@@ -742,7 +742,14 @@ mod tests {
         let (cmd_tx, _) = mpsc::channel(100);
         let (event_tx, _) = mpsc::channel(100);
         let (_, command_rx) = mpsc::channel(100);
-        PairingManager::new(cmd_tx, event_tx, command_rx, "Test Device".to_string())
+        PairingManager::new(
+            cmd_tx,
+            event_tx,
+            command_rx,
+            "Test Device".to_string(),
+            "test-device-id".to_string(),
+            "test-peer-id".to_string(),
+        )
     }
 }
 

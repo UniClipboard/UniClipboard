@@ -6,14 +6,16 @@
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use chrono::Utc;
+use futures::future;
 use log::{debug, error, info, warn};
 use sha2::{Digest, Sha256};
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, RwLock};
 
 use crate::domain::transfer_message::ClipboardTransferMessage;
-use crate::infrastructure::p2p::{ClipboardMessage, NetworkCommand};
+use crate::infrastructure::p2p::{ClipboardMessage, ConnectedPeer, NetworkCommand};
 use crate::infrastructure::security::unified_encryption::UnifiedEncryption;
 use crate::interface::RemoteClipboardSync;
 
@@ -34,6 +36,8 @@ pub struct Libp2pSync {
     clipboard_rx: Arc<Mutex<tokio::sync::mpsc::Receiver<ClipboardTransferMessage>>>,
     /// Whether sync is running
     running: Arc<Mutex<bool>>,
+    /// Connected peers reference for broadcasting clipboard content
+    connected_peers: Arc<RwLock<HashMap<String, ConnectedPeer>>>,
 }
 
 impl Libp2pSync {
@@ -46,24 +50,28 @@ impl Libp2pSync {
     ///
     /// ```rust,no_run
     /// use std::sync::Arc;
-    /// use tokio::sync::mpsc;
+    /// use std::collections::HashMap;
+    /// use tokio::sync::{mpsc, RwLock};
     ///
     /// // Placeholder types; replace with real implementations from the crate.
     /// // let network_command_tx: mpsc::Sender<NetworkCommand> = ...;
     /// // let encryptor: Arc<UnifiedEncryption> = Arc::new(...);
+    /// // let connected_peers: Arc<RwLock<HashMap<String, ConnectedPeer>>> = ...;
     ///
     /// let (network_command_tx, _rx) = mpsc::channel::<NetworkCommand>(8);
     /// let device_name = "my-device".to_string();
     /// let device_id = "peer-id-123".to_string();
     /// let encryptor = Arc::new(unimplemented!()); // replace with `UnifiedEncryption` instance
+    /// let connected_peers = Arc::new(RwLock::new(HashMap::new()));
     ///
-    /// let sync = Libp2pSync::new(network_command_tx, device_name, device_id, encryptor);
+    /// let sync = Libp2pSync::new(network_command_tx, device_name, device_id, encryptor, connected_peers);
     /// ```
     pub fn new(
         network_command_tx: tokio::sync::mpsc::Sender<NetworkCommand>,
         device_name: String,
         device_id: String,
         encryptor: Arc<UnifiedEncryption>,
+        connected_peers: Arc<RwLock<HashMap<String, ConnectedPeer>>>,
     ) -> Self {
         let (clipboard_tx, clipboard_rx) = tokio::sync::mpsc::channel(100);
 
@@ -75,6 +83,7 @@ impl Libp2pSync {
             clipboard_tx,
             clipboard_rx: Arc::new(Mutex::new(clipboard_rx)),
             running: Arc::new(Mutex::new(false)),
+            connected_peers,
         }
     }
 
@@ -165,7 +174,7 @@ impl Libp2pSync {
 
 #[async_trait]
 impl RemoteClipboardSync for Libp2pSync {
-    /// Push clipboard content to all paired peers
+    /// Push clipboard content to all connected peers via BlobStream
     async fn push(&self, message: ClipboardTransferMessage) -> Result<()> {
         let content_bytes = serde_json::to_vec(&message)
             .map_err(|e| anyhow!("Failed to serialize clipboard message: {}", e))?;
@@ -176,31 +185,61 @@ impl RemoteClipboardSync for Libp2pSync {
             anyhow!("Failed to encrypt clipboard content: {}", e)
         })?;
 
-        let content_hash = Self::compute_content_hash(&encrypted_content);
+        // Get all connected peers
+        let peers = self.connected_peers.read().await;
 
-        let clipboard_msg = ClipboardMessage {
-            id: message.message_id.clone(),
-            content_hash,
-            encrypted_content,
-            timestamp: Utc::now(),
-            origin_device_id: self.device_id.clone(),
-            origin_device_name: self.device_name.clone(),
-        };
-
-        // Broadcast once (GossipSub delivers to all connected peers)
-        if let Err(e) = self
-            .network_command_tx
-            .send(NetworkCommand::BroadcastClipboard {
-                message: clipboard_msg,
-            })
-            .await
-        {
-            warn!("Failed to send command to network manager: {}", e);
-            return Err(anyhow!("Failed to broadcast clipboard message: {}", e));
+        if peers.is_empty() {
+            debug!("No connected peers, skipping clipboard broadcast");
+            return Ok(());
         }
 
-        debug!("Clipboard message broadcasted successfully");
-        Ok(())
+        // Concurrently send to all connected peers using BlobStream
+        let mut send_tasks = Vec::new();
+        for (peer_id, _peer_info) in peers.iter() {
+            let cmd_tx = self.network_command_tx.clone();
+            let peer_id = peer_id.clone();
+            let encrypted_data = encrypted_content.clone();
+
+            send_tasks.push(tokio::spawn(async move {
+                let (respond_to, rx) = tokio::sync::oneshot::channel();
+                let peer_id_for_log = peer_id.clone();
+
+                if let Err(e) = cmd_tx.send(NetworkCommand::SendClipboard {
+                    peer_id,
+                    data: encrypted_data,
+                    respond_to,
+                }).await {
+                    return Err(format!("Failed to send SendClipboard command: {}", e));
+                }
+
+                match rx.await {
+                    Ok(Ok(())) => Ok(()),
+                    Ok(Err(e)) => Err(format!("SendClipboard failed for peer {}: {}", peer_id_for_log, e)),
+                    Err(e) => Err(format!("SendClipboard response channel closed for peer {}: {}", peer_id_for_log, e)),
+                }
+            }));
+        }
+
+        // Wait for all send tasks to complete
+        let results: Vec<_> = future::join_all(send_tasks).await;
+
+        // Count successes and failures
+        let success_count = results.iter().filter(|r| r.is_ok() && r.as_ref().unwrap().is_ok()).count();
+        let fail_count = results.len() - success_count;
+
+        if fail_count > 0 {
+            warn!("Clipboard broadcast partially failed: {} succeeded, {} failed",
+                  success_count, fail_count);
+        } else {
+            debug!("Clipboard message sent successfully to {} peers", success_count);
+        }
+
+        // At least one success is considered success
+        if success_count == 0 {
+            Err(anyhow!("Failed to broadcast clipboard to any peer (0/{} succeeded)", results.len()))
+        } else {
+            Ok(())
+        }
     }
 
     /// Pull clipboard content from P2P network

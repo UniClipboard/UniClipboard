@@ -145,6 +145,10 @@ impl P2PRuntime {
         // Create PeerStorage (kept separate for pairing management)
         let peer_storage = Arc::new(PeerStorage::new().expect("Failed to create PeerStorage"));
 
+        // Initialize peer tracking before creating Libp2pSync (avoids circular dependency)
+        let discovered_peers = Arc::new(RwLock::new(HashMap::new()));
+        let connected_peers = Arc::new(RwLock::new(HashMap::new()));
+
         // Try to get the unified encryption (optional for first-time users)
         let p2p_sync = match get_unified_encryption().await {
             Some(encryptor) => {
@@ -155,6 +159,7 @@ impl P2PRuntime {
                     device_name_for_sync,
                     our_device_id.clone(), // Use 6-digit device ID instead of PeerId
                     encryptor,
+                    connected_peers.clone(), // Pass connected_peers reference for broadcasting
                 )))
             }
             None => {
@@ -165,9 +170,6 @@ impl P2PRuntime {
                 None
             }
         };
-
-        let discovered_peers = Arc::new(RwLock::new(HashMap::new()));
-        let connected_peers = Arc::new(RwLock::new(HashMap::new()));
 
         // Spawn event monitoring loop
         let pairing_cmd_tx_clone = pairing_cmd_tx.clone();

@@ -62,40 +62,72 @@ pub fn get_preferred_local_address() -> String {
     }
 }
 
-/// 获取所有网络接口的 IP 地址
+/// 获取用于 QUIC 监听的物理网卡 IP
 ///
-/// 返回所有非回环的 IPv4 地址，用于显示本机可用的网络接口
-pub fn get_local_network_interfaces() -> Vec<NetworkInterface> {
-    let mut interfaces = Vec::new();
+/// QUIC 不能绑定 0.0.0.0（在有多网卡/VPN 环境下会失败）
+/// 必须明确绑定到物理 LAN IP
+///
+/// 过滤规则：
+/// - 排除 loopback (127.*)
+/// - 排除 tunnel/utun 接口（如 Clash 的 198.18.*）
+/// - 排除 link-local (169.254.*)
+/// - 只保留 IPv4 私网地址 (10.*, 172.16-31.*, 192.168.*)
+pub fn get_physical_lan_ip() -> Option<String> {
+    use std::net::IpAddr;
 
     match list_afinet_netifas() {
-        Ok(network_interfaces) => {
-            for (name, ip) in network_interfaces {
-                let is_loopback = ip.is_loopback();
-                let is_ipv4 = matches!(ip, std::net::IpAddr::V4(_));
+        Ok(interfaces) => {
+            for (iface_name, ip) in interfaces {
+                if let IpAddr::V4(v4) = ip {
+                    // 排除 loopback
+                    if v4.is_loopback() {
+                        continue;
+                    }
 
-                // 过滤掉 IPv6 和回环地址
-                if is_ipv4 && !is_loopback {
-                    interfaces.push(NetworkInterface {
-                        name,
-                        ip: ip.to_string(),
-                        is_loopback,
-                        is_ipv4,
-                    });
+                    // 排除 link-local
+                    if v4.is_link_local() {
+                        continue;
+                    }
+
+                    // 排除 tunnel 接口（utun, tun, tap）
+                    if iface_name.contains("utun")
+                        || iface_name.contains("tun")
+                        || iface_name.contains("tap")
+                    {
+                        continue;
+                    }
+
+                    // 排除 Clash TUN 模式的地址范围 (198.18.0.0/15)
+                    if v4.octets()[0] == 198 && v4.octets()[1] >= 18 {
+                        continue;
+                    }
+
+                    // 只保留 IPv4 私网地址
+                    if is_private_ipv4(v4) {
+                        log::info!("Found physical LAN IP: {} (interface: {})", v4, iface_name);
+                        return Some(v4.to_string());
+                    }
                 }
             }
+            log::warn!("No suitable physical LAN IP found for QUIC");
+            None
         }
         Err(e) => {
-            log::error!("Failed to get network interfaces: {}", e);
+            log::error!("Failed to enumerate network interfaces: {}", e);
+            None
         }
     }
-
-    interfaces
 }
 
-/// 当前时间
-pub fn get_current_time() -> i32 {
-    chrono::Utc::now().timestamp() as i32
+/// 检查是否为 IPv4 私网地址
+fn is_private_ipv4(ip: std::net::Ipv4Addr) -> bool {
+    let octets = ip.octets();
+    match octets[0] {
+        10 => true,                                // 10.0.0.0/8
+        172 => octets[1] >= 16 && octets[1] <= 31, // 172.16.0.0/12
+        192 => octets[1] == 168,                   // 192.168.0.0/16
+        _ => false,
+    }
 }
 
 /// 获取当前平台
@@ -148,22 +180,5 @@ mod tests {
         let ip = get_local_ip();
         println!("local ip: {}", ip);
         assert!(is_valid_ip(&ip));
-    }
-
-    #[test]
-    fn test_get_local_network_interfaces() {
-        let interfaces = get_local_network_interfaces();
-        println!("Found {} network interfaces:", interfaces.len());
-        for iface in &interfaces {
-            println!("  - {}: {}", iface.name, iface.ip);
-        }
-
-        // 至少应该有一个非回环的 IPv4 地址（如果设备有网络连接）
-        // 但在某些环境下（如 CI），可能没有网络接口
-        for iface in &interfaces {
-            assert!(is_valid_ip(&iface.ip), "Invalid IP: {}", iface.ip);
-            assert!(!iface.is_loopback, "Loopback address should be filtered");
-            assert!(iface.is_ipv4, "Only IPv4 addresses should be included");
-        }
     }
 }

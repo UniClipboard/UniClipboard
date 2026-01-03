@@ -1,188 +1,95 @@
-use async_trait::async_trait;
-use futures::prelude::*;
 use libp2p::{
-    gossipsub, identify, mdns,
-    request_response::{self, Codec, ProtocolSupport},
+    identify, mdns, ping,
+    request_response::{self, ProtocolSupport},
     swarm::NetworkBehaviour,
     StreamProtocol,
 };
+use libp2p_stream::Behaviour as StreamBehaviour;
 use std::time::Duration;
 
-use super::protocol::ProtocolMessage;
+use super::codec::UniClipboardCodec;
 
 const PROTOCOL_NAME: &str = "/uniclipboard/1.0.0";
-const GOSSIPSUB_TOPIC: &str = "uniclipboard-clipboard";
-
-/// Request-response codec for pairing protocol
-#[derive(Debug, Clone, Default)]
-pub struct UniClipboardCodec;
-
-/// Pairing request wrapper for request-response protocol
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct PairingRequest {
-    pub message: Vec<u8>,
-}
-
-/// Pairing response wrapper for request-response protocol
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct PairingResponse {
-    pub message: Vec<u8>,
-}
-
-#[async_trait]
-impl Codec for UniClipboardCodec {
-    type Protocol = StreamProtocol;
-    type Request = PairingRequest;
-    type Response = PairingResponse;
-
-    async fn read_request<T>(
-        &mut self,
-        _: &Self::Protocol,
-        io: &mut T,
-    ) -> std::io::Result<Self::Request>
-    where
-        T: futures::AsyncRead + Unpin + Send,
-    {
-        let mut buf = Vec::new();
-        let mut limited = io.take(1024 * 64); // 64KB limit
-        limited.read_to_end(&mut buf).await?;
-        serde_json::from_slice(&buf)
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))
-    }
-
-    async fn read_response<T>(
-        &mut self,
-        _: &Self::Protocol,
-        io: &mut T,
-    ) -> std::io::Result<Self::Response>
-    where
-        T: futures::AsyncRead + Unpin + Send,
-    {
-        let mut buf = Vec::new();
-        let mut limited = io.take(1024 * 64); // 64KB limit
-        limited.read_to_end(&mut buf).await?;
-        serde_json::from_slice(&buf)
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))
-    }
-
-    async fn write_request<T>(
-        &mut self,
-        _: &Self::Protocol,
-        io: &mut T,
-        req: Self::Request,
-    ) -> std::io::Result<()>
-    where
-        T: futures::AsyncWrite + Unpin + Send,
-    {
-        let bytes = serde_json::to_vec(&req)
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
-        io.write_all(&bytes).await?;
-        io.close().await?;
-        Ok(())
-    }
-
-    async fn write_response<T>(
-        &mut self,
-        _: &Self::Protocol,
-        io: &mut T,
-        res: Self::Response,
-    ) -> std::io::Result<()>
-    where
-        T: futures::AsyncWrite + Unpin + Send,
-    {
-        let bytes = serde_json::to_vec(&res)
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
-        io.write_all(&bytes).await?;
-        io.close().await?;
-        Ok(())
-    }
-}
 
 /// UniClipboard network behaviour combining libp2p protocols
+///
+/// This behaviour combines:
+/// - mDNS: For local device discovery
+/// - Request-Response: For device pairing protocol
+/// - Identify: For peer identification and agent version info
+/// - Stream: For BlobStream data transfer (large files)
+///
+/// Note: GossipSub has been removed in v2.0.0 as we now use BlobStream
+/// for clipboard content transfer instead of pub/sub broadcasting.
 #[derive(NetworkBehaviour)]
 pub struct UniClipboardBehaviour {
+    /// mDNS device discovery
     pub mdns: mdns::tokio::Behaviour,
-    pub gossipsub: gossipsub::Behaviour,
+    /// Request-Response protocol for device pairing
     pub request_response: request_response::Behaviour<UniClipboardCodec>,
+    /// Identify protocol for peer information
     pub identify: identify::Behaviour,
+    /// Stream protocol for BlobStream data transfer
+    pub stream: StreamBehaviour,
+    /// Ping protocol for connection keepalive
+    pub ping: ping::Behaviour,
 }
 
 impl UniClipboardBehaviour {
+    /// Create a new UniClipboard behaviour instance
+    ///
+    /// # Arguments
+    ///
+    /// * `local_peer_id` - The local peer's libp2p PeerId
+    /// * `key` - The local peer's keypair
+    /// * `device_name` - Human-readable device name (e.g., "MacBook Pro")
+    /// * `device_id` - 6-digit stable device ID from database
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if mDNS behaviour creation fails
     pub fn new(
         local_peer_id: libp2p::PeerId,
-        keypair: &libp2p::identity::Keypair,
+        key: &libp2p::identity::Keypair,
         device_name: &str,
-        device_id: &str, // 6-digit device ID from database
+        device_id: &str,
     ) -> Result<Self, Box<dyn std::error::Error>> {
         // mDNS for local device discovery
         let mdns = mdns::tokio::Behaviour::new(mdns::Config::default(), local_peer_id)?;
 
-        // Gossipsub for clipboard broadcast
-        let gossipsub_config = gossipsub::ConfigBuilder::default()
-            // Use 1-second heartbeat for faster mesh building after reconnection
-            // This is important for quick clipboard sync after peer restart
-            .heartbeat_interval(Duration::from_secs(1))
-            .validation_mode(gossipsub::ValidationMode::Strict)
-            .message_id_fn(|message| {
-                // For clipboard messages: use the message's own UUID as the MessageId
-                // This makes each broadcast unique, allowing resending same content.
-                // For other messages: use content hash for deduplication.
-                if let Ok(ProtocolMessage::Clipboard(clipboard_msg)) =
-                    ProtocolMessage::from_bytes(&message.data)
-                {
-                    return gossipsub::MessageId::from(clipboard_msg.id);
-                }
-                // Fallback: content-based hash for non-clipboard messages
-                let mut hasher = std::collections::hash_map::DefaultHasher::new();
-                std::hash::Hash::hash(&message.data, &mut hasher);
-                gossipsub::MessageId::from(std::hash::Hasher::finish(&hasher).to_string())
-            })
-            .build()
-            .map_err(|e| format!("Failed to create gossipsub config: {}", e))?;
-
-        let gossipsub = gossipsub::Behaviour::new(
-            gossipsub::MessageAuthenticity::Signed(keypair.clone()),
-            gossipsub_config,
-        )
-        .map_err(|e| format!("Failed to create gossipsub behaviour: {}", e))?;
-
-        // Request-response for pairing protocol
-        let request_response = request_response::Behaviour::new(
-            [(StreamProtocol::new(PROTOCOL_NAME), ProtocolSupport::Full)],
-            request_response::Config::default(),
+        // Identify for peer identification
+        // Agent version format: "uniclipboard/2.0.0/<device_id>/<device_name>"
+        // Updated to v2.0.0 to reflect removal of GossipSub and addition of BlobStream
+        let identify = identify::Behaviour::new(
+            identify::Config::new(
+                format!("uniclipboard/2.0.0/{}/{}", device_id, device_name),
+                key.public(),
+            )
+            .with_push_listen_addr_updates(true),
         );
 
-        // Identify for peer identification
-        // Format: "uniclipboard/<version>/<device_id>/<device_name>"
-        // The device_id is the 6-digit stable ID, device_name is human-readable
-        let identify = identify::Behaviour::new(
-            identify::Config::new(PROTOCOL_NAME.to_string(), keypair.public())
-                .with_agent_version(format!("uniclipboard/1.0.0/{}/{}", device_id, device_name)),
+        // Request-Response for pairing protocol
+        let request_response = request_response::Behaviour::new(
+            [(StreamProtocol::new(PROTOCOL_NAME), ProtocolSupport::Full)],
+            request_response::Config::default().with_request_timeout(Duration::from_secs(30)),
+        );
+
+        // Stream for BlobStream data transfer
+        let stream = StreamBehaviour::new();
+
+        // Ping for connection keepalive (QUIC, NAT mapping, idle timeout prevention)
+        let ping = ping::Behaviour::new(
+            ping::Config::new()
+                .with_interval(Duration::from_secs(15))
+                .with_timeout(Duration::from_secs(10)),
         );
 
         Ok(Self {
             mdns,
-            gossipsub,
             request_response,
             identify,
+            stream,
+            ping,
         })
-    }
-
-    /// Subscribe to clipboard broadcast topic
-    pub fn subscribe_clipboard(&mut self) -> Result<(), gossipsub::SubscriptionError> {
-        let topic = gossipsub::IdentTopic::new(GOSSIPSUB_TOPIC);
-        self.gossipsub.subscribe(&topic).map(|_| ())
-    }
-
-    /// Publish a message to the clipboard topic
-    pub fn publish_clipboard(
-        &mut self,
-        message: &ProtocolMessage,
-    ) -> Result<gossipsub::MessageId, gossipsub::PublishError> {
-        let topic = gossipsub::IdentTopic::new(GOSSIPSUB_TOPIC);
-        let data = message
-            .to_bytes()
-            .map_err(|e| gossipsub::PublishError::TransformFailed(std::io::Error::other(e)))?;
-        self.gossipsub.publish(topic, data)
     }
 }

@@ -82,30 +82,7 @@ impl SecureStoragePort for SystemSecureStorage {
 #[cfg(test)]
 mod tests {
     use super::resolve_service_name;
-    use std::sync::Mutex;
-
-    static UC_PROFILE_ENV_LOCK: Mutex<()> = Mutex::new(());
-
-    fn with_uc_profile<T>(value: Option<&str>, f: impl FnOnce() -> T) -> T {
-        let _guard = UC_PROFILE_ENV_LOCK
-            .lock()
-            .expect("lock UC_PROFILE test guard");
-        let previous = std::env::var("UC_PROFILE").ok();
-
-        match value {
-            Some(profile) => std::env::set_var("UC_PROFILE", profile),
-            None => std::env::remove_var("UC_PROFILE"),
-        }
-
-        let result = f();
-
-        match previous {
-            Some(profile) => std::env::set_var("UC_PROFILE", profile),
-            None => std::env::remove_var("UC_PROFILE"),
-        }
-
-        result
-    }
+    use crate::test_support::with_uc_profile;
 
     #[test]
     fn service_name_defaults_without_profile() {

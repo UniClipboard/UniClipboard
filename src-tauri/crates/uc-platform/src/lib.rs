@@ -22,3 +22,4 @@ pub mod ports;
 pub mod runtime;
 pub mod secure_storage;
 pub mod system_secure_storage;
+pub mod test_support;

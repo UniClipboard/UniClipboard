@@ -13,20 +13,29 @@ fn resolve_service_name() -> String {
 /// System keychain-backed secure storage.
 ///
 /// 基于系统钥匙串的安全存储实现。
-#[derive(Debug, Clone, Default)]
-pub struct SystemSecureStorage;
+#[derive(Debug, Clone)]
+pub struct SystemSecureStorage {
+    service_name: String,
+}
+
+impl Default for SystemSecureStorage {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 impl SystemSecureStorage {
     /// Create a system secure storage instance.
     ///
     /// 创建系统安全存储实例。
     pub fn new() -> Self {
-        Self
+        Self {
+            service_name: resolve_service_name(),
+        }
     }
 
     fn entry_for_key(&self, key: &str) -> Result<Entry, SecureStorageError> {
-        let service_name = resolve_service_name();
-        Entry::new(&service_name, key)
+        Entry::new(&self.service_name, key)
             .map_err(|e| SecureStorageError::Other(format!("failed to create keyring entry: {e}")))
     }
 }
@@ -101,6 +110,12 @@ mod tests {
     #[test]
     fn service_name_defaults_without_profile() {
         let name = with_uc_profile(None, resolve_service_name);
+        assert_eq!(name, "UniClipboard");
+    }
+
+    #[test]
+    fn service_name_defaults_with_empty_profile() {
+        let name = with_uc_profile(Some(""), resolve_service_name);
         assert_eq!(name, "UniClipboard");
     }
 

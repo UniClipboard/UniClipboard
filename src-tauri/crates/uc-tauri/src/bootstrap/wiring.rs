@@ -2286,29 +2286,7 @@ mod tests {
     use uc_core::network::{ConnectedPeer, DiscoveredPeer, PairingMessage};
     use uc_core::ports::{EncryptionSessionPort, NetworkPort};
     use uc_core::security::model::{EncryptionError, MasterKey};
-
-    static UC_PROFILE_ENV_LOCK: Mutex<()> = Mutex::new(());
-
-    fn with_uc_profile<T>(value: Option<&str>, f: impl FnOnce() -> T) -> T {
-        let _guard = UC_PROFILE_ENV_LOCK
-            .lock()
-            .expect("lock UC_PROFILE test guard");
-        let previous = std::env::var("UC_PROFILE").ok();
-
-        match value {
-            Some(profile) => std::env::set_var("UC_PROFILE", profile),
-            None => std::env::remove_var("UC_PROFILE"),
-        }
-
-        let result = f();
-
-        match previous {
-            Some(profile) => std::env::set_var("UC_PROFILE", profile),
-            None => std::env::remove_var("UC_PROFILE"),
-        }
-
-        result
-    }
+    use uc_platform::test_support::with_uc_profile;
 
     #[test]
     fn test_wiring_error_display() {

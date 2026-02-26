@@ -182,11 +182,16 @@ impl SyncInboundClipboardUseCase {
                 let message_id = message.id.clone();
                 self.prune_recent_ids().await;
                 {
-                    let recent_ids = self.recent_ids.lock().await;
+                    let now = Instant::now();
+                    let mut recent_ids = self.recent_ids.lock().await;
                     let is_duplicate = recent_ids.iter().any(|(id, _)| id == &message_id);
                     if is_duplicate {
                         debug!(message_id = %message_id, "Skipping inbound apply because passive mode already processed this message id");
                         return Ok(InboundApplyOutcome::Skipped);
+                    }
+                    recent_ids.push_back((message_id.clone(), now));
+                    while recent_ids.len() > RECENT_ID_MAX {
+                        recent_ids.pop_front();
                     }
                 }
 
@@ -194,22 +199,22 @@ impl SyncInboundClipboardUseCase {
                     .capture_clipboard
                     .as_ref()
                     .context("passive inbound sync requires capture clipboard dependencies")?;
-                capture
+                if let Err(err) = capture
                     .execute_with_origin(snapshot, ClipboardChangeOrigin::RemotePush)
                     .await
-                    .context("failed to persist inbound clipboard in passive mode")?;
-
-                self.prune_recent_ids().await;
                 {
-                    let now = Instant::now();
+                    self.prune_recent_ids().await;
                     let mut recent_ids = self.recent_ids.lock().await;
-                    if !recent_ids.iter().any(|(id, _)| id == &message_id) {
-                        recent_ids.push_back((message_id, now));
+                    if let Some(index) = recent_ids.iter().position(|(id, _)| id == &message_id) {
+                        recent_ids.remove(index);
                     }
                     while recent_ids.len() > RECENT_ID_MAX {
                         recent_ids.pop_front();
                     }
+                    return Err(err).context("failed to persist inbound clipboard in passive mode");
                 }
+
+                self.prune_recent_ids().await;
 
                 info!(mode = ?self.mode, "Inbound clipboard message persisted in passive mode");
                 return Ok(InboundApplyOutcome::Applied);

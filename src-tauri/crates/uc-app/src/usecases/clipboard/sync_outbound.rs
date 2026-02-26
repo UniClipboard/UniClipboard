@@ -237,16 +237,20 @@ impl SyncOutboundClipboardUseCase {
             let mut failures = Vec::new();
             failures.extend(connect_failures);
             failures.extend(send_failures);
+            let failure_count = failures.len();
             warn!(
                 sent_count,
-                failure_count = failures.len(),
+                failure_count,
                 "outbound clipboard fanout partially failed after best-effort retries"
             );
             info!(
                 sent_count,
                 connect_success_count, "Outbound clipboard sync sent to sendable peers (partial)"
             );
-            return Ok(());
+            return Err(anyhow::anyhow!(
+                "outbound clipboard fanout partially failed: {sent_count} sent, {failure_count} failed ({})",
+                failures.join(" | ")
+            ));
         }
 
         info!(
@@ -753,13 +757,103 @@ mod tests {
             &[],
         );
 
-        usecase
+        let err = usecase
             .execute(build_snapshot(), ClipboardChangeOrigin::LocalCapture)
-            .expect("partial failure should still be best-effort success");
+            .expect_err("partial fanout failure should be reported");
+        let err_msg = err.to_string();
+        assert!(
+            err_msg.contains("partially failed"),
+            "unexpected error message: {err_msg}"
+        );
+        assert!(
+            err_msg.contains("peer-1"),
+            "missing peer-1 in error: {err_msg}"
+        );
 
         let calls = send_calls.lock().expect("send calls lock");
         assert_eq!(calls.len(), 1, "peer-2 should still receive payload");
         assert_eq!(calls[0].0, "peer-2");
+    }
+
+    #[test]
+    fn returns_error_when_all_sendable_peers_fail_business_path_ensure() {
+        let (usecase, send_calls, _, ensure_calls, _) = build_usecase(
+            vec![
+                ConnectedPeer {
+                    peer_id: "peer-1".to_string(),
+                    device_name: "Desk".to_string(),
+                    connected_at: Utc::now(),
+                },
+                ConnectedPeer {
+                    peer_id: "peer-2".to_string(),
+                    device_name: "Laptop".to_string(),
+                    connected_at: Utc::now(),
+                },
+            ],
+            true,
+            &[],
+            &["peer-1", "peer-2"],
+        );
+
+        let err = usecase
+            .execute(build_snapshot(), ClipboardChangeOrigin::LocalCapture)
+            .expect_err("all ensure failures should return error");
+
+        let err_msg = err.to_string();
+        assert!(
+            err_msg.contains("fanout failed"),
+            "unexpected error message: {err_msg}"
+        );
+        assert!(
+            err_msg.contains("peer-1"),
+            "missing peer-1 in error: {err_msg}"
+        );
+        assert!(
+            err_msg.contains("peer-2"),
+            "missing peer-2 in error: {err_msg}"
+        );
+        assert_eq!(send_calls.lock().expect("send calls lock").len(), 0);
+        assert_eq!(ensure_calls.load(Ordering::SeqCst), 2);
+    }
+
+    #[test]
+    fn returns_error_with_partial_send_when_some_ensure_business_path_fail() {
+        let (usecase, send_calls, _, ensure_calls, _) = build_usecase(
+            vec![
+                ConnectedPeer {
+                    peer_id: "peer-1".to_string(),
+                    device_name: "Desk".to_string(),
+                    connected_at: Utc::now(),
+                },
+                ConnectedPeer {
+                    peer_id: "peer-2".to_string(),
+                    device_name: "Laptop".to_string(),
+                    connected_at: Utc::now(),
+                },
+            ],
+            true,
+            &[],
+            &["peer-1"],
+        );
+
+        let err = usecase
+            .execute(build_snapshot(), ClipboardChangeOrigin::LocalCapture)
+            .expect_err("partial ensure failures should return error");
+
+        let err_msg = err.to_string();
+        assert!(
+            err_msg.contains("partially failed"),
+            "unexpected error message: {err_msg}"
+        );
+        assert!(
+            err_msg.contains("peer-1"),
+            "missing peer-1 in error: {err_msg}"
+        );
+
+        let calls = send_calls.lock().expect("send calls lock");
+        assert_eq!(calls.len(), 1, "peer-2 should still receive payload");
+        assert_eq!(calls[0].0, "peer-2");
+        assert_eq!(ensure_calls.load(Ordering::SeqCst), 2);
     }
 
     #[test]

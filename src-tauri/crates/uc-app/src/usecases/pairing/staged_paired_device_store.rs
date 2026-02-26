@@ -23,6 +23,14 @@ pub(crate) fn take_by_peer_id(peer_id: &str) -> Option<PairedDevice> {
     staged.remove(&session_id)
 }
 
+pub(crate) fn get_by_peer_id(peer_id: &str) -> Option<PairedDevice> {
+    let staged = staged_devices().lock().ok()?;
+    staged
+        .values()
+        .find(|device| device.peer_id.as_str() == peer_id)
+        .cloned()
+}
+
 #[cfg(test)]
 pub(crate) fn clear() {
     if let Ok(mut staged) = staged_devices().lock() {

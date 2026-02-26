@@ -36,9 +36,10 @@ impl PersistencePort for SpaceAccessPersistenceAdapter {
     ) -> anyhow::Result<()> {
         info!(peer_id = %peer_id, "Persisting joiner access and promoting peer trust");
         self.encryption_state.persist_initialized().await?;
-        if let Some(mut staged_device) = staged_paired_device_store::take_by_peer_id(peer_id) {
+        if let Some(mut staged_device) = staged_paired_device_store::get_by_peer_id(peer_id) {
             staged_device.pairing_state = PairingState::Trusted;
             self.paired_device_repo.upsert(staged_device).await?;
+            let _ = staged_paired_device_store::take_by_peer_id(peer_id);
             info!(
                 peer_id = %peer_id,
                 source = "staged",
@@ -66,9 +67,10 @@ impl PersistencePort for SpaceAccessPersistenceAdapter {
         peer_id: &str,
     ) -> anyhow::Result<()> {
         info!(peer_id = %peer_id, "Persisting sponsor access and promoting peer trust");
-        if let Some(mut staged_device) = staged_paired_device_store::take_by_peer_id(peer_id) {
+        if let Some(mut staged_device) = staged_paired_device_store::get_by_peer_id(peer_id) {
             staged_device.pairing_state = PairingState::Trusted;
             self.paired_device_repo.upsert(staged_device).await?;
+            let _ = staged_paired_device_store::take_by_peer_id(peer_id);
             info!(
                 peer_id = %peer_id,
                 source = "staged",

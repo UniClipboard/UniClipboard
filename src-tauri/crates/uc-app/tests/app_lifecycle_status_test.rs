@@ -4,6 +4,7 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use tokio::sync::Mutex;
 
+use uc_app::usecases::clipboard::ClipboardIntegrationMode;
 use uc_app::usecases::{
     AppLifecycleCoordinator, AppLifecycleCoordinatorDeps, LifecycleEvent, LifecycleEventEmitter,
     LifecycleState, LifecycleStatusPort, SessionReadyEmitter, StartClipboardWatcher,
@@ -152,7 +153,10 @@ fn build_coordinator_with_network_error(
         calls: watcher_calls.clone(),
         should_fail: watcher_fails,
     });
-    let watcher = Arc::new(StartClipboardWatcher::new(watcher_control));
+    let watcher = Arc::new(StartClipboardWatcher::new(
+        watcher_control,
+        ClipboardIntegrationMode::Full,
+    ));
 
     let network_control = Arc::new(MockNetworkControl {
         calls: network_calls.clone(),

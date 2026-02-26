@@ -4,6 +4,7 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use tokio::sync::Mutex;
 
+use uc_app::usecases::clipboard::ClipboardIntegrationMode;
 use uc_app::usecases::{
     AppLifecycleCoordinator, AppLifecycleCoordinatorDeps, LifecycleEvent, LifecycleEventEmitter,
     LifecycleState, LifecycleStatusPort, SessionReadyEmitter, StartClipboardWatcher,
@@ -30,7 +31,10 @@ fn test_fixtures() -> (TestMocks, AppLifecycleCoordinator) {
     let watcher_control = Arc::new(MockWatcherControl {
         calls: watcher_calls.clone(),
     });
-    let watcher = Arc::new(StartClipboardWatcher::new(watcher_control));
+    let watcher = Arc::new(StartClipboardWatcher::new(
+        watcher_control,
+        ClipboardIntegrationMode::Full,
+    ));
 
     let network_control = Arc::new(MockNetworkControl {
         calls: network_calls.clone(),

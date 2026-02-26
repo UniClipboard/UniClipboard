@@ -1,3 +1,4 @@
+use crate::usecases::clipboard::ClipboardIntegrationMode;
 use anyhow::Result;
 use std::sync::Arc;
 use std::time::Duration;
@@ -24,6 +25,7 @@ pub struct RestoreClipboardSelectionUseCase {
     representation_repo: Arc<dyn ClipboardRepresentationRepositoryPort>,
     blob_store: Arc<dyn BlobStorePort>,
     clipboard_change_origin: Arc<dyn ClipboardChangeOriginPort>,
+    mode: ClipboardIntegrationMode,
 }
 
 impl RestoreClipboardSelectionUseCase {
@@ -52,6 +54,7 @@ impl RestoreClipboardSelectionUseCase {
         representation_repo: Arc<dyn ClipboardRepresentationRepositoryPort>,
         blob_store: Arc<dyn BlobStorePort>,
         clipboard_change_origin: Arc<dyn ClipboardChangeOriginPort>,
+        mode: ClipboardIntegrationMode,
     ) -> Self {
         Self {
             clipboard_repo,
@@ -60,6 +63,7 @@ impl RestoreClipboardSelectionUseCase {
             representation_repo,
             blob_store,
             clipboard_change_origin,
+            mode,
         }
     }
 
@@ -175,6 +179,12 @@ impl RestoreClipboardSelectionUseCase {
     }
 
     pub async fn restore_snapshot(&self, snapshot: SystemClipboardSnapshot) -> Result<()> {
+        if !self.mode.allow_os_write() {
+            return Err(anyhow::anyhow!(
+                "System clipboard writes disabled (UC_CLIPBOARD_MODE=passive)"
+            ));
+        }
+
         self.clipboard_change_origin
             .set_next_origin(ClipboardChangeOrigin::LocalRestore, Duration::from_secs(2))
             .await;
@@ -200,6 +210,7 @@ mod tests {
     use super::*;
     use async_trait::async_trait;
     use std::collections::HashMap;
+    use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::{Arc, Mutex};
     use std::time::Duration;
     use uc_core::clipboard::{
@@ -354,6 +365,10 @@ mod tests {
         calls: Arc<Mutex<Vec<&'static str>>>,
     }
 
+    struct TrackingSystemClipboard {
+        write_calls: Arc<AtomicUsize>,
+    }
+
     impl SystemClipboardPort for FailingSystemClipboard {
         fn read_snapshot(&self) -> Result<SystemClipboardSnapshot> {
             Ok(SystemClipboardSnapshot {
@@ -367,6 +382,20 @@ mod tests {
                 calls.push("write_snapshot");
             }
             Err(anyhow::anyhow!("write failed"))
+        }
+    }
+
+    impl SystemClipboardPort for TrackingSystemClipboard {
+        fn read_snapshot(&self) -> Result<SystemClipboardSnapshot> {
+            Ok(SystemClipboardSnapshot {
+                ts_ms: 0,
+                representations: vec![],
+            })
+        }
+
+        fn write_snapshot(&self, _snapshot: SystemClipboardSnapshot) -> Result<()> {
+            self.write_calls.fetch_add(1, Ordering::SeqCst);
+            Ok(())
         }
     }
 
@@ -450,6 +479,7 @@ mod tests {
             }),
             Arc::new(MockBlobStore),
             Arc::new(NoopClipboardChangeOrigin),
+            ClipboardIntegrationMode::Full,
         );
 
         let snapshot = uc.build_snapshot(&entry_id).await.unwrap();
@@ -507,6 +537,7 @@ mod tests {
             }),
             Arc::new(MockBlobStore),
             Arc::new(NoopClipboardChangeOrigin),
+            ClipboardIntegrationMode::Full,
         );
 
         let snapshot = uc.build_snapshot(&entry_id).await.unwrap();
@@ -531,6 +562,7 @@ mod tests {
             Arc::new(MockClipboardChangeOrigin {
                 calls: calls.clone(),
             }),
+            ClipboardIntegrationMode::Full,
         );
 
         let snapshot = SystemClipboardSnapshot {
@@ -546,5 +578,41 @@ mod tests {
             calls,
             vec!["set_origin", "write_snapshot", "consume_origin"]
         );
+    }
+
+    #[tokio::test]
+    async fn restore_snapshot_returns_error_in_passive_mode_without_writing() {
+        let write_calls = Arc::new(AtomicUsize::new(0));
+        let origin_calls = Arc::new(Mutex::new(Vec::new()));
+        let uc = RestoreClipboardSelectionUseCase::new(
+            Arc::new(MockEntryRepository { entry: None }),
+            Arc::new(TrackingSystemClipboard {
+                write_calls: write_calls.clone(),
+            }),
+            Arc::new(MockSelectionRepository { selection: None }),
+            Arc::new(MockRepresentationRepository {
+                reps: HashMap::new(),
+            }),
+            Arc::new(MockBlobStore),
+            Arc::new(MockClipboardChangeOrigin {
+                calls: origin_calls.clone(),
+            }),
+            ClipboardIntegrationMode::Passive,
+        );
+
+        let snapshot = SystemClipboardSnapshot {
+            ts_ms: 0,
+            representations: vec![],
+        };
+
+        let result = uc.restore_snapshot(snapshot).await;
+
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("System clipboard writes disabled (UC_CLIPBOARD_MODE=passive)"));
+        assert_eq!(write_calls.load(Ordering::SeqCst), 0);
+        assert!(origin_calls.lock().unwrap().is_empty());
     }
 }

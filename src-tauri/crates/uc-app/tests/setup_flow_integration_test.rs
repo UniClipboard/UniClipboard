@@ -3,6 +3,7 @@ use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
 use tempfile::TempDir;
+use uc_app::usecases::clipboard::ClipboardIntegrationMode;
 use uc_app::usecases::space_access::{SpaceAccessExecutor, SpaceAccessOrchestrator};
 use uc_app::usecases::{
     space_access::{
@@ -355,6 +356,7 @@ impl PersistencePort for DeterministicSpaceAccessPersistence {
     async fn persist_joiner_access(
         &mut self,
         _space_id: &uc_core::ids::SpaceId,
+        _peer_id: &str,
     ) -> anyhow::Result<()> {
         Ok(())
     }
@@ -445,7 +447,10 @@ async fn drive_space_access_to_waiting_decision(
 fn build_mock_lifecycle() -> Arc<AppLifecycleCoordinator> {
     Arc::new(AppLifecycleCoordinator::from_deps(
         AppLifecycleCoordinatorDeps {
-            watcher: Arc::new(StartClipboardWatcher::new(Arc::new(MockWatcherControl))),
+            watcher: Arc::new(StartClipboardWatcher::new(
+                Arc::new(MockWatcherControl),
+                ClipboardIntegrationMode::Full,
+            )),
             network: Arc::new(StartNetworkAfterUnlock::new(Arc::new(MockNetworkControl))),
             announcer: None,
             emitter: Arc::new(MockSessionReadyEmitter),
@@ -460,7 +465,10 @@ fn build_ordered_mock_lifecycle(
 ) -> Arc<AppLifecycleCoordinator> {
     Arc::new(AppLifecycleCoordinator::from_deps(
         AppLifecycleCoordinatorDeps {
-            watcher: Arc::new(StartClipboardWatcher::new(Arc::new(MockWatcherControl))),
+            watcher: Arc::new(StartClipboardWatcher::new(
+                Arc::new(MockWatcherControl),
+                ClipboardIntegrationMode::Full,
+            )),
             network: Arc::new(StartNetworkAfterUnlock::new(Arc::new(
                 OrderedNetworkControl { calls },
             ))),

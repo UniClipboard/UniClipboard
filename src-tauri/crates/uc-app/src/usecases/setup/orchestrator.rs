@@ -843,6 +843,7 @@ mod tests {
     use uc_core::setup::{SetupError as SetupDomainError, SetupStatus};
     use uc_core::PeerId;
 
+    use crate::usecases::clipboard::ClipboardIntegrationMode;
     use crate::usecases::{
         AppLifecycleCoordinatorDeps, LifecycleEvent, LifecycleEventEmitter, LifecycleState,
         LifecycleStatusPort, SessionReadyEmitter, StartClipboardWatcher, StartNetworkAfterUnlock,
@@ -1483,6 +1484,7 @@ mod tests {
         async fn persist_joiner_access(
             &mut self,
             _space_id: &uc_core::ids::SpaceId,
+            _peer_id: &str,
         ) -> anyhow::Result<()> {
             Ok(())
         }
@@ -1499,7 +1501,10 @@ mod tests {
     fn build_mock_lifecycle() -> Arc<AppLifecycleCoordinator> {
         Arc::new(AppLifecycleCoordinator::from_deps(
             AppLifecycleCoordinatorDeps {
-                watcher: Arc::new(StartClipboardWatcher::new(Arc::new(MockWatcherControl))),
+                watcher: Arc::new(StartClipboardWatcher::new(
+                    Arc::new(MockWatcherControl),
+                    ClipboardIntegrationMode::Full,
+                )),
                 network: Arc::new(StartNetworkAfterUnlock::new(Arc::new(MockNetworkControl))),
                 announcer: None,
                 emitter: Arc::new(MockSessionReadyEmitter),

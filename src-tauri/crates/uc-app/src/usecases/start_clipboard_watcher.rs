@@ -1,7 +1,9 @@
 //! Use case for starting the clipboard watcher
 //! 启动剪贴板监控器的用例
 
+use crate as uc_app;
 use tracing::{info, info_span, Instrument};
+use uc_app::usecases::clipboard::ClipboardIntegrationMode;
 use uc_core::ports::WatcherControlPort;
 
 /// Error type for clipboard watcher startup failures.
@@ -29,19 +31,29 @@ impl From<uc_core::ports::WatcherControlError> for StartClipboardWatcherError {
 /// This operation is idempotent - starting an already-running watcher is safe.
 pub struct StartClipboardWatcher {
     watcher_control: std::sync::Arc<dyn WatcherControlPort>,
+    mode: ClipboardIntegrationMode,
 }
 
 impl StartClipboardWatcher {
     /// Create a new StartClipboardWatcher use case.
-    pub fn new(watcher_control: std::sync::Arc<dyn WatcherControlPort>) -> Self {
-        Self { watcher_control }
+    pub fn new(
+        watcher_control: std::sync::Arc<dyn WatcherControlPort>,
+        mode: ClipboardIntegrationMode,
+    ) -> Self {
+        Self {
+            watcher_control,
+            mode,
+        }
     }
 
     /// Create a new StartClipboardWatcher use case from an Arc port.
     ///
     /// This is a convenience method for the UseCases accessor pattern.
-    pub fn from_port(watcher_control: std::sync::Arc<dyn WatcherControlPort>) -> Self {
-        Self::new(watcher_control)
+    pub fn from_port(
+        watcher_control: std::sync::Arc<dyn WatcherControlPort>,
+        mode: ClipboardIntegrationMode,
+    ) -> Self {
+        Self::new(watcher_control, mode)
     }
 
     /// Execute the use case.
@@ -53,6 +65,11 @@ impl StartClipboardWatcher {
         let span = info_span!("usecase.start_clipboard_watcher.execute");
 
         async {
+            if !self.mode.observe_os_clipboard() {
+                info!("Clipboard watcher disabled by integration mode (passive)");
+                return Ok(());
+            }
+
             info!("Requesting clipboard watcher to start");
 
             self.watcher_control.start_watcher().await?;
@@ -117,7 +134,7 @@ mod tests {
     #[tokio::test]
     async fn test_start_clipboard_watcher_succeeds() {
         let watcher = Arc::new(MockWatcherControl::new());
-        let use_case = StartClipboardWatcher::new(watcher.clone());
+        let use_case = StartClipboardWatcher::new(watcher.clone(), ClipboardIntegrationMode::Full);
 
         let result = use_case.execute().await;
 
@@ -128,7 +145,7 @@ mod tests {
     #[tokio::test]
     async fn test_start_clipboard_watcher_propagates_error() {
         let watcher = Arc::new(MockWatcherControl::fail_on_start());
-        let use_case = StartClipboardWatcher::new(watcher);
+        let use_case = StartClipboardWatcher::new(watcher, ClipboardIntegrationMode::Full);
 
         let result = use_case.execute().await;
 
@@ -140,10 +157,23 @@ mod tests {
     #[tokio::test]
     async fn test_from_port_creates_use_case() {
         let watcher = Arc::new(MockWatcherControl::new());
-        let use_case = StartClipboardWatcher::from_port(watcher.clone());
+        let use_case =
+            StartClipboardWatcher::from_port(watcher.clone(), ClipboardIntegrationMode::Full);
 
         let result = use_case.execute().await;
 
         assert!(result.is_ok(), "use_case created from_port should work");
+    }
+
+    #[tokio::test]
+    async fn test_start_clipboard_watcher_is_noop_in_passive_mode() {
+        let watcher = Arc::new(MockWatcherControl::new());
+        let use_case =
+            StartClipboardWatcher::new(watcher.clone(), ClipboardIntegrationMode::Passive);
+
+        let result = use_case.execute().await;
+
+        assert!(result.is_ok(), "passive mode should skip watcher startup");
+        assert!(!watcher.was_started(), "watcher should not be started");
     }
 }

@@ -577,7 +577,10 @@ mod tests {
         assert!(harness.transport.results().is_empty());
         assert_eq!(harness.timer.start_calls.len(), 2);
         assert_eq!(harness.timer.stop_calls.len(), 2);
-        assert_eq!(harness.store.joiner_access, vec![space_id.clone()]);
+        assert_eq!(
+            harness.store.joiner_access,
+            vec![(space_id.clone(), "peer-join".to_string())]
+        );
     }
 
     #[tokio::test]
@@ -1027,7 +1030,7 @@ mod tests {
 
     #[derive(Default)]
     struct MockStore {
-        joiner_access: Vec<SpaceId>,
+        joiner_access: Vec<(SpaceId, String)>,
         sponsor_access: Vec<(SpaceId, String)>,
     }
 
@@ -1036,9 +1039,10 @@ mod tests {
         async fn persist_joiner_access(
             &mut self,
             space_id: &SpaceId,
-            _peer_id: &str,
+            peer_id: &str,
         ) -> anyhow::Result<()> {
-            self.joiner_access.push(space_id.clone());
+            self.joiner_access
+                .push((space_id.clone(), peer_id.to_string()));
             Ok(())
         }
 

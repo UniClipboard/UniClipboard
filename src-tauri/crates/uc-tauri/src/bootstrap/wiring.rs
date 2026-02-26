@@ -1616,23 +1616,6 @@ impl uc_core::ports::space::CryptoPort for LoadedKeyslotSpaceAccessCrypto {
     }
 }
 
-struct NoopSpaceAccessTimer;
-
-#[async_trait::async_trait]
-impl uc_core::ports::TimerPort for NoopSpaceAccessTimer {
-    async fn start(
-        &mut self,
-        _session_id: &uc_core::ids::SessionId,
-        _ttl_secs: u64,
-    ) -> anyhow::Result<()> {
-        Ok(())
-    }
-
-    async fn stop(&mut self, _session_id: &uc_core::ids::SessionId) -> anyhow::Result<()> {
-        Ok(())
-    }
-}
-
 async fn run_space_access_completion_loop<R: Runtime>(
     mut event_rx: mpsc::Receiver<SpaceAccessCompletedEvent>,
     app_handle: Option<AppHandle<R>>,
@@ -2495,6 +2478,23 @@ mod tests {
     struct SuccessSpaceAccessProof;
 
     struct SuccessSpaceAccessPersistence;
+
+    struct NoopSpaceAccessTimer;
+
+    #[async_trait]
+    impl TimerPort for NoopSpaceAccessTimer {
+        async fn start(
+            &mut self,
+            _session_id: &uc_core::ids::SessionId,
+            _ttl_secs: u64,
+        ) -> anyhow::Result<()> {
+            Ok(())
+        }
+
+        async fn stop(&mut self, _session_id: &uc_core::ids::SessionId) -> anyhow::Result<()> {
+            Ok(())
+        }
+    }
 
     struct FixedMasterKeyEncryptionSession {
         master_key: TokioMutex<Option<MasterKey>>,

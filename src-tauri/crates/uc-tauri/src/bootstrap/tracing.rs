@@ -46,10 +46,11 @@ fn is_development() -> bool {
 fn build_filter_directives(is_dev: bool) -> Vec<String> {
     vec![
         if is_dev { "debug" } else { "info" }.to_string(),
-        "libp2p_mdns=debug".to_string(), // Set to info to see discovery events
-        "tauri=warn".to_string(),        // Filter noisy setup spans (app::setup)
-        "wry=off".to_string(),           // Filter Tauri internal spans (custom_protocol)
-        "ipc::request=off".to_string(),  // Filter Tauri IPC handler spans
+        "libp2p_mdns=info".to_string(),
+        "libp2p_mdns::behaviour::iface=off".to_string(),
+        "tauri=warn".to_string(), // Filter noisy setup spans (app::setup)
+        "wry=off".to_string(),    // Filter Tauri internal spans (custom_protocol)
+        "ipc::request=off".to_string(), // Filter Tauri IPC handler spans
         if is_dev {
             "uc_platform=debug"
         } else {

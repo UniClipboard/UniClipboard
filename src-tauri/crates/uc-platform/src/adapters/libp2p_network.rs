@@ -35,6 +35,7 @@ const BUSINESS_READ_TIMEOUT: Duration = Duration::from_secs(30);
 const BUSINESS_STREAM_OPEN_TIMEOUT: Duration = Duration::from_secs(10);
 const BUSINESS_STREAM_WRITE_TIMEOUT: Duration = Duration::from_secs(10);
 const BUSINESS_STREAM_CLOSE_TIMEOUT: Duration = Duration::from_secs(10);
+const BUSINESS_COMMAND_ENQUEUE_TIMEOUT: Duration = Duration::from_secs(5);
 const BUSINESS_SEND_COMMAND_RESULT_TIMEOUT: Duration = Duration::from_secs(35);
 const BUSINESS_ENSURE_COMMAND_RESULT_TIMEOUT: Duration = Duration::from_secs(25);
 const MAX_IN_FLIGHT_BUSINESS_COMMANDS: usize = 16;
@@ -405,14 +406,40 @@ impl NetworkPort for Libp2pNetworkAdapter {
     async fn send_clipboard(&self, _peer_id: &str, _encrypted_data: Vec<u8>) -> Result<()> {
         let peer = uc_core::PeerId::from(_peer_id);
         let (result_tx, result_rx) = oneshot::channel();
-        self.business_tx
-            .send(BusinessCommand::SendClipboard {
-                peer_id: peer,
-                data: _encrypted_data,
-                result_tx,
-            })
-            .await
-            .map_err(|err| anyhow!("failed to queue business stream: {err}"))?;
+        let command = BusinessCommand::SendClipboard {
+            peer_id: peer,
+            data: _encrypted_data,
+            result_tx,
+        };
+        let enqueue_result = timeout(
+            BUSINESS_COMMAND_ENQUEUE_TIMEOUT,
+            self.business_tx.send(command),
+        )
+        .await;
+        match enqueue_result {
+            Ok(Ok(())) => {}
+            Ok(Err(tokio::sync::mpsc::error::SendError(command))) => {
+                let message = "failed to queue business stream: business command channel closed";
+                error!(
+                    peer_id = _peer_id,
+                    error = message,
+                    "business command enqueue failed"
+                );
+                notify_enqueue_failure(command, message, "clipboard", _peer_id);
+                return Err(anyhow!(message));
+            }
+            Err(_) => {
+                // Cancelling the send future drops the unsent command and closes its result_tx.
+                let message = "timed out queueing business stream command";
+                error!(
+                    peer_id = _peer_id,
+                    timeout_ms = BUSINESS_COMMAND_ENQUEUE_TIMEOUT.as_millis() as u64,
+                    error = message,
+                    "business command enqueue timed out"
+                );
+                return Err(anyhow!(message));
+            }
+        }
         match timeout(BUSINESS_SEND_COMMAND_RESULT_TIMEOUT, result_rx).await {
             Ok(Ok(result)) => result,
             Ok(Err(err)) => Err(anyhow!("failed to receive business stream result: {err}")),
@@ -502,13 +529,40 @@ impl NetworkPort for Libp2pNetworkAdapter {
     async fn ensure_business_path(&self, peer_id: &str) -> Result<()> {
         let peer = uc_core::PeerId::from(peer_id);
         let (result_tx, result_rx) = oneshot::channel();
-        self.business_tx
-            .send(BusinessCommand::EnsureBusinessPath {
-                peer_id: peer,
-                result_tx,
-            })
-            .await
-            .map_err(|err| anyhow!("failed to queue ensure business path command: {err}"))?;
+        let command = BusinessCommand::EnsureBusinessPath {
+            peer_id: peer,
+            result_tx,
+        };
+        let enqueue_result = timeout(
+            BUSINESS_COMMAND_ENQUEUE_TIMEOUT,
+            self.business_tx.send(command),
+        )
+        .await;
+        match enqueue_result {
+            Ok(Ok(())) => {}
+            Ok(Err(tokio::sync::mpsc::error::SendError(command))) => {
+                let message =
+                    "failed to queue ensure business path command: business command channel closed";
+                error!(
+                    peer_id = peer_id,
+                    error = message,
+                    "business command enqueue failed"
+                );
+                notify_enqueue_failure(command, message, "ensure", peer_id);
+                return Err(anyhow!(message));
+            }
+            Err(_) => {
+                // Cancelling the send future drops the unsent command and closes its result_tx.
+                let message = "timed out queueing ensure business path command";
+                error!(
+                    peer_id = peer_id,
+                    timeout_ms = BUSINESS_COMMAND_ENQUEUE_TIMEOUT.as_millis() as u64,
+                    error = message,
+                    "business command enqueue timed out"
+                );
+                return Err(anyhow!(message));
+            }
+        }
 
         match timeout(BUSINESS_ENSURE_COMMAND_RESULT_TIMEOUT, result_rx).await {
             Ok(Ok(result)) => result,
@@ -1137,6 +1191,23 @@ fn business_command_log_fields(command: &BusinessCommand) -> (&'static str, Opti
         BusinessCommand::SendClipboard { peer_id, .. } => ("clipboard", Some(peer_id.as_str())),
         BusinessCommand::EnsureBusinessPath { peer_id, .. } => ("ensure", Some(peer_id.as_str())),
         BusinessCommand::AnnounceDeviceName { .. } => ("announce_device_name", None),
+    }
+}
+
+fn notify_enqueue_failure(command: BusinessCommand, message: &str, operation: &str, peer_id: &str) {
+    let result_tx = match command {
+        BusinessCommand::SendClipboard { result_tx, .. } => result_tx,
+        BusinessCommand::EnsureBusinessPath { result_tx, .. } => result_tx,
+        BusinessCommand::AnnounceDeviceName { .. } => return,
+    };
+
+    if let Err(undelivered_result) = result_tx.send(Err(anyhow!(message.to_string()))) {
+        warn!(
+            op = operation,
+            peer_id = %peer_id,
+            result_ok = undelivered_result.is_ok(),
+            "failed to deliver enqueue failure to caller"
+        );
     }
 }
 

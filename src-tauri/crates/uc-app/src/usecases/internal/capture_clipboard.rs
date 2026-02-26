@@ -141,6 +141,14 @@ impl CaptureClipboardUseCase {
                 info!(origin = ?origin, "Skipping clipboard capture");
                 return Ok(None);
             }
+            if !Self::has_supported_representation(&snapshot) {
+                info!(
+                    origin = ?origin,
+                    representation_count = snapshot.representations.len(),
+                    "Skipping clipboard capture because snapshot has no supported representations"
+                );
+                return Ok(None);
+            }
             info!("Starting clipboard capture with provided snapshot");
 
             let event_id = EventId::new();
@@ -280,6 +288,33 @@ impl CaptureClipboardUseCase {
         // 回退：没有找到文本表示
         debug!("No text representation found in snapshot, title will be None");
         None
+    }
+
+    fn has_supported_representation(snapshot: &SystemClipboardSnapshot) -> bool {
+        snapshot
+            .representations
+            .iter()
+            .any(Self::is_supported_representation)
+    }
+
+    fn is_supported_representation(rep: &uc_core::ObservedClipboardRepresentation) -> bool {
+        if let Some(mime) = &rep.mime {
+            let mime_str = mime.as_str();
+            if mime_str.starts_with("text/")
+                || mime_str.starts_with("image/")
+                || mime_str.eq_ignore_ascii_case("public.utf8-plain-text")
+                || mime_str.eq_ignore_ascii_case("file/uri-list")
+                || mime_str.eq_ignore_ascii_case("text/uri-list")
+            {
+                return true;
+            }
+        }
+
+        rep.format_id.eq_ignore_ascii_case("text")
+            || rep.format_id.eq_ignore_ascii_case("rtf")
+            || rep.format_id.eq_ignore_ascii_case("html")
+            || rep.format_id.eq_ignore_ascii_case("files")
+            || rep.format_id.eq_ignore_ascii_case("image")
     }
 }
 
@@ -464,6 +499,61 @@ mod tests {
             .await
             .expect("expected ok result");
 
+        assert_eq!(save_calls.load(Ordering::SeqCst), 0);
+        assert_eq!(insert_calls.load(Ordering::SeqCst), 0);
+        assert_eq!(select_calls.load(Ordering::SeqCst), 0);
+        assert_eq!(normalize_calls.load(Ordering::SeqCst), 0);
+        assert_eq!(cache_put_calls.load(Ordering::SeqCst), 0);
+        assert_eq!(enqueue_calls.load(Ordering::SeqCst), 0);
+    }
+
+    #[tokio::test]
+    async fn capture_skips_unsupported_snapshot_without_persisting() {
+        let save_calls = Arc::new(AtomicUsize::new(0));
+        let insert_calls = Arc::new(AtomicUsize::new(0));
+        let select_calls = Arc::new(AtomicUsize::new(0));
+        let normalize_calls = Arc::new(AtomicUsize::new(0));
+        let cache_put_calls = Arc::new(AtomicUsize::new(0));
+        let enqueue_calls = Arc::new(AtomicUsize::new(0));
+
+        let use_case = CaptureClipboardUseCase::new(
+            Arc::new(MockEntryRepository {
+                save_calls: save_calls.clone(),
+            }),
+            Arc::new(MockEventWriter {
+                insert_calls: insert_calls.clone(),
+            }),
+            Arc::new(MockRepresentationPolicy {
+                select_calls: select_calls.clone(),
+            }),
+            Arc::new(MockNormalizer {
+                normalize_calls: normalize_calls.clone(),
+            }),
+            Arc::new(MockDeviceIdentity),
+            Arc::new(MockRepresentationCache {
+                put_calls: cache_put_calls.clone(),
+            }),
+            Arc::new(MockSpoolQueue {
+                enqueue_calls: enqueue_calls.clone(),
+            }),
+        );
+
+        let snapshot = SystemClipboardSnapshot {
+            ts_ms: 0,
+            representations: vec![uc_core::ObservedClipboardRepresentation {
+                id: uc_core::ids::RepresentationId::new(),
+                format_id: uc_core::ids::FormatId::from("UnknownPrivateFormat"),
+                mime: None,
+                bytes: vec![1],
+            }],
+        };
+
+        let result = use_case
+            .execute_with_origin(snapshot, ClipboardChangeOrigin::LocalCapture)
+            .await
+            .expect("expected ok result");
+
+        assert!(result.is_none());
         assert_eq!(save_calls.load(Ordering::SeqCst), 0);
         assert_eq!(insert_calls.load(Ordering::SeqCst), 0);
         assert_eq!(select_calls.load(Ordering::SeqCst), 0);

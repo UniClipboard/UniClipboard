@@ -6,6 +6,12 @@ use uc_core::ids::RepresentationId;
 
 pub struct CommonClipboardImpl;
 
+fn should_skip_raw_format(format_id: &str) -> bool {
+    // Barrier writes this ownership marker during clipboard handoff.
+    // It is not user clipboard content and should never be persisted.
+    format_id.eq_ignore_ascii_case("BarrierOwnership")
+}
+
 fn map_clipboard_err<T>(
     result: std::result::Result<T, Box<dyn std::error::Error + Send + Sync>>,
 ) -> Result<T> {
@@ -142,6 +148,10 @@ impl CommonClipboardImpl {
 
         for format_id in available {
             if seen.contains(&format_id) {
+                continue;
+            }
+            if should_skip_raw_format(&format_id) {
+                debug!(format_id = %format_id, "Skipping raw buffer representation");
                 continue;
             }
             match ctx.get_buffer(&format_id) {

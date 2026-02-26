@@ -119,6 +119,10 @@ where
     async fn handle_event(&self, event: PlatformEvent) {
         match event {
             PlatformEvent::ClipboardChanged { snapshot } => {
+                if snapshot.is_empty() {
+                    debug!("Clipboard changed event had no representations; skipping callback");
+                    return;
+                }
                 debug!(
                     representation_count = snapshot.representation_count(),
                     total_bytes = snapshot.total_size_bytes(),

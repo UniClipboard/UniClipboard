@@ -216,15 +216,14 @@ impl SetupOrchestrator {
                 SetupAction::CreateEncryptedSpace => {
                     let passphrase = self.take_passphrase().await?;
                     self.initialize_encryption.execute(passphrase).await?;
-                    // Boot watcher + network + session ready
-                    self.app_lifecycle
-                        .ensure_ready()
-                        .await
-                        .map_err(SetupError::LifecycleFailed)?;
                     follow_up_events.push(SetupEvent::CreateSpaceSucceeded);
                     debug!("setup action CreateEncryptedSpace completed");
                 }
                 SetupAction::MarkSetupComplete => {
+                    self.app_lifecycle
+                        .ensure_ready()
+                        .await
+                        .map_err(SetupError::LifecycleFailed)?;
                     self.mark_setup_complete.execute().await?;
                     debug!("setup action MarkSetupComplete completed");
                 }
@@ -469,6 +468,7 @@ impl SetupOrchestrator {
         let context = Arc::clone(&self.context);
         let setup_event_port = Arc::clone(&self.setup_event_port);
         let mark_setup_complete = Arc::clone(&self.mark_setup_complete);
+        let app_lifecycle = Arc::clone(&self.app_lifecycle);
         let pairing_session_id = Arc::clone(&self.pairing_session_id);
         let space_access_orchestrator = Arc::clone(&self.space_access_orchestrator);
 
@@ -492,6 +492,22 @@ impl SetupOrchestrator {
 
                 for action in actions {
                     if matches!(action, SetupAction::MarkSetupComplete) {
+                        if let Err(err) = app_lifecycle.ensure_ready().await {
+                            error!(
+                                error = %err,
+                                session_id = %session_id,
+                                "lifecycle ensure_ready failed after space access completion"
+                            );
+                            let failed_state = SetupState::JoinSpaceInputPassphrase {
+                                error: Some(SetupDomainError::PairingFailed),
+                            };
+                            context.set_state(failed_state.clone()).await;
+                            setup_event_port
+                                .emit_setup_state_changed(failed_state, Some(session_id.clone()))
+                                .await;
+                            return;
+                        }
+
                         if let Err(err) = mark_setup_complete.execute().await {
                             error!(
                                 error = %err,

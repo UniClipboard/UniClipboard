@@ -14,6 +14,7 @@ use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tokio::sync::{mpsc, oneshot, RwLock};
+use tokio::time::timeout;
 use tracing::{debug, error, info, warn};
 use uc_core::network::{
     ClipboardMessage, ConnectedPeer, DeviceAnnounceMessage, DiscoveredPeer, NetworkEvent,
@@ -34,6 +35,7 @@ const BUSINESS_READ_TIMEOUT: Duration = Duration::from_secs(30);
 const BUSINESS_STREAM_OPEN_TIMEOUT: Duration = Duration::from_secs(10);
 const BUSINESS_STREAM_WRITE_TIMEOUT: Duration = Duration::from_secs(10);
 const BUSINESS_STREAM_CLOSE_TIMEOUT: Duration = Duration::from_secs(10);
+const BUSINESS_COMMAND_RESULT_TIMEOUT: Duration = Duration::from_secs(10);
 const START_STATE_IDLE: u8 = 0;
 const START_STATE_STARTING: u8 = 1;
 const START_STATE_STARTED: u8 = 2;
@@ -409,9 +411,10 @@ impl NetworkPort for Libp2pNetworkAdapter {
             })
             .await
             .map_err(|err| anyhow!("failed to queue business stream: {err}"))?;
-        match result_rx.await {
-            Ok(result) => result,
-            Err(err) => Err(anyhow!("failed to receive business stream result: {err}")),
+        match timeout(BUSINESS_COMMAND_RESULT_TIMEOUT, result_rx).await {
+            Ok(Ok(result)) => result,
+            Ok(Err(err)) => Err(anyhow!("failed to receive business stream result: {err}")),
+            Err(_) => Err(anyhow!("timed out waiting for business command result")),
         }
     }
 
@@ -505,11 +508,12 @@ impl NetworkPort for Libp2pNetworkAdapter {
             .await
             .map_err(|err| anyhow!("failed to queue ensure business path command: {err}"))?;
 
-        match result_rx.await {
-            Ok(result) => result,
-            Err(err) => Err(anyhow!(
+        match timeout(BUSINESS_COMMAND_RESULT_TIMEOUT, result_rx).await {
+            Ok(Ok(result)) => result,
+            Ok(Err(err)) => Err(anyhow!(
                 "failed to receive ensure business path result: {err}"
             )),
+            Err(_) => Err(anyhow!("timed out waiting for business command result")),
         }
     }
 

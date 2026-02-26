@@ -1,7 +1,7 @@
 //! Clipboard-related Tauri commands
 //! 剪贴板相关的 Tauri 命令
 
-use crate::bootstrap::AppRuntime;
+use crate::bootstrap::{resolve_clipboard_integration_mode, AppRuntime};
 use crate::commands::record_trace_fields;
 use crate::models::{
     ClipboardEntriesResponse, ClipboardEntryDetail, ClipboardEntryProjection,
@@ -10,6 +10,7 @@ use crate::models::{
 use std::sync::Arc;
 use tauri::State;
 use tracing::{info_span, Instrument};
+use uc_app::usecases::clipboard::ClipboardIntegrationMode;
 use uc_core::ids::EntryId;
 use uc_core::ports::observability::TraceMetadata;
 use uc_core::security::state::EncryptionState;
@@ -265,6 +266,13 @@ pub async fn sync_clipboard_items(
     record_trace_fields(&span, &_trace);
 
     async move {
+        if matches!(
+            resolve_clipboard_integration_mode(),
+            ClipboardIntegrationMode::Passive
+        ) {
+            return Err("Clipboard sync disabled in passive mode".to_string());
+        }
+
         let outbound_sync_uc = runtime.usecases().sync_outbound_clipboard();
         match tokio::task::spawn_blocking(move || {
             outbound_sync_uc.execute_current_snapshot(uc_core::ClipboardChangeOrigin::LocalCapture)

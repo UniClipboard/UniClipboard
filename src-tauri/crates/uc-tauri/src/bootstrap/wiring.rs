@@ -42,10 +42,10 @@ use tokio::sync::mpsc;
 use tracing::{debug, error, info, info_span, warn, Instrument};
 
 use crate::events::{
-    P2PPairingVerificationEvent, P2PPeerConnectionEvent, P2PPeerDiscoveryEvent,
-    P2PPeerNameUpdatedEvent,
+    forward_clipboard_event, ClipboardEvent, P2PPairingVerificationEvent, P2PPeerConnectionEvent,
+    P2PPeerDiscoveryEvent, P2PPeerNameUpdatedEvent,
 };
-use uc_app::usecases::clipboard::sync_inbound::SyncInboundClipboardUseCase;
+use uc_app::usecases::clipboard::sync_inbound::{InboundApplyOutcome, SyncInboundClipboardUseCase};
 use uc_app::usecases::space_access::{
     HmacProofAdapter, SpaceAccessCompletedEvent, SpaceAccessContext, SpaceAccessEventPort,
     SpaceAccessJoinerOffer, SpaceAccessNetworkAdapter, SpaceAccessOrchestrator,
@@ -1306,12 +1306,19 @@ pub fn start_background_tasks<R: Runtime>(
 }
 
 fn new_sync_inbound_clipboard_usecase(deps: &AppDeps) -> SyncInboundClipboardUseCase {
-    SyncInboundClipboardUseCase::new(
+    SyncInboundClipboardUseCase::with_capture_dependencies(
+        super::resolve_clipboard_integration_mode(),
         deps.system_clipboard.clone(),
         deps.clipboard_change_origin.clone(),
         deps.encryption_session.clone(),
         deps.encryption.clone(),
         deps.device_identity.clone(),
+        deps.clipboard_entry_repo.clone(),
+        deps.clipboard_event_repo.clone(),
+        deps.representation_policy.clone(),
+        deps.representation_normalizer.clone(),
+        deps.representation_cache.clone(),
+        deps.spool_queue.clone(),
     )
 }
 
@@ -1320,6 +1327,8 @@ async fn run_clipboard_receive_loop<R: Runtime>(
     usecase: &SyncInboundClipboardUseCase,
     app_handle: Option<AppHandle<R>>,
 ) {
+    let mode = super::resolve_clipboard_integration_mode();
+
     while let Some(message) = clipboard_rx.recv().await {
         let message_id = message.id.clone();
         let origin_device_id = message.origin_device_id.clone();
@@ -1329,12 +1338,28 @@ async fn run_clipboard_receive_loop<R: Runtime>(
             origin_device_id = %origin_device_id
         );
 
-        let result = async { usecase.execute(message).await }
+        let result = async { usecase.execute_with_outcome(message).await }
             .instrument(span)
             .await;
 
         match result {
-            Ok(()) => {}
+            Ok(outcome) => {
+                if matches!(
+                    mode,
+                    uc_app::usecases::clipboard::ClipboardIntegrationMode::Passive
+                ) && matches!(outcome, InboundApplyOutcome::Applied)
+                {
+                    if let Some(app) = app_handle.as_ref() {
+                        let event = ClipboardEvent::NewContent {
+                            entry_id: message_id.clone(),
+                            preview: "Remote clipboard content applied".to_string(),
+                        };
+                        if let Err(emit_err) = forward_clipboard_event(app, event) {
+                            warn!(error = %emit_err, message_id = %message_id, "Failed to emit clipboard event after inbound apply in passive mode");
+                        }
+                    }
+                }
+            }
             Err(err) => {
                 warn!(
                     error = %err,

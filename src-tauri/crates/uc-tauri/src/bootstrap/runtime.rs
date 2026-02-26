@@ -226,6 +226,7 @@ impl AppRuntime {
         ));
         let start_watcher = Arc::new(uc_app::usecases::StartClipboardWatcher::from_port(
             deps.watcher_control.clone(),
+            super::resolve_clipboard_integration_mode(),
         ));
         let start_network = Arc::new(uc_app::usecases::StartNetworkAfterUnlock::from_port(
             deps.network_control.clone(),
@@ -631,6 +632,7 @@ impl<'a> UseCases<'a> {
     pub fn start_clipboard_watcher(&self) -> uc_app::usecases::StartClipboardWatcher {
         uc_app::usecases::StartClipboardWatcher::from_port(
             self.runtime.deps.watcher_control.clone(),
+            super::resolve_clipboard_integration_mode(),
         )
     }
 
@@ -682,6 +684,7 @@ impl<'a> UseCases<'a> {
             self.runtime.deps.representation_repo.clone(),
             self.runtime.deps.blob_store.clone(),
             self.runtime.deps.clipboard_change_origin.clone(),
+            super::resolve_clipboard_integration_mode(),
         )
     }
 
@@ -700,12 +703,19 @@ impl<'a> UseCases<'a> {
     pub fn sync_inbound_clipboard(
         &self,
     ) -> uc_app::usecases::clipboard::sync_inbound::SyncInboundClipboardUseCase {
-        uc_app::usecases::clipboard::sync_inbound::SyncInboundClipboardUseCase::new(
+        uc_app::usecases::clipboard::sync_inbound::SyncInboundClipboardUseCase::with_capture_dependencies(
+            super::resolve_clipboard_integration_mode(),
             self.runtime.deps.system_clipboard.clone(),
             self.runtime.deps.clipboard_change_origin.clone(),
             self.runtime.deps.encryption_session.clone(),
             self.runtime.deps.encryption.clone(),
             self.runtime.deps.device_identity.clone(),
+            self.runtime.deps.clipboard_entry_repo.clone(),
+            self.runtime.deps.clipboard_event_repo.clone(),
+            self.runtime.deps.representation_policy.clone(),
+            self.runtime.deps.representation_normalizer.clone(),
+            self.runtime.deps.representation_cache.clone(),
+            self.runtime.deps.spool_queue.clone(),
         )
     }
 
@@ -912,7 +922,7 @@ impl ClipboardChangeHandler for AppRuntime {
                     .await
                     {
                         Ok(Ok(())) => {
-                            tracing::debug!("Outbound clipboard sync completed");
+                            tracing::info!("Outbound clipboard sync completed");
                         }
                         Ok(Err(err)) => {
                             tracing::warn!(error = %err, "Outbound clipboard sync failed");

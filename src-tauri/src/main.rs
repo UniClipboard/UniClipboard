@@ -265,7 +265,10 @@ mod tests {
     use super::*;
     use std::env;
     use std::fs;
+    use std::sync::Mutex;
     use tempfile::TempDir;
+
+    static CWD_TEST_LOCK: Mutex<()> = Mutex::new(());
 
     #[test]
     fn test_cors_headers_are_set_for_dev_origin() {
@@ -297,6 +300,7 @@ mod tests {
 
     #[test]
     fn test_resolve_config_path_finds_parent_directory() {
+        let _guard = CWD_TEST_LOCK.lock().unwrap();
         let temp_dir = TempDir::new().unwrap();
         let root_dir = temp_dir.path();
         let nested_dir = root_dir.join("src-tauri");
@@ -316,6 +320,7 @@ mod tests {
 
     #[test]
     fn test_resolve_config_path_finds_src_tauri_config_from_repo_root() {
+        let _guard = CWD_TEST_LOCK.lock().unwrap();
         let temp_dir = TempDir::new().unwrap();
         let root_dir = temp_dir.path();
         let src_tauri_dir = root_dir.join("src-tauri");

@@ -55,51 +55,59 @@ mod tests {
     use super::*;
     use tokio::time::{advance, Duration};
 
-    #[tokio::test]
+    async fn wait_until_absent(timer: &Timer, session_id: &SessionId) {
+        for _ in 0..64 {
+            if !timer.timers.lock().await.contains_key(session_id) {
+                return;
+            }
+            tokio::task::yield_now().await;
+        }
+    }
+
+    #[tokio::test(flavor = "current_thread", start_paused = true)]
     async fn start_sends_timeout_after_ttl() -> anyhow::Result<()> {
-        tokio::time::pause();
         let mut timer = Timer::new();
         let session_id = SessionId::from("session-1");
 
         timer.start(&session_id, 5).await?;
         assert!(timer.timers.lock().await.contains_key(&session_id));
-        advance(Duration::from_secs(5)).await;
         tokio::task::yield_now().await;
+        advance(Duration::from_secs(5)).await;
+        wait_until_absent(&timer, &session_id).await;
 
         assert!(!timer.timers.lock().await.contains_key(&session_id));
         Ok(())
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread", start_paused = true)]
     async fn stop_cancels_timer() -> anyhow::Result<()> {
-        tokio::time::pause();
         let mut timer = Timer::new();
         let session_id = SessionId::from("session-2");
 
         timer.start(&session_id, 5).await?;
         timer.stop(&session_id).await?;
         advance(Duration::from_secs(10)).await;
-        tokio::task::yield_now().await;
+        wait_until_absent(&timer, &session_id).await;
 
         assert!(!timer.timers.lock().await.contains_key(&session_id));
         Ok(())
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread", start_paused = true)]
     async fn start_replaces_existing_timer_for_same_session() -> anyhow::Result<()> {
-        tokio::time::pause();
         let mut timer = Timer::new();
         let session_id = SessionId::from("session-3");
 
         timer.start(&session_id, 5).await?;
         timer.start(&session_id, 10).await?;
+        tokio::task::yield_now().await;
         advance(Duration::from_secs(5)).await;
         tokio::task::yield_now().await;
 
         assert!(timer.timers.lock().await.contains_key(&session_id));
 
         advance(Duration::from_secs(5)).await;
-        tokio::task::yield_now().await;
+        wait_until_absent(&timer, &session_id).await;
         assert!(!timer.timers.lock().await.contains_key(&session_id));
         Ok(())
     }

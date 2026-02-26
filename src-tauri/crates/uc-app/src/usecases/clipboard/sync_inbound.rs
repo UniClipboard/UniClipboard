@@ -102,6 +102,22 @@ impl SyncInboundClipboardUseCase {
         self.execute_with_outcome(message).await.map(|_| ())
     }
 
+    pub fn mode(&self) -> ClipboardIntegrationMode {
+        self.mode
+    }
+
+    async fn prune_recent_ids(&self) {
+        let now = Instant::now();
+        let mut recent_ids = self.recent_ids.lock().await;
+        while let Some((_id, ts)) = recent_ids.front() {
+            if now.duration_since(*ts) > RECENT_ID_TTL {
+                recent_ids.pop_front();
+            } else {
+                break;
+            }
+        }
+    }
+
     pub async fn execute_with_outcome(
         &self,
         message: ClipboardMessage,
@@ -164,16 +180,9 @@ impl SyncInboundClipboardUseCase {
 
             if !self.mode.allow_os_read() {
                 let message_id = message.id.clone();
+                self.prune_recent_ids().await;
                 {
-                    let now = Instant::now();
-                    let mut recent_ids = self.recent_ids.lock().await;
-                    while let Some((_id, ts)) = recent_ids.front() {
-                        if now.duration_since(*ts) > RECENT_ID_TTL {
-                            recent_ids.pop_front();
-                        } else {
-                            break;
-                        }
-                    }
+                    let recent_ids = self.recent_ids.lock().await;
                     let is_duplicate = recent_ids.iter().any(|(id, _)| id == &message_id);
                     if is_duplicate {
                         debug!(message_id = %message_id, "Skipping inbound apply because passive mode already processed this message id");
@@ -190,16 +199,10 @@ impl SyncInboundClipboardUseCase {
                     .await
                     .context("failed to persist inbound clipboard in passive mode")?;
 
+                self.prune_recent_ids().await;
                 {
                     let now = Instant::now();
                     let mut recent_ids = self.recent_ids.lock().await;
-                    while let Some((_id, ts)) = recent_ids.front() {
-                        if now.duration_since(*ts) > RECENT_ID_TTL {
-                            recent_ids.pop_front();
-                        } else {
-                            break;
-                        }
-                    }
                     if !recent_ids.iter().any(|(id, _)| id == &message_id) {
                         recent_ids.push_back((message_id, now));
                     }

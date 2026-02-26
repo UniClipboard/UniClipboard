@@ -112,12 +112,16 @@ impl SyncOutboundClipboardUseCase {
             .list_sendable_peers()
             .await
             .context("failed to load sendable peers for outbound sync")?;
-        let discovered_peer_count = self
-            .network
-            .get_discovered_peers()
-            .await
-            .map(|peers| peers.len())
-            .unwrap_or(0);
+        let discovered_peer_count = match self.network.get_discovered_peers().await {
+            Ok(peers) => peers.len(),
+            Err(err) => {
+                warn!(
+                    error = %err,
+                    "get_discovered_peers failed during outbound clipboard peer evaluation"
+                );
+                0
+            }
+        };
         info!(
             discovered_peer_count,
             sendable_peer_count = sendable_peers.len(),

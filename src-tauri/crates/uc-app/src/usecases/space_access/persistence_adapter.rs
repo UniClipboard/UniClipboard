@@ -29,6 +29,7 @@ impl SpaceAccessPersistenceAdapter {
 
 #[async_trait]
 impl PersistencePort for SpaceAccessPersistenceAdapter {
+    #[tracing::instrument(skip(self, _space_id), fields(peer_id = %peer_id))]
     async fn persist_joiner_access(
         &mut self,
         _space_id: &SpaceId,
@@ -67,6 +68,7 @@ impl PersistencePort for SpaceAccessPersistenceAdapter {
         Ok(())
     }
 
+    #[tracing::instrument(skip(self, _space_id), fields(peer_id = %peer_id))]
     async fn persist_sponsor_access(
         &mut self,
         _space_id: &SpaceId,
@@ -285,5 +287,40 @@ mod tests {
             repo.state_of(peer_id.as_str()).await,
             Some(PairingState::Trusted)
         );
+    }
+
+    #[tokio::test]
+    async fn joiner_persistence_promotes_staged_device_and_consumes_stage() {
+        staged_paired_device_store::clear();
+        let peer_id = PeerId::from("peer-joiner-staged");
+        staged_paired_device_store::stage(
+            "session-joiner-staged",
+            PairedDevice {
+                peer_id: peer_id.clone(),
+                pairing_state: PairingState::Pending,
+                identity_fingerprint: "fp-joiner-staged".to_string(),
+                paired_at: Utc::now(),
+                last_seen_at: None,
+                device_name: "Joiner Staged Peer".to_string(),
+            },
+        );
+
+        assert!(staged_paired_device_store::get_by_peer_id(peer_id.as_str()).is_some());
+
+        let repo = Arc::new(MockPairedDeviceRepo::default());
+        let mut adapter =
+            SpaceAccessPersistenceAdapter::new(Arc::new(MockEncryptionState), repo.clone());
+
+        adapter
+            .persist_joiner_access(&SpaceId::from("space-1"), peer_id.as_str())
+            .await
+            .expect("persist joiner access from staged device");
+
+        assert_eq!(
+            repo.state_of(peer_id.as_str()).await,
+            Some(PairingState::Trusted)
+        );
+        assert!(staged_paired_device_store::get_by_peer_id(peer_id.as_str()).is_none());
+        assert!(staged_paired_device_store::take_by_peer_id(peer_id.as_str()).is_none());
     }
 }

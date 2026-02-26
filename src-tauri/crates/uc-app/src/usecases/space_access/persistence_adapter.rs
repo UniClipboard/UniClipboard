@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use tracing::info;
+use tracing::{info, warn};
 
 use crate::usecases::pairing::staged_paired_device_store;
 use uc_core::ids::{PeerId, SpaceId};
@@ -39,7 +39,13 @@ impl PersistencePort for SpaceAccessPersistenceAdapter {
         if let Some(mut staged_device) = staged_paired_device_store::get_by_peer_id(peer_id) {
             staged_device.pairing_state = PairingState::Trusted;
             self.paired_device_repo.upsert(staged_device).await?;
-            let _ = staged_paired_device_store::take_by_peer_id(peer_id);
+            if staged_paired_device_store::take_by_peer_id(peer_id).is_none() {
+                warn!(
+                    peer_id = %peer_id,
+                    operation = "take_by_peer_id",
+                    "take_by_peer_id failed: no staged state found"
+                );
+            }
             info!(
                 peer_id = %peer_id,
                 source = "staged",
@@ -70,7 +76,13 @@ impl PersistencePort for SpaceAccessPersistenceAdapter {
         if let Some(mut staged_device) = staged_paired_device_store::get_by_peer_id(peer_id) {
             staged_device.pairing_state = PairingState::Trusted;
             self.paired_device_repo.upsert(staged_device).await?;
-            let _ = staged_paired_device_store::take_by_peer_id(peer_id);
+            if staged_paired_device_store::take_by_peer_id(peer_id).is_none() {
+                warn!(
+                    peer_id = %peer_id,
+                    operation = "take_by_peer_id",
+                    "take_by_peer_id failed: no staged state found"
+                );
+            }
             info!(
                 peer_id = %peer_id,
                 source = "staged",

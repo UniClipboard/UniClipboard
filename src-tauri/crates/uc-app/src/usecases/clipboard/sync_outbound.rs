@@ -107,13 +107,24 @@ impl SyncOutboundClipboardUseCase {
             }
         };
 
-        let connected_peers = self
+        let sendable_peers = self
             .network
-            .get_connected_peers()
+            .list_sendable_peers()
             .await
-            .context("failed to load connected peers for outbound sync")?;
-        if connected_peers.is_empty() {
-            debug!("Skipping outbound sync because there are no connected peers");
+            .context("failed to load sendable peers for outbound sync")?;
+        let discovered_peer_count = self
+            .network
+            .get_discovered_peers()
+            .await
+            .map(|peers| peers.len())
+            .unwrap_or(0);
+        info!(
+            discovered_peer_count,
+            sendable_peer_count = sendable_peers.len(),
+            "Evaluated outbound clipboard sendable peers"
+        );
+        if sendable_peers.is_empty() {
+            info!("Skipping outbound sync because there are no sendable peers");
             return Ok(());
         }
 
@@ -174,9 +185,22 @@ impl SyncOutboundClipboardUseCase {
             .context("failed to serialize outbound protocol clipboard message")?;
 
         let mut send_failures = Vec::new();
+        let mut connect_failures = Vec::new();
+        let mut connect_success_count = 0usize;
         let mut sent_count = 0usize;
 
-        for peer in connected_peers {
+        for peer in sendable_peers {
+            if let Err(err) = self.network.ensure_business_path(&peer.peer_id).await {
+                warn!(
+                    peer_id = %peer.peer_id,
+                    error = %err,
+                    "failed to ensure outbound business path; skipping send for this peer"
+                );
+                connect_failures.push(format!("{}: {}", peer.peer_id, err));
+                continue;
+            }
+            connect_success_count += 1;
+
             if let Err(err) = self
                 .network
                 .send_clipboard(&peer.peer_id, outbound_bytes.clone())
@@ -187,23 +211,44 @@ impl SyncOutboundClipboardUseCase {
                     error = %err,
                     "failed to send outbound clipboard message to peer; continuing best-effort fanout"
                 );
-                send_failures.push(peer.peer_id);
+                send_failures.push(format!("{}: {}", peer.peer_id, err));
                 continue;
             }
 
             sent_count += 1;
         }
 
-        if !send_failures.is_empty() {
+        if sent_count == 0 {
+            let mut failures = Vec::new();
+            failures.extend(connect_failures);
+            failures.extend(send_failures);
             return Err(anyhow::anyhow!(
-                "outbound clipboard fanout partially failed: {} sent, {} failed ({})",
-                sent_count,
-                send_failures.len(),
-                send_failures.join(", ")
+                "outbound clipboard fanout failed: 0 sent, {} failed ({})",
+                failures.len(),
+                failures.join(" | ")
             ));
         }
 
-        info!("Outbound clipboard sync sent to connected peers");
+        if !connect_failures.is_empty() || !send_failures.is_empty() {
+            let mut failures = Vec::new();
+            failures.extend(connect_failures);
+            failures.extend(send_failures);
+            warn!(
+                sent_count,
+                failure_count = failures.len(),
+                "outbound clipboard fanout partially failed after best-effort retries"
+            );
+            info!(
+                sent_count,
+                connect_success_count, "Outbound clipboard sync sent to sendable peers (partial)"
+            );
+            return Ok(());
+        }
+
+        info!(
+            sent_count,
+            connect_success_count, "Outbound clipboard sync sent to sendable peers"
+        );
         Ok(())
     }
 }
@@ -256,10 +301,12 @@ mod tests {
     }
 
     struct TestNetwork {
-        connected_peers: Vec<ConnectedPeer>,
+        sendable_peers: Vec<DiscoveredPeer>,
         failing_peers: HashSet<String>,
+        ensure_failing_peers: HashSet<String>,
         send_calls: Arc<Mutex<Vec<(String, Vec<u8>)>>>,
-        get_connected_peers_calls: Arc<AtomicUsize>,
+        list_sendable_peers_calls: Arc<AtomicUsize>,
+        ensure_business_path_calls: Arc<AtomicUsize>,
     }
 
     #[async_trait]
@@ -294,9 +341,24 @@ mod tests {
         }
 
         async fn get_connected_peers(&self) -> anyhow::Result<Vec<ConnectedPeer>> {
-            self.get_connected_peers_calls
+            Ok(Vec::new())
+        }
+
+        async fn list_sendable_peers(&self) -> anyhow::Result<Vec<DiscoveredPeer>> {
+            self.list_sendable_peers_calls
                 .fetch_add(1, Ordering::SeqCst);
-            Ok(self.connected_peers.clone())
+            Ok(self.sendable_peers.clone())
+        }
+
+        async fn ensure_business_path(&self, peer_id: &str) -> anyhow::Result<()> {
+            self.ensure_business_path_calls
+                .fetch_add(1, Ordering::SeqCst);
+            if self.ensure_failing_peers.contains(peer_id) {
+                return Err(anyhow::anyhow!(
+                    "simulated ensure business path failure for {peer_id}"
+                ));
+            }
+            Ok(())
         }
 
         fn local_peer_id(&self) -> String {
@@ -465,28 +527,48 @@ mod tests {
         connected_peers: Vec<ConnectedPeer>,
         encryption_ready: bool,
         failing_peers: &[&str],
+        ensure_failing_peers: &[&str],
     ) -> (
         SyncOutboundClipboardUseCase,
         Arc<Mutex<Vec<(String, Vec<u8>)>>>,
         Arc<AtomicUsize>,
         Arc<AtomicUsize>,
+        Arc<AtomicUsize>,
     ) {
         let send_calls = Arc::new(Mutex::new(Vec::new()));
-        let get_connected_peers_calls = Arc::new(AtomicUsize::new(0));
+        let list_sendable_peers_calls = Arc::new(AtomicUsize::new(0));
+        let ensure_business_path_calls = Arc::new(AtomicUsize::new(0));
         let encrypt_calls = Arc::new(AtomicUsize::new(0));
+        let sendable_peers = connected_peers
+            .iter()
+            .map(|peer| DiscoveredPeer {
+                peer_id: peer.peer_id.clone(),
+                device_name: Some(peer.device_name.clone()),
+                device_id: None,
+                addresses: Vec::new(),
+                discovered_at: Utc::now(),
+                last_seen: Utc::now(),
+                is_paired: true,
+            })
+            .collect();
 
         let usecase = SyncOutboundClipboardUseCase::new(
             Arc::new(TestSystemClipboard {
                 snapshot: build_snapshot(),
             }),
             Arc::new(TestNetwork {
-                connected_peers,
+                sendable_peers,
                 failing_peers: failing_peers
                     .iter()
                     .map(|peer| (*peer).to_string())
                     .collect(),
+                ensure_failing_peers: ensure_failing_peers
+                    .iter()
+                    .map(|peer| (*peer).to_string())
+                    .collect(),
                 send_calls: send_calls.clone(),
-                get_connected_peers_calls: get_connected_peers_calls.clone(),
+                list_sendable_peers_calls: list_sendable_peers_calls.clone(),
+                ensure_business_path_calls: ensure_business_path_calls.clone(),
             }),
             Arc::new(TestEncryptionSession {
                 ready: encryption_ready,
@@ -503,20 +585,22 @@ mod tests {
         (
             usecase,
             send_calls,
-            get_connected_peers_calls,
+            list_sendable_peers_calls,
+            ensure_business_path_calls,
             encrypt_calls,
         )
     }
 
     #[test]
     fn sends_exactly_once_for_local_capture_when_peer_exists() {
-        let (usecase, send_calls, _, _) = build_usecase(
+        let (usecase, send_calls, _, _, _) = build_usecase(
             vec![ConnectedPeer {
                 peer_id: "peer-1".to_string(),
                 device_name: "Desk".to_string(),
                 connected_at: Utc::now(),
             }],
             true,
+            &[],
             &[],
         );
 
@@ -529,13 +613,14 @@ mod tests {
 
     #[test]
     fn does_not_send_for_remote_push() {
-        let (usecase, send_calls, _, _) = build_usecase(
+        let (usecase, send_calls, _, _, _) = build_usecase(
             vec![ConnectedPeer {
                 peer_id: "peer-1".to_string(),
                 device_name: "Desk".to_string(),
                 connected_at: Utc::now(),
             }],
             true,
+            &[],
             &[],
         );
 
@@ -548,13 +633,14 @@ mod tests {
 
     #[test]
     fn sends_for_local_restore() {
-        let (usecase, send_calls, _, _) = build_usecase(
+        let (usecase, send_calls, _, _, _) = build_usecase(
             vec![ConnectedPeer {
                 peer_id: "peer-1".to_string(),
                 device_name: "Desk".to_string(),
                 connected_at: Utc::now(),
             }],
             true,
+            &[],
             &[],
         );
 
@@ -567,34 +653,38 @@ mod tests {
 
     #[test]
     fn no_op_when_encryption_session_not_ready() {
-        let (usecase, send_calls, get_connected_peers_calls, encrypt_calls) = build_usecase(
-            vec![ConnectedPeer {
-                peer_id: "peer-1".to_string(),
-                device_name: "Desk".to_string(),
-                connected_at: Utc::now(),
-            }],
-            false,
-            &[],
-        );
+        let (usecase, send_calls, list_sendable_peers_calls, ensure_calls, encrypt_calls) =
+            build_usecase(
+                vec![ConnectedPeer {
+                    peer_id: "peer-1".to_string(),
+                    device_name: "Desk".to_string(),
+                    connected_at: Utc::now(),
+                }],
+                false,
+                &[],
+                &[],
+            );
 
         usecase
             .execute(build_snapshot(), ClipboardChangeOrigin::LocalCapture)
             .expect("execute should no-op");
 
         assert_eq!(send_calls.lock().expect("send calls lock").len(), 0);
-        assert_eq!(get_connected_peers_calls.load(Ordering::SeqCst), 0);
+        assert_eq!(list_sendable_peers_calls.load(Ordering::SeqCst), 0);
+        assert_eq!(ensure_calls.load(Ordering::SeqCst), 0);
         assert_eq!(encrypt_calls.load(Ordering::SeqCst), 0);
     }
 
     #[test]
     fn execute_current_snapshot_reads_from_clipboard() {
-        let (usecase, send_calls, _, _) = build_usecase(
+        let (usecase, send_calls, _, _, _) = build_usecase(
             vec![ConnectedPeer {
                 peer_id: "peer-1".to_string(),
                 device_name: "Desk".to_string(),
                 connected_at: Utc::now(),
             }],
             true,
+            &[],
             &[],
         );
 
@@ -607,13 +697,14 @@ mod tests {
 
     #[test]
     fn outbound_bytes_decode_as_protocol_message_clipboard() {
-        let (usecase, send_calls, _, _) = build_usecase(
+        let (usecase, send_calls, _, _, _) = build_usecase(
             vec![ConnectedPeer {
                 peer_id: "peer-1".to_string(),
                 device_name: "Desk".to_string(),
                 connected_at: Utc::now(),
             }],
             true,
+            &[],
             &[],
         );
 
@@ -640,7 +731,7 @@ mod tests {
 
     #[test]
     fn continues_sending_to_other_peers_after_single_peer_failure() {
-        let (usecase, send_calls, _, _) = build_usecase(
+        let (usecase, send_calls, _, _, _) = build_usecase(
             vec![
                 ConnectedPeer {
                     peer_id: "peer-1".to_string(),
@@ -655,24 +746,70 @@ mod tests {
             ],
             true,
             &["peer-1"],
+            &[],
         );
 
-        let err = usecase
+        usecase
             .execute(build_snapshot(), ClipboardChangeOrigin::LocalCapture)
-            .expect_err("should surface partial fanout failure");
-
-        let err_msg = err.to_string();
-        assert!(
-            err_msg.contains("partially failed"),
-            "unexpected error message: {err_msg}"
-        );
-        assert!(
-            err_msg.contains("peer-1"),
-            "error should include failed peer id: {err_msg}"
-        );
+            .expect("partial failure should still be best-effort success");
 
         let calls = send_calls.lock().expect("send calls lock");
         assert_eq!(calls.len(), 1, "peer-2 should still receive payload");
         assert_eq!(calls[0].0, "peer-2");
+    }
+
+    #[test]
+    fn no_op_when_no_sendable_peers() {
+        let (usecase, send_calls, list_sendable_peers_calls, ensure_calls, encrypt_calls) =
+            build_usecase(vec![], true, &[], &[]);
+
+        usecase
+            .execute(build_snapshot(), ClipboardChangeOrigin::LocalCapture)
+            .expect("should no-op");
+
+        assert_eq!(send_calls.lock().expect("send calls lock").len(), 0);
+        assert_eq!(list_sendable_peers_calls.load(Ordering::SeqCst), 1);
+        assert_eq!(ensure_calls.load(Ordering::SeqCst), 0);
+        assert_eq!(encrypt_calls.load(Ordering::SeqCst), 0);
+    }
+
+    #[test]
+    fn returns_error_when_all_sendable_peers_fail() {
+        let (usecase, send_calls, _, _, _) = build_usecase(
+            vec![
+                ConnectedPeer {
+                    peer_id: "peer-1".to_string(),
+                    device_name: "Desk".to_string(),
+                    connected_at: Utc::now(),
+                },
+                ConnectedPeer {
+                    peer_id: "peer-2".to_string(),
+                    device_name: "Laptop".to_string(),
+                    connected_at: Utc::now(),
+                },
+            ],
+            true,
+            &["peer-1", "peer-2"],
+            &[],
+        );
+
+        let err = usecase
+            .execute(build_snapshot(), ClipboardChangeOrigin::LocalCapture)
+            .expect_err("all send failures should return error");
+
+        let err_msg = err.to_string();
+        assert!(
+            err_msg.contains("fanout failed"),
+            "unexpected error message: {err_msg}"
+        );
+        assert!(
+            err_msg.contains("peer-1"),
+            "missing peer-1 in error: {err_msg}"
+        );
+        assert!(
+            err_msg.contains("peer-2"),
+            "missing peer-2 in error: {err_msg}"
+        );
+        assert_eq!(send_calls.lock().expect("send calls lock").len(), 0);
     }
 }

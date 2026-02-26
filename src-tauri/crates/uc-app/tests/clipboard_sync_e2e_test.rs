@@ -7,6 +7,7 @@ use chrono::Utc;
 use tokio::sync::mpsc;
 use uc_app::usecases::clipboard::sync_inbound::SyncInboundClipboardUseCase;
 use uc_app::usecases::clipboard::sync_outbound::SyncOutboundClipboardUseCase;
+use uc_app::usecases::clipboard::ClipboardIntegrationMode;
 use uc_core::ids::{FormatId, RepresentationId};
 use uc_core::network::{
     ClipboardMessage, ConnectedPeer, DiscoveredPeer, NetworkEvent, PairingMessage, ProtocolMessage,
@@ -211,7 +212,15 @@ impl NetworkPort for InProcessNetwork {
     }
 
     async fn get_discovered_peers(&self) -> anyhow::Result<Vec<DiscoveredPeer>> {
-        Ok(Vec::new())
+        Ok(vec![DiscoveredPeer {
+            peer_id: self.remote_peer.peer_id.clone(),
+            device_name: Some(self.remote_peer.device_name.clone()),
+            device_id: None,
+            addresses: Vec::new(),
+            discovered_at: Utc::now(),
+            last_seen: Utc::now(),
+            is_paired: true,
+        }])
     }
 
     async fn get_connected_peers(&self) -> anyhow::Result<Vec<ConnectedPeer>> {
@@ -307,6 +316,7 @@ async fn clipboard_sync_e2e_dual_peer_in_process() -> Result<()> {
     });
 
     let inbound_a = Arc::new(SyncInboundClipboardUseCase::new(
+        ClipboardIntegrationMode::Full,
         clipboard_a.clone(),
         origin_a.clone(),
         session_a.clone(),
@@ -314,6 +324,7 @@ async fn clipboard_sync_e2e_dual_peer_in_process() -> Result<()> {
         identity_a.clone(),
     ));
     let inbound_b = Arc::new(SyncInboundClipboardUseCase::new(
+        ClipboardIntegrationMode::Full,
         clipboard_b.clone(),
         origin_b.clone(),
         session_b.clone(),

@@ -25,10 +25,9 @@ pub(crate) fn take_by_peer_id(peer_id: &str) -> Option<PairedDevice> {
 
 pub(crate) fn get_by_peer_id(peer_id: &str) -> Option<PairedDevice> {
     let staged = staged_devices().lock().ok()?;
-    let session_id = staged.iter().find_map(|(session_id, device)| {
-        (device.peer_id.as_str() == peer_id).then(|| session_id.clone())
-    })?;
-    staged.get(&session_id).cloned()
+    staged.iter().find_map(|(_session_id, device)| {
+        (device.peer_id.as_str() == peer_id).then(|| device.clone())
+    })
 }
 
 #[cfg(test)]

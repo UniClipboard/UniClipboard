@@ -15,6 +15,11 @@ pub struct SpaceAccessPersistenceAdapter {
     paired_device_repo: Arc<dyn PairedDeviceRepositoryPort>,
 }
 
+enum TrustPromotionSource {
+    Staged,
+    Repository,
+}
+
 impl SpaceAccessPersistenceAdapter {
     pub fn new(
         encryption_state: Arc<dyn EncryptionStatePort>,
@@ -24,6 +29,26 @@ impl SpaceAccessPersistenceAdapter {
             encryption_state,
             paired_device_repo,
         }
+    }
+
+    async fn promote_peer_to_trusted(&self, peer_id: &str) -> anyhow::Result<TrustPromotionSource> {
+        if let Some(mut staged_device) = staged_paired_device_store::get_by_peer_id(peer_id) {
+            staged_device.pairing_state = PairingState::Trusted;
+            self.paired_device_repo.upsert(staged_device).await?;
+            if staged_paired_device_store::take_by_peer_id(peer_id).is_none() {
+                warn!(
+                    peer_id = %peer_id,
+                    operation = "take_by_peer_id",
+                    "take_by_peer_id failed: no staged state found"
+                );
+            }
+            return Ok(TrustPromotionSource::Staged);
+        }
+
+        self.paired_device_repo
+            .set_state(&PeerId::from(peer_id), PairingState::Trusted)
+            .await?;
+        Ok(TrustPromotionSource::Repository)
     }
 }
 
@@ -37,34 +62,21 @@ impl PersistencePort for SpaceAccessPersistenceAdapter {
     ) -> anyhow::Result<()> {
         info!(peer_id = %peer_id, "Persisting joiner access and promoting peer trust");
         self.encryption_state.persist_initialized().await?;
-        if let Some(mut staged_device) = staged_paired_device_store::get_by_peer_id(peer_id) {
-            staged_device.pairing_state = PairingState::Trusted;
-            self.paired_device_repo.upsert(staged_device).await?;
-            if staged_paired_device_store::take_by_peer_id(peer_id).is_none() {
-                warn!(
-                    peer_id = %peer_id,
-                    operation = "take_by_peer_id",
-                    "take_by_peer_id failed: no staged state found"
-                );
-            }
-            info!(
+        let source = self.promote_peer_to_trusted(peer_id).await?;
+        match source {
+            TrustPromotionSource::Staged => info!(
                 peer_id = %peer_id,
                 source = "staged",
                 target_state = "Trusted",
                 "Joiner access persisted with staged paired device"
-            );
-            return Ok(());
+            ),
+            TrustPromotionSource::Repository => info!(
+                peer_id = %peer_id,
+                source = "repository",
+                target_state = "Trusted",
+                "Joiner access persisted with repository state update"
+            ),
         }
-
-        self.paired_device_repo
-            .set_state(&PeerId::from(peer_id), PairingState::Trusted)
-            .await?;
-        info!(
-            peer_id = %peer_id,
-            source = "repository",
-            target_state = "Trusted",
-            "Joiner access persisted with repository state update"
-        );
         Ok(())
     }
 
@@ -75,34 +87,21 @@ impl PersistencePort for SpaceAccessPersistenceAdapter {
         peer_id: &str,
     ) -> anyhow::Result<()> {
         info!(peer_id = %peer_id, "Persisting sponsor access and promoting peer trust");
-        if let Some(mut staged_device) = staged_paired_device_store::get_by_peer_id(peer_id) {
-            staged_device.pairing_state = PairingState::Trusted;
-            self.paired_device_repo.upsert(staged_device).await?;
-            if staged_paired_device_store::take_by_peer_id(peer_id).is_none() {
-                warn!(
-                    peer_id = %peer_id,
-                    operation = "take_by_peer_id",
-                    "take_by_peer_id failed: no staged state found"
-                );
-            }
-            info!(
+        let source = self.promote_peer_to_trusted(peer_id).await?;
+        match source {
+            TrustPromotionSource::Staged => info!(
                 peer_id = %peer_id,
                 source = "staged",
                 target_state = "Trusted",
                 "Sponsor access persisted with staged paired device"
-            );
-            return Ok(());
+            ),
+            TrustPromotionSource::Repository => info!(
+                peer_id = %peer_id,
+                source = "repository",
+                target_state = "Trusted",
+                "Sponsor access persisted with repository state update"
+            ),
         }
-
-        self.paired_device_repo
-            .set_state(&PeerId::from(peer_id), PairingState::Trusted)
-            .await?;
-        info!(
-            peer_id = %peer_id,
-            source = "repository",
-            target_state = "Trusted",
-            "Sponsor access persisted with repository state update"
-        );
         Ok(())
     }
 }
@@ -111,13 +110,18 @@ impl PersistencePort for SpaceAccessPersistenceAdapter {
 mod tests {
     use super::*;
     use std::collections::HashMap;
-    use std::sync::Arc;
+    use std::sync::{Arc, OnceLock};
 
     use chrono::Utc;
     use tokio::sync::Mutex;
     use uc_core::network::PairedDevice;
     use uc_core::ports::errors::PairedDeviceRepositoryError;
     use uc_core::security::state::{EncryptionState, EncryptionStateError};
+
+    fn test_staged_store_lock() -> &'static Mutex<()> {
+        static TEST_STAGED_STORE_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        TEST_STAGED_STORE_LOCK.get_or_init(|| Mutex::new(()))
+    }
 
     struct MockEncryptionState;
 
@@ -194,6 +198,7 @@ mod tests {
 
     #[tokio::test]
     async fn pairing_deferred_persistence_promotes_to_trusted_on_proof_verified() {
+        let _guard = test_staged_store_lock().lock().await;
         staged_paired_device_store::clear();
         let peer_id = PeerId::from("peer-1");
         let repo = Arc::new(MockPairedDeviceRepo::default());
@@ -230,6 +235,7 @@ mod tests {
 
     #[tokio::test]
     async fn pairing_deferred_persistence_commits_staged_device_on_proof_verified() {
+        let _guard = test_staged_store_lock().lock().await;
         staged_paired_device_store::clear();
         let peer_id = PeerId::from("peer-staged");
         staged_paired_device_store::stage(
@@ -261,6 +267,7 @@ mod tests {
 
     #[tokio::test]
     async fn joiner_persistence_promotes_peer_to_trusted() {
+        let _guard = test_staged_store_lock().lock().await;
         staged_paired_device_store::clear();
         let peer_id = PeerId::from("peer-joiner");
         let repo = Arc::new(MockPairedDeviceRepo::default());
@@ -291,6 +298,7 @@ mod tests {
 
     #[tokio::test]
     async fn joiner_persistence_promotes_staged_device_and_consumes_stage() {
+        let _guard = test_staged_store_lock().lock().await;
         staged_paired_device_store::clear();
         let peer_id = PeerId::from("peer-joiner-staged");
         staged_paired_device_store::stage(

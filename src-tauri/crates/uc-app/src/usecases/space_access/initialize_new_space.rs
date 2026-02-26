@@ -248,7 +248,11 @@ mod tests {
 
     #[async_trait]
     impl PersistencePort for MockStorePort {
-        async fn persist_joiner_access(&mut self, _space_id: &SpaceId) -> anyhow::Result<()> {
+        async fn persist_joiner_access(
+            &mut self,
+            _space_id: &SpaceId,
+            _peer_id: &str,
+        ) -> anyhow::Result<()> {
             Ok(())
         }
 

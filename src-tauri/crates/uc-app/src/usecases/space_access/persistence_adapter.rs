@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use tracing::info;
 
 use crate::usecases::pairing::staged_paired_device_store;
 use uc_core::ids::{PeerId, SpaceId};
@@ -28,8 +29,34 @@ impl SpaceAccessPersistenceAdapter {
 
 #[async_trait]
 impl PersistencePort for SpaceAccessPersistenceAdapter {
-    async fn persist_joiner_access(&mut self, _space_id: &SpaceId) -> anyhow::Result<()> {
+    async fn persist_joiner_access(
+        &mut self,
+        _space_id: &SpaceId,
+        peer_id: &str,
+    ) -> anyhow::Result<()> {
+        info!(peer_id = %peer_id, "Persisting joiner access and promoting peer trust");
         self.encryption_state.persist_initialized().await?;
+        if let Some(mut staged_device) = staged_paired_device_store::take_by_peer_id(peer_id) {
+            staged_device.pairing_state = PairingState::Trusted;
+            self.paired_device_repo.upsert(staged_device).await?;
+            info!(
+                peer_id = %peer_id,
+                source = "staged",
+                target_state = "Trusted",
+                "Joiner access persisted with staged paired device"
+            );
+            return Ok(());
+        }
+
+        self.paired_device_repo
+            .set_state(&PeerId::from(peer_id), PairingState::Trusted)
+            .await?;
+        info!(
+            peer_id = %peer_id,
+            source = "repository",
+            target_state = "Trusted",
+            "Joiner access persisted with repository state update"
+        );
         Ok(())
     }
 
@@ -38,15 +65,28 @@ impl PersistencePort for SpaceAccessPersistenceAdapter {
         _space_id: &SpaceId,
         peer_id: &str,
     ) -> anyhow::Result<()> {
+        info!(peer_id = %peer_id, "Persisting sponsor access and promoting peer trust");
         if let Some(mut staged_device) = staged_paired_device_store::take_by_peer_id(peer_id) {
             staged_device.pairing_state = PairingState::Trusted;
             self.paired_device_repo.upsert(staged_device).await?;
+            info!(
+                peer_id = %peer_id,
+                source = "staged",
+                target_state = "Trusted",
+                "Sponsor access persisted with staged paired device"
+            );
             return Ok(());
         }
 
         self.paired_device_repo
             .set_state(&PeerId::from(peer_id), PairingState::Trusted)
             .await?;
+        info!(
+            peer_id = %peer_id,
+            source = "repository",
+            target_state = "Trusted",
+            "Sponsor access persisted with repository state update"
+        );
         Ok(())
     }
 }
@@ -196,6 +236,36 @@ mod tests {
             .persist_sponsor_access(&SpaceId::from("space-1"), peer_id.as_str())
             .await
             .expect("persist sponsor access");
+
+        assert_eq!(
+            repo.state_of(peer_id.as_str()).await,
+            Some(PairingState::Trusted)
+        );
+    }
+
+    #[tokio::test]
+    async fn joiner_persistence_promotes_peer_to_trusted() {
+        staged_paired_device_store::clear();
+        let peer_id = PeerId::from("peer-joiner");
+        let repo = Arc::new(MockPairedDeviceRepo::default());
+        repo.upsert(PairedDevice {
+            peer_id: peer_id.clone(),
+            pairing_state: PairingState::Pending,
+            identity_fingerprint: "fp-joiner".to_string(),
+            paired_at: Utc::now(),
+            last_seen_at: None,
+            device_name: "Joiner Peer".to_string(),
+        })
+        .await
+        .expect("seed pending paired device");
+
+        let mut adapter =
+            SpaceAccessPersistenceAdapter::new(Arc::new(MockEncryptionState), repo.clone());
+
+        adapter
+            .persist_joiner_access(&SpaceId::from("space-1"), peer_id.as_str())
+            .await
+            .expect("persist joiner access");
 
         assert_eq!(
             repo.state_of(peer_id.as_str()).await,

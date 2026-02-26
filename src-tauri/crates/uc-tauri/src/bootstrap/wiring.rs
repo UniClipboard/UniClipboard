@@ -1939,6 +1939,7 @@ async fn handle_pairing_message<R: Runtime>(
                                 let mut guard: tokio::sync::MutexGuard<'_, SpaceAccessContext> =
                                     context.lock().await;
                                 guard.joiner_offer = Some(joiner_offer);
+                                guard.sponsor_peer_id = Some(peer_id.clone());
                                 drop(guard);
 
                                 let state = space_access_orchestrator.get_state().await;
@@ -2307,6 +2308,11 @@ async fn run_pairing_action_loop<R: Runtime>(
                     }
                 }
                 if success && role == Some(PairingRole::Responder) {
+                    {
+                        let context = space_access_orchestrator.context();
+                        let mut guard = context.lock().await;
+                        guard.sponsor_peer_id = Some(peer_id.to_string());
+                    }
                     match key_slot_store.load().await {
                         Ok(keyslot_file) => {
                             let space_id =
@@ -3010,6 +3016,7 @@ mod tests {
         async fn persist_joiner_access(
             &mut self,
             _space_id: &uc_core::ids::SpaceId,
+            _peer_id: &str,
         ) -> anyhow::Result<()> {
             Ok(())
         }

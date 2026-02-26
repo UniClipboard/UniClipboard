@@ -374,9 +374,17 @@ impl SpaceAccessOrchestrator {
                     executor.transport.send_result(session_id).await?;
                 }
                 SpaceAccessAction::PersistJoinerAccess { space_id } => {
+                    let peer_id = {
+                        let context = self.context.lock().await;
+                        context
+                            .sponsor_peer_id
+                            .as_ref()
+                            .cloned()
+                            .ok_or(SpaceAccessError::MissingContext("sponsor peer id"))?
+                    };
                     executor
                         .store
-                        .persist_joiner_access(&space_id)
+                        .persist_joiner_access(&space_id, &peer_id)
                         .await
                         .map_err(SpaceAccessError::Persistence)?;
                 }
@@ -547,6 +555,7 @@ mod tests {
                 },
                 || SecretString::new("join-pass".into()),
             ),
+            AccessTestStep::set_sponsor_peer("peer-join"),
             AccessTestStep::dispatch(
                 "passphrase submitted",
                 SpaceAccessEvent::PassphraseSubmitted,
@@ -1024,7 +1033,11 @@ mod tests {
 
     #[async_trait]
     impl PersistencePort for MockStore {
-        async fn persist_joiner_access(&mut self, space_id: &SpaceId) -> anyhow::Result<()> {
+        async fn persist_joiner_access(
+            &mut self,
+            space_id: &SpaceId,
+            _peer_id: &str,
+        ) -> anyhow::Result<()> {
             self.joiner_access.push(space_id.clone());
             Ok(())
         }

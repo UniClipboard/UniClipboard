@@ -1346,16 +1346,28 @@ async fn run_clipboard_receive_loop<R: Runtime>(
                 if matches!(
                     usecase.mode(),
                     uc_app::usecases::clipboard::ClipboardIntegrationMode::Passive
-                ) && matches!(outcome, InboundApplyOutcome::Applied)
-                {
-                    if let Some(app) = app_handle.as_ref() {
-                        let event = ClipboardEvent::NewContent {
-                            entry_id: message_id.clone(),
-                            preview: "Remote clipboard content applied".to_string(),
-                        };
-                        if let Err(emit_err) = forward_clipboard_event(app, event) {
-                            warn!(error = %emit_err, message_id = %message_id, "Failed to emit clipboard event after inbound apply in passive mode");
+                ) {
+                    match outcome {
+                        InboundApplyOutcome::Applied {
+                            entry_id: Some(entry_id),
+                        } => {
+                            if let Some(app) = app_handle.as_ref() {
+                                let event = ClipboardEvent::NewContent {
+                                    entry_id: entry_id.to_string(),
+                                    preview: "Remote clipboard content applied".to_string(),
+                                };
+                                if let Err(emit_err) = forward_clipboard_event(app, event) {
+                                    warn!(error = %emit_err, message_id = %message_id, "Failed to emit clipboard event after inbound apply in passive mode");
+                                }
+                            }
                         }
+                        InboundApplyOutcome::Applied { entry_id: None } => {
+                            warn!(
+                                message_id = %message_id,
+                                "Inbound apply reported success in passive mode without persisted entry id"
+                            );
+                        }
+                        InboundApplyOutcome::Skipped => {}
                     }
                 }
             }

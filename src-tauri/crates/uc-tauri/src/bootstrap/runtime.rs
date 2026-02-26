@@ -899,8 +899,11 @@ impl ClipboardChangeHandler for AppRuntime {
 
         // Execute capture with the provided snapshot
         match usecase.execute_with_origin(snapshot, origin).await {
-            Ok(event_id) => {
-                tracing::debug!("Successfully captured clipboard, event_id: {}", event_id);
+            Ok(Some(entry_id)) => {
+                tracing::debug!(
+                    entry_id = %entry_id,
+                    "Successfully captured clipboard"
+                );
 
                 // Emit event to frontend if AppHandle is available
                 let app_handle_guard = self.app_handle.read().unwrap_or_else(|poisoned| {
@@ -911,7 +914,7 @@ impl ClipboardChangeHandler for AppRuntime {
                 });
                 if let Some(app) = app_handle_guard.as_ref() {
                     let event = ClipboardEvent::NewContent {
-                        entry_id: event_id.to_string(),
+                        entry_id: entry_id.to_string(),
                         preview: "New clipboard content".to_string(),
                     };
 
@@ -944,6 +947,10 @@ impl ClipboardChangeHandler for AppRuntime {
                     }
                 });
 
+                Ok(())
+            }
+            Ok(None) => {
+                tracing::debug!(origin = ?origin, "Clipboard capture skipped for current origin");
                 Ok(())
             }
             Err(e) => {

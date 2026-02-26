@@ -15,22 +15,19 @@ pub(crate) fn stage(session_id: &str, device: PairedDevice) {
     }
 }
 
-fn resolve_session_id_by_peer_id(peer_id: &str) -> Option<String> {
-    let staged = staged_devices().lock().ok()?;
-    staged.iter().find_map(|(session_id, device)| {
-        (device.peer_id.as_str() == peer_id).then(|| session_id.clone())
-    })
-}
-
 pub(crate) fn take_by_peer_id(peer_id: &str) -> Option<PairedDevice> {
-    let session_id = resolve_session_id_by_peer_id(peer_id)?;
     let mut staged = staged_devices().lock().ok()?;
+    let session_id = staged.iter().find_map(|(session_id, device)| {
+        (device.peer_id.as_str() == peer_id).then(|| session_id.clone())
+    })?;
     staged.remove(&session_id)
 }
 
 pub(crate) fn get_by_peer_id(peer_id: &str) -> Option<PairedDevice> {
-    let session_id = resolve_session_id_by_peer_id(peer_id)?;
     let staged = staged_devices().lock().ok()?;
+    let session_id = staged.iter().find_map(|(session_id, device)| {
+        (device.peer_id.as_str() == peer_id).then(|| session_id.clone())
+    })?;
     staged.get(&session_id).cloned()
 }
 

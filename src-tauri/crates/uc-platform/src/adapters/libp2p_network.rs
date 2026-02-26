@@ -669,8 +669,6 @@ impl NetworkControlPort for Libp2pNetworkAdapter {
                 Ok(())
             }
             Err(err) => {
-                self.start_state
-                    .store(START_STATE_FAILED, Ordering::Release);
                 self.start_state.store(START_STATE_IDLE, Ordering::Release);
                 error!(
                     error = %err,

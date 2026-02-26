@@ -1951,7 +1951,18 @@ async fn handle_pairing_message<R: Runtime>(
                             };
 
                             if !keyslot_blob.is_empty() {
-                                let challenge_nonce: [u8; 32] = offer.nonce.try_into().unwrap();
+                                let challenge_nonce: [u8; 32] = match offer.nonce.try_into() {
+                                    Ok(challenge_nonce) => challenge_nonce,
+                                    Err(err) => {
+                                        warn!(
+                                            session_id = %session_id,
+                                            peer_id = %peer_id,
+                                            error = ?err,
+                                            "Failed to parse challenge nonce for space access offer"
+                                        );
+                                        return;
+                                    }
+                                };
                                 let space_id = uc_core::ids::SpaceId::from(offer.space_id.as_str());
                                 let joiner_offer = SpaceAccessJoinerOffer {
                                     space_id: space_id.clone(),
@@ -2333,9 +2344,12 @@ async fn run_pairing_action_loop<R: Runtime>(
                         let mut guard = context.lock().await;
                         guard.sponsor_peer_id = Some(peer.peer_id.clone());
                     } else {
+                        let context = space_access_orchestrator.context();
+                        let mut guard = context.lock().await;
+                        guard.sponsor_peer_id = None;
                         warn!(
                             session_id = %session_id,
-                            "Responder emit result has no peer info; sponsor_peer_id not updated"
+                            "Responder emit result has no peer info; sponsor_peer_id cleared"
                         );
                     }
                     match key_slot_store.load().await {

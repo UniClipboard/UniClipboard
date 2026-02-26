@@ -13,7 +13,7 @@ use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
-use tokio::sync::{mpsc, oneshot, RwLock};
+use tokio::sync::{mpsc, oneshot, RwLock, Semaphore};
 use tokio::time::timeout;
 use tracing::{debug, error, info, warn};
 use uc_core::network::{
@@ -37,6 +37,7 @@ const BUSINESS_STREAM_WRITE_TIMEOUT: Duration = Duration::from_secs(10);
 const BUSINESS_STREAM_CLOSE_TIMEOUT: Duration = Duration::from_secs(10);
 const BUSINESS_SEND_COMMAND_RESULT_TIMEOUT: Duration = Duration::from_secs(35);
 const BUSINESS_ENSURE_COMMAND_RESULT_TIMEOUT: Duration = Duration::from_secs(25);
+const MAX_IN_FLIGHT_BUSINESS_COMMANDS: usize = 16;
 const START_STATE_IDLE: u8 = 0;
 const START_STATE_STARTING: u8 = 1;
 const START_STATE_STARTED: u8 = 2;
@@ -929,6 +930,8 @@ async fn run_swarm(
 ) {
     info!(local_peer_id = %local_peer_id, "libp2p mDNS swarm started");
     let mut next_business_command_id: u64 = 1;
+    let business_command_semaphore = Arc::new(Semaphore::new(MAX_IN_FLIGHT_BUSINESS_COMMANDS));
+    let mut pending_business_command: Option<(u64, BusinessCommand)> = None;
 
     loop {
         tokio::select! {
@@ -1075,7 +1078,7 @@ async fn run_swarm(
                     _ => {}
                 }
             }
-            Some(command) = business_rx.recv() => {
+            Some(command) = business_rx.recv(), if pending_business_command.is_none() => {
                 let command_id = next_business_command_id;
                 next_business_command_id = next_business_command_id.wrapping_add(1);
                 let (operation, peer_id) = business_command_log_fields(&command);
@@ -1085,6 +1088,26 @@ async fn run_swarm(
                     peer_id = %peer_id.unwrap_or("-"),
                     "business command queued"
                 );
+                pending_business_command = Some((command_id, command));
+            }
+            permit_result = business_command_semaphore.clone().acquire_owned(), if pending_business_command.is_some() => {
+                let command_permit = match permit_result {
+                    Ok(permit) => permit,
+                    Err(err) => {
+                        error!(error = %err, "business command semaphore closed");
+                        break;
+                    }
+                };
+                let Some((command_id, command)) = pending_business_command.take() else {
+                    continue;
+                };
+                let (operation, peer_id) = business_command_log_fields(&command);
+                debug!(
+                    cmd_id = command_id,
+                    op = operation,
+                    peer_id = %peer_id.unwrap_or("-"),
+                    "business command dispatched"
+                );
 
                 let command_control = swarm.behaviour().stream.new_control();
                 let command_caches = caches.clone();
@@ -1092,6 +1115,7 @@ async fn run_swarm(
                 let command_event_tx = event_tx.clone();
                 let command_local_peer_id = local_peer_id.clone();
                 tokio::spawn(async move {
+                    let _command_permit = command_permit;
                     execute_business_command(
                         command,
                         command_id,

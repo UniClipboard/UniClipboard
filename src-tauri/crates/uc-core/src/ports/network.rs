@@ -37,6 +37,24 @@ pub trait NetworkPort: Send + Sync {
     /// Get currently connected peers
     async fn get_connected_peers(&self) -> Result<Vec<ConnectedPeer>>;
 
+    /// List peers that are eligible for business payload fan-out.
+    ///
+    /// Default behavior returns discovered peers marked as paired.
+    async fn list_sendable_peers(&self) -> Result<Vec<DiscoveredPeer>> {
+        let peers = self.get_discovered_peers().await?;
+        Ok(peers
+            .into_iter()
+            .filter(|peer| peer.is_paired)
+            .collect::<Vec<_>>())
+    }
+
+    /// Ensure business protocol path is available for a peer before sending payload.
+    ///
+    /// Default behavior is a no-op for adapters that do not support proactive path setup.
+    async fn ensure_business_path(&self, _peer_id: &str) -> Result<()> {
+        Ok(())
+    }
+
     /// Get local peer ID
     fn local_peer_id(&self) -> String;
 

@@ -286,16 +286,18 @@ async fn sync_clipboard_items_impl(
         })
         .await
         {
-            Ok(Ok(())) => {}
+            Ok(Ok(())) => Ok(true),
             Ok(Err(err)) => {
                 tracing::warn!(error = %err, "Outbound clipboard sync command failed");
+                Err(format!("Outbound clipboard sync command failed: {err}"))
             }
             Err(err) => {
                 tracing::warn!(error = %err, "Outbound clipboard sync command task join failed");
+                Err(format!(
+                    "Outbound clipboard sync command task join failed: {err}"
+                ))
             }
         }
-
-        Ok(true)
     }
     .instrument(span)
     .await

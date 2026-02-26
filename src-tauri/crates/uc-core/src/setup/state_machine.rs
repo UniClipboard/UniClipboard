@@ -210,9 +210,7 @@ mod tests {
                     error: None,
                 },
                 || SetupEvent::ConfirmPeerTrust,
-                SetupState::ProcessingJoinSpace {
-                    message: Some("Confirming peer identity…".into()),
-                },
+                SetupState::JoinSpaceInputPassphrase { error: None },
                 vec![SetupAction::ConfirmPeerTrust {}],
             ),
             (

@@ -1306,8 +1306,9 @@ pub fn start_background_tasks<R: Runtime>(
 }
 
 fn new_sync_inbound_clipboard_usecase(deps: &AppDeps) -> SyncInboundClipboardUseCase {
+    let mode = super::resolve_clipboard_integration_mode();
     SyncInboundClipboardUseCase::with_capture_dependencies(
-        super::resolve_clipboard_integration_mode(),
+        mode,
         deps.system_clipboard.clone(),
         deps.clipboard_change_origin.clone(),
         deps.encryption_session.clone(),
@@ -1327,8 +1328,6 @@ async fn run_clipboard_receive_loop<R: Runtime>(
     usecase: &SyncInboundClipboardUseCase,
     app_handle: Option<AppHandle<R>>,
 ) {
-    let mode = super::resolve_clipboard_integration_mode();
-
     while let Some(message) = clipboard_rx.recv().await {
         let message_id = message.id.clone();
         let origin_device_id = message.origin_device_id.clone();
@@ -1345,7 +1344,7 @@ async fn run_clipboard_receive_loop<R: Runtime>(
         match result {
             Ok(outcome) => {
                 if matches!(
-                    mode,
+                    usecase.mode(),
                     uc_app::usecases::clipboard::ClipboardIntegrationMode::Passive
                 ) && matches!(outcome, InboundApplyOutcome::Applied)
                 {

@@ -1,7 +1,7 @@
 //! Clipboard-related Tauri commands
 //! 剪贴板相关的 Tauri 命令
 
-use crate::bootstrap::{resolve_clipboard_integration_mode, AppRuntime};
+use crate::bootstrap::AppRuntime;
 use crate::commands::record_trace_fields;
 use crate::models::{
     ClipboardEntriesResponse, ClipboardEntryDetail, ClipboardEntryProjection,
@@ -267,7 +267,7 @@ pub async fn sync_clipboard_items(
 
     async move {
         if matches!(
-            resolve_clipboard_integration_mode(),
+            runtime.clipboard_integration_mode(),
             ClipboardIntegrationMode::Passive
         ) {
             return Err("Clipboard sync disabled in passive mode".to_string());

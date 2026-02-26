@@ -98,6 +98,7 @@ pub struct AppRuntime {
     /// 缓存的 Setup 编排器 – 在所有 Tauri 命令间共享，
     /// 避免每次调用都重置内存中的 Setup 状态机。
     setup_orchestrator: Arc<SetupOrchestrator>,
+    clipboard_integration_mode: uc_app::usecases::clipboard::ClipboardIntegrationMode,
 }
 
 /// Setup wiring dependencies for runtime-level orchestrators.
@@ -156,12 +157,14 @@ impl AppRuntime {
         let lifecycle_status: Arc<dyn uc_app::usecases::LifecycleStatusPort> =
             Arc::new(crate::adapters::lifecycle::InMemoryLifecycleStatus::new());
         let app_handle = Arc::new(std::sync::RwLock::new(None));
+        let clipboard_integration_mode = super::resolve_clipboard_integration_mode();
 
         let setup_orchestrator = Self::build_setup_orchestrator(
             &deps,
             &lifecycle_status,
             &setup_ports,
             app_handle.clone(),
+            clipboard_integration_mode,
         );
 
         Self {
@@ -169,6 +172,7 @@ impl AppRuntime {
             app_handle,
             lifecycle_status,
             setup_orchestrator,
+            clipboard_integration_mode,
         }
     }
 
@@ -203,11 +207,18 @@ impl AppRuntime {
         UseCases::new(self)
     }
 
+    pub fn clipboard_integration_mode(
+        &self,
+    ) -> uc_app::usecases::clipboard::ClipboardIntegrationMode {
+        self.clipboard_integration_mode
+    }
+
     fn build_setup_orchestrator(
         deps: &AppDeps,
         lifecycle_status: &Arc<dyn uc_app::usecases::LifecycleStatusPort>,
         setup_ports: &SetupRuntimePorts,
         app_handle: Arc<std::sync::RwLock<Option<tauri::AppHandle>>>,
+        clipboard_integration_mode: uc_app::usecases::clipboard::ClipboardIntegrationMode,
     ) -> Arc<SetupOrchestrator> {
         let initialize_encryption = Arc::new(uc_app::usecases::InitializeEncryption::from_ports(
             deps.encryption.clone(),
@@ -226,7 +237,7 @@ impl AppRuntime {
         ));
         let start_watcher = Arc::new(uc_app::usecases::StartClipboardWatcher::from_port(
             deps.watcher_control.clone(),
-            super::resolve_clipboard_integration_mode(),
+            clipboard_integration_mode,
         ));
         let start_network = Arc::new(uc_app::usecases::StartNetworkAfterUnlock::from_port(
             deps.network_control.clone(),
@@ -632,7 +643,7 @@ impl<'a> UseCases<'a> {
     pub fn start_clipboard_watcher(&self) -> uc_app::usecases::StartClipboardWatcher {
         uc_app::usecases::StartClipboardWatcher::from_port(
             self.runtime.deps.watcher_control.clone(),
-            super::resolve_clipboard_integration_mode(),
+            self.runtime.clipboard_integration_mode,
         )
     }
 
@@ -684,7 +695,7 @@ impl<'a> UseCases<'a> {
             self.runtime.deps.representation_repo.clone(),
             self.runtime.deps.blob_store.clone(),
             self.runtime.deps.clipboard_change_origin.clone(),
-            super::resolve_clipboard_integration_mode(),
+            self.runtime.clipboard_integration_mode,
         )
     }
 
@@ -704,7 +715,7 @@ impl<'a> UseCases<'a> {
         &self,
     ) -> uc_app::usecases::clipboard::sync_inbound::SyncInboundClipboardUseCase {
         uc_app::usecases::clipboard::sync_inbound::SyncInboundClipboardUseCase::with_capture_dependencies(
-            super::resolve_clipboard_integration_mode(),
+            self.runtime.clipboard_integration_mode,
             self.runtime.deps.system_clipboard.clone(),
             self.runtime.deps.clipboard_change_origin.clone(),
             self.runtime.deps.encryption_session.clone(),

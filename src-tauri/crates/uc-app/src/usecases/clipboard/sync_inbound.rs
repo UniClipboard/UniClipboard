@@ -50,6 +50,10 @@ impl SyncInboundClipboardUseCase {
         encryption: Arc<dyn EncryptionPort>,
         device_identity: Arc<dyn DeviceIdentityPort>,
     ) -> Self {
+        if mode == ClipboardIntegrationMode::Passive {
+            panic!("Passive mode requires capture dependencies; use with_capture_dependencies");
+        }
+
         Self {
             mode,
             local_clipboard,
@@ -692,6 +696,22 @@ mod tests {
             Some(MimeType::text_plain())
         );
         assert_eq!(writes[0].representations[0].bytes, b"hello inbound");
+    }
+
+    #[test]
+    #[should_panic(
+        expected = "Passive mode requires capture dependencies; use with_capture_dependencies"
+    )]
+    fn new_rejects_passive_mode_without_capture_dependencies() {
+        let _ = build_usecase(
+            ClipboardIntegrationMode::Passive,
+            SystemClipboardSnapshot {
+                ts_ms: 0,
+                representations: vec![],
+            },
+            "local-1",
+            true,
+        );
     }
 
     #[tokio::test]

@@ -49,12 +49,14 @@ impl SyncInboundClipboardUseCase {
         encryption_session: Arc<dyn EncryptionSessionPort>,
         encryption: Arc<dyn EncryptionPort>,
         device_identity: Arc<dyn DeviceIdentityPort>,
-    ) -> Self {
+    ) -> Result<Self> {
         if mode == ClipboardIntegrationMode::Passive {
-            panic!("Passive mode requires capture dependencies; use with_capture_dependencies");
+            return Err(anyhow::anyhow!(
+                "invalid inbound sync configuration: Passive mode requires capture dependencies; use with_capture_dependencies"
+            ));
         }
 
-        Self {
+        Ok(Self {
             mode,
             local_clipboard,
             clipboard_change_origin,
@@ -63,7 +65,7 @@ impl SyncInboundClipboardUseCase {
             device_identity,
             capture_clipboard: None,
             recent_ids: Mutex::new(VecDeque::new()),
-        }
+        })
     }
 
     pub fn with_capture_dependencies(
@@ -119,6 +121,17 @@ impl SyncInboundClipboardUseCase {
             } else {
                 break;
             }
+        }
+    }
+
+    async fn rollback_recent_id(&self, message_id: &str) {
+        self.prune_recent_ids().await;
+        let mut recent_ids = self.recent_ids.lock().await;
+        if let Some(index) = recent_ids.iter().position(|(id, _)| id == message_id) {
+            recent_ids.remove(index);
+        }
+        while recent_ids.len() > RECENT_ID_MAX {
+            recent_ids.pop_front();
         }
     }
 
@@ -209,30 +222,14 @@ impl SyncInboundClipboardUseCase {
                 {
                     Ok(Some(entry_id)) => entry_id,
                     Ok(None) => {
-                        self.prune_recent_ids().await;
-                        let mut recent_ids = self.recent_ids.lock().await;
-                        if let Some(index) = recent_ids.iter().position(|(id, _)| id == &message_id)
-                        {
-                            recent_ids.remove(index);
-                        }
-                        while recent_ids.len() > RECENT_ID_MAX {
-                            recent_ids.pop_front();
-                        }
+                        self.rollback_recent_id(&message_id).await;
                         return Err(anyhow::anyhow!(
                             "capture usecase skipped persistence for RemotePush origin"
                         ))
                         .context("failed to persist inbound clipboard in passive mode");
                     }
                     Err(err) => {
-                        self.prune_recent_ids().await;
-                        let mut recent_ids = self.recent_ids.lock().await;
-                        if let Some(index) = recent_ids.iter().position(|(id, _)| id == &message_id)
-                        {
-                            recent_ids.remove(index);
-                        }
-                        while recent_ids.len() > RECENT_ID_MAX {
-                            recent_ids.pop_front();
-                        }
+                        self.rollback_recent_id(&message_id).await;
                         return Err(err).context("failed to persist inbound clipboard in passive mode");
                     }
                 };
@@ -639,7 +636,8 @@ mod tests {
             Arc::new(MockDeviceIdentity {
                 id: DeviceId::new(local_device_id),
             }),
-        );
+        )
+        .expect("build inbound usecase");
 
         (usecase, writes, calls, origin_values, decrypt_calls)
     }
@@ -720,19 +718,40 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(
-        expected = "Passive mode requires capture dependencies; use with_capture_dependencies"
-    )]
     fn new_rejects_passive_mode_without_capture_dependencies() {
-        let _ = build_usecase(
+        let result = SyncInboundClipboardUseCase::new(
             ClipboardIntegrationMode::Passive,
-            SystemClipboardSnapshot {
-                ts_ms: 0,
-                representations: vec![],
-            },
-            "local-1",
-            true,
+            Arc::new(MockSystemClipboard {
+                reads: SystemClipboardSnapshot {
+                    ts_ms: 0,
+                    representations: vec![],
+                },
+                writes: Arc::new(Mutex::new(Vec::new())),
+                calls: Arc::new(Mutex::new(Vec::new())),
+            }),
+            Arc::new(MockChangeOrigin {
+                calls: Arc::new(Mutex::new(Vec::new())),
+                values: Arc::new(Mutex::new(Vec::new())),
+            }),
+            Arc::new(MockEncryptionSession { ready: true }),
+            Arc::new(MockEncryption {
+                decrypt_calls: Arc::new(AtomicUsize::new(0)),
+            }),
+            Arc::new(MockDeviceIdentity {
+                id: DeviceId::new("local-1"),
+            }),
         );
+
+        match result {
+            Ok(_) => panic!("expected passive mode configuration error"),
+            Err(err) => {
+                assert!(
+                    err.to_string()
+                        .contains("Passive mode requires capture dependencies"),
+                    "unexpected error: {err}"
+                );
+            }
+        }
     }
 
     #[tokio::test]

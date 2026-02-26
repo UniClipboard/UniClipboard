@@ -322,7 +322,7 @@ async fn clipboard_sync_e2e_dual_peer_in_process() -> Result<()> {
         session_a.clone(),
         encryption_a.clone(),
         identity_a.clone(),
-    ));
+    )?);
     let inbound_b = Arc::new(SyncInboundClipboardUseCase::new(
         ClipboardIntegrationMode::Full,
         clipboard_b.clone(),
@@ -330,7 +330,7 @@ async fn clipboard_sync_e2e_dual_peer_in_process() -> Result<()> {
         session_b.clone(),
         encryption_b.clone(),
         identity_b.clone(),
-    ));
+    )?);
 
     let a_send_count = Arc::new(AtomicUsize::new(0));
     let b_send_count = Arc::new(AtomicUsize::new(0));

@@ -1082,120 +1082,48 @@ async fn run_swarm(
                         data,
                         result_tx,
                     } => {
-                        let send_result: Result<()>;
                         let peer = match peer_id.as_str().parse::<PeerId>() {
                             Ok(peer) => peer,
                             Err(err) => {
-                                send_result =
-                                    Err(anyhow!("invalid peer id for business stream: {err}"));
-                                if result_tx.send(send_result).is_err() {
+                                if result_tx
+                                    .send(Err(anyhow!(
+                                        "invalid peer id for business stream: {err}"
+                                    )))
+                                    .is_err()
+                                {
                                     warn!("failed to deliver send clipboard result to caller");
                                 }
                                 continue;
                             }
                         };
-                        if check_business_allowed(
+                        let send_result = execute_business_stream(
+                            &mut swarm,
+                            &caches,
                             &policy_resolver,
                             &event_tx,
-                            peer_id.as_str(),
-                            ProtocolDirection::Outbound,
-                        )
-                        .await
-                        .is_err()
-                        {
-                            send_result = Err(anyhow!(
-                                "business protocol denied for outbound clipboard peer_id={}",
-                                peer_id.as_str()
-                            ));
-                            if result_tx.send(send_result).is_err() {
-                                warn!("failed to deliver send clipboard result to caller");
-                            }
-                            continue;
-                        }
-                        let mut control = swarm.behaviour().stream.new_control();
-                        send_result = match tokio::time::timeout(
+                            &peer_id,
+                            peer,
+                            Some(data.as_slice()),
                             BUSINESS_STREAM_OPEN_TIMEOUT,
-                            control.open_stream(peer, StreamProtocol::new(BUSINESS_PROTOCOL_ID)),
+                            BUSINESS_STREAM_WRITE_TIMEOUT,
+                            BUSINESS_STREAM_CLOSE_TIMEOUT,
+                            "clipboard",
                         )
-                        .await
-                        {
-                            Ok(Ok(mut stream)) => {
-                                match tokio::time::timeout(
-                                    BUSINESS_STREAM_WRITE_TIMEOUT,
-                                    stream.write_all(&data),
-                                )
-                                .await
-                                {
-                                    Ok(Ok(())) => match tokio::time::timeout(
-                                        BUSINESS_STREAM_CLOSE_TIMEOUT,
-                                        stream.close(),
-                                    )
-                                    .await
-                                    {
-                                        Ok(Ok(())) => Ok(()),
-                                        Ok(Err(err)) => {
-                                            warn!("business stream close failed: {err}");
-                                            Err(anyhow!("business stream close failed: {err}"))
-                                        }
-                                        Err(_) => {
-                                            warn!(
-                                                peer_id = %peer_id,
-                                                "business stream close timed out"
-                                            );
-                                            Err(anyhow!("business stream close timed out"))
-                                        }
-                                    },
-                                    Ok(Err(err)) => {
-                                        warn!("business stream write failed: {err}");
-                                        Err(anyhow!("business stream write failed: {err}"))
-                                    }
-                                    Err(_) => {
-                                        warn!(
-                                            peer_id = %peer_id,
-                                            "business stream write timed out"
-                                        );
-                                        Err(anyhow!("business stream write timed out"))
-                                    }
-                                }
-                            }
-                            Ok(Err(err)) => {
-                                warn!("business stream open failed: {err}");
-                                Err(anyhow!("business stream open failed: {err}"))
-                            }
-                            Err(_) => {
-                                warn!(peer_id = %peer_id, "business stream open timed out");
-                                Err(anyhow!("business stream open timed out"))
-                            }
-                        };
-                        if send_result.is_ok() {
-                            let event = {
-                                let mut caches = caches.write().await;
-                                apply_peer_ready(&mut caches, peer_id.as_str(), Utc::now())
-                            };
-                            if let Some(event) = event {
-                                let _ = try_send_event(&event_tx, event, "PeerReady");
-                            }
-                        } else {
-                            let event = {
-                                let mut caches = caches.write().await;
-                                apply_peer_not_ready(&mut caches, peer_id.as_str())
-                            };
-                            if let Some(event) = event {
-                                let _ = try_send_event(&event_tx, event, "PeerNotReady");
-                            }
-                        }
+                        .await;
                         if result_tx.send(send_result).is_err() {
                             warn!("failed to deliver send clipboard result to caller");
                         }
                     }
                     BusinessCommand::EnsureBusinessPath { peer_id, result_tx } => {
-                        let ensure_result: Result<()>;
                         let peer = match peer_id.as_str().parse::<PeerId>() {
                             Ok(peer) => peer,
                             Err(err) => {
-                                ensure_result =
-                                    Err(anyhow!("invalid peer id for ensure business path: {err}"));
-                                if result_tx.send(ensure_result).is_err() {
+                                if result_tx
+                                    .send(Err(anyhow!(
+                                        "invalid peer id for ensure business path: {err}"
+                                    )))
+                                    .is_err()
+                                {
                                     warn!(
                                         "failed to deliver ensure business path result to caller"
                                     );
@@ -1204,86 +1132,20 @@ async fn run_swarm(
                             }
                         };
 
-                        if check_business_allowed(
+                        let ensure_result = execute_business_stream(
+                            &mut swarm,
+                            &caches,
                             &policy_resolver,
                             &event_tx,
-                            peer_id.as_str(),
-                            ProtocolDirection::Outbound,
-                        )
-                        .await
-                        .is_err()
-                        {
-                            ensure_result = Err(anyhow!(
-                                "business protocol denied for outbound ensure peer_id={}",
-                                peer_id.as_str()
-                            ));
-                            let event = {
-                                let mut caches = caches.write().await;
-                                apply_peer_not_ready(&mut caches, peer_id.as_str())
-                            };
-                            if let Some(event) = event {
-                                let _ = try_send_event(&event_tx, event, "PeerNotReady");
-                            }
-                            if result_tx.send(ensure_result).is_err() {
-                                warn!(
-                                    "failed to deliver ensure business path result to caller"
-                                );
-                            }
-                            continue;
-                        }
-
-                        let mut control = swarm.behaviour().stream.new_control();
-                        ensure_result = match tokio::time::timeout(
+                            &peer_id,
+                            peer,
+                            None,
                             BUSINESS_STREAM_OPEN_TIMEOUT,
-                            control.open_stream(peer, StreamProtocol::new(BUSINESS_PROTOCOL_ID)),
+                            BUSINESS_STREAM_WRITE_TIMEOUT,
+                            BUSINESS_STREAM_CLOSE_TIMEOUT,
+                            "ensure",
                         )
-                        .await
-                        {
-                            Ok(Ok(mut stream)) => match tokio::time::timeout(
-                                BUSINESS_STREAM_CLOSE_TIMEOUT,
-                                stream.close(),
-                            )
-                            .await
-                            {
-                                Ok(Ok(())) => Ok(()),
-                                Ok(Err(err)) => Err(anyhow!(
-                                    "ensure business stream close failed: {err}"
-                                )),
-                                Err(_) => {
-                                    warn!(
-                                        peer_id = %peer_id,
-                                        "ensure business stream close timed out"
-                                    );
-                                    Err(anyhow!("ensure business stream close timed out"))
-                                }
-                            },
-                            Ok(Err(err)) => Err(anyhow!("ensure business stream open failed: {err}")),
-                            Err(_) => {
-                                warn!(
-                                    peer_id = %peer_id,
-                                    "ensure business stream open timed out"
-                                );
-                                Err(anyhow!("ensure business stream open timed out"))
-                            }
-                        };
-
-                        if ensure_result.is_ok() {
-                            let event = {
-                                let mut caches = caches.write().await;
-                                apply_peer_ready(&mut caches, peer_id.as_str(), Utc::now())
-                            };
-                            if let Some(event) = event {
-                                let _ = try_send_event(&event_tx, event, "PeerReady");
-                            }
-                        } else {
-                            let event = {
-                                let mut caches = caches.write().await;
-                                apply_peer_not_ready(&mut caches, peer_id.as_str())
-                            };
-                            if let Some(event) = event {
-                                let _ = try_send_event(&event_tx, event, "PeerNotReady");
-                            }
-                        }
+                        .await;
 
                         if result_tx.send(ensure_result).is_err() {
                             warn!("failed to deliver ensure business path result to caller");
@@ -1358,6 +1220,125 @@ async fn run_swarm(
                 }
             }
         }
+    }
+}
+
+async fn execute_business_stream(
+    swarm: &mut Swarm<Libp2pBehaviour>,
+    caches: &Arc<RwLock<PeerCaches>>,
+    policy_resolver: &Arc<dyn ConnectionPolicyResolverPort>,
+    event_tx: &mpsc::Sender<NetworkEvent>,
+    peer_id: &uc_core::PeerId,
+    peer: PeerId,
+    payload: Option<&[u8]>,
+    open_timeout: Duration,
+    write_timeout: Duration,
+    close_timeout: Duration,
+    denied_operation: &str,
+) -> Result<()> {
+    let peer_id_str = peer_id.as_str();
+
+    if check_business_allowed(
+        policy_resolver,
+        event_tx,
+        peer_id_str,
+        ProtocolDirection::Outbound,
+    )
+    .await
+    .is_err()
+    {
+        let result = Err(anyhow!(
+            "business protocol denied for outbound {denied_operation} peer_id={peer_id_str}"
+        ));
+        apply_business_stream_result(caches, event_tx, peer_id_str, &result).await;
+        return result;
+    }
+
+    let mut control = swarm.behaviour().stream.new_control();
+    let result = match timeout(
+        open_timeout,
+        control.open_stream(peer, StreamProtocol::new(BUSINESS_PROTOCOL_ID)),
+    )
+    .await
+    {
+        Ok(Ok(mut stream)) => {
+            if let Some(data) = payload {
+                match timeout(write_timeout, stream.write_all(data)).await {
+                    Ok(Ok(())) => match timeout(close_timeout, stream.close()).await {
+                        Ok(Ok(())) => Ok(()),
+                        Ok(Err(err)) => {
+                            warn!("business stream close failed: {err}");
+                            Err(anyhow!("business stream close failed: {err}"))
+                        }
+                        Err(_) => {
+                            warn!(peer_id = %peer_id_str, "business stream close timed out");
+                            Err(anyhow!("business stream close timed out"))
+                        }
+                    },
+                    Ok(Err(err)) => {
+                        warn!("business stream write failed: {err}");
+                        Err(anyhow!("business stream write failed: {err}"))
+                    }
+                    Err(_) => {
+                        warn!(peer_id = %peer_id_str, "business stream write timed out");
+                        Err(anyhow!("business stream write timed out"))
+                    }
+                }
+            } else {
+                match timeout(close_timeout, stream.close()).await {
+                    Ok(Ok(())) => Ok(()),
+                    Ok(Err(err)) => Err(anyhow!("ensure business stream close failed: {err}")),
+                    Err(_) => {
+                        warn!(peer_id = %peer_id_str, "ensure business stream close timed out");
+                        Err(anyhow!("ensure business stream close timed out"))
+                    }
+                }
+            }
+        }
+        Ok(Err(err)) => {
+            if payload.is_some() {
+                warn!("business stream open failed: {err}");
+                Err(anyhow!("business stream open failed: {err}"))
+            } else {
+                Err(anyhow!("ensure business stream open failed: {err}"))
+            }
+        }
+        Err(_) => {
+            if payload.is_some() {
+                warn!(peer_id = %peer_id_str, "business stream open timed out");
+                Err(anyhow!("business stream open timed out"))
+            } else {
+                warn!(peer_id = %peer_id_str, "ensure business stream open timed out");
+                Err(anyhow!("ensure business stream open timed out"))
+            }
+        }
+    };
+
+    apply_business_stream_result(caches, event_tx, peer_id_str, &result).await;
+    result
+}
+
+async fn apply_business_stream_result(
+    caches: &Arc<RwLock<PeerCaches>>,
+    event_tx: &mpsc::Sender<NetworkEvent>,
+    peer_id: &str,
+    result: &Result<()>,
+) {
+    let event = {
+        let mut caches = caches.write().await;
+        if result.is_ok() {
+            apply_peer_ready(&mut caches, peer_id, Utc::now())
+        } else {
+            apply_peer_not_ready(&mut caches, peer_id)
+        }
+    };
+    if let Some(event) = event {
+        let label = if result.is_ok() {
+            "PeerReady"
+        } else {
+            "PeerNotReady"
+        };
+        let _ = try_send_event(event_tx, event, label);
     }
 }
 

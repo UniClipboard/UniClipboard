@@ -1181,6 +1181,7 @@ async fn run_swarm(
                             }
                         };
                         for peer_id in peer_ids {
+                            let peer_id_str = peer_id.as_str();
                             let peer = match peer_id.as_str().parse::<PeerId>() {
                                 Ok(peer) => peer,
                                 Err(err) => {
@@ -1200,19 +1201,58 @@ async fn run_swarm(
                                 continue;
                             }
                             let mut control = swarm.behaviour().stream.new_control();
-                            match control
-                                .open_stream(peer, StreamProtocol::new(BUSINESS_PROTOCOL_ID))
-                                .await
+                            match timeout(
+                                BUSINESS_STREAM_OPEN_TIMEOUT,
+                                control.open_stream(peer, StreamProtocol::new(BUSINESS_PROTOCOL_ID)),
+                            )
+                            .await
                             {
-                                Ok(mut stream) => {
-                                    if let Err(err) = stream.write_all(&payload).await {
-                                        warn!("announce stream write failed: {err}");
-                                    } else if let Err(err) = stream.close().await {
-                                        warn!("announce stream close failed: {err}");
+                                Ok(Ok(mut stream)) => {
+                                    match timeout(BUSINESS_STREAM_WRITE_TIMEOUT, stream.write_all(&payload))
+                                        .await
+                                    {
+                                        Ok(Ok(())) => {
+                                            match timeout(BUSINESS_STREAM_CLOSE_TIMEOUT, stream.close()).await {
+                                                Ok(Ok(())) => {}
+                                                Ok(Err(err)) => {
+                                                    warn!(
+                                                        peer_id = %peer_id_str,
+                                                        error = %err,
+                                                        "announce stream close failed"
+                                                    );
+                                                }
+                                                Err(_) => {
+                                                    warn!(
+                                                        peer_id = %peer_id_str,
+                                                        "announce stream close timed out"
+                                                    );
+                                                }
+                                            }
+                                        }
+                                        Ok(Err(err)) => {
+                                            warn!(
+                                                peer_id = %peer_id_str,
+                                                error = %err,
+                                                "announce stream write failed"
+                                            );
+                                        }
+                                        Err(_) => {
+                                            warn!(
+                                                peer_id = %peer_id_str,
+                                                "announce stream write timed out"
+                                            );
+                                        }
                                     }
                                 }
-                                Err(err) => {
-                                    warn!("announce stream open failed: {err}");
+                                Ok(Err(err)) => {
+                                    warn!(
+                                        peer_id = %peer_id_str,
+                                        error = %err,
+                                        "announce stream open failed"
+                                    );
+                                }
+                                Err(_) => {
+                                    warn!(peer_id = %peer_id_str, "announce stream open timed out");
                                 }
                             }
                         }
@@ -1247,11 +1287,9 @@ async fn execute_business_stream(
     .await
     .is_err()
     {
-        let result = Err(anyhow!(
+        return Err(anyhow!(
             "business protocol denied for outbound {denied_operation} peer_id={peer_id_str}"
         ));
-        apply_business_stream_result(caches, event_tx, peer_id_str, &result).await;
-        return result;
     }
 
     let mut control = swarm.behaviour().stream.new_control();
@@ -1880,6 +1918,63 @@ mod tests {
             }
             _ => panic!("expected ProtocolDenied"),
         }
+    }
+
+    #[tokio::test]
+    async fn outbound_business_denied_keeps_peer_reachable() {
+        let keypair = identity::Keypair::generate_ed25519();
+        let local_peer_id = PeerId::from(keypair.public());
+        let behaviour = Libp2pBehaviour::new(local_peer_id).expect("behaviour");
+        let mut swarm = SwarmBuilder::with_existing_identity(keypair)
+            .with_tokio()
+            .with_tcp(
+                tcp::Config::default().nodelay(true),
+                noise::Config::new,
+                yamux::Config::default,
+            )
+            .expect("tcp config")
+            .with_behaviour(move |_| behaviour)
+            .expect("attach behaviour")
+            .build();
+
+        let caches = Arc::new(RwLock::new(PeerCaches::new()));
+        let remote_keypair = identity::Keypair::generate_ed25519();
+        let remote_peer = PeerId::from(remote_keypair.public());
+        let remote_peer_id = remote_peer.to_string();
+        {
+            let mut caches_guard = caches.write().await;
+            let _ = caches_guard.upsert_discovered(remote_peer_id.clone(), Vec::new(), Utc::now());
+            assert!(caches_guard.mark_reachable(&remote_peer_id, Utc::now()));
+        }
+
+        let resolver: Arc<dyn ConnectionPolicyResolverPort> = Arc::new(PendingResolver);
+        let (event_tx, mut event_rx) = mpsc::channel(4);
+        let uc_peer_id = uc_core::PeerId::from(remote_peer_id.as_str());
+
+        let result = execute_business_stream(
+            &mut swarm,
+            &caches,
+            &resolver,
+            &event_tx,
+            &uc_peer_id,
+            remote_peer,
+            Some(b"clipboard"),
+            BUSINESS_STREAM_OPEN_TIMEOUT,
+            BUSINESS_STREAM_WRITE_TIMEOUT,
+            BUSINESS_STREAM_CLOSE_TIMEOUT,
+            "clipboard",
+        )
+        .await;
+
+        assert!(result.is_err());
+        assert!(matches!(
+            event_rx.recv().await,
+            Some(NetworkEvent::ProtocolDenied { .. })
+        ));
+        assert!(
+            caches.read().await.is_reachable(&remote_peer_id),
+            "policy denial must not demote peer network readiness"
+        );
     }
 
     #[tokio::test]

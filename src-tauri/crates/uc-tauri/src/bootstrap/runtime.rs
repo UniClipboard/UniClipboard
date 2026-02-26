@@ -33,6 +33,7 @@ use async_trait::async_trait;
 use std::sync::Arc;
 use tauri::Emitter;
 use tokio::sync::Mutex;
+use tracing::Instrument;
 use uc_app::{
     usecases::{
         space_access::{
@@ -878,6 +879,7 @@ pub fn create_app(deps: AppDeps) -> App {
 /// from the platform layer.
 #[async_trait::async_trait]
 impl ClipboardChangeHandler for AppRuntime {
+    #[tracing::instrument(name = "runtime.on_clipboard_changed", skip(self, snapshot))]
     async fn on_clipboard_changed(&self, snapshot: SystemClipboardSnapshot) -> anyhow::Result<()> {
         let origin = self
             .deps
@@ -929,23 +931,27 @@ impl ClipboardChangeHandler for AppRuntime {
                 drop(app_handle_guard);
 
                 let outbound_sync_uc = self.usecases().sync_outbound_clipboard();
-                tauri::async_runtime::spawn(async move {
-                    match tokio::task::spawn_blocking(move || {
-                        outbound_sync_uc.execute(outbound_snapshot, origin)
-                    })
-                    .await
-                    {
-                        Ok(Ok(())) => {
-                            tracing::info!("Outbound clipboard sync completed");
-                        }
-                        Ok(Err(err)) => {
-                            tracing::warn!(error = %err, "Outbound clipboard sync failed");
-                        }
-                        Err(err) => {
-                            tracing::warn!(error = %err, "Outbound clipboard sync task join failed");
+                let parent_span = tracing::Span::current();
+                tauri::async_runtime::spawn(
+                    async move {
+                        match tokio::task::spawn_blocking(move || {
+                            outbound_sync_uc.execute(outbound_snapshot, origin)
+                        })
+                        .await
+                        {
+                            Ok(Ok(())) => {
+                                tracing::info!("Outbound clipboard sync completed");
+                            }
+                            Ok(Err(err)) => {
+                                tracing::warn!(error = %err, "Outbound clipboard sync failed");
+                            }
+                            Err(err) => {
+                                tracing::warn!(error = %err, "Outbound clipboard sync task join failed");
+                            }
                         }
                     }
-                });
+                    .instrument(parent_span),
+                );
 
                 Ok(())
             }

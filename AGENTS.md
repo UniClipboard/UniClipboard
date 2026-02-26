@@ -203,6 +203,13 @@ Never commit code that only exists to support a later commit.
 - **No silent failures in async or event-driven code.**
   - Errors must be **logged** and **observable** by upper layers.
 
+## Async Network Loop Safety (Required)
+
+- In single-loop async drivers (for example `tokio::select!` + network poll loops), never `await` operations that require the same loop to make progress.
+- If a business operation can block (dial/open/write/close), dispatch it out of the poll loop and keep the poll loop responsive.
+- Treat `oneshot send failed` / "failed to deliver result to caller" as a symptom (caller dropped), not root cause; trace upstream scheduling/state progression first.
+- Command-level timeout budgets must be strictly larger than inner stage budgets (`open + write + close + buffer`), never equal.
+
 ## Tauri Command Tracing (Required)
 
 - **All Tauri commands must accept** `_trace: Option<TraceMetadata>` **when available.**

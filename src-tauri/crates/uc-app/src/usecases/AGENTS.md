@@ -35,6 +35,8 @@ They must not embed transport/storage implementation details.
 - Protocol-level literals (MIME names, protocol tags, field identifiers) must come from shared `uc-core` constants/types, not duplicated string literals.
 - If command-side workflow needs "read current system state then execute", expose a dedicated usecase entrypoint instead of building flow in command handlers.
 - Propagate errors with context; no silent `Ok(())` fallbacks for failed sync actions.
+- In outbound sync fanout, keep stage-level failure semantics explicit (ensure/connect vs payload send); do not collapse into ambiguous "network failed".
+- Retry/backoff policy belongs to usecase decisions, not platform adapters.
 
 ## ANTI-PATTERNS
 
@@ -58,6 +60,7 @@ They must not embed transport/storage implementation details.
 4. Tests cover happy path, duplicate message, and channel/error path.
 5. Business policy remains in usecases; wiring/adapters stay mechanical.
 6. New/changed usecase entrypoints have focused tests (including command-facing entry methods when added).
+7. Include cold-start connectivity coverage: peer discovered but not yet connected, ensure/send still converge correctly.
 
 ## COMMANDS
 

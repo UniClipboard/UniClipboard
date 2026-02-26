@@ -19,12 +19,17 @@ Follow parent rules in `AGENTS.md`. This crate is OS/runtime adapter territory.
 - Platform-specific branches must stay localized (macOS/windows/linux files).
 - Respect port behavior contracts from `uc-core` and wiring expectations from `uc-tauri`.
 - Prefer explicit error propagation + structured `tracing` context.
+- Keep swarm/event-loop drivers responsive: command handling must not block polling progress.
+- Business stream operations should run through cloned control handles; avoid long-running waits that hold `&mut Swarm`.
+- Use layered timeout budgets: outer command timeout > inner operation budgets (`open + write + close`) with explicit buffer.
+- For command/stream diagnostics, log structured command lifecycle fields (`cmd_id`, `op`, `peer_id`, `elapsed_ms`).
 
 ## ANTI-PATTERNS
 
 - Embedding usecase or orchestration logic in adapter implementations.
 - Cross-calling tauri APIs directly from platform internals.
 - Changing protocol framing behavior without pairing-flow verification.
+- Treating dropped result receivers as root cause without checking upstream poll-loop starvation or scheduling issues.
 
 ## HIGH-RISK FILES
 

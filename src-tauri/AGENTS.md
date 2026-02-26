@@ -56,6 +56,7 @@ src-tauri/
 - Tauri command pattern: command -> `runtime.usecases().x()`; avoid direct `deps` access from command layer.
 - Event payloads emitted via `app.emit()` must use `#[serde(rename_all = "camelCase")]`.
 - Use `tracing` structured logs; avoid `println!/eprintln!/log` macros in production.
+- For libp2p/event-loop changes, preserve non-blocking poll loop progress; do not block swarm progression while awaiting business stream operations.
 
 ## ANTI-PATTERNS (THIS PROJECT)
 
@@ -92,3 +93,4 @@ bun run test:coverage
 
 - `src-legacy/` is not in active runtime path; treat as migration archive.
 - Current repository root also has parent-level `AGENTS.md`; local file narrows rules to `src-tauri/` workspace details.
+- Any change touching `crates/uc-platform/src/adapters/libp2p_network.rs` must run `cargo test -p uc-platform` before merge.

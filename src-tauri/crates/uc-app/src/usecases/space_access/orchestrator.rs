@@ -457,7 +457,6 @@ mod tests {
             assert: StateAssert,
         },
         PrepareJoinerInput {
-            label: &'static str,
             build_offer: Box<dyn Fn() -> SpaceAccessJoinerOffer + Send + Sync>,
             build_passphrase: Box<dyn Fn() -> SecretString + Send + Sync>,
         },
@@ -475,17 +474,12 @@ mod tests {
             }
         }
 
-        fn prepare_joiner_input<FOffer, FPass>(
-            label: &'static str,
-            build_offer: FOffer,
-            build_passphrase: FPass,
-        ) -> Self
+        fn prepare_joiner_input<FOffer, FPass>(build_offer: FOffer, build_passphrase: FPass) -> Self
         where
             FOffer: Fn() -> SpaceAccessJoinerOffer + Send + Sync + 'static,
             FPass: Fn() -> SecretString + Send + Sync + 'static,
         {
             Self::PrepareJoinerInput {
-                label,
                 build_offer: Box::new(build_offer),
                 build_passphrase: Box::new(build_passphrase),
             }
@@ -548,7 +542,6 @@ mod tests {
                 expect_waiting_user_passphrase(session_id.clone(), space_id.clone()),
             ),
             AccessTestStep::prepare_joiner_input(
-                "prepare joiner input",
                 {
                     let space_id = space_id.clone();
                     move || build_joiner_offer(&space_id)
@@ -612,7 +605,6 @@ mod tests {
                 expect_waiting_user_passphrase(session_id.clone(), space_id.clone()),
             ),
             AccessTestStep::prepare_joiner_input(
-                "prepare joiner input",
                 {
                     let space_id = space_id.clone();
                     move || build_joiner_offer(&space_id)

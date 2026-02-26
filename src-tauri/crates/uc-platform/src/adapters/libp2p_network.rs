@@ -13,7 +13,7 @@ use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
-use tokio::sync::{mpsc, RwLock};
+use tokio::sync::{mpsc, oneshot, RwLock};
 use tracing::{debug, error, info, warn};
 use uc_core::network::{
     ClipboardMessage, ConnectedPeer, DeviceAnnounceMessage, DiscoveredPeer, NetworkEvent,
@@ -41,6 +41,11 @@ enum BusinessCommand {
     SendClipboard {
         peer_id: uc_core::PeerId,
         data: Vec<u8>,
+        result_tx: oneshot::Sender<Result<()>>,
+    },
+    EnsureBusinessPath {
+        peer_id: uc_core::PeerId,
+        result_tx: oneshot::Sender<Result<()>>,
     },
     AnnounceDeviceName {
         device_name: String,
@@ -392,13 +397,19 @@ impl Libp2pNetworkAdapter {
 impl NetworkPort for Libp2pNetworkAdapter {
     async fn send_clipboard(&self, _peer_id: &str, _encrypted_data: Vec<u8>) -> Result<()> {
         let peer = uc_core::PeerId::from(_peer_id);
+        let (result_tx, result_rx) = oneshot::channel();
         self.business_tx
             .send(BusinessCommand::SendClipboard {
                 peer_id: peer,
                 data: _encrypted_data,
+                result_tx,
             })
             .await
-            .map_err(|err| anyhow!("failed to queue business stream: {err}"))
+            .map_err(|err| anyhow!("failed to queue business stream: {err}"))?;
+        match result_rx.await {
+            Ok(result) => result,
+            Err(err) => Err(anyhow!("failed to receive business stream result: {err}")),
+        }
     }
 
     async fn broadcast_clipboard(&self, _encrypted_data: Vec<u8>) -> Result<()> {
@@ -446,6 +457,57 @@ impl NetworkPort for Libp2pNetworkAdapter {
             });
         }
         Ok(peers)
+    }
+
+    async fn list_sendable_peers(&self) -> Result<Vec<DiscoveredPeer>> {
+        let discovered: Vec<DiscoveredPeer> = {
+            let caches = self.caches.read().await;
+            caches.discovered_peers.values().cloned().collect()
+        };
+
+        let mut sendable = Vec::new();
+        for mut peer in discovered {
+            let policy = match self
+                .policy_resolver
+                .resolve_for_peer(&uc_core::PeerId::from(peer.peer_id.as_str()))
+                .await
+            {
+                Ok(policy) => policy,
+                Err(err) => {
+                    warn!(
+                        peer_id = %peer.peer_id,
+                        error = %err,
+                        "failed to resolve connection policy while listing sendable peers"
+                    );
+                    continue;
+                }
+            };
+
+            if policy.allowed.allows(ProtocolKind::Business) {
+                peer.is_paired = matches!(policy.pairing_state, PairingState::Trusted);
+                sendable.push(peer);
+            }
+        }
+        Ok(sendable)
+    }
+
+    async fn ensure_business_path(&self, peer_id: &str) -> Result<()> {
+        let peer = uc_core::PeerId::from(peer_id);
+        let (result_tx, result_rx) = oneshot::channel();
+        self.business_tx
+            .send(BusinessCommand::EnsureBusinessPath {
+                peer_id: peer,
+                result_tx,
+            })
+            .await
+            .map_err(|err| anyhow!("failed to queue ensure business path command: {err}"))?;
+
+        match result_rx.await {
+            Ok(result) => result,
+            Err(err) => Err(anyhow!(
+                "failed to receive ensure business path result: {err}"
+            )),
+        }
     }
 
     fn local_peer_id(&self) -> String {
@@ -1008,11 +1070,20 @@ async fn run_swarm(
             }
             Some(command) = business_rx.recv() => {
                 match command {
-                    BusinessCommand::SendClipboard { peer_id, data } => {
+                    BusinessCommand::SendClipboard {
+                        peer_id,
+                        data,
+                        result_tx,
+                    } => {
+                        let send_result: Result<()>;
                         let peer = match peer_id.as_str().parse::<PeerId>() {
                             Ok(peer) => peer,
                             Err(err) => {
-                                warn!("invalid peer id for business stream: {err}");
+                                send_result =
+                                    Err(anyhow!("invalid peer id for business stream: {err}"));
+                                if result_tx.send(send_result).is_err() {
+                                    warn!("failed to deliver send clipboard result to caller");
+                                }
                                 continue;
                             }
                         };
@@ -1025,23 +1096,135 @@ async fn run_swarm(
                         .await
                         .is_err()
                         {
+                            send_result = Err(anyhow!(
+                                "business protocol denied for outbound clipboard peer_id={}",
+                                peer_id.as_str()
+                            ));
+                            if result_tx.send(send_result).is_err() {
+                                warn!("failed to deliver send clipboard result to caller");
+                            }
                             continue;
                         }
                         let mut control = swarm.behaviour().stream.new_control();
-                        match control
+                        send_result = match control
                             .open_stream(peer, StreamProtocol::new(BUSINESS_PROTOCOL_ID))
                             .await
                         {
                             Ok(mut stream) => {
                                 if let Err(err) = stream.write_all(&data).await {
                                     warn!("business stream write failed: {err}");
+                                    Err(anyhow!("business stream write failed: {err}"))
                                 } else if let Err(err) = stream.close().await {
                                     warn!("business stream close failed: {err}");
+                                    Err(anyhow!("business stream close failed: {err}"))
+                                } else {
+                                    Ok(())
                                 }
                             }
                             Err(err) => {
                                 warn!("business stream open failed: {err}");
+                                Err(anyhow!("business stream open failed: {err}"))
                             }
+                        };
+                        if send_result.is_ok() {
+                            let event = {
+                                let mut caches = caches.write().await;
+                                apply_peer_ready(&mut caches, peer_id.as_str(), Utc::now())
+                            };
+                            if let Some(event) = event {
+                                let _ = try_send_event(&event_tx, event, "PeerReady");
+                            }
+                        } else {
+                            let event = {
+                                let mut caches = caches.write().await;
+                                apply_peer_not_ready(&mut caches, peer_id.as_str())
+                            };
+                            if let Some(event) = event {
+                                let _ = try_send_event(&event_tx, event, "PeerNotReady");
+                            }
+                        }
+                        if result_tx.send(send_result).is_err() {
+                            warn!("failed to deliver send clipboard result to caller");
+                        }
+                    }
+                    BusinessCommand::EnsureBusinessPath { peer_id, result_tx } => {
+                        let ensure_result: Result<()>;
+                        let peer = match peer_id.as_str().parse::<PeerId>() {
+                            Ok(peer) => peer,
+                            Err(err) => {
+                                ensure_result =
+                                    Err(anyhow!("invalid peer id for ensure business path: {err}"));
+                                if result_tx.send(ensure_result).is_err() {
+                                    warn!(
+                                        "failed to deliver ensure business path result to caller"
+                                    );
+                                }
+                                continue;
+                            }
+                        };
+
+                        if check_business_allowed(
+                            &policy_resolver,
+                            &event_tx,
+                            peer_id.as_str(),
+                            ProtocolDirection::Outbound,
+                        )
+                        .await
+                        .is_err()
+                        {
+                            ensure_result = Err(anyhow!(
+                                "business protocol denied for outbound ensure peer_id={}",
+                                peer_id.as_str()
+                            ));
+                            let event = {
+                                let mut caches = caches.write().await;
+                                apply_peer_not_ready(&mut caches, peer_id.as_str())
+                            };
+                            if let Some(event) = event {
+                                let _ = try_send_event(&event_tx, event, "PeerNotReady");
+                            }
+                            if result_tx.send(ensure_result).is_err() {
+                                warn!(
+                                    "failed to deliver ensure business path result to caller"
+                                );
+                            }
+                            continue;
+                        }
+
+                        let mut control = swarm.behaviour().stream.new_control();
+                        ensure_result = match control
+                            .open_stream(peer, StreamProtocol::new(BUSINESS_PROTOCOL_ID))
+                            .await
+                        {
+                            Ok(mut stream) => match stream.close().await {
+                                Ok(()) => Ok(()),
+                                Err(err) => Err(anyhow!(
+                                    "ensure business stream close failed: {err}"
+                                )),
+                            },
+                            Err(err) => Err(anyhow!("ensure business stream open failed: {err}")),
+                        };
+
+                        if ensure_result.is_ok() {
+                            let event = {
+                                let mut caches = caches.write().await;
+                                apply_peer_ready(&mut caches, peer_id.as_str(), Utc::now())
+                            };
+                            if let Some(event) = event {
+                                let _ = try_send_event(&event_tx, event, "PeerReady");
+                            }
+                        } else {
+                            let event = {
+                                let mut caches = caches.write().await;
+                                apply_peer_not_ready(&mut caches, peer_id.as_str())
+                            };
+                            if let Some(event) = event {
+                                let _ = try_send_event(&event_tx, event, "PeerNotReady");
+                            }
+                        }
+
+                        if result_tx.send(ensure_result).is_err() {
+                            warn!("failed to deliver ensure business path result to caller");
                         }
                     }
                     BusinessCommand::AnnounceDeviceName { device_name } => {
@@ -1600,6 +1783,9 @@ mod tests {
             BusinessCommand::SendClipboard { .. } => {
                 panic!("unexpected clipboard command")
             }
+            BusinessCommand::EnsureBusinessPath { .. } => {
+                panic!("unexpected ensure command")
+            }
         }
     }
 
@@ -1715,24 +1901,38 @@ mod tests {
         )
         .expect("create adapter");
         let payload = vec![1, 2, 3, 4];
-
-        adapter
-            .send_clipboard("peer-2", payload.clone())
-            .await
-            .expect("send clipboard");
-
+        let expected_payload = payload.clone();
         let mut rx = Libp2pNetworkAdapter::take_receiver(&adapter.business_rx, "business")
             .expect("business receiver");
+
+        let send_task =
+            tokio::spawn(async move { adapter.send_clipboard("peer-2", payload).await });
         let command = rx.recv().await.expect("business command");
         match command {
-            BusinessCommand::SendClipboard { peer_id, data } => {
+            BusinessCommand::SendClipboard {
+                peer_id,
+                data,
+                result_tx,
+                ..
+            } => {
                 assert_eq!(peer_id.as_str(), "peer-2");
-                assert_eq!(data, payload);
+                assert_eq!(data, expected_payload);
+                result_tx
+                    .send(Ok(()))
+                    .expect("deliver send result to send_clipboard caller");
             }
             BusinessCommand::AnnounceDeviceName { .. } => {
                 panic!("unexpected announce command")
             }
+            BusinessCommand::EnsureBusinessPath { .. } => {
+                panic!("unexpected ensure command")
+            }
         }
+
+        send_task
+            .await
+            .expect("send task join")
+            .expect("send clipboard");
     }
 
     #[tokio::test]

@@ -348,7 +348,7 @@ Wave 2（依赖 Wave 1 的行为改造）
 
   **Commit**: YES | Message: `feat: block clipboard restore in passive mode` | Files: `src-tauri/crates/uc-app/src/usecases/clipboard/restore_clipboard_selection.rs`, `src-tauri/crates/uc-tauri/src/bootstrap/runtime.rs`
 
-#HN|- [x] 6. passive 入站同步：不写 OS clipboard，直接持久化 + in-memory 去重（SyncInboundClipboardUseCase）
+- HN|- [x] 6. passive 入站同步：不写 OS clipboard，直接持久化 + in-memory 去重（SyncInboundClipboardUseCase）
 
 **What to do**:
 
@@ -427,7 +427,7 @@ Scenario: Passive dedupe by message id
 
 **Commit**: YES | Message: `feat: persist inbound clipboard without OS in passive mode` | Files: `src-tauri/crates/uc-app/src/usecases/clipboard/sync_inbound.rs`, `src-tauri/crates/uc-app/tests/clipboard_sync_e2e_test.rs`
 
-#YX|- [x] 7. passive 入站成功时 emit `clipboard://event`（bootstrap receive loop）
+- YX|- [x] 7. passive 入站成功时 emit `clipboard://event`（bootstrap receive loop）
 
 **What to do**:
 
@@ -476,7 +476,7 @@ Scenario: Full mode does not double-emit
 
 **Commit**: YES | Message: `feat: emit clipboard event for passive inbound apply` | Files: `src-tauri/crates/uc-tauri/src/bootstrap/wiring.rs`
 
-#TM|- [x] 8. 更新 UseCases accessor 构造签名（uc-tauri runtime.rs）
+- TM|- [x] 8. 更新 UseCases accessor 构造签名（uc-tauri runtime.rs）
 
 **What to do**:
 
@@ -519,7 +519,7 @@ Scenario: Tests still build
 
 **Commit**: YES | Message: `chore: thread clipboard integration mode through runtime accessors` | Files: `src-tauri/crates/uc-tauri/src/bootstrap/runtime.rs`
 
-#WM|- [x] 9. `sync_clipboard_items` 在 passive 下显式返回 Err
+- WM|- [x] 9. `sync_clipboard_items` 在 passive 下显式返回 Err
 
 **What to do**:
 

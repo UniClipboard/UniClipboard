@@ -2306,14 +2306,10 @@ async fn run_pairing_action_loop<R: Runtime>(
                 error,
             } => {
                 let peer_info = orchestrator.get_session_peer(&session_id).await;
-                let peer_id = peer_info
-                    .as_ref()
-                    .map(|p| p.peer_id.as_str())
-                    .unwrap_or("unknown");
                 let role = orchestrator.get_session_role(&session_id).await;
                 info!(
                     session_id = %session_id,
-                    peer_id = %peer_id,
+                    peer_id = ?peer_info.as_ref().map(|p| p.peer_id.as_str()),
                     success = success,
                     role = ?role,
                     reason = ?error,
@@ -2332,10 +2328,15 @@ async fn run_pairing_action_loop<R: Runtime>(
                     }
                 }
                 if success && role == Some(PairingRole::Responder) {
-                    {
+                    if let Some(peer) = peer_info.as_ref() {
                         let context = space_access_orchestrator.context();
                         let mut guard = context.lock().await;
-                        guard.sponsor_peer_id = Some(peer_id.to_string());
+                        guard.sponsor_peer_id = Some(peer.peer_id.clone());
+                    } else {
+                        warn!(
+                            session_id = %session_id,
+                            "Responder emit result has no peer info; sponsor_peer_id not updated"
+                        );
                     }
                     match key_slot_store.load().await {
                         Ok(keyslot_file) => {

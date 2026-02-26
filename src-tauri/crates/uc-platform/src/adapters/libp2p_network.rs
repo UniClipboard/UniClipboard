@@ -35,7 +35,8 @@ const BUSINESS_READ_TIMEOUT: Duration = Duration::from_secs(30);
 const BUSINESS_STREAM_OPEN_TIMEOUT: Duration = Duration::from_secs(10);
 const BUSINESS_STREAM_WRITE_TIMEOUT: Duration = Duration::from_secs(10);
 const BUSINESS_STREAM_CLOSE_TIMEOUT: Duration = Duration::from_secs(10);
-const BUSINESS_COMMAND_RESULT_TIMEOUT: Duration = Duration::from_secs(10);
+const BUSINESS_SEND_COMMAND_RESULT_TIMEOUT: Duration = Duration::from_secs(35);
+const BUSINESS_ENSURE_COMMAND_RESULT_TIMEOUT: Duration = Duration::from_secs(25);
 const START_STATE_IDLE: u8 = 0;
 const START_STATE_STARTING: u8 = 1;
 const START_STATE_STARTED: u8 = 2;
@@ -411,7 +412,7 @@ impl NetworkPort for Libp2pNetworkAdapter {
             })
             .await
             .map_err(|err| anyhow!("failed to queue business stream: {err}"))?;
-        match timeout(BUSINESS_COMMAND_RESULT_TIMEOUT, result_rx).await {
+        match timeout(BUSINESS_SEND_COMMAND_RESULT_TIMEOUT, result_rx).await {
             Ok(Ok(result)) => result,
             Ok(Err(err)) => Err(anyhow!("failed to receive business stream result: {err}")),
             Err(_) => Err(anyhow!("timed out waiting for business command result")),
@@ -508,7 +509,7 @@ impl NetworkPort for Libp2pNetworkAdapter {
             .await
             .map_err(|err| anyhow!("failed to queue ensure business path command: {err}"))?;
 
-        match timeout(BUSINESS_COMMAND_RESULT_TIMEOUT, result_rx).await {
+        match timeout(BUSINESS_ENSURE_COMMAND_RESULT_TIMEOUT, result_rx).await {
             Ok(Ok(result)) => result,
             Ok(Err(err)) => Err(anyhow!(
                 "failed to receive ensure business path result: {err}"
@@ -929,6 +930,7 @@ async fn run_swarm(
     local_peer_id: String,
 ) {
     info!(local_peer_id = %local_peer_id, "libp2p mDNS swarm started");
+    let mut next_business_command_id: u64 = 1;
 
     loop {
         tokio::select! {
@@ -1076,195 +1078,352 @@ async fn run_swarm(
                 }
             }
             Some(command) = business_rx.recv() => {
-                match command {
-                    BusinessCommand::SendClipboard {
-                        peer_id,
-                        data,
-                        result_tx,
-                    } => {
-                        let peer = match peer_id.as_str().parse::<PeerId>() {
-                            Ok(peer) => peer,
-                            Err(err) => {
-                                if result_tx
-                                    .send(Err(anyhow!(
-                                        "invalid peer id for business stream: {err}"
-                                    )))
-                                    .is_err()
-                                {
-                                    warn!("failed to deliver send clipboard result to caller");
-                                }
-                                continue;
-                            }
-                        };
-                        let send_result = execute_business_stream(
-                            &mut swarm,
-                            &caches,
-                            &policy_resolver,
-                            &event_tx,
-                            &peer_id,
-                            peer,
-                            Some(data.as_slice()),
-                            BUSINESS_STREAM_OPEN_TIMEOUT,
-                            BUSINESS_STREAM_WRITE_TIMEOUT,
-                            BUSINESS_STREAM_CLOSE_TIMEOUT,
-                            "clipboard",
-                        )
-                        .await;
-                        if result_tx.send(send_result).is_err() {
-                            warn!("failed to deliver send clipboard result to caller");
-                        }
-                    }
-                    BusinessCommand::EnsureBusinessPath { peer_id, result_tx } => {
-                        let peer = match peer_id.as_str().parse::<PeerId>() {
-                            Ok(peer) => peer,
-                            Err(err) => {
-                                if result_tx
-                                    .send(Err(anyhow!(
-                                        "invalid peer id for ensure business path: {err}"
-                                    )))
-                                    .is_err()
-                                {
-                                    warn!(
-                                        "failed to deliver ensure business path result to caller"
-                                    );
-                                }
-                                continue;
-                            }
-                        };
+                let command_id = next_business_command_id;
+                next_business_command_id = next_business_command_id.wrapping_add(1);
+                let (operation, peer_id) = business_command_log_fields(&command);
+                debug!(
+                    cmd_id = command_id,
+                    op = operation,
+                    peer_id = %peer_id.unwrap_or("-"),
+                    "business command queued"
+                );
 
-                        let ensure_result = execute_business_stream(
-                            &mut swarm,
-                            &caches,
-                            &policy_resolver,
-                            &event_tx,
-                            &peer_id,
-                            peer,
-                            None,
-                            BUSINESS_STREAM_OPEN_TIMEOUT,
-                            BUSINESS_STREAM_WRITE_TIMEOUT,
-                            BUSINESS_STREAM_CLOSE_TIMEOUT,
-                            "ensure",
-                        )
-                        .await;
-
-                        if result_tx.send(ensure_result).is_err() {
-                            warn!("failed to deliver ensure business path result to caller");
-                        }
-                    }
-                    BusinessCommand::AnnounceDeviceName { device_name } => {
-                        let peer_ids = {
-                            let caches = caches.read().await;
-                            caches.discovered_peers.keys().cloned().collect::<Vec<_>>()
-                        };
-                        if peer_ids.is_empty() {
-                            info!(
-                                local_peer_id = %local_peer_id,
-                                "skip device announce because discovered peer list is empty"
-                            );
-                            continue;
-                        }
-                        info!(
-                            target_peer_count = peer_ids.len(),
-                            local_peer_id = %local_peer_id,
-                            "broadcasting device announce to discovered peers"
-                        );
-                        let message = ProtocolMessage::DeviceAnnounce(DeviceAnnounceMessage {
-                            peer_id: local_peer_id.clone(),
-                            device_name: device_name.clone(),
-                            timestamp: Utc::now(),
-                        });
-                        let payload = match message.to_bytes() {
-                            Ok(payload) => payload,
-                            Err(err) => {
-                                warn!("Failed to serialize device announce payload: {err}");
-                                continue;
-                            }
-                        };
-                        for peer_id in peer_ids {
-                            let peer_id_str = peer_id.as_str();
-                            let peer = match peer_id.as_str().parse::<PeerId>() {
-                                Ok(peer) => peer,
-                                Err(err) => {
-                                    warn!("invalid peer id for announce stream: {err}");
-                                    continue;
-                                }
-                            };
-                            if check_business_allowed(
-                                &policy_resolver,
-                                &event_tx,
-                                peer_id.as_str(),
-                                ProtocolDirection::Outbound,
-                            )
-                            .await
-                            .is_err()
-                            {
-                                continue;
-                            }
-                            let mut control = swarm.behaviour().stream.new_control();
-                            match timeout(
-                                BUSINESS_STREAM_OPEN_TIMEOUT,
-                                control.open_stream(peer, StreamProtocol::new(BUSINESS_PROTOCOL_ID)),
-                            )
-                            .await
-                            {
-                                Ok(Ok(mut stream)) => {
-                                    match timeout(BUSINESS_STREAM_WRITE_TIMEOUT, stream.write_all(&payload))
-                                        .await
-                                    {
-                                        Ok(Ok(())) => {
-                                            match timeout(BUSINESS_STREAM_CLOSE_TIMEOUT, stream.close()).await {
-                                                Ok(Ok(())) => {}
-                                                Ok(Err(err)) => {
-                                                    warn!(
-                                                        peer_id = %peer_id_str,
-                                                        error = %err,
-                                                        "announce stream close failed"
-                                                    );
-                                                }
-                                                Err(_) => {
-                                                    warn!(
-                                                        peer_id = %peer_id_str,
-                                                        "announce stream close timed out"
-                                                    );
-                                                }
-                                            }
-                                        }
-                                        Ok(Err(err)) => {
-                                            warn!(
-                                                peer_id = %peer_id_str,
-                                                error = %err,
-                                                "announce stream write failed"
-                                            );
-                                        }
-                                        Err(_) => {
-                                            warn!(
-                                                peer_id = %peer_id_str,
-                                                "announce stream write timed out"
-                                            );
-                                        }
-                                    }
-                                }
-                                Ok(Err(err)) => {
-                                    warn!(
-                                        peer_id = %peer_id_str,
-                                        error = %err,
-                                        "announce stream open failed"
-                                    );
-                                }
-                                Err(_) => {
-                                    warn!(peer_id = %peer_id_str, "announce stream open timed out");
-                                }
-                            }
-                        }
-                    }
-                }
+                let command_control = swarm.behaviour().stream.new_control();
+                let command_caches = caches.clone();
+                let command_policy_resolver = policy_resolver.clone();
+                let command_event_tx = event_tx.clone();
+                let command_local_peer_id = local_peer_id.clone();
+                tokio::spawn(async move {
+                    execute_business_command(
+                        command,
+                        command_id,
+                        command_control,
+                        command_caches,
+                        command_policy_resolver,
+                        command_event_tx,
+                        command_local_peer_id,
+                    )
+                    .await;
+                });
             }
         }
     }
 }
 
+fn business_command_log_fields(command: &BusinessCommand) -> (&'static str, Option<&str>) {
+    match command {
+        BusinessCommand::SendClipboard { peer_id, .. } => ("clipboard", Some(peer_id.as_str())),
+        BusinessCommand::EnsureBusinessPath { peer_id, .. } => ("ensure", Some(peer_id.as_str())),
+        BusinessCommand::AnnounceDeviceName { .. } => ("announce_device_name", None),
+    }
+}
+
+fn deliver_business_command_result(
+    result_tx: oneshot::Sender<Result<()>>,
+    result: Result<()>,
+    command_id: u64,
+    operation: &str,
+    peer_id: &str,
+) {
+    if let Err(undelivered_result) = result_tx.send(result) {
+        warn!(
+            cmd_id = command_id,
+            op = operation,
+            peer_id = %peer_id,
+            result_ok = undelivered_result.is_ok(),
+            "business command result receiver dropped"
+        );
+    }
+}
+
+async fn execute_business_command(
+    command: BusinessCommand,
+    command_id: u64,
+    control: stream::Control,
+    caches: Arc<RwLock<PeerCaches>>,
+    policy_resolver: Arc<dyn ConnectionPolicyResolverPort>,
+    event_tx: mpsc::Sender<NetworkEvent>,
+    local_peer_id: String,
+) {
+    match command {
+        BusinessCommand::SendClipboard {
+            peer_id,
+            data,
+            result_tx,
+        } => {
+            let started_at = std::time::Instant::now();
+            let peer_id_str = peer_id.as_str().to_string();
+            debug!(
+                cmd_id = command_id,
+                op = "clipboard",
+                peer_id = %peer_id_str,
+                "business command started"
+            );
+
+            let result = match peer_id_str.parse::<PeerId>() {
+                Ok(peer) => {
+                    execute_business_stream(
+                        &control,
+                        &caches,
+                        &policy_resolver,
+                        &event_tx,
+                        &peer_id,
+                        peer,
+                        Some(data.as_slice()),
+                        BUSINESS_STREAM_OPEN_TIMEOUT,
+                        BUSINESS_STREAM_WRITE_TIMEOUT,
+                        BUSINESS_STREAM_CLOSE_TIMEOUT,
+                        "clipboard",
+                    )
+                    .await
+                }
+                Err(err) => Err(anyhow!("invalid peer id for business stream: {err}")),
+            };
+
+            let elapsed_ms = started_at.elapsed().as_millis() as u64;
+            match &result {
+                Ok(()) => {
+                    debug!(
+                        cmd_id = command_id,
+                        op = "clipboard",
+                        peer_id = %peer_id_str,
+                        elapsed_ms,
+                        "business command completed"
+                    );
+                }
+                Err(err) => {
+                    warn!(
+                        cmd_id = command_id,
+                        op = "clipboard",
+                        peer_id = %peer_id_str,
+                        elapsed_ms,
+                        error = %err,
+                        "business command failed"
+                    );
+                }
+            }
+
+            deliver_business_command_result(
+                result_tx,
+                result,
+                command_id,
+                "clipboard",
+                &peer_id_str,
+            );
+        }
+        BusinessCommand::EnsureBusinessPath { peer_id, result_tx } => {
+            let started_at = std::time::Instant::now();
+            let peer_id_str = peer_id.as_str().to_string();
+            debug!(
+                cmd_id = command_id,
+                op = "ensure",
+                peer_id = %peer_id_str,
+                "business command started"
+            );
+
+            let result = match peer_id_str.parse::<PeerId>() {
+                Ok(peer) => {
+                    execute_business_stream(
+                        &control,
+                        &caches,
+                        &policy_resolver,
+                        &event_tx,
+                        &peer_id,
+                        peer,
+                        None,
+                        BUSINESS_STREAM_OPEN_TIMEOUT,
+                        BUSINESS_STREAM_WRITE_TIMEOUT,
+                        BUSINESS_STREAM_CLOSE_TIMEOUT,
+                        "ensure",
+                    )
+                    .await
+                }
+                Err(err) => Err(anyhow!("invalid peer id for ensure business path: {err}")),
+            };
+
+            let elapsed_ms = started_at.elapsed().as_millis() as u64;
+            match &result {
+                Ok(()) => {
+                    debug!(
+                        cmd_id = command_id,
+                        op = "ensure",
+                        peer_id = %peer_id_str,
+                        elapsed_ms,
+                        "business command completed"
+                    );
+                }
+                Err(err) => {
+                    warn!(
+                        cmd_id = command_id,
+                        op = "ensure",
+                        peer_id = %peer_id_str,
+                        elapsed_ms,
+                        error = %err,
+                        "business command failed"
+                    );
+                }
+            }
+
+            deliver_business_command_result(result_tx, result, command_id, "ensure", &peer_id_str);
+        }
+        BusinessCommand::AnnounceDeviceName { device_name } => {
+            let started_at = std::time::Instant::now();
+            debug!(
+                cmd_id = command_id,
+                op = "announce_device_name",
+                "business command started"
+            );
+
+            let peer_ids = {
+                let caches = caches.read().await;
+                caches.discovered_peers.keys().cloned().collect::<Vec<_>>()
+            };
+            if peer_ids.is_empty() {
+                info!(
+                    cmd_id = command_id,
+                    op = "announce_device_name",
+                    local_peer_id = %local_peer_id,
+                    "skip device announce because discovered peer list is empty"
+                );
+                return;
+            }
+            info!(
+                cmd_id = command_id,
+                op = "announce_device_name",
+                target_peer_count = peer_ids.len(),
+                local_peer_id = %local_peer_id,
+                "broadcasting device announce to discovered peers"
+            );
+            let message = ProtocolMessage::DeviceAnnounce(DeviceAnnounceMessage {
+                peer_id: local_peer_id.clone(),
+                device_name,
+                timestamp: Utc::now(),
+            });
+            let payload = match message.to_bytes() {
+                Ok(payload) => payload,
+                Err(err) => {
+                    warn!(
+                        cmd_id = command_id,
+                        op = "announce_device_name",
+                        error = %err,
+                        "failed to serialize device announce payload"
+                    );
+                    return;
+                }
+            };
+
+            for peer_id in peer_ids {
+                let peer_id_str = peer_id.as_str();
+                let peer = match peer_id.as_str().parse::<PeerId>() {
+                    Ok(peer) => peer,
+                    Err(err) => {
+                        warn!(
+                            cmd_id = command_id,
+                            op = "announce_device_name",
+                            peer_id = %peer_id_str,
+                            error = %err,
+                            "invalid peer id for announce stream"
+                        );
+                        continue;
+                    }
+                };
+                if check_business_allowed(
+                    &policy_resolver,
+                    &event_tx,
+                    peer_id.as_str(),
+                    ProtocolDirection::Outbound,
+                )
+                .await
+                .is_err()
+                {
+                    continue;
+                }
+
+                let mut announce_control = control.clone();
+                match timeout(
+                    BUSINESS_STREAM_OPEN_TIMEOUT,
+                    announce_control.open_stream(peer, StreamProtocol::new(BUSINESS_PROTOCOL_ID)),
+                )
+                .await
+                {
+                    Ok(Ok(mut stream)) => {
+                        match timeout(BUSINESS_STREAM_WRITE_TIMEOUT, stream.write_all(&payload))
+                            .await
+                        {
+                            Ok(Ok(())) => {
+                                match timeout(BUSINESS_STREAM_CLOSE_TIMEOUT, stream.close()).await {
+                                    Ok(Ok(())) => {}
+                                    Ok(Err(err)) => {
+                                        warn!(
+                                            cmd_id = command_id,
+                                            op = "announce_device_name",
+                                            peer_id = %peer_id_str,
+                                            error = %err,
+                                            "announce stream close failed"
+                                        );
+                                    }
+                                    Err(_) => {
+                                        warn!(
+                                            cmd_id = command_id,
+                                            op = "announce_device_name",
+                                            peer_id = %peer_id_str,
+                                            "announce stream close timed out"
+                                        );
+                                    }
+                                }
+                            }
+                            Ok(Err(err)) => {
+                                warn!(
+                                    cmd_id = command_id,
+                                    op = "announce_device_name",
+                                    peer_id = %peer_id_str,
+                                    error = %err,
+                                    "announce stream write failed"
+                                );
+                            }
+                            Err(_) => {
+                                warn!(
+                                    cmd_id = command_id,
+                                    op = "announce_device_name",
+                                    peer_id = %peer_id_str,
+                                    "announce stream write timed out"
+                                );
+                            }
+                        }
+                    }
+                    Ok(Err(err)) => {
+                        warn!(
+                            cmd_id = command_id,
+                            op = "announce_device_name",
+                            peer_id = %peer_id_str,
+                            error = %err,
+                            "announce stream open failed"
+                        );
+                    }
+                    Err(_) => {
+                        warn!(
+                            cmd_id = command_id,
+                            op = "announce_device_name",
+                            peer_id = %peer_id_str,
+                            "announce stream open timed out"
+                        );
+                    }
+                }
+            }
+
+            let elapsed_ms = started_at.elapsed().as_millis() as u64;
+            debug!(
+                cmd_id = command_id,
+                op = "announce_device_name",
+                elapsed_ms,
+                "business command completed"
+            );
+        }
+    }
+}
+
 async fn execute_business_stream(
-    swarm: &mut Swarm<Libp2pBehaviour>,
+    control: &stream::Control,
     caches: &Arc<RwLock<PeerCaches>>,
     policy_resolver: &Arc<dyn ConnectionPolicyResolverPort>,
     event_tx: &mpsc::Sender<NetworkEvent>,
@@ -1292,7 +1451,7 @@ async fn execute_business_stream(
         ));
     }
 
-    let mut control = swarm.behaviour().stream.new_control();
+    let mut control = control.clone();
     let result = match timeout(
         open_timeout,
         control.open_stream(peer, StreamProtocol::new(BUSINESS_PROTOCOL_ID)),
@@ -1520,6 +1679,22 @@ mod tests {
     fn mdns_config_has_5s_query_interval() {
         let config = build_mdns_config();
         assert_eq!(config.query_interval, Duration::from_secs(5));
+    }
+
+    #[test]
+    fn business_command_timeouts_cover_stream_operation_budgets() {
+        let send_budget = BUSINESS_STREAM_OPEN_TIMEOUT
+            + BUSINESS_STREAM_WRITE_TIMEOUT
+            + BUSINESS_STREAM_CLOSE_TIMEOUT;
+        let ensure_budget = BUSINESS_STREAM_OPEN_TIMEOUT + BUSINESS_STREAM_CLOSE_TIMEOUT;
+        assert!(
+            BUSINESS_SEND_COMMAND_RESULT_TIMEOUT > send_budget,
+            "send command timeout must exceed open/write/close total budget"
+        );
+        assert!(
+            BUSINESS_ENSURE_COMMAND_RESULT_TIMEOUT > ensure_budget,
+            "ensure command timeout must exceed open/close total budget"
+        );
     }
 
     #[test]
@@ -1925,7 +2100,7 @@ mod tests {
         let keypair = identity::Keypair::generate_ed25519();
         let local_peer_id = PeerId::from(keypair.public());
         let behaviour = Libp2pBehaviour::new(local_peer_id).expect("behaviour");
-        let mut swarm = SwarmBuilder::with_existing_identity(keypair)
+        let swarm = SwarmBuilder::with_existing_identity(keypair)
             .with_tokio()
             .with_tcp(
                 tcp::Config::default().nodelay(true),
@@ -1950,9 +2125,10 @@ mod tests {
         let resolver: Arc<dyn ConnectionPolicyResolverPort> = Arc::new(PendingResolver);
         let (event_tx, mut event_rx) = mpsc::channel(4);
         let uc_peer_id = uc_core::PeerId::from(remote_peer_id.as_str());
+        let control = swarm.behaviour().stream.new_control();
 
         let result = execute_business_stream(
-            &mut swarm,
+            &control,
             &caches,
             &resolver,
             &event_tx,
@@ -2197,6 +2373,78 @@ mod tests {
             ),
             Err(_) => panic!("mdns discovery timed out"),
         }
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn ensure_business_path_opens_stream_without_blocking_swarm_poll() {
+        let adapter_a = Libp2pNetworkAdapter::new(
+            Arc::new(TestIdentityStore::default()),
+            Arc::new(FakeResolver),
+        )
+        .expect("create adapter a");
+        let adapter_b = Libp2pNetworkAdapter::new(
+            Arc::new(TestIdentityStore::default()),
+            Arc::new(FakeResolver),
+        )
+        .expect("create adapter b");
+        adapter_a.spawn_swarm().expect("start swarm a");
+        adapter_b.spawn_swarm().expect("start swarm b");
+
+        let peer_a = adapter_a.local_peer_id();
+        let peer_b = adapter_b.local_peer_id();
+
+        let rx_a = adapter_a.subscribe_events().await.expect("subscribe a");
+        let rx_b = adapter_b.subscribe_events().await.expect("subscribe b");
+
+        sleep(Duration::from_millis(200)).await;
+
+        let discovery = timeout(Duration::from_secs(15), async {
+            tokio::join!(
+                wait_for_discovery(rx_a, &peer_b),
+                wait_for_discovery(rx_b, &peer_a)
+            )
+        })
+        .await;
+
+        match discovery {
+            Ok((Some(_), Some(_))) => {}
+            Ok((left, right)) => panic!(
+                "mdns discovery incomplete: left={:?} right={:?}",
+                left.as_ref().map(|peer| peer.peer_id.as_str()),
+                right.as_ref().map(|peer| peer.peer_id.as_str())
+            ),
+            Err(_) => panic!("mdns discovery timed out"),
+        }
+
+        match timeout(
+            Duration::from_secs(20),
+            NetworkPort::ensure_business_path(&adapter_a, &peer_b),
+        )
+        .await
+        {
+            Ok(Ok(())) => {}
+            Ok(Err(err)) => panic!("ensure business path failed unexpectedly: {err}"),
+            Err(_) => panic!("ensure business path timed out"),
+        }
+
+        let connected = timeout(Duration::from_secs(5), async {
+            loop {
+                let peers = adapter_a
+                    .get_connected_peers()
+                    .await
+                    .expect("query connected peers");
+                if peers.iter().any(|peer| peer.peer_id == peer_b) {
+                    return true;
+                }
+                sleep(Duration::from_millis(100)).await;
+            }
+        })
+        .await
+        .unwrap_or(false);
+        assert!(
+            connected,
+            "ensure business path should mark peer as reachable after stream success"
+        );
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

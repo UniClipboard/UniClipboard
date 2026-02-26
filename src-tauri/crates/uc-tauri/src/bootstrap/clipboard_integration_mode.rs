@@ -1,6 +1,15 @@
 use tracing::warn;
 use uc_app::usecases::clipboard::ClipboardIntegrationMode;
 
+#[cfg(test)]
+use std::sync::{Mutex, OnceLock};
+
+#[cfg(test)]
+pub(crate) fn clipboard_mode_env_lock() -> &'static Mutex<()> {
+    static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+    LOCK.get_or_init(|| Mutex::new(()))
+}
+
 fn parse_clipboard_integration_mode(raw: Option<&str>) -> ClipboardIntegrationMode {
     let Some(raw_value) = raw else {
         return ClipboardIntegrationMode::Full;
@@ -31,12 +40,6 @@ pub fn resolve_clipboard_integration_mode() -> ClipboardIntegrationMode {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::{Mutex, OnceLock};
-
-    fn env_lock() -> &'static Mutex<()> {
-        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-        LOCK.get_or_init(|| Mutex::new(()))
-    }
 
     #[test]
     fn parse_clipboard_integration_mode_table_driven() {
@@ -75,7 +78,7 @@ mod tests {
 
     #[test]
     fn resolve_clipboard_integration_mode_table_driven() {
-        let _guard = env_lock().lock().expect("env lock");
+        let _guard = clipboard_mode_env_lock().lock().expect("env lock");
         let key = "UC_CLIPBOARD_MODE";
         let original = std::env::var(key).ok();
 

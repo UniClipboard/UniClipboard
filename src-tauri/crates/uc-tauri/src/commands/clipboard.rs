@@ -258,12 +258,19 @@ pub async fn sync_clipboard_items(
     runtime: State<'_, Arc<AppRuntime>>,
     _trace: Option<TraceMetadata>,
 ) -> Result<bool, String> {
+    sync_clipboard_items_impl(runtime.as_ref(), _trace).await
+}
+
+async fn sync_clipboard_items_impl(
+    runtime: &AppRuntime,
+    trace: Option<TraceMetadata>,
+) -> Result<bool, String> {
     let span = info_span!(
         "command.clipboard.sync_items",
         trace_id = tracing::field::Empty,
         trace_ts = tracing::field::Empty,
     );
-    record_trace_fields(&span, &_trace);
+    record_trace_fields(&span, &trace);
 
     async move {
         if matches!(
@@ -381,7 +388,7 @@ async fn restore_clipboard_entry_impl(
 
 #[cfg(test)]
 mod tests {
-    use super::restore_clipboard_entry_impl;
+    use super::{restore_clipboard_entry_impl, sync_clipboard_items_impl};
     use crate::bootstrap::AppRuntime;
     use async_trait::async_trait;
     use std::collections::HashMap;
@@ -412,6 +419,28 @@ mod tests {
         entry: Option<ClipboardEntry>,
         touch_result: bool,
         calls: Arc<Mutex<Vec<&'static str>>>,
+    }
+
+    struct EnvVarGuard {
+        key: &'static str,
+        original: Option<String>,
+    }
+
+    impl EnvVarGuard {
+        fn set(key: &'static str, value: &str) -> Self {
+            let original = std::env::var(key).ok();
+            std::env::set_var(key, value);
+            Self { key, original }
+        }
+    }
+
+    impl Drop for EnvVarGuard {
+        fn drop(&mut self) {
+            match &self.original {
+                Some(value) => std::env::set_var(self.key, value),
+                None => std::env::remove_var(self.key),
+            }
+        }
     }
 
     struct MockSelectionRepository {
@@ -1130,5 +1159,67 @@ mod tests {
         assert!(result.is_err());
         let calls = calls.lock().unwrap().clone();
         assert_eq!(calls, vec!["touch"]);
+    }
+
+    #[tokio::test]
+    async fn sync_clipboard_items_returns_error_in_passive_mode() {
+        let _guard = crate::bootstrap::clipboard_integration_mode::clipboard_mode_env_lock()
+            .lock()
+            .expect("env lock");
+        let _mode_guard = EnvVarGuard::set("UC_CLIPBOARD_MODE", "passive");
+
+        let (worker_tx, _worker_rx) = mpsc::channel(1);
+        let deps = AppDeps {
+            clipboard: Arc::new(NoopClipboard),
+            system_clipboard: Arc::new(NoopClipboard),
+            clipboard_entry_repo: Arc::new(MockEntryRepository {
+                entry: None,
+                touch_result: true,
+                calls: Arc::new(Mutex::new(Vec::new())),
+            }),
+            clipboard_event_repo: Arc::new(NoopPort),
+            representation_repo: Arc::new(MockRepresentationRepository {
+                reps: HashMap::new(),
+            }),
+            representation_normalizer: Arc::new(NoopPort),
+            selection_repo: Arc::new(MockSelectionRepository { selection: None }),
+            representation_policy: Arc::new(NoopPort),
+            representation_cache: Arc::new(NoopPort),
+            spool_queue: Arc::new(NoopPort),
+            clipboard_change_origin: Arc::new(InMemoryClipboardChangeOrigin::new()),
+            worker_tx,
+            encryption: Arc::new(NoopPort),
+            encryption_session: Arc::new(NoopPort),
+            encryption_state: Arc::new(NoopPort),
+            key_scope: Arc::new(NoopPort),
+            secure_storage: Arc::new(NoopPort),
+            key_material: Arc::new(NoopPort),
+            watcher_control: Arc::new(NoopPort),
+            device_repo: Arc::new(NoopPort),
+            device_identity: Arc::new(MockDeviceIdentity),
+            paired_device_repo: Arc::new(NoopPort),
+            network: Arc::new(NoopPort),
+            network_control: Arc::new(NoopPort),
+            setup_status: Arc::new(NoopPort),
+            blob_store: Arc::new(NoopPort),
+            blob_repository: Arc::new(NoopPort),
+            blob_writer: Arc::new(NoopPort),
+            thumbnail_repo: Arc::new(NoopPort),
+            thumbnail_generator: Arc::new(NoopPort),
+            settings: Arc::new(NoopPort),
+            ui_port: Arc::new(NoopPort),
+            autostart: Arc::new(NoopPort),
+            clock: Arc::new(NoopPort),
+            hash: Arc::new(NoopPort),
+        };
+
+        let runtime = Arc::new(AppRuntime::new(deps));
+        let result = sync_clipboard_items_impl(runtime.as_ref(), None).await;
+
+        let err = result.expect_err("passive mode should return error");
+        assert!(
+            err.contains("Clipboard sync disabled in passive mode"),
+            "unexpected error: {err}"
+        );
     }
 }

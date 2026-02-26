@@ -31,6 +31,9 @@ use crate::identity_store::load_or_create_identity;
 const BUSINESS_PROTOCOL_ID: &str = ProtocolId::Business.as_str();
 const BUSINESS_PAYLOAD_MAX_BYTES: u64 = 100 * 1024 * 1024;
 const BUSINESS_READ_TIMEOUT: Duration = Duration::from_secs(30);
+const BUSINESS_STREAM_OPEN_TIMEOUT: Duration = Duration::from_secs(10);
+const BUSINESS_STREAM_WRITE_TIMEOUT: Duration = Duration::from_secs(10);
+const BUSINESS_STREAM_CLOSE_TIMEOUT: Duration = Duration::from_secs(10);
 const START_STATE_IDLE: u8 = 0;
 const START_STATE_STARTING: u8 = 1;
 const START_STATE_STARTED: u8 = 2;
@@ -1106,24 +1109,58 @@ async fn run_swarm(
                             continue;
                         }
                         let mut control = swarm.behaviour().stream.new_control();
-                        send_result = match control
-                            .open_stream(peer, StreamProtocol::new(BUSINESS_PROTOCOL_ID))
-                            .await
+                        send_result = match tokio::time::timeout(
+                            BUSINESS_STREAM_OPEN_TIMEOUT,
+                            control.open_stream(peer, StreamProtocol::new(BUSINESS_PROTOCOL_ID)),
+                        )
+                        .await
                         {
-                            Ok(mut stream) => {
-                                if let Err(err) = stream.write_all(&data).await {
-                                    warn!("business stream write failed: {err}");
-                                    Err(anyhow!("business stream write failed: {err}"))
-                                } else if let Err(err) = stream.close().await {
-                                    warn!("business stream close failed: {err}");
-                                    Err(anyhow!("business stream close failed: {err}"))
-                                } else {
-                                    Ok(())
+                            Ok(Ok(mut stream)) => {
+                                match tokio::time::timeout(
+                                    BUSINESS_STREAM_WRITE_TIMEOUT,
+                                    stream.write_all(&data),
+                                )
+                                .await
+                                {
+                                    Ok(Ok(())) => match tokio::time::timeout(
+                                        BUSINESS_STREAM_CLOSE_TIMEOUT,
+                                        stream.close(),
+                                    )
+                                    .await
+                                    {
+                                        Ok(Ok(())) => Ok(()),
+                                        Ok(Err(err)) => {
+                                            warn!("business stream close failed: {err}");
+                                            Err(anyhow!("business stream close failed: {err}"))
+                                        }
+                                        Err(_) => {
+                                            warn!(
+                                                peer_id = %peer_id,
+                                                "business stream close timed out"
+                                            );
+                                            Err(anyhow!("business stream close timed out"))
+                                        }
+                                    },
+                                    Ok(Err(err)) => {
+                                        warn!("business stream write failed: {err}");
+                                        Err(anyhow!("business stream write failed: {err}"))
+                                    }
+                                    Err(_) => {
+                                        warn!(
+                                            peer_id = %peer_id,
+                                            "business stream write timed out"
+                                        );
+                                        Err(anyhow!("business stream write timed out"))
+                                    }
                                 }
                             }
-                            Err(err) => {
+                            Ok(Err(err)) => {
                                 warn!("business stream open failed: {err}");
                                 Err(anyhow!("business stream open failed: {err}"))
+                            }
+                            Err(_) => {
+                                warn!(peer_id = %peer_id, "business stream open timed out");
+                                Err(anyhow!("business stream open timed out"))
                             }
                         };
                         if send_result.is_ok() {
@@ -1192,17 +1229,38 @@ async fn run_swarm(
                         }
 
                         let mut control = swarm.behaviour().stream.new_control();
-                        ensure_result = match control
-                            .open_stream(peer, StreamProtocol::new(BUSINESS_PROTOCOL_ID))
-                            .await
+                        ensure_result = match tokio::time::timeout(
+                            BUSINESS_STREAM_OPEN_TIMEOUT,
+                            control.open_stream(peer, StreamProtocol::new(BUSINESS_PROTOCOL_ID)),
+                        )
+                        .await
                         {
-                            Ok(mut stream) => match stream.close().await {
-                                Ok(()) => Ok(()),
-                                Err(err) => Err(anyhow!(
+                            Ok(Ok(mut stream)) => match tokio::time::timeout(
+                                BUSINESS_STREAM_CLOSE_TIMEOUT,
+                                stream.close(),
+                            )
+                            .await
+                            {
+                                Ok(Ok(())) => Ok(()),
+                                Ok(Err(err)) => Err(anyhow!(
                                     "ensure business stream close failed: {err}"
                                 )),
+                                Err(_) => {
+                                    warn!(
+                                        peer_id = %peer_id,
+                                        "ensure business stream close timed out"
+                                    );
+                                    Err(anyhow!("ensure business stream close timed out"))
+                                }
                             },
-                            Err(err) => Err(anyhow!("ensure business stream open failed: {err}")),
+                            Ok(Err(err)) => Err(anyhow!("ensure business stream open failed: {err}")),
+                            Err(_) => {
+                                warn!(
+                                    peer_id = %peer_id,
+                                    "ensure business stream open timed out"
+                                );
+                                Err(anyhow!("ensure business stream open timed out"))
+                            }
                         };
 
                         if ensure_result.is_ok() {
@@ -1837,6 +1895,48 @@ mod tests {
             }
             _ => panic!("expected ProtocolDenied"),
         }
+    }
+
+    #[tokio::test]
+    async fn list_sendable_peers_filters_out_untrusted_peers() {
+        let adapter = Libp2pNetworkAdapter::new(
+            Arc::new(TestIdentityStore::default()),
+            Arc::new(PendingResolver),
+        )
+        .expect("create adapter");
+
+        {
+            let mut caches = adapter.caches.write().await;
+            let _ = caches.upsert_discovered("peer-pending".to_string(), Vec::new(), Utc::now());
+        }
+
+        let peers = adapter
+            .list_sendable_peers()
+            .await
+            .expect("list sendable peers");
+        assert!(peers.is_empty(), "pending peer must not be sendable");
+    }
+
+    #[tokio::test]
+    async fn list_sendable_peers_marks_trusted_peers_as_paired() {
+        let adapter = Libp2pNetworkAdapter::new(
+            Arc::new(TestIdentityStore::default()),
+            Arc::new(FakeResolver),
+        )
+        .expect("create adapter");
+
+        {
+            let mut caches = adapter.caches.write().await;
+            let _ = caches.upsert_discovered("peer-trusted".to_string(), Vec::new(), Utc::now());
+        }
+
+        let peers = adapter
+            .list_sendable_peers()
+            .await
+            .expect("list sendable peers");
+        assert_eq!(peers.len(), 1);
+        assert_eq!(peers[0].peer_id, "peer-trusted");
+        assert!(peers[0].is_paired);
     }
 
     #[tokio::test]

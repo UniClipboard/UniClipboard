@@ -111,24 +111,25 @@ impl CaptureClipboardUseCase {
     ///               来自平台层的预捕获剪贴板快照
     ///
     /// # Returns / 返回值
-    /// - `EventId` of the created capture event
-    /// - 创建的捕获事件的 `EventId`
+    /// - Persisted clipboard `EntryId`
+    /// - 持久化剪贴板条目的 `EntryId`
     ///
     /// # When to Use / 使用时机
     /// - Called from clipboard change callback (snapshot already read)
     /// - 从剪贴板变化回调调用时（快照已读取）
     /// - Avoids redundant system clipboard reads
     /// - 避免重复读取系统剪贴板
-    pub async fn execute(&self, snapshot: SystemClipboardSnapshot) -> Result<EventId> {
+    pub async fn execute(&self, snapshot: SystemClipboardSnapshot) -> Result<EntryId> {
         self.execute_with_origin(snapshot, ClipboardChangeOrigin::LocalCapture)
-            .await
+            .await?
+            .ok_or_else(|| anyhow::anyhow!("local capture should always persist an entry"))
     }
 
     pub async fn execute_with_origin(
         &self,
         snapshot: SystemClipboardSnapshot,
         origin: ClipboardChangeOrigin,
-    ) -> Result<EventId> {
+    ) -> Result<Option<EntryId>> {
         let span = info_span!(
             "usecase.capture_clipboard.execute",
             source = "callback",
@@ -138,7 +139,7 @@ impl CaptureClipboardUseCase {
         async move {
             if origin == ClipboardChangeOrigin::LocalRestore {
                 info!(origin = ?origin, "Skipping clipboard capture");
-                return Ok(EventId::new());
+                return Ok(None);
             }
             info!("Starting clipboard capture with provided snapshot");
 
@@ -219,8 +220,8 @@ impl CaptureClipboardUseCase {
                 .save_entry_and_selection(&new_entry, &new_selection)
                 .await?;
 
-            info!(event_id = %event_id, "Clipboard capture completed");
-            Ok(event_id)
+            info!(event_id = %event_id, entry_id = %entry_id, "Clipboard capture completed");
+            Ok(Some(entry_id))
         }
         .instrument(span)
         .await

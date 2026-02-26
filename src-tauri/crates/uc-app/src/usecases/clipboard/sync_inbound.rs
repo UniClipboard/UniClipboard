@@ -6,7 +6,7 @@ use crate::usecases::clipboard::ClipboardIntegrationMode;
 use anyhow::{Context, Result};
 use tokio::sync::Mutex;
 use tracing::{debug, info, info_span, warn, Instrument};
-use uc_core::ids::{FormatId, RepresentationId};
+use uc_core::ids::{EntryId, FormatId, RepresentationId};
 use uc_core::network::protocol::ClipboardTextPayloadV1;
 use uc_core::network::ClipboardMessage;
 use uc_core::ports::clipboard::{RepresentationCachePort, SpoolQueuePort};
@@ -23,9 +23,9 @@ use uc_core::{
 const RECENT_ID_TTL: Duration = Duration::from_secs(600);
 const RECENT_ID_MAX: usize = 1024;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum InboundApplyOutcome {
-    Applied,
+    Applied { entry_id: Option<EntryId> },
     Skipped,
 }
 
@@ -203,25 +203,46 @@ impl SyncInboundClipboardUseCase {
                     .capture_clipboard
                     .as_ref()
                     .context("passive inbound sync requires capture clipboard dependencies")?;
-                if let Err(err) = capture
+                let persisted_entry_id = match capture
                     .execute_with_origin(snapshot, ClipboardChangeOrigin::RemotePush)
                     .await
                 {
-                    self.prune_recent_ids().await;
-                    let mut recent_ids = self.recent_ids.lock().await;
-                    if let Some(index) = recent_ids.iter().position(|(id, _)| id == &message_id) {
-                        recent_ids.remove(index);
+                    Ok(Some(entry_id)) => entry_id,
+                    Ok(None) => {
+                        self.prune_recent_ids().await;
+                        let mut recent_ids = self.recent_ids.lock().await;
+                        if let Some(index) = recent_ids.iter().position(|(id, _)| id == &message_id)
+                        {
+                            recent_ids.remove(index);
+                        }
+                        while recent_ids.len() > RECENT_ID_MAX {
+                            recent_ids.pop_front();
+                        }
+                        return Err(anyhow::anyhow!(
+                            "capture usecase skipped persistence for RemotePush origin"
+                        ))
+                        .context("failed to persist inbound clipboard in passive mode");
                     }
-                    while recent_ids.len() > RECENT_ID_MAX {
-                        recent_ids.pop_front();
+                    Err(err) => {
+                        self.prune_recent_ids().await;
+                        let mut recent_ids = self.recent_ids.lock().await;
+                        if let Some(index) = recent_ids.iter().position(|(id, _)| id == &message_id)
+                        {
+                            recent_ids.remove(index);
+                        }
+                        while recent_ids.len() > RECENT_ID_MAX {
+                            recent_ids.pop_front();
+                        }
+                        return Err(err).context("failed to persist inbound clipboard in passive mode");
                     }
-                    return Err(err).context("failed to persist inbound clipboard in passive mode");
-                }
+                };
 
                 self.prune_recent_ids().await;
 
                 info!(mode = ?self.mode, "Inbound clipboard message persisted in passive mode");
-                return Ok(InboundApplyOutcome::Applied);
+                return Ok(InboundApplyOutcome::Applied {
+                    entry_id: Some(persisted_entry_id),
+                });
             }
 
             if !self.mode.allow_os_write() {
@@ -257,7 +278,7 @@ impl SyncInboundClipboardUseCase {
             }
 
             info!("Inbound clipboard message applied");
-            Ok(InboundApplyOutcome::Applied)
+            Ok(InboundApplyOutcome::Applied { entry_id: None })
         }
         .instrument(span)
         .await
@@ -841,7 +862,10 @@ mod tests {
             .await
             .expect("second passive apply");
 
-        assert_eq!(first, InboundApplyOutcome::Applied);
+        assert!(matches!(
+            first,
+            InboundApplyOutcome::Applied { entry_id: Some(_) }
+        ));
         assert_eq!(second, InboundApplyOutcome::Skipped);
     }
 }

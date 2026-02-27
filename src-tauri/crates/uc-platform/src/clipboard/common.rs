@@ -9,7 +9,26 @@ pub struct CommonClipboardImpl;
 fn should_skip_raw_format(format_id: &str) -> bool {
     // Barrier writes this ownership marker during clipboard handoff.
     // It is not user clipboard content and should never be persisted.
-    format_id.eq_ignore_ascii_case("BarrierOwnership")
+    if format_id.eq_ignore_ascii_case("BarrierOwnership") {
+        return true;
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        // Windows standard text-related formats are already handled by high-level
+        // clipboard APIs (get_text/get_rich_text/get_html). Attempting raw buffer
+        // reads for these often returns transient OSError(1168), which is noisy
+        // and not actionable for sync correctness.
+        if format_id.eq_ignore_ascii_case("CF_UNICODETEXT")
+            || format_id.eq_ignore_ascii_case("CF_TEXT")
+            || format_id.eq_ignore_ascii_case("CF_OEMTEXT")
+            || format_id.eq_ignore_ascii_case("CF_LOCALE")
+        {
+            return true;
+        }
+    }
+
+    false
 }
 
 fn map_clipboard_err<T>(

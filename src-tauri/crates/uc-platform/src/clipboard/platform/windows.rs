@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use clipboard_rs::{Clipboard, ClipboardContext};
 use std::ops::Range;
 use std::sync::{Arc, Mutex};
-use tracing::{debug, debug_span, error, warn};
+use tracing::{debug, debug_span, error, info, warn};
 use uc_core::clipboard::SystemClipboardSnapshot;
 use uc_core::ports::SystemClipboardPort;
 
@@ -71,7 +71,7 @@ impl SystemClipboardPort for WindowsClipboard {
                         "Primary clipboard-rs write failed; using Windows Unicode text fallback"
                     );
                     write_text_windows_native(text)?;
-                    debug!("Wrote clipboard text via Windows Unicode fallback");
+                    info!("Wrote clipboard text via Windows Unicode fallback");
                     return Ok(());
                 }
                 return Err(err);
@@ -105,11 +105,11 @@ impl SystemClipboardPort for WindowsClipboard {
             if needs_fallback {
                 if let Some(text) = expected_text.as_deref() {
                     write_text_windows_native(text)?;
-                    debug!("Rewrote clipboard text via Windows Unicode fallback after verification");
+                    info!("Rewrote clipboard text via Windows Unicode fallback after verification");
                 }
             }
 
-            debug!("Wrote clipboard snapshot to system");
+            info!("Wrote clipboard snapshot to system");
             Ok(())
         })
     }

@@ -146,6 +146,14 @@ impl SyncInboundClipboardUseCase {
         );
 
         async move {
+            debug!(
+                mode = ?self.mode,
+                allow_os_read = self.mode.allow_os_read(),
+                allow_os_write = self.mode.allow_os_write(),
+                incoming_content_hash = %message.content_hash,
+                "Processing inbound clipboard message"
+            );
+
             let local_device_id = self.device_identity.current_device_id().to_string();
             if message.origin_device_id == local_device_id {
                 debug!("Ignoring inbound clipboard message from local device");
@@ -203,7 +211,11 @@ impl SyncInboundClipboardUseCase {
                     let mut recent_ids = self.recent_ids.lock().await;
                     let is_duplicate = recent_ids.iter().any(|(id, _)| id == &message_id);
                     if is_duplicate {
-                        debug!(message_id = %message_id, "Skipping inbound apply because passive mode already processed this message id");
+                        debug!(
+                            message_id = %message_id,
+                            dedupe_hit = true,
+                            "Skipping inbound apply because passive mode already processed this message id"
+                        );
                         return Ok(InboundApplyOutcome::Skipped);
                     }
                     recent_ids.push_back((message_id.clone(), now));
@@ -256,7 +268,11 @@ impl SyncInboundClipboardUseCase {
                 .iter()
                 .any(|rep| rep.content_hash().to_string() == message.content_hash);
             if already_applied {
-                debug!("Skipping inbound apply because local clipboard already matches content hash");
+                debug!(
+                    incoming_content_hash = %message.content_hash,
+                    dedupe_hit = true,
+                    "Skipping inbound apply because local clipboard already matches content hash"
+                );
                 return Ok(InboundApplyOutcome::Skipped);
             }
 
@@ -267,6 +283,11 @@ impl SyncInboundClipboardUseCase {
                 )
                 .await;
 
+            debug!(
+                write_attempted = true,
+                incoming_content_hash = %message.content_hash,
+                "Applying inbound snapshot to system clipboard"
+            );
             if let Err(err) = self.local_clipboard.write_snapshot(snapshot) {
                 self.clipboard_change_origin
                     .consume_origin_or_default(ClipboardChangeOrigin::LocalCapture)
@@ -274,7 +295,41 @@ impl SyncInboundClipboardUseCase {
                 return Err(err).context("failed to write inbound clipboard snapshot");
             }
 
-            info!("Inbound clipboard message applied");
+            info!(
+                write_result = "ok",
+                incoming_content_hash = %message.content_hash,
+                "Inbound clipboard message applied"
+            );
+
+            match self.local_clipboard.read_snapshot() {
+                Ok(post_write_snapshot) => {
+                    let post_write_hash_match =
+                        snapshot_matches_content_hash(&post_write_snapshot, &message.content_hash);
+                    let post_write_text_len = first_text_representation_len(&post_write_snapshot);
+                    if post_write_hash_match {
+                        debug!(
+                            post_write_hash_match,
+                            post_write_text_len,
+                            "Inbound clipboard write post-check matched content hash"
+                        );
+                    } else {
+                        warn!(
+                            post_write_hash_match,
+                            post_write_text_len,
+                            incoming_content_hash = %message.content_hash,
+                            "Inbound clipboard write post-check hash mismatch"
+                        );
+                    }
+                }
+                Err(err) => {
+                    warn!(
+                        error = %err,
+                        incoming_content_hash = %message.content_hash,
+                        "Inbound clipboard write post-check read failed"
+                    );
+                }
+            }
+
             Ok(InboundApplyOutcome::Applied { entry_id: None })
         }
         .instrument(span)
@@ -288,6 +343,25 @@ fn is_text_plain_mime(mime: &str) -> bool {
     let normalized = mime.trim();
     normalized.eq_ignore_ascii_case(ClipboardTextPayloadV1::MIME_TEXT_PLAIN)
         || normalized.to_ascii_lowercase().starts_with("text/plain;")
+}
+
+fn snapshot_matches_content_hash(snapshot: &SystemClipboardSnapshot, target_hash: &str) -> bool {
+    snapshot
+        .representations
+        .iter()
+        .any(|rep| rep.content_hash().to_string() == target_hash)
+}
+
+fn first_text_representation_len(snapshot: &SystemClipboardSnapshot) -> Option<usize> {
+    snapshot
+        .representations
+        .iter()
+        .find(|rep| {
+            rep.mime
+                .as_ref()
+                .is_some_and(|mime| mime.as_str().eq_ignore_ascii_case("text/plain"))
+        })
+        .map(|rep| rep.bytes.len())
 }
 
 #[cfg(test)]
@@ -773,7 +847,12 @@ mod tests {
 
         assert_eq!(
             calls.lock().expect("calls lock").as_slice(),
-            ["read_snapshot", "set_origin", "write_snapshot"]
+            [
+                "read_snapshot",
+                "set_origin",
+                "write_snapshot",
+                "read_snapshot"
+            ]
         );
         let values = origin_values.lock().expect("origin values lock");
         assert_eq!(values.len(), 1);

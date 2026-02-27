@@ -53,7 +53,12 @@ impl SystemClipboardPort for WindowsClipboard {
             representations = snapshot.representations.len(),
         );
         span.in_scope(|| {
-            let expected_text = extract_text_plain_utf8(&snapshot)?;
+            let fallback_eligible = is_single_text_plain_snapshot(&snapshot);
+            let expected_text = if fallback_eligible {
+                extract_text_plain_utf8(&snapshot)?
+            } else {
+                None
+            };
             let mut ctx = self.inner.lock().map_err(|poison| {
                 error!("Failed to lock clipboard context in write_snapshot (poisoned mutex)");
                 anyhow::anyhow!(
@@ -63,6 +68,9 @@ impl SystemClipboardPort for WindowsClipboard {
             })?;
             let write_result = CommonClipboardImpl::write_snapshot(&mut ctx, snapshot);
             if let Err(err) = write_result {
+                if !fallback_eligible {
+                    return Err(err);
+                }
                 drop(ctx);
                 if let Some(text) = expected_text.as_deref() {
                     warn!(
@@ -129,6 +137,17 @@ fn extract_text_plain_utf8(snapshot: &SystemClipboardSnapshot) -> Result<Option<
     let text = String::from_utf8(text_rep.bytes.clone())
         .map_err(|err| anyhow::anyhow!("Failed to decode text/plain snapshot as UTF-8: {}", err))?;
     Ok(Some(text))
+}
+
+fn is_single_text_plain_snapshot(snapshot: &SystemClipboardSnapshot) -> bool {
+    if snapshot.representations.len() != 1 {
+        return false;
+    }
+
+    snapshot.representations[0]
+        .mime
+        .as_ref()
+        .is_some_and(|mime| mime.as_str().eq_ignore_ascii_case("text/plain"))
 }
 
 fn write_text_windows_native(text: &str) -> Result<()> {

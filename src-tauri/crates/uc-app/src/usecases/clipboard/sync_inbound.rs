@@ -368,12 +368,15 @@ fn first_text_representation_len(snapshot: &SystemClipboardSnapshot) -> Option<u
 mod tests {
     use super::*;
 
+    use std::collections::VecDeque;
+    use std::io::Write;
     use std::sync::atomic::{AtomicUsize, Ordering};
-    use std::sync::{Arc, Mutex};
+    use std::sync::{Arc, Mutex, OnceLock};
     use std::time::Duration;
 
     use async_trait::async_trait;
     use chrono::Utc;
+    use tracing_subscriber::{fmt::MakeWriter, EnvFilter};
     use uc_core::clipboard::{ClipboardSelection, PolicyError, SelectionPolicyVersion};
     use uc_core::ids::{FormatId, RepresentationId};
     use uc_core::network::protocol::ClipboardTextPayloadV1;
@@ -634,6 +637,90 @@ mod tests {
     #[async_trait]
     impl uc_core::ports::clipboard::SpoolQueuePort for MockSpoolQueue {
         async fn enqueue(&self, _request: uc_core::ports::clipboard::SpoolRequest) -> Result<()> {
+            Ok(())
+        }
+    }
+
+    #[derive(Clone)]
+    struct SharedLogBuffer {
+        buffer: Arc<Mutex<Vec<u8>>>,
+    }
+
+    struct SharedLogWriter {
+        buffer: Arc<Mutex<Vec<u8>>>,
+    }
+
+    impl<'a> MakeWriter<'a> for SharedLogBuffer {
+        type Writer = SharedLogWriter;
+
+        fn make_writer(&'a self) -> Self::Writer {
+            SharedLogWriter {
+                buffer: self.buffer.clone(),
+            }
+        }
+    }
+
+    impl Write for SharedLogWriter {
+        fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+            let mut guard = self.buffer.lock().expect("log buffer lock");
+            guard.extend_from_slice(buf);
+            Ok(buf.len())
+        }
+
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    static LOG_BUFFER: OnceLock<Arc<Mutex<Vec<u8>>>> = OnceLock::new();
+
+    fn init_test_tracing() -> Arc<Mutex<Vec<u8>>> {
+        LOG_BUFFER
+            .get_or_init(|| {
+                let buffer = Arc::new(Mutex::new(Vec::new()));
+                let writer = SharedLogBuffer {
+                    buffer: buffer.clone(),
+                };
+                let subscriber = tracing_subscriber::fmt()
+                    .with_ansi(false)
+                    .with_env_filter(EnvFilter::new("info,warn"))
+                    .with_writer(writer)
+                    .finish();
+                let _ = tracing::subscriber::set_global_default(subscriber);
+                buffer
+            })
+            .clone()
+    }
+
+    struct SequencedReadClipboard {
+        read_results: Arc<Mutex<VecDeque<std::result::Result<SystemClipboardSnapshot, String>>>>,
+        writes: Arc<Mutex<Vec<SystemClipboardSnapshot>>>,
+        calls: Arc<Mutex<Vec<&'static str>>>,
+    }
+
+    impl SystemClipboardPort for SequencedReadClipboard {
+        fn read_snapshot(&self) -> Result<SystemClipboardSnapshot> {
+            self.calls.lock().expect("calls lock").push("read_snapshot");
+            let next = self
+                .read_results
+                .lock()
+                .expect("read_results lock")
+                .pop_front()
+                .unwrap_or_else(|| {
+                    Ok(SystemClipboardSnapshot {
+                        ts_ms: 0,
+                        representations: vec![],
+                    })
+                });
+            next.map_err(|msg| anyhow::anyhow!(msg))
+        }
+
+        fn write_snapshot(&self, snapshot: SystemClipboardSnapshot) -> Result<()> {
+            self.calls
+                .lock()
+                .expect("calls lock")
+                .push("write_snapshot");
+            self.writes.lock().expect("writes lock").push(snapshot);
             Ok(())
         }
     }
@@ -965,5 +1052,91 @@ mod tests {
             InboundApplyOutcome::Applied { entry_id: Some(_) }
         ));
         assert_eq!(second, InboundApplyOutcome::Skipped);
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn post_write_verification_logs_hash_mismatch_and_keeps_applied_outcome() {
+        let log_buffer = init_test_tracing();
+        let start_len = log_buffer.lock().expect("log buffer lock").len();
+
+        let (usecase, writes, _, _, _) = build_usecase(
+            ClipboardIntegrationMode::Full,
+            build_text_snapshot("local-before-and-after"),
+            "local-1",
+            true,
+        );
+
+        let outcome = usecase
+            .execute_with_outcome(build_message("remote-value", "remote-1"))
+            .await
+            .expect("execute inbound message");
+
+        assert_eq!(writes.lock().expect("writes lock").len(), 1);
+        assert!(matches!(
+            outcome,
+            InboundApplyOutcome::Applied { entry_id: None }
+        ));
+
+        let guard = log_buffer.lock().expect("log buffer lock");
+        let (_, new_bytes) = guard.split_at(start_len);
+        let output = String::from_utf8_lossy(new_bytes);
+        assert!(
+            output.contains("Inbound clipboard write post-check hash mismatch"),
+            "log output: {output}"
+        );
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn post_write_verification_logs_read_failure_and_keeps_applied_outcome() {
+        let log_buffer = init_test_tracing();
+        let start_len = log_buffer.lock().expect("log buffer lock").len();
+
+        let writes = Arc::new(Mutex::new(Vec::new()));
+        let calls = Arc::new(Mutex::new(Vec::new()));
+        let read_results = Arc::new(Mutex::new(VecDeque::from(vec![
+            Ok(build_text_snapshot("dedupe-miss")),
+            Err("simulated post-check read failure".to_string()),
+        ])));
+        let local_clipboard: Arc<dyn SystemClipboardPort> = Arc::new(SequencedReadClipboard {
+            read_results,
+            writes: writes.clone(),
+            calls,
+        });
+
+        let usecase = SyncInboundClipboardUseCase::new(
+            ClipboardIntegrationMode::Full,
+            local_clipboard,
+            Arc::new(MockChangeOrigin {
+                calls: Arc::new(Mutex::new(Vec::new())),
+                values: Arc::new(Mutex::new(Vec::new())),
+            }),
+            Arc::new(MockEncryptionSession { ready: true }),
+            Arc::new(MockEncryption {
+                decrypt_calls: Arc::new(AtomicUsize::new(0)),
+            }),
+            Arc::new(MockDeviceIdentity {
+                id: DeviceId::new("local-1"),
+            }),
+        )
+        .expect("build inbound usecase");
+
+        let outcome = usecase
+            .execute_with_outcome(build_message("remote-value", "remote-1"))
+            .await
+            .expect("execute inbound message");
+
+        assert_eq!(writes.lock().expect("writes lock").len(), 1);
+        assert!(matches!(
+            outcome,
+            InboundApplyOutcome::Applied { entry_id: None }
+        ));
+
+        let guard = log_buffer.lock().expect("log buffer lock");
+        let (_, new_bytes) = guard.split_at(start_len);
+        let output = String::from_utf8_lossy(new_bytes);
+        assert!(
+            output.contains("Inbound clipboard write post-check read failed"),
+            "log output: {output}"
+        );
     }
 }

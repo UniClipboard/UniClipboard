@@ -1,7 +1,7 @@
 use super::super::common::CommonClipboardImpl;
 use anyhow::Result;
 use async_trait::async_trait;
-use clipboard_rs::ClipboardContext;
+use clipboard_rs::{Clipboard, ClipboardContext};
 use std::ops::Range;
 use std::sync::{Arc, Mutex};
 use tracing::{debug, debug_span, error, warn};
@@ -80,11 +80,11 @@ impl SystemClipboardPort for WindowsClipboard {
             let mut needs_fallback = false;
             if let Some(expected) = expected_text.as_deref() {
                 match ctx.get_text() {
-                    Ok(actual) => {
-                        if actual != expected {
+                    Ok(actual_text) => {
+                        if actual_text != expected {
                             warn!(
                                 expected_len = expected.len(),
-                                actual_len = actual.len(),
+                                actual_len = actual_text.len(),
                                 "Post-write clipboard text mismatch; enabling Windows Unicode fallback"
                             );
                             needs_fallback = true;

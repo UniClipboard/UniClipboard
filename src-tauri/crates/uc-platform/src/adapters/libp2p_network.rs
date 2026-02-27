@@ -404,6 +404,10 @@ impl Libp2pNetworkAdapter {
 #[async_trait]
 impl NetworkPort for Libp2pNetworkAdapter {
     async fn send_clipboard(&self, _peer_id: &str, _encrypted_data: Vec<u8>) -> Result<()> {
+        if _peer_id == self.local_peer_id {
+            warn!(peer_id = _peer_id, "skip send_clipboard to local peer");
+            return Err(anyhow!("send_clipboard target is local peer_id"));
+        }
         let peer = uc_core::PeerId::from(_peer_id);
         let (result_tx, result_rx) = oneshot::channel();
         let command = BusinessCommand::SendClipboard {
@@ -502,6 +506,10 @@ impl NetworkPort for Libp2pNetworkAdapter {
 
         let mut sendable = Vec::new();
         for mut peer in discovered {
+            if peer.peer_id == self.local_peer_id {
+                debug!(peer_id = %peer.peer_id, "skip local peer in sendable peer list");
+                continue;
+            }
             let policy = match self
                 .policy_resolver
                 .resolve_for_peer(&uc_core::PeerId::from(peer.peer_id.as_str()))
@@ -527,6 +535,10 @@ impl NetworkPort for Libp2pNetworkAdapter {
     }
 
     async fn ensure_business_path(&self, peer_id: &str) -> Result<()> {
+        if peer_id == self.local_peer_id {
+            warn!(peer_id = peer_id, "skip ensure_business_path to local peer");
+            return Err(anyhow!("ensure_business_path target is local peer_id"));
+        }
         let peer = uc_core::PeerId::from(peer_id);
         let (result_tx, result_rx) = oneshot::channel();
         let command = BusinessCommand::EnsureBusinessPath {
@@ -999,6 +1011,10 @@ async fn run_swarm(
                                 local_peer_id = %local_peer_id,
                                 "received mdns discovered event"
                             );
+                            let peers: Vec<(PeerId, Multiaddr)> = peers
+                                .into_iter()
+                                .filter(|(peer_id, _)| peer_id.to_string() != local_peer_id)
+                                .collect();
                             for (peer_id, address) in peers.iter() {
                                 swarm.add_peer_address(peer_id.clone(), address.clone());
                             }
@@ -1030,6 +1046,10 @@ async fn run_swarm(
                                 local_peer_id = %local_peer_id,
                                 "received mdns expired event"
                             );
+                            let peers: Vec<(PeerId, Multiaddr)> = peers
+                                .into_iter()
+                                .filter(|(peer_id, _)| peer_id.to_string() != local_peer_id)
+                                .collect();
                             let expired = collect_mdns_expired(peers);
                             let events = {
                                 let mut caches = caches.write().await;
@@ -1369,7 +1389,12 @@ async fn execute_business_command(
 
             let peer_ids = {
                 let caches = caches.read().await;
-                caches.discovered_peers.keys().cloned().collect::<Vec<_>>()
+                caches
+                    .discovered_peers
+                    .keys()
+                    .filter(|peer_id| peer_id.as_str() != local_peer_id.as_str())
+                    .cloned()
+                    .collect::<Vec<_>>()
             };
             if peer_ids.is_empty() {
                 info!(
@@ -2286,6 +2311,31 @@ mod tests {
         assert_eq!(peers.len(), 1);
         assert_eq!(peers[0].peer_id, "peer-trusted");
         assert!(peers[0].is_paired);
+    }
+
+    #[tokio::test]
+    async fn list_sendable_peers_excludes_local_peer_id() {
+        let adapter = Libp2pNetworkAdapter::new(
+            Arc::new(TestIdentityStore::default()),
+            Arc::new(FakeResolver),
+        )
+        .expect("create adapter");
+        let local_peer_id = adapter.local_peer_id();
+
+        {
+            let mut caches = adapter.caches.write().await;
+            let _ = caches.upsert_discovered(local_peer_id.clone(), Vec::new(), Utc::now());
+            let _ = caches.upsert_discovered("peer-trusted".to_string(), Vec::new(), Utc::now());
+        }
+
+        let peers = adapter
+            .list_sendable_peers()
+            .await
+            .expect("list sendable peers");
+
+        assert_eq!(peers.len(), 1);
+        assert_eq!(peers[0].peer_id, "peer-trusted");
+        assert!(peers.iter().all(|peer| peer.peer_id != local_peer_id));
     }
 
     #[tokio::test]

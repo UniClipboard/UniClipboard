@@ -146,7 +146,7 @@ impl SyncInboundClipboardUseCase {
         );
 
         async move {
-            debug!(
+            info!(
                 mode = ?self.mode,
                 allow_os_read = self.mode.allow_os_read(),
                 allow_os_write = self.mode.allow_os_write(),
@@ -283,7 +283,7 @@ impl SyncInboundClipboardUseCase {
                 )
                 .await;
 
-            debug!(
+            info!(
                 write_attempted = true,
                 incoming_content_hash = %message.content_hash,
                 "Applying inbound snapshot to system clipboard"
@@ -307,7 +307,7 @@ impl SyncInboundClipboardUseCase {
                         snapshot_matches_content_hash(&post_write_snapshot, &message.content_hash);
                     let post_write_text_len = first_text_representation_len(&post_write_snapshot);
                     if post_write_hash_match {
-                        debug!(
+                        info!(
                             post_write_hash_match,
                             post_write_text_len,
                             "Inbound clipboard write post-check matched content hash"

@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use clipboard_rs::ClipboardContext;
 use std::ops::Range;
 use std::sync::{Arc, Mutex};
-use tracing::{debug, debug_span};
+use tracing::{debug, debug_span, error, warn};
 use uc_core::clipboard::SystemClipboardSnapshot;
 use uc_core::ports::SystemClipboardPort;
 
@@ -28,8 +28,13 @@ impl SystemClipboardPort for WindowsClipboard {
     fn read_snapshot(&self) -> Result<SystemClipboardSnapshot> {
         let span = debug_span!("platform.windows.read_clipboard");
         span.in_scope(|| {
-            // FIXME: 禁止使用 unwrap
-            let mut ctx = self.inner.lock().unwrap();
+            let mut ctx = self.inner.lock().map_err(|poison| {
+                error!("Failed to lock clipboard context in read_snapshot (poisoned mutex)");
+                anyhow::anyhow!(
+                    "mutex poisoned locking inner in read_snapshot: {}",
+                    poison.to_string()
+                )
+            })?;
             let snapshot = CommonClipboardImpl::read_snapshot(&mut ctx)?;
 
             debug!(
@@ -48,13 +53,87 @@ impl SystemClipboardPort for WindowsClipboard {
             representations = snapshot.representations.len(),
         );
         span.in_scope(|| {
-            let mut ctx = self.inner.lock().unwrap();
-            CommonClipboardImpl::write_snapshot(&mut ctx, snapshot)?;
+            let expected_text = extract_text_plain_utf8(&snapshot)?;
+            let mut ctx = self.inner.lock().map_err(|poison| {
+                error!("Failed to lock clipboard context in write_snapshot (poisoned mutex)");
+                anyhow::anyhow!(
+                    "mutex poisoned locking inner in write_snapshot: {}",
+                    poison.to_string()
+                )
+            })?;
+            let write_result = CommonClipboardImpl::write_snapshot(&mut ctx, snapshot);
+            if let Err(err) = write_result {
+                drop(ctx);
+                if let Some(text) = expected_text.as_deref() {
+                    warn!(
+                        error = %err,
+                        text_len = text.len(),
+                        "Primary clipboard-rs write failed; using Windows Unicode text fallback"
+                    );
+                    write_text_windows_native(text)?;
+                    debug!("Wrote clipboard text via Windows Unicode fallback");
+                    return Ok(());
+                }
+                return Err(err);
+            }
+
+            let mut needs_fallback = false;
+            if let Some(expected) = expected_text.as_deref() {
+                match ctx.get_text() {
+                    Ok(actual) => {
+                        if actual != expected {
+                            warn!(
+                                expected_len = expected.len(),
+                                actual_len = actual.len(),
+                                "Post-write clipboard text mismatch; enabling Windows Unicode fallback"
+                            );
+                            needs_fallback = true;
+                        }
+                    }
+                    Err(err) => {
+                        warn!(
+                            error = %err,
+                            expected_len = expected.len(),
+                            "Post-write clipboard text read failed; enabling Windows Unicode fallback"
+                        );
+                        needs_fallback = true;
+                    }
+                }
+            }
+            drop(ctx);
+
+            if needs_fallback {
+                if let Some(text) = expected_text.as_deref() {
+                    write_text_windows_native(text)?;
+                    debug!("Rewrote clipboard text via Windows Unicode fallback after verification");
+                }
+            }
 
             debug!("Wrote clipboard snapshot to system");
             Ok(())
         })
     }
+}
+
+fn extract_text_plain_utf8(snapshot: &SystemClipboardSnapshot) -> Result<Option<String>> {
+    let maybe_text_rep = snapshot.representations.iter().find(|rep| {
+        rep.mime
+            .as_ref()
+            .is_some_and(|mime| mime.as_str().eq_ignore_ascii_case("text/plain"))
+    });
+
+    let Some(text_rep) = maybe_text_rep else {
+        return Ok(None);
+    };
+
+    let text = String::from_utf8(text_rep.bytes.clone())
+        .map_err(|err| anyhow::anyhow!("Failed to decode text/plain snapshot as UTF-8: {}", err))?;
+    Ok(Some(text))
+}
+
+fn write_text_windows_native(text: &str) -> Result<()> {
+    clipboard_win::set_clipboard_string(text)
+        .map_err(|e| anyhow::anyhow!("Failed to set Windows Unicode clipboard text: {}", e))
 }
 
 /// Windows-specific: Read image from clipboard as Bitmap format

@@ -202,6 +202,8 @@ impl SetupEventPort for TauriSetupEventPort {
 const SPOOL_JANITOR_INTERVAL_SECS: u64 = 60 * 60;
 const CLIPBOARD_SUBSCRIBE_BACKOFF_INITIAL_MS: u64 = 250;
 const CLIPBOARD_SUBSCRIBE_BACKOFF_MAX_MS: u64 = 30_000;
+const PAIRING_EVENTS_SUBSCRIBE_BACKOFF_INITIAL_MS: u64 = 250;
+const PAIRING_EVENTS_SUBSCRIBE_BACKOFF_MAX_MS: u64 = 30_000;
 
 #[derive(Clone, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -238,6 +240,28 @@ fn subscribe_backoff_ms(attempt: u32) -> u64 {
     CLIPBOARD_SUBSCRIBE_BACKOFF_INITIAL_MS
         .saturating_mul(factor)
         .min(CLIPBOARD_SUBSCRIBE_BACKOFF_MAX_MS)
+}
+
+#[derive(Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct PairingEventsSubscribeFailurePayload {
+    attempt: u32,
+    retry_in_ms: u64,
+    error: String,
+}
+
+#[derive(Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct PairingEventsSubscribeRecoveredPayload {
+    recovered_after_attempts: u32,
+}
+
+fn pairing_events_subscribe_backoff_ms(attempt: u32) -> u64 {
+    let exponent = attempt.saturating_sub(1).min(16);
+    let factor = 1u64 << exponent;
+    PAIRING_EVENTS_SUBSCRIBE_BACKOFF_INITIAL_MS
+        .saturating_mul(factor)
+        .min(PAIRING_EVENTS_SUBSCRIBE_BACKOFF_MAX_MS)
 }
 
 /// Create SQLite database connection pool
@@ -1292,21 +1316,83 @@ pub fn start_background_tasks<R: Runtime>(
             .await;
         });
 
-        match pairing_events.subscribe_events().await {
-            Ok(event_rx) => {
-                run_pairing_event_loop(
-                    event_rx,
-                    pairing_orchestrator,
-                    pairing_app_handle,
-                    peer_directory.clone(),
-                    pairing_space_access_orchestrator,
-                    space_access_runtime_ports,
-                )
-                .await;
-                warn!("Pairing event loop stopped");
+        let mut subscribe_attempt: u32 = 0;
+        loop {
+            let subscribe_result = tokio::select! {
+                _ = tokio::signal::ctrl_c() => {
+                    info!("Pairing event loop task stopping on shutdown signal");
+                    return;
+                }
+                result = pairing_events.subscribe_events() => result,
+            };
+
+            match subscribe_result {
+                Ok(event_rx) => {
+                    if subscribe_attempt > 0 {
+                        info!(
+                            attempts = subscribe_attempt,
+                            "Recovered pairing network event subscription"
+                        );
+                        emit_pairing_events_subscribe_recovered(
+                            pairing_app_handle.as_ref(),
+                            subscribe_attempt,
+                        );
+                    }
+
+                    subscribe_attempt = 0;
+
+                    run_pairing_event_loop(
+                        event_rx,
+                        pairing_orchestrator.clone(),
+                        pairing_app_handle.clone(),
+                        peer_directory.clone(),
+                        pairing_space_access_orchestrator.clone(),
+                        space_access_runtime_ports.clone(),
+                    )
+                    .await;
+
+                    let err = anyhow::anyhow!("pairing network event stream closed");
+                    subscribe_attempt = subscribe_attempt.saturating_add(1);
+                    let retry_in_ms = pairing_events_subscribe_backoff_ms(subscribe_attempt);
+                    warn!(
+                        error = %err,
+                        attempt = subscribe_attempt,
+                        retry_in_ms,
+                        "Pairing event loop stopped unexpectedly; restarting"
+                    );
+                    emit_pairing_events_subscribe_failure(
+                        pairing_app_handle.as_ref(),
+                        subscribe_attempt,
+                        retry_in_ms,
+                        err.to_string(),
+                    );
+                }
+                Err(err) => {
+                    subscribe_attempt = subscribe_attempt.saturating_add(1);
+                    let retry_in_ms = pairing_events_subscribe_backoff_ms(subscribe_attempt);
+                    warn!(
+                        error = %err,
+                        attempt = subscribe_attempt,
+                        retry_in_ms,
+                        "Failed to subscribe to network events for pairing"
+                    );
+                    emit_pairing_events_subscribe_failure(
+                        pairing_app_handle.as_ref(),
+                        subscribe_attempt,
+                        retry_in_ms,
+                        err.to_string(),
+                    );
+                }
             }
-            Err(err) => {
-                warn!(error = %err, "Failed to subscribe to network events for pairing");
+
+            let backoff =
+                Duration::from_millis(pairing_events_subscribe_backoff_ms(subscribe_attempt));
+            tokio::select! {
+                _ = tokio::signal::ctrl_c() => {
+                    info!("Pairing event loop task stopping during backoff on shutdown signal");
+                    return;
+                }
+                _ = tokio::time::sleep(backoff) => {}
             }
         }
     });
@@ -2462,6 +2548,38 @@ async fn signal_pairing_transport_failure<R: Runtime>(
             session_id = %session_id,
             "Failed to handle pairing transport error"
         );
+    }
+}
+
+fn emit_pairing_events_subscribe_failure<R: Runtime>(
+    app_handle: Option<&AppHandle<R>>,
+    attempt: u32,
+    retry_in_ms: u64,
+    error: String,
+) {
+    if let Some(app) = app_handle {
+        let payload = PairingEventsSubscribeFailurePayload {
+            attempt,
+            retry_in_ms,
+            error,
+        };
+        if let Err(emit_err) = app.emit("pairing-events-subscribe-failure", payload) {
+            warn!(error = %emit_err, "Failed to emit pairing events subscribe failure event");
+        }
+    }
+}
+
+fn emit_pairing_events_subscribe_recovered<R: Runtime>(
+    app_handle: Option<&AppHandle<R>>,
+    recovered_after_attempts: u32,
+) {
+    if let Some(app) = app_handle {
+        let payload = PairingEventsSubscribeRecoveredPayload {
+            recovered_after_attempts,
+        };
+        if let Err(emit_err) = app.emit("pairing-events-subscribe-recovered", payload) {
+            warn!(error = %emit_err, "Failed to emit pairing events subscribe recovered event");
+        }
     }
 }
 

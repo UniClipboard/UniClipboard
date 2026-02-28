@@ -1273,14 +1273,6 @@ pub fn start_background_tasks<R: Runtime>(
     );
 
     async_runtime::spawn(async move {
-        let event_rx = match pairing_events.subscribe_events().await {
-            Ok(rx) => rx,
-            Err(err) => {
-                warn!(error = %err, "Failed to subscribe to network events for pairing");
-                return;
-            }
-        };
-
         let action_network = pairing_transport.clone();
         let action_app_handle = pairing_app_handle.clone();
         let action_orchestrator = pairing_orchestrator.clone();
@@ -1300,16 +1292,23 @@ pub fn start_background_tasks<R: Runtime>(
             .await;
         });
 
-        run_pairing_event_loop(
-            event_rx,
-            pairing_orchestrator,
-            pairing_app_handle,
-            peer_directory.clone(),
-            pairing_space_access_orchestrator,
-            space_access_runtime_ports,
-        )
-        .await;
-        warn!("Pairing event loop stopped");
+        match pairing_events.subscribe_events().await {
+            Ok(event_rx) => {
+                run_pairing_event_loop(
+                    event_rx,
+                    pairing_orchestrator,
+                    pairing_app_handle,
+                    peer_directory.clone(),
+                    pairing_space_access_orchestrator,
+                    space_access_runtime_ports,
+                )
+                .await;
+                warn!("Pairing event loop stopped");
+            }
+            Err(err) => {
+                warn!(error = %err, "Failed to subscribe to network events for pairing");
+            }
+        }
     });
 }
 
@@ -2223,12 +2222,22 @@ async fn run_pairing_action_loop<R: Runtime>(
                     .open_pairing_session(peer_id.clone(), session_id.clone())
                     .await
                 {
+                    let reason = err.to_string();
                     warn!(
-                        error = %err,
+                        error = %reason,
                         peer_id = %peer_id,
                         session_id = %session_id,
                         "Failed to open pairing session"
                     );
+                    signal_pairing_transport_failure(
+                        app_handle.as_ref(),
+                        orchestrator.as_ref(),
+                        &session_id,
+                        &peer_id,
+                        reason,
+                    )
+                    .await;
+                    continue;
                 }
                 let result = network.send_pairing_on_session(message).await;
 
@@ -2243,31 +2252,23 @@ async fn run_pairing_action_loop<R: Runtime>(
                         );
                     }
                     Err(err) => {
+                        let reason = err.to_string();
                         warn!(
-                            error = %err,
+                            error = %reason,
                             peer_id = %peer_id,
                             session_id = %session_id,
                             message_kind = %message_kind,
                             stage = "send_result",
                             "Failed to send pairing message"
                         );
-                        if let Some(app) = app_handle.as_ref() {
-                            let payload =
-                                P2PPairingVerificationEvent::failed(&session_id, err.to_string());
-                            if let Err(emit_err) = app.emit("p2p-pairing-verification", payload) {
-                                warn!(error = %emit_err, "Failed to emit pairing verification event");
-                            }
-                        }
-                        if let Err(handle_err) = orchestrator
-                            .handle_transport_error(&session_id, &peer_id, err.to_string())
-                            .await
-                        {
-                            error!(
-                                error = %handle_err,
-                                session_id = %session_id,
-                                "Failed to handle pairing transport error"
-                            );
-                        }
+                        signal_pairing_transport_failure(
+                            app_handle.as_ref(),
+                            orchestrator.as_ref(),
+                            &session_id,
+                            &peer_id,
+                            reason,
+                        )
+                        .await;
                     }
                 }
             }
@@ -2439,6 +2440,31 @@ async fn run_pairing_action_loop<R: Runtime>(
     warn!("Pairing action loop stopped");
 }
 
+async fn signal_pairing_transport_failure<R: Runtime>(
+    app_handle: Option<&AppHandle<R>>,
+    orchestrator: &PairingOrchestrator,
+    session_id: &str,
+    peer_id: &str,
+    reason: String,
+) {
+    if let Some(app) = app_handle {
+        let payload = P2PPairingVerificationEvent::failed(session_id, reason.clone());
+        if let Err(emit_err) = app.emit("p2p-pairing-verification", payload) {
+            warn!(error = %emit_err, "Failed to emit pairing verification event");
+        }
+    }
+    if let Err(handle_err) = orchestrator
+        .handle_transport_error(session_id, peer_id, reason)
+        .await
+    {
+        error!(
+            error = %handle_err,
+            session_id = %session_id,
+            "Failed to handle pairing transport error"
+        );
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2470,17 +2496,26 @@ mod tests {
 
     struct NoopPairedDeviceRepository;
 
-    struct NoopNetwork;
+    #[derive(Default, Clone, Copy)]
+    struct BaseNetwork;
+
+    #[derive(Default)]
+    struct NoopNetwork {
+        base: BaseNetwork,
+    }
 
     struct SendFailNetwork {
+        base: BaseNetwork,
         send_called: Arc<AtomicUsize>,
     }
 
     struct CloseRecordingNetwork {
+        base: BaseNetwork,
         close_calls: Arc<Mutex<Vec<(String, Option<String>)>>>,
     }
 
     struct OfferRecordingNetwork {
+        base: BaseNetwork,
         sent_messages: Arc<Mutex<Vec<(String, PairingMessage)>>>,
     }
 
@@ -2660,7 +2695,7 @@ mod tests {
     }
 
     #[async_trait]
-    impl ClipboardTransportPort for NoopNetwork {
+    impl ClipboardTransportPort for BaseNetwork {
         async fn send_clipboard(
             &self,
             _peer_id: &str,
@@ -2683,7 +2718,7 @@ mod tests {
     }
 
     #[async_trait]
-    impl PeerDirectoryPort for NoopNetwork {
+    impl PeerDirectoryPort for BaseNetwork {
         async fn get_discovered_peers(&self) -> anyhow::Result<Vec<DiscoveredPeer>> {
             Ok(vec![])
         }
@@ -2702,7 +2737,7 @@ mod tests {
     }
 
     #[async_trait]
-    impl PairingTransportPort for NoopNetwork {
+    impl PairingTransportPort for BaseNetwork {
         async fn open_pairing_session(
             &self,
             _peer_id: String,
@@ -2729,7 +2764,7 @@ mod tests {
     }
 
     #[async_trait]
-    impl NetworkEventPort for NoopNetwork {
+    impl NetworkEventPort for BaseNetwork {
         async fn subscribe_events(
             &self,
         ) -> anyhow::Result<tokio::sync::mpsc::Receiver<NetworkEvent>> {
@@ -2738,56 +2773,119 @@ mod tests {
         }
     }
 
-    #[async_trait]
-    impl ClipboardTransportPort for SendFailNetwork {
-        async fn send_clipboard(
-            &self,
-            _peer_id: &str,
-            _encrypted_data: Vec<u8>,
-        ) -> anyhow::Result<()> {
-            Ok(())
-        }
+    macro_rules! delegate_clipboard_port_to_base {
+        ($ty:ty) => {
+            #[async_trait]
+            impl ClipboardTransportPort for $ty {
+                async fn send_clipboard(
+                    &self,
+                    peer_id: &str,
+                    encrypted_data: Vec<u8>,
+                ) -> anyhow::Result<()> {
+                    self.base.send_clipboard(peer_id, encrypted_data).await
+                }
 
-        async fn broadcast_clipboard(&self, _encrypted_data: Vec<u8>) -> anyhow::Result<()> {
-            Ok(())
-        }
+                async fn broadcast_clipboard(&self, encrypted_data: Vec<u8>) -> anyhow::Result<()> {
+                    self.base.broadcast_clipboard(encrypted_data).await
+                }
 
-        async fn subscribe_clipboard(
-            &self,
-        ) -> anyhow::Result<tokio::sync::mpsc::Receiver<uc_core::network::ClipboardMessage>>
-        {
-            let (_tx, rx) = tokio::sync::mpsc::channel(1);
-            Ok(rx)
-        }
+                async fn subscribe_clipboard(
+                    &self,
+                ) -> anyhow::Result<tokio::sync::mpsc::Receiver<uc_core::network::ClipboardMessage>>
+                {
+                    self.base.subscribe_clipboard().await
+                }
+            }
+        };
     }
 
-    #[async_trait]
-    impl PeerDirectoryPort for SendFailNetwork {
-        async fn get_discovered_peers(&self) -> anyhow::Result<Vec<DiscoveredPeer>> {
-            Ok(vec![])
-        }
+    macro_rules! delegate_peer_directory_port_to_base {
+        ($ty:ty) => {
+            #[async_trait]
+            impl PeerDirectoryPort for $ty {
+                async fn get_discovered_peers(&self) -> anyhow::Result<Vec<DiscoveredPeer>> {
+                    self.base.get_discovered_peers().await
+                }
 
-        async fn get_connected_peers(&self) -> anyhow::Result<Vec<ConnectedPeer>> {
-            Ok(vec![])
-        }
+                async fn get_connected_peers(&self) -> anyhow::Result<Vec<ConnectedPeer>> {
+                    self.base.get_connected_peers().await
+                }
 
-        fn local_peer_id(&self) -> String {
-            "local-peer".to_string()
-        }
+                fn local_peer_id(&self) -> String {
+                    self.base.local_peer_id()
+                }
 
-        async fn announce_device_name(&self, _device_name: String) -> anyhow::Result<()> {
-            Ok(())
-        }
+                async fn announce_device_name(&self, device_name: String) -> anyhow::Result<()> {
+                    self.base.announce_device_name(device_name).await
+                }
+            }
+        };
     }
+
+    macro_rules! delegate_network_event_port_to_base {
+        ($ty:ty) => {
+            #[async_trait]
+            impl NetworkEventPort for $ty {
+                async fn subscribe_events(
+                    &self,
+                ) -> anyhow::Result<tokio::sync::mpsc::Receiver<NetworkEvent>> {
+                    self.base.subscribe_events().await
+                }
+            }
+        };
+    }
+
+    macro_rules! delegate_pairing_port_to_base {
+        ($ty:ty) => {
+            #[async_trait]
+            impl PairingTransportPort for $ty {
+                async fn open_pairing_session(
+                    &self,
+                    peer_id: String,
+                    session_id: String,
+                ) -> anyhow::Result<()> {
+                    self.base.open_pairing_session(peer_id, session_id).await
+                }
+
+                async fn send_pairing_on_session(
+                    &self,
+                    message: PairingMessage,
+                ) -> anyhow::Result<()> {
+                    self.base.send_pairing_on_session(message).await
+                }
+
+                async fn close_pairing_session(
+                    &self,
+                    session_id: String,
+                    reason: Option<String>,
+                ) -> anyhow::Result<()> {
+                    self.base.close_pairing_session(session_id, reason).await
+                }
+
+                async fn unpair_device(&self, peer_id: String) -> anyhow::Result<()> {
+                    self.base.unpair_device(peer_id).await
+                }
+            }
+        };
+    }
+
+    delegate_clipboard_port_to_base!(NoopNetwork);
+    delegate_peer_directory_port_to_base!(NoopNetwork);
+    delegate_pairing_port_to_base!(NoopNetwork);
+    delegate_network_event_port_to_base!(NoopNetwork);
+
+    delegate_clipboard_port_to_base!(SendFailNetwork);
+    delegate_peer_directory_port_to_base!(SendFailNetwork);
+    delegate_network_event_port_to_base!(SendFailNetwork);
 
     #[async_trait]
     impl PairingTransportPort for SendFailNetwork {
         async fn open_pairing_session(
             &self,
-            _peer_id: String,
-            _session_id: String,
+            peer_id: String,
+            session_id: String,
         ) -> anyhow::Result<()> {
-            Ok(())
+            self.base.open_pairing_session(peer_id, session_id).await
         }
 
         async fn send_pairing_on_session(&self, _message: PairingMessage) -> anyhow::Result<()> {
@@ -2797,81 +2895,33 @@ mod tests {
 
         async fn close_pairing_session(
             &self,
-            _session_id: String,
-            _reason: Option<String>,
+            session_id: String,
+            reason: Option<String>,
         ) -> anyhow::Result<()> {
-            Ok(())
+            self.base.close_pairing_session(session_id, reason).await
         }
 
-        async fn unpair_device(&self, _peer_id: String) -> anyhow::Result<()> {
-            Ok(())
+        async fn unpair_device(&self, peer_id: String) -> anyhow::Result<()> {
+            self.base.unpair_device(peer_id).await
         }
     }
 
-    #[async_trait]
-    impl NetworkEventPort for SendFailNetwork {
-        async fn subscribe_events(
-            &self,
-        ) -> anyhow::Result<tokio::sync::mpsc::Receiver<NetworkEvent>> {
-            let (_tx, rx) = tokio::sync::mpsc::channel(1);
-            Ok(rx)
-        }
-    }
-
-    #[async_trait]
-    impl ClipboardTransportPort for CloseRecordingNetwork {
-        async fn send_clipboard(
-            &self,
-            _peer_id: &str,
-            _encrypted_data: Vec<u8>,
-        ) -> anyhow::Result<()> {
-            Ok(())
-        }
-
-        async fn broadcast_clipboard(&self, _encrypted_data: Vec<u8>) -> anyhow::Result<()> {
-            Ok(())
-        }
-
-        async fn subscribe_clipboard(
-            &self,
-        ) -> anyhow::Result<tokio::sync::mpsc::Receiver<uc_core::network::ClipboardMessage>>
-        {
-            let (_tx, rx) = tokio::sync::mpsc::channel(1);
-            Ok(rx)
-        }
-    }
-
-    #[async_trait]
-    impl PeerDirectoryPort for CloseRecordingNetwork {
-        async fn get_discovered_peers(&self) -> anyhow::Result<Vec<DiscoveredPeer>> {
-            Ok(vec![])
-        }
-
-        async fn get_connected_peers(&self) -> anyhow::Result<Vec<ConnectedPeer>> {
-            Ok(vec![])
-        }
-
-        fn local_peer_id(&self) -> String {
-            "local-peer".to_string()
-        }
-
-        async fn announce_device_name(&self, _device_name: String) -> anyhow::Result<()> {
-            Ok(())
-        }
-    }
+    delegate_clipboard_port_to_base!(CloseRecordingNetwork);
+    delegate_peer_directory_port_to_base!(CloseRecordingNetwork);
+    delegate_network_event_port_to_base!(CloseRecordingNetwork);
 
     #[async_trait]
     impl PairingTransportPort for CloseRecordingNetwork {
         async fn open_pairing_session(
             &self,
-            _peer_id: String,
-            _session_id: String,
+            peer_id: String,
+            session_id: String,
         ) -> anyhow::Result<()> {
-            Ok(())
+            self.base.open_pairing_session(peer_id, session_id).await
         }
 
-        async fn send_pairing_on_session(&self, _message: PairingMessage) -> anyhow::Result<()> {
-            Ok(())
+        async fn send_pairing_on_session(&self, message: PairingMessage) -> anyhow::Result<()> {
+            self.base.send_pairing_on_session(message).await
         }
 
         async fn close_pairing_session(
@@ -2883,71 +2933,23 @@ mod tests {
             Ok(())
         }
 
-        async fn unpair_device(&self, _peer_id: String) -> anyhow::Result<()> {
-            Ok(())
+        async fn unpair_device(&self, peer_id: String) -> anyhow::Result<()> {
+            self.base.unpair_device(peer_id).await
         }
     }
 
-    #[async_trait]
-    impl NetworkEventPort for CloseRecordingNetwork {
-        async fn subscribe_events(
-            &self,
-        ) -> anyhow::Result<tokio::sync::mpsc::Receiver<NetworkEvent>> {
-            let (_tx, rx) = tokio::sync::mpsc::channel(1);
-            Ok(rx)
-        }
-    }
-
-    #[async_trait]
-    impl ClipboardTransportPort for OfferRecordingNetwork {
-        async fn send_clipboard(
-            &self,
-            _peer_id: &str,
-            _encrypted_data: Vec<u8>,
-        ) -> anyhow::Result<()> {
-            Ok(())
-        }
-
-        async fn broadcast_clipboard(&self, _encrypted_data: Vec<u8>) -> anyhow::Result<()> {
-            Ok(())
-        }
-
-        async fn subscribe_clipboard(
-            &self,
-        ) -> anyhow::Result<tokio::sync::mpsc::Receiver<uc_core::network::ClipboardMessage>>
-        {
-            let (_tx, rx) = tokio::sync::mpsc::channel(1);
-            Ok(rx)
-        }
-    }
-
-    #[async_trait]
-    impl PeerDirectoryPort for OfferRecordingNetwork {
-        async fn get_discovered_peers(&self) -> anyhow::Result<Vec<DiscoveredPeer>> {
-            Ok(vec![])
-        }
-
-        async fn get_connected_peers(&self) -> anyhow::Result<Vec<ConnectedPeer>> {
-            Ok(vec![])
-        }
-
-        fn local_peer_id(&self) -> String {
-            "local-peer".to_string()
-        }
-
-        async fn announce_device_name(&self, _device_name: String) -> anyhow::Result<()> {
-            Ok(())
-        }
-    }
+    delegate_clipboard_port_to_base!(OfferRecordingNetwork);
+    delegate_peer_directory_port_to_base!(OfferRecordingNetwork);
+    delegate_network_event_port_to_base!(OfferRecordingNetwork);
 
     #[async_trait]
     impl PairingTransportPort for OfferRecordingNetwork {
         async fn open_pairing_session(
             &self,
-            _peer_id: String,
-            _session_id: String,
+            peer_id: String,
+            session_id: String,
         ) -> anyhow::Result<()> {
-            Ok(())
+            self.base.open_pairing_session(peer_id, session_id).await
         }
 
         async fn send_pairing_on_session(&self, message: PairingMessage) -> anyhow::Result<()> {
@@ -2961,24 +2963,14 @@ mod tests {
 
         async fn close_pairing_session(
             &self,
-            _session_id: String,
-            _reason: Option<String>,
+            session_id: String,
+            reason: Option<String>,
         ) -> anyhow::Result<()> {
-            Ok(())
+            self.base.close_pairing_session(session_id, reason).await
         }
 
-        async fn unpair_device(&self, _peer_id: String) -> anyhow::Result<()> {
-            Ok(())
-        }
-    }
-
-    #[async_trait]
-    impl NetworkEventPort for OfferRecordingNetwork {
-        async fn subscribe_events(
-            &self,
-        ) -> anyhow::Result<tokio::sync::mpsc::Receiver<NetworkEvent>> {
-            let (_tx, rx) = tokio::sync::mpsc::channel(1);
-            Ok(rx)
+        async fn unpair_device(&self, peer_id: String) -> anyhow::Result<()> {
+            self.base.unpair_device(peer_id).await
         }
     }
 
@@ -3273,7 +3265,7 @@ mod tests {
             vec![9; 32],
         );
         let orchestrator = Arc::new(orchestrator);
-        let network = Arc::new(NoopNetwork);
+        let network = Arc::new(NoopNetwork::default());
         let space_access_orchestrator = Arc::new(SpaceAccessOrchestrator::new());
         let runtime_ports =
             test_runtime_space_access_ports(network.clone(), space_access_orchestrator.clone());
@@ -3323,7 +3315,7 @@ mod tests {
         );
         let orchestrator = Arc::new(orchestrator);
         let space_access_orchestrator = Arc::new(SpaceAccessOrchestrator::new());
-        let network = Arc::new(NoopNetwork);
+        let network = Arc::new(NoopNetwork::default());
         let runtime_ports =
             test_runtime_space_access_ports(network.clone(), space_access_orchestrator.clone());
 
@@ -3369,7 +3361,7 @@ mod tests {
         );
         let orchestrator = Arc::new(orchestrator);
         let space_access_orchestrator = Arc::new(SpaceAccessOrchestrator::new());
-        let network = Arc::new(NoopNetwork);
+        let network = Arc::new(NoopNetwork::default());
         let runtime_ports =
             test_runtime_space_access_ports(network.clone(), space_access_orchestrator.clone());
 
@@ -3416,7 +3408,7 @@ mod tests {
         );
         let orchestrator = Arc::new(orchestrator);
         let space_access_orchestrator = Arc::new(SpaceAccessOrchestrator::new());
-        let network = Arc::new(NoopNetwork);
+        let network = Arc::new(NoopNetwork::default());
         let runtime_ports =
             test_runtime_space_access_ports(network.clone(), space_access_orchestrator.clone());
         seed_waiting_joiner_proof_state(
@@ -3499,7 +3491,7 @@ mod tests {
         );
         let orchestrator = Arc::new(orchestrator);
         let space_access_orchestrator = Arc::new(SpaceAccessOrchestrator::new());
-        let network = Arc::new(NoopNetwork);
+        let network = Arc::new(NoopNetwork::default());
         let master_key = MasterKey::from_bytes(&[4; 32]).expect("master key");
         let proof_port: Arc<dyn uc_core::ports::space::ProofPort> =
             Arc::new(HmacProofAdapter::new_with_encryption_session(Arc::new(
@@ -3582,7 +3574,7 @@ mod tests {
         );
         let orchestrator = Arc::new(orchestrator);
         let space_access_orchestrator = Arc::new(SpaceAccessOrchestrator::new());
-        let network = Arc::new(NoopNetwork);
+        let network = Arc::new(NoopNetwork::default());
         let runtime_ports =
             test_runtime_space_access_ports(network.clone(), space_access_orchestrator.clone());
         seed_waiting_decision_state(
@@ -3637,7 +3629,7 @@ mod tests {
         );
         let orchestrator = Arc::new(orchestrator);
         let space_access_orchestrator = Arc::new(SpaceAccessOrchestrator::new());
-        let network = Arc::new(NoopNetwork);
+        let network = Arc::new(NoopNetwork::default());
         let runtime_ports =
             test_runtime_space_access_ports(network.clone(), space_access_orchestrator.clone());
         seed_waiting_decision_state(
@@ -4049,7 +4041,7 @@ mod tests {
             .expect("handle incoming request");
 
         let (action_tx, action_rx) = mpsc::channel(1);
-        let network = Arc::new(NoopNetwork);
+        let network = Arc::new(NoopNetwork::default());
         let space_access_orchestrator = Arc::new(SpaceAccessOrchestrator::new());
         let key_slot_store = Arc::new(NoopKeySlotStore);
         let runtime_ports =
@@ -4122,7 +4114,7 @@ mod tests {
             .expect("handle incoming request");
 
         let (action_tx, action_rx) = mpsc::channel(1);
-        let network = Arc::new(NoopNetwork);
+        let network = Arc::new(NoopNetwork::default());
         let space_access_orchestrator = Arc::new(SpaceAccessOrchestrator::new());
         let key_slot_store = Arc::new(NoopKeySlotStore);
         let runtime_ports =
@@ -4184,7 +4176,7 @@ mod tests {
         let orchestrator = Arc::new(orchestrator);
 
         let (action_tx, action_rx) = mpsc::channel(1);
-        let network = Arc::new(NoopNetwork);
+        let network = Arc::new(NoopNetwork::default());
         let space_access_orchestrator = Arc::new(SpaceAccessOrchestrator::new());
         let key_slot_store = Arc::new(NoopKeySlotStore);
         let runtime_ports =
@@ -4246,6 +4238,7 @@ mod tests {
         let key_slot_store = Arc::new(NoopKeySlotStore);
         let send_called = Arc::new(AtomicUsize::new(0));
         let network = Arc::new(SendFailNetwork {
+            base: BaseNetwork::default(),
             send_called: send_called.clone(),
         });
         let runtime_ports =
@@ -4315,6 +4308,7 @@ mod tests {
         let orchestrator = Arc::new(orchestrator);
         let close_calls = Arc::new(Mutex::new(Vec::new()));
         let network = Arc::new(CloseRecordingNetwork {
+            base: BaseNetwork::default(),
             close_calls: close_calls.clone(),
         });
         let space_access_orchestrator = Arc::new(SpaceAccessOrchestrator::new());
@@ -4393,6 +4387,7 @@ mod tests {
 
         let sent_messages = Arc::new(Mutex::new(Vec::new()));
         let network = Arc::new(OfferRecordingNetwork {
+            base: BaseNetwork::default(),
             sent_messages: sent_messages.clone(),
         });
         let space_access_orchestrator = Arc::new(SpaceAccessOrchestrator::new());

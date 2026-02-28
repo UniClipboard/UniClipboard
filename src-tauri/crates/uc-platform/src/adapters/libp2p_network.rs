@@ -83,9 +83,10 @@ impl PeerCaches {
     pub fn upsert_discovered(
         &mut self,
         peer_id: String,
-        addresses: Vec<String>,
+        mut addresses: Vec<String>,
         discovered_at: DateTime<Utc>,
     ) -> DiscoveredPeer {
+        sort_addresses_quic_first(&mut addresses);
         let peer = DiscoveredPeer {
             peer_id,
             device_name: None,
@@ -123,6 +124,7 @@ impl PeerCaches {
         let mut changed = false;
         if !entry.addresses.contains(&address) {
             entry.addresses.push(address);
+            sort_addresses_quic_first(&mut entry.addresses);
             changed = true;
         }
         entry.last_seen = observed_at;
@@ -312,6 +314,7 @@ impl Libp2pNetworkAdapter {
                 yamux::Config::default,
             )
             .map_err(|e| anyhow!("failed to configure tcp transport: {e}"))?
+            .with_quic()
             .with_behaviour(move |_| behaviour)
             .map_err(|e| anyhow!("failed to attach libp2p behaviour: {e}"))?
             .build();
@@ -356,15 +359,25 @@ impl Libp2pNetworkAdapter {
                 "0.0.0.0".to_string()
             }
         };
-        let listen_addr_str = format!("/ip4/{listen_ip}/tcp/0");
-        info!(address = %listen_addr_str, "selected listen address");
-        listen_on_swarm(
-            &mut swarm,
-            listen_addr_str
-                .parse()
-                .map_err(|e| anyhow!("failed to parse listen address: {e}"))?,
-            &self.event_tx,
-        )?;
+        let quic_addr_str = format!("/ip4/{listen_ip}/udp/0/quic-v1");
+        let tcp_addr_str = format!("/ip4/{listen_ip}/tcp/0");
+        info!(quic_address = %quic_addr_str, tcp_address = %tcp_addr_str, "selected listen addresses");
+
+        let quic_addr: Multiaddr = quic_addr_str
+            .parse()
+            .map_err(|e| anyhow!("failed to parse quic listen address: {e}"))?;
+        let tcp_addr: Multiaddr = tcp_addr_str
+            .parse()
+            .map_err(|e| anyhow!("failed to parse tcp listen address: {e}"))?;
+
+        let quic_ok = listen_on_swarm(&mut swarm, quic_addr, &self.event_tx).is_ok();
+        let tcp_ok = listen_on_swarm(&mut swarm, tcp_addr, &self.event_tx).is_ok();
+
+        if !quic_ok && !tcp_ok {
+            return Err(anyhow!(
+                "failed to listen on any transport (tried QUIC and TCP)"
+            ));
+        }
 
         let caches = self.caches.clone();
         let event_tx = self.event_tx.clone();
@@ -1099,10 +1112,14 @@ async fn run_swarm(
                                 local_peer_id = %local_peer_id,
                                 "received mdns discovered event"
                             );
-                            let peers: Vec<(PeerId, Multiaddr)> = peers
+                            let mut peers: Vec<(PeerId, Multiaddr)> = peers
                                 .into_iter()
                                 .filter(|(peer_id, _)| peer_id.to_string() != local_peer_id)
                                 .collect();
+                            // Sort so QUIC addresses are added to the swarm first
+                            peers.sort_by_key(|(_, addr)| {
+                                if addr.to_string().contains("/quic-v1") { 0 } else { 1 }
+                            });
                             for (peer_id, address) in peers.iter() {
                                 swarm.add_peer_address(peer_id.clone(), address.clone());
                             }
@@ -1781,8 +1798,8 @@ fn listen_on_swarm(
     listen_addr: Multiaddr,
     event_tx: &mpsc::Sender<NetworkEvent>,
 ) -> Result<()> {
-    if let Err(e) = swarm.listen_on(listen_addr) {
-        let message = format!("failed to listen on tcp: {e}");
+    if let Err(e) = swarm.listen_on(listen_addr.clone()) {
+        let message = format!("failed to listen on {listen_addr}: {e}");
         warn!("{message}");
         if let Err(err) = event_tx.try_send(NetworkEvent::Error(message.clone())) {
             warn!("failed to publish network error event: {err}");
@@ -1802,6 +1819,10 @@ fn try_send_event(
         warn!("failed to send {label} event: {err}");
         err
     })
+}
+
+fn sort_addresses_quic_first(addresses: &mut Vec<String>) {
+    addresses.sort_by_key(|addr| if addr.contains("/quic-v1") { 0 } else { 1 });
 }
 
 fn collect_mdns_discovered(
@@ -2348,6 +2369,7 @@ mod tests {
                 yamux::Config::default,
             )
             .expect("tcp config")
+            .with_quic()
             .with_behaviour(move |_| behaviour)
             .expect("attach behaviour")
             .build();
@@ -2838,6 +2860,7 @@ mod tests {
                 yamux::Config::default,
             )
             .expect("tcp config")
+            .with_quic()
             .with_behaviour(move |_| behaviour)
             .expect("attach behaviour")
             .build();
@@ -2850,7 +2873,63 @@ mod tests {
 
         let event = event_rx.recv().await.expect("error event");
         assert!(
-            matches!(event, NetworkEvent::Error(message) if message.contains("failed to listen on tcp"))
+            matches!(event, NetworkEvent::Error(message) if message.contains("failed to listen on"))
         );
+    }
+
+    #[tokio::test]
+    async fn listen_on_accepts_quic_and_tcp_addresses() {
+        let keypair = identity::Keypair::generate_ed25519();
+        let local_peer_id = PeerId::from(keypair.public());
+        let behaviour = Libp2pBehaviour::new(local_peer_id).expect("behaviour");
+
+        let mut swarm = SwarmBuilder::with_existing_identity(keypair)
+            .with_tokio()
+            .with_tcp(
+                tcp::Config::default().nodelay(true),
+                noise::Config::new,
+                yamux::Config::default,
+            )
+            .expect("tcp config")
+            .with_quic()
+            .with_behaviour(move |_| behaviour)
+            .expect("attach behaviour")
+            .build();
+
+        let (event_tx, _event_rx) = mpsc::channel(8);
+
+        let quic_addr: Multiaddr = "/ip4/127.0.0.1/udp/0/quic-v1".parse().expect("quic addr");
+        let tcp_addr: Multiaddr = "/ip4/127.0.0.1/tcp/0".parse().expect("tcp addr");
+
+        listen_on_swarm(&mut swarm, quic_addr, &event_tx).expect("listen quic");
+        listen_on_swarm(&mut swarm, tcp_addr, &event_tx).expect("listen tcp");
+    }
+
+    #[test]
+    fn sort_addresses_quic_first_puts_quic_before_tcp() {
+        let mut addresses = vec![
+            "/ip4/192.168.1.100/tcp/12345".to_string(),
+            "/ip4/192.168.1.100/udp/54321/quic-v1".to_string(),
+            "/ip4/192.168.1.100/tcp/12346".to_string(),
+            "/ip4/192.168.1.100/udp/54322/quic-v1".to_string(),
+        ];
+        sort_addresses_quic_first(&mut addresses);
+        assert!(addresses[0].contains("/quic-v1"));
+        assert!(addresses[1].contains("/quic-v1"));
+        assert!(addresses[2].contains("/tcp/"));
+        assert!(addresses[3].contains("/tcp/"));
+    }
+
+    #[test]
+    fn sort_addresses_quic_first_preserves_relative_order() {
+        let mut addresses = vec![
+            "/ip4/10.0.0.1/tcp/1000".to_string(),
+            "/ip4/10.0.0.2/udp/2000/quic-v1".to_string(),
+            "/ip4/10.0.0.3/tcp/3000".to_string(),
+        ];
+        sort_addresses_quic_first(&mut addresses);
+        assert_eq!(addresses[0], "/ip4/10.0.0.2/udp/2000/quic-v1");
+        assert_eq!(addresses[1], "/ip4/10.0.0.1/tcp/1000");
+        assert_eq!(addresses[2], "/ip4/10.0.0.3/tcp/3000");
     }
 }

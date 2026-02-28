@@ -198,11 +198,8 @@ impl PairingStreamService {
         }
     }
 
-    pub async fn send_pairing_on_session(
-        &self,
-        session_id: String,
-        message: PairingMessage,
-    ) -> Result<()> {
+    pub async fn send_pairing_on_session(&self, message: PairingMessage) -> Result<()> {
+        let session_id = message.session_id().to_string();
         let sender = {
             let sessions = self.inner.sessions.lock().await;
             sessions
@@ -214,6 +211,32 @@ impl PairingStreamService {
             .send(message)
             .await
             .map_err(|err| anyhow!("pairing session send failed: {err}"))
+    }
+
+    pub async fn close_sessions_for_peer(&self, peer_id: &str) -> Result<()> {
+        let sessions_to_close = {
+            let sessions = self.inner.sessions.lock().await;
+            sessions
+                .iter()
+                .filter_map(|(session_id, handle)| {
+                    if handle.peer_id == peer_id {
+                        Some(session_id.clone())
+                    } else {
+                        None
+                    }
+                })
+                .collect::<Vec<_>>()
+        };
+
+        for session_id in sessions_to_close {
+            self.close_pairing_session(
+                session_id,
+                Some("peer unpaired; closing pairing session".to_string()),
+            )
+            .await?;
+        }
+
+        Ok(())
     }
 
     pub async fn close_pairing_session(

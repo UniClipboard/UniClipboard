@@ -1304,7 +1304,6 @@ pub fn start_background_tasks<R: Runtime>(
             event_rx,
             pairing_orchestrator,
             pairing_app_handle,
-            pairing_transport.clone(),
             peer_directory.clone(),
             pairing_space_access_orchestrator,
             space_access_runtime_ports,
@@ -1709,7 +1708,6 @@ async fn run_pairing_event_loop<R: Runtime>(
     mut event_rx: mpsc::Receiver<NetworkEvent>,
     orchestrator: Arc<PairingOrchestrator>,
     app_handle: Option<AppHandle<R>>,
-    pairing_transport: Arc<dyn PairingTransportPort>,
     peer_directory: Arc<dyn PeerDirectoryPort>,
     space_access_orchestrator: Arc<SpaceAccessOrchestrator>,
     space_access_runtime_ports: RuntimeSpaceAccessPorts,
@@ -1720,7 +1718,6 @@ async fn run_pairing_event_loop<R: Runtime>(
                 handle_pairing_message(
                     orchestrator.as_ref(),
                     space_access_orchestrator.as_ref(),
-                    pairing_transport.as_ref(),
                     &space_access_runtime_ports,
                     peer_id,
                     message,
@@ -1839,7 +1836,6 @@ async fn run_pairing_event_loop<R: Runtime>(
 async fn handle_pairing_message<R: Runtime>(
     orchestrator: &PairingOrchestrator,
     space_access_orchestrator: &SpaceAccessOrchestrator,
-    _pairing_transport: &dyn PairingTransportPort,
     space_access_runtime_ports: &RuntimeSpaceAccessPorts,
     peer_id: String,
     message: PairingMessage,
@@ -2234,9 +2230,7 @@ async fn run_pairing_action_loop<R: Runtime>(
                         "Failed to open pairing session"
                     );
                 }
-                let result = network
-                    .send_pairing_on_session(session_id.clone(), message)
-                    .await;
+                let result = network.send_pairing_on_session(message).await;
 
                 match &result {
                     Ok(_) => {
@@ -2717,11 +2711,7 @@ mod tests {
             Ok(())
         }
 
-        async fn send_pairing_on_session(
-            &self,
-            _session_id: String,
-            _message: PairingMessage,
-        ) -> anyhow::Result<()> {
+        async fn send_pairing_on_session(&self, _message: PairingMessage) -> anyhow::Result<()> {
             Ok(())
         }
 
@@ -2800,11 +2790,7 @@ mod tests {
             Ok(())
         }
 
-        async fn send_pairing_on_session(
-            &self,
-            _session_id: String,
-            _message: PairingMessage,
-        ) -> anyhow::Result<()> {
+        async fn send_pairing_on_session(&self, _message: PairingMessage) -> anyhow::Result<()> {
             self.send_called.fetch_add(1, Ordering::SeqCst);
             Err(anyhow!("send failed"))
         }
@@ -2884,11 +2870,7 @@ mod tests {
             Ok(())
         }
 
-        async fn send_pairing_on_session(
-            &self,
-            _session_id: String,
-            _message: PairingMessage,
-        ) -> anyhow::Result<()> {
+        async fn send_pairing_on_session(&self, _message: PairingMessage) -> anyhow::Result<()> {
             Ok(())
         }
 
@@ -2968,11 +2950,7 @@ mod tests {
             Ok(())
         }
 
-        async fn send_pairing_on_session(
-            &self,
-            session_id: String,
-            message: PairingMessage,
-        ) -> anyhow::Result<()> {
+        async fn send_pairing_on_session(&self, message: PairingMessage) -> anyhow::Result<()> {
             self.sent_messages
                 .lock()
                 .unwrap()
@@ -3761,11 +3739,7 @@ mod tests {
             Ok(())
         }
 
-        async fn send_pairing_on_session(
-            &self,
-            _session_id: String,
-            _message: PairingMessage,
-        ) -> anyhow::Result<()> {
+        async fn send_pairing_on_session(&self, _message: PairingMessage) -> anyhow::Result<()> {
             Ok(())
         }
 

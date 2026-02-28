@@ -401,11 +401,7 @@ mod tests {
             Ok(())
         }
 
-        async fn send_pairing_on_session(
-            &self,
-            _session_id: String,
-            _message: PairingMessage,
-        ) -> anyhow::Result<()> {
+        async fn send_pairing_on_session(&self, _message: PairingMessage) -> anyhow::Result<()> {
             Ok(())
         }
 

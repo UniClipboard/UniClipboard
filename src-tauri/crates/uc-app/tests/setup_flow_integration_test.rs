@@ -259,7 +259,6 @@ impl PairingTransportPort for NoopSpaceAccessNetworkPort {
 
     async fn send_pairing_on_session(
         &self,
-        _session_id: String,
         _message: uc_core::network::PairingMessage,
     ) -> anyhow::Result<()> {
         Ok(())

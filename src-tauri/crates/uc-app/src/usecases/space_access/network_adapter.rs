@@ -42,13 +42,10 @@ impl SpaceAccessTransportPort for SpaceAccessNetworkAdapter {
         let payload = serde_json::to_string(&payload)?;
 
         self.network
-            .send_pairing_on_session(
-                session_id.to_string(),
-                PairingMessage::Busy(PairingBusy {
-                    session_id: session_id.to_string(),
-                    reason: Some(payload),
-                }),
-            )
+            .send_pairing_on_session(PairingMessage::Busy(PairingBusy {
+                session_id: session_id.to_string(),
+                reason: Some(payload),
+            }))
             .await
     }
 
@@ -71,13 +68,10 @@ impl SpaceAccessTransportPort for SpaceAccessNetworkAdapter {
         let payload = serde_json::to_string(&payload)?;
 
         self.network
-            .send_pairing_on_session(
-                session_id.to_string(),
-                PairingMessage::Busy(PairingBusy {
-                    session_id: session_id.to_string(),
-                    reason: Some(payload),
-                }),
-            )
+            .send_pairing_on_session(PairingMessage::Busy(PairingBusy {
+                session_id: session_id.to_string(),
+                reason: Some(payload),
+            }))
             .await
     }
 
@@ -119,13 +113,10 @@ impl SpaceAccessTransportPort for SpaceAccessNetworkAdapter {
         let payload = serde_json::to_string(&payload)?;
 
         self.network
-            .send_pairing_on_session(
-                session_id.to_string(),
-                PairingMessage::Busy(PairingBusy {
-                    session_id: session_id.to_string(),
-                    reason: Some(payload),
-                }),
-            )
+            .send_pairing_on_session(PairingMessage::Busy(PairingBusy {
+                session_id: session_id.to_string(),
+                reason: Some(payload),
+            }))
             .await
     }
 }

@@ -12,3 +12,6 @@ pub mod events;
 pub mod models;
 pub mod protocol;
 pub mod services;
+
+#[cfg(test)]
+pub mod test_utils;

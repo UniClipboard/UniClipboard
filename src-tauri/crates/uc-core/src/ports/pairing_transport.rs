@@ -12,11 +12,7 @@ pub trait PairingTransportPort: Send + Sync {
     async fn open_pairing_session(&self, peer_id: String, session_id: String) -> Result<()>;
 
     /// Send a message on an already opened pairing session stream.
-    async fn send_pairing_on_session(
-        &self,
-        session_id: String,
-        message: PairingMessage,
-    ) -> Result<()>;
+    async fn send_pairing_on_session(&self, message: PairingMessage) -> Result<()>;
 
     /// Close a pairing session stream, optionally reporting a reason.
     async fn close_pairing_session(&self, session_id: String, reason: Option<String>)

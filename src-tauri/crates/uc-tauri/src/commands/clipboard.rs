@@ -392,6 +392,7 @@ async fn restore_clipboard_entry_impl(
 mod tests {
     use super::{restore_clipboard_entry_impl, sync_clipboard_items_impl};
     use crate::bootstrap::AppRuntime;
+    use crate::test_utils::noop_network_ports;
     use async_trait::async_trait;
     use std::collections::HashMap;
     use std::sync::{Arc, Mutex};
@@ -924,7 +925,6 @@ mod tests {
 
         async fn send_pairing_on_session(
             &self,
-            _session_id: String,
             _message: uc_core::network::PairingMessage,
         ) -> anyhow::Result<()> {
             Ok(())
@@ -1087,16 +1087,6 @@ mod tests {
         fn hash_bytes(&self, _bytes: &[u8]) -> anyhow::Result<ContentHash> {
             Err(anyhow::anyhow!("noop hash"))
         }
-    }
-
-    fn noop_network_ports() -> Arc<uc_app::deps::NetworkPorts> {
-        let network = Arc::new(NoopPort);
-        Arc::new(uc_app::deps::NetworkPorts {
-            clipboard: network.clone(),
-            peers: network.clone(),
-            pairing: network.clone(),
-            events: network,
-        })
     }
 
     #[tokio::test]

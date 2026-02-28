@@ -971,6 +971,7 @@ impl ClipboardChangeHandler for AppRuntime {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_utils::noop_network_ports;
     use async_trait::async_trait;
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::Arc;
@@ -1415,7 +1416,6 @@ mod tests {
 
         async fn send_pairing_on_session(
             &self,
-            _session_id: String,
             _message: uc_core::network::PairingMessage,
         ) -> anyhow::Result<()> {
             Ok(())
@@ -1621,16 +1621,6 @@ mod tests {
         fn hash_bytes(&self, _bytes: &[u8]) -> anyhow::Result<ContentHash> {
             Err(anyhow::anyhow!("noop hash"))
         }
-    }
-
-    fn noop_network_ports() -> Arc<uc_app::deps::NetworkPorts> {
-        let network = Arc::new(NoopPort);
-        Arc::new(uc_app::deps::NetworkPorts {
-            clipboard: network.clone(),
-            peers: network.clone(),
-            pairing: network.clone(),
-            events: network,
-        })
     }
 
     #[tokio::test]

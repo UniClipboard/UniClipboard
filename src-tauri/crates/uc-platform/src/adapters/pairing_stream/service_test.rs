@@ -37,7 +37,7 @@ async fn shutdown_drains_outbound_queue() {
         device_id: "device-drain".to_string(),
     });
     service
-        .send_pairing_on_session("session-drain".to_string(), drain_msg.clone())
+        .send_pairing_on_session(drain_msg.clone())
         .await
         .expect("send");
 

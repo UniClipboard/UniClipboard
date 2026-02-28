@@ -1,0 +1,88 @@
+use anyhow::Result;
+use async_trait::async_trait;
+use std::sync::Arc;
+use tokio::sync::mpsc;
+use uc_core::network::{
+    ClipboardMessage, ConnectedPeer, DiscoveredPeer, NetworkEvent, PairingMessage,
+};
+use uc_core::ports::{
+    ClipboardTransportPort, NetworkEventPort, PairingTransportPort, PeerDirectoryPort,
+};
+
+pub struct NoopPort;
+
+#[async_trait]
+impl ClipboardTransportPort for NoopPort {
+    async fn send_clipboard(&self, _peer_id: &str, _encrypted_data: Vec<u8>) -> Result<()> {
+        Ok(())
+    }
+
+    async fn broadcast_clipboard(&self, _encrypted_data: Vec<u8>) -> Result<()> {
+        Ok(())
+    }
+
+    async fn subscribe_clipboard(&self) -> Result<mpsc::Receiver<ClipboardMessage>> {
+        let (_tx, rx) = mpsc::channel(1);
+        Ok(rx)
+    }
+}
+
+#[async_trait]
+impl PeerDirectoryPort for NoopPort {
+    async fn get_discovered_peers(&self) -> Result<Vec<DiscoveredPeer>> {
+        Ok(Vec::new())
+    }
+
+    async fn get_connected_peers(&self) -> Result<Vec<ConnectedPeer>> {
+        Ok(Vec::new())
+    }
+
+    fn local_peer_id(&self) -> String {
+        "noop-peer".to_string()
+    }
+
+    async fn announce_device_name(&self, _device_name: String) -> Result<()> {
+        Ok(())
+    }
+}
+
+#[async_trait]
+impl PairingTransportPort for NoopPort {
+    async fn open_pairing_session(&self, _peer_id: String, _session_id: String) -> Result<()> {
+        Ok(())
+    }
+
+    async fn send_pairing_on_session(&self, _message: PairingMessage) -> Result<()> {
+        Ok(())
+    }
+
+    async fn close_pairing_session(
+        &self,
+        _session_id: String,
+        _reason: Option<String>,
+    ) -> Result<()> {
+        Ok(())
+    }
+
+    async fn unpair_device(&self, _peer_id: String) -> Result<()> {
+        Ok(())
+    }
+}
+
+#[async_trait]
+impl NetworkEventPort for NoopPort {
+    async fn subscribe_events(&self) -> Result<mpsc::Receiver<NetworkEvent>> {
+        let (_tx, rx) = mpsc::channel(1);
+        Ok(rx)
+    }
+}
+
+pub fn noop_network_ports() -> Arc<uc_app::deps::NetworkPorts> {
+    let network = Arc::new(NoopPort);
+    Arc::new(uc_app::deps::NetworkPorts {
+        clipboard: network.clone(),
+        peers: network.clone(),
+        pairing: network.clone(),
+        events: network,
+    })
+}

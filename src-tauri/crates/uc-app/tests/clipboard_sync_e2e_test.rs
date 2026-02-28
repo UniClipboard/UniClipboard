@@ -211,6 +211,18 @@ impl ClipboardTransportPort for InProcessNetwork {
         let (_tx, rx) = mpsc::channel(1);
         Ok(rx)
     }
+
+    async fn ensure_business_path(&self, peer_id: &str) -> anyhow::Result<()> {
+        if peer_id == self.remote_peer.peer_id {
+            return Ok(());
+        }
+
+        Err(anyhow!(
+            "unexpected peer id for business path; expected {}, got {}",
+            self.remote_peer.peer_id,
+            peer_id
+        ))
+    }
 }
 
 #[async_trait]
@@ -229,6 +241,18 @@ impl PeerDirectoryPort for InProcessNetwork {
 
     async fn get_connected_peers(&self) -> anyhow::Result<Vec<ConnectedPeer>> {
         Ok(vec![self.remote_peer.clone()])
+    }
+
+    async fn list_sendable_peers(&self) -> anyhow::Result<Vec<DiscoveredPeer>> {
+        Ok(vec![DiscoveredPeer {
+            peer_id: self.remote_peer.peer_id.clone(),
+            device_name: Some(self.remote_peer.device_name.clone()),
+            device_id: None,
+            addresses: Vec::new(),
+            discovered_at: self.remote_peer.connected_at,
+            last_seen: self.remote_peer.connected_at,
+            is_paired: true,
+        }])
     }
 
     fn local_peer_id(&self) -> String {
@@ -250,11 +274,7 @@ impl PairingTransportPort for InProcessNetwork {
         Ok(())
     }
 
-    async fn send_pairing_on_session(
-        &self,
-        _session_id: String,
-        _message: PairingMessage,
-    ) -> anyhow::Result<()> {
+    async fn send_pairing_on_session(&self, _message: PairingMessage) -> anyhow::Result<()> {
         Ok(())
     }
 

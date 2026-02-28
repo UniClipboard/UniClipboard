@@ -86,11 +86,7 @@ impl PairingTransportPort for PlaceholderNetworkPort {
         ))
     }
 
-    async fn send_pairing_on_session(
-        &self,
-        _session_id: String,
-        _message: PairingMessage,
-    ) -> Result<()> {
+    async fn send_pairing_on_session(&self, _message: PairingMessage) -> Result<()> {
         Err(anyhow::anyhow!(
             "PairingTransportPort::send_pairing_on_session not implemented yet"
         ))

@@ -59,6 +59,10 @@ enum BusinessCommand {
     AnnounceDeviceName {
         device_name: String,
     },
+    UnpairPeer {
+        peer_id: uc_core::PeerId,
+        result_tx: oneshot::Sender<Result<()>>,
+    },
 }
 
 pub struct PeerCaches {
@@ -641,10 +645,20 @@ impl PeerDirectoryPort for Libp2pNetworkAdapter {
     }
 
     async fn announce_device_name(&self, device_name: String) -> Result<()> {
-        self.business_tx
-            .send(BusinessCommand::AnnounceDeviceName { device_name })
-            .await
-            .map_err(|err| anyhow!("failed to queue device announce: {err}"))
+        match timeout(
+            BUSINESS_COMMAND_ENQUEUE_TIMEOUT,
+            self.business_tx
+                .send(BusinessCommand::AnnounceDeviceName { device_name }),
+        )
+        .await
+        {
+            Ok(Ok(())) => Ok(()),
+            Ok(Err(err)) => Err(anyhow!("failed to queue device announce: {err}")),
+            Err(_) => Err(anyhow!(
+                "timed out queueing device announce command after {} ms",
+                BUSINESS_COMMAND_ENQUEUE_TIMEOUT.as_millis()
+            )),
+        }
     }
 }
 
@@ -674,11 +688,7 @@ impl PairingTransportPort for Libp2pNetworkAdapter {
         }
     }
 
-    async fn send_pairing_on_session(
-        &self,
-        session_id: String,
-        message: PairingMessage,
-    ) -> Result<()> {
+    async fn send_pairing_on_session(&self, message: PairingMessage) -> Result<()> {
         let service = {
             let guard = self
                 .pairing_service
@@ -689,7 +699,7 @@ impl PairingTransportPort for Libp2pNetworkAdapter {
                 .cloned()
                 .ok_or_else(|| anyhow!("pairing service not initialized"))?
         };
-        service.send_pairing_on_session(session_id, message).await
+        service.send_pairing_on_session(message).await
     }
 
     async fn close_pairing_session(
@@ -710,10 +720,71 @@ impl PairingTransportPort for Libp2pNetworkAdapter {
         service.close_pairing_session(session_id, reason).await
     }
 
-    async fn unpair_device(&self, _peer_id: String) -> Result<()> {
-        Err(anyhow!(
-            "PairingTransportPort::unpair_device not implemented yet"
-        ))
+    async fn unpair_device(&self, peer_id: String) -> Result<()> {
+        peer_id
+            .parse::<PeerId>()
+            .map_err(|err| anyhow!("invalid peer id for unpair_device: {err}"))?;
+        if peer_id == self.local_peer_id {
+            return Err(anyhow!("cannot unpair local peer id"));
+        }
+
+        let service = {
+            let guard = self
+                .pairing_service
+                .lock()
+                .map_err(|_| anyhow!("pairing service mutex poisoned"))?;
+            guard
+                .as_ref()
+                .cloned()
+                .ok_or_else(|| anyhow!("pairing service not initialized"))?
+        };
+        service.close_sessions_for_peer(&peer_id).await?;
+
+        let event = {
+            let mut caches = self.caches.write().await;
+            caches
+                .remove_discovered(&peer_id)
+                .map(|_| NetworkEvent::PeerLost(peer_id.clone()))
+        };
+        if let Some(event) = event {
+            if let Err(err) = self.event_tx.send(event).await {
+                warn!(
+                    peer_id = %peer_id,
+                    error = %err,
+                    "failed to publish peer lost event after unpair"
+                );
+            }
+        }
+
+        let (result_tx, result_rx) = oneshot::channel();
+        let command = BusinessCommand::UnpairPeer {
+            peer_id: uc_core::PeerId::from(peer_id.as_str()),
+            result_tx,
+        };
+        match timeout(
+            BUSINESS_COMMAND_ENQUEUE_TIMEOUT,
+            self.business_tx.send(command),
+        )
+        .await
+        {
+            Ok(Ok(())) => {}
+            Ok(Err(tokio::sync::mpsc::error::SendError(command))) => {
+                let message = "failed to queue unpair command: business command channel closed";
+                notify_enqueue_failure(command, message, "unpair", &peer_id);
+                return Err(anyhow!(message));
+            }
+            Err(_) => {
+                return Err(anyhow!(
+                    "timed out queueing unpair command after {} ms",
+                    BUSINESS_COMMAND_ENQUEUE_TIMEOUT.as_millis()
+                ));
+            }
+        }
+        match timeout(BUSINESS_ENSURE_COMMAND_RESULT_TIMEOUT, result_rx).await {
+            Ok(Ok(result)) => result,
+            Ok(Err(err)) => Err(anyhow!("failed to receive unpair command result: {err}")),
+            Err(_) => Err(anyhow!("timed out waiting for unpair command result")),
+        }
     }
 }
 
@@ -1242,6 +1313,19 @@ async fn run_swarm(
                     "business command dispatched"
                 );
 
+                if let BusinessCommand::UnpairPeer { peer_id, result_tx } = command {
+                    let _command_permit = command_permit;
+                    let peer_id_str = peer_id.as_str().to_string();
+                    let result = match peer_id_str.parse::<PeerId>() {
+                        Ok(peer) => swarm
+                            .disconnect_peer_id(peer)
+                            .map_err(|_| anyhow!("failed to disconnect peer during unpair")),
+                        Err(err) => Err(anyhow!("invalid peer id for unpair: {err}")),
+                    };
+                    deliver_business_command_result(result_tx, result, command_id, "unpair", &peer_id_str);
+                    continue;
+                }
+
                 let command_control = swarm.behaviour().stream.new_control();
                 let command_caches = caches.clone();
                 let command_policy_resolver = policy_resolver.clone();
@@ -1270,6 +1354,7 @@ fn business_command_log_fields(command: &BusinessCommand) -> (&'static str, Opti
         BusinessCommand::SendClipboard { peer_id, .. } => ("clipboard", Some(peer_id.as_str())),
         BusinessCommand::EnsureBusinessPath { peer_id, .. } => ("ensure", Some(peer_id.as_str())),
         BusinessCommand::AnnounceDeviceName { .. } => ("announce_device_name", None),
+        BusinessCommand::UnpairPeer { peer_id, .. } => ("unpair", Some(peer_id.as_str())),
     }
 }
 
@@ -1277,6 +1362,7 @@ fn notify_enqueue_failure(command: BusinessCommand, message: &str, operation: &s
     let result_tx = match command {
         BusinessCommand::SendClipboard { result_tx, .. } => result_tx,
         BusinessCommand::EnsureBusinessPath { result_tx, .. } => result_tx,
+        BusinessCommand::UnpairPeer { result_tx, .. } => result_tx,
         BusinessCommand::AnnounceDeviceName { .. } => return,
     };
 
@@ -1594,6 +1680,16 @@ async fn execute_business_command(
                 op = "announce_device_name",
                 elapsed_ms,
                 "business command completed"
+            );
+        }
+        BusinessCommand::UnpairPeer { peer_id, result_tx } => {
+            let peer_id_str = peer_id.as_str().to_string();
+            deliver_business_command_result(
+                result_tx,
+                Err(anyhow!("unpair command must be handled by swarm loop")),
+                command_id,
+                "unpair",
+                &peer_id_str,
             );
         }
     }

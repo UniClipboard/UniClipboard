@@ -245,10 +245,10 @@ impl SpaceAccessTransportPort for NoopSpaceAccessTransport {
     }
 }
 
-struct NoopSpaceAccessNetworkPort;
+struct NoopSpaceAccessPairingTransport;
 
 #[async_trait]
-impl PairingTransportPort for NoopSpaceAccessNetworkPort {
+impl PairingTransportPort for NoopSpaceAccessPairingTransport {
     async fn open_pairing_session(
         &self,
         _peer_id: String,
@@ -533,7 +533,7 @@ async fn create_space_flow_marks_setup_complete_and_persists_state() {
         build_discovery_port(),
         Arc::new(MockNetworkControl),
         crypto_factory,
-        Arc::new(NoopSpaceAccessNetworkPort),
+        Arc::new(NoopSpaceAccessPairingTransport),
         transport_port,
         proof_port,
         timer_port,
@@ -679,7 +679,7 @@ async fn ensure_discovery_starts_network_before_listing_peers() {
             calls: calls.clone(),
         }),
         crypto_factory,
-        Arc::new(NoopSpaceAccessNetworkPort),
+        Arc::new(NoopSpaceAccessPairingTransport),
         transport_port,
         proof_port,
         timer_port,
@@ -750,7 +750,7 @@ async fn join_space_access_invokes_space_access_orchestrator() {
         build_discovery_port(),
         Arc::new(MockNetworkControl),
         crypto_factory,
-        Arc::new(NoopSpaceAccessNetworkPort),
+        Arc::new(NoopSpaceAccessPairingTransport),
         transport_port,
         proof_port,
         timer_port,
@@ -829,7 +829,7 @@ async fn join_space_access_propagates_space_access_error() {
         build_discovery_port(),
         Arc::new(MockNetworkControl),
         crypto_factory.clone(),
-        Arc::new(NoopSpaceAccessNetworkPort),
+        Arc::new(NoopSpaceAccessPairingTransport),
         transport_port.clone(),
         proof_port,
         timer_port.clone(),

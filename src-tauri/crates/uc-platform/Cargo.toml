@@ -41,6 +41,7 @@ libp2p = { version = "0.56", features = [
   "identify",
   "macros",
   "request-response",
+  "quic",
 ] }
 libp2p-request-response = { version = "0.29", features = ["json"] }
 libp2p-stream = "0.4.0-alpha"

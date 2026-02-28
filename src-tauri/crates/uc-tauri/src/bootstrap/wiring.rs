@@ -2951,6 +2951,7 @@ mod tests {
         }
 
         async fn send_pairing_on_session(&self, message: PairingMessage) -> anyhow::Result<()> {
+            let session_id = message.session_id().to_string();
             self.sent_messages
                 .lock()
                 .unwrap()
@@ -3281,7 +3282,6 @@ mod tests {
             event_rx,
             orchestrator.clone(),
             None,
-            network.clone() as Arc<dyn PairingTransportPort>,
             network.clone() as Arc<dyn PeerDirectoryPort>,
             space_access_orchestrator,
             runtime_ports,
@@ -3338,7 +3338,6 @@ mod tests {
         handle_pairing_message::<Wry>(
             orchestrator.as_ref(),
             space_access_orchestrator.as_ref(),
-            network.as_ref(),
             &runtime_ports,
             "peer-remote".to_string(),
             PairingMessage::Busy(uc_core::network::protocol::PairingBusy {
@@ -3387,7 +3386,6 @@ mod tests {
         handle_pairing_message::<Wry>(
             orchestrator.as_ref(),
             space_access_orchestrator.as_ref(),
-            network.as_ref(),
             &runtime_ports,
             "peer-remote".to_string(),
             PairingMessage::Busy(uc_core::network::protocol::PairingBusy {
@@ -3440,7 +3438,6 @@ mod tests {
         handle_pairing_message::<Wry>(
             orchestrator.as_ref(),
             space_access_orchestrator.as_ref(),
-            network.as_ref(),
             &runtime_ports,
             "peer-remote".to_string(),
             PairingMessage::Busy(uc_core::network::protocol::PairingBusy {
@@ -3469,7 +3466,6 @@ mod tests {
         handle_pairing_message::<Wry>(
             orchestrator.as_ref(),
             space_access_orchestrator.as_ref(),
-            network.as_ref(),
             &runtime_ports,
             "peer-remote".to_string(),
             PairingMessage::Busy(uc_core::network::protocol::PairingBusy {
@@ -3556,7 +3552,6 @@ mod tests {
         handle_pairing_message::<Wry>(
             orchestrator.as_ref(),
             space_access_orchestrator.as_ref(),
-            network.as_ref(),
             &runtime_ports,
             "peer-remote".to_string(),
             PairingMessage::Busy(uc_core::network::protocol::PairingBusy {
@@ -3609,7 +3604,6 @@ mod tests {
         handle_pairing_message::<Wry>(
             orchestrator.as_ref(),
             space_access_orchestrator.as_ref(),
-            network.as_ref(),
             &runtime_ports,
             "peer-remote".to_string(),
             PairingMessage::Busy(uc_core::network::protocol::PairingBusy {
@@ -3665,7 +3659,6 @@ mod tests {
         handle_pairing_message::<Wry>(
             orchestrator.as_ref(),
             space_access_orchestrator.as_ref(),
-            network.as_ref(),
             &runtime_ports,
             "peer-remote".to_string(),
             PairingMessage::Busy(uc_core::network::protocol::PairingBusy {
@@ -3806,7 +3799,6 @@ mod tests {
             event_rx,
             orchestrator,
             Some(app_handle.clone()),
-            network.clone() as Arc<dyn PairingTransportPort>,
             network.clone() as Arc<dyn PeerDirectoryPort>,
             space_access_orchestrator,
             runtime_ports,
@@ -3868,7 +3860,6 @@ mod tests {
             event_rx,
             orchestrator,
             Some(app_handle.clone()),
-            network.clone() as Arc<dyn PairingTransportPort>,
             network.clone() as Arc<dyn PeerDirectoryPort>,
             space_access_orchestrator,
             runtime_ports,

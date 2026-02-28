@@ -370,8 +370,11 @@ impl Libp2pNetworkAdapter {
             .parse()
             .map_err(|e| anyhow!("failed to parse tcp listen address: {e}"))?;
 
-        let quic_ok = listen_on_swarm(&mut swarm, quic_addr, &self.event_tx).is_ok();
-        let tcp_ok = listen_on_swarm(&mut swarm, tcp_addr, &self.event_tx).is_ok();
+        // Partial startup is acceptable: if at least one transport binds,
+        // the node can operate. Individual transport failures are logged as
+        // warnings by listen_on_swarm but do not emit error events.
+        let quic_ok = listen_on_swarm(&mut swarm, quic_addr).is_ok();
+        let tcp_ok = listen_on_swarm(&mut swarm, tcp_addr).is_ok();
 
         if !quic_ok && !tcp_ok {
             return Err(anyhow!(
@@ -1793,17 +1796,10 @@ async fn apply_business_stream_result(
     }
 }
 
-fn listen_on_swarm(
-    swarm: &mut Swarm<Libp2pBehaviour>,
-    listen_addr: Multiaddr,
-    event_tx: &mpsc::Sender<NetworkEvent>,
-) -> Result<()> {
+fn listen_on_swarm(swarm: &mut Swarm<Libp2pBehaviour>, listen_addr: Multiaddr) -> Result<()> {
     if let Err(e) = swarm.listen_on(listen_addr.clone()) {
         let message = format!("failed to listen on {listen_addr}: {e}");
         warn!("{message}");
-        if let Err(err) = event_tx.try_send(NetworkEvent::Error(message.clone())) {
-            warn!("failed to publish network error event: {err}");
-        }
         return Err(anyhow!(message));
     }
 
@@ -2848,7 +2844,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn listen_on_failure_emits_error_event_and_returns_err() {
+    async fn listen_on_failure_returns_err() {
         let keypair = identity::Keypair::generate_ed25519();
         let local_peer_id = PeerId::from(keypair.public());
         let behaviour = Libp2pBehaviour::new(local_peer_id).expect("behaviour");
@@ -2865,16 +2861,14 @@ mod tests {
             .expect("attach behaviour")
             .build();
 
-        let (event_tx, mut event_rx) = mpsc::channel(1);
         let bad_addr: Multiaddr = "/ip4/127.0.0.1/udp/0".parse().expect("bad addr");
 
-        let result = listen_on_swarm(&mut swarm, bad_addr, &event_tx);
+        let result = listen_on_swarm(&mut swarm, bad_addr);
         assert!(result.is_err());
-
-        let event = event_rx.recv().await.expect("error event");
-        assert!(
-            matches!(event, NetworkEvent::Error(message) if message.contains("failed to listen on"))
-        );
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("failed to listen on"),);
     }
 
     #[tokio::test]
@@ -2896,13 +2890,11 @@ mod tests {
             .expect("attach behaviour")
             .build();
 
-        let (event_tx, _event_rx) = mpsc::channel(8);
-
         let quic_addr: Multiaddr = "/ip4/127.0.0.1/udp/0/quic-v1".parse().expect("quic addr");
         let tcp_addr: Multiaddr = "/ip4/127.0.0.1/tcp/0".parse().expect("tcp addr");
 
-        listen_on_swarm(&mut swarm, quic_addr, &event_tx).expect("listen quic");
-        listen_on_swarm(&mut swarm, tcp_addr, &event_tx).expect("listen tcp");
+        listen_on_swarm(&mut swarm, quic_addr).expect("listen quic");
+        listen_on_swarm(&mut swarm, tcp_addr).expect("listen tcp");
     }
 
     #[test]

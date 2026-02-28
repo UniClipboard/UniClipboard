@@ -740,22 +740,6 @@ impl PairingTransportPort for Libp2pNetworkAdapter {
         };
         service.close_sessions_for_peer(&peer_id).await?;
 
-        let event = {
-            let mut caches = self.caches.write().await;
-            caches
-                .remove_discovered(&peer_id)
-                .map(|_| NetworkEvent::PeerLost(peer_id.clone()))
-        };
-        if let Some(event) = event {
-            if let Err(err) = self.event_tx.send(event).await {
-                warn!(
-                    peer_id = %peer_id,
-                    error = %err,
-                    "failed to publish peer lost event after unpair"
-                );
-            }
-        }
-
         let (result_tx, result_rx) = oneshot::channel();
         let command = BusinessCommand::UnpairPeer {
             peer_id: uc_core::PeerId::from(peer_id.as_str()),
@@ -780,11 +764,36 @@ impl PairingTransportPort for Libp2pNetworkAdapter {
                 ));
             }
         }
-        match timeout(BUSINESS_ENSURE_COMMAND_RESULT_TIMEOUT, result_rx).await {
+        let unpair_result = match timeout(BUSINESS_ENSURE_COMMAND_RESULT_TIMEOUT, result_rx).await {
             Ok(Ok(result)) => result,
             Ok(Err(err)) => Err(anyhow!("failed to receive unpair command result: {err}")),
             Err(_) => Err(anyhow!("timed out waiting for unpair command result")),
+        };
+        if let Err(err) = unpair_result {
+            error!(
+                peer_id = %peer_id,
+                error = %err,
+                "unpair command failed; skipping peer cache mutation and peer-lost event"
+            );
+            return Err(err);
         }
+
+        let event = {
+            let mut caches = self.caches.write().await;
+            caches
+                .remove_discovered(&peer_id)
+                .map(|_| NetworkEvent::PeerLost(peer_id.clone()))
+        };
+        if let Some(event) = event {
+            if let Err(err) = self.event_tx.send(event).await {
+                warn!(
+                    peer_id = %peer_id,
+                    error = %err,
+                    "failed to publish peer lost event after unpair"
+                );
+            }
+        }
+        Ok(())
     }
 }
 
@@ -2315,6 +2324,9 @@ mod tests {
             BusinessCommand::EnsureBusinessPath { .. } => {
                 panic!("unexpected ensure command")
             }
+            BusinessCommand::UnpairPeer { .. } => {
+                panic!("unexpected unpair command")
+            }
         }
     }
 
@@ -2580,6 +2592,9 @@ mod tests {
             }
             BusinessCommand::EnsureBusinessPath { .. } => {
                 panic!("unexpected ensure command")
+            }
+            BusinessCommand::UnpairPeer { .. } => {
+                panic!("unexpected unpair command")
             }
         }
 

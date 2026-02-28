@@ -1275,9 +1275,15 @@ async fn run_swarm(
                     let _command_permit = command_permit;
                     let peer_id_str = peer_id.as_str().to_string();
                     let result = match peer_id_str.parse::<PeerId>() {
-                        Ok(peer) => swarm
-                            .disconnect_peer_id(peer)
-                            .map_err(|_| anyhow!("failed to disconnect peer during unpair")),
+                        Ok(peer) => {
+                            if swarm.is_connected(&peer) {
+                                swarm
+                                    .disconnect_peer_id(peer)
+                                    .map_err(|_| anyhow!("failed to disconnect peer during unpair"))
+                            } else {
+                                Ok(())
+                            }
+                        }
                         Err(err) => Err(anyhow!("invalid peer id for unpair: {err}")),
                     };
                     deliver_business_command_result(result_tx, result, command_id, "unpair", &peer_id_str);

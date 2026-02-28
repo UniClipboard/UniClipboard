@@ -177,7 +177,7 @@ pub async fn unlock_encryption_session(
 mod tests {
     use super::{emit_session_ready, unlock_encryption_session_with_runtime};
     use crate::bootstrap::AppRuntime;
-    use crate::test_utils::noop_network_ports;
+    use crate::test_utils::{noop_network_ports, NoopPort};
     use async_trait::async_trait;
     use chrono::{DateTime, Utc};
     use serde_json::Value;
@@ -228,7 +228,6 @@ mod tests {
     }
 
     struct NoopClipboard;
-    struct NoopPort;
     struct MockDeviceIdentity;
 
     struct MockEncryptionState;
@@ -665,91 +664,6 @@ mod tests {
 
         async fn delete(&self, _peer_id: &PeerId) -> Result<(), PairedDeviceRepositoryError> {
             Ok(())
-        }
-    }
-
-    #[async_trait]
-    impl ClipboardTransportPort for NoopPort {
-        async fn send_clipboard(
-            &self,
-            _peer_id: &str,
-            _encrypted_data: Vec<u8>,
-        ) -> anyhow::Result<()> {
-            Ok(())
-        }
-
-        async fn broadcast_clipboard(&self, _encrypted_data: Vec<u8>) -> anyhow::Result<()> {
-            Ok(())
-        }
-
-        async fn subscribe_clipboard(
-            &self,
-        ) -> anyhow::Result<mpsc::Receiver<uc_core::network::ClipboardMessage>> {
-            let (_tx, rx) = mpsc::channel(1);
-            Ok(rx)
-        }
-    }
-
-    #[async_trait]
-    impl PeerDirectoryPort for NoopPort {
-        async fn get_discovered_peers(
-            &self,
-        ) -> anyhow::Result<Vec<uc_core::network::DiscoveredPeer>> {
-            Ok(vec![])
-        }
-
-        async fn get_connected_peers(
-            &self,
-        ) -> anyhow::Result<Vec<uc_core::network::ConnectedPeer>> {
-            Ok(vec![])
-        }
-
-        fn local_peer_id(&self) -> String {
-            "noop".to_string()
-        }
-
-        async fn announce_device_name(&self, _device_name: String) -> anyhow::Result<()> {
-            Ok(())
-        }
-    }
-
-    #[async_trait]
-    impl PairingTransportPort for NoopPort {
-        async fn open_pairing_session(
-            &self,
-            _peer_id: String,
-            _session_id: String,
-        ) -> anyhow::Result<()> {
-            Ok(())
-        }
-
-        async fn send_pairing_on_session(
-            &self,
-            _message: uc_core::network::PairingMessage,
-        ) -> anyhow::Result<()> {
-            Ok(())
-        }
-
-        async fn close_pairing_session(
-            &self,
-            _session_id: String,
-            _reason: Option<String>,
-        ) -> anyhow::Result<()> {
-            Ok(())
-        }
-
-        async fn unpair_device(&self, _peer_id: String) -> anyhow::Result<()> {
-            Ok(())
-        }
-    }
-
-    #[async_trait]
-    impl NetworkEventPort for NoopPort {
-        async fn subscribe_events(
-            &self,
-        ) -> anyhow::Result<mpsc::Receiver<uc_core::network::NetworkEvent>> {
-            let (_tx, rx) = mpsc::channel(1);
-            Ok(rx)
         }
     }
 

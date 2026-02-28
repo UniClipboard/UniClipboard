@@ -699,6 +699,85 @@ mod tests {
         result.expect("idempotent open");
     }
 
+    #[tokio::test]
+    async fn close_sessions_for_peer_only_removes_target_peer_sessions() {
+        let (event_tx, _event_rx) = mpsc::channel(1);
+        let service = PairingStreamService::for_tests(event_tx, PairingStreamConfig::default());
+        let target_peer = PeerId::random().to_string();
+        let other_peer = PeerId::random().to_string();
+
+        let target_permits_a = service
+            .acquire_permits(&target_peer)
+            .await
+            .expect("target permits a");
+        let target_permits_b = service
+            .acquire_permits(&target_peer)
+            .await
+            .expect("target permits b");
+        let other_permits = service
+            .acquire_permits(&other_peer)
+            .await
+            .expect("other permits");
+
+        let (target_write_tx_a, _target_write_rx_a) = mpsc::channel(1);
+        let (target_shutdown_tx_a, _target_shutdown_rx_a) = watch::channel(false);
+        let (target_write_tx_b, _target_write_rx_b) = mpsc::channel(1);
+        let (target_shutdown_tx_b, _target_shutdown_rx_b) = watch::channel(false);
+        let (other_write_tx, _other_write_rx) = mpsc::channel(1);
+        let (other_shutdown_tx, _other_shutdown_rx) = watch::channel(false);
+
+        {
+            let mut sessions = service.inner.sessions.lock().await;
+            sessions.insert(
+                "target-session-a".to_string(),
+                super::SessionHandle {
+                    peer_id: target_peer.clone(),
+                    write_tx: target_write_tx_a,
+                    shutdown_tx: target_shutdown_tx_a,
+                    _global_permit: target_permits_a.global,
+                    _peer_permit: target_permits_a.peer,
+                },
+            );
+            sessions.insert(
+                "target-session-b".to_string(),
+                super::SessionHandle {
+                    peer_id: target_peer.clone(),
+                    write_tx: target_write_tx_b,
+                    shutdown_tx: target_shutdown_tx_b,
+                    _global_permit: target_permits_b.global,
+                    _peer_permit: target_permits_b.peer,
+                },
+            );
+            sessions.insert(
+                "other-session".to_string(),
+                super::SessionHandle {
+                    peer_id: other_peer.clone(),
+                    write_tx: other_write_tx,
+                    shutdown_tx: other_shutdown_tx,
+                    _global_permit: other_permits.global,
+                    _peer_permit: other_permits.peer,
+                },
+            );
+        }
+
+        service
+            .close_sessions_for_peer(&target_peer)
+            .await
+            .expect("close sessions for target peer");
+
+        let sessions = service.inner.sessions.lock().await;
+        assert!(!sessions.contains_key("target-session-a"));
+        assert!(!sessions.contains_key("target-session-b"));
+        assert!(sessions.contains_key("other-session"));
+        assert_eq!(
+            sessions
+                .get("other-session")
+                .expect("other session")
+                .peer_id,
+            other_peer
+        );
+    }
+
     struct TestLogger {
         logs: Mutex<Vec<String>>,
     }

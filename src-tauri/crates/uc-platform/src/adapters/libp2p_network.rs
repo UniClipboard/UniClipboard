@@ -22,7 +22,8 @@ use uc_core::network::{
     ProtocolMessage, ResolvedConnectionPolicy,
 };
 use uc_core::ports::{
-    ConnectionPolicyResolverPort, IdentityStorePort, NetworkControlPort, NetworkPort,
+    ClipboardTransportPort, ConnectionPolicyResolverPort, IdentityStorePort, NetworkControlPort,
+    NetworkEventPort, PairingTransportPort, PeerDirectoryPort,
 };
 
 use super::pairing_stream::service::{
@@ -402,7 +403,7 @@ impl Libp2pNetworkAdapter {
 }
 
 #[async_trait]
-impl NetworkPort for Libp2pNetworkAdapter {
+impl ClipboardTransportPort for Libp2pNetworkAdapter {
     async fn send_clipboard(&self, _peer_id: &str, _encrypted_data: Vec<u8>) -> Result<()> {
         if _peer_id == self.local_peer_id {
             warn!(peer_id = _peer_id, "skip send_clipboard to local peer");
@@ -453,7 +454,7 @@ impl NetworkPort for Libp2pNetworkAdapter {
 
     async fn broadcast_clipboard(&self, _encrypted_data: Vec<u8>) -> Result<()> {
         Err(anyhow!(
-            "NetworkPort::broadcast_clipboard not implemented yet"
+            "ClipboardTransportPort::broadcast_clipboard not implemented yet"
         ))
     }
 
@@ -464,6 +465,56 @@ impl NetworkPort for Libp2pNetworkAdapter {
         Self::take_receiver(&self.clipboard_rx, "clipboard")
     }
 
+    async fn ensure_business_path(&self, peer_id: &str) -> Result<()> {
+        let peer = uc_core::PeerId::from(peer_id);
+        let (result_tx, result_rx) = oneshot::channel();
+        let command = BusinessCommand::EnsureBusinessPath {
+            peer_id: peer,
+            result_tx,
+        };
+        let enqueue_result = timeout(
+            BUSINESS_COMMAND_ENQUEUE_TIMEOUT,
+            self.business_tx.send(command),
+        )
+        .await;
+        match enqueue_result {
+            Ok(Ok(())) => {}
+            Ok(Err(tokio::sync::mpsc::error::SendError(command))) => {
+                let message =
+                    "failed to queue ensure business path command: business command channel closed";
+                error!(
+                    peer_id = peer_id,
+                    error = message,
+                    "business command enqueue failed"
+                );
+                notify_enqueue_failure(command, message, "ensure", peer_id);
+                return Err(anyhow!(message));
+            }
+            Err(_) => {
+                // Cancelling the send future drops the unsent command and closes its result_tx.
+                let message = "timed out queueing ensure business path command";
+                error!(
+                    peer_id = peer_id,
+                    timeout_ms = BUSINESS_COMMAND_ENQUEUE_TIMEOUT.as_millis() as u64,
+                    error = message,
+                    "business command enqueue timed out"
+                );
+                return Err(anyhow!(message));
+            }
+        }
+
+        match timeout(BUSINESS_ENSURE_COMMAND_RESULT_TIMEOUT, result_rx).await {
+            Ok(Ok(result)) => result,
+            Ok(Err(err)) => Err(anyhow!(
+                "failed to receive ensure business path result: {err}"
+            )),
+            Err(_) => Err(anyhow!("timed out waiting for business command result")),
+        }
+    }
+}
+
+#[async_trait]
+impl PeerDirectoryPort for Libp2pNetworkAdapter {
     async fn get_discovered_peers(&self) -> Result<Vec<DiscoveredPeer>> {
         let caches = self.caches.read().await;
         let peers: Vec<DiscoveredPeer> = caches.discovered_peers.values().cloned().collect();
@@ -595,7 +646,10 @@ impl NetworkPort for Libp2pNetworkAdapter {
             .await
             .map_err(|err| anyhow!("failed to queue device announce: {err}"))
     }
+}
 
+#[async_trait]
+impl PairingTransportPort for Libp2pNetworkAdapter {
     async fn open_pairing_session(&self, peer_id: String, session_id: String) -> Result<()> {
         let service = {
             let guard = self
@@ -657,9 +711,14 @@ impl NetworkPort for Libp2pNetworkAdapter {
     }
 
     async fn unpair_device(&self, _peer_id: String) -> Result<()> {
-        Err(anyhow!("NetworkPort::unpair_device not implemented yet"))
+        Err(anyhow!(
+            "PairingTransportPort::unpair_device not implemented yet"
+        ))
     }
+}
 
+#[async_trait]
+impl NetworkEventPort for Libp2pNetworkAdapter {
     async fn subscribe_events(&self) -> Result<mpsc::Receiver<NetworkEvent>> {
         Self::take_receiver(&self.event_rx, "network event")
     }
@@ -2568,7 +2627,7 @@ mod tests {
 
         match timeout(
             Duration::from_secs(20),
-            NetworkPort::ensure_business_path(&adapter_a, &peer_b),
+            ClipboardTransportPort::ensure_business_path(&adapter_a, &peer_b),
         )
         .await
         {
@@ -2636,7 +2695,7 @@ mod tests {
             return;
         }
 
-        NetworkPort::open_pairing_session(
+        PairingTransportPort::open_pairing_session(
             &adapter_a,
             peer_b.clone(),
             "wire-compat-session".to_string(),
@@ -2659,7 +2718,7 @@ mod tests {
 
         let mut received = None;
         for _attempt in 0..20 {
-            NetworkPort::send_clipboard(&adapter_a, &peer_b, payload.clone())
+            ClipboardTransportPort::send_clipboard(&adapter_a, &peer_b, payload.clone())
                 .await
                 .expect("send clipboard protocol payload");
 

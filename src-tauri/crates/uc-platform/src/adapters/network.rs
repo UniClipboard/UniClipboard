@@ -8,7 +8,10 @@ use uc_core::network::{
     ClipboardMessage, ConnectedPeer, DiscoveredPeer, NetworkEvent, PairingMessage,
 };
 use uc_core::ports::IdentityStorePort;
-use uc_core::ports::{NetworkControlPort, NetworkPort};
+use uc_core::ports::{
+    ClipboardTransportPort, NetworkControlPort, NetworkEventPort, PairingTransportPort,
+    PeerDirectoryPort,
+};
 
 use crate::identity_store::load_or_create_identity;
 
@@ -33,18 +36,16 @@ impl PlaceholderNetworkPort {
 }
 
 #[async_trait]
-impl NetworkPort for PlaceholderNetworkPort {
-    // === Clipboard operations ===
-
+impl ClipboardTransportPort for PlaceholderNetworkPort {
     async fn send_clipboard(&self, _peer_id: &str, _encrypted_data: Vec<u8>) -> Result<()> {
         Err(anyhow::anyhow!(
-            "NetworkPort::send_clipboard not implemented yet"
+            "ClipboardTransportPort::send_clipboard not implemented yet"
         ))
     }
 
     async fn broadcast_clipboard(&self, _encrypted_data: Vec<u8>) -> Result<()> {
         Err(anyhow::anyhow!(
-            "NetworkPort::broadcast_clipboard not implemented yet"
+            "ClipboardTransportPort::broadcast_clipboard not implemented yet"
         ))
     }
 
@@ -52,7 +53,10 @@ impl NetworkPort for PlaceholderNetworkPort {
         let (_tx, rx) = tokio::sync::mpsc::channel(1);
         Ok(rx)
     }
+}
 
+#[async_trait]
+impl PeerDirectoryPort for PlaceholderNetworkPort {
     // === Peer operations ===
 
     async fn get_discovered_peers(&self) -> Result<Vec<DiscoveredPeer>> {
@@ -69,15 +73,16 @@ impl NetworkPort for PlaceholderNetworkPort {
 
     async fn announce_device_name(&self, _device_name: String) -> Result<()> {
         Err(anyhow::anyhow!(
-            "NetworkPort::announce_device_name not implemented yet"
+            "PeerDirectoryPort::announce_device_name not implemented yet"
         ))
     }
+}
 
-    // === Pairing operations ===
-
+#[async_trait]
+impl PairingTransportPort for PlaceholderNetworkPort {
     async fn open_pairing_session(&self, _peer_id: String, _session_id: String) -> Result<()> {
         Err(anyhow::anyhow!(
-            "NetworkPort::open_pairing_session not implemented yet"
+            "PairingTransportPort::open_pairing_session not implemented yet"
         ))
     }
 
@@ -87,7 +92,7 @@ impl NetworkPort for PlaceholderNetworkPort {
         _message: PairingMessage,
     ) -> Result<()> {
         Err(anyhow::anyhow!(
-            "NetworkPort::send_pairing_on_session not implemented yet"
+            "PairingTransportPort::send_pairing_on_session not implemented yet"
         ))
     }
 
@@ -97,18 +102,19 @@ impl NetworkPort for PlaceholderNetworkPort {
         _reason: Option<String>,
     ) -> Result<()> {
         Err(anyhow::anyhow!(
-            "NetworkPort::close_pairing_session not implemented yet"
+            "PairingTransportPort::close_pairing_session not implemented yet"
         ))
     }
 
     async fn unpair_device(&self, _peer_id: String) -> Result<()> {
         Err(anyhow::anyhow!(
-            "NetworkPort::unpair_device not implemented yet"
+            "PairingTransportPort::unpair_device not implemented yet"
         ))
     }
+}
 
-    // === Event operations ===
-
+#[async_trait]
+impl NetworkEventPort for PlaceholderNetworkPort {
     async fn subscribe_events(&self) -> Result<tokio::sync::mpsc::Receiver<NetworkEvent>> {
         let (_tx, rx) = tokio::sync::mpsc::channel(1);
         Ok(rx)

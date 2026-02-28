@@ -198,6 +198,7 @@ impl PairingStreamService {
         }
     }
 
+    #[tracing::instrument(skip(self, message), fields(session_id = %message.session_id()))]
     pub async fn send_pairing_on_session(&self, message: PairingMessage) -> Result<()> {
         let session_id = message.session_id().to_string();
         let sender = {
@@ -213,6 +214,7 @@ impl PairingStreamService {
             .map_err(|err| anyhow!("pairing session send failed: {err}"))
     }
 
+    #[tracing::instrument(skip(self), fields(peer_id = %peer_id))]
     pub async fn close_sessions_for_peer(&self, peer_id: &str) -> Result<()> {
         let sessions_to_close = {
             let sessions = self.inner.sessions.lock().await;

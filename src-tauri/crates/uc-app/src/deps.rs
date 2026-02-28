@@ -20,10 +20,19 @@ use uc_core::ports::clipboard::{
 use uc_core::ports::*;
 
 /// Focused network capability bundle for dependency injection.
+/// 用于依赖注入的网络能力聚合。
 pub struct NetworkPorts {
+    /// Clipboard transport capability (`Arc<dyn ClipboardTransportPort>`).
+    /// 剪贴板传输能力（`Arc<dyn ClipboardTransportPort>`）。
     pub clipboard: Arc<dyn ClipboardTransportPort>,
+    /// Peer directory capability (`Arc<dyn PeerDirectoryPort>`).
+    /// 对等端目录能力（`Arc<dyn PeerDirectoryPort>`）。
     pub peers: Arc<dyn PeerDirectoryPort>,
+    /// Pairing transport capability (`Arc<dyn PairingTransportPort>`).
+    /// 配对传输能力（`Arc<dyn PairingTransportPort>`）。
     pub pairing: Arc<dyn PairingTransportPort>,
+    /// Network event subscription capability (`Arc<dyn NetworkEventPort>`).
+    /// 网络事件订阅能力（`Arc<dyn NetworkEventPort>`）。
     pub events: Arc<dyn NetworkEventPort>,
 }
 

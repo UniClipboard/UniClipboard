@@ -329,7 +329,7 @@ fn test_bootstrap_wire_dependencies_creates_app_deps() {
         let _ = &deps.watcher_control;
         let _ = &deps.device_repo;
         let _ = &deps.device_identity;
-        let _ = &deps.network;
+        let _ = &deps.network_ports;
         let _ = &deps.blob_store;
         let _ = &deps.blob_repository;
         let _ = &deps.blob_writer;
@@ -752,7 +752,7 @@ fn test_bootstrap_wire_dependencies_creates_platform_adapters() {
         // 验证占位符适配器存在（用于未实现的端口）
         let _ui = deps.ui_port.clone();
         let _autostart = deps.autostart.clone();
-        let _network = deps.network.clone();
+        let _network = deps.network_ports.clone();
         let _device_identity = deps.device_identity.clone();
         let _representation_normalizer = deps.representation_normalizer.clone();
         let _blob_writer = deps.blob_writer.clone();

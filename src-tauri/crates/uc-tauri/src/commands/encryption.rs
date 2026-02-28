@@ -668,7 +668,7 @@ mod tests {
     }
 
     #[async_trait]
-    impl NetworkPort for NoopPort {
+    impl ClipboardTransportPort for NoopPort {
         async fn send_clipboard(
             &self,
             _peer_id: &str,
@@ -687,7 +687,10 @@ mod tests {
             let (_tx, rx) = mpsc::channel(1);
             Ok(rx)
         }
+    }
 
+    #[async_trait]
+    impl PeerDirectoryPort for NoopPort {
         async fn get_discovered_peers(
             &self,
         ) -> anyhow::Result<Vec<uc_core::network::DiscoveredPeer>> {
@@ -707,7 +710,10 @@ mod tests {
         async fn announce_device_name(&self, _device_name: String) -> anyhow::Result<()> {
             Ok(())
         }
+    }
 
+    #[async_trait]
+    impl PairingTransportPort for NoopPort {
         async fn open_pairing_session(
             &self,
             _peer_id: String,
@@ -735,7 +741,10 @@ mod tests {
         async fn unpair_device(&self, _peer_id: String) -> anyhow::Result<()> {
             Ok(())
         }
+    }
 
+    #[async_trait]
+    impl NetworkEventPort for NoopPort {
         async fn subscribe_events(
             &self,
         ) -> anyhow::Result<mpsc::Receiver<uc_core::network::NetworkEvent>> {
@@ -883,6 +892,16 @@ mod tests {
         }
     }
 
+    fn noop_network_ports() -> Arc<uc_app::deps::NetworkPorts> {
+        let network = Arc::new(NoopPort);
+        Arc::new(uc_app::deps::NetworkPorts {
+            clipboard: network.clone(),
+            peers: network.clone(),
+            pairing: network.clone(),
+            events: network,
+        })
+    }
+
     #[tokio::test]
     async fn unlock_success_triggers_network_start() {
         let start_calls = Arc::new(AtomicUsize::new(0));
@@ -918,7 +937,7 @@ mod tests {
             device_repo: Arc::new(NoopPort),
             device_identity: Arc::new(MockDeviceIdentity),
             paired_device_repo: Arc::new(NoopPort),
-            network: Arc::new(NoopPort),
+            network_ports: noop_network_ports(),
             network_control: Arc::new(RecordingNetworkControl::new(start_calls.clone())),
             setup_status: Arc::new(NoopPort),
             blob_store: Arc::new(NoopPort),

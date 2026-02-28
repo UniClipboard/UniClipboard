@@ -19,7 +19,7 @@ use uc_app::usecases::{pairing::PairingOrchestrator, space_access::SpaceAccessOr
 use uc_core::config::AppConfig;
 use uc_core::ports::AppDirsPort;
 use uc_core::ports::ClipboardChangeHandler;
-use uc_core::ports::NetworkPort;
+use uc_core::ports::PeerDirectoryPort;
 use uc_infra::fs::key_slot_store::{JsonKeySlotStore, KeySlotStore};
 use uc_platform::app_dirs::DirsAppDirsAdapter;
 use uc_platform::ipc::PlatformCommand;
@@ -496,7 +496,7 @@ fn run_app(config: AppConfig) {
     let pairing_device_repo = deps.paired_device_repo.clone();
     let pairing_device_identity = deps.device_identity.clone();
     let pairing_settings = deps.settings.clone();
-    let discovery_network = deps.network.clone();
+    let discovery_network = deps.network_ports.peers.clone();
     let pairing_peer_id = background.libp2p_network.local_peer_id();
     let pairing_identity_pubkey = background.libp2p_network.local_identity_pubkey();
     let (pairing_device_name, pairing_config) = tauri::async_runtime::block_on(async move {

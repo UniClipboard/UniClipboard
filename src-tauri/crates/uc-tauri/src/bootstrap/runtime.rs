@@ -47,7 +47,7 @@ use uc_app::{
 use uc_core::config::AppConfig;
 use uc_core::network::DiscoveredPeer;
 use uc_core::ports::space::SpaceAccessTransportPort;
-use uc_core::ports::{ClipboardChangeHandler, DiscoveryPort, NetworkPort, TimerPort};
+use uc_core::ports::{ClipboardChangeHandler, DiscoveryPort, PeerDirectoryPort, TimerPort};
 use uc_core::{ClipboardChangeOrigin, SystemClipboardSnapshot};
 use uc_infra::time::Timer;
 
@@ -123,16 +123,16 @@ impl SetupRuntimePorts {
         }
     }
 
-    /// Create a bundle using the network port as the discovery adapter.
+    /// Create a bundle using the peer-directory port as the discovery adapter.
     pub fn from_network(
         pairing_orchestrator: Arc<PairingOrchestrator>,
         space_access_orchestrator: Arc<SpaceAccessOrchestrator>,
-        network: Arc<dyn NetworkPort>,
+        peers: Arc<dyn PeerDirectoryPort>,
     ) -> Self {
         Self::new(
             pairing_orchestrator,
             space_access_orchestrator,
-            Arc::new(NetworkDiscoveryPort { network }),
+            Arc::new(NetworkDiscoveryPort { peers }),
         )
     }
 
@@ -233,7 +233,7 @@ impl AppRuntime {
         ));
 
         let announcer = Arc::new(crate::adapters::lifecycle::DeviceNameAnnouncer::new(
-            deps.network.clone(),
+            deps.network_ports.peers.clone(),
             deps.settings.clone(),
         ));
         let start_watcher = Arc::new(uc_app::usecases::StartClipboardWatcher::from_port(
@@ -266,7 +266,7 @@ impl AppRuntime {
         ));
         let transport_port: Arc<Mutex<dyn SpaceAccessTransportPort>> =
             Arc::new(Mutex::new(SpaceAccessNetworkAdapter::new(
-                deps.network.clone(),
+                deps.network_ports.pairing.clone(),
                 setup_ports.space_access_orchestrator.context(),
             )));
         let proof_port: Arc<dyn uc_core::ports::space::ProofPort> = Arc::new(
@@ -292,7 +292,7 @@ impl AppRuntime {
             setup_ports.discovery_port.clone(),
             deps.network_control.clone(),
             crypto_factory,
-            deps.network.clone(),
+            deps.network_ports.pairing.clone(),
             transport_port,
             proof_port,
             timer_port,
@@ -314,13 +314,13 @@ impl AppRuntime {
 }
 
 struct NetworkDiscoveryPort {
-    network: Arc<dyn NetworkPort>,
+    peers: Arc<dyn PeerDirectoryPort>,
 }
 
 #[async_trait]
 impl DiscoveryPort for NetworkDiscoveryPort {
     async fn list_discovered_peers(&self) -> anyhow::Result<Vec<DiscoveredPeer>> {
-        self.network.get_discovered_peers().await
+        self.peers.get_discovered_peers().await
     }
 }
 
@@ -483,7 +483,7 @@ impl<'a> UseCases<'a> {
     ///
     /// 获取本地 Peer ID。
     pub fn get_local_peer_id(&self) -> uc_app::usecases::GetLocalPeerId {
-        uc_app::usecases::GetLocalPeerId::new(self.runtime.deps.network.clone())
+        uc_app::usecases::GetLocalPeerId::new(self.runtime.deps.network_ports.peers.clone())
     }
 
     /// Get local device info (peer id + device name).
@@ -491,7 +491,7 @@ impl<'a> UseCases<'a> {
     /// 获取本地设备信息（Peer ID + 设备名称）。
     pub fn get_local_device_info(&self) -> uc_app::usecases::GetLocalDeviceInfo {
         uc_app::usecases::GetLocalDeviceInfo::new(
-            self.runtime.deps.network.clone(),
+            self.runtime.deps.network_ports.peers.clone(),
             self.runtime.deps.settings.clone(),
         )
     }
@@ -500,21 +500,21 @@ impl<'a> UseCases<'a> {
     ///
     /// 通过网络端口广播本地设备名称。
     pub fn announce_device_name(&self) -> uc_app::usecases::AnnounceDeviceName {
-        uc_app::usecases::AnnounceDeviceName::new(self.runtime.deps.network.clone())
+        uc_app::usecases::AnnounceDeviceName::new(self.runtime.deps.network_ports.peers.clone())
     }
 
     /// List discovered peers from network.
     ///
     /// 列出已发现的对等端。
     pub fn list_discovered_peers(&self) -> uc_app::usecases::ListDiscoveredPeers {
-        uc_app::usecases::ListDiscoveredPeers::new(self.runtime.deps.network.clone())
+        uc_app::usecases::ListDiscoveredPeers::new(self.runtime.deps.network_ports.peers.clone())
     }
 
     /// List connected peers from network.
     ///
     /// 列出已连接的对等端。
     pub fn list_connected_peers(&self) -> uc_app::usecases::ListConnectedPeers {
-        uc_app::usecases::ListConnectedPeers::new(self.runtime.deps.network.clone())
+        uc_app::usecases::ListConnectedPeers::new(self.runtime.deps.network_ports.peers.clone())
     }
 
     /// Update pairing state for a peer.
@@ -529,7 +529,7 @@ impl<'a> UseCases<'a> {
     /// 取消配对并从存储中删除。
     pub fn unpair_device(&self) -> uc_app::usecases::UnpairDevice {
         uc_app::usecases::UnpairDevice::new(
-            self.runtime.deps.network.clone(),
+            self.runtime.deps.network_ports.pairing.clone(),
             self.runtime.deps.paired_device_repo.clone(),
         )
     }
@@ -736,7 +736,8 @@ impl<'a> UseCases<'a> {
     ) -> uc_app::usecases::clipboard::sync_outbound::SyncOutboundClipboardUseCase {
         uc_app::usecases::clipboard::sync_outbound::SyncOutboundClipboardUseCase::new(
             self.runtime.deps.system_clipboard.clone(),
-            self.runtime.deps.network.clone(),
+            self.runtime.deps.network_ports.clipboard.clone(),
+            self.runtime.deps.network_ports.peers.clone(),
             self.runtime.deps.encryption_session.clone(),
             self.runtime.deps.encryption.clone(),
             self.runtime.deps.device_identity.clone(),
@@ -757,7 +758,7 @@ impl<'a> UseCases<'a> {
     /// 获取 AppLifecycleCoordinator 用例以编排剪贴板监视器、网络启动和会话就绪。
     pub fn app_lifecycle_coordinator(&self) -> uc_app::usecases::AppLifecycleCoordinator {
         let announcer = Arc::new(crate::adapters::lifecycle::DeviceNameAnnouncer::new(
-            self.runtime.deps.network.clone(),
+            self.runtime.deps.network_ports.peers.clone(),
             self.runtime.deps.settings.clone(),
         ));
         uc_app::usecases::AppLifecycleCoordinator::from_deps(
@@ -1357,7 +1358,7 @@ mod tests {
     }
 
     #[async_trait]
-    impl NetworkPort for NoopPort {
+    impl ClipboardTransportPort for NoopPort {
         async fn send_clipboard(
             &self,
             _peer_id: &str,
@@ -1377,7 +1378,10 @@ mod tests {
             let (_tx, rx) = mpsc::channel(1);
             Ok(rx)
         }
+    }
 
+    #[async_trait]
+    impl PeerDirectoryPort for NoopPort {
         async fn get_discovered_peers(
             &self,
         ) -> anyhow::Result<Vec<uc_core::network::DiscoveredPeer>> {
@@ -1397,7 +1401,10 @@ mod tests {
         async fn announce_device_name(&self, _device_name: String) -> anyhow::Result<()> {
             Ok(())
         }
+    }
 
+    #[async_trait]
+    impl PairingTransportPort for NoopPort {
         async fn open_pairing_session(
             &self,
             _peer_id: String,
@@ -1425,7 +1432,10 @@ mod tests {
         async fn unpair_device(&self, _peer_id: String) -> anyhow::Result<()> {
             Ok(())
         }
+    }
 
+    #[async_trait]
+    impl NetworkEventPort for NoopPort {
         async fn subscribe_events(
             &self,
         ) -> anyhow::Result<tokio::sync::mpsc::Receiver<uc_core::network::NetworkEvent>> {
@@ -1613,6 +1623,16 @@ mod tests {
         }
     }
 
+    fn noop_network_ports() -> Arc<uc_app::deps::NetworkPorts> {
+        let network = Arc::new(NoopPort);
+        Arc::new(uc_app::deps::NetworkPorts {
+            clipboard: network.clone(),
+            peers: network.clone(),
+            pairing: network.clone(),
+            events: network,
+        })
+    }
+
     #[tokio::test]
     async fn runtime_consumes_origin() {
         let save_calls = Arc::new(AtomicUsize::new(0));
@@ -1663,7 +1683,7 @@ mod tests {
             device_repo: Arc::new(NoopPort),
             device_identity: Arc::new(MockDeviceIdentity),
             paired_device_repo: Arc::new(NoopPort),
-            network: Arc::new(NoopPort),
+            network_ports: noop_network_ports(),
             network_control: Arc::new(NoopPort),
             setup_status: Arc::new(NoopPort),
             blob_store: Arc::new(NoopPort),

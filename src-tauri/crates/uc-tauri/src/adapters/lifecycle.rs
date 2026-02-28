@@ -11,7 +11,7 @@ use uc_app::usecases::{
     DeviceAnnouncer, LifecycleEvent, LifecycleEventEmitter, LifecycleState, LifecycleStatusPort,
     SessionReadyEmitter,
 };
-use uc_core::ports::{NetworkPort, SettingsPort};
+use uc_core::ports::{PeerDirectoryPort, SettingsPort};
 
 use std::sync::Arc;
 
@@ -132,12 +132,12 @@ impl<R: Runtime> SessionReadyEmitter for TauriSessionReadyEmitter<R> {
 /// Used by `AppLifecycleCoordinator` to broadcast the device name after
 /// the network runtime has started.
 pub struct DeviceNameAnnouncer {
-    network: Arc<dyn NetworkPort>,
+    network: Arc<dyn PeerDirectoryPort>,
     settings: Arc<dyn SettingsPort>,
 }
 
 impl DeviceNameAnnouncer {
-    pub fn new(network: Arc<dyn NetworkPort>, settings: Arc<dyn SettingsPort>) -> Self {
+    pub fn new(network: Arc<dyn PeerDirectoryPort>, settings: Arc<dyn SettingsPort>) -> Self {
         Self { network, settings }
     }
 }

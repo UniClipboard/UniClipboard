@@ -45,6 +45,7 @@ use crate::events::{
     forward_clipboard_event, ClipboardEvent, P2PPairingVerificationEvent, P2PPeerConnectionEvent,
     P2PPeerDiscoveryEvent, P2PPeerNameUpdatedEvent,
 };
+use uc_app::deps::NetworkPorts;
 use uc_app::usecases::clipboard::sync_inbound::{InboundApplyOutcome, SyncInboundClipboardUseCase};
 use uc_app::usecases::space_access::{
     HmacProofAdapter, SpaceAccessCompletedEvent, SpaceAccessContext, SpaceAccessEventPort,
@@ -340,7 +341,7 @@ struct PlatformLayer {
     autostart: Arc<dyn AutostartPort>,
 
     // Network operations / 网络操作（占位符）
-    network: Arc<dyn NetworkPort>,
+    network_ports: Arc<NetworkPorts>,
 
     // libp2p network adapter (concrete)
     libp2p_network: Arc<Libp2pNetworkAdapter>,
@@ -600,7 +601,12 @@ fn create_platform_layer(
         })?,
     );
     info!(peer_id = %libp2p_network.local_peer_id(), "Loaded libp2p identity");
-    let network: Arc<dyn NetworkPort> = libp2p_network.clone();
+    let network_ports = Arc::new(NetworkPorts {
+        clipboard: libp2p_network.clone(),
+        peers: libp2p_network.clone(),
+        pairing: libp2p_network.clone(),
+        events: libp2p_network.clone(),
+    });
     let encryption_session: Arc<dyn EncryptionSessionPort> =
         Arc::new(InMemoryEncryptionSessionPort::new());
 
@@ -636,7 +642,7 @@ fn create_platform_layer(
         secure_storage,
         ui,
         autostart,
-        network,
+        network_ports,
         libp2p_network,
         device_identity,
         representation_normalizer,
@@ -1002,7 +1008,7 @@ pub fn wire_dependencies_with_identity_store(
         paired_device_repo: infra.paired_device_repo,
 
         // Network dependencies / 网络依赖
-        network: platform.network,
+        network_ports: platform.network_ports,
         network_control: platform.libp2p_network.clone(),
 
         // Setup status dependencies / 设置状态依赖
@@ -1079,12 +1085,14 @@ pub fn start_background_tasks<R: Runtime>(
     let clock = deps.clock.clone();
     let thumbnail_repo = deps.thumbnail_repo.clone();
     let thumbnail_generator = deps.thumbnail_generator.clone();
-    let pairing_network = deps.network.clone();
-    let clipboard_network = deps.network.clone();
+    let pairing_transport = deps.network_ports.pairing.clone();
+    let pairing_events = deps.network_ports.events.clone();
+    let peer_directory = deps.network_ports.peers.clone();
+    let clipboard_network = deps.network_ports.clipboard.clone();
     let sync_inbound_usecase = new_sync_inbound_clipboard_usecase(deps);
     let space_access_runtime_ports = RuntimeSpaceAccessPorts {
         transport: Arc::new(tokio::sync::Mutex::new(SpaceAccessNetworkAdapter::new(
-            pairing_network.clone(),
+            pairing_transport.clone(),
             pairing_space_access_orchestrator.context(),
         ))),
         proof: Arc::new(HmacProofAdapter::new_with_encryption_session(
@@ -1265,7 +1273,7 @@ pub fn start_background_tasks<R: Runtime>(
     );
 
     async_runtime::spawn(async move {
-        let event_rx = match pairing_network.subscribe_events().await {
+        let event_rx = match pairing_events.subscribe_events().await {
             Ok(rx) => rx,
             Err(err) => {
                 warn!(error = %err, "Failed to subscribe to network events for pairing");
@@ -1273,7 +1281,7 @@ pub fn start_background_tasks<R: Runtime>(
             }
         };
 
-        let action_network = pairing_network.clone();
+        let action_network = pairing_transport.clone();
         let action_app_handle = pairing_app_handle.clone();
         let action_orchestrator = pairing_orchestrator.clone();
         let action_space_access_orchestrator = pairing_space_access_orchestrator.clone();
@@ -1296,7 +1304,8 @@ pub fn start_background_tasks<R: Runtime>(
             event_rx,
             pairing_orchestrator,
             pairing_app_handle,
-            pairing_network.clone(),
+            pairing_transport.clone(),
+            peer_directory.clone(),
             pairing_space_access_orchestrator,
             space_access_runtime_ports,
         )
@@ -1406,7 +1415,6 @@ struct RuntimeSpaceAccessPorts {
 
 async fn dispatch_space_access_busy_event(
     orchestrator: &SpaceAccessOrchestrator,
-    network: &dyn NetworkPort,
     runtime_ports: &RuntimeSpaceAccessPorts,
     event: SpaceAccessEvent,
     session_id: &str,
@@ -1420,7 +1428,6 @@ async fn dispatch_space_access_busy_event(
         .dispatch(
             &mut uc_app::usecases::space_access::SpaceAccessExecutor {
                 crypto: &noop_crypto,
-                net: network,
                 transport: &mut *transport,
                 proof: runtime_ports.proof.as_ref(),
                 timer: &mut *timer,
@@ -1683,7 +1690,7 @@ pub async fn resolve_pairing_config(settings: Arc<dyn SettingsPort>) -> PairingC
 }
 
 async fn resolve_device_name_for_peer(
-    network: &Arc<dyn NetworkPort>,
+    network: &Arc<dyn PeerDirectoryPort>,
     peer_id: &str,
 ) -> Option<String> {
     match network.get_discovered_peers().await {
@@ -1702,7 +1709,8 @@ async fn run_pairing_event_loop<R: Runtime>(
     mut event_rx: mpsc::Receiver<NetworkEvent>,
     orchestrator: Arc<PairingOrchestrator>,
     app_handle: Option<AppHandle<R>>,
-    network: Arc<dyn NetworkPort>,
+    pairing_transport: Arc<dyn PairingTransportPort>,
+    peer_directory: Arc<dyn PeerDirectoryPort>,
     space_access_orchestrator: Arc<SpaceAccessOrchestrator>,
     space_access_runtime_ports: RuntimeSpaceAccessPorts,
 ) {
@@ -1712,7 +1720,7 @@ async fn run_pairing_event_loop<R: Runtime>(
                 handle_pairing_message(
                     orchestrator.as_ref(),
                     space_access_orchestrator.as_ref(),
-                    network.as_ref(),
+                    pairing_transport.as_ref(),
                     &space_access_runtime_ports,
                     peer_id,
                     message,
@@ -1756,7 +1764,7 @@ async fn run_pairing_event_loop<R: Runtime>(
                     peer_id = %peer_id,
                     "Pairing loop received peer lost event"
                 );
-                let device_name = resolve_device_name_for_peer(&network, &peer_id).await;
+                let device_name = resolve_device_name_for_peer(&peer_directory, &peer_id).await;
                 if let Some(app) = app_handle.as_ref() {
                     let payload = P2PPeerDiscoveryEvent {
                         peer_id,
@@ -1772,7 +1780,7 @@ async fn run_pairing_event_loop<R: Runtime>(
             NetworkEvent::PeerReady { ref peer_id }
             | NetworkEvent::PeerNotReady { ref peer_id } => {
                 let connected = matches!(event, NetworkEvent::PeerReady { .. });
-                let device_name = resolve_device_name_for_peer(&network, peer_id).await;
+                let device_name = resolve_device_name_for_peer(&peer_directory, peer_id).await;
                 if let Some(app) = app_handle.as_ref() {
                     let payload = P2PPeerConnectionEvent {
                         peer_id: peer_id.clone(),
@@ -1797,7 +1805,7 @@ async fn run_pairing_event_loop<R: Runtime>(
                 }
             }
             NetworkEvent::PeerDisconnected(peer_id) => {
-                let device_name = resolve_device_name_for_peer(&network, &peer_id).await;
+                let device_name = resolve_device_name_for_peer(&peer_directory, &peer_id).await;
                 if let Some(app) = app_handle.as_ref() {
                     let payload = P2PPeerConnectionEvent {
                         peer_id,
@@ -1831,7 +1839,7 @@ async fn run_pairing_event_loop<R: Runtime>(
 async fn handle_pairing_message<R: Runtime>(
     orchestrator: &PairingOrchestrator,
     space_access_orchestrator: &SpaceAccessOrchestrator,
-    network: &dyn NetworkPort,
+    _pairing_transport: &dyn PairingTransportPort,
     space_access_runtime_ports: &RuntimeSpaceAccessPorts,
     peer_id: String,
     message: PairingMessage,
@@ -1981,7 +1989,6 @@ async fn handle_pairing_message<R: Runtime>(
                                 ) {
                                     if let Err(err) = dispatch_space_access_busy_event(
                                         space_access_orchestrator,
-                                        network,
                                         space_access_runtime_ports,
                                         SpaceAccessEvent::OfferAccepted {
                                             pairing_session_id: session_id.clone(),
@@ -2082,7 +2089,6 @@ async fn handle_pairing_message<R: Runtime>(
 
                         if let Err(err) = dispatch_space_access_busy_event(
                             space_access_orchestrator,
-                            network,
                             space_access_runtime_ports,
                             space_access_event,
                             &session_id,
@@ -2135,7 +2141,6 @@ async fn handle_pairing_message<R: Runtime>(
 
                         if let Err(err) = dispatch_space_access_busy_event(
                             space_access_orchestrator,
-                            network,
                             space_access_runtime_ports,
                             event,
                             &session_id,
@@ -2189,7 +2194,7 @@ async fn handle_pairing_message<R: Runtime>(
 
 async fn run_pairing_action_loop<R: Runtime>(
     mut action_rx: mpsc::Receiver<PairingAction>,
-    network: Arc<dyn NetworkPort>,
+    network: Arc<dyn PairingTransportPort>,
     app_handle: Option<AppHandle<R>>,
     orchestrator: Arc<PairingOrchestrator>,
     space_access_orchestrator: Arc<SpaceAccessOrchestrator>,
@@ -2365,7 +2370,6 @@ async fn run_pairing_action_loop<R: Runtime>(
                             let mut executor =
                                 uc_app::usecases::space_access::SpaceAccessExecutor {
                                     crypto: &sponsor_crypto,
-                                    net: network.as_ref(),
                                     transport: &mut network_transport,
                                     proof: space_access_runtime_ports.proof.as_ref(),
                                     timer: &mut *timer_guard,
@@ -2456,7 +2460,10 @@ mod tests {
     use uc_core::network::paired_device::{PairedDevice, PairingState};
     use uc_core::network::protocol::{PairingChallenge, PairingRequest};
     use uc_core::network::{ConnectedPeer, DiscoveredPeer, PairingMessage};
-    use uc_core::ports::{EncryptionSessionPort, NetworkPort};
+    use uc_core::ports::{
+        ClipboardTransportPort, EncryptionSessionPort, NetworkEventPort, PairingTransportPort,
+        PeerDirectoryPort,
+    };
     use uc_core::security::model::{EncryptionError, MasterKey};
     use uc_platform::test_support::with_uc_profile;
 
@@ -2562,10 +2569,8 @@ mod tests {
         let mut timer = NoopSpaceAccessTimer;
         let mut store = SuccessSpaceAccessPersistence;
         let crypto = SuccessSpaceAccessCrypto;
-        let network = NoopNetwork;
         let mut executor = uc_app::usecases::space_access::SpaceAccessExecutor {
             crypto: &crypto,
-            net: &network,
             transport: &mut transport,
             proof: &proof,
             timer: &mut timer,
@@ -2612,10 +2617,8 @@ mod tests {
         let mut timer = NoopSpaceAccessTimer;
         let mut store = SuccessSpaceAccessPersistence;
         let crypto = SuccessSpaceAccessCrypto;
-        let network = NoopNetwork;
         let mut executor = uc_app::usecases::space_access::SpaceAccessExecutor {
             crypto: &crypto,
-            net: &network,
             transport: &mut transport,
             proof: &proof,
             timer: &mut timer,
@@ -2663,7 +2666,7 @@ mod tests {
     }
 
     #[async_trait]
-    impl NetworkPort for NoopNetwork {
+    impl ClipboardTransportPort for NoopNetwork {
         async fn send_clipboard(
             &self,
             _peer_id: &str,
@@ -2683,7 +2686,10 @@ mod tests {
             let (_tx, rx) = tokio::sync::mpsc::channel(1);
             Ok(rx)
         }
+    }
 
+    #[async_trait]
+    impl PeerDirectoryPort for NoopNetwork {
         async fn get_discovered_peers(&self) -> anyhow::Result<Vec<DiscoveredPeer>> {
             Ok(vec![])
         }
@@ -2699,7 +2705,10 @@ mod tests {
         async fn announce_device_name(&self, _device_name: String) -> anyhow::Result<()> {
             Ok(())
         }
+    }
 
+    #[async_trait]
+    impl PairingTransportPort for NoopNetwork {
         async fn open_pairing_session(
             &self,
             _peer_id: String,
@@ -2727,7 +2736,10 @@ mod tests {
         async fn unpair_device(&self, _peer_id: String) -> anyhow::Result<()> {
             Ok(())
         }
+    }
 
+    #[async_trait]
+    impl NetworkEventPort for NoopNetwork {
         async fn subscribe_events(
             &self,
         ) -> anyhow::Result<tokio::sync::mpsc::Receiver<NetworkEvent>> {
@@ -2737,7 +2749,7 @@ mod tests {
     }
 
     #[async_trait]
-    impl NetworkPort for SendFailNetwork {
+    impl ClipboardTransportPort for SendFailNetwork {
         async fn send_clipboard(
             &self,
             _peer_id: &str,
@@ -2757,7 +2769,10 @@ mod tests {
             let (_tx, rx) = tokio::sync::mpsc::channel(1);
             Ok(rx)
         }
+    }
 
+    #[async_trait]
+    impl PeerDirectoryPort for SendFailNetwork {
         async fn get_discovered_peers(&self) -> anyhow::Result<Vec<DiscoveredPeer>> {
             Ok(vec![])
         }
@@ -2773,7 +2788,10 @@ mod tests {
         async fn announce_device_name(&self, _device_name: String) -> anyhow::Result<()> {
             Ok(())
         }
+    }
 
+    #[async_trait]
+    impl PairingTransportPort for SendFailNetwork {
         async fn open_pairing_session(
             &self,
             _peer_id: String,
@@ -2802,7 +2820,10 @@ mod tests {
         async fn unpair_device(&self, _peer_id: String) -> anyhow::Result<()> {
             Ok(())
         }
+    }
 
+    #[async_trait]
+    impl NetworkEventPort for SendFailNetwork {
         async fn subscribe_events(
             &self,
         ) -> anyhow::Result<tokio::sync::mpsc::Receiver<NetworkEvent>> {
@@ -2812,7 +2833,7 @@ mod tests {
     }
 
     #[async_trait]
-    impl NetworkPort for CloseRecordingNetwork {
+    impl ClipboardTransportPort for CloseRecordingNetwork {
         async fn send_clipboard(
             &self,
             _peer_id: &str,
@@ -2832,7 +2853,10 @@ mod tests {
             let (_tx, rx) = tokio::sync::mpsc::channel(1);
             Ok(rx)
         }
+    }
 
+    #[async_trait]
+    impl PeerDirectoryPort for CloseRecordingNetwork {
         async fn get_discovered_peers(&self) -> anyhow::Result<Vec<DiscoveredPeer>> {
             Ok(vec![])
         }
@@ -2848,7 +2872,10 @@ mod tests {
         async fn announce_device_name(&self, _device_name: String) -> anyhow::Result<()> {
             Ok(())
         }
+    }
 
+    #[async_trait]
+    impl PairingTransportPort for CloseRecordingNetwork {
         async fn open_pairing_session(
             &self,
             _peer_id: String,
@@ -2877,7 +2904,10 @@ mod tests {
         async fn unpair_device(&self, _peer_id: String) -> anyhow::Result<()> {
             Ok(())
         }
+    }
 
+    #[async_trait]
+    impl NetworkEventPort for CloseRecordingNetwork {
         async fn subscribe_events(
             &self,
         ) -> anyhow::Result<tokio::sync::mpsc::Receiver<NetworkEvent>> {
@@ -2887,7 +2917,7 @@ mod tests {
     }
 
     #[async_trait]
-    impl NetworkPort for OfferRecordingNetwork {
+    impl ClipboardTransportPort for OfferRecordingNetwork {
         async fn send_clipboard(
             &self,
             _peer_id: &str,
@@ -2907,7 +2937,10 @@ mod tests {
             let (_tx, rx) = tokio::sync::mpsc::channel(1);
             Ok(rx)
         }
+    }
 
+    #[async_trait]
+    impl PeerDirectoryPort for OfferRecordingNetwork {
         async fn get_discovered_peers(&self) -> anyhow::Result<Vec<DiscoveredPeer>> {
             Ok(vec![])
         }
@@ -2923,7 +2956,10 @@ mod tests {
         async fn announce_device_name(&self, _device_name: String) -> anyhow::Result<()> {
             Ok(())
         }
+    }
 
+    #[async_trait]
+    impl PairingTransportPort for OfferRecordingNetwork {
         async fn open_pairing_session(
             &self,
             _peer_id: String,
@@ -2955,7 +2991,10 @@ mod tests {
         async fn unpair_device(&self, _peer_id: String) -> anyhow::Result<()> {
             Ok(())
         }
+    }
 
+    #[async_trait]
+    impl NetworkEventPort for OfferRecordingNetwork {
         async fn subscribe_events(
             &self,
         ) -> anyhow::Result<tokio::sync::mpsc::Receiver<NetworkEvent>> {
@@ -3177,10 +3216,13 @@ mod tests {
         }
     }
 
-    fn test_runtime_space_access_ports(
-        network: Arc<dyn NetworkPort>,
+    fn test_runtime_space_access_ports<N>(
+        network: Arc<N>,
         space_access_orchestrator: Arc<SpaceAccessOrchestrator>,
-    ) -> RuntimeSpaceAccessPorts {
+    ) -> RuntimeSpaceAccessPorts
+    where
+        N: PairingTransportPort + Send + Sync + 'static,
+    {
         test_runtime_space_access_ports_with_proof(
             network,
             space_access_orchestrator,
@@ -3188,14 +3230,17 @@ mod tests {
         )
     }
 
-    fn test_runtime_space_access_ports_with_proof(
-        network: Arc<dyn NetworkPort>,
+    fn test_runtime_space_access_ports_with_proof<N>(
+        network: Arc<N>,
         space_access_orchestrator: Arc<SpaceAccessOrchestrator>,
         proof: Arc<dyn uc_core::ports::space::ProofPort>,
-    ) -> RuntimeSpaceAccessPorts {
+    ) -> RuntimeSpaceAccessPorts
+    where
+        N: PairingTransportPort + Send + Sync + 'static,
+    {
         RuntimeSpaceAccessPorts {
             transport: Arc::new(tokio::sync::Mutex::new(SpaceAccessNetworkAdapter::new(
-                network,
+                network as Arc<dyn PairingTransportPort>,
                 space_access_orchestrator.context(),
             ))),
             proof,
@@ -3210,10 +3255,8 @@ mod tests {
         let mut timer = NoopSpaceAccessTimer;
         let mut store = SuccessSpaceAccessPersistence;
         let crypto = SuccessSpaceAccessCrypto;
-        let network = NoopNetwork;
         let mut executor = uc_app::usecases::space_access::SpaceAccessExecutor {
             crypto: &crypto,
-            net: &network,
             transport: &mut transport,
             proof: &proof,
             timer: &mut timer,
@@ -3251,7 +3294,7 @@ mod tests {
             vec![9; 32],
         );
         let orchestrator = Arc::new(orchestrator);
-        let network: Arc<dyn NetworkPort> = Arc::new(NoopNetwork);
+        let network = Arc::new(NoopNetwork);
         let space_access_orchestrator = Arc::new(SpaceAccessOrchestrator::new());
         let runtime_ports =
             test_runtime_space_access_ports(network.clone(), space_access_orchestrator.clone());
@@ -3260,7 +3303,8 @@ mod tests {
             event_rx,
             orchestrator.clone(),
             None,
-            network,
+            network.clone() as Arc<dyn PairingTransportPort>,
+            network.clone() as Arc<dyn PeerDirectoryPort>,
             space_access_orchestrator,
             runtime_ports,
         ));
@@ -3301,7 +3345,7 @@ mod tests {
         );
         let orchestrator = Arc::new(orchestrator);
         let space_access_orchestrator = Arc::new(SpaceAccessOrchestrator::new());
-        let network: Arc<dyn NetworkPort> = Arc::new(NoopNetwork);
+        let network = Arc::new(NoopNetwork);
         let runtime_ports =
             test_runtime_space_access_ports(network.clone(), space_access_orchestrator.clone());
 
@@ -3348,7 +3392,7 @@ mod tests {
         );
         let orchestrator = Arc::new(orchestrator);
         let space_access_orchestrator = Arc::new(SpaceAccessOrchestrator::new());
-        let network: Arc<dyn NetworkPort> = Arc::new(NoopNetwork);
+        let network = Arc::new(NoopNetwork);
         let runtime_ports =
             test_runtime_space_access_ports(network.clone(), space_access_orchestrator.clone());
 
@@ -3396,7 +3440,7 @@ mod tests {
         );
         let orchestrator = Arc::new(orchestrator);
         let space_access_orchestrator = Arc::new(SpaceAccessOrchestrator::new());
-        let network: Arc<dyn NetworkPort> = Arc::new(NoopNetwork);
+        let network = Arc::new(NoopNetwork);
         let runtime_ports =
             test_runtime_space_access_ports(network.clone(), space_access_orchestrator.clone());
         seed_waiting_joiner_proof_state(
@@ -3481,7 +3525,7 @@ mod tests {
         );
         let orchestrator = Arc::new(orchestrator);
         let space_access_orchestrator = Arc::new(SpaceAccessOrchestrator::new());
-        let network: Arc<dyn NetworkPort> = Arc::new(NoopNetwork);
+        let network = Arc::new(NoopNetwork);
         let master_key = MasterKey::from_bytes(&[4; 32]).expect("master key");
         let proof_port: Arc<dyn uc_core::ports::space::ProofPort> =
             Arc::new(HmacProofAdapter::new_with_encryption_session(Arc::new(
@@ -3565,7 +3609,7 @@ mod tests {
         );
         let orchestrator = Arc::new(orchestrator);
         let space_access_orchestrator = Arc::new(SpaceAccessOrchestrator::new());
-        let network: Arc<dyn NetworkPort> = Arc::new(NoopNetwork);
+        let network = Arc::new(NoopNetwork);
         let runtime_ports =
             test_runtime_space_access_ports(network.clone(), space_access_orchestrator.clone());
         seed_waiting_decision_state(
@@ -3621,7 +3665,7 @@ mod tests {
         );
         let orchestrator = Arc::new(orchestrator);
         let space_access_orchestrator = Arc::new(SpaceAccessOrchestrator::new());
-        let network: Arc<dyn NetworkPort> = Arc::new(NoopNetwork);
+        let network = Arc::new(NoopNetwork);
         let runtime_ports =
             test_runtime_space_access_ports(network.clone(), space_access_orchestrator.clone());
         seed_waiting_decision_state(
@@ -3666,7 +3710,7 @@ mod tests {
     }
 
     #[async_trait]
-    impl NetworkPort for TestNetwork {
+    impl ClipboardTransportPort for TestNetwork {
         async fn send_clipboard(
             &self,
             _peer_id: &str,
@@ -3686,7 +3730,10 @@ mod tests {
             let (_tx, rx) = tokio::sync::mpsc::channel(1);
             Ok(rx)
         }
+    }
 
+    #[async_trait]
+    impl PeerDirectoryPort for TestNetwork {
         async fn get_discovered_peers(&self) -> anyhow::Result<Vec<DiscoveredPeer>> {
             Ok(self.discovered.clone())
         }
@@ -3702,7 +3749,10 @@ mod tests {
         async fn announce_device_name(&self, _device_name: String) -> anyhow::Result<()> {
             Ok(())
         }
+    }
 
+    #[async_trait]
+    impl PairingTransportPort for TestNetwork {
         async fn open_pairing_session(
             &self,
             _peer_id: String,
@@ -3730,7 +3780,10 @@ mod tests {
         async fn unpair_device(&self, _peer_id: String) -> anyhow::Result<()> {
             Ok(())
         }
+    }
 
+    #[async_trait]
+    impl NetworkEventPort for TestNetwork {
         async fn subscribe_events(
             &self,
         ) -> anyhow::Result<tokio::sync::mpsc::Receiver<NetworkEvent>> {
@@ -3760,7 +3813,7 @@ mod tests {
             vec![9; 32],
         );
         let orchestrator = Arc::new(orchestrator);
-        let network: Arc<dyn NetworkPort> = Arc::new(TestNetwork {
+        let network = Arc::new(TestNetwork {
             discovered: vec![DiscoveredPeer {
                 peer_id: "peer-1".to_string(),
                 device_name: Some("Desk".to_string()),
@@ -3779,7 +3832,8 @@ mod tests {
             event_rx,
             orchestrator,
             Some(app_handle.clone()),
-            network,
+            network.clone() as Arc<dyn PairingTransportPort>,
+            network.clone() as Arc<dyn PeerDirectoryPort>,
             space_access_orchestrator,
             runtime_ports,
         ));
@@ -3821,7 +3875,7 @@ mod tests {
             vec![9; 32],
         );
         let orchestrator = Arc::new(orchestrator);
-        let network: Arc<dyn NetworkPort> = Arc::new(TestNetwork {
+        let network = Arc::new(TestNetwork {
             discovered: vec![DiscoveredPeer {
                 peer_id: "peer-1".to_string(),
                 device_name: Some("Desk".to_string()),
@@ -3840,7 +3894,8 @@ mod tests {
             event_rx,
             orchestrator,
             Some(app_handle.clone()),
-            network,
+            network.clone() as Arc<dyn PairingTransportPort>,
+            network.clone() as Arc<dyn PeerDirectoryPort>,
             space_access_orchestrator,
             runtime_ports,
         ));
@@ -4029,14 +4084,14 @@ mod tests {
             .expect("handle incoming request");
 
         let (action_tx, action_rx) = mpsc::channel(1);
-        let network: Arc<dyn NetworkPort> = Arc::new(NoopNetwork);
+        let network = Arc::new(NoopNetwork);
         let space_access_orchestrator = Arc::new(SpaceAccessOrchestrator::new());
         let key_slot_store = Arc::new(NoopKeySlotStore);
         let runtime_ports =
             test_runtime_space_access_ports(network.clone(), space_access_orchestrator.clone());
         let loop_handle = tokio::spawn(run_pairing_action_loop::<tauri::test::MockRuntime>(
             action_rx,
-            network,
+            network.clone() as Arc<dyn PairingTransportPort>,
             Some(app_handle.clone()),
             orchestrator.clone(),
             space_access_orchestrator,
@@ -4102,14 +4157,14 @@ mod tests {
             .expect("handle incoming request");
 
         let (action_tx, action_rx) = mpsc::channel(1);
-        let network: Arc<dyn NetworkPort> = Arc::new(NoopNetwork);
+        let network = Arc::new(NoopNetwork);
         let space_access_orchestrator = Arc::new(SpaceAccessOrchestrator::new());
         let key_slot_store = Arc::new(NoopKeySlotStore);
         let runtime_ports =
             test_runtime_space_access_ports(network.clone(), space_access_orchestrator.clone());
         let loop_handle = tokio::spawn(run_pairing_action_loop::<tauri::test::MockRuntime>(
             action_rx,
-            network,
+            network.clone() as Arc<dyn PairingTransportPort>,
             Some(app_handle.clone()),
             orchestrator.clone(),
             space_access_orchestrator,
@@ -4164,14 +4219,14 @@ mod tests {
         let orchestrator = Arc::new(orchestrator);
 
         let (action_tx, action_rx) = mpsc::channel(1);
-        let network: Arc<dyn NetworkPort> = Arc::new(NoopNetwork);
+        let network = Arc::new(NoopNetwork);
         let space_access_orchestrator = Arc::new(SpaceAccessOrchestrator::new());
         let key_slot_store = Arc::new(NoopKeySlotStore);
         let runtime_ports =
             test_runtime_space_access_ports(network.clone(), space_access_orchestrator.clone());
         let loop_handle = tokio::spawn(run_pairing_action_loop::<tauri::test::MockRuntime>(
             action_rx,
-            network,
+            network.clone() as Arc<dyn PairingTransportPort>,
             Some(app_handle.clone()),
             orchestrator.clone(),
             space_access_orchestrator,
@@ -4225,14 +4280,14 @@ mod tests {
         let space_access_orchestrator = Arc::new(SpaceAccessOrchestrator::new());
         let key_slot_store = Arc::new(NoopKeySlotStore);
         let send_called = Arc::new(AtomicUsize::new(0));
-        let network: Arc<dyn NetworkPort> = Arc::new(SendFailNetwork {
+        let network = Arc::new(SendFailNetwork {
             send_called: send_called.clone(),
         });
         let runtime_ports =
             test_runtime_space_access_ports(network.clone(), space_access_orchestrator.clone());
         let loop_handle = tokio::spawn(run_pairing_action_loop::<tauri::test::MockRuntime>(
             action_rx,
-            network,
+            network.clone() as Arc<dyn PairingTransportPort>,
             Some(app_handle.clone()),
             orchestrator.clone(),
             space_access_orchestrator,
@@ -4304,7 +4359,7 @@ mod tests {
         let (action_tx, action_rx) = mpsc::channel(4);
         let loop_handle = tokio::spawn(run_pairing_action_loop::<Wry>(
             action_rx,
-            network,
+            network.clone() as Arc<dyn PairingTransportPort>,
             None,
             orchestrator,
             space_access_orchestrator,
@@ -4382,7 +4437,7 @@ mod tests {
         let (action_tx, action_rx) = mpsc::channel(2);
         let loop_handle = tokio::spawn(run_pairing_action_loop::<Wry>(
             action_rx,
-            network,
+            network.clone() as Arc<dyn PairingTransportPort>,
             None,
             orchestrator,
             space_access_orchestrator,
@@ -4504,7 +4559,7 @@ mod tests {
                 let _ = &deps.device_repo;
                 let _ = &&deps.device_identity;
                 let _ = &deps.paired_device_repo;
-                let _ = &deps.network;
+                let _ = &deps.network_ports;
                 let _ = &deps.blob_store;
                 let _ = &deps.blob_repository;
                 let _ = &deps.blob_writer;
@@ -4670,7 +4725,7 @@ mod tests {
                     let _secure_storage: &Arc<dyn SecureStoragePort> = &layer.secure_storage;
                     let _ui: &Arc<dyn UiPort> = &layer.ui;
                     let _autostart: &Arc<dyn AutostartPort> = &layer.autostart;
-                    let _network: &Arc<dyn NetworkPort> = &layer.network;
+                    let _network_ports: &Arc<NetworkPorts> = &layer.network_ports;
                     let _device_identity: &Arc<dyn DeviceIdentityPort> = &layer.device_identity;
                     let _representation_normalizer: &Arc<
                         dyn ClipboardRepresentationNormalizerPort,

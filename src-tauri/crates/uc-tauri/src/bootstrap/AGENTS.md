@@ -26,7 +26,7 @@ It must not own business decisions.
 ## CONVENTIONS
 
 - Keep this directory as orchestration glue only.
-- For clipboard sync, subscribe via ports (for example `NetworkPort::subscribe_clipboard`) and hand off to `uc-app` use cases.
+- For clipboard sync, subscribe via focused ports (for example `ClipboardTransportPort::subscribe_clipboard`) and hand off to `uc-app` use cases.
 - Do not parse domain policy in bootstrap. Domain decisions live in `uc-app` and `uc-core`.
 - Do not perform direct repository mutations from bootstrap loops.
 - Keep usecase constructor wiring in sync with `uc-app` signatures; when constructor params change, update bootstrap accessor wiring immediately.

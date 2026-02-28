@@ -24,6 +24,10 @@ impl SpaceAccessNetworkAdapter {
 
 #[async_trait::async_trait]
 impl SpaceAccessTransportPort for SpaceAccessNetworkAdapter {
+    /// Uses `PairingMessage::Busy` as a temporary envelope in `send_pairing_on_session` for
+    /// space-access protocol messages, storing JSON in `PairingBusy.reason` with shape
+    /// `{"kind":"space_access_offer|space_access_proof|space_access_result", ...}`.
+    /// TODO: replace this with a dedicated `PairingMessage::SpaceAccess` variant.
     async fn send_offer(&mut self, session_id: &SessionId) -> anyhow::Result<()> {
         let offer = {
             let context = self.context.lock().await;

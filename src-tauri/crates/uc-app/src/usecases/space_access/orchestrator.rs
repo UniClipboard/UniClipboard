@@ -427,15 +427,11 @@ mod tests {
     use super::*;
     use async_trait::async_trait;
     use chrono::{Duration, Utc};
-    use tokio::sync::mpsc;
     use tokio::time::{timeout, Duration as TokioDuration};
     use uc_core::ids::{SessionId as CoreSessionId, SpaceId};
     use uc_core::network::SessionId as NetSessionId;
-    use uc_core::network::{
-        ClipboardMessage, ConnectedPeer, DiscoveredPeer, NetworkEvent, PairingMessage,
-    };
     use uc_core::ports::space::{CryptoPort, PersistencePort, ProofPort, SpaceAccessTransportPort};
-    use uc_core::ports::{NetworkPort, TimerPort};
+    use uc_core::ports::TimerPort;
     use uc_core::security::model::{
         EncryptedBlob, EncryptionAlgo, EncryptionFormatVersion, KdfParams, KeyScope, KeySlot,
         KeySlotVersion, MasterKey, WrappedMasterKey,
@@ -493,7 +489,6 @@ mod tests {
     #[derive(Default)]
     struct AccessTestHarness {
         crypto: MockCrypto,
-        net: NoopNetwork,
         transport: MockTransport,
         proof: MockProof,
         timer: MockTimer,
@@ -504,7 +499,6 @@ mod tests {
         fn executor(&mut self) -> SpaceAccessExecutor<'_> {
             SpaceAccessExecutor {
                 crypto: &self.crypto,
-                net: &self.net,
                 transport: &mut self.transport,
                 proof: &self.proof,
                 timer: &mut self.timer,
@@ -1046,78 +1040,6 @@ mod tests {
             self.sponsor_access
                 .push((space_id.clone(), peer_id.to_string()));
             Ok(())
-        }
-    }
-
-    #[derive(Default)]
-    struct NoopNetwork;
-
-    #[async_trait]
-    impl NetworkPort for NoopNetwork {
-        async fn send_clipboard(
-            &self,
-            _peer_id: &str,
-            _encrypted_data: Vec<u8>,
-        ) -> anyhow::Result<()> {
-            Ok(())
-        }
-
-        async fn broadcast_clipboard(&self, _encrypted_data: Vec<u8>) -> anyhow::Result<()> {
-            Ok(())
-        }
-
-        async fn subscribe_clipboard(&self) -> anyhow::Result<mpsc::Receiver<ClipboardMessage>> {
-            let (_tx, rx) = mpsc::channel(1);
-            Ok(rx)
-        }
-
-        async fn get_discovered_peers(&self) -> anyhow::Result<Vec<DiscoveredPeer>> {
-            Ok(Vec::new())
-        }
-
-        async fn get_connected_peers(&self) -> anyhow::Result<Vec<ConnectedPeer>> {
-            Ok(Vec::new())
-        }
-
-        fn local_peer_id(&self) -> String {
-            "local-peer".into()
-        }
-
-        async fn announce_device_name(&self, _device_name: String) -> anyhow::Result<()> {
-            Ok(())
-        }
-
-        async fn open_pairing_session(
-            &self,
-            _peer_id: String,
-            _session_id: String,
-        ) -> anyhow::Result<()> {
-            Ok(())
-        }
-
-        async fn send_pairing_on_session(
-            &self,
-            _session_id: String,
-            _message: PairingMessage,
-        ) -> anyhow::Result<()> {
-            Ok(())
-        }
-
-        async fn close_pairing_session(
-            &self,
-            _session_id: String,
-            _reason: Option<String>,
-        ) -> anyhow::Result<()> {
-            Ok(())
-        }
-
-        async fn unpair_device(&self, _peer_id: String) -> anyhow::Result<()> {
-            Ok(())
-        }
-
-        async fn subscribe_events(&self) -> anyhow::Result<mpsc::Receiver<NetworkEvent>> {
-            let (_tx, rx) = mpsc::channel(1);
-            Ok(rx)
         }
     }
 }

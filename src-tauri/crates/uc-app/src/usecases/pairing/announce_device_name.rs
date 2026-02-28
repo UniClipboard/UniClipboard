@@ -1,16 +1,16 @@
 use anyhow::Result;
 use std::sync::Arc;
 use tracing::{info_span, Instrument};
-use uc_core::ports::NetworkPort;
+use uc_core::ports::PeerDirectoryPort;
 
 /// Use case for announcing the local device name over the network.
 pub struct AnnounceDeviceName {
-    network: Arc<dyn NetworkPort>,
+    network: Arc<dyn PeerDirectoryPort>,
 }
 
 impl AnnounceDeviceName {
     /// Create a new AnnounceDeviceName use case.
-    pub fn new(network: Arc<dyn NetworkPort>) -> Self {
+    pub fn new(network: Arc<dyn PeerDirectoryPort>) -> Self {
         Self { network }
     }
 
@@ -29,10 +29,8 @@ mod tests {
     use super::AnnounceDeviceName;
     use async_trait::async_trait;
     use std::sync::{Arc, Mutex};
-    use tokio::sync::mpsc;
-    use uc_core::network::PairingMessage;
-    use uc_core::network::{ClipboardMessage, ConnectedPeer, DiscoveredPeer, NetworkEvent};
-    use uc_core::ports::NetworkPort;
+    use uc_core::network::{ConnectedPeer, DiscoveredPeer};
+    use uc_core::ports::PeerDirectoryPort;
 
     struct TestNetwork {
         called: Arc<Mutex<Vec<String>>>,
@@ -40,24 +38,7 @@ mod tests {
     }
 
     #[async_trait]
-    impl NetworkPort for TestNetwork {
-        async fn send_clipboard(
-            &self,
-            _peer_id: &str,
-            _encrypted_data: Vec<u8>,
-        ) -> anyhow::Result<()> {
-            Ok(())
-        }
-
-        async fn broadcast_clipboard(&self, _encrypted_data: Vec<u8>) -> anyhow::Result<()> {
-            Ok(())
-        }
-
-        async fn subscribe_clipboard(&self) -> anyhow::Result<mpsc::Receiver<ClipboardMessage>> {
-            let (_tx, rx) = mpsc::channel(1);
-            Ok(rx)
-        }
-
+    impl PeerDirectoryPort for TestNetwork {
         async fn get_discovered_peers(&self) -> anyhow::Result<Vec<DiscoveredPeer>> {
             Ok(vec![])
         }
@@ -77,39 +58,6 @@ mod tests {
                 Ok(()) => Ok(()),
                 Err(error) => Err(anyhow::anyhow!(error.to_string())),
             }
-        }
-
-        async fn open_pairing_session(
-            &self,
-            _peer_id: String,
-            _session_id: String,
-        ) -> anyhow::Result<()> {
-            Ok(())
-        }
-
-        async fn send_pairing_on_session(
-            &self,
-            _session_id: String,
-            _message: PairingMessage,
-        ) -> anyhow::Result<()> {
-            Ok(())
-        }
-
-        async fn close_pairing_session(
-            &self,
-            _session_id: String,
-            _reason: Option<String>,
-        ) -> anyhow::Result<()> {
-            Ok(())
-        }
-
-        async fn unpair_device(&self, _peer_id: String) -> anyhow::Result<()> {
-            Ok(())
-        }
-
-        async fn subscribe_events(&self) -> anyhow::Result<mpsc::Receiver<NetworkEvent>> {
-            let (_tx, rx) = mpsc::channel(1);
-            Ok(rx)
         }
     }
 

@@ -9,15 +9,16 @@ use uuid::Uuid;
 use uc_core::network::protocol::ClipboardTextPayloadV1;
 use uc_core::network::{ClipboardMessage, ProtocolMessage};
 use uc_core::ports::{
-    DeviceIdentityPort, EncryptionPort, EncryptionSessionPort, NetworkPort, SettingsPort,
-    SystemClipboardPort,
+    ClipboardTransportPort, DeviceIdentityPort, EncryptionPort, EncryptionSessionPort,
+    PeerDirectoryPort, SettingsPort, SystemClipboardPort,
 };
 use uc_core::security::{aad, model::EncryptionAlgo};
 use uc_core::{ClipboardChangeOrigin, SystemClipboardSnapshot};
 
 pub struct SyncOutboundClipboardUseCase {
     local_clipboard: Arc<dyn SystemClipboardPort>,
-    network: Arc<dyn NetworkPort>,
+    clipboard_network: Arc<dyn ClipboardTransportPort>,
+    peer_directory: Arc<dyn PeerDirectoryPort>,
     encryption_session: Arc<dyn EncryptionSessionPort>,
     encryption: Arc<dyn EncryptionPort>,
     device_identity: Arc<dyn DeviceIdentityPort>,
@@ -27,7 +28,8 @@ pub struct SyncOutboundClipboardUseCase {
 impl SyncOutboundClipboardUseCase {
     pub fn new(
         local_clipboard: Arc<dyn SystemClipboardPort>,
-        network: Arc<dyn NetworkPort>,
+        clipboard_network: Arc<dyn ClipboardTransportPort>,
+        peer_directory: Arc<dyn PeerDirectoryPort>,
         encryption_session: Arc<dyn EncryptionSessionPort>,
         encryption: Arc<dyn EncryptionPort>,
         device_identity: Arc<dyn DeviceIdentityPort>,
@@ -35,7 +37,8 @@ impl SyncOutboundClipboardUseCase {
     ) -> Self {
         Self {
             local_clipboard,
-            network,
+            clipboard_network,
+            peer_directory,
             encryption_session,
             encryption,
             device_identity,
@@ -108,11 +111,11 @@ impl SyncOutboundClipboardUseCase {
         };
 
         let sendable_peers = self
-            .network
+            .peer_directory
             .list_sendable_peers()
             .await
             .context("failed to load sendable peers for outbound sync")?;
-        let discovered_peer_count = match self.network.get_discovered_peers().await {
+        let discovered_peer_count = match self.peer_directory.get_discovered_peers().await {
             Ok(peers) => peers.len(),
             Err(err) => {
                 warn!(
@@ -194,7 +197,11 @@ impl SyncOutboundClipboardUseCase {
         let mut sent_count = 0usize;
 
         for peer in sendable_peers {
-            if let Err(err) = self.network.ensure_business_path(&peer.peer_id).await {
+            if let Err(err) = self
+                .clipboard_network
+                .ensure_business_path(&peer.peer_id)
+                .await
+            {
                 warn!(
                     peer_id = %peer.peer_id,
                     error = %err,
@@ -206,7 +213,7 @@ impl SyncOutboundClipboardUseCase {
             connect_success_count += 1;
 
             if let Err(err) = self
-                .network
+                .clipboard_network
                 .send_clipboard(&peer.peer_id, outbound_bytes.clone())
                 .await
             {
@@ -287,6 +294,9 @@ mod tests {
         ClipboardMessage, ConnectedPeer, DiscoveredPeer, NetworkEvent, PairingMessage,
         ProtocolMessage,
     };
+    use uc_core::ports::{
+        ClipboardTransportPort, NetworkEventPort, PairingTransportPort, PeerDirectoryPort,
+    };
     use uc_core::security::model::{
         EncryptedBlob, EncryptionAlgo, EncryptionError, EncryptionFormatVersion, KdfParams, Kek,
         MasterKey, Passphrase,
@@ -318,7 +328,7 @@ mod tests {
     }
 
     #[async_trait]
-    impl NetworkPort for TestNetwork {
+    impl ClipboardTransportPort for TestNetwork {
         async fn send_clipboard(
             &self,
             peer_id: &str,
@@ -344,6 +354,20 @@ mod tests {
             Ok(rx)
         }
 
+        async fn ensure_business_path(&self, peer_id: &str) -> anyhow::Result<()> {
+            self.ensure_business_path_calls
+                .fetch_add(1, Ordering::SeqCst);
+            if self.ensure_failing_peers.contains(peer_id) {
+                return Err(anyhow::anyhow!(
+                    "simulated ensure business path failure for {peer_id}"
+                ));
+            }
+            Ok(())
+        }
+    }
+
+    #[async_trait]
+    impl PeerDirectoryPort for TestNetwork {
         async fn get_discovered_peers(&self) -> anyhow::Result<Vec<DiscoveredPeer>> {
             Ok(Vec::new())
         }
@@ -358,17 +382,6 @@ mod tests {
             Ok(self.sendable_peers.clone())
         }
 
-        async fn ensure_business_path(&self, peer_id: &str) -> anyhow::Result<()> {
-            self.ensure_business_path_calls
-                .fetch_add(1, Ordering::SeqCst);
-            if self.ensure_failing_peers.contains(peer_id) {
-                return Err(anyhow::anyhow!(
-                    "simulated ensure business path failure for {peer_id}"
-                ));
-            }
-            Ok(())
-        }
-
         fn local_peer_id(&self) -> String {
             "peer-local".to_string()
         }
@@ -376,7 +389,10 @@ mod tests {
         async fn announce_device_name(&self, _device_name: String) -> anyhow::Result<()> {
             Ok(())
         }
+    }
 
+    #[async_trait]
+    impl PairingTransportPort for TestNetwork {
         async fn open_pairing_session(
             &self,
             _peer_id: String,
@@ -404,7 +420,10 @@ mod tests {
         async fn unpair_device(&self, _peer_id: String) -> anyhow::Result<()> {
             Ok(())
         }
+    }
 
+    #[async_trait]
+    impl NetworkEventPort for TestNetwork {
         async fn subscribe_events(&self) -> anyhow::Result<mpsc::Receiver<NetworkEvent>> {
             let (_tx, rx) = mpsc::channel(1);
             Ok(rx)
@@ -560,24 +579,27 @@ mod tests {
             })
             .collect();
 
+        let network = Arc::new(TestNetwork {
+            sendable_peers,
+            failing_peers: failing_peers
+                .iter()
+                .map(|peer| (*peer).to_string())
+                .collect(),
+            ensure_failing_peers: ensure_failing_peers
+                .iter()
+                .map(|peer| (*peer).to_string())
+                .collect(),
+            send_calls: send_calls.clone(),
+            list_sendable_peers_calls: list_sendable_peers_calls.clone(),
+            ensure_business_path_calls: ensure_business_path_calls.clone(),
+        });
+
         let usecase = SyncOutboundClipboardUseCase::new(
             Arc::new(TestSystemClipboard {
                 snapshot: build_snapshot(),
             }),
-            Arc::new(TestNetwork {
-                sendable_peers,
-                failing_peers: failing_peers
-                    .iter()
-                    .map(|peer| (*peer).to_string())
-                    .collect(),
-                ensure_failing_peers: ensure_failing_peers
-                    .iter()
-                    .map(|peer| (*peer).to_string())
-                    .collect(),
-                send_calls: send_calls.clone(),
-                list_sendable_peers_calls: list_sendable_peers_calls.clone(),
-                ensure_business_path_calls: ensure_business_path_calls.clone(),
-            }),
+            network.clone(),
+            network,
             Arc::new(TestEncryptionSession {
                 ready: encryption_ready,
             }),

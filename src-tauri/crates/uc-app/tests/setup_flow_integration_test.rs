@@ -24,7 +24,7 @@ use uc_core::ports::space::{CryptoPort, PersistencePort, SpaceAccessTransportPor
 use uc_core::ports::watcher_control::{WatcherControlError, WatcherControlPort};
 use uc_core::ports::{
     DiscoveryPort, EncryptionSessionPort, PairedDeviceRepositoryError, PairedDeviceRepositoryPort,
-    SetupEventPort, SetupStatusPort, TimerPort,
+    PairingTransportPort, SetupEventPort, SetupStatusPort, TimerPort,
 };
 use uc_core::security::model::KeyScope;
 use uc_core::security::space_access::event::SpaceAccessEvent;
@@ -248,38 +248,7 @@ impl SpaceAccessTransportPort for NoopSpaceAccessTransport {
 struct NoopSpaceAccessNetworkPort;
 
 #[async_trait]
-impl uc_core::ports::NetworkPort for NoopSpaceAccessNetworkPort {
-    async fn send_clipboard(&self, _peer_id: &str, _encrypted_data: Vec<u8>) -> anyhow::Result<()> {
-        Ok(())
-    }
-
-    async fn broadcast_clipboard(&self, _encrypted_data: Vec<u8>) -> anyhow::Result<()> {
-        Ok(())
-    }
-
-    async fn subscribe_clipboard(
-        &self,
-    ) -> anyhow::Result<tokio::sync::mpsc::Receiver<uc_core::network::ClipboardMessage>> {
-        let (_tx, rx) = tokio::sync::mpsc::channel(1);
-        Ok(rx)
-    }
-
-    async fn get_discovered_peers(&self) -> anyhow::Result<Vec<uc_core::network::DiscoveredPeer>> {
-        Ok(vec![])
-    }
-
-    async fn get_connected_peers(&self) -> anyhow::Result<Vec<uc_core::network::ConnectedPeer>> {
-        Ok(vec![])
-    }
-
-    fn local_peer_id(&self) -> String {
-        "local".to_string()
-    }
-
-    async fn announce_device_name(&self, _device_name: String) -> anyhow::Result<()> {
-        Ok(())
-    }
-
+impl PairingTransportPort for NoopSpaceAccessNetworkPort {
     async fn open_pairing_session(
         &self,
         _peer_id: String,
@@ -306,13 +275,6 @@ impl uc_core::ports::NetworkPort for NoopSpaceAccessNetworkPort {
 
     async fn unpair_device(&self, _peer_id: String) -> anyhow::Result<()> {
         Ok(())
-    }
-
-    async fn subscribe_events(
-        &self,
-    ) -> anyhow::Result<tokio::sync::mpsc::Receiver<uc_core::network::NetworkEvent>> {
-        let (_tx, rx) = tokio::sync::mpsc::channel(1);
-        Ok(rx)
     }
 }
 
@@ -389,7 +351,6 @@ async fn drive_space_access_to_waiting_decision(
         guard.sponsor_peer_id = Some("peer-join".to_string());
     }
 
-    let network_port = NoopSpaceAccessNetworkPort;
     let crypto = DeterministicSpaceAccessCrypto;
     let mut transport = NoopSpaceAccessTransport;
     let proof = HmacProofAdapter::new();
@@ -397,7 +358,6 @@ async fn drive_space_access_to_waiting_decision(
     let mut store = DeterministicSpaceAccessPersistence;
     let mut executor = SpaceAccessExecutor {
         crypto: &crypto,
-        net: &network_port,
         transport: &mut transport,
         proof: &proof,
         timer: &mut timer,
@@ -884,14 +844,12 @@ async fn join_space_access_propagates_space_access_error() {
     let crypto = crypto_factory.build(uc_core::security::SecretString::new(
         "seed-pass".to_string(),
     ));
-    let network_port = NoopSpaceAccessNetworkPort;
     let proof_adapter = HmacProofAdapter::new();
     let mut transport = transport_port.lock().await;
     let mut timer = timer_port.lock().await;
     let mut store = persistence_port.lock().await;
     let mut executor = SpaceAccessExecutor {
         crypto: crypto.as_ref(),
-        net: &network_port,
         transport: &mut *transport,
         proof: &proof_adapter,
         timer: &mut *timer,
@@ -948,7 +906,6 @@ async fn join_space_flow_converges_to_granted_on_access_granted_result() {
     )
     .await;
 
-    let network_port = NoopSpaceAccessNetworkPort;
     let crypto = DeterministicSpaceAccessCrypto;
     let mut transport = NoopSpaceAccessTransport;
     let proof = HmacProofAdapter::new();
@@ -956,7 +913,6 @@ async fn join_space_flow_converges_to_granted_on_access_granted_result() {
     let mut store = DeterministicSpaceAccessPersistence;
     let mut executor = SpaceAccessExecutor {
         crypto: &crypto,
-        net: &network_port,
         transport: &mut transport,
         proof: &proof,
         timer: &mut timer,
@@ -994,7 +950,6 @@ async fn join_space_flow_converges_to_denied_on_access_denied_result() {
     )
     .await;
 
-    let network_port = NoopSpaceAccessNetworkPort;
     let crypto = DeterministicSpaceAccessCrypto;
     let mut transport = NoopSpaceAccessTransport;
     let proof = HmacProofAdapter::new();
@@ -1002,7 +957,6 @@ async fn join_space_flow_converges_to_denied_on_access_denied_result() {
     let mut store = DeterministicSpaceAccessPersistence;
     let mut executor = SpaceAccessExecutor {
         crypto: &crypto,
-        net: &network_port,
         transport: &mut transport,
         proof: &proof,
         timer: &mut timer,
@@ -1044,7 +998,6 @@ async fn join_space_flow_times_out_when_result_does_not_arrive() {
     )
     .await;
 
-    let network_port = NoopSpaceAccessNetworkPort;
     let crypto = DeterministicSpaceAccessCrypto;
     let mut transport = NoopSpaceAccessTransport;
     let proof = HmacProofAdapter::new();
@@ -1052,7 +1005,6 @@ async fn join_space_flow_times_out_when_result_does_not_arrive() {
     let mut store = DeterministicSpaceAccessPersistence;
     let mut executor = SpaceAccessExecutor {
         crypto: &crypto,
-        net: &network_port,
         transport: &mut transport,
         proof: &proof,
         timer: &mut timer,

@@ -4,7 +4,7 @@ use tokio::sync::Mutex;
 
 use uc_core::ids::SpaceId;
 use uc_core::ports::space::{CryptoPort, PersistencePort, ProofPort, SpaceAccessTransportPort};
-use uc_core::ports::{NetworkPort, TimerPort};
+use uc_core::ports::TimerPort;
 use uc_core::security::space_access::state::SpaceAccessState;
 use uc_core::security::SecretString;
 
@@ -24,7 +24,6 @@ pub trait SpaceAccessCryptoFactory: Send + Sync {
 pub struct StartSponsorAuthorization {
     orchestrator: Arc<SpaceAccessOrchestrator>,
     crypto_factory: Arc<dyn SpaceAccessCryptoFactory>,
-    network: Arc<dyn NetworkPort>,
     transport: Arc<Mutex<dyn SpaceAccessTransportPort>>,
     proof: Arc<dyn ProofPort>,
     timer: Arc<Mutex<dyn TimerPort>>,
@@ -36,7 +35,6 @@ impl StartSponsorAuthorization {
     pub fn new(
         orchestrator: Arc<SpaceAccessOrchestrator>,
         crypto_factory: Arc<dyn SpaceAccessCryptoFactory>,
-        network: Arc<dyn NetworkPort>,
         transport: Arc<Mutex<dyn SpaceAccessTransportPort>>,
         proof: Arc<dyn ProofPort>,
         timer: Arc<Mutex<dyn TimerPort>>,
@@ -45,7 +43,6 @@ impl StartSponsorAuthorization {
         Self {
             orchestrator,
             crypto_factory,
-            network,
             transport,
             proof,
             timer,
@@ -66,7 +63,6 @@ impl StartSponsorAuthorization {
         let mut transport = self.transport.lock().await;
         let mut executor = SpaceAccessExecutor {
             crypto: crypto.as_ref(),
-            net: self.network.as_ref(),
             transport: &mut *transport,
             proof: self.proof.as_ref(),
             timer: &mut *timer,
@@ -147,86 +143,6 @@ mod tests {
         }
     }
 
-    struct MockNetworkPort;
-
-    #[async_trait]
-    impl NetworkPort for MockNetworkPort {
-        async fn send_clipboard(
-            &self,
-            _peer_id: &str,
-            _encrypted_data: Vec<u8>,
-        ) -> anyhow::Result<()> {
-            Ok(())
-        }
-
-        async fn broadcast_clipboard(&self, _encrypted_data: Vec<u8>) -> anyhow::Result<()> {
-            Ok(())
-        }
-
-        async fn subscribe_clipboard(
-            &self,
-        ) -> anyhow::Result<tokio::sync::mpsc::Receiver<uc_core::network::ClipboardMessage>>
-        {
-            let (_tx, rx) = tokio::sync::mpsc::channel(1);
-            Ok(rx)
-        }
-
-        async fn get_discovered_peers(
-            &self,
-        ) -> anyhow::Result<Vec<uc_core::network::DiscoveredPeer>> {
-            Ok(vec![])
-        }
-
-        async fn get_connected_peers(
-            &self,
-        ) -> anyhow::Result<Vec<uc_core::network::ConnectedPeer>> {
-            Ok(vec![])
-        }
-
-        fn local_peer_id(&self) -> String {
-            "local".to_string()
-        }
-
-        async fn announce_device_name(&self, _device_name: String) -> anyhow::Result<()> {
-            Ok(())
-        }
-
-        async fn open_pairing_session(
-            &self,
-            _peer_id: String,
-            _session_id: String,
-        ) -> anyhow::Result<()> {
-            Ok(())
-        }
-
-        async fn send_pairing_on_session(
-            &self,
-            _session_id: String,
-            _message: uc_core::network::PairingMessage,
-        ) -> anyhow::Result<()> {
-            Ok(())
-        }
-
-        async fn close_pairing_session(
-            &self,
-            _session_id: String,
-            _reason: Option<String>,
-        ) -> anyhow::Result<()> {
-            Ok(())
-        }
-
-        async fn unpair_device(&self, _peer_id: String) -> anyhow::Result<()> {
-            Ok(())
-        }
-
-        async fn subscribe_events(
-            &self,
-        ) -> anyhow::Result<tokio::sync::mpsc::Receiver<uc_core::network::NetworkEvent>> {
-            let (_tx, rx) = tokio::sync::mpsc::channel(1);
-            Ok(rx)
-        }
-    }
-
     struct MockTimerPort;
 
     #[async_trait]
@@ -271,7 +187,6 @@ mod tests {
         let crypto_factory = Arc::new(MockCryptoFactory {
             exported: exported.clone(),
         });
-        let network = Arc::new(MockNetworkPort);
         let transport = Arc::new(Mutex::new(MockTransportPort));
         let proof = Arc::new(MockProofPort);
         let timer = Arc::new(Mutex::new(MockTimerPort));
@@ -281,7 +196,6 @@ mod tests {
         let uc = StartSponsorAuthorization::new(
             orchestrator,
             crypto_factory,
-            network,
             transport,
             proof,
             timer,

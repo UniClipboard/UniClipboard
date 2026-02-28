@@ -1,16 +1,19 @@
 use anyhow::Result;
 use std::sync::Arc;
 
-use uc_core::ports::{NetworkPort, PairedDeviceRepositoryPort};
+use uc_core::ports::{PairedDeviceRepositoryPort, PairingTransportPort};
 use uc_core::PeerId;
 
 pub struct UnpairDevice {
-    network: Arc<dyn NetworkPort>,
+    network: Arc<dyn PairingTransportPort>,
     repo: Arc<dyn PairedDeviceRepositoryPort>,
 }
 
 impl UnpairDevice {
-    pub fn new(network: Arc<dyn NetworkPort>, repo: Arc<dyn PairedDeviceRepositoryPort>) -> Self {
+    pub fn new(
+        network: Arc<dyn PairingTransportPort>,
+        repo: Arc<dyn PairedDeviceRepositoryPort>,
+    ) -> Self {
         Self { network, repo }
     }
 

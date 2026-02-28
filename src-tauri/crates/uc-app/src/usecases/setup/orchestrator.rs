@@ -13,7 +13,8 @@ use tracing::{debug, error, info, info_span, warn, Instrument};
 use uc_core::{
     ports::space::{PersistencePort, ProofPort, SpaceAccessTransportPort},
     ports::{
-        DiscoveryPort, NetworkControlPort, NetworkPort, SetupEventPort, SetupStatusPort, TimerPort,
+        DiscoveryPort, NetworkControlPort, PairingTransportPort, SetupEventPort, SetupStatusPort,
+        TimerPort,
     },
     security::space_access::{
         event::SpaceAccessEvent,
@@ -71,7 +72,7 @@ pub struct SetupOrchestrator {
     discovery_port: Arc<dyn DiscoveryPort>,
     network_control: Arc<dyn NetworkControlPort>,
     crypto_factory: Arc<dyn SpaceAccessCryptoFactory>,
-    network_port: Arc<dyn NetworkPort>,
+    pairing_transport: Arc<dyn PairingTransportPort>,
     transport_port: Arc<Mutex<dyn SpaceAccessTransportPort>>,
     proof_port: Arc<dyn ProofPort>,
     timer_port: Arc<Mutex<dyn TimerPort>>,
@@ -96,7 +97,7 @@ impl SetupOrchestrator {
         discovery_port: Arc<dyn DiscoveryPort>,
         network_control: Arc<dyn NetworkControlPort>,
         crypto_factory: Arc<dyn SpaceAccessCryptoFactory>,
-        network_port: Arc<dyn NetworkPort>,
+        pairing_transport: Arc<dyn PairingTransportPort>,
         transport_port: Arc<Mutex<dyn SpaceAccessTransportPort>>,
         proof_port: Arc<dyn ProofPort>,
         timer_port: Arc<Mutex<dyn TimerPort>>,
@@ -119,7 +120,7 @@ impl SetupOrchestrator {
             discovery_port,
             network_control,
             crypto_factory,
-            network_port,
+            pairing_transport,
             transport_port,
             proof_port,
             timer_port,
@@ -310,7 +311,7 @@ impl SetupOrchestrator {
             SetupError::PairingFailed
         })?;
 
-        self.network_port
+        self.pairing_transport
             .open_pairing_session(peer_id, pairing_session_id.clone())
             .await
             .map_err(|err| {
@@ -356,7 +357,6 @@ impl SetupOrchestrator {
         let mut store = self.persistence_port.lock().await;
         let mut executor = SpaceAccessExecutor {
             crypto: crypto.as_ref(),
-            net: self.network_port.as_ref(),
             transport: &mut *transport,
             proof: self.proof_port.as_ref(),
             timer: &mut *timer,
@@ -846,8 +846,8 @@ mod tests {
     use uc_core::ports::space::{CryptoPort, PersistencePort, ProofPort, SpaceAccessTransportPort};
     use uc_core::ports::watcher_control::{WatcherControlError, WatcherControlPort};
     use uc_core::ports::{
-        DiscoveryPort, NetworkPort, PairedDeviceRepositoryError, PairedDeviceRepositoryPort,
-        SetupEventPort, TimerPort,
+        DiscoveryPort, PairedDeviceRepositoryError, PairedDeviceRepositoryPort,
+        PairingTransportPort, SetupEventPort, TimerPort,
     };
     use uc_core::security::model::{
         EncryptedBlob, EncryptionAlgo, EncryptionError, EncryptionFormatVersion, KdfAlgorithm,
@@ -1342,50 +1342,10 @@ mod tests {
         }
     }
 
-    struct NoopSpaceAccessNetworkPort;
+    struct NoopSpaceAccessPairingTransport;
 
     #[async_trait]
-    impl NetworkPort for NoopSpaceAccessNetworkPort {
-        async fn send_clipboard(
-            &self,
-            _peer_id: &str,
-            _encrypted_data: Vec<u8>,
-        ) -> anyhow::Result<()> {
-            Ok(())
-        }
-
-        async fn broadcast_clipboard(&self, _encrypted_data: Vec<u8>) -> anyhow::Result<()> {
-            Ok(())
-        }
-
-        async fn subscribe_clipboard(
-            &self,
-        ) -> anyhow::Result<tokio::sync::mpsc::Receiver<uc_core::network::ClipboardMessage>>
-        {
-            let (_tx, rx) = tokio::sync::mpsc::channel(1);
-            Ok(rx)
-        }
-
-        async fn get_discovered_peers(
-            &self,
-        ) -> anyhow::Result<Vec<uc_core::network::DiscoveredPeer>> {
-            Ok(vec![])
-        }
-
-        async fn get_connected_peers(
-            &self,
-        ) -> anyhow::Result<Vec<uc_core::network::ConnectedPeer>> {
-            Ok(vec![])
-        }
-
-        fn local_peer_id(&self) -> String {
-            "local".to_string()
-        }
-
-        async fn announce_device_name(&self, _device_name: String) -> anyhow::Result<()> {
-            Ok(())
-        }
-
+    impl PairingTransportPort for NoopSpaceAccessPairingTransport {
         async fn open_pairing_session(
             &self,
             _peer_id: String,
@@ -1412,13 +1372,6 @@ mod tests {
 
         async fn unpair_device(&self, _peer_id: String) -> anyhow::Result<()> {
             Ok(())
-        }
-
-        async fn subscribe_events(
-            &self,
-        ) -> anyhow::Result<tokio::sync::mpsc::Receiver<uc_core::network::NetworkEvent>> {
-            let (_tx, rx) = tokio::sync::mpsc::channel(1);
-            Ok(rx)
         }
     }
 
@@ -1601,8 +1554,8 @@ mod tests {
         Arc::new(SucceedSpaceAccessCryptoFactory)
     }
 
-    fn build_network_port() -> Arc<dyn NetworkPort> {
-        Arc::new(NoopSpaceAccessNetworkPort)
+    fn build_pairing_transport() -> Arc<dyn PairingTransportPort> {
+        Arc::new(NoopSpaceAccessPairingTransport)
     }
 
     fn build_transport_port() -> Arc<Mutex<dyn SpaceAccessTransportPort>> {
@@ -1643,7 +1596,7 @@ mod tests {
             build_discovery_port(),
             build_network_control(),
             crypto_factory,
-            build_network_port(),
+            build_pairing_transport(),
             build_transport_port(),
             build_proof_port(),
             build_timer_port(),
@@ -1763,7 +1716,7 @@ mod tests {
             build_discovery_port(),
             build_network_control(),
             build_crypto_factory(),
-            build_network_port(),
+            build_pairing_transport(),
             build_transport_port(),
             build_proof_port(),
             build_timer_port(),
@@ -1809,7 +1762,7 @@ mod tests {
             build_discovery_port(),
             build_network_control(),
             build_crypto_factory(),
-            build_network_port(),
+            build_pairing_transport(),
             build_transport_port(),
             build_proof_port(),
             build_timer_port(),
@@ -1894,7 +1847,7 @@ mod tests {
             build_discovery_port(),
             build_network_control(),
             build_crypto_factory(),
-            build_network_port(),
+            build_pairing_transport(),
             build_transport_port(),
             build_proof_port(),
             build_timer_port(),
@@ -2005,7 +1958,7 @@ mod tests {
             build_discovery_port(),
             build_network_control(),
             build_crypto_factory(),
-            build_network_port(),
+            build_pairing_transport(),
             build_transport_port(),
             build_proof_port(),
             build_timer_port(),
@@ -2100,7 +2053,6 @@ mod tests {
         let mut store = orchestrator.persistence_port.lock().await;
         let mut executor = SpaceAccessExecutor {
             crypto: crypto.as_ref(),
-            net: orchestrator.network_port.as_ref(),
             transport: &mut *transport,
             proof: orchestrator.proof_port.as_ref(),
             timer: &mut *timer,
@@ -2296,7 +2248,6 @@ mod tests {
         let mut store = orchestrator.persistence_port.lock().await;
         let mut executor = SpaceAccessExecutor {
             crypto: crypto.as_ref(),
-            net: orchestrator.network_port.as_ref(),
             transport: &mut *transport,
             proof: orchestrator.proof_port.as_ref(),
             timer: &mut *timer,

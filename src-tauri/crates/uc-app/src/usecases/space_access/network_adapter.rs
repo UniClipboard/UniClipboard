@@ -3,18 +3,21 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 use uc_core::network::{PairingBusy, PairingMessage, SessionId};
 use uc_core::ports::space::SpaceAccessTransportPort;
-use uc_core::ports::NetworkPort;
+use uc_core::ports::PairingTransportPort;
 use uc_core::security::space_access::deny_reason_to_code;
 
 use super::context::SpaceAccessContext;
 
 pub struct SpaceAccessNetworkAdapter {
-    network: Arc<dyn NetworkPort>,
+    network: Arc<dyn PairingTransportPort>,
     context: Arc<Mutex<SpaceAccessContext>>,
 }
 
 impl SpaceAccessNetworkAdapter {
-    pub fn new(network: Arc<dyn NetworkPort>, context: Arc<Mutex<SpaceAccessContext>>) -> Self {
+    pub fn new(
+        network: Arc<dyn PairingTransportPort>,
+        context: Arc<Mutex<SpaceAccessContext>>,
+    ) -> Self {
         Self { network, context }
     }
 }

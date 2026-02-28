@@ -19,6 +19,14 @@ use uc_core::ports::clipboard::{
 };
 use uc_core::ports::*;
 
+/// Focused network capability bundle for dependency injection.
+pub struct NetworkPorts {
+    pub clipboard: Arc<dyn ClipboardTransportPort>,
+    pub peers: Arc<dyn PeerDirectoryPort>,
+    pub pairing: Arc<dyn PairingTransportPort>,
+    pub events: Arc<dyn NetworkEventPort>,
+}
+
 /// Application dependency grouping (non-Builder, just parameter grouping)
 /// 应用依赖分组（非 Builder，仅参数打包）
 ///
@@ -59,7 +67,7 @@ pub struct AppDeps {
     pub paired_device_repo: Arc<dyn PairedDeviceRepositoryPort>,
 
     // Network dependencies / 网络依赖
-    pub network: Arc<dyn NetworkPort>,
+    pub network_ports: Arc<NetworkPorts>,
     pub network_control: Arc<dyn NetworkControlPort>,
 
     // Setup dependencies / 设置流程依赖

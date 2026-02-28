@@ -13,8 +13,9 @@ use uc_core::network::{
     ClipboardMessage, ConnectedPeer, DiscoveredPeer, NetworkEvent, PairingMessage, ProtocolMessage,
 };
 use uc_core::ports::{
-    ClipboardChangeOriginPort, DeviceIdentityPort, EncryptionPort, EncryptionSessionPort,
-    NetworkPort, SettingsPort, SystemClipboardPort,
+    ClipboardChangeOriginPort, ClipboardTransportPort, DeviceIdentityPort, EncryptionPort,
+    EncryptionSessionPort, NetworkEventPort, PairingTransportPort, PeerDirectoryPort, SettingsPort,
+    SystemClipboardPort,
 };
 use uc_core::security::model::{
     EncryptedBlob, EncryptionAlgo, EncryptionError, EncryptionFormatVersion, KdfParams, Kek,
@@ -178,7 +179,7 @@ struct InProcessNetwork {
 }
 
 #[async_trait]
-impl NetworkPort for InProcessNetwork {
+impl ClipboardTransportPort for InProcessNetwork {
     async fn send_clipboard(&self, peer_id: &str, outbound_bytes: Vec<u8>) -> anyhow::Result<()> {
         self.send_count.fetch_add(1, Ordering::SeqCst);
 
@@ -210,7 +211,10 @@ impl NetworkPort for InProcessNetwork {
         let (_tx, rx) = mpsc::channel(1);
         Ok(rx)
     }
+}
 
+#[async_trait]
+impl PeerDirectoryPort for InProcessNetwork {
     async fn get_discovered_peers(&self) -> anyhow::Result<Vec<DiscoveredPeer>> {
         Ok(vec![DiscoveredPeer {
             peer_id: self.remote_peer.peer_id.clone(),
@@ -234,7 +238,10 @@ impl NetworkPort for InProcessNetwork {
     async fn announce_device_name(&self, _device_name: String) -> anyhow::Result<()> {
         Ok(())
     }
+}
 
+#[async_trait]
+impl PairingTransportPort for InProcessNetwork {
     async fn open_pairing_session(
         &self,
         _peer_id: String,
@@ -262,7 +269,10 @@ impl NetworkPort for InProcessNetwork {
     async fn unpair_device(&self, _peer_id: String) -> anyhow::Result<()> {
         Ok(())
     }
+}
 
+#[async_trait]
+impl NetworkEventPort for InProcessNetwork {
     async fn subscribe_events(&self) -> anyhow::Result<mpsc::Receiver<NetworkEvent>> {
         let (_tx, rx) = mpsc::channel(1);
         Ok(rx)
@@ -335,7 +345,7 @@ async fn clipboard_sync_e2e_dual_peer_in_process() -> Result<()> {
     let a_send_count = Arc::new(AtomicUsize::new(0));
     let b_send_count = Arc::new(AtomicUsize::new(0));
 
-    let network_a: Arc<dyn NetworkPort> = Arc::new(InProcessNetwork {
+    let network_a = Arc::new(InProcessNetwork {
         local_peer_id: "peer-a".to_string(),
         remote_peer: ConnectedPeer {
             peer_id: "peer-b".to_string(),
@@ -346,7 +356,7 @@ async fn clipboard_sync_e2e_dual_peer_in_process() -> Result<()> {
         send_count: a_send_count.clone(),
     });
 
-    let network_b: Arc<dyn NetworkPort> = Arc::new(InProcessNetwork {
+    let network_b = Arc::new(InProcessNetwork {
         local_peer_id: "peer-b".to_string(),
         remote_peer: ConnectedPeer {
             peer_id: "peer-a".to_string(),
@@ -359,7 +369,8 @@ async fn clipboard_sync_e2e_dual_peer_in_process() -> Result<()> {
 
     let outbound_a = SyncOutboundClipboardUseCase::new(
         clipboard_a.clone(),
-        network_a,
+        network_a.clone() as Arc<dyn uc_core::ports::ClipboardTransportPort>,
+        network_a.clone() as Arc<dyn uc_core::ports::PeerDirectoryPort>,
         session_a,
         encryption_a,
         identity_a,
@@ -367,7 +378,8 @@ async fn clipboard_sync_e2e_dual_peer_in_process() -> Result<()> {
     );
     let outbound_b = SyncOutboundClipboardUseCase::new(
         clipboard_b.clone(),
-        network_b,
+        network_b.clone() as Arc<dyn uc_core::ports::ClipboardTransportPort>,
+        network_b.clone() as Arc<dyn uc_core::ports::PeerDirectoryPort>,
         session_b,
         encryption_b,
         identity_b,

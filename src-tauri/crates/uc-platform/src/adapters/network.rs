@@ -4,6 +4,7 @@
 use anyhow::Result;
 use async_trait::async_trait;
 use libp2p::PeerId;
+use tracing::error;
 use uc_core::network::{
     ClipboardMessage, ConnectedPeer, DiscoveredPeer, NetworkEvent, PairingMessage,
 };
@@ -50,8 +51,10 @@ impl ClipboardTransportPort for PlaceholderNetworkPort {
     }
 
     async fn subscribe_clipboard(&self) -> Result<tokio::sync::mpsc::Receiver<ClipboardMessage>> {
-        let (_tx, rx) = tokio::sync::mpsc::channel(1);
-        Ok(rx)
+        error!("ClipboardTransportPort::subscribe_clipboard not implemented");
+        Err(anyhow::anyhow!(
+            "ClipboardTransportPort::subscribe_clipboard not implemented yet"
+        ))
     }
 }
 
@@ -112,8 +115,10 @@ impl PairingTransportPort for PlaceholderNetworkPort {
 #[async_trait]
 impl NetworkEventPort for PlaceholderNetworkPort {
     async fn subscribe_events(&self) -> Result<tokio::sync::mpsc::Receiver<NetworkEvent>> {
-        let (_tx, rx) = tokio::sync::mpsc::channel(1);
-        Ok(rx)
+        error!("NetworkEventPort::subscribe_events not implemented");
+        Err(anyhow::anyhow!(
+            "NetworkEventPort::subscribe_events not implemented yet"
+        ))
     }
 }
 

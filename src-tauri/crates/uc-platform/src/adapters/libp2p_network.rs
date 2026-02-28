@@ -589,57 +589,6 @@ impl PeerDirectoryPort for Libp2pNetworkAdapter {
         Ok(sendable)
     }
 
-    async fn ensure_business_path(&self, peer_id: &str) -> Result<()> {
-        if peer_id == self.local_peer_id {
-            warn!(peer_id = peer_id, "skip ensure_business_path to local peer");
-            return Err(anyhow!("ensure_business_path target is local peer_id"));
-        }
-        let peer = uc_core::PeerId::from(peer_id);
-        let (result_tx, result_rx) = oneshot::channel();
-        let command = BusinessCommand::EnsureBusinessPath {
-            peer_id: peer,
-            result_tx,
-        };
-        let enqueue_result = timeout(
-            BUSINESS_COMMAND_ENQUEUE_TIMEOUT,
-            self.business_tx.send(command),
-        )
-        .await;
-        match enqueue_result {
-            Ok(Ok(())) => {}
-            Ok(Err(tokio::sync::mpsc::error::SendError(command))) => {
-                let message =
-                    "failed to queue ensure business path command: business command channel closed";
-                error!(
-                    peer_id = peer_id,
-                    error = message,
-                    "business command enqueue failed"
-                );
-                notify_enqueue_failure(command, message, "ensure", peer_id);
-                return Err(anyhow!(message));
-            }
-            Err(_) => {
-                // Cancelling the send future drops the unsent command and closes its result_tx.
-                let message = "timed out queueing ensure business path command";
-                error!(
-                    peer_id = peer_id,
-                    timeout_ms = BUSINESS_COMMAND_ENQUEUE_TIMEOUT.as_millis() as u64,
-                    error = message,
-                    "business command enqueue timed out"
-                );
-                return Err(anyhow!(message));
-            }
-        }
-
-        match timeout(BUSINESS_ENSURE_COMMAND_RESULT_TIMEOUT, result_rx).await {
-            Ok(Ok(result)) => result,
-            Ok(Err(err)) => Err(anyhow!(
-                "failed to receive ensure business path result: {err}"
-            )),
-            Err(_) => Err(anyhow!("timed out waiting for business command result")),
-        }
-    }
-
     fn local_peer_id(&self) -> String {
         self.local_peer_id.clone()
     }

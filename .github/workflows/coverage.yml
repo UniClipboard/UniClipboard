@@ -28,7 +28,7 @@ jobs:
       - name: Generate coverage report
         run: |
           cd src-tauri
-          xvfb-run -a cargo llvm-cov --lcov --output-path lcov.info --workspace --features=integration_tests
+          xvfb-run -a cargo llvm-cov --lcov --output-path lcov.info --workspace
 
       - name: Upload to Codecov
         uses: codecov/codecov-action@v5.5.2

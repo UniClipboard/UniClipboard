@@ -575,6 +575,9 @@ impl SetupOrchestrator {
     fn map_pairing_failure_reason(reason: &FailureReason) -> SetupDomainError {
         match reason {
             FailureReason::Other(message) => {
+                // Message patterns are produced by the pairing state machine.
+                // "rejected" → user declined on the peer device
+                // "timeout"  → WaitingChallenge or similar stage timed out
                 let message_lower = message.to_ascii_lowercase();
                 if message_lower.contains("rejected") {
                     return SetupDomainError::PairingRejected;

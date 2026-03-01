@@ -1,6 +1,6 @@
 use tracing::warn;
 
-use crate::setup::{SetupAction, SetupEvent, SetupState};
+use crate::setup::{SetupAction, SetupError, SetupEvent, SetupState};
 
 pub struct SetupStateMachine;
 
@@ -81,10 +81,24 @@ impl SetupStateMachine {
             (SetupState::ProcessingCreateSpace { .. }, SetupEvent::CreateSpaceSucceeded) => {
                 (SetupState::Completed, vec![SetupAction::MarkSetupComplete])
             }
-            (SetupState::ProcessingJoinSpace { .. }, SetupEvent::JoinSpaceFailed { error }) => (
-                SetupState::JoinSpaceInputPassphrase { error: Some(error) },
-                vec![],
-            ),
+            (SetupState::ProcessingJoinSpace { .. }, SetupEvent::JoinSpaceFailed { error }) => {
+                let target = match &error {
+                    // Passphrase-related failures → return to passphrase input
+                    SetupError::PassphraseInvalidOrMismatch
+                    | SetupError::PassphraseMismatch
+                    | SetupError::PassphraseEmpty => {
+                        SetupState::JoinSpaceInputPassphrase { error: Some(error) }
+                    }
+                    // Pairing/network failures → return to device selection
+                    SetupError::PairingFailed
+                    | SetupError::PairingRejected
+                    | SetupError::PeerUnavailable
+                    | SetupError::NetworkTimeout => {
+                        SetupState::JoinSpaceSelectDevice { error: Some(error) }
+                    }
+                };
+                (target, vec![])
+            }
             (SetupState::ProcessingJoinSpace { .. }, SetupEvent::CancelSetup) => {
                 (SetupState::Welcome, vec![SetupAction::AbortPairing {}])
             }
@@ -252,13 +266,35 @@ mod tests {
                 vec![SetupAction::MarkSetupComplete],
             ),
             (
-                "join failed",
+                "join failed (passphrase) -> back to passphrase input",
                 SetupState::ProcessingJoinSpace { message: None },
                 || SetupEvent::JoinSpaceFailed {
                     error: SetupError::PassphraseInvalidOrMismatch,
                 },
                 SetupState::JoinSpaceInputPassphrase {
                     error: Some(SetupError::PassphraseInvalidOrMismatch),
+                },
+                vec![],
+            ),
+            (
+                "join failed (pairing) -> back to device selection",
+                SetupState::ProcessingJoinSpace { message: None },
+                || SetupEvent::JoinSpaceFailed {
+                    error: SetupError::PairingFailed,
+                },
+                SetupState::JoinSpaceSelectDevice {
+                    error: Some(SetupError::PairingFailed),
+                },
+                vec![],
+            ),
+            (
+                "join failed (peer unavailable) -> back to device selection",
+                SetupState::ProcessingJoinSpace { message: None },
+                || SetupEvent::JoinSpaceFailed {
+                    error: SetupError::PeerUnavailable,
+                },
+                SetupState::JoinSpaceSelectDevice {
+                    error: Some(SetupError::PeerUnavailable),
                 },
                 vec![],
             ),

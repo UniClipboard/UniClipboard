@@ -500,7 +500,7 @@ impl SetupOrchestrator {
                                 session_id = %session_id,
                                 "lifecycle ensure_ready failed after space access completion"
                             );
-                            let failed_state = SetupState::JoinSpaceInputPassphrase {
+                            let failed_state = SetupState::JoinSpaceSelectDevice {
                                 error: Some(SetupDomainError::PairingFailed),
                             };
                             context.set_state(failed_state.clone()).await;
@@ -516,7 +516,7 @@ impl SetupOrchestrator {
                                 session_id = %session_id,
                                 "mark setup complete failed after space access completion"
                             );
-                            let failed_state = SetupState::JoinSpaceInputPassphrase {
+                            let failed_state = SetupState::JoinSpaceSelectDevice {
                                 error: Some(SetupDomainError::PairingFailed),
                             };
                             context.set_state(failed_state.clone()).await;
@@ -764,7 +764,7 @@ impl SetupOrchestrator {
                         session_id: event_session_id,
                         ..
                     } if event_session_id == session_id => {
-                        let next_state = SetupState::JoinSpaceInputPassphrase {
+                        let next_state = SetupState::JoinSpaceSelectDevice {
                             error: Some(SetupDomainError::PairingFailed),
                         };
                         context.set_state(next_state.clone()).await;
@@ -2091,7 +2091,7 @@ mod tests {
             let found = emitted.iter().any(|(state, sid)| {
                 matches!(
                     state,
-                    SetupState::JoinSpaceInputPassphrase {
+                    SetupState::JoinSpaceSelectDevice {
                         error: Some(SetupDomainError::PairingFailed)
                     }
                 ) && sid.as_ref() == Some(&session_id)
@@ -2101,7 +2101,7 @@ mod tests {
             }
             assert!(
                 Instant::now() < emit_deadline,
-                "setup-state-changed JoinSpaceInputPassphrase error event timeout"
+                "setup-state-changed JoinSpaceSelectDevice error event timeout"
             );
             sleep(Duration::from_millis(10)).await;
         }
@@ -2678,7 +2678,7 @@ mod tests {
                 || SetupEvent::JoinSpaceFailed {
                     error: SetupDomainError::PairingFailed,
                 },
-                SetupState::JoinSpaceInputPassphrase {
+                SetupState::JoinSpaceSelectDevice {
                     error: Some(SetupDomainError::PairingFailed),
                 },
             ),

@@ -28,12 +28,12 @@ describe('setup i18n keys', () => {
   it('resolves zh-CN setup.welcome.title', async () => {
     await i18n.changeLanguage('zh-CN')
     expect(i18n.t('setup.welcome.title')).toBe('欢迎使用 UniClipboard')
-    expect(i18n.t('setup.preparingDashboard')).toBe('准备您的仪表板...')
+    expect(i18n.t('setup.page.loadingSetupState')).toBe('正在加载初始化状态...')
   })
 
   it('resolves en-US setup.welcome.title', async () => {
     await i18n.changeLanguage('en-US')
     expect(i18n.t('setup.welcome.title')).toBe('Welcome to UniClipboard')
-    expect(i18n.t('setup.preparingDashboard')).toBe('Preparing your dashboard...')
+    expect(i18n.t('setup.page.loadingSetupState')).toBe('Loading setup state...')
   })
 })

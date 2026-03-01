@@ -8,6 +8,7 @@ import SetupPage from '@/pages/SetupPage'
 // Mock the API
 vi.mock('@/api/setup', () => ({
   getSetupState: vi.fn(),
+  onSetupStateChanged: vi.fn(() => Promise.resolve(() => {})),
   startNewSpace: vi.fn(),
   startJoinSpace: vi.fn(),
   selectJoinPeer: vi.fn(),
@@ -49,8 +50,8 @@ describe('Setup flow', () => {
     render(<SetupPage />)
 
     expect(await screen.findByText('欢迎使用 UniClipboard')).toBeInTheDocument()
-    expect(screen.getByText('选择一种方式开始设置你的加密空间')).toBeInTheDocument()
-    expect(screen.getByText('创建新的加密空间')).toBeInTheDocument()
+    expect(screen.getByText(i18n.t('setup.welcome.subtitle'))).toBeInTheDocument()
+    expect(screen.getByText(i18n.t('setup.welcome.create.title'))).toBeInTheDocument()
 
     await act(async () => {
       await i18n.changeLanguage('en-US')
@@ -68,7 +69,9 @@ describe('Setup flow', () => {
     render(<SetupPage />)
 
     // Wait for the error message to appear
-    expect(await screen.findByText('两次输入不一致，请重新确认。')).toBeInTheDocument()
+    expect(
+      await screen.findByText(i18n.t('setup.createPassphrase.errors.mismatch'))
+    ).toBeInTheDocument()
   })
 
   it('starts new space when clicking create CTA', async () => {
@@ -78,7 +81,14 @@ describe('Setup flow', () => {
     })
     render(<SetupPage />)
 
-    const createBtn = await screen.findByText('创建新的加密空间')
+    const ctaText = await screen.findByText(i18n.t('setup.welcome.create.cta'))
+    const createBtn = ctaText.closest('button')
+    expect(createBtn).toBeTruthy()
+
+    if (!createBtn) {
+      throw new Error('Create CTA button not found')
+    }
+
     await act(async () => {
       createBtn.click()
     })

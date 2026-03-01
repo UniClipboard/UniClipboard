@@ -17,8 +17,9 @@ const MODIFIER_ORDER = ['ctrl', 'alt', 'shift', 'cmd'] as const
  * - "esc"
  * - "ctrl+alt+/"
  */
-export const normalizeHotkey = (key: string): string => {
-  const tokens = key
+export const normalizeHotkey = (key: string | string[]): string => {
+  const raw = Array.isArray(key) ? (key[0] ?? '') : key
+  const tokens = raw
     .split('+')
     .map(t => t.trim().toLowerCase())
     .filter(Boolean)

@@ -4,6 +4,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate, Outlet } from 'react-
 import { type EncryptionSessionStatus } from '@/api/security'
 import { getSetupState, type SetupState } from '@/api/setup'
 import { TitleBar } from '@/components'
+import { GlobalShortcuts } from '@/components/GlobalShortcuts'
 import { PairingNotificationProvider } from '@/components/PairingNotificationProvider'
 import { Toaster } from '@/components/ui/sonner'
 import { useSearch } from '@/contexts/search-context'
@@ -111,6 +112,7 @@ const AppContent = ({
 
   return (
     <ShortcutProvider>
+      <GlobalShortcuts />
       <Routes>
         <Route element={<AuthenticatedLayout />}>
           <Route

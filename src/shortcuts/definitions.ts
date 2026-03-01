@@ -44,8 +44,8 @@ export const DEFAULT_SCOPE_LAYER: Record<ShortcutScope, ShortcutLayer> = {
 export interface ShortcutDefinition {
   /** 唯一标识符 */
   id: string
-  /** 快捷键组合，如 "esc", "cmd+a", "ctrl+shift+d" */
-  key: string
+  /** 快捷键组合，如 "esc", "cmd+a", "mod+comma"，支持字符串或数组形式 */
+  key: string | string[]
   /** 动作类型 */
   action: ShortcutAction
   /** 作用域 */
@@ -106,13 +106,13 @@ export const SHORTCUT_DEFINITIONS: ShortcutDefinition[] = [
   //   scope: "global",
   //   description: "前往设备",
   // },
-  // {
-  //   id: "nav.settings",
-  //   key: "cmd+,",
-  //   action: "navigation.settings",
-  //   scope: "global",
-  //   description: "前往设置",
-  // },
+  {
+    id: 'nav.settings',
+    key: 'mod+comma',
+    action: 'navigation.settings',
+    scope: 'global',
+    description: '前往设置',
+  },
 
   // ===== 搜索 =====
   // {

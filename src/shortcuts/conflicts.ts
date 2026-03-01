@@ -34,7 +34,8 @@ export const resolveShortcuts = (
   scopeLayer: Record<ShortcutScope, ShortcutLayer> = DEFAULT_SCOPE_LAYER
 ): ResolvedShortcut[] => {
   return definitions.map(def => {
-    const resolvedKey = overrides[def.id] ?? def.key
+    const rawKey = overrides[def.id] ?? def.key
+    const resolvedKey = Array.isArray(rawKey) ? (rawKey[0] ?? '') : rawKey
     const normalizedKey = normalizeHotkey(resolvedKey)
     const layer = scopeLayer[def.scope] ?? 'page'
     return { ...def, resolvedKey, normalizedKey, layer }

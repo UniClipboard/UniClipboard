@@ -26,58 +26,27 @@ uc-infra = { path = "crates/uc-infra" }
 uc-tauri = { path = "crates/uc-tauri" }
 
 # ===== Tauri 相关依赖 =====
-tauri = { version = "2", features = ["macos-private-api"] } # Tauri 框架核心库
-tauri-plugin-opener = "2"                # 用于打开文件或URL的Tauri插件
-tauri-plugin-devtools = "2.0.0"          # Tauri开发工具插件
-tauri-plugin-decorum = "1"               # Windows窗口管理插件，提供原生Windows窗口行为
-
-# ===== 序列化/数据处理 =====
-serde = { version = "1", features = ["derive"] } # 序列化和反序列化框架
-serde_json = "1"                                 # JSON数据处理
-toml = "0.8.19"                                  # TOML配置文件解析
-bincode = "1.3"                                  # 二进制序列化，用于 BlobStream 帧格式
-hex = "0.4"                                      # 十六进制编码/解码
-
-# ===== 异步/网络相关 =====
-tokio = { version = "1.28", features = ["full"] } # 异步运行时
-tokio-util = { version = "0.7", features = ["codec"] } # Tokio实用工具
-futures-util = "0.3" # Future相关工具
-futures = "0.3.30" # 异步编程工具
-async-trait = "0.1.82" # 异步特性支持
-local-ip-address = "0.6.4" # 获取本地IP地址
-reqwest = { version = "0.12", default-features = false, features = [
-  "rustls-tls",
-  "json",
-] } # HTTP客户端，用于内容下载
-blake3 = "1.5" # 快速哈希函数，用于分片流协议
-
-# ===== 加密/安全 =====
-sha2 = "0.10.8"     # SHA-2哈希函数
-base64 = "0.22.1"   # Base64编码/解码
-aes-gcm = "0.10.3"  # AES-GCM加密算法
-subtle = "2.5"      # Constant-time comparisons
-twox-hash = "1.6.3"
-
-# ===== 文件/系统操作 =====
-bytes = "1.7.1"       # 字节处理工具
-dirs = "6.0.0"        # 跨平台目录路径
-gethostname = "1.1.0" # 获取主机名
-
-# ===== 日志/错误处理 =====
-anyhow = "1.0.98"      # 错误处理
-log = "0.4.27"         # 日志库
-tracing = "0.1"        # 结构化日志，支持 span
-tauri-plugin-log = "2" # Tauri 日志插件（替代 env_logger）
-
-# ===== 工具/辅助功能 =====
-regex = "1.9.5"                                       # 正则表达式
-rand = "0.9.1"                                        # 随机数生成
-chrono = { version = "0.4.38", features = ["serde"] } # 日期和时间处理
-once_cell = "1.19.0"                                  # 延迟初始化
-dotenvy = "0.15"                                      # 环境变量管理
+tauri = { version = "2", features = ["macos-private-api"] }
+tauri-plugin-opener = "2"
 tauri-plugin-stronghold = "2"
-argon2 = "0.5.3"
-iota_stronghold = "2.1.0"
+
+# ===== 异步运行时 =====
+tokio = { version = "1.28", features = ["full"] }
+
+# ===== 错误处理 =====
+anyhow = "1.0"
+
+# ===== 异步特性 =====
+async-trait = "0.1"
+
+# ===== 序列化 =====
+serde_json = "1"
+
+# ===== 日志 =====
+tracing = "0.1"
+
+[features]
+cargo-clippy = []
 
 [profile.release]
 panic = "abort"   # Strip expensive panic clean-up logic
@@ -86,51 +55,20 @@ lto = true        # Enables link to optimizations
 opt-level = "z"   # Optimize for binary size
 strip = true      # Remove debug symbols
 
-[features]
-integration_tests = []
-network_tests = []
-hardware_tests = []
-testing = []
-cargo-clippy = []
-
 [target.'cfg(target_os = "macos")'.dependencies]
 objc = "0.2"
 objc2 = "0.6"
 objc2-app-kit = "0.3"
 objc2-foundation = { version = "0.3", features = ["objc2-core-foundation"] }
 
-[target.'cfg(windows)'.dependencies]
-clipboard-win = { version = "5.4.0" }
-winapi = { version = "0.3.9", features = [
-  "winuser",
-  "basetsd",
-  "minwindef",
-  "winbase",
-] }
-
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 tauri-plugin-autostart = "2"
 tauri-plugin-single-instance = "2"
 tauri-plugin-updater = "2"
 
-[dependencies.uuid]
-version = "1.10.0"
-features = [
-  "v4",                # Lets you generate random UUIDs
-  "fast-rng",          # Use a faster (but still sufficiently random) RNG
-  "macro-diagnostics", # Enable better diagnostics for compile-time UUIDs
-]
-
 [dev-dependencies]
-mockito = "1.7.0"
 tempfile = "3.2"
-dotenv = "0.15.0"
-mockall = "0.11"
 tokio = { version = "1", features = ["full"] }
-serial_test = "3.1.1"
-enigo = "0.2.1"
-arboard = "3.4.1"
-ctor = "0.2.8"
 
 [workspace]
 members = [

@@ -18,8 +18,6 @@
     "autostart:allow-disable",
     "autostart:allow-is-enabled",
     "stronghold:default",
-    "log:default",
-    "decorum:allow-show-snap-overlay",
     "updater:default"
   ]
 }

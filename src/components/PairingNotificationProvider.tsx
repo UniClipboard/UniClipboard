@@ -88,7 +88,7 @@ export function PairingNotificationProvider() {
                 }
               },
             },
-            duration: 15000,
+            duration: 30_000,
           }
         )
         return

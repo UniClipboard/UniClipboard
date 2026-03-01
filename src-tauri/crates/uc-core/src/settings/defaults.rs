@@ -136,14 +136,14 @@ impl Default for PairingSettings {
     /// Creates default pairing settings for handshake timers and retry behavior.
     ///
     /// Defaults are:
-    /// - `step_timeout`: 15 seconds
+    /// - `step_timeout`: 30 seconds
     /// - `user_verification_timeout`: 120 seconds
     /// - `session_timeout`: 300 seconds
     /// - `max_retries`: 3
     /// - `protocol_version`: "1.0.0"
     fn default() -> Self {
         Self {
-            step_timeout: Duration::from_secs(15),
+            step_timeout: Duration::from_secs(30),
             user_verification_timeout: Duration::from_secs(120),
             session_timeout: Duration::from_secs(300),
             max_retries: 3,

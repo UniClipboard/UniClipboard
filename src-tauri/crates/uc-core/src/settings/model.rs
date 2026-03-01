@@ -211,7 +211,7 @@ mod tests {
         });
 
         let settings: Settings = serde_json::from_value(value).expect("deserialize settings");
-        assert_eq!(settings.pairing.step_timeout.as_secs(), 15);
+        assert_eq!(settings.pairing.step_timeout.as_secs(), 30);
         assert_eq!(settings.pairing.user_verification_timeout.as_secs(), 120);
         assert_eq!(settings.pairing.session_timeout.as_secs(), 300);
         assert_eq!(settings.pairing.max_retries, 3);

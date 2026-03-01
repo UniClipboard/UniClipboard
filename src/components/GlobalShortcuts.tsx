@@ -19,10 +19,6 @@ export const GlobalShortcuts = () => {
     scope: 'global',
     enabled: settingsShortcutEnabled,
     handler: () => {
-      if (!settingsDef) {
-        return
-      }
-
       if (location.pathname !== '/settings') {
         navigate('/settings')
       }

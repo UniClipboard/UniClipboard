@@ -63,4 +63,34 @@ describe('JoinPickDeviceStep error message mapping', () => {
     expect(screen.getByText('对方设备未同意或未及时响应配对请求，请重试。')).toBeInTheDocument()
     expect(screen.queryByText('获取设备列表失败。')).not.toBeInTheDocument()
   })
+
+  it('shows peer unavailable message instead of load peers failure', () => {
+    renderWithI18n(
+      <JoinPickDeviceStep
+        onSelectPeer={() => undefined}
+        onBack={() => undefined}
+        onRefresh={() => undefined}
+        peers={[]}
+        error="PeerUnavailable"
+      />
+    )
+
+    expect(screen.getByText('对方设备当前不可用，请重新选择设备。')).toBeInTheDocument()
+    expect(screen.queryByText('获取设备列表失败。')).not.toBeInTheDocument()
+  })
+
+  it('shows network timeout message instead of load peers failure', () => {
+    renderWithI18n(
+      <JoinPickDeviceStep
+        onSelectPeer={() => undefined}
+        onBack={() => undefined}
+        onRefresh={() => undefined}
+        peers={[]}
+        error="NetworkTimeout"
+      />
+    )
+
+    expect(screen.getByText('扫描超时，请稍后重试。')).toBeInTheDocument()
+    expect(screen.queryByText('获取设备列表失败。')).not.toBeInTheDocument()
+  })
 })

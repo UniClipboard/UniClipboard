@@ -259,10 +259,16 @@ const ClipboardItem: React.FC<ClipboardItemProps> = ({
           ? 'bg-primary/5 border-l-4 border-l-primary'
           : 'hover:bg-muted/20 border-l-4 border-l-transparent hover:border-l-primary/30'
       )}
-      onClick={onSelect}
+      onClick={e => {
+        const selection = window.getSelection()
+        if (selection && selection.toString().length > 0) {
+          return
+        }
+        onSelect?.(e)
+      }}
     >
       {/* Main Content Area */}
-      <div className="p-4">{renderContent()}</div>
+      <div className="select-text p-4">{renderContent()}</div>
 
       {/* Footer Area */}
       <div className="flex items-center justify-between px-4 pb-2 pt-1 text-xs text-muted-foreground/60 select-none">

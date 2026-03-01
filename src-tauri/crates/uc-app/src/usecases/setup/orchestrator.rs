@@ -2815,7 +2815,7 @@ mod tests {
             JoinTestStep::dispatch(
                 "user cancels during pairing",
                 || SetupEvent::CancelSetup,
-                SetupState::Welcome,
+                SetupState::JoinSpaceSelectDevice { error: None },
             ),
         ];
 

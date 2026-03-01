@@ -17,6 +17,27 @@ export default function JoinPickDeviceStep({
   const { t } = useTranslation(undefined, { keyPrefix: 'setup.joinPickDevice' })
   const { t: tCommon } = useTranslation(undefined, { keyPrefix: 'setup.common' })
 
+  const resolveErrorMessage = () => {
+    if (!error) {
+      return null
+    }
+
+    switch (error) {
+      case 'NetworkTimeout':
+        return t('errors.timeout')
+      case 'PeerUnavailable':
+        return t('errors.peerUnavailable')
+      case 'PairingRejected':
+        return t('errors.pairingRejected')
+      case 'PairingFailed':
+        return t('errors.pairingFailed')
+      default:
+        return t('errors.loadPeers')
+    }
+  }
+
+  const errorMessage = resolveErrorMessage()
+
   const getIcon = (type: string) => {
     switch (type.toLowerCase()) {
       case 'mobile':
@@ -60,10 +81,10 @@ export default function JoinPickDeviceStep({
         <p className="mt-2 text-muted-foreground">{t('subtitle')}</p>
       </div>
 
-      {error && (
+      {errorMessage && (
         <div className="mb-6 flex items-center gap-2 text-sm text-destructive">
           <AlertCircle className="h-4 w-4 shrink-0" />
-          {error === 'NetworkTimeout' ? t('errors.timeout') : t('errors.loadPeers')}
+          {errorMessage}
         </div>
       )}
 

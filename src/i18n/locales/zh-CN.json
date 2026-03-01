@@ -575,6 +575,9 @@
       },
       "errors": {
         "timeout": "扫描超时，请稍后重试。",
+        "peerUnavailable": "对方设备当前不可用，请重新选择设备。",
+        "pairingRejected": "对方设备已拒绝此次配对请求。",
+        "pairingFailed": "对方设备未同意或未及时响应配对请求，请重试。",
         "loadPeers": "获取设备列表失败。"
       },
       "empty": {

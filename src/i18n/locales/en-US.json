@@ -575,6 +575,9 @@
       },
       "errors": {
         "timeout": "Scanning timed out. Please try again.",
+        "peerUnavailable": "The other device is currently unavailable. Please choose a device again.",
+        "pairingRejected": "The other device rejected this pairing request.",
+        "pairingFailed": "The other device did not approve or respond in time. Please try again.",
         "loadPeers": "Failed to fetch device list."
       },
       "empty": {

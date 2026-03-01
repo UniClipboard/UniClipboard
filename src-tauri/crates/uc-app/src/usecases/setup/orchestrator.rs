@@ -11,6 +11,7 @@ use tokio::time::{sleep, Duration};
 use tracing::{debug, error, info, info_span, warn, Instrument};
 
 use uc_core::{
+    network::pairing_state_machine::FailureReason,
     ports::space::{PersistencePort, ProofPort, SpaceAccessTransportPort},
     ports::{
         DiscoveryPort, NetworkControlPort, PairingTransportPort, SetupEventPort, SetupStatusPort,
@@ -571,6 +572,22 @@ impl SetupOrchestrator {
         }
     }
 
+    fn map_pairing_failure_reason(reason: &FailureReason) -> SetupDomainError {
+        match reason {
+            FailureReason::Other(message) => {
+                let message_lower = message.to_ascii_lowercase();
+                if message_lower.contains("rejected") {
+                    return SetupDomainError::PairingRejected;
+                }
+                if message_lower.contains("timeout") {
+                    return SetupDomainError::NetworkTimeout;
+                }
+                SetupDomainError::PairingFailed
+            }
+            _ => SetupDomainError::PairingFailed,
+        }
+    }
+
     async fn capture_context(&self, event: SetupEvent) -> SetupEvent {
         match event {
             SetupEvent::ChooseJoinPeer { peer_id } => {
@@ -762,10 +779,12 @@ impl SetupOrchestrator {
                     }
                     PairingDomainEvent::PairingFailed {
                         session_id: event_session_id,
+                        reason,
                         ..
                     } if event_session_id == session_id => {
+                        let mapped_error = Self::map_pairing_failure_reason(&reason);
                         let next_state = SetupState::JoinSpaceSelectDevice {
-                            error: Some(SetupDomainError::PairingFailed),
+                            error: Some(mapped_error),
                         };
                         context.set_state(next_state.clone()).await;
                         setup_event_port
@@ -2124,6 +2143,24 @@ mod tests {
         }
 
         assert!(orchestrator.passphrase.lock().await.is_some());
+    }
+
+    #[test]
+    fn map_pairing_failure_reason_maps_rejected_and_timeout() {
+        let rejected = SetupOrchestrator::map_pairing_failure_reason(&FailureReason::Other(
+            "Peer rejected pairing".to_string(),
+        ));
+        assert_eq!(rejected, SetupDomainError::PairingRejected);
+
+        let timeout = SetupOrchestrator::map_pairing_failure_reason(&FailureReason::Other(
+            "Timeout(WaitingChallenge)".to_string(),
+        ));
+        assert_eq!(timeout, SetupDomainError::NetworkTimeout);
+
+        let generic = SetupOrchestrator::map_pairing_failure_reason(&FailureReason::Other(
+            "stream closed".to_string(),
+        ));
+        assert_eq!(generic, SetupDomainError::PairingFailed);
     }
 
     #[tokio::test]

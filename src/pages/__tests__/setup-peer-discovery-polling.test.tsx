@@ -8,6 +8,7 @@ import SetupPage from '@/pages/SetupPage'
 
 vi.mock('@/api/setup', () => ({
   getSetupState: vi.fn(),
+  onSetupStateChanged: vi.fn(() => Promise.resolve(() => {})),
   startNewSpace: vi.fn(),
   startJoinSpace: vi.fn(),
   selectJoinPeer: vi.fn(),

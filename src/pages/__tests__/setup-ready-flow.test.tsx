@@ -43,6 +43,7 @@ const i18n = loadI18n.default
 
 vi.mock('@/api/setup', () => ({
   getSetupState: vi.fn(),
+  onSetupStateChanged: vi.fn(() => Promise.resolve(() => {})),
   startNewSpace: vi.fn(),
   startJoinSpace: vi.fn(),
   selectJoinPeer: vi.fn(),

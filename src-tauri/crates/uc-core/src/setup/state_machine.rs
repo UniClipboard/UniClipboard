@@ -99,9 +99,10 @@ impl SetupStateMachine {
                 };
                 (target, vec![])
             }
-            (SetupState::ProcessingJoinSpace { .. }, SetupEvent::CancelSetup) => {
-                (SetupState::Welcome, vec![SetupAction::AbortPairing {}])
-            }
+            (SetupState::ProcessingJoinSpace { .. }, SetupEvent::CancelSetup) => (
+                SetupState::JoinSpaceSelectDevice { error: None },
+                vec![SetupAction::AbortPairing {}],
+            ),
             (SetupState::ProcessingCreateSpace { .. }, SetupEvent::CancelSetup) => {
                 (SetupState::Welcome, vec![SetupAction::AbortPairing {}])
             }
@@ -302,7 +303,7 @@ mod tests {
                 "join cancel during processing",
                 SetupState::ProcessingJoinSpace { message: None },
                 || SetupEvent::CancelSetup,
-                SetupState::Welcome,
+                SetupState::JoinSpaceSelectDevice { error: None },
                 vec![SetupAction::AbortPairing {}],
             ),
             // ===== Completed =====

@@ -18,26 +18,36 @@ const MODIFIER_ORDER = ['ctrl', 'alt', 'shift', 'cmd'] as const
  * - "ctrl+alt+/"
  */
 export const normalizeHotkey = (key: string | string[]): string => {
-  const raw = Array.isArray(key) ? (key[0] ?? '') : key
-  const tokens = raw
-    .split('+')
-    .map(t => t.trim().toLowerCase())
-    .filter(Boolean)
-    .map(t => MODIFIER_ALIASES[t] ?? t)
+  const normalizeSingleHotkey = (raw: string): string => {
+    const tokens = raw
+      .split('+')
+      .map(t => t.trim().toLowerCase())
+      .filter(Boolean)
+      .map(t => MODIFIER_ALIASES[t] ?? t)
 
-  const modifiers = new Set<string>()
-  const nonModifiers: string[] = []
+    const modifiers = new Set<string>()
+    const nonModifiers: string[] = []
 
-  for (const token of tokens) {
-    if ((MODIFIER_ORDER as readonly string[]).includes(token)) {
-      modifiers.add(token)
-      continue
+    for (const token of tokens) {
+      if ((MODIFIER_ORDER as readonly string[]).includes(token)) {
+        modifiers.add(token)
+        continue
+      }
+      nonModifiers.push(token)
     }
-    nonModifiers.push(token)
+
+    const orderedModifiers = MODIFIER_ORDER.filter(m => modifiers.has(m))
+    const base = nonModifiers.join('+')
+
+    return base ? [...orderedModifiers, base].join('+') : orderedModifiers.join('+')
   }
 
-  const orderedModifiers = MODIFIER_ORDER.filter(m => modifiers.has(m))
-  const base = nonModifiers.join('+')
+  if (Array.isArray(key)) {
+    return key
+      .map(raw => normalizeSingleHotkey(raw ?? ''))
+      .filter(Boolean)
+      .join(',')
+  }
 
-  return base ? [...orderedModifiers, base].join('+') : orderedModifiers.join('+')
+  return normalizeSingleHotkey(key)
 }

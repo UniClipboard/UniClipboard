@@ -2,9 +2,10 @@ import { DEFAULT_SCOPE_LAYER, ShortcutDefinition, ShortcutScope } from './defini
 import { ShortcutLayer, LAYER_ORDER } from './layers'
 import { normalizeHotkey } from './normalize'
 
-export type ShortcutKeyOverrides = Record<string, string>
+export type ShortcutKeyOverrides = Record<string, string | string[]>
 
-export type ResolvedShortcut = ShortcutDefinition & {
+export type ResolvedShortcut = Omit<ShortcutDefinition, 'key'> & {
+  key: string
   resolvedKey: string
   normalizedKey: string
   layer: ShortcutLayer
@@ -33,12 +34,25 @@ export const resolveShortcuts = (
   overrides: ShortcutKeyOverrides = {},
   scopeLayer: Record<ShortcutScope, ShortcutLayer> = DEFAULT_SCOPE_LAYER
 ): ResolvedShortcut[] => {
-  return definitions.map(def => {
+  return definitions.flatMap(def => {
     const rawKey = overrides[def.id] ?? def.key
-    const resolvedKey = Array.isArray(rawKey) ? (rawKey[0] ?? '') : rawKey
-    const normalizedKey = normalizeHotkey(resolvedKey)
+    const resolvedKeys = Array.isArray(rawKey) ? rawKey : [rawKey]
     const layer = scopeLayer[def.scope] ?? 'page'
-    return { ...def, resolvedKey, normalizedKey, layer }
+
+    const seenNormalizedKeys = new Set<string>()
+    const resolvedShortcuts: ResolvedShortcut[] = []
+
+    for (const resolvedKey of resolvedKeys) {
+      const normalizedKey = normalizeHotkey(resolvedKey)
+      if (!normalizedKey || seenNormalizedKeys.has(normalizedKey)) {
+        continue
+      }
+
+      seenNormalizedKeys.add(normalizedKey)
+      resolvedShortcuts.push({ ...def, key: resolvedKey, resolvedKey, normalizedKey, layer })
+    }
+
+    return resolvedShortcuts
   })
 }
 

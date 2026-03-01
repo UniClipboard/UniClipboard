@@ -2,8 +2,6 @@ import { useLocation, useNavigate } from 'react-router-dom'
 import { useShortcut } from '@/hooks/useShortcut'
 import { SHORTCUT_DEFINITIONS } from '@/shortcuts/definitions'
 
-const settingsDef = SHORTCUT_DEFINITIONS.find(d => d.id === 'nav.settings')!
-
 /**
  * 全局快捷键注册组件
  *
@@ -13,11 +11,18 @@ const settingsDef = SHORTCUT_DEFINITIONS.find(d => d.id === 'nav.settings')!
 export const GlobalShortcuts = () => {
   const navigate = useNavigate()
   const location = useLocation()
+  const settingsDef = SHORTCUT_DEFINITIONS.find(d => d.id === 'nav.settings')
+  const settingsShortcutEnabled = Boolean(settingsDef)
 
   useShortcut({
-    key: settingsDef.key,
+    key: settingsDef?.key ?? '',
     scope: 'global',
+    enabled: settingsShortcutEnabled,
     handler: () => {
+      if (!settingsDef) {
+        return
+      }
+
       if (location.pathname !== '/settings') {
         navigate('/settings')
       }

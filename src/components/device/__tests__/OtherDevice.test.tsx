@@ -2,6 +2,7 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import OtherDevice from '../OtherDevice'
 import * as p2pApi from '@/api/p2p'
+import i18n from '@/i18n'
 
 vi.mock('../DeviceSettingsPanel', () => ({
   default: ({ deviceName }: { deviceName: string }) => (
@@ -45,11 +46,11 @@ describe('OtherDevice', () => {
   it('renders empty state with discovery message when no devices are paired', () => {
     render(<OtherDevice onAddDevice={vi.fn()} />)
 
-    expect(screen.getByText('No paired devices')).toBeInTheDocument()
+    expect(screen.getByText(i18n.t('devices.list.empty.title'))).toBeInTheDocument()
+    expect(screen.getByText(i18n.t('devices.list.empty.description'))).toBeInTheDocument()
     expect(
-      screen.getByText('Connect your other devices to start syncing clipboard content instantly.')
+      screen.getByRole('button', { name: i18n.t('devices.list.actions.addDevice') })
     ).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Add Device' })).toBeInTheDocument()
   })
 
   it('renders paired devices in a list', () => {
@@ -70,8 +71,8 @@ describe('OtherDevice', () => {
 
     expect(screen.getByText('iPhone 13')).toBeInTheDocument()
     expect(screen.getByText('MacBook Pro')).toBeInTheDocument()
-    expect(screen.getByText('在线')).toBeInTheDocument()
-    expect(screen.getByText('离线')).toBeInTheDocument()
+    expect(screen.getByText(i18n.t('devices.list.status.online'))).toBeInTheDocument()
+    expect(screen.getByText(i18n.t('devices.list.status.offline'))).toBeInTheDocument()
   })
 
   it('expands device row on click (accordion behavior)', async () => {
@@ -117,7 +118,7 @@ describe('OtherDevice', () => {
 
     render(<OtherDevice onAddDevice={vi.fn()} />)
 
-    const unpairButton = screen.getByTitle('取消配对')
+    const unpairButton = screen.getByTitle(i18n.t('devices.list.actions.unpair'))
 
     fireEvent.click(unpairButton)
 

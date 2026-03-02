@@ -83,6 +83,7 @@ describe('AboutSection', () => {
             isCheckingUpdate: false,
             checkForUpdates,
             installUpdate: vi.fn(),
+            downloadProgress: { downloaded: 0, total: null, phase: 'idle' as const },
           }}
         >
           <AboutSection />
@@ -123,6 +124,7 @@ describe('AboutSection', () => {
             isCheckingUpdate: false,
             checkForUpdates: vi.fn(),
             installUpdate: vi.fn(),
+            downloadProgress: { downloaded: 0, total: null, phase: 'idle' as const },
           }}
         >
           <AboutSection />

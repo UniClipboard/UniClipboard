@@ -78,6 +78,7 @@ describe('Sidebar update indicator', () => {
             isCheckingUpdate: false,
             checkForUpdates: vi.fn(),
             installUpdate: vi.fn(),
+            downloadProgress: { downloaded: 0, total: null, phase: 'idle' as const },
           }}
         >
           <MemoryRouter>
@@ -112,6 +113,7 @@ describe('Sidebar update indicator', () => {
             isCheckingUpdate: false,
             checkForUpdates: vi.fn(),
             installUpdate: vi.fn(),
+            downloadProgress: { downloaded: 0, total: null, phase: 'idle' as const },
           }}
         >
           <MemoryRouter>

@@ -14,6 +14,7 @@ import {
 } from '@/components/ui/alert-dialog'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
+import { Progress } from '@/components/ui/progress'
 import {
   Select,
   SelectContent,
@@ -25,6 +26,7 @@ import { Switch } from '@/components/ui/switch'
 import { toast } from '@/components/ui/toast'
 import { useSetting } from '@/hooks/useSetting'
 import { useUpdate } from '@/hooks/useUpdate'
+import { cn } from '@/lib/utils'
 import type { UpdateChannel } from '@/types/setting'
 
 function parseChannel(version: string): string {
@@ -49,13 +51,14 @@ function getChannelLabel(channel: string): string {
 const AboutSection: React.FC = () => {
   const { t } = useTranslation()
   const { setting, loading: settingLoading, updateGeneralSetting } = useSetting()
-  const { updateInfo, isCheckingUpdate, checkForUpdates, installUpdate } = useUpdate()
+  const { updateInfo, isCheckingUpdate, checkForUpdates, installUpdate, downloadProgress } =
+    useUpdate()
   const [appVersion, setAppVersion] = useState<string>('')
   const [autoCheckUpdate, setAutoCheckUpdate] = useState(true)
   const [updateChannel, setUpdateChannel] = useState<UpdateChannel | null>(null)
   const [updateDialogOpen, setUpdateDialogOpen] = useState(false)
-  const [isInstallingUpdate, setIsInstallingUpdate] = useState(false)
   const [saving, setSaving] = useState(false)
+  const isInstallingUpdate = downloadProgress.phase !== 'idle'
   const isBusy = settingLoading || saving
 
   const channel = appVersion ? parseChannel(appVersion) : null
@@ -121,15 +124,12 @@ const AboutSection: React.FC = () => {
 
   const handleInstallUpdate = async () => {
     if (!updateInfo || isInstallingUpdate) return
-    setIsInstallingUpdate(true)
     try {
       await installUpdate()
       setUpdateDialogOpen(false)
     } catch (error) {
       console.error('更新失败:', error)
       toast.error(t('update.installFailed'))
-    } finally {
-      setIsInstallingUpdate(false)
     }
   }
 
@@ -283,6 +283,31 @@ const AboutSection: React.FC = () => {
                     {updateInfo?.body?.trim() ? updateInfo.body : t('update.noNotes')}
                   </div>
                 </div>
+                {downloadProgress.phase !== 'idle' && (
+                  <div className="space-y-2 pt-2">
+                    <div className="flex justify-between text-xs text-muted-foreground">
+                      <span>
+                        {downloadProgress.phase === 'installing'
+                          ? t('update.installing')
+                          : t('update.downloading')}
+                      </span>
+                      {downloadProgress.total !== null && (
+                        <span>
+                          {Math.round((downloadProgress.downloaded / downloadProgress.total) * 100)}
+                          %
+                        </span>
+                      )}
+                    </div>
+                    <Progress
+                      value={
+                        downloadProgress.total !== null
+                          ? (downloadProgress.downloaded / downloadProgress.total) * 100
+                          : undefined
+                      }
+                      className={cn('h-2', downloadProgress.total === null && 'animate-pulse')}
+                    />
+                  </div>
+                )}
               </div>
             </AlertDialogDescription>
           </AlertDialogHeader>

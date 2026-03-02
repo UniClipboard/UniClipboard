@@ -25,7 +25,9 @@
     "later": "稍后",
     "noUpdate": "当前已是最新版本。",
     "checkFailed": "检查更新失败",
-    "installFailed": "更新失败，请稍后重试"
+    "installFailed": "更新失败，请稍后重试",
+    "downloading": "正在下载...",
+    "installing": "正在安装..."
   },
   "settings": {
     "title": "设置",

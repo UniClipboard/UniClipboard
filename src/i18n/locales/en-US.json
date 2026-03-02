@@ -25,7 +25,9 @@
     "later": "Later",
     "noUpdate": "You're already on the latest version.",
     "checkFailed": "Failed to check for updates.",
-    "installFailed": "Update failed. Please try again."
+    "installFailed": "Update failed. Please try again.",
+    "downloading": "Downloading...",
+    "installing": "Installing..."
   },
   "settings": {
     "title": "Settings",

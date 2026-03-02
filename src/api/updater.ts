@@ -1,3 +1,4 @@
+import { Channel } from '@tauri-apps/api/core'
 import { invokeWithTrace } from '@/lib/tauri-command'
 import type { UpdateChannel } from '@/types/setting'
 
@@ -6,6 +7,17 @@ export interface UpdateMetadata {
   currentVersion: string
   body?: string
   date?: string
+}
+
+export type DownloadEvent =
+  | { event: 'Started'; data: { contentLength: number | null } }
+  | { event: 'Progress'; data: { chunkLength: number } }
+  | { event: 'Finished' }
+
+export interface DownloadProgress {
+  downloaded: number
+  total: number | null
+  phase: 'idle' | 'downloading' | 'installing'
 }
 
 /**
@@ -26,11 +38,34 @@ export async function checkForUpdate(
 
 /**
  * 安装更新
+ * @param onProgress 可选的进度回调
  * @returns Promise，安装完成后应用重启
  */
-export async function installUpdate(): Promise<void> {
+export async function installUpdate(
+  onProgress?: (progress: DownloadProgress) => void
+): Promise<void> {
+  const onEvent = new Channel<DownloadEvent>()
+  let downloaded = 0
+  let total: number | null = null
+
+  onEvent.onmessage = message => {
+    switch (message.event) {
+      case 'Started':
+        total = message.data.contentLength
+        onProgress?.({ downloaded: 0, total, phase: 'downloading' })
+        break
+      case 'Progress':
+        downloaded += message.data.chunkLength
+        onProgress?.({ downloaded, total, phase: 'downloading' })
+        break
+      case 'Finished':
+        onProgress?.({ downloaded, total, phase: 'installing' })
+        break
+    }
+  }
+
   try {
-    return await invokeWithTrace('install_update')
+    await invokeWithTrace('install_update', { onEvent })
   } catch (error) {
     console.error('安装更新失败:', error)
     throw error

@@ -5,6 +5,7 @@ import {
   checkForUpdate,
   installUpdate as apiInstallUpdate,
   type UpdateMetadata,
+  type DownloadProgress,
 } from '@/api/updater'
 import { toast } from '@/components/ui/toast'
 import { useSetting } from '@/hooks/useSetting'
@@ -18,6 +19,11 @@ export const UpdateProvider: React.FC<UpdateProviderProps> = ({ children }) => {
   const { setting } = useSetting()
   const [updateInfo, setUpdateInfo] = useState<UpdateMetadata | null>(null)
   const [isCheckingUpdate, setIsCheckingUpdate] = useState(false)
+  const [downloadProgress, setDownloadProgress] = useState<DownloadProgress>({
+    downloaded: 0,
+    total: null,
+    phase: 'idle',
+  })
   const isCheckingRef = useRef(false)
   const hasCheckedOnStartup = useRef(false)
 
@@ -41,7 +47,15 @@ export const UpdateProvider: React.FC<UpdateProviderProps> = ({ children }) => {
   }, [updateInfo, setting?.general?.update_channel])
 
   const doInstallUpdate = useCallback(async () => {
-    await apiInstallUpdate()
+    setDownloadProgress({ downloaded: 0, total: null, phase: 'downloading' })
+    try {
+      await apiInstallUpdate(progress => {
+        setDownloadProgress(progress)
+      })
+    } catch (error) {
+      setDownloadProgress({ downloaded: 0, total: null, phase: 'idle' })
+      throw error
+    }
   }, [])
 
   useEffect(() => {
@@ -65,10 +79,11 @@ export const UpdateProvider: React.FC<UpdateProviderProps> = ({ children }) => {
     () => ({
       updateInfo,
       isCheckingUpdate,
+      downloadProgress,
       checkForUpdates,
       installUpdate: doInstallUpdate,
     }),
-    [updateInfo, isCheckingUpdate, checkForUpdates, doInstallUpdate]
+    [updateInfo, isCheckingUpdate, downloadProgress, checkForUpdates, doInstallUpdate]
   )
 
   return <UpdateContext.Provider value={value}>{children}</UpdateContext.Provider>

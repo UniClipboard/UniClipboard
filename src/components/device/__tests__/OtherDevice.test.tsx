@@ -44,13 +44,10 @@ describe('OtherDevice', () => {
   })
 
   it('renders empty state with discovery message when no devices are paired', () => {
-    render(<OtherDevice onAddDevice={vi.fn()} />)
+    render(<OtherDevice />)
 
     expect(screen.getByText(i18n.t('devices.list.empty.title'))).toBeInTheDocument()
     expect(screen.getByText(i18n.t('devices.list.empty.description'))).toBeInTheDocument()
-    expect(
-      screen.getByRole('button', { name: i18n.t('devices.list.actions.addDevice') })
-    ).toBeInTheDocument()
   })
 
   it('renders paired devices in a list', () => {
@@ -67,7 +64,7 @@ describe('OtherDevice', () => {
       }
     })
 
-    render(<OtherDevice onAddDevice={vi.fn()} />)
+    render(<OtherDevice />)
 
     expect(screen.getByText('iPhone 13')).toBeInTheDocument()
     expect(screen.getByText('MacBook Pro')).toBeInTheDocument()
@@ -89,7 +86,7 @@ describe('OtherDevice', () => {
       }
     })
 
-    render(<OtherDevice onAddDevice={vi.fn()} />)
+    render(<OtherDevice />)
 
     expect(screen.queryByTestId('device-settings-panel')).not.toBeInTheDocument()
 
@@ -116,7 +113,7 @@ describe('OtherDevice', () => {
       }
     })
 
-    render(<OtherDevice onAddDevice={vi.fn()} />)
+    render(<OtherDevice />)
 
     const unpairButton = screen.getByTitle(i18n.t('devices.list.actions.unpair'))
 

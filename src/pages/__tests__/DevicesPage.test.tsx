@@ -1,42 +1,18 @@
-import { fireEvent, render, screen } from '@testing-library/react'
+import { render, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import DevicesPage from '@/pages/DevicesPage'
 
-const dispatchMock = vi.hoisted(() => vi.fn())
-
-vi.mock('@/store/hooks', () => ({
-  useAppDispatch: () => dispatchMock,
-}))
-
-vi.mock('@/store/slices/devicesSlice', () => ({
-  fetchPairedDevices: () => ({ type: 'devices/fetchPairedDevices' }),
-}))
-
 vi.mock('@/components', () => ({
-  DeviceList: ({ onAddDevice }: { onAddDevice: () => void }) => (
+  DeviceList: () => (
     <div>
       <div data-testid="device-list">DeviceList</div>
-      <button type="button" onClick={onAddDevice}>
-        Open Pairing
-      </button>
     </div>
   ),
-}))
-
-vi.mock('@/components/PairingDialog', () => ({
-  default: ({ open, onPairingSuccess }: { open: boolean; onPairingSuccess: () => void }) =>
-    open ? (
-      <div>
-        PairingDialog
-        <button type="button" onClick={onPairingSuccess}>
-          Trigger Success
-        </button>
-      </div>
-    ) : null,
+  PairingDialog: () => <div data-testid="pairing-dialog-mock">PairingDialog</div>,
 }))
 
 describe('DevicesPage', () => {
-  it('does not render legacy header and pairing requests sections', () => {
+  it('renders device list and does not render legacy sections', () => {
     render(<DevicesPage />)
 
     expect(screen.getByTestId('device-list')).toBeInTheDocument()
@@ -45,13 +21,12 @@ describe('DevicesPage', () => {
     expect(screen.queryByText('当前设备')).not.toBeInTheDocument()
   })
 
-  it('opens pairing dialog and refreshes devices on pairing success', () => {
+  it('does not render pairing dialog entry in page', () => {
     render(<DevicesPage />)
 
-    fireEvent.click(screen.getByText('Open Pairing'))
-    expect(screen.getByText('PairingDialog')).toBeInTheDocument()
-
-    fireEvent.click(screen.getByText('Trigger Success'))
-    expect(dispatchMock).toHaveBeenCalledWith({ type: 'devices/fetchPairedDevices' })
+    expect(screen.queryByTestId('pairing-dialog-mock')).not.toBeInTheDocument()
+    expect(screen.queryByText('PairingDialog')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Open Pairing' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Trigger Success' })).not.toBeInTheDocument()
   })
 })

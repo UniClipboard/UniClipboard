@@ -1,14 +1,5 @@
 import { motion, AnimatePresence } from 'framer-motion'
-import {
-  Smartphone,
-  Monitor,
-  Tablet,
-  Trash2,
-  Laptop,
-  RefreshCw,
-  Plus,
-  ChevronRight,
-} from 'lucide-react'
+import { Smartphone, Monitor, Tablet, Trash2, Laptop, RefreshCw, ChevronRight } from 'lucide-react'
 import React, { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import DeviceSettingsPanel from './DeviceSettingsPanel'
@@ -22,11 +13,7 @@ import {
   updatePeerDeviceName,
 } from '@/store/slices/devicesSlice'
 
-interface OtherDeviceProps {
-  onAddDevice: () => void
-}
-
-const OtherDevice: React.FC<OtherDeviceProps> = ({ onAddDevice }) => {
+const OtherDevice: React.FC = () => {
   const { t } = useTranslation()
   const [expandedDeviceId, setExpandedDeviceId] = useState<string | null>(null)
   const dispatch = useAppDispatch()
@@ -167,15 +154,7 @@ const OtherDevice: React.FC<OtherDeviceProps> = ({ onAddDevice }) => {
         <h3 className="text-xl font-semibold text-foreground mb-2">
           {t('devices.list.empty.title')}
         </h3>
-        <p className="text-muted-foreground max-w-xs mb-8">{t('devices.list.empty.description')}</p>
-        <button
-          type="button"
-          onClick={onAddDevice}
-          className="inline-flex items-center gap-2 px-6 py-3 bg-primary text-primary-foreground rounded-full font-medium hover:bg-primary/90 transition-all shadow-lg shadow-primary/20 hover:shadow-primary/30 hover:-translate-y-0.5"
-        >
-          <Plus className="h-5 w-5" />
-          {t('devices.list.actions.addDevice')}
-        </button>
+        <p className="text-muted-foreground max-w-xs">{t('devices.list.empty.description')}</p>
       </div>
     )
   }
@@ -280,15 +259,6 @@ const OtherDevice: React.FC<OtherDeviceProps> = ({ onAddDevice }) => {
           )
         })}
       </div>
-
-      <button
-        type="button"
-        onClick={onAddDevice}
-        className="w-full group relative overflow-hidden bg-card/30 hover:bg-card/50 border border-dashed border-border hover:border-primary/50 rounded-lg transition-all duration-300 p-3 flex items-center justify-center gap-2 text-muted-foreground hover:text-primary"
-      >
-        <Plus className="h-4 w-4" />
-        <span className="text-sm font-medium">{t('devices.list.actions.addAnotherDevice')}</span>
-      </button>
     </div>
   )
 }

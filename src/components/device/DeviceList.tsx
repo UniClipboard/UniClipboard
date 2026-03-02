@@ -1,14 +1,10 @@
 import React from 'react'
 import OtherDevice from './OtherDevice'
 
-interface DeviceListProps {
-  onAddDevice: () => void
-}
-
-const DeviceList: React.FC<DeviceListProps> = ({ onAddDevice }) => {
+const DeviceList: React.FC = () => {
   return (
     <>
-      <OtherDevice onAddDevice={onAddDevice} />
+      <OtherDevice />
     </>
   )
 }

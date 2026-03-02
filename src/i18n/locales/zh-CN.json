@@ -202,7 +202,7 @@
       "about": {
         "title": "关于",
         "appName": "UniClipboard",
-        "version": "版本 0.1.0",
+        "version": "版本 {{version}}",
         "checkUpdate": "检查更新",
         "autoCheckUpdate": {
           "label": "自动检查更新",

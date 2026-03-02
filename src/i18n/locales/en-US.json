@@ -202,7 +202,7 @@
       "about": {
         "title": "About",
         "appName": "UniClipboard",
-        "version": "Version 0.1.0",
+        "version": "Version {{version}}",
         "checkUpdate": "Check for updates",
         "autoCheckUpdate": {
           "label": "Auto-check for updates",

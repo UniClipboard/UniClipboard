@@ -1,3 +1,4 @@
+import { getVersion } from '@tauri-apps/api/app'
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { SettingSectionHeader } from './SettingSectionHeader'
@@ -11,6 +12,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
+import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
 import {
   Select,
@@ -25,16 +27,42 @@ import { useSetting } from '@/hooks/useSetting'
 import { useUpdate } from '@/hooks/useUpdate'
 import type { UpdateChannel } from '@/types/setting'
 
+function parseChannel(version: string): string {
+  const match = version.match(/-(alpha|beta|rc)/)
+  return match ? match[1] : 'stable'
+}
+
+function getChannelBadgeVariant(channel: string): 'outline' | 'secondary' {
+  return channel === 'stable' ? 'secondary' : 'outline'
+}
+
+function getChannelLabel(channel: string): string {
+  const labels: Record<string, string> = {
+    alpha: 'Alpha',
+    beta: 'Beta',
+    rc: 'RC',
+    stable: 'Stable',
+  }
+  return labels[channel] ?? channel
+}
+
 const AboutSection: React.FC = () => {
   const { t } = useTranslation()
   const { setting, loading: settingLoading, updateGeneralSetting } = useSetting()
   const { updateInfo, isCheckingUpdate, checkForUpdates, installUpdate } = useUpdate()
+  const [appVersion, setAppVersion] = useState<string>('')
   const [autoCheckUpdate, setAutoCheckUpdate] = useState(true)
   const [updateChannel, setUpdateChannel] = useState<UpdateChannel | null>(null)
   const [updateDialogOpen, setUpdateDialogOpen] = useState(false)
   const [isInstallingUpdate, setIsInstallingUpdate] = useState(false)
   const [saving, setSaving] = useState(false)
   const isBusy = settingLoading || saving
+
+  const channel = appVersion ? parseChannel(appVersion) : null
+
+  useEffect(() => {
+    getVersion().then(setAppVersion).catch(console.error)
+  }, [])
 
   useEffect(() => {
     if (!setting?.general) return
@@ -129,9 +157,18 @@ const AboutSection: React.FC = () => {
               </svg>
             </div>
             <div className="ml-4 space-y-0.5">
-              <h4 className="text-lg font-medium">{t('settings.sections.about.appName')}</h4>
+              <div className="flex items-center gap-2">
+                <h4 className="text-lg font-medium">{t('settings.sections.about.appName')}</h4>
+                {channel && (
+                  <Badge variant={getChannelBadgeVariant(channel)}>
+                    {getChannelLabel(channel)}
+                  </Badge>
+                )}
+              </div>
               <p className="text-sm text-muted-foreground">
-                {t('settings.sections.about.version')}
+                {appVersion
+                  ? t('settings.sections.about.version', { version: appVersion })
+                  : t('settings.sections.about.version', { version: '...' })}
               </p>
             </div>
           </div>
@@ -185,13 +222,9 @@ const AboutSection: React.FC = () => {
               <SelectItem value="stable">
                 {t('settings.sections.about.updateChannel.stable')}
               </SelectItem>
-              <SelectItem value="beta">
-                {t('settings.sections.about.updateChannel.beta')}
-              </SelectItem>
               <SelectItem value="alpha">
                 {t('settings.sections.about.updateChannel.alpha')}
               </SelectItem>
-              <SelectItem value="rc">{t('settings.sections.about.updateChannel.rc')}</SelectItem>
             </SelectContent>
           </Select>
         </div>

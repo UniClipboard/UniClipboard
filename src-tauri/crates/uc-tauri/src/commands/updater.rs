@@ -10,7 +10,7 @@ use std::sync::Mutex;
 use tauri::ipc::Channel;
 use tauri::{AppHandle, State};
 use tauri_plugin_updater::UpdaterExt as _;
-use tracing::{info, info_span, Instrument};
+use tracing::{error, info, info_span, Instrument};
 use uc_core::ports::observability::TraceMetadata;
 use uc_core::settings::channel::detect_channel;
 use uc_core::settings::model::UpdateChannel;
@@ -29,6 +29,10 @@ pub enum DownloadEvent {
         chunk_length: usize,
     },
     Finished,
+    #[serde(rename_all = "camelCase")]
+    Failed {
+        error: String,
+    },
 }
 
 /// Holds a pending update ready for installation.
@@ -196,12 +200,69 @@ pub async fn install_update(
                 |chunk_length, content_length| {
                     if first_chunk {
                         first_chunk = false;
-                        let _ = on_event.send(DownloadEvent::Started { content_length });
+                        if let Err(e) = on_event.send(DownloadEvent::Started { content_length }) {
+                            let send_err = e.to_string();
+                            error!(
+                                event = "Started",
+                                content_length,
+                                error = %send_err,
+                                "failed to send download event"
+                            );
+                            if let Err(fallback_err) = on_event.send(DownloadEvent::Failed {
+                                error: format!("Failed to send Started event: {}", send_err),
+                            }) {
+                                error!(
+                                    event = "Failed",
+                                    original_event = "Started",
+                                    content_length,
+                                    error = %fallback_err,
+                                    "failed to send fallback failure event"
+                                );
+                            }
+                        }
                     }
-                    let _ = on_event.send(DownloadEvent::Progress { chunk_length });
+                    if let Err(e) = on_event.send(DownloadEvent::Progress { chunk_length }) {
+                        let send_err = e.to_string();
+                        error!(
+                            event = "Progress",
+                            chunk_length,
+                            content_length,
+                            error = %send_err,
+                            "failed to send download event"
+                        );
+                        if let Err(fallback_err) = on_event.send(DownloadEvent::Failed {
+                            error: format!("Failed to send Progress event: {}", send_err),
+                        }) {
+                            error!(
+                                event = "Failed",
+                                original_event = "Progress",
+                                chunk_length,
+                                content_length,
+                                error = %fallback_err,
+                                "failed to send fallback failure event"
+                            );
+                        }
+                    }
                 },
                 || {
-                    let _ = on_event.send(DownloadEvent::Finished);
+                    if let Err(e) = on_event.send(DownloadEvent::Finished) {
+                        let send_err = e.to_string();
+                        error!(
+                            event = "Finished",
+                            error = %send_err,
+                            "failed to send download event"
+                        );
+                        if let Err(fallback_err) = on_event.send(DownloadEvent::Failed {
+                            error: format!("Failed to send Finished event: {}", send_err),
+                        }) {
+                            error!(
+                                event = "Failed",
+                                original_event = "Finished",
+                                error = %fallback_err,
+                                "failed to send fallback failure event"
+                            );
+                        }
+                    }
                 },
             )
             .await

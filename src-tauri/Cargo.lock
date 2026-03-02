@@ -9011,7 +9011,7 @@ dependencies = [
 
 [[package]]
 name = "uniclipboard"
-version = "0.1.0"
+version = "0.1.0-alpha.3"
 dependencies = [
  "anyhow",
  "async-trait",

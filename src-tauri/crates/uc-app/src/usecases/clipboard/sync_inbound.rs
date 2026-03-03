@@ -1,13 +1,16 @@
 use std::collections::VecDeque;
+use std::io::Cursor;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use crate::usecases::clipboard::ClipboardIntegrationMode;
 use anyhow::{Context, Result};
 use tokio::sync::Mutex;
-use tracing::{debug, info, info_span, warn, Instrument};
+use tracing::{debug, error, info, info_span, warn, Instrument};
 use uc_core::ids::{EntryId, FormatId, RepresentationId};
-use uc_core::network::protocol::ClipboardTextPayloadV1;
+use uc_core::network::protocol::{
+    ClipboardMultiRepPayloadV2, ClipboardPayloadVersion, ClipboardTextPayloadV1, WireRepresentation,
+};
 use uc_core::network::ClipboardMessage;
 use uc_core::ports::clipboard::{RepresentationCachePort, SpoolQueuePort};
 use uc_core::ports::{
@@ -19,6 +22,7 @@ use uc_core::security::{aad, model::EncryptedBlob};
 use uc_core::{
     ClipboardChangeOrigin, MimeType, ObservedClipboardRepresentation, SystemClipboardSnapshot,
 };
+use uc_infra::clipboard::ChunkedDecoder;
 
 const RECENT_ID_TTL: Duration = Duration::from_secs(600);
 const RECENT_ID_MAX: usize = 1024;
@@ -143,6 +147,7 @@ impl SyncInboundClipboardUseCase {
             "usecase.clipboard.sync_inbound.execute",
             message_id = %message.id,
             origin_device_id = %message.origin_device_id,
+            payload_version = ?message.payload_version,
         );
 
         async move {
@@ -154,6 +159,7 @@ impl SyncInboundClipboardUseCase {
                 "Processing inbound clipboard message"
             );
 
+            // Echo prevention: check before any decryption attempt
             let local_device_id = self.device_identity.current_device_id().to_string();
             if message.origin_device_id == local_device_id {
                 debug!("Ignoring inbound clipboard message from local device");
@@ -165,117 +171,291 @@ impl SyncInboundClipboardUseCase {
                 return Ok(InboundApplyOutcome::Skipped);
             }
 
-            let encrypted_blob: EncryptedBlob = serde_json::from_slice(&message.encrypted_content)
-                .context("failed to deserialize encrypted inbound clipboard payload")?;
+            // Route to V1 or V2 path based on payload_version
+            match message.payload_version {
+                ClipboardPayloadVersion::V1 => self.apply_v1_inbound(message).await,
+                ClipboardPayloadVersion::V2 => self.apply_v2_inbound(message).await,
+            }
+        }
+        .instrument(span)
+        .await
+    }
 
-            let master_key = self
-                .encryption_session
-                .get_master_key()
-                .await
-                .map_err(anyhow::Error::from)
-                .context("failed to access encryption session master key for inbound apply")?;
+    /// V1 inbound path: decrypt via EncryptionPort, parse ClipboardTextPayloadV1.
+    /// This path is unchanged for backward compatibility with old senders.
+    async fn apply_v1_inbound(&self, message: ClipboardMessage) -> Result<InboundApplyOutcome> {
+        let encrypted_blob: EncryptedBlob = serde_json::from_slice(&message.encrypted_content)
+            .context("failed to deserialize encrypted inbound clipboard payload")?;
 
-            let plaintext = self
-                .encryption
-                .decrypt_blob(
-                    &master_key,
-                    &encrypted_blob,
-                    &aad::for_network_clipboard(&message.id),
-                )
-                .await
-                .map_err(anyhow::Error::from)
-                .context("failed to decrypt inbound clipboard payload")?;
+        let master_key = self
+            .encryption_session
+            .get_master_key()
+            .await
+            .map_err(anyhow::Error::from)
+            .context("failed to access encryption session master key for inbound apply")?;
 
-            let payload: ClipboardTextPayloadV1 = serde_json::from_slice(&plaintext)
-                .context("failed to deserialize inbound clipboard payload")?;
-            if !is_text_plain_mime(&payload.mime) {
-                warn!(mime = %payload.mime, "Skipping inbound apply because payload mime is not text/plain");
-                return Ok(InboundApplyOutcome::Skipped);
+        let plaintext = self
+            .encryption
+            .decrypt_blob(
+                &master_key,
+                &encrypted_blob,
+                &aad::for_network_clipboard(&message.id),
+            )
+            .await
+            .map_err(anyhow::Error::from)
+            .context("failed to decrypt inbound clipboard payload")?;
+
+        let payload: ClipboardTextPayloadV1 = serde_json::from_slice(&plaintext)
+            .context("failed to deserialize inbound clipboard payload")?;
+        if !is_text_plain_mime(&payload.mime) {
+            warn!(mime = %payload.mime, "Skipping inbound apply because payload mime is not text/plain");
+            return Ok(InboundApplyOutcome::Skipped);
+        }
+
+        let snapshot = SystemClipboardSnapshot {
+            ts_ms: payload.ts_ms,
+            representations: vec![ObservedClipboardRepresentation {
+                id: RepresentationId::new(),
+                format_id: FormatId::from("text"),
+                mime: Some(MimeType::text_plain()),
+                bytes: payload.text.into_bytes(),
+            }],
+        };
+
+        self.apply_snapshot_v1(message, snapshot).await
+    }
+
+    /// Apply a V1 snapshot: handles passive mode dedup, OS-clipboard dedup, and write.
+    async fn apply_snapshot_v1(
+        &self,
+        message: ClipboardMessage,
+        snapshot: SystemClipboardSnapshot,
+    ) -> Result<InboundApplyOutcome> {
+        if !self.mode.allow_os_read() {
+            let message_id = message.id.clone();
+            self.prune_recent_ids().await;
+            {
+                let now = Instant::now();
+                let mut recent_ids = self.recent_ids.lock().await;
+                let is_duplicate = recent_ids.iter().any(|(id, _)| id == &message_id);
+                if is_duplicate {
+                    debug!(
+                        message_id = %message_id,
+                        dedupe_hit = true,
+                        "Skipping inbound apply because passive mode already processed this message id"
+                    );
+                    return Ok(InboundApplyOutcome::Skipped);
+                }
+                recent_ids.push_back((message_id.clone(), now));
+                while recent_ids.len() > RECENT_ID_MAX {
+                    recent_ids.pop_front();
+                }
             }
 
-            let snapshot = SystemClipboardSnapshot {
-                ts_ms: payload.ts_ms,
-                representations: vec![ObservedClipboardRepresentation {
-                    id: RepresentationId::new(),
-                    format_id: FormatId::from("text"),
-                    mime: Some(MimeType::text_plain()),
-                    bytes: payload.text.into_bytes(),
-                }],
+            let capture = self
+                .capture_clipboard
+                .as_ref()
+                .context("passive inbound sync requires capture clipboard dependencies")?;
+            let persisted_entry_id = match capture
+                .execute_with_origin(snapshot, ClipboardChangeOrigin::RemotePush)
+                .await
+            {
+                Ok(Some(entry_id)) => entry_id,
+                Ok(None) => {
+                    self.rollback_recent_id(&message_id).await;
+                    return Err(anyhow::anyhow!(
+                        "capture usecase skipped persistence for RemotePush origin"
+                    ))
+                    .context("failed to persist inbound clipboard in passive mode");
+                }
+                Err(err) => {
+                    self.rollback_recent_id(&message_id).await;
+                    return Err(err).context("failed to persist inbound clipboard in passive mode");
+                }
             };
 
-            if !self.mode.allow_os_read() {
-                let message_id = message.id.clone();
-                self.prune_recent_ids().await;
-                {
-                    let now = Instant::now();
-                    let mut recent_ids = self.recent_ids.lock().await;
-                    let is_duplicate = recent_ids.iter().any(|(id, _)| id == &message_id);
-                    if is_duplicate {
-                        debug!(
-                            message_id = %message_id,
-                            dedupe_hit = true,
-                            "Skipping inbound apply because passive mode already processed this message id"
-                        );
-                        return Ok(InboundApplyOutcome::Skipped);
-                    }
-                    recent_ids.push_back((message_id.clone(), now));
-                    while recent_ids.len() > RECENT_ID_MAX {
-                        recent_ids.pop_front();
-                    }
+            self.prune_recent_ids().await;
+
+            info!(mode = ?self.mode, "Inbound clipboard message persisted in passive mode");
+            return Ok(InboundApplyOutcome::Applied {
+                entry_id: Some(persisted_entry_id),
+            });
+        }
+
+        if !self.mode.allow_os_write() {
+            info!(mode = ?self.mode, "Skipping inbound apply because clipboard integration mode disallows OS clipboard write");
+            return Ok(InboundApplyOutcome::Skipped);
+        }
+
+        let current_snapshot = self
+            .local_clipboard
+            .read_snapshot()
+            .context("failed to read local clipboard snapshot for inbound dedupe")?;
+        let already_applied = current_snapshot
+            .representations
+            .iter()
+            .any(|rep| rep.content_hash().to_string() == message.content_hash);
+        if already_applied {
+            debug!(
+                incoming_content_hash = %message.content_hash,
+                dedupe_hit = true,
+                "Skipping inbound apply because local clipboard already matches content hash"
+            );
+            return Ok(InboundApplyOutcome::Skipped);
+        }
+
+        self.clipboard_change_origin
+            .set_next_origin(
+                ClipboardChangeOrigin::RemotePush,
+                Duration::from_millis(REMOTE_PUSH_ORIGIN_TTL_MS),
+            )
+            .await;
+
+        info!(
+            write_attempted = true,
+            incoming_content_hash = %message.content_hash,
+            "Applying inbound snapshot to system clipboard"
+        );
+        if let Err(err) = self.local_clipboard.write_snapshot(snapshot) {
+            self.clipboard_change_origin
+                .consume_origin_or_default(ClipboardChangeOrigin::LocalCapture)
+                .await;
+            return Err(err).context("failed to write inbound clipboard snapshot");
+        }
+
+        info!(
+            write_result = "ok",
+            incoming_content_hash = %message.content_hash,
+            "Inbound clipboard message applied"
+        );
+
+        match self.local_clipboard.read_snapshot() {
+            Ok(post_write_snapshot) => {
+                let post_write_hash_match =
+                    snapshot_matches_content_hash(&post_write_snapshot, &message.content_hash);
+                let post_write_text_len = first_text_representation_len(&post_write_snapshot);
+                if post_write_hash_match {
+                    info!(
+                        post_write_hash_match,
+                        post_write_text_len,
+                        "Inbound clipboard write post-check matched content hash"
+                    );
+                } else {
+                    warn!(
+                        post_write_hash_match,
+                        post_write_text_len,
+                        incoming_content_hash = %message.content_hash,
+                        "Inbound clipboard write post-check hash mismatch"
+                    );
                 }
-
-                let capture = self
-                    .capture_clipboard
-                    .as_ref()
-                    .context("passive inbound sync requires capture clipboard dependencies")?;
-                let persisted_entry_id = match capture
-                    .execute_with_origin(snapshot, ClipboardChangeOrigin::RemotePush)
-                    .await
-                {
-                    Ok(Some(entry_id)) => entry_id,
-                    Ok(None) => {
-                        self.rollback_recent_id(&message_id).await;
-                        return Err(anyhow::anyhow!(
-                            "capture usecase skipped persistence for RemotePush origin"
-                        ))
-                        .context("failed to persist inbound clipboard in passive mode");
-                    }
-                    Err(err) => {
-                        self.rollback_recent_id(&message_id).await;
-                        return Err(err).context("failed to persist inbound clipboard in passive mode");
-                    }
-                };
-
-                self.prune_recent_ids().await;
-
-                info!(mode = ?self.mode, "Inbound clipboard message persisted in passive mode");
-                return Ok(InboundApplyOutcome::Applied {
-                    entry_id: Some(persisted_entry_id),
-                });
             }
-
-            if !self.mode.allow_os_write() {
-                info!(mode = ?self.mode, "Skipping inbound apply because clipboard integration mode disallows OS clipboard write");
-                return Ok(InboundApplyOutcome::Skipped);
-            }
-
-            let current_snapshot = self
-                .local_clipboard
-                .read_snapshot()
-                .context("failed to read local clipboard snapshot for inbound dedupe")?;
-            let already_applied = current_snapshot
-                .representations
-                .iter()
-                .any(|rep| rep.content_hash().to_string() == message.content_hash);
-            if already_applied {
-                debug!(
+            Err(err) => {
+                warn!(
+                    error = %err,
                     incoming_content_hash = %message.content_hash,
+                    "Inbound clipboard write post-check read failed"
+                );
+            }
+        }
+
+        Ok(InboundApplyOutcome::Applied { entry_id: None })
+    }
+
+    /// V2 inbound path: chunk-decrypt via ChunkedDecoder, select highest-priority representation.
+    ///
+    /// Dedup strategy: uses recent_ids by message.id only.
+    /// Unlike V1, we do NOT read the OS clipboard to compare snapshot_hash.
+    /// Rationale: V2 carries a multi-representation payload whose snapshot_hash is computed from ALL
+    /// representations. The OS clipboard holds only the highest-priority representation written by a
+    /// prior V2 receive. Comparing snapshot_hash against the OS clipboard would require re-reading
+    /// the OS clipboard and re-computing a hash, which is expensive and fragile (OS clipboard format
+    /// may not round-trip exactly). The recent_ids dedup (by message.id, TTL-bounded) is sufficient
+    /// to prevent duplicate processing from the same message broadcast to multiple paths.
+    async fn apply_v2_inbound(&self, message: ClipboardMessage) -> Result<InboundApplyOutcome> {
+        // V2 dedup: by message.id only (see rationale above)
+        self.prune_recent_ids().await;
+        {
+            let now = Instant::now();
+            let mut recent_ids = self.recent_ids.lock().await;
+            let is_duplicate = recent_ids.iter().any(|(id, _)| id == &message.id);
+            if is_duplicate {
+                debug!(
+                    message_id = %message.id,
                     dedupe_hit = true,
-                    "Skipping inbound apply because local clipboard already matches content hash"
+                    "Skipping V2 inbound: already processed this message id"
                 );
                 return Ok(InboundApplyOutcome::Skipped);
             }
+            recent_ids.push_back((message.id.clone(), now));
+            while recent_ids.len() > RECENT_ID_MAX {
+                recent_ids.pop_front();
+            }
+        }
 
+        let master_key = self
+            .encryption_session
+            .get_master_key()
+            .await
+            .map_err(anyhow::Error::from)
+            .context("failed to get master key for V2 inbound")?;
+
+        // Decode using streaming ChunkedDecoder::decode_from with Cursor over encrypted_content.
+        // Note: encrypted_content is already fully in memory (received via read_to_end of the
+        // ProtocolMessage JSON envelope). True inbound stream-level chunking is a future optimization.
+        let plaintext =
+            match ChunkedDecoder::decode_from(Cursor::new(&message.encrypted_content), &master_key)
+            {
+                Ok(bytes) => bytes,
+                Err(e) => {
+                    error!(
+                        error = %e,
+                        message_id = %message.id,
+                        "V2 inbound: failed to decode chunked payload — dropping message"
+                    );
+                    self.rollback_recent_id(&message.id).await;
+                    return Ok(InboundApplyOutcome::Skipped);
+                }
+            };
+
+        let v2_payload: ClipboardMultiRepPayloadV2 = match serde_json::from_slice(&plaintext) {
+            Ok(p) => p,
+            Err(e) => {
+                error!(
+                    error = %e,
+                    message_id = %message.id,
+                    "V2 inbound: failed to deserialize ClipboardMultiRepPayloadV2 — dropping"
+                );
+                self.rollback_recent_id(&message.id).await;
+                return Ok(InboundApplyOutcome::Skipped);
+            }
+        };
+
+        let selected = match select_highest_priority_repr(&v2_payload.representations) {
+            Some(r) => r,
+            None => {
+                warn!(message_id = %message.id, "V2 inbound: no representations — dropping");
+                self.rollback_recent_id(&message.id).await;
+                return Ok(InboundApplyOutcome::Skipped);
+            }
+        };
+
+        // Construct MimeType from wire string.
+        // MimeType(s.to_string()) is correct — there is no from_str_lossy method.
+        let mime: Option<MimeType> = selected.mime.as_deref().map(|s| MimeType(s.to_string()));
+
+        // Build a single-representation snapshot from the selected (highest-priority) repr
+        let snapshot = SystemClipboardSnapshot {
+            ts_ms: v2_payload.ts_ms,
+            representations: vec![ObservedClipboardRepresentation {
+                id: RepresentationId::new(),
+                format_id: FormatId::from(selected.format_id.as_str()),
+                mime,
+                bytes: selected.bytes.clone(),
+            }],
+        };
+
+        // In Full mode: set origin + write to OS clipboard
+        if self.mode.allow_os_write() {
             self.clipboard_change_origin
                 .set_next_origin(
                     ClipboardChangeOrigin::RemotePush,
@@ -283,61 +463,72 @@ impl SyncInboundClipboardUseCase {
                 )
                 .await;
 
-            info!(
-                write_attempted = true,
-                incoming_content_hash = %message.content_hash,
-                "Applying inbound snapshot to system clipboard"
-            );
-            if let Err(err) = self.local_clipboard.write_snapshot(snapshot) {
+            if let Err(err) = self.local_clipboard.write_snapshot(snapshot.clone()) {
                 self.clipboard_change_origin
                     .consume_origin_or_default(ClipboardChangeOrigin::LocalCapture)
                     .await;
-                return Err(err).context("failed to write inbound clipboard snapshot");
+                self.rollback_recent_id(&message.id).await;
+                return Err(err).context("V2 inbound: failed to write snapshot to OS clipboard");
             }
+            info!(message_id = %message.id, "V2 inbound clipboard applied");
+            return Ok(InboundApplyOutcome::Applied { entry_id: None });
+        }
 
-            info!(
-                write_result = "ok",
-                incoming_content_hash = %message.content_hash,
-                "Inbound clipboard message applied"
-            );
-
-            match self.local_clipboard.read_snapshot() {
-                Ok(post_write_snapshot) => {
-                    let post_write_hash_match =
-                        snapshot_matches_content_hash(&post_write_snapshot, &message.content_hash);
-                    let post_write_text_len = first_text_representation_len(&post_write_snapshot);
-                    if post_write_hash_match {
-                        info!(
-                            post_write_hash_match,
-                            post_write_text_len,
-                            "Inbound clipboard write post-check matched content hash"
-                        );
-                    } else {
-                        warn!(
-                            post_write_hash_match,
-                            post_write_text_len,
-                            incoming_content_hash = %message.content_hash,
-                            "Inbound clipboard write post-check hash mismatch"
-                        );
-                    }
+        // In Passive mode (allow_os_read = false): persist via capture use case
+        if !self.mode.allow_os_read() {
+            let capture = self
+                .capture_clipboard
+                .as_ref()
+                .context("V2 passive inbound: capture dependencies required")?;
+            return match capture
+                .execute_with_origin(snapshot, ClipboardChangeOrigin::RemotePush)
+                .await
+            {
+                Ok(Some(entry_id)) => {
+                    info!(message_id = %message.id, "V2 inbound clipboard persisted (passive)");
+                    Ok(InboundApplyOutcome::Applied {
+                        entry_id: Some(entry_id),
+                    })
+                }
+                Ok(None) => {
+                    self.rollback_recent_id(&message.id).await;
+                    Err(anyhow::anyhow!("V2 passive capture skipped persistence"))
                 }
                 Err(err) => {
-                    warn!(
-                        error = %err,
-                        incoming_content_hash = %message.content_hash,
-                        "Inbound clipboard write post-check read failed"
-                    );
+                    self.rollback_recent_id(&message.id).await;
+                    Err(err).context("V2 passive inbound: capture failed")
                 }
-            }
-
-            Ok(InboundApplyOutcome::Applied { entry_id: None })
+            };
         }
-        .instrument(span)
-        .await
+
+        // WriteOnly mode — should not happen in practice for inbound
+        info!(mode = ?self.mode, "V2 inbound: mode disallows write — skipped");
+        Ok(InboundApplyOutcome::Skipped)
     }
 }
 
 const REMOTE_PUSH_ORIGIN_TTL_MS: u64 = 100;
+
+/// Select the highest-priority WireRepresentation from a V2 inbound payload.
+///
+/// Priority order (highest first): image/* > text/html > text/rtf > text/plain > other.
+/// This mirrors the locked decision from CONTEXT.md § "Multi-representation strategy".
+fn select_highest_priority_repr(
+    representations: &[WireRepresentation],
+) -> Option<&WireRepresentation> {
+    fn priority(mime: Option<&str>) -> u8 {
+        match mime {
+            Some(m) if m.starts_with("image/") => 4,
+            Some(m) if m.eq_ignore_ascii_case("text/html") => 3,
+            Some(m) if m.eq_ignore_ascii_case("text/rtf") => 2,
+            Some(m) if m.eq_ignore_ascii_case("text/plain") => 1,
+            _ => 0,
+        }
+    }
+    representations
+        .iter()
+        .max_by_key(|r| priority(r.mime.as_deref()))
+}
 
 fn is_text_plain_mime(mime: &str) -> bool {
     let normalized = mime.trim();
@@ -369,7 +560,7 @@ mod tests {
     use super::*;
 
     use std::collections::VecDeque;
-    use std::io::Write;
+    use std::io::{Cursor, Write};
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::{Arc, Mutex, OnceLock};
     use std::time::Duration;
@@ -379,7 +570,10 @@ mod tests {
     use tracing_subscriber::{fmt::MakeWriter, EnvFilter};
     use uc_core::clipboard::{ClipboardSelection, PolicyError, SelectionPolicyVersion};
     use uc_core::ids::{FormatId, RepresentationId};
-    use uc_core::network::protocol::ClipboardTextPayloadV1;
+    use uc_core::network::protocol::{
+        ClipboardMultiRepPayloadV2, ClipboardPayloadVersion, ClipboardTextPayloadV1,
+        WireRepresentation,
+    };
     use uc_core::security::model::{
         EncryptedBlob, EncryptionAlgo, EncryptionError, EncryptionFormatVersion, KdfParams, Kek,
         MasterKey, Passphrase,
@@ -389,6 +583,7 @@ mod tests {
         DeviceId, MimeType, ObservedClipboardRepresentation, PersistedClipboardRepresentation,
         SystemClipboardSnapshot,
     };
+    use uc_infra::clipboard::{ChunkedDecoder, ChunkedEncoder};
 
     struct MockSystemClipboard {
         reads: SystemClipboardSnapshot,
@@ -1139,5 +1334,233 @@ mod tests {
             output.contains("Inbound clipboard write post-check read failed"),
             "log output: {output}"
         );
+    }
+
+    /// Build a V2 ClipboardMessage with the given representations.
+    /// Uses ChunkedEncoder::encode_to with the same master key as MockEncryptionSession (MasterKey([3; 32])).
+    fn build_v2_message(
+        representations: Vec<WireRepresentation>,
+        origin_device_id: &str,
+        message_id: &str,
+    ) -> ClipboardMessage {
+        let test_master_key = MasterKey([3; 32]); // matches MockEncryptionSession
+        let transfer_id = [0x42u8; 16];
+        let v2_payload = ClipboardMultiRepPayloadV2 {
+            ts_ms: 1_713_000_000_000,
+            representations,
+        };
+        let plaintext = serde_json::to_vec(&v2_payload).expect("serialize V2 payload");
+        let mut encrypted_content = Vec::new();
+        ChunkedEncoder::encode_to(
+            &mut encrypted_content,
+            &test_master_key,
+            &transfer_id,
+            &plaintext,
+        )
+        .expect("encode V2 payload");
+
+        ClipboardMessage {
+            id: message_id.to_string(),
+            content_hash: "v2-snapshot-hash".to_string(),
+            encrypted_content,
+            timestamp: Utc::now(),
+            origin_device_id: origin_device_id.to_string(),
+            origin_device_name: "peer-device".to_string(),
+            payload_version: ClipboardPayloadVersion::V2,
+        }
+    }
+
+    #[tokio::test]
+    async fn v2_message_applies_image_representation_with_highest_priority() {
+        let (usecase, writes, _, _, _) = build_usecase(
+            ClipboardIntegrationMode::Full,
+            SystemClipboardSnapshot {
+                ts_ms: 0,
+                representations: vec![],
+            },
+            "local-1",
+            true,
+        );
+
+        let png_bytes = vec![0x89, 0x50, 0x4E, 0x47]; // PNG header
+        let message = build_v2_message(
+            vec![
+                WireRepresentation {
+                    mime: Some("text/plain".to_string()),
+                    format_id: "text".to_string(),
+                    bytes: b"hello world".to_vec(),
+                },
+                WireRepresentation {
+                    mime: Some("image/png".to_string()),
+                    format_id: "public.png".to_string(),
+                    bytes: png_bytes.clone(),
+                },
+            ],
+            "remote-1",
+            "msg-v2-image",
+        );
+
+        let outcome = usecase
+            .execute_with_outcome(message)
+            .await
+            .expect("execute V2 inbound message");
+
+        // Must be Applied
+        assert!(
+            matches!(outcome, InboundApplyOutcome::Applied { entry_id: None }),
+            "expected Applied, got {:?}",
+            outcome
+        );
+
+        // image/png must be selected (highest priority)
+        let snapshots = writes.lock().expect("writes lock");
+        assert_eq!(snapshots.len(), 1, "must write exactly one snapshot");
+        let snapshot = &snapshots[0];
+        assert_eq!(snapshot.representations.len(), 1);
+        assert_eq!(
+            snapshot.representations[0]
+                .mime
+                .as_ref()
+                .map(|m| m.as_str()),
+            Some("image/png"),
+            "must select image/png as highest-priority representation"
+        );
+        assert_eq!(
+            snapshot.representations[0].bytes, png_bytes,
+            "must write image bytes"
+        );
+    }
+
+    #[tokio::test]
+    async fn v2_message_with_html_and_text_selects_html() {
+        let (usecase, writes, _, _, _) = build_usecase(
+            ClipboardIntegrationMode::Full,
+            SystemClipboardSnapshot {
+                ts_ms: 0,
+                representations: vec![],
+            },
+            "local-1",
+            true,
+        );
+
+        let message = build_v2_message(
+            vec![
+                WireRepresentation {
+                    mime: Some("text/plain".to_string()),
+                    format_id: "text".to_string(),
+                    bytes: b"plain text".to_vec(),
+                },
+                WireRepresentation {
+                    mime: Some("text/html".to_string()),
+                    format_id: "html".to_string(),
+                    bytes: b"<b>bold</b>".to_vec(),
+                },
+            ],
+            "remote-1",
+            "msg-v2-html",
+        );
+
+        let outcome = usecase
+            .execute_with_outcome(message)
+            .await
+            .expect("execute V2 html message");
+
+        assert!(matches!(outcome, InboundApplyOutcome::Applied { .. }));
+
+        let snapshots = writes.lock().expect("writes lock");
+        assert_eq!(snapshots.len(), 1);
+        assert_eq!(
+            snapshots[0].representations[0]
+                .mime
+                .as_ref()
+                .map(|m| m.as_str()),
+            Some("text/html"),
+            "must prefer text/html over text/plain"
+        );
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn v2_message_with_tampered_content_returns_skipped() {
+        let log_buffer = init_test_tracing();
+        let start_len = log_buffer.lock().expect("log buffer lock").len();
+
+        let (usecase, writes, _, _, _) = build_usecase(
+            ClipboardIntegrationMode::Full,
+            SystemClipboardSnapshot {
+                ts_ms: 0,
+                representations: vec![],
+            },
+            "local-1",
+            true,
+        );
+
+        // Build a valid V2 message then tamper with the encrypted_content
+        let mut message = build_v2_message(
+            vec![WireRepresentation {
+                mime: Some("text/plain".to_string()),
+                format_id: "text".to_string(),
+                bytes: b"secret data".to_vec(),
+            }],
+            "remote-1",
+            "msg-v2-tampered",
+        );
+        // Flip a byte in encrypted_content to cause AEAD auth failure
+        if !message.encrypted_content.is_empty() {
+            let last = message.encrypted_content.len() - 1;
+            message.encrypted_content[last] ^= 0xFF;
+        }
+
+        let outcome = usecase
+            .execute_with_outcome(message)
+            .await
+            .expect("tampered V2 message must not panic or return Err");
+
+        // Must return Skipped (not panic, not propagate error)
+        assert_eq!(
+            outcome,
+            InboundApplyOutcome::Skipped,
+            "tampered V2 content must return Skipped"
+        );
+
+        // Must not write anything to clipboard
+        assert_eq!(
+            writes.lock().expect("writes lock").len(),
+            0,
+            "must not write to clipboard on decode failure"
+        );
+
+        // Must log an error
+        let guard = log_buffer.lock().expect("log buffer lock");
+        let (_, new_bytes) = guard.split_at(start_len);
+        let output = String::from_utf8_lossy(new_bytes);
+        assert!(
+            output.contains("V2 inbound")
+                || output.contains("failed to decode")
+                || output.contains("dropping"),
+            "must log error for tampered V2 content, got: {output}"
+        );
+    }
+
+    #[tokio::test]
+    async fn v1_message_path_unchanged_after_v2_changes() {
+        // Verify V1 backward compatibility: existing V1 message still applies correctly
+        let (usecase, writes, _, _, _) = build_usecase(
+            ClipboardIntegrationMode::Full,
+            SystemClipboardSnapshot {
+                ts_ms: 0,
+                representations: vec![],
+            },
+            "local-1",
+            true,
+        );
+
+        usecase
+            .execute(build_message("hello v1", "remote-1"))
+            .await
+            .expect("V1 message must still apply");
+
+        let snapshots = writes.lock().expect("writes lock");
+        assert_eq!(snapshots.len(), 1);
+        assert_eq!(snapshots[0].representations[0].bytes, b"hello v1");
     }
 }

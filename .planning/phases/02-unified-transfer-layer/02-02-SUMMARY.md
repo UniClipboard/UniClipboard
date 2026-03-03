@@ -28,6 +28,7 @@ decisions:
   - Used thiserror::Error derive macro (already in uc-infra Cargo.toml) instead of manual Display impl
   - MasterKey([0u8; 32]) tuple struct literal for test key construction (pub field confirmed in uc-core)
   - cargo fmt reordered pub mod chunked_transfer alphabetically in mod.rs (accepted)
+requirements_completed: [UTL-03, UTL-04]
 metrics:
   duration: '3 minutes'
   completed_date: '2026-03-03'

@@ -69,7 +69,7 @@ Each task was committed atomically:
 1. **Task 1: Add frame_to_bytes method to ProtocolMessage** - `099171c` (feat) - TDD: 3 new tests for roundtrip, trailing payload, empty trailing
 2. **Task 2: Update sync_outbound to produce two-segment framed wire bytes** - `cc42d3c` (feat) - Updated production code + all tests + e2e test
 
-**Plan metadata:** (pending)
+**Plan metadata:** `d3fac77` (docs: complete plan)
 
 ## Files Created/Modified
 

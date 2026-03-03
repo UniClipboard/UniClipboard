@@ -306,7 +306,8 @@ impl ChunkedSender {
     |  app.get_webview_window("quick-paste").show() + set_position()
     v
 [QuickPaste React window appears at cursor position]
-    |  RTK Query: get_clipboard_entries (reuses main window's cached data)
+[QuickPaste React window appears at cursor position]
+    |  RTK Query: get_clipboard_entries (separate renderer cache; same backend DB)
     v
 [User selects entry → paste_clipboard_entry command]
     |  AppRuntime → RestoreClipboardSelection use case

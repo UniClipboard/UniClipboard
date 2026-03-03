@@ -43,4 +43,16 @@ Plans:
 - [ ] 02-02-PLAN.md — ChunkedEncoder/Decoder in uc-infra (XChaCha20-Poly1305 per-chunk AEAD, binary wire format)
 - [ ] 02-03-PLAN.md — Wire V2 into sync_outbound + sync_inbound use cases; raise transport limits
 
+### Phase 3: True Inbound Streaming
+
+**Goal:** Eliminate the `read_to_end` bottleneck in `libp2p_network.rs` — separate the outer `ProtocolMessage` JSON envelope from the V2 binary payload so `ChunkedDecoder::decode_from` can operate at the stream level, reducing peak memory from ~2× payload size to ~1× chunk size.
+**Requirements:** (no new UTL REQ-IDs — this is a tech debt resolution)
+**Depends on:** Phase 2
+**Plans:** 0/2 plans complete
+
+Plans:
+
+- [ ] 03-01-PLAN.md — Two-segment wire framing: outbound sender produces [length-prefix JSON header][raw V2 payload]; ProtocolMessage gains frame_to_bytes method
+- [ ] 03-02-PLAN.md — Inbound streaming: libp2p_network.rs reads length-prefix, then streams V2 remainder to ChunkedDecoder via SyncIoBridge + spawn_blocking; sync_inbound receives pre-decoded plaintext
+
 ---

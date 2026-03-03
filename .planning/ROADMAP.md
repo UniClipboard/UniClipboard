@@ -26,11 +26,11 @@ Plans:
 
 ## Progress
 
-| Phase                        | Milestone | Plans Complete | Status      | Completed  |
-| ---------------------------- | --------- | -------------- | ----------- | ---------- |
-| 1. Download progress display | v0.1.0    | 1/1            | Complete    | 2026-03-03 |
-| 2. Unified transfer layer    | v0.1.0    | 3/3            | Complete    | 2026-03-03 |
-| 3. True inbound streaming    | v0.1.0    | 1/2            | In Progress |            |
+| Phase                        | Milestone | Plans Complete | Status   | Completed  |
+| ---------------------------- | --------- | -------------- | -------- | ---------- |
+| 1. Download progress display | v0.1.0    | 1/1            | Complete | 2026-03-03 |
+| 2. Unified transfer layer    | v0.1.0    | 3/3            | Complete | 2026-03-03 |
+| 3. True inbound streaming    | v0.1.0    | 2/2            | Complete | 2026-03-03 |
 
 ### Phase 2: 实现统一数据传输层：不关心内容类型（文本/图片/文件），内部自动分块，对方设备校验拼装后写入剪切板
 
@@ -50,11 +50,11 @@ Plans:
 **Goal:** Eliminate the `read_to_end` bottleneck in `libp2p_network.rs` — separate the outer `ProtocolMessage` JSON envelope from the V2 binary payload so `ChunkedDecoder::decode_from` can operate at the stream level, reducing peak memory from ~2× payload size to ~1× chunk size.
 **Requirements:** (no new UTL REQ-IDs — this is a tech debt resolution)
 **Depends on:** Phase 2
-**Plans:** 1/2 plans complete
+**Plans:** 2/2 plans complete
 
 Plans:
 
 - [x] 03-01-PLAN.md — Two-segment wire framing: outbound sender produces [length-prefix JSON header][raw V2 payload]; ProtocolMessage gains frame_to_bytes method
-- [ ] 03-02-PLAN.md — Inbound streaming: libp2p_network.rs reads length-prefix, then streams V2 remainder to ChunkedDecoder via SyncIoBridge + spawn_blocking; sync_inbound receives pre-decoded plaintext
+- [x] 03-02-PLAN.md — Inbound streaming: libp2p_network.rs reads length-prefix, then streams V2 remainder to ChunkedDecoder via SyncIoBridge + spawn_blocking; sync_inbound receives pre-decoded plaintext
 
 ---

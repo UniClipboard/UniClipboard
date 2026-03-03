@@ -2,13 +2,13 @@
 gsd_state_version: 1.0
 milestone: v0.1
 milestone_name: milestone
-status: in-progress
-last_updated: '2026-03-03T09:30:20.000Z'
+status: completed
+last_updated: '2026-03-03T10:00:00.000Z'
 progress:
   total_phases: 3
-  completed_phases: 2
+  completed_phases: 3
   total_plans: 6
-  completed_plans: 5
+  completed_plans: 6
 ---
 
 # Project State
@@ -22,20 +22,20 @@ See: .planning/PROJECT.md (updated 2026-03-03)
 
 ## Current Position
 
-Phase: 3 of 3 (03-true-inbound-streaming)
-Plan: 1 of 2 complete (03-01 done)
-Status: In Progress
-Last activity: 2026-03-03 — Phase 3 Plan 01 complete (two-segment wire framing)
+Phase: 3 of 3 (03-true-inbound-streaming) -- COMPLETE
+Plan: 2 of 2 complete (03-02 done)
+Status: Complete
+Last activity: 2026-03-03 — Phase 3 Plan 02 complete (inbound V2 streaming decode)
 
-Progress: [████████░░] ~83%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 4
+- Total plans completed: 6
 - Average duration: ~17min
-- Total execution time: ~68min (02-01: ~45min, 02-02: ~3min, 02-03: ~15min, 03-01: ~5min)
+- Total execution time: ~88min (02-01: ~45min, 02-02: ~3min, 02-03: ~15min, 03-01: ~5min, 03-02: ~20min)
 
 ## Accumulated Context
 
@@ -58,6 +58,11 @@ Decisions are logged in PROJECT.md Key Decisions table.
 - [Phase 03-true-inbound-streaming Plan 01]: frame_to_bytes returns Result<Vec<u8>, serde_json::Error> matching to_bytes signature -- no new error types needed
 - [Phase 03-true-inbound-streaming Plan 01]: V2 JSON header has encrypted_content=vec![] with raw V2 binary as trailing bytes -- eliminates ~33% base64 overhead on wire
 - [Phase 03-true-inbound-streaming Plan 01]: to_bytes and from_bytes remain unchanged for backward compatibility
+- [Phase 03-true-inbound-streaming Plan 02]: EncryptionSessionPort added as constructor parameter to Libp2pNetworkAdapter, not runtime field
+- [Phase 03-true-inbound-streaming Plan 02]: Stream close handled via Drop (SyncIoBridge -> tokio reader -> compat -> Take<Stream>) -- no explicit .close() for V2
+- [Phase 03-true-inbound-streaming Plan 02]: Fallback ChunkedDecoder path preserved in sync_inbound for robustness
+- [Phase 03-true-inbound-streaming Plan 02]: MAX_JSON_HEADER_SIZE=64KB -- JSON headers exceeding this discarded at transport
+- [Phase 03-true-inbound-streaming Plan 02]: Channel type (ClipboardMessage, Option<Vec<u8>>) -- Option carries pre-decoded V2 plaintext
 
 ### Roadmap Evolution
 
@@ -75,5 +80,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-03-03
-Stopped at: Completed 03-true-inbound-streaming/03-01-PLAN.md
-Resume file: .planning/phases/03-true-inbound-streaming/03-02-PLAN.md
+Stopped at: Completed 03-true-inbound-streaming/03-02-PLAN.md (Phase 03 complete, all plans done)
+Resume file: N/A -- all phases complete

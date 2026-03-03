@@ -6,6 +6,8 @@ edition = "2021"
 [dependencies]
 # Core domain models
 uc-core = { path = "../uc-core" }
+# Infrastructure implementations (ChunkedEncoder/ChunkedDecoder for V2 transfer)
+uc-infra = { path = "../uc-infra" }
 
 # Async runtime
 tokio = { version = "1", features = ["full"] }

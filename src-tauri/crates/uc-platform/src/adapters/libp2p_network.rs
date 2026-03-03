@@ -31,10 +31,10 @@ use super::pairing_stream::service::{
 };
 use crate::identity_store::load_or_create_identity;
 const BUSINESS_PROTOCOL_ID: &str = ProtocolId::Business.as_str();
-const BUSINESS_PAYLOAD_MAX_BYTES: u64 = 100 * 1024 * 1024;
-const BUSINESS_READ_TIMEOUT: Duration = Duration::from_secs(30);
+const BUSINESS_PAYLOAD_MAX_BYTES: u64 = 300 * 1024 * 1024;
+const BUSINESS_READ_TIMEOUT: Duration = Duration::from_secs(120);
 const BUSINESS_STREAM_OPEN_TIMEOUT: Duration = Duration::from_secs(10);
-const BUSINESS_STREAM_WRITE_TIMEOUT: Duration = Duration::from_secs(10);
+const BUSINESS_STREAM_WRITE_TIMEOUT: Duration = Duration::from_secs(120);
 const BUSINESS_STREAM_CLOSE_TIMEOUT: Duration = Duration::from_secs(10);
 const BUSINESS_COMMAND_ENQUEUE_TIMEOUT: Duration = Duration::from_secs(5);
 const BUSINESS_SEND_COMMAND_RESULT_TIMEOUT: Duration = Duration::from_secs(35);

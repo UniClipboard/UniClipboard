@@ -6,20 +6,23 @@ use futures::executor;
 use tracing::{debug, info, info_span, warn, Instrument};
 use uuid::Uuid;
 
-use uc_core::network::protocol::ClipboardTextPayloadV1;
+use uc_core::network::protocol::{
+    ClipboardMultiRepPayloadV2, ClipboardPayloadVersion, WireRepresentation,
+};
 use uc_core::network::{ClipboardMessage, ProtocolMessage};
 use uc_core::ports::{
     ClipboardTransportPort, DeviceIdentityPort, EncryptionPort, EncryptionSessionPort,
     PeerDirectoryPort, SettingsPort, SystemClipboardPort,
 };
-use uc_core::security::{aad, model::EncryptionAlgo};
 use uc_core::{ClipboardChangeOrigin, SystemClipboardSnapshot};
+use uc_infra::clipboard::ChunkedEncoder;
 
 pub struct SyncOutboundClipboardUseCase {
     local_clipboard: Arc<dyn SystemClipboardPort>,
     clipboard_network: Arc<dyn ClipboardTransportPort>,
     peer_directory: Arc<dyn PeerDirectoryPort>,
     encryption_session: Arc<dyn EncryptionSessionPort>,
+    #[allow(dead_code)]
     encryption: Arc<dyn EncryptionPort>,
     device_identity: Arc<dyn DeviceIdentityPort>,
     settings: Arc<dyn SettingsPort>,
@@ -83,32 +86,12 @@ impl SyncOutboundClipboardUseCase {
             return Ok(());
         }
 
-        let selected_representation = match snapshot.representations.iter().find(|rep| {
-            rep.mime
-                .as_ref()
-                .is_some_and(|mime| is_text_plain_mime(mime.as_str()))
-        }) {
-            Some(rep) => rep,
-            None => {
-                debug!(
-                    representation_count = snapshot.representations.len(),
-                    "Skipping outbound sync because no text/plain representation is available"
-                );
-                return Ok(());
-            }
-        };
-
-        let plaintext_text = match std::str::from_utf8(&selected_representation.bytes) {
-            Ok(text) => text.to_string(),
-            Err(err) => {
-                warn!(
-                    error = %err,
-                    payload_bytes = selected_representation.bytes.len(),
-                    "Skipping outbound sync because selected text/plain representation is not valid UTF-8"
-                );
-                return Ok(());
-            }
-        };
+        // V2: All representations are sent, not just text/plain.
+        // Return early if there are no representations at all.
+        if snapshot.representations.is_empty() {
+            debug!("Skipping outbound sync because snapshot has no representations");
+            return Ok(());
+        }
 
         let sendable_peers = self
             .peer_directory
@@ -136,9 +119,27 @@ impl SyncOutboundClipboardUseCase {
         }
 
         let message_id = Uuid::new_v4().to_string();
-        let payload = ClipboardTextPayloadV1::new(plaintext_text, snapshot.ts_ms);
-        let payload_bytes = serde_json::to_vec(&payload)
-            .context("failed to serialize clipboard text payload for outbound sync")?;
+        let transfer_id_uuid = Uuid::new_v4();
+        let transfer_id: [u8; 16] = *transfer_id_uuid.as_bytes();
+
+        // Build V2 multi-representation payload — all representations are included.
+        let wire_reps: Vec<WireRepresentation> = snapshot
+            .representations
+            .iter()
+            .map(|rep| WireRepresentation {
+                mime: rep.mime.as_ref().map(|m| m.as_str().to_string()),
+                format_id: rep.format_id.as_ref().to_string(),
+                bytes: rep.bytes.clone(),
+            })
+            .collect();
+
+        let v2_payload = ClipboardMultiRepPayloadV2 {
+            ts_ms: snapshot.ts_ms,
+            representations: wire_reps,
+        };
+
+        let plaintext_bytes = serde_json::to_vec(&v2_payload)
+            .context("failed to serialize V2 clipboard payload for outbound sync")?;
 
         let master_key = self
             .encryption_session
@@ -147,20 +148,21 @@ impl SyncOutboundClipboardUseCase {
             .map_err(anyhow::Error::from)
             .context("failed to access encryption session master key for outbound sync")?;
 
-        let encrypted_blob = self
-            .encryption
-            .encrypt_blob(
-                &master_key,
-                &payload_bytes,
-                &aad::for_network_clipboard(&message_id),
-                EncryptionAlgo::XChaCha20Poly1305,
-            )
-            .await
-            .map_err(anyhow::Error::from)
-            .context("failed to encrypt outbound clipboard payload")?;
+        // Encode V2 payload using ChunkedEncoder::encode_to into a Vec<u8>.
+        // Memory usage during encoding: CHUNK_SIZE × 2 (one plaintext chunk + one ciphertext chunk).
+        // This is Option B from the plan: encode to Vec<u8> in use case, pass Vec to transport.
+        // The streaming memory guarantee holds within encode_to itself — no double-buffering.
+        let mut encrypted_content = Vec::new();
+        ChunkedEncoder::encode_to(
+            &mut encrypted_content,
+            &master_key,
+            &transfer_id,
+            &plaintext_bytes,
+        )
+        .map_err(|e| anyhow::anyhow!("failed to chunk-encrypt outbound clipboard payload: {e}"))?;
 
-        let encrypted_content = serde_json::to_vec(&encrypted_blob)
-            .context("failed to serialize encrypted outbound clipboard payload")?;
+        // V2 content_hash covers ALL representations (snapshot_hash), not a single rep hash.
+        let content_hash = snapshot.snapshot_hash().to_string();
 
         let origin_device_id = self.device_identity.current_device_id().to_string();
         let origin_device_name = match self.settings.load().await {
@@ -180,12 +182,12 @@ impl SyncOutboundClipboardUseCase {
 
         let clipboard_message = ClipboardMessage {
             id: message_id,
-            content_hash: selected_representation.content_hash().to_string(),
+            content_hash,
             encrypted_content,
             timestamp: Utc::now(),
             origin_device_id,
             origin_device_name,
-            payload_version: uc_core::network::protocol::ClipboardPayloadVersion::V1,
+            payload_version: ClipboardPayloadVersion::V2,
         };
 
         let outbound_bytes = ProtocolMessage::Clipboard(clipboard_message)
@@ -269,20 +271,12 @@ impl SyncOutboundClipboardUseCase {
     }
 }
 
-fn is_text_plain_mime(mime: &str) -> bool {
-    let normalized = mime.trim();
-    let text_plain_with_params = format!("{};", ClipboardTextPayloadV1::MIME_TEXT_PLAIN);
-    normalized.eq_ignore_ascii_case(ClipboardTextPayloadV1::MIME_TEXT_PLAIN)
-        || normalized
-            .to_ascii_lowercase()
-            .starts_with(text_plain_with_params.as_str())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
     use std::collections::HashSet;
+    use std::io::Cursor;
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::Mutex;
 
@@ -290,7 +284,7 @@ mod tests {
     use chrono::Utc;
     use tokio::sync::mpsc;
     use uc_core::ids::{FormatId, RepresentationId};
-    use uc_core::network::protocol::ClipboardTextPayloadV1;
+    use uc_core::network::protocol::{ClipboardMultiRepPayloadV2, ClipboardPayloadVersion};
     use uc_core::network::{
         ClipboardMessage, ConnectedPeer, DiscoveredPeer, NetworkEvent, PairingMessage,
         ProtocolMessage,
@@ -304,6 +298,7 @@ mod tests {
     };
     use uc_core::settings::model::Settings;
     use uc_core::{DeviceId, MimeType, ObservedClipboardRepresentation, SystemClipboardSnapshot};
+    use uc_infra::clipboard::ChunkedDecoder;
 
     struct TestSystemClipboard {
         snapshot: SystemClipboardSnapshot,
@@ -723,7 +718,8 @@ mod tests {
     }
 
     #[test]
-    fn outbound_bytes_decode_as_protocol_message_clipboard() {
+    fn outbound_bytes_decode_as_v2_protocol_message_clipboard() {
+        let test_master_key = MasterKey([7; 32]); // matches TestEncryptionSession
         let (usecase, send_calls, _, _, _) = build_usecase(
             vec![ConnectedPeer {
                 peer_id: "peer-1".to_string(),
@@ -745,12 +741,145 @@ mod tests {
 
         match decoded {
             ProtocolMessage::Clipboard(message) => {
-                let encrypted_blob: EncryptedBlob =
-                    serde_json::from_slice(&message.encrypted_content)
-                        .expect("decode encrypted blob");
-                let payload: ClipboardTextPayloadV1 =
-                    serde_json::from_slice(&encrypted_blob.ciphertext).expect("decode payload");
-                assert_eq!(payload.text, "hello world");
+                // V2: payload_version must be V2
+                assert_eq!(
+                    message.payload_version,
+                    ClipboardPayloadVersion::V2,
+                    "outbound message must use V2 payload version"
+                );
+
+                // V2: encrypted_content is V2 binary chunked format, decodeable via ChunkedDecoder
+                let plaintext = ChunkedDecoder::decode_from(
+                    Cursor::new(&message.encrypted_content),
+                    &test_master_key,
+                )
+                .expect("V2 chunk decode must succeed");
+
+                // V2: plaintext deserializes as ClipboardMultiRepPayloadV2
+                let v2_payload: ClipboardMultiRepPayloadV2 =
+                    serde_json::from_slice(&plaintext).expect("V2 payload JSON deserialization");
+
+                // Must have representations — "hello world" text/plain rep
+                assert_eq!(v2_payload.representations.len(), 1);
+                assert_eq!(v2_payload.representations[0].bytes, b"hello world".to_vec());
+                assert_eq!(
+                    v2_payload.representations[0].mime.as_deref(),
+                    Some("text/plain")
+                );
+            }
+            _ => panic!("expected ProtocolMessage::Clipboard"),
+        }
+    }
+
+    #[test]
+    fn no_op_when_snapshot_has_no_representations() {
+        let empty_snapshot = SystemClipboardSnapshot {
+            ts_ms: 1_713_000_000_000,
+            representations: vec![],
+        };
+
+        let (usecase, send_calls, list_sendable_peers_calls, ensure_calls, encrypt_calls) =
+            build_usecase(
+                vec![ConnectedPeer {
+                    peer_id: "peer-1".to_string(),
+                    device_name: "Desk".to_string(),
+                    connected_at: Utc::now(),
+                }],
+                true,
+                &[],
+                &[],
+            );
+
+        usecase
+            .execute(empty_snapshot, ClipboardChangeOrigin::LocalCapture)
+            .expect("empty snapshot should no-op without error");
+
+        assert_eq!(send_calls.lock().expect("send calls lock").len(), 0);
+        // Should return early before peer lookup when there are no representations
+        assert_eq!(
+            list_sendable_peers_calls.load(Ordering::SeqCst),
+            0,
+            "should not query peers for empty snapshot"
+        );
+        assert_eq!(ensure_calls.load(Ordering::SeqCst), 0);
+        assert_eq!(encrypt_calls.load(Ordering::SeqCst), 0);
+    }
+
+    #[test]
+    fn v2_outbound_sends_all_representations_and_uses_snapshot_hash() {
+        let test_master_key = MasterKey([7; 32]); // matches TestEncryptionSession
+        let multi_rep_snapshot = SystemClipboardSnapshot {
+            ts_ms: 1_713_000_000_000,
+            representations: vec![
+                ObservedClipboardRepresentation {
+                    id: RepresentationId::new(),
+                    format_id: FormatId::from("public.utf8-plain-text"),
+                    mime: Some(MimeType::text_plain()),
+                    bytes: b"hello world".to_vec(),
+                },
+                ObservedClipboardRepresentation {
+                    id: RepresentationId::new(),
+                    format_id: FormatId::from("public.png"),
+                    mime: Some(MimeType("image/png".to_string())),
+                    bytes: vec![0x89, 0x50, 0x4E, 0x47], // PNG header bytes
+                },
+            ],
+        };
+
+        let expected_hash = multi_rep_snapshot.snapshot_hash().to_string();
+
+        let (usecase, send_calls, _, _, encrypt_calls) = build_usecase(
+            vec![ConnectedPeer {
+                peer_id: "peer-1".to_string(),
+                device_name: "Desk".to_string(),
+                connected_at: Utc::now(),
+            }],
+            true,
+            &[],
+            &[],
+        );
+
+        usecase
+            .execute(multi_rep_snapshot, ClipboardChangeOrigin::LocalCapture)
+            .expect("execute multi-rep capture");
+
+        // V2 does NOT call encrypt_blob (uses ChunkedEncoder directly)
+        assert_eq!(
+            encrypt_calls.load(Ordering::SeqCst),
+            0,
+            "V2 must not call encrypt_blob"
+        );
+
+        let calls = send_calls.lock().expect("send calls lock");
+        let (_, outbound_bytes) = calls.first().expect("one outbound send");
+        let decoded = ProtocolMessage::from_bytes(outbound_bytes).expect("decode protocol message");
+
+        match decoded {
+            ProtocolMessage::Clipboard(message) => {
+                // content_hash must equal snapshot_hash (covers all representations)
+                assert_eq!(
+                    message.content_hash, expected_hash,
+                    "content_hash must be snapshot_hash covering all representations"
+                );
+                assert_eq!(message.payload_version, ClipboardPayloadVersion::V2);
+
+                let plaintext = ChunkedDecoder::decode_from(
+                    Cursor::new(&message.encrypted_content),
+                    &test_master_key,
+                )
+                .expect("V2 chunk decode");
+                let v2_payload: ClipboardMultiRepPayloadV2 =
+                    serde_json::from_slice(&plaintext).expect("V2 payload");
+
+                // Must have BOTH representations
+                assert_eq!(v2_payload.representations.len(), 2);
+                let mimes: Vec<Option<&str>> = v2_payload
+                    .representations
+                    .iter()
+                    .map(|r| r.mime.as_deref())
+                    .collect();
+                assert!(mimes.contains(&Some("text/plain")));
+                assert!(mimes.contains(&Some("image/png")));
             }
             _ => panic!("expected ProtocolMessage::Clipboard"),
         }

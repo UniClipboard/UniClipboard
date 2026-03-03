@@ -1,5 +1,6 @@
 mod background_blob_worker;
 mod change_origin;
+pub mod chunked_transfer;
 mod normalizer;
 mod payload_resolver;
 mod representation_cache;
@@ -13,6 +14,7 @@ mod thumbnail_generator;
 
 pub use background_blob_worker::BackgroundBlobWorker;
 pub use change_origin::InMemoryClipboardChangeOrigin;
+pub use chunked_transfer::{ChunkedDecoder, ChunkedEncoder, ChunkedTransferError};
 pub use normalizer::ClipboardRepresentationNormalizer;
 pub use payload_resolver::ClipboardPayloadResolver;
 pub use representation_cache::{CacheEntryStatus, RepresentationCache};

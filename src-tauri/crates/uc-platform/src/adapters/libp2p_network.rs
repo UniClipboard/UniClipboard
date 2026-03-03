@@ -918,11 +918,19 @@ fn spawn_business_stream_handler(
                     use tokio::io::AsyncReadExt;
 
                     // Step 1: Read 4-byte JSON header length (u32 LE)
+                    // An immediate EOF here means the peer opened the stream as a
+                    // connectivity probe (ensure_business_path) and closed it without
+                    // sending data — not an error.
                     let mut len_buf = [0u8; 4];
-                    reader
-                        .read_exact(&mut len_buf)
-                        .await
-                        .map_err(|e| format!("failed to read json header length: {e}"))?;
+                    match reader.read_exact(&mut len_buf).await {
+                        Ok(_) => {}
+                        Err(e) if e.kind() == std::io::ErrorKind::UnexpectedEof => {
+                            return Err("probe".into());
+                        }
+                        Err(e) => {
+                            return Err(format!("failed to read json header length: {e}"));
+                        }
+                    }
                     let json_len = u32::from_le_bytes(len_buf) as usize;
 
                     // Guard: cap JSON header size at 64KB
@@ -1001,6 +1009,9 @@ fn spawn_business_stream_handler(
                     Ok(Ok(ProcessedMessage::Standard(message))) => {
                         handle_standard_message(caches, event_tx, clipboard_tx, peer_id, message)
                             .await;
+                    }
+                    Ok(Err(err)) if err == "probe" => {
+                        debug!(peer_id = %peer_id, "business stream probe (ensure_business_path)");
                     }
                     Ok(Err(err)) => {
                         warn!(peer_id = %peer_id, error = %err, "business stream processing failed");

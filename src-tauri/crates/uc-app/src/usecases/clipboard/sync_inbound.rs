@@ -108,8 +108,14 @@ impl SyncInboundClipboardUseCase {
         }
     }
 
-    pub async fn execute(&self, message: ClipboardMessage) -> Result<()> {
-        self.execute_with_outcome(message).await.map(|_| ())
+    pub async fn execute(
+        &self,
+        message: ClipboardMessage,
+        pre_decoded_plaintext: Option<Vec<u8>>,
+    ) -> Result<()> {
+        self.execute_with_outcome(message, pre_decoded_plaintext)
+            .await
+            .map(|_| ())
     }
 
     pub fn mode(&self) -> ClipboardIntegrationMode {
@@ -142,6 +148,7 @@ impl SyncInboundClipboardUseCase {
     pub async fn execute_with_outcome(
         &self,
         message: ClipboardMessage,
+        pre_decoded_plaintext: Option<Vec<u8>>,
     ) -> Result<InboundApplyOutcome> {
         let span = info_span!(
             "usecase.clipboard.sync_inbound.execute",
@@ -174,7 +181,9 @@ impl SyncInboundClipboardUseCase {
             // Route to V1 or V2 path based on payload_version
             match message.payload_version {
                 ClipboardPayloadVersion::V1 => self.apply_v1_inbound(message).await,
-                ClipboardPayloadVersion::V2 => self.apply_v2_inbound(message).await,
+                ClipboardPayloadVersion::V2 => {
+                    self.apply_v2_inbound(message, pre_decoded_plaintext).await
+                }
             }
         }
         .instrument(span)
@@ -371,7 +380,11 @@ impl SyncInboundClipboardUseCase {
     /// the OS clipboard and re-computing a hash, which is expensive and fragile (OS clipboard format
     /// may not round-trip exactly). The recent_ids dedup (by message.id, TTL-bounded) is sufficient
     /// to prevent duplicate processing from the same message broadcast to multiple paths.
-    async fn apply_v2_inbound(&self, message: ClipboardMessage) -> Result<InboundApplyOutcome> {
+    async fn apply_v2_inbound(
+        &self,
+        message: ClipboardMessage,
+        pre_decoded_plaintext: Option<Vec<u8>>,
+    ) -> Result<InboundApplyOutcome> {
         // V2 dedup: by message.id only (see rationale above)
         self.prune_recent_ids().await;
         {
@@ -392,30 +405,35 @@ impl SyncInboundClipboardUseCase {
             }
         }
 
-        let master_key = self
-            .encryption_session
-            .get_master_key()
-            .await
-            .map_err(anyhow::Error::from)
-            .context("failed to get master key for V2 inbound")?;
-
-        // Decode using streaming ChunkedDecoder::decode_from with Cursor over encrypted_content.
-        // Note: encrypted_content is already fully in memory (received via read_to_end of the
-        // ProtocolMessage JSON envelope). True inbound stream-level chunking is a future optimization.
-        let plaintext =
-            match ChunkedDecoder::decode_from(Cursor::new(&message.encrypted_content), &master_key)
-            {
-                Ok(bytes) => bytes,
-                Err(e) => {
-                    error!(
-                        error = %e,
-                        message_id = %message.id,
-                        "V2 inbound: failed to decode chunked payload — dropping message"
-                    );
-                    self.rollback_recent_id(&message.id).await;
-                    return Ok(InboundApplyOutcome::Skipped);
+        // Use pre-decoded plaintext from transport layer when available (streaming decode),
+        // otherwise fall back to in-process ChunkedDecoder decode.
+        let plaintext = match pre_decoded_plaintext {
+            Some(bytes) => bytes,
+            None => {
+                // Fallback: transport didn't pre-decode — decode in-process
+                let master_key = self
+                    .encryption_session
+                    .get_master_key()
+                    .await
+                    .map_err(anyhow::Error::from)
+                    .context("failed to get master key for V2 inbound")?;
+                match ChunkedDecoder::decode_from(
+                    Cursor::new(&message.encrypted_content),
+                    &master_key,
+                ) {
+                    Ok(bytes) => bytes,
+                    Err(e) => {
+                        error!(
+                            error = %e,
+                            message_id = %message.id,
+                            "V2 inbound: failed to decode chunked payload — dropping message"
+                        );
+                        self.rollback_recent_id(&message.id).await;
+                        return Ok(InboundApplyOutcome::Skipped);
+                    }
                 }
-            };
+            }
+        };
 
         let v2_payload: ClipboardMultiRepPayloadV2 = match serde_json::from_slice(&plaintext) {
             Ok(p) => p,
@@ -1060,7 +1078,7 @@ mod tests {
         );
 
         usecase
-            .execute(build_message("hello inbound", "remote-1"))
+            .execute(build_message("hello inbound", "remote-1"), None)
             .await
             .expect("execute inbound message");
 
@@ -1124,7 +1142,7 @@ mod tests {
         );
 
         usecase
-            .execute(build_message("hello order", "remote-1"))
+            .execute(build_message("hello order", "remote-1"), None)
             .await
             .expect("execute inbound message");
 
@@ -1153,7 +1171,7 @@ mod tests {
         );
 
         usecase
-            .execute(build_message("same text", "remote-1"))
+            .execute(build_message("same text", "remote-1"), None)
             .await
             .expect("execute inbound message");
 
@@ -1177,7 +1195,7 @@ mod tests {
         );
 
         usecase
-            .execute(build_message("self text", "device-self"))
+            .execute(build_message("self text", "device-self"), None)
             .await
             .expect("execute inbound message");
 
@@ -1199,7 +1217,7 @@ mod tests {
         );
 
         usecase
-            .execute(build_message("not ready", "remote-1"))
+            .execute(build_message("not ready", "remote-1"), None)
             .await
             .expect("execute inbound message");
 
@@ -1215,11 +1233,11 @@ mod tests {
 
         let message = build_message("passive inbound", "remote-1");
         usecase
-            .execute(message.clone())
+            .execute(message.clone(), None)
             .await
             .expect("execute passive inbound message");
         usecase
-            .execute(message)
+            .execute(message, None)
             .await
             .expect("execute duplicated passive inbound message");
 
@@ -1235,11 +1253,11 @@ mod tests {
         let message = build_message("passive inbound", "remote-1");
 
         let first = usecase
-            .execute_with_outcome(message.clone())
+            .execute_with_outcome(message.clone(), None)
             .await
             .expect("first passive apply");
         let second = usecase
-            .execute_with_outcome(message)
+            .execute_with_outcome(message, None)
             .await
             .expect("second passive apply");
 
@@ -1263,7 +1281,7 @@ mod tests {
         );
 
         let outcome = usecase
-            .execute_with_outcome(build_message("remote-value", "remote-1"))
+            .execute_with_outcome(build_message("remote-value", "remote-1"), None)
             .await
             .expect("execute inbound message");
 
@@ -1317,7 +1335,7 @@ mod tests {
         .expect("build inbound usecase");
 
         let outcome = usecase
-            .execute_with_outcome(build_message("remote-value", "remote-1"))
+            .execute_with_outcome(build_message("remote-value", "remote-1"), None)
             .await
             .expect("execute inbound message");
 
@@ -1401,7 +1419,7 @@ mod tests {
         );
 
         let outcome = usecase
-            .execute_with_outcome(message)
+            .execute_with_outcome(message, None)
             .await
             .expect("execute V2 inbound message");
 
@@ -1461,7 +1479,7 @@ mod tests {
         );
 
         let outcome = usecase
-            .execute_with_outcome(message)
+            .execute_with_outcome(message, None)
             .await
             .expect("execute V2 html message");
 
@@ -1511,7 +1529,7 @@ mod tests {
         }
 
         let outcome = usecase
-            .execute_with_outcome(message)
+            .execute_with_outcome(message, None)
             .await
             .expect("tampered V2 message must not panic or return Err");
 
@@ -1555,7 +1573,7 @@ mod tests {
         );
 
         usecase
-            .execute(build_message("hello v1", "remote-1"))
+            .execute(build_message("hello v1", "remote-1"), None)
             .await
             .expect("V1 message must still apply");
 

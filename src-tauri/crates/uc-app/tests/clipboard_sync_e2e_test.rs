@@ -215,7 +215,7 @@ impl ClipboardTransportPort for InProcessNetwork {
                 if !v2_trailing.is_empty() {
                     clipboard_message.encrypted_content = v2_trailing.to_vec();
                 }
-                self.remote_inbound.execute(clipboard_message).await
+                self.remote_inbound.execute(clipboard_message, None).await
             }
             _ => Err(anyhow!(
                 "expected ProtocolMessage::Clipboard for in-process routing"

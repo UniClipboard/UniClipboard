@@ -1560,6 +1560,98 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn v2_inbound_with_pre_decoded_plaintext_applies_correctly() {
+        let (usecase, writes, _, _, _) = build_usecase(
+            ClipboardIntegrationMode::Full,
+            SystemClipboardSnapshot {
+                ts_ms: 0,
+                representations: vec![],
+            },
+            "local-1",
+            true,
+        );
+
+        // Build a V2 ClipboardMessage with empty encrypted_content (transport already decoded)
+        let v2_message = ClipboardMessage {
+            id: "msg-pre-decoded".to_string(),
+            content_hash: "pre-decoded-hash".to_string(),
+            encrypted_content: vec![], // empty — transport already decoded
+            timestamp: Utc::now(),
+            origin_device_id: "remote-1".to_string(),
+            origin_device_name: "peer-device".to_string(),
+            payload_version: ClipboardPayloadVersion::V2,
+        };
+
+        // Build plaintext as transport would provide it
+        let v2_payload = ClipboardMultiRepPayloadV2 {
+            ts_ms: 1_713_000_000_000,
+            representations: vec![WireRepresentation {
+                mime: Some("text/plain".to_string()),
+                format_id: "text".to_string(),
+                bytes: b"pre-decoded text".to_vec(),
+            }],
+        };
+        let plaintext = serde_json::to_vec(&v2_payload).expect("serialize V2 payload");
+
+        let outcome = usecase
+            .execute_with_outcome(v2_message, Some(plaintext))
+            .await
+            .expect("pre-decoded V2 message must apply");
+
+        assert!(
+            matches!(outcome, InboundApplyOutcome::Applied { entry_id: None }),
+            "expected Applied, got {:?}",
+            outcome
+        );
+
+        let snapshots = writes.lock().expect("writes lock");
+        assert_eq!(snapshots.len(), 1, "must write exactly one snapshot");
+        assert_eq!(
+            snapshots[0].representations[0].bytes, b"pre-decoded text",
+            "must apply pre-decoded plaintext content"
+        );
+    }
+
+    #[tokio::test]
+    async fn v2_inbound_with_invalid_pre_decoded_plaintext_returns_skipped() {
+        let (usecase, writes, _, _, _) = build_usecase(
+            ClipboardIntegrationMode::Full,
+            SystemClipboardSnapshot {
+                ts_ms: 0,
+                representations: vec![],
+            },
+            "local-1",
+            true,
+        );
+
+        let v2_message = ClipboardMessage {
+            id: "msg-bad-pre-decoded".to_string(),
+            content_hash: "bad-hash".to_string(),
+            encrypted_content: vec![],
+            timestamp: Utc::now(),
+            origin_device_id: "remote-1".to_string(),
+            origin_device_name: "peer-device".to_string(),
+            payload_version: ClipboardPayloadVersion::V2,
+        };
+
+        let outcome = usecase
+            .execute_with_outcome(v2_message, Some(b"not valid json".to_vec()))
+            .await
+            .expect("invalid pre-decoded plaintext must not panic");
+
+        assert_eq!(
+            outcome,
+            InboundApplyOutcome::Skipped,
+            "invalid pre-decoded plaintext must return Skipped"
+        );
+        assert_eq!(
+            writes.lock().expect("writes lock").len(),
+            0,
+            "must not write to clipboard on invalid pre-decoded plaintext"
+        );
+    }
+
+    #[tokio::test]
     async fn v1_message_path_unchanged_after_v2_changes() {
         // Verify V1 backward compatibility: existing V1 message still applies correctly
         let (usecase, writes, _, _, _) = build_usecase(

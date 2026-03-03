@@ -618,11 +618,14 @@ fn create_platform_layer(
     // 为未实现的端口创建占位符实现
     let ui: Arc<dyn UiPort> = Arc::new(PlaceholderUiPort);
     let autostart: Arc<dyn AutostartPort> = Arc::new(PlaceholderAutostartPort);
+    let encryption_session: Arc<dyn EncryptionSessionPort> =
+        Arc::new(InMemoryEncryptionSessionPort::new());
     let policy_resolver = Arc::new(ResolveConnectionPolicy::new(paired_device_repo.clone()));
     let libp2p_network = Arc::new(
-        Libp2pNetworkAdapter::new(identity_store, policy_resolver).map_err(|e| {
-            WiringError::NetworkInit(format!("Failed to initialize libp2p identity: {e}"))
-        })?,
+        Libp2pNetworkAdapter::new(identity_store, policy_resolver, encryption_session.clone())
+            .map_err(|e| {
+                WiringError::NetworkInit(format!("Failed to initialize libp2p identity: {e}"))
+            })?,
     );
     info!(peer_id = %libp2p_network.local_peer_id(), "Loaded libp2p identity");
     let network_ports = Arc::new(NetworkPorts {
@@ -631,8 +634,6 @@ fn create_platform_layer(
         pairing: libp2p_network.clone(),
         events: libp2p_network.clone(),
     });
-    let encryption_session: Arc<dyn EncryptionSessionPort> =
-        Arc::new(InMemoryEncryptionSessionPort::new());
 
     // Wrap blob_store with encryption decorator
     // 用加密装饰器包装 blob_store
@@ -1417,11 +1418,11 @@ fn new_sync_inbound_clipboard_usecase(deps: &AppDeps) -> SyncInboundClipboardUse
 }
 
 async fn run_clipboard_receive_loop<R: Runtime>(
-    mut clipboard_rx: mpsc::Receiver<ClipboardMessage>,
+    mut clipboard_rx: mpsc::Receiver<(ClipboardMessage, Option<Vec<u8>>)>,
     usecase: &SyncInboundClipboardUseCase,
     app_handle: Option<AppHandle<R>>,
 ) {
-    while let Some(message) = clipboard_rx.recv().await {
+    while let Some((message, pre_decoded)) = clipboard_rx.recv().await {
         let message_id = message.id.clone();
         let origin_device_id = message.origin_device_id.clone();
         let span = info_span!(
@@ -1430,7 +1431,7 @@ async fn run_clipboard_receive_loop<R: Runtime>(
             origin_device_id = %origin_device_id
         );
 
-        let result = async { usecase.execute_with_outcome(message).await }
+        let result = async { usecase.execute_with_outcome(message, pre_decoded).await }
             .instrument(span)
             .await;
 
@@ -2828,8 +2829,9 @@ mod tests {
 
         async fn subscribe_clipboard(
             &self,
-        ) -> anyhow::Result<tokio::sync::mpsc::Receiver<uc_core::network::ClipboardMessage>>
-        {
+        ) -> anyhow::Result<
+            tokio::sync::mpsc::Receiver<(uc_core::network::ClipboardMessage, Option<Vec<u8>>)>,
+        > {
             let (_tx, rx) = tokio::sync::mpsc::channel(1);
             Ok(rx)
         }
@@ -2909,8 +2911,12 @@ mod tests {
 
                 async fn subscribe_clipboard(
                     &self,
-                ) -> anyhow::Result<tokio::sync::mpsc::Receiver<uc_core::network::ClipboardMessage>>
-                {
+                ) -> anyhow::Result<
+                    tokio::sync::mpsc::Receiver<(
+                        uc_core::network::ClipboardMessage,
+                        Option<Vec<u8>>,
+                    )>,
+                > {
                     self.base.subscribe_clipboard().await
                 }
             }
@@ -3806,8 +3812,9 @@ mod tests {
 
         async fn subscribe_clipboard(
             &self,
-        ) -> anyhow::Result<tokio::sync::mpsc::Receiver<uc_core::network::ClipboardMessage>>
-        {
+        ) -> anyhow::Result<
+            tokio::sync::mpsc::Receiver<(uc_core::network::ClipboardMessage, Option<Vec<u8>>)>,
+        > {
             let (_tx, rx) = tokio::sync::mpsc::channel(1);
             Ok(rx)
         }

@@ -16,8 +16,14 @@ pub trait ClipboardTransportPort: Send + Sync {
 
     /// Subscribe to incoming clipboard payloads.
     ///
+    /// Returns `(ClipboardMessage, Option<Vec<u8>>)` where:
+    /// - `Some(bytes)` = V2 pre-decoded plaintext (already decrypted at transport level)
+    /// - `None` = V1 message (encrypted_content contains the payload, use case must decrypt)
+    ///
     /// Contract: adapters may expose this as a single-consumer stream.
-    async fn subscribe_clipboard(&self) -> Result<tokio::sync::mpsc::Receiver<ClipboardMessage>>;
+    async fn subscribe_clipboard(
+        &self,
+    ) -> Result<tokio::sync::mpsc::Receiver<(ClipboardMessage, Option<Vec<u8>>)>>;
 
     /// Ensure business protocol path is available before payload send.
     ///

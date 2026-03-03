@@ -10,6 +10,7 @@ test-helpers = []
 [dependencies]
 # Workspace crates
 uc-core = { path = "../uc-core" }
+uc-infra = { path = "../uc-infra" }
 
 # Serialization
 serde = { version = "1", features = ["derive"] }
@@ -18,7 +19,7 @@ serde_json = "1"
 # Async runtime
 tokio = { version = "1", features = ["full"] }
 async-trait = "0.1"
-tokio-util = { version = "0.7", features = ["io", "compat"] }
+tokio-util = { version = "0.7", features = ["io", "io-util", "compat"] }
 futures = "0.3"
 
 # Error handling

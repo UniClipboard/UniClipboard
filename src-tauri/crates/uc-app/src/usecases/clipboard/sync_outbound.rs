@@ -346,7 +346,9 @@ mod tests {
             Ok(())
         }
 
-        async fn subscribe_clipboard(&self) -> anyhow::Result<mpsc::Receiver<ClipboardMessage>> {
+        async fn subscribe_clipboard(
+            &self,
+        ) -> anyhow::Result<mpsc::Receiver<(ClipboardMessage, Option<Vec<u8>>)>> {
             let (_tx, rx) = mpsc::channel(1);
             Ok(rx)
         }

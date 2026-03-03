@@ -1374,8 +1374,9 @@ mod tests {
 
         async fn subscribe_clipboard(
             &self,
-        ) -> anyhow::Result<tokio::sync::mpsc::Receiver<uc_core::network::ClipboardMessage>>
-        {
+        ) -> anyhow::Result<
+            tokio::sync::mpsc::Receiver<(uc_core::network::ClipboardMessage, Option<Vec<u8>>)>,
+        > {
             let (_tx, rx) = mpsc::channel(1);
             Ok(rx)
         }

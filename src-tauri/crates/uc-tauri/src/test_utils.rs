@@ -12,8 +12,10 @@ use uc_core::ports::{
 
 pub struct NoopPort;
 
-fn clipboard_subscribers() -> &'static Mutex<Vec<mpsc::Sender<ClipboardMessage>>> {
-    static SUBSCRIBERS: OnceLock<Mutex<Vec<mpsc::Sender<ClipboardMessage>>>> = OnceLock::new();
+fn clipboard_subscribers() -> &'static Mutex<Vec<mpsc::Sender<(ClipboardMessage, Option<Vec<u8>>)>>>
+{
+    static SUBSCRIBERS: OnceLock<Mutex<Vec<mpsc::Sender<(ClipboardMessage, Option<Vec<u8>>)>>>> =
+        OnceLock::new();
     SUBSCRIBERS.get_or_init(|| Mutex::new(Vec::new()))
 }
 
@@ -32,7 +34,9 @@ impl ClipboardTransportPort for NoopPort {
         Ok(())
     }
 
-    async fn subscribe_clipboard(&self) -> Result<mpsc::Receiver<ClipboardMessage>> {
+    async fn subscribe_clipboard(
+        &self,
+    ) -> Result<mpsc::Receiver<(ClipboardMessage, Option<Vec<u8>>)>> {
         let (tx, rx) = mpsc::channel(1);
         clipboard_subscribers()
             .lock()

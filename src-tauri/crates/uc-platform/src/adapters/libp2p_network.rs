@@ -16,14 +16,15 @@ use std::time::Duration;
 use tokio::sync::{mpsc, oneshot, RwLock, Semaphore};
 use tokio::time::timeout;
 use tracing::{debug, error, info, warn};
+use uc_core::network::protocol::ClipboardPayloadVersion;
 use uc_core::network::{
     ClipboardMessage, ConnectedPeer, DeviceAnnounceMessage, DiscoveredPeer, NetworkEvent,
     PairingMessage, PairingState, ProtocolDenyReason, ProtocolDirection, ProtocolId, ProtocolKind,
     ProtocolMessage, ResolvedConnectionPolicy,
 };
 use uc_core::ports::{
-    ClipboardTransportPort, ConnectionPolicyResolverPort, IdentityStorePort, NetworkControlPort,
-    NetworkEventPort, PairingTransportPort, PeerDirectoryPort,
+    ClipboardTransportPort, ConnectionPolicyResolverPort, EncryptionSessionPort, IdentityStorePort,
+    NetworkControlPort, NetworkEventPort, PairingTransportPort, PeerDirectoryPort,
 };
 
 use super::pairing_stream::service::{
@@ -240,13 +241,14 @@ pub struct Libp2pNetworkAdapter {
     caches: Arc<RwLock<PeerCaches>>,
     event_tx: mpsc::Sender<NetworkEvent>,
     event_rx: Mutex<Option<mpsc::Receiver<NetworkEvent>>>,
-    clipboard_tx: mpsc::Sender<ClipboardMessage>,
-    clipboard_rx: Mutex<Option<mpsc::Receiver<ClipboardMessage>>>,
+    clipboard_tx: mpsc::Sender<(ClipboardMessage, Option<Vec<u8>>)>,
+    clipboard_rx: Mutex<Option<mpsc::Receiver<(ClipboardMessage, Option<Vec<u8>>)>>>,
     business_tx: mpsc::Sender<BusinessCommand>,
     business_rx: Mutex<Option<mpsc::Receiver<BusinessCommand>>>,
     keypair: Mutex<identity::Keypair>,
     start_state: AtomicU8,
     policy_resolver: Arc<dyn ConnectionPolicyResolverPort>,
+    encryption_session: Arc<dyn EncryptionSessionPort>,
     stream_control: Mutex<Option<stream::Control>>,
     pairing_service: Mutex<Option<PairingStreamService>>,
 }
@@ -255,6 +257,7 @@ impl Libp2pNetworkAdapter {
     pub fn new(
         identity_store: Arc<dyn IdentityStorePort>,
         policy_resolver: Arc<dyn ConnectionPolicyResolverPort>,
+        encryption_session: Arc<dyn EncryptionSessionPort>,
     ) -> Result<Self> {
         let keypair = load_or_create_identity(identity_store.as_ref())
             .map_err(|e| anyhow!("failed to load libp2p identity: {e}"))?;
@@ -283,6 +286,7 @@ impl Libp2pNetworkAdapter {
             keypair: Mutex::new(keypair),
             start_state: AtomicU8::new(START_STATE_IDLE),
             policy_resolver,
+            encryption_session,
             stream_control: Mutex::new(None),
             pairing_service,
         })
@@ -347,6 +351,7 @@ impl Libp2pNetworkAdapter {
             self.event_tx.clone(),
             self.clipboard_tx.clone(),
             self.policy_resolver.clone(),
+            self.encryption_session.clone(),
         );
 
         let listen_ip = match crate::net_utils::get_physical_lan_ip() {
@@ -478,7 +483,9 @@ impl ClipboardTransportPort for Libp2pNetworkAdapter {
         ))
     }
 
-    async fn subscribe_clipboard(&self) -> Result<mpsc::Receiver<ClipboardMessage>> {
+    async fn subscribe_clipboard(
+        &self,
+    ) -> Result<mpsc::Receiver<(ClipboardMessage, Option<Vec<u8>>)>> {
         if self.clipboard_tx.is_closed() {
             warn!("clipboard channel sender is closed");
         }
@@ -852,12 +859,24 @@ impl NetworkControlPort for Libp2pNetworkAdapter {
     }
 }
 
+/// Maximum JSON header size (64KB). Streams with larger headers are discarded.
+const MAX_JSON_HEADER_SIZE: usize = 64 * 1024;
+
+/// Result of processing a single inbound business stream message.
+enum ProcessedMessage {
+    /// V2 clipboard with pre-decoded plaintext from transport-level streaming decode.
+    V2Clipboard(ClipboardMessage, Vec<u8>),
+    /// All other messages (V1 clipboard, DeviceAnnounce, Heartbeat, Pairing).
+    Standard(ProtocolMessage),
+}
+
 fn spawn_business_stream_handler(
     mut control: stream::Control,
     caches: Arc<RwLock<PeerCaches>>,
     event_tx: mpsc::Sender<NetworkEvent>,
-    clipboard_tx: mpsc::Sender<ClipboardMessage>,
+    clipboard_tx: mpsc::Sender<(ClipboardMessage, Option<Vec<u8>>)>,
     policy_resolver: Arc<dyn ConnectionPolicyResolverPort>,
+    encryption_session: Arc<dyn EncryptionSessionPort>,
 ) {
     let mut incoming = match control.accept(StreamProtocol::new(BUSINESS_PROTOCOL_ID)) {
         Ok(incoming) => incoming,
@@ -874,6 +893,7 @@ fn spawn_business_stream_handler(
             let clipboard_tx = clipboard_tx.clone();
             let policy_resolver = policy_resolver.clone();
             let caches = caches.clone();
+            let encryption_session = encryption_session.clone();
             tokio::spawn(async move {
                 if check_business_allowed(
                     &policy_resolver,
@@ -886,67 +906,122 @@ fn spawn_business_stream_handler(
                 {
                     return;
                 }
-                let mut payload = Vec::new();
-                let mut limited = stream.take(BUSINESS_PAYLOAD_MAX_BYTES + 1);
-                match tokio::time::timeout(BUSINESS_READ_TIMEOUT, limited.read_to_end(&mut payload))
-                    .await
-                {
-                    Ok(Ok(_)) => {}
-                    Ok(Err(err)) => {
-                        warn!("business stream read failed: {err}");
-                        if let Err(err) = limited.into_inner().close().await {
-                            warn!("business stream close failed: {err}");
+
+                // Apply overall size guard on the stream
+                let limited = stream.take(BUSINESS_PAYLOAD_MAX_BYTES + 1);
+
+                // Convert libp2p stream (futures::AsyncRead) to tokio AsyncRead
+                use tokio_util::compat::FuturesAsyncReadCompatExt;
+                let mut reader = limited.compat();
+
+                let result = tokio::time::timeout(BUSINESS_READ_TIMEOUT, async {
+                    use tokio::io::AsyncReadExt;
+
+                    // Step 1: Read 4-byte JSON header length (u32 LE)
+                    let mut len_buf = [0u8; 4];
+                    reader
+                        .read_exact(&mut len_buf)
+                        .await
+                        .map_err(|e| format!("failed to read json header length: {e}"))?;
+                    let json_len = u32::from_le_bytes(len_buf) as usize;
+
+                    // Guard: cap JSON header size at 64KB
+                    if json_len > MAX_JSON_HEADER_SIZE {
+                        return Err(format!(
+                            "json header too large: {json_len} > {MAX_JSON_HEADER_SIZE}"
+                        ));
+                    }
+
+                    // Step 2: Read JSON header (exactly json_len bytes)
+                    let mut json_buf = vec![0u8; json_len];
+                    reader
+                        .read_exact(&mut json_buf)
+                        .await
+                        .map_err(|e| format!("failed to read json header: {e}"))?;
+
+                    let message = ProtocolMessage::from_bytes(&json_buf)
+                        .map_err(|e| format!("invalid protocol message: {e}"))?;
+
+                    match message {
+                        ProtocolMessage::Clipboard(msg)
+                            if msg.payload_version == ClipboardPayloadVersion::V2 =>
+                        {
+                            // Step 3: V2 streaming decode via spawn_blocking
+                            let master_key = match encryption_session.get_master_key().await {
+                                Ok(k) => k,
+                                Err(e) => {
+                                    return Err(format!(
+                                        "V2 inbound: encryption session not ready: {e}"
+                                    ));
+                                }
+                            };
+
+                            let decode_result = tokio::task::spawn_blocking(move || {
+                                use tokio_util::io::SyncIoBridge;
+                                let sync_reader = SyncIoBridge::new(reader);
+                                uc_infra::clipboard::ChunkedDecoder::decode_from(
+                                    sync_reader,
+                                    &master_key,
+                                )
+                            })
+                            .await
+                            .map_err(|e| format!("V2 decode task panicked: {e}"))?;
+
+                            match decode_result {
+                                Ok(plaintext) => Ok(ProcessedMessage::V2Clipboard(msg, plaintext)),
+                                Err(e) => Err(format!("V2 inbound: chunk decode failed: {e}")),
+                            }
                         }
-                        return;
+                        other => {
+                            // V1 clipboard, DeviceAnnounce, Heartbeat, Pairing — no trailing payload
+                            Ok(ProcessedMessage::Standard(other))
+                        }
+                    }
+                })
+                .await;
+
+                // Stream ownership: for V2 the stream was moved into spawn_blocking via SyncIoBridge;
+                // when ChunkedDecoder::decode_from finishes (or errors), SyncIoBridge is dropped,
+                // which drops the underlying tokio reader / compat layer / Take<libp2p::Stream>.
+                // The libp2p stream close happens via Drop.
+                // For non-V2, the reader is dropped when the async block completes.
+
+                match result {
+                    Ok(Ok(ProcessedMessage::V2Clipboard(msg, plaintext))) => {
+                        handle_v2_clipboard(
+                            caches,
+                            event_tx,
+                            clipboard_tx,
+                            peer_id,
+                            msg,
+                            plaintext,
+                        )
+                        .await;
+                    }
+                    Ok(Ok(ProcessedMessage::Standard(message))) => {
+                        handle_standard_message(caches, event_tx, clipboard_tx, peer_id, message)
+                            .await;
+                    }
+                    Ok(Err(err)) => {
+                        warn!(peer_id = %peer_id, error = %err, "business stream processing failed");
                     }
                     Err(_) => {
-                        warn!("business stream read timed out");
-                        if let Err(err) = limited.into_inner().close().await {
-                            warn!("business stream close failed: {err}");
-                        }
-                        return;
+                        warn!(peer_id = %peer_id, "business stream read timed out");
                     }
                 }
-                if payload.len() as u64 > BUSINESS_PAYLOAD_MAX_BYTES {
-                    warn!(
-                        "business stream payload exceeds limit: payload_len={}, max_bytes={}",
-                        payload.len(),
-                        BUSINESS_PAYLOAD_MAX_BYTES
-                    );
-                    if let Err(err) = limited.into_inner().close().await {
-                        warn!("business stream close failed: {err}");
-                    }
-                    return;
-                }
-                if let Err(err) = limited.into_inner().close().await {
-                    warn!("business stream close failed: {err}");
-                }
-                handle_business_payload(caches, event_tx, clipboard_tx, peer_id, payload).await;
             });
         }
     });
 }
 
-async fn handle_business_payload(
+/// Handle non-V2 protocol messages (V1 clipboard, DeviceAnnounce, Heartbeat, Pairing).
+async fn handle_standard_message(
     caches: Arc<RwLock<PeerCaches>>,
     event_tx: mpsc::Sender<NetworkEvent>,
-    clipboard_tx: mpsc::Sender<ClipboardMessage>,
+    clipboard_tx: mpsc::Sender<(ClipboardMessage, Option<Vec<u8>>)>,
     peer_id: String,
-    payload: Vec<u8>,
+    message: ProtocolMessage,
 ) {
-    let message = match ProtocolMessage::from_bytes(&payload) {
-        Ok(message) => message,
-        Err(err) => {
-            warn!(
-                "Failed to decode business payload: peer_id={}, payload_len={}, err={}",
-                peer_id,
-                payload.len(),
-                err
-            );
-            return;
-        }
-    };
-
     match message {
         ProtocolMessage::DeviceAnnounce(announce) => {
             if announce.peer_id != peer_id {
@@ -977,8 +1052,9 @@ async fn handle_business_payload(
             }
         }
         ProtocolMessage::Clipboard(message) => {
-            if let Err(err) = clipboard_tx.send(message.clone()).await {
-                warn!("Failed to forward clipboard payload: {err}");
+            // V1 path — send with None for pre-decoded plaintext
+            if let Err(err) = clipboard_tx.send((message.clone(), None)).await {
+                warn!("Failed to forward V1 clipboard payload: {err}");
             }
             if let Err(err) = try_send_event(
                 &event_tx,
@@ -997,6 +1073,27 @@ async fn handle_business_payload(
                 peer_id
             );
         }
+    }
+}
+
+/// Handle V2 clipboard message with pre-decoded plaintext from transport-level streaming decode.
+async fn handle_v2_clipboard(
+    _caches: Arc<RwLock<PeerCaches>>,
+    event_tx: mpsc::Sender<NetworkEvent>,
+    clipboard_tx: mpsc::Sender<(ClipboardMessage, Option<Vec<u8>>)>,
+    _peer_id: String,
+    message: ClipboardMessage,
+    plaintext: Vec<u8>,
+) {
+    if let Err(err) = clipboard_tx.send((message.clone(), Some(plaintext))).await {
+        warn!("Failed to forward V2 clipboard payload: {err}");
+    }
+    if let Err(err) = try_send_event(
+        &event_tx,
+        NetworkEvent::ClipboardReceived(message),
+        "ClipboardReceived",
+    ) {
+        warn!("failed to send ClipboardReceived event: {err}");
     }
 }
 
@@ -1909,6 +2006,7 @@ fn apply_peer_not_ready(caches: &mut PeerCaches, peer_id: &str) -> Option<Networ
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::adapters::InMemoryEncryptionSessionPort;
     use libp2p::futures::{AsyncReadExt, AsyncWriteExt};
     use libp2p::identity;
     use libp2p::Multiaddr;
@@ -2173,7 +2271,11 @@ mod tests {
     #[tokio::test]
     async fn adapter_constructs_with_policy_resolver() {
         let resolver: Arc<dyn ConnectionPolicyResolverPort> = Arc::new(FakeResolver);
-        let adapter = Libp2pNetworkAdapter::new(Arc::new(TestIdentityStore::default()), resolver);
+        let adapter = Libp2pNetworkAdapter::new(
+            Arc::new(TestIdentityStore::default()),
+            resolver,
+            Arc::new(InMemoryEncryptionSessionPort::default()),
+        );
         assert!(adapter.is_ok());
     }
 
@@ -2182,6 +2284,7 @@ mod tests {
         let adapter = Libp2pNetworkAdapter::new(
             Arc::new(TestIdentityStore::default()),
             Arc::new(FakeResolver),
+            Arc::new(InMemoryEncryptionSessionPort::default()),
         )
         .expect("create adapter");
 
@@ -2200,6 +2303,7 @@ mod tests {
         let adapter = Libp2pNetworkAdapter::new(
             Arc::new(TestIdentityStore::default()),
             Arc::new(FakeResolver),
+            Arc::new(InMemoryEncryptionSessionPort::default()),
         )
         .expect("create adapter");
 
@@ -2238,14 +2342,13 @@ mod tests {
             device_name: "Desk".to_string(),
             timestamp: Utc::now(),
         });
-        let payload = announce.to_bytes().expect("serialize announce");
 
-        handle_business_payload(
+        handle_standard_message(
             caches.clone(),
             event_tx,
             clipboard_tx,
             "peer-1".to_string(),
-            payload,
+            announce,
         )
         .await;
 
@@ -2275,6 +2378,7 @@ mod tests {
         let adapter = Libp2pNetworkAdapter::new(
             Arc::new(TestIdentityStore::default()),
             Arc::new(FakeResolver),
+            Arc::new(InMemoryEncryptionSessionPort::default()),
         )
         .expect("create adapter");
 
@@ -2416,6 +2520,7 @@ mod tests {
         let adapter = Libp2pNetworkAdapter::new(
             Arc::new(TestIdentityStore::default()),
             Arc::new(PendingResolver),
+            Arc::new(InMemoryEncryptionSessionPort::default()),
         )
         .expect("create adapter");
 
@@ -2436,6 +2541,7 @@ mod tests {
         let adapter = Libp2pNetworkAdapter::new(
             Arc::new(TestIdentityStore::default()),
             Arc::new(FakeResolver),
+            Arc::new(InMemoryEncryptionSessionPort::default()),
         )
         .expect("create adapter");
 
@@ -2458,6 +2564,7 @@ mod tests {
         let adapter = Libp2pNetworkAdapter::new(
             Arc::new(TestIdentityStore::default()),
             Arc::new(FakeResolver),
+            Arc::new(InMemoryEncryptionSessionPort::default()),
         )
         .expect("create adapter");
         let local_peer_id = adapter.local_peer_id();
@@ -2537,6 +2644,7 @@ mod tests {
         let adapter = Libp2pNetworkAdapter::new(
             Arc::new(TestIdentityStore::default()),
             Arc::new(FakeResolver),
+            Arc::new(InMemoryEncryptionSessionPort::default()),
         )
         .expect("create adapter");
         let payload = vec![1, 2, 3, 4];
@@ -2582,6 +2690,7 @@ mod tests {
         let adapter = Libp2pNetworkAdapter::new(
             Arc::new(TestIdentityStore::default()),
             Arc::new(FakeResolver),
+            Arc::new(InMemoryEncryptionSessionPort::default()),
         )
         .expect("create adapter");
 
@@ -2598,6 +2707,7 @@ mod tests {
         let adapter = Libp2pNetworkAdapter::new(
             Arc::new(TestIdentityStore::default()),
             Arc::new(FakeResolver),
+            Arc::new(InMemoryEncryptionSessionPort::default()),
         )
         .expect("create adapter");
 
@@ -2655,11 +2765,13 @@ mod tests {
         let adapter_a = Libp2pNetworkAdapter::new(
             Arc::new(TestIdentityStore::default()),
             Arc::new(FakeResolver),
+            Arc::new(InMemoryEncryptionSessionPort::default()),
         )
         .expect("create adapter a");
         let adapter_b = Libp2pNetworkAdapter::new(
             Arc::new(TestIdentityStore::default()),
             Arc::new(FakeResolver),
+            Arc::new(InMemoryEncryptionSessionPort::default()),
         )
         .expect("create adapter b");
         let rx_a = adapter_a.subscribe_events().await.expect("subscribe a");
@@ -2685,11 +2797,13 @@ mod tests {
         let adapter_a = Libp2pNetworkAdapter::new(
             Arc::new(TestIdentityStore::default()),
             Arc::new(FakeResolver),
+            Arc::new(InMemoryEncryptionSessionPort::default()),
         )
         .expect("create adapter a");
         let adapter_b = Libp2pNetworkAdapter::new(
             Arc::new(TestIdentityStore::default()),
             Arc::new(FakeResolver),
+            Arc::new(InMemoryEncryptionSessionPort::default()),
         )
         .expect("create adapter b");
         let rx_a = adapter_a.subscribe_events().await.expect("subscribe a");
@@ -2745,11 +2859,13 @@ mod tests {
         let adapter_a = Libp2pNetworkAdapter::new(
             Arc::new(TestIdentityStore::default()),
             Arc::new(FakeResolver),
+            Arc::new(InMemoryEncryptionSessionPort::default()),
         )
         .expect("create adapter a");
         let adapter_b = Libp2pNetworkAdapter::new(
             Arc::new(TestIdentityStore::default()),
             Arc::new(FakeResolver),
+            Arc::new(InMemoryEncryptionSessionPort::default()),
         )
         .expect("create adapter b");
         let rx_a = adapter_a
@@ -2797,9 +2913,10 @@ mod tests {
             origin_device_name: "Adapter A".to_string(),
             payload_version: uc_core::network::protocol::ClipboardPayloadVersion::V1,
         };
+        // Use frame_to_bytes for the new two-segment wire format
         let payload = ProtocolMessage::Clipboard(expected.clone())
-            .to_bytes()
-            .expect("serialize clipboard protocol payload");
+            .frame_to_bytes(None)
+            .expect("serialize clipboard protocol payload with frame_to_bytes");
 
         let mut received = None;
         for _attempt in 0..20 {
@@ -2808,7 +2925,12 @@ mod tests {
                 .expect("send clipboard protocol payload");
 
             match timeout(Duration::from_millis(500), clipboard_rx_b.recv()).await {
-                Ok(Some(message)) => {
+                Ok(Some((message, pre_decoded))) => {
+                    // V1 messages should have None pre-decoded plaintext
+                    assert!(
+                        pre_decoded.is_none(),
+                        "V1 message should have no pre-decoded plaintext"
+                    );
                     received = Some(message);
                     break;
                 }

@@ -50,7 +50,9 @@ impl ClipboardTransportPort for PlaceholderNetworkPort {
         ))
     }
 
-    async fn subscribe_clipboard(&self) -> Result<tokio::sync::mpsc::Receiver<ClipboardMessage>> {
+    async fn subscribe_clipboard(
+        &self,
+    ) -> Result<tokio::sync::mpsc::Receiver<(ClipboardMessage, Option<Vec<u8>>)>> {
         error!("ClipboardTransportPort::subscribe_clipboard not implemented");
         Err(anyhow::anyhow!(
             "ClipboardTransportPort::subscribe_clipboard not implemented yet"

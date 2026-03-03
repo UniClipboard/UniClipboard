@@ -180,19 +180,20 @@ impl SyncOutboundClipboardUseCase {
             }
         };
 
-        let clipboard_message = ClipboardMessage {
+        // Build the JSON header with empty encrypted_content (V2 payload goes as raw trailing bytes)
+        let clipboard_header = ClipboardMessage {
             id: message_id,
             content_hash,
-            encrypted_content,
+            encrypted_content: vec![], // V2 binary is NOT in the JSON
             timestamp: Utc::now(),
             origin_device_id,
             origin_device_name,
             payload_version: ClipboardPayloadVersion::V2,
         };
 
-        let outbound_bytes = ProtocolMessage::Clipboard(clipboard_message)
-            .to_bytes()
-            .context("failed to serialize outbound protocol clipboard message")?;
+        let outbound_bytes = ProtocolMessage::Clipboard(clipboard_header)
+            .frame_to_bytes(Some(&encrypted_content))
+            .context("failed to frame outbound V2 clipboard message")?;
 
         let mut send_failures = Vec::new();
         let mut connect_failures = Vec::new();
@@ -530,6 +531,17 @@ mod tests {
         }
     }
 
+    /// Parse a two-segment framed wire message, returning (ClipboardMessage, raw_v2_trailing_bytes).
+    fn parse_framed_v2(bytes: &[u8]) -> (ClipboardMessage, &[u8]) {
+        let json_len = u32::from_le_bytes(bytes[0..4].try_into().unwrap()) as usize;
+        let json_bytes = &bytes[4..4 + json_len];
+        let trailing = &bytes[4 + json_len..];
+        match ProtocolMessage::from_bytes(json_bytes).expect("decode protocol message") {
+            ProtocolMessage::Clipboard(msg) => (msg, trailing),
+            other => panic!("expected Clipboard, got {:?}", other),
+        }
+    }
+
     fn build_snapshot() -> SystemClipboardSnapshot {
         SystemClipboardSnapshot {
             ts_ms: 1_713_000_000_000,
@@ -737,38 +749,36 @@ mod tests {
 
         let calls = send_calls.lock().expect("send calls lock");
         let (_, outbound_bytes) = calls.first().expect("one outbound send");
-        let decoded = ProtocolMessage::from_bytes(outbound_bytes).expect("decode protocol message");
 
-        match decoded {
-            ProtocolMessage::Clipboard(message) => {
-                // V2: payload_version must be V2
-                assert_eq!(
-                    message.payload_version,
-                    ClipboardPayloadVersion::V2,
-                    "outbound message must use V2 payload version"
-                );
+        // Parse two-segment wire format
+        let (message, v2_raw_payload) = parse_framed_v2(outbound_bytes);
 
-                // V2: encrypted_content is V2 binary chunked format, decodeable via ChunkedDecoder
-                let plaintext = ChunkedDecoder::decode_from(
-                    Cursor::new(&message.encrypted_content),
-                    &test_master_key,
-                )
-                .expect("V2 chunk decode must succeed");
+        // V2: payload_version must be V2
+        assert_eq!(
+            message.payload_version,
+            ClipboardPayloadVersion::V2,
+            "outbound message must use V2 payload version"
+        );
+        assert!(
+            message.encrypted_content.is_empty(),
+            "V2 JSON header must have empty encrypted_content"
+        );
 
-                // V2: plaintext deserializes as ClipboardMultiRepPayloadV2
-                let v2_payload: ClipboardMultiRepPayloadV2 =
-                    serde_json::from_slice(&plaintext).expect("V2 payload JSON deserialization");
+        // Decode the raw V2 payload (trailing bytes, not the JSON)
+        let plaintext = ChunkedDecoder::decode_from(Cursor::new(v2_raw_payload), &test_master_key)
+            .expect("V2 chunk decode must succeed");
 
-                // Must have representations — "hello world" text/plain rep
-                assert_eq!(v2_payload.representations.len(), 1);
-                assert_eq!(v2_payload.representations[0].bytes, b"hello world".to_vec());
-                assert_eq!(
-                    v2_payload.representations[0].mime.as_deref(),
-                    Some("text/plain")
-                );
-            }
-            _ => panic!("expected ProtocolMessage::Clipboard"),
-        }
+        // V2: plaintext deserializes as ClipboardMultiRepPayloadV2
+        let v2_payload: ClipboardMultiRepPayloadV2 =
+            serde_json::from_slice(&plaintext).expect("V2 payload JSON deserialization");
+
+        // Must have representations — "hello world" text/plain rep
+        assert_eq!(v2_payload.representations.len(), 1);
+        assert_eq!(v2_payload.representations[0].bytes, b"hello world".to_vec());
+        assert_eq!(
+            v2_payload.representations[0].mime.as_deref(),
+            Some("text/plain")
+        );
     }
 
     #[test]
@@ -852,37 +862,35 @@ mod tests {
 
         let calls = send_calls.lock().expect("send calls lock");
         let (_, outbound_bytes) = calls.first().expect("one outbound send");
-        let decoded = ProtocolMessage::from_bytes(outbound_bytes).expect("decode protocol message");
 
-        match decoded {
-            ProtocolMessage::Clipboard(message) => {
-                // content_hash must equal snapshot_hash (covers all representations)
-                assert_eq!(
-                    message.content_hash, expected_hash,
-                    "content_hash must be snapshot_hash covering all representations"
-                );
-                assert_eq!(message.payload_version, ClipboardPayloadVersion::V2);
+        // Parse two-segment wire format
+        let (message, v2_raw_payload) = parse_framed_v2(outbound_bytes);
 
-                let plaintext = ChunkedDecoder::decode_from(
-                    Cursor::new(&message.encrypted_content),
-                    &test_master_key,
-                )
-                .expect("V2 chunk decode");
-                let v2_payload: ClipboardMultiRepPayloadV2 =
-                    serde_json::from_slice(&plaintext).expect("V2 payload");
+        // content_hash must equal snapshot_hash (covers all representations)
+        assert_eq!(
+            message.content_hash, expected_hash,
+            "content_hash must be snapshot_hash covering all representations"
+        );
+        assert_eq!(message.payload_version, ClipboardPayloadVersion::V2);
+        assert!(
+            message.encrypted_content.is_empty(),
+            "V2 JSON header must have empty encrypted_content"
+        );
 
-                // Must have BOTH representations
-                assert_eq!(v2_payload.representations.len(), 2);
-                let mimes: Vec<Option<&str>> = v2_payload
-                    .representations
-                    .iter()
-                    .map(|r| r.mime.as_deref())
-                    .collect();
-                assert!(mimes.contains(&Some("text/plain")));
-                assert!(mimes.contains(&Some("image/png")));
-            }
-            _ => panic!("expected ProtocolMessage::Clipboard"),
-        }
+        let plaintext = ChunkedDecoder::decode_from(Cursor::new(v2_raw_payload), &test_master_key)
+            .expect("V2 chunk decode");
+        let v2_payload: ClipboardMultiRepPayloadV2 =
+            serde_json::from_slice(&plaintext).expect("V2 payload");
+
+        // Must have BOTH representations
+        assert_eq!(v2_payload.representations.len(), 2);
+        let mimes: Vec<Option<&str>> = v2_payload
+            .representations
+            .iter()
+            .map(|r| r.mime.as_deref())
+            .collect();
+        assert!(mimes.contains(&Some("text/plain")));
+        assert!(mimes.contains(&Some("image/png")));
     }
 
     #[test]

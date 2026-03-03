@@ -40,4 +40,3 @@ features = ["v4"]
 mockall = "0.13"
 tempfile = "3"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-uc-infra = { path = "../uc-infra" }

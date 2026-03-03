@@ -191,10 +191,30 @@ impl ClipboardTransportPort for InProcessNetwork {
             ));
         }
 
-        let message = ProtocolMessage::from_bytes(&outbound_bytes)
-            .context("failed to decode outbound bytes as ProtocolMessage")?;
+        // Parse two-segment wire format: [4-byte JSON len LE][JSON header][optional trailing V2 payload]
+        if outbound_bytes.len() < 4 {
+            return Err(anyhow!("outbound bytes too short for framed format"));
+        }
+        let json_len = u32::from_le_bytes(outbound_bytes[0..4].try_into().unwrap()) as usize;
+        if outbound_bytes.len() < 4 + json_len {
+            return Err(anyhow!(
+                "outbound bytes truncated: expected {} JSON bytes, have {}",
+                json_len,
+                outbound_bytes.len() - 4
+            ));
+        }
+        let json_bytes = &outbound_bytes[4..4 + json_len];
+        let v2_trailing = &outbound_bytes[4 + json_len..];
+
+        let message = ProtocolMessage::from_bytes(json_bytes)
+            .context("failed to decode framed JSON header as ProtocolMessage")?;
         match message {
-            ProtocolMessage::Clipboard(clipboard_message) => {
+            ProtocolMessage::Clipboard(mut clipboard_message) => {
+                // For V2: the real encrypted payload is in the trailing bytes, not in the JSON header.
+                // Re-attach it to encrypted_content so the inbound use case can process it.
+                if !v2_trailing.is_empty() {
+                    clipboard_message.encrypted_content = v2_trailing.to_vec();
+                }
                 self.remote_inbound.execute(clipboard_message).await
             }
             _ => Err(anyhow!(

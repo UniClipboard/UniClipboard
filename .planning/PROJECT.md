@@ -23,6 +23,7 @@ Seamless clipboard synchronization across devices — users can copy on one devi
 - ✓ Auto-start on boot — existing
 - ✓ Single instance enforcement — existing
 - ✓ Hexagonal architecture (uc-core, uc-infra, uc-platform, uc-app) — existing (~60%)
+- ✓ Download progress display in update dialogs — v0.1.0 (Phase 01)
 
 ### Active
 
@@ -78,4 +79,4 @@ Seamless clipboard synchronization across devices — users can copy on one devi
 
 ---
 
-_Last updated: 2026-03-02 after initialization_
+_Last updated: 2026-03-03 after v0.1.0 milestone_

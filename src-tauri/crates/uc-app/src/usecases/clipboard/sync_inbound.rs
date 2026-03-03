@@ -759,6 +759,7 @@ mod tests {
             timestamp: Utc::now(),
             origin_device_id: origin_device_id.to_string(),
             origin_device_name: "peer-device".to_string(),
+            payload_version: uc_core::network::protocol::ClipboardPayloadVersion::V1,
         }
     }
 

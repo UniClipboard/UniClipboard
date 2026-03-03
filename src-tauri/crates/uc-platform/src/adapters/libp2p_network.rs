@@ -2795,6 +2795,7 @@ mod tests {
             timestamp: Utc::now(),
             origin_device_id: "device-a".to_string(),
             origin_device_name: "Adapter A".to_string(),
+            payload_version: uc_core::network::protocol::ClipboardPayloadVersion::V1,
         };
         let payload = ProtocolMessage::Clipboard(expected.clone())
             .to_bytes()

@@ -185,6 +185,7 @@ impl SyncOutboundClipboardUseCase {
             timestamp: Utc::now(),
             origin_device_id,
             origin_device_name,
+            payload_version: uc_core::network::protocol::ClipboardPayloadVersion::V1,
         };
 
         let outbound_bytes = ProtocolMessage::Clipboard(clipboard_message)

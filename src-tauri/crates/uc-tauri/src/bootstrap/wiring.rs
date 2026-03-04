@@ -607,6 +607,43 @@ fn create_platform_layer(
     // Create blob store (filesystem-based)
     // 创建 blob 存储（基于文件系统）
     let blob_store_dir = config_dir.join("blobs");
+
+    // Purge old blob files after V2 migration (old JSON format files are incompatible
+    // with the new UCBL binary format). Uses a sentinel file so this only runs once.
+    let sentinel = blob_store_dir.join(".v2_migrated");
+    if blob_store_dir.exists() && !sentinel.exists() {
+        match std::fs::read_dir(&blob_store_dir) {
+            Ok(entries) => {
+                let mut purged = 0u64;
+                for entry in entries.flatten() {
+                    if entry.path().is_file() {
+                        if let Err(e) = std::fs::remove_file(entry.path()) {
+                            tracing::warn!(
+                                path = %entry.path().display(),
+                                error = %e,
+                                "Failed to purge old blob file"
+                            );
+                        } else {
+                            purged += 1;
+                        }
+                    }
+                }
+                if purged > 0 {
+                    tracing::info!(
+                        count = purged,
+                        "Purged old blob files (V2 format migration)"
+                    );
+                }
+            }
+            Err(e) => {
+                tracing::warn!(error = %e, "Failed to read blob directory for cleanup");
+            }
+        }
+        if let Err(e) = std::fs::File::create(&sentinel) {
+            tracing::warn!(error = %e, "Failed to create V2 migration sentinel");
+        }
+    }
+
     let blob_store: Arc<dyn BlobStorePort> = Arc::new(FilesystemBlobStore::new(blob_store_dir));
 
     // Create clipboard representation normalizer (real implementation)

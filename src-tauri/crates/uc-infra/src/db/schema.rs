@@ -9,6 +9,7 @@ diesel::table! {
         content_hash -> Text,
         encryption_algo -> Nullable<Text>,
         created_at_ms -> BigInt,
+        compressed_size -> Nullable<BigInt>,
     }
 }
 

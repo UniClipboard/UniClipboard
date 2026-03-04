@@ -20,6 +20,7 @@ impl InsertMapper<Blob, NewBlobRow> for BlobRowMapper {
             size_bytes: domain.size_bytes,
             content_hash: domain.content_hash.to_string(),
             created_at_ms: domain.created_at_ms,
+            compressed_size: domain.compressed_size,
         })
     }
 }
@@ -51,7 +52,7 @@ impl RowMapper<BlobRow, Blob> for BlobRowMapper {
             row.size_bytes,
             ContentHash::from(row.content_hash.clone()),
             row.created_at_ms,
-            None, // compressed_size: will be mapped from row in Task 2
+            row.compressed_size,
         ))
     }
 }

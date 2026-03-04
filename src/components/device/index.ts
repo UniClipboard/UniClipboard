@@ -1,5 +1,4 @@
-export { default as DeviceList } from './DeviceList'
-export { default as OtherDevice } from './OtherDevice'
+export { default as PairedDevicesPanel } from './PairedDevicesPanel'
 export { default as DeviceStatus } from './DeviceStatus'
 export { default as Permissions } from './Permissions'
 export { default as Rules } from './Rules'

@@ -13,7 +13,7 @@ import {
   updatePeerDeviceName,
 } from '@/store/slices/devicesSlice'
 
-const OtherDevice: React.FC = () => {
+const PairedDevicesPanel: React.FC = () => {
   const { t } = useTranslation()
   const [expandedDeviceId, setExpandedDeviceId] = useState<string | null>(null)
   const dispatch = useAppDispatch()
@@ -147,14 +147,14 @@ const OtherDevice: React.FC = () => {
 
   if (pairedDevices.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center py-20 text-center">
-        <div className="bg-muted/30 p-6 rounded-full mb-6 ring-1 ring-border/50">
-          <Monitor className="h-12 w-12 text-muted-foreground/50" />
+      <div className="mx-auto -mt-3 flex min-h-[26rem] w-full max-w-xl flex-col items-center justify-center py-10 text-center sm:-mt-4 sm:min-h-[30rem] sm:py-12">
+        <div className="mb-5 rounded-full bg-muted/30 p-5 ring-1 ring-border/50">
+          <Monitor className="h-10 w-10 text-muted-foreground/50" />
         </div>
-        <h3 className="text-xl font-semibold text-foreground mb-2">
+        <h3 className="mb-2 text-xl font-semibold text-foreground">
           {t('devices.list.empty.title')}
         </h3>
-        <p className="text-muted-foreground max-w-xs">{t('devices.list.empty.description')}</p>
+        <p className="max-w-sm text-muted-foreground">{t('devices.list.empty.description')}</p>
       </div>
     )
   }
@@ -263,4 +263,4 @@ const OtherDevice: React.FC = () => {
   )
 }
 
-export default OtherDevice
+export default PairedDevicesPanel

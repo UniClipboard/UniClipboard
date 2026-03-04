@@ -1,6 +1,6 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { describe, expect, it, vi, beforeEach } from 'vitest'
-import OtherDevice from '../OtherDevice'
+import PairedDevicesPanel from '../PairedDevicesPanel'
 import * as p2pApi from '@/api/p2p'
 import i18n from '@/i18n'
 
@@ -15,7 +15,8 @@ const useAppSelectorMock = vi.fn()
 
 vi.mock('@/store/hooks', () => ({
   useAppDispatch: () => dispatchMock,
-  useAppSelector: (selector: any) => useAppSelectorMock(selector),
+  useAppSelector: (selector: (state: { devices: unknown }) => unknown) =>
+    useAppSelectorMock(selector),
 }))
 
 vi.mock('@/api/p2p', () => ({
@@ -31,7 +32,7 @@ vi.mock('@/store/slices/devicesSlice', () => ({
   updatePeerDeviceName: vi.fn(),
 }))
 
-describe('OtherDevice', () => {
+describe('PairedDevicesPanel', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     useAppSelectorMock.mockImplementation(() => {
@@ -44,7 +45,7 @@ describe('OtherDevice', () => {
   })
 
   it('renders empty state with discovery message when no devices are paired', () => {
-    render(<OtherDevice />)
+    render(<PairedDevicesPanel />)
 
     expect(screen.getByText(i18n.t('devices.list.empty.title'))).toBeInTheDocument()
     expect(screen.getByText(i18n.t('devices.list.empty.description'))).toBeInTheDocument()
@@ -64,7 +65,7 @@ describe('OtherDevice', () => {
       }
     })
 
-    render(<OtherDevice />)
+    render(<PairedDevicesPanel />)
 
     expect(screen.getByText('iPhone 13')).toBeInTheDocument()
     expect(screen.getByText('MacBook Pro')).toBeInTheDocument()
@@ -86,7 +87,7 @@ describe('OtherDevice', () => {
       }
     })
 
-    render(<OtherDevice />)
+    render(<PairedDevicesPanel />)
 
     expect(screen.queryByTestId('device-settings-panel')).not.toBeInTheDocument()
 
@@ -113,7 +114,7 @@ describe('OtherDevice', () => {
       }
     })
 
-    render(<OtherDevice />)
+    render(<PairedDevicesPanel />)
 
     const unpairButton = screen.getByTitle(i18n.t('devices.list.actions.unpair'))
 

@@ -19,11 +19,12 @@ See: `.planning/milestones/v0.1-ROADMAP.md` for full details.
 
 ## Progress
 
-| Phase                        | Milestone | Plans Complete | Status   | Completed  |
-| ---------------------------- | --------- | -------------- | -------- | ---------- |
-| 1. Download progress display | v0.1.0    | 1/1            | Complete | 2026-03-03 |
-| 2. Unified transfer layer    | v0.1.0    | 3/3            | Complete | 2026-03-03 |
-| 3. True inbound streaming    | v0.1.0    | 2/2            | Complete | 2026-03-03 |
+| Phase                        | Milestone | Plans Complete | Status      | Completed  |
+| ---------------------------- | --------- | -------------- | ----------- | ---------- |
+| 1. Download progress display | v0.1.0    | 1/1            | Complete    | 2026-03-03 |
+| 2. Unified transfer layer    | v0.1.0    | 3/3            | Complete    | 2026-03-03 |
+| 3. True inbound streaming    | v0.1.0    | 2/2            | Complete    | 2026-03-03 |
+| 4. Blob at-rest storage opt  | v0.1      | 1/2            | In Progress | -          |
 
 ### Phase 4: Optimize blob at-rest storage format without backward compatibility
 
@@ -34,5 +35,5 @@ See: `.planning/milestones/v0.1-ROADMAP.md` for full details.
 
 Plans:
 
-- [ ] 04-01-PLAN.md — Contracts, domain models, schema migration (AAD v2, BlobStorePort, Diesel)
+- [x] 04-01-PLAN.md — Contracts, domain models, schema migration (AAD v2, BlobStorePort, Diesel)
 - [ ] 04-02-PLAN.md — V2 binary format implementation with zstd compression + spool cleanup

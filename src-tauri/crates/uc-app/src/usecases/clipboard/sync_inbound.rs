@@ -578,7 +578,7 @@ mod tests {
     use super::*;
 
     use std::collections::VecDeque;
-    use std::io::{Cursor, Write};
+    use std::io::Write;
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::{Arc, Mutex, OnceLock};
     use std::time::Duration;
@@ -601,7 +601,7 @@ mod tests {
         DeviceId, MimeType, ObservedClipboardRepresentation, PersistedClipboardRepresentation,
         SystemClipboardSnapshot,
     };
-    use uc_infra::clipboard::{ChunkedDecoder, ChunkedEncoder};
+    use uc_infra::clipboard::ChunkedEncoder;
 
     struct MockSystemClipboard {
         reads: SystemClipboardSnapshot,

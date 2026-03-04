@@ -26,7 +26,9 @@ use uc_core::{
     ClipboardChangeOrigin, DeviceId, MimeType, ObservedClipboardRepresentation,
     SystemClipboardSnapshot,
 };
-use uc_infra::clipboard::InMemoryClipboardChangeOrigin;
+use uc_infra::clipboard::{
+    InMemoryClipboardChangeOrigin, TransferPayloadDecryptorAdapter, TransferPayloadEncryptorAdapter,
+};
 
 struct InMemoryClipboard {
     snapshot: Arc<Mutex<SystemClipboardSnapshot>>,
@@ -367,6 +369,8 @@ async fn clipboard_sync_e2e_dual_peer_in_process() -> Result<()> {
         settings: Settings::default(),
     });
 
+    let transfer_decryptor: Arc<TransferPayloadDecryptorAdapter> =
+        Arc::new(TransferPayloadDecryptorAdapter);
     let inbound_a = Arc::new(SyncInboundClipboardUseCase::new(
         ClipboardIntegrationMode::Full,
         clipboard_a.clone(),
@@ -374,6 +378,7 @@ async fn clipboard_sync_e2e_dual_peer_in_process() -> Result<()> {
         session_a.clone(),
         encryption_a.clone(),
         identity_a.clone(),
+        transfer_decryptor.clone(),
     )?);
     let inbound_b = Arc::new(SyncInboundClipboardUseCase::new(
         ClipboardIntegrationMode::Full,
@@ -382,6 +387,7 @@ async fn clipboard_sync_e2e_dual_peer_in_process() -> Result<()> {
         session_b.clone(),
         encryption_b.clone(),
         identity_b.clone(),
+        transfer_decryptor,
     )?);
 
     let a_send_count = Arc::new(AtomicUsize::new(0));
@@ -409,6 +415,8 @@ async fn clipboard_sync_e2e_dual_peer_in_process() -> Result<()> {
         send_count: b_send_count.clone(),
     });
 
+    let transfer_encryptor: Arc<TransferPayloadEncryptorAdapter> =
+        Arc::new(TransferPayloadEncryptorAdapter);
     let outbound_a = SyncOutboundClipboardUseCase::new(
         clipboard_a.clone(),
         network_a.clone() as Arc<dyn uc_core::ports::ClipboardTransportPort>,
@@ -417,6 +425,7 @@ async fn clipboard_sync_e2e_dual_peer_in_process() -> Result<()> {
         encryption_a,
         identity_a,
         settings.clone(),
+        transfer_encryptor.clone(),
     );
     let outbound_b = SyncOutboundClipboardUseCase::new(
         clipboard_b.clone(),
@@ -426,6 +435,7 @@ async fn clipboard_sync_e2e_dual_peer_in_process() -> Result<()> {
         encryption_b,
         identity_b,
         settings,
+        transfer_encryptor,
     );
 
     outbound_a.execute(

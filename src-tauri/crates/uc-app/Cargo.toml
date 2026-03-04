@@ -6,8 +6,6 @@ edition = "2021"
 [dependencies]
 # Core domain models
 uc-core = { path = "../uc-core" }
-# Infrastructure implementations (ChunkedEncoder/ChunkedDecoder for V2 transfer)
-uc-infra = { path = "../uc-infra" }
 
 # Async runtime
 tokio = { version = "1", features = ["full"] }
@@ -37,6 +35,7 @@ version = "1.10.0"
 features = ["v4"]
 
 [dev-dependencies]
+uc-infra = { path = "../uc-infra" }
 mockall = "0.13"
 tempfile = "3"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }

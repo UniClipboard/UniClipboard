@@ -12,10 +12,9 @@ use uc_core::network::protocol::{
 use uc_core::network::{ClipboardMessage, ProtocolMessage};
 use uc_core::ports::{
     ClipboardTransportPort, DeviceIdentityPort, EncryptionPort, EncryptionSessionPort,
-    PeerDirectoryPort, SettingsPort, SystemClipboardPort,
+    PeerDirectoryPort, SettingsPort, SystemClipboardPort, TransferPayloadEncryptorPort,
 };
 use uc_core::{ClipboardChangeOrigin, SystemClipboardSnapshot};
-use uc_infra::clipboard::ChunkedEncoder;
 
 pub struct SyncOutboundClipboardUseCase {
     local_clipboard: Arc<dyn SystemClipboardPort>,
@@ -26,6 +25,7 @@ pub struct SyncOutboundClipboardUseCase {
     encryption: Arc<dyn EncryptionPort>,
     device_identity: Arc<dyn DeviceIdentityPort>,
     settings: Arc<dyn SettingsPort>,
+    transfer_encryptor: Arc<dyn TransferPayloadEncryptorPort>,
 }
 
 impl SyncOutboundClipboardUseCase {
@@ -37,6 +37,7 @@ impl SyncOutboundClipboardUseCase {
         encryption: Arc<dyn EncryptionPort>,
         device_identity: Arc<dyn DeviceIdentityPort>,
         settings: Arc<dyn SettingsPort>,
+        transfer_encryptor: Arc<dyn TransferPayloadEncryptorPort>,
     ) -> Self {
         Self {
             local_clipboard,
@@ -46,6 +47,7 @@ impl SyncOutboundClipboardUseCase {
             encryption,
             device_identity,
             settings,
+            transfer_encryptor,
         }
     }
 
@@ -119,8 +121,6 @@ impl SyncOutboundClipboardUseCase {
         }
 
         let message_id = Uuid::new_v4().to_string();
-        let transfer_id_uuid = Uuid::new_v4();
-        let transfer_id: [u8; 16] = *transfer_id_uuid.as_bytes();
 
         // Build V2 multi-representation payload — all representations are included.
         let wire_reps: Vec<WireRepresentation> = snapshot
@@ -148,18 +148,12 @@ impl SyncOutboundClipboardUseCase {
             .map_err(anyhow::Error::from)
             .context("failed to access encryption session master key for outbound sync")?;
 
-        // Encode V2 payload using ChunkedEncoder::encode_to into a Vec<u8>.
+        // Encrypt V2 payload using transfer encryptor port.
         // Memory usage during encoding: CHUNK_SIZE × 2 (one plaintext chunk + one ciphertext chunk).
-        // This is Option B from the plan: encode to Vec<u8> in use case, pass Vec to transport.
-        // The streaming memory guarantee holds within encode_to itself — no double-buffering.
-        let mut encrypted_content = Vec::new();
-        ChunkedEncoder::encode_to(
-            &mut encrypted_content,
-            &master_key,
-            &transfer_id,
-            &plaintext_bytes,
-        )
-        .map_err(|e| anyhow::anyhow!("failed to chunk-encrypt outbound clipboard payload: {e}"))?;
+        let encrypted_content = self
+            .transfer_encryptor
+            .encrypt(&master_key, &plaintext_bytes)
+            .map_err(|e| anyhow::anyhow!("failed to encrypt outbound clipboard payload: {e}"))?;
 
         // V2 content_hash covers ALL representations (snapshot_hash), not a single rep hash.
         let content_hash = snapshot.snapshot_hash().to_string();
@@ -299,7 +293,7 @@ mod tests {
     };
     use uc_core::settings::model::Settings;
     use uc_core::{DeviceId, MimeType, ObservedClipboardRepresentation, SystemClipboardSnapshot};
-    use uc_infra::clipboard::ChunkedDecoder;
+    use uc_infra::clipboard::{ChunkedDecoder, TransferPayloadEncryptorAdapter};
 
     struct TestSystemClipboard {
         snapshot: SystemClipboardSnapshot,
@@ -616,6 +610,7 @@ mod tests {
             Arc::new(TestSettings {
                 settings: Settings::default(),
             }),
+            Arc::new(TransferPayloadEncryptorAdapter),
         );
 
         (

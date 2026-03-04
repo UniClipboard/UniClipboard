@@ -1,5 +1,4 @@
 use std::collections::VecDeque;
-use std::io::Cursor;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -17,12 +16,12 @@ use uc_core::ports::{
     ClipboardChangeOriginPort, ClipboardEntryRepositoryPort, ClipboardEventWriterPort,
     ClipboardRepresentationNormalizerPort, DeviceIdentityPort, EncryptionPort,
     EncryptionSessionPort, SelectRepresentationPolicyPort, SystemClipboardPort,
+    TransferPayloadDecryptorPort,
 };
 use uc_core::security::{aad, model::EncryptedBlob};
 use uc_core::{
     ClipboardChangeOrigin, MimeType, ObservedClipboardRepresentation, SystemClipboardSnapshot,
 };
-use uc_infra::clipboard::ChunkedDecoder;
 
 const RECENT_ID_TTL: Duration = Duration::from_secs(600);
 const RECENT_ID_MAX: usize = 1024;
@@ -40,6 +39,7 @@ pub struct SyncInboundClipboardUseCase {
     encryption_session: Arc<dyn EncryptionSessionPort>,
     encryption: Arc<dyn EncryptionPort>,
     device_identity: Arc<dyn DeviceIdentityPort>,
+    transfer_decryptor: Arc<dyn TransferPayloadDecryptorPort>,
     capture_clipboard:
         Option<crate::usecases::internal::capture_clipboard::CaptureClipboardUseCase>,
     recent_ids: Mutex<VecDeque<(String, Instant)>>,
@@ -53,6 +53,7 @@ impl SyncInboundClipboardUseCase {
         encryption_session: Arc<dyn EncryptionSessionPort>,
         encryption: Arc<dyn EncryptionPort>,
         device_identity: Arc<dyn DeviceIdentityPort>,
+        transfer_decryptor: Arc<dyn TransferPayloadDecryptorPort>,
     ) -> Result<Self> {
         if mode == ClipboardIntegrationMode::Passive {
             return Err(anyhow::anyhow!(
@@ -67,6 +68,7 @@ impl SyncInboundClipboardUseCase {
             encryption_session,
             encryption,
             device_identity,
+            transfer_decryptor,
             capture_clipboard: None,
             recent_ids: Mutex::new(VecDeque::new()),
         })
@@ -79,6 +81,7 @@ impl SyncInboundClipboardUseCase {
         encryption_session: Arc<dyn EncryptionSessionPort>,
         encryption: Arc<dyn EncryptionPort>,
         device_identity: Arc<dyn DeviceIdentityPort>,
+        transfer_decryptor: Arc<dyn TransferPayloadDecryptorPort>,
         entry_repo: Arc<dyn ClipboardEntryRepositoryPort>,
         event_writer: Arc<dyn ClipboardEventWriterPort>,
         representation_policy: Arc<dyn SelectRepresentationPolicyPort>,
@@ -93,6 +96,7 @@ impl SyncInboundClipboardUseCase {
             encryption_session,
             encryption,
             device_identity: device_identity.clone(),
+            transfer_decryptor,
             capture_clipboard: Some(
                 crate::usecases::internal::capture_clipboard::CaptureClipboardUseCase::new(
                     entry_repo,
@@ -417,10 +421,10 @@ impl SyncInboundClipboardUseCase {
                     .await
                     .map_err(anyhow::Error::from)
                     .context("failed to get master key for V2 inbound")?;
-                match ChunkedDecoder::decode_from(
-                    Cursor::new(&message.encrypted_content),
-                    &master_key,
-                ) {
+                match self
+                    .transfer_decryptor
+                    .decrypt(&message.encrypted_content, &master_key)
+                {
                     Ok(bytes) => bytes,
                     Err(e) => {
                         error!(
@@ -601,7 +605,7 @@ mod tests {
         DeviceId, MimeType, ObservedClipboardRepresentation, PersistedClipboardRepresentation,
         SystemClipboardSnapshot,
     };
-    use uc_infra::clipboard::ChunkedEncoder;
+    use uc_infra::clipboard::{ChunkedEncoder, TransferPayloadDecryptorAdapter};
 
     struct MockSystemClipboard {
         reads: SystemClipboardSnapshot,
@@ -1011,6 +1015,7 @@ mod tests {
             Arc::new(MockDeviceIdentity {
                 id: DeviceId::new(local_device_id),
             }),
+            Arc::new(TransferPayloadDecryptorAdapter),
         )
         .expect("build inbound usecase");
 
@@ -1050,6 +1055,7 @@ mod tests {
             Arc::new(MockDeviceIdentity {
                 id: DeviceId::new(local_device_id),
             }),
+            Arc::new(TransferPayloadDecryptorAdapter),
             Arc::new(MockEntryRepository {
                 save_calls: save_calls.clone(),
             }),
@@ -1115,6 +1121,7 @@ mod tests {
             Arc::new(MockDeviceIdentity {
                 id: DeviceId::new("local-1"),
             }),
+            Arc::new(TransferPayloadDecryptorAdapter),
         );
 
         match result {
@@ -1331,6 +1338,7 @@ mod tests {
             Arc::new(MockDeviceIdentity {
                 id: DeviceId::new("local-1"),
             }),
+            Arc::new(TransferPayloadDecryptorAdapter),
         )
         .expect("build inbound usecase");
 

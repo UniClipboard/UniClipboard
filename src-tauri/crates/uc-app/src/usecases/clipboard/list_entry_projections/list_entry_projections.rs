@@ -3,6 +3,7 @@
 
 use anyhow::Result;
 use std::sync::Arc;
+use uc_core::clipboard::PayloadAvailability;
 use uc_core::ports::{
     ClipboardEntryRepositoryPort, ClipboardRepresentationRepositoryPort,
     ClipboardSelectionRepositoryPort, ThumbnailRepositoryPort,
@@ -136,11 +137,25 @@ impl ListClipboardEntryProjections {
                     ))
                 })?;
 
-            // Build preview text
+            let is_image = representation
+                .mime_type
+                .as_ref()
+                .map(|mt| mt.as_str().starts_with("image/"))
+                .unwrap_or(false);
+
             let preview = if let Some(data) = representation.inline_data.as_ref() {
                 String::from_utf8_lossy(data).trim().to_string()
-            } else {
+            } else if is_image {
                 format!("Image ({} bytes)", representation.size_bytes)
+            } else {
+                entry
+                    .title
+                    .as_ref()
+                    .map(|title| title.trim().to_string())
+                    .filter(|title| !title.is_empty())
+                    .unwrap_or_else(|| {
+                        "Text content (full payload in background processing)".to_string()
+                    })
             };
 
             // Get content type from representation
@@ -149,12 +164,6 @@ impl ListClipboardEntryProjections {
                 .as_ref()
                 .map(|mt| mt.as_str().to_string())
                 .unwrap_or_else(|| "unknown".to_string());
-
-            let is_image = representation
-                .mime_type
-                .as_ref()
-                .map(|mt| mt.as_str().starts_with("image/"))
-                .unwrap_or(false);
 
             let thumbnail_url = if is_image {
                 match self
@@ -177,8 +186,13 @@ impl ListClipboardEntryProjections {
                 None
             };
 
-            // Check if has detail (blob exists)
-            let has_detail = representation.blob_id.is_some();
+            // has_detail controls whether frontend should try fetching full content.
+            // For staged/processing payloads, full content may become available via blob shortly.
+            let has_detail = representation.blob_id.is_some()
+                || matches!(
+                    representation.payload_state(),
+                    PayloadAvailability::Staged | PayloadAvailability::Processing
+                );
 
             projections.push(EntryProjectionDto {
                 id: entry_id_str,
@@ -486,5 +500,73 @@ mod tests {
             projection.thumbnail_url,
             Some(format!("uc://thumbnail/{}", rep_id.inner()))
         );
+    }
+
+    #[tokio::test]
+    async fn test_staged_text_projection_uses_title_preview_and_has_detail() {
+        let entry_id = EntryId::from("entry-staged-text");
+        let event_id = EventId::from("event-staged-text");
+        let rep_id = RepresentationId::from("rep-staged-text");
+
+        let entry = ClipboardEntry::new(
+            entry_id.clone(),
+            event_id.clone(),
+            999,
+            Some("  staged text title  ".to_string()),
+            42_000,
+        );
+
+        let selection = ClipboardSelectionDecision::new(
+            entry_id.clone(),
+            ClipboardSelection {
+                primary_rep_id: rep_id.clone(),
+                secondary_rep_ids: vec![],
+                preview_rep_id: rep_id.clone(),
+                paste_rep_id: rep_id.clone(),
+                policy_version: SelectionPolicyVersion::V1,
+            },
+        );
+
+        let representation = PersistedClipboardRepresentation::new_with_state(
+            rep_id.clone(),
+            FormatId::from("public.utf8-plain-text"),
+            Some(MimeType("text/plain".to_string())),
+            42_000,
+            None,
+            None,
+            uc_core::clipboard::PayloadAvailability::Staged,
+            None,
+        )
+        .expect("valid staged representation");
+
+        let entry_repo = Arc::new(MockEntryRepository {
+            entries: vec![entry],
+        });
+        let selection_repo = Arc::new(MockSelectionRepository {
+            selections: HashMap::from([(entry_id.inner().clone(), selection)]),
+        });
+        let representation_repo = Arc::new(MockRepresentationRepository {
+            representations: HashMap::from([(
+                (event_id.inner().clone(), rep_id.inner().clone()),
+                representation,
+            )]),
+        });
+        let thumbnail_repo = Arc::new(MockThumbnailRepository {
+            thumbnails: HashMap::new(),
+        });
+
+        let use_case = ListClipboardEntryProjections::new(
+            entry_repo,
+            selection_repo,
+            representation_repo,
+            thumbnail_repo,
+        );
+
+        let result = use_case.execute(50, 0).await.expect("expected projections");
+        let projection = result.first().expect("expected projection");
+
+        assert_eq!(projection.preview, "staged text title");
+        assert!(projection.has_detail);
+        assert_eq!(projection.thumbnail_url, None);
     }
 }

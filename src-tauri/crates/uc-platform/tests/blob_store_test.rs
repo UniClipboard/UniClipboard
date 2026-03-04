@@ -11,8 +11,12 @@ async fn test_put_and_get_blob() {
     let blob_id = BlobId::from("test-blob-1");
     let data = b"hello, world!";
 
-    let path = store.put(&blob_id, data).await.unwrap();
+    let (path, compressed_size) = store.put(&blob_id, data).await.unwrap();
     assert!(path.exists());
+    assert!(
+        compressed_size.is_none(),
+        "Raw FS store should return None for compressed_size"
+    );
 
     let retrieved = store.get(&blob_id).await.unwrap();
     assert_eq!(retrieved, data);
@@ -53,7 +57,7 @@ async fn test_empty_blob() {
     let blob_id = BlobId::from("empty-blob");
     let data = b"";
 
-    let path = store.put(&blob_id, data).await.unwrap();
+    let (path, _) = store.put(&blob_id, data).await.unwrap();
     assert!(path.exists());
 
     let retrieved = store.get(&blob_id).await.unwrap();
@@ -69,7 +73,7 @@ async fn test_large_blob() {
     let blob_id = BlobId::from("large-blob");
     let data = vec![0u8; 1024 * 1024]; // 1MB of zeros
 
-    let path = store.put(&blob_id, &data).await.unwrap();
+    let (path, _) = store.put(&blob_id, &data).await.unwrap();
     assert!(path.exists());
 
     let retrieved = store.get(&blob_id).await.unwrap();

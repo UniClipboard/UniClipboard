@@ -51,6 +51,7 @@ impl RowMapper<BlobRow, Blob> for BlobRowMapper {
             row.size_bytes,
             ContentHash::from(row.content_hash.clone()),
             row.created_at_ms,
+            None, // compressed_size: will be mapped from row in Task 2
         ))
     }
 }

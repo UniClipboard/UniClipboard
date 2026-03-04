@@ -339,8 +339,8 @@ mod tests {
             &self,
             _blob_id: &uc_core::BlobId,
             _data: &[u8],
-        ) -> Result<std::path::PathBuf> {
-            Ok(std::path::PathBuf::from("/tmp/mock"))
+        ) -> Result<(std::path::PathBuf, Option<i64>)> {
+            Ok((std::path::PathBuf::from("/tmp/mock"), None))
         }
 
         async fn get(&self, _blob_id: &uc_core::BlobId) -> Result<Vec<u8>> {

@@ -7,16 +7,19 @@ use crate::BlobId;
 
 #[async_trait]
 pub trait BlobStorePort: Send + Sync {
-    // 把 bytes 写入 blob 存储，返回 storage_path（或 key）
-    async fn put(&self, blob_id: &BlobId, data: &[u8]) -> Result<PathBuf>;
+    /// Write bytes into blob storage, returning (storage_path, compressed_size).
+    ///
+    /// The `Option<i64>` is the on-disk byte count after any compression+encryption.
+    /// Returns `None` if the store does not track compressed size (e.g., raw filesystem).
+    async fn put(&self, blob_id: &BlobId, data: &[u8]) -> Result<(PathBuf, Option<i64>)>;
 
-    // 从 blob 存储读取 bytes
+    // Read bytes from blob storage
     async fn get(&self, blob_id: &BlobId) -> Result<Vec<u8>>;
 }
 
 #[async_trait]
 impl<T: BlobStorePort + ?Sized> BlobStorePort for Arc<T> {
-    async fn put(&self, blob_id: &BlobId, data: &[u8]) -> Result<PathBuf> {
+    async fn put(&self, blob_id: &BlobId, data: &[u8]) -> Result<(PathBuf, Option<i64>)> {
         (**self).put(blob_id, data).await
     }
 

@@ -99,6 +99,34 @@ pub fn for_blob(blob_id: &BlobId) -> Vec<u8> {
     format!("{AAD_NAMESPACE}:blob:{AAD_VERSION}|{}", blob_id.as_ref()).into_bytes()
 }
 
+/// AAD format version for V2 blob storage (binary format with zstd compression).
+const AAD_BLOB_V2_VERSION: &str = "v2";
+
+/// Generates AAD for V2 blob storage encryption/decryption.
+///
+/// # Format
+///
+/// `uc:blob:v2|{blob_id}`
+///
+/// This is used for the new binary blob format that supports zstd compression.
+/// The V1 `for_blob` function is kept unchanged for backward compatibility with
+/// inline data tests and network clipboard operations.
+///
+/// # Arguments
+///
+/// * `blob_id` - The blob identifier
+///
+/// # Returns
+///
+/// AAD as bytes for use with AEAD encryption.
+pub fn for_blob_v2(blob_id: &BlobId) -> Vec<u8> {
+    format!(
+        "{AAD_NAMESPACE}:blob:{AAD_BLOB_V2_VERSION}|{}",
+        blob_id.as_ref()
+    )
+    .into_bytes()
+}
+
 pub fn for_network_clipboard(message_id: &str) -> Vec<u8> {
     format!("{AAD_NAMESPACE}:net_clipboard:{AAD_VERSION}|{message_id}").into_bytes()
 }
@@ -228,6 +256,58 @@ mod tests {
             inline_aad, blob_aad,
             "Inline and blob AAD should use different prefixes"
         );
+    }
+
+    #[test]
+    fn test_for_blob_v2_is_deterministic() {
+        let blob_id = BlobId::from("test-blob");
+
+        let aad1 = for_blob_v2(&blob_id);
+        let aad2 = for_blob_v2(&blob_id);
+
+        assert_eq!(
+            aad1, aad2,
+            "AAD v2 should be deterministic for same blob ID"
+        );
+    }
+
+    #[test]
+    fn test_for_blob_v2_includes_blob_id_and_prefix() {
+        let blob_id = BlobId::from("my-blob");
+
+        let aad = for_blob_v2(&blob_id);
+        let aad_str = String::from_utf8(aad).unwrap();
+
+        assert!(aad_str.contains("my-blob"), "AAD v2 should contain blob ID");
+        assert!(
+            aad_str.starts_with("uc:blob:v2|"),
+            "AAD v2 should have correct prefix, got: {}",
+            aad_str
+        );
+    }
+
+    #[test]
+    fn test_for_blob_v2_differs_from_v1() {
+        let blob_id = BlobId::from("same-blob");
+
+        let aad_v1 = for_blob(&blob_id);
+        let aad_v2 = for_blob_v2(&blob_id);
+
+        assert_ne!(
+            aad_v1, aad_v2,
+            "AAD v2 should differ from v1 for same blob ID"
+        );
+    }
+
+    #[test]
+    fn test_for_blob_v2_differs_by_blob_id() {
+        let blob_id1 = BlobId::from("blob-1");
+        let blob_id2 = BlobId::from("blob-2");
+
+        let aad1 = for_blob_v2(&blob_id1);
+        let aad2 = for_blob_v2(&blob_id2);
+
+        assert_ne!(aad1, aad2, "AAD v2 should differ for different blob IDs");
     }
 
     #[test]

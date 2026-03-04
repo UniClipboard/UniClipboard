@@ -55,6 +55,7 @@ blake3 = "1.8.2"
 hex = "0.4.3"
 config = "0.15.19"
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp"] }
+zstd = "0.13"
 
 [dependencies.uuid]
 version = "1.10.0"

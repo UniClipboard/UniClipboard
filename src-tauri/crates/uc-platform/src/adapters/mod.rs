@@ -25,7 +25,7 @@ pub mod ui;
 
 pub use autostart::PlaceholderAutostartPort;
 pub use blob::PlaceholderBlobWriterPort;
-pub use blob_store::{FilesystemBlobStore, PlaceholderBlobStorePort};
+pub use blob_store::FilesystemBlobStore;
 pub use encryption::{InMemoryEncryptionSessionPort, PlaceholderEncryptionSessionPort};
 pub use in_memory_watcher_control::InMemoryWatcherControl;
 pub use libp2p_network::Libp2pNetworkAdapter;

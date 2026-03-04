@@ -702,8 +702,12 @@ mod tests {
 
     #[async_trait]
     impl BlobStorePort for NoopPort {
-        async fn put(&self, _blob_id: &BlobId, _data: &[u8]) -> anyhow::Result<std::path::PathBuf> {
-            Ok(std::path::PathBuf::from("/tmp/noop"))
+        async fn put(
+            &self,
+            _blob_id: &BlobId,
+            _data: &[u8],
+        ) -> anyhow::Result<(std::path::PathBuf, Option<i64>)> {
+            Ok((std::path::PathBuf::from("/tmp/noop"), None))
         }
 
         async fn get(&self, _blob_id: &BlobId) -> anyhow::Result<Vec<u8>> {

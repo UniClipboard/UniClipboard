@@ -60,6 +60,7 @@ async fn test_insert_and_find_by_hash() {
         1024,
         ContentHash::from(make_hash("abc123")),
         1704067200000,
+        None,
     );
 
     // Insert the blob
@@ -110,6 +111,7 @@ async fn test_insert_duplicate_hash_fails() {
         2048,
         ContentHash::from(make_hash("hash456")),
         1704067200000,
+        None,
     );
 
     let blob2 = Blob::new(
@@ -120,6 +122,7 @@ async fn test_insert_duplicate_hash_fails() {
         4096,
         ContentHash::from(make_hash("hash456")), // Same hash as blob1
         1704067300000,
+        None,
     );
 
     // Insert first blob
@@ -151,6 +154,7 @@ async fn test_insert_encrypted_blob() {
         512,
         ContentHash::from(make_hash("encrypted")),
         1704067200000,
+        None,
     );
 
     // Insert the encrypted blob
@@ -195,6 +199,7 @@ async fn test_multiple_blobs_different_hash() {
             i * 1024,
             ContentHash::from(hash_str.clone()),
             1704067200000 + (i as i64 * 1000),
+            None,
         );
 
         repo.insert_blob(&blob)
@@ -231,6 +236,7 @@ async fn test_blob_with_zero_size() {
         0,
         ContentHash::from(make_hash("empty")),
         1704067200000,
+        None,
     );
 
     repo.insert_blob(&blob)

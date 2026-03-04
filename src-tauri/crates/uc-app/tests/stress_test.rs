@@ -319,6 +319,7 @@ impl BlobWriterPort for InMemoryBlobWriter {
             plaintext_bytes.len() as i64,
             content_id.clone(),
             0,
+            None,
         );
         guard.insert(content_id.clone(), blob.clone());
         Ok(blob)

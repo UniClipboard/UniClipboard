@@ -427,6 +427,7 @@ mod tests {
                 encrypted_bytes.len() as i64,
                 content_id.clone(),
                 0,
+                None,
             );
             blobs.insert(content_id.clone(), blob.clone());
             Ok(blob)
@@ -995,6 +996,7 @@ mod tests {
                 encrypted_bytes.len() as i64,
                 content_id.clone(),
                 0,
+                None,
             ))
         }
     }

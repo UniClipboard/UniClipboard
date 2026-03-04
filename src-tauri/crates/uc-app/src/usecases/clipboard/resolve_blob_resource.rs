@@ -135,8 +135,12 @@ mod tests {
 
     #[async_trait]
     impl BlobStorePort for MockBlobStore {
-        async fn put(&self, _blob_id: &BlobId, _data: &[u8]) -> Result<std::path::PathBuf> {
-            Ok(std::path::PathBuf::from("/tmp/mock"))
+        async fn put(
+            &self,
+            _blob_id: &BlobId,
+            _data: &[u8],
+        ) -> Result<(std::path::PathBuf, Option<i64>)> {
+            Ok((std::path::PathBuf::from("/tmp/mock"), None))
         }
 
         async fn get(&self, blob_id: &BlobId) -> Result<Vec<u8>> {

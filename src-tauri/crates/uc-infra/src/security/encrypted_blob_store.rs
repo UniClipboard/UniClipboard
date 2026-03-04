@@ -39,7 +39,7 @@ impl EncryptedBlobStore {
 
 #[async_trait]
 impl BlobStorePort for EncryptedBlobStore {
-    async fn put(&self, blob_id: &BlobId, data: &[u8]) -> Result<PathBuf> {
+    async fn put(&self, blob_id: &BlobId, data: &[u8]) -> Result<(PathBuf, Option<i64>)> {
         // 1. Get master key from session
         let master_key = self
             .session
@@ -67,7 +67,9 @@ impl BlobStorePort for EncryptedBlobStore {
         );
 
         // 4. Store encrypted bytes
-        self.inner.put(blob_id, &encrypted_bytes).await
+        // Temporarily return (path, None) until Plan 02 implements binary format
+        let (path, _) = self.inner.put(blob_id, &encrypted_bytes).await?;
+        Ok((path, None))
     }
 
     async fn get(&self, blob_id: &BlobId) -> Result<Vec<u8>> {
@@ -140,12 +142,15 @@ mod tests {
 
     #[async_trait]
     impl BlobStorePort for MockBlobStore {
-        async fn put(&self, blob_id: &BlobId, data: &[u8]) -> Result<PathBuf> {
+        async fn put(&self, blob_id: &BlobId, data: &[u8]) -> Result<(PathBuf, Option<i64>)> {
             self.storage
                 .lock()
                 .unwrap()
                 .insert(blob_id.clone(), data.to_vec());
-            Ok(PathBuf::from(format!("/fake/path/{}", blob_id.as_ref())))
+            Ok((
+                PathBuf::from(format!("/fake/path/{}", blob_id.as_ref())),
+                None,
+            ))
         }
 
         async fn get(&self, blob_id: &BlobId) -> Result<Vec<u8>> {

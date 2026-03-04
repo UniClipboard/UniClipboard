@@ -58,7 +58,8 @@ where
             let blob_id = BlobId::new();
 
             // Encryption is handled by the injected BlobStorePort decorator (if any).
-            let storage_path = self.blob_store.put(&blob_id, plaintext_bytes).await?;
+            let (storage_path, compressed_size) =
+                self.blob_store.put(&blob_id, plaintext_bytes).await?;
 
             let created_at_ms = self.clock.now_ms();
             let blob_storage_locator = BlobStorageLocator::new_local_fs(storage_path);
@@ -68,6 +69,7 @@ where
                 plaintext_bytes.len() as i64,
                 content_id.clone(),
                 created_at_ms,
+                compressed_size,
             );
 
             if let Err(err) = self.blob_repo.insert_blob(&result).await {
@@ -110,8 +112,8 @@ mod tests {
 
     #[async_trait]
     impl BlobStorePort for MockBlobStore {
-        async fn put(&self, _blob_id: &BlobId, _data: &[u8]) -> Result<PathBuf> {
-            Ok(self.storage_path.clone())
+        async fn put(&self, _blob_id: &BlobId, _data: &[u8]) -> Result<(PathBuf, Option<i64>)> {
+            Ok((self.storage_path.clone(), None))
         }
 
         async fn get(&self, _blob_id: &BlobId) -> Result<Vec<u8>> {
@@ -207,6 +209,7 @@ mod tests {
                 "blake3v1:1111111111111111111111111111111111111111111111111111111111111111",
             ),
             1111111111,
+            None,
         );
         let blob_repo = MockBlobRepo::new().with_existing_blob(existing_blob);
         let clock = MockClock::new();
@@ -237,6 +240,7 @@ mod tests {
                 "blake3v1:2222222222222222222222222222222222222222222222222222222222222222",
             ),
             2222222222,
+            None,
         );
         let blob_repo = MockBlobRepo::new()
             .with_existing_blob(existing_blob)

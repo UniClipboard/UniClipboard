@@ -2,7 +2,6 @@
 //! 基于文件系统的 blob 存储
 
 use anyhow::{Context, Result};
-use async_trait::async_trait;
 use std::path::PathBuf;
 use uc_core::ports::BlobStorePort;
 use uc_core::BlobId;
@@ -37,7 +36,7 @@ impl FilesystemBlobStore {
 
 #[async_trait::async_trait]
 impl BlobStorePort for FilesystemBlobStore {
-    async fn put(&self, blob_id: &BlobId, data: &[u8]) -> Result<PathBuf> {
+    async fn put(&self, blob_id: &BlobId, data: &[u8]) -> Result<(PathBuf, Option<i64>)> {
         self.ensure_dir().await?;
         let path = self.blob_path(blob_id);
 
@@ -48,7 +47,8 @@ impl BlobStorePort for FilesystemBlobStore {
             .await
             .context("Failed to write blob data")?;
 
-        Ok(path)
+        // Raw filesystem store doesn't track compression
+        Ok((path, None))
     }
 
     async fn get(&self, blob_id: &BlobId) -> Result<Vec<u8>> {
@@ -63,22 +63,6 @@ impl BlobStorePort for FilesystemBlobStore {
             .context("Failed to read blob data")?;
 
         Ok(data)
-    }
-}
-
-/// Placeholder blob store port implementation
-/// 占位符 blob 存储端口实现
-#[derive(Debug, Clone)]
-pub struct PlaceholderBlobStorePort;
-
-#[async_trait]
-impl BlobStorePort for PlaceholderBlobStorePort {
-    async fn put(&self, _blob_id: &BlobId, _data: &[u8]) -> Result<PathBuf> {
-        Err(anyhow::anyhow!("BlobStorePort not implemented yet"))
-    }
-
-    async fn get(&self, _blob_id: &BlobId) -> Result<Vec<u8>> {
-        Err(anyhow::anyhow!("BlobStorePort not implemented yet"))
     }
 }
 

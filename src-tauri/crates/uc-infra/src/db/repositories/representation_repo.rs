@@ -221,10 +221,12 @@ where
 
             // Build the update statement with all fields in one set() call
             let update_result = if let Some(blob_id) = blob_id {
+                // Keep DB constraint satisfied: inline_data and blob_id cannot coexist.
                 diesel::update(base_filter)
                     .set((
                         clipboard_snapshot_representation::payload_state.eq(new_state.as_str()),
                         clipboard_snapshot_representation::last_error.eq(last_error),
+                        clipboard_snapshot_representation::inline_data.eq::<Option<Vec<u8>>>(None),
                         clipboard_snapshot_representation::blob_id.eq(blob_id.to_string()),
                     ))
                     .execute(conn)

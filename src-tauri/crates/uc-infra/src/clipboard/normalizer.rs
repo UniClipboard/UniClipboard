@@ -8,7 +8,8 @@ use tracing::debug;
 
 use crate::config::clipboard_storage_config::ClipboardStorageConfig;
 use uc_core::clipboard::{
-    MimeType, ObservedClipboardRepresentation, PersistedClipboardRepresentation,
+    MimeType, ObservedClipboardRepresentation, PayloadAvailability,
+    PersistedClipboardRepresentation,
 };
 use uc_core::ports::clipboard::ClipboardRepresentationNormalizerPort;
 
@@ -53,12 +54,15 @@ pub(crate) fn truncate_to_preview(bytes: &[u8]) -> Vec<u8> {
 /// 带有拥有所有权的配置的剪贴板表示规范化器
 ///
 /// Valid states (per database CHECK constraint after migration 2026-01-18-000001):
-/// 1. inline_data = Some(payload), blob_id = None  -> inline payload (small files)
-/// 2. inline_data = Some(preview), blob_id = None  -> preview (large text files)
-/// 3. inline_data = None, blob_id = None, payload_state = Staged  -> staged (large non-text files)
+/// 1. inline_data = Some(payload), blob_id = None, payload_state = Inline
+///    -> inline payload (small content)
+/// 2. inline_data = Some(preview), blob_id = None, payload_state = Staged
+///    -> staged payload with inline preview (large text content)
+/// 3. inline_data = None, blob_id = None, payload_state = Staged
+///    -> staged payload without preview (large non-text content)
 ///
-/// Note: The CHECK constraint allows both inline_data and blob_id to be NULL for Staged state.
-/// blob_id is populated later by blob materialization worker.
+/// Note: CHECK (inline_data IS NULL OR blob_id IS NULL) means blob materialization
+/// must clear inline_data when blob_id is set.
 pub struct ClipboardRepresentationNormalizer {
     config: Arc<ClipboardStorageConfig>,
 }
@@ -103,24 +107,27 @@ impl ClipboardRepresentationNormalizerPort for ClipboardRepresentationNormalizer
         } else {
             // Large content: decide based on type
             if is_text_mime_type(&observed.mime) {
-                // Text type: generate truncated preview
+                // Text type: keep a 500-char inline preview but mark as staged so
+                // background worker can materialize full payload into blob storage.
                 debug!(
                     representation_id = %observed.id,
                     format_id = %observed.format_id,
                     size_bytes,
                     threshold = inline_threshold_bytes,
                     preview_length_chars = PREVIEW_LENGTH_CHARS,
-                    strategy = "preview",
-                    "Normalizing large text as preview"
+                    strategy = "staged_with_preview",
+                    "Normalizing large text as staged with inline preview"
                 );
-                Ok(PersistedClipboardRepresentation::new(
+                PersistedClipboardRepresentation::new_with_state(
                     observed.id.clone(),
                     observed.format_id.clone(),
                     observed.mime.clone(),
                     size_bytes,
                     Some(truncate_to_preview(&observed.bytes)),
                     None, // blob_id
-                ))
+                    PayloadAvailability::Staged,
+                    None,
+                )
             } else {
                 // Non-text (images, etc.): create staged representation for blob materialization
                 debug!(
@@ -285,6 +292,40 @@ mod tests {
         assert_eq!(
             result.size_bytes, 13,
             "Size should match small content size"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_normalizer_creates_staged_with_preview_for_large_text() {
+        let large_text = "x".repeat(20 * 1024); // 20 KB > 16 KB threshold
+        let config = Arc::new(ClipboardStorageConfig {
+            inline_threshold_bytes: 16 * 1024,
+            ..ClipboardStorageConfig::defaults()
+        });
+        let normalizer = ClipboardRepresentationNormalizer::new(config);
+
+        let observed = ObservedClipboardRepresentation {
+            id: RepresentationId::new(),
+            format_id: FormatId::from("public.utf8-plain-text"),
+            mime: Some(MimeType::text_plain()),
+            bytes: large_text.as_bytes().to_vec(),
+        };
+
+        let result = normalizer.normalize(&observed).await.unwrap();
+
+        assert_eq!(
+            result.payload_state,
+            PayloadAvailability::Staged,
+            "Large text should be staged for blob materialization"
+        );
+        assert_eq!(
+            result.blob_id, None,
+            "Staged state should not have blob_id yet"
+        );
+        assert_eq!(
+            result.inline_data,
+            Some("x".repeat(PREVIEW_LENGTH_CHARS).into_bytes()),
+            "Staged large text should keep a preview inline"
         );
     }
 }

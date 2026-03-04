@@ -38,8 +38,8 @@ const BUSINESS_STREAM_OPEN_TIMEOUT: Duration = Duration::from_secs(10);
 const BUSINESS_STREAM_WRITE_TIMEOUT: Duration = Duration::from_secs(120);
 const BUSINESS_STREAM_CLOSE_TIMEOUT: Duration = Duration::from_secs(10);
 const BUSINESS_COMMAND_ENQUEUE_TIMEOUT: Duration = Duration::from_secs(5);
-const BUSINESS_SEND_COMMAND_RESULT_TIMEOUT: Duration = Duration::from_secs(35);
-const BUSINESS_ENSURE_COMMAND_RESULT_TIMEOUT: Duration = Duration::from_secs(25);
+const BUSINESS_SEND_COMMAND_RESULT_TIMEOUT: Duration = Duration::from_secs(150);
+const BUSINESS_ENSURE_COMMAND_RESULT_TIMEOUT: Duration = Duration::from_secs(30);
 const MAX_IN_FLIGHT_BUSINESS_COMMANDS: usize = 16;
 const START_STATE_IDLE: u8 = 0;
 const START_STATE_STARTING: u8 = 1;
@@ -2048,15 +2048,18 @@ mod tests {
     fn business_command_timeouts_cover_stream_operation_budgets() {
         let send_budget = BUSINESS_STREAM_OPEN_TIMEOUT
             + BUSINESS_STREAM_WRITE_TIMEOUT
-            + BUSINESS_STREAM_CLOSE_TIMEOUT;
-        let ensure_budget = BUSINESS_STREAM_OPEN_TIMEOUT + BUSINESS_STREAM_CLOSE_TIMEOUT;
+            + BUSINESS_STREAM_CLOSE_TIMEOUT
+            + BUSINESS_COMMAND_ENQUEUE_TIMEOUT;
+        let ensure_budget = BUSINESS_STREAM_OPEN_TIMEOUT
+            + BUSINESS_STREAM_CLOSE_TIMEOUT
+            + BUSINESS_COMMAND_ENQUEUE_TIMEOUT;
         assert!(
             BUSINESS_SEND_COMMAND_RESULT_TIMEOUT > send_budget,
-            "send command timeout must exceed open/write/close total budget"
+            "send command timeout must exceed open/write/close/enqueue total budget"
         );
         assert!(
             BUSINESS_ENSURE_COMMAND_RESULT_TIMEOUT > ensure_budget,
-            "ensure command timeout must exceed open/close total budget"
+            "ensure command timeout must exceed open/close/enqueue total budget"
         );
     }
 

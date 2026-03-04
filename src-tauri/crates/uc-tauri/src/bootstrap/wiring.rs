@@ -1445,6 +1445,7 @@ fn new_sync_inbound_clipboard_usecase(deps: &AppDeps) -> SyncInboundClipboardUse
         deps.encryption_session.clone(),
         deps.encryption.clone(),
         deps.device_identity.clone(),
+        Arc::new(uc_infra::clipboard::TransferPayloadDecryptorAdapter),
         deps.clipboard_entry_repo.clone(),
         deps.clipboard_event_repo.clone(),
         deps.representation_policy.clone(),

@@ -722,6 +722,7 @@ impl<'a> UseCases<'a> {
             self.runtime.deps.encryption_session.clone(),
             self.runtime.deps.encryption.clone(),
             self.runtime.deps.device_identity.clone(),
+            Arc::new(uc_infra::clipboard::TransferPayloadDecryptorAdapter),
             self.runtime.deps.clipboard_entry_repo.clone(),
             self.runtime.deps.clipboard_event_repo.clone(),
             self.runtime.deps.representation_policy.clone(),
@@ -742,6 +743,7 @@ impl<'a> UseCases<'a> {
             self.runtime.deps.encryption.clone(),
             self.runtime.deps.device_identity.clone(),
             self.runtime.deps.settings.clone(),
+            Arc::new(uc_infra::clipboard::TransferPayloadEncryptorAdapter),
         )
     }
 

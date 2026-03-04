@@ -79,6 +79,9 @@ pub use security::encryption::EncryptionPort;
 pub use security::encryption_session::EncryptionSessionPort;
 pub use security::key_material::KeyMaterialPort;
 pub use security::secure_storage::{SecureStorageError, SecureStoragePort};
+pub use security::transfer_crypto::{
+    TransferCryptoError, TransferPayloadDecryptorPort, TransferPayloadEncryptorPort,
+};
 pub use settings::{SettingsMigrationPort, SettingsPort};
 pub use setup::SetupStatusPort;
 pub use setup_event_port::SetupEventPort;

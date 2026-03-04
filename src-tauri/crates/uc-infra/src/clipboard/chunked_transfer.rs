@@ -17,13 +17,17 @@
 //!   [N bytes]  ciphertext (plaintext_chunk + 16-byte Poly1305 tag)
 //! ```
 
-use std::io::{self, Read, Write};
+use std::io::{Cursor, Read, Write};
 
 use chacha20poly1305::{
     aead::{Aead, Payload},
     KeyInit, XChaCha20Poly1305, XNonce,
 };
+use uc_core::ports::{
+    TransferCryptoError, TransferPayloadDecryptorPort, TransferPayloadEncryptorPort,
+};
 use uc_core::security::{aad, model::MasterKey};
+use uuid::Uuid;
 
 /// Nominal chunk size: 256 KB.
 /// Peak memory per encode or decode call: ~2 × CHUNK_SIZE.
@@ -33,6 +37,9 @@ pub const CHUNK_SIZE: usize = 256 * 1024;
 pub const V2_MAGIC: [u8; 4] = [0x55, 0x43, 0x32, 0x00];
 
 /// Errors that can occur during chunked transfer encoding or decoding.
+///
+/// These are wire-format implementation details, internal to uc-infra.
+/// Adapters map these to `TransferCryptoError` at the port boundary.
 #[derive(Debug, thiserror::Error)]
 pub enum ChunkedTransferError {
     /// First 4 bytes are not V2_MAGIC.
@@ -52,7 +59,32 @@ pub enum ChunkedTransferError {
     EncryptFailed(String),
     /// Underlying IO error while reading or writing.
     #[error("IO error: {0}")]
-    Io(#[from] io::Error),
+    Io(#[from] std::io::Error),
+}
+
+impl From<ChunkedTransferError> for TransferCryptoError {
+    fn from(e: ChunkedTransferError) -> Self {
+        match e {
+            ChunkedTransferError::EncryptFailed(msg) => TransferCryptoError::EncryptionFailed(msg),
+            ChunkedTransferError::DecryptFailed { chunk_index } => {
+                TransferCryptoError::DecryptionFailed(format!(
+                    "AEAD decryption failed for chunk {chunk_index}"
+                ))
+            }
+            ChunkedTransferError::InvalidMagic => {
+                TransferCryptoError::InvalidFormat("invalid V2 magic bytes".into())
+            }
+            ChunkedTransferError::TruncatedHeader => {
+                TransferCryptoError::InvalidFormat("stream ended before header was complete".into())
+            }
+            ChunkedTransferError::TruncatedChunk => TransferCryptoError::InvalidFormat(
+                "stream ended before chunk ciphertext was complete".into(),
+            ),
+            ChunkedTransferError::Io(e) => {
+                TransferCryptoError::EncryptionFailed(format!("IO error: {e}"))
+            }
+        }
+    }
 }
 
 /// Streaming encoder for V2 chunked clipboard transfers.
@@ -203,6 +235,38 @@ impl ChunkedDecoder {
     }
 }
 
+/// Adapter implementing `TransferPayloadEncryptorPort` via `ChunkedEncoder`.
+///
+/// Generates `transfer_id` internally (UUID v4) — callers do not need to manage it.
+pub struct TransferPayloadEncryptorAdapter;
+
+impl TransferPayloadEncryptorPort for TransferPayloadEncryptorAdapter {
+    fn encrypt(
+        &self,
+        master_key: &MasterKey,
+        plaintext: &[u8],
+    ) -> Result<Vec<u8>, TransferCryptoError> {
+        let transfer_id: [u8; 16] = *Uuid::new_v4().as_bytes();
+        let mut buf = Vec::new();
+        ChunkedEncoder::encode_to(&mut buf, master_key, &transfer_id, plaintext)?;
+        Ok(buf)
+    }
+}
+
+/// Adapter implementing `TransferPayloadDecryptorPort` via `ChunkedDecoder`.
+pub struct TransferPayloadDecryptorAdapter;
+
+impl TransferPayloadDecryptorPort for TransferPayloadDecryptorAdapter {
+    fn decrypt(
+        &self,
+        encrypted: &[u8],
+        master_key: &MasterKey,
+    ) -> Result<Vec<u8>, TransferCryptoError> {
+        ChunkedDecoder::decode_from(Cursor::new(encrypted), master_key)
+            .map_err(TransferCryptoError::from)
+    }
+}
+
 /// Derive a 24-byte XChaCha20 nonce for a given chunk.
 ///
 /// `nonce = blake3("uc:chunk-nonce:v1|" || transfer_id || chunk_index_le)[0..24]`
@@ -345,5 +409,16 @@ mod tests {
             result,
             Err(ChunkedTransferError::DecryptFailed { .. })
         ));
+    }
+
+    #[test]
+    fn adapter_encrypt_decrypt_round_trip() {
+        let key = test_key();
+        let encryptor = TransferPayloadEncryptorAdapter;
+        let decryptor = TransferPayloadDecryptorAdapter;
+        let plaintext = b"adapter round trip test";
+        let encrypted = encryptor.encrypt(&key, plaintext).expect("encrypt");
+        let decrypted = decryptor.decrypt(&encrypted, &key).expect("decrypt");
+        assert_eq!(decrypted, plaintext);
     }
 }

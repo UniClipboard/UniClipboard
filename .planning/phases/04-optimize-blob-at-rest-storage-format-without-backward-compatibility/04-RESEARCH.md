@@ -467,7 +467,7 @@ pub struct Blob {
 1. **BlobWriterPort and compressed_size tracking**
    - What we know: `BlobWriter::write_if_absent` currently creates a `Blob` with `size_bytes = plaintext.len()`. The `compressed_size` is only known after the `EncryptedBlobStore` processes the data, but `BlobWriter` calls `BlobStorePort::put` which only returns a `PathBuf`.
    - What's unclear: How to get the `compressed_size` back from `EncryptedBlobStore` to populate the `Blob` record without changing the `BlobStorePort` trait signature.
-   - Recommendation: Two options: (a) Change `BlobStorePort::put` to return `(PathBuf, Option<i64>)` for on-disk size, or (b) have `BlobWriter` stat the file after writing to get the actual disk size. Option (b) is simpler and avoids trait changes, but adds one extra filesystem call. Option (a) is cleaner but requires updating all `BlobStorePort` implementors. **Recommend option (a)** since only 3 implementors exist (`FilesystemBlobStore`, `EncryptedBlobStore`, `PlaceholderBlobStorePort`).
+   - Recommendation: Two options: (a) Change `BlobStorePort::put` to return `(PathBuf, Option<i64>)` for on-disk size, or (b) have `BlobWriter` stat the file after writing to get the actual disk size. Option (b) is simpler and avoids trait changes, but adds one extra filesystem call. Option (a) is cleaner but requires updating all `BlobStorePort` implementors. **Recommend option (a)** since only 2 real implementors exist (`FilesystemBlobStore`, `EncryptedBlobStore`). Note: `PlaceholderBlobStorePort` is dead code (never instantiated) and should be removed during this phase.
 
 ## Sources
 

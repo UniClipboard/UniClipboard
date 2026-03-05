@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v0.1
 milestone_name: milestone
 status: completed
-stopped_at: 'Completed quick-01: verify and fix review findings across uc-*'
-last_updated: '2026-03-05T02:17:29.228Z'
+stopped_at: 'Completed quick-02: verify and fix code review findings round 2'
+last_updated: '2026-03-05T02:53:32Z'
 progress:
   total_phases: 4
   completed_phases: 4
@@ -54,6 +54,8 @@ Progress: [==========] 100%
 - [Phase 04]: Sentinel file (.v2_migrated) for one-time spool cleanup instead of per-startup purge
 - [Phase quick]: Decrypt/deserialize failures in V2 inbound propagate as Err, not silent Ok(Skipped)
 - [Phase quick]: InvalidCiphertextLen added to ChunkedTransferError for wire data bounds validation
+- [Phase quick-02]: Added InvalidHeader variant to ChunkedTransferError for decoder validation semantics
+- [Phase quick-02]: MIME constants extracted to uc-core module level, imported by uc-app consumers
 
 ### Roadmap Evolution
 
@@ -76,13 +78,14 @@ None.
 
 ### Quick Tasks Completed
 
-| #   | Description                                                                   | Date       | Commit  | Directory                                                                                         |
-| --- | ----------------------------------------------------------------------------- | ---------- | ------- | ------------------------------------------------------------------------------------------------- |
-| 1   | Verify and fix review findings across uc-app, uc-infra, uc-platform, uc-tauri | 2026-03-05 | 17f78ba | [1-verify-and-fix-review-findings-across-uc](./quick/1-verify-and-fix-review-findings-across-uc/) |
+| #   | Description                                                                       | Date       | Commit  | Directory                                                                                         |
+| --- | --------------------------------------------------------------------------------- | ---------- | ------- | ------------------------------------------------------------------------------------------------- |
+| 1   | Verify and fix review findings across uc-app, uc-infra, uc-platform, uc-tauri     | 2026-03-05 | 17f78ba | [1-verify-and-fix-review-findings-across-uc](./quick/1-verify-and-fix-review-findings-across-uc/) |
+| 2   | Verify and fix code review findings round 2 (uc-core, uc-app, uc-infra, uc-tauri) | 2026-03-05 | dc30395 | [2-verify-and-fix-code-review-findings-roun](./quick/2-verify-and-fix-code-review-findings-roun/) |
 
 ## Session Continuity
 
-Last activity: 2026-03-05 - Completed quick task 1: Verify and fix review findings across uc-app, uc-infra, uc-platform, uc-tauri
-Last session: 2026-03-05T02:17:24.788Z
-Stopped at: Completed quick-01: verify and fix review findings across uc-\*
+Last activity: 2026-03-05 - Completed quick task 2: Verify and fix code review findings round 2
+Last session: 2026-03-05T02:53:32Z
+Stopped at: Completed quick-02: verify and fix code review findings round 2
 Resume file: None

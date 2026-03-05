@@ -495,7 +495,7 @@ impl SyncInboundClipboardUseCase {
                 )
                 .await;
 
-            if let Err(err) = self.local_clipboard.write_snapshot(snapshot.clone()) {
+            if let Err(err) = self.local_clipboard.write_snapshot(snapshot) {
                 self.clipboard_change_origin
                     .consume_origin_or_default(ClipboardChangeOrigin::LocalCapture)
                     .await;

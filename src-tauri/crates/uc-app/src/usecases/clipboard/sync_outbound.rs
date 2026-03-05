@@ -283,13 +283,9 @@ mod tests {
         ProtocolMessage,
     };
     use uc_core::ports::{
-        ClipboardTransportPort, EncryptionPort, NetworkEventPort, PairingTransportPort,
-        PeerDirectoryPort,
+        ClipboardTransportPort, NetworkEventPort, PairingTransportPort, PeerDirectoryPort,
     };
-    use uc_core::security::model::{
-        EncryptedBlob, EncryptionAlgo, EncryptionError, EncryptionFormatVersion, KdfParams, Kek,
-        MasterKey, Passphrase,
-    };
+    use uc_core::security::model::{EncryptionError, MasterKey};
     use uc_core::settings::model::Settings;
     use uc_core::{DeviceId, MimeType, ObservedClipboardRepresentation, SystemClipboardSnapshot};
     use uc_infra::clipboard::{ChunkedDecoder, TransferPayloadEncryptorAdapter};
@@ -441,65 +437,6 @@ mod tests {
 
         async fn clear(&self) -> std::result::Result<(), EncryptionError> {
             Ok(())
-        }
-    }
-
-    struct TestEncryption {
-        encrypt_calls: Arc<AtomicUsize>,
-    }
-
-    #[async_trait]
-    impl EncryptionPort for TestEncryption {
-        async fn derive_kek(
-            &self,
-            _passphrase: &Passphrase,
-            _salt: &[u8],
-            _kdf: &KdfParams,
-        ) -> std::result::Result<Kek, EncryptionError> {
-            Err(EncryptionError::UnsupportedKdfAlgorithm)
-        }
-
-        async fn wrap_master_key(
-            &self,
-            _kek: &Kek,
-            _master_key: &MasterKey,
-            _aead: EncryptionAlgo,
-        ) -> std::result::Result<EncryptedBlob, EncryptionError> {
-            Err(EncryptionError::EncryptFailed)
-        }
-
-        async fn unwrap_master_key(
-            &self,
-            _kek: &Kek,
-            _wrapped: &EncryptedBlob,
-        ) -> std::result::Result<MasterKey, EncryptionError> {
-            Err(EncryptionError::WrongPassphrase)
-        }
-
-        async fn encrypt_blob(
-            &self,
-            _master_key: &MasterKey,
-            plaintext: &[u8],
-            _aad: &[u8],
-            _aead: EncryptionAlgo,
-        ) -> std::result::Result<EncryptedBlob, EncryptionError> {
-            self.encrypt_calls.fetch_add(1, Ordering::SeqCst);
-            Ok(EncryptedBlob {
-                version: EncryptionFormatVersion::V1,
-                aead: EncryptionAlgo::XChaCha20Poly1305,
-                nonce: vec![1; 24],
-                ciphertext: plaintext.to_vec(),
-                aad_fingerprint: None,
-            })
-        }
-
-        async fn decrypt_blob(
-            &self,
-            _master_key: &MasterKey,
-            _encrypted: &EncryptedBlob,
-            _aad: &[u8],
-        ) -> std::result::Result<Vec<u8>, EncryptionError> {
-            Err(EncryptionError::CorruptedBlob)
         }
     }
 

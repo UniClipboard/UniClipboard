@@ -36,23 +36,23 @@ created: 2026-03-05
 
 ## Per-Task Verification Map
 
-| Task ID    | Plan | Wave | Requirement                               | Test Type   | Automated Command                                                 | File Exists | Status     |
-| ---------- | ---- | ---- | ----------------------------------------- | ----------- | ----------------------------------------------------------------- | ----------- | ---------- |
-| WIN-IMG-01 | 01   | 1    | Text capture unbroken                     | unit        | `cd src-tauri && cargo test -p uc-platform -- watcher`            | ✅ Existing | ⬜ pending |
-| WIN-IMG-02 | 01   | 1    | read_image_windows_as_png valid PNG       | unit        | `cd src-tauri && cargo test -p uc-platform -- read_image_windows` | ❌ W0       | ⬜ pending |
-| WIN-IMG-03 | 01   | 1    | PNG encoding from DynamicImage            | unit        | `cd src-tauri && cargo test -p uc-platform -- png_encode`         | ❌ W0       | ⬜ pending |
-| WIN-IMG-04 | 01   | 1    | Fallback triggers when clipboard-rs fails | unit (mock) | `cd src-tauri && cargo test -p uc-platform -- fallback`           | ❌ W0       | ⬜ pending |
-| WIN-IMG-05 | 01   | 1    | E2E screenshot capture                    | manual-only | Manual: Win+Shift+S                                               | N/A         | ⬜ pending |
-| WIN-IMG-06 | 01   | 1    | E2E browser image copy                    | manual-only | Manual: right-click > Copy Image                                  | N/A         | ⬜ pending |
+| Task ID    | Plan | Wave | Requirement                               | Test Type   | Automated Command                                            | File Exists | Status  |
+| ---------- | ---- | ---- | ----------------------------------------- | ----------- | ------------------------------------------------------------ | ----------- | ------- |
+| WIN-IMG-01 | 01   | 1    | Text capture unbroken                     | unit        | `cd src-tauri && cargo test -p uc-platform -- watcher`       | Existing    | pending |
+| WIN-IMG-02 | 01   | 1    | read_image_windows_as_png valid PNG       | unit        | `cd src-tauri && cargo test -p uc-platform -- image_convert` | W0          | pending |
+| WIN-IMG-03 | 01   | 1    | PNG encoding from DynamicImage            | unit        | `cd src-tauri && cargo test -p uc-platform -- image_convert` | W0          | pending |
+| WIN-IMG-04 | 02   | 2    | Fallback triggers when clipboard-rs fails | unit        | `cd src-tauri && cargo test -p uc-platform -- --nocapture`   | W0          | pending |
+| WIN-IMG-05 | 02   | 2    | E2E screenshot capture                    | manual-only | Manual: Win+Shift+S                                          | N/A         | pending |
+| WIN-IMG-06 | 02   | 2    | E2E browser image copy                    | manual-only | Manual: right-click > Copy Image                             | N/A         | pending |
 
-_Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky_
+_Status: pending / green / red / flaky_
 
 ---
 
 ## Wave 0 Requirements
 
-- [ ] `src-tauri/crates/uc-platform/src/clipboard/platform/windows.rs` — unit tests for PNG encoding helper (cross-platform testable via `image` crate)
-- [ ] Cross-platform test for BMP-to-PNG conversion logic — extract conversion to a testable function, guard Windows clipboard access behind `#[cfg(target_os = "windows")]`
+- [ ] `src-tauri/crates/uc-platform/src/clipboard/image_convert.rs` — cross-platform unit tests for dib_to_png conversion (uses `image` crate, runs on all platforms)
+- [ ] Cross-platform test for BMP-to-PNG conversion logic — extract conversion to a testable function in `image_convert.rs`, guard Windows clipboard access behind `#[cfg(target_os = "windows")]` in `windows.rs`
 
 _Existing watcher tests cover WIN-IMG-01 (text capture regression)._
 

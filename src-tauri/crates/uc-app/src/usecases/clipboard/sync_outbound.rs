@@ -122,19 +122,24 @@ impl SyncOutboundClipboardUseCase {
 
         let message_id = Uuid::new_v4().to_string();
 
+        // Extract content_hash and ts_ms BEFORE consuming representations via into_iter().
+        let content_hash = snapshot.snapshot_hash().to_string();
+        let ts_ms = snapshot.ts_ms;
+
         // Build V2 multi-representation payload — all representations are included.
+        // Uses into_iter() to move byte buffers instead of cloning them.
         let wire_reps: Vec<WireRepresentation> = snapshot
             .representations
-            .iter()
+            .into_iter()
             .map(|rep| WireRepresentation {
-                mime: rep.mime.as_ref().map(|m| m.as_str().to_string()),
-                format_id: rep.format_id.as_ref().to_string(),
-                bytes: rep.bytes.clone(),
+                mime: rep.mime.map(|m| m.0),
+                format_id: rep.format_id.into_inner(),
+                bytes: rep.bytes,
             })
             .collect();
 
         let v2_payload = ClipboardMultiRepPayloadV2 {
-            ts_ms: snapshot.ts_ms,
+            ts_ms,
             representations: wire_reps,
         };
 
@@ -154,9 +159,6 @@ impl SyncOutboundClipboardUseCase {
             .transfer_encryptor
             .encrypt(&master_key, &plaintext_bytes)
             .map_err(|e| anyhow::anyhow!("failed to encrypt outbound clipboard payload: {e}"))?;
-
-        // V2 content_hash covers ALL representations (snapshot_hash), not a single rep hash.
-        let content_hash = snapshot.snapshot_hash().to_string();
 
         let origin_device_id = self.device_identity.current_device_id().to_string();
         let origin_device_name = match self.settings.load().await {

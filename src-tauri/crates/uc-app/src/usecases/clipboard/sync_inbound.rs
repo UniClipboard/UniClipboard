@@ -433,7 +433,10 @@ impl SyncInboundClipboardUseCase {
                             "V2 inbound: failed to decode chunked payload — dropping message"
                         );
                         self.rollback_recent_id(&message.id).await;
-                        return Ok(InboundApplyOutcome::Skipped);
+                        return Err(anyhow::anyhow!(
+                            "V2 inbound: failed to decode chunked payload for message {}: {e}",
+                            message.id
+                        ));
                     }
                 }
             }
@@ -448,7 +451,10 @@ impl SyncInboundClipboardUseCase {
                     "V2 inbound: failed to deserialize ClipboardMultiRepPayloadV2 — dropping"
                 );
                 self.rollback_recent_id(&message.id).await;
-                return Ok(InboundApplyOutcome::Skipped);
+                return Err(anyhow::anyhow!(
+                    "V2 inbound: failed to deserialize ClipboardMultiRepPayloadV2 for message {}: {e}",
+                    message.id
+                ));
             }
         };
 
@@ -540,7 +546,7 @@ fn select_highest_priority_repr(
 ) -> Option<&WireRepresentation> {
     fn priority(mime: Option<&str>) -> u8 {
         match mime {
-            Some(m) if m.starts_with("image/") => 4,
+            Some(m) if m.to_ascii_lowercase().starts_with("image/") => 4,
             Some(m) if m.eq_ignore_ascii_case("text/html") => 3,
             Some(m) if m.eq_ignore_ascii_case("text/rtf") => 2,
             Some(m) if m.eq_ignore_ascii_case("text/plain") => 1,

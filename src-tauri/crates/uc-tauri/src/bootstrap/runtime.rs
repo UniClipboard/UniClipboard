@@ -1486,7 +1486,10 @@ mod tests {
             _blob_id: &BlobId,
             _data: &[u8],
         ) -> anyhow::Result<(std::path::PathBuf, Option<i64>)> {
-            Ok((std::path::PathBuf::from("/tmp/noop"), None))
+            Ok((
+                std::path::PathBuf::from("/tmp/noop"),
+                Some(_data.len() as i64),
+            ))
         }
 
         async fn get(&self, _blob_id: &BlobId) -> anyhow::Result<Vec<u8>> {

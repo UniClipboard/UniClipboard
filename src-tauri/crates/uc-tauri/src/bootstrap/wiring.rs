@@ -634,13 +634,15 @@ fn create_platform_layer(
                         "Purged old blob files (V2 format migration)"
                     );
                 }
+
+                // Only mark migration complete after successful directory scan
+                if let Err(e) = std::fs::File::create(&sentinel) {
+                    tracing::warn!(error = %e, "Failed to create V2 migration sentinel");
+                }
             }
             Err(e) => {
                 tracing::warn!(error = %e, "Failed to read blob directory for cleanup");
             }
-        }
-        if let Err(e) = std::fs::File::create(&sentinel) {
-            tracing::warn!(error = %e, "Failed to create V2 migration sentinel");
         }
     }
 

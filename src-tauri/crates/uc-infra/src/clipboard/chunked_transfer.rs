@@ -54,6 +54,12 @@ pub enum ChunkedTransferError {
     /// AEAD tag verification failed for the given chunk index.
     #[error("AEAD decryption failed for chunk {chunk_index}")]
     DecryptFailed { chunk_index: u32 },
+    /// Ciphertext length from wire is outside valid range.
+    #[error("chunk {chunk_index}: ciphertext_len {ciphertext_len} outside valid range")]
+    InvalidCiphertextLen {
+        chunk_index: u32,
+        ciphertext_len: usize,
+    },
     /// AEAD encryption failed (key size error).
     #[error("encryption failed: {0}")]
     EncryptFailed(String),
@@ -71,6 +77,12 @@ impl From<ChunkedTransferError> for TransferCryptoError {
                     "AEAD decryption failed for chunk {chunk_index}"
                 ))
             }
+            ChunkedTransferError::InvalidCiphertextLen {
+                chunk_index,
+                ciphertext_len,
+            } => TransferCryptoError::InvalidFormat(format!(
+                "chunk {chunk_index}: ciphertext_len {ciphertext_len} outside valid range"
+            )),
             ChunkedTransferError::InvalidMagic => {
                 TransferCryptoError::InvalidFormat("invalid V2 magic bytes".into())
             }
@@ -207,6 +219,17 @@ impl ChunkedDecoder {
                 .read_exact(&mut len_buf)
                 .map_err(|_| ChunkedTransferError::TruncatedChunk)?;
             let ciphertext_len = u32::from_le_bytes(len_buf) as usize;
+
+            // XChaCha20-Poly1305 tag is 16 bytes. Valid ciphertext must contain at least
+            // the tag, and at most one full chunk of plaintext + tag.
+            const TAG_SIZE: usize = 16;
+            let max_ciphertext = CHUNK_SIZE + TAG_SIZE;
+            if ciphertext_len < TAG_SIZE || ciphertext_len > max_ciphertext {
+                return Err(ChunkedTransferError::InvalidCiphertextLen {
+                    chunk_index,
+                    ciphertext_len,
+                });
+            }
 
             // Read ciphertext — one chunk in memory at a time
             let mut ciphertext = vec![0u8; ciphertext_len];

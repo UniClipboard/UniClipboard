@@ -224,11 +224,19 @@ impl ChunkedDecoder {
                 reason: "total_chunks > 0 but total_plaintext_len is 0".into(),
             });
         }
-        if total_plaintext_len > total_chunks as usize * CHUNK_SIZE {
+        let max_capacity = (total_chunks as usize)
+            .checked_mul(CHUNK_SIZE)
+            .ok_or_else(|| ChunkedTransferError::InvalidHeader {
+                reason: format!(
+                    "total_chunks {} * CHUNK_SIZE {} overflows usize",
+                    total_chunks, CHUNK_SIZE
+                ),
+            })?;
+        if total_plaintext_len > max_capacity {
             return Err(ChunkedTransferError::InvalidHeader {
                 reason: format!(
                     "total_plaintext_len {} exceeds maximum capacity {} (total_chunks {} * CHUNK_SIZE {})",
-                    total_plaintext_len, total_chunks as usize * CHUNK_SIZE, total_chunks, CHUNK_SIZE
+                    total_plaintext_len, max_capacity, total_chunks, CHUNK_SIZE
                 ),
             });
         }

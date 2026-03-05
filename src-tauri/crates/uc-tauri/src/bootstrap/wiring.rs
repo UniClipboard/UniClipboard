@@ -550,6 +550,20 @@ fn create_infra_layer(
     Ok(infra)
 }
 
+/// Check if a file starts with the UCBL binary format magic bytes.
+/// V2 blobs use magic [0x55, 0x43, 0x42, 0x4C] ("UCBL").
+fn is_v2_blob(path: &std::path::Path) -> bool {
+    const UCBL_MAGIC: [u8; 4] = [0x55, 0x43, 0x42, 0x4C];
+    std::fs::File::open(path)
+        .and_then(|mut f| {
+            use std::io::Read;
+            let mut buf = [0u8; 4];
+            f.read_exact(&mut buf)?;
+            Ok(buf == UCBL_MAGIC)
+        })
+        .unwrap_or(false)
+}
+
 /// Create platform layer implementations
 /// 创建平台层实现
 ///
@@ -626,9 +640,17 @@ fn create_platform_layer(
                         }
                     };
                     if entry.path().is_file() {
-                        if let Err(e) = std::fs::remove_file(entry.path()) {
+                        let path = entry.path();
+                        // Skip the sentinel file and valid V2 blobs
+                        if path.file_name().map_or(false, |n| n == ".v2_migrated") {
+                            continue;
+                        }
+                        if is_v2_blob(&path) {
+                            continue;
+                        }
+                        if let Err(e) = std::fs::remove_file(&path) {
                             tracing::warn!(
-                                path = %entry.path().display(),
+                                path = %path.display(),
                                 error = %e,
                                 "Failed to purge old blob file"
                             );

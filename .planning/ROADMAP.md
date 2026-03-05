@@ -37,3 +37,15 @@ Plans:
 
 - [x] 04-01-PLAN.md — Contracts, domain models, schema migration (AAD v2, BlobStorePort, Diesel)
 - [x] 04-02-PLAN.md — V2 binary format implementation with zstd compression + spool cleanup
+
+### Phase 5: Fix Windows clipboard image capture
+
+**Goal:** Make clipboard image capture work reliably on Windows by upgrading clipboard-rs to 0.3.3 and adding a native CF_DIB fallback via clipboard-win when clipboard-rs fails to read images. Screenshots (Win+Shift+S, Print Screen), browser image copies, and image editor copies should all produce valid image/png representations.
+**Requirements:** [WIN-IMG-01, WIN-IMG-02, WIN-IMG-03, WIN-IMG-04, WIN-IMG-05, WIN-IMG-06]
+**Depends on:** Phase 4
+**Plans:** 2 plans
+
+Plans:
+
+- [ ] 05-01-PLAN.md — Upgrade clipboard-rs, fix BMP-to-PNG conversion, add unit tests
+- [ ] 05-02-PLAN.md — Wire Windows-native image fallback into read_snapshot + manual verification

@@ -4,9 +4,16 @@ use tracing::{debug, warn};
 use uc_core::clipboard::{MimeType, ObservedClipboardRepresentation, SystemClipboardSnapshot};
 use uc_core::ids::RepresentationId;
 
+/// Known TIFF UTI aliases on macOS pasteboard.
+/// When the image has already been captured via the fast raw-TIFF path,
+/// these formats must be skipped in the raw fallback loop to avoid
+/// reading the same TIFF data a second time.
+#[cfg(target_os = "macos")]
+const TIFF_ALIASES: &[&str] = &["public.tiff", "NeXT TIFF v4.0 pasteboard type"];
+
 pub struct CommonClipboardImpl;
 
-fn should_skip_raw_format(format_id: &str) -> bool {
+fn should_skip_raw_format(format_id: &str, image_already_read: bool) -> bool {
     // Barrier writes this ownership marker during clipboard handoff.
     // It is not user clipboard content and should never be persisted.
     if format_id.eq_ignore_ascii_case("BarrierOwnership") {
@@ -27,6 +34,23 @@ fn should_skip_raw_format(format_id: &str) -> bool {
             return true;
         }
     }
+
+    // On macOS, skip TIFF aliases in the raw fallback loop when the image
+    // was already captured via the fast path (get_buffer("public.tiff") or
+    // get_buffer("public.png") or get_image()).
+    #[cfg(target_os = "macos")]
+    {
+        if image_already_read {
+            for alias in TIFF_ALIASES {
+                if format_id == *alias {
+                    return true;
+                }
+            }
+        }
+    }
+
+    // Suppress unused-variable warning on non-macOS.
+    let _ = image_already_read;
 
     false
 }
@@ -134,33 +158,133 @@ impl CommonClipboardImpl {
             }
         }
 
+        // Track whether we successfully read image data via the high-level path.
+        // Used to skip TIFF aliases in the raw fallback loop on macOS.
+        let mut image_already_read = false;
+
         if ctx.has(ContentFormat::Image) {
             debug!("clipboard-rs reports ContentFormat::Image available");
-            match ctx.get_image() {
-                Ok(img) => {
-                    debug!("clipboard-rs get_image() succeeded, converting to PNG");
-                    match img.to_png() {
-                        Ok(png) => {
-                            let bytes = png.get_bytes().to_vec();
+
+            // macOS fast path: read raw TIFF directly via get_buffer, avoiding
+            // the expensive decode+re-encode through get_image()+to_png().
+            #[cfg(target_os = "macos")]
+            {
+                let mut captured = false;
+
+                // Try raw TIFF first (fastest — no decode, no re-encode)
+                match ctx.get_buffer("public.tiff") {
+                    Ok(tiff_bytes) => {
+                        debug!(
+                            format_id = "image",
+                            size_bytes = tiff_bytes.len(),
+                            mime = "image/tiff",
+                            "Read image representation via raw public.tiff (fast path)"
+                        );
+                        reps.push(ObservedClipboardRepresentation {
+                            id: RepresentationId::new(),
+                            format_id: "image".into(),
+                            mime: Some(MimeType("image/tiff".to_string())),
+                            bytes: tiff_bytes,
+                        });
+                        captured = true;
+                    }
+                    Err(err) => {
+                        debug!(error = %err, "public.tiff not available, trying public.png");
+                    }
+                }
+
+                // Fallback: try raw PNG
+                if !captured {
+                    match ctx.get_buffer("public.png") {
+                        Ok(png_bytes) => {
                             debug!(
                                 format_id = "image",
-                                size_bytes = bytes.len(),
-                                "Read image representation via clipboard-rs"
+                                size_bytes = png_bytes.len(),
+                                mime = "image/png",
+                                "Read image representation via raw public.png"
                             );
                             reps.push(ObservedClipboardRepresentation {
                                 id: RepresentationId::new(),
                                 format_id: "image".into(),
                                 mime: Some(MimeType("image/png".to_string())),
-                                bytes,
+                                bytes: png_bytes,
                             });
+                            captured = true;
                         }
                         Err(err) => {
-                            warn!(error = %err, "clipboard-rs: image available but to_png() failed");
+                            debug!(error = %err, "public.png not available, falling back to get_image()");
                         }
                     }
                 }
-                Err(err) => {
-                    warn!(error = %err, "clipboard-rs: ContentFormat::Image reported available but get_image() failed");
+
+                // Final fallback: get_image() + to_png() (slow path — for apps
+                // that only provide NSImage without raw TIFF/PNG buffers)
+                if !captured {
+                    match ctx.get_image() {
+                        Ok(img) => {
+                            debug!(
+                                "clipboard-rs get_image() succeeded, converting to PNG (slow path)"
+                            );
+                            match img.to_png() {
+                                Ok(png) => {
+                                    let bytes = png.get_bytes().to_vec();
+                                    debug!(
+                                        format_id = "image",
+                                        size_bytes = bytes.len(),
+                                        "Read image representation via clipboard-rs get_image()+to_png()"
+                                    );
+                                    reps.push(ObservedClipboardRepresentation {
+                                        id: RepresentationId::new(),
+                                        format_id: "image".into(),
+                                        mime: Some(MimeType("image/png".to_string())),
+                                        bytes,
+                                    });
+                                    captured = true;
+                                }
+                                Err(err) => {
+                                    warn!(error = %err, "clipboard-rs: image available but to_png() failed");
+                                }
+                            }
+                        }
+                        Err(err) => {
+                            warn!(error = %err, "clipboard-rs: ContentFormat::Image reported available but get_image() failed");
+                        }
+                    }
+                }
+
+                image_already_read = captured;
+            }
+
+            // Non-macOS: keep original get_image()+to_png() path
+            #[cfg(not(target_os = "macos"))]
+            {
+                match ctx.get_image() {
+                    Ok(img) => {
+                        debug!("clipboard-rs get_image() succeeded, converting to PNG");
+                        match img.to_png() {
+                            Ok(png) => {
+                                let bytes = png.get_bytes().to_vec();
+                                debug!(
+                                    format_id = "image",
+                                    size_bytes = bytes.len(),
+                                    "Read image representation via clipboard-rs"
+                                );
+                                reps.push(ObservedClipboardRepresentation {
+                                    id: RepresentationId::new(),
+                                    format_id: "image".into(),
+                                    mime: Some(MimeType("image/png".to_string())),
+                                    bytes,
+                                });
+                                image_already_read = true;
+                            }
+                            Err(err) => {
+                                warn!(error = %err, "clipboard-rs: image available but to_png() failed");
+                            }
+                        }
+                    }
+                    Err(err) => {
+                        warn!(error = %err, "clipboard-rs: ContentFormat::Image reported available but get_image() failed");
+                    }
                 }
             }
         } else {
@@ -176,7 +300,7 @@ impl CommonClipboardImpl {
             if seen.contains(&format_id) {
                 continue;
             }
-            if should_skip_raw_format(&format_id) {
+            if should_skip_raw_format(&format_id, image_already_read) {
                 debug!(format_id = %format_id, "Skipping raw buffer representation");
                 continue;
             }
@@ -277,5 +401,64 @@ impl CommonClipboardImpl {
         }
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn should_skip_barrier_ownership_regardless_of_image_flag() {
+        assert!(should_skip_raw_format("BarrierOwnership", false));
+        assert!(should_skip_raw_format("BarrierOwnership", true));
+        assert!(should_skip_raw_format("barrierownership", true));
+    }
+
+    #[test]
+    fn should_skip_tiff_aliases_when_image_already_read() {
+        // On macOS, TIFF aliases should be skipped when image was already captured.
+        #[cfg(target_os = "macos")]
+        {
+            assert!(should_skip_raw_format("public.tiff", true));
+            assert!(should_skip_raw_format(
+                "NeXT TIFF v4.0 pasteboard type",
+                true
+            ));
+        }
+
+        // On non-macOS, these are never skipped by the TIFF alias logic.
+        #[cfg(not(target_os = "macos"))]
+        {
+            assert!(!should_skip_raw_format("public.tiff", true));
+            assert!(!should_skip_raw_format(
+                "NeXT TIFF v4.0 pasteboard type",
+                true
+            ));
+        }
+    }
+
+    #[test]
+    fn should_not_skip_tiff_aliases_when_image_not_read() {
+        // When no image was captured, TIFF aliases should NOT be skipped
+        // (they might be the only representation of image data).
+        assert!(!should_skip_raw_format("public.tiff", false));
+        assert!(!should_skip_raw_format(
+            "NeXT TIFF v4.0 pasteboard type",
+            false
+        ));
+    }
+
+    #[test]
+    fn should_not_skip_unrelated_formats() {
+        assert!(!should_skip_raw_format(
+            "org.nspasteboard.AutoGeneratedPasteboard",
+            false
+        ));
+        assert!(!should_skip_raw_format(
+            "org.nspasteboard.AutoGeneratedPasteboard",
+            true
+        ));
+        assert!(!should_skip_raw_format("com.apple.finder.node", true));
     }
 }

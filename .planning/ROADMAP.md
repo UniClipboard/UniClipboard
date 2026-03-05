@@ -68,7 +68,7 @@ Plans:
 **Goal:** Redesign the setup flow frontend (SetupPage + all step components) to achieve consistent UX across Windows, macOS, and Linux. Extract a shared StepLayout component, unify slide animations with directional transitions, change WelcomeStep to vertical card layout, add step dot indicators, and standardize on sm: breakpoint only.
 **Requirements:** [UX-01, UX-02, UX-03, UX-04, UX-05, UX-06, UX-07, UX-08]
 **Depends on:** Phase 6
-**Plans:** 2 plans
+**Plans:** 1/2 plans executed
 
 Plans:
 

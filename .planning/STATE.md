@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v0.1
 milestone_name: milestone
-status: unknown
-stopped_at: Phase 5 context gathered
-last_updated: '2026-03-05T05:13:34.860Z'
-last_activity: '2026-03-05 - Completed quick task 3: Verify and fix code review findings round 3'
+status: in-progress
+stopped_at: Completed 05-01-PLAN.md
+last_updated: '2026-03-05T05:43:02.000Z'
+last_activity: '2026-03-05 - Completed 05-01: Windows image capture building blocks'
 progress:
   total_phases: 2
   completed_phases: 1
-  total_plans: 2
-  completed_plans: 2
-  percent: 100
+  total_plans: 4
+  completed_plans: 3
+  percent: 75
 ---
 
 # Project State
@@ -21,27 +21,28 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-03)
 
 **Core value:** Seamless clipboard synchronization across devices -- copy on one, paste on another
-**Current focus:** Phase 4 - Optimize blob at-rest storage format (COMPLETE)
+**Current focus:** Phase 5 - Fix Windows clipboard image capture
 
 ## Current Position
 
-Phase 04: Optimize blob at-rest storage format
-Plan 2 of 2 complete.
+Phase 05: Fix Windows clipboard image capture
+Plan 1 of 2 complete.
 
-Progress: [==========] 100%
+Progress: [=====-----] 50%
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 8
-- Average duration: ~16min
-- Total execution time: ~119min (02-01: ~45min, 02-02: ~3min, 02-03: ~15min, 03-01: ~5min, 03-02: ~20min, 04-01: ~13min, 04-02: ~18min)
+- Total plans completed: 9
+- Average duration: ~14min
+- Total execution time: ~122min (02-01: ~45min, 02-02: ~3min, 02-03: ~15min, 03-01: ~5min, 03-02: ~20min, 04-01: ~13min, 04-02: ~18min, 05-01: ~3min)
 
 | Phase | Plan | Duration | Tasks | Files |
 | ----- | ---- | -------- | ----- | ----- |
 | 04    | 01   | 13min    | 2     | 21    |
 | 04    | 02   | 18min    | 2     | 2     |
+| 05    | 01   | 3min     | 2     | 5     |
 
 ## Accumulated Context
 
@@ -58,6 +59,9 @@ Progress: [==========] 100%
 - [Phase quick-02]: Added InvalidHeader variant to ChunkedTransferError for decoder validation semantics
 - [Phase quick-02]: MIME constants extracted to uc-core module level, imported by uc-app consumers
 - [Phase quick-03]: checked_mul for overflow safety in chunked transfer decoder (explicit error, not silent clamp)
+- [Phase 05]: BmpDecoder::new_without_file_header for CF_DIB (no 14-byte BMP header in Windows clipboard data)
+- [Phase 05]: image_convert module non-cfg-gated so tests run on macOS/Linux CI
+- [Phase 05]: RawData(CF_DIB) instead of formats::Bitmap for correct headerless DIB data
 
 ### Roadmap Evolution
 
@@ -70,6 +74,7 @@ Progress: [==========] 100%
 - Phase 4 Plan 02 completed: V2 binary blob format with zstd compression + spool cleanup
 - Phase 4 completed: Optimize blob at-rest storage format
 - Phase 5 added: 支持Windows平台的剪切板图片捕获
+- Phase 5 Plan 01 completed: clipboard-rs 0.3.3 upgrade + dib_to_png converter + read_image_windows_as_png
 
 ### Pending Todos
 
@@ -89,7 +94,7 @@ None.
 
 ## Session Continuity
 
-Last activity: 2026-03-05 - Completed quick task 3: Verify and fix code review findings round 3
-Last session: 2026-03-05T05:13:34.858Z
-Stopped at: Phase 5 context gathered
-Resume file: .planning/phases/05-windows/05-CONTEXT.md
+Last activity: 2026-03-05 - Completed 05-01: Windows image capture building blocks
+Last session: 2026-03-05T05:43:02.000Z
+Stopped at: Completed 05-01-PLAN.md
+Resume file: .planning/phases/05-windows/05-01-SUMMARY.md

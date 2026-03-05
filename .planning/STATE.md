@@ -80,6 +80,7 @@ Progress: [==========] 100%
 - Phase 5 Plan 01 completed: clipboard-rs 0.3.3 upgrade + dib_to_png converter + read_image_windows_as_png
 - Phase 5 Plan 02 completed: Wired native CF_DIB fallback into read_snapshot with diagnostic logging (verified working on Windows)
 - Phase 5 completed: Windows clipboard image capture working via clipboard-rs primary path
+- Phase 6 added: Fix dashboard image display — images captured successfully but not visible in dashboard, even after expand (not a thumbnail issue)
 
 ### Pending Todos
 

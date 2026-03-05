@@ -60,6 +60,9 @@ pub enum ChunkedTransferError {
         chunk_index: u32,
         ciphertext_len: usize,
     },
+    /// Header declares a total_plaintext_len inconsistent with chunk count.
+    #[error("header validation failed: {reason}")]
+    InvalidHeader { reason: String },
     /// AEAD encryption failed (key size error).
     #[error("encryption failed: {0}")]
     EncryptFailed(String),
@@ -83,6 +86,9 @@ impl From<ChunkedTransferError> for TransferCryptoError {
             } => TransferCryptoError::InvalidFormat(format!(
                 "chunk {chunk_index}: ciphertext_len {ciphertext_len} outside valid range"
             )),
+            ChunkedTransferError::InvalidHeader { reason } => {
+                TransferCryptoError::InvalidFormat(reason)
+            }
             ChunkedTransferError::InvalidMagic => {
                 TransferCryptoError::InvalidFormat("invalid V2 magic bytes".into())
             }
@@ -125,7 +131,12 @@ impl ChunkedEncoder {
         let cipher = XChaCha20Poly1305::new_from_slice(master_key.as_bytes())
             .map_err(|e| ChunkedTransferError::EncryptFailed(e.to_string()))?;
 
-        let total_plaintext_len = plaintext.len() as u32;
+        let total_plaintext_len = u32::try_from(plaintext.len()).map_err(|_| {
+            ChunkedTransferError::EncryptFailed(format!(
+                "plaintext length {} exceeds u32::MAX",
+                plaintext.len()
+            ))
+        })?;
         let total_chunks = if plaintext.is_empty() {
             0u32
         } else {
@@ -207,6 +218,21 @@ impl ChunkedDecoder {
                 .map_err(|_| ChunkedTransferError::TruncatedHeader)?,
         ) as usize;
 
+        // Validate header consistency: plaintext cannot exceed what total_chunks can hold.
+        if total_chunks > 0 && total_plaintext_len == 0 {
+            return Err(ChunkedTransferError::InvalidHeader {
+                reason: "total_chunks > 0 but total_plaintext_len is 0".into(),
+            });
+        }
+        if total_plaintext_len > total_chunks as usize * CHUNK_SIZE {
+            return Err(ChunkedTransferError::InvalidHeader {
+                reason: format!(
+                    "total_plaintext_len {} exceeds maximum capacity {} (total_chunks {} * CHUNK_SIZE {})",
+                    total_plaintext_len, total_chunks as usize * CHUNK_SIZE, total_chunks, CHUNK_SIZE
+                ),
+            });
+        }
+
         let cipher = XChaCha20Poly1305::new_from_slice(master_key.as_bytes())
             .map_err(|e| ChunkedTransferError::EncryptFailed(e.to_string()))?;
 
@@ -252,6 +278,16 @@ impl ChunkedDecoder {
 
             plaintext.extend_from_slice(&chunk_plaintext);
             // `ciphertext` and `chunk_plaintext` are dropped here
+        }
+
+        if plaintext.len() != total_plaintext_len {
+            return Err(ChunkedTransferError::InvalidHeader {
+                reason: format!(
+                    "decoded {} bytes but header declared {}",
+                    plaintext.len(),
+                    total_plaintext_len
+                ),
+            });
         }
 
         Ok(plaintext)

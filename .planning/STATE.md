@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v0.1
 milestone_name: milestone
-status: unknown
+status: completed
 stopped_at: 'Completed quick-01: verify and fix review findings across uc-*'
 last_updated: '2026-03-05T02:17:29.228Z'
 progress:
-  total_phases: 1
-  completed_phases: 1
-  total_plans: 2
-  completed_plans: 2
+  total_phases: 4
+  completed_phases: 4
+  total_plans: 8
+  completed_plans: 8
   percent: 100
 ---
 
@@ -46,7 +46,7 @@ Progress: [==========] 100%
 
 ### Decisions
 
-- Kept for_blob (v1) unchanged alongside new for_blob_v2 for backward compatibility
+- Replaced for_blob (v1) with for_blob_v2 (breaking change -- V1 blobs are incompatible with V2 binary format)
 - BlobStorePort::put returns (PathBuf, Option<i64>) tuple where None means store does not track compression
 - Removed PlaceholderBlobStorePort dead code to reduce implementor count from 3 to 2
 - [Phase 04]: zstd level 3 for compression (default, good speed/ratio balance)

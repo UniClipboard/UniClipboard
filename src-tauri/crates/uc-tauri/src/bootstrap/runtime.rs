@@ -1487,7 +1487,7 @@ mod tests {
         ) -> anyhow::Result<(std::path::PathBuf, Option<i64>)> {
             Ok((
                 std::path::PathBuf::from("/tmp/noop"),
-                Some(_data.len() as i64),
+                i64::try_from(_data.len()).ok(),
             ))
         }
 

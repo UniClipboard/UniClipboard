@@ -615,7 +615,16 @@ fn create_platform_layer(
         match std::fs::read_dir(&blob_store_dir) {
             Ok(entries) => {
                 let mut purged = 0u64;
-                for entry in entries.flatten() {
+                let mut errors = 0u64;
+                for entry_result in entries {
+                    let entry = match entry_result {
+                        Ok(e) => e,
+                        Err(e) => {
+                            tracing::warn!(error = %e, "Failed to read directory entry during V2 migration");
+                            errors += 1;
+                            continue;
+                        }
+                    };
                     if entry.path().is_file() {
                         if let Err(e) = std::fs::remove_file(entry.path()) {
                             tracing::warn!(
@@ -623,6 +632,7 @@ fn create_platform_layer(
                                 error = %e,
                                 "Failed to purge old blob file"
                             );
+                            errors += 1;
                         } else {
                             purged += 1;
                         }
@@ -635,9 +645,17 @@ fn create_platform_layer(
                     );
                 }
 
-                // Only mark migration complete after successful directory scan
-                if let Err(e) = std::fs::File::create(&sentinel) {
-                    tracing::warn!(error = %e, "Failed to create V2 migration sentinel");
+                // Only mark migration complete when ALL files were handled successfully.
+                if errors == 0 {
+                    if let Err(e) = std::fs::File::create(&sentinel) {
+                        tracing::warn!(error = %e, "Failed to create V2 migration sentinel");
+                    }
+                } else {
+                    tracing::warn!(
+                        errors = errors,
+                        "Skipping V2 migration sentinel: {} errors during cleanup, will retry next startup",
+                        errors
+                    );
                 }
             }
             Err(e) => {

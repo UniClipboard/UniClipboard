@@ -25,6 +25,8 @@ See: `.planning/milestones/v0.1-ROADMAP.md` for full details.
 | 2. Unified transfer layer    | v0.1.0    | 3/3            | Complete | 2026-03-03 |
 | 3. True inbound streaming    | v0.1.0    | 2/2            | Complete | 2026-03-03 |
 | 4. Blob at-rest storage opt  | v0.1      | 2/2            | Complete | 2026-03-04 |
+| 5. Windows image capture     | v0.1      | 2/2            | Complete | 2026-03-05 |
+| 6. Dashboard image display   | v0.1      | 1/1            | Complete | 2026-03-05 |
 
 ### Phase 4: Optimize blob at-rest storage format without backward compatibility
 
@@ -47,16 +49,16 @@ Plans:
 
 Plans:
 
-- [ ] 05-01-PLAN.md — Upgrade clipboard-rs, fix BMP-to-PNG conversion, add unit tests
-- [ ] 05-02-PLAN.md — Wire Windows-native image fallback into read_snapshot + manual verification
+- [x] 05-01-PLAN.md — Upgrade clipboard-rs, fix BMP-to-PNG conversion, add unit tests
+- [x] 05-02-PLAN.md — Wire Windows-native image fallback into read_snapshot + manual verification
 
 ### Phase 6: Fix dashboard image display
 
 **Goal:** Fix cross-platform image display in the dashboard by using Tauri's convertFileSrc API to generate platform-correct URLs for the uc:// custom protocol, replacing raw uc:// URLs that fail on Windows (WebView2 requires http://uc.localhost/ format).
 **Requirements:** [IMG-DISPLAY-01, IMG-DISPLAY-02]
 **Depends on:** Phase 5
-**Plans:** 1 plan
+**Plans:** 1/1 plans complete
 
 Plans:
 
-- [ ] 06-01-PLAN.md — Create resolveUcUrl helper with convertFileSrc, wire into ClipboardItem + API layer
+- [x] 06-01-PLAN.md — Create resolveUcUrl helper with convertFileSrc, wire into ClipboardItem + API layer

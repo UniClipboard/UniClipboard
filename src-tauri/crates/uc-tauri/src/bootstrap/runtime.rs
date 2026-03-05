@@ -1543,6 +1543,15 @@ mod tests {
         ) -> anyhow::Result<uc_core::ports::clipboard::GeneratedThumbnail> {
             Err(anyhow::anyhow!("noop thumbnail generator"))
         }
+
+        async fn generate_thumbnail_from_rgba(
+            &self,
+            _rgba_bytes: &[u8],
+            _width: u32,
+            _height: u32,
+        ) -> anyhow::Result<uc_core::ports::clipboard::GeneratedThumbnail> {
+            self.generate_thumbnail(&[]).await
+        }
     }
 
     #[async_trait]

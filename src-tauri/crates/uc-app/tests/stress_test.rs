@@ -115,6 +115,15 @@ impl ThumbnailGeneratorPort for NoopThumbnailGenerator {
             original_height: 1,
         })
     }
+
+    async fn generate_thumbnail_from_rgba(
+        &self,
+        _rgba_bytes: &[u8],
+        _width: u32,
+        _height: u32,
+    ) -> Result<GeneratedThumbnail> {
+        self.generate_thumbnail(&[]).await
+    }
 }
 
 struct FixedClock {

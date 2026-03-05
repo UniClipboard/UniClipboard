@@ -32,4 +32,17 @@ pub trait ThumbnailGeneratorPort: Send + Sync {
     ///
     /// 从图像字节生成缩略图。
     async fn generate_thumbnail(&self, image_bytes: &[u8]) -> Result<GeneratedThumbnail>;
+
+    /// Generate thumbnail from pre-decoded RGBA pixels.
+    ///
+    /// Avoids re-decoding when the caller already has raw pixel data
+    /// (e.g. after TIFF→PNG conversion).
+    ///
+    /// 从已解码的 RGBA 像素生成缩略图，避免重复解码。
+    async fn generate_thumbnail_from_rgba(
+        &self,
+        rgba_bytes: &[u8],
+        width: u32,
+        height: u32,
+    ) -> Result<GeneratedThumbnail>;
 }

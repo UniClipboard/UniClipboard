@@ -23,6 +23,29 @@ impl ThumbnailGeneratorPort for InfraThumbnailGenerator {
         let decoded =
             image::load_from_memory(image_bytes).context("decode image bytes for thumbnail")?;
         let (original_width, original_height) = decoded.dimensions();
+        self.generate_from_decoded(decoded, original_width, original_height)
+    }
+
+    async fn generate_thumbnail_from_rgba(
+        &self,
+        rgba_bytes: &[u8],
+        width: u32,
+        height: u32,
+    ) -> Result<GeneratedThumbnail> {
+        let rgba_image = image::RgbaImage::from_raw(width, height, rgba_bytes.to_vec())
+            .ok_or_else(|| anyhow::anyhow!("RGBA buffer size mismatch for {}x{}", width, height))?;
+        let decoded = image::DynamicImage::ImageRgba8(rgba_image);
+        self.generate_from_decoded(decoded, width, height)
+    }
+}
+
+impl InfraThumbnailGenerator {
+    fn generate_from_decoded(
+        &self,
+        decoded: image::DynamicImage,
+        original_width: u32,
+        original_height: u32,
+    ) -> Result<GeneratedThumbnail> {
         let (target_width, target_height) =
             calculate_target_size(original_width, original_height, self.max_edge);
 

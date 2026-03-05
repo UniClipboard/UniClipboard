@@ -31,7 +31,7 @@ base64 = "0.22"
 base32 = "0.5"
 
 # Bytes handling
-bytes = "1.7"
+bytes = "1.11"
 
 # Async runtime (for mpsc channels in ports)
 tokio = { version = "1", features = ["sync"] }

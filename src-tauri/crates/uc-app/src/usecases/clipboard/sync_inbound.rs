@@ -1542,16 +1542,18 @@ mod tests {
             message.encrypted_content[last] ^= 0xFF;
         }
 
-        let outcome = usecase
-            .execute_with_outcome(message, None)
-            .await
-            .expect("tampered V2 message must not panic or return Err");
+        let result = usecase.execute_with_outcome(message, None).await;
 
-        // Must return Skipped (not panic, not propagate error)
-        assert_eq!(
-            outcome,
-            InboundApplyOutcome::Skipped,
-            "tampered V2 content must return Skipped"
+        // Must return Err (decrypt failure is a real error, not silent skip)
+        assert!(
+            result.is_err(),
+            "tampered V2 content must return Err, got: {:?}",
+            result
+        );
+        let err_msg = result.unwrap_err().to_string();
+        assert!(
+            err_msg.contains("failed to decode chunked payload"),
+            "error must mention decode failure, got: {err_msg}"
         );
 
         // Must not write anything to clipboard
@@ -1627,7 +1629,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn v2_inbound_with_invalid_pre_decoded_plaintext_returns_skipped() {
+    async fn v2_inbound_with_invalid_pre_decoded_plaintext_returns_err() {
         let (usecase, writes, _, _, _) = build_usecase(
             ClipboardIntegrationMode::Full,
             SystemClipboardSnapshot {
@@ -1648,15 +1650,20 @@ mod tests {
             payload_version: ClipboardPayloadVersion::V2,
         };
 
-        let outcome = usecase
+        let result = usecase
             .execute_with_outcome(v2_message, Some(b"not valid json".to_vec()))
-            .await
-            .expect("invalid pre-decoded plaintext must not panic");
+            .await;
 
-        assert_eq!(
-            outcome,
-            InboundApplyOutcome::Skipped,
-            "invalid pre-decoded plaintext must return Skipped"
+        // Must return Err (deserialize failure is a real error, not silent skip)
+        assert!(
+            result.is_err(),
+            "invalid pre-decoded plaintext must return Err, got: {:?}",
+            result
+        );
+        let err_msg = result.unwrap_err().to_string();
+        assert!(
+            err_msg.contains("failed to deserialize"),
+            "error must mention deserialize failure, got: {err_msg}"
         );
         assert_eq!(
             writes.lock().expect("writes lock").len(),

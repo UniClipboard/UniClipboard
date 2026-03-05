@@ -1,6 +1,25 @@
+import type { ReactNode } from 'react'
 import { SetupError } from '@/api/setup'
 export interface StepProps {
   error?: SetupError | null
+  loading?: boolean
+}
+
+export interface StepLayoutProps {
+  headerLeft?: ReactNode
+  headerRight?: ReactNode
+  title: string
+  subtitle?: string
+  children?: ReactNode
+  footer?: ReactNode
+  hint?: string
+  error?: string | null
+  variant?: 'default' | 'centered'
+  direction?: 'forward' | 'backward'
+}
+
+export interface ProcessingJoinStepProps {
+  onCancel: () => void
   loading?: boolean
 }
 

@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v0.1
 milestone_name: milestone
 status: unknown
-stopped_at: Completed 04-02-PLAN.md
-last_updated: '2026-03-04T03:24:38.178Z'
+stopped_at: 'Completed quick-01: verify and fix review findings across uc-*'
+last_updated: '2026-03-05T02:17:29.228Z'
 progress:
   total_phases: 1
   completed_phases: 1
@@ -52,6 +52,8 @@ Progress: [==========] 100%
 - [Phase 04]: zstd level 3 for compression (default, good speed/ratio balance)
 - [Phase 04]: 500MB max decompressed size to prevent zip bombs
 - [Phase 04]: Sentinel file (.v2_migrated) for one-time spool cleanup instead of per-startup purge
+- [Phase quick]: Decrypt/deserialize failures in V2 inbound propagate as Err, not silent Ok(Skipped)
+- [Phase quick]: InvalidCiphertextLen added to ChunkedTransferError for wire data bounds validation
 
 ### Roadmap Evolution
 
@@ -74,6 +76,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-04T03:18:31.894Z
-Stopped at: Completed 04-02-PLAN.md
+Last session: 2026-03-05T02:17:24.788Z
+Stopped at: Completed quick-01: verify and fix review findings across uc-\*
 Resume file: None

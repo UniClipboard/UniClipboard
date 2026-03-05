@@ -52,11 +52,11 @@ Plans:
 
 ### Phase 6: Fix dashboard image display
 
-**Goal:** [To be planned]
-**Requirements**: TBD
+**Goal:** Fix cross-platform image display in the dashboard by using Tauri's convertFileSrc API to generate platform-correct URLs for the uc:// custom protocol, replacing raw uc:// URLs that fail on Windows (WebView2 requires http://uc.localhost/ format).
+**Requirements:** [IMG-DISPLAY-01, IMG-DISPLAY-02]
 **Depends on:** Phase 5
-**Plans:** 0 plans
+**Plans:** 1 plan
 
 Plans:
 
-- [ ] TBD (run /gsd:plan-phase 6 to break down)
+- [ ] 06-01-PLAN.md — Create resolveUcUrl helper with convertFileSrc, wire into ClipboardItem + API layer

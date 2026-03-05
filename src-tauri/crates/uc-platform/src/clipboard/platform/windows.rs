@@ -155,18 +155,23 @@ fn write_text_windows_native(text: &str) -> Result<()> {
         .map_err(|e| anyhow::anyhow!("Failed to set Windows Unicode clipboard text: {}", e))
 }
 
-/// Windows-specific: Read image from clipboard as Bitmap format
-fn read_image_windows() -> Result<Vec<u8>> {
+/// Windows-specific: Read image from clipboard as CF_DIB and convert to PNG bytes.
+///
+/// Uses `clipboard-win` to read raw CF_DIB data (BITMAPINFOHEADER + pixel data,
+/// without the 14-byte BMP file header), then delegates to the cross-platform
+/// `dib_to_png` converter.
+#[allow(dead_code)]
+fn read_image_windows_as_png() -> Result<Vec<u8>> {
     use clipboard_win::{formats, get_clipboard};
-    let data = get_clipboard(formats::Bitmap)
-        .map_err(|e| anyhow::anyhow!("Failed to get image from clipboard: {}", e))?;
 
-    // Convert BMP to PNG for consistency with other platforms
-    let image = image::load_from_memory_with_format(&data, image::ImageFormat::Bmp)
-        .map_err(|e| anyhow::anyhow!("Failed to decode BMP: {}", e))?;
-    let rgba_image = image.to_rgba8();
+    let dib_data: Vec<u8> = get_clipboard(formats::RawData(formats::CF_DIB))
+        .map_err(|e| anyhow::anyhow!("No DIB image on clipboard: {}", e))?;
 
-    Ok(rgba_image.to_vec())
+    debug!(
+        dib_size_bytes = dib_data.len(),
+        "Read CF_DIB from Windows clipboard"
+    );
+    crate::clipboard::image_convert::dib_to_png(&dib_data)
 }
 
 /// Windows-specific: Write image to clipboard as Bitmap format

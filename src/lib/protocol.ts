@@ -1,3 +1,5 @@
+import { isWindowsPlatform } from './utils'
+
 const UC_PROTOCOL_RE = /^uc:\/\/(.+)$/
 
 /**
@@ -18,7 +20,7 @@ export function resolveUcUrl(ucUrl: string): string {
     return ucUrl
   }
   const path = match[1] // e.g. "thumbnail/rep-1" or "blob/blob-1"
-  if (navigator.userAgent.includes('Windows')) {
+  if (isWindowsPlatform()) {
     return `http://uc.localhost/${path}`
   }
   return `uc://localhost/${path}`

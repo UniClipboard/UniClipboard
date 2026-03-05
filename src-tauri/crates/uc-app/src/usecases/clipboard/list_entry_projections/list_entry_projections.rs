@@ -3,6 +3,7 @@
 
 use anyhow::Result;
 use std::sync::Arc;
+use tracing::warn;
 use uc_core::clipboard::PayloadAvailability;
 use uc_core::ports::{
     ClipboardEntryRepositoryPort, ClipboardRepresentationRepositoryPort,
@@ -106,36 +107,51 @@ impl ListClipboardEntryProjections {
             let active_time = entry.active_time_ms;
 
             // Get selection for this entry
-            let selection = self
-                .selection_repo
-                .get_selection(&entry.entry_id)
-                .await
-                .map_err(|e| {
-                    ListProjectionsError::RepositoryError(format!(
-                        "Failed to get selection for {}: {}",
-                        entry_id_str, e
-                    ))
-                })?
-                .ok_or_else(|| ListProjectionsError::SelectionNotFound(entry_id_str.clone()))?;
+            let selection = match self.selection_repo.get_selection(&entry.entry_id).await {
+                Ok(Some(selection)) => selection,
+                Ok(None) => {
+                    warn!(
+                        entry_id = %entry_id_str,
+                        "Skipping entry without selection while listing projections"
+                    );
+                    continue;
+                }
+                Err(e) => {
+                    warn!(
+                        entry_id = %entry_id_str,
+                        error = %e,
+                        "Skipping entry due to selection lookup failure"
+                    );
+                    continue;
+                }
+            };
 
             // Get preview representation
             let preview_rep_id = selection.selection.preview_rep_id.inner().clone();
-            let representation = self
+            let representation = match self
                 .representation_repo
                 .get_representation(&entry.event_id, &selection.selection.preview_rep_id)
                 .await
-                .map_err(|e| {
-                    ListProjectionsError::RepositoryError(format!(
-                        "Failed to get representation for {}/{}: {}",
-                        event_id_str, preview_rep_id, e
-                    ))
-                })?
-                .ok_or_else(|| {
-                    ListProjectionsError::RepresentationNotFound(format!(
-                        "{}/{}",
-                        event_id_str, preview_rep_id
-                    ))
-                })?;
+            {
+                Ok(Some(rep)) => rep,
+                Ok(None) => {
+                    warn!(
+                        event_id = %event_id_str,
+                        preview_rep_id = %preview_rep_id,
+                        "Skipping entry because preview representation is missing"
+                    );
+                    continue;
+                }
+                Err(e) => {
+                    warn!(
+                        event_id = %event_id_str,
+                        preview_rep_id = %preview_rep_id,
+                        error = %e,
+                        "Skipping entry due to preview representation lookup failure"
+                    );
+                    continue;
+                }
+            };
 
             let is_image = representation
                 .mime_type
@@ -216,7 +232,7 @@ impl ListClipboardEntryProjections {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::collections::HashMap;
+    use std::collections::{HashMap, HashSet};
     use uc_core::clipboard::{
         ClipboardEntry, ClipboardSelection, MimeType, PersistedClipboardRepresentation,
         SelectionPolicyVersion, ThumbnailMetadata,
@@ -237,6 +253,7 @@ mod tests {
     struct MockRepresentationRepository {
         representations:
             std::collections::HashMap<(String, String), uc_core::PersistedClipboardRepresentation>,
+        fail_keys: HashSet<(String, String)>,
     }
 
     struct MockThumbnailRepository {
@@ -293,10 +310,11 @@ mod tests {
             event_id: &EventId,
             rep_id: &RepresentationId,
         ) -> Result<Option<PersistedClipboardRepresentation>> {
-            Ok(self
-                .representations
-                .get(&(event_id.inner().clone(), rep_id.inner().clone()))
-                .cloned())
+            let key = (event_id.inner().clone(), rep_id.inner().clone());
+            if self.fail_keys.contains(&key) {
+                return Err(anyhow::anyhow!("payload_state BlobReady requires blob_id"));
+            }
+            Ok(self.representations.get(&key).cloned())
         }
 
         async fn get_representation_by_id(
@@ -373,6 +391,7 @@ mod tests {
         });
         let representation_repo = Arc::new(MockRepresentationRepository {
             representations: std::collections::HashMap::new(),
+            fail_keys: HashSet::new(),
         });
         let thumbnail_repo = Arc::new(MockThumbnailRepository {
             thumbnails: HashMap::new(),
@@ -400,6 +419,7 @@ mod tests {
         });
         let representation_repo = Arc::new(MockRepresentationRepository {
             representations: std::collections::HashMap::new(),
+            fail_keys: HashSet::new(),
         });
         let thumbnail_repo = Arc::new(MockThumbnailRepository {
             thumbnails: HashMap::new(),
@@ -424,6 +444,7 @@ mod tests {
         // 编译期失败即为预期：新增方法未实现
         let representation_repo = MockRepresentationRepository {
             representations: std::collections::HashMap::new(),
+            fail_keys: HashSet::new(),
         };
         let blob_id = uc_core::BlobId::from("test-blob");
         let _ = representation_repo
@@ -481,6 +502,7 @@ mod tests {
                 (event_id.inner().clone(), rep_id.inner().clone()),
                 representation,
             )]),
+            fail_keys: HashSet::new(),
         });
         let thumbnail_repo = Arc::new(MockThumbnailRepository {
             thumbnails: HashMap::from([(rep_id.inner().clone(), thumbnail)]),
@@ -550,6 +572,7 @@ mod tests {
                 (event_id.inner().clone(), rep_id.inner().clone()),
                 representation,
             )]),
+            fail_keys: HashSet::new(),
         });
         let thumbnail_repo = Arc::new(MockThumbnailRepository {
             thumbnails: HashMap::new(),
@@ -568,5 +591,97 @@ mod tests {
         assert_eq!(projection.preview, "staged text title");
         assert!(projection.has_detail);
         assert_eq!(projection.thumbnail_url, None);
+    }
+
+    #[tokio::test]
+    async fn test_skips_corrupted_representation_and_returns_other_entries() {
+        let good_entry_id = EntryId::from("entry-good");
+        let good_event_id = EventId::from("event-good");
+        let good_rep_id = RepresentationId::from("rep-good");
+
+        let bad_entry_id = EntryId::from("entry-bad");
+        let bad_event_id = EventId::from("event-bad");
+        let bad_rep_id = RepresentationId::from("rep-bad");
+
+        let good_entry = ClipboardEntry::new(
+            good_entry_id.clone(),
+            good_event_id.clone(),
+            100,
+            Some("good title".to_string()),
+            12,
+        );
+        let bad_entry = ClipboardEntry::new(
+            bad_entry_id.clone(),
+            bad_event_id.clone(),
+            101,
+            Some("bad title".to_string()),
+            34,
+        );
+
+        let good_selection = ClipboardSelectionDecision::new(
+            good_entry_id.clone(),
+            ClipboardSelection {
+                primary_rep_id: good_rep_id.clone(),
+                secondary_rep_ids: vec![],
+                preview_rep_id: good_rep_id.clone(),
+                paste_rep_id: good_rep_id.clone(),
+                policy_version: SelectionPolicyVersion::V1,
+            },
+        );
+        let bad_selection = ClipboardSelectionDecision::new(
+            bad_entry_id.clone(),
+            ClipboardSelection {
+                primary_rep_id: bad_rep_id.clone(),
+                secondary_rep_ids: vec![],
+                preview_rep_id: bad_rep_id.clone(),
+                paste_rep_id: bad_rep_id.clone(),
+                policy_version: SelectionPolicyVersion::V1,
+            },
+        );
+
+        let good_representation = PersistedClipboardRepresentation::new(
+            good_rep_id.clone(),
+            FormatId::from("public.utf8-plain-text"),
+            Some(MimeType("text/plain".to_string())),
+            12,
+            Some(b"good-content".to_vec()),
+            None,
+        );
+
+        let entry_repo = Arc::new(MockEntryRepository {
+            entries: vec![bad_entry, good_entry],
+        });
+        let selection_repo = Arc::new(MockSelectionRepository {
+            selections: HashMap::from([
+                (good_entry_id.inner().clone(), good_selection),
+                (bad_entry_id.inner().clone(), bad_selection),
+            ]),
+        });
+        let representation_repo = Arc::new(MockRepresentationRepository {
+            representations: HashMap::from([(
+                (good_event_id.inner().clone(), good_rep_id.inner().clone()),
+                good_representation,
+            )]),
+            fail_keys: HashSet::from([(bad_event_id.inner().clone(), bad_rep_id.inner().clone())]),
+        });
+        let thumbnail_repo = Arc::new(MockThumbnailRepository {
+            thumbnails: HashMap::new(),
+        });
+
+        let use_case = ListClipboardEntryProjections::new(
+            entry_repo,
+            selection_repo,
+            representation_repo,
+            thumbnail_repo,
+        );
+
+        let result = use_case
+            .execute(50, 0)
+            .await
+            .expect("corrupted representation should be skipped");
+
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].id, good_entry_id.inner().clone());
+        assert_eq!(result[0].preview, "good-content");
     }
 }

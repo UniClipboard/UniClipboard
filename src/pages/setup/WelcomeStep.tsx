@@ -20,7 +20,7 @@ export default function WelcomeStep({ onCreate, onJoin, loading }: WelcomeStepPr
         <p className="mt-4 text-lg text-muted-foreground">{t('subtitle')}</p>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2">
+      <div className="grid grid-cols-2 gap-4">
         <button
           type="button"
           onClick={onCreate}

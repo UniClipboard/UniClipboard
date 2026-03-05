@@ -135,30 +135,37 @@ impl CommonClipboardImpl {
         }
 
         if ctx.has(ContentFormat::Image) {
+            debug!("clipboard-rs reports ContentFormat::Image available");
             match ctx.get_image() {
-                Ok(img) => match img.to_png() {
-                    Ok(png) => {
-                        let bytes = png.get_bytes().to_vec();
-                        debug!(
-                            format_id = "image",
-                            size_bytes = bytes.len(),
-                            "Read image representation"
-                        );
-                        reps.push(ObservedClipboardRepresentation {
-                            id: RepresentationId::new(),
-                            format_id: "image".into(),
-                            mime: Some(MimeType("image/png".to_string())),
-                            bytes,
-                        });
+                Ok(img) => {
+                    debug!("clipboard-rs get_image() succeeded, converting to PNG");
+                    match img.to_png() {
+                        Ok(png) => {
+                            let bytes = png.get_bytes().to_vec();
+                            debug!(
+                                format_id = "image",
+                                size_bytes = bytes.len(),
+                                "Read image representation via clipboard-rs"
+                            );
+                            reps.push(ObservedClipboardRepresentation {
+                                id: RepresentationId::new(),
+                                format_id: "image".into(),
+                                mime: Some(MimeType("image/png".to_string())),
+                                bytes,
+                            });
+                        }
+                        Err(err) => {
+                            warn!(error = %err, "clipboard-rs: image available but to_png() failed");
+                        }
                     }
-                    Err(err) => {
-                        warn!(error = %err, "Failed to convert image to png");
-                    }
-                },
+                }
                 Err(err) => {
-                    warn!(error = %err, "Failed to read image representation");
+                    warn!(error = %err, "clipboard-rs: ContentFormat::Image reported available but get_image() failed");
                 }
             }
+        } else {
+            // Log at debug level -- this is normal when clipboard has only text
+            debug!("clipboard-rs reports no ContentFormat::Image available");
         }
 
         // raw fallback

@@ -5,7 +5,8 @@ use clipboard_rs::{Clipboard, ClipboardContext};
 use std::ops::Range;
 use std::sync::{Arc, Mutex};
 use tracing::{debug, debug_span, error, info, warn};
-use uc_core::clipboard::SystemClipboardSnapshot;
+use uc_core::clipboard::{MimeType, ObservedClipboardRepresentation, SystemClipboardSnapshot};
+use uc_core::ids::RepresentationId;
 use uc_core::ports::SystemClipboardPort;
 
 /// Windows clipboard implementation using clipboard-rs and clipboard-win
@@ -35,7 +36,50 @@ impl SystemClipboardPort for WindowsClipboard {
                     poison.to_string()
                 )
             })?;
-            let snapshot = CommonClipboardImpl::read_snapshot(&mut ctx)?;
+            let mut snapshot = CommonClipboardImpl::read_snapshot(&mut ctx)?;
+
+            // Check if clipboard-rs already captured an image
+            let has_image = snapshot.representations.iter().any(|rep| {
+                rep.mime
+                    .as_ref()
+                    .is_some_and(|m| m.as_str().starts_with("image/"))
+            });
+
+            if has_image {
+                debug!(
+                    formats = snapshot.representations.len(),
+                    total_size_bytes = snapshot.total_size_bytes(),
+                    "Captured system clipboard snapshot (image via clipboard-rs)"
+                );
+                return Ok(snapshot);
+            }
+
+            // No image from clipboard-rs -- try Windows native fallback.
+            // MUST drop the mutex guard before calling clipboard-win to avoid
+            // double clipboard open (clipboard-rs may still hold it internally).
+            drop(ctx);
+
+            match read_image_windows_as_png() {
+                Ok(png_bytes) => {
+                    info!(
+                        size_bytes = png_bytes.len(),
+                        "Read image via Windows native CF_DIB fallback"
+                    );
+                    snapshot
+                        .representations
+                        .push(ObservedClipboardRepresentation {
+                            id: RepresentationId::new(),
+                            format_id: "image".into(),
+                            mime: Some(MimeType("image/png".to_string())),
+                            bytes: png_bytes,
+                        });
+                }
+                Err(err) => {
+                    // Not necessarily an error -- clipboard may genuinely have no image.
+                    // Use debug level (not warn) to avoid log noise when user copies text.
+                    debug!(error = %err, "Windows native image fallback unavailable");
+                }
+            }
 
             debug!(
                 formats = snapshot.representations.len(),
@@ -160,7 +204,6 @@ fn write_text_windows_native(text: &str) -> Result<()> {
 /// Uses `clipboard-win` to read raw CF_DIB data (BITMAPINFOHEADER + pixel data,
 /// without the 14-byte BMP file header), then delegates to the cross-platform
 /// `dib_to_png` converter.
-#[allow(dead_code)]
 fn read_image_windows_as_png() -> Result<Vec<u8>> {
     use clipboard_win::{formats, get_clipboard};
 

@@ -4,8 +4,8 @@ milestone: v0.1
 milestone_name: milestone
 status: unknown
 stopped_at: Completed 06-01-PLAN.md
-last_updated: '2026-03-05T06:44:33.986Z'
-last_activity: '2026-03-05 - Completed 05-02: Windows image capture verified working on Windows'
+last_updated: '2026-03-05T06:55:04.143Z'
+last_activity: '2026-03-05 - Completed 06-01: Dashboard image display fix with platform-aware URL resolution'
 progress:
   total_phases: 3
   completed_phases: 3

@@ -3,9 +3,9 @@ gsd_state_version: 1.0
 milestone: v0.1
 milestone_name: milestone
 status: in-progress
-stopped_at: Checkpoint 05-02-PLAN.md Task 2 (human-verify)
-last_updated: '2026-03-05T05:43:02.000Z'
-last_activity: '2026-03-05 - Completed 05-02 Task 1: Wire Windows image fallback (awaiting manual verification)'
+stopped_at: Completed 05-02-PLAN.md
+last_updated: '2026-03-05T06:00:00.000Z'
+last_activity: '2026-03-05 - Completed 05-02: Windows image capture verified working'
 progress:
   total_phases: 2
   completed_phases: 1
@@ -78,7 +78,8 @@ Progress: [==========] 100%
 - Phase 4 completed: Optimize blob at-rest storage format
 - Phase 5 added: 支持Windows平台的剪切板图片捕获
 - Phase 5 Plan 01 completed: clipboard-rs 0.3.3 upgrade + dib_to_png converter + read_image_windows_as_png
-- Phase 5 Plan 02 completed: Wired native CF_DIB fallback into read_snapshot with diagnostic logging
+- Phase 5 Plan 02 completed: Wired native CF_DIB fallback into read_snapshot with diagnostic logging (verified working on Windows)
+- Phase 5 completed: Windows clipboard image capture working via clipboard-rs primary path
 
 ### Pending Todos
 
@@ -98,7 +99,7 @@ None.
 
 ## Session Continuity
 
-Last activity: 2026-03-05 - Completed 05-02 Task 1: Wire Windows image fallback (awaiting manual verification)
-Last session: 2026-03-05T05:49:00.000Z
-Stopped at: Checkpoint 05-02-PLAN.md Task 2 (human-verify)
+Last activity: 2026-03-05 - Completed 05-02: Windows image capture verified working on Windows
+Last session: 2026-03-05T06:00:00.000Z
+Stopped at: Completed 05-02-PLAN.md
 Resume file: .planning/phases/05-windows/05-02-SUMMARY.md

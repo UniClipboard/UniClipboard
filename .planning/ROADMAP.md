@@ -87,3 +87,14 @@ Plans:
 - [ ] 08-01-PLAN.md — V3 binary payload codec (uc-core) + V3 chunked encoder/decoder with zstd compression (uc-infra)
 - [ ] 08-02-PLAN.md — Port signature changes (Arc<[u8]>), outbound rewrite with V3 encode + parallelization, V1/V2 type deletion
 - [ ] 08-03-PLAN.md — Inbound rewrite for V3-only decode, V2 chunked transfer removal, tracing spans
+
+### Phase 9: Optimize large image clipboard read pipeline
+
+**Goal:** Fix 3 bottlenecks in image clipboard capture: (1) slow TIFF->PNG conversion (~3s), (2) duplicate macOS TIFF format reads (34MB x 2), (3) excessive memory usage (71MB for one image)
+**Requirements**: [TIFF-DEDUP, SKIP-TRANSCODE, REDUCE-MEMORY]
+**Depends on:** None (independent of Phase 8)
+**Plans:** 1 plan
+
+Plans:
+
+- [ ] 09-01-PLAN.md — Optimize read_snapshot (direct TIFF read, alias dedup) + blob worker TIFF-to-PNG conversion

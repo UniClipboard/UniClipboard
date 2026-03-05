@@ -62,3 +62,15 @@ Plans:
 Plans:
 
 - [x] 06-01-PLAN.md — Create resolveUcUrl helper with convertFileSrc, wire into ClipboardItem + API layer
+
+### Phase 7: Redesign setup flow UX for cross-platform consistency
+
+**Goal:** Redesign the setup flow frontend (SetupPage + all step components) to achieve consistent UX across Windows, macOS, and Linux. Extract a shared StepLayout component, unify slide animations with directional transitions, change WelcomeStep to vertical card layout, add step dot indicators, and standardize on sm: breakpoint only.
+**Requirements:** [UX-01, UX-02, UX-03, UX-04, UX-05, UX-06, UX-07, UX-08]
+**Depends on:** Phase 6
+**Plans:** 2 plans
+
+Plans:
+
+- [ ] 07-01-PLAN.md — Create StepLayout, StepDotIndicator, ProcessingJoinStep components and types
+- [ ] 07-02-PLAN.md — Migrate all steps to StepLayout, update SetupPage orchestrator, visual verification

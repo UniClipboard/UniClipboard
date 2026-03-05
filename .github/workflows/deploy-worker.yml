@@ -1,10 +1,6 @@
 name: Deploy Update Server Worker
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'workers/update-server/**'
   workflow_dispatch:
 
 jobs:
@@ -21,3 +17,4 @@ jobs:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           workingDirectory: workers/update-server
+          packageManager: npm

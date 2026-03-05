@@ -74,3 +74,16 @@ Plans:
 
 - [ ] 07-01-PLAN.md — Create StepLayout, StepDotIndicator, ProcessingJoinStep components and types
 - [ ] 07-02-PLAN.md — Migrate all steps to StepLayout, update SetupPage orchestrator, visual verification
+
+### Phase 8: Optimize large image sync pipeline (V3 binary protocol, compression, zero-copy fanout)
+
+**Goal:** Replace V2 JSON+base64 clipboard sync protocol with V3 binary wire format (37-byte header, length-prefixed payload codec), add zstd compression before encryption inside chunked transfer, eliminate per-peer memory copies via Arc<[u8]> zero-copy fanout, parallelize encrypt+ensure_business_path with tokio::join!, and delete all V1/V2 legacy code paths.
+**Requirements:** [V3-CODEC, V3-WIRE, V3-COMPRESS, V3-LARGE, V3-ARC, V3-OUTBOUND, V3-INBOUND, V3-NOENC, V3-NOLEAK]
+**Depends on:** Phase 7
+**Plans:** 3 plans
+
+Plans:
+
+- [ ] 08-01-PLAN.md — V3 binary payload codec (uc-core) + V3 chunked encoder/decoder with zstd compression (uc-infra)
+- [ ] 08-02-PLAN.md — Port signature changes (Arc<[u8]>), outbound rewrite with V3 encode + parallelization, V1/V2 type deletion
+- [ ] 08-03-PLAN.md — Inbound rewrite for V3-only decode, V2 chunked transfer removal, tracing spans

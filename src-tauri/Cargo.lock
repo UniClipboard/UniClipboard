@@ -1245,9 +1245,9 @@ checksum = "a1d728cc89cf3aee9ff92b05e62b19ee65a02b5702cff7d5a377e32c6ae29d8d"
 
 [[package]]
 name = "clipboard-rs"
-version = "0.3.1"
+version = "0.3.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "915fa0d77c59e330333562661159b14205f76a41a6e6eb59957724f938cb8203"
+checksum = "58c4843457db4cfc367efd4fc554e0f222c9da86359606132adc0db01592b82b"
 dependencies = [
  "clipboard-win",
  "image",
@@ -9024,7 +9024,7 @@ dependencies = [
 
 [[package]]
 name = "uniclipboard"
-version = "0.1.0-alpha.4"
+version = "0.1.0-alpha.5"
 dependencies = [
  "anyhow",
  "async-trait",

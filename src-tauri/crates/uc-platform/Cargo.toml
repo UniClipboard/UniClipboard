@@ -53,7 +53,7 @@ base64 = "0.22"
 subtle = "2.5"
 
 # Clipboard
-clipboard-rs = { version = "0.3", features = ["default"] }
+clipboard-rs = { version = "0.3.3", features = ["default"] }
 arboard = "3.4"
 
 # Image handling

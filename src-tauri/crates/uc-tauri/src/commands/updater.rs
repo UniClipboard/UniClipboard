@@ -111,19 +111,24 @@ pub async fn check_for_update(
 
         info!(channel = %channel_str, "checking for update");
 
-        // Build endpoint URL for this channel
-        let url_str = format!(
+        // Primary: Cloudflare Worker
+        let primary_url: url::Url =
+            format!("https://release.uniclipboard.app/{}.json", channel_str)
+                .parse()
+                .map_err(|e| format!("Invalid primary updater URL: {}", e))?;
+
+        // Fallback: GitHub Pages
+        let fallback_url: url::Url = format!(
             "https://uniclipboard.github.io/UniClipboard/{}.json",
             channel_str
-        );
-        let url: url::Url = url_str
-            .parse()
-            .map_err(|e| format!("Invalid updater URL: {}", e))?;
+        )
+        .parse()
+        .map_err(|e| format!("Invalid fallback updater URL: {}", e))?;
 
-        // Build updater and check for an update
+        // Build updater with dual endpoints (tries in order, first success wins)
         let updater = app
             .updater_builder()
-            .endpoints(vec![url])
+            .endpoints(vec![primary_url, fallback_url])
             .map_err(|e| e.to_string())?
             .build()
             .map_err(|e| e.to_string())?;

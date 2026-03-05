@@ -326,6 +326,44 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Upload artifacts to R2
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          npm install -g wrangler
+          VERSION="${{ needs.validate.outputs.version }}"
+          for file in release-assets/*; do
+            filename=$(basename "$file")
+            echo "Uploading ${filename} to R2..."
+            wrangler r2 object put \
+              "uniclipboard-releases/artifacts/v${VERSION}/${filename}" \
+              --file "$file"
+          done
+
+      - name: Assemble and upload R2 manifest
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          VERSION="${{ needs.validate.outputs.version }}"
+          CHANNEL="${{ needs.validate.outputs.channel }}"
+          WORKER_URL="${{ vars.UPDATE_SERVER_URL }}"
+
+          node scripts/assemble-update-manifest.js \
+            --version "$VERSION" \
+            --artifacts-dir release-assets \
+            --output "updates-r2/${CHANNEL}.json" \
+            --base-url "${WORKER_URL}/artifacts/v${VERSION}"
+
+          echo "R2 manifest assembled for channel: ${CHANNEL}"
+          cat "updates-r2/${CHANNEL}.json"
+
+          wrangler r2 object put \
+            "uniclipboard-releases/manifests/${CHANNEL}.json" \
+            --file "updates-r2/${CHANNEL}.json" \
+            --content-type "application/json"
+
       - name: Assemble update manifest
         run: |
           VERSION="${{ needs.validate.outputs.version }}"

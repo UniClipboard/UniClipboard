@@ -49,7 +49,10 @@
   },
   "plugins": {
     "updater": {
-      "endpoints": ["https://uniclipboard.github.io/UniClipboard/stable.json"],
+      "endpoints": [
+        "https://release.uniclipboard.app/stable.json",
+        "https://uniclipboard.github.io/UniClipboard/stable.json"
+      ],
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEIyNjgwODM2ODY1QzI3MzgKUldRNEoxeUdOZ2hvc3RZOXRMNTRiOHBWQ1d2RkljN2ViTzlpRDExSHZmMmZxY01ZZW1Zd3RJV2IK"
     }
   }

@@ -11,8 +11,8 @@ use uc_core::network::protocol::{
 };
 use uc_core::network::{ClipboardMessage, ProtocolMessage};
 use uc_core::ports::{
-    ClipboardTransportPort, DeviceIdentityPort, EncryptionPort, EncryptionSessionPort,
-    PeerDirectoryPort, SettingsPort, SystemClipboardPort, TransferPayloadEncryptorPort,
+    ClipboardTransportPort, DeviceIdentityPort, EncryptionSessionPort, PeerDirectoryPort,
+    SettingsPort, SystemClipboardPort, TransferPayloadEncryptorPort,
 };
 use uc_core::{ClipboardChangeOrigin, SystemClipboardSnapshot};
 
@@ -21,8 +21,6 @@ pub struct SyncOutboundClipboardUseCase {
     clipboard_network: Arc<dyn ClipboardTransportPort>,
     peer_directory: Arc<dyn PeerDirectoryPort>,
     encryption_session: Arc<dyn EncryptionSessionPort>,
-    #[allow(dead_code)]
-    encryption: Arc<dyn EncryptionPort>,
     device_identity: Arc<dyn DeviceIdentityPort>,
     settings: Arc<dyn SettingsPort>,
     transfer_encryptor: Arc<dyn TransferPayloadEncryptorPort>,
@@ -34,7 +32,6 @@ impl SyncOutboundClipboardUseCase {
         clipboard_network: Arc<dyn ClipboardTransportPort>,
         peer_directory: Arc<dyn PeerDirectoryPort>,
         encryption_session: Arc<dyn EncryptionSessionPort>,
-        encryption: Arc<dyn EncryptionPort>,
         device_identity: Arc<dyn DeviceIdentityPort>,
         settings: Arc<dyn SettingsPort>,
         transfer_encryptor: Arc<dyn TransferPayloadEncryptorPort>,
@@ -44,7 +41,6 @@ impl SyncOutboundClipboardUseCase {
             clipboard_network,
             peer_directory,
             encryption_session,
-            encryption,
             device_identity,
             settings,
             transfer_encryptor,
@@ -287,7 +283,8 @@ mod tests {
         ProtocolMessage,
     };
     use uc_core::ports::{
-        ClipboardTransportPort, NetworkEventPort, PairingTransportPort, PeerDirectoryPort,
+        ClipboardTransportPort, EncryptionPort, NetworkEventPort, PairingTransportPort,
+        PeerDirectoryPort,
     };
     use uc_core::security::model::{
         EncryptedBlob, EncryptionAlgo, EncryptionError, EncryptionFormatVersion, KdfParams, Kek,
@@ -604,9 +601,6 @@ mod tests {
             network,
             Arc::new(TestEncryptionSession {
                 ready: encryption_ready,
-            }),
-            Arc::new(TestEncryption {
-                encrypt_calls: encrypt_calls.clone(),
             }),
             Arc::new(TestDeviceIdentity),
             Arc::new(TestSettings {

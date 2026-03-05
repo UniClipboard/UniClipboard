@@ -740,7 +740,6 @@ impl<'a> UseCases<'a> {
             self.runtime.deps.network_ports.clipboard.clone(),
             self.runtime.deps.network_ports.peers.clone(),
             self.runtime.deps.encryption_session.clone(),
-            self.runtime.deps.encryption.clone(),
             self.runtime.deps.device_identity.clone(),
             self.runtime.deps.settings.clone(),
             Arc::new(uc_infra::clipboard::TransferPayloadEncryptorAdapter),

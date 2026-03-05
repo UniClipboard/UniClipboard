@@ -5,6 +5,7 @@ use anyhow::Result;
 use std::sync::Arc;
 use tracing::warn;
 use uc_core::clipboard::PayloadAvailability;
+use uc_core::network::protocol::MIME_IMAGE_PREFIX;
 use uc_core::ports::{
     ClipboardEntryRepositoryPort, ClipboardRepresentationRepositoryPort,
     ClipboardSelectionRepositoryPort, ThumbnailRepositoryPort,
@@ -156,7 +157,11 @@ impl ListClipboardEntryProjections {
             let is_image = representation
                 .mime_type
                 .as_ref()
-                .map(|mt| mt.as_str().starts_with("image/"))
+                .map(|mt| {
+                    mt.as_str()
+                        .to_ascii_lowercase()
+                        .starts_with(MIME_IMAGE_PREFIX)
+                })
                 .unwrap_or(false);
 
             let preview = if let Some(data) = representation.inline_data.as_ref() {

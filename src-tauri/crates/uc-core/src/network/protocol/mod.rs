@@ -7,7 +7,9 @@ mod pairing;
 mod protocol_message;
 
 pub use clipboard::{ClipboardMessage, ClipboardPayloadVersion};
-pub use clipboard_payload::ClipboardTextPayloadV1;
+pub use clipboard_payload::{
+    ClipboardTextPayloadV1, MIME_IMAGE_PREFIX, MIME_TEXT_HTML, MIME_TEXT_PLAIN, MIME_TEXT_RTF,
+};
 pub use clipboard_payload_v2::{ClipboardMultiRepPayloadV2, WireRepresentation};
 pub use device_announce::DeviceAnnounceMessage;
 pub use heartbeat::HeartbeatMessage;

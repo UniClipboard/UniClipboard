@@ -1,5 +1,11 @@
 use serde::{Deserialize, Serialize};
 
+/// Standard MIME type constants used throughout the clipboard protocol.
+pub const MIME_IMAGE_PREFIX: &str = "image/";
+pub const MIME_TEXT_HTML: &str = "text/html";
+pub const MIME_TEXT_RTF: &str = "text/rtf";
+pub const MIME_TEXT_PLAIN: &str = "text/plain";
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ClipboardTextPayloadV1 {
     pub text: String,

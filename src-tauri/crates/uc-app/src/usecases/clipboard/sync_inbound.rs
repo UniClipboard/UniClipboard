@@ -8,7 +8,8 @@ use tokio::sync::Mutex;
 use tracing::{debug, error, info, info_span, warn, Instrument};
 use uc_core::ids::{EntryId, FormatId, RepresentationId};
 use uc_core::network::protocol::{
-    ClipboardMultiRepPayloadV2, ClipboardPayloadVersion, ClipboardTextPayloadV1, WireRepresentation,
+    ClipboardMultiRepPayloadV2, ClipboardPayloadVersion, ClipboardTextPayloadV1,
+    WireRepresentation, MIME_IMAGE_PREFIX, MIME_TEXT_HTML, MIME_TEXT_PLAIN, MIME_TEXT_RTF,
 };
 use uc_core::network::ClipboardMessage;
 use uc_core::ports::clipboard::{RepresentationCachePort, SpoolQueuePort};
@@ -442,7 +443,7 @@ impl SyncInboundClipboardUseCase {
             }
         };
 
-        let v2_payload: ClipboardMultiRepPayloadV2 = match serde_json::from_slice(&plaintext) {
+        let mut v2_payload: ClipboardMultiRepPayloadV2 = match serde_json::from_slice(&plaintext) {
             Ok(p) => p,
             Err(e) => {
                 error!(
@@ -458,14 +459,17 @@ impl SyncInboundClipboardUseCase {
             }
         };
 
-        let selected = match select_highest_priority_repr(&v2_payload.representations) {
-            Some(r) => r,
+        let selected_idx = match select_highest_priority_repr_index(&v2_payload.representations) {
+            Some(i) => i,
             None => {
                 warn!(message_id = %message.id, "V2 inbound: no representations — dropping");
                 self.rollback_recent_id(&message.id).await;
                 return Ok(InboundApplyOutcome::Skipped);
             }
         };
+
+        // Take ownership via swap_remove to avoid cloning potentially large bytes.
+        let selected = v2_payload.representations.swap_remove(selected_idx);
 
         // Construct MimeType from wire string.
         // MimeType(s.to_string()) is correct — there is no from_str_lossy method.
@@ -478,7 +482,7 @@ impl SyncInboundClipboardUseCase {
                 id: RepresentationId::new(),
                 format_id: FormatId::from(selected.format_id.as_str()),
                 mime,
-                bytes: selected.bytes.clone(),
+                bytes: selected.bytes,
             }],
         };
 
@@ -537,25 +541,25 @@ impl SyncInboundClipboardUseCase {
 
 const REMOTE_PUSH_ORIGIN_TTL_MS: u64 = 100;
 
-/// Select the highest-priority WireRepresentation from a V2 inbound payload.
+/// Returns the index of the highest-priority WireRepresentation, or None if empty.
 ///
 /// Priority order (highest first): image/* > text/html > text/rtf > text/plain > other.
 /// This mirrors the locked decision from CONTEXT.md § "Multi-representation strategy".
-fn select_highest_priority_repr(
-    representations: &[WireRepresentation],
-) -> Option<&WireRepresentation> {
+fn select_highest_priority_repr_index(representations: &[WireRepresentation]) -> Option<usize> {
     fn priority(mime: Option<&str>) -> u8 {
         match mime {
-            Some(m) if m.to_ascii_lowercase().starts_with("image/") => 4,
-            Some(m) if m.eq_ignore_ascii_case("text/html") => 3,
-            Some(m) if m.eq_ignore_ascii_case("text/rtf") => 2,
-            Some(m) if m.eq_ignore_ascii_case("text/plain") => 1,
+            Some(m) if m.to_ascii_lowercase().starts_with(MIME_IMAGE_PREFIX) => 4,
+            Some(m) if m.eq_ignore_ascii_case(MIME_TEXT_HTML) => 3,
+            Some(m) if m.eq_ignore_ascii_case(MIME_TEXT_RTF) => 2,
+            Some(m) if m.eq_ignore_ascii_case(MIME_TEXT_PLAIN) => 1,
             _ => 0,
         }
     }
     representations
         .iter()
-        .max_by_key(|r| priority(r.mime.as_deref()))
+        .enumerate()
+        .max_by_key(|(_, r)| priority(r.mime.as_deref()))
+        .map(|(i, _)| i)
 }
 
 fn is_text_plain_mime(mime: &str) -> bool {
@@ -578,7 +582,7 @@ fn first_text_representation_len(snapshot: &SystemClipboardSnapshot) -> Option<u
         .find(|rep| {
             rep.mime
                 .as_ref()
-                .is_some_and(|mime| mime.as_str().eq_ignore_ascii_case("text/plain"))
+                .is_some_and(|mime| mime.as_str().eq_ignore_ascii_case(MIME_TEXT_PLAIN))
         })
         .map(|rep| rep.bytes.len())
 }
@@ -1512,7 +1516,7 @@ mod tests {
     }
 
     #[tokio::test(flavor = "current_thread")]
-    async fn v2_message_with_tampered_content_returns_skipped() {
+    async fn v2_message_with_tampered_content_returns_err() {
         let log_buffer = init_test_tracing();
         let start_len = log_buffer.lock().expect("log buffer lock").len();
 

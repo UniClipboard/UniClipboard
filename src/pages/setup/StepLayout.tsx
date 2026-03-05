@@ -41,7 +41,7 @@ export default function StepLayout({
       transition={{ duration: 0.2, ease: 'easeOut' }}
     >
       {(headerLeft || headerRight) && (
-        <div data-testid="step-header" className="flex items-center justify-between">
+        <div data-testid="step-header" className="mb-6 flex items-center justify-between text-base">
           {headerLeft ?? <div />}
           {headerRight ?? <div />}
         </div>

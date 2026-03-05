@@ -1,5 +1,5 @@
 import { AnimatePresence } from 'framer-motion'
-import { Loader2, Shield, Wifi, Key } from 'lucide-react'
+import { Loader2 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate } from 'react-router-dom'
@@ -389,21 +389,6 @@ export default function SetupPage({ onCompleteSetup }: SetupPageProps = {}) {
             <StepDotIndicator totalSteps={stepInfo.total} currentStep={stepInfo.current} />
           </div>
         )}
-
-        <div className="pointer-events-none absolute bottom-6 right-6 hidden flex-col gap-2 text-[0.625rem] text-muted-foreground/60 sm:flex">
-          <div className="flex items-center gap-1.5">
-            <Shield className="h-3 w-3" />
-            <span>{t('badges.e2ee')}</span>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <Key className="h-3 w-3" />
-            <span>{t('badges.localKeys')}</span>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <Wifi className="h-3 w-3" />
-            <span>{t('badges.lanDiscovery')}</span>
-          </div>
-        </div>
       </div>
     </div>
   )

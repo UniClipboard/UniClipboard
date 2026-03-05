@@ -175,6 +175,8 @@ impl SyncOutboundClipboardUseCase {
         let first_peer = sendable_peers[0].clone();
         let remaining_peers = sendable_peers[1..].to_vec();
 
+        let raw_bytes = plaintext_bytes.len();
+
         // Parallel: encrypt + first peer's ensure_business_path
         let (encrypted_result, ensure_result) = tokio::join!(
             async {
@@ -190,12 +192,19 @@ impl SyncOutboundClipboardUseCase {
                     anyhow::anyhow!("failed to encrypt outbound clipboard payload: {e}")
                 })?;
 
+                info!(
+                    raw_bytes,
+                    encrypted_bytes = encrypted_content.len(),
+                    "outbound payload encrypted"
+                );
+
                 let framed = ProtocolMessage::Clipboard(clipboard_header)
                     .frame_to_bytes(Some(&encrypted_content))
                     .context("failed to frame outbound V3 clipboard message")?;
 
                 Ok::<Arc<[u8]>, anyhow::Error>(Arc::from(framed.into_boxed_slice()))
-            },
+            }
+            .instrument(info_span!("outbound.prepare", raw_bytes)),
             self.clipboard_network
                 .ensure_business_path(&first_peer.peer_id)
         );
@@ -211,10 +220,13 @@ impl SyncOutboundClipboardUseCase {
         match ensure_result {
             Ok(()) => {
                 connect_success_count += 1;
-                if let Err(err) = self
-                    .clipboard_network
-                    .send_clipboard(&first_peer.peer_id, outbound_bytes.clone())
-                    .await
+                if let Err(err) = async {
+                    self.clipboard_network
+                        .send_clipboard(&first_peer.peer_id, outbound_bytes.clone())
+                        .await
+                }
+                .instrument(info_span!("outbound.send", peer_id = %first_peer.peer_id))
+                .await
                 {
                     warn!(
                         peer_id = %first_peer.peer_id,
@@ -253,10 +265,13 @@ impl SyncOutboundClipboardUseCase {
             }
             connect_success_count += 1;
 
-            if let Err(err) = self
-                .clipboard_network
-                .send_clipboard(&peer.peer_id, outbound_bytes.clone())
-                .await
+            if let Err(err) = async {
+                self.clipboard_network
+                    .send_clipboard(&peer.peer_id, outbound_bytes.clone())
+                    .await
+            }
+            .instrument(info_span!("outbound.send", peer_id = %peer.peer_id))
+            .await
             {
                 warn!(
                     peer_id = %peer.peer_id,
@@ -333,7 +348,7 @@ mod tests {
     use uc_core::security::model::{EncryptionError, MasterKey};
     use uc_core::settings::model::Settings;
     use uc_core::{DeviceId, MimeType, ObservedClipboardRepresentation, SystemClipboardSnapshot};
-    use uc_infra::clipboard::{ChunkedDecoderV3, TransferPayloadEncryptorAdapter};
+    use uc_infra::clipboard::{ChunkedDecoder, TransferPayloadEncryptorAdapter};
 
     struct TestSystemClipboard {
         snapshot: SystemClipboardSnapshot,
@@ -743,9 +758,8 @@ mod tests {
         );
 
         // Decode the raw V3 payload (trailing bytes after JSON header)
-        let plaintext =
-            ChunkedDecoderV3::decode_from(Cursor::new(v3_raw_payload), &test_master_key)
-                .expect("V3 chunk decode must succeed");
+        let plaintext = ChunkedDecoder::decode_from(Cursor::new(v3_raw_payload), &test_master_key)
+            .expect("V3 chunk decode must succeed");
 
         // V3: plaintext decodes as ClipboardBinaryPayload
         let v3_payload = ClipboardBinaryPayload::decode_from(&mut Cursor::new(&plaintext))
@@ -832,7 +846,7 @@ mod tests {
             .execute(multi_rep_snapshot, ClipboardChangeOrigin::LocalCapture)
             .expect("execute multi-rep capture");
 
-        // V3 does NOT call encrypt_blob (uses ChunkedEncoderV3 directly)
+        // V3 does NOT call encrypt_blob (uses ChunkedEncoder directly)
         assert_eq!(
             encrypt_calls.load(Ordering::SeqCst),
             0,
@@ -856,9 +870,8 @@ mod tests {
             "V3 JSON header must have empty encrypted_content"
         );
 
-        let plaintext =
-            ChunkedDecoderV3::decode_from(Cursor::new(v3_raw_payload), &test_master_key)
-                .expect("V3 chunk decode");
+        let plaintext = ChunkedDecoder::decode_from(Cursor::new(v3_raw_payload), &test_master_key)
+            .expect("V3 chunk decode");
         let v3_payload = ClipboardBinaryPayload::decode_from(&mut Cursor::new(&plaintext))
             .expect("V3 payload decode");
 

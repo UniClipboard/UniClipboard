@@ -1,24 +1,11 @@
 //! Chunk-level AEAD streaming encoder and decoder for clipboard wire transfer.
 //!
-//! Supports V2 (UC2) and V3 (UC3) wire formats. V3 adds zstd compression
-//! before encryption for payloads exceeding `COMPRESSION_THRESHOLD`.
+//! V3-only wire format with zstd compression for payloads exceeding `COMPRESSION_THRESHOLD`.
 //!
-//! # Memory Contract (LOCKED — from CONTEXT.md)
-//! Memory usage is bounded by CHUNK_SIZE × 2 regardless of total payload size:
+//! # Memory Contract (LOCKED -- from CONTEXT.md)
+//! Memory usage is bounded by CHUNK_SIZE x 2 regardless of total payload size:
 //! - Encoder: one plaintext chunk slice (no copy) + one ciphertext Vec<u8> per iteration.
 //! - Decoder: one ciphertext Vec<u8> + one plaintext Vec<u8> per chunk, appended to output.
-//!
-//! # V2 Wire Format (32-byte header)
-//! ```text
-//! [4 bytes]  magic: 0x55 0x43 0x32 0x00 ("UC2\0")
-//! [16 bytes] transfer_id (UUID v4 raw bytes, little-endian UUID byte order)
-//! [4 bytes]  total_chunks (u32 LE)
-//! [4 bytes]  chunk_size_hint (u32 LE)
-//! [4 bytes]  total_plaintext_len (u32 LE)
-//! then for each chunk i in 0..total_chunks:
-//!   [4 bytes]  chunk_ciphertext_len (u32 LE)
-//!   [N bytes]  ciphertext (plaintext_chunk + 16-byte Poly1305 tag)
-//! ```
 //!
 //! # V3 Wire Format (37-byte header)
 //! ```text
@@ -28,8 +15,10 @@
 //! [16 bytes] transfer_id (UUID v4 raw bytes)
 //! [4 bytes]  total_chunks (u32 LE)
 //! [4 bytes]  chunk_size_hint (u32 LE)
-//! [4 bytes]  total_plaintext_len (u32 LE) — compressed size when compression active
-//! then chunked AEAD same as V2
+//! [4 bytes]  total_plaintext_len (u32 LE) -- compressed size when compression active
+//! then for each chunk i in 0..total_chunks:
+//!   [4 bytes]  chunk_ciphertext_len (u32 LE)
+//!   [N bytes]  ciphertext (plaintext_chunk + 16-byte Poly1305 tag)
 //! ```
 
 use std::io::{Cursor, Read, Write};
@@ -45,11 +34,8 @@ use uc_core::security::{aad, model::MasterKey};
 use uuid::Uuid;
 
 /// Nominal chunk size: 256 KB.
-/// Peak memory per encode or decode call: ~2 × CHUNK_SIZE.
+/// Peak memory per encode or decode call: ~2 x CHUNK_SIZE.
 pub const CHUNK_SIZE: usize = 256 * 1024;
-
-/// Magic bytes identifying a V2 chunked clipboard payload ("UC2\0").
-pub const V2_MAGIC: [u8; 4] = [0x55, 0x43, 0x32, 0x00];
 
 /// Magic bytes identifying a V3 chunked clipboard payload ("UC3\0").
 pub const V3_MAGIC: [u8; 4] = [0x55, 0x43, 0x33, 0x00];
@@ -70,8 +56,8 @@ pub const ZSTD_LEVEL: i32 = 3;
 /// Adapters map these to `TransferCryptoError` at the port boundary.
 #[derive(Debug, thiserror::Error)]
 pub enum ChunkedTransferError {
-    /// First 4 bytes are not V2_MAGIC.
-    #[error("invalid V2 magic bytes")]
+    /// First 4 bytes do not match V3_MAGIC.
+    #[error("invalid magic bytes")]
     InvalidMagic,
     /// Stream ended before the fixed-size header was fully read.
     #[error("stream ended before header was complete")]
@@ -127,7 +113,7 @@ impl From<ChunkedTransferError> for TransferCryptoError {
                 TransferCryptoError::InvalidFormat(reason)
             }
             ChunkedTransferError::InvalidMagic => {
-                TransferCryptoError::InvalidFormat("invalid V2 magic bytes".into())
+                TransferCryptoError::InvalidFormat("invalid magic bytes".into())
             }
             ChunkedTransferError::TruncatedHeader => {
                 TransferCryptoError::InvalidFormat("stream ended before header was complete".into())
@@ -151,210 +137,13 @@ impl From<ChunkedTransferError> for TransferCryptoError {
     }
 }
 
-/// Streaming encoder for V2 chunked clipboard transfers.
+/// Streaming encoder for V3 chunked clipboard transfers with compression support.
 pub struct ChunkedEncoder;
 
-/// Streaming decoder for V2 chunked clipboard transfers.
+/// Streaming decoder for V3 chunked clipboard transfers with decompression support.
 pub struct ChunkedDecoder;
 
 impl ChunkedEncoder {
-    /// Encode `plaintext` in V2 streaming wire format, writing directly to `writer`.
-    ///
-    /// Memory usage is bounded by CHUNK_SIZE × 2 regardless of `plaintext.len()`.
-    /// Each chunk is encrypted and flushed to `writer` before the next chunk is processed.
-    ///
-    /// # Arguments
-    /// * `writer`      — destination implementing `std::io::Write` (e.g., libp2p stream)
-    /// * `master_key`  — 32-byte XChaCha20-Poly1305 key
-    /// * `transfer_id` — 16-byte transfer identifier (UUID v4 raw bytes)
-    /// * `plaintext`   — input bytes to chunk and encrypt
-    pub fn encode_to<W: Write>(
-        mut writer: W,
-        master_key: &MasterKey,
-        transfer_id: &[u8; 16],
-        plaintext: &[u8],
-    ) -> Result<(), ChunkedTransferError> {
-        let cipher = XChaCha20Poly1305::new_from_slice(master_key.as_bytes())
-            .map_err(|e| ChunkedTransferError::EncryptFailed(e.to_string()))?;
-
-        let total_plaintext_len = u32::try_from(plaintext.len()).map_err(|_| {
-            ChunkedTransferError::EncryptFailed(format!(
-                "plaintext length {} exceeds u32::MAX",
-                plaintext.len()
-            ))
-        })?;
-        let total_chunks = if plaintext.is_empty() {
-            0u32
-        } else {
-            ((plaintext.len() + CHUNK_SIZE - 1) / CHUNK_SIZE) as u32
-        };
-
-        // Write fixed header (32 bytes total):
-        //   [0..4]   magic
-        //   [4..20]  transfer_id
-        //   [20..24] total_chunks
-        //   [24..28] chunk_size_hint
-        //   [28..32] total_plaintext_len
-        writer.write_all(&V2_MAGIC)?;
-        writer.write_all(transfer_id)?;
-        writer.write_all(&total_chunks.to_le_bytes())?;
-        writer.write_all(&(CHUNK_SIZE as u32).to_le_bytes())?;
-        writer.write_all(&total_plaintext_len.to_le_bytes())?;
-
-        // Write chunks incrementally — at most one ciphertext Vec<u8> in memory at a time
-        for (chunk_index, plaintext_chunk) in plaintext.chunks(CHUNK_SIZE).enumerate() {
-            let chunk_index = chunk_index as u32;
-            let nonce_bytes = derive_chunk_nonce(transfer_id, chunk_index);
-            let aad_bytes = aad::for_chunk_transfer(transfer_id, chunk_index);
-
-            let ciphertext = cipher
-                .encrypt(
-                    XNonce::from_slice(&nonce_bytes),
-                    Payload {
-                        msg: plaintext_chunk,
-                        aad: &aad_bytes,
-                    },
-                )
-                .map_err(|e| ChunkedTransferError::EncryptFailed(e.to_string()))?;
-
-            writer.write_all(&(ciphertext.len() as u32).to_le_bytes())?;
-            writer.write_all(&ciphertext)?;
-            // `ciphertext` is dropped here — only one chunk buffer is alive per iteration
-        }
-
-        Ok(())
-    }
-}
-
-impl ChunkedDecoder {
-    /// Decode a V2 streaming wire format from `reader`, returning assembled plaintext.
-    ///
-    /// Reads chunks one at a time using `read_exact`. Does NOT call `read_to_end`.
-    /// On any chunk AEAD failure, returns `Err` immediately (no partial data retained).
-    ///
-    /// # Arguments
-    /// * `reader`     — source implementing `std::io::Read` (e.g., libp2p stream)
-    /// * `master_key` — 32-byte XChaCha20-Poly1305 key
-    pub fn decode_from<R: Read>(
-        mut reader: R,
-        master_key: &MasterKey,
-    ) -> Result<Vec<u8>, ChunkedTransferError> {
-        // Read fixed header: 4 + 16 + 4 + 4 + 4 = 32 bytes
-        let mut header = [0u8; 32];
-        reader
-            .read_exact(&mut header)
-            .map_err(|_| ChunkedTransferError::TruncatedHeader)?;
-
-        if header[0..4] != V2_MAGIC {
-            return Err(ChunkedTransferError::InvalidMagic);
-        }
-
-        let transfer_id: [u8; 16] = header[4..20]
-            .try_into()
-            .map_err(|_| ChunkedTransferError::TruncatedHeader)?;
-        let total_chunks = u32::from_le_bytes(
-            header[20..24]
-                .try_into()
-                .map_err(|_| ChunkedTransferError::TruncatedHeader)?,
-        );
-        // chunk_size_hint at [24..28] — not needed for decode; skip
-        let total_plaintext_len = u32::from_le_bytes(
-            header[28..32]
-                .try_into()
-                .map_err(|_| ChunkedTransferError::TruncatedHeader)?,
-        ) as usize;
-
-        // Validate header consistency: plaintext cannot exceed what total_chunks can hold.
-        if total_chunks > 0 && total_plaintext_len == 0 {
-            return Err(ChunkedTransferError::InvalidHeader {
-                reason: "total_chunks > 0 but total_plaintext_len is 0".into(),
-            });
-        }
-        let max_capacity = (total_chunks as usize)
-            .checked_mul(CHUNK_SIZE)
-            .ok_or_else(|| ChunkedTransferError::InvalidHeader {
-                reason: format!(
-                    "total_chunks {} * CHUNK_SIZE {} overflows usize",
-                    total_chunks, CHUNK_SIZE
-                ),
-            })?;
-        if total_plaintext_len > max_capacity {
-            return Err(ChunkedTransferError::InvalidHeader {
-                reason: format!(
-                    "total_plaintext_len {} exceeds maximum capacity {} (total_chunks {} * CHUNK_SIZE {})",
-                    total_plaintext_len, max_capacity, total_chunks, CHUNK_SIZE
-                ),
-            });
-        }
-
-        let cipher = XChaCha20Poly1305::new_from_slice(master_key.as_bytes())
-            .map_err(|e| ChunkedTransferError::EncryptFailed(e.to_string()))?;
-
-        let mut plaintext = Vec::with_capacity(total_plaintext_len);
-
-        for chunk_index in 0..total_chunks {
-            // Read 4-byte ciphertext length prefix
-            let mut len_buf = [0u8; 4];
-            reader
-                .read_exact(&mut len_buf)
-                .map_err(|_| ChunkedTransferError::TruncatedChunk)?;
-            let ciphertext_len = u32::from_le_bytes(len_buf) as usize;
-
-            // XChaCha20-Poly1305 tag is 16 bytes. Valid ciphertext must contain at least
-            // the tag, and at most one full chunk of plaintext + tag.
-            const TAG_SIZE: usize = 16;
-            let max_ciphertext = CHUNK_SIZE + TAG_SIZE;
-            if ciphertext_len < TAG_SIZE || ciphertext_len > max_ciphertext {
-                return Err(ChunkedTransferError::InvalidCiphertextLen {
-                    chunk_index,
-                    ciphertext_len,
-                });
-            }
-
-            // Read ciphertext — one chunk in memory at a time
-            let mut ciphertext = vec![0u8; ciphertext_len];
-            reader
-                .read_exact(&mut ciphertext)
-                .map_err(|_| ChunkedTransferError::TruncatedChunk)?;
-
-            let nonce_bytes = derive_chunk_nonce(&transfer_id, chunk_index);
-            let aad_bytes = aad::for_chunk_transfer(&transfer_id, chunk_index);
-
-            let chunk_plaintext = cipher
-                .decrypt(
-                    XNonce::from_slice(&nonce_bytes),
-                    Payload {
-                        msg: &ciphertext,
-                        aad: &aad_bytes,
-                    },
-                )
-                .map_err(|_| ChunkedTransferError::DecryptFailed { chunk_index })?;
-
-            plaintext.extend_from_slice(&chunk_plaintext);
-            // `ciphertext` and `chunk_plaintext` are dropped here
-        }
-
-        if plaintext.len() != total_plaintext_len {
-            return Err(ChunkedTransferError::InvalidHeader {
-                reason: format!(
-                    "decoded {} bytes but header declared {}",
-                    plaintext.len(),
-                    total_plaintext_len
-                ),
-            });
-        }
-
-        Ok(plaintext)
-    }
-}
-
-/// Streaming encoder for V3 chunked clipboard transfers with compression support.
-pub struct ChunkedEncoderV3;
-
-/// Streaming decoder for V3 chunked clipboard transfers with decompression support.
-pub struct ChunkedDecoderV3;
-
-impl ChunkedEncoderV3 {
     /// Encode `plaintext` in V3 streaming wire format, writing directly to `writer`.
     ///
     /// The caller decides compression: pass `compression_algo=1` with pre-compressed data,
@@ -362,12 +151,12 @@ impl ChunkedEncoderV3 {
     /// original (uncompressed) plaintext length.
     ///
     /// # Arguments
-    /// * `writer`           — destination implementing `std::io::Write`
-    /// * `master_key`       — 32-byte XChaCha20-Poly1305 key
-    /// * `transfer_id`      — 16-byte transfer identifier (UUID v4 raw bytes)
-    /// * `plaintext`        — input bytes to chunk and encrypt (possibly compressed)
-    /// * `compression_algo` — 0=none, 1=zstd
-    /// * `uncompressed_len` — original plaintext length before compression
+    /// * `writer`           -- destination implementing `std::io::Write`
+    /// * `master_key`       -- 32-byte XChaCha20-Poly1305 key
+    /// * `transfer_id`      -- 16-byte transfer identifier (UUID v4 raw bytes)
+    /// * `plaintext`        -- input bytes to chunk and encrypt (possibly compressed)
+    /// * `compression_algo` -- 0=none, 1=zstd
+    /// * `uncompressed_len` -- original plaintext length before compression
     pub fn encode_to<W: Write>(
         mut writer: W,
         master_key: &MasterKey,
@@ -407,7 +196,7 @@ impl ChunkedEncoderV3 {
         writer.write_all(&(CHUNK_SIZE as u32).to_le_bytes())?;
         writer.write_all(&total_plaintext_len.to_le_bytes())?;
 
-        // Write chunks incrementally — same AEAD loop as V2
+        // Write chunks incrementally -- at most one ciphertext Vec<u8> in memory at a time
         for (chunk_index, plaintext_chunk) in plaintext.chunks(CHUNK_SIZE).enumerate() {
             let chunk_index = chunk_index as u32;
             let nonce_bytes = derive_chunk_nonce(transfer_id, chunk_index);
@@ -431,15 +220,15 @@ impl ChunkedEncoderV3 {
     }
 }
 
-impl ChunkedDecoderV3 {
+impl ChunkedDecoder {
     /// Decode a V3 streaming wire format from `reader`, returning assembled plaintext.
     ///
     /// If the V3 header indicates compression (compression_algo=1), the decrypted data
     /// is decompressed with zstd using the `uncompressed_len` from the header.
     ///
     /// # Arguments
-    /// * `reader`     — source implementing `std::io::Read`
-    /// * `master_key` — 32-byte XChaCha20-Poly1305 key
+    /// * `reader`     -- source implementing `std::io::Read`
+    /// * `master_key` -- 32-byte XChaCha20-Poly1305 key
     pub fn decode_from<R: Read>(
         mut reader: R,
         master_key: &MasterKey,
@@ -468,7 +257,7 @@ impl ChunkedDecoderV3 {
                 .try_into()
                 .map_err(|_| ChunkedTransferError::TruncatedHeader)?,
         );
-        // chunk_size_hint at [29..33] — not needed for decode
+        // chunk_size_hint at [29..33] -- not needed for decode
         let total_plaintext_len = u32::from_le_bytes(
             header[33..37]
                 .try_into()
@@ -563,9 +352,9 @@ impl ChunkedDecoderV3 {
     }
 }
 
-/// Adapter implementing `TransferPayloadEncryptorPort` via `ChunkedEncoderV3`.
+/// Adapter implementing `TransferPayloadEncryptorPort` via `ChunkedEncoder`.
 ///
-/// Generates `transfer_id` internally (UUID v4) — callers do not need to manage it.
+/// Generates `transfer_id` internally (UUID v4) -- callers do not need to manage it.
 /// Compresses payloads exceeding `COMPRESSION_THRESHOLD` with zstd before encryption.
 pub struct TransferPayloadEncryptorAdapter;
 
@@ -600,7 +389,7 @@ impl TransferPayloadEncryptorPort for TransferPayloadEncryptorAdapter {
             };
 
         let mut buf = Vec::new();
-        ChunkedEncoderV3::encode_to(
+        ChunkedEncoder::encode_to(
             &mut buf,
             master_key,
             &transfer_id,
@@ -612,10 +401,9 @@ impl TransferPayloadEncryptorPort for TransferPayloadEncryptorAdapter {
     }
 }
 
-/// Adapter implementing `TransferPayloadDecryptorPort`.
+/// Adapter implementing `TransferPayloadDecryptorPort` via `ChunkedDecoder`.
 ///
-/// Detects wire format by magic bytes: V3 (`UC3\0`) or V2 (`UC2\0`).
-/// V2 support is temporary and will be removed in Plan 02.
+/// Only accepts V3 (`UC3\0`) wire format.
 pub struct TransferPayloadDecryptorAdapter;
 
 impl TransferPayloadDecryptorPort for TransferPayloadDecryptorAdapter {
@@ -632,10 +420,6 @@ impl TransferPayloadDecryptorPort for TransferPayloadDecryptorAdapter {
 
         let magic = &encrypted[0..4];
         if magic == V3_MAGIC {
-            ChunkedDecoderV3::decode_from(Cursor::new(encrypted), master_key)
-                .map_err(TransferCryptoError::from)
-        } else if magic == V2_MAGIC {
-            // Temporary V2 fallback — will be removed in Plan 02
             ChunkedDecoder::decode_from(Cursor::new(encrypted), master_key)
                 .map_err(TransferCryptoError::from)
         } else {
@@ -678,51 +462,111 @@ mod tests {
         [0x42u8; 16]
     }
 
-    fn round_trip(plaintext: &[u8]) -> Vec<u8> {
+    fn round_trip_raw(plaintext: &[u8], compression_algo: u8) -> Vec<u8> {
         let key = test_key();
         let id = test_transfer_id();
+        let uncompressed_len = plaintext.len() as u32;
         let mut buf = Vec::new();
-        ChunkedEncoder::encode_to(&mut buf, &key, &id, plaintext).expect("encode_to failed");
-        let cursor = Cursor::new(buf);
-        ChunkedDecoder::decode_from(cursor, &key).expect("decode_from failed")
+        ChunkedEncoder::encode_to(
+            &mut buf,
+            &key,
+            &id,
+            plaintext,
+            compression_algo,
+            uncompressed_len,
+        )
+        .expect("encode_to failed");
+        ChunkedDecoder::decode_from(Cursor::new(buf), &key).expect("decode_from failed")
     }
 
     #[test]
-    fn round_trip_small() {
-        let pt = b"hello world";
-        assert_eq!(round_trip(pt), pt);
+    fn round_trip_small_no_compression() {
+        let pt = b"hello V3 world";
+        let result = round_trip_raw(pt, 0);
+        assert_eq!(result, pt);
     }
 
     #[test]
     fn round_trip_empty() {
-        assert_eq!(round_trip(b""), b"");
+        assert_eq!(round_trip_raw(b"", 0), b"");
     }
 
     #[test]
-    fn round_trip_1mb() {
-        let pt = vec![0u8; 1024 * 1024];
-        assert_eq!(round_trip(&pt), pt);
-    }
-
-    #[test]
-    fn header_starts_with_magic() {
+    fn round_trip_large_with_compression() {
+        let pt = vec![0x42u8; 16 * 1024];
+        let compressed = zstd::bulk::compress(&pt, ZSTD_LEVEL).unwrap();
         let key = test_key();
         let id = test_transfer_id();
         let mut buf = Vec::new();
-        ChunkedEncoder::encode_to(&mut buf, &key, &id, b"test").unwrap();
-        assert_eq!(&buf[0..4], &V2_MAGIC);
+        ChunkedEncoder::encode_to(&mut buf, &key, &id, &compressed, 1, pt.len() as u32).unwrap();
+        let result = ChunkedDecoder::decode_from(Cursor::new(buf), &key).unwrap();
+        assert_eq!(result, pt);
     }
 
     #[test]
-    fn two_chunk_input_has_total_chunks_2() {
+    fn round_trip_10mb() {
+        let pt = vec![0xABu8; 10 * 1024 * 1024];
+        let compressed = zstd::bulk::compress(&pt, ZSTD_LEVEL).unwrap();
         let key = test_key();
         let id = test_transfer_id();
-        let plaintext = vec![0u8; CHUNK_SIZE * 2];
         let mut buf = Vec::new();
-        ChunkedEncoder::encode_to(&mut buf, &key, &id, &plaintext).unwrap();
-        // total_chunks is at bytes [20..24]
-        let total_chunks = u32::from_le_bytes(buf[20..24].try_into().unwrap());
-        assert_eq!(total_chunks, 2);
+        ChunkedEncoder::encode_to(&mut buf, &key, &id, &compressed, 1, pt.len() as u32).unwrap();
+        let result = ChunkedDecoder::decode_from(Cursor::new(buf), &key).unwrap();
+        assert_eq!(result, pt);
+    }
+
+    #[test]
+    fn header_magic_and_size() {
+        let key = test_key();
+        let id = test_transfer_id();
+        let mut buf = Vec::new();
+        ChunkedEncoder::encode_to(&mut buf, &key, &id, b"test", 0, 4).unwrap();
+        assert_eq!(&buf[0..4], &V3_MAGIC);
+        assert!(buf.len() >= V3_HEADER_SIZE);
+    }
+
+    #[test]
+    fn compression_flag_no_compression() {
+        let key = test_key();
+        let id = test_transfer_id();
+        let small = vec![0u8; 100];
+        let mut buf = Vec::new();
+        ChunkedEncoder::encode_to(&mut buf, &key, &id, &small, 0, small.len() as u32).unwrap();
+        assert_eq!(buf[4], 0);
+    }
+
+    #[test]
+    fn compression_flag_with_compression() {
+        let key = test_key();
+        let id = test_transfer_id();
+        let large = vec![0u8; 16 * 1024];
+        let compressed = zstd::bulk::compress(&large, ZSTD_LEVEL).unwrap();
+        let mut buf = Vec::new();
+        ChunkedEncoder::encode_to(&mut buf, &key, &id, &compressed, 1, large.len() as u32).unwrap();
+        assert_eq!(buf[4], 1);
+    }
+
+    #[test]
+    fn uncompressed_len_field() {
+        let key = test_key();
+        let id = test_transfer_id();
+        let original_len = 12345u32;
+        let data = vec![0u8; 100];
+        let mut buf = Vec::new();
+        ChunkedEncoder::encode_to(&mut buf, &key, &id, &data, 0, original_len).unwrap();
+        let stored_len = u32::from_le_bytes(buf[5..9].try_into().unwrap());
+        assert_eq!(stored_len, original_len);
+    }
+
+    #[test]
+    fn total_plaintext_len_equals_input() {
+        let key = test_key();
+        let id = test_transfer_id();
+        let data = vec![0u8; 500];
+        let mut buf = Vec::new();
+        ChunkedEncoder::encode_to(&mut buf, &key, &id, &data, 0, 500).unwrap();
+        let total_pt_len = u32::from_le_bytes(buf[33..37].try_into().unwrap());
+        assert_eq!(total_pt_len, 500);
     }
 
     #[test]
@@ -730,9 +574,8 @@ mod tests {
         let key = test_key();
         let id = test_transfer_id();
         let mut buf = Vec::new();
-        ChunkedEncoder::encode_to(&mut buf, &key, &id, b"secret data").unwrap();
-        // Flip a bit in the first chunk's ciphertext (after 32-byte header + 4-byte len = offset 36)
-        buf[36] ^= 0xFF;
+        ChunkedEncoder::encode_to(&mut buf, &key, &id, b"secret", 0, 6).unwrap();
+        buf[41] ^= 0xFF;
         let result = ChunkedDecoder::decode_from(Cursor::new(buf), &key);
         assert!(matches!(
             result,
@@ -754,7 +597,7 @@ mod tests {
         let key2 = test_key_alt();
         let id = test_transfer_id();
         let mut buf = Vec::new();
-        ChunkedEncoder::encode_to(&mut buf, &key1, &id, b"data").unwrap();
+        ChunkedEncoder::encode_to(&mut buf, &key1, &id, b"data", 0, 4).unwrap();
         let result = ChunkedDecoder::decode_from(Cursor::new(buf), &key2);
         assert!(matches!(
             result,
@@ -763,199 +606,13 @@ mod tests {
     }
 
     #[test]
-    fn swapped_chunks_aad_mismatch() {
-        let key = test_key();
-        let id = test_transfer_id();
-        // Use two equal-size chunks for clean swap
-        let plaintext = vec![0u8; CHUNK_SIZE * 2];
-        let mut buf = Vec::new();
-        ChunkedEncoder::encode_to(&mut buf, &key, &id, &plaintext).unwrap();
-        let c0_len = u32::from_le_bytes(buf[32..36].try_into().unwrap()) as usize;
-        let c1_off = 32 + 4 + c0_len;
-        let c1_len = u32::from_le_bytes(buf[c1_off..c1_off + 4].try_into().unwrap()) as usize;
-        assert_eq!(
-            c0_len, c1_len,
-            "chunks must be same size for this swap test"
-        );
-        let c0_range = 36..36 + c0_len;
-        let c1_range = c1_off + 4..c1_off + 4 + c1_len;
-        let c0 = buf[c0_range.clone()].to_vec();
-        let c1 = buf[c1_range.clone()].to_vec();
-        buf[c0_range].copy_from_slice(&c1);
-        buf[c1_range].copy_from_slice(&c0);
-        let result = ChunkedDecoder::decode_from(Cursor::new(buf), &key);
-        assert!(matches!(
-            result,
-            Err(ChunkedTransferError::DecryptFailed { .. })
-        ));
-    }
-
-    #[test]
-    fn adapter_encrypt_decrypt_round_trip() {
-        let key = test_key();
-        let encryptor = TransferPayloadEncryptorAdapter;
-        let decryptor = TransferPayloadDecryptorAdapter;
-        let plaintext = b"adapter round trip test";
-        let encrypted = encryptor.encrypt(&key, plaintext).expect("encrypt");
-        let decrypted = decryptor.decrypt(&encrypted, &key).expect("decrypt");
-        assert_eq!(decrypted, plaintext);
-    }
-
-    // ===== V3 Tests =====
-
-    fn v3_round_trip_raw(plaintext: &[u8], compression_algo: u8) -> Vec<u8> {
-        let key = test_key();
-        let id = test_transfer_id();
-        let uncompressed_len = plaintext.len() as u32;
-        let mut buf = Vec::new();
-        ChunkedEncoderV3::encode_to(
-            &mut buf,
-            &key,
-            &id,
-            plaintext,
-            compression_algo,
-            uncompressed_len,
-        )
-        .expect("V3 encode_to failed");
-        ChunkedDecoderV3::decode_from(Cursor::new(buf), &key).expect("V3 decode_from failed")
-    }
-
-    #[test]
-    fn v3_round_trip_small_no_compression() {
-        let pt = b"hello V3 world";
-        let result = v3_round_trip_raw(pt, 0);
-        assert_eq!(result, pt);
-    }
-
-    #[test]
-    fn v3_round_trip_large_with_compression() {
-        // Create compressible data > 8KB
-        let pt = vec![0x42u8; 16 * 1024];
-        let compressed = zstd::bulk::compress(&pt, ZSTD_LEVEL).unwrap();
+    fn invalid_compression_algo() {
         let key = test_key();
         let id = test_transfer_id();
         let mut buf = Vec::new();
-        ChunkedEncoderV3::encode_to(&mut buf, &key, &id, &compressed, 1, pt.len() as u32).unwrap();
-        let result = ChunkedDecoderV3::decode_from(Cursor::new(buf), &key).unwrap();
-        assert_eq!(result, pt);
-    }
-
-    #[test]
-    fn v3_round_trip_10mb() {
-        let pt = vec![0xABu8; 10 * 1024 * 1024];
-        let compressed = zstd::bulk::compress(&pt, ZSTD_LEVEL).unwrap();
-        let key = test_key();
-        let id = test_transfer_id();
-        let mut buf = Vec::new();
-        ChunkedEncoderV3::encode_to(&mut buf, &key, &id, &compressed, 1, pt.len() as u32).unwrap();
-        let result = ChunkedDecoderV3::decode_from(Cursor::new(buf), &key).unwrap();
-        assert_eq!(result, pt);
-    }
-
-    #[test]
-    fn v3_header_magic_and_size() {
-        let key = test_key();
-        let id = test_transfer_id();
-        let mut buf = Vec::new();
-        ChunkedEncoderV3::encode_to(&mut buf, &key, &id, b"test", 0, 4).unwrap();
-        // Check V3 magic
-        assert_eq!(&buf[0..4], &V3_MAGIC);
-        // Header is exactly 37 bytes (plus chunk data after)
-        assert!(buf.len() >= V3_HEADER_SIZE);
-    }
-
-    #[test]
-    fn v3_compression_flag_no_compression() {
-        let key = test_key();
-        let id = test_transfer_id();
-        let small = vec![0u8; 100]; // < 8KB
-        let mut buf = Vec::new();
-        ChunkedEncoderV3::encode_to(&mut buf, &key, &id, &small, 0, small.len() as u32).unwrap();
-        // compression_algo at byte 4
-        assert_eq!(buf[4], 0);
-    }
-
-    #[test]
-    fn v3_compression_flag_with_compression() {
-        let key = test_key();
-        let id = test_transfer_id();
-        let large = vec![0u8; 16 * 1024];
-        let compressed = zstd::bulk::compress(&large, ZSTD_LEVEL).unwrap();
-        let mut buf = Vec::new();
-        ChunkedEncoderV3::encode_to(&mut buf, &key, &id, &compressed, 1, large.len() as u32)
-            .unwrap();
-        assert_eq!(buf[4], 1);
-    }
-
-    #[test]
-    fn v3_uncompressed_len_field() {
-        let key = test_key();
-        let id = test_transfer_id();
-        let original_len = 12345u32;
-        let data = vec![0u8; 100];
-        let mut buf = Vec::new();
-        ChunkedEncoderV3::encode_to(&mut buf, &key, &id, &data, 0, original_len).unwrap();
-        let stored_len = u32::from_le_bytes(buf[5..9].try_into().unwrap());
-        assert_eq!(stored_len, original_len);
-    }
-
-    #[test]
-    fn v3_total_plaintext_len_equals_input() {
-        let key = test_key();
-        let id = test_transfer_id();
-        let data = vec![0u8; 500];
-        let mut buf = Vec::new();
-        ChunkedEncoderV3::encode_to(&mut buf, &key, &id, &data, 0, 500).unwrap();
-        let total_pt_len = u32::from_le_bytes(buf[33..37].try_into().unwrap());
-        assert_eq!(total_pt_len, 500);
-    }
-
-    #[test]
-    fn v3_tampered_ciphertext_returns_decrypt_failed() {
-        let key = test_key();
-        let id = test_transfer_id();
-        let mut buf = Vec::new();
-        ChunkedEncoderV3::encode_to(&mut buf, &key, &id, b"secret", 0, 6).unwrap();
-        // Flip a bit in ciphertext (after 37-byte header + 4-byte len = offset 41)
-        buf[41] ^= 0xFF;
-        let result = ChunkedDecoderV3::decode_from(Cursor::new(buf), &key);
-        assert!(matches!(
-            result,
-            Err(ChunkedTransferError::DecryptFailed { .. })
-        ));
-    }
-
-    #[test]
-    fn v3_wrong_key_returns_decrypt_failed() {
-        let key1 = test_key();
-        let key2 = test_key_alt();
-        let id = test_transfer_id();
-        let mut buf = Vec::new();
-        ChunkedEncoderV3::encode_to(&mut buf, &key1, &id, b"data", 0, 4).unwrap();
-        let result = ChunkedDecoderV3::decode_from(Cursor::new(buf), &key2);
-        assert!(matches!(
-            result,
-            Err(ChunkedTransferError::DecryptFailed { .. })
-        ));
-    }
-
-    #[test]
-    fn v3_invalid_magic_returns_error() {
-        let key = test_key();
-        let buf = vec![0xFFu8; 64];
-        let result = ChunkedDecoderV3::decode_from(Cursor::new(buf), &key);
-        assert!(matches!(result, Err(ChunkedTransferError::InvalidMagic)));
-    }
-
-    #[test]
-    fn v3_invalid_compression_algo() {
-        let key = test_key();
-        let id = test_transfer_id();
-        let mut buf = Vec::new();
-        // Encode with algo=0, then patch to algo=99
-        ChunkedEncoderV3::encode_to(&mut buf, &key, &id, b"test", 0, 4).unwrap();
+        ChunkedEncoder::encode_to(&mut buf, &key, &id, b"test", 0, 4).unwrap();
         buf[4] = 99;
-        let result = ChunkedDecoderV3::decode_from(Cursor::new(buf), &key);
+        let result = ChunkedDecoder::decode_from(Cursor::new(buf), &key);
         assert!(matches!(
             result,
             Err(ChunkedTransferError::InvalidCompressionAlgo { algo: 99 })
@@ -963,37 +620,33 @@ mod tests {
     }
 
     #[test]
-    fn v3_adapter_round_trip_small_no_compression() {
+    fn adapter_round_trip_small_no_compression() {
         let key = test_key();
         let encryptor = TransferPayloadEncryptorAdapter;
         let decryptor = TransferPayloadDecryptorAdapter;
-        let plaintext = b"small V3 adapter test"; // < 8KB, no compression
+        let plaintext = b"small adapter test";
         let encrypted = encryptor.encrypt(&key, plaintext).expect("encrypt");
-        // Should have V3 magic
         assert_eq!(&encrypted[0..4], &V3_MAGIC);
-        // compression_algo should be 0
         assert_eq!(encrypted[4], 0);
         let decrypted = decryptor.decrypt(&encrypted, &key).expect("decrypt");
         assert_eq!(decrypted, plaintext);
     }
 
     #[test]
-    fn v3_adapter_round_trip_large_with_compression() {
+    fn adapter_round_trip_large_with_compression() {
         let key = test_key();
         let encryptor = TransferPayloadEncryptorAdapter;
         let decryptor = TransferPayloadDecryptorAdapter;
-        let plaintext = vec![0x42u8; 16 * 1024]; // > 8KB, should compress
+        let plaintext = vec![0x42u8; 16 * 1024];
         let encrypted = encryptor.encrypt(&key, &plaintext).expect("encrypt");
-        // Should have V3 magic
         assert_eq!(&encrypted[0..4], &V3_MAGIC);
-        // compression_algo should be 1
         assert_eq!(encrypted[4], 1);
         let decrypted = decryptor.decrypt(&encrypted, &key).expect("decrypt");
         assert_eq!(decrypted, plaintext);
     }
 
     #[test]
-    fn v3_adapter_round_trip_10mb() {
+    fn adapter_round_trip_10mb() {
         let key = test_key();
         let encryptor = TransferPayloadEncryptorAdapter;
         let decryptor = TransferPayloadDecryptorAdapter;
@@ -1004,20 +657,16 @@ mod tests {
     }
 
     #[test]
-    fn adapter_decryptor_still_handles_v2_format() {
-        // Encode with V2 ChunkedEncoder
+    fn adapter_decryptor_rejects_unknown_magic() {
         let key = test_key();
-        let id = test_transfer_id();
-        let plaintext = b"legacy V2 data";
-        let mut buf = Vec::new();
-        ChunkedEncoder::encode_to(&mut buf, &key, &id, plaintext).unwrap();
-        assert_eq!(&buf[0..4], &V2_MAGIC);
-
-        // Decrypt via adapter should still work (V2 fallback)
         let decryptor = TransferPayloadDecryptorAdapter;
-        let decrypted = decryptor
-            .decrypt(&buf, &key)
-            .expect("V2 decrypt via adapter");
-        assert_eq!(decrypted, plaintext);
+        let buf = vec![0xDE, 0xAD, 0xBE, 0xEF, 0x00, 0x00];
+        let result = decryptor.decrypt(&buf, &key);
+        assert!(result.is_err());
+        let err_msg = result.unwrap_err().to_string();
+        assert!(
+            err_msg.contains("unrecognized wire format"),
+            "unexpected error: {err_msg}"
+        );
     }
 }

@@ -865,7 +865,6 @@ const MAX_JSON_HEADER_SIZE: usize = 64 * 1024;
 /// Result of processing a single inbound business stream message.
 enum ProcessedMessage {
     /// Clipboard with pre-decoded plaintext from transport-level streaming decode.
-    /// TODO(Plan 03): V3 inbound rewrite — currently uses ChunkedDecoder which auto-detects V2/V3.
     StreamingClipboard(ClipboardMessage, Vec<u8>),
     /// All other messages (DeviceAnnounce, Heartbeat, Pairing).
     Standard(ProtocolMessage),
@@ -969,7 +968,6 @@ fn spawn_business_stream_handler(
                             let decode_result = tokio::task::spawn_blocking(move || {
                                 use tokio_util::io::SyncIoBridge;
                                 let sync_reader = SyncIoBridge::new(reader);
-                                // TODO(Plan 03): Use V3-specific streaming decoder
                                 uc_infra::clipboard::ChunkedDecoder::decode_from(
                                     sync_reader,
                                     &master_key,

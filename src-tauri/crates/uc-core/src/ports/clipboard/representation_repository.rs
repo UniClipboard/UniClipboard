@@ -1,4 +1,4 @@
-use crate::clipboard::{PayloadAvailability, PersistedClipboardRepresentation};
+use crate::clipboard::{MimeType, PayloadAvailability, PersistedClipboardRepresentation};
 use crate::ids::{EventId, RepresentationId};
 use crate::BlobId;
 use anyhow::Result;
@@ -90,4 +90,14 @@ pub trait ClipboardRepresentationRepositoryPort: Send + Sync {
         new_state: PayloadAvailability,
         last_error: Option<&str>,
     ) -> Result<ProcessingUpdateOutcome>;
+
+    /// Update the MIME type of a representation.
+    ///
+    /// Used by the background blob worker to correct MIME after format conversion
+    /// (e.g. image/tiff -> image/png).
+    ///
+    /// Default implementation is a no-op for mock/test implementations.
+    async fn update_mime_type(&self, _rep_id: &RepresentationId, _mime: &MimeType) -> Result<()> {
+        Ok(())
+    }
 }

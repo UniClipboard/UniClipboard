@@ -7,8 +7,8 @@ use std::time::Duration;
 use anyhow::{Context, Result};
 use tokio::sync::mpsc;
 use tokio::time::sleep;
-use tracing::{error, info_span, warn, Instrument};
-use uc_core::clipboard::PayloadAvailability;
+use tracing::{debug, error, info_span, warn, Instrument};
+use uc_core::clipboard::{MimeType, PayloadAvailability};
 use uc_core::clipboard::{ThumbnailMetadata, TimestampMs};
 use uc_core::ids::RepresentationId;
 use uc_core::ports::clipboard::{
@@ -19,6 +19,30 @@ use uc_core::ports::{
 };
 
 use crate::clipboard::{RepresentationCache, SpoolManager};
+
+/// Check if an image MIME type needs conversion to PNG before blob storage.
+/// Returns true for image/* types that are not already PNG or WebP.
+fn should_convert_to_png(mime: Option<&MimeType>) -> bool {
+    match mime {
+        Some(m) => {
+            let s = m.as_str();
+            s.starts_with("image/") && s != "image/png" && s != "image/webp"
+        }
+        None => false,
+    }
+}
+
+/// Convert image bytes (any format supported by the `image` crate) to PNG.
+fn convert_image_to_png(image_bytes: &[u8]) -> Result<Vec<u8>> {
+    let img = image::load_from_memory(image_bytes).context("decode image for PNG conversion")?;
+    let mut png_bytes = Vec::new();
+    img.write_to(
+        &mut std::io::Cursor::new(&mut png_bytes),
+        image::ImageFormat::Png,
+    )
+    .context("encode image as PNG")?;
+    Ok(png_bytes)
+}
 
 /// Background worker that materializes blob data from cache/spool.
 /// 从缓存/磁盘缓存中物化 blob 数据的后台工作者。
@@ -191,17 +215,66 @@ impl BackgroundBlobWorker {
             }
         };
 
+        // Check if this representation needs format conversion (e.g. TIFF -> PNG).
+        // Fetch the representation metadata to read its MIME type.
+        let rep_meta = self.repo.get_representation_by_id(rep_id).await?;
+        let mime = rep_meta.as_ref().and_then(|r| r.mime_type.as_ref());
+        let needs_conversion = should_convert_to_png(mime);
+
+        let (blob_bytes, mime_updated) = if needs_conversion {
+            let original_mime = mime.map(|m| m.as_str()).unwrap_or("unknown");
+            let original_size = raw_bytes.len();
+            match convert_image_to_png(&raw_bytes) {
+                Ok(png_bytes) => {
+                    debug!(
+                        representation_id = %rep_id,
+                        original_mime = %original_mime,
+                        original_size = original_size,
+                        converted_size = png_bytes.len(),
+                        "Converted image to PNG for blob storage"
+                    );
+                    (png_bytes, true)
+                }
+                Err(err) => {
+                    warn!(
+                        representation_id = %rep_id,
+                        original_mime = %original_mime,
+                        error = %err,
+                        "Failed to convert image to PNG; storing original bytes"
+                    );
+                    (raw_bytes, false)
+                }
+            }
+        } else {
+            (raw_bytes, false)
+        };
+
         let content_hash = self
             .hasher
-            .hash_bytes(&raw_bytes)
+            .hash_bytes(&blob_bytes)
             .context("failed to hash representation bytes")?;
 
         // BlobWriterPort should handle deduplication; data is passed as-is.
         let blob = self
             .blob_writer
-            .write_if_absent(&content_hash, &raw_bytes)
+            .write_if_absent(&content_hash, &blob_bytes)
             .await
             .context("failed to write blob")?;
+
+        // Update the representation MIME type in DB if conversion occurred.
+        if mime_updated {
+            if let Err(err) = self
+                .repo
+                .update_mime_type(rep_id, &MimeType("image/png".to_string()))
+                .await
+            {
+                warn!(
+                    representation_id = %rep_id,
+                    error = %err,
+                    "Failed to update MIME type to image/png after conversion"
+                );
+            }
+        }
 
         let updated = self
             .repo
@@ -223,7 +296,7 @@ impl BackgroundBlobWorker {
                         "Failed to delete spool entry after blob materialization"
                     );
                 }
-                self.try_generate_thumbnail(rep_id, &raw_bytes).await;
+                self.try_generate_thumbnail(rep_id, &blob_bytes).await;
                 Ok(ProcessResult::Completed)
             }
             Ok(ProcessingUpdateOutcome::StateMismatch) => {
@@ -1041,5 +1114,78 @@ mod tests {
         let updated = updated.expect("representation missing");
         assert_eq!(updated.payload_state(), PayloadAvailability::BlobReady);
         Ok(())
+    }
+
+    // --- Tests for should_convert_to_png and convert_image_to_png ---
+
+    #[test]
+    fn test_should_convert_to_png_tiff() {
+        let mime = MimeType("image/tiff".to_string());
+        assert!(should_convert_to_png(Some(&mime)));
+    }
+
+    #[test]
+    fn test_should_convert_to_png_false_for_png() {
+        let mime = MimeType("image/png".to_string());
+        assert!(!should_convert_to_png(Some(&mime)));
+    }
+
+    #[test]
+    fn test_should_convert_to_png_false_for_text() {
+        let mime = MimeType("text/plain".to_string());
+        assert!(!should_convert_to_png(Some(&mime)));
+    }
+
+    #[test]
+    fn test_should_convert_to_png_false_for_webp() {
+        let mime = MimeType("image/webp".to_string());
+        assert!(!should_convert_to_png(Some(&mime)));
+    }
+
+    #[test]
+    fn test_should_convert_to_png_false_for_none() {
+        assert!(!should_convert_to_png(None));
+    }
+
+    #[test]
+    fn test_convert_image_to_png_with_valid_png_bytes() {
+        // Create a minimal valid PNG (1x1 red pixel)
+        let img = image::RgbaImage::from_pixel(1, 1, image::Rgba([255, 0, 0, 255]));
+        let mut png_input = Vec::new();
+        img.write_to(
+            &mut std::io::Cursor::new(&mut png_input),
+            image::ImageFormat::Png,
+        )
+        .unwrap();
+
+        let result = convert_image_to_png(&png_input);
+        assert!(result.is_ok());
+        let output = result.unwrap();
+        // PNG magic bytes: 0x89 0x50 0x4E 0x47
+        assert_eq!(&output[..4], &[0x89, 0x50, 0x4E, 0x47]);
+    }
+
+    #[test]
+    fn test_convert_image_to_png_with_valid_tiff_bytes() {
+        // Create a minimal TIFF image in memory
+        let img = image::RgbaImage::from_pixel(2, 2, image::Rgba([0, 128, 255, 255]));
+        let mut tiff_bytes = Vec::new();
+        img.write_to(
+            &mut std::io::Cursor::new(&mut tiff_bytes),
+            image::ImageFormat::Tiff,
+        )
+        .unwrap();
+
+        let result = convert_image_to_png(&tiff_bytes);
+        assert!(result.is_ok());
+        let output = result.unwrap();
+        // Verify PNG magic bytes
+        assert_eq!(&output[..4], &[0x89, 0x50, 0x4E, 0x47]);
+    }
+
+    #[test]
+    fn test_convert_image_to_png_with_invalid_bytes() {
+        let result = convert_image_to_png(&[0x00, 0x01, 0x02, 0x03]);
+        assert!(result.is_err());
     }
 }

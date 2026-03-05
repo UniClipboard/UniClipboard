@@ -176,6 +176,14 @@ impl ClipboardRepresentationRepositoryPort for DecryptingClipboardRepresentation
             .update_processing_result(rep_id, expected_states, blob_id, new_state, last_error)
             .await
     }
+
+    async fn update_mime_type(
+        &self,
+        rep_id: &RepresentationId,
+        mime: &uc_core::clipboard::MimeType,
+    ) -> Result<()> {
+        self.inner.update_mime_type(rep_id, mime).await
+    }
 }
 
 #[cfg(test)]

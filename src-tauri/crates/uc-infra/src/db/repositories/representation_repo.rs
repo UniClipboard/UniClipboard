@@ -32,7 +32,7 @@ use crate::db::ports::{DbExecutor, RowMapper};
 use crate::db::schema::clipboard_snapshot_representation;
 use anyhow::Result;
 use diesel::{BoolExpressionMethods, ExpressionMethods, OptionalExtension, QueryDsl, RunQueryDsl};
-use uc_core::clipboard::{PayloadAvailability, PersistedClipboardRepresentation};
+use uc_core::clipboard::{MimeType, PayloadAvailability, PersistedClipboardRepresentation};
 use uc_core::ids::{EventId, RepresentationId};
 use uc_core::ports::clipboard::{ClipboardRepresentationRepositoryPort, ProcessingUpdateOutcome};
 use uc_core::BlobId;
@@ -263,5 +263,20 @@ where
         let mapper = RepresentationRowMapper;
         let representation = mapper.to_domain(&row)?;
         Ok(ProcessingUpdateOutcome::Updated(representation))
+    }
+
+    async fn update_mime_type(&self, rep_id: &RepresentationId, mime: &MimeType) -> Result<()> {
+        let rep_id_str = rep_id.to_string();
+        let mime_str = mime.as_str().to_string();
+
+        self.executor.run(|conn| {
+            diesel::update(
+                clipboard_snapshot_representation::table
+                    .filter(clipboard_snapshot_representation::id.eq(&rep_id_str)),
+            )
+            .set(clipboard_snapshot_representation::mime_type.eq(Some(&mime_str)))
+            .execute(conn)?;
+            Ok(())
+        })
     }
 }

@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v0.1
 milestone_name: milestone
-status: unknown
-stopped_at: Completed 08-03-PLAN.md
-last_updated: '2026-03-05T15:26:09.614Z'
-last_activity: '2026-03-05 - Completed 07-02: Step component migration to StepLayout with direction tracking and dot indicator'
+status: complete
+stopped_at: Completed 09-01-PLAN.md
+last_updated: '2026-03-05T16:40:17Z'
+last_activity: '2026-03-05 - Completed 09-01: Optimize large image clipboard read pipeline'
 progress:
-  total_phases: 5
-  completed_phases: 5
-  total_plans: 10
-  completed_plans: 10
-  percent: 80
+  total_phases: 6
+  completed_phases: 6
+  total_plans: 11
+  completed_plans: 11
+  percent: 100
 ---
 
 # Project State
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-03)
 
 **Core value:** Seamless clipboard synchronization across devices -- copy on one, paste on another
-**Current focus:** Phase 8 - Optimize large image sync pipeline (V3 binary protocol, compression, zero-copy fanout)
+**Current focus:** Phase 9 - Optimize large image clipboard read pipeline (TIFF dedup, skip transcode, reduce memory)
 
 ## Current Position
 
-Phase 08: Optimize large image sync pipeline
-Plan 3 of 3 complete.
+Phase 09: Optimize large image clipboard read pipeline
+Plan 1 of 1 complete.
 
-Progress: [████████░░] 80%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
@@ -50,6 +50,7 @@ Progress: [████████░░] 80%
 | Phase 08 P01 | 6min  | 2 tasks  | 3 files  |
 | Phase 08 P02 | 14min | 2 tasks  | 12 files |
 | Phase 08 P03 | 19min | 2 tasks  | 5 files  |
+| Phase 09 P01 | 5min  | 2 tasks  | 6 files  |
 
 ## Accumulated Context
 
@@ -86,6 +87,10 @@ Progress: [████████░░] 80%
 - [Phase 08]: Local stub types in sync_inbound.rs preserve compilation during V1/V2 deletion (Plan 03 rewrite)
 - [Phase 08]: Kept V3_MAGIC constant name (not renamed to MAGIC) for clarity in documentation and grep-ability
 - [Phase 08]: Removed snapshot_matches_content_hash and first_text_representation_len helpers (V1-only, unused after inbound rewrite)
+- [Phase 09]: TIFF_ALIASES const for macOS dedup (public.tiff + NeXT TIFF v4.0 pasteboard type)
+- [Phase 09]: image/tiff MIME signals blob worker to convert; format_id stays "image" for downstream compat
+- [Phase 09]: update_mime_type added as default no-op on port trait to avoid touching 15 mock implementations
+- [Phase 09]: Conversion failure falls back to storing original bytes (no data loss)
 
 ### Roadmap Evolution
 
@@ -108,6 +113,9 @@ Progress: [████████░░] 80%
 - Phase 7 Plan 01 completed: StepLayout, StepDotIndicator, ProcessingJoinStep foundation components
 - Phase 7 Plan 02 completed: All step components migrated to StepLayout, SetupPage direction tracking + dot indicator
 - Phase 8 added: Optimize large image sync pipeline (V3 binary protocol, compression, zero-copy fanout)
+- Phase 9 added: Optimize large image clipboard read pipeline (deduplicate TIFF aliases, skip/defer PNG transcode, reduce memory)
+- Phase 9 Plan 01 completed: macOS direct TIFF read + TIFF alias dedup + background TIFF-to-PNG conversion
+- Phase 9 completed: Large image clipboard read pipeline optimized
 
 ### Pending Todos
 
@@ -127,7 +135,7 @@ None.
 
 ## Session Continuity
 
-Last activity: 2026-03-05 - Completed 07-02: Step component migration to StepLayout with direction tracking and dot indicator
-Last session: 2026-03-05T15:22:18.385Z
-Stopped at: Completed 08-03-PLAN.md
+Last activity: 2026-03-05 - Completed 09-01: Optimize large image clipboard read pipeline
+Last session: 2026-03-05T16:40:17Z
+Stopped at: Completed 09-01-PLAN.md
 Resume file: None

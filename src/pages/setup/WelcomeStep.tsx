@@ -43,7 +43,7 @@ export default function WelcomeStep({
         <p className="mt-4 text-lg text-muted-foreground">{t('subtitle')}</p>
       </div>
 
-      <div className="flex flex-col gap-4">
+      <div className="flex flex-row gap-4">
         <button
           type="button"
           onClick={onCreate}

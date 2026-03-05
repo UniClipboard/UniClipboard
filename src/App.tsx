@@ -185,9 +185,9 @@ const AppContentWithBar = () => {
     showCompletionStep: false,
   })
 
+  const isSetupLoading = setupGate.setupState === null
   const isSetupActive =
-    setupGate.setupState !== null &&
-    (setupGate.setupState !== 'Completed' || setupGate.showCompletionStep)
+    isSetupLoading || setupGate.setupState !== 'Completed' || setupGate.showCompletionStep
 
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout> | null = null

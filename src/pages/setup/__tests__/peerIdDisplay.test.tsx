@@ -1,10 +1,19 @@
 import { render, screen } from '@testing-library/react'
-import type { ReactElement } from 'react'
+import type { HTMLAttributes, ReactElement } from 'react'
 import { I18nextProvider } from 'react-i18next'
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import i18n from '@/i18n'
 import { formatPeerIdForDisplay } from '@/lib/utils'
 import JoinVerifyPassphraseStep from '@/pages/setup/JoinVerifyPassphraseStep'
+
+vi.mock('framer-motion', () => ({
+  motion: new Proxy(
+    {},
+    {
+      get: () => (props: HTMLAttributes<HTMLDivElement>) => <div {...props} />,
+    }
+  ),
+}))
 
 const renderWithI18n = (ui: ReactElement) =>
   render(<I18nextProvider i18n={i18n}>{ui}</I18nextProvider>)

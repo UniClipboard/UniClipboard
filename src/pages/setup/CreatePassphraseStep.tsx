@@ -1,10 +1,10 @@
-import { motion } from 'framer-motion'
-import { AlertCircle, Eye, EyeOff, Loader2, ArrowLeft } from 'lucide-react'
+import { Eye, EyeOff, Loader2, ArrowLeft } from 'lucide-react'
 import { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import StepLayout from '@/pages/setup/StepLayout'
 import { CreatePassphraseStepProps } from '@/pages/setup/types'
 
 export default function CreatePassphraseStep({
@@ -12,6 +12,7 @@ export default function CreatePassphraseStep({
   onBack,
   error,
   loading,
+  direction,
 }: CreatePassphraseStepProps) {
   const { t } = useTranslation(undefined, { keyPrefix: 'setup.createPassphrase' })
   const { t: tCommon } = useTranslation(undefined, { keyPrefix: 'setup.common' })
@@ -51,28 +52,43 @@ export default function CreatePassphraseStep({
     onSubmit(pass1, pass2)
   }
 
-  return (
-    <motion.div
-      initial={{ opacity: 0, x: 20 }}
-      animate={{ opacity: 1, x: 0 }}
-      exit={{ opacity: 0, x: -20 }}
-      className="w-full"
+  const backButton = (
+    <button
+      type="button"
+      onClick={onBack}
+      className="flex items-center gap-1 text-sm text-muted-foreground transition-colors hover:text-foreground"
     >
-      <button
-        type="button"
-        onClick={onBack}
-        className="mb-8 flex items-center gap-1 text-sm text-muted-foreground transition-colors hover:text-foreground"
-      >
-        <ArrowLeft className="h-4 w-4" />
-        {tCommon('back')}
-      </button>
+      <ArrowLeft className="h-4 w-4" />
+      {tCommon('back')}
+    </button>
+  )
 
-      <div className="mb-10">
-        <h1 className="text-2xl font-semibold tracking-tight text-foreground">{t('title')}</h1>
-        <p className="mt-2 text-muted-foreground">{t('subtitle')}</p>
-      </div>
+  const submitButton = (
+    <div className="flex items-center gap-4">
+      <Button onClick={handleSubmit} disabled={loading} className="min-w-32">
+        {loading ? (
+          <>
+            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            {t('actions.creating')}
+          </>
+        ) : (
+          t('actions.submit')
+        )}
+      </Button>
+    </div>
+  )
 
-      <div className="space-y-6">
+  return (
+    <StepLayout
+      headerLeft={backButton}
+      title={t('title')}
+      subtitle={t('subtitle')}
+      error={localError}
+      footer={submitButton}
+      hint={t('hint')}
+      direction={direction}
+    >
+      <div className="mt-6 space-y-6 sm:mt-8">
         <div className="space-y-4">
           <Label htmlFor="pass1" className="block">
             {t('labels.pass1')}
@@ -121,33 +137,7 @@ export default function CreatePassphraseStep({
             </button>
           </div>
         </div>
-
-        {localError && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            className="flex items-center gap-2 text-sm text-destructive"
-          >
-            <AlertCircle className="h-4 w-4 shrink-0" />
-            {localError}
-          </motion.div>
-        )}
       </div>
-
-      <div className="mt-10 flex items-center gap-4">
-        <Button onClick={handleSubmit} disabled={loading} className="min-w-32">
-          {loading ? (
-            <>
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              {t('actions.creating')}
-            </>
-          ) : (
-            t('actions.submit')
-          )}
-        </Button>
-      </div>
-
-      <p className="mt-6 text-xs text-muted-foreground">{t('hint')}</p>
-    </motion.div>
+    </StepLayout>
   )
 }

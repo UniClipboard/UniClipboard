@@ -3,6 +3,7 @@ import { SetupError } from '@/api/setup'
 export interface StepProps {
   error?: SetupError | null
   loading?: boolean
+  direction?: 'forward' | 'backward'
 }
 
 export interface StepLayoutProps {
@@ -21,6 +22,7 @@ export interface StepLayoutProps {
 export interface ProcessingJoinStepProps {
   onCancel: () => void
   loading?: boolean
+  direction?: 'forward' | 'backward'
 }
 
 export interface WelcomeStepProps extends StepProps {

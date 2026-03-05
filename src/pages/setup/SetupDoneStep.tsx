@@ -1,32 +1,32 @@
-import { motion } from 'framer-motion'
 import { CheckCircle2, ArrowRight } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
+import StepLayout from '@/pages/setup/StepLayout'
 import { SetupDoneStepProps } from '@/pages/setup/types'
 
-export default function SetupDoneStep({ onComplete, loading }: SetupDoneStepProps) {
+export default function SetupDoneStep({ onComplete, loading, direction }: SetupDoneStepProps) {
   const { t } = useTranslation(undefined, { keyPrefix: 'setup.done' })
 
+  const enterButton = (
+    <Button onClick={onComplete} disabled={loading} className="min-w-40">
+      {t('actions.enter')}
+      <ArrowRight className="ml-2 h-4 w-4" />
+    </Button>
+  )
+
   return (
-    <motion.div
-      initial={{ opacity: 0, scale: 0.98 }}
-      animate={{ opacity: 1, scale: 1 }}
-      exit={{ opacity: 0, scale: 0.98 }}
-      className="w-full"
+    <StepLayout
+      variant="centered"
+      title={t('title')}
+      subtitle={t('subtitle')}
+      footer={enterButton}
+      direction={direction}
     >
-      <div className="flex flex-col items-center text-center">
-        <div className="mb-8 flex h-20 w-20 items-center justify-center text-green-500">
-          <CheckCircle2 className="h-16 w-16" />
+      <div className="flex justify-center">
+        <div className="mb-6 flex h-16 w-16 items-center justify-center text-green-500 sm:mb-8 sm:h-20 sm:w-20">
+          <CheckCircle2 className="h-12 w-12 sm:h-16 sm:w-16" />
         </div>
-
-        <h1 className="text-2xl font-semibold tracking-tight text-foreground">{t('title')}</h1>
-        <p className="mt-2 max-w-sm text-muted-foreground">{t('subtitle')}</p>
-
-        <Button onClick={onComplete} disabled={loading} className="mt-10 min-w-40">
-          {t('actions.enter')}
-          <ArrowRight className="ml-2 h-4 w-4" />
-        </Button>
       </div>
-    </motion.div>
+    </StepLayout>
   )
 }

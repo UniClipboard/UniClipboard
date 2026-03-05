@@ -1,9 +1,9 @@
-import { motion } from 'framer-motion'
-import { ArrowLeft, RefreshCw, Monitor, Smartphone, Laptop, AlertCircle } from 'lucide-react'
+import { ArrowLeft, RefreshCw, Monitor, Smartphone, Laptop } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { JoinPickDeviceStepProps } from './types'
 import { Button } from '@/components/ui/button'
 import { formatPeerIdForDisplay } from '@/lib/utils'
+import StepLayout from '@/pages/setup/StepLayout'
 
 export default function JoinPickDeviceStep({
   onSelectPeer,
@@ -13,6 +13,7 @@ export default function JoinPickDeviceStep({
   error,
   loading,
   isScanningInitial,
+  direction,
 }: JoinPickDeviceStepProps) {
   const { t } = useTranslation(undefined, { keyPrefix: 'setup.joinPickDevice' })
   const { t: tCommon } = useTranslation(undefined, { keyPrefix: 'setup.common' })
@@ -49,48 +50,41 @@ export default function JoinPickDeviceStep({
     }
   }
 
-  return (
-    <motion.div
-      initial={{ opacity: 0, x: 20 }}
-      animate={{ opacity: 1, x: 0 }}
-      exit={{ opacity: 0, x: -20 }}
-      className="w-full"
+  const backButton = (
+    <button
+      type="button"
+      onClick={onBack}
+      className="flex items-center gap-1 text-sm text-muted-foreground transition-colors hover:text-foreground"
     >
-      <div className="mb-8 flex items-center justify-between">
-        <button
-          type="button"
-          onClick={onBack}
-          className="flex items-center gap-1 text-sm text-muted-foreground transition-colors hover:text-foreground"
-        >
-          <ArrowLeft className="h-4 w-4" />
-          {tCommon('back')}
-        </button>
-        <button
-          type="button"
-          onClick={onRefresh}
-          disabled={loading}
-          className="flex items-center gap-1 text-sm text-muted-foreground transition-colors hover:text-foreground disabled:opacity-50"
-        >
-          <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
-          {tCommon('refresh')}
-        </button>
-      </div>
+      <ArrowLeft className="h-4 w-4" />
+      {tCommon('back')}
+    </button>
+  )
 
-      <div className="mb-10">
-        <h1 className="text-2xl font-semibold tracking-tight text-foreground">{t('title')}</h1>
-        <p className="mt-2 text-muted-foreground">{t('subtitle')}</p>
-      </div>
+  const refreshButton = (
+    <button
+      type="button"
+      onClick={onRefresh}
+      disabled={loading}
+      className="flex items-center gap-1 text-sm text-muted-foreground transition-colors hover:text-foreground disabled:opacity-50"
+    >
+      <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+      {tCommon('refresh')}
+    </button>
+  )
 
-      {errorMessage && (
-        <div className="mb-6 flex items-center gap-2 text-sm text-destructive">
-          <AlertCircle className="h-4 w-4 shrink-0" />
-          {errorMessage}
-        </div>
-      )}
-
-      <div className="min-h-[14rem] space-y-2">
+  return (
+    <StepLayout
+      headerLeft={backButton}
+      headerRight={refreshButton}
+      title={t('title')}
+      subtitle={t('subtitle')}
+      error={errorMessage}
+      direction={direction}
+    >
+      <div className="mt-6 min-h-48 space-y-2 sm:mt-8">
         {isScanningInitial ? (
-          <div className="flex flex-col items-center justify-center py-16 text-center">
+          <div className="flex flex-col items-center justify-center py-10 text-center sm:py-12">
             <RefreshCw className="mb-4 h-8 w-8 animate-spin text-muted-foreground" />
             <p className="text-foreground">{t('scanning.title')}</p>
             <p className="mt-2 max-w-sm text-sm text-muted-foreground">
@@ -98,7 +92,7 @@ export default function JoinPickDeviceStep({
             </p>
           </div>
         ) : peers.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-16 text-center">
+          <div className="flex flex-col items-center justify-center py-10 text-center sm:py-12">
             <p className="text-foreground">{t('empty.title')}</p>
             <p className="mt-2 max-w-sm text-sm text-muted-foreground">{t('empty.description')}</p>
             <Button
@@ -134,6 +128,6 @@ export default function JoinPickDeviceStep({
           ))
         )}
       </div>
-    </motion.div>
+    </StepLayout>
   )
 }

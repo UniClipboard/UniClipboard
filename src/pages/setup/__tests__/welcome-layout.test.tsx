@@ -12,14 +12,13 @@ vi.mock('framer-motion', () => ({
 }))
 
 describe('WelcomeStep layout', () => {
-  it('uses fixed two-column cards layout', () => {
+  it('uses vertical card layout', () => {
     const { container } = render(
       <WelcomeStep onCreate={() => {}} onJoin={() => {}} loading={false} />
     )
 
     screen.getByRole('heading', { name: /create/i })
-    const cardsGrid = container.querySelector('div.grid.gap-4')
-    expect(cardsGrid).toBeTruthy()
-    expect(cardsGrid).toHaveClass('grid-cols-2')
+    const cardsContainer = container.querySelector('div.flex.flex-col.gap-4')
+    expect(cardsContainer).toBeTruthy()
   })
 })

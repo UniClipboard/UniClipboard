@@ -4,7 +4,11 @@ import { Button } from '@/components/ui/button'
 import StepLayout from '@/pages/setup/StepLayout'
 import type { ProcessingJoinStepProps } from '@/pages/setup/types'
 
-export default function ProcessingJoinStep({ onCancel, loading }: ProcessingJoinStepProps) {
+export default function ProcessingJoinStep({
+  onCancel,
+  loading,
+  direction,
+}: ProcessingJoinStepProps) {
   const { t } = useTranslation(undefined, { keyPrefix: 'setup.page' })
   const { t: tCommon } = useTranslation(undefined, { keyPrefix: 'setup.common' })
 
@@ -13,6 +17,7 @@ export default function ProcessingJoinStep({ onCancel, loading }: ProcessingJoin
       variant="centered"
       title={t('processingJoinSpace.title')}
       subtitle={t('processingJoinSpace.subtitle')}
+      direction={direction}
       footer={
         <Button
           variant="ghost"

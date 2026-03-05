@@ -1,3 +1,4 @@
+import { resolveUcUrl } from '@/lib/protocol'
 import { invokeWithTrace } from '@/lib/tauri-command'
 
 // Backend projection type
@@ -264,7 +265,8 @@ export async function fetchClipboardResourceText(
   resource: ClipboardEntryResource
 ): Promise<string> {
   try {
-    const response = await fetch(resource.url)
+    const resolvedUrl = resolveUcUrl(resource.url)
+    const response = await fetch(resolvedUrl)
     if (!response.ok) {
       throw new Error(`Failed to fetch clipboard resource: ${response.status}`)
     }

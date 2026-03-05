@@ -18,6 +18,7 @@ import {
   getClipboardEntryResource,
 } from '@/api/clipboardItems'
 import { toast } from '@/components/ui/toast'
+import { resolveUcUrl } from '@/lib/protocol'
 import { cn } from '@/lib/utils'
 import { formatFileSize } from '@/utils'
 
@@ -179,7 +180,8 @@ const ClipboardItem: React.FC<ClipboardItemProps> = ({
       }
       case 'image': {
         const thumbnailUrl = (content as ClipboardImageItem | null)?.thumbnail ?? null
-        const imageUrl = isExpanded && detailImageUrl ? detailImageUrl : thumbnailUrl
+        const rawImageUrl = isExpanded && detailImageUrl ? detailImageUrl : thumbnailUrl
+        const imageUrl = rawImageUrl ? resolveUcUrl(rawImageUrl) : null
         return (
           <div className="flex justify-center bg-black/20 rounded-lg overflow-hidden py-4">
             {imageUrl ? (

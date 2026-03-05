@@ -7,6 +7,12 @@ vi.mock('@/lib/tauri-command', () => ({
   invokeWithTrace: vi.fn(),
 }))
 
+// Mock Tauri core API so resolveUcUrl works in test environment.
+// convertFileSrc returns the path prefixed with "uc://" to simulate platform URL conversion.
+vi.mock('@tauri-apps/api/core', () => ({
+  convertFileSrc: (path: string, _protocol: string) => `uc://${path}`,
+}))
+
 const invokeMock = vi.mocked(invokeWithTrace)
 
 describe('ClipboardItem', () => {

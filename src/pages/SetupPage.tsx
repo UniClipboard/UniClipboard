@@ -1,5 +1,5 @@
-import { AnimatePresence, motion } from 'framer-motion'
-import { Loader2, Monitor, Shield, Smartphone, Wifi, Key } from 'lucide-react'
+import { AnimatePresence } from 'framer-motion'
+import { Loader2, Shield, Wifi, Key } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate } from 'react-router-dom'
@@ -17,16 +17,52 @@ import {
   verifyPassphrase,
   SetupState,
 } from '@/api/setup'
-import { Button } from '@/components/ui/button'
 import CreatePassphraseStep from '@/pages/setup/CreatePassphraseStep'
 import JoinPickDeviceStep from '@/pages/setup/JoinPickDeviceStep'
 import JoinVerifyPassphraseStep from '@/pages/setup/JoinVerifyPassphraseStep'
 import PairingConfirmStep from '@/pages/setup/PairingConfirmStep'
+import ProcessingJoinStep from '@/pages/setup/ProcessingJoinStep'
 import SetupDoneStep from '@/pages/setup/SetupDoneStep'
+import StepDotIndicator from '@/pages/setup/StepDotIndicator'
 import WelcomeStep from '@/pages/setup/WelcomeStep'
 
 type SetupPageProps = {
   onCompleteSetup?: () => void
+}
+
+function getStateOrdinal(state: SetupState | null): number {
+  if (!state) return -1
+  if (state === 'Welcome') return 0
+  if (state === 'Completed') return 99
+  if (typeof state === 'object') {
+    if ('CreateSpaceInputPassphrase' in state) return 1
+    if ('ProcessingCreateSpace' in state) return 2
+    if ('JoinSpaceSelectDevice' in state) return 1
+    if ('JoinSpaceInputPassphrase' in state) return 2
+    if ('JoinSpaceConfirmPeer' in state) return 3
+    if ('ProcessingJoinSpace' in state) return 4
+  }
+  return -1
+}
+
+function getStepInfo(state: SetupState | null): { total: number; current: number } | null {
+  if (!state || state === 'Welcome') return null
+  if (state === 'Completed') {
+    // Completed can be reached from either flow; show final dot
+    // We don't know which flow, so return null (no dots on done)
+    return null
+  }
+  if (typeof state === 'object') {
+    // Create flow: InputPassphrase(0) -> Processing(1) -> Done(2)
+    if ('CreateSpaceInputPassphrase' in state) return { total: 3, current: 0 }
+    if ('ProcessingCreateSpace' in state) return { total: 3, current: 1 }
+    // Join flow: SelectDevice(0) -> InputPassphrase(1) -> ConfirmPeer(2) -> Processing(3) -> Done(4)
+    if ('JoinSpaceSelectDevice' in state) return { total: 5, current: 0 }
+    if ('JoinSpaceInputPassphrase' in state) return { total: 5, current: 1 }
+    if ('JoinSpaceConfirmPeer' in state) return { total: 5, current: 2 }
+    if ('ProcessingJoinSpace' in state) return { total: 5, current: 3 }
+  }
+  return null
 }
 
 export default function SetupPage({ onCompleteSetup }: SetupPageProps = {}) {
@@ -41,6 +77,19 @@ export default function SetupPage({ onCompleteSetup }: SetupPageProps = {}) {
   const [selectedPeerId, setSelectedPeerId] = useState<string | null>(null)
   const activeEventSessionIdRef = useRef<string | null>(null)
   const setupStateRef = useRef<SetupState | null>(null)
+  const prevStateRef = useRef<SetupState | null>(null)
+
+  const direction = useMemo(() => {
+    return getStateOrdinal(setupState) >= getStateOrdinal(prevStateRef.current)
+      ? 'forward'
+      : 'backward'
+  }, [setupState])
+
+  useEffect(() => {
+    prevStateRef.current = setupState
+  }, [setupState])
+
+  const stepInfo = useMemo(() => getStepInfo(setupState), [setupState])
 
   const isSetupFlowActive = useCallback((state: SetupState | null) => {
     if (!state) return false
@@ -193,6 +242,7 @@ export default function SetupPage({ onCompleteSetup }: SetupPageProps = {}) {
           onCreate={() => runAction(() => startNewSpace())}
           onJoin={() => runAction(() => startJoinSpace())}
           loading={loading}
+          direction={direction}
         />
       )
     }
@@ -205,6 +255,7 @@ export default function SetupPage({ onCompleteSetup }: SetupPageProps = {}) {
             navigate('/', { replace: true })
           }}
           loading={loading}
+          direction={direction}
         />
       )
     }
@@ -219,6 +270,7 @@ export default function SetupPage({ onCompleteSetup }: SetupPageProps = {}) {
             onBack={() => runAction(() => cancelSetup())}
             error={setupState.CreateSpaceInputPassphrase.error}
             loading={loading}
+            direction={direction}
           />
         )
       }
@@ -236,6 +288,7 @@ export default function SetupPage({ onCompleteSetup }: SetupPageProps = {}) {
             error={setupState.JoinSpaceSelectDevice.error}
             loading={loading || peersLoading}
             isScanningInitial={isScanningInitial}
+            direction={direction}
           />
         )
       }
@@ -250,6 +303,7 @@ export default function SetupPage({ onCompleteSetup }: SetupPageProps = {}) {
             onCreateNew={() => runAction(() => startNewSpace())}
             error={error}
             loading={loading}
+            direction={direction}
           />
         )
       }
@@ -264,6 +318,7 @@ export default function SetupPage({ onCompleteSetup }: SetupPageProps = {}) {
             onCancel={() => runAction(() => cancelSetup())}
             error={error}
             loading={loading}
+            direction={direction}
           />
         )
       }
@@ -282,45 +337,20 @@ export default function SetupPage({ onCompleteSetup }: SetupPageProps = {}) {
 
       if ('ProcessingJoinSpace' in setupState) {
         return (
-          <motion.div
-            initial={{ opacity: 0, scale: 0.98 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.98 }}
-            className="w-full"
-          >
-            <div className="flex flex-col items-center justify-center py-12 text-center">
-              <div className="mb-6 flex h-16 w-16 items-center justify-center rounded-full bg-primary/10">
-                <Loader2 className="h-8 w-8 animate-spin text-primary" />
-              </div>
-              <h1 className="text-2xl font-semibold tracking-tight text-foreground">
-                {t('processingJoinSpace.title')}
-              </h1>
-              <p className="mt-2 max-w-sm text-muted-foreground">
-                {t('processingJoinSpace.subtitle')}
-              </p>
-              <div className="mt-8 flex items-center gap-2.5 rounded-lg border border-border/50 bg-muted/40 px-5 py-3 text-sm text-muted-foreground">
-                <div className="flex shrink-0 items-center gap-1">
-                  <Monitor className="h-4 w-4" />
-                  <span className="text-xs">/</span>
-                  <Smartphone className="h-4 w-4" />
-                </div>
-                <span>{t('processingJoinSpace.hint')}</span>
-              </div>
-              <Button
-                variant="ghost"
-                className="mt-8 text-muted-foreground"
-                onClick={() => runAction(() => cancelSetup())}
-                disabled={loading}
-              >
-                {tCommon('cancel')}
-              </Button>
-            </div>
-          </motion.div>
+          <ProcessingJoinStep
+            onCancel={() => runAction(() => cancelSetup())}
+            loading={loading}
+            direction={direction}
+          />
         )
       }
     }
 
-    return <div>{t('unknownState', { state: JSON.stringify(setupState) })}</div>
+    return (
+      <div className="break-all text-sm text-muted-foreground">
+        {t('unknownState', { state: JSON.stringify(setupState) })}
+      </div>
+    )
   }
 
   const stepKey = useMemo(() => {
@@ -337,16 +367,30 @@ export default function SetupPage({ onCompleteSetup }: SetupPageProps = {}) {
         <div className="absolute -bottom-32 -right-32 h-96 w-96 bg-emerald-500/5 blur-3xl" />
       </div>
 
-      <div className="relative flex h-full w-full flex-col">
-        <main className="flex flex-1 items-center overflow-y-auto px-6 py-12 lg:px-16">
-          <div className="mx-auto w-full max-w-2xl">
-            <AnimatePresence mode="wait" initial={false}>
-              <div key={stepKey}>{renderStep()}</div>
-            </AnimatePresence>
+      <div className="relative flex h-full w-full min-h-0 flex-col">
+        <main
+          className={`flex min-h-0 flex-1 items-center px-4 py-4 sm:px-6 sm:py-6 ${
+            stepKey === 'Welcome' ? 'overflow-hidden' : 'overflow-y-auto'
+          }`}
+        >
+          <div className="mx-auto w-full max-w-3xl max-h-full">
+            <div className="max-h-full px-1 py-1 sm:px-0 sm:py-2">
+              <AnimatePresence mode="wait" initial={false}>
+                <div key={stepKey} className="w-full">
+                  {renderStep()}
+                </div>
+              </AnimatePresence>
+            </div>
           </div>
         </main>
 
-        <div className="pointer-events-none absolute bottom-6 right-6 hidden flex-col gap-2 text-[0.625rem] text-muted-foreground/60 lg:flex">
+        {stepInfo && (
+          <div className="flex justify-center pb-4">
+            <StepDotIndicator totalSteps={stepInfo.total} currentStep={stepInfo.current} />
+          </div>
+        )}
+
+        <div className="pointer-events-none absolute bottom-6 right-6 hidden flex-col gap-2 text-[0.625rem] text-muted-foreground/60 sm:flex">
           <div className="flex items-center gap-1.5">
             <Shield className="h-3 w-3" />
             <span>{t('badges.e2ee')}</span>

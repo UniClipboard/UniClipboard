@@ -14,6 +14,7 @@ vi.mock('@/api/setup', () => ({
   selectJoinPeer: vi.fn(),
   submitPassphrase: vi.fn(),
   verifyPassphrase: vi.fn(),
+  confirmPeerTrust: vi.fn(),
   cancelSetup: vi.fn(),
 }))
 
@@ -99,6 +100,28 @@ describe('Setup flow', () => {
     })
 
     expect(startNewSpace).toHaveBeenCalled()
+  })
+
+  it('uses non-scrollable main layout on welcome step', async () => {
+    vi.mocked(getSetupState).mockResolvedValue('Welcome')
+
+    const { container } = render(<SetupPage />)
+    await screen.findByText('欢迎使用 UniClipboard')
+
+    const mainContainer = container.querySelector('main')
+    expect(mainContainer).toBeTruthy()
+    expect(mainContainer).toHaveClass('overflow-hidden')
+    expect(mainContainer).not.toHaveClass('overflow-y-auto')
+  })
+
+  it('does not show step dot indicator on welcome step', async () => {
+    vi.mocked(getSetupState).mockResolvedValue('Welcome')
+
+    const { container } = render(<SetupPage />)
+    await screen.findByText('欢迎使用 UniClipboard')
+
+    const dots = container.querySelectorAll('[data-testid^="dot-"]')
+    expect(dots.length).toBe(0)
   })
 
   it('cleans listener when registration resolves after unmount', async () => {

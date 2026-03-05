@@ -182,7 +182,11 @@ struct InProcessNetwork {
 
 #[async_trait]
 impl ClipboardTransportPort for InProcessNetwork {
-    async fn send_clipboard(&self, peer_id: &str, outbound_bytes: Vec<u8>) -> anyhow::Result<()> {
+    async fn send_clipboard(
+        &self,
+        peer_id: &str,
+        outbound_bytes: std::sync::Arc<[u8]>,
+    ) -> anyhow::Result<()> {
         self.send_count.fetch_add(1, Ordering::SeqCst);
 
         if peer_id != self.remote_peer.peer_id {
@@ -225,7 +229,10 @@ impl ClipboardTransportPort for InProcessNetwork {
         }
     }
 
-    async fn broadcast_clipboard(&self, _encrypted_data: Vec<u8>) -> anyhow::Result<()> {
+    async fn broadcast_clipboard(
+        &self,
+        _encrypted_data: std::sync::Arc<[u8]>,
+    ) -> anyhow::Result<()> {
         Ok(())
     }
 

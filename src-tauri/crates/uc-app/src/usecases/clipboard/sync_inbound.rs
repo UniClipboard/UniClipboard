@@ -8,9 +8,50 @@ use tokio::sync::Mutex;
 use tracing::{debug, error, info, info_span, warn, Instrument};
 use uc_core::ids::{EntryId, FormatId, RepresentationId};
 use uc_core::network::protocol::{
-    ClipboardMultiRepPayloadV2, ClipboardPayloadVersion, ClipboardTextPayloadV1,
-    WireRepresentation, MIME_IMAGE_PREFIX, MIME_TEXT_HTML, MIME_TEXT_PLAIN, MIME_TEXT_RTF,
+    ClipboardPayloadVersion, MIME_IMAGE_PREFIX, MIME_TEXT_HTML, MIME_TEXT_PLAIN, MIME_TEXT_RTF,
 };
+
+// TODO(Plan 03): V1/V2 inbound rewrite — these local stubs preserve compilation
+// until the inbound path is rewritten to use V3 binary payload decoding.
+
+/// Stub: V1 text payload (to be removed in Plan 03 V3 inbound rewrite)
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+pub(crate) struct ClipboardTextPayloadV1 {
+    pub text: String,
+    pub mime: String,
+    pub ts_ms: i64,
+}
+
+impl ClipboardTextPayloadV1 {
+    pub const MIME_TEXT_PLAIN: &'static str = "text/plain";
+
+    pub fn new(text: String, ts_ms: i64) -> Self {
+        Self {
+            text,
+            mime: Self::MIME_TEXT_PLAIN.to_string(),
+            ts_ms,
+        }
+    }
+}
+
+/// Stub: V2 multi-representation payload (to be removed in Plan 03 V3 inbound rewrite)
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+pub(crate) struct ClipboardMultiRepPayloadV2 {
+    pub ts_ms: i64,
+    pub representations: Vec<WireRepresentation>,
+}
+
+/// Stub: Wire representation (to be removed in Plan 03 V3 inbound rewrite)
+///
+/// Note: `bytes` field uses default serde Vec<u8> serialization (integer array),
+/// which differs from the original serde_with Base64 encoding. This stub is only
+/// used during the transition period — Plan 03 will replace the entire V2 inbound path.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+pub(crate) struct WireRepresentation {
+    pub mime: Option<String>,
+    pub format_id: String,
+    pub bytes: Vec<u8>,
+}
 use uc_core::network::ClipboardMessage;
 use uc_core::ports::clipboard::{RepresentationCachePort, SpoolQueuePort};
 use uc_core::ports::{
@@ -183,10 +224,16 @@ impl SyncInboundClipboardUseCase {
                 return Ok(InboundApplyOutcome::Skipped);
             }
 
-            // Route to V1 or V2 path based on payload_version
+            // TODO(Plan 03): V3 inbound rewrite — currently routes to legacy V2 path
+            // which handles the payload after decryption via the same chunked decode.
+            // V1 inbound is no longer supported (ClipboardPayloadVersion only has V3).
             match message.payload_version {
-                ClipboardPayloadVersion::V1 => self.apply_v1_inbound(message).await,
-                ClipboardPayloadVersion::V2 => {
+                ClipboardPayloadVersion::V3 => {
+                    // V3 uses the same two-segment wire format as V2 (JSON header + trailing payload).
+                    // The transport layer pre-decodes via TransferPayloadDecryptorAdapter which
+                    // auto-detects V2/V3 by magic bytes. The plaintext is then a V3 binary payload
+                    // but we temporarily route through the V2 JSON deserialization path.
+                    // Plan 03 will replace this with proper V3 binary payload decoding.
                     self.apply_v2_inbound(message, pre_decoded_plaintext).await
                 }
             }
@@ -597,15 +644,13 @@ mod tests {
     use std::sync::{Arc, Mutex, OnceLock};
     use std::time::Duration;
 
+    use super::{ClipboardMultiRepPayloadV2, ClipboardTextPayloadV1, WireRepresentation};
     use async_trait::async_trait;
     use chrono::Utc;
     use tracing_subscriber::{fmt::MakeWriter, EnvFilter};
     use uc_core::clipboard::{ClipboardSelection, PolicyError, SelectionPolicyVersion};
     use uc_core::ids::{FormatId, RepresentationId};
-    use uc_core::network::protocol::{
-        ClipboardMultiRepPayloadV2, ClipboardPayloadVersion, ClipboardTextPayloadV1,
-        WireRepresentation,
-    };
+    use uc_core::network::protocol::ClipboardPayloadVersion;
     use uc_core::security::model::{
         EncryptedBlob, EncryptionAlgo, EncryptionError, EncryptionFormatVersion, KdfParams, Kek,
         MasterKey, Passphrase,
@@ -986,7 +1031,7 @@ mod tests {
             timestamp: Utc::now(),
             origin_device_id: origin_device_id.to_string(),
             origin_device_name: "peer-device".to_string(),
-            payload_version: uc_core::network::protocol::ClipboardPayloadVersion::V1,
+            payload_version: uc_core::network::protocol::ClipboardPayloadVersion::V3,
         }
     }
 
@@ -1402,7 +1447,7 @@ mod tests {
             timestamp: Utc::now(),
             origin_device_id: origin_device_id.to_string(),
             origin_device_name: "peer-device".to_string(),
-            payload_version: ClipboardPayloadVersion::V2,
+            payload_version: ClipboardPayloadVersion::V3,
         }
     }
 
@@ -1599,7 +1644,7 @@ mod tests {
             timestamp: Utc::now(),
             origin_device_id: "remote-1".to_string(),
             origin_device_name: "peer-device".to_string(),
-            payload_version: ClipboardPayloadVersion::V2,
+            payload_version: ClipboardPayloadVersion::V3,
         };
 
         // Build plaintext as transport would provide it
@@ -1651,7 +1696,7 @@ mod tests {
             timestamp: Utc::now(),
             origin_device_id: "remote-1".to_string(),
             origin_device_name: "peer-device".to_string(),
-            payload_version: ClipboardPayloadVersion::V2,
+            payload_version: ClipboardPayloadVersion::V3,
         };
 
         let result = usecase

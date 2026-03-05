@@ -3,20 +3,17 @@ use serde::{Deserialize, Serialize};
 use serde_with::{base64::Base64, serde_as};
 
 /// Payload version for ClipboardMessage.encrypted_content.
-/// Default is V1 for backward compatibility with old senders that do not
-/// include this field.
+/// V3 is the only supported version. V1/V2 have been removed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(into = "u8", try_from = "u8")]
 pub enum ClipboardPayloadVersion {
-    /// V1: JSON-serialized EncryptedBlob wrapping ClipboardTextPayloadV1
-    V1 = 1,
-    /// V2: Binary chunked multi-representation payload (XChaCha20-Poly1305 per chunk)
-    V2 = 2,
+    /// V3: Binary multi-representation payload (V3 chunked AEAD with optional zstd compression)
+    V3 = 3,
 }
 
 impl Default for ClipboardPayloadVersion {
     fn default() -> Self {
-        Self::V1
+        Self::V3
     }
 }
 
@@ -30,8 +27,7 @@ impl TryFrom<u8> for ClipboardPayloadVersion {
     type Error = String;
     fn try_from(v: u8) -> Result<Self, Self::Error> {
         match v {
-            1 => Ok(Self::V1),
-            2 => Ok(Self::V2),
+            3 => Ok(Self::V3),
             other => Err(format!("unknown ClipboardPayloadVersion: {other}")),
         }
     }
@@ -43,15 +39,14 @@ impl TryFrom<u8> for ClipboardPayloadVersion {
 pub struct ClipboardMessage {
     pub id: String,
     pub content_hash: String,
-    /// Binary payload. For V1: JSON-serialized EncryptedBlob.
-    /// For V2: binary chunked format (magic + header + chunks).
+    /// Binary payload. For V3: binary chunked format (UC3 header + compressed chunks).
     /// Uses base64 encoding in JSON for compact representation.
     #[serde_as(as = "Base64")]
     pub encrypted_content: Vec<u8>,
     pub timestamp: DateTime<Utc>,
     pub origin_device_id: String,
     pub origin_device_name: String,
-    /// Payload format version. Defaults to V1 when absent (old senders).
+    /// Payload format version. Defaults to V3.
     #[serde(default)]
     pub payload_version: ClipboardPayloadVersion,
 }
@@ -62,36 +57,19 @@ mod tests {
     use chrono::Utc;
 
     #[test]
-    fn payload_version_defaults_to_v1_when_absent_in_json() {
-        // Simulate a V1 message (old sender — no payload_version field)
-        // base64 of b"hello" is "aGVsbG8="
+    fn payload_version_v3_deserializes_correctly() {
         let json = r#"{
-            "id": "msg-1",
-            "content_hash": "abc",
+            "id": "msg-3",
+            "content_hash": "ghi",
             "encrypted_content": "aGVsbG8=",
             "timestamp": "2024-01-01T00:00:00Z",
-            "origin_device_id": "dev-1",
-            "origin_device_name": "Device"
-        }"#;
-
-        let message: ClipboardMessage = serde_json::from_str(json).expect("deserialize V1 message");
-        assert_eq!(message.payload_version, ClipboardPayloadVersion::V1);
-    }
-
-    #[test]
-    fn payload_version_v2_deserializes_correctly() {
-        let json = r#"{
-            "id": "msg-2",
-            "content_hash": "def",
-            "encrypted_content": "aGVsbG8=",
-            "timestamp": "2024-01-01T00:00:00Z",
-            "origin_device_id": "dev-2",
+            "origin_device_id": "dev-3",
             "origin_device_name": "Device",
-            "payload_version": 2
+            "payload_version": 3
         }"#;
 
-        let message: ClipboardMessage = serde_json::from_str(json).expect("deserialize V2 message");
-        assert_eq!(message.payload_version, ClipboardPayloadVersion::V2);
+        let message: ClipboardMessage = serde_json::from_str(json).expect("deserialize V3 message");
+        assert_eq!(message.payload_version, ClipboardPayloadVersion::V3);
     }
 
     #[test]
@@ -104,7 +82,7 @@ mod tests {
             timestamp: Utc::now(),
             origin_device_id: "dev-1".to_string(),
             origin_device_name: "Test Device".to_string(),
-            payload_version: ClipboardPayloadVersion::V1,
+            payload_version: ClipboardPayloadVersion::V3,
         };
 
         let json = serde_json::to_string(&message).expect("serialize message");
@@ -121,16 +99,14 @@ mod tests {
             timestamp: Utc::now(),
             origin_device_id: "dev-1".to_string(),
             origin_device_name: "Test Device".to_string(),
-            payload_version: ClipboardPayloadVersion::V1,
+            payload_version: ClipboardPayloadVersion::V3,
         };
 
         let json_str = serde_json::to_string(&message).expect("serialize message");
-        // base64 of [0x01, 0x02, 0x03] is "AQID"
         assert!(
             json_str.contains("AQID"),
             "encrypted_content should be base64-encoded: {json_str}"
         );
-        // Should NOT be [1,2,3] as integer array
         assert!(
             !json_str.contains("[1,2,3]"),
             "encrypted_content should not be integer array: {json_str}"
@@ -138,50 +114,47 @@ mod tests {
     }
 
     #[test]
-    fn v2_message_deserializes_without_panic_on_v1_receiver() {
-        // Simulate a V2 message received by a V1 receiver:
-        // ClipboardMessage deserialization should succeed even if payload_version is unknown
-        // The encrypted_content will differ but the struct itself parses fine.
-        let json = r#"{
-            "id": "msg-v2",
-            "content_hash": "xyz",
-            "encrypted_content": "dGVzdA==",
-            "timestamp": "2024-06-01T12:00:00Z",
-            "origin_device_id": "dev-v2",
-            "origin_device_name": "New Device",
-            "payload_version": 2
-        }"#;
-
-        // V1 receiver still deserializes the message (no panic)
-        let result: Result<ClipboardMessage, _> = serde_json::from_str(json);
-        assert!(
-            result.is_ok(),
-            "V2 message should deserialize without panic on V1 receiver"
-        );
-        let message = result.unwrap();
-        assert_eq!(message.payload_version, ClipboardPayloadVersion::V2);
-    }
-
-    #[test]
     fn clipboard_payload_version_try_from_u8() {
         assert_eq!(
-            ClipboardPayloadVersion::try_from(1u8),
-            Ok(ClipboardPayloadVersion::V1)
-        );
-        assert_eq!(
-            ClipboardPayloadVersion::try_from(2u8),
-            Ok(ClipboardPayloadVersion::V2)
+            ClipboardPayloadVersion::try_from(3u8),
+            Ok(ClipboardPayloadVersion::V3)
         );
         assert!(ClipboardPayloadVersion::try_from(0u8).is_err());
-        assert!(ClipboardPayloadVersion::try_from(3u8).is_err());
+        assert!(ClipboardPayloadVersion::try_from(1u8).is_err());
+        assert!(ClipboardPayloadVersion::try_from(2u8).is_err());
         assert!(ClipboardPayloadVersion::try_from(255u8).is_err());
     }
 
     #[test]
     fn clipboard_payload_version_into_u8() {
-        let v1: u8 = ClipboardPayloadVersion::V1.into();
-        let v2: u8 = ClipboardPayloadVersion::V2.into();
-        assert_eq!(v1, 1u8);
-        assert_eq!(v2, 2u8);
+        let v3: u8 = ClipboardPayloadVersion::V3.into();
+        assert_eq!(v3, 3u8);
+    }
+
+    #[test]
+    fn default_version_is_v3() {
+        assert_eq!(
+            ClipboardPayloadVersion::default(),
+            ClipboardPayloadVersion::V3
+        );
+    }
+
+    #[test]
+    fn unknown_version_returns_error() {
+        let json = r#"{
+            "id": "msg-1",
+            "content_hash": "abc",
+            "encrypted_content": "aGVsbG8=",
+            "timestamp": "2024-01-01T00:00:00Z",
+            "origin_device_id": "dev-1",
+            "origin_device_name": "Device",
+            "payload_version": 1
+        }"#;
+
+        let result: Result<ClipboardMessage, _> = serde_json::from_str(json);
+        assert!(
+            result.is_err(),
+            "V1 payload_version should fail deserialization"
+        );
     }
 }

@@ -864,9 +864,10 @@ const MAX_JSON_HEADER_SIZE: usize = 64 * 1024;
 
 /// Result of processing a single inbound business stream message.
 enum ProcessedMessage {
-    /// V2 clipboard with pre-decoded plaintext from transport-level streaming decode.
-    V2Clipboard(ClipboardMessage, Vec<u8>),
-    /// All other messages (V1 clipboard, DeviceAnnounce, Heartbeat, Pairing).
+    /// Clipboard with pre-decoded plaintext from transport-level streaming decode.
+    /// TODO(Plan 03): V3 inbound rewrite — currently uses ChunkedDecoder which auto-detects V2/V3.
+    StreamingClipboard(ClipboardMessage, Vec<u8>),
+    /// All other messages (DeviceAnnounce, Heartbeat, Pairing).
     Standard(ProtocolMessage),
 }
 
@@ -952,14 +953,15 @@ fn spawn_business_stream_handler(
 
                     match message {
                         ProtocolMessage::Clipboard(msg)
-                            if msg.payload_version == ClipboardPayloadVersion::V2 =>
+                            if msg.payload_version == ClipboardPayloadVersion::V3 =>
                         {
-                            // Step 3: V2 streaming decode via spawn_blocking
+                            // Streaming decode via spawn_blocking.
+                            // TransferPayloadDecryptorAdapter auto-detects V2/V3 by magic bytes.
                             let master_key = match encryption_session.get_master_key().await {
                                 Ok(k) => k,
                                 Err(e) => {
                                     return Err(format!(
-                                        "V2 inbound: encryption session not ready: {e}"
+                                        "inbound: encryption session not ready: {e}"
                                     ));
                                 }
                             };
@@ -967,35 +969,38 @@ fn spawn_business_stream_handler(
                             let decode_result = tokio::task::spawn_blocking(move || {
                                 use tokio_util::io::SyncIoBridge;
                                 let sync_reader = SyncIoBridge::new(reader);
+                                // TODO(Plan 03): Use V3-specific streaming decoder
                                 uc_infra::clipboard::ChunkedDecoder::decode_from(
                                     sync_reader,
                                     &master_key,
                                 )
                             })
                             .await
-                            .map_err(|e| format!("V2 decode task panicked: {e}"))?;
+                            .map_err(|e| format!("decode task panicked: {e}"))?;
 
                             match decode_result {
-                                Ok(plaintext) => Ok(ProcessedMessage::V2Clipboard(msg, plaintext)),
-                                Err(e) => Err(format!("V2 inbound: chunk decode failed: {e}")),
+                                Ok(plaintext) => {
+                                    Ok(ProcessedMessage::StreamingClipboard(msg, plaintext))
+                                }
+                                Err(e) => Err(format!("inbound: chunk decode failed: {e}")),
                             }
                         }
                         other => {
-                            // V1 clipboard, DeviceAnnounce, Heartbeat, Pairing — no trailing payload
+                            // DeviceAnnounce, Heartbeat, Pairing — no trailing payload
                             Ok(ProcessedMessage::Standard(other))
                         }
                     }
                 })
                 .await;
 
-                // Stream ownership: for V2 the stream was moved into spawn_blocking via SyncIoBridge;
-                // when ChunkedDecoder::decode_from finishes (or errors), SyncIoBridge is dropped,
-                // which drops the underlying tokio reader / compat layer / Take<libp2p::Stream>.
-                // The libp2p stream close happens via Drop.
-                // For non-V2, the reader is dropped when the async block completes.
+                // Stream ownership: for streaming clipboard the stream was moved into
+                // spawn_blocking via SyncIoBridge; when decode_from finishes (or errors),
+                // SyncIoBridge is dropped, which drops the underlying tokio reader / compat
+                // layer / Take<libp2p::Stream>. The libp2p stream close happens via Drop.
+                // For non-clipboard messages, the reader is dropped when the async block completes.
 
                 match result {
-                    Ok(Ok(ProcessedMessage::V2Clipboard(msg, plaintext))) => {
+                    Ok(Ok(ProcessedMessage::StreamingClipboard(msg, plaintext))) => {
                         handle_v2_clipboard(
                             caches,
                             event_tx,
@@ -1025,7 +1030,7 @@ fn spawn_business_stream_handler(
     });
 }
 
-/// Handle non-V2 protocol messages (V1 clipboard, DeviceAnnounce, Heartbeat, Pairing).
+/// Handle non-streaming protocol messages (DeviceAnnounce, Heartbeat, Pairing, fallback clipboard).
 async fn handle_standard_message(
     caches: Arc<RwLock<PeerCaches>>,
     event_tx: mpsc::Sender<NetworkEvent>,
@@ -1063,9 +1068,9 @@ async fn handle_standard_message(
             }
         }
         ProtocolMessage::Clipboard(message) => {
-            // V1 path — send with None for pre-decoded plaintext
+            // Fallback path — send with None for pre-decoded plaintext
             if let Err(err) = clipboard_tx.send((message.clone(), None)).await {
-                warn!("Failed to forward V1 clipboard payload: {err}");
+                warn!("Failed to forward clipboard payload: {err}");
             }
             if let Err(err) = try_send_event(
                 &event_tx,
@@ -1087,7 +1092,7 @@ async fn handle_standard_message(
     }
 }
 
-/// Handle V2 clipboard message with pre-decoded plaintext from transport-level streaming decode.
+/// Handle clipboard message with pre-decoded plaintext from transport-level streaming decode.
 async fn handle_v2_clipboard(
     _caches: Arc<RwLock<PeerCaches>>,
     event_tx: mpsc::Sender<NetworkEvent>,
@@ -1097,7 +1102,7 @@ async fn handle_v2_clipboard(
     plaintext: Vec<u8>,
 ) {
     if let Err(err) = clipboard_tx.send((message.clone(), Some(plaintext))).await {
-        warn!("Failed to forward V2 clipboard payload: {err}");
+        warn!("Failed to forward clipboard payload: {err}");
     }
     if let Err(err) = try_send_event(
         &event_tx,
@@ -2925,12 +2930,15 @@ mod tests {
             timestamp: Utc::now(),
             origin_device_id: "device-a".to_string(),
             origin_device_name: "Adapter A".to_string(),
-            payload_version: uc_core::network::protocol::ClipboardPayloadVersion::V1,
+            payload_version: uc_core::network::protocol::ClipboardPayloadVersion::V3,
         };
-        // Use frame_to_bytes for the new two-segment wire format
-        let payload = ProtocolMessage::Clipboard(expected.clone())
-            .frame_to_bytes(None)
-            .expect("serialize clipboard protocol payload with frame_to_bytes");
+        // Use frame_to_bytes for the two-segment wire format (header + no trailing payload for this test)
+        let payload: Arc<[u8]> = Arc::from(
+            ProtocolMessage::Clipboard(expected.clone())
+                .frame_to_bytes(None)
+                .expect("serialize clipboard protocol payload with frame_to_bytes")
+                .into_boxed_slice(),
+        );
 
         let mut received = None;
         for _attempt in 0..20 {
@@ -2939,12 +2947,8 @@ mod tests {
                 .expect("send clipboard protocol payload");
 
             match timeout(Duration::from_millis(500), clipboard_rx_b.recv()).await {
-                Ok(Some((message, pre_decoded))) => {
-                    // V1 messages should have None pre-decoded plaintext
-                    assert!(
-                        pre_decoded.is_none(),
-                        "V1 message should have no pre-decoded plaintext"
-                    );
+                Ok(Some((message, _pre_decoded))) => {
+                    // This is a test-only scenario without actual encrypted trailing payload
                     received = Some(message);
                     break;
                 }

@@ -15,7 +15,7 @@ mod thumbnail_generator;
 pub use background_blob_worker::BackgroundBlobWorker;
 pub use change_origin::InMemoryClipboardChangeOrigin;
 pub use chunked_transfer::{
-    ChunkedDecoder, ChunkedEncoder, TransferPayloadDecryptorAdapter,
+    ChunkedDecoder, ChunkedDecoderV3, ChunkedEncoder, TransferPayloadDecryptorAdapter,
     TransferPayloadEncryptorAdapter,
 };
 pub use normalizer::ClipboardRepresentationNormalizer;

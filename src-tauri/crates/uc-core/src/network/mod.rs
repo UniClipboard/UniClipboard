@@ -19,6 +19,7 @@ pub use pairing_state_machine::{
     CancellationBy, FailureReason, PairingAction, PairingEvent, PairingRole, PairingStateMachine,
     SessionId, TimeoutKind,
 };
+pub use protocol::{BinaryRepresentation, ClipboardBinaryPayload};
 pub use protocol::{
     ClipboardMessage, DeviceAnnounceMessage, HeartbeatMessage, PairingBusy, PairingCancel,
     PairingChallenge, PairingChallengeResponse, PairingConfirm, PairingKeyslotOffer,

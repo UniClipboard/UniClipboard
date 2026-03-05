@@ -64,11 +64,11 @@ mod tests {
         ProtocolMessage::Clipboard(ClipboardMessage {
             id: "msg-1".to_string(),
             content_hash: "hash-abc".to_string(),
-            encrypted_content: vec![], // V2: empty in JSON header
+            encrypted_content: vec![], // V3: empty in JSON header
             timestamp: Utc::now(),
             origin_device_id: "dev-1".to_string(),
             origin_device_name: "Test Device".to_string(),
-            payload_version: super::super::ClipboardPayloadVersion::V2,
+            payload_version: super::super::ClipboardPayloadVersion::V3,
         })
     }
 

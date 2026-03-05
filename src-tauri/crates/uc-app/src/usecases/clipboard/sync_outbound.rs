@@ -7,7 +7,7 @@ use tracing::{debug, info, info_span, warn, Instrument};
 use uuid::Uuid;
 
 use uc_core::network::protocol::{
-    ClipboardMultiRepPayloadV2, ClipboardPayloadVersion, WireRepresentation,
+    BinaryRepresentation, ClipboardBinaryPayload, ClipboardPayloadVersion,
 };
 use uc_core::network::{ClipboardMessage, ProtocolMessage};
 use uc_core::ports::{
@@ -84,8 +84,7 @@ impl SyncOutboundClipboardUseCase {
             return Ok(());
         }
 
-        // V2: All representations are sent, not just text/plain.
-        // Return early if there are no representations at all.
+        // V3: All representations are sent. Return early if there are none.
         if snapshot.representations.is_empty() {
             debug!("Skipping outbound sync because snapshot has no representations");
             return Ok(());
@@ -122,39 +121,25 @@ impl SyncOutboundClipboardUseCase {
         let content_hash = snapshot.snapshot_hash().to_string();
         let ts_ms = snapshot.ts_ms;
 
-        // Build V2 multi-representation payload — all representations are included.
-        // Uses into_iter() to move byte buffers instead of cloning them.
-        let wire_reps: Vec<WireRepresentation> = snapshot
+        // Build V3 binary payload from snapshot representations.
+        let binary_reps: Vec<BinaryRepresentation> = snapshot
             .representations
             .into_iter()
-            .map(|rep| WireRepresentation {
-                mime: rep.mime.map(|m| m.0),
+            .map(|rep| BinaryRepresentation {
                 format_id: rep.format_id.into_inner(),
-                bytes: rep.bytes,
+                mime: rep.mime.map(|m| m.0),
+                data: rep.bytes,
             })
             .collect();
 
-        let v2_payload = ClipboardMultiRepPayloadV2 {
+        let v3_payload = ClipboardBinaryPayload {
             ts_ms,
-            representations: wire_reps,
+            representations: binary_reps,
         };
 
-        let plaintext_bytes = serde_json::to_vec(&v2_payload)
-            .context("failed to serialize V2 clipboard payload for outbound sync")?;
-
-        let master_key = self
-            .encryption_session
-            .get_master_key()
-            .await
-            .map_err(anyhow::Error::from)
-            .context("failed to access encryption session master key for outbound sync")?;
-
-        // Encrypt V2 payload using transfer encryptor port.
-        // Memory usage during encoding: CHUNK_SIZE × 2 (one plaintext chunk + one ciphertext chunk).
-        let encrypted_content = self
-            .transfer_encryptor
-            .encrypt(&master_key, &plaintext_bytes)
-            .map_err(|e| anyhow::anyhow!("failed to encrypt outbound clipboard payload: {e}"))?;
+        let plaintext_bytes = v3_payload
+            .encode_to_vec()
+            .context("failed to encode V3 clipboard binary payload")?;
 
         let origin_device_id = self.device_identity.current_device_id().to_string();
         let origin_device_name = match self.settings.load().await {
@@ -172,30 +157,87 @@ impl SyncOutboundClipboardUseCase {
             }
         };
 
-        // Build the JSON header with empty encrypted_content (V2 payload goes as raw trailing bytes)
+        // Build the JSON header (V3: encrypted payload goes as raw trailing bytes)
         let clipboard_header = ClipboardMessage {
             id: message_id,
             content_hash,
-            encrypted_content: vec![], // V2 binary is NOT in the JSON
+            encrypted_content: vec![], // V3 binary is NOT in the JSON
             timestamp: Utc::now(),
             origin_device_id,
             origin_device_name,
-            payload_version: ClipboardPayloadVersion::V2,
+            payload_version: ClipboardPayloadVersion::V3,
         };
 
-        let outbound_bytes: Arc<[u8]> = Arc::from(
-            ProtocolMessage::Clipboard(clipboard_header)
-                .frame_to_bytes(Some(&encrypted_content))
-                .context("failed to frame outbound V2 clipboard message")?
-                .into_boxed_slice(),
+        // Clone values needed for parallel encryption block (to avoid &self borrow in tokio::join!)
+        let transfer_encryptor = self.transfer_encryptor.clone();
+        let encryption_session = self.encryption_session.clone();
+
+        let first_peer = sendable_peers[0].clone();
+        let remaining_peers = sendable_peers[1..].to_vec();
+
+        // Parallel: encrypt + first peer's ensure_business_path
+        let (encrypted_result, ensure_result) = tokio::join!(
+            async {
+                let master_key = encryption_session
+                    .get_master_key()
+                    .await
+                    .map_err(anyhow::Error::from)
+                    .context("failed to access encryption session master key for outbound sync")?;
+
+                let encrypted_content = transfer_encryptor
+                    .encrypt(&master_key, &plaintext_bytes)
+                    .map_err(|e| {
+                    anyhow::anyhow!("failed to encrypt outbound clipboard payload: {e}")
+                })?;
+
+                let framed = ProtocolMessage::Clipboard(clipboard_header)
+                    .frame_to_bytes(Some(&encrypted_content))
+                    .context("failed to frame outbound V3 clipboard message")?;
+
+                Ok::<Arc<[u8]>, anyhow::Error>(Arc::from(framed.into_boxed_slice()))
+            },
+            self.clipboard_network
+                .ensure_business_path(&first_peer.peer_id)
         );
+
+        let outbound_bytes = encrypted_result?;
 
         let mut send_failures = Vec::new();
         let mut connect_failures = Vec::new();
         let mut connect_success_count = 0usize;
         let mut sent_count = 0usize;
 
-        for peer in sendable_peers {
+        // Handle first peer's ensure result
+        match ensure_result {
+            Ok(()) => {
+                connect_success_count += 1;
+                if let Err(err) = self
+                    .clipboard_network
+                    .send_clipboard(&first_peer.peer_id, outbound_bytes.clone())
+                    .await
+                {
+                    warn!(
+                        peer_id = %first_peer.peer_id,
+                        error = %err,
+                        "failed to send outbound clipboard message to first peer"
+                    );
+                    send_failures.push(format!("{}: {}", first_peer.peer_id, err));
+                } else {
+                    sent_count += 1;
+                }
+            }
+            Err(err) => {
+                warn!(
+                    peer_id = %first_peer.peer_id,
+                    error = %err,
+                    "failed to ensure outbound business path for first peer; skipping send"
+                );
+                connect_failures.push(format!("{}: {}", first_peer.peer_id, err));
+            }
+        }
+
+        // Serial for remaining peers: ensure + send with Arc clone (zero-copy)
+        for peer in &remaining_peers {
             if let Err(err) = self
                 .clipboard_network
                 .ensure_business_path(&peer.peer_id)
@@ -280,7 +322,7 @@ mod tests {
     use chrono::Utc;
     use tokio::sync::mpsc;
     use uc_core::ids::{FormatId, RepresentationId};
-    use uc_core::network::protocol::{ClipboardMultiRepPayloadV2, ClipboardPayloadVersion};
+    use uc_core::network::protocol::ClipboardPayloadVersion;
     use uc_core::network::{
         ClipboardMessage, ConnectedPeer, DiscoveredPeer, NetworkEvent, PairingMessage,
         ProtocolMessage,
@@ -291,7 +333,7 @@ mod tests {
     use uc_core::security::model::{EncryptionError, MasterKey};
     use uc_core::settings::model::Settings;
     use uc_core::{DeviceId, MimeType, ObservedClipboardRepresentation, SystemClipboardSnapshot};
-    use uc_infra::clipboard::{ChunkedDecoder, TransferPayloadEncryptorAdapter};
+    use uc_infra::clipboard::{ChunkedDecoderV3, TransferPayloadEncryptorAdapter};
 
     struct TestSystemClipboard {
         snapshot: SystemClipboardSnapshot,
@@ -469,8 +511,8 @@ mod tests {
         }
     }
 
-    /// Parse a two-segment framed wire message, returning (ClipboardMessage, raw_v2_trailing_bytes).
-    fn parse_framed_v2(bytes: &[u8]) -> (ClipboardMessage, &[u8]) {
+    /// Parse a two-segment framed wire message, returning (ClipboardMessage, raw_trailing_bytes).
+    fn parse_framed(bytes: &[u8]) -> (ClipboardMessage, &[u8]) {
         let json_len = u32::from_le_bytes(bytes[0..4].try_into().unwrap()) as usize;
         let json_bytes = &bytes[4..4 + json_len];
         let trailing = &bytes[4 + json_len..];
@@ -666,7 +708,7 @@ mod tests {
     }
 
     #[test]
-    fn outbound_bytes_decode_as_v2_protocol_message_clipboard() {
+    fn outbound_bytes_decode_as_v3_protocol_message_clipboard() {
         let test_master_key = MasterKey([7; 32]); // matches TestEncryptionSession
         let (usecase, send_calls, _, _, _) = build_usecase(
             vec![ConnectedPeer {
@@ -687,32 +729,33 @@ mod tests {
         let (_, outbound_bytes) = calls.first().expect("one outbound send");
 
         // Parse two-segment wire format
-        let (message, v2_raw_payload) = parse_framed_v2(outbound_bytes);
+        let (message, v3_raw_payload) = parse_framed(outbound_bytes);
 
-        // V2: payload_version must be V2
+        // V3: payload_version must be V3
         assert_eq!(
             message.payload_version,
-            ClipboardPayloadVersion::V2,
-            "outbound message must use V2 payload version"
+            ClipboardPayloadVersion::V3,
+            "outbound message must use V3 payload version"
         );
         assert!(
             message.encrypted_content.is_empty(),
-            "V2 JSON header must have empty encrypted_content"
+            "V3 JSON header must have empty encrypted_content"
         );
 
-        // Decode the raw V2 payload (trailing bytes, not the JSON)
-        let plaintext = ChunkedDecoder::decode_from(Cursor::new(v2_raw_payload), &test_master_key)
-            .expect("V2 chunk decode must succeed");
+        // Decode the raw V3 payload (trailing bytes after JSON header)
+        let plaintext =
+            ChunkedDecoderV3::decode_from(Cursor::new(v3_raw_payload), &test_master_key)
+                .expect("V3 chunk decode must succeed");
 
-        // V2: plaintext deserializes as ClipboardMultiRepPayloadV2
-        let v2_payload: ClipboardMultiRepPayloadV2 =
-            serde_json::from_slice(&plaintext).expect("V2 payload JSON deserialization");
+        // V3: plaintext decodes as ClipboardBinaryPayload
+        let v3_payload = ClipboardBinaryPayload::decode_from(&mut Cursor::new(&plaintext))
+            .expect("V3 binary payload decode");
 
         // Must have representations — "hello world" text/plain rep
-        assert_eq!(v2_payload.representations.len(), 1);
-        assert_eq!(v2_payload.representations[0].bytes, b"hello world".to_vec());
+        assert_eq!(v3_payload.representations.len(), 1);
+        assert_eq!(v3_payload.representations[0].data, b"hello world".to_vec());
         assert_eq!(
-            v2_payload.representations[0].mime.as_deref(),
+            v3_payload.representations[0].mime.as_deref(),
             Some("text/plain")
         );
     }
@@ -752,7 +795,7 @@ mod tests {
     }
 
     #[test]
-    fn v2_outbound_sends_all_representations_and_uses_snapshot_hash() {
+    fn v3_outbound_sends_all_representations_and_uses_snapshot_hash() {
         let test_master_key = MasterKey([7; 32]); // matches TestEncryptionSession
         let multi_rep_snapshot = SystemClipboardSnapshot {
             ts_ms: 1_713_000_000_000,
@@ -789,38 +832,39 @@ mod tests {
             .execute(multi_rep_snapshot, ClipboardChangeOrigin::LocalCapture)
             .expect("execute multi-rep capture");
 
-        // V2 does NOT call encrypt_blob (uses ChunkedEncoder directly)
+        // V3 does NOT call encrypt_blob (uses ChunkedEncoderV3 directly)
         assert_eq!(
             encrypt_calls.load(Ordering::SeqCst),
             0,
-            "V2 must not call encrypt_blob"
+            "V3 must not call encrypt_blob"
         );
 
         let calls = send_calls.lock().expect("send calls lock");
         let (_, outbound_bytes) = calls.first().expect("one outbound send");
 
         // Parse two-segment wire format
-        let (message, v2_raw_payload) = parse_framed_v2(outbound_bytes);
+        let (message, v3_raw_payload) = parse_framed(outbound_bytes);
 
         // content_hash must equal snapshot_hash (covers all representations)
         assert_eq!(
             message.content_hash, expected_hash,
             "content_hash must be snapshot_hash covering all representations"
         );
-        assert_eq!(message.payload_version, ClipboardPayloadVersion::V2);
+        assert_eq!(message.payload_version, ClipboardPayloadVersion::V3);
         assert!(
             message.encrypted_content.is_empty(),
-            "V2 JSON header must have empty encrypted_content"
+            "V3 JSON header must have empty encrypted_content"
         );
 
-        let plaintext = ChunkedDecoder::decode_from(Cursor::new(v2_raw_payload), &test_master_key)
-            .expect("V2 chunk decode");
-        let v2_payload: ClipboardMultiRepPayloadV2 =
-            serde_json::from_slice(&plaintext).expect("V2 payload");
+        let plaintext =
+            ChunkedDecoderV3::decode_from(Cursor::new(v3_raw_payload), &test_master_key)
+                .expect("V3 chunk decode");
+        let v3_payload = ClipboardBinaryPayload::decode_from(&mut Cursor::new(&plaintext))
+            .expect("V3 payload decode");
 
         // Must have BOTH representations
-        assert_eq!(v2_payload.representations.len(), 2);
-        let mimes: Vec<Option<&str>> = v2_payload
+        assert_eq!(v3_payload.representations.len(), 2);
+        let mimes: Vec<Option<&str>> = v3_payload
             .representations
             .iter()
             .map(|r| r.mime.as_deref())

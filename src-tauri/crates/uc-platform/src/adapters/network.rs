@@ -38,13 +38,17 @@ impl PlaceholderNetworkPort {
 
 #[async_trait]
 impl ClipboardTransportPort for PlaceholderNetworkPort {
-    async fn send_clipboard(&self, _peer_id: &str, _encrypted_data: Vec<u8>) -> Result<()> {
+    async fn send_clipboard(
+        &self,
+        _peer_id: &str,
+        _encrypted_data: std::sync::Arc<[u8]>,
+    ) -> Result<()> {
         Err(anyhow::anyhow!(
             "ClipboardTransportPort::send_clipboard not implemented yet"
         ))
     }
 
-    async fn broadcast_clipboard(&self, _encrypted_data: Vec<u8>) -> Result<()> {
+    async fn broadcast_clipboard(&self, _encrypted_data: std::sync::Arc<[u8]>) -> Result<()> {
         Err(anyhow::anyhow!(
             "ClipboardTransportPort::broadcast_clipboard not implemented yet"
         ))

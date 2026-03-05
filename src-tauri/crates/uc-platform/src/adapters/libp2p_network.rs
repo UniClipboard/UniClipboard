@@ -50,7 +50,7 @@ const START_STATE_FAILED: u8 = 3;
 enum BusinessCommand {
     SendClipboard {
         peer_id: uc_core::PeerId,
-        data: Vec<u8>,
+        data: Arc<[u8]>,
         result_tx: oneshot::Sender<Result<()>>,
     },
     EnsureBusinessPath {
@@ -429,7 +429,7 @@ impl Libp2pNetworkAdapter {
 
 #[async_trait]
 impl ClipboardTransportPort for Libp2pNetworkAdapter {
-    async fn send_clipboard(&self, _peer_id: &str, _encrypted_data: Vec<u8>) -> Result<()> {
+    async fn send_clipboard(&self, _peer_id: &str, _encrypted_data: Arc<[u8]>) -> Result<()> {
         if _peer_id == self.local_peer_id {
             warn!(peer_id = _peer_id, "skip send_clipboard to local peer");
             return Err(anyhow!("send_clipboard target is local peer_id"));
@@ -477,7 +477,7 @@ impl ClipboardTransportPort for Libp2pNetworkAdapter {
         }
     }
 
-    async fn broadcast_clipboard(&self, _encrypted_data: Vec<u8>) -> Result<()> {
+    async fn broadcast_clipboard(&self, _encrypted_data: Arc<[u8]>) -> Result<()> {
         Err(anyhow!(
             "ClipboardTransportPort::broadcast_clipboard not implemented yet"
         ))
@@ -1519,7 +1519,7 @@ async fn execute_business_command(
                         &event_tx,
                         &peer_id,
                         peer,
-                        Some(data.as_slice()),
+                        Some(&*data),
                         BUSINESS_STREAM_OPEN_TIMEOUT,
                         BUSINESS_STREAM_WRITE_TIMEOUT,
                         BUSINESS_STREAM_CLOSE_TIMEOUT,
@@ -2661,7 +2661,7 @@ mod tests {
             Arc::new(InMemoryEncryptionSessionPort::default()),
         )
         .expect("create adapter");
-        let payload = vec![1, 2, 3, 4];
+        let payload: Arc<[u8]> = Arc::from(vec![1u8, 2, 3, 4].into_boxed_slice());
         let expected_payload = payload.clone();
         let mut rx = Libp2pNetworkAdapter::take_receiver(&adapter.business_rx, "business")
             .expect("business receiver");
@@ -2677,7 +2677,7 @@ mod tests {
                 ..
             } => {
                 assert_eq!(peer_id.as_str(), "peer-2");
-                assert_eq!(data, expected_payload);
+                assert_eq!(&*data, &*expected_payload);
                 result_tx
                     .send(Ok(()))
                     .expect("deliver send result to send_clipboard caller");

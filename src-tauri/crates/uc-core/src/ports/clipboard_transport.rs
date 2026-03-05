@@ -1,18 +1,25 @@
 //! Clipboard transport port.
 //!
 //! Defines clipboard payload send/receive capabilities over network transports.
+//! Uses `Arc<[u8]>` for outbound payloads to enable zero-copy multi-peer fanout.
 
 use crate::network::ClipboardMessage;
 use anyhow::Result;
 use async_trait::async_trait;
+use std::sync::Arc;
 
 #[async_trait]
 pub trait ClipboardTransportPort: Send + Sync {
     /// Send an encrypted clipboard payload to one peer.
-    async fn send_clipboard(&self, peer_id: &str, encrypted_data: Vec<u8>) -> Result<()>;
+    ///
+    /// Accepts `Arc<[u8]>` to allow zero-copy fanout when sending the same
+    /// payload to multiple peers — each peer receives a cheap Arc clone.
+    async fn send_clipboard(&self, peer_id: &str, encrypted_data: Arc<[u8]>) -> Result<()>;
 
     /// Broadcast an encrypted clipboard payload to all eligible peers.
-    async fn broadcast_clipboard(&self, encrypted_data: Vec<u8>) -> Result<()>;
+    ///
+    /// Accepts `Arc<[u8]>` for zero-copy multi-peer fanout.
+    async fn broadcast_clipboard(&self, encrypted_data: Arc<[u8]>) -> Result<()>;
 
     /// Subscribe to incoming clipboard payloads.
     ///

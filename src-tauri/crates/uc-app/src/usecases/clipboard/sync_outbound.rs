@@ -183,9 +183,12 @@ impl SyncOutboundClipboardUseCase {
             payload_version: ClipboardPayloadVersion::V2,
         };
 
-        let outbound_bytes = ProtocolMessage::Clipboard(clipboard_header)
-            .frame_to_bytes(Some(&encrypted_content))
-            .context("failed to frame outbound V2 clipboard message")?;
+        let outbound_bytes: Arc<[u8]> = Arc::from(
+            ProtocolMessage::Clipboard(clipboard_header)
+                .frame_to_bytes(Some(&encrypted_content))
+                .context("failed to frame outbound V2 clipboard message")?
+                .into_boxed_slice(),
+        );
 
         let mut send_failures = Vec::new();
         let mut connect_failures = Vec::new();
@@ -318,7 +321,7 @@ mod tests {
         async fn send_clipboard(
             &self,
             peer_id: &str,
-            encrypted_data: Vec<u8>,
+            encrypted_data: std::sync::Arc<[u8]>,
         ) -> anyhow::Result<()> {
             if self.failing_peers.contains(peer_id) {
                 return Err(anyhow::anyhow!("simulated send failure for {peer_id}"));
@@ -327,11 +330,14 @@ mod tests {
             self.send_calls
                 .lock()
                 .expect("send calls lock")
-                .push((peer_id.to_string(), encrypted_data));
+                .push((peer_id.to_string(), encrypted_data.to_vec()));
             Ok(())
         }
 
-        async fn broadcast_clipboard(&self, _encrypted_data: Vec<u8>) -> anyhow::Result<()> {
+        async fn broadcast_clipboard(
+            &self,
+            _encrypted_data: std::sync::Arc<[u8]>,
+        ) -> anyhow::Result<()> {
             Ok(())
         }
 

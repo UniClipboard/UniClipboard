@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v0.1
 milestone_name: milestone
 status: in-progress
-stopped_at: Completed 05-01-PLAN.md
+stopped_at: Checkpoint 05-02-PLAN.md Task 2 (human-verify)
 last_updated: '2026-03-05T05:43:02.000Z'
-last_activity: '2026-03-05 - Completed 05-01: Windows image capture building blocks'
+last_activity: '2026-03-05 - Completed 05-02 Task 1: Wire Windows image fallback (awaiting manual verification)'
 progress:
   total_phases: 2
   completed_phases: 1
   total_plans: 4
-  completed_plans: 3
-  percent: 75
+  completed_plans: 4
+  percent: 100
 ---
 
 # Project State
@@ -26,9 +26,9 @@ See: .planning/PROJECT.md (updated 2026-03-03)
 ## Current Position
 
 Phase 05: Fix Windows clipboard image capture
-Plan 1 of 2 complete.
+Plan 2 of 2 complete.
 
-Progress: [=====-----] 50%
+Progress: [==========] 100%
 
 ## Performance Metrics
 
@@ -43,6 +43,7 @@ Progress: [=====-----] 50%
 | 04    | 01   | 13min    | 2     | 21    |
 | 04    | 02   | 18min    | 2     | 2     |
 | 05    | 01   | 3min     | 2     | 5     |
+| 05    | 02   | 3min     | 1     | 2     |
 
 ## Accumulated Context
 
@@ -62,6 +63,8 @@ Progress: [=====-----] 50%
 - [Phase 05]: BmpDecoder::new_without_file_header for CF_DIB (no 14-byte BMP header in Windows clipboard data)
 - [Phase 05]: image_convert module non-cfg-gated so tests run on macOS/Linux CI
 - [Phase 05]: RawData(CF_DIB) instead of formats::Bitmap for correct headerless DIB data
+- [Phase 05]: Drop mutex guard before native clipboard-win fallback to avoid deadlock
+- [Phase 05]: Debug level for native fallback unavailable (text-only clipboard is normal)
 
 ### Roadmap Evolution
 
@@ -75,6 +78,7 @@ Progress: [=====-----] 50%
 - Phase 4 completed: Optimize blob at-rest storage format
 - Phase 5 added: 支持Windows平台的剪切板图片捕获
 - Phase 5 Plan 01 completed: clipboard-rs 0.3.3 upgrade + dib_to_png converter + read_image_windows_as_png
+- Phase 5 Plan 02 completed: Wired native CF_DIB fallback into read_snapshot with diagnostic logging
 
 ### Pending Todos
 
@@ -94,7 +98,7 @@ None.
 
 ## Session Continuity
 
-Last activity: 2026-03-05 - Completed 05-01: Windows image capture building blocks
-Last session: 2026-03-05T05:43:02.000Z
-Stopped at: Completed 05-01-PLAN.md
-Resume file: .planning/phases/05-windows/05-01-SUMMARY.md
+Last activity: 2026-03-05 - Completed 05-02 Task 1: Wire Windows image fallback (awaiting manual verification)
+Last session: 2026-03-05T05:49:00.000Z
+Stopped at: Checkpoint 05-02-PLAN.md Task 2 (human-verify)
+Resume file: .planning/phases/05-windows/05-02-SUMMARY.md

@@ -7,11 +7,8 @@ vi.mock('@/lib/tauri-command', () => ({
   invokeWithTrace: vi.fn(),
 }))
 
-// Mock Tauri core API so resolveUcUrl works in test environment.
-// convertFileSrc returns the path prefixed with "uc://" to simulate platform URL conversion.
-vi.mock('@tauri-apps/api/core', () => ({
-  convertFileSrc: (path: string, _protocol: string) => `uc://${path}`,
-}))
+// resolveUcUrl no longer depends on @tauri-apps/api/core.
+// In test env (non-Windows userAgent), it produces uc://localhost/{path} format.
 
 const invokeMock = vi.mocked(invokeWithTrace)
 
@@ -59,7 +56,8 @@ describe('ClipboardItem', () => {
       expect(invokeMock).toHaveBeenCalledWith('get_clipboard_entry_resource', {
         entryId: 'entry-1',
       })
-      expect(fetchMock).toHaveBeenCalledWith(url)
+      // resolveUcUrl converts uc://blob/blob-1 → uc://localhost/blob/blob-1
+      expect(fetchMock).toHaveBeenCalledWith('uc://localhost/blob/blob-1')
     })
 
     expect(await screen.findByText(fullText)).toBeInTheDocument()
@@ -97,6 +95,7 @@ describe('ClipboardItem', () => {
       })
     })
 
-    expect(image).toHaveAttribute('src', url)
+    // resolveUcUrl converts uc://blob/image-1 → uc://localhost/blob/image-1
+    expect(image).toHaveAttribute('src', 'uc://localhost/blob/image-1')
   })
 })

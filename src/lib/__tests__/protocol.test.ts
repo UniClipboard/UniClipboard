@@ -1,41 +1,32 @@
-import { convertFileSrc } from '@tauri-apps/api/core'
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import { resolveUcUrl } from '@/lib/protocol'
 
-vi.mock('@tauri-apps/api/core', () => ({
-  convertFileSrc: vi.fn((path: string, protocol: string) => `${protocol}://localhost/${path}`),
-}))
-
-const convertMock = vi.mocked(convertFileSrc)
-
 describe('resolveUcUrl', () => {
-  beforeEach(() => {
-    convertMock.mockClear()
-  })
-
-  it('resolves uc://thumbnail/rep-1 via convertFileSrc', () => {
-    convertMock.mockReturnValue('uc://localhost/thumbnail/rep-1')
+  it('resolves uc://thumbnail/rep-1 to platform-correct URL (non-Windows)', () => {
     const result = resolveUcUrl('uc://thumbnail/rep-1')
-    expect(convertMock).toHaveBeenCalledWith('thumbnail/rep-1', 'uc')
+    // In test env (non-Windows), uses uc://localhost/ format
     expect(result).toBe('uc://localhost/thumbnail/rep-1')
   })
 
-  it('resolves uc://blob/blob-1 via convertFileSrc', () => {
-    convertMock.mockReturnValue('uc://localhost/blob/blob-1')
+  it('resolves uc://blob/blob-1 to platform-correct URL', () => {
     const result = resolveUcUrl('uc://blob/blob-1')
-    expect(convertMock).toHaveBeenCalledWith('blob/blob-1', 'uc')
     expect(result).toBe('uc://localhost/blob/blob-1')
   })
 
   it('returns non-uc:// URLs unchanged', () => {
     const result = resolveUcUrl('https://example.com')
-    expect(convertMock).not.toHaveBeenCalled()
     expect(result).toBe('https://example.com')
   })
 
   it('returns empty string unchanged', () => {
     const result = resolveUcUrl('')
-    expect(convertMock).not.toHaveBeenCalled()
     expect(result).toBe('')
+  })
+
+  it('preserves path segments without encoding slashes', () => {
+    const result = resolveUcUrl('uc://thumbnail/2614aa37-e227-4bba-b084-ed1c2ac59c85')
+    expect(result).toBe('uc://localhost/thumbnail/2614aa37-e227-4bba-b084-ed1c2ac59c85')
+    // Must NOT contain %2F
+    expect(result).not.toContain('%2F')
   })
 })

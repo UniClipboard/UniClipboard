@@ -72,7 +72,23 @@ pub fn parse_uc_request(request: &Request<Vec<u8>>) -> Result<UcRoute, UcRequest
     let uri = request.uri();
     let host = uri.host().unwrap_or_default();
     let path = uri.path();
-    let resource_id = path.trim_start_matches('/');
+
+    // Two URL formats depending on platform:
+    //   macOS/Linux (direct scheme):  uc://thumbnail/rep-1  → host="thumbnail", path="/rep-1"
+    //   Windows (HTTP proxy):         http://uc.localhost/thumbnail/rep-1  → host="localhost", path="/thumbnail/rep-1"
+    //   Frontend with convertFileSrc: uc://localhost/thumbnail/rep-1      → host="localhost", path="/thumbnail/rep-1"
+    let (resource_type, resource_id) = if host == "localhost" || host == "uc.localhost" {
+        // Windows / convertFileSrc format: resource type is the first path segment
+        let trimmed = path.trim_start_matches('/');
+        trimmed.split_once('/').ok_or(UcRequestError::MissingId)?
+    } else {
+        // macOS/Linux direct scheme format: resource type is the host
+        let resource_id = path.trim_start_matches('/');
+        if resource_id.is_empty() {
+            return Err(UcRequestError::MissingId);
+        }
+        (host, resource_id)
+    };
 
     if resource_id.is_empty() {
         return Err(UcRequestError::MissingId);
@@ -82,7 +98,7 @@ pub fn parse_uc_request(request: &Request<Vec<u8>>) -> Result<UcRoute, UcRequest
         return Err(UcRequestError::InvalidId);
     }
 
-    match host {
+    match resource_type {
         "blob" => Ok(UcRoute::Blob {
             blob_id: BlobId::from(resource_id),
         }),
@@ -98,7 +114,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_thumbnail_protocol_parsing() {
+    fn test_thumbnail_direct_scheme_format() {
+        // macOS/Linux format: uc://thumbnail/rep-1 (host=thumbnail)
         let request = Request::builder()
             .uri("uc://thumbnail/rep-1")
             .body(Vec::new())
@@ -112,5 +129,80 @@ mod tests {
                 representation_id,
             } if representation_id == RepresentationId::from("rep-1")
         ));
+    }
+
+    #[test]
+    fn test_thumbnail_localhost_format() {
+        // Frontend convertFileSrc format: uc://localhost/thumbnail/rep-1
+        let request = Request::builder()
+            .uri("uc://localhost/thumbnail/rep-1")
+            .body(Vec::new())
+            .expect("build request");
+
+        let route = parse_uc_request(&request).expect("expected uc request route");
+
+        assert!(matches!(
+            route,
+            UcRoute::Thumbnail {
+                representation_id,
+            } if representation_id == RepresentationId::from("rep-1")
+        ));
+    }
+
+    #[test]
+    fn test_blob_direct_scheme_format() {
+        let request = Request::builder()
+            .uri("uc://blob/blob-123")
+            .body(Vec::new())
+            .expect("build request");
+
+        let route = parse_uc_request(&request).expect("expected uc request route");
+
+        assert!(matches!(
+            route,
+            UcRoute::Blob {
+                blob_id,
+            } if blob_id == BlobId::from("blob-123")
+        ));
+    }
+
+    #[test]
+    fn test_blob_localhost_format() {
+        let request = Request::builder()
+            .uri("uc://localhost/blob/blob-123")
+            .body(Vec::new())
+            .expect("build request");
+
+        let route = parse_uc_request(&request).expect("expected uc request route");
+
+        assert!(matches!(
+            route,
+            UcRoute::Blob {
+                blob_id,
+            } if blob_id == BlobId::from("blob-123")
+        ));
+    }
+
+    #[test]
+    fn test_unsupported_host() {
+        let request = Request::builder()
+            .uri("uc://unknown/id-1")
+            .body(Vec::new())
+            .expect("build request");
+
+        assert!(matches!(
+            parse_uc_request(&request),
+            Err(UcRequestError::UnsupportedHost)
+        ));
+    }
+
+    #[test]
+    fn test_missing_id_localhost_format() {
+        let request = Request::builder()
+            .uri("uc://localhost/thumbnail")
+            .body(Vec::new())
+            .expect("build request");
+
+        assert!(parse_uc_request(&request).is_err());
     }
 }

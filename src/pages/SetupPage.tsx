@@ -369,7 +369,7 @@ export default function SetupPage({ onCompleteSetup }: SetupPageProps = {}) {
 
       <div className="relative flex h-full w-full min-h-0 flex-col">
         <main
-          className={`flex min-h-0 flex-1 items-center px-4 py-4 sm:px-6 sm:py-6 ${
+          className={`flex min-h-0 flex-1 items-center px-8 py-4 sm:px-12 sm:py-6 ${
             stepKey === 'Welcome' ? 'overflow-hidden' : 'overflow-y-auto'
           }`}
         >

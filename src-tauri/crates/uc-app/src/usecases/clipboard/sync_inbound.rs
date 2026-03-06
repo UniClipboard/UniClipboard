@@ -399,19 +399,67 @@ const REMOTE_PUSH_ORIGIN_TTL_MS: u64 = 100;
 /// Priority order (highest first): image/* > text/html > text/rtf > text/plain > other.
 /// This mirrors the locked decision from CONTEXT.md - "Multi-representation strategy".
 fn select_highest_priority_repr_index(representations: &[BinaryRepresentation]) -> Option<usize> {
-    fn priority(mime: Option<&str>) -> u8 {
-        match mime {
-            Some(m) if m.to_ascii_lowercase().starts_with(MIME_IMAGE_PREFIX) => 4,
-            Some(m) if m.eq_ignore_ascii_case(MIME_TEXT_HTML) => 3,
-            Some(m) if m.eq_ignore_ascii_case(MIME_TEXT_RTF) => 2,
-            Some(m) if m.eq_ignore_ascii_case(MIME_TEXT_PLAIN) => 1,
-            _ => 0,
+    fn priority_from_mime(mime: &str) -> u8 {
+        if mime.to_ascii_lowercase().starts_with(MIME_IMAGE_PREFIX) {
+            4
+        } else if mime.eq_ignore_ascii_case(MIME_TEXT_HTML) {
+            3
+        } else if mime.eq_ignore_ascii_case(MIME_TEXT_RTF) {
+            2
+        } else if mime.eq_ignore_ascii_case(MIME_TEXT_PLAIN) {
+            1
+        } else {
+            0
         }
     }
+
+    fn fallback_priority_from_format_id(format_id: &str) -> u8 {
+        if format_id.eq_ignore_ascii_case("public.png")
+            || format_id.eq_ignore_ascii_case("public.jpeg")
+            || format_id.eq_ignore_ascii_case("public.jpg")
+            || format_id.eq_ignore_ascii_case("public.tiff")
+            || format_id.eq_ignore_ascii_case("public.gif")
+            || format_id.eq_ignore_ascii_case("public.webp")
+            || format_id.eq_ignore_ascii_case("image/png")
+            || format_id.eq_ignore_ascii_case("image/jpeg")
+            || format_id.eq_ignore_ascii_case("image/jpg")
+            || format_id.eq_ignore_ascii_case("image/gif")
+            || format_id.eq_ignore_ascii_case("image/webp")
+        {
+            4
+        } else if format_id.eq_ignore_ascii_case("public.html")
+            || format_id.eq_ignore_ascii_case("html")
+            || format_id.eq_ignore_ascii_case(MIME_TEXT_HTML)
+        {
+            3
+        } else if format_id.eq_ignore_ascii_case("public.rtf")
+            || format_id.eq_ignore_ascii_case("rtf")
+            || format_id.eq_ignore_ascii_case(MIME_TEXT_RTF)
+        {
+            2
+        } else if format_id.eq_ignore_ascii_case("text")
+            || format_id.eq_ignore_ascii_case("public.utf8-plain-text")
+            || format_id.eq_ignore_ascii_case("public.text")
+            || format_id.eq_ignore_ascii_case("NSStringPboardType")
+            || format_id.eq_ignore_ascii_case(MIME_TEXT_PLAIN)
+        {
+            1
+        } else {
+            0
+        }
+    }
+
+    fn priority(rep: &BinaryRepresentation) -> u8 {
+        match rep.mime.as_deref() {
+            Some(mime) => priority_from_mime(mime),
+            None => fallback_priority_from_format_id(&rep.format_id),
+        }
+    }
+
     representations
         .iter()
         .enumerate()
-        .max_by_key(|(_, r)| priority(r.mime.as_deref()))
+        .max_by_key(|(_, r)| priority(r))
         .map(|(i, _)| i)
 }
 
@@ -439,6 +487,25 @@ mod tests {
         SystemClipboardSnapshot,
     };
     use uc_infra::clipboard::TransferPayloadDecryptorAdapter;
+
+    #[test]
+    fn select_highest_priority_uses_format_id_fallback_when_mime_missing() {
+        let representations = vec![
+            BinaryRepresentation {
+                format_id: "public.utf8-plain-text".to_string(),
+                mime: None,
+                data: b"plain".to_vec(),
+            },
+            BinaryRepresentation {
+                format_id: "public.html".to_string(),
+                mime: None,
+                data: b"<b>html</b>".to_vec(),
+            },
+        ];
+
+        let idx = select_highest_priority_repr_index(&representations).expect("selected index");
+        assert_eq!(idx, 1, "public.html should outrank plain text fallback");
+    }
 
     struct MockSystemClipboard {
         reads: SystemClipboardSnapshot,

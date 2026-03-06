@@ -883,10 +883,14 @@ pub fn create_app(deps: AppDeps) -> App {
 impl ClipboardChangeHandler for AppRuntime {
     #[tracing::instrument(name = "runtime.on_clipboard_changed", skip(self, snapshot))]
     async fn on_clipboard_changed(&self, snapshot: SystemClipboardSnapshot) -> anyhow::Result<()> {
+        let snapshot_hash = snapshot.snapshot_hash().to_string();
         let origin = self
             .deps
             .clipboard_change_origin
-            .consume_origin_or_default(ClipboardChangeOrigin::LocalCapture)
+            .consume_origin_for_snapshot_or_default(
+                &snapshot_hash,
+                ClipboardChangeOrigin::LocalCapture,
+            )
             .await;
         let outbound_snapshot = snapshot.clone();
 

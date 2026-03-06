@@ -9,8 +9,8 @@ use tokio::sync::Mutex;
 use tracing::{debug, error, info, info_span, warn, Instrument};
 use uc_core::ids::{EntryId, FormatId, RepresentationId};
 use uc_core::network::protocol::{
-    fallback_priority_from_format_id, BinaryRepresentation, ClipboardBinaryPayload,
-    ClipboardPayloadVersion, MIME_IMAGE_PREFIX, MIME_TEXT_HTML, MIME_TEXT_PLAIN, MIME_TEXT_RTF,
+    BinaryRepresentation, ClipboardBinaryPayload, ClipboardPayloadVersion, MIME_IMAGE_PREFIX,
+    MIME_TEXT_HTML, MIME_TEXT_PLAIN, MIME_TEXT_RTF,
 };
 
 use uc_core::network::ClipboardMessage;
@@ -401,6 +401,42 @@ const REMOTE_PUSH_ORIGIN_TTL_MS: u64 = 100;
 /// Priority order (highest first): image/* > text/html > text/rtf > text/plain > other.
 /// This mirrors the locked decision from CONTEXT.md - "Multi-representation strategy".
 fn select_highest_priority_repr_index(representations: &[BinaryRepresentation]) -> Option<usize> {
+    fn fallback_priority_from_format_id(format_id: &str) -> u8 {
+        if format_id.eq_ignore_ascii_case("public.png")
+            || format_id.eq_ignore_ascii_case("public.jpeg")
+            || format_id.eq_ignore_ascii_case("public.jpg")
+            || format_id.eq_ignore_ascii_case("public.tiff")
+            || format_id.eq_ignore_ascii_case("public.gif")
+            || format_id.eq_ignore_ascii_case("public.webp")
+            || format_id.eq_ignore_ascii_case("image/png")
+            || format_id.eq_ignore_ascii_case("image/jpeg")
+            || format_id.eq_ignore_ascii_case("image/jpg")
+            || format_id.eq_ignore_ascii_case("image/gif")
+            || format_id.eq_ignore_ascii_case("image/webp")
+        {
+            4
+        } else if format_id.eq_ignore_ascii_case("public.html")
+            || format_id.eq_ignore_ascii_case("html")
+            || format_id.eq_ignore_ascii_case(MIME_TEXT_HTML)
+        {
+            3
+        } else if format_id.eq_ignore_ascii_case("public.rtf")
+            || format_id.eq_ignore_ascii_case("rtf")
+            || format_id.eq_ignore_ascii_case(MIME_TEXT_RTF)
+        {
+            2
+        } else if format_id.eq_ignore_ascii_case("text")
+            || format_id.eq_ignore_ascii_case("public.utf8-plain-text")
+            || format_id.eq_ignore_ascii_case("public.text")
+            || format_id.eq_ignore_ascii_case("NSStringPboardType")
+            || format_id.eq_ignore_ascii_case(MIME_TEXT_PLAIN)
+        {
+            1
+        } else {
+            0
+        }
+    }
+
     fn priority_from_mime(mime: &str) -> u8 {
         let normalized = mime
             .split(';')

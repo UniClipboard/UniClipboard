@@ -6,7 +6,7 @@ import {
   Image as ImageIcon,
   Loader2,
 } from 'lucide-react'
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   ClipboardTextItem,
@@ -53,8 +53,34 @@ const ClipboardItem: React.FC<ClipboardItemProps> = ({
   const { t } = useTranslation()
   const [isExpanded, setIsExpanded] = useState(false)
   const [detailContent, setDetailContent] = useState<string | null>(null)
-  const [detailImageUrl, setDetailImageUrl] = useState<string | null>(null)
+  const [originalImageUrl, setOriginalImageUrl] = useState<string | null>(null)
   const [isLoadingDetail, setIsLoadingDetail] = useState(false)
+  const [isLoadingImage, setIsLoadingImage] = useState(false)
+  const [imageDimensions, setImageDimensions] = useState<{ width: number; height: number } | null>(
+    null
+  )
+
+  // Eagerly fetch original image URL on mount for image items
+  useEffect(() => {
+    if (type !== 'image') return
+    let cancelled = false
+    setIsLoadingImage(true)
+    getClipboardEntryResource(entryId)
+      .then(resource => {
+        if (!cancelled) {
+          setOriginalImageUrl(resource.url)
+        }
+      })
+      .catch(e => {
+        console.error('Failed to load original image URL:', e)
+      })
+      .finally(() => {
+        if (!cancelled) setIsLoadingImage(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [type, entryId])
 
   // Determine if expand button should show (based on UI display needs)
   const shouldShowExpandButton = (): boolean => {
@@ -116,24 +142,8 @@ const ClipboardItem: React.FC<ClipboardItemProps> = ({
     }
 
     if (type === 'image') {
-      if (detailImageUrl) {
-        setIsExpanded(true)
-        return
-      }
-
-      setIsLoadingDetail(true)
-      try {
-        const resource = await getClipboardEntryResource(entryId)
-        setDetailImageUrl(resource.url)
-        setIsExpanded(true)
-      } catch (e) {
-        console.error('Failed to load image detail:', e)
-        toast.error(t('clipboard.errors.loadDetailFailed'), {
-          description: e instanceof Error ? e.message : t('clipboard.errors.unknown'),
-        })
-      } finally {
-        setIsLoadingDetail(false)
-      }
+      // Original image is already fetched on mount, just toggle expand
+      setIsExpanded(true)
       return
     }
 
@@ -152,9 +162,17 @@ const ClipboardItem: React.FC<ClipboardItemProps> = ({
         return `${(content as ClipboardCodeItem).code.length} ${t('clipboard.item.characters')}`
       case 'file':
         return formatFileSize(fileSize)
-      case 'image':
-        // Note: Use actual dimensions if available in API, otherwise placeholder or remove
-        return t('clipboard.item.image')
+      case 'image': {
+        const imageItem = content as ClipboardImageItem
+        const parts: string[] = []
+        if (imageDimensions) {
+          parts.push(`${imageDimensions.width}×${imageDimensions.height}`)
+        }
+        if (imageItem.size > 0) {
+          parts.push(formatFileSize(imageItem.size))
+        }
+        return parts.length > 0 ? parts.join(' · ') : t('clipboard.item.image')
+      }
       default:
         return ''
     }
@@ -179,29 +197,31 @@ const ClipboardItem: React.FC<ClipboardItemProps> = ({
         )
       }
       case 'image': {
-        const thumbnailUrl = (content as ClipboardImageItem | null)?.thumbnail ?? null
-        const rawImageUrl = isExpanded && detailImageUrl ? detailImageUrl : thumbnailUrl
-        const imageUrl = rawImageUrl ? resolveUcUrl(rawImageUrl) : null
-        return (
-          <div className="flex justify-center bg-black/20 rounded-lg overflow-hidden py-4">
-            {imageUrl ? (
-              <img
-                src={imageUrl}
-                className={cn(
-                  'w-auto object-contain rounded-md shadow-sm transition-all duration-300',
-                  isExpanded ? 'max-h-[32rem]' : 'h-32'
-                )}
-                alt={t('clipboard.item.altText.clipboardImage')}
-                loading="lazy"
-              />
-            ) : (
-              <div className="flex flex-col items-center justify-center gap-2 h-32 w-full rounded-md bg-muted/30 border border-border/30">
-                <ImageIcon className="h-6 w-6 text-muted-foreground/70" />
-                <span className="text-xs text-muted-foreground/70">
-                  {t('clipboard.item.loading')}
-                </span>
-              </div>
+        const imageUrl = originalImageUrl ? resolveUcUrl(originalImageUrl) : null
+        return imageUrl ? (
+          <img
+            src={imageUrl}
+            className={cn(
+              'mx-auto w-auto object-contain rounded-md transition-all duration-300',
+              isExpanded ? 'max-h-[32rem]' : 'max-h-32'
             )}
+            alt={t('clipboard.item.altText.clipboardImage')}
+            loading="lazy"
+            onLoad={e => {
+              const img = e.currentTarget
+              if (!imageDimensions) {
+                setImageDimensions({ width: img.naturalWidth, height: img.naturalHeight })
+              }
+            }}
+          />
+        ) : (
+          <div className="flex flex-col items-center justify-center gap-2 h-32 w-full rounded-md bg-muted/30 border border-border/30">
+            {isLoadingImage ? (
+              <Loader2 className="h-6 w-6 text-muted-foreground/70 animate-spin" />
+            ) : (
+              <ImageIcon className="h-6 w-6 text-muted-foreground/70" />
+            )}
+            <span className="text-xs text-muted-foreground/70">{t('clipboard.item.loading')}</span>
           </div>
         )
       }

@@ -22,6 +22,16 @@
 
 use std::io::{Read, Write};
 
+// Decode-side safety limits to prevent OOM from malformed/malicious input.
+/// Maximum number of representations in a single payload.
+const MAX_REPRESENTATIONS: usize = 1_024;
+/// Maximum length of a format_id string in bytes.
+const MAX_FORMAT_ID_LEN: usize = 1_024;
+/// Maximum length of a MIME type string in bytes.
+const MAX_MIME_LEN: usize = 1_024;
+/// Maximum length of a single representation's data in bytes (256 MiB).
+const MAX_DATA_LEN: usize = 256 * 1024 * 1024;
+
 /// A single clipboard representation in binary wire format.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BinaryRepresentation {
@@ -128,6 +138,13 @@ impl ClipboardBinaryPayload {
         reader.read_exact(&mut rep_count_buf)?;
         let rep_count = u16::from_le_bytes(rep_count_buf) as usize;
 
+        if rep_count > MAX_REPRESENTATIONS {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                format!("rep_count {rep_count} exceeds maximum {MAX_REPRESENTATIONS}"),
+            ));
+        }
+
         let mut representations = Vec::with_capacity(rep_count);
 
         for _ in 0..rep_count {
@@ -135,6 +152,12 @@ impl ClipboardBinaryPayload {
             let mut fid_len_buf = [0u8; 2];
             reader.read_exact(&mut fid_len_buf)?;
             let format_id_len = u16::from_le_bytes(fid_len_buf) as usize;
+            if format_id_len > MAX_FORMAT_ID_LEN {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    format!("format_id_len {format_id_len} exceeds maximum {MAX_FORMAT_ID_LEN}"),
+                ));
+            }
             let mut format_id_bytes = vec![0u8; format_id_len];
             reader.read_exact(&mut format_id_bytes)?;
             let format_id = String::from_utf8(format_id_bytes).map_err(|e| {
@@ -147,28 +170,47 @@ impl ClipboardBinaryPayload {
             // [1B] has_mime
             let mut has_mime_buf = [0u8; 1];
             reader.read_exact(&mut has_mime_buf)?;
-            let mime = if has_mime_buf[0] == 1 {
-                // [2B] mime_len + [NB] mime
-                let mut mime_len_buf = [0u8; 2];
-                reader.read_exact(&mut mime_len_buf)?;
-                let mime_len = u16::from_le_bytes(mime_len_buf) as usize;
-                let mut mime_bytes = vec![0u8; mime_len];
-                reader.read_exact(&mut mime_bytes)?;
-                let mime_str = String::from_utf8(mime_bytes).map_err(|e| {
-                    std::io::Error::new(
+            let mime = match has_mime_buf[0] {
+                1 => {
+                    // [2B] mime_len + [NB] mime
+                    let mut mime_len_buf = [0u8; 2];
+                    reader.read_exact(&mut mime_len_buf)?;
+                    let mime_len = u16::from_le_bytes(mime_len_buf) as usize;
+                    if mime_len > MAX_MIME_LEN {
+                        return Err(std::io::Error::new(
+                            std::io::ErrorKind::InvalidData,
+                            format!("mime_len {mime_len} exceeds maximum {MAX_MIME_LEN}"),
+                        ));
+                    }
+                    let mut mime_bytes = vec![0u8; mime_len];
+                    reader.read_exact(&mut mime_bytes)?;
+                    let mime_str = String::from_utf8(mime_bytes).map_err(|e| {
+                        std::io::Error::new(
+                            std::io::ErrorKind::InvalidData,
+                            format!("invalid UTF-8 in mime: {e}"),
+                        )
+                    })?;
+                    Some(mime_str)
+                }
+                0 => None,
+                other => {
+                    return Err(std::io::Error::new(
                         std::io::ErrorKind::InvalidData,
-                        format!("invalid UTF-8 in mime: {e}"),
-                    )
-                })?;
-                Some(mime_str)
-            } else {
-                None
+                        format!("invalid has_mime flag: expected 0 or 1, got {other}"),
+                    ));
+                }
             };
 
             // [4B] data_len + [NB] data
             let mut data_len_buf = [0u8; 4];
             reader.read_exact(&mut data_len_buf)?;
             let data_len = u32::from_le_bytes(data_len_buf) as usize;
+            if data_len > MAX_DATA_LEN {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    format!("data_len {data_len} exceeds maximum {MAX_DATA_LEN}"),
+                ));
+            }
             let mut data = vec![0u8; data_len];
             reader.read_exact(&mut data)?;
 
@@ -335,5 +377,62 @@ mod tests {
         };
         let decoded = round_trip(&payload);
         assert_eq!(decoded.ts_ms, -12345);
+    }
+
+    /// Build a minimal valid V3 binary payload with a crafted rep_count.
+    fn craft_header_with_rep_count(rep_count: u16) -> Vec<u8> {
+        let mut buf = Vec::new();
+        buf.extend_from_slice(&0i64.to_le_bytes()); // ts_ms
+        buf.extend_from_slice(&rep_count.to_le_bytes());
+        buf
+    }
+
+    #[test]
+    fn reject_rep_count_exceeds_max() {
+        let buf = craft_header_with_rep_count(u16::MAX); // 65535 > MAX_REPRESENTATIONS
+        let err = ClipboardBinaryPayload::decode_from(&mut Cursor::new(buf)).unwrap_err();
+        assert_eq!(err.kind(), std::io::ErrorKind::InvalidData);
+        assert!(
+            err.to_string().contains("rep_count"),
+            "error should mention rep_count: {err}"
+        );
+    }
+
+    #[test]
+    fn reject_invalid_has_mime_flag() {
+        // Build: ts_ms + rep_count=1 + format_id_len=1 + format_id="x" + has_mime=2 (invalid)
+        let mut buf = Vec::new();
+        buf.extend_from_slice(&0i64.to_le_bytes());
+        buf.extend_from_slice(&1u16.to_le_bytes()); // 1 rep
+        buf.extend_from_slice(&1u16.to_le_bytes()); // format_id_len = 1
+        buf.push(b'x'); // format_id
+        buf.push(2u8); // invalid has_mime flag
+
+        let err = ClipboardBinaryPayload::decode_from(&mut Cursor::new(buf)).unwrap_err();
+        assert_eq!(err.kind(), std::io::ErrorKind::InvalidData);
+        assert!(
+            err.to_string().contains("has_mime"),
+            "error should mention has_mime: {err}"
+        );
+    }
+
+    #[test]
+    fn reject_data_len_exceeds_max() {
+        // Build a payload where data_len claims to be larger than MAX_DATA_LEN
+        let mut buf = Vec::new();
+        buf.extend_from_slice(&0i64.to_le_bytes());
+        buf.extend_from_slice(&1u16.to_le_bytes()); // 1 rep
+        buf.extend_from_slice(&1u16.to_le_bytes()); // format_id_len = 1
+        buf.push(b'x'); // format_id
+        buf.push(0u8); // has_mime = false
+        let huge_len = (MAX_DATA_LEN as u32) + 1;
+        buf.extend_from_slice(&huge_len.to_le_bytes());
+
+        let err = ClipboardBinaryPayload::decode_from(&mut Cursor::new(buf)).unwrap_err();
+        assert_eq!(err.kind(), std::io::ErrorKind::InvalidData);
+        assert!(
+            err.to_string().contains("data_len"),
+            "error should mention data_len: {err}"
+        );
     }
 }

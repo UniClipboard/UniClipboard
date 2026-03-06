@@ -10,6 +10,16 @@ pub trait ClipboardChangeOriginPort: Send + Sync {
         &self,
         default_origin: ClipboardChangeOrigin,
     ) -> ClipboardChangeOrigin;
+
+    async fn remember_remote_snapshot_hash(&self, _snapshot_hash: String, _ttl: Duration) {}
+
+    async fn consume_origin_for_snapshot_or_default(
+        &self,
+        _snapshot_hash: &str,
+        default_origin: ClipboardChangeOrigin,
+    ) -> ClipboardChangeOrigin {
+        self.consume_origin_or_default(default_origin).await
+    }
 }
 
 #[cfg(test)]

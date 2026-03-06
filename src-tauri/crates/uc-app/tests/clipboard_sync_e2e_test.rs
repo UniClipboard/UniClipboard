@@ -460,7 +460,10 @@ async fn clipboard_sync_e2e_dual_peer_in_process() -> Result<()> {
     assert_eq!(snapshot_text(&snapshot_on_b)?, "hello from device A");
 
     let b_origin = origin_b
-        .consume_origin_or_default(ClipboardChangeOrigin::LocalCapture)
+        .consume_origin_for_snapshot_or_default(
+            &snapshot_on_b.snapshot_hash().to_string(),
+            ClipboardChangeOrigin::LocalCapture,
+        )
         .await;
     assert_eq!(b_origin, ClipboardChangeOrigin::RemotePush);
 

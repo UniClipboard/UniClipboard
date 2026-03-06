@@ -443,10 +443,14 @@ async fn clipboard_sync_e2e_dual_peer_in_process() -> Result<()> {
         transfer_encryptor,
     );
 
-    outbound_a.execute(
-        text_snapshot("hello from device A", 1_713_000_000_001),
-        ClipboardChangeOrigin::LocalCapture,
-    )?;
+    tokio::task::spawn_blocking(move || {
+        outbound_a.execute(
+            text_snapshot("hello from device A", 1_713_000_000_001),
+            ClipboardChangeOrigin::LocalCapture,
+        )
+    })
+    .await
+    .map_err(|e| anyhow!("failed to join outbound A task: {e}"))??;
 
     assert_eq!(a_send_count.load(Ordering::SeqCst), 1);
     assert_eq!(clipboard_b.writes(), 1);
@@ -460,7 +464,9 @@ async fn clipboard_sync_e2e_dual_peer_in_process() -> Result<()> {
         .await;
     assert_eq!(b_origin, ClipboardChangeOrigin::RemotePush);
 
-    outbound_b.execute(snapshot_on_b, b_origin)?;
+    tokio::task::spawn_blocking(move || outbound_b.execute(snapshot_on_b, b_origin))
+        .await
+        .map_err(|e| anyhow!("failed to join outbound B task: {e}"))??;
 
     assert_eq!(b_send_count.load(Ordering::SeqCst), 0);
     assert_eq!(clipboard_a.writes(), 0);

@@ -146,6 +146,37 @@ mod tests {
             _ => panic!("expected DeviceAnnounce"),
         }
     }
+
+    #[test]
+    fn frame_to_bytes_clipboard_header_payload_without_trailing_keeps_bytes() {
+        let msg = ProtocolMessage::Clipboard(ClipboardMessage {
+            id: "msg-header-only".to_string(),
+            content_hash: "hash-header-only".to_string(),
+            encrypted_content: vec![1, 2, 3, 4, 5],
+            timestamp: Utc::now(),
+            origin_device_id: "dev-1".to_string(),
+            origin_device_name: "Test Device".to_string(),
+            payload_version: super::super::ClipboardPayloadVersion::V3,
+        });
+        let framed = msg.frame_to_bytes(None).expect("frame_to_bytes");
+
+        let json_len = u32::from_le_bytes(framed[0..4].try_into().unwrap()) as usize;
+        assert_eq!(framed.len(), 4 + json_len, "no trailing bytes expected");
+
+        let json_bytes = &framed[4..4 + json_len];
+        let decoded = ProtocolMessage::from_bytes(json_bytes).expect("from_bytes");
+        match decoded {
+            ProtocolMessage::Clipboard(cm) => {
+                assert_eq!(cm.id, "msg-header-only");
+                assert_eq!(cm.encrypted_content, vec![1, 2, 3, 4, 5]);
+                assert_eq!(
+                    cm.payload_version,
+                    super::super::ClipboardPayloadVersion::V3
+                );
+            }
+            _ => panic!("expected Clipboard"),
+        }
+    }
 }
 
 impl std::fmt::Debug for ProtocolMessage {

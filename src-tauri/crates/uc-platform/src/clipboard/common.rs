@@ -373,7 +373,23 @@ impl CommonClipboardImpl {
 
         let rep = &snapshot.representations[0];
 
-        match rep.mime.as_ref().map(|m| m.as_str()) {
+        // Use explicit MIME if present, otherwise infer from macOS/cross-platform format_id.
+        let effective_mime =
+            rep.mime
+                .as_ref()
+                .map(|m| m.as_str())
+                .or_else(|| match rep.format_id.as_str() {
+                    "public.utf8-plain-text" | "public.text" | "NSStringPboardType" | "text" => {
+                        Some("text/plain")
+                    }
+                    "public.html" | "Apple HTML pasteboard type" | "html" => Some("text/html"),
+                    "public.rtf" | "rtf" => Some("text/rtf"),
+                    "public.png" => Some("image/png"),
+                    "public.file-url" | "NSFilenamesPboardType" => Some("text/uri-list"),
+                    _ => None,
+                });
+
+        match effective_mime {
             Some("text/plain") => {
                 map_clipboard_err(ctx.set_text(String::from_utf8(rep.bytes.clone())?))?;
             }

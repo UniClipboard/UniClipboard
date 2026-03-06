@@ -320,7 +320,7 @@ impl SyncInboundClipboardUseCase {
             }
         };
 
-        let mut representations: Vec<ObservedClipboardRepresentation> = v3_payload
+        let representations: Vec<ObservedClipboardRepresentation> = v3_payload
             .representations
             .into_iter()
             .map(|rep| {
@@ -332,9 +332,9 @@ impl SyncInboundClipboardUseCase {
                 )
             })
             .collect();
-        if selected_idx < representations.len() {
-            representations.swap(0, selected_idx);
-        }
+        // Keep only the highest-priority representation.
+        // write_snapshot requires exactly ONE representation (tracked in issue #92).
+        let representations = vec![representations.into_iter().nth(selected_idx).unwrap()];
 
         let snapshot = SystemClipboardSnapshot {
             ts_ms: v3_payload.ts_ms,
@@ -1247,7 +1247,11 @@ mod tests {
         let snapshots = writes.lock().expect("writes lock");
         assert_eq!(snapshots.len(), 1, "must write exactly one snapshot");
         let snapshot = &snapshots[0];
-        assert_eq!(snapshot.representations.len(), 2);
+        assert_eq!(
+            snapshot.representations.len(),
+            1,
+            "write_snapshot requires exactly one representation"
+        );
         assert_eq!(
             snapshot.representations[0]
                 .mime
@@ -1259,14 +1263,6 @@ mod tests {
         assert_eq!(
             snapshot.representations[0].bytes, png_bytes,
             "must write image bytes"
-        );
-        assert_eq!(
-            snapshot.representations[1]
-                .mime
-                .as_ref()
-                .map(|m| m.as_str()),
-            Some("text/plain"),
-            "lower-priority representation should still be preserved"
         );
     }
 
@@ -1308,7 +1304,11 @@ mod tests {
 
         let snapshots = writes.lock().expect("writes lock");
         assert_eq!(snapshots.len(), 1);
-        assert_eq!(snapshots[0].representations.len(), 2);
+        assert_eq!(
+            snapshots[0].representations.len(),
+            1,
+            "write_snapshot requires exactly one representation"
+        );
         assert_eq!(
             snapshots[0].representations[0]
                 .mime

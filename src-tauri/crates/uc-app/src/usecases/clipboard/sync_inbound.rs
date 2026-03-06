@@ -341,18 +341,22 @@ impl SyncInboundClipboardUseCase {
             representations,
         };
 
-        // In Full mode: set origin + write to OS clipboard
+        // In Full mode: remember inbound snapshot hash + write to OS clipboard
         if self.mode.allow_os_write() {
+            let snapshot_hash = snapshot.snapshot_hash().to_string();
             self.clipboard_change_origin
-                .set_next_origin(
-                    ClipboardChangeOrigin::RemotePush,
-                    Duration::from_millis(REMOTE_PUSH_ORIGIN_TTL_MS),
+                .remember_remote_snapshot_hash(
+                    snapshot_hash.clone(),
+                    Duration::from_millis(REMOTE_SNAPSHOT_HASH_TTL_MS),
                 )
                 .await;
 
             if let Err(err) = self.local_clipboard.write_snapshot(snapshot) {
                 self.clipboard_change_origin
-                    .consume_origin_or_default(ClipboardChangeOrigin::LocalCapture)
+                    .consume_origin_for_snapshot_or_default(
+                        &snapshot_hash,
+                        ClipboardChangeOrigin::LocalCapture,
+                    )
                     .await;
                 self.rollback_recent_id(&message.id).await;
                 return Err(err).context("V3 inbound: failed to write snapshot to OS clipboard");
@@ -394,12 +398,12 @@ impl SyncInboundClipboardUseCase {
     }
 }
 
-const REMOTE_PUSH_ORIGIN_TTL_MS: u64 = 100;
+const REMOTE_SNAPSHOT_HASH_TTL_MS: u64 = 60_000;
 
 /// Returns the index of the highest-priority BinaryRepresentation, or None if empty.
 ///
-/// Priority order (highest first): image/* > text/html > text/rtf > text/plain > other.
-/// This mirrors the locked decision from CONTEXT.md - "Multi-representation strategy".
+/// Priority order (highest first): image/* > text/plain > text/html > text/rtf > other.
+/// While write_snapshot is single-representation-only, prefer plain text for textual payloads.
 fn select_highest_priority_repr_index(representations: &[BinaryRepresentation]) -> Option<usize> {
     fn fallback_priority_from_format_id(format_id: &str) -> u8 {
         if format_id.eq_ignore_ascii_case("public.png")
@@ -415,21 +419,21 @@ fn select_highest_priority_repr_index(representations: &[BinaryRepresentation]) 
             || format_id.eq_ignore_ascii_case("image/webp")
         {
             4
-        } else if format_id.eq_ignore_ascii_case("public.html")
-            || format_id.eq_ignore_ascii_case("html")
-            || format_id.eq_ignore_ascii_case(MIME_TEXT_HTML)
-        {
-            3
-        } else if format_id.eq_ignore_ascii_case("public.rtf")
-            || format_id.eq_ignore_ascii_case("rtf")
-            || format_id.eq_ignore_ascii_case(MIME_TEXT_RTF)
-        {
-            2
         } else if format_id.eq_ignore_ascii_case("text")
             || format_id.eq_ignore_ascii_case("public.utf8-plain-text")
             || format_id.eq_ignore_ascii_case("public.text")
             || format_id.eq_ignore_ascii_case("NSStringPboardType")
             || format_id.eq_ignore_ascii_case(MIME_TEXT_PLAIN)
+        {
+            3
+        } else if format_id.eq_ignore_ascii_case("public.html")
+            || format_id.eq_ignore_ascii_case("html")
+            || format_id.eq_ignore_ascii_case(MIME_TEXT_HTML)
+        {
+            2
+        } else if format_id.eq_ignore_ascii_case("public.rtf")
+            || format_id.eq_ignore_ascii_case("rtf")
+            || format_id.eq_ignore_ascii_case(MIME_TEXT_RTF)
         {
             1
         } else {
@@ -446,11 +450,11 @@ fn select_highest_priority_repr_index(representations: &[BinaryRepresentation]) 
             .to_ascii_lowercase();
         if normalized.starts_with(MIME_IMAGE_PREFIX) {
             4
-        } else if normalized == MIME_TEXT_HTML {
-            3
-        } else if normalized == MIME_TEXT_RTF {
-            2
         } else if normalized == MIME_TEXT_PLAIN {
+            3
+        } else if normalized == MIME_TEXT_HTML {
+            2
+        } else if normalized == MIME_TEXT_RTF {
             1
         } else {
             0
@@ -519,7 +523,10 @@ mod tests {
         ];
 
         let idx = select_highest_priority_repr_index(&representations).expect("selected index");
-        assert_eq!(idx, 1, "public.html should outrank plain text fallback");
+        assert_eq!(
+            idx, 0,
+            "plain text fallback should outrank html while single-rep restore is enabled"
+        );
     }
 
     #[test]
@@ -544,7 +551,8 @@ mod tests {
 
         let idx = select_highest_priority_repr_index(&representations).expect("selected index");
         assert_eq!(
-            idx, 0,
+            representations[idx].mime.as_deref(),
+            Some("text/plain; charset=utf-8"),
             "mime params should be trimmed before priority matching"
         );
     }
@@ -566,7 +574,7 @@ mod tests {
 
         let idx = select_highest_priority_repr_index(&representations).expect("selected index");
         assert_eq!(
-            idx, 1,
+            idx, 0,
             "unknown mime should fall back to format_id priority"
         );
     }
@@ -596,6 +604,7 @@ mod tests {
     struct MockChangeOrigin {
         calls: Arc<Mutex<Vec<&'static str>>>,
         values: Arc<Mutex<Vec<(ClipboardChangeOrigin, Duration)>>>,
+        remote_hash_values: Arc<Mutex<Vec<(String, Duration)>>>,
     }
 
     #[async_trait]
@@ -610,6 +619,17 @@ mod tests {
             default_origin: ClipboardChangeOrigin,
         ) -> ClipboardChangeOrigin {
             default_origin
+        }
+
+        async fn remember_remote_snapshot_hash(&self, snapshot_hash: String, ttl: Duration) {
+            self.calls
+                .lock()
+                .expect("calls lock")
+                .push("remember_remote_snapshot_hash");
+            self.remote_hash_values
+                .lock()
+                .expect("remote hash values lock")
+                .push((snapshot_hash, ttl));
         }
     }
 
@@ -924,11 +944,13 @@ mod tests {
         Arc<Mutex<Vec<SystemClipboardSnapshot>>>,
         Arc<Mutex<Vec<&'static str>>>,
         Arc<Mutex<Vec<(ClipboardChangeOrigin, Duration)>>>,
+        Arc<Mutex<Vec<(String, Duration)>>>,
         Arc<AtomicUsize>,
     ) {
         let writes = Arc::new(Mutex::new(Vec::new()));
         let calls = Arc::new(Mutex::new(Vec::new()));
         let origin_values = Arc::new(Mutex::new(Vec::new()));
+        let remote_hash_values = Arc::new(Mutex::new(Vec::new()));
         let decrypt_calls = Arc::new(AtomicUsize::new(0));
 
         let usecase = SyncInboundClipboardUseCase::new(
@@ -941,6 +963,7 @@ mod tests {
             Arc::new(MockChangeOrigin {
                 calls: calls.clone(),
                 values: origin_values.clone(),
+                remote_hash_values: remote_hash_values.clone(),
             }),
             Arc::new(MockEncryptionSession { ready }),
             Arc::new(MockEncryption {
@@ -953,7 +976,14 @@ mod tests {
         )
         .expect("build inbound usecase");
 
-        (usecase, writes, calls, origin_values, decrypt_calls)
+        (
+            usecase,
+            writes,
+            calls,
+            origin_values,
+            remote_hash_values,
+            decrypt_calls,
+        )
     }
 
     fn build_passive_usecase(
@@ -981,6 +1011,7 @@ mod tests {
             Arc::new(MockChangeOrigin {
                 calls: calls.clone(),
                 values: Arc::new(Mutex::new(Vec::new())),
+                remote_hash_values: Arc::new(Mutex::new(Vec::new())),
             }),
             Arc::new(MockEncryptionSession { ready: true }),
             Arc::new(MockEncryption {
@@ -1007,7 +1038,7 @@ mod tests {
 
     #[tokio::test]
     async fn valid_v3_inbound_message_applies_text_plain_snapshot() {
-        let (usecase, writes, _, _, _) = build_usecase(
+        let (usecase, writes, _, _, _, _) = build_usecase(
             ClipboardIntegrationMode::Full,
             SystemClipboardSnapshot {
                 ts_ms: 0,
@@ -1048,6 +1079,7 @@ mod tests {
             Arc::new(MockChangeOrigin {
                 calls: Arc::new(Mutex::new(Vec::new())),
                 values: Arc::new(Mutex::new(Vec::new())),
+                remote_hash_values: Arc::new(Mutex::new(Vec::new())),
             }),
             Arc::new(MockEncryptionSession { ready: true }),
             Arc::new(MockEncryption {
@@ -1072,8 +1104,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn sets_origin_to_remote_push_before_write() {
-        let (usecase, _, calls, origin_values, _) = build_usecase(
+    async fn remembers_remote_snapshot_hash_before_write() {
+        let (usecase, _, calls, origin_values, remote_hash_values, _) = build_usecase(
             ClipboardIntegrationMode::Full,
             SystemClipboardSnapshot {
                 ts_ms: 0,
@@ -1092,17 +1124,18 @@ mod tests {
         // V3 inbound does NOT read OS clipboard for dedup (uses message.id dedup)
         assert_eq!(
             calls.lock().expect("calls lock").as_slice(),
-            ["set_origin", "write_snapshot"]
+            ["remember_remote_snapshot_hash", "write_snapshot"]
         );
         let values = origin_values.lock().expect("origin values lock");
-        assert_eq!(values.len(), 1);
-        assert_eq!(values[0].0, ClipboardChangeOrigin::RemotePush);
-        assert_eq!(values[0].1, Duration::from_millis(100));
+        assert_eq!(values.len(), 0);
+        let remote_values = remote_hash_values.lock().expect("remote hash values lock");
+        assert_eq!(remote_values.len(), 1);
+        assert_eq!(remote_values[0].1, Duration::from_secs(60));
     }
 
     #[tokio::test]
     async fn ignores_self_origin_messages() {
-        let (usecase, writes, calls, _, decrypt_calls) = build_usecase(
+        let (usecase, writes, calls, _, _, decrypt_calls) = build_usecase(
             ClipboardIntegrationMode::Full,
             SystemClipboardSnapshot {
                 ts_ms: 0,
@@ -1125,7 +1158,7 @@ mod tests {
 
     #[tokio::test]
     async fn no_op_when_encryption_session_not_ready() {
-        let (usecase, writes, calls, _, decrypt_calls) = build_usecase(
+        let (usecase, writes, calls, _, _, decrypt_calls) = build_usecase(
             ClipboardIntegrationMode::Full,
             SystemClipboardSnapshot {
                 ts_ms: 0,
@@ -1203,7 +1236,7 @@ mod tests {
 
     #[tokio::test]
     async fn v3_message_applies_image_representation_with_highest_priority() {
-        let (usecase, writes, _, _, _) = build_usecase(
+        let (usecase, writes, _, _, _, _) = build_usecase(
             ClipboardIntegrationMode::Full,
             SystemClipboardSnapshot {
                 ts_ms: 0,
@@ -1267,8 +1300,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn v3_message_with_html_and_text_selects_html() {
-        let (usecase, writes, _, _, _) = build_usecase(
+    async fn v3_message_with_html_and_text_selects_plain_text() {
+        let (usecase, writes, _, _, _, _) = build_usecase(
             ClipboardIntegrationMode::Full,
             SystemClipboardSnapshot {
                 ts_ms: 0,
@@ -1314,14 +1347,14 @@ mod tests {
                 .mime
                 .as_ref()
                 .map(|m| m.as_str()),
-            Some("text/html"),
-            "must prefer text/html over text/plain"
+            Some("text/plain"),
+            "must prefer text/plain over text/html while only one representation can be written"
         );
     }
 
     #[tokio::test]
     async fn v3_inbound_with_invalid_pre_decoded_plaintext_returns_err() {
-        let (usecase, writes, _, _, _) = build_usecase(
+        let (usecase, writes, _, _, _, _) = build_usecase(
             ClipboardIntegrationMode::Full,
             SystemClipboardSnapshot {
                 ts_ms: 0,
@@ -1365,7 +1398,7 @@ mod tests {
 
     #[tokio::test]
     async fn v3_inbound_with_pre_decoded_plaintext_applies_correctly() {
-        let (usecase, writes, _, _, _) = build_usecase(
+        let (usecase, writes, _, _, _, _) = build_usecase(
             ClipboardIntegrationMode::Full,
             SystemClipboardSnapshot {
                 ts_ms: 0,
@@ -1409,7 +1442,7 @@ mod tests {
         let log_buffer = init_test_tracing();
         let start_len = log_buffer.lock().expect("log buffer lock").len();
 
-        let (usecase, writes, _, _, _) = build_usecase(
+        let (usecase, writes, _, _, _, _) = build_usecase(
             ClipboardIntegrationMode::Full,
             SystemClipboardSnapshot {
                 ts_ms: 0,

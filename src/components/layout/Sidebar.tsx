@@ -48,7 +48,7 @@ const NavButton: React.FC<{
             )}
             <div
               className={cn(
-                'relative flex items-center justify-center w-12 h-12 rounded-lg transition-colors duration-200 z-10',
+                'relative flex items-center justify-center w-10 h-10 rounded-lg transition-colors duration-200 z-10',
                 isActive
                   ? 'text-primary'
                   : 'text-muted-foreground group-hover:text-primary group-hover:bg-muted'
@@ -102,7 +102,7 @@ const Sidebar: React.FC = () => {
       <aside
         data-tauri-drag-region
         className={cn(
-          'w-16 h-full flex flex-col items-center py-4 bg-muted/40 border-r border-border/40 backdrop-blur-xl shrink-0'
+          'w-14 h-full flex flex-col items-center py-4 bg-muted/40 border-r border-border/40 backdrop-blur-xl shrink-0'
         )}
       >
         {/* Main Navigation */}
@@ -137,7 +137,7 @@ const Sidebar: React.FC = () => {
                   >
                     <div
                       className={cn(
-                        'relative flex items-center justify-center w-12 h-12 rounded-lg transition-colors duration-200 z-10',
+                        'relative flex items-center justify-center w-10 h-10 rounded-lg transition-colors duration-200 z-10',
                         'text-amber-600 dark:text-amber-400 group-hover:bg-muted'
                       )}
                     >
@@ -169,7 +169,7 @@ const Sidebar: React.FC = () => {
                     >
                       <div
                         className={cn(
-                          'relative flex items-center justify-center w-12 h-12 rounded-lg transition-colors duration-200 z-10',
+                          'relative flex items-center justify-center w-10 h-10 rounded-lg transition-colors duration-200 z-10',
                           'text-muted-foreground group-hover:text-primary group-hover:bg-muted'
                         )}
                       >

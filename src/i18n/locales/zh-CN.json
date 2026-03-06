@@ -327,6 +327,25 @@
       "hoursAgo": "{{hours}}小时前",
       "daysAgo": "{{days}}天前"
     },
+    "dateGroup": {
+      "today": "今天",
+      "yesterday": "昨天",
+      "earlier": "更早"
+    },
+    "preview": {
+      "selectItem": "选择一个项目预览",
+      "information": "信息",
+      "contentType": "内容类型",
+      "characters": "字符数",
+      "words": "词数",
+      "size": "大小",
+      "dimensions": "尺寸"
+    },
+    "actionBar": {
+      "title": "剪贴板历史",
+      "copy": "复制",
+      "delete": "删除"
+    },
     "confirmDeleteTitle": "确认删除",
     "confirmDeleteDescription_one": "确定要删除选中的项目吗？此操作无法撤销。",
     "confirmDeleteDescription_other": "确定要删除选中的 {{count}} 项吗？此操作无法撤销。",

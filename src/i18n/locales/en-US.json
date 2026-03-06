@@ -327,6 +327,25 @@
       "hoursAgo": "{{hours}}h ago",
       "daysAgo": "{{days}}d ago"
     },
+    "dateGroup": {
+      "today": "Today",
+      "yesterday": "Yesterday",
+      "earlier": "Earlier"
+    },
+    "preview": {
+      "selectItem": "Select an item to preview",
+      "information": "Information",
+      "contentType": "Content Type",
+      "characters": "Characters",
+      "words": "Words",
+      "size": "Size",
+      "dimensions": "Dimensions"
+    },
+    "actionBar": {
+      "title": "Clipboard History",
+      "copy": "Copy",
+      "delete": "Delete"
+    },
     "confirmDeleteTitle": "Confirm Delete",
     "confirmDeleteDescription_one": "Are you sure you want to delete the selected item? This action cannot be undone.",
     "confirmDeleteDescription_other": "Are you sure you want to delete the {{count}} selected items? This action cannot be undone.",

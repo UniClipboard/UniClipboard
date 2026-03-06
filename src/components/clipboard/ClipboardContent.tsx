@@ -1,8 +1,10 @@
 import { Inbox } from 'lucide-react'
-import React, { useMemo, useState, useEffect, useCallback } from 'react'
+import React, { useMemo, useState, useEffect, useCallback, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
-import ClipboardItem from './ClipboardItem'
-import ClipboardSelectionActionBar from './ClipboardSelectionActionBar'
+import { useDefaultLayout } from 'react-resizable-panels'
+import ClipboardActionBar from './ClipboardActionBar'
+import ClipboardItemRow from './ClipboardItemRow'
+import ClipboardPreview from './ClipboardPreview'
 import DeleteConfirmDialog from './DeleteConfirmDialog'
 import {
   getDisplayType,
@@ -14,24 +16,19 @@ import {
   ClipboardCodeItem,
   ClipboardFileItem,
 } from '@/api/clipboardItems'
+import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from '@/components/ui/resizable'
 import { Skeleton } from '@/components/ui/skeleton'
 import { toast } from '@/components/ui/toast'
 import { useShortcut } from '@/hooks/useShortcut'
 import { captureUserIntent } from '@/observability/breadcrumbs'
 import { useAppDispatch, useAppSelector } from '@/store/hooks'
-import {
-  removeClipboardItem,
-  copyToClipboard,
-  toggleFavoriteItem,
-} from '@/store/slices/clipboardSlice'
+import { removeClipboardItem, copyToClipboard } from '@/store/slices/clipboardSlice'
 
-// 后端收藏功能尚未在新架构中实装（仅保留前端逻辑以便后续快速启用）。
-const FAVORITES_UI_ENABLED = false
-
-interface DisplayClipboardItem {
+export interface DisplayClipboardItem {
   id: string
   type: 'text' | 'image' | 'link' | 'code' | 'file' | 'unknown'
   time: string
+  activeTime: number
   isDownloaded?: boolean
   isFavorited?: boolean
   content:
@@ -44,6 +41,11 @@ interface DisplayClipboardItem {
   device?: string
 }
 
+interface DateGroup {
+  label: string
+  items: DisplayClipboardItem[]
+}
+
 interface ClipboardContentProps {
   filter: Filter
   searchQuery?: string
@@ -53,6 +55,35 @@ interface ClipboardContentProps {
 
 const SKELETON_KEYS = Array.from({ length: 12 }, (_, index) => `clipboard-skeleton-${index}`)
 
+function groupItemsByDate(items: DisplayClipboardItem[], t: (key: string) => string): DateGroup[] {
+  if (items.length === 0) return []
+
+  const now = new Date()
+  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()
+  const yesterdayStart = todayStart - 86400000
+
+  const today: DisplayClipboardItem[] = []
+  const yesterday: DisplayClipboardItem[] = []
+  const earlier: DisplayClipboardItem[] = []
+
+  for (const item of items) {
+    if (item.activeTime >= todayStart) {
+      today.push(item)
+    } else if (item.activeTime >= yesterdayStart) {
+      yesterday.push(item)
+    } else {
+      earlier.push(item)
+    }
+  }
+
+  const groups: DateGroup[] = []
+  if (today.length > 0) groups.push({ label: t('clipboard.dateGroup.today'), items: today })
+  if (yesterday.length > 0)
+    groups.push({ label: t('clipboard.dateGroup.yesterday'), items: yesterday })
+  if (earlier.length > 0) groups.push({ label: t('clipboard.dateGroup.earlier'), items: earlier })
+  return groups
+}
+
 const ClipboardContent: React.FC<ClipboardContentProps> = ({
   filter,
   searchQuery = '',
@@ -61,65 +92,27 @@ const ClipboardContent: React.FC<ClipboardContentProps> = ({
 }) => {
   const { t } = useTranslation()
 
-  // Use Redux state and dispatch
   const dispatch = useAppDispatch()
+
+  // Persist panel layout to localStorage
+  const { defaultLayout } = useDefaultLayout({
+    id: 'clipboard-panels',
+    panelIds: ['clipboard-list', 'clipboard-preview'],
+    storage: localStorage,
+  })
   const { items: reduxItems, loading, notReady } = useAppSelector(state => state.clipboard)
 
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
-  const [lastSelectedIndex, setLastSelectedIndex] = useState<number | null>(null)
+  const [activeItemId, setActiveItemId] = useState<string | null>(null)
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [copySuccess, setCopySuccess] = useState(false)
 
-  // 注册 ESC 取消选择快捷键
-  useShortcut({
-    key: 'esc',
-    scope: 'clipboard',
-    enabled: selectedIds.size > 0, // 只在有选中时启用
-    handler: () => {
-      setSelectedIds(new Set())
-      setLastSelectedIndex(null)
-    },
-  })
-
-  // 选中状态下的快捷键：复制/收藏/删除
-  useShortcut({
-    key: 'c',
-    scope: 'clipboard',
-    enabled: selectedIds.size > 0,
-    handler: () => {
-      void handleBatchCopy()
-    },
-    preventDefault: false,
-  })
-
-  useShortcut({
-    key: 's',
-    scope: 'clipboard',
-    enabled: FAVORITES_UI_ENABLED && selectedIds.size > 0,
-    handler: () => {
-      void handleBatchToggleFavorite()
-    },
-    preventDefault: false,
-  })
-
-  useShortcut({
-    key: 'd',
-    scope: 'clipboard',
-    enabled: selectedIds.size > 0,
-    handler: () => {
-      void handleBatchDelete()
-    },
-    preventDefault: false,
-  })
+  const activeItemRef = useRef<HTMLDivElement>(null)
 
   // Convert clipboard item to display item
   const convertToDisplayItem = useCallback(
     (item: ClipboardItemResponse): DisplayClipboardItem => {
-      console.log(t('clipboard.content.logs.convertingItem'), item)
-      // Get type suitable for UI display
       const type = getDisplayType(item.item)
 
-      // Format time (active_time is already in milliseconds from backend)
       const activeTime = new Date(item.active_time)
       const now = new Date()
       const diffMs = now.getTime() - activeTime.getTime()
@@ -136,7 +129,6 @@ const ClipboardContent: React.FC<ClipboardContentProps> = ({
         timeString = t('clipboard.time.daysAgo', { days: Math.floor(diffMins / 1440) })
       }
 
-      // Create display item
       const contentByType = {
         text: item.item.text,
         image: item.item.image,
@@ -150,6 +142,7 @@ const ClipboardContent: React.FC<ClipboardContentProps> = ({
         id: item.id,
         type,
         time: timeString,
+        activeTime: item.active_time,
         isDownloaded: item.is_downloaded,
         isFavorited: item.is_favorited,
         content: contentByType[type] ?? null,
@@ -158,216 +151,159 @@ const ClipboardContent: React.FC<ClipboardContentProps> = ({
     [t]
   )
 
-  // Local state for converted display items
-  const [clipboardItems, setClipboardItems] = useState<DisplayClipboardItem[]>(() => {
-    if (reduxItems && reduxItems.length > 0) {
-      return reduxItems.map(convertToDisplayItem)
+  // Build display items from Redux state
+  const clipboardItems = useMemo(() => {
+    if (!reduxItems || reduxItems.length === 0) return []
+
+    let items: DisplayClipboardItem[] = reduxItems.map(convertToDisplayItem)
+
+    if (filter === Filter.Favorited) {
+      items = items.filter(it => it.isFavorited)
     }
-    return []
+
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase().trim()
+      items = items.filter(it => {
+        if (it.type === 'text' && it.content) {
+          return (it.content as ClipboardTextItem).display_text?.toLowerCase().includes(query)
+        }
+        if (it.type === 'code' && it.content) {
+          return (it.content as ClipboardCodeItem).code?.toLowerCase().includes(query)
+        }
+        if (it.type === 'link' && it.content) {
+          return (it.content as ClipboardLinkItem).url?.toLowerCase().includes(query)
+        }
+        if (it.type === 'file' && it.content) {
+          return (it.content as ClipboardFileItem).file_names?.some(name =>
+            name.toLowerCase().includes(query)
+          )
+        }
+        return false
+      })
+    }
+
+    return items
+  }, [reduxItems, filter, searchQuery, convertToDisplayItem])
+
+  // Flat list for keyboard navigation
+  const flatItems = useMemo(() => clipboardItems, [clipboardItems])
+
+  // Date groups for rendering
+  const dateGroups = useMemo(() => groupItemsByDate(clipboardItems, t), [clipboardItems, t])
+
+  // Active item index in flat list
+  const activeIndex = useMemo(() => {
+    if (!activeItemId) return -1
+    return flatItems.findIndex(it => it.id === activeItemId)
+  }, [flatItems, activeItemId])
+
+  // Active item object
+  const activeItem = useMemo(() => {
+    if (activeIndex < 0) return null
+    return flatItems[activeIndex] ?? null
+  }, [flatItems, activeIndex])
+
+  // Auto-select first item when list loads or changes
+  useEffect(() => {
+    if (
+      flatItems.length > 0 &&
+      (activeItemId === null || !flatItems.some(it => it.id === activeItemId))
+    ) {
+      setActiveItemId(flatItems[0].id)
+    }
+    if (flatItems.length === 0) {
+      setActiveItemId(null)
+    }
+  }, [flatItems, activeItemId])
+
+  // Scroll active item into view
+  useEffect(() => {
+    activeItemRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+  }, [activeItemId])
+
+  // Keyboard: Arrow Down
+  useShortcut({
+    key: 'down',
+    scope: 'clipboard',
+    handler: () => {
+      if (flatItems.length === 0) return
+      const nextIndex = activeIndex < 0 ? 0 : Math.min(activeIndex + 1, flatItems.length - 1)
+      setActiveItemId(flatItems[nextIndex].id)
+    },
   })
 
-  // 监听 Redux 中的 items 变化,转换为显示项目
-  useEffect(() => {
-    console.log(t('clipboard.content.filterCondition'), filter)
-    console.log(t('clipboard.content.queryResults'), reduxItems)
+  // Keyboard: Arrow Up
+  useShortcut({
+    key: 'up',
+    scope: 'clipboard',
+    handler: () => {
+      if (flatItems.length === 0) return
+      const prevIndex = activeIndex <= 0 ? 0 : activeIndex - 1
+      setActiveItemId(flatItems[prevIndex].id)
+    },
+  })
 
-    if (reduxItems && reduxItems.length > 0) {
-      let items: DisplayClipboardItem[] = reduxItems.map(convertToDisplayItem)
-
-      // Apply filter
-      if (filter === Filter.Favorited) {
-        items = items.filter(it => it.isFavorited)
-      }
-
-      // Apply search query
-      if (searchQuery.trim()) {
-        const query = searchQuery.toLowerCase().trim()
-        items = items.filter(it => {
-          // Search in text content
-          if (it.type === 'text' && it.content) {
-            const textItem = it.content as ClipboardTextItem
-            return textItem.display_text?.toLowerCase().includes(query)
-          }
-          // Search in code content
-          if (it.type === 'code' && it.content) {
-            const codeItem = it.content as ClipboardCodeItem
-            return codeItem.code?.toLowerCase().includes(query)
-          }
-          // Search in link URL
-          if (it.type === 'link' && it.content) {
-            const linkItem = it.content as ClipboardLinkItem
-            return linkItem.url?.toLowerCase().includes(query)
-          }
-          // Search in file names
-          if (it.type === 'file' && it.content) {
-            const fileItem = it.content as ClipboardFileItem
-            return fileItem.file_names?.some(name => name.toLowerCase().includes(query))
-          }
-          return false
-        })
-      }
-
-      setClipboardItems(items)
-      console.log(t('clipboard.content.convertedItems'), items)
-    } else {
-      setClipboardItems([])
-      console.log(t('clipboard.content.noItemsFound'))
-    }
-  }, [reduxItems, filter, searchQuery, t, convertToDisplayItem])
-
-  // 处理复制到剪贴板
-  const handleCopyItem = async (itemId: string) => {
-    try {
-      captureUserIntent('copy_clipboard', { count: 1 })
-      console.log(`${t('clipboard.content.logs.copyItem')} ${itemId}`)
-      const result = await dispatch(copyToClipboard(itemId)).unwrap()
-      if (result.success) {
-        setCopySuccess(true)
-        setTimeout(() => setCopySuccess(false), 1500)
-      }
-      return result.success
-    } catch (err) {
-      console.error(t('clipboard.content.logs.copyToClipboardFailed'), err)
-
-      // 显示复制失败的 toast 提示
-      toast.error(t('clipboard.errors.copyFailed'), {
-        description: err instanceof Error ? err.message : t('clipboard.errors.unknown'),
-      })
-
-      return false
-    }
-  }
-
-  // 当列表变化时，清理已经不存在的选择
-  useEffect(() => {
-    setSelectedIds(prev => {
-      if (prev.size === 0) return prev
-      const valid = new Set(clipboardItems.map(i => i.id))
-      const next = new Set<string>()
-      for (const id of prev) {
-        if (valid.has(id)) next.add(id)
-      }
-      return next
-    })
-    if (lastSelectedIndex !== null && lastSelectedIndex >= clipboardItems.length) {
-      setLastSelectedIndex(null)
-    }
-  }, [clipboardItems, lastSelectedIndex])
-
-  const handleSelect = (id: string, index: number, event: React.MouseEvent<HTMLDivElement>) => {
-    setSelectedIds(prev => {
-      const next = new Set(prev)
-
-      const isMultiToggle = event.metaKey || event.ctrlKey
-      const isRange = event.shiftKey
-
-      if (isRange && lastSelectedIndex !== null) {
-        const start = Math.min(lastSelectedIndex, index)
-        const end = Math.max(lastSelectedIndex, index)
-        const rangeIds = clipboardItems.slice(start, end + 1).map(i => i.id)
-
-        if (!isMultiToggle) next.clear()
-        for (const rid of rangeIds) next.add(rid)
-        return next
-      }
-
-      if (isMultiToggle) {
-        if (next.has(id)) next.delete(id)
-        else next.add(id)
-        return next
-      }
-
-      // 默认：单选
-      if (next.size === 1 && next.has(id)) return next
-      next.clear()
-      next.add(id)
-      return next
-    })
-
-    setLastSelectedIndex(index)
-  }
-
-  const selectedItems = useMemo(() => {
-    if (selectedIds.size === 0) return []
-    return clipboardItems.filter(it => selectedIds.has(it.id))
-  }, [clipboardItems, selectedIds])
-
-  const favoriteIntent: 'favorite' | 'unfavorite' = useMemo(() => {
-    if (selectedItems.length === 0) return 'favorite'
-    const allFavorited = selectedItems.every(it => Boolean(it.isFavorited))
-    return allFavorited ? 'unfavorite' : 'favorite'
-  }, [selectedItems])
-
-  const handleBatchCopy = async (): Promise<boolean> => {
-    if (selectedItems.length === 0) return false
-    if (selectedItems.length === 1) {
-      return handleCopyItem(selectedItems[0].id)
-    }
-
-    captureUserIntent('copy_clipboard', { count: selectedItems.length })
-
-    const toText = (it: DisplayClipboardItem): string => {
-      switch (it.type) {
-        case 'text':
-          return (it.content as ClipboardTextItem)?.display_text ?? ''
-        case 'code':
-          return (it.content as ClipboardCodeItem)?.code ?? ''
-        case 'link':
-          return (it.content as ClipboardLinkItem)?.url ?? ''
-        case 'file': {
-          const names = (it.content as ClipboardFileItem)?.file_names ?? []
-          return names.length > 0 ? names.join('\n') : '[文件]'
+  // Copy
+  const handleCopyItem = useCallback(
+    async (itemId: string) => {
+      try {
+        captureUserIntent('copy_clipboard', { count: 1 })
+        const result = await dispatch(copyToClipboard(itemId)).unwrap()
+        if (result.success) {
+          setCopySuccess(true)
+          setTimeout(() => setCopySuccess(false), 1500)
         }
-        case 'image':
-          return '[图片]'
-        default:
-          return ''
+        return result.success
+      } catch (err) {
+        console.error('Copy failed:', err)
+        toast.error(t('clipboard.errors.copyFailed'), {
+          description: err instanceof Error ? err.message : t('clipboard.errors.unknown'),
+        })
+        return false
       }
-    }
+    },
+    [dispatch, t]
+  )
 
-    const text = selectedItems.map(toText).filter(Boolean).join('\n\n')
-    if (!text) return false
-    try {
-      await navigator.clipboard.writeText(text)
-      // 批量复制成功后高亮第一个选中项并显示复制成功反馈
-      setCopySuccess(true)
-      setTimeout(() => setCopySuccess(false), 1500)
-      return true
-    } catch (e) {
-      console.error('批量复制失败:', e)
-      return false
-    }
-  }
+  // Keyboard: C to copy
+  useShortcut({
+    key: 'c',
+    scope: 'clipboard',
+    enabled: activeItemId !== null,
+    handler: () => {
+      if (activeItemId) void handleCopyItem(activeItemId)
+    },
+    preventDefault: false,
+  })
 
-  const handleBatchToggleFavorite = async () => {
-    if (selectedItems.length === 0) return
-    captureUserIntent('toggle_favorite', { count: selectedItems.length })
-    const targetFavorited = favoriteIntent === 'favorite'
-    await Promise.all(
-      selectedItems.map(it =>
-        dispatch(toggleFavoriteItem({ id: it.id, isFavorited: targetFavorited }))
-          .unwrap()
-          .catch(e => console.error('设置收藏状态失败:', e))
-      )
-    )
-  }
-
-  const handleBatchDelete = async () => {
-    if (selectedItems.length === 0) return
-    captureUserIntent('delete_entry', { count: selectedItems.length })
-    setDeleteDialogOpen(true)
-  }
+  // Keyboard: D to delete
+  useShortcut({
+    key: 'd',
+    scope: 'clipboard',
+    enabled: activeItemId !== null,
+    handler: () => {
+      if (activeItemId) {
+        captureUserIntent('delete_entry', { count: 1 })
+        setDeleteDialogOpen(true)
+      }
+    },
+    preventDefault: false,
+  })
 
   const handleConfirmDelete = async () => {
-    for (const it of selectedItems) {
-      try {
-        await dispatch(removeClipboardItem(it.id)).unwrap()
-      } catch (e) {
-        console.error('删除失败:', e)
+    if (!activeItemId) return
+    try {
+      await dispatch(removeClipboardItem(activeItemId)).unwrap()
+      // Select next or previous item
+      if (flatItems.length > 1) {
+        const nextIndex = activeIndex < flatItems.length - 1 ? activeIndex + 1 : activeIndex - 1
+        setActiveItemId(flatItems[nextIndex]?.id ?? null)
+      } else {
+        setActiveItemId(null)
       }
+    } catch (e) {
+      console.error('Delete failed:', e)
     }
-    setSelectedIds(new Set())
-    setLastSelectedIndex(null)
   }
 
   const handleScroll = useCallback(
@@ -385,73 +321,115 @@ const ClipboardContent: React.FC<ClipboardContentProps> = ({
   // Skeleton loading state
   if (notReady || (loading && clipboardItems.length === 0)) {
     return (
-      <div
-        className="h-full overflow-y-auto scrollbar-thin px-4 pb-32 pt-2"
-        onScroll={handleScroll}
-      >
-        <div className="flex flex-col gap-1">
-          {SKELETON_KEYS.map(key => (
-            <Skeleton key={key} className="h-12 w-full rounded-lg" />
-          ))}
-        </div>
+      <div className="h-full flex flex-col">
+        <ResizablePanelGroup
+          id="clipboard-panels"
+          orientation="horizontal"
+          defaultLayout={defaultLayout}
+          className="flex-1 min-h-0"
+        >
+          <ResizablePanel id="clipboard-list" defaultSize="40%" minSize="25%" maxSize="60%">
+            <div className="h-full bg-muted/20 p-3">
+              <div className="flex flex-col gap-1.5">
+                {SKELETON_KEYS.map(key => (
+                  <Skeleton key={key} className="h-10 w-full rounded-lg" />
+                ))}
+              </div>
+            </div>
+          </ResizablePanel>
+          <ResizableHandle />
+          <ResizablePanel id="clipboard-preview" defaultSize="60%">
+            <div className="flex-1" />
+          </ResizablePanel>
+        </ResizablePanelGroup>
       </div>
     )
   }
 
   return (
-    <div className="h-full relative">
-      <div className="h-full overflow-y-auto scrollbar-thin px-4 pb-32 pt-2">
-        {clipboardItems.length > 0 ? (
-          <div className="flex flex-col">
-            {clipboardItems.map((item, index) => (
-              <ClipboardItem
-                key={item.id}
-                index={index + 1}
-                type={item.type}
-                time={item.time}
-                device={item.device}
-                content={item.content}
-                entryId={item.id}
-                isSelected={selectedIds.has(item.id)}
-                onSelect={e => handleSelect(item.id, index, e)}
-              />
-            ))}
-          </div>
-        ) : (
-          <div className="h-full flex flex-col items-center justify-center gap-6">
-            <div className="flex flex-col items-center justify-center w-16 h-16 rounded-lg bg-muted/50 border border-dashed border-muted">
-              <Inbox className="h-8 w-8 text-muted-foreground/60" />
+    <div className="h-full flex flex-col">
+      {clipboardItems.length > 0 ? (
+        <ResizablePanelGroup
+          id="clipboard-panels"
+          orientation="horizontal"
+          defaultLayout={defaultLayout}
+          className="flex-1 min-h-0"
+        >
+          {/* Left panel: item list */}
+          <ResizablePanel id="clipboard-list" defaultSize="40%" minSize="25%" maxSize="60%">
+            <div
+              className="h-full bg-muted/20 overflow-y-auto overflow-x-hidden no-scrollbar"
+              onScroll={handleScroll}
+            >
+              <div className="p-3 flex flex-col gap-0.5">
+                {dateGroups.map(group => (
+                  <div key={group.label}>
+                    <div className="px-3 py-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                      {group.label}
+                    </div>
+                    {group.items.map(item => (
+                      <ClipboardItemRow
+                        key={item.id}
+                        item={item}
+                        isActive={item.id === activeItemId}
+                        onClick={() => setActiveItemId(item.id)}
+                        itemRef={item.id === activeItemId ? activeItemRef : undefined}
+                      />
+                    ))}
+                  </div>
+                ))}
+                {loading && (
+                  <div className="p-2">
+                    <Skeleton className="h-9 w-full rounded-md" />
+                  </div>
+                )}
+              </div>
             </div>
-            <div className="text-center">
-              <h3 className="text-base font-semibold text-foreground mb-1">
-                {t('clipboard.content.noClipboardItems')}
-              </h3>
-              <p className="text-sm text-muted-foreground">
-                {t('clipboard.content.emptyDescription')}
-              </p>
-            </div>
-          </div>
-        )}
-      </div>
+          </ResizablePanel>
 
-      <ClipboardSelectionActionBar
-        selectedCount={selectedIds.size}
-        favoriteIntent={favoriteIntent}
-        copySuccess={copySuccess}
-        onCopy={handleBatchCopy}
-        onToggleFavorite={handleBatchToggleFavorite}
-        onDelete={handleBatchDelete}
-        onClearSelection={() => {
-          setSelectedIds(new Set())
-          setLastSelectedIndex(null)
-        }}
-      />
+          <ResizableHandle />
+
+          {/* Right panel: preview + action bar */}
+          <ResizablePanel id="clipboard-preview" defaultSize="60%" minSize="30%">
+            <div className="h-full flex flex-col min-w-0">
+              <ClipboardPreview item={activeItem} />
+              <ClipboardActionBar
+                hasActiveItem={activeItemId !== null}
+                copySuccess={copySuccess}
+                onCopy={() => {
+                  if (activeItemId) void handleCopyItem(activeItemId)
+                }}
+                onDelete={() => {
+                  if (activeItemId) {
+                    captureUserIntent('delete_entry', { count: 1 })
+                    setDeleteDialogOpen(true)
+                  }
+                }}
+              />
+            </div>
+          </ResizablePanel>
+        </ResizablePanelGroup>
+      ) : (
+        <div className="h-full flex flex-col items-center justify-center gap-6">
+          <div className="flex flex-col items-center justify-center w-16 h-16 rounded-lg bg-muted/50 border border-dashed border-muted">
+            <Inbox className="h-8 w-8 text-muted-foreground/60" />
+          </div>
+          <div className="text-center">
+            <h3 className="text-base font-semibold text-foreground mb-1">
+              {t('clipboard.content.noClipboardItems')}
+            </h3>
+            <p className="text-sm text-muted-foreground">
+              {t('clipboard.content.emptyDescription')}
+            </p>
+          </div>
+        </div>
+      )}
 
       <DeleteConfirmDialog
         open={deleteDialogOpen}
         onOpenChange={setDeleteDialogOpen}
         onConfirm={handleConfirmDelete}
-        count={selectedItems.length}
+        count={1}
       />
     </div>
   )

@@ -872,12 +872,12 @@ mod tests {
         async fn send_clipboard(
             &self,
             _peer_id: &str,
-            _encrypted_data: Vec<u8>,
+            _encrypted_data: Arc<[u8]>,
         ) -> anyhow::Result<()> {
             Ok(())
         }
 
-        async fn broadcast_clipboard(&self, _encrypted_data: Vec<u8>) -> anyhow::Result<()> {
+        async fn broadcast_clipboard(&self, _encrypted_data: Arc<[u8]>) -> anyhow::Result<()> {
             Ok(())
         }
 

@@ -26,11 +26,11 @@ fn event_subscribers() -> &'static Mutex<Vec<mpsc::Sender<NetworkEvent>>> {
 
 #[async_trait]
 impl ClipboardTransportPort for NoopPort {
-    async fn send_clipboard(&self, _peer_id: &str, _encrypted_data: Vec<u8>) -> Result<()> {
+    async fn send_clipboard(&self, _peer_id: &str, _encrypted_data: Arc<[u8]>) -> Result<()> {
         Ok(())
     }
 
-    async fn broadcast_clipboard(&self, _encrypted_data: Vec<u8>) -> Result<()> {
+    async fn broadcast_clipboard(&self, _encrypted_data: Arc<[u8]>) -> Result<()> {
         Ok(())
     }
 

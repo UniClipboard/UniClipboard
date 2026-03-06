@@ -2898,12 +2898,12 @@ mod tests {
         async fn send_clipboard(
             &self,
             _peer_id: &str,
-            _encrypted_data: Vec<u8>,
+            _encrypted_data: Arc<[u8]>,
         ) -> anyhow::Result<()> {
             Ok(())
         }
 
-        async fn broadcast_clipboard(&self, _encrypted_data: Vec<u8>) -> anyhow::Result<()> {
+        async fn broadcast_clipboard(&self, _encrypted_data: Arc<[u8]>) -> anyhow::Result<()> {
             Ok(())
         }
 
@@ -2980,12 +2980,15 @@ mod tests {
                 async fn send_clipboard(
                     &self,
                     peer_id: &str,
-                    encrypted_data: Vec<u8>,
+                    encrypted_data: Arc<[u8]>,
                 ) -> anyhow::Result<()> {
                     self.base.send_clipboard(peer_id, encrypted_data).await
                 }
 
-                async fn broadcast_clipboard(&self, encrypted_data: Vec<u8>) -> anyhow::Result<()> {
+                async fn broadcast_clipboard(
+                    &self,
+                    encrypted_data: Arc<[u8]>,
+                ) -> anyhow::Result<()> {
                     self.base.broadcast_clipboard(encrypted_data).await
                 }
 
@@ -3881,12 +3884,12 @@ mod tests {
         async fn send_clipboard(
             &self,
             _peer_id: &str,
-            _encrypted_data: Vec<u8>,
+            _encrypted_data: Arc<[u8]>,
         ) -> anyhow::Result<()> {
             Ok(())
         }
 
-        async fn broadcast_clipboard(&self, _encrypted_data: Vec<u8>) -> anyhow::Result<()> {
+        async fn broadcast_clipboard(&self, _encrypted_data: Arc<[u8]>) -> anyhow::Result<()> {
             Ok(())
         }
 

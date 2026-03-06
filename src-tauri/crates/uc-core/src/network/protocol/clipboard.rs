@@ -46,8 +46,7 @@ pub struct ClipboardMessage {
     pub timestamp: DateTime<Utc>,
     pub origin_device_id: String,
     pub origin_device_name: String,
-    /// Payload format version. Defaults to V3.
-    #[serde(default)]
+    /// Payload format version. Required in deserialization to reject messages with missing version.
     pub payload_version: ClipboardPayloadVersion,
 }
 
@@ -136,6 +135,24 @@ mod tests {
         assert_eq!(
             ClipboardPayloadVersion::default(),
             ClipboardPayloadVersion::V3
+        );
+    }
+
+    #[test]
+    fn missing_payload_version_returns_error() {
+        let json = r#"{
+            "id": "msg-no-ver",
+            "content_hash": "abc",
+            "encrypted_content": "aGVsbG8=",
+            "timestamp": "2024-01-01T00:00:00Z",
+            "origin_device_id": "dev-1",
+            "origin_device_name": "Device"
+        }"#;
+
+        let result: Result<ClipboardMessage, _> = serde_json::from_str(json);
+        assert!(
+            result.is_err(),
+            "missing payload_version should fail deserialization"
         );
     }
 

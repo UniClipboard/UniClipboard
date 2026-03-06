@@ -47,6 +47,14 @@ pub const V3_HEADER_SIZE: usize = 37;
 /// Payloads larger than this threshold are compressed with zstd before encryption.
 pub const COMPRESSION_THRESHOLD: usize = 8 * 1024;
 
+/// Maximum allowed decompressed size (128 MiB).
+///
+/// Bounds the allocation hint passed to `zstd::bulk::decompress` so that a
+/// malicious header cannot trigger a multi-gigabyte allocation via a forged
+/// `uncompressed_len` field.  128 MiB is generous for any realistic clipboard
+/// content (text, images, rich-text) while keeping the OOM surface small.
+pub const MAX_DECOMPRESSED_SIZE: usize = 128 * 1024 * 1024;
+
 /// Zstd compression level (consistent with Phase 4 blob at-rest choice).
 pub const ZSTD_LEVEL: i32 = 3;
 
@@ -285,6 +293,33 @@ impl ChunkedDecoder {
                     total_plaintext_len, max_capacity, total_chunks, CHUNK_SIZE
                 ),
             });
+        }
+
+        // Validate uncompressed_len against safe ceiling to prevent OOM from
+        // forged headers.
+        match compression_algo {
+            0 => {
+                // No compression: uncompressed_len must equal total_plaintext_len.
+                if uncompressed_len != total_plaintext_len {
+                    return Err(ChunkedTransferError::InvalidHeader {
+                        reason: format!(
+                            "compression_algo=0 but uncompressed_len {} != total_plaintext_len {}",
+                            uncompressed_len, total_plaintext_len
+                        ),
+                    });
+                }
+            }
+            1 => {
+                if uncompressed_len > MAX_DECOMPRESSED_SIZE {
+                    return Err(ChunkedTransferError::InvalidHeader {
+                        reason: format!(
+                            "uncompressed_len {} exceeds MAX_DECOMPRESSED_SIZE {}",
+                            uncompressed_len, MAX_DECOMPRESSED_SIZE
+                        ),
+                    });
+                }
+            }
+            _ => {} // handled later by the match on compression_algo
         }
 
         let cipher = XChaCha20Poly1305::new_from_slice(master_key.as_bytes())
@@ -654,6 +689,52 @@ mod tests {
         let encrypted = encryptor.encrypt(&key, &plaintext).expect("encrypt");
         let decrypted = decryptor.decrypt(&encrypted, &key).expect("decrypt");
         assert_eq!(decrypted, plaintext);
+    }
+
+    #[test]
+    fn rejects_uncompressed_len_exceeding_max_decompressed_size() {
+        // Forge a valid V3 header with compression_algo=1 and
+        // uncompressed_len = MAX_DECOMPRESSED_SIZE + 1, which should be
+        // rejected before any zstd allocation occurs.
+        let key = test_key();
+        let id = test_transfer_id();
+
+        // Encode a small compressed payload normally first.
+        let pt = vec![0x42u8; 16 * 1024];
+        let compressed = zstd::bulk::compress(&pt, ZSTD_LEVEL).unwrap();
+        let mut buf = Vec::new();
+        ChunkedEncoder::encode_to(&mut buf, &key, &id, &compressed, 1, pt.len() as u32).unwrap();
+
+        // Tamper uncompressed_len field (bytes 5..9) to exceed the ceiling.
+        let forged_len = (MAX_DECOMPRESSED_SIZE as u32).saturating_add(1);
+        buf[5..9].copy_from_slice(&forged_len.to_le_bytes());
+
+        let result = ChunkedDecoder::decode_from(Cursor::new(buf), &key);
+        assert!(
+            matches!(result, Err(ChunkedTransferError::InvalidHeader { .. })),
+            "expected InvalidHeader for oversized uncompressed_len, got: {result:?}"
+        );
+    }
+
+    #[test]
+    fn rejects_uncompressed_len_mismatch_when_uncompressed() {
+        // When compression_algo=0, uncompressed_len must equal total_plaintext_len.
+        let key = test_key();
+        let id = test_transfer_id();
+
+        let pt = b"hello world";
+        let mut buf = Vec::new();
+        ChunkedEncoder::encode_to(&mut buf, &key, &id, pt, 0, pt.len() as u32).unwrap();
+
+        // Tamper uncompressed_len to a different value.
+        let forged_len = 99999u32;
+        buf[5..9].copy_from_slice(&forged_len.to_le_bytes());
+
+        let result = ChunkedDecoder::decode_from(Cursor::new(buf), &key);
+        assert!(
+            matches!(result, Err(ChunkedTransferError::InvalidHeader { .. })),
+            "expected InvalidHeader for mismatched uncompressed_len, got: {result:?}"
+        );
     }
 
     #[test]

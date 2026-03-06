@@ -325,7 +325,8 @@ impl ChunkedDecoder {
         let cipher = XChaCha20Poly1305::new_from_slice(master_key.as_bytes())
             .map_err(|e| ChunkedTransferError::EncryptFailed(e.to_string()))?;
 
-        let mut decrypted = Vec::with_capacity(total_plaintext_len);
+        let bounded_prealloc = total_plaintext_len.min(MAX_DECOMPRESSED_SIZE);
+        let mut decrypted = Vec::with_capacity(bounded_prealloc);
 
         for chunk_index in 0..total_chunks {
             let mut len_buf = [0u8; 4];
@@ -401,27 +402,26 @@ impl TransferPayloadEncryptorPort for TransferPayloadEncryptorAdapter {
     ) -> Result<Vec<u8>, TransferCryptoError> {
         let transfer_id: [u8; 16] = *Uuid::new_v4().as_bytes();
 
-        let (data_to_encrypt, compression_algo, uncompressed_len) =
-            if plaintext.len() > COMPRESSION_THRESHOLD {
-                let compressed = zstd::bulk::compress(plaintext, ZSTD_LEVEL).map_err(|e| {
-                    TransferCryptoError::EncryptionFailed(format!("compression failed: {e}"))
-                })?;
-                let uncompressed_len = u32::try_from(plaintext.len()).map_err(|_| {
-                    TransferCryptoError::EncryptionFailed(format!(
-                        "plaintext length {} exceeds u32::MAX",
-                        plaintext.len()
-                    ))
-                })?;
-                (compressed, 1u8, uncompressed_len)
+        let uncompressed_len = u32::try_from(plaintext.len()).map_err(|_| {
+            TransferCryptoError::EncryptionFailed(format!(
+                "plaintext length {} exceeds u32::MAX",
+                plaintext.len()
+            ))
+        })?;
+
+        let (data_to_encrypt, compression_algo) = if plaintext.len() > COMPRESSION_THRESHOLD {
+            let compressed = zstd::bulk::compress(plaintext, ZSTD_LEVEL).map_err(|e| {
+                TransferCryptoError::EncryptionFailed(format!("compression failed: {e}"))
+            })?;
+
+            if compressed.len() < plaintext.len() {
+                (compressed, 1u8)
             } else {
-                let uncompressed_len = u32::try_from(plaintext.len()).map_err(|_| {
-                    TransferCryptoError::EncryptionFailed(format!(
-                        "plaintext length {} exceeds u32::MAX",
-                        plaintext.len()
-                    ))
-                })?;
-                (plaintext.to_vec(), 0u8, uncompressed_len)
-            };
+                (plaintext.to_vec(), 0u8)
+            }
+        } else {
+            (plaintext.to_vec(), 0u8)
+        };
 
         let mut buf = Vec::new();
         ChunkedEncoder::encode_to(
@@ -689,6 +689,29 @@ mod tests {
         let encrypted = encryptor.encrypt(&key, &plaintext).expect("encrypt");
         let decrypted = decryptor.decrypt(&encrypted, &key).expect("decrypt");
         assert_eq!(decrypted, plaintext);
+    }
+
+    #[test]
+    fn adapter_uses_no_compression_when_zstd_not_smaller() {
+        let key = test_key();
+        let encryptor = TransferPayloadEncryptorAdapter;
+
+        let mut plaintext = Vec::with_capacity(16 * 1024);
+        let mut seed: u64 = 0x0123_4567_89AB_CDEF;
+        for _ in 0..(16 * 1024) {
+            // xorshift64* for deterministic pseudo-random bytes.
+            seed ^= seed >> 12;
+            seed ^= seed << 25;
+            seed ^= seed >> 27;
+            let byte = seed.wrapping_mul(0x2545_F491_4F6C_DD1D) as u8;
+            plaintext.push(byte);
+        }
+
+        let encrypted = encryptor.encrypt(&key, &plaintext).expect("encrypt");
+        assert_eq!(
+            encrypted[4], 0,
+            "incompressible payload should not be marked zstd"
+        );
     }
 
     #[test]

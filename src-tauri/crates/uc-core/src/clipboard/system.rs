@@ -26,6 +26,16 @@ pub struct ObservedClipboardRepresentation {
     pub mime: Option<MimeType>,
     pub bytes: Vec<u8>,
     /// Cached blake3 content hash — computed lazily on first access.
+    ///
+    /// Cloning this type copies `cached_hash` as-is. If callers mutate the cloned
+    /// instance's public `bytes` after `content_hash()` has already populated the
+    /// cache, the cached hash can become stale. Current assumptions/mitigations:
+    /// - Deserialized instances start with an empty cache (`serde(skip)`).
+    /// - `DecryptingClipboardEventRepository` mutates bytes before hash access.
+    ///
+    /// Alternative designs if this trade-off changes:
+    /// - clear cache in `Clone`
+    /// - make `bytes` non-public and force controlled mutation paths
     #[serde(skip)]
     cached_hash: OnceLock<RepresentationHash>,
 }
@@ -120,13 +130,7 @@ impl SystemClipboardSnapshot {
         let mut rep_hashes: Vec<[u8; 32]> = self
             .representations
             .iter()
-            .map(|r| {
-                let content_hash = r.content_hash();
-                let hash_bytes = content_hash.as_ref();
-                hash_bytes
-                    .try_into()
-                    .expect("ContentHash should be 32 bytes")
-            })
+            .map(|r| r.content_hash().bytes)
             .collect();
 
         // 顺序无关

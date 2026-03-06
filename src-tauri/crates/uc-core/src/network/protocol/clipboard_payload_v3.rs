@@ -59,11 +59,21 @@ impl ClipboardBinaryPayload {
         writer.write_all(&self.ts_ms.to_le_bytes())?;
 
         // [2B] rep_count
+        if self.representations.len() > MAX_REPRESENTATIONS {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                format!(
+                    "representation count {} exceeds maximum {}",
+                    self.representations.len(),
+                    MAX_REPRESENTATIONS
+                ),
+            ));
+        }
         let rep_count = u16::try_from(self.representations.len()).map_err(|_| {
             std::io::Error::new(
                 std::io::ErrorKind::InvalidInput,
                 format!(
-                    "representation count {} exceeds u16::MAX",
+                    "representation count {} cannot fit u16",
                     self.representations.len()
                 ),
             )
@@ -73,13 +83,20 @@ impl ClipboardBinaryPayload {
         for rep in &self.representations {
             // [2B] format_id_len + [NB] format_id
             let format_id_bytes = rep.format_id.as_bytes();
+            if format_id_bytes.len() > MAX_FORMAT_ID_LEN {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::InvalidInput,
+                    format!(
+                        "format_id length {} exceeds maximum {}",
+                        format_id_bytes.len(),
+                        MAX_FORMAT_ID_LEN
+                    ),
+                ));
+            }
             let format_id_len = u16::try_from(format_id_bytes.len()).map_err(|_| {
                 std::io::Error::new(
                     std::io::ErrorKind::InvalidInput,
-                    format!(
-                        "format_id length {} exceeds u16::MAX",
-                        format_id_bytes.len()
-                    ),
+                    format!("format_id length {} cannot fit u16", format_id_bytes.len()),
                 )
             })?;
             writer.write_all(&format_id_len.to_le_bytes())?;
@@ -91,10 +108,20 @@ impl ClipboardBinaryPayload {
                     writer.write_all(&[1u8])?;
                     // [2B] mime_len + [NB] mime
                     let mime_bytes = mime.as_bytes();
+                    if mime_bytes.len() > MAX_MIME_LEN {
+                        return Err(std::io::Error::new(
+                            std::io::ErrorKind::InvalidInput,
+                            format!(
+                                "mime length {} exceeds maximum {}",
+                                mime_bytes.len(),
+                                MAX_MIME_LEN
+                            ),
+                        ));
+                    }
                     let mime_len = u16::try_from(mime_bytes.len()).map_err(|_| {
                         std::io::Error::new(
                             std::io::ErrorKind::InvalidInput,
-                            format!("mime length {} exceeds u16::MAX", mime_bytes.len()),
+                            format!("mime length {} cannot fit u16", mime_bytes.len()),
                         )
                     })?;
                     writer.write_all(&mime_len.to_le_bytes())?;
@@ -106,10 +133,20 @@ impl ClipboardBinaryPayload {
             }
 
             // [4B] data_len + [NB] data
+            if rep.data.len() > MAX_DATA_LEN {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::InvalidInput,
+                    format!(
+                        "data length {} exceeds maximum {}",
+                        rep.data.len(),
+                        MAX_DATA_LEN
+                    ),
+                ));
+            }
             let data_len = u32::try_from(rep.data.len()).map_err(|_| {
                 std::io::Error::new(
                     std::io::ErrorKind::InvalidInput,
-                    format!("data length {} exceeds u32::MAX", rep.data.len()),
+                    format!("data length {} cannot fit u32", rep.data.len()),
                 )
             })?;
             writer.write_all(&data_len.to_le_bytes())?;
@@ -434,5 +471,45 @@ mod tests {
             err.to_string().contains("data_len"),
             "error should mention data_len: {err}"
         );
+    }
+
+    #[test]
+    fn encode_rejects_rep_count_exceeds_max() {
+        let payload = make_payload(
+            (0..(MAX_REPRESENTATIONS + 1))
+                .map(|i| BinaryRepresentation {
+                    format_id: format!("f{i}"),
+                    mime: None,
+                    data: vec![0],
+                })
+                .collect(),
+        );
+        let err = payload.encode_to_vec().unwrap_err();
+        assert_eq!(err.kind(), std::io::ErrorKind::InvalidInput);
+        assert!(err.to_string().contains("representation count"));
+    }
+
+    #[test]
+    fn encode_rejects_format_id_len_exceeds_max() {
+        let payload = make_payload(vec![BinaryRepresentation {
+            format_id: "x".repeat(MAX_FORMAT_ID_LEN + 1),
+            mime: None,
+            data: vec![1],
+        }]);
+        let err = payload.encode_to_vec().unwrap_err();
+        assert_eq!(err.kind(), std::io::ErrorKind::InvalidInput);
+        assert!(err.to_string().contains("format_id length"));
+    }
+
+    #[test]
+    fn encode_rejects_mime_len_exceeds_max() {
+        let payload = make_payload(vec![BinaryRepresentation {
+            format_id: "text".to_string(),
+            mime: Some("m".repeat(MAX_MIME_LEN + 1)),
+            data: vec![1],
+        }]);
+        let err = payload.encode_to_vec().unwrap_err();
+        assert_eq!(err.kind(), std::io::ErrorKind::InvalidInput);
+        assert!(err.to_string().contains("mime length"));
     }
 }

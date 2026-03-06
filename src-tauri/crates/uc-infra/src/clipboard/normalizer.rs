@@ -225,12 +225,12 @@ mod tests {
         });
         let normalizer = ClipboardRepresentationNormalizer::new(config);
 
-        let observed = ObservedClipboardRepresentation {
-            id: RepresentationId::new(),
-            format_id: FormatId::from("public.png"),
-            mime: Some(MimeType::from_str("image/png").unwrap()),
-            bytes: large_image_data,
-        };
+        let observed = ObservedClipboardRepresentation::new(
+            RepresentationId::new(),
+            FormatId::from("public.png"),
+            Some(MimeType::from_str("image/png").unwrap()),
+            large_image_data,
+        );
 
         let result = normalizer.normalize(&observed).await.unwrap();
 
@@ -265,12 +265,12 @@ mod tests {
         });
         let normalizer = ClipboardRepresentationNormalizer::new(config);
 
-        let observed = ObservedClipboardRepresentation {
-            id: RepresentationId::new(),
-            format_id: FormatId::from("public.utf8-plain-text"),
-            mime: Some(MimeType::text_plain()),
-            bytes: small_text_data.clone(),
-        };
+        let observed = ObservedClipboardRepresentation::new(
+            RepresentationId::new(),
+            FormatId::from("public.utf8-plain-text"),
+            Some(MimeType::text_plain()),
+            small_text_data.clone(),
+        );
 
         let result = normalizer.normalize(&observed).await.unwrap();
 
@@ -304,12 +304,12 @@ mod tests {
         });
         let normalizer = ClipboardRepresentationNormalizer::new(config);
 
-        let observed = ObservedClipboardRepresentation {
-            id: RepresentationId::new(),
-            format_id: FormatId::from("public.utf8-plain-text"),
-            mime: Some(MimeType::text_plain()),
-            bytes: large_text.as_bytes().to_vec(),
-        };
+        let observed = ObservedClipboardRepresentation::new(
+            RepresentationId::new(),
+            FormatId::from("public.utf8-plain-text"),
+            Some(MimeType::text_plain()),
+            large_text.as_bytes().to_vec(),
+        );
 
         let result = normalizer.normalize(&observed).await.unwrap();
 

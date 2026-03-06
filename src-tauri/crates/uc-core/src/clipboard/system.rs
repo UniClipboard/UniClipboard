@@ -1,3 +1,5 @@
+use std::sync::OnceLock;
+
 use crate::{
     ids::{FormatId, RepresentationId},
     ContentHash, MimeType,
@@ -17,12 +19,15 @@ pub struct SystemClipboardSnapshot {
     pub representations: Vec<ObservedClipboardRepresentation>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Serialize, Deserialize)]
 pub struct ObservedClipboardRepresentation {
     pub id: RepresentationId, // 建议：uuid
     pub format_id: FormatId,
     pub mime: Option<MimeType>,
     pub bytes: Vec<u8>,
+    /// Cached blake3 content hash — computed lazily on first access.
+    #[serde(skip)]
+    cached_hash: OnceLock<RepresentationHash>,
 }
 
 impl std::ops::Deref for RepresentationHash {
@@ -42,14 +47,56 @@ impl std::ops::Deref for SnapshotHash {
 }
 
 impl ObservedClipboardRepresentation {
+    pub fn new(
+        id: RepresentationId,
+        format_id: FormatId,
+        mime: Option<MimeType>,
+        bytes: Vec<u8>,
+    ) -> Self {
+        Self {
+            id,
+            format_id,
+            mime,
+            bytes,
+            cached_hash: OnceLock::new(),
+        }
+    }
+
     pub fn size_bytes(&self) -> i64 {
         self.bytes.len() as i64
     }
 
+    /// Returns the blake3 content hash, computing it lazily and caching the result.
     pub fn content_hash(&self) -> RepresentationHash {
-        // Compute blake3 hash of the content bytes, then create ContentHash from the hash result
-        let hash = blake3::hash(&self.bytes);
-        RepresentationHash(ContentHash::from(hash.as_bytes()))
+        self.cached_hash
+            .get_or_init(|| {
+                let hash = blake3::hash(&self.bytes);
+                RepresentationHash(ContentHash::from(hash.as_bytes()))
+            })
+            .clone()
+    }
+}
+
+impl Clone for ObservedClipboardRepresentation {
+    fn clone(&self) -> Self {
+        Self {
+            id: self.id.clone(),
+            format_id: self.format_id.clone(),
+            mime: self.mime.clone(),
+            bytes: self.bytes.clone(),
+            cached_hash: self.cached_hash.clone(),
+        }
+    }
+}
+
+impl std::fmt::Debug for ObservedClipboardRepresentation {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ObservedClipboardRepresentation")
+            .field("id", &self.id)
+            .field("format_id", &self.format_id)
+            .field("mime", &self.mime)
+            .field("bytes_len", &self.bytes.len())
+            .finish()
     }
 }
 

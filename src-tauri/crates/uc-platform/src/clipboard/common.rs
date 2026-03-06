@@ -79,12 +79,12 @@ impl CommonClipboardImpl {
                         size_bytes = bytes.len(),
                         "Read text representation"
                     );
-                    reps.push(ObservedClipboardRepresentation {
-                        id: RepresentationId::new(),
-                        format_id: "text".into(),
-                        mime: Some(MimeType::text_plain()),
+                    reps.push(ObservedClipboardRepresentation::new(
+                        RepresentationId::new(),
+                        "text".into(),
+                        Some(MimeType::text_plain()),
                         bytes,
-                    });
+                    ));
                 }
                 Err(err) => {
                     warn!(error = %err, "Failed to read text representation");
@@ -101,12 +101,12 @@ impl CommonClipboardImpl {
                         size_bytes = bytes.len(),
                         "Read rtf representation"
                     );
-                    reps.push(ObservedClipboardRepresentation {
-                        id: RepresentationId::new(),
-                        format_id: "rtf".into(),
-                        mime: Some(MimeType("text/rtf".to_string())),
+                    reps.push(ObservedClipboardRepresentation::new(
+                        RepresentationId::new(),
+                        "rtf".into(),
+                        Some(MimeType("text/rtf".to_string())),
                         bytes,
-                    });
+                    ));
                 }
                 Err(err) => {
                     warn!(error = %err, "Failed to read rtf representation");
@@ -123,12 +123,12 @@ impl CommonClipboardImpl {
                         size_bytes = bytes.len(),
                         "Read html representation"
                     );
-                    reps.push(ObservedClipboardRepresentation {
-                        id: RepresentationId::new(),
-                        format_id: "html".into(),
-                        mime: Some(MimeType::text_html()),
+                    reps.push(ObservedClipboardRepresentation::new(
+                        RepresentationId::new(),
+                        "html".into(),
+                        Some(MimeType::text_html()),
                         bytes,
-                    });
+                    ));
                 }
                 Err(err) => {
                     warn!(error = %err, "Failed to read html representation");
@@ -145,12 +145,12 @@ impl CommonClipboardImpl {
                         size_bytes = bytes.len(),
                         "Read files representation"
                     );
-                    reps.push(ObservedClipboardRepresentation {
-                        id: RepresentationId::new(),
-                        format_id: "files".into(),
-                        mime: Some(MimeType("text/uri-list".to_string())),
+                    reps.push(ObservedClipboardRepresentation::new(
+                        RepresentationId::new(),
+                        "files".into(),
+                        Some(MimeType("text/uri-list".to_string())),
                         bytes,
-                    });
+                    ));
                 }
                 Err(err) => {
                     warn!(error = %err, "Failed to read files representation");
@@ -180,12 +180,12 @@ impl CommonClipboardImpl {
                             mime = "image/tiff",
                             "Read image representation via raw public.tiff (fast path)"
                         );
-                        reps.push(ObservedClipboardRepresentation {
-                            id: RepresentationId::new(),
-                            format_id: "image".into(),
-                            mime: Some(MimeType("image/tiff".to_string())),
-                            bytes: tiff_bytes,
-                        });
+                        reps.push(ObservedClipboardRepresentation::new(
+                            RepresentationId::new(),
+                            "image".into(),
+                            Some(MimeType("image/tiff".to_string())),
+                            tiff_bytes,
+                        ));
                         captured = true;
                     }
                     Err(err) => {
@@ -203,12 +203,12 @@ impl CommonClipboardImpl {
                                 mime = "image/png",
                                 "Read image representation via raw public.png"
                             );
-                            reps.push(ObservedClipboardRepresentation {
-                                id: RepresentationId::new(),
-                                format_id: "image".into(),
-                                mime: Some(MimeType("image/png".to_string())),
-                                bytes: png_bytes,
-                            });
+                            reps.push(ObservedClipboardRepresentation::new(
+                                RepresentationId::new(),
+                                "image".into(),
+                                Some(MimeType("image/png".to_string())),
+                                png_bytes,
+                            ));
                             captured = true;
                         }
                         Err(err) => {
@@ -233,12 +233,12 @@ impl CommonClipboardImpl {
                                         size_bytes = bytes.len(),
                                         "Read image representation via clipboard-rs get_image()+to_png()"
                                     );
-                                    reps.push(ObservedClipboardRepresentation {
-                                        id: RepresentationId::new(),
-                                        format_id: "image".into(),
-                                        mime: Some(MimeType("image/png".to_string())),
+                                    reps.push(ObservedClipboardRepresentation::new(
+                                        RepresentationId::new(),
+                                        "image".into(),
+                                        Some(MimeType("image/png".to_string())),
                                         bytes,
-                                    });
+                                    ));
                                     captured = true;
                                 }
                                 Err(err) => {
@@ -269,12 +269,12 @@ impl CommonClipboardImpl {
                                     size_bytes = bytes.len(),
                                     "Read image representation via clipboard-rs"
                                 );
-                                reps.push(ObservedClipboardRepresentation {
-                                    id: RepresentationId::new(),
-                                    format_id: "image".into(),
-                                    mime: Some(MimeType("image/png".to_string())),
+                                reps.push(ObservedClipboardRepresentation::new(
+                                    RepresentationId::new(),
+                                    "image".into(),
+                                    Some(MimeType("image/png".to_string())),
                                     bytes,
-                                });
+                                ));
                                 image_already_read = true;
                             }
                             Err(err) => {
@@ -311,12 +311,12 @@ impl CommonClipboardImpl {
                         size_bytes = buf.len(),
                         "Read raw buffer representation"
                     );
-                    reps.push(ObservedClipboardRepresentation {
-                        id: RepresentationId::new(),
-                        format_id: format_id.into(),
-                        mime: None,
-                        bytes: buf,
-                    });
+                    reps.push(ObservedClipboardRepresentation::new(
+                        RepresentationId::new(),
+                        format_id.into(),
+                        None,
+                        buf,
+                    ));
                 }
                 Err(err) => {
                     warn!(

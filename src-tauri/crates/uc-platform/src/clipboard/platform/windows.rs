@@ -67,12 +67,12 @@ impl SystemClipboardPort for WindowsClipboard {
                     );
                     snapshot
                         .representations
-                        .push(ObservedClipboardRepresentation {
-                            id: RepresentationId::new(),
-                            format_id: "image".into(),
-                            mime: Some(MimeType("image/png".to_string())),
-                            bytes: png_bytes,
-                        });
+                        .push(ObservedClipboardRepresentation::new(
+                            RepresentationId::new(),
+                            "image".into(),
+                            Some(MimeType("image/png".to_string())),
+                            png_bytes,
+                        ));
                 }
                 Err(err) => {
                     // Not necessarily an error -- clipboard may genuinely have no image.

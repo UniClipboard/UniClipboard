@@ -331,12 +331,12 @@ impl SyncInboundClipboardUseCase {
         // Build a single-representation snapshot from the selected (highest-priority) repr
         let snapshot = SystemClipboardSnapshot {
             ts_ms: v3_payload.ts_ms,
-            representations: vec![ObservedClipboardRepresentation {
-                id: RepresentationId::new(),
-                format_id: FormatId::from(selected.format_id.as_str()),
+            representations: vec![ObservedClipboardRepresentation::new(
+                RepresentationId::new(),
+                FormatId::from(selected.format_id.as_str()),
                 mime,
-                bytes: selected.data,
-            }],
+                selected.data,
+            )],
         };
 
         // In Full mode: set origin + write to OS clipboard

@@ -276,24 +276,24 @@ mod tests {
         };
         let encrypted_bytes = serde_json::to_vec(&encrypted_blob).unwrap();
 
-        ObservedClipboardRepresentation {
-            id: uc_core::ids::RepresentationId::from("test-rep"),
-            format_id: uc_core::ids::FormatId::from("public.utf8-plain-text"),
-            mime: Some(uc_core::clipboard::MimeType("text/plain".to_string())),
-            bytes: encrypted_bytes,
-        }
+        ObservedClipboardRepresentation::new(
+            uc_core::ids::RepresentationId::from("test-rep"),
+            uc_core::ids::FormatId::from("public.utf8-plain-text"),
+            Some(uc_core::clipboard::MimeType("text/plain".to_string())),
+            encrypted_bytes,
+        )
     }
 
     /// Creates an unencrypted representation for testing
     fn create_unencrypted_observed_representation(
         plaintext: &[u8],
     ) -> ObservedClipboardRepresentation {
-        ObservedClipboardRepresentation {
-            id: uc_core::ids::RepresentationId::from("test-rep"),
-            format_id: uc_core::ids::FormatId::from("public.utf8-plain-text"),
-            mime: Some(uc_core::clipboard::MimeType("text/plain".to_string())),
-            bytes: plaintext.to_vec(),
-        }
+        ObservedClipboardRepresentation::new(
+            uc_core::ids::RepresentationId::from("test-rep"),
+            uc_core::ids::FormatId::from("public.utf8-plain-text"),
+            Some(uc_core::clipboard::MimeType("text/plain".to_string())),
+            plaintext.to_vec(),
+        )
     }
 
     #[tokio::test]

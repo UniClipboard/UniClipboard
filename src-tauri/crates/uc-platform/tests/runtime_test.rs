@@ -33,12 +33,12 @@ async fn test_handle_clipboard_changed_event() {
     // Create a test snapshot
     let snapshot = SystemClipboardSnapshot {
         ts_ms: 0,
-        representations: vec![ObservedClipboardRepresentation {
-            id: RepresentationId::new(),
-            format_id: "text".into(),
-            mime: None,
-            bytes: b"test content".to_vec(),
-        }],
+        representations: vec![ObservedClipboardRepresentation::new(
+            RepresentationId::new(),
+            "text".into(),
+            None,
+            b"test content".to_vec(),
+        )],
     };
 
     // Send the event

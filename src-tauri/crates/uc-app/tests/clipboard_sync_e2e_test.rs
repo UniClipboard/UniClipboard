@@ -333,12 +333,12 @@ impl NetworkEventPort for InProcessNetwork {
 fn text_snapshot(text: &str, ts_ms: i64) -> SystemClipboardSnapshot {
     SystemClipboardSnapshot {
         ts_ms,
-        representations: vec![ObservedClipboardRepresentation {
-            id: RepresentationId::new(),
-            format_id: FormatId::from("text"),
-            mime: Some(MimeType::text_plain()),
-            bytes: text.as_bytes().to_vec(),
-        }],
+        representations: vec![ObservedClipboardRepresentation::new(
+            RepresentationId::new(),
+            FormatId::from("text"),
+            Some(MimeType::text_plain()),
+            text.as_bytes().to_vec(),
+        )],
     }
 }
 

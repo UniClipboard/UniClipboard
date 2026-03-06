@@ -246,12 +246,12 @@ where
 
         Ok(SystemClipboardSnapshot {
             ts_ms: Utc::now().timestamp_millis(),
-            representations: vec![ObservedClipboardRepresentation {
-                id: RepresentationId::new(),
-                format_id: FormatId::from(format_id),
+            representations: vec![ObservedClipboardRepresentation::new(
+                RepresentationId::new(),
+                FormatId::from(format_id),
                 mime,
                 bytes,
-            }],
+            )],
         })
     }
 }
@@ -342,12 +342,12 @@ mod tests {
         let writes = Arc::new(Mutex::new(Vec::new()));
         let snapshot = SystemClipboardSnapshot {
             ts_ms: 123,
-            representations: vec![ObservedClipboardRepresentation {
-                id: RepresentationId::from("rep-1".to_string()),
-                format_id: FormatId::from("text/plain".to_string()),
-                mime: Some(MimeType::text_plain()),
-                bytes: b"hello".to_vec(),
-            }],
+            representations: vec![ObservedClipboardRepresentation::new(
+                RepresentationId::from("rep-1".to_string()),
+                FormatId::from("text/plain".to_string()),
+                Some(MimeType::text_plain()),
+                b"hello".to_vec(),
+            )],
         };
         let clipboard: Arc<dyn SystemClipboardPort> = Arc::new(TestClipboard {
             snapshot: snapshot.clone(),

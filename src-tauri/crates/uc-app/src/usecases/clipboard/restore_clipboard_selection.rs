@@ -126,12 +126,12 @@ impl RestoreClipboardSelectionUseCase {
             ));
         };
 
-        let representations = vec![ObservedClipboardRepresentation {
-            id: restore_rep.id.clone(),
-            format_id: restore_rep.format_id.clone(),
-            mime: restore_rep.mime_type.clone(),
+        let representations = vec![ObservedClipboardRepresentation::new(
+            restore_rep.id.clone(),
+            restore_rep.format_id.clone(),
+            restore_rep.mime_type.clone(),
             bytes,
-        }];
+        )];
 
         // 5. 构造 Snapshot
         Ok(SystemClipboardSnapshot {

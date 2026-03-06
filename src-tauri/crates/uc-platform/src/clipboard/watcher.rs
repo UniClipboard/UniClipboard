@@ -150,24 +150,24 @@ mod tests {
     fn text_snapshot(content: &str) -> SystemClipboardSnapshot {
         SystemClipboardSnapshot {
             ts_ms: 0,
-            representations: vec![ObservedClipboardRepresentation {
-                id: RepresentationId::from("rep-1"),
-                format_id: FormatId::from("text"),
-                mime: Some(MimeType::text_plain()),
-                bytes: content.as_bytes().to_vec(),
-            }],
+            representations: vec![ObservedClipboardRepresentation::new(
+                RepresentationId::from("rep-1"),
+                FormatId::from("text"),
+                Some(MimeType::text_plain()),
+                content.as_bytes().to_vec(),
+            )],
         }
     }
 
     fn raw_snapshot(content: &[u8]) -> SystemClipboardSnapshot {
         SystemClipboardSnapshot {
             ts_ms: 0,
-            representations: vec![ObservedClipboardRepresentation {
-                id: RepresentationId::from("rep-raw"),
-                format_id: FormatId::from("UnknownRaw"),
-                mime: None,
-                bytes: content.to_vec(),
-            }],
+            representations: vec![ObservedClipboardRepresentation::new(
+                RepresentationId::from("rep-raw"),
+                FormatId::from("UnknownRaw"),
+                None,
+                content.to_vec(),
+            )],
         }
     }
 
@@ -175,18 +175,18 @@ mod tests {
         SystemClipboardSnapshot {
             ts_ms: 0,
             representations: vec![
-                ObservedClipboardRepresentation {
-                    id: RepresentationId::from("rep-plain"),
-                    format_id: FormatId::from("text"),
-                    mime: Some(MimeType::text_plain()),
-                    bytes: plain_text.as_bytes().to_vec(),
-                },
-                ObservedClipboardRepresentation {
-                    id: RepresentationId::from("rep-html"),
-                    format_id: FormatId::from("html"),
-                    mime: Some(MimeType::text_html()),
-                    bytes: html_payload.as_bytes().to_vec(),
-                },
+                ObservedClipboardRepresentation::new(
+                    RepresentationId::from("rep-plain"),
+                    FormatId::from("text"),
+                    Some(MimeType::text_plain()),
+                    plain_text.as_bytes().to_vec(),
+                ),
+                ObservedClipboardRepresentation::new(
+                    RepresentationId::from("rep-html"),
+                    FormatId::from("html"),
+                    Some(MimeType::text_html()),
+                    html_payload.as_bytes().to_vec(),
+                ),
             ],
         }
     }

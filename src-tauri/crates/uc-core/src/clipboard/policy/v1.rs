@@ -194,12 +194,12 @@ mod tests {
         mime: Option<MimeType>,
         bytes: &[u8],
     ) -> ObservedClipboardRepresentation {
-        ObservedClipboardRepresentation {
-            id: RepresentationId::from(id),
-            format_id: FormatId::from(format_id),
+        ObservedClipboardRepresentation::new(
+            RepresentationId::from(id),
+            FormatId::from(format_id),
             mime,
-            bytes: bytes.to_vec(),
-        }
+            bytes.to_vec(),
+        )
     }
 
     #[test]

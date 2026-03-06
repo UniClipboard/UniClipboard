@@ -540,12 +540,12 @@ mod tests {
 
         let snapshot = SystemClipboardSnapshot {
             ts_ms: 0,
-            representations: vec![uc_core::ObservedClipboardRepresentation {
-                id: uc_core::ids::RepresentationId::new(),
-                format_id: uc_core::ids::FormatId::from("UnknownPrivateFormat"),
-                mime: None,
-                bytes: vec![1],
-            }],
+            representations: vec![uc_core::ObservedClipboardRepresentation::new(
+                uc_core::ids::RepresentationId::new(),
+                uc_core::ids::FormatId::from("UnknownPrivateFormat"),
+                None,
+                vec![1],
+            )],
         };
 
         let result = use_case

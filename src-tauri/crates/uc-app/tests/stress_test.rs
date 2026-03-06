@@ -345,12 +345,12 @@ fn now_ms() -> i64 {
 fn build_snapshot(rep_id: RepresentationId, bytes: Vec<u8>, mime: &str) -> SystemClipboardSnapshot {
     SystemClipboardSnapshot {
         ts_ms: now_ms(),
-        representations: vec![ObservedClipboardRepresentation {
-            id: rep_id,
-            format_id: FormatId::from(mime),
-            mime: Some(MimeType::from_str(mime).unwrap()),
+        representations: vec![ObservedClipboardRepresentation::new(
+            rep_id,
+            FormatId::from(mime),
+            Some(MimeType::from_str(mime).unwrap()),
             bytes,
-        }],
+        )],
     }
 }
 

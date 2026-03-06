@@ -52,12 +52,12 @@ async fn test_clipboard_change_handler_receives_callback() {
     // Create a dummy snapshot
     let snapshot = SystemClipboardSnapshot {
         ts_ms: 12345,
-        representations: vec![ObservedClipboardRepresentation {
-            id: RepresentationId::from("test-rep-1".to_string()),
-            format_id: FormatId::from("public.utf8-plain-text".to_string()),
-            mime: Some(uc_core::MimeType("text/plain".to_string())),
-            bytes: vec![b'H', b'e', b'l', b'l', b'o'],
-        }],
+        representations: vec![ObservedClipboardRepresentation::new(
+            RepresentationId::from("test-rep-1".to_string()),
+            FormatId::from("public.utf8-plain-text".to_string()),
+            Some(uc_core::MimeType("text/plain".to_string())),
+            vec![b'H', b'e', b'l', b'l', b'o'],
+        )],
     };
 
     // Clone the Arc to get the trait object

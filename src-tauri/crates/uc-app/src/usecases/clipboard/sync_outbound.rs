@@ -540,12 +540,12 @@ mod tests {
     fn build_snapshot() -> SystemClipboardSnapshot {
         SystemClipboardSnapshot {
             ts_ms: 1_713_000_000_000,
-            representations: vec![ObservedClipboardRepresentation {
-                id: RepresentationId::new(),
-                format_id: FormatId::from("public.utf8-plain-text"),
-                mime: Some(MimeType::text_plain()),
-                bytes: b"hello world".to_vec(),
-            }],
+            representations: vec![ObservedClipboardRepresentation::new(
+                RepresentationId::new(),
+                FormatId::from("public.utf8-plain-text"),
+                Some(MimeType::text_plain()),
+                b"hello world".to_vec(),
+            )],
         }
     }
 
@@ -814,18 +814,18 @@ mod tests {
         let multi_rep_snapshot = SystemClipboardSnapshot {
             ts_ms: 1_713_000_000_000,
             representations: vec![
-                ObservedClipboardRepresentation {
-                    id: RepresentationId::new(),
-                    format_id: FormatId::from("public.utf8-plain-text"),
-                    mime: Some(MimeType::text_plain()),
-                    bytes: b"hello world".to_vec(),
-                },
-                ObservedClipboardRepresentation {
-                    id: RepresentationId::new(),
-                    format_id: FormatId::from("public.png"),
-                    mime: Some(MimeType("image/png".to_string())),
-                    bytes: vec![0x89, 0x50, 0x4E, 0x47], // PNG header bytes
-                },
+                ObservedClipboardRepresentation::new(
+                    RepresentationId::new(),
+                    FormatId::from("public.utf8-plain-text"),
+                    Some(MimeType::text_plain()),
+                    b"hello world".to_vec(),
+                ),
+                ObservedClipboardRepresentation::new(
+                    RepresentationId::new(),
+                    FormatId::from("public.png"),
+                    Some(MimeType("image/png".to_string())),
+                    vec![0x89, 0x50, 0x4E, 0x47], // PNG header bytes,
+                ),
             ],
         };
 

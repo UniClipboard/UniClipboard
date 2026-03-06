@@ -193,12 +193,12 @@ where
 
         // Convert from PersistedClipboardRepresentation to ObservedClipboardRepresentation
         let persisted = self.snapshot_mapper.to_domain(&rep_row)?;
-        Ok(uc_core::ObservedClipboardRepresentation {
-            id: persisted.id,
-            format_id: persisted.format_id,
-            mime: persisted.mime_type,
-            bytes: persisted.inline_data.unwrap_or_default(),
-        })
+        Ok(uc_core::ObservedClipboardRepresentation::new(
+            persisted.id,
+            persisted.format_id,
+            persisted.mime_type,
+            persisted.inline_data.unwrap_or_default(),
+        ))
     }
 }
 

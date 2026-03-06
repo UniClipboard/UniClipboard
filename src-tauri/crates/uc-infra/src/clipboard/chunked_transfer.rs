@@ -27,6 +27,7 @@ use chacha20poly1305::{
     aead::{Aead, Payload},
     KeyInit, XChaCha20Poly1305, XNonce,
 };
+use uc_core::config::RECEIVE_PLAINTEXT_CAP;
 use uc_core::ports::{
     TransferCryptoError, TransferPayloadDecryptorPort, TransferPayloadEncryptorPort,
 };
@@ -53,7 +54,7 @@ pub const COMPRESSION_THRESHOLD: usize = 8 * 1024;
 /// malicious header cannot trigger a multi-gigabyte allocation via a forged
 /// `uncompressed_len` field.  128 MiB is generous for any realistic clipboard
 /// content (text, images, rich-text) while keeping the OOM surface small.
-pub const MAX_DECOMPRESSED_SIZE: usize = 128 * 1024 * 1024;
+pub const MAX_DECOMPRESSED_SIZE: usize = RECEIVE_PLAINTEXT_CAP;
 
 /// Zstd compression level (consistent with Phase 4 blob at-rest choice).
 pub const ZSTD_LEVEL: i32 = 3;
@@ -291,6 +292,14 @@ impl ChunkedDecoder {
                 reason: format!(
                     "total_plaintext_len {} exceeds maximum capacity {} (total_chunks {} * CHUNK_SIZE {})",
                     total_plaintext_len, max_capacity, total_chunks, CHUNK_SIZE
+                ),
+            });
+        }
+        if total_plaintext_len > MAX_DECOMPRESSED_SIZE {
+            return Err(ChunkedTransferError::InvalidHeader {
+                reason: format!(
+                    "total_plaintext_len {} exceeds MAX_DECOMPRESSED_SIZE {}",
+                    total_plaintext_len, MAX_DECOMPRESSED_SIZE
                 ),
             });
         }

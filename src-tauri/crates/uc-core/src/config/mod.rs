@@ -18,6 +18,9 @@
 
 use std::path::PathBuf;
 
+/// Maximum allowed plaintext size for clipboard transfer payloads (128 MiB).
+pub const RECEIVE_PLAINTEXT_CAP: usize = 128 * 1024 * 1024;
+
 /// Application configuration DTO (pure data, no logic)
 /// 应用配置 DTO（纯数据，无逻辑）
 #[derive(Debug, Clone)]

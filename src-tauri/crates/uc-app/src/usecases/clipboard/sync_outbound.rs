@@ -6,6 +6,7 @@ use futures::executor;
 use tracing::{debug, info, info_span, warn, Instrument};
 use uuid::Uuid;
 
+use uc_core::config::RECEIVE_PLAINTEXT_CAP;
 use uc_core::network::protocol::{
     BinaryRepresentation, ClipboardBinaryPayload, ClipboardPayloadVersion,
 };
@@ -25,9 +26,6 @@ pub struct SyncOutboundClipboardUseCase {
     settings: Arc<dyn SettingsPort>,
     transfer_encryptor: Arc<dyn TransferPayloadEncryptorPort>,
 }
-
-// Keep aligned with inbound transport decompression ceiling (uc-infra::chunked_transfer).
-const RECEIVE_PLAINTEXT_CAP: usize = 128 * 1024 * 1024;
 
 impl SyncOutboundClipboardUseCase {
     pub fn new(

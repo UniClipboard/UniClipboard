@@ -9,8 +9,8 @@ use tokio::sync::Mutex;
 use tracing::{debug, error, info, info_span, warn, Instrument};
 use uc_core::ids::{EntryId, FormatId, RepresentationId};
 use uc_core::network::protocol::{
-    BinaryRepresentation, ClipboardBinaryPayload, ClipboardPayloadVersion, MIME_IMAGE_PREFIX,
-    MIME_TEXT_HTML, MIME_TEXT_PLAIN, MIME_TEXT_RTF,
+    fallback_priority_from_format_id, BinaryRepresentation, ClipboardBinaryPayload,
+    ClipboardPayloadVersion, MIME_IMAGE_PREFIX, MIME_TEXT_HTML, MIME_TEXT_PLAIN, MIME_TEXT_RTF,
 };
 
 use uc_core::network::ClipboardMessage;
@@ -289,7 +289,7 @@ impl SyncInboundClipboardUseCase {
         ))
         .await;
 
-        let mut v3_payload = match payload {
+        let v3_payload = match payload {
             Ok(p) => p,
             Err(e) => {
                 self.rollback_recent_id(&message.id).await;
@@ -311,7 +311,6 @@ impl SyncInboundClipboardUseCase {
             "V3 inbound payload decoded"
         );
 
-        // TODO: Multi-rep storage not yet supported -- persisting highest-priority only
         let selected_idx = match select_highest_priority_repr_index(&v3_payload.representations) {
             Some(i) => i,
             None => {
@@ -321,22 +320,25 @@ impl SyncInboundClipboardUseCase {
             }
         };
 
-        // Take ownership via swap_remove to avoid cloning potentially large bytes.
-        let selected = v3_payload.representations.swap_remove(selected_idx);
+        let mut representations: Vec<ObservedClipboardRepresentation> = v3_payload
+            .representations
+            .into_iter()
+            .map(|rep| {
+                ObservedClipboardRepresentation::new(
+                    RepresentationId::new(),
+                    FormatId::from(rep.format_id.as_str()),
+                    rep.mime.map(MimeType),
+                    rep.data,
+                )
+            })
+            .collect();
+        if selected_idx < representations.len() {
+            representations.swap(0, selected_idx);
+        }
 
-        // Construct MimeType from wire string.
-        let mime: Option<MimeType> = selected.mime.as_deref().map(|s| MimeType(s.to_string()));
-
-        // TODO: batch-write all reps when RepresentationRepository supports it
-        // Build a single-representation snapshot from the selected (highest-priority) repr
         let snapshot = SystemClipboardSnapshot {
             ts_ms: v3_payload.ts_ms,
-            representations: vec![ObservedClipboardRepresentation::new(
-                RepresentationId::new(),
-                FormatId::from(selected.format_id.as_str()),
-                mime,
-                selected.data,
-            )],
+            representations,
         };
 
         // In Full mode: set origin + write to OS clipboard
@@ -400,49 +402,19 @@ const REMOTE_PUSH_ORIGIN_TTL_MS: u64 = 100;
 /// This mirrors the locked decision from CONTEXT.md - "Multi-representation strategy".
 fn select_highest_priority_repr_index(representations: &[BinaryRepresentation]) -> Option<usize> {
     fn priority_from_mime(mime: &str) -> u8 {
-        if mime.to_ascii_lowercase().starts_with(MIME_IMAGE_PREFIX) {
+        let normalized = mime
+            .split(';')
+            .next()
+            .map(str::trim)
+            .unwrap_or_default()
+            .to_ascii_lowercase();
+        if normalized.starts_with(MIME_IMAGE_PREFIX) {
             4
-        } else if mime.eq_ignore_ascii_case(MIME_TEXT_HTML) {
+        } else if normalized == MIME_TEXT_HTML {
             3
-        } else if mime.eq_ignore_ascii_case(MIME_TEXT_RTF) {
+        } else if normalized == MIME_TEXT_RTF {
             2
-        } else if mime.eq_ignore_ascii_case(MIME_TEXT_PLAIN) {
-            1
-        } else {
-            0
-        }
-    }
-
-    fn fallback_priority_from_format_id(format_id: &str) -> u8 {
-        if format_id.eq_ignore_ascii_case("public.png")
-            || format_id.eq_ignore_ascii_case("public.jpeg")
-            || format_id.eq_ignore_ascii_case("public.jpg")
-            || format_id.eq_ignore_ascii_case("public.tiff")
-            || format_id.eq_ignore_ascii_case("public.gif")
-            || format_id.eq_ignore_ascii_case("public.webp")
-            || format_id.eq_ignore_ascii_case("image/png")
-            || format_id.eq_ignore_ascii_case("image/jpeg")
-            || format_id.eq_ignore_ascii_case("image/jpg")
-            || format_id.eq_ignore_ascii_case("image/gif")
-            || format_id.eq_ignore_ascii_case("image/webp")
-        {
-            4
-        } else if format_id.eq_ignore_ascii_case("public.html")
-            || format_id.eq_ignore_ascii_case("html")
-            || format_id.eq_ignore_ascii_case(MIME_TEXT_HTML)
-        {
-            3
-        } else if format_id.eq_ignore_ascii_case("public.rtf")
-            || format_id.eq_ignore_ascii_case("rtf")
-            || format_id.eq_ignore_ascii_case(MIME_TEXT_RTF)
-        {
-            2
-        } else if format_id.eq_ignore_ascii_case("text")
-            || format_id.eq_ignore_ascii_case("public.utf8-plain-text")
-            || format_id.eq_ignore_ascii_case("public.text")
-            || format_id.eq_ignore_ascii_case("NSStringPboardType")
-            || format_id.eq_ignore_ascii_case(MIME_TEXT_PLAIN)
-        {
+        } else if normalized == MIME_TEXT_PLAIN {
             1
         } else {
             0
@@ -451,7 +423,14 @@ fn select_highest_priority_repr_index(representations: &[BinaryRepresentation]) 
 
     fn priority(rep: &BinaryRepresentation) -> u8 {
         match rep.mime.as_deref() {
-            Some(mime) => priority_from_mime(mime),
+            Some(mime) => {
+                let mime_priority = priority_from_mime(mime);
+                if mime_priority > 0 {
+                    mime_priority
+                } else {
+                    fallback_priority_from_format_id(&rep.format_id)
+                }
+            }
             None => fallback_priority_from_format_id(&rep.format_id),
         }
     }
@@ -505,6 +484,55 @@ mod tests {
 
         let idx = select_highest_priority_repr_index(&representations).expect("selected index");
         assert_eq!(idx, 1, "public.html should outrank plain text fallback");
+    }
+
+    #[test]
+    fn select_highest_priority_trims_mime_parameters() {
+        let representations = vec![
+            BinaryRepresentation {
+                format_id: "public.html".to_string(),
+                mime: Some("text/html; charset=utf-8".to_string()),
+                data: b"<b>html</b>".to_vec(),
+            },
+            BinaryRepresentation {
+                format_id: "public.html".to_string(),
+                mime: Some("text/plain; charset=utf-8".to_string()),
+                data: b"<b>html</b>".to_vec(),
+            },
+            BinaryRepresentation {
+                format_id: "public.utf8-plain-text".to_string(),
+                mime: Some("text/plain; charset=utf-8".to_string()),
+                data: b"plain".to_vec(),
+            },
+        ];
+
+        let idx = select_highest_priority_repr_index(&representations).expect("selected index");
+        assert_eq!(
+            idx, 0,
+            "mime params should be trimmed before priority matching"
+        );
+    }
+
+    #[test]
+    fn select_highest_priority_falls_back_to_format_id_when_mime_unknown() {
+        let representations = vec![
+            BinaryRepresentation {
+                format_id: "public.utf8-plain-text".to_string(),
+                mime: Some("application/x-custom; version=1".to_string()),
+                data: b"plain".to_vec(),
+            },
+            BinaryRepresentation {
+                format_id: "public.html".to_string(),
+                mime: Some("application/x-custom; version=1".to_string()),
+                data: b"<b>html</b>".to_vec(),
+            },
+        ];
+
+        let idx = select_highest_priority_repr_index(&representations).expect("selected index");
+        assert_eq!(
+            idx, 1,
+            "unknown mime should fall back to format_id priority"
+        );
     }
 
     struct MockSystemClipboard {
@@ -1183,7 +1211,7 @@ mod tests {
         let snapshots = writes.lock().expect("writes lock");
         assert_eq!(snapshots.len(), 1, "must write exactly one snapshot");
         let snapshot = &snapshots[0];
-        assert_eq!(snapshot.representations.len(), 1);
+        assert_eq!(snapshot.representations.len(), 2);
         assert_eq!(
             snapshot.representations[0]
                 .mime
@@ -1195,6 +1223,14 @@ mod tests {
         assert_eq!(
             snapshot.representations[0].bytes, png_bytes,
             "must write image bytes"
+        );
+        assert_eq!(
+            snapshot.representations[1]
+                .mime
+                .as_ref()
+                .map(|m| m.as_str()),
+            Some("text/plain"),
+            "lower-priority representation should still be preserved"
         );
     }
 
@@ -1236,6 +1272,7 @@ mod tests {
 
         let snapshots = writes.lock().expect("writes lock");
         assert_eq!(snapshots.len(), 1);
+        assert_eq!(snapshots[0].representations.len(), 2);
         assert_eq!(
             snapshots[0].representations[0]
                 .mime

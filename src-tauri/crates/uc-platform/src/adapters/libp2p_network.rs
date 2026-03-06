@@ -952,7 +952,8 @@ fn spawn_business_stream_handler(
 
                     match message {
                         ProtocolMessage::Clipboard(msg)
-                            if msg.payload_version == ClipboardPayloadVersion::V3 =>
+                            if msg.payload_version == ClipboardPayloadVersion::V3
+                                && msg.encrypted_content.is_empty() =>
                         {
                             // Streaming decode via spawn_blocking.
                             // TransferPayloadDecryptorAdapter auto-detects V2/V3 by magic bytes.
@@ -2388,6 +2389,49 @@ mod tests {
             .get("peer-1")
             .and_then(|peer| peer.device_name.clone());
         assert_eq!(cached_name, Some("Desk".to_string()));
+    }
+
+    #[tokio::test]
+    async fn v3_clipboard_with_header_payload_uses_standard_forward_path() {
+        let caches = Arc::new(RwLock::new(PeerCaches::new()));
+        let (event_tx, mut event_rx) = mpsc::channel(1);
+        let (clipboard_tx, mut clipboard_rx) = mpsc::channel(1);
+        let message = ClipboardMessage {
+            id: "msg-header-v3".to_string(),
+            content_hash: "hash-header-v3".to_string(),
+            encrypted_content: vec![7, 8, 9],
+            timestamp: Utc::now(),
+            origin_device_id: "peer-1".to_string(),
+            origin_device_name: "Desk".to_string(),
+            payload_version: ClipboardPayloadVersion::V3,
+        };
+
+        handle_standard_message(
+            caches,
+            event_tx,
+            clipboard_tx,
+            "peer-1".to_string(),
+            ProtocolMessage::Clipboard(message.clone()),
+        )
+        .await;
+
+        let (forwarded, pre_decoded) = clipboard_rx.recv().await.expect("clipboard payload");
+        assert_eq!(forwarded.id, message.id);
+        assert_eq!(forwarded.content_hash, message.content_hash);
+        assert_eq!(forwarded.encrypted_content, message.encrypted_content);
+        assert!(
+            pre_decoded.is_none(),
+            "standard path should not attach plaintext"
+        );
+
+        let event = event_rx.recv().await.expect("clipboard received event");
+        match event {
+            NetworkEvent::ClipboardReceived(received) => {
+                assert_eq!(received.id, message.id);
+                assert_eq!(received.encrypted_content, message.encrypted_content);
+            }
+            _ => panic!("expected ClipboardReceived"),
+        }
     }
 
     #[tokio::test]

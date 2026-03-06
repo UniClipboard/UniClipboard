@@ -118,11 +118,48 @@ impl ThumbnailGeneratorPort for NoopThumbnailGenerator {
 
     async fn generate_thumbnail_from_rgba(
         &self,
-        _rgba_bytes: &[u8],
-        _width: u32,
-        _height: u32,
+        rgba_bytes: &[u8],
+        width: u32,
+        height: u32,
     ) -> Result<GeneratedThumbnail> {
-        self.generate_thumbnail(&[]).await
+        let expected_len = width
+            .checked_mul(height)
+            .and_then(|px| px.checked_mul(4))
+            .ok_or_else(|| anyhow!("rgba dimensions overflow: width={width}, height={height}"))?;
+        if rgba_bytes.len() != expected_len as usize {
+            return Err(anyhow!(
+                "invalid RGBA length: got {}, expected {} for {}x{}",
+                rgba_bytes.len(),
+                expected_len,
+                width,
+                height
+            ));
+        }
+
+        let original_width =
+            i32::try_from(width).map_err(|_| anyhow!("width exceeds i32 range: {width}"))?;
+        let original_height =
+            i32::try_from(height).map_err(|_| anyhow!("height exceeds i32 range: {height}"))?;
+
+        let mut thumbnail_bytes = vec![0u8; 16];
+        for (idx, b) in rgba_bytes.iter().enumerate() {
+            thumbnail_bytes[idx % 16] ^= *b;
+        }
+        for (idx, b) in width
+            .to_le_bytes()
+            .into_iter()
+            .chain(height.to_le_bytes())
+            .enumerate()
+        {
+            thumbnail_bytes[idx % 16] ^= b;
+        }
+
+        Ok(GeneratedThumbnail {
+            thumbnail_bytes,
+            thumbnail_mime_type: MimeType("image/webp".to_string()),
+            original_width,
+            original_height,
+        })
     }
 }
 

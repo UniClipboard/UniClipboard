@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use anyhow::{Context, Result};
+use anyhow::{bail, Context, Result};
 use chrono::Utc;
 use futures::executor;
 use tracing::{debug, info, info_span, warn, Instrument};
@@ -25,6 +25,9 @@ pub struct SyncOutboundClipboardUseCase {
     settings: Arc<dyn SettingsPort>,
     transfer_encryptor: Arc<dyn TransferPayloadEncryptorPort>,
 }
+
+// Keep aligned with inbound transport decompression ceiling (uc-infra::chunked_transfer).
+const RECEIVE_PLAINTEXT_CAP: usize = 128 * 1024 * 1024;
 
 impl SyncOutboundClipboardUseCase {
     pub fn new(
@@ -140,6 +143,13 @@ impl SyncOutboundClipboardUseCase {
         let plaintext_bytes = v3_payload
             .encode_to_vec()
             .context("failed to encode V3 clipboard binary payload")?;
+        if plaintext_bytes.len() > RECEIVE_PLAINTEXT_CAP {
+            bail!(
+                "plaintext exceeds receive-side cap: {} > {}",
+                plaintext_bytes.len(),
+                RECEIVE_PLAINTEXT_CAP
+            );
+        }
 
         let origin_device_id = self.device_identity.current_device_id().to_string();
         let origin_device_name = match self.settings.load().await {
@@ -176,75 +186,104 @@ impl SyncOutboundClipboardUseCase {
         let remaining_peers = sendable_peers[1..].to_vec();
 
         let raw_bytes = plaintext_bytes.len();
+        let mut connect_failures = Vec::new();
+        let mut connect_success_count = 0usize;
 
-        // Parallel: encrypt + first peer's ensure_business_path
-        let (encrypted_result, ensure_result) = tokio::join!(
-            async {
-                let master_key = encryption_session
-                    .get_master_key()
-                    .await
-                    .map_err(anyhow::Error::from)
-                    .context("failed to access encryption session master key for outbound sync")?;
+        // Parallel: run prepare path in its own task so CPU-heavy encrypt/frame work
+        // cannot starve the business-path ensure branch.
+        let prepare_future = async move {
+            let master_key = encryption_session
+                .get_master_key()
+                .await
+                .map_err(anyhow::Error::from)
+                .context("failed to access encryption session master key for outbound sync")?;
 
-                let encrypted_content = transfer_encryptor
-                    .encrypt(&master_key, &plaintext_bytes)
-                    .map_err(|e| {
+            let encrypted_content = transfer_encryptor
+                .encrypt(&master_key, &plaintext_bytes)
+                .map_err(|e| {
                     anyhow::anyhow!("failed to encrypt outbound clipboard payload: {e}")
                 })?;
 
-                info!(
-                    raw_bytes,
-                    encrypted_bytes = encrypted_content.len(),
-                    "outbound payload encrypted"
-                );
+            info!(
+                raw_bytes,
+                encrypted_bytes = encrypted_content.len(),
+                "outbound payload encrypted"
+            );
 
-                let framed = ProtocolMessage::Clipboard(clipboard_header)
-                    .frame_to_bytes(Some(&encrypted_content))
-                    .context("failed to frame outbound V3 clipboard message")?;
+            let framed = ProtocolMessage::Clipboard(clipboard_header)
+                .frame_to_bytes(Some(&encrypted_content))
+                .context("failed to frame outbound V3 clipboard message")?;
 
-                Ok::<Arc<[u8]>, anyhow::Error>(Arc::from(framed.into_boxed_slice()))
-            }
-            .instrument(info_span!("outbound.prepare", raw_bytes)),
-            self.clipboard_network
-                .ensure_business_path(&first_peer.peer_id)
-        );
+            Ok::<Arc<[u8]>, anyhow::Error>(Arc::from(framed.into_boxed_slice()))
+        }
+        .instrument(info_span!("outbound.prepare", raw_bytes));
 
-        let outbound_bytes = encrypted_result?;
-
-        let mut send_failures = Vec::new();
-        let mut connect_failures = Vec::new();
-        let mut connect_success_count = 0usize;
-        let mut sent_count = 0usize;
-
-        // Handle first peer's ensure result
-        match ensure_result {
-            Ok(()) => {
-                connect_success_count += 1;
-                if let Err(err) = async {
-                    self.clipboard_network
-                        .send_clipboard(&first_peer.peer_id, outbound_bytes.clone())
-                        .await
+        let outbound_bytes = if tokio::runtime::Handle::try_current().is_ok() {
+            let prepare_handle = tokio::spawn(prepare_future);
+            let (prepare_result, ensure_result) = tokio::join!(
+                prepare_handle,
+                self.clipboard_network
+                    .ensure_business_path(&first_peer.peer_id)
+            );
+            match ensure_result {
+                Ok(()) => {
+                    connect_success_count += 1;
                 }
-                .instrument(info_span!("outbound.send", peer_id = %first_peer.peer_id))
-                .await
-                {
+                Err(err) => {
                     warn!(
                         peer_id = %first_peer.peer_id,
                         error = %err,
-                        "failed to send outbound clipboard message to first peer"
+                        "failed to ensure outbound business path for first peer; skipping send"
                     );
-                    send_failures.push(format!("{}: {}", first_peer.peer_id, err));
-                } else {
-                    sent_count += 1;
+                    connect_failures.push(format!("{}: {}", first_peer.peer_id, err));
                 }
             }
-            Err(err) => {
+            let encrypted_result = prepare_result
+                .map_err(anyhow::Error::from)
+                .context("outbound prepare task join failed")?;
+            encrypted_result?
+        } else {
+            let (encrypted_result, ensure_result) = tokio::join!(
+                prepare_future,
+                self.clipboard_network
+                    .ensure_business_path(&first_peer.peer_id)
+            );
+            match ensure_result {
+                Ok(()) => {
+                    connect_success_count += 1;
+                }
+                Err(err) => {
+                    warn!(
+                        peer_id = %first_peer.peer_id,
+                        error = %err,
+                        "failed to ensure outbound business path for first peer; skipping send"
+                    );
+                    connect_failures.push(format!("{}: {}", first_peer.peer_id, err));
+                }
+            }
+            encrypted_result?
+        };
+
+        let mut send_failures = Vec::new();
+        let mut sent_count = 0usize;
+
+        if connect_success_count > 0 {
+            if let Err(err) = async {
+                self.clipboard_network
+                    .send_clipboard(&first_peer.peer_id, outbound_bytes.clone())
+                    .await
+            }
+            .instrument(info_span!("outbound.send", peer_id = %first_peer.peer_id))
+            .await
+            {
                 warn!(
                     peer_id = %first_peer.peer_id,
                     error = %err,
-                    "failed to ensure outbound business path for first peer; skipping send"
+                    "failed to send outbound clipboard message to first peer"
                 );
-                connect_failures.push(format!("{}: {}", first_peer.peer_id, err));
+                send_failures.push(format!("{}: {}", first_peer.peer_id, err));
+            } else {
+                sent_count += 1;
             }
         }
 

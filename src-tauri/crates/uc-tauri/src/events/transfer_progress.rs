@@ -66,6 +66,14 @@ mod tests {
         assert_eq!(json["totalChunks"], 10);
         assert_eq!(json["bytesTransferred"], 786432);
         assert_eq!(json["totalBytes"], 2621440);
+
+        // Ensure snake_case keys are absent (guards #[serde(rename_all = "camelCase")])
+        assert!(json.get("transfer_id").is_none());
+        assert!(json.get("peer_id").is_none());
+        assert!(json.get("chunks_completed").is_none());
+        assert!(json.get("total_chunks").is_none());
+        assert!(json.get("bytes_transferred").is_none());
+        assert!(json.get("total_bytes").is_none());
     }
 
     #[test]

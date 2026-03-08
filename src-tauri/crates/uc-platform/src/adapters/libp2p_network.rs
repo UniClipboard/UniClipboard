@@ -1063,7 +1063,8 @@ fn spawn_business_stream_handler(
                                         || last_progress.elapsed()
                                             >= std::time::Duration::from_millis(100)
                                     {
-                                        let _ = progress_event_tx.blocking_send(
+                                        let _ = try_send_event(
+                                            &progress_event_tx,
                                             NetworkEvent::TransferProgress(TransferProgress {
                                                 transfer_id: transfer_id.clone(),
                                                 peer_id: inbound_peer_id_str.clone(),
@@ -1073,6 +1074,7 @@ fn spawn_business_stream_handler(
                                                 bytes_transferred: bytes_received,
                                                 total_bytes: 0, // unknown until fully read
                                             }),
+                                            "TransferProgress",
                                         );
                                         last_progress = std::time::Instant::now();
                                     }
@@ -1989,8 +1991,9 @@ async fn execute_business_stream(
                             || chunks_completed == total_chunks
                             || last_progress.elapsed() >= Duration::from_millis(100)
                         {
-                            let _ = event_tx
-                                .send(NetworkEvent::TransferProgress(TransferProgress {
+                            let _ = try_send_event(
+                                &event_tx,
+                                NetworkEvent::TransferProgress(TransferProgress {
                                     transfer_id: transfer_id.clone(),
                                     peer_id: peer_id_str.to_string(),
                                     direction: TransferDirection::Sending,
@@ -1998,8 +2001,9 @@ async fn execute_business_stream(
                                     total_chunks,
                                     bytes_transferred: written,
                                     total_bytes: total,
-                                }))
-                                .await;
+                                }),
+                                "TransferProgress",
+                            );
                             last_progress = std::time::Instant::now();
                         }
                     }

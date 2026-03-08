@@ -4,6 +4,7 @@ import { SettingContext } from './setting-context'
 import { DEFAULT_THEME_COLOR } from '@/constants/theme'
 import i18n, { normalizeLanguage, persistLanguage } from '@/i18n'
 import { invokeWithTrace } from '@/lib/tauri-command'
+import { applyThemePreset } from '@/lib/theme-engine'
 import type { SettingChangedEvent } from '@/types/events'
 import type { SettingContextType, Settings } from '@/types/setting'
 
@@ -157,15 +158,19 @@ export const SettingProvider: React.FC<SettingProviderProps> = ({ children }) =>
       // 1. Apply Mode (Light/Dark)
       root.classList.remove('light', 'dark')
 
+      let resolvedMode: 'light' | 'dark' = 'light'
+
       if (theme === 'system' || !theme) {
         const systemTheme = systemThemeMedia.matches ? 'dark' : 'light'
+        resolvedMode = systemTheme
         root.classList.add(systemTheme)
       } else {
+        resolvedMode = theme
         root.classList.add(theme)
       }
 
-      // 2. Apply Theme Color
-      root.setAttribute('data-theme', themeColor)
+      // 2. Apply Theme Color tokens for the resolved mode
+      applyThemePreset(themeColor, resolvedMode, root)
     }
 
     applyTheme()

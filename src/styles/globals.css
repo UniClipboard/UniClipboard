@@ -220,10 +220,6 @@
   --radius-4xl: calc(var(--radius) + 16px);
 }
 
-@import './themes/zinc.css';
-@import './themes/catppuccin.css';
-@import './themes/t3chat.css';
-@import './themes/claude.css';
 @import 'tw-animate-css';
 @import 'shadcn/tailwind.css';
 @import '@fontsource-variable/geist';
@@ -268,6 +264,10 @@
   body {
     background-color: transparent;
     @apply bg-background text-foreground;
+    transition:
+      background-color 200ms ease,
+      color 200ms ease,
+      border-color 200ms ease;
   }
 
   html {

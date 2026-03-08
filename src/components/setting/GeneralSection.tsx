@@ -1,8 +1,3 @@
-import {
-  disable as disableAutostart,
-  enable as enableAutostart,
-  isEnabled,
-} from '@tauri-apps/plugin-autostart'
 import { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { SettingGroup } from './SettingGroup'
@@ -26,29 +21,13 @@ export default function GeneralSection() {
   const [silentStart, setSilentStart] = useState(false)
   const [language, setLanguage] = useState<SupportedLanguage>(getInitialLanguage())
   const [deviceName, setDeviceName] = useState('')
-  const [checkingAutostart, setCheckingAutostart] = useState(true)
   const [saving, setSaving] = useState(false)
-  const isBusy = settingLoading || checkingAutostart || saving
+  const isBusy = settingLoading || saving
 
-  // 初始化时检查系统自启动状态（不要与设置读取绑在一起，避免任一失败导致 UI 不更新）
-  useEffect(() => {
-    const checkAutostart = async () => {
-      try {
-        setCheckingAutostart(true)
-        setAutoStart(await isEnabled())
-      } catch (error) {
-        console.error('检查系统自启动状态失败:', error)
-      } finally {
-        setCheckingAutostart(false)
-      }
-    }
-
-    checkAutostart()
-  }, [])
-
-  // 从配置中读取设置（确保即使自启动检查失败，设备名等也能正常显示）
+  // 从配置中读取设置（auto_start 状态由后端管理，直接从 settings 读取）
   useEffect(() => {
     if (!setting?.general) return
+    setAutoStart(setting.general.auto_start)
     setSilentStart(setting.general.silent_start)
     // Validate backend language value against supported languages
     const backendLang = setting.general.language
@@ -58,28 +37,11 @@ export default function GeneralSection() {
     setDeviceName(setting.general.device_name ?? '')
   }, [setting])
 
-  // 处理自启动开关变化
+  // 处理自启动开关变化（后端 update_settings 会自动调用 ApplyAutostartSetting）
   const handleAutoStartChange = async (checked: boolean) => {
     try {
       setSaving(true)
-
-      // Update backend setting first (source of truth)
       await updateGeneralSetting({ auto_start: checked })
-
-      // Then apply OS autostart change
-      try {
-        if (checked) {
-          await enableAutostart()
-        } else {
-          await disableAutostart()
-        }
-      } catch (osError) {
-        // Rollback backend setting if OS operation fails
-        await updateGeneralSetting({ auto_start: !checked })
-        throw osError
-      }
-
-      // Only update local state after both succeed
       setAutoStart(checked)
     } catch (error) {
       console.error('更改自启动状态失败:', error)

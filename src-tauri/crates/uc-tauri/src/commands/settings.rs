@@ -86,12 +86,37 @@ pub async fn update_settings(
             })?;
         let device_name_changed =
             old_settings.general.device_name != parsed_settings.general.device_name;
+        let auto_start_changed =
+            old_settings.general.auto_start != parsed_settings.general.auto_start;
 
         let uc = runtime.usecases().update_settings();
-        uc.execute(parsed_settings).await.map_err(|e| {
+        uc.execute(parsed_settings.clone()).await.map_err(|e| {
             tracing::error!(error = %e, "Failed to update settings");
             CommandError::InternalError(e.to_string())
         })?;
+
+        // Apply OS-level autostart when auto_start setting changes
+        if auto_start_changed {
+            match runtime.usecases().apply_autostart() {
+                Some(uc) => {
+                    if let Err(e) = uc.execute(parsed_settings.general.auto_start) {
+                        tracing::error!(error = %e, "Failed to apply OS autostart setting");
+                        // Rollback: restore old settings so backend stays consistent with OS state
+                        let rollback_uc = runtime.usecases().update_settings();
+                        if let Err(rb_err) = rollback_uc.execute(old_settings).await {
+                            tracing::error!(error = %rb_err, "Failed to rollback settings after autostart failure");
+                        }
+                        return Err(CommandError::InternalError(format!(
+                            "Failed to apply autostart: {}",
+                            e
+                        )));
+                    }
+                }
+                None => {
+                    tracing::warn!("AppHandle not available, cannot apply autostart setting");
+                }
+            }
+        }
 
         if device_name_changed {
             let device_name = resolve_pairing_device_name(runtime.settings_port()).await;

@@ -134,7 +134,7 @@ Plans:
 **Goal:** Migrate theme color ownership to runtime TS preset injection and upgrade Appearance preset swatches to multi-dot previews while preserving mode/persistence behavior.
 **Requirements**: P17-01, P17-02, P17-03, P17-04, P17-05, P17-06, P17-07
 **Depends on:** Phase 16
-**Plans:** 1/2 plans executed
+**Plans:** 2/2 plans complete
 
 Plans:
 

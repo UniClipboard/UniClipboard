@@ -1,7 +1,3 @@
-// NOTE: This file uses Node-only APIs (fs/path/url) in a vitest environment.
-// We intentionally keep types minimal here and accept any where needed to avoid
-// leaking Node typings into the main frontend tsconfig.
-
 import { readFileSync } from 'fs'
 import path from 'path'
 import { fileURLToPath } from 'url'

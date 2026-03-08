@@ -716,6 +716,24 @@ impl<'a> UseCases<'a> {
         uc_app::usecases::UpdateSettings::new(self.runtime.deps.settings.clone())
     }
 
+    /// Apply OS-level autostart setting.
+    ///
+    /// Requires AppHandle to be set (returns None during early bootstrap).
+    ///
+    /// 应用 OS 级别的自启动设置。需要 AppHandle 已设置。
+    pub fn apply_autostart(
+        &self,
+    ) -> Option<
+        uc_platform::usecases::ApplyAutostartSetting<crate::adapters::autostart::TauriAutostart>,
+    > {
+        let guard = self.runtime.app_handle();
+        let handle = guard.as_ref()?;
+        let adapter = Arc::new(crate::adapters::autostart::TauriAutostart::new(
+            handle.clone(),
+        ));
+        Some(uc_platform::usecases::ApplyAutostartSetting::new(adapter))
+    }
+
     /// Start the clipboard watcher
     ///
     /// ## Example / 示例

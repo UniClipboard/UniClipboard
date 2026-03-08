@@ -107,14 +107,12 @@ use uc_infra::{FileSetupStatusRepository, SystemClock, Timer};
 
 use uc_platform::adapters::{
     FilesystemBlobStore, InMemoryEncryptionSessionPort, InMemoryWatcherControl,
-    Libp2pNetworkAdapter, PlaceholderAutostartPort, PlaceholderUiPort,
+    Libp2pNetworkAdapter,
 };
 use uc_platform::app_dirs::DirsAppDirsAdapter;
 use uc_platform::clipboard::LocalClipboard;
 use uc_platform::identity_store::FileIdentityStore;
-use uc_platform::ports::{
-    AppDirsPort, AutostartPort, IdentityStorePort, UiPort, WatcherControlPort,
-};
+use uc_platform::ports::{AppDirsPort, IdentityStorePort, WatcherControlPort};
 use uc_platform::runtime::event_bus::PlatformCommandSender;
 
 /// Result type for wiring operations
@@ -365,12 +363,6 @@ struct PlatformLayer {
 
     // Secure storage / 安全存储
     secure_storage: Arc<dyn SecureStoragePort>,
-
-    // UI operations / UI 操作（占位符）
-    ui: Arc<dyn UiPort>,
-
-    // Autostart management / 自动启动管理（占位符）
-    autostart: Arc<dyn AutostartPort>,
 
     // Network operations / 网络操作（占位符）
     network_ports: Arc<NetworkPorts>,
@@ -701,10 +693,6 @@ fn create_platform_layer(
     let representation_normalizer: Arc<dyn ClipboardRepresentationNormalizerPort> =
         Arc::new(ClipboardRepresentationNormalizer::new(storage_config));
 
-    // Create placeholder implementations for unimplemented ports
-    // 为未实现的端口创建占位符实现
-    let ui: Arc<dyn UiPort> = Arc::new(PlaceholderUiPort);
-    let autostart: Arc<dyn AutostartPort> = Arc::new(PlaceholderAutostartPort);
     let encryption_session: Arc<dyn EncryptionSessionPort> =
         Arc::new(InMemoryEncryptionSessionPort::new());
     let policy_resolver = Arc::new(ResolveConnectionPolicy::new(paired_device_repo.clone()));
@@ -762,8 +750,6 @@ fn create_platform_layer(
         clipboard,
         system_clipboard,
         secure_storage,
-        ui,
-        autostart,
         network_ports,
         libp2p_network,
         device_identity,
@@ -4821,8 +4807,7 @@ mod tests {
                 let _ = &deps.blob_repository;
                 let _ = &deps.blob_writer;
                 let _ = &deps.settings;
-                let _ = &deps.ui_port;
-                let _ = &deps.autostart;
+
                 let _ = &deps.clock;
                 let _ = &deps.hash;
                 // Test passes if we can access all fields without panicking
@@ -4980,8 +4965,6 @@ mod tests {
                     // 验证所有字段都有正确的类型
                     let _clipboard: &Arc<dyn PlatformClipboardPort> = &layer.clipboard;
                     let _secure_storage: &Arc<dyn SecureStoragePort> = &layer.secure_storage;
-                    let _ui: &Arc<dyn UiPort> = &layer.ui;
-                    let _autostart: &Arc<dyn AutostartPort> = &layer.autostart;
                     let _network_ports: &Arc<NetworkPorts> = &layer.network_ports;
                     let _device_identity: &Arc<dyn DeviceIdentityPort> = &layer.device_identity;
                     let _representation_normalizer: &Arc<

@@ -273,8 +273,6 @@ pub async fn get_clipboard_item(
     record_trace_fields(&span, &_trace);
 
     async move {
-        let parsed_id = EntryId::from(id.clone());
-
         // Use list_entry_projections to find the entry and build a response
         // that matches the frontend contract. This reuses existing projection
         // infrastructure rather than duplicating query logic.
@@ -1320,27 +1318,6 @@ mod tests {
         }
     }
 
-    #[async_trait]
-    impl UiPort for NoopPort {
-        async fn open_settings(&self) -> anyhow::Result<()> {
-            Ok(())
-        }
-    }
-
-    impl AutostartPort for NoopPort {
-        fn is_enabled(&self) -> anyhow::Result<bool> {
-            Ok(false)
-        }
-
-        fn enable(&self) -> anyhow::Result<()> {
-            Ok(())
-        }
-
-        fn disable(&self) -> anyhow::Result<()> {
-            Ok(())
-        }
-    }
-
     impl ClockPort for NoopPort {
         fn now_ms(&self) -> i64 {
             0
@@ -1422,8 +1399,7 @@ mod tests {
             thumbnail_repo: Arc::new(NoopPort),
             thumbnail_generator: Arc::new(NoopPort),
             settings: Arc::new(NoopPort),
-            ui_port: Arc::new(NoopPort),
-            autostart: Arc::new(NoopPort),
+
             clock: Arc::new(NoopPort),
             hash: Arc::new(NoopPort),
         };
@@ -1486,8 +1462,7 @@ mod tests {
             thumbnail_repo: Arc::new(NoopPort),
             thumbnail_generator: Arc::new(NoopPort),
             settings: Arc::new(NoopPort),
-            ui_port: Arc::new(NoopPort),
-            autostart: Arc::new(NoopPort),
+
             clock: Arc::new(NoopPort),
             hash: Arc::new(NoopPort),
         };

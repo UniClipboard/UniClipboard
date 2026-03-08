@@ -10,7 +10,7 @@ use uc_app::usecases::{
     LifecycleState, LifecycleStatusPort, SessionReadyEmitter, StartNetworkAfterUnlock,
 };
 use uc_core::ports::network_control::NetworkControlPort;
-use uc_platform::ports::{WatcherControlError, WatcherControlPort};
+use uc_platform::ports::watcher_control::{WatcherControlError, WatcherControlPort};
 use uc_platform::usecases::StartClipboardWatcher;
 
 // ---------------------------------------------------------------------------

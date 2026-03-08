@@ -3,10 +3,12 @@ import { useTranslation } from 'react-i18next'
 import { Filter } from '@/api/clipboardItems'
 import ClipboardContent from '@/components/clipboard/ClipboardContent'
 import Header from '@/components/layout/Header'
+import { TransferProgressBar } from '@/components/TransferProgressBar'
 import { useSearch } from '@/contexts/search-context'
 import { useClipboardEvents } from '@/hooks/useClipboardEvents'
 import { useLifecycleStatus } from '@/hooks/useLifecycleStatus'
 import { useShortcutScope } from '@/hooks/useShortcutScope'
+import { useTransferProgress } from '@/hooks/useTransferProgress'
 
 const DashboardPage: React.FC = () => {
   const { t } = useTranslation()
@@ -15,6 +17,7 @@ const DashboardPage: React.FC = () => {
   const { status: lifecycleStatusDto, retry: retryLifecycle, retrying } = useLifecycleStatus()
 
   useShortcutScope('clipboard')
+  useTransferProgress()
 
   const { hasMore, handleLoadMore } = useClipboardEvents(currentFilter)
 
@@ -45,6 +48,9 @@ const DashboardPage: React.FC = () => {
           </button>
         </div>
       )}
+
+      {/* Transfer progress indicators */}
+      <TransferProgressBar />
 
       {/* Clipboard content area - use flex-1 to make it take remaining space */}
       <div className="flex-1 overflow-hidden relative">

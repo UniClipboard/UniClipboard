@@ -4,14 +4,14 @@ milestone: v0.1
 milestone_name: milestone
 current_plan: 2
 status: completed
-stopped_at: Completed 17-02-PLAN.md
+stopped_at: Completed 18-01-PLAN.md
 last_updated: '2026-03-08T11:51:23.297Z'
 last_activity: 2026-03-08
 progress:
-  total_phases: 8
+  total_phases: 9
   completed_phases: 8
-  total_plans: 19
-  completed_plans: 19
+  total_plans: 22
+  completed_plans: 20
   percent: 100
 ---
 
@@ -74,11 +74,15 @@ Progress: [██████████] 100%
 - [Phase 16]: get_clipboard_entry uses ClipboardEntriesResponse enum for frontend API consistency
 - [Phase 16]: Throttle window reduced to 300ms; getClipboardEntry returns null on error for silent fallback; transformProjectionToResponse extracted as shared helper
 - [Phase 17-dynamic-theme-switching-with-shadcn-preset-import-and-enhanced-color-preview]: Appearance theme color picker now uses multi-dot swatches derived from runtime presets while preserving existing persistence behavior.
+- [Phase 18-chunk-transfer-resume]: Transfer progress events throttled to first/last chunk and max 100ms to avoid flooding
+- [Phase 18-chunk-transfer-resume]: V3 header transfer_id at [9..25] extracted inline without hex crate dependency
+- [Phase 18-chunk-transfer-resume]: Inbound total_bytes=0 since V3 wire format does not expose total size before reading all chunks
 
 ### Roadmap Evolution
 
 - Phase 16 added: Optimize DashboardPage refresh mechanism on new clipboard content
 - Phase 17 added: Dynamic theme switching with shadcn preset import and enhanced color preview
+- Phase 18 added: 实现分块传输和断点续传
 
 ### Pending Todos
 
@@ -95,7 +99,7 @@ None.
 ## Session Continuity
 
 Last activity: 2026-03-07 - Phase 14 plan 14-02 execution complete
-Stopped at: Completed 17-02-PLAN.md
+Stopped at: Completed 18-01-PLAN.md
 Resume file: None
 
 ## Performance Metrics
@@ -115,3 +119,4 @@ Resume file: None
 | Phase 16 P01                                                                              | 8min     | 2 tasks | 10 files |
 | Phase 16 P02                                                                              | 6min     | 2 tasks | 4 files  |
 | Phase 17-dynamic-theme-switching-with-shadcn-preset-import-and-enhanced-color-preview P02 | ~5min    | 2 tasks | 3 files  |
+| Phase 18-chunk-transfer-resume P01                                                        | 9min     | 2 tasks | 7 files  |

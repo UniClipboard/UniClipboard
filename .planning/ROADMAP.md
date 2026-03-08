@@ -154,7 +154,7 @@ Plans:
 4. Interrupted transfers of large payloads (>1MB) can resume from the last successful chunk using in-memory TTL cache (CT-04).
 5. The DashboardPage displays real-time transfer progress with direction, peer, and completion percentage (CT-05).
 
-**Plans:** 3 plans
+**Plans:** 1/3 plans executed
 
 Plans:
 

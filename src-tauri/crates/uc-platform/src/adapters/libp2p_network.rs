@@ -1072,7 +1072,7 @@ fn spawn_business_stream_handler(
                                                 chunks_completed,
                                                 total_chunks,
                                                 bytes_transferred: bytes_received,
-                                                total_bytes: 0, // unknown until fully read
+                                                total_bytes: None, // unknown until fully read
                                             }),
                                             "TransferProgress",
                                         );
@@ -2000,7 +2000,7 @@ async fn execute_business_stream(
                                     chunks_completed,
                                     total_chunks,
                                     bytes_transferred: written,
-                                    total_bytes: total,
+                                    total_bytes: Some(total),
                                 }),
                                 "TransferProgress",
                             );

@@ -14,7 +14,9 @@ pub struct TransferProgressEvent {
     pub chunks_completed: u32,
     pub total_chunks: u32,
     pub bytes_transferred: u64,
-    pub total_bytes: u64,
+    /// Total bytes for this transfer, or `null` if unknown (e.g. receiving side).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub total_bytes: Option<u64>,
 }
 
 impl From<TransferProgress> for TransferProgressEvent {
@@ -56,7 +58,7 @@ mod tests {
             chunks_completed: 3,
             total_chunks: 10,
             bytes_transferred: 786432,
-            total_bytes: 2621440,
+            total_bytes: Some(2621440),
         };
         let json = serde_json::to_value(&event).unwrap();
         assert_eq!(json["transferId"], "t-1");
@@ -77,6 +79,21 @@ mod tests {
     }
 
     #[test]
+    fn transfer_progress_event_omits_total_bytes_when_none() {
+        let event = TransferProgressEvent {
+            transfer_id: "t-2".to_string(),
+            peer_id: "p-2".to_string(),
+            direction: "Receiving".to_string(),
+            chunks_completed: 1,
+            total_chunks: 5,
+            bytes_transferred: 262144,
+            total_bytes: None,
+        };
+        let json = serde_json::to_value(&event).unwrap();
+        assert!(json.get("totalBytes").is_none());
+    }
+
+    #[test]
     fn from_transfer_progress_converts_correctly() {
         let progress = TransferProgress {
             transfer_id: "xfer-99".to_string(),
@@ -85,12 +102,13 @@ mod tests {
             chunks_completed: 5,
             total_chunks: 8,
             bytes_transferred: 1_310_720,
-            total_bytes: 2_097_152,
+            total_bytes: Some(2_097_152),
         };
         let event: TransferProgressEvent = progress.into();
         assert_eq!(event.transfer_id, "xfer-99");
         assert_eq!(event.direction, "Receiving");
         assert_eq!(event.chunks_completed, 5);
+        assert_eq!(event.total_bytes, Some(2_097_152));
     }
 
     #[tokio::test]
@@ -111,7 +129,7 @@ mod tests {
             chunks_completed: 1,
             total_chunks: 2,
             bytes_transferred: 262144,
-            total_bytes: 524288,
+            total_bytes: Some(524288),
         };
 
         forward_transfer_progress_event(&app_handle, progress)

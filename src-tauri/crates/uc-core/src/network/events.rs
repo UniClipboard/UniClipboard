@@ -174,7 +174,7 @@ mod tests {
             chunks_completed: 2,
             total_chunks: 4,
             bytes_transferred: 524288,
-            total_bytes: 1048576,
+            total_bytes: Some(1048576),
         };
         let event = NetworkEvent::TransferProgress(progress);
         let json = serde_json::to_string(&event).unwrap();

@@ -3,6 +3,7 @@
 //! Provides progress tracking for chunked clipboard transfers,
 //! enabling the frontend to display transfer progress UI.
 
+use anyhow::Result;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
@@ -22,14 +23,15 @@ pub struct TransferProgress {
     pub chunks_completed: u32,
     pub total_chunks: u32,
     pub bytes_transferred: u64,
-    pub total_bytes: u64,
+    /// Total bytes for this transfer, or `None` if unknown (e.g. receiving side).
+    pub total_bytes: Option<u64>,
 }
 
 /// Port for reporting transfer progress events.
 #[async_trait]
 pub trait TransferProgressPort: Send + Sync {
     /// Report progress of an active transfer.
-    async fn report_progress(&self, progress: TransferProgress);
+    async fn report_progress(&self, progress: TransferProgress) -> Result<()>;
 }
 
 /// No-op implementation of `TransferProgressPort` for tests and default usage.
@@ -37,8 +39,8 @@ pub struct NoopTransferProgressPort;
 
 #[async_trait]
 impl TransferProgressPort for NoopTransferProgressPort {
-    async fn report_progress(&self, _progress: TransferProgress) {
-        // intentionally empty
+    async fn report_progress(&self, _progress: TransferProgress) -> Result<()> {
+        Ok(())
     }
 }
 
@@ -55,7 +57,7 @@ mod tests {
             chunks_completed: 5,
             total_chunks: 10,
             bytes_transferred: 1_310_720,
-            total_bytes: 2_621_440,
+            total_bytes: Some(2_621_440),
         };
         let json = serde_json::to_value(&progress).unwrap();
         assert_eq!(json["transfer_id"], "abc-123");
@@ -65,6 +67,21 @@ mod tests {
         assert_eq!(json["total_chunks"], 10);
         assert_eq!(json["bytes_transferred"], 1_310_720);
         assert_eq!(json["total_bytes"], 2_621_440);
+    }
+
+    #[test]
+    fn transfer_progress_with_unknown_total_bytes() {
+        let progress = TransferProgress {
+            transfer_id: "abc-123".to_string(),
+            peer_id: "peer-1".to_string(),
+            direction: TransferDirection::Receiving,
+            chunks_completed: 3,
+            total_chunks: 10,
+            bytes_transferred: 768_000,
+            total_bytes: None,
+        };
+        let json = serde_json::to_value(&progress).unwrap();
+        assert!(json["total_bytes"].is_null());
     }
 
     #[test]
@@ -85,12 +102,13 @@ mod tests {
             chunks_completed: 3,
             total_chunks: 5,
             bytes_transferred: 768_000,
-            total_bytes: 1_280_000,
+            total_bytes: Some(1_280_000),
         };
         let json = serde_json::to_string(&progress).unwrap();
         let restored: TransferProgress = serde_json::from_str(&json).unwrap();
         assert_eq!(restored.transfer_id, "t-1");
         assert_eq!(restored.direction, TransferDirection::Receiving);
         assert_eq!(restored.chunks_completed, 3);
+        assert_eq!(restored.total_bytes, Some(1_280_000));
     }
 }

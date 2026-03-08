@@ -121,12 +121,12 @@ export default function AppearanceSection() {
                   : 'border-transparent'
               )}
             >
-              <div className="flex items-center justify-center gap-1">
+              <div className="flex w-full h-6 rounded-lg overflow-hidden shadow-sm">
                 {item.previewDots.map((dot, index) => (
                   <span
                     key={index}
                     data-testid="theme-color-dot"
-                    className="h-2.5 w-2.5 rounded-full shadow-sm"
+                    className="flex-1 h-full"
                     style={{ backgroundColor: dot }}
                   />
                 ))}

@@ -4,6 +4,7 @@ mod device_announce;
 mod heartbeat;
 mod pairing;
 mod protocol_message;
+mod transfer_resume;
 
 /// Standard MIME type constants used throughout the clipboard protocol.
 pub const MIME_IMAGE_PREFIX: &str = "image/";
@@ -20,3 +21,4 @@ pub use pairing::{
     PairingKeyslotOffer, PairingMessage, PairingReject, PairingRequest, PairingResponse,
 };
 pub use protocol_message::ProtocolMessage;
+pub use transfer_resume::TransferResumeMessage;

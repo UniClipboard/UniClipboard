@@ -1167,6 +1167,17 @@ async fn handle_standard_message(
                 peer_id
             );
         }
+        ProtocolMessage::TransferResume(resume_msg) => {
+            // Resume requests are handled inline by the inbound stream handler
+            // before reaching handle_standard_message. If one arrives here,
+            // it means it was sent without the streaming V3 path -- log and ignore.
+            warn!(
+                peer_id = %peer_id,
+                transfer_id = %resume_msg.transfer_id,
+                start_chunk = resume_msg.start_chunk,
+                "TransferResume received on standard message path (unexpected)"
+            );
+        }
     }
 }
 

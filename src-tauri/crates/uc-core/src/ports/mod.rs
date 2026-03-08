@@ -43,6 +43,7 @@ pub mod setup_event_port;
 pub mod space;
 pub mod start_clipboard_watcher;
 mod timer;
+pub mod transfer_progress;
 
 pub use blob_repository::BlobRepositoryPort;
 pub use blob_store::BlobStorePort;
@@ -77,3 +78,4 @@ pub use settings::{SettingsMigrationPort, SettingsPort};
 pub use setup::SetupStatusPort;
 pub use setup_event_port::SetupEventPort;
 pub use start_clipboard_watcher::{StartClipboardWatcherError, StartClipboardWatcherPort};
+pub use transfer_progress::{TransferDirection, TransferProgress, TransferProgressPort};

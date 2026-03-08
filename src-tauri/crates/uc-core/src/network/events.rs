@@ -1,4 +1,5 @@
 use super::protocol::{ClipboardMessage, PairingMessage, PairingRequest, PairingResponse};
+use crate::ports::transfer_progress::TransferProgress;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
@@ -124,6 +125,9 @@ pub enum NetworkEvent {
         direction: ProtocolDirection,
         reason: ProtocolDenyReason,
     },
+    // Transfer progress events
+    TransferProgress(TransferProgress),
+
     #[allow(dead_code)]
     Error(String),
 }
@@ -159,6 +163,29 @@ mod tests {
         assert_eq!(deserialized.device_name, peer.device_name);
         assert_eq!(deserialized.last_seen, peer.last_seen);
         assert!(!deserialized.is_paired);
+    }
+
+    #[test]
+    fn transfer_progress_event_serializes_round_trip() {
+        let progress = TransferProgress {
+            transfer_id: "xfer-1".to_string(),
+            peer_id: "peer-abc".to_string(),
+            direction: crate::ports::transfer_progress::TransferDirection::Sending,
+            chunks_completed: 2,
+            total_chunks: 4,
+            bytes_transferred: 524288,
+            total_bytes: 1048576,
+        };
+        let event = NetworkEvent::TransferProgress(progress);
+        let json = serde_json::to_string(&event).unwrap();
+        let restored: NetworkEvent = serde_json::from_str(&json).unwrap();
+        match restored {
+            NetworkEvent::TransferProgress(p) => {
+                assert_eq!(p.transfer_id, "xfer-1");
+                assert_eq!(p.chunks_completed, 2);
+            }
+            _ => panic!("expected TransferProgress"),
+        }
     }
 
     #[test]

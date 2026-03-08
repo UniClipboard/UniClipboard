@@ -44,8 +44,9 @@ use tracing::{debug, error, info, info_span, warn, Instrument};
 use super::task_registry::TaskRegistry;
 
 use crate::events::{
-    forward_clipboard_event, ClipboardEvent, P2PPairingVerificationEvent, P2PPeerConnectionEvent,
-    P2PPeerDiscoveryEvent, P2PPeerNameUpdatedEvent,
+    forward_clipboard_event, forward_transfer_progress_event, ClipboardEvent,
+    P2PPairingVerificationEvent, P2PPeerConnectionEvent, P2PPeerDiscoveryEvent,
+    P2PPeerNameUpdatedEvent,
 };
 use uc_app::deps::NetworkPorts;
 use uc_app::usecases::clipboard::sync_inbound::{InboundApplyOutcome, SyncInboundClipboardUseCase};
@@ -2051,6 +2052,13 @@ async fn run_pairing_event_loop<R: Runtime>(
                     };
                     if let Err(err) = app.emit("p2p-peer-name-updated", payload) {
                         warn!(error = %err, "Failed to emit peer name updated event");
+                    }
+                }
+            }
+            NetworkEvent::TransferProgress(progress) => {
+                if let Some(app) = app_handle.as_ref() {
+                    if let Err(err) = forward_transfer_progress_event(app, progress) {
+                        warn!(error = %err, "Failed to emit transfer progress event");
                     }
                 }
             }

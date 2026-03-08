@@ -6,8 +6,10 @@ use tauri::{AppHandle, Emitter};
 
 pub mod p2p_pairing;
 pub mod p2p_peer;
+pub mod transfer_progress;
 pub use p2p_pairing::{P2PPairingVerificationEvent, P2PPairingVerificationKind};
 pub use p2p_peer::{P2PPeerConnectionEvent, P2PPeerDiscoveryEvent, P2PPeerNameUpdatedEvent};
+pub use transfer_progress::{forward_transfer_progress_event, TransferProgressEvent};
 
 /// Clipboard events emitted to frontend
 /// 发送到前端的剪贴板事件

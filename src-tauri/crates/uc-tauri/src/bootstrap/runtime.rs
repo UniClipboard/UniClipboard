@@ -1102,6 +1102,7 @@ mod tests {
     use uc_core::PeerId;
     use uc_core::{Blob, BlobId, ClipboardChangeOrigin, ContentHash, DeviceId};
     use uc_infra::clipboard::InMemoryClipboardChangeOrigin;
+    use uc_platform::ports::{AutostartPort, UiPort, WatcherControlError, WatcherControlPort};
 
     struct MockEntryRepository {
         save_calls: Arc<AtomicUsize>,

@@ -2744,6 +2744,7 @@ mod tests {
         PeerDirectoryPort,
     };
     use uc_core::security::model::{EncryptionError, MasterKey};
+    use uc_platform::ports::IdentityStoreError;
     use uc_platform::test_support::with_uc_profile;
 
     #[test]
@@ -4790,26 +4791,25 @@ mod tests {
                 // Verify all dependencies are present by type checking
                 // 通过类型检查验证所有依赖都存在
                 let _ = &deps.clipboard;
-                let _ = &deps.clipboard_event_repo;
-                let _ = &deps.representation_repo;
-                let _ = &deps.representation_normalizer;
-                let _ = &deps.encryption;
-                let _ = &deps.encryption_session;
-                let _ = &deps.secure_storage;
-                let _ = &deps.key_material;
-                let _ = &deps.watcher_control;
-                let _ = &deps.clipboard_change_origin;
-                let _ = &deps.device_repo;
-                let _ = &&deps.device_identity;
-                let _ = &deps.paired_device_repo;
+                let _ = &deps.clipboard.clipboard_event_repo;
+                let _ = &deps.clipboard.representation_repo;
+                let _ = &deps.clipboard.representation_normalizer;
+                let _ = &deps.security.encryption;
+                let _ = &deps.security.encryption_session;
+                let _ = &deps.security.secure_storage;
+                let _ = &deps.security.key_material;
+                let _ = &deps.clipboard.clipboard_change_origin;
+                let _ = &deps.device.device_repo;
+                let _ = &deps.device.device_identity;
+                let _ = &deps.device.paired_device_repo;
                 let _ = &deps.network_ports;
-                let _ = &deps.blob_store;
-                let _ = &deps.blob_repository;
-                let _ = &deps.blob_writer;
+                let _ = &deps.storage.blob_store;
+                let _ = &deps.storage.blob_repository;
+                let _ = &deps.storage.blob_writer;
                 let _ = &deps.settings;
 
-                let _ = &deps.clock;
-                let _ = &deps.hash;
+                let _ = &deps.system.clock;
+                let _ = &deps.system.hash;
                 // Test passes if we can access all fields without panicking
                 // 如果我们可以访问所有字段而不恐慌，测试通过
             }

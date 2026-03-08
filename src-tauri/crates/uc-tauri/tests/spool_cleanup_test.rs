@@ -26,7 +26,7 @@ use std::sync::{Arc, Mutex};
 use tempfile::TempDir;
 use tokio::sync::mpsc;
 use uc_core::config::AppConfig;
-use uc_core::ports::{IdentityStoreError, IdentityStorePort};
+use uc_platform::ports::{IdentityStoreError, IdentityStorePort};
 use uc_tauri::bootstrap::wiring::wire_dependencies_with_identity_store;
 
 // ---------------------------------------------------------------------------

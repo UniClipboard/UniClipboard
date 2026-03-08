@@ -2278,15 +2278,12 @@ mod tests {
     }
 
     impl IdentityStorePort for TestIdentityStore {
-        fn load_identity(&self) -> Result<Option<Vec<u8>>, uc_core::ports::IdentityStoreError> {
+        fn load_identity(&self) -> Result<Option<Vec<u8>>, crate::ports::IdentityStoreError> {
             let guard = self.data.lock().expect("lock test identity store");
             Ok(guard.clone())
         }
 
-        fn store_identity(
-            &self,
-            identity: &[u8],
-        ) -> Result<(), uc_core::ports::IdentityStoreError> {
+        fn store_identity(&self, identity: &[u8]) -> Result<(), crate::ports::IdentityStoreError> {
             let mut guard = self.data.lock().expect("lock test identity store");
             *guard = Some(identity.to_vec());
             Ok(())

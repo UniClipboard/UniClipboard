@@ -30,7 +30,7 @@ use std::sync::Mutex;
 use tempfile::TempDir;
 use tokio::sync::mpsc;
 use uc_core::config::AppConfig;
-use uc_core::ports::{IdentityStoreError, IdentityStorePort};
+use uc_platform::ports::{IdentityStoreError, IdentityStorePort};
 use uc_tauri::bootstrap::wiring::wire_dependencies_with_identity_store;
 use uc_tauri::bootstrap::{create_app, create_runtime, load_config};
 
@@ -319,25 +319,22 @@ fn test_bootstrap_wire_dependencies_creates_app_deps() {
         // Verify we can access all dependency fields
         // 验证我们可以访问所有依赖字段
         let _ = &deps.clipboard;
-        let _ = &deps.clipboard_event_repo;
-        let _ = &deps.representation_repo;
-        let _ = &deps.representation_normalizer;
-        let _ = &deps.encryption;
-        let _ = &deps.encryption_session;
-        let _ = &deps.secure_storage;
-        let _ = &deps.key_material;
-        let _ = &deps.watcher_control;
-        let _ = &deps.device_repo;
-        let _ = &deps.device_identity;
+        let _ = &deps.clipboard.clipboard_event_repo;
+        let _ = &deps.clipboard.representation_repo;
+        let _ = &deps.clipboard.representation_normalizer;
+        let _ = &deps.security.encryption;
+        let _ = &deps.security.encryption_session;
+        let _ = &deps.security.secure_storage;
+        let _ = &deps.security.key_material;
+        let _ = &deps.device.device_repo;
+        let _ = &deps.device.device_identity;
         let _ = &deps.network_ports;
-        let _ = &deps.blob_store;
-        let _ = &deps.blob_repository;
-        let _ = &deps.blob_writer;
+        let _ = &deps.storage.blob_store;
+        let _ = &deps.storage.blob_repository;
+        let _ = &deps.storage.blob_writer;
         let _ = &deps.settings;
-        let _ = &deps.ui_port;
-        let _ = &deps.autostart;
-        let _ = &deps.clock;
-        let _ = &deps.hash;
+        let _ = &deps.system.clock;
+        let _ = &deps.system.hash;
     });
 }
 
@@ -674,9 +671,9 @@ fn test_bootstrap_wire_dependencies_with_empty_config() {
         // Verify all dependencies are present even with empty config
         // 验证即使配置为空，所有依赖都存在
         let _ = &deps.clipboard;
-        let _ = &deps.encryption;
-        let _ = &deps.secure_storage;
-        let _ = &deps.device_repo;
+        let _ = &deps.security.encryption;
+        let _ = &deps.security.secure_storage;
+        let _ = &deps.device.device_repo;
         let _ = &deps.settings;
     });
 }
@@ -703,17 +700,17 @@ fn test_bootstrap_wire_dependencies_creates_real_repositories() {
 
         // Verify clipboard repositories
         // 验证剪贴板仓库
-        let _clipboard_entry_repo = deps.clipboard_entry_repo.clone();
-        let _clipboard_event_repo = deps.clipboard_event_repo.clone();
-        let _representation_repo = deps.representation_repo.clone();
+        let _clipboard_entry_repo = deps.clipboard.clipboard_entry_repo.clone();
+        let _clipboard_event_repo = deps.clipboard.clipboard_event_repo.clone();
+        let _representation_repo = deps.clipboard.representation_repo.clone();
 
         // Verify device repository
         // 验证设备仓库
-        let _device_repo = deps.device_repo.clone();
+        let _device_repo = deps.device.device_repo.clone();
 
         // Verify blob repository
         // 验证 blob 仓库
-        let _blob_repository = deps.blob_repository.clone();
+        let _blob_repository = deps.storage.blob_repository.clone();
 
         // If we got here without panicking, all repositories are properly created
         // 如果我们到这里没有 panic，所有仓库都正确创建了
@@ -742,22 +739,20 @@ fn test_bootstrap_wire_dependencies_creates_platform_adapters() {
 
         // Verify system clipboard (platform-specific)
         // 验证系统剪贴板（平台特定）
-        let _clipboard = deps.clipboard.clone();
+        let _clipboard = deps.clipboard.clipboard.clone();
 
         // Verify secure storage (platform-specific)
         // 验证安全存储（平台特定）
-        let _secure_storage = deps.secure_storage.clone();
+        let _secure_storage = deps.security.secure_storage.clone();
 
         // Verify placeholder adapters exist (for unimplemented ports)
         // 验证占位符适配器存在（用于未实现的端口）
-        let _ui = deps.ui_port.clone();
-        let _autostart = deps.autostart.clone();
         let _network = deps.network_ports.clone();
-        let _device_identity = deps.device_identity.clone();
-        let _representation_normalizer = deps.representation_normalizer.clone();
-        let _blob_writer = deps.blob_writer.clone();
-        let _blob_store = deps.blob_store.clone();
-        let _encryption_session = deps.encryption_session.clone();
+        let _device_identity = deps.device.device_identity.clone();
+        let _representation_normalizer = deps.clipboard.representation_normalizer.clone();
+        let _blob_writer = deps.storage.blob_writer.clone();
+        let _blob_store = deps.storage.blob_store.clone();
+        let _encryption_session = deps.security.encryption_session.clone();
     });
 }
 

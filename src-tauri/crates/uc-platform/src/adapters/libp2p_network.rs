@@ -26,7 +26,8 @@ use uc_core::network::{
 use uc_core::ports::{
     ClipboardTransportPort, ConnectionPolicyResolverPort, EncryptionSessionPort,
     NetworkControlPort, NetworkEventPort, PairingTransportPort, PeerDirectoryPort,
-    TransferPayloadDecryptorPort, TransferPayloadEncryptorPort,
+    TransferDirection, TransferPayloadDecryptorPort, TransferPayloadEncryptorPort,
+    TransferProgress,
 };
 
 use super::pairing_stream::service::{
@@ -35,6 +36,8 @@ use super::pairing_stream::service::{
 use crate::identity_store::load_or_create_identity;
 const BUSINESS_PROTOCOL_ID: &str = ProtocolId::Business.as_str();
 const BUSINESS_PAYLOAD_MAX_BYTES: u64 = 300 * 1024 * 1024;
+/// Network I/O chunk size for writing outbound payloads (256 KB).
+const NETWORK_CHUNK_SIZE: usize = 256 * 1024;
 const BUSINESS_READ_TIMEOUT: Duration = Duration::from_secs(120);
 const BUSINESS_STREAM_OPEN_TIMEOUT: Duration = Duration::from_secs(10);
 const BUSINESS_STREAM_WRITE_TIMEOUT: Duration = Duration::from_secs(120);
@@ -977,14 +980,78 @@ fn spawn_business_stream_handler(
                                 }
                             };
 
+                            // Clone event_tx for progress reporting inside spawn_blocking
+                            let progress_event_tx = event_tx.clone();
+                            let inbound_peer_id_str = peer_id.clone();
                             let encrypted = tokio::task::spawn_blocking(move || {
                                 use std::io::Read;
                                 use tokio_util::io::SyncIoBridge;
                                 let mut sync_reader = SyncIoBridge::new(reader);
-                                let mut buf = Vec::new();
+
+                                // Read V3 header (37 bytes) to extract total_chunks and transfer_id
+                                let mut header = [0u8; 37];
                                 sync_reader
-                                    .read_to_end(&mut buf)
-                                    .map_err(|e| anyhow!("stream read failed: {e}"))?;
+                                    .read_exact(&mut header)
+                                    .map_err(|e| anyhow!("stream read failed (header): {e}"))?;
+
+                                let total_chunks = u32::from_le_bytes(
+                                    header[25..29]
+                                        .try_into()
+                                        .map_err(|_| anyhow!("invalid header: total_chunks"))?,
+                                );
+                                let transfer_id = header[9..25]
+                                    .iter()
+                                    .map(|b| format!("{b:02x}"))
+                                    .collect::<String>();
+
+                                // Accumulate: header + per-chunk (4-byte len prefix + ciphertext)
+                                let mut buf = Vec::from(&header[..]);
+                                let mut bytes_received = 37u64;
+                                let mut last_progress = std::time::Instant::now();
+
+                                for chunk_idx in 0..total_chunks {
+                                    // Read 4-byte chunk ciphertext length
+                                    let mut len_buf = [0u8; 4];
+                                    sync_reader.read_exact(&mut len_buf).map_err(|e| {
+                                        anyhow!("stream read failed (chunk {} len): {e}", chunk_idx)
+                                    })?;
+                                    let ct_len = u32::from_le_bytes(len_buf) as usize;
+                                    buf.extend_from_slice(&len_buf);
+
+                                    // Read chunk ciphertext
+                                    let mut ct_buf = vec![0u8; ct_len];
+                                    sync_reader.read_exact(&mut ct_buf).map_err(|e| {
+                                        anyhow!(
+                                            "stream read failed (chunk {} data): {e}",
+                                            chunk_idx
+                                        )
+                                    })?;
+                                    buf.extend_from_slice(&ct_buf);
+                                    bytes_received += 4 + ct_len as u64;
+
+                                    let chunks_completed = chunk_idx + 1;
+
+                                    // Throttle progress: first, last, and at most every 100ms
+                                    if chunks_completed == 1
+                                        || chunks_completed == total_chunks
+                                        || last_progress.elapsed()
+                                            >= std::time::Duration::from_millis(100)
+                                    {
+                                        let _ = progress_event_tx.blocking_send(
+                                            NetworkEvent::TransferProgress(TransferProgress {
+                                                transfer_id: transfer_id.clone(),
+                                                peer_id: inbound_peer_id_str.clone(),
+                                                direction: TransferDirection::Receiving,
+                                                chunks_completed,
+                                                total_chunks,
+                                                bytes_transferred: bytes_received,
+                                                total_bytes: 0, // unknown until fully read
+                                            }),
+                                        );
+                                        last_progress = std::time::Instant::now();
+                                    }
+                                }
+
                                 Ok::<Vec<u8>, anyhow::Error>(buf)
                             })
                             .await
@@ -1841,7 +1908,55 @@ async fn execute_business_stream(
     {
         Ok(Ok(mut stream)) => {
             if let Some(data) = payload {
-                match timeout(write_timeout, stream.write_all(data)).await {
+                // Write payload in NETWORK_CHUNK_SIZE chunks with progress tracking
+                let total = data.len() as u64;
+                let total_chunks =
+                    ((data.len() + NETWORK_CHUNK_SIZE - 1) / NETWORK_CHUNK_SIZE) as u32;
+                let transfer_id = if data.len() >= 25 {
+                    // Extract transfer_id from V3 header bytes [9..25] if payload is large enough
+                    data[9..25]
+                        .iter()
+                        .map(|b| format!("{b:02x}"))
+                        .collect::<String>()
+                } else {
+                    format!("outbound-{}", peer_id_str)
+                };
+
+                let write_result = timeout(write_timeout, async {
+                    let mut written = 0u64;
+                    let mut chunks_completed = 0u32;
+                    let mut last_progress = std::time::Instant::now();
+
+                    for chunk in data.chunks(NETWORK_CHUNK_SIZE) {
+                        stream.write_all(chunk).await?;
+                        written += chunk.len() as u64;
+                        chunks_completed += 1;
+
+                        // Throttle progress events: emit first, last, and at most every 100ms
+                        if chunks_completed == 1
+                            || chunks_completed == total_chunks
+                            || last_progress.elapsed() >= Duration::from_millis(100)
+                        {
+                            let _ = event_tx
+                                .send(NetworkEvent::TransferProgress(TransferProgress {
+                                    transfer_id: transfer_id.clone(),
+                                    peer_id: peer_id_str.to_string(),
+                                    direction: TransferDirection::Sending,
+                                    chunks_completed,
+                                    total_chunks,
+                                    bytes_transferred: written,
+                                    total_bytes: total,
+                                }))
+                                .await;
+                            last_progress = std::time::Instant::now();
+                        }
+                    }
+                    stream.flush().await?;
+                    Ok::<(), std::io::Error>(())
+                })
+                .await;
+
+                match write_result {
                     Ok(Ok(())) => match timeout(close_timeout, stream.close()).await {
                         Ok(Ok(())) => Ok(()),
                         Ok(Err(err)) => {

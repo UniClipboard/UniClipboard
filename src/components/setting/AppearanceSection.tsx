@@ -105,7 +105,7 @@ export default function AppearanceSection() {
       </SettingGroup>
 
       <SettingGroup title={t('settings.sections.appearance.themeColor.title')}>
-        <div className="grid grid-cols-5 gap-4 p-4">
+        <div className="grid grid-cols-4 gap-4 p-4">
           {THEME_COLORS.map(item => (
             <div
               key={item.name}

@@ -1,5 +1,5 @@
 use tokio::sync::mpsc;
-use uc_platform::ports::{WatcherControlError, WatcherControlPort};
+use uc_platform::ports::watcher_control::{WatcherControlError, WatcherControlPort};
 
 use uc_platform::adapters::InMemoryWatcherControl;
 use uc_platform::ipc::PlatformCommand;

@@ -1004,6 +1004,13 @@ fn spawn_business_stream_handler(
                                     .map(|b| format!("{b:02x}"))
                                     .collect::<String>();
 
+                                debug!(
+                                    peer_id = %inbound_peer_id_str,
+                                    transfer_id = %transfer_id,
+                                    total_chunks,
+                                    "inbound chunked read started"
+                                );
+
                                 // Accumulate: header + per-chunk (4-byte len prefix + ciphertext)
                                 let mut buf = Vec::from(&header[..]);
                                 let mut bytes_received = 37u64;
@@ -1031,6 +1038,15 @@ fn spawn_business_stream_handler(
 
                                     let chunks_completed = chunk_idx + 1;
 
+                                    debug!(
+                                        transfer_id = %transfer_id,
+                                        chunk = chunks_completed,
+                                        total_chunks,
+                                        ct_len,
+                                        bytes_received,
+                                        "inbound chunk read"
+                                    );
+
                                     // Throttle progress: first, last, and at most every 100ms
                                     if chunks_completed == 1
                                         || chunks_completed == total_chunks
@@ -1051,6 +1067,13 @@ fn spawn_business_stream_handler(
                                         last_progress = std::time::Instant::now();
                                     }
                                 }
+
+                                debug!(
+                                    transfer_id = %transfer_id,
+                                    total_chunks,
+                                    total_bytes_received = bytes_received,
+                                    "inbound chunked read completed"
+                                );
 
                                 Ok::<Vec<u8>, anyhow::Error>(buf)
                             })
@@ -1165,17 +1188,6 @@ async fn handle_standard_message(
             warn!(
                 "Unexpected pairing payload on business stream from peer_id={}",
                 peer_id
-            );
-        }
-        ProtocolMessage::TransferResume(resume_msg) => {
-            // Resume requests are handled inline by the inbound stream handler
-            // before reaching handle_standard_message. If one arrives here,
-            // it means it was sent without the streaming V3 path -- log and ignore.
-            warn!(
-                peer_id = %peer_id,
-                transfer_id = %resume_msg.transfer_id,
-                start_chunk = resume_msg.start_chunk,
-                "TransferResume received on standard message path (unexpected)"
             );
         }
     }
@@ -1933,6 +1945,15 @@ async fn execute_business_stream(
                     format!("outbound-{}", peer_id_str)
                 };
 
+                debug!(
+                    peer_id = %peer_id_str,
+                    transfer_id = %transfer_id,
+                    total_bytes = total,
+                    total_chunks,
+                    chunk_size = NETWORK_CHUNK_SIZE,
+                    "outbound chunked write started"
+                );
+
                 let write_result = timeout(write_timeout, async {
                     let mut written = 0u64;
                     let mut chunks_completed = 0u32;
@@ -1942,6 +1963,16 @@ async fn execute_business_stream(
                         stream.write_all(chunk).await?;
                         written += chunk.len() as u64;
                         chunks_completed += 1;
+
+                        debug!(
+                            transfer_id = %transfer_id,
+                            chunk = chunks_completed,
+                            total_chunks,
+                            chunk_bytes = chunk.len(),
+                            bytes_written = written,
+                            total_bytes = total,
+                            "outbound chunk written"
+                        );
 
                         // Throttle progress events: emit first, last, and at most every 100ms
                         if chunks_completed == 1
@@ -1963,6 +1994,12 @@ async fn execute_business_stream(
                         }
                     }
                     stream.flush().await?;
+                    debug!(
+                        transfer_id = %transfer_id,
+                        total_bytes = total,
+                        total_chunks,
+                        "outbound chunked write completed"
+                    );
                     Ok::<(), std::io::Error>(())
                 })
                 .await;

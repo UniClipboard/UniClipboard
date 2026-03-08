@@ -1,9 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use super::{
-    ClipboardMessage, DeviceAnnounceMessage, HeartbeatMessage, PairingMessage,
-    TransferResumeMessage,
-};
+use super::{ClipboardMessage, DeviceAnnounceMessage, HeartbeatMessage, PairingMessage};
 
 /// P2P protocol messages for UniClipboard
 /// Based on decentpaste protocol with UniClipboard-specific adaptations
@@ -15,10 +12,6 @@ pub enum ProtocolMessage {
     /// Announces device name to all peers on the network.
     /// Used when device name is changed in settings.
     DeviceAnnounce(DeviceAnnounceMessage),
-    /// Requests resume of an interrupted chunked clipboard transfer.
-    /// Sent by the receiver to the original sender with the transfer_id
-    /// and the first chunk index that still needs to be re-sent.
-    TransferResume(TransferResumeMessage),
 }
 
 impl ProtocolMessage {
@@ -58,13 +51,6 @@ impl ProtocolMessage {
 mod tests {
     use super::*;
     use chrono::Utc;
-
-    fn make_transfer_resume() -> ProtocolMessage {
-        ProtocolMessage::TransferResume(TransferResumeMessage {
-            transfer_id: "0102030405060708090a0b0c0d0e0f10".to_string(),
-            start_chunk: 5,
-        })
-    }
 
     fn make_device_announce() -> ProtocolMessage {
         ProtocolMessage::DeviceAnnounce(DeviceAnnounceMessage {
@@ -191,70 +177,6 @@ mod tests {
             _ => panic!("expected Clipboard"),
         }
     }
-
-    #[test]
-    fn transfer_resume_message_serializes() {
-        let msg = TransferResumeMessage {
-            transfer_id: "0102030405060708090a0b0c0d0e0f10".to_string(),
-            start_chunk: 42,
-        };
-        let json = serde_json::to_value(&msg).expect("serialize");
-        assert_eq!(json["transfer_id"], "0102030405060708090a0b0c0d0e0f10");
-        assert_eq!(json["start_chunk"], 42);
-    }
-
-    #[test]
-    fn transfer_resume_to_bytes_roundtrip() {
-        let msg = make_transfer_resume();
-        let bytes = msg.to_bytes().expect("to_bytes");
-        let decoded = ProtocolMessage::from_bytes(&bytes).expect("from_bytes");
-        match decoded {
-            ProtocolMessage::TransferResume(resume) => {
-                assert_eq!(resume.transfer_id, "0102030405060708090a0b0c0d0e0f10");
-                assert_eq!(resume.start_chunk, 5);
-            }
-            _ => panic!("expected TransferResume"),
-        }
-    }
-
-    #[test]
-    fn frame_to_bytes_roundtrip_transfer_resume() {
-        let msg = make_transfer_resume();
-        let framed = msg.frame_to_bytes(None).expect("frame_to_bytes");
-
-        assert!(framed.len() >= 4);
-        let json_len = u32::from_le_bytes(framed[0..4].try_into().unwrap()) as usize;
-        assert_eq!(framed.len(), 4 + json_len, "no trailing bytes expected");
-
-        let json_bytes = &framed[4..4 + json_len];
-        let decoded = ProtocolMessage::from_bytes(json_bytes).expect("from_bytes");
-        match decoded {
-            ProtocolMessage::TransferResume(resume) => {
-                assert_eq!(resume.transfer_id, "0102030405060708090a0b0c0d0e0f10");
-                assert_eq!(resume.start_chunk, 5);
-            }
-            _ => panic!("expected TransferResume"),
-        }
-    }
-
-    #[test]
-    fn existing_variants_still_roundtrip_after_transfer_resume_added() {
-        // DeviceAnnounce
-        let da = make_device_announce();
-        let da_bytes = da.to_bytes().expect("to_bytes");
-        assert!(matches!(
-            ProtocolMessage::from_bytes(&da_bytes).unwrap(),
-            ProtocolMessage::DeviceAnnounce(_)
-        ));
-
-        // Clipboard
-        let cb = make_clipboard_header();
-        let cb_bytes = cb.to_bytes().expect("to_bytes");
-        assert!(matches!(
-            ProtocolMessage::from_bytes(&cb_bytes).unwrap(),
-            ProtocolMessage::Clipboard(_)
-        ));
-    }
 }
 
 impl std::fmt::Debug for ProtocolMessage {
@@ -264,7 +186,6 @@ impl std::fmt::Debug for ProtocolMessage {
             Self::Clipboard(msg) => f.debug_tuple("Clipboard").field(msg).finish(),
             Self::Heartbeat(msg) => f.debug_tuple("Heartbeat").field(msg).finish(),
             Self::DeviceAnnounce(msg) => f.debug_tuple("DeviceAnnounce").field(msg).finish(),
-            Self::TransferResume(msg) => f.debug_tuple("TransferResume").field(msg).finish(),
         }
     }
 }

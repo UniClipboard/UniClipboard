@@ -384,7 +384,9 @@ impl CommonClipboardImpl {
                     }
                     "public.html" | "Apple HTML pasteboard type" | "html" => Some("text/html"),
                     "public.rtf" | "rtf" => Some("text/rtf"),
-                    "public.png" => Some("image/png"),
+                    "public.png" | "image" => Some("image/png"),
+                    "public.tiff" => Some("image/tiff"),
+                    "public.jpeg" => Some("image/jpeg"),
                     "public.file-url" | "NSFilenamesPboardType" => Some("text/uri-list"),
                     _ => None,
                 });
@@ -406,7 +408,7 @@ impl CommonClipboardImpl {
                     .collect();
                 map_clipboard_err(ctx.set_files(files))?;
             }
-            Some("image/png") => {
+            Some(mime) if mime.starts_with("image/") => {
                 let img =
                     clipboard_rs::RustImageData::from_bytes(&rep.bytes).map_err(|e| anyhow!(e))?;
                 map_clipboard_err(ctx.set_image(img))?;

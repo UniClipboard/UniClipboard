@@ -252,7 +252,7 @@ pub struct Libp2pNetworkAdapter {
     policy_resolver: Arc<dyn ConnectionPolicyResolverPort>,
     encryption_session: Arc<dyn EncryptionSessionPort>,
     transfer_decryptor: Arc<dyn TransferPayloadDecryptorPort>,
-    transfer_encryptor: Arc<dyn TransferPayloadEncryptorPort>,
+    _transfer_encryptor: Arc<dyn TransferPayloadEncryptorPort>,
     stream_control: Mutex<Option<stream::Control>>,
     pairing_service: Mutex<Option<PairingStreamService>>,
 }
@@ -294,7 +294,7 @@ impl Libp2pNetworkAdapter {
             policy_resolver,
             encryption_session,
             transfer_decryptor,
-            transfer_encryptor,
+            _transfer_encryptor: transfer_encryptor,
             stream_control: Mutex::new(None),
             pairing_service,
         })

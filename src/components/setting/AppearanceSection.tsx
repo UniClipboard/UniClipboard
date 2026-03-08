@@ -105,6 +105,7 @@ export default function AppearanceSection() {
           {THEME_COLORS.map(item => (
             <div
               key={item.name}
+              data-testid="theme-color-swatch"
               onClick={() => {
                 void handleThemeColorChange(item.name)
               }}
@@ -116,10 +117,16 @@ export default function AppearanceSection() {
                   : 'border-transparent'
               )}
             >
-              <div
-                className="w-8 h-8 rounded-full shadow-sm"
-                style={{ backgroundColor: item.color }}
-              />
+              <div className="flex items-center justify-center gap-1">
+                {item.previewDots.map((dot, index) => (
+                  <span
+                    key={index}
+                    data-testid="theme-color-dot"
+                    className="h-2.5 w-2.5 rounded-full shadow-sm"
+                    style={{ backgroundColor: dot }}
+                  />
+                ))}
+              </div>
               <span className="text-xs font-medium capitalize text-muted-foreground group-hover:text-foreground">
                 {item.name}
               </span>

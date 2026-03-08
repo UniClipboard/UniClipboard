@@ -38,6 +38,8 @@ const BUSINESS_PROTOCOL_ID: &str = ProtocolId::Business.as_str();
 const BUSINESS_PAYLOAD_MAX_BYTES: u64 = 300 * 1024 * 1024;
 /// Network I/O chunk size for writing outbound payloads (256 KB).
 const NETWORK_CHUNK_SIZE: usize = 256 * 1024;
+/// Maximum allowed ciphertext length per chunk (plaintext chunk + encryption overhead).
+const MAX_CHUNK_CIPHERTEXT_SIZE: usize = NETWORK_CHUNK_SIZE + 256;
 const BUSINESS_READ_TIMEOUT: Duration = Duration::from_secs(120);
 const BUSINESS_STREAM_OPEN_TIMEOUT: Duration = Duration::from_secs(10);
 const BUSINESS_STREAM_WRITE_TIMEOUT: Duration = Duration::from_secs(120);
@@ -1023,6 +1025,14 @@ fn spawn_business_stream_handler(
                                         anyhow!("stream read failed (chunk {} len): {e}", chunk_idx)
                                     })?;
                                     let ct_len = u32::from_le_bytes(len_buf) as usize;
+                                    if ct_len > MAX_CHUNK_CIPHERTEXT_SIZE {
+                                        return Err(anyhow!(
+                                            "chunk {} ciphertext length {} exceeds maximum allowed size {}",
+                                            chunk_idx,
+                                            ct_len,
+                                            MAX_CHUNK_CIPHERTEXT_SIZE
+                                        ));
+                                    }
                                     buf.extend_from_slice(&len_buf);
 
                                     // Read chunk ciphertext

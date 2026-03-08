@@ -97,9 +97,17 @@ impl SystemClipboardPort for WindowsClipboard {
             representations = snapshot.representations.len(),
         );
         span.in_scope(|| {
-            let fallback_eligible = is_single_text_plain_snapshot(&snapshot);
-            let expected_text = if fallback_eligible {
+            let text_fallback_eligible = is_single_text_plain_snapshot(&snapshot);
+            let image_fallback_eligible = is_single_image_snapshot(&snapshot);
+            let expected_text = if text_fallback_eligible {
                 extract_text_plain_utf8(&snapshot)?
+            } else {
+                None
+            };
+            // Extract image bytes before passing snapshot to CommonClipboardImpl
+            // (which consumes it by reference but we need the bytes for fallback).
+            let image_bytes = if image_fallback_eligible {
+                snapshot.representations.first().map(|rep| rep.bytes.clone())
             } else {
                 None
             };
@@ -112,20 +120,35 @@ impl SystemClipboardPort for WindowsClipboard {
             })?;
             let write_result = CommonClipboardImpl::write_snapshot(&mut ctx, snapshot);
             if let Err(err) = write_result {
-                if !fallback_eligible {
-                    return Err(err);
-                }
+                // Drop clipboard-rs context before native fallback to avoid double clipboard open
                 drop(ctx);
-                if let Some(text) = expected_text.as_deref() {
-                    warn!(
-                        error = %err,
-                        text_len = text.len(),
-                        "Primary clipboard-rs write failed; using Windows Unicode text fallback"
-                    );
-                    write_text_windows_native(text)?;
-                    info!("Wrote clipboard text via Windows Unicode fallback");
-                    return Ok(());
+
+                if text_fallback_eligible {
+                    if let Some(text) = expected_text.as_deref() {
+                        warn!(
+                            error = %err,
+                            text_len = text.len(),
+                            "Primary clipboard-rs write failed; using Windows Unicode text fallback"
+                        );
+                        write_text_windows_native(text)?;
+                        info!("Wrote clipboard text via Windows Unicode fallback");
+                        return Ok(());
+                    }
                 }
+
+                if image_fallback_eligible {
+                    if let Some(bytes) = image_bytes.as_deref() {
+                        warn!(
+                            error = %err,
+                            image_size = bytes.len(),
+                            "Primary clipboard-rs image write failed; using Windows native Bitmap fallback"
+                        );
+                        write_image_windows(bytes)?;
+                        info!("Wrote clipboard image via Windows native Bitmap fallback");
+                        return Ok(());
+                    }
+                }
+
                 return Err(err);
             }
 
@@ -194,6 +217,17 @@ fn is_single_text_plain_snapshot(snapshot: &SystemClipboardSnapshot) -> bool {
         .is_some_and(|mime| mime.as_str().eq_ignore_ascii_case("text/plain"))
 }
 
+fn is_single_image_snapshot(snapshot: &SystemClipboardSnapshot) -> bool {
+    if snapshot.representations.len() != 1 {
+        return false;
+    }
+
+    snapshot.representations[0]
+        .mime
+        .as_ref()
+        .is_some_and(|mime| mime.as_str().starts_with("image/"))
+}
+
 fn write_text_windows_native(text: &str) -> Result<()> {
     clipboard_win::set_clipboard_string(text)
         .map_err(|e| anyhow::anyhow!("Failed to set Windows Unicode clipboard text: {}", e))
@@ -217,54 +251,34 @@ fn read_image_windows_as_png() -> Result<Vec<u8>> {
     crate::clipboard::image_convert::dib_to_png(&dib_data)
 }
 
-/// Windows-specific: Write image to clipboard as Bitmap format
+/// Windows-specific: Write image to clipboard as CF_DIB format.
+///
+/// Uses clipboard-win's `Clipboard` struct for explicit open/close control
+/// with retry logic, avoiding the OSError(1418) failures seen with
+/// clipboard-rs's set_image() on Windows.
+///
+/// Accepts raw image bytes in any format supported by the `image` crate
+/// (PNG, TIFF, JPEG, BMP, etc.), decodes them, and writes as CF_DIB
+/// (BITMAPINFOHEADER + pixel data, without 14-byte BMP file header).
 fn write_image_windows(bytes: &[u8]) -> Result<()> {
-    use clipboard_win::{empty, formats, set_clipboard};
-    use std::ptr::null_mut;
-    use winapi::um::winuser::{CloseClipboard, GetOpenClipboardWindow, OpenClipboard};
+    use clipboard_win::{formats, Clipboard as ClipboardWin, Setter};
 
-    // Decode image bytes
+    // Decode image bytes (supports PNG, TIFF, JPEG, BMP, etc. via `image` crate)
     let img = image::load_from_memory(bytes)
-        .map_err(|e| anyhow::anyhow!("Failed to decode image: {}", e))?;
+        .map_err(|e| anyhow::anyhow!("Failed to decode image for Windows native write: {}", e))?;
 
-    // Convert to BMP format with proper header
+    // Convert to full BMP format then strip the 14-byte file header to get CF_DIB data.
+    // CF_DIB = BITMAPINFOHEADER (40 bytes) + pixel data (no BMP file header).
     let bmp_bytes = to_bitmap(&img);
+    let dib_bytes = &bmp_bytes[14..]; // Skip BITMAPFILEHEADER (14 bytes)
 
-    // Retry mechanism to open clipboard (max 5 attempts, 10ms delay)
-    let mut retry_count = 0;
-    while retry_count < 5 {
-        unsafe {
-            if OpenClipboard(null_mut()) != 0 {
-                // Successfully opened clipboard
-                break;
-            }
-            // If clipboard is opened by another process, wait and retry
-            if GetOpenClipboardWindow() != null_mut() {
-                std::thread::sleep(std::time::Duration::from_millis(10));
-                retry_count += 1;
-            } else {
-                return Err(anyhow::anyhow!("Failed to open clipboard"));
-            }
-        }
-    }
+    // Use clipboard-win's Clipboard struct with retry (up to 10 attempts).
+    // This handles OpenClipboard/EmptyClipboard/CloseClipboard atomically.
+    let _clip = ClipboardWin::new_attempts(10)
+        .map_err(|e| anyhow::anyhow!("Failed to open clipboard for image write: {}", e))?;
 
-    if retry_count == 5 {
-        return Err(anyhow::anyhow!(
-            "Failed to open clipboard after multiple attempts"
-        ));
-    }
-
-    // Clear clipboard and set new content
-    let clear_result = empty();
-    let set_result = set_clipboard(formats::Bitmap, &bmp_bytes);
-
-    // Close clipboard
-    unsafe {
-        CloseClipboard();
-    }
-
-    clear_result.map_err(|e| anyhow::anyhow!("Failed to clear clipboard: {}", e))?;
-    set_result.map_err(|e| anyhow::anyhow!("Failed to set clipboard: {}", e))?;
+    clipboard_win::raw::set(formats::CF_DIB, dib_bytes)
+        .map_err(|e| anyhow::anyhow!("Failed to write CF_DIB to clipboard: {}", e))?;
 
     Ok(())
 }

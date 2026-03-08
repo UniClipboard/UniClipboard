@@ -89,9 +89,3 @@ tempfile = "3"
 
 [target.'cfg(windows)'.dependencies]
 clipboard-win = { version = "5.4" }
-winapi = { version = "0.3", features = [
-  "winuser",
-  "basetsd",
-  "minwindef",
-  "winbase",
-] }

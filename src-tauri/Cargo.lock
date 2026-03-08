@@ -8919,7 +8919,6 @@ dependencies = [
  "tracing",
  "uc-core",
  "uuid",
- "winapi",
 ]
 
 [[package]]

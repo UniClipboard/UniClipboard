@@ -1,8 +1,10 @@
 import { type LucideIcon, Check, Monitor, Moon, Sun } from 'lucide-react'
+import type { MouseEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 import { SettingGroup } from './SettingGroup'
 import { DEFAULT_THEME_COLOR, THEME_COLORS } from '@/constants/theme'
 import { useSetting, type Theme } from '@/hooks/useSetting'
+import { setTransitionOrigin } from '@/lib/theme-transition'
 import { cn } from '@/lib/utils'
 
 interface ThemeOptionProps {
@@ -10,13 +12,13 @@ interface ThemeOptionProps {
   icon: LucideIcon
   label: string
   theme: Theme
-  handleThemeChange: (newTheme: Theme) => Promise<void>
+  handleThemeChange: (newTheme: Theme, e: MouseEvent) => Promise<void>
 }
 
 function ThemeOption({ value, icon: Icon, label, theme, handleThemeChange }: ThemeOptionProps) {
   return (
     <div
-      onClick={() => handleThemeChange(value)}
+      onClick={e => handleThemeChange(value, e)}
       className={cn(
         'cursor-pointer relative flex flex-col items-center gap-2 p-4 rounded-xl border-2 transition-all',
         theme === value
@@ -56,16 +58,18 @@ export default function AppearanceSection() {
   // Use derived state instead of local state to avoid initial flash
   const theme = setting?.general?.theme || 'system'
 
-  const handleThemeChange = async (newTheme: Theme) => {
+  const handleThemeChange = async (newTheme: Theme, e: MouseEvent) => {
     try {
+      setTransitionOrigin(e.clientX, e.clientY)
       await updateGeneralSetting({ theme: newTheme })
     } catch (error) {
       console.error('Failed to change theme:', error)
     }
   }
 
-  const handleThemeColorChange = async (newThemeColor: string) => {
+  const handleThemeColorChange = async (newThemeColor: string, e: MouseEvent) => {
     try {
+      setTransitionOrigin(e.clientX, e.clientY)
       await updateGeneralSetting({ theme_color: newThemeColor })
     } catch (error) {
       console.error('Failed to change theme color:', error)
@@ -106,8 +110,8 @@ export default function AppearanceSection() {
             <div
               key={item.name}
               data-testid="theme-color-swatch"
-              onClick={() => {
-                void handleThemeColorChange(item.name)
+              onClick={e => {
+                void handleThemeColorChange(item.name, e)
               }}
               className={cn(
                 'cursor-pointer group relative flex flex-col items-center gap-2 p-2 rounded-xl border-2 transition-all hover:bg-muted/50',
@@ -130,12 +134,6 @@ export default function AppearanceSection() {
               <span className="text-xs font-medium capitalize text-muted-foreground group-hover:text-foreground">
                 {item.name}
               </span>
-              {(setting?.general?.theme_color === item.name ||
-                (item.name === DEFAULT_THEME_COLOR && !setting?.general?.theme_color)) && (
-                <div className="absolute top-1 right-1 text-primary bg-background rounded-full p-0.5 shadow-sm">
-                  <Check className="w-3 h-3" />
-                </div>
-              )}
             </div>
           ))}
         </div>

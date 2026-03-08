@@ -5,6 +5,7 @@ import { DEFAULT_THEME_COLOR } from '@/constants/theme'
 import i18n, { normalizeLanguage, persistLanguage } from '@/i18n'
 import { invokeWithTrace } from '@/lib/tauri-command'
 import { applyThemePreset } from '@/lib/theme-engine'
+import { startThemeTransition } from '@/lib/theme-transition'
 import type { SettingChangedEvent } from '@/types/events'
 import type { SettingContextType, Settings } from '@/types/setting'
 
@@ -147,13 +148,21 @@ export const SettingProvider: React.FC<SettingProviderProps> = ({ children }) =>
   }, [])
 
   // 监听主题变化并应用
+  const prevThemeRef = React.useRef<string | undefined>()
+  const prevThemeColorRef = React.useRef<string | undefined>()
+  const hasAppliedOnceRef = React.useRef(false)
+
   useEffect(() => {
+    // Skip theme application until settings are loaded to avoid
+    // flashing the default theme before switching to the user's theme
+    if (!setting) return
+
     const root = window.document.documentElement
     const systemThemeMedia = window.matchMedia('(prefers-color-scheme: dark)')
 
     const applyTheme = () => {
-      const theme = setting?.general.theme
-      const themeColor = setting?.general.theme_color || DEFAULT_THEME_COLOR
+      const theme = setting.general.theme
+      const themeColor = setting.general.theme_color || DEFAULT_THEME_COLOR
 
       // 1. Apply Mode (Light/Dark)
       root.classList.remove('light', 'dark')
@@ -173,10 +182,23 @@ export const SettingProvider: React.FC<SettingProviderProps> = ({ children }) =>
       applyThemePreset(themeColor, resolvedMode, root)
     }
 
-    applyTheme()
+    // Use view transition animation only for user-initiated theme changes (not initial load)
+    const hasChanged =
+      prevThemeRef.current !== setting.general.theme ||
+      prevThemeColorRef.current !== (setting.general.theme_color || DEFAULT_THEME_COLOR)
+
+    prevThemeRef.current = setting.general.theme
+    prevThemeColorRef.current = setting.general.theme_color || DEFAULT_THEME_COLOR
+
+    if (!hasAppliedOnceRef.current || !hasChanged) {
+      hasAppliedOnceRef.current = true
+      applyTheme()
+    } else {
+      startThemeTransition(applyTheme)
+    }
 
     const handleSystemThemeChange = () => {
-      if (setting?.general.theme === 'system' || !setting?.general.theme) {
+      if (setting.general.theme === 'system' || !setting.general.theme) {
         applyTheme()
       }
     }

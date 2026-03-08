@@ -86,6 +86,7 @@ iota_stronghold = "2.1"
 
 [dev-dependencies]
 tempfile = "3"
+mockall = "0.14.0"
 
 [target.'cfg(windows)'.dependencies]
 clipboard-win = { version = "5.4" }

@@ -3,6 +3,7 @@ import { appApi } from './api'
 import clipboardReducer from './slices/clipboardSlice'
 import devicesReducer from './slices/devicesSlice'
 import statsReducer from './slices/statsSlice'
+import transferReducer from './slices/transferSlice'
 
 export const store = configureStore({
   reducer: {
@@ -10,6 +11,7 @@ export const store = configureStore({
     clipboard: clipboardReducer,
     stats: statsReducer,
     devices: devicesReducer,
+    transfer: transferReducer,
   },
   middleware: getDefaultMiddleware => getDefaultMiddleware().concat(appApi.middleware),
 })

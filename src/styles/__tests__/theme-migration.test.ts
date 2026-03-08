@@ -1,6 +1,10 @@
-import { readFileSync } from 'node:fs'
-import path from 'node:path'
-import { fileURLToPath } from 'node:url'
+// NOTE: This file uses Node-only APIs (fs/path/url) in a vitest environment.
+// We intentionally keep types minimal here and accept any where needed to avoid
+// leaking Node typings into the main frontend tsconfig.
+
+import { readFileSync } from 'fs'
+import path from 'path'
+import { fileURLToPath } from 'url'
 import { describe, expect, it } from 'vitest'
 
 const __filename = fileURLToPath(import.meta.url)

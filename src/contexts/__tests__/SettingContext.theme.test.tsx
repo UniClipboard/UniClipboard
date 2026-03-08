@@ -4,21 +4,17 @@ import { DEFAULT_THEME_COLOR } from '@/constants/theme'
 import { SettingProvider } from '@/contexts/SettingContext'
 import { useSetting } from '@/hooks/useSetting'
 
-vi.mock('@/hooks/useSetting', async actualImport => {
-  const actual = await actualImport()
+vi.mock('@/hooks/useSetting', () => {
   return {
-    ...actual,
-    useSetting: () => {
-      return {
-        setting: {
-          general: {
-            theme: 'light',
-            theme_color: DEFAULT_THEME_COLOR,
-            language: 'en',
-          },
+    useSetting: () => ({
+      setting: {
+        general: {
+          theme: 'light',
+          theme_color: DEFAULT_THEME_COLOR,
+          language: 'en',
         },
-      }
-    },
+      },
+    }),
   }
 })
 
@@ -31,8 +27,9 @@ describe('SettingProvider theme integration', () => {
 
   beforeEach(() => {
     // jsdom does not provide matchMedia by default; provide a minimal stub.
-    // @ts-expect-error - we are defining a testing-only global
-    window.matchMedia = vi.fn().mockReturnValue(matchMediaMock)
+    ;(window as unknown as { matchMedia: (query: string) => MediaQueryList }).matchMedia = vi
+      .fn()
+      .mockReturnValue(matchMediaMock)
   })
 
   afterEach(() => {

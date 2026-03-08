@@ -128,3 +128,15 @@ Plans:
 
 - [ ] 16-01-PLAN.md — Backend origin event + get_clipboard_entry command + Redux reducers
 - [ ] 16-02-PLAN.md — useClipboardEvents hook extraction + DashboardPage simplification
+
+### Phase 17: Dynamic theme switching with shadcn preset import and enhanced color preview
+
+**Goal:** Migrate theme color ownership to runtime TS preset injection and upgrade Appearance preset swatches to multi-dot previews while preserving mode/persistence behavior.
+**Requirements**: P17-01, P17-02, P17-03, P17-04, P17-05, P17-06, P17-07
+**Depends on:** Phase 16
+**Plans:** 1/2 plans executed
+
+Plans:
+
+- [ ] 17-01-PLAN.md — Runtime preset engine + SettingProvider injection + static CSS theme migration
+- [ ] 17-02-PLAN.md — Appearance multi-dot swatches + persistence contract regression tests

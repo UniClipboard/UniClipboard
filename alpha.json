@@ -1,23 +1,23 @@
 {
-  "version": "0.1.0-alpha.7",
+  "version": "0.2.0-alpha.2",
   "notes": "",
-  "pub_date": "2026-03-06T05:40:01Z",
+  "pub_date": "2026-03-08T04:59:41Z",
   "platforms": {
     "linux-x86_64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVRNEoxeUdOZ2hvc3B5Zks0MytKQmtZTmh5VVNyakowM3Y5Q0dsS0FBZ2dsZk85TjlMZm5ZOTc1cGNDQ2I2cTlNejR2TFc3RGQ5MHpjd1ZHN0ZDMm1WUSswSlBPQ2toN0EwPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzcyNzc1MjA3CWZpbGU6VW5pQ2xpcGJvYXJkXzAuMS4wLWFscGhhLjdfYW1kNjQuQXBwSW1hZ2UKM2dja1ArQTR2V2hEUm9aV01aZlQ4TXZadHJhQ0Y1YTZ6SWNZa1k2UUVxSzlCTWY1c1JtYytmc2pxYi9CTHRHVTdVUm1MeGgxTEVzU3Fsb09XNTQrQXc9PQo=",
-      "url": "https://github.com/UniClipboard/UniClipboard/releases/download/v0.1.0-alpha.7/UniClipboard_0.1.0-alpha.7_amd64.AppImage"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVRNEoxeUdOZ2hvc2pkUUVYZU9PTzd0NmRFQmRHbDgyZ3p0OHVKMVQzN1RpZlVhZTVwWlJTNkRRSms3QnV5OVFKdm5yTkhoWEFiVzA3YnR5a3Z3OUdzL1VONUNOdDZyK3dNPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzcyOTQ1NjY5CWZpbGU6VW5pQ2xpcGJvYXJkXzAuMi4wLWFscGhhLjJfYW1kNjQuQXBwSW1hZ2UKNWZHcnk4MlIxQ1VvWW5YdFRIanJ1QUwyNUJZWllUalQ0LzRJSmE3ZitzVGZtSTQyajNHSyt6disvUDROU0lFR2VzRGZsbTB5eUJLM3ZKVFNnd2tSQ2c9PQo=",
+      "url": "https://github.com/UniClipboard/UniClipboard/releases/download/v0.2.0-alpha.2/UniClipboard_0.2.0-alpha.2_amd64.AppImage"
     },
     "windows-x86_64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVRNEoxeUdOZ2hvc3U5RnRBYkJOWWRIeWw3cXprTzA4bk9nNmtwY25ncDJPS1ZSN1huL2JUZ3pGOS94dkhZUHhQdXZUakVjM2hySzNaalU2OVlUaXhXbXRqSFVIZGVGdVFjPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzcyNzc1NTUwCWZpbGU6VW5pQ2xpcGJvYXJkXzAuMS4wLWFscGhhLjdfeDY0LXNldHVwLmV4ZQpJM01xUk93ZkRETkNvL3doREQ5RlVab0pldTZpWmNCSDJVWDVqZjJhRW9Cazd6OU1UVnoxSUFXOVdlR0RmbkRTYXIzTUZvT3Z1VDNqV0NzUCsrd0pEQT09Cg==",
-      "url": "https://github.com/UniClipboard/UniClipboard/releases/download/v0.1.0-alpha.7/UniClipboard_0.1.0-alpha.7_x64-setup.exe"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVRNEoxeUdOZ2hvc2xGRHROMEhBYkhWeW9aVXozRjh2UXpuSFpYeGxKTG9FVWIzdVY2bFR3VmZNNXcxTjFpV3MvZ2pNVVJPVGJJR2ZOYUdSY2tMaEpMYlZWOXVDS1FTMWcwPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzcyOTQ1OTEzCWZpbGU6VW5pQ2xpcGJvYXJkXzAuMi4wLWFscGhhLjJfeDY0LXNldHVwLmV4ZQpMSjFYMUxWMUF5SHNlN3d6SEx0a3BFdGp6SEkrUDVMaElhZFdsczJ4Q3laeVc0VnZzcTB6c2haSlZGWlZPRnd5djVQR3NrZGxHNktTWjBRUlVxaU9Ddz09Cg==",
+      "url": "https://github.com/UniClipboard/UniClipboard/releases/download/v0.2.0-alpha.2/UniClipboard_0.2.0-alpha.2_x64-setup.exe"
     },
     "darwin-aarch64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVRNEoxeUdOZ2hvc2ljcUZUKzkwbHlUMExvclZ3clF4QjJIVWpNdnR1S2pKSkhaNUdwNXAyb1VhbW9lWG0xOXhaWitmYVlwZS9BczdPc08vR1VSSjRqRi9adnY0S0VyN0FnPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzcyNzc1MTU4CWZpbGU6VW5pQ2xpcGJvYXJkLmFwcC50YXIuZ3oKc1F3N3RlNjcwZVdVMkZ2bzR6dWpqbVpZUlJwMFpEY3N4d2F0cE9VWVEvSnBJRmNUWDhkWGJZR0J0dGF6ajhHSnZXMEhlRm5md0RPUmR4ZG9PR2trRFE9PQo=",
-      "url": "https://github.com/UniClipboard/UniClipboard/releases/download/v0.1.0-alpha.7/UniClipboard_aarch64-apple-darwin.app.tar.gz"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVRNEoxeUdOZ2hvc2ptdm5xUDEvZ0lUUFlwM0ZCNWJBczV4UmVaN1hVczJ0Nm9HWXN6M1Q2bmZtYllTbTZDYnFGcmhXSzkyY0NLYk9MUVMwdDBCS3BtdE9xczdPNnNMdEFrPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzcyOTQ1NzI4CWZpbGU6VW5pQ2xpcGJvYXJkLmFwcC50YXIuZ3oKcEUyaGh1bVhCYlZIZit1bEtCeW1PTnhFaTBlYm05azc3VCtjbkVMU1h3LzdaeGJHVGNqRlFCelg4ZEk5SkRhYWt3djVlSVVTdEtXanJ3ZkpEZzV6QkE9PQo=",
+      "url": "https://github.com/UniClipboard/UniClipboard/releases/download/v0.2.0-alpha.2/UniClipboard_aarch64-apple-darwin.app.tar.gz"
     },
     "darwin-x86_64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVRNEoxeUdOZ2hvc2djemVjSnU3ckF4N2RQbVhaRlYvRFNlRElzdXZuZEdmeklGdnovSkpBcUtKbzBuRGp0N3c0VXdmOEd2N3RnNmdVWDU0cWQ0amJyS2k4SnhTSjlJMHdNPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzcyNzc1MTkzCWZpbGU6VW5pQ2xpcGJvYXJkLmFwcC50YXIuZ3oKc25oWWtqZHJoTDA1eWNLaEp1VG53Z1FGVDVmMWdPMDlFa1NUY2gxdGZYZjl2M09lQVJwUFYwNk1pMjNqeTFZN0hNQUtFaVI5N2ljM3lUMlRjUUFORGc9PQo=",
-      "url": "https://github.com/UniClipboard/UniClipboard/releases/download/v0.1.0-alpha.7/UniClipboard_x86_64-apple-darwin.app.tar.gz"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVRNEoxeUdOZ2hvc3BkN2hBUENPZFI0eDN5VDFUNStYb2w1NThUeXlTREhtcEQ2aEtkc290TTIzbFZqYTdZaG41MW1GT2J1THVIYXFHOW1xUXU5QmFaWnI3amJacXV3WXdrPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzcyOTQ1NTg2CWZpbGU6VW5pQ2xpcGJvYXJkLmFwcC50YXIuZ3oKMml3MTNoUHRBa21XeExqRTh2TFhUS3lvRDdwTnNuUWRBS3ZGQVJrUFQvSG1zODZkV2Z1aTFVU21xbThvUjZkSXJzMGliN29ST1M2MEliNjRGT0tEQWc9PQo=",
+      "url": "https://github.com/UniClipboard/UniClipboard/releases/download/v0.2.0-alpha.2/UniClipboard_x86_64-apple-darwin.app.tar.gz"
     }
   }
 }

@@ -1,6 +1,6 @@
 [package]
 name = "uniclipboard"
-version = "0.2.0-alpha.6"
+version = "0.2.0"
 description = "一个剪切板同步工具"
 authors = ["mkdir700@gmail.com"]
 edition = "2021"

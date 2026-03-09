@@ -864,7 +864,8 @@ fn derive_default_paths_from_app_dirs(
 ) -> WiringResult<DefaultPaths> {
     let default_app_data_root = app_dirs.app_data_root.clone();
 
-    let app_data_root = if config.database_path.as_os_str().is_empty() {
+    let is_in_memory_db = config.database_path.as_os_str() == ":memory:";
+    let app_data_root = if config.database_path.as_os_str().is_empty() || is_in_memory_db {
         default_app_data_root
     } else {
         let configured_root = config
@@ -877,6 +878,8 @@ fn derive_default_paths_from_app_dirs(
 
     let db_path = if config.database_path.as_os_str().is_empty() {
         app_data_root.join("uniclipboard.db")
+    } else if is_in_memory_db {
+        config.database_path.clone()
     } else {
         let db_file_name = config
             .database_path

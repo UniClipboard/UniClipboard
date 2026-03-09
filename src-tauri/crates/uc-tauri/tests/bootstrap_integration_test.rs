@@ -360,11 +360,17 @@ fn wiring_exposes_secure_storage_not_keyring() {
         "uc-core KeyringPort definition should be removed"
     );
 
-    let config = AppConfig::empty();
-    let (cmd_tx, _cmd_rx) = mpsc::channel(10);
-    let result =
-        wire_dependencies_with_identity_store(&config, cmd_tx, Some(test_identity_store()));
-    assert!(result.is_ok());
+    run_with_tokio(|| {
+        let config = AppConfig::empty();
+        let (cmd_tx, _cmd_rx) = mpsc::channel(10);
+        let result =
+            wire_dependencies_with_identity_store(&config, cmd_tx, Some(test_identity_store()));
+        assert!(
+            result.is_ok(),
+            "wire_dependencies should succeed with empty config: {:?}",
+            result.err()
+        );
+    });
 }
 
 /// Test 6: Integration test - real file I/O error handling

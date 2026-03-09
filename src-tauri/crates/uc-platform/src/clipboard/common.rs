@@ -472,22 +472,45 @@ impl CommonClipboardImpl {
                     mime = mime,
                     data_size = rep.bytes.len(),
                     format_id = %rep.format_id,
-                    "write_snapshot: decoding image bytes for clipboard write"
+                    "write_snapshot: writing image to clipboard"
                 );
-                let img = clipboard_rs::RustImageData::from_bytes(&rep.bytes).map_err(|e| {
-                    warn!(
-                        mime = mime,
-                        data_size = rep.bytes.len(),
-                        error = %e,
-                        "write_snapshot: failed to decode image bytes via RustImageData::from_bytes"
-                    );
-                    anyhow!(e)
-                })?;
-                debug!(
-                    mime = mime,
-                    "write_snapshot: setting image on system clipboard"
-                );
-                map_clipboard_err(ctx.set_image(img))?;
+                // On macOS, bypass clipboard-rs set_image() which does an unnecessary
+                // decode → re-encode cycle (from_bytes → to_png). For large images this
+                // re-encode can silently fail, leaving the clipboard empty after
+                // clearContents(). Instead, write raw PNG bytes directly via set_buffer
+                // with the "public.png" UTI (equivalent to NSPasteboardTypePNG).
+                #[cfg(target_os = "macos")]
+                {
+                    if mime == "image/png" {
+                        map_clipboard_err(ctx.set_buffer("public.png", rep.bytes.clone()))?;
+                    } else {
+                        // Non-PNG images still need format conversion via set_image
+                        let img =
+                            clipboard_rs::RustImageData::from_bytes(&rep.bytes).map_err(|e| {
+                                warn!(
+                                    mime = mime,
+                                    data_size = rep.bytes.len(),
+                                    error = %e,
+                                    "write_snapshot: failed to decode image bytes"
+                                );
+                                anyhow!(e)
+                            })?;
+                        map_clipboard_err(ctx.set_image(img))?;
+                    }
+                }
+                #[cfg(not(target_os = "macos"))]
+                {
+                    let img = clipboard_rs::RustImageData::from_bytes(&rep.bytes).map_err(|e| {
+                        warn!(
+                            mime = mime,
+                            data_size = rep.bytes.len(),
+                            error = %e,
+                            "write_snapshot: failed to decode image bytes"
+                        );
+                        anyhow!(e)
+                    })?;
+                    map_clipboard_err(ctx.set_image(img))?;
+                }
                 debug!(
                     mime = mime,
                     "write_snapshot: image set on system clipboard successfully"

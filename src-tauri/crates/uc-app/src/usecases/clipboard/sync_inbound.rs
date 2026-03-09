@@ -387,6 +387,34 @@ impl SyncInboundClipboardUseCase {
                 self.rollback_recent_id(&message.id).await;
                 return Err(err).context("V3 inbound: failed to write snapshot to OS clipboard");
             }
+
+            // Read back the clipboard to capture the OS-re-encoded hash.
+            // Some platforms (e.g. Windows clipboard-rs) re-encode images (PNG→DIB→PNG),
+            // producing different bytes than the original. Without this, the watcher
+            // would see a different hash and treat it as a new local copy, causing a
+            // sync loop.
+            match self.local_clipboard.read_snapshot() {
+                Ok(readback) => {
+                    let readback_hash = readback.snapshot_hash().to_string();
+                    if readback_hash != snapshot_hash {
+                        debug!(
+                            original_hash = %snapshot_hash,
+                            readback_hash = %readback_hash,
+                            "Inbound write: OS re-encoded clipboard, remembering readback hash to prevent loopback"
+                        );
+                        self.clipboard_change_origin
+                            .remember_remote_snapshot_hash(
+                                readback_hash,
+                                Duration::from_millis(REMOTE_SNAPSHOT_HASH_TTL_MS),
+                            )
+                            .await;
+                    }
+                }
+                Err(e) => {
+                    warn!(error = %e, "Failed to read back clipboard after inbound write; loopback may occur");
+                }
+            }
+
             info!(message_id = %message.id, "V3 inbound clipboard applied");
             return Ok(InboundApplyOutcome::Applied { entry_id: None });
         }
@@ -1165,16 +1193,23 @@ mod tests {
             .await
             .expect("execute inbound message");
 
-        // V3 inbound does NOT read OS clipboard for dedup (uses message.id dedup)
+        // V3 inbound: remember hash, write, read-back, remember readback hash (loopback guard)
         assert_eq!(
             calls.lock().expect("calls lock").as_slice(),
-            ["remember_remote_snapshot_hash", "write_snapshot"]
+            [
+                "remember_remote_snapshot_hash",
+                "write_snapshot",
+                "read_snapshot",
+                "remember_remote_snapshot_hash",
+            ]
         );
         let values = origin_values.lock().expect("origin values lock");
         assert_eq!(values.len(), 0);
         let remote_values = remote_hash_values.lock().expect("remote hash values lock");
-        assert_eq!(remote_values.len(), 1);
+        // Two hashes remembered: original pre-write hash + readback post-write hash
+        assert_eq!(remote_values.len(), 2);
         assert_eq!(remote_values[0].1, Duration::from_secs(60));
+        assert_eq!(remote_values[1].1, Duration::from_secs(60));
     }
 
     #[tokio::test]

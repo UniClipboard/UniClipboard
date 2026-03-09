@@ -8,6 +8,16 @@ A cross-platform clipboard synchronization app built with Tauri 2, React, and Ru
 
 Seamless clipboard synchronization across devices — users can copy on one device and paste on another without interrupting their workflow.
 
+## Current Milestone: v0.3.0 Log Observability
+
+**Goal:** Make the clipboard capture pipeline fully observable with structured logging, dual output, and Seq-based local visualization.
+
+**Target features:**
+
+- Structured business logging with flow_id/stage tracing across clipboard capture lifecycle
+- Dual output (pretty console + JSON file) with configurable log profiles
+- Seq local integration for structured event search and business flow visualization
+
 ## Current State
 
 - **Latest shipped milestone:** v0.2.0 Architecture Remediation (2026-03-09)
@@ -38,6 +48,14 @@ Seamless clipboard synchronization across devices — users can copy on one devi
 
 ### Active
 
+- [ ] Structured business logging with flow_id/stage/target for clipboard capture pipeline
+- [ ] Dual output subscriber (pretty console + JSON file) with log profiles (dev/prod/debug_clipboard)
+- [ ] Seq local integration for structured event search and flow visualization
+- [ ] Business span hierarchy for clipboard capture flow (capture → persist → publish)
+- [ ] Cross-layer context propagation (flow_id, representation_id, item_id)
+
+### Deferred (v0.4.0)
+
 - [ ] Complete chunked transfer resume protocol (CT-02, CT-04 — backend only, frontend deferred)
 - [ ] Wire transfer progress events to frontend UI (CT-05)
 - [ ] Add favorites persistence (domain model column needed)
@@ -54,10 +72,10 @@ Seamless clipboard synchronization across devices — users can copy on one devi
 
 ## Next Milestone Goals
 
-- Complete chunked transfer and resume capability for reliable large-payload transfers.
-- Wire transfer progress events to dashboard UI.
-- Continue architecture hardening at port boundaries.
-- Address favorites persistence and lifecycle event wiring.
+- OTel trace/log layer预留 (Phase 3 of Issue #213)
+- Collector & multi-backend support (Phase 4 of Issue #213)
+- Complete chunked transfer and resume capability
+- Wire transfer progress events to dashboard UI
 
 ## Context
 
@@ -92,4 +110,4 @@ Dashboard reduced from 330 to 63 lines with hook-based event management.
 
 ---
 
-_Last updated: 2026-03-09 after v0.2.0 milestone completion_
+_Last updated: 2026-03-09 after v0.3.0 milestone start_

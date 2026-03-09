@@ -468,9 +468,30 @@ impl CommonClipboardImpl {
                 map_clipboard_err(ctx.set_files(files))?;
             }
             Some(mime) if mime.starts_with("image/") => {
-                let img =
-                    clipboard_rs::RustImageData::from_bytes(&rep.bytes).map_err(|e| anyhow!(e))?;
+                debug!(
+                    mime = mime,
+                    data_size = rep.bytes.len(),
+                    format_id = %rep.format_id,
+                    "write_snapshot: decoding image bytes for clipboard write"
+                );
+                let img = clipboard_rs::RustImageData::from_bytes(&rep.bytes).map_err(|e| {
+                    warn!(
+                        mime = mime,
+                        data_size = rep.bytes.len(),
+                        error = %e,
+                        "write_snapshot: failed to decode image bytes via RustImageData::from_bytes"
+                    );
+                    anyhow!(e)
+                })?;
+                debug!(
+                    mime = mime,
+                    "write_snapshot: setting image on system clipboard"
+                );
                 map_clipboard_err(ctx.set_image(img))?;
+                debug!(
+                    mime = mime,
+                    "write_snapshot: image set on system clipboard successfully"
+                );
             }
             _ => {
                 map_clipboard_err(ctx.set_buffer(&rep.format_id, rep.bytes.clone()))?;

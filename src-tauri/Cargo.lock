@@ -8793,6 +8793,7 @@ dependencies = [
  "chrono",
  "futures",
  "hmac",
+ "image",
  "log",
  "mockall 0.13.1",
  "rand 0.8.5",

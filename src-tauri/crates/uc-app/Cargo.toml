@@ -40,3 +40,4 @@ uc-platform = { path = "../uc-platform" }
 mockall = "0.13"
 tempfile = "3"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+image = "0.25"

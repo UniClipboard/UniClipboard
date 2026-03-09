@@ -360,6 +360,15 @@ impl SyncInboundClipboardUseCase {
 
         // In Full mode: remember inbound snapshot hash + write to OS clipboard
         if self.mode.allow_os_write() {
+            let selected_rep_ref = &snapshot_for_os.representations[0];
+            info!(
+                message_id = %message.id,
+                format_id = %selected_rep_ref.format_id,
+                mime = ?selected_rep_ref.mime.as_ref().map(|m| m.as_str()),
+                data_size = selected_rep_ref.bytes.len(),
+                "V3 inbound: writing selected representation to OS clipboard"
+            );
+
             let snapshot_hash = snapshot_for_os.snapshot_hash().to_string();
             self.clipboard_change_origin
                 .remember_remote_snapshot_hash(

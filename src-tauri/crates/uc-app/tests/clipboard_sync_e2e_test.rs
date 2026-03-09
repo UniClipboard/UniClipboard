@@ -330,6 +330,68 @@ impl NetworkEventPort for InProcessNetwork {
     }
 }
 
+/// Build a minimal 2x2 red PNG image for testing.
+fn make_test_png() -> Vec<u8> {
+    // Minimal valid 2x2 RGBA PNG image (red pixels)
+    use std::io::Cursor;
+    let mut buf = Vec::new();
+    {
+        let mut encoder = image::codecs::png::PngEncoder::new(Cursor::new(&mut buf));
+        use image::ImageEncoder;
+        // 2x2 RGBA red pixels
+        let pixels: Vec<u8> = vec![
+            255, 0, 0, 255, // R
+            255, 0, 0, 255, // R
+            255, 0, 0, 255, // R
+            255, 0, 0, 255, // R
+        ];
+        encoder
+            .write_image(&pixels, 2, 2, image::ExtendedColorType::Rgba8)
+            .expect("PNG encode");
+    }
+    buf
+}
+
+fn image_snapshot(png_bytes: Vec<u8>, ts_ms: i64) -> SystemClipboardSnapshot {
+    SystemClipboardSnapshot {
+        ts_ms,
+        representations: vec![ObservedClipboardRepresentation::new(
+            RepresentationId::new(),
+            FormatId::from("image"),
+            Some(MimeType("image/png".to_string())),
+            png_bytes,
+        )],
+    }
+}
+
+/// Build a multi-representation snapshot simulating Windows image copy
+/// (image + Windows-specific private formats).
+fn windows_image_snapshot(png_bytes: Vec<u8>, ts_ms: i64) -> SystemClipboardSnapshot {
+    SystemClipboardSnapshot {
+        ts_ms,
+        representations: vec![
+            ObservedClipboardRepresentation::new(
+                RepresentationId::new(),
+                FormatId::from("image"),
+                Some(MimeType("image/png".to_string())),
+                png_bytes,
+            ),
+            ObservedClipboardRepresentation::new(
+                RepresentationId::new(),
+                FormatId::from("DataObject"),
+                None,
+                vec![0xDE, 0xAD],
+            ),
+            ObservedClipboardRepresentation::new(
+                RepresentationId::new(),
+                FormatId::from("Ole Private Data"),
+                None,
+                vec![0xBE, 0xEF],
+            ),
+        ],
+    }
+}
+
 fn text_snapshot(text: &str, ts_ms: i64) -> SystemClipboardSnapshot {
     SystemClipboardSnapshot {
         ts_ms,
@@ -473,6 +535,199 @@ async fn clipboard_sync_e2e_dual_peer_in_process() -> Result<()> {
 
     assert_eq!(b_send_count.load(Ordering::SeqCst), 0);
     assert_eq!(clipboard_a.writes(), 0);
+
+    Ok(())
+}
+
+/// Image sync E2E: single image representation (image/png) syncs from A to B.
+#[tokio::test]
+async fn clipboard_sync_e2e_image_single_rep() -> Result<()> {
+    let png_bytes = make_test_png();
+    let clipboard_a = Arc::new(InMemoryClipboard::new(image_snapshot(vec![], 0)));
+    let clipboard_b = Arc::new(InMemoryClipboard::new(image_snapshot(vec![], 0)));
+
+    let origin_b = Arc::new(InMemoryClipboardChangeOrigin::new());
+
+    let encryption_a: Arc<dyn EncryptionPort> = Arc::new(PassthroughEncryption);
+    let encryption_b: Arc<dyn EncryptionPort> = Arc::new(PassthroughEncryption);
+    let session_a: Arc<dyn EncryptionSessionPort> = Arc::new(ReadyEncryptionSession);
+    let session_b: Arc<dyn EncryptionSessionPort> = Arc::new(ReadyEncryptionSession);
+
+    let identity_a: Arc<dyn DeviceIdentityPort> = Arc::new(StaticDeviceIdentity {
+        id: DeviceId::new("device-a"),
+    });
+    let identity_b: Arc<dyn DeviceIdentityPort> = Arc::new(StaticDeviceIdentity {
+        id: DeviceId::new("device-b"),
+    });
+
+    let settings: Arc<dyn SettingsPort> = Arc::new(StaticSettings {
+        settings: Settings::default(),
+    });
+
+    let transfer_decryptor: Arc<TransferPayloadDecryptorAdapter> =
+        Arc::new(TransferPayloadDecryptorAdapter);
+    let inbound_b = Arc::new(SyncInboundClipboardUseCase::new(
+        ClipboardIntegrationMode::Full,
+        clipboard_b.clone(),
+        origin_b.clone(),
+        session_b.clone(),
+        encryption_b.clone(),
+        identity_b.clone(),
+        transfer_decryptor,
+    )?);
+
+    let a_send_count = Arc::new(AtomicUsize::new(0));
+
+    let network_a = Arc::new(InProcessNetwork {
+        local_peer_id: "peer-a".to_string(),
+        remote_peer: ConnectedPeer {
+            peer_id: "peer-b".to_string(),
+            device_name: "Device B".to_string(),
+            connected_at: Utc::now(),
+        },
+        remote_inbound: inbound_b,
+        send_count: a_send_count.clone(),
+    });
+
+    let transfer_encryptor: Arc<TransferPayloadEncryptorAdapter> =
+        Arc::new(TransferPayloadEncryptorAdapter);
+    let outbound_a = SyncOutboundClipboardUseCase::new(
+        clipboard_a.clone(),
+        network_a.clone() as Arc<dyn uc_core::ports::ClipboardTransportPort>,
+        network_a.clone() as Arc<dyn uc_core::ports::PeerDirectoryPort>,
+        session_a,
+        identity_a,
+        settings,
+        transfer_encryptor,
+    );
+
+    let png_clone = png_bytes.clone();
+    tokio::task::spawn_blocking(move || {
+        outbound_a.execute(
+            image_snapshot(png_clone, 1_713_000_000_001),
+            ClipboardChangeOrigin::LocalCapture,
+        )
+    })
+    .await
+    .map_err(|e| anyhow!("failed to join outbound A task: {e}"))??;
+
+    assert_eq!(a_send_count.load(Ordering::SeqCst), 1);
+    assert_eq!(clipboard_b.writes(), 1);
+
+    let snapshot_on_b = clipboard_b.read_snapshot()?;
+    assert_eq!(
+        snapshot_on_b.representations.len(),
+        1,
+        "receiver should have exactly one representation"
+    );
+
+    let rep = &snapshot_on_b.representations[0];
+    assert_eq!(
+        rep.mime.as_ref().map(|m| m.as_str()),
+        Some("image/png"),
+        "receiver representation should be image/png"
+    );
+    assert_eq!(
+        rep.bytes, png_bytes,
+        "receiver image bytes should match sender"
+    );
+
+    Ok(())
+}
+
+/// Image sync E2E: multi-representation Windows snapshot (image + private formats).
+/// The receiver should select the image representation and write it to the clipboard.
+#[tokio::test]
+async fn clipboard_sync_e2e_windows_image_multi_rep() -> Result<()> {
+    let png_bytes = make_test_png();
+    let clipboard_a = Arc::new(InMemoryClipboard::new(image_snapshot(vec![], 0)));
+    let clipboard_b = Arc::new(InMemoryClipboard::new(image_snapshot(vec![], 0)));
+
+    let origin_b = Arc::new(InMemoryClipboardChangeOrigin::new());
+
+    let encryption_a: Arc<dyn EncryptionPort> = Arc::new(PassthroughEncryption);
+    let encryption_b: Arc<dyn EncryptionPort> = Arc::new(PassthroughEncryption);
+    let session_a: Arc<dyn EncryptionSessionPort> = Arc::new(ReadyEncryptionSession);
+    let session_b: Arc<dyn EncryptionSessionPort> = Arc::new(ReadyEncryptionSession);
+
+    let identity_a: Arc<dyn DeviceIdentityPort> = Arc::new(StaticDeviceIdentity {
+        id: DeviceId::new("device-a"),
+    });
+    let identity_b: Arc<dyn DeviceIdentityPort> = Arc::new(StaticDeviceIdentity {
+        id: DeviceId::new("device-b"),
+    });
+
+    let settings: Arc<dyn SettingsPort> = Arc::new(StaticSettings {
+        settings: Settings::default(),
+    });
+
+    let transfer_decryptor: Arc<TransferPayloadDecryptorAdapter> =
+        Arc::new(TransferPayloadDecryptorAdapter);
+    let inbound_b = Arc::new(SyncInboundClipboardUseCase::new(
+        ClipboardIntegrationMode::Full,
+        clipboard_b.clone(),
+        origin_b.clone(),
+        session_b.clone(),
+        encryption_b.clone(),
+        identity_b.clone(),
+        transfer_decryptor,
+    )?);
+
+    let a_send_count = Arc::new(AtomicUsize::new(0));
+
+    let network_a = Arc::new(InProcessNetwork {
+        local_peer_id: "peer-a".to_string(),
+        remote_peer: ConnectedPeer {
+            peer_id: "peer-b".to_string(),
+            device_name: "Device B".to_string(),
+            connected_at: Utc::now(),
+        },
+        remote_inbound: inbound_b,
+        send_count: a_send_count.clone(),
+    });
+
+    let transfer_encryptor: Arc<TransferPayloadEncryptorAdapter> =
+        Arc::new(TransferPayloadEncryptorAdapter);
+    let outbound_a = SyncOutboundClipboardUseCase::new(
+        clipboard_a.clone(),
+        network_a.clone() as Arc<dyn uc_core::ports::ClipboardTransportPort>,
+        network_a.clone() as Arc<dyn uc_core::ports::PeerDirectoryPort>,
+        session_a,
+        identity_a,
+        settings,
+        transfer_encryptor,
+    );
+
+    let png_clone = png_bytes.clone();
+    tokio::task::spawn_blocking(move || {
+        outbound_a.execute(
+            windows_image_snapshot(png_clone, 1_713_000_000_001),
+            ClipboardChangeOrigin::LocalCapture,
+        )
+    })
+    .await
+    .map_err(|e| anyhow!("failed to join outbound A task: {e}"))??;
+
+    assert_eq!(a_send_count.load(Ordering::SeqCst), 1);
+    assert_eq!(clipboard_b.writes(), 1);
+
+    let snapshot_on_b = clipboard_b.read_snapshot()?;
+    assert_eq!(
+        snapshot_on_b.representations.len(),
+        1,
+        "receiver should have exactly ONE representation (highest priority selected)"
+    );
+
+    let rep = &snapshot_on_b.representations[0];
+    assert_eq!(
+        rep.mime.as_ref().map(|m| m.as_str()),
+        Some("image/png"),
+        "receiver should select image/png as highest priority"
+    );
+    assert_eq!(
+        rep.bytes, png_bytes,
+        "receiver image bytes should match the PNG from sender"
+    );
 
     Ok(())
 }

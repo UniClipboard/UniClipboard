@@ -11,9 +11,9 @@ use tauri::ipc::Channel;
 use tauri::{AppHandle, State};
 use tauri_plugin_updater::UpdaterExt as _;
 use tracing::{error, info, info_span, Instrument};
+use uc_core::ports::observability::TraceMetadata;
 use uc_core::settings::channel::detect_channel;
 use uc_core::settings::model::UpdateChannel;
-use uc_platform::ports::observability::TraceMetadata;
 
 /// Events emitted during update download via `tauri::ipc::Channel`.
 /// 更新下载期间通过 `tauri::ipc::Channel` 发出的事件。

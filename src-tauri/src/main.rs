@@ -15,17 +15,14 @@ use tauri_plugin_stronghold;
 use tokio::sync::mpsc;
 use tracing::{debug, error, info, warn};
 
-use uc_app::usecases::{
-    pairing::{PairingOrchestrator, StagedPairedDeviceStore},
-    space_access::SpaceAccessOrchestrator,
-};
+use uc_app::usecases::{pairing::PairingOrchestrator, space_access::SpaceAccessOrchestrator};
 use uc_core::config::AppConfig;
+use uc_core::ports::AppDirsPort;
 use uc_core::ports::ClipboardChangeHandler;
 use uc_core::ports::PeerDirectoryPort;
 use uc_infra::fs::key_slot_store::{JsonKeySlotStore, KeySlotStore};
 use uc_platform::app_dirs::DirsAppDirsAdapter;
 use uc_platform::ipc::PlatformCommand;
-use uc_platform::ports::AppDirsPort;
 use uc_platform::ports::PlatformCommandExecutorPort;
 use uc_platform::runtime::event_bus::{
     PlatformCommandReceiver, PlatformEventReceiver, PlatformEventSender,
@@ -497,10 +494,9 @@ fn run_app(config: AppConfig) {
 
     let deps = wired.deps;
     let background = wired.background;
-    let watcher_control = wired.watcher_control;
 
-    let pairing_device_repo = deps.device.paired_device_repo.clone();
-    let pairing_device_identity = deps.device.device_identity.clone();
+    let pairing_device_repo = deps.paired_device_repo.clone();
+    let pairing_device_identity = deps.device_identity.clone();
     let pairing_settings = deps.settings.clone();
     let discovery_network = deps.network_ports.peers.clone();
     let pairing_peer_id = background.libp2p_network.local_peer_id();
@@ -511,7 +507,6 @@ fn run_app(config: AppConfig) {
         (device_name, config)
     });
     let pairing_device_id = pairing_device_identity.current_device_id().to_string();
-    let staged_store = Arc::new(StagedPairedDeviceStore::new());
     let (pairing_orchestrator, pairing_action_rx) = PairingOrchestrator::new(
         pairing_config,
         pairing_device_repo,
@@ -519,7 +514,6 @@ fn run_app(config: AppConfig) {
         pairing_device_id,
         pairing_peer_id,
         pairing_identity_pubkey,
-        staged_store.clone(),
     );
     let pairing_orchestrator = Arc::new(pairing_orchestrator);
     let space_access_orchestrator = Arc::new(SpaceAccessOrchestrator::new());
@@ -556,7 +550,6 @@ fn run_app(config: AppConfig) {
             space_access_orchestrator.clone(),
             discovery_network,
         ),
-        watcher_control,
     );
 
     // Wrap runtime in Arc for clipboard handler (PlatformRuntime needs Arc<dyn ClipboardChangeHandler>)
@@ -578,15 +571,11 @@ fn run_app(config: AppConfig) {
 
     let disable_single_instance = std::env::var("UC_DISABLE_SINGLE_INSTANCE").as_deref() == Ok("1");
 
-    // Store TaskRegistry reference for exit hook registration
-    let task_registry = runtime_for_handler.task_registry().clone();
-
     let builder = Builder::default()
         // Register AppRuntime for Tauri commands
         .manage(runtime_for_tauri)
         .manage(pairing_orchestrator.clone())
         .manage(TrayState::default())
-        .manage(task_registry.clone())
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 if window.label() == "main" {
@@ -658,7 +647,7 @@ fn run_app(config: AppConfig) {
 
             // Load startup settings for tray and silent start
             let (silent_start, initial_language) = {
-                let settings_port = runtime_for_handler.settings_port();
+                let settings_port = runtime_for_handler.deps.settings.clone();
                 match tauri::async_runtime::block_on(settings_port.load()) {
                     Ok(settings) => {
                         let silent = settings.general.silent_start;
@@ -701,14 +690,12 @@ fn run_app(config: AppConfig) {
             // Start background spooler and blob worker tasks
             start_background_tasks(
                 background,
-                runtime_for_handler.wiring_deps(),
+                &runtime_for_handler.deps,
                 Some(app.handle().clone()),
                 pairing_orchestrator.clone(),
                 pairing_action_rx,
-                staged_store,
                 space_access_orchestrator.clone(),
                 key_slot_store.clone(),
-                runtime_for_handler.task_registry(),
             );
 
             // Clone handles for async blocks
@@ -723,7 +710,7 @@ fn run_app(config: AppConfig) {
                 info!("Starting backend initialization");
 
                 // 0. Ensure device name is initialized (runs on every startup)
-                if let Err(e) = ensure_default_device_name(runtime.settings_port()).await {
+                if let Err(e) = ensure_default_device_name(runtime.deps.settings.clone()).await {
                     warn!("Failed to initialize default device name: {}", e);
                     // Non-fatal: continue startup even if device name initialization fails
                 }
@@ -763,7 +750,7 @@ fn run_app(config: AppConfig) {
                 let app_handle_for_unlock = app_handle_for_startup.clone();
                 tauri::async_runtime::spawn(async move {
                     let auto_unlock_enabled =
-                        match runtime_for_auto_unlock.settings_port().load().await {
+                        match runtime_for_auto_unlock.deps.settings.load().await {
                             Ok(settings) => settings.security.auto_unlock_enabled,
                             Err(e) => {
                                 warn!("[Startup] Failed to load settings for auto unlock: {}", e);
@@ -800,15 +787,11 @@ fn run_app(config: AppConfig) {
         .invoke_handler(tauri::generate_handler![
             // Clipboard commands
             uc_tauri::commands::clipboard::get_clipboard_entries,
-            uc_tauri::commands::clipboard::get_clipboard_entry,
             uc_tauri::commands::clipboard::get_clipboard_entry_detail,
             uc_tauri::commands::clipboard::get_clipboard_entry_resource,
             uc_tauri::commands::clipboard::delete_clipboard_entry,
             uc_tauri::commands::clipboard::restore_clipboard_entry,
             uc_tauri::commands::clipboard::sync_clipboard_items,
-            uc_tauri::commands::clipboard::get_clipboard_stats,
-            uc_tauri::commands::clipboard::toggle_favorite_clipboard_item,
-            uc_tauri::commands::clipboard::get_clipboard_item,
             // Encryption commands
             uc_tauri::commands::encryption::initialize_encryption,
             uc_tauri::commands::encryption::get_encryption_session_status,
@@ -858,15 +841,6 @@ fn run_app(config: AppConfig) {
             #[cfg(target_os = "macos")]
             plugins::mac_rounded_corners::reposition_traffic_lights,
         ])
-        .build(tauri::generate_context!())
-        .expect("error building tauri application")
-        .run(move |_app_handle, event| {
-            if let tauri::RunEvent::ExitRequested { .. } = event {
-                info!("App exit requested, cancelling all tracked tasks");
-                task_registry.token().cancel();
-            }
-            if let tauri::RunEvent::Exit = event {
-                info!("Application exiting");
-            }
-        });
+        .run(tauri::generate_context!())
+        .expect("error while running tauri application");
 }

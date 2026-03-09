@@ -84,20 +84,15 @@ impl ClipboardEventWriterPort for EncryptingClipboardEventWriter {
                 None
             };
 
-            // Create new representation with encrypted inline_data, preserving
-            // the original payload_state. Using ::new() here would re-infer state
-            // from (inline_data, blob_id), converting Staged to Inline and preventing
-            // the blob worker from materializing full content.
-            encrypted_reps.push(PersistedClipboardRepresentation::new_with_state(
+            // Create new representation with encrypted inline_data
+            encrypted_reps.push(PersistedClipboardRepresentation::new(
                 rep.id.clone(),
                 rep.format_id.clone(),
                 rep.mime_type.clone(),
                 rep.size_bytes,
                 encrypted_inline_data,
                 rep.blob_id.clone(),
-                rep.payload_state(),
-                rep.last_error.clone(),
-            )?);
+            ));
         }
 
         // Delegate to inner with encrypted representations

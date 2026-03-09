@@ -1,10 +1,10 @@
 //! Use case for starting the clipboard watcher
 //! 启动剪贴板监控器的用例
 
-use crate::ports::WatcherControlPort;
-use async_trait::async_trait;
+use crate as uc_app;
 use tracing::{info, info_span, Instrument};
-pub use uc_core::clipboard::ClipboardIntegrationMode;
+use uc_app::usecases::clipboard::ClipboardIntegrationMode;
+use uc_core::ports::WatcherControlPort;
 
 /// Error type for clipboard watcher startup failures.
 /// 剪贴板监控器启动失败的错误类型。
@@ -14,8 +14,8 @@ pub enum StartClipboardWatcherError {
     StartFailed(String),
 }
 
-impl From<crate::ports::WatcherControlError> for StartClipboardWatcherError {
-    fn from(err: crate::ports::WatcherControlError) -> Self {
+impl From<uc_core::ports::WatcherControlError> for StartClipboardWatcherError {
+    fn from(err: uc_core::ports::WatcherControlError) -> Self {
         StartClipboardWatcherError::StartFailed(err.to_string())
     }
 }
@@ -82,22 +82,12 @@ impl StartClipboardWatcher {
     }
 }
 
-// Implement the core port trait so AppLifecycleCoordinator can use it
-#[async_trait]
-impl uc_core::ports::StartClipboardWatcherPort for StartClipboardWatcher {
-    async fn execute(&self) -> Result<(), uc_core::ports::StartClipboardWatcherError> {
-        self.execute()
-            .await
-            .map_err(|e| uc_core::ports::StartClipboardWatcherError::StartFailed(e.to_string()))
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ports::WatcherControlError;
     use async_trait::async_trait;
     use std::sync::Arc;
+    use uc_core::ports::WatcherControlError;
 
     /// Mock WatcherControlPort
     struct MockWatcherControl {

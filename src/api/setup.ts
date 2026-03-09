@@ -34,12 +34,23 @@ export interface SetupStateChangedEvent {
   ts: number
 }
 
+function decodeSetupState(raw: unknown): SetupState {
+  if (typeof raw === 'string') {
+    try {
+      return JSON.parse(raw) as SetupState
+    } catch {
+      return raw as SetupState
+    }
+  }
+  return raw as SetupState
+}
+
 /**
  * Get current setup state
  * 获取当前设置流程状态
  */
 export async function getSetupState(): Promise<SetupState> {
-  return (await invokeWithTrace('get_setup_state')) as SetupState
+  return decodeSetupState(await invokeWithTrace('get_setup_state'))
 }
 
 /**
@@ -47,7 +58,7 @@ export async function getSetupState(): Promise<SetupState> {
  * 启动新空间流程
  */
 export async function startNewSpace(): Promise<SetupState> {
-  return (await invokeWithTrace('start_new_space')) as SetupState
+  return decodeSetupState(await invokeWithTrace('start_new_space'))
 }
 
 /**
@@ -55,7 +66,7 @@ export async function startNewSpace(): Promise<SetupState> {
  * 启动加入空间流程
  */
 export async function startJoinSpace(): Promise<SetupState> {
-  return (await invokeWithTrace('start_join_space')) as SetupState
+  return decodeSetupState(await invokeWithTrace('start_join_space'))
 }
 
 /**
@@ -63,7 +74,7 @@ export async function startJoinSpace(): Promise<SetupState> {
  * 选择加入空间的设备
  */
 export async function selectJoinPeer(peerId: string): Promise<SetupState> {
-  return (await invokeWithTrace('select_device', { peerId })) as SetupState
+  return decodeSetupState(await invokeWithTrace('select_device', { peerId }))
 }
 
 /**
@@ -74,7 +85,7 @@ export async function submitPassphrase(
   passphrase1: string,
   passphrase2: string
 ): Promise<SetupState> {
-  return (await invokeWithTrace('submit_passphrase', { passphrase1, passphrase2 })) as SetupState
+  return decodeSetupState(await invokeWithTrace('submit_passphrase', { passphrase1, passphrase2 }))
 }
 
 /**
@@ -82,7 +93,7 @@ export async function submitPassphrase(
  * 校验加入空间口令
  */
 export async function verifyPassphrase(passphrase: string): Promise<SetupState> {
-  return (await invokeWithTrace('verify_passphrase', { passphrase })) as SetupState
+  return decodeSetupState(await invokeWithTrace('verify_passphrase', { passphrase }))
 }
 
 /**
@@ -90,7 +101,7 @@ export async function verifyPassphrase(passphrase: string): Promise<SetupState> 
  * 确认选中设备的可信度
  */
 export async function confirmPeerTrust(): Promise<SetupState> {
-  return (await invokeWithTrace('confirm_peer_trust')) as SetupState
+  return decodeSetupState(await invokeWithTrace('confirm_peer_trust'))
 }
 
 /**
@@ -98,7 +109,7 @@ export async function confirmPeerTrust(): Promise<SetupState> {
  * 取消设置流程
  */
 export async function cancelSetup(): Promise<SetupState> {
-  return (await invokeWithTrace('cancel_setup')) as SetupState
+  return decodeSetupState(await invokeWithTrace('cancel_setup'))
 }
 
 /**

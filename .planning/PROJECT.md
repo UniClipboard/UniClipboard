@@ -30,11 +30,12 @@ Seamless clipboard synchronization across devices — users can copy on one devi
 
 ### Active
 
-- [ ] Remove cross-layer boundary violations and command-layer penetration
-- [ ] Establish typed command DTO/error contracts and traceable API surfaces
-- [ ] Add lifecycle governance (task cancellation, graceful shutdown, runtime cleanup)
-- [ ] Decompose god objects (AppDeps/SetupOrchestrator/Sync\* use cases)
-- [ ] Reduce test infrastructure debt from duplicated noop ports and heavy setup
+- [ ] Quick-paste floating window with global hotkey
+- [ ] Auto-paste selected history item into previous app
+- [ ] Clipboard history search/favorites/filtering enhancements
+- [ ] Architecture boundary remediation (issue #214 clusters A-D)
+- [ ] Lifecycle/task shutdown governance improvements
+- [ ] Command DTO/error contract hardening
 
 ### Out of Scope
 
@@ -42,18 +43,6 @@ Seamless clipboard synchronization across devices — users can copy on one devi
 - File synchronization — deferred
 - Mobile app — desktop-first
 - OAuth/third-party login — not required for current product model
-
-## Current Milestone: v0.2.0 Architecture Remediation
-
-**Goal:** Eliminate root-cause architectural defects from issue #214 while keeping clipboard sync behavior stable for daily use.
-
-**Target features:**
-
-- Boundary repair for `uc-app → uc-core ← uc-infra/uc-platform` directionality
-- Structured command contract layer (DTO mapping + typed command errors)
-- Lifecycle safety baseline (no global staging state, unified task shutdown path)
-- Responsibility decomposition for high-risk orchestrator/use-case modules
-- Testability foundation (`test_utils` consolidation and lighter AppDeps setup)
 
 ## Next Milestone Goals
 
@@ -86,4 +75,4 @@ Large-payload transfer and large-image capture paths were materially optimized i
 
 ---
 
-_Last updated: 2026-03-06 after v0.2.0 milestone initialization_
+_Last updated: 2026-03-06 after v0.1.0 milestone completion_

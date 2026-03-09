@@ -10,7 +10,6 @@ import {
   ClipboardTextItem,
   fetchClipboardResourceText,
   getClipboardEntryResource,
-  getResourceImageUrl,
 } from '@/api/clipboardItems'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Separator } from '@/components/ui/separator'
@@ -61,7 +60,7 @@ const ClipboardPreview: React.FC<ClipboardPreviewProps> = ({ item }) => {
       setIsLoadingImage(true)
       getClipboardEntryResource(item.id)
         .then(resource => {
-          if (!cancelled) setImageUrl(getResourceImageUrl(resource))
+          if (!cancelled) setImageUrl(resource.url)
         })
         .catch(e => console.error('Failed to load image:', e))
         .finally(() => {

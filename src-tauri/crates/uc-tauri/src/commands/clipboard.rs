@@ -2,22 +2,18 @@
 //! 剪贴板相关的 Tauri 命令
 
 use crate::bootstrap::AppRuntime;
-use crate::commands::error::CommandError;
 use crate::commands::record_trace_fields;
 use crate::models::{
     ClipboardEntriesResponse, ClipboardEntryDetail, ClipboardEntryProjection,
-    ClipboardEntryResource, ClipboardImageItemDto, ClipboardItemDto, ClipboardItemResponse,
-    ClipboardStats, ClipboardTextItemDto,
+    ClipboardEntryResource,
 };
-use base64::Engine;
 use std::sync::Arc;
 use tauri::State;
 use tracing::{info_span, Instrument};
 use uc_app::usecases::clipboard::ClipboardIntegrationMode;
-use uc_app::usecases::clipboard::ClipboardUseCases;
 use uc_core::ids::EntryId;
+use uc_core::ports::observability::TraceMetadata;
 use uc_core::security::state::EncryptionState;
-use uc_platform::ports::observability::TraceMetadata;
 
 /// Get clipboard history entries (preview only)
 /// 获取剪贴板历史条目（仅预览）
@@ -27,10 +23,10 @@ pub async fn get_clipboard_entries(
     limit: Option<usize>,
     offset: Option<usize>,
     _trace: Option<TraceMetadata>,
-) -> Result<ClipboardEntriesResponse, CommandError> {
+) -> Result<ClipboardEntriesResponse, String> {
     let resolved_limit = limit.unwrap_or(50);
     let resolved_offset = offset.unwrap_or(0);
-    let device_id = runtime.device_id();
+    let device_id = runtime.deps.device_identity.current_device_id();
 
     let span = info_span!(
         "command.clipboard.get_entries",
@@ -44,12 +40,17 @@ pub async fn get_clipboard_entries(
 
     async move {
         // Check encryption session readiness to avoid decryption failures during startup
-        let encryption_state = runtime.encryption_state().await.map_err(|e| {
-            tracing::error!(error = %e, "Failed to check encryption state");
-            CommandError::InternalError(format!("Failed to check encryption state: {}", e))
-        })?;
+        let encryption_state = runtime
+            .deps
+            .encryption_state
+            .load_state()
+            .await
+            .map_err(|e| {
+                tracing::error!(error = %e, "Failed to check encryption state");
+                format!("Failed to check encryption state: {}", e)
+            })?;
 
-        let session_ready = runtime.is_encryption_ready().await;
+        let session_ready = runtime.deps.encryption_session.is_ready().await;
         if should_return_not_ready(encryption_state, session_ready) {
             tracing::warn!(
                 "Encryption initialized but session not ready yet, returning not-ready response. \
@@ -64,7 +65,7 @@ pub async fn get_clipboard_entries(
             .await
             .map_err(|e| {
                 tracing::error!(error = %e, "Failed to get clipboard entry projections");
-                CommandError::InternalError(e.to_string())
+                e.to_string()
             })?;
 
         // Map DTOs to command layer models
@@ -96,248 +97,6 @@ pub async fn get_clipboard_entries(
 
 fn should_return_not_ready(state: EncryptionState, session_ready: bool) -> bool {
     matches!(state, EncryptionState::Initialized) && !session_ready
-}
-
-/// Get aggregate clipboard statistics (total_items, total_size).
-/// 获取剪贴板统计信息（总条目数和总大小）。
-#[tauri::command]
-pub async fn get_clipboard_stats(
-    runtime: State<'_, Arc<AppRuntime>>,
-    _trace: Option<TraceMetadata>,
-) -> Result<ClipboardStats, CommandError> {
-    let device_id = runtime.device_id();
-
-    let span = info_span!(
-        "command.clipboard.get_stats",
-        trace_id = tracing::field::Empty,
-        trace_ts = tracing::field::Empty,
-        device_id = %device_id,
-    );
-    record_trace_fields(&span, &_trace);
-
-    async move {
-        let uc = runtime.usecases().list_entry_projections();
-        let dtos = uc.execute(1_000, 0).await.map_err(|e| {
-            tracing::error!(error = %e, "Failed to list clipboard entry projections for stats");
-            CommandError::InternalError(e.to_string())
-        })?;
-
-        let stats = ClipboardUseCases::compute_stats(&dtos);
-        Ok(ClipboardStats {
-            total_items: stats.total_items,
-            total_size: stats.total_size,
-        })
-    }
-    .instrument(span)
-    .await
-}
-
-/// Toggle favorite state for a clipboard item.
-/// 切换剪贴板条目的收藏状态。
-#[tauri::command]
-pub async fn toggle_favorite_clipboard_item(
-    runtime: State<'_, Arc<AppRuntime>>,
-    id: String,
-    is_favorited: bool,
-    _trace: Option<TraceMetadata>,
-) -> Result<(), CommandError> {
-    let device_id = runtime.device_id();
-
-    let span = info_span!(
-        "command.clipboard.toggle_favorite",
-        trace_id = tracing::field::Empty,
-        trace_ts = tracing::field::Empty,
-        device_id = %device_id,
-        entry_id = %id,
-        is_favorited,
-    );
-    record_trace_fields(&span, &_trace);
-
-    async move {
-        let entry_id = EntryId::from(id.clone());
-
-        let uc = runtime.usecases().toggle_favorite_clipboard_entry();
-        match uc.execute(&entry_id, is_favorited).await {
-            Ok(true) => {
-                tracing::info!(
-                    entry_id = %entry_id,
-                    is_favorited,
-                    "Toggled favorite for clipboard entry",
-                );
-                Ok(())
-            }
-            Ok(false) => {
-                tracing::warn!(
-                    entry_id = %entry_id,
-                    is_favorited,
-                    "Entry not found for favorite toggle",
-                );
-                Err(CommandError::NotFound("Entry not found".to_string()))
-            }
-            Err(e) => {
-                tracing::error!(
-                    entry_id = %entry_id,
-                    error = %e,
-                    "Failed to toggle favorite for clipboard entry",
-                );
-                Err(CommandError::InternalError(e.to_string()))
-            }
-        }
-    }
-    .instrument(span)
-    .await
-}
-
-/// Get a single clipboard entry by entry_id, returning ClipboardEntriesResponse.
-/// Uses execute_single for efficient single-entry lookup.
-/// 通过 entry_id 获取单个剪贴板条目，使用 execute_single 高效查找。
-#[tauri::command]
-pub async fn get_clipboard_entry(
-    runtime: State<'_, Arc<AppRuntime>>,
-    entry_id: String,
-    _trace: Option<TraceMetadata>,
-) -> Result<ClipboardEntriesResponse, CommandError> {
-    let device_id = runtime.device_id();
-
-    let span = info_span!(
-        "command.clipboard.get_entry_single",
-        trace_id = tracing::field::Empty,
-        trace_ts = tracing::field::Empty,
-        device_id = %device_id,
-        entry_id = %entry_id,
-    );
-    record_trace_fields(&span, &_trace);
-
-    async move {
-        // Check encryption session readiness
-        let encryption_state = runtime.encryption_state().await.map_err(|e| {
-            tracing::error!(error = %e, "Failed to check encryption state");
-            CommandError::InternalError(format!("Failed to check encryption state: {}", e))
-        })?;
-        let session_ready = runtime.is_encryption_ready().await;
-        if should_return_not_ready(encryption_state, session_ready) {
-            return Ok(ClipboardEntriesResponse::NotReady);
-        }
-
-        let uc = runtime.usecases().list_entry_projections();
-        let projection = uc.execute_single(&entry_id).await.map_err(|e| {
-            tracing::error!(error = %e, "Failed to get single entry projection");
-            CommandError::InternalError(e.to_string())
-        })?;
-
-        let entries: Vec<ClipboardEntryProjection> = match projection {
-            Some(dto) => vec![ClipboardEntryProjection {
-                id: dto.id,
-                preview: dto.preview,
-                has_detail: dto.has_detail,
-                size_bytes: dto.size_bytes,
-                captured_at: dto.captured_at,
-                content_type: dto.content_type,
-                thumbnail_url: dto.thumbnail_url,
-                is_encrypted: dto.is_encrypted,
-                is_favorited: dto.is_favorited,
-                updated_at: dto.updated_at,
-                active_time: dto.active_time,
-            }],
-            None => vec![],
-        };
-
-        Ok(ClipboardEntriesResponse::Ready { entries })
-    }
-    .instrument(span)
-    .await
-}
-
-/// Get a single clipboard item by ID, returning a response matching the
-/// frontend ClipboardItemResponse contract. Returns Ok(None) when the entry
-/// does not exist.
-/// 获取单个剪贴板条目，返回与前端 ClipboardItemResponse 匹配的响应。
-#[tauri::command]
-pub async fn get_clipboard_item(
-    runtime: State<'_, Arc<AppRuntime>>,
-    id: String,
-    full_content: Option<bool>,
-    _trace: Option<TraceMetadata>,
-) -> Result<Option<ClipboardItemResponse>, CommandError> {
-    let resolved_full = full_content.unwrap_or(false);
-    let device_id = runtime.device_id();
-
-    let span = info_span!(
-        "command.clipboard.get_item",
-        trace_id = tracing::field::Empty,
-        trace_ts = tracing::field::Empty,
-        device_id = %device_id,
-        entry_id = %id,
-        full_content = resolved_full,
-    );
-    record_trace_fields(&span, &_trace);
-
-    async move {
-        // Use list_entry_projections to find the entry and build a response
-        // that matches the frontend contract. This reuses existing projection
-        // infrastructure rather than duplicating query logic.
-        let uc = runtime.usecases().list_entry_projections();
-        let projections = uc.execute(1_000, 0).await.map_err(|e| {
-            tracing::error!(error = %e, "Failed to list projections for get_clipboard_item");
-            CommandError::InternalError(e.to_string())
-        })?;
-
-        let projection = projections.into_iter().find(|p| p.id == id);
-
-        match projection {
-            None => {
-                tracing::info!(entry_id = %id, "Clipboard item not found");
-                Ok(None)
-            }
-            Some(proj) => {
-                let is_image = proj.content_type.to_ascii_lowercase().starts_with("image/");
-
-                let item = if is_image {
-                    ClipboardItemDto {
-                        text: None,
-                        image: Some(ClipboardImageItemDto {
-                            thumbnail: proj.thumbnail_url.clone(),
-                            size: proj.size_bytes,
-                            width: 0,
-                            height: 0,
-                        }),
-                        file: None,
-                        link: None,
-                        code: None,
-                        unknown: None,
-                    }
-                } else {
-                    ClipboardItemDto {
-                        text: Some(ClipboardTextItemDto {
-                            display_text: proj.preview.clone(),
-                            has_detail: proj.has_detail,
-                            size: proj.size_bytes,
-                        }),
-                        image: None,
-                        file: None,
-                        link: None,
-                        code: None,
-                        unknown: None,
-                    }
-                };
-
-                let response = ClipboardItemResponse {
-                    id: proj.id,
-                    is_downloaded: true,
-                    is_favorited: proj.is_favorited,
-                    created_at: proj.captured_at,
-                    updated_at: proj.updated_at,
-                    active_time: proj.active_time,
-                    item,
-                };
-
-                tracing::info!(entry_id = %id, "Retrieved clipboard item");
-                Ok(Some(response))
-            }
-        }
-    }
-    .instrument(span)
-    .await
 }
 
 #[cfg(test)]
@@ -384,8 +143,8 @@ pub async fn delete_clipboard_entry(
     runtime: State<'_, Arc<AppRuntime>>,
     entry_id: String,
     _trace: Option<TraceMetadata>,
-) -> Result<(), CommandError> {
-    let device_id = runtime.device_id();
+) -> Result<(), String> {
+    let device_id = runtime.deps.device_identity.current_device_id();
 
     let span = info_span!(
         "command.clipboard.delete_entry",
@@ -401,7 +160,7 @@ pub async fn delete_clipboard_entry(
         let use_case = runtime.usecases().delete_clipboard_entry();
         use_case.execute(&parsed_id).await.map_err(|e| {
             tracing::error!(error = %e, entry_id = %entry_id, "Failed to delete entry");
-            CommandError::InternalError(e.to_string())
+            e.to_string()
         })?;
 
         tracing::info!(entry_id = %entry_id, "Deleted clipboard entry");
@@ -418,7 +177,7 @@ pub async fn get_clipboard_entry_detail(
     runtime: State<'_, Arc<AppRuntime>>,
     entry_id: String,
     _trace: Option<TraceMetadata>,
-) -> Result<ClipboardEntryDetail, CommandError> {
+) -> Result<ClipboardEntryDetail, String> {
     let span = info_span!(
         "command.clipboard.get_entry_detail",
         trace_id = tracing::field::Empty,
@@ -432,7 +191,7 @@ pub async fn get_clipboard_entry_detail(
         let use_case = runtime.usecases().get_entry_detail();
         let result = use_case.execute(&parsed_id).await.map_err(|e| {
             tracing::error!(error = %e, entry_id = %entry_id, "Failed to get entry detail");
-            CommandError::InternalError(e.to_string())
+            e.to_string()
         })?;
 
         let detail = ClipboardEntryDetail {
@@ -459,7 +218,7 @@ pub async fn get_clipboard_entry_resource(
     runtime: State<'_, Arc<AppRuntime>>,
     entry_id: String,
     _trace: Option<TraceMetadata>,
-) -> Result<ClipboardEntryResource, CommandError> {
+) -> Result<ClipboardEntryResource, String> {
     let span = info_span!(
         "command.clipboard.get_entry_resource",
         trace_id = tracing::field::Empty,
@@ -477,17 +236,14 @@ pub async fn get_clipboard_entry_resource(
                 entry_id = %entry_id,
                 "Failed to get entry resource"
             );
-            CommandError::InternalError(e.to_string())
+            e.to_string()
         })?;
 
         let resource = ClipboardEntryResource {
-            blob_id: result.blob_id.map(|b| b.to_string()),
+            blob_id: result.blob_id.to_string(),
             mime_type: result.mime_type.unwrap_or_else(|| "unknown".to_string()),
             size_bytes: result.size_bytes,
             url: result.url,
-            inline_data: result
-                .inline_data
-                .map(|bytes| base64::engine::general_purpose::STANDARD.encode(&bytes)),
         };
 
         tracing::info!(entry_id = %entry_id, "Retrieved clipboard entry resource");
@@ -501,14 +257,14 @@ pub async fn get_clipboard_entry_resource(
 pub async fn sync_clipboard_items(
     runtime: State<'_, Arc<AppRuntime>>,
     _trace: Option<TraceMetadata>,
-) -> Result<bool, CommandError> {
+) -> Result<bool, String> {
     sync_clipboard_items_impl(runtime.as_ref(), _trace).await
 }
 
 async fn sync_clipboard_items_impl(
     runtime: &AppRuntime,
     trace: Option<TraceMetadata>,
-) -> Result<bool, CommandError> {
+) -> Result<bool, String> {
     let span = info_span!(
         "command.clipboard.sync_items",
         trace_id = tracing::field::Empty,
@@ -521,7 +277,7 @@ async fn sync_clipboard_items_impl(
             runtime.clipboard_integration_mode(),
             ClipboardIntegrationMode::Passive
         ) {
-            return Err(CommandError::ValidationError("Clipboard sync disabled in passive mode".to_string()));
+            return Err("Clipboard sync disabled in passive mode".to_string());
         }
 
         let outbound_sync_uc = runtime.usecases().sync_outbound_clipboard();
@@ -533,15 +289,13 @@ async fn sync_clipboard_items_impl(
             Ok(Ok(())) => Ok(true),
             Ok(Err(err)) => {
                 tracing::warn!(error = %err, "Outbound clipboard sync command failed");
-                Err(CommandError::InternalError(format!("sync failed: {err}")))
+                Err(format!("Outbound clipboard sync command failed: {err}"))
             }
-            Err(join_err) if join_err.is_cancelled() => {
-                tracing::warn!("Outbound clipboard sync task cancelled");
-                Err(CommandError::Cancelled("sync task cancelled".to_string()))
-            }
-            Err(join_err) => {
-                tracing::warn!(error = %join_err, "Outbound clipboard sync command task join failed");
-                Err(CommandError::InternalError(format!("sync task panic: {join_err}")))
+            Err(err) => {
+                tracing::warn!(error = %err, "Outbound clipboard sync command task join failed");
+                Err(format!(
+                    "Outbound clipboard sync command task join failed: {err}"
+                ))
             }
         }
     }
@@ -556,7 +310,7 @@ pub async fn restore_clipboard_entry(
     runtime: State<'_, Arc<AppRuntime>>,
     entry_id: String,
     _trace: Option<TraceMetadata>,
-) -> Result<bool, CommandError> {
+) -> Result<bool, String> {
     restore_clipboard_entry_impl(runtime.as_ref(), entry_id, _trace).await
 }
 
@@ -564,7 +318,7 @@ async fn restore_clipboard_entry_impl(
     runtime: &AppRuntime,
     entry_id: String,
     trace: Option<TraceMetadata>,
-) -> Result<bool, CommandError> {
+) -> Result<bool, String> {
     let span = info_span!(
         "command.clipboard.restore_entry",
         trace_id = tracing::field::Empty,
@@ -579,24 +333,24 @@ async fn restore_clipboard_entry_impl(
         let restore_uc = runtime.usecases().restore_clipboard_selection();
         let snapshot = restore_uc.build_snapshot(&parsed_id).await.map_err(|e| {
             tracing::error!(error = %e, entry_id = %entry_id, "Failed to build restore snapshot");
-            CommandError::InternalError(e.to_string())
+            e.to_string()
         })?;
 
         let touch_uc = runtime.usecases().touch_clipboard_entry();
         let touched = touch_uc.execute(&parsed_id).await.map_err(|e| {
             tracing::error!(error = %e, entry_id = %entry_id, "Failed to update entry active time");
-            CommandError::InternalError(e.to_string())
+            e.to_string()
         })?;
 
         if !touched {
             tracing::warn!(entry_id = %entry_id, "Entry not found when touching active time");
-            return Err(CommandError::NotFound("Entry not found".to_string()));
+            return Err("Entry not found".to_string());
         }
 
         let outbound_snapshot = snapshot.clone();
         restore_uc.restore_snapshot(snapshot).await.map_err(|err| {
             tracing::error!(error = %err, entry_id = %entry_id, "Failed to write restore snapshot");
-            CommandError::InternalError(err.to_string())
+            err.to_string()
         })?;
 
         let outbound_sync_uc = runtime.usecases().sync_outbound_clipboard();
@@ -620,7 +374,6 @@ async fn restore_clipboard_entry_impl(
                 crate::events::ClipboardEvent::NewContent {
                     entry_id: entry_id.clone(),
                     preview: "Clipboard restored".to_string(),
-                    origin: "local".to_string(),
                 },
             ) {
                 tracing::warn!(error = %err, entry_id = %entry_id, "Failed to emit restore event");
@@ -639,7 +392,6 @@ async fn restore_clipboard_entry_impl(
 mod tests {
     use super::{restore_clipboard_entry_impl, sync_clipboard_items_impl};
     use crate::bootstrap::AppRuntime;
-    use crate::commands::error::CommandError;
     use crate::test_utils::noop_network_ports;
     use async_trait::async_trait;
     use std::collections::HashMap;
@@ -665,7 +417,6 @@ mod tests {
     use uc_core::security::state::{EncryptionState, EncryptionStateError};
     use uc_core::{Blob, BlobId, ContentHash, DeviceId};
     use uc_infra::clipboard::InMemoryClipboardChangeOrigin;
-    use uc_platform::ports::{WatcherControlError, WatcherControlPort};
 
     struct MockEntryRepository {
         entry: Option<ClipboardEntry>,
@@ -1319,6 +1070,27 @@ mod tests {
         }
     }
 
+    #[async_trait]
+    impl UiPort for NoopPort {
+        async fn open_settings(&self) -> anyhow::Result<()> {
+            Ok(())
+        }
+    }
+
+    impl AutostartPort for NoopPort {
+        fn is_enabled(&self) -> anyhow::Result<bool> {
+            Ok(false)
+        }
+
+        fn enable(&self) -> anyhow::Result<()> {
+            Ok(())
+        }
+
+        fn disable(&self) -> anyhow::Result<()> {
+            Ok(())
+        }
+    }
+
     impl ClockPort for NoopPort {
         fn now_ms(&self) -> i64 {
             0
@@ -1361,66 +1133,55 @@ mod tests {
 
         let (worker_tx, _worker_rx) = mpsc::channel(1);
         let deps = AppDeps {
-            clipboard: uc_app::ClipboardPorts {
-                clipboard: Arc::new(NoopClipboard),
-                system_clipboard: Arc::new(MockSystemClipboard {
-                    calls: calls.clone(),
-                }),
-                clipboard_entry_repo: Arc::new(MockEntryRepository {
-                    entry: Some(entry),
-                    touch_result: false,
-                    calls: calls.clone(),
-                }),
-                clipboard_event_repo: Arc::new(NoopPort),
-                representation_repo: Arc::new(MockRepresentationRepository { reps }),
-                representation_normalizer: Arc::new(NoopPort),
-                selection_repo: Arc::new(MockSelectionRepository {
-                    selection: Some(selection),
-                }),
-                representation_policy: Arc::new(NoopPort),
-                representation_cache: Arc::new(NoopPort),
-                spool_queue: Arc::new(NoopPort),
-                clipboard_change_origin: Arc::new(InMemoryClipboardChangeOrigin::new()),
-                worker_tx,
-            },
-            security: uc_app::SecurityPorts {
-                encryption: Arc::new(NoopPort),
-                encryption_session: Arc::new(NoopPort),
-                encryption_state: Arc::new(NoopPort),
-                key_scope: Arc::new(NoopPort),
-                secure_storage: Arc::new(NoopPort),
-                key_material: Arc::new(NoopPort),
-            },
-            device: uc_app::DevicePorts {
-                device_repo: Arc::new(NoopPort),
-                device_identity: Arc::new(MockDeviceIdentity),
-                paired_device_repo: Arc::new(NoopPort),
-            },
+            clipboard: Arc::new(NoopClipboard),
+            system_clipboard: Arc::new(MockSystemClipboard {
+                calls: calls.clone(),
+            }),
+            clipboard_entry_repo: Arc::new(MockEntryRepository {
+                entry: Some(entry),
+                touch_result: false,
+                calls: calls.clone(),
+            }),
+            clipboard_event_repo: Arc::new(NoopPort),
+            representation_repo: Arc::new(MockRepresentationRepository { reps }),
+            representation_normalizer: Arc::new(NoopPort),
+            selection_repo: Arc::new(MockSelectionRepository {
+                selection: Some(selection),
+            }),
+            representation_policy: Arc::new(NoopPort),
+            representation_cache: Arc::new(NoopPort),
+            spool_queue: Arc::new(NoopPort),
+            clipboard_change_origin: Arc::new(InMemoryClipboardChangeOrigin::new()),
+            worker_tx,
+            encryption: Arc::new(NoopPort),
+            encryption_session: Arc::new(NoopPort),
+            encryption_state: Arc::new(NoopPort),
+            key_scope: Arc::new(NoopPort),
+            secure_storage: Arc::new(NoopPort),
+            key_material: Arc::new(NoopPort),
+            watcher_control: Arc::new(NoopPort),
+            device_repo: Arc::new(NoopPort),
+            device_identity: Arc::new(MockDeviceIdentity),
+            paired_device_repo: Arc::new(NoopPort),
             network_ports: noop_network_ports(),
             network_control: Arc::new(NoopPort),
             setup_status: Arc::new(NoopPort),
-            storage: uc_app::StoragePorts {
-                blob_store: Arc::new(NoopPort),
-                blob_repository: Arc::new(NoopPort),
-                blob_writer: Arc::new(NoopPort),
-                thumbnail_repo: Arc::new(NoopPort),
-                thumbnail_generator: Arc::new(NoopPort),
-            },
+            blob_store: Arc::new(NoopPort),
+            blob_repository: Arc::new(NoopPort),
+            blob_writer: Arc::new(NoopPort),
+            thumbnail_repo: Arc::new(NoopPort),
+            thumbnail_generator: Arc::new(NoopPort),
             settings: Arc::new(NoopPort),
-            system: uc_app::SystemPorts {
-                clock: Arc::new(NoopPort),
-                hash: Arc::new(NoopPort),
-            },
+            ui_port: Arc::new(NoopPort),
+            autostart: Arc::new(NoopPort),
+            clock: Arc::new(NoopPort),
+            hash: Arc::new(NoopPort),
         };
 
         let runtime = AppRuntime::new(deps);
         let result = restore_clipboard_entry_impl(&runtime, entry_id.to_string(), None).await;
 
-        let err = result.expect_err("touch_result=false should produce NotFound");
-        assert!(
-            matches!(err, CommandError::NotFound(_)),
-            "expected NotFound, got: {err:?}"
-        );
+        assert!(result.is_err());
         let calls = calls.lock().unwrap().clone();
         assert_eq!(calls, vec!["touch"]);
     }
@@ -1434,54 +1195,47 @@ mod tests {
 
         let (worker_tx, _worker_rx) = mpsc::channel(1);
         let deps = AppDeps {
-            clipboard: uc_app::ClipboardPorts {
-                clipboard: Arc::new(NoopClipboard),
-                system_clipboard: Arc::new(NoopClipboard),
-                clipboard_entry_repo: Arc::new(MockEntryRepository {
-                    entry: None,
-                    touch_result: true,
-                    calls: Arc::new(Mutex::new(Vec::new())),
-                }),
-                clipboard_event_repo: Arc::new(NoopPort),
-                representation_repo: Arc::new(MockRepresentationRepository {
-                    reps: HashMap::new(),
-                }),
-                representation_normalizer: Arc::new(NoopPort),
-                selection_repo: Arc::new(MockSelectionRepository { selection: None }),
-                representation_policy: Arc::new(NoopPort),
-                representation_cache: Arc::new(NoopPort),
-                spool_queue: Arc::new(NoopPort),
-                clipboard_change_origin: Arc::new(InMemoryClipboardChangeOrigin::new()),
-                worker_tx,
-            },
-            security: uc_app::SecurityPorts {
-                encryption: Arc::new(NoopPort),
-                encryption_session: Arc::new(NoopPort),
-                encryption_state: Arc::new(NoopPort),
-                key_scope: Arc::new(NoopPort),
-                secure_storage: Arc::new(NoopPort),
-                key_material: Arc::new(NoopPort),
-            },
-            device: uc_app::DevicePorts {
-                device_repo: Arc::new(NoopPort),
-                device_identity: Arc::new(MockDeviceIdentity),
-                paired_device_repo: Arc::new(NoopPort),
-            },
+            clipboard: Arc::new(NoopClipboard),
+            system_clipboard: Arc::new(NoopClipboard),
+            clipboard_entry_repo: Arc::new(MockEntryRepository {
+                entry: None,
+                touch_result: true,
+                calls: Arc::new(Mutex::new(Vec::new())),
+            }),
+            clipboard_event_repo: Arc::new(NoopPort),
+            representation_repo: Arc::new(MockRepresentationRepository {
+                reps: HashMap::new(),
+            }),
+            representation_normalizer: Arc::new(NoopPort),
+            selection_repo: Arc::new(MockSelectionRepository { selection: None }),
+            representation_policy: Arc::new(NoopPort),
+            representation_cache: Arc::new(NoopPort),
+            spool_queue: Arc::new(NoopPort),
+            clipboard_change_origin: Arc::new(InMemoryClipboardChangeOrigin::new()),
+            worker_tx,
+            encryption: Arc::new(NoopPort),
+            encryption_session: Arc::new(NoopPort),
+            encryption_state: Arc::new(NoopPort),
+            key_scope: Arc::new(NoopPort),
+            secure_storage: Arc::new(NoopPort),
+            key_material: Arc::new(NoopPort),
+            watcher_control: Arc::new(NoopPort),
+            device_repo: Arc::new(NoopPort),
+            device_identity: Arc::new(MockDeviceIdentity),
+            paired_device_repo: Arc::new(NoopPort),
             network_ports: noop_network_ports(),
             network_control: Arc::new(NoopPort),
             setup_status: Arc::new(NoopPort),
-            storage: uc_app::StoragePorts {
-                blob_store: Arc::new(NoopPort),
-                blob_repository: Arc::new(NoopPort),
-                blob_writer: Arc::new(NoopPort),
-                thumbnail_repo: Arc::new(NoopPort),
-                thumbnail_generator: Arc::new(NoopPort),
-            },
+            blob_store: Arc::new(NoopPort),
+            blob_repository: Arc::new(NoopPort),
+            blob_writer: Arc::new(NoopPort),
+            thumbnail_repo: Arc::new(NoopPort),
+            thumbnail_generator: Arc::new(NoopPort),
             settings: Arc::new(NoopPort),
-            system: uc_app::SystemPorts {
-                clock: Arc::new(NoopPort),
-                hash: Arc::new(NoopPort),
-            },
+            ui_port: Arc::new(NoopPort),
+            autostart: Arc::new(NoopPort),
+            clock: Arc::new(NoopPort),
+            hash: Arc::new(NoopPort),
         };
 
         let runtime = Arc::new(AppRuntime::new(deps));
@@ -1489,8 +1243,8 @@ mod tests {
 
         let err = result.expect_err("passive mode should return error");
         assert!(
-            matches!(err, CommandError::ValidationError(_)),
-            "expected ValidationError, got: {err:?}"
+            err.contains("Clipboard sync disabled in passive mode"),
+            "unexpected error: {err}"
         );
     }
 }

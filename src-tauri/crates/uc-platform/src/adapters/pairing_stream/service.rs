@@ -1,5 +1,4 @@
 use super::framing::{read_length_prefixed, write_length_prefixed, MAX_PAIRING_FRAME_BYTES};
-use crate::ports::observability::TraceMetadata;
 use anyhow::{anyhow, Result};
 use libp2p::{futures::StreamExt, PeerId, StreamProtocol};
 use libp2p_stream as stream;
@@ -13,6 +12,7 @@ use tokio::time::{timeout, Duration};
 use tokio_util::compat::FuturesAsyncReadCompatExt;
 use tracing::{info_span, Instrument, Span};
 use uc_core::network::{NetworkEvent, PairingMessage, ProtocolId};
+use uc_core::ports::observability::TraceMetadata;
 
 pub const MAX_PAIRING_CONCURRENCY: usize = 16;
 const PER_PEER_CONCURRENCY: usize = 2;

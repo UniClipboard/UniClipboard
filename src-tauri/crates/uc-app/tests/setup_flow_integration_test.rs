@@ -3,40 +3,40 @@ use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
 use tempfile::TempDir;
-use uc_app::testing::{
-    NoopDiscoveryPort, NoopLifecycleEventEmitter, NoopLifecycleStatus, NoopNetworkControl,
-    NoopPairedDeviceRepository, NoopPairingTransport, NoopSessionReadyEmitter, NoopSetupEventPort,
-    NoopSpaceAccessPersistence, NoopSpaceAccessTransport,
-};
 use uc_app::usecases::clipboard::ClipboardIntegrationMode;
 use uc_app::usecases::space_access::{SpaceAccessExecutor, SpaceAccessOrchestrator};
 use uc_app::usecases::{
     space_access::{
         DefaultSpaceAccessCryptoFactory, HmacProofAdapter, SpaceAccessPersistenceAdapter,
     },
-    AppLifecycleCoordinator, AppLifecycleCoordinatorDeps, InitializeEncryption, MarkSetupComplete,
-    PairingConfig, PairingOrchestrator, SetupOrchestrator, StartNetworkAfterUnlock,
+    AppLifecycleCoordinator, AppLifecycleCoordinatorDeps, InitializeEncryption, LifecycleEvent,
+    LifecycleEventEmitter, LifecycleState, LifecycleStatusPort, MarkSetupComplete, PairingConfig,
+    PairingOrchestrator, SessionReadyEmitter, SetupOrchestrator, StartClipboardWatcher,
+    StartNetworkAfterUnlock,
 };
 use uc_core::network::pairing_state_machine::PairingAction;
 use uc_core::network::protocol::{PairingChallenge, PairingMessage};
-use uc_core::network::DiscoveredPeer;
+use uc_core::network::{DiscoveredPeer, PairedDevice, PairingState};
 use uc_core::ports::network_control::NetworkControlPort;
 use uc_core::ports::security::key_scope::{KeyScopePort, ScopeError};
 use uc_core::ports::security::secure_storage::{SecureStorageError, SecureStoragePort};
-use uc_core::ports::space::{CryptoPort, SpaceAccessTransportPort};
-use uc_core::ports::{DiscoveryPort, EncryptionSessionPort, SetupStatusPort, TimerPort};
+use uc_core::ports::space::{CryptoPort, PersistencePort, SpaceAccessTransportPort};
+use uc_core::ports::watcher_control::{WatcherControlError, WatcherControlPort};
+use uc_core::ports::{
+    DiscoveryPort, EncryptionSessionPort, PairedDeviceRepositoryError, PairedDeviceRepositoryPort,
+    PairingTransportPort, SetupEventPort, SetupStatusPort, TimerPort,
+};
 use uc_core::security::model::KeyScope;
 use uc_core::security::space_access::event::SpaceAccessEvent;
 use uc_core::setup::SetupState;
+use uc_core::PeerId;
 use uc_infra::fs::key_slot_store::JsonKeySlotStore;
 use uc_infra::security::{
     DefaultKeyMaterialService, EncryptionRepository, FileEncryptionStateRepository,
+    InMemoryEncryptionSession,
 };
 use uc_infra::setup_status::FileSetupStatusRepository;
 use uc_infra::time::Timer;
-use uc_platform::adapters::InMemoryEncryptionSessionPort;
-use uc_platform::ports::{WatcherControlError, WatcherControlPort};
-use uc_platform::usecases::StartClipboardWatcher;
 
 use tokio::sync::mpsc;
 use tokio::time::{sleep, Duration, Instant};
@@ -86,21 +86,24 @@ impl KeyScopePort for TestKeyScope {
     }
 }
 
-// NoopNetworkControl, NoopSessionReadyEmitter, NoopLifecycleStatus,
-// NoopLifecycleEventEmitter, NoopPairedDeviceRepository, NoopDiscoveryPort,
-// NoopSetupEventPort, NoopSpaceAccessTransport, NoopPairingTransport
-// — imported from uc_app::testing.
-// NoopWatcherControl stays inline (WatcherControlPort is in uc-platform).
-
-struct NoopWatcherControl;
+struct MockWatcherControl;
 
 #[async_trait]
-impl WatcherControlPort for NoopWatcherControl {
+impl WatcherControlPort for MockWatcherControl {
     async fn start_watcher(&self) -> Result<(), WatcherControlError> {
         Ok(())
     }
 
     async fn stop_watcher(&self) -> Result<(), WatcherControlError> {
+        Ok(())
+    }
+}
+
+struct MockNetworkControl;
+
+#[async_trait]
+impl NetworkControlPort for MockNetworkControl {
+    async fn start_network(&self) -> anyhow::Result<()> {
         Ok(())
     }
 }
@@ -117,6 +120,93 @@ impl NetworkControlPort for OrderedNetworkControl {
     }
 }
 
+struct MockSessionReadyEmitter;
+
+#[async_trait]
+impl SessionReadyEmitter for MockSessionReadyEmitter {
+    async fn emit_ready(&self) -> anyhow::Result<()> {
+        Ok(())
+    }
+}
+
+struct MockLifecycleStatus;
+
+#[async_trait]
+impl LifecycleStatusPort for MockLifecycleStatus {
+    async fn set_state(&self, _state: LifecycleState) -> anyhow::Result<()> {
+        Ok(())
+    }
+
+    async fn get_state(&self) -> LifecycleState {
+        LifecycleState::Idle
+    }
+}
+
+struct MockLifecycleEventEmitter;
+
+#[async_trait]
+impl LifecycleEventEmitter for MockLifecycleEventEmitter {
+    async fn emit_lifecycle_event(&self, _event: LifecycleEvent) -> anyhow::Result<()> {
+        Ok(())
+    }
+}
+
+struct NoopPairedDeviceRepository;
+
+#[async_trait]
+impl PairedDeviceRepositoryPort for NoopPairedDeviceRepository {
+    async fn get_by_peer_id(
+        &self,
+        _peer_id: &PeerId,
+    ) -> Result<Option<PairedDevice>, PairedDeviceRepositoryError> {
+        Ok(None)
+    }
+
+    async fn list_all(&self) -> Result<Vec<PairedDevice>, PairedDeviceRepositoryError> {
+        Ok(Vec::new())
+    }
+
+    async fn upsert(&self, _device: PairedDevice) -> Result<(), PairedDeviceRepositoryError> {
+        Ok(())
+    }
+
+    async fn set_state(
+        &self,
+        _peer_id: &PeerId,
+        _state: PairingState,
+    ) -> Result<(), PairedDeviceRepositoryError> {
+        Ok(())
+    }
+
+    async fn update_last_seen(
+        &self,
+        _peer_id: &PeerId,
+        _last_seen_at: chrono::DateTime<chrono::Utc>,
+    ) -> Result<(), PairedDeviceRepositoryError> {
+        Ok(())
+    }
+
+    async fn delete(&self, _peer_id: &PeerId) -> Result<(), PairedDeviceRepositoryError> {
+        Ok(())
+    }
+}
+
+struct NoopDiscoveryPort;
+
+#[async_trait]
+impl DiscoveryPort for NoopDiscoveryPort {
+    async fn list_discovered_peers(&self) -> anyhow::Result<Vec<DiscoveredPeer>> {
+        Ok(Vec::new())
+    }
+}
+
+struct NoopSetupEventPort;
+
+#[async_trait]
+impl SetupEventPort for NoopSetupEventPort {
+    async fn emit_setup_state_changed(&self, _state: SetupState, _session_id: Option<String>) {}
+}
+
 struct OrderedDiscoveryPort {
     calls: Arc<Mutex<Vec<&'static str>>>,
 }
@@ -126,6 +216,64 @@ impl DiscoveryPort for OrderedDiscoveryPort {
     async fn list_discovered_peers(&self) -> anyhow::Result<Vec<DiscoveredPeer>> {
         self.calls.lock().unwrap().push("discovery");
         Ok(Vec::new())
+    }
+}
+
+struct NoopSpaceAccessTransport;
+
+#[async_trait]
+impl SpaceAccessTransportPort for NoopSpaceAccessTransport {
+    async fn send_offer(
+        &mut self,
+        _session_id: &uc_core::network::SessionId,
+    ) -> anyhow::Result<()> {
+        Ok(())
+    }
+
+    async fn send_proof(
+        &mut self,
+        _session_id: &uc_core::network::SessionId,
+    ) -> anyhow::Result<()> {
+        Ok(())
+    }
+
+    async fn send_result(
+        &mut self,
+        _session_id: &uc_core::network::SessionId,
+    ) -> anyhow::Result<()> {
+        Ok(())
+    }
+}
+
+struct NoopSpaceAccessPairingTransport;
+
+#[async_trait]
+impl PairingTransportPort for NoopSpaceAccessPairingTransport {
+    async fn open_pairing_session(
+        &self,
+        _peer_id: String,
+        _session_id: String,
+    ) -> anyhow::Result<()> {
+        Ok(())
+    }
+
+    async fn send_pairing_on_session(
+        &self,
+        _message: uc_core::network::PairingMessage,
+    ) -> anyhow::Result<()> {
+        Ok(())
+    }
+
+    async fn close_pairing_session(
+        &self,
+        _session_id: String,
+        _reason: Option<String>,
+    ) -> anyhow::Result<()> {
+        Ok(())
+    }
+
+    async fn unpair_device(&self, _peer_id: String) -> anyhow::Result<()> {
+        Ok(())
     }
 }
 
@@ -162,7 +310,26 @@ impl CryptoPort for DeterministicSpaceAccessCrypto {
     }
 }
 
-// NoopSpaceAccessPersistence replaced by NoopSpaceAccessPersistence from uc_app::testing
+struct DeterministicSpaceAccessPersistence;
+
+#[async_trait]
+impl PersistencePort for DeterministicSpaceAccessPersistence {
+    async fn persist_joiner_access(
+        &mut self,
+        _space_id: &uc_core::ids::SpaceId,
+        _peer_id: &str,
+    ) -> anyhow::Result<()> {
+        Ok(())
+    }
+
+    async fn persist_sponsor_access(
+        &mut self,
+        _space_id: &uc_core::ids::SpaceId,
+        _peer_id: &str,
+    ) -> anyhow::Result<()> {
+        Ok(())
+    }
+}
 
 async fn drive_space_access_to_waiting_decision(
     orchestrator: &SpaceAccessOrchestrator,
@@ -187,7 +354,7 @@ async fn drive_space_access_to_waiting_decision(
     let mut transport = NoopSpaceAccessTransport;
     let proof = HmacProofAdapter::new();
     let mut timer = Timer::new();
-    let mut store = NoopSpaceAccessPersistence;
+    let mut store = DeterministicSpaceAccessPersistence;
     let mut executor = SpaceAccessExecutor {
         crypto: &crypto,
         transport: &mut transport,
@@ -240,14 +407,14 @@ fn build_mock_lifecycle() -> Arc<AppLifecycleCoordinator> {
     Arc::new(AppLifecycleCoordinator::from_deps(
         AppLifecycleCoordinatorDeps {
             watcher: Arc::new(StartClipboardWatcher::new(
-                Arc::new(NoopWatcherControl),
+                Arc::new(MockWatcherControl),
                 ClipboardIntegrationMode::Full,
             )),
-            network: Arc::new(StartNetworkAfterUnlock::new(Arc::new(NoopNetworkControl))),
+            network: Arc::new(StartNetworkAfterUnlock::new(Arc::new(MockNetworkControl))),
             announcer: None,
-            emitter: Arc::new(NoopSessionReadyEmitter),
-            status: Arc::new(NoopLifecycleStatus),
-            lifecycle_emitter: Arc::new(NoopLifecycleEventEmitter),
+            emitter: Arc::new(MockSessionReadyEmitter),
+            status: Arc::new(MockLifecycleStatus),
+            lifecycle_emitter: Arc::new(MockLifecycleEventEmitter),
         },
     ))
 }
@@ -258,23 +425,22 @@ fn build_ordered_mock_lifecycle(
     Arc::new(AppLifecycleCoordinator::from_deps(
         AppLifecycleCoordinatorDeps {
             watcher: Arc::new(StartClipboardWatcher::new(
-                Arc::new(NoopWatcherControl),
+                Arc::new(MockWatcherControl),
                 ClipboardIntegrationMode::Full,
             )),
             network: Arc::new(StartNetworkAfterUnlock::new(Arc::new(
                 OrderedNetworkControl { calls },
             ))),
             announcer: None,
-            emitter: Arc::new(NoopSessionReadyEmitter),
-            status: Arc::new(NoopLifecycleStatus),
-            lifecycle_emitter: Arc::new(NoopLifecycleEventEmitter),
+            emitter: Arc::new(MockSessionReadyEmitter),
+            status: Arc::new(MockLifecycleStatus),
+            lifecycle_emitter: Arc::new(MockLifecycleEventEmitter),
         },
     ))
 }
 
 fn build_pairing_orchestrator() -> Arc<PairingOrchestrator> {
     let repo = Arc::new(NoopPairedDeviceRepository);
-    let staged_store = Arc::new(uc_app::usecases::StagedPairedDeviceStore::new());
     let (orchestrator, _rx) = PairingOrchestrator::new(
         PairingConfig::default(),
         repo,
@@ -282,7 +448,6 @@ fn build_pairing_orchestrator() -> Arc<PairingOrchestrator> {
         "test-device-id".to_string(),
         "test-peer-id".to_string(),
         vec![1; 32],
-        staged_store,
     );
     Arc::new(orchestrator)
 }
@@ -292,7 +457,6 @@ fn build_pairing_orchestrator_with_actions() -> (
     tokio::sync::Mutex<mpsc::Receiver<PairingAction>>,
 ) {
     let repo = Arc::new(NoopPairedDeviceRepository);
-    let staged_store = Arc::new(uc_app::usecases::StagedPairedDeviceStore::new());
     let (orchestrator, rx) = PairingOrchestrator::new(
         PairingConfig::default(),
         repo,
@@ -300,7 +464,6 @@ fn build_pairing_orchestrator_with_actions() -> (
         "test-device-id".to_string(),
         "test-peer-id".to_string(),
         vec![1; 32],
-        staged_store,
     );
     (Arc::new(orchestrator), tokio::sync::Mutex::new(rx))
 }
@@ -329,7 +492,7 @@ async fn create_space_flow_marks_setup_complete_and_persists_state() {
     let encryption = Arc::new(EncryptionRepository);
     let key_scope = Arc::new(TestKeyScope::default());
     let encryption_state = Arc::new(FileEncryptionStateRepository::new(vault_dir.clone()));
-    let encryption_session = Arc::new(InMemoryEncryptionSessionPort::new());
+    let encryption_session = Arc::new(InMemoryEncryptionSession::new());
 
     let initialize_encryption = Arc::new(InitializeEncryption::from_ports(
         encryption.clone(),
@@ -358,7 +521,6 @@ async fn create_space_flow_marks_setup_complete_and_persists_state() {
         Arc::new(tokio::sync::Mutex::new(SpaceAccessPersistenceAdapter::new(
             encryption_state,
             Arc::new(NoopPairedDeviceRepository),
-            Arc::new(uc_app::usecases::StagedPairedDeviceStore::new()),
         )));
     let orchestrator = SetupOrchestrator::new(
         initialize_encryption,
@@ -369,9 +531,9 @@ async fn create_space_flow_marks_setup_complete_and_persists_state() {
         Arc::new(NoopSetupEventPort),
         build_space_access_orchestrator(),
         build_discovery_port(),
-        Arc::new(NoopNetworkControl),
+        Arc::new(MockNetworkControl),
         crypto_factory,
-        Arc::new(NoopPairingTransport),
+        Arc::new(NoopSpaceAccessPairingTransport),
         transport_port,
         proof_port,
         timer_port,
@@ -470,7 +632,7 @@ async fn ensure_discovery_starts_network_before_listing_peers() {
     let encryption = Arc::new(EncryptionRepository);
     let key_scope = Arc::new(TestKeyScope::default());
     let encryption_state = Arc::new(FileEncryptionStateRepository::new(vault_dir.clone()));
-    let encryption_session = Arc::new(InMemoryEncryptionSessionPort::new());
+    let encryption_session = Arc::new(InMemoryEncryptionSession::new());
 
     let initialize_encryption = Arc::new(InitializeEncryption::from_ports(
         encryption.clone(),
@@ -499,7 +661,6 @@ async fn ensure_discovery_starts_network_before_listing_peers() {
         Arc::new(tokio::sync::Mutex::new(SpaceAccessPersistenceAdapter::new(
             encryption_state,
             Arc::new(NoopPairedDeviceRepository),
-            Arc::new(uc_app::usecases::StagedPairedDeviceStore::new()),
         )));
     let calls = Arc::new(Mutex::new(Vec::new()));
 
@@ -518,7 +679,7 @@ async fn ensure_discovery_starts_network_before_listing_peers() {
             calls: calls.clone(),
         }),
         crypto_factory,
-        Arc::new(NoopPairingTransport),
+        Arc::new(NoopSpaceAccessPairingTransport),
         transport_port,
         proof_port,
         timer_port,
@@ -546,7 +707,7 @@ async fn join_space_access_invokes_space_access_orchestrator() {
     let encryption = Arc::new(EncryptionRepository);
     let key_scope = Arc::new(TestKeyScope::default());
     let encryption_state = Arc::new(FileEncryptionStateRepository::new(vault_dir.clone()));
-    let encryption_session = Arc::new(InMemoryEncryptionSessionPort::new());
+    let encryption_session = Arc::new(InMemoryEncryptionSession::new());
 
     let initialize_encryption = Arc::new(InitializeEncryption::from_ports(
         encryption.clone(),
@@ -575,7 +736,6 @@ async fn join_space_access_invokes_space_access_orchestrator() {
         Arc::new(tokio::sync::Mutex::new(SpaceAccessPersistenceAdapter::new(
             encryption_state,
             Arc::new(NoopPairedDeviceRepository),
-            Arc::new(uc_app::usecases::StagedPairedDeviceStore::new()),
         )));
     let (pairing_orchestrator, action_rx) = build_pairing_orchestrator_with_actions();
     let space_access_orchestrator = build_space_access_orchestrator();
@@ -588,9 +748,9 @@ async fn join_space_access_invokes_space_access_orchestrator() {
         Arc::new(NoopSetupEventPort),
         space_access_orchestrator.clone(),
         build_discovery_port(),
-        Arc::new(NoopNetworkControl),
+        Arc::new(MockNetworkControl),
         crypto_factory,
-        Arc::new(NoopPairingTransport),
+        Arc::new(NoopSpaceAccessPairingTransport),
         transport_port,
         proof_port,
         timer_port,
@@ -626,7 +786,7 @@ async fn join_space_access_propagates_space_access_error() {
     let encryption = Arc::new(EncryptionRepository);
     let key_scope = Arc::new(TestKeyScope::default());
     let encryption_state = Arc::new(FileEncryptionStateRepository::new(vault_dir.clone()));
-    let encryption_session = Arc::new(InMemoryEncryptionSessionPort::new());
+    let encryption_session = Arc::new(InMemoryEncryptionSession::new());
 
     let initialize_encryption = Arc::new(InitializeEncryption::from_ports(
         encryption.clone(),
@@ -655,7 +815,6 @@ async fn join_space_access_propagates_space_access_error() {
         Arc::new(tokio::sync::Mutex::new(SpaceAccessPersistenceAdapter::new(
             encryption_state,
             Arc::new(NoopPairedDeviceRepository),
-            Arc::new(uc_app::usecases::StagedPairedDeviceStore::new()),
         )));
     let (pairing_orchestrator, action_rx) = build_pairing_orchestrator_with_actions();
     let space_access_orchestrator = build_space_access_orchestrator();
@@ -668,9 +827,9 @@ async fn join_space_access_propagates_space_access_error() {
         Arc::new(NoopSetupEventPort),
         space_access_orchestrator.clone(),
         build_discovery_port(),
-        Arc::new(NoopNetworkControl),
+        Arc::new(MockNetworkControl),
         crypto_factory.clone(),
-        Arc::new(NoopPairingTransport),
+        Arc::new(NoopSpaceAccessPairingTransport),
         transport_port.clone(),
         proof_port,
         timer_port.clone(),
@@ -750,7 +909,7 @@ async fn join_space_flow_converges_to_granted_on_access_granted_result() {
     let mut transport = NoopSpaceAccessTransport;
     let proof = HmacProofAdapter::new();
     let mut timer = Timer::new();
-    let mut store = NoopSpaceAccessPersistence;
+    let mut store = DeterministicSpaceAccessPersistence;
     let mut executor = SpaceAccessExecutor {
         crypto: &crypto,
         transport: &mut transport,
@@ -794,7 +953,7 @@ async fn join_space_flow_converges_to_denied_on_access_denied_result() {
     let mut transport = NoopSpaceAccessTransport;
     let proof = HmacProofAdapter::new();
     let mut timer = Timer::new();
-    let mut store = NoopSpaceAccessPersistence;
+    let mut store = DeterministicSpaceAccessPersistence;
     let mut executor = SpaceAccessExecutor {
         crypto: &crypto,
         transport: &mut transport,
@@ -842,7 +1001,7 @@ async fn join_space_flow_times_out_when_result_does_not_arrive() {
     let mut transport = NoopSpaceAccessTransport;
     let proof = HmacProofAdapter::new();
     let mut timer = Timer::new();
-    let mut store = NoopSpaceAccessPersistence;
+    let mut store = DeterministicSpaceAccessPersistence;
     let mut executor = SpaceAccessExecutor {
         crypto: &crypto,
         transport: &mut transport,

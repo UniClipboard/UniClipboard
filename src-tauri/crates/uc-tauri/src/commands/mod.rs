@@ -11,7 +11,7 @@ pub mod tray;
 pub mod updater;
 
 use tracing::Span;
-use uc_platform::ports::observability::TraceMetadata;
+use uc_core::ports::observability::TraceMetadata;
 
 // Re-export commonly used types
 pub use autostart::*;
@@ -24,7 +24,7 @@ pub use setup::*;
 pub use startup::*;
 pub use updater::*;
 
-pub use error::CommandError;
+pub use error::map_err;
 
 pub(crate) fn record_trace_fields(span: &Span, trace: &Option<TraceMetadata>) {
     if let Some(metadata) = trace.as_ref() {
@@ -40,7 +40,7 @@ mod tests {
     use std::sync::{Arc, Mutex};
     use tracing::info_span;
     use tracing_subscriber::fmt::MakeWriter;
-    use uc_platform::ports::observability::TraceMetadata;
+    use uc_core::ports::observability::TraceMetadata;
 
     #[derive(Clone)]
     struct BufferWriter {

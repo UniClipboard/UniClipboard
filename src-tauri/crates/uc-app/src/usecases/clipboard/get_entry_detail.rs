@@ -88,7 +88,7 @@ impl GetEntryDetailUseCase {
         Ok(EntryDetailResult {
             id: entry.entry_id.to_string(),
             content: full_content,
-            size_bytes: preview_rep.size_bytes,
+            size_bytes: entry.total_size,
             created_at_ms: entry.created_at_ms,
             active_time_ms: entry.active_time_ms,
             mime_type: mime_type_str.map(String::from),

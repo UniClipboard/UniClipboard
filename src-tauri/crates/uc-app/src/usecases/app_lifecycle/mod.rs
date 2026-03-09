@@ -4,14 +4,14 @@ use anyhow::Result;
 use async_trait::async_trait;
 use tracing::{info, info_span, warn, Instrument};
 
-use super::{StartClipboardWatcherPort, StartNetworkAfterUnlock};
+use super::{StartClipboardWatcher, StartNetworkAfterUnlock};
 
 // ---------------------------------------------------------------------------
 // Lifecycle state
 // ---------------------------------------------------------------------------
 
 /// Represents the current state of the application lifecycle.
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub enum LifecycleState {
     /// Initial state – no lifecycle attempt has been made yet.
     Idle,
@@ -89,7 +89,7 @@ pub trait DeviceAnnouncer: Send + Sync {
 /// 4. If both succeed, sets state to **Ready** and emits a `Ready` event.
 /// 5. On failure, sets the appropriate failed state and emits a failure event.
 pub struct AppLifecycleCoordinator {
-    watcher: Arc<dyn StartClipboardWatcherPort>,
+    watcher: Arc<StartClipboardWatcher>,
     network: Arc<StartNetworkAfterUnlock>,
     announcer: Option<Arc<dyn DeviceAnnouncer>>,
     emitter: Arc<dyn SessionReadyEmitter>,
@@ -99,7 +99,7 @@ pub struct AppLifecycleCoordinator {
 
 /// Helper for constructing the coordinator with explicit dependency fields.
 pub struct AppLifecycleCoordinatorDeps {
-    pub watcher: Arc<dyn StartClipboardWatcherPort>,
+    pub watcher: Arc<StartClipboardWatcher>,
     pub network: Arc<StartNetworkAfterUnlock>,
     pub announcer: Option<Arc<dyn DeviceAnnouncer>>,
     pub emitter: Arc<dyn SessionReadyEmitter>,
@@ -110,7 +110,7 @@ pub struct AppLifecycleCoordinatorDeps {
 impl AppLifecycleCoordinator {
     /// Create a new coordinator instance.
     pub fn new(
-        watcher: Arc<dyn StartClipboardWatcherPort>,
+        watcher: Arc<StartClipboardWatcher>,
         network: Arc<StartNetworkAfterUnlock>,
         announcer: Option<Arc<dyn DeviceAnnouncer>>,
         emitter: Arc<dyn SessionReadyEmitter>,

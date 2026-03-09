@@ -8806,7 +8806,6 @@ dependencies = [
  "tracing-subscriber",
  "uc-core",
  "uc-infra",
- "uc-platform",
  "uuid",
 ]
 
@@ -8905,7 +8904,6 @@ dependencies = [
  "libp2p-stream",
  "local-ip-address",
  "log",
- "mockall 0.14.0",
  "once_cell",
  "png 0.18.0",
  "rand 0.9.2",
@@ -8919,6 +8917,7 @@ dependencies = [
  "tokio-util",
  "tracing",
  "uc-core",
+ "uc-infra",
  "uuid",
  "winapi",
 ]
@@ -8929,7 +8928,6 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "async-trait",
- "base64 0.22.1",
  "chrono",
  "dirs 6.0.0",
  "gethostname",
@@ -8945,7 +8943,6 @@ dependencies = [
  "tempfile",
  "thiserror 2.0.17",
  "tokio",
- "tokio-util",
  "toml 0.8.23",
  "tracing",
  "tracing-appender",
@@ -9027,7 +9024,7 @@ dependencies = [
 
 [[package]]
 name = "uniclipboard"
-version = "0.2.0-alpha.3"
+version = "0.1.0-alpha.6"
 dependencies = [
  "anyhow",
  "async-trait",

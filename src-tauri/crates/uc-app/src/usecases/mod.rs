@@ -26,6 +26,7 @@ pub mod pairing;
 pub mod settings;
 pub mod setup;
 pub mod space_access;
+pub mod start_clipboard_watcher;
 pub mod start_network;
 pub mod start_network_after_unlock;
 pub mod update_settings;
@@ -45,10 +46,10 @@ pub use list_clipboard_entries::ListClipboardEntries;
 pub use pairing::{
     AnnounceDeviceName, GetLocalDeviceInfo, GetLocalPeerId, ListConnectedPeers,
     ListDiscoveredPeers, ListPairedDevices, LocalDeviceInfo, PairingConfig, PairingOrchestrator,
-    ResolveConnectionPolicy, SetPairingState, StagedPairedDeviceStore, UnpairDevice,
+    ResolveConnectionPolicy, SetPairingState, UnpairDevice,
 };
 pub use setup::{MarkSetupComplete, SetupError, SetupOrchestrator};
+pub use start_clipboard_watcher::StartClipboardWatcher;
 pub use start_network::StartNetwork;
 pub use start_network_after_unlock::StartNetworkAfterUnlock;
-pub use uc_core::ports::{StartClipboardWatcherError, StartClipboardWatcherPort};
 pub use update_settings::UpdateSettings;

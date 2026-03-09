@@ -15,11 +15,7 @@ pub use p2p_peer::{P2PPeerConnectionEvent, P2PPeerDiscoveryEvent, P2PPeerNameUpd
 #[serde(tag = "type")]
 pub enum ClipboardEvent {
     /// New clipboard content captured
-    NewContent {
-        entry_id: String,
-        preview: String,
-        origin: String,
-    },
+    NewContent { entry_id: String, preview: String },
     /// Clipboard content deleted
     Deleted { entry_id: String },
 }
@@ -51,36 +47,6 @@ pub fn forward_libp2p_start_failed<R: tauri::Runtime>(
 mod tests {
     use super::*;
     use tauri::Listener;
-
-    #[test]
-    fn clipboard_event_new_content_serializes_with_origin() {
-        let event = ClipboardEvent::NewContent {
-            entry_id: "abc".to_string(),
-            preview: "hello".to_string(),
-            origin: "local".to_string(),
-        };
-        let json = serde_json::to_value(event).unwrap();
-        assert_eq!(
-            json,
-            serde_json::json!({
-                "type": "NewContent",
-                "entry_id": "abc",
-                "preview": "hello",
-                "origin": "local"
-            })
-        );
-    }
-
-    #[test]
-    fn clipboard_event_new_content_serializes_with_remote_origin() {
-        let event = ClipboardEvent::NewContent {
-            entry_id: "xyz".to_string(),
-            preview: "world".to_string(),
-            origin: "remote".to_string(),
-        };
-        let json = serde_json::to_value(event).unwrap();
-        assert_eq!(json["origin"], "remote");
-    }
 
     #[test]
     fn encryption_event_serializes_with_type_tag() {

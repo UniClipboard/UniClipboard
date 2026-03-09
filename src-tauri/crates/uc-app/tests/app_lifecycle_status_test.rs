@@ -7,11 +7,11 @@ use tokio::sync::Mutex;
 use uc_app::usecases::clipboard::ClipboardIntegrationMode;
 use uc_app::usecases::{
     AppLifecycleCoordinator, AppLifecycleCoordinatorDeps, LifecycleEvent, LifecycleEventEmitter,
-    LifecycleState, LifecycleStatusPort, SessionReadyEmitter, StartNetworkAfterUnlock,
+    LifecycleState, LifecycleStatusPort, SessionReadyEmitter, StartClipboardWatcher,
+    StartNetworkAfterUnlock,
 };
 use uc_core::ports::network_control::NetworkControlPort;
-use uc_platform::ports::watcher_control::{WatcherControlError, WatcherControlPort};
-use uc_platform::usecases::StartClipboardWatcher;
+use uc_core::ports::watcher_control::{WatcherControlError, WatcherControlPort};
 
 // ---------------------------------------------------------------------------
 // Mock: WatcherControlPort (configurable failure)

@@ -24,12 +24,8 @@ impl Runtime {
     }
 
     /// Handle clipboard captured event
-    pub async fn on_clipboard_captured(&self, entry_id: String, preview: String, origin: String) {
-        let event = ClipboardEvent::NewContent {
-            entry_id,
-            preview,
-            origin,
-        };
+    pub async fn on_clipboard_captured(&self, entry_id: String, preview: String) {
+        let event = ClipboardEvent::NewContent { entry_id, preview };
         if let Err(e) = forward_clipboard_event(&self.app_handle, event) {
             eprintln!("Failed to forward clipboard event: {}", e);
         }

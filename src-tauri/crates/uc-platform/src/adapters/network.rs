@@ -1,7 +1,6 @@
 //! Placeholder network port implementation
 //! 占位符网络端口实现
 
-use crate::ports::IdentityStorePort;
 use anyhow::Result;
 use async_trait::async_trait;
 use libp2p::PeerId;
@@ -9,6 +8,7 @@ use tracing::error;
 use uc_core::network::{
     ClipboardMessage, ConnectedPeer, DiscoveredPeer, NetworkEvent, PairingMessage,
 };
+use uc_core::ports::IdentityStorePort;
 use uc_core::ports::{
     ClipboardTransportPort, NetworkControlPort, NetworkEventPort, PairingTransportPort,
     PeerDirectoryPort,
@@ -146,12 +146,15 @@ mod tests {
     }
 
     impl IdentityStorePort for TestIdentityStore {
-        fn load_identity(&self) -> Result<Option<Vec<u8>>, crate::ports::IdentityStoreError> {
+        fn load_identity(&self) -> Result<Option<Vec<u8>>, uc_core::ports::IdentityStoreError> {
             let guard = self.data.lock().expect("lock test identity store");
             Ok(guard.clone())
         }
 
-        fn store_identity(&self, identity: &[u8]) -> Result<(), crate::ports::IdentityStoreError> {
+        fn store_identity(
+            &self,
+            identity: &[u8],
+        ) -> Result<(), uc_core::ports::IdentityStoreError> {
             let mut guard = self.data.lock().expect("lock test identity store");
             *guard = Some(identity.to_vec());
             Ok(())

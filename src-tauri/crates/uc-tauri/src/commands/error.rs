@@ -1,33 +1,7 @@
-use serde::Serialize;
-
-/// Typed command error taxonomy for Tauri command boundary.
+/// Centralized error mapping for commands.
 ///
-/// Serializes to {"code": "...", "message": "..."} for frontend discriminated union handling.
-#[derive(Debug, Clone, Serialize, thiserror::Error)]
-#[serde(tag = "code", content = "message")]
-pub enum CommandError {
-    #[error("not found: {0}")]
-    NotFound(String),
-
-    #[error("internal error: {0}")]
-    InternalError(String),
-
-    #[error("timeout: {0}")]
-    Timeout(String),
-
-    #[error("cancelled: {0}")]
-    Cancelled(String),
-
-    #[error("validation error: {0}")]
-    ValidationError(String),
-
-    #[error("conflict: {0}")]
-    Conflict(String),
-}
-
-impl CommandError {
-    /// Convenience constructor wrapping any Display as InternalError.
-    pub fn internal(err: impl std::fmt::Display) -> Self {
-        CommandError::InternalError(err.to_string())
-    }
+/// This function provides a single upgrade path for future
+/// CommandError enhancements (e.g., error codes).
+pub fn map_err(err: anyhow::Error) -> String {
+    err.to_string()
 }

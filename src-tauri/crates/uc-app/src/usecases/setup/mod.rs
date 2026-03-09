@@ -1,7 +1,6 @@
 //! /// Setup is a business phase.
 //! It is the only authority to decide whether the app is initialized.
 /// Do NOT infer setup progress from encryption / pairing state.
-mod action_executor;
 mod context;
 mod mark_complete;
 pub mod orchestrator;

@@ -1,5 +1,5 @@
-use crate::ports::{WatcherControlError, WatcherControlPort};
 use tokio::sync::mpsc;
+use uc_core::ports::watcher_control::{WatcherControlError, WatcherControlPort};
 
 use crate::ipc::PlatformCommand;
 

@@ -16,7 +16,9 @@
 //! If all three answers are **yes**, place it in `uc-core/ports`.
 //! Otherwise, place it in the relevant `domain` submodule.
 
+pub mod app_dirs;
 pub mod app_runtime;
+pub mod autostart;
 pub mod blob_repository;
 mod blob_store;
 mod blob_writer;
@@ -31,8 +33,10 @@ pub mod device_repository;
 mod discovery;
 pub mod errors;
 mod hash;
+pub mod identity_store;
 pub mod network_control;
 pub mod network_events;
+pub mod observability;
 pub mod paired_device_repository;
 pub mod pairing_transport;
 pub mod peer_directory;
@@ -41,8 +45,9 @@ pub mod settings;
 pub mod setup;
 pub mod setup_event_port;
 pub mod space;
-pub mod start_clipboard_watcher;
 mod timer;
+pub mod ui_port;
+pub mod watcher_control;
 
 pub use blob_repository::BlobRepositoryPort;
 pub use blob_store::BlobStorePort;
@@ -54,15 +59,19 @@ pub use discovery::DiscoveryPort;
 pub use hash::*;
 pub use timer::TimerPort;
 
+pub use app_dirs::AppDirsPort;
 pub use app_runtime::AppRuntimePort;
+pub use autostart::AutostartPort;
 pub use clipboard::*;
 pub use clipboard_change_handler::ClipboardChangeHandler;
 pub use clipboard_transport::ClipboardTransportPort;
 pub use device_identity::DeviceIdentityPort;
 pub use device_repository::DeviceRepositoryPort;
 pub use errors::{AppDirsError, DeviceRepositoryError, PairedDeviceRepositoryError};
+pub use identity_store::{IdentityStoreError, IdentityStorePort};
 pub use network_control::NetworkControlPort;
 pub use network_events::NetworkEventPort;
+pub use observability::{extract_trace, OptionalTrace, TraceMetadata, TraceParseError};
 pub use paired_device_repository::PairedDeviceRepositoryPort;
 pub use pairing_transport::PairingTransportPort;
 pub use peer_directory::PeerDirectoryPort;
@@ -76,4 +85,5 @@ pub use security::transfer_crypto::{
 pub use settings::{SettingsMigrationPort, SettingsPort};
 pub use setup::SetupStatusPort;
 pub use setup_event_port::SetupEventPort;
-pub use start_clipboard_watcher::{StartClipboardWatcherError, StartClipboardWatcherPort};
+pub use ui_port::UiPort;
+pub use watcher_control::{WatcherControlError, WatcherControlPort};

@@ -87,20 +87,15 @@ impl ClipboardRepresentationRepositoryPort for DecryptingClipboardRepresentation
             None
         };
 
-        // Return representation with decrypted data, preserving the original payload_state.
-        // Using ::new() here would re-infer the state from (inline_data, blob_id), which
-        // incorrectly converts Staged (with preview inline_data) to Inline, causing
-        // has_detail=false in list projections and preventing full content loading.
-        Ok(Some(PersistedClipboardRepresentation::new_with_state(
+        // Return representation with decrypted data
+        Ok(Some(PersistedClipboardRepresentation::new(
             rep.id,
             rep.format_id,
             rep.mime_type,
             rep.size_bytes,
             decrypted_inline_data,
             rep.blob_id,
-            rep.payload_state,
-            rep.last_error,
-        )?))
+        )))
     }
 
     async fn get_representation_by_id(

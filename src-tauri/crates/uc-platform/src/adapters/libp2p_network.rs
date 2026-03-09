@@ -1,4 +1,3 @@
-use crate::ports::IdentityStorePort;
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
@@ -24,9 +23,8 @@ use uc_core::network::{
     ProtocolMessage, ResolvedConnectionPolicy,
 };
 use uc_core::ports::{
-    ClipboardTransportPort, ConnectionPolicyResolverPort, EncryptionSessionPort,
+    ClipboardTransportPort, ConnectionPolicyResolverPort, EncryptionSessionPort, IdentityStorePort,
     NetworkControlPort, NetworkEventPort, PairingTransportPort, PeerDirectoryPort,
-    TransferPayloadDecryptorPort, TransferPayloadEncryptorPort,
 };
 
 use super::pairing_stream::service::{
@@ -251,8 +249,6 @@ pub struct Libp2pNetworkAdapter {
     start_state: AtomicU8,
     policy_resolver: Arc<dyn ConnectionPolicyResolverPort>,
     encryption_session: Arc<dyn EncryptionSessionPort>,
-    transfer_decryptor: Arc<dyn TransferPayloadDecryptorPort>,
-    _transfer_encryptor: Arc<dyn TransferPayloadEncryptorPort>,
     stream_control: Mutex<Option<stream::Control>>,
     pairing_service: Mutex<Option<PairingStreamService>>,
 }
@@ -262,8 +258,6 @@ impl Libp2pNetworkAdapter {
         identity_store: Arc<dyn IdentityStorePort>,
         policy_resolver: Arc<dyn ConnectionPolicyResolverPort>,
         encryption_session: Arc<dyn EncryptionSessionPort>,
-        transfer_decryptor: Arc<dyn TransferPayloadDecryptorPort>,
-        transfer_encryptor: Arc<dyn TransferPayloadEncryptorPort>,
     ) -> Result<Self> {
         let keypair = load_or_create_identity(identity_store.as_ref())
             .map_err(|e| anyhow!("failed to load libp2p identity: {e}"))?;
@@ -293,8 +287,6 @@ impl Libp2pNetworkAdapter {
             start_state: AtomicU8::new(START_STATE_IDLE),
             policy_resolver,
             encryption_session,
-            transfer_decryptor,
-            _transfer_encryptor: transfer_encryptor,
             stream_control: Mutex::new(None),
             pairing_service,
         })
@@ -360,7 +352,6 @@ impl Libp2pNetworkAdapter {
             self.clipboard_tx.clone(),
             self.policy_resolver.clone(),
             self.encryption_session.clone(),
-            self.transfer_decryptor.clone(),
         );
 
         let listen_ip = match crate::net_utils::get_physical_lan_ip() {
@@ -886,7 +877,6 @@ fn spawn_business_stream_handler(
     clipboard_tx: mpsc::Sender<(ClipboardMessage, Option<Vec<u8>>)>,
     policy_resolver: Arc<dyn ConnectionPolicyResolverPort>,
     encryption_session: Arc<dyn EncryptionSessionPort>,
-    transfer_decryptor: Arc<dyn TransferPayloadDecryptorPort>,
 ) {
     let mut incoming = match control.accept(StreamProtocol::new(BUSINESS_PROTOCOL_ID)) {
         Ok(incoming) => incoming,
@@ -904,7 +894,6 @@ fn spawn_business_stream_handler(
             let policy_resolver = policy_resolver.clone();
             let caches = caches.clone();
             let encryption_session = encryption_session.clone();
-            let transfer_decryptor = transfer_decryptor.clone();
             tokio::spawn(async move {
                 if check_business_allowed(
                     &policy_resolver,
@@ -966,8 +955,8 @@ fn spawn_business_stream_handler(
                             if msg.payload_version == ClipboardPayloadVersion::V3
                                 && msg.encrypted_content.is_empty() =>
                         {
-                            // Streaming decode uses a blocking read-to-end, then async decrypt
-                            // via injected TransferPayloadDecryptorPort.
+                            // Streaming decode via spawn_blocking.
+                            // TransferPayloadDecryptorAdapter auto-detects V2/V3 by magic bytes.
                             let master_key = match encryption_session.get_master_key().await {
                                 Ok(k) => k,
                                 Err(e) => {
@@ -977,24 +966,23 @@ fn spawn_business_stream_handler(
                                 }
                             };
 
-                            let encrypted = tokio::task::spawn_blocking(move || {
-                                use std::io::Read;
+                            let decode_result = tokio::task::spawn_blocking(move || {
                                 use tokio_util::io::SyncIoBridge;
-                                let mut sync_reader = SyncIoBridge::new(reader);
-                                let mut buf = Vec::new();
-                                sync_reader
-                                    .read_to_end(&mut buf)
-                                    .map_err(|e| anyhow!("stream read failed: {e}"))?;
-                                Ok::<Vec<u8>, anyhow::Error>(buf)
+                                let sync_reader = SyncIoBridge::new(reader);
+                                uc_infra::clipboard::ChunkedDecoder::decode_from(
+                                    sync_reader,
+                                    &master_key,
+                                )
                             })
                             .await
-                            .map_err(|e| format!("buffer task panicked: {e}"))?
-                            .map_err(|e| format!("inbound: stream read failed: {e}"))?;
+                            .map_err(|e| format!("decode task panicked: {e}"))?;
 
-                            let plaintext = transfer_decryptor
-                                .decrypt(&encrypted, &master_key)
-                                .map_err(|e| format!("inbound: chunk decrypt failed: {e}"))?;
-                            Ok(ProcessedMessage::StreamingClipboard(msg, plaintext))
+                            match decode_result {
+                                Ok(plaintext) => {
+                                    Ok(ProcessedMessage::StreamingClipboard(msg, plaintext))
+                                }
+                                Err(e) => Err(format!("inbound: chunk decode failed: {e}")),
+                            }
                         }
                         other => {
                             // DeviceAnnounce, Heartbeat, Pairing — no trailing payload
@@ -1004,8 +992,8 @@ fn spawn_business_stream_handler(
                 })
                 .await;
 
-                // Stream ownership: for streaming clipboard the stream is moved into
-                // spawn_blocking via SyncIoBridge; when buffering finishes (or errors),
+                // Stream ownership: for streaming clipboard the stream was moved into
+                // spawn_blocking via SyncIoBridge; when decode_from finishes (or errors),
                 // SyncIoBridge is dropped, which drops the underlying tokio reader / compat
                 // layer / Take<libp2p::Stream>. The libp2p stream close happens via Drop.
                 // For non-clipboard messages, the reader is dropped when the async block completes.
@@ -2042,31 +2030,6 @@ mod tests {
     use tokio_util::compat::TokioAsyncReadCompatExt;
     use uc_core::network::{ConnectionPolicy, PairingState, ResolvedConnectionPolicy};
     use uc_core::ports::{ConnectionPolicyResolverError, ConnectionPolicyResolverPort};
-    use uc_core::security::MasterKey;
-
-    struct PassthroughTransferPayloadDecryptor;
-
-    impl TransferPayloadDecryptorPort for PassthroughTransferPayloadDecryptor {
-        fn decrypt(
-            &self,
-            encrypted: &[u8],
-            _master_key: &MasterKey,
-        ) -> Result<Vec<u8>, uc_core::ports::TransferCryptoError> {
-            Ok(encrypted.to_vec())
-        }
-    }
-
-    struct PassthroughTransferPayloadEncryptor;
-
-    impl TransferPayloadEncryptorPort for PassthroughTransferPayloadEncryptor {
-        fn encrypt(
-            &self,
-            _master_key: &MasterKey,
-            plaintext: &[u8],
-        ) -> Result<Vec<u8>, uc_core::ports::TransferCryptoError> {
-            Ok(plaintext.to_vec())
-        }
-    }
 
     async fn echo_payload<Stream>(stream: &mut Stream) -> anyhow::Result<()>
     where
@@ -2278,12 +2241,15 @@ mod tests {
     }
 
     impl IdentityStorePort for TestIdentityStore {
-        fn load_identity(&self) -> Result<Option<Vec<u8>>, crate::ports::IdentityStoreError> {
+        fn load_identity(&self) -> Result<Option<Vec<u8>>, uc_core::ports::IdentityStoreError> {
             let guard = self.data.lock().expect("lock test identity store");
             Ok(guard.clone())
         }
 
-        fn store_identity(&self, identity: &[u8]) -> Result<(), crate::ports::IdentityStoreError> {
+        fn store_identity(
+            &self,
+            identity: &[u8],
+        ) -> Result<(), uc_core::ports::IdentityStoreError> {
             let mut guard = self.data.lock().expect("lock test identity store");
             *guard = Some(identity.to_vec());
             Ok(())
@@ -2327,8 +2293,6 @@ mod tests {
             Arc::new(TestIdentityStore::default()),
             resolver,
             Arc::new(InMemoryEncryptionSessionPort::default()),
-            Arc::new(PassthroughTransferPayloadDecryptor),
-            Arc::new(PassthroughTransferPayloadEncryptor),
         );
         assert!(adapter.is_ok());
     }
@@ -2339,8 +2303,6 @@ mod tests {
             Arc::new(TestIdentityStore::default()),
             Arc::new(FakeResolver),
             Arc::new(InMemoryEncryptionSessionPort::default()),
-            Arc::new(PassthroughTransferPayloadDecryptor),
-            Arc::new(PassthroughTransferPayloadEncryptor),
         )
         .expect("create adapter");
 
@@ -2360,8 +2322,6 @@ mod tests {
             Arc::new(TestIdentityStore::default()),
             Arc::new(FakeResolver),
             Arc::new(InMemoryEncryptionSessionPort::default()),
-            Arc::new(PassthroughTransferPayloadDecryptor),
-            Arc::new(PassthroughTransferPayloadEncryptor),
         )
         .expect("create adapter");
 
@@ -2480,8 +2440,6 @@ mod tests {
             Arc::new(TestIdentityStore::default()),
             Arc::new(FakeResolver),
             Arc::new(InMemoryEncryptionSessionPort::default()),
-            Arc::new(PassthroughTransferPayloadDecryptor),
-            Arc::new(PassthroughTransferPayloadEncryptor),
         )
         .expect("create adapter");
 
@@ -2624,8 +2582,6 @@ mod tests {
             Arc::new(TestIdentityStore::default()),
             Arc::new(PendingResolver),
             Arc::new(InMemoryEncryptionSessionPort::default()),
-            Arc::new(PassthroughTransferPayloadDecryptor),
-            Arc::new(PassthroughTransferPayloadEncryptor),
         )
         .expect("create adapter");
 
@@ -2647,8 +2603,6 @@ mod tests {
             Arc::new(TestIdentityStore::default()),
             Arc::new(FakeResolver),
             Arc::new(InMemoryEncryptionSessionPort::default()),
-            Arc::new(PassthroughTransferPayloadDecryptor),
-            Arc::new(PassthroughTransferPayloadEncryptor),
         )
         .expect("create adapter");
 
@@ -2672,8 +2626,6 @@ mod tests {
             Arc::new(TestIdentityStore::default()),
             Arc::new(FakeResolver),
             Arc::new(InMemoryEncryptionSessionPort::default()),
-            Arc::new(PassthroughTransferPayloadDecryptor),
-            Arc::new(PassthroughTransferPayloadEncryptor),
         )
         .expect("create adapter");
         let local_peer_id = adapter.local_peer_id();
@@ -2754,8 +2706,6 @@ mod tests {
             Arc::new(TestIdentityStore::default()),
             Arc::new(FakeResolver),
             Arc::new(InMemoryEncryptionSessionPort::default()),
-            Arc::new(PassthroughTransferPayloadDecryptor),
-            Arc::new(PassthroughTransferPayloadEncryptor),
         )
         .expect("create adapter");
         let payload: Arc<[u8]> = Arc::from(vec![1u8, 2, 3, 4].into_boxed_slice());
@@ -2802,8 +2752,6 @@ mod tests {
             Arc::new(TestIdentityStore::default()),
             Arc::new(FakeResolver),
             Arc::new(InMemoryEncryptionSessionPort::default()),
-            Arc::new(PassthroughTransferPayloadDecryptor),
-            Arc::new(PassthroughTransferPayloadEncryptor),
         )
         .expect("create adapter");
 
@@ -2821,8 +2769,6 @@ mod tests {
             Arc::new(TestIdentityStore::default()),
             Arc::new(FakeResolver),
             Arc::new(InMemoryEncryptionSessionPort::default()),
-            Arc::new(PassthroughTransferPayloadDecryptor),
-            Arc::new(PassthroughTransferPayloadEncryptor),
         )
         .expect("create adapter");
 
@@ -2881,16 +2827,12 @@ mod tests {
             Arc::new(TestIdentityStore::default()),
             Arc::new(FakeResolver),
             Arc::new(InMemoryEncryptionSessionPort::default()),
-            Arc::new(PassthroughTransferPayloadDecryptor),
-            Arc::new(PassthroughTransferPayloadEncryptor),
         )
         .expect("create adapter a");
         let adapter_b = Libp2pNetworkAdapter::new(
             Arc::new(TestIdentityStore::default()),
             Arc::new(FakeResolver),
             Arc::new(InMemoryEncryptionSessionPort::default()),
-            Arc::new(PassthroughTransferPayloadDecryptor),
-            Arc::new(PassthroughTransferPayloadEncryptor),
         )
         .expect("create adapter b");
         let rx_a = adapter_a.subscribe_events().await.expect("subscribe a");
@@ -2917,16 +2859,12 @@ mod tests {
             Arc::new(TestIdentityStore::default()),
             Arc::new(FakeResolver),
             Arc::new(InMemoryEncryptionSessionPort::default()),
-            Arc::new(PassthroughTransferPayloadDecryptor),
-            Arc::new(PassthroughTransferPayloadEncryptor),
         )
         .expect("create adapter a");
         let adapter_b = Libp2pNetworkAdapter::new(
             Arc::new(TestIdentityStore::default()),
             Arc::new(FakeResolver),
             Arc::new(InMemoryEncryptionSessionPort::default()),
-            Arc::new(PassthroughTransferPayloadDecryptor),
-            Arc::new(PassthroughTransferPayloadEncryptor),
         )
         .expect("create adapter b");
         let rx_a = adapter_a.subscribe_events().await.expect("subscribe a");
@@ -2983,16 +2921,12 @@ mod tests {
             Arc::new(TestIdentityStore::default()),
             Arc::new(FakeResolver),
             Arc::new(InMemoryEncryptionSessionPort::default()),
-            Arc::new(PassthroughTransferPayloadDecryptor),
-            Arc::new(PassthroughTransferPayloadEncryptor),
         )
         .expect("create adapter a");
         let adapter_b = Libp2pNetworkAdapter::new(
             Arc::new(TestIdentityStore::default()),
             Arc::new(FakeResolver),
             Arc::new(InMemoryEncryptionSessionPort::default()),
-            Arc::new(PassthroughTransferPayloadDecryptor),
-            Arc::new(PassthroughTransferPayloadEncryptor),
         )
         .expect("create adapter b");
         let rx_a = adapter_a

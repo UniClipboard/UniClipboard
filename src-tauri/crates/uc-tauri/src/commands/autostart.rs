@@ -9,7 +9,7 @@ use std::fmt::Display;
 use tauri::AppHandle;
 use tauri_plugin_autostart::ManagerExt as _;
 use tracing::{info_span, Instrument};
-use uc_platform::ports::observability::TraceMetadata;
+use uc_core::ports::observability::TraceMetadata;
 
 fn format_autostart_error(prefix: &str, error: impl Display) -> String {
     format!("{}: {}", prefix, error)

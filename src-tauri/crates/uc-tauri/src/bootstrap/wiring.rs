@@ -41,8 +41,6 @@ use tauri::{async_runtime, AppHandle, Emitter, Runtime};
 use tokio::sync::mpsc;
 use tracing::{debug, error, info, info_span, warn, Instrument};
 
-use super::task_registry::TaskRegistry;
-
 use crate::events::{
     forward_clipboard_event, ClipboardEvent, P2PPairingVerificationEvent, P2PPeerConnectionEvent,
     P2PPeerDiscoveryEvent, P2PPeerNameUpdatedEvent,
@@ -54,10 +52,8 @@ use uc_app::usecases::space_access::{
     SpaceAccessJoinerOffer, SpaceAccessNetworkAdapter, SpaceAccessOrchestrator,
     SpaceAccessPersistenceAdapter,
 };
-use uc_app::usecases::{
-    PairingConfig, PairingOrchestrator, ResolveConnectionPolicy, StagedPairedDeviceStore,
-};
-use uc_app::{AppDeps, ClipboardPorts, DevicePorts, SecurityPorts, StoragePorts, SystemPorts};
+use uc_app::usecases::{PairingConfig, PairingOrchestrator, ResolveConnectionPolicy};
+use uc_app::AppDeps;
 use uc_core::clipboard::SelectRepresentationPolicyV1;
 use uc_core::config::AppConfig;
 use uc_core::ids::RepresentationId;
@@ -107,12 +103,11 @@ use uc_infra::{FileSetupStatusRepository, SystemClock, Timer};
 
 use uc_platform::adapters::{
     FilesystemBlobStore, InMemoryEncryptionSessionPort, InMemoryWatcherControl,
-    Libp2pNetworkAdapter,
+    Libp2pNetworkAdapter, PlaceholderAutostartPort, PlaceholderUiPort,
 };
 use uc_platform::app_dirs::DirsAppDirsAdapter;
 use uc_platform::clipboard::LocalClipboard;
 use uc_platform::identity_store::FileIdentityStore;
-use uc_platform::ports::{AppDirsPort, IdentityStorePort, WatcherControlPort};
 use uc_platform::runtime::event_bus::PlatformCommandSender;
 
 /// Result type for wiring operations
@@ -152,7 +147,6 @@ pub enum WiringError {
 pub struct WiredDependencies {
     pub deps: AppDeps,
     pub background: BackgroundRuntimeDeps,
-    pub watcher_control: Arc<dyn WatcherControlPort>,
 }
 
 /// Background runtime components that must be started after async runtime is ready.
@@ -363,6 +357,12 @@ struct PlatformLayer {
 
     // Secure storage / 安全存储
     secure_storage: Arc<dyn SecureStoragePort>,
+
+    // UI operations / UI 操作（占位符）
+    ui: Arc<dyn UiPort>,
+
+    // Autostart management / 自动启动管理（占位符）
+    autostart: Arc<dyn AutostartPort>,
 
     // Network operations / 网络操作（占位符）
     network_ports: Arc<NetworkPorts>,
@@ -693,24 +693,18 @@ fn create_platform_layer(
     let representation_normalizer: Arc<dyn ClipboardRepresentationNormalizerPort> =
         Arc::new(ClipboardRepresentationNormalizer::new(storage_config));
 
+    // Create placeholder implementations for unimplemented ports
+    // 为未实现的端口创建占位符实现
+    let ui: Arc<dyn UiPort> = Arc::new(PlaceholderUiPort);
+    let autostart: Arc<dyn AutostartPort> = Arc::new(PlaceholderAutostartPort);
     let encryption_session: Arc<dyn EncryptionSessionPort> =
         Arc::new(InMemoryEncryptionSessionPort::new());
     let policy_resolver = Arc::new(ResolveConnectionPolicy::new(paired_device_repo.clone()));
-    let transfer_decryptor: Arc<dyn TransferPayloadDecryptorPort> =
-        Arc::new(uc_infra::clipboard::TransferPayloadDecryptorAdapter);
-    let transfer_encryptor: Arc<dyn TransferPayloadEncryptorPort> =
-        Arc::new(uc_infra::clipboard::TransferPayloadEncryptorAdapter);
     let libp2p_network = Arc::new(
-        Libp2pNetworkAdapter::new(
-            identity_store,
-            policy_resolver,
-            encryption_session.clone(),
-            transfer_decryptor,
-            transfer_encryptor,
-        )
-        .map_err(|e| {
-            WiringError::NetworkInit(format!("Failed to initialize libp2p identity: {e}"))
-        })?,
+        Libp2pNetworkAdapter::new(identity_store, policy_resolver, encryption_session.clone())
+            .map_err(|e| {
+                WiringError::NetworkInit(format!("Failed to initialize libp2p identity: {e}"))
+            })?,
     );
     info!(peer_id = %libp2p_network.local_peer_id(), "Loaded libp2p identity");
     let network_ports = Arc::new(NetworkPorts {
@@ -750,6 +744,8 @@ fn create_platform_layer(
         clipboard,
         system_clipboard,
         secure_storage,
+        ui,
+        autostart,
         network_ports,
         libp2p_network,
         device_identity,
@@ -1085,48 +1081,60 @@ pub fn wire_dependencies_with_identity_store(
     // Step 4: Construct AppDeps with all dependencies
     // 步骤 4：使用所有依赖构造 AppDeps
     let deps = AppDeps {
-        clipboard: ClipboardPorts {
-            clipboard: platform.clipboard,
-            system_clipboard: platform.system_clipboard,
-            clipboard_entry_repo: infra.clipboard_entry_repo,
-            clipboard_event_repo: encrypting_event_writer,
-            representation_repo: decrypting_rep_repo,
-            representation_normalizer: platform.representation_normalizer,
-            selection_repo: infra.selection_repo,
-            representation_policy: Arc::new(SelectRepresentationPolicyV1::new()),
-            representation_cache: representation_cache_port,
-            spool_queue,
-            clipboard_change_origin,
-            worker_tx,
-        },
-        security: SecurityPorts {
-            encryption: infra.encryption,
-            encryption_session: platform.encryption_session,
-            encryption_state: infra.encryption_state,
-            key_scope: platform.key_scope,
-            secure_storage: platform.secure_storage,
-            key_material: infra.key_material,
-        },
-        device: DevicePorts {
-            device_repo: infra.device_repo,
-            device_identity: platform.device_identity,
-            paired_device_repo: infra.paired_device_repo,
-        },
+        // Clipboard dependencies / 剪贴板依赖
+        clipboard: platform.clipboard,
+        system_clipboard: platform.system_clipboard,
+        clipboard_entry_repo: infra.clipboard_entry_repo,
+        clipboard_event_repo: encrypting_event_writer,
+        representation_repo: decrypting_rep_repo,
+        representation_normalizer: platform.representation_normalizer,
+        selection_repo: infra.selection_repo,
+        representation_policy: Arc::new(SelectRepresentationPolicyV1::new()),
+        representation_cache: representation_cache_port,
+        spool_queue,
+        clipboard_change_origin,
+        worker_tx,
+
+        // Security dependencies / 安全依赖
+        encryption: infra.encryption,
+        encryption_session: platform.encryption_session,
+        encryption_state: infra.encryption_state,
+        key_scope: platform.key_scope,
+        secure_storage: platform.secure_storage,
+        key_material: infra.key_material,
+        watcher_control: platform.watcher_control,
+
+        // Device dependencies / 设备依赖
+        device_repo: infra.device_repo,
+        device_identity: platform.device_identity,
+
+        // Pairing dependencies / 配对依赖
+        paired_device_repo: infra.paired_device_repo,
+
+        // Network dependencies / 网络依赖
         network_ports: platform.network_ports,
         network_control: platform.libp2p_network.clone(),
+
+        // Setup status dependencies / 设置状态依赖
         setup_status: infra.setup_status,
-        storage: StoragePorts {
-            blob_store: platform.blob_store,
-            blob_repository: infra.blob_repository,
-            blob_writer: platform.blob_writer,
-            thumbnail_repo: infra.thumbnail_repo,
-            thumbnail_generator: infra.thumbnail_generator,
-        },
+
+        // Storage dependencies / 存储依赖
+        blob_store: platform.blob_store,
+        blob_repository: infra.blob_repository,
+        blob_writer: platform.blob_writer,
+        thumbnail_repo: infra.thumbnail_repo,
+        thumbnail_generator: infra.thumbnail_generator,
+
+        // Settings dependencies / 设置依赖
         settings: infra.settings_repo,
-        system: SystemPorts {
-            clock: infra.clock,
-            hash: infra.hash,
-        },
+
+        // UI dependencies / UI 依赖
+        ui_port: platform.ui,
+        autostart: platform.autostart,
+
+        // System dependencies / 系统依赖
+        clock: infra.clock,
+        hash: infra.hash,
     };
 
     Ok(WiredDependencies {
@@ -1142,25 +1150,19 @@ pub fn wire_dependencies_with_identity_store(
             worker_retry_max_attempts: storage_config.worker_retry_max_attempts,
             worker_retry_backoff_ms: storage_config.worker_retry_backoff_ms,
         },
-        watcher_control: platform.watcher_control,
     })
 }
 
 /// Start background spooler and blob worker tasks.
 /// 启动后台假脱机写入和 blob 物化任务。
-///
-/// All long-lived tasks are spawned through the `TaskRegistry` for centralized
-/// lifecycle management and graceful shutdown via cooperative cancellation.
 pub fn start_background_tasks<R: Runtime>(
     background: BackgroundRuntimeDeps,
     deps: &AppDeps,
     app_handle: Option<AppHandle<R>>,
     pairing_orchestrator: Arc<PairingOrchestrator>,
     pairing_action_rx: mpsc::Receiver<PairingAction>,
-    staged_store: Arc<StagedPairedDeviceStore>,
     space_access_orchestrator: Arc<SpaceAccessOrchestrator>,
     key_slot_store: Arc<dyn KeySlotStore>,
-    task_registry: &Arc<TaskRegistry>,
 ) {
     let BackgroundRuntimeDeps {
         libp2p_network: _,
@@ -1180,13 +1182,13 @@ pub fn start_background_tasks<R: Runtime>(
     let space_access_app_handle = app_handle.clone();
     let clipboard_app_handle = app_handle.clone();
     let pairing_space_access_orchestrator = space_access_orchestrator.clone();
-    let representation_repo = deps.clipboard.representation_repo.clone();
-    let worker_tx = deps.clipboard.worker_tx.clone();
-    let blob_writer = deps.storage.blob_writer.clone();
-    let hasher = deps.system.hash.clone();
-    let clock = deps.system.clock.clone();
-    let thumbnail_repo = deps.storage.thumbnail_repo.clone();
-    let thumbnail_generator = deps.storage.thumbnail_generator.clone();
+    let representation_repo = deps.representation_repo.clone();
+    let worker_tx = deps.worker_tx.clone();
+    let blob_writer = deps.blob_writer.clone();
+    let hasher = deps.hash.clone();
+    let clock = deps.clock.clone();
+    let thumbnail_repo = deps.thumbnail_repo.clone();
+    let thumbnail_generator = deps.thumbnail_generator.clone();
     let pairing_transport = deps.network_ports.pairing.clone();
     let pairing_events = deps.network_ports.events.clone();
     let peer_directory = deps.network_ports.peers.clone();
@@ -1198,43 +1200,33 @@ pub fn start_background_tasks<R: Runtime>(
             pairing_space_access_orchestrator.context(),
         ))),
         proof: Arc::new(HmacProofAdapter::new_with_encryption_session(
-            deps.security.encryption_session.clone(),
+            deps.encryption_session.clone(),
         )),
         timer: Arc::new(tokio::sync::Mutex::new(Timer::new())),
         persistence: Arc::new(tokio::sync::Mutex::new(SpaceAccessPersistenceAdapter::new(
-            deps.security.encryption_state.clone(),
-            deps.device.paired_device_repo.clone(),
-            staged_store.clone(),
+            deps.encryption_state.clone(),
+            deps.paired_device_repo.clone(),
         ))),
     };
 
-    // Spawn all long-lived tasks through the TaskRegistry for lifecycle management.
-    // We use a single orchestration spawn to set up all registry tasks, since
-    // registry.spawn() is async and start_background_tasks is sync.
-    let registry = task_registry.clone();
     async_runtime::spawn(async move {
-        // --- Spool scanner (runs once at startup, then spawns long-lived sub-tasks) ---
         let scanner = SpoolScanner::new(spool_dir, representation_repo.clone(), worker_tx.clone());
         match scanner.scan_and_recover().await {
             Ok(recovered) => info!("Recovered {} representations from spool", recovered),
             Err(err) => warn!(error = %err, "Spool scan failed; continuing startup"),
         }
 
-        // --- Spooler task (long-lived, channel-driven) ---
         let spooler = SpoolerTask::new(
             spool_rx,
             spool_manager.clone(),
             worker_tx,
             representation_cache.clone(),
         );
-        registry
-            .spawn("spooler", |_token| async move {
-                spooler.run().await;
-                warn!("SpoolerTask stopped");
-            })
-            .await;
+        async_runtime::spawn(async move {
+            spooler.run().await;
+            warn!("SpoolerTask stopped");
+        });
 
-        // --- Background blob worker (long-lived, channel-driven) ---
         let worker = BackgroundBlobWorker::new(
             worker_rx,
             representation_cache,
@@ -1248,292 +1240,241 @@ pub fn start_background_tasks<R: Runtime>(
             worker_retry_max_attempts,
             Duration::from_millis(worker_retry_backoff_ms),
         );
-        registry
-            .spawn("blob_worker", |_token| async move {
-                worker.run().await;
-                warn!("BackgroundBlobWorker stopped");
-            })
-            .await;
+        async_runtime::spawn(async move {
+            worker.run().await;
+            warn!("BackgroundBlobWorker stopped");
+        });
 
-        // --- Spool janitor (long-lived, interval-based loop with cooperative cancellation) ---
         let janitor = SpoolJanitor::new(
             spool_manager.clone(),
             representation_repo.clone(),
             clock,
             spool_ttl_days,
         );
-        registry
-            .spawn("spool_janitor", |token| async move {
-                let mut interval =
-                    tokio::time::interval(Duration::from_secs(SPOOL_JANITOR_INTERVAL_SECS));
-                loop {
-                    tokio::select! {
-                        _ = token.cancelled() => {
-                            info!("Spool janitor shutting down");
-                            return;
+        async_runtime::spawn(async move {
+            let mut interval =
+                tokio::time::interval(Duration::from_secs(SPOOL_JANITOR_INTERVAL_SECS));
+            loop {
+                interval.tick().await;
+                match janitor.run_once().await {
+                    Ok(removed) => {
+                        if removed > 0 {
+                            info!("Spool janitor removed {} expired entries", removed);
                         }
-                        _ = interval.tick() => {
-                            match janitor.run_once().await {
-                                Ok(removed) => {
-                                    if removed > 0 {
-                                        info!("Spool janitor removed {} expired entries", removed);
-                                    }
-                                }
-                                Err(err) => {
-                                    warn!(error = %err, "Spool janitor run failed");
+                    }
+                    Err(err) => {
+                        warn!(error = %err, "Spool janitor run failed");
+                    }
+                }
+            }
+        });
+    });
+
+    async_runtime::spawn(async move {
+        let completion_rx =
+            match SpaceAccessEventPort::subscribe(space_access_orchestrator.as_ref()).await {
+                Ok(rx) => rx,
+                Err(err) => {
+                    warn!(error = %err, "Failed to subscribe to space access completion events");
+                    return;
+                }
+            };
+
+        run_space_access_completion_loop(completion_rx, space_access_app_handle).await;
+        warn!("Space access completion loop stopped");
+    });
+
+    async_runtime::spawn(
+        async move {
+            let mut subscribe_attempt: u32 = 0;
+            let mut first_subscribe_failure_emitted = false;
+
+            loop {
+                let subscribe_result = tokio::select! {
+                    _ = tokio::signal::ctrl_c() => {
+                        info!("Clipboard receive task stopping on shutdown signal");
+                        return;
+                    }
+                    result = clipboard_network.subscribe_clipboard() => result,
+                };
+
+                match subscribe_result {
+                    Ok(clipboard_rx) => {
+                        if subscribe_attempt > 0 {
+                            info!(attempts = subscribe_attempt, "Recovered clipboard subscription");
+
+                            if let Some(app) = clipboard_app_handle.as_ref() {
+                                let payload = InboundClipboardSubscribeRecoveredPayload {
+                                    recovered_after_attempts: subscribe_attempt,
+                                };
+                                if let Err(err) =
+                                    app.emit("inbound-clipboard-subscribe-recovered", payload)
+                                {
+                                    warn!(error = %err, "Failed to emit inbound clipboard subscribe recovered event");
                                 }
                             }
                         }
-                    }
-                }
-            })
-            .await;
 
-        // --- Space access completion loop ---
-        registry
-            .spawn("space_access_completion", |token| async move {
-                let completion_rx =
-                    match SpaceAccessEventPort::subscribe(space_access_orchestrator.as_ref()).await {
-                        Ok(rx) => rx,
-                        Err(err) => {
-                            warn!(
-                                error = %err,
-                                "Failed to subscribe to space access completion events"
-                            );
-                            return;
+                        subscribe_attempt = 0;
+                        first_subscribe_failure_emitted = false;
+                        run_clipboard_receive_loop(
+                            clipboard_rx,
+                            &sync_inbound_usecase,
+                            clipboard_app_handle.clone(),
+                        )
+                        .await;
+                    }
+                    Err(err) => {
+                        subscribe_attempt = subscribe_attempt.saturating_add(1);
+                        let retry_in_ms = subscribe_backoff_ms(subscribe_attempt);
+
+                        warn!(
+                            error = %err,
+                            attempt = subscribe_attempt,
+                            retry_in_ms,
+                            "Failed to subscribe to clipboard messages"
+                        );
+
+                        if let Some(app) = clipboard_app_handle.as_ref() {
+                            if !first_subscribe_failure_emitted {
+                                let payload = InboundClipboardSubscribeErrorPayload {
+                                    attempt: subscribe_attempt,
+                                    error: err.to_string(),
+                                };
+                                if let Err(emit_err) =
+                                    app.emit("inbound-clipboard-subscribe-error", payload)
+                                {
+                                    warn!(error = %emit_err, "Failed to emit inbound clipboard subscribe error event");
+                                }
+                                first_subscribe_failure_emitted = true;
+                            }
+
+                            let retry_payload = InboundClipboardSubscribeRetryPayload {
+                                attempt: subscribe_attempt,
+                                retry_in_ms,
+                                error: err.to_string(),
+                            };
+                            if let Err(emit_err) =
+                                app.emit("inbound-clipboard-subscribe-retry", retry_payload)
+                            {
+                                warn!(error = %emit_err, "Failed to emit inbound clipboard subscribe retry event");
+                            }
                         }
-                    };
 
-                tokio::select! {
-                    _ = token.cancelled() => {
-                        info!("Space access completion loop shutting down");
-                    }
-                    _ = run_space_access_completion_loop(completion_rx, space_access_app_handle) => {
-                        warn!("Space access completion loop stopped");
-                    }
-                }
-            })
-            .await;
-
-        // --- Clipboard receive loop (replaces ctrl_c with CancellationToken) ---
-        registry
-            .spawn("clipboard_receive", |token| {
-                async move {
-                    let mut subscribe_attempt: u32 = 0;
-                    let mut first_subscribe_failure_emitted = false;
-
-                    loop {
-                        let subscribe_result = tokio::select! {
-                            _ = token.cancelled() => {
-                                info!("Clipboard receive task stopping on shutdown signal");
+                        let backoff = Duration::from_millis(retry_in_ms);
+                        tokio::select! {
+                            _ = tokio::signal::ctrl_c() => {
+                                info!("Clipboard receive task stopping during backoff on shutdown signal");
                                 return;
                             }
-                            result = clipboard_network.subscribe_clipboard() => result,
-                        };
-
-                        match subscribe_result {
-                            Ok(clipboard_rx) => {
-                                if subscribe_attempt > 0 {
-                                    info!(
-                                        attempts = subscribe_attempt,
-                                        "Recovered clipboard subscription"
-                                    );
-
-                                    if let Some(app) = clipboard_app_handle.as_ref() {
-                                        let payload = InboundClipboardSubscribeRecoveredPayload {
-                                            recovered_after_attempts: subscribe_attempt,
-                                        };
-                                        if let Err(err) = app.emit(
-                                            "inbound-clipboard-subscribe-recovered",
-                                            payload,
-                                        ) {
-                                            warn!(
-                                                error = %err,
-                                                "Failed to emit inbound clipboard subscribe recovered event"
-                                            );
-                                        }
-                                    }
-                                }
-
-                                subscribe_attempt = 0;
-                                first_subscribe_failure_emitted = false;
-                                run_clipboard_receive_loop(
-                                    clipboard_rx,
-                                    &sync_inbound_usecase,
-                                    clipboard_app_handle.clone(),
-                                )
-                                .await;
-                            }
-                            Err(err) => {
-                                subscribe_attempt = subscribe_attempt.saturating_add(1);
-                                let retry_in_ms = subscribe_backoff_ms(subscribe_attempt);
-
-                                warn!(
-                                    error = %err,
-                                    attempt = subscribe_attempt,
-                                    retry_in_ms,
-                                    "Failed to subscribe to clipboard messages"
-                                );
-
-                                if let Some(app) = clipboard_app_handle.as_ref() {
-                                    if !first_subscribe_failure_emitted {
-                                        let payload = InboundClipboardSubscribeErrorPayload {
-                                            attempt: subscribe_attempt,
-                                            error: err.to_string(),
-                                        };
-                                        if let Err(emit_err) = app
-                                            .emit("inbound-clipboard-subscribe-error", payload)
-                                        {
-                                            warn!(
-                                                error = %emit_err,
-                                                "Failed to emit inbound clipboard subscribe error event"
-                                            );
-                                        }
-                                        first_subscribe_failure_emitted = true;
-                                    }
-
-                                    let retry_payload = InboundClipboardSubscribeRetryPayload {
-                                        attempt: subscribe_attempt,
-                                        retry_in_ms,
-                                        error: err.to_string(),
-                                    };
-                                    if let Err(emit_err) = app
-                                        .emit("inbound-clipboard-subscribe-retry", retry_payload)
-                                    {
-                                        warn!(
-                                            error = %emit_err,
-                                            "Failed to emit inbound clipboard subscribe retry event"
-                                        );
-                                    }
-                                }
-
-                                let backoff = Duration::from_millis(retry_in_ms);
-                                tokio::select! {
-                                    _ = token.cancelled() => {
-                                        info!("Clipboard receive task stopping during backoff on shutdown signal");
-                                        return;
-                                    }
-                                    _ = tokio::time::sleep(backoff) => {}
-                                }
-                            }
+                            _ = tokio::time::sleep(backoff) => {}
                         }
                     }
                 }
-                .instrument(info_span!("loop.clipboard.receive_task"))
-            })
-            .await;
+            }
+        }
+        .instrument(info_span!("loop.clipboard.receive_task")),
+    );
 
-        // --- Pairing action loop (long-lived, channel-driven) ---
+    async_runtime::spawn(async move {
         let action_network = pairing_transport.clone();
         let action_app_handle = pairing_app_handle.clone();
         let action_orchestrator = pairing_orchestrator.clone();
         let action_space_access_orchestrator = pairing_space_access_orchestrator.clone();
         let action_key_slot_store = key_slot_store.clone();
         let action_space_access_runtime_ports = space_access_runtime_ports.clone();
-        registry
-            .spawn("pairing_action", |_token| async move {
-                run_pairing_action_loop(
-                    pairing_action_rx,
-                    action_network,
-                    action_app_handle,
-                    action_orchestrator,
-                    action_space_access_orchestrator,
-                    action_key_slot_store,
-                    action_space_access_runtime_ports,
-                )
-                .await;
-            })
+        async_runtime::spawn(async move {
+            run_pairing_action_loop(
+                pairing_action_rx,
+                action_network,
+                action_app_handle,
+                action_orchestrator,
+                action_space_access_orchestrator,
+                action_key_slot_store,
+                action_space_access_runtime_ports,
+            )
             .await;
+        });
 
-        // --- Pairing event loop (long-lived, with retry + cooperative cancellation) ---
-        registry
-            .spawn("pairing_events", |token| async move {
-                let mut subscribe_attempt: u32 = 0;
-                loop {
-                    let subscribe_result = tokio::select! {
-                        _ = token.cancelled() => {
-                            info!("Pairing event loop task stopping on shutdown signal");
-                            return;
-                        }
-                        result = pairing_events.subscribe_events() => result,
-                    };
-
-                    match subscribe_result {
-                        Ok(event_rx) => {
-                            if subscribe_attempt > 0 {
-                                info!(
-                                    attempts = subscribe_attempt,
-                                    "Recovered pairing network event subscription"
-                                );
-                                emit_pairing_events_subscribe_recovered(
-                                    pairing_app_handle.as_ref(),
-                                    subscribe_attempt,
-                                );
-                            }
-
-                            subscribe_attempt = 0;
-
-                            run_pairing_event_loop(
-                                event_rx,
-                                pairing_orchestrator.clone(),
-                                pairing_app_handle.clone(),
-                                peer_directory.clone(),
-                                pairing_space_access_orchestrator.clone(),
-                                space_access_runtime_ports.clone(),
-                            )
-                            .await;
-
-                            let err = anyhow::anyhow!("pairing network event stream closed");
-                            subscribe_attempt = subscribe_attempt.saturating_add(1);
-                            let retry_in_ms =
-                                pairing_events_subscribe_backoff_ms(subscribe_attempt);
-                            warn!(
-                                error = %err,
-                                attempt = subscribe_attempt,
-                                retry_in_ms,
-                                "Pairing event loop stopped unexpectedly; restarting"
-                            );
-                            emit_pairing_events_subscribe_failure(
-                                pairing_app_handle.as_ref(),
-                                subscribe_attempt,
-                                retry_in_ms,
-                                err.to_string(),
-                            );
-                        }
-                        Err(err) => {
-                            subscribe_attempt = subscribe_attempt.saturating_add(1);
-                            let retry_in_ms =
-                                pairing_events_subscribe_backoff_ms(subscribe_attempt);
-                            warn!(
-                                error = %err,
-                                attempt = subscribe_attempt,
-                                retry_in_ms,
-                                "Failed to subscribe to network events for pairing"
-                            );
-                            emit_pairing_events_subscribe_failure(
-                                pairing_app_handle.as_ref(),
-                                subscribe_attempt,
-                                retry_in_ms,
-                                err.to_string(),
-                            );
-                        }
-                    }
-
-                    let backoff = Duration::from_millis(pairing_events_subscribe_backoff_ms(
-                        subscribe_attempt,
-                    ));
-                    tokio::select! {
-                        _ = token.cancelled() => {
-                            info!("Pairing event loop task stopping during backoff on shutdown signal");
-                            return;
-                        }
-                        _ = tokio::time::sleep(backoff) => {}
-                    }
+        let mut subscribe_attempt: u32 = 0;
+        loop {
+            let subscribe_result = tokio::select! {
+                _ = tokio::signal::ctrl_c() => {
+                    info!("Pairing event loop task stopping on shutdown signal");
+                    return;
                 }
-            })
-            .await;
+                result = pairing_events.subscribe_events() => result,
+            };
 
-        info!("All background tasks registered with TaskRegistry");
+            match subscribe_result {
+                Ok(event_rx) => {
+                    if subscribe_attempt > 0 {
+                        info!(
+                            attempts = subscribe_attempt,
+                            "Recovered pairing network event subscription"
+                        );
+                        emit_pairing_events_subscribe_recovered(
+                            pairing_app_handle.as_ref(),
+                            subscribe_attempt,
+                        );
+                    }
+
+                    subscribe_attempt = 0;
+
+                    run_pairing_event_loop(
+                        event_rx,
+                        pairing_orchestrator.clone(),
+                        pairing_app_handle.clone(),
+                        peer_directory.clone(),
+                        pairing_space_access_orchestrator.clone(),
+                        space_access_runtime_ports.clone(),
+                    )
+                    .await;
+
+                    let err = anyhow::anyhow!("pairing network event stream closed");
+                    subscribe_attempt = subscribe_attempt.saturating_add(1);
+                    let retry_in_ms = pairing_events_subscribe_backoff_ms(subscribe_attempt);
+                    warn!(
+                        error = %err,
+                        attempt = subscribe_attempt,
+                        retry_in_ms,
+                        "Pairing event loop stopped unexpectedly; restarting"
+                    );
+                    emit_pairing_events_subscribe_failure(
+                        pairing_app_handle.as_ref(),
+                        subscribe_attempt,
+                        retry_in_ms,
+                        err.to_string(),
+                    );
+                }
+                Err(err) => {
+                    subscribe_attempt = subscribe_attempt.saturating_add(1);
+                    let retry_in_ms = pairing_events_subscribe_backoff_ms(subscribe_attempt);
+                    warn!(
+                        error = %err,
+                        attempt = subscribe_attempt,
+                        retry_in_ms,
+                        "Failed to subscribe to network events for pairing"
+                    );
+                    emit_pairing_events_subscribe_failure(
+                        pairing_app_handle.as_ref(),
+                        subscribe_attempt,
+                        retry_in_ms,
+                        err.to_string(),
+                    );
+                }
+            }
+
+            let backoff =
+                Duration::from_millis(pairing_events_subscribe_backoff_ms(subscribe_attempt));
+            tokio::select! {
+                _ = tokio::signal::ctrl_c() => {
+                    info!("Pairing event loop task stopping during backoff on shutdown signal");
+                    return;
+                }
+                _ = tokio::time::sleep(backoff) => {}
+            }
+        }
     });
 }
 
@@ -1541,18 +1482,18 @@ fn new_sync_inbound_clipboard_usecase(deps: &AppDeps) -> SyncInboundClipboardUse
     let mode = super::resolve_clipboard_integration_mode();
     SyncInboundClipboardUseCase::with_capture_dependencies(
         mode,
-        deps.clipboard.system_clipboard.clone(),
-        deps.clipboard.clipboard_change_origin.clone(),
-        deps.security.encryption_session.clone(),
-        deps.security.encryption.clone(),
-        deps.device.device_identity.clone(),
+        deps.system_clipboard.clone(),
+        deps.clipboard_change_origin.clone(),
+        deps.encryption_session.clone(),
+        deps.encryption.clone(),
+        deps.device_identity.clone(),
         Arc::new(uc_infra::clipboard::TransferPayloadDecryptorAdapter),
-        deps.clipboard.clipboard_entry_repo.clone(),
-        deps.clipboard.clipboard_event_repo.clone(),
-        deps.clipboard.representation_policy.clone(),
-        deps.clipboard.representation_normalizer.clone(),
-        deps.clipboard.representation_cache.clone(),
-        deps.clipboard.spool_queue.clone(),
+        deps.clipboard_entry_repo.clone(),
+        deps.clipboard_event_repo.clone(),
+        deps.representation_policy.clone(),
+        deps.representation_normalizer.clone(),
+        deps.representation_cache.clone(),
+        deps.spool_queue.clone(),
     )
 }
 
@@ -1588,7 +1529,6 @@ async fn run_clipboard_receive_loop<R: Runtime>(
                                 let event = ClipboardEvent::NewContent {
                                     entry_id: entry_id.to_string(),
                                     preview: "Remote clipboard content applied".to_string(),
-                                    origin: "remote".to_string(),
                                 };
                                 if let Err(emit_err) = forward_clipboard_event(app, event) {
                                     warn!(error = %emit_err, message_id = %message_id, "Failed to emit clipboard event after inbound apply in passive mode");
@@ -2744,7 +2684,6 @@ mod tests {
         PeerDirectoryPort,
     };
     use uc_core::security::model::{EncryptionError, MasterKey};
-    use uc_platform::ports::IdentityStoreError;
     use uc_platform::test_support::with_uc_profile;
 
     #[test]
@@ -3531,7 +3470,6 @@ mod tests {
             "device-123".to_string(),
             "peer-local".to_string(),
             vec![9; 32],
-            Arc::new(StagedPairedDeviceStore::new()),
         );
         let orchestrator = Arc::new(orchestrator);
         let network = Arc::new(NoopNetwork::default());
@@ -3581,7 +3519,6 @@ mod tests {
             "device-123".to_string(),
             "peer-local".to_string(),
             vec![9; 32],
-            Arc::new(StagedPairedDeviceStore::new()),
         );
         let orchestrator = Arc::new(orchestrator);
         let space_access_orchestrator = Arc::new(SpaceAccessOrchestrator::new());
@@ -3628,7 +3565,6 @@ mod tests {
             "device-123".to_string(),
             "peer-local".to_string(),
             vec![9; 32],
-            Arc::new(StagedPairedDeviceStore::new()),
         );
         let orchestrator = Arc::new(orchestrator);
         let space_access_orchestrator = Arc::new(SpaceAccessOrchestrator::new());
@@ -3676,7 +3612,6 @@ mod tests {
             "device-123".to_string(),
             "peer-local".to_string(),
             vec![9; 32],
-            Arc::new(StagedPairedDeviceStore::new()),
         );
         let orchestrator = Arc::new(orchestrator);
         let space_access_orchestrator = Arc::new(SpaceAccessOrchestrator::new());
@@ -3760,7 +3695,6 @@ mod tests {
             "device-123".to_string(),
             "peer-local".to_string(),
             vec![9; 32],
-            Arc::new(StagedPairedDeviceStore::new()),
         );
         let orchestrator = Arc::new(orchestrator);
         let space_access_orchestrator = Arc::new(SpaceAccessOrchestrator::new());
@@ -3844,7 +3778,6 @@ mod tests {
             "device-123".to_string(),
             "peer-local".to_string(),
             vec![9; 32],
-            Arc::new(StagedPairedDeviceStore::new()),
         );
         let orchestrator = Arc::new(orchestrator);
         let space_access_orchestrator = Arc::new(SpaceAccessOrchestrator::new());
@@ -3900,7 +3833,6 @@ mod tests {
             "device-123".to_string(),
             "peer-local".to_string(),
             vec![9; 32],
-            Arc::new(StagedPairedDeviceStore::new()),
         );
         let orchestrator = Arc::new(orchestrator);
         let space_access_orchestrator = Arc::new(SpaceAccessOrchestrator::new());
@@ -4046,7 +3978,6 @@ mod tests {
             "device-123".to_string(),
             "peer-local".to_string(),
             vec![9; 32],
-            Arc::new(StagedPairedDeviceStore::new()),
         );
         let orchestrator = Arc::new(orchestrator);
         let network = Arc::new(TestNetwork {
@@ -4108,7 +4039,6 @@ mod tests {
             "device-123".to_string(),
             "peer-local".to_string(),
             vec![9; 32],
-            Arc::new(StagedPairedDeviceStore::new()),
         );
         let orchestrator = Arc::new(orchestrator);
         let network = Arc::new(TestNetwork {
@@ -4302,7 +4232,6 @@ mod tests {
             "device-123".to_string(),
             "peer-local".to_string(),
             vec![9; 32],
-            Arc::new(StagedPairedDeviceStore::new()),
         );
         let orchestrator = Arc::new(orchestrator);
 
@@ -4376,7 +4305,6 @@ mod tests {
             "device-123".to_string(),
             "peer-local".to_string(),
             vec![9; 32],
-            Arc::new(StagedPairedDeviceStore::new()),
         );
         let orchestrator = Arc::new(orchestrator);
 
@@ -4452,7 +4380,6 @@ mod tests {
             "device-123".to_string(),
             "peer-local".to_string(),
             vec![9; 32],
-            Arc::new(StagedPairedDeviceStore::new()),
         );
         let orchestrator = Arc::new(orchestrator);
 
@@ -4511,7 +4438,6 @@ mod tests {
             "device-123".to_string(),
             "peer-local".to_string(),
             vec![9; 32],
-            Arc::new(StagedPairedDeviceStore::new()),
         );
         let orchestrator = Arc::new(orchestrator);
 
@@ -4586,7 +4512,6 @@ mod tests {
             "device-123".to_string(),
             "peer-local".to_string(),
             vec![9; 32],
-            Arc::new(StagedPairedDeviceStore::new()),
         );
         let orchestrator = Arc::new(orchestrator);
         let close_calls = Arc::new(Mutex::new(Vec::new()));
@@ -4647,7 +4572,6 @@ mod tests {
             "device-123".to_string(),
             "peer-local".to_string(),
             vec![9; 32],
-            Arc::new(StagedPairedDeviceStore::new()),
         );
         let orchestrator = Arc::new(orchestrator);
 
@@ -4791,25 +4715,27 @@ mod tests {
                 // Verify all dependencies are present by type checking
                 // 通过类型检查验证所有依赖都存在
                 let _ = &deps.clipboard;
-                let _ = &deps.clipboard.clipboard_event_repo;
-                let _ = &deps.clipboard.representation_repo;
-                let _ = &deps.clipboard.representation_normalizer;
-                let _ = &deps.security.encryption;
-                let _ = &deps.security.encryption_session;
-                let _ = &deps.security.secure_storage;
-                let _ = &deps.security.key_material;
-                let _ = &deps.clipboard.clipboard_change_origin;
-                let _ = &deps.device.device_repo;
-                let _ = &deps.device.device_identity;
-                let _ = &deps.device.paired_device_repo;
+                let _ = &deps.clipboard_event_repo;
+                let _ = &deps.representation_repo;
+                let _ = &deps.representation_normalizer;
+                let _ = &deps.encryption;
+                let _ = &deps.encryption_session;
+                let _ = &deps.secure_storage;
+                let _ = &deps.key_material;
+                let _ = &deps.watcher_control;
+                let _ = &deps.clipboard_change_origin;
+                let _ = &deps.device_repo;
+                let _ = &&deps.device_identity;
+                let _ = &deps.paired_device_repo;
                 let _ = &deps.network_ports;
-                let _ = &deps.storage.blob_store;
-                let _ = &deps.storage.blob_repository;
-                let _ = &deps.storage.blob_writer;
+                let _ = &deps.blob_store;
+                let _ = &deps.blob_repository;
+                let _ = &deps.blob_writer;
                 let _ = &deps.settings;
-
-                let _ = &deps.system.clock;
-                let _ = &deps.system.hash;
+                let _ = &deps.ui_port;
+                let _ = &deps.autostart;
+                let _ = &deps.clock;
+                let _ = &deps.hash;
                 // Test passes if we can access all fields without panicking
                 // 如果我们可以访问所有字段而不恐慌，测试通过
             }
@@ -4965,6 +4891,8 @@ mod tests {
                     // 验证所有字段都有正确的类型
                     let _clipboard: &Arc<dyn PlatformClipboardPort> = &layer.clipboard;
                     let _secure_storage: &Arc<dyn SecureStoragePort> = &layer.secure_storage;
+                    let _ui: &Arc<dyn UiPort> = &layer.ui;
+                    let _autostart: &Arc<dyn AutostartPort> = &layer.autostart;
                     let _network_ports: &Arc<NetworkPorts> = &layer.network_ports;
                     let _device_identity: &Arc<dyn DeviceIdentityPort> = &layer.device_identity;
                     let _representation_normalizer: &Arc<

@@ -10,6 +10,7 @@ test-helpers = []
 [dependencies]
 # Workspace crates
 uc-core = { path = "../uc-core" }
+uc-infra = { path = "../uc-infra" }
 
 # Serialization
 serde = { version = "1", features = ["derive"] }
@@ -86,7 +87,6 @@ iota_stronghold = "2.1"
 
 [dev-dependencies]
 tempfile = "3"
-mockall = "0.14.0"
 
 [target.'cfg(windows)'.dependencies]
 clipboard-win = { version = "5.4" }

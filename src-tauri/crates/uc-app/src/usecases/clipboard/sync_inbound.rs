@@ -320,14 +320,8 @@ impl SyncInboundClipboardUseCase {
             }
         };
 
-        // Convert all BinaryRepresentation values into ObservedClipboardRepresentation so that
-        // downstream consumers (capture path) can see the full multi-representation snapshot.
-        let ClipboardBinaryPayload {
-            ts_ms,
-            representations: binary_reps,
-        } = v3_payload;
-
-        let all_reps: Vec<ObservedClipboardRepresentation> = binary_reps
+        let representations: Vec<ObservedClipboardRepresentation> = v3_payload
+            .representations
             .into_iter()
             .map(|rep| {
                 ObservedClipboardRepresentation::new(
@@ -338,29 +332,18 @@ impl SyncInboundClipboardUseCase {
                 )
             })
             .collect();
-
-        // For OS clipboard writes we still restrict to a single highest-priority representation.
+        // Keep only the highest-priority representation.
         // write_snapshot requires exactly ONE representation (tracked in issue #92).
-        let selected_rep = all_reps
-            .get(selected_idx)
-            .cloned()
-            .expect("selected index must be within range");
+        let representations = vec![representations.into_iter().nth(selected_idx).unwrap()];
 
-        let snapshot_for_os = SystemClipboardSnapshot {
-            ts_ms,
-            representations: vec![selected_rep],
-        };
-
-        // For Passive-mode capture we want the full set of representations so that title
-        // generation and normalization can choose the most appropriate representation.
-        let snapshot_for_capture = SystemClipboardSnapshot {
-            ts_ms,
-            representations: all_reps,
+        let snapshot = SystemClipboardSnapshot {
+            ts_ms: v3_payload.ts_ms,
+            representations,
         };
 
         // In Full mode: remember inbound snapshot hash + write to OS clipboard
         if self.mode.allow_os_write() {
-            let snapshot_hash = snapshot_for_os.snapshot_hash().to_string();
+            let snapshot_hash = snapshot.snapshot_hash().to_string();
             self.clipboard_change_origin
                 .remember_remote_snapshot_hash(
                     snapshot_hash.clone(),
@@ -368,7 +351,7 @@ impl SyncInboundClipboardUseCase {
                 )
                 .await;
 
-            if let Err(err) = self.local_clipboard.write_snapshot(snapshot_for_os) {
+            if let Err(err) = self.local_clipboard.write_snapshot(snapshot) {
                 self.clipboard_change_origin
                     .consume_origin_for_snapshot_or_default(
                         &snapshot_hash,
@@ -388,26 +371,8 @@ impl SyncInboundClipboardUseCase {
                 .capture_clipboard
                 .as_ref()
                 .context("V3 passive inbound: capture dependencies required")?;
-
-            // Debug snapshot before handing off to capture use case
-            debug!(
-                origin = ?ClipboardChangeOrigin::RemotePush,
-                repr_count = snapshot_for_capture.representations.len(),
-                repr_format_ids = ?snapshot_for_capture
-                    .representations
-                    .iter()
-                    .map(|r| r.format_id.to_string())
-                    .collect::<Vec<_>>(),
-                repr_mimes = ?snapshot_for_capture
-                    .representations
-                    .iter()
-                    .map(|r| r.mime.as_ref().map(|m| m.as_str().to_string()))
-                    .collect::<Vec<_>>(),
-                "V3 passive snapshot before capture",
-            );
-
             return match capture
-                .execute_with_origin(snapshot_for_capture, ClipboardChangeOrigin::RemotePush)
+                .execute_with_origin(snapshot, ClipboardChangeOrigin::RemotePush)
                 .await
             {
                 Ok(Some(entry_id)) => {
@@ -1470,51 +1435,6 @@ mod tests {
             snapshots[0].representations[0].bytes, b"pre-decoded text",
             "must apply pre-decoded plaintext content"
         );
-    }
-
-    #[tokio::test]
-    async fn passive_mode_v3_payload_preserves_all_representations_for_capture() {
-        let (usecase, writes, calls, save_calls, insert_calls) = build_passive_usecase(
-            SystemClipboardSnapshot {
-                ts_ms: 0,
-                representations: vec![],
-            },
-            "local-1",
-        );
-
-        // Build a V3 payload that contains both plain text and HTML representations.
-        let (message, plaintext) = build_v3_message_pre_decoded(
-            vec![
-                BinaryRepresentation {
-                    format_id: "text".to_string(),
-                    mime: Some("text/plain".to_string()),
-                    data: b"passive multi-rep text".to_vec(),
-                },
-                BinaryRepresentation {
-                    format_id: "html".to_string(),
-                    mime: Some("text/html".to_string()),
-                    data: b"<b>html</b>".to_vec(),
-                },
-            ],
-            "remote-1",
-            "msg-passive-multi-rep",
-        );
-
-        let outcome = usecase
-            .execute_with_outcome(message, Some(plaintext))
-            .await
-            .expect("passive V3 multi-representation message must apply");
-
-        // Passive mode should persist once, without touching the OS clipboard or
-        // change-origin remote snapshot hash APIs.
-        assert!(matches!(
-            outcome,
-            InboundApplyOutcome::Applied { entry_id: Some(_) }
-        ));
-        assert_eq!(writes.lock().expect("writes lock").len(), 0);
-        assert!(calls.lock().expect("calls lock").is_empty());
-        assert_eq!(save_calls.load(Ordering::SeqCst), 1);
-        assert_eq!(insert_calls.load(Ordering::SeqCst), 1);
     }
 
     #[tokio::test(flavor = "current_thread")]

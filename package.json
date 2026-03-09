@@ -1,7 +1,7 @@
 {
   "name": "uniclipboard",
   "private": true,
-  "version": "0.2.0-alpha.3",
+  "version": "0.1.2",
   "type": "module",
   "scripts": {
     "dev": "cross-env UNICLIPBOARD_ENV=development vite",
@@ -81,7 +81,6 @@
   "devDependencies": {
     "@eslint/compat": "^2.0.0",
     "@eslint/js": "^9.39.2",
-    "@react-grab/mcp": "^0.1.25",
     "@tailwindcss/postcss": "^4.1.18",
     "@tailwindcss/vite": "^4.1.18",
     "@tauri-apps/cli": "^2.9.6",
@@ -110,7 +109,6 @@
     "lint-staged": "^16.2.7",
     "postcss": "^8.5.6",
     "prettier": "^3.7.4",
-    "react-grab": "^0.1.25",
     "shadcn": "^3.6.2",
     "tailwind-merge": "^3.4.0",
     "tailwindcss": "^4.1.18",

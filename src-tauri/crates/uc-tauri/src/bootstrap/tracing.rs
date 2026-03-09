@@ -23,8 +23,8 @@ use std::{fs, io, sync::OnceLock};
 use tracing_appender::non_blocking::{NonBlocking, WorkerGuard};
 use tracing_subscriber::{fmt, fmt::writer::BoxMakeWriter, prelude::*, registry};
 use uc_app::app_paths::AppPaths;
+use uc_core::ports::AppDirsPort;
 use uc_platform::app_dirs::DirsAppDirsAdapter;
-use uc_platform::ports::AppDirsPort;
 
 use sentry;
 use sentry_tracing;

@@ -4,7 +4,6 @@ mod decision;
 mod entry;
 mod event;
 mod hash;
-pub mod integration_mode;
 mod mime;
 mod origin;
 mod payload_availability;
@@ -28,7 +27,6 @@ pub use system::{
 
 pub use decision::{ClipboardContentActionDecision, DuplicationHint, RejectReason};
 pub use hash::{ContentHash, HashAlgorithm};
-pub use integration_mode::ClipboardIntegrationMode;
 pub use mime::MimeType;
 pub use origin::ClipboardOrigin;
 pub use payload_availability::PayloadAvailability;

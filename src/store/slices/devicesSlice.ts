@@ -98,7 +98,12 @@ const devicesSlice = createSlice({
     // Paired devices
     builder
       .addCase(fetchPairedDevices.pending, state => {
-        state.pairedDevicesLoading = true
+        // Only show loading state when there are no cached devices.
+        // When devices already exist (e.g., navigating back to the page),
+        // we fetch in the background without triggering skeleton/loading UI.
+        if (state.pairedDevices.length === 0) {
+          state.pairedDevicesLoading = true
+        }
         state.pairedDevicesError = null
       })
       .addCase(fetchPairedDevices.fulfilled, (state, action) => {

@@ -17,9 +17,7 @@ const PairedDevicesPanel: React.FC = () => {
   const { t } = useTranslation()
   const [expandedDeviceId, setExpandedDeviceId] = useState<string | null>(null)
   const dispatch = useAppDispatch()
-  const { pairedDevices, pairedDevicesLoading, pairedDevicesError } = useAppSelector(
-    state => state.devices
-  )
+  const { pairedDevices, pairedDevicesError } = useAppSelector(state => state.devices)
 
   useEffect(() => {
     dispatch(fetchPairedDevices())
@@ -107,27 +105,9 @@ const PairedDevicesPanel: React.FC = () => {
     return colors[index % colors.length]
   }
 
-  if (pairedDevicesLoading) {
-    return (
-      <div className="space-y-4">
-        {[1, 2, 3].map(i => (
-          <div key={i} className="border border-border/50 rounded-lg bg-card p-6">
-            <div className="animate-pulse flex items-center gap-5">
-              <div className="h-14 w-14 bg-muted rounded-md"></div>
-              <div className="space-y-2 flex-1">
-                <div className="h-5 bg-muted rounded w-32"></div>
-                <div className="h-4 bg-muted rounded w-24"></div>
-              </div>
-            </div>
-          </div>
-        ))}
-      </div>
-    )
-  }
-
   if (pairedDevicesError) {
     return (
-      <div className="space-y-4">
+      <div className="space-y-4 px-4 pt-6 pb-8">
         <div className="border border-destructive/50 rounded-lg bg-card p-6">
           <div className="flex items-center gap-3">
             <p className="text-sm text-destructive">{pairedDevicesError}</p>
@@ -147,7 +127,7 @@ const PairedDevicesPanel: React.FC = () => {
 
   if (pairedDevices.length === 0) {
     return (
-      <div className="mx-auto -mt-3 flex min-h-[26rem] w-full max-w-xl flex-col items-center justify-center py-10 text-center sm:-mt-4 sm:min-h-[30rem] sm:py-12">
+      <div className="mx-auto flex h-full w-full max-w-xl flex-col items-center justify-center text-center">
         <div className="mb-5 rounded-full bg-muted/30 p-5 ring-1 ring-border/50">
           <Monitor className="h-10 w-10 text-muted-foreground/50" />
         </div>
@@ -160,7 +140,7 @@ const PairedDevicesPanel: React.FC = () => {
   }
 
   return (
-    <div className="flex flex-col gap-3">
+    <div className="flex flex-col gap-3 px-4 pt-6 pb-8">
       <div className="flex flex-col rounded-xl border border-border/50 bg-card/50 overflow-hidden divide-y divide-border/50">
         {pairedDevices.map((device, index) => {
           const Icon = getDeviceIcon(device.deviceName)

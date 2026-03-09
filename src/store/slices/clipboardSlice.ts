@@ -144,7 +144,12 @@ const clipboardSlice = createSlice({
   extraReducers: builder => {
     // 处理获取剪贴板内容
     builder.addCase(fetchClipboardItems.pending, state => {
-      state.loading = true
+      // Only show loading state when there are no cached items.
+      // When items already exist (e.g., navigating back to the page),
+      // we fetch in the background without triggering skeleton/loading UI.
+      if (state.items.length === 0) {
+        state.loading = true
+      }
       state.error = null
       state.notReady = false
     })

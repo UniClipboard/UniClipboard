@@ -17,7 +17,6 @@ import {
   ClipboardFileItem,
 } from '@/api/clipboardItems'
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from '@/components/ui/resizable'
-import { Skeleton } from '@/components/ui/skeleton'
 import { toast } from '@/components/ui/toast'
 import { useShortcut } from '@/hooks/useShortcut'
 import { captureUserIntent } from '@/observability/breadcrumbs'
@@ -52,8 +51,6 @@ interface ClipboardContentProps {
   hasMore?: boolean
   onLoadMore?: () => void
 }
-
-const SKELETON_KEYS = Array.from({ length: 12 }, (_, index) => `clipboard-skeleton-${index}`)
 
 function groupItemsByDate(items: DisplayClipboardItem[], t: (key: string) => string): DateGroup[] {
   if (items.length === 0) return []
@@ -318,34 +315,6 @@ const ClipboardContent: React.FC<ClipboardContentProps> = ({
     [hasMore, loading, notReady, onLoadMore]
   )
 
-  // Skeleton loading state
-  if (notReady || (loading && clipboardItems.length === 0)) {
-    return (
-      <div className="h-full flex flex-col">
-        <ResizablePanelGroup
-          id="clipboard-panels"
-          orientation="horizontal"
-          defaultLayout={defaultLayout}
-          className="flex-1 min-h-0"
-        >
-          <ResizablePanel id="clipboard-list" defaultSize="40%" minSize="25%" maxSize="60%">
-            <div className="h-full bg-muted/20 p-3">
-              <div className="flex flex-col gap-1.5">
-                {SKELETON_KEYS.map(key => (
-                  <Skeleton key={key} className="h-10 w-full rounded-lg" />
-                ))}
-              </div>
-            </div>
-          </ResizablePanel>
-          <ResizableHandle />
-          <ResizablePanel id="clipboard-preview" defaultSize="60%">
-            <div className="flex-1" />
-          </ResizablePanel>
-        </ResizablePanelGroup>
-      </div>
-    )
-  }
-
   return (
     <div className="h-full flex flex-col">
       {clipboardItems.length > 0 ? (
@@ -378,11 +347,6 @@ const ClipboardContent: React.FC<ClipboardContentProps> = ({
                     ))}
                   </div>
                 ))}
-                {loading && (
-                  <div className="p-2">
-                    <Skeleton className="h-9 w-full rounded-md" />
-                  </div>
-                )}
               </div>
             </div>
           </ResizablePanel>
@@ -410,18 +374,16 @@ const ClipboardContent: React.FC<ClipboardContentProps> = ({
           </ResizablePanel>
         </ResizablePanelGroup>
       ) : (
-        <div className="h-full flex flex-col items-center justify-center gap-6">
-          <div className="flex flex-col items-center justify-center w-16 h-16 rounded-lg bg-muted/50 border border-dashed border-muted">
-            <Inbox className="h-8 w-8 text-muted-foreground/60" />
+        <div className="mx-auto flex h-full w-full max-w-xl flex-col items-center justify-center text-center">
+          <div className="mb-5 rounded-full bg-muted/30 p-5 ring-1 ring-border/50">
+            <Inbox className="h-10 w-10 text-muted-foreground/50" />
           </div>
-          <div className="text-center">
-            <h3 className="text-base font-semibold text-foreground mb-1">
-              {t('clipboard.content.noClipboardItems')}
-            </h3>
-            <p className="text-sm text-muted-foreground">
-              {t('clipboard.content.emptyDescription')}
-            </p>
-          </div>
+          <h3 className="mb-2 text-xl font-semibold text-foreground">
+            {t('clipboard.content.noClipboardItems')}
+          </h3>
+          <p className="max-w-sm text-muted-foreground">
+            {t('clipboard.content.emptyDescription')}
+          </p>
         </div>
       )}
 

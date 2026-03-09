@@ -336,7 +336,7 @@ fn make_test_png() -> Vec<u8> {
     use std::io::Cursor;
     let mut buf = Vec::new();
     {
-        let mut encoder = image::codecs::png::PngEncoder::new(Cursor::new(&mut buf));
+        let encoder = image::codecs::png::PngEncoder::new(Cursor::new(&mut buf));
         use image::ImageEncoder;
         // 2x2 RGBA red pixels
         let pixels: Vec<u8> = vec![
@@ -548,7 +548,7 @@ async fn clipboard_sync_e2e_image_single_rep() -> Result<()> {
 
     let origin_b = Arc::new(InMemoryClipboardChangeOrigin::new());
 
-    let encryption_a: Arc<dyn EncryptionPort> = Arc::new(PassthroughEncryption);
+    let _encryption_a: Arc<dyn EncryptionPort> = Arc::new(PassthroughEncryption);
     let encryption_b: Arc<dyn EncryptionPort> = Arc::new(PassthroughEncryption);
     let session_a: Arc<dyn EncryptionSessionPort> = Arc::new(ReadyEncryptionSession);
     let session_b: Arc<dyn EncryptionSessionPort> = Arc::new(ReadyEncryptionSession);
@@ -645,7 +645,7 @@ async fn clipboard_sync_e2e_windows_image_multi_rep() -> Result<()> {
 
     let origin_b = Arc::new(InMemoryClipboardChangeOrigin::new());
 
-    let encryption_a: Arc<dyn EncryptionPort> = Arc::new(PassthroughEncryption);
+    let _encryption_a: Arc<dyn EncryptionPort> = Arc::new(PassthroughEncryption);
     let encryption_b: Arc<dyn EncryptionPort> = Arc::new(PassthroughEncryption);
     let session_a: Arc<dyn EncryptionSessionPort> = Arc::new(ReadyEncryptionSession);
     let session_b: Arc<dyn EncryptionSessionPort> = Arc::new(ReadyEncryptionSession);

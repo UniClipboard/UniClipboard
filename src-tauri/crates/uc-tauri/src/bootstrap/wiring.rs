@@ -290,12 +290,14 @@ fn pairing_events_subscribe_backoff_ms(attempt: u32) -> u64 {
 /// - Database pool creation fails / 数据库池创建失败
 /// - Migration fails / 迁移失败
 fn create_db_pool(db_path: &PathBuf) -> WiringResult<DbPool> {
-    // Ensure parent directory exists
-    // 确保父目录存在
-    if let Some(parent) = db_path.parent() {
-        std::fs::create_dir_all(parent).map_err(|e| {
-            WiringError::DatabaseInit(format!("Failed to create DB directory: {}", e))
-        })?;
+    // Ensure parent directory exists (skip for in-memory databases)
+    // 确保父目录存在（跳过内存数据库）
+    if db_path.as_os_str() != ":memory:" {
+        if let Some(parent) = db_path.parent().filter(|p| !p.as_os_str().is_empty()) {
+            std::fs::create_dir_all(parent).map_err(|e| {
+                WiringError::DatabaseInit(format!("Failed to create DB directory: {}", e))
+            })?;
+        }
     }
 
     // Convert PathBuf to string for database URL

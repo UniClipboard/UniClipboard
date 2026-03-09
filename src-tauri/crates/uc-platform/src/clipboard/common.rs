@@ -1,6 +1,6 @@
 use anyhow::{anyhow, ensure, Result};
 use clipboard_rs::{common::RustImage, Clipboard, ContentFormat};
-use tracing::{debug, info, warn};
+use tracing::{debug, warn};
 use uc_core::clipboard::{MimeType, ObservedClipboardRepresentation, SystemClipboardSnapshot};
 use uc_core::ids::RepresentationId;
 

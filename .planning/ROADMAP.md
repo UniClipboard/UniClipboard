@@ -4,6 +4,7 @@
 
 - ✅ **v0.1.0 Daily Driver** - Phases 1-9 (shipped 2026-03-06)
 - ✅ **v0.2.0 Architecture Remediation** - Phases 10-18 (shipped 2026-03-09)
+- 📋 **v0.3.0 Log Observability** - Phases 19-22 (planned)
 
 ## Phases
 
@@ -31,9 +32,76 @@ See: `.planning/milestones/v0.2.0-ROADMAP.md`
 
 </details>
 
+### 📋 v0.3.0 Log Observability (Planned)
+
+**Milestone Goal:** Make the clipboard capture pipeline fully observable with structured logging, dual output, and Seq-based local visualization.
+
+- [ ] **Phase 19: Dual Output Logging Foundation** - Establish structured dual-output logging, profiles, and configuration-controlled activation.
+- [ ] **Phase 20: Clipboard Capture Flow Correlation** - Correlate a single clipboard capture across spans, stages, layers, and spawned work.
+- [ ] **Phase 21: Sync Flow Correlation** - Extend the same flow model to inbound and outbound sync activity on a device.
+- [ ] **Phase 22: Seq Local Visualization** - Deliver configurable Seq ingestion and searchable flow visualization for local developer debugging.
+
+## Phase Details
+
+### Phase 19: Dual Output Logging Foundation
+
+**Goal**: Developers can run the app with one tracing setup that emits human-readable console logs and machine-readable JSON logs using selectable profiles.
+**Depends on**: Phase 18
+**Requirements**: LOG-01, LOG-02, LOG-03, LOG-04
+**Success Criteria** (what must be TRUE):
+
+1. Developers can start the app and simultaneously see pretty console logs and structured JSON log records generated from the same tracing pipeline.
+2. Developers can choose `dev`, `prod`, or `debug_clipboard` logging behavior via configuration without changing code.
+3. JSON log records include active span data and inherited parent span fields so correlated identifiers remain visible on each event.
+4. Developers can discover how to select log profiles and outputs from milestone documentation or configuration guidance.
+   **Plans**: TBD
+
+### Phase 20: Clipboard Capture Flow Correlation
+
+**Goal**: Developers can trace one clipboard capture from detection through persistence and publish using a single correlated flow record.
+**Depends on**: Phase 19
+**Requirements**: FLOW-01, FLOW-02, FLOW-03, FLOW-04
+**Success Criteria** (what must be TRUE):
+
+1. Each clipboard capture starts with a unique `flow_id` at the platform entry point and that identifier remains attached to the root capture span.
+2. Developers can inspect logs for one clipboard capture and see the same `flow_id` across detect, normalize, persist_event, select_policy, persist_entry, spool_blobs, and publish stages.
+3. Each major capture step appears as a named span with a `stage` field, making pipeline progress readable in structured logs.
+4. Work that crosses platform, app, and infra boundaries — including spawned async tasks — preserves the same flow context instead of breaking correlation.
+   **Plans**: TBD
+
+### Phase 21: Sync Flow Correlation
+
+**Goal**: Developers can follow inbound and outbound sync operations with the same flow conventions used by local clipboard capture.
+**Depends on**: Phase 20
+**Requirements**: FLOW-05
+**Success Criteria** (what must be TRUE):
+
+1. Outbound sync activity emits spans and events that use the same `flow_id` and `stage` structure as local capture flows.
+2. Inbound sync activity emits spans and events that use the same `flow_id` and `stage` structure as local capture flows.
+3. Developers can review logs on a single device and follow sync-specific stages without learning a second observability model.
+   **Plans**: TBD
+
+### Phase 22: Seq Local Visualization
+
+**Goal**: Developers can stream structured events into a local Seq instance and query a single flow as an ordered sequence of stages.
+**Depends on**: Phase 21
+**Requirements**: SEQ-01, SEQ-02, SEQ-03, SEQ-04, SEQ-05, SEQ-06
+**Success Criteria** (what must be TRUE):
+
+1. Developers can enable or disable Seq ingestion through configuration and run the app against a local Seq endpoint without code changes.
+2. Structured events arrive in Seq in CLEF-compatible form with `flow_id` and `stage` fields preserved.
+3. Seq ingestion happens asynchronously with batching so normal application activity does not pause while logs are shipped.
+4. Developers can query a single `flow_id` in Seq and see the related capture or sync stages in time order.
+5. Local Seq defaults are sensible enough that developers can get observability working with minimal setup, while still supporting explicit endpoint and API key overrides.
+   **Plans**: TBD
+
 ## Progress
 
-| Phase | Milestone | Plans Complete | Status   | Completed  |
-| ----- | --------- | -------------- | -------- | ---------- |
-| 1-9   | v0.1.0    | 17/17          | Complete | 2026-03-06 |
-| 10-18 | v0.2.0    | 22/22          | Complete | 2026-03-09 |
+| Phase                                  | Milestone | Plans Complete | Status      | Completed  |
+| -------------------------------------- | --------- | -------------- | ----------- | ---------- |
+| 1-9                                    | v0.1.0    | 17/17          | Complete    | 2026-03-06 |
+| 10-18                                  | v0.2.0    | 22/22          | Complete    | 2026-03-09 |
+| 19. Dual Output Logging Foundation     | v0.3.0    | 0/TBD          | Not started | -          |
+| 20. Clipboard Capture Flow Correlation | v0.3.0    | 0/TBD          | Not started | -          |
+| 21. Sync Flow Correlation              | v0.3.0    | 0/TBD          | Not started | -          |
+| 22. Seq Local Visualization            | v0.3.0    | 0/TBD          | Not started | -          |

@@ -50,39 +50,39 @@ Explicitly excluded from v0.3.0. Documented to prevent scope creep.
 | Full OpenTelemetry integration (traces/logs/metrics) | Adds significant dependency and configuration complexity; reserved for a later milestone focused on multi-backend and collector integration. |
 | Remote/cloud log shipping (Datadog/Honeycomb/etc.)   | Clipboard logs may contain sensitive content; current milestone is local developer observability only.                                       |
 | React/frontend log integration into Rust tracing     | Cross-boundary logging adds complexity; frontend debugging handled via browser/React DevTools and Redux tooling.                             |
-| In-app log viewer UI                                 | High effort, low value compared to Seqs dedicated log UI; would duplicate existing tooling.                                                  |
+| In-app log viewer UI                                 | High effort, low value compared to Seq’s dedicated log UI; would duplicate existing tooling.                                                 |
 | Metrics dashboards and alerting rules                | Belong to a separate observability/metrics milestone; this milestone focuses on structured logs and flows.                                   |
 | Distributed tracing across devices                   | Requires protocol-level changes for trace context propagation; current milestone limits scope to single-device flows.                        |
 
 ## Traceability
 
-Which phases cover which requirements. To be updated during roadmap creation.
+Which phases cover which requirements.
 
-| Requirement | Phase     | Status  |
-| ----------- | --------- | ------- |
-| LOG-01      | Phase [N] | Pending |
-| LOG-02      | Phase [N] | Pending |
-| LOG-03      | Phase [N] | Pending |
-| LOG-04      | Phase [N] | Pending |
-| FLOW-01     | Phase [N] | Pending |
-| FLOW-02     | Phase [N] | Pending |
-| FLOW-03     | Phase [N] | Pending |
-| FLOW-04     | Phase [N] | Pending |
-| FLOW-05     | Phase [N] | Pending |
-| SEQ-01      | Phase [N] | Pending |
-| SEQ-02      | Phase [N] | Pending |
-| SEQ-03      | Phase [N] | Pending |
-| SEQ-04      | Phase [N] | Pending |
-| SEQ-05      | Phase [N] | Pending |
-| SEQ-06      | Phase [N] | Pending |
+| Requirement | Phase    | Status  |
+| ----------- | -------- | ------- |
+| LOG-01      | Phase 19 | Pending |
+| LOG-02      | Phase 19 | Pending |
+| LOG-03      | Phase 19 | Pending |
+| LOG-04      | Phase 19 | Pending |
+| FLOW-01     | Phase 20 | Pending |
+| FLOW-02     | Phase 20 | Pending |
+| FLOW-03     | Phase 20 | Pending |
+| FLOW-04     | Phase 20 | Pending |
+| FLOW-05     | Phase 21 | Pending |
+| SEQ-01      | Phase 22 | Pending |
+| SEQ-02      | Phase 22 | Pending |
+| SEQ-03      | Phase 22 | Pending |
+| SEQ-04      | Phase 22 | Pending |
+| SEQ-05      | Phase 22 | Pending |
+| SEQ-06      | Phase 22 | Pending |
 
 **Coverage:**
 
 - v1 requirements: 15 total
-- Mapped to phases: 0 (roadmap pending)
-- Unmapped: 15 ⚠️
+- Mapped to phases: 15
+- Unmapped: 0 ✓
 
 ---
 
 _Requirements defined: 2026-03-09_
-_Last updated: 2026-03-09 after initial definition_
+_Last updated: 2026-03-09 after roadmap creation_

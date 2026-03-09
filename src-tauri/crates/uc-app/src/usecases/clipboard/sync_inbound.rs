@@ -388,32 +388,19 @@ impl SyncInboundClipboardUseCase {
                 return Err(err).context("V3 inbound: failed to write snapshot to OS clipboard");
             }
 
-            // Read back the clipboard to capture the OS-re-encoded hash.
+            // Guard against loopback when the OS re-encodes clipboard content.
             // Some platforms (e.g. Windows clipboard-rs) re-encode images (PNG→DIB→PNG),
-            // producing different bytes than the original. Without this, the watcher
-            // would see a different hash and treat it as a new local copy, causing a
-            // sync loop.
-            match self.local_clipboard.read_snapshot() {
-                Ok(readback) => {
-                    let readback_hash = readback.snapshot_hash().to_string();
-                    if readback_hash != snapshot_hash {
-                        debug!(
-                            original_hash = %snapshot_hash,
-                            readback_hash = %readback_hash,
-                            "Inbound write: OS re-encoded clipboard, remembering readback hash to prevent loopback"
-                        );
-                        self.clipboard_change_origin
-                            .remember_remote_snapshot_hash(
-                                readback_hash,
-                                Duration::from_millis(REMOTE_SNAPSHOT_HASH_TTL_MS),
-                            )
-                            .await;
-                    }
-                }
-                Err(e) => {
-                    warn!(error = %e, "Failed to read back clipboard after inbound write; loopback may occur");
-                }
-            }
+            // producing different bytes than the original. The hash-based guard above
+            // won't match the re-encoded content, so we set a one-shot origin override:
+            // the NEXT clipboard change will be treated as RemotePush regardless of hash.
+            // This avoids reading back the clipboard (which can crash on Windows with
+            // large native bitmaps).
+            self.clipboard_change_origin
+                .set_next_origin(
+                    ClipboardChangeOrigin::RemotePush,
+                    Duration::from_millis(REMOTE_SNAPSHOT_HASH_TTL_MS),
+                )
+                .await;
 
             info!(message_id = %message.id, "V3 inbound clipboard applied");
             return Ok(InboundApplyOutcome::Applied { entry_id: None });
@@ -1193,23 +1180,22 @@ mod tests {
             .await
             .expect("execute inbound message");
 
-        // V3 inbound: remember hash, write, read-back, remember readback hash (loopback guard)
+        // V3 inbound: remember hash, write, then set_next_origin as loopback guard
         assert_eq!(
             calls.lock().expect("calls lock").as_slice(),
             [
                 "remember_remote_snapshot_hash",
                 "write_snapshot",
-                "read_snapshot",
-                "remember_remote_snapshot_hash",
+                "set_origin",
             ]
         );
         let values = origin_values.lock().expect("origin values lock");
-        assert_eq!(values.len(), 0);
+        // set_next_origin(RemotePush) called as loopback guard after write
+        assert_eq!(values.len(), 1);
+        assert_eq!(values[0].0, ClipboardChangeOrigin::RemotePush);
         let remote_values = remote_hash_values.lock().expect("remote hash values lock");
-        // Two hashes remembered: original pre-write hash + readback post-write hash
-        assert_eq!(remote_values.len(), 2);
+        assert_eq!(remote_values.len(), 1);
         assert_eq!(remote_values[0].1, Duration::from_secs(60));
-        assert_eq!(remote_values[1].1, Duration::from_secs(60));
     }
 
     #[tokio::test]

@@ -1,6 +1,6 @@
 /**
- * Theme transition utility using View Transition API.
- * Creates a circular reveal animation from the click position.
+ * View Transition utility using the View Transition API.
+ * Creates a circular reveal animation from a given origin point.
  */
 
 let lastClickX = 0
@@ -14,18 +14,15 @@ export function setTransitionOrigin(x: number, y: number) {
 
 /**
  * Execute a DOM update wrapped in a View Transition with circular reveal.
+ * Animates from (x, y) outward to cover the entire viewport.
  * Falls back to immediate execution if View Transition API is not supported.
  */
-export function startThemeTransition(updateDOM: () => void) {
+export function startCircularReveal(x: number, y: number, updateDOM: () => void) {
   if (!document.startViewTransition) {
     updateDOM()
     return
   }
 
-  const x = lastClickX
-  const y = lastClickY
-
-  // Calculate the maximum radius needed to cover the entire viewport
   const endRadius = Math.hypot(
     Math.max(x, window.innerWidth - x),
     Math.max(y, window.innerHeight - y)
@@ -45,4 +42,12 @@ export function startThemeTransition(updateDOM: () => void) {
       }
     )
   })
+}
+
+/**
+ * Execute a DOM update wrapped in a View Transition with circular reveal,
+ * using the last stored click position (for theme switching).
+ */
+export function startThemeTransition(updateDOM: () => void) {
+  startCircularReveal(lastClickX, lastClickY, updateDOM)
 }

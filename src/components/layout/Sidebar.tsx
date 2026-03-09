@@ -2,7 +2,7 @@ import { motion } from 'framer-motion'
 import { ArrowUpCircle, Home, MessageSquare, Monitor, Settings } from 'lucide-react'
 import React, { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Link, useLocation } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { FeedbackDialog } from '@/components/feedback/FeedbackDialog'
 import {
   AlertDialog,
@@ -19,6 +19,7 @@ import { toast } from '@/components/ui/toast'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { useSetting } from '@/hooks/useSetting'
 import { useUpdate } from '@/hooks/useUpdate'
+import { startCircularReveal } from '@/lib/theme-transition'
 import { cn } from '@/lib/utils'
 import { sentryEnabled } from '@/observability/sentry'
 
@@ -28,12 +29,25 @@ const NavButton: React.FC<{
   label: string
   isActive: boolean
   layoutId: string
-}> = ({ to, icon: Icon, label, isActive, layoutId }) => {
+  onClick?: (e: React.MouseEvent<HTMLAnchorElement>) => void
+}> = ({ to, icon: Icon, label, isActive, layoutId, onClick }) => {
   return (
     <TooltipProvider delayDuration={0}>
       <Tooltip>
         <TooltipTrigger asChild>
-          <Link data-tauri-drag-region="false" to={to} className="relative group">
+          <Link
+            data-tauri-drag-region="false"
+            to={to}
+            className="relative group"
+            onClick={
+              onClick
+                ? e => {
+                    e.preventDefault()
+                    onClick(e)
+                  }
+                : undefined
+            }
+          >
             {isActive && (
               <motion.div
                 layoutId={layoutId}
@@ -69,6 +83,7 @@ const NavButton: React.FC<{
 const Sidebar: React.FC = () => {
   const { t } = useTranslation()
   const location = useLocation()
+  const navigate = useNavigate()
   const { setting } = useSetting()
   const [updateDialogOpen, setUpdateDialogOpen] = useState(false)
   const [feedbackOpen, setFeedbackOpen] = useState(false)
@@ -191,6 +206,10 @@ const Sidebar: React.FC = () => {
             label={t('nav.settings')}
             isActive={location.pathname.startsWith('/settings')}
             layoutId="sidebar-nav-bottom"
+            onClick={e => {
+              if (location.pathname.startsWith('/settings')) return
+              startCircularReveal(e.clientX, e.clientY, () => navigate('/settings'))
+            }}
           />
         </div>
       </aside>

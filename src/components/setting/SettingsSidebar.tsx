@@ -12,6 +12,7 @@ import {
   SidebarMenu,
   SidebarMenuItem,
 } from '@/components/ui/sidebar'
+import { startCircularReveal } from '@/lib/theme-transition'
 
 interface SettingsSidebarProps {
   activeCategory: string
@@ -22,12 +23,15 @@ const SettingsSidebar: FC<SettingsSidebarProps> = ({ activeCategory, onCategoryC
   const { t } = useTranslation()
   const navigate = useNavigate()
 
-  const handleBack = () => {
-    if (window.history.state && window.history.state.idx > 0) {
-      navigate(-1)
-    } else {
-      navigate('/')
+  const handleBack = (e: React.MouseEvent) => {
+    const doNavigate = () => {
+      if (window.history.state && window.history.state.idx > 0) {
+        navigate(-1)
+      } else {
+        navigate('/')
+      }
     }
+    startCircularReveal(e.clientX, e.clientY, doNavigate)
   }
 
   return (

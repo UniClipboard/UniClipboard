@@ -114,6 +114,14 @@ pub async fn update_settings(
                 }
                 None => {
                     tracing::warn!("AppHandle not available, cannot apply autostart setting");
+                    // Rollback: restore old settings so backend stays consistent with OS state
+                    let rollback_uc = runtime.usecases().update_settings();
+                    if let Err(rb_err) = rollback_uc.execute(old_settings).await {
+                        tracing::error!(error = %rb_err, "Failed to rollback settings after autostart failure");
+                    }
+                    return Err(CommandError::InternalError(
+                        "AppHandle not available, cannot apply autostart setting".to_string(),
+                    ));
                 }
             }
         }

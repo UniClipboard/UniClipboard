@@ -30,13 +30,23 @@ const NavButton: React.FC<{
   isActive: boolean
   layoutId: string
   onClick?: (e: React.MouseEvent<HTMLAnchorElement>) => void
-}> = ({ to, icon: Icon, label, isActive, layoutId, onClick }) => {
+  'data-settings-icon'?: boolean
+}> = ({
+  to,
+  icon: Icon,
+  label,
+  isActive,
+  layoutId,
+  onClick,
+  'data-settings-icon': dataSettingsIcon,
+}) => {
   return (
     <TooltipProvider delayDuration={0}>
       <Tooltip>
         <TooltipTrigger asChild>
           <Link
             data-tauri-drag-region="false"
+            data-settings-icon={dataSettingsIcon || undefined}
             to={to}
             className="relative group"
             onClick={
@@ -206,9 +216,15 @@ const Sidebar: React.FC = () => {
             label={t('nav.settings')}
             isActive={location.pathname.startsWith('/settings')}
             layoutId="sidebar-nav-bottom"
+            data-settings-icon
             onClick={e => {
               if (location.pathname.startsWith('/settings')) return
-              startCircularReveal(e.clientX, e.clientY, () => navigate('/settings'))
+              const isKeyboard = e.clientX === 0 && e.clientY === 0
+              startCircularReveal(
+                isKeyboard ? null : e.clientX,
+                isKeyboard ? null : e.clientY,
+                () => navigate('/settings')
+              )
             }}
           />
         </div>

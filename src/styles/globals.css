@@ -274,6 +274,15 @@
   z-index: 9999;
 }
 
+/* Collapse mode: old view on top, shrinks away to reveal new view */
+.view-transition-collapse::view-transition-old(root) {
+  z-index: 9999;
+}
+
+.view-transition-collapse::view-transition-new(root) {
+  z-index: 1;
+}
+
 @layer base {
   html,
   body,

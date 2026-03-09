@@ -1,5 +1,5 @@
 ---
-status: awaiting_human_verify
+status: resolved
 trigger: 'text-truncation-500-chars: expanded view and copy action only show 500 chars'
 created: 2026-03-04T00:00:00Z
 updated: 2026-03-04T00:04:00Z

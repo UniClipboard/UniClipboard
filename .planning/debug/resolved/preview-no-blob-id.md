@@ -1,5 +1,5 @@
 ---
-status: awaiting_human_verify
+status: resolved
 trigger: "preview-no-blob-id: get_entry_resource fails with 'Preview representation has no blob_id' for synced entries"
 created: 2026-03-08T00:00:00Z
 updated: 2026-03-08T00:00:00Z

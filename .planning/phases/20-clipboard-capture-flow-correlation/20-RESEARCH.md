@@ -1,16 +1,18 @@
-# Phase 20: Clipboard Capture Flow Correlation - Research
+# Phase 20: Clipboard Capture Flow Correlation - Research (Gap Closure)
 
 **Researched:** 2026-03-11
-**Domain:** Rust tracing span instrumentation, flow correlation, structured logging
+**Domain:** Rust tracing instrumentation / observability gap closure
 **Confidence:** HIGH
 
 ## Summary
 
-Phase 20 adds a `flow_id` (UUID v7) to every clipboard capture flow so developers can filter logs by a single identifier and see the full pipeline. The work is primarily instrumentation: generating a UUID at the AppRuntime entry point, attaching it as a span field, and adding `stage`-labeled sub-spans at each pipeline step.
+Phase 20 was substantially implemented in plans 20-01 and 20-02. Verification found ONE gap: the `spool_blobs` stage span is missing. The spool queue enqueue loop currently runs inside the `cache_representations` span (lines 188-225 of `capture_clipboard.rs`) instead of having its own distinct `spool_blobs` stage span with `stage = stages::SPOOL_BLOBS`.
 
-The existing infrastructure is well-suited. Phase 19's `FlatJsonFormat` already flattens parent span fields to the top-level JSON object, so a `flow_id` on a root span automatically appears on every child event. The `tracing` crate's span inheritance handles the local capture path (no explicit parameter passing). The spawned outbound sync task already captures `parent_span` for instrumentation.
+The fix is surgical: (1) add a `SPOOL_BLOBS` constant to `stages.rs`, (2) split the combined cache+spool async block into two sequential instrumented blocks in `capture_clipboard.rs`, and (3) update the existing tests in `stages.rs` to include the new constant.
 
-**Primary recommendation:** Add FlowId newtype + stage constants to uc-observability, generate flow_id in `AppRuntime::on_clipboard_changed`, instrument each pipeline step with `info_span!("step_name", stage = STAGE_X)` inside `CaptureClipboardUseCase::execute_with_origin`.
+The `publish` stage is correctly deferred to Phase 21 per CONTEXT.md locked decisions and should NOT be addressed here.
+
+**Primary recommendation:** Add `SPOOL_BLOBS` constant and wrap the spool enqueue loop in a separate `info_span!("spool_blobs", stage = stages::SPOOL_BLOBS)` block, keeping `cache_representations` for the cache `.put()` calls only.
 
 <user_constraints>
 
@@ -20,17 +22,12 @@ The existing infrastructure is well-suited. Phase 19's `FlatJsonFormat` already 
 
 - flow_id generated at the App layer (AppRuntime::on_clipboard_changed) -- the business logic entry point
 - Format: UUID v7 (time-sortable), using the existing `uuid` crate dependency
-- Displayed as full UUID string in logs (e.g., `flow_id=019526a7-3b4c-7def-8123-456789abcdef`)
-- flow_id injected as a span field on the root capture span; downstream UseCase and infra layers inherit it via tracing span context -- no explicit parameter passing within the local capture path
+- flow_id injected as a span field on the root capture span; downstream UseCase and infra layers inherit it via tracing span context
 - Stage names follow the actual code structure, not strictly the requirements document's 7-stage list
 - Each major capture step gets one span with a `stage` field -- no sub-spans within stages
 - Span naming style: flat names (e.g., `info_span!("normalize", stage = "normalize")`)
 - Scope limited to local capture: detect -> normalize -> persist_event -> cache_representations -> select_policy -> persist_entry. The "publish" stage (outbound sync) is deferred to Phase 21
-- For spawned async tasks: flow_id is explicitly passed as a plain Uuid value into the spawn closure, which creates its own span with the flow_id attached
-- For the local capture path: relies on tracing span inheritance -- no explicit flow_id passing
-- try_join_all() in the normalizer does not need special handling
 - Each layer directly uses the tracing API -- no custom span builder abstraction
-- flow_id generation is inline in AppRuntime (one-liner: Uuid::now_v7())
 - uc-observability crate gets FlowId newtype and stage name constants
 - uc-observability does NOT need changes to its subscriber/format infrastructure
 
@@ -48,315 +45,202 @@ The existing infrastructure is well-suited. Phase 19's `FlatJsonFormat` already 
 - Inbound sync flow correlation -- Phase 21
 - Representation-level sub-spans with representation_id, mime_type, size_bytes (OBS-02) -- future milestone
 - FlowContext struct wrapping flow_id + metadata -- not needed for current scope
-  </user_constraints>
+
+</user_constraints>
 
 <phase_requirements>
 
 ## Phase Requirements
 
-| ID      | Description                                                                                                                             | Research Support                                                                                                                      |
-| ------- | --------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
-| FLOW-01 | Each clipboard capture flow is assigned a unique `flow_id` at the platform entry point and this `flow_id` is attached to the root span. | FlowId newtype in uc-observability, UUID v7 generation in AppRuntime::on_clipboard_changed, added as field to `#[instrument]` span    |
-| FLOW-02 | All spans and events participating in a clipboard capture flow carry the same `flow_id` field.                                          | FlatJsonFormat already flattens parent span fields; flow_id on root span auto-propagates to all child events via tracing span context |
-| FLOW-03 | Each major step of the capture pipeline is represented by a named span with a `stage` field.                                            | Stage constants in uc-observability, `info_span!` with `stage` field wrapping each step in CaptureClipboardUseCase                    |
-| FLOW-04 | Cross-layer operations preserve `flow_id` and `stage` context, including across `tokio::spawn` boundaries.                              | Explicit flow_id passing into spawn closure (already has `parent_span` pattern at runtime.rs:1064-1085)                               |
+| ID      | Description                                                                                                                                         | Research Support                                                                                                        |
+| ------- | --------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| FLOW-01 | Each clipboard capture flow is assigned a unique `flow_id` at the platform entry point                                                              | ALREADY IMPLEMENTED - `FlowId::generate()` in `on_clipboard_changed` (runtime.rs:1003)                                  |
+| FLOW-02 | All spans and events carry the same `flow_id` field                                                                                                 | ALREADY IMPLEMENTED - root span `.instrument()` + spawn clone (runtime.rs:1004-1106)                                    |
+| FLOW-03 | Each major step represented by named span with `stage` field (detect, normalize, persist_event, select_policy, persist_entry, spool_blobs, publish) | GAP: `spool_blobs` stage span missing -- merged into `cache_representations`. `publish` deferred to Phase 21 by design. |
+| FLOW-04 | Cross-layer operations preserve `flow_id` and `stage` context including across `tokio::spawn`                                                       | ALREADY IMPLEMENTED - `flow_id_for_sync` clone into spawn (runtime.rs:1071-1091)                                        |
 
 </phase_requirements>
 
-## Standard Stack
+## Current Implementation State
 
-### Core
+All Phase 20 work is complete EXCEPT one gap identified by verification.
 
-| Library | Version | Purpose                        | Why Standard                     |
-| ------- | ------- | ------------------------------ | -------------------------------- |
-| tracing | 0.1     | Structured logging with spans  | Already in use across all crates |
-| uuid    | 1.19.0  | UUID v7 generation for flow_id | Already a workspace dependency   |
+### What Already Exists (DO NOT RE-IMPLEMENT)
 
-### Supporting
+| File                                                                 | What It Does                                                                                             | Status                       |
+| -------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- | ---------------------------- |
+| `src-tauri/crates/uc-observability/src/flow.rs`                      | `FlowId` newtype wrapping UUID v7 with Display/Debug/Clone/PartialEq/Eq/Hash                             | COMPLETE                     |
+| `src-tauri/crates/uc-observability/src/stages.rs`                    | 6 stage constants: DETECT, NORMALIZE, PERSIST_EVENT, CACHE_REPRESENTATIONS, SELECT_POLICY, PERSIST_ENTRY | NEEDS `SPOOL_BLOBS` added    |
+| `src-tauri/crates/uc-observability/src/lib.rs`                       | Public re-exports of flow and stages modules                                                             | COMPLETE                     |
+| `src-tauri/crates/uc-observability/Cargo.toml`                       | uuid dependency with v7 feature                                                                          | COMPLETE                     |
+| `src-tauri/crates/uc-app/Cargo.toml`                                 | uc-observability dependency                                                                              | COMPLETE                     |
+| `src-tauri/crates/uc-tauri/src/bootstrap/runtime.rs`                 | Root span with flow_id + detect stage at line 1003-1008, spawn propagation at lines 1070-1091            | COMPLETE                     |
+| `src-tauri/crates/uc-app/src/usecases/internal/capture_clipboard.rs` | 5 stage spans (normalize, persist_event, cache_representations, select_policy, persist_entry)            | NEEDS spool_blobs separation |
 
-| Library          | Version       | Purpose                          | When to Use                         |
-| ---------------- | ------------- | -------------------------------- | ----------------------------------- |
-| uc-observability | 0.1.0 (local) | FlowId newtype + stage constants | New public API for flow correlation |
+## The Gap: spool_blobs Stage Span
 
-### Dependency Changes Required
+### Current Code Structure (lines 188-225 of capture_clipboard.rs)
 
-**uuid feature flag addition:** The `uuid` crate in uc-observability (or whichever crate hosts FlowId) needs the `v7` feature. Currently:
-
-- uc-core: `features = ["v4", "fast-rng", "serde"]`
-- uc-app: `features = ["v4"]`
-- uc-tauri: does not depend on uuid directly
-
-UUID v7 requires: `features = ["v7"]`. This must be added to the crate that generates the flow_id. Since generation happens in AppRuntime (uc-tauri crate) but FlowId lives in uc-observability, the `uuid` dependency with `v7` feature needs to be added to uc-observability's Cargo.toml.
-
-**Confidence:** HIGH -- verified uuid 1.19.0 is resolved in the workspace, and v7 feature is available since uuid 1.3.0.
-
-## Architecture Patterns
-
-### Injection Point Map
-
-```
-PlatformRuntime::handle_event(ClipboardChanged)     [uc-platform]
-  -> handler.on_clipboard_changed(snapshot)
-    -> AppRuntime::on_clipboard_changed(snapshot)    [uc-tauri]  <-- FLOW_ID GENERATED HERE
-      -> #[instrument] span with flow_id field
-      -> CaptureClipboardUseCase::execute_with_origin()  [uc-app]
-        -> info_span!("usecase.capture_clipboard.execute", ...)
-          -> info_span!("normalize", stage = "normalize")
-          -> info_span!("persist_event", stage = "persist_event")
-          -> info_span!("cache_representations", stage = "cache_representations")
-          -> info_span!("select_policy", stage = "select_policy")
-          -> info_span!("persist_entry", stage = "persist_entry")
-      -> tokio::spawn (outbound sync)                [DEFERRED to Phase 21]
-```
-
-### Pattern 1: Root Span with flow_id
-
-The existing `#[tracing::instrument]` on `on_clipboard_changed` creates the root span. flow_id must be added as a field:
+The `cache_representations` span currently wraps BOTH the cache `.put()` calls AND the spool `.enqueue()` calls in a single async block:
 
 ```rust
-// Option A: Replace #[instrument] with manual span (recommended)
-async fn on_clipboard_changed(&self, snapshot: SystemClipboardSnapshot) -> anyhow::Result<()> {
-    let flow_id = FlowId::generate();
-    let span = info_span!(
-        "runtime.on_clipboard_changed",
-        %flow_id,
-        stage = stages::DETECT,
-    );
-    async move {
-        // ... existing body ...
-    }.instrument(span).await
+// Lines 188-225: ONE async block with ONE span
+async {
+    for rep in &normalized_reps {
+        if rep.payload_state() == PayloadAvailability::Staged {
+            if let Some(observed) = snapshot.representations.iter().find(|o| o.id == rep.id) {
+                // Cache put (belongs in cache_representations)
+                self.representation_cache.put(&rep.id, observed.bytes.clone()).await;
+
+                // Spool enqueue (should be its own spool_blobs stage)
+                if let Err(err) = self.spool_queue.enqueue(SpoolRequest { ... }).await {
+                    warn!(...);
+                    return Err(err);
+                }
+            }
+        }
+    }
+    Ok::<(), anyhow::Error>(())
 }
-```
-
-Rationale: `#[instrument]` does not support computed field values (flow_id must be generated at runtime). A manual span is needed.
-
-### Pattern 2: Stage Sub-Spans in UseCase
-
-Each step inside `execute_with_origin` gets a stage span:
-
-```rust
-// Normalize step
-let normalized_reps = async {
-    let normalized_futures: Vec<_> = snapshot
-        .representations
-        .iter()
-        .map(|rep| self.representation_normalizer.normalize(rep))
-        .collect();
-    try_join_all(normalized_futures).await
-}
-.instrument(info_span!("normalize", stage = uc_observability::stages::NORMALIZE))
+.instrument(info_span!("cache_representations", stage = stages::CACHE_REPRESENTATIONS))
 .await?;
 ```
 
-### Pattern 3: Cross-Spawn flow_id Propagation
+### Required Fix
 
-Already established in runtime.rs:1064-1085. For Phase 21, the outbound sync spawn will create its own span with flow_id:
+Split into two sequential instrumented blocks:
+
+1. **`cache_representations`** span: iterate reps, cache `.put()` for staged items, collect which reps need spooling
+2. **`spool_blobs`** span: iterate collected reps, enqueue spool requests
+
+This matches FLOW-03's requirement that `spool_blobs` appears as a distinct named stage span in structured logs.
+
+### Architecture Pattern for the Fix
 
 ```rust
-let flow_id = flow_id.clone(); // plain Uuid value
-tauri::async_runtime::spawn(
-    async move {
-        // Phase 21 will add: info_span!("publish", %flow_id, stage = "publish")
-        // ... sync logic ...
+// Stage: cache_representations - cache in-memory bytes for staged representations
+let staged_for_spool: Vec<_> = async {
+    let mut staged = Vec::new();
+    for rep in &normalized_reps {
+        if rep.payload_state() == PayloadAvailability::Staged {
+            if let Some(observed) = snapshot.representations.iter().find(|o| o.id == rep.id) {
+                self.representation_cache.put(&rep.id, observed.bytes.clone()).await;
+                staged.push(observed);
+            }
+        }
     }
-    .instrument(info_span!("outbound_sync", %flow_id)),
-);
+    staged
+}
+.instrument(info_span!("cache_representations", stage = stages::CACHE_REPRESENTATIONS))
+.await;
+
+// Stage: spool_blobs - enqueue disk spool requests for staged representations
+async {
+    for observed in &staged_for_spool {
+        if let Err(err) = self.spool_queue.enqueue(SpoolRequest {
+            rep_id: observed.id.clone(),
+            bytes: observed.bytes.clone(),
+        }).await {
+            warn!(representation_id = %observed.id, error = %err, "Failed to enqueue spool request");
+            return Err(err);
+        }
+    }
+    Ok::<(), anyhow::Error>(())
+}
+.instrument(info_span!("spool_blobs", stage = stages::SPOOL_BLOBS))
+.await?;
 ```
 
-### Anti-Patterns to Avoid
-
-- **Passing flow_id as function parameter through the capture path:** Tracing span inheritance handles this automatically. Only pass explicitly across spawn boundaries.
-- **Creating sub-spans within stages:** CONTEXT.md locks "one span per stage, no sub-spans."
-- **Using `#[instrument]` for spans needing runtime-computed fields:** `#[instrument]` fields are limited to function parameters. Use manual `info_span!` when flow_id is generated inside the function.
-
-## Don't Hand-Roll
-
-| Problem                | Don't Build               | Use Instead                                 | Why                                             |
-| ---------------------- | ------------------------- | ------------------------------------------- | ----------------------------------------------- |
-| UUID v7 generation     | Custom timestamp-based ID | `uuid::Uuid::now_v7()`                      | Standard, time-sortable, 122 bits of uniqueness |
-| Span field propagation | Manual field threading    | tracing span parent-child inheritance       | FlatJsonFormat already flattens parent fields   |
-| Cross-spawn context    | Custom context struct     | Explicit Uuid value + `info_span!` in spawn | Simple, no framework needed                     |
+**Confidence:** HIGH -- this follows the exact same `.instrument(info_span!(...))` pattern used by all other stage spans in the file.
 
 ## Common Pitfalls
 
-### Pitfall 1: #[instrument] Cannot Use Runtime-Generated Values
+### Pitfall 1: Borrowing Issues in Split Async Blocks
 
-**What goes wrong:** Trying to add `flow_id` to `#[instrument(fields(flow_id = ...))]` when flow_id is computed inside the function body.
-**Why it happens:** `#[instrument]` evaluates field expressions at span creation time, before the function body runs.
-**How to avoid:** Replace `#[instrument]` with a manual `info_span!` + `.instrument(span).await` pattern. Generate flow_id first, then create span with it.
-**Warning signs:** Compile errors about `flow_id not found in this scope` in instrument attribute.
+**What goes wrong:** When splitting one async block into two, the second block may need data computed in the first. Rust's borrow checker requires careful ownership transfer.
+**How to avoid:** Collect the staged representations into an owned `Vec` in the first block and return it. The second block borrows or consumes this owned data. Note: the collected items are references to `observed` (`&ObservedClipboardRepresentation`), so lifetimes must be compatible -- since `snapshot` is borrowed for the entire `execute_with_origin` scope, this is safe.
 
-### Pitfall 2: UUID v7 Feature Flag Missing
+### Pitfall 2: Changing the Span Hierarchy
 
-**What goes wrong:** `Uuid::now_v7()` does not compile.
-**Why it happens:** The `v7` feature is not enabled in Cargo.toml. Currently only `v4` is enabled.
-**How to avoid:** Add `features = ["v7"]` to the uuid dependency in the crate that calls `Uuid::now_v7()`.
-**Warning signs:** Compile error `no method named 'now_v7' found`.
+**What goes wrong:** Accidentally nesting `spool_blobs` inside `cache_representations` instead of making them sequential siblings.
+**How to avoid:** Both blocks must be at the same indentation level, sequentially awaited, each with their own `.instrument()` call. They are sibling spans under `usecase.capture_clipboard.execute`.
 
-### Pitfall 3: Span Not Entered for Synchronous Code
+### Pitfall 3: Breaking Error Propagation
 
-**What goes wrong:** Stage spans created with `info_span!` but not entered (`.enter()` or `.instrument()`) -- events inside don't carry the span context.
-**Why it happens:** Creating a span does not activate it. It must be entered.
-**How to avoid:** Always use `.instrument(span).await` for async blocks, or `let _guard = span.enter()` for sync blocks.
-**Warning signs:** flow_id appears on root events but not on events inside a stage.
+**What goes wrong:** The current code returns `Err` from within the combined block. When splitting, ensure the `spool_blobs` block still propagates errors with `?`.
+**How to avoid:** The `cache_representations` block should NOT return a `Result` (cache `.put()` returns `()` -- it cannot fail). Only the `spool_blobs` block returns `Result` and uses `?`.
 
-### Pitfall 4: Sync select() Call Needs Special Span Handling
+### Pitfall 4: stages.rs Test Update
 
-**What goes wrong:** `representation_policy.select(&snapshot)` is synchronous (not async), so `.instrument()` doesn't apply.
-**Why it happens:** `.instrument()` is for futures. Sync calls need `span.enter()`.
-**How to avoid:** Use `let _guard = info_span!("select_policy", stage = ...).entered();` for the sync call.
+**What goes wrong:** Adding `SPOOL_BLOBS` constant but forgetting to add it to the existing `stage_constants_are_lowercase_snake_case` and `all_stages_are_non_empty` tests.
+**How to avoid:** Both tests iterate over an array of all constants. Add `("SPOOL_BLOBS", SPOOL_BLOBS)` to the array and `assert!(!SPOOL_BLOBS.is_empty())` to the non-empty test.
 
-### Pitfall 5: try_join_all Span Context
+## Publish Stage Scoping Decision
 
-**What goes wrong:** Concern that concurrent futures in `try_join_all` lose span context.
-**Why it happens:** Misunderstanding of tokio's task model.
-**How to avoid:** CONTEXT.md confirms: `try_join_all()` runs futures concurrently within the same task, so span context is preserved. No special handling needed.
+The `publish` stage is explicitly deferred to Phase 21 per CONTEXT.md locked decisions. The verification report notes this gap but it is by design. The outbound_sync span at runtime.rs:1090 already carries `flow_id` but intentionally has no `stage` field -- Phase 21 will add `stage = stages::PUBLISH`.
 
-## Code Examples
+**Recommendation:** Do NOT add `PUBLISH` constant or publish stage span in this gap closure. Phase 21 will handle it. Phase 20 success criterion 2 should be understood as covering local capture stages only (detect through persist_entry + spool_blobs).
 
-### FlowId Newtype in uc-observability
+## Files to Modify
 
-```rust
-// uc-observability/src/flow.rs
-use std::fmt;
-use uuid::Uuid;
+| File                                                                 | Change                                                                                    | Scope                                     |
+| -------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- | ----------------------------------------- |
+| `src-tauri/crates/uc-observability/src/stages.rs`                    | Add `pub const SPOOL_BLOBS: &str = "spool_blobs";`, update both existing tests            | ~5 new lines                              |
+| `src-tauri/crates/uc-app/src/usecases/internal/capture_clipboard.rs` | Split the cache+spool async block (lines 188-225) into two sequential instrumented blocks | Lines 188-225 restructured into ~30 lines |
 
-/// A unique identifier for a clipboard capture or sync flow.
-///
-/// Wraps UUID v7 for time-sortable, globally unique flow correlation.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct FlowId(Uuid);
+**No other files need changes.** All dependency wiring (uc-observability in uc-app, uuid v7 feature) is already in place from plans 20-01 and 20-02.
 
-impl FlowId {
-    /// Generate a new time-sortable flow ID (UUID v7).
-    pub fn generate() -> Self {
-        Self(Uuid::now_v7())
-    }
-}
+## Don't Hand-Roll
 
-impl fmt::Display for FlowId {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.0.fmt(f)
-    }
-}
-```
+| Problem                | Don't Build                              | Use Instead                                      | Why                                                            |
+| ---------------------- | ---------------------------------------- | ------------------------------------------------ | -------------------------------------------------------------- |
+| Stage name consistency | Hardcoded `"spool_blobs"` string literal | `uc_observability::stages::SPOOL_BLOBS` constant | Prevents typos, enables grep-ability, matches all other stages |
 
-### Stage Constants in uc-observability
+## Validation Architecture
 
-```rust
-// uc-observability/src/stages.rs
-/// Stage name constants for clipboard capture flow correlation.
-///
-/// Used as the `stage` field value in tracing spans to ensure consistency.
+### Test Framework
 
-pub const DETECT: &str = "detect";
-pub const NORMALIZE: &str = "normalize";
-pub const PERSIST_EVENT: &str = "persist_event";
-pub const CACHE_REPRESENTATIONS: &str = "cache_representations";
-pub const SELECT_POLICY: &str = "select_policy";
-pub const PERSIST_ENTRY: &str = "persist_entry";
-```
+| Property           | Value                                                         |
+| ------------------ | ------------------------------------------------------------- |
+| Framework          | cargo test (built-in Rust test framework)                     |
+| Config file        | `src-tauri/Cargo.toml` workspace                              |
+| Quick run command  | `cd src-tauri && cargo test -p uc-observability --lib stages` |
+| Full suite command | `cd src-tauri && cargo test -p uc-observability -p uc-app`    |
 
-### Modified on_clipboard_changed (Root Span)
+### Phase Requirements -> Test Map
 
-```rust
-// Replace #[instrument] with manual span
-async fn on_clipboard_changed(&self, snapshot: SystemClipboardSnapshot) -> anyhow::Result<()> {
-    let flow_id = uc_observability::FlowId::generate();
-    let span = tracing::info_span!(
-        "runtime.on_clipboard_changed",
-        %flow_id,
-        stage = uc_observability::stages::DETECT,
-    );
-    async move {
-        // ... existing body unchanged ...
-    }
-    .instrument(span)
-    .await
-}
-```
+| Req ID        | Behavior                                                | Test Type   | Automated Command                                                        | File Exists?         |
+| ------------- | ------------------------------------------------------- | ----------- | ------------------------------------------------------------------------ | -------------------- |
+| FLOW-03 (gap) | SPOOL_BLOBS constant exists and is lowercase snake_case | unit        | `cd src-tauri && cargo test -p uc-observability --lib stages`            | Exists, needs update |
+| FLOW-03 (gap) | spool_blobs span is a sibling of cache_representations  | manual-only | Run app with LOG_PROFILE=debug_clipboard, copy text, inspect JSON output | N/A                  |
 
-### Stage Spans in execute_with_origin
+### Sampling Rate
 
-```rust
-// Inside execute_with_origin async block:
+- **Per task commit:** `cd src-tauri && cargo test -p uc-observability -p uc-app`
+- **Per wave merge:** `cd src-tauri && cargo test -p uc-observability -p uc-app`
+- **Phase gate:** Full suite green + manual log inspection per human_verification in 20-VERIFICATION.md
 
-// Normalize stage
-let normalized_reps = async {
-    let normalized_futures: Vec<_> = snapshot
-        .representations
-        .iter()
-        .map(|rep| self.representation_normalizer.normalize(rep))
-        .collect();
-    try_join_all(normalized_futures).await
-}
-.instrument(info_span!("normalize", stage = uc_observability::stages::NORMALIZE))
-.await?;
+### Wave 0 Gaps
 
-// Persist event stage
-async {
-    self.event_writer
-        .insert_event(&new_event, &normalized_reps)
-        .await
-}
-.instrument(info_span!("persist_event", stage = uc_observability::stages::PERSIST_EVENT))
-.await?;
-
-// Select policy stage (sync call -- use entered())
-let (entry_id, new_selection) = {
-    let _guard = info_span!("select_policy", stage = uc_observability::stages::SELECT_POLICY).entered();
-    let entry_id = EntryId::new();
-    let selection = self.representation_policy.select(&snapshot)?;
-    let new_selection = ClipboardSelectionDecision::new(entry_id.clone(), selection);
-    (entry_id, new_selection)
-};
-```
-
-## State of the Art
-
-| Old Approach         | Current Approach                 | When Changed   | Impact                                        |
-| -------------------- | -------------------------------- | -------------- | --------------------------------------------- |
-| No flow correlation  | flow_id + stage spans            | Phase 20 (now) | Enables filtering logs by single capture flow |
-| `#[instrument]` only | Manual spans for computed fields | Phase 20       | Supports runtime-generated flow_id            |
-
-## Open Questions
-
-1. **Detect stage boundary**
-   - What we know: CONTEXT.md says flow_id is generated at AppRuntime::on_clipboard_changed. The "detect" stage represents entry into the capture pipeline.
-   - What's unclear: Whether the detect stage span should be the root span itself (on_clipboard_changed) or a separate span inside it.
-   - Recommendation: Make the root span double as the detect stage (add `stage = DETECT` to the root span). This avoids an extra span layer and matches the CONTEXT.md "detect -> normalize -> ..." flow.
-
-2. **uc-observability dependency on uuid**
-   - What we know: uc-observability currently has no uuid dependency. FlowId needs uuid with v7 feature.
-   - What's unclear: Whether to add uuid to uc-observability or put FlowId elsewhere.
-   - Recommendation: Add `uuid = { version = "1", features = ["v7"] }` to uc-observability. This keeps flow correlation concerns in the observability crate.
-
-3. **uc-app dependency on uc-observability**
-   - What we know: uc-app currently does not depend on uc-observability. Stage spans in CaptureClipboardUseCase need stage constants.
-   - What's unclear: Whether to add the dependency or inline constants.
-   - Recommendation: Add `uc-observability` as a dependency of `uc-app` for stage constants. This is a lightweight, observability-only dependency. Alternative: put constants in uc-core, but that pollutes the domain layer.
+None -- existing test infrastructure covers the constant validation. The span hierarchy is verified by manual log inspection (runtime behavior).
 
 ## Sources
 
 ### Primary (HIGH confidence)
 
-- **Source code audit**: `uc-tauri/src/bootstrap/runtime.rs` lines 1000-1099 (AppRuntime::on_clipboard_changed)
-- **Source code audit**: `uc-app/src/usecases/internal/capture_clipboard.rs` (full CaptureClipboardUseCase)
-- **Source code audit**: `uc-observability/src/format.rs` (FlatJsonFormat field flattening behavior)
-- **Source code audit**: `uc-platform/src/runtime/runtime.rs` (PlatformRuntime event handling)
-
-### Secondary (MEDIUM confidence)
-
-- **uuid crate**: v1.19.0 resolved in workspace; `v7` feature available since uuid 1.3.0 (verified via `cargo tree`)
-- **tracing span inheritance**: Well-documented behavior -- parent span fields visible to child spans via subscriber extensions
+- Direct code inspection: `capture_clipboard.rs` lines 188-225 -- verified combined cache+spool block
+- Direct code inspection: `stages.rs` -- verified 6 existing constants, no SPOOL_BLOBS
+- Direct code inspection: `runtime.rs` lines 1003-1091 -- verified root span and spawn propagation
+- Verification report: `20-VERIFICATION.md` -- identified the specific gap with line numbers
+- CONTEXT.md -- locked decisions constraining scope
 
 ## Metadata
 
 **Confidence breakdown:**
 
-- Standard stack: HIGH - all libraries already in use, only feature flag addition needed
-- Architecture: HIGH - injection points clearly identified in source code, patterns match existing codebase conventions
-- Pitfalls: HIGH - identified from direct code analysis of actual span usage patterns
+- Gap identification: HIGH -- verified by code inspection and verification report with exact line numbers
+- Fix approach: HIGH -- follows exact pattern of 5 existing stage spans in the same file
+- Scope (publish deferral): HIGH -- explicitly locked in CONTEXT.md decisions
 
 **Research date:** 2026-03-11
-**Valid until:** 2026-04-11 (stable domain, no external dependency changes expected)
+**Valid until:** 2026-04-11 (stable -- no external dependency changes)

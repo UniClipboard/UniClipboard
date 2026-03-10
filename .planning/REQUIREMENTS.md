@@ -16,9 +16,9 @@ Requirements for v0.3.0 Log Observability. Each will be mapped to roadmap phases
 
 ### Flow Observability
 
-- [ ] **FLOW-01**: Each clipboard capture flow is assigned a unique `flow_id` at the platform entry point and this `flow_id` is attached to the root span.
+- [x] **FLOW-01**: Each clipboard capture flow is assigned a unique `flow_id` at the platform entry point and this `flow_id` is attached to the root span.
 - [ ] **FLOW-02**: All spans and events participating in a clipboard capture flow (from detection through normalize, persist, and publish) carry the same `flow_id` field.
-- [ ] **FLOW-03**: Each major step of the capture pipeline (detect, normalize, persist_event, select_policy, persist_entry, spool_blobs, publish) is represented by a named span with a `stage` field.
+- [x] **FLOW-03**: Each major step of the capture pipeline (detect, normalize, persist_event, select_policy, persist_entry, spool_blobs, publish) is represented by a named span with a `stage` field.
 - [ ] **FLOW-04**: Cross-layer operations within a capture flow (platform, app, infra) preserve `flow_id` and `stage` context, including across `tokio::spawn` boundaries.
 - [ ] **FLOW-05**: Sync outbound and inbound clipboard flows use the same `flow_id` and `stage` pattern, enabling end-to-end tracing of sync operations on a single device.
 
@@ -64,9 +64,9 @@ Which phases cover which requirements.
 | LOG-02      | Phase 19 | Complete |
 | LOG-03      | Phase 19 | Complete |
 | LOG-04      | Phase 19 | Complete |
-| FLOW-01     | Phase 20 | Pending  |
+| FLOW-01     | Phase 20 | Complete |
 | FLOW-02     | Phase 20 | Pending  |
-| FLOW-03     | Phase 20 | Pending  |
+| FLOW-03     | Phase 20 | Complete |
 | FLOW-04     | Phase 20 | Pending  |
 | FLOW-05     | Phase 21 | Pending  |
 | SEQ-01      | Phase 22 | Pending  |

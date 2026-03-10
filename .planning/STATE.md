@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v0.1
 milestone_name: milestone
 status: completed
-stopped_at: Phase 20 context gathered
-last_updated: '2026-03-10T16:37:09.500Z'
+stopped_at: Completed 20-01-PLAN.md
+last_updated: '2026-03-10T16:52:20.829Z'
 last_activity: 2026-03-10 — Completed 19-02 uc-observability integration + docs
 progress:
   total_phases: 4
   completed_phases: 1
-  total_plans: 2
-  completed_plans: 2
+  total_plans: 4
+  completed_plans: 3
   percent: 100
 ---
 
@@ -50,6 +50,7 @@ Progress: [██████████] 100%
 
 - Last 5 plans: 4min, 9min
 - Trend: N/A
+  | Phase 20 P01 | 2min | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -66,6 +67,8 @@ Recent decisions affecting current work:
 - Phase 20: Capture observability uses `flow_id` and `stage` as the canonical clipboard pipeline correlation fields.
 - Phase 21: Sync observability must reuse the same flow model as local capture rather than inventing a second tracing pattern.
 - Phase 22: Seq remains local and configuration-driven for this milestone; full OTel and multi-backend support stay deferred.
+- [Phase 20]: UUID v7 chosen for FlowId (time-ordered) over v4 (random)
+- [Phase 20]: Stage constant values are lowercase snake_case matching const names for queryability
 
 ### Pending Todos
 
@@ -78,6 +81,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-10T16:37:09.498Z
-Stopped at: Phase 20 context gathered
-Resume file: .planning/phases/20-clipboard-capture-flow-correlation/20-CONTEXT.md
+Last session: 2026-03-10T16:52:20.828Z
+Stopped at: Completed 20-01-PLAN.md
+Resume file: None

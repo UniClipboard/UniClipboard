@@ -67,13 +67,19 @@ Plans:
 **Goal**: Developers can trace one clipboard capture from detection through persistence and publish using a single correlated flow record.
 **Depends on**: Phase 19
 **Requirements**: FLOW-01, FLOW-02, FLOW-03, FLOW-04
+**Plans:** 2 plans
+
+Plans:
+
+- [ ] 20-01-PLAN.md — FlowId newtype, stage constants, and dependency wiring in uc-observability
+- [ ] 20-02-PLAN.md — Instrument runtime and capture use case with flow_id and stage spans
+
 **Success Criteria** (what must be TRUE):
 
 1. Each clipboard capture starts with a unique `flow_id` at the platform entry point and that identifier remains attached to the root capture span.
 2. Developers can inspect logs for one clipboard capture and see the same `flow_id` across detect, normalize, persist_event, select_policy, persist_entry, spool_blobs, and publish stages.
 3. Each major capture step appears as a named span with a `stage` field, making pipeline progress readable in structured logs.
 4. Work that crosses platform, app, and infra boundaries — including spawned async tasks — preserves the same flow context instead of breaking correlation.
-   **Plans**: TBD
 
 ### Phase 21: Sync Flow Correlation
 
@@ -108,6 +114,6 @@ Plans:
 | 1-9                                    | v0.1.0    | 17/17          | Complete    | 2026-03-06 |
 | 10-18                                  | v0.2.0    | 22/22          | Complete    | 2026-03-09 |
 | 19. Dual Output Logging Foundation     | 2/2       | Complete       | 2026-03-10  | -          |
-| 20. Clipboard Capture Flow Correlation | v0.3.0    | 0/TBD          | Not started | -          |
+| 20. Clipboard Capture Flow Correlation | v0.3.0    | 0/2            | Not started | -          |
 | 21. Sync Flow Correlation              | v0.3.0    | 0/TBD          | Not started | -          |
 | 22. Seq Local Visualization            | v0.3.0    | 0/TBD          | Not started | -          |

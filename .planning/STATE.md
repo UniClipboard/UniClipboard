@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v0.1
 milestone_name: milestone
 status: completed
-stopped_at: Completed 20-01-PLAN.md
-last_updated: '2026-03-10T16:52:20.829Z'
-last_activity: 2026-03-10 — Completed 19-02 uc-observability integration + docs
+stopped_at: Completed 20-02-PLAN.md
+last_updated: '2026-03-10T16:56:56.615Z'
+last_activity: 2026-03-11 — Completed 20-02 capture pipeline instrumentation
 progress:
   total_phases: 4
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 4
-  completed_plans: 3
+  completed_plans: 4
   percent: 100
 ---
 
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-09)
 
 **Core value:** Seamless clipboard synchronization across devices -- copy on one, paste on another
-**Current focus:** Phase 19 - Dual Output Logging Foundation
+**Current focus:** Phase 20 - Clipboard Capture Flow Correlation
 
 ## Current Position
 
-Phase: 19 of 22 (Dual Output Logging Foundation)
+Phase: 20 of 22 (Clipboard Capture Flow Correlation)
 Plan: 2 of 2 complete
-Status: Phase 19 Complete
-Last activity: 2026-03-10 — Completed 19-02 uc-observability integration + docs
+Status: Phase 20 Complete
+Last activity: 2026-03-11 — Completed 20-02 capture pipeline instrumentation
 
 Progress: [██████████] 100%
 
@@ -48,9 +48,10 @@ Progress: [██████████] 100%
 
 **Recent Trend:**
 
-- Last 5 plans: 4min, 9min
-- Trend: N/A
+- Last 5 plans: 4min, 9min, 2min, 3min
+- Trend: Stable
   | Phase 20 P01 | 2min | 2 tasks | 5 files |
+  | Phase 20 P02 | 3min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -69,6 +70,8 @@ Recent decisions affecting current work:
 - Phase 22: Seq remains local and configuration-driven for this milestone; full OTel and multi-backend support stay deferred.
 - [Phase 20]: UUID v7 chosen for FlowId (time-ordered) over v4 (random)
 - [Phase 20]: Stage constant values are lowercase snake_case matching const names for queryability
+- 20-02: Replaced #[tracing::instrument] with manual span to support runtime-computed flow_id field
+- 20-02: outbound_sync span carries flow_id but no stage field (Phase 21 adds publish stage)
 
 ### Pending Todos
 
@@ -81,6 +84,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-10T16:52:20.828Z
-Stopped at: Completed 20-01-PLAN.md
+Last session: 2026-03-10T16:56:30Z
+Stopped at: Completed 20-02-PLAN.md
 Resume file: None

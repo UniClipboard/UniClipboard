@@ -4,6 +4,7 @@ use std::time::SystemTime;
 use anyhow::Result;
 use futures::future::try_join_all;
 use tracing::{debug, info, info_span, warn, Instrument};
+use uc_observability::stages;
 
 use uc_core::ids::{EntryId, EventId};
 use uc_core::ports::clipboard::{RepresentationCachePort, SpoolQueuePort, SpoolRequest};
@@ -165,68 +166,94 @@ impl CaptureClipboardUseCase {
             );
 
             // 3. Normalize representations
-            let normalized_futures: Vec<_> = snapshot
-                .representations
-                .iter()
-                .map(|rep| self.representation_normalizer.normalize(rep))
-                .collect();
-            let normalized_reps = try_join_all(normalized_futures).await?;
-            self.event_writer
-                .insert_event(&new_event, &normalized_reps)
-                .await?;
+            let normalized_reps = async {
+                let normalized_futures: Vec<_> = snapshot
+                    .representations
+                    .iter()
+                    .map(|rep| self.representation_normalizer.normalize(rep))
+                    .collect();
+                try_join_all(normalized_futures).await
+            }
+            .instrument(info_span!("normalize", stage = stages::NORMALIZE))
+            .await?;
+
+            async {
+                self.event_writer
+                    .insert_event(&new_event, &normalized_reps)
+                    .await
+            }
+            .instrument(info_span!("persist_event", stage = stages::PERSIST_EVENT))
+            .await?;
 
             // Queue large representations for background processing
-            for rep in &normalized_reps {
-                if rep.payload_state() == PayloadAvailability::Staged {
-                    // Find original bytes from snapshot
-                    if let Some(observed) = snapshot.representations.iter().find(|o| o.id == rep.id)
-                    {
-                        // Put in cache
-                        self.representation_cache
-                            .put(&rep.id, observed.bytes.clone())
-                            .await;
-
-                        if let Err(err) = self
-                            .spool_queue
-                            .enqueue(SpoolRequest {
-                                rep_id: rep.id.clone(),
-                                bytes: observed.bytes.clone(),
-                            })
-                            .await
+            async {
+                for rep in &normalized_reps {
+                    if rep.payload_state() == PayloadAvailability::Staged {
+                        // Find original bytes from snapshot
+                        if let Some(observed) =
+                            snapshot.representations.iter().find(|o| o.id == rep.id)
                         {
-                            warn!(
-                                representation_id = %rep.id,
-                                error = %err,
-                                "Failed to enqueue spool request"
-                            );
-                            return Err(err);
+                            // Put in cache
+                            self.representation_cache
+                                .put(&rep.id, observed.bytes.clone())
+                                .await;
+
+                            if let Err(err) = self
+                                .spool_queue
+                                .enqueue(SpoolRequest {
+                                    rep_id: rep.id.clone(),
+                                    bytes: observed.bytes.clone(),
+                                })
+                                .await
+                            {
+                                warn!(
+                                    representation_id = %rep.id,
+                                    error = %err,
+                                    "Failed to enqueue spool request"
+                                );
+                                return Err(err);
+                            }
                         }
                     }
                 }
+                Ok::<(), anyhow::Error>(())
             }
+            .instrument(info_span!(
+                "cache_representations",
+                stage = stages::CACHE_REPRESENTATIONS
+            ))
+            .await?;
 
             // 4. policy.select(snapshot)
-            let entry_id = EntryId::new();
-            let selection = self.representation_policy.select(&snapshot)?;
-            let new_selection = ClipboardSelectionDecision::new(entry_id.clone(), selection);
+            let (entry_id, new_selection) = {
+                let _guard = info_span!("select_policy", stage = stages::SELECT_POLICY).entered();
+                let entry_id = EntryId::new();
+                let selection = self.representation_policy.select(&snapshot)?;
+                let new_selection = ClipboardSelectionDecision::new(entry_id.clone(), selection);
+                (entry_id, new_selection)
+            };
 
             // 5. entry_repo.insert_entry
-            let created_at_ms = SystemTime::now()
-                .duration_since(SystemTime::UNIX_EPOCH)
-                .map_err(|e| anyhow::anyhow!("Failed to get system time: {}", e))?
-                .as_millis() as i64;
-            let total_size = snapshot.total_size_bytes();
+            async {
+                let created_at_ms = SystemTime::now()
+                    .duration_since(SystemTime::UNIX_EPOCH)
+                    .map_err(|e| anyhow::anyhow!("Failed to get system time: {}", e))?
+                    .as_millis() as i64;
+                let total_size = snapshot.total_size_bytes();
 
-            let new_entry = ClipboardEntry::new(
-                entry_id.clone(),
-                event_id.clone(),
-                created_at_ms,
-                Self::generate_title(&snapshot),
-                total_size,
-            );
-            self.entry_repo
-                .save_entry_and_selection(&new_entry, &new_selection)
-                .await?;
+                let new_entry = ClipboardEntry::new(
+                    entry_id.clone(),
+                    event_id.clone(),
+                    created_at_ms,
+                    Self::generate_title(&snapshot),
+                    total_size,
+                );
+                self.entry_repo
+                    .save_entry_and_selection(&new_entry, &new_selection)
+                    .await
+            }
+            .instrument(info_span!("persist_entry", stage = stages::PERSIST_ENTRY))
+            .await?;
 
             info!(event_id = %event_id, entry_id = %entry_id, "Clipboard capture completed");
             Ok(Some(entry_id))

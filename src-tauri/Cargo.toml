@@ -78,6 +78,7 @@ members = [
   "crates/uc-infra",
   "crates/uc-clipboard-probe",
   "crates/uc-tauri",
+  "crates/uc-observability",
 ]
 resolver = "2"
 

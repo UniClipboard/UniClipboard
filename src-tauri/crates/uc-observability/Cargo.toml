@@ -1,0 +1,18 @@
+[package]
+name = "uc-observability"
+version = "0.1.0"
+edition = "2021"
+description = "Observability infrastructure for UniClipboard: dual-output tracing with profile-based filtering"
+
+[dependencies]
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt", "chrono", "json", "registry"] }
+tracing-appender = "0.2"
+serde_json = "1"
+serde = { version = "1", features = ["derive"] }
+chrono = "0.4"
+anyhow = "1.0"
+
+[dev-dependencies]
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt", "chrono", "json", "registry"] }
+tempfile = "3"

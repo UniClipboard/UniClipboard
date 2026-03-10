@@ -2,9 +2,17 @@
 
 ## Overview
 
-UniClipboard uses **`tracing`** crate as the primary logging framework with structured logging and span-based context tracking. The system runs a **dual-track setup** during the transition from legacy `log` crate to `tracing`.
+UniClipboard uses **`tracing`** crate as the primary logging framework with structured logging and span-based context tracking. The system produces **dual output** from a single tracing pipeline:
 
-**Current Status**: Phases 0-3 complete, actively using `tracing` across all architectural layers.
+- **Console output**: Pretty human-readable format with ANSI colors (stdout)
+- **JSON file output**: Structured flat JSON with daily-rotating files for tooling and analysis
+
+A **dual-track** coexistence is maintained during the transition from legacy `log` crate to `tracing`:
+
+- `log::*` macros -> `tauri-plugin-log` -> Webview (dev) / stdout (prod)
+- `tracing::*` macros -> `uc-observability` subscriber -> console + JSON file
+
+**Current Status**: Phases 0-3 complete, actively using `tracing` across all architectural layers. Dual-output logging with profile system active.
 
 ## Architecture
 
@@ -12,7 +20,7 @@ UniClipboard uses **`tracing`** crate as the primary logging framework with stru
 
 The application uses `tracing` crate for structured, span-aware logging:
 
-**✅ Supported Features**:
+**Supported Features**:
 
 - **Spans** - Structured context spans with parent-child relationships
 - **Structured fields** - Field-based logging with typed values
@@ -22,13 +30,13 @@ The application uses `tracing` crate for structured, span-aware logging:
 
 **Migration Status**:
 
-| Phase   | Description                                             | Status          |
-| ------- | ------------------------------------------------------- | --------------- |
-| Phase 0 | Infrastructure setup (tracing dependencies, subscriber) | ✅ Complete     |
-| Phase 1 | Command layer root spans                                | ✅ Complete     |
-| Phase 2 | UseCase layer child spans                               | ✅ Complete     |
-| Phase 3 | Infra/Platform layer debug spans                        | ✅ Complete     |
-| Phase 4 | Remove `log` dependency (optional)                      | ⏸️ Not required |
+| Phase   | Description                                             | Status       |
+| ------- | ------------------------------------------------------- | ------------ |
+| Phase 0 | Infrastructure setup (tracing dependencies, subscriber) | Complete     |
+| Phase 1 | Command layer root spans                                | Complete     |
+| Phase 2 | UseCase layer child spans                               | Complete     |
+| Phase 3 | Infra/Platform layer debug spans                        | Complete     |
+| Phase 4 | Remove `log` dependency (optional)                      | Not required |
 
 ### Dual-Track System
 
@@ -38,41 +46,68 @@ During the transition, both `log` and `tracing` coexist:
 // Legacy code (still works via tauri-plugin-log)
 log::info!("Application started");
 
-// New code (preferred)
+// New code (preferred) - produces both console + JSON output
 tracing::info!("Application started");
 tracing::info_span!("command.clipboard.capture", device_id = %id);
 ```
 
 **Note**: `tracing-log` bridge is NOT configured. The two systems operate independently:
 
-- `log::` macros → `tauri-plugin-log` → Webview (dev) / file (prod)
-- `tracing::` macros → `tracing-subscriber` → stdout
+- `log::` macros -> `tauri-plugin-log` -> Webview (dev) / stdout (prod)
+- `tracing::` macros -> `uc-observability` subscriber -> console (pretty) + JSON file
 
 ### Module Organization
 
-#### 1. Bootstrap Configuration
+#### 1. Observability Crate
+
+**Location**: `src-tauri/crates/uc-observability/`
+
+```
+uc-observability/
+├── src/
+│   ├── lib.rs         # Public API re-exports
+│   ├── profile.rs     # LogProfile enum (Dev/Prod/DebugClipboard)
+│   ├── format.rs      # FlatJsonFormat custom FormatEvent
+│   └── init.rs        # Layer builders + standalone init
+└── Cargo.toml
+```
+
+Provides:
+
+- `LogProfile` - Profile-based filter selection via `UC_LOG_PROFILE`
+- `build_console_layer()` - Pretty console layer with per-layer EnvFilter
+- `build_json_layer()` - JSON file layer with FlatJsonFormat and daily rolling
+- `init_tracing_subscriber()` - Standalone convenience init (no Sentry)
+
+**Zero app-layer dependencies** - Sentry integration is kept in the caller.
+
+#### 2. Bootstrap Configuration
 
 **Location**: `src-tauri/crates/uc-tauri/src/bootstrap/`
 
 ```
 bootstrap/
-├── logging.rs       # tauri-plugin-log configuration (legacy)
-└── tracing.rs       # tracing-subscriber configuration (primary)
+├── logging.rs       # tauri-plugin-log configuration (legacy, Webview + stdout)
+└── tracing.rs       # Thin wrapper: uc-observability layers + Sentry layer
 ```
 
 **Initialization Flow**:
 
 ```
 main.rs
-  ├─> init_tracing_subscriber()     // Global tracing registry
-  │    └─> All tracing::* macros now produce output
+  ├─> init_tracing_subscriber()         // uc-tauri/bootstrap/tracing.rs
+  │    ├─> LogProfile::from_env()       // Select profile
+  │    ├─> sentry::init()               // Optional Sentry (if SENTRY_DSN set)
+  │    ├─> build_console_layer()        // From uc-observability
+  │    ├─> build_json_layer()           // From uc-observability
+  │    └─> registry().with(...).try_init()  // Compose and register
   │
   └─> Builder::default()
        └─> .plugin(logging::get_builder().build())
-            └─> Legacy log::* macros still work
+            └─> Legacy log::* macros still work (Webview/stdout only)
 ```
 
-#### 2. Layer-Based Tracing
+#### 3. Layer-Based Tracing
 
 Each architectural layer has specific span naming conventions:
 
@@ -100,20 +135,119 @@ Each architectural layer has specific span naming conventions:
 - Naming: `platform.{module}.{operation}`
 - Example: `platform.linux.read_clipboard`, `platform.encryption.set_master_key`
 
+## Log Profiles
+
+The `UC_LOG_PROFILE` environment variable selects a logging profile that controls filter verbosity for both console and JSON outputs.
+
+### Profile Selection Precedence
+
+1. **`RUST_LOG`** env var (overrides everything when set)
+2. **`UC_LOG_PROFILE`** env var (`dev`, `prod`, `debug_clipboard`)
+3. **Build-type default**: debug builds -> `dev`, release builds -> `prod`
+
+### Available Profiles
+
+| Profile           | Base Level | Console Behavior           | JSON Behavior             | Special Overrides                                                                                         |
+| ----------------- | ---------- | -------------------------- | ------------------------- | --------------------------------------------------------------------------------------------------------- |
+| `dev`             | `debug`    | Pretty format, ANSI colors | Flat JSON, daily rotating | `uc_platform=debug`, `uc_infra=debug`                                                                     |
+| `prod`            | `info`     | Pretty format, ANSI colors | Flat JSON, daily rotating | (none)                                                                                                    |
+| `debug_clipboard` | `info`     | Pretty format, ANSI colors | Flat JSON, daily rotating | `uc_platform::adapters::clipboard=trace`, `uc_app::usecases::clipboard=debug`, `uc_core::clipboard=debug` |
+
+All profiles include common noise filters:
+
+- `libp2p_mdns=info`
+- `libp2p_mdns::behaviour::iface=off`
+- `tauri=warn`
+- `wry=off`
+- `ipc::request=off`
+
+### Usage Examples
+
+```bash
+# Use debug_clipboard profile for clipboard debugging
+UC_LOG_PROFILE=debug_clipboard bun tauri dev
+
+# Use prod profile in development for testing production behavior
+UC_LOG_PROFILE=prod bun tauri dev
+
+# Override profile with RUST_LOG (takes precedence)
+RUST_LOG=uc_platform::clipboard=trace bun tauri dev
+
+# Enable all debug logs
+RUST_LOG=debug bun tauri dev
+```
+
+## Dual Output
+
+The tracing subscriber produces two simultaneous outputs from the same pipeline:
+
+### Console Output
+
+- **Format**: Pretty human-readable with timestamps, file/line, target, ANSI colors
+- **Destination**: stdout (terminal where app is running)
+- **Example**:
+
+```
+2026-03-10 10:30:45.123 INFO [clipboard.rs:51] [command.clipboard.get_entries] Fetching entries
+2026-03-10 10:30:45.456 ERROR [clipboard.rs:52] [platform.linux.read_clipboard] Failed to read clipboard: NotFound
+```
+
+### JSON File Output
+
+- **Format**: Flat NDJSON (one JSON object per line)
+- **Destination**: Daily-rotating file in platform log directory
+- **File naming**: `uniclipboard.json.YYYY-MM-DD`
+- **Rotation**: New file each day (UTC date boundary)
+
+**JSON field layout**:
+
+| Field       | Description                                               |
+| ----------- | --------------------------------------------------------- |
+| `timestamp` | ISO 8601 UTC timestamp (e.g., `2026-03-10T10:30:45.123Z`) |
+| `level`     | Log level (`TRACE`, `DEBUG`, `INFO`, `WARN`, `ERROR`)     |
+| `target`    | Rust module path of the log callsite                      |
+| `message`   | The log message string                                    |
+| `span`      | Name of the current (leaf) span                           |
+| _(fields)_  | Span fields flattened to top level                        |
+| _(fields)_  | Event fields at top level                                 |
+
+**Field conflict resolution**: When a span field has the same key as an event field, the span field is prefixed with `parent_`. Event fields always keep their original key.
+
+**Example JSON line**:
+
+```json
+{
+  "timestamp": "2026-03-10T10:30:45.123Z",
+  "level": "INFO",
+  "target": "command.clipboard.get_entries",
+  "message": "Fetching entries",
+  "span": "command.clipboard.get_entries",
+  "device_id": "abc-123",
+  "limit": 50
+}
+```
+
+### JSON File Locations
+
+- **macOS**: `~/Library/Logs/com.uniclipboard/uniclipboard.json.YYYY-MM-DD`
+- **Linux**: `~/.local/share/com.uniclipboard/logs/uniclipboard.json.YYYY-MM-DD`
+- **Windows**: `%LOCALAPPDATA%\com.uniclipboard\logs\uniclipboard.json.YYYY-MM-DD`
+
 ## Configuration
 
 ### Development Mode
 
 When `debug_assertions` is true (debug builds):
 
-**tracing-subscriber**:
+**tracing (uc-observability)**:
 
+- **Profile**: `dev` (or `UC_LOG_PROFILE` override)
 - **Level**: `Debug`
 - **Targets**: `uc_platform=debug`, `uc_infra=debug`
-- **Output**: `stdout` (terminal)
-- **Filter**: `libp2p_mdns=warn`
+- **Console**: Pretty format to stdout
+- **JSON**: Flat JSON to daily-rotating file
 
-**tauri-plugin-log**:
+**tauri-plugin-log (legacy)**:
 
 - **Level**: `Debug`
 - **Target**: `Webview` (browser DevTools console)
@@ -123,47 +257,30 @@ When `debug_assertions` is true (debug builds):
 
 When `debug_assertions` is false (release builds):
 
-**tracing-subscriber**:
+**tracing (uc-observability)**:
+
+- **Profile**: `prod` (or `UC_LOG_PROFILE` override)
+- **Level**: `Info`
+- **Console**: Pretty format to stdout
+- **JSON**: Flat JSON to daily-rotating file
+
+**tauri-plugin-log (legacy)**:
 
 - **Level**: `Info`
-- **Targets**: `uc_platform=info`, `uc_infra=info`
-- **Output**: `stdout`
-- **Filter**: `libp2p_mdns=warn`
-
-**tauri-plugin-log**:
-
-- **Level**: `Info`
-- **Targets**: `LogDir` (file) + `Stdout`
+- **Target**: `Stdout` only (file logging handled by tracing)
 - **Filters**: Tauri internals, wry noise, `ipc::request`
 
 ### Environment Variables
 
-Override defaults with `RUST_LOG`:
-
-```bash
-# Enable trace for specific module
-RUST_LOG=uc_platform::clipboard=trace,bun tauri dev
-
-# Enable all debug logs
-RUST_LOG=debug,bun tauri dev
-```
-
-### Log Format
-
-Both systems output compatible formats:
-
-```
-YYYY-MM-DD HH:MM:SS.mmm LEVEL [file:line] [module] message
-```
-
-Example:
-
-```
-2025-01-15 10:30:45.123 INFO [clipboard.rs:51] [command.clipboard.get_entries] Fetching entries
-2025-01-15 10:30:45.456 ERROR [clipboard.rs:52] [platform.linux.read_clipboard] Failed to read clipboard: NotFound
-```
+| Variable         | Purpose                                                   | Default            |
+| ---------------- | --------------------------------------------------------- | ------------------ |
+| `UC_LOG_PROFILE` | Select logging profile (`dev`, `prod`, `debug_clipboard`) | Build-type default |
+| `RUST_LOG`       | Override profile filters (standard tracing env)           | Not set            |
+| `SENTRY_DSN`     | Enable Sentry error reporting                             | Not set (disabled) |
 
 ### Color Coding
+
+Console output color coding:
 
 - ERROR: Red (bold)
 - WARN: Yellow
@@ -332,7 +449,8 @@ count = 42
 
 **libp2p_mdns**:
 
-- Set to `LevelFilter::Warn` to avoid spam from harmless mDNS errors
+- Set to `info` to avoid spam from harmless mDNS errors
+- `libp2p_mdns::behaviour::iface` set to `off`
 - Caused by proxy software virtual network interfaces
 
 **Tauri Internal Events** (tauri-plugin-log only):
@@ -352,17 +470,18 @@ count = 42
 
 ### Development
 
-**Terminal (tracing output)**:
+**Terminal (tracing output - console + JSON)**:
 
 ```bash
 bun tauri dev
-# tracing::* macros appear here
+# tracing::* macros appear in terminal (pretty format)
+# JSON file written to platform log directory simultaneously
 ```
 
 **Browser DevTools (log output)**:
 
 1. Open app in development mode
-2. Press F12 or right-click → Inspect
+2. Press F12 or right-click -> Inspect
 3. Go to Console tab
 4. `log::*` macros appear here
 
@@ -374,60 +493,62 @@ bun tauri dev
 # Run the application
 ./uniclipboard
 
-# tracing::* output appears in terminal
-# log::* output appears in log file
+# tracing::* output appears in terminal (pretty format)
+# log::* output also appears in terminal (stdout)
 ```
 
-**Log file**:
+**JSON log file**:
 
 ```bash
-# macOS
-tail -f ~/Library/Logs/com.uniclipboard/uniclipboard.log
+# macOS - view latest JSON log
+cat ~/Library/Logs/com.uniclipboard/uniclipboard.json.$(date +%Y-%m-%d) | jq .
+
+# macOS - follow live
+tail -f ~/Library/Logs/com.uniclipboard/uniclipboard.json.$(date +%Y-%m-%d)
 
 # Linux
-tail -f ~/.local/share/com.uniclipboard/logs/uniclipboard.log
+tail -f ~/.local/share/com.uniclipboard/logs/uniclipboard.json.$(date +%Y-%m-%d)
 
 # Windows (PowerShell)
-Get-Content "$env:LOCALAPPDATA\com.uniclipboard\logs\uniclipboard.log" -Wait
+Get-Content "$env:LOCALAPPDATA\com.uniclipboard\logs\uniclipboard.json.$(Get-Date -Format yyyy-MM-dd)" -Wait
 ```
 
-**Filter for errors**:
+**Filter JSON logs for errors**:
 
 ```bash
-grep ERROR ~/Library/Logs/com.uniclipboard/uniclipboard.log
+cat ~/Library/Logs/com.uniclipboard/uniclipboard.json.$(date +%Y-%m-%d) | jq 'select(.level == "ERROR")'
 ```
 
 **View last 100 lines**:
 
 ```bash
-tail -n 100 ~/Library/Logs/com.uniclipboard/uniclipboard.log
+tail -n 100 ~/Library/Logs/com.uniclipboard/uniclipboard.json.$(date +%Y-%m-%d)
 ```
 
 ## Testing
 
 ### Unit Tests
 
-The tracing module includes basic tests:
+The tracing and observability modules include tests:
 
-```rust
-#[test]
-fn test_tracing_init() {
-    let is_dev = is_development();
-    let _ = is_dev;
-}
+```bash
+# Run uc-observability tests (profile, format, init)
+cd src-tauri && cargo test --package uc-observability
+
+# Run uc-tauri tracing bootstrap tests
+cd src-tauri && cargo test --package uc-tauri -- bootstrap::tracing
 ```
-
-Run with: `cd src-tauri && cargo test --package uc-tauri`
 
 ### Manual Testing
 
 1. **Development**: Run `bun tauri dev` and check:
-   - Terminal for `tracing::*` output
+   - Terminal for `tracing::*` console output (pretty)
+   - JSON file created in platform log directory
    - Browser DevTools for `log::*` output
 2. **Production**: Build and run, check:
-   - Log file exists and contains entries
-   - Terminal shows `tracing::*` output
-3. **Level filtering**: Verify DEBUG logs appear in dev but not in production
+   - JSON file exists and contains valid NDJSON entries
+   - Terminal shows `tracing::*` console output
+3. **Profile selection**: Verify `UC_LOG_PROFILE=debug_clipboard` shows clipboard trace logs
 
 ## Troubleshooting
 
@@ -450,11 +571,18 @@ Run with: `cd src-tauri && cargo test --package uc-tauri`
 2. Open browser DevTools and check Console tab
 3. Verify there are no JavaScript errors preventing log display
 
-### Log file not created
+### JSON log file not created
 
-1. Check app has write permissions to log directory
-2. Verify LogDir target is enabled in production mode (`logging.rs`)
-3. Check platform-specific log directory path
+1. Check app has write permissions to the log directory
+2. Verify the directory exists: `ls ~/Library/Logs/com.uniclipboard/` (macOS)
+3. Check `init_tracing_subscriber()` completed without error (look for "Tracing initialized" in console)
+4. Ensure `UC_LOG_PROFILE` is a valid value (or unset for default)
+
+### Profile not taking effect
+
+1. Check if `RUST_LOG` is set -- it overrides `UC_LOG_PROFILE`
+2. Verify `UC_LOG_PROFILE` value is exactly `dev`, `prod`, or `debug_clipboard`
+3. Unrecognized values fall back to build-type default
 
 ### Span hierarchy not visible
 
@@ -519,7 +647,7 @@ pub async fn get_entries(&self) -> Result<Vec<Entry>> {
 
 ## Best Practices
 
-### DO ✅
+### DO
 
 - **Use spans for operations**: Every usecase/command should have a span
 - **Add structured fields**: Include operation parameters as span fields
@@ -528,7 +656,7 @@ pub async fn get_entries(&self) -> Result<Vec<Entry>> {
 - **Instrument async operations**: Use `.instrument(span)` for async functions
 - **Add context to errors**: Include error details and context in error logs
 
-### DON'T ❌
+### DON'T
 
 - **Don't use `log::*` in new code**: Prefer `tracing::*` macros
 - **Don't create spans for trivial operations**: Spans should represent meaningful work
@@ -563,8 +691,9 @@ pub async fn get_entries(&self) -> Result<Vec<Entry>> {
 - [Tracing Subscriber Documentation](https://docs.rs/tracing-subscriber/)
 - [Tauri Plugin Log Documentation](https://v2.tauri.app/plugin/logging/)
 - Source:
-  - `src-tauri/crates/uc-tauri/src/bootstrap/tracing.rs`
-  - `src-tauri/crates/uc-tauri/src/bootstrap/logging.rs`
+  - `src-tauri/crates/uc-observability/` (profile, format, init)
+  - `src-tauri/crates/uc-tauri/src/bootstrap/tracing.rs` (Sentry + uc-observability composition)
+  - `src-tauri/crates/uc-tauri/src/bootstrap/logging.rs` (legacy log plugin, Webview + stdout)
 - Guides:
   - [Tracing Usage Guide](../guides/tracing.md)
   - [Coding Standards](../guides/coding-standards.md)

@@ -1,18 +1,17 @@
-//! Logging configuration for UniClipboard
+//! Legacy logging configuration for UniClipboard (tauri-plugin-log)
 //!
-//! This module provides the logging builder configured for both development
-//! and production environments, following the Tauri plugin logging best practices.
+//! This module provides the `log::*` macro output configuration via
+//! `tauri-plugin-log`. File logging is now handled by the tracing system
+//! (via `uc-observability` JSON output), so this module only handles:
 //!
-//! ## Environment Behavior
+//! - **Development**: Webview console output (browser DevTools)
+//! - **Production**: Stdout output only (file output removed)
 //!
-//! - **Development**: Debug level, outputs to Webview console
-//! - **Production**: Info level, outputs to log file + stdout
+//! ## Note
 //!
-//! ## Log Locations
-//!
-//! - **macOS**: `~/Library/Logs/com.uniclipboard/uniclipboard.log`
-//! - **Linux**: `~/.local/share/com.uniclipboard/logs/uniclipboard.log`
-//! - **Windows**: `%LOCALAPPDATA%\com.uniclipboard\logs\uniclipboard.log`
+//! Structured file logging (JSON) is provided by `uc-observability` through
+//! the tracing subscriber. The `uniclipboard.log` plain-text file is no
+//! longer produced. See `docs/architecture/logging-architecture.md`.
 
 use log::LevelFilter;
 use tauri_plugin_log::{Target, TargetKind, TimezoneStrategy};
@@ -105,17 +104,14 @@ pub fn get_builder() -> tauri_plugin_log::Builder {
         });
 
     // Configure different targets based on environment
+    // Note: File logging is now handled by uc-observability (JSON output via tracing).
+    // This plugin only provides log::* macro routing to Webview/stdout.
     if is_dev {
         // Development: Output to Webview (browser DevTools console)
         builder = builder.target(Target::new(TargetKind::Webview));
     } else {
-        // Production: Output to file and optionally stdout
-        // LogDir target writes to platform-specific log directory
-        builder = builder
-            .target(Target::new(TargetKind::LogDir {
-                file_name: Some("uniclipboard.log".to_string()),
-            }))
-            .target(Target::new(TargetKind::Stdout)); // Optional: keep terminal output
+        // Production: Stdout only (JSON file logging handled by tracing/uc-observability)
+        builder = builder.target(Target::new(TargetKind::Stdout));
     }
 
     builder

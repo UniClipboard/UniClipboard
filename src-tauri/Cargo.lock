@@ -8975,12 +8975,12 @@ dependencies = [
  "tokio-util",
  "toml 0.8.23",
  "tracing",
- "tracing-appender",
  "tracing-log",
  "tracing-subscriber",
  "uc-app",
  "uc-core",
  "uc-infra",
+ "uc-observability",
  "uc-platform",
  "url",
 ]

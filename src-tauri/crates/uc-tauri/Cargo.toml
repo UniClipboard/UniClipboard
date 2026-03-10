@@ -10,6 +10,7 @@ uc-core = { path = "../uc-core" }
 uc-app = { path = "../uc-app" }
 uc-infra = { path = "../uc-infra" }
 uc-platform = { path = "../uc-platform" }
+uc-observability = { path = "../uc-observability" }
 
 # System utilities
 gethostname = "1.1"
@@ -43,9 +44,8 @@ chrono = { version = "0.4", features = ["serde"] }
 
 # Tracing support
 tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt", "chrono"] }
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt", "registry"] }
 tracing-log = "0.2"
-tracing-appender = "0.2"
 sentry = { version = "0.46.1", features = ["tracing"] }
 sentry-tracing = "0.46.1"
 

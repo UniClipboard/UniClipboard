@@ -7,6 +7,9 @@ edition = "2021"
 # Core domain models
 uc-core = { path = "../uc-core" }
 
+# Observability (flow correlation, stage constants)
+uc-observability = { path = "../uc-observability" }
+
 # Async runtime
 tokio = { version = "1", features = ["full"] }
 async-trait = "0.1"

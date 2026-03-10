@@ -39,10 +39,13 @@
 //!     .try_init()?;
 //! ```
 
+pub mod flow;
 pub mod format;
 mod init;
 pub mod profile;
+pub mod stages;
 
+pub use flow::FlowId;
 pub use init::{build_console_layer, build_json_layer, init_tracing_subscriber};
 pub use profile::LogProfile;
 pub use tracing_appender::non_blocking::WorkerGuard;

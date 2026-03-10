@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v0.1
 milestone_name: milestone
 status: completed
-stopped_at: Completed 20-02-PLAN.md
-last_updated: '2026-03-10T16:56:56.615Z'
+stopped_at: Completed 20-03-PLAN.md
+last_updated: '2026-03-10T23:52:53.674Z'
 last_activity: 2026-03-11 — Completed 20-02 capture pipeline instrumentation
 progress:
   total_phases: 4
   completed_phases: 2
-  total_plans: 4
-  completed_plans: 4
+  total_plans: 5
+  completed_plans: 5
   percent: 100
 ---
 
@@ -52,6 +52,7 @@ Progress: [██████████] 100%
 - Trend: Stable
   | Phase 20 P01 | 2min | 2 tasks | 5 files |
   | Phase 20 P02 | 3min | 2 tasks | 2 files |
+  | Phase 20 P03 | 2min | 1 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -72,6 +73,7 @@ Recent decisions affecting current work:
 - [Phase 20]: Stage constant values are lowercase snake_case matching const names for queryability
 - 20-02: Replaced #[tracing::instrument] with manual span to support runtime-computed flow_id field
 - 20-02: outbound_sync span carries flow_id but no stage field (Phase 21 adds publish stage)
+- [Phase 20]: Split cache_representations into two sequential stage spans (cache_representations + spool_blobs) for distinct observability
 
 ### Pending Todos
 
@@ -84,6 +86,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-10T16:56:30Z
-Stopped at: Completed 20-02-PLAN.md
+Last session: 2026-03-10T23:52:53.673Z
+Stopped at: Completed 20-03-PLAN.md
 Resume file: None

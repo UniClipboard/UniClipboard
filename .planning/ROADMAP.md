@@ -48,13 +48,19 @@ See: `.planning/milestones/v0.2.0-ROADMAP.md`
 **Goal**: Developers can run the app with one tracing setup that emits human-readable console logs and machine-readable JSON logs using selectable profiles.
 **Depends on**: Phase 18
 **Requirements**: LOG-01, LOG-02, LOG-03, LOG-04
+**Plans:** 2 plans
+
+Plans:
+
+- [ ] 19-01-PLAN.md — Create uc-observability crate with LogProfile, FlatJsonFormat, and dual-layer init
+- [ ] 19-02-PLAN.md — Integrate into app, Sentry wiring, legacy cleanup, documentation update
+
 **Success Criteria** (what must be TRUE):
 
 1. Developers can start the app and simultaneously see pretty console logs and structured JSON log records generated from the same tracing pipeline.
 2. Developers can choose `dev`, `prod`, or `debug_clipboard` logging behavior via configuration without changing code.
 3. JSON log records include active span data and inherited parent span fields so correlated identifiers remain visible on each event.
 4. Developers can discover how to select log profiles and outputs from milestone documentation or configuration guidance.
-   **Plans**: TBD
 
 ### Phase 20: Clipboard Capture Flow Correlation
 
@@ -101,7 +107,7 @@ See: `.planning/milestones/v0.2.0-ROADMAP.md`
 | -------------------------------------- | --------- | -------------- | ----------- | ---------- |
 | 1-9                                    | v0.1.0    | 17/17          | Complete    | 2026-03-06 |
 | 10-18                                  | v0.2.0    | 22/22          | Complete    | 2026-03-09 |
-| 19. Dual Output Logging Foundation     | v0.3.0    | 0/TBD          | Not started | -          |
+| 19. Dual Output Logging Foundation     | v0.3.0    | 0/2            | Not started | -          |
 | 20. Clipboard Capture Flow Correlation | v0.3.0    | 0/TBD          | Not started | -          |
 | 21. Sync Flow Correlation              | v0.3.0    | 0/TBD          | Not started | -          |
 | 22. Seq Local Visualization            | v0.3.0    | 0/TBD          | Not started | -          |

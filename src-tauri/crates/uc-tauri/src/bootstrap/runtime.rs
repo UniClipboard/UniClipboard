@@ -999,102 +999,111 @@ pub fn create_app(deps: AppDeps) -> App {
 /// from the platform layer.
 #[async_trait::async_trait]
 impl ClipboardChangeHandler for AppRuntime {
-    #[tracing::instrument(name = "runtime.on_clipboard_changed", skip(self, snapshot))]
     async fn on_clipboard_changed(&self, snapshot: SystemClipboardSnapshot) -> anyhow::Result<()> {
-        let snapshot_hash = snapshot.snapshot_hash().to_string();
-        let origin = self
-            .deps
-            .clipboard
-            .clipboard_change_origin
-            .consume_origin_for_snapshot_or_default(
-                &snapshot_hash,
-                ClipboardChangeOrigin::LocalCapture,
-            )
-            .await;
-        let outbound_snapshot = snapshot.clone();
-
-        // Create CaptureClipboardUseCase with dependencies
-        let usecase = uc_app::usecases::internal::capture_clipboard::CaptureClipboardUseCase::new(
-            self.deps.clipboard.clipboard_entry_repo.clone(),
-            self.deps.clipboard.clipboard_event_repo.clone(),
-            self.deps.clipboard.representation_policy.clone(),
-            self.deps.clipboard.representation_normalizer.clone(),
-            self.deps.device.device_identity.clone(),
-            self.deps.clipboard.representation_cache.clone(),
-            self.deps.clipboard.spool_queue.clone(),
+        let flow_id = uc_observability::FlowId::generate();
+        let span = tracing::info_span!(
+            "runtime.on_clipboard_changed",
+            %flow_id,
+            stage = uc_observability::stages::DETECT,
         );
+        async move {
+            let snapshot_hash = snapshot.snapshot_hash().to_string();
+            let origin = self
+                .deps
+                .clipboard
+                .clipboard_change_origin
+                .consume_origin_for_snapshot_or_default(
+                    &snapshot_hash,
+                    ClipboardChangeOrigin::LocalCapture,
+                )
+                .await;
+            let outbound_snapshot = snapshot.clone();
 
-        // Execute capture with the provided snapshot
-        match usecase.execute_with_origin(snapshot, origin).await {
-            Ok(Some(entry_id)) => {
-                tracing::debug!(
-                    entry_id = %entry_id,
-                    "Successfully captured clipboard"
-                );
+            // Create CaptureClipboardUseCase with dependencies
+            let usecase = uc_app::usecases::internal::capture_clipboard::CaptureClipboardUseCase::new(
+                self.deps.clipboard.clipboard_entry_repo.clone(),
+                self.deps.clipboard.clipboard_event_repo.clone(),
+                self.deps.clipboard.representation_policy.clone(),
+                self.deps.clipboard.representation_normalizer.clone(),
+                self.deps.device.device_identity.clone(),
+                self.deps.clipboard.representation_cache.clone(),
+                self.deps.clipboard.spool_queue.clone(),
+            );
 
-                // Emit event to frontend if AppHandle is available
-                let app_handle_guard = self.app_handle.read().unwrap_or_else(|poisoned| {
-                    tracing::error!(
-                        "RwLock poisoned in on_clipboard_changed, recovering from poisoned state"
+            // Execute capture with the provided snapshot
+            match usecase.execute_with_origin(snapshot, origin).await {
+                Ok(Some(entry_id)) => {
+                    tracing::debug!(
+                        entry_id = %entry_id,
+                        "Successfully captured clipboard"
                     );
-                    poisoned.into_inner()
-                });
-                if let Some(app) = app_handle_guard.as_ref() {
-                    let origin_str = match origin {
-                        ClipboardChangeOrigin::LocalCapture
-                        | ClipboardChangeOrigin::LocalRestore => "local",
-                        ClipboardChangeOrigin::RemotePush => "remote",
-                    };
-                    let event = ClipboardEvent::NewContent {
-                        entry_id: entry_id.to_string(),
-                        preview: "New clipboard content".to_string(),
-                        origin: origin_str.to_string(),
-                    };
 
-                    if let Err(e) = app.emit("clipboard://event", event) {
-                        tracing::warn!("Failed to emit clipboard event to frontend: {}", e);
+                    // Emit event to frontend if AppHandle is available
+                    let app_handle_guard = self.app_handle.read().unwrap_or_else(|poisoned| {
+                        tracing::error!(
+                            "RwLock poisoned in on_clipboard_changed, recovering from poisoned state"
+                        );
+                        poisoned.into_inner()
+                    });
+                    if let Some(app) = app_handle_guard.as_ref() {
+                        let origin_str = match origin {
+                            ClipboardChangeOrigin::LocalCapture
+                            | ClipboardChangeOrigin::LocalRestore => "local",
+                            ClipboardChangeOrigin::RemotePush => "remote",
+                        };
+                        let event = ClipboardEvent::NewContent {
+                            entry_id: entry_id.to_string(),
+                            preview: "New clipboard content".to_string(),
+                            origin: origin_str.to_string(),
+                        };
+
+                        if let Err(e) = app.emit("clipboard://event", event) {
+                            tracing::warn!("Failed to emit clipboard event to frontend: {}", e);
+                        } else {
+                            tracing::debug!("Successfully emitted clipboard://event to frontend");
+                        }
                     } else {
-                        tracing::debug!("Successfully emitted clipboard://event to frontend");
+                        tracing::debug!("AppHandle not available, skipping event emission");
                     }
-                } else {
-                    tracing::debug!("AppHandle not available, skipping event emission");
-                }
-                drop(app_handle_guard);
+                    drop(app_handle_guard);
 
-                let outbound_sync_uc = self.usecases().sync_outbound_clipboard();
-                let parent_span = tracing::Span::current();
-                tauri::async_runtime::spawn(
-                    async move {
-                        match tokio::task::spawn_blocking(move || {
-                            outbound_sync_uc.execute(outbound_snapshot, origin)
-                        })
-                        .await
-                        {
-                            Ok(Ok(())) => {
-                                tracing::info!("Outbound clipboard sync completed");
-                            }
-                            Ok(Err(err)) => {
-                                tracing::warn!(error = %err, "Outbound clipboard sync failed");
-                            }
-                            Err(err) => {
-                                tracing::warn!(error = %err, "Outbound clipboard sync task join failed");
+                    let outbound_sync_uc = self.usecases().sync_outbound_clipboard();
+                    let flow_id_for_sync = flow_id.clone();
+                    tauri::async_runtime::spawn(
+                        async move {
+                            match tokio::task::spawn_blocking(move || {
+                                outbound_sync_uc.execute(outbound_snapshot, origin)
+                            })
+                            .await
+                            {
+                                Ok(Ok(())) => {
+                                    tracing::info!("Outbound clipboard sync completed");
+                                }
+                                Ok(Err(err)) => {
+                                    tracing::warn!(error = %err, "Outbound clipboard sync failed");
+                                }
+                                Err(err) => {
+                                    tracing::warn!(error = %err, "Outbound clipboard sync task join failed");
+                                }
                             }
                         }
-                    }
-                    .instrument(parent_span),
-                );
+                        .instrument(tracing::info_span!("outbound_sync", %flow_id_for_sync)),
+                    );
 
-                Ok(())
-            }
-            Ok(None) => {
-                tracing::debug!(origin = ?origin, "Clipboard capture skipped for current origin");
-                Ok(())
-            }
-            Err(e) => {
-                tracing::error!("Failed to capture clipboard: {:?}", e);
-                Err(e)
+                    Ok(())
+                }
+                Ok(None) => {
+                    tracing::debug!(origin = ?origin, "Clipboard capture skipped for current origin");
+                    Ok(())
+                }
+                Err(e) => {
+                    tracing::error!("Failed to capture clipboard: {:?}", e);
+                    Err(e)
+                }
             }
         }
+        .instrument(span)
+        .await
     }
 }
 

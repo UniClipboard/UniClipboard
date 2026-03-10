@@ -10,6 +10,7 @@ pub const PERSIST_EVENT: &str = "persist_event";
 pub const CACHE_REPRESENTATIONS: &str = "cache_representations";
 pub const SELECT_POLICY: &str = "select_policy";
 pub const PERSIST_ENTRY: &str = "persist_entry";
+pub const SPOOL_BLOBS: &str = "spool_blobs";
 
 #[cfg(test)]
 mod tests {
@@ -24,6 +25,7 @@ mod tests {
             ("CACHE_REPRESENTATIONS", CACHE_REPRESENTATIONS),
             ("SELECT_POLICY", SELECT_POLICY),
             ("PERSIST_ENTRY", PERSIST_ENTRY),
+            ("SPOOL_BLOBS", SPOOL_BLOBS),
         ];
         for (name, value) in stages {
             assert_eq!(
@@ -43,5 +45,6 @@ mod tests {
         assert!(!CACHE_REPRESENTATIONS.is_empty());
         assert!(!SELECT_POLICY.is_empty());
         assert!(!PERSIST_ENTRY.is_empty());
+        assert!(!SPOOL_BLOBS.is_empty());
     }
 }

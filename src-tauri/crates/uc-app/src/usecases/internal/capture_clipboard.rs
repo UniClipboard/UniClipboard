@@ -185,19 +185,34 @@ impl CaptureClipboardUseCase {
             .instrument(info_span!("persist_event", stage = stages::PERSIST_EVENT))
             .await?;
 
-            // Queue large representations for background processing
+            // Cache representations for immediate access
             async {
                 for rep in &normalized_reps {
                     if rep.payload_state() == PayloadAvailability::Staged {
-                        // Find original bytes from snapshot
                         if let Some(observed) =
                             snapshot.representations.iter().find(|o| o.id == rep.id)
                         {
-                            // Put in cache
                             self.representation_cache
                                 .put(&rep.id, observed.bytes.clone())
                                 .await;
+                        }
+                    }
+                }
+                Ok::<(), anyhow::Error>(())
+            }
+            .instrument(info_span!(
+                "cache_representations",
+                stage = stages::CACHE_REPRESENTATIONS
+            ))
+            .await?;
 
+            // Queue large representations for background spool-to-disk
+            async {
+                for rep in &normalized_reps {
+                    if rep.payload_state() == PayloadAvailability::Staged {
+                        if let Some(observed) =
+                            snapshot.representations.iter().find(|o| o.id == rep.id)
+                        {
                             if let Err(err) = self
                                 .spool_queue
                                 .enqueue(SpoolRequest {
@@ -218,10 +233,7 @@ impl CaptureClipboardUseCase {
                 }
                 Ok::<(), anyhow::Error>(())
             }
-            .instrument(info_span!(
-                "cache_representations",
-                stage = stages::CACHE_REPRESENTATIONS
-            ))
+            .instrument(info_span!("spool_blobs", stage = stages::SPOOL_BLOBS))
             .await?;
 
             // 4. policy.select(snapshot)

@@ -9,9 +9,9 @@ Requirements for v0.3.0 Log Observability. Each will be mapped to roadmap phases
 
 ### Logging Foundation
 
-- [ ] **LOG-01**: Application emits logs to both pretty-formatted console (for developers) and JSON file (for tools) using a single shared tracing subscriber.
-- [ ] **LOG-02**: JSON log output includes current span context and parent span fields (e.g., `flow_id`, `stage`, `entry_id`) for every event.
-- [ ] **LOG-03**: The logging subsystem supports three log profiles — `dev`, `prod`, and `debug_clipboard` — each with clearly defined filter levels and output targets.
+- [x] **LOG-01**: Application emits logs to both pretty-formatted console (for developers) and JSON file (for tools) using a single shared tracing subscriber.
+- [x] **LOG-02**: JSON log output includes current span context and parent span fields (e.g., `flow_id`, `stage`, `entry_id`) for every event.
+- [x] **LOG-03**: The logging subsystem supports three log profiles — `dev`, `prod`, and `debug_clipboard` — each with clearly defined filter levels and output targets.
 - [ ] **LOG-04**: Log profile selection is controlled via configuration (env var or settings) and is documented for developers.
 
 ### Flow Observability
@@ -58,23 +58,23 @@ Explicitly excluded from v0.3.0. Documented to prevent scope creep.
 
 Which phases cover which requirements.
 
-| Requirement | Phase    | Status  |
-| ----------- | -------- | ------- |
-| LOG-01      | Phase 19 | Pending |
-| LOG-02      | Phase 19 | Pending |
-| LOG-03      | Phase 19 | Pending |
-| LOG-04      | Phase 19 | Pending |
-| FLOW-01     | Phase 20 | Pending |
-| FLOW-02     | Phase 20 | Pending |
-| FLOW-03     | Phase 20 | Pending |
-| FLOW-04     | Phase 20 | Pending |
-| FLOW-05     | Phase 21 | Pending |
-| SEQ-01      | Phase 22 | Pending |
-| SEQ-02      | Phase 22 | Pending |
-| SEQ-03      | Phase 22 | Pending |
-| SEQ-04      | Phase 22 | Pending |
-| SEQ-05      | Phase 22 | Pending |
-| SEQ-06      | Phase 22 | Pending |
+| Requirement | Phase    | Status   |
+| ----------- | -------- | -------- |
+| LOG-01      | Phase 19 | Complete |
+| LOG-02      | Phase 19 | Complete |
+| LOG-03      | Phase 19 | Complete |
+| LOG-04      | Phase 19 | Pending  |
+| FLOW-01     | Phase 20 | Pending  |
+| FLOW-02     | Phase 20 | Pending  |
+| FLOW-03     | Phase 20 | Pending  |
+| FLOW-04     | Phase 20 | Pending  |
+| FLOW-05     | Phase 21 | Pending  |
+| SEQ-01      | Phase 22 | Pending  |
+| SEQ-02      | Phase 22 | Pending  |
+| SEQ-03      | Phase 22 | Pending  |
+| SEQ-04      | Phase 22 | Pending  |
+| SEQ-05      | Phase 22 | Pending  |
+| SEQ-06      | Phase 22 | Pending  |
 
 **Coverage:**
 

@@ -37,7 +37,7 @@ See: `.planning/milestones/v0.2.0-ROADMAP.md`
 **Milestone Goal:** Make the clipboard capture pipeline fully observable with structured logging, dual output, and Seq-based local visualization.
 
 - [x] **Phase 19: Dual Output Logging Foundation** - Establish structured dual-output logging, profiles, and configuration-controlled activation. (completed 2026-03-10)
-- [x] **Phase 20: Clipboard Capture Flow Correlation** - Correlate a single clipboard capture across spans, stages, layers, and spawned work. (completed 2026-03-10)
+- [ ] **Phase 20: Clipboard Capture Flow Correlation** - Correlate a single clipboard capture across spans, stages, layers, and spawned work. (gap closure in progress)
 - [ ] **Phase 21: Sync Flow Correlation** - Extend the same flow model to inbound and outbound sync activity on a device.
 - [ ] **Phase 22: Seq Local Visualization** - Deliver configurable Seq ingestion and searchable flow visualization for local developer debugging.
 
@@ -67,12 +67,13 @@ Plans:
 **Goal**: Developers can trace one clipboard capture from detection through persistence and publish using a single correlated flow record.
 **Depends on**: Phase 19
 **Requirements**: FLOW-01, FLOW-02, FLOW-03, FLOW-04
-**Plans:** 2/2 plans complete
+**Plans:** 3 plans (2 complete, 1 gap closure)
 
 Plans:
 
-- [ ] 20-01-PLAN.md — FlowId newtype, stage constants, and dependency wiring in uc-observability
-- [ ] 20-02-PLAN.md — Instrument runtime and capture use case with flow_id and stage spans
+- [x] 20-01-PLAN.md — FlowId newtype, stage constants, and dependency wiring in uc-observability
+- [x] 20-02-PLAN.md — Instrument runtime and capture use case with flow_id and stage spans
+- [ ] 20-03-PLAN.md — Gap closure: add spool_blobs stage span (FLOW-03 partial fix)
 
 **Success Criteria** (what must be TRUE):
 
@@ -114,6 +115,6 @@ Plans:
 | 1-9                                    | v0.1.0    | 17/17          | Complete    | 2026-03-06 |
 | 10-18                                  | v0.2.0    | 22/22          | Complete    | 2026-03-09 |
 | 19. Dual Output Logging Foundation     | 2/2       | Complete       | 2026-03-10  | -          |
-| 20. Clipboard Capture Flow Correlation | 2/2       | Complete       | 2026-03-10  | -          |
+| 20. Clipboard Capture Flow Correlation | 2/3       | Gap closure    | -           | -          |
 | 21. Sync Flow Correlation              | v0.3.0    | 0/TBD          | Not started | -          |
 | 22. Seq Local Visualization            | v0.3.0    | 0/TBD          | Not started | -          |

@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v0.1
 milestone_name: milestone
 status: executing
-stopped_at: Completed 19-01-PLAN.md
-last_updated: '2026-03-10T13:45:35Z'
-last_activity: 2026-03-10 — Completed 19-01 uc-observability crate
+stopped_at: Completed 19-02-PLAN.md
+last_updated: '2026-03-10T13:58:00Z'
+last_activity: 2026-03-10 — Completed 19-02 uc-observability integration + docs
 progress:
   total_phases: 4
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 2
-  completed_plans: 1
-  percent: 50
+  completed_plans: 2
+  percent: 100
 ---
 
 # Project State
@@ -26,29 +26,29 @@ See: .planning/PROJECT.md (updated 2026-03-09)
 ## Current Position
 
 Phase: 19 of 22 (Dual Output Logging Foundation)
-Plan: 1 of 2 complete
-Status: Executing
-Last activity: 2026-03-10 — Completed 19-01 uc-observability crate
+Plan: 2 of 2 complete
+Status: Phase 19 Complete
+Last activity: 2026-03-10 — Completed 19-02 uc-observability integration + docs
 
-Progress: [█████░░░░░] 50%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 1
-- Average duration: 4min
-- Total execution time: 0.07 hours
+- Total plans completed: 2
+- Average duration: 6.5min
+- Total execution time: 0.22 hours
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 | ----- | ----- | ----- | -------- |
-| 19    | 1     | 4min  | 4min     |
+| 19    | 2     | 13min | 6.5min   |
 
 **Recent Trend:**
 
-- Last 5 plans: 4min
+- Last 5 plans: 4min, 9min
 - Trend: N/A
 
 ## Accumulated Context
@@ -58,6 +58,8 @@ Progress: [█████░░░░░] 50%
 Decisions are logged in PROJECT.md Key Decisions table.
 Recent decisions affecting current work:
 
+- 19-02: Used generic impl Layer<S> return types for builder functions to enable caller composition without Box<dyn> type issues.
+- 19-02: Re-exported WorkerGuard from uc-observability to avoid adding tracing-appender as direct dependency.
 - 19-01: Used JsonFields as field formatter so FlatJsonFormat can extract structured span data from extensions.
 - 19-01: Sentry integration excluded from uc-observability to keep zero app-layer dependencies.
 - Phase 19: Start observability work by refactoring the tracing subscriber into dual-output profile-driven logging.
@@ -76,6 +78,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-10T13:45:35Z
-Stopped at: Completed 19-01-PLAN.md
-Resume file: .planning/phases/19-dual-output-logging-foundation/19-01-SUMMARY.md
+Last session: 2026-03-10T13:58:00Z
+Stopped at: Completed 19-02-PLAN.md
+Resume file: .planning/phases/19-dual-output-logging-foundation/19-02-SUMMARY.md

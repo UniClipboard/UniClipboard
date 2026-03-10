@@ -12,7 +12,7 @@ Requirements for v0.3.0 Log Observability. Each will be mapped to roadmap phases
 - [x] **LOG-01**: Application emits logs to both pretty-formatted console (for developers) and JSON file (for tools) using a single shared tracing subscriber.
 - [x] **LOG-02**: JSON log output includes current span context and parent span fields (e.g., `flow_id`, `stage`, `entry_id`) for every event.
 - [x] **LOG-03**: The logging subsystem supports three log profiles — `dev`, `prod`, and `debug_clipboard` — each with clearly defined filter levels and output targets.
-- [ ] **LOG-04**: Log profile selection is controlled via configuration (env var or settings) and is documented for developers.
+- [x] **LOG-04**: Log profile selection is controlled via configuration (env var or settings) and is documented for developers.
 
 ### Flow Observability
 
@@ -63,7 +63,7 @@ Which phases cover which requirements.
 | LOG-01      | Phase 19 | Complete |
 | LOG-02      | Phase 19 | Complete |
 | LOG-03      | Phase 19 | Complete |
-| LOG-04      | Phase 19 | Pending  |
+| LOG-04      | Phase 19 | Complete |
 | FLOW-01     | Phase 20 | Pending  |
 | FLOW-02     | Phase 20 | Pending  |
 | FLOW-03     | Phase 20 | Pending  |

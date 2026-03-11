@@ -1,0 +1,26 @@
+{
+  "title": "Flow Timeline",
+  "description": "View all stages of a specific flow_id in chronological order",
+  "query": "Has(flow_id)",
+  "columns": [
+    { "name": "flow_id", "width": 280 },
+    { "name": "stage", "width": 120 },
+    { "name": "device_id", "width": 150 },
+    { "name": "@t", "header": "Timestamp", "width": 180 },
+    { "name": "@m", "header": "Message", "width": 400 }
+  ],
+  "sort": [{ "field": "@t", "order": "asc" }],
+  "signal": {
+    "type": "saved-search",
+    "expression": "flow_id = '<select-a-flow-id>'"
+  },
+  "example": {
+    "description": "Find all events for a specific flow",
+    "query": "flow_id = '01958a3b-0000-0000-0000-000000000001'"
+  },
+  "example_descriptions": [
+    "Find all stages of a single clipboard operation",
+    "View the complete timeline from capture to persistence",
+    "Identify bottlenecks by seeing time gaps between stages"
+  ]
+}

@@ -35,15 +35,35 @@ static SEQ_RUNTIME: OnceLock<tokio::runtime::Runtime> = OnceLock::new();
 
 /// Resolve device_id from config directory for Seq cross-device correlation.
 ///
-/// Reads device identifier from `{config_dir}/device_id.txt` if it exists.
-/// Returns `None` if the file doesn't exist (first launch graceful degradation).
+/// Reads device identifier from `{config_dir}/device_id.txt`. If the file
+/// doesn't exist yet (first launch before device registration), generates a
+/// new UUID v4 and writes it so that **every** Seq event carries a device_id
+/// from the very first log line. The device registration flow in
+/// `LocalDeviceIdentity::init()` will later overwrite this with the canonical
+/// device ID, but that only takes effect after the next app restart (which is
+/// fine — the important thing is that Seq events are always filterable).
 fn resolve_device_id_for_seq(config_dir: &Path) -> Option<String> {
     let device_id_path = config_dir.join("device_id.txt");
-    std::fs::read_to_string(&device_id_path)
-        .ok()?
-        .trim()
-        .to_string()
-        .into()
+
+    // Try to read existing device_id first
+    if let Ok(content) = std::fs::read_to_string(&device_id_path) {
+        let trimmed = content.trim();
+        if !trimmed.is_empty() {
+            return Some(trimmed.to_string());
+        }
+    }
+
+    // File doesn't exist or is empty — generate a provisional device_id
+    // so Seq events are always filterable by device from the first log line.
+    let provisional_id = uuid::Uuid::new_v4().to_string();
+    if let Err(e) = std::fs::create_dir_all(config_dir) {
+        tracing::warn!("Failed to create config dir for provisional device_id: {e}");
+        return Some(provisional_id);
+    }
+    if let Err(e) = std::fs::write(&device_id_path, &provisional_id) {
+        tracing::warn!("Failed to write provisional device_id: {e}");
+    }
+    Some(provisional_id)
 }
 
 /// Initialize the tracing subscriber with dual-output and optional Sentry.
@@ -70,6 +90,9 @@ pub fn init_tracing_subscriber() -> anyhow::Result<()> {
 
     // Step 1b: Resolve device_id for Seq cross-device correlation
     let device_id = resolve_device_id_for_seq(&app_dirs.app_data_root);
+    if let Some(device_id) = device_id.as_ref() {
+        let _ = uc_observability::set_global_device_id(device_id.clone());
+    }
 
     // Step 2: Select log profile
     let profile = LogProfile::from_env();

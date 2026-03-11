@@ -27,7 +27,6 @@ pub async fn get_settings(
         "command.settings.get",
         trace_id = tracing::field::Empty,
         trace_ts = tracing::field::Empty,
-        device_id = %runtime.device_id(),
     );
     record_trace_fields(&span, &_trace);
     async {
@@ -65,7 +64,6 @@ pub async fn update_settings(
         "command.settings.update",
         trace_id = tracing::field::Empty,
         trace_ts = tracing::field::Empty,
-        device_id = %runtime.device_id(),
     );
     record_trace_fields(&span, &_trace);
     async {

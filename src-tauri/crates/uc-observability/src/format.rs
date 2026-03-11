@@ -12,6 +12,7 @@ use tracing_subscriber::fmt::format::{FormatFields, Writer};
 use tracing_subscriber::fmt::{FmtContext, FormatEvent};
 use tracing_subscriber::registry::LookupSpan;
 
+use crate::context::global_device_id;
 use crate::span_fields::collect_span_fields;
 
 /// A flat JSON event formatter that merges span fields into the top-level JSON object.
@@ -92,6 +93,16 @@ where
         if let Some(span_name) = &leaf_span_name {
             map.serialize_entry("span", span_name)
                 .map_err(|_| fmt::Error)?;
+        }
+
+        let has_device_id =
+            event_fields.contains_key("device_id") || span_fields.contains_key("device_id");
+
+        if !has_device_id {
+            if let Some(device_id) = global_device_id() {
+                map.serialize_entry("device_id", device_id)
+                    .map_err(|_| fmt::Error)?;
+            }
         }
 
         // 4. Merge: span fields with conflict resolution, then event fields
@@ -392,5 +403,34 @@ mod tests {
 
         assert_eq!(obj.get("count").and_then(|v| v.as_u64()), Some(5));
         assert_eq!(obj.get("name").and_then(|v| v.as_str()), Some("test"));
+    }
+
+    #[test]
+    fn test_flat_json_injects_global_device_id_when_missing() {
+        let _ = crate::set_global_device_id("device-test-1".to_string());
+
+        let buf = BufWriter::new();
+        let buf_clone = buf.clone();
+
+        let subscriber = tracing_subscriber::registry().with(
+            tracing_subscriber::fmt::layer()
+                .event_format(FlatJsonFormat::new())
+                .fmt_fields(JsonFields::new())
+                .with_writer(buf_clone)
+                .with_ansi(false),
+        );
+
+        tracing::subscriber::with_default(subscriber, || {
+            tracing::info!("event without explicit device field");
+        });
+
+        let output = buf.contents();
+        let parsed: serde_json::Value = serde_json::from_str(output.trim()).unwrap();
+        let obj = parsed.as_object().unwrap();
+
+        assert!(
+            obj.get("device_id").and_then(|v| v.as_str()).is_some(),
+            "Expected global device_id to be injected when event has no device_id"
+        );
     }
 }

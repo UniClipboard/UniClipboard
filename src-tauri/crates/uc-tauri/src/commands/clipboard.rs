@@ -30,13 +30,11 @@ pub async fn get_clipboard_entries(
 ) -> Result<ClipboardEntriesResponse, CommandError> {
     let resolved_limit = limit.unwrap_or(50);
     let resolved_offset = offset.unwrap_or(0);
-    let device_id = runtime.device_id();
 
     let span = info_span!(
         "command.clipboard.get_entries",
         trace_id = tracing::field::Empty,
         trace_ts = tracing::field::Empty,
-        device_id = %device_id,
         limit = resolved_limit,
         offset = resolved_offset,
     );
@@ -105,13 +103,10 @@ pub async fn get_clipboard_stats(
     runtime: State<'_, Arc<AppRuntime>>,
     _trace: Option<TraceMetadata>,
 ) -> Result<ClipboardStats, CommandError> {
-    let device_id = runtime.device_id();
-
     let span = info_span!(
         "command.clipboard.get_stats",
         trace_id = tracing::field::Empty,
         trace_ts = tracing::field::Empty,
-        device_id = %device_id,
     );
     record_trace_fields(&span, &_trace);
 
@@ -141,13 +136,10 @@ pub async fn toggle_favorite_clipboard_item(
     is_favorited: bool,
     _trace: Option<TraceMetadata>,
 ) -> Result<(), CommandError> {
-    let device_id = runtime.device_id();
-
     let span = info_span!(
         "command.clipboard.toggle_favorite",
         trace_id = tracing::field::Empty,
         trace_ts = tracing::field::Empty,
-        device_id = %device_id,
         entry_id = %id,
         is_favorited,
     );
@@ -197,13 +189,10 @@ pub async fn get_clipboard_entry(
     entry_id: String,
     _trace: Option<TraceMetadata>,
 ) -> Result<ClipboardEntriesResponse, CommandError> {
-    let device_id = runtime.device_id();
-
     let span = info_span!(
         "command.clipboard.get_entry_single",
         trace_id = tracing::field::Empty,
         trace_ts = tracing::field::Empty,
-        device_id = %device_id,
         entry_id = %entry_id,
     );
     record_trace_fields(&span, &_trace);
@@ -260,13 +249,11 @@ pub async fn get_clipboard_item(
     _trace: Option<TraceMetadata>,
 ) -> Result<Option<ClipboardItemResponse>, CommandError> {
     let resolved_full = full_content.unwrap_or(false);
-    let device_id = runtime.device_id();
 
     let span = info_span!(
         "command.clipboard.get_item",
         trace_id = tracing::field::Empty,
         trace_ts = tracing::field::Empty,
-        device_id = %device_id,
         entry_id = %id,
         full_content = resolved_full,
     );
@@ -385,13 +372,10 @@ pub async fn delete_clipboard_entry(
     entry_id: String,
     _trace: Option<TraceMetadata>,
 ) -> Result<(), CommandError> {
-    let device_id = runtime.device_id();
-
     let span = info_span!(
         "command.clipboard.delete_entry",
         trace_id = tracing::field::Empty,
         trace_ts = tracing::field::Empty,
-        device_id = %device_id,
         entry_id = %entry_id,
     );
     record_trace_fields(&span, &_trace);

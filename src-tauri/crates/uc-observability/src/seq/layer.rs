@@ -10,6 +10,8 @@ use tracing::Subscriber;
 use tracing_subscriber::registry::LookupSpan;
 use tracing_subscriber::Layer;
 
+use crate::context::global_device_id;
+
 /// Map tracing Level to Seq/CLEF level name.
 fn tracing_level_to_clef(level: &tracing::Level) -> &'static str {
     match *level {
@@ -87,11 +89,6 @@ where
     map.serialize_entry("target", event.metadata().target())
         .ok()?;
 
-    // device_id - static field for cross-device log correlation
-    if let Some(did) = device_id {
-        map.serialize_entry("device_id", did).ok()?;
-    }
-
     // Span fields - we need to manually walk the span scope since we have a Layer context
     // not a FmtContext. We use the same logic as collect_span_fields but adapted for Layer context.
     let mut span_fields = BTreeMap::new();
@@ -122,6 +119,15 @@ where
 
     if let Some(span_name) = &leaf_span_name {
         map.serialize_entry("span", span_name).ok()?;
+    }
+
+    let has_device_id =
+        event_fields.contains_key("device_id") || span_fields.contains_key("device_id");
+    if !has_device_id {
+        let fallback_device_id = device_id.or(global_device_id());
+        if let Some(did) = fallback_device_id {
+            map.serialize_entry("device_id", did).ok()?;
+        }
     }
 
     for (key, value) in &span_fields {

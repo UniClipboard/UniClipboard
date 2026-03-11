@@ -40,6 +40,7 @@
 //! ```
 
 pub mod clef_format;
+mod context;
 pub mod flow;
 pub mod format;
 mod init;
@@ -49,6 +50,7 @@ pub mod span_fields;
 pub mod stages;
 
 pub use clef_format::CLEFFormat;
+pub use context::{global_device_id, set_global_device_id};
 pub use flow::FlowId;
 pub use init::{build_console_layer, build_json_layer, init_tracing_subscriber};
 pub use profile::LogProfile;

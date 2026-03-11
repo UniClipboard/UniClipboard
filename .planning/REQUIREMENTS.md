@@ -20,7 +20,7 @@ Requirements for v0.3.0 Log Observability. Each will be mapped to roadmap phases
 - [x] **FLOW-02**: All spans and events participating in a clipboard capture flow (from detection through normalize, persist, and publish) carry the same `flow_id` field.
 - [x] **FLOW-03**: Each major step of the capture pipeline (detect, normalize, persist_event, select_policy, persist_entry, spool_blobs, publish) is represented by a named span with a `stage` field.
 - [x] **FLOW-04**: Cross-layer operations within a capture flow (platform, app, infra) preserve `flow_id` and `stage` context, including across `tokio::spawn` boundaries.
-- [ ] **FLOW-05**: Sync outbound and inbound clipboard flows use the same `flow_id` and `stage` pattern, enabling end-to-end tracing of sync operations on a single device.
+- [x] **FLOW-05**: Sync outbound and inbound clipboard flows use the same `flow_id` and `stage` pattern, enabling end-to-end tracing of sync operations on a single device.
 
 ### Seq Integration
 
@@ -68,7 +68,7 @@ Which phases cover which requirements.
 | FLOW-02     | Phase 20 | Complete |
 | FLOW-03     | Phase 20 | Complete |
 | FLOW-04     | Phase 20 | Complete |
-| FLOW-05     | Phase 21 | Pending  |
+| FLOW-05     | Phase 21 | Complete |
 | SEQ-01      | Phase 22 | Pending  |
 | SEQ-02      | Phase 22 | Pending  |
 | SEQ-03      | Phase 22 | Pending  |

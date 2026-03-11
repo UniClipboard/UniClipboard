@@ -2,10 +2,10 @@
 gsd_state_version: 1.0
 milestone: v0.1
 milestone_name: milestone
-status: completed
-stopped_at: Phase 21 context gathered
-last_updated: '2026-03-11T00:47:54.385Z'
-last_activity: 2026-03-11 — Completed 20-02 capture pipeline instrumentation
+status: in-progress
+stopped_at: Completed 21-01-PLAN.md
+last_updated: '2026-03-11T03:32:12Z'
+last_activity: 2026-03-11 — Completed 21-01 sync flow correlation contracts
 progress:
   total_phases: 4
   completed_phases: 2
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-09)
 
 **Core value:** Seamless clipboard synchronization across devices -- copy on one, paste on another
-**Current focus:** Phase 20 - Clipboard Capture Flow Correlation
+**Current focus:** Phase 21 - Sync Flow Correlation
 
 ## Current Position
 
-Phase: 20 of 22 (Clipboard Capture Flow Correlation)
-Plan: 2 of 2 complete
-Status: Phase 20 Complete
-Last activity: 2026-03-11 — Completed 20-02 capture pipeline instrumentation
+Phase: 21 of 22 (Sync Flow Correlation)
+Plan: 1 of 1 complete
+Status: Phase 21 In Progress
+Last activity: 2026-03-11 — Completed 21-01 sync flow correlation contracts
 
 Progress: [██████████] 100%
 
@@ -48,11 +48,12 @@ Progress: [██████████] 100%
 
 **Recent Trend:**
 
-- Last 5 plans: 4min, 9min, 2min, 3min
+- Last 5 plans: 4min, 9min, 2min, 3min, 9min
 - Trend: Stable
   | Phase 20 P01 | 2min | 2 tasks | 5 files |
   | Phase 20 P02 | 3min | 2 tasks | 2 files |
   | Phase 20 P03 | 2min | 1 tasks | 2 files |
+  | Phase 21 P01 | 9min | 2 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -74,6 +75,7 @@ Recent decisions affecting current work:
 - 20-02: Replaced #[tracing::instrument] with manual span to support runtime-computed flow_id field
 - 20-02: outbound_sync span carries flow_id but no stage field (Phase 21 adds publish stage)
 - [Phase 20]: Split cache_representations into two sequential stage spans (cache_representations + spool_blobs) for distinct observability
+- 21-01: origin_flow_id uses serde(default) + skip_serializing_if for zero-cost backward compatibility with older peers
 
 ### Pending Todos
 
@@ -86,6 +88,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-11T00:47:54.384Z
-Stopped at: Phase 21 context gathered
-Resume file: .planning/phases/21-sync-flow-correlation/21-CONTEXT.md
+Last session: 2026-03-11T03:32:12Z
+Stopped at: Completed 21-01-PLAN.md
+Resume file: .planning/phases/21-sync-flow-correlation/21-01-SUMMARY.md

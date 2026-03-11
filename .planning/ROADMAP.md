@@ -87,12 +87,18 @@ Plans:
 **Goal**: Developers can follow inbound and outbound sync operations with the same flow conventions used by local clipboard capture.
 **Depends on**: Phase 20
 **Requirements**: FLOW-05
+**Plans:** 2 plans
+
+Plans:
+
+- [ ] 21-01-PLAN.md — Add sync stage constants and origin_flow_id to ClipboardMessage
+- [ ] 21-02-PLAN.md — Instrument outbound and inbound sync spans with flow_id and stage fields
+
 **Success Criteria** (what must be TRUE):
 
 1. Outbound sync activity emits spans and events that use the same `flow_id` and `stage` structure as local capture flows.
 2. Inbound sync activity emits spans and events that use the same `flow_id` and `stage` structure as local capture flows.
 3. Developers can review logs on a single device and follow sync-specific stages without learning a second observability model.
-   **Plans**: TBD
 
 ### Phase 22: Seq Local Visualization
 
@@ -116,5 +122,5 @@ Plans:
 | 10-18                                  | v0.2.0    | 22/22          | Complete    | 2026-03-09 |
 | 19. Dual Output Logging Foundation     | 2/2       | Complete       | 2026-03-10  | -          |
 | 20. Clipboard Capture Flow Correlation | 3/3       | Complete       | 2026-03-10  | -          |
-| 21. Sync Flow Correlation              | v0.3.0    | 0/TBD          | Not started | -          |
+| 21. Sync Flow Correlation              | v0.3.0    | 0/2            | Not started | -          |
 | 22. Seq Local Visualization            | v0.3.0    | 0/TBD          | Not started | -          |

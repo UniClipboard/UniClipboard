@@ -36,15 +36,14 @@ created: 2026-03-11
 
 ## Per-Task Verification Map
 
-| Task ID  | Plan | Wave | Requirement | Test Type   | Automated Command                                                         | File Exists | Status     |
-| -------- | ---- | ---- | ----------- | ----------- | ------------------------------------------------------------------------- | ----------- | ---------- |
-| 22-01-01 | 01   | 1    | SEQ-01      | unit        | `cd src-tauri && cargo test -p uc-observability clef_format`              | ❌ W0       | ⬜ pending |
-| 22-01-02 | 01   | 1    | SEQ-04      | unit        | `cd src-tauri && cargo test -p uc-observability clef_format::span_fields` | ❌ W0       | ⬜ pending |
-| 22-01-03 | 01   | 1    | SEQ-06      | unit        | `cd src-tauri && cargo test -p uc-observability clef_format::timestamp`   | ❌ W0       | ⬜ pending |
-| 22-02-01 | 02   | 1    | SEQ-02      | unit        | `cd src-tauri && cargo test -p uc-observability seq::build_seq_layer`     | ❌ W0       | ⬜ pending |
-| 22-02-02 | 02   | 1    | SEQ-03      | unit        | `cd src-tauri && cargo test -p uc-observability seq::sender`              | ❌ W0       | ⬜ pending |
-| 22-02-03 | 02   | 1    | SEQ-05      | unit        | `cd src-tauri && cargo test -p uc-observability seq::config`              | ❌ W0       | ⬜ pending |
-| 22-03-01 | 03   | 2    | SEQ-02      | integration | `cd src-tauri && cargo test -p uc-tauri seq_integration`                  | ❌ W0       | ⬜ pending |
+| Task ID  | Plan | Wave | Requirement | Test Type | Automated Command                                                         | File Exists | Status     |
+| -------- | ---- | ---- | ----------- | --------- | ------------------------------------------------------------------------- | ----------- | ---------- |
+| 22-01-01 | 01   | 1    | SEQ-01      | unit      | `cd src-tauri && cargo test -p uc-observability clef_format`              | ❌ W0       | ⬜ pending |
+| 22-01-02 | 01   | 1    | SEQ-04      | unit      | `cd src-tauri && cargo test -p uc-observability clef_format::span_fields` | ❌ W0       | ⬜ pending |
+| 22-01-03 | 01   | 1    | SEQ-06      | unit      | `cd src-tauri && cargo test -p uc-observability clef_format::timestamp`   | ❌ W0       | ⬜ pending |
+| 22-02-01 | 02   | 2    | SEQ-02      | unit      | `cd src-tauri && cargo test -p uc-observability seq::build_seq_layer`     | ❌ W0       | ⬜ pending |
+| 22-02-02 | 02   | 2    | SEQ-03      | unit      | `cd src-tauri && cargo test -p uc-observability seq::sender`              | ❌ W0       | ⬜ pending |
+| 22-02-03 | 02   | 2    | SEQ-05      | unit      | `cd src-tauri && cargo test -p uc-observability seq::config`              | ❌ W0       | ⬜ pending |
 
 _Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky_
 

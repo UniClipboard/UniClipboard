@@ -6,6 +6,7 @@
 use std::time::Duration;
 use tokio::sync::{mpsc, oneshot};
 use tokio::task::JoinHandle;
+use tracing::error;
 
 /// Guard that signals shutdown and flushes remaining events when dropped.
 ///
@@ -114,7 +115,6 @@ async fn flush_batch(
     batch: &mut Vec<String>,
 ) {
     let body = batch.join("\n");
-    batch.clear();
 
     let mut req = client
         .post(format!("{}/ingest/clef", url.trim_end_matches('/')))
@@ -125,13 +125,32 @@ async fn flush_batch(
         req = req.header("X-Seq-ApiKey", key);
     }
 
-    // Silently discard errors - we don't want logging to break the app
-    let _ = req.send().await;
+    match req.send().await {
+        Ok(response) if response.status().is_success() => {
+            batch.clear();
+        }
+        Ok(response) => {
+            error!(
+                status = %response.status(),
+                batch_size = batch.len(),
+                "failed to send Seq batch"
+            );
+        }
+        Err(error) => {
+            error!(
+                error = %error,
+                batch_size = batch.len(),
+                "failed to send Seq batch"
+            );
+        }
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::{Read, Write};
+    use std::net::TcpListener;
     use tokio::sync::mpsc;
 
     #[tokio::test]
@@ -253,5 +272,60 @@ mod tests {
             .await
             .expect("sender_loop should exit when channel closes")
             .expect("sender_loop should not panic");
+    }
+
+    #[tokio::test]
+    async fn test_flush_batch_keeps_events_when_send_fails() {
+        let client = reqwest::Client::new();
+        let mut batch = vec![
+            r#"{"@m":"event 1"}"#.to_string(),
+            r#"{"@m":"event 2"}"#.to_string(),
+        ];
+
+        flush_batch(&client, "http://127.0.0.1:1", &None, &mut batch).await;
+
+        assert_eq!(batch.len(), 2, "failed sends should preserve the batch");
+    }
+
+    #[tokio::test]
+    async fn test_flush_batch_clears_events_after_successful_send() {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("listener should bind");
+        let addr = listener
+            .local_addr()
+            .expect("listener should expose local addr");
+
+        let server = std::thread::spawn(move || {
+            let (mut stream, _) = listener
+                .accept()
+                .expect("server should accept one connection");
+            let mut request = Vec::new();
+            let mut buf = [0_u8; 1024];
+
+            loop {
+                let n = stream.read(&mut buf).expect("server should read request");
+                if n == 0 {
+                    break;
+                }
+                request.extend_from_slice(&buf[..n]);
+                if request.windows(4).any(|window| window == b"\r\n\r\n") {
+                    break;
+                }
+            }
+
+            stream
+                .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n")
+                .expect("server should write response");
+        });
+
+        let client = reqwest::Client::new();
+        let mut batch = vec![
+            r#"{"@m":"event 1"}"#.to_string(),
+            r#"{"@m":"event 2"}"#.to_string(),
+        ];
+
+        flush_batch(&client, &format!("http://{}", addr), &None, &mut batch).await;
+
+        server.join().expect("server thread should complete");
+        assert!(batch.is_empty(), "successful sends should clear the batch");
     }
 }

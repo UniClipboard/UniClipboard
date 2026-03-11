@@ -4,7 +4,7 @@
 # Ingestion: http://localhost:5341/ingest/clef
 services:
   seq:
-    image: datalust/seq:2024.3
+    image: datalust/seq:2025.2
     restart: unless-stopped
     environment:
       ACCEPT_EULA: 'Y'

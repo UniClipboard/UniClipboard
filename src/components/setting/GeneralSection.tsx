@@ -137,7 +137,7 @@ export default function GeneralSection() {
         >
           <div className="w-40">
             <Select value={language} onValueChange={handleLanguageChange} disabled={isBusy}>
-              <SelectTrigger>
+              <SelectTrigger className="w-full">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>

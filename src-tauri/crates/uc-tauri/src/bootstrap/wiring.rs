@@ -2757,20 +2757,23 @@ mod tests {
     use anyhow::anyhow;
     use async_trait::async_trait;
     use chrono::Utc;
+    use std::io;
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::Mutex;
     use std::time::Duration;
     use tauri::{Listener, Wry};
     use tokio::sync::{mpsc, Mutex as TokioMutex};
+    use tracing_subscriber::fmt::writer::MakeWriter;
     use uc_app::usecases::PairingConfig;
     use uc_core::network::paired_device::{PairedDevice, PairingState};
     use uc_core::network::protocol::{PairingChallenge, PairingRequest};
     use uc_core::network::{ConnectedPeer, DiscoveredPeer, PairingMessage};
     use uc_core::ports::{
         ClipboardTransportPort, EncryptionSessionPort, NetworkEventPort, PairingTransportPort,
-        PeerDirectoryPort,
+        PeerDirectoryPort, TransferCryptoError,
     };
     use uc_core::security::model::{EncryptionError, MasterKey};
+    use uc_core::{ClipboardChangeOrigin, SystemClipboardSnapshot};
     use uc_platform::ports::IdentityStoreError;
     use uc_platform::test_support::with_uc_profile;
 
@@ -3515,6 +3518,165 @@ mod tests {
         }
     }
 
+    #[derive(Clone, Default)]
+    struct TestLogBuffer {
+        inner: Arc<Mutex<Vec<u8>>>,
+    }
+
+    impl TestLogBuffer {
+        fn content(&self) -> String {
+            String::from_utf8(self.inner.lock().unwrap().clone()).unwrap_or_default()
+        }
+    }
+
+    struct TestLogWriter {
+        inner: Arc<Mutex<Vec<u8>>>,
+    }
+
+    impl io::Write for TestLogWriter {
+        fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+            self.inner.lock().unwrap().extend_from_slice(buf);
+            Ok(buf.len())
+        }
+
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
+    }
+
+    impl<'a> MakeWriter<'a> for TestLogBuffer {
+        type Writer = TestLogWriter;
+
+        fn make_writer(&'a self) -> Self::Writer {
+            TestLogWriter {
+                inner: self.inner.clone(),
+            }
+        }
+    }
+
+    struct NoopSystemClipboard;
+
+    #[async_trait]
+    impl SystemClipboardPort for NoopSystemClipboard {
+        fn read_snapshot(&self) -> anyhow::Result<SystemClipboardSnapshot> {
+            Ok(SystemClipboardSnapshot {
+                ts_ms: 0,
+                representations: vec![],
+            })
+        }
+
+        fn write_snapshot(&self, _snapshot: SystemClipboardSnapshot) -> anyhow::Result<()> {
+            Ok(())
+        }
+    }
+
+    struct NoopClipboardChangeOrigin;
+
+    #[async_trait]
+    impl ClipboardChangeOriginPort for NoopClipboardChangeOrigin {
+        async fn set_next_origin(&self, _origin: ClipboardChangeOrigin, _ttl: Duration) {}
+
+        async fn consume_origin_or_default(
+            &self,
+            default_origin: ClipboardChangeOrigin,
+        ) -> ClipboardChangeOrigin {
+            default_origin
+        }
+    }
+
+    struct NotReadyEncryptionSession;
+
+    #[async_trait]
+    impl EncryptionSessionPort for NotReadyEncryptionSession {
+        async fn is_ready(&self) -> bool {
+            false
+        }
+
+        async fn get_master_key(&self) -> Result<MasterKey, EncryptionError> {
+            Err(EncryptionError::NotInitialized)
+        }
+
+        async fn set_master_key(&self, _master_key: MasterKey) -> Result<(), EncryptionError> {
+            Ok(())
+        }
+
+        async fn clear(&self) -> Result<(), EncryptionError> {
+            Ok(())
+        }
+    }
+
+    struct NoopEncryptionPort;
+
+    #[async_trait]
+    impl EncryptionPort for NoopEncryptionPort {
+        async fn derive_kek(
+            &self,
+            _passphrase: &uc_core::security::model::Passphrase,
+            _salt: &[u8],
+            _kdf: &uc_core::security::model::KdfParams,
+        ) -> Result<uc_core::security::model::Kek, EncryptionError> {
+            Err(EncryptionError::EncryptFailed)
+        }
+
+        async fn wrap_master_key(
+            &self,
+            _kek: &uc_core::security::model::Kek,
+            _master_key: &MasterKey,
+            _aead: uc_core::security::model::EncryptionAlgo,
+        ) -> Result<uc_core::security::model::EncryptedBlob, EncryptionError> {
+            Err(EncryptionError::EncryptFailed)
+        }
+
+        async fn unwrap_master_key(
+            &self,
+            _kek: &uc_core::security::model::Kek,
+            _wrapped: &uc_core::security::model::EncryptedBlob,
+        ) -> Result<MasterKey, EncryptionError> {
+            Err(EncryptionError::EncryptFailed)
+        }
+
+        async fn encrypt_blob(
+            &self,
+            _master_key: &MasterKey,
+            _plaintext: &[u8],
+            _aad: &[u8],
+            _aead: uc_core::security::model::EncryptionAlgo,
+        ) -> Result<uc_core::security::model::EncryptedBlob, EncryptionError> {
+            Err(EncryptionError::EncryptFailed)
+        }
+
+        async fn decrypt_blob(
+            &self,
+            _master_key: &MasterKey,
+            _encrypted: &uc_core::security::model::EncryptedBlob,
+            _aad: &[u8],
+        ) -> Result<Vec<u8>, EncryptionError> {
+            Err(EncryptionError::EncryptFailed)
+        }
+    }
+
+    struct StaticDeviceIdentity {
+        id: uc_core::DeviceId,
+    }
+
+    impl DeviceIdentityPort for StaticDeviceIdentity {
+        fn current_device_id(&self) -> uc_core::DeviceId {
+            self.id.clone()
+        }
+    }
+
+    struct NoopTransferDecryptor;
+
+    impl TransferPayloadDecryptorPort for NoopTransferDecryptor {
+        fn decrypt(
+            &self,
+            _encrypted: &[u8],
+            _master_key: &MasterKey,
+        ) -> Result<Vec<u8>, TransferCryptoError> {
+            Ok(vec![])
+        }
+    }
+
     async fn seed_waiting_offer_state(orchestrator: &SpaceAccessOrchestrator, session_id: &str) {
         let mut transport = SuccessSpaceAccessTransport;
         let proof = SuccessSpaceAccessProof;
@@ -3545,6 +3707,57 @@ mod tests {
             state,
             uc_core::security::space_access::state::SpaceAccessState::WaitingOffer { .. }
         ));
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn clipboard_receive_loop_warns_when_origin_flow_id_missing() {
+        let log_buffer = TestLogBuffer::default();
+        let subscriber = tracing_subscriber::fmt()
+            .with_writer(log_buffer.clone())
+            .with_max_level(tracing::Level::WARN)
+            .with_ansi(false)
+            .without_time()
+            .finish();
+        let _guard = tracing::subscriber::set_default(subscriber);
+
+        let usecase = SyncInboundClipboardUseCase::new(
+            uc_core::clipboard::ClipboardIntegrationMode::Full,
+            Arc::new(NoopSystemClipboard),
+            Arc::new(NoopClipboardChangeOrigin),
+            Arc::new(NotReadyEncryptionSession),
+            Arc::new(NoopEncryptionPort),
+            Arc::new(StaticDeviceIdentity {
+                id: uc_core::DeviceId::new("local-device".to_string()),
+            }),
+            Arc::new(NoopTransferDecryptor),
+        )
+        .expect("usecase should build in Full mode");
+
+        let (tx, rx) = mpsc::channel(1);
+        tx.send((
+            ClipboardMessage {
+                id: "msg-legacy-origin-flow".to_string(),
+                content_hash: "hash".to_string(),
+                encrypted_content: vec![1, 2, 3],
+                timestamp: Utc::now(),
+                origin_device_id: "remote-device".to_string(),
+                origin_device_name: "Remote".to_string(),
+                payload_version: uc_core::network::protocol::ClipboardPayloadVersion::V3,
+                origin_flow_id: None,
+            },
+            None,
+        ))
+        .await
+        .expect("send clipboard message");
+        drop(tx);
+
+        run_clipboard_receive_loop::<tauri::test::MockRuntime>(rx, &usecase, None).await;
+
+        let logs = log_buffer.content();
+        assert!(
+            logs.contains("Inbound message has no origin_flow_id (sender may be an older version)"),
+            "expected warning log for missing origin_flow_id, got logs: {logs}"
+        );
     }
 
     #[tokio::test]

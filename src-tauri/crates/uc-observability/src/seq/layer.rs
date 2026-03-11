@@ -201,3 +201,52 @@ impl<'a> Visit for ClefLayerVisitor<'a> {
         );
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::SeqLayer;
+    use serde_json::Value;
+    use tokio::sync::mpsc;
+    use tracing::Level;
+    use tracing_subscriber::layer::SubscriberExt;
+
+    fn emit_event_and_collect(device_id: Option<&str>) -> Value {
+        let (tx, mut rx) = mpsc::channel(4);
+        let layer = SeqLayer::new(tx, device_id.map(ToString::to_string));
+        let subscriber = tracing_subscriber::registry().with(layer);
+
+        tracing::subscriber::with_default(subscriber, || {
+            tracing::event!(
+                target: "seq.layer.test",
+                Level::INFO,
+                message = "test event",
+                op = "emit"
+            );
+        });
+
+        let payload = rx
+            .try_recv()
+            .expect("SeqLayer should emit one CLEF JSON payload");
+        serde_json::from_str(&payload).expect("payload should be valid JSON")
+    }
+
+    #[test]
+    fn injects_device_id_when_layer_has_value() {
+        let json = emit_event_and_collect(Some("device-layer-123"));
+        assert_eq!(json["device_id"], "device-layer-123");
+    }
+
+    #[test]
+    fn uses_clef_field_name_device_id() {
+        let json = emit_event_and_collect(Some("device-clef-1"));
+        assert!(json.get("device_id").is_some());
+        assert!(json.get("deviceId").is_none());
+    }
+
+    #[test]
+    fn missing_device_id_is_handled_gracefully() {
+        let json = emit_event_and_collect(None);
+        assert_eq!(json["@m"], "test event");
+        assert_eq!(json["target"], "seq.layer.test");
+    }
+}

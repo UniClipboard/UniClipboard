@@ -48,6 +48,10 @@ pub struct ClipboardMessage {
     pub origin_device_name: String,
     /// Payload format version. Required in deserialization to reject messages with missing version.
     pub payload_version: ClipboardPayloadVersion,
+    /// Flow correlation ID from the originating capture pipeline.
+    /// Defaults to None for backward compatibility with older peers.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub origin_flow_id: Option<String>,
 }
 
 #[cfg(test)]
@@ -82,6 +86,7 @@ mod tests {
             origin_device_id: "dev-1".to_string(),
             origin_device_name: "Test Device".to_string(),
             payload_version: ClipboardPayloadVersion::V3,
+            origin_flow_id: None,
         };
 
         let json = serde_json::to_string(&message).expect("serialize message");
@@ -99,6 +104,7 @@ mod tests {
             origin_device_id: "dev-1".to_string(),
             origin_device_name: "Test Device".to_string(),
             payload_version: ClipboardPayloadVersion::V3,
+            origin_flow_id: None,
         };
 
         let json_str = serde_json::to_string(&message).expect("serialize message");
@@ -153,6 +159,41 @@ mod tests {
         assert!(
             result.is_err(),
             "missing payload_version should fail deserialization"
+        );
+    }
+
+    #[test]
+    fn origin_flow_id_defaults_to_none_when_missing_from_json() {
+        let json = r#"{
+            "id": "msg-compat",
+            "content_hash": "hash",
+            "encrypted_content": "aGVsbG8=",
+            "timestamp": "2024-01-01T00:00:00Z",
+            "origin_device_id": "dev-1",
+            "origin_device_name": "Device",
+            "payload_version": 3
+        }"#;
+        let msg: ClipboardMessage = serde_json::from_str(json).expect("backward compat");
+        assert!(msg.origin_flow_id.is_none());
+    }
+
+    #[test]
+    fn origin_flow_id_roundtrips_when_present() {
+        let msg = ClipboardMessage {
+            id: "test".to_string(),
+            content_hash: "h".to_string(),
+            encrypted_content: vec![],
+            timestamp: Utc::now(),
+            origin_device_id: "d".to_string(),
+            origin_device_name: "D".to_string(),
+            payload_version: ClipboardPayloadVersion::V3,
+            origin_flow_id: Some("01234567-89ab-cdef-0123-456789abcdef".to_string()),
+        };
+        let json = serde_json::to_string(&msg).unwrap();
+        let decoded: ClipboardMessage = serde_json::from_str(&json).unwrap();
+        assert_eq!(
+            decoded.origin_flow_id.as_deref(),
+            Some("01234567-89ab-cdef-0123-456789abcdef")
         );
     }
 

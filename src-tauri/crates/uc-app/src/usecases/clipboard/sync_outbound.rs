@@ -174,6 +174,7 @@ impl SyncOutboundClipboardUseCase {
             origin_device_id,
             origin_device_name,
             payload_version: ClipboardPayloadVersion::V3,
+            origin_flow_id: None,
         };
 
         // Clone values needed for parallel encryption block (to avoid &self borrow in tokio::join!)

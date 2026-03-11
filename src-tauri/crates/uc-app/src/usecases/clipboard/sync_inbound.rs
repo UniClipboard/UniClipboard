@@ -976,6 +976,7 @@ mod tests {
             origin_device_id: origin_device_id.to_string(),
             origin_device_name: "peer-device".to_string(),
             payload_version: ClipboardPayloadVersion::V3,
+            origin_flow_id: None,
         };
         (message, plaintext)
     }
@@ -1437,6 +1438,7 @@ mod tests {
             origin_device_id: "remote-1".to_string(),
             origin_device_name: "peer-device".to_string(),
             payload_version: ClipboardPayloadVersion::V3,
+            origin_flow_id: None,
         };
 
         let result = usecase
@@ -1571,6 +1573,7 @@ mod tests {
             origin_device_id: "remote-1".to_string(),
             origin_device_name: "peer-device".to_string(),
             payload_version: ClipboardPayloadVersion::V3,
+            origin_flow_id: None,
         };
 
         // No pre-decoded plaintext, so it will try the fallback decrypt path

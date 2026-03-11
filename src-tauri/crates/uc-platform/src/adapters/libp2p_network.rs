@@ -2621,6 +2621,7 @@ mod tests {
             origin_device_id: "peer-1".to_string(),
             origin_device_name: "Desk".to_string(),
             payload_version: ClipboardPayloadVersion::V3,
+            origin_flow_id: None,
         };
 
         handle_standard_message(
@@ -3216,6 +3217,7 @@ mod tests {
             origin_device_id: "device-a".to_string(),
             origin_device_name: "Adapter A".to_string(),
             payload_version: uc_core::network::protocol::ClipboardPayloadVersion::V3,
+            origin_flow_id: None,
         };
         // Use frame_to_bytes for the two-segment wire format (header + no trailing payload for this test)
         let payload: Arc<[u8]> = Arc::from(

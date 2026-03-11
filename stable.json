@@ -1,23 +1,23 @@
 {
-  "version": "0.2.2",
-  "notes": "## 0.2.2 - 2026-03-11\n\n### Features\n\n- Auto-follow active item when a new clipboard entry arrives: if the currently selected item is at the first position, the selection automatically moves to the new entry\n\n<!-- zh -->\n\n## 0.2.2 - 2026-03-11\n\n### 新功能\n\n- 新剪贴板条目到达时自动跟随：当前选中项在首位时，选中项会自动切换到最新条目",
-  "pub_date": "2026-03-11T03:14:00Z",
+  "version": "0.2.3",
+  "notes": "## 0.2.3 - 2026-03-11\n\n### Features\n\n- Add an automated release PR workflow to create release branches, bump versions, and generate changelog drafts\n- Add a merge-triggered tagging workflow to validate release versions and publish annotated tags automatically\n\n### Fixes\n\n- Tag releases from the exact PR merge commit to avoid tagging the wrong `main` revision\n- Preserve the final frame in settings page transitions to remove close-animation flashing\n- Reduce the settings sidebar width to provide more content space\n- Update the release prompt to use `docs/CHANGELOG_TEMPLATE.md`\n\n### Docs\n\n- Document the auto-PR release bot workflows and rollout plan\n\n<!-- zh -->\n\n## 0.2.3 - 2026-03-11\n\n### 新功能\n\n- 新增自动发布 PR 工作流：创建发布分支、提升版本并生成 changelog 草稿\n- 新增合并触发的打标工作流：校验发布版本并自动发布带注释标签\n\n### 修复\n\n- 从 PR 的精确合并提交创建标签，避免错误标记到 `main` 的其他提交\n- 保留设置页过渡动画的最终帧，消除关闭时闪烁\n- 缩窄设置页侧边栏宽度，为内容区域提供更多空间\n- 更新发布提示词路径为 `docs/CHANGELOG_TEMPLATE.md`\n\n### 文档\n\n- 补充自动发布 PR 机器人工作流与落地方案文档",
+  "pub_date": "2026-03-11T06:28:11Z",
   "platforms": {
     "linux-x86_64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVRNEoxeUdOZ2hvc2hwNHJzcy9FVmZkcGRjeGpGd3Y0cHA5Q2lnRHNHTm1VM0lURUk1ekoybmg2RVl6bXZsZkZGU3duN1VTZnFhdEZyeGcxUTB1T1UvajVmSmF4KzhnMEFJPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzczMTk4NTUwCWZpbGU6VW5pQ2xpcGJvYXJkXzAuMi4yX2FtZDY0LkFwcEltYWdlClkxa0hRSTUrN2YzL0xkSzBFditRcEJCZjIwN2FtbVgrcUxCSGs2MXZ2dFQvbUZaVHZiYW1uZitMZ1FxaGd3RlNRY3FVaXdlSmorRnpzUllhN0JhOUNnPT0K",
-      "url": "https://github.com/UniClipboard/UniClipboard/releases/download/v0.2.2/UniClipboard_0.2.2_amd64.AppImage"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVRNEoxeUdOZ2hvc3ZDWGd6dzJPQnJDcDNYVUpybjlNVWladVZZdU9tY05kcU9Ua21jRXZ0eEJhcFp2d25MU2V1NTZMU2JzY2JtSUNpSTFudjBLbU5wRVR0dUhzNWUzSmc0PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzczMjEwMTMxCWZpbGU6VW5pQ2xpcGJvYXJkXzAuMi4zX2FtZDY0LkFwcEltYWdlCm05RUVNeWlpRitxSEFWTVNUTGlVUHBDODBwREY5bnU5dU9sdVFQUGZ4aUQwN1EvM0s0ejIza3pLZnFpL3FMOEVxNXFscTR2emFCL3J5WnFRdWVoUkNBPT0K",
+      "url": "https://github.com/UniClipboard/UniClipboard/releases/download/v0.2.3/UniClipboard_0.2.3_amd64.AppImage"
     },
     "windows-x86_64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVRNEoxeUdOZ2hvc2cxRzJoRU1GOHUzZE1NU0RLamNTZ1BOWUhndHcwZWEySjAzMGFuY01nMWdwdVp2NGlyYjg1QktHWWIySm9CTXBTa2VycVdYOWJ3Nkg5eTg4emlmTUE0PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzczMTk4Nzc3CWZpbGU6VW5pQ2xpcGJvYXJkXzAuMi4yX3g2NC1zZXR1cC5leGUKZFI3dDF1dW9XcWhxWlVtbGhzZEdjdFpkMldqVFFFV2JJVGhlb2JIMFp0OWJ5M1k4SXFaRFBDcjRFODdrbDlqZ3F6RUNTQnlvRUV4b09oWmFPVWpaQnc9PQo=",
-      "url": "https://github.com/UniClipboard/UniClipboard/releases/download/v0.2.2/UniClipboard_0.2.2_x64-setup.exe"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVRNEoxeUdOZ2hvc29FQ1U4NEVPbGFuVUk1Q2NaT2NsN0x4Y1owYkcvMVZVcmhycW9ZMVFkR0srTk1UYTJmTWxHcEVLL0x1aHVtTldTa2Y2Q21zUE9ESnl6SFlrUkZtZkFvPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzczMjEwNDMxCWZpbGU6VW5pQ2xpcGJvYXJkXzAuMi4zX3g2NC1zZXR1cC5leGUKNElJMFg2dCtuQ3dBMVNuY1lNZGtCc1pkTDJFOTU0ZWxpbml0TjJWRjZ1YWZuQkE0dm5YMTBrTGhGVWUvT0JJRitRbE9jNjk2OHR4eG9uMUhWR1B4RGc9PQo=",
+      "url": "https://github.com/UniClipboard/UniClipboard/releases/download/v0.2.3/UniClipboard_0.2.3_x64-setup.exe"
     },
     "darwin-aarch64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVRNEoxeUdOZ2hvc3BJUXVyMUNLQjZRa3BkS0UyWXBYSlF3RE5ldTZjL0RiNTdFSy9raUdNWDlOa2hTdGw5cUN0YUtaMFRFN2tyNlBmdHBuNW5TMGVKaGRrWTlqc0J4a0FnPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzczMTk4NDIwCWZpbGU6VW5pQ2xpcGJvYXJkLmFwcC50YXIuZ3oKZEF4ZkdkMXRrZncvNDRvQTJ6bTM0WHg3aS95dVl2VmxHUEJTM2dUYTBoZTVUQ081UFhuWmg5YWdZNTZaRkcyeTljMURtanUzWnl3czFKU0JkTzR6Q3c9PQo=",
-      "url": "https://github.com/UniClipboard/UniClipboard/releases/download/v0.2.2/UniClipboard_aarch64-apple-darwin.app.tar.gz"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVRNEoxeUdOZ2hvc3NDRmZuYWVLWmxoSHVmclA3WERDdHB3elVuTDJOb2ZvekhNNXp2cys0R2FDcllmS3R4NWNTTE5kcGlWUFVBL2NRYXhGNU10RUJONFNHTmVzR0pkc1FZPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzczMjA5OTcwCWZpbGU6VW5pQ2xpcGJvYXJkLmFwcC50YXIuZ3oKbzVjcFlMR3JUU1BiUXB2TDR5Z1paT3E1dzJrOVQrajlkTmhqRGxoVEVCb2FXUHBjdmdIZGNjYVVxMGVaNzBLbmFEZGdmWFpvb2c4dG9QNDBtQUdQQVE9PQo=",
+      "url": "https://github.com/UniClipboard/UniClipboard/releases/download/v0.2.3/UniClipboard_aarch64-apple-darwin.app.tar.gz"
     },
     "darwin-x86_64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVRNEoxeUdOZ2hvc255QzJSQnhQeVJXczBmOUhmeTJhOHM4bURMNVBCKzRnRlFHc0FyeTY1NDRObzB6Rk5FVEZMQXVVMEtwcVFwUlNtankvSVQvUWY2bHplODVEbmljb0FrPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzczMTk4MzUwCWZpbGU6VW5pQ2xpcGJvYXJkLmFwcC50YXIuZ3oKaUwrL0ZmaE8rbVgxeDg5T3Z4c0M1TVdaQVljSVczZGk1bUFTT1c0L2pVVzd2Z2FuYzU5RDdyMWpmTFpPc2M4K3NqOWhvZ0pPOVpnSEl6aEJaMys1Q2c9PQo=",
-      "url": "https://github.com/UniClipboard/UniClipboard/releases/download/v0.2.2/UniClipboard_x86_64-apple-darwin.app.tar.gz"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVRNEoxeUdOZ2hvc29MQlBXRnpNc2VPVjIxWThqcUh0aEtiNGVELzc1TFV5YnhHRWlYbUlPeFBWVjkvRG83aElWMUpDbE43K1ZHTE0wbndJc25TMW9mYVpHVWdldkZXckFnPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzczMjA5OTMzCWZpbGU6VW5pQ2xpcGJvYXJkLmFwcC50YXIuZ3oKWGh0aUMwb2VGYk5yOThvWjZ0UkQrYUZQNkwxUFpZK2NmcWl2TDkzVWJWMkNwajlSWFArQWxkZFB1bWk0RUpDalFOM1I2ay9RRWFLL1dDU2dYRjRoRHc9PQo=",
+      "url": "https://github.com/UniClipboard/UniClipboard/releases/download/v0.2.3/UniClipboard_x86_64-apple-darwin.app.tar.gz"
     }
   }
 }

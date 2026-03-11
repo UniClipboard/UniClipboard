@@ -30,6 +30,8 @@ const NOISE_FILTERS: &[&str] = &[
     "tauri=warn",
     "wry=off",
     "ipc::request=off",
+    "hyper_util=info",
+    "hyper=info",
 ];
 
 impl LogProfile {
@@ -255,6 +257,14 @@ mod tests {
             assert!(
                 directives.contains("ipc::request=off"),
                 "Missing ipc::request=off in {profile}"
+            );
+            assert!(
+                directives.contains("hyper_util=info"),
+                "Missing hyper_util=info in {profile}"
+            );
+            assert!(
+                directives.contains("hyper=info"),
+                "Missing hyper=info in {profile}"
             );
         }
     }

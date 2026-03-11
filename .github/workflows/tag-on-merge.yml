@@ -1,0 +1,85 @@
+name: Tag on Release PR Merge
+run-name: tag-${{ github.event.pull_request.head.ref }}
+
+on:
+  pull_request:
+    types: [closed]
+    branches: [main]
+
+jobs:
+  tag-release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    if: >-
+      github.event.pull_request.merged == true &&
+      startsWith(github.event.pull_request.head.ref, 'release/v')
+    steps:
+      - name: Extract version from branch name
+        id: extract
+        run: |
+          BRANCH="${{ github.event.pull_request.head.ref }}"
+          VERSION="${BRANCH#release/v}"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Extracted version: $VERSION"
+
+      - name: Checkout main at merge commit
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          token: ${{ secrets.REPO_BOT_TOKEN }}
+          fetch-depth: 0
+
+      - name: Validate version matches package.json
+        run: |
+          VERSION="${{ steps.extract.outputs.version }}"
+          PKG_VERSION=$(node -p "require('./package.json').version")
+          if [ "$VERSION" != "$PKG_VERSION" ]; then
+            echo "Error: Branch version ($VERSION) does not match package.json version ($PKG_VERSION)"
+            exit 1
+          fi
+          echo "Version validated: $VERSION"
+
+      - name: Check tag does not already exist
+        run: |
+          VERSION="${{ steps.extract.outputs.version }}"
+          if git tag -l "v${VERSION}" | grep -q "v${VERSION}"; then
+            echo "Error: Tag v${VERSION} already exists"
+            exit 1
+          fi
+          echo "Tag v${VERSION} does not exist, proceeding"
+
+      - name: Create annotated tag
+        run: |
+          VERSION="${{ steps.extract.outputs.version }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -a "v${VERSION}" -m "Release v${VERSION}"
+
+      - name: Push tag
+        run: |
+          VERSION="${{ steps.extract.outputs.version }}"
+          git push origin "v${VERSION}"
+          echo "Pushed tag v${VERSION} — this will trigger the Release workflow"
+
+      - name: Delete release branch
+        continue-on-error: true
+        run: |
+          VERSION="${{ steps.extract.outputs.version }}"
+          git push origin --delete "release/v${VERSION}"
+          echo "Deleted branch release/v${VERSION}"
+
+      - name: Summary
+        run: |
+          VERSION="${{ steps.extract.outputs.version }}"
+          echo "## Release Tag Created" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Tag:** v${VERSION}" >> $GITHUB_STEP_SUMMARY
+          echo "**Commit:** ${{ github.event.pull_request.merge_commit_sha }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "The tag push has triggered the [Release workflow](https://github.com/${{ github.repository }}/actions/workflows/release.yml)." >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### What happens next" >> $GITHUB_STEP_SUMMARY
+          echo "1. The Release workflow builds artifacts for all platforms" >> $GITHUB_STEP_SUMMARY
+          echo "2. A draft GitHub Release is created with the built artifacts" >> $GITHUB_STEP_SUMMARY
+          echo "3. Review and publish the release when ready" >> $GITHUB_STEP_SUMMARY

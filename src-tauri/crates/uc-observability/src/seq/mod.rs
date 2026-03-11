@@ -32,7 +32,11 @@ use crate::profile::LogProfile;
 /// # Arguments
 ///
 /// * `profile` - The [`LogProfile`] controlling filter verbosity
-pub fn build_seq_layer<S>(profile: &LogProfile) -> Option<(impl Layer<S> + Send + Sync, SeqGuard)>
+/// * `device_id` - Optional device identifier for cross-device log correlation
+pub fn build_seq_layer<S>(
+    profile: &LogProfile,
+    device_id: Option<&str>,
+) -> Option<(impl Layer<S> + Send + Sync, SeqGuard)>
 where
     S: Subscriber + for<'a> LookupSpan<'a>,
 {
@@ -49,7 +53,7 @@ where
 
     let handle = tokio::spawn(sender::sender_loop(rx, shutdown_rx, client, url, api_key));
 
-    let seq_layer = layer::SeqLayer::new(tx);
+    let seq_layer = layer::SeqLayer::new(tx, device_id.map(String::from));
     let guard = SeqGuard::new(shutdown_tx, handle);
 
     let filtered_layer = seq_layer.with_filter(profile.json_filter());
@@ -71,7 +75,7 @@ mod tests {
         std::env::remove_var("UC_SEQ_API_KEY");
         std::env::remove_var("RUST_LOG");
 
-        let result = build_seq_layer::<tracing_subscriber::Registry>(&LogProfile::Dev);
+        let result = build_seq_layer::<tracing_subscriber::Registry>(&LogProfile::Dev, None);
         assert!(
             result.is_none(),
             "Should return None when UC_SEQ_URL is not set"
@@ -85,7 +89,7 @@ mod tests {
         std::env::remove_var("UC_SEQ_API_KEY");
         std::env::remove_var("RUST_LOG");
 
-        let result = build_seq_layer::<tracing_subscriber::Registry>(&LogProfile::Dev);
+        let result = build_seq_layer::<tracing_subscriber::Registry>(&LogProfile::Dev, None);
         assert!(
             result.is_none(),
             "Should return None when UC_SEQ_URL is empty"

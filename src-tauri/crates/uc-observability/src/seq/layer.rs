@@ -25,11 +25,12 @@ fn tracing_level_to_clef(level: &tracing::Level) -> &'static str {
 /// to the background Seq sender via an mpsc channel.
 pub(crate) struct SeqLayer {
     tx: mpsc::Sender<String>,
+    device_id: Option<String>,
 }
 
 impl SeqLayer {
-    pub(crate) fn new(tx: mpsc::Sender<String>) -> Self {
-        Self { tx }
+    pub(crate) fn new(tx: mpsc::Sender<String>, device_id: Option<String>) -> Self {
+        Self { tx, device_id }
     }
 }
 
@@ -39,7 +40,7 @@ where
 {
     fn on_event(&self, event: &tracing::Event<'_>, ctx: tracing_subscriber::layer::Context<'_, S>) {
         // Format event as CLEF JSON
-        let clef_json = match format_clef_event(event, &ctx) {
+        let clef_json = match format_clef_event(event, &ctx, self.device_id.as_deref()) {
             Some(json) => json,
             None => return,
         };
@@ -53,6 +54,7 @@ where
 fn format_clef_event<S>(
     event: &tracing::Event<'_>,
     ctx: &tracing_subscriber::layer::Context<'_, S>,
+    device_id: Option<&str>,
 ) -> Option<String>
 where
     S: Subscriber + for<'lookup> LookupSpan<'lookup>,
@@ -84,6 +86,11 @@ where
     // target
     map.serialize_entry("target", event.metadata().target())
         .ok()?;
+
+    // device_id - static field for cross-device log correlation
+    if let Some(did) = device_id {
+        map.serialize_entry("device_id", did).ok()?;
+    }
 
     // Span fields - we need to manually walk the span scope since we have a Layer context
     // not a FmtContext. We use the same logic as collect_span_fields but adapted for Layer context.

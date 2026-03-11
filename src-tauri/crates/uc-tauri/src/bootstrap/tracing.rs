@@ -16,6 +16,7 @@
 //!
 //! Call `init_tracing_subscriber()` in `main.rs` **before** Tauri Builder setup.
 
+use std::path::Path;
 use std::sync::OnceLock;
 
 use tracing_subscriber::prelude::*;
@@ -31,6 +32,19 @@ static SEQ_GUARD: OnceLock<SeqGuard> = OnceLock::new();
 /// Needed because `init_tracing_subscriber` runs before Tauri's async runtime
 /// is available. The runtime is kept alive as long as this static exists.
 static SEQ_RUNTIME: OnceLock<tokio::runtime::Runtime> = OnceLock::new();
+
+/// Resolve device_id from config directory for Seq cross-device correlation.
+///
+/// Reads device identifier from `{config_dir}/device_id.txt` if it exists.
+/// Returns `None` if the file doesn't exist (first launch graceful degradation).
+fn resolve_device_id_for_seq(config_dir: &Path) -> Option<String> {
+    let device_id_path = config_dir.join("device_id.txt");
+    std::fs::read_to_string(&device_id_path)
+        .ok()?
+        .trim()
+        .to_string()
+        .into()
+}
 
 /// Initialize the tracing subscriber with dual-output and optional Sentry.
 ///
@@ -53,6 +67,9 @@ pub fn init_tracing_subscriber() -> anyhow::Result<()> {
     let app_dirs = DirsAppDirsAdapter::new().get_app_dirs()?;
     let paths = AppPaths::from_app_dirs(&app_dirs);
     std::fs::create_dir_all(&paths.logs_dir)?;
+
+    // Step 1b: Resolve device_id for Seq cross-device correlation
+    let device_id = resolve_device_id_for_seq(&app_dirs.app_data_root);
 
     // Step 2: Select log profile
     let profile = LogProfile::from_env();
@@ -97,7 +114,8 @@ pub fn init_tracing_subscriber() -> anyhow::Result<()> {
             .enable_all()
             .build()?;
 
-        let layer_result = rt.block_on(async { uc_observability::build_seq_layer(&profile) });
+        let layer_result = rt
+            .block_on(async { uc_observability::build_seq_layer(&profile, device_id.as_deref()) });
 
         match layer_result {
             Some((layer, guard)) => {

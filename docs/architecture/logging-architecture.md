@@ -840,6 +840,90 @@ docker compose -f docker-compose.seq.yml down        # Stop and remove container
 docker compose -f docker-compose.seq.yml down -v      # Stop and remove container + data volume
 ```
 
+## Cross-Device Tracing
+
+UniClipboard provides end-to-end observability for cross-device clipboard synchronization. Each CLEF event includes device correlation fields that enable tracking clipboard content from capture on one device through delivery to another device.
+
+### Device ID Injection
+
+Every tracing event from the clipboard pipeline includes the `device_id` field, which identifies the device that generated the event:
+
+```json
+{
+  "@t": "2026-03-11T10:30:45.123456Z",
+  "@l": "Information",
+  "@m": "Clipboard content captured",
+  "flow_id": "01958a3b-0000-0000-0000-000000000001",
+  "stage": "detect",
+  "device_id": "device-abc-123"
+}
+```
+
+This field is automatically injected at the command/loop layer and propagates through all child spans in the clipboard pipeline.
+
+### Origin Flow ID Linking
+
+When clipboard content is sent from one device to another, the sender's `flow_id` is preserved as `origin_flow_id` on the receiver. This creates a traceable link between the sender's clipboard capture and the receiver's application:
+
+```
+Sender Device                          Receiver Device
+┌─────────────────────────┐           ┌─────────────────────────┐
+│ flow_id: abc-001        │ ────────► │ origin_flow_id: abc-001  │
+│ stage: capture          │           │ flow_id: def-002         │
+│ device_id: sender-123   │           │ stage: inbound_apply     │
+└─────────────────────────┘           │ device_id: receiver-456  │
+                                       └─────────────────────────┘
+```
+
+This linking enables:
+
+- Querying all events related to a single cross-device clipboard operation
+- Understanding end-to-end latency from sender capture to receiver application
+- Identifying which device originated the content
+
+### Seq Signal Queries
+
+Pre-configured Seq signal files are provided for common cross-device observability patterns:
+
+| Signal File              | Purpose                            | Query                                 |
+| ------------------------ | ---------------------------------- | ------------------------------------- |
+| `flow-timeline.json`     | View all stages of a specific flow | `Has(flow_id)`                        |
+| `cross-device-flow.json` | View complete cross-device journey | `Has(flow_id) or Has(origin_flow_id)` |
+
+These files are located in `docs/seq/signals/` and can be imported into Seq as saved searches.
+
+**Usage:**
+
+1. Start Seq: `docker compose -f docker-compose.seq.yml up -d`
+2. Set `UC_SEQ_URL=http://localhost:5341`
+3. Run the application and trigger clipboard sync between devices
+4. In Seq UI, use the saved searches or manually query:
+   - `origin_flow_id = '01958a3b-...'` - Find all receiver events for a sender's flow
+   - `origin_device_id = 'device-abc-123'` - Find all clipboard content from a specific device
+
+### Graceful Degradation
+
+When receiving messages from older peer devices that don't send `origin_flow_id`, the application logs a warning but continues processing:
+
+```
+WARN loop.clipboard.receive_message: Inbound message has no origin_flow_id (sender may be an older version)
+```
+
+This ensures backward compatibility while providing visibility into potential sync issues with legacy versions.
+
+### LAN Access Configuration
+
+For testing cross-device tracing on a local network, update `docker-compose.seq.yml` to bind Seq to all network interfaces:
+
+```yaml
+services:
+  seq:
+    ports:
+      - '0.0.0.0:5341:5341' # Bind to all interfaces, not just localhost
+```
+
+Then set `UC_SEQ_URL=http://<your-local-ip>:5341` on each device to send events to the centralized Seq instance.
+
 ## References
 
 - [Tracing Crate Documentation](https://docs.rs/tracing/)

@@ -1,0 +1,16 @@
+# Local Seq instance for UniClipboard log visualization
+# Usage: docker compose -f docker-compose.seq.yml up -d
+# UI: http://localhost:5341
+# Ingestion: http://localhost:5341/ingest/clef
+services:
+  seq:
+    image: datalust/seq:2024.3
+    restart: unless-stopped
+    environment:
+      ACCEPT_EULA: 'Y'
+    ports:
+      - '5341:80'
+    volumes:
+      - seq-data:/data
+volumes:
+  seq-data:

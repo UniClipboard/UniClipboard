@@ -7,9 +7,10 @@
 //! ## Architecture
 //!
 //! - **uc-observability** provides `build_console_layer` + `build_json_layer`
-//!   (profile-driven, dual-output: pretty console + flat JSON file)
-//! - **This module** adds the Sentry layer on top and registers the composed
-//!   subscriber via `try_init()`
+//!   (profile-driven, dual-output: pretty console + flat JSON file) and
+//!   `build_seq_layer` (optional CLEF ingestion to a local Seq instance)
+//! - **This module** adds the Sentry layer on top, optionally wires Seq, and
+//!   registers the composed subscriber via `try_init()`
 //!
 //! ## Call Site
 //!
@@ -19,12 +20,17 @@ use std::sync::OnceLock;
 
 use tracing_subscriber::prelude::*;
 use uc_app::app_paths::AppPaths;
-use uc_observability::{LogProfile, WorkerGuard};
+use uc_observability::{LogProfile, SeqGuard, WorkerGuard};
 use uc_platform::app_dirs::DirsAppDirsAdapter;
 use uc_platform::ports::AppDirsPort;
 
 static SENTRY_GUARD: OnceLock<sentry::ClientInitGuard> = OnceLock::new();
 static JSON_GUARD: OnceLock<WorkerGuard> = OnceLock::new();
+static SEQ_GUARD: OnceLock<SeqGuard> = OnceLock::new();
+/// Dedicated tokio runtime for the Seq background sender task.
+/// Needed because `init_tracing_subscriber` runs before Tauri's async runtime
+/// is available. The runtime is kept alive as long as this static exists.
+static SEQ_RUNTIME: OnceLock<tokio::runtime::Runtime> = OnceLock::new();
 
 /// Initialize the tracing subscriber with dual-output and optional Sentry.
 ///
@@ -81,17 +87,54 @@ pub fn init_tracing_subscriber() -> anyhow::Result<()> {
         anyhow::bail!("JSON log guard already initialized");
     }
 
+    // Step 4b: Build Seq layer (if UC_SEQ_URL is set)
+    // build_seq_layer uses tokio::spawn internally, so we need a runtime.
+    // Since this runs before Tauri's async runtime, we create a dedicated one.
+    let seq_enabled;
+    let seq_layer = if std::env::var("UC_SEQ_URL").is_ok() {
+        let rt = tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(1)
+            .enable_all()
+            .build()?;
+
+        let layer_result = rt.block_on(async { uc_observability::build_seq_layer(&profile) });
+
+        match layer_result {
+            Some((layer, guard)) => {
+                seq_enabled = true;
+                if SEQ_GUARD.set(guard).is_err() {
+                    eprintln!("Seq guard already initialized");
+                }
+                // Keep the runtime alive so the background sender task continues
+                if SEQ_RUNTIME.set(rt).is_err() {
+                    eprintln!("Seq runtime already initialized");
+                }
+                Some(layer)
+            }
+            None => {
+                seq_enabled = false;
+                None
+            }
+        }
+    } else {
+        seq_enabled = false;
+        None
+    };
+
     // Step 5: Compose all layers and register
     tracing_subscriber::registry()
         .with(sentry_layer)
         .with(console_layer)
         .with(json_layer)
+        .with(seq_layer)
         .try_init()?;
 
     tracing::info!(
         profile = %profile,
         logs_dir = %paths.logs_dir.display(),
-        "Tracing initialized with dual output (console + JSON)"
+        seq_enabled = seq_enabled,
+        "Tracing initialized with dual output (console + JSON{})",
+        if seq_enabled { " + Seq" } else { "" }
     );
 
     Ok(())

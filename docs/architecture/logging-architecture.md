@@ -685,15 +685,173 @@ pub async fn get_entries(&self) -> Result<Vec<Entry>> {
 - Set appropriate levels for each layer
 - Use environment-specific filtering in production
 
+## Seq Integration (Local Visualization)
+
+### Overview
+
+[Seq](https://datalust.co/seq) is a structured log server that provides a rich web UI for searching, filtering, and visualizing structured log events. UniClipboard can stream tracing events to a local Seq instance in real time using the [CLEF](https://clef-json.org/) (Compact Log Event Format) ingestion protocol.
+
+Key capabilities when using Seq:
+
+- **Full-text search** across all log fields
+- **Filter by flow_id** to see all stages of a single clipboard operation in time order
+- **Filter by stage** to see all events at a particular pipeline stage
+- **Time-ordered views** showing event sequences with microsecond precision
+- **Dashboard creation** for monitoring clipboard operations
+
+### Quick Start
+
+**1. Start a local Seq instance:**
+
+```bash
+docker compose -f docker-compose.seq.yml up -d
+```
+
+**2. Set the Seq URL environment variable:**
+
+```bash
+export UC_SEQ_URL=http://localhost:5341
+```
+
+**3. Start the application:**
+
+```bash
+bun tauri dev
+```
+
+Events will begin streaming to Seq immediately. Open [http://localhost:5341](http://localhost:5341) to view them.
+
+### Configuration
+
+| Variable         | Purpose                        | Required | Default    |
+| ---------------- | ------------------------------ | -------- | ---------- |
+| `UC_SEQ_URL`     | Seq server URL for CLEF ingest | Yes      | Not set    |
+| `UC_SEQ_API_KEY` | API key for Seq authentication | No       | Not needed |
+
+- When `UC_SEQ_URL` is **not set**, the Seq layer is completely disabled with zero overhead.
+- When `UC_SEQ_URL` is set, events are formatted as CLEF JSON and sent to `{UC_SEQ_URL}/ingest/clef` via HTTP POST.
+- `UC_SEQ_API_KEY` is only needed if your Seq instance requires authentication (not needed for local development).
+
+### Querying Flows in Seq
+
+Once events are flowing, use Seq's filter bar to query specific clipboard flows:
+
+**Find all events for a specific flow:**
+
+```
+Has(flow_id)
+```
+
+**Filter by a specific flow ID:**
+
+```
+flow_id = 'your-flow-id-here'
+```
+
+**Filter by flow and stage:**
+
+```
+flow_id = 'your-flow-id-here' and stage = 'normalize'
+```
+
+**Find all events at a specific stage:**
+
+```
+stage = 'persist_event'
+```
+
+**See all clipboard capture flows:**
+
+```
+Has(flow_id) and stage = 'detect'
+```
+
+**Tip:** Click on any `flow_id` value in the Seq UI event detail panel, then select "Find" to automatically filter to that flow.
+
+### Architecture
+
+The Seq integration uses a non-blocking pipeline to avoid impacting application performance:
+
+```
+tracing event
+  -> SeqLayer (formats as CLEF JSON string)
+  -> mpsc channel (1024 buffer)
+  -> background sender_loop (batches by count=100 or time=2s)
+  -> HTTP POST to /ingest/clef
+```
+
+- **SeqLayer** implements the `tracing_subscriber::Layer` trait directly
+- Events are formatted using **CLEFFormat** which produces Seq-compatible CLEF JSON
+- An mpsc channel decouples the hot tracing path from network I/O
+- The **background sender** batches events (up to 100 or every 2 seconds) and POSTs them to Seq
+- **SeqGuard** ensures remaining events are flushed on application shutdown
+
+### CLEF Format
+
+Events are sent as newline-delimited CLEF JSON. Each line contains:
+
+```json
+{
+  "@t": "2026-03-11T10:30:45.123456Z",
+  "@l": "Information",
+  "@m": "Clipboard content captured",
+  "flow_id": "01958a3b-...",
+  "stage": "detect",
+  "device_id": "abc-123",
+  "span": "usecase.capture_clipboard.execute"
+}
+```
+
+| Field      | Description                                                        |
+| ---------- | ------------------------------------------------------------------ |
+| `@t`       | Timestamp in ISO 8601 UTC with microsecond precision               |
+| `@l`       | Seq log level (Verbose, Debug, Information, Warning, Error, Fatal) |
+| `@m`       | Log message                                                        |
+| `flow_id`  | Clipboard operation correlation ID (UUID v7)                       |
+| `stage`    | Pipeline stage name (detect, normalize, etc.)                      |
+| _(fields)_ | All span fields flattened to top level                             |
+
+### Troubleshooting
+
+**Events not appearing in Seq:**
+
+1. Verify `UC_SEQ_URL` is set: `echo $UC_SEQ_URL`
+2. Verify Seq is running: `docker compose -f docker-compose.seq.yml ps`
+3. Verify Seq is reachable: `curl -s http://localhost:5341/api` (should return JSON)
+4. Check the application terminal for "Tracing initialized with dual output (console + JSON + Seq)" log line
+5. If the log says just "(console + JSON)" without "+ Seq", the environment variable was not set before app startup
+
+**Seq container not starting:**
+
+1. Ensure Docker is running
+2. Check port 5341 is not already in use: `lsof -i :5341`
+3. Check container logs: `docker compose -f docker-compose.seq.yml logs seq`
+
+**Events appearing but missing flow_id:**
+
+1. Ensure you are triggering a clipboard capture (copy something)
+2. Not all events have `flow_id` -- only clipboard pipeline events carry it
+3. Use `Has(flow_id)` in Seq to filter to only flow-correlated events
+
+**Stopping Seq:**
+
+```bash
+docker compose -f docker-compose.seq.yml down        # Stop and remove container (data persists)
+docker compose -f docker-compose.seq.yml down -v      # Stop and remove container + data volume
+```
+
 ## References
 
 - [Tracing Crate Documentation](https://docs.rs/tracing/)
 - [Tracing Subscriber Documentation](https://docs.rs/tracing-subscriber/)
 - [Tauri Plugin Log Documentation](https://v2.tauri.app/plugin/logging/)
+- [Seq Documentation](https://docs.datalust.co/docs)
+- [CLEF Format Specification](https://clef-json.org/)
 - Source:
-  - `src-tauri/crates/uc-observability/` (profile, format, init)
-  - `src-tauri/crates/uc-tauri/src/bootstrap/tracing.rs` (Sentry + uc-observability composition)
+  - `src-tauri/crates/uc-observability/` (profile, format, init, seq, clef_format)
+  - `src-tauri/crates/uc-tauri/src/bootstrap/tracing.rs` (Sentry + Seq + uc-observability composition)
   - `src-tauri/crates/uc-tauri/src/bootstrap/logging.rs` (legacy log plugin, Webview + stdout)
+  - `docker-compose.seq.yml` (local Seq instance)
 - Guides:
   - [Tracing Usage Guide](../guides/tracing.md)
   - [Coding Standards](../guides/coding-standards.md)

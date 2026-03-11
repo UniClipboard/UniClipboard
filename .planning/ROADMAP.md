@@ -39,7 +39,7 @@ See: `.planning/milestones/v0.2.0-ROADMAP.md`
 - [x] **Phase 19: Dual Output Logging Foundation** - Establish structured dual-output logging, profiles, and configuration-controlled activation. (completed 2026-03-10)
 - [x] **Phase 20: Clipboard Capture Flow Correlation** - Correlate a single clipboard capture across spans, stages, layers, and spawned work. (gap closure in progress) (completed 2026-03-10)
 - [x] **Phase 21: Sync Flow Correlation** - Extend the same flow model to inbound and outbound sync activity on a device. (completed 2026-03-11)
-- [ ] **Phase 22: Seq Local Visualization** - Deliver configurable Seq ingestion and searchable flow visualization for local developer debugging.
+- [x] **Phase 22: Seq Local Visualization** - Deliver configurable Seq ingestion and searchable flow visualization for local developer debugging. (completed 2026-03-11)
 
 ## Phase Details
 
@@ -105,7 +105,7 @@ Plans:
 **Goal**: Developers can stream structured events into a local Seq instance and query a single flow as an ordered sequence of stages.
 **Depends on**: Phase 21
 **Requirements**: SEQ-01, SEQ-02, SEQ-03, SEQ-04, SEQ-05, SEQ-06
-**Plans:** 1/2 plans executed
+**Plans:** 2/2 plans complete
 
 Plans:
 
@@ -129,4 +129,4 @@ Plans:
 | 19. Dual Output Logging Foundation     | 2/2       | Complete       | 2026-03-10 | -          |
 | 20. Clipboard Capture Flow Correlation | 3/3       | Complete       | 2026-03-10 | -          |
 | 21. Sync Flow Correlation              | 2/2       | Complete       | 2026-03-11 | -          |
-| 22. Seq Local Visualization            | 1/2       | In Progress    |            | -          |
+| 22. Seq Local Visualization            | 2/2       | Complete       | 2026-03-11 | -          |

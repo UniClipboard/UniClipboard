@@ -29,7 +29,7 @@ Requirements for v0.3.0 Log Observability. Each will be mapped to roadmap phases
 - [x] **SEQ-03**: The Seq Layer batches events and flushes asynchronously so that log ingestion does not block the main application execution path.
 - [x] **SEQ-04**: Events ingested into Seq include `flow_id` and `stage` fields, allowing developers to query and follow a single clipboard capture or sync flow.
 - [x] **SEQ-05**: Seq configuration (endpoint URL and API key, if needed) can be set via configuration (env var or settings) with sensible defaults for local development.
-- [ ] **SEQ-06**: Seq displays clipboard capture flows as time-ordered sequences of stages for a given `flow_id`, either via trace/waterfall view or equivalent queryable structure.
+- [x] **SEQ-06**: Seq displays clipboard capture flows as time-ordered sequences of stages for a given `flow_id`, either via trace/waterfall view or equivalent queryable structure.
 
 ## v2 Requirements
 
@@ -74,7 +74,7 @@ Which phases cover which requirements.
 | SEQ-03      | Phase 22 | Complete |
 | SEQ-04      | Phase 22 | Complete |
 | SEQ-05      | Phase 22 | Complete |
-| SEQ-06      | Phase 22 | Pending  |
+| SEQ-06      | Phase 22 | Complete |
 
 **Coverage:**
 

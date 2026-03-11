@@ -68,10 +68,23 @@ pub(crate) async fn sender_loop(
 
     loop {
         tokio::select! {
-            Some(event) = rx.recv() => {
-                batch.push(event);
-                if batch.len() >= 100 {
-                    flush_batch(&client, &url, &api_key, &mut batch).await;
+            msg = rx.recv() => {
+                match msg {
+                    Some(event) => {
+                        batch.push(event);
+                        if batch.len() >= 100 {
+                            flush_batch(&client, &url, &api_key, &mut batch).await;
+                        }
+                    }
+                    None => {
+                        while let Ok(event) = rx.try_recv() {
+                            batch.push(event);
+                        }
+                        if !batch.is_empty() {
+                            flush_batch(&client, &url, &api_key, &mut batch).await;
+                        }
+                        return;
+                    }
                 }
             }
             _ = interval.tick() => {
@@ -214,5 +227,31 @@ mod tests {
             .await
             .expect("should complete")
             .expect("should not panic");
+    }
+
+    #[tokio::test]
+    async fn test_sender_exits_when_channel_closes() {
+        let (tx, rx) = mpsc::channel(1024);
+        let (_shutdown_tx, shutdown_rx) = oneshot::channel();
+
+        let client = reqwest::Client::new();
+
+        let handle = tokio::spawn(sender_loop(
+            rx,
+            shutdown_rx,
+            client,
+            "http://127.0.0.1:1".to_string(),
+            None,
+        ));
+
+        tx.send(r#"{"@m":"event before close"}"#.to_string())
+            .await
+            .unwrap();
+        drop(tx);
+
+        tokio::time::timeout(Duration::from_secs(5), handle)
+            .await
+            .expect("sender_loop should exit when channel closes")
+            .expect("sender_loop should not panic");
     }
 }

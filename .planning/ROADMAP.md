@@ -4,7 +4,7 @@
 
 - ✅ **v0.1.0 Daily Driver** - Phases 1-9 (shipped 2026-03-06)
 - ✅ **v0.2.0 Architecture Remediation** - Phases 10-18 (shipped 2026-03-09)
-- 📋 **v0.3.0 Log Observability** - Phases 19-22 (planned)
+- 📋 **v0.3.0 Log Observability** - Phases 19-23 (in progress)
 
 ## Phases
 
@@ -32,14 +32,15 @@ See: `.planning/milestones/v0.2.0-ROADMAP.md`
 
 </details>
 
-### 📋 v0.3.0 Log Observability (Planned)
+### 📋 v0.3.0 Log Observability (In Progress)
 
-**Milestone Goal:** Make the clipboard capture pipeline fully observable with structured logging, dual output, and Seq-based local visualization.
+**Milestone Goal:** Make the clipboard capture pipeline fully observable with structured logging, dual output, Seq-based local visualization, and cross-device tracing.
 
 - [x] **Phase 19: Dual Output Logging Foundation** - Establish structured dual-output logging, profiles, and configuration-controlled activation. (completed 2026-03-10)
 - [x] **Phase 20: Clipboard Capture Flow Correlation** - Correlate a single clipboard capture across spans, stages, layers, and spawned work. (gap closure in progress) (completed 2026-03-10)
 - [x] **Phase 21: Sync Flow Correlation** - Extend the same flow model to inbound and outbound sync activity on a device. (completed 2026-03-11)
 - [x] **Phase 22: Seq Local Visualization** - Deliver configurable Seq ingestion and searchable flow visualization for local developer debugging. (completed 2026-03-11)
+- [ ] **Phase 23: Distributed Tracing** - Enable cross-device tracing with device_id injection and Seq saved searches. (in progress)
 
 ## Phase Details
 
@@ -120,13 +121,33 @@ Plans:
 4. Developers can query a single `flow_id` in Seq and see the related capture or sync stages in time order.
 5. Local Seq defaults are sensible enough that developers can get observability working with minimal setup, while still supporting explicit endpoint and API key overrides.
 
+### Phase 23: Distributed Tracing with Trace View Visualization
+
+**Goal:** Enable cross-device tracing by injecting device_id into every Seq event and providing Seq saved searches for flow correlation across devices.
+**Depends on:** Phase 22
+**Plans:** 2/2 plans
+
+Plans:
+
+- [x] 23-01-PLAN.md — Inject device_id into SeqLayer, early resolution from device_id.txt, update docker-compose for LAN access
+- [x] 23-02-PLAN.md — Create Seq signal configs, add graceful degradation warning, extend documentation
+
+**Success Criteria** (what must be TRUE):
+
+1. Every CLEF event sent to Seq includes device_id field from the sending device.
+2. Developers can query Seq for all events from a specific device using device_id field.
+3. Developers can query Seq for cross-device flows by filtering on flow_id OR origin_flow_id.
+4. Seq is accessible from LAN devices for cross-device testing (docker-compose binds to 0.0.0.0).
+5. Older peer messages without origin_flow_id are handled gracefully with warning logs.
+
 ## Progress
 
-| Phase                                  | Milestone | Plans Complete | Status     | Completed  |
-| -------------------------------------- | --------- | -------------- | ---------- | ---------- |
-| 1-9                                    | v0.1.0    | 17/17          | Complete   | 2026-03-06 |
-| 10-18                                  | v0.2.0    | 22/22          | Complete   | 2026-03-09 |
-| 19. Dual Output Logging Foundation     | 2/2       | Complete       | 2026-03-10 | -          |
-| 20. Clipboard Capture Flow Correlation | 3/3       | Complete       | 2026-03-10 | -          |
-| 21. Sync Flow Correlation              | 2/2       | Complete       | 2026-03-11 | -          |
-| 22. Seq Local Visualization            | 2/2       | Complete       | 2026-03-11 | -          |
+| Phase                                  | Milestone | Plans Complete | Status      | Completed  |
+| -------------------------------------- | --------- | -------------- | ----------- | ---------- |
+| 1-9                                    | v0.1.0    | 17/17          | Complete    | 2026-03-06 |
+| 10-18                                  | v0.2.0    | 22/22          | Complete    | 2026-03-09 |
+| 19. Dual Output Logging Foundation     | v0.3.0    | 2/2            | Complete    | 2026-03-10 |
+| 20. Clipboard Capture Flow Correlation | v0.3.0    | 3/3            | Complete    | 2026-03-10 |
+| 21. Sync Flow Correlation              | v0.3.0    | 2/2            | Complete    | 2026-03-11 |
+| 22. Seq Local Visualization            | v0.3.0    | 2/2            | Complete    | 2026-03-11 |
+| 23. Distributed Tracing                | v0.3.0    | 2/2            | In Progress | -          |

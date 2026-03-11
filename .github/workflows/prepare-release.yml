@@ -1,0 +1,210 @@
+name: Prepare Release
+run-name: prepare-release-v${{ inputs.version || inputs.bump }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Exact semver version (e.g. 0.3.0, no "v" prefix). Leave empty to use bump type.'
+        required: false
+        type: string
+        default: ''
+      bump:
+        description: 'Version bump type (used only if version is empty)'
+        required: false
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+        default: patch
+      channel:
+        description: 'Release channel'
+        required: false
+        type: choice
+        options:
+          - stable
+          - alpha
+          - beta
+          - rc
+        default: stable
+      base_branch:
+        description: 'Branch to base the release off'
+        required: false
+        type: string
+        default: main
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.base_branch }}
+          token: ${{ secrets.REPO_BOT_TOKEN }}
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+
+      - name: Determine version
+        id: version
+        run: |
+          if [ -n "${{ inputs.version }}" ]; then
+            VERSION="${{ inputs.version }}"
+            echo "Using exact version: $VERSION"
+          else
+            # Dry-run bump to determine the version
+            OUTPUT=$(node scripts/bump-version.js --type ${{ inputs.bump }} --channel ${{ inputs.channel }} --dry-run 2>&1)
+            VERSION=$(echo "$OUTPUT" | grep "New version:" | awk '{print $NF}')
+            if [ -z "$VERSION" ]; then
+              echo "Error: Could not determine version from bump-version.js dry-run"
+              echo "$OUTPUT"
+              exit 1
+            fi
+            echo "Determined version from bump: $VERSION"
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Check release branch does not exist
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          if git ls-remote --heads origin "release/v${VERSION}" | grep -q "release/v${VERSION}"; then
+            echo "Error: Branch release/v${VERSION} already exists on remote"
+            exit 1
+          fi
+
+      - name: Create release branch
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          git checkout -b "release/v${VERSION}"
+
+      - name: Bump version
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          node scripts/bump-version.js --to "${VERSION}"
+
+      - name: Generate changelog skeleton
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          CHANGELOG_PATH="docs/changelog/${VERSION}.md"
+
+          if [ -f "$CHANGELOG_PATH" ]; then
+            echo "Changelog already exists at $CHANGELOG_PATH, skipping generation"
+          else
+            mkdir -p docs/changelog
+
+            # Create empty temp artifacts dir (script requires it but we have no artifacts yet)
+            TEMP_ARTIFACTS=$(mktemp -d)
+
+            # Get previous tag for release notes generation
+            git fetch --tags origin
+            PREV_TAG=$(git tag --sort=-version:refname | head -n 1 || echo "")
+            if [ -z "$PREV_TAG" ]; then
+              PREV_TAG=$(git rev-list --max-parents=0 HEAD)
+            fi
+
+            node scripts/generate-release-notes.js \
+              --version "${VERSION}" \
+              --repo "${{ github.repository }}" \
+              --previous-tag "${PREV_TAG}" \
+              --channel "${{ inputs.channel }}" \
+              --is-prerelease "false" \
+              --artifacts-dir "${TEMP_ARTIFACTS}" \
+              --template ".github/release-notes/release.md.tmpl" \
+              --output "${CHANGELOG_PATH}" || {
+                echo "Release notes generation failed, creating minimal changelog"
+                echo "# v${VERSION}" > "${CHANGELOG_PATH}"
+                echo "" >> "${CHANGELOG_PATH}"
+                echo "Release notes pending." >> "${CHANGELOG_PATH}"
+              }
+
+            rm -rf "${TEMP_ARTIFACTS}"
+          fi
+
+      - name: Commit version bump
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add package.json src-tauri/tauri.conf.json src-tauri/Cargo.toml src-tauri/Cargo.lock docs/changelog/
+          git commit -m "chore: bump version to ${VERSION}"
+
+      - name: Codex polish changelog
+        if: env.CODEX_API_KEY != ''
+        uses: openai/codex-action@v1
+        env:
+          CODEX_API_KEY: ${{ secrets.CODEX_API_KEY }}
+        with:
+          responses-api-endpoint: ${{ secrets.CODEX_API_ENDPOINT || 'https://api.openai.com/v1' }}
+          api-key: ${{ secrets.CODEX_API_KEY }}
+          prompt: >-
+            Polish the changelog at docs/changelog/${{ steps.version.outputs.version }}.md
+            -- improve wording, fix grammar, ensure consistent formatting.
+            Also create docs/changelog/${{ steps.version.outputs.version }}.zh.md
+            as a Chinese translation if it does not exist.
+            Only modify files under docs/changelog/. Do not change any code files.
+
+      - name: Commit codex changes
+        if: env.CODEX_API_KEY != ''
+        env:
+          CODEX_API_KEY: ${{ secrets.CODEX_API_KEY }}
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          git add docs/changelog/
+          git diff --cached --quiet || git commit -m "docs: polish changelog for v${VERSION}"
+
+      - name: Push release branch
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          git push origin "release/v${VERSION}"
+
+      - name: Create pull request
+        env:
+          GITHUB_TOKEN: ${{ secrets.REPO_BOT_TOKEN }}
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          PR_URL=$(gh pr create \
+            --title "release: v${VERSION}" \
+            --body "$(cat <<EOF
+          ## Release v${VERSION}
+
+          This PR prepares the release of v${VERSION}.
+
+          ### Changes
+          - Version bumped to ${VERSION} in package.json, tauri.conf.json, Cargo.toml, Cargo.lock
+          - Changelog generated at docs/changelog/${VERSION}.md
+
+          ### What happens when this PR is merged
+          1. The **tag-on-merge** workflow will automatically create an annotated tag \`v${VERSION}\`
+          2. The tag push will trigger the **Release** workflow to build and publish artifacts
+          3. The release branch \`release/v${VERSION}\` will be automatically deleted
+
+          > **Do not manually create a tag.** Merging this PR handles everything.
+          EOF
+          )" \
+            --base "${{ inputs.base_branch }}" \
+            --head "release/v${VERSION}")
+
+          echo "pr_url=$PR_URL" >> "$GITHUB_OUTPUT"
+          echo "PR_URL=$PR_URL" >> "$GITHUB_ENV"
+
+      - name: Summary
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          echo "## Release Preparation Complete" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Version:** v${VERSION}" >> $GITHUB_STEP_SUMMARY
+          echo "**Channel:** ${{ inputs.channel }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Branch:** release/v${VERSION}" >> $GITHUB_STEP_SUMMARY
+          echo "**PR:** ${PR_URL}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Next Steps" >> $GITHUB_STEP_SUMMARY
+          echo "1. Review the PR and changelog" >> $GITHUB_STEP_SUMMARY
+          echo "2. Merge the PR to trigger automatic tag creation and release" >> $GITHUB_STEP_SUMMARY

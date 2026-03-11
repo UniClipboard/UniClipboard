@@ -24,11 +24,11 @@ Requirements for v0.3.0 Log Observability. Each will be mapped to roadmap phases
 
 ### Seq Integration
 
-- [ ] **SEQ-01**: The application can send structured log events to a local Seq instance via HTTP in CLEF-compatible JSON format.
-- [ ] **SEQ-02**: Seq integration is implemented as a dedicated tracing Layer that can be enabled or disabled via configuration without code changes.
-- [ ] **SEQ-03**: The Seq Layer batches events and flushes asynchronously so that log ingestion does not block the main application execution path.
-- [ ] **SEQ-04**: Events ingested into Seq include `flow_id` and `stage` fields, allowing developers to query and follow a single clipboard capture or sync flow.
-- [ ] **SEQ-05**: Seq configuration (endpoint URL and API key, if needed) can be set via configuration (env var or settings) with sensible defaults for local development.
+- [x] **SEQ-01**: The application can send structured log events to a local Seq instance via HTTP in CLEF-compatible JSON format.
+- [x] **SEQ-02**: Seq integration is implemented as a dedicated tracing Layer that can be enabled or disabled via configuration without code changes.
+- [x] **SEQ-03**: The Seq Layer batches events and flushes asynchronously so that log ingestion does not block the main application execution path.
+- [x] **SEQ-04**: Events ingested into Seq include `flow_id` and `stage` fields, allowing developers to query and follow a single clipboard capture or sync flow.
+- [x] **SEQ-05**: Seq configuration (endpoint URL and API key, if needed) can be set via configuration (env var or settings) with sensible defaults for local development.
 - [ ] **SEQ-06**: Seq displays clipboard capture flows as time-ordered sequences of stages for a given `flow_id`, either via trace/waterfall view or equivalent queryable structure.
 
 ## v2 Requirements
@@ -69,11 +69,11 @@ Which phases cover which requirements.
 | FLOW-03     | Phase 20 | Complete |
 | FLOW-04     | Phase 20 | Complete |
 | FLOW-05     | Phase 21 | Complete |
-| SEQ-01      | Phase 22 | Pending  |
-| SEQ-02      | Phase 22 | Pending  |
-| SEQ-03      | Phase 22 | Pending  |
-| SEQ-04      | Phase 22 | Pending  |
-| SEQ-05      | Phase 22 | Pending  |
+| SEQ-01      | Phase 22 | Complete |
+| SEQ-02      | Phase 22 | Complete |
+| SEQ-03      | Phase 22 | Complete |
+| SEQ-04      | Phase 22 | Complete |
+| SEQ-05      | Phase 22 | Complete |
 | SEQ-06      | Phase 22 | Pending  |
 
 **Coverage:**

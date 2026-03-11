@@ -1572,6 +1572,16 @@ async fn run_clipboard_receive_loop<R: Runtime>(
         let message_id = message.id.clone();
         let origin_device_id = message.origin_device_id.clone();
         let origin_flow_id_display = message.origin_flow_id.as_deref().unwrap_or("");
+
+        // Warn if message is from an older peer that doesn't send origin_flow_id
+        if message.origin_flow_id.is_none() {
+            warn!(
+                message_id = %message_id,
+                origin_device_id = %origin_device_id,
+                "Inbound message has no origin_flow_id (sender may be an older version)"
+            );
+        }
+
         let span = info_span!(
             "loop.clipboard.receive_message",
             %flow_id,

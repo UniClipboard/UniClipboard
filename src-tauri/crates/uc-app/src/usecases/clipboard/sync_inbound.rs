@@ -286,6 +286,7 @@ impl SyncInboundClipboardUseCase {
         .instrument(info_span!(
             "inbound.decode",
             wire_bytes = message.encrypted_content.len(),
+            stage = uc_observability::stages::INBOUND_DECODE,
         ))
         .await;
 
@@ -311,149 +312,158 @@ impl SyncInboundClipboardUseCase {
             "V3 inbound payload decoded"
         );
 
-        let selected_idx = match select_highest_priority_repr_index(&v3_payload.representations) {
-            Some(i) => i,
-            None => {
-                warn!(message_id = %message.id, "V3 inbound: no representations — dropping");
-                self.rollback_recent_id(&message.id).await;
-                return Ok(InboundApplyOutcome::Skipped);
-            }
-        };
-
-        // Convert all BinaryRepresentation values into ObservedClipboardRepresentation so that
-        // downstream consumers (capture path) can see the full multi-representation snapshot.
-        let ClipboardBinaryPayload {
-            ts_ms,
-            representations: binary_reps,
-        } = v3_payload;
-
-        let all_reps: Vec<ObservedClipboardRepresentation> = binary_reps
-            .into_iter()
-            .map(|rep| {
-                ObservedClipboardRepresentation::new(
-                    RepresentationId::new(),
-                    FormatId::from(rep.format_id.as_str()),
-                    rep.mime.map(MimeType),
-                    rep.data,
-                )
-            })
-            .collect();
-
-        // For OS clipboard writes we still restrict to a single highest-priority representation.
-        // write_snapshot requires exactly ONE representation (tracked in issue #92).
-        let selected_rep = all_reps
-            .get(selected_idx)
-            .cloned()
-            .expect("selected index must be within range");
-
-        let snapshot_for_os = SystemClipboardSnapshot {
-            ts_ms,
-            representations: vec![selected_rep],
-        };
-
-        // For Passive-mode capture we want the full set of representations so that title
-        // generation and normalization can choose the most appropriate representation.
-        let snapshot_for_capture = SystemClipboardSnapshot {
-            ts_ms,
-            representations: all_reps,
-        };
-
-        // In Full mode: remember inbound snapshot hash + write to OS clipboard
-        if self.mode.allow_os_write() {
-            let selected_rep_ref = &snapshot_for_os.representations[0];
-            info!(
-                message_id = %message.id,
-                format_id = %selected_rep_ref.format_id,
-                mime = ?selected_rep_ref.mime.as_ref().map(|m| m.as_str()),
-                data_size = selected_rep_ref.bytes.len(),
-                "V3 inbound: writing selected representation to OS clipboard"
-            );
-
-            let snapshot_hash = snapshot_for_os.snapshot_hash().to_string();
-            self.clipboard_change_origin
-                .remember_remote_snapshot_hash(
-                    snapshot_hash.clone(),
-                    Duration::from_millis(REMOTE_SNAPSHOT_HASH_TTL_MS),
-                )
-                .await;
-
-            if let Err(err) = self.local_clipboard.write_snapshot(snapshot_for_os) {
-                self.clipboard_change_origin
-                    .consume_origin_for_snapshot_or_default(
-                        &snapshot_hash,
-                        ClipboardChangeOrigin::LocalCapture,
-                    )
-                    .await;
-                self.rollback_recent_id(&message.id).await;
-                return Err(err).context("V3 inbound: failed to write snapshot to OS clipboard");
-            }
-
-            // Guard against loopback when the OS re-encodes clipboard content.
-            // Some platforms (e.g. Windows clipboard-rs) re-encode images (PNG→DIB→PNG),
-            // producing different bytes than the original. The hash-based guard above
-            // won't match the re-encoded content, so we set a one-shot origin override:
-            // the NEXT clipboard change will be treated as RemotePush regardless of hash.
-            // This avoids reading back the clipboard (which can crash on Windows with
-            // large native bitmaps).
-            self.clipboard_change_origin
-                .set_next_origin(
-                    ClipboardChangeOrigin::RemotePush,
-                    Duration::from_millis(REMOTE_SNAPSHOT_HASH_TTL_MS),
-                )
-                .await;
-
-            info!(message_id = %message.id, "V3 inbound clipboard applied");
-            return Ok(InboundApplyOutcome::Applied { entry_id: None });
-        }
-
-        // In Passive mode (allow_os_read = false): persist via capture use case
-        if !self.mode.allow_os_read() {
-            let capture = self
-                .capture_clipboard
-                .as_ref()
-                .context("V3 passive inbound: capture dependencies required")?;
-
-            // Debug snapshot before handing off to capture use case
-            debug!(
-                origin = ?ClipboardChangeOrigin::RemotePush,
-                repr_count = snapshot_for_capture.representations.len(),
-                repr_format_ids = ?snapshot_for_capture
-                    .representations
-                    .iter()
-                    .map(|r| r.format_id.to_string())
-                    .collect::<Vec<_>>(),
-                repr_mimes = ?snapshot_for_capture
-                    .representations
-                    .iter()
-                    .map(|r| r.mime.as_ref().map(|m| m.as_str().to_string()))
-                    .collect::<Vec<_>>(),
-                "V3 passive snapshot before capture",
-            );
-
-            return match capture
-                .execute_with_origin(snapshot_for_capture, ClipboardChangeOrigin::RemotePush)
-                .await
+        async {
+            let selected_idx = match select_highest_priority_repr_index(&v3_payload.representations)
             {
-                Ok(Some(entry_id)) => {
-                    info!(message_id = %message.id, "V3 inbound clipboard persisted (passive)");
-                    Ok(InboundApplyOutcome::Applied {
-                        entry_id: Some(entry_id),
-                    })
-                }
-                Ok(None) => {
+                Some(i) => i,
+                None => {
+                    warn!(message_id = %message.id, "V3 inbound: no representations — dropping");
                     self.rollback_recent_id(&message.id).await;
-                    Err(anyhow::anyhow!("V3 passive capture skipped persistence"))
-                }
-                Err(err) => {
-                    self.rollback_recent_id(&message.id).await;
-                    Err(err).context("V3 passive inbound: capture failed")
+                    return Ok(InboundApplyOutcome::Skipped);
                 }
             };
-        }
 
-        // WriteOnly mode — should not happen in practice for inbound
-        info!(mode = ?self.mode, "V3 inbound: mode disallows write — skipped");
-        Ok(InboundApplyOutcome::Skipped)
+            // Convert all BinaryRepresentation values into ObservedClipboardRepresentation so that
+            // downstream consumers (capture path) can see the full multi-representation snapshot.
+            let ClipboardBinaryPayload {
+                ts_ms,
+                representations: binary_reps,
+            } = v3_payload;
+
+            let all_reps: Vec<ObservedClipboardRepresentation> = binary_reps
+                .into_iter()
+                .map(|rep| {
+                    ObservedClipboardRepresentation::new(
+                        RepresentationId::new(),
+                        FormatId::from(rep.format_id.as_str()),
+                        rep.mime.map(MimeType),
+                        rep.data,
+                    )
+                })
+                .collect();
+
+            // For OS clipboard writes we still restrict to a single highest-priority representation.
+            // write_snapshot requires exactly ONE representation (tracked in issue #92).
+            let selected_rep = all_reps
+                .get(selected_idx)
+                .cloned()
+                .expect("selected index must be within range");
+
+            let snapshot_for_os = SystemClipboardSnapshot {
+                ts_ms,
+                representations: vec![selected_rep],
+            };
+
+            // For Passive-mode capture we want the full set of representations so that title
+            // generation and normalization can choose the most appropriate representation.
+            let snapshot_for_capture = SystemClipboardSnapshot {
+                ts_ms,
+                representations: all_reps,
+            };
+
+            // In Full mode: remember inbound snapshot hash + write to OS clipboard
+            if self.mode.allow_os_write() {
+                let selected_rep_ref = &snapshot_for_os.representations[0];
+                info!(
+                    message_id = %message.id,
+                    format_id = %selected_rep_ref.format_id,
+                    mime = ?selected_rep_ref.mime.as_ref().map(|m| m.as_str()),
+                    data_size = selected_rep_ref.bytes.len(),
+                    "V3 inbound: writing selected representation to OS clipboard"
+                );
+
+                let snapshot_hash = snapshot_for_os.snapshot_hash().to_string();
+                self.clipboard_change_origin
+                    .remember_remote_snapshot_hash(
+                        snapshot_hash.clone(),
+                        Duration::from_millis(REMOTE_SNAPSHOT_HASH_TTL_MS),
+                    )
+                    .await;
+
+                if let Err(err) = self.local_clipboard.write_snapshot(snapshot_for_os) {
+                    self.clipboard_change_origin
+                        .consume_origin_for_snapshot_or_default(
+                            &snapshot_hash,
+                            ClipboardChangeOrigin::LocalCapture,
+                        )
+                        .await;
+                    self.rollback_recent_id(&message.id).await;
+                    return Err(err)
+                        .context("V3 inbound: failed to write snapshot to OS clipboard");
+                }
+
+                // Guard against loopback when the OS re-encodes clipboard content.
+                // Some platforms (e.g. Windows clipboard-rs) re-encode images (PNG→DIB→PNG),
+                // producing different bytes than the original. The hash-based guard above
+                // won't match the re-encoded content, so we set a one-shot origin override:
+                // the NEXT clipboard change will be treated as RemotePush regardless of hash.
+                // This avoids reading back the clipboard (which can crash on Windows with
+                // large native bitmaps).
+                self.clipboard_change_origin
+                    .set_next_origin(
+                        ClipboardChangeOrigin::RemotePush,
+                        Duration::from_millis(REMOTE_SNAPSHOT_HASH_TTL_MS),
+                    )
+                    .await;
+
+                info!(message_id = %message.id, "V3 inbound clipboard applied");
+                return Ok(InboundApplyOutcome::Applied { entry_id: None });
+            }
+
+            // In Passive mode (allow_os_read = false): persist via capture use case
+            if !self.mode.allow_os_read() {
+                let capture = self
+                    .capture_clipboard
+                    .as_ref()
+                    .context("V3 passive inbound: capture dependencies required")?;
+
+                // Debug snapshot before handing off to capture use case
+                debug!(
+                    origin = ?ClipboardChangeOrigin::RemotePush,
+                    repr_count = snapshot_for_capture.representations.len(),
+                    repr_format_ids = ?snapshot_for_capture
+                        .representations
+                        .iter()
+                        .map(|r| r.format_id.to_string())
+                        .collect::<Vec<_>>(),
+                    repr_mimes = ?snapshot_for_capture
+                        .representations
+                        .iter()
+                        .map(|r| r.mime.as_ref().map(|m| m.as_str().to_string()))
+                        .collect::<Vec<_>>(),
+                    "V3 passive snapshot before capture",
+                );
+
+                return match capture
+                    .execute_with_origin(snapshot_for_capture, ClipboardChangeOrigin::RemotePush)
+                    .await
+                {
+                    Ok(Some(entry_id)) => {
+                        info!(message_id = %message.id, "V3 inbound clipboard persisted (passive)");
+                        Ok(InboundApplyOutcome::Applied {
+                            entry_id: Some(entry_id),
+                        })
+                    }
+                    Ok(None) => {
+                        self.rollback_recent_id(&message.id).await;
+                        Err(anyhow::anyhow!("V3 passive capture skipped persistence"))
+                    }
+                    Err(err) => {
+                        self.rollback_recent_id(&message.id).await;
+                        Err(err).context("V3 passive inbound: capture failed")
+                    }
+                };
+            }
+
+            // WriteOnly mode — should not happen in practice for inbound
+            info!(mode = ?self.mode, "V3 inbound: mode disallows write — skipped");
+            Ok(InboundApplyOutcome::Skipped)
+        }
+        .instrument(info_span!(
+            "inbound.apply",
+            stage = uc_observability::stages::INBOUND_APPLY
+        ))
+        .await
     }
 }
 

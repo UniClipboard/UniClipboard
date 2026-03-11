@@ -1568,12 +1568,16 @@ async fn run_clipboard_receive_loop<R: Runtime>(
     app_handle: Option<AppHandle<R>>,
 ) {
     while let Some((message, pre_decoded)) = clipboard_rx.recv().await {
+        let flow_id = uc_observability::FlowId::generate();
         let message_id = message.id.clone();
         let origin_device_id = message.origin_device_id.clone();
+        let origin_flow_id_display = message.origin_flow_id.as_deref().unwrap_or("");
         let span = info_span!(
             "loop.clipboard.receive_message",
+            %flow_id,
             message_id = %message_id,
-            origin_device_id = %origin_device_id
+            origin_device_id = %origin_device_id,
+            origin_flow_id = origin_flow_id_display,
         );
 
         let result = async { usecase.execute_with_outcome(message, pre_decoded).await }

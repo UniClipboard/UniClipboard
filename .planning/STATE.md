@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v0.1
 milestone_name: milestone
 status: completed
-stopped_at: Completed 20-03-PLAN.md
-last_updated: '2026-03-10T23:56:27.667Z'
+stopped_at: Phase 21 context gathered
+last_updated: '2026-03-11T00:47:54.385Z'
 last_activity: 2026-03-11 — Completed 20-02 capture pipeline instrumentation
 progress:
   total_phases: 4
@@ -86,6 +86,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-10T23:52:53.673Z
-Stopped at: Completed 20-03-PLAN.md
-Resume file: None
+Last session: 2026-03-11T00:47:54.384Z
+Stopped at: Phase 21 context gathered
+Resume file: .planning/phases/21-sync-flow-correlation/21-CONTEXT.md

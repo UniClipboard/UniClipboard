@@ -50,7 +50,7 @@ function SettingsPage() {
     <SidebarProvider
       style={
         {
-          '--sidebar-width': '14rem',
+          '--sidebar-width': '12rem',
         } as React.CSSProperties
       }
       className="min-h-0 h-full"

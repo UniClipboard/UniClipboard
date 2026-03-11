@@ -105,6 +105,13 @@ Plans:
 **Goal**: Developers can stream structured events into a local Seq instance and query a single flow as an ordered sequence of stages.
 **Depends on**: Phase 21
 **Requirements**: SEQ-01, SEQ-02, SEQ-03, SEQ-04, SEQ-05, SEQ-06
+**Plans:** 2 plans
+
+Plans:
+
+- [ ] 22-01-PLAN.md — CLEFFormat formatter, shared span-field extraction, Seq sender/layer/builder in uc-observability
+- [ ] 22-02-PLAN.md — Wire Seq layer into bootstrap, docker-compose, documentation, end-to-end verification
+
 **Success Criteria** (what must be TRUE):
 
 1. Developers can enable or disable Seq ingestion through configuration and run the app against a local Seq endpoint without code changes.
@@ -112,7 +119,6 @@ Plans:
 3. Seq ingestion happens asynchronously with batching so normal application activity does not pause while logs are shipped.
 4. Developers can query a single `flow_id` in Seq and see the related capture or sync stages in time order.
 5. Local Seq defaults are sensible enough that developers can get observability working with minimal setup, while still supporting explicit endpoint and API key overrides.
-   **Plans**: TBD
 
 ## Progress
 
@@ -123,4 +129,4 @@ Plans:
 | 19. Dual Output Logging Foundation     | 2/2       | Complete       | 2026-03-10  | -          |
 | 20. Clipboard Capture Flow Correlation | 3/3       | Complete       | 2026-03-10  | -          |
 | 21. Sync Flow Correlation              | 2/2       | Complete       | 2026-03-11  | -          |
-| 22. Seq Local Visualization            | v0.3.0    | 0/TBD          | Not started | -          |
+| 22. Seq Local Visualization            | v0.3.0    | 0/2            | Not started | -          |

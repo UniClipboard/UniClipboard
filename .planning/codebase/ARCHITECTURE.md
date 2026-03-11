@@ -1,338 +1,198 @@
 # Architecture
 
-**Analysis Date:** 2026-03-02
+**Analysis Date:** 2026-03-11
 
 ## Pattern Overview
 
-**Overall:** Hexagonal Architecture (Ports and Adapters) with message-driven event runtime
+**Overall:** Hexagonal Architecture (Ports and Adapters) — actively migrating from legacy Clean Architecture
 
 **Key Characteristics:**
 
-- Domain-driven design with clear separation between core domain, infrastructure, and platform adapters
-- Trait-based port/adapter pattern for all external dependencies
-- Event-driven async runtime using tokio channels for inter-component communication
-- Crate-based module boundaries (uc-core, uc-infra, uc-platform, uc-app) enforce dependency direction
-- Frontend-backend communication via Tauri commands and event subscriptions
-- No global mutable state; all state accessed through ports
+- Domain core (`uc-core`) defines port traits; infrastructure/platform implement them
+- Use cases in `uc-app` hold `Arc<dyn Port>` references, never concrete types
+- `uc-tauri/bootstrap/wiring.rs` is the single composition root: the only place that sees all crates simultaneously
+- Frontend communicates with Rust exclusively via Tauri commands (IPC) and Tauri events
+- Async throughout: Tokio runtime, `Arc<Mutex<T>>` for shared state
 
 ## Layers
 
-**Domain Layer (uc-core):**
+**Domain Core (`uc-core`):**
 
-- Purpose: Pure business domain models with no external dependencies
+- Purpose: Pure domain models and port trait definitions — no I/O
 - Location: `src-tauri/crates/uc-core/src/`
-- Contains: Clipboard, Device, Network, Security, Setup, and Blob domain models; trait port definitions
-- Depends on: Nothing (zero dependencies on other crates)
-- Used by: uc-app (use cases), uc-infra (implementations), uc-platform (adapters)
-- Key modules: `clipboard/`, `device/`, `network/`, `security/`, `ports/`
+- Contains: Domain aggregates (`clipboard/`, `device/`, `network/`, `security/`, `settings/`), all port trait definitions in `ports/`
+- Depends on: Nothing (no external side-effecting crates)
+- Used by: All other crates
 
-**Application Layer (uc-app):**
+**Application Use Cases (`uc-app`):**
 
-- Purpose: Use cases orchestrating domain models and coordinating with ports
+- Purpose: Business logic orchestration, one use case per file
 - Location: `src-tauri/crates/uc-app/src/usecases/`
-- Contains: Clipboard operations, encryption, settings, pairing, setup, space access workflows
-- Depends on: uc-core ports; receives implementations via dependency injection
-- Used by: uc-tauri commands, background tasks
-- Key pattern: Pure use case classes with `execute()` methods taking ports as constructor parameters
-- Examples: `ListClipboardEntries`, `DeleteClipboardEntry`, `CaptureClipboard`, `JoinSpace`
+- Contains: `delete_clipboard_entry.rs`, `list_clipboard_entries.rs`, `initialize_encryption.rs`, `clipboard/sync_inbound.rs`, `clipboard/sync_outbound.rs`, `pairing/`, `setup/`, `space_access/`
+- Depends on: `uc-core` (port traits only, no concrete implementations)
+- Used by: `uc-tauri` (wired in `bootstrap/runtime.rs` and `bootstrap/wiring.rs`)
 
-**Infrastructure Layer (uc-infra):**
+**Infrastructure (`uc-infra`):**
 
-- Purpose: Implement ports defined in uc-core; handle database, encryption, file system, network abstractions
+- Purpose: Implements domain ports using external dependencies (database, filesystem, crypto)
 - Location: `src-tauri/crates/uc-infra/src/`
-- Contains: Database repositories (Diesel ORM), encryption (XChaCha20-Poly1305), file system (key slots, blobs), settings
-- Depends on: uc-core (ports only)
-- Used by: uc-tauri bootstrap to inject implementations
-- Key modules: `db/repositories/`, `security/encryption.rs`, `fs/`, `settings/`
+- Contains: `db/` (Diesel + SQLite repositories), `security/` (XChaCha20-Poly1305 encryption), `blob/`, `settings/`, `fs/` (key slot store at `fs/key_slot_store.rs`)
+- Depends on: `uc-core`
+- Used by: `uc-tauri/bootstrap/wiring.rs` only
 
-**Platform Layer (uc-platform):**
+**Platform Adapter (`uc-platform`):**
 
-- Purpose: Bridge between Tauri, OS-specific features, and application core
+- Purpose: OS-level integrations — clipboard watching, libp2p networking, IPC event bus
 - Location: `src-tauri/crates/uc-platform/src/`
-- Contains: Clipboard watcher, app directory resolution, IPC event/command bus, pairing stream framing
-- Depends on: uc-core (ports only, not implementations)
-- Used by: uc-tauri main.rs to initialize PlatformRuntime
-- Key modules: `runtime/`, `clipboard/`, `ipc/`, `adapters/`
+- Contains: `adapters/libp2p_network.rs` (full P2P network over libp2p), `clipboard/` (system clipboard read/write + watcher), `runtime/runtime.rs` (`PlatformRuntime` event loop), `ipc/` (`PlatformCommand` / `PlatformEvent` message types)
+- Depends on: `uc-core`
+- Used by: `uc-tauri/bootstrap/wiring.rs` only
 
-**Tauri Adapter Layer (uc-tauri):**
+**Tauri Bootstrap / Commands (`uc-tauri`):**
 
-- Purpose: Wire dependencies, register Tauri commands, coordinate startup sequence
+- Purpose: Composition root, Tauri command handlers, event forwarding to frontend
 - Location: `src-tauri/crates/uc-tauri/src/`
-- Contains: Command handlers, bootstrap logic, event adapters, models (DTOs), protocols
-- Depends on: uc-app (use cases), uc-infra (implementations), uc-core (models), uc-platform (runtime)
-- Used by: src-tauri/src/main.rs
-- Key files: `bootstrap/`, `commands/`, `services/`, `events/`
+- Contains: `bootstrap/wiring.rs` (DI wiring), `bootstrap/runtime.rs` (`AppRuntime` + `UseCases` accessor), `commands/` (Tauri command functions), `events/` (typed frontend events), `tray.rs`, `protocol.rs` (custom `uc://` URI scheme handler)
+- Depends on: ALL crates (only permitted location)
+- Used by: `src-tauri/src/main.rs`
 
-**Frontend Layer (React + TypeScript):**
+**Observability (`uc-observability`):**
 
-- Purpose: User interface with state management and API integration
+- Purpose: Structured log formatting and Seq/CLEF integration
+- Location: `src-tauri/crates/uc-observability/src/`
+- Contains: `clef_format.rs`, `profile.rs`, `stages.rs`, `seq/`
+- Depends on: tracing ecosystem
+- Used by: `uc-tauri/bootstrap/tracing.rs`
+
+**Clipboard Probe (`uc-clipboard-probe`):**
+
+- Purpose: Standalone binary for platform clipboard capability detection
+- Location: `src-tauri/crates/uc-clipboard-probe/src/main.rs`
+- Contains: Single binary entry point
+- Used by: Build system / runtime capability detection
+
+**Frontend (React + TypeScript):**
+
+- Purpose: UI layer, state management, Tauri command invocations
 - Location: `src/`
-- Contains: Pages, components (UI), layouts, hooks, Redux Toolkit store, Tauri API wrappers
-- Depends on: Tauri commands (uc-tauri), event listeners
-- Key modules: `pages/`, `components/`, `store/`, `api/`, `hooks/`
+- Contains: `pages/`, `components/`, `store/` (Redux Toolkit), `api/` (Tauri invoke wrappers), `hooks/`, `contexts/`
+- Depends on: Tauri JS API (`@tauri-apps/api/event`, `@tauri-apps/api/core`)
+- Used by: Webview rendered by Tauri
 
 ## Data Flow
 
-**Clipboard Capture (System → Database → Frontend):**
+**Clipboard Capture (Local):**
 
-1. `PlatformRuntime` watches system clipboard changes (clipboard_rs crate)
-2. ClipboardWatcher detects change, emits `PlatformEvent::ClipboardChanged { snapshot }`
-3. PlatformRuntime dispatches event to `ClipboardChangeHandler` callback (trait in uc-core)
-4. `AppRuntime` implements callback, invokes `CaptureClipboard` use case
-5. UseCase: persists clipboard event, creates representations, saves blobs, creates ClipboardEntry
-6. ClipboardEntryRepo saves entry to SQLite database
-7. Frontend polls `get_clipboard_entries` command to fetch list of entries
-8. Frontend renders preview images (fetched via `uc://blob/<blob_id>` protocol)
+1. `PlatformRuntime` (`uc-platform/src/runtime/runtime.rs`) runs `ClipboardWatcher` in a background Tokio task
+2. On clipboard change, calls `ClipboardChangeHandler` trait (implemented by `AppRuntime`)
+3. `AppRuntime` invokes `CaptureClipboardUseCase` from `uc-app`
+4. Use case persists `ClipboardEvent` → `ClipboardSnapshotRepresentation` → `ClipboardEntry` via repository port traits
+5. `uc-tauri` emits `ClipboardEvent::NewContent` Tauri event to frontend
+6. Frontend hook `src/hooks/useClipboardEvents.ts` listens via `@tauri-apps/api/event` `listen()`, dispatches Redux `prependItem` action
 
-**Tauri Command Execution Flow:**
+**Clipboard Sync (Inbound from Peer):**
 
-1. Frontend invokes Tauri command (e.g., `get_clipboard_entries`)
-2. Command handler in `src-tauri/crates/uc-tauri/src/commands/` receives `State<'_, Arc<AppRuntime>>`
-3. Handler calls `runtime.usecases().desired_use_case()` to get use case instance
-4. UseCases accessor wires ports into use case constructor (uc-app pattern)
-5. UseCase executes, reading/writing through ports
-6. Infrastructure implementations (uc-infra) handle actual I/O (database, filesystem)
-7. Result serialized and returned to frontend as TypeScript DTO
+1. `LibP2pNetworkAdapter` (`uc-platform/src/adapters/libp2p_network.rs`) receives encrypted payload over libp2p stream
+2. Calls `NetworkEventPort` with `NetworkEvent::ClipboardReceived`
+3. `SyncInboundClipboardUseCase` (`uc-app/src/usecases/clipboard/sync_inbound.rs`) decrypts payload, normalizes representations, persists entry
+4. If this device is the paste target, writes to system clipboard via `SystemClipboardPort`
 
-**Setup Workflow (P2P Pairing → Space Access → Device Sync):**
+**Tauri Command Invocation (Frontend → Backend):**
 
-1. Frontend calls `start_join_space` → `SetupOrchestrator` (cached in AppRuntime)
-2. Setup orchestrator: prompts for passphrase → peer discovery via libp2p
-3. `PairingOrchestrator` handles peer selection and HMAC verification via pairing stream framing
-4. Once paired, `SpaceAccessOrchestrator` derives shared key from passphrase
-5. Backend creates Device, saves to database
-6. Frontend polls `get_setup_state` to drive UI through wizard steps
-7. On completion, encryption is initialized with derived key
+1. Frontend calls `invokeWithTrace('command_name', args)` from `src/lib/tauri-command.ts`
+2. Tauri routes to matching `#[tauri::command]` function in `src-tauri/crates/uc-tauri/src/commands/`
+3. Command extracts `State<'_, Arc<AppRuntime>>`, calls `runtime.usecases().xxx()`
+4. Use case executes business logic through port traits
+5. Returns serialized result to frontend as JSON
 
-**Encryption Session Lifecycle:**
+**Custom Resource Protocol (`uc://`):**
 
-1. AppStartup: load encryption state from secure storage (Stronghold)
-2. If initialized but session not ready: redirect to unlock page
-3. Frontend submits passphrase via `unlock_encryption_session` command
-4. Backend derives key from passphrase (Argon2id), unlocks secure storage
-5. Encryption session marked ready; backend broadcasts `encryption://event` with `SessionReady`
-6. Frontend receives event, can now decrypt clipboard entries
+1. Frontend requests `uc://blob/<blob_id>` or `uc://thumbnail/<rep_id>` image URLs (generated by `src/lib/protocol.ts`)
+2. Tauri intercepts via custom URI handler registered in `src-tauri/src/main.rs`
+3. `resolve_uc_request()` calls `ResolveBlobResource` or `ResolveThumbnailResource` use case
+4. Returns binary bytes response with proper MIME type and CORS headers
 
 **State Management:**
 
-- **Backend:** No global state; all state accessed through ports
-  - Encryption state: `EncryptionState` port in uc-infra (thread-safe via Mutex/RwLock)
-  - Settings: `SettingsPort` (TOML file with RwLock wrapper)
-  - Database: Diesel connection pool (Arc-wrapped)
-  - Lifecycle status: `LifecycleStatusPort` (in-memory with interior mutability)
-
-- **Frontend:** Redux Toolkit store with slices
-  - `appApi` (RTK Query): queries for clipboard entries, encryption status, settings
-  - `clipboardSlice`: pagination state, selected entry
-  - `devicesSlice`: paired devices list
-  - `statsSlice`: app statistics
+- Backend: `Arc<AppRuntime>` managed by Tauri state system (`.manage()`); `AppDeps` holds `Arc<dyn Port>` for each dependency grouped as `ClipboardPorts`, `DevicePorts`, `SecurityPorts`, `StoragePorts`, `SystemPorts`, `NetworkPorts`
+- Frontend: Redux Toolkit slices (`clipboardSlice`, `devicesSlice`, `statsSlice`); no RTK Query — manual async thunks + Tauri event listeners
 
 ## Key Abstractions
 
-**Port (Interface) Pattern:**
+**Port Traits (`uc-core/src/ports/`):**
 
-Defined in `src-tauri/crates/uc-core/src/ports/`:
+- Purpose: Contracts between business logic and the external world
+- Examples: `ClipboardEntryRepositoryPort`, `EncryptionPort`, `SystemClipboardPort`, `ClipboardTransportPort`, `SettingsPort`, `BlobStorePort`, `PairingTransportPort`
+- Pattern: `#[async_trait]` trait; injected as `Arc<dyn Port>` into use case constructors
 
-- `ClipboardEntryRepository` - CRUD operations for clipboard entries
-- `ClipboardEventRepository` - Event log for clipboard changes
-- `DeviceRepository` - Paired devices storage
-- `SettingsPort` - Application settings persistence
-- `SystemClipboardPort` - OS clipboard read/write
-- `BlobStore` - Large binary data storage (images, files)
-- `ThumbnailRepository` - Image thumbnail caching
-- `EncryptionSession` - Crypto key management and encryption/decryption
-- `SecurityCrypto` - Cryptographic primitives (XChaCha20-Poly1305)
-- `TimerPort` - Async timing utilities
-- `ClipboardChangeHandler` - Callback for clipboard changes (app implements)
-- `SpaceAccessTransportPort` - Network transport for space join flow
-- `SpaceAccessCryptoFactory` - Creates crypto operations for space access
+**UseCases Accessor (`uc-tauri/src/bootstrap/runtime.rs` — `UseCases` struct):**
 
-**Adapter (Implementation) Pattern:**
+- Purpose: Factory pattern providing pre-wired use case instances to Tauri commands
+- Pattern: `runtime.usecases().list_clipboard_entries()` constructs use case with ports from `AppDeps`; commands never access `runtime.deps` directly
 
-Located in `src-tauri/crates/uc-infra/src/`:
+**AppDeps (`uc-app/src/lib.rs`):**
 
-- `DieselClipboardEntryRepo` implements `ClipboardEntryRepository`
-- `DieselDeviceRepo` implements `DeviceRepository`
-- `JsonKeySlotStore` implements `KeySlotStore` (key material persistence)
-- `XChaCha20Encryption` implements `EncryptionSession`
-- `LocalClipboard` implements `SystemClipboardPort` (platform-specific via clipboard_rs)
+- Purpose: Dependency bundle grouping all `Arc<dyn Port>` references passed to use cases
+- Sub-groups: `ClipboardPorts`, `DevicePorts`, `SecurityPorts`, `StoragePorts`, `SystemPorts`, `NetworkPorts`
 
-Located in `src-tauri/crates/uc-platform/src/`:
+**PlatformRuntime (`uc-platform/src/runtime/runtime.rs`):**
 
-- `PlatformRuntime` - Main event loop and clipboard watcher integration
-- `ClipboardWatcher` - Wraps clipboard_rs for change detection
-- `PairingStreamFramer` - Encodes/decodes messages for pairing flow
-- `LocalClipboard` - Clipboard API adapter (wraps clipboard_rs)
+- Purpose: OS event loop handling `PlatformCommand` messages and invoking `ClipboardChangeHandler`
+- Pattern: Async `select!` loop over `event_rx` and `command_rx` channels; callback pattern maintains DIP (Platform → Core trait, never Platform → App)
 
-**UseCase Pattern:**
+**SetupOrchestrator / PairingOrchestrator:**
 
-Located in `src-tauri/crates/uc-app/src/usecases/`:
-
-```rust
-// Example: GetEntryDetail use case
-pub struct GetClipboardEntryDetail {
-    clipboard_entry_repo: Arc<dyn ClipboardEntryRepository>,
-    representation_repo: Arc<dyn RepresentationRepository>,
-}
-
-impl GetClipboardEntryDetail {
-    pub fn new(
-        clipboard_entry_repo: Arc<dyn ClipboardEntryRepository>,
-        representation_repo: Arc<dyn RepresentationRepository>,
-    ) -> Self {
-        Self { clipboard_entry_repo, representation_repo }
-    }
-
-    pub async fn execute(&self, entry_id: &EntryId) -> Result<EntryDetail> {
-        let entry = self.clipboard_entry_repo.get_entry(entry_id).await?;
-        let representations = self.representation_repo.get_by_entry(entry_id).await?;
-        Ok(EntryDetail { entry, representations })
-    }
-}
-```
-
-Each use case:
-
-- Takes only ports as dependencies (via constructor)
-- Has a single public `execute()` method
-- Returns Result with domain types
-- No Tauri or command knowledge
+- Purpose: Stateful multi-step orchestrators for device setup and P2P pairing flows
+- Location: `uc-app/src/usecases/setup/`, `uc-app/src/usecases/pairing/`
+- Pattern: Cached in `AppRuntime` (not recreated per command call) to preserve in-memory state machine
 
 ## Entry Points
 
-**Backend Entry:**
+**Rust Application Entry:**
 
 - Location: `src-tauri/src/main.rs`
-- Triggers: Application startup
-- Responsibilities:
-  1. Initialize tracing subscriber (structured logging)
-  2. Load configuration (development: config.toml, production: system defaults)
-  3. Wire dependencies using `wire_dependencies()` from uc-tauri bootstrap
-  4. Create channels for PlatformRuntime event/command communication
-  5. Initialize Tauri Builder with plugins
-  6. Register all Tauri command handlers via `invoke_handler![]`
-  7. Spawn PlatformRuntime startup task in setup block
-  8. Register URI protocol handler (`uc://`) for blob/thumbnail serving
+- Triggers: OS process start
+- Responsibilities: Tauri builder setup, load config, call `wire_dependencies`, register `Arc<AppRuntime>` with `.manage()`, register all commands in `invoke_handler![]`, start `PlatformRuntime` background task, register `uc://` custom protocol handler
 
-**Command Entry Points:**
+**Tauri Commands Entry:**
 
-- Location: `src-tauri/crates/uc-tauri/src/commands/`
-- Trigger: Frontend invokes Tauri command
-- Pattern:
-  ```rust
-  #[tauri::command]
-  pub async fn get_clipboard_entries(
-      runtime: State<'_, Arc<AppRuntime>>,
-      limit: Option<usize>,
-  ) -> Result<Response, String> {
-      let uc = runtime.usecases().list_entry_projections();
-      let result = uc.execute(limit, 0).await?;
-      Ok(Response { entries: result })
-  }
-  ```
+- Location: `src-tauri/crates/uc-tauri/src/commands/` (files: `clipboard.rs`, `encryption.rs`, `pairing.rs`, `settings.rs`, `setup.rs`, `lifecycle.rs`, `updater.rs`, etc.)
+- Triggers: Frontend IPC invocations via `invoke()`
+- Responsibilities: Thin adapter — extract `AppRuntime` state, call `runtime.usecases().xxx().execute()`, map errors to `String`
 
 **Frontend Entry:**
 
-- Location: `src/main.tsx`
-- Triggers: App load in browser
-- Responsibilities:
-  1. Initialize Sentry error tracking
-  2. Initialize logging (attach Tauri console plugin)
-  3. Set up Redux store with RTK Query
-  4. Initialize i18n (internationalization)
-  5. Apply platform-specific typography scaling (Windows smaller fonts)
-  6. Render React root with context providers
+- Location: `src/main.tsx` (presumed standard Vite entry) → page components in `src/pages/`
+- Triggers: Webview load
+- Responsibilities: React root mount, Redux store provider, React Router v7 routes to `DashboardPage`, `DevicesPage`, `SettingsPage`, `SetupPage`, `UnlockPage`
 
-**App Router Entry:**
+**Composition Root:**
 
-- Location: `src/App.tsx`
-- Triggers: After main.tsx ReactDOM render
-- Responsibilities:
-  1. Load setup state to check if setup wizard needed
-  2. Check encryption session status (initialized, ready)
-  3. Route to SetupPage, UnlockPage, or authenticated routes (Dashboard, Devices, Settings)
-  4. Manage context providers (SearchProvider, ShortcutProvider, UpdateProvider)
-  5. Handle event listeners for encryption and UI navigation
-
-**PlatformRuntime Entry:**
-
-- Location: `src-tauri/crates/uc-platform/src/runtime/runtime.rs`
-- Triggers: `PlatformRuntime::start()` spawned in main.rs setup block
-- Responsibilities:
-  1. Start clipboard watcher (platform-specific via clipboard_rs)
-  2. Listen on event channel from clipboard watcher
-  3. Listen on command channel from Tauri commands
-  4. Call `ClipboardChangeHandler` callback when clipboard changes
-  5. Run async event loop until app shutdown
+- Location: `src-tauri/crates/uc-tauri/src/bootstrap/wiring.rs`
+- Triggers: Called from `main.rs` during Tauri `.setup()` callback
+- Responsibilities: Instantiate all infra/platform implementations, inject into `AppDeps`, wire orchestrators, return `WiredDependencies`; contains no business logic
 
 ## Error Handling
 
-**Strategy:** Explicit Result types with anyhow::Error in infrastructure; domain-specific errors in application
+**Strategy:** `anyhow::Result<T>` in use cases and infrastructure; Tauri commands map errors to `String` for frontend serialization
 
 **Patterns:**
 
-**Infrastructure Layer (uc-infra):**
-
-- All fallible operations return `Result<T, anyhow::Error>`
-- Database errors wrapped with context: `query().context("Failed to fetch entry")?`
-- Encryption errors propagated as anyhow errors
-
-**Application Layer (uc-app):**
-
-- Use cases return domain error types (e.g., `EntryNotFound`, `DecryptionFailed`)
-- Custom error enums implement `From<anyhow::Error>` for conversion from infrastructure
-- Error messages include context for UI display
-
-**Command Layer (uc-tauri):**
-
-- Commands return `Result<T, String>` for Tauri compatibility
-- Use case errors converted to strings: `uc.execute().map_err(|e| e.to_string())?`
-- Errors logged to tracing before returning to frontend
-
-**Frontend:**
-
-- API queries wrapped with RTK Query error handling
-- Try-catch blocks for async operations
-- Errors displayed to user via toast notifications (Sonner)
-- Fallback UI states for failed requests
+- Use cases: `anyhow::Result<T>` or domain-specific error enums (e.g., `SetupError`, `ListProjectionsError`)
+- Commands: `uc.execute().await.map_err(|e| e.to_string())`
+- No `unwrap()` or `expect()` in production code — use `?`, pattern matching, or `unwrap_or_else`
+- Event-driven code: errors logged with `warn!`/`error!` and emitted as typed events (e.g., `NetworkEvent::Error`) so UI can surface them
 
 ## Cross-Cutting Concerns
 
-**Logging:** Structured logging with tracing crate
+**Logging:** `tracing` crate; spans via `#[tracing::instrument]` or manual `info_span!(...).instrument(future)`; CLEF format for Seq aggregation via `uc-observability`; development logs to terminal, production to stdout + log file
 
-- Backend: `src-tauri/crates/uc-tauri/src/bootstrap/tracing.rs` initializes subscriber
-- Spans for operation tracking: `info_span!("operation.name", field = value)`
-- `.instrument(span)` attaches spans to async blocks for duration tracking
-- Development: Debug level to terminal; Production: Info level to file + stdout
-- Filtered to exclude noisy libp2p_mdns, Tauri internal events
+**Validation:** Domain types enforce invariants (e.g., typed ID newtypes in `uc-core/src/ids/`); business rule validation in use case layer
 
-**Validation:** Input validation at command layer
+**Encryption:** XChaCha20-Poly1305 AEAD in `uc-infra/src/security/encryption.rs`; Argon2id KDF for passphrase-to-key; key slots file system at `uc-infra/src/fs/key_slot_store.rs`; Tauri Stronghold plugin for secure master key storage
 
-- Parse and validate Tauri command inputs before passing to use cases
-- IDs validated (e.g., EntryId, BlobId format checks)
-- No unchecked user input passed to use cases
-
-**Authentication:** Encryption session as gatekeeper
-
-- Commands check `encryption_session.is_ready()` before accessing clipboard data
-- Uninitialized state redirects to setup wizard
-- Initialized but locked redirects to unlock page
-- Session marked ready only after secure storage unlock completes
-
-**Concurrency:** Tokio async runtime with Arc/Mutex for shared state
-
-- Arc<dyn Port> for dependency injection
-- Mutex<T> around mutable state in adapters (encryption state, settings cache)
-- RwLock for read-heavy state (app handle, lifecycle status)
-- Channel-based message passing between runtime components (no shared mutable state between them)
-
-**Testing:** Infrastructure tested in isolation; use cases tested with mock ports
-
-- `#[cfg(test)]` modules in each module with unit tests
-- Integration tests in `tests/` directories
-- Mocks created by implementing port traits
-- No database tests (Diesel migrations in separate flow)
+**P2P Networking:** libp2p with mDNS discovery, TCP transport, Noise protocol encryption, yamux multiplexing; all in `uc-platform/src/adapters/libp2p_network.rs`
 
 ---
 
-_Architecture analysis: 2026-03-02_
+_Architecture analysis: 2026-03-11_

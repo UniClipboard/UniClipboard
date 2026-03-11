@@ -12,6 +12,11 @@ pub const SELECT_POLICY: &str = "select_policy";
 pub const PERSIST_ENTRY: &str = "persist_entry";
 pub const SPOOL_BLOBS: &str = "spool_blobs";
 
+pub const OUTBOUND_PREPARE: &str = "outbound_prepare";
+pub const OUTBOUND_SEND: &str = "outbound_send";
+pub const INBOUND_DECODE: &str = "inbound_decode";
+pub const INBOUND_APPLY: &str = "inbound_apply";
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -26,6 +31,10 @@ mod tests {
             ("SELECT_POLICY", SELECT_POLICY),
             ("PERSIST_ENTRY", PERSIST_ENTRY),
             ("SPOOL_BLOBS", SPOOL_BLOBS),
+            ("OUTBOUND_PREPARE", OUTBOUND_PREPARE),
+            ("OUTBOUND_SEND", OUTBOUND_SEND),
+            ("INBOUND_DECODE", INBOUND_DECODE),
+            ("INBOUND_APPLY", INBOUND_APPLY),
         ];
         for (name, value) in stages {
             assert_eq!(
@@ -46,5 +55,9 @@ mod tests {
         assert!(!SELECT_POLICY.is_empty());
         assert!(!PERSIST_ENTRY.is_empty());
         assert!(!SPOOL_BLOBS.is_empty());
+        assert!(!OUTBOUND_PREPARE.is_empty());
+        assert!(!OUTBOUND_SEND.is_empty());
+        assert!(!INBOUND_DECODE.is_empty());
+        assert!(!INBOUND_APPLY.is_empty());
     }
 }

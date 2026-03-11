@@ -2,7 +2,7 @@
 phase: 23
 slug: distributed-tracing-with-trace-view-visualization-for-cross-device-observability
 status: draft
-nyquist_compliant: false
+nyquist_compliant: true
 wave_0_complete: false
 created: 2026-03-11
 ---
@@ -36,23 +36,23 @@ created: 2026-03-11
 
 ## Per-Task Verification Map
 
-| Task ID  | Plan | Wave | Requirement                 | Test Type | Automated Command                                                     | File Exists             | Status     |
-| -------- | ---- | ---- | --------------------------- | --------- | --------------------------------------------------------------------- | ----------------------- | ---------- |
-| 23-01-01 | 01   | 0    | device_id injection         | unit      | `cd src-tauri && cargo test -p uc-observability seq::layer::tests -x` | ❌ W0                   | ⬜ pending |
-| 23-01-02 | 01   | 0    | device_id absent gracefully | unit      | `cd src-tauri && cargo test -p uc-observability seq::layer::tests -x` | ❌ W0                   | ⬜ pending |
-| 23-01-03 | 01   | 0    | CLEF device_id field name   | unit      | `cd src-tauri && cargo test -p uc-observability clef -x`              | ❌ W0                   | ⬜ pending |
-| 23-01-04 | 01   | 0    | build_seq_layer signature   | unit      | `cd src-tauri && cargo test -p uc-observability seq::tests -x`        | Existing (needs update) | ⬜ pending |
-| 23-02-01 | 02   | 1    | origin_flow_id warning      | unit      | `cd src-tauri && cargo test -p uc-tauri -x`                           | ❌ W0                   | ⬜ pending |
+| Task ID  | Plan | Wave | Requirement                 | Test Type | Automated Command                                                                                                                 | File Exists                                          | Status   |
+| -------- | ---- | ---- | --------------------------- | --------- | --------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------- | -------- |
+| 23-01-01 | 01   | 0    | device_id injection         | unit      | `cd src-tauri && cargo test -p uc-observability --lib seq::layer::tests::injects_device_id_when_layer_has_value`                  | `src-tauri/crates/uc-observability/src/seq/layer.rs` | ✅ green |
+| 23-01-02 | 01   | 0    | device_id absent gracefully | unit      | `cd src-tauri && cargo test -p uc-observability --lib seq::layer::tests::missing_device_id_is_handled_gracefully`                 | `src-tauri/crates/uc-observability/src/seq/layer.rs` | ✅ green |
+| 23-01-03 | 01   | 0    | CLEF device_id field name   | unit      | `cd src-tauri && cargo test -p uc-observability --lib seq::layer::tests::uses_clef_field_name_device_id`                          | `src-tauri/crates/uc-observability/src/seq/layer.rs` | ✅ green |
+| 23-01-04 | 01   | 0    | build_seq_layer signature   | unit      | `cd src-tauri && cargo test -p uc-observability --lib`                                                                            | ✅ Existing                                          | ✅ green |
+| 23-02-01 | 02   | 1    | origin_flow_id warning      | unit      | `cd src-tauri && cargo test -p uc-tauri --lib bootstrap::wiring::tests::clipboard_receive_loop_warns_when_origin_flow_id_missing` | `src-tauri/crates/uc-tauri/src/bootstrap/wiring.rs`  | ✅ green |
 
-_Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky_
+_Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky · ⚠ manual-only_
 
 ---
 
 ## Wave 0 Requirements
 
-- [ ] `uc-observability/src/seq/layer.rs` tests — stubs for device_id injection, absent device_id, CLEF field name
-- [ ] Update existing `seq/mod.rs` tests for new `build_seq_layer` signature (device_id parameter)
-- [ ] `uc-tauri` test stubs for origin_flow_id warning on None value
+- [x] `uc-observability/src/seq/layer.rs` tests added for device_id injection, absent handling, and CLEF field name
+- [x] Existing `seq/mod.rs` tests validate `build_seq_layer(..., None)` signature path
+- [x] `uc-tauri` inbound receive-loop warning test covers `origin_flow_id: None` path
 
 _Existing infrastructure covers test framework setup._
 
@@ -70,11 +70,19 @@ _Existing infrastructure covers test framework setup._
 
 ## Validation Sign-Off
 
-- [ ] All tasks have `<automated>` verify or Wave 0 dependencies
-- [ ] Sampling continuity: no 3 consecutive tasks without automated verify
-- [ ] Wave 0 covers all MISSING references
+- [x] All tasks have `<automated>` verify or Wave 0 dependencies
+- [x] Sampling continuity: no 3 consecutive tasks without automated verify
+- [x] Wave 0 covers all MISSING references
 - [ ] No watch-mode flags
 - [ ] Feedback latency < 30s
-- [ ] `nyquist_compliant: true` set in frontmatter
+- [x] `nyquist_compliant: true` set in frontmatter
 
-**Approval:** pending
+**Approval:** automated coverage complete (manual environment checks remain)
+
+## Validation Audit 2026-03-11
+
+| Metric     | Count |
+| ---------- | ----- |
+| Gaps found | 4     |
+| Resolved   | 4     |
+| Escalated  | 0     |

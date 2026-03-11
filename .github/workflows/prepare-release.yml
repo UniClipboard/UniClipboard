@@ -145,10 +145,15 @@ jobs:
           responses-api-endpoint: ${{ secrets.CODEX_API_ENDPOINT || 'https://api.openai.com/v1/responses' }}
           openai-api-key: ${{ secrets.CODEX_API_KEY }}
           prompt: >-
-            Polish the changelog at docs/changelog/${{ steps.version.outputs.version }}.md
-            -- improve wording, fix grammar, ensure consistent formatting.
+            Read docs/CHANGELOG_TEMPLATE.md for the changelog format rules and conventions.
+            Then generate the changelog at docs/changelog/${{ steps.version.outputs.version }}.md
+            following those rules exactly:
+            - Categorize commits since the last tag using conventional commit types
+            - Only include categories that have entries (omit empty ones)
+            - Write descriptions in English, concise and user-facing
+            - Add Breaking Changes section at top if any exist
             Also create docs/changelog/${{ steps.version.outputs.version }}.zh.md
-            as a Chinese translation if it does not exist.
+            as a Chinese translation following the same structure.
             Only modify files under docs/changelog/. Do not change any code files.
 
       - name: Commit codex changes

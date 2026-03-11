@@ -13,6 +13,8 @@ serde = { version = "1", features = ["derive"] }
 chrono = "0.4"
 anyhow = "1.0"
 uuid = { version = "1", features = ["v7"] }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
+tokio = { version = "1", features = ["sync", "time", "rt"] }
 
 [dev-dependencies]
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt", "chrono", "json", "registry"] }

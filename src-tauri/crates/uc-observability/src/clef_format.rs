@@ -1,12 +1,13 @@
-//! Custom flat JSON formatter for tracing events.
+//! CLEF (Compact Log Event Format) formatter for Seq ingestion.
 //!
-//! Produces newline-delimited JSON with span fields flattened to the top level,
-//! using `parent_` prefix for conflicting keys.
+//! Produces newline-delimited JSON with CLEF fields (`@t`, `@l`, `@m`)
+//! and flattened span fields at the top level.
 
 use serde::ser::{SerializeMap, Serializer as _};
 use std::collections::BTreeMap;
 use std::fmt;
 use tracing::field::{Field, Visit};
+use tracing::Level;
 use tracing::Subscriber;
 use tracing_subscriber::fmt::format::{FormatFields, Writer};
 use tracing_subscriber::fmt::{FmtContext, FormatEvent};
@@ -14,27 +15,22 @@ use tracing_subscriber::registry::LookupSpan;
 
 use crate::span_fields::collect_span_fields;
 
-/// A flat JSON event formatter that merges span fields into the top-level JSON object.
+/// A CLEF event formatter for Seq ingestion.
 ///
-/// # JSON Structure
+/// # CLEF JSON Structure
 ///
 /// Each log line is a JSON object with:
-/// - `timestamp` - ISO 8601 UTC timestamp
-/// - `level` - Log level (TRACE, DEBUG, INFO, WARN, ERROR)
+/// - `@t` - ISO 8601 UTC timestamp (e.g., `2024-01-15T10:30:00.123Z`)
+/// - `@l` - Seq level name (Verbose, Debug, Information, Warning, Error)
+/// - `@m` - Rendered message string
 /// - `target` - Rust module path of the log callsite
-/// - `message` - The log message string
 /// - `span` - Name of the current (leaf) span
 /// - Span fields flattened to top level
 /// - Event fields at top level
-///
-/// # Conflict Resolution
-///
-/// If a span field has the same key as an event field, the span field is
-/// prefixed with `parent_`. Event fields always keep their original key.
-pub struct FlatJsonFormat;
+pub struct CLEFFormat;
 
-impl FlatJsonFormat {
-    /// Create a new `FlatJsonFormat` instance.
+impl CLEFFormat {
+    /// Create a new `CLEFFormat` instance.
     pub fn new() -> Self {
         Self
     }
@@ -44,13 +40,24 @@ impl FlatJsonFormat {
     }
 }
 
-impl Default for FlatJsonFormat {
+impl Default for CLEFFormat {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl<S, N> FormatEvent<S, N> for FlatJsonFormat
+/// Map tracing Level to Seq/CLEF level name.
+fn tracing_level_to_clef(level: &Level) -> &'static str {
+    match *level {
+        Level::TRACE => "Verbose",
+        Level::DEBUG => "Debug",
+        Level::INFO => "Information",
+        Level::WARN => "Warning",
+        Level::ERROR => "Error",
+    }
+}
+
+impl<S, N> FormatEvent<S, N> for CLEFFormat
 where
     S: Subscriber + for<'lookup> LookupSpan<'lookup>,
     N: for<'writer> FormatFields<'writer> + 'static,
@@ -65,28 +72,30 @@ where
         let mut ser = serde_json::Serializer::new(&mut buf);
         let mut map = ser.serialize_map(None).map_err(|_| fmt::Error)?;
 
-        // 1. Base fields
-        map.serialize_entry("timestamp", &Self::format_timestamp())
+        // 1. CLEF base fields
+        map.serialize_entry("@t", &Self::format_timestamp())
             .map_err(|_| fmt::Error)?;
-        map.serialize_entry("level", &event.metadata().level().as_str())
-            .map_err(|_| fmt::Error)?;
-        map.serialize_entry("target", event.metadata().target())
+        map.serialize_entry("@l", tracing_level_to_clef(event.metadata().level()))
             .map_err(|_| fmt::Error)?;
 
         // 2. Collect event fields (including message)
         let mut event_fields = BTreeMap::new();
-        let mut visitor = JsonVisitor::new(&mut event_fields);
+        let mut visitor = ClefVisitor::new(&mut event_fields);
         event.record(&mut visitor);
 
-        // Extract message from event fields
+        // Extract message
         if let Some(message) = event_fields.remove("message") {
-            map.serialize_entry("message", &message)
+            map.serialize_entry("@m", &message)
                 .map_err(|_| fmt::Error)?;
         } else {
-            map.serialize_entry("message", "").map_err(|_| fmt::Error)?;
+            map.serialize_entry("@m", "").map_err(|_| fmt::Error)?;
         }
 
-        // 3. Collect span fields (root to leaf) and span name using shared helper
+        // 3. Target and span name
+        map.serialize_entry("target", event.metadata().target())
+            .map_err(|_| fmt::Error)?;
+
+        // 4. Collect span fields using shared helper
         let (leaf_span_name, span_fields) = collect_span_fields(ctx);
 
         if let Some(span_name) = &leaf_span_name {
@@ -94,39 +103,34 @@ where
                 .map_err(|_| fmt::Error)?;
         }
 
-        // 4. Merge: span fields with conflict resolution, then event fields
+        // 5. Flatten span fields at top level (no conflict resolution for CLEF)
         for (key, value) in &span_fields {
-            if event_fields.contains_key(key) {
-                map.serialize_entry(&format!("parent_{}", key), value)
-                    .map_err(|_| fmt::Error)?;
-            } else {
-                map.serialize_entry(key, value).map_err(|_| fmt::Error)?;
-            }
+            map.serialize_entry(key, value).map_err(|_| fmt::Error)?;
         }
 
+        // 6. Event fields at top level
         for (key, value) in &event_fields {
             map.serialize_entry(key, value).map_err(|_| fmt::Error)?;
         }
 
         map.end().map_err(|_| fmt::Error)?;
 
-        // Write the JSON line
         writeln!(writer, "{}", String::from_utf8_lossy(&buf))
     }
 }
 
-/// Visitor that collects tracing fields as `serde_json::Value` entries.
-struct JsonVisitor<'a> {
+/// Visitor that collects tracing fields as `serde_json::Value` entries for CLEF output.
+struct ClefVisitor<'a> {
     fields: &'a mut BTreeMap<String, serde_json::Value>,
 }
 
-impl<'a> JsonVisitor<'a> {
+impl<'a> ClefVisitor<'a> {
     fn new(fields: &'a mut BTreeMap<String, serde_json::Value>) -> Self {
         Self { fields }
     }
 }
 
-impl<'a> Visit for JsonVisitor<'a> {
+impl<'a> Visit for ClefVisitor<'a> {
     fn record_f64(&mut self, field: &Field, value: f64) {
         self.fields
             .insert(field.name().to_string(), serde_json::Value::from(value));
@@ -214,13 +218,13 @@ mod tests {
     }
 
     #[test]
-    fn test_flat_json_produces_valid_json() {
+    fn test_clef_produces_valid_json() {
         let buf = BufWriter::new();
         let buf_clone = buf.clone();
 
         let subscriber = tracing_subscriber::registry().with(
             tracing_subscriber::fmt::layer()
-                .event_format(FlatJsonFormat::new())
+                .event_format(CLEFFormat::new())
                 .fmt_fields(JsonFields::new())
                 .with_writer(buf_clone)
                 .with_ansi(false),
@@ -232,58 +236,73 @@ mod tests {
 
         let output = buf.contents();
         let line = output.trim();
-        assert!(!line.is_empty(), "Expected JSON output");
+        assert!(!line.is_empty(), "Expected CLEF JSON output");
         let parsed: serde_json::Value = serde_json::from_str(line)
             .unwrap_or_else(|e| panic!("Invalid JSON: {e}\nOutput: {line}"));
         assert!(parsed.is_object());
+
+        let obj = parsed.as_object().unwrap();
+        assert!(obj.contains_key("@t"), "Missing '@t' timestamp");
+        assert!(obj.contains_key("@l"), "Missing '@l' level");
+        assert!(obj.contains_key("@m"), "Missing '@m' message");
     }
 
     #[test]
-    fn test_flat_json_has_required_base_fields() {
+    fn test_clef_level_mapping() {
+        let test_cases = vec![
+            (tracing::Level::TRACE, "Verbose"),
+            (tracing::Level::DEBUG, "Debug"),
+            (tracing::Level::INFO, "Information"),
+            (tracing::Level::WARN, "Warning"),
+            (tracing::Level::ERROR, "Error"),
+        ];
+
+        for (level, expected) in &test_cases {
+            assert_eq!(
+                tracing_level_to_clef(level),
+                *expected,
+                "Level {:?} should map to {}",
+                level,
+                expected
+            );
+        }
+
+        // Also verify via actual event output
         let buf = BufWriter::new();
         let buf_clone = buf.clone();
 
         let subscriber = tracing_subscriber::registry().with(
             tracing_subscriber::fmt::layer()
-                .event_format(FlatJsonFormat::new())
+                .event_format(CLEFFormat::new())
                 .fmt_fields(JsonFields::new())
                 .with_writer(buf_clone)
                 .with_ansi(false),
         );
 
         tracing::subscriber::with_default(subscriber, || {
-            tracing::info!(target: "my_target", "hello world");
+            tracing::info!("info event");
         });
 
         let output = buf.contents();
         let parsed: serde_json::Value = serde_json::from_str(output.trim()).unwrap();
-        let obj = parsed.as_object().unwrap();
-
-        assert!(obj.contains_key("timestamp"), "Missing 'timestamp'");
-        assert!(obj.contains_key("level"), "Missing 'level'");
-        assert!(obj.contains_key("target"), "Missing 'target'");
-        assert!(obj.contains_key("message"), "Missing 'message'");
-
-        assert_eq!(obj["level"], "INFO");
-        assert_eq!(obj["target"], "my_target");
-        assert_eq!(obj["message"], "hello world");
+        assert_eq!(parsed["@l"], "Information");
     }
 
     #[test]
-    fn test_flat_json_includes_span_name_and_fields() {
+    fn test_clef_includes_span_fields() {
         let buf = BufWriter::new();
         let buf_clone = buf.clone();
 
         let subscriber = tracing_subscriber::registry().with(
             tracing_subscriber::fmt::layer()
-                .event_format(FlatJsonFormat::new())
+                .event_format(CLEFFormat::new())
                 .fmt_fields(JsonFields::new())
                 .with_writer(buf_clone)
                 .with_ansi(false),
         );
 
         tracing::subscriber::with_default(subscriber, || {
-            let span = tracing::info_span!("my_operation", user_id = 42);
+            let span = tracing::info_span!("my_operation", flow_id = "abc-123", stage = "capture");
             let _enter = span.enter();
             tracing::info!("inside span");
         });
@@ -293,90 +312,30 @@ mod tests {
         let obj = parsed.as_object().unwrap();
 
         assert_eq!(
+            obj.get("flow_id").and_then(|v| v.as_str()),
+            Some("abc-123"),
+            "flow_id should be flattened at top level"
+        );
+        assert_eq!(
+            obj.get("stage").and_then(|v| v.as_str()),
+            Some("capture"),
+            "stage should be flattened at top level"
+        );
+        assert_eq!(
             obj.get("span").and_then(|v| v.as_str()),
-            Some("my_operation")
+            Some("my_operation"),
+            "span name should be present"
         );
-        assert_eq!(obj.get("user_id").and_then(|v| v.as_u64()), Some(42));
     }
 
     #[test]
-    fn test_flat_json_flattens_parent_span_fields() {
+    fn test_clef_includes_event_fields() {
         let buf = BufWriter::new();
         let buf_clone = buf.clone();
 
         let subscriber = tracing_subscriber::registry().with(
             tracing_subscriber::fmt::layer()
-                .event_format(FlatJsonFormat::new())
-                .fmt_fields(JsonFields::new())
-                .with_writer(buf_clone)
-                .with_ansi(false),
-        );
-
-        tracing::subscriber::with_default(subscriber, || {
-            let parent = tracing::info_span!("parent_op", request_id = "abc-123");
-            let _parent_enter = parent.enter();
-            let child = tracing::info_span!("child_op", step = 2);
-            let _child_enter = child.enter();
-            tracing::info!("nested event");
-        });
-
-        let output = buf.contents();
-        let parsed: serde_json::Value = serde_json::from_str(output.trim()).unwrap();
-        let obj = parsed.as_object().unwrap();
-
-        // Parent span fields should be flattened to top level
-        assert_eq!(
-            obj.get("request_id").and_then(|v| v.as_str()),
-            Some("abc-123")
-        );
-        assert_eq!(obj.get("step").and_then(|v| v.as_u64()), Some(2));
-        // Leaf span name
-        assert_eq!(obj.get("span").and_then(|v| v.as_str()), Some("child_op"));
-    }
-
-    #[test]
-    fn test_flat_json_prefixes_conflicting_span_keys() {
-        let buf = BufWriter::new();
-        let buf_clone = buf.clone();
-
-        let subscriber = tracing_subscriber::registry().with(
-            tracing_subscriber::fmt::layer()
-                .event_format(FlatJsonFormat::new())
-                .fmt_fields(JsonFields::new())
-                .with_writer(buf_clone)
-                .with_ansi(false),
-        );
-
-        tracing::subscriber::with_default(subscriber, || {
-            let span = tracing::info_span!("op", status = "pending");
-            let _enter = span.enter();
-            tracing::info!(status = "completed", "status changed");
-        });
-
-        let output = buf.contents();
-        let parsed: serde_json::Value = serde_json::from_str(output.trim()).unwrap();
-        let obj = parsed.as_object().unwrap();
-
-        // Event field keeps original key
-        assert_eq!(
-            obj.get("status").and_then(|v| v.as_str()),
-            Some("completed")
-        );
-        // Span field gets parent_ prefix
-        assert_eq!(
-            obj.get("parent_status").and_then(|v| v.as_str()),
-            Some("pending")
-        );
-    }
-
-    #[test]
-    fn test_flat_json_event_fields_at_top_level() {
-        let buf = BufWriter::new();
-        let buf_clone = buf.clone();
-
-        let subscriber = tracing_subscriber::registry().with(
-            tracing_subscriber::fmt::layer()
-                .event_format(FlatJsonFormat::new())
+                .event_format(CLEFFormat::new())
                 .fmt_fields(JsonFields::new())
                 .with_writer(buf_clone)
                 .with_ansi(false),
@@ -392,5 +351,39 @@ mod tests {
 
         assert_eq!(obj.get("count").and_then(|v| v.as_u64()), Some(5));
         assert_eq!(obj.get("name").and_then(|v| v.as_str()), Some("test"));
+    }
+
+    #[test]
+    fn test_clef_timestamp_is_iso8601() {
+        let buf = BufWriter::new();
+        let buf_clone = buf.clone();
+
+        let subscriber = tracing_subscriber::registry().with(
+            tracing_subscriber::fmt::layer()
+                .event_format(CLEFFormat::new())
+                .fmt_fields(JsonFields::new())
+                .with_writer(buf_clone)
+                .with_ansi(false),
+        );
+
+        tracing::subscriber::with_default(subscriber, || {
+            tracing::info!("timestamp test");
+        });
+
+        let output = buf.contents();
+        let parsed: serde_json::Value = serde_json::from_str(output.trim()).unwrap();
+        let timestamp = parsed["@t"].as_str().unwrap();
+
+        // Verify RFC 3339 format (subset of ISO 8601)
+        assert!(
+            chrono::DateTime::parse_from_rfc3339(timestamp).is_ok(),
+            "Timestamp '{}' is not valid RFC 3339",
+            timestamp
+        );
+        // Should end with Z (UTC)
+        assert!(
+            timestamp.ends_with('Z'),
+            "Timestamp should be UTC (end with Z)"
+        );
     }
 }

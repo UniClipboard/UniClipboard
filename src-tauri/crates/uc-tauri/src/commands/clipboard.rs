@@ -601,7 +601,7 @@ async fn restore_clipboard_entry_impl(
 
         let outbound_sync_uc = runtime.usecases().sync_outbound_clipboard();
         match tokio::task::spawn_blocking(move || {
-            outbound_sync_uc.execute(outbound_snapshot, uc_core::ClipboardChangeOrigin::LocalRestore)
+            outbound_sync_uc.execute(outbound_snapshot, uc_core::ClipboardChangeOrigin::LocalRestore, None)
         })
         .await
         {

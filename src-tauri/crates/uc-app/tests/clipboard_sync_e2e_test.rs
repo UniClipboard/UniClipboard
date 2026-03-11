@@ -509,6 +509,7 @@ async fn clipboard_sync_e2e_dual_peer_in_process() -> Result<()> {
         outbound_a.execute(
             text_snapshot("hello from device A", 1_713_000_000_001),
             ClipboardChangeOrigin::LocalCapture,
+            None,
         )
     })
     .await
@@ -529,7 +530,7 @@ async fn clipboard_sync_e2e_dual_peer_in_process() -> Result<()> {
         .await;
     assert_eq!(b_origin, ClipboardChangeOrigin::RemotePush);
 
-    tokio::task::spawn_blocking(move || outbound_b.execute(snapshot_on_b, b_origin))
+    tokio::task::spawn_blocking(move || outbound_b.execute(snapshot_on_b, b_origin, None))
         .await
         .map_err(|e| anyhow!("failed to join outbound B task: {e}"))??;
 
@@ -606,6 +607,7 @@ async fn clipboard_sync_e2e_image_single_rep() -> Result<()> {
         outbound_a.execute(
             image_snapshot(png_clone, 1_713_000_000_001),
             ClipboardChangeOrigin::LocalCapture,
+            None,
         )
     })
     .await
@@ -703,6 +705,7 @@ async fn clipboard_sync_e2e_windows_image_multi_rep() -> Result<()> {
         outbound_a.execute(
             windows_image_snapshot(png_clone, 1_713_000_000_001),
             ClipboardChangeOrigin::LocalCapture,
+            None,
         )
     })
     .await

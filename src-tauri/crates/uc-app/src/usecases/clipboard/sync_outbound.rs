@@ -53,13 +53,14 @@ impl SyncOutboundClipboardUseCase {
             .local_clipboard
             .read_snapshot()
             .context("failed to read current clipboard snapshot for outbound sync")?;
-        self.execute(snapshot, origin)
+        self.execute(snapshot, origin, None)
     }
 
     pub fn execute(
         &self,
         snapshot: SystemClipboardSnapshot,
         origin: ClipboardChangeOrigin,
+        origin_flow_id: Option<String>,
     ) -> Result<()> {
         let span = info_span!(
             "usecase.clipboard.sync_outbound.execute",
@@ -67,13 +68,17 @@ impl SyncOutboundClipboardUseCase {
             representation_count = snapshot.representations.len(),
         );
 
-        executor::block_on(self.execute_async(snapshot, origin).instrument(span))
+        executor::block_on(
+            self.execute_async(snapshot, origin, origin_flow_id)
+                .instrument(span),
+        )
     }
 
     async fn execute_async(
         &self,
         snapshot: SystemClipboardSnapshot,
         origin: ClipboardChangeOrigin,
+        origin_flow_id: Option<String>,
     ) -> Result<()> {
         if origin == ClipboardChangeOrigin::RemotePush {
             debug!(origin = ?origin, "Skipping outbound sync for remote-push origin");
@@ -174,7 +179,7 @@ impl SyncOutboundClipboardUseCase {
             origin_device_id,
             origin_device_name,
             payload_version: ClipboardPayloadVersion::V3,
-            origin_flow_id: None,
+            origin_flow_id,
         };
 
         // Clone values needed for parallel encryption block (to avoid &self borrow in tokio::join!)
@@ -215,7 +220,11 @@ impl SyncOutboundClipboardUseCase {
 
             Ok::<Arc<[u8]>, anyhow::Error>(Arc::from(framed.into_boxed_slice()))
         }
-        .instrument(info_span!("outbound.prepare", raw_bytes));
+        .instrument(info_span!(
+            "outbound.prepare",
+            raw_bytes,
+            stage = uc_observability::stages::OUTBOUND_PREPARE
+        ));
 
         let outbound_bytes = if tokio::runtime::Handle::try_current().is_ok() {
             let prepare_handle = tokio::spawn(prepare_future);
@@ -272,7 +281,7 @@ impl SyncOutboundClipboardUseCase {
                     .send_clipboard(&first_peer.peer_id, outbound_bytes.clone())
                     .await
             }
-            .instrument(info_span!("outbound.send", peer_id = %first_peer.peer_id))
+            .instrument(info_span!("outbound.send", peer_id = %first_peer.peer_id, stage = uc_observability::stages::OUTBOUND_SEND))
             .await
             {
                 warn!(
@@ -308,7 +317,7 @@ impl SyncOutboundClipboardUseCase {
                     .send_clipboard(&peer.peer_id, outbound_bytes.clone())
                     .await
             }
-            .instrument(info_span!("outbound.send", peer_id = %peer.peer_id))
+            .instrument(info_span!("outbound.send", peer_id = %peer.peer_id, stage = uc_observability::stages::OUTBOUND_SEND))
             .await
             {
                 warn!(
@@ -670,7 +679,7 @@ mod tests {
         );
 
         usecase
-            .execute(build_snapshot(), ClipboardChangeOrigin::LocalCapture)
+            .execute(build_snapshot(), ClipboardChangeOrigin::LocalCapture, None)
             .expect("execute local capture");
 
         assert_eq!(send_calls.lock().expect("send calls lock").len(), 1);
@@ -690,7 +699,7 @@ mod tests {
         );
 
         usecase
-            .execute(build_snapshot(), ClipboardChangeOrigin::RemotePush)
+            .execute(build_snapshot(), ClipboardChangeOrigin::RemotePush, None)
             .expect("remote push should no-op");
 
         assert_eq!(send_calls.lock().expect("send calls lock").len(), 0);
@@ -710,7 +719,7 @@ mod tests {
         );
 
         usecase
-            .execute(build_snapshot(), ClipboardChangeOrigin::LocalRestore)
+            .execute(build_snapshot(), ClipboardChangeOrigin::LocalRestore, None)
             .expect("local restore should fan out");
 
         assert_eq!(send_calls.lock().expect("send calls lock").len(), 1);
@@ -731,7 +740,7 @@ mod tests {
             );
 
         usecase
-            .execute(build_snapshot(), ClipboardChangeOrigin::LocalCapture)
+            .execute(build_snapshot(), ClipboardChangeOrigin::LocalCapture, None)
             .expect("execute should no-op");
 
         assert_eq!(send_calls.lock().expect("send calls lock").len(), 0);
@@ -775,7 +784,7 @@ mod tests {
         );
 
         usecase
-            .execute(build_snapshot(), ClipboardChangeOrigin::LocalCapture)
+            .execute(build_snapshot(), ClipboardChangeOrigin::LocalCapture, None)
             .expect("execute local capture");
 
         let calls = send_calls.lock().expect("send calls lock");
@@ -832,7 +841,7 @@ mod tests {
             );
 
         usecase
-            .execute(empty_snapshot, ClipboardChangeOrigin::LocalCapture)
+            .execute(empty_snapshot, ClipboardChangeOrigin::LocalCapture, None)
             .expect("empty snapshot should no-op without error");
 
         assert_eq!(send_calls.lock().expect("send calls lock").len(), 0);
@@ -881,7 +890,11 @@ mod tests {
         );
 
         usecase
-            .execute(multi_rep_snapshot, ClipboardChangeOrigin::LocalCapture)
+            .execute(
+                multi_rep_snapshot,
+                ClipboardChangeOrigin::LocalCapture,
+                None,
+            )
             .expect("execute multi-rep capture");
 
         // V3 does NOT call encrypt_blob (uses ChunkedEncoder directly)
@@ -945,7 +958,7 @@ mod tests {
         );
 
         let err = usecase
-            .execute(build_snapshot(), ClipboardChangeOrigin::LocalCapture)
+            .execute(build_snapshot(), ClipboardChangeOrigin::LocalCapture, None)
             .expect_err("partial fanout failure should be reported");
         let err_msg = err.to_string();
         assert!(
@@ -983,7 +996,7 @@ mod tests {
         );
 
         let err = usecase
-            .execute(build_snapshot(), ClipboardChangeOrigin::LocalCapture)
+            .execute(build_snapshot(), ClipboardChangeOrigin::LocalCapture, None)
             .expect_err("all ensure failures should return error");
 
         let err_msg = err.to_string();
@@ -1024,7 +1037,7 @@ mod tests {
         );
 
         let err = usecase
-            .execute(build_snapshot(), ClipboardChangeOrigin::LocalCapture)
+            .execute(build_snapshot(), ClipboardChangeOrigin::LocalCapture, None)
             .expect_err("partial ensure failures should return error");
 
         let err_msg = err.to_string();
@@ -1049,7 +1062,7 @@ mod tests {
             build_usecase(vec![], true, &[], &[]);
 
         usecase
-            .execute(build_snapshot(), ClipboardChangeOrigin::LocalCapture)
+            .execute(build_snapshot(), ClipboardChangeOrigin::LocalCapture, None)
             .expect("should no-op");
 
         assert_eq!(send_calls.lock().expect("send calls lock").len(), 0);
@@ -1079,7 +1092,7 @@ mod tests {
         );
 
         let err = usecase
-            .execute(build_snapshot(), ClipboardChangeOrigin::LocalCapture)
+            .execute(build_snapshot(), ClipboardChangeOrigin::LocalCapture, None)
             .expect_err("all send failures should return error");
 
         let err_msg = err.to_string();

@@ -1069,10 +1069,11 @@ impl ClipboardChangeHandler for AppRuntime {
 
                     let outbound_sync_uc = self.usecases().sync_outbound_clipboard();
                     let flow_id_for_sync = flow_id.clone();
+                    let flow_id_str = flow_id_for_sync.to_string();
                     tauri::async_runtime::spawn(
                         async move {
                             match tokio::task::spawn_blocking(move || {
-                                outbound_sync_uc.execute(outbound_snapshot, origin)
+                                outbound_sync_uc.execute(outbound_snapshot, origin, Some(flow_id_str))
                             })
                             .await
                             {

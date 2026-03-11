@@ -142,8 +142,8 @@ jobs:
         env:
           CODEX_API_KEY: ${{ secrets.CODEX_API_KEY }}
         with:
-          responses-api-endpoint: ${{ secrets.CODEX_API_ENDPOINT || 'https://api.openai.com/v1' }}
-          api-key: ${{ secrets.CODEX_API_KEY }}
+          responses-api-endpoint: ${{ secrets.CODEX_API_ENDPOINT || 'https://api.openai.com/v1/responses' }}
+          openai-api-key: ${{ secrets.CODEX_API_KEY }}
           prompt: >-
             Polish the changelog at docs/changelog/${{ steps.version.outputs.version }}.md
             -- improve wording, fix grammar, ensure consistent formatting.

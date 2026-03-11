@@ -110,12 +110,18 @@ jobs:
               PREV_TAG=$(git rev-list --max-parents=0 HEAD)
             fi
 
+            if [ "${{ inputs.channel }}" = "stable" ]; then
+              IS_PRERELEASE=false
+            else
+              IS_PRERELEASE=true
+            fi
+
             node scripts/generate-release-notes.js \
               --version "${VERSION}" \
               --repo "${{ github.repository }}" \
               --previous-tag "${PREV_TAG}" \
               --channel "${{ inputs.channel }}" \
-              --is-prerelease "false" \
+              --is-prerelease "${IS_PRERELEASE}" \
               --artifacts-dir "${TEMP_ARTIFACTS}" \
               --template ".github/release-notes/release.md.tmpl" \
               --output "${CHANGELOG_PATH}" || {

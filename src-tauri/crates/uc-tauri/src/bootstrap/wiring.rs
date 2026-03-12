@@ -1133,6 +1133,7 @@ pub fn wire_dependencies_with_identity_store(
             clock: infra.clock,
             hash: infra.hash,
             file_manager: Arc::new(uc_platform::file_manager::NativeFileManagerAdapter::new()),
+            cache_fs: Arc::new(uc_infra::fs::TokioCacheFsAdapter::new()),
         },
     };
 

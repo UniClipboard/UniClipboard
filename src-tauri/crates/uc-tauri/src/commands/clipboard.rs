@@ -1332,6 +1332,28 @@ mod tests {
         }
     }
 
+    #[async_trait::async_trait]
+    impl uc_core::ports::CacheFsPort for NoopPort {
+        async fn exists(&self, _path: &std::path::Path) -> bool {
+            false
+        }
+        async fn read_dir(
+            &self,
+            _path: &std::path::Path,
+        ) -> anyhow::Result<Vec<uc_core::ports::CacheFsDirEntry>> {
+            Ok(vec![])
+        }
+        async fn remove_dir_all(&self, _path: &std::path::Path) -> anyhow::Result<()> {
+            Ok(())
+        }
+        async fn remove_file(&self, _path: &std::path::Path) -> anyhow::Result<()> {
+            Ok(())
+        }
+        async fn dir_size(&self, _path: &std::path::Path) -> u64 {
+            0
+        }
+    }
+
     fn test_app_dirs() -> uc_core::app_dirs::AppDirs {
         uc_core::app_dirs::AppDirs {
             app_data_root: std::path::PathBuf::from("/tmp/uniclipboard-test"),
@@ -1419,6 +1441,7 @@ mod tests {
                 clock: Arc::new(NoopPort),
                 hash: Arc::new(NoopPort),
                 file_manager: Arc::new(NoopPort),
+                cache_fs: Arc::new(NoopPort),
             },
         };
 
@@ -1491,6 +1514,7 @@ mod tests {
                 clock: Arc::new(NoopPort),
                 hash: Arc::new(NoopPort),
                 file_manager: Arc::new(NoopPort),
+                cache_fs: Arc::new(NoopPort),
             },
         };
 

@@ -83,12 +83,13 @@ pub struct StoragePorts {
     pub thumbnail_generator: Arc<dyn ThumbnailGeneratorPort>,
 }
 
-/// System-domain ports bundle (clock, hash, file manager).
-/// 系统领域端口组（时钟、哈希、文件管理器）。
+/// System-domain ports bundle (clock, hash, file manager, cache filesystem).
+/// 系统领域端口组（时钟、哈希、文件管理器、缓存文件系统）。
 pub struct SystemPorts {
     pub clock: Arc<dyn ClockPort>,
     pub hash: Arc<dyn ContentHashPort>,
     pub file_manager: Arc<dyn FileManagerPort>,
+    pub cache_fs: Arc<dyn uc_core::ports::cache_fs::CacheFsPort>,
 }
 
 /// Application dependency grouping (non-Builder, just parameter grouping)

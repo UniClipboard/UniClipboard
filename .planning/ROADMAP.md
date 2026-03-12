@@ -200,7 +200,7 @@ Plans:
 **Goal:** When macOS users toggle auto-unlock ON, a confirmation modal guides them through granting "Always Allow" in the Keychain popup and verifies the permission was granted before enabling auto-unlock. Non-macOS platforms skip the modal entirely.
 **Requirements**: KC-01, KC-02, KC-03, KC-04, KC-05, KC-06
 **Depends on:** Phase 25
-**Plans:** 2 plans
+**Plans:** 1/2 plans executed
 
 Plans:
 

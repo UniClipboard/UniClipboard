@@ -320,6 +320,91 @@ const [activeCategory, setActiveCategory] = useState(
 )
 ```
 
+## Validation Architecture
+
+### Test Framework
+
+| Property                     | Value                                                         |
+| ---------------------------- | ------------------------------------------------------------- |
+| Framework (Backend)          | Rust built-in test + tokio::test (async)                      |
+| Framework (Frontend)         | Vitest 4.x + @testing-library/jest-dom                        |
+| Config file (Backend)        | Cargo.toml per crate (existing)                               |
+| Config file (Frontend)       | None yet -- Wave 0 gap                                        |
+| Quick run command (Backend)  | `cd src-tauri && cargo test -p uc-app --lib -- sync_outbound` |
+| Quick run command (Frontend) | `bun run test -- --run`                                       |
+| Full suite command           | `cd src-tauri && cargo test --workspace`                      |
+
+### Phase Requirements to Test Map
+
+| Req ID | Behavior                                                                | Test Type   | Automated Command                                                          | File Exists? |
+| ------ | ----------------------------------------------------------------------- | ----------- | -------------------------------------------------------------------------- | ------------ |
+| P26-01 | Global auto_sync=false returns empty peer list from apply_sync_policy   | unit        | `cd src-tauri && cargo test -p uc-app -- sync_outbound_global_toggle`      | No -- Wave 0 |
+| P26-02 | Global auto_sync=false overrides per-device auto_sync=true              | unit        | `cd src-tauri && cargo test -p uc-app -- sync_outbound_global_override`    | No -- Wave 0 |
+| P26-03 | Global auto_sync=true preserves existing per-device filtering behavior  | unit        | `cd src-tauri && cargo test -p uc-app -- sync_outbound_global_enabled`     | No -- Wave 0 |
+| P26-04 | Settings load failure falls back to allowing all peers (safety)         | unit        | `cd src-tauri && cargo test -p uc-app -- sync_outbound_settings_fallback`  | No -- Wave 0 |
+| P26-05 | Per-device settings NOT modified when global toggle changes             | unit        | `cd src-tauri && cargo test -p uc-app -- sync_outbound_no_device_mutation` | No -- Wave 0 |
+| P26-06 | Banner visible when globalAutoSyncOff=true in PairedDevicesPanel        | manual-only | Visual inspection in `bun tauri dev`                                       | N/A          |
+| P26-07 | Banner hidden when globalAutoSyncOff=false                              | manual-only | Visual inspection                                                          | N/A          |
+| P26-08 | All DeviceSettingsPanel controls disabled when global off               | manual-only | Visual inspection                                                          | N/A          |
+| P26-09 | Per-device toggle preserves checked visual state when globally disabled | manual-only | Visual inspection                                                          | N/A          |
+| P26-10 | "Go to Settings" link navigates to sync category                        | manual-only | Visual inspection                                                          | N/A          |
+| P26-11 | i18n keys render correctly in EN and ZH locales                         | manual-only | Visual inspection                                                          | N/A          |
+| P26-12 | Re-enabling global auto_sync resumes per-device settings immediately    | integration | `cd src-tauri && cargo test -p uc-app -- sync_outbound_resume`             | No -- Wave 0 |
+
+### Test Strategy by Layer
+
+**Backend (Rust) -- Unit Tests for apply_sync_policy:**
+
+The core enforcement logic lives in `SyncOutboundClipboardUseCase::apply_sync_policy()`. This method is `async` and takes `&self`, peers, and snapshot as arguments. Testing requires mock implementations of `SettingsPort` and `PairedDeviceRepositoryPort`.
+
+**Existing test infrastructure:**
+
+- `src-tauri/crates/uc-app/src/testing.rs` provides `NoopPairedDeviceRepository` and other noop impls
+- `src-tauri/crates/uc-app/tests/clipboard_sync_e2e_test.rs` has full mock implementations for all ports (InMemoryClipboard, StaticDeviceIdentity, etc.)
+- These mocks can be reused or extended for targeted apply_sync_policy tests
+
+**Key test scenarios for backend:**
+
+1. **Global off, multiple peers with per-device on:** Create a `MockSettingsPort` returning `auto_sync=false`, provide 3 peers all with per-device `auto_sync=true`. Assert `apply_sync_policy()` returns empty vec.
+
+2. **Global on, mixed per-device:** Create `MockSettingsPort` returning `auto_sync=true`, provide peers with mixed per-device settings. Assert only enabled peers returned (existing behavior preserved).
+
+3. **Settings load error:** Create `MockSettingsPort` that returns `Err`. Assert all peers are returned (safety fallback).
+
+4. **Global toggle cycle (off then on):** Two sequential calls -- first with `auto_sync=false` (empty result), then with `auto_sync=true` (peers returned based on per-device). Validates resume behavior.
+
+**Frontend -- Manual Validation:**
+
+Frontend tests are marked manual-only because:
+
+- No vitest config exists yet (CLAUDE.md confirms "No test framework currently configured")
+- The UI changes are primarily visual (banner styling, disabled states)
+- Component testing would require mocking SettingContext + Redux store + React Router
+- The effort of setting up frontend test infrastructure exceeds the scope of this phase
+
+**Manual test checklist:**
+
+1. Toggle global auto_sync OFF in Settings -> navigate to Devices -> verify amber banner visible
+2. Verify all device controls are grayed out but preserve their on/off visual state
+3. Click "Go to Settings" link -> verify lands on Sync section
+4. Toggle global auto_sync ON -> navigate back to Devices -> verify banner gone, controls re-enabled
+5. Verify other Sync section settings (sync_frequency, max_file_size_mb) remain editable when global off
+6. Switch language to ZH -> verify all new strings render correctly
+
+### Sampling Rate
+
+- **Per task commit:** `cd src-tauri && cargo test -p uc-app -- sync_outbound -x`
+- **Per wave merge:** `cd src-tauri && cargo test --workspace`
+- **Phase gate:** Full backend suite green + manual frontend checklist before `/gsd:verify-work`
+
+### Wave 0 Gaps
+
+- [ ] `src-tauri/crates/uc-app/tests/sync_outbound_policy_test.rs` -- unit tests for global auto_sync enforcement in apply_sync_policy (covers P26-01 through P26-05, P26-12)
+- [ ] Mock `SettingsPort` with configurable `auto_sync` value -- extend existing test mocks in `clipboard_sync_e2e_test.rs` or create new focused mock
+- [ ] Frontend vitest config -- NOT required for this phase (manual testing sufficient for UI-only changes)
+
+_(Note: The `apply_sync_policy` method is currently private (`async fn`, not `pub`). To unit test it directly, either make it `pub(crate)` or test through the `execute()` public method using the existing e2e test pattern. Recommendation: test through `execute()` with mock ports, matching the established pattern in `clipboard_sync_e2e_test.rs`.)_
+
 ## Sources
 
 ### Primary (HIGH confidence)
@@ -333,6 +418,8 @@ const [activeCategory, setActiveCategory] = useState(
 - Direct code inspection of `devicesSlice.ts` -- Redux state structure
 - Direct code inspection of `SettingsPage.tsx` -- category state management
 - Direct code inspection of i18n locale files (en-US.json, zh-CN.json) -- existing key structure
+- Direct code inspection of `uc-app/tests/clipboard_sync_e2e_test.rs` -- existing mock patterns
+- Direct code inspection of `uc-app/src/testing.rs` -- shared noop implementations
 
 ## Metadata
 
@@ -341,6 +428,7 @@ const [activeCategory, setActiveCategory] = useState(
 - Standard stack: HIGH -- all libraries already in project, no new dependencies
 - Architecture: HIGH -- direct code inspection of all integration points
 - Pitfalls: HIGH -- derived from understanding existing code patterns and edge cases
+- Validation: HIGH -- existing test patterns in clipboard_sync_e2e_test.rs provide clear template
 
 **Research date:** 2026-03-12
 **Valid until:** 2026-04-12 (stable, no external dependency changes)

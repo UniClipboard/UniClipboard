@@ -24,6 +24,7 @@
         "transparent": true,
         "visible": false,
         "devtools": true,
+        "incognito": true,
         "windowEffects": {
           "effects": [
             "hudWindow"

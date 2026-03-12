@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import {
   DEFAULT_CATEGORY,
   SETTINGS_CATEGORIES,
@@ -14,7 +14,10 @@ import { SettingContentLayout } from '@/layouts'
 import { captureUserIntent } from '@/observability/breadcrumbs'
 
 function SettingsPage() {
-  const [activeCategory, setActiveCategory] = useState(DEFAULT_CATEGORY)
+  const location = useLocation()
+  const [activeCategory, setActiveCategory] = useState(
+    (location.state as { category?: string } | null)?.category || DEFAULT_CATEGORY
+  )
   const navigate = useNavigate()
   useShortcutScope('settings')
 
@@ -35,6 +38,12 @@ function SettingsPage() {
   useEffect(() => {
     captureUserIntent('open_settings')
   }, [])
+
+  useEffect(() => {
+    if (location.state && (location.state as { category?: string }).category) {
+      window.history.replaceState({}, '')
+    }
+  }, [location.state])
 
   const handleCategoryChange = (category: string) => {
     setActiveCategory(category)

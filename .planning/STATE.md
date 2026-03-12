@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v0.1
 milestone_name: milestone
 status: executing
-stopped_at: Phase 26 context gathered
-last_updated: '2026-03-12T08:46:49.669Z'
-last_activity: '2026-03-12 — Completed quick task 9: Optimize stale relative timestamps on clipboard items'
+stopped_at: Completed 26-01-PLAN.md
+last_updated: '2026-03-12T09:24:31.940Z'
+last_activity: '2026-03-12 — Completed 26-01 plan: global sync master toggle backend and i18n foundations'
 progress:
   total_phases: 8
   completed_phases: 7
-  total_plans: 16
-  completed_plans: 16
-  percent: 100
+  total_plans: 18
+  completed_plans: 17
+  percent: 97
 ---
 
 # Project State
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-09)
 
 **Core value:** Seamless clipboard synchronization across devices -- copy on one, paste on another
-**Current focus:** Phase 25 - Per-device Sync Content Type Toggles
+**Current focus:** Phase 26 - Implement global sync master toggle and improve sync UX
 
 ## Current Position
 
-Phase: 25 of 25 (Per-device Sync Content Type Toggles)
-Plan: 2 of 2 complete
+Phase: 26 of 26 (Implement global sync master toggle and improve sync UX)
+Plan: 1 of 2 complete
 Status: In Progress
-Last activity: 2026-03-12 — Completed quick task 9: Optimize stale relative timestamps on clipboard items
+Last activity: 2026-03-12 — Completed 26-01 plan: global sync master toggle backend and i18n foundations
 
-Progress: [██████████] 100%
+Progress: [██████████] 97%
 
 ## Performance Metrics
 
@@ -63,6 +63,7 @@ Progress: [██████████] 100%
   | Phase 25 P01 | 8min | 2 tasks | 5 files |
   | Phase 25 P02 | 4min | 2 tasks | 4 files |
   | Phase 25 P01 | 8min | 2 tasks | 5 files |
+  | Phase 26 P01 | 7min | 3 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -102,6 +103,8 @@ Recent decisions affecting current work:
 - [Phase 25]: ContentTypes::default() fix from derive(Default) all-false to explicit all-true impl
 - [Phase 25]: Classify snapshot once before peer loop for efficiency (not per-peer)
 - [Phase 25]: Only Text and Image are filterable; unimplemented types always sync
+- [Phase 26]: Exposed apply_sync_policy as pub for integration tests in tests/ to validate policy logic directly
+- [Phase 26]: Global auto_sync guard executes before per-device evaluation and does not mutate per-device sync settings
 
 ### Roadmap Evolution
 
@@ -128,6 +131,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-12T08:46:49.667Z
-Stopped at: Phase 26 context gathered
-Resume file: .planning/phases/26-implement-global-sync-master-toggle-and-improve-sync-ux/26-CONTEXT.md
+Last session: 2026-03-12T09:24:31.932Z
+Stopped at: Completed 26-01-PLAN.md
+Resume file: None

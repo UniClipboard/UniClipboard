@@ -5,27 +5,29 @@ use std::sync::Arc;
 
 use crate::app_paths::AppPaths;
 use anyhow::Result;
-use uc_core::app_dirs::AppDirs;
 use uc_core::ports::cache_fs::CacheFsPort;
 
 /// Use case for clearing cache directory contents.
 /// 清除缓存目录内容的用例。
 pub struct ClearCache {
-    app_dirs: AppDirs,
+    storage_paths: AppPaths,
     cache_fs: Arc<dyn CacheFsPort>,
 }
 
 impl ClearCache {
-    pub fn new(app_dirs: AppDirs, cache_fs: Arc<dyn CacheFsPort>) -> Self {
-        Self { app_dirs, cache_fs }
+    pub fn new(storage_paths: AppPaths, cache_fs: Arc<dyn CacheFsPort>) -> Self {
+        Self {
+            storage_paths,
+            cache_fs,
+        }
     }
 
     /// Clears cache directory contents and returns the number of bytes freed.
     /// 清除缓存目录内容并返回释放的字节数。
     #[tracing::instrument(name = "usecase.clear_cache.execute", skip(self))]
     pub async fn execute(&self) -> Result<u64> {
-        let paths = AppPaths::from_app_dirs(&self.app_dirs);
-        let freed = self.cache_fs.dir_size(&paths.cache_dir).await;
+        let paths = &self.storage_paths;
+        let size_before = self.cache_fs.dir_size(&paths.cache_dir).await;
 
         if self.cache_fs.exists(&paths.cache_dir).await {
             let entries = self
@@ -45,6 +47,9 @@ impl ClearCache {
             }
         }
 
+        let size_after = self.cache_fs.dir_size(&paths.cache_dir).await;
+        let freed = size_before.saturating_sub(size_after);
+
         tracing::info!(freed_bytes = freed, "Cache cleared");
         Ok(freed)
     }
@@ -54,12 +59,15 @@ impl ClearCache {
 mod tests {
     use super::*;
     use std::path::{Path, PathBuf};
+    use std::sync::atomic::{AtomicU32, Ordering};
     use uc_core::ports::cache_fs::DirEntry;
 
     struct MockCacheFs {
         entries: Vec<DirEntry>,
-        size: u64,
+        size_before: u64,
+        size_after: u64,
         exists: bool,
+        dir_size_call_count: AtomicU32,
     }
 
     #[async_trait::async_trait]
@@ -81,14 +89,23 @@ mod tests {
         }
 
         async fn dir_size(&self, _path: &Path) -> u64 {
-            self.size
+            let call = self.dir_size_call_count.fetch_add(1, Ordering::SeqCst);
+            if call == 0 {
+                self.size_before
+            } else {
+                self.size_after
+            }
         }
     }
 
-    fn test_app_dirs() -> AppDirs {
-        AppDirs {
+    fn test_storage_paths() -> AppPaths {
+        AppPaths {
+            db_path: PathBuf::from("/tmp/test-data/uniclipboard.db"),
+            vault_dir: PathBuf::from("/tmp/test-data/vault"),
+            settings_path: PathBuf::from("/tmp/test-data/settings.json"),
+            logs_dir: PathBuf::from("/tmp/test-data/logs"),
+            cache_dir: PathBuf::from("/tmp/test-cache"),
             app_data_root: PathBuf::from("/tmp/test-data"),
-            app_cache_root: PathBuf::from("/tmp/test-cache"),
         }
     }
 
@@ -105,11 +122,13 @@ mod tests {
                     is_dir: false,
                 },
             ],
-            size: 1024,
+            size_before: 1024,
+            size_after: 0,
             exists: true,
+            dir_size_call_count: AtomicU32::new(0),
         });
 
-        let uc = ClearCache::new(test_app_dirs(), cache_fs);
+        let uc = ClearCache::new(test_storage_paths(), cache_fs);
         let freed = uc.execute().await.unwrap();
         assert_eq!(freed, 1024);
     }
@@ -118,11 +137,13 @@ mod tests {
     async fn execute_returns_zero_when_cache_dir_missing() {
         let cache_fs = Arc::new(MockCacheFs {
             entries: vec![],
-            size: 0,
+            size_before: 0,
+            size_after: 0,
             exists: false,
+            dir_size_call_count: AtomicU32::new(0),
         });
 
-        let uc = ClearCache::new(test_app_dirs(), cache_fs);
+        let uc = ClearCache::new(test_storage_paths(), cache_fs);
         let freed = uc.execute().await.unwrap();
         assert_eq!(freed, 0);
     }

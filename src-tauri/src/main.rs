@@ -33,8 +33,9 @@ use uc_platform::runtime::event_bus::{
 use uc_platform::runtime::runtime::PlatformRuntime;
 use uc_tauri::bootstrap::tracing as bootstrap_tracing;
 use uc_tauri::bootstrap::{
-    ensure_default_device_name, load_config, resolve_pairing_config, resolve_pairing_device_name,
-    start_background_tasks, wire_dependencies, AppRuntime, SetupRuntimePorts,
+    ensure_default_device_name, get_storage_paths, load_config, resolve_pairing_config,
+    resolve_pairing_device_name, start_background_tasks, wire_dependencies, AppRuntime,
+    SetupRuntimePorts,
 };
 use uc_tauri::commands::updater::PendingUpdate;
 use uc_tauri::protocol::{parse_uc_request, UcRoute};
@@ -548,6 +549,9 @@ fn run_app(config: AppConfig) {
         Arc::new(JsonKeySlotStore::new(vault_dir))
     };
 
+    // Get resolved storage paths with profile suffix and config overrides applied
+    let storage_paths = get_storage_paths(&config).expect("failed to get storage paths");
+
     let runtime = AppRuntime::with_setup(
         deps,
         SetupRuntimePorts::from_network(
@@ -556,7 +560,7 @@ fn run_app(config: AppConfig) {
             discovery_network,
         ),
         watcher_control,
-        app_dirs,
+        storage_paths,
     );
 
     // Wrap runtime in Arc for clipboard handler (PlatformRuntime needs Arc<dyn ClipboardChangeHandler>)

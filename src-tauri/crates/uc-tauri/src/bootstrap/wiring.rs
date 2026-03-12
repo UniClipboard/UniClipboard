@@ -789,6 +789,38 @@ fn get_default_app_dirs() -> WiringResult<uc_core::app_dirs::AppDirs> {
         .map_err(|e| WiringError::ConfigInit(e.to_string()))
 }
 
+/// Get resolved storage paths from configuration.
+///
+/// This function computes the storage paths that will be used by the application,
+/// including applying profile suffixes and any path overrides from the config.
+///
+/// # Errors
+///
+/// Returns `WiringError::ConfigInit` if the platform adapter fails to determine the directories.
+///
+/// # Examples
+///
+/// ```ignore
+/// use uc_tauri::bootstrap::wiring::get_storage_paths;
+///
+/// let config = uc_core::config::AppConfig::default();
+/// let paths = get_storage_paths(&config).expect("failed to get storage paths");
+/// // `paths` contains resolved paths with profile suffix applied
+/// ```
+pub fn get_storage_paths(
+    config: &uc_core::config::AppConfig,
+) -> WiringResult<uc_app::app_paths::AppPaths> {
+    let default_paths = derive_default_paths(config)?;
+    Ok(uc_app::app_paths::AppPaths {
+        db_path: default_paths.db_path,
+        vault_dir: default_paths.vault_dir,
+        settings_path: default_paths.settings_path,
+        logs_dir: default_paths.app_data_root.join("logs"),
+        cache_dir: default_paths.cache_dir,
+        app_data_root: default_paths.app_data_root,
+    })
+}
+
 #[derive(Debug, Clone)]
 struct DefaultPaths {
     app_data_root: PathBuf,

@@ -46,6 +46,13 @@ impl FileManagerPort for NativeFileManagerAdapter {
                 .map_err(|e| FileManagerError::OpenFailed(e.to_string()))?;
         }
 
+        #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
+        {
+            return Err(FileManagerError::OpenFailed(
+                "unsupported platform".to_string(),
+            ));
+        }
+
         Ok(())
     }
 }

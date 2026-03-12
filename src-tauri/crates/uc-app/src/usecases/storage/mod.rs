@@ -9,39 +9,46 @@ pub use clear_cache::ClearCache;
 pub use get_storage_stats::{GetStorageStats, StorageStatsResult};
 pub use open_data_directory::OpenDataDirectory;
 
+use anyhow::{Context, Result};
 use std::path::Path;
 
 /// Recursively calculate directory size in bytes.
 /// 递归计算目录大小（字节数）。
-pub(crate) async fn dir_size(path: &Path) -> u64 {
+///
+/// Returns `Ok(0)` for non-existent paths. Returns an error if a path exists
+/// but cannot be read (e.g. permission denied).
+pub(crate) async fn dir_size(path: &Path) -> Result<u64> {
     if !path.exists() {
-        return 0;
+        return Ok(0);
     }
 
     if path.is_file() {
-        return tokio::fs::metadata(path)
+        let meta = tokio::fs::metadata(path)
             .await
-            .map(|m| m.len())
-            .unwrap_or(0);
+            .with_context(|| format!("Failed to read metadata for file: {}", path.display()))?;
+        return Ok(meta.len());
     }
 
     let mut total: u64 = 0;
-    let mut entries = match tokio::fs::read_dir(path).await {
-        Ok(entries) => entries,
-        Err(_) => return 0,
-    };
+    let mut entries = tokio::fs::read_dir(path)
+        .await
+        .with_context(|| format!("Failed to read directory: {}", path.display()))?;
 
-    while let Ok(Some(entry)) = entries.next_entry().await {
+    while let Some(entry) = entries
+        .next_entry()
+        .await
+        .with_context(|| format!("Failed to read entry in directory: {}", path.display()))?
+    {
         let entry_path = entry.path();
         if entry_path.is_dir() {
-            total += Box::pin(dir_size(&entry_path)).await;
+            total += Box::pin(dir_size(&entry_path)).await?;
         } else {
-            total += tokio::fs::metadata(&entry_path)
-                .await
-                .map(|m| m.len())
-                .unwrap_or(0);
+            let meta = tokio::fs::metadata(&entry_path).await.with_context(|| {
+                format!("Failed to read metadata for: {}", entry_path.display())
+            })?;
+            total += meta.len();
         }
     }
 
-    total
+    Ok(total)
 }

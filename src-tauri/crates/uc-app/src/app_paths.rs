@@ -9,6 +9,9 @@ pub struct AppPaths {
     pub settings_path: PathBuf,
     pub logs_dir: PathBuf,
     pub cache_dir: PathBuf,
+    /// The resolved application data root directory.
+    /// 已解析的应用数据根目录。
+    pub app_data_root: PathBuf,
 }
 
 impl AppPaths {
@@ -39,6 +42,7 @@ impl AppPaths {
             settings_path: dirs.app_data_root.join("settings.json"),
             logs_dir: dirs.app_data_root.join("logs"),
             cache_dir: dirs.app_cache_root.clone(),
+            app_data_root: dirs.app_data_root.clone(),
         }
     }
 }
@@ -68,6 +72,7 @@ mod tests {
             PathBuf::from("/tmp/uniclipboard/settings.json")
         );
         assert_eq!(paths.logs_dir, PathBuf::from("/tmp/uniclipboard/logs"));
+        assert_eq!(paths.app_data_root, PathBuf::from("/tmp/uniclipboard"));
     }
 
     #[test]
@@ -78,5 +83,6 @@ mod tests {
         };
         let paths = AppPaths::from_app_dirs(&dirs);
         assert_eq!(paths.cache_dir, PathBuf::from("/tmp/uniclipboard-cache"));
+        assert_eq!(paths.app_data_root, PathBuf::from("/tmp/uniclipboard"));
     }
 }

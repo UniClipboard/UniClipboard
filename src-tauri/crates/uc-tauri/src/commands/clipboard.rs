@@ -1354,10 +1354,14 @@ mod tests {
         }
     }
 
-    fn test_app_dirs() -> uc_core::app_dirs::AppDirs {
-        uc_core::app_dirs::AppDirs {
+    fn test_storage_paths() -> uc_app::app_paths::AppPaths {
+        uc_app::app_paths::AppPaths {
+            db_path: std::path::PathBuf::from("/tmp/uniclipboard-test/uniclipboard.db"),
+            vault_dir: std::path::PathBuf::from("/tmp/uniclipboard-test/vault"),
+            settings_path: std::path::PathBuf::from("/tmp/uniclipboard-test/settings.json"),
+            logs_dir: std::path::PathBuf::from("/tmp/uniclipboard-test/logs"),
+            cache_dir: std::path::PathBuf::from("/tmp/uniclipboard-test-cache"),
             app_data_root: std::path::PathBuf::from("/tmp/uniclipboard-test"),
-            app_cache_root: std::path::PathBuf::from("/tmp/uniclipboard-test-cache"),
         }
     }
 
@@ -1445,7 +1449,7 @@ mod tests {
             },
         };
 
-        let runtime = AppRuntime::new(deps, test_app_dirs());
+        let runtime = AppRuntime::new(deps, test_storage_paths());
         let result = restore_clipboard_entry_impl(&runtime, entry_id.to_string(), None).await;
 
         let err = result.expect_err("touch_result=false should produce NotFound");
@@ -1518,7 +1522,7 @@ mod tests {
             },
         };
 
-        let runtime = Arc::new(AppRuntime::new(deps, test_app_dirs()));
+        let runtime = Arc::new(AppRuntime::new(deps, test_storage_paths()));
         let result = sync_clipboard_items_impl(runtime.as_ref(), None).await;
 
         let err = result.expect_err("passive mode should return error");

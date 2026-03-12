@@ -116,9 +116,9 @@ pub struct AppRuntime {
     /// Centralized task lifecycle registry for tracking and shutting down
     /// all long-lived spawned tasks.
     task_registry: Arc<TaskRegistry>,
-    /// Resolved application directories for storage use cases.
-    /// 已解析的应用目录，用于存储用例。
-    app_dirs: uc_core::app_dirs::AppDirs,
+    /// Resolved storage paths for storage use cases.
+    /// 已解析的存储路径，用于存储用例。
+    storage_paths: uc_app::app_paths::AppPaths,
 }
 
 /// Setup wiring dependencies for runtime-level orchestrators.
@@ -167,7 +167,7 @@ impl SetupRuntimePorts {
 impl AppRuntime {
     /// Create a new AppRuntime from dependencies.
     /// 从依赖创建新的 AppRuntime。
-    pub fn new(deps: AppDeps, app_dirs: uc_core::app_dirs::AppDirs) -> Self {
+    pub fn new(deps: AppDeps, storage_paths: uc_app::app_paths::AppPaths) -> Self {
         struct NoopWatcherControl;
         #[async_trait::async_trait]
         impl uc_platform::ports::WatcherControlPort for NoopWatcherControl {
@@ -181,7 +181,7 @@ impl AppRuntime {
         let setup_ports = SetupRuntimePorts::placeholder(&deps);
         let watcher_control: Arc<dyn uc_platform::ports::WatcherControlPort> =
             Arc::new(NoopWatcherControl);
-        Self::with_setup(deps, setup_ports, watcher_control, app_dirs)
+        Self::with_setup(deps, setup_ports, watcher_control, storage_paths)
     }
 
     /// Create a new AppRuntime with explicit setup orchestrator dependencies.
@@ -189,7 +189,7 @@ impl AppRuntime {
         deps: AppDeps,
         setup_ports: SetupRuntimePorts,
         watcher_control: Arc<dyn uc_platform::ports::WatcherControlPort>,
-        app_dirs: uc_core::app_dirs::AppDirs,
+        storage_paths: uc_app::app_paths::AppPaths,
     ) -> Self {
         let lifecycle_status: Arc<dyn uc_app::usecases::LifecycleStatusPort> =
             Arc::new(crate::adapters::lifecycle::InMemoryLifecycleStatus::new());
@@ -214,7 +214,7 @@ impl AppRuntime {
             clipboard_integration_mode,
             watcher_control,
             task_registry,
-            app_dirs,
+            storage_paths,
         }
     }
 
@@ -566,14 +566,14 @@ impl<'a> UseCases<'a> {
     /// Get storage statistics use case.
     /// 获取存储统计用例。
     pub fn get_storage_stats(&self) -> uc_app::usecases::storage::GetStorageStats {
-        uc_app::usecases::storage::GetStorageStats::new(self.runtime.app_dirs.clone())
+        uc_app::usecases::storage::GetStorageStats::new(self.runtime.storage_paths.clone())
     }
 
     /// Clear cache use case.
     /// 清除缓存用例。
     pub fn clear_cache(&self) -> uc_app::usecases::storage::ClearCache {
         uc_app::usecases::storage::ClearCache::new(
-            self.runtime.app_dirs.clone(),
+            self.runtime.storage_paths.clone(),
             self.runtime.deps.system.cache_fs.clone(),
         )
     }
@@ -582,7 +582,7 @@ impl<'a> UseCases<'a> {
     /// 打开数据目录用例。
     pub fn open_data_directory(&self) -> uc_app::usecases::storage::OpenDataDirectory {
         uc_app::usecases::storage::OpenDataDirectory::new(
-            self.runtime.app_dirs.clone(),
+            self.runtime.storage_paths.clone(),
             self.runtime.deps.system.file_manager.clone(),
         )
     }
@@ -1869,10 +1869,14 @@ mod tests {
         }
     }
 
-    fn test_app_dirs() -> uc_core::app_dirs::AppDirs {
-        uc_core::app_dirs::AppDirs {
+    fn test_storage_paths() -> uc_app::app_paths::AppPaths {
+        uc_app::app_paths::AppPaths {
+            db_path: std::path::PathBuf::from("/tmp/uniclipboard-test/uniclipboard.db"),
+            vault_dir: std::path::PathBuf::from("/tmp/uniclipboard-test/vault"),
+            settings_path: std::path::PathBuf::from("/tmp/uniclipboard-test/settings.json"),
+            logs_dir: std::path::PathBuf::from("/tmp/uniclipboard-test/logs"),
+            cache_dir: std::path::PathBuf::from("/tmp/uniclipboard-test-cache"),
             app_data_root: std::path::PathBuf::from("/tmp/uniclipboard-test"),
-            app_cache_root: std::path::PathBuf::from("/tmp/uniclipboard-test-cache"),
         }
     }
 
@@ -1951,7 +1955,7 @@ mod tests {
             },
         };
 
-        let runtime = AppRuntime::new(deps, test_app_dirs());
+        let runtime = AppRuntime::new(deps, test_storage_paths());
         let snapshot = SystemClipboardSnapshot {
             ts_ms: 0,
             representations: vec![],

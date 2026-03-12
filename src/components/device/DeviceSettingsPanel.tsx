@@ -18,7 +18,7 @@ const contentTypeEntries: {
   { field: 'text', i18nKey: 'syncText', status: 'editable' },
   { field: 'image', i18nKey: 'syncImage', status: 'editable' },
   { field: 'file', i18nKey: 'syncFile', status: 'coming_soon' },
-  { field: 'link', i18nKey: 'syncLink', status: 'coming_soon' },
+  { field: 'link', i18nKey: 'syncLink', status: 'editable' },
   { field: 'code_snippet', i18nKey: 'syncCodeSnippet', status: 'coming_soon' },
   { field: 'rich_text', i18nKey: 'syncRichText', status: 'coming_soon' },
 ]

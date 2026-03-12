@@ -125,7 +125,7 @@ Plans:
 
 **Goal:** Enable cross-device tracing by injecting device_id into every Seq event and providing Seq saved searches for flow correlation across devices.
 **Depends on:** Phase 22
-**Plans:** 1/2 plans executed
+**Plans:** 2/2 plans complete
 
 Plans:
 
@@ -204,5 +204,5 @@ Plans:
 
 Plans:
 
-- [ ] 26-01-PLAN.md — Backend global auto_sync guard in sync engine + i18n keys and description copy
-- [ ] 26-02-PLAN.md — Frontend warning banner, cascade disable, and Settings navigation
+- [x] 26-01-PLAN.md — Backend global auto_sync guard in sync engine + i18n keys and description copy
+- [x] 26-02-PLAN.md — Frontend warning banner, cascade disable, and Settings navigation

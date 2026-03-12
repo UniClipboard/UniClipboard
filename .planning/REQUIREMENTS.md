@@ -45,8 +45,8 @@ Requirements for v0.3.0 Log Observability. Each will be mapped to roadmap phases
 
 - [x] **GSYNC-01**: When global auto_sync is false, apply_sync_policy returns an empty peer list before any per-device evaluation, preventing all outbound sync.
 - [x] **GSYNC-02**: Per-device sync settings are never modified when the global auto_sync toggle changes; they persist unchanged in storage and resume automatically when re-enabled.
-- [ ] **GSYNC-03**: A warning banner appears at the top of the Devices page when global auto_sync is off, with a "Go to Settings" link that navigates directly to the Settings Sync section.
-- [ ] **GSYNC-04**: All interactive controls in DeviceSettingsPanel (per-device auto_sync, content type toggles, restore defaults) are cascade-disabled when global auto_sync is off, while preserving their visual on/off state.
+- [x] **GSYNC-03**: A warning banner appears at the top of the Devices page when global auto_sync is off, with a "Go to Settings" link that navigates directly to the Settings Sync section.
+- [x] **GSYNC-04**: All interactive controls in DeviceSettingsPanel (per-device auto_sync, content type toggles, restore defaults) are cascade-disabled when global auto_sync is off, while preserving their visual on/off state.
 - [x] **GSYNC-05**: The auto sync toggle description in Settings displays master switch copy in both EN and ZH locales using the existing i18n infrastructure.
 
 ## v2 Requirements
@@ -100,11 +100,11 @@ Which phases cover which requirements.
 | CT-05       | Phase 25 | Planned  |
 | CT-06       | Phase 25 | Planned  |
 | CT-07       | Phase 25 | Planned  |
-| GSYNC-01    | Phase 26 | Planned  |
-| GSYNC-02    | Phase 26 | Planned  |
-| GSYNC-03    | Phase 26 | Planned  |
-| GSYNC-04    | Phase 26 | Planned  |
-| GSYNC-05    | Phase 26 | Planned  |
+| GSYNC-01    | Phase 26 | Complete |
+| GSYNC-02    | Phase 26 | Complete |
+| GSYNC-03    | Phase 26 | Complete |
+| GSYNC-04    | Phase 26 | Complete |
+| GSYNC-05    | Phase 26 | Complete |
 
 **Coverage:**
 
@@ -115,4 +115,4 @@ Which phases cover which requirements.
 ---
 
 _Requirements defined: 2026-03-09_
-_Last updated: 2026-03-12 after Phase 26 planning_
+_Last updated: 2026-03-12 after Phase 26 completion_

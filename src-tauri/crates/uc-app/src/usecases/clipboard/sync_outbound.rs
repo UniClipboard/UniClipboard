@@ -57,7 +57,7 @@ impl SyncOutboundClipboardUseCase {
     /// Peers not found in the paired device table are kept (safety fallback).
     /// Errors from settings/repo loads are logged and the peer is kept.
     /// The snapshot is classified once and the content type check is applied per-peer.
-    async fn apply_sync_policy(
+    pub async fn apply_sync_policy(
         &self,
         peers: &[uc_core::network::DiscoveredPeer],
         snapshot: &SystemClipboardSnapshot,

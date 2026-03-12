@@ -75,6 +75,14 @@ impl SyncOutboundClipboardUseCase {
             }
         };
 
+        // Global master toggle: if auto_sync is off, skip ALL outbound sync.
+        if let Some(ref gs) = global_settings {
+            if !gs.sync.auto_sync {
+                info!("Global auto_sync disabled; returning empty peer list");
+                return vec![];
+            }
+        }
+
         // Classify the snapshot once, not per-peer
         let content_category = classify_snapshot(snapshot);
 

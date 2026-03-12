@@ -179,12 +179,31 @@ pub async fn clear_all_clipboard_history(
     record_trace_fields(&span, &_trace);
 
     async move {
-        // 1. Get all entry IDs
+        // 1. Get all entry IDs using pagination (max limit is 1000)
         let uc = runtime.usecases().list_clipboard_entries();
-        let entries = uc.execute(10_000, 0).await.map_err(|e| {
-            tracing::error!(error = %e, "Failed to list entries for bulk delete");
-            CommandError::InternalError(e.to_string())
-        })?;
+        let mut entries = Vec::new();
+        let mut offset = 0usize;
+        let batch_size = 1000usize;
+
+        loop {
+            let batch = uc.execute(batch_size, offset).await.map_err(|e| {
+                tracing::error!(error = %e, "Failed to list entries for bulk delete");
+                CommandError::InternalError(e.to_string())
+            })?;
+
+            if batch.is_empty() {
+                break;
+            }
+
+            let batch_len = batch.len();
+            entries.extend(batch);
+            offset += batch_len;
+
+            // If we got fewer than batch_size, we've fetched everything
+            if batch_len < batch_size {
+                break;
+            }
+        }
 
         let total = entries.len() as u64;
         tracing::info!(total_entries = total, "Starting bulk clipboard history deletion");

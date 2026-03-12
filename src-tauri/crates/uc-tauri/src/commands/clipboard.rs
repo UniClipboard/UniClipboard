@@ -7,7 +7,7 @@ use crate::commands::record_trace_fields;
 use crate::models::{
     ClipboardEntriesResponse, ClipboardEntryDetail, ClipboardEntryProjection,
     ClipboardEntryResource, ClipboardImageItemDto, ClipboardItemDto, ClipboardItemResponse,
-    ClipboardStats, ClipboardTextItemDto,
+    ClipboardLinkItemDto, ClipboardStats, ClipboardTextItemDto,
 };
 use base64::Engine;
 use std::sync::Arc;
@@ -15,6 +15,7 @@ use tauri::State;
 use tracing::{info_span, Instrument};
 use uc_app::usecases::clipboard::ClipboardIntegrationMode;
 use uc_app::usecases::clipboard::ClipboardUseCases;
+use uc_core::clipboard::link_utils::{extract_domain, is_single_url, parse_uri_list};
 use uc_core::ids::EntryId;
 use uc_core::security::state::EncryptionState;
 use uc_platform::ports::observability::TraceMetadata;
@@ -277,7 +278,11 @@ pub async fn get_clipboard_item(
                 Ok(None)
             }
             Some(proj) => {
-                let is_image = proj.content_type.to_ascii_lowercase().starts_with("image/");
+                let content_type_lower = proj.content_type.to_ascii_lowercase();
+                let is_image = content_type_lower.starts_with("image/");
+                let is_uri_list = content_type_lower == "text/uri-list";
+                let is_plain_url =
+                    content_type_lower.starts_with("text/plain") && is_single_url(&proj.preview);
 
                 let item = if is_image {
                     ClipboardItemDto {
@@ -290,6 +295,21 @@ pub async fn get_clipboard_item(
                         }),
                         file: None,
                         link: None,
+                        code: None,
+                        unknown: None,
+                    }
+                } else if is_uri_list || is_plain_url {
+                    let urls = if is_uri_list {
+                        parse_uri_list(&proj.preview)
+                    } else {
+                        vec![proj.preview.trim().to_string()]
+                    };
+                    let domains = urls.iter().filter_map(|u| extract_domain(u)).collect();
+                    ClipboardItemDto {
+                        text: None,
+                        image: None,
+                        file: None,
+                        link: Some(ClipboardLinkItemDto { urls, domains }),
                         code: None,
                         unknown: None,
                     }

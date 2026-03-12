@@ -110,7 +110,7 @@ pub struct ClipboardItemDto {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub file: Option<serde_json::Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub link: Option<serde_json::Value>,
+    pub link: Option<ClipboardLinkItemDto>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub code: Option<serde_json::Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -134,6 +134,14 @@ pub struct ClipboardImageItemDto {
     pub size: i64,
     pub width: i64,
     pub height: i64,
+}
+
+/// Link item DTO for clipboard item response.
+/// 链接条目 DTO。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ClipboardLinkItemDto {
+    pub urls: Vec<String>,
+    pub domains: Vec<String>,
 }
 
 /// Response DTO for get_clipboard_item command.

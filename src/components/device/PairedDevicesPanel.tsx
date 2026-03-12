@@ -1,9 +1,20 @@
 import { motion, AnimatePresence } from 'framer-motion'
-import { Smartphone, Monitor, Tablet, Trash2, Laptop, RefreshCw, ChevronRight } from 'lucide-react'
+import {
+  Smartphone,
+  Monitor,
+  Tablet,
+  Trash2,
+  Laptop,
+  RefreshCw,
+  ChevronRight,
+  AlertTriangle,
+} from 'lucide-react'
 import React, { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { useNavigate } from 'react-router-dom'
 import DeviceSettingsPanel from './DeviceSettingsPanel'
 import { onP2PPeerConnectionChanged, onP2PPeerNameUpdated, unpairP2PDevice } from '@/api/p2p'
+import { useSetting } from '@/hooks/useSetting'
 import { formatPeerIdForDisplay } from '@/lib/utils'
 import { useAppDispatch, useAppSelector } from '@/store/hooks'
 import {
@@ -16,8 +27,11 @@ import {
 const PairedDevicesPanel: React.FC = () => {
   const { t } = useTranslation()
   const [expandedDeviceId, setExpandedDeviceId] = useState<string | null>(null)
+  const { setting } = useSetting()
+  const navigate = useNavigate()
   const dispatch = useAppDispatch()
   const { pairedDevices, pairedDevicesError } = useAppSelector(state => state.devices)
+  const globalAutoSyncOff = setting?.sync.auto_sync === false
 
   useEffect(() => {
     dispatch(fetchPairedDevices())
@@ -141,6 +155,21 @@ const PairedDevicesPanel: React.FC = () => {
 
   return (
     <div className="flex flex-col gap-3 px-4 pt-6 pb-8">
+      {globalAutoSyncOff && (
+        <div className="flex items-center gap-3 rounded-lg border border-amber-500/20 bg-amber-500/10 px-4 py-3">
+          <AlertTriangle className="h-4 w-4 shrink-0 text-amber-500" />
+          <p className="text-sm text-amber-700 dark:text-amber-400">
+            {t('devices.syncPaused.message')}{' '}
+            <button
+              type="button"
+              onClick={() => navigate('/settings', { state: { category: 'sync' } })}
+              className="font-medium underline hover:no-underline"
+            >
+              {t('devices.syncPaused.goToSettings')}
+            </button>
+          </p>
+        </div>
+      )}
       <div className="flex flex-col rounded-xl border border-border/50 bg-card/50 overflow-hidden divide-y divide-border/50">
         {pairedDevices.map((device, index) => {
           const Icon = getDeviceIcon(device.deviceName)
@@ -230,6 +259,7 @@ const PairedDevicesPanel: React.FC = () => {
                       <DeviceSettingsPanel
                         deviceId={device.peerId}
                         deviceName={device.deviceName || t('devices.list.labels.unknownDevice')}
+                        globalAutoSyncOff={globalAutoSyncOff}
                       />
                     </div>
                   </motion.div>

@@ -825,6 +825,22 @@ mod tests {
         }
     }
 
+    impl uc_core::ports::FileManagerPort for NoopPort {
+        fn open_directory(
+            &self,
+            _path: &std::path::Path,
+        ) -> Result<(), uc_core::ports::FileManagerError> {
+            Ok(())
+        }
+    }
+
+    fn test_app_dirs() -> uc_core::app_dirs::AppDirs {
+        uc_core::app_dirs::AppDirs {
+            app_data_root: std::path::PathBuf::from("/tmp/uniclipboard-test"),
+            app_cache_root: std::path::PathBuf::from("/tmp/uniclipboard-test-cache"),
+        }
+    }
+
     #[tokio::test]
     async fn unlock_success_triggers_network_start() {
         let start_calls = Arc::new(AtomicUsize::new(0));
@@ -879,10 +895,11 @@ mod tests {
             system: uc_app::SystemPorts {
                 clock: Arc::new(NoopPort),
                 hash: Arc::new(NoopPort),
+                file_manager: Arc::new(NoopPort),
             },
         };
 
-        let runtime = Arc::new(AppRuntime::new(deps));
+        let runtime = Arc::new(AppRuntime::new(deps, test_app_dirs()));
         let app = tauri::test::mock_app();
         let app_handle = app.handle();
 

@@ -523,17 +523,16 @@ fn run_app(config: AppConfig) {
     );
     let pairing_orchestrator = Arc::new(pairing_orchestrator);
     let space_access_orchestrator = Arc::new(SpaceAccessOrchestrator::new());
+    // Resolve app directories once for reuse across wiring
+    let app_dirs = match DirsAppDirsAdapter::new().get_app_dirs() {
+        Ok(dirs) => dirs,
+        Err(err) => {
+            error!(error = %err, "Failed to determine app directories");
+            panic!("Failed to determine app directories: {}", err);
+        }
+    };
+
     let key_slot_store: Arc<dyn KeySlotStore> = {
-        let app_dirs = match DirsAppDirsAdapter::new().get_app_dirs() {
-            Ok(dirs) => dirs,
-            Err(err) => {
-                error!(error = %err, "Failed to determine app directories for keyslot store");
-                panic!(
-                    "Failed to determine app directories for keyslot store: {}",
-                    err
-                );
-            }
-        };
         let app_data_root = if config.database_path.as_os_str().is_empty() {
             app_dirs.app_data_root.clone()
         } else {
@@ -557,6 +556,7 @@ fn run_app(config: AppConfig) {
             discovery_network,
         ),
         watcher_control,
+        app_dirs,
     );
 
     // Wrap runtime in Arc for clipboard handler (PlatformRuntime needs Arc<dyn ClipboardChangeHandler>)

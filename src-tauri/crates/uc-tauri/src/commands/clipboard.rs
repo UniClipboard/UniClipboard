@@ -1323,6 +1323,22 @@ mod tests {
         }
     }
 
+    impl uc_core::ports::FileManagerPort for NoopPort {
+        fn open_directory(
+            &self,
+            _path: &std::path::Path,
+        ) -> Result<(), uc_core::ports::FileManagerError> {
+            Ok(())
+        }
+    }
+
+    fn test_app_dirs() -> uc_core::app_dirs::AppDirs {
+        uc_core::app_dirs::AppDirs {
+            app_data_root: std::path::PathBuf::from("/tmp/uniclipboard-test"),
+            app_cache_root: std::path::PathBuf::from("/tmp/uniclipboard-test-cache"),
+        }
+    }
+
     #[tokio::test]
     async fn restore_entry_returns_error_before_clipboard_write_when_touch_fails() {
         let calls = Arc::new(Mutex::new(Vec::new()));
@@ -1402,10 +1418,11 @@ mod tests {
             system: uc_app::SystemPorts {
                 clock: Arc::new(NoopPort),
                 hash: Arc::new(NoopPort),
+                file_manager: Arc::new(NoopPort),
             },
         };
 
-        let runtime = AppRuntime::new(deps);
+        let runtime = AppRuntime::new(deps, test_app_dirs());
         let result = restore_clipboard_entry_impl(&runtime, entry_id.to_string(), None).await;
 
         let err = result.expect_err("touch_result=false should produce NotFound");
@@ -1473,10 +1490,11 @@ mod tests {
             system: uc_app::SystemPorts {
                 clock: Arc::new(NoopPort),
                 hash: Arc::new(NoopPort),
+                file_manager: Arc::new(NoopPort),
             },
         };
 
-        let runtime = Arc::new(AppRuntime::new(deps));
+        let runtime = Arc::new(AppRuntime::new(deps, test_app_dirs()));
         let result = sync_clipboard_items_impl(runtime.as_ref(), None).await;
 
         let err = result.expect_err("passive mode should return error");

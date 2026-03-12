@@ -116,6 +116,9 @@ pub struct AppRuntime {
     /// Centralized task lifecycle registry for tracking and shutting down
     /// all long-lived spawned tasks.
     task_registry: Arc<TaskRegistry>,
+    /// Resolved application directories for storage use cases.
+    /// 已解析的应用目录，用于存储用例。
+    app_dirs: uc_core::app_dirs::AppDirs,
 }
 
 /// Setup wiring dependencies for runtime-level orchestrators.
@@ -164,7 +167,7 @@ impl SetupRuntimePorts {
 impl AppRuntime {
     /// Create a new AppRuntime from dependencies.
     /// 从依赖创建新的 AppRuntime。
-    pub fn new(deps: AppDeps) -> Self {
+    pub fn new(deps: AppDeps, app_dirs: uc_core::app_dirs::AppDirs) -> Self {
         struct NoopWatcherControl;
         #[async_trait::async_trait]
         impl uc_platform::ports::WatcherControlPort for NoopWatcherControl {
@@ -178,7 +181,7 @@ impl AppRuntime {
         let setup_ports = SetupRuntimePorts::placeholder(&deps);
         let watcher_control: Arc<dyn uc_platform::ports::WatcherControlPort> =
             Arc::new(NoopWatcherControl);
-        Self::with_setup(deps, setup_ports, watcher_control)
+        Self::with_setup(deps, setup_ports, watcher_control, app_dirs)
     }
 
     /// Create a new AppRuntime with explicit setup orchestrator dependencies.
@@ -186,6 +189,7 @@ impl AppRuntime {
         deps: AppDeps,
         setup_ports: SetupRuntimePorts,
         watcher_control: Arc<dyn uc_platform::ports::WatcherControlPort>,
+        app_dirs: uc_core::app_dirs::AppDirs,
     ) -> Self {
         let lifecycle_status: Arc<dyn uc_app::usecases::LifecycleStatusPort> =
             Arc::new(crate::adapters::lifecycle::InMemoryLifecycleStatus::new());
@@ -210,6 +214,7 @@ impl AppRuntime {
             clipboard_integration_mode,
             watcher_control,
             task_registry,
+            app_dirs,
         }
     }
 
@@ -555,6 +560,27 @@ impl<'a> UseCases<'a> {
         uc_app::usecases::clipboard::resolve_blob_resource::ResolveBlobResourceUseCase::new(
             self.runtime.deps.clipboard.representation_repo.clone(),
             self.runtime.deps.storage.blob_store.clone(),
+        )
+    }
+
+    /// Get storage statistics use case.
+    /// 获取存储统计用例。
+    pub fn get_storage_stats(&self) -> uc_app::usecases::storage::GetStorageStats {
+        uc_app::usecases::storage::GetStorageStats::new(self.runtime.app_dirs.clone())
+    }
+
+    /// Clear cache use case.
+    /// 清除缓存用例。
+    pub fn clear_cache(&self) -> uc_app::usecases::storage::ClearCache {
+        uc_app::usecases::storage::ClearCache::new(self.runtime.app_dirs.clone())
+    }
+
+    /// Open data directory use case.
+    /// 打开数据目录用例。
+    pub fn open_data_directory(&self) -> uc_app::usecases::storage::OpenDataDirectory {
+        uc_app::usecases::storage::OpenDataDirectory::new(
+            self.runtime.app_dirs.clone(),
+            self.runtime.deps.system.file_manager.clone(),
         )
     }
 
@@ -1809,6 +1835,22 @@ mod tests {
         }
     }
 
+    impl uc_core::ports::FileManagerPort for NoopPort {
+        fn open_directory(
+            &self,
+            _path: &std::path::Path,
+        ) -> Result<(), uc_core::ports::FileManagerError> {
+            Ok(())
+        }
+    }
+
+    fn test_app_dirs() -> uc_core::app_dirs::AppDirs {
+        uc_core::app_dirs::AppDirs {
+            app_data_root: std::path::PathBuf::from("/tmp/uniclipboard-test"),
+            app_cache_root: std::path::PathBuf::from("/tmp/uniclipboard-test-cache"),
+        }
+    }
+
     #[tokio::test]
     async fn runtime_consumes_origin() {
         let save_calls = Arc::new(AtomicUsize::new(0));
@@ -1879,10 +1921,11 @@ mod tests {
             system: uc_app::SystemPorts {
                 clock: Arc::new(NoopPort),
                 hash: Arc::new(NoopPort),
+                file_manager: Arc::new(NoopPort),
             },
         };
 
-        let runtime = AppRuntime::new(deps);
+        let runtime = AppRuntime::new(deps, test_app_dirs());
         let snapshot = SystemClipboardSnapshot {
             ts_ms: 0,
             representations: vec![],

@@ -1132,6 +1132,7 @@ pub fn wire_dependencies_with_identity_store(
         system: SystemPorts {
             clock: infra.clock,
             hash: infra.hash,
+            file_manager: Arc::new(uc_platform::file_manager::NativeFileManagerAdapter::new()),
         },
     };
 

@@ -17,6 +17,7 @@ use uc_core::ports::clipboard::{
     ClipboardChangeOriginPort, ClipboardRepresentationNormalizerPort, RepresentationCachePort,
     SpoolQueuePort, SystemClipboardPort, ThumbnailGeneratorPort, ThumbnailRepositoryPort,
 };
+use uc_core::ports::file_manager::FileManagerPort;
 use uc_core::ports::*;
 
 /// Focused network capability bundle for dependency injection.
@@ -82,11 +83,12 @@ pub struct StoragePorts {
     pub thumbnail_generator: Arc<dyn ThumbnailGeneratorPort>,
 }
 
-/// System-domain ports bundle (clock, hash).
-/// 系统领域端口组（时钟、哈希）。
+/// System-domain ports bundle (clock, hash, file manager).
+/// 系统领域端口组（时钟、哈希、文件管理器）。
 pub struct SystemPorts {
     pub clock: Arc<dyn ClockPort>,
     pub hash: Arc<dyn ContentHashPort>,
+    pub file_manager: Arc<dyn FileManagerPort>,
 }
 
 /// Application dependency grouping (non-Builder, just parameter grouping)

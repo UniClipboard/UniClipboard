@@ -5,6 +5,7 @@ use crate::commands::error::CommandError;
 use crate::commands::record_trace_fields;
 use serde::Serialize;
 use tracing::{info_span, Instrument};
+use uc_core::ports::file_manager::FileManagerError;
 use uc_platform::ports::observability::TraceMetadata;
 
 /// Storage statistics response.
@@ -178,7 +179,9 @@ pub async fn open_data_directory(
             .execute()
             .await
             .map_err(|e| {
-                if e.to_string().contains("does not exist") {
+                if e.downcast_ref::<FileManagerError>()
+                    .is_some_and(|fe| matches!(fe, FileManagerError::DirectoryNotFound(_)))
+                {
                     CommandError::NotFound(e.to_string())
                 } else {
                     CommandError::InternalError(e.to_string())

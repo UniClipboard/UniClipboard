@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use crate::app_paths::AppPaths;
 use anyhow::Result;
-use uc_core::ports::file_manager::{FileManagerError, FileManagerPort};
+use uc_core::ports::file_manager::FileManagerPort;
 
 /// Use case for opening the data directory in the native file manager.
 /// 在原生文件管理器中打开数据目录的用例。
@@ -25,14 +25,9 @@ impl OpenDataDirectory {
     #[tracing::instrument(name = "usecase.open_data_directory.execute", skip(self))]
     pub async fn execute(&self) -> Result<()> {
         let dir = &self.storage_paths.app_data_root;
-        self.file_manager.open_directory(dir).map_err(|e| match e {
-            FileManagerError::DirectoryNotFound(msg) => {
-                anyhow::anyhow!("Data directory does not exist: {}", msg)
-            }
-            FileManagerError::OpenFailed(msg) => {
-                anyhow::anyhow!("Failed to open directory: {}", msg)
-            }
-        })?;
+        self.file_manager
+            .open_directory(dir)
+            .map_err(anyhow::Error::from)?;
 
         tracing::info!(dir = %dir.display(), "Opened data directory");
         Ok(())

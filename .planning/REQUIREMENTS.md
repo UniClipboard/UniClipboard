@@ -41,6 +41,16 @@ Requirements for v0.3.0 Log Observability. Each will be mapped to roadmap phases
 - [x] **CT-06**: Unimplemented content type toggles (file, link, code_snippet, rich_text) display a "Coming Soon" badge and are non-interactive.
 - [x] **CT-07**: An inline warning appears when auto_sync is on but all content types are disabled for a device.
 
+### Link Content Type
+
+- [ ] **LINK-01**: Plain text clipboard content that is a single valid URL (entire trimmed text, no whitespace) is classified as Link instead of Text by `classify_snapshot`.
+- [ ] **LINK-02**: `is_content_type_allowed` respects the `ct.link` toggle for Link content, making link sync filterable per device.
+- [ ] **LINK-03**: `text/uri-list` content is parsed per RFC 2483 (one URL per line, # comment lines skipped) and returned as a list of URLs with extracted domains.
+- [ ] **LINK-04**: `get_clipboard_item` returns structured `ClipboardLinkItemDto` with urls and domains arrays for link entries.
+- [ ] **LINK-05**: Dashboard list view shows link entries with clickable first URL and "+N more" badge for multi-URL entries.
+- [ ] **LINK-06**: Dashboard detail panel shows all URLs with domain names and character count for link entries.
+- [ ] **LINK-07**: Link sync toggle in DeviceSettingsPanel is interactive (not "Coming Soon"), while file/code_snippet/rich_text remain "Coming Soon".
+
 ## v2 Requirements
 
 Deferred to a future milestone. Tracked but not in the current roadmap.
@@ -92,14 +102,21 @@ Which phases cover which requirements.
 | CT-05       | Phase 25 | Planned  |
 | CT-06       | Phase 25 | Planned  |
 | CT-07       | Phase 25 | Planned  |
+| LINK-01     | Phase 26 | Planned  |
+| LINK-02     | Phase 26 | Planned  |
+| LINK-03     | Phase 26 | Planned  |
+| LINK-04     | Phase 26 | Planned  |
+| LINK-05     | Phase 26 | Planned  |
+| LINK-06     | Phase 26 | Planned  |
+| LINK-07     | Phase 26 | Planned  |
 
 **Coverage:**
 
-- v1 requirements: 22 total
-- Mapped to phases: 22
+- v1 requirements: 29 total
+- Mapped to phases: 29
 - Unmapped: 0
 
 ---
 
 _Requirements defined: 2026-03-09_
-_Last updated: 2026-03-12 after Phase 25 planning_
+_Last updated: 2026-03-13 after Phase 26 planning_

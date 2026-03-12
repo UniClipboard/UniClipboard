@@ -1,7 +1,15 @@
 import { Lock, Unlock, Loader2 } from 'lucide-react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { unlockEncryptionSession } from '@/api/security'
+import { unlockEncryptionSession, verifyKeychainAccess } from '@/api/security'
+import {
+  AlertDialog,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
@@ -14,6 +22,9 @@ export default function UnlockPage() {
   const { isMac } = usePlatform()
   const [unlocking, setUnlocking] = useState(false)
   const [isExiting, setIsExiting] = useState(false)
+  const [showKeychainModal, setShowKeychainModal] = useState(false)
+  const [verifying, setVerifying] = useState(false)
+  const [verifyError, setVerifyError] = useState<string | null>(null)
 
   const handleUnlock = async () => {
     setUnlocking(true)
@@ -30,7 +41,35 @@ export default function UnlockPage() {
   }
 
   const handleAutoUnlockChange = async (checked: boolean) => {
+    if (checked && isMac) {
+      setVerifyError(null)
+      setShowKeychainModal(true)
+      return
+    }
     await updateSecuritySetting({ auto_unlock_enabled: checked })
+  }
+
+  const handleKeychainVerify = async () => {
+    setVerifying(true)
+    setVerifyError(null)
+    try {
+      const granted = await verifyKeychainAccess()
+      if (granted) {
+        await updateSecuritySetting({ auto_unlock_enabled: true })
+        setShowKeychainModal(false)
+      } else {
+        setVerifyError(t('unlock.keychainModal.error'))
+      }
+    } catch {
+      setVerifyError(t('unlock.keychainModal.error'))
+    } finally {
+      setVerifying(false)
+    }
+  }
+
+  const handleKeychainCancel = () => {
+    setShowKeychainModal(false)
+    setVerifyError(null)
   }
 
   return (
@@ -99,6 +138,45 @@ export default function UnlockPage() {
           <p className="max-w-xs text-xs text-muted-foreground/60">{t('unlock.macOSNote')}</p>
         )}
       </div>
+
+      <AlertDialog open={showKeychainModal}>
+        <AlertDialogContent onEscapeKeyDown={e => e.preventDefault()}>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t('unlock.keychainModal.title')}</AlertDialogTitle>
+            <AlertDialogDescription>{t('unlock.keychainModal.description')}</AlertDialogDescription>
+          </AlertDialogHeader>
+
+          <ol className="list-decimal space-y-2 pl-5 text-sm text-foreground">
+            <li>{t('unlock.keychainModal.step1')}</li>
+            <li>{t('unlock.keychainModal.step2')}</li>
+            <li>{t('unlock.keychainModal.step3')}</li>
+          </ol>
+
+          <p className="text-xs text-muted-foreground">{t('unlock.keychainModal.note')}</p>
+
+          {verifyError && (
+            <div className="rounded-lg border border-destructive/20 bg-destructive/5 p-3">
+              <p className="text-sm font-medium text-destructive">{verifyError}</p>
+            </div>
+          )}
+
+          <AlertDialogFooter>
+            <Button variant="outline" onClick={handleKeychainCancel} disabled={verifying}>
+              {t('unlock.keychainModal.cancel')}
+            </Button>
+            <Button variant="secondary" onClick={handleKeychainVerify} disabled={verifying}>
+              {verifying ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  {t('unlock.keychainModal.verifying')}
+                </>
+              ) : (
+                t('unlock.keychainModal.confirm')
+              )}
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

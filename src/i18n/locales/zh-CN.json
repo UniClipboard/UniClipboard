@@ -237,7 +237,19 @@
       "label": "自动解锁",
       "description": "启动应用时自动解锁"
     },
-    "macOSNote": "在 macOS 上，您可以在钥匙串提示中选择“始终允许”以启用无缝自动解锁。"
+    "macOSNote": "在 macOS 上，您可以在钥匙串提示中选择“始终允许”以启用无缝自动解锁。",
+    "keychainModal": {
+      "title": "授权钥匙串访问",
+      "description": "要启用自动解锁，UniClipboard 需要获得 macOS 钥匙串的永久访问权限。",
+      "step1": "macOS 钥匙串访问提示将会出现",
+      "step2": "在提示中选择「始终允许」",
+      "step3": "输入 macOS 密码确认",
+      "note": "这是 macOS 系统对话框，不是 UniClipboard 的一部分。",
+      "confirm": "已勾选始终允许",
+      "cancel": "取消",
+      "verifying": "正在验证访问权限...",
+      "error": "未检测到钥匙串始终允许授权。请重试，并确保在 macOS 钥匙串提示中选择「始终允许」。"
+    }
   },
   "language": {
     "zh-CN": "简体中文",

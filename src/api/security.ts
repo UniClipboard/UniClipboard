@@ -70,3 +70,16 @@ export async function unlockEncryptionSession(): Promise<boolean> {
     throw error
   }
 }
+
+/**
+ * 验证 macOS Keychain "Always Allow" 权限
+ * @returns Promise，返回是否已授权
+ */
+export async function verifyKeychainAccess(): Promise<boolean> {
+  try {
+    return await invokeWithTrace('verify_keychain_access')
+  } catch (error) {
+    console.error('Keychain verification failed:', error)
+    throw error
+  }
+}

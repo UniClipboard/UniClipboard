@@ -92,7 +92,7 @@ const ClipboardContent: React.FC<ClipboardContentProps> = ({
   const dispatch = useAppDispatch()
 
   // Persist panel layout to localStorage
-  const { defaultLayout } = useDefaultLayout({
+  const { defaultLayout, onLayoutChanged } = useDefaultLayout({
     id: 'clipboard-panels',
     panelIds: ['clipboard-list', 'clipboard-preview'],
     storage: localStorage,
@@ -337,6 +337,7 @@ const ClipboardContent: React.FC<ClipboardContentProps> = ({
           id="clipboard-panels"
           orientation="horizontal"
           defaultLayout={defaultLayout}
+          onLayoutChanged={onLayoutChanged}
           className="flex-1 min-h-0"
         >
           {/* Left panel: item list */}

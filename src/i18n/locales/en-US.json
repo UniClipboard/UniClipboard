@@ -79,7 +79,7 @@
         "title": "Sync",
         "autoSync": {
           "label": "Auto sync",
-          "description": "Enable automatic synchronization of copied content across all devices"
+          "description": "Control clipboard sync across all devices. When disabled, no content will be synced to any device."
         },
         "syncFrequency": {
           "label": "Sync frequency",
@@ -382,6 +382,10 @@
         "addDevice": "Add Device",
         "addAnotherDevice": "Add another device"
       }
+    },
+    "syncPaused": {
+      "message": "Clipboard sync is paused. All devices are currently not syncing.",
+      "goToSettings": "Go to Settings"
     },
     "settings": {
       "readOnly": "Locked",

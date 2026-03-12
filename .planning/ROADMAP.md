@@ -194,3 +194,24 @@ Plans:
 4. Text and image toggles are interactive in the UI; other types show "Coming Soon".
 5. All-disabled warning appears when auto_sync is on but all content types are off.
 6. ContentTypes defaults to all-true so new devices sync everything by default.
+
+### Phase 26: Add macOS auto-unlock keychain Always Allow confirmation modal on UnlockPage
+
+**Goal:** When macOS users toggle auto-unlock ON, a confirmation modal guides them through granting "Always Allow" in the Keychain popup and verifies the permission was granted before enabling auto-unlock. Non-macOS platforms skip the modal entirely.
+**Requirements**: KC-01, KC-02, KC-03, KC-04, KC-05, KC-06
+**Depends on:** Phase 25
+**Plans:** 2 plans
+
+Plans:
+
+- [ ] 26-01-PLAN.md — Backend VerifyKeychainAccess use case, Tauri command, and runtime wiring
+- [ ] 26-02-PLAN.md — Frontend API, AlertDialog modal, i18n strings, and UnlockPage integration
+
+**Success Criteria** (what must be TRUE):
+
+1. A dedicated `verify_keychain_access` Tauri command checks if Keychain Always Allow is granted by calling `load_kek()`.
+2. macOS users see a step-by-step modal when toggling auto-unlock ON; the switch stays OFF until verification passes.
+3. The modal shows a red error on verification failure and stays open for retry.
+4. Cancel closes the modal with no side effects (switch stays OFF).
+5. Windows/Linux users can toggle auto-unlock ON directly without any modal.
+6. All modal strings are internationalized in both en-US and zh-CN locales.

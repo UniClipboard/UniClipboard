@@ -17,10 +17,14 @@ import { SUPPORTED_LANGUAGES, type SupportedLanguage, getInitialLanguage } from 
 export default function GeneralSection() {
   const { t } = useTranslation()
   const { setting, loading: settingLoading, updateGeneralSetting } = useSetting()
-  const [autoStart, setAutoStart] = useState(false)
-  const [silentStart, setSilentStart] = useState(false)
-  const [language, setLanguage] = useState<SupportedLanguage>(getInitialLanguage())
-  const [deviceName, setDeviceName] = useState('')
+  const [autoStart, setAutoStart] = useState(setting?.general.auto_start ?? false)
+  const [silentStart, setSilentStart] = useState(setting?.general.silent_start ?? false)
+  const [language, setLanguage] = useState<SupportedLanguage>(() => {
+    const backendLang = setting?.general.language
+    const isValid = backendLang && SUPPORTED_LANGUAGES.includes(backendLang as SupportedLanguage)
+    return isValid ? (backendLang as SupportedLanguage) : getInitialLanguage()
+  })
+  const [deviceName, setDeviceName] = useState(setting?.general.device_name ?? '')
   const [saving, setSaving] = useState(false)
   const isBusy = settingLoading || saving
 

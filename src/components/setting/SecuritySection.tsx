@@ -9,7 +9,9 @@ const SecuritySection: React.FC = () => {
   const { t } = useTranslation()
   const { setting, error, updateSecuritySetting } = useSetting()
 
-  const [autoUnlockEnabled, setAutoUnlockEnabled] = useState(false)
+  const [autoUnlockEnabled, setAutoUnlockEnabled] = useState(
+    setting?.security.auto_unlock_enabled ?? false
+  )
 
   // Update local state when settings are loaded
   useEffect(() => {

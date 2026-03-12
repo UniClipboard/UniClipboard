@@ -1,9 +1,9 @@
 import { Database, FolderOpen, HardDrive, RefreshCw } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import ClearHistoryDialog from './ClearHistoryDialog'
 import { SettingGroup } from './SettingGroup'
 import { SettingRow } from './SettingRow'
-import ClearHistoryDialog from './ClearHistoryDialog'
 import {
   Button,
   Switch,
@@ -354,28 +354,52 @@ const StorageSection: React.FC = () => {
 
   // ── Handlers ─────────────────────────────────────────────────────
 
-  const handleEnabledChange = (checked: boolean) => {
+  const handleEnabledChange = async (checked: boolean) => {
+    const prev = enabled
     setEnabled(checked)
-    updateRetentionPolicy({ enabled: checked })
+    try {
+      await updateRetentionPolicy({ enabled: checked })
+    } catch (err) {
+      console.error('Failed to update retention enabled:', err)
+      setEnabled(prev)
+    }
   }
 
-  const handleRetentionDaysChange = (value: string) => {
+  const handleRetentionDaysChange = async (value: string) => {
+    const prev = retentionDays
     setRetentionDays(value)
     if (!setting?.retention_policy) return
     const days = RETENTION_DAYS_OPTIONS.find(o => o.value === value)?.days ?? 30
-    updateRetentionPolicy({ rules: setByAgeRule(setting.retention_policy.rules, days) })
+    try {
+      await updateRetentionPolicy({ rules: setByAgeRule(setting.retention_policy.rules, days) })
+    } catch (err) {
+      console.error('Failed to update retention days:', err)
+      setRetentionDays(prev)
+    }
   }
 
-  const handleMaxItemsChange = (value: string) => {
+  const handleMaxItemsChange = async (value: string) => {
+    const prev = maxItems
     setMaxItems(value)
     if (!setting?.retention_policy) return
     const count = MAX_ITEMS_OPTIONS.find(o => o.value === value)?.count ?? 500
-    updateRetentionPolicy({ rules: setByCountRule(setting.retention_policy.rules, count) })
+    try {
+      await updateRetentionPolicy({ rules: setByCountRule(setting.retention_policy.rules, count) })
+    } catch (err) {
+      console.error('Failed to update max items:', err)
+      setMaxItems(prev)
+    }
   }
 
-  const handleSkipPinnedChange = (checked: boolean) => {
+  const handleSkipPinnedChange = async (checked: boolean) => {
+    const prev = skipPinned
     setSkipPinned(checked)
-    updateRetentionPolicy({ skip_pinned: checked })
+    try {
+      await updateRetentionPolicy({ skip_pinned: checked })
+    } catch (err) {
+      console.error('Failed to update skip pinned:', err)
+      setSkipPinned(prev)
+    }
   }
 
   const handleClearCache = async () => {

@@ -200,7 +200,7 @@ Plans:
 **Goal:** Link content type is fully functional across the pipeline: classification detects both text/uri-list and single-URL plain text, sync filtering respects the link toggle, and the Dashboard displays links with clickable URLs and domain information.
 **Requirements**: LINK-01, LINK-02, LINK-03, LINK-04, LINK-05, LINK-06, LINK-07
 **Depends on:** Phase 25
-**Plans:** 1/2 plans executed
+**Plans:** 2/2 plans complete
 
 Plans:
 

@@ -41,6 +41,14 @@ Requirements for v0.3.0 Log Observability. Each will be mapped to roadmap phases
 - [x] **CT-06**: Unimplemented content type toggles (file, link, code_snippet, rich_text) display a "Coming Soon" badge and are non-interactive.
 - [x] **CT-07**: An inline warning appears when auto_sync is on but all content types are disabled for a device.
 
+### Global Sync Master Toggle
+
+- [ ] **GSYNC-01**: When global auto_sync is false, apply_sync_policy returns an empty peer list before any per-device evaluation, preventing all outbound sync.
+- [ ] **GSYNC-02**: Per-device sync settings are never modified when the global auto_sync toggle changes; they persist unchanged in storage and resume automatically when re-enabled.
+- [ ] **GSYNC-03**: A warning banner appears at the top of the Devices page when global auto_sync is off, with a "Go to Settings" link that navigates directly to the Settings Sync section.
+- [ ] **GSYNC-04**: All interactive controls in DeviceSettingsPanel (per-device auto_sync, content type toggles, restore defaults) are cascade-disabled when global auto_sync is off, while preserving their visual on/off state.
+- [ ] **GSYNC-05**: The auto sync toggle description in Settings displays master switch copy in both EN and ZH locales using the existing i18n infrastructure.
+
 ## v2 Requirements
 
 Deferred to a future milestone. Tracked but not in the current roadmap.
@@ -92,14 +100,19 @@ Which phases cover which requirements.
 | CT-05       | Phase 25 | Planned  |
 | CT-06       | Phase 25 | Planned  |
 | CT-07       | Phase 25 | Planned  |
+| GSYNC-01    | Phase 26 | Planned  |
+| GSYNC-02    | Phase 26 | Planned  |
+| GSYNC-03    | Phase 26 | Planned  |
+| GSYNC-04    | Phase 26 | Planned  |
+| GSYNC-05    | Phase 26 | Planned  |
 
 **Coverage:**
 
-- v1 requirements: 22 total
-- Mapped to phases: 22
+- v1 requirements: 27 total
+- Mapped to phases: 27
 - Unmapped: 0
 
 ---
 
 _Requirements defined: 2026-03-09_
-_Last updated: 2026-03-12 after Phase 25 planning_
+_Last updated: 2026-03-12 after Phase 26 planning_

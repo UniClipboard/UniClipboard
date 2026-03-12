@@ -194,3 +194,15 @@ Plans:
 4. Text and image toggles are interactive in the UI; other types show "Coming Soon".
 5. All-disabled warning appears when auto_sync is on but all content types are off.
 6. ContentTypes defaults to all-true so new devices sync everything by default.
+
+### Phase 26: Implement global sync master toggle and improve sync UX
+
+**Goal:** The global auto_sync toggle acts as a true master switch that overrides all per-device sync settings. When off, all outbound sync stops. Per-device settings are preserved and resume when re-enabled. The Devices page shows a warning banner with navigation to Settings, and all device controls cascade-disable.
+**Requirements**: GSYNC-01, GSYNC-02, GSYNC-03, GSYNC-04, GSYNC-05
+**Depends on:** Phase 25
+**Plans:** 2 plans
+
+Plans:
+
+- [ ] 26-01-PLAN.md — Backend global auto_sync guard in sync engine + i18n keys and description copy
+- [ ] 26-02-PLAN.md — Frontend warning banner, cascade disable, and Settings navigation

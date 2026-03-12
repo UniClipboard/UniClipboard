@@ -43,10 +43,10 @@ Requirements for v0.3.0 Log Observability. Each will be mapped to roadmap phases
 
 ### Link Content Type
 
-- [ ] **LINK-01**: Plain text clipboard content that is a single valid URL (entire trimmed text, no whitespace) is classified as Link instead of Text by `classify_snapshot`.
-- [ ] **LINK-02**: `is_content_type_allowed` respects the `ct.link` toggle for Link content, making link sync filterable per device.
-- [ ] **LINK-03**: `text/uri-list` content is parsed per RFC 2483 (one URL per line, # comment lines skipped) and returned as a list of URLs with extracted domains.
-- [ ] **LINK-04**: `get_clipboard_item` returns structured `ClipboardLinkItemDto` with urls and domains arrays for link entries.
+- [x] **LINK-01**: Plain text clipboard content that is a single valid URL (entire trimmed text, no whitespace) is classified as Link instead of Text by `classify_snapshot`.
+- [x] **LINK-02**: `is_content_type_allowed` respects the `ct.link` toggle for Link content, making link sync filterable per device.
+- [x] **LINK-03**: `text/uri-list` content is parsed per RFC 2483 (one URL per line, # comment lines skipped) and returned as a list of URLs with extracted domains.
+- [x] **LINK-04**: `get_clipboard_item` returns structured `ClipboardLinkItemDto` with urls and domains arrays for link entries.
 - [ ] **LINK-05**: Dashboard list view shows link entries with clickable first URL and "+N more" badge for multi-URL entries.
 - [ ] **LINK-06**: Dashboard detail panel shows all URLs with domain names and character count for link entries.
 - [ ] **LINK-07**: Link sync toggle in DeviceSettingsPanel is interactive (not "Coming Soon"), while file/code_snippet/rich_text remain "Coming Soon".

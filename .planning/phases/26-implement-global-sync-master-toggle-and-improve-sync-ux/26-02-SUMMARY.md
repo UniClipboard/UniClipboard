@@ -89,4 +89,6 @@ _Completed: 2026-03-12_
 
 ## Self-Check: PASSED
 
-\n- FOUND: .planning/phases/26-implement-global-sync-master-toggle-and-improve-sync-ux/26-02-SUMMARY.md\n- FOUND: 6aabb2a3\n- FOUND: 1318d0b0
+- FOUND: .planning/phases/26-implement-global-sync-master-toggle-and-improve-sync-ux/26-02-SUMMARY.md
+- FOUND: 6aabb2a3
+- FOUND: 1318d0b0

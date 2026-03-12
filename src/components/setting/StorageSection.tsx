@@ -165,16 +165,30 @@ function StorageUsageBar({
   segments,
   total,
   loading,
+  error,
   onRefresh,
 }: {
   segments: StorageSegment[]
   total: number
   loading: boolean
+  error?: string | null
   onRefresh: () => void
 }) {
   const { t } = useTranslation()
 
   if (loading) return <StorageUsageSkeleton />
+
+  if (error) {
+    return (
+      <div className="px-4 py-6 flex flex-col items-center justify-center gap-3 text-center">
+        <div className="text-sm text-destructive">{error}</div>
+        <Button variant="outline" size="sm" onClick={onRefresh}>
+          <RefreshCw className="w-4 h-4 mr-2" />
+          {t('common.retry')}
+        </Button>
+      </div>
+    )
+  }
 
   return (
     <div className="px-4 py-4 space-y-3.5">
@@ -261,6 +275,7 @@ const StorageSection: React.FC = () => {
   // Storage stats state
   const [stats, setStats] = useState<StorageStats | null>(null)
   const [statsLoading, setStatsLoading] = useState(true)
+  const [statsError, setStatsError] = useState<string | null>(null)
 
   // Action states
   const [clearingCache, setClearingCache] = useState(false)
@@ -271,11 +286,13 @@ const StorageSection: React.FC = () => {
 
   const loadStats = useCallback(async () => {
     setStatsLoading(true)
+    setStatsError(null)
     try {
       const result = await invokeWithTrace<StorageStats>('get_storage_stats')
       setStats(result)
     } catch (err) {
       console.error('Failed to load storage stats:', err)
+      setStatsError(err instanceof Error ? err.message : String(err))
     } finally {
       setStatsLoading(false)
     }
@@ -410,6 +427,7 @@ const StorageSection: React.FC = () => {
           segments={segments}
           total={stats?.totalBytes ?? 0}
           loading={statsLoading}
+          error={statsError}
           onRefresh={loadStats}
         />
       </SettingGroup>

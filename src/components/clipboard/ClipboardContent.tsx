@@ -102,9 +102,25 @@ const ClipboardContent: React.FC<ClipboardContentProps> = ({
   const [activeItemId, setActiveItemId] = useState<string | null>(null)
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [copySuccess, setCopySuccess] = useState(false)
+  const [tick, setTick] = useState(0)
 
   const activeItemRef = useRef<HTMLDivElement>(null)
   const prevFirstItemIdRef = useRef<string | null>(null)
+
+  // Periodic tick to force timestamp recalculation
+  useEffect(() => {
+    if (!reduxItems || reduxItems.length === 0) return
+
+    const now = Date.now()
+    const hasRecentItems = reduxItems.some(item => now - item.active_time < 3600000)
+    const interval = hasRecentItems ? 30000 : 60000
+
+    const id = setInterval(() => {
+      setTick(t => t + 1)
+    }, interval)
+
+    return () => clearInterval(id)
+  }, [reduxItems])
 
   // Convert clipboard item to display item
   const convertToDisplayItem = useCallback(
@@ -181,7 +197,7 @@ const ClipboardContent: React.FC<ClipboardContentProps> = ({
     }
 
     return items
-  }, [reduxItems, filter, searchQuery, convertToDisplayItem])
+  }, [reduxItems, filter, searchQuery, convertToDisplayItem, tick])
 
   // Flat list for keyboard navigation
   const flatItems = useMemo(() => clipboardItems, [clipboardItems])

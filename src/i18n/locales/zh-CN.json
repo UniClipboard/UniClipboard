@@ -170,36 +170,55 @@
       "storage": {
         "title": "存储管理",
         "autoClearHistory": {
-          "label": "自动清除历史记录",
-          "description": "定期自动清除剪贴板历史记录",
-          "never": "从不",
-          "daily": "每天",
-          "weekly": "每周",
-          "monthly": "每月",
-          "onExit": "每次退出"
+          "label": "自动清理历史",
+          "description": "根据保留规则自动清理旧的剪贴板条目"
         },
         "storageUsage": {
-          "label": "存储使用情况",
-          "usage": "已使用 {{percentage}}%"
+          "label": "存储用量",
+          "usage": "已使用 {{percentage}}%",
+          "database": "数据库",
+          "blobVault": "Blob 存储",
+          "cache": "缓存",
+          "logs": "日志",
+          "total": "总计"
         },
         "historyRetention": {
-          "label": "历史记录保留时间",
-          "description": "设置剪贴板历史记录的最长保留时间",
+          "label": "历史保留时间",
+          "description": "剪贴板历史的最长保留时间",
           "days": "{{days}} 天"
         },
         "maxHistoryItems": {
-          "label": "最大历史记录数",
-          "description": "限制保存的剪贴板历史记录数量",
-          "items": "{{count}}条",
+          "label": "最大历史条目数",
+          "description": "保留的最大剪贴板条目数量",
+          "items": "{{count}} 条",
           "unlimited": "无限制"
         },
-        "clearHistory": {
-          "label": "历史记录",
-          "description": "清空所有剪贴板历史记录并释放存储空间",
-          "button": "清空历史记录",
-          "cleared": "历史记录已清空"
+        "skipPinned": {
+          "label": "跳过已收藏条目",
+          "description": "已收藏的条目不会被自动清理"
         },
-        "loadError": "加载设置失败:"
+        "clearHistory": {
+          "label": "清除历史",
+          "description": "删除所有剪贴板历史并释放存储空间",
+          "button": "全部清除",
+          "confirm": "确定要清除吗？此操作不可撤销。",
+          "cleared": "历史已清除",
+          "clearing": "清除中..."
+        },
+        "clearCache": {
+          "label": "清除缓存",
+          "description": "删除缓存的缩略图和临时文件",
+          "button": "清除缓存",
+          "cleared": "缓存已清除",
+          "clearing": "清除中..."
+        },
+        "dataDirectory": {
+          "label": "数据目录",
+          "description": "打开应用数据存储所在的文件夹",
+          "button": "在文件管理器中打开"
+        },
+        "loadError": "加载存储设置失败：",
+        "placeholder": "存储设置尚不可用。"
       },
       "about": {
         "title": "关于",

@@ -171,35 +171,54 @@
         "title": "Storage",
         "autoClearHistory": {
           "label": "Auto-clear history",
-          "description": "Automatically clear clipboard history at regular intervals",
-          "never": "Never",
-          "daily": "Daily",
-          "weekly": "Weekly",
-          "monthly": "Monthly",
-          "onExit": "On exit"
+          "description": "Automatically clean up old clipboard entries based on retention rules"
         },
         "storageUsage": {
           "label": "Storage usage",
-          "usage": "{{percentage}}% used"
+          "usage": "{{percentage}}% used",
+          "database": "Database",
+          "blobVault": "Blob vault",
+          "cache": "Cache",
+          "logs": "Logs",
+          "total": "Total"
         },
         "historyRetention": {
           "label": "History retention",
-          "description": "Set the maximum retention time for clipboard history",
+          "description": "Maximum retention time for clipboard history",
           "days": "{{days}} days"
         },
         "maxHistoryItems": {
           "label": "Max history items",
-          "description": "Limit the number of clipboard history items to save",
+          "description": "Maximum number of clipboard entries to keep",
           "items": "{{count}} items",
           "unlimited": "Unlimited"
         },
-        "clearHistory": {
-          "label": "History",
-          "description": "Clear all clipboard history and free up storage space",
-          "button": "Clear history",
-          "cleared": "History cleared"
+        "skipPinned": {
+          "label": "Skip pinned items",
+          "description": "Pinned items are excluded from automatic cleanup"
         },
-        "loadError": "Failed to load settings:"
+        "clearHistory": {
+          "label": "Clear history",
+          "description": "Delete all clipboard history and free up storage space",
+          "button": "Clear all",
+          "confirm": "Are you sure? This action cannot be undone.",
+          "cleared": "History cleared",
+          "clearing": "Clearing..."
+        },
+        "clearCache": {
+          "label": "Clear cache",
+          "description": "Remove cached thumbnails and temporary files",
+          "button": "Clear cache",
+          "cleared": "Cache cleared",
+          "clearing": "Clearing..."
+        },
+        "dataDirectory": {
+          "label": "Data directory",
+          "description": "Open the folder where application data is stored",
+          "button": "Open in file manager"
+        },
+        "loadError": "Failed to load storage settings:",
+        "placeholder": "Storage settings are not yet available."
       },
       "about": {
         "title": "About",

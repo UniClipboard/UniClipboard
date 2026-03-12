@@ -852,6 +852,11 @@ fn run_app(config: AppConfig) {
             // Updater commands
             uc_tauri::commands::updater::check_for_update,
             uc_tauri::commands::updater::install_update,
+            // Storage commands
+            uc_tauri::commands::storage::get_storage_stats,
+            uc_tauri::commands::storage::clear_cache,
+            uc_tauri::commands::storage::clear_all_clipboard_history,
+            uc_tauri::commands::storage::open_data_directory,
             // macOS-specific commands (conditionally compiled)
             #[cfg(target_os = "macos")]
             plugins::mac_rounded_corners::enable_rounded_corners,

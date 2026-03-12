@@ -92,7 +92,8 @@ export interface ClipboardFileItem {
 }
 
 export interface ClipboardLinkItem {
-  url: string
+  urls: string[]
+  domains: string[]
 }
 
 export interface ClipboardCodeItem {
@@ -124,11 +125,64 @@ export interface ClipboardStats {
 }
 
 /**
+ * Lightweight frontend heuristic to detect link entries from projections.
+ * The authoritative classification happens in the backend; this is only
+ * needed for the projection path where we don't get a typed DTO.
+ */
+function isLinkType(contentType: string, preview: string): boolean {
+  if (contentType === 'text/uri-list') return true
+  if (contentType.startsWith('text/plain')) {
+    const trimmed = preview.trim()
+    if (/^(https?:\/\/|ftp:\/\/|ftps:\/\/|mailto:)\S+$/.test(trimmed)) {
+      return true
+    }
+  }
+  return false
+}
+
+/**
+ * Extract hostname from a URL string. Returns the raw string on failure.
+ */
+function extractDomainFromUrl(url: string): string {
+  try {
+    return new URL(url).hostname
+  } catch {
+    return url
+  }
+}
+
+/**
+ * Parse a text/uri-list body into an array of URLs (skipping empty lines and comments).
+ */
+function parseUriList(text: string): string[] {
+  return text
+    .split(/\r?\n/)
+    .map(line => line.trim())
+    .filter(line => line.length > 0 && !line.startsWith('#'))
+}
+
+/**
  * Transform a backend ClipboardEntryProjection to frontend ClipboardItemResponse.
  * Shared by getClipboardItems and getClipboardEntry to avoid duplication.
  */
 function transformProjectionToResponse(entry: ClipboardEntryProjection): ClipboardItemResponse {
   const isImage = isImageType(entry.content_type)
+  const isLink = !isImage && isLinkType(entry.content_type, entry.preview)
+
+  let linkItem: ClipboardLinkItem | null = null
+  if (isLink) {
+    let urls: string[]
+    if (entry.content_type === 'text/uri-list') {
+      urls = parseUriList(entry.preview)
+      if (urls.length === 0) urls = [entry.preview.trim()]
+    } else {
+      urls = [entry.preview.trim()]
+    }
+    linkItem = {
+      urls,
+      domains: urls.map(extractDomainFromUrl),
+    }
+  }
 
   const item: ClipboardItem = {
     image: isImage
@@ -139,15 +193,16 @@ function transformProjectionToResponse(entry: ClipboardEntryProjection): Clipboa
           height: 0,
         }
       : null,
-    text: !isImage
-      ? {
-          display_text: entry.preview,
-          has_detail: entry.has_detail,
-          size: entry.size_bytes,
-        }
-      : null,
+    text:
+      !isImage && !isLink
+        ? {
+            display_text: entry.preview,
+            has_detail: entry.has_detail,
+            size: entry.size_bytes,
+          }
+        : null,
     file: null as unknown as ClipboardFileItem,
-    link: null as unknown as ClipboardLinkItem,
+    link: linkItem as unknown as ClipboardLinkItem,
     code: null as unknown as ClipboardCodeItem,
     unknown: null,
   }

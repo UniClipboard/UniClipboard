@@ -169,7 +169,7 @@ const ClipboardContent: React.FC<ClipboardContentProps> = ({
           return (it.content as ClipboardCodeItem).code?.toLowerCase().includes(query)
         }
         if (it.type === 'link' && it.content) {
-          return (it.content as ClipboardLinkItem).url?.toLowerCase().includes(query)
+          return (it.content as ClipboardLinkItem).urls?.some(u => u.toLowerCase().includes(query))
         }
         if (it.type === 'file' && it.content) {
           return (it.content as ClipboardFileItem).file_names?.some(name =>

@@ -39,7 +39,7 @@ function getPreviewText(item: DisplayClipboardItem): string {
       return 'Image'
     }
     case 'link':
-      return (item.content as ClipboardLinkItem).url
+      return (item.content as ClipboardLinkItem).urls[0] ?? ''
     case 'code':
       return (item.content as ClipboardCodeItem).code.split('\n')[0] ?? ''
     case 'file': {
@@ -72,6 +72,13 @@ const ClipboardItemRow: React.FC<ClipboardItemRowProps> = ({
         className={cn('h-4 w-4 shrink-0', isActive ? 'text-primary' : 'text-muted-foreground')}
       />
       <span className="w-0 flex-grow truncate text-sm">{getPreviewText(item)}</span>
+      {item.type === 'link' &&
+        item.content &&
+        (item.content as ClipboardLinkItem).urls.length > 1 && (
+          <span className="text-xs text-muted-foreground bg-muted/50 px-1.5 py-0.5 rounded-full shrink-0">
+            +{(item.content as ClipboardLinkItem).urls.length - 1}
+          </span>
+        )}
       <span className="text-xs text-muted-foreground shrink-0">{item.time}</span>
     </div>
   )

@@ -132,19 +132,39 @@ const ClipboardPreview: React.FC<ClipboardPreviewProps> = ({ item }) => {
         )
       }
       case 'link': {
-        const url = (item.content as ClipboardLinkItem).url
+        const linkItem = item.content as ClipboardLinkItem
         return (
-          <div className="p-4">
+          <div className="p-4 space-y-2">
             <a
-              href={url}
+              href={linkItem.urls[0]}
               target="_blank"
               rel="noreferrer"
               className="text-primary font-medium hover:underline break-all text-sm leading-relaxed flex items-center gap-2"
               onClick={e => e.stopPropagation()}
             >
               <ExternalLink size={14} className="shrink-0" />
-              {url}
+              {linkItem.urls[0]}
             </a>
+            {linkItem.urls.length > 1 &&
+              linkItem.urls.slice(1).map((url, i) => (
+                <div key={i} className="flex items-center gap-2">
+                  <a
+                    href={url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-primary/80 hover:underline break-all text-sm leading-relaxed flex items-center gap-2"
+                    onClick={e => e.stopPropagation()}
+                  >
+                    <ExternalLink size={12} className="shrink-0 text-muted-foreground" />
+                    {url}
+                  </a>
+                  {linkItem.domains[i + 1] && (
+                    <span className="text-xs text-muted-foreground shrink-0">
+                      {linkItem.domains[i + 1]}
+                    </span>
+                  )}
+                </div>
+              ))}
           </div>
         )
       }
@@ -245,10 +265,26 @@ const ClipboardPreview: React.FC<ClipboardPreviewProps> = ({ item }) => {
     }
 
     if (item.type === 'link' && item.content) {
-      const url = (item.content as ClipboardLinkItem).url
+      const linkItem = item.content as ClipboardLinkItem
+      const domainStr = linkItem.domains.filter(Boolean).join(', ')
+      if (domainStr) {
+        rows.push({
+          label:
+            linkItem.domains.length > 1
+              ? t('clipboard.preview.domains', 'Domains')
+              : t('clipboard.preview.domain', 'Domain'),
+          value: domainStr,
+        })
+      }
+      if (linkItem.urls.length > 1) {
+        rows.push({
+          label: t('clipboard.preview.urlCount', 'URLs'),
+          value: String(linkItem.urls.length),
+        })
+      }
       rows.push({
         label: t('clipboard.preview.characters'),
-        value: String(url.length),
+        value: String(linkItem.urls[0]?.length ?? 0),
       })
     }
 

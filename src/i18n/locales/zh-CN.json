@@ -79,7 +79,7 @@
         "title": "同步设置",
         "autoSync": {
           "label": "自动同步",
-          "description": "启用后，uniClipboard将自动同步您复制的内容到所有设备"
+          "description": "控制所有设备的剪贴板同步。关闭后停止向所有设备同步内容。"
         },
         "syncFrequency": {
           "label": "同步频率",
@@ -382,6 +382,10 @@
         "addDevice": "添加设备",
         "addAnotherDevice": "添加另一台设备"
       }
+    },
+    "syncPaused": {
+      "message": "剪贴板同步已暂停，所有设备当前均不会同步内容。",
+      "goToSettings": "前往设置"
     },
     "settings": {
       "readOnly": "不可更改",

@@ -899,6 +899,30 @@ mod tests {
     }
 }
 
+/// Verify whether macOS Keychain "Always Allow" permission has been granted.
+/// 验证 macOS 钥匙串"始终允许"权限是否已授予。
+///
+/// Returns `true` if Keychain access succeeds silently, `false` if permission denied.
+/// Returns an error if KEK is not found (encryption not properly initialized).
+#[tauri::command]
+pub async fn verify_keychain_access(
+    runtime: State<'_, Arc<AppRuntime>>,
+    _trace: Option<TraceMetadata>,
+) -> Result<bool, String> {
+    let span = info_span!(
+        "command.encryption.verify_keychain_access",
+        trace_id = tracing::field::Empty,
+        trace_ts = tracing::field::Empty,
+    );
+    record_trace_fields(&span, &_trace);
+
+    let uc = runtime.usecases().verify_keychain_access();
+    uc.execute()
+        .instrument(span)
+        .await
+        .map_err(|e| e.to_string())
+}
+
 /// Check if encryption is initialized
 /// 检查加密是否已初始化
 ///

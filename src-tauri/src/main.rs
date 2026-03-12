@@ -813,6 +813,7 @@ fn run_app(config: AppConfig) {
             uc_tauri::commands::encryption::initialize_encryption,
             uc_tauri::commands::encryption::get_encryption_session_status,
             uc_tauri::commands::encryption::unlock_encryption_session,
+            uc_tauri::commands::encryption::verify_keychain_access,
             // Settings commands
             uc_tauri::commands::settings::get_settings,
             uc_tauri::commands::settings::update_settings,

@@ -380,6 +380,7 @@ const StorageSection: React.FC = () => {
       await loadStats()
     } catch (err) {
       console.error('Failed to clear history:', err)
+      throw err
     } finally {
       setClearingHistory(false)
     }

@@ -1,3 +1,4 @@
+import { openUrl } from '@tauri-apps/plugin-opener'
 import { Clipboard, ExternalLink, File, Loader2, Image as ImageIcon } from 'lucide-react'
 import React, { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -135,29 +136,31 @@ const ClipboardPreview: React.FC<ClipboardPreviewProps> = ({ item }) => {
         const linkItem = item.content as ClipboardLinkItem
         return (
           <div className="p-4 space-y-2">
-            <a
-              href={linkItem.urls[0]}
-              target="_blank"
-              rel="noreferrer"
-              className="text-primary font-medium hover:underline break-all text-sm leading-relaxed flex items-center gap-2"
-              onClick={e => e.stopPropagation()}
+            <button
+              type="button"
+              className="text-left text-primary font-medium hover:underline break-all text-sm leading-relaxed flex items-center gap-2"
+              onClick={e => {
+                e.stopPropagation()
+                openUrl(linkItem.urls[0]).catch(console.error)
+              }}
             >
               <ExternalLink size={14} className="shrink-0" />
               {linkItem.urls[0]}
-            </a>
+            </button>
             {linkItem.urls.length > 1 &&
               linkItem.urls.slice(1).map((url, i) => (
                 <div key={i} className="flex items-center gap-2">
-                  <a
-                    href={url}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="text-primary/80 hover:underline break-all text-sm leading-relaxed flex items-center gap-2"
-                    onClick={e => e.stopPropagation()}
+                  <button
+                    type="button"
+                    className="text-left text-primary/80 hover:underline break-all text-sm leading-relaxed flex items-center gap-2"
+                    onClick={e => {
+                      e.stopPropagation()
+                      openUrl(url).catch(console.error)
+                    }}
                   >
                     <ExternalLink size={12} className="shrink-0 text-muted-foreground" />
                     {url}
-                  </a>
+                  </button>
                   {linkItem.domains[i + 1] && (
                     <span className="text-xs text-muted-foreground shrink-0">
                       {linkItem.domains[i + 1]}

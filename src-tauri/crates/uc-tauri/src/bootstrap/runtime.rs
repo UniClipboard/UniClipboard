@@ -683,6 +683,16 @@ impl<'a> UseCases<'a> {
         )
     }
 
+    /// Get the VerifyKeychainAccess use case for checking Always Allow permission.
+    pub fn verify_keychain_access(
+        &self,
+    ) -> uc_app::usecases::verify_keychain_access::VerifyKeychainAccess {
+        uc_app::usecases::verify_keychain_access::VerifyKeychainAccess::from_ports(
+            self.runtime.deps.security.key_scope.clone(),
+            self.runtime.deps.security.key_material.clone(),
+        )
+    }
+
     /// Get the AutoUnlockEncryptionSession use case for startup unlock.
     pub fn auto_unlock_encryption_session(&self) -> uc_app::usecases::AutoUnlockEncryptionSession {
         uc_app::usecases::AutoUnlockEncryptionSession::from_ports(

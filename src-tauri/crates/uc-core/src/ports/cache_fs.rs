@@ -36,5 +36,8 @@ pub trait CacheFsPort: Send + Sync {
 
     /// Recursively calculate the size of a path in bytes.
     /// 递归计算路径的大小（字节数）。
-    async fn dir_size(&self, path: &Path) -> u64;
+    ///
+    /// Returns `Ok(0)` for non-existent paths. Returns an error if a path
+    /// exists but cannot be read (e.g. permission denied).
+    async fn dir_size(&self, path: &Path) -> Result<u64>;
 }

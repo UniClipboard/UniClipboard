@@ -1864,8 +1864,8 @@ mod tests {
         async fn remove_file(&self, _path: &std::path::Path) -> anyhow::Result<()> {
             Ok(())
         }
-        async fn dir_size(&self, _path: &std::path::Path) -> u64 {
-            0
+        async fn dir_size(&self, _path: &std::path::Path) -> anyhow::Result<u64> {
+            Ok(0)
         }
     }
 

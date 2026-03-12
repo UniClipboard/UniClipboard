@@ -27,7 +27,7 @@ impl ClearCache {
     #[tracing::instrument(name = "usecase.clear_cache.execute", skip(self))]
     pub async fn execute(&self) -> Result<u64> {
         let paths = &self.storage_paths;
-        let size_before = self.cache_fs.dir_size(&paths.cache_dir).await;
+        let size_before = self.cache_fs.dir_size(&paths.cache_dir).await?;
 
         if self.cache_fs.exists(&paths.cache_dir).await {
             let entries = self
@@ -47,7 +47,7 @@ impl ClearCache {
             }
         }
 
-        let size_after = self.cache_fs.dir_size(&paths.cache_dir).await;
+        let size_after = self.cache_fs.dir_size(&paths.cache_dir).await?;
         let freed = size_before.saturating_sub(size_after);
 
         tracing::info!(freed_bytes = freed, "Cache cleared");
@@ -88,12 +88,12 @@ mod tests {
             Ok(())
         }
 
-        async fn dir_size(&self, _path: &Path) -> u64 {
+        async fn dir_size(&self, _path: &Path) -> Result<u64> {
             let call = self.dir_size_call_count.fetch_add(1, Ordering::SeqCst);
             if call == 0 {
-                self.size_before
+                Ok(self.size_before)
             } else {
-                self.size_after
+                Ok(self.size_after)
             }
         }
     }

@@ -3,7 +3,7 @@
 
 use std::path::Path;
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use async_trait::async_trait;
 use uc_core::ports::cache_fs::{CacheFsPort, DirEntry};
 
@@ -29,7 +29,11 @@ impl CacheFsPort for TokioCacheFsAdapter {
             .await
             .map_err(|e| anyhow::anyhow!("Failed to read directory: {}", e))?;
 
-        while let Ok(Some(entry)) = read_dir.next_entry().await {
+        while let Some(entry) = read_dir
+            .next_entry()
+            .await
+            .with_context(|| format!("Failed to read entry in directory: {}", path.display()))?
+        {
             let entry_path = entry.path();
             let is_dir = entry_path.is_dir();
             entries.push(DirEntry {
@@ -53,44 +57,49 @@ impl CacheFsPort for TokioCacheFsAdapter {
             .map_err(|e| anyhow::anyhow!("Failed to remove file: {}", e))
     }
 
-    async fn dir_size(&self, path: &Path) -> u64 {
+    async fn dir_size(&self, path: &Path) -> Result<u64> {
         compute_dir_size(path).await
     }
 }
 
 /// Recursively calculate directory size in bytes.
 /// 递归计算目录大小（字节数）。
-async fn compute_dir_size(path: &Path) -> u64 {
+///
+/// Returns `Ok(0)` for non-existent paths. Returns an error if a path
+/// exists but cannot be read (e.g. permission denied).
+async fn compute_dir_size(path: &Path) -> Result<u64> {
     if !tokio::fs::try_exists(path).await.unwrap_or(false) {
-        return 0;
+        return Ok(0);
     }
 
-    let metadata = match tokio::fs::metadata(path).await {
-        Ok(m) => m,
-        Err(_) => return 0,
-    };
+    let metadata = tokio::fs::metadata(path)
+        .await
+        .with_context(|| format!("Failed to read metadata for: {}", path.display()))?;
 
     if metadata.is_file() {
-        return metadata.len();
+        return Ok(metadata.len());
     }
 
     let mut total: u64 = 0;
-    let mut entries = match tokio::fs::read_dir(path).await {
-        Ok(entries) => entries,
-        Err(_) => return 0,
-    };
+    let mut entries = tokio::fs::read_dir(path)
+        .await
+        .with_context(|| format!("Failed to read directory: {}", path.display()))?;
 
-    while let Ok(Some(entry)) = entries.next_entry().await {
+    while let Some(entry) = entries
+        .next_entry()
+        .await
+        .with_context(|| format!("Failed to read entry in directory: {}", path.display()))?
+    {
         let entry_path = entry.path();
         if entry_path.is_dir() {
-            total += Box::pin(compute_dir_size(&entry_path)).await;
+            total += Box::pin(compute_dir_size(&entry_path)).await?;
         } else {
-            total += tokio::fs::metadata(&entry_path)
-                .await
-                .map(|m| m.len())
-                .unwrap_or(0);
+            let meta = tokio::fs::metadata(&entry_path).await.with_context(|| {
+                format!("Failed to read metadata for: {}", entry_path.display())
+            })?;
+            total += meta.len();
         }
     }
 
-    total
+    Ok(total)
 }

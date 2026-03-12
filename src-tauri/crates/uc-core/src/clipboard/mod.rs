@@ -5,6 +5,7 @@ mod entry;
 mod event;
 mod hash;
 pub mod integration_mode;
+pub mod link_utils;
 mod mime;
 mod origin;
 mod payload_availability;

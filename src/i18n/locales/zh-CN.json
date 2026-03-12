@@ -203,7 +203,10 @@
           "button": "全部清除",
           "confirm": "确定要清除吗？此操作不可撤销。",
           "cleared": "历史已清除",
-          "clearing": "清除中..."
+          "clearing": "清除中...",
+          "dialogTitle": "确认清除历史",
+          "dialogDescription": "此操作将删除所有剪贴板历史记录，且无法恢复。",
+          "dialogConfirm": "清除历史"
         },
         "clearCache": {
           "label": "清除缓存",

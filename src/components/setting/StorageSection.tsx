@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { SettingGroup } from './SettingGroup'
 import { SettingRow } from './SettingRow'
+import ClearHistoryDialog from './ClearHistoryDialog'
 import {
   Button,
   Switch,
@@ -264,6 +265,7 @@ const StorageSection: React.FC = () => {
   // Action states
   const [clearingCache, setClearingCache] = useState(false)
   const [clearingHistory, setClearingHistory] = useState(false)
+  const [showClearHistoryDialog, setShowClearHistoryDialog] = useState(false)
 
   // ── Load storage stats ───────────────────────────────────────────
 
@@ -372,7 +374,6 @@ const StorageSection: React.FC = () => {
   }
 
   const handleClearHistory = async () => {
-    if (!window.confirm(t('settings.sections.storage.clearHistory.confirm'))) return
     setClearingHistory(true)
     try {
       await invokeWithTrace('clear_all_clipboard_history')
@@ -493,7 +494,7 @@ const StorageSection: React.FC = () => {
           <Button
             variant="destructive"
             size="sm"
-            onClick={handleClearHistory}
+            onClick={() => setShowClearHistoryDialog(true)}
             disabled={clearingHistory}
           >
             {clearingHistory
@@ -511,6 +512,13 @@ const StorageSection: React.FC = () => {
           </Button>
         </SettingRow>
       </SettingGroup>
+
+      {/* ── Confirmation Dialog ── */}
+      <ClearHistoryDialog
+        open={showClearHistoryDialog}
+        onOpenChange={setShowClearHistoryDialog}
+        onConfirm={handleClearHistory}
+      />
     </div>
   )
 }

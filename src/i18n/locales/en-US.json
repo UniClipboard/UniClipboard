@@ -203,7 +203,10 @@
           "button": "Clear all",
           "confirm": "Are you sure? This action cannot be undone.",
           "cleared": "History cleared",
-          "clearing": "Clearing..."
+          "clearing": "Clearing...",
+          "dialogTitle": "Confirm clear history",
+          "dialogDescription": "This will delete all clipboard history and cannot be undone.",
+          "dialogConfirm": "Clear history"
         },
         "clearCache": {
           "label": "Clear cache",

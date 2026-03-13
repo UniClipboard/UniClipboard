@@ -245,7 +245,7 @@
       "step2": "Select \"Always Allow\" in the prompt",
       "step3": "Enter your macOS password to confirm",
       "note": "This is a macOS system dialog, not part of UniClipboard.",
-      "confirm": "I've selected Always Allow",
+      "confirm": "I understand",
       "cancel": "Cancel",
       "verifying": "Verifying access...",
       "error": "Keychain Always Allow permission not detected. Please try again and make sure to select \"Always Allow\" in the macOS Keychain prompt."

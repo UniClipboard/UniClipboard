@@ -245,7 +245,7 @@
       "step2": "在提示中选择「始终允许」",
       "step3": "输入 macOS 密码确认",
       "note": "这是 macOS 系统对话框，不是 UniClipboard 的一部分。",
-      "confirm": "已勾选始终允许",
+      "confirm": "我知道了",
       "cancel": "取消",
       "verifying": "正在验证访问权限...",
       "error": "未检测到钥匙串始终允许授权。请重试，并确保在 macOS 钥匙串提示中选择「始终允许」。"

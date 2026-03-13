@@ -19,6 +19,10 @@ pub struct GeneralSettings {
     /// `Some(channel)` means the user has overridden the channel.
     #[serde(default)]
     pub update_channel: Option<UpdateChannel>,
+    /// Whether holding the platform modifier key (Cmd on macOS, Ctrl on others)
+    /// for 2 seconds opens the quick panel.
+    #[serde(default)]
+    pub hold_modifier_to_open_quick_panel: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

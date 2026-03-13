@@ -10,7 +10,7 @@ use tauri::http::{Request, Response, StatusCode};
 use tauri::webview::PageLoadEvent;
 use tauri::Manager;
 use tauri_plugin_autostart::MacosLauncher;
-use tauri_plugin_global_shortcut::{Code, Modifiers, ShortcutState};
+use tauri_plugin_global_shortcut;
 use tauri_plugin_single_instance;
 use tauri_plugin_stronghold;
 use tokio::sync::mpsc;
@@ -692,30 +692,43 @@ fn run_app(config: AppConfig) {
                 warn!(error = %error, "Failed to hide Dock icon during startup");
             }
 
-            // Register global shortcut for clipboard history panel (Cmd+Shift+V)
+            // Register global shortcut plugin (empty — shortcuts registered dynamically)
             #[cfg(desktop)]
             {
-                let app_handle = app.handle().clone();
-                app.handle().plugin(
-                    tauri_plugin_global_shortcut::Builder::new()
-                        .with_shortcuts(["super+shift+v"])?
-                        .with_handler(move |_app, shortcut, event| {
-                            if event.state == ShortcutState::Pressed
-                                && shortcut.matches(Modifiers::SUPER | Modifiers::SHIFT, Code::KeyV)
-                            {
-                                info!("Global shortcut Cmd+Shift+V triggered");
-                                quick_panel::toggle(&app_handle);
-                            }
-                        })
-                        .build(),
-                )?;
-                info!("Global shortcut Cmd+Shift+V registered for quick panel");
+                app.handle()
+                    .plugin(tauri_plugin_global_shortcut::Builder::new().build())?;
+
+                // Read shortcut override from settings, or use default
+                let shortcut_str = {
+                    let settings_port = runtime_for_handler.settings_port();
+                    match tauri::async_runtime::block_on(settings_port.load()) {
+                        Ok(settings) => quick_panel::resolve_shortcut_from_settings(&settings),
+                        Err(e) => {
+                            warn!("Failed to load settings for shortcut: {}, using default", e);
+                            quick_panel::DEFAULT_SHORTCUT.to_string()
+                        }
+                    }
+                };
+
+                quick_panel::register_global_shortcut(app.handle(), &shortcut_str);
             }
 
             // Pre-create quick panel and preview panel (hidden) so the first
             // shortcut press doesn't activate the app via WebviewWindowBuilder::build()
             quick_panel::pre_create(app.handle());
             preview_panel::pre_create(app.handle());
+
+            // Start hold-modifier-key trigger for the quick panel
+            {
+                let hold_enabled = {
+                    let settings_port = runtime_for_handler.settings_port();
+                    match tauri::async_runtime::block_on(settings_port.load()) {
+                        Ok(s) => s.general.hold_modifier_to_open_quick_panel,
+                        Err(_) => false,
+                    }
+                };
+                quick_panel::hold_trigger::start(app.handle().clone(), hold_enabled);
+            }
 
             // Show window based on silent_start setting
             if !silent_start {

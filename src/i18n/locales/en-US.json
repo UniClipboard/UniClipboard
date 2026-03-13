@@ -58,6 +58,10 @@
           "label": "Silent start",
           "description": "Run in background without showing the main window"
         },
+        "holdModifier": {
+          "label": "Hold modifier key to open Quick Panel",
+          "description": "Hold ⌘ (macOS) or Ctrl (Windows/Linux) for 2 seconds to open Quick Panel. Release to dismiss."
+        },
         "language": {
           "title": "Language",
           "label": "UI language",
@@ -243,7 +247,8 @@
           "goDevices": "Go to devices",
           "goSettings": "Go to settings",
           "focusSearch": "Focus search",
-          "closeModal": "Close modal"
+          "closeModal": "Close modal",
+          "toggleQuickPanel": "Toggle quick panel"
         },
         "issues": {
           "sameScope": "Shortcut conflict in same scope: {{key}}",

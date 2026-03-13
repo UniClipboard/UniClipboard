@@ -122,6 +122,15 @@ export const SHORTCUT_DEFINITIONS: ShortcutDefinition[] = [
     description: 'settings.sections.shortcuts.actions.focusSearch',
   },
 
+  // ===== Global (OS-level) =====
+  {
+    id: 'global.toggleQuickPanel',
+    key: 'mod+ctrl+v',
+    action: 'global.toggleQuickPanel',
+    scope: 'global',
+    description: 'settings.sections.shortcuts.actions.toggleQuickPanel',
+  },
+
   // ===== Modal =====
   {
     id: 'modal.close',

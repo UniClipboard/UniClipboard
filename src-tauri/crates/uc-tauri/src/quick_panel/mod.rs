@@ -6,11 +6,19 @@
 //!
 //! 跨平台快捷剪贴板面板。macOS 上使用 NSPanel，不会抢夺前台应用焦点。
 
+pub mod hold_trigger;
 #[cfg(target_os = "macos")]
 mod macos;
 
 use tauri::{Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
+use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 use tracing::{debug, error, info, warn};
+
+/// Default global shortcut for the quick panel (Tauri format).
+pub const DEFAULT_SHORTCUT: &str = "super+ctrl+v";
+
+/// Settings key used to store the quick panel shortcut override.
+pub const SHORTCUT_SETTINGS_KEY: &str = "global.toggleQuickPanel";
 
 /// Panel dimensions (logical pixels).
 const PANEL_WIDTH: f64 = 360.0;
@@ -184,6 +192,75 @@ pub fn paste(app: &tauri::AppHandle) {
         std::thread::sleep(std::time::Duration::from_millis(50));
         macos::simulate_paste();
     }
+}
+
+// ── Global shortcut management ────────────────────────────────────────
+
+/// Resolve the quick panel shortcut string from settings (in Tauri format).
+///
+/// Falls back to [`DEFAULT_SHORTCUT`] if not configured.
+pub fn resolve_shortcut_from_settings(settings: &uc_core::settings::model::Settings) -> String {
+    use uc_core::settings::model::ShortcutKey;
+
+    match settings.keyboard_shortcuts.get(SHORTCUT_SETTINGS_KEY) {
+        Some(ShortcutKey::Single(s)) => normalize_shortcut_for_tauri(s),
+        Some(ShortcutKey::Multiple(v)) if !v.is_empty() => normalize_shortcut_for_tauri(&v[0]),
+        _ => DEFAULT_SHORTCUT.to_string(),
+    }
+}
+
+/// Convert a frontend shortcut string (e.g. `mod+ctrl+v`) to the Tauri
+/// global-shortcut format (e.g. `super+ctrl+v` on macOS).
+///
+/// 将前端快捷键字符串转换为 Tauri 全局快捷键格式。
+pub fn normalize_shortcut_for_tauri(key: &str) -> String {
+    key.split('+')
+        .map(|part| {
+            match part.trim().to_lowercase().as_str() {
+                // `mod` = platform modifier: Cmd on macOS, Ctrl on others
+                "mod" | "cmd" | "command" => {
+                    if cfg!(target_os = "macos") {
+                        "super"
+                    } else {
+                        "ctrl"
+                    }
+                }
+                other => return other.to_string(),
+            }
+            .to_string()
+        })
+        .collect::<Vec<_>>()
+        .join("+")
+}
+
+/// Register a global shortcut that toggles the quick panel.
+///
+/// 注册一个用于切换快捷面板的全局快捷键。
+pub fn register_global_shortcut(app: &tauri::AppHandle, shortcut_str: &str) {
+    let app_handle = app.clone();
+    if let Err(e) =
+        app.global_shortcut()
+            .on_shortcut(shortcut_str, move |_app, _shortcut, event| {
+                if event.state == ShortcutState::Pressed {
+                    info!("Global shortcut triggered for quick panel");
+                    toggle(&app_handle);
+                }
+            })
+    {
+        error!(error = %e, shortcut = %shortcut_str, "Failed to register global shortcut for quick panel");
+    } else {
+        info!(shortcut = %shortcut_str, "Global shortcut registered for quick panel");
+    }
+}
+
+/// Unregister the old shortcut and register a new one.
+///
+/// 注销旧快捷键并注册新的快捷键。
+pub fn update_global_shortcut(app: &tauri::AppHandle, old: &str, new: &str) {
+    if let Err(e) = app.global_shortcut().unregister(old) {
+        warn!(error = %e, shortcut = %old, "Failed to unregister old global shortcut");
+    }
+    register_global_shortcut(app, new);
 }
 
 // ── Tauri Commands ─────────────────────────────────────────────────────

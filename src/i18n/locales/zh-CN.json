@@ -58,6 +58,10 @@
           "label": "静默启动",
           "description": "启动时不显示主界面，在后台运行"
         },
+        "holdModifier": {
+          "label": "长按修饰键打开快捷面板",
+          "description": "长按 ⌘（macOS）或 Ctrl（Windows/Linux）2 秒打开快捷面板，松开关闭。"
+        },
         "language": {
           "title": "语言",
           "label": "界面语言",
@@ -243,7 +247,8 @@
           "goDevices": "前往设备",
           "goSettings": "前往设置",
           "focusSearch": "聚焦搜索框",
-          "closeModal": "关闭模态框"
+          "closeModal": "关闭模态框",
+          "toggleQuickPanel": "切换快捷面板"
         },
         "issues": {
           "sameScope": "同一作用域内快捷键冲突：{{key}}",

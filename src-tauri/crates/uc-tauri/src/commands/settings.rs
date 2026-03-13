@@ -89,6 +89,15 @@ pub async fn update_settings(
             old_settings.general.device_name != parsed_settings.general.device_name;
         let auto_start_changed =
             old_settings.general.auto_start != parsed_settings.general.auto_start;
+        let quick_panel_shortcut_changed = {
+            let old_val = old_settings
+                .keyboard_shortcuts
+                .get(crate::quick_panel::SHORTCUT_SETTINGS_KEY);
+            let new_val = parsed_settings
+                .keyboard_shortcuts
+                .get(crate::quick_panel::SHORTCUT_SETTINGS_KEY);
+            old_val != new_val
+        };
 
         let uc = runtime.usecases().update_settings();
         uc.execute(parsed_settings.clone()).await.map_err(|e| {
@@ -134,6 +143,19 @@ pub async fn update_settings(
                 tracing::error!(error = %e, "Failed to announce device name after settings update");
                 CommandError::InternalError(e.to_string())
             })?;
+        }
+
+        // Re-register global shortcut when quick panel shortcut changes
+        if quick_panel_shortcut_changed {
+            let old_shortcut = crate::quick_panel::resolve_shortcut_from_settings(&old_settings);
+            let new_shortcut =
+                crate::quick_panel::resolve_shortcut_from_settings(&parsed_settings);
+            tracing::info!(
+                old = %old_shortcut,
+                new = %new_shortcut,
+                "Quick panel shortcut changed, re-registering"
+            );
+            crate::quick_panel::update_global_shortcut(&app_handle, &old_shortcut, &new_shortcut);
         }
 
         // Broadcast setting-changed event to all windows (quick panel, preview panel, etc.)

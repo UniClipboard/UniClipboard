@@ -19,6 +19,7 @@ uuid = { version = "1", features = ["v4", "fast-rng"] }
 # Tauri
 tauri = { workspace = true }
 tauri-plugin-autostart = { workspace = true }
+tauri-plugin-global-shortcut = "2"
 tauri-plugin-updater = "2"
 url = "2"
 
@@ -56,6 +57,9 @@ objc2-app-kit = { version = "0.3", features = ["NSEvent", "NSScreen", "NSPanel",
 core-graphics = "0.24"
 core-foundation = "0.10"
 objc2-foundation = { version = "0.3", features = ["NSGeometry"] }
+
+[target.'cfg(not(target_os = "macos"))'.dependencies]
+rdev = "0.5"
 
 [dev-dependencies]
 uc-platform = { path = "../uc-platform", features = ["test-helpers"] }

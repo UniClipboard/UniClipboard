@@ -1,6 +1,16 @@
 import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
-import { Code, ExternalLink, File, FileText, Image as ImageIcon, Search } from 'lucide-react'
+import {
+  Code,
+  ExternalLink,
+  File,
+  FileText,
+  Image as ImageIcon,
+  Loader2,
+  Lock,
+  Search,
+  Unlock,
+} from 'lucide-react'
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { applyThemePreset, DEFAULT_THEME_COLOR } from '@/lib/theme-engine'
 import type { ThemeMode } from '@/lib/theme-engine'
@@ -115,6 +125,15 @@ function applyFullTheme(settings: Settings | null): void {
 
   // Apply theme color tokens
   applyThemePreset(themeColor, resolvedMode, root)
+}
+
+// ── Encryption status ─────────────────────────────────────────────────
+
+async function checkEncryptionLocked(): Promise<boolean> {
+  const status = await invoke<{ initialized: boolean; session_ready: boolean }>(
+    'get_encryption_session_status'
+  )
+  return status.initialized && !status.session_ready
 }
 
 // ── Data fetch ─────────────────────────────────────────────────────────
@@ -232,11 +251,16 @@ const ClipboardHistoryPanel: React.FC = () => {
   const [selectedIndex, setSelectedIndex] = useState(0)
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null)
   const [isKeyboardNav, setIsKeyboardNav] = useState(true)
+  const [isLocked, setIsLocked] = useState(false)
+  const [unlocking, setUnlocking] = useState(false)
+  const [unlockError, setUnlockError] = useState<string | null>(null)
+  const [holdMode, setHoldMode] = useState(false)
 
   const searchInputRef = useRef<HTMLInputElement>(null)
   const listRef = useRef<HTMLDivElement>(null)
   const itemRefs = useRef<Map<number, HTMLDivElement>>(new Map())
   const previewTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const deletingRef = useRef(false)
 
   // ── Theme sync with main window settings ──
   const settingsRef = useRef<Settings | null>(null)
@@ -284,10 +308,16 @@ const ClipboardHistoryPanel: React.FC = () => {
     }
   }, [])
 
-  // Load data
+  // Load data (check lock status first)
   const loadData = useCallback(async () => {
     setLoading(true)
     try {
+      const locked = await checkEncryptionLocked()
+      if (locked) {
+        setIsLocked(true)
+        return
+      }
+      setIsLocked(false)
       const entries = await fetchEntries()
       setItems(entries)
     } catch (err) {
@@ -307,16 +337,56 @@ const ClipboardHistoryPanel: React.FC = () => {
       setSelectedIndex(0)
       setHoveredIndex(null)
       setIsKeyboardNav(true)
+      setHoldMode(false)
       invoke('dismiss_preview_panel').catch(() => {})
       loadData()
       // Re-focus search input when panel is re-shown
       requestAnimationFrame(() => searchInputRef.current?.focus())
     })
 
+    // Listen for hold-mode event (fires after refresh when opened via modifier hold)
+    const unlistenHold = listen('quick-panel://hold-mode', () => {
+      setHoldMode(true)
+    })
+
     return () => {
       unlisten.then(fn => fn())
+      unlistenHold.then(fn => fn())
     }
   }, [loadData])
+
+  // Listen for encryption session ready event
+  useEffect(() => {
+    const unlistenPromise = listen<'SessionReady' | { type: string }>(
+      'encryption://event',
+      event => {
+        const eventType = typeof event.payload === 'string' ? event.payload : event.payload?.type
+        if (eventType === 'SessionReady') {
+          setIsLocked(false)
+          setUnlocking(false)
+          setUnlockError(null)
+          loadData()
+        }
+      }
+    )
+
+    return () => {
+      unlistenPromise.then(fn => fn())
+    }
+  }, [loadData])
+
+  // Unlock encryption session
+  const handleUnlock = useCallback(async () => {
+    setUnlocking(true)
+    setUnlockError(null)
+    try {
+      await invoke('unlock_encryption_session')
+      // SessionReady event will handle the rest
+    } catch (err) {
+      setUnlocking(false)
+      setUnlockError(err instanceof Error ? err.message : String(err))
+    }
+  }, [])
 
   // Filter items by search query
   const filteredItems = useMemo(() => {
@@ -325,8 +395,12 @@ const ClipboardHistoryPanel: React.FC = () => {
     return items.filter(item => item.preview.toLowerCase().includes(q))
   }, [items, searchQuery])
 
-  // Reset selection when filter changes
+  // Reset selection when filter changes (but not during deletion)
   useEffect(() => {
+    if (deletingRef.current) {
+      deletingRef.current = false
+      return
+    }
     setSelectedIndex(0)
   }, [filteredItems.length])
 
@@ -387,9 +461,59 @@ const ClipboardHistoryPanel: React.FC = () => {
     [filteredItems]
   )
 
+  // Delete selected item
+  const handleDelete = useCallback(
+    async (index: number) => {
+      const item = filteredItems[index]
+      if (!item) return
+
+      try {
+        await invoke('delete_clipboard_entry', { entryId: item.id })
+
+        // Mark as deleting so effects skip the dismiss/reset cycle
+        deletingRef.current = true
+
+        // Remove from local state
+        setItems(prev => prev.filter(i => i.id !== item.id))
+
+        // Stay at same index, or clamp to last item if we deleted the tail
+        const newLength = filteredItems.length - 1
+        const nextIndex = Math.min(index, newLength - 1)
+        setSelectedIndex(nextIndex)
+
+        // Immediately show preview for the next focused item
+        const nextItem = filteredItems[index === filteredItems.length - 1 ? index - 1 : index + 1]
+        if (nextItem) {
+          invoke('show_preview_panel', { entryId: nextItem.id }).catch(() => {})
+        } else {
+          invoke('dismiss_preview_panel').catch(() => {})
+        }
+      } catch (err) {
+        console.error('Failed to delete clipboard entry:', err)
+      }
+    },
+    [filteredItems]
+  )
+
   // Keyboard navigation
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // When locked, only allow Escape
+      if (isLocked) {
+        if (e.key === 'Escape') {
+          e.preventDefault()
+          dismissPanel()
+        }
+        return
+      }
+
+      // ⌥+Backspace: delete selected item
+      if (e.altKey && e.key === 'Backspace') {
+        e.preventDefault()
+        handleDelete(selectedIndex)
+        return
+      }
+
       // ⌘/Ctrl + 1~0: quick paste the Nth item
       if ((e.metaKey || e.ctrlKey) && e.key >= '0' && e.key <= '9') {
         e.preventDefault()
@@ -441,12 +565,56 @@ const ClipboardHistoryPanel: React.FC = () => {
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [filteredItems.length, selectedIndex, handleSelect])
+  }, [filteredItems.length, selectedIndex, handleSelect, handleDelete, isLocked])
 
   // Auto-focus search input
   useEffect(() => {
     searchInputRef.current?.focus()
   }, [])
+
+  // Locked UI
+  if (isLocked && !loading) {
+    return (
+      <div className="flex flex-col h-screen w-screen overflow-hidden rounded-xl bg-background/95 backdrop-blur-xl shadow-xl border border-border/50">
+        <div className="flex-1 flex flex-col items-center justify-center gap-4 px-6">
+          <div className="flex items-center justify-center w-12 h-12 rounded-xl bg-muted/30">
+            <Lock className="h-6 w-6 text-muted-foreground" />
+          </div>
+          <div className="text-center space-y-1">
+            <h2 className="text-sm font-medium text-foreground">Clipboard is locked</h2>
+            <p className="text-[12px] text-muted-foreground">
+              Unlock to access your clipboard history
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={handleUnlock}
+            disabled={unlocking}
+            className="flex items-center gap-1.5 px-4 py-1.5 rounded-md text-[13px] font-medium bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
+          >
+            {unlocking ? (
+              <>
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                Unlocking...
+              </>
+            ) : (
+              <>
+                <Unlock className="h-3.5 w-3.5" />
+                Unlock
+              </>
+            )}
+          </button>
+          {unlockError && (
+            <p className="text-[12px] text-destructive text-center max-w-[15rem]">{unlockError}</p>
+          )}
+        </div>
+        {/* Footer hint */}
+        <div className="flex items-center justify-center px-3 py-1.5 border-t border-border/50 text-[11px] text-muted-foreground">
+          <span>esc close</span>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="flex flex-col h-screen w-screen overflow-hidden rounded-xl bg-background/95 backdrop-blur-xl shadow-xl border border-border/50">
@@ -511,8 +679,17 @@ const ClipboardHistoryPanel: React.FC = () => {
 
       {/* Footer hint */}
       <div className="flex items-center justify-between px-3 py-1.5 border-t border-border/50 text-[11px] text-muted-foreground">
-        <span>{isMac ? '⌘' : '⌃'}1-0 paste</span>
-        <span>↑↓ navigate · ⏎ paste · esc close</span>
+        {holdMode ? (
+          <>
+            <span>Release {isMac ? '⌘' : 'Ctrl'} to close</span>
+            <span>1-0 paste</span>
+          </>
+        ) : (
+          <>
+            <span>{isMac ? '⌘' : '⌃'}1-0 paste</span>
+            <span>↑↓ navigate · ⏎ paste · {isMac ? '⌥' : 'Alt+'}⌫ delete · esc close</span>
+          </>
+        )}
       </div>
     </div>
   )

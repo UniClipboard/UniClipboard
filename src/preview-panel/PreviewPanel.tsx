@@ -232,6 +232,11 @@ const PreviewPanel: React.FC = () => {
           </div>
         )}
       </div>
+
+      {/* Footer hint */}
+      <div className="flex items-center justify-start px-3 py-1.5 border-t border-border/50 text-[11px] text-muted-foreground">
+        <span>⌥⌫ delete</span>
+      </div>
     </div>
   )
 }

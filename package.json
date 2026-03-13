@@ -35,7 +35,9 @@
   },
   "dependencies": {
     "@cloudworxx/tauri-plugin-mac-rounded-corners": "^1.1.1",
-    "@fontsource-variable/geist": "^5.2.8",
+    "@fontsource-variable/inter": "^5.2.8",
+    "@fontsource-variable/noto-sans-sc": "^5.2.10",
+    "@fontsource/jetbrains-mono": "^5.2.8",
     "@headlessui/react": "^2.2.9",
     "@ltd/j-toml": "^1.38.0",
     "@radix-ui/react-alert-dialog": "^1.1.15",

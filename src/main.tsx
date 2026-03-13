@@ -40,10 +40,12 @@ const applyPlatformTypographyScale = () => {
 
   const root = document.documentElement
 
-  root.style.setProperty('--font-size-sm', '0.75rem')
-  root.style.setProperty('--font-size-base', '0.875rem')
-  root.style.setProperty('--font-size-lg', '1rem')
-  root.style.setProperty('--line-height-ui', '1.35')
+  root.style.setProperty('--font-size-caption', '0.6875rem') /* 11px */
+  root.style.setProperty('--font-size-small', '0.75rem') /* 12px */
+  root.style.setProperty('--font-size-body', '0.8125rem') /* 13px */
+  root.style.setProperty('--font-size-body-lg', '0.875rem') /* 14px */
+  root.style.setProperty('--font-size-section', '0.9375rem') /* 15px */
+  root.style.setProperty('--font-size-title', '1.125rem') /* 18px */
 }
 
 applyPlatformTypographyScale()

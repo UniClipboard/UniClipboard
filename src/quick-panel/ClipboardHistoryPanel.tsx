@@ -158,6 +158,7 @@ const isMac = navigator.platform.toUpperCase().includes('MAC')
 interface PanelItemProps {
   item: DisplayItem
   isSelected: boolean
+  hoverDisabled: boolean
   onClick: () => void
   onMouseEnter: () => void
   itemRef?: React.Ref<HTMLDivElement>
@@ -167,6 +168,7 @@ interface PanelItemProps {
 const PanelItem: React.FC<PanelItemProps> = ({
   item,
   isSelected,
+  hoverDisabled,
   onClick,
   onMouseEnter,
   itemRef,
@@ -180,7 +182,11 @@ const PanelItem: React.FC<PanelItemProps> = ({
       className={[
         'flex items-center gap-2.5 py-2 px-3 cursor-pointer select-none transition-colors',
         'rounded-md text-[13px] leading-tight',
-        isSelected ? 'bg-primary text-primary-foreground' : 'hover:bg-accent text-foreground',
+        isSelected
+          ? 'bg-primary text-primary-foreground'
+          : hoverDisabled
+            ? 'text-foreground'
+            : 'hover:bg-accent text-foreground',
       ].join(' ')}
       onClick={onClick}
       onMouseEnter={onMouseEnter}
@@ -225,6 +231,7 @@ const ClipboardHistoryPanel: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedIndex, setSelectedIndex] = useState(0)
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null)
+  const [isKeyboardNav, setIsKeyboardNav] = useState(true)
 
   const searchInputRef = useRef<HTMLInputElement>(null)
   const listRef = useRef<HTMLDivElement>(null)
@@ -299,6 +306,7 @@ const ClipboardHistoryPanel: React.FC = () => {
       setSearchQuery('')
       setSelectedIndex(0)
       setHoveredIndex(null)
+      setIsKeyboardNav(true)
       invoke('dismiss_preview_panel').catch(() => {})
       loadData()
       // Re-focus search input when panel is re-shown
@@ -392,13 +400,30 @@ const ClipboardHistoryPanel: React.FC = () => {
         return
       }
 
+      // Ctrl+N / Ctrl+P: Emacs-style navigation
+      if (e.ctrlKey && (e.key === 'n' || e.key === 'p')) {
+        e.preventDefault()
+        setIsKeyboardNav(true)
+        setHoveredIndex(null)
+        if (e.key === 'n') {
+          setSelectedIndex(prev => Math.min(prev + 1, filteredItems.length - 1))
+        } else {
+          setSelectedIndex(prev => Math.max(prev - 1, 0))
+        }
+        return
+      }
+
       switch (e.key) {
         case 'ArrowDown':
           e.preventDefault()
+          setIsKeyboardNav(true)
+          setHoveredIndex(null)
           setSelectedIndex(prev => Math.min(prev + 1, filteredItems.length - 1))
           break
         case 'ArrowUp':
           e.preventDefault()
+          setIsKeyboardNav(true)
+          setHoveredIndex(null)
           setSelectedIndex(prev => Math.max(prev - 1, 0))
           break
         case 'Enter':
@@ -447,6 +472,9 @@ const ClipboardHistoryPanel: React.FC = () => {
       <div
         ref={listRef}
         className="flex-1 overflow-y-auto px-1.5 py-1 scrollbar-thin"
+        onMouseMove={() => {
+          if (isKeyboardNav) setIsKeyboardNav(false)
+        }}
         onMouseLeave={() => setHoveredIndex(null)}
       >
         {loading ? (
@@ -463,8 +491,11 @@ const ClipboardHistoryPanel: React.FC = () => {
               key={item.id}
               item={item}
               isSelected={index === selectedIndex}
+              hoverDisabled={isKeyboardNav}
               onClick={() => handleSelect(index)}
-              onMouseEnter={() => setHoveredIndex(index)}
+              onMouseEnter={() => {
+                if (!isKeyboardNav) setHoveredIndex(index)
+              }}
               shortcutKey={index < 10 ? (index === 9 ? '0' : String(index + 1)) : undefined}
               itemRef={el => {
                 if (el) {

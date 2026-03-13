@@ -45,6 +45,7 @@ use uc_tauri::tray::TrayState;
 // Platform-specific command modules
 mod plugins;
 
+use uc_tauri::preview_panel;
 use uc_tauri::quick_panel;
 
 /// Simple executor for platform commands
@@ -711,9 +712,10 @@ fn run_app(config: AppConfig) {
                 info!("Global shortcut Cmd+Shift+V registered for quick panel");
             }
 
-            // Pre-create quick panel (hidden) so the first shortcut press
-            // doesn't activate the app via WebviewWindowBuilder::build()
+            // Pre-create quick panel and preview panel (hidden) so the first
+            // shortcut press doesn't activate the app via WebviewWindowBuilder::build()
             quick_panel::pre_create(app.handle());
+            preview_panel::pre_create(app.handle());
 
             // Show window based on silent_start setting
             if !silent_start {
@@ -899,6 +901,9 @@ fn run_app(config: AppConfig) {
             // Quick panel commands
             quick_panel::paste_to_previous_app,
             quick_panel::dismiss_quick_panel,
+            // Preview panel commands
+            preview_panel::show_preview_panel,
+            preview_panel::dismiss_preview_panel,
         ])
         .build(tauri::generate_context!())
         .expect("error building tauri application")

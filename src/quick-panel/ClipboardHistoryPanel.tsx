@@ -159,6 +159,7 @@ interface PanelItemProps {
   item: DisplayItem
   isSelected: boolean
   onClick: () => void
+  onMouseEnter: () => void
   itemRef?: React.Ref<HTMLDivElement>
   shortcutKey?: string
 }
@@ -167,6 +168,7 @@ const PanelItem: React.FC<PanelItemProps> = ({
   item,
   isSelected,
   onClick,
+  onMouseEnter,
   itemRef,
   shortcutKey,
 }) => {
@@ -181,7 +183,7 @@ const PanelItem: React.FC<PanelItemProps> = ({
         isSelected ? 'bg-primary text-primary-foreground' : 'hover:bg-accent text-foreground',
       ].join(' ')}
       onClick={onClick}
-      onMouseEnter={() => {}}
+      onMouseEnter={onMouseEnter}
     >
       <Icon
         className={[
@@ -222,10 +224,12 @@ const ClipboardHistoryPanel: React.FC = () => {
   const [loading, setLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedIndex, setSelectedIndex] = useState(0)
+  const [hoveredIndex, setHoveredIndex] = useState<number | null>(null)
 
   const searchInputRef = useRef<HTMLInputElement>(null)
   const listRef = useRef<HTMLDivElement>(null)
   const itemRefs = useRef<Map<number, HTMLDivElement>>(new Map())
+  const previewTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // ── Theme sync with main window settings ──
   const settingsRef = useRef<Settings | null>(null)
@@ -294,6 +298,8 @@ const ClipboardHistoryPanel: React.FC = () => {
     const unlisten = listen('quick-panel://refresh', () => {
       setSearchQuery('')
       setSelectedIndex(0)
+      setHoveredIndex(null)
+      invoke('dismiss_preview_panel').catch(() => {})
       loadData()
       // Re-focus search input when panel is re-shown
       requestAnimationFrame(() => searchInputRef.current?.focus())
@@ -323,6 +329,36 @@ const ClipboardHistoryPanel: React.FC = () => {
       el.scrollIntoView({ block: 'nearest' })
     }
   }, [selectedIndex])
+
+  // Preview debounce: show preview after 500ms of hovering/selecting an item
+  const focusedIndex = hoveredIndex ?? selectedIndex
+  useEffect(() => {
+    // Clear previous timer
+    if (previewTimerRef.current) {
+      clearTimeout(previewTimerRef.current)
+      previewTimerRef.current = null
+    }
+
+    // Dismiss current preview immediately on focus change
+    invoke('dismiss_preview_panel').catch(() => {})
+
+    const focusedItem = filteredItems[focusedIndex]
+    if (!focusedItem) return
+
+    // Start new timer
+    previewTimerRef.current = setTimeout(() => {
+      invoke('show_preview_panel', { entryId: focusedItem.id }).catch(err => {
+        console.error('Failed to show preview panel:', err)
+      })
+    }, 500)
+
+    return () => {
+      if (previewTimerRef.current) {
+        clearTimeout(previewTimerRef.current)
+        previewTimerRef.current = null
+      }
+    }
+  }, [focusedIndex, filteredItems])
 
   // Select & paste item
   const handleSelect = useCallback(
@@ -371,6 +407,8 @@ const ClipboardHistoryPanel: React.FC = () => {
           break
         case 'Escape':
           e.preventDefault()
+          invoke('dismiss_preview_panel').catch(() => {})
+          setHoveredIndex(null)
           dismissPanel()
           break
       }
@@ -406,7 +444,11 @@ const ClipboardHistoryPanel: React.FC = () => {
       </div>
 
       {/* Items list */}
-      <div ref={listRef} className="flex-1 overflow-y-auto px-1.5 py-1 scrollbar-thin">
+      <div
+        ref={listRef}
+        className="flex-1 overflow-y-auto px-1.5 py-1 scrollbar-thin"
+        onMouseLeave={() => setHoveredIndex(null)}
+      >
         {loading ? (
           <div className="flex items-center justify-center h-full text-[13px] text-muted-foreground">
             Loading…
@@ -422,6 +464,7 @@ const ClipboardHistoryPanel: React.FC = () => {
               item={item}
               isSelected={index === selectedIndex}
               onClick={() => handleSelect(index)}
+              onMouseEnter={() => setHoveredIndex(index)}
               shortcutKey={index < 10 ? (index === 9 ? '0' : String(index + 1)) : undefined}
               itemRef={el => {
                 if (el) {

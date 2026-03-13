@@ -16,6 +16,7 @@ export default defineConfig(async () => ({
       input: {
         main: resolve('./index.html'),
         'quick-panel': resolve('./quick-panel.html'),
+        'preview-panel': resolve('./preview-panel.html'),
       },
     },
   },

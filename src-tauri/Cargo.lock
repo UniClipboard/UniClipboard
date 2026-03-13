@@ -8996,6 +8996,7 @@ dependencies = [
  "async-trait",
  "base64 0.22.1",
  "chrono",
+ "core-foundation 0.10.1",
  "core-graphics",
  "dirs 6.0.0",
  "gethostname",

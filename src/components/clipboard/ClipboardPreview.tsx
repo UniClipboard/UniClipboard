@@ -15,6 +15,7 @@ import {
 } from '@/api/clipboardItems'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Separator } from '@/components/ui/separator'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { resolveUcUrl } from '@/lib/protocol'
 import { formatFileSize } from '@/utils'
 
@@ -212,7 +213,7 @@ const ClipboardPreview: React.FC<ClipboardPreviewProps> = ({ item }) => {
   }
 
   const renderInformation = () => {
-    const rows: { label: string; value: string }[] = []
+    const rows: { label: string; value: React.ReactNode }[] = []
 
     // Content type
     rows.push({
@@ -270,14 +271,28 @@ const ClipboardPreview: React.FC<ClipboardPreviewProps> = ({ item }) => {
     if (item.type === 'link' && item.content) {
       const linkItem = item.content as ClipboardLinkItem
       const uniqueDomains = [...new Set(linkItem.domains.filter(Boolean))]
-      const domainStr = uniqueDomains.join(', ')
-      if (domainStr) {
+      if (uniqueDomains.length > 0) {
+        const domainStr = uniqueDomains.join(', ')
         rows.push({
           label:
             uniqueDomains.length > 1
               ? t('clipboard.preview.domains', 'Domains')
               : t('clipboard.preview.domain', 'Domain'),
-          value: domainStr,
+          value:
+            uniqueDomains.length > 1 ? (
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span className="truncate block cursor-default">{domainStr}</span>
+                  </TooltipTrigger>
+                  <TooltipContent side="top" className="max-w-xs">
+                    {uniqueDomains.join('\n')}
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            ) : (
+              domainStr
+            ),
         })
       }
       if (linkItem.urls.length > 1) {

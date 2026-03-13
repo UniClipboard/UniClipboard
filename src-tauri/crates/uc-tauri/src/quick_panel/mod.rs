@@ -96,6 +96,26 @@ pub fn pre_create(app: &tauri::AppHandle) {
     }
 }
 
+/// Check whether the quick panel is currently visible.
+///
+/// 检查快捷面板是否当前可见。
+pub fn is_visible(app: &tauri::AppHandle) -> bool {
+    app.get_webview_window(PANEL_LABEL)
+        .and_then(|w| w.is_visible().ok())
+        .unwrap_or(false)
+}
+
+/// Toggle the quick panel: show if hidden, dismiss if visible.
+///
+/// 切换快捷面板：隐藏时显示，显示时关闭。
+pub fn toggle(app: &tauri::AppHandle) {
+    if is_visible(app) {
+        dismiss(app);
+    } else {
+        show(app);
+    }
+}
+
 /// Show the quick panel centered on screen (like Raycast).
 ///
 /// Expects the panel to already exist (via `pre_create`). Falls back to

@@ -704,7 +704,7 @@ fn run_app(config: AppConfig) {
                                 && shortcut.matches(Modifiers::SUPER | Modifiers::SHIFT, Code::KeyV)
                             {
                                 info!("Global shortcut Cmd+Shift+V triggered");
-                                quick_panel::show(&app_handle);
+                                quick_panel::toggle(&app_handle);
                             }
                         })
                         .build(),

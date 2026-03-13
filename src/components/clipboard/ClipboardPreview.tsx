@@ -138,7 +138,7 @@ const ClipboardPreview: React.FC<ClipboardPreviewProps> = ({ item }) => {
           <div className="p-4 space-y-2">
             <button
               type="button"
-              className="text-left text-primary font-medium hover:underline break-all text-sm leading-relaxed flex items-center gap-2"
+              className="text-left text-primary font-medium hover:underline break-all text-sm leading-relaxed flex items-center gap-2 cursor-pointer"
               onClick={e => {
                 e.stopPropagation()
                 openUrl(linkItem.urls[0]).catch(console.error)
@@ -152,7 +152,7 @@ const ClipboardPreview: React.FC<ClipboardPreviewProps> = ({ item }) => {
                 <div key={i} className="flex items-center gap-2">
                   <button
                     type="button"
-                    className="text-left text-primary/80 hover:underline break-all text-sm leading-relaxed flex items-center gap-2"
+                    className="text-left text-primary/80 hover:underline break-all text-sm leading-relaxed flex items-center gap-2 cursor-pointer"
                     onClick={e => {
                       e.stopPropagation()
                       openUrl(url).catch(console.error)

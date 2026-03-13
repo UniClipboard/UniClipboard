@@ -234,7 +234,7 @@ const ClipboardItem: React.FC<ClipboardItemProps> = ({
           <div className="flex flex-col gap-1">
             <button
               type="button"
-              className="text-left text-primary font-medium hover:underline break-all text-sm leading-relaxed flex items-center gap-2"
+              className="text-left text-primary font-medium hover:underline break-all text-sm leading-relaxed flex items-center gap-2 cursor-pointer"
               onClick={e => {
                 e.stopPropagation()
                 openUrl(firstUrl).catch(console.error)

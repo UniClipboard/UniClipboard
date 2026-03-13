@@ -12,6 +12,22 @@ import {
   SelectValue,
 } from '@/components/ui'
 import { useSetting } from '@/hooks/useSetting'
+import type { SyncFrequency } from '@/types/setting'
+
+// UI option values used in the Select component
+type SyncFrequencyUI = 'realtime' | '30s' | '1m' | '5m' | '15m'
+
+const DEFAULT_INTERVAL_UI: SyncFrequencyUI = '30s'
+
+/** Map a backend SyncFrequency value to a UI option string */
+function backendToUI(value: SyncFrequency): SyncFrequencyUI {
+  return value === 'realtime' ? 'realtime' : DEFAULT_INTERVAL_UI
+}
+
+/** Map a UI option string to the backend SyncFrequency value */
+function uiToBackend(value: SyncFrequencyUI): SyncFrequency {
+  return value === 'realtime' ? 'realtime' : 'interval'
+}
 
 const SyncSection: React.FC = () => {
   const { t } = useTranslation()
@@ -20,8 +36,8 @@ const SyncSection: React.FC = () => {
 
   // Local state for UI display - initialize from setting to avoid flash
   const [autoSync, setAutoSync] = useState(setting?.sync.auto_sync ?? true)
-  const [syncFrequency, setSyncFrequency] = useState<string>(
-    setting?.sync.sync_frequency ?? 'realtime'
+  const [syncFrequency, setSyncFrequency] = useState<SyncFrequencyUI>(
+    backendToUI(setting?.sync.sync_frequency ?? 'realtime')
   )
 
   const [maxFileSize, setMaxFileSize] = useState(setting?.sync.max_file_size_mb ?? 10)
@@ -40,8 +56,7 @@ const SyncSection: React.FC = () => {
   useEffect(() => {
     if (setting) {
       setAutoSync(setting.sync.auto_sync)
-      setSyncFrequency(setting.sync.sync_frequency)
-
+      setSyncFrequency(backendToUI(setting.sync.sync_frequency))
       setMaxFileSize(setting.sync.max_file_size_mb)
     }
   }, [setting])
@@ -54,11 +69,9 @@ const SyncSection: React.FC = () => {
 
   // Handle sync frequency change
   const handleSyncFrequencyChange = (value: string) => {
-    setSyncFrequency(value)
-    // TODO: 后端 SyncFrequency 只支持 'realtime' | 'interval'
-    // UI 选项包括更多值 ('30s', '1m', '5m', '15m')，需要后续扩展后端类型
-    // 暂时使用类型断言让编译通过
-    updateSyncSetting({ sync_frequency: value as 'realtime' | 'interval' })
+    const uiValue = value as SyncFrequencyUI
+    setSyncFrequency(uiValue)
+    updateSyncSetting({ sync_frequency: uiToBackend(uiValue) })
   }
 
   // Handle max file size change

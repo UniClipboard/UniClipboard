@@ -1,14 +1,18 @@
 import { Pencil, RotateCcw } from 'lucide-react'
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { KeyRecorder } from './KeyRecorder'
 import { Button } from '@/components/ui'
+import type { ShortcutKeyOverrides } from '@/shortcuts/conflicts'
 import type { ShortcutDefinition } from '@/shortcuts/definitions'
 
 interface ShortcutRowProps {
   definition: ShortcutDefinition
   currentKey: string
+  currentOverrides: ShortcutKeyOverrides
   isModified: boolean
-  onEdit: () => void
-  onReset: () => void
+  onOverrideChange: (id: string, key: string, clearedIds?: string[]) => void
+  onResetShortcut: (id: string) => void
 }
 
 const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad|iPod/.test(navigator.userAgent)
@@ -62,12 +66,46 @@ function formatKeyPart(part: string): string {
 export function ShortcutRow({
   definition,
   currentKey,
+  currentOverrides,
   isModified,
-  onEdit,
-  onReset,
+  onOverrideChange,
+  onResetShortcut,
 }: ShortcutRowProps) {
   const { t } = useTranslation()
+  const [isRecording, setIsRecording] = useState(false)
   const keyParts = currentKey.split('+').map(formatKeyPart)
+
+  const handleEdit = () => {
+    setIsRecording(true)
+  }
+
+  const handleConfirm = (key: string, clearedIds?: string[]) => {
+    onOverrideChange(definition.id, key, clearedIds)
+    setIsRecording(false)
+  }
+
+  const handleCancel = () => {
+    setIsRecording(false)
+  }
+
+  const handleReset = () => {
+    onResetShortcut(definition.id)
+  }
+
+  // When recording, show the KeyRecorder component
+  if (isRecording) {
+    return (
+      <div className="px-4 py-2.5">
+        <KeyRecorder
+          shortcutId={definition.id}
+          scope={definition.scope}
+          currentOverrides={currentOverrides}
+          onConfirm={handleConfirm}
+          onCancel={handleCancel}
+        />
+      </div>
+    )
+  }
 
   return (
     <div className="flex items-center justify-between gap-4 px-4 py-2.5">
@@ -96,7 +134,7 @@ export function ShortcutRow({
           variant="ghost"
           size="icon"
           className="h-7 w-7"
-          onClick={onEdit}
+          onClick={handleEdit}
           title={t('settings.shortcuts.edit')}
         >
           <Pencil className="h-3.5 w-3.5" />
@@ -107,7 +145,7 @@ export function ShortcutRow({
             variant="ghost"
             size="icon"
             className="h-7 w-7"
-            onClick={onReset}
+            onClick={handleReset}
             title={t('settings.shortcuts.reset')}
           >
             <RotateCcw className="h-3.5 w-3.5" />

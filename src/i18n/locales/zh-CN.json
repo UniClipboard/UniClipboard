@@ -240,6 +240,7 @@
         "recording": "请按快捷键...",
         "conflict": "与 {{name}} 冲突",
         "confirmOverride": "仍然应用（清除冲突）",
+        "confirm": "确认",
         "cancel": "取消",
         "modified": "已修改"
       },

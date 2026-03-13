@@ -240,6 +240,7 @@
         "recording": "Press keys...",
         "conflict": "Conflicts with: {{name}}",
         "confirmOverride": "Apply anyway (clears conflict)",
+        "confirm": "Confirm",
         "cancel": "Cancel",
         "modified": "Modified"
       },

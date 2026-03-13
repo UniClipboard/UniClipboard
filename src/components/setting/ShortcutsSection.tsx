@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useMemo, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { SettingGroup } from './SettingGroup'
 import { ShortcutRow } from './ShortcutRow'
@@ -15,7 +15,7 @@ const SCOPE_ORDER: ShortcutScope[] = ['global', 'clipboard', 'settings', 'device
 
 const ShortcutsSection: React.FC = () => {
   const { t } = useTranslation()
-  const { setting } = useSetting()
+  const { setting, updateKeyboardShortcuts } = useSetting()
   const overrides = setting?.keyboard_shortcuts ?? {}
 
   const groupedShortcuts = useMemo(() => {
@@ -42,18 +42,53 @@ const ShortcutsSection: React.FC = () => {
     return defId in overrides
   }
 
-  // Stub handlers for Plan 02
-  const handleEdit = () => {
-    // Will be implemented in Plan 02
-  }
+  // Handle override change with conflict clearing
+  const handleOverrideChange = useCallback(
+    async (id: string, newKey: string, clearedIds?: string[]) => {
+      const newOverrides = { ...overrides }
 
-  const handleReset = () => {
-    // Will be implemented in Plan 02
-  }
+      // Set the new shortcut override
+      newOverrides[id] = newKey
 
-  const handleResetAll = () => {
-    // Will be implemented in Plan 02
-  }
+      // If there's a conflict that needs to be cleared, remove those overrides
+      if (clearedIds && clearedIds.length > 0) {
+        for (const clearedId of clearedIds) {
+          // Check if the cleared shortcut's default key equals the new key
+          const clearedDef = SHORTCUT_DEFINITIONS.find(d => d.id === clearedId)
+          if (clearedDef) {
+            const clearedDefaultKey = Array.isArray(clearedDef.key)
+              ? clearedDef.key[0]
+              : clearedDef.key
+            if (clearedDefaultKey === newKey) {
+              // Just delete the override entry (effectively resetting it to default)
+              delete newOverrides[clearedId]
+            } else {
+              // Delete the override so it reverts to default
+              delete newOverrides[clearedId]
+            }
+          }
+        }
+      }
+
+      await updateKeyboardShortcuts(newOverrides)
+    },
+    [overrides, updateKeyboardShortcuts]
+  )
+
+  // Handle single shortcut reset
+  const handleResetShortcut = useCallback(
+    async (id: string) => {
+      const newOverrides = { ...overrides }
+      delete newOverrides[id]
+      await updateKeyboardShortcuts(newOverrides)
+    },
+    [overrides, updateKeyboardShortcuts]
+  )
+
+  // Handle reset all shortcuts
+  const handleResetAll = useCallback(async () => {
+    await updateKeyboardShortcuts({})
+  }, [updateKeyboardShortcuts])
 
   return (
     <div className="space-y-6">
@@ -68,9 +103,10 @@ const ShortcutsSection: React.FC = () => {
                 key={def.id}
                 definition={def}
                 currentKey={getCurrentKey(def)}
+                currentOverrides={overrides}
                 isModified={isModified(def.id)}
-                onEdit={handleEdit}
-                onReset={handleReset}
+                onOverrideChange={handleOverrideChange}
+                onResetShortcut={handleResetShortcut}
               />
             ))}
           </SettingGroup>

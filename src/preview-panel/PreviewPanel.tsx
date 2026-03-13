@@ -2,6 +2,7 @@ import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import { Loader2 } from 'lucide-react'
 import React, { useEffect, useRef, useState } from 'react'
+import { resolveUcUrl } from '@/lib/protocol'
 import { applyThemePreset, DEFAULT_THEME_COLOR } from '@/lib/theme-engine'
 import type { ThemeMode } from '@/lib/theme-engine'
 import type { SettingChangedEvent } from '@/types/events'
@@ -17,6 +18,14 @@ interface ClipboardEntryDetail {
   is_favorited: boolean
   updated_at: number
   active_time: number
+}
+
+interface ClipboardEntryResource {
+  blob_id: string | null
+  mime_type: string
+  size_bytes: number
+  url: string | null
+  inline_data: string | null
 }
 
 interface ShowPayload {
@@ -55,8 +64,29 @@ function formatBytes(bytes: number): string {
 
 // ── Component ──────────────────────────────────────────────────────────
 
+function getResourceImageUrl(resource: ClipboardEntryResource): string | null {
+  if (resource.url) {
+    return resolveUcUrl(resource.url)
+  }
+  if (resource.inline_data) {
+    return `data:${resource.mime_type};base64,${resource.inline_data}`
+  }
+  return null
+}
+
+// Unified preview state
+interface PreviewState {
+  entryId: string
+  contentType: 'text' | 'image'
+  sizeBytes: number
+  // Text content (only for text type)
+  textContent?: string
+  // Image URL (only for image type)
+  imageUrl?: string
+}
+
 const PreviewPanel: React.FC = () => {
-  const [detail, setDetail] = useState<ClipboardEntryDetail | null>(null)
+  const [preview, setPreview] = useState<PreviewState | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const settingsRef = useRef<Settings | null>(null)
@@ -107,21 +137,45 @@ const PreviewPanel: React.FC = () => {
       const { entryId } = event.payload
       setLoading(true)
       setError(null)
+      setPreview(null)
 
       try {
-        const result = await invoke<ClipboardEntryDetail>('get_clipboard_entry_detail', { entryId })
-        setDetail(result)
+        // First, get resource metadata (works for ALL content types)
+        const resource = await invoke<ClipboardEntryResource>('get_clipboard_entry_resource', {
+          entryId,
+        })
+
+        if (isImageType(resource.mime_type)) {
+          // Image: use resource URL directly (get_clipboard_entry_detail fails for images)
+          const url = getResourceImageUrl(resource)
+          setPreview({
+            entryId,
+            contentType: 'image',
+            sizeBytes: resource.size_bytes,
+            imageUrl: url ?? undefined,
+          })
+        } else {
+          // Text: use get_clipboard_entry_detail for full text content
+          const detail = await invoke<ClipboardEntryDetail>('get_clipboard_entry_detail', {
+            entryId,
+          })
+          setPreview({
+            entryId,
+            contentType: 'text',
+            sizeBytes: detail.size_bytes,
+            textContent: detail.content,
+          })
+        }
       } catch (err) {
-        console.error('Failed to load entry detail:', err)
+        console.error('Failed to load preview:', err)
         setError(String(err))
-        setDetail(null)
       } finally {
         setLoading(false)
       }
     })
 
     const unlistenHide = listen('preview-panel://hide', () => {
-      setDetail(null)
+      setPreview(null)
       setError(null)
       setLoading(false)
     })
@@ -137,9 +191,9 @@ const PreviewPanel: React.FC = () => {
       {/* Header */}
       <div className="flex items-center justify-between px-3 py-2 border-b border-border/50">
         <span className="text-[12px] font-medium text-foreground">Preview</span>
-        {detail && (
+        {preview && (
           <span className="text-[11px] text-muted-foreground tabular-nums">
-            {formatBytes(detail.size_bytes)}
+            {formatBytes(preview.sizeBytes)}
           </span>
         )}
       </div>
@@ -154,14 +208,22 @@ const PreviewPanel: React.FC = () => {
           <div className="flex items-center justify-center h-full text-[12px] text-destructive">
             Failed to load preview
           </div>
-        ) : detail ? (
-          isImageType(detail.content_type) ? (
+        ) : preview ? (
+          preview.contentType === 'image' ? (
             <div className="flex items-center justify-center h-full">
-              <span className="text-[12px] text-muted-foreground">Image preview not available</span>
+              {preview.imageUrl ? (
+                <img
+                  src={preview.imageUrl}
+                  className="max-w-full max-h-full object-contain rounded-md"
+                  alt="Clipboard image"
+                />
+              ) : (
+                <span className="text-[12px] text-muted-foreground">Image not available</span>
+              )}
             </div>
           ) : (
             <pre className="text-[12px] leading-relaxed text-foreground whitespace-pre-wrap break-words select-text cursor-text font-mono">
-              {detail.content}
+              {preview.textContent}
             </pre>
           )
         ) : (

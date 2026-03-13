@@ -68,44 +68,43 @@ export const SHORTCUT_DEFINITIONS: ShortcutDefinition[] = [
     scope: 'clipboard',
     description: '取消选择',
   },
-  // 预留更多快捷键位置
-  // {
-  //   id: "clipboard.selectAll",
-  //   key: "cmd+a",
-  //   action: "clipboard.selectAll",
-  //   scope: "clipboard",
-  //   description: "全选",
-  // },
-  // {
-  //   id: "clipboard.delete",
-  //   key: "backspace",
-  //   action: "clipboard.delete",
-  //   scope: "clipboard",
-  //   description: "删除选中项",
-  // },
-  // {
-  //   id: "clipboard.favorite",
-  //   key: "cmd+f",
-  //   action: "clipboard.favorite",
-  //   scope: "clipboard",
-  //   description: "收藏/取消收藏",
-  // },
+  {
+    id: 'clipboard.selectAll',
+    key: 'mod+a',
+    action: 'clipboard.selectAll',
+    scope: 'clipboard',
+    description: '全选',
+  },
+  {
+    id: 'clipboard.delete',
+    key: 'backspace',
+    action: 'clipboard.delete',
+    scope: 'clipboard',
+    description: '删除选中项',
+  },
+  {
+    id: 'clipboard.favorite',
+    key: 'mod+f',
+    action: 'clipboard.favorite',
+    scope: 'clipboard',
+    description: '收藏/取消收藏',
+  },
 
   // ===== 导航 =====
-  // {
-  //   id: "nav.dashboard",
-  //   key: "cmd+1",
-  //   action: "navigation.dashboard",
-  //   scope: "global",
-  //   description: "前往剪贴板",
-  // },
-  // {
-  //   id: "nav.devices",
-  //   key: "cmd+2",
-  //   action: "navigation.devices",
-  //   scope: "global",
-  //   description: "前往设备",
-  // },
+  {
+    id: 'nav.dashboard',
+    key: 'mod+1',
+    action: 'navigation.dashboard',
+    scope: 'global',
+    description: '前往剪贴板',
+  },
+  {
+    id: 'nav.devices',
+    key: 'mod+2',
+    action: 'navigation.devices',
+    scope: 'global',
+    description: '前往设备',
+  },
   {
     id: 'nav.settings',
     key: 'mod+comma',
@@ -115,20 +114,20 @@ export const SHORTCUT_DEFINITIONS: ShortcutDefinition[] = [
   },
 
   // ===== 搜索 =====
-  // {
-  //   id: "search.focus",
-  //   key: "cmd+/",
-  //   action: "search.focus",
-  //   scope: "global",
-  //   description: "聚焦搜索框",
-  // },
+  {
+    id: 'search.focus',
+    key: 'mod+/',
+    action: 'search.focus',
+    scope: 'global',
+    description: '聚焦搜索框',
+  },
 
   // ===== 模态框 =====
-  // {
-  //   id: "modal.close",
-  //   key: "esc",
-  //   action: "modal.close",
-  //   scope: "modal",
-  //   description: "关闭模态框",
-  // },
+  {
+    id: 'modal.close',
+    key: 'esc',
+    action: 'modal.close',
+    scope: 'modal',
+    description: '关闭模态框',
+  },
 ]

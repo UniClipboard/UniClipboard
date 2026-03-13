@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
@@ -163,6 +164,9 @@ pub struct Settings {
 
     #[serde(default)]
     pub pairing: PairingSettings,
+
+    #[serde(default)]
+    pub keyboard_shortcuts: HashMap<String, serde_json::Value>,
     // #[serde(default)]
     // pub network: NetworkSettings,
 }
@@ -290,6 +294,19 @@ mod tests {
         assert!(settings.encryption_enabled);
         assert!(settings.passphrase_configured);
         assert!(!settings.auto_unlock_enabled);
+    }
+
+    #[test]
+    fn test_settings_missing_keyboard_shortcuts_defaults_to_empty() {
+        let value = json!({
+            "schema_version": 1
+        });
+
+        let settings: Settings = serde_json::from_value(value).expect("deserialize settings");
+        assert!(
+            settings.keyboard_shortcuts.is_empty(),
+            "keyboard_shortcuts should default to empty HashMap"
+        );
     }
 
     #[test]

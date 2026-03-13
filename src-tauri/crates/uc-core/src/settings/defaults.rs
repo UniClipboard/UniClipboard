@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::time::Duration;
 
 use super::model::*;
@@ -234,6 +235,7 @@ impl Default for Settings {
             retention_policy: RetentionPolicy::default(),
             security: SecuritySettings::default(),
             pairing: PairingSettings::default(),
+            keyboard_shortcuts: HashMap::new(),
         }
     }
 }

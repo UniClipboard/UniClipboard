@@ -117,6 +117,7 @@ export interface Settings {
   retention_policy: RetentionPolicy
   security: SecuritySettings
   pairing: PairingSettings
+  keyboard_shortcuts?: Record<string, string | string[]>
 }
 
 // ============================================================================
@@ -174,6 +175,7 @@ export interface SettingContextType {
   updateSyncSetting: (newSyncSetting: Partial<SyncSettings>) => Promise<void>
   updateSecuritySetting: (newSecuritySetting: Partial<SecuritySettings>) => Promise<void>
   updateRetentionPolicy: (newPolicy: Partial<RetentionPolicy>) => Promise<void>
+  updateKeyboardShortcuts: (overrides: Record<string, string | string[]>) => Promise<void>
 }
 
 // ============================================================================

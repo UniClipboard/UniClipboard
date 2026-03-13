@@ -109,6 +109,13 @@ export const SettingProvider: React.FC<SettingProviderProps> = ({ children }) =>
     await saveSetting(updatedSetting)
   }
 
+  // Update keyboard shortcuts
+  const updateKeyboardShortcuts = async (overrides: Record<string, string | string[]>) => {
+    if (!setting) return
+    const updatedSetting: Settings = { ...setting, keyboard_shortcuts: overrides }
+    await saveSetting(updatedSetting)
+  }
+
   // Load settings immediately on mount
   useEffect(() => {
     void loadSetting()
@@ -232,6 +239,7 @@ export const SettingProvider: React.FC<SettingProviderProps> = ({ children }) =>
     updateSyncSetting,
     updateSecuritySetting,
     updateRetentionPolicy,
+    updateKeyboardShortcuts,
   }
 
   return <SettingContext.Provider value={value}>{children}</SettingContext.Provider>

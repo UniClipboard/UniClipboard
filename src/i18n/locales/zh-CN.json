@@ -234,6 +234,23 @@
           "devices": "设备",
           "modal": "模态框"
         },
+        "actions": {
+          "clearSelection": "取消选择",
+          "selectAll": "全选",
+          "delete": "删除选中项",
+          "favorite": "收藏/取消收藏",
+          "goClipboard": "前往剪贴板",
+          "goDevices": "前往设备",
+          "goSettings": "前往设置",
+          "focusSearch": "聚焦搜索框",
+          "closeModal": "关闭模态框"
+        },
+        "issues": {
+          "sameScope": "同一作用域内快捷键冲突：{{key}}",
+          "sameLayer": "同一层级内其它作用域也使用了该快捷键：{{key}}",
+          "shadowedByHigher": "当更高层级激活时会被遮蔽：{{key}}",
+          "shadowsLower": "会遮蔽更低层级中的快捷键：{{key}}"
+        },
         "edit": "编辑",
         "reset": "恢复默认",
         "resetAll": "重置所有快捷键",

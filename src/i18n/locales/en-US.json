@@ -234,6 +234,23 @@
           "devices": "Devices",
           "modal": "Modal"
         },
+        "actions": {
+          "clearSelection": "Clear selection",
+          "selectAll": "Select all",
+          "delete": "Delete selected",
+          "favorite": "Toggle favorite",
+          "goClipboard": "Go to clipboard",
+          "goDevices": "Go to devices",
+          "goSettings": "Go to settings",
+          "focusSearch": "Focus search",
+          "closeModal": "Close modal"
+        },
+        "issues": {
+          "sameScope": "Shortcut conflict in same scope: {{key}}",
+          "sameLayer": "Same key used in another scope on this layer: {{key}}",
+          "shadowedByHigher": "Will be shadowed when a higher layer is active: {{key}}",
+          "shadowsLower": "Will shadow shortcuts on lower layers: {{key}}"
+        },
         "edit": "Edit",
         "reset": "Reset to default",
         "resetAll": "Reset All Shortcuts",

@@ -110,10 +110,10 @@ export function ShortcutRow({
   return (
     <div className="flex items-center justify-between gap-4 px-4 py-2.5">
       <div className="min-w-0 flex-1">
-        <span className="text-sm">{definition.description}</span>
+        <span className="text-sm">{t(definition.description)}</span>
         {isModified && (
           <span className="ml-2 text-xs text-primary font-medium">
-            {t('settings.shortcuts.modified')}
+            {t('settings.sections.shortcuts.modified')}
           </span>
         )}
       </div>
@@ -135,7 +135,7 @@ export function ShortcutRow({
           size="icon"
           className="h-7 w-7"
           onClick={handleEdit}
-          title={t('settings.shortcuts.edit')}
+          title={t('settings.sections.shortcuts.edit')}
         >
           <Pencil className="h-3.5 w-3.5" />
         </Button>
@@ -146,7 +146,7 @@ export function ShortcutRow({
             size="icon"
             className="h-7 w-7"
             onClick={handleReset}
-            title={t('settings.shortcuts.reset')}
+            title={t('settings.sections.shortcuts.reset')}
           >
             <RotateCcw className="h-3.5 w-3.5" />
           </Button>

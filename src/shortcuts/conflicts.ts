@@ -117,10 +117,17 @@ export const analyzeShortcutConflicts = (
 /**
  * 给“单个候选键位”做即时校验（用于 key picker）
  */
+export type CandidateKeyIssue = {
+  level: 'error' | 'warning' | 'info'
+  messageKey: string
+  messageParams: Record<string, string>
+  relatedIds: string[]
+}
+
 export const getCandidateKeyIssues = (
   resolved: ResolvedShortcut[],
   candidate: { id: string; scope: ShortcutScope; key: string }
-): { level: 'error' | 'warning' | 'info'; message: string; relatedIds: string[] }[] => {
+): CandidateKeyIssue[] => {
   const normalized = normalizeHotkey(candidate.key)
   if (!normalized) return []
 
@@ -134,7 +141,8 @@ export const getCandidateKeyIssues = (
     return [
       {
         level: 'error',
-        message: `同一作用域内快捷键冲突：${normalized}`,
+        messageKey: 'settings.sections.shortcuts.issues.sameScope',
+        messageParams: { key: normalized },
         relatedIds: sameScope.map(s => s.id),
       },
     ]
@@ -143,13 +151,13 @@ export const getCandidateKeyIssues = (
   const sameLayerOtherScopes = resolved.filter(
     s => s.id !== candidate.id && s.layer === candidateLayer && s.normalizedKey === normalized
   )
-  const issues: { level: 'error' | 'warning' | 'info'; message: string; relatedIds: string[] }[] =
-    []
+  const issues: CandidateKeyIssue[] = []
 
   if (sameLayerOtherScopes.length > 0) {
     issues.push({
       level: 'warning',
-      message: `同一层级内其它作用域也使用了该快捷键：${normalized}`,
+      messageKey: 'settings.sections.shortcuts.issues.sameLayer',
+      messageParams: { key: normalized },
       relatedIds: sameLayerOtherScopes.map(s => s.id),
     })
   }
@@ -163,7 +171,8 @@ export const getCandidateKeyIssues = (
   if (higherLayerShadow.length > 0) {
     issues.push({
       level: 'info',
-      message: `当更高层级激活时会被遮蔽：${normalized}`,
+      messageKey: 'settings.sections.shortcuts.issues.shadowedByHigher',
+      messageParams: { key: normalized },
       relatedIds: higherLayerShadow.map(s => s.id),
     })
   }
@@ -177,7 +186,8 @@ export const getCandidateKeyIssues = (
   if (lowerLayerShadowed.length > 0) {
     issues.push({
       level: 'info',
-      message: `会遮蔽更低层级中的快捷键：${normalized}`,
+      messageKey: 'settings.sections.shortcuts.issues.shadowsLower',
+      messageParams: { key: normalized },
       relatedIds: lowerLayerShadowed.map(s => s.id),
     })
   }

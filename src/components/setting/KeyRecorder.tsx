@@ -159,7 +159,9 @@ export function KeyRecorder({
             ))}
           </div>
         ) : (
-          <span className="text-sm text-muted-foreground">{t('settings.shortcuts.recording')}</span>
+          <span className="text-sm text-muted-foreground">
+            {t('settings.sections.shortcuts.recording')}
+          </span>
         )}
       </div>
 
@@ -168,17 +170,17 @@ export function KeyRecorder({
         <div className="flex flex-col gap-1 text-xs">
           {errorIssue && (
             <div className="flex items-center gap-2 text-destructive">
-              <span>{errorIssue.message}</span>
+              <span>{t(errorIssue.messageKey, errorIssue.messageParams)}</span>
             </div>
           )}
           {warningIssues.map((issue, idx) => (
             <div key={idx} className="flex items-center gap-2 text-yellow-600 dark:text-yellow-400">
-              <span>{issue.message}</span>
+              <span>{t(issue.messageKey, issue.messageParams)}</span>
             </div>
           ))}
           {infoIssues.map((issue, idx) => (
             <div key={idx} className="flex items-center gap-2 text-muted-foreground">
-              <span>{issue.message}</span>
+              <span>{t(issue.messageKey, issue.messageParams)}</span>
             </div>
           ))}
         </div>
@@ -192,10 +194,12 @@ export function KeyRecorder({
           onClick={handleConfirm}
           disabled={!recordedKey}
         >
-          {errorIssue ? t('settings.shortcuts.confirmOverride') : t('settings.shortcuts.confirm')}
+          {errorIssue
+            ? t('settings.sections.shortcuts.confirmOverride')
+            : t('settings.sections.shortcuts.confirm')}
         </Button>
         <Button size="sm" variant="ghost" onClick={handleCancelClick}>
-          {t('settings.shortcuts.cancel')}
+          {t('settings.sections.shortcuts.cancel')}
         </Button>
       </div>
     </div>

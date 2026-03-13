@@ -97,7 +97,7 @@ const ShortcutsSection: React.FC = () => {
         if (!shortcuts || shortcuts.length === 0) return null
 
         return (
-          <SettingGroup key={scope} title={t(`settings.shortcuts.scope.${scope}`)}>
+          <SettingGroup key={scope} title={t(`settings.sections.shortcuts.scope.${scope}`)}>
             {shortcuts.map(def => (
               <ShortcutRow
                 key={def.id}
@@ -115,7 +115,7 @@ const ShortcutsSection: React.FC = () => {
 
       <div className="flex justify-end pt-2">
         <Button variant="outline" size="sm" disabled={!hasOverrides} onClick={handleResetAll}>
-          {t('settings.shortcuts.resetAll')}
+          {t('settings.sections.shortcuts.resetAll')}
         </Button>
       </div>
     </div>

@@ -49,6 +49,16 @@ Requirements for v0.3.0 Log Observability. Each will be mapped to roadmap phases
 - [x] **GSYNC-04**: All interactive controls in DeviceSettingsPanel (per-device auto_sync, content type toggles, restore defaults) are cascade-disabled when global auto_sync is off, while preserving their visual on/off state.
 - [x] **GSYNC-05**: The auto sync toggle description in Settings displays master switch copy in both EN and ZH locales using the existing i18n infrastructure.
 
+### Keyboard Shortcuts Settings
+
+- [ ] **KB-01**: The Settings page has a "Shortcuts" category between Appearance and Sync that displays all shortcut definitions grouped by scope.
+- [ ] **KB-02**: All reserved shortcut definitions (~8 commented-out entries) are activated in the definitions array.
+- [ ] **KB-03**: The Rust Settings struct and TypeScript Settings interface include a `keyboard_shortcuts` field for storing user key overrides, with backward-compatible defaults.
+- [ ] **KB-04**: Users can click edit on a shortcut, press a new key combination via click-to-record, and see real-time conflict detection with inline feedback.
+- [ ] **KB-05**: Pressing Escape during recording cancels without changing the binding; confirming a conflicting override clears the conflicting binding.
+- [ ] **KB-06**: Custom key overrides persist to the Rust settings system via existing `update_settings` command and survive app restart.
+- [ ] **KB-07**: Changed shortcuts take effect immediately without app restart, with per-shortcut and Reset All restore-to-defaults capability.
+
 ## v2 Requirements
 
 Deferred to a future milestone. Tracked but not in the current roadmap.
@@ -105,14 +115,21 @@ Which phases cover which requirements.
 | GSYNC-03    | Phase 26 | Complete |
 | GSYNC-04    | Phase 26 | Complete |
 | GSYNC-05    | Phase 26 | Complete |
+| KB-01       | Phase 27 | Planned  |
+| KB-02       | Phase 27 | Planned  |
+| KB-03       | Phase 27 | Planned  |
+| KB-04       | Phase 27 | Planned  |
+| KB-05       | Phase 27 | Planned  |
+| KB-06       | Phase 27 | Planned  |
+| KB-07       | Phase 27 | Planned  |
 
 **Coverage:**
 
-- v1 requirements: 27 total
-- Mapped to phases: 27
+- v1 requirements: 34 total
+- Mapped to phases: 34
 - Unmapped: 0
 
 ---
 
 _Requirements defined: 2026-03-09_
-_Last updated: 2026-03-12 after Phase 26 completion_
+_Last updated: 2026-03-13 after Phase 27 planning_

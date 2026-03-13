@@ -207,13 +207,14 @@ Plans:
 - [x] 26-01-PLAN.md — Backend global auto_sync guard in sync engine + i18n keys and description copy
 - [x] 26-02-PLAN.md — Frontend warning banner, cascade disable, and Settings navigation
 
-### Phase 27: 支持快捷键设置在 settings page 中
+### Phase 27: Keyboard Shortcuts Settings
 
-**Goal:** [To be planned]
-**Requirements**: TBD
+**Goal:** Users can view, customize, and reset keyboard shortcuts from a dedicated Settings section, with click-to-record key capture, real-time conflict detection, and immediate effect on active shortcuts.
+**Requirements**: KB-01, KB-02, KB-03, KB-04, KB-05, KB-06, KB-07
 **Depends on:** Phase 26
-**Plans:** 0 plans
+**Plans:** 2 plans
 
 Plans:
 
-- [ ] TBD (run /gsd:plan-phase 27 to break down)
+- [ ] 27-01-PLAN.md — Backend/frontend Settings types, activate definitions, ShortcutsSection display UI
+- [ ] 27-02-PLAN.md — Key recording, conflict detection, persistence, reset, and live override wiring

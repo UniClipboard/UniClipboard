@@ -66,6 +66,7 @@ function renderAppearanceSection() {
         updateSyncSetting: vi.fn(),
         updateSecuritySetting: vi.fn(),
         updateRetentionPolicy: vi.fn(),
+        updateKeyboardShortcuts: vi.fn(),
       }}
     >
       <AppearanceSection />
@@ -99,6 +100,7 @@ describe('AppearanceSection - theme color swatches', () => {
           updateSyncSetting: vi.fn(),
           updateSecuritySetting: vi.fn(),
           updateRetentionPolicy: vi.fn(),
+          updateKeyboardShortcuts: vi.fn(),
         }}
       >
         <AppearanceSection />

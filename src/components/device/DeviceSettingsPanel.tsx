@@ -7,6 +7,7 @@ import { fetchDeviceSyncSettings, updateDeviceSyncSettings } from '@/store/slice
 interface DeviceSettingsPanelProps {
   deviceId: string
   deviceName: string
+  globalAutoSyncOff?: boolean
 }
 
 /** Maps ContentTypes fields to i18n keys */
@@ -23,7 +24,10 @@ const contentTypeEntries: {
   { field: 'rich_text', i18nKey: 'syncRichText', status: 'coming_soon' },
 ]
 
-const DeviceSettingsPanel: React.FC<DeviceSettingsPanelProps> = ({ deviceId }) => {
+const DeviceSettingsPanel: React.FC<DeviceSettingsPanelProps> = ({
+  deviceId,
+  globalAutoSyncOff,
+}) => {
   const { t } = useTranslation()
   const dispatch = useAppDispatch()
 
@@ -31,6 +35,7 @@ const DeviceSettingsPanel: React.FC<DeviceSettingsPanelProps> = ({ deviceId }) =
   const isLoading = useAppSelector(
     state => state.devices.deviceSyncSettingsLoading[deviceId] ?? false
   )
+  const isGlobalOff = globalAutoSyncOff ?? false
 
   useEffect(() => {
     dispatch(fetchDeviceSyncSettings(deviceId))
@@ -105,7 +110,7 @@ const DeviceSettingsPanel: React.FC<DeviceSettingsPanelProps> = ({ deviceId }) =
           <button
             type="button"
             onClick={handleRestoreDefaults}
-            disabled={isLoading}
+            disabled={isGlobalOff || isLoading}
             className="text-xs px-2 py-1 rounded-md text-muted-foreground hover:bg-muted hover:text-foreground transition-colors disabled:opacity-50"
           >
             {t('devices.settings.sync.restoreDefaults')}
@@ -125,14 +130,18 @@ const DeviceSettingsPanel: React.FC<DeviceSettingsPanelProps> = ({ deviceId }) =
                 {t('devices.settings.sync.rules.autoSync.description')}
               </p>
             </div>
-            <label className="flex items-center shrink-0 cursor-pointer">
+            <label
+              className={`flex items-center shrink-0 ${
+                isGlobalOff || isLoading ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'
+              }`}
+            >
               <div className="relative">
                 <input
                   type="checkbox"
                   className="sr-only peer"
                   checked={settings?.auto_sync ?? true}
                   onChange={handleAutoSyncToggle}
-                  disabled={isLoading}
+                  disabled={isGlobalOff || isLoading}
                 />
                 <div className="block w-9 h-5 rounded-full transition-colors bg-muted peer-checked:bg-primary" />
                 <div className="absolute left-1 top-1 w-3 h-3 rounded-full transition-transform transform peer-checked:translate-x-4 bg-white" />
@@ -144,7 +153,7 @@ const DeviceSettingsPanel: React.FC<DeviceSettingsPanelProps> = ({ deviceId }) =
           {contentTypeEntries.map(({ field, i18nKey, status }) => {
             const isComingSoon = status === 'coming_soon'
             const isAutoSyncOff = !settings?.auto_sync
-            const isDisabled = isComingSoon || isAutoSyncOff || isLoading
+            const isDisabled = isComingSoon || isAutoSyncOff || isGlobalOff || isLoading
 
             return (
               <div key={field} className="flex items-center justify-between py-3 px-1">

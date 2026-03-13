@@ -18,11 +18,13 @@ const SyncSection: React.FC = () => {
   // Use setting context
   const { setting, error, updateSyncSetting } = useSetting()
 
-  // Local state for UI display
-  const [autoSync, setAutoSync] = useState(true)
-  const [syncFrequency, setSyncFrequency] = useState<string>('realtime')
+  // Local state for UI display - initialize from setting to avoid flash
+  const [autoSync, setAutoSync] = useState(setting?.sync.auto_sync ?? true)
+  const [syncFrequency, setSyncFrequency] = useState<string>(
+    setting?.sync.sync_frequency ?? 'realtime'
+  )
 
-  const [maxFileSize, setMaxFileSize] = useState(10)
+  const [maxFileSize, setMaxFileSize] = useState(setting?.sync.max_file_size_mb ?? 10)
   const [maxFileSizeError, setMaxFileSizeError] = useState<string | null>(null)
 
   // Sync frequency options

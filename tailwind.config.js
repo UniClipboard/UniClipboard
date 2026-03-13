@@ -6,12 +6,23 @@ export default {
   theme: {
     extend: {
       fontSize: {
-        sm: 'var(--font-size-sm)',
-        base: 'var(--font-size-base)',
-        lg: 'var(--font-size-lg)',
+        caption: 'var(--font-size-caption)',
+        small: 'var(--font-size-small)',
+        body: 'var(--font-size-body)',
+        'body-lg': 'var(--font-size-body-lg)',
+        section: 'var(--font-size-section)',
+        title: 'var(--font-size-title)',
       },
       lineHeight: {
-        ui: 'var(--line-height-ui)',
+        tight: 'var(--line-height-tight)',
+        normal: 'var(--line-height-normal)',
+        relaxed: 'var(--line-height-relaxed)',
+      },
+      letterSpacing: {
+        title: 'var(--letter-spacing-title)',
+        body: 'var(--letter-spacing-body)',
+        button: 'var(--letter-spacing-button)',
+        caption: 'var(--letter-spacing-caption)',
       },
       borderRadius: {
         lg: 'var(--radius)',

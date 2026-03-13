@@ -1,3 +1,4 @@
+pub mod clear_history;
 pub mod get_entry_detail;
 pub mod get_entry_resource;
 pub mod integration_mode;
@@ -9,6 +10,8 @@ pub mod sync_inbound;
 pub mod sync_outbound;
 pub mod toggle_favorite_clipboard_entry;
 pub mod touch_clipboard_entry;
+
+pub use clear_history::{ClearClipboardHistory, ClearHistoryResult};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ClipboardStats {

@@ -7,6 +7,7 @@ pub mod pairing;
 pub mod settings;
 pub mod setup;
 pub mod startup;
+pub mod storage;
 pub mod tray;
 pub mod updater;
 
@@ -22,6 +23,7 @@ pub use pairing::*;
 pub use settings::*;
 pub use setup::*;
 pub use startup::*;
+pub use storage::*;
 pub use updater::*;
 
 pub use error::CommandError;

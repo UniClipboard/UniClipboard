@@ -38,7 +38,8 @@
       "security": "Security & Privacy",
       "network": "Network",
       "storage": "Storage",
-      "about": "About"
+      "about": "About",
+      "shortcuts": "Shortcuts"
     },
     "sections": {
       "general": {
@@ -79,7 +80,7 @@
         "title": "Sync",
         "autoSync": {
           "label": "Auto sync",
-          "description": "Enable automatic synchronization of copied content across all devices"
+          "description": "Control clipboard sync across all devices. When disabled, no content will be synced to any device."
         },
         "syncFrequency": {
           "label": "Sync frequency",
@@ -171,35 +172,94 @@
         "title": "Storage",
         "autoClearHistory": {
           "label": "Auto-clear history",
-          "description": "Automatically clear clipboard history at regular intervals",
-          "never": "Never",
-          "daily": "Daily",
-          "weekly": "Weekly",
-          "monthly": "Monthly",
-          "onExit": "On exit"
+          "description": "Automatically clean up old clipboard entries based on retention rules"
         },
         "storageUsage": {
           "label": "Storage usage",
-          "usage": "{{percentage}}% used"
+          "usage": "{{percentage}}% used",
+          "database": "Database",
+          "blobVault": "Blob vault",
+          "cache": "Cache",
+          "logs": "Logs",
+          "total": "Total"
         },
         "historyRetention": {
           "label": "History retention",
-          "description": "Set the maximum retention time for clipboard history",
+          "description": "Maximum retention time for clipboard history",
           "days": "{{days}} days"
         },
         "maxHistoryItems": {
           "label": "Max history items",
-          "description": "Limit the number of clipboard history items to save",
+          "description": "Maximum number of clipboard entries to keep",
           "items": "{{count}} items",
           "unlimited": "Unlimited"
         },
-        "clearHistory": {
-          "label": "History",
-          "description": "Clear all clipboard history and free up storage space",
-          "button": "Clear history",
-          "cleared": "History cleared"
+        "skipPinned": {
+          "label": "Skip pinned items",
+          "description": "Pinned items are excluded from automatic cleanup"
         },
-        "loadError": "Failed to load settings:"
+        "clearHistory": {
+          "label": "Clear history",
+          "description": "Delete all clipboard history and free up storage space",
+          "button": "Clear all",
+          "confirm": "Are you sure? This action cannot be undone.",
+          "cleared": "History cleared",
+          "clearing": "Clearing...",
+          "dialogTitle": "Confirm clear history",
+          "dialogDescription": "This will delete all clipboard history and cannot be undone.",
+          "dialogConfirm": "Clear history"
+        },
+        "clearCache": {
+          "label": "Clear cache",
+          "description": "Remove cached thumbnails and temporary files",
+          "button": "Clear cache",
+          "cleared": "Cache cleared",
+          "clearing": "Clearing..."
+        },
+        "dataDirectory": {
+          "label": "Data directory",
+          "description": "Open the folder where application data is stored",
+          "button": "Open in file manager"
+        },
+        "loadError": "Failed to load storage settings:",
+        "placeholder": "Storage settings are not yet available."
+      },
+      "shortcuts": {
+        "title": "Shortcuts",
+        "description": "Customize keyboard shortcuts",
+        "scope": {
+          "global": "Global",
+          "clipboard": "Clipboard",
+          "settings": "Settings",
+          "devices": "Devices",
+          "modal": "Modal"
+        },
+        "actions": {
+          "clearSelection": "Clear selection",
+          "selectAll": "Select all",
+          "delete": "Delete selected",
+          "favorite": "Toggle favorite",
+          "goClipboard": "Go to clipboard",
+          "goDevices": "Go to devices",
+          "goSettings": "Go to settings",
+          "focusSearch": "Focus search",
+          "closeModal": "Close modal"
+        },
+        "issues": {
+          "sameScope": "Shortcut conflict in same scope: {{key}}",
+          "sameLayer": "Same key used in another scope on this layer: {{key}}",
+          "shadowedByHigher": "Will be shadowed when a higher layer is active: {{key}}",
+          "shadowsLower": "Will shadow shortcuts on lower layers: {{key}}"
+        },
+        "edit": "Edit",
+        "reset": "Reset to default",
+        "resetAll": "Reset All Shortcuts",
+        "recording": "Press keys...",
+        "conflict": "Conflicts with: {{name}}",
+        "confirmOverride": "Apply anyway (clears conflict)",
+        "confirm": "Confirm",
+        "cancel": "Cancel",
+        "modified": "Modified"
       },
       "about": {
         "title": "About",
@@ -382,6 +442,10 @@
         "addDevice": "Add Device",
         "addAnotherDevice": "Add another device"
       }
+    },
+    "syncPaused": {
+      "message": "Clipboard sync is paused. All devices are currently not syncing.",
+      "goToSettings": "Go to Settings"
     },
     "settings": {
       "readOnly": "Locked",

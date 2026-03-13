@@ -62,14 +62,15 @@ export type DurationSeconds = number
 
 /**
  * 保留规则 - 对应 Rust RetentionRule enum
- * Rust 的 enum variants 序列化为带有 tag 字段的对象
+ * Rust 使用 serde externally-tagged + rename_all="snake_case"
+ * 序列化为 { "by_age": { "max_age": 2592000 } } 格式
  */
 export type RetentionRule =
-  | { tag: 'by_age'; max_age: DurationSeconds }
-  | { tag: 'by_count'; max_items: number }
-  | { tag: 'by_content_type'; content_type: ContentTypes; max_age: DurationSeconds }
-  | { tag: 'by_total_size'; max_bytes: number }
-  | { tag: 'sensitive'; max_age: DurationSeconds }
+  | { by_age: { max_age: DurationSeconds } }
+  | { by_count: { max_items: number } }
+  | { by_content_type: { content_type: ContentTypes; max_age: DurationSeconds } }
+  | { by_total_size: { max_bytes: number } }
+  | { sensitive: { max_age: DurationSeconds } }
 
 /**
  * 规则评估方式 - 对应 Rust RuleEvaluation enum
@@ -116,6 +117,7 @@ export interface Settings {
   retention_policy: RetentionPolicy
   security: SecuritySettings
   pairing: PairingSettings
+  keyboard_shortcuts?: Record<string, string | string[]>
 }
 
 // ============================================================================
@@ -173,6 +175,7 @@ export interface SettingContextType {
   updateSyncSetting: (newSyncSetting: Partial<SyncSettings>) => Promise<void>
   updateSecuritySetting: (newSecuritySetting: Partial<SecuritySettings>) => Promise<void>
   updateRetentionPolicy: (newPolicy: Partial<RetentionPolicy>) => Promise<void>
+  updateKeyboardShortcuts: (overrides: Record<string, string | string[]>) => Promise<void>
 }
 
 // ============================================================================

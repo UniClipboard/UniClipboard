@@ -140,6 +140,10 @@ const clipboardSlice = createSlice({
     removeItem: (state, action: PayloadAction<string>) => {
       state.items = state.items.filter(item => item.id !== action.payload)
     },
+    resetItems: state => {
+      state.items = []
+      state.error = null
+    },
   },
   extraReducers: builder => {
     // 处理获取剪贴板内容
@@ -216,7 +220,7 @@ const clipboardSlice = createSlice({
 })
 
 // 导出 Actions
-export const { setDeleteConfirmId, setNotReady, clearError, prependItem, removeItem } =
+export const { setDeleteConfirmId, setNotReady, clearError, prependItem, removeItem, resetItems } =
   clipboardSlice.actions
 
 // 导出 Reducer

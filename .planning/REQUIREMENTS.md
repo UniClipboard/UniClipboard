@@ -41,6 +41,24 @@ Requirements for v0.3.0 Log Observability. Each will be mapped to roadmap phases
 - [x] **CT-06**: Unimplemented content type toggles (file, link, code_snippet, rich_text) display a "Coming Soon" badge and are non-interactive.
 - [x] **CT-07**: An inline warning appears when auto_sync is on but all content types are disabled for a device.
 
+### Global Sync Master Toggle
+
+- [x] **GSYNC-01**: When global auto_sync is false, apply_sync_policy returns an empty peer list before any per-device evaluation, preventing all outbound sync.
+- [x] **GSYNC-02**: Per-device sync settings are never modified when the global auto_sync toggle changes; they persist unchanged in storage and resume automatically when re-enabled.
+- [x] **GSYNC-03**: A warning banner appears at the top of the Devices page when global auto_sync is off, with a "Go to Settings" link that navigates directly to the Settings Sync section.
+- [x] **GSYNC-04**: All interactive controls in DeviceSettingsPanel (per-device auto_sync, content type toggles, restore defaults) are cascade-disabled when global auto_sync is off, while preserving their visual on/off state.
+- [x] **GSYNC-05**: The auto sync toggle description in Settings displays master switch copy in both EN and ZH locales using the existing i18n infrastructure.
+
+### Keyboard Shortcuts Settings
+
+- [x] **KB-01**: The Settings page has a "Shortcuts" category between Appearance and Sync that displays all shortcut definitions grouped by scope.
+- [x] **KB-02**: All reserved shortcut definitions (~8 commented-out entries) are activated in the definitions array.
+- [x] **KB-03**: The Rust Settings struct and TypeScript Settings interface include a `keyboard_shortcuts` field for storing user key overrides, with backward-compatible defaults.
+- [ ] **KB-04**: Users can click edit on a shortcut, press a new key combination via click-to-record, and see real-time conflict detection with inline feedback.
+- [ ] **KB-05**: Pressing Escape during recording cancels without changing the binding; confirming a conflicting override clears the conflicting binding.
+- [ ] **KB-06**: Custom key overrides persist to the Rust settings system via existing `update_settings` command and survive app restart.
+- [ ] **KB-07**: Changed shortcuts take effect immediately without app restart, with per-shortcut and Reset All restore-to-defaults capability.
+
 ### Link Content Type
 
 - [x] **LINK-01**: Plain text clipboard content that is a single valid URL (entire trimmed text, no whitespace) is classified as Link instead of Text by `classify_snapshot`.
@@ -102,6 +120,18 @@ Which phases cover which requirements.
 | CT-05       | Phase 25 | Planned  |
 | CT-06       | Phase 25 | Planned  |
 | CT-07       | Phase 25 | Planned  |
+| GSYNC-01    | Phase 26 | Complete |
+| GSYNC-02    | Phase 26 | Complete |
+| GSYNC-03    | Phase 26 | Complete |
+| GSYNC-04    | Phase 26 | Complete |
+| GSYNC-05    | Phase 26 | Complete |
+| KB-01       | Phase 27 | Planned  |
+| KB-02       | Phase 27 | Planned  |
+| KB-03       | Phase 27 | Planned  |
+| KB-04       | Phase 27 | Planned  |
+| KB-05       | Phase 27 | Planned  |
+| KB-06       | Phase 27 | Planned  |
+| KB-07       | Phase 27 | Planned  |
 | LINK-01     | Phase 28 | Planned  |
 | LINK-02     | Phase 28 | Planned  |
 | LINK-03     | Phase 28 | Planned  |
@@ -112,11 +142,11 @@ Which phases cover which requirements.
 
 **Coverage:**
 
-- v1 requirements: 29 total
-- Mapped to phases: 29
+- v1 requirements: 41 total
+- Mapped to phases: 41
 - Unmapped: 0
 
 ---
 
 _Requirements defined: 2026-03-09_
-_Last updated: 2026-03-13 after Phase 26 planning_
+_Last updated: 2026-03-13 after Phase 28 planning_

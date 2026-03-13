@@ -57,7 +57,7 @@ impl SyncOutboundClipboardUseCase {
     /// Peers not found in the paired device table are kept (safety fallback).
     /// Errors from settings/repo loads are logged and the peer is kept.
     /// The snapshot is classified once and the content type check is applied per-peer.
-    async fn apply_sync_policy(
+    pub async fn apply_sync_policy(
         &self,
         peers: &[uc_core::network::DiscoveredPeer],
         snapshot: &SystemClipboardSnapshot,
@@ -74,6 +74,14 @@ impl SyncOutboundClipboardUseCase {
                 None
             }
         };
+
+        // Global master toggle: if auto_sync is off, skip ALL outbound sync.
+        if let Some(ref gs) = global_settings {
+            if !gs.sync.auto_sync {
+                info!("Global auto_sync disabled; returning empty peer list");
+                return vec![];
+            }
+        }
 
         // Classify the snapshot once, not per-peer
         let content_category = classify_snapshot(snapshot);

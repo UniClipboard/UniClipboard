@@ -38,7 +38,8 @@
       "security": "安全与隐私",
       "network": "网络设置",
       "storage": "存储管理",
-      "about": "关于"
+      "about": "关于",
+      "shortcuts": "快捷键"
     },
     "sections": {
       "general": {
@@ -79,7 +80,7 @@
         "title": "同步设置",
         "autoSync": {
           "label": "自动同步",
-          "description": "启用后，uniClipboard将自动同步您复制的内容到所有设备"
+          "description": "控制所有设备的剪贴板同步。关闭后停止向所有设备同步内容。"
         },
         "syncFrequency": {
           "label": "同步频率",
@@ -170,36 +171,95 @@
       "storage": {
         "title": "存储管理",
         "autoClearHistory": {
-          "label": "自动清除历史记录",
-          "description": "定期自动清除剪贴板历史记录",
-          "never": "从不",
-          "daily": "每天",
-          "weekly": "每周",
-          "monthly": "每月",
-          "onExit": "每次退出"
+          "label": "自动清理历史",
+          "description": "根据保留规则自动清理旧的剪贴板条目"
         },
         "storageUsage": {
-          "label": "存储使用情况",
-          "usage": "已使用 {{percentage}}%"
+          "label": "存储用量",
+          "usage": "已使用 {{percentage}}%",
+          "database": "数据库",
+          "blobVault": "Blob 存储",
+          "cache": "缓存",
+          "logs": "日志",
+          "total": "总计"
         },
         "historyRetention": {
-          "label": "历史记录保留时间",
-          "description": "设置剪贴板历史记录的最长保留时间",
+          "label": "历史保留时间",
+          "description": "剪贴板历史的最长保留时间",
           "days": "{{days}} 天"
         },
         "maxHistoryItems": {
-          "label": "最大历史记录数",
-          "description": "限制保存的剪贴板历史记录数量",
-          "items": "{{count}}条",
+          "label": "最大历史条目数",
+          "description": "保留的最大剪贴板条目数量",
+          "items": "{{count}} 条",
           "unlimited": "无限制"
         },
-        "clearHistory": {
-          "label": "历史记录",
-          "description": "清空所有剪贴板历史记录并释放存储空间",
-          "button": "清空历史记录",
-          "cleared": "历史记录已清空"
+        "skipPinned": {
+          "label": "跳过已收藏条目",
+          "description": "已收藏的条目不会被自动清理"
         },
-        "loadError": "加载设置失败:"
+        "clearHistory": {
+          "label": "清除历史",
+          "description": "删除所有剪贴板历史并释放存储空间",
+          "button": "全部清除",
+          "confirm": "确定要清除吗？此操作不可撤销。",
+          "cleared": "历史已清除",
+          "clearing": "清除中...",
+          "dialogTitle": "确认清除历史",
+          "dialogDescription": "此操作将删除所有剪贴板历史记录，且无法恢复。",
+          "dialogConfirm": "清除历史"
+        },
+        "clearCache": {
+          "label": "清除缓存",
+          "description": "删除缓存的缩略图和临时文件",
+          "button": "清除缓存",
+          "cleared": "缓存已清除",
+          "clearing": "清除中..."
+        },
+        "dataDirectory": {
+          "label": "数据目录",
+          "description": "打开应用数据存储所在的文件夹",
+          "button": "在文件管理器中打开"
+        },
+        "loadError": "加载存储设置失败：",
+        "placeholder": "存储设置尚不可用。"
+      },
+      "shortcuts": {
+        "title": "快捷键",
+        "description": "自定义键盘快捷键",
+        "scope": {
+          "global": "全局",
+          "clipboard": "剪贴板",
+          "settings": "设置",
+          "devices": "设备",
+          "modal": "模态框"
+        },
+        "actions": {
+          "clearSelection": "取消选择",
+          "selectAll": "全选",
+          "delete": "删除选中项",
+          "favorite": "收藏/取消收藏",
+          "goClipboard": "前往剪贴板",
+          "goDevices": "前往设备",
+          "goSettings": "前往设置",
+          "focusSearch": "聚焦搜索框",
+          "closeModal": "关闭模态框"
+        },
+        "issues": {
+          "sameScope": "同一作用域内快捷键冲突：{{key}}",
+          "sameLayer": "同一层级内其它作用域也使用了该快捷键：{{key}}",
+          "shadowedByHigher": "当更高层级激活时会被遮蔽：{{key}}",
+          "shadowsLower": "会遮蔽更低层级中的快捷键：{{key}}"
+        },
+        "edit": "编辑",
+        "reset": "恢复默认",
+        "resetAll": "重置所有快捷键",
+        "recording": "请按快捷键...",
+        "conflict": "与 {{name}} 冲突",
+        "confirmOverride": "仍然应用（清除冲突）",
+        "confirm": "确认",
+        "cancel": "取消",
+        "modified": "已修改"
       },
       "about": {
         "title": "关于",
@@ -382,6 +442,10 @@
         "addDevice": "添加设备",
         "addAnotherDevice": "添加另一台设备"
       }
+    },
+    "syncPaused": {
+      "message": "剪贴板同步已暂停，所有设备当前均不会同步内容。",
+      "goToSettings": "前往设置"
     },
     "settings": {
       "readOnly": "不可更改",

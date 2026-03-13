@@ -103,56 +103,14 @@ pub async fn clear_all_clipboard_history(
     record_trace_fields(&span, &_trace);
 
     async move {
-        // 1. Get all entry IDs using pagination (max limit is 1000)
-        let uc = runtime.usecases().list_clipboard_entries();
-        let mut entries = Vec::new();
-        let mut offset = 0usize;
-        let batch_size = 1000usize;
+        let result = runtime
+            .usecases()
+            .clear_clipboard_history()
+            .execute()
+            .await
+            .map_err(|e| CommandError::InternalError(e.to_string()))?;
 
-        loop {
-            let batch = uc.execute(batch_size, offset).await.map_err(|e| {
-                tracing::error!(error = %e, "Failed to list entries for bulk delete");
-                CommandError::InternalError(e.to_string())
-            })?;
-
-            if batch.is_empty() {
-                break;
-            }
-
-            let batch_len = batch.len();
-            entries.extend(batch);
-            offset += batch_len;
-
-            // If we got fewer than batch_size, we've fetched everything
-            if batch_len < batch_size {
-                break;
-            }
-        }
-
-        let total = entries.len() as u64;
-        tracing::info!(
-            total_entries = total,
-            "Starting bulk clipboard history deletion"
-        );
-
-        // 2. Delete each entry
-        let delete_uc = runtime.usecases().delete_clipboard_entry();
-        let mut deleted = 0u64;
-        for entry in &entries {
-            match delete_uc.execute(&entry.entry_id).await {
-                Ok(()) => deleted += 1,
-                Err(e) => {
-                    tracing::warn!(
-                        entry_id = %entry.entry_id,
-                        error = %e,
-                        "Failed to delete entry during bulk clear"
-                    );
-                }
-            }
-        }
-
-        tracing::info!(deleted, total, "Clipboard history cleared");
-        Ok(deleted)
+        Ok(result.deleted_count)
     }
     .instrument(span)
     .await

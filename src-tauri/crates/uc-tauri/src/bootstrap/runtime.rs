@@ -511,6 +511,15 @@ impl<'a> UseCases<'a> {
         )
     }
 
+    /// Create a `ClearClipboardHistory` use case wired with this runtime's clipboard, selection, and event repositories.
+    pub fn clear_clipboard_history(&self) -> uc_app::usecases::clipboard::ClearClipboardHistory {
+        uc_app::usecases::clipboard::ClearClipboardHistory::from_ports(
+            self.runtime.deps.clipboard.clipboard_entry_repo.clone(),
+            self.runtime.deps.clipboard.selection_repo.clone(),
+            self.runtime.deps.clipboard.clipboard_event_repo.clone(),
+        )
+    }
+
     /// Get the GetEntryDetail use case for fetching full clipboard entry content.
     ///
     /// 获取 GetEntryDetail 用例以获取完整剪贴板条目内容。

@@ -67,7 +67,7 @@ fn detect_link_urls(content_type: &str, inline_data: Option<&[u8]>) -> Option<Ve
     let full_text = inline_data.and_then(|d| std::str::from_utf8(d).ok())?;
     let ct = content_type.to_ascii_lowercase();
 
-    if ct == "text/uri-list" {
+    if ct.starts_with("text/uri-list") {
         let urls = parse_uri_list(full_text);
         if urls.is_empty() {
             None

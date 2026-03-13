@@ -11,6 +11,7 @@ pub mod commands;
 pub mod events;
 pub mod models;
 pub mod protocol;
+pub mod quick_panel;
 pub mod services;
 pub mod tray;
 

@@ -50,6 +50,12 @@ tracing-log = "0.2"
 sentry = { version = "0.46.1", features = ["tracing"] }
 sentry-tracing = "0.46.1"
 
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "0.6"
+objc2-app-kit = { version = "0.3", features = ["NSEvent", "NSScreen", "NSPanel", "NSResponder", "NSWindow"] }
+core-graphics = "0.24"
+objc2-foundation = { version = "0.3", features = ["NSGeometry"] }
+
 [dev-dependencies]
 uc-platform = { path = "../uc-platform", features = ["test-helpers"] }
 sentry = { version = "0.46.1", features = ["test"] }

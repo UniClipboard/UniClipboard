@@ -45,7 +45,7 @@ use uc_tauri::tray::TrayState;
 // Platform-specific command modules
 mod plugins;
 
-mod quick_panel;
+use uc_tauri::quick_panel;
 
 /// Simple executor for platform commands
 ///

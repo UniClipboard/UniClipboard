@@ -59,7 +59,7 @@ strip = true      # Remove debug symbols
 [target.'cfg(target_os = "macos")'.dependencies]
 objc = "0.2"
 objc2 = "0.6"
-objc2-app-kit = { version = "0.3", features = ["NSEvent", "NSScreen", "NSGraphics", "NSRunningApplication", "NSWorkspace"] }
+objc2-app-kit = { version = "0.3", features = ["NSEvent", "NSScreen", "NSGraphics", "NSPanel", "NSResponder", "NSWindow"] }
 core-graphics = "0.24"
 objc2-foundation = { version = "0.3", features = ["objc2-core-foundation", "NSGeometry"] }
 

@@ -2,14 +2,13 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicI32, Ordering};
 use std::sync::{Arc, Mutex};
 use tauri::http::header::{
     HeaderValue, ACCESS_CONTROL_ALLOW_METHODS, ACCESS_CONTROL_ALLOW_ORIGIN, CONTENT_TYPE,
 };
 use tauri::http::{Request, Response, StatusCode};
 use tauri::webview::PageLoadEvent;
-use tauri::{Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
+use tauri::Manager;
 use tauri_plugin_autostart::MacosLauncher;
 use tauri_plugin_global_shortcut::{Code, Modifiers, ShortcutState};
 use tauri_plugin_single_instance;
@@ -46,230 +45,7 @@ use uc_tauri::tray::TrayState;
 // Platform-specific command modules
 mod plugins;
 
-/// Stores the PID of the frontmost application before the quick panel is shown,
-/// so we can re-activate it and paste after the user selects an entry.
-///
-/// 存储快捷面板显示前的最前端应用 PID，以便选择条目后切换回并粘贴。
-static PREVIOUS_APP_PID: AtomicI32 = AtomicI32::new(0);
-
-/// Get cursor position on macOS (screen coordinates, top-left origin).
-///
-/// 获取 macOS 上的光标位置（屏幕坐标，左上角原点）。
-#[cfg(target_os = "macos")]
-fn get_cursor_position() -> (f64, f64) {
-    use objc2::MainThreadMarker;
-    use objc2_app_kit::{NSEvent, NSScreen};
-
-    let point = NSEvent::mouseLocation();
-
-    // macOS uses bottom-left origin; convert to top-left origin for Tauri
-    // MainThreadMarker is required by NSScreen::mainScreen; this function is
-    // called from the main-thread shortcut handler, so the marker is valid.
-    let screen_height = MainThreadMarker::new()
-        .and_then(|mtm| {
-            let screen = NSScreen::mainScreen(mtm)?;
-            Some(screen.frame().size.height)
-        })
-        .unwrap_or(900.0);
-
-    let x = point.x;
-    let y = screen_height - point.y;
-
-    (x, y)
-}
-
-#[cfg(not(target_os = "macos"))]
-fn get_cursor_position() -> (f64, f64) {
-    // Fallback: center of screen
-    (400.0, 300.0)
-}
-
-/// Panel dimensions
-const PANEL_WIDTH: f64 = 360.0;
-const PANEL_HEIGHT: f64 = 420.0;
-
-/// Show or create the quick panel at the current cursor position.
-///
-/// 在当前光标位置显示或创建快捷面板。
-fn show_quick_panel(app: &tauri::AppHandle) {
-    // Capture the frontmost application before we steal focus
-    #[cfg(target_os = "macos")]
-    {
-        use objc2_app_kit::NSWorkspace;
-
-        let workspace = NSWorkspace::sharedWorkspace();
-        if let Some(front_app) = workspace.frontmostApplication() {
-            let pid = front_app.processIdentifier();
-            PREVIOUS_APP_PID.store(pid, Ordering::SeqCst);
-            info!(pid, "Captured previous frontmost app PID");
-        }
-    }
-
-    let (cursor_x, cursor_y) = get_cursor_position();
-    info!(cursor_x, cursor_y, "Showing quick panel at cursor position");
-
-    // Position panel so its top-left corner is at the cursor
-    let panel_x = cursor_x;
-    let panel_y = cursor_y;
-
-    match app.get_webview_window("quick-panel") {
-        Some(window) => {
-            // Panel already exists — reposition and show
-            if let Err(e) = window.set_position(tauri::Position::Logical(
-                tauri::LogicalPosition::new(panel_x, panel_y),
-            )) {
-                warn!(error = %e, "Failed to set quick panel position");
-            }
-            let _ = window.show();
-            let _ = window.set_focus();
-
-            // Notify the frontend to refresh data
-            if let Err(e) = app.emit_to("quick-panel", "quick-panel://refresh", ()) {
-                warn!(error = %e, "Failed to emit refresh event to quick panel");
-            }
-        }
-        None => {
-            // Create a new panel window
-            let url = WebviewUrl::App("quick-panel.html".into());
-            match WebviewWindowBuilder::new(app, "quick-panel", url)
-                .title("Quick Panel")
-                .inner_size(PANEL_WIDTH, PANEL_HEIGHT)
-                .position(panel_x, panel_y)
-                .decorations(false)
-                .transparent(true)
-                .always_on_top(true)
-                .visible(true)
-                .resizable(false)
-                .skip_taskbar(true)
-                .build()
-            {
-                Ok(window) => {
-                    info!("Quick panel window created");
-
-                    // Auto-hide when the panel loses focus
-                    let win_clone = window.clone();
-                    window.on_window_event(move |event| {
-                        if let tauri::WindowEvent::Focused(false) = event {
-                            debug!("Quick panel lost focus, hiding");
-                            let _ = win_clone.hide();
-                        }
-                    });
-                }
-                Err(e) => {
-                    error!(error = %e, "Failed to create quick panel window");
-                }
-            }
-        }
-    }
-}
-
-/// Activate the previously focused app and simulate Cmd+V to paste.
-///
-/// 激活之前聚焦的应用并模拟 Cmd+V 粘贴。
-#[cfg(target_os = "macos")]
-fn activate_previous_app_and_paste() {
-    use objc2_app_kit::{NSApplicationActivationOptions, NSRunningApplication};
-
-    let pid = PREVIOUS_APP_PID.load(Ordering::SeqCst);
-    if pid == 0 {
-        warn!("No previous app PID stored, skipping paste");
-        return;
-    }
-
-    // 1. Activate the previous application
-    let target = NSRunningApplication::runningApplicationWithProcessIdentifier(pid);
-    match target {
-        Some(app) => {
-            #[allow(deprecated)]
-            let activated =
-                app.activateWithOptions(NSApplicationActivationOptions::ActivateIgnoringOtherApps);
-            if activated {
-                info!(pid, "Activated previous app");
-            } else {
-                warn!(pid, "Failed to activate previous app");
-            }
-        }
-        None => {
-            warn!(pid, "Could not find running application with PID");
-            return;
-        }
-    }
-
-    // 2. Short delay for the app to come to foreground
-    std::thread::sleep(std::time::Duration::from_millis(50));
-
-    // 3. Simulate Cmd+V keystroke via CGEvent
-    simulate_paste_keystroke();
-}
-
-/// Simulate Cmd+V keystroke using CoreGraphics CGEvent.
-///
-/// 使用 CoreGraphics CGEvent 模拟 Cmd+V 按键。
-#[cfg(target_os = "macos")]
-fn simulate_paste_keystroke() {
-    use core_graphics::event::{CGEvent, CGEventFlags, CGKeyCode};
-    use core_graphics::event_source::{CGEventSource, CGEventSourceStateID};
-
-    // Key code for 'V' on macOS
-    const KEY_V: CGKeyCode = 9;
-
-    let source = match CGEventSource::new(CGEventSourceStateID::HIDSystemState) {
-        Ok(s) => s,
-        Err(_) => {
-            error!("Failed to create CGEventSource");
-            return;
-        }
-    };
-
-    let key_down = match CGEvent::new_keyboard_event(source.clone(), KEY_V, true) {
-        Ok(e) => e,
-        Err(_) => {
-            error!("Failed to create key-down CGEvent");
-            return;
-        }
-    };
-    key_down.set_flags(CGEventFlags::CGEventFlagCommand);
-
-    let key_up = match CGEvent::new_keyboard_event(source, KEY_V, false) {
-        Ok(e) => e,
-        Err(_) => {
-            error!("Failed to create key-up CGEvent");
-            return;
-        }
-    };
-    key_up.set_flags(CGEventFlags::CGEventFlagCommand);
-
-    key_down.post(core_graphics::event::CGEventTapLocation::HID);
-    key_up.post(core_graphics::event::CGEventTapLocation::HID);
-
-    info!("Simulated Cmd+V paste keystroke");
-}
-
-/// Tauri command: hide the quick panel, re-activate the previous app, and paste.
-///
-/// Tauri 命令：隐藏快捷面板，重新激活之前的应用，并粘贴。
-#[tauri::command]
-async fn paste_to_previous_app(app: tauri::AppHandle) -> Result<(), String> {
-    // Hide the quick panel first
-    if let Some(window) = app.get_webview_window("quick-panel") {
-        let _ = window.hide();
-    }
-
-    // Give the panel time to fully hide
-    tokio::time::sleep(std::time::Duration::from_millis(30)).await;
-
-    // Activate previous app and paste — must run on main thread for macOS APIs
-    #[cfg(target_os = "macos")]
-    {
-        // Dispatch to main thread since NSRunningApplication requires it
-        app.run_on_main_thread(|| {
-            activate_previous_app_and_paste();
-        })
-        .map_err(|e| format!("Failed to dispatch to main thread: {e}"))?;
-    }
-
-    Ok(())
-}
+mod quick_panel;
 
 /// Simple executor for platform commands
 ///
@@ -927,7 +703,7 @@ fn run_app(config: AppConfig) {
                                 && shortcut.matches(Modifiers::SUPER | Modifiers::SHIFT, Code::KeyV)
                             {
                                 info!("Global shortcut Cmd+Shift+V triggered");
-                                show_quick_panel(&app_handle);
+                                quick_panel::show(&app_handle);
                             }
                         })
                         .build(),
@@ -1117,7 +893,8 @@ fn run_app(config: AppConfig) {
             #[cfg(target_os = "macos")]
             plugins::mac_rounded_corners::reposition_traffic_lights,
             // Quick panel commands
-            paste_to_previous_app,
+            quick_panel::paste_to_previous_app,
+            quick_panel::dismiss_quick_panel,
         ])
         .build(tauri::generate_context!())
         .expect("error building tauri application")

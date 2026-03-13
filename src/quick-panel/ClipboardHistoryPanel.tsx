@@ -1,6 +1,5 @@
 import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
-import { getCurrentWindow } from '@tauri-apps/api/window'
 import { Code, ExternalLink, File, FileText, Image as ImageIcon, Search } from 'lucide-react'
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { applyThemePreset, DEFAULT_THEME_COLOR } from '@/lib/theme-engine'
@@ -142,9 +141,8 @@ async function restoreEntry(entryId: string): Promise<void> {
   await invoke('restore_clipboard_entry', { entryId })
 }
 
-async function hidePanel(): Promise<void> {
-  const win = getCurrentWindow()
-  await win.hide()
+async function dismissPanel(): Promise<void> {
+  await invoke('dismiss_quick_panel')
 }
 
 async function pasteToApp(): Promise<void> {
@@ -268,11 +266,13 @@ const ClipboardHistoryPanel: React.FC = () => {
   useEffect(() => {
     loadData()
 
-    // Listen for panel show event to reload data
+    // Listen for panel show event to reload data and re-focus search
     const unlisten = listen('quick-panel://refresh', () => {
       setSearchQuery('')
       setSelectedIndex(0)
       loadData()
+      // Re-focus search input when panel is re-shown
+      requestAnimationFrame(() => searchInputRef.current?.focus())
     })
 
     return () => {
@@ -337,7 +337,7 @@ const ClipboardHistoryPanel: React.FC = () => {
           break
         case 'Escape':
           e.preventDefault()
-          hidePanel()
+          dismissPanel()
           break
       }
     }

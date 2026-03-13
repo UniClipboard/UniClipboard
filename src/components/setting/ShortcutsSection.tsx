@@ -1,7 +1,7 @@
 import { useMemo, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
-import { SettingGroup } from './SettingGroup'
-import { ShortcutRow } from './ShortcutRow'
+import { SettingGroup } from '@/components/setting/SettingGroup'
+import { ShortcutRow } from '@/components/setting/ShortcutRow'
 import { Button } from '@/components/ui'
 import { useSetting } from '@/hooks/useSetting'
 import {
@@ -60,17 +60,22 @@ const ShortcutsSection: React.FC = () => {
               ? clearedDef.key[0]
               : clearedDef.key
             if (clearedDefaultKey === newKey) {
-              // Just delete the override entry (effectively resetting it to default)
-              delete newOverrides[clearedId]
+              // Default key conflicts with the new key, so deleting the override
+              // would revert to the conflicting default. Set empty string to unbind.
+              newOverrides[clearedId] = ''
             } else {
-              // Delete the override so it reverts to default
+              // Delete the override so it reverts to a non-conflicting default
               delete newOverrides[clearedId]
             }
           }
         }
       }
 
-      await updateKeyboardShortcuts(newOverrides)
+      try {
+        await updateKeyboardShortcuts(newOverrides)
+      } catch (error) {
+        console.error('Failed to update keyboard shortcuts:', error)
+      }
     },
     [overrides, updateKeyboardShortcuts]
   )
@@ -80,14 +85,22 @@ const ShortcutsSection: React.FC = () => {
     async (id: string) => {
       const newOverrides = { ...overrides }
       delete newOverrides[id]
-      await updateKeyboardShortcuts(newOverrides)
+      try {
+        await updateKeyboardShortcuts(newOverrides)
+      } catch (error) {
+        console.error('Failed to reset shortcut:', error)
+      }
     },
     [overrides, updateKeyboardShortcuts]
   )
 
   // Handle reset all shortcuts
   const handleResetAll = useCallback(async () => {
-    await updateKeyboardShortcuts({})
+    try {
+      await updateKeyboardShortcuts({})
+    } catch (error) {
+      console.error('Failed to reset all shortcuts:', error)
+    }
   }, [updateKeyboardShortcuts])
 
   return (

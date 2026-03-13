@@ -15,9 +15,9 @@ import AppearanceSection from './AppearanceSection'
 import GeneralSection from './GeneralSection'
 import NetworkSection from './NetworkSection'
 import SecuritySection from './SecuritySection'
-import ShortcutsSection from './ShortcutsSection'
 import StorageSection from './StorageSection'
 import SyncSection from './SyncSection'
+import ShortcutsSection from '@/components/setting/ShortcutsSection'
 
 export interface SettingsCategory {
   id: string

@@ -216,5 +216,5 @@ Plans:
 
 Plans:
 
-- [ ] 27-01-PLAN.md — Backend/frontend Settings types, activate definitions, ShortcutsSection display UI
+- [x] 27-01-PLAN.md — Backend/frontend Settings types, activate definitions, ShortcutsSection display UI
 - [ ] 27-02-PLAN.md — Key recording, conflict detection, persistence, reset, and live override wiring

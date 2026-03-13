@@ -38,6 +38,17 @@ pub enum UpdateChannel {
     Rc,
 }
 
+/// A keyboard shortcut value that can be either a single key combo or multiple alternatives.
+///
+/// Serialised with `#[serde(untagged)]` so that `"Ctrl+C"` and `["Ctrl+C","Meta+C"]` are both
+/// accepted without a wrapping tag, matching the TypeScript type `string | string[]`.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(untagged)]
+pub enum ShortcutKey {
+    Single(String),
+    Multiple(Vec<String>),
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ContentTypes {
     pub text: bool,
@@ -166,7 +177,7 @@ pub struct Settings {
     pub pairing: PairingSettings,
 
     #[serde(default)]
-    pub keyboard_shortcuts: HashMap<String, serde_json::Value>,
+    pub keyboard_shortcuts: HashMap<String, ShortcutKey>,
     // #[serde(default)]
     // pub network: NetworkSettings,
 }

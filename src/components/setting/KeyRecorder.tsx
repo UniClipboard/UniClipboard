@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useRecordHotkeys } from 'react-hotkeys-hook'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui'
+import { formatKeyPart } from '@/lib/shortcut-format'
 import {
   getCandidateKeyIssues,
   resolveShortcuts,
@@ -18,52 +19,6 @@ interface KeyRecorderProps {
   currentOverrides: ShortcutKeyOverrides
   onConfirm: (key: string, clearedIds?: string[]) => void
   onCancel: () => void
-}
-
-const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad|iPod/.test(navigator.userAgent)
-
-/**
- * Format a modifier key for display using platform-appropriate symbols.
- */
-function formatKeyPart(part: string): string {
-  const lower = part.toLowerCase().trim()
-
-  if (isMac) {
-    switch (lower) {
-      case 'mod':
-      case 'meta':
-      case 'cmd':
-      case 'command':
-        return '\u2318'
-      case 'alt':
-      case 'option':
-        return '\u2325'
-      case 'shift':
-        return '\u21E7'
-      case 'ctrl':
-      case 'control':
-        return '\u2303'
-      default:
-        return part.charAt(0).toUpperCase() + part.slice(1)
-    }
-  } else {
-    switch (lower) {
-      case 'mod':
-      case 'meta':
-      case 'cmd':
-      case 'command':
-      case 'ctrl':
-      case 'control':
-        return 'Ctrl'
-      case 'alt':
-      case 'option':
-        return 'Alt'
-      case 'shift':
-        return 'Shift'
-      default:
-        return part.charAt(0).toUpperCase() + part.slice(1)
-    }
-  }
 }
 
 export function KeyRecorder({
@@ -98,10 +53,11 @@ export function KeyRecorder({
   const warningIssues = issues.filter(i => i.level === 'warning')
   const infoIssues = issues.filter(i => i.level === 'info')
 
-  // Start recording on mount
+  // Start recording on mount, stop on unmount
   useEffect(() => {
     start()
-  }, [start])
+    return () => stop()
+  }, [start, stop])
 
   // Update recorded key when keys change
   useEffect(() => {
@@ -145,7 +101,7 @@ export function KeyRecorder({
   const keyParts = recordedKey ? recordedKey.split('+').map(formatKeyPart) : []
 
   return (
-    <div className="flex flex-col gap-2 p-3 rounded-md border-2 border-primary/50 bg-background animate-pulse">
+    <div className="flex flex-col gap-2 p-3 rounded-md border-2 border-primary/50 bg-card animate-pulse">
       <div className="flex items-center gap-2">
         {recordedKey ? (
           <div className="flex items-center gap-0.5">

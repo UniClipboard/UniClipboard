@@ -54,7 +54,7 @@ completed: 2026-03-13
 
 ## Performance
 
-- **Duration:** 5 min
+- **Duration:** 5 min (actual)
 - **Started:** 2026-03-13T05:10:17Z
 - **Completed:** 2026-03-13T05:15:20Z
 - **Tasks:** 2

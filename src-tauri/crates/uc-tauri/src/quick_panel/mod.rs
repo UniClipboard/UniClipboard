@@ -21,102 +21,108 @@ const PANEL_LABEL: &str = "quick-panel";
 
 // ── Cross-platform helpers ─────────────────────────────────────────────
 
-/// Get cursor position in screen coordinates (top-left origin).
+/// Get screen center position for the panel (top-left corner of the panel
+/// such that it appears centered on screen, like Raycast/Spotlight).
 ///
-/// 获取光标位置（屏幕坐标，左上角原点）。
-fn cursor_position() -> (f64, f64) {
+/// 获取面板在屏幕居中时的左上角坐标（类似 Raycast/Spotlight 的位置）。
+fn screen_center_position() -> (f64, f64) {
     #[cfg(target_os = "macos")]
     {
-        macos::get_cursor_position()
+        macos::get_screen_center(PANEL_WIDTH, PANEL_HEIGHT)
     }
     #[cfg(not(target_os = "macos"))]
     {
-        // Fallback: center of screen
-        (400.0, 300.0)
+        // Fallback: rough center assuming 1440x900
+        ((1440.0 - PANEL_WIDTH) / 2.0, (900.0 - PANEL_HEIGHT) / 2.0)
     }
 }
 
 // ── Public API ─────────────────────────────────────────────────────────
 
-/// Show (or create) the quick panel at the current cursor position.
+/// Pre-create the quick panel window (hidden) during app startup.
 ///
-/// 在当前光标位置显示（或创建）快捷面板。
-pub fn show(app: &tauri::AppHandle) {
-    let (cursor_x, cursor_y) = cursor_position();
-    info!(cursor_x, cursor_y, "Showing quick panel at cursor position");
+/// This avoids the first-invocation activation problem: `WebviewWindowBuilder::build()`
+/// creates a regular NSWindow which activates the app. By pre-creating and converting
+/// to NSPanel at startup, the first shortcut press follows the same "already exists"
+/// path as subsequent presses.
+///
+/// 在应用启动时预创建快捷面板（隐藏状态），避免首次调用时激活应用。
+pub fn pre_create(app: &tauri::AppHandle) {
+    if app.get_webview_window(PANEL_LABEL).is_some() {
+        return; // Already created
+    }
 
-    // Position panel so its top-left corner is at the cursor
-    let panel_x = cursor_x;
-    let panel_y = cursor_y;
+    // Position off-screen; will be repositioned on first show()
+    let url = WebviewUrl::App("quick-panel.html".into());
+    match WebviewWindowBuilder::new(app, PANEL_LABEL, url)
+        .title("Quick Panel")
+        .inner_size(PANEL_WIDTH, PANEL_HEIGHT)
+        .position(-9999.0, -9999.0)
+        .decorations(false)
+        .transparent(true)
+        .always_on_top(true)
+        .visible(false)
+        .resizable(false)
+        .skip_taskbar(true)
+        .build()
+    {
+        Ok(window) => {
+            info!("Quick panel window pre-created");
 
-    match app.get_webview_window(PANEL_LABEL) {
-        Some(window) => {
-            // Panel already exists — reposition and show
-            if let Err(e) = window.set_position(tauri::Position::Logical(
-                tauri::LogicalPosition::new(panel_x, panel_y),
-            )) {
-                warn!(error = %e, "Failed to set quick panel position");
-            }
-            let _ = window.show();
-
-            // Make panel key window for keyboard input (macOS-specific,
-            // avoids NSApp.activate that Tauri's set_focus would trigger)
             #[cfg(target_os = "macos")]
-            macos::make_panel_key(&window);
-            #[cfg(not(target_os = "macos"))]
-            let _ = window.set_focus();
+            macos::convert_to_panel(&window);
 
-            // Notify the frontend to refresh data
-            if let Err(e) = app.emit_to(PANEL_LABEL, "quick-panel://refresh", ()) {
-                warn!(error = %e, "Failed to emit refresh event to quick panel");
-            }
+            // Auto-hide when the panel loses focus (user clicks elsewhere)
+            let win_clone = window.clone();
+            window.on_window_event(move |event| {
+                if let tauri::WindowEvent::Focused(false) = event {
+                    debug!("Quick panel lost focus, hiding");
+                    let _ = win_clone.hide();
+                }
+            });
         }
-        None => {
-            // Create a new panel window (hidden initially for NSPanel conversion)
-            let url = WebviewUrl::App("quick-panel.html".into());
-            match WebviewWindowBuilder::new(app, PANEL_LABEL, url)
-                .title("Quick Panel")
-                .inner_size(PANEL_WIDTH, PANEL_HEIGHT)
-                .position(panel_x, panel_y)
-                .decorations(false)
-                .transparent(true)
-                .always_on_top(true)
-                .visible(false) // Hidden until platform setup is complete
-                .resizable(false)
-                .skip_taskbar(true)
-                .build()
-            {
-                Ok(window) => {
-                    info!("Quick panel window created");
+        Err(e) => {
+            error!(error = %e, "Failed to pre-create quick panel window");
+        }
+    }
+}
 
-                    // ── Platform-specific panel conversion ──
-                    // On macOS: convert NSWindow → NSPanel with NonactivatingPanel.
-                    // This makes the panel receive keyboard input without
-                    // activating our app, so the previous app stays frontmost.
-                    #[cfg(target_os = "macos")]
-                    macos::convert_to_panel(&window);
+/// Show the quick panel centered on screen (like Raycast).
+///
+/// Expects the panel to already exist (via `pre_create`). Falls back to
+/// creating inline if it doesn't exist yet.
+///
+/// 在屏幕中央显示快捷面板（类似 Raycast）。
+pub fn show(app: &tauri::AppHandle) {
+    let (panel_x, panel_y) = screen_center_position();
+    info!(panel_x, panel_y, "Showing quick panel centered on screen");
 
-                    // Auto-hide when the panel loses focus (user clicks elsewhere)
-                    let win_clone = window.clone();
-                    window.on_window_event(move |event| {
-                        if let tauri::WindowEvent::Focused(false) = event {
-                            debug!("Quick panel lost focus, hiding");
-                            let _ = win_clone.hide();
-                        }
-                    });
+    // If panel doesn't exist yet (pre_create wasn't called), create it now
+    if app.get_webview_window(PANEL_LABEL).is_none() {
+        warn!("Quick panel not pre-created, creating inline (may activate app)");
+        pre_create(app);
+    }
 
-                    // Now show the fully-configured panel
-                    let _ = window.show();
+    if let Some(window) = app.get_webview_window(PANEL_LABEL) {
+        // Reposition to screen center
+        if let Err(e) = window.set_position(tauri::Position::Logical(tauri::LogicalPosition::new(
+            panel_x, panel_y,
+        ))) {
+            warn!(error = %e, "Failed to set quick panel position");
+        }
 
-                    #[cfg(target_os = "macos")]
-                    macos::make_panel_key(&window);
-                    #[cfg(not(target_os = "macos"))]
-                    let _ = window.set_focus();
-                }
-                Err(e) => {
-                    error!(error = %e, "Failed to create quick panel window");
-                }
-            }
+        // Show panel without activating the app (macOS uses orderFrontRegardless)
+        #[cfg(target_os = "macos")]
+        macos::show_panel(&window);
+        #[cfg(not(target_os = "macos"))]
+        {
+            let _ = window.show();
+            let _ = window.set_focus();
+        }
+
+        // Notify the frontend to refresh data
+        if let Err(e) = app.emit_to(PANEL_LABEL, "quick-panel://refresh", ()) {
+            warn!(error = %e, "Failed to emit refresh event to quick panel");
         }
     }
 }

@@ -711,6 +711,10 @@ fn run_app(config: AppConfig) {
                 info!("Global shortcut Cmd+Shift+V registered for quick panel");
             }
 
+            // Pre-create quick panel (hidden) so the first shortcut press
+            // doesn't activate the app via WebviewWindowBuilder::build()
+            quick_panel::pre_create(app.handle());
+
             // Show window based on silent_start setting
             if !silent_start {
                 uc_tauri::tray::show_main_window(app.handle());

@@ -65,3 +65,80 @@ impl GetStorageStats {
         })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::TempDir;
+
+    fn make_paths(root: &TempDir, cache: &TempDir) -> AppPaths {
+        let root_path = root.path().to_path_buf();
+        AppPaths {
+            db_path: root_path.join("uniclipboard.db"),
+            vault_dir: root_path.join("vault"),
+            settings_path: root_path.join("settings.json"),
+            logs_dir: root_path.join("logs"),
+            cache_dir: cache.path().to_path_buf(),
+            app_data_root: root_path,
+        }
+    }
+
+    #[tokio::test]
+    async fn returns_zero_for_nonexistent_directories() {
+        let root = TempDir::new().unwrap();
+        let cache = TempDir::new().unwrap();
+        let paths = make_paths(&root, &cache);
+        // Don't create any subdirectories — all paths are nonexistent
+        let uc = GetStorageStats::new(paths.clone());
+        let result = uc.execute().await.unwrap();
+
+        assert_eq!(result.database_bytes, 0);
+        assert_eq!(result.vault_bytes, 0);
+        assert_eq!(result.logs_bytes, 0);
+        assert_eq!(result.total_bytes, 0);
+        assert_eq!(result.data_dir, paths.app_data_root.to_string_lossy());
+    }
+
+    #[tokio::test]
+    async fn sums_bytes_across_directories() {
+        let root = TempDir::new().unwrap();
+        let cache = TempDir::new().unwrap();
+        let paths = make_paths(&root, &cache);
+
+        // Create db file (single file path)
+        std::fs::write(&paths.db_path, vec![0u8; 100]).unwrap();
+
+        // Create vault dir with a file
+        std::fs::create_dir_all(&paths.vault_dir).unwrap();
+        std::fs::write(paths.vault_dir.join("blob.dat"), vec![0u8; 200]).unwrap();
+
+        // Create logs dir with a file
+        std::fs::create_dir_all(&paths.logs_dir).unwrap();
+        std::fs::write(paths.logs_dir.join("app.log"), vec![0u8; 50]).unwrap();
+
+        // Cache dir already exists (tempdir), add a file
+        std::fs::write(cache.path().join("tmp.bin"), vec![0u8; 30]).unwrap();
+
+        let uc = GetStorageStats::new(paths);
+        let result = uc.execute().await.unwrap();
+
+        assert_eq!(result.database_bytes, 100);
+        assert_eq!(result.vault_bytes, 200);
+        assert_eq!(result.logs_bytes, 50);
+        assert_eq!(result.cache_bytes, 30);
+        assert_eq!(result.total_bytes, 380);
+    }
+
+    #[tokio::test]
+    async fn data_dir_field_matches_app_data_root() {
+        let root = TempDir::new().unwrap();
+        let cache = TempDir::new().unwrap();
+        let paths = make_paths(&root, &cache);
+        let expected = paths.app_data_root.to_string_lossy().to_string();
+
+        let uc = GetStorageStats::new(paths);
+        let result = uc.execute().await.unwrap();
+
+        assert_eq!(result.data_dir, expected);
+    }
+}

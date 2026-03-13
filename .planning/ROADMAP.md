@@ -212,7 +212,7 @@ Plans:
 **Goal:** Users can view, customize, and reset keyboard shortcuts from a dedicated Settings section, with click-to-record key capture, real-time conflict detection, and immediate effect on active shortcuts.
 **Requirements**: KB-01, KB-02, KB-03, KB-04, KB-05, KB-06, KB-07
 **Depends on:** Phase 26
-**Plans:** 2 plans
+**Plans:** 1/2 plans executed
 
 Plans:
 

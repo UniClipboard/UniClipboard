@@ -51,9 +51,9 @@ Requirements for v0.3.0 Log Observability. Each will be mapped to roadmap phases
 
 ### Keyboard Shortcuts Settings
 
-- [ ] **KB-01**: The Settings page has a "Shortcuts" category between Appearance and Sync that displays all shortcut definitions grouped by scope.
-- [ ] **KB-02**: All reserved shortcut definitions (~8 commented-out entries) are activated in the definitions array.
-- [ ] **KB-03**: The Rust Settings struct and TypeScript Settings interface include a `keyboard_shortcuts` field for storing user key overrides, with backward-compatible defaults.
+- [x] **KB-01**: The Settings page has a "Shortcuts" category between Appearance and Sync that displays all shortcut definitions grouped by scope.
+- [x] **KB-02**: All reserved shortcut definitions (~8 commented-out entries) are activated in the definitions array.
+- [x] **KB-03**: The Rust Settings struct and TypeScript Settings interface include a `keyboard_shortcuts` field for storing user key overrides, with backward-compatible defaults.
 - [ ] **KB-04**: Users can click edit on a shortcut, press a new key combination via click-to-record, and see real-time conflict detection with inline feedback.
 - [ ] **KB-05**: Pressing Escape during recording cancels without changing the binding; confirming a conflicting override clears the conflicting binding.
 - [ ] **KB-06**: Custom key overrides persist to the Rust settings system via existing `update_settings` command and survive app restart.

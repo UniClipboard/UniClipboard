@@ -14,6 +14,10 @@ interface ClipboardEntryProjection {
   updated_at: number
   active_time: number
   thumbnail_url?: string | null
+  /** Parsed link URLs (built from full representation data, not preview) */
+  link_urls?: string[] | null
+  /** Extracted domains for link entries */
+  link_domains?: string[] | null
 }
 
 type ClipboardEntriesResponse =
@@ -125,26 +129,6 @@ export interface ClipboardStats {
 }
 
 /**
- * Lightweight frontend heuristic to detect link entries from projections.
- * The authoritative classification happens in the backend; this is only
- * needed for the projection path where we don't get a typed DTO.
- */
-const URL_RE = /^(https?:\/\/|ftp:\/\/|ftps:\/\/|mailto:)\S+$/
-
-function isLinkType(contentType: string, preview: string): boolean {
-  if (contentType === 'text/uri-list') return true
-  if (contentType.startsWith('text/plain')) {
-    const trimmed = preview.trim()
-    // Single URL
-    if (URL_RE.test(trimmed)) return true
-    // Multi-line: every non-empty line is a URL
-    const lines = trimmed.split(/\r?\n/).filter(l => l.trim().length > 0)
-    if (lines.length > 1 && lines.every(l => URL_RE.test(l.trim()))) return true
-  }
-  return false
-}
-
-/**
  * Extract hostname from a URL string. Returns the raw string on failure.
  */
 function extractDomainFromUrl(url: string): string {
@@ -156,41 +140,19 @@ function extractDomainFromUrl(url: string): string {
 }
 
 /**
- * Parse a text/uri-list body into an array of URLs (skipping empty lines and comments).
- */
-function parseUriList(text: string): string[] {
-  return text
-    .split(/\r?\n/)
-    .map(line => line.trim())
-    .filter(line => line.length > 0 && !line.startsWith('#'))
-}
-
-/**
  * Transform a backend ClipboardEntryProjection to frontend ClipboardItemResponse.
  * Shared by getClipboardItems and getClipboardEntry to avoid duplication.
  */
 function transformProjectionToResponse(entry: ClipboardEntryProjection): ClipboardItemResponse {
   const isImage = isImageType(entry.content_type)
-  const isLink = !isImage && isLinkType(entry.content_type, entry.preview)
 
+  // Use pre-parsed link data from backend (built from full representation, not preview)
+  const hasLinkData = !isImage && entry.link_urls && entry.link_urls.length > 0
   let linkItem: ClipboardLinkItem | null = null
-  if (isLink) {
-    let urls: string[]
-    if (entry.content_type === 'text/uri-list') {
-      urls = parseUriList(entry.preview)
-      if (urls.length === 0) urls = [entry.preview.trim()]
-    } else {
-      // Split multi-line plain text URLs
-      const lines = entry.preview
-        .trim()
-        .split(/\r?\n/)
-        .map(l => l.trim())
-        .filter(l => l.length > 0)
-      urls = lines.length > 1 ? lines : [entry.preview.trim()]
-    }
+  if (hasLinkData) {
     linkItem = {
-      urls,
-      domains: urls.map(extractDomainFromUrl),
+      urls: entry.link_urls!,
+      domains: entry.link_domains ?? entry.link_urls!.map(extractDomainFromUrl),
     }
   }
 
@@ -204,7 +166,7 @@ function transformProjectionToResponse(entry: ClipboardEntryProjection): Clipboa
         }
       : null,
     text:
-      !isImage && !isLink
+      !isImage && !hasLinkData
         ? {
             display_text: entry.preview,
             has_detail: entry.has_detail,

@@ -37,6 +37,12 @@ pub struct ClipboardEntryProjection {
     pub updated_at: i64,
     /// Timestamp of last access/use
     pub active_time: i64,
+    /// Parsed link URLs (built from full representation data, not preview)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub link_urls: Option<Vec<String>>,
+    /// Extracted domains for link entries
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub link_domains: Option<Vec<String>>,
 }
 
 /// Clipboard entries response with readiness status
@@ -229,6 +235,8 @@ mod tests {
             is_favorited: false,
             updated_at: 1234567890,
             active_time: 1234567890,
+            link_urls: None,
+            link_domains: None,
         };
         let value = serde_json::to_value(&entry).expect("serialize failed");
         // Verify snake_case field names (not camelCase)

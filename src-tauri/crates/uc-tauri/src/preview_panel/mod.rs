@@ -66,6 +66,17 @@ pub fn pre_create(app: &tauri::AppHandle) {
 /// Show the preview panel next to the quick panel and send the entry ID
 /// to the frontend for content loading.
 pub fn show(app: &tauri::AppHandle, entry_id: &str) {
+    // Don't show preview if the quick panel is not visible (e.g. the 500ms
+    // debounce timer fired after the quick panel was already dismissed).
+    let quick_panel_visible = app
+        .get_webview_window(QUICK_PANEL_LABEL)
+        .and_then(|w| w.is_visible().ok())
+        .unwrap_or(false);
+    if !quick_panel_visible {
+        debug!("Quick panel not visible, skipping preview show");
+        return;
+    }
+
     // Ensure panel exists
     if app.get_webview_window(PANEL_LABEL).is_none() {
         warn!("Preview panel not pre-created, creating inline");
@@ -129,6 +140,13 @@ pub fn dismiss(app: &tauri::AppHandle) {
 pub fn is_visible(app: &tauri::AppHandle) -> bool {
     app.get_webview_window(PANEL_LABEL)
         .and_then(|w| w.is_visible().ok())
+        .unwrap_or(false)
+}
+
+/// Check if the preview panel currently has focus (is the key window).
+pub fn is_focused(app: &tauri::AppHandle) -> bool {
+    app.get_webview_window(PANEL_LABEL)
+        .and_then(|w| w.is_focused().ok())
         .unwrap_or(false)
 }
 

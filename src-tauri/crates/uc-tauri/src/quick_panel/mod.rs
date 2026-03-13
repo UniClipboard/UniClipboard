@@ -72,19 +72,20 @@ pub fn pre_create(app: &tauri::AppHandle) {
             #[cfg(target_os = "macos")]
             macos::convert_to_panel(&window);
 
-            // Auto-hide when the panel loses focus (user clicks elsewhere),
-            // but not if the preview panel is currently visible (user may be
-            // interacting with the preview).
+            // Auto-hide when the panel loses focus (user clicks elsewhere).
+            // If focus went to the preview panel, keep the quick panel visible;
+            // otherwise dismiss both panels.
             let win_clone = window.clone();
             let app_for_focus = app.clone();
             window.on_window_event(move |event| {
                 if let tauri::WindowEvent::Focused(false) = event {
-                    // If preview panel is visible, don't hide quick panel
-                    if crate::preview_panel::is_visible(&app_for_focus) {
-                        debug!("Quick panel lost focus, but preview panel is visible — not hiding");
+                    // If focus transferred to the preview panel, keep quick panel visible
+                    if crate::preview_panel::is_focused(&app_for_focus) {
+                        debug!("Quick panel lost focus to preview panel — not hiding");
                         return;
                     }
                     debug!("Quick panel lost focus, hiding");
+                    crate::preview_panel::dismiss(&app_for_focus);
                     let _ = win_clone.hide();
                 }
             });

@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v0.1
 milestone_name: milestone
-status: completed
-stopped_at: Completed 29-02-PLAN.md
-last_updated: '2026-03-13T00:09:05.141Z'
-last_activity: '2026-03-13 — Completed 29-02: Frontend Keychain Always Allow confirmation modal'
+status: in-progress
+stopped_at: Completed 27-01-PLAN.md
+last_updated: '2026-03-13T05:15:20.000Z'
+last_activity: '2026-03-13 — Completed 27-01 plan: keyboard shortcuts settings data model and display'
 progress:
-  total_phases: 8
-  completed_phases: 8
-  total_plans: 18
-  completed_plans: 18
+  total_phases: 10
+  completed_phases: 9
+  total_plans: 20
+  completed_plans: 20
   percent: 100
 ---
 
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-09)
 
 **Core value:** Seamless clipboard synchronization across devices -- copy on one, paste on another
-**Current focus:** Phase 29 - Add macOS auto-unlock keychain Always Allow confirmation modal on UnlockPage
+**Current focus:** Phase 27 - Keyboard shortcuts settings page
 
 ## Current Position
 
 Phase: 29 of 29 (Add macOS auto-unlock keychain Always Allow confirmation modal on UnlockPage)
 Plan: 2 of 2 complete
-Status: Complete
-Last activity: 2026-03-13 — Completed 29-02: Frontend Keychain Always Allow confirmation modal
+Status: In Progress (Phase 27 KB-04~07 pending)
+Last activity: 2026-03-13 — Completed 27-01 plan: keyboard shortcuts settings data model and display
 
 Progress: [██████████] 100%
 
@@ -62,6 +62,12 @@ Progress: [██████████] 100%
   | Phase 24 P03 | 10min | 3 tasks | 5 files |
   | Phase 25 P01 | 8min | 2 tasks | 5 files |
   | Phase 25 P02 | 4min | 2 tasks | 4 files |
+  | Phase 25 P01 | 8min | 2 tasks | 5 files |
+  | Phase 26 P01 | 7min | 3 tasks | 4 files |
+  | Phase 26 P02 | 2min | 3 tasks | 3 files |
+  | Phase 27 P01 | 5min | 2 tasks | 13 files |
+  | Phase 28 P01 | 7min | 2 tasks | 6 files |
+  | Phase 28 P02 | 3min | 2 tasks | 6 files |
   | Phase 29 P01 | 4min | 2 tasks | 5 files |
   | Phase 29 P02 | 8min | 2 tasks | 4 files |
 
@@ -103,6 +109,15 @@ Recent decisions affecting current work:
 - [Phase 25]: ContentTypes::default() fix from derive(Default) all-false to explicit all-true impl
 - [Phase 25]: Classify snapshot once before peer loop for efficiency (not per-peer)
 - [Phase 25]: Only Text and Image are filterable; unimplemented types always sync
+- [Phase 26]: Exposed apply_sync_policy as pub for integration tests in tests/ to validate policy logic directly
+- [Phase 26]: Global auto_sync guard executes before per-device evaluation and does not mutate per-device sync settings
+- [Phase 26]: Global auto_sync off UX remains explicit-only (auto_sync === false) for banner visibility and disable cascade.
+- [Phase 26]: Settings navigation category state is one-shot and cleared after consumption to prevent stale tab forcing.
+- [Phase 27]: Used HashMap<String, serde_json::Value> for keyboard_shortcuts for flexible override storage
+- [Phase 27]: Used mod prefix for all shortcut definitions for cross-platform compatibility (mod = Cmd on Mac, Ctrl on others)
+- [Phase 28]: url crate v2 for URL parsing validation instead of regex
+- [Phase 28]: ClipboardItemDto.link changed from serde_json::Value to ClipboardLinkItemDto for type safety
+- [Phase 28]: URL regex heuristic checks http/https/ftp/ftps/mailto with no-whitespace for text/plain link detection
 - [Phase 29]: VerifyKeychainAccess use case takes only KeyScopePort + KeyMaterialPort (lighter than AutoUnlock's 5 ports)
 - [Phase 29]: KeyringError mapped to Ok(false) to treat keyring issues as not-granted rather than hard failure
 - 29-02: Used regular Button instead of AlertDialogAction for confirm to prevent auto-close on verification failure
@@ -113,6 +128,9 @@ Recent decisions affecting current work:
 - Phase 23 added: Distributed tracing with trace view visualization for cross-device observability
 - Phase 24 added: Implement per-device sync settings for paired devices
 - Phase 25 added: Implement per-device sync content type toggles
+- Phase 26 added: Implement global sync master toggle and improve sync UX
+- Phase 27 added: 支持快捷键设置在 settings page 中
+- Phase 28 added: Support link content type (MIME link and URL-detected plain text)
 - Phase 29 added: Add macOS auto-unlock keychain Always Allow confirmation modal on UnlockPage
 
 ### Pending Todos
@@ -129,9 +147,10 @@ None yet.
 | #   | Description                                                 | Date       | Commit   | Directory                                                                                         |
 | --- | ----------------------------------------------------------- | ---------- | -------- | ------------------------------------------------------------------------------------------------- |
 | 8   | Fix Vite chunk size warning by code-splitting large bundles | 2026-03-12 | 06d711af | [8-fix-vite-chunk-size-warning-by-code-spli](./quick/8-fix-vite-chunk-size-warning-by-code-spli/) |
+| 9   | Optimize stale relative timestamps on clipboard items       | 2026-03-12 | 8a079cb7 | [9-optimize-stale-relative-timestamps-on-cl](./quick/9-optimize-stale-relative-timestamps-on-cl/) |
 
 ## Session Continuity
 
-Last session: 2026-03-13T00:03:22Z
-Stopped at: Completed 29-02-PLAN.md
-Resume file: .planning/phases/29-add-macos-auto-unlock-keychain-always-allow-confirmation-modal-on-unlockpage/29-02-SUMMARY.md
+Last session: 2026-03-13T05:15:20.000Z
+Stopped at: Completed 27-01-PLAN.md
+Resume file: .planning/phases/27-settings-page/27-01-SUMMARY.md

@@ -28,6 +28,7 @@ pub mod setup;
 pub mod space_access;
 pub mod start_network;
 pub mod start_network_after_unlock;
+pub mod storage;
 pub mod update_settings;
 pub mod verify_keychain_access;
 

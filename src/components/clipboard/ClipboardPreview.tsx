@@ -1,3 +1,4 @@
+import { openUrl } from '@tauri-apps/plugin-opener'
 import { Clipboard, ExternalLink, File, Loader2, Image as ImageIcon } from 'lucide-react'
 import React, { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -14,6 +15,7 @@ import {
 } from '@/api/clipboardItems'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Separator } from '@/components/ui/separator'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { resolveUcUrl } from '@/lib/protocol'
 import { formatFileSize } from '@/utils'
 
@@ -132,19 +134,41 @@ const ClipboardPreview: React.FC<ClipboardPreviewProps> = ({ item }) => {
         )
       }
       case 'link': {
-        const url = (item.content as ClipboardLinkItem).url
+        const linkItem = item.content as ClipboardLinkItem
         return (
-          <div className="p-4">
-            <a
-              href={url}
-              target="_blank"
-              rel="noreferrer"
-              className="text-primary font-medium hover:underline break-all text-sm leading-relaxed flex items-center gap-2"
-              onClick={e => e.stopPropagation()}
+          <div className="p-4 space-y-2">
+            <button
+              type="button"
+              className="text-left text-primary font-medium hover:underline break-all text-sm leading-relaxed flex items-center gap-2 cursor-pointer"
+              onClick={e => {
+                e.stopPropagation()
+                openUrl(linkItem.urls[0]).catch(console.error)
+              }}
             >
               <ExternalLink size={14} className="shrink-0" />
-              {url}
-            </a>
+              {linkItem.urls[0]}
+            </button>
+            {linkItem.urls.length > 1 &&
+              linkItem.urls.slice(1).map((url, i) => (
+                <div key={i} className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    className="text-left text-primary/80 hover:underline break-all text-sm leading-relaxed flex items-center gap-2 cursor-pointer"
+                    onClick={e => {
+                      e.stopPropagation()
+                      openUrl(url).catch(console.error)
+                    }}
+                  >
+                    <ExternalLink size={12} className="shrink-0 text-muted-foreground" />
+                    {url}
+                  </button>
+                  {linkItem.domains[i + 1] && (
+                    <span className="text-xs text-muted-foreground shrink-0">
+                      {linkItem.domains[i + 1]}
+                    </span>
+                  )}
+                </div>
+              ))}
           </div>
         )
       }
@@ -189,7 +213,7 @@ const ClipboardPreview: React.FC<ClipboardPreviewProps> = ({ item }) => {
   }
 
   const renderInformation = () => {
-    const rows: { label: string; value: string }[] = []
+    const rows: { label: string; value: React.ReactNode }[] = []
 
     // Content type
     rows.push({
@@ -245,10 +269,41 @@ const ClipboardPreview: React.FC<ClipboardPreviewProps> = ({ item }) => {
     }
 
     if (item.type === 'link' && item.content) {
-      const url = (item.content as ClipboardLinkItem).url
+      const linkItem = item.content as ClipboardLinkItem
+      const uniqueDomains = [...new Set(linkItem.domains.filter(Boolean))]
+      if (uniqueDomains.length > 0) {
+        const domainStr = uniqueDomains.join(', ')
+        rows.push({
+          label:
+            uniqueDomains.length > 1
+              ? t('clipboard.preview.domains', 'Domains')
+              : t('clipboard.preview.domain', 'Domain'),
+          value:
+            uniqueDomains.length > 1 ? (
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span className="truncate block cursor-default">{domainStr}</span>
+                  </TooltipTrigger>
+                  <TooltipContent side="top" className="max-w-xs">
+                    {uniqueDomains.join('\n')}
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            ) : (
+              domainStr
+            ),
+        })
+      }
+      if (linkItem.urls.length > 1) {
+        rows.push({
+          label: t('clipboard.preview.urlCount', 'URLs'),
+          value: String(linkItem.urls.length),
+        })
+      }
       rows.push({
         label: t('clipboard.preview.characters'),
-        value: String(url.length),
+        value: String(linkItem.urls[0]?.length ?? 0),
       })
     }
 

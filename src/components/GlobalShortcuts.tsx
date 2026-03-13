@@ -17,6 +17,7 @@ export const GlobalShortcuts = () => {
   useShortcut({
     key: settingsDef?.key ?? '',
     scope: 'global',
+    id: 'nav.settings',
     enabled: settingsShortcutEnabled,
     handler: () => {
       if (location.pathname.startsWith('/settings')) {

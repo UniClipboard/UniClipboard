@@ -1,3 +1,4 @@
+import { openUrl } from '@tauri-apps/plugin-opener'
 import {
   ChevronDown,
   ChevronUp,
@@ -227,19 +228,21 @@ const ClipboardItem: React.FC<ClipboardItemProps> = ({
         )
       }
       case 'link': {
-        const url = (content as ClipboardLinkItem).url
+        const linkItem = content as ClipboardLinkItem
+        const firstUrl = linkItem.urls[0] ?? ''
         return (
           <div className="flex flex-col gap-1">
-            <a
-              href={url}
-              target="_blank"
-              rel="noreferrer"
-              className="text-primary font-medium hover:underline break-all text-sm leading-relaxed flex items-center gap-2"
-              onClick={e => e.stopPropagation()}
+            <button
+              type="button"
+              className="text-left text-primary font-medium hover:underline break-all text-sm leading-relaxed flex items-center gap-2 cursor-pointer"
+              onClick={e => {
+                e.stopPropagation()
+                openUrl(firstUrl).catch(console.error)
+              }}
             >
               <ExternalLink size={14} />
-              {url}
-            </a>
+              {firstUrl}
+            </button>
           </div>
         )
       }

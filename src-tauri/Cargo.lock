@@ -8864,6 +8864,7 @@ dependencies = [
  "toml 0.8.23",
  "tracing",
  "twox-hash",
+ "url",
  "uuid",
  "zeroize",
 ]
@@ -9059,7 +9060,7 @@ dependencies = [
 
 [[package]]
 name = "uniclipboard"
-version = "0.3.0-alpha.3"
+version = "0.3.0-alpha.4"
 dependencies = [
  "anyhow",
  "async-trait",

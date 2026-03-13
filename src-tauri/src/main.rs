@@ -33,8 +33,9 @@ use uc_platform::runtime::event_bus::{
 use uc_platform::runtime::runtime::PlatformRuntime;
 use uc_tauri::bootstrap::tracing as bootstrap_tracing;
 use uc_tauri::bootstrap::{
-    ensure_default_device_name, load_config, resolve_pairing_config, resolve_pairing_device_name,
-    start_background_tasks, wire_dependencies, AppRuntime, SetupRuntimePorts,
+    ensure_default_device_name, get_storage_paths, load_config, resolve_pairing_config,
+    resolve_pairing_device_name, start_background_tasks, wire_dependencies, AppRuntime,
+    SetupRuntimePorts,
 };
 use uc_tauri::commands::updater::PendingUpdate;
 use uc_tauri::protocol::{parse_uc_request, UcRoute};
@@ -523,17 +524,16 @@ fn run_app(config: AppConfig) {
     );
     let pairing_orchestrator = Arc::new(pairing_orchestrator);
     let space_access_orchestrator = Arc::new(SpaceAccessOrchestrator::new());
+    // Resolve app directories once for reuse across wiring
+    let app_dirs = match DirsAppDirsAdapter::new().get_app_dirs() {
+        Ok(dirs) => dirs,
+        Err(err) => {
+            error!(error = %err, "Failed to determine app directories");
+            panic!("Failed to determine app directories: {}", err);
+        }
+    };
+
     let key_slot_store: Arc<dyn KeySlotStore> = {
-        let app_dirs = match DirsAppDirsAdapter::new().get_app_dirs() {
-            Ok(dirs) => dirs,
-            Err(err) => {
-                error!(error = %err, "Failed to determine app directories for keyslot store");
-                panic!(
-                    "Failed to determine app directories for keyslot store: {}",
-                    err
-                );
-            }
-        };
         let app_data_root = if config.database_path.as_os_str().is_empty() {
             app_dirs.app_data_root.clone()
         } else {
@@ -549,6 +549,9 @@ fn run_app(config: AppConfig) {
         Arc::new(JsonKeySlotStore::new(vault_dir))
     };
 
+    // Get resolved storage paths with profile suffix and config overrides applied
+    let storage_paths = get_storage_paths(&config).expect("failed to get storage paths");
+
     let runtime = AppRuntime::with_setup(
         deps,
         SetupRuntimePorts::from_network(
@@ -557,6 +560,7 @@ fn run_app(config: AppConfig) {
             discovery_network,
         ),
         watcher_control,
+        storage_paths,
     );
 
     // Wrap runtime in Arc for clipboard handler (PlatformRuntime needs Arc<dyn ClipboardChangeHandler>)
@@ -853,6 +857,11 @@ fn run_app(config: AppConfig) {
             // Updater commands
             uc_tauri::commands::updater::check_for_update,
             uc_tauri::commands::updater::install_update,
+            // Storage commands
+            uc_tauri::commands::storage::get_storage_stats,
+            uc_tauri::commands::storage::clear_cache,
+            uc_tauri::commands::storage::clear_all_clipboard_history,
+            uc_tauri::commands::storage::open_data_directory,
             // macOS-specific commands (conditionally compiled)
             #[cfg(target_os = "macos")]
             plugins::mac_rounded_corners::enable_rounded_corners,

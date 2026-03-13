@@ -79,6 +79,7 @@ describe('AboutSection', () => {
           updateSyncSetting: vi.fn(),
           updateSecuritySetting: vi.fn(),
           updateRetentionPolicy: vi.fn(),
+          updateKeyboardShortcuts: vi.fn(),
         }}
       >
         <UpdateContext.Provider
@@ -120,6 +121,7 @@ describe('AboutSection', () => {
           updateSyncSetting: vi.fn(),
           updateSecuritySetting: vi.fn(),
           updateRetentionPolicy: vi.fn(),
+          updateKeyboardShortcuts: vi.fn(),
         }}
       >
         <UpdateContext.Provider

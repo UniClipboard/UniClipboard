@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import {
   DEFAULT_CATEGORY,
   SETTINGS_CATEGORIES,
@@ -14,7 +14,10 @@ import { SettingContentLayout } from '@/layouts'
 import { captureUserIntent } from '@/observability/breadcrumbs'
 
 function SettingsPage() {
-  const [activeCategory, setActiveCategory] = useState(DEFAULT_CATEGORY)
+  const location = useLocation()
+  const [activeCategory, setActiveCategory] = useState(
+    (location.state as { category?: string } | null)?.category || DEFAULT_CATEGORY
+  )
   const navigate = useNavigate()
   useShortcutScope('settings')
 
@@ -36,6 +39,14 @@ function SettingsPage() {
     captureUserIntent('open_settings')
   }, [])
 
+  useEffect(() => {
+    if (location.state && (location.state as { category?: string }).category) {
+      const newState = { ...location.state } as Record<string, unknown>
+      delete newState.category
+      navigate(location.pathname, { replace: true, state: newState })
+    }
+  }, [location.state, navigate, location.pathname])
+
   const handleCategoryChange = (category: string) => {
     setActiveCategory(category)
   }
@@ -55,9 +66,9 @@ function SettingsPage() {
       className="min-h-0 h-full"
     >
       <SettingsSidebar activeCategory={activeCategory} onCategoryChange={handleCategoryChange} />
-      <SidebarInset>
-        <ScrollArea className="flex-1">
-          <div className="flex-1 p-6">
+      <SidebarInset className="min-h-0">
+        <ScrollArea className="flex-1 min-h-0">
+          <div className="p-6">
             {ActiveSection && (
               <SettingContentLayout>
                 <ActiveSection />

@@ -56,7 +56,7 @@ const AboutSection: React.FC = () => {
   const { updateInfo, isCheckingUpdate, checkForUpdates, installUpdate, downloadProgress } =
     useUpdate()
   const [appVersion, setAppVersion] = useState<string>('')
-  const [autoCheckUpdate, setAutoCheckUpdate] = useState(true)
+  const [autoCheckUpdate, setAutoCheckUpdate] = useState(setting?.general.auto_check_update ?? true)
   const [updateChannel, setUpdateChannel] = useState<UpdateChannel | null>(null)
   const [updateDialogOpen, setUpdateDialogOpen] = useState(false)
   const [saving, setSaving] = useState(false)

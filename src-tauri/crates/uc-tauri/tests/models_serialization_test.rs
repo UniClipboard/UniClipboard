@@ -54,6 +54,8 @@ fn clipboard_entry_projection_preserves_snake_case() {
         is_favorited: false,
         updated_at: 1234567890,
         active_time: 1234567890,
+        link_urls: None,
+        link_domains: None,
     };
     let value = serde_json::to_value(&entry).expect("serialize failed");
     // Verify snake_case field names (not camelCase)

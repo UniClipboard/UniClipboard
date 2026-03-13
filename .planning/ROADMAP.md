@@ -125,7 +125,7 @@ Plans:
 
 **Goal:** Enable cross-device tracing by injecting device_id into every Seq event and providing Seq saved searches for flow correlation across devices.
 **Depends on:** Phase 22
-**Plans:** 1/2 plans executed
+**Plans:** 2/2 plans complete
 
 Plans:
 
@@ -194,6 +194,52 @@ Plans:
 4. Text and image toggles are interactive in the UI; other types show "Coming Soon".
 5. All-disabled warning appears when auto_sync is on but all content types are off.
 6. ContentTypes defaults to all-true so new devices sync everything by default.
+
+### Phase 26: Implement global sync master toggle and improve sync UX
+
+**Goal:** The global auto_sync toggle acts as a true master switch that overrides all per-device sync settings. When off, all outbound sync stops. Per-device settings are preserved and resume when re-enabled. The Devices page shows a warning banner with navigation to Settings, and all device controls cascade-disable.
+**Requirements**: GSYNC-01, GSYNC-02, GSYNC-03, GSYNC-04, GSYNC-05
+**Depends on:** Phase 25
+**Plans:** 2/2 plans complete
+
+Plans:
+
+- [x] 26-01-PLAN.md — Backend global auto_sync guard in sync engine + i18n keys and description copy
+- [x] 26-02-PLAN.md — Frontend warning banner, cascade disable, and Settings navigation
+
+### Phase 27: Keyboard Shortcuts Settings
+
+**Goal:** Users can view, customize, and reset keyboard shortcuts from a dedicated Settings section, with click-to-record key capture, real-time conflict detection, and immediate effect on active shortcuts.
+**Requirements**: KB-01, KB-02, KB-03, KB-04, KB-05, KB-06, KB-07
+**Depends on:** Phase 26
+**Plans:** 1/2 plans executed
+
+Plans:
+
+- [x] 27-01-PLAN.md — Backend/frontend Settings types, activate definitions, ShortcutsSection display UI
+- [ ] 27-02-PLAN.md — Key recording, conflict detection, persistence, reset, and live override wiring
+
+### Phase 28: Support link content type (MIME link and URL-detected plain text)
+
+**Goal:** Link content type is fully functional across the pipeline: classification detects both text/uri-list and single-URL plain text, sync filtering respects the link toggle, and the Dashboard displays links with clickable URLs and domain information.
+**Requirements**: LINK-01, LINK-02, LINK-03, LINK-04, LINK-05, LINK-06, LINK-07
+**Depends on:** Phase 25
+**Plans:** 2/2 plans complete
+
+Plans:
+
+- [ ] 28-01-PLAN.md — Backend link detection, classification, utility functions, and DTO population
+- [ ] 28-02-PLAN.md — Frontend link display, multi-URL rendering, and sync toggle activation
+
+**Success Criteria** (what must be TRUE):
+
+1. text/uri-list MIME snapshots and single-URL plain text are both classified as Link.
+2. Sync filtering respects the ct.link toggle for Link content.
+3. get_clipboard_item returns structured link data (urls + domains) for link entries.
+4. Dashboard list view shows clickable URLs with +N more badge for multi-URL entries.
+5. Dashboard detail panel shows all URLs with domain names.
+6. Link sync toggle is interactive in DeviceSettingsPanel (not "Coming Soon").
+7. Mixed text content (e.g., "see https://...") remains classified as Text.
 
 ### Phase 29: Add macOS auto-unlock keychain Always Allow confirmation modal on UnlockPage
 

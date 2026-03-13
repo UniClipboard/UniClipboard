@@ -1,5 +1,5 @@
 ---
-phase: 26-support-link-content-type-mime-link-and-url-detected-plain-text
+phase: 28-support-link-content-type-mime-link-and-url-detected-plain-text
 plan: 01
 subsystem: clipboard
 tags: [url-detection, link-classification, mime, dto, content-type]
@@ -15,7 +15,7 @@ provides:
   - ClipboardLinkItemDto struct for frontend API
   - link-aware get_clipboard_item command returning urls and domains
 
-affects: [26-02-frontend-link-display]
+affects: [28-02-frontend-link-display]
 
 tech-stack:
   added: [url (crate v2)]
@@ -42,18 +42,18 @@ patterns-established:
 requirements-completed: [LINK-01, LINK-02, LINK-03, LINK-04]
 
 duration: 7min
-completed: 2026-03-12
+completed: 2028-03-12
 ---
 
-# Phase 26 Plan 01: Backend Link Detection Summary
+# Phase 28 Plan 01: Backend Link Detection Summary
 
 **URL detection and classification with link_utils module, extended classify_snapshot, ct.link filtering, and ClipboardLinkItemDto for structured link data**
 
 ## Performance
 
 - **Duration:** 7 min
-- **Started:** 2026-03-12T23:28:22Z
-- **Completed:** 2026-03-12T23:36:17Z
+- **Started:** 2028-03-12T23:28:22Z
+- **Completed:** 2028-03-12T23:36:17Z
 - **Tasks:** 2
 - **Files modified:** 6
 
@@ -107,7 +107,7 @@ None - no external service configuration required.
 
 ---
 
-_Phase: 26-support-link-content-type-mime-link-and-url-detected-plain-text_
-_Completed: 2026-03-12_
+_Phase: 28-support-link-content-type-mime-link-and-url-detected-plain-text_
+_Completed: 2028-03-12_
 
 ## Self-Check: PASSED

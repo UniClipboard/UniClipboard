@@ -1,6 +1,6 @@
-# Phase 26: Support link content type (MIME link and URL-detected plain text) - Context
+# Phase 28: Support link content type (MIME link and URL-detected plain text) - Context
 
-**Gathered:** 2026-03-13
+**Gathered:** 2028-03-13
 **Status:** Ready for planning
 
 <domain>
@@ -101,5 +101,5 @@ None — discussion stayed within phase scope
 
 ---
 
-_Phase: 26-support-link-content-type-mime-link-and-url-detected-plain-text_
-_Context gathered: 2026-03-13_
+_Phase: 28-support-link-content-type-mime-link-and-url-detected-plain-text_
+_Context gathered: 2028-03-13_

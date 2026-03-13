@@ -1,12 +1,12 @@
-# Phase 26: Support link content type - Research
+# Phase 28: Support link content type - Research
 
-**Researched:** 2026-03-13
+**Researched:** 2028-03-13
 **Domain:** Clipboard link content type detection, extraction, display, and sync filtering
 **Confidence:** HIGH
 
 ## Summary
 
-Phase 26 makes the link content type fully functional across the entire pipeline. The work is well-scoped: extend `classify_snapshot` to detect URLs in plain text, extract link metadata during capture, populate the `link` field in `ClipboardItemDto`, update the frontend display for links (including multi-URL), and activate the link sync toggle.
+Phase 28 makes the link content type fully functional across the entire pipeline. The work is well-scoped: extend `classify_snapshot` to detect URLs in plain text, extract link metadata during capture, populate the `link` field in `ClipboardItemDto`, update the frontend display for links (including multi-URL), and activate the link sync toggle.
 
 The codebase already has all the scaffolding in place: `ContentTypeCategory::Link` exists, `ClipboardItemDto.link` field exists (always `None`), frontend `ClipboardPreview` already renders link type, and `DeviceSettingsPanel` has the link toggle (currently "coming soon"). The work is primarily connecting these existing pieces with real data flow.
 
@@ -344,9 +344,9 @@ case 'link': {
 
 | Old Approach                   | Current Approach                | When Changed | Impact                        |
 | ------------------------------ | ------------------------------- | ------------ | ----------------------------- |
-| Link always `None` in DTO      | Populated from content          | Phase 26     | Links visible in Dashboard    |
-| Link toggle "coming soon"      | Link toggle interactive         | Phase 26     | Users can filter link sync    |
-| Only MIME-based link detection | MIME + plain text URL detection | Phase 26     | More links captured correctly |
+| Link always `None` in DTO      | Populated from content          | Phase 28     | Links visible in Dashboard    |
+| Link toggle "coming soon"      | Link toggle interactive         | Phase 28     | Users can filter link sync    |
+| Only MIME-based link detection | MIME + plain text URL detection | Phase 28     | More links captured correctly |
 
 ## Open Questions
 
@@ -384,5 +384,5 @@ case 'link': {
 - Architecture: HIGH - clear pattern from existing text/image handling, straightforward extension
 - Pitfalls: HIGH - identified from direct code reading, all integration points inspected
 
-**Research date:** 2026-03-13
+**Research date:** 2028-03-13
 **Valid until:** 2026-04-13 (stable domain, no external API dependencies)

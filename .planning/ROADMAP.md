@@ -195,7 +195,7 @@ Plans:
 5. All-disabled warning appears when auto_sync is on but all content types are off.
 6. ContentTypes defaults to all-true so new devices sync everything by default.
 
-### Phase 26: Support link content type (MIME link and URL-detected plain text)
+### Phase 28: Support link content type (MIME link and URL-detected plain text)
 
 **Goal:** Link content type is fully functional across the pipeline: classification detects both text/uri-list and single-URL plain text, sync filtering respects the link toggle, and the Dashboard displays links with clickable URLs and domain information.
 **Requirements**: LINK-01, LINK-02, LINK-03, LINK-04, LINK-05, LINK-06, LINK-07
@@ -204,8 +204,8 @@ Plans:
 
 Plans:
 
-- [ ] 26-01-PLAN.md — Backend link detection, classification, utility functions, and DTO population
-- [ ] 26-02-PLAN.md — Frontend link display, multi-URL rendering, and sync toggle activation
+- [ ] 28-01-PLAN.md — Backend link detection, classification, utility functions, and DTO population
+- [ ] 28-02-PLAN.md — Frontend link display, multi-URL rendering, and sync toggle activation
 
 **Success Criteria** (what must be TRUE):
 

@@ -102,13 +102,13 @@ Which phases cover which requirements.
 | CT-05       | Phase 25 | Planned  |
 | CT-06       | Phase 25 | Planned  |
 | CT-07       | Phase 25 | Planned  |
-| LINK-01     | Phase 26 | Planned  |
-| LINK-02     | Phase 26 | Planned  |
-| LINK-03     | Phase 26 | Planned  |
-| LINK-04     | Phase 26 | Planned  |
-| LINK-05     | Phase 26 | Planned  |
-| LINK-06     | Phase 26 | Planned  |
-| LINK-07     | Phase 26 | Planned  |
+| LINK-01     | Phase 28 | Planned  |
+| LINK-02     | Phase 28 | Planned  |
+| LINK-03     | Phase 28 | Planned  |
+| LINK-04     | Phase 28 | Planned  |
+| LINK-05     | Phase 28 | Planned  |
+| LINK-06     | Phase 28 | Planned  |
+| LINK-07     | Phase 28 | Planned  |
 
 **Coverage:**
 

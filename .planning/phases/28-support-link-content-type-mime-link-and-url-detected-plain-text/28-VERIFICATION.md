@@ -1,15 +1,15 @@
 ---
-phase: 26-support-link-content-type-mime-link-and-url-detected-plain-text
-verified: 2026-03-13T00:00:00Z
+phase: 28-support-link-content-type-mime-link-and-url-detected-plain-text
+verified: 2028-03-13T00:00:00Z
 status: passed
 score: 11/11 must-haves verified
 re_verification: false
 ---
 
-# Phase 26: Support Link Content Type Verification Report
+# Phase 28: Support Link Content Type Verification Report
 
 **Phase Goal:** Support link content type (MIME link and URL-detected plain text)
-**Verified:** 2026-03-13
+**Verified:** 2028-03-13
 **Status:** passed
 **Re-verification:** No - initial verification
 
@@ -58,13 +58,13 @@ re_verification: false
 
 | Requirement | Source Plan | Description                                                                                            | Status    | Evidence                                                                                                   |
 | ----------- | ----------- | ------------------------------------------------------------------------------------------------------ | --------- | ---------------------------------------------------------------------------------------------------------- |
-| LINK-01     | 26-01       | Plain text clipboard content that is a single valid URL is classified as Link                          | SATISFIED | `is_single_url` in classify_snapshot text/plain branch; 5 tests passing                                    |
-| LINK-02     | 26-01       | is_content_type_allowed respects ct.link toggle for Link content                                       | SATISFIED | `ContentTypeCategory::Link => ct.link` in is_content_type_allowed; 2 tests passing                         |
-| LINK-03     | 26-01       | text/uri-list content parsed per RFC 2483 with comments skipped                                        | SATISFIED | `parse_uri_list` in link_utils.rs; test `parse_uri_list_with_comments_and_blanks` passes                   |
-| LINK-04     | 26-01       | get_clipboard_item returns ClipboardLinkItemDto with urls and domains                                  | SATISFIED | is_uri_list/is_plain_url branches in get_clipboard_item build typed DTO                                    |
-| LINK-05     | 26-02       | Dashboard list view shows link entries with clickable first URL and "+N more" badge                    | SATISFIED | ClipboardItemRow.tsx: urls[0] preview text + badge when urls.length > 1                                    |
-| LINK-06     | 26-02       | Dashboard detail panel shows all URLs with domain names and character count                            | SATISFIED | ClipboardPreview.tsx: link case renders all URLs + domains info in renderInformation                       |
-| LINK-07     | 26-02       | Link sync toggle in DeviceSettingsPanel is interactive, file/code_snippet/rich_text remain Coming Soon | SATISFIED | Line 21 of DeviceSettingsPanel.tsx: link is 'editable'; file, code_snippet, rich_text remain 'coming_soon' |
+| LINK-01     | 28-01       | Plain text clipboard content that is a single valid URL is classified as Link                          | SATISFIED | `is_single_url` in classify_snapshot text/plain branch; 5 tests passing                                    |
+| LINK-02     | 28-01       | is_content_type_allowed respects ct.link toggle for Link content                                       | SATISFIED | `ContentTypeCategory::Link => ct.link` in is_content_type_allowed; 2 tests passing                         |
+| LINK-03     | 28-01       | text/uri-list content parsed per RFC 2483 with comments skipped                                        | SATISFIED | `parse_uri_list` in link_utils.rs; test `parse_uri_list_with_comments_and_blanks` passes                   |
+| LINK-04     | 28-01       | get_clipboard_item returns ClipboardLinkItemDto with urls and domains                                  | SATISFIED | is_uri_list/is_plain_url branches in get_clipboard_item build typed DTO                                    |
+| LINK-05     | 28-02       | Dashboard list view shows link entries with clickable first URL and "+N more" badge                    | SATISFIED | ClipboardItemRow.tsx: urls[0] preview text + badge when urls.length > 1                                    |
+| LINK-06     | 28-02       | Dashboard detail panel shows all URLs with domain names and character count                            | SATISFIED | ClipboardPreview.tsx: link case renders all URLs + domains info in renderInformation                       |
+| LINK-07     | 28-02       | Link sync toggle in DeviceSettingsPanel is interactive, file/code_snippet/rich_text remain Coming Soon | SATISFIED | Line 21 of DeviceSettingsPanel.tsx: link is 'editable'; file, code_snippet, rich_text remain 'coming_soon' |
 
 ### Anti-Patterns Found
 
@@ -101,5 +101,5 @@ No gaps found. All 11 observable truths are verified against the actual codebase
 
 ---
 
-_Verified: 2026-03-13_
+_Verified: 2028-03-13_
 _Verifier: Claude (gsd-verifier)_

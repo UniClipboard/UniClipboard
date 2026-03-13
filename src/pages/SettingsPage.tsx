@@ -40,10 +40,14 @@ function SettingsPage() {
   }, [])
 
   useEffect(() => {
-    if (location.state && (location.state as { category?: string }).category) {
-      window.history.replaceState({}, '')
+    const state = location.state as ({ category?: string } & Record<string, unknown>) | null
+
+    if (state?.category) {
+      const newState = { ...state }
+      delete newState.category
+      navigate(location.pathname, { replace: true, state: newState })
     }
-  }, [location.state])
+  }, [location.pathname, location.state, navigate])
 
   const handleCategoryChange = (category: string) => {
     setActiveCategory(category)

@@ -118,6 +118,25 @@ mod tests {
     }
 }
 
+/// Setting changed event emitted to frontend
+/// 发送到前端的设置变更事件
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SettingChangedEvent {
+    pub setting_json: String,
+    pub timestamp: u64,
+}
+
+/// Forward setting changed event to all windows
+/// 将设置变更事件转发到所有窗口
+pub fn forward_setting_changed_event<R: tauri::Runtime>(
+    app: &AppHandle<R>,
+    event: SettingChangedEvent,
+) -> Result<(), Box<dyn std::error::Error>> {
+    app.emit("setting-changed", event)?;
+    Ok(())
+}
+
 /// Forward clipboard event to frontend
 /// 将剪贴板事件转发到前端
 pub fn forward_clipboard_event<R: tauri::Runtime>(

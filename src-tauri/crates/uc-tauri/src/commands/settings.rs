@@ -4,8 +4,10 @@
 use crate::bootstrap::{resolve_pairing_device_name, AppRuntime};
 use crate::commands::error::CommandError;
 use crate::commands::record_trace_fields;
+use crate::events::{forward_setting_changed_event, SettingChangedEvent};
 use serde_json::Value;
 use std::sync::Arc;
+use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::State;
 use tracing::{info_span, Instrument};
 use uc_core::settings::model::Settings;
@@ -56,6 +58,7 @@ pub async fn get_settings(
 /// - `settings`: JSON value containing settings to update
 #[tauri::command]
 pub async fn update_settings(
+    app_handle: tauri::AppHandle,
     runtime: State<'_, Arc<AppRuntime>>,
     settings: Value,
     _trace: Option<TraceMetadata>,
@@ -131,6 +134,22 @@ pub async fn update_settings(
                 tracing::error!(error = %e, "Failed to announce device name after settings update");
                 CommandError::InternalError(e.to_string())
             })?;
+        }
+
+        // Broadcast setting-changed event to all windows (quick panel, preview panel, etc.)
+        let setting_json = serde_json::to_string(&parsed_settings).unwrap_or_default();
+        let timestamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as u64;
+        if let Err(e) = forward_setting_changed_event(
+            &app_handle,
+            SettingChangedEvent {
+                setting_json,
+                timestamp,
+            },
+        ) {
+            tracing::warn!(error = %e, "Failed to broadcast setting-changed event");
         }
 
         tracing::info!("Settings updated successfully");

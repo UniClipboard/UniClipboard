@@ -1,9 +1,11 @@
 import { Database, FolderOpen, HardDrive, RefreshCw } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import ClearHistoryDialog from './ClearHistoryDialog'
 import { SettingGroup } from './SettingGroup'
 import { SettingRow } from './SettingRow'
+import * as storageApi from '@/api/storage'
+import type { StorageStats } from '@/api/storage'
 import {
   Button,
   Switch,
@@ -16,19 +18,7 @@ import {
 import { Skeleton } from '@/components/ui/skeleton'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { useSetting } from '@/hooks/useSetting'
-import { invokeWithTrace } from '@/lib/tauri-command'
 import type { RetentionRule } from '@/types/setting'
-
-// ── Types ────────────────────────────────────────────────────────────
-
-interface StorageStats {
-  databaseBytes: number
-  vaultBytes: number
-  cacheBytes: number
-  logsBytes: number
-  totalBytes: number
-  dataDir: string
-}
 
 // ── Constants ────────────────────────────────────────────────────────
 
@@ -272,6 +262,9 @@ const StorageSection: React.FC = () => {
   const [maxItems, setMaxItems] = useState('500')
   const [skipPinned, setSkipPinned] = useState(true)
 
+  // Optimistic rules ref to avoid stale reads when rapidly changing both rules
+  const optimisticRulesRef = useRef<RetentionRule[]>([])
+
   // Storage stats state
   const [stats, setStats] = useState<StorageStats | null>(null)
   const [statsLoading, setStatsLoading] = useState(true)
@@ -288,7 +281,7 @@ const StorageSection: React.FC = () => {
     setStatsLoading(true)
     setStatsError(null)
     try {
-      const result = await invokeWithTrace<StorageStats>('get_storage_stats')
+      const result = await storageApi.getStorageStats()
       setStats(result)
     } catch (err) {
       console.error('Failed to load storage stats:', err)
@@ -337,6 +330,7 @@ const StorageSection: React.FC = () => {
 
     setEnabled(rp.enabled)
     setSkipPinned(rp.skip_pinned)
+    optimisticRulesRef.current = rp.rules
 
     const ageSecs = getByAgeSecs(rp.rules)
     if (ageSecs !== null) {
@@ -370,11 +364,15 @@ const StorageSection: React.FC = () => {
     setRetentionDays(value)
     if (!setting?.retention_policy) return
     const days = RETENTION_DAYS_OPTIONS.find(o => o.value === value)?.days ?? 30
+    const prevRules = optimisticRulesRef.current
+    const newRules = setByAgeRule(prevRules, days)
+    optimisticRulesRef.current = newRules
     try {
-      await updateRetentionPolicy({ rules: setByAgeRule(setting.retention_policy.rules, days) })
+      await updateRetentionPolicy({ rules: newRules })
     } catch (err) {
       console.error('Failed to update retention days:', err)
       setRetentionDays(prev)
+      optimisticRulesRef.current = prevRules
     }
   }
 
@@ -383,11 +381,15 @@ const StorageSection: React.FC = () => {
     setMaxItems(value)
     if (!setting?.retention_policy) return
     const count = MAX_ITEMS_OPTIONS.find(o => o.value === value)?.count ?? 500
+    const prevRules = optimisticRulesRef.current
+    const newRules = setByCountRule(prevRules, count)
+    optimisticRulesRef.current = newRules
     try {
-      await updateRetentionPolicy({ rules: setByCountRule(setting.retention_policy.rules, count) })
+      await updateRetentionPolicy({ rules: newRules })
     } catch (err) {
       console.error('Failed to update max items:', err)
       setMaxItems(prev)
+      optimisticRulesRef.current = prevRules
     }
   }
 
@@ -405,7 +407,7 @@ const StorageSection: React.FC = () => {
   const handleClearCache = async () => {
     setClearingCache(true)
     try {
-      await invokeWithTrace('clear_cache')
+      await storageApi.clearCache()
       await loadStats()
     } catch (err) {
       console.error('Failed to clear cache:', err)
@@ -417,7 +419,7 @@ const StorageSection: React.FC = () => {
   const handleClearHistory = async () => {
     setClearingHistory(true)
     try {
-      await invokeWithTrace('clear_all_clipboard_history')
+      await storageApi.clearAllClipboardHistory()
       await loadStats()
     } catch (err) {
       console.error('Failed to clear history:', err)
@@ -429,7 +431,7 @@ const StorageSection: React.FC = () => {
 
   const handleOpenDataDir = async () => {
     try {
-      await invokeWithTrace('open_data_directory')
+      await storageApi.openDataDirectory()
     } catch (err) {
       console.error('Failed to open data directory:', err)
     }

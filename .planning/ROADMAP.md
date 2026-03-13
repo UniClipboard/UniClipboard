@@ -206,3 +206,14 @@ Plans:
 
 - [x] 26-01-PLAN.md — Backend global auto_sync guard in sync engine + i18n keys and description copy
 - [x] 26-02-PLAN.md — Frontend warning banner, cascade disable, and Settings navigation
+
+### Phase 27: 支持快捷键设置在 settings page 中
+
+**Goal:** [To be planned]
+**Requirements**: TBD
+**Depends on:** Phase 26
+**Plans:** 0 plans
+
+Plans:
+
+- [ ] TBD (run /gsd:plan-phase 27 to break down)

@@ -115,6 +115,7 @@ Recent decisions affecting current work:
 - Phase 24 added: Implement per-device sync settings for paired devices
 - Phase 25 added: Implement per-device sync content type toggles
 - Phase 26 added: Implement global sync master toggle and improve sync UX
+- Phase 27 added: 支持快捷键设置在 settings page 中
 
 ### Pending Todos
 

@@ -269,11 +269,12 @@ const ClipboardPreview: React.FC<ClipboardPreviewProps> = ({ item }) => {
 
     if (item.type === 'link' && item.content) {
       const linkItem = item.content as ClipboardLinkItem
-      const domainStr = linkItem.domains.filter(Boolean).join(', ')
+      const uniqueDomains = [...new Set(linkItem.domains.filter(Boolean))]
+      const domainStr = uniqueDomains.join(', ')
       if (domainStr) {
         rows.push({
           label:
-            linkItem.domains.length > 1
+            uniqueDomains.length > 1
               ? t('clipboard.preview.domains', 'Domains')
               : t('clipboard.preview.domain', 'Domain'),
           value: domainStr,

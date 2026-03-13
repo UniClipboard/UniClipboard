@@ -8864,6 +8864,7 @@ dependencies = [
  "toml 0.8.23",
  "tracing",
  "twox-hash",
+ "url",
  "uuid",
  "zeroize",
 ]

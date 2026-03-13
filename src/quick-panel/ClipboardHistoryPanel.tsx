@@ -149,6 +149,10 @@ async function pasteToApp(): Promise<void> {
   await invoke('paste_to_previous_app')
 }
 
+// ── Platform detection ─────────────────────────────────────────────────
+
+const isMac = navigator.platform.toUpperCase().includes('MAC')
+
 // ── Components ─────────────────────────────────────────────────────────
 
 interface PanelItemProps {
@@ -156,9 +160,16 @@ interface PanelItemProps {
   isSelected: boolean
   onClick: () => void
   itemRef?: React.Ref<HTMLDivElement>
+  shortcutKey?: string
 }
 
-const PanelItem: React.FC<PanelItemProps> = ({ item, isSelected, onClick, itemRef }) => {
+const PanelItem: React.FC<PanelItemProps> = ({
+  item,
+  isSelected,
+  onClick,
+  itemRef,
+  shortcutKey,
+}) => {
   const Icon = typeIcons[item.type] ?? FileText
 
   return (
@@ -187,6 +198,19 @@ const PanelItem: React.FC<PanelItemProps> = ({ item, isSelected, onClick, itemRe
       >
         {item.time}
       </span>
+      {shortcutKey && (
+        <kbd
+          className={[
+            'text-[10px] leading-none px-1 py-0.5 rounded border shrink-0 font-mono',
+            isSelected
+              ? 'border-primary-foreground/30 text-primary-foreground/70'
+              : 'border-border text-muted-foreground',
+          ].join(' ')}
+        >
+          {isMac ? '⌘' : '⌃'}
+          {shortcutKey}
+        </kbd>
+      )}
     </div>
   )
 }
@@ -322,6 +346,16 @@ const ClipboardHistoryPanel: React.FC = () => {
   // Keyboard navigation
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // ⌘/Ctrl + 1~0: quick paste the Nth item
+      if ((e.metaKey || e.ctrlKey) && e.key >= '0' && e.key <= '9') {
+        e.preventDefault()
+        const index = e.key === '0' ? 9 : parseInt(e.key) - 1
+        if (index < filteredItems.length) {
+          handleSelect(index)
+        }
+        return
+      }
+
       switch (e.key) {
         case 'ArrowDown':
           e.preventDefault()
@@ -388,6 +422,7 @@ const ClipboardHistoryPanel: React.FC = () => {
               item={item}
               isSelected={index === selectedIndex}
               onClick={() => handleSelect(index)}
+              shortcutKey={index < 10 ? (index === 9 ? '0' : String(index + 1)) : undefined}
               itemRef={el => {
                 if (el) {
                   itemRefs.current.set(index, el)
@@ -402,8 +437,8 @@ const ClipboardHistoryPanel: React.FC = () => {
 
       {/* Footer hint */}
       <div className="flex items-center justify-between px-3 py-1.5 border-t border-border/50 text-[11px] text-muted-foreground">
-        <span>↑↓ navigate</span>
-        <span>⏎ paste · esc close</span>
+        <span>{isMac ? '⌘' : '⌃'}1-0 paste</span>
+        <span>↑↓ navigate · ⏎ paste · esc close</span>
       </div>
     </div>
   )

@@ -2,6 +2,11 @@
 @source "../**/*.{ts,tsx,html}";
 @source "../../index.html";
 @import './decorum.css';
+@import 'tw-animate-css';
+@import 'shadcn/tailwind.css';
+@import '@fontsource-variable/inter';
+@import '@fontsource/jetbrains-mono';
+@import '@fontsource-variable/noto-sans-sc';
 
 @custom-variant dark (&:is(.dark *));
 
@@ -256,12 +261,7 @@
   --radius-4xl: calc(var(--radius) + 16px);
 }
 
-@import 'tw-animate-css';
-@import 'shadcn/tailwind.css';
 @plugin "@tailwindcss/typography";
-@import '@fontsource-variable/inter';
-@import '@fontsource/jetbrains-mono';
-@import '@fontsource-variable/noto-sans-sc';
 
 /* 玻璃态效果 */
 @layer utilities {

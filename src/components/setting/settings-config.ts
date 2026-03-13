@@ -1,4 +1,5 @@
 import {
+  Command,
   HardDrive,
   Info,
   Palette,
@@ -14,6 +15,7 @@ import AppearanceSection from './AppearanceSection'
 import GeneralSection from './GeneralSection'
 import NetworkSection from './NetworkSection'
 import SecuritySection from './SecuritySection'
+import ShortcutsSection from './ShortcutsSection'
 import StorageSection from './StorageSection'
 import SyncSection from './SyncSection'
 
@@ -33,6 +35,11 @@ export const SETTINGS_CATEGORIES: SettingsCategory[] = [
     id: 'appearance',
     icon: Palette,
     Component: AppearanceSection,
+  },
+  {
+    id: 'shortcuts',
+    icon: Command,
+    Component: ShortcutsSection,
   },
   {
     id: 'sync',

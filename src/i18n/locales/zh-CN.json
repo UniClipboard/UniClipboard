@@ -38,7 +38,8 @@
       "security": "安全与隐私",
       "network": "网络设置",
       "storage": "存储管理",
-      "about": "关于"
+      "about": "关于",
+      "shortcuts": "快捷键"
     },
     "sections": {
       "general": {
@@ -222,6 +223,25 @@
         },
         "loadError": "加载存储设置失败：",
         "placeholder": "存储设置尚不可用。"
+      },
+      "shortcuts": {
+        "title": "快捷键",
+        "description": "自定义键盘快捷键",
+        "scope": {
+          "global": "全局",
+          "clipboard": "剪贴板",
+          "settings": "设置",
+          "devices": "设备",
+          "modal": "模态框"
+        },
+        "edit": "编辑",
+        "reset": "恢复默认",
+        "resetAll": "重置所有快捷键",
+        "recording": "请按快捷键...",
+        "conflict": "与 {{name}} 冲突",
+        "confirmOverride": "仍然应用（清除冲突）",
+        "cancel": "取消",
+        "modified": "已修改"
       },
       "about": {
         "title": "关于",

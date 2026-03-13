@@ -38,7 +38,8 @@
       "security": "Security & Privacy",
       "network": "Network",
       "storage": "Storage",
-      "about": "About"
+      "about": "About",
+      "shortcuts": "Shortcuts"
     },
     "sections": {
       "general": {
@@ -222,6 +223,25 @@
         },
         "loadError": "Failed to load storage settings:",
         "placeholder": "Storage settings are not yet available."
+      },
+      "shortcuts": {
+        "title": "Shortcuts",
+        "description": "Customize keyboard shortcuts",
+        "scope": {
+          "global": "Global",
+          "clipboard": "Clipboard",
+          "settings": "Settings",
+          "devices": "Devices",
+          "modal": "Modal"
+        },
+        "edit": "Edit",
+        "reset": "Reset to default",
+        "resetAll": "Reset All Shortcuts",
+        "recording": "Press keys...",
+        "conflict": "Conflicts with: {{name}}",
+        "confirmOverride": "Apply anyway (clears conflict)",
+        "cancel": "Cancel",
+        "modified": "Modified"
       },
       "about": {
         "title": "About",

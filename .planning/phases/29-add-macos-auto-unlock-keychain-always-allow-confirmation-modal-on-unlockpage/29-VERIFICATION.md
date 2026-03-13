@@ -1,5 +1,5 @@
 ---
-phase: 26-add-macos-auto-unlock-keychain-always-allow-confirmation-modal-on-unlockpage
+phase: 29-add-macos-auto-unlock-keychain-always-allow-confirmation-modal-on-unlockpage
 verified: 2026-03-13T00:00:00Z
 status: human_needed
 score: 6/6 must-haves verified
@@ -25,7 +25,7 @@ human_verification:
     why_human: 'Visual presence of existing hint requires visual inspection on macOS'
 ---
 
-# Phase 26: Add macOS Auto-Unlock Keychain Always Allow Confirmation Modal Verification Report
+# Phase 29: Add macOS Auto-Unlock Keychain Always Allow Confirmation Modal Verification Report
 
 **Phase Goal:** When macOS users toggle auto-unlock ON, a confirmation modal guides them through granting "Always Allow" in the Keychain popup and verifies the permission was granted before enabling auto-unlock. Non-macOS platforms skip the modal entirely.
 **Verified:** 2026-03-13
@@ -72,14 +72,14 @@ human_verification:
 
 | Requirement | Source Plan | Description                                                 | Status                   | Evidence                                                                     |
 | ----------- | ----------- | ----------------------------------------------------------- | ------------------------ | ---------------------------------------------------------------------------- |
-| KC-01       | 26-01       | verify_keychain_access Tauri command exists and is callable | SATISFIED                | Command registered in main.rs:816, implemented in encryption.rs:908          |
-| KC-02       | 26-01       | Command calls load_kek(), returns true/false/error          | SATISFIED                | use case execute() maps EncryptionError variants to Ok(true)/Ok(false)/Err   |
-| KC-03       | 26-02       | macOS modal appears when toggling auto-unlock ON            | SATISFIED (programmatic) | isMac guard + setShowKeychainModal(true) wired; runtime behavior needs human |
-| KC-04       | 26-02       | Cancel closes modal, switch stays OFF                       | SATISFIED (programmatic) | handleKeychainCancel does not call updateSecuritySetting                     |
-| KC-05       | 26-02       | Verification failure shows red error, modal stays open      | SATISFIED (programmatic) | regular Button (not AlertDialogAction) + verifyError state display           |
-| KC-06       | 26-02       | Non-macOS platforms bypass modal                            | SATISFIED (programmatic) | `if (checked && isMac)` guard; non-macOS falls through                       |
+| KC-01       | 29-01       | verify_keychain_access Tauri command exists and is callable | SATISFIED                | Command registered in main.rs:816, implemented in encryption.rs:908          |
+| KC-02       | 29-01       | Command calls load_kek(), returns true/false/error          | SATISFIED                | use case execute() maps EncryptionError variants to Ok(true)/Ok(false)/Err   |
+| KC-03       | 29-02       | macOS modal appears when toggling auto-unlock ON            | SATISFIED (programmatic) | isMac guard + setShowKeychainModal(true) wired; runtime behavior needs human |
+| KC-04       | 29-02       | Cancel closes modal, switch stays OFF                       | SATISFIED (programmatic) | handleKeychainCancel does not call updateSecuritySetting                     |
+| KC-05       | 29-02       | Verification failure shows red error, modal stays open      | SATISFIED (programmatic) | regular Button (not AlertDialogAction) + verifyError state display           |
+| KC-06       | 29-02       | Non-macOS platforms bypass modal                            | SATISFIED (programmatic) | `if (checked && isMac)` guard; non-macOS falls through                       |
 
-**Note:** KC-01 through KC-06 are defined only in ROADMAP.md and not present in REQUIREMENTS.md. These are phase-local requirements. No orphaned REQUIREMENTS.md entries for Phase 26.
+**Note:** KC-01 through KC-06 are defined only in ROADMAP.md and not present in REQUIREMENTS.md. These are phase-local requirements. No orphaned REQUIREMENTS.md entries for Phase 29.
 
 ### Anti-Patterns Found
 

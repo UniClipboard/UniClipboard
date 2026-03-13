@@ -1,4 +1,4 @@
-# Phase 26: Add macOS auto-unlock keychain Always Allow confirmation modal on UnlockPage - Research
+# Phase 29: Add macOS auto-unlock keychain Always Allow confirmation modal on UnlockPage - Research
 
 **Researched:** 2026-03-13
 **Domain:** macOS Keychain permission verification + React modal UI

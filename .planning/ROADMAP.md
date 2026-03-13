@@ -195,7 +195,7 @@ Plans:
 5. All-disabled warning appears when auto_sync is on but all content types are off.
 6. ContentTypes defaults to all-true so new devices sync everything by default.
 
-### Phase 26: Add macOS auto-unlock keychain Always Allow confirmation modal on UnlockPage
+### Phase 29: Add macOS auto-unlock keychain Always Allow confirmation modal on UnlockPage
 
 **Goal:** When macOS users toggle auto-unlock ON, a confirmation modal guides them through granting "Always Allow" in the Keychain popup and verifies the permission was granted before enabling auto-unlock. Non-macOS platforms skip the modal entirely.
 **Requirements**: KC-01, KC-02, KC-03, KC-04, KC-05, KC-06
@@ -204,8 +204,8 @@ Plans:
 
 Plans:
 
-- [ ] 26-01-PLAN.md — Backend VerifyKeychainAccess use case, Tauri command, and runtime wiring
-- [ ] 26-02-PLAN.md — Frontend API, AlertDialog modal, i18n strings, and UnlockPage integration
+- [ ] 29-01-PLAN.md — Backend VerifyKeychainAccess use case, Tauri command, and runtime wiring
+- [ ] 29-02-PLAN.md — Frontend API, AlertDialog modal, i18n strings, and UnlockPage integration
 
 **Success Criteria** (what must be TRUE):
 

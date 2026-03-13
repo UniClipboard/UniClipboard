@@ -1,5 +1,5 @@
 ---
-phase: 26-add-macos-auto-unlock-keychain-always-allow-confirmation-modal-on-unlockpage
+phase: 29-add-macos-auto-unlock-keychain-always-allow-confirmation-modal-on-unlockpage
 plan: 01
 subsystem: security
 tags: [keychain, macos, keyring, encryption, tauri-command]
@@ -12,7 +12,7 @@ provides:
   - VerifyKeychainAccess use case for lightweight KEK load check
   - verify_keychain_access Tauri command callable from frontend
 
-affects: [26-02, frontend-unlock-page]
+affects: [29-02, frontend-unlock-page]
 
 tech-stack:
   added: []
@@ -40,7 +40,7 @@ duration: 4min
 completed: 2026-03-12
 ---
 
-# Phase 26 Plan 01: Backend Keychain Verification Summary
+# Phase 29 Plan 01: Backend Keychain Verification Summary
 
 **VerifyKeychainAccess use case and Tauri command for checking macOS Keychain Always Allow permission via lightweight load_kek probe**
 
@@ -97,5 +97,5 @@ None - no external service configuration required.
 
 ---
 
-_Phase: 26-add-macos-auto-unlock-keychain-always-allow-confirmation-modal-on-unlockpage_
+_Phase: 29-add-macos-auto-unlock-keychain-always-allow-confirmation-modal-on-unlockpage_
 _Completed: 2026-03-12_

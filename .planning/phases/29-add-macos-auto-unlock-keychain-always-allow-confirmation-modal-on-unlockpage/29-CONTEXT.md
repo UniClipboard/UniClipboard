@@ -1,4 +1,4 @@
-# Phase 26: Add macOS auto-unlock keychain Always Allow confirmation modal on UnlockPage - Context
+# Phase 29: Add macOS auto-unlock keychain Always Allow confirmation modal on UnlockPage - Context
 
 **Gathered:** 2026-03-13
 **Status:** Ready for planning
@@ -96,5 +96,5 @@ None — discussion stayed within phase scope
 
 ---
 
-_Phase: 26-add-macos-auto-unlock-keychain-always-allow-confirmation-modal-on-unlockpage_
+_Phase: 29-add-macos-auto-unlock-keychain-always-allow-confirmation-modal-on-unlockpage_
 _Context gathered: 2026-03-13_

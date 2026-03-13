@@ -1,11 +1,11 @@
 ---
-phase: 26-add-macos-auto-unlock-keychain-always-allow-confirmation-modal-on-unlockpage
+phase: 29-add-macos-auto-unlock-keychain-always-allow-confirmation-modal-on-unlockpage
 plan: 02
 subsystem: ui
 tags: [keychain, macos, alert-dialog, i18n, react, unlock-page]
 
 requires:
-  - phase: 26-01
+  - phase: 29-01
     provides: verify_keychain_access Tauri command for checking Always Allow status
 
 provides:
@@ -41,7 +41,7 @@ duration: 8min
 completed: 2026-03-13
 ---
 
-# Phase 26 Plan 02: Frontend Keychain Modal Summary
+# Phase 29 Plan 02: Frontend Keychain Modal Summary
 
 **AlertDialog confirmation modal on UnlockPage guiding macOS users through Keychain Always Allow grant with verification, error display, and retry**
 
@@ -112,12 +112,12 @@ None - no external service configuration required.
 
 ## Next Phase Readiness
 
-- Phase 26 complete: macOS Keychain Always Allow flow fully implemented end-to-end
+- Phase 29 complete: macOS Keychain Always Allow flow fully implemented end-to-end
 - Backend verification + frontend modal + i18n all in place
 
 ---
 
-_Phase: 26-add-macos-auto-unlock-keychain-always-allow-confirmation-modal-on-unlockpage_
+_Phase: 29-add-macos-auto-unlock-keychain-always-allow-confirmation-modal-on-unlockpage_
 _Completed: 2026-03-13_
 
 ## Self-Check: PASSED

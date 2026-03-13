@@ -21,6 +21,24 @@ pub fn is_single_url(text: &str) -> bool {
     Url::parse(trimmed).is_ok()
 }
 
+/// Check if the given text consists entirely of URLs (one per line).
+///
+/// Returns `true` when every non-empty line (after trimming) is a valid URL.
+/// Requires at least one URL to be present.
+pub fn is_all_urls(text: &str) -> bool {
+    let lines: Vec<&str> = text
+        .lines()
+        .map(|l| l.trim())
+        .filter(|l| !l.is_empty())
+        .collect();
+    if lines.is_empty() {
+        return false;
+    }
+    lines
+        .iter()
+        .all(|line| !line.contains(char::is_whitespace) && Url::parse(line).is_ok())
+}
+
 /// Parse a `text/uri-list` body per RFC 2483.
 ///
 /// Lines starting with `#` are comments and are skipped.
@@ -101,6 +119,33 @@ mod tests {
     fn parse_uri_list_with_comments_and_blanks() {
         let result = parse_uri_list("# comment\nhttps://a.com\n\nhttps://b.com");
         assert_eq!(result, vec!["https://a.com", "https://b.com"]);
+    }
+
+    // --- is_all_urls ---
+
+    #[test]
+    fn is_all_urls_multiline() {
+        assert!(is_all_urls("https://a.com\nhttps://b.com\nhttps://c.com"));
+    }
+
+    #[test]
+    fn is_all_urls_with_blank_lines() {
+        assert!(is_all_urls("https://a.com\n\nhttps://b.com\n"));
+    }
+
+    #[test]
+    fn is_all_urls_single_url() {
+        assert!(is_all_urls("https://a.com"));
+    }
+
+    #[test]
+    fn is_all_urls_mixed_content_false() {
+        assert!(!is_all_urls("https://a.com\nnot a url\nhttps://b.com"));
+    }
+
+    #[test]
+    fn is_all_urls_empty_false() {
+        assert!(!is_all_urls(""));
     }
 
     // --- extract_domain ---

@@ -129,13 +129,17 @@ export interface ClipboardStats {
  * The authoritative classification happens in the backend; this is only
  * needed for the projection path where we don't get a typed DTO.
  */
+const URL_RE = /^(https?:\/\/|ftp:\/\/|ftps:\/\/|mailto:)\S+$/
+
 function isLinkType(contentType: string, preview: string): boolean {
   if (contentType === 'text/uri-list') return true
   if (contentType.startsWith('text/plain')) {
     const trimmed = preview.trim()
-    if (/^(https?:\/\/|ftp:\/\/|ftps:\/\/|mailto:)\S+$/.test(trimmed)) {
-      return true
-    }
+    // Single URL
+    if (URL_RE.test(trimmed)) return true
+    // Multi-line: every non-empty line is a URL
+    const lines = trimmed.split(/\r?\n/).filter(l => l.trim().length > 0)
+    if (lines.length > 1 && lines.every(l => URL_RE.test(l.trim()))) return true
   }
   return false
 }
@@ -176,7 +180,13 @@ function transformProjectionToResponse(entry: ClipboardEntryProjection): Clipboa
       urls = parseUriList(entry.preview)
       if (urls.length === 0) urls = [entry.preview.trim()]
     } else {
-      urls = [entry.preview.trim()]
+      // Split multi-line plain text URLs
+      const lines = entry.preview
+        .trim()
+        .split(/\r?\n/)
+        .map(l => l.trim())
+        .filter(l => l.length > 0)
+      urls = lines.length > 1 ? lines : [entry.preview.trim()]
     }
     linkItem = {
       urls,

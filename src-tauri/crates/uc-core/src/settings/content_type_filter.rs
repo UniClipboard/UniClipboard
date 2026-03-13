@@ -1,5 +1,5 @@
 use super::model::ContentTypes;
-use crate::clipboard::link_utils::is_single_url;
+use crate::clipboard::link_utils::{is_all_urls, is_single_url};
 use crate::clipboard::SystemClipboardSnapshot;
 
 /// Categories of clipboard content determined by MIME type analysis.
@@ -28,9 +28,9 @@ pub fn classify_snapshot(snapshot: &SystemClipboardSnapshot) -> ContentTypeCateg
                 "text/html" => return ContentTypeCategory::RichText,
                 "text/uri-list" => return ContentTypeCategory::Link,
                 "text/plain" => {
-                    // Check if the plain text content is a single URL
+                    // Check if the plain text content is URL(s)
                     if let Ok(text) = std::str::from_utf8(&rep.bytes) {
-                        if is_single_url(text) {
+                        if is_single_url(text) || is_all_urls(text) {
                             return ContentTypeCategory::Link;
                         }
                     }
@@ -245,6 +245,15 @@ mod tests {
     fn classify_text_plain_mixed_content_as_text() {
         let snapshot = make_snapshot_with_bytes(Some("text/plain"), b"see https://github.com");
         assert_eq!(classify_snapshot(&snapshot), ContentTypeCategory::Text);
+    }
+
+    #[test]
+    fn classify_text_plain_multi_url_as_link() {
+        let snapshot = make_snapshot_with_bytes(
+            Some("text/plain"),
+            b"https://a.com\nhttps://b.com\nhttps://c.com",
+        );
+        assert_eq!(classify_snapshot(&snapshot), ContentTypeCategory::Link);
     }
 
     // --- Link toggle filtering ---

@@ -1,6 +1,7 @@
 @import 'tailwindcss' source(none);
 @source "../**/*.{ts,tsx,html}";
 @source "../../index.html";
+@source "../../quick-panel.html";
 @import './decorum.css';
 @import 'tw-animate-css';
 @import 'shadcn/tailwind.css';

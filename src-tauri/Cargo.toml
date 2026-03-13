@@ -28,6 +28,7 @@ uc-tauri = { path = "crates/uc-tauri" }
 # ===== Tauri 相关依赖 =====
 tauri = { version = "2", features = ["macos-private-api", "tray-icon"] }
 tauri-plugin-opener = "2"
+tauri-plugin-global-shortcut = "2"
 tauri-plugin-stronghold = "2"
 
 # ===== 异步运行时 =====
@@ -58,8 +59,9 @@ strip = true      # Remove debug symbols
 [target.'cfg(target_os = "macos")'.dependencies]
 objc = "0.2"
 objc2 = "0.6"
-objc2-app-kit = "0.3"
-objc2-foundation = { version = "0.3", features = ["objc2-core-foundation"] }
+objc2-app-kit = { version = "0.3", features = ["NSEvent", "NSScreen", "NSGraphics", "NSRunningApplication", "NSWorkspace"] }
+core-graphics = "0.24"
+objc2-foundation = { version = "0.3", features = ["objc2-core-foundation", "NSGeometry"] }
 
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 tauri-plugin-autostart = "2"

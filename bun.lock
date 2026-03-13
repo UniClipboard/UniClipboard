@@ -35,6 +35,7 @@
         "@sentry/react": "^10.36.0",
         "@tauri-apps/api": "^2.9.1",
         "@tauri-apps/plugin-autostart": "~2.5.1",
+        "@tauri-apps/plugin-global-shortcut": "^2.3.1",
         "@tauri-apps/plugin-log": "2.7.1",
         "@tauri-apps/plugin-opener": "^2.5.2",
         "@tauri-apps/plugin-stronghold": "~2.3.1",
@@ -638,6 +639,8 @@
     "@tauri-apps/cli-win32-x64-msvc": ["@tauri-apps/cli-win32-x64-msvc@2.9.6", "", { "os": "win32", "cpu": "x64" }, "sha512-ldWuWSSkWbKOPjQMJoYVj9wLHcOniv7diyI5UAJ4XsBdtaFB0pKHQsqw/ItUma0VXGC7vB4E9fZjivmxur60aw=="],
 
     "@tauri-apps/plugin-autostart": ["@tauri-apps/plugin-autostart@2.5.1", "", { "dependencies": { "@tauri-apps/api": "^2.8.0" } }, "sha512-zS/xx7yzveCcotkA+8TqkI2lysmG2wvQXv2HGAVExITmnFfHAdj1arGsbbfs3o6EktRHf6l34pJxc3YGG2mg7w=="],
+
+    "@tauri-apps/plugin-global-shortcut": ["@tauri-apps/plugin-global-shortcut@2.3.1", "", { "dependencies": { "@tauri-apps/api": "^2.8.0" } }, "sha512-vr40W2N6G63dmBPaha1TsBQLLURXG538RQbH5vAm0G/ovVZyXJrmZR1HF1W+WneNloQvwn4dm8xzwpEXRW560g=="],
 
     "@tauri-apps/plugin-log": ["@tauri-apps/plugin-log@2.7.1", "", { "dependencies": { "@tauri-apps/api": "^2.8.0" } }, "sha512-jdb+o0wxQc8PjnLktgGpOs9Dh1YupaOGDXzO+Y8peA1UZ1ep3eXv4E1oiJ7nIQVN0XUFDDhnn3aBszl8ijhR+A=="],
 

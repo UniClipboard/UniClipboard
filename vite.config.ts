@@ -10,6 +10,16 @@ const host = process.env.TAURI_DEV_HOST
 export default defineConfig(async () => ({
   plugins: [react(), tailwindcss()],
 
+  // Multi-page build: main app + clipboard panel
+  build: {
+    rollupOptions: {
+      input: {
+        main: resolve('./index.html'),
+        'quick-panel': resolve('./quick-panel.html'),
+      },
+    },
+  },
+
   // 添加路径别名配置
   resolve: {
     alias: {

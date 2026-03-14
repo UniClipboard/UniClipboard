@@ -14,7 +14,7 @@ import {
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { applyThemePreset, DEFAULT_THEME_COLOR } from '@/lib/theme-engine'
 import type { ThemeMode } from '@/lib/theme-engine'
-import type { SettingChangedEvent } from '@/types/events'
+import type { ClipboardEvent, SettingChangedEvent } from '@/types/events'
 import type { Settings } from '@/types/setting'
 
 // ── Types ──────────────────────────────────────────────────────────────
@@ -261,6 +261,9 @@ const ClipboardHistoryPanel: React.FC = () => {
   const itemRefs = useRef<Map<number, HTMLDivElement>>(new Map())
   const previewTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const deletingRef = useRef(false)
+  const visibleRef = useRef(false)
+  const throttleTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const lastReloadTimestampRef = useRef<number | undefined>(undefined)
 
   // ── Theme sync with main window settings ──
   const settingsRef = useRef<Settings | null>(null)
@@ -333,6 +336,7 @@ const ClipboardHistoryPanel: React.FC = () => {
 
     // Listen for panel show event to reload data and re-focus search
     const unlisten = listen('quick-panel://refresh', () => {
+      visibleRef.current = true
       setSearchQuery('')
       setSelectedIndex(0)
       setHoveredIndex(null)
@@ -349,9 +353,19 @@ const ClipboardHistoryPanel: React.FC = () => {
       setHoldMode(true)
     })
 
+    // Track visibility via focus/blur
+    const unlistenFocus = listen('tauri://focus', () => {
+      visibleRef.current = true
+    })
+    const unlistenBlur = listen('tauri://blur', () => {
+      visibleRef.current = false
+    })
+
     return () => {
       unlisten.then(fn => fn())
       unlistenHold.then(fn => fn())
+      unlistenFocus.then(fn => fn())
+      unlistenBlur.then(fn => fn())
     }
   }, [loadData])
 
@@ -371,6 +385,67 @@ const ClipboardHistoryPanel: React.FC = () => {
     )
 
     return () => {
+      unlistenPromise.then(fn => fn())
+    }
+  }, [loadData])
+
+  // Live clipboard event updates (only when panel is visible)
+  useEffect(() => {
+    const unlistenPromise = listen<ClipboardEvent>('clipboard://event', event => {
+      if (!visibleRef.current) return
+
+      if (event.payload.type === 'NewContent' && event.payload.entry_id) {
+        if (event.payload.origin === 'local') {
+          // Fetch the single new entry and prepend
+          invoke<ClipboardEntriesResponse>('get_clipboard_entry', {
+            entryId: event.payload.entry_id,
+          })
+            .then(response => {
+              if (response.status === 'not_ready' || response.entries.length === 0) return
+              const entry = response.entries[0]
+              const newItem: DisplayItem = {
+                id: entry.id,
+                type: resolveType(entry),
+                preview: getPreview(entry),
+                time: formatRelativeTime(entry.active_time),
+                activeTime: entry.active_time,
+                isFavorited: entry.is_favorited,
+              }
+              setItems(prev => [newItem, ...prev])
+            })
+            .catch(err => console.error('Failed to fetch new clipboard entry:', err))
+        } else {
+          // Remote event: throttled full reload
+          const now = Date.now()
+          const lastReload = lastReloadTimestampRef.current
+
+          if (lastReload === undefined || now - lastReload >= 300) {
+            lastReloadTimestampRef.current = now
+            if (throttleTimeoutRef.current) {
+              clearTimeout(throttleTimeoutRef.current)
+              throttleTimeoutRef.current = null
+            }
+            loadData()
+          } else if (!throttleTimeoutRef.current) {
+            const delay = 300 - (now - lastReload)
+            throttleTimeoutRef.current = setTimeout(() => {
+              lastReloadTimestampRef.current = Date.now()
+              loadData()
+              throttleTimeoutRef.current = null
+            }, delay)
+          }
+        }
+      } else if (event.payload.type === 'Deleted' && event.payload.entry_id) {
+        const deletedId = event.payload.entry_id
+        setItems(prev => prev.filter(i => i.id !== deletedId))
+      }
+    })
+
+    return () => {
+      if (throttleTimeoutRef.current) {
+        clearTimeout(throttleTimeoutRef.current)
+        throttleTimeoutRef.current = null
+      }
       unlistenPromise.then(fn => fn())
     }
   }, [loadData])
@@ -498,11 +573,14 @@ const ClipboardHistoryPanel: React.FC = () => {
   // Keyboard navigation
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // When locked, only allow Escape
+      // When locked, only allow Escape and Enter (unlock)
       if (isLocked) {
         if (e.key === 'Escape') {
           e.preventDefault()
           dismissPanel()
+        } else if (e.key === 'Enter' && !unlocking) {
+          e.preventDefault()
+          handleUnlock()
         }
         return
       }
@@ -565,7 +643,15 @@ const ClipboardHistoryPanel: React.FC = () => {
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [filteredItems.length, selectedIndex, handleSelect, handleDelete, isLocked])
+  }, [
+    filteredItems.length,
+    selectedIndex,
+    handleSelect,
+    handleDelete,
+    isLocked,
+    unlocking,
+    handleUnlock,
+  ])
 
   // Auto-focus search input
   useEffect(() => {

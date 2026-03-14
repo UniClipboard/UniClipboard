@@ -155,7 +155,20 @@ pub async fn update_settings(
                 new = %new_shortcut,
                 "Quick panel shortcut changed, re-registering"
             );
-            crate::quick_panel::update_global_shortcut(&app_handle, &old_shortcut, &new_shortcut);
+            if let Err(e) =
+                crate::quick_panel::update_global_shortcut(&app_handle, &old_shortcut, &new_shortcut)
+            {
+                tracing::error!(error = %e, "Failed to update global shortcut");
+                // Rollback: restore old settings so persisted state matches actual registered shortcut
+                let rollback_uc = runtime.usecases().update_settings();
+                if let Err(rb_err) = rollback_uc.execute(old_settings).await {
+                    tracing::error!(error = %rb_err, "Failed to rollback settings after shortcut update failure");
+                }
+                return Err(CommandError::InternalError(format!(
+                    "Failed to update shortcut: {}",
+                    e
+                )));
+            }
         }
 
         // Broadcast setting-changed event to all windows (quick panel, preview panel, etc.)

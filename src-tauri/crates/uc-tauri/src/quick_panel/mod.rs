@@ -244,29 +244,29 @@ pub fn normalize_shortcut_for_tauri(key: &str) -> String {
 /// Register a global shortcut that toggles the quick panel.
 ///
 /// 注册一个用于切换快捷面板的全局快捷键。
-pub fn register_global_shortcut(app: &tauri::AppHandle, shortcut_str: &str) {
+pub fn register_global_shortcut(app: &tauri::AppHandle, shortcut_str: &str) -> Result<(), String> {
     let app_handle = app.clone();
-    if let Err(e) =
-        app.global_shortcut()
-            .on_shortcut(shortcut_str, move |_app, _shortcut, event| {
-                if event.state == ShortcutState::Pressed {
-                    info!("Global shortcut triggered for quick panel");
-                    toggle(&app_handle);
-                }
-            })
-    {
-        error!(error = %e, shortcut = %shortcut_str, "Failed to register global shortcut for quick panel");
-    } else {
-        info!(shortcut = %shortcut_str, "Global shortcut registered for quick panel");
-    }
+    app.global_shortcut()
+        .on_shortcut(shortcut_str, move |_app, _shortcut, event| {
+            if event.state == ShortcutState::Pressed {
+                info!("Global shortcut triggered for quick panel");
+                toggle(&app_handle);
+            }
+        })
+        .map_err(|e| {
+            error!(error = %e, shortcut = %shortcut_str, "Failed to register global shortcut for quick panel");
+            format!("Failed to register shortcut '{}': {}", shortcut_str, e)
+        })?;
+    info!(shortcut = %shortcut_str, "Global shortcut registered for quick panel");
+    Ok(())
 }
 
 /// Unregister the old shortcut and register a new one.
 ///
 /// 注销旧快捷键并注册新的快捷键。
-pub fn update_global_shortcut(app: &tauri::AppHandle, old: &str, new: &str) {
+pub fn update_global_shortcut(app: &tauri::AppHandle, old: &str, new: &str) -> Result<(), String> {
     if let Err(e) = app.global_shortcut().unregister(old) {
         warn!(error = %e, shortcut = %old, "Failed to unregister old global shortcut");
     }
-    register_global_shortcut(app, new);
+    register_global_shortcut(app, new)
 }

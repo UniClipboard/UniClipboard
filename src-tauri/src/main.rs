@@ -710,7 +710,9 @@ fn run_app(config: AppConfig) {
                     }
                 };
 
-                quick_panel::register_global_shortcut(app.handle(), &shortcut_str);
+                if let Err(e) = quick_panel::register_global_shortcut(app.handle(), &shortcut_str) {
+                    tracing::error!(error = %e, "Failed to register global shortcut during startup");
+                }
             }
 
             // Pre-create quick panel and preview panel (hidden) so the first

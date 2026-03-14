@@ -91,6 +91,7 @@ const PreviewPanel: React.FC = () => {
   const [preview, setPreview] = useState<PreviewState | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const requestIdRef = useRef(0)
   const settingsRef = useRef<Settings | null>(null)
   const isMac = useMemo(() => navigator.platform.toUpperCase().includes('MAC'), [])
 
@@ -138,6 +139,7 @@ const PreviewPanel: React.FC = () => {
   useEffect(() => {
     const unlistenShow = listen<ShowPayload>('preview-panel://show', async event => {
       const { entryId } = event.payload
+      const currentRequestId = ++requestIdRef.current
       setLoading(true)
       setError(null)
       setPreview(null)
@@ -147,6 +149,8 @@ const PreviewPanel: React.FC = () => {
         const resource = await invoke<ClipboardEntryResource>('get_clipboard_entry_resource', {
           entryId,
         })
+
+        if (currentRequestId !== requestIdRef.current) return
 
         if (isImageType(resource.mime_type)) {
           // Image: use resource URL directly (get_clipboard_entry_detail fails for images)
@@ -162,6 +166,9 @@ const PreviewPanel: React.FC = () => {
           const detail = await invoke<ClipboardEntryDetail>('get_clipboard_entry_detail', {
             entryId,
           })
+
+          if (currentRequestId !== requestIdRef.current) return
+
           setPreview({
             entryId,
             contentType: 'text',
@@ -170,14 +177,18 @@ const PreviewPanel: React.FC = () => {
           })
         }
       } catch (err) {
+        if (currentRequestId !== requestIdRef.current) return
         console.error('Failed to load preview:', err)
         setError(String(err))
       } finally {
-        setLoading(false)
+        if (currentRequestId === requestIdRef.current) {
+          setLoading(false)
+        }
       }
     })
 
     const unlistenHide = listen('preview-panel://hide', () => {
+      requestIdRef.current++
       setPreview(null)
       setError(null)
       setLoading(false)

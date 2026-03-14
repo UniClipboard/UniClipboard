@@ -724,7 +724,10 @@ fn run_app(config: AppConfig) {
                     let settings_port = runtime_for_handler.settings_port();
                     match tauri::async_runtime::block_on(settings_port.load()) {
                         Ok(s) => s.general.hold_modifier_to_open_quick_panel,
-                        Err(_) => false,
+                        Err(e) => {
+                            warn!("Failed to load settings for hold-modifier trigger: {e}");
+                            false
+                        }
                     }
                 };
                 quick_panel::hold_trigger::start(app.handle().clone(), hold_enabled);

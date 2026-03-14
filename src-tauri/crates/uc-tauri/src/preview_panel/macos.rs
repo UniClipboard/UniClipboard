@@ -21,6 +21,11 @@ use tracing::{error, info};
 ///   so `object_setClass` is safe.
 /// - Must be called from the main thread.
 pub fn convert_to_non_key_panel(window: &WebviewWindow) {
+    if MainThreadMarker::new().is_none() {
+        error!("convert_to_non_key_panel called from a non-main thread");
+        return;
+    }
+
     let ns_window = match window.ns_window() {
         Ok(ptr) => ptr,
         Err(e) => {
@@ -52,6 +57,11 @@ pub fn convert_to_non_key_panel(window: &WebviewWindow) {
 
 /// Show the preview panel without activating the app or making it key.
 pub fn show_panel(window: &WebviewWindow) {
+    if MainThreadMarker::new().is_none() {
+        error!("show_panel called from a non-main thread");
+        return;
+    }
+
     let ns_window = match window.ns_window() {
         Ok(ptr) => ptr,
         Err(e) => {
@@ -68,12 +78,19 @@ pub fn show_panel(window: &WebviewWindow) {
 }
 
 /// Get the screen dimensions for positioning calculations.
-pub fn get_screen_size() -> (f64, f64) {
-    let mtm = MainThreadMarker::new();
-    mtm.and_then(|mtm| {
-        let screen = NSScreen::mainScreen(mtm)?;
-        let frame = screen.frame();
-        Some((frame.size.width, frame.size.height))
-    })
-    .unwrap_or((1440.0, 900.0))
+///
+/// Returns `Err` if not called from the main thread or if no main screen is available.
+pub fn get_screen_size() -> Result<(f64, f64), String> {
+    let mtm = MainThreadMarker::new().ok_or_else(|| {
+        let msg = "get_screen_size called from a non-main thread";
+        error!(msg);
+        msg.to_string()
+    })?;
+    let screen = NSScreen::mainScreen(mtm).ok_or_else(|| {
+        let msg = "NSScreen::mainScreen returned nil";
+        error!(msg);
+        msg.to_string()
+    })?;
+    let frame = screen.frame();
+    Ok((frame.size.width, frame.size.height))
 }

@@ -107,8 +107,8 @@ pub fn show(app: &tauri::AppHandle, entry_id: &str) {
 
     // Send entry ID to the frontend
     #[derive(Clone, serde::Serialize)]
+    #[serde(rename_all = "camelCase")]
     struct ShowPayload {
-        #[serde(rename = "entryId")]
         entry_id: String,
     }
 
@@ -173,7 +173,10 @@ fn calculate_position(app: &tauri::AppHandle) -> (f64, f64) {
 
     // Get screen width to decide left vs right placement
     #[cfg(target_os = "macos")]
-    let (screen_width, _) = macos::get_screen_size();
+    let (screen_width, _) = macos::get_screen_size().unwrap_or_else(|e| {
+        warn!(error = %e, "Failed to get screen size, using fallback");
+        (1440.0, 900.0)
+    });
     #[cfg(not(target_os = "macos"))]
     let (screen_width, _) = (1440.0, 900.0);
 

@@ -120,38 +120,23 @@ pub fn get_screen_center(panel_width: f64, panel_height: f64) -> (f64, f64) {
 /// Simulate Cmd+V paste keystroke via CoreGraphics CGEvent.
 ///
 /// 通过 CoreGraphics CGEvent 模拟 Cmd+V 粘贴。
-pub fn simulate_paste() {
+pub fn simulate_paste() -> Result<(), String> {
     // macOS virtual key code for 'V'
     const KEY_V: CGKeyCode = 9;
 
-    let source = match CGEventSource::new(CGEventSourceStateID::HIDSystemState) {
-        Ok(s) => s,
-        Err(_) => {
-            error!("Failed to create CGEventSource");
-            return;
-        }
-    };
+    let source = CGEventSource::new(CGEventSourceStateID::HIDSystemState)
+        .map_err(|e| format!("Failed to create CGEventSource: {:?}", e))?;
 
-    let key_down = match CGEvent::new_keyboard_event(source.clone(), KEY_V, true) {
-        Ok(e) => e,
-        Err(_) => {
-            error!("Failed to create key-down CGEvent");
-            return;
-        }
-    };
+    let key_down = CGEvent::new_keyboard_event(source.clone(), KEY_V, true)
+        .map_err(|e| format!("Failed to create key-down CGEvent: {:?}", e))?;
     key_down.set_flags(CGEventFlags::CGEventFlagCommand);
 
-    let key_up = match CGEvent::new_keyboard_event(source, KEY_V, false) {
-        Ok(e) => e,
-        Err(_) => {
-            error!("Failed to create key-up CGEvent");
-            return;
-        }
-    };
+    let key_up = CGEvent::new_keyboard_event(source, KEY_V, false)
+        .map_err(|e| format!("Failed to create key-up CGEvent: {:?}", e))?;
     key_up.set_flags(CGEventFlags::CGEventFlagCommand);
 
     key_down.post(core_graphics::event::CGEventTapLocation::HID);
     key_up.post(core_graphics::event::CGEventTapLocation::HID);
 
-    info!("Simulated Cmd+V paste keystroke");
+    Ok(())
 }

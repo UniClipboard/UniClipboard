@@ -157,18 +157,20 @@ fn start_platform_listener(tx: mpsc::UnboundedSender<HoldEvent>) {
                 }
             };
 
-            unsafe {
-                let loop_source = tap
-                    .mach_port
-                    .create_runloop_source(0)
-                    .expect("Failed to create CFRunLoopSource for CGEventTap");
-                let current = core_foundation::runloop::CFRunLoop::get_current();
-                current.add_source(
-                    &loop_source,
-                    core_foundation::runloop::kCFRunLoopCommonModes,
-                );
-                tap.enable();
-                core_foundation::runloop::CFRunLoop::run_current();
+            let loop_source = tap.mach_port.create_runloop_source(0);
+            match loop_source {
+                Ok(source) => unsafe {
+                    let current = core_foundation::runloop::CFRunLoop::get_current();
+                    current.add_source(
+                        &source,
+                        core_foundation::runloop::kCFRunLoopCommonModes,
+                    );
+                    tap.enable();
+                    core_foundation::runloop::CFRunLoop::run_current();
+                },
+                Err(_) => {
+                    warn!("Failed to create CFRunLoopSource for CGEventTap");
+                }
             }
         })
     {

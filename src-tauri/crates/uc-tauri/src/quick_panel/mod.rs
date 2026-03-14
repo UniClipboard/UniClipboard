@@ -192,7 +192,7 @@ pub fn paste(app: &tauri::AppHandle) -> Result<(), String> {
     {
         // Small delay for the panel to fully hide before simulating keystrokes
         std::thread::sleep(std::time::Duration::from_millis(50));
-        macos::simulate_paste();
+        macos::simulate_paste()?;
         Ok(())
     }
 

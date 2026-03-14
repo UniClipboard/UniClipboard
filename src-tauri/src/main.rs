@@ -699,19 +699,21 @@ fn run_app(config: AppConfig) {
                     .plugin(tauri_plugin_global_shortcut::Builder::new().build())?;
 
                 // Read shortcut override from settings, or use default
-                let shortcut_str = {
+                let shortcuts = {
                     let settings_port = runtime_for_handler.settings_port();
                     match tauri::async_runtime::block_on(settings_port.load()) {
                         Ok(settings) => quick_panel::resolve_shortcut_from_settings(&settings),
                         Err(e) => {
                             warn!("Failed to load settings for shortcut: {}, using default", e);
-                            quick_panel::DEFAULT_SHORTCUT.to_string()
+                            vec![quick_panel::DEFAULT_SHORTCUT.to_string()]
                         }
                     }
                 };
 
-                if let Err(e) = quick_panel::register_global_shortcut(app.handle(), &shortcut_str) {
-                    tracing::error!(error = %e, "Failed to register global shortcut during startup");
+                for shortcut_str in &shortcuts {
+                    if let Err(e) = quick_panel::register_global_shortcut(app.handle(), shortcut_str) {
+                        tracing::error!(error = %e, shortcut = %shortcut_str, "Failed to register global shortcut during startup");
+                    }
                 }
             }
 
@@ -719,21 +721,6 @@ fn run_app(config: AppConfig) {
             // shortcut press doesn't activate the app via WebviewWindowBuilder::build()
             quick_panel::pre_create(app.handle());
             preview_panel::pre_create(app.handle());
-
-            // Start hold-modifier-key trigger for the quick panel
-            {
-                let hold_enabled = {
-                    let settings_port = runtime_for_handler.settings_port();
-                    match tauri::async_runtime::block_on(settings_port.load()) {
-                        Ok(s) => s.general.hold_modifier_to_open_quick_panel,
-                        Err(e) => {
-                            warn!("Failed to load settings for hold-modifier trigger: {e}");
-                            false
-                        }
-                    }
-                };
-                quick_panel::hold_trigger::start(app.handle().clone(), hold_enabled);
-            }
 
             // Show window based on silent_start setting
             if !silent_start {
@@ -920,8 +907,8 @@ fn run_app(config: AppConfig) {
             uc_tauri::commands::quick_panel::paste_to_previous_app,
             uc_tauri::commands::quick_panel::dismiss_quick_panel,
             // Preview panel commands
-            preview_panel::show_preview_panel,
-            preview_panel::dismiss_preview_panel,
+            uc_tauri::commands::preview_panel::show_preview_panel,
+            uc_tauri::commands::preview_panel::dismiss_preview_panel,
         ])
         .build(tauri::generate_context!())
         .expect("error building tauri application")

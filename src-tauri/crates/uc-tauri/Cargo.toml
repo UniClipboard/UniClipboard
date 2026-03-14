@@ -55,11 +55,7 @@ sentry-tracing = "0.46.1"
 objc2 = "0.6"
 objc2-app-kit = { version = "0.3", features = ["NSEvent", "NSScreen", "NSPanel", "NSResponder", "NSWindow"] }
 core-graphics = "0.24"
-core-foundation = "0.10"
 objc2-foundation = { version = "0.3", features = ["NSGeometry"] }
-
-[target.'cfg(not(target_os = "macos"))'.dependencies]
-rdev = "0.5"
 
 [dev-dependencies]
 uc-platform = { path = "../uc-platform", features = ["test-helpers"] }

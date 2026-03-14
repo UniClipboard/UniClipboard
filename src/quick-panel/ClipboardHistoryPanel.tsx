@@ -254,7 +254,6 @@ const ClipboardHistoryPanel: React.FC = () => {
   const [isLocked, setIsLocked] = useState(false)
   const [unlocking, setUnlocking] = useState(false)
   const [unlockError, setUnlockError] = useState<string | null>(null)
-  const [holdMode, setHoldMode] = useState(false)
 
   const searchInputRef = useRef<HTMLInputElement>(null)
   const listRef = useRef<HTMLDivElement>(null)
@@ -341,16 +340,10 @@ const ClipboardHistoryPanel: React.FC = () => {
       setSelectedIndex(0)
       setHoveredIndex(null)
       setIsKeyboardNav(true)
-      setHoldMode(false)
       invoke('dismiss_preview_panel').catch(() => {})
       loadData()
       // Re-focus search input when panel is re-shown
       requestAnimationFrame(() => searchInputRef.current?.focus())
-    })
-
-    // Listen for hold-mode event (fires after refresh when opened via modifier hold)
-    const unlistenHold = listen('quick-panel://hold-mode', () => {
-      setHoldMode(true)
     })
 
     // Track visibility via focus/blur
@@ -363,7 +356,6 @@ const ClipboardHistoryPanel: React.FC = () => {
 
     return () => {
       unlisten.then(fn => fn())
-      unlistenHold.then(fn => fn())
       unlistenFocus.then(fn => fn())
       unlistenBlur.then(fn => fn())
     }
@@ -765,17 +757,8 @@ const ClipboardHistoryPanel: React.FC = () => {
 
       {/* Footer hint */}
       <div className="flex items-center justify-between px-3 py-1.5 border-t border-border/50 text-[11px] text-muted-foreground">
-        {holdMode ? (
-          <>
-            <span>Release {isMac ? '⌘' : 'Ctrl'} to close</span>
-            <span>1-0 paste</span>
-          </>
-        ) : (
-          <>
-            <span>{isMac ? '⌘' : '⌃'}1-0 paste</span>
-            <span>↑↓ navigate · ⏎ paste · {isMac ? '⌥' : 'Alt+'}⌫ delete · esc close</span>
-          </>
-        )}
+        <span>{isMac ? '⌘' : '⌃'}1-0 paste</span>
+        <span>↑↓ navigate · ⏎ paste · {isMac ? '⌥' : 'Alt+'}⌫ delete · esc close</span>
       </div>
     </div>
   )

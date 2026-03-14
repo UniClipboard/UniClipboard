@@ -19,9 +19,6 @@ export default function GeneralSection() {
   const { setting, loading: settingLoading, updateGeneralSetting } = useSetting()
   const [autoStart, setAutoStart] = useState(setting?.general.auto_start ?? false)
   const [silentStart, setSilentStart] = useState(setting?.general.silent_start ?? false)
-  const [holdModifier, setHoldModifier] = useState(
-    setting?.general.hold_modifier_to_open_quick_panel ?? false
-  )
   const [language, setLanguage] = useState<SupportedLanguage>(() => {
     const backendLang = setting?.general.language
     const isValid = backendLang && SUPPORTED_LANGUAGES.includes(backendLang as SupportedLanguage)
@@ -36,7 +33,6 @@ export default function GeneralSection() {
     if (!setting?.general) return
     setAutoStart(setting.general.auto_start)
     setSilentStart(setting.general.silent_start)
-    setHoldModifier(setting.general.hold_modifier_to_open_quick_panel ?? false)
     // Validate backend language value against supported languages
     const backendLang = setting.general.language
     const isValidLanguage =
@@ -53,19 +49,6 @@ export default function GeneralSection() {
       setAutoStart(checked)
     } catch (error) {
       console.error('更改自启动状态失败:', error)
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  // 处理长按修饰键打开快捷面板开关变化
-  const handleHoldModifierChange = async (checked: boolean) => {
-    try {
-      setSaving(true)
-      await updateGeneralSetting({ hold_modifier_to_open_quick_panel: checked })
-      setHoldModifier(checked)
-    } catch (error) {
-      console.error('Failed to change hold modifier setting:', error)
     } finally {
       setSaving(false)
     }
@@ -146,17 +129,6 @@ export default function GeneralSection() {
           <Switch
             checked={silentStart}
             onCheckedChange={handleSilentStartChange}
-            disabled={isBusy}
-          />
-        </SettingRow>
-
-        <SettingRow
-          label={t('settings.sections.general.holdModifier.label')}
-          description={t('settings.sections.general.holdModifier.description')}
-        >
-          <Switch
-            checked={holdModifier}
-            onCheckedChange={handleHoldModifierChange}
             disabled={isBusy}
           />
         </SettingRow>

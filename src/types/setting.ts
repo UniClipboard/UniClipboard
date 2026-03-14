@@ -25,7 +25,6 @@ export interface GeneralSettings {
   language?: string | null
   device_name?: string | null
   update_channel?: UpdateChannel | null
-  hold_modifier_to_open_quick_panel?: boolean
 }
 
 /**

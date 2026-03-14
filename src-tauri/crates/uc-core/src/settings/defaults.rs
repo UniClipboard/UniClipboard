@@ -57,7 +57,6 @@ impl Default for GeneralSettings {
             device_name: None,
             language: None,
             update_channel: None,
-            hold_modifier_to_open_quick_panel: false,
         }
     }
 }

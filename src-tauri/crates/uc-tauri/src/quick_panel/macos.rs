@@ -15,7 +15,7 @@ use objc2::runtime::AnyObject;
 use objc2::{define_class, ClassType, MainThreadMarker};
 use objc2_app_kit::{NSPanel, NSScreen, NSWindowStyleMask};
 use tauri::WebviewWindow;
-use tracing::{error, info};
+use tracing::{error, info, warn};
 
 // Custom NSPanel subclass that overrides `canBecomeKeyWindow` to return YES.
 // NSPanel without a title bar (`decorations: false`) returns NO by default,
@@ -103,14 +103,31 @@ pub fn show_panel(window: &WebviewWindow) {
 ///
 /// 获取面板居中显示时的左上角坐标。
 pub fn get_screen_center(panel_width: f64, panel_height: f64) -> (f64, f64) {
-    let mtm = MainThreadMarker::new();
-    let (screen_width, screen_height) = mtm
-        .and_then(|mtm| {
-            let screen = NSScreen::mainScreen(mtm)?;
-            let frame = screen.frame();
-            Some((frame.size.width, frame.size.height))
-        })
-        .unwrap_or((1440.0, 900.0));
+    let fallback = (1440.0, 900.0);
+    let (screen_width, screen_height) = match MainThreadMarker::new() {
+        None => {
+            warn!(
+                fallback_width = fallback.0,
+                fallback_height = fallback.1,
+                "MainThreadMarker::new() returned None — not on main thread; using fallback screen size"
+            );
+            fallback
+        }
+        Some(mtm) => match NSScreen::mainScreen(mtm) {
+            None => {
+                warn!(
+                    fallback_width = fallback.0,
+                    fallback_height = fallback.1,
+                    "NSScreen::mainScreen() returned None — no main screen available; using fallback screen size"
+                );
+                fallback
+            }
+            Some(screen) => {
+                let frame = screen.frame();
+                (frame.size.width, frame.size.height)
+            }
+        },
+    };
 
     let x = (screen_width - panel_width) / 2.0;
     let y = (screen_height - panel_height) / 2.0;

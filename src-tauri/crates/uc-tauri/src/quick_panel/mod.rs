@@ -6,7 +6,6 @@
 //!
 //! 跨平台快捷剪贴板面板。macOS 上使用 NSPanel，不会抢夺前台应用焦点。
 
-pub mod hold_trigger;
 #[cfg(target_os = "macos")]
 mod macos;
 
@@ -25,7 +24,7 @@ const PANEL_WIDTH: f64 = 360.0;
 const PANEL_HEIGHT: f64 = 420.0;
 
 /// Tauri window label for the quick panel.
-const PANEL_LABEL: &str = "quick-panel";
+pub(crate) const PANEL_LABEL: &str = "quick-panel";
 
 // ── Cross-platform helpers ─────────────────────────────────────────────
 
@@ -33,15 +32,31 @@ const PANEL_LABEL: &str = "quick-panel";
 /// such that it appears centered on screen, like Raycast/Spotlight).
 ///
 /// 获取面板在屏幕居中时的左上角坐标（类似 Raycast/Spotlight 的位置）。
-fn screen_center_position() -> (f64, f64) {
+fn screen_center_position(app: &tauri::AppHandle) -> (f64, f64) {
     #[cfg(target_os = "macos")]
     {
+        let _ = app; // used only on non-macOS
         macos::get_screen_center(PANEL_WIDTH, PANEL_HEIGHT)
     }
     #[cfg(not(target_os = "macos"))]
     {
-        // Fallback: rough center assuming 1440x900
-        ((1440.0 - PANEL_WIDTH) / 2.0, (900.0 - PANEL_HEIGHT) / 2.0)
+        // Query the primary monitor for its size; fall back to 800x600 if unavailable.
+        let (screen_w, screen_h) = app
+            .get_webview_window(PANEL_LABEL)
+            .and_then(|w| w.primary_monitor().ok().flatten())
+            .map(|m| {
+                let size = m.size();
+                let scale = m.scale_factor();
+                (size.width as f64 / scale, size.height as f64 / scale)
+            })
+            .unwrap_or_else(|| {
+                warn!("No primary monitor detected, using 800x600 fallback for panel centering");
+                (800.0, 600.0)
+            });
+        (
+            (screen_w - PANEL_WIDTH) / 2.0,
+            (screen_h - PANEL_HEIGHT) / 2.0,
+        )
     }
 }
 
@@ -131,7 +146,7 @@ pub fn toggle(app: &tauri::AppHandle) {
 ///
 /// 在屏幕中央显示快捷面板（类似 Raycast）。
 pub fn show(app: &tauri::AppHandle) {
-    let (panel_x, panel_y) = screen_center_position();
+    let (panel_x, panel_y) = screen_center_position(app);
     info!(panel_x, panel_y, "Showing quick panel centered on screen");
 
     // If panel doesn't exist yet (pre_create wasn't called), create it now
@@ -207,13 +222,26 @@ pub fn paste(app: &tauri::AppHandle) -> Result<(), String> {
 /// Resolve the quick panel shortcut string from settings (in Tauri format).
 ///
 /// Falls back to [`DEFAULT_SHORTCUT`] if not configured.
-pub fn resolve_shortcut_from_settings(settings: &uc_core::settings::model::Settings) -> String {
+pub fn resolve_shortcut_from_settings(
+    settings: &uc_core::settings::model::Settings,
+) -> Vec<String> {
     use uc_core::settings::model::ShortcutKey;
 
     match settings.keyboard_shortcuts.get(SHORTCUT_SETTINGS_KEY) {
-        Some(ShortcutKey::Single(s)) => normalize_shortcut_for_tauri(s),
-        Some(ShortcutKey::Multiple(v)) if !v.is_empty() => normalize_shortcut_for_tauri(&v[0]),
-        _ => DEFAULT_SHORTCUT.to_string(),
+        Some(ShortcutKey::Single(s)) => vec![normalize_shortcut_for_tauri(s)],
+        Some(ShortcutKey::Multiple(v)) => {
+            let shortcuts: Vec<String> = v
+                .iter()
+                .map(|s| normalize_shortcut_for_tauri(s))
+                .filter(|s| !s.is_empty())
+                .collect();
+            if shortcuts.is_empty() {
+                vec![DEFAULT_SHORTCUT.to_string()]
+            } else {
+                shortcuts
+            }
+        }
+        _ => vec![DEFAULT_SHORTCUT.to_string()],
     }
 }
 
@@ -261,12 +289,48 @@ pub fn register_global_shortcut(app: &tauri::AppHandle, shortcut_str: &str) -> R
     Ok(())
 }
 
-/// Unregister the old shortcut and register a new one.
+/// Unregister old shortcuts and register new ones atomically.
 ///
-/// 注销旧快捷键并注册新的快捷键。
-pub fn update_global_shortcut(app: &tauri::AppHandle, old: &str, new: &str) -> Result<(), String> {
-    if let Err(e) = app.global_shortcut().unregister(old) {
-        warn!(error = %e, shortcut = %old, "Failed to unregister old global shortcut");
+/// If registering any new shortcut fails, attempts to re-register all old
+/// shortcuts so the system is not left without a working shortcut.
+///
+/// 原子地注销旧快捷键并注册新快捷键。如果注册新快捷键失败，
+/// 尝试重新注册旧快捷键以避免系统处于无快捷键状态。
+pub fn update_global_shortcut(
+    app: &tauri::AppHandle,
+    old: &[String],
+    new: &[String],
+) -> Result<(), String> {
+    // Unregister all old shortcuts
+    for shortcut in old {
+        if let Err(e) = app.global_shortcut().unregister(shortcut.as_str()) {
+            warn!(error = %e, shortcut = %shortcut, "Failed to unregister old global shortcut");
+        }
     }
-    register_global_shortcut(app, new)
+
+    // Register all new shortcuts; on failure, rollback to old shortcuts
+    for shortcut in new {
+        if let Err(e) = register_global_shortcut(app, shortcut) {
+            warn!(error = %e, shortcut = %shortcut, "New shortcut registration failed, rolling back");
+            // Unregister any new shortcuts that were successfully registered
+            for already in new {
+                if already == shortcut {
+                    break;
+                }
+                let _ = app.global_shortcut().unregister(already.as_str());
+            }
+            // Re-register old shortcuts
+            for old_shortcut in old {
+                if let Err(rb_err) = register_global_shortcut(app, old_shortcut) {
+                    error!(
+                        error = %rb_err,
+                        shortcut = %old_shortcut,
+                        "Failed to rollback old global shortcut"
+                    );
+                }
+            }
+            return Err(e);
+        }
+    }
+    Ok(())
 }

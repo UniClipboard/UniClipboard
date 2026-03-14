@@ -147,16 +147,16 @@ pub async fn update_settings(
 
         // Re-register global shortcut when quick panel shortcut changes
         if quick_panel_shortcut_changed {
-            let old_shortcut = crate::quick_panel::resolve_shortcut_from_settings(&old_settings);
-            let new_shortcut =
+            let old_shortcuts = crate::quick_panel::resolve_shortcut_from_settings(&old_settings);
+            let new_shortcuts =
                 crate::quick_panel::resolve_shortcut_from_settings(&parsed_settings);
             tracing::info!(
-                old = %old_shortcut,
-                new = %new_shortcut,
+                old = ?old_shortcuts,
+                new = ?new_shortcuts,
                 "Quick panel shortcut changed, re-registering"
             );
             if let Err(e) =
-                crate::quick_panel::update_global_shortcut(&app_handle, &old_shortcut, &new_shortcut)
+                crate::quick_panel::update_global_shortcut(&app_handle, &old_shortcuts, &new_shortcuts)
             {
                 tracing::error!(error = %e, "Failed to update global shortcut");
                 // Rollback: restore old settings so persisted state matches actual registered shortcut

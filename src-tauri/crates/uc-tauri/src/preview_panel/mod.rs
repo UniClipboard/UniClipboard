@@ -191,26 +191,4 @@ fn calculate_position(app: &tauri::AppHandle) -> (f64, f64) {
     }
 }
 
-// ── Tauri Commands ─────────────────────────────────────────────────────
-
-/// Show the preview panel with the specified entry's content.
-#[tauri::command]
-pub async fn show_preview_panel(app: tauri::AppHandle, entry_id: String) -> Result<(), String> {
-    let handle = app.clone();
-    app.run_on_main_thread(move || {
-        show(&handle, &entry_id);
-    })
-    .map_err(|e| format!("Failed to dispatch to main thread: {e}"))?;
-    Ok(())
-}
-
-/// Hide the preview panel.
-#[tauri::command]
-pub async fn dismiss_preview_panel(app: tauri::AppHandle) -> Result<(), String> {
-    let handle = app.clone();
-    app.run_on_main_thread(move || {
-        dismiss(&handle);
-    })
-    .map_err(|e| format!("Failed to dispatch to main thread: {e}"))?;
-    Ok(())
-}
+// Tauri commands for preview panel are in commands::preview_panel module.

@@ -4,6 +4,7 @@ pub mod encryption;
 pub mod error;
 pub mod lifecycle;
 pub mod pairing;
+pub mod preview_panel;
 pub mod quick_panel;
 pub mod settings;
 pub mod setup;

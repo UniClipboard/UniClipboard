@@ -121,6 +121,9 @@ where
         map.serialize_entry("span", span_name).ok()?;
     }
 
+    // Source - distinguish backend logs from frontend logs in Seq
+    map.serialize_entry("Source", "backend").ok()?;
+
     let has_device_id =
         event_fields.contains_key("device_id") || span_fields.contains_key("device_id");
     if !has_device_id {

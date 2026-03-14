@@ -6,8 +6,10 @@ import App from './App'
 import './i18n'
 import { store } from './store'
 import { initSentry, Sentry } from '@/observability/sentry'
+import { initSeq } from '@/observability/seq'
 
 initSentry()
+initSeq()
 
 const startupTimingOrigin = Date.now()
 const logStartupTiming = (label: string) => {

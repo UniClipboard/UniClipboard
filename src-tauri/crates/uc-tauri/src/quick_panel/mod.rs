@@ -183,7 +183,9 @@ pub fn dismiss(app: &tauri::AppHandle) {
 /// Dismiss the quick panel, then paste clipboard content to the previous app.
 ///
 /// 关闭快捷面板，然后将剪贴板内容粘贴到之前的应用。
-pub fn paste(app: &tauri::AppHandle) {
+///
+/// Returns an error on platforms where simulated paste is not yet implemented.
+pub fn paste(app: &tauri::AppHandle) -> Result<(), String> {
     dismiss(app);
 
     #[cfg(target_os = "macos")]
@@ -191,6 +193,12 @@ pub fn paste(app: &tauri::AppHandle) {
         // Small delay for the panel to fully hide before simulating keystrokes
         std::thread::sleep(std::time::Duration::from_millis(50));
         macos::simulate_paste();
+        Ok(())
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        Err("Paste to previous app is not yet supported on this platform".into())
     }
 }
 

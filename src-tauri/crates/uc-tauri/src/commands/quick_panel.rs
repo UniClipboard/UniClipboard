@@ -50,11 +50,14 @@ pub async fn paste_to_previous_app(
 
     async {
         let handle = app.clone();
+        let (tx, rx) = tokio::sync::oneshot::channel();
         app.run_on_main_thread(move || {
-            quick_panel::paste(&handle);
+            let result = quick_panel::paste(&handle);
+            let _ = tx.send(result);
         })
         .map_err(|e| format!("Failed to dispatch to main thread: {e}"))?;
-        Ok(())
+        rx.await
+            .map_err(|_| "Main thread dropped result".to_string())?
     }
     .instrument(span)
     .await

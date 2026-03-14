@@ -262,31 +262,3 @@ pub fn update_global_shortcut(app: &tauri::AppHandle, old: &str, new: &str) {
     }
     register_global_shortcut(app, new);
 }
-
-// ── Tauri Commands ─────────────────────────────────────────────────────
-
-/// Dismiss the quick panel and return focus to the previous app (no paste).
-///
-/// 关闭快捷面板并将焦点返回到之前的应用（不粘贴）。
-#[tauri::command]
-pub async fn dismiss_quick_panel(app: tauri::AppHandle) -> Result<(), String> {
-    let handle = app.clone();
-    app.run_on_main_thread(move || {
-        dismiss(&handle);
-    })
-    .map_err(|e| format!("Failed to dispatch to main thread: {e}"))?;
-    Ok(())
-}
-
-/// Hide the quick panel, re-activate the previous app, and paste.
-///
-/// 隐藏快捷面板，重新激活之前的应用，并粘贴。
-#[tauri::command]
-pub async fn paste_to_previous_app(app: tauri::AppHandle) -> Result<(), String> {
-    let handle = app.clone();
-    app.run_on_main_thread(move || {
-        paste(&handle);
-    })
-    .map_err(|e| format!("Failed to dispatch to main thread: {e}"))?;
-    Ok(())
-}

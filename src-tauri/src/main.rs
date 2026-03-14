@@ -915,8 +915,8 @@ fn run_app(config: AppConfig) {
             #[cfg(target_os = "macos")]
             plugins::mac_rounded_corners::reposition_traffic_lights,
             // Quick panel commands
-            quick_panel::paste_to_previous_app,
-            quick_panel::dismiss_quick_panel,
+            uc_tauri::commands::quick_panel::paste_to_previous_app,
+            uc_tauri::commands::quick_panel::dismiss_quick_panel,
             // Preview panel commands
             preview_panel::show_preview_panel,
             preview_panel::dismiss_preview_panel,

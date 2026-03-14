@@ -624,6 +624,14 @@
     "retry": "Retry",
     "retrying": "Retrying..."
   },
+  "previewPanel": {
+    "title": "Preview",
+    "error": "Failed to load preview",
+    "imageUnavailable": "Image not available",
+    "empty": "Hover over an item to preview",
+    "imageAlt": "Clipboard image",
+    "deleteHint": "{{modifier}}⌫ delete"
+  },
   "setup": {
     "page": {
       "loadingSetupState": "Loading setup state...",

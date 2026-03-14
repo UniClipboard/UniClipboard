@@ -1,7 +1,8 @@
 import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import { Loader2 } from 'lucide-react'
-import React, { useEffect, useRef, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { resolveUcUrl } from '@/lib/protocol'
 import { applyThemePreset, DEFAULT_THEME_COLOR } from '@/lib/theme-engine'
 import type { ThemeMode } from '@/lib/theme-engine'
@@ -86,10 +87,12 @@ interface PreviewState {
 }
 
 const PreviewPanel: React.FC = () => {
+  const { t } = useTranslation(undefined, { keyPrefix: 'previewPanel' })
   const [preview, setPreview] = useState<PreviewState | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const settingsRef = useRef<Settings | null>(null)
+  const isMac = useMemo(() => navigator.platform.toUpperCase().includes('MAC'), [])
 
   // ── Theme sync ──
   useEffect(() => {
@@ -190,7 +193,7 @@ const PreviewPanel: React.FC = () => {
     <div className="flex flex-col h-screen w-screen overflow-hidden rounded-xl bg-background/95 backdrop-blur-xl shadow-xl border border-border/50">
       {/* Header */}
       <div className="flex items-center justify-between px-3 py-2 border-b border-border/50">
-        <span className="text-[12px] font-medium text-foreground">Preview</span>
+        <span className="text-[12px] font-medium text-foreground">{t('title')}</span>
         {preview && (
           <span className="text-[11px] text-muted-foreground tabular-nums">
             {formatBytes(preview.sizeBytes)}
@@ -206,7 +209,7 @@ const PreviewPanel: React.FC = () => {
           </div>
         ) : error ? (
           <div className="flex items-center justify-center h-full text-[12px] text-destructive">
-            Failed to load preview
+            {t('error')}
           </div>
         ) : preview ? (
           preview.contentType === 'image' ? (
@@ -215,10 +218,10 @@ const PreviewPanel: React.FC = () => {
                 <img
                   src={preview.imageUrl}
                   className="max-w-full max-h-full object-contain rounded-md"
-                  alt="Clipboard image"
+                  alt={t('imageAlt')}
                 />
               ) : (
-                <span className="text-[12px] text-muted-foreground">Image not available</span>
+                <span className="text-[12px] text-muted-foreground">{t('imageUnavailable')}</span>
               )}
             </div>
           ) : (
@@ -228,14 +231,14 @@ const PreviewPanel: React.FC = () => {
           )
         ) : (
           <div className="flex items-center justify-center h-full text-[12px] text-muted-foreground">
-            Hover over an item to preview
+            {t('empty')}
           </div>
         )}
       </div>
 
       {/* Footer hint */}
       <div className="flex items-center justify-start px-3 py-1.5 border-t border-border/50 text-[11px] text-muted-foreground">
-        <span>⌥⌫ delete</span>
+        <span>{t('deleteHint', { modifier: isMac ? '⌥' : 'Alt+' })}</span>
       </div>
     </div>
   )

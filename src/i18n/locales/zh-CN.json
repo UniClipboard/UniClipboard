@@ -624,6 +624,14 @@
     "retry": "重试",
     "retrying": "重试中..."
   },
+  "previewPanel": {
+    "title": "预览",
+    "error": "加载预览失败",
+    "imageUnavailable": "图片不可用",
+    "empty": "将鼠标悬停在项目上以预览",
+    "imageAlt": "剪贴板图片",
+    "deleteHint": "{{modifier}}⌫ 删除"
+  },
   "setup": {
     "page": {
       "loadingSetupState": "正在加载初始化状态...",

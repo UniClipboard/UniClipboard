@@ -99,6 +99,34 @@ mod tests {
         );
     }
 
+    #[test]
+    fn test_setting_changed_event_camelcase_serialization() {
+        let event = SettingChangedEvent {
+            setting_json: r#"{"key":"value"}"#.to_string(),
+            timestamp: 1234567890,
+        };
+        let json_str = serde_json::to_string(&event).unwrap();
+
+        // Must use camelCase keys
+        assert!(
+            json_str.contains("settingJson"),
+            "expected camelCase key 'settingJson', got: {}",
+            json_str
+        );
+        assert!(
+            json_str.contains("timestamp"),
+            "expected key 'timestamp', got: {}",
+            json_str
+        );
+
+        // Must NOT use snake_case keys
+        assert!(
+            !json_str.contains("setting_json"),
+            "unexpected snake_case key 'setting_json' in: {}",
+            json_str
+        );
+    }
+
     #[tokio::test]
     async fn forward_libp2p_start_failed_emits_event() {
         let app = tauri::test::mock_app();

@@ -15,6 +15,7 @@ export function formatKeyPart(part: string): string {
       case 'meta':
       case 'cmd':
       case 'command':
+      case 'super':
         return '\u2318'
       case 'alt':
       case 'option':
@@ -36,6 +37,8 @@ export function formatKeyPart(part: string): string {
       case 'ctrl':
       case 'control':
         return 'Ctrl'
+      case 'super':
+        return 'Win'
       case 'alt':
       case 'option':
         return 'Alt'

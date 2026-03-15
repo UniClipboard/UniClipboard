@@ -2,6 +2,7 @@ const MODIFIER_ALIASES: Record<string, string> = {
   command: 'cmd',
   meta: 'cmd',
   mod: 'cmd',
+  super: 'cmd',
   control: 'ctrl',
   option: 'alt',
   escape: 'esc',

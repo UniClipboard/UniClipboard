@@ -125,7 +125,7 @@ export const SHORTCUT_DEFINITIONS: ShortcutDefinition[] = [
   // ===== Global (OS-level) =====
   {
     id: 'global.toggleQuickPanel',
-    key: 'mod+ctrl+v',
+    key: 'super+ctrl+v',
     action: 'global.toggleQuickPanel',
     scope: 'global',
     description: 'settings.sections.shortcuts.actions.toggleQuickPanel',

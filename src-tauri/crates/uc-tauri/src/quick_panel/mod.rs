@@ -308,6 +308,14 @@ pub fn update_global_shortcut(
         }
     }
 
+    // Also unregister new shortcuts defensively, in case they are already
+    // registered (e.g. from startup or a previous partial update).
+    for shortcut in new {
+        if !old.contains(shortcut) {
+            let _ = app.global_shortcut().unregister(shortcut.as_str());
+        }
+    }
+
     // Register all new shortcuts; on failure, rollback to old shortcuts
     for shortcut in new {
         if let Err(e) = register_global_shortcut(app, shortcut) {

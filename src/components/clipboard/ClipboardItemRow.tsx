@@ -37,7 +37,7 @@ interface ClipboardItemRowProps extends React.HTMLAttributes<HTMLDivElement> {
   isActive: boolean
   isStale?: boolean
   onClick: () => void
-  itemRef?: React.Ref<HTMLDivElement>
+  elementRef?: React.Ref<HTMLDivElement>
 }
 
 const FILE_EXT_ICON_MAP: Record<string, React.ElementType> = {
@@ -118,7 +118,7 @@ function getPreviewText(item: DisplayClipboardItem): string {
 }
 
 const ClipboardItemRow = React.forwardRef<HTMLDivElement, ClipboardItemRowProps>(
-  ({ item, isActive, isStale, onClick, itemRef, className: extraClassName, ...rest }, ref) => {
+  ({ item, isActive, isStale, onClick, elementRef, className: extraClassName, ...rest }, ref) => {
     const { t } = useTranslation()
     const Icon = FILE_EXT_ICON_MAP[getFileExt(item)] ?? typeIcons[item.type] ?? FileText
     const transfer = useAppSelector(state => selectTransferByEntryId(state, item.id))
@@ -135,7 +135,7 @@ const ClipboardItemRow = React.forwardRef<HTMLDivElement, ClipboardItemRowProps>
 
     return (
       <div
-        ref={itemRef ?? ref}
+        ref={elementRef ?? ref}
         {...rest}
         className={cn(
           'flex flex-col gap-1 py-2.5 px-3 rounded-lg cursor-pointer select-none transition-colors shrink-0 overflow-hidden',

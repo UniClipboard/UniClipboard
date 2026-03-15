@@ -90,6 +90,7 @@ pub async fn get_clipboard_entries(
                     file_transfer_reason: dto.file_transfer_reason,
                     link_urls: dto.link_urls,
                     link_domains,
+                    file_sizes: dto.file_sizes,
                 }
             })
             .collect();
@@ -247,6 +248,7 @@ pub async fn get_clipboard_entry(
                     file_transfer_reason: dto.file_transfer_reason,
                     link_urls: dto.link_urls,
                     link_domains,
+                    file_sizes: dto.file_sizes,
                 }]
             }
             None => vec![],

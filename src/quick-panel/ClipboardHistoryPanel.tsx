@@ -33,6 +33,7 @@ interface ClipboardEntryProjection {
   thumbnail_url?: string | null
   link_urls?: string[] | null
   link_domains?: string[] | null
+  file_sizes?: number[] | null
 }
 
 type ClipboardEntriesResponse =

@@ -62,7 +62,9 @@ impl SyncOutboundClipboardUseCase {
         peers: &[uc_core::network::DiscoveredPeer],
         snapshot: &SystemClipboardSnapshot,
     ) -> Vec<uc_core::network::DiscoveredPeer> {
-        use uc_core::settings::content_type_filter::{classify_snapshot, is_content_type_allowed};
+        use uc_core::settings::content_type_filter::{
+            classify_snapshot, is_content_type_allowed, ContentTypeCategory,
+        };
 
         let global_settings = match self.settings.load().await {
             Ok(s) => Some(s),
@@ -85,6 +87,16 @@ impl SyncOutboundClipboardUseCase {
 
         // Classify the snapshot once, not per-peer
         let content_category = classify_snapshot(snapshot);
+
+        // Global file_sync_enabled guard for file content
+        if content_category == ContentTypeCategory::File {
+            if let Some(ref gs) = global_settings {
+                if !gs.file_sync.file_sync_enabled {
+                    info!("Global file_sync disabled; skipping outbound sync for file content");
+                    return vec![];
+                }
+            }
+        }
 
         let mut result = Vec::with_capacity(peers.len());
         for peer in peers {
@@ -1669,5 +1681,107 @@ mod tests {
             "missing peer-2 in error: {err_msg}"
         );
         assert_eq!(send_calls.lock().expect("send calls lock").len(), 0);
+    }
+
+    fn make_file_snapshot() -> SystemClipboardSnapshot {
+        SystemClipboardSnapshot {
+            ts_ms: 1_713_000_000_000,
+            representations: vec![ObservedClipboardRepresentation::new(
+                RepresentationId::new(),
+                FormatId::from("public.file-url"),
+                Some(MimeType("text/uri-list".to_string())),
+                b"file:///tmp/test.txt".to_vec(),
+            )],
+        }
+    }
+
+    fn build_policy_usecase_with_settings(
+        sendable_peers: Vec<DiscoveredPeer>,
+        paired_device_repo: Arc<dyn PairedDeviceRepositoryPort>,
+        settings: Settings,
+    ) -> SyncOutboundClipboardUseCase {
+        let network = Arc::new(TestNetwork {
+            sendable_peers,
+            failing_peers: HashSet::new(),
+            ensure_failing_peers: HashSet::new(),
+            send_calls: Arc::new(Mutex::new(Vec::new())),
+            list_sendable_peers_calls: Arc::new(AtomicUsize::new(0)),
+            ensure_business_path_calls: Arc::new(AtomicUsize::new(0)),
+        });
+
+        SyncOutboundClipboardUseCase::new(
+            Arc::new(TestSystemClipboard {
+                snapshot: build_snapshot(),
+            }),
+            network.clone(),
+            network,
+            Arc::new(TestEncryptionSession { ready: true }),
+            Arc::new(TestDeviceIdentity),
+            Arc::new(TestSettings { settings }),
+            Arc::new(TransferPayloadEncryptorAdapter),
+            paired_device_repo,
+        )
+    }
+
+    #[tokio::test]
+    async fn apply_sync_policy_blocks_file_content_when_global_file_sync_disabled() {
+        let peers = vec![make_discovered_peer("peer-1")];
+        let mut devices = std::collections::HashMap::new();
+        devices.insert("peer-1".to_string(), make_paired_device("peer-1", None));
+        let repo = Arc::new(ConfigurablePairedDeviceRepo {
+            devices,
+            fail_for: HashSet::new(),
+        });
+        let mut settings = Settings::default();
+        settings.file_sync.file_sync_enabled = false;
+        let uc = build_policy_usecase_with_settings(peers.clone(), repo, settings);
+
+        let result = uc.apply_sync_policy(&peers, &make_file_snapshot()).await;
+        assert!(
+            result.is_empty(),
+            "file content should be blocked when global file_sync disabled"
+        );
+    }
+
+    #[tokio::test]
+    async fn apply_sync_policy_allows_file_content_when_global_file_sync_enabled() {
+        let peers = vec![make_discovered_peer("peer-1")];
+        let mut devices = std::collections::HashMap::new();
+        devices.insert("peer-1".to_string(), make_paired_device("peer-1", None));
+        let repo = Arc::new(ConfigurablePairedDeviceRepo {
+            devices,
+            fail_for: HashSet::new(),
+        });
+        let mut settings = Settings::default();
+        settings.file_sync.file_sync_enabled = true;
+        let uc = build_policy_usecase_with_settings(peers.clone(), repo, settings);
+
+        let result = uc.apply_sync_policy(&peers, &make_file_snapshot()).await;
+        assert_eq!(
+            result.len(),
+            1,
+            "file content should be allowed when global file_sync enabled"
+        );
+    }
+
+    #[tokio::test]
+    async fn apply_sync_policy_text_unaffected_by_file_sync_disabled() {
+        let peers = vec![make_discovered_peer("peer-1")];
+        let mut devices = std::collections::HashMap::new();
+        devices.insert("peer-1".to_string(), make_paired_device("peer-1", None));
+        let repo = Arc::new(ConfigurablePairedDeviceRepo {
+            devices,
+            fail_for: HashSet::new(),
+        });
+        let mut settings = Settings::default();
+        settings.file_sync.file_sync_enabled = false;
+        let uc = build_policy_usecase_with_settings(peers.clone(), repo, settings);
+
+        let result = uc.apply_sync_policy(&peers, &make_text_snapshot()).await;
+        assert_eq!(
+            result.len(),
+            1,
+            "text content should not be affected by file_sync_enabled"
+        );
     }
 }

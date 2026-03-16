@@ -519,6 +519,16 @@
   "devices": {
     "title": "Device Management",
     "addNew": "Add New Device",
+    "thisDevice": {
+      "title": "This Device"
+    },
+    "pairedDevices": {
+      "title": "Paired Devices"
+    },
+    "unpair": {
+      "confirmTitle": "Unpair Device",
+      "confirmDescription": "Are you sure you want to unpair {{deviceName}}? You will need to pair again to sync clipboard content."
+    },
     "tabs": {
       "connected": "Connected Devices",
       "requests": "Pairing Requests"
@@ -542,6 +552,7 @@
       "actions": {
         "retry": "Retry",
         "unpair": "Unpair",
+        "settings": "Settings",
         "addDevice": "Add Device",
         "addAnotherDevice": "Add another device"
       }

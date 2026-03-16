@@ -519,6 +519,16 @@
   "devices": {
     "title": "设备管理",
     "addNew": "添加新设备",
+    "thisDevice": {
+      "title": "本设备"
+    },
+    "pairedDevices": {
+      "title": "已配对设备"
+    },
+    "unpair": {
+      "confirmTitle": "取消配对",
+      "confirmDescription": "确定要取消与 {{deviceName}} 的配对吗？取消后需要重新配对才能同步剪贴板内容。"
+    },
     "tabs": {
       "connected": "已连接设备",
       "requests": "配对请求"
@@ -542,6 +552,7 @@
       "actions": {
         "retry": "重试",
         "unpair": "取消配对",
+        "settings": "设置",
         "addDevice": "添加设备",
         "addAnotherDevice": "添加另一台设备"
       }

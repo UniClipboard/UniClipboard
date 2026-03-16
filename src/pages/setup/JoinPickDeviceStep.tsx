@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from 'framer-motion'
-import { ArrowLeft, Laptop, Monitor, Radar, RefreshCw, Smartphone } from 'lucide-react'
+import { Laptop, Monitor, Radar, RefreshCw, Smartphone } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { JoinPickDeviceStepProps } from './types'
 import { Button } from '@/components/ui/button'
@@ -8,7 +8,6 @@ import StepLayout from '@/pages/setup/StepLayout'
 
 export default function JoinPickDeviceStep({
   onSelectPeer,
-  onBack,
   onRescan,
   peers,
   scanPhase,
@@ -51,20 +50,8 @@ export default function JoinPickDeviceStep({
     }
   }
 
-  const backButton = (
-    <button
-      type="button"
-      onClick={onBack}
-      className="flex items-center gap-1 text-sm text-muted-foreground transition-colors hover:text-foreground"
-    >
-      <ArrowLeft className="h-4 w-4" />
-      {tCommon('back')}
-    </button>
-  )
-
   return (
     <StepLayout
-      headerLeft={backButton}
       title={t('title')}
       subtitle={t('subtitle')}
       error={errorMessage}

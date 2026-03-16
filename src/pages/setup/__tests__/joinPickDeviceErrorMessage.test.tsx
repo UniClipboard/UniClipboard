@@ -38,7 +38,6 @@ describe('JoinPickDeviceStep error message mapping', () => {
     renderWithI18n(
       <JoinPickDeviceStep
         onSelectPeer={() => undefined}
-        onBack={() => undefined}
         onRescan={() => undefined}
         peers={[]}
         scanPhase="empty"
@@ -54,7 +53,6 @@ describe('JoinPickDeviceStep error message mapping', () => {
     renderWithI18n(
       <JoinPickDeviceStep
         onSelectPeer={() => undefined}
-        onBack={() => undefined}
         onRescan={() => undefined}
         peers={[]}
         scanPhase="empty"
@@ -70,7 +68,6 @@ describe('JoinPickDeviceStep error message mapping', () => {
     renderWithI18n(
       <JoinPickDeviceStep
         onSelectPeer={() => undefined}
-        onBack={() => undefined}
         onRescan={() => undefined}
         peers={[]}
         scanPhase="empty"
@@ -86,7 +83,6 @@ describe('JoinPickDeviceStep error message mapping', () => {
     renderWithI18n(
       <JoinPickDeviceStep
         onSelectPeer={() => undefined}
-        onBack={() => undefined}
         onRescan={() => undefined}
         peers={[]}
         scanPhase="empty"

@@ -1,4 +1,4 @@
-import { Eye, EyeOff, Loader2, ArrowLeft } from 'lucide-react'
+import { Eye, EyeOff, Loader2 } from 'lucide-react'
 import { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { JoinVerifyPassphraseStepProps } from './types'
@@ -11,7 +11,6 @@ import StepLayout from '@/pages/setup/StepLayout'
 export default function JoinVerifyPassphraseStep({
   peerId,
   onSubmit,
-  onBack,
   onCreateNew,
   error,
   loading,
@@ -51,21 +50,9 @@ export default function JoinVerifyPassphraseStep({
     onSubmit(passphrase)
   }
 
-  const backButton = (
-    <button
-      type="button"
-      onClick={onBack}
-      className="flex items-center gap-1 text-sm text-muted-foreground transition-colors hover:text-foreground"
-    >
-      <ArrowLeft className="h-4 w-4" />
-      {t('actions.backToPick')}
-    </button>
-  )
-
   if (error === 'PassphraseInvalidOrMismatch' && showMismatchHelp) {
     return (
       <StepLayout
-        headerLeft={backButton}
         title={t('mismatchHelp.title')}
         subtitle={t('mismatchHelp.subtitle')}
         direction={direction}
@@ -110,7 +97,6 @@ export default function JoinVerifyPassphraseStep({
 
   return (
     <StepLayout
-      headerLeft={backButton}
       title={t('title')}
       subtitle={t('subtitle')}
       error={localError}

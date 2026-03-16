@@ -35,12 +35,10 @@ export interface WelcomeStepProps extends StepProps {
 
 export interface CreatePassphraseStepProps extends StepProps {
   onSubmit: (pass1: string, pass2: string) => void
-  onBack: () => void
 }
 
 export interface JoinPickDeviceStepProps extends StepProps {
   onSelectPeer: (peerId: string) => void
-  onBack: () => void
   onRescan: () => void
   peers: DiscoveredPeer[]
   scanPhase: ScanPhase
@@ -49,7 +47,6 @@ export interface JoinPickDeviceStepProps extends StepProps {
 export interface JoinVerifyPassphraseStepProps extends StepProps {
   peerId?: string
   onSubmit: (passphrase: string) => void
-  onBack: () => void
   onCreateNew: () => void
 }
 

@@ -38,7 +38,6 @@ describe('setup join pick peer id display', () => {
     renderWithI18n(
       <JoinPickDeviceStep
         onSelectPeer={() => undefined}
-        onBack={() => undefined}
         onRescan={() => undefined}
         peers={[{ id: peerId, deviceName: 'Device A', device_type: 'desktop' }]}
         scanPhase="hasDevices"

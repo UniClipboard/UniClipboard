@@ -1,4 +1,4 @@
-import { Eye, EyeOff, Loader2, ArrowLeft } from 'lucide-react'
+import { Eye, EyeOff, Loader2 } from 'lucide-react'
 import { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
@@ -9,14 +9,11 @@ import { CreatePassphraseStepProps } from '@/pages/setup/types'
 
 export default function CreatePassphraseStep({
   onSubmit,
-  onBack,
   error,
   loading,
   direction,
 }: CreatePassphraseStepProps) {
   const { t } = useTranslation(undefined, { keyPrefix: 'setup.createPassphrase' })
-  const { t: tCommon } = useTranslation(undefined, { keyPrefix: 'setup.common' })
-
   const [pass1, setPass1] = useState('')
   const [pass2, setPass2] = useState('')
   const [showPass1, setShowPass1] = useState(false)
@@ -52,17 +49,6 @@ export default function CreatePassphraseStep({
     onSubmit(pass1, pass2)
   }
 
-  const backButton = (
-    <button
-      type="button"
-      onClick={onBack}
-      className="flex items-center gap-1 text-sm text-muted-foreground transition-colors hover:text-foreground"
-    >
-      <ArrowLeft className="h-4 w-4" />
-      {tCommon('back')}
-    </button>
-  )
-
   const submitButton = (
     <div className="flex items-center gap-4">
       <Button onClick={handleSubmit} disabled={loading} className="min-w-32">
@@ -80,7 +66,6 @@ export default function CreatePassphraseStep({
 
   return (
     <StepLayout
-      headerLeft={backButton}
       title={t('title')}
       subtitle={t('subtitle')}
       error={localError}

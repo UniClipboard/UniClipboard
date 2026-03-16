@@ -48,7 +48,6 @@ describe('setup peer id display', () => {
       <JoinVerifyPassphraseStep
         peerId={peerId}
         onSubmit={() => undefined}
-        onBack={() => undefined}
         onCreateNew={() => undefined}
       />
     )

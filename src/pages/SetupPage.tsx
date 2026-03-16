@@ -1,5 +1,5 @@
 import { AnimatePresence } from 'framer-motion'
-import { Loader2 } from 'lucide-react'
+import { ArrowLeft, Loader2 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate } from 'react-router-dom'
@@ -18,6 +18,7 @@ import {
 } from '@/api/setup'
 import FloatingParticles from '@/components/effects/FloatingParticles'
 import { useDeviceDiscovery } from '@/hooks/useDeviceDiscovery'
+import { usePlatform } from '@/hooks/usePlatform'
 import CreatePassphraseStep from '@/pages/setup/CreatePassphraseStep'
 import JoinPickDeviceStep from '@/pages/setup/JoinPickDeviceStep'
 import JoinVerifyPassphraseStep from '@/pages/setup/JoinVerifyPassphraseStep'
@@ -68,6 +69,8 @@ function getStepInfo(state: SetupState | null): { total: number; current: number
 
 export default function SetupPage({ onCompleteSetup }: SetupPageProps = {}) {
   const { t } = useTranslation(undefined, { keyPrefix: 'setup.page' })
+  const { t: tCommon } = useTranslation(undefined, { keyPrefix: 'setup.common' })
+  const { isMac } = usePlatform()
   const navigate = useNavigate()
   const [setupState, setSetupState] = useState<SetupState | null>(null)
   const [loading, setLoading] = useState(false)
@@ -241,7 +244,6 @@ export default function SetupPage({ onCompleteSetup }: SetupPageProps = {}) {
             onSubmit={(pass1: string, pass2: string) =>
               runAction(() => submitPassphrase(pass1, pass2))
             }
-            onBack={() => runAction(() => cancelSetup())}
             error={setupState.CreateSpaceInputPassphrase.error}
             loading={loading}
             direction={direction}
@@ -256,7 +258,6 @@ export default function SetupPage({ onCompleteSetup }: SetupPageProps = {}) {
               setSelectedPeerId(peerId)
               runAction(() => selectJoinPeer(peerId))
             }}
-            onBack={() => runAction(() => cancelSetup())}
             onRescan={resetScan}
             peers={peers}
             scanPhase={scanPhase}
@@ -273,7 +274,6 @@ export default function SetupPage({ onCompleteSetup }: SetupPageProps = {}) {
           <JoinVerifyPassphraseStep
             peerId={selectedPeerId ?? undefined}
             onSubmit={(passphrase: string) => runAction(() => verifyPassphrase(passphrase))}
-            onBack={() => runAction(() => cancelSetup())}
             onCreateNew={() => runAction(() => startNewSpace())}
             error={error}
             loading={loading}
@@ -353,6 +353,30 @@ export default function SetupPage({ onCompleteSetup }: SetupPageProps = {}) {
       </div>
 
       <div className="relative flex h-full w-full min-h-0 flex-col">
+        {/* Draggable header with back button */}
+        <header
+          data-tauri-drag-region
+          className={`relative z-10 flex h-12 shrink-0 items-center pr-4 ${
+            isMac ? 'pl-20' : 'pl-4'
+          }`}
+        >
+          {setupState &&
+            typeof setupState === 'object' &&
+            ('CreateSpaceInputPassphrase' in setupState ||
+              'JoinSpaceSelectDevice' in setupState ||
+              'JoinSpaceInputPassphrase' in setupState) && (
+              <button
+                type="button"
+                data-tauri-drag-region="false"
+                onClick={() => runAction(() => cancelSetup())}
+                className="flex items-center gap-1 text-sm text-muted-foreground transition-colors hover:text-foreground"
+              >
+                <ArrowLeft className="h-4 w-4" />
+                {tCommon('back')}
+              </button>
+            )}
+        </header>
+
         <main
           className={`flex min-h-0 flex-1 items-center px-8 py-4 sm:px-12 sm:py-6 ${
             stepKey === 'Welcome' ? 'overflow-hidden' : 'overflow-y-auto'

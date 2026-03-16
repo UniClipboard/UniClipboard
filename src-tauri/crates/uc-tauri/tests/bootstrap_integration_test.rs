@@ -361,7 +361,8 @@ fn wiring_exposes_secure_storage_not_keyring() {
     );
 
     run_with_tokio(|| {
-        let config = AppConfig::empty();
+        let mut config = AppConfig::empty();
+        config.database_path = PathBuf::from(":memory:");
         let (cmd_tx, _cmd_rx) = mpsc::channel(10);
         let result =
             wire_dependencies_with_identity_store(&config, cmd_tx, Some(test_identity_store()));
@@ -659,7 +660,8 @@ fn test_bootstrap_create_runtime_wrapper() {
 #[test]
 fn test_bootstrap_wire_dependencies_with_empty_config() {
     run_with_tokio(|| {
-        let config = AppConfig::empty();
+        let mut config = AppConfig::empty();
+        config.database_path = PathBuf::from(":memory:");
 
         let (cmd_tx, _cmd_rx) = mpsc::channel(10);
         let deps_result =

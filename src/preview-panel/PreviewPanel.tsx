@@ -1,78 +1,26 @@
-import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import { Loader2 } from 'lucide-react'
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import {
+  getClipboardEntryDetail,
+  getClipboardEntryResource,
+  getResourceImageUrl,
+  isImageType,
+} from '@/api/clipboardItems'
+import { useThemeSync } from '@/hooks/useThemeSync'
 import { resolveUcUrl } from '@/lib/protocol'
-import { applyThemePreset, DEFAULT_THEME_COLOR } from '@/lib/theme-engine'
-import type { ThemeMode } from '@/lib/theme-engine'
-import type { SettingChangedEvent } from '@/types/events'
-import type { Settings } from '@/types/setting'
-
-// ── Types ──────────────────────────────────────────────────────────────
-
-interface ClipboardEntryDetail {
-  id: string
-  content: string
-  content_type: string
-  size_bytes: number
-  is_favorited: boolean
-  updated_at: number
-  active_time: number
-}
-
-interface ClipboardEntryResource {
-  blob_id: string | null
-  mime_type: string
-  size_bytes: number
-  url: string | null
-  inline_data: string | null
-}
 
 interface ShowPayload {
   entryId: string
 }
 
-// ── Theme sync ─────────────────────────────────────────────────────────
-
-function resolveThemeMode(theme: string | undefined | null): ThemeMode {
-  if (theme === 'light' || theme === 'dark') return theme
-  return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
-}
-
-function applyFullTheme(settings: Settings | null): void {
-  const root = document.documentElement
-  const theme = settings?.general?.theme
-  const themeColor = settings?.general?.theme_color || DEFAULT_THEME_COLOR
-
-  const resolvedMode = resolveThemeMode(theme)
-  root.classList.remove('light', 'dark')
-  root.classList.add(resolvedMode)
-  applyThemePreset(themeColor, resolvedMode, root)
-}
-
 // ── Helpers ────────────────────────────────────────────────────────────
-
-function isImageType(contentType: string): boolean {
-  return contentType === 'image' || contentType.startsWith('image/')
-}
 
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
-}
-
-// ── Component ──────────────────────────────────────────────────────────
-
-function getResourceImageUrl(resource: ClipboardEntryResource): string | null {
-  if (resource.url) {
-    return resolveUcUrl(resource.url)
-  }
-  if (resource.inline_data) {
-    return `data:${resource.mime_type};base64,${resource.inline_data}`
-  }
-  return null
 }
 
 // Unified preview state
@@ -88,52 +36,12 @@ interface PreviewState {
 
 const PreviewPanel: React.FC = () => {
   const { t } = useTranslation(undefined, { keyPrefix: 'previewPanel' })
+  useThemeSync()
   const [preview, setPreview] = useState<PreviewState | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const requestIdRef = useRef(0)
-  const settingsRef = useRef<Settings | null>(null)
   const isMac = useMemo(() => navigator.platform.toUpperCase().includes('MAC'), [])
-
-  // ── Theme sync ──
-  useEffect(() => {
-    async function loadAndApplyTheme() {
-      try {
-        const settings = await invoke<Settings>('get_settings')
-        settingsRef.current = settings
-        applyFullTheme(settings)
-      } catch (err) {
-        console.error('Failed to load settings for theme:', err)
-        applyFullTheme(null)
-      }
-    }
-
-    loadAndApplyTheme()
-
-    const unlistenSettings = listen<SettingChangedEvent>('setting-changed', event => {
-      try {
-        const newSettings = JSON.parse(event.payload.settingJson) as Settings
-        settingsRef.current = newSettings
-        applyFullTheme(newSettings)
-      } catch (err) {
-        console.error('Failed to parse setting-changed event:', err)
-      }
-    })
-
-    const mq = window.matchMedia('(prefers-color-scheme: dark)')
-    const handleSystemChange = () => {
-      const settings = settingsRef.current
-      if (!settings?.general?.theme || settings.general.theme === 'system') {
-        applyFullTheme(settings)
-      }
-    }
-    mq.addEventListener('change', handleSystemChange)
-
-    return () => {
-      unlistenSettings.then(fn => fn())
-      mq.removeEventListener('change', handleSystemChange)
-    }
-  }, [])
 
   // ── Event listeners ──
   useEffect(() => {
@@ -146,15 +54,14 @@ const PreviewPanel: React.FC = () => {
 
       try {
         // First, get resource metadata (works for ALL content types)
-        const resource = await invoke<ClipboardEntryResource>('get_clipboard_entry_resource', {
-          entryId,
-        })
+        const resource = await getClipboardEntryResource(entryId)
 
         if (currentRequestId !== requestIdRef.current) return
 
         if (isImageType(resource.mime_type)) {
           // Image: use resource URL directly (get_clipboard_entry_detail fails for images)
-          const url = getResourceImageUrl(resource)
+          const rawUrl = getResourceImageUrl(resource)
+          const url = rawUrl && !rawUrl.startsWith('data:') ? resolveUcUrl(rawUrl) : rawUrl
           setPreview({
             entryId,
             contentType: 'image',
@@ -163,9 +70,7 @@ const PreviewPanel: React.FC = () => {
           })
         } else {
           // Text: use get_clipboard_entry_detail for full text content
-          const detail = await invoke<ClipboardEntryDetail>('get_clipboard_entry_detail', {
-            entryId,
-          })
+          const detail = await getClipboardEntryDetail(entryId)
 
           if (currentRequestId !== requestIdRef.current) return
 

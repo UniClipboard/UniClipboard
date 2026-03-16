@@ -12,77 +12,19 @@ import {
   Unlock,
 } from 'lucide-react'
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { applyThemePreset, DEFAULT_THEME_COLOR } from '@/lib/theme-engine'
-import type { ThemeMode } from '@/lib/theme-engine'
-import type { ClipboardEvent, SettingChangedEvent } from '@/types/events'
-import type { Settings } from '@/types/setting'
-
-// ── Types ──────────────────────────────────────────────────────────────
-
-interface ClipboardEntryProjection {
-  id: string
-  preview: string
-  has_detail: boolean
-  size_bytes: number
-  captured_at: number
-  content_type: string
-  is_encrypted: boolean
-  is_favorited: boolean
-  updated_at: number
-  active_time: number
-  thumbnail_url?: string | null
-  link_urls?: string[] | null
-  link_domains?: string[] | null
-}
-
-type ClipboardEntriesResponse =
-  | { status: 'ready'; entries: ClipboardEntryProjection[] }
-  | { status: 'not_ready' }
-
-type ItemType = 'text' | 'image' | 'link' | 'code' | 'file' | 'unknown'
+import { copyClipboardItem, deleteClipboardItem } from '@/api/clipboardItems'
+import { unlockEncryptionSession } from '@/api/security'
+import { useClipboardCollection } from '@/hooks/useClipboardCollection'
+import { useThemeSync } from '@/hooks/useThemeSync'
+import { formatRelativeTime, getItemPreview, resolveItemType } from '@/lib/clipboard-utils'
+import type { ItemType } from '@/lib/clipboard-utils'
 
 interface DisplayItem {
   id: string
   type: ItemType
   preview: string
-  time: string
   activeTime: number
   isFavorited: boolean
-}
-
-// ── Helpers ────────────────────────────────────────────────────────────
-
-function isImageType(contentType: string): boolean {
-  return contentType === 'image' || contentType.startsWith('image/')
-}
-
-function resolveType(entry: ClipboardEntryProjection): ItemType {
-  if (isImageType(entry.content_type)) return 'image'
-  if (entry.link_urls && entry.link_urls.length > 0) return 'link'
-  return 'text'
-}
-
-function getPreview(entry: ClipboardEntryProjection): string {
-  const type = resolveType(entry)
-  switch (type) {
-    case 'image':
-      return 'Image'
-    case 'link':
-      return entry.link_urls?.[0] ?? entry.preview
-    default:
-      return entry.preview
-  }
-}
-
-function formatRelativeTime(timestampMs: number): string {
-  const now = Date.now()
-  const diffMs = now - timestampMs
-  const diffMins = Math.round(diffMs / 60000)
-
-  if (diffMins < 1) return 'just now'
-  if (diffMins < 60) return `${diffMins}m`
-  if (diffMins < 1440) return `${Math.floor(diffMins / 60)}h`
-  return `${Math.floor(diffMins / 1440)}d`
 }
 
 const typeIcons: Record<ItemType, React.ElementType> = {
@@ -92,72 +34,6 @@ const typeIcons: Record<ItemType, React.ElementType> = {
   code: Code,
   file: File,
   unknown: FileText,
-}
-
-// ── Theme sync ─────────────────────────────────────────────────────────
-
-/**
- * Resolve the effective theme mode from settings, respecting 'system' preference.
- *
- * 根据设置解析实际的主题模式，支持跟随系统。
- */
-function resolveThemeMode(theme: string | undefined | null): ThemeMode {
-  if (theme === 'light' || theme === 'dark') return theme
-  // 'system' or undefined — follow OS preference
-  return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
-}
-
-/**
- * Apply the full theme (mode + color preset) to the document root.
- *
- * 将完整主题（模式 + 颜色预设）应用到文档根元素。
- */
-function applyFullTheme(settings: Settings | null): void {
-  const root = document.documentElement
-  const theme = settings?.general?.theme
-  const themeColor = settings?.general?.theme_color || DEFAULT_THEME_COLOR
-
-  const resolvedMode = resolveThemeMode(theme)
-
-  // Toggle dark class — same logic as SettingContext
-  root.classList.remove('light', 'dark')
-  root.classList.add(resolvedMode)
-
-  // Apply theme color tokens
-  applyThemePreset(themeColor, resolvedMode, root)
-}
-
-// ── Encryption status ─────────────────────────────────────────────────
-
-async function checkEncryptionLocked(): Promise<boolean> {
-  const status = await invoke<{ initialized: boolean; session_ready: boolean }>(
-    'get_encryption_session_status'
-  )
-  return status.initialized && !status.session_ready
-}
-
-// ── Data fetch ─────────────────────────────────────────────────────────
-
-async function fetchEntries(): Promise<DisplayItem[]> {
-  const response = await invoke<ClipboardEntriesResponse>('get_clipboard_entries', {
-    limit: 50,
-    offset: 0,
-  })
-
-  if (response.status === 'not_ready') return []
-
-  return response.entries.map(entry => ({
-    id: entry.id,
-    type: resolveType(entry),
-    preview: getPreview(entry),
-    time: formatRelativeTime(entry.active_time),
-    activeTime: entry.active_time,
-    isFavorited: entry.is_favorited,
-  }))
-}
-
-async function restoreEntry(entryId: string): Promise<void> {
-  await invoke('restore_clipboard_entry', { entryId })
 }
 
 async function dismissPanel(): Promise<void> {
@@ -223,7 +99,7 @@ const PanelItem: React.FC<PanelItemProps> = ({
           isSelected ? 'text-primary-foreground/60' : 'text-muted-foreground',
         ].join(' ')}
       >
-        {item.time}
+        {formatRelativeTime(item.activeTime)}
       </span>
       {shortcutKey && (
         <kbd
@@ -245,13 +121,13 @@ const PanelItem: React.FC<PanelItemProps> = ({
 // ── Main Panel ─────────────────────────────────────────────────────────
 
 const ClipboardHistoryPanel: React.FC = () => {
-  const [items, setItems] = useState<DisplayItem[]>([])
-  const [loading, setLoading] = useState(true)
+  useThemeSync()
+
+  const { items, loading, isLocked, reload } = useClipboardCollection()
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedIndex, setSelectedIndex] = useState(0)
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null)
   const [isKeyboardNav, setIsKeyboardNav] = useState(true)
-  const [isLocked, setIsLocked] = useState(false)
   const [unlocking, setUnlocking] = useState(false)
   const [unlockError, setUnlockError] = useState<string | null>(null)
 
@@ -261,78 +137,9 @@ const ClipboardHistoryPanel: React.FC = () => {
   const previewTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const deletingRef = useRef(false)
   const visibleRef = useRef(false)
-  const throttleTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const lastReloadTimestampRef = useRef<number | undefined>(undefined)
-
-  // ── Theme sync with main window settings ──
-  const settingsRef = useRef<Settings | null>(null)
-
-  useEffect(() => {
-    // 1. Load settings from backend and apply theme
-    async function loadAndApplyTheme() {
-      try {
-        const settings = await invoke<Settings>('get_settings')
-        settingsRef.current = settings
-        applyFullTheme(settings)
-      } catch (err) {
-        console.error('Failed to load settings for theme:', err)
-        // Fallback: apply default theme with system mode
-        applyFullTheme(null)
-      }
-    }
-
-    loadAndApplyTheme()
-
-    // 2. Listen for settings changes from main window
-    const unlistenSettings = listen<SettingChangedEvent>('setting-changed', event => {
-      try {
-        const newSettings = JSON.parse(event.payload.settingJson) as Settings
-        settingsRef.current = newSettings
-        applyFullTheme(newSettings)
-      } catch (err) {
-        console.error('Failed to parse setting-changed event:', err)
-      }
-    })
-
-    // 3. Listen for OS theme changes (when theme mode is 'system')
-    const mq = window.matchMedia('(prefers-color-scheme: dark)')
-    const handleSystemChange = () => {
-      const settings = settingsRef.current
-      if (!settings?.general?.theme || settings.general.theme === 'system') {
-        applyFullTheme(settings)
-      }
-    }
-    mq.addEventListener('change', handleSystemChange)
-
-    return () => {
-      unlistenSettings.then(fn => fn())
-      mq.removeEventListener('change', handleSystemChange)
-    }
-  }, [])
-
-  // Load data (check lock status first)
-  const loadData = useCallback(async () => {
-    setLoading(true)
-    try {
-      const locked = await checkEncryptionLocked()
-      if (locked) {
-        setIsLocked(true)
-        return
-      }
-      setIsLocked(false)
-      const entries = await fetchEntries()
-      setItems(entries)
-    } catch (err) {
-      console.error('Failed to load clipboard entries:', err)
-    } finally {
-      setLoading(false)
-    }
-  }, [])
 
   // Load data on mount and when panel becomes visible
   useEffect(() => {
-    loadData()
-
     // Listen for panel show event to reload data and re-focus search
     const unlisten = listen('quick-panel://refresh', () => {
       visibleRef.current = true
@@ -341,7 +148,7 @@ const ClipboardHistoryPanel: React.FC = () => {
       setHoveredIndex(null)
       setIsKeyboardNav(true)
       invoke('dismiss_preview_panel').catch(() => {})
-      loadData()
+      void reload()
       // Re-focus search input when panel is re-shown
       requestAnimationFrame(() => searchInputRef.current?.focus())
     })
@@ -359,108 +166,48 @@ const ClipboardHistoryPanel: React.FC = () => {
       unlistenFocus.then(fn => fn())
       unlistenBlur.then(fn => fn())
     }
-  }, [loadData])
-
-  // Listen for encryption session ready event
-  useEffect(() => {
-    const unlistenPromise = listen<'SessionReady' | { type: string }>(
-      'encryption://event',
-      event => {
-        const eventType = typeof event.payload === 'string' ? event.payload : event.payload?.type
-        if (eventType === 'SessionReady') {
-          setIsLocked(false)
-          setUnlocking(false)
-          setUnlockError(null)
-          loadData()
-        }
-      }
-    )
-
-    return () => {
-      unlistenPromise.then(fn => fn())
-    }
-  }, [loadData])
-
-  // Live clipboard event updates (only when panel is visible)
-  useEffect(() => {
-    const unlistenPromise = listen<ClipboardEvent>('clipboard://event', event => {
-      if (!visibleRef.current) return
-
-      if (event.payload.type === 'NewContent' && event.payload.entry_id) {
-        if (event.payload.origin === 'local') {
-          // Fetch the single new entry and prepend
-          invoke<ClipboardEntriesResponse>('get_clipboard_entry', {
-            entryId: event.payload.entry_id,
-          })
-            .then(response => {
-              if (response.status === 'not_ready' || response.entries.length === 0) return
-              const entry = response.entries[0]
-              const newItem: DisplayItem = {
-                id: entry.id,
-                type: resolveType(entry),
-                preview: getPreview(entry),
-                time: formatRelativeTime(entry.active_time),
-                activeTime: entry.active_time,
-                isFavorited: entry.is_favorited,
-              }
-              setItems(prev => [newItem, ...prev])
-            })
-            .catch(err => console.error('Failed to fetch new clipboard entry:', err))
-        } else {
-          // Remote event: throttled full reload
-          const now = Date.now()
-          const lastReload = lastReloadTimestampRef.current
-
-          if (lastReload === undefined || now - lastReload >= 300) {
-            lastReloadTimestampRef.current = now
-            if (throttleTimeoutRef.current) {
-              clearTimeout(throttleTimeoutRef.current)
-              throttleTimeoutRef.current = null
-            }
-            loadData()
-          } else if (!throttleTimeoutRef.current) {
-            const delay = 300 - (now - lastReload)
-            throttleTimeoutRef.current = setTimeout(() => {
-              lastReloadTimestampRef.current = Date.now()
-              loadData()
-              throttleTimeoutRef.current = null
-            }, delay)
-          }
-        }
-      } else if (event.payload.type === 'Deleted' && event.payload.entry_id) {
-        const deletedId = event.payload.entry_id
-        setItems(prev => prev.filter(i => i.id !== deletedId))
-      }
-    })
-
-    return () => {
-      if (throttleTimeoutRef.current) {
-        clearTimeout(throttleTimeoutRef.current)
-        throttleTimeoutRef.current = null
-      }
-      unlistenPromise.then(fn => fn())
-    }
-  }, [loadData])
+  }, [reload])
 
   // Unlock encryption session
   const handleUnlock = useCallback(async () => {
     setUnlocking(true)
     setUnlockError(null)
     try {
-      await invoke('unlock_encryption_session')
-      // SessionReady event will handle the rest
+      await unlockEncryptionSession()
+      setUnlocking(false)
+      setUnlockError(null)
+      void reload()
     } catch (err) {
       setUnlocking(false)
       setUnlockError(err instanceof Error ? err.message : String(err))
     }
-  }, [])
+  }, [reload])
+
+  useEffect(() => {
+    if (!isLocked) {
+      setUnlocking(false)
+      setUnlockError(null)
+    }
+  }, [isLocked])
+
+  const displayItems = useMemo<DisplayItem[]>(
+    () =>
+      items.map(item => ({
+        id: item.id,
+        type: resolveItemType(item),
+        preview: getItemPreview(item),
+        activeTime: item.active_time,
+        isFavorited: item.is_favorited,
+      })),
+    [items]
+  )
 
   // Filter items by search query
   const filteredItems = useMemo(() => {
-    if (!searchQuery.trim()) return items
+    if (!searchQuery.trim()) return displayItems
     const q = searchQuery.toLowerCase()
-    return items.filter(item => item.preview.toLowerCase().includes(q))
-  }, [items, searchQuery])
+    return displayItems.filter(item => item.preview.toLowerCase().includes(q))
+  }, [displayItems, searchQuery])
 
   // Reset selection when filter changes (but not during deletion)
   useEffect(() => {
@@ -516,7 +263,7 @@ const ClipboardHistoryPanel: React.FC = () => {
       if (!item) return
 
       try {
-        await restoreEntry(item.id)
+        await copyClipboardItem(item.id)
       } catch (err) {
         console.error('Failed to restore clipboard entry:', err)
         return
@@ -535,13 +282,10 @@ const ClipboardHistoryPanel: React.FC = () => {
       if (!item) return
 
       try {
-        await invoke('delete_clipboard_entry', { entryId: item.id })
+        await deleteClipboardItem(item.id)
 
         // Mark as deleting so effects skip the dismiss/reset cycle
         deletingRef.current = true
-
-        // Remove from local state
-        setItems(prev => prev.filter(i => i.id !== item.id))
 
         // Stay at same index, or clamp to last item if we deleted the tail
         const newLength = filteredItems.length - 1
@@ -555,11 +299,12 @@ const ClipboardHistoryPanel: React.FC = () => {
         } else {
           invoke('dismiss_preview_panel').catch(() => {})
         }
+        void reload()
       } catch (err) {
         console.error('Failed to delete clipboard entry:', err)
       }
     },
-    [filteredItems]
+    [filteredItems, reload]
   )
 
   // Keyboard navigation

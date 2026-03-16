@@ -219,22 +219,11 @@ describe('useClipboardEvents', () => {
     const { Wrapper } = createWrapper()
     renderHook(() => useClipboardEvents(Filter.All), { wrapper: Wrapper })
 
-    await vi.waitFor(() => {
-      expect(clipboardListenerCallback).not.toBeNull()
-    })
-
     // Wait for encryption status check to complete
     await act(async () => {
       await new Promise(r => setTimeout(r, 10))
     })
-
-    // Simulate clipboard event while encryption is not ready
-    await act(async () => {
-      clipboardListenerCallback!({
-        payload: { type: 'NewContent', entry_id: 'entry-3', origin: 'local' },
-      })
-      await new Promise(r => setTimeout(r, 10))
-    })
+    expect(clipboardListenerCallback).toBeNull()
 
     expect(mockGetClipboardEntry).not.toHaveBeenCalled()
   })

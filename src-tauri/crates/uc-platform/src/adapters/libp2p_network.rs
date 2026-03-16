@@ -97,10 +97,18 @@ impl PeerCaches {
         discovered_at: DateTime<Utc>,
     ) -> DiscoveredPeer {
         sort_addresses_quic_first(&mut addresses);
+        // Preserve device_name and device_id from existing entry when
+        // re-discovered via mDNS, so we don't overwrite names that were
+        // resolved through the DeviceAnnounce protocol.
+        let (existing_name, existing_device_id) = self
+            .discovered_peers
+            .get(&peer_id)
+            .map(|p| (p.device_name.clone(), p.device_id.clone()))
+            .unwrap_or((None, None));
         let peer = DiscoveredPeer {
             peer_id,
-            device_name: None,
-            device_id: None,
+            device_name: existing_name,
+            device_id: existing_device_id,
             addresses,
             discovered_at,
             last_seen: discovered_at,
@@ -2388,6 +2396,31 @@ mod tests {
         assert!(peer.device_name.is_none());
         assert!(peer.device_id.is_none());
         assert!(!peer.is_paired);
+    }
+
+    #[test]
+    fn cache_upsert_discovered_preserves_device_name() {
+        let mut caches = PeerCaches::new();
+        let t0 = Utc::now();
+
+        // Initial discovery: no name yet
+        let peer = caches.upsert_discovered(
+            "peer-1".to_string(),
+            vec!["/ip4/192.168.1.2/tcp/4001".to_string()],
+            t0,
+        );
+        assert!(peer.device_name.is_none());
+
+        // Device name resolved via DeviceAnnounce protocol
+        caches.upsert_device_name("peer-1", "My Laptop".to_string(), t0);
+
+        // Re-discovery via mDNS: device_name must be preserved
+        let peer = caches.upsert_discovered(
+            "peer-1".to_string(),
+            vec!["/ip4/192.168.1.2/tcp/4001".to_string()],
+            t0,
+        );
+        assert_eq!(peer.device_name.as_deref(), Some("My Laptop"));
     }
 
     #[test]

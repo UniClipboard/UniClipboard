@@ -39,8 +39,9 @@ describe('JoinPickDeviceStep error message mapping', () => {
       <JoinPickDeviceStep
         onSelectPeer={() => undefined}
         onBack={() => undefined}
-        onRefresh={() => undefined}
+        onRescan={() => undefined}
         peers={[]}
+        scanPhase="empty"
         error="PairingRejected"
       />
     )
@@ -54,8 +55,9 @@ describe('JoinPickDeviceStep error message mapping', () => {
       <JoinPickDeviceStep
         onSelectPeer={() => undefined}
         onBack={() => undefined}
-        onRefresh={() => undefined}
+        onRescan={() => undefined}
         peers={[]}
+        scanPhase="empty"
         error="PairingFailed"
       />
     )
@@ -69,8 +71,9 @@ describe('JoinPickDeviceStep error message mapping', () => {
       <JoinPickDeviceStep
         onSelectPeer={() => undefined}
         onBack={() => undefined}
-        onRefresh={() => undefined}
+        onRescan={() => undefined}
         peers={[]}
+        scanPhase="empty"
         error="PeerUnavailable"
       />
     )
@@ -84,8 +87,9 @@ describe('JoinPickDeviceStep error message mapping', () => {
       <JoinPickDeviceStep
         onSelectPeer={() => undefined}
         onBack={() => undefined}
-        onRefresh={() => undefined}
+        onRescan={() => undefined}
         peers={[]}
+        scanPhase="empty"
         error="NetworkTimeout"
       />
     )

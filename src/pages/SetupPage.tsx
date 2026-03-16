@@ -4,7 +4,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
-import { getP2PPeers, P2PPeerInfo } from '@/api/p2p'
 import {
   cancelSetup,
   getSetupState,
@@ -17,6 +16,7 @@ import {
   verifyPassphrase,
   SetupState,
 } from '@/api/setup'
+import { useDeviceDiscovery } from '@/hooks/useDeviceDiscovery'
 import CreatePassphraseStep from '@/pages/setup/CreatePassphraseStep'
 import JoinPickDeviceStep from '@/pages/setup/JoinPickDeviceStep'
 import JoinVerifyPassphraseStep from '@/pages/setup/JoinVerifyPassphraseStep'
@@ -67,14 +67,19 @@ function getStepInfo(state: SetupState | null): { total: number; current: number
 
 export default function SetupPage({ onCompleteSetup }: SetupPageProps = {}) {
   const { t } = useTranslation(undefined, { keyPrefix: 'setup.page' })
-  const { t: tCommon } = useTranslation(undefined, { keyPrefix: 'setup.common' })
   const navigate = useNavigate()
   const [setupState, setSetupState] = useState<SetupState | null>(null)
   const [loading, setLoading] = useState(false)
-  const [peers, setPeers] = useState<Array<{ id: string; name: string; device_type: string }>>([])
-  const [peersLoading, setPeersLoading] = useState(false)
-  const [isScanningInitial, setIsScanningInitial] = useState(true)
   const [selectedPeerId, setSelectedPeerId] = useState<string | null>(null)
+
+  const isJoinSelectActive =
+    !!setupState && typeof setupState === 'object' && 'JoinSpaceSelectDevice' in setupState
+
+  const { peers, scanPhase, resetScan } = useDeviceDiscovery(isJoinSelectActive, {
+    onError: () => {
+      toast.error(t('errors.refreshPeersFailed'))
+    },
+  })
   const activeEventSessionIdRef = useRef<string | null>(null)
   const setupStateRef = useRef<SetupState | null>(null)
   const prevStateRef = useRef<SetupState | null>(null)
@@ -179,38 +184,6 @@ export default function SetupPage({ onCompleteSetup }: SetupPageProps = {}) {
     }
   }, [isSetupFlowActive, setupState])
 
-  const handleRefreshPeers = useCallback(async () => {
-    setPeersLoading(true)
-    try {
-      const peerList = await getP2PPeers()
-      setPeers(
-        peerList.map((p: P2PPeerInfo) => ({
-          id: p.peerId,
-          name: p.deviceName || tCommon('unknownDevice'),
-          device_type: 'desktop',
-        }))
-      )
-    } catch (error) {
-      console.error('Failed to refresh peers:', error)
-      toast.error(t('errors.refreshPeersFailed'))
-    } finally {
-      setPeersLoading(false)
-      setIsScanningInitial(false)
-    }
-  }, [t, tCommon])
-
-  useEffect(() => {
-    if (setupState && typeof setupState === 'object' && 'JoinSpaceSelectDevice' in setupState) {
-      handleRefreshPeers()
-      const interval = setInterval(handleRefreshPeers, 3000)
-      return () => {
-        clearInterval(interval)
-      }
-    } else {
-      setIsScanningInitial(true)
-    }
-  }, [setupState, handleRefreshPeers])
-
   const runAction = async (action: () => Promise<SetupState>) => {
     setLoading(true)
     try {
@@ -283,11 +256,11 @@ export default function SetupPage({ onCompleteSetup }: SetupPageProps = {}) {
               runAction(() => selectJoinPeer(peerId))
             }}
             onBack={() => runAction(() => cancelSetup())}
-            onRefresh={handleRefreshPeers}
+            onRescan={resetScan}
             peers={peers}
+            scanPhase={scanPhase}
             error={setupState.JoinSpaceSelectDevice.error}
-            loading={loading || peersLoading}
-            isScanningInitial={isScanningInitial}
+            loading={loading}
             direction={direction}
           />
         )

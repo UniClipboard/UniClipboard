@@ -8,11 +8,11 @@ import StepLayout from '@/pages/setup/StepLayout'
 export default function JoinPickDeviceStep({
   onSelectPeer,
   onBack,
-  onRefresh,
+  onRescan,
   peers,
+  scanPhase,
   error,
   loading,
-  isScanningInitial,
   direction,
 }: JoinPickDeviceStepProps) {
   const { t } = useTranslation(undefined, { keyPrefix: 'setup.joinPickDevice' })
@@ -64,7 +64,7 @@ export default function JoinPickDeviceStep({
   const refreshButton = (
     <button
       type="button"
-      onClick={onRefresh}
+      onClick={onRescan}
       disabled={loading}
       className="flex items-center gap-1 text-sm text-muted-foreground transition-colors hover:text-foreground disabled:opacity-50"
     >
@@ -83,7 +83,7 @@ export default function JoinPickDeviceStep({
       direction={direction}
     >
       <div className="mt-6 min-h-48 space-y-2 sm:mt-8">
-        {isScanningInitial ? (
+        {scanPhase === 'scanning' ? (
           <div className="flex flex-col items-center justify-center py-10 text-center sm:py-12">
             <RefreshCw className="mb-4 h-8 w-8 animate-spin text-muted-foreground" />
             <p className="text-foreground">{t('scanning.title')}</p>
@@ -91,14 +91,14 @@ export default function JoinPickDeviceStep({
               {t('scanning.description')}
             </p>
           </div>
-        ) : peers.length === 0 ? (
+        ) : scanPhase === 'empty' ? (
           <div className="flex flex-col items-center justify-center py-10 text-center sm:py-12">
             <p className="text-foreground">{t('empty.title')}</p>
             <p className="mt-2 max-w-sm text-sm text-muted-foreground">{t('empty.description')}</p>
             <Button
               variant="outline"
               size="sm"
-              onClick={onRefresh}
+              onClick={onRescan}
               disabled={loading}
               className="mt-6"
             >
@@ -107,7 +107,7 @@ export default function JoinPickDeviceStep({
             </Button>
           </div>
         ) : (
-          peers.map((peer: JoinPickDeviceStepProps['peers'][number]) => (
+          peers.map(peer => (
             <div
               key={peer.id}
               className="flex items-center gap-4 rounded-lg px-4 py-4 transition-colors hover:bg-muted/30"
@@ -116,7 +116,9 @@ export default function JoinPickDeviceStep({
                 {getIcon(peer.device_type)}
               </div>
               <div className="min-w-0 flex-1">
-                <div className="truncate font-medium">{peer.name}</div>
+                <div className="truncate font-medium">
+                  {peer.deviceName ?? tCommon('unknownDevice')}
+                </div>
                 <div className="truncate font-mono text-xs text-muted-foreground">
                   {formatPeerIdForDisplay(peer.id)}
                 </div>

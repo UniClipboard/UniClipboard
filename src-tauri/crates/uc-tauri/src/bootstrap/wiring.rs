@@ -2337,6 +2337,16 @@ async fn run_pairing_event_loop<R: Runtime>(
                         warn!(error = %err, "Failed to emit peer discovery changed event");
                     }
                 }
+
+                // Announce our device name so the remote peer can display it
+                // in its device-selection UI (before pairing begins).
+                let device_name = resolve_pairing_device_name(inbound_file_settings.clone()).await;
+                if let Err(err) = peer_directory.announce_device_name(device_name).await {
+                    warn!(
+                        error = %err,
+                        "Failed to announce device name after peer discovery"
+                    );
+                }
             }
             NetworkEvent::PeerLost(peer_id) => {
                 info!(

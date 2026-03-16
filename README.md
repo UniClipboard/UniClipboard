@@ -5,9 +5,9 @@
 English | [简体中文](./README_ZH.md)
 
 UniClipboard is a **privacy-first**, cross-device clipboard synchronization tool.
-It enables seamless and secure syncing of text and images across multiple devices, with file sync planned for future releases. Data is encrypted both in transit and at rest, and decrypted only on the user’s devices—neither servers nor the network layer can ever access plaintext data.
+It enables seamless and secure syncing of text, images, and files across multiple devices. Data is encrypted both in transit and at rest, and decrypted only on the user’s devices—neither servers nor the network layer can ever access plaintext data.
 
-![Image](./assets/demo.png)
+![Image](https://github.com/user-attachments/assets/8d339467-5bbe-4afa-9235-1d26cbff82c9)
 
 <div align="center">
   <br/>
@@ -56,7 +56,10 @@ It enables seamless and secure syncing of text and images across multiple device
 
 - **Cross-platform support**: Supports Windows, macOS, and Linux operating systems
 - **Real-time sync**: Instantly share clipboard content between connected devices
-- **Content types**: Currently supports text and images; file sync is planned for future releases
+- **Content types**: Supports text, images, and files
+- **P2P device discovery**: Automatic device discovery on LAN via mDNS (powered by libp2p)
+- **Quick Panel**: Keyboard shortcut-triggered quick access panel for clipboard history
+- **Preview Panel**: Detailed content preview for clipboard entries
 - **Secure encryption**: Uses XChaCha20-Poly1305 AEAD encryption algorithm to ensure secure data transmission
 - **Multi-device management**: Easily add and manage multiple devices
 - **Flexible configuration**: Provides extensive customization options
@@ -103,7 +106,7 @@ bun tauri build
 
 Supports multiple network connection modes that can be configured based on your network environment:
 
-- **LAN sync**: Uses local area network direct sync by default
+- **LAN sync (P2P)**: Automatic device discovery and direct sync over local network using libp2p with mDNS
 - **WebDAV sync**: Under development
 
 ### Security Features

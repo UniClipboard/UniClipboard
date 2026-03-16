@@ -1178,36 +1178,48 @@ impl ClipboardChangeHandler for AppRuntime {
                     );
 
                     // Emit event to frontend if AppHandle is available
-                    let app_handle_guard = self.app_handle.read().unwrap_or_else(|poisoned| {
-                        tracing::error!(
-                            "RwLock poisoned in on_clipboard_changed, recovering from poisoned state"
-                        );
-                        poisoned.into_inner()
-                    });
-                    if let Some(app) = app_handle_guard.as_ref() {
-                        let origin_str = match origin {
-                            ClipboardChangeOrigin::LocalCapture
-                            | ClipboardChangeOrigin::LocalRestore => "local",
-                            ClipboardChangeOrigin::RemotePush => "remote",
-                        };
-                        let event = ClipboardEvent::NewContent {
-                            entry_id: entry_id.to_string(),
-                            preview: "New clipboard content".to_string(),
-                            origin: origin_str.to_string(),
-                        };
+                    {
+                        let app_handle_guard = self.app_handle.read().unwrap_or_else(|poisoned| {
+                            tracing::error!(
+                                "RwLock poisoned in on_clipboard_changed, recovering from poisoned state"
+                            );
+                            poisoned.into_inner()
+                        });
+                        if let Some(app) = app_handle_guard.as_ref() {
+                            let origin_str = match origin {
+                                ClipboardChangeOrigin::LocalCapture
+                                | ClipboardChangeOrigin::LocalRestore => "local",
+                                ClipboardChangeOrigin::RemotePush => "remote",
+                            };
+                            let event = ClipboardEvent::NewContent {
+                                entry_id: entry_id.to_string(),
+                                preview: "New clipboard content".to_string(),
+                                origin: origin_str.to_string(),
+                            };
 
-                        if let Err(e) = app.emit("clipboard://event", event) {
-                            tracing::warn!("Failed to emit clipboard event to frontend: {}", e);
+                            if let Err(e) = app.emit("clipboard://event", event) {
+                                tracing::warn!("Failed to emit clipboard event to frontend: {}", e);
+                            } else {
+                                tracing::debug!("Successfully emitted clipboard://event to frontend");
+                            }
                         } else {
-                            tracing::debug!("Successfully emitted clipboard://event to frontend");
+                            tracing::debug!("AppHandle not available, skipping event emission");
                         }
-                    } else {
-                        tracing::debug!("AppHandle not available, skipping event emission");
                     }
-                    drop(app_handle_guard);
 
-                    // Extract file paths before outbound_snapshot is moved
-                    let file_paths_for_sync = if origin == ClipboardChangeOrigin::LocalCapture {
+                    // Extract file paths before outbound_snapshot is moved.
+                    // Gate on file_sync_enabled so that Stage 1 clipboard sync
+                    // does not carry file metadata when file sync is disabled.
+                    let settings_snapshot = self.deps.settings.load().await;
+                    let file_sync_enabled = settings_snapshot
+                        .as_ref()
+                        .map(|s| s.file_sync.file_sync_enabled)
+                        .unwrap_or(true);
+                    let max_file_size = settings_snapshot
+                        .as_ref()
+                        .map(|s| s.file_sync.max_file_size)
+                        .unwrap_or(u64::MAX);
+                    let file_paths_for_sync = if origin == ClipboardChangeOrigin::LocalCapture && file_sync_enabled {
                         extract_file_paths_from_snapshot(&outbound_snapshot)
                     } else {
                         Vec::new()
@@ -1216,16 +1228,40 @@ impl ClipboardChangeHandler for AppRuntime {
                     // Pre-generate transfer_ids for file paths and build file_transfers
                     // mapping so clipboard sync carries the mapping for cross-platform
                     // path rewriting on the receiver side.
+                    // Filter out files exceeding max_file_size to avoid sending clipboard
+                    // metadata for files that will never be transferred (which would cause
+                    // the peer to show "transferring" indefinitely).
                     let file_sync_entries: Vec<(PathBuf, String, String)> = file_paths_for_sync
                         .iter()
-                        .map(|path| {
-                            let transfer_id = uuid::Uuid::new_v4().to_string();
-                            let filename = path
-                                .file_name()
-                                .and_then(|n| n.to_str())
-                                .unwrap_or("unknown")
-                                .to_string();
-                            (path.clone(), transfer_id, filename)
+                        .filter_map(|path| {
+                            match std::fs::metadata(path) {
+                                Ok(meta) if meta.len() > max_file_size => {
+                                    tracing::warn!(
+                                        file = %path.display(),
+                                        file_size = meta.len(),
+                                        max_file_size = max_file_size,
+                                        "Excluding file from sync: exceeds max_file_size"
+                                    );
+                                    None
+                                }
+                                Ok(_) => {
+                                    let transfer_id = uuid::Uuid::new_v4().to_string();
+                                    let filename = path
+                                        .file_name()
+                                        .and_then(|n| n.to_str())
+                                        .unwrap_or("unknown")
+                                        .to_string();
+                                    Some((path.clone(), transfer_id, filename))
+                                }
+                                Err(e) => {
+                                    tracing::warn!(
+                                        file = %path.display(),
+                                        error = %e,
+                                        "Excluding file from sync: failed to read metadata"
+                                    );
+                                    None
+                                }
+                            }
                         })
                         .collect();
 

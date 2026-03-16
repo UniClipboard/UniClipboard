@@ -9,6 +9,7 @@ use uc_app::usecases::clipboard::sync_inbound::SyncInboundClipboardUseCase;
 use uc_app::usecases::clipboard::sync_outbound::SyncOutboundClipboardUseCase;
 use uc_app::usecases::clipboard::ClipboardIntegrationMode;
 use uc_core::ids::{FormatId, RepresentationId};
+use uc_core::network::protocol::FileTransferMapping;
 use uc_core::network::{
     ClipboardMessage, ConnectedPeer, DiscoveredPeer, NetworkEvent, PairingMessage, ProtocolMessage,
 };
@@ -793,6 +794,305 @@ async fn clipboard_sync_e2e_windows_image_multi_rep() -> Result<()> {
         rep.bytes, png_bytes,
         "receiver image bytes should match the PNG from sender"
     );
+
+    Ok(())
+}
+
+/// A network transport that captures sent ClipboardMessages for inspection
+/// instead of forwarding them to a remote inbound use case.
+struct CapturingNetwork {
+    local_peer_id: String,
+    remote_peer: ConnectedPeer,
+    captured_messages: Arc<Mutex<Vec<ClipboardMessage>>>,
+}
+
+#[async_trait]
+impl ClipboardTransportPort for CapturingNetwork {
+    async fn send_clipboard(
+        &self,
+        _peer_id: &str,
+        outbound_bytes: std::sync::Arc<[u8]>,
+    ) -> anyhow::Result<()> {
+        if outbound_bytes.len() < 4 {
+            return Err(anyhow!("outbound bytes too short for framed format"));
+        }
+        let json_len = u32::from_le_bytes(outbound_bytes[0..4].try_into().unwrap()) as usize;
+        if outbound_bytes.len() < 4 + json_len {
+            return Err(anyhow!("outbound bytes truncated"));
+        }
+        let json_bytes = &outbound_bytes[4..4 + json_len];
+
+        let message = ProtocolMessage::from_bytes(json_bytes)
+            .context("failed to decode framed JSON header as ProtocolMessage")?;
+        match message {
+            ProtocolMessage::Clipboard(clipboard_message) => {
+                self.captured_messages
+                    .lock()
+                    .map_err(|_| anyhow!("lock poisoned"))?
+                    .push(clipboard_message);
+                Ok(())
+            }
+            _ => Err(anyhow!("expected ProtocolMessage::Clipboard")),
+        }
+    }
+
+    async fn broadcast_clipboard(
+        &self,
+        _encrypted_data: std::sync::Arc<[u8]>,
+    ) -> anyhow::Result<()> {
+        Ok(())
+    }
+
+    async fn subscribe_clipboard(
+        &self,
+    ) -> anyhow::Result<mpsc::Receiver<(ClipboardMessage, Option<Vec<u8>>)>> {
+        let (_tx, rx) = mpsc::channel(1);
+        Ok(rx)
+    }
+
+    async fn ensure_business_path(&self, _peer_id: &str) -> anyhow::Result<()> {
+        Ok(())
+    }
+}
+
+#[async_trait]
+impl PeerDirectoryPort for CapturingNetwork {
+    async fn get_discovered_peers(&self) -> anyhow::Result<Vec<DiscoveredPeer>> {
+        Ok(vec![DiscoveredPeer {
+            peer_id: self.remote_peer.peer_id.clone(),
+            device_name: Some(self.remote_peer.device_name.clone()),
+            device_id: None,
+            addresses: Vec::new(),
+            discovered_at: Utc::now(),
+            last_seen: Utc::now(),
+            is_paired: true,
+        }])
+    }
+
+    async fn get_connected_peers(&self) -> anyhow::Result<Vec<ConnectedPeer>> {
+        Ok(vec![self.remote_peer.clone()])
+    }
+
+    async fn list_sendable_peers(&self) -> anyhow::Result<Vec<DiscoveredPeer>> {
+        Ok(vec![DiscoveredPeer {
+            peer_id: self.remote_peer.peer_id.clone(),
+            device_name: Some(self.remote_peer.device_name.clone()),
+            device_id: None,
+            addresses: Vec::new(),
+            discovered_at: self.remote_peer.connected_at,
+            last_seen: self.remote_peer.connected_at,
+            is_paired: true,
+        }])
+    }
+
+    fn local_peer_id(&self) -> String {
+        self.local_peer_id.clone()
+    }
+
+    async fn announce_device_name(&self, _device_name: String) -> anyhow::Result<()> {
+        Ok(())
+    }
+}
+
+#[async_trait]
+impl PairingTransportPort for CapturingNetwork {
+    async fn open_pairing_session(
+        &self,
+        _peer_id: String,
+        _session_id: String,
+    ) -> anyhow::Result<()> {
+        Ok(())
+    }
+
+    async fn send_pairing_on_session(&self, _message: PairingMessage) -> anyhow::Result<()> {
+        Ok(())
+    }
+
+    async fn close_pairing_session(
+        &self,
+        _session_id: String,
+        _reason: Option<String>,
+    ) -> anyhow::Result<()> {
+        Ok(())
+    }
+
+    async fn unpair_device(&self, _peer_id: String) -> anyhow::Result<()> {
+        Ok(())
+    }
+}
+
+#[async_trait]
+impl NetworkEventPort for CapturingNetwork {
+    async fn subscribe_events(&self) -> anyhow::Result<mpsc::Receiver<NetworkEvent>> {
+        let (_tx, rx) = mpsc::channel(1);
+        Ok(rx)
+    }
+}
+
+fn file_snapshot(ts_ms: i64) -> SystemClipboardSnapshot {
+    // Snapshot with both text/uri-list (file URIs) and text/plain representations.
+    // This simulates the common case where clipboard contains file paths alongside
+    // a text fallback — classify_snapshot may classify as Text, bypassing the
+    // file_sync_enabled guard in sync_policy.
+    SystemClipboardSnapshot {
+        ts_ms,
+        representations: vec![
+            ObservedClipboardRepresentation::new(
+                RepresentationId::new(),
+                FormatId::from("text"),
+                Some(MimeType("text/plain".to_string())),
+                b"/tmp/test.txt".to_vec(),
+            ),
+            ObservedClipboardRepresentation::new(
+                RepresentationId::new(),
+                FormatId::from("files"),
+                Some(MimeType("text/uri-list".to_string())),
+                b"file:///tmp/test.txt\n".to_vec(),
+            ),
+        ],
+    }
+}
+
+/// When file_sync_enabled=false, outbound clipboard sync must NOT carry
+/// file_transfers metadata (Stage 1 guard). This test verifies that passing
+/// empty file_transfers (as the runtime does when the setting is off) results
+/// in the sent ClipboardMessage having no file_transfers.
+#[tokio::test]
+async fn test_outbound_file_transfers_empty_when_file_sync_disabled() -> Result<()> {
+    let clipboard_a = Arc::new(InMemoryClipboard::new(text_snapshot("", 0)));
+
+    let session_a: Arc<dyn EncryptionSessionPort> = Arc::new(ReadyEncryptionSession);
+    let identity_a: Arc<dyn DeviceIdentityPort> = Arc::new(StaticDeviceIdentity {
+        id: DeviceId::new("device-a"),
+    });
+
+    let mut settings_with_file_sync_disabled = Settings::default();
+    settings_with_file_sync_disabled.file_sync.file_sync_enabled = false;
+    let settings: Arc<dyn SettingsPort> = Arc::new(StaticSettings {
+        settings: settings_with_file_sync_disabled,
+    });
+
+    let captured_messages = Arc::new(Mutex::new(Vec::<ClipboardMessage>::new()));
+
+    let network_a = Arc::new(CapturingNetwork {
+        local_peer_id: "peer-a".to_string(),
+        remote_peer: ConnectedPeer {
+            peer_id: "peer-b".to_string(),
+            device_name: "Device B".to_string(),
+            connected_at: Utc::now(),
+        },
+        captured_messages: captured_messages.clone(),
+    });
+
+    let transfer_encryptor: Arc<TransferPayloadEncryptorAdapter> =
+        Arc::new(TransferPayloadEncryptorAdapter);
+    let outbound_a = SyncOutboundClipboardUseCase::new(
+        clipboard_a,
+        network_a.clone() as Arc<dyn ClipboardTransportPort>,
+        network_a.clone() as Arc<dyn PeerDirectoryPort>,
+        session_a,
+        identity_a,
+        settings,
+        transfer_encryptor,
+        Arc::new(NoopPairedDeviceRepo),
+    );
+
+    // Simulate what runtime.rs does when file_sync_enabled=false:
+    // it passes empty file_transfers even though the snapshot contains file URIs.
+    let snapshot = file_snapshot(1_713_000_000_001);
+    tokio::task::spawn_blocking(move || {
+        outbound_a.execute(
+            snapshot,
+            ClipboardChangeOrigin::LocalCapture,
+            None,
+            vec![], // empty — runtime gates this when file_sync_enabled=false
+        )
+    })
+    .await
+    .map_err(|e| anyhow!("failed to join outbound A task: {e}"))??;
+
+    let messages = captured_messages
+        .lock()
+        .map_err(|_| anyhow!("lock poisoned"))?;
+    assert!(
+        messages.is_empty(),
+        "no messages should be sent when file_sync_enabled=false and snapshot is a file copy, got {} messages",
+        messages.len()
+    );
+
+    Ok(())
+}
+
+/// Verify that file_transfers ARE populated when file_sync_enabled=true (default).
+/// This is the positive counterpart to the disabled test above.
+#[tokio::test]
+async fn test_outbound_file_transfers_present_when_file_sync_enabled() -> Result<()> {
+    let clipboard_a = Arc::new(InMemoryClipboard::new(text_snapshot("", 0)));
+
+    let session_a: Arc<dyn EncryptionSessionPort> = Arc::new(ReadyEncryptionSession);
+    let identity_a: Arc<dyn DeviceIdentityPort> = Arc::new(StaticDeviceIdentity {
+        id: DeviceId::new("device-a"),
+    });
+
+    // Default settings have file_sync_enabled=true
+    let settings: Arc<dyn SettingsPort> = Arc::new(StaticSettings {
+        settings: Settings::default(),
+    });
+
+    let captured_messages = Arc::new(Mutex::new(Vec::<ClipboardMessage>::new()));
+
+    let network_a = Arc::new(CapturingNetwork {
+        local_peer_id: "peer-a".to_string(),
+        remote_peer: ConnectedPeer {
+            peer_id: "peer-b".to_string(),
+            device_name: "Device B".to_string(),
+            connected_at: Utc::now(),
+        },
+        captured_messages: captured_messages.clone(),
+    });
+
+    let transfer_encryptor: Arc<TransferPayloadEncryptorAdapter> =
+        Arc::new(TransferPayloadEncryptorAdapter);
+    let outbound_a = SyncOutboundClipboardUseCase::new(
+        clipboard_a,
+        network_a.clone() as Arc<dyn ClipboardTransportPort>,
+        network_a.clone() as Arc<dyn PeerDirectoryPort>,
+        session_a,
+        identity_a,
+        settings,
+        transfer_encryptor,
+        Arc::new(NoopPairedDeviceRepo),
+    );
+
+    // Simulate what runtime.rs does when file_sync_enabled=true:
+    // it extracts file paths and builds file_transfers.
+    let file_transfers = vec![FileTransferMapping {
+        transfer_id: "tf-001".to_string(),
+        filename: "test.txt".to_string(),
+    }];
+    let snapshot = file_snapshot(1_713_000_000_001);
+    tokio::task::spawn_blocking(move || {
+        outbound_a.execute(
+            snapshot,
+            ClipboardChangeOrigin::LocalCapture,
+            None,
+            file_transfers,
+        )
+    })
+    .await
+    .map_err(|e| anyhow!("failed to join outbound A task: {e}"))??;
+
+    let messages = captured_messages
+        .lock()
+        .map_err(|_| anyhow!("lock poisoned"))?;
+    assert_eq!(messages.len(), 1, "expected exactly one sent message");
+    assert_eq!(
+        messages[0].file_transfers.len(),
+        1,
+        "file_transfers should contain the mapping when file_sync_enabled=true"
+    );
+    assert_eq!(messages[0].file_transfers[0].transfer_id, "tf-001");
+    assert_eq!(messages[0].file_transfers[0].filename, "test.txt");
 
     Ok(())
 }

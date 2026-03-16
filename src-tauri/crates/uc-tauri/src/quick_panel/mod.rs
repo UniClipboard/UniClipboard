@@ -14,7 +14,11 @@ use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 use tracing::{debug, error, info, warn};
 
 /// Default global shortcut for the quick panel (Tauri format).
+/// macOS: Cmd+Ctrl+V, Windows/Linux: Ctrl+Alt+V
+#[cfg(target_os = "macos")]
 pub const DEFAULT_SHORTCUT: &str = "super+ctrl+v";
+#[cfg(not(target_os = "macos"))]
+pub const DEFAULT_SHORTCUT: &str = "ctrl+alt+v";
 
 /// Settings key used to store the quick panel shortcut override.
 pub const SHORTCUT_SETTINGS_KEY: &str = "global.toggleQuickPanel";

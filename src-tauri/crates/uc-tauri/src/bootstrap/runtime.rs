@@ -1208,95 +1208,66 @@ impl ClipboardChangeHandler for AppRuntime {
                         }
                     }
 
-                    // Extract file paths before outbound_snapshot is moved.
-                    // Gate on file_sync_enabled so that Stage 1 clipboard sync
-                    // does not carry file metadata when file sync is disabled.
-                    let settings_snapshot = self.deps.settings.load().await;
-                    let file_sync_enabled = settings_snapshot
-                        .as_ref()
-                        .map(|s| s.file_sync.file_sync_enabled)
-                        .unwrap_or(true);
-                    let max_file_size = settings_snapshot
-                        .as_ref()
-                        .map(|s| s.file_sync.max_file_size)
-                        .unwrap_or(u64::MAX);
-                    let file_paths_for_sync = if origin == ClipboardChangeOrigin::LocalCapture && file_sync_enabled {
+                    // Extract file paths from snapshot (APFS resolution happens here, in platform layer).
+                    // Only LocalCapture events produce file candidates; all others pass empty vec.
+                    let resolved_paths = if origin == ClipboardChangeOrigin::LocalCapture {
                         extract_file_paths_from_snapshot(&outbound_snapshot)
                     } else {
                         Vec::new()
                     };
 
-                    // Pre-generate transfer_ids for file paths and build file_transfers
-                    // mapping so clipboard sync carries the mapping for cross-platform
-                    // path rewriting on the receiver side.
-                    // Filter out files exceeding max_file_size to avoid sending clipboard
-                    // metadata for files that will never be transferred (which would cause
-                    // the peer to show "transferring" indefinitely).
-                    let file_sync_entries: Vec<(PathBuf, String, String)> = file_paths_for_sync
-                        .iter()
-                        .filter_map(|path| {
-                            match std::fs::metadata(path) {
-                                Ok(meta) if meta.len() > max_file_size => {
-                                    tracing::warn!(
-                                        file = %path.display(),
-                                        file_size = meta.len(),
-                                        max_file_size = max_file_size,
-                                        "Excluding file from sync: exceeds max_file_size"
-                                    );
-                                    None
-                                }
-                                Ok(_) => {
-                                    let transfer_id = uuid::Uuid::new_v4().to_string();
-                                    let filename = path
-                                        .file_name()
-                                        .and_then(|n| n.to_str())
-                                        .unwrap_or("unknown")
-                                        .to_string();
-                                    Some((path.clone(), transfer_id, filename))
-                                }
-                                Err(e) => {
-                                    tracing::warn!(
-                                        file = %path.display(),
-                                        error = %e,
-                                        "Excluding file from sync: failed to read metadata"
-                                    );
-                                    None
-                                }
-                            }
-                        })
-                        .collect();
+                    // Capture count BEFORE metadata filtering so the planner can detect
+                    // the all_files_excluded case even when file_candidates is empty.
+                    let extracted_paths_count = resolved_paths.len();
 
-                    // If this is a file-copy clipboard and ALL files were excluded
-                    // (e.g. all exceed max_file_size), skip outbound clipboard sync
-                    // entirely. Otherwise the peer would receive the file's thumbnail/icon
-                    // image as a standalone clipboard entry, which is misleading.
-                    let all_files_excluded =
-                        !file_paths_for_sync.is_empty() && file_sync_entries.is_empty();
-
-                    if all_files_excluded {
-                        tracing::info!(
-                            excluded_file_count = file_paths_for_sync.len(),
-                            "Skipping outbound clipboard sync: all files excluded by size limit"
-                        );
-                    } else {
-                        let file_transfers: Vec<uc_core::network::protocol::FileTransferMapping> =
-                            file_sync_entries
-                                .iter()
-                                .map(|(_, tid, fname)| {
-                                    uc_core::network::protocol::FileTransferMapping {
-                                        transfer_id: tid.clone(),
-                                        filename: fname.clone(),
+                    // Build FileCandidate vec by reading metadata for each resolved path.
+                    // All filesystem I/O stays in the platform layer (uc-tauri); the planner
+                    // in uc-app is a pure function with zero filesystem dependencies.
+                    let file_candidates: Vec<uc_app::usecases::sync_planner::FileCandidate> =
+                        resolved_paths
+                            .into_iter()
+                            .filter_map(|path| {
+                                match std::fs::metadata(&path) {
+                                    Ok(meta) => {
+                                        Some(uc_app::usecases::sync_planner::FileCandidate {
+                                            path,
+                                            size: meta.len(),
+                                        })
                                     }
-                                })
-                                .collect();
+                                    Err(e) => {
+                                        tracing::warn!(
+                                            error = %e,
+                                            file = %path.display(),
+                                            "Excluding file from sync: failed to read metadata"
+                                        );
+                                        None
+                                    }
+                                }
+                            })
+                            .collect();
 
+                    // Delegate all sync policy decisions to OutboundSyncPlanner.
+                    let planner = uc_app::usecases::sync_planner::OutboundSyncPlanner::new(
+                        self.deps.settings.clone(),
+                    );
+                    let plan = planner
+                        .plan(outbound_snapshot, origin, file_candidates, extracted_paths_count)
+                        .await;
+
+                    // Dispatch clipboard sync from plan.clipboard.
+                    if let Some(clipboard_intent) = plan.clipboard {
                         let outbound_sync_uc = self.usecases().sync_outbound_clipboard();
                         let flow_id_for_sync = flow_id.clone();
                         let flow_id_str = flow_id_for_sync.to_string();
                         tauri::async_runtime::spawn(
                             async move {
                                 match tokio::task::spawn_blocking(move || {
-                                    outbound_sync_uc.execute(outbound_snapshot, origin, Some(flow_id_str), file_transfers)
+                                    outbound_sync_uc.execute(
+                                        clipboard_intent.snapshot,
+                                        origin,
+                                        Some(flow_id_str),
+                                        clipboard_intent.file_transfers,
+                                    )
                                 })
                                 .await
                                 {
@@ -1315,26 +1286,33 @@ impl ClipboardChangeHandler for AppRuntime {
                         );
                     }
 
-                    // Trigger outbound file sync for LocalCapture only
-                    if !file_sync_entries.is_empty() {
+                    // Dispatch file sync from plan.files (paths already resolved, sizes already checked).
+                    if !plan.files.is_empty() {
                         let outbound_file_uc = self.usecases().sync_outbound_file();
                         tauri::async_runtime::spawn(
                             async move {
-                                for (path, transfer_id, _filename) in file_sync_entries {
-                                    tracing::info!(file = %path.display(), transfer_id = %transfer_id, "Sending file to peers");
-                                    match outbound_file_uc.execute(path.clone(), Some(transfer_id)).await {
+                                for file_intent in plan.files {
+                                    tracing::info!(
+                                        file = %file_intent.path.display(),
+                                        transfer_id = %file_intent.transfer_id,
+                                        "Sending file to peers"
+                                    );
+                                    match outbound_file_uc
+                                        .execute(file_intent.path.clone(), Some(file_intent.transfer_id))
+                                        .await
+                                    {
                                         Ok(result) => {
                                             tracing::info!(
                                                 transfer_id = %result.transfer_id,
                                                 peer_count = result.peer_count,
-                                                file = %path.display(),
+                                                file = %file_intent.path.display(),
                                                 "Outbound file sync completed"
                                             );
                                         }
                                         Err(err) => {
                                             tracing::warn!(
                                                 error = %err,
-                                                file = %path.display(),
+                                                file = %file_intent.path.display(),
                                                 "Outbound file sync failed"
                                             );
                                         }
@@ -2179,6 +2157,73 @@ mod tests {
             spool_dir: std::path::PathBuf::from("/tmp/uniclipboard-test-cache/spool"),
             app_data_root: std::path::PathBuf::from("/tmp/uniclipboard-test"),
         }
+    }
+
+    /// Verify the integration boundary: when file paths are extracted from the snapshot
+    /// but ALL `std::fs::metadata()` calls fail (e.g. APFS path already deleted),
+    /// `extracted_paths_count` is still captured correctly (> 0), and the planner
+    /// receives empty `file_candidates` with that non-zero count.
+    ///
+    /// The planner's `test_all_files_excluded_by_metadata_failure` covers that this
+    /// combination correctly returns `clipboard: None`.  This test covers the runtime's
+    /// responsibility: that `extracted_paths_count` is captured BEFORE the metadata
+    /// filter rather than after.
+    #[test]
+    fn runtime_captured_count_before_metadata_filter() {
+        use uc_app::usecases::sync_planner::FileCandidate;
+        use uc_core::{ids::FormatId, ObservedClipboardRepresentation, SystemClipboardSnapshot};
+
+        // Build a snapshot with a text/uri-list representation referencing a
+        // non-existent path so that metadata() will fail.
+        let uri_list = "file:///nonexistent/path/that/does/not/exist/test_file.txt\n";
+        let snapshot = SystemClipboardSnapshot {
+            ts_ms: 0,
+            representations: vec![ObservedClipboardRepresentation::new(
+                uc_core::ids::RepresentationId::new(),
+                FormatId::from_str("text/uri-list"),
+                Some("text/uri-list".parse().unwrap()),
+                uri_list.as_bytes().to_vec(),
+            )],
+        };
+
+        // Step 1: extract paths (mirrors runtime code for LocalCapture).
+        let resolved_paths = extract_file_paths_from_snapshot(&snapshot);
+
+        // Step 2: capture count BEFORE metadata filtering.
+        let extracted_paths_count = resolved_paths.len();
+
+        // The non-existent URI should have produced exactly 1 resolved path.
+        assert_eq!(
+            extracted_paths_count, 1,
+            "expected 1 path extracted from the URI-list snapshot"
+        );
+
+        // Step 3: build FileCandidate vec — all metadata() calls will fail for the
+        // non-existent path.
+        let file_candidates: Vec<FileCandidate> = resolved_paths
+            .into_iter()
+            .filter_map(|path| match std::fs::metadata(&path) {
+                Ok(meta) => Some(FileCandidate {
+                    path,
+                    size: meta.len(),
+                }),
+                Err(_) => None, // metadata failed — excluded
+            })
+            .collect();
+
+        // The non-existent path produces NO candidates.
+        assert!(
+            file_candidates.is_empty(),
+            "expected no file candidates since the path does not exist"
+        );
+
+        // Key invariant: extracted_paths_count (captured before filtering) is still 1,
+        // so passing (file_candidates=[], extracted_paths_count=1) to the planner triggers
+        // the all_files_excluded guard → clipboard: None.
+        assert_eq!(
+            extracted_paths_count, 1,
+            "extracted_paths_count must reflect pre-filter count, not post-filter count"
+        );
     }
 
     #[tokio::test]

@@ -118,12 +118,9 @@ export async function onSetupStateChanged(
         return
       }
 
-      if (activeSessionId === null) {
+      if (activeSessionId !== payload.sessionId) {
         activeSessionId = payload.sessionId
-      }
-
-      if (payload.sessionId !== activeSessionId) {
-        return
+        seenEventKeys.clear()
       }
 
       const dedupeKey = `${payload.sessionId}:${JSON.stringify(payload.state)}:${payload.ts}`

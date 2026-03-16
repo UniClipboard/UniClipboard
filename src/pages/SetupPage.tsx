@@ -155,12 +155,8 @@ export default function SetupPage({ onCompleteSetup }: SetupPageProps = {}) {
           return
         }
 
-        if (!activeEventSessionIdRef.current) {
-          activeEventSessionIdRef.current = event.sessionId
-        }
-
         if (activeEventSessionIdRef.current !== event.sessionId) {
-          return
+          activeEventSessionIdRef.current = event.sessionId
         }
 
         syncSetupState(event.state)

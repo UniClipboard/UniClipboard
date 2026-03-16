@@ -9,8 +9,8 @@
 //! calling `SetForegroundWindow`. This bypasses the restrictions.
 
 use tracing::{debug, warn};
-use windows::Win32::System::Threading::GetCurrentThreadId;
-use windows::Win32::UI::Input::KeyboardAndMouse::{AttachThreadInput, SetFocus};
+use windows::Win32::System::Threading::{AttachThreadInput, GetCurrentThreadId};
+use windows::Win32::UI::Input::KeyboardAndMouse::SetFocus;
 use windows::Win32::UI::WindowsAndMessaging::{
     GetForegroundWindow, GetWindowThreadProcessId, SetForegroundWindow,
 };
@@ -21,8 +21,6 @@ use windows::Win32::UI::WindowsAndMessaging::{
 /// foreground window's input queue, allowing `SetForegroundWindow` to succeed
 /// even when Windows would normally block it.
 pub fn force_foreground(window: &tauri::WebviewWindow) {
-    use tauri::Manager;
-
     let Some(hwnd) = window.hwnd().ok() else {
         warn!("Could not get HWND for quick panel");
         return;
@@ -37,10 +35,10 @@ pub fn force_foreground(window: &tauri::WebviewWindow) {
             // Attach to the foreground thread so we're allowed to steal focus.
             let _ = AttachThreadInput(foreground_thread, current_thread, true);
             let result = SetForegroundWindow(hwnd);
-            let _ = SetFocus(hwnd);
+            let _ = SetFocus(Some(hwnd));
             let _ = AttachThreadInput(foreground_thread, current_thread, false);
 
-            if result.is_err() {
+            if !result.as_bool() {
                 warn!("SetForegroundWindow failed even after AttachThreadInput");
             } else {
                 debug!("Quick panel forced to foreground via AttachThreadInput");
@@ -48,7 +46,7 @@ pub fn force_foreground(window: &tauri::WebviewWindow) {
         } else {
             // We're already the foreground thread, just set focus.
             let _ = SetForegroundWindow(hwnd);
-            let _ = SetFocus(hwnd);
+            let _ = SetFocus(Some(hwnd));
             debug!("Quick panel set as foreground (same thread)");
         }
     }

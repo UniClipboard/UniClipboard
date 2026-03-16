@@ -511,6 +511,7 @@ impl<'a> UseCases<'a> {
             self.runtime.deps.clipboard.clipboard_event_repo.clone(),
             self.runtime.deps.clipboard.representation_repo.clone(),
         )
+        .with_file_cache_dir(self.runtime.storage_paths.file_cache_dir.clone())
     }
 
     /// Create a `ClearClipboardHistory` use case wired with this runtime's clipboard, selection, and event repositories.

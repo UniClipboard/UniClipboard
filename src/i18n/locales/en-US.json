@@ -555,7 +555,8 @@
       "badges": {
         "mvp": "MVP",
         "comingSoon": "Coming Soon",
-        "notEditable": "Not Editable"
+        "notEditable": "Not Editable",
+        "globalFileSyncOff": "File sync off"
       },
       "sync": {
         "title": "Sync Settings",

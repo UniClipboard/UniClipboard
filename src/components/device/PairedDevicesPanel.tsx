@@ -32,6 +32,7 @@ const PairedDevicesPanel: React.FC = () => {
   const dispatch = useAppDispatch()
   const { pairedDevices, pairedDevicesError } = useAppSelector(state => state.devices)
   const globalAutoSyncOff = setting?.sync.auto_sync === false
+  const globalFileSyncOff = setting?.file_sync?.file_sync_enabled === false
 
   useEffect(() => {
     dispatch(fetchPairedDevices())
@@ -260,6 +261,7 @@ const PairedDevicesPanel: React.FC = () => {
                         deviceId={device.peerId}
                         deviceName={device.deviceName || t('devices.list.labels.unknownDevice')}
                         globalAutoSyncOff={globalAutoSyncOff}
+                        globalFileSyncOff={globalFileSyncOff}
                       />
                     </div>
                   </motion.div>

@@ -323,6 +323,7 @@ const SyncSection: React.FC = () => {
               id="file-sync-enabled"
               checked={fileSyncEnabled}
               onCheckedChange={handleFileSyncEnabledChange}
+              disabled={!autoSync}
             />
           </SettingRow>
 
@@ -338,7 +339,7 @@ const SyncSection: React.FC = () => {
                   value={smallFileThreshold.toString()}
                   onChange={handleSmallFileThresholdChange}
                   className={smallFileThresholdError ? 'border-red-500 w-32' : 'w-32'}
-                  disabled={!fileSyncEnabled}
+                  disabled={!autoSync || !fileSyncEnabled}
                 />
                 <span className="text-sm text-muted-foreground">
                   {t('settings.sections.sync.fileSync.smallFileThreshold.unit')}
@@ -362,7 +363,7 @@ const SyncSection: React.FC = () => {
                   value={maxFileSizeLimit.toString()}
                   onChange={handleMaxFileSizeLimitChange}
                   className={maxFileSizeLimitError ? 'border-red-500 w-32' : 'w-32'}
-                  disabled={!fileSyncEnabled}
+                  disabled={!autoSync || !fileSyncEnabled}
                 />
                 <span className="text-sm text-muted-foreground">
                   {t('settings.sections.sync.fileSync.maxFileSize.unit')}
@@ -386,7 +387,7 @@ const SyncSection: React.FC = () => {
                   value={cacheQuota.toString()}
                   onChange={handleCacheQuotaChange}
                   className={cacheQuotaError ? 'border-red-500 w-32' : 'w-32'}
-                  disabled={!fileSyncEnabled}
+                  disabled={!autoSync || !fileSyncEnabled}
                 />
                 <span className="text-sm text-muted-foreground">
                   {t('settings.sections.sync.fileSync.cacheQuota.unit')}
@@ -408,7 +409,7 @@ const SyncSection: React.FC = () => {
                   value={retentionHours.toString()}
                   onChange={handleRetentionHoursChange}
                   className={retentionHoursError ? 'border-red-500 w-32' : 'w-32'}
-                  disabled={!fileSyncEnabled}
+                  disabled={!autoSync || !fileSyncEnabled}
                 />
                 <span className="text-sm text-muted-foreground">
                   {t('settings.sections.sync.fileSync.retentionPeriod.unit')}
@@ -427,7 +428,7 @@ const SyncSection: React.FC = () => {
               id="file-auto-cleanup"
               checked={fileAutoCleanup}
               onCheckedChange={handleFileAutoCleanupChange}
-              disabled={!fileSyncEnabled}
+              disabled={!autoSync || !fileSyncEnabled}
             />
           </SettingRow>
         </SettingGroup>

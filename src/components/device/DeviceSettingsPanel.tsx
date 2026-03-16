@@ -8,6 +8,7 @@ interface DeviceSettingsPanelProps {
   deviceId: string
   deviceName: string
   globalAutoSyncOff?: boolean
+  globalFileSyncOff?: boolean
 }
 
 /** Maps ContentTypes fields to i18n keys */
@@ -18,7 +19,7 @@ const contentTypeEntries: {
 }[] = [
   { field: 'text', i18nKey: 'syncText', status: 'editable' },
   { field: 'image', i18nKey: 'syncImage', status: 'editable' },
-  { field: 'file', i18nKey: 'syncFile', status: 'coming_soon' },
+  { field: 'file', i18nKey: 'syncFile', status: 'editable' },
   { field: 'link', i18nKey: 'syncLink', status: 'editable' },
   { field: 'code_snippet', i18nKey: 'syncCodeSnippet', status: 'coming_soon' },
   { field: 'rich_text', i18nKey: 'syncRichText', status: 'coming_soon' },
@@ -27,6 +28,7 @@ const contentTypeEntries: {
 const DeviceSettingsPanel: React.FC<DeviceSettingsPanelProps> = ({
   deviceId,
   globalAutoSyncOff,
+  globalFileSyncOff,
 }) => {
   const { t } = useTranslation()
   const dispatch = useAppDispatch()
@@ -36,6 +38,7 @@ const DeviceSettingsPanel: React.FC<DeviceSettingsPanelProps> = ({
     state => state.devices.deviceSyncSettingsLoading[deviceId] ?? false
   )
   const isGlobalOff = globalAutoSyncOff ?? false
+  const isGlobalFileSyncOff = globalFileSyncOff ?? false
 
   useEffect(() => {
     dispatch(fetchDeviceSyncSettings(deviceId))
@@ -153,7 +156,9 @@ const DeviceSettingsPanel: React.FC<DeviceSettingsPanelProps> = ({
           {contentTypeEntries.map(({ field, i18nKey, status }) => {
             const isComingSoon = status === 'coming_soon'
             const isAutoSyncOff = !settings?.auto_sync
-            const isDisabled = isComingSoon || isAutoSyncOff || isGlobalOff || isLoading
+            const isGlobalFileSyncDisabled = field === 'file' && isGlobalFileSyncOff
+            const isDisabled =
+              isComingSoon || isAutoSyncOff || isGlobalOff || isGlobalFileSyncDisabled || isLoading
 
             return (
               <div key={field} className="flex items-center justify-between py-3 px-1">
@@ -165,6 +170,11 @@ const DeviceSettingsPanel: React.FC<DeviceSettingsPanelProps> = ({
                     {isComingSoon && (
                       <span className="text-[10px] leading-none rounded px-1.5 py-1 bg-muted text-muted-foreground">
                         {t('devices.settings.badges.comingSoon')}
+                      </span>
+                    )}
+                    {isGlobalFileSyncDisabled && !isComingSoon && (
+                      <span className="text-[10px] leading-none rounded px-1.5 py-1 bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
+                        {t('devices.settings.badges.globalFileSyncOff')}
                       </span>
                     )}
                   </div>

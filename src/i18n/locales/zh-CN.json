@@ -555,7 +555,8 @@
       "badges": {
         "mvp": "MVP",
         "comingSoon": "即将推出",
-        "notEditable": "不可变更"
+        "notEditable": "不可变更",
+        "globalFileSyncOff": "文件同步已关闭"
       },
       "sync": {
         "title": "同步设置",

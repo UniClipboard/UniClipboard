@@ -37,30 +37,37 @@ function getStateOrdinal(state: SetupState | null): number {
   if (typeof state === 'object') {
     if ('CreateSpaceInputPassphrase' in state) return 1
     if ('ProcessingCreateSpace' in state) return 2
+    // Join flow actual order: SelectDevice → ConfirmPeer → InputPassphrase → Processing
     if ('JoinSpaceSelectDevice' in state) return 1
-    if ('JoinSpaceInputPassphrase' in state) return 2
-    if ('JoinSpaceConfirmPeer' in state) return 3
+    if ('JoinSpaceConfirmPeer' in state) return 2
+    if ('JoinSpaceInputPassphrase' in state) return 3
     if ('ProcessingJoinSpace' in state) return 4
   }
   return -1
 }
 
-function getStepInfo(state: SetupState | null): { total: number; current: number } | null {
+function getStepInfo(
+  state: SetupState | null,
+  prevState?: SetupState | null
+): { total: number; current: number } | null {
   if (!state || state === 'Welcome') return null
-  if (state === 'Completed') {
-    // Completed can be reached from either flow; show final dot
-    // We don't know which flow, so return null (no dots on done)
-    return null
-  }
+  if (state === 'Completed') return null
   if (typeof state === 'object') {
     // Create flow: InputPassphrase(0) -> Processing(1) -> Done(2)
     if ('CreateSpaceInputPassphrase' in state) return { total: 3, current: 0 }
     if ('ProcessingCreateSpace' in state) return { total: 3, current: 1 }
-    // Join flow: SelectDevice(0) -> InputPassphrase(1) -> ConfirmPeer(2) -> Processing(3) -> Done(4)
-    if ('JoinSpaceSelectDevice' in state) return { total: 5, current: 0 }
-    if ('JoinSpaceInputPassphrase' in state) return { total: 5, current: 1 }
-    if ('JoinSpaceConfirmPeer' in state) return { total: 5, current: 2 }
-    if ('ProcessingJoinSpace' in state) return { total: 5, current: 3 }
+    // Join flow actual order: SelectDevice(0) -> ConfirmPeer(1) -> InputPassphrase(2) -> Processing(3)
+    if ('JoinSpaceSelectDevice' in state) return { total: 4, current: 0 }
+    if ('JoinSpaceConfirmPeer' in state) return { total: 4, current: 1 }
+    if ('JoinSpaceInputPassphrase' in state) return { total: 4, current: 2 }
+    if ('ProcessingJoinSpace' in state) {
+      // ProcessingJoinSpace appears twice in the flow:
+      // 1) After SelectDevice (connecting to device) — keep dot at step 0
+      // 2) After InputPassphrase (verifying passphrase) — show as step 3
+      const isConnectingPhase =
+        prevState && typeof prevState === 'object' && 'JoinSpaceSelectDevice' in prevState
+      return { total: 4, current: isConnectingPhase ? 0 : 3 }
+    }
   }
   return null
 }
@@ -94,7 +101,9 @@ export default function SetupPage({ onCompleteSetup }: SetupPageProps = {}) {
     prevStateRef.current = setupState
   }, [setupState])
 
-  const stepInfo = useMemo(() => getStepInfo(setupState), [setupState])
+  // prevStateRef.current is read during render (before the useEffect updates it),
+  // so it still holds the previous state — exactly what getStepInfo needs.
+  const stepInfo = useMemo(() => getStepInfo(setupState, prevStateRef.current), [setupState])
 
   const isSetupFlowActive = useCallback((state: SetupState | null) => {
     if (!state) return false

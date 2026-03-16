@@ -103,6 +103,11 @@ pub fn show(app: &tauri::AppHandle, entry_id: &str) {
     #[cfg(not(target_os = "macos"))]
     {
         let _ = preview_window.show();
+        // On Windows, show() activates the window and steals focus from the quick
+        // panel. Immediately restore focus so the quick panel remains active.
+        if let Some(quick_window) = app.get_webview_window(QUICK_PANEL_LABEL) {
+            let _ = quick_window.set_focus();
+        }
     }
 
     // Send entry ID to the frontend

@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v0.1
 milestone_name: milestone
 status: completed
-stopped_at: Phase 35 context gathered
-last_updated: '2026-03-16T06:56:18.071Z'
+stopped_at: Completed 35-01-PLAN.md
+last_updated: '2026-03-16T08:10:59.116Z'
 last_activity: '2026-03-15 — Completed 33-05 plan: File transfer state UI and Copy gating'
 progress:
   total_phases: 19
   completed_phases: 17
-  total_plans: 48
-  completed_plans: 47
+  total_plans: 50
+  completed_plans: 48
   percent: 98
 ---
 
@@ -94,6 +94,7 @@ Progress: [██████████] 98%
   | Phase 33 P05 | 5min | 2 tasks | 7 files |
   | Phase 33 P06 | 5 | 1 tasks | 3 files |
   | Phase 34 P01 | 19 | 3 tasks | 9 files |
+  | Phase 35 P01 | 7min | 1 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -200,6 +201,8 @@ Recent decisions affecting current work:
 - [Phase 34]: SetupPage migrated from 3s polling interval to event-driven useDeviceDiscovery hook
 - [Phase 34]: Removed headerRight refresh button from JoinPickDeviceStep -- scanning is automatic, header stays clean
 - [Phase 34]: AnimatePresence mode=wait for clean phase-to-phase transitions in JoinPickDeviceStep
+- [Phase 35]: all_files_excluded guard scoped to file_sync_attempted flag to prevent false suppression when file_sync is disabled
+- [Phase 35]: OutboundSyncPlanner plan() infallible: settings failure returns safe defaults (clipboard: Some, files: [])
 
 ### Roadmap Evolution
 
@@ -238,6 +241,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-16T06:56:18.068Z
-Stopped at: Phase 35 context gathered
-Resume file: .planning/phases/35-extract-outboundsyncplanner-to-consolidate-scattered-sync-policy-checks/35-CONTEXT.md
+Last session: 2026-03-16T08:10:59.110Z
+Stopped at: Completed 35-01-PLAN.md
+Resume file: None

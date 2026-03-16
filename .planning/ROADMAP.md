@@ -353,7 +353,7 @@ Plans:
 **Goal:** Consolidate all outbound sync eligibility decisions (settings load, content type classification, file extraction, size filtering, all_files_excluded guard) from three scattered stages in on_clipboard_changed() into a single OutboundSyncPlanner::plan() call that produces an OutboundSyncPlan, making the runtime a thin dispatcher with no inline policy logic.
 **Requirements**: SYNCPLAN-01, SYNCPLAN-02, SYNCPLAN-03, SYNCPLAN-04
 **Depends on:** Phase 34
-**Plans:** 2 plans
+**Plans:** 1/2 plans executed
 
 Plans:
 

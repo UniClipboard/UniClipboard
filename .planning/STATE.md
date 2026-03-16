@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v0.1
 milestone_name: milestone
 status: completed
-stopped_at: Completed 35-01-PLAN.md
-last_updated: '2026-03-16T08:10:59.116Z'
+stopped_at: Completed 35-02-PLAN.md
+last_updated: '2026-03-16T08:22:30.637Z'
 last_activity: '2026-03-15 — Completed 33-05 plan: File transfer state UI and Copy gating'
 progress:
   total_phases: 19
-  completed_phases: 17
+  completed_phases: 18
   total_plans: 50
-  completed_plans: 48
+  completed_plans: 49
   percent: 98
 ---
 
@@ -95,6 +95,7 @@ Progress: [██████████] 98%
   | Phase 33 P06 | 5 | 1 tasks | 3 files |
   | Phase 34 P01 | 19 | 3 tasks | 9 files |
   | Phase 35 P01 | 7min | 1 tasks | 4 files |
+  | Phase 35 P02 | 10min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -203,6 +204,8 @@ Recent decisions affecting current work:
 - [Phase 34]: AnimatePresence mode=wait for clean phase-to-phase transitions in JoinPickDeviceStep
 - [Phase 35]: all_files_excluded guard scoped to file_sync_attempted flag to prevent false suppression when file_sync is disabled
 - [Phase 35]: OutboundSyncPlanner plan() infallible: settings failure returns safe defaults (clipboard: Some, files: [])
+- [Phase 35]: runtime.rs retains extract_file_paths_from_snapshot() + std::fs::metadata() calls (platform layer owns all fs I/O)
+- [Phase 35]: extracted_paths_count captured from resolved_paths.len() BEFORE metadata filter; passed to plan() for all_files_excluded detection
 
 ### Roadmap Evolution
 
@@ -241,6 +244,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-16T08:10:59.110Z
-Stopped at: Completed 35-01-PLAN.md
+Last session: 2026-03-16T08:22:30.633Z
+Stopped at: Completed 35-02-PLAN.md
 Resume file: None

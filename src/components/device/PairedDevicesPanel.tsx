@@ -1,19 +1,22 @@
-import { motion, AnimatePresence } from 'framer-motion'
-import {
-  Smartphone,
-  Monitor,
-  Tablet,
-  Trash2,
-  Laptop,
-  RefreshCw,
-  ChevronRight,
-  AlertTriangle,
-} from 'lucide-react'
+import { AlertTriangle, Monitor, MoreHorizontal, RefreshCw, Settings, Unlink } from 'lucide-react'
 import React, { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate } from 'react-router-dom'
-import DeviceSettingsPanel from './DeviceSettingsPanel'
+import { getDeviceIcon, getIconColor } from './device-utils'
+import DeviceSettingsSheet from './DeviceSettingsSheet'
+import UnpairAlertDialog from './UnpairAlertDialog'
 import { onP2PPeerConnectionChanged, onP2PPeerNameUpdated, unpairP2PDevice } from '@/api/p2p'
+import { SettingGroup } from '@/components/setting/SettingGroup'
+import { Alert, AlertDescription } from '@/components/ui/alert'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { useSetting } from '@/hooks/useSetting'
 import { formatPeerIdForDisplay } from '@/lib/utils'
 import { useAppDispatch, useAppSelector } from '@/store/hooks'
@@ -26,13 +29,17 @@ import {
 
 const PairedDevicesPanel: React.FC = () => {
   const { t } = useTranslation()
-  const [expandedDeviceId, setExpandedDeviceId] = useState<string | null>(null)
   const { setting } = useSetting()
   const navigate = useNavigate()
   const dispatch = useAppDispatch()
   const { pairedDevices, pairedDevicesError } = useAppSelector(state => state.devices)
   const globalAutoSyncOff = setting?.sync.auto_sync === false
   const globalFileSyncOff = setting?.file_sync?.file_sync_enabled === false
+
+  const [selectedDeviceId, setSelectedDeviceId] = useState<string | null>(null)
+  const [sheetOpen, setSheetOpen] = useState(false)
+  const [unpairDialogOpen, setUnpairDialogOpen] = useState(false)
+  const [unpairTargetId, setUnpairTargetId] = useState<string | null>(null)
 
   useEffect(() => {
     dispatch(fetchPairedDevices())
@@ -72,18 +79,24 @@ const PairedDevicesPanel: React.FC = () => {
     }
   }, [dispatch])
 
-  const toggleDevice = (id: string) => {
-    setExpandedDeviceId(prev => (prev === id ? null : id))
+  const openSheet = (peerId: string) => {
+    setSelectedDeviceId(peerId)
+    setSheetOpen(true)
   }
 
-  const handleUnpair = async (e: React.MouseEvent, peerId: string) => {
-    e.stopPropagation()
+  const handleUnpairRequest = (peerId: string) => {
+    setUnpairTargetId(peerId)
+    setUnpairDialogOpen(true)
+  }
+
+  const handleUnpairConfirm = async () => {
+    if (!unpairTargetId) return
     try {
-      await unpairP2PDevice(peerId)
+      await unpairP2PDevice(unpairTargetId)
       dispatch(fetchPairedDevices())
-      if (expandedDeviceId === peerId) {
-        setExpandedDeviceId(null)
-      }
+      setUnpairDialogOpen(false)
+      setSheetOpen(false)
+      setUnpairTargetId(null)
     } catch (error) {
       console.error('Failed to unpair device:', error)
     }
@@ -94,49 +107,28 @@ const PairedDevicesPanel: React.FC = () => {
     dispatch(fetchPairedDevices())
   }
 
-  const getDeviceIcon = (deviceName?: string | null) => {
-    const name = deviceName?.toLowerCase() || ''
-    if (name.includes('iphone') || name.includes('phone') || name.includes('android'))
-      return Smartphone
-    if (name.includes('ipad') || name.includes('tablet')) return Tablet
-    if (
-      name.includes('mac') ||
-      name.includes('macbook') ||
-      name.includes('pc') ||
-      name.includes('windows')
-    )
-      return Laptop
-    return Monitor
-  }
-
-  const getIconColor = (index: number) => {
-    const colors = [
-      'text-blue-500 bg-blue-500/10 border-blue-500/20',
-      'text-purple-500 bg-purple-500/10 border-purple-500/20',
-      'text-green-500 bg-green-500/10 border-green-500/20',
-      'text-orange-500 bg-orange-500/10 border-orange-500/20',
-      'text-primary bg-primary/10 border-primary/20',
-    ]
-    return colors[index % colors.length]
-  }
+  const selectedDevice = pairedDevices.find(d => d.peerId === selectedDeviceId)
+  const unpairTargetDevice = pairedDevices.find(d => d.peerId === unpairTargetId)
 
   if (pairedDevicesError) {
     return (
-      <div className="space-y-4 px-4 pt-6 pb-8">
-        <div className="border border-destructive/50 rounded-lg bg-card p-6">
-          <div className="flex items-center gap-3">
-            <p className="text-sm text-destructive">{pairedDevicesError}</p>
-            <button
-              type="button"
-              onClick={handleRetry}
-              className="p-1.5 text-destructive hover:bg-destructive/10 rounded-lg transition-colors"
-              title={t('devices.list.actions.retry')}
-            >
-              <RefreshCw className="h-4 w-4" />
-            </button>
-          </div>
+      <SettingGroup title={t('devices.pairedDevices.title')}>
+        <div className="px-4 py-3">
+          <Alert variant="destructive">
+            <AlertDescription className="flex items-center gap-3">
+              <span className="flex-1">{pairedDevicesError}</span>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                onClick={handleRetry}
+                title={t('devices.list.actions.retry')}
+              >
+                <RefreshCw className="h-4 w-4" />
+              </Button>
+            </AlertDescription>
+          </Alert>
         </div>
-      </div>
+      </SettingGroup>
     )
   }
 
@@ -155,11 +147,11 @@ const PairedDevicesPanel: React.FC = () => {
   }
 
   return (
-    <div className="flex flex-col gap-3 px-4 pt-6 pb-8">
+    <>
       {globalAutoSyncOff && (
-        <div className="flex items-center gap-3 rounded-lg border border-amber-500/20 bg-amber-500/10 px-4 py-3">
-          <AlertTriangle className="h-4 w-4 shrink-0 text-amber-500" />
-          <p className="text-sm text-amber-700 dark:text-amber-400">
+        <Alert className="border-amber-500/20 bg-amber-500/10">
+          <AlertTriangle className="h-4 w-4 text-amber-500" />
+          <AlertDescription className="text-amber-700 dark:text-amber-400">
             {t('devices.syncPaused.message')}{' '}
             <button
               type="button"
@@ -168,110 +160,98 @@ const PairedDevicesPanel: React.FC = () => {
             >
               {t('devices.syncPaused.goToSettings')}
             </button>
-          </p>
-        </div>
+          </AlertDescription>
+        </Alert>
       )}
-      <div className="flex flex-col rounded-xl border border-border/50 bg-card/50 overflow-hidden divide-y divide-border/50">
+
+      <SettingGroup title={t('devices.pairedDevices.title')}>
         {pairedDevices.map((device, index) => {
           const Icon = getDeviceIcon(device.deviceName)
-          const isExpanded = expandedDeviceId === device.peerId
           const iconColor = getIconColor(index)
 
           return (
-            <div key={device.peerId} className="flex flex-col bg-card/30">
-              <div
-                className={`
-                  relative flex items-center p-4
-                  hover:bg-accent/50 transition-colors duration-200
-                  ${isExpanded ? 'bg-accent/50' : ''}
-                `}
+            <div
+              key={device.peerId}
+              className="flex items-center gap-3 px-4 py-3 hover:bg-accent/50 transition-colors cursor-pointer"
+              onClick={() => openSheet(device.peerId)}
+            >
+              <button
+                type="button"
+                onClick={() => openSheet(device.peerId)}
+                className="flex min-w-0 flex-1 items-center gap-4 text-left outline-none cursor-pointer"
               >
-                <button
-                  type="button"
-                  aria-expanded={isExpanded}
-                  aria-controls={`device-settings-${device.peerId}`}
-                  onClick={() => toggleDevice(device.peerId)}
-                  className="flex min-w-0 flex-1 items-center justify-between gap-3 text-left outline-none"
+                <div
+                  className={`h-10 w-10 shrink-0 rounded-lg flex items-center justify-center ring-1 shadow-sm ${iconColor}`}
                 >
-                  <div className="flex min-w-0 items-center gap-4">
-                    <div
-                      className={`h-10 w-10 rounded-lg flex items-center justify-center ring-1 shadow-sm ${iconColor}`}
-                    >
-                      <Icon className="h-5 w-5" />
-                    </div>
+                  <Icon className="h-5 w-5" />
+                </div>
+                <div className="flex min-w-0 flex-col gap-0.5">
+                  <span className="truncate font-medium text-foreground text-sm">
+                    {device.deviceName || t('devices.list.labels.unknownDevice')}
+                  </span>
+                  <span className="text-xs text-muted-foreground font-mono">
+                    {formatPeerIdForDisplay(device.peerId)}
+                  </span>
+                </div>
+              </button>
 
-                    <div className="flex min-w-0 flex-col gap-0.5">
-                      <div className="flex items-center gap-2">
-                        <span className="truncate font-medium text-foreground text-sm">
-                          {device.deviceName || t('devices.list.labels.unknownDevice')}
-                        </span>
-                        {device.connected && (
-                          <span className="flex h-2 w-2 rounded-full bg-green-500 animate-pulse" />
-                        )}
-                      </div>
-                      <span className="text-xs text-muted-foreground font-mono">
-                        {formatPeerIdForDisplay(device.peerId)}
-                      </span>
-                    </div>
-                  </div>
+              <Badge variant={device.connected ? 'default' : 'secondary'}>
+                {device.connected
+                  ? t('devices.list.status.online')
+                  : t('devices.list.status.offline')}
+              </Badge>
 
-                  <div className="flex items-center gap-3">
-                    <div
-                      className={`text-xs px-2 py-0.5 rounded-full border ${
-                        device.connected
-                          ? 'bg-green-500/10 text-green-600 border-green-500/20'
-                          : 'bg-muted text-muted-foreground border-border'
-                      }`}
-                    >
-                      {device.connected
-                        ? t('devices.list.status.online')
-                        : t('devices.list.status.offline')}
-                    </div>
-
-                    <ChevronRight
-                      className={`h-4 w-4 text-muted-foreground transition-transform duration-200 ${
-                        isExpanded ? 'rotate-90' : ''
-                      }`}
-                    />
-                  </div>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={e => handleUnpair(e, device.peerId)}
-                  className="ml-2 p-2 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-lg transition-colors"
-                  title={t('devices.list.actions.unpair')}
-                >
-                  <Trash2 className="h-4 w-4" />
-                </button>
-              </div>
-
-              <AnimatePresence>
-                {isExpanded && (
-                  <motion.div
-                    id={`device-settings-${device.peerId}`}
-                    initial={{ height: 0, opacity: 0 }}
-                    animate={{ height: 'auto', opacity: 1 }}
-                    exit={{ height: 0, opacity: 0 }}
-                    transition={{ duration: 0.2, ease: 'easeInOut' }}
-                    className="overflow-hidden bg-accent/20"
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" size="icon-sm" onClick={e => e.stopPropagation()}>
+                    <MoreHorizontal className="h-4 w-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem
+                    onClick={e => {
+                      e.stopPropagation()
+                      openSheet(device.peerId)
+                    }}
                   >
-                    <div className="p-4 border-t border-border/50">
-                      <DeviceSettingsPanel
-                        deviceId={device.peerId}
-                        deviceName={device.deviceName || t('devices.list.labels.unknownDevice')}
-                        globalAutoSyncOff={globalAutoSyncOff}
-                        globalFileSyncOff={globalFileSyncOff}
-                      />
-                    </div>
-                  </motion.div>
-                )}
-              </AnimatePresence>
+                    <Settings className="h-4 w-4" />
+                    {t('devices.list.actions.settings')}
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    variant="destructive"
+                    onClick={e => {
+                      e.stopPropagation()
+                      handleUnpairRequest(device.peerId)
+                    }}
+                  >
+                    <Unlink className="h-4 w-4" />
+                    {t('devices.list.actions.unpair')}
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
           )
         })}
-      </div>
-    </div>
+      </SettingGroup>
+
+      <DeviceSettingsSheet
+        open={sheetOpen}
+        onOpenChange={setSheetOpen}
+        deviceId={selectedDeviceId || ''}
+        device={selectedDevice}
+        globalAutoSyncOff={globalAutoSyncOff}
+        globalFileSyncOff={globalFileSyncOff}
+        onUnpair={handleUnpairRequest}
+      />
+
+      <UnpairAlertDialog
+        open={unpairDialogOpen}
+        onOpenChange={setUnpairDialogOpen}
+        deviceName={unpairTargetDevice?.deviceName || t('devices.list.labels.unknownDevice')}
+        onConfirm={handleUnpairConfirm}
+      />
+    </>
   )
 }
 

@@ -35,6 +35,10 @@ pub async fn apply_file_sync_policy(
             info!("Global auto_sync disabled; skipping file sync");
             return vec![];
         }
+        if !gs.file_sync.file_sync_enabled {
+            info!("Global file_sync disabled; skipping file sync policy");
+            return vec![];
+        }
     }
 
     let mut result = Vec::with_capacity(peers.len());
@@ -263,5 +267,35 @@ mod tests {
         let result = apply_file_sync_policy(&settings, &repo, &peers).await;
         assert_eq!(result.len(), 1);
         assert_eq!(result[0].peer_id, "peer-unknown");
+    }
+
+    #[tokio::test]
+    async fn test_file_policy_global_file_sync_disabled_returns_empty() {
+        let mut settings = make_settings_with_auto_sync(true);
+        settings.file_sync.file_sync_enabled = false;
+        let settings: Arc<dyn SettingsPort> = Arc::new(MockSettings {
+            settings: Some(settings),
+        });
+        let repo: Arc<dyn PairedDeviceRepositoryPort> =
+            Arc::new(MockPairedDeviceRepo { devices: vec![] });
+        let peers = vec![make_peer("peer-1"), make_peer("peer-2")];
+
+        let result = apply_file_sync_policy(&settings, &repo, &peers).await;
+        assert!(result.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_file_policy_global_file_sync_enabled_keeps_eligible() {
+        let mut settings = make_settings_with_auto_sync(true);
+        settings.file_sync.file_sync_enabled = true;
+        let settings: Arc<dyn SettingsPort> = Arc::new(MockSettings {
+            settings: Some(settings),
+        });
+        let repo: Arc<dyn PairedDeviceRepositoryPort> =
+            Arc::new(MockPairedDeviceRepo { devices: vec![] });
+        let peers = vec![make_peer("peer-1")];
+
+        let result = apply_file_sync_policy(&settings, &repo, &peers).await;
+        assert_eq!(result.len(), 1);
     }
 }

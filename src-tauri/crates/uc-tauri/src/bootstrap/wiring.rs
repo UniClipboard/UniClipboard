@@ -1666,6 +1666,7 @@ fn new_sync_inbound_clipboard_usecase(
         deps.clipboard.representation_cache.clone(),
         deps.clipboard.spool_queue.clone(),
         file_cache_dir,
+        deps.settings.clone(),
     )
 }
 
@@ -4305,6 +4306,7 @@ mod tests {
                 id: uc_core::DeviceId::new("local-device".to_string()),
             }),
             Arc::new(NoopTransferDecryptor),
+            Arc::new(NoopSettings),
         )
         .expect("usecase should build in Full mode");
 

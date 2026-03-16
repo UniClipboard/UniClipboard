@@ -918,6 +918,7 @@ impl<'a> UseCases<'a> {
             self.runtime.deps.clipboard.representation_cache.clone(),
             self.runtime.deps.clipboard.spool_queue.clone(),
             Some(self.runtime.storage_paths.file_cache_dir.clone()),
+            self.runtime.deps.settings.clone(),
         )
     }
 

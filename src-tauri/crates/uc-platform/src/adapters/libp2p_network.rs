@@ -1003,17 +1003,9 @@ fn spawn_business_stream_handler(
             let encryption_session = encryption_session.clone();
             let transfer_decryptor = transfer_decryptor.clone();
             tokio::spawn(async move {
-                if check_business_allowed(
-                    &policy_resolver,
-                    &event_tx,
-                    &peer_id,
-                    ProtocolDirection::Inbound,
-                )
-                .await
-                .is_err()
-                {
-                    return;
-                }
+                // Policy check is deferred until after reading the message type.
+                // DeviceAnnounce is allowed from any peer (even unpaired) so that
+                // device names are available in JoinPickDeviceStep before pairing.
 
                 // Apply overall size guard on the stream
                 let limited = stream.take(BUSINESS_PAYLOAD_MAX_BYTES + 1);
@@ -1206,6 +1198,18 @@ fn spawn_business_stream_handler(
 
                 match result {
                     Ok(Ok(ProcessedMessage::StreamingClipboard(msg, plaintext))) => {
+                        // Clipboard requires pairing
+                        if check_business_allowed(
+                            &policy_resolver,
+                            &event_tx,
+                            &peer_id,
+                            ProtocolDirection::Inbound,
+                        )
+                        .await
+                        .is_err()
+                        {
+                            return;
+                        }
                         handle_v2_clipboard(
                             caches,
                             event_tx,
@@ -1216,7 +1220,32 @@ fn spawn_business_stream_handler(
                         )
                         .await;
                     }
+                    Ok(Ok(ProcessedMessage::Standard(ProtocolMessage::DeviceAnnounce(
+                        announce,
+                    )))) => {
+                        // DeviceAnnounce is allowed from any peer (even unpaired)
+                        handle_standard_message(
+                            caches,
+                            event_tx,
+                            clipboard_tx,
+                            peer_id,
+                            ProtocolMessage::DeviceAnnounce(announce),
+                        )
+                        .await;
+                    }
                     Ok(Ok(ProcessedMessage::Standard(message))) => {
+                        // All other standard messages require pairing
+                        if check_business_allowed(
+                            &policy_resolver,
+                            &event_tx,
+                            &peer_id,
+                            ProtocolDirection::Inbound,
+                        )
+                        .await
+                        .is_err()
+                        {
+                            return;
+                        }
                         handle_standard_message(caches, event_tx, clipboard_tx, peer_id, message)
                             .await;
                     }
@@ -1873,7 +1902,7 @@ async fn execute_business_command(
                 device_name,
                 timestamp: Utc::now(),
             });
-            let payload = match message.to_bytes() {
+            let payload = match message.frame_to_bytes(None) {
                 Ok(payload) => payload,
                 Err(err) => {
                     warn!(
@@ -1901,17 +1930,9 @@ async fn execute_business_command(
                         continue;
                     }
                 };
-                if check_business_allowed(
-                    &policy_resolver,
-                    &event_tx,
-                    peer_id.as_str(),
-                    ProtocolDirection::Outbound,
-                )
-                .await
-                .is_err()
-                {
-                    continue;
-                }
+                // DeviceAnnounce is allowed for all peers regardless of pairing
+                // state so that device names are visible in the JoinPickDeviceStep
+                // UI before pairing is initiated.
 
                 let mut announce_control = control.clone();
                 match timeout(

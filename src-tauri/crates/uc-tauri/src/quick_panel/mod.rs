@@ -14,7 +14,11 @@ use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 use tracing::{debug, error, info, warn};
 
 /// Default global shortcut for the quick panel (Tauri format).
+/// macOS: Cmd+Ctrl+V, Windows/Linux: Ctrl+Alt+V
+#[cfg(target_os = "macos")]
 pub const DEFAULT_SHORTCUT: &str = "super+ctrl+v";
+#[cfg(not(target_os = "macos"))]
+pub const DEFAULT_SHORTCUT: &str = "ctrl+alt+v";
 
 /// Settings key used to store the quick panel shortcut override.
 pub const SHORTCUT_SETTINGS_KEY: &str = "global.toggleQuickPanel";
@@ -245,25 +249,29 @@ pub fn resolve_shortcut_from_settings(
     }
 }
 
-/// Convert a frontend shortcut string (e.g. `mod+ctrl+v`) to the Tauri
-/// global-shortcut format (e.g. `super+ctrl+v` on macOS).
+/// Convert a frontend shortcut string to the Tauri global-shortcut format.
+///
+/// Mapping rules:
+///   - `meta` (the physical Meta/Win/Cmd key) → `super` (Tauri's name for that key)
+///   - `mod`/`cmd`/`command` (abstract platform modifier) → `super` on macOS, `ctrl` on others
+///   - everything else passes through unchanged
 ///
 /// 将前端快捷键字符串转换为 Tauri 全局快捷键格式。
 pub fn normalize_shortcut_for_tauri(key: &str) -> String {
     key.split('+')
         .map(|part| {
             match part.trim().to_lowercase().as_str() {
-                // `mod` = platform modifier: Cmd on macOS, Ctrl on others
-                "mod" | "cmd" | "command" => {
-                    if cfg!(target_os = "macos") {
-                        "super"
-                    } else {
-                        "ctrl"
-                    }
+                // Physical Meta key (Cmd on macOS, Win on Windows) → Tauri `super`
+                "meta" | "super" => "super".to_string(),
+                // Abstract platform modifier → Cmd on macOS, Ctrl on others
+                "mod" | "cmd" | "command" => if cfg!(target_os = "macos") {
+                    "super"
+                } else {
+                    "ctrl"
                 }
-                other => return other.to_string(),
+                .to_string(),
+                other => other.to_string(),
             }
-            .to_string()
         })
         .collect::<Vec<_>>()
         .join("+")
@@ -305,6 +313,14 @@ pub fn update_global_shortcut(
     for shortcut in old {
         if let Err(e) = app.global_shortcut().unregister(shortcut.as_str()) {
             warn!(error = %e, shortcut = %shortcut, "Failed to unregister old global shortcut");
+        }
+    }
+
+    // Also unregister new shortcuts defensively, in case they are already
+    // registered (e.g. from startup or a previous partial update).
+    for shortcut in new {
+        if !old.contains(shortcut) {
+            let _ = app.global_shortcut().unregister(shortcut.as_str());
         }
     }
 

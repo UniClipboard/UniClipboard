@@ -39,6 +39,11 @@ pub struct EntryProjectionDto {
     /// Parsed link URLs when content is a link type.
     /// Built from full representation data (not truncated preview).
     pub link_urls: Option<Vec<String>>,
+    /// Per-file sizes in bytes for file (uri-list) entries.
+    /// Each element corresponds to a file URI parsed from inline_data.
+    /// -1 means the file could not be stat'd (missing or non-local).
+    /// None for non-file entries.
+    pub file_sizes: Option<Vec<i64>>,
 }
 
 /// Error type for list projections use case
@@ -100,6 +105,30 @@ fn detect_link_urls(content_type: &str, inline_data: Option<&[u8]>) -> Option<Ve
     } else {
         None
     }
+}
+
+/// Compute per-file sizes from a `text/uri-list` inline payload.
+///
+/// For each `file://` URI, stats the local file and returns its size in bytes.
+/// Returns `-1` for URIs that are not `file://` or where the file cannot be found.
+fn compute_file_sizes(inline_data: &[u8]) -> Vec<i64> {
+    let text = match std::str::from_utf8(inline_data) {
+        Ok(t) => t,
+        Err(_) => return vec![],
+    };
+    parse_uri_list(text)
+        .iter()
+        .map(|uri| match url::Url::parse(uri) {
+            Ok(parsed) if parsed.scheme() == "file" => match parsed.to_file_path() {
+                Ok(path) => match std::fs::metadata(&path) {
+                    Ok(meta) => meta.len() as i64,
+                    Err(_) => -1,
+                },
+                Err(_) => -1,
+            },
+            _ => -1,
+        })
+        .collect()
 }
 
 impl ListClipboardEntryProjections {
@@ -239,7 +268,19 @@ impl ListClipboardEntryProjections {
             None
         };
 
+        let is_uri_list = content_type
+            .to_ascii_lowercase()
+            .starts_with("text/uri-list");
         let link_urls = detect_link_urls(&content_type, representation.inline_data.as_deref());
+
+        let file_sizes = if is_uri_list {
+            representation
+                .inline_data
+                .as_deref()
+                .map(compute_file_sizes)
+        } else {
+            None
+        };
 
         let has_detail = representation.blob_id.is_some()
             || matches!(
@@ -285,6 +326,7 @@ impl ListClipboardEntryProjections {
             file_transfer_reason,
             file_transfer_ids,
             link_urls,
+            file_sizes,
         }))
     }
 
@@ -424,7 +466,19 @@ impl ListClipboardEntryProjections {
                 None
             };
 
+            let is_uri_list = content_type
+                .to_ascii_lowercase()
+                .starts_with("text/uri-list");
             let link_urls = detect_link_urls(&content_type, representation.inline_data.as_deref());
+
+            let file_sizes = if is_uri_list {
+                representation
+                    .inline_data
+                    .as_deref()
+                    .map(compute_file_sizes)
+            } else {
+                None
+            };
 
             // has_detail controls whether frontend should try fetching full content.
             // For staged/processing payloads, full content may become available via blob shortly.
@@ -472,6 +526,7 @@ impl ListClipboardEntryProjections {
                 file_transfer_reason,
                 file_transfer_ids,
                 link_urls,
+                file_sizes,
             });
         }
 
@@ -1093,6 +1148,7 @@ mod tests {
                 file_transfer_reason: None,
                 file_transfer_ids: vec![],
                 link_urls: None,
+                file_sizes: None,
             },
             EntryProjectionDto {
                 id: "2".to_string(),
@@ -1110,6 +1166,7 @@ mod tests {
                 file_transfer_reason: None,
                 file_transfer_ids: vec![],
                 link_urls: None,
+                file_sizes: None,
             },
         ];
 

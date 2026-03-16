@@ -50,6 +50,10 @@ pub struct ClipboardEntryProjection {
     /// Extracted domains for link entries
     #[serde(skip_serializing_if = "Option::is_none")]
     pub link_domains: Option<Vec<String>>,
+    /// Per-file sizes in bytes for file (uri-list) entries.
+    /// -1 means the file could not be stat'd.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub file_sizes: Option<Vec<i64>>,
 }
 
 /// Clipboard entries response with readiness status
@@ -246,6 +250,7 @@ mod tests {
             file_transfer_reason: None,
             link_urls: None,
             link_domains: None,
+            file_sizes: None,
         };
         let value = serde_json::to_value(&entry).expect("serialize failed");
         // Verify snake_case field names (not camelCase)

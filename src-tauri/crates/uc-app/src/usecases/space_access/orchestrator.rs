@@ -95,6 +95,27 @@ impl SpaceAccessOrchestrator {
         let span = info_span!("usecase.space_access_orchestrator.dispatch", event = ?event);
         async {
             let current = self.state.lock().await.clone();
+
+            // When re-entering from a terminal state (e.g. sponsor handling a
+            // second joiner after the first completed), clear stale context so
+            // the new session starts with a clean slate.
+            let restarting_from_terminal = matches!(
+                current,
+                SpaceAccessState::Granted { .. }
+                    | SpaceAccessState::Denied { .. }
+                    | SpaceAccessState::Cancelled { .. }
+            );
+            if restarting_from_terminal {
+                let mut context = self.context.lock().await;
+                context.prepared_offer = None;
+                context.joiner_offer = None;
+                context.joiner_passphrase = None;
+                context.proof_artifact = None;
+                context.result_success = None;
+                context.result_deny_reason = None;
+                // sponsor_peer_id is set by wiring before dispatch — keep it.
+            }
+
             let (next, actions) = SpaceAccessStateMachine::transition(current.clone(), event);
             let is_responder_flow = matches!(
                 current,

@@ -20,6 +20,8 @@ interface ClipboardEntryProjection {
   link_urls?: string[] | null
   /** Extracted domains for link entries */
   link_domains?: string[] | null
+  /** Per-file sizes in bytes for file (uri-list) entries. -1 means unknown. */
+  file_sizes?: number[] | null
 }
 
 type ClipboardEntriesResponse =
@@ -192,7 +194,7 @@ function transformProjectionToResponse(entry: ClipboardEntryProjection): Clipboa
                 return uri
               }
             }),
-          file_sizes: [], // Size info not available from URI list; use entry.size_bytes as total
+          file_sizes: entry.file_sizes ?? [],
         }
       : (null as unknown as ClipboardFileItem),
     link: linkItem as unknown as ClipboardLinkItem,

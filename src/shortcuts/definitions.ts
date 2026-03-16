@@ -3,6 +3,7 @@
  * Union type of all shortcut actions
  */
 import { ShortcutLayer } from './layers'
+import { isMac } from '@/lib/shortcut-format'
 
 export type ShortcutAction =
   | 'clipboard.clearSelection'
@@ -125,7 +126,7 @@ export const SHORTCUT_DEFINITIONS: ShortcutDefinition[] = [
   // ===== Global (OS-level) =====
   {
     id: 'global.toggleQuickPanel',
-    key: 'mod+ctrl+v',
+    key: isMac ? 'meta+ctrl+v' : 'ctrl+alt+v',
     action: 'global.toggleQuickPanel',
     scope: 'global',
     description: 'settings.sections.shortcuts.actions.toggleQuickPanel',

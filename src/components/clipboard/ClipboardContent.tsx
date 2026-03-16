@@ -474,7 +474,7 @@ const ClipboardContent: React.FC<ClipboardContentProps> = ({
                           isActive={item.id === activeItemId}
                           isStale={staleEntryIds.includes(item.id)}
                           onClick={() => setActiveItemId(item.id)}
-                          itemRef={item.id === activeItemId ? activeItemRef : undefined}
+                          elementRef={item.id === activeItemId ? activeItemRef : undefined}
                         />
                       </FileContextMenu>
                     ))}

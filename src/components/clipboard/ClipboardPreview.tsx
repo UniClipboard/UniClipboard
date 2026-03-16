@@ -359,6 +359,22 @@ const ClipboardPreview: React.FC<ClipboardPreviewProps> = ({ item }) => {
       }
     }
 
+    if (item.type === 'file' && item.content) {
+      const fileItem = item.content as ClipboardFileItem
+      rows.push({
+        label: t('clipboard.preview.fileCount', 'Files'),
+        value: String(fileItem.file_names.length),
+      })
+      const knownSizes = fileItem.file_sizes.filter(s => s >= 0)
+      if (knownSizes.length > 0) {
+        const totalSize = knownSizes.reduce((sum, s) => sum + s, 0)
+        rows.push({
+          label: t('clipboard.preview.size'),
+          value: formatFileSize(totalSize),
+        })
+      }
+    }
+
     if (item.type === 'link' && item.content) {
       const linkItem = item.content as ClipboardLinkItem
       const uniqueDomains = [...new Set(linkItem.domains.filter(Boolean))]

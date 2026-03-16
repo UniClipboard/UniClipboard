@@ -54,6 +54,13 @@ tracing-log = "0.2"
 sentry = { version = "0.46.1", features = ["tracing"] }
 sentry-tracing = "0.46.1"
 
+[target.'cfg(target_os = "windows")'.dependencies]
+windows = { version = "0.61", features = [
+    "Win32_UI_WindowsAndMessaging",
+    "Win32_UI_Input_KeyboardAndMouse",
+    "Win32_System_Threading",
+] }
+
 [target.'cfg(target_os = "macos")'.dependencies]
 core-foundation = "0.10"
 objc2 = "0.6"

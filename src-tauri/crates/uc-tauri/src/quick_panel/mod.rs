@@ -8,15 +8,22 @@
 
 #[cfg(target_os = "macos")]
 mod macos;
+#[cfg(target_os = "windows")]
+mod windows;
 
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Mutex;
+use std::time::Instant;
 use tauri::{Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 use tracing::{debug, error, info, warn};
 
-/// Guard flag: when `true`, the blur handler will not hide the panel.
-/// This prevents the "show → instant blur → hide" race on Windows.
-static SUPPRESS_BLUR: AtomicBool = AtomicBool::new(false);
+/// Timestamp of the last `show()` call. Blur events within
+/// [`BLUR_DEBOUNCE_MS`] of this timestamp are ignored to prevent
+/// the "show → instant blur → hide" race on Windows/Linux.
+static LAST_SHOW_TIME: Mutex<Option<Instant>> = Mutex::new(None);
+
+/// How long (ms) after `show()` to suppress blur events.
+const BLUR_DEBOUNCE_MS: u128 = 300;
 
 /// Default global shortcut for the quick panel (Tauri format).
 /// macOS: Cmd+Ctrl+V, Windows/Linux: Ctrl+Alt+V
@@ -110,30 +117,28 @@ pub fn pre_create(app: &tauri::AppHandle) {
             let win_clone = window.clone();
             let app_for_focus = app.clone();
             window.on_window_event(move |event| {
-                match event {
-                    tauri::WindowEvent::Focused(true) => {
-                        // Window successfully received focus — clear the suppress flag
-                        // so future blur events are handled normally.
-                        if SUPPRESS_BLUR.swap(false, Ordering::SeqCst) {
-                            debug!("Quick panel gained focus, blur suppression cleared");
+                if let tauri::WindowEvent::Focused(false) = event {
+                    // Debounce: ignore blur events shortly after show() to prevent
+                    // the "show → instant blur → hide" race on Windows/Linux.
+                    if let Ok(guard) = LAST_SHOW_TIME.lock() {
+                        if let Some(t) = *guard {
+                            if t.elapsed().as_millis() < BLUR_DEBOUNCE_MS {
+                                debug!(
+                                    elapsed_ms = t.elapsed().as_millis(),
+                                    "Quick panel blur suppressed (within debounce window)"
+                                );
+                                return;
+                            }
                         }
                     }
-                    tauri::WindowEvent::Focused(false) => {
-                        // Skip this blur if we just called show() and haven't gained focus yet.
-                        if SUPPRESS_BLUR.swap(false, Ordering::SeqCst) {
-                            debug!("Quick panel blur suppressed (show-in-progress)");
-                            return;
-                        }
-                        // If focus transferred to the preview panel, keep quick panel visible
-                        if crate::preview_panel::is_focused(&app_for_focus) {
-                            debug!("Quick panel lost focus to preview panel — not hiding");
-                            return;
-                        }
-                        debug!("Quick panel lost focus, hiding");
-                        crate::preview_panel::dismiss(&app_for_focus);
-                        let _ = win_clone.hide();
+                    // If focus transferred to the preview panel, keep quick panel visible
+                    if crate::preview_panel::is_focused(&app_for_focus) {
+                        debug!("Quick panel lost focus to preview panel — not hiding");
+                        return;
                     }
-                    _ => {}
+                    debug!("Quick panel lost focus, hiding");
+                    crate::preview_panel::dismiss(&app_for_focus);
+                    let _ = win_clone.hide();
                 }
             });
         }
@@ -187,15 +192,25 @@ pub fn show(app: &tauri::AppHandle) {
             warn!(error = %e, "Failed to set quick panel position");
         }
 
+        // Record show timestamp *before* showing so the blur handler can
+        // debounce any spurious Focused(false) events that fire during the
+        // show + focus sequence on Windows/Linux.
+        if let Ok(mut guard) = LAST_SHOW_TIME.lock() {
+            *guard = Some(Instant::now());
+        }
+
         // Show panel without activating the app (macOS uses orderFrontRegardless)
         #[cfg(target_os = "macos")]
         macos::show_panel(&window);
-        #[cfg(not(target_os = "macos"))]
+        #[cfg(target_os = "windows")]
         {
-            // Suppress the next blur event to prevent the "show → instant blur → hide"
-            // race on Windows. The flag is cleared when the panel gains focus, or
-            // consumed (and discarded) if a spurious blur fires before focus arrives.
-            SUPPRESS_BLUR.store(true, Ordering::SeqCst);
+            let _ = window.show();
+            // Use Win32 AttachThreadInput trick to reliably claim foreground,
+            // bypassing SetForegroundWindow restrictions.
+            windows::force_foreground(&window);
+        }
+        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+        {
             let _ = window.show();
             let _ = window.set_focus();
         }

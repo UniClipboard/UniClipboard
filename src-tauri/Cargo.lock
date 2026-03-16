@@ -9101,6 +9101,7 @@ dependencies = [
  "uc-platform",
  "url",
  "uuid",
+ "windows 0.61.3",
 ]
 
 [[package]]

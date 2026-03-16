@@ -1,5 +1,5 @@
 ---
-status: fix_applied
+status: resolved
 trigger: 'pairing-second-device-stuck'
 created: 2026-03-15
 updated: 2026-03-16T00:00:00Z
@@ -10,7 +10,7 @@ updated: 2026-03-16T00:00:00Z
 hypothesis: CONFIRMED — SpaceAccessOrchestrator is a singleton shared across all pairing sessions. After Device B completes space access, the state machine reaches terminal `Granted` state. When Device C pairs and the sponsor tries `start_sponsor_authorization`, the state machine silently ignores the event (terminal catch-all), so no offer is ever sent to Device C.
 test: cargo check passes, all space_access tests pass (7 in uc-core, 19 in uc-app)
 expecting: Second device should now receive the sponsor's offer and complete space access
-next_action: Await human verification
+next_action: None — resolved
 
 ## Symptoms
 

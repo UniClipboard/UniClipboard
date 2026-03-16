@@ -1265,40 +1265,54 @@ impl ClipboardChangeHandler for AppRuntime {
                         })
                         .collect();
 
-                    let file_transfers: Vec<uc_core::network::protocol::FileTransferMapping> =
-                        file_sync_entries
-                            .iter()
-                            .map(|(_, tid, fname)| {
-                                uc_core::network::protocol::FileTransferMapping {
-                                    transfer_id: tid.clone(),
-                                    filename: fname.clone(),
-                                }
-                            })
-                            .collect();
+                    // If this is a file-copy clipboard and ALL files were excluded
+                    // (e.g. all exceed max_file_size), skip outbound clipboard sync
+                    // entirely. Otherwise the peer would receive the file's thumbnail/icon
+                    // image as a standalone clipboard entry, which is misleading.
+                    let all_files_excluded =
+                        !file_paths_for_sync.is_empty() && file_sync_entries.is_empty();
 
-                    let outbound_sync_uc = self.usecases().sync_outbound_clipboard();
-                    let flow_id_for_sync = flow_id.clone();
-                    let flow_id_str = flow_id_for_sync.to_string();
-                    tauri::async_runtime::spawn(
-                        async move {
-                            match tokio::task::spawn_blocking(move || {
-                                outbound_sync_uc.execute(outbound_snapshot, origin, Some(flow_id_str), file_transfers)
-                            })
-                            .await
-                            {
-                                Ok(Ok(())) => {
-                                    tracing::info!("Outbound clipboard sync completed");
-                                }
-                                Ok(Err(err)) => {
-                                    tracing::warn!(error = %err, "Outbound clipboard sync failed");
-                                }
-                                Err(err) => {
-                                    tracing::warn!(error = %err, "Outbound clipboard sync task join failed");
+                    if all_files_excluded {
+                        tracing::info!(
+                            excluded_file_count = file_paths_for_sync.len(),
+                            "Skipping outbound clipboard sync: all files excluded by size limit"
+                        );
+                    } else {
+                        let file_transfers: Vec<uc_core::network::protocol::FileTransferMapping> =
+                            file_sync_entries
+                                .iter()
+                                .map(|(_, tid, fname)| {
+                                    uc_core::network::protocol::FileTransferMapping {
+                                        transfer_id: tid.clone(),
+                                        filename: fname.clone(),
+                                    }
+                                })
+                                .collect();
+
+                        let outbound_sync_uc = self.usecases().sync_outbound_clipboard();
+                        let flow_id_for_sync = flow_id.clone();
+                        let flow_id_str = flow_id_for_sync.to_string();
+                        tauri::async_runtime::spawn(
+                            async move {
+                                match tokio::task::spawn_blocking(move || {
+                                    outbound_sync_uc.execute(outbound_snapshot, origin, Some(flow_id_str), file_transfers)
+                                })
+                                .await
+                                {
+                                    Ok(Ok(())) => {
+                                        tracing::info!("Outbound clipboard sync completed");
+                                    }
+                                    Ok(Err(err)) => {
+                                        tracing::warn!(error = %err, "Outbound clipboard sync failed");
+                                    }
+                                    Err(err) => {
+                                        tracing::warn!(error = %err, "Outbound clipboard sync task join failed");
+                                    }
                                 }
                             }
-                        }
-                        .instrument(tracing::info_span!("outbound_sync", %flow_id_for_sync)),
-                    );
+                            .instrument(tracing::info_span!("outbound_sync", %flow_id_for_sync)),
+                        );
+                    }
 
                     // Trigger outbound file sync for LocalCapture only
                     if !file_sync_entries.is_empty() {

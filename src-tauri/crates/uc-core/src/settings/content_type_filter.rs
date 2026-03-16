@@ -16,12 +16,32 @@ pub enum ContentTypeCategory {
 
 /// Classify a clipboard snapshot by examining its representations' MIME types.
 ///
-/// Returns the first recognized category found by iterating representations in order.
-/// If no representation has a recognized MIME type, returns `Unknown`.
+/// File URIs are given highest priority: if **any** representation contains a
+/// `text/uri-list` with `file://` URIs, the snapshot is classified as `File`
+/// regardless of representation order.  This is necessary because macOS (and
+/// some Linux DEs) place convenience representations (e.g. `image/png` for an
+/// image file copy) *before* the `text/uri-list` representation, which would
+/// otherwise cause the snapshot to be mis-classified as `Image`.
+///
+/// After the file-URI pre-scan, the remaining representations are checked in
+/// order using first-match semantics.
 ///
 /// For `text/uri-list`, the representation data is inspected to distinguish between
 /// file URIs (`file://`) and web links (`http://`, `https://`, etc.).
 pub fn classify_snapshot(snapshot: &SystemClipboardSnapshot) -> ContentTypeCategory {
+    // Pre-scan: if any representation is a file URI list, this is a file copy.
+    // This must happen before first-match iteration so that an `image/*`
+    // representation placed earlier by the OS does not shadow the file URI.
+    for rep in &snapshot.representations {
+        if let Some(ref mime) = rep.mime {
+            if mime.0.as_str() == "text/uri-list"
+                && classify_uri_list(&rep.bytes) == ContentTypeCategory::File
+            {
+                return ContentTypeCategory::File;
+            }
+        }
+    }
+
     for rep in &snapshot.representations {
         if let Some(ref mime) = rep.mime {
             let m = mime.0.as_str();
@@ -245,6 +265,57 @@ mod tests {
     fn classify_multiple_representations_returns_first_recognized() {
         // image/png comes before text/plain, so Image should be returned
         let snapshot = make_multi_snapshot(&["image/png", "text/plain"]);
+        assert_eq!(classify_snapshot(&snapshot), ContentTypeCategory::Image);
+    }
+
+    #[test]
+    fn classify_file_copy_with_image_before_uri_list() {
+        // macOS places image/png before text/uri-list when copying an image file.
+        // The snapshot should still be classified as File because the file URI
+        // pre-scan takes priority over representation order.
+        let reps = vec![
+            ObservedClipboardRepresentation::new(
+                RepresentationId::new(),
+                FormatId::from("image"),
+                Some(MimeType("image/png".to_string())),
+                b"fake png data".to_vec(),
+            ),
+            ObservedClipboardRepresentation::new(
+                RepresentationId::new(),
+                FormatId::from("files"),
+                Some(MimeType("text/uri-list".to_string())),
+                b"file:///Users/test/photo.png\r\n".to_vec(),
+            ),
+        ];
+        let snapshot = SystemClipboardSnapshot {
+            ts_ms: 1_713_000_000_000,
+            representations: reps,
+        };
+        assert_eq!(classify_snapshot(&snapshot), ContentTypeCategory::File);
+    }
+
+    #[test]
+    fn classify_link_uri_list_with_image_stays_image() {
+        // When text/uri-list contains http:// (not file://), the pre-scan
+        // should NOT promote it to File — first-match should still apply.
+        let reps = vec![
+            ObservedClipboardRepresentation::new(
+                RepresentationId::new(),
+                FormatId::from("image"),
+                Some(MimeType("image/png".to_string())),
+                b"fake png data".to_vec(),
+            ),
+            ObservedClipboardRepresentation::new(
+                RepresentationId::new(),
+                FormatId::from("url"),
+                Some(MimeType("text/uri-list".to_string())),
+                b"https://example.com/image.png\r\n".to_vec(),
+            ),
+        ];
+        let snapshot = SystemClipboardSnapshot {
+            ts_ms: 1_713_000_000_000,
+            representations: reps,
+        };
         assert_eq!(classify_snapshot(&snapshot), ContentTypeCategory::Image);
     }
 

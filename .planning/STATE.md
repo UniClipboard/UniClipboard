@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v0.1
 milestone_name: milestone
 status: completed
-stopped_at: Completed 34-01-PLAN.md
-last_updated: '2026-03-16T06:04:56.401Z'
+stopped_at: 'Checkpoint Task 3: Visual verification of scanning UX (34-02)'
+last_updated: '2026-03-16T06:10:00.228Z'
 last_activity: '2026-03-15 — Completed 33-05 plan: File transfer state UI and Copy gating'
 progress:
   total_phases: 18
-  completed_phases: 16
+  completed_phases: 17
   total_plans: 48
-  completed_plans: 46
+  completed_plans: 47
   percent: 98
 ---
 
@@ -198,6 +198,8 @@ Recent decisions affecting current work:
 - [Phase 34]: useDeviceDiscovery stores raw deviceName (string | null) from backend — no fallback mapping in hook
 - [Phase 34]: onError callback stored in useRef synced via useEffect (not during render) to satisfy react-hooks/refs ESLint rule
 - [Phase 34]: SetupPage migrated from 3s polling interval to event-driven useDeviceDiscovery hook
+- [Phase 34]: Removed headerRight refresh button from JoinPickDeviceStep -- scanning is automatic, header stays clean
+- [Phase 34]: AnimatePresence mode=wait for clean phase-to-phase transitions in JoinPickDeviceStep
 
 ### Roadmap Evolution
 
@@ -235,6 +237,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-16T06:04:56.398Z
-Stopped at: Completed 34-01-PLAN.md
+Last session: 2026-03-16T06:09:56.158Z
+Stopped at: Checkpoint Task 3: Visual verification of scanning UX (34-02)
 Resume file: None

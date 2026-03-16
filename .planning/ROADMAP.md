@@ -335,3 +335,15 @@ Plans:
 - [ ] 33-04-PLAN.md — Frontend data hydration for durable transfer status
 - [ ] 33-05-PLAN.md — Frontend UI rendering and action gating for file transfer states
 - [ ] 33-06-PLAN.md — Gap closure: wire API hydration to Redux and add camelCase serialization test
+
+### Phase 34: Optimize JoinPickDevice page: event-driven discovery with scanning UX
+
+**Goal:** Replace 3-second polling with event-driven device discovery using existing backend events, and transform the JoinPickDevice step into a Bluetooth/AirDrop-like scanning experience with pulse animation, animated device list, and troubleshooting empty state.
+**Requirements**: SCAN-01, SCAN-02, SCAN-03, SCAN-04, SCAN-05, SCAN-06
+**Depends on:** Phase 33
+**Plans:** 2 plans
+
+Plans:
+
+- [ ] 34-01-PLAN.md — Create useDeviceDiscovery hook, update types, add CSS ripple animation and i18n keys
+- [ ] 34-02-PLAN.md — Wire hook into SetupPage, rebuild JoinPickDeviceStep UI with scanning phases, rewrite tests

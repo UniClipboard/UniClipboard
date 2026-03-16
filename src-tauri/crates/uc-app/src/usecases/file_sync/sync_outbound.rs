@@ -51,22 +51,10 @@ impl SyncOutboundFileUseCase {
         pre_generated_transfer_id: Option<String>,
     ) -> Result<SyncOutboundResult> {
         async move {
-            // 0a. Guard: file_sync_enabled
-            let settings = self
-                .settings
-                .load()
-                .await
-                .context("Failed to load settings for file sync check")?;
-
-            if !settings.file_sync.file_sync_enabled {
-                info!("File sync disabled, skipping outbound file transfer");
-                return Ok(SyncOutboundResult {
-                    transfer_id: String::new(),
-                    peer_count: 0,
-                });
-            }
-
             // 1. Validate file exists and get metadata
+            // Note: file_sync_enabled and max_file_size guards have been removed.
+            // The OutboundSyncPlanner in runtime.rs guarantees both pre-conditions
+            // before constructing FileSyncIntent entries that invoke this use case.
             let metadata = tokio::fs::symlink_metadata(&file_path)
                 .await
                 .with_context(|| format!("Failed to stat file: {}", file_path.display()))?;
@@ -97,27 +85,6 @@ impl SyncOutboundFileUseCase {
                 bail!(
                     "Source file deleted before transfer could start: {}",
                     file_path.display()
-                );
-            }
-
-            // 4a. Guard: max_file_size
-            let file_size = metadata.len();
-            let max_size = settings.file_sync.max_file_size;
-            if file_size > max_size {
-                let file_name = file_path.file_name().unwrap_or_default().to_string_lossy();
-                let file_size_mb = file_size / (1024 * 1024);
-                let max_size_mb = max_size / (1024 * 1024);
-                warn!(
-                    file_size = file_size,
-                    max_size = max_size,
-                    path = %file_path.display(),
-                    "File exceeds maximum size limit, skipping sync"
-                );
-                bail!(
-                    "File {} ({} MB) exceeds maximum size limit ({} MB)",
-                    file_name,
-                    file_size_mb,
-                    max_size_mb,
                 );
             }
 
@@ -415,53 +382,6 @@ mod tests {
         let uc = make_use_case(vec![], vec![]);
         let result = uc.execute(tmp.path().to_path_buf(), None).await.unwrap();
         assert_eq!(result.peer_count, 0);
-    }
-
-    #[tokio::test]
-    async fn test_outbound_skips_when_file_sync_disabled() {
-        let tmp = NamedTempFile::new().unwrap();
-        let mut settings = make_settings();
-        settings.file_sync.file_sync_enabled = false;
-
-        let uc = SyncOutboundFileUseCase::new(
-            Arc::new(MockSettings { settings }),
-            Arc::new(MockPairedDeviceRepo { devices: vec![] }),
-            Arc::new(MockPeerDirectory {
-                peers: vec![make_peer("p1")],
-            }),
-            Arc::new(MockFileTransport),
-        );
-        let result = uc.execute(tmp.path().to_path_buf(), None).await.unwrap();
-        assert_eq!(result.peer_count, 0);
-        assert!(result.transfer_id.is_empty());
-    }
-
-    #[tokio::test]
-    async fn test_outbound_rejects_oversized_file() {
-        // Create a temp file and set max_file_size to 0 so any file exceeds it
-        let tmp = NamedTempFile::new().unwrap();
-        std::io::Write::write_all(&mut tmp.as_file(), b"some content").unwrap();
-
-        let mut settings = make_settings();
-        settings.file_sync.max_file_size = 1; // 1 byte limit
-
-        let uc = SyncOutboundFileUseCase::new(
-            Arc::new(MockSettings { settings }),
-            Arc::new(MockPairedDeviceRepo { devices: vec![] }),
-            Arc::new(MockPeerDirectory {
-                peers: vec![make_peer("p1")],
-            }),
-            Arc::new(MockFileTransport),
-        );
-        let result = uc.execute(tmp.path().to_path_buf(), None).await;
-        assert!(result.is_err());
-        assert!(
-            result
-                .unwrap_err()
-                .to_string()
-                .contains("exceeds maximum size limit"),
-            "Expected max file size rejection"
-        );
     }
 
     #[tokio::test]

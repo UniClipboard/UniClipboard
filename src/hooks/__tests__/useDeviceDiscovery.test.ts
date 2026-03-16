@@ -9,8 +9,6 @@ const mockDiscoveryUnlisten = vi.fn()
 const mockConnectionUnlisten = vi.fn()
 const mockNameUnlisten = vi.fn()
 let capturedDiscoveryCb: (event: unknown) => void
-let _capturedConnectionCb: (event: unknown) => void
-let _capturedNameCb: (event: unknown) => void
 
 vi.mock('@/api/p2p', () => ({
   getP2PPeers: (...args: unknown[]) => mockGetP2PPeers(...args),
@@ -18,12 +16,10 @@ vi.mock('@/api/p2p', () => ({
     capturedDiscoveryCb = cb
     return Promise.resolve(mockDiscoveryUnlisten)
   }),
-  onP2PPeerConnectionChanged: vi.fn((cb: (event: unknown) => void) => {
-    _capturedConnectionCb = cb
+  onP2PPeerConnectionChanged: vi.fn((_cb: (event: unknown) => void) => {
     return Promise.resolve(mockConnectionUnlisten)
   }),
-  onP2PPeerNameUpdated: vi.fn((cb: (event: unknown) => void) => {
-    _capturedNameCb = cb
+  onP2PPeerNameUpdated: vi.fn((_cb: (event: unknown) => void) => {
     return Promise.resolve(mockNameUnlisten)
   }),
 }))

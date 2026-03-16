@@ -790,7 +790,8 @@
       "subtitle": "请选择已经加入该加密空间的设备。",
       "scanning": {
         "title": "正在扫描设备...",
-        "description": "正在寻找局域网内的其他设备。"
+        "description": "正在寻找局域网内的其他设备。",
+        "compact": "扫描中..."
       },
       "errors": {
         "timeout": "扫描超时，请稍后重试。",
@@ -802,7 +803,13 @@
       "empty": {
         "title": "没有发现可连接的设备",
         "description": "请确认主设备与本机在同一网络，并已开启配对。",
-        "rescan": "重新扫描"
+        "rescan": "重新扫描",
+        "tips": {
+          "heading": "排查建议",
+          "sameNetwork": "确认两台设备连接到同一 Wi-Fi 或局域网",
+          "pairingEnabled": "确认主设备已开启配对功能",
+          "firewall": "检查防火墙设置是否阻止了局域网连接"
+        }
       },
       "actions": {
         "select": "选择"

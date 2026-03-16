@@ -790,7 +790,8 @@
       "subtitle": "Select a device that already joined the encrypted space.",
       "scanning": {
         "title": "Scanning for devices...",
-        "description": "Looking for other devices on your local network."
+        "description": "Looking for other devices on your local network.",
+        "compact": "Scanning..."
       },
       "errors": {
         "timeout": "Scanning timed out. Please try again.",
@@ -802,7 +803,13 @@
       "empty": {
         "title": "No devices discovered",
         "description": "Ensure the host device is on the same network and pairing is enabled.",
-        "rescan": "Scan again"
+        "rescan": "Scan again",
+        "tips": {
+          "heading": "Troubleshooting tips",
+          "sameNetwork": "Confirm both devices are on the same Wi-Fi or LAN",
+          "pairingEnabled": "Confirm the main device has pairing enabled",
+          "firewall": "Check firewall settings aren't blocking local connections"
+        }
       },
       "actions": {
         "select": "Select"

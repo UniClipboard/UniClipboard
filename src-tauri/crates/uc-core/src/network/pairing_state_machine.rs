@@ -893,6 +893,34 @@ impl PairingStateMachine {
             (PairingState::RequestSent { session_id }, PairingEvent::RecvBusy { .. }) => {
                 self.fail_with_reason(session_id, FailureReason::PeerBusy)
             }
+            (PairingState::RequestSent { session_id }, PairingEvent::UserReject { .. }) => self
+                .cancel_with_reason(
+                    session_id.clone(),
+                    CancellationBy::LocalUser,
+                    Some("User rejected pairing".to_string()),
+                    Some(PairingAction::Send {
+                        peer_id: self.context.peer_id.clone().unwrap_or_default(),
+                        message: PairingMessage::Reject(PairingReject {
+                            session_id: session_id.clone(),
+                            reason: Some("user_reject".to_string()),
+                        }),
+                    }),
+                    Some(TimeoutKind::WaitingChallenge),
+                ),
+            (PairingState::RequestSent { session_id }, PairingEvent::UserCancel { .. }) => self
+                .cancel_with_reason(
+                    session_id.clone(),
+                    CancellationBy::LocalUser,
+                    Some("User cancelled pairing".to_string()),
+                    Some(PairingAction::Send {
+                        peer_id: self.context.peer_id.clone().unwrap_or_default(),
+                        message: PairingMessage::Cancel(PairingCancel {
+                            session_id: session_id.clone(),
+                            reason: Some("user_cancel".to_string()),
+                        }),
+                    }),
+                    Some(TimeoutKind::WaitingChallenge),
+                ),
             (
                 PairingState::ResponseSent { session_id },
                 PairingEvent::RecvConfirm { confirm, .. },
@@ -2274,5 +2302,113 @@ mod tests {
 
         // The context should reflect the trusted sender_peer_id, not the spoofed one
         assert_eq!(sm.context.peer_id, Some(sender_peer_id));
+    }
+
+    #[test]
+    fn initiator_user_reject_from_request_sent_sends_reject_and_cancels() {
+        let mut sm = PairingStateMachine::new_with_local_identity(
+            "LocalDevice".to_string(),
+            "device-1".to_string(),
+            vec![1; 32],
+        );
+
+        let (state, _) = sm.handle_event(
+            PairingEvent::StartPairing {
+                role: PairingRole::Initiator,
+                peer_id: "peer-2".to_string(),
+            },
+            Utc::now(),
+        );
+        assert!(matches!(state, PairingState::RequestSent { .. }));
+
+        let session_id = match &state {
+            PairingState::RequestSent { session_id } => session_id.clone(),
+            _ => panic!("expected RequestSent"),
+        };
+
+        let (state, actions) = sm.handle_event(
+            PairingEvent::UserReject {
+                session_id: session_id.clone(),
+            },
+            Utc::now(),
+        );
+
+        assert!(
+            matches!(state, PairingState::Cancelled { .. }),
+            "expected Cancelled, got {:?}",
+            state
+        );
+
+        let has_send = actions.iter().any(|a| {
+            matches!(
+                a,
+                PairingAction::Send {
+                    message: PairingMessage::Reject(_),
+                    ..
+                }
+            )
+        });
+        assert!(has_send, "should send Reject message to peer");
+
+        let has_cancel_timer = actions.iter().any(|a| {
+            matches!(
+                a,
+                PairingAction::CancelTimer {
+                    kind: TimeoutKind::WaitingChallenge,
+                    ..
+                }
+            )
+        });
+        assert!(has_cancel_timer, "should cancel WaitingChallenge timer");
+
+        let has_emit = actions
+            .iter()
+            .any(|a| matches!(a, PairingAction::EmitResult { success: false, .. }));
+        assert!(has_emit, "should emit failure result");
+    }
+
+    #[test]
+    fn initiator_user_cancel_from_request_sent_sends_cancel_and_cancels() {
+        let mut sm = PairingStateMachine::new_with_local_identity(
+            "LocalDevice".to_string(),
+            "device-1".to_string(),
+            vec![1; 32],
+        );
+
+        let (state, _) = sm.handle_event(
+            PairingEvent::StartPairing {
+                role: PairingRole::Initiator,
+                peer_id: "peer-2".to_string(),
+            },
+            Utc::now(),
+        );
+        let session_id = match &state {
+            PairingState::RequestSent { session_id } => session_id.clone(),
+            _ => panic!("expected RequestSent"),
+        };
+
+        let (state, actions) = sm.handle_event(
+            PairingEvent::UserCancel {
+                session_id: session_id.clone(),
+            },
+            Utc::now(),
+        );
+
+        assert!(
+            matches!(state, PairingState::Cancelled { .. }),
+            "expected Cancelled, got {:?}",
+            state
+        );
+
+        let has_send = actions.iter().any(|a| {
+            matches!(
+                a,
+                PairingAction::Send {
+                    message: PairingMessage::Cancel(_),
+                    ..
+                }
+            )
+        });
+        assert!(has_send, "should send Cancel message to peer");
     }
 }

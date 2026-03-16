@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "cross-env UNICLIPBOARD_ENV=development vite",
+    "dev:sweep": "node -e \"try{require('child_process').execSync('cargo sweep --time 3 --target src-tauri/target',{stdio:'ignore'})}catch{}\"",
     "build": "tsc && vite build",
     "preview": "vite preview",
     "version:bump": "node scripts/bump-version.js",

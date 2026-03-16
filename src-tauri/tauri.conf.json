@@ -4,7 +4,7 @@
   "version": "0.3.0-alpha.5",
   "identifier": "app.uniclipboard.desktop",
   "build": {
-    "beforeDevCommand": "cargo sweep --time 3 --target src-tauri/target 2>/dev/null; bun run dev",
+    "beforeDevCommand": "bun run dev:sweep && bun run dev",
     "devUrl": "http://localhost:1420",
     "beforeBuildCommand": "bun run build",
     "frontendDist": "../dist"

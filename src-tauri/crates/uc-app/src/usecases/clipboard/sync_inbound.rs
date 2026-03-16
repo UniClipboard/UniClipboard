@@ -19,7 +19,7 @@ use uc_core::ports::clipboard::{RepresentationCachePort, SpoolQueuePort};
 use uc_core::ports::{
     ClipboardChangeOriginPort, ClipboardEntryRepositoryPort, ClipboardEventWriterPort,
     ClipboardRepresentationNormalizerPort, DeviceIdentityPort, EncryptionPort,
-    EncryptionSessionPort, SelectRepresentationPolicyPort, SystemClipboardPort,
+    EncryptionSessionPort, SelectRepresentationPolicyPort, SettingsPort, SystemClipboardPort,
     TransferPayloadDecryptorPort,
 };
 use uc_core::{
@@ -62,6 +62,7 @@ pub struct SyncInboundClipboardUseCase {
     recent_ids: Mutex<VecDeque<(String, Instant)>>,
     /// Local file cache directory for rewriting remote file paths.
     file_cache_dir: Option<PathBuf>,
+    settings: Arc<dyn SettingsPort>,
 }
 
 impl SyncInboundClipboardUseCase {
@@ -73,6 +74,7 @@ impl SyncInboundClipboardUseCase {
         encryption: Arc<dyn EncryptionPort>,
         device_identity: Arc<dyn DeviceIdentityPort>,
         transfer_decryptor: Arc<dyn TransferPayloadDecryptorPort>,
+        settings: Arc<dyn SettingsPort>,
     ) -> Result<Self> {
         if mode == ClipboardIntegrationMode::Passive {
             return Err(anyhow::anyhow!(
@@ -91,6 +93,7 @@ impl SyncInboundClipboardUseCase {
             capture_clipboard: None,
             recent_ids: Mutex::new(VecDeque::new()),
             file_cache_dir: None,
+            settings,
         })
     }
 
@@ -109,6 +112,7 @@ impl SyncInboundClipboardUseCase {
         representation_cache: Arc<dyn RepresentationCachePort>,
         spool_queue: Arc<dyn SpoolQueuePort>,
         file_cache_dir: Option<PathBuf>,
+        settings: Arc<dyn SettingsPort>,
     ) -> Self {
         Self {
             mode,
@@ -131,6 +135,7 @@ impl SyncInboundClipboardUseCase {
             ),
             recent_ids: Mutex::new(VecDeque::new()),
             file_cache_dir,
+            settings,
         }
     }
 
@@ -400,6 +405,25 @@ impl SyncInboundClipboardUseCase {
                     )
                 })
                 .collect();
+
+            // Global file_sync_enabled guard for inbound file content
+            {
+                use uc_core::settings::content_type_filter::{classify_snapshot, ContentTypeCategory};
+                let inbound_snapshot = SystemClipboardSnapshot {
+                    ts_ms,
+                    representations: all_reps.clone(),
+                };
+                let content_category = classify_snapshot(&inbound_snapshot);
+                if content_category == ContentTypeCategory::File {
+                    if let Ok(settings) = self.settings.load().await {
+                        if !settings.file_sync.file_sync_enabled {
+                            info!(message_id = %message.id, "Rejecting inbound file content: file_sync disabled");
+                            self.rollback_recent_id(&message.id).await;
+                            return Ok(InboundApplyOutcome::Skipped);
+                        }
+                    }
+                }
+            }
 
             // When file_transfers are present, skip OS clipboard write (files don't exist yet)
             // and force DB persistence so the entry exists before file transfer completes.
@@ -1046,6 +1070,21 @@ mod tests {
         }
     }
 
+    struct MockSettings {
+        settings: uc_core::settings::model::Settings,
+    }
+
+    #[async_trait]
+    impl SettingsPort for MockSettings {
+        async fn load(&self) -> Result<uc_core::settings::model::Settings> {
+            Ok(self.settings.clone())
+        }
+
+        async fn save(&self, _settings: &uc_core::settings::model::Settings) -> Result<()> {
+            Ok(())
+        }
+    }
+
     #[derive(Clone)]
     struct SharedLogBuffer {
         buffer: Arc<Mutex<Vec<u8>>>,
@@ -1179,6 +1218,9 @@ mod tests {
                 id: DeviceId::new(local_device_id),
             }),
             Arc::new(TransferPayloadDecryptorAdapter),
+            Arc::new(MockSettings {
+                settings: uc_core::settings::model::Settings::default(),
+            }),
         )
         .expect("build inbound usecase");
 
@@ -1238,6 +1280,9 @@ mod tests {
             Arc::new(MockRepresentationCache),
             Arc::new(MockSpoolQueue),
             None,
+            Arc::new(MockSettings {
+                settings: uc_core::settings::model::Settings::default(),
+            }),
         );
 
         (usecase, writes, calls, save_calls, insert_calls)
@@ -1296,6 +1341,9 @@ mod tests {
                 id: DeviceId::new("local-1"),
             }),
             Arc::new(TransferPayloadDecryptorAdapter),
+            Arc::new(MockSettings {
+                settings: uc_core::settings::model::Settings::default(),
+            }),
         );
 
         match result {

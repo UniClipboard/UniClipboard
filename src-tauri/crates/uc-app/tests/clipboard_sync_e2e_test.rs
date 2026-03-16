@@ -499,6 +499,7 @@ async fn clipboard_sync_e2e_dual_peer_in_process() -> Result<()> {
         encryption_a.clone(),
         identity_a.clone(),
         transfer_decryptor.clone(),
+        settings.clone(),
     )?);
     let inbound_b = Arc::new(SyncInboundClipboardUseCase::new(
         ClipboardIntegrationMode::Full,
@@ -508,6 +509,7 @@ async fn clipboard_sync_e2e_dual_peer_in_process() -> Result<()> {
         encryption_b.clone(),
         identity_b.clone(),
         transfer_decryptor,
+        settings.clone(),
     )?);
 
     let a_send_count = Arc::new(AtomicUsize::new(0));
@@ -629,6 +631,7 @@ async fn clipboard_sync_e2e_image_single_rep() -> Result<()> {
         encryption_b.clone(),
         identity_b.clone(),
         transfer_decryptor,
+        settings.clone(),
     )?);
 
     let a_send_count = Arc::new(AtomicUsize::new(0));
@@ -729,6 +732,7 @@ async fn clipboard_sync_e2e_windows_image_multi_rep() -> Result<()> {
         encryption_b.clone(),
         identity_b.clone(),
         transfer_decryptor,
+        settings.clone(),
     )?);
 
     let a_send_count = Arc::new(AtomicUsize::new(0));

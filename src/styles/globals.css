@@ -264,6 +264,80 @@
 
 @plugin "@tailwindcss/typography";
 
+/* Setup 页面流光背景动画 */
+@keyframes aurora-drift-1 {
+  0%,
+  100% {
+    transform: translate(-30%, -30%) scale(1);
+    opacity: 0.4;
+  }
+  25% {
+    transform: translate(10%, -20%) scale(1.2);
+    opacity: 0.6;
+  }
+  50% {
+    transform: translate(20%, 10%) scale(0.9);
+    opacity: 0.35;
+  }
+  75% {
+    transform: translate(-10%, 20%) scale(1.1);
+    opacity: 0.55;
+  }
+}
+
+@keyframes aurora-drift-2 {
+  0%,
+  100% {
+    transform: translate(30%, 30%) scale(1);
+    opacity: 0.3;
+  }
+  25% {
+    transform: translate(-10%, 20%) scale(1.15);
+    opacity: 0.5;
+  }
+  50% {
+    transform: translate(-20%, -10%) scale(0.95);
+    opacity: 0.35;
+  }
+  75% {
+    transform: translate(15%, -15%) scale(1.1);
+    opacity: 0.45;
+  }
+}
+
+@keyframes aurora-drift-3 {
+  0%,
+  100% {
+    transform: translate(0%, -20%) scale(1.1);
+    opacity: 0.25;
+  }
+  33% {
+    transform: translate(-25%, 15%) scale(0.9);
+    opacity: 0.45;
+  }
+  66% {
+    transform: translate(20%, 5%) scale(1.15);
+    opacity: 0.3;
+  }
+}
+
+@keyframes particle-float {
+  0% {
+    transform: translateY(0) translateX(0);
+    opacity: 0;
+  }
+  10% {
+    opacity: var(--particle-opacity, 0.2);
+  }
+  90% {
+    opacity: var(--particle-opacity, 0.2);
+  }
+  100% {
+    transform: translateY(-110vh) translateX(var(--particle-drift, 0px));
+    opacity: 0;
+  }
+}
+
 /* 玻璃态效果 */
 @layer utilities {
   .glass-weak {

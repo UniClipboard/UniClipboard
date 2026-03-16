@@ -48,10 +48,10 @@ export default function WelcomeStep({
           type="button"
           onClick={onCreate}
           disabled={loading}
-          className="group relative flex flex-col items-start gap-5 rounded-xl border bg-card p-7 text-left shadow-sm transition-all duration-200 hover:-translate-y-1 hover:border-primary/50 hover:shadow-lg active:translate-y-0 active:shadow-sm disabled:opacity-50"
+          className="group relative flex flex-col items-start gap-5 rounded-xl border border-white/20 bg-white/40 p-7 text-left backdrop-blur-xl transition-all duration-300 hover:-translate-y-1 hover:border-white/40 hover:bg-white/50 hover:shadow-lg active:translate-y-0 active:shadow-sm disabled:opacity-50 dark:border-white/10 dark:bg-white/5 dark:hover:border-white/20 dark:hover:bg-white/10"
         >
-          <div className="flex h-12 w-12 items-center justify-center text-primary">
-            <Shield className="h-7 w-7" />
+          <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10 text-primary">
+            <Shield className="h-6 w-6" />
           </div>
           <div className="space-y-2">
             <h3 className="text-lg font-medium text-foreground">{t('create.title')}</h3>
@@ -59,7 +59,7 @@ export default function WelcomeStep({
               {t('create.description')}
             </p>
           </div>
-          <div className="mt-2 flex items-center gap-2 text-sm font-medium text-primary">
+          <div className="mt-auto flex items-center gap-2 text-sm font-medium text-primary">
             {t('create.cta')}
             <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
           </div>
@@ -69,16 +69,16 @@ export default function WelcomeStep({
           type="button"
           onClick={onJoin}
           disabled={loading}
-          className="group relative flex flex-col items-start gap-5 rounded-xl border bg-card p-7 text-left shadow-sm transition-all duration-200 hover:-translate-y-1 hover:border-primary/50 hover:shadow-lg active:translate-y-0 active:shadow-sm disabled:opacity-50"
+          className="group relative flex flex-col items-start gap-5 rounded-xl border border-white/20 bg-white/40 p-7 text-left backdrop-blur-xl transition-all duration-300 hover:-translate-y-1 hover:border-white/40 hover:bg-white/50 hover:shadow-lg active:translate-y-0 active:shadow-sm disabled:opacity-50 dark:border-white/10 dark:bg-white/5 dark:hover:border-white/20 dark:hover:bg-white/10"
         >
-          <div className="flex h-12 w-12 items-center justify-center text-primary">
-            <Smartphone className="h-7 w-7" />
+          <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10 text-primary">
+            <Smartphone className="h-6 w-6" />
           </div>
           <div className="space-y-2">
             <h3 className="text-lg font-medium text-foreground">{t('join.title')}</h3>
             <p className="text-sm leading-relaxed text-muted-foreground">{t('join.description')}</p>
           </div>
-          <div className="mt-2 flex items-center gap-2 text-sm font-medium text-primary">
+          <div className="mt-auto flex items-center gap-2 text-sm font-medium text-primary">
             {t('join.cta')}
             <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
           </div>

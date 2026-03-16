@@ -16,6 +16,7 @@ import {
   verifyPassphrase,
   SetupState,
 } from '@/api/setup'
+import FloatingParticles from '@/components/effects/FloatingParticles'
 import { useDeviceDiscovery } from '@/hooks/useDeviceDiscovery'
 import CreatePassphraseStep from '@/pages/setup/CreatePassphraseStep'
 import JoinPickDeviceStep from '@/pages/setup/JoinPickDeviceStep'
@@ -334,10 +335,21 @@ export default function SetupPage({ onCompleteSetup }: SetupPageProps = {}) {
 
   return (
     <div className="relative h-full w-full overflow-hidden bg-background">
-      <div className="pointer-events-none absolute inset-0">
-        <div className="absolute inset-0 bg-gradient-to-br from-background via-background to-muted/20" />
-        <div className="absolute -top-32 -left-32 h-96 w-96 bg-primary/5 blur-3xl" />
-        <div className="absolute -bottom-32 -right-32 h-96 w-96 bg-emerald-500/5 blur-3xl" />
+      <div className="pointer-events-none absolute inset-0 overflow-hidden">
+        <div className="absolute inset-0 bg-gradient-to-br from-background via-background to-muted/30" />
+        <div
+          className="absolute -top-32 -left-32 h-[28rem] w-[28rem] rounded-full bg-blue-500/25 blur-[6rem] dark:bg-blue-500/15"
+          style={{ animation: 'aurora-drift-1 12s ease-in-out infinite' }}
+        />
+        <div
+          className="absolute -bottom-24 -right-24 h-[24rem] w-[24rem] rounded-full bg-emerald-500/25 blur-[5rem] dark:bg-emerald-500/15"
+          style={{ animation: 'aurora-drift-2 15s ease-in-out infinite' }}
+        />
+        <div
+          className="absolute top-1/3 left-1/2 h-[20rem] w-[20rem] -translate-x-1/2 rounded-full bg-violet-500/20 blur-[5rem] dark:bg-violet-500/12"
+          style={{ animation: 'aurora-drift-3 18s ease-in-out infinite' }}
+        />
+        <FloatingParticles />
       </div>
 
       <div className="relative flex h-full w-full min-h-0 flex-col">

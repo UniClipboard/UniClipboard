@@ -347,3 +347,15 @@ Plans:
 
 - [ ] 34-01-PLAN.md — Create useDeviceDiscovery hook, update types, add CSS ripple animation and i18n keys
 - [ ] 34-02-PLAN.md — Wire hook into SetupPage, rebuild JoinPickDeviceStep UI with scanning phases, rewrite tests
+
+### Phase 35: Extract OutboundSyncPlanner to consolidate scattered sync policy checks
+
+**Goal:** Consolidate all outbound sync eligibility decisions (settings load, content type classification, file extraction, size filtering, all_files_excluded guard) from three scattered stages in on_clipboard_changed() into a single OutboundSyncPlanner::plan() call that produces an OutboundSyncPlan, making the runtime a thin dispatcher with no inline policy logic.
+**Requirements**: SYNCPLAN-01, SYNCPLAN-02, SYNCPLAN-03, SYNCPLAN-04
+**Depends on:** Phase 34
+**Plans:** 2 plans
+
+Plans:
+
+- [ ] 35-01-PLAN.md — Define OutboundSyncPlan types and implement OutboundSyncPlanner with TDD
+- [ ] 35-02-PLAN.md — Wire planner into runtime.rs and remove redundant guards from SyncOutboundFileUseCase

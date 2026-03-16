@@ -1055,6 +1055,19 @@ fn spawn_business_stream_handler(
                             if msg.payload_version == ClipboardPayloadVersion::V3
                                 && msg.encrypted_content.is_empty() =>
                         {
+                            // Gate unpaired/pending peers before expensive I/O and crypto.
+                            if check_business_allowed(
+                                &policy_resolver,
+                                &event_tx,
+                                &peer_id,
+                                ProtocolDirection::Inbound,
+                            )
+                            .await
+                            .is_err()
+                            {
+                                return Err("denied by policy".into());
+                            }
+
                             // Streaming decode uses a blocking read-to-end, then async decrypt
                             // via injected TransferPayloadDecryptorPort.
                             let master_key = match encryption_session.get_master_key().await {
@@ -1198,18 +1211,8 @@ fn spawn_business_stream_handler(
 
                 match result {
                     Ok(Ok(ProcessedMessage::StreamingClipboard(msg, plaintext))) => {
-                        // Clipboard requires pairing
-                        if check_business_allowed(
-                            &policy_resolver,
-                            &event_tx,
-                            &peer_id,
-                            ProtocolDirection::Inbound,
-                        )
-                        .await
-                        .is_err()
-                        {
-                            return;
-                        }
+                        // Policy already checked inside the streaming branch before
+                        // get_master_key / spawn_blocking / decrypt.
                         handle_v2_clipboard(
                             caches,
                             event_tx,

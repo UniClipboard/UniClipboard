@@ -324,6 +324,39 @@ impl SpaceAccessStateMachine {
                 vec![SpaceAccessAction::StopTimer],
             ),
 
+            // ===== Sponsor re-authorization from terminal states =====
+            // After completing authorization for one joiner, the sponsor must be
+            // able to start a fresh authorization for the next joiner.
+            (
+                SpaceAccessState::Granted { .. }
+                | SpaceAccessState::Denied { .. }
+                | SpaceAccessState::Cancelled { .. },
+                SpaceAccessEvent::SponsorAuthorizationRequested {
+                    pairing_session_id,
+                    space_id,
+                    ttl_secs,
+                },
+            ) => {
+                let expires_at = now + Duration::seconds(ttl_secs as i64);
+                let actions = vec![
+                    SpaceAccessAction::RequestOfferPreparation {
+                        pairing_session_id: pairing_session_id.clone().into(),
+                        space_id: space_id.clone(),
+                        expires_at,
+                    },
+                    SpaceAccessAction::SendOffer,
+                    SpaceAccessAction::StartTimer { ttl_secs },
+                ];
+                (
+                    SpaceAccessState::WaitingJoinerProof {
+                        pairing_session_id,
+                        space_id,
+                        expires_at,
+                    },
+                    actions,
+                )
+            }
+
             // ===== Terminal =====
             (state @ SpaceAccessState::Granted { .. }, _) => (state, vec![]),
             (state @ SpaceAccessState::Denied { .. }, _) => (state, vec![]),
@@ -574,6 +607,94 @@ mod tests {
             assert_eq!(next, expected_state, "state mismatch: {}", name);
             assert_eq!(actions, expected_actions, "actions mismatch: {}", name);
         }
+    }
+
+    #[test]
+    fn sponsor_reauthorization_from_granted() {
+        let now = fixed_now();
+        let pairing_session_id = "session-2".to_string();
+        let space_id: SpaceId = "space-1".into();
+        let ttl_secs = 30_u64;
+        let expires_at = now + Duration::seconds(ttl_secs as i64);
+
+        let from = SpaceAccessState::Granted {
+            pairing_session_id: "session-1".to_string(),
+            space_id: "space-1".into(),
+        };
+
+        let (next, actions) = SpaceAccessStateMachine::transition_at(
+            from,
+            SpaceAccessEvent::SponsorAuthorizationRequested {
+                pairing_session_id: pairing_session_id.clone(),
+                space_id: space_id.clone(),
+                ttl_secs,
+            },
+            now,
+        );
+
+        assert_eq!(
+            next,
+            SpaceAccessState::WaitingJoinerProof {
+                pairing_session_id: pairing_session_id.clone(),
+                space_id: space_id.clone(),
+                expires_at,
+            }
+        );
+        assert_eq!(
+            actions,
+            vec![
+                SpaceAccessAction::RequestOfferPreparation {
+                    pairing_session_id: CoreSessionId::from("session-2"),
+                    space_id: space_id.clone(),
+                    expires_at,
+                },
+                SpaceAccessAction::SendOffer,
+                SpaceAccessAction::StartTimer { ttl_secs },
+            ]
+        );
+    }
+
+    #[test]
+    fn sponsor_reauthorization_from_denied() {
+        let now = fixed_now();
+        let from = SpaceAccessState::Denied {
+            pairing_session_id: "session-1".to_string(),
+            space_id: "space-1".into(),
+            reason: DenyReason::InvalidProof,
+        };
+
+        let (next, _actions) = SpaceAccessStateMachine::transition_at(
+            from,
+            SpaceAccessEvent::SponsorAuthorizationRequested {
+                pairing_session_id: "session-2".to_string(),
+                space_id: "space-1".into(),
+                ttl_secs: 30,
+            },
+            now,
+        );
+
+        assert!(matches!(next, SpaceAccessState::WaitingJoinerProof { .. }));
+    }
+
+    #[test]
+    fn sponsor_reauthorization_from_cancelled() {
+        let now = fixed_now();
+        let from = SpaceAccessState::Cancelled {
+            pairing_session_id: "session-1".to_string(),
+            reason: CancelReason::Timeout,
+        };
+
+        let (next, _actions) = SpaceAccessStateMachine::transition_at(
+            from,
+            SpaceAccessEvent::SponsorAuthorizationRequested {
+                pairing_session_id: "session-2".to_string(),
+                space_id: "space-1".into(),
+                ttl_secs: 30,
+            },
+            now,
+        );
+
+        assert!(matches!(next, SpaceAccessState::WaitingJoinerProof { .. }));
     }
 
     #[test]

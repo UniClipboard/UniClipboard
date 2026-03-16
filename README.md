@@ -89,16 +89,24 @@ bun tauri build
 
 ## Usage
 
-1. **First launch**: Start the application and complete basic setup to create your device identity
-2. **Add devices**: Click "Add Device" button on the "Devices" page to add new devices
-3. **Clipboard sync**: Copied text and images will automatically sync to all connected devices
-4. **Settings**: Customize application behavior, network, and security options on the "Settings" page
+### First Device (Create Encrypted Space)
+
+1. Launch the application for the first time and select **Create Encrypted Space**
+2. Set an encryption passphrase — this will be used to protect all synced data
+3. Setup is complete. Copied text, images, and files will be stored in the encrypted space
+
+### Adding More Devices (Join Encrypted Space)
+
+1. Launch the application on the new device and select **Join Encrypted Space**
+2. The app will automatically scan for available devices on the local network
+3. Select the discovered device, then enter the encryption passphrase
+4. Once the passphrase is verified, clipboard sync begins automatically
 
 ### Main Pages
 
-- **Dashboard**: Overview of current clipboard status and device connections
-- **Devices**: Manage and pair devices, set device access permissions
-- **Settings**: Configure application parameters, including general settings, sync options, security & privacy, network settings, and storage management
+- **Dashboard**: Overview of clipboard history and device connections
+- **Devices**: Manage paired devices and access permissions
+- **Settings**: Configure general, sync, security, network, and storage options
 
 ## Advanced Features
 

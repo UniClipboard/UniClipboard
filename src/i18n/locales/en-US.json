@@ -1,6 +1,8 @@
 {
   "common": {
-    "loading": "Loading..."
+    "loading": "Loading...",
+    "unknownSize": "Unknown size",
+    "zeroBytes": "0 Bytes"
   },
   "loading": {
     "initializing": "Initializing...",

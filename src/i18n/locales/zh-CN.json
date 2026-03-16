@@ -1,6 +1,8 @@
 {
   "common": {
-    "loading": "加载中..."
+    "loading": "加载中...",
+    "unknownSize": "未知大小",
+    "zeroBytes": "0 字节"
   },
   "loading": {
     "initializing": "正在初始化...",

@@ -1,8 +1,14 @@
 // @vitest-environment jsdom
+// Tests for event-driven device discovery replacing the old 3-second polling approach
 import { act, cleanup, render } from '@testing-library/react'
 import type { HTMLAttributes, ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest'
-import { getP2PPeers } from '@/api/p2p'
+import {
+  getP2PPeers,
+  onP2PPeerConnectionChanged,
+  onP2PPeerDiscoveryChanged,
+  onP2PPeerNameUpdated,
+} from '@/api/p2p'
 import { getSetupState, selectJoinPeer } from '@/api/setup'
 import SetupPage from '@/pages/SetupPage'
 
@@ -20,6 +26,9 @@ vi.mock('@/api/setup', () => ({
 
 vi.mock('@/api/p2p', () => ({
   getP2PPeers: vi.fn(),
+  onP2PPeerDiscoveryChanged: vi.fn(() => Promise.resolve(() => {})),
+  onP2PPeerConnectionChanged: vi.fn(() => Promise.resolve(() => {})),
+  onP2PPeerNameUpdated: vi.fn(() => Promise.resolve(() => {})),
 }))
 
 const navigateMock = vi.fn()
@@ -53,15 +62,21 @@ vi.mock('framer-motion', () => ({
   ),
 }))
 
-describe('setup peer discovery polling', () => {
+describe('setup event-driven device discovery', () => {
   beforeEach(() => {
     vi.useFakeTimers()
     ;(getSetupState as Mock).mockReset()
     ;(getP2PPeers as Mock).mockReset()
     ;(selectJoinPeer as Mock).mockReset()
+    ;(onP2PPeerDiscoveryChanged as Mock).mockReset()
+    ;(onP2PPeerConnectionChanged as Mock).mockReset()
+    ;(onP2PPeerNameUpdated as Mock).mockReset()
     navigateMock.mockReset()
     ;(getSetupState as Mock).mockResolvedValue({ JoinSpaceSelectDevice: { error: null } })
     ;(getP2PPeers as Mock).mockResolvedValue([])
+    ;(onP2PPeerDiscoveryChanged as Mock).mockResolvedValue(() => {})
+    ;(onP2PPeerConnectionChanged as Mock).mockResolvedValue(() => {})
+    ;(onP2PPeerNameUpdated as Mock).mockResolvedValue(() => {})
   })
 
   afterEach(() => {
@@ -70,93 +85,140 @@ describe('setup peer discovery polling', () => {
     vi.useRealTimers()
   })
 
-  it('starts polling after entering JoinSpaceSelectDevice', async () => {
+  it('calls getP2PPeers on mount and sets up event listeners', async () => {
     render(<SetupPage />)
     await act(async () => {})
 
     await vi.waitFor(() => {
       expect(getP2PPeers).toHaveBeenCalled()
     })
-    const initialCalls = (getP2PPeers as Mock).mock.calls.length
 
+    // Event listeners must be set up
+    expect(onP2PPeerDiscoveryChanged).toHaveBeenCalledTimes(1)
+    expect(onP2PPeerConnectionChanged).toHaveBeenCalledTimes(1)
+    expect(onP2PPeerNameUpdated).toHaveBeenCalledTimes(1)
+
+    const callsBeforeAdvance = (getP2PPeers as Mock).mock.calls.length
+
+    // Advance 6 seconds -- NO repeated polling should occur
     await act(async () => {
       vi.advanceTimersByTime(6000)
     })
 
-    expect((getP2PPeers as Mock).mock.calls.length).toBeGreaterThanOrEqual(initialCalls + 2)
+    expect((getP2PPeers as Mock).mock.calls.length).toBe(callsBeforeAdvance)
   })
 
-  it('stops polling after leaving JoinSpaceSelectDevice', async () => {
-    ;(getP2PPeers as Mock).mockResolvedValue([
-      {
+  it('shows scanning state then transitions to empty after timeout', async () => {
+    ;(getP2PPeers as Mock).mockResolvedValue([])
+
+    const view = render(<SetupPage />)
+    await act(async () => {})
+
+    await vi.waitFor(() => {
+      expect(getP2PPeers).toHaveBeenCalled()
+    })
+
+    // Scanning state should be visible initially
+    expect(view.getByText('setup.joinPickDevice.scanning.title')).toBeTruthy()
+
+    // After 10 seconds, empty state should appear
+    await act(async () => {
+      vi.advanceTimersByTime(10000)
+    })
+
+    expect(view.getByText('setup.joinPickDevice.empty.title')).toBeTruthy()
+  })
+
+  it('discovery event adds device to list', async () => {
+    let discoveryCallback:
+      | ((event: {
+          peerId: string
+          deviceName: string | null
+          addresses: string[]
+          discovered: boolean
+        }) => void)
+      | null = null
+
+    ;(onP2PPeerDiscoveryChanged as Mock).mockImplementation((cb: typeof discoveryCallback) => {
+      discoveryCallback = cb
+      return Promise.resolve(() => {})
+    })
+
+    const view = render(<SetupPage />)
+    await act(async () => {})
+
+    await vi.waitFor(() => {
+      expect(discoveryCallback).not.toBeNull()
+    })
+
+    // Fire discovery event with a device
+    await act(async () => {
+      discoveryCallback!({
         peerId: 'peer-1',
-        deviceName: 'Peer One',
+        deviceName: 'Test Device',
         addresses: [],
-        isPaired: false,
-        connected: true,
-      },
-    ])
-    ;(selectJoinPeer as Mock).mockResolvedValue({ JoinSpaceInputPassphrase: { error: null } })
-
-    const view = render(<SetupPage />)
-    await act(async () => {})
-    await vi.waitFor(() => {
-      expect(getP2PPeers).toHaveBeenCalled()
-      expect(
-        view.getByRole('button', {
-          name: 'setup.joinPickDevice.actions.select',
-        })
-      ).toBeTruthy()
+        discovered: true,
+      })
     })
 
-    const selectButton = view.getByRole('button', {
-      name: 'setup.joinPickDevice.actions.select',
-    }) as HTMLButtonElement
-    await act(async () => {
-      selectButton.click()
-    })
-
-    const callsAfterLeave = (getP2PPeers as Mock).mock.calls.length
-
-    await act(async () => {
-      vi.advanceTimersByTime(6000)
-    })
-
-    expect((getP2PPeers as Mock).mock.calls.length).toBe(callsAfterLeave)
+    // Device card should appear with the device name
+    expect(view.getByText('Test Device')).toBeTruthy()
   })
 
-  it('restores loading state when getP2PPeers fails', async () => {
-    const rejectRefreshRef: { current: ((reason?: unknown) => void) | null } = { current: null }
-    ;(getP2PPeers as Mock)
-      .mockResolvedValueOnce([])
-      .mockImplementationOnce(
-        () =>
-          new Promise((_resolve, reject) => {
-            rejectRefreshRef.current = reject
-          })
-      )
-      .mockResolvedValueOnce([])
+  it('cleans up event listeners on unmount', async () => {
+    const cleanupSpy = vi.fn()
+    ;(onP2PPeerDiscoveryChanged as Mock).mockResolvedValue(cleanupSpy)
 
     const view = render(<SetupPage />)
     await act(async () => {})
-    await vi.waitFor(() => {
-      expect(getP2PPeers).toHaveBeenCalled()
-    })
-
-    const refreshButton = view.getByRole('button', { name: 'setup.common.refresh' })
-    await act(async () => {
-      refreshButton.click()
-    })
 
     await vi.waitFor(() => {
-      expect((getP2PPeers as Mock).mock.calls.length).toBeGreaterThanOrEqual(2)
+      expect(onP2PPeerDiscoveryChanged).toHaveBeenCalledTimes(1)
     })
 
-    rejectRefreshRef.current?.(new Error('network failure'))
+    // Unmount the component
+    view.unmount()
+    await act(async () => {})
+
+    // Cleanup function should have been called
+    expect(cleanupSpy).toHaveBeenCalled()
+  })
+
+  it('anonymous device renders with i18n fallback from render layer', async () => {
+    let discoveryCallback:
+      | ((event: {
+          peerId: string
+          deviceName: string | null
+          addresses: string[]
+          discovered: boolean
+        }) => void)
+      | null = null
+
+    ;(onP2PPeerDiscoveryChanged as Mock).mockImplementation((cb: typeof discoveryCallback) => {
+      discoveryCallback = cb
+      return Promise.resolve(() => {})
+    })
+
+    const view = render(<SetupPage />)
     await act(async () => {})
 
     await vi.waitFor(() => {
-      expect((refreshButton as HTMLButtonElement).disabled).toBe(false)
+      expect(discoveryCallback).not.toBeNull()
     })
+
+    // Fire discovery event with null deviceName (anonymous device)
+    await act(async () => {
+      discoveryCallback!({
+        peerId: 'peer-anon',
+        deviceName: null,
+        addresses: ['addr'],
+        discovered: true,
+      })
+    })
+
+    // The render layer applies tCommon('unknownDevice') fallback.
+    // The mock t function with keyPrefix 'setup.common' returns 'setup.common.unknownDevice'
+    // NOT the hardcoded English string 'Unknown device'
+    expect(view.getByText('setup.common.unknownDevice')).toBeTruthy()
   })
 })

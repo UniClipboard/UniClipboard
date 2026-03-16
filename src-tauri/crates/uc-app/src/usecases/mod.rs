@@ -30,6 +30,7 @@ pub mod space_access;
 pub mod start_network;
 pub mod start_network_after_unlock;
 pub mod storage;
+pub mod sync_planner;
 pub mod update_settings;
 pub mod verify_keychain_access;
 
@@ -60,4 +61,8 @@ pub use verify_keychain_access::VerifyKeychainAccess;
 
 pub use file_sync::{
     SyncInboundFileUseCase, SyncOutboundFileUseCase, TrackInboundTransfersUseCase,
+};
+
+pub use sync_planner::{
+    ClipboardSyncIntent, FileCandidate, FileSyncIntent, OutboundSyncPlan, OutboundSyncPlanner,
 };

@@ -113,7 +113,7 @@ export default function PairingPinDialog({
             ) : (
               <div className="w-full">
                 <Button variant="outline" className="w-full" onClick={() => handleConfirm(false)}>
-                  {t('dialogs.cancelLabel')}
+                  {t('clipboard.cancelLabel')}
                 </Button>
               </div>
             )}

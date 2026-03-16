@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v0.1
 milestone_name: milestone
 status: completed
-stopped_at: Phase 34 context gathered
-last_updated: '2026-03-16T04:37:00.329Z'
+stopped_at: Completed 34-01-PLAN.md
+last_updated: '2026-03-16T06:04:56.401Z'
 last_activity: '2026-03-15 — Completed 33-05 plan: File transfer state UI and Copy gating'
 progress:
   total_phases: 18
   completed_phases: 16
-  total_plans: 46
-  completed_plans: 45
+  total_plans: 48
+  completed_plans: 46
   percent: 98
 ---
 
@@ -93,6 +93,7 @@ Progress: [██████████] 98%
   | Phase 33 P04 | 3min | 1 tasks | 5 files |
   | Phase 33 P05 | 5min | 2 tasks | 7 files |
   | Phase 33 P06 | 5 | 1 tasks | 3 files |
+  | Phase 34 P01 | 19 | 3 tasks | 9 files |
 
 ## Accumulated Context
 
@@ -194,6 +195,9 @@ Recent decisions affecting current work:
 - [Phase 33]: Durable entryStatusById takes priority over ephemeral activeTransfers for all UI state decisions
 - [Phase 33]: Hydration dispatch placed inside thunk (not fulfilled reducer) because reducers cannot dispatch actions
 - [Phase 33]: fetchClipboardItems filters file_transfer_status != null before building hydrateEntryTransferStatuses payload to avoid seeding null statuses into entryStatusById
+- [Phase 34]: useDeviceDiscovery stores raw deviceName (string | null) from backend — no fallback mapping in hook
+- [Phase 34]: onError callback stored in useRef synced via useEffect (not during render) to satisfy react-hooks/refs ESLint rule
+- [Phase 34]: SetupPage migrated from 3s polling interval to event-driven useDeviceDiscovery hook
 
 ### Roadmap Evolution
 
@@ -231,6 +235,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-16T04:37:00.326Z
-Stopped at: Phase 34 context gathered
-Resume file: .planning/phases/34-optimize-joinpickdevice-page-event-driven-discovery-with-scanning-ux/34-CONTEXT.md
+Last session: 2026-03-16T06:04:56.398Z
+Stopped at: Completed 34-01-PLAN.md
+Resume file: None

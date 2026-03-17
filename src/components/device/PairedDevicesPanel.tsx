@@ -13,7 +13,7 @@ import { useAppDispatch, useAppSelector } from '@/store/hooks'
 import {
   fetchPairedDevices,
   clearPairedDevicesError,
-  updatePeerConnectionStatus,
+  updatePeerPresenceStatus,
   updatePeerDeviceName,
 } from '@/store/slices/devicesSlice'
 
@@ -40,7 +40,7 @@ const PairedDevicesPanel: React.FC = () => {
     const setupConnectionListener = async () => {
       unlistenConnection = await onP2PPeerDiscoveryChanged(event => {
         dispatch(
-          updatePeerConnectionStatus({
+          updatePeerPresenceStatus({
             peerId: event.peerId,
             connected: event.discovered,
             deviceName: event.deviceName ?? undefined,

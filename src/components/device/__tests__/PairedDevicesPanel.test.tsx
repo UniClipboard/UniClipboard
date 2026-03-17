@@ -48,7 +48,7 @@ vi.mock('@/hooks/useSetting', () => ({
 }))
 
 vi.mock('@/api/p2p', () => ({
-  onP2PPeerConnectionChanged: vi.fn(() => Promise.resolve(() => {})),
+  onP2PPeerDiscoveryChanged: vi.fn(() => Promise.resolve(() => {})),
   onP2PPeerNameUpdated: vi.fn(() => Promise.resolve(() => {})),
   unpairP2PDevice: vi.fn(() => Promise.resolve()),
 }))
@@ -56,7 +56,7 @@ vi.mock('@/api/p2p', () => ({
 vi.mock('@/store/slices/devicesSlice', () => ({
   fetchPairedDevices: vi.fn(() => ({ type: 'devices/fetchPairedDevices' })),
   clearPairedDevicesError: vi.fn(() => ({ type: 'devices/clearPairedDevicesError' })),
-  updatePeerConnectionStatus: vi.fn(),
+  updatePeerPresenceStatus: vi.fn(),
   updatePeerDeviceName: vi.fn(),
 }))
 

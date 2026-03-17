@@ -2637,6 +2637,34 @@ mod tests {
         assert!(!caches.discovered_peers.contains_key("peer-1"));
     }
 
+    #[test]
+    fn sweep_stale_peers_evicts_old_entries() {
+        let mut caches = PeerCaches::new();
+        let now = Utc::now();
+        let old = now - chrono::Duration::seconds(60);
+
+        // Insert a stale peer (last_seen 60s ago)
+        caches.upsert_discovered(
+            "stale-peer".to_string(),
+            vec!["/ip4/192.168.1.2/tcp/4001".to_string()],
+            old,
+        );
+        // Insert a fresh peer (last_seen = now)
+        caches.upsert_discovered(
+            "fresh-peer".to_string(),
+            vec!["/ip4/192.168.1.3/tcp/4001".to_string()],
+            now,
+        );
+
+        // Sweep with threshold = 20s ago
+        let threshold = now - chrono::Duration::seconds(20);
+        let evicted = caches.sweep_stale_peers(threshold);
+
+        assert_eq!(evicted, vec!["stale-peer".to_string()]);
+        assert!(!caches.discovered_peers.contains_key("stale-peer"));
+        assert!(caches.discovered_peers.contains_key("fresh-peer"));
+    }
+
     #[derive(Default)]
     struct TestIdentityStore {
         data: Mutex<Option<Vec<u8>>>,

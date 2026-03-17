@@ -43,6 +43,8 @@ const NETWORK_CHUNK_SIZE: usize = 256 * 1024;
 /// Maximum allowed ciphertext length per chunk (plaintext chunk + encryption overhead).
 const MAX_CHUNK_CIPHERTEXT_SIZE: usize = NETWORK_CHUNK_SIZE + 256;
 const BUSINESS_READ_TIMEOUT: Duration = Duration::from_secs(120);
+const PRESENCE_STALENESS_THRESHOLD: Duration = Duration::from_secs(20);
+const PRESENCE_SWEEP_INTERVAL: Duration = Duration::from_secs(10);
 const BUSINESS_STREAM_OPEN_TIMEOUT: Duration = Duration::from_secs(10);
 const BUSINESS_STREAM_WRITE_TIMEOUT: Duration = Duration::from_secs(120);
 const BUSINESS_STREAM_CLOSE_TIMEOUT: Duration = Duration::from_secs(10);
@@ -200,6 +202,23 @@ impl PeerCaches {
     pub fn is_reachable(&self, peer_id: &str) -> bool {
         self.reachable_peers.contains(peer_id)
     }
+
+    /// Remove peers whose `last_seen` is older than `threshold` and return their IDs.
+    pub fn sweep_stale_peers(&mut self, threshold: DateTime<Utc>) -> Vec<String> {
+        let stale: Vec<String> = self
+            .discovered_peers
+            .iter()
+            .filter(|(_, peer)| peer.last_seen < threshold)
+            .map(|(peer_id, _)| peer_id.clone())
+            .collect();
+        let mut evicted = Vec::new();
+        for peer_id in stale {
+            if self.remove_discovered(&peer_id).is_some() {
+                evicted.push(peer_id);
+            }
+        }
+        evicted
+    }
 }
 
 #[derive(NetworkBehaviour)]
@@ -230,6 +249,7 @@ impl From<()> for Libp2pBehaviourEvent {
 fn build_mdns_config() -> mdns::Config {
     let mut config = mdns::Config::default();
     config.query_interval = Duration::from_secs(5);
+    config.ttl = Duration::from_secs(30);
     config
 }
 
@@ -1452,6 +1472,8 @@ async fn run_swarm(
     let mut next_business_command_id: u64 = 1;
     let business_command_semaphore = Arc::new(Semaphore::new(MAX_IN_FLIGHT_BUSINESS_COMMANDS));
     let mut pending_business_command: Option<(u64, BusinessCommand)> = None;
+    let mut presence_sweep = tokio::time::interval(PRESENCE_SWEEP_INTERVAL);
+    presence_sweep.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
 
     loop {
         tokio::select! {
@@ -1687,6 +1709,22 @@ async fn run_swarm(
                     )
                     .await;
                 });
+            }
+            _ = presence_sweep.tick() => {
+                let threshold = Utc::now() - chrono::Duration::from_std(PRESENCE_STALENESS_THRESHOLD)
+                    .unwrap_or_else(|_| chrono::Duration::seconds(20));
+                let evicted = {
+                    let mut caches = caches.write().await;
+                    caches.sweep_stale_peers(threshold)
+                };
+                for peer_id in evicted {
+                    let _ = try_send_event(
+                        &event_tx,
+                        NetworkEvent::PeerLost(peer_id.clone()),
+                        "PeerLost(stale)",
+                    );
+                    info!(peer_id = %peer_id, "peer evicted due to presence staleness");
+                }
             }
         }
     }

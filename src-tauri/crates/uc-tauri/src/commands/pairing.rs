@@ -237,23 +237,10 @@ pub async fn get_paired_peers_with_status(
                 emit_command_error(&runtime, "get_paired_peers_with_status", &message);
                 CommandError::InternalError(e.to_string())
             })?;
-        let connected = runtime
-            .usecases()
-            .list_connected_peers()
-            .execute()
-            .await
-            .map_err(|e| {
-                tracing::error!(error = %e, "Failed to list connected peers");
-                let message = format!("list_connected_peers: {}", e);
-                emit_command_error(&runtime, "get_paired_peers_with_status", &message);
-                CommandError::InternalError(e.to_string())
-            })?;
         let discovered_map = discovered_peer_map(&discovered);
-        let connected_map = connected_peer_ids(&connected);
         tracing::info!(
             paired_device_count = paired_devices.len(),
             discovered_peer_count = discovered_map.len(),
-            connected_peer_count = connected_map.len(),
             "assembled paired peers with status"
         );
 
@@ -262,7 +249,7 @@ pub async fn get_paired_peers_with_status(
             .map(|device| {
                 let peer_id = device.peer_id.as_str().to_string();
                 let discovered_peer = discovered_map.get(&peer_id);
-                let connected = connected_map.contains_key(&peer_id);
+                let connected = discovered_map.contains_key(&peer_id);
                 map_paired_device_to_peer(device, discovered_peer, connected)
             })
             .collect())

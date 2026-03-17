@@ -1474,6 +1474,7 @@ async fn run_swarm(
     let mut pending_business_command: Option<(u64, BusinessCommand)> = None;
     let mut presence_sweep = tokio::time::interval(PRESENCE_SWEEP_INTERVAL);
     presence_sweep.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+    let mut pending_presence_evictions: Vec<String> = Vec::new();
 
     loop {
         tokio::select! {
@@ -1711,6 +1712,16 @@ async fn run_swarm(
                 });
             }
             _ = presence_sweep.tick() => {
+                // Retry any PeerLost events that failed to send on a previous sweep
+                pending_presence_evictions.retain(|peer_id| {
+                    try_send_event(
+                        &event_tx,
+                        NetworkEvent::PeerLost(peer_id.clone()),
+                        "PeerLost(stale-retry)",
+                    )
+                    .is_err()
+                });
+
                 let threshold = Utc::now() - chrono::Duration::from_std(PRESENCE_STALENESS_THRESHOLD)
                     .unwrap_or_else(|_| chrono::Duration::seconds(20));
                 let evicted = {
@@ -1718,11 +1729,15 @@ async fn run_swarm(
                     caches.sweep_stale_peers(threshold)
                 };
                 for peer_id in evicted {
-                    let _ = try_send_event(
+                    if try_send_event(
                         &event_tx,
                         NetworkEvent::PeerLost(peer_id.clone()),
                         "PeerLost(stale)",
-                    );
+                    )
+                    .is_err()
+                    {
+                        pending_presence_evictions.push(peer_id.clone());
+                    }
                     info!(peer_id = %peer_id, "peer evicted due to presence staleness");
                 }
             }

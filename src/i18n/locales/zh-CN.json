@@ -522,7 +522,13 @@
     "title": "设备管理",
     "addNew": "添加新设备",
     "thisDevice": {
-      "title": "本设备"
+      "title": "本设备",
+      "syncActive": "同步已开启",
+      "syncPaused": "同步已暂停",
+      "pairedCount_zero": "暂无配对",
+      "pairedCount_one": "{{count}} 台已配对",
+      "pairedCount_other": "{{count}} 台已配对",
+      "onlineCount": "{{count}} 台在线"
     },
     "pairedDevices": {
       "title": "已配对设备"

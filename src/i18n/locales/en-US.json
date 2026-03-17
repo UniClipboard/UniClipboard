@@ -522,7 +522,13 @@
     "title": "Device Management",
     "addNew": "Add New Device",
     "thisDevice": {
-      "title": "This Device"
+      "title": "This Device",
+      "syncActive": "Sync active",
+      "syncPaused": "Sync paused",
+      "pairedCount_zero": "No paired devices",
+      "pairedCount_one": "{{count}} paired",
+      "pairedCount_other": "{{count}} paired",
+      "onlineCount": "{{count}} online"
     },
     "pairedDevices": {
       "title": "Paired Devices"

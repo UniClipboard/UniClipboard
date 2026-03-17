@@ -10,6 +10,7 @@ vi.mock('@/store/hooks', () => ({
 
 vi.mock('@/store/slices/devicesSlice', () => ({
   fetchLocalDeviceInfo: vi.fn(() => ({ type: 'devices/fetchLocalDeviceInfo' })),
+  fetchPairedDevices: vi.fn(() => ({ type: 'devices/fetchPairedDevices' })),
 }))
 
 vi.mock('@/components', () => ({
@@ -25,10 +26,11 @@ describe('DevicesPage', () => {
     expect(screen.getByTestId('paired-devices-panel')).toBeInTheDocument()
   })
 
-  it('dispatches fetchLocalDeviceInfo on mount', () => {
+  it('dispatches fetchLocalDeviceInfo and fetchPairedDevices on mount', () => {
     render(<DevicesPage />)
 
     expect(dispatchMock).toHaveBeenCalledWith({ type: 'devices/fetchLocalDeviceInfo' })
+    expect(dispatchMock).toHaveBeenCalledWith({ type: 'devices/fetchPairedDevices' })
   })
 
   it('does not render legacy sections', () => {

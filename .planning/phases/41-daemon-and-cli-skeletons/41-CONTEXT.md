@@ -11,8 +11,8 @@ Create `uc-daemon` and `uc-cli` as independent binary crates that validate the e
 
 **In scope:**
 
-- `uc-daemon` crate: DaemonApp struct, DaemonWorker trait, placeholder workers, Unix socket JSON-RPC server, graceful shutdown, RuntimeState with uptime/health
-- `uc-cli` crate: clap-based argument parsing, `status` subcommand (via daemon RPC), `devices` subcommand (direct mode via uc-bootstrap), `--json` output flag, stable exit codes
+- `uc-daemon` crate: DaemonApp struct, DaemonWorker trait, placeholder workers, Unix socket JSON-RPC server, graceful shutdown, RuntimeState with uptime/health/peers
+- `uc-cli` crate: clap-based argument parsing, `status` subcommand (via daemon RPC), `devices` and `space-status` subcommands (direct mode via uc-bootstrap), `--json` output flag, stable exit codes
 - Shared RPC types (request/response structs) accessible to both crates
 - Workspace Cargo.toml updates (new members)
 - End-to-end validation: daemon start → CLI status → JSON response with uptime and worker health
@@ -33,7 +33,7 @@ Create `uc-daemon` and `uc-cli` as independent binary crates that validate the e
 
 ### RPC transport — Unix domain socket with JSON-RPC 2.0
 
-- Unix domain socket on macOS/Linux, named pipe on Windows
+- Unix domain socket on macOS/Linux (Windows named pipe support deferred to a future phase)
 - Socket path: `{app_data_dir}/uniclipboard-daemon.sock` (resolved via uc-bootstrap config)
 - Protocol: minimal JSON-RPC 2.0 over newline-delimited JSON (one request per line)
 - No external RPC framework — use `tokio::net::UnixListener` + `serde_json` directly
@@ -52,6 +52,7 @@ Create `uc-daemon` and `uc-cli` as independent binary crates that validate the e
 ### DaemonWorker trait — async start/stop/health_check
 
 - Trait: `name() -> &str`, `start() -> Result<()>`, `stop() -> Result<()>`, `health_check() -> WorkerHealth`
+- Workers receive a `CancellationToken` (from `tokio_util`) at start time — they must select on the token for cooperative shutdown. This integrates with the existing TaskRegistry pattern from Phase 38
 - `WorkerHealth` enum: `Healthy`, `Degraded(String)`, `Stopped`
 - `DaemonApp` struct owns `Vec<Box<dyn DaemonWorker>>`, manages lifecycle
 - Placeholder workers: `ClipboardWatcherWorker` and `PeerDiscoveryWorker`
@@ -67,10 +68,19 @@ Create `uc-daemon` and `uc-cli` as independent binary crates that validate the e
 - Shutdown sequence: stop accepting new RPC connections → stop workers in reverse order → clean up socket file → exit 0
 - Matches existing TaskRegistry pattern from Phase 38
 
+### Stale socket handling on daemon startup
+
+- Before binding the Unix socket, check if a daemon is already running by attempting a `ping` RPC to the existing socket
+- If ping succeeds → another daemon is running, exit with error "daemon already running"
+- If ping fails (connection refused / timeout) → stale socket from a crash, delete it and proceed with bind
+- If socket file doesn't exist → proceed normally
+- This prevents `bind()` failures after unclean shutdowns (kill -9, crash)
+
 ### CLI command routing — dual dispatch
 
 - `uniclipboard-cli status` → connects to daemon via Unix socket, sends JSON-RPC `status` request
-- `uniclipboard-cli devices` → uses `build_cli_context()` directly, queries device list from AppDeps without daemon
+- `uniclipboard-cli devices` → uses `build_cli_context()` directly, constructs CoreRuntime, queries device list via `CoreUseCases::list_paired_devices()` without daemon
+- `uniclipboard-cli space-status` → uses `build_cli_context()` directly, constructs CoreRuntime, queries encryption/space status via CoreRuntime runtime-level methods (e.g., `encryption_state()`, `is_encryption_ready()`) without daemon
 - `--json` global flag: outputs JSON on stdout; default: human-readable key-value text
 - Human-readable format: simple key-value lines (no table/color libraries for skeleton)
 
@@ -86,6 +96,7 @@ Create `uc-daemon` and `uc-cli` as independent binary crates that validate the e
 - `uptime_seconds: u64` — seconds since daemon start
 - `version: String` — from Cargo package version
 - `workers: Vec<WorkerStatus>` where `WorkerStatus { name, health }`
+- `connected_peers: Option<u32>` — count of currently connected peers (sourced from PeerDirectoryPort; `null` if query failed, with error logged)
 - Human-readable example:
   ```
   Status: running
@@ -93,7 +104,17 @@ Create `uc-daemon` and `uc-cli` as independent binary crates that validate the e
   Workers: 2/2 healthy
     clipboard-watcher: healthy
     peer-discovery: healthy
+  Connected peers: 0
   ```
+
+### Non-GUI CoreRuntime assembly path
+
+- `CoreRuntime::new()` requires: `AppDeps`, emitter cell (`Arc<RwLock<Arc<dyn HostEventEmitterPort>>>`), `LifecycleStatusPort`, `SetupOrchestrator`, `ClipboardIntegrationMode`, `TaskRegistry`, `AppPaths`
+- Bootstrap contexts currently return `AppDeps` + `config` (CLI) or `AppDeps` + `BackgroundRuntimeDeps` + channels (daemon), but NOT a ready-to-use CoreRuntime
+- Non-GUI modes need a lightweight assembly path: create a logging-only `HostEventEmitterPort` implementation as permanent emitter (no swap), `InMemoryLifecycleStatus`, fresh `TaskRegistry`, and a minimal or no-op `SetupOrchestrator`
+- **IMPORTANT**: `LoggingEventEmitter` currently lives in `uc-tauri` (not accessible from uc-bootstrap/uc-daemon/uc-cli). A non-GUI emitter implementation must be created in `uc-app` or `uc-bootstrap` — or the existing one moved out of uc-tauri. This is a prerequisite for non-GUI CoreRuntime construction
+- Options: (a) add `build_cli_runtime()` / `build_daemon_runtime()` helpers to `uc-bootstrap` that return `CoreRuntime` directly, or (b) extend existing bootstrap contexts to expose enough for callers to construct CoreRuntime. Planner decides which approach fits best
+- `DaemonBootstrapContext` already has `storage_paths`; `CliBootstrapContext` needs it added or resolved inline
 
 ### Claude's Discretion
 
@@ -103,6 +124,7 @@ Create `uc-daemon` and `uc-cli` as independent binary crates that validate the e
 - Error type design (anyhow vs custom error enums)
 - Test structure and mock strategies
 - Whether `DaemonApp::run()` starts workers concurrently or sequentially
+- Exact CoreRuntime assembly approach for non-GUI modes (see above)
 
 </decisions>
 
@@ -133,7 +155,7 @@ Create `uc-daemon` and `uc-cli` as independent binary crates that validate the e
 ### Existing patterns to follow
 
 - `src-tauri/crates/uc-clipboard-probe/Cargo.toml` — Existing binary crate with clap derive (reference for Cargo.toml structure)
-- `src-tauri/crates/uc-app/src/core_runtime.rs` — CoreRuntime struct (daemon will construct this)
+- `src-tauri/crates/uc-app/src/runtime.rs` — CoreRuntime struct (daemon will construct this)
 - `src-tauri/crates/uc-app/src/task_registry.rs` — TaskRegistry + CancellationToken pattern (reuse for daemon shutdown)
 
 ### Workspace configuration
@@ -158,7 +180,7 @@ Create `uc-daemon` and `uc-cli` as independent binary crates that validate the e
 
 - Crate-based modularization: each crate in `src-tauri/crates/`
 - Port/adapter pattern: domain logic via uc-core traits, adapters in uc-infra/uc-platform
-- `LoggingEventEmitter` for non-GUI modes (Phase 36 decision — daemon uses this permanently)
+- Non-GUI modes use a logging-only `HostEventEmitterPort` implementation permanently (no emitter swap). Note: current `LoggingEventEmitter` is in `uc-tauri` — must be moved or recreated in uc-app/uc-bootstrap for daemon/CLI use
 - Idempotent tracing init in uc-bootstrap (OnceLock guard)
 - `AppDeps` as the dependency bundle from `wire_dependencies()`
 
@@ -166,7 +188,7 @@ Create `uc-daemon` and `uc-cli` as independent binary crates that validate the e
 
 - `src-tauri/Cargo.toml` workspace members — add `crates/uc-daemon` and `crates/uc-cli`
 - `DaemonBootstrapContext.deps` → construct `CoreRuntime` → access domain use cases
-- `CliBootstrapContext.deps` → construct `CoreRuntime` → execute direct commands (e.g., device list)
+- `CliBootstrapContext.deps` → construct `CoreRuntime` → access `CoreUseCases` → execute direct commands (e.g., device list, space status)
 - Socket path resolution — use config from `resolve_app_config()` or platform app data dir
 
 </code_context>
@@ -181,7 +203,7 @@ No specific requirements — open to standard approaches. The phase is a straigh
 <deferred>
 ## Deferred Ideas
 
-None — discussion stayed within phase scope.
+- Windows named pipe transport for daemon RPC — Unix socket only in skeleton phase, Windows support in a future phase
 
 </deferred>
 

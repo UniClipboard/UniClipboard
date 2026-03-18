@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v0.1
 milestone_name: milestone
 status: executing
-stopped_at: Completed 41-03-PLAN.md
-last_updated: '2026-03-18T14:07:21.140Z'
-last_activity: 2026-03-18 — Plan 41-03 complete (uc-cli binary with clap, dual-dispatch commands, smoke tests)
+stopped_at: Completed 41-04-PLAN.md
+last_updated: '2026-03-18T15:20:42.234Z'
+last_activity: 2026-03-18 — Plan 41-04 complete (shared daemon socket path resolver, unified daemon/CLI socket path, macOS SUN_LEN gap closure)
 progress:
   total_phases: 6
   completed_phases: 5
-  total_plans: 18
-  completed_plans: 17
-  percent: 94
+  total_plans: 19
+  completed_plans: 18
+  percent: 95
 ---
 
 # Project State
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-17)
 
 **Core value:** Seamless clipboard synchronization across devices — copy on one, paste on another
-**Current focus:** v0.4.0 Runtime Mode Separation — Phase 36: Event Emitter Abstraction
+**Current focus:** v0.4.0 Runtime Mode Separation — Phase 40: uc-bootstrap Crate
 
 ## Current Position
 
-Phase: 41 of 41 (daemon-and-cli-skeletons)
-Plan: 3 of 3 complete. Phase 41 complete.
+Phase: 40 of 41 (uc-bootstrap-crate)
+Plan: 2 of 3 complete.
 Status: Executing
-Last activity: 2026-03-18 — Plan 41-03 complete (uc-cli binary with clap, dual-dispatch commands, smoke tests)
+Last activity: 2026-03-18 — Plan 41-04 complete (shared daemon socket path resolver, unified daemon/CLI socket path, macOS SUN_LEN gap closure)
 
-Progress: [█████████░] 94%
+Progress: [██████████] 95%
 
 ## Performance Metrics
 
@@ -63,6 +63,7 @@ _Updated after each plan completion_
 | Phase 41-daemon-and-cli-skeletons P01 | 7 | 3 tasks | 13 files |
 | Phase 41-daemon-and-cli-skeletons P02 | 4 | 2 tasks | 7 files |
 | Phase 41-daemon-and-cli-skeletons P03 | 3 | 3 tasks | 10 files |
+| Phase 41-daemon-and-cli-skeletons P04 | 8 | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -106,6 +107,8 @@ Recent decisions affecting current work:
 - [Phase 41]: DaemonApp binds RPC socket before starting workers for fail-fast on already-running daemon
 - [Phase 41]: Workers stored as Vec<Arc<dyn DaemonWorker>> for tokio::spawn 'static compatibility
 - [Phase 41]: CLI dual-dispatch: status via daemon RPC, devices/space-status via direct bootstrap
+- [Phase 41]: Unix socket path resolution is centralized in uc-daemon so daemon and CLI cannot drift
+- [Phase 41]: On Unix, overlong XDG runtime paths warn and fall back to /tmp to stay under the 103-byte sun_path payload limit
 
 ### Roadmap Evolution
 
@@ -119,7 +122,6 @@ None.
 ### Blockers/Concerns
 
 - Phase 40 (uc-bootstrap) is high risk: crate extraction touches dependency graph across uc-tauri, uc-infra, uc-platform. Verify cargo workspace configuration before planning.
-- Phase 41 (daemon/CLI) depends on all prior phases being stable. Plan only after Phase 40 is complete.
 
 ### Known Bugs (deferred to future phases)
 
@@ -127,6 +129,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-18T14:02:50.993Z
-Stopped at: Completed 41-03-PLAN.md
+Last session: 2026-03-18T15:20:42.232Z
+Stopped at: Completed 41-04-PLAN.md
 Resume file: None

@@ -26,9 +26,9 @@ See: .planning/PROJECT.md (updated 2026-03-17)
 ## Current Position
 
 Phase: 40 of 41 (uc-bootstrap Crate)
-Plan: 40-01 complete. 40-02 is next.
+Plan: 40-02 complete. 40-03 is next.
 Status: Executing
-Last activity: 2026-03-18 — Plan 40-01 complete (uc-bootstrap crate created with moved modules, idempotent tracing)
+Last activity: 2026-03-18 — Plan 40-02 complete (scene-specific builders: build_gui_app, build_cli_context, build_daemon_app)
 
 Progress: [█████████░] 87%
 
@@ -59,6 +59,7 @@ _Updated after each plan completion_
 | Phase 39-config-resolution-extraction P01 | 4 | 2 tasks | 3 files |
 | Phase 39-config-resolution-extraction P02 | 3 | 1 tasks | 1 files |
 | Phase 40-uc-bootstrap-crate P01 | 14 | 2 tasks | 16 files |
+| Phase 40-uc-bootstrap-crate P02 | 2 | 1 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -94,6 +95,8 @@ Recent decisions affecting current work:
 - [Phase 40]: Assembly helpers widened to pub for cross-crate test access; PlatformLayer made pub in uc-bootstrap
 - [Phase 40]: Re-export stub pattern: uc-tauri bootstrap modules become thin pub use uc_bootstrap::module::* stubs
 - [Phase 40]: Idempotent tracing: TRACING_INITIALIZED OnceLock guard allows safe multiple init_tracing_subscriber calls
+- [Phase 40]: Builders return AppDeps (not CoreRuntime) per Codex Review R1 -- callers construct CoreRuntime with appropriate emitter/lifecycle
+- [Phase 40]: GUI builder uses standalone tokio::runtime::Builder (not tauri::async_runtime) to keep uc-bootstrap tauri-free
 
 ### Roadmap Evolution
 
@@ -115,6 +118,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-18T11:05:56.503Z
-Stopped at: Completed 40-01-PLAN.md
+Last session: 2026-03-18T11:11:30Z
+Stopped at: Completed 40-02-PLAN.md
 Resume file: None

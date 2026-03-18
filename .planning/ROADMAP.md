@@ -156,7 +156,7 @@ Plans:
 5. UseCases accessor is instantiated inside uc-bootstrap and shared to all entry points; no entry point constructs its own UseCases
 6. Logging initialization (init_tracing_subscriber) is called exactly once inside uc-bootstrap; duplicate calls in main.rs or other entry points are removed
 
-**Plans:** 1/3 plans executed
+**Plans:** 2/3 plans executed
 
 Plans:
 
@@ -190,5 +190,5 @@ Plans:
 | 37. Wiring Decomposition         | 5/5       | Complete       | 2026-03-18  | 2026-03-17 |
 | 38. CoreRuntime Extraction       | 3/3       | Complete       | 2026-03-18  | -          |
 | 39. Config Resolution Extraction | 2/2       | Complete       | 2026-03-18  | -          |
-| 40. uc-bootstrap Crate           | 1/3 | In Progress|  | -          |
+| 40. uc-bootstrap Crate           | 2/3 | In Progress|  | -          |
 | 41. Daemon and CLI Skeletons     | v0.4.0    | 0/?            | Not started | -          |

@@ -19,14 +19,14 @@ Requirements for runtime mode separation. Each maps to roadmap phases.
 - [x] **RNTM-01**: CoreRuntime struct exists without Tauri dependency, holding AppDeps and shared orchestrators
 - [x] **RNTM-02**: wiring.rs is decomposed into pure assembly module (Tauri-free) and Tauri-specific event loop module
 - [x] **RNTM-03**: Configuration resolution functions (path resolve, profile suffix, keyslot dir) extracted from main.rs to reusable module
-- [ ] **RNTM-04**: UseCases accessor is shared across all entry points (not duplicated per runtime mode)
+- [x] **RNTM-04**: UseCases accessor is shared across all entry points (not duplicated per runtime mode)
 - [x] **RNTM-05**: SetupOrchestrator assembly unified into main composition root (no secondary wiring in runtime.rs)
 
 ### Bootstrap Crate
 
 - [x] **BOOT-01**: uc-bootstrap crate exists as sole composition root, depending on uc-core + uc-app + uc-infra + uc-platform
-- [ ] **BOOT-02**: uc-bootstrap provides build_cli_context() returning CLI-ready dependencies
-- [ ] **BOOT-03**: uc-bootstrap provides build_daemon_app() returning daemon-ready dependencies with workers
+- [x] **BOOT-02**: uc-bootstrap provides build_cli_context() returning CLI-ready dependencies
+- [x] **BOOT-03**: uc-bootstrap provides build_daemon_app() returning daemon-ready dependencies with workers
 - [ ] **BOOT-04**: uc-tauri depends on uc-bootstrap instead of directly on uc-infra + uc-platform
 - [x] **BOOT-05**: Logging initialization unified in uc-bootstrap (not duplicated per entry point)
 
@@ -85,11 +85,11 @@ Requirements for runtime mode separation. Each maps to roadmap phases.
 | RNTM-05     | 38    | Complete |
 | RNTM-03     | 39    | Complete |
 | BOOT-01     | 40    | Complete |
-| BOOT-02     | 40    | Pending  |
-| BOOT-03     | 40    | Pending  |
+| BOOT-02     | 40    | Complete |
+| BOOT-03     | 40    | Complete |
 | BOOT-04     | 40    | Pending  |
 | BOOT-05     | 40    | Complete |
-| RNTM-04     | 40    | Pending  |
+| RNTM-04     | 40    | Complete |
 | DAEM-01     | 41    | Pending  |
 | DAEM-02     | 41    | Pending  |
 | DAEM-03     | 41    | Pending  |

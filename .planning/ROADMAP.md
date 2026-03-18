@@ -115,7 +115,7 @@ Plans:
 3. SetupOrchestrator is assembled exactly once in the main composition root; runtime.rs contains no secondary wiring or orchestrator construction
 4. The existing GUI setup flow (first-run setup, encrypted space unlock) continues to work end-to-end
 
-**Plans:** 3/3 plans complete
+**Plans:** 4 plans (3 complete + 1 gap closure)
 
 Plans:
 
@@ -178,13 +178,14 @@ Plans:
 5. Exit codes are stable: 0 on success, 1 on error, 5 when daemon is unreachable
 6. DaemonWorker trait exists; placeholder clipboard watcher and peer discovery workers implement it and are registered with DaemonApp
 
-**Plans:** 3/3 plans complete
+**Plans:** 4 plans (3 complete + 1 gap closure)
 
 Plans:
 
 - [ ] 41-01-PLAN.md — Create LoggingHostEventEmitter + build_non_gui_runtime() in uc-bootstrap; create uc-daemon crate with DaemonWorker trait, placeholder workers, RPC types, RuntimeState
 - [ ] 41-02-PLAN.md — Create RPC server, handler, DaemonApp lifecycle, and daemon main.rs entry point
 - [ ] 41-03-PLAN.md — Create uc-cli crate with clap parsing, status command (RPC), devices and space-status commands (direct mode), --json flag, exit codes
+- [ ] 41-04-PLAN.md — Fix socket path SUN_LEN overflow: extract shared resolve_daemon_socket_path to uc-daemon, wire daemon and CLI (gap closure)
 
 ## Progress
 

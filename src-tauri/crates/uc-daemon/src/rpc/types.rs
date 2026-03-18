@@ -41,7 +41,7 @@ pub struct StatusResponse {
 }
 
 /// Status of an individual daemon worker.
-#[derive(Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct WorkerStatus {
     pub name: String,
     pub health: WorkerHealth,

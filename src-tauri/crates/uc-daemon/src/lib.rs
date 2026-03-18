@@ -8,6 +8,7 @@
 
 pub mod app;
 pub mod rpc;
+pub mod socket;
 pub mod state;
 pub mod worker;
 pub mod workers;

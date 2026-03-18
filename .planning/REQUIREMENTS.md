@@ -32,18 +32,18 @@ Requirements for runtime mode separation. Each maps to roadmap phases.
 
 ### Daemon Skeleton
 
-- [ ] **DAEM-01**: uc-daemon crate exists with DaemonApp struct supporting startup and graceful shutdown
-- [ ] **DAEM-02**: Daemon exposes local RPC server with ping and status commands
+- [x] **DAEM-01**: uc-daemon crate exists with DaemonApp struct supporting startup and graceful shutdown
+- [x] **DAEM-02**: Daemon exposes local RPC server with ping and status commands
 - [x] **DAEM-03**: Daemon has DaemonWorker trait abstraction with placeholder workers (clipboard watcher, peer discovery)
 - [x] **DAEM-04**: Daemon maintains RuntimeState with uptime, worker health, and connected peers summary
 
 ### CLI Skeleton
 
-- [ ] **CLI-01**: uc-cli crate exists with clap-based argument parsing and subcommand routing
-- [ ] **CLI-02**: CLI supports daemon status command via RPC connection to daemon
-- [ ] **CLI-03**: CLI supports direct app commands (space status, device list) via uc-bootstrap
-- [ ] **CLI-04**: CLI supports --json output mode for machine-consumable output
-- [ ] **CLI-05**: CLI uses stable exit codes (0=success, 1=error, 5=daemon unreachable)
+- [x] **CLI-01**: uc-cli crate exists with clap-based argument parsing and subcommand routing
+- [x] **CLI-02**: CLI supports daemon status command via RPC connection to daemon
+- [x] **CLI-03**: CLI supports direct app commands (space status, device list) via uc-bootstrap
+- [x] **CLI-04**: CLI supports --json output mode for machine-consumable output
+- [x] **CLI-05**: CLI uses stable exit codes (0=success, 1=error, 5=daemon unreachable)
 
 ## Future Requirements
 
@@ -90,15 +90,15 @@ Requirements for runtime mode separation. Each maps to roadmap phases.
 | BOOT-04     | 40    | Pending  |
 | BOOT-05     | 40    | Complete |
 | RNTM-04     | 40    | Complete |
-| DAEM-01     | 41    | Pending  |
-| DAEM-02     | 41    | Pending  |
+| DAEM-01     | 41    | Complete |
+| DAEM-02     | 41    | Complete |
 | DAEM-03     | 41    | Complete |
 | DAEM-04     | 41    | Complete |
-| CLI-01      | 41    | Pending  |
-| CLI-02      | 41    | Pending  |
-| CLI-03      | 41    | Pending  |
-| CLI-04      | 41    | Pending  |
-| CLI-05      | 41    | Pending  |
+| CLI-01      | 41    | Complete |
+| CLI-02      | 41    | Complete |
+| CLI-03      | 41    | Complete |
+| CLI-04      | 41    | Complete |
+| CLI-05      | 41    | Complete |
 
 **Coverage:**
 

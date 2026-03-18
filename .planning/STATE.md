@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v0.1
 milestone_name: milestone
 status: executing
-stopped_at: Phase 41 context gathered
-last_updated: '2026-03-18T11:59:18.396Z'
-last_activity: '2026-03-18 — Plan 40-02 complete (scene-specific builders: build_gui_app, build_cli_context, build_daemon_app)'
+stopped_at: Completed 41-03-PLAN.md
+last_updated: '2026-03-18T14:02:50.995Z'
+last_activity: 2026-03-18 — Plan 41-03 complete (uc-cli binary with clap, dual-dispatch commands, smoke tests)
 progress:
   total_phases: 6
-  completed_phases: 4
-  total_plans: 15
-  completed_plans: 15
-  percent: 90
+  completed_phases: 5
+  total_plans: 18
+  completed_plans: 17
+  percent: 94
 ---
 
 # Project State
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-03-17)
 ## Current Position
 
 Phase: 41 of 41 (daemon-and-cli-skeletons)
-Plan: 1 of 3 complete. 41-02 is next.
+Plan: 3 of 3 complete. Phase 41 complete.
 Status: Executing
-Last activity: 2026-03-18 — Plan 41-01 complete (non-GUI runtime + uc-daemon crate foundation)
+Last activity: 2026-03-18 — Plan 41-03 complete (uc-cli binary with clap, dual-dispatch commands, smoke tests)
 
-Progress: [█████████░] 90%
+Progress: [█████████░] 94%
 
 ## Performance Metrics
 
@@ -61,6 +61,8 @@ _Updated after each plan completion_
 | Phase 40-uc-bootstrap-crate P01 | 14 | 2 tasks | 16 files |
 | Phase 40-uc-bootstrap-crate P02 | 2 | 1 tasks | 2 files |
 | Phase 41-daemon-and-cli-skeletons P01 | 7 | 3 tasks | 13 files |
+| Phase 41-daemon-and-cli-skeletons P02 | 4 | 2 tasks | 7 files |
+| Phase 41-daemon-and-cli-skeletons P03 | 3 | 3 tasks | 10 files |
 
 ## Accumulated Context
 
@@ -100,6 +102,10 @@ Recent decisions affecting current work:
 - [Phase 40]: GUI builder uses standalone tokio::runtime::Builder (not tauri::async_runtime) to keep uc-bootstrap tauri-free
 - [Phase 41]: ClipboardIntegrationMode::Passive used for non-GUI modes (Disabled variant does not exist); Passive correctly disables OS clipboard observation
 - [Phase 41]: DaemonWorker trait: async start(CancellationToken), async stop(), sync health_check() -> WorkerHealth; RuntimeState is snapshot-only (no worker ownership)
+- [Phase 41]: Explicit tokio runtime construction (not #[tokio::main]) for daemon to avoid conflicts with tracing init's internal Seq runtime
+- [Phase 41]: DaemonApp binds RPC socket before starting workers for fail-fast on already-running daemon
+- [Phase 41]: Workers stored as Vec<Arc<dyn DaemonWorker>> for tokio::spawn 'static compatibility
+- [Phase 41]: CLI dual-dispatch: status via daemon RPC, devices/space-status via direct bootstrap
 
 ### Roadmap Evolution
 
@@ -121,6 +127,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-18T13:54:45Z
-Stopped at: Completed 41-01-PLAN.md
-Resume file: .planning/phases/41-daemon-and-cli-skeletons/41-02-PLAN.md
+Last session: 2026-03-18T14:02:50.993Z
+Stopped at: Completed 41-03-PLAN.md
+Resume file: None

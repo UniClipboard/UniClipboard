@@ -60,7 +60,7 @@ See: `.planning/milestones/v0.3.0-ROADMAP.md`
 - [x] **Phase 38: CoreRuntime Extraction** - Extract Tauri-free CoreRuntime and unify SetupOrchestrator into single composition point (completed 2026-03-18)
 - [x] **Phase 39: Config Resolution Extraction** - Move path/profile/keyslot resolution from main.rs into reusable bootstrap module (completed 2026-03-18)
 - [ ] **Phase 40: uc-bootstrap Crate** - Create sole composition root crate with scene-specific builders and unified logging init
-- [ ] **Phase 41: Daemon and CLI Skeletons** - Create uc-daemon and uc-cli crates with end-to-end path validation
+- [x] **Phase 41: Daemon and CLI Skeletons** - Create uc-daemon and uc-cli crates with end-to-end path validation (completed 2026-03-18)
 
 ## Phase Details
 
@@ -178,7 +178,7 @@ Plans:
 5. Exit codes are stable: 0 on success, 1 on error, 5 when daemon is unreachable
 6. DaemonWorker trait exists; placeholder clipboard watcher and peer discovery workers implement it and are registered with DaemonApp
 
-**Plans:** 1/3 plans executed
+**Plans:** 3/3 plans complete
 
 Plans:
 
@@ -198,4 +198,4 @@ Plans:
 | 38. CoreRuntime Extraction       | 3/3       | Complete       | 2026-03-18 | -          |
 | 39. Config Resolution Extraction | 2/2       | Complete       | 2026-03-18 | -          |
 | 40. uc-bootstrap Crate           | 2/3       | In Progress    |            | -          |
-| 41. Daemon and CLI Skeletons     | 1/3       | In Progress    |            | -          |
+| 41. Daemon and CLI Skeletons     | 3/3       | Complete       | 2026-03-18 | -          |

@@ -12,29 +12,14 @@ use tauri_plugin_autostart::MacosLauncher;
 use tauri_plugin_global_shortcut;
 use tauri_plugin_single_instance;
 use tauri_plugin_stronghold;
-use tokio::sync::mpsc;
 use tracing::{error, info, warn};
 
-use uc_app::usecases::{
-    pairing::{PairingOrchestrator, StagedPairedDeviceStore},
-    space_access::SpaceAccessOrchestrator,
-};
-use uc_core::config::AppConfig;
+use uc_bootstrap::GuiBootstrapContext;
 use uc_core::ports::ClipboardChangeHandler;
-use uc_core::ports::PeerDirectoryPort;
-use uc_infra::fs::key_slot_store::{JsonKeySlotStore, KeySlotStore};
 use uc_platform::ipc::PlatformCommand;
 use uc_platform::ports::PlatformCommandExecutorPort;
-use uc_platform::runtime::event_bus::{
-    PlatformCommandReceiver, PlatformEventReceiver, PlatformEventSender,
-};
 use uc_platform::runtime::runtime::PlatformRuntime;
-use uc_tauri::bootstrap::tracing as bootstrap_tracing;
-use uc_tauri::bootstrap::{
-    ensure_default_device_name, get_storage_paths, resolve_app_config, resolve_pairing_config,
-    resolve_pairing_device_name, start_background_tasks, wire_dependencies, AppRuntime,
-    SetupAssemblyPorts,
-};
+use uc_tauri::bootstrap::{ensure_default_device_name, start_background_tasks, AppRuntime};
 use uc_tauri::commands::updater::PendingUpdate;
 use uc_tauri::protocol::{parse_uc_request, UcRoute};
 use uc_tauri::tray::TrayState;
@@ -301,96 +286,46 @@ mod tests {
 }
 
 fn main() {
-    if let Err(e) = bootstrap_tracing::init_tracing_subscriber() {
-        eprintln!("Failed to initialize tracing: {}", e);
-        std::process::exit(1);
-    }
-
-    let config = match resolve_app_config() {
-        Ok(config) => config,
+    // Tracing and config are handled inside build_gui_app()
+    let ctx = match uc_bootstrap::build_gui_app() {
+        Ok(ctx) => ctx,
         Err(e) => {
-            error!("Configuration resolution failed: {}", e);
+            eprintln!("Bootstrap failed: {}", e);
             std::process::exit(1);
         }
     };
 
-    run_app(config);
+    run_app(ctx);
 }
 
 /// Run the Tauri application
-fn run_app(config: AppConfig) {
+fn run_app(ctx: GuiBootstrapContext) {
     use tauri::Builder;
 
-    // Create event channels for PlatformRuntime
-    let (platform_event_tx, platform_event_rx): (PlatformEventSender, PlatformEventReceiver) =
-        mpsc::channel(100);
-    let (platform_cmd_tx, platform_cmd_rx): (
-        tokio::sync::mpsc::Sender<uc_platform::ipc::PlatformCommand>,
-        PlatformCommandReceiver,
-    ) = mpsc::channel(100);
-
-    // Wire all dependencies using the new bootstrap flow
-    let wired = match wire_dependencies(&config, platform_cmd_tx.clone()) {
-        Ok(wired) => wired,
-        Err(e) => {
-            error!("Failed to wire dependencies: {}", e);
-            panic!("Dependency wiring failed: {}", e);
-        }
-    };
-
-    let deps = wired.deps;
-    let background = wired.background;
-    let watcher_control = wired.watcher_control;
-
-    let pairing_device_repo = deps.device.paired_device_repo.clone();
-    let pairing_device_identity = deps.device.device_identity.clone();
-    let pairing_settings = deps.settings.clone();
-    let discovery_network = deps.network_ports.peers.clone();
-    let pairing_peer_id = background.libp2p_network.local_peer_id();
-    let pairing_identity_pubkey = background.libp2p_network.local_identity_pubkey();
-    let (pairing_device_name, pairing_config) = tauri::async_runtime::block_on(async move {
-        let device_name = resolve_pairing_device_name(pairing_settings.clone()).await;
-        let config = resolve_pairing_config(pairing_settings).await;
-        (device_name, config)
-    });
-    let pairing_device_id = pairing_device_identity.current_device_id().to_string();
-    let staged_store = Arc::new(StagedPairedDeviceStore::new());
-    let (pairing_orchestrator, pairing_action_rx) = PairingOrchestrator::new(
-        pairing_config,
-        pairing_device_repo,
-        pairing_device_name,
-        pairing_device_id,
-        pairing_peer_id,
-        pairing_identity_pubkey,
-        staged_store.clone(),
-    );
-    let pairing_orchestrator = Arc::new(pairing_orchestrator);
-    let space_access_orchestrator = Arc::new(SpaceAccessOrchestrator::new());
-
-    // Get resolved storage paths with profile suffix and config overrides applied
-    let storage_paths = get_storage_paths(&config).expect("failed to get storage paths");
-    let key_slot_store: Arc<dyn KeySlotStore> =
-        Arc::new(JsonKeySlotStore::new(storage_paths.vault_dir.clone()));
+    // Destructure context -- channels, deps, orchestrators all come from build_gui_app()
+    let GuiBootstrapContext {
+        deps,
+        background,
+        watcher_control,
+        setup_ports,
+        storage_paths,
+        platform_event_tx,
+        platform_event_rx,
+        platform_cmd_tx: _,
+        platform_cmd_rx,
+        pairing_orchestrator,
+        pairing_action_rx,
+        staged_store,
+        space_access_orchestrator,
+        key_slot_store,
+        config: _config,
+    } = ctx;
 
     let event_emitter: std::sync::Arc<dyn uc_core::ports::HostEventEmitterPort> =
         std::sync::Arc::new(uc_tauri::adapters::host_event_emitter::LoggingEventEmitter);
-    let device_announcer: Option<std::sync::Arc<dyn uc_app::usecases::DeviceAnnouncer>> = Some(
-        std::sync::Arc::new(uc_app::usecases::DeviceNameAnnouncer::new(
-            deps.network_ports.peers.clone(),
-            deps.settings.clone(),
-        )),
-    );
-    let lifecycle_emitter: std::sync::Arc<dyn uc_app::usecases::LifecycleEventEmitter> =
-        std::sync::Arc::new(uc_app::usecases::LoggingLifecycleEventEmitter);
     let runtime = AppRuntime::with_setup(
         deps,
-        SetupAssemblyPorts::from_network(
-            pairing_orchestrator.clone(),
-            space_access_orchestrator.clone(),
-            discovery_network,
-            device_announcer,
-            lifecycle_emitter,
-        ),
+        setup_ports,
         watcher_control,
         storage_paths,
         event_emitter,

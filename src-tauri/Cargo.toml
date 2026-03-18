@@ -20,10 +20,9 @@ tauri-build = { version = "2", features = [] }
 [dependencies]
 # ===== Workspace crates =====
 uc-core = { path = "crates/uc-core" }
-uc-app = { path = "crates/uc-app" }
 uc-platform = { path = "crates/uc-platform" }
-uc-infra = { path = "crates/uc-infra" }
 uc-tauri = { path = "crates/uc-tauri" }
+uc-bootstrap = { path = "crates/uc-bootstrap" }
 
 # ===== Tauri 相关依赖 =====
 tauri = { version = "2", features = ["macos-private-api", "tray-icon"] }

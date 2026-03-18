@@ -51,10 +51,9 @@ use uc_app::usecases::space_access::{
 };
 use uc_app::usecases::{PairingOrchestrator, StagedPairedDeviceStore};
 use uc_app::AppDeps;
-use uc_core::ids::RepresentationId;
 use uc_core::network::pairing_state_machine::{PairingAction, PairingRole};
 use uc_core::network::{ClipboardMessage, NetworkEvent, PairingMessage};
-use uc_core::ports::clipboard::{ClipboardChangeOriginPort, SpoolRequest};
+use uc_core::ports::clipboard::ClipboardChangeOriginPort;
 use uc_core::ports::host_event_emitter::{
     ClipboardHostEvent, ClipboardOriginKind, HostEvent, HostEventEmitterPort, PairingHostEvent,
     PairingVerificationKind, PeerConnectionHostEvent, PeerDiscoveryHostEvent, SpaceAccessHostEvent,
@@ -66,42 +65,27 @@ use uc_core::security::model::{KeySlot, KeySlotFile};
 use uc_core::security::space_access::event::SpaceAccessEvent;
 use uc_core::security::space_access::{deny_reason_from_code, DENY_REASON_INVALID_PROOF};
 use uc_infra::clipboard::{
-    BackgroundBlobWorker, RepresentationCache, SpoolJanitor, SpoolManager, SpoolScanner,
+    BackgroundBlobWorker, SpoolJanitor, SpoolScanner,
     SpoolerTask,
 };
 use uc_infra::fs::key_slot_store::KeySlotStore;
 use uc_infra::Timer;
-use uc_platform::adapters::Libp2pNetworkAdapter;
-
-// Re-export assembly types for backward compatibility.
-// Types moved to assembly.rs but callers of this module (via mod.rs re-exports) are unaffected.
+// Re-export assembly types from uc-bootstrap (via the thin stub in super::assembly).
 pub use super::assembly::{
     get_storage_paths, resolve_pairing_config, resolve_pairing_device_name, wire_dependencies,
     wire_dependencies_with_identity_store, HostEventSetupPort, WiredDependencies, WiringError,
     WiringResult,
 };
 
+// Re-export BackgroundRuntimeDeps from uc-bootstrap (definition moved in Phase 40).
+pub use uc_bootstrap::BackgroundRuntimeDeps;
+
 // Re-export private assembly helpers for test access (tests in this module use `use super::*`).
 #[cfg(test)]
-pub(crate) use super::assembly::{
+pub(crate) use uc_bootstrap::assembly::{
     apply_profile_suffix, create_db_pool, create_platform_layer, get_default_app_dirs,
     resolve_app_dirs, resolve_app_paths,
 };
-
-/// Background runtime components that must be started after async runtime is ready.
-/// 需要在异步运行时就绪后启动的后台组件。
-pub struct BackgroundRuntimeDeps {
-    pub libp2p_network: Arc<Libp2pNetworkAdapter>,
-    pub representation_cache: Arc<RepresentationCache>,
-    pub spool_manager: Arc<SpoolManager>,
-    pub spool_rx: mpsc::Receiver<SpoolRequest>,
-    pub worker_rx: mpsc::Receiver<RepresentationId>,
-    pub spool_dir: PathBuf,
-    pub file_cache_dir: PathBuf,
-    pub spool_ttl_days: u64,
-    pub worker_retry_max_attempts: u32,
-    pub worker_retry_backoff_ms: u64,
-}
 
 const SPOOL_JANITOR_INTERVAL_SECS: u64 = 60 * 60;
 const CLIPBOARD_SUBSCRIBE_BACKOFF_INITIAL_MS: u64 = 250;

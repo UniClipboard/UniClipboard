@@ -11,6 +11,7 @@ uc-app = { path = "../uc-app" }
 uc-infra = { path = "../uc-infra" }
 uc-platform = { path = "../uc-platform" }
 uc-observability = { path = "../uc-observability" }
+uc-bootstrap = { path = "../uc-bootstrap" }
 
 # System utilities
 gethostname = "1.1"

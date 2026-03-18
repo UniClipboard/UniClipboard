@@ -205,44 +205,44 @@ struct InfraLayer {
 }
 
 /// Platform layer implementations
-pub(crate) struct PlatformLayer {
+pub struct PlatformLayer {
     // System clipboard
-    pub(crate) clipboard: Arc<dyn PlatformClipboardPort>,
-    pub(crate) system_clipboard: Arc<dyn SystemClipboardPort>,
+    pub clipboard: Arc<dyn PlatformClipboardPort>,
+    pub system_clipboard: Arc<dyn SystemClipboardPort>,
 
     // Secure storage
-    pub(crate) secure_storage: Arc<dyn SecureStoragePort>,
+    pub secure_storage: Arc<dyn SecureStoragePort>,
 
     // Network operations
-    pub(crate) network_ports: Arc<NetworkPorts>,
+    pub network_ports: Arc<NetworkPorts>,
 
     // libp2p network adapter (concrete)
-    pub(crate) libp2p_network: Arc<Libp2pNetworkAdapter>,
+    pub libp2p_network: Arc<Libp2pNetworkAdapter>,
 
     // Device identity
-    pub(crate) device_identity: Arc<dyn DeviceIdentityPort>,
+    pub device_identity: Arc<dyn DeviceIdentityPort>,
 
     // Clipboard representation normalizer
-    pub(crate) representation_normalizer: Arc<dyn ClipboardRepresentationNormalizerPort>,
+    pub representation_normalizer: Arc<dyn ClipboardRepresentationNormalizerPort>,
 
     // Blob writer
-    pub(crate) blob_writer: Arc<dyn BlobWriterPort>,
+    pub blob_writer: Arc<dyn BlobWriterPort>,
 
     // Blob store (encrypted)
-    pub(crate) blob_store: Arc<dyn BlobStorePort>,
+    pub blob_store: Arc<dyn BlobStorePort>,
 
     // Encryption session
-    pub(crate) encryption_session: Arc<dyn EncryptionSessionPort>,
+    pub encryption_session: Arc<dyn EncryptionSessionPort>,
 
     // Watcher control
-    pub(crate) watcher_control: Arc<dyn WatcherControlPort>,
+    pub watcher_control: Arc<dyn WatcherControlPort>,
 
     // Key scope
-    pub(crate) key_scope: Arc<dyn uc_core::ports::security::key_scope::KeyScopePort>,
+    pub key_scope: Arc<dyn uc_core::ports::security::key_scope::KeyScopePort>,
 }
 
 /// Create SQLite database connection pool
-pub(crate) fn create_db_pool(db_path: &PathBuf) -> WiringResult<DbPool> {
+pub fn create_db_pool(db_path: &PathBuf) -> WiringResult<DbPool> {
     if db_path.as_os_str() != ":memory:" {
         if let Some(parent) = db_path.parent().filter(|p| !p.as_os_str().is_empty()) {
             std::fs::create_dir_all(parent).map_err(|e| {
@@ -382,7 +382,7 @@ fn create_infra_layer(
 }
 
 /// Create platform layer implementations
-pub(crate) fn create_platform_layer(
+pub fn create_platform_layer(
     secure_storage: Arc<dyn SecureStoragePort>,
     config_dir: &PathBuf,
     platform_cmd_tx: PlatformCommandSender,
@@ -538,7 +538,7 @@ pub(crate) fn create_platform_layer(
 }
 
 /// Resolves the application's default directories for storing data and configuration.
-pub(crate) fn get_default_app_dirs() -> WiringResult<uc_core::app_dirs::AppDirs> {
+pub fn get_default_app_dirs() -> WiringResult<uc_core::app_dirs::AppDirs> {
     let adapter = DirsAppDirsAdapter::new();
     adapter
         .get_app_dirs()
@@ -554,7 +554,7 @@ pub fn get_storage_paths(
 }
 
 /// Resolve the effective `AppDirs` by applying config overrides.
-pub(crate) fn resolve_app_dirs(
+pub fn resolve_app_dirs(
     platform_dirs: &uc_core::app_dirs::AppDirs,
     config: &AppConfig,
 ) -> uc_core::app_dirs::AppDirs {
@@ -584,7 +584,7 @@ pub(crate) fn resolve_app_dirs(
 }
 
 /// Build `AppPaths` from platform dirs and config overrides.
-pub(crate) fn resolve_app_paths(
+pub fn resolve_app_paths(
     platform_dirs: &uc_core::app_dirs::AppDirs,
     config: &AppConfig,
 ) -> WiringResult<uc_app::app_paths::AppPaths> {
@@ -634,7 +634,7 @@ pub(crate) fn resolve_app_paths(
     Ok(paths)
 }
 
-pub(crate) fn apply_profile_suffix(path: PathBuf) -> PathBuf {
+pub fn apply_profile_suffix(path: PathBuf) -> PathBuf {
     let profile = match std::env::var("UC_PROFILE") {
         Ok(value) if !value.is_empty() => value.replace('/', "_").replace('\\', "_"),
         _ => return path,

@@ -6,6 +6,7 @@
 //! This crate is used as both a library (by uc-cli for RPC type sharing) and
 //! a binary (`uniclipboard-daemon`).
 
+pub mod app;
 pub mod rpc;
 pub mod state;
 pub mod worker;

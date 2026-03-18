@@ -43,8 +43,6 @@ const NETWORK_CHUNK_SIZE: usize = 256 * 1024;
 /// Maximum allowed ciphertext length per chunk (plaintext chunk + encryption overhead).
 const MAX_CHUNK_CIPHERTEXT_SIZE: usize = NETWORK_CHUNK_SIZE + 256;
 const BUSINESS_READ_TIMEOUT: Duration = Duration::from_secs(120);
-const PRESENCE_STALENESS_THRESHOLD: Duration = Duration::from_secs(20);
-const PRESENCE_SWEEP_INTERVAL: Duration = Duration::from_secs(10);
 const BUSINESS_STREAM_OPEN_TIMEOUT: Duration = Duration::from_secs(10);
 const BUSINESS_STREAM_WRITE_TIMEOUT: Duration = Duration::from_secs(120);
 const BUSINESS_STREAM_CLOSE_TIMEOUT: Duration = Duration::from_secs(10);
@@ -202,23 +200,6 @@ impl PeerCaches {
     pub fn is_reachable(&self, peer_id: &str) -> bool {
         self.reachable_peers.contains(peer_id)
     }
-
-    /// Remove peers whose `last_seen` is older than `threshold` and return their IDs.
-    pub fn sweep_stale_peers(&mut self, threshold: DateTime<Utc>) -> Vec<String> {
-        let stale: Vec<String> = self
-            .discovered_peers
-            .iter()
-            .filter(|(_, peer)| peer.last_seen < threshold)
-            .map(|(peer_id, _)| peer_id.clone())
-            .collect();
-        let mut evicted = Vec::new();
-        for peer_id in stale {
-            if self.remove_discovered(&peer_id).is_some() {
-                evicted.push(peer_id);
-            }
-        }
-        evicted
-    }
 }
 
 #[derive(NetworkBehaviour)]
@@ -249,7 +230,6 @@ impl From<()> for Libp2pBehaviourEvent {
 fn build_mdns_config() -> mdns::Config {
     let mut config = mdns::Config::default();
     config.query_interval = Duration::from_secs(5);
-    config.ttl = Duration::from_secs(30);
     config
 }
 
@@ -1472,9 +1452,6 @@ async fn run_swarm(
     let mut next_business_command_id: u64 = 1;
     let business_command_semaphore = Arc::new(Semaphore::new(MAX_IN_FLIGHT_BUSINESS_COMMANDS));
     let mut pending_business_command: Option<(u64, BusinessCommand)> = None;
-    let mut presence_sweep = tokio::time::interval(PRESENCE_SWEEP_INTERVAL);
-    presence_sweep.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
-    let mut pending_presence_evictions: Vec<String> = Vec::new();
 
     loop {
         tokio::select! {
@@ -1710,36 +1687,6 @@ async fn run_swarm(
                     )
                     .await;
                 });
-            }
-            _ = presence_sweep.tick() => {
-                // Retry any PeerLost events that failed to send on a previous sweep
-                pending_presence_evictions.retain(|peer_id| {
-                    try_send_event(
-                        &event_tx,
-                        NetworkEvent::PeerLost(peer_id.clone()),
-                        "PeerLost(stale-retry)",
-                    )
-                    .is_err()
-                });
-
-                let threshold = Utc::now() - chrono::Duration::from_std(PRESENCE_STALENESS_THRESHOLD)
-                    .unwrap_or_else(|_| chrono::Duration::seconds(20));
-                let evicted = {
-                    let mut caches = caches.write().await;
-                    caches.sweep_stale_peers(threshold)
-                };
-                for peer_id in evicted {
-                    if try_send_event(
-                        &event_tx,
-                        NetworkEvent::PeerLost(peer_id.clone()),
-                        "PeerLost(stale)",
-                    )
-                    .is_err()
-                    {
-                        pending_presence_evictions.push(peer_id.clone());
-                    }
-                    info!(peer_id = %peer_id, "peer evicted due to presence staleness");
-                }
             }
         }
     }
@@ -2650,34 +2597,6 @@ mod tests {
             NetworkEvent::PeerLost(peer_id) if peer_id == "peer-1"
         ));
         assert!(!caches.discovered_peers.contains_key("peer-1"));
-    }
-
-    #[test]
-    fn sweep_stale_peers_evicts_old_entries() {
-        let mut caches = PeerCaches::new();
-        let now = Utc::now();
-        let old = now - chrono::Duration::seconds(60);
-
-        // Insert a stale peer (last_seen 60s ago)
-        caches.upsert_discovered(
-            "stale-peer".to_string(),
-            vec!["/ip4/192.168.1.2/tcp/4001".to_string()],
-            old,
-        );
-        // Insert a fresh peer (last_seen = now)
-        caches.upsert_discovered(
-            "fresh-peer".to_string(),
-            vec!["/ip4/192.168.1.3/tcp/4001".to_string()],
-            now,
-        );
-
-        // Sweep with threshold = 20s ago
-        let threshold = now - chrono::Duration::seconds(20);
-        let evicted = caches.sweep_stale_peers(threshold);
-
-        assert_eq!(evicted, vec!["stale-peer".to_string()]);
-        assert!(!caches.discovered_peers.contains_key("stale-peer"));
-        assert!(caches.discovered_peers.contains_key("fresh-peer"));
     }
 
     #[derive(Default)]

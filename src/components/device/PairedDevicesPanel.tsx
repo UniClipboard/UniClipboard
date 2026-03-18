@@ -5,7 +5,7 @@ import { useNavigate } from 'react-router-dom'
 import { getDeviceIcon, getIconColor } from './device-utils'
 import DeviceSettingsSheet from './DeviceSettingsSheet'
 import UnpairAlertDialog from './UnpairAlertDialog'
-import { onP2PPeerDiscoveryChanged, onP2PPeerNameUpdated, unpairP2PDevice } from '@/api/p2p'
+import { onP2PPeerConnectionChanged, onP2PPeerNameUpdated, unpairP2PDevice } from '@/api/p2p'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { useSetting } from '@/hooks/useSetting'
@@ -13,7 +13,7 @@ import { useAppDispatch, useAppSelector } from '@/store/hooks'
 import {
   fetchPairedDevices,
   clearPairedDevicesError,
-  updatePeerPresenceStatus,
+  updatePeerConnectionStatus,
   updatePeerDeviceName,
 } from '@/store/slices/devicesSlice'
 
@@ -38,11 +38,11 @@ const PairedDevicesPanel: React.FC = () => {
     let unlistenName: (() => void) | undefined
 
     const setupConnectionListener = async () => {
-      unlistenConnection = await onP2PPeerDiscoveryChanged(event => {
+      unlistenConnection = await onP2PPeerConnectionChanged(event => {
         dispatch(
-          updatePeerPresenceStatus({
+          updatePeerConnectionStatus({
             peerId: event.peerId,
-            connected: event.discovered,
+            connected: event.connected,
             deviceName: event.deviceName ?? undefined,
           })
         )

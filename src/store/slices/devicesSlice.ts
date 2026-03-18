@@ -96,7 +96,7 @@ const devicesSlice = createSlice({
     clearPairedDevicesError: state => {
       state.pairedDevicesError = null
     },
-    updatePeerPresenceStatus: (
+    updatePeerConnectionStatus: (
       state,
       action: { payload: { peerId: string; connected: boolean; deviceName?: string | null } }
     ) => {
@@ -185,7 +185,7 @@ const devicesSlice = createSlice({
 export const {
   clearLocalDeviceError,
   clearPairedDevicesError,
-  updatePeerPresenceStatus,
+  updatePeerConnectionStatus,
   updatePeerDeviceName,
 } = devicesSlice.actions
 export default devicesSlice.reducer

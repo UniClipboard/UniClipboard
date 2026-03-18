@@ -29,8 +29,8 @@ use uc_app::usecases::{
 };
 use uc_app::AppDeps;
 use uc_core::config::AppConfig;
-use uc_core::ports::PeerDirectoryPort;
 use uc_core::network::pairing_state_machine::PairingAction;
+use uc_core::ports::PeerDirectoryPort;
 use uc_infra::fs::key_slot_store::{JsonKeySlotStore, KeySlotStore};
 use uc_platform::ipc::PlatformCommand;
 use uc_platform::ports::WatcherControlPort;
@@ -39,8 +39,8 @@ use uc_platform::runtime::event_bus::{
 };
 
 use crate::assembly::{
-    get_storage_paths, resolve_pairing_config, resolve_pairing_device_name,
-    wire_dependencies, BackgroundRuntimeDeps, SetupAssemblyPorts,
+    get_storage_paths, resolve_pairing_config, resolve_pairing_device_name, wire_dependencies,
+    BackgroundRuntimeDeps, SetupAssemblyPorts,
 };
 use crate::config_resolution::resolve_app_config;
 
@@ -117,8 +117,10 @@ fn build_core(
 pub fn build_gui_app() -> anyhow::Result<GuiBootstrapContext> {
     let (platform_event_tx, platform_event_rx): (PlatformEventSender, PlatformEventReceiver) =
         mpsc::channel(100);
-    let (platform_cmd_tx, platform_cmd_rx): (mpsc::Sender<PlatformCommand>, PlatformCommandReceiver) =
-        mpsc::channel(100);
+    let (platform_cmd_tx, platform_cmd_rx): (
+        mpsc::Sender<PlatformCommand>,
+        PlatformCommandReceiver,
+    ) = mpsc::channel(100);
 
     let (config, wired) = build_core(platform_cmd_tx.clone())?;
 
@@ -162,13 +164,10 @@ pub fn build_gui_app() -> anyhow::Result<GuiBootstrapContext> {
         Arc::new(JsonKeySlotStore::new(storage_paths.vault_dir.clone()));
 
     // Create device announcer and lifecycle emitter for SetupAssemblyPorts
-    let device_announcer: Option<Arc<dyn DeviceAnnouncer>> =
-        Some(Arc::new(DeviceNameAnnouncer::new(
-            deps.network_ports.peers.clone(),
-            deps.settings.clone(),
-        )));
-    let lifecycle_emitter: Arc<dyn LifecycleEventEmitter> =
-        Arc::new(LoggingLifecycleEventEmitter);
+    let device_announcer: Option<Arc<dyn DeviceAnnouncer>> = Some(Arc::new(
+        DeviceNameAnnouncer::new(deps.network_ports.peers.clone(), deps.settings.clone()),
+    ));
+    let lifecycle_emitter: Arc<dyn LifecycleEventEmitter> = Arc::new(LoggingLifecycleEventEmitter);
 
     let setup_ports = SetupAssemblyPorts::from_network(
         pairing_orchestrator.clone(),
@@ -222,8 +221,10 @@ pub fn build_cli_context() -> anyhow::Result<CliBootstrapContext> {
 pub fn build_daemon_app() -> anyhow::Result<DaemonBootstrapContext> {
     let (platform_event_tx, platform_event_rx): (PlatformEventSender, PlatformEventReceiver) =
         mpsc::channel(100);
-    let (platform_cmd_tx, platform_cmd_rx): (mpsc::Sender<PlatformCommand>, PlatformCommandReceiver) =
-        mpsc::channel(100);
+    let (platform_cmd_tx, platform_cmd_rx): (
+        mpsc::Sender<PlatformCommand>,
+        PlatformCommandReceiver,
+    ) = mpsc::channel(100);
 
     let (config, wired) = build_core(platform_cmd_tx.clone())?;
     let storage_paths = get_storage_paths(&config)?;

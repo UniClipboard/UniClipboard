@@ -82,6 +82,7 @@ members = [
   "crates/uc-tauri",
   "crates/uc-observability",
   "crates/uc-bootstrap",
+  "crates/uc-daemon",
 ]
 resolver = "2"
 

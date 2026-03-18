@@ -8959,6 +8959,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "uc-cli"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
+ "uc-app",
+ "uc-bootstrap",
+ "uc-core",
+ "uc-daemon",
+]
+
+[[package]]
 name = "uc-clipboard-probe"
 version = "0.1.0"
 dependencies = [

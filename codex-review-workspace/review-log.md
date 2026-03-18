@@ -178,3 +178,40 @@ Started: 2026-03-18
 **41-01**: Fixed health_check wording; added full workspace check; Task 2 files includes main.rs
 **41-02**: All run_rpc_server→run_rpc_accept_loop; Arc::clone spawn pattern; select! for accept loop crash; socket removal logging
 **41-03**: Added Task 3 smoke tests; print_result returns Result
+
+## Round 5
+
+### 41-01-PLAN — Codex Verdict: NEEDS_REVISION (2 findings)
+
+| Finding | Severity | CC Decision | Action                                                                    |
+| ------- | -------- | ----------- | ------------------------------------------------------------------------- |
+| F-1     | CRITICAL | AGREE       | LoggingHostEventEmitter now logs only event_type string, no payload Debug |
+| F-2     | MAJOR    | AGREE       | Removed pipe from Task 1 verify; uses echo exit:$?                        |
+
+### 41-03-PLAN — Codex Verdict: NEEDS_REVISION (2 findings)
+
+| Finding | Severity | CC Decision | Action                                                            |
+| ------- | -------- | ----------- | ----------------------------------------------------------------- |
+| F-1     | CRITICAL | AGREE       | Changed JSON verification to --json devices; status JSON deferred |
+| F-2     | MAJOR    | AGREE       | Changed test filter to --test cli_smoke (not -- cli_smoke)        |
+
+### Plan diffs (Round 5 → Round 6):
+
+**41-01**: LoggingHostEventEmitter logs only event_type; Task 1 verify uses echo exit:$? without pipe
+**41-03**: must_haves.truths + verification now use `--json devices`; Task 3 verify uses `--test cli_smoke`
+
+## Round 6 (VERIFICATION)
+
+### 41-01-PLAN — Codex Verdict: NEEDS_REVISION (1 finding)
+
+| Finding | Severity | CC Decision | Action               |
+| ------- | -------- | ----------- | -------------------- | ---------------------------------------- |
+| F-1     | MAJOR    | AGREE       | Task 3 verify pipe ` | tail -10`replaced with`; echo "exit:$?"` |
+
+### 41-03-PLAN — Codex Verdict: APPROVED
+
+Both Round 5 fixes verified present. No new findings raised.
+
+### Plan diffs (Round 6):
+
+**41-01**: Task 3 verify command fixed: removed `| tail -10`, now uses `; echo "exit:$?"`

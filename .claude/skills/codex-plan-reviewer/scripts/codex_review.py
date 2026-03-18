@@ -6,7 +6,7 @@ Usage:
     python3 codex_review.py \
         --plan-file path/to/plan.md \
         --round 1 \
-        --max-rounds 5 \
+        --max-rounds 10 \
         --output-dir ./review-rounds \
         [--prior-context path/to/review-log.md] \
         [--severity-filter all|critical+major]
@@ -164,7 +164,7 @@ def main():
     parser = argparse.ArgumentParser(description="Send a plan to Codex for review")
     parser.add_argument("--plan-file", required=True, help="Path to the markdown plan file")
     parser.add_argument("--round", type=int, default=1, help="Current review round number")
-    parser.add_argument("--max-rounds", type=int, default=5, help="Maximum number of rounds")
+    parser.add_argument("--max-rounds", type=int, default=10, help="Maximum number of rounds")
     parser.add_argument("--output-dir", default="./review-rounds", help="Directory for review artifacts")
     parser.add_argument("--prior-context", default=None, help="Path to review log for context in subsequent rounds")
     parser.add_argument("--severity-filter", default="all", choices=["all", "critical+major"],

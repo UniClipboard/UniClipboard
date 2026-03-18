@@ -47,7 +47,7 @@ You are running a Codex plan review round. Your job:
    python3 <skill-path>/scripts/codex_review.py \
      --plan-file "<path-to-plan.md>" \
      --round <N> \
-     --max-rounds 5 \
+     --max-rounds 10 \
      --output-dir "<workspace>/review-rounds" \
      [--prior-context "<workspace>/review-log.md"]
 
@@ -177,7 +177,7 @@ Record the decision **with reasoning** in the review log:
 After all findings are processed and the plan is updated:
 
 1. Increment the round counter
-2. Check if round > 5 (max rounds). If so, go to Step 5 with a timeout notice
+2. Check if round > 10 (max rounds). If so, go to Step 5 with a timeout notice
 3. Save the updated plan as `<workspace>/review-rounds/round-<N>/plan-after-revision.md`
 4. Append the current round's decisions to `<workspace>/review-log.md` (this is the prior context for the next round)
 5. **Spawn a new subagent** (repeat from Step 1) with the updated round number and `--prior-context` pointing to the review log
@@ -220,7 +220,7 @@ When the loop ends (either `APPROVED` or max rounds reached), produce a summary:
 # Plan Review Summary
 
 - **File**: <plan filename>
-- **Rounds**: <N> of 5
+- **Rounds**: <N> of 10
 - **Final Verdict**: <APPROVED | MAX_ROUNDS_REACHED>
 
 ## Review History
@@ -248,7 +248,7 @@ Save this summary to `<workspace>/review-summary.md`.
 If max rounds reached without approval, tell the user clearly:
 
 ```
-⚠️ Codex did not approve the plan after 5 rounds.
+⚠️ Codex did not approve the plan after 10 rounds.
 Remaining concerns: <list>
 You may want to review these manually or refine the plan further before proceeding.
 ```
@@ -316,7 +316,7 @@ The skill uses these defaults, overridable by the user:
 
 | Parameter           | Default                    | Description                                         |
 | ------------------- | -------------------------- | --------------------------------------------------- |
-| `max-rounds`        | 5                          | Maximum review-revision cycles                      |
+| `max-rounds`        | 10                         | Maximum review-revision cycles                      |
 | `severity-filter`   | all                        | Review all severities, or only CRITICAL+MAJOR       |
 | `auto-accept-minor` | false                      | Auto-apply MINOR findings without user confirmation |
 | `workspace`         | `./codex-review-workspace` | Directory for review artifacts                      |
@@ -326,5 +326,5 @@ The skill uses these defaults, overridable by the user:
 1. **Never blindly accept Codex feedback** — CC independently evaluates every finding
 2. **Human-in-the-loop for disagreements** — When CC and Codex disagree, the user decides
 3. **Full audit trail** — Every decision, accepted or rejected, is logged with reasoning
-4. **Bounded loops** — Hard cap at 5 rounds prevents infinite back-and-forth
+4. **Bounded loops** — Hard cap at 10 rounds prevents infinite back-and-forth
 5. **Transparency** — User sees exactly what Codex said, what CC thinks, and what changed

@@ -1,0 +1,35 @@
+[package]
+name = "uc-bootstrap"
+version = "0.1.0"
+edition = "2021"
+description = "Composition root — sole crate allowed to depend on uc-core + uc-app + uc-infra + uc-platform simultaneously"
+
+[dependencies]
+uc-core = { path = "../uc-core" }
+uc-app = { path = "../uc-app" }
+uc-infra = { path = "../uc-infra" }
+uc-platform = { path = "../uc-platform" }
+uc-observability = { path = "../uc-observability" }
+
+tokio = { version = "1", features = ["full"] }
+tokio-util = "0.7"
+anyhow = "1.0"
+thiserror = "2.0"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt", "registry"] }
+sentry = { version = "0.46.1", features = ["tracing"] }
+sentry-tracing = "0.46.1"
+gethostname = "1.1"
+toml = "0.8"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+chrono = { version = "0.4", features = ["serde"] }
+log = "0.4"
+async-trait = "0.1"
+uuid = { version = "1", features = ["v4", "fast-rng"] }
+blake3 = "1"
+base64 = "0.22"
+
+[dev-dependencies]
+tempfile = "3"
+tokio = { version = "1", features = ["full"] }

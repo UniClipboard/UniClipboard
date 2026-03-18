@@ -177,7 +177,14 @@ Plans:
 4. `uniclipboard-cli --json status` outputs valid JSON; `uniclipboard-cli status` (no flag) outputs human-readable text
 5. Exit codes are stable: 0 on success, 1 on error, 5 when daemon is unreachable
 6. DaemonWorker trait exists; placeholder clipboard watcher and peer discovery workers implement it and are registered with DaemonApp
-   **Plans**: TBD
+
+**Plans:** 3 plans
+
+Plans:
+
+- [ ] 41-01-PLAN.md — Create LoggingHostEventEmitter + build_non_gui_runtime() in uc-bootstrap; create uc-daemon crate with DaemonWorker trait, placeholder workers, RPC types, RuntimeState
+- [ ] 41-02-PLAN.md — Create RPC server, handler, DaemonApp lifecycle, and daemon main.rs entry point
+- [ ] 41-03-PLAN.md — Create uc-cli crate with clap parsing, status command (RPC), devices and space-status commands (direct mode), --json flag, exit codes
 
 ## Progress
 
@@ -190,5 +197,5 @@ Plans:
 | 37. Wiring Decomposition         | 5/5       | Complete       | 2026-03-18  | 2026-03-17 |
 | 38. CoreRuntime Extraction       | 3/3       | Complete       | 2026-03-18  | -          |
 | 39. Config Resolution Extraction | 2/2       | Complete       | 2026-03-18  | -          |
-| 40. uc-bootstrap Crate           | 2/3 | In Progress|  | -          |
-| 41. Daemon and CLI Skeletons     | v0.4.0    | 0/?            | Not started | -          |
+| 40. uc-bootstrap Crate           | 2/3       | In Progress    |             | -          |
+| 41. Daemon and CLI Skeletons     | v0.4.0    | 0/3            | Not started | -          |

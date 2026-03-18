@@ -6,6 +6,7 @@
 //! for dependency wiring and initialization.
 
 pub mod assembly;
+pub mod builders;
 pub mod config;
 pub mod config_resolution;
 pub mod init;
@@ -21,4 +22,8 @@ pub use assembly::{
 pub use config::load_config;
 pub use config_resolution::{resolve_app_config, resolve_config_path, ConfigResolutionError};
 pub use init::ensure_default_device_name;
+pub use builders::{
+    build_cli_context, build_daemon_app, build_gui_app, CliBootstrapContext,
+    DaemonBootstrapContext, GuiBootstrapContext,
+};
 pub use tracing::init_tracing_subscriber;

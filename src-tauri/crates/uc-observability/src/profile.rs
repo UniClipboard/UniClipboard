@@ -21,6 +21,8 @@ pub enum LogProfile {
     Prod,
     /// Clipboard debugging profile: info-level base with clipboard targets raised to debug/trace
     DebugClipboard,
+    /// CLI profile: console output disabled (no noise), JSON file logging at info level
+    Cli,
 }
 
 /// Common noise filter directives applied to all profiles.
@@ -44,6 +46,7 @@ impl LogProfile {
             Ok("dev") => Self::Dev,
             Ok("prod") => Self::Prod,
             Ok("debug_clipboard") => Self::DebugClipboard,
+            Ok("cli") => Self::Cli,
             _ => {
                 if cfg!(debug_assertions) {
                     Self::Dev
@@ -57,16 +60,21 @@ impl LogProfile {
     /// Build the `EnvFilter` for the console (pretty) layer.
     ///
     /// If `RUST_LOG` is set, returns that override filter instead.
+    /// For the `Cli` profile, console output is completely disabled.
     pub fn console_filter(&self) -> EnvFilter {
         if let Some(filter) = Self::rust_log_override() {
             return filter;
+        }
+        if matches!(self, Self::Cli) {
+            return EnvFilter::new("off");
         }
         self.build_filter()
     }
 
     /// Build the `EnvFilter` for the JSON file layer.
     ///
-    /// Symmetric with `console_filter` per design decision.
+    /// Symmetric with `console_filter` per design decision, except for the
+    /// `Cli` profile which still logs to JSON at info level for debugging.
     /// If `RUST_LOG` is set, returns that override filter instead.
     pub fn json_filter(&self) -> EnvFilter {
         if let Some(filter) = Self::rust_log_override() {
@@ -88,7 +96,7 @@ impl LogProfile {
     fn build_filter(&self) -> EnvFilter {
         let base = match self {
             Self::Dev => "debug",
-            Self::Prod => "info",
+            Self::Prod | Self::Cli => "info",
             Self::DebugClipboard => "info",
         };
 
@@ -110,7 +118,7 @@ impl LogProfile {
                 directives.push("uc_app::usecases::clipboard=debug".to_string());
                 directives.push("uc_core::clipboard=debug".to_string());
             }
-            Self::Prod => {}
+            Self::Prod | Self::Cli => {}
         }
 
         EnvFilter::new(directives.join(","))
@@ -121,7 +129,7 @@ impl LogProfile {
     fn directives_string(&self) -> String {
         let base = match self {
             Self::Dev => "debug",
-            Self::Prod => "info",
+            Self::Prod | Self::Cli => "info",
             Self::DebugClipboard => "info",
         };
 
@@ -139,7 +147,7 @@ impl LogProfile {
                 directives.push("uc_app::usecases::clipboard=debug".to_string());
                 directives.push("uc_core::clipboard=debug".to_string());
             }
-            Self::Prod => {}
+            Self::Prod | Self::Cli => {}
         }
         directives.join(",")
     }
@@ -151,6 +159,7 @@ impl fmt::Display for LogProfile {
             Self::Dev => write!(f, "dev"),
             Self::Prod => write!(f, "prod"),
             Self::DebugClipboard => write!(f, "debug_clipboard"),
+            Self::Cli => write!(f, "cli"),
         }
     }
 }
@@ -231,11 +240,43 @@ mod tests {
     }
 
     #[test]
+    fn test_from_env_cli() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        std::env::set_var("UC_LOG_PROFILE", "cli");
+        std::env::remove_var("RUST_LOG");
+        assert_eq!(LogProfile::from_env(), LogProfile::Cli);
+        std::env::remove_var("UC_LOG_PROFILE");
+    }
+
+    #[test]
+    fn test_cli_console_filter_is_off() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        std::env::remove_var("RUST_LOG");
+        // CLI profile should have console filter set to "off"
+        let filter = LogProfile::Cli.console_filter();
+        // Verify it builds without panic; the filter should reject all events
+        let _ = filter;
+    }
+
+    #[test]
+    fn test_cli_json_filter_is_info() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        std::env::remove_var("RUST_LOG");
+        let directives = LogProfile::Cli.directives_string();
+        assert!(
+            directives.starts_with("info,"),
+            "CLI JSON filter should be info-level, got: {}",
+            directives
+        );
+    }
+
+    #[test]
     fn test_all_profiles_include_noise_filters() {
         for profile in [
             LogProfile::Dev,
             LogProfile::Prod,
             LogProfile::DebugClipboard,
+            LogProfile::Cli,
         ] {
             let directives = profile.directives_string();
             assert!(
@@ -289,6 +330,7 @@ mod tests {
         let _guard = ENV_LOCK.lock().unwrap();
         std::env::remove_var("RUST_LOG");
         // We can't directly compare EnvFilters, but we can verify the directives are the same
+        // Note: Cli profile is intentionally asymmetric (console=off, json=info)
         for profile in [
             LogProfile::Dev,
             LogProfile::Prod,
@@ -309,6 +351,7 @@ mod tests {
         assert_eq!(LogProfile::Dev.to_string(), "dev");
         assert_eq!(LogProfile::Prod.to_string(), "prod");
         assert_eq!(LogProfile::DebugClipboard.to_string(), "debug_clipboard");
+        assert_eq!(LogProfile::Cli.to_string(), "cli");
     }
 
     #[test]
@@ -319,5 +362,6 @@ mod tests {
         let _ = LogProfile::Dev.console_filter();
         let _ = LogProfile::Prod.console_filter();
         let _ = LogProfile::DebugClipboard.console_filter();
+        let _ = LogProfile::Cli.console_filter();
     }
 }

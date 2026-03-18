@@ -193,6 +193,7 @@ mod tests {
             LogProfile::Dev,
             LogProfile::Prod,
             LogProfile::DebugClipboard,
+            LogProfile::Cli,
         ] {
             let _ = profile.console_filter();
             let _ = profile.json_filter();

@@ -15,6 +15,10 @@ struct Cli {
     #[arg(long, global = true)]
     json: bool,
 
+    /// Enable verbose tracing output (shows debug logs on console)
+    #[arg(long, short, global = true)]
+    verbose: bool,
+
     #[command(subcommand)]
     command: Commands,
 }
@@ -38,9 +42,9 @@ fn main() -> anyhow::Result<()> {
 
     let exit_code = rt.block_on(async {
         match cli.command {
-            Commands::Status => commands::status::run(cli.json).await,
-            Commands::Devices => commands::devices::run(cli.json).await,
-            Commands::SpaceStatus => commands::space_status::run(cli.json).await,
+            Commands::Status => commands::status::run(cli.json, cli.verbose).await,
+            Commands::Devices => commands::devices::run(cli.json, cli.verbose).await,
+            Commands::SpaceStatus => commands::space_status::run(cli.json, cli.verbose).await,
         }
     });
 

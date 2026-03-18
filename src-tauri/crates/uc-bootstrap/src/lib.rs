@@ -21,8 +21,8 @@ pub use assembly::{
     WiringResult,
 };
 pub use builders::{
-    build_cli_context, build_daemon_app, build_gui_app, CliBootstrapContext,
-    DaemonBootstrapContext, GuiBootstrapContext,
+    build_cli_context, build_cli_context_with_profile, build_daemon_app, build_gui_app,
+    CliBootstrapContext, DaemonBootstrapContext, GuiBootstrapContext,
 };
 pub use config::load_config;
 pub use config_resolution::{resolve_app_config, resolve_config_path, ConfigResolutionError};

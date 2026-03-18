@@ -95,33 +95,20 @@ Logic (Unix):
 - Otherwise fall back to `PathBuf::from("/tmp")` (NOT `std::env::temp_dir()` which on macOS returns `$TMPDIR` — a long `/var/folders/.../T/` path that may exceed SUN_LEN).
 - Join with `"uniclipboard-daemon.sock"`.
 - **Length guard**: After joining, check byte length <= 103 (path bytes + NUL terminator <= 104, the sockaddr_un.sun_path limit). Use a helper `fn socket_path_byte_len(path: &Path) -> usize` that on `#[cfg(unix)]` uses `std::os::unix::ffi::OsStrExt::as_bytes().len()` and on other platforms uses `path.as_os_str().len()`. If the XDG_RUNTIME_DIR-based path exceeds this, log a warning and fall back to `/tmp/uniclipboard-daemon.sock`.
-- **Testability**: Two `#[cfg(unix)]` pure internal functions for clean separation of concerns:
-  1. `#[cfg(unix)] sanitize_xdg_runtime_dir(xdg: Option<&str>) -> Option<PathBuf>` — string-level env var cleaning. Returns `None` for `None`, empty, or whitespace-only values. Returns `Some(PathBuf)` for valid non-empty values.
-  2. `#[cfg(unix)] resolve_daemon_socket_path_from(base: Option<&Path>) -> PathBuf` — path-level resolution. Accepts cleaned base directory. `None` falls back to `/tmp`. Joins with socket name. Applies length guard; falls back to `/tmp` if over limit.
-     The public `resolve_daemon_socket_path()` on `#[cfg(unix)]` calls `sanitize_xdg_runtime_dir(env::var("XDG_RUNTIME_DIR").ok().as_deref())` then passes result to `_from`. On `#[cfg(not(unix))]` it simply returns `std::env::temp_dir().join("uniclipboard-daemon.sock")`. Tests use these pure functions directly — no global env var mutation, parallel-safe.
+- **Testability**: Expose a pure internal function `resolve_daemon_socket_path_from(base: Option<&Path>) -> PathBuf` that accepts the base directory as a parameter. The public `resolve_daemon_socket_path()` calls it with the env-var-resolved base. Tests use the `_from` variant directly, avoiding global env var mutation and parallel test pollution.
 - This produces paths like `/tmp/uniclipboard-daemon.sock` (~35 bytes) — well within the 104-byte SUN_LEN limit.
 
 Logic (non-Unix): return `std::env::temp_dir().join("uniclipboard-daemon.sock")`.
 
 Add a `#[cfg(test)]` module with:
 
-**Cross-platform tests** (no cfg guard):
+- `test_socket_path_length`: call `resolve_daemon_socket_path_from(None)` and assert `socket_path_byte_len(&path) <= 103` (byte length via helper; path + NUL must fit in 104-byte sun_path).
+- `test_socket_path_ends_with_sock`: assert filename is `uniclipboard-daemon.sock`.
+- `test_xdg_runtime_dir_override`: call `resolve_daemon_socket_path_from(Some(Path::new("/run/user/1000")))`, verify base directory is used. No global env mutation needed.
+- `test_xdg_runtime_dir_too_long`: call `resolve_daemon_socket_path_from(Some(Path::new("/a]very/long/path/...")))` with a base that would exceed 103 bytes after joining, verify fallback to `/tmp` is used.
+- `test_socket_path_boundary`: call `resolve_daemon_socket_path_from` with a base that produces exactly 103 bytes, verify it succeeds. Call with base that produces 104 bytes, verify fallback.
 
-- `test_socket_path_ends_with_sock`: call `resolve_daemon_socket_path()`, assert filename is `uniclipboard-daemon.sock`.
-
-**Unix-only tests** (`#[cfg(unix)]`):
-
-- `test_socket_path_length`: call `resolve_daemon_socket_path_from(None)` and assert `socket_path_byte_len(&path) <= 103`.
-- `test_xdg_runtime_dir_override`: call `resolve_daemon_socket_path_from(Some(Path::new("/run/user/1000")))`, verify base directory is used.
-- `test_sanitize_xdg_none`: call `sanitize_xdg_runtime_dir(None)`, verify returns `None`.
-- `test_sanitize_xdg_empty`: call `sanitize_xdg_runtime_dir(Some(""))`, verify returns `None`.
-- `test_sanitize_xdg_whitespace_only`: call `sanitize_xdg_runtime_dir(Some("   "))`, verify returns `None`.
-- `test_sanitize_xdg_valid`: call `sanitize_xdg_runtime_dir(Some("/run/user/1000"))`, verify returns `Some(PathBuf::from("/run/user/1000"))`.
-- `test_resolve_from_none`: call `resolve_daemon_socket_path_from(None)`, verify uses `/tmp` as base.
-- `test_xdg_runtime_dir_too_long`: construct a long base with `PathBuf::from("/").join("a".repeat(90))`, verify fallback to `/tmp`.
-- `test_socket_path_boundary`: define `const SOCKET_NAME: &str = "uniclipboard-daemon.sock"` (24 bytes). Compute `max_base_len = 103 - 1 - SOCKET_NAME.len()` = 78. Construct base = `format!("/{}", "x".repeat(max_base_len - 1))` (78 bytes with leading `/`). Verify joined path is exactly 103 bytes and succeeds. Then add one more byte to base (79 bytes), verify fallback to `/tmp`.
-
-All Unix tests use the pure `sanitize_xdg_runtime_dir()` and `resolve_daemon_socket_path_from()` functions directly — no global env var mutation, safe for parallel execution.
+All tests use the pure `resolve_daemon_socket_path_from()` function directly — no global env var mutation, safe for parallel execution.
 
 Update `src-tauri/crates/uc-daemon/src/lib.rs` to add `pub mod socket;`.
 </action>

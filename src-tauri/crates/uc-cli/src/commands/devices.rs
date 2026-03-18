@@ -37,8 +37,14 @@ impl fmt::Display for DeviceListOutput {
 ///
 /// Uses `build_cli_context()` + `build_non_gui_runtime()` to query the device
 /// list directly from the database without requiring the daemon to be running.
-pub async fn run(json: bool) -> i32 {
-    let ctx = match uc_bootstrap::build_cli_context() {
+pub async fn run(json: bool, verbose: bool) -> i32 {
+    let profile = if verbose {
+        Some(uc_observability::LogProfile::Dev)
+    } else {
+        Some(uc_observability::LogProfile::Cli)
+    };
+
+    let ctx = match uc_bootstrap::build_cli_context_with_profile(profile) {
         Ok(c) => c,
         Err(e) => {
             eprintln!("Error: failed to initialize CLI context: {}", e);

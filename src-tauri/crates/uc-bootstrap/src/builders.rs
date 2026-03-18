@@ -94,9 +94,18 @@ pub struct DaemonBootstrapContext {
 
 /// Shared core wiring used by all three builders.
 /// Initializes tracing, resolves config, wires dependencies.
+///
+/// If `log_profile_override` is `Some`, the `UC_LOG_PROFILE` env var is set
+/// before tracing initialization so the subscriber picks up the desired profile.
 fn build_core(
     platform_cmd_tx: mpsc::Sender<PlatformCommand>,
+    log_profile_override: Option<uc_observability::LogProfile>,
 ) -> anyhow::Result<(AppConfig, crate::assembly::WiredDependencies)> {
+    // Apply log profile override before tracing init
+    if let Some(profile) = log_profile_override {
+        std::env::set_var("UC_LOG_PROFILE", profile.to_string());
+    }
+
     // Idempotent -- safe to call multiple times
     crate::tracing::init_tracing_subscriber()?;
 
@@ -122,7 +131,7 @@ pub fn build_gui_app() -> anyhow::Result<GuiBootstrapContext> {
         PlatformCommandReceiver,
     ) = mpsc::channel(100);
 
-    let (config, wired) = build_core(platform_cmd_tx.clone())?;
+    let (config, wired) = build_core(platform_cmd_tx.clone(), None)?;
 
     let deps = wired.deps;
     let background = wired.background;
@@ -202,8 +211,19 @@ pub fn build_gui_app() -> anyhow::Result<GuiBootstrapContext> {
 /// Build CLI bootstrap context. Returns AppDeps for the caller to construct
 /// CoreRuntime as needed. No background workers are started.
 pub fn build_cli_context() -> anyhow::Result<CliBootstrapContext> {
+    build_cli_context_with_profile(Some(uc_observability::LogProfile::Cli))
+}
+
+/// Build CLI bootstrap context with an explicit log profile override.
+///
+/// When `verbose` mode is active, callers pass `Some(LogProfile::Dev)` to
+/// get full console tracing. The default `build_cli_context()` uses `Cli`
+/// profile which suppresses console output.
+pub fn build_cli_context_with_profile(
+    log_profile: Option<uc_observability::LogProfile>,
+) -> anyhow::Result<CliBootstrapContext> {
     let (_platform_cmd_tx, _platform_cmd_rx) = mpsc::channel(100);
-    let (config, wired) = build_core(_platform_cmd_tx)?;
+    let (config, wired) = build_core(_platform_cmd_tx, log_profile)?;
 
     // [Codex Review R1] Return AppDeps, not CoreRuntime.
     // CLI entry point constructs CoreRuntime itself with appropriate emitter.
@@ -226,7 +246,7 @@ pub fn build_daemon_app() -> anyhow::Result<DaemonBootstrapContext> {
         PlatformCommandReceiver,
     ) = mpsc::channel(100);
 
-    let (config, wired) = build_core(platform_cmd_tx.clone())?;
+    let (config, wired) = build_core(platform_cmd_tx.clone(), None)?;
     let storage_paths = get_storage_paths(&config)?;
 
     Ok(DaemonBootstrapContext {

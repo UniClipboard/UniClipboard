@@ -49,7 +49,7 @@ fn resolve_socket_path() -> std::path::PathBuf {
 /// Connects to the daemon via Unix domain socket, sends a JSON-RPC `status`
 /// request, and prints the response.
 #[cfg(unix)]
-pub async fn run(json: bool) -> i32 {
+pub async fn run(json: bool, _verbose: bool) -> i32 {
     use std::time::Duration;
     use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
     use tokio::net::UnixStream;
@@ -185,7 +185,7 @@ pub async fn run(json: bool) -> i32 {
 ///
 /// Unix socket RPC is not supported on non-Unix platforms.
 #[cfg(not(unix))]
-pub async fn run(_json: bool) -> i32 {
+pub async fn run(_json: bool, _verbose: bool) -> i32 {
     eprintln!("Unix socket RPC not supported on this platform");
     exit_codes::EXIT_ERROR
 }

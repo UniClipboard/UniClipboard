@@ -8972,6 +8972,7 @@ dependencies = [
  "uc-bootstrap",
  "uc-core",
  "uc-daemon",
+ "uc-observability",
 ]
 
 [[package]]

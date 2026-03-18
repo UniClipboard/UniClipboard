@@ -113,7 +113,9 @@ pub fn init_tracing_subscriber() -> anyhow::Result<()> {
 
         Some(sentry_tracing::layer())
     } else {
-        eprintln!("Sentry DSN not set, disabling Sentry");
+        // No eprintln here -- it pollutes CLI output. The absence of Sentry
+        // is a normal condition and will be visible in the JSON log file via
+        // the tracing::info! at the end of initialization.
         None
     };
 

@@ -53,8 +53,6 @@ mod tests {
         let state = RuntimeState::new(vec![]);
         // Sleep briefly to ensure elapsed time > 0
         std::thread::sleep(std::time::Duration::from_millis(10));
-        assert!(state.uptime_seconds() >= 0, "uptime should be non-negative");
-        // More meaningful: elapsed().as_millis() > 0
         assert!(
             state.start_time.elapsed().as_millis() > 0,
             "elapsed time should be > 0 after sleep"

@@ -64,10 +64,7 @@ use uc_core::ports::*;
 use uc_core::security::model::{KeySlot, KeySlotFile};
 use uc_core::security::space_access::event::SpaceAccessEvent;
 use uc_core::security::space_access::{deny_reason_from_code, DENY_REASON_INVALID_PROOF};
-use uc_infra::clipboard::{
-    BackgroundBlobWorker, SpoolJanitor, SpoolScanner,
-    SpoolerTask,
-};
+use uc_infra::clipboard::{BackgroundBlobWorker, SpoolJanitor, SpoolScanner, SpoolerTask};
 use uc_infra::fs::key_slot_store::KeySlotStore;
 use uc_infra::Timer;
 // Re-export assembly types from uc-bootstrap (via the thin stub in super::assembly).
@@ -2258,7 +2255,7 @@ mod tests {
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::Mutex;
     use std::time::Duration;
-    use tauri::{Emitter, Listener, Wry};
+    use tauri::{Emitter, Listener};
     use tokio::sync::{mpsc, Mutex as TokioMutex};
     use tracing_subscriber::fmt::writer::MakeWriter;
     // Types from assembly.rs that are needed for tests in this module

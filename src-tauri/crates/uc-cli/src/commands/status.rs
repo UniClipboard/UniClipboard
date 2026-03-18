@@ -31,19 +31,6 @@ fn format_uptime(seconds: u64) -> String {
     parts.join(" ")
 }
 
-/// Resolve the Unix domain socket path for daemon RPC.
-///
-/// Uses the XDG runtime directory if available, otherwise falls back to
-/// the system temp directory. The socket file is always named
-/// `uniclipboard-daemon.sock`.
-#[cfg(unix)]
-fn resolve_socket_path() -> std::path::PathBuf {
-    let dir = std::env::var("XDG_RUNTIME_DIR")
-        .map(std::path::PathBuf::from)
-        .unwrap_or_else(|_| std::env::temp_dir());
-    dir.join("uniclipboard-daemon.sock")
-}
-
 /// Run the status command (Unix platforms).
 ///
 /// Connects to the daemon via Unix domain socket, sends a JSON-RPC `status`
@@ -54,8 +41,9 @@ pub async fn run(json: bool, _verbose: bool) -> i32 {
     use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
     use tokio::net::UnixStream;
     use uc_daemon::rpc::types::{RpcRequest, RpcResponse, StatusResponse};
+    use uc_daemon::socket::resolve_daemon_socket_path;
 
-    let socket_path = resolve_socket_path();
+    let socket_path = resolve_daemon_socket_path();
 
     // Connect with 2-second timeout
     let stream =

@@ -178,7 +178,7 @@ Plans:
 5. Exit codes are stable: 0 on success, 1 on error, 5 when daemon is unreachable
 6. DaemonWorker trait exists; placeholder clipboard watcher and peer discovery workers implement it and are registered with DaemonApp
 
-**Plans:** 3 plans
+**Plans:** 1/3 plans executed
 
 Plans:
 
@@ -188,14 +188,14 @@ Plans:
 
 ## Progress
 
-| Phase                            | Milestone | Plans Complete | Status      | Completed  |
-| -------------------------------- | --------- | -------------- | ----------- | ---------- |
-| 1-9                              | v0.1.0    | 17/17          | Complete    | 2026-03-06 |
-| 10-18                            | v0.2.0    | 22/22          | Complete    | 2026-03-09 |
-| 19-35                            | v0.3.0    | 51/51          | Complete    | 2026-03-17 |
-| 36. Event Emitter Abstraction    | 2/2       | Complete       | 2026-03-17  | -          |
-| 37. Wiring Decomposition         | 5/5       | Complete       | 2026-03-18  | 2026-03-17 |
-| 38. CoreRuntime Extraction       | 3/3       | Complete       | 2026-03-18  | -          |
-| 39. Config Resolution Extraction | 2/2       | Complete       | 2026-03-18  | -          |
-| 40. uc-bootstrap Crate           | 2/3       | In Progress    |             | -          |
-| 41. Daemon and CLI Skeletons     | v0.4.0    | 0/3            | Not started | -          |
+| Phase                            | Milestone | Plans Complete | Status     | Completed  |
+| -------------------------------- | --------- | -------------- | ---------- | ---------- |
+| 1-9                              | v0.1.0    | 17/17          | Complete   | 2026-03-06 |
+| 10-18                            | v0.2.0    | 22/22          | Complete   | 2026-03-09 |
+| 19-35                            | v0.3.0    | 51/51          | Complete   | 2026-03-17 |
+| 36. Event Emitter Abstraction    | 2/2       | Complete       | 2026-03-17 | -          |
+| 37. Wiring Decomposition         | 5/5       | Complete       | 2026-03-18 | 2026-03-17 |
+| 38. CoreRuntime Extraction       | 3/3       | Complete       | 2026-03-18 | -          |
+| 39. Config Resolution Extraction | 2/2       | Complete       | 2026-03-18 | -          |
+| 40. uc-bootstrap Crate           | 2/3       | In Progress    |            | -          |
+| 41. Daemon and CLI Skeletons     | 1/3       | In Progress    |            | -          |

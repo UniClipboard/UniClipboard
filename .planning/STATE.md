@@ -10,8 +10,8 @@ progress:
   total_phases: 6
   completed_phases: 4
   total_plans: 15
-  completed_plans: 14
-  percent: 87
+  completed_plans: 15
+  percent: 90
 ---
 
 # Project State
@@ -25,12 +25,12 @@ See: .planning/PROJECT.md (updated 2026-03-17)
 
 ## Current Position
 
-Phase: 40 of 41 (uc-bootstrap Crate)
-Plan: 40-02 complete. 40-03 is next.
+Phase: 41 of 41 (daemon-and-cli-skeletons)
+Plan: 1 of 3 complete. 41-02 is next.
 Status: Executing
-Last activity: 2026-03-18 — Plan 40-02 complete (scene-specific builders: build_gui_app, build_cli_context, build_daemon_app)
+Last activity: 2026-03-18 — Plan 41-01 complete (non-GUI runtime + uc-daemon crate foundation)
 
-Progress: [█████████░] 87%
+Progress: [█████████░] 90%
 
 ## Performance Metrics
 
@@ -60,6 +60,7 @@ _Updated after each plan completion_
 | Phase 39-config-resolution-extraction P02 | 3 | 1 tasks | 1 files |
 | Phase 40-uc-bootstrap-crate P01 | 14 | 2 tasks | 16 files |
 | Phase 40-uc-bootstrap-crate P02 | 2 | 1 tasks | 2 files |
+| Phase 41-daemon-and-cli-skeletons P01 | 7 | 3 tasks | 13 files |
 
 ## Accumulated Context
 
@@ -97,6 +98,8 @@ Recent decisions affecting current work:
 - [Phase 40]: Idempotent tracing: TRACING_INITIALIZED OnceLock guard allows safe multiple init_tracing_subscriber calls
 - [Phase 40]: Builders return AppDeps (not CoreRuntime) per Codex Review R1 -- callers construct CoreRuntime with appropriate emitter/lifecycle
 - [Phase 40]: GUI builder uses standalone tokio::runtime::Builder (not tauri::async_runtime) to keep uc-bootstrap tauri-free
+- [Phase 41]: ClipboardIntegrationMode::Passive used for non-GUI modes (Disabled variant does not exist); Passive correctly disables OS clipboard observation
+- [Phase 41]: DaemonWorker trait: async start(CancellationToken), async stop(), sync health_check() -> WorkerHealth; RuntimeState is snapshot-only (no worker ownership)
 
 ### Roadmap Evolution
 
@@ -118,6 +121,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-18T11:59:18.394Z
-Stopped at: Phase 41 context gathered
-Resume file: .planning/phases/41-daemon-and-cli-skeletons/41-CONTEXT.md
+Last session: 2026-03-18T13:54:45Z
+Stopped at: Completed 41-01-PLAN.md
+Resume file: .planning/phases/41-daemon-and-cli-skeletons/41-02-PLAN.md

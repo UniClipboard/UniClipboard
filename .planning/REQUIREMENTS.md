@@ -34,8 +34,8 @@ Requirements for runtime mode separation. Each maps to roadmap phases.
 
 - [ ] **DAEM-01**: uc-daemon crate exists with DaemonApp struct supporting startup and graceful shutdown
 - [ ] **DAEM-02**: Daemon exposes local RPC server with ping and status commands
-- [ ] **DAEM-03**: Daemon has DaemonWorker trait abstraction with placeholder workers (clipboard watcher, peer discovery)
-- [ ] **DAEM-04**: Daemon maintains RuntimeState with uptime, worker health, and connected peers summary
+- [x] **DAEM-03**: Daemon has DaemonWorker trait abstraction with placeholder workers (clipboard watcher, peer discovery)
+- [x] **DAEM-04**: Daemon maintains RuntimeState with uptime, worker health, and connected peers summary
 
 ### CLI Skeleton
 
@@ -92,8 +92,8 @@ Requirements for runtime mode separation. Each maps to roadmap phases.
 | RNTM-04     | 40    | Complete |
 | DAEM-01     | 41    | Pending  |
 | DAEM-02     | 41    | Pending  |
-| DAEM-03     | 41    | Pending  |
-| DAEM-04     | 41    | Pending  |
+| DAEM-03     | 41    | Complete |
+| DAEM-04     | 41    | Complete |
 | CLI-01      | 41    | Pending  |
 | CLI-02      | 41    | Pending  |
 | CLI-03      | 41    | Pending  |

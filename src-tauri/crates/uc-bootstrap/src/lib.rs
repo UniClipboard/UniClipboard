@@ -10,6 +10,7 @@ pub mod builders;
 pub mod config;
 pub mod config_resolution;
 pub mod init;
+pub mod non_gui_runtime;
 pub mod tracing;
 
 // Re-export primary public items
@@ -19,11 +20,12 @@ pub use assembly::{
     BackgroundRuntimeDeps, HostEventSetupPort, SetupAssemblyPorts, WiredDependencies, WiringError,
     WiringResult,
 };
-pub use config::load_config;
-pub use config_resolution::{resolve_app_config, resolve_config_path, ConfigResolutionError};
-pub use init::ensure_default_device_name;
 pub use builders::{
     build_cli_context, build_daemon_app, build_gui_app, CliBootstrapContext,
     DaemonBootstrapContext, GuiBootstrapContext,
 };
+pub use config::load_config;
+pub use config_resolution::{resolve_app_config, resolve_config_path, ConfigResolutionError};
+pub use init::ensure_default_device_name;
+pub use non_gui_runtime::{build_non_gui_runtime, LoggingHostEventEmitter};
 pub use tracing::init_tracing_subscriber;

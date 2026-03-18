@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v0.1
 milestone_name: milestone
 status: executing
-stopped_at: Completed 40-01-PLAN.md
-last_updated: "2026-03-18T11:05:56.505Z"
-last_activity: 2026-03-18 — Plan 40-01 complete (uc-bootstrap crate created with moved modules, idempotent tracing)
+stopped_at: Phase 41 context gathered
+last_updated: '2026-03-18T11:59:18.396Z'
+last_activity: '2026-03-18 — Plan 40-02 complete (scene-specific builders: build_gui_app, build_cli_context, build_daemon_app)'
 progress:
   total_phases: 6
   completed_phases: 4
   total_plans: 15
-  completed_plans: 13
-  percent: 0
+  completed_plans: 14
+  percent: 87
 ---
 
 # Project State
@@ -93,7 +93,7 @@ Recent decisions affecting current work:
 - [Phase 39]: resolve_app_config() returns Result<AppConfig, ConfigResolutionError> with typed enum variants for InvalidConfig and PlatformDirsFailed
 - [Phase 39]: main.rs imports uc_tauri::bootstrap::resolve_app_config via bootstrap/mod.rs re-export; storage_paths moved before key_slot_store construction so vault_dir is available
 - [Phase 40]: Assembly helpers widened to pub for cross-crate test access; PlatformLayer made pub in uc-bootstrap
-- [Phase 40]: Re-export stub pattern: uc-tauri bootstrap modules become thin pub use uc_bootstrap::module::* stubs
+- [Phase 40]: Re-export stub pattern: uc-tauri bootstrap modules become thin pub use uc_bootstrap::module::\* stubs
 - [Phase 40]: Idempotent tracing: TRACING_INITIALIZED OnceLock guard allows safe multiple init_tracing_subscriber calls
 - [Phase 40]: Builders return AppDeps (not CoreRuntime) per Codex Review R1 -- callers construct CoreRuntime with appropriate emitter/lifecycle
 - [Phase 40]: GUI builder uses standalone tokio::runtime::Builder (not tauri::async_runtime) to keep uc-bootstrap tauri-free
@@ -118,6 +118,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-18T11:11:30Z
-Stopped at: Completed 40-02-PLAN.md
-Resume file: None
+Last session: 2026-03-18T11:59:18.394Z
+Stopped at: Phase 41 context gathered
+Resume file: .planning/phases/41-daemon-and-cli-skeletons/41-CONTEXT.md

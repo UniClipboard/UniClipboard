@@ -9227,9 +9227,8 @@ dependencies = [
  "tempfile",
  "tokio",
  "tracing",
- "uc-app",
+ "uc-bootstrap",
  "uc-core",
- "uc-infra",
  "uc-platform",
  "uc-tauri",
 ]

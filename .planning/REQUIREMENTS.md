@@ -24,11 +24,11 @@ Requirements for runtime mode separation. Each maps to roadmap phases.
 
 ### Bootstrap Crate
 
-- [ ] **BOOT-01**: uc-bootstrap crate exists as sole composition root, depending on uc-core + uc-app + uc-infra + uc-platform
+- [x] **BOOT-01**: uc-bootstrap crate exists as sole composition root, depending on uc-core + uc-app + uc-infra + uc-platform
 - [ ] **BOOT-02**: uc-bootstrap provides build_cli_context() returning CLI-ready dependencies
 - [ ] **BOOT-03**: uc-bootstrap provides build_daemon_app() returning daemon-ready dependencies with workers
 - [ ] **BOOT-04**: uc-tauri depends on uc-bootstrap instead of directly on uc-infra + uc-platform
-- [ ] **BOOT-05**: Logging initialization unified in uc-bootstrap (not duplicated per entry point)
+- [x] **BOOT-05**: Logging initialization unified in uc-bootstrap (not duplicated per entry point)
 
 ### Daemon Skeleton
 
@@ -84,11 +84,11 @@ Requirements for runtime mode separation. Each maps to roadmap phases.
 | RNTM-01     | 38    | Complete |
 | RNTM-05     | 38    | Complete |
 | RNTM-03     | 39    | Complete |
-| BOOT-01     | 40    | Pending  |
+| BOOT-01     | 40    | Complete |
 | BOOT-02     | 40    | Pending  |
 | BOOT-03     | 40    | Pending  |
 | BOOT-04     | 40    | Pending  |
-| BOOT-05     | 40    | Pending  |
+| BOOT-05     | 40    | Complete |
 | RNTM-04     | 40    | Pending  |
 | DAEM-01     | 41    | Pending  |
 | DAEM-02     | 41    | Pending  |

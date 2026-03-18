@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v0.1
 milestone_name: milestone
 status: executing
-stopped_at: Phase 40 context gathered
-last_updated: '2026-03-18T09:34:14.308Z'
-last_activity: 2026-03-17 — Plan 37-03 complete (wiring.rs split into assembly.rs; AppHandle removed from start_background_tasks)
+stopped_at: Completed 40-01-PLAN.md
+last_updated: "2026-03-18T11:05:56.505Z"
+last_activity: 2026-03-18 — Plan 40-01 complete (uc-bootstrap crate created with moved modules, idempotent tracing)
 progress:
   total_phases: 6
   completed_phases: 4
-  total_plans: 12
-  completed_plans: 12
+  total_plans: 15
+  completed_plans: 13
   percent: 0
 ---
 
@@ -25,12 +25,12 @@ See: .planning/PROJECT.md (updated 2026-03-17)
 
 ## Current Position
 
-Phase: 37 of 41 (Wiring Decomposition) — COMPLETE
-Plan: 37-01, 37-02, 37-03 all complete. Phase 38 is next.
+Phase: 40 of 41 (uc-bootstrap Crate)
+Plan: 40-01 complete. 40-02 is next.
 Status: Executing
-Last activity: 2026-03-17 — Plan 37-03 complete (wiring.rs split into assembly.rs; AppHandle removed from start_background_tasks)
+Last activity: 2026-03-18 — Plan 40-01 complete (uc-bootstrap crate created with moved modules, idempotent tracing)
 
-Progress: [░░░░░░░░░░] 0%
+Progress: [█████████░] 87%
 
 ## Performance Metrics
 
@@ -58,6 +58,7 @@ _Updated after each plan completion_
 | Phase 38-coreruntime-extraction P03 | 60 | 2 tasks | 6 files |
 | Phase 39-config-resolution-extraction P01 | 4 | 2 tasks | 3 files |
 | Phase 39-config-resolution-extraction P02 | 3 | 1 tasks | 1 files |
+| Phase 40-uc-bootstrap-crate P01 | 14 | 2 tasks | 16 files |
 
 ## Accumulated Context
 
@@ -90,6 +91,9 @@ Recent decisions affecting current work:
 - [Phase 39]: config_resolution.rs in uc-tauri/bootstrap/ (not uc-app) — DirsAppDirsAdapter (uc-platform) cannot be a prod dep of uc-app
 - [Phase 39]: resolve_app_config() returns Result<AppConfig, ConfigResolutionError> with typed enum variants for InvalidConfig and PlatformDirsFailed
 - [Phase 39]: main.rs imports uc_tauri::bootstrap::resolve_app_config via bootstrap/mod.rs re-export; storage_paths moved before key_slot_store construction so vault_dir is available
+- [Phase 40]: Assembly helpers widened to pub for cross-crate test access; PlatformLayer made pub in uc-bootstrap
+- [Phase 40]: Re-export stub pattern: uc-tauri bootstrap modules become thin pub use uc_bootstrap::module::* stubs
+- [Phase 40]: Idempotent tracing: TRACING_INITIALIZED OnceLock guard allows safe multiple init_tracing_subscriber calls
 
 ### Roadmap Evolution
 
@@ -111,6 +115,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-18T09:34:14.306Z
-Stopped at: Phase 40 context gathered
-Resume file: .planning/phases/40-uc-bootstrap-crate/40-CONTEXT.md
+Last session: 2026-03-18T11:05:56.503Z
+Stopped at: Completed 40-01-PLAN.md
+Resume file: None

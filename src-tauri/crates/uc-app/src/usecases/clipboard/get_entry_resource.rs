@@ -1,12 +1,25 @@
 use anyhow::Result;
 use std::sync::Arc;
 
+#[cfg(not(test))]
+use uc_core::{
+    ids::EntryId,
+    ports::clipboard::ResolvedClipboardPayload,
+    ports::{
+        ClipboardEntryRepositoryPort, ClipboardPayloadResolverPort,
+        ClipboardRepresentationRepositoryPort, ClipboardSelectionRepositoryPort,
+    },
+    BlobId,
+};
+
+#[cfg(test)]
 use uc_core::{
     clipboard::MimeType,
     ids::EntryId,
+    ports::clipboard::ResolvedClipboardPayload,
     ports::{
-        ClipboardEntryRepositoryPort, ClipboardRepresentationRepositoryPort,
-        ClipboardSelectionRepositoryPort,
+        ClipboardEntryRepositoryPort, ClipboardPayloadResolverPort,
+        ClipboardRepresentationRepositoryPort, ClipboardSelectionRepositoryPort,
     },
     BlobId,
 };
@@ -17,6 +30,7 @@ pub struct GetEntryResourceUseCase {
     entry_repo: Arc<dyn ClipboardEntryRepositoryPort>,
     selection_repo: Arc<dyn ClipboardSelectionRepositoryPort>,
     representation_repo: Arc<dyn ClipboardRepresentationRepositoryPort>,
+    payload_resolver: Arc<dyn ClipboardPayloadResolverPort>,
 }
 
 /// Resource metadata result from GetEntryResourceUseCase
@@ -38,11 +52,13 @@ impl GetEntryResourceUseCase {
         entry_repo: Arc<dyn ClipboardEntryRepositoryPort>,
         selection_repo: Arc<dyn ClipboardSelectionRepositoryPort>,
         representation_repo: Arc<dyn ClipboardRepresentationRepositoryPort>,
+        payload_resolver: Arc<dyn ClipboardPayloadResolverPort>,
     ) -> Self {
         Self {
             entry_repo,
             selection_repo,
             representation_repo,
+            payload_resolver,
         }
     }
 
@@ -65,32 +81,28 @@ impl GetEntryResourceUseCase {
             .await?
             .ok_or(anyhow::anyhow!("Preview representation not found"))?;
 
-        let mime_type_str = preview_rep.mime_type.as_ref().map(MimeType::as_str);
+        // Use payload resolver to handle Staged/Processing states correctly
+        // This will attempt to get bytes from cache/spool when blob is not yet materialized
+        let payload = self.payload_resolver.resolve(&preview_rep).await?;
 
-        match preview_rep.blob_id.clone() {
-            Some(blob_id) => {
-                // Blob-backed content: return URL for fetching
+        match payload {
+            ResolvedClipboardPayload::Inline { mime, bytes } => Ok(EntryResourceResult {
+                entry_id: entry.entry_id.to_string(),
+                blob_id: None,
+                mime_type: Some(mime),
+                size_bytes: preview_rep.size_bytes,
+                url: None,
+                inline_data: Some(bytes),
+            }),
+            ResolvedClipboardPayload::BlobRef { mime, blob_id } => {
+                let blob_id_clone = blob_id.clone();
                 Ok(EntryResourceResult {
                     entry_id: entry.entry_id.to_string(),
-                    blob_id: Some(blob_id.clone()),
-                    mime_type: mime_type_str.map(String::from),
+                    blob_id: Some(blob_id),
+                    mime_type: Some(mime),
                     size_bytes: preview_rep.size_bytes,
-                    url: Some(format!("uc://blob/{}", blob_id)),
+                    url: Some(format!("uc://blob/{}", blob_id_clone)),
                     inline_data: None,
-                })
-            }
-            None => {
-                // Inline content: return data directly
-                let inline_data = preview_rep.inline_data.clone().ok_or(anyhow::anyhow!(
-                    "Preview representation has neither blob_id nor inline_data"
-                ))?;
-                Ok(EntryResourceResult {
-                    entry_id: entry.entry_id.to_string(),
-                    blob_id: None,
-                    mime_type: mime_type_str.map(String::from),
-                    size_bytes: preview_rep.size_bytes,
-                    url: None,
-                    inline_data: Some(inline_data),
                 })
             }
         }
@@ -106,6 +118,7 @@ mod tests {
         PersistedClipboardRepresentation, SelectionPolicyVersion,
     };
     use uc_core::ids::{EventId, FormatId, RepresentationId};
+    use uc_core::ports::clipboard::ResolvedClipboardPayload;
 
     struct MockEntryRepository {
         entry: Option<ClipboardEntry>,
@@ -117,6 +130,38 @@ mod tests {
 
     struct MockRepresentationRepository {
         rep: Option<PersistedClipboardRepresentation>,
+    }
+
+    struct MockPayloadResolver {
+        payload: Option<ResolvedClipboardPayload>,
+    }
+
+    impl MockPayloadResolver {
+        fn new() -> Self {
+            Self { payload: None }
+        }
+
+        fn with_inline_payload(mut self, mime: String, bytes: Vec<u8>) -> Self {
+            self.payload = Some(ResolvedClipboardPayload::Inline { mime, bytes });
+            self
+        }
+
+        fn with_blob_ref_payload(mut self, mime: String, blob_id: BlobId) -> Self {
+            self.payload = Some(ResolvedClipboardPayload::BlobRef { mime, blob_id });
+            self
+        }
+    }
+
+    #[async_trait]
+    impl ClipboardPayloadResolverPort for MockPayloadResolver {
+        async fn resolve(
+            &self,
+            _representation: &PersistedClipboardRepresentation,
+        ) -> anyhow::Result<ResolvedClipboardPayload> {
+            self.payload
+                .clone()
+                .ok_or_else(|| anyhow::anyhow!("Payload not available"))
+        }
     }
 
     #[async_trait]
@@ -242,6 +287,10 @@ mod tests {
             Arc::new(MockRepresentationRepository {
                 rep: Some(representation),
             }),
+            Arc::new(
+                MockPayloadResolver::new()
+                    .with_blob_ref_payload("text/plain".to_string(), BlobId::from("blob-1")),
+            ),
         );
 
         let result = uc.execute(&entry_id).await.unwrap();
@@ -289,6 +338,10 @@ mod tests {
             Arc::new(MockRepresentationRepository {
                 rep: Some(representation),
             }),
+            Arc::new(
+                MockPayloadResolver::new()
+                    .with_inline_payload("text/plain".to_string(), b"Hello, world!".to_vec()),
+            ),
         );
 
         let result = uc.execute(&entry_id).await.unwrap();

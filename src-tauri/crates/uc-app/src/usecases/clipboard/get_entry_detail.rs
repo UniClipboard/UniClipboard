@@ -4,9 +4,10 @@ use std::sync::Arc;
 use uc_core::{
     clipboard::MimeType,
     ids::EntryId,
+    ports::clipboard::ResolvedClipboardPayload,
     ports::{
-        BlobStorePort, ClipboardEntryRepositoryPort, ClipboardRepresentationRepositoryPort,
-        ClipboardSelectionRepositoryPort,
+        BlobStorePort, ClipboardEntryRepositoryPort, ClipboardPayloadResolverPort,
+        ClipboardRepresentationRepositoryPort, ClipboardSelectionRepositoryPort,
     },
 };
 
@@ -17,6 +18,7 @@ pub struct GetEntryDetailUseCase {
     selection_repo: Arc<dyn ClipboardSelectionRepositoryPort>,
     representation_repo: Arc<dyn ClipboardRepresentationRepositoryPort>,
     blob_store: Arc<dyn BlobStorePort>,
+    payload_resolver: Arc<dyn ClipboardPayloadResolverPort>,
 }
 
 /// Detail result from GetEntryDetailUseCase
@@ -37,12 +39,14 @@ impl GetEntryDetailUseCase {
         selection_repo: Arc<dyn ClipboardSelectionRepositoryPort>,
         representation_repo: Arc<dyn ClipboardRepresentationRepositoryPort>,
         blob_store: Arc<dyn BlobStorePort>,
+        payload_resolver: Arc<dyn ClipboardPayloadResolverPort>,
     ) -> Self {
         Self {
             entry_repo,
             selection_repo,
             representation_repo,
             blob_store,
+            payload_resolver,
         }
     }
 
@@ -72,17 +76,18 @@ impl GetEntryDetailUseCase {
 
         let mime_type_str = preview_rep.mime_type.as_ref().map(|mt| mt.as_str());
 
-        let full_content = if let Some(blob_id) = &preview_rep.blob_id {
-            let blob_content = self.blob_store.get(blob_id).await?;
-            String::from_utf8_lossy(&blob_content).to_string()
-        } else {
-            String::from_utf8_lossy(
-                preview_rep
-                    .inline_data
-                    .as_ref()
-                    .ok_or(anyhow::anyhow!("No inline data"))?,
-            )
-            .to_string()
+        // Use payload resolver to handle Staged/Processing states correctly
+        // This will attempt to get bytes from cache/spool when blob is not yet materialized
+        let payload = self.payload_resolver.resolve(&preview_rep).await?;
+
+        let full_content = match payload {
+            ResolvedClipboardPayload::Inline { bytes, .. } => {
+                String::from_utf8_lossy(&bytes).to_string()
+            }
+            ResolvedClipboardPayload::BlobRef { blob_id, .. } => {
+                let blob_content = self.blob_store.get(&blob_id).await?;
+                String::from_utf8_lossy(&blob_content).to_string()
+            }
         };
 
         Ok(EntryDetailResult {

@@ -14,8 +14,9 @@ use std::sync::Arc;
 use tokio::sync::mpsc;
 use uc_core::ids::RepresentationId;
 use uc_core::ports::clipboard::{
-    ClipboardChangeOriginPort, ClipboardRepresentationNormalizerPort, RepresentationCachePort,
-    SpoolQueuePort, SystemClipboardPort, ThumbnailGeneratorPort, ThumbnailRepositoryPort,
+    ClipboardChangeOriginPort, ClipboardPayloadResolverPort, ClipboardRepresentationNormalizerPort,
+    RepresentationCachePort, SpoolQueuePort, SystemClipboardPort, ThumbnailGeneratorPort,
+    ThumbnailRepositoryPort,
 };
 use uc_core::ports::file_manager::FileManagerPort;
 use uc_core::ports::file_transport::FileTransportPort;
@@ -56,6 +57,7 @@ pub struct ClipboardPorts {
     pub spool_queue: Arc<dyn SpoolQueuePort>,
     pub clipboard_change_origin: Arc<dyn ClipboardChangeOriginPort>,
     pub worker_tx: mpsc::Sender<RepresentationId>,
+    pub payload_resolver: Arc<dyn ClipboardPayloadResolverPort>,
 }
 
 /// Security-domain ports bundle.

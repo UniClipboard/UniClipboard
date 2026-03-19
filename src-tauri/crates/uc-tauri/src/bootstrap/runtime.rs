@@ -548,6 +548,7 @@ impl<'a> UseCases<'a> {
             self.runtime.deps.clipboard.selection_repo.clone(),
             self.runtime.deps.clipboard.representation_repo.clone(),
             self.runtime.deps.storage.blob_store.clone(),
+            self.runtime.deps.clipboard.payload_resolver.clone(),
         )
     }
 
@@ -561,6 +562,7 @@ impl<'a> UseCases<'a> {
             self.runtime.deps.clipboard.clipboard_entry_repo.clone(),
             self.runtime.deps.clipboard.selection_repo.clone(),
             self.runtime.deps.clipboard.representation_repo.clone(),
+            self.runtime.deps.clipboard.payload_resolver.clone(),
         )
     }
 

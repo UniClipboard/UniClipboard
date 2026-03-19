@@ -77,9 +77,9 @@ use uc_core::settings::model::Settings;
 use uc_core::setup::SetupState;
 use uc_infra::blob::BlobWriter;
 use uc_infra::clipboard::{
-    BackgroundBlobWorker, ClipboardRepresentationNormalizer, InMemoryClipboardChangeOrigin,
-    InfraThumbnailGenerator, MpscSpoolQueue, RepresentationCache, SpoolJanitor, SpoolManager,
-    SpoolScanner, SpoolerTask,
+    BackgroundBlobWorker, ClipboardPayloadResolver, ClipboardRepresentationNormalizer,
+    InMemoryClipboardChangeOrigin, InfraThumbnailGenerator, MpscSpoolQueue, RepresentationCache,
+    SpoolJanitor, SpoolManager, SpoolScanner, SpoolerTask,
 };
 use uc_infra::config::ClipboardStorageConfig;
 use uc_infra::db::executor::DieselSqliteExecutor;
@@ -1077,6 +1077,14 @@ pub fn wire_dependencies_with_identity_store(
     let clipboard_change_origin: Arc<dyn ClipboardChangeOriginPort> =
         Arc::new(InMemoryClipboardChangeOrigin::new());
 
+    // Create payload resolver for resolving staged/processing payloads
+    let payload_resolver: Arc<dyn uc_core::ports::clipboard::ClipboardPayloadResolverPort> =
+        Arc::new(ClipboardPayloadResolver::new(
+            representation_cache.clone(),
+            spool_manager.clone(),
+            worker_tx.clone(),
+        ));
+
     // Step 4: Construct AppDeps with all dependencies
     // 步骤 4：使用所有依赖构造 AppDeps
     let deps = AppDeps {
@@ -1093,6 +1101,7 @@ pub fn wire_dependencies_with_identity_store(
             spool_queue,
             clipboard_change_origin,
             worker_tx,
+            payload_resolver,
         },
         security: SecurityPorts {
             encryption: infra.encryption,

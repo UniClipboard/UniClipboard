@@ -193,7 +193,8 @@ mod tests {
     use uc_core::ids::{FormatId, RepresentationId};
     use uc_core::network::{PairedDevice, PairingState};
     use uc_core::ports::clipboard::{
-        ProcessingUpdateOutcome, RepresentationCachePort, SpoolQueuePort, SpoolRequest,
+        ClipboardPayloadResolverPort, ProcessingUpdateOutcome, RepresentationCachePort,
+        ResolvedClipboardPayload, SpoolQueuePort, SpoolRequest,
     };
     use uc_core::ports::errors::{DeviceRepositoryError, PairedDeviceRepositoryError};
     use uc_core::ports::security::encryption_state::EncryptionStatePort;
@@ -437,6 +438,16 @@ mod tests {
     impl SpoolQueuePort for NoopPort {
         async fn enqueue(&self, _request: SpoolRequest) -> anyhow::Result<()> {
             Ok(())
+        }
+    }
+
+    #[async_trait]
+    impl ClipboardPayloadResolverPort for NoopPort {
+        async fn resolve(
+            &self,
+            _representation: &PersistedClipboardRepresentation,
+        ) -> anyhow::Result<ResolvedClipboardPayload> {
+            Err(anyhow::anyhow!("NoopPayloadResolver"))
         }
     }
 
@@ -895,6 +906,7 @@ mod tests {
                 spool_queue: Arc::new(NoopPort),
                 clipboard_change_origin: origin_port,
                 worker_tx,
+                payload_resolver: Arc::new(NoopPort),
             },
             security: uc_app::SecurityPorts {
                 encryption: Arc::new(MockEncryption),

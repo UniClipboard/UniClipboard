@@ -685,8 +685,9 @@ mod tests {
     };
     use uc_core::ids::{EntryId, EventId, FormatId, RepresentationId};
     use uc_core::ports::clipboard::{
-        GeneratedThumbnail, ProcessingUpdateOutcome, RepresentationCachePort, SpoolQueuePort,
-        SpoolRequest, ThumbnailGeneratorPort, ThumbnailRepositoryPort,
+        ClipboardPayloadResolverPort, GeneratedThumbnail, ProcessingUpdateOutcome,
+        RepresentationCachePort, ResolvedClipboardPayload, SpoolQueuePort, SpoolRequest,
+        ThumbnailGeneratorPort, ThumbnailRepositoryPort,
     };
     use uc_core::ports::security::encryption_state::EncryptionStatePort;
     use uc_core::ports::security::key_scope::KeyScopePort;
@@ -943,6 +944,16 @@ mod tests {
     impl SpoolQueuePort for NoopPort {
         async fn enqueue(&self, _request: SpoolRequest) -> anyhow::Result<()> {
             Ok(())
+        }
+    }
+
+    #[async_trait]
+    impl ClipboardPayloadResolverPort for NoopPort {
+        async fn resolve(
+            &self,
+            _representation: &uc_core::clipboard::PersistedClipboardRepresentation,
+        ) -> anyhow::Result<ResolvedClipboardPayload> {
+            Err(anyhow::anyhow!("NoopPayloadResolver"))
         }
     }
 
@@ -1467,6 +1478,7 @@ mod tests {
                 spool_queue: Arc::new(NoopPort),
                 clipboard_change_origin: Arc::new(InMemoryClipboardChangeOrigin::new()),
                 worker_tx,
+                payload_resolver: Arc::new(NoopPort),
             },
             security: uc_app::SecurityPorts {
                 encryption: Arc::new(NoopPort),
@@ -1541,6 +1553,7 @@ mod tests {
                 spool_queue: Arc::new(NoopPort),
                 clipboard_change_origin: Arc::new(InMemoryClipboardChangeOrigin::new()),
                 worker_tx,
+                payload_resolver: Arc::new(NoopPort),
             },
             security: uc_app::SecurityPorts {
                 encryption: Arc::new(NoopPort),

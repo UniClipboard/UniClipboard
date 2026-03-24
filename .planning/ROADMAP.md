@@ -435,14 +435,15 @@ Plans:
 
 ### Phase 54: Extract daemon client and realtime infrastructure from uc-tauri
 
-**Goal:** [To be planned]
+**Goal:** Extract daemon HTTP client, WebSocket bridge, realtime runtime, and connection state from `uc-tauri` into new `uc-daemon-client` crate; rename `TauriDaemon*Client` to `Daemon*Client`
 **Requirements**: TBD
 **Depends on:** Phase 53
-**Plans:** 0 plans
+**Plans:** 2/2 plans
 
 Plans:
 
-- [ ] TBD (run /gsd:plan-phase 54 to break down)
+- [x] 54-01-PLAN.md -- Create uc-daemon-client crate with HTTP clients, ws_bridge, realtime, connection (Wave 1)
+- [x] 54-02-PLAN.md -- Update uc-tauri call sites, delete old modules, verify clean build (Wave 2, depends on 54-01)
 
 ### Phase 55: Extract daemon lifecycle and setup pairing bridge from uc-tauri
 

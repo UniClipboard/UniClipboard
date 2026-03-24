@@ -1,0 +1,40 @@
+[package]
+name = "uc-daemon-client"
+version.workspace = true
+edition = "2021"
+description = "Daemon HTTP and WebSocket client for UniClipboard"
+
+[lib]
+name = "uc_daemon_client"
+path = "src/lib.rs"
+
+[dependencies]
+# Workspace crates
+uc-core = { path = "../uc-core" }
+uc-app = { path = "../uc-app" }
+uc-daemon = { path = "../uc-daemon" }
+uc-bootstrap = { path = "../uc-bootstrap" }
+
+# HTTP + WebSocket
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+tokio-tungstenite = "0.24"
+
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+tokio-util = { version = "0.7", features = ["codec"] }
+futures-util = "0.3"
+async-trait = "0.1"
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# URL parsing
+url = "2"
+
+# Error handling + logging
+anyhow = "1.0"
+tracing = "0.1"
+
+[dev-dependencies]
+tokio = { version = "1", features = ["full"] }

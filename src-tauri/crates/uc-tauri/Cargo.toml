@@ -13,6 +13,7 @@ uc-platform = { path = "../uc-platform" }
 uc-observability = { path = "../uc-observability" }
 uc-bootstrap = { path = "../uc-bootstrap" }
 uc-daemon = { path = "../uc-daemon" }
+uc-daemon-client = { path = "../uc-daemon-client" }
 
 # System utilities
 gethostname = "1.1"

@@ -9,11 +9,10 @@ use anyhow::Result;
 use tokio::sync::mpsc;
 use tracing::error;
 
-use crate::bootstrap::DaemonConnectionState;
-use crate::daemon_client::TauriDaemonPairingClient;
 use uc_app::realtime::SetupPairingEventHub;
 use uc_app::usecases::pairing::PairingDomainEvent;
 use uc_app::usecases::setup::SetupPairingFacadePort;
+use uc_daemon_client::{http::DaemonPairingClient, DaemonConnectionState};
 
 pub struct DaemonBackedSetupPairingFacade {
     connection_state: DaemonConnectionState,
@@ -38,31 +37,31 @@ impl DaemonBackedSetupPairingFacade {
     }
 
     pub async fn initiate_pairing(&self, peer_id: String) -> Result<String> {
-        let client = TauriDaemonPairingClient::new(self.connection_state.clone());
+        let client = DaemonPairingClient::new(self.connection_state.clone());
         let response = client.initiate_pairing(peer_id).await?;
         Ok(response.session_id)
     }
 
     pub async fn accept_pairing(&self, session_id: &str) -> Result<()> {
-        let client = TauriDaemonPairingClient::new(self.connection_state.clone());
+        let client = DaemonPairingClient::new(self.connection_state.clone());
         client.accept_pairing(session_id).await?;
         Ok(())
     }
 
     pub async fn reject_pairing(&self, session_id: &str) -> Result<()> {
-        let client = TauriDaemonPairingClient::new(self.connection_state.clone());
+        let client = DaemonPairingClient::new(self.connection_state.clone());
         client.reject_pairing(session_id).await?;
         Ok(())
     }
 
     pub async fn cancel_pairing(&self, session_id: &str) -> Result<()> {
-        let client = TauriDaemonPairingClient::new(self.connection_state.clone());
+        let client = DaemonPairingClient::new(self.connection_state.clone());
         client.cancel_pairing(session_id).await?;
         Ok(())
     }
 
     pub async fn verify_pairing(&self, session_id: &str, pin_matches: bool) -> Result<()> {
-        let client = TauriDaemonPairingClient::new(self.connection_state.clone());
+        let client = DaemonPairingClient::new(self.connection_state.clone());
         client.verify_pairing(session_id, pin_matches).await?;
         Ok(())
     }
@@ -72,7 +71,7 @@ impl DaemonBackedSetupPairingFacade {
         ready: bool,
         lease_ttl_ms: Option<u64>,
     ) -> Result<()> {
-        let client = TauriDaemonPairingClient::new(self.connection_state.clone());
+        let client = DaemonPairingClient::new(self.connection_state.clone());
         client
             .set_pairing_participant_ready("setup", ready, lease_ttl_ms)
             .await?;
@@ -90,7 +89,7 @@ impl Drop for DaemonBackedSetupPairingFacade {
         if self.participant_ready {
             let connection_state = self.connection_state.clone();
             tokio::spawn(async move {
-                let client = TauriDaemonPairingClient::new(connection_state);
+                let client = DaemonPairingClient::new(connection_state);
                 if let Err(error) = client
                     .set_pairing_participant_ready("setup", false, None)
                     .await

@@ -8,7 +8,6 @@
 pub mod adapters;
 pub mod bootstrap;
 pub mod commands;
-pub mod daemon_client;
 pub mod events;
 pub mod models;
 pub mod preview_panel;

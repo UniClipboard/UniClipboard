@@ -3,24 +3,22 @@
 
 use std::sync::Arc;
 
-use crate::bootstrap::{AppRuntime, DaemonConnectionState};
+use crate::bootstrap::AppRuntime;
 use crate::commands::error::CommandError;
 use crate::commands::record_trace_fields;
-use crate::daemon_client::TauriDaemonSetupClient;
 use tauri::State;
 use tracing::{info_span, Instrument};
 use uc_app::usecases::setup::orchestrator::SetupError;
 use uc_core::setup::{SetupError as CoreSetupError, SetupState};
+use uc_daemon_client::{http::DaemonSetupClient, DaemonConnectionState};
 use uc_platform::ports::observability::TraceMetadata;
 
 fn deserialize_setup_state(value: serde_json::Value) -> Result<SetupState, CommandError> {
     serde_json::from_value::<SetupState>(value).map_err(CommandError::internal)
 }
 
-fn daemon_setup_client(
-    daemon_connection: &State<'_, DaemonConnectionState>,
-) -> TauriDaemonSetupClient {
-    TauriDaemonSetupClient::new(daemon_connection.inner().clone())
+fn daemon_setup_client(daemon_connection: &State<'_, DaemonConnectionState>) -> DaemonSetupClient {
+    DaemonSetupClient::new(daemon_connection.inner().clone())
 }
 
 /// Get current setup state.

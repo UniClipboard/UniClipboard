@@ -40,8 +40,8 @@ use tauri::async_runtime;
 use tokio::sync::mpsc;
 use tracing::{debug, error, info, info_span, warn, Instrument};
 
-use super::start_realtime_runtime;
 use super::task_registry::TaskRegistry;
+use uc_daemon_client::realtime::start_realtime_runtime;
 
 use uc_app::usecases::clipboard::sync_inbound::{InboundApplyOutcome, SyncInboundClipboardUseCase};
 use uc_app::usecases::space_access::SpaceAccessOrchestrator;
@@ -99,7 +99,7 @@ pub fn start_background_tasks(
     background: BackgroundRuntimeDeps,
     deps: &AppDeps,
     event_emitter: Arc<dyn HostEventEmitterPort>,
-    daemon_connection_state: crate::bootstrap::DaemonConnectionState,
+    daemon_connection_state: uc_daemon_client::DaemonConnectionState,
     setup_pairing_event_hub: Arc<uc_app::realtime::SetupPairingEventHub>,
     task_registry: &Arc<TaskRegistry>,
 ) {

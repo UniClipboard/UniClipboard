@@ -12,6 +12,8 @@ use uc_app::realtime::{
     run_setup_state_realtime_consumer_with_rx, SetupPairingEventHub,
 };
 use uc_app::task_registry::TaskRegistry;
+use uc_app::usecases::pairing::PairingDomainEvent;
+use uc_app::usecases::setup::SetupPairingFacadePort;
 use uc_core::ports::{HostEventEmitterPort, RealtimeTopic};
 
 use crate::http::DaemonPairingClient;
@@ -83,17 +85,137 @@ async fn maintain_gui_pairing_leases(
     }
 }
 
+/// Daemon-backed implementation of [`SetupPairingFacadePort`].
+///
+/// Inlined in uc-daemon-client to avoid a circular dependency with uc-tauri.
+pub struct DaemonBackedSetupPairingFacade {
+    connection_state: DaemonConnectionState,
+    event_hub: Arc<SetupPairingEventHub>,
+    participant_ready: bool,
+}
+
+impl DaemonBackedSetupPairingFacade {
+    pub fn new(
+        connection_state: DaemonConnectionState,
+        event_hub: Arc<SetupPairingEventHub>,
+    ) -> Self {
+        Self {
+            connection_state,
+            event_hub,
+            participant_ready: false,
+        }
+    }
+
+    pub async fn subscribe(&self) -> Result<tokio::sync::mpsc::Receiver<PairingDomainEvent>> {
+        self.event_hub.subscribe().await
+    }
+
+    pub async fn initiate_pairing(&self, peer_id: String) -> Result<String> {
+        let client = DaemonPairingClient::new(self.connection_state.clone());
+        let response = client.initiate_pairing(peer_id).await?;
+        Ok(response.session_id)
+    }
+
+    pub async fn accept_pairing(&self, session_id: &str) -> Result<()> {
+        let client = DaemonPairingClient::new(self.connection_state.clone());
+        client.accept_pairing(session_id).await?;
+        Ok(())
+    }
+
+    pub async fn reject_pairing(&self, session_id: &str) -> Result<()> {
+        let client = DaemonPairingClient::new(self.connection_state.clone());
+        client.reject_pairing(session_id).await?;
+        Ok(())
+    }
+
+    pub async fn cancel_pairing(&self, session_id: &str) -> Result<()> {
+        let client = DaemonPairingClient::new(self.connection_state.clone());
+        client.cancel_pairing(session_id).await?;
+        Ok(())
+    }
+
+    pub async fn verify_pairing(&self, session_id: &str, pin_matches: bool) -> Result<()> {
+        let client = DaemonPairingClient::new(self.connection_state.clone());
+        client.verify_pairing(session_id, pin_matches).await?;
+        Ok(())
+    }
+
+    pub async fn set_participant_ready(
+        &mut self,
+        ready: bool,
+        lease_ttl_ms: Option<u64>,
+    ) -> Result<()> {
+        let client = DaemonPairingClient::new(self.connection_state.clone());
+        client
+            .set_pairing_participant_ready("setup", ready, lease_ttl_ms)
+            .await?;
+        self.participant_ready = ready;
+        Ok(())
+    }
+
+    pub fn is_participant_ready(&self) -> bool {
+        self.participant_ready
+    }
+}
+
+impl Drop for DaemonBackedSetupPairingFacade {
+    fn drop(&mut self) {
+        if self.participant_ready {
+            let connection_state = self.connection_state.clone();
+            tokio::spawn(async move {
+                let client = DaemonPairingClient::new(connection_state);
+                if let Err(error) = client
+                    .set_pairing_participant_ready("setup", false, None)
+                    .await
+                {
+                    warn!(error = %error, "failed to revoke participant-ready on facade drop");
+                }
+            });
+        }
+    }
+}
+
+#[async_trait]
+impl SetupPairingFacadePort for DaemonBackedSetupPairingFacade {
+    async fn subscribe(&self) -> Result<tokio::sync::mpsc::Receiver<PairingDomainEvent>> {
+        self.subscribe().await
+    }
+
+    async fn initiate_pairing(&self, peer_id: String) -> Result<String> {
+        self.initiate_pairing(peer_id).await
+    }
+
+    async fn accept_pairing(&self, session_id: &str) -> Result<()> {
+        self.accept_pairing(session_id).await
+    }
+
+    async fn reject_pairing(&self, session_id: &str) -> Result<()> {
+        self.reject_pairing(session_id).await
+    }
+
+    async fn cancel_pairing(&self, session_id: &str) -> Result<()> {
+        self.cancel_pairing(session_id).await
+    }
+
+    async fn verify_pairing(&self, session_id: &str, pin_matches: bool) -> Result<()> {
+        self.verify_pairing(session_id, pin_matches).await
+    }
+}
+
 /// Installs the daemon-backed setup/pairing facade into SetupAssemblyPorts.
 ///
-/// This function is moved from uc-tauri bootstrap. The `SetupAssemblyPorts` type
-/// and `build_setup_pairing_facade` function are deferred to Phase 55 extraction.
+/// Inlines the facade construction to avoid a circular dependency between
+/// uc-daemon-client and uc-tauri. Wires
+/// `setup_ports.setup_pairing_facade = Arc::new(DaemonBackedSetupPairingFacade::new(...))`.
 pub fn install_daemon_setup_pairing_facade(
-    _setup_ports: &mut uc_bootstrap::assembly::SetupAssemblyPorts,
+    setup_ports: &mut uc_bootstrap::assembly::SetupAssemblyPorts,
     connection_state: DaemonConnectionState,
 ) -> Arc<SetupPairingEventHub> {
     let setup_hub = Arc::new(SetupPairingEventHub::new(SETUP_PAIRING_HUB_BUFFER));
-    // Phase 55: wire up setup_ports.setup_pairing_facade = build_setup_pairing_facade(connection_state, setup_hub.clone())
-    let _ = (connection_state, setup_hub.clone());
+    setup_ports.setup_pairing_facade = Arc::new(DaemonBackedSetupPairingFacade::new(
+        connection_state,
+        setup_hub.clone(),
+    ));
     setup_hub
 }
 

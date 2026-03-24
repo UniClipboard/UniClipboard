@@ -20,13 +20,11 @@ use uc_core::ports::{
 use uc_core::setup::SetupState;
 use uc_daemon::api::auth::DaemonConnectionInfo;
 use uc_daemon::api::types::DaemonWsEvent;
-use uc_tauri::bootstrap::daemon_ws_bridge::{
+use uc_daemon_client::ws_bridge::{
     BridgeState, DaemonWsBridge, DaemonWsBridgeConfig, ScriptedDaemonWsConnector,
 };
-use uc_tauri::bootstrap::{
-    install_daemon_setup_pairing_facade, DaemonConnectionState, SetupAssemblyPorts,
-    SetupPairingFacadePort,
-};
+use uc_daemon_client::{realtime::install_daemon_setup_pairing_facade, DaemonConnectionState};
+use uc_tauri::bootstrap::{SetupAssemblyPorts, SetupPairingFacadePort};
 
 fn connection_state() -> DaemonConnectionState {
     let state = DaemonConnectionState::default();

@@ -6,10 +6,11 @@ use std::time::Duration;
 use uc_daemon::api::auth::DaemonConnectionInfo;
 use uc_daemon::api::types::HealthResponse;
 use uc_daemon::DAEMON_API_REVISION;
+use uc_daemon_client::DaemonConnectionState;
 use uc_tauri::bootstrap::run::{
     bootstrap_daemon_connection_with_hooks, DaemonBootstrapError, ProbeOutcome,
 };
-use uc_tauri::bootstrap::runtime::{DaemonBootstrapOwnershipState, DaemonConnectionState};
+use uc_tauri::bootstrap::runtime::DaemonBootstrapOwnershipState;
 use uc_tauri::bootstrap::{GuiOwnedDaemonState, SpawnReason};
 
 fn compatible_health() -> HealthResponse {

@@ -12,9 +12,10 @@ use uc_daemon::api::types::HealthResponse;
 use uc_daemon::process_metadata::read_pid_file;
 use uc_daemon::socket::{resolve_daemon_socket_path, try_resolve_daemon_http_addr};
 use uc_daemon::DAEMON_API_REVISION;
+use uc_daemon_client::DaemonConnectionState;
 
 use super::daemon_lifecycle::{GuiOwnedDaemonState, SpawnReason};
-use super::runtime::{DaemonBootstrapOwnershipState, DaemonConnectionState};
+use super::runtime::DaemonBootstrapOwnershipState;
 use crate::commands::startup::StartupBarrier;
 
 pub const DAEMON_CONNECTION_EVENT: &str = "daemon://connection-info";

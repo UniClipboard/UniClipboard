@@ -43,39 +43,6 @@ use uc_core::{ClipboardChangeOrigin, SystemClipboardSnapshot};
 use uc_core::ports::host_event_emitter::{
     ClipboardHostEvent, ClipboardOriginKind, HostEvent, HostEventEmitterPort,
 };
-use uc_daemon::api::auth::DaemonConnectionInfo;
-
-#[derive(Clone, Default)]
-pub struct DaemonConnectionState(Arc<RwLock<Option<DaemonConnectionInfo>>>);
-
-impl DaemonConnectionState {
-    pub fn set(&self, connection_info: DaemonConnectionInfo) {
-        match self.0.write() {
-            Ok(mut guard) => {
-                *guard = Some(connection_info);
-            }
-            Err(poisoned) => {
-                tracing::error!(
-                    "RwLock poisoned in DaemonConnectionState::set, recovering from poisoned state"
-                );
-                let mut guard = poisoned.into_inner();
-                *guard = Some(connection_info);
-            }
-        }
-    }
-
-    pub fn get(&self) -> Option<DaemonConnectionInfo> {
-        match self.0.read() {
-            Ok(guard) => guard.clone(),
-            Err(poisoned) => {
-                tracing::error!(
-                    "RwLock poisoned in DaemonConnectionState::get, recovering from poisoned state"
-                );
-                poisoned.into_inner().clone()
-            }
-        }
-    }
-}
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct DaemonBootstrapOwnershipSnapshot {
@@ -2065,19 +2032,5 @@ mod tests {
             }) => assert_eq!(*recovered_after_attempts, 2),
             other => panic!("expected recovered event on swapped emitter, got {other:?}"),
         }
-    }
-
-    #[test]
-    fn daemon_connection_state_stores_connection_info_in_memory() {
-        let state = DaemonConnectionState::default();
-        let connection_info = DaemonConnectionInfo {
-            base_url: "http://127.0.0.1:42715".to_string(),
-            ws_url: "ws://127.0.0.1:42715/ws".to_string(),
-            token: "test-token".to_string(),
-        };
-
-        state.set(connection_info.clone());
-
-        assert_eq!(state.get(), Some(connection_info));
     }
 }

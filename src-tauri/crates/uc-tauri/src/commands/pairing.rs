@@ -2,12 +2,8 @@
 //! 配对相关的 Tauri 命令
 
 use crate::bootstrap::AppRuntime;
-use crate::bootstrap::DaemonConnectionState;
 use crate::commands::error::CommandError;
 use crate::commands::record_trace_fields;
-use crate::daemon_client::{
-    DaemonPairingRequestError, TauriDaemonPairingClient, TauriDaemonQueryClient,
-};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tauri::State;
@@ -15,6 +11,10 @@ use tracing::{error, info_span, warn, Instrument};
 use uc_app::usecases::LocalDeviceInfo;
 use uc_core::network::PairingState;
 use uc_core::PeerId;
+use uc_daemon_client::{
+    http::{DaemonPairingClient, DaemonPairingRequestError, DaemonQueryClient},
+    DaemonConnectionState,
+};
 use uc_platform::ports::observability::TraceMetadata;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -96,7 +96,7 @@ pub async fn list_paired_devices(
     );
     record_trace_fields(&span, &_trace);
     async {
-        let devices = TauriDaemonQueryClient::new(daemon_connection.inner().clone())
+        let devices = DaemonQueryClient::new(daemon_connection.inner().clone())
             .get_paired_devices()
             .await
             .map_err(|error| {
@@ -167,7 +167,7 @@ pub async fn get_p2p_peers(
     );
     record_trace_fields(&span, &_trace);
     async {
-        let snapshot = TauriDaemonQueryClient::new(daemon_connection.inner().clone())
+        let snapshot = DaemonQueryClient::new(daemon_connection.inner().clone())
             .get_peers()
             .await
             .map_err(|error| {
@@ -215,7 +215,7 @@ pub async fn get_paired_peers_with_status(
     );
     record_trace_fields(&span, &_trace);
     async {
-        let devices = TauriDaemonQueryClient::new(daemon_connection.inner().clone())
+        let devices = DaemonQueryClient::new(daemon_connection.inner().clone())
             .get_paired_devices()
             .await
             .map_err(|error| {
@@ -281,7 +281,7 @@ pub async fn initiate_p2p_pairing(
     );
     record_trace_fields(&span, &_trace);
     async {
-        match TauriDaemonPairingClient::new(daemon_connection.inner().clone())
+        match DaemonPairingClient::new(daemon_connection.inner().clone())
             .initiate_pairing(request.peer_id)
             .await
         {
@@ -319,7 +319,7 @@ pub async fn accept_p2p_pairing(
     );
     record_trace_fields(&span, &_trace);
     async {
-        TauriDaemonPairingClient::new(daemon_connection.inner().clone())
+        DaemonPairingClient::new(daemon_connection.inner().clone())
             .accept_pairing(&session_id)
             .await
             .map_err(|error| {
@@ -347,7 +347,7 @@ pub async fn reject_p2p_pairing(
     );
     record_trace_fields(&span, &_trace);
     async {
-        TauriDaemonPairingClient::new(daemon_connection.inner().clone())
+        DaemonPairingClient::new(daemon_connection.inner().clone())
             .reject_pairing(&session_id)
             .await
             .map_err(|error| {
@@ -375,7 +375,7 @@ pub async fn verify_p2p_pairing_pin(
     );
     record_trace_fields(&span, &_trace);
     async {
-        TauriDaemonPairingClient::new(daemon_connection.inner().clone())
+        DaemonPairingClient::new(daemon_connection.inner().clone())
             .verify_pairing(&request.session_id, request.pin_matches)
             .await
             .map_err(|error| {
@@ -403,7 +403,7 @@ pub async fn unpair_p2p_device(
     );
     record_trace_fields(&span, &_trace);
     async {
-        TauriDaemonPairingClient::new(daemon_connection.inner().clone())
+        DaemonPairingClient::new(daemon_connection.inner().clone())
             .unpair_device(peer_id.clone())
             .await
             .map_err(|error| {

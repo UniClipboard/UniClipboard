@@ -86,6 +86,7 @@ members = [
   "crates/uc-bootstrap",
   "crates/uc-daemon",
   "crates/uc-cli",
+  "crates/uc-daemon-client",
 ]
 resolver = "2"
 

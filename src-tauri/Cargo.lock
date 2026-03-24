@@ -9186,6 +9186,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "uc-daemon-client"
+version = "0.4.0-alpha.1"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "futures-util",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tokio-tungstenite",
+ "tokio-util",
+ "tracing",
+ "uc-app",
+ "uc-bootstrap",
+ "uc-core",
+ "uc-daemon",
+ "url",
+]
+
+[[package]]
 name = "uc-infra"
 version = "0.1.0"
 dependencies = [

@@ -9336,6 +9336,7 @@ dependencies = [
  "uc-bootstrap",
  "uc-core",
  "uc-daemon",
+ "uc-daemon-client",
  "uc-infra",
  "uc-observability",
  "uc-platform",

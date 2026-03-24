@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v0.1
 milestone_name: milestone
 status: unknown
-stopped_at: Completed 54-01-PLAN.md
-last_updated: '2026-03-24T08:33:03.945Z'
+stopped_at: Completed 54-02-PLAN.md
+last_updated: '2026-03-24T08:55:59.590Z'
 progress:
   total_phases: 27
-  completed_phases: 18
+  completed_phases: 19
   total_plans: 64
-  completed_plans: 57
+  completed_plans: 59
 ---
 
 # Project State
@@ -19,11 +19,11 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-17)
 
 **Core value:** Seamless clipboard synchronization across devices — copy on one, paste on another
-**Current focus:** Phase 52 — daemon-space-access-ssot
+**Current focus:** Phase 54 — extract-daemon-client-and-realtime-infrastructure-from-uc-tauri
 
 ## Current Position
 
-Phase: 53
+Phase: 54
 Plan: Not started
 
 ## Performance Metrics
@@ -90,6 +90,7 @@ _Updated after each plan completion_
 | Phase 52-daemon-space-access-ssot P01 | 15 | 2 tasks | 9 files |
 | Phase 52 P02 | 9 | 2 tasks | 5 files |
 | Phase 54-extract-daemon-client-and-realtime-infrastructure-from-uc-tauri P01 | 831 | 4 tasks | 11 files |
+| Phase 54 P02 | 1015 | 8 tasks | 16 files |
 
 ## Accumulated Context
 
@@ -202,6 +203,9 @@ Recent decisions affecting current work:
 - [Phase 52]: space_access.snapshot and space_access.state_changed both map to SpaceAccessStateChangedPayload for uniform frontend event type
 - [Phase 52]: SpaceAccessOrchestrator creation kept in build_gui_app for SetupAssemblyPorts internal wiring, not returned in GuiBootstrapContext
 - [Phase 54-extract-daemon-client-and-realtime-infrastructure-from-uc-tauri]: uc-daemon-client added to workspace members in Plan 01 (not deferred to Plan 02) — required for verification to work
+- [Phase 54]: Did not remove reqwest/tokio-tungstenite/tokio-util/futures-util from uc-tauri direct deps — run.rs uses reqwest::Client directly and these deps were primarily consumed by deleted files; removing was deemed scope creep risk
+- [Phase 54]: Inlined DaemonBackedSetupPairingFacade in uc-daemon-client/realtime.rs rather than importing from uc-tauri — avoids a cargo cycle (uc_tauri → uc_daemon_client → uc_tauri). Struct + trait impl duplicated across both crates intentionally (Rust OK since different crate paths).
+- [Phase 54]: Removed install_daemon_setup_pairing_facade re-export from bootstrap/mod.rs — all call sites (main.rs, wiring.rs) now import from uc_daemon_client::realtime directly. D-10 (no re-export stubs) is enforced.
 
 ### Roadmap Evolution
 
@@ -244,6 +248,6 @@ v0.4.0 runs phases 36-41. Phase numbering is continuous.
 
 ## Session Continuity
 
-Last session: 2026-03-24T08:32:56.711Z
-Stopped at: Completed 54-01-PLAN.md
+Last session: 2026-03-24T08:55:59.585Z
+Stopped at: Completed 54-02-PLAN.md
 Resume file: None

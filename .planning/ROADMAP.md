@@ -438,7 +438,7 @@ Plans:
 **Goal:** Extract daemon HTTP client, WebSocket bridge, realtime runtime, and connection state from `uc-tauri` into new `uc-daemon-client` crate; rename `TauriDaemon*Client` to `Daemon*Client`
 **Requirements**: TBD
 **Depends on:** Phase 53
-**Plans:** 2/2 plans
+**Plans:** 1/2 plans executed
 
 Plans:
 

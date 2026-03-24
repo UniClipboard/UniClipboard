@@ -1,15 +1,15 @@
 ---
 gsd_state_version: 1.0
-milestone: v0.4.0
-milestone_name: Runtime Mode Separation
-status: Ready to plan
-stopped_at: Phase 56 context gathered
-last_updated: '2026-03-23T13:44:20.685Z'
+milestone: v0.1
+milestone_name: milestone
+status: unknown
+stopped_at: Completed 54-01-PLAN.md
+last_updated: '2026-03-24T08:33:03.945Z'
 progress:
   total_phases: 27
   completed_phases: 18
-  total_plans: 59
-  completed_plans: 56
+  total_plans: 64
+  completed_plans: 57
 ---
 
 # Project State
@@ -89,6 +89,7 @@ _Updated after each plan completion_
 | Phase 50-daemon-encryption-state-recovery P01 | 10 | 3 tasks | 1 files |
 | Phase 52-daemon-space-access-ssot P01 | 15 | 2 tasks | 9 files |
 | Phase 52 P02 | 9 | 2 tasks | 5 files |
+| Phase 54-extract-daemon-client-and-realtime-infrastructure-from-uc-tauri P01 | 831 | 4 tasks | 11 files |
 
 ## Accumulated Context
 
@@ -200,6 +201,7 @@ Recent decisions affecting current work:
 - [Phase 52-daemon-space-access-ssot]: Space access broadcasts placed at four transition sites: reset_setup_state, start_completed_host_sponsor_authorization, resolve_host_space_access_proof, apply_joiner_space_access_result
 - [Phase 52]: space_access.snapshot and space_access.state_changed both map to SpaceAccessStateChangedPayload for uniform frontend event type
 - [Phase 52]: SpaceAccessOrchestrator creation kept in build_gui_app for SetupAssemblyPorts internal wiring, not returned in GuiBootstrapContext
+- [Phase 54-extract-daemon-client-and-realtime-infrastructure-from-uc-tauri]: uc-daemon-client added to workspace members in Plan 01 (not deferred to Plan 02) — required for verification to work
 
 ### Roadmap Evolution
 
@@ -242,6 +244,6 @@ v0.4.0 runs phases 36-41. Phase numbering is continuous.
 
 ## Session Continuity
 
-Last session: 2026-03-23T13:44:20.681Z
-Stopped at: Phase 56 context gathered
-Resume file: .planning/phases/56-refactor-daemon-host-architecture-extract-peer-lifecycle-from-pairinghost-unify-host-lifecycle-management/56-CONTEXT.md
+Last session: 2026-03-24T08:32:56.711Z
+Stopped at: Completed 54-01-PLAN.md
+Resume file: None

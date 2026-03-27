@@ -71,20 +71,6 @@ const AppContent = ({
 }) => {
   const [encryptionStatus, setEncryptionStatus] = useState<EncryptionSessionStatus | null>(null)
   const [encryptionError, setEncryptionError] = useState<string | null>(null)
-  const wasSetupActiveRef = useRef(isSetupActive)
-
-  // When setup just completed, trigger Tauri-side auto-unlock.
-  // The daemon runs MarkSetupComplete + ensure_ready on its side, but the Tauri-side
-  // encryption session needs its own unlock to become session_ready.
-  // The existing encryption://event SessionReady listener handles the state update.
-  useEffect(() => {
-    const wasActive = wasSetupActiveRef.current
-    wasSetupActiveRef.current = isSetupActive
-
-    if (wasActive && !isSetupActive) {
-      unlockEncryptionSession().catch(err => console.warn('Post-setup auto-unlock failed:', err))
-    }
-  }, [isSetupActive])
 
   const {
     data: encryptionData,
@@ -113,7 +99,16 @@ const AppContent = ({
 
   useEffect(() => {
     if (encryptionData) {
-      setEncryptionStatus(encryptionData)
+      setEncryptionStatus(prev => {
+        // Never downgrade session_ready from true → false.
+        // The RTK Query result may be stale (captured before unlock completed),
+        // so if we already know the session is ready (from a SessionReady event),
+        // do not let an older query result roll that back.
+        if (prev?.session_ready && !encryptionData.session_ready) {
+          return prev
+        }
+        return encryptionData
+      })
       setEncryptionError(null)
     }
   }, [encryptionData])
@@ -136,7 +131,11 @@ const AppContent = ({
     return <SetupPage onCompleteSetup={onSetupComplete} />
   }
 
-  if (encryptionLoading) {
+  // Only show blank screen during initial load when we have no encryption status at all.
+  // Once encryptionStatus is known (from a previous query or SessionReady event), we continue
+  // rendering even if RTK Query is re-fetching — this prevents a blank screen flash when
+  // isSetupActive transitions from true→false and RTK Query starts a new request.
+  if (encryptionLoading && encryptionStatus === null) {
     return null
   }
 
@@ -246,6 +245,10 @@ export const AppContentWithBar = () => {
 
   const handleSetupComplete = () => {
     setShowCompletionStep(false)
+    // Trigger Tauri-side auto-unlock only when setup actually completes during this session.
+    // The daemon runs MarkSetupComplete + ensure_ready on its side, but the Tauri-side
+    // encryption session needs its own unlock to become session_ready.
+    unlockEncryptionSession().catch(err => console.warn('Post-setup auto-unlock failed:', err))
   }
 
   return (

@@ -9,6 +9,7 @@
 use std::sync::Arc;
 
 use tokio::sync::{broadcast, RwLock};
+use tokio_util::sync::CancellationToken;
 use uc_app::usecases::LoggingLifecycleEventEmitter;
 use uc_app::usecases::SessionReadyEmitter;
 use uc_bootstrap::assembly::SetupAssemblyPorts;
@@ -31,6 +32,26 @@ use uc_infra::clipboard::InMemoryClipboardChangeOrigin;
 use uc_platform::clipboard::LocalClipboard;
 
 fn main() -> anyhow::Result<()> {
+    let gui_managed = std::env::args().any(|arg| arg == "--gui-managed");
+
+    // When launched with --gui-managed, the parent GUI process keeps our stdin pipe open.
+    // If the parent exits (normally, crash, or SIGKILL), the pipe closes and we detect EOF.
+    // This token fires on EOF, triggering graceful daemon shutdown via DaemonApp's select loop.
+    let external_shutdown = if gui_managed {
+        let token = CancellationToken::new();
+        let token_clone = token.clone();
+        std::thread::spawn(move || {
+            use std::io::Read;
+            let mut buf = [0u8; 1];
+            // Blocks until stdin is closed (parent process gone)
+            let _ = std::io::stdin().read(&mut buf);
+            token_clone.cancel();
+        });
+        Some(token)
+    } else {
+        None
+    };
+
     // build_daemon_app() calls build_core() which inits tracing + wires deps.
     // Safe to call outside tokio (no internal block_on in daemon path).
     let ctx = build_daemon_app()?;
@@ -226,7 +247,11 @@ fn main() -> anyhow::Result<()> {
             Arc::clone(&pairing_host) as Arc<dyn DaemonService>,
             Arc::clone(&peer_monitor) as Arc<dyn DaemonService>,
         ];
-        (services, Some(peer_discovery_worker), Some(setup_complete_rx))
+        (
+            services,
+            Some(peer_discovery_worker),
+            Some(setup_complete_rx),
+        )
     };
 
     // 5. Assemble and run daemon app.
@@ -243,6 +268,7 @@ fn main() -> anyhow::Result<()> {
         encryption_unlocked,
         deferred_peer_discovery,
         setup_complete_rx_opt,
+        external_shutdown,
     );
 
     rt.block_on(daemon.run())

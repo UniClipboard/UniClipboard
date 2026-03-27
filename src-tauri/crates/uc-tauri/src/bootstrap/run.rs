@@ -599,7 +599,8 @@ fn spawn_daemon_process() -> Result<Child, DaemonBootstrapError> {
     })?;
 
     Command::new(&daemon_binary)
-        .stdin(Stdio::null())
+        .arg("--gui-managed")
+        .stdin(Stdio::piped())
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .spawn()

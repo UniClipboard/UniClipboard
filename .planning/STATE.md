@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v0.4.0
 milestone_name: Runtime Mode Separation
-status: Milestone complete
-stopped_at: Phase 68 context gathered
-last_updated: '2026-03-28T03:48:28.547Z'
+status: Ready to execute
+stopped_at: Completed 68-01-PLAN.md
+last_updated: "2026-03-28T04:26:45.819Z"
 progress:
   total_phases: 39
   completed_phases: 31
-  total_plans: 86
-  completed_plans: 83
+  total_plans: 88
+  completed_plans: 84
 ---
 
 # Project State
@@ -19,12 +19,12 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-09)
 
 **Core value:** Seamless clipboard synchronization across devices -- copy on one, paste on another
-**Current focus:** Phase 67 — setup-filter
+**Current focus:** Phase 68 — adopt-tauri-sidecar-for-daemon
 
 ## Current Position
 
-Phase: 67
-Plan: Not started
+Phase: 68 (adopt-tauri-sidecar-for-daemon) — EXECUTING
+Plan: 2 of 2
 
 ## Performance Metrics
 
@@ -94,6 +94,7 @@ Plan: Not started
   | Phase 66 P01 | 5 | 1 tasks | 1 files |
   | Phase 66-daemon-dashboard P02 | 18 | 2 tasks | 4 files |
   | Phase 67-setup-filter P02 | 8 | 1 tasks | 3 files |
+| Phase 68-adopt-tauri-sidecar-for-daemon P01 | 5 | 2 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -212,6 +213,8 @@ Recent decisions affecting current work:
 - [Phase 67-setup-filter]: recover_encryption_session made pub so main.rs can call it before DaemonApp construction
 - [Phase 67-setup-filter]: Removed recover_encryption_session from DaemonApp::run() — Phase 67 moved it to main.rs for deferred-start logic
 - [Phase 67-setup-filter]: RuntimeState::update_service_health() added for single-entry Stopped→Healthy mutation when deferred worker starts
+- [Phase 68]: Copy daemon binary before tauri_build::build() so externalBin path validation succeeds at check time
+- [Phase 68]: tauri-plugin-shell in workspace.dependencies; build.rs in src-tauri/ (main crate) for TAURI_ENV_TARGET_TRIPLE access
 
 ### Roadmap Evolution
 
@@ -253,6 +256,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-28T03:48:28.544Z
-Stopped at: Phase 68 context gathered
-Resume file: .planning/phases/68-adopt-tauri-sidecar-for-daemon/68-CONTEXT.md
+Last session: 2026-03-28T04:26:45.815Z
+Stopped at: Completed 68-01-PLAN.md
+Resume file: None

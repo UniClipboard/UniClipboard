@@ -694,7 +694,7 @@ Plans:
 **Goal:** Migrate daemon binary building, bundling, and path resolution from manual std::process::Command management to Tauri's externalBin sidecar mechanism. GUI launches daemon via sidecar API, build.rs stages binary with target-triple naming, and shell:allow-spawn capability grants permission.
 **Requirements**: PH68-01, PH68-02, PH68-03, PH68-04, PH68-05, PH68-06
 **Depends on:** Phase 67
-**Plans:** 2 plans
+**Plans:** 1/2 plans executed
 
 **Success Criteria** (what must be TRUE):
 
@@ -707,5 +707,5 @@ Plans:
 
 Plans:
 
-- [ ] 68-01-PLAN.md — Add sidecar infrastructure: externalBin config, build.rs daemon copy, tauri-plugin-shell dependency, shell capability, .gitignore
+- [x] 68-01-PLAN.md — Add sidecar infrastructure: externalBin config, build.rs daemon copy, tauri-plugin-shell dependency, shell capability, .gitignore
 - [ ] 68-02-PLAN.md — Replace spawn_daemon_process with sidecar API, migrate GuiOwnedDaemonState to CommandChild, wire AppHandle through bootstrap/supervision

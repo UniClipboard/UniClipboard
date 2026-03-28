@@ -24,6 +24,7 @@ tauri = { workspace = true }
 tauri-plugin-autostart = { workspace = true }
 tauri-plugin-global-shortcut = "2"
 tauri-plugin-updater = "2"
+tauri-plugin-shell = { workspace = true }
 url = "2"
 
 # Async

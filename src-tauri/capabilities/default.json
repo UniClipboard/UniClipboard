@@ -26,6 +26,16 @@
     "notification:default",
     "global-shortcut:allow-register",
     "global-shortcut:allow-unregister",
-    "global-shortcut:allow-is-registered"
+    "global-shortcut:allow-is-registered",
+    {
+      "identifier": "shell:allow-spawn",
+      "allow": [
+        {
+          "name": "binaries/uniclipboard-daemon",
+          "sidecar": true,
+          "args": ["--gui-managed"]
+        }
+      ]
+    }
   ]
 }

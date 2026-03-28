@@ -29,7 +29,7 @@ describe('generate-release-notes', () => {
 
     fs.writeFileSync(
       path.join(repoDir, '.github', 'release-notes', 'release.md.tmpl'),
-      '{{CHANGELOG_SECTION}}\n\n{{CHANGELOG_LINKS_SECTION}}\n\n## Installation\n\n### macOS\n{{MACOS_INSTALLERS}}\n\n### Linux\n{{LINUX_INSTALLERS}}\n\n### Windows\n{{WINDOWS_INSTALLERS}}\n\n{{IS_PRERELEASE_WARNING}}\n',
+      '{{CHANGELOG_SECTION}}\n\n{{CHANGELOG_LINKS_SECTION}}\n\n## App Installation\n\n### macOS\n{{MACOS_INSTALLERS}}\n\n### Linux\n{{LINUX_INSTALLERS}}\n\n### Windows\n{{WINDOWS_INSTALLERS}}\n\n## CLI Downloads\n\n### macOS\n{{CLI_MACOS_INSTALLERS}}\n\n### Linux\n{{CLI_LINUX_INSTALLERS}}\n\n### Windows\n{{CLI_WINDOWS_INSTALLERS}}\n\n{{IS_PRERELEASE_WARNING}}\n',
       'utf8'
     )
 
@@ -75,6 +75,62 @@ describe('generate-release-notes', () => {
     expect(content).toContain('Prerelease Warning')
     expect(content).toContain('Apple Silicon')
     expect(content).toContain('NSIS Installer')
+  })
+
+  it('includes CLI download links when CLI artifacts are present', () => {
+    const repoDir = setupRepo()
+    // Must update template to include CLI placeholders
+    fs.writeFileSync(
+      path.join(repoDir, '.github', 'release-notes', 'release.md.tmpl'),
+      '{{CHANGELOG_SECTION}}\n\n## App Installation\n\n### macOS\n{{MACOS_INSTALLERS}}\n\n### Linux\n{{LINUX_INSTALLERS}}\n\n### Windows\n{{WINDOWS_INSTALLERS}}\n\n## CLI Downloads\n\n### macOS\n{{CLI_MACOS_INSTALLERS}}\n\n### Linux\n{{CLI_LINUX_INSTALLERS}}\n\n### Windows\n{{CLI_WINDOWS_INSTALLERS}}\n\n{{IS_PRERELEASE_WARNING}}\n',
+      'utf8'
+    )
+    fs.writeFileSync(
+      path.join(repoDir, 'docs', 'changelog', '1.2.3.md'),
+      "## What's Changed\n\n- Feature",
+      'utf8'
+    )
+    // App artifacts
+    fs.writeFileSync(path.join(repoDir, 'release-assets', 'UniClipboard_aarch64.dmg'), 'x', 'utf8')
+    // CLI artifacts
+    fs.writeFileSync(
+      path.join(repoDir, 'release-assets', 'uniclipboard-cli-1.2.3-aarch64-apple-darwin.tar.gz'),
+      'x',
+      'utf8'
+    )
+    fs.writeFileSync(
+      path.join(
+        repoDir,
+        'release-assets',
+        'uniclipboard-cli-1.2.3-x86_64-unknown-linux-gnu.tar.gz'
+      ),
+      'x',
+      'utf8'
+    )
+    fs.writeFileSync(
+      path.join(repoDir, 'release-assets', 'uniclipboard-cli-1.2.3-x86_64-pc-windows-msvc.zip'),
+      'x',
+      'utf8'
+    )
+
+    const outputPath = path.join(repoDir, 'release-notes.md')
+    generateReleaseNotes({
+      version: '1.2.3',
+      repo: 'foo/bar',
+      previousTag: 'v1.2.2',
+      channel: 'stable',
+      isPrerelease: false,
+      artifactsDir: path.join(repoDir, 'release-assets'),
+      template: path.join(repoDir, '.github', 'release-notes', 'release.md.tmpl'),
+      output: outputPath,
+    })
+
+    const content = fs.readFileSync(outputPath, 'utf8')
+    expect(content).toContain('CLI Downloads')
+    expect(content).toContain('uniclipboard-cli-1.2.3-aarch64-apple-darwin.tar.gz')
+    expect(content).toContain('uniclipboard-cli-1.2.3-x86_64-unknown-linux-gnu.tar.gz')
+    expect(content).toContain('uniclipboard-cli-1.2.3-x86_64-pc-windows-msvc.zip')
+    expect(content).toContain('App Installation')
   })
 
   it('falls back to default text and warns when english changelog is missing', () => {

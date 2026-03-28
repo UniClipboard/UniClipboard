@@ -131,6 +131,48 @@ function buildInstallerLines({ artifactsDir, baseUrl }) {
   }
 }
 
+function buildCliInstallerLines({ artifactsDir, baseUrl }) {
+  const macosArm64 = findFirstFile(
+    artifactsDir,
+    file =>
+      file.startsWith('uniclipboard-cli-') &&
+      file.includes('aarch64-apple-darwin') &&
+      file.endsWith('.tar.gz')
+  )
+  const macosX64 = findFirstFile(
+    artifactsDir,
+    file =>
+      file.startsWith('uniclipboard-cli-') &&
+      file.includes('x86_64-apple-darwin') &&
+      file.endsWith('.tar.gz')
+  )
+  const linux = findFirstFile(
+    artifactsDir,
+    file =>
+      file.startsWith('uniclipboard-cli-') && file.includes('linux-gnu') && file.endsWith('.tar.gz')
+  )
+  const windows = findFirstFile(
+    artifactsDir,
+    file =>
+      file.startsWith('uniclipboard-cli-') && file.includes('windows-msvc') && file.endsWith('.zip')
+  )
+
+  const makeLink = (label, fileName) => `- ${label}: [${fileName}](${baseUrl}/${fileName})`
+  const fallback = '- Not available for this release.'
+
+  return {
+    macos:
+      [
+        macosArm64 ? makeLink('**Apple Silicon (M1/M2/M3)**', macosArm64) : '',
+        macosX64 ? makeLink('**Intel**', macosX64) : '',
+      ]
+        .filter(Boolean)
+        .join('\n') || fallback,
+    linux: linux ? makeLink('**x86_64**', linux) : fallback,
+    windows: windows ? makeLink('**x86_64**', windows) : fallback,
+  }
+}
+
 function readChangelogSection(filePath, fallbackTitle = "## What's Changed") {
   if (!fs.existsSync(filePath)) {
     return `${fallbackTitle}\n\nRelease notes are not available yet.`
@@ -204,6 +246,7 @@ export function generateReleaseNotes(options) {
   }
 
   const installers = buildInstallerLines({ artifactsDir, baseUrl })
+  const cliInstallers = buildCliInstallerLines({ artifactsDir, baseUrl })
   const template = fs.readFileSync(templatePath, 'utf8')
   const rendered =
     renderTemplate(template, {
@@ -221,6 +264,9 @@ export function generateReleaseNotes(options) {
       MACOS_INSTALLERS: installers.macos,
       LINUX_INSTALLERS: installers.linux,
       WINDOWS_INSTALLERS: installers.windows,
+      CLI_MACOS_INSTALLERS: cliInstallers.macos,
+      CLI_LINUX_INSTALLERS: cliInstallers.linux,
+      CLI_WINDOWS_INSTALLERS: cliInstallers.windows,
       VERIFICATION_SECTION: '',
     }).trim() + '\n'
 

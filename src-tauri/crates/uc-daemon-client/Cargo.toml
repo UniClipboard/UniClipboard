@@ -32,10 +32,16 @@ serde_json = "1"
 # URL parsing
 url = "2"
 
+# Tauri sidecar process management
+tauri-plugin-shell = { workspace = true }
+
 # Error handling + logging
 anyhow = "1.0"
 thiserror = "2.0"
 tracing = "0.1"
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
 
 [dev-dependencies]
 tokio = { version = "1", features = ["full"] }

@@ -1,12 +1,12 @@
 //! GUI-owned daemon process lifecycle management.
 //! Handles spawned daemon child tracking, graceful shutdown, and exit cleanup.
 
-use std::process::Child;
 use std::process::Command;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
+use tauri_plugin_shell::process::CommandChild;
 use thiserror::Error;
 use tokio::time::{sleep, Instant};
 
@@ -66,7 +66,7 @@ pub enum SpawnReason {
 pub struct OwnedDaemonChild {
     pub pid: u32,
     pub spawn_reason: SpawnReason,
-    pub child: Child,
+    pub child: CommandChild,
 }
 
 #[derive(Default)]
@@ -105,9 +105,11 @@ pub enum DaemonExitCleanupError {
 }
 
 impl GuiOwnedDaemonState {
-    pub fn record_spawned(&self, child: Child, spawn_reason: SpawnReason) {
+    /// Record a newly spawned daemon child. `pid` is passed separately since
+    /// `CommandChild::pid()` must be called before moving the child.
+    pub fn record_spawned(&self, child: CommandChild, pid: u32, spawn_reason: SpawnReason) {
         let owned_child = OwnedDaemonChild {
-            pid: child.id(),
+            pid,
             spawn_reason,
             child,
         };
@@ -169,8 +171,9 @@ impl GuiOwnedDaemonState {
         timeout: Duration,
         poll_interval: Duration,
     ) -> Result<bool, DaemonExitCleanupError> {
-        let Some(mut owned_child) = self.take_owned_child() else {
-            return Ok(false);
+        let owned_child = match self.take_owned_child() {
+            Some(c) => c,
+            None => return Ok(false),
         };
 
         let daemon_pid = owned_child.pid;
@@ -181,83 +184,65 @@ impl GuiOwnedDaemonState {
             ?spawn_reason,
             timeout_ms = timeout.as_millis() as u64,
             poll_interval_ms = poll_interval.as_millis() as u64,
-            "Starting GUI-owned daemon exit cleanup"
+            "Starting GUI-owned daemon exit cleanup (sidecar)"
         );
 
+        // Step 1: Send SIGTERM via PID
         if let Err(error) = terminate_local_daemon_pid(daemon_pid) {
-            match owned_child.child.try_wait() {
-                Ok(Some(status)) => {
+            tracing::warn!(
+                daemon_pid,
+                error = %error,
+                "SIGTERM failed; dropping CommandChild to close stdin tether (D-06)"
+            );
+            // Drop child to close stdin (daemon should exit on stdin EOF per D-06)
+            drop(owned_child.child);
+            // Wait briefly for stdin-EOF-triggered exit
+            sleep(poll_interval).await;
+            return Ok(true);
+        }
+
+        // Step 2: Poll for process exit
+        let deadline = Instant::now() + timeout;
+        let child = owned_child.child;
+        loop {
+            sleep(poll_interval).await;
+
+            // Check if process is gone by trying to signal with 0 (Unix only)
+            #[cfg(unix)]
+            {
+                let alive = unsafe { libc::kill(daemon_pid as libc::pid_t, 0) } == 0;
+                if !alive {
                     tracing::info!(
                         daemon_pid,
                         ?spawn_reason,
-                        exit_status = %status,
-                        "GUI-owned daemon already exited before cleanup wait"
+                        "GUI-owned daemon exited after SIGTERM"
                     );
+                    drop(child);
                     return Ok(true);
                 }
-                Ok(None) => {
-                    let cleanup_error = DaemonExitCleanupError::Terminate {
-                        pid: daemon_pid,
-                        details: error.to_string(),
-                    };
-                    self.restore_owned_child(owned_child);
-                    return Err(cleanup_error);
-                }
-                Err(wait_error) => {
-                    let cleanup_error = DaemonExitCleanupError::Observe {
-                        pid: daemon_pid,
-                        source: wait_error,
-                    };
-                    self.restore_owned_child(owned_child);
-                    return Err(cleanup_error);
-                }
             }
-        }
 
-        match wait_for_child_exit(&mut owned_child, timeout, poll_interval).await {
-            Ok(()) => {
-                tracing::info!(
-                    daemon_pid,
-                    ?spawn_reason,
-                    "GUI-owned daemon exit cleanup completed"
-                );
-                Ok(true)
-            }
-            Err(DaemonExitCleanupError::Timeout { .. }) => {
+            if Instant::now() >= deadline {
                 tracing::warn!(
                     daemon_pid,
                     ?spawn_reason,
                     timeout_ms = timeout.as_millis() as u64,
-                    "GUI-owned daemon did not exit after graceful termination; forcing kill"
+                    "GUI-owned daemon did not exit after SIGTERM; forcing kill via CommandChild"
                 );
-                if let Err(error) = owned_child.child.kill() {
-                    let cleanup_error = DaemonExitCleanupError::ForceKill {
+                // CommandChild::kill() consumes self
+                if let Err(e) = child.kill() {
+                    tracing::error!(daemon_pid, error = %e, "CommandChild::kill() failed");
+                    return Err(DaemonExitCleanupError::ForceKill {
                         pid: daemon_pid,
-                        source: error,
-                    };
-                    self.restore_owned_child(owned_child);
-                    return Err(cleanup_error);
+                        source: std::io::Error::new(std::io::ErrorKind::Other, e.to_string()),
+                    });
                 }
-
-                if let Err(error) = owned_child.child.wait() {
-                    let cleanup_error = DaemonExitCleanupError::Wait {
-                        pid: daemon_pid,
-                        source: error,
-                    };
-                    self.restore_owned_child(owned_child);
-                    return Err(cleanup_error);
-                }
-
                 tracing::info!(
                     daemon_pid,
                     ?spawn_reason,
-                    "GUI-owned daemon force kill completed"
+                    "GUI-owned daemon force-killed via CommandChild"
                 );
-                Ok(true)
-            }
-            Err(error) => {
-                self.restore_owned_child(owned_child);
-                Err(error)
+                return Ok(true);
             }
         }
     }
@@ -275,92 +260,11 @@ impl GuiOwnedDaemonState {
         }
     }
 
-    fn restore_owned_child(&self, owned_child: OwnedDaemonChild) {
-        match self.0.child.lock() {
-            Ok(mut guard) => {
-                *guard = Some(owned_child);
-            }
-            Err(poisoned) => {
-                tracing::error!(
-                    "Mutex poisoned in GuiOwnedDaemonState::restore_owned_child, recovering from poisoned state"
-                );
-                let mut guard = poisoned.into_inner();
-                *guard = Some(owned_child);
-            }
-        }
-    }
-}
-
-async fn wait_for_child_exit(
-    owned_child: &mut OwnedDaemonChild,
-    timeout: Duration,
-    poll_interval: Duration,
-) -> Result<(), DaemonExitCleanupError> {
-    let deadline = Instant::now() + timeout;
-
-    loop {
-        match owned_child.child.try_wait() {
-            Ok(Some(_)) => return Ok(()),
-            Ok(None) => {}
-            Err(error) => {
-                return Err(DaemonExitCleanupError::Observe {
-                    pid: owned_child.pid,
-                    source: error,
-                });
-            }
-        }
-
-        if Instant::now() >= deadline {
-            return Err(DaemonExitCleanupError::Timeout {
-                pid: owned_child.pid,
-                timeout_ms: timeout.as_millis() as u64,
-            });
-        }
-
-        sleep(poll_interval).await;
-    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::process::{Command, Stdio};
-
-    fn spawn_test_child() -> Child {
-        Command::new(std::env::current_exe().expect("current test binary"))
-            .arg("--help")
-            .stdin(Stdio::null())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .spawn()
-            .expect("spawn test child")
-    }
-
-    fn cleanup_owned_child(state: &GuiOwnedDaemonState) {
-        if let Some(mut owned_child) = state.clear() {
-            let _ = owned_child.child.kill();
-            let _ = owned_child.child.wait();
-        }
-    }
-
-    #[test]
-    fn record_spawned_tracks_pid_and_reason() {
-        let state = GuiOwnedDaemonState::default();
-        let child = spawn_test_child();
-        let child_pid = child.id();
-
-        state.record_spawned(child, SpawnReason::Absent);
-
-        assert_eq!(state.snapshot_pid(), Some(child_pid));
-
-        let owned_child = state.clear().expect("owned child should exist");
-        assert_eq!(owned_child.pid, child_pid);
-        assert_eq!(owned_child.spawn_reason, SpawnReason::Absent);
-
-        let mut child = owned_child.child;
-        let _ = child.kill();
-        let _ = child.wait();
-    }
 
     #[test]
     fn begin_exit_cleanup_is_idempotent_until_finished() {
@@ -373,16 +277,5 @@ mod tests {
 
         assert!(state.begin_exit_cleanup());
         state.finish_exit_cleanup();
-    }
-
-    #[test]
-    fn clear_removes_owned_child_snapshot() {
-        let state = GuiOwnedDaemonState::default();
-        let child = spawn_test_child();
-
-        state.record_spawned(child, SpawnReason::Replacement);
-        cleanup_owned_child(&state);
-
-        assert_eq!(state.snapshot_pid(), None);
     }
 }

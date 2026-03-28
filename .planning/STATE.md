@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v0.4.0
 milestone_name: Runtime Mode Separation
-status: Ready to execute
-stopped_at: Completed 71-01-PLAN.md
-last_updated: "2026-03-28T14:11:14.003Z"
+status: Phase complete — ready for verification
+stopped_at: Completed 71-03-PLAN.md
+last_updated: '2026-03-28T14:15:39.322Z'
 progress:
   total_phases: 42
-  completed_phases: 34
+  completed_phases: 35
   total_plans: 93
-  completed_plans: 89
+  completed_plans: 90
 ---
 
 # Project State
@@ -98,8 +98,9 @@ Plan: 3 of 3
   | Phase 68 P02 | 20 | 2 tasks | 6 files |
   | Phase 69 P01 | 4 | 3 tasks | 2 files |
   | Phase 70 P01 | 8 | 2 tasks | 6 files |
-| Phase 71 P02 | 52s | 1 tasks | 1 files |
-| Phase 71 P01 | 2 | 2 tasks | 4 files |
+  | Phase 71 P02 | 52s | 1 tasks | 1 files |
+  | Phase 71 P01 | 2 | 2 tasks | 4 files |
+  | Phase 71 P03 | 2 | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -232,6 +233,8 @@ Recent decisions affecting current work:
 - [Phase 71]: Use cli-{target} artifact prefix to disambiguate from app artifacts in shared release workflows
 - [Phase 71]: Cargo.lock refresh for workspace members delegated to cargo update -p uc-cli in CI (not fragile JS regex patching)
 - [Phase 71]: cargo update steps in release.yml gated with if: github.event_name == 'workflow_dispatch' to avoid running on tag-push events
+- [Phase 71]: CLI artifact collection uses separate find loop with no collision handling — CLI archives have unique names (version + target triple in filename)
+- [Phase 71]: buildCliInstallerLines() detects artifacts by uniclipboard-cli- prefix + target triple patterns (aarch64-apple-darwin, x86_64-apple-darwin, linux-gnu, windows-msvc)
 
 ### Roadmap Evolution
 
@@ -276,6 +279,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-28T14:11:13.999Z
-Stopped at: Completed 71-01-PLAN.md
+Last session: 2026-03-28T14:15:39.318Z
+Stopped at: Completed 71-03-PLAN.md
 Resume file: None

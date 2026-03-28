@@ -90,6 +90,11 @@ jobs:
           VERSION="${{ steps.version.outputs.version }}"
           node scripts/bump-version.js --to "${VERSION}"
 
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Refresh Cargo.lock for workspace members
+        run: cd src-tauri && cargo update -p uc-cli
+
       - name: Generate changelog skeleton
         run: |
           VERSION="${{ steps.version.outputs.version }}"

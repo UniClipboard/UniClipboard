@@ -80,6 +80,13 @@ jobs:
           echo "New version: $VERSION"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
+      - uses: dtolnay/rust-toolchain@stable
+        if: github.event_name == 'workflow_dispatch'
+
+      - name: Refresh Cargo.lock for workspace members
+        if: github.event_name == 'workflow_dispatch'
+        run: cd src-tauri && cargo update -p uc-cli
+
       - name: Set outputs
         id: set-outputs
         run: |

@@ -599,26 +599,34 @@ fn terminate_incompatible_daemon_from_pid_file() -> Result<(), DaemonBootstrapEr
 fn spawn_daemon_process<R: Runtime>(
     app: &AppHandle<R>,
 ) -> Result<(CommandChild, u32), DaemonBootstrapError> {
-    let (rx, child) = app
+    let sidecar_cmd = app
         .shell()
         .sidecar("uniclipboard-daemon")
         .map_err(|e| {
             DaemonBootstrapError::Spawn(anyhow::Error::msg(format!("sidecar create: {e}")))
         })?
-        .args(["--gui-managed"])
-        .spawn()
-        .map_err(|e| {
-            DaemonBootstrapError::Spawn(anyhow::Error::msg(format!("sidecar spawn: {e}")))
-        })?;
+        .args(["--gui-managed"]);
+
+    let (rx, child) = sidecar_cmd.spawn().map_err(|e| {
+        DaemonBootstrapError::Spawn(anyhow::Error::msg(format!("sidecar spawn: {e}")))
+    })?;
 
     let pid = child.pid();
+    tracing::info!(pid, "daemon sidecar spawned successfully");
 
     // Drain stdout/stderr events to prevent pipe blocking.
+    // Daemon's tracing output goes to stdout (uc-observability console layer).
     // CommandChild holds stdin open, maintaining the D-06 stdin tether.
     tauri::async_runtime::spawn(async move {
         let mut rx = rx;
         while let Some(event) = rx.recv().await {
             match event {
+                CommandEvent::Stdout(line) => {
+                    tracing::debug!(
+                        line = %String::from_utf8_lossy(&line),
+                        "daemon sidecar stdout"
+                    );
+                }
                 CommandEvent::Stderr(line) => {
                     tracing::debug!(
                         line = %String::from_utf8_lossy(&line),
@@ -626,8 +634,11 @@ fn spawn_daemon_process<R: Runtime>(
                     );
                 }
                 CommandEvent::Terminated(payload) => {
-                    tracing::info!(?payload, "daemon sidecar terminated");
+                    tracing::warn!(?payload, "daemon sidecar terminated");
                     break;
+                }
+                CommandEvent::Error(err) => {
+                    tracing::error!(error = %err, "daemon sidecar error event");
                 }
                 _ => {}
             }

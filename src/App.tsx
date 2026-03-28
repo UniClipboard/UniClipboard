@@ -71,20 +71,11 @@ const AppContent = ({
 }) => {
   const [encryptionStatus, setEncryptionStatus] = useState<EncryptionSessionStatus | null>(null)
   const [encryptionError, setEncryptionError] = useState<string | null>(null)
-  const wasSetupActiveRef = useRef(isSetupActive)
-
-  // When setup just completed, trigger Tauri-side auto-unlock.
-  // The daemon runs MarkSetupComplete + ensure_ready on its side, but the Tauri-side
-  // encryption session needs its own unlock to become session_ready.
-  // The existing encryption://event SessionReady listener handles the state update.
-  useEffect(() => {
-    const wasActive = wasSetupActiveRef.current
-    wasSetupActiveRef.current = isSetupActive
-
-    if (wasActive && !isSetupActive) {
-      unlockEncryptionSession().catch(err => console.warn('Post-setup auto-unlock failed:', err))
-    }
-  }, [isSetupActive])
+  // Post-setup auto-unlock is handled by onSetupComplete callback (in AppContentWithBar),
+  // NOT by detecting isSetupActive transitions. Detecting transitions here would false-trigger
+  // on initial hydration: isSetupActive starts true (hydrated=false placeholder) then becomes
+  // false when hydration completes with setupState='Completed', mimicking a setup→completed
+  // transition even though setup was already done.
 
   const {
     data: encryptionData,
@@ -246,6 +237,10 @@ export const AppContentWithBar = () => {
 
   const handleSetupComplete = () => {
     setShowCompletionStep(false)
+    // When setup just completed, trigger Tauri-side auto-unlock.
+    // The daemon runs MarkSetupComplete + ensure_ready on its side, but the Tauri-side
+    // encryption session needs its own unlock to become session_ready.
+    unlockEncryptionSession().catch(err => console.warn('Post-setup auto-unlock failed:', err))
   }
 
   return (

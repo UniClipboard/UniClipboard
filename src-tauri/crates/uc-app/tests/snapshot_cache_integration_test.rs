@@ -395,7 +395,10 @@ fn build_snapshot(rep_id: RepresentationId, bytes: Vec<u8>, mime: &str) -> Syste
 }
 
 #[tokio::test]
-async fn test_capture_returns_error_when_spool_queue_closed() -> Result<()> {
+async fn test_capture_succeeds_even_when_spool_queue_closed() -> Result<()> {
+    // Spool failures are non-fatal: the entry must still be created so the user
+    // sees their clipboard content immediately. Bytes are kept in the in-memory
+    // cache for the background blob worker to use.
     let rep_id = RepresentationId::new();
     let bytes = vec![0u8; 32 * 1024];
     let snapshot = build_snapshot(rep_id.clone(), bytes.clone(), "image/png");
@@ -432,8 +435,12 @@ async fn test_capture_returns_error_when_spool_queue_closed() -> Result<()> {
         spool_queue,
     );
     let result = timeout(Duration::from_millis(200), usecase.execute(snapshot)).await?;
-    assert!(result.is_err(), "expected enqueue failure");
+    assert!(
+        result.is_ok(),
+        "capture must succeed even when spool queue is closed"
+    );
 
+    // Bytes must still be in the in-memory cache for the blob worker.
     let cached = rep_cache.get(&rep_id).await;
     assert_eq!(cached, Some(bytes));
     Ok(())
@@ -441,6 +448,8 @@ async fn test_capture_returns_error_when_spool_queue_closed() -> Result<()> {
 
 #[tokio::test(flavor = "current_thread")]
 async fn test_capture_logs_on_spool_queue_closed() -> Result<()> {
+    // When the spool queue is closed, capture must still succeed (non-fatal)
+    // but must log a warning containing the representation ID.
     let rep_id = RepresentationId::new();
     let bytes = vec![0u8; 32 * 1024];
     let snapshot = build_snapshot(rep_id.clone(), bytes, "image/png");
@@ -478,7 +487,13 @@ async fn test_capture_logs_on_spool_queue_closed() -> Result<()> {
         spool_queue,
     );
     let result = usecase.execute(snapshot).await;
-    assert!(result.is_err(), "expected enqueue failure");
+    assert!(
+        result.is_ok(),
+        "capture must succeed even when spool queue is closed"
+    );
+
+    // Spool writes are spawned as a background task; yield to let it run and log.
+    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
 
     let guard = log_buffer.lock().unwrap();
     let (_, new_bytes) = guard.split_at(start_len);

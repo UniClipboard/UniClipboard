@@ -185,7 +185,9 @@ impl CaptureClipboardUseCase {
             .instrument(info_span!("persist_event", stage = stages::PERSIST_EVENT))
             .await?;
 
-            // Cache representations for immediate access
+            // Cache representations for immediate access by the background blob worker.
+            // This must happen before persist_entry so the worker gets a cache hit
+            // when it is notified (via try_send in spool_blobs below).
             async {
                 for rep in &normalized_reps {
                     if rep.payload_state() == PayloadAvailability::Staged {
@@ -206,36 +208,6 @@ impl CaptureClipboardUseCase {
             ))
             .await?;
 
-            // Queue large representations for background spool-to-disk
-            async {
-                for rep in &normalized_reps {
-                    if rep.payload_state() == PayloadAvailability::Staged {
-                        if let Some(observed) =
-                            snapshot.representations.iter().find(|o| o.id == rep.id)
-                        {
-                            if let Err(err) = self
-                                .spool_queue
-                                .enqueue(SpoolRequest {
-                                    rep_id: rep.id.clone(),
-                                    bytes: observed.bytes.clone(),
-                                })
-                                .await
-                            {
-                                warn!(
-                                    representation_id = %rep.id,
-                                    error = %err,
-                                    "Failed to enqueue spool request"
-                                );
-                                return Err(err);
-                            }
-                        }
-                    }
-                }
-                Ok::<(), anyhow::Error>(())
-            }
-            .instrument(info_span!("spool_blobs", stage = stages::SPOOL_BLOBS))
-            .await?;
-
             // 4. policy.select(snapshot)
             let (entry_id, new_selection) = {
                 let _guard = info_span!("select_policy", stage = stages::SELECT_POLICY).entered();
@@ -246,6 +218,11 @@ impl CaptureClipboardUseCase {
             };
 
             // 5. entry_repo.insert_entry
+            //
+            // Persist the entry BEFORE spool writes so the entry appears in the
+            // dashboard immediately. Spool writes (below) can take many seconds for
+            // large images (e.g., macOS TIFF representations of 30-100 MB), and must
+            // not block the user-visible entry creation path.
             async {
                 let created_at_ms = SystemTime::now()
                     .duration_since(SystemTime::UNIX_EPOCH)
@@ -268,6 +245,45 @@ impl CaptureClipboardUseCase {
             .await?;
 
             info!(event_id = %event_id, entry_id = %entry_id, "Clipboard capture completed");
+
+            // Queue large representations for durable spool-to-disk in a background task.
+            // The entry is already persisted and bytes are in the in-memory cache, so the
+            // background blob worker will get a cache hit immediately. Spool writes only
+            // provide durability (survive process exit) — they must not block the callback.
+            let spool_queue = Arc::clone(&self.spool_queue);
+            let spool_reps: Vec<_> = normalized_reps
+                .iter()
+                .filter(|rep| rep.payload_state() == PayloadAvailability::Staged)
+                .filter_map(|rep| {
+                    snapshot
+                        .representations
+                        .iter()
+                        .find(|o| o.id == rep.id)
+                        .map(|observed| SpoolRequest {
+                            rep_id: rep.id.clone(),
+                            bytes: observed.bytes.clone(),
+                        })
+                })
+                .collect();
+
+            if !spool_reps.is_empty() {
+                tokio::spawn(
+                    async move {
+                        for req in spool_reps {
+                            let rep_id = req.rep_id.clone();
+                            if let Err(err) = spool_queue.enqueue(req).await {
+                                warn!(
+                                    representation_id = %rep_id,
+                                    error = %err,
+                                    "Failed to enqueue spool request; blob will be lost if process exits before worker runs"
+                                );
+                            }
+                        }
+                    }
+                    .instrument(info_span!("spool_blobs", stage = stages::SPOOL_BLOBS)),
+                );
+            }
+
             Ok(Some(entry_id))
         }
         .instrument(span)

@@ -1,0 +1,126 @@
+name: 'Build CLI'
+run-name: "build-cli-${{ inputs.platform || 'all' }}-${{ github.run_number }}"
+on:
+  workflow_dispatch:
+    inputs:
+      platform:
+        description: 'Select build platform'
+        required: true
+        type: choice
+        options:
+          - 'macos-aarch64'
+          - 'macos-x86_64'
+          - 'ubuntu-22.04'
+          - 'windows-latest'
+          - 'all'
+        default: 'all'
+  workflow_call:
+    inputs:
+      platform:
+        description: 'Select build platform'
+        required: false
+        type: string
+        default: 'all'
+      branch:
+        description: 'Branch to build'
+        required: false
+        type: string
+        default: ''
+
+jobs:
+  setup-matrix:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+    steps:
+      - name: Generate matrix
+        id: set-matrix
+        run: |
+          PLATFORM="${{ inputs.platform || 'all' }}"
+          if [ "$PLATFORM" == "all" ]; then
+            echo 'matrix=[{"platform":"macos-latest","target":"aarch64-apple-darwin","args":"--target aarch64-apple-darwin"},{"platform":"macos-latest","target":"x86_64-apple-darwin","args":"--target x86_64-apple-darwin"},{"platform":"ubuntu-22.04","target":"x86_64-unknown-linux-gnu","args":""},{"platform":"windows-latest","target":"x86_64-pc-windows-msvc","args":""}]' >> "$GITHUB_OUTPUT"
+          elif [ "$PLATFORM" == "macos-aarch64" ]; then
+            echo 'matrix=[{"platform":"macos-latest","target":"aarch64-apple-darwin","args":"--target aarch64-apple-darwin"}]' >> "$GITHUB_OUTPUT"
+          elif [ "$PLATFORM" == "macos-x86_64" ]; then
+            echo 'matrix=[{"platform":"macos-latest","target":"x86_64-apple-darwin","args":"--target x86_64-apple-darwin"}]' >> "$GITHUB_OUTPUT"
+          elif [ "$PLATFORM" == "ubuntu-22.04" ]; then
+            echo 'matrix=[{"platform":"ubuntu-22.04","target":"x86_64-unknown-linux-gnu","args":""}]' >> "$GITHUB_OUTPUT"
+          elif [ "$PLATFORM" == "windows-latest" ]; then
+            echo 'matrix=[{"platform":"windows-latest","target":"x86_64-pc-windows-msvc","args":""}]' >> "$GITHUB_OUTPUT"
+          else
+            echo "Error: Unknown platform '$PLATFORM'. Valid options: all, macos-aarch64, macos-x86_64, ubuntu-22.04, windows-latest"
+            exit 1
+          fi
+
+  build-cli:
+    name: Build CLI ${{ matrix.target }}
+    needs: setup-matrix
+    runs-on: ${{ matrix.platform }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.setup-matrix.outputs.matrix) }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.branch || github.ref }}
+
+      - name: setup node
+        uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+
+      - name: install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "src-tauri -> target"
+          shared-key: cli-${{ matrix.target }}
+
+      - name: install dependencies (ubuntu only)
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+
+      - name: build CLI binary
+        working-directory: src-tauri
+        run: cargo build --release -p uc-cli ${{ matrix.args }}
+
+      - name: package CLI binary
+        id: package
+        shell: bash
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          TARGET="${{ matrix.target }}"
+          BIN_NAME="uniclipboard-cli"
+
+          if [ "${{ matrix.platform }}" = "windows-latest" ]; then
+            BIN_SRC="src-tauri/target/release/${BIN_NAME}.exe"
+            # Windows non-cross build puts binary in target/release/, not target/{target}/release/
+            if [ ! -f "$BIN_SRC" ]; then
+              BIN_SRC="src-tauri/target/${TARGET}/release/${BIN_NAME}.exe"
+            fi
+            ARCHIVE="uniclipboard-cli-${VERSION}-${TARGET}.zip"
+            7z a "$ARCHIVE" "$BIN_SRC"
+          else
+            BIN_DIR="src-tauri/target/${TARGET}/release"
+            # Fallback for non-cross builds
+            if [ ! -f "${BIN_DIR}/${BIN_NAME}" ]; then
+              BIN_DIR="src-tauri/target/release"
+            fi
+            ARCHIVE="uniclipboard-cli-${VERSION}-${TARGET}.tar.gz"
+            tar -czf "$ARCHIVE" -C "$BIN_DIR" "$BIN_NAME"
+          fi
+          echo "archive=$ARCHIVE" >> "$GITHUB_OUTPUT"
+
+      - name: upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: cli-${{ matrix.target }}
+          path: uniclipboard-cli-*

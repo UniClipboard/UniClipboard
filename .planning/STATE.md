@@ -3,10 +3,10 @@ gsd_state_version: 1.0
 milestone: v0.4.0
 milestone_name: Runtime Mode Separation
 status: Milestone complete
-stopped_at: Completed 67-02-PLAN.md
-last_updated: '2026-03-27T13:53:50.638Z'
+stopped_at: Phase 68 context gathered
+last_updated: '2026-03-28T03:48:28.547Z'
 progress:
-  total_phases: 38
+  total_phases: 39
   completed_phases: 31
   total_plans: 86
   completed_plans: 83
@@ -233,6 +233,7 @@ Recent decisions affecting current work:
 - Phase 35 added: Extract OutboundSyncPlanner to consolidate scattered sync policy checks
 - Phase 66 added: 修复 daemon 剪切板监听导致前端 dashboard 不会自动刷新剪切板历史的问题
 - Phase 67 added: 设备在 setup 完成前不应被其他设备发现，需要在业务层进行过滤
+- Phase 68 added: Adopt Tauri Sidecar for daemon binary management (dev build, bundling, and path resolution)
 
 ### Pending Todos
 
@@ -252,6 +253,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-27T13:48:49.317Z
-Stopped at: Completed 67-02-PLAN.md
-Resume file: None
+Last session: 2026-03-28T03:48:28.544Z
+Stopped at: Phase 68 context gathered
+Resume file: .planning/phases/68-adopt-tauri-sidecar-for-daemon/68-CONTEXT.md

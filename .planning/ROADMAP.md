@@ -746,3 +746,14 @@ Plans:
 Plans:
 
 - [x] 70-01-PLAN.md — Implement start and stop commands with background/foreground modes, PID-based SIGTERM, and idempotent behavior
+
+### Phase 71: Dual-product release pipeline for CLI and App
+
+**Goal:** [To be planned]
+**Requirements**: TBD
+**Depends on:** Phase 70
+**Plans:** 0 plans
+
+Plans:
+
+- [ ] TBD (run /gsd:plan-phase 71 to break down)

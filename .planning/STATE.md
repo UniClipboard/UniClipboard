@@ -250,6 +250,7 @@ Recent decisions affecting current work:
 - Phase 68 added: Adopt Tauri Sidecar for daemon binary management (dev build, bundling, and path resolution)
 - Phase 69 added: CLI setup flow: first-time encryption init before daemon spawn
 - Phase 70 added: CLI start/stop commands for daemon lifecycle management
+- Phase 71 added: Dual-product release pipeline for CLI and App
 
 ### Pending Todos
 

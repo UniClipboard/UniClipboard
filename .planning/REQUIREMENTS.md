@@ -236,10 +236,10 @@ Requirements for runtime mode separation. Each maps to roadmap phases.
 
 - [x] **PH68-01**: `tauri.conf.json` declares `"binaries/uniclipboard-daemon"` in `bundle.externalBin` array
 - [x] **PH68-02**: `src-tauri/build.rs` contains `copy_daemon_binary_to_binaries()` that copies compiled daemon to `src-tauri/binaries/uniclipboard-daemon-{target-triple}` using `TAURI_ENV_TARGET_TRIPLE` or `CARGO_CFG_*` fallback
-- [ ] **PH68-03**: `spawn_daemon_process()` in `run.rs` uses `app.shell().sidecar("uniclipboard-daemon").args(["--gui-managed"]).spawn()` instead of `std::process::Command`
-- [ ] **PH68-04**: `bootstrap_daemon_connection()` and `supervise_daemon()` accept `AppHandle<R>` parameter for sidecar API access
+- [x] **PH68-03**: `spawn_daemon_process()` in `run.rs` uses `app.shell().sidecar("uniclipboard-daemon").args(["--gui-managed"]).spawn()` instead of `std::process::Command`
+- [x] **PH68-04**: `bootstrap_daemon_connection()` and `supervise_daemon()` accept `AppHandle<R>` parameter for sidecar API access
 - [x] **PH68-05**: `src-tauri/capabilities/default.json` contains `shell:allow-spawn` permission with `sidecar: true` and `args: ["--gui-managed"]`
-- [ ] **PH68-06**: `GuiOwnedDaemonState` holds `tauri_plugin_shell::process::CommandChild` instead of `std::process::Child`, and `shutdown_owned_daemon` uses PID-based termination
+- [x] **PH68-06**: `GuiOwnedDaemonState` holds `tauri_plugin_shell::process::CommandChild` instead of `std::process::Child`, and `shutdown_owned_daemon` uses PID-based termination
 
 ## Out of Scope
 
@@ -391,10 +391,10 @@ Requirements for runtime mode separation. Each maps to roadmap phases.
 
 | PH68-01 | 68 | Complete |
 | PH68-02 | 68 | Complete |
-| PH68-03 | 68 | Pending |
-| PH68-04 | 68 | Pending |
+| PH68-03 | 68 | Complete |
+| PH68-04 | 68 | Complete |
 | PH68-05 | 68 | Complete |
-| PH68-06 | 68 | Pending |
+| PH68-06 | 68 | Complete |
 
 **Coverage:**
 

@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v0.4.0
 milestone_name: Runtime Mode Separation
-status: Ready to execute
-stopped_at: Completed 68-01-PLAN.md
-last_updated: "2026-03-28T04:26:45.819Z"
+status: Phase complete — ready for verification
+stopped_at: Completed 68-02-PLAN.md
+last_updated: "2026-03-28T04:46:43.614Z"
 progress:
   total_phases: 39
-  completed_phases: 31
+  completed_phases: 32
   total_plans: 88
-  completed_plans: 84
+  completed_plans: 85
 ---
 
 # Project State
@@ -95,6 +95,7 @@ Plan: 2 of 2
   | Phase 66-daemon-dashboard P02 | 18 | 2 tasks | 4 files |
   | Phase 67-setup-filter P02 | 8 | 1 tasks | 3 files |
 | Phase 68-adopt-tauri-sidecar-for-daemon P01 | 5 | 2 tasks | 6 files |
+| Phase 68 P02 | 20 | 2 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -215,6 +216,9 @@ Recent decisions affecting current work:
 - [Phase 67-setup-filter]: RuntimeState::update_service_health() added for single-entry Stopped→Healthy mutation when deferred worker starts
 - [Phase 68]: Copy daemon binary before tauri_build::build() so externalBin path validation succeeds at check time
 - [Phase 68]: tauri-plugin-shell in workspace.dependencies; build.rs in src-tauri/ (main crate) for TAURI_ENV_TARGET_TRIPLE access
+- [Phase 68]: CommandChild from sidecar spawn maintains stdin tether (D-06): drop sends EOF to daemon's --gui-managed stdin monitor
+- [Phase 68]: shutdown_owned_daemon uses terminate_local_daemon_pid + libc::kill(0) polling instead of Child::try_wait/kill/wait
+- [Phase 68]: Sidecar rx Receiver drained in background task — must not be dropped immediately or pipe blocks
 
 ### Roadmap Evolution
 
@@ -256,6 +260,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-28T04:26:45.815Z
-Stopped at: Completed 68-01-PLAN.md
+Last session: 2026-03-28T04:46:43.611Z
+Stopped at: Completed 68-02-PLAN.md
 Resume file: None

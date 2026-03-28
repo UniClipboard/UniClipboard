@@ -1,10 +1,11 @@
 use std::future::Future;
 use std::path::{Path, PathBuf};
-use std::process::{Child, Command, Stdio};
 use std::time::Duration;
 
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, Runtime};
+use tauri_plugin_shell::process::{CommandChild, CommandEvent};
+use tauri_plugin_shell::ShellExt;
 use thiserror::Error;
 use tokio_util::sync::CancellationToken;
 use uc_daemon::api::auth::{resolve_daemon_token_path, DaemonConnectionInfo};
@@ -20,7 +21,6 @@ pub use uc_daemon_client::daemon_lifecycle::terminate_local_daemon_pid;
 use uc_daemon_client::daemon_lifecycle::{GuiOwnedDaemonState, SpawnReason};
 
 pub const DAEMON_CONNECTION_EVENT: &str = "daemon://connection-info";
-const DAEMON_BINARY_NAME: &str = "uniclipboard-daemon";
 const HEALTH_PATH: &str = "/health";
 const HEALTH_CHECK_TIMEOUT: Duration = Duration::from_secs(8);
 const HEALTH_POLL_INTERVAL: Duration = Duration::from_millis(200);
@@ -77,7 +77,8 @@ impl From<&DaemonConnectionInfo> for DaemonConnectionPayload {
     }
 }
 
-pub async fn bootstrap_daemon_connection(
+pub async fn bootstrap_daemon_connection<R: Runtime>(
+    app: &AppHandle<R>,
     state: &DaemonConnectionState,
     gui_owned_daemon_state: &GuiOwnedDaemonState,
 ) -> Result<DaemonConnectionInfo, DaemonBootstrapError> {
@@ -90,12 +91,16 @@ pub async fn bootstrap_daemon_connection(
             )
         })?;
 
+    let app = app.clone();
     let ownership = DaemonBootstrapOwnershipState::default();
     bootstrap_daemon_connection_with_hooks(
         state,
         &ownership,
         gui_owned_daemon_state,
-        || spawn_daemon_process().map(Some),
+        || {
+            let (child, pid) = spawn_daemon_process(&app)?;
+            Ok(Some((child, pid)))
+        },
         || probe_daemon_health(&client),
         load_daemon_connection_info,
         terminate_incompatible_daemon_from_pid_file,
@@ -114,7 +119,8 @@ const SUPERVISOR_RESPAWN_BACKOFF_MAX: Duration = Duration::from_secs(30);
 ///
 /// Runs until the cancellation token is triggered (app exit). After a successful
 /// respawn, updates `DaemonConnectionState` so the WS bridge can reconnect.
-pub async fn supervise_daemon(
+pub async fn supervise_daemon<R: Runtime>(
+    app: &AppHandle<R>,
     state: &DaemonConnectionState,
     gui_owned_daemon_state: &GuiOwnedDaemonState,
     token: CancellationToken,
@@ -162,10 +168,10 @@ pub async fn supervise_daemon(
             "Daemon supervisor detected owned daemon is gone; attempting respawn"
         );
 
-        match spawn_daemon_process() {
-            Ok(child) => {
+        match spawn_daemon_process(app) {
+            Ok((child, pid)) => {
                 let ownership = DaemonBootstrapOwnershipState::default();
-                gui_owned_daemon_state.record_spawned(child, SpawnReason::Replacement);
+                gui_owned_daemon_state.record_spawned(child, pid, SpawnReason::Replacement);
                 ownership.record_spawned_child(gui_owned_daemon_state.snapshot_pid());
 
                 // Wait for it to become healthy.
@@ -264,7 +270,7 @@ pub async fn bootstrap_daemon_connection_with_hooks<
     poll_interval: Duration,
 ) -> Result<DaemonConnectionInfo, DaemonBootstrapError>
 where
-    Spawn: FnMut() -> Result<Option<Child>, DaemonBootstrapError>,
+    Spawn: FnMut() -> Result<Option<(CommandChild, u32)>, DaemonBootstrapError>,
     Probe: FnMut() -> ProbeFuture,
     ProbeFuture: Future<Output = Result<ProbeOutcome, DaemonBootstrapError>>,
     LoadInfo: Fn() -> Result<DaemonConnectionInfo, DaemonBootstrapError>,
@@ -317,15 +323,14 @@ async fn spawn_and_wait_for_compatible<Spawn, Probe, ProbeFuture>(
     spawn_reason: SpawnReason,
 ) -> Result<(), DaemonBootstrapError>
 where
-    Spawn: FnMut() -> Result<Option<Child>, DaemonBootstrapError>,
+    Spawn: FnMut() -> Result<Option<(CommandChild, u32)>, DaemonBootstrapError>,
     Probe: FnMut() -> ProbeFuture,
     ProbeFuture: Future<Output = Result<ProbeOutcome, DaemonBootstrapError>>,
 {
     match spawn()? {
-        Some(child) => {
-            let child_pid = child.id();
-            gui_owned_daemon_state.record_spawned(child, spawn_reason);
-            ownership.record_spawned_child(Some(child_pid));
+        Some((child, pid)) => {
+            gui_owned_daemon_state.record_spawned(child, pid, spawn_reason);
+            ownership.record_spawned_child(Some(pid));
         }
         None => {
             let _ = gui_owned_daemon_state.clear();
@@ -354,7 +359,7 @@ async fn replace_incompatible_daemon<Terminate, Spawn, Probe, ProbeFuture>(
 ) -> Result<(), DaemonBootstrapError>
 where
     Terminate: FnMut() -> Result<(), DaemonBootstrapError>,
-    Spawn: FnMut() -> Result<Option<Child>, DaemonBootstrapError>,
+    Spawn: FnMut() -> Result<Option<(CommandChild, u32)>, DaemonBootstrapError>,
     Probe: FnMut() -> ProbeFuture,
     ProbeFuture: Future<Output = Result<ProbeOutcome, DaemonBootstrapError>>,
 {
@@ -591,48 +596,45 @@ fn terminate_incompatible_daemon_from_pid_file() -> Result<(), DaemonBootstrapEr
     Ok(())
 }
 
-fn spawn_daemon_process() -> Result<Child, DaemonBootstrapError> {
-    let daemon_binary = resolve_daemon_binary_path().map_err(|error| {
-        DaemonBootstrapError::Spawn(
-            anyhow::Error::new(error).context("failed to resolve daemon binary path"),
-        )
-    })?;
-
-    Command::new(&daemon_binary)
-        .arg("--gui-managed")
-        .stdin(Stdio::piped())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
+fn spawn_daemon_process<R: Runtime>(
+    app: &AppHandle<R>,
+) -> Result<(CommandChild, u32), DaemonBootstrapError> {
+    let (rx, child) = app
+        .shell()
+        .sidecar("uniclipboard-daemon")
+        .map_err(|e| {
+            DaemonBootstrapError::Spawn(anyhow::Error::msg(format!("sidecar create: {e}")))
+        })?
+        .args(["--gui-managed"])
         .spawn()
-        .map_err(|error| {
-            DaemonBootstrapError::Spawn(anyhow::Error::new(error).context(format!(
-                "failed to spawn {} from {}",
-                DAEMON_BINARY_NAME,
-                daemon_binary.display()
-            )))
-        })
-}
+        .map_err(|e| {
+            DaemonBootstrapError::Spawn(anyhow::Error::msg(format!("sidecar spawn: {e}")))
+        })?;
 
-fn resolve_daemon_binary_path() -> std::io::Result<PathBuf> {
-    let current_exe = std::env::current_exe()?;
-    let binary_name = daemon_binary_name();
-    let sibling = current_exe
-        .parent()
-        .map(|parent| parent.join(binary_name))
-        .filter(|candidate| candidate.exists());
+    let pid = child.pid();
 
-    Ok(sibling.unwrap_or_else(|| PathBuf::from(binary_name)))
-}
+    // Drain stdout/stderr events to prevent pipe blocking.
+    // CommandChild holds stdin open, maintaining the D-06 stdin tether.
+    tauri::async_runtime::spawn(async move {
+        let mut rx = rx;
+        while let Some(event) = rx.recv().await {
+            match event {
+                CommandEvent::Stderr(line) => {
+                    tracing::debug!(
+                        line = %String::from_utf8_lossy(&line),
+                        "daemon sidecar stderr"
+                    );
+                }
+                CommandEvent::Terminated(payload) => {
+                    tracing::info!(?payload, "daemon sidecar terminated");
+                    break;
+                }
+                _ => {}
+            }
+        }
+    });
 
-fn daemon_binary_name() -> &'static str {
-    #[cfg(target_os = "windows")]
-    {
-        "uniclipboard-daemon.exe"
-    }
-    #[cfg(not(target_os = "windows"))]
-    {
-        DAEMON_BINARY_NAME
-    }
+    Ok((child, pid))
 }
 
 fn resolve_token_path() -> PathBuf {
@@ -786,17 +788,20 @@ mod tests {
         let state = DaemonConnectionState::default();
         let ownership = DaemonBootstrapOwnershipState::default();
         let gui_owned_daemon_state = GuiOwnedDaemonState::default();
+        // terminate_incompatible is called but daemon stays incompatible (probe never returns
+        // Absent), so wait_for_endpoint_absent times out with IncompatibleDaemon.
+        // spawn is never reached because the replacement path fails first.
         let result = bootstrap_daemon_connection_with_hooks(
             &state,
             &ownership,
             &gui_owned_daemon_state,
-            || panic!("spawn should not run when an incompatible daemon is already listening"),
+            || panic!("spawn should not run when incompatible daemon does not exit"),
             || {
                 let incompatible_outcome = incompatible_outcome.clone();
                 async move { Ok(incompatible_outcome) }
             },
             || unreachable!(),
-            || unreachable!(),
+            || Ok(()),
             Duration::from_millis(10),
             Duration::from_millis(10),
             Duration::from_millis(1),
@@ -806,7 +811,7 @@ mod tests {
         assert!(matches!(
             result,
             Err(DaemonBootstrapError::IncompatibleDaemon { details })
-                if details.contains("does not match GUI packageVersion")
+                if details.contains("did not exit within 10ms")
         ));
     }
 

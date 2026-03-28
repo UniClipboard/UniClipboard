@@ -11,6 +11,7 @@ use tauri::webview::PageLoadEvent;
 use tauri::Manager;
 use tauri_plugin_autostart::MacosLauncher;
 use tauri_plugin_global_shortcut;
+use tauri_plugin_shell;
 use tauri_plugin_single_instance;
 use tauri_plugin_stronghold;
 use tracing::{error, info, warn};
@@ -372,7 +373,8 @@ fn run_app(ctx: GuiBootstrapContext) {
         // 2) In frontend devtools: fetch("uc://thumbnail/<representation_id>")
         // 3) Network should show 200 with Access-Control-Allow-Origin matching http://localhost:1420
         .plugin(tauri_plugin_notification::init())
-        .plugin(tauri_plugin_opener::init());
+        .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_shell::init());
 
     let builder = if disable_single_instance {
         info!("UC_DISABLE_SINGLE_INSTANCE=1 set; skipping single-instance plugin registration");
@@ -419,6 +421,7 @@ fn run_app(ctx: GuiBootstrapContext) {
             let supervisor_token = task_registry.token().clone();
             tauri::async_runtime::spawn(async move {
                 match bootstrap_daemon_connection(
+                    &app_handle_for_daemon,
                     &daemon_connection_state_for_setup,
                     &gui_owned_daemon_state_for_setup,
                 )
@@ -436,8 +439,10 @@ fn run_app(ctx: GuiBootstrapContext) {
                         // Start daemon supervisor to respawn if daemon dies unexpectedly.
                         let supervisor_state = daemon_connection_state_for_setup.clone();
                         let supervisor_daemon = gui_owned_daemon_state_for_setup.clone();
+                        let app_handle_for_supervisor = app_handle_for_daemon.clone();
                         tauri::async_runtime::spawn(async move {
                             supervise_daemon(
+                                &app_handle_for_supervisor,
                                 &supervisor_state,
                                 &supervisor_daemon,
                                 supervisor_token,

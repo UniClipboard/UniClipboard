@@ -30,9 +30,18 @@ export default function UnlockPage() {
     setUnlocking(true)
     setIsExiting(false)
     try {
-      await unlockEncryptionSession()
-      // The App component will handle the navigation when the session becomes ready
-      setIsExiting(true)
+      const unlocked = await unlockEncryptionSession()
+      if (unlocked) {
+        // The App component will handle the navigation when the session becomes ready
+        // via the encryption://event SessionReady listener.
+        setIsExiting(true)
+      } else {
+        // unlock_encryption_session returned false — encryption was not initialized
+        // or the session was already ready. Do not animate out; reset state.
+        console.warn('Unlock returned false — encryption may not be initialized')
+        setUnlocking(false)
+        setIsExiting(false)
+      }
     } catch (error) {
       console.error('Unlock failed:', error)
       setUnlocking(false)

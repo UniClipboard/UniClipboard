@@ -1,6 +1,7 @@
 mod background_blob_worker;
 mod change_origin;
 pub mod chunked_transfer;
+mod durable_spool_queue;
 mod normalizer;
 mod payload_resolver;
 mod representation_cache;
@@ -18,6 +19,7 @@ pub use chunked_transfer::{
     ChunkedDecoder, ChunkedEncoder, TransferPayloadDecryptorAdapter,
     TransferPayloadEncryptorAdapter,
 };
+pub use durable_spool_queue::DurableSpoolQueue;
 pub use normalizer::ClipboardRepresentationNormalizer;
 pub use payload_resolver::ClipboardPayloadResolver;
 pub use representation_cache::{CacheEntryStatus, RepresentationCache};

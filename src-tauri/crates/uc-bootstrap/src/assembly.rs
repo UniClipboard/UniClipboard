@@ -36,8 +36,8 @@ use uc_core::ports::*;
 use uc_core::settings::model::Settings;
 use uc_infra::blob::BlobWriter;
 use uc_infra::clipboard::{
-    ClipboardPayloadResolver, ClipboardRepresentationNormalizer, InMemoryClipboardChangeOrigin,
-    InfraThumbnailGenerator, MpscSpoolQueue, RepresentationCache, SpoolManager,
+    ClipboardPayloadResolver, ClipboardRepresentationNormalizer, DurableSpoolQueue,
+    InMemoryClipboardChangeOrigin, InfraThumbnailGenerator, RepresentationCache, SpoolManager,
 };
 use uc_infra::config::ClipboardStorageConfig;
 use uc_infra::db::executor::DieselSqliteExecutor;
@@ -140,6 +140,11 @@ pub struct BackgroundRuntimeDeps {
     pub libp2p_network: Arc<Libp2pNetworkAdapter>,
     pub representation_cache: Arc<RepresentationCache>,
     pub spool_manager: Arc<SpoolManager>,
+    /// Sender side of the legacy spool channel. Kept alive so that `SpoolerTask`
+    /// (which drains `spool_rx`) does not immediately exit when no senders remain.
+    /// `DurableSpoolQueue` bypasses this channel and writes to disk directly, so
+    /// `spool_tx` is never actually used to send messages in normal operation.
+    pub spool_tx: mpsc::Sender<SpoolRequest>,
     pub spool_rx: mpsc::Receiver<SpoolRequest>,
     pub worker_rx: mpsc::Receiver<RepresentationId>,
     pub spool_dir: PathBuf,
@@ -771,8 +776,16 @@ pub fn wire_dependencies_with_identity_store(
     );
 
     let (spool_tx, spool_rx) = mpsc::channel::<SpoolRequest>(100);
-    let spool_queue: Arc<dyn SpoolQueuePort> = Arc::new(MpscSpoolQueue::new(spool_tx));
     let (worker_tx, worker_rx) = mpsc::channel::<RepresentationId>(100);
+
+    // DurableSpoolQueue writes bytes to disk synchronously before returning,
+    // ensuring spool files survive process exits. The in-memory MpscSpoolQueue
+    // used previously only enqueued bytes into a channel; if the app exited
+    // before SpoolerTask drained the channel, the bytes were permanently lost.
+    let spool_queue: Arc<dyn SpoolQueuePort> = Arc::new(DurableSpoolQueue::new(
+        spool_manager.clone(),
+        worker_tx.clone(),
+    ));
 
     let clipboard_change_origin: Arc<dyn ClipboardChangeOriginPort> =
         Arc::new(InMemoryClipboardChangeOrigin::new());
@@ -853,6 +866,7 @@ pub fn wire_dependencies_with_identity_store(
             libp2p_network: platform.libp2p_network.clone(),
             representation_cache,
             spool_manager,
+            spool_tx,
             spool_rx,
             worker_rx,
             spool_dir,

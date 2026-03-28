@@ -83,6 +83,7 @@ pub fn start_background_tasks(
         libp2p_network: _,
         representation_cache,
         spool_manager,
+        spool_tx: _spool_tx, // Kept alive so SpoolerTask does not exit immediately
         spool_rx,
         worker_rx,
         spool_dir,
@@ -229,7 +230,6 @@ pub fn start_background_tasks(
         info!("All background tasks registered with TaskRegistry");
     });
 }
-
 
 #[derive(Clone)]
 #[cfg(test)]
@@ -467,7 +467,6 @@ impl uc_core::ports::space::CryptoPort for LoadedKeyslotSpaceAccessCrypto {
         ))
     }
 }
-
 
 #[cfg(test)]
 mod tests {

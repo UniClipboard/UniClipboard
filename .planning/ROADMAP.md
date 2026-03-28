@@ -752,7 +752,7 @@ Plans:
 **Goal:** Align CLI version to workspace inheritance, create a parallel CLI build workflow, and integrate CLI artifacts into the existing release pipeline so every release ships both App bundles and CLI binaries.
 **Requirements**: PH71-01, PH71-02, PH71-03, PH71-04, PH71-05, PH71-06
 **Depends on:** Phase 70
-**Plans:** 3 plans
+**Plans:** 1/3 plans executed
 
 **Success Criteria** (what must be TRUE):
 
@@ -766,5 +766,5 @@ Plans:
 Plans:
 
 - [ ] 71-01-PLAN.md — Version alignment: uc-cli workspace version, bump-version.js Cargo.lock workspace refresh, CI workflow comments
-- [ ] 71-02-PLAN.md — Create build-cli.yml reusable workflow for cross-platform CLI binary compilation and packaging
+- [x] 71-02-PLAN.md — Create build-cli.yml reusable workflow for cross-platform CLI binary compilation and packaging
 - [ ] 71-03-PLAN.md — Wire release pipeline: add build-cli job to release.yml, extend release notes template and generator with CLI section

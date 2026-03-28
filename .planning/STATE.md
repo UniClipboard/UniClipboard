@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v0.4.0
 milestone_name: Runtime Mode Separation
-status: Milestone complete
-stopped_at: Completed 70-01-PLAN.md
-last_updated: '2026-03-28T10:15:15.549Z'
+status: Ready to execute
+stopped_at: Completed 71-02-PLAN.md
+last_updated: "2026-03-28T14:10:27.768Z"
 progress:
-  total_phases: 41
+  total_phases: 42
   completed_phases: 34
-  total_plans: 90
-  completed_plans: 87
+  total_plans: 93
+  completed_plans: 88
 ---
 
 # Project State
@@ -19,12 +19,12 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-09)
 
 **Core value:** Seamless clipboard synchronization across devices -- copy on one, paste on another
-**Current focus:** Phase 70 — cli-start-stop-commands-for-daemon-lifecycle-management
+**Current focus:** Phase 71 — dual-product-release-pipeline-for-cli-and-app
 
 ## Current Position
 
-Phase: 70
-Plan: Not started
+Phase: 71 (dual-product-release-pipeline-for-cli-and-app) — EXECUTING
+Plan: 2 of 3
 
 ## Performance Metrics
 
@@ -98,6 +98,7 @@ Plan: Not started
   | Phase 68 P02 | 20 | 2 tasks | 6 files |
   | Phase 69 P01 | 4 | 3 tasks | 2 files |
   | Phase 70 P01 | 8 | 2 tasks | 6 files |
+| Phase 71 P02 | 52s | 1 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -226,6 +227,8 @@ Recent decisions affecting current work:
 - [Phase 70]: Background start reuses ensure_local_daemon_running() for probe-spawn-poll pattern consistency
 - [Phase 70]: SIGKILL not used -- user warned if daemon does not stop within 10s timeout
 - [Phase 70]: libc added directly to uc-cli (not workspace) since no other crate needs it
+- [Phase 71]: Mirror setup-matrix pattern from build.yml for consistent platform matrix across CLI and app builds
+- [Phase 71]: Use cli-{target} artifact prefix to disambiguate from app artifacts in shared release workflows
 
 ### Roadmap Evolution
 
@@ -270,6 +273,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-28T10:10:03.072Z
-Stopped at: Completed 70-01-PLAN.md
+Last session: 2026-03-28T14:10:27.764Z
+Stopped at: Completed 71-02-PLAN.md
 Resume file: None

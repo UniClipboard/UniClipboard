@@ -688,3 +688,24 @@ Plans:
 
 - [x] 67-01-PLAN.md — Add deferred PeerDiscoveryWorker infrastructure: recover_encryption_session returns bool, SetupCompletionEmitter, DaemonApp deferred worker support, build_non_gui_runtime_with_emitter
 - [x] 67-02-PLAN.md — Wire conditional PeerDiscoveryWorker registration in daemon main.rs with oneshot channel and SetupCompletionEmitter
+
+### Phase 68: Adopt Tauri Sidecar for daemon binary management (dev build, bundling, and path resolution)
+
+**Goal:** Migrate daemon binary building, bundling, and path resolution from manual std::process::Command management to Tauri's externalBin sidecar mechanism. GUI launches daemon via sidecar API, build.rs stages binary with target-triple naming, and shell:allow-spawn capability grants permission.
+**Requirements**: PH68-01, PH68-02, PH68-03, PH68-04, PH68-05, PH68-06
+**Depends on:** Phase 67
+**Plans:** 2 plans
+
+**Success Criteria** (what must be TRUE):
+
+1. tauri.conf.json declares daemon as externalBin sidecar at `binaries/uniclipboard-daemon`
+2. build.rs copies compiled daemon binary to src-tauri/binaries/ with target-triple suffix for dev and production builds
+3. spawn_daemon_process uses `app.shell().sidecar("uniclipboard-daemon")` instead of `std::process::Command`
+4. GuiOwnedDaemonState holds `CommandChild` (tauri-plugin-shell) instead of `std::process::Child`
+5. Shell plugin registered in main.rs and shell:allow-spawn capability configured with --gui-managed arg
+6. resolve_daemon_binary_path() and daemon_binary_name() functions are deleted (replaced by sidecar path resolution)
+
+Plans:
+
+- [ ] 68-01-PLAN.md — Add sidecar infrastructure: externalBin config, build.rs daemon copy, tauri-plugin-shell dependency, shell capability, .gitignore
+- [ ] 68-02-PLAN.md — Replace spawn_daemon_process with sidecar API, migrate GuiOwnedDaemonState to CommandChild, wire AppHandle through bootstrap/supervision

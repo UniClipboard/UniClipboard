@@ -232,6 +232,15 @@ Requirements for runtime mode separation. Each maps to roadmap phases.
 - [x] **PH67-06**: daemon `main.rs` wires `SetupCompletionEmitter` as the `SessionReadyEmitter` into `CoreRuntime` via `build_non_gui_runtime_with_emitter`
 - [x] **PH67-07**: peer-discovery initial health status is `ServiceHealth::Stopped` when encryption is uninitialized, `Healthy` when initialized
 
+### Tauri Sidecar For Daemon Binary Management
+
+- [ ] **PH68-01**: `tauri.conf.json` declares `"binaries/uniclipboard-daemon"` in `bundle.externalBin` array
+- [ ] **PH68-02**: `src-tauri/build.rs` contains `copy_daemon_binary_to_binaries()` that copies compiled daemon to `src-tauri/binaries/uniclipboard-daemon-{target-triple}` using `TAURI_ENV_TARGET_TRIPLE` or `CARGO_CFG_*` fallback
+- [ ] **PH68-03**: `spawn_daemon_process()` in `run.rs` uses `app.shell().sidecar("uniclipboard-daemon").args(["--gui-managed"]).spawn()` instead of `std::process::Command`
+- [ ] **PH68-04**: `bootstrap_daemon_connection()` and `supervise_daemon()` accept `AppHandle<R>` parameter for sidecar API access
+- [ ] **PH68-05**: `src-tauri/capabilities/default.json` contains `shell:allow-spawn` permission with `sidecar: true` and `args: ["--gui-managed"]`
+- [ ] **PH68-06**: `GuiOwnedDaemonState` holds `tauri_plugin_shell::process::CommandChild` instead of `std::process::Child`, and `shutdown_owned_daemon` uses PID-based termination
+
 ## Out of Scope
 
 | Feature                                | Reason                                                            |
@@ -380,13 +389,20 @@ Requirements for runtime mode separation. Each maps to roadmap phases.
 | PH67-06     | 67    | Complete |
 | PH67-07     | 67    | Complete |
 
+| PH68-01 | 68 | Pending |
+| PH68-02 | 68 | Pending |
+| PH68-03 | 68 | Pending |
+| PH68-04 | 68 | Pending |
+| PH68-05 | 68 | Pending |
+| PH68-06 | 68 | Pending |
+
 **Coverage:**
 
-- v0.4.0 requirements: 113 total
-- Mapped to phases: 113
+- v0.4.0 requirements: 119 total
+- Mapped to phases: 119
 - Unmapped: 0
 
 ---
 
 _Requirements defined: 2026-03-17_
-_Last updated: 2026-03-27 after Phase 67 planning_
+_Last updated: 2026-03-28 after Phase 68 planning_

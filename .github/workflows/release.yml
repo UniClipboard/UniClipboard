@@ -153,9 +153,17 @@ jobs:
       branch: ${{ inputs.branch || '' }}
     secrets: inherit
 
+  build-cli:
+    needs: validate
+    uses: ./.github/workflows/build-cli.yml
+    with:
+      platform: ${{ inputs.platform || 'all' }}
+      branch: ${{ inputs.branch || '' }}
+    secrets: inherit
+
   create-release:
     name: Create GitHub Release
-    needs: [validate, build]
+    needs: [validate, build, build-cli]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -228,6 +236,19 @@ jobs:
             -name "*.sig" -o \
             -name "*.json" \
           \) | sort)
+
+          # Collect CLI binary archives (uniquely named, no collision handling needed)
+          while IFS= read -r src; do
+            filename="$(basename "$src")"
+            cp "$src" "release-assets/$filename"
+          done < <(find artifacts -type f \( \
+            -name "uniclipboard-cli-*.tar.gz" -o \
+            -name "uniclipboard-cli-*.zip" \
+          \) | sort)
+
+          # Verify CLI archives are present
+          echo "CLI archives in release-assets/:"
+          ls -la release-assets/uniclipboard-cli-* 2>/dev/null || echo "WARNING: No CLI archives found"
 
           echo "Release assets:"
           ls -lh release-assets

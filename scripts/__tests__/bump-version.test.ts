@@ -5,6 +5,17 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { bumpVersion, parseSemver } from '../bump-version-lib.js'
 import { updateCargoLock } from '../bump-version.js'
 
+describe('workspace version inheritance', () => {
+  it('uc-cli uses version.workspace = true', () => {
+    const content = fs.readFileSync(
+      path.resolve(__dirname, '../../src-tauri/crates/uc-cli/Cargo.toml'),
+      'utf8'
+    )
+    expect(content).toContain('version.workspace = true')
+    expect(content).not.toMatch(/^version\s*=\s*"[\d.]+"/m)
+  })
+})
+
 describe('bumpVersion prerelease patch', () => {
   it('keeps base version when creating first alpha prerelease', () => {
     expect(bumpVersion('0.1.0', 'patch', 'alpha')).toBe('0.1.0-alpha.1')

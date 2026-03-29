@@ -14,7 +14,7 @@
     "text_mode": false,
     "research_before_questions": false,
     "skip_discuss": false,
-    "_auto_chain_active": true
+    "_auto_chain_active": false
   },
   "git": {
     "branching_strategy": "phase",

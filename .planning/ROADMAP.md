@@ -774,7 +774,7 @@ Plans:
 **Goal:** Move the clipboard restore operation from GUI Tauri process to daemon, so that ClipboardChangeOriginPort::set_next_origin(LocalRestore) is armed in-process before the OS clipboard write, eliminating cross-process origin tracker desync.
 **Requirements**: PH72-01, PH72-02, PH72-03, PH72-04, PH72-05
 **Depends on:** Phase 71
-**Plans:** 2 plans
+**Plans:** 2/2 plans complete
 
 **Success Criteria** (what must be TRUE):
 

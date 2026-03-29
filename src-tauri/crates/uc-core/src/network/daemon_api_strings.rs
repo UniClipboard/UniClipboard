@@ -64,6 +64,12 @@ pub mod pairing_error_code {
     pub const RUNTIME_UNAVAILABLE: &str = "runtime_unavailable";
 }
 
+/// HTTP route path prefixes for daemon REST endpoints.
+pub mod http_route {
+    /// POST /clipboard/restore/:entry_id — restore clipboard entry to OS clipboard
+    pub const CLIPBOARD_RESTORE: &str = "/clipboard/restore";
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -133,5 +139,10 @@ mod tests {
         assert_eq!(pairing_error_code::INTERNAL, "internal");
         assert_eq!(pairing_error_code::BAD_REQUEST, "bad_request");
         assert_eq!(pairing_error_code::RUNTIME_UNAVAILABLE, "runtime_unavailable");
+    }
+
+    #[test]
+    fn http_route_values_match() {
+        assert_eq!(http_route::CLIPBOARD_RESTORE, "/clipboard/restore");
     }
 }

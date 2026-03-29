@@ -11,7 +11,7 @@ use axum::routing::{get, post, put};
 use axum::{Json, Router};
 use serde_json::json;
 use uc_app::usecases::CoreUseCases;
-use uc_core::network::daemon_api_strings::{pairing_error_code, pairing_stage};
+use uc_core::network::daemon_api_strings::{http_route, pairing_error_code, pairing_stage};
 use uc_core::security::model::EncryptionError;
 use uc_core::setup::SetupState;
 
@@ -61,6 +61,10 @@ pub fn router() -> Router<DaemonApiState> {
         .route("/pairing/sessions/:session_id/cancel", post(cancel_pairing))
         .route("/pairing/sessions/:session_id/verify", post(verify_pairing))
         .route("/lifecycle/ready", post(lifecycle_ready))
+        .route(
+            &format!("{}/:entry_id", http_route::CLIPBOARD_RESTORE),
+            post(restore_clipboard_entry_handler),
+        )
 }
 
 async fn health(State(state): State<DaemonApiState>) -> impl IntoResponse {
@@ -95,6 +99,51 @@ async fn lifecycle_ready(
     }
 
     StatusCode::NO_CONTENT.into_response()
+}
+
+async fn restore_clipboard_entry_handler(
+    State(state): State<DaemonApiState>,
+    headers: HeaderMap,
+    Path(entry_id): Path<String>,
+) -> impl IntoResponse {
+    if !state.is_authorized(&headers) {
+        return unauthorized().into_response();
+    }
+    let Some(runtime) = state.runtime.clone() else {
+        return internal_error(anyhow::anyhow!("daemon runtime unavailable")).into_response();
+    };
+
+    let parsed_id = uc_core::ids::EntryId::from(entry_id.clone());
+    let usecases = CoreUseCases::new(runtime.as_ref());
+
+    // Restore to OS clipboard first — this calls set_next_origin(LocalRestore) in-process.
+    // The daemon's ClipboardWatcherWorker will detect the write, but CaptureClipboardUseCase
+    // skips capture for LocalRestore origin — no duplicate DB entry, no outbound sync.
+    // This is correct behavior: restored content is already in DB and was previously synced.
+    // Do NOT call SyncOutboundClipboardUseCase here — it would cause unwanted duplicate sync.
+    match usecases.restore_clipboard_selection().execute(&parsed_id).await {
+        Ok(()) => {}
+        Err(e) => {
+            // Map "entry not found" errors to 404 (not 500).
+            // RestoreClipboardSelectionUseCase returns anyhow error with "not found" text
+            // when entry or representations are missing.
+            let msg = e.to_string().to_lowercase();
+            if msg.contains("not found") {
+                return (StatusCode::NOT_FOUND, Json(json!({"error": "not_found"}))).into_response();
+            }
+            return internal_error(e).into_response();
+        }
+    }
+
+    // Touch after successful restore to bump active_time (avoids stale timestamp on failed restore)
+    match usecases.touch_clipboard_entry().execute(&parsed_id).await {
+        Ok(_) => {}
+        Err(e) => {
+            tracing::warn!(error = %e, entry_id = %entry_id, "touch_clipboard_entry failed after restore");
+        }
+    }
+
+    (StatusCode::OK, Json(json!({"success": true}))).into_response()
 }
 
 async fn status(State(state): State<DaemonApiState>, headers: HeaderMap) -> impl IntoResponse {
@@ -1000,7 +1049,7 @@ async fn setup_action_ack_response(
 }
 
 #[allow(dead_code)]
-fn _route_markers() -> [&'static str; 21] {
+fn _route_markers() -> [&'static str; 22] {
     [
         "/space-access/state",
         "/setup/state",
@@ -1023,6 +1072,7 @@ fn _route_markers() -> [&'static str; 21] {
         pairing_error_code::NO_LOCAL_PARTICIPANT,
         pairing_error_code::HOST_NOT_DISCOVERABLE,
         "invalid_setup_transition",
+        "/clipboard/restore/:entry_id",
     ]
 }
 

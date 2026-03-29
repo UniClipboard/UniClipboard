@@ -2,9 +2,9 @@
 gsd_state_version: 1.0
 milestone: v0.4.0
 milestone_name: Runtime Mode Separation
-status: Milestone complete
+status: 'Phase 71 shipped — PR #323'
 stopped_at: Completed 71-03-PLAN.md
-last_updated: '2026-03-28T14:20:35.956Z'
+last_updated: '2026-03-29T02:04:04.638Z'
 progress:
   total_phases: 42
   completed_phases: 35

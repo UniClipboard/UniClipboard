@@ -123,11 +123,14 @@ async fn restore_clipboard_entry_handler(
     // skips capture for LocalRestore origin — no duplicate DB entry, no outbound sync.
     // This is correct behavior: restored content is already in DB and was previously synced.
     // Do NOT call SyncOutboundClipboardUseCase here — it would cause unwanted duplicate sync.
-    match usecases
-        .restore_clipboard_selection()
-        .execute(&parsed_id)
-        .await
-    {
+    let restore_uc = match usecases.restore_clipboard_selection() {
+        Ok(uc) => uc,
+        Err(e) => {
+            tracing::warn!(entry_id = %entry_id, error = %e, "clipboard_write_coordinator unavailable for restore");
+            return internal_error(e).into_response();
+        }
+    };
+    match restore_uc.execute(&parsed_id).await {
         Ok(()) => {
             tracing::info!(entry_id = %entry_id, "daemon restore request succeeded");
         }

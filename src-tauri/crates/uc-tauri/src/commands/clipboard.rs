@@ -594,7 +594,10 @@ pub async fn copy_file_to_clipboard(
     runtime: State<'_, Arc<AppRuntime>>,
     entry_id: String,
 ) -> Result<(), String> {
-    let uc = runtime.usecases().copy_file_to_clipboard();
+    let uc = runtime
+        .usecases()
+        .copy_file_to_clipboard()
+        .map_err(|e| e.to_string())?;
     let id = EntryId::from(entry_id);
     uc.execute(&id).await.map_err(|e| e.to_string())
 }

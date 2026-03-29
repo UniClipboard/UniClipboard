@@ -152,10 +152,8 @@ impl FileSyncOrchestratorWorker {
                     "File transfer completed, processing inbound file"
                 );
 
-                let inbound_uc = SyncInboundFileUseCase::new(
-                    self.settings.clone(),
-                    self.file_cache_dir.clone(),
-                );
+                let inbound_uc =
+                    SyncInboundFileUseCase::new(self.settings.clone(), self.file_cache_dir.clone());
 
                 let orch = self.orchestrator.clone();
                 let system_clipboard = self.system_clipboard.clone();
@@ -303,7 +301,9 @@ async fn restore_file_to_clipboard_after_transfer(
     system_clipboard: &Arc<dyn SystemClipboardPort>,
     clipboard_change_origin: &Arc<dyn ClipboardChangeOriginPort>,
 ) {
-    use uc_app::usecases::file_sync::copy_file_to_clipboard::{build_file_snapshot, build_path_list};
+    use uc_app::usecases::file_sync::copy_file_to_clipboard::{
+        build_file_snapshot, build_path_list,
+    };
 
     // Canonicalize paths to absolute paths.
     // The clipboard (CF_HDROP on Windows, NSPasteboard on macOS) requires absolute
@@ -470,12 +470,7 @@ mod tests {
             self.pending.load(std::sync::atomic::Ordering::SeqCst)
         }
 
-        async fn remember_remote_snapshot_hash(
-            &self,
-            _hash: String,
-            _ttl: std::time::Duration,
-        ) {
-        }
+        async fn remember_remote_snapshot_hash(&self, _hash: String, _ttl: std::time::Duration) {}
 
         async fn consume_origin_for_snapshot_or_default(
             &self,
@@ -494,10 +489,7 @@ mod tests {
             Ok(uc_core::settings::model::Settings::default())
         }
 
-        async fn save(
-            &self,
-            _settings: &uc_core::settings::model::Settings,
-        ) -> anyhow::Result<()> {
+        async fn save(&self, _settings: &uc_core::settings::model::Settings) -> anyhow::Result<()> {
             Ok(())
         }
     }

@@ -14,7 +14,9 @@ use uc_app::usecases::space_access::{
     SpaceAccessCompletedEvent, SpaceAccessEventPort, SpaceAccessOrchestrator,
 };
 use uc_app::usecases::SetupOrchestrator;
-use uc_core::network::daemon_api_strings::{pairing_busy_reason, pairing_stage, ws_event, ws_topic};
+use uc_core::network::daemon_api_strings::{
+    pairing_busy_reason, pairing_stage, ws_event, ws_topic,
+};
 use uc_core::network::pairing_state_machine::{PairingAction, PairingRole};
 use uc_core::network::{
     protocol::PairingKeyslotOffer, NetworkEvent, PairingBusy, PairingMessage, PairingRequest,
@@ -422,7 +424,6 @@ impl DaemonPairingHost {
         while tasks.join_next().await.is_some() {}
         Ok(())
     }
-
 }
 
 #[async_trait::async_trait]
@@ -485,13 +486,21 @@ impl DaemonPairingHost {
         session_id: &str,
     ) -> Result<(), DaemonPairingHostError> {
         if !self.discoverability.is_active().await {
-            self.reject_inbound_request(peer_id, session_id, pairing_busy_reason::HOST_NOT_DISCOVERABLE)
-                .await;
+            self.reject_inbound_request(
+                peer_id,
+                session_id,
+                pairing_busy_reason::HOST_NOT_DISCOVERABLE,
+            )
+            .await;
             return Err(DaemonPairingHostError::HostNotDiscoverable);
         }
         if !self.participant_readiness.is_active().await {
-            self.reject_inbound_request(peer_id, session_id, pairing_busy_reason::NO_LOCAL_PAIRING_PARTICIPANT_READY)
-                .await;
+            self.reject_inbound_request(
+                peer_id,
+                session_id,
+                pairing_busy_reason::NO_LOCAL_PAIRING_PARTICIPANT_READY,
+            )
+            .await;
             return Err(DaemonPairingHostError::NoLocalPairingParticipantReady);
         }
 
@@ -1707,7 +1716,10 @@ mod tests {
             pairing_failure_message(&FailureReason::Timeout(TimeoutKind::WaitingChallenge)),
             "timeout:WaitingChallenge"
         );
-        assert_eq!(pairing_failure_message(&FailureReason::PeerBusy), pairing_busy_reason::BUSY);
+        assert_eq!(
+            pairing_failure_message(&FailureReason::PeerBusy),
+            pairing_busy_reason::BUSY
+        );
     }
 
     #[test]

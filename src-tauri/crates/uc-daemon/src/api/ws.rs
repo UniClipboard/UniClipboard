@@ -21,7 +21,7 @@ use crate::api::types::{
     DaemonWsEvent, DaemonWsSubscribeRequest, PairedDeviceDto, PairedDevicesChangedPayload,
     PairingFailurePayload, PairingSessionChangedPayload, PairingSessionSummaryDto,
     PairingVerificationPayload, PeerConnectionChangedPayload, PeerNameUpdatedPayload,
-    PeersChangedFullPayload, PeerSnapshotDto, SpaceAccessStateResponse, StatusResponse,
+    PeerSnapshotDto, PeersChangedFullPayload, SpaceAccessStateResponse, StatusResponse,
 };
 
 type ClientTopics = Arc<RwLock<HashSet<String>>>;
@@ -303,7 +303,10 @@ mod tests {
             ws_topic::FILE_TRANSFER,
         ];
         for topic in known {
-            assert!(is_supported_topic(topic), "expected {topic} to be supported");
+            assert!(
+                is_supported_topic(topic),
+                "expected {topic} to be supported"
+            );
         }
     }
 

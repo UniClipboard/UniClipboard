@@ -211,12 +211,17 @@ mod tests {
             }))
             .expect("emit should succeed");
 
-        let event = rx.try_recv().expect("file-transfer event should be broadcast");
+        let event = rx
+            .try_recv()
+            .expect("file-transfer event should be broadcast");
         assert_eq!(event.topic, ws_topic::FILE_TRANSFER);
         assert_eq!(event.event_type, ws_event::FILE_TRANSFER_STATUS_CHANGED);
         assert_eq!(event.payload["transferId"].as_str(), Some("xfer-42"));
         assert_eq!(event.payload["entryId"].as_str(), Some("entry-99"));
         assert_eq!(event.payload["status"].as_str(), Some("completed"));
-        assert!(event.payload.get("reason").is_none(), "reason should be omitted when None");
+        assert!(
+            event.payload.get("reason").is_none(),
+            "reason should be omitted when None"
+        );
     }
 }

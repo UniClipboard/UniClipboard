@@ -420,7 +420,11 @@ mod tests {
         //
         // This is a compile-time guarantee enforced by the match arm exhaustiveness.
         // The test documents the intent explicitly.
-        let handled_event_types = ["peers.changed", "peers.name_updated", "peers.connection_changed"];
+        let handled_event_types = [
+            "peers.changed",
+            "peers.name_updated",
+            "peers.connection_changed",
+        ];
         for event_type in &handled_event_types {
             assert!(
                 !event_type.contains("pairing"),

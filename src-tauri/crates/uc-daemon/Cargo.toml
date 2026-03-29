@@ -20,7 +20,7 @@ uc-infra = { path = "../uc-infra" }
 uc-platform = { path = "../uc-platform" }
 uc-observability = { path = "../uc-observability" }
 clipboard-rs = { version = "0.3.3", features = ["default"] }
-axum = { version = "0.7", features = ["ws"] }
+axum = { version = "0.7", features = ["ws", "tokio", "http1", "http2"] }
 tokio = { version = "1", features = ["full", "test-util"] }
 tokio-util = "0.7"
 serde = { version = "1", features = ["derive"] }

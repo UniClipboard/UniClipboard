@@ -96,8 +96,6 @@ impl InboundClipboardSyncWorker {
         let deps = self.runtime.wiring_deps();
         SyncInboundClipboardUseCase::with_capture_dependencies(
             ClipboardIntegrationMode::Full,
-            deps.clipboard.system_clipboard.clone(),
-            deps.clipboard.clipboard_change_origin.clone(),
             deps.security.encryption_session.clone(),
             deps.security.encryption.clone(),
             deps.device.device_identity.clone(),
@@ -320,6 +318,7 @@ mod tests {
         BinaryRepresentation, ClipboardBinaryPayload, ClipboardPayloadVersion,
     };
     use uc_core::network::ClipboardMessage;
+    use uc_core::ports::{ClipboardChangeOriginPort, SystemClipboardPort};
     use uc_core::security::model::{EncryptionError, KdfParams, Kek, MasterKey, Passphrase};
     use uc_core::{
         ClipboardChangeOrigin, ClipboardEntry, ClipboardEvent, ClipboardSelectionDecision,
@@ -346,29 +345,6 @@ mod tests {
         fn write_snapshot(&self, snapshot: SystemClipboardSnapshot) -> Result<()> {
             self.writes.lock().unwrap().push(snapshot);
             Ok(())
-        }
-    }
-
-    struct MockChangeOrigin {
-        _calls: Arc<Mutex<Vec<&'static str>>>,
-    }
-
-    #[async_trait]
-    impl uc_core::ports::ClipboardChangeOriginPort for MockChangeOrigin {
-        async fn set_next_origin(&self, _: ClipboardChangeOrigin, _: std::time::Duration) {}
-        async fn consume_origin_or_default(
-            &self,
-            default: ClipboardChangeOrigin,
-        ) -> ClipboardChangeOrigin {
-            default
-        }
-        async fn remember_remote_snapshot_hash(&self, _: String, _: std::time::Duration) {}
-        async fn consume_origin_for_snapshot_or_default(
-            &self,
-            _: &str,
-            default: ClipboardChangeOrigin,
-        ) -> ClipboardChangeOrigin {
-            default
         }
     }
 
@@ -675,12 +651,6 @@ mod tests {
     fn build_passive_usecase() -> SyncInboundClipboardUseCase {
         SyncInboundClipboardUseCase::with_capture_dependencies(
             ClipboardIntegrationMode::Passive,
-            Arc::new(MockSystemClipboard {
-                writes: Arc::new(Mutex::new(vec![])),
-            }),
-            Arc::new(MockChangeOrigin {
-                _calls: Arc::new(Mutex::new(vec![])),
-            }),
             Arc::new(MockEncryptionSession),
             Arc::new(MockEncryption),
             Arc::new(MockDeviceIdentity),
@@ -703,18 +673,16 @@ mod tests {
 
     /// Build a SyncInboundClipboardUseCase for Full mode tests (returns entry_id: None for text).
     fn build_full_usecase() -> SyncInboundClipboardUseCase {
-        let clipboard = Arc::new(MockSystemClipboard {
+        let clipboard: Arc<dyn SystemClipboardPort> = Arc::new(MockSystemClipboard {
             writes: Arc::new(Mutex::new(vec![])),
         });
-        let origin = new_clipboard_change_origin();
+        let origin: Arc<dyn ClipboardChangeOriginPort> = new_clipboard_change_origin();
         let coordinator = Arc::new(ClipboardWriteCoordinator::new(
             clipboard.clone(),
             origin.clone(),
         ));
         SyncInboundClipboardUseCase::with_capture_dependencies(
             ClipboardIntegrationMode::Full,
-            clipboard,
-            origin,
             Arc::new(MockEncryptionSession),
             Arc::new(MockEncryption),
             Arc::new(MockDeviceIdentity),

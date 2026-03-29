@@ -16,10 +16,9 @@ use uc_core::network::{
 };
 use uc_core::network::{PairedDevice, PairingState};
 use uc_core::ports::{
-    ClipboardChangeOriginPort, ClipboardTransportPort, DeviceIdentityPort, EncryptionPort,
-    EncryptionSessionPort, NetworkEventPort, PairedDeviceRepositoryError,
-    PairedDeviceRepositoryPort, PairingTransportPort, PeerDirectoryPort, SettingsPort,
-    SystemClipboardPort,
+    ClipboardTransportPort, DeviceIdentityPort, EncryptionPort, EncryptionSessionPort,
+    NetworkEventPort, PairedDeviceRepositoryError, PairedDeviceRepositoryPort,
+    PairingTransportPort, PeerDirectoryPort, SettingsPort, SystemClipboardPort,
 };
 use uc_core::security::model::{
     EncryptedBlob, EncryptionAlgo, EncryptionError, EncryptionFormatVersion, KdfParams, Kek,
@@ -500,8 +499,6 @@ async fn clipboard_sync_e2e_dual_peer_in_process() -> Result<()> {
     let inbound_a = Arc::new(
         SyncInboundClipboardUseCase::new(
             ClipboardIntegrationMode::Full,
-            clipboard_a.clone(),
-            origin_a.clone(),
             session_a.clone(),
             encryption_a.clone(),
             identity_a.clone(),
@@ -517,8 +514,6 @@ async fn clipboard_sync_e2e_dual_peer_in_process() -> Result<()> {
     let inbound_b = Arc::new(
         SyncInboundClipboardUseCase::new(
             ClipboardIntegrationMode::Full,
-            clipboard_b.clone(),
-            origin_b.clone(),
             session_b.clone(),
             encryption_b.clone(),
             identity_b.clone(),
@@ -646,8 +641,6 @@ async fn clipboard_sync_e2e_image_single_rep() -> Result<()> {
     let inbound_b = Arc::new(
         SyncInboundClipboardUseCase::new(
             ClipboardIntegrationMode::Full,
-            clipboard_b.clone(),
-            origin_b.clone(),
             session_b.clone(),
             encryption_b.clone(),
             identity_b.clone(),
@@ -754,8 +747,6 @@ async fn clipboard_sync_e2e_windows_image_multi_rep() -> Result<()> {
     let inbound_b = Arc::new(
         SyncInboundClipboardUseCase::new(
             ClipboardIntegrationMode::Full,
-            clipboard_b.clone(),
-            origin_b.clone(),
             session_b.clone(),
             encryption_b.clone(),
             identity_b.clone(),

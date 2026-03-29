@@ -20,10 +20,9 @@ use uc_core::network::protocol::{
 use uc_core::network::ClipboardMessage;
 use uc_core::ports::clipboard::{RepresentationCachePort, SpoolQueuePort};
 use uc_core::ports::{
-    ClipboardChangeOriginPort, ClipboardEntryRepositoryPort, ClipboardEventWriterPort,
-    ClipboardRepresentationNormalizerPort, DeviceIdentityPort, EncryptionPort,
-    EncryptionSessionPort, SelectRepresentationPolicyPort, SettingsPort, SystemClipboardPort,
-    TransferPayloadDecryptorPort,
+    ClipboardEntryRepositoryPort, ClipboardEventWriterPort, ClipboardRepresentationNormalizerPort,
+    DeviceIdentityPort, EncryptionPort, EncryptionSessionPort, SelectRepresentationPolicyPort,
+    SettingsPort, TransferPayloadDecryptorPort,
 };
 use uc_core::{
     ClipboardChangeOrigin, MimeType, ObservedClipboardRepresentation, SystemClipboardSnapshot,
@@ -53,13 +52,6 @@ pub enum InboundApplyOutcome {
 
 pub struct SyncInboundClipboardUseCase {
     mode: ClipboardIntegrationMode,
-    /// Retained for `new()` constructor callers (e2e tests, passive mode).
-    /// Not used on the write path — coordinator handles all OS writes.
-    #[allow(dead_code)]
-    local_clipboard: Arc<dyn SystemClipboardPort>,
-    /// Retained for `new()` constructor callers. Not used on write path.
-    #[allow(dead_code)]
-    clipboard_change_origin: Arc<dyn ClipboardChangeOriginPort>,
     /// Coordinator for Full-mode OS clipboard writes (write path).
     /// None for Passive-mode instances that never write to the OS clipboard.
     clipboard_write_coordinator: Option<Arc<ClipboardWriteCoordinator>>,
@@ -79,8 +71,6 @@ pub struct SyncInboundClipboardUseCase {
 impl SyncInboundClipboardUseCase {
     pub fn new(
         mode: ClipboardIntegrationMode,
-        local_clipboard: Arc<dyn SystemClipboardPort>,
-        clipboard_change_origin: Arc<dyn ClipboardChangeOriginPort>,
         encryption_session: Arc<dyn EncryptionSessionPort>,
         encryption: Arc<dyn EncryptionPort>,
         device_identity: Arc<dyn DeviceIdentityPort>,
@@ -95,8 +85,6 @@ impl SyncInboundClipboardUseCase {
 
         Ok(Self {
             mode,
-            local_clipboard,
-            clipboard_change_origin,
             clipboard_write_coordinator: None,
             encryption_session,
             encryption,
@@ -111,8 +99,6 @@ impl SyncInboundClipboardUseCase {
 
     pub fn with_capture_dependencies(
         mode: ClipboardIntegrationMode,
-        local_clipboard: Arc<dyn SystemClipboardPort>,
-        clipboard_change_origin: Arc<dyn ClipboardChangeOriginPort>,
         encryption_session: Arc<dyn EncryptionSessionPort>,
         encryption: Arc<dyn EncryptionPort>,
         device_identity: Arc<dyn DeviceIdentityPort>,
@@ -128,8 +114,6 @@ impl SyncInboundClipboardUseCase {
     ) -> Self {
         Self {
             mode,
-            local_clipboard,
-            clipboard_change_origin,
             clipboard_write_coordinator: None,
             encryption_session,
             encryption,
@@ -726,6 +710,7 @@ mod tests {
     use uc_core::clipboard::{ClipboardSelection, PolicyError, SelectionPolicyVersion};
     use uc_core::ids::RepresentationId;
     use uc_core::network::protocol::ClipboardPayloadVersion;
+    use uc_core::ports::{ClipboardChangeOriginPort, SystemClipboardPort};
     use uc_core::security::model::{
         EncryptedBlob, EncryptionAlgo, EncryptionError, KdfParams, Kek, MasterKey, Passphrase,
     };
@@ -1219,8 +1204,6 @@ mod tests {
 
         let usecase = SyncInboundClipboardUseCase::new(
             mode,
-            mock_clipboard,
-            mock_origin,
             Arc::new(MockEncryptionSession { ready }),
             Arc::new(MockEncryption {
                 decrypt_calls: decrypt_calls.clone(),
@@ -1247,7 +1230,6 @@ mod tests {
     }
 
     fn build_passive_usecase(
-        local_snapshot: SystemClipboardSnapshot,
         local_device_id: &str,
     ) -> (
         SyncInboundClipboardUseCase,
@@ -1263,16 +1245,6 @@ mod tests {
 
         let usecase = SyncInboundClipboardUseCase::with_capture_dependencies(
             ClipboardIntegrationMode::Passive,
-            Arc::new(MockSystemClipboard {
-                reads: local_snapshot,
-                writes: writes.clone(),
-                calls: calls.clone(),
-            }),
-            Arc::new(MockChangeOrigin {
-                calls: calls.clone(),
-                values: Arc::new(Mutex::new(Vec::new())),
-                remote_hash_values: Arc::new(Mutex::new(Vec::new())),
-            }),
             Arc::new(MockEncryptionSession { ready: true }),
             Arc::new(MockEncryption {
                 decrypt_calls: Arc::new(AtomicUsize::new(0)),
@@ -1332,19 +1304,6 @@ mod tests {
     fn new_rejects_passive_mode_without_capture_dependencies() {
         let result = SyncInboundClipboardUseCase::new(
             ClipboardIntegrationMode::Passive,
-            Arc::new(MockSystemClipboard {
-                reads: SystemClipboardSnapshot {
-                    ts_ms: 0,
-                    representations: vec![],
-                },
-                writes: Arc::new(Mutex::new(Vec::new())),
-                calls: Arc::new(Mutex::new(Vec::new())),
-            }),
-            Arc::new(MockChangeOrigin {
-                calls: Arc::new(Mutex::new(Vec::new())),
-                values: Arc::new(Mutex::new(Vec::new())),
-                remote_hash_values: Arc::new(Mutex::new(Vec::new())),
-            }),
             Arc::new(MockEncryptionSession { ready: true }),
             Arc::new(MockEncryption {
                 decrypt_calls: Arc::new(AtomicUsize::new(0)),
@@ -1454,13 +1413,7 @@ mod tests {
 
     #[tokio::test]
     async fn passive_mode_persists_without_os_clipboard_calls_and_dedupes_by_message_id() {
-        let (usecase, writes, calls, save_calls, insert_calls) = build_passive_usecase(
-            SystemClipboardSnapshot {
-                ts_ms: 0,
-                representations: vec![],
-            },
-            "local-1",
-        );
+        let (usecase, writes, calls, save_calls, insert_calls) = build_passive_usecase("local-1");
 
         let (message, plaintext) = build_v3_text_message("passive inbound", "remote-1");
         let plaintext2 = plaintext.clone();
@@ -1481,13 +1434,7 @@ mod tests {
 
     #[tokio::test]
     async fn execute_with_outcome_marks_duplicate_as_skipped_in_passive_mode() {
-        let (usecase, _, _, _, _) = build_passive_usecase(
-            SystemClipboardSnapshot {
-                ts_ms: 0,
-                representations: vec![],
-            },
-            "local-1",
-        );
+        let (usecase, _, _, _, _) = build_passive_usecase("local-1");
         let (message, plaintext) = build_v3_text_message("passive inbound", "remote-1");
         let plaintext2 = plaintext.clone();
 
@@ -1717,13 +1664,7 @@ mod tests {
 
     #[tokio::test]
     async fn passive_mode_v3_payload_preserves_all_representations_for_capture() {
-        let (usecase, writes, calls, save_calls, insert_calls) = build_passive_usecase(
-            SystemClipboardSnapshot {
-                ts_ms: 0,
-                representations: vec![],
-            },
-            "local-1",
-        );
+        let (usecase, writes, calls, save_calls, insert_calls) = build_passive_usecase("local-1");
 
         // Build a V3 payload that contains both plain text and HTML representations.
         let (message, plaintext) = build_v3_message_pre_decoded(

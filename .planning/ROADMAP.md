@@ -771,11 +771,20 @@ Plans:
 
 ### Phase 72: Migrate restore-clipboard to daemon — eliminate cross-process origin desync
 
-**Goal:** [To be planned]
-**Requirements**: TBD
-**Depends on:** Phase 70
-**Plans:** 0 plans
+**Goal:** Move the clipboard restore operation from GUI Tauri process to daemon, so that ClipboardChangeOriginPort::set_next_origin(LocalRestore) is armed in-process before the OS clipboard write, eliminating cross-process origin tracker desync.
+**Requirements**: PH72-01, PH72-02, PH72-03, PH72-04, PH72-05
+**Depends on:** Phase 71
+**Plans:** 2 plans
+
+**Success Criteria** (what must be TRUE):
+
+1. Daemon exposes POST /clipboard/restore/:entry_id with bearer auth, returning 200 {success:true} or 404/401
+2. DaemonClipboardClient in uc-daemon-client can call the restore endpoint
+3. GUI restore_clipboard_entry Tauri command proxies to daemon HTTP API (not direct use case)
+4. Direct RestoreClipboardSelectionUseCase invocation removed from uc-tauri command layer
+5. Outbound sync handled by daemon's ClipboardWatcherWorker chain (not GUI command)
 
 Plans:
 
-- [ ] TBD (run /gsd:plan-phase 71 to break down)
+- [ ] 72-01-PLAN.md — Add daemon HTTP restore route, http_route constant, and DaemonClipboardClient
+- [ ] 72-02-PLAN.md — Rewire GUI restore_clipboard_entry to daemon proxy, remove dead code

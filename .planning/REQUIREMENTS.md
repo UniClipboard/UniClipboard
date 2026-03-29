@@ -254,6 +254,14 @@ Requirements for runtime mode separation. Each maps to roadmap phases.
 - [x] **PH70-03**: `uniclipboard-cli stop` reads PID from profile-aware PID file, sends SIGTERM (Unix) / TerminateProcess (Windows), polls for process exit with timeout, and exits 0 if daemon is not running (idempotent)
 - [x] **PH70-04**: Both `start` and `stop` commands support `--json` for structured output (`{"status": "started", "pid": ...}` / `{"status": "stopped"}`) and human-readable Display output
 
+### Migrate Restore Clipboard To Daemon
+
+- [ ] **PH72-01**: Daemon exposes `POST /clipboard/restore/:entry_id` with bearer auth that calls `TouchClipboardEntryUseCase` then `RestoreClipboardSelectionUseCase`, returning 200 `{success:true}` on success, 404 on not-found, 401 on unauthorized
+- [ ] **PH72-02**: `daemon_api_strings::http_route::CLIPBOARD_RESTORE` constant exists in uc-core with value assertion test
+- [ ] **PH72-03**: `DaemonClipboardClient` in uc-daemon-client has `restore_clipboard_entry(&self, entry_id: &str) -> Result<()>` using `authorized_daemon_request`
+- [ ] **PH72-04**: GUI `restore_clipboard_entry` Tauri command proxies to daemon via `DaemonClipboardClient`, with `DaemonConnectionState` parameter; direct `RestoreClipboardSelectionUseCase` invocation and `ClipboardChangeOriginPort` usage removed
+- [ ] **PH72-05**: Daemon route handler does NOT call `SyncOutboundClipboardUseCase` or `set_next_origin` directly; outbound sync is handled by `DaemonClipboardChangeHandler` chain after OS clipboard write
+
 ## Out of Scope
 
 | Feature                                | Reason                                                            |
@@ -414,14 +422,19 @@ Requirements for runtime mode separation. Each maps to roadmap phases.
 | PH70-02     | 70    | Complete |
 | PH70-03     | 70    | Complete |
 | PH70-04     | 70    | Complete |
+| PH72-01     | 72    | Pending  |
+| PH72-02     | 72    | Pending  |
+| PH72-03     | 72    | Pending  |
+| PH72-04     | 72    | Pending  |
+| PH72-05     | 72    | Pending  |
 
 **Coverage:**
 
-- v0.4.0 requirements: 126 total
-- Mapped to phases: 126
+- v0.4.0 requirements: 131 total
+- Mapped to phases: 131
 - Unmapped: 0
 
 ---
 
 _Requirements defined: 2026-03-17_
-_Last updated: 2026-03-28 after Phase 70 planning_
+_Last updated: 2026-03-29 after Phase 72 planning_

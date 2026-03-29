@@ -92,6 +92,50 @@ jobs:
         working-directory: src-tauri
         run: cargo build --release -p uc-cli ${{ matrix.args }}
 
+      - name: import Apple certificate (macOS only)
+        if: matrix.platform == 'macos-latest'
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+        run: |
+          CERTIFICATE_PATH=$RUNNER_TEMP/build_certificate.p12
+          KEYCHAIN_PATH=$RUNNER_TEMP/app-signing.keychain-db
+          KEYCHAIN_PASSWORD=$(openssl rand -hex 12)
+
+          echo -n "$APPLE_CERTIFICATE" | base64 --decode -o $CERTIFICATE_PATH
+
+          security create-keychain -p "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
+          security set-keychain-settings -lut 21600 $KEYCHAIN_PATH
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
+
+          security import $CERTIFICATE_PATH -P "$APPLE_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k $KEYCHAIN_PATH
+          security set-key-partition-list -S apple-tool:,apple: -k "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
+          security list-keychain -d user -s $KEYCHAIN_PATH
+
+          echo "KEYCHAIN_PATH=$KEYCHAIN_PATH" >> "$GITHUB_ENV"
+
+      - name: sign CLI binary (macOS only)
+        if: matrix.platform == 'macos-latest'
+        run: |
+          # Extract signing identity from imported certificate
+          IDENTITY=$(security find-identity -v -p codesigning "$KEYCHAIN_PATH" | grep "Developer ID Application" | head -1 | sed 's/.*"\(.*\)".*/\1/')
+          if [ -z "$IDENTITY" ]; then
+            echo "ERROR: No Developer ID Application identity found in keychain"
+            security find-identity -v -p codesigning "$KEYCHAIN_PATH"
+            exit 1
+          fi
+          echo "Signing with: $IDENTITY"
+
+          TARGET="${{ matrix.target }}"
+          BIN_NAME="uniclipboard-cli"
+          BIN_PATH="src-tauri/target/${TARGET}/release/${BIN_NAME}"
+          if [ ! -f "$BIN_PATH" ]; then
+            BIN_PATH="src-tauri/target/release/${BIN_NAME}"
+          fi
+
+          codesign --force --options runtime --sign "$IDENTITY" --keychain "$KEYCHAIN_PATH" "$BIN_PATH"
+          codesign --verify --verbose "$BIN_PATH"
+
       - name: package CLI binary
         id: package
         shell: bash
@@ -124,3 +168,7 @@ jobs:
         with:
           name: cli-${{ matrix.target }}
           path: uniclipboard-cli-*
+
+      - name: cleanup keychain (macOS only)
+        if: matrix.platform == 'macos-latest' && always()
+        run: security delete-keychain $RUNNER_TEMP/app-signing.keychain-db 2>/dev/null || true

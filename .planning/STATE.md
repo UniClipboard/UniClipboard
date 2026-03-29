@@ -260,6 +260,7 @@ Recent decisions affecting current work:
 - Phase 69 added: CLI setup flow: first-time encryption init before daemon spawn
 - Phase 70 added: CLI start/stop commands for daemon lifecycle management
 - Phase 71 added: Dual-product release pipeline for CLI and App
+- Phase 72 added: Migrate restore-clipboard to daemon — eliminate cross-process origin desync
 
 ### Pending Todos
 

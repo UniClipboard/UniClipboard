@@ -768,3 +768,14 @@ Plans:
 - [x] 71-01-PLAN.md — Version alignment: uc-cli workspace version, bump-version.js Cargo.lock workspace refresh, CI workflow comments
 - [x] 71-02-PLAN.md — Create build-cli.yml reusable workflow for cross-platform CLI binary compilation and packaging
 - [x] 71-03-PLAN.md — Wire release pipeline: add build-cli job to release.yml, extend release notes template and generator with CLI section
+
+### Phase 72: Migrate restore-clipboard to daemon — eliminate cross-process origin desync
+
+**Goal:** [To be planned]
+**Requirements**: TBD
+**Depends on:** Phase 70
+**Plans:** 0 plans
+
+Plans:
+
+- [ ] TBD (run /gsd:plan-phase 71 to break down)

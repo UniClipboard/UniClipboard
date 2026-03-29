@@ -18,6 +18,13 @@ fn build_runtime() -> Arc<uc_app::runtime::CoreRuntime> {
     Arc::new(uc_bootstrap::build_cli_runtime(None).unwrap())
 }
 
+/// Spawn a test server and return (ws_url, session_token, server_handle).
+///
+/// After Phase 75, WebSocket connections require a JWT session token in the
+/// Authorization header using the "Session <token>" prefix instead of the old
+/// "Bearer <bearer>" prefix. The session token is pre-generated using
+/// `SecurityState::make_session_token_for_pid()` so tests do not need to call
+/// POST /auth/connect separately.
 async fn spawn_server() -> (String, String, tokio::task::JoinHandle<()>) {
     let runtime = build_runtime();
     let state = Arc::new(RwLock::new(RuntimeState::new(vec![])));
@@ -25,8 +32,12 @@ async fn spawn_server() -> (String, String, tokio::task::JoinHandle<()>) {
     let tempdir = tempfile::tempdir().unwrap();
     let token_path = tempdir.path().join("daemon.token");
     let token = load_or_create_auth_token(&token_path).unwrap();
-    let token_value = std::fs::read_to_string(&token_path).unwrap();
-    let api_state = DaemonApiState::new(query_service, token, None, Arc::new(SecurityState::new()));
+    // Pre-register the current test process PID so the WS handler allows the connection
+    let pid = std::process::id();
+    let security = Arc::new(SecurityState::new_with_pid(pid));
+    // Generate a valid JWT session token for the pre-registered PID
+    let session_token = security.make_session_token_for_pid(pid);
+    let api_state = DaemonApiState::new(query_service, token, None, security);
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     let handle = tokio::spawn(async move {
@@ -35,24 +46,25 @@ async fn spawn_server() -> (String, String, tokio::task::JoinHandle<()>) {
             .unwrap();
     });
 
-    (format!("ws://{}/ws", addr), token_value, handle)
+    (format!("ws://{}/ws", addr), session_token, handle)
 }
 
 async fn connect_with_token(
     url: &str,
-    token: &str,
+    session_token: &str,
 ) -> tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>> {
     let mut request = url.into_client_request().unwrap();
+    // Phase 75: WS upgrade uses "Session <token>" prefix (JWT session token), not "Bearer".
     request.headers_mut().insert(
         "Authorization",
-        format!("Bearer {}", token.trim()).parse().unwrap(),
+        format!("Session {}", session_token.trim()).parse().unwrap(),
     );
     let (socket, _) = tokio_tungstenite::connect_async(request).await.unwrap();
     socket
 }
 
 #[tokio::test]
-async fn upgrade_rejected_without_valid_bearer_token() {
+async fn upgrade_rejected_without_session_token() {
     let (url, _token, handle) = spawn_server().await;
 
     let request = url.into_client_request().unwrap();

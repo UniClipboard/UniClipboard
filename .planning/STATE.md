@@ -2,13 +2,13 @@
 gsd_state_version: 1.0
 milestone: v0.4.0
 milestone_name: Runtime Mode Separation
-status: Phase 74 complete
-stopped_at: Completed Phase 74 — daemon-clipboard-http-api
-last_updated: "2026-03-29T12:24:35.917Z"
+status: 'Phase 74 shipped — PR #330'
+stopped_at: Completed 74-02-PLAN.md
+last_updated: '2026-03-29T13:07:03.194Z'
 progress:
   total_phases: 52
   completed_phases: 38
-  total_plans: 105
+  total_plans: 101
   completed_plans: 96
 ---
 
@@ -108,7 +108,7 @@ Plan: Not started
   | Phase 73 P01 | 14 | 2 tasks | 14 files |
   | Phase 73 P02 | 90 | 2 tasks | 6 files |
   | Phase 74 P01 | 4 | 2 tasks | 5 files |
-| Phase 74 P02 | 149 | 1 tasks | 1 files |
+  | Phase 74 P02 | 149 | 1 tasks | 1 files |
 
 ## Accumulated Context
 

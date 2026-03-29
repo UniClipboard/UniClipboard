@@ -27,7 +27,7 @@ use crate::api::types::DaemonWsEvent;
 use crate::pairing::host::DaemonPairingHost;
 use crate::process_metadata::{remove_pid_file, write_current_pid};
 use crate::rpc::server::{check_or_remove_stale_socket, run_rpc_accept_loop};
-use crate::security::SecurityState;
+use crate::security::{cleanup_rate_limiter_task, SecurityState};
 use crate::service::DaemonService;
 use crate::state::RuntimeState;
 
@@ -216,13 +216,18 @@ impl DaemonApp {
         let token_path = resolve_daemon_token_path(token_base_dir);
         let auth_token = load_or_create_auth_token(&token_path)?;
         let _pid_file_guard = DaemonPidFileGuard::activate()?;
+        let pid = write_current_pid()?;
+        info!(pid, "wrote daemon pid metadata");
         let query_service = Arc::new(DaemonQueryService::new(
             self.runtime.clone(),
             self.state.clone(),
         ));
 
-        // 2. Build API state using the shared event_tx (same channel used by all services)
-        let security = SecurityState::new();
+        // 2. Build security state and register daemon's own PID
+        let security = Arc::new(SecurityState::new());
+        security.register_pid(pid).await;
+
+        // 3. Build API state using the shared event_tx (same channel used by all services)
         let mut api_state =
             DaemonApiState::new(query_service, auth_token, Some(self.runtime.clone()), security);
         // Replace the default-created channel with our shared one so all services
@@ -260,12 +265,19 @@ impl DaemonApp {
             service_tasks.spawn(async move { svc.start(token).await });
         }
 
-        // 5. Spawn RPC accept loop and HTTP server as infrastructure tasks
+        // 5. Spawn RPC accept loop, HTTP server, and rate limiter cleanup task
         let rpc_state = self.state.clone();
         let rpc_cancel = self.cancel.child_token();
         let mut rpc_handle = tokio::spawn(run_rpc_accept_loop(listener, rpc_state, rpc_cancel));
+
+        // Clone security and cancel BEFORE moving api_state into the HTTP server
+        let security_for_cleanup = api_state.security.clone();
+        let cleanup_cancel = self.cancel.child_token();
         let http_cancel = self.cancel.child_token();
         let mut http_handle = tokio::spawn(run_http_server(api_state, http_cancel));
+
+        // Rate limiter cleanup: runs every 5 minutes, respects cleanup_cancel
+        let _cleanup_handle = cleanup_rate_limiter_task(security_for_cleanup, cleanup_cancel);
 
         // Prepare deferred services start
         let mut deferred = std::mem::take(&mut self.deferred_services);

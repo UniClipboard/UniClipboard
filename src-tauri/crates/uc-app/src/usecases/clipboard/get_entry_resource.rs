@@ -35,7 +35,7 @@ pub struct GetEntryResourceUseCase {
 
 /// Resource metadata result from GetEntryResourceUseCase
 /// GetEntryResourceUseCase 返回的资源元信息结果
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize)]
 pub struct EntryResourceResult {
     pub entry_id: String,
     pub blob_id: Option<BlobId>,

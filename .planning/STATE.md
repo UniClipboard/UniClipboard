@@ -271,6 +271,14 @@ Recent decisions affecting current work:
 - Phase 71 added: Dual-product release pipeline for CLI and App
 - Phase 73 added: Refactor clipboard restore loop prevention: introduce ClipboardWriteCoordinator as single write boundary owning origin guard registration, derive meaningful content key, and remove composition-time re-creation risk of origin store
 - Phase 73 discussed: ClipboardWriteCoordinator.write(snapshot, intent) as sole clipboard write API; snapshot building stays in use cases; Coordinator is only caller of origin_guard_key(); coordinator built in bootstrap assembly
+- Phase 74 added: Daemon Clipboard HTTP API — add list, detail, delete, favorite, stats endpoints
+- Phase 75 added: Daemon Security Middleware — JWT session token, PID verification, rate limiting, permission levels
+- Phase 76 added: Daemon Settings, Encryption & Storage HTTP API
+- Phase 77 added: Frontend Daemon HTTP Client & Auth Module
+- Phase 78 added: Frontend Clipboard API Migration — Tauri invoke to daemon HTTP
+- Phase 79 added: Frontend WebSocket Direct Connection & Event Migration
+- Phase 80 added: uc-tauri Command Cleanup — remove migrated commands
+- Phase 81 added: Frontend-Daemon Integration Testing & Security Audit
 
 ### Pending Todos
 

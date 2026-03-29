@@ -68,6 +68,10 @@ pub mod pairing_error_code {
 pub mod http_route {
     /// POST /clipboard/restore/:entry_id — restore clipboard entry to OS clipboard
     pub const CLIPBOARD_RESTORE: &str = "/clipboard/restore";
+    /// GET /clipboard/entries — list clipboard entries with pagination
+    pub const CLIPBOARD_ENTRIES: &str = "/clipboard/entries";
+    /// GET /clipboard/stats — clipboard statistics
+    pub const CLIPBOARD_STATS: &str = "/clipboard/stats";
 }
 
 #[cfg(test)]
@@ -144,5 +148,7 @@ mod tests {
     #[test]
     fn http_route_values_match() {
         assert_eq!(http_route::CLIPBOARD_RESTORE, "/clipboard/restore");
+        assert_eq!(http_route::CLIPBOARD_ENTRIES, "/clipboard/entries");
+        assert_eq!(http_route::CLIPBOARD_STATS, "/clipboard/stats");
     }
 }

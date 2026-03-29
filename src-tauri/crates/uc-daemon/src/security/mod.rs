@@ -11,7 +11,7 @@ pub mod state;
 
 // Re-export commonly used types
 pub use claims::SessionTokenClaims;
-pub use middleware::{auth_extractor_middleware, rate_limit_middleware};
+pub use middleware::{auth_extractor_middleware, rate_limit_middleware, ClientId};
 pub use permission::PermissionLevel;
 pub use rate_limiter::SlidingWindowRateLimiter;
 pub use state::SecurityState;

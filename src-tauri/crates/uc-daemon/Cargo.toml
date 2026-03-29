@@ -21,7 +21,7 @@ uc-platform = { path = "../uc-platform" }
 uc-observability = { path = "../uc-observability" }
 clipboard-rs = { version = "0.3.3", features = ["default"] }
 axum = { version = "0.7", features = ["ws"] }
-tokio = { version = "1", features = ["full"] }
+tokio = { version = "1", features = ["full", "test-util"] }
 tokio-util = "0.7"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
@@ -30,7 +30,7 @@ async-trait = "0.1"
 chrono = { version = "0.4", features = ["serde"] }
 rand = "0.8"
 blake3 = "1"
-jsonwebtoken = "10"
+jsonwebtoken = { version = "10", default-features = false, features = ["rust_crypto"] }
 tracing = "0.1"
 futures-util = "0.3"
 url = "2"

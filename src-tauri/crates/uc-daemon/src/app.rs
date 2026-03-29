@@ -27,6 +27,7 @@ use crate::api::types::DaemonWsEvent;
 use crate::pairing::host::DaemonPairingHost;
 use crate::process_metadata::{remove_pid_file, write_current_pid};
 use crate::rpc::server::{check_or_remove_stale_socket, run_rpc_accept_loop};
+use crate::security::SecurityState;
 use crate::service::DaemonService;
 use crate::state::RuntimeState;
 
@@ -221,8 +222,9 @@ impl DaemonApp {
         ));
 
         // 2. Build API state using the shared event_tx (same channel used by all services)
+        let security = SecurityState::new();
         let mut api_state =
-            DaemonApiState::new(query_service, auth_token, Some(self.runtime.clone()));
+            DaemonApiState::new(query_service, auth_token, Some(self.runtime.clone()), security);
         // Replace the default-created channel with our shared one so all services
         // emit to the same broadcast channel that WebSocket subscribers receive from.
         api_state.event_tx = self.event_tx.clone();

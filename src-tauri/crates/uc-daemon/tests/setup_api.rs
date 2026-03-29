@@ -36,6 +36,7 @@ use uc_daemon::api::query::DaemonQueryService;
 use uc_daemon::api::server::{build_router, DaemonApiState};
 use uc_daemon::api::types::DaemonWsEvent;
 use uc_daemon::pairing::host::DaemonPairingHost;
+use uc_daemon::security::SecurityState;
 use uc_daemon::state::RuntimeState;
 
 fn build_runtime() -> Arc<CoreRuntime> {
@@ -60,7 +61,7 @@ async fn build_setup_router() -> (axum::Router, String) {
     let token = load_or_create_auth_token(&token_path).unwrap();
     let token_value = std::fs::read_to_string(token_path).unwrap();
     let setup_orchestrator = build_setup_orchestrator(runtime);
-    let api_state = DaemonApiState::new(query_service, token, None).with_setup(setup_orchestrator);
+    let api_state = DaemonApiState::new(query_service, token, None, SecurityState::new()).with_setup(setup_orchestrator);
     (build_router(api_state), token_value)
 }
 
@@ -146,7 +147,7 @@ fn build_reset_router() -> (axum::Router, String) {
             ctx.key_slot_store,
             event_tx,
         ));
-        let api_state = DaemonApiState::new(query_service, token, Some(runtime))
+        let api_state = DaemonApiState::new(query_service, token, Some(runtime), SecurityState::new())
             .with_setup(setup_orchestrator)
             .with_pairing_host(pairing_host);
         (build_router(api_state), token_value)
@@ -513,7 +514,7 @@ fn build_join_setup_fixture() -> JoinSetupFixture {
         facade.clone(),
         Arc::new(WorkingSpaceAccessCryptoFactory),
     );
-    let api_state = DaemonApiState::new(query_service, token, None).with_setup(setup_orchestrator);
+    let api_state = DaemonApiState::new(query_service, token, None, SecurityState::new()).with_setup(setup_orchestrator);
 
     JoinSetupFixture {
         app: build_router(api_state),
@@ -579,7 +580,7 @@ fn build_host_setup_fixture() -> HostSetupFixture {
             ctx.key_slot_store,
             event_tx,
         ));
-        let api_state = DaemonApiState::new(query_service, token, Some(runtime.clone()))
+        let api_state = DaemonApiState::new(query_service, token, Some(runtime.clone()), SecurityState::new())
             .with_setup(setup_orchestrator)
             .with_pairing_host(pairing_host.clone());
 

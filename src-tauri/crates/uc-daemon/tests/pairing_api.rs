@@ -17,6 +17,7 @@ use uc_daemon::api::query::DaemonQueryService;
 use uc_daemon::api::server::{build_router, DaemonApiState};
 use uc_daemon::api::types::DaemonWsEvent;
 use uc_daemon::pairing::host::DaemonPairingHost;
+use uc_daemon::security::SecurityState;
 use uc_daemon::state::RuntimeState;
 
 struct PairingApiFixture {
@@ -65,7 +66,7 @@ fn build_api_fixture() -> PairingApiFixture {
         ctx.key_slot_store,
         event_tx,
     ));
-    let api_state = DaemonApiState::new(query_service, token, Some(runtime.clone()))
+    let api_state = DaemonApiState::new(query_service, token, Some(runtime.clone()), SecurityState::new())
         .with_pairing_host(pairing_host.clone());
     PairingApiFixture {
         app: build_router(api_state),

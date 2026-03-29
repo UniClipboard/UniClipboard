@@ -18,6 +18,7 @@ use uc_daemon::api::types::{
     SetupStateChangedPayload,
 };
 use uc_daemon::pairing::session_projection::upsert_pairing_snapshot;
+use uc_daemon::security::SecurityState;
 use uc_daemon::state::RuntimeState;
 
 struct PairingWsHarness {
@@ -46,7 +47,7 @@ async fn spawn_server() -> PairingWsHarness {
     let token_path = tempdir.path().join("daemon.token");
     let token = load_or_create_auth_token(&token_path).unwrap();
     let token_value = std::fs::read_to_string(&token_path).unwrap();
-    let api_state = DaemonApiState::new(query_service, token, None);
+    let api_state = DaemonApiState::new(query_service, token, None, SecurityState::new());
     let event_tx = api_state.event_tx.clone();
     let app = build_router(api_state);
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();

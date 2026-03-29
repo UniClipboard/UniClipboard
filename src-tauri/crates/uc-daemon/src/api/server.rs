@@ -25,6 +25,7 @@ use crate::api::routes;
 use crate::api::types::DaemonWsEvent;
 use crate::api::ws;
 use crate::pairing::host::{DaemonPairingHost, DaemonPairingHostError};
+use crate::security::SecurityState;
 use crate::socket::{try_resolve_daemon_http_addr, DEFAULT_HTTP_HOST};
 
 #[derive(Clone)]
@@ -41,6 +42,8 @@ pub struct DaemonApiState {
     pub clipboard_capture_gate: Option<Arc<AtomicBool>>,
     /// Notify to trigger deferred service startup (clipboard-watcher, etc.)
     pub deferred_ready_notify: Option<Arc<tokio::sync::Notify>>,
+    /// Security state: JWT secret, PID whitelist, and rate limiter.
+    pub security: SecurityState,
 }
 
 impl DaemonApiState {
@@ -48,6 +51,7 @@ impl DaemonApiState {
         query_service: Arc<DaemonQueryService>,
         auth_token: DaemonAuthToken,
         runtime: Option<Arc<CoreRuntime>>,
+        security: SecurityState,
     ) -> Self {
         let (event_tx, _) = broadcast::channel(64);
         Self {
@@ -60,6 +64,7 @@ impl DaemonApiState {
             event_tx,
             clipboard_capture_gate: None,
             deferred_ready_notify: None,
+            security,
         }
     }
 

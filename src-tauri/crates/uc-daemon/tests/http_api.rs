@@ -9,6 +9,7 @@ use tower::ServiceExt;
 use uc_daemon::api::auth::load_or_create_auth_token;
 use uc_daemon::api::query::DaemonQueryService;
 use uc_daemon::api::server::{build_router, DaemonApiState};
+use uc_daemon::security::SecurityState;
 use uc_daemon::state::RuntimeState;
 
 fn build_runtime() -> Arc<uc_app::runtime::CoreRuntime> {
@@ -24,7 +25,7 @@ async fn build_test_router() -> (axum::Router, String) {
     let tempdir = tempfile::tempdir().unwrap();
     let token_path = tempdir.path().join("daemon.token");
     let token = load_or_create_auth_token(&token_path).unwrap();
-    let api_state = DaemonApiState::new(query_service, token, None);
+    let api_state = DaemonApiState::new(query_service, token, None, SecurityState::new());
     let router = build_router(api_state);
     let token_value = std::fs::read_to_string(token_path).unwrap();
     (router, token_value)

@@ -9286,6 +9286,7 @@ dependencies = [
  "uc-bootstrap",
  "uc-core",
  "uc-infra",
+ "uc-observability",
  "uc-platform",
  "url",
 ]

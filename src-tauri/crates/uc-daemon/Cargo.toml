@@ -18,6 +18,7 @@ uc-app = { path = "../uc-app" }
 uc-core = { path = "../uc-core" }
 uc-infra = { path = "../uc-infra" }
 uc-platform = { path = "../uc-platform" }
+uc-observability = { path = "../uc-observability" }
 clipboard-rs = { version = "0.3.3", features = ["default"] }
 axum = { version = "0.7", features = ["ws"] }
 tokio = { version = "1", features = ["full"] }

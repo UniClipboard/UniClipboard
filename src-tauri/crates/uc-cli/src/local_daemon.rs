@@ -1,6 +1,6 @@
 use std::fmt;
 use std::future::Future;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
 use std::time::Duration;
 
@@ -8,7 +8,6 @@ use reqwest::Client;
 use uc_daemon::api::types::HealthResponse;
 use uc_daemon::socket::try_resolve_daemon_http_addr;
 
-const DAEMON_BINARY_NAME: &str = "uniclipboard-daemon";
 const HEALTH_PATH: &str = "/health";
 const PROBE_TIMEOUT: Duration = Duration::from_secs(2);
 const STARTUP_TIMEOUT: Duration = Duration::from_secs(8);
@@ -53,10 +52,10 @@ impl fmt::Display for LocalDaemonError {
             Self::ResolveBinary(error) => {
                 write!(
                     f,
-                    "failed to resolve local uniclipboard-daemon binary: {error}"
+                    "failed to resolve CLI executable for daemon spawn: {error}"
                 )
             }
-            Self::Spawn(error) => write!(f, "failed to spawn local uniclipboard-daemon: {error}"),
+            Self::Spawn(error) => write!(f, "failed to spawn daemon process: {error}"),
             Self::StartupTimeout {
                 timeout_ms,
                 profile,
@@ -194,91 +193,38 @@ fn resolve_base_url() -> Result<String, LocalDaemonError> {
 }
 
 fn spawn_daemon_process() -> Result<Child, LocalDaemonError> {
-    let daemon_binary = resolve_daemon_binary_path()?;
+    let cli_exe = resolve_cli_exe_path()?;
 
-    Command::new(&daemon_binary)
+    Command::new(&cli_exe)
+        .arg("daemon")
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .spawn()
         .map_err(|error| {
             LocalDaemonError::Spawn(anyhow::Error::new(error).context(format!(
-                "failed to spawn {} from {}",
-                daemon_binary_name(),
-                daemon_binary.display()
+                "failed to spawn daemon via `{} daemon`",
+                cli_exe.display()
             )))
         })
 }
 
-pub(crate) fn resolve_daemon_binary_path() -> Result<PathBuf, LocalDaemonError> {
-    let current_exe = std::env::current_exe().map_err(|error| {
+/// Resolve the path to the current CLI executable (used to spawn itself with `daemon` subcommand).
+pub(crate) fn resolve_cli_exe_path() -> Result<PathBuf, LocalDaemonError> {
+    std::env::current_exe().map_err(|error| {
         LocalDaemonError::ResolveBinary(
             anyhow::Error::new(error).context("failed to resolve current CLI executable"),
         )
-    })?;
-
-    Ok(resolve_daemon_binary_path_from(&current_exe))
-}
-
-fn resolve_daemon_binary_path_from(current_exe: &Path) -> PathBuf {
-    let binary_name = daemon_binary_name();
-    current_exe
-        .parent()
-        .map(|parent| parent.join(binary_name))
-        .filter(|candidate| candidate.exists())
-        .unwrap_or_else(|| PathBuf::from(binary_name))
-}
-
-fn daemon_binary_name() -> &'static str {
-    #[cfg(target_os = "windows")]
-    {
-        "uniclipboard-daemon.exe"
-    }
-    #[cfg(not(target_os = "windows"))]
-    {
-        DAEMON_BINARY_NAME
-    }
+    })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::fs;
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::Arc;
-    use std::time::{SystemTime, UNIX_EPOCH};
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio::net::TcpListener;
-
-    struct TestTempDir {
-        path: PathBuf,
-    }
-
-    impl TestTempDir {
-        fn new() -> Self {
-            let unique = format!(
-                "uc-cli-local-daemon-{}-{}",
-                std::process::id(),
-                SystemTime::now()
-                    .duration_since(UNIX_EPOCH)
-                    .expect("system time should be after epoch")
-                    .as_nanos()
-            );
-            let path = std::env::temp_dir().join(unique);
-            fs::create_dir_all(&path).expect("test temp dir should be created");
-            Self { path }
-        }
-
-        fn path(&self) -> &Path {
-            &self.path
-        }
-    }
-
-    impl Drop for TestTempDir {
-        fn drop(&mut self) {
-            let _ = fs::remove_dir_all(&self.path);
-        }
-    }
 
     #[tokio::test]
     async fn ensure_local_daemon_running_returns_without_spawn_when_probe_is_healthy() {
@@ -375,20 +321,5 @@ mod tests {
 
         assert!(is_healthy);
         server.await.expect("server should finish");
-    }
-
-    #[test]
-    fn resolve_daemon_binary_path_prefers_cli_sibling_binary() {
-        let tempdir = TestTempDir::new();
-        let exe_dir = tempdir.path().join("bin");
-        fs::create_dir_all(&exe_dir).expect("bin dir should exist");
-        let current_exe = exe_dir.join("uniclipboard-cli");
-        fs::write(&current_exe, b"").expect("current exe placeholder should be written");
-        let sibling = exe_dir.join(daemon_binary_name());
-        fs::write(&sibling, b"").expect("daemon sibling placeholder should be written");
-
-        let resolved = resolve_daemon_binary_path_from(&current_exe);
-
-        assert_eq!(resolved, sibling);
     }
 }

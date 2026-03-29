@@ -11,11 +11,12 @@ pub const DAEMON_API_REVISION: &str = "setup-pairing-http-routes-v1";
 
 pub mod api;
 pub mod app;
+pub mod entrypoint;
 pub mod pairing;
 pub mod peers;
 pub mod process_metadata;
 pub mod rpc;
+pub mod service;
 pub mod socket;
 pub mod state;
-pub mod service;
 pub mod workers;

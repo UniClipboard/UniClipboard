@@ -56,6 +56,13 @@ enum Commands {
     Devices,
     /// Show space and encryption status (direct mode, no daemon required)
     SpaceStatus,
+    /// Run the daemon process inline (used internally by `start`)
+    #[command(hide = true)]
+    Daemon {
+        /// Launched by a GUI parent that keeps stdin open for lifecycle detection
+        #[arg(long)]
+        gui_managed: bool,
+    },
 }
 
 #[derive(Subcommand)]
@@ -75,6 +82,12 @@ fn main() -> anyhow::Result<()> {
 
     if cli.dev {
         std::env::set_var("UNICLIPBOARD_ENV", "development");
+    }
+
+    // Handle `daemon` subcommand before creating the tokio runtime —
+    // the daemon entrypoint creates its own runtime internally.
+    if let Commands::Daemon { gui_managed } = cli.command {
+        return uc_daemon::entrypoint::run(gui_managed);
     }
 
     let rt = tokio::runtime::Builder::new_multi_thread()
@@ -103,6 +116,7 @@ fn main() -> anyhow::Result<()> {
             },
             Commands::Devices => commands::devices::run(cli.json, cli.verbose).await,
             Commands::SpaceStatus => commands::space_status::run(cli.json, cli.verbose).await,
+            Commands::Daemon { .. } => unreachable!("handled above"),
         }
     });
 

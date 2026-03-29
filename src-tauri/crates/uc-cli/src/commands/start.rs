@@ -124,7 +124,7 @@ async fn run_foreground(json: bool, _verbose: bool) -> i32 {
         return exit_codes::EXIT_SUCCESS;
     }
 
-    let daemon_binary = match local_daemon::resolve_daemon_binary_path() {
+    let cli_exe = match local_daemon::resolve_cli_exe_path() {
         Ok(path) => path,
         Err(e) => {
             eprintln!("Error: {}", e);
@@ -136,7 +136,8 @@ async fn run_foreground(json: bool, _verbose: bool) -> i32 {
         println!("Starting daemon in foreground... (press Ctrl+C to stop)");
     }
 
-    let mut child = match std::process::Command::new(&daemon_binary)
+    let mut child = match std::process::Command::new(&cli_exe)
+        .arg("daemon")
         .stdin(Stdio::null())
         .stdout(Stdio::inherit())
         .stderr(Stdio::inherit())

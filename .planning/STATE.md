@@ -3,10 +3,10 @@ gsd_state_version: 1.0
 milestone: v0.4.0
 milestone_name: Runtime Mode Separation
 status: 'Phase 71 shipped — PR #323'
-stopped_at: Phase 72 context gathered
-last_updated: '2026-03-29T03:01:49.436Z'
+stopped_at: Completed 72-01-PLAN.md
+last_updated: '2026-03-29T04:34:04.084Z'
 progress:
-  total_phases: 43
+  total_phases: 42
   completed_phases: 35
   total_plans: 93
   completed_plans: 90
@@ -101,6 +101,7 @@ Plan: Not started
   | Phase 71 P02 | 52s | 1 tasks | 1 files |
   | Phase 71 P01 | 2 | 2 tasks | 4 files |
   | Phase 71 P03 | 2 | 2 tasks | 4 files |
+  | Phase 72 P01 | 8 | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -235,6 +236,8 @@ Recent decisions affecting current work:
 - [Phase 71]: cargo update steps in release.yml gated with if: github.event_name == 'workflow_dispatch' to avoid running on tag-push events
 - [Phase 71]: CLI artifact collection uses separate find loop with no collision handling — CLI archives have unique names (version + target triple in filename)
 - [Phase 71]: buildCliInstallerLines() detects artifacts by uniclipboard-cli- prefix + target triple patterns (aarch64-apple-darwin, x86_64-apple-darwin, linux-gnu, windows-msvc)
+- [Phase 72]: http_route module in daemon_api_strings mirrors ws_topic/ws_event pattern for REST endpoint path constants
+- [Phase 72]: DaemonClipboardClient uses [NOT_FOUND] prefix in error strings for caller-distinguishable 404 vs other errors
 
 ### Roadmap Evolution
 
@@ -260,7 +263,6 @@ Recent decisions affecting current work:
 - Phase 69 added: CLI setup flow: first-time encryption init before daemon spawn
 - Phase 70 added: CLI start/stop commands for daemon lifecycle management
 - Phase 71 added: Dual-product release pipeline for CLI and App
-- Phase 72 added: Migrate restore-clipboard to daemon — eliminate cross-process origin desync
 
 ### Pending Todos
 
@@ -280,6 +282,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-29T03:01:49.432Z
-Stopped at: Phase 72 context gathered
-Resume file: .planning/phases/72-migrate-restore-clipboard-to-daemon-eliminate-cross-process-origin-desync/72-CONTEXT.md
+Last session: 2026-03-29T04:34:04.080Z
+Stopped at: Completed 72-01-PLAN.md
+Resume file: None

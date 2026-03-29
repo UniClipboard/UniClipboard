@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v0.4.0
 milestone_name: Runtime Mode Separation
 status: Ready to execute
-stopped_at: Completed 75-02-PLAN.md
-last_updated: "2026-03-29T16:30:16.852Z"
+stopped_at: Completed 75-03-PLAN.md
+last_updated: "2026-03-29T16:37:56.116Z"
 progress:
   total_phases: 52
-  completed_phases: 38
+  completed_phases: 39
   total_plans: 104
-  completed_plans: 98
+  completed_plans: 99
 ---
 
 # Project State
@@ -23,7 +23,7 @@ See: .planning/PROJECT.md (updated 2026-03-09)
 ## Current Position
 
 Phase: 75 (daemon-security-middleware) — EXECUTING
-Plan: 2 of 3
+Plan: 3 of 3
 **Current focus:** Phase 75 — daemon-security-middleware
 
 ## Current Position
@@ -113,6 +113,7 @@ Plan: Not started
   | Phase 74 P02 | 149 | 1 tasks | 1 files |
 | Phase 75 P01 | 1194 | 2 tasks | 17 files |
 | Phase 75 P02 | 60 | 3 tasks | 11 files |
+| Phase 75 P03 | 10 | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -260,6 +261,8 @@ Recent decisions affecting current work:
 - [Phase 75]: ClientId typed marker for request extensions (http::Extensions uses type-based keys)
 - [Phase 75]: Option<ConnectInfo<SocketAddr>> used for IP rate limiting at /auth/connect so tests using tower::ServiceExt::oneshot compile without real TCP connection
 - [Phase 75]: SecurityState::new_with_pid() and make_session_token_for_pid() kept without #[cfg(test)] because integration tests in tests/ directory cannot see cfg(test) items
+- [Phase 75]: WS upgrade validates Session JWT not Bearer token — consistent with L2 HTTP middleware pattern
+- [Phase 75]: Rate limit WS upgrades by PID from validated JWT claims for trustworthy rate limiting on authenticated routes
 
 ### Roadmap Evolution
 
@@ -314,6 +317,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-29T16:30:16.849Z
-Stopped at: Completed 75-02-PLAN.md
+Last session: 2026-03-29T16:37:56.113Z
+Stopped at: Completed 75-03-PLAN.md
 Resume file: None

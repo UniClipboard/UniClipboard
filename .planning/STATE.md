@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v0.4.0
 milestone_name: Runtime Mode Separation
-status: 'Phase 74 shipped — PR #330'
-stopped_at: Completed 74-02-PLAN.md
-last_updated: '2026-03-29T13:07:03.194Z'
+status: Ready to execute
+stopped_at: Completed 75-01-PLAN.md
+last_updated: "2026-03-29T15:44:34.097Z"
 progress:
   total_phases: 52
   completed_phases: 38
-  total_plans: 101
-  completed_plans: 96
+  total_plans: 104
+  completed_plans: 97
 ---
 
 # Project State
@@ -22,6 +22,8 @@ See: .planning/PROJECT.md (updated 2026-03-09)
 
 ## Current Position
 
+Phase: 75 (daemon-security-middleware) — EXECUTING
+Plan: 2 of 3
 **Current focus:** Phase 75 — daemon-security-middleware
 
 ## Current Position
@@ -109,6 +111,7 @@ Plan: Not started
   | Phase 73 P02 | 90 | 2 tasks | 6 files |
   | Phase 74 P01 | 4 | 2 tasks | 5 files |
   | Phase 74 P02 | 149 | 1 tasks | 1 files |
+| Phase 75 P01 | 1194 | 2 tasks | 17 files |
 
 ## Accumulated Context
 
@@ -250,6 +253,10 @@ Recent decisions affecting current work:
 - [Phase 73]: REMOTE_SNAPSHOT_HASH_TTL_MS removed from sync_inbound.rs — TTL semantics now exclusively owned by ClipboardWriteCoordinator
 - [Phase 73]: FileSyncOrchestratorWorker consolidates system_clipboard + clipboard_change_origin into single clipboard_write_coordinator field
 - [Phase 74]: 74-01: EntryDetailResult needed serde::Serialize added as Rule 2 auto-fix
+- [Phase 75]: Used rust_crypto feature for jsonwebtoken (aws_lc_rs version conflict)
+- [Phase 75]: Used tokio::time::Instant for rate limiter (testable time control)
+- [Phase 75]: Subject validation done manually after JWT decode (no set_subject in jsonwebtoken 10.x)
+- [Phase 75]: ClientId typed marker for request extensions (http::Extensions uses type-based keys)
 
 ### Roadmap Evolution
 
@@ -304,6 +311,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-29T12:24:35.913Z
-Stopped at: Completed 74-02-PLAN.md
+Last session: 2026-03-29T15:44:33.931Z
+Stopped at: Completed 75-01-PLAN.md
 Resume file: None

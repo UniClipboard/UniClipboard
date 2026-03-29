@@ -808,3 +808,92 @@ Plans:
 
 - [x] 73-01-PLAN.md — Create ClipboardWriteCoordinator with unit tests, wire into bootstrap and CoreUseCases, lock down InMemoryClipboardChangeOrigin
 - [x] 73-02-PLAN.md — Refactor all 4 clipboard write callsites to use coordinator, update daemon workers and entrypoint
+
+### Phase 74: Daemon Clipboard HTTP API — add list, detail, delete, favorite, stats endpoints
+
+**Goal:** Extend daemon HTTP API with full clipboard CRUD endpoints: list entries with pagination, get entry detail, delete entry, toggle favorite, get stats, and get entry resource/blob content.
+**Requirements**: TBD
+**Depends on:** Phase 72
+**Plans:** 0 plans
+
+Plans:
+
+- [ ] TBD (run /gsd:plan-phase 74 to break down)
+
+### Phase 75: Daemon Security Middleware — JWT session token, PID verification, rate limiting, permission levels
+
+**Goal:** Add production-grade security middleware to daemon: short-lived JWT session tokens (5min TTL) exchanged from bearer token, optional PID whitelist verification, per-client rate limiting (100 req/min), and L1-L4 permission level enforcement on all endpoints.
+**Requirements**: TBD
+**Depends on:** Phase 74
+**Plans:** 0 plans
+
+Plans:
+
+- [ ] TBD (run /gsd:plan-phase 75 to break down)
+
+### Phase 76: Daemon Settings, Encryption & Storage HTTP API — read/write settings, encryption state, storage stats
+
+**Goal:** Add daemon HTTP endpoints for settings (GET/PUT), encryption state management (get state, unlock, lock), and storage statistics (stats, clear cache). Complete the daemon API surface required for frontend direct connection.
+**Requirements**: TBD
+**Depends on:** Phase 75
+**Plans:** 0 plans
+
+Plans:
+
+- [ ] TBD (run /gsd:plan-phase 76 to break down)
+
+### Phase 77: Frontend Daemon HTTP Client & Auth Module — create client framework with session management
+
+**Goal:** Create frontend DaemonClient class with automatic session token management (refresh before expiry), connection initialization via Tauri invoke for bootstrap info, and typed request/error handling. Replace Tauri invoke() as the primary API transport.
+**Requirements**: TBD
+**Depends on:** Phase 76
+**Plans:** 0 plans
+
+Plans:
+
+- [ ] TBD (run /gsd:plan-phase 77 to break down)
+
+### Phase 78: Frontend Clipboard API Migration — switch clipboard operations from Tauri invoke to daemon HTTP
+
+**Goal:** Migrate all frontend clipboard API calls (list, detail, delete, restore, favorite, stats, resource) from Tauri invoke() to daemon HTTP client. Preserve existing UI behavior and data contracts.
+**Requirements**: PH78-01, PH78-02, PH78-03, PH78-04, PH78-05
+**Depends on:** Phase 77
+**Plans:** 2 plans
+
+Plans:
+
+- [ ] 78-01-PLAN.md — Create daemon clipboard API module (src/api/daemon/clipboard.ts)
+- [ ] 78-02-PLAN.md — Migrate Redux slices (clipboardSlice, statsSlice) to daemon API
+
+### Phase 79: Frontend WebSocket Direct Connection & Event Migration — replace Tauri event bridge with daemon WS
+
+**Goal:** Create DaemonWsClient for direct WebSocket connection to daemon, implement topic-based subscription with reconnect/backoff, migrate clipboard/encryption/lifecycle event listeners from Tauri listen() to daemon WS, and add React hooks for event consumption.
+**Requirements**: TBD
+**Depends on:** Phase 78
+**Plans:** 0 plans
+
+Plans:
+
+- [ ] TBD (run /gsd:plan-phase 79 to break down)
+
+### Phase 80: uc-tauri Command Cleanup — remove migrated commands, retain only Tauri-specific functionality
+
+**Goal:** Remove all Tauri commands that have been migrated to daemon HTTP API (clipboard, settings, encryption, storage). Retain only Tauri-specific commands: daemon lifecycle, auth bootstrap, system tray, quick panel, preview panel, updater, and protocol handler.
+**Requirements**: TBD
+**Depends on:** Phase 79
+**Plans:** 0 plans
+
+Plans:
+
+- [ ] TBD (run /gsd:plan-phase 80 to break down)
+
+### Phase 81: Frontend-Daemon Integration Testing & Security Audit — end-to-end validation and security review
+
+**Goal:** End-to-end integration tests for the full frontend-daemon direct connection stack: HTTP API correctness, WebSocket event delivery, session token lifecycle, reconnection recovery, and security audit (token leakage, rate limiting effectiveness, permission enforcement).
+**Requirements**: TBD
+**Depends on:** Phase 80
+**Plans:** 0 plans
+
+Plans:
+
+- [ ] TBD (run /gsd:plan-phase 81 to break down)

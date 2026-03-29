@@ -74,6 +74,12 @@ pub mod http_route {
     pub const CLIPBOARD_STATS: &str = "/clipboard/stats";
 }
 
+/// HTTP route paths for daemon auth endpoints.
+pub mod auth_route {
+    /// POST /auth/connect — exchange bearer token for JWT session token
+    pub const AUTH_CONNECT: &str = "/auth/connect";
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -150,5 +156,10 @@ mod tests {
         assert_eq!(http_route::CLIPBOARD_RESTORE, "/clipboard/restore");
         assert_eq!(http_route::CLIPBOARD_ENTRIES, "/clipboard/entries");
         assert_eq!(http_route::CLIPBOARD_STATS, "/clipboard/stats");
+    }
+
+    #[test]
+    fn auth_route_values_match() {
+        assert_eq!(auth_route::AUTH_CONNECT, "/auth/connect");
     }
 }

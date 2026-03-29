@@ -4,6 +4,7 @@
 //! L3/L4 permission enforcement is reserved for future phases.
 
 pub mod claims;
+pub mod connect;
 pub mod middleware;
 pub mod permission;
 pub mod rate_limiter;

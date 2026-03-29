@@ -130,7 +130,9 @@ impl DaemonApiState {
 
 pub fn build_router(state: DaemonApiState) -> Router {
     Router::new()
-        .merge(routes::router())
+        .merge(routes::router_l1(state.clone()))
+        .merge(routes::router_l2_plus(state.clone()))
+        .merge(crate::security::connect::router())
         .merge(ws::router())
         .with_state(state)
 }
@@ -194,6 +196,10 @@ pub async fn run_http_server(
 
     // into_make_service_with_connect_info enables ConnectInfo<SocketAddr> in handlers.
     // This is required for the /auth/connect endpoint's IP-based rate limiting.
+    // NOTE on ConnectInfo in tests: In test contexts using tower::ServiceExt::oneshot,
+    // the socket address will be a default value (127.0.0.1:0) since there's no real
+    // TCP connection. The SlidingWindowRateLimiter unit tests cover rate limiting logic
+    // independently. IP-based rate limiting works correctly in production.
     let make_service = build_router(state).into_make_service_with_connect_info::<SocketAddr>();
 
     let listener = tokio::net::TcpListener::bind(addr).await?;

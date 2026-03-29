@@ -38,6 +38,37 @@ impl SecurityState {
         }
     }
 
+    /// Create a new SecurityState with a single PID pre-registered in the whitelist.
+    ///
+    /// This is useful in test fixtures where async PID registration is not available
+    /// (e.g., synchronous test setup functions). The PID is directly inserted into
+    /// the `allowed_pids` set without requiring an async context.
+    pub fn new_with_pid(pid: u32) -> Self {
+        let state = Self::new();
+        let mut pids = state
+            .allowed_pids
+            .try_write()
+            .expect("SecurityState::new_with_pid: RwLock write contention at construction time is unexpected");
+        pids.insert(pid);
+        drop(pids);
+        state
+    }
+
+    /// Generate a JWT session token signed with this state's jwt_secret.
+    ///
+    /// Used in test fixtures to pre-obtain a session token for use in
+    /// authenticated requests without requiring an async `/auth/connect` call.
+    ///
+    /// # Panics
+    /// Panics if JWT signing fails (should not happen with a valid secret).
+    pub fn make_session_token_for_pid(&self, pid: u32) -> String {
+        use super::claims::{SessionTokenClaims, LEVEL_L2};
+        let claims = SessionTokenClaims::new(pid, "test".to_string(), LEVEL_L2, false);
+        claims
+            .sign(self.jwt_secret.as_ref())
+            .expect("SecurityState::make_session_token_for_pid: JWT signing failed")
+    }
+
     /// Register a client PID in the whitelist.
     ///
     /// Called during `/auth/connect` when a client successfully authenticates.

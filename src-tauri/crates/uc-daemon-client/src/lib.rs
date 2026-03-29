@@ -14,7 +14,8 @@ pub use daemon_lifecycle::{
     DaemonExitCleanupError, GuiOwnedDaemonState, OwnedDaemonChild, SpawnReason,
 };
 pub use http::{
-    DaemonPairingClient, DaemonPairingRequestError, DaemonQueryClient, DaemonSetupClient,
+    DaemonClipboardClient, DaemonPairingClient, DaemonPairingRequestError, DaemonQueryClient,
+    DaemonSetupClient,
 };
 pub use realtime::{install_daemon_setup_pairing_facade, start_realtime_runtime};
 pub use ws_bridge::{BridgeState, DaemonWsBridge, DaemonWsBridgeConfig, DaemonWsBridgeError};

@@ -28,7 +28,6 @@ use crate::workers::clipboard_watcher::{ClipboardWatcherWorker, DaemonClipboardC
 use crate::workers::file_sync_orchestrator::FileSyncOrchestratorWorker;
 use crate::workers::inbound_clipboard_sync::InboundClipboardSyncWorker;
 use crate::workers::peer_discovery::PeerDiscoveryWorker;
-use uc_infra::clipboard::InMemoryClipboardChangeOrigin;
 use uc_platform::clipboard::LocalClipboard;
 
 /// Run the daemon process. This is the composition root.
@@ -105,9 +104,13 @@ pub fn run(gui_managed: bool) -> anyhow::Result<()> {
             .map_err(|e| anyhow::anyhow!("failed to create LocalClipboard: {}", e))?,
     );
 
-    // Create shared clipboard change origin for write-back loop prevention.
-    let clipboard_change_origin: Arc<dyn uc_core::ports::ClipboardChangeOriginPort> =
-        Arc::new(InMemoryClipboardChangeOrigin::new());
+    // Reuse the runtime's clipboard change origin so restore commands, watcher,
+    // inbound sync, and file restore all observe the same guard state.
+    let clipboard_change_origin = runtime
+        .wiring_deps()
+        .clipboard
+        .clipboard_change_origin
+        .clone();
 
     // Clipboard capture gate: controls whether clipboard changes are processed.
     // In standalone CLI mode, capture is always enabled.

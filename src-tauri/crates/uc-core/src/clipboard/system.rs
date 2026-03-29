@@ -87,6 +87,50 @@ impl ObservedClipboardRepresentation {
     }
 }
 
+fn is_plain_text_representation(rep: &ObservedClipboardRepresentation) -> bool {
+    if let Some(mime) = rep.mime.as_ref() {
+        let mime_str = mime.as_str();
+        if mime_str.eq_ignore_ascii_case("text/plain")
+            || mime_str.to_ascii_lowercase().starts_with("text/plain;")
+            || mime_str.eq_ignore_ascii_case("public.utf8-plain-text")
+        {
+            return true;
+        }
+    }
+    rep.format_id.eq_ignore_ascii_case("text")
+}
+
+fn is_text_representation(rep: &ObservedClipboardRepresentation) -> bool {
+    if let Some(mime) = rep.mime.as_ref() {
+        let mime_str = mime.as_str();
+        if mime_str.starts_with("text/") || mime_str.eq_ignore_ascii_case("public.utf8-plain-text")
+        {
+            return true;
+        }
+    }
+    rep.format_id.eq_ignore_ascii_case("text")
+        || rep.format_id.eq_ignore_ascii_case("html")
+        || rep.format_id.eq_ignore_ascii_case("rtf")
+}
+
+fn is_image_representation(rep: &ObservedClipboardRepresentation) -> bool {
+    rep.mime
+        .as_ref()
+        .is_some_and(|mime| mime.as_str().starts_with("image/"))
+        || rep.format_id.eq_ignore_ascii_case("image")
+}
+
+fn is_file_representation(rep: &ObservedClipboardRepresentation) -> bool {
+    if let Some(mime) = rep.mime.as_ref() {
+        let s = mime.as_str();
+        if s.eq_ignore_ascii_case("text/uri-list") || s.eq_ignore_ascii_case("file/uri-list") {
+            return true;
+        }
+    }
+    rep.format_id.eq_ignore_ascii_case("files")
+        || rep.format_id.eq_ignore_ascii_case("public.file-url")
+}
+
 impl Clone for ObservedClipboardRepresentation {
     fn clone(&self) -> Self {
         Self {
@@ -145,5 +189,46 @@ impl SystemClipboardSnapshot {
 
         let hash = hasher.finalize();
         SnapshotHash(ContentHash::from(hash.as_bytes()))
+    }
+
+    pub fn meaningful_origin_key(&self) -> Option<String> {
+        if let Some(rep) = self
+            .representations
+            .iter()
+            .find(|rep| is_file_representation(rep))
+        {
+            return Some(format!("files:{}", rep.content_hash().0));
+        }
+
+        if let Some(rep) = self
+            .representations
+            .iter()
+            .find(|rep| is_plain_text_representation(rep))
+        {
+            return Some(format!("text:{}", rep.content_hash().0));
+        }
+
+        if let Some(rep) = self
+            .representations
+            .iter()
+            .find(|rep| is_text_representation(rep))
+        {
+            return Some(format!("rich-text:{}", rep.content_hash().0));
+        }
+
+        if let Some(rep) = self
+            .representations
+            .iter()
+            .find(|rep| is_image_representation(rep))
+        {
+            return Some(format!("image:{}", rep.content_hash().0));
+        }
+
+        None
+    }
+
+    pub fn origin_guard_key(&self) -> String {
+        self.meaningful_origin_key()
+            .unwrap_or_else(|| self.snapshot_hash().to_string())
     }
 }

@@ -2,6 +2,7 @@ use crate::usecases::clipboard::ClipboardIntegrationMode;
 use anyhow::Result;
 use std::sync::Arc;
 use std::time::Duration;
+use tracing::{debug, info, warn};
 
 use uc_core::{
     clipboard::{
@@ -68,6 +69,7 @@ impl RestoreClipboardSelectionUseCase {
     }
 
     pub async fn build_snapshot(&self, entry_id: &EntryId) -> Result<SystemClipboardSnapshot> {
+        debug!(entry_id = %entry_id, "restore.build_snapshot start");
         // 1. 读取 Entry
         let entry = self
             .clipboard_repo
@@ -133,6 +135,17 @@ impl RestoreClipboardSelectionUseCase {
             bytes,
         )];
 
+        debug!(
+            entry_id = %entry_id,
+            event_id = %entry.event_id,
+            restore_rep_id = %restore_rep.id,
+            restore_format = %restore_rep.format_id,
+            restore_mime = ?restore_rep.mime_type.as_ref().map(|mime| mime.as_str()),
+            candidate_count = candidates.len(),
+            restore_size_bytes = representations[0].bytes.len(),
+            "restore.build_snapshot selected representation"
+        );
+
         // 5. 构造 Snapshot
         Ok(SystemClipboardSnapshot {
             ts_ms: chrono::Utc::now().timestamp_millis(),
@@ -178,30 +191,59 @@ impl RestoreClipboardSelectionUseCase {
             || format_id.eq_ignore_ascii_case("NSStringPboardType")
     }
 
-    pub async fn restore_snapshot(&self, snapshot: SystemClipboardSnapshot) -> Result<()> {
+    pub async fn restore_snapshot(
+        &self,
+        entry_id: &EntryId,
+        snapshot: SystemClipboardSnapshot,
+    ) -> Result<()> {
         if !self.mode.allow_os_write() {
             return Err(anyhow::anyhow!(
                 "System clipboard writes disabled (UC_CLIPBOARD_MODE=passive)"
             ));
         }
 
+        let origin_guard_key = snapshot.origin_guard_key();
+        // Bind the LocalRestore guard to the exact snapshot we are about to write,
+        // so unrelated clipboard events cannot consume it prematurely.
+        info!(
+            entry_id = %entry_id,
+            origin_guard_key = %origin_guard_key,
+            rep_count = snapshot.representations.len(),
+            "restore.restore_snapshot guard registered"
+        );
         self.clipboard_change_origin
-            .set_next_origin(ClipboardChangeOrigin::LocalRestore, Duration::from_secs(2))
+            .remember_local_snapshot_hash(origin_guard_key.clone(), Duration::from_secs(2))
             .await;
 
         if let Err(err) = self.local_clipboard.write_snapshot(snapshot) {
+            warn!(
+                entry_id = %entry_id,
+                origin_guard_key = %origin_guard_key,
+                error = %err,
+                "restore.restore_snapshot write failed"
+            );
             self.clipboard_change_origin
-                .consume_origin_or_default(ClipboardChangeOrigin::LocalCapture)
+                .consume_origin_for_snapshot_or_default(
+                    &origin_guard_key,
+                    ClipboardChangeOrigin::LocalCapture,
+                )
                 .await;
             return Err(err);
         }
+
+        info!(
+            entry_id = %entry_id,
+            origin_guard_key = %origin_guard_key,
+            "restore.restore_snapshot write succeeded"
+        );
 
         Ok(())
     }
 
     pub async fn execute(&self, entry_id: &EntryId) -> Result<()> {
+        info!(entry_id = %entry_id, "restore.execute requested");
         let snapshot = self.build_snapshot(entry_id).await?;
-        self.restore_snapshot(snapshot).await
+        self.restore_snapshot(entry_id, snapshot).await
     }
 }
 
@@ -407,12 +449,29 @@ mod tests {
             }
         }
 
+        async fn remember_local_snapshot_hash(&self, _snapshot_hash: String, _ttl: Duration) {
+            if let Ok(mut calls) = self.calls.lock() {
+                calls.push("remember_local_snapshot_hash");
+            }
+        }
+
         async fn consume_origin_or_default(
             &self,
             default_origin: ClipboardChangeOrigin,
         ) -> ClipboardChangeOrigin {
             if let Ok(mut calls) = self.calls.lock() {
                 calls.push("consume_origin");
+            }
+            default_origin
+        }
+
+        async fn consume_origin_for_snapshot_or_default(
+            &self,
+            _snapshot_hash: &str,
+            default_origin: ClipboardChangeOrigin,
+        ) -> ClipboardChangeOrigin {
+            if let Ok(mut calls) = self.calls.lock() {
+                calls.push("consume_origin_for_snapshot");
             }
             default_origin
         }
@@ -570,13 +629,19 @@ mod tests {
             representations: vec![],
         };
 
-        let result = uc.restore_snapshot(snapshot).await;
+        let result = uc
+            .restore_snapshot(&EntryId::from("entry-write-error"), snapshot)
+            .await;
 
         assert!(result.is_err());
         let calls = calls.lock().unwrap().clone();
         assert_eq!(
             calls,
-            vec!["set_origin", "write_snapshot", "consume_origin"]
+            vec![
+                "remember_local_snapshot_hash",
+                "write_snapshot",
+                "consume_origin_for_snapshot",
+            ]
         );
     }
 
@@ -605,7 +670,9 @@ mod tests {
             representations: vec![],
         };
 
-        let result = uc.restore_snapshot(snapshot).await;
+        let result = uc
+            .restore_snapshot(&EntryId::from("entry-passive"), snapshot)
+            .await;
 
         assert!(result.is_err());
         assert!(result

@@ -116,20 +116,30 @@ async fn restore_clipboard_entry_handler(
     let parsed_id = uc_core::ids::EntryId::from(entry_id.clone());
     let usecases = CoreUseCases::new(runtime.as_ref());
 
+    tracing::info!(entry_id = %entry_id, "daemon restore request received");
+
     // Restore to OS clipboard first — this calls set_next_origin(LocalRestore) in-process.
     // The daemon's ClipboardWatcherWorker will detect the write, but CaptureClipboardUseCase
     // skips capture for LocalRestore origin — no duplicate DB entry, no outbound sync.
     // This is correct behavior: restored content is already in DB and was previously synced.
     // Do NOT call SyncOutboundClipboardUseCase here — it would cause unwanted duplicate sync.
-    match usecases.restore_clipboard_selection().execute(&parsed_id).await {
-        Ok(()) => {}
+    match usecases
+        .restore_clipboard_selection()
+        .execute(&parsed_id)
+        .await
+    {
+        Ok(()) => {
+            tracing::info!(entry_id = %entry_id, "daemon restore request succeeded");
+        }
         Err(e) => {
             // Map "entry not found" errors to 404 (not 500).
             // RestoreClipboardSelectionUseCase returns anyhow error with "not found" text
             // when entry or representations are missing.
             let msg = e.to_string().to_lowercase();
+            tracing::warn!(entry_id = %entry_id, error = %e, "daemon restore request failed");
             if msg.contains("not found") {
-                return (StatusCode::NOT_FOUND, Json(json!({"error": "not_found"}))).into_response();
+                return (StatusCode::NOT_FOUND, Json(json!({"error": "not_found"})))
+                    .into_response();
             }
             return internal_error(e).into_response();
         }

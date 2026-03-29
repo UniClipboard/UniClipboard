@@ -21,6 +21,8 @@ pub trait ClipboardChangeOriginPort: Send + Sync {
 
     async fn remember_remote_snapshot_hash(&self, _snapshot_hash: String, _ttl: Duration) {}
 
+    async fn remember_local_snapshot_hash(&self, _snapshot_hash: String, _ttl: Duration) {}
+
     async fn consume_origin_for_snapshot_or_default(
         &self,
         _snapshot_hash: &str,

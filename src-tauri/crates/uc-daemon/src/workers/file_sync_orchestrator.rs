@@ -350,6 +350,7 @@ async fn restore_file_to_clipboard_after_transfer(
 
     let path_list = build_path_list(&file_paths);
     let snapshot = build_file_snapshot(&path_list);
+    let origin_guard_key = snapshot.origin_guard_key();
 
     // FCLIP-03: Non-destructive check for concurrent clipboard operations.
     // Use has_pending_origin() (peek) instead of consume_origin_or_default()
@@ -362,14 +363,10 @@ async fn restore_file_to_clipboard_after_transfer(
         return;
     }
 
-    // Set origin to LocalRestore so the clipboard watcher skips capture entirely.
-    // The DB entry was already created by inbound sync — RemotePush would still
-    // trigger a duplicate capture; only LocalRestore is skipped.
+    // Bind LocalRestore to this exact file snapshot so unrelated clipboard
+    // changes cannot consume the restore guard before the watcher sees it.
     clipboard_change_origin
-        .set_next_origin(
-            uc_core::ClipboardChangeOrigin::LocalRestore,
-            std::time::Duration::from_secs(2),
-        )
+        .remember_local_snapshot_hash(origin_guard_key.clone(), std::time::Duration::from_secs(2))
         .await;
 
     // Restore to system clipboard
@@ -380,7 +377,10 @@ async fn restore_file_to_clipboard_after_transfer(
     if let Err(err) = system_clipboard.write_snapshot(snapshot) {
         // Consume origin on failure to avoid stale origin
         clipboard_change_origin
-            .consume_origin_or_default(uc_core::ClipboardChangeOrigin::LocalCapture)
+            .consume_origin_for_snapshot_or_default(
+                &origin_guard_key,
+                uc_core::ClipboardChangeOrigin::LocalCapture,
+            )
             .await;
         warn!(error = %err, "Failed to write file URIs to system clipboard");
     } else {

@@ -42,39 +42,6 @@ impl ClipboardWatcher {
     }
 }
 
-fn is_plain_text_representation(rep: &uc_core::ObservedClipboardRepresentation) -> bool {
-    if let Some(mime) = rep.mime.as_ref() {
-        let mime_str = mime.as_str();
-        if mime_str.eq_ignore_ascii_case("text/plain")
-            || mime_str.to_ascii_lowercase().starts_with("text/plain;")
-            || mime_str.eq_ignore_ascii_case("public.utf8-plain-text")
-        {
-            return true;
-        }
-    }
-    rep.format_id.eq_ignore_ascii_case("text")
-}
-
-fn is_text_representation(rep: &uc_core::ObservedClipboardRepresentation) -> bool {
-    if let Some(mime) = rep.mime.as_ref() {
-        let mime_str = mime.as_str();
-        if mime_str.starts_with("text/") || mime_str.eq_ignore_ascii_case("public.utf8-plain-text")
-        {
-            return true;
-        }
-    }
-    rep.format_id.eq_ignore_ascii_case("text")
-        || rep.format_id.eq_ignore_ascii_case("html")
-        || rep.format_id.eq_ignore_ascii_case("rtf")
-}
-
-fn is_image_representation(rep: &uc_core::ObservedClipboardRepresentation) -> bool {
-    rep.mime
-        .as_ref()
-        .is_some_and(|mime| mime.as_str().starts_with("image/"))
-        || rep.format_id.eq_ignore_ascii_case("image")
-}
-
 fn is_file_representation(rep: &uc_core::ObservedClipboardRepresentation) -> bool {
     if let Some(mime) = rep.mime.as_ref() {
         let s = mime.as_str();
@@ -87,45 +54,7 @@ fn is_file_representation(rep: &uc_core::ObservedClipboardRepresentation) -> boo
 }
 
 fn dedupe_key(snapshot: &SystemClipboardSnapshot) -> Option<String> {
-    // Check files first — file representations use text/uri-list MIME which
-    // would otherwise match the generic is_text_representation check.
-    if let Some(rep) = snapshot
-        .representations
-        .iter()
-        .find(|rep| is_file_representation(rep))
-    {
-        let hash = rep.content_hash();
-        return Some(format!("files:{}", hash.0));
-    }
-
-    if let Some(rep) = snapshot
-        .representations
-        .iter()
-        .find(|rep| is_plain_text_representation(rep))
-    {
-        let hash = rep.content_hash();
-        return Some(format!("text:{}", hash.0));
-    }
-
-    if let Some(rep) = snapshot
-        .representations
-        .iter()
-        .find(|rep| is_text_representation(rep))
-    {
-        let hash = rep.content_hash();
-        return Some(format!("rich-text:{}", hash.0));
-    }
-
-    if let Some(rep) = snapshot
-        .representations
-        .iter()
-        .find(|rep| is_image_representation(rep))
-    {
-        let hash = rep.content_hash();
-        return Some(format!("image:{}", hash.0));
-    }
-
-    None
+    snapshot.meaningful_origin_key()
 }
 
 /// Returns true if any representation in the snapshot is a file representation.

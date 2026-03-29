@@ -182,7 +182,7 @@ impl ClipboardChangeHandler for DaemonClipboardChangeHandler {
         let usecase = self.build_capture_use_case();
 
         // 1. Compute snapshot hash for write-back loop prevention.
-        let snapshot_hash = snapshot.snapshot_hash().to_string();
+        let origin_guard_key = snapshot.origin_guard_key();
 
         // 2. Check if this clipboard change was triggered by daemon inbound sync (RemotePush)
         //    or by the local user (LocalCapture). This prevents re-capturing content that
@@ -190,10 +190,17 @@ impl ClipboardChangeHandler for DaemonClipboardChangeHandler {
         let origin = self
             .clipboard_change_origin
             .consume_origin_for_snapshot_or_default(
-                &snapshot_hash,
+                &origin_guard_key,
                 ClipboardChangeOrigin::LocalCapture,
             )
             .await;
+
+        debug!(
+            origin_guard_key = %origin_guard_key,
+            rep_count = snapshot.representations.len(),
+            origin = ?origin,
+            "daemon clipboard watcher resolved origin for snapshot"
+        );
 
         // 3. Determine the origin string for the WS event payload.
         let origin_str = match origin {
@@ -324,10 +331,10 @@ impl ClipboardChangeHandler for DaemonClipboardChangeHandler {
             }
             Ok(None) => {
                 // Dedup at use-case level (e.g. unsupported representation) — skip silently.
-                debug!("Clipboard capture returned None (dedup or unsupported)");
+                debug!(origin_guard_key = %origin_guard_key, ?origin, "Clipboard capture returned None");
             }
             Err(e) => {
-                warn!(error = %e, "Daemon clipboard capture failed");
+                warn!(error = %e, origin_guard_key = %origin_guard_key, ?origin, "Daemon clipboard capture failed");
             }
         }
 

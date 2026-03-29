@@ -825,12 +825,12 @@ Plans:
 **Goal:** Add production-grade security middleware to daemon: short-lived JWT session tokens (5min TTL) exchanged from bearer token, optional PID whitelist verification, per-client rate limiting (100 req/min), and L1-L4 permission level enforcement on all endpoints.
 **Requirements**: TBD
 **Depends on:** Phase 74
-**Plans:** 1/3 plans executed
+**Plans:** 2/3 plans executed
 
 Plans:
 
 - [x] 75-01-PLAN.md -- Core security types: SessionTokenClaims (JWT), PermissionLevel, SlidingWindowRateLimiter, SecurityState, middleware functions
-- [ ] 75-02-PLAN.md -- POST /auth/connect endpoint, L1/L2 router split, middleware wiring, remove per-handler is_authorized checks
+- [x] 75-02-PLAN.md -- POST /auth/connect endpoint, L1/L2 router split, middleware wiring, remove per-handler is_authorized checks
 - [ ] 75-03-PLAN.md -- WebSocket upgrade uses session token validation, PID whitelist check, rate limiting
 
 ### Phase 76: Daemon Settings, Encryption & Storage HTTP API — read/write settings, encryption state, storage stats

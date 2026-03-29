@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v0.4.0
 milestone_name: Runtime Mode Separation
 status: Ready to execute
-stopped_at: Completed 75-01-PLAN.md
-last_updated: "2026-03-29T15:44:34.097Z"
+stopped_at: Completed 75-02-PLAN.md
+last_updated: "2026-03-29T16:30:16.852Z"
 progress:
   total_phases: 52
   completed_phases: 38
   total_plans: 104
-  completed_plans: 97
+  completed_plans: 98
 ---
 
 # Project State
@@ -112,6 +112,7 @@ Plan: Not started
   | Phase 74 P01 | 4 | 2 tasks | 5 files |
   | Phase 74 P02 | 149 | 1 tasks | 1 files |
 | Phase 75 P01 | 1194 | 2 tasks | 17 files |
+| Phase 75 P02 | 60 | 3 tasks | 11 files |
 
 ## Accumulated Context
 
@@ -257,6 +258,8 @@ Recent decisions affecting current work:
 - [Phase 75]: Used tokio::time::Instant for rate limiter (testable time control)
 - [Phase 75]: Subject validation done manually after JWT decode (no set_subject in jsonwebtoken 10.x)
 - [Phase 75]: ClientId typed marker for request extensions (http::Extensions uses type-based keys)
+- [Phase 75]: Option<ConnectInfo<SocketAddr>> used for IP rate limiting at /auth/connect so tests using tower::ServiceExt::oneshot compile without real TCP connection
+- [Phase 75]: SecurityState::new_with_pid() and make_session_token_for_pid() kept without #[cfg(test)] because integration tests in tests/ directory cannot see cfg(test) items
 
 ### Roadmap Evolution
 
@@ -311,6 +314,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-29T15:44:33.931Z
-Stopped at: Completed 75-01-PLAN.md
+Last session: 2026-03-29T16:30:16.849Z
+Stopped at: Completed 75-02-PLAN.md
 Resume file: None

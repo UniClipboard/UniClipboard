@@ -31,8 +31,15 @@ use uc_core::{
     SystemClipboardSnapshot,
 };
 use uc_infra::clipboard::{
-    new_clipboard_change_origin, TransferPayloadDecryptorAdapter, TransferPayloadEncryptorAdapter,
+    new_in_memory_change_origin, TransferPayloadDecryptorAdapter, TransferPayloadEncryptorAdapter,
 };
+
+/// Creates a fresh origin instance for use in tests. Each call produces a new
+/// `InMemoryClipboardChangeOrigin` so callers (e.g. peer A and peer B in the same
+/// test) get independent state.
+fn fresh_test_origin() -> Arc<dyn uc_core::ports::clipboard::ClipboardChangeOriginPort> {
+    new_in_memory_change_origin()
+}
 
 struct InMemoryClipboard {
     snapshot: Arc<Mutex<SystemClipboardSnapshot>>,
@@ -471,8 +478,8 @@ async fn clipboard_sync_e2e_dual_peer_in_process() -> Result<()> {
     let clipboard_a = Arc::new(InMemoryClipboard::new(text_snapshot("", 0)));
     let clipboard_b = Arc::new(InMemoryClipboard::new(text_snapshot("", 0)));
 
-    let origin_a = new_clipboard_change_origin();
-    let origin_b = new_clipboard_change_origin();
+    let origin_a = fresh_test_origin();
+    let origin_b = fresh_test_origin();
 
     let encryption_a: Arc<dyn EncryptionPort> = Arc::new(PassthroughEncryption);
     let encryption_b: Arc<dyn EncryptionPort> = Arc::new(PassthroughEncryption);
@@ -614,7 +621,7 @@ async fn clipboard_sync_e2e_image_single_rep() -> Result<()> {
     let clipboard_a = Arc::new(InMemoryClipboard::new(image_snapshot(vec![], 0)));
     let clipboard_b = Arc::new(InMemoryClipboard::new(image_snapshot(vec![], 0)));
 
-    let origin_b = new_clipboard_change_origin();
+    let origin_b = fresh_test_origin();
 
     let _encryption_a: Arc<dyn EncryptionPort> = Arc::new(PassthroughEncryption);
     let encryption_b: Arc<dyn EncryptionPort> = Arc::new(PassthroughEncryption);
@@ -720,7 +727,7 @@ async fn clipboard_sync_e2e_windows_image_multi_rep() -> Result<()> {
     let clipboard_a = Arc::new(InMemoryClipboard::new(image_snapshot(vec![], 0)));
     let clipboard_b = Arc::new(InMemoryClipboard::new(image_snapshot(vec![], 0)));
 
-    let origin_b = new_clipboard_change_origin();
+    let origin_b = fresh_test_origin();
 
     let _encryption_a: Arc<dyn EncryptionPort> = Arc::new(PassthroughEncryption);
     let encryption_b: Arc<dyn EncryptionPort> = Arc::new(PassthroughEncryption);

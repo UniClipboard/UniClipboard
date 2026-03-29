@@ -211,7 +211,11 @@ mod tests {
     use uc_core::ports::clipboard::ProcessingUpdateOutcome;
     use uc_core::ports::SystemClipboardPort;
     use uc_core::ClipboardChangeOrigin;
-    use uc_infra::clipboard::new_clipboard_change_origin;
+    use uc_infra::clipboard::new_in_memory_change_origin;
+
+    fn test_origin() -> std::sync::Arc<dyn uc_core::ports::clipboard::ClipboardChangeOriginPort> {
+        new_in_memory_change_origin()
+    }
 
     struct MockEntryRepository {
         entry: Option<ClipboardEntry>,
@@ -421,7 +425,7 @@ mod tests {
 
         let coordinator = Arc::new(ClipboardWriteCoordinator::new(
             Arc::new(MockSystemClipboard),
-            new_clipboard_change_origin(),
+            test_origin(),
         ));
 
         let uc = RestoreClipboardSelectionUseCase::new(
@@ -483,7 +487,7 @@ mod tests {
 
         let coordinator = Arc::new(ClipboardWriteCoordinator::new(
             Arc::new(MockSystemClipboard),
-            new_clipboard_change_origin(),
+            test_origin(),
         ));
 
         let uc = RestoreClipboardSelectionUseCase::new(
@@ -516,7 +520,7 @@ mod tests {
             Arc::new(FailingSystemClipboard {
                 calls: calls.clone(),
             }),
-            new_clipboard_change_origin(),
+            test_origin(),
         ));
 
         let uc = RestoreClipboardSelectionUseCase::new(
@@ -547,7 +551,7 @@ mod tests {
             Arc::new(TrackingSystemClipboard {
                 write_calls: write_calls.clone(),
             }),
-            new_clipboard_change_origin(),
+            test_origin(),
         ));
 
         let uc = RestoreClipboardSelectionUseCase::new(

@@ -379,7 +379,11 @@ mod tests {
     use tokio::time::{timeout, Duration};
     use uc_core::network::NetworkEvent;
     use uc_core::ports::transfer_progress::{TransferDirection, TransferProgress};
-    use uc_infra::clipboard::new_clipboard_change_origin;
+    use uc_infra::clipboard::new_in_memory_change_origin;
+
+    fn test_origin() -> Arc<dyn uc_core::ports::clipboard::ClipboardChangeOriginPort> {
+        new_in_memory_change_origin()
+    }
 
     struct MockNetworkEvents {
         rx: Mutex<Option<mpsc::Receiver<NetworkEvent>>>,
@@ -476,10 +480,9 @@ mod tests {
 
     /// Build a test ClipboardWriteCoordinator with no-op ports.
     fn build_test_coordinator() -> Arc<ClipboardWriteCoordinator> {
-        use uc_infra::clipboard::new_clipboard_change_origin;
         Arc::new(ClipboardWriteCoordinator::new(
             Arc::new(MockSystemClipboard),
-            new_clipboard_change_origin(),
+            test_origin(),
         ))
     }
 

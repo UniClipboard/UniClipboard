@@ -536,7 +536,12 @@ mod tests {
         Blob, BlobId, ContentHash, DeviceId, PersistedClipboardRepresentation,
         SystemClipboardSnapshot,
     };
-    use uc_infra::clipboard::new_clipboard_change_origin;
+    use uc_infra::clipboard::new_in_memory_change_origin;
+
+    fn test_origin() -> std::sync::Arc<dyn uc_core::ports::clipboard::ClipboardChangeOriginPort> {
+        new_in_memory_change_origin()
+    }
+
     use uc_platform::ports::{AutostartPort, UiPort};
 
     struct MockEntryRepository {
@@ -1328,7 +1333,7 @@ mod tests {
                     enqueue_calls: Arc::new(AtomicUsize::new(0)),
                 }),
                 worker_tx: mpsc::channel(1).0,
-                clipboard_change_origin: new_clipboard_change_origin(),
+                clipboard_change_origin: test_origin(),
                 payload_resolver: Arc::new(NoopPort),
             },
             security: uc_app::SecurityPorts {

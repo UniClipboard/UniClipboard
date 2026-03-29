@@ -325,7 +325,11 @@ mod tests {
         DeviceId, MimeType, ObservedClipboardRepresentation, PersistedClipboardRepresentation,
         SystemClipboardSnapshot,
     };
-    use uc_infra::clipboard::{new_clipboard_change_origin, TransferPayloadDecryptorAdapter};
+    use uc_infra::clipboard::{new_in_memory_change_origin, TransferPayloadDecryptorAdapter};
+
+    fn test_origin() -> Arc<dyn ClipboardChangeOriginPort> {
+        new_in_memory_change_origin()
+    }
 
     // -------------------------------------------------------------------------
     // Mock ports for SyncInboundClipboardUseCase construction
@@ -676,7 +680,7 @@ mod tests {
         let clipboard: Arc<dyn SystemClipboardPort> = Arc::new(MockSystemClipboard {
             writes: Arc::new(Mutex::new(vec![])),
         });
-        let origin: Arc<dyn ClipboardChangeOriginPort> = new_clipboard_change_origin();
+        let origin: Arc<dyn ClipboardChangeOriginPort> = test_origin();
         let coordinator = Arc::new(ClipboardWriteCoordinator::new(
             clipboard.clone(),
             origin.clone(),

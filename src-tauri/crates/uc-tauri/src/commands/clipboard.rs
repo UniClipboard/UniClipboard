@@ -632,11 +632,15 @@ mod tests {
     };
     use uc_core::security::state::{EncryptionState, EncryptionStateError};
     use uc_core::{Blob, BlobId, ContentHash, DeviceId};
-    use uc_infra::clipboard::new_clipboard_change_origin;
+    use uc_infra::clipboard::new_in_memory_change_origin;
 
     fn clipboard_mode_env_lock() -> &'static std::sync::Mutex<()> {
         static LOCK: std::sync::OnceLock<std::sync::Mutex<()>> = std::sync::OnceLock::new();
         LOCK.get_or_init(|| std::sync::Mutex::new(()))
+    }
+
+    fn test_origin() -> std::sync::Arc<dyn uc_core::ports::clipboard::ClipboardChangeOriginPort> {
+        new_in_memory_change_origin()
     }
 
     struct MockEntryRepository {
@@ -1402,7 +1406,7 @@ mod tests {
                 representation_policy: Arc::new(NoopPort),
                 representation_cache: Arc::new(NoopPort),
                 spool_queue: Arc::new(NoopPort),
-                clipboard_change_origin: new_clipboard_change_origin(),
+                clipboard_change_origin: test_origin(),
                 worker_tx,
                 payload_resolver: Arc::new(NoopPort),
             },

@@ -29,7 +29,7 @@ struct OriginStore {
 const SNAPSHOT_ORIGIN_MAX: usize = 256;
 
 impl InMemoryClipboardChangeOrigin {
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self {
             state: Mutex::new(OriginStore {
                 next_origin: None,

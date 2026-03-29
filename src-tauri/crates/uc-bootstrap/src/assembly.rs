@@ -36,8 +36,9 @@ use uc_core::ports::*;
 use uc_core::settings::model::Settings;
 use uc_infra::blob::BlobWriter;
 use uc_infra::clipboard::{
-    new_clipboard_change_origin, ClipboardPayloadResolver, ClipboardRepresentationNormalizer,
-    DurableSpoolQueue, InfraThumbnailGenerator, RepresentationCache, SpoolManager,
+    clipboard_change_origin, init_clipboard_change_origin, new_in_memory_change_origin,
+    ClipboardPayloadResolver, ClipboardRepresentationNormalizer, DurableSpoolQueue,
+    InfraThumbnailGenerator, RepresentationCache, SpoolManager,
 };
 use uc_infra::config::ClipboardStorageConfig;
 use uc_infra::db::executor::DieselSqliteExecutor;
@@ -790,7 +791,10 @@ pub fn wire_dependencies_with_identity_store(
         worker_tx.clone(),
     ));
 
-    let clipboard_change_origin: Arc<dyn ClipboardChangeOriginPort> = new_clipboard_change_origin();
+    let origin_impl = new_in_memory_change_origin();
+    init_clipboard_change_origin(origin_impl.clone());
+    let clipboard_change_origin =
+        clipboard_change_origin().expect("clipboard_change_origin not initialized");
 
     // Create payload resolver for resolving staged/processing payloads
     let payload_resolver: Arc<dyn ClipboardPayloadResolverPort> =

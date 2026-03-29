@@ -14,6 +14,16 @@ pub mod spooler_task;
 mod thumbnail_generator;
 
 pub use background_blob_worker::BackgroundBlobWorker;
+
+/// Builds a new `InMemoryClipboardChangeOrigin` and wraps it in an
+/// `Arc<dyn ClipboardChangeOriginPort>`. Used by bootstrap to produce the shared
+/// instance passed to [`init_clipboard_change_origin`]. Callers must not create
+/// multiple independent instances — use [`init_clipboard_change_origin`] /
+/// [`clipboard_change_origin`] to obtain the single shared singleton.
+pub fn new_in_memory_change_origin(
+) -> std::sync::Arc<dyn uc_core::ports::clipboard::ClipboardChangeOriginPort> {
+    std::sync::Arc::new(change_origin::InMemoryClipboardChangeOrigin::new())
+}
 pub use chunked_transfer::{
     ChunkedDecoder, ChunkedEncoder, TransferPayloadDecryptorAdapter,
     TransferPayloadEncryptorAdapter,
@@ -31,12 +41,29 @@ pub use spooler_task::SpoolerTask;
 pub use thumbnail_generator::InfraThumbnailGenerator;
 pub use uc_core::ports::clipboard::SpoolRequest;
 
-/// Factory function for creating a new `ClipboardChangeOriginPort` implementation.
+/// Module-level singleton for the shared `ClipboardChangeOriginPort` instance.
+static CLIPBOARD_CHANGE_ORIGIN: std::sync::OnceLock<
+    std::sync::Arc<dyn uc_core::ports::clipboard::ClipboardChangeOriginPort>,
+> = std::sync::OnceLock::new();
+
+/// Initialize the shared `ClipboardChangeOriginPort` singleton.
 ///
-/// Returns an `Arc<dyn ClipboardChangeOriginPort>` backed by `InMemoryClipboardChangeOrigin`.
-/// `InMemoryClipboardChangeOrigin` is intentionally `pub(crate)` — external crates must use
-/// this factory so the concrete type cannot be duplicated outside uc-infra.
-pub fn new_clipboard_change_origin(
-) -> std::sync::Arc<dyn uc_core::ports::clipboard::ClipboardChangeOriginPort> {
-    std::sync::Arc::new(change_origin::InMemoryClipboardChangeOrigin::new())
+/// Idempotent: safe to call multiple times. If already initialized (e.g., by a test
+/// helper), subsequent calls are no-ops. The first call wins.
+pub fn init_clipboard_change_origin(
+    shared: std::sync::Arc<dyn uc_core::ports::clipboard::ClipboardChangeOriginPort>,
+) {
+    // If already set (by a test helper or a previous call), do nothing.
+    // Only initialize if not yet set.
+    if CLIPBOARD_CHANGE_ORIGIN.get().is_none() {
+        let _ = CLIPBOARD_CHANGE_ORIGIN.set(shared);
+    }
+}
+
+/// Return a clone of the shared `ClipboardChangeOriginPort` singleton.
+///
+/// Returns `None` if [`init_clipboard_change_origin`] has not been called yet.
+pub fn clipboard_change_origin(
+) -> Option<std::sync::Arc<dyn uc_core::ports::clipboard::ClipboardChangeOriginPort>> {
+    CLIPBOARD_CHANGE_ORIGIN.get().cloned()
 }

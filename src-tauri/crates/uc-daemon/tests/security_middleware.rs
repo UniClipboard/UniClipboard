@@ -343,6 +343,100 @@ async fn paired_devices_is_not_reachable_without_session_token() {
     );
 }
 
+// ---- WebSocket security behavior (documented via manual approach) ----
+//
+// Full WebSocket upgrade tests (connecting via tokio_tungstenite) require a running
+// TCP server with a real listener. HTTP-level tests below cover the security rejection
+// paths by verifying JWT session token content and correctness.
+//
+// MANUAL TESTING for WS security:
+// 1. Start daemon: cargo run --bin uniclipboard-daemon
+// 2. Get session token:
+//    curl -X POST http://127.0.0.1:<port>/auth/connect \
+//      -H "Authorization: Bearer $(cat ~/.config/uniclipboard/daemon.token)" \
+//      -H "Content-Type: application/json" \
+//      -d '{"pid":12345,"clientType":"gui"}'
+// 3. Open WebSocket (expect success):
+//    websocat "ws://127.0.0.1:<port>/ws" -H "Authorization: Session <token>"
+// 4. Rejection scenarios:
+//    - WS with no Authorization header: connection closed (401)
+//    - WS with invalid token: HTTP 401 in upgrade response
+//    - WS with valid token but unregistered PID: HTTP 403 in upgrade response
+//    - WS after exceeding rate limit: HTTP 429 in upgrade response
+
+#[tokio::test]
+async fn session_token_contains_correct_pid() {
+    // Verify that after calling /auth/connect with a specific client type and PID,
+    // the resulting JWT can be verified and its claims contain the expected values.
+    let (app, bearer, security) = build_test_router_with_security().await;
+    // Use the current test process PID (which is pre-registered in build_test_router_with_security)
+    let pid = std::process::id();
+
+    let session_token = get_session_token(&app, &bearer).await;
+
+    // Verify the token using SessionTokenClaims::verify — this exercises the
+    // full JWT round-trip (sign at /auth/connect, verify here).
+    use uc_daemon::security::claims::SessionTokenClaims;
+    let claims = SessionTokenClaims::verify(&session_token, &security.jwt_secret)
+        .expect("session token from /auth/connect should be valid");
+
+    assert_eq!(claims.pid, pid, "JWT should contain the PID used in /auth/connect");
+    assert_eq!(claims.client_type, "test", "JWT should contain the clientType from /auth/connect");
+    assert_eq!(claims.access_level, 2, "JWT should have L2 access level");
+    assert!(!claims.encryption_ready, "encryption_ready should be false by default");
+    assert!(!claims.jti.is_empty(), "JWT should have a non-empty jti");
+    assert_eq!(claims.iss, "uniclipboard-daemon", "JWT issuer should be uniclipboard-daemon");
+    assert_eq!(claims.sub, "frontend", "JWT subject should be frontend");
+    assert!(claims.exp > claims.iat, "exp should be greater than iat");
+}
+
+#[tokio::test]
+async fn session_token_for_gui_client_type_contains_correct_claims() {
+    // Verify that /auth/connect with clientType "gui" returns a JWT with
+    // client_type = "gui" (not "test" or any other value).
+    let (app, bearer, security) = build_test_router_with_security().await;
+    let pid = std::process::id();
+
+    // Call /auth/connect with clientType "gui" explicitly
+    use axum::body::to_bytes;
+    use axum::body::Body;
+    use axum::http::Request;
+    use serde_json::Value;
+    use tower::ServiceExt;
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/auth/connect")
+                .header("Authorization", format!("Bearer {}", bearer.trim()))
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    serde_json::to_string(&serde_json::json!({
+                        "pid": pid,
+                        "clientType": "gui"
+                    }))
+                    .unwrap(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), axum::http::StatusCode::OK);
+    let body = to_bytes(response.into_body(), 4096).await.unwrap();
+    let json: Value = serde_json::from_slice(&body).unwrap();
+    let token_str = json["sessionToken"].as_str().unwrap();
+
+    use uc_daemon::security::claims::SessionTokenClaims;
+    let claims = SessionTokenClaims::verify(token_str, &security.jwt_secret)
+        .expect("session token should be valid");
+
+    assert_eq!(claims.client_type, "gui", "JWT clientType should match request");
+    assert_eq!(claims.pid, pid, "JWT pid should match request");
+}
+
 // ---- session token field validation ----
 
 #[tokio::test]

@@ -14,6 +14,7 @@ use tauri::State;
 use tracing::{info_span, Instrument};
 use uc_app::usecases::clipboard::ClipboardIntegrationMode;
 use uc_app::usecases::clipboard::ClipboardUseCases;
+use uc_daemon_client::DaemonConnectionState;
 use uc_app::usecases::clipboard::{ClipboardStats, EntryProjectionDto};
 use uc_core::clipboard::link_utils::extract_domain;
 use uc_core::ids::EntryId;
@@ -527,20 +528,14 @@ async fn sync_clipboard_items_impl(
 }
 
 /// Restore clipboard entry to system clipboard.
-/// 将历史剪贴板条目恢复到系统剪贴板。
+/// Delegates to daemon HTTP API (per D-04) — daemon owns origin tracking and outbound sync.
+/// 将历史剪贴板条目恢复到系统剪贴板。代理到 daemon HTTP API。
 #[tauri::command]
 pub async fn restore_clipboard_entry(
     runtime: State<'_, Arc<AppRuntime>>,
+    daemon_connection: State<'_, DaemonConnectionState>,
     entry_id: String,
     _trace: Option<TraceMetadata>,
-) -> Result<bool, CommandError> {
-    restore_clipboard_entry_impl(runtime.as_ref(), entry_id, _trace).await
-}
-
-async fn restore_clipboard_entry_impl(
-    runtime: &AppRuntime,
-    entry_id: String,
-    trace: Option<TraceMetadata>,
 ) -> Result<bool, CommandError> {
     let span = info_span!(
         "command.clipboard.restore_entry",
@@ -548,56 +543,17 @@ async fn restore_clipboard_entry_impl(
         trace_ts = tracing::field::Empty,
         entry_id = %entry_id,
     );
-    record_trace_fields(&span, &trace);
+    record_trace_fields(&span, &_trace);
 
     async move {
-        let parsed_id = EntryId::from(entry_id.clone());
-
-        let restore_uc = runtime.usecases().restore_clipboard_selection();
-        let snapshot = restore_uc.build_snapshot(&parsed_id).await.map_err(|e| {
-            tracing::error!(error = %e, entry_id = %entry_id, "Failed to build restore snapshot");
-            CommandError::InternalError(e.to_string())
-        })?;
-
-        let touch_uc = runtime.usecases().touch_clipboard_entry();
-        let touched = touch_uc.execute(&parsed_id).await.map_err(|e| {
-            tracing::error!(error = %e, entry_id = %entry_id, "Failed to update entry active time");
-            CommandError::InternalError(e.to_string())
-        })?;
-
-        if !touched {
-            tracing::warn!(entry_id = %entry_id, "Entry not found when touching active time");
-            return Err(CommandError::NotFound("Entry not found".to_string()));
-        }
-
-        restore_uc.restore_snapshot(snapshot.clone()).await.map_err(|err| {
-            tracing::error!(error = %err, entry_id = %entry_id, "Failed to write restore snapshot");
-            CommandError::InternalError(err.to_string())
-        })?;
-
-        // In Passive mode, daemon's ClipboardWatcherWorker handles outbound sync
-        // after detecting the OS clipboard write. Skip direct sync to avoid double-send.
-        if !matches!(
-            runtime.clipboard_integration_mode(),
-            ClipboardIntegrationMode::Passive
-        ) {
-            let outbound_snapshot = snapshot;
-            let outbound_sync_uc = runtime.usecases().sync_outbound_clipboard();
-            match tokio::task::spawn_blocking(move || {
-                outbound_sync_uc.execute(outbound_snapshot, uc_core::ClipboardChangeOrigin::LocalRestore, None, vec![])
-            })
+        uc_daemon_client::DaemonClipboardClient::new(daemon_connection.inner().clone())
+            .restore_clipboard_entry(&entry_id)
             .await
-            {
-                Ok(Ok(())) => {}
-                Ok(Err(err)) => {
-                    tracing::warn!(error = %err, entry_id = %entry_id, "Restore outbound sync failed");
-                }
-                Err(err) => {
-                    tracing::warn!(error = %err, entry_id = %entry_id, "Restore outbound sync task join failed");
-                }
-            }
-        }
+            .map_err(map_daemon_restore_error)?;
 
+        // Emit frontend event after daemon success.
+        // This is the ONLY frontend update — LocalRestore skips capture in daemon,
+        // so no WS clipboard.new_content event is emitted (F-2 correction).
         if let Some(app) = runtime.app_handle().as_ref() {
             if let Err(err) = crate::events::forward_clipboard_event(
                 app,
@@ -609,14 +565,23 @@ async fn restore_clipboard_entry_impl(
             ) {
                 tracing::warn!(error = %err, entry_id = %entry_id, "Failed to emit restore event");
             }
-        } else {
-            tracing::debug!("AppHandle not available, skipping restore event emission");
         }
 
         Ok(true)
     }
     .instrument(span)
     .await
+}
+
+/// Maps daemon restore errors to CommandError, preserving 404 distinction.
+/// Used by both restore_clipboard_entry command and tests.
+fn map_daemon_restore_error(e: anyhow::Error) -> CommandError {
+    let msg = e.to_string();
+    if msg.starts_with("[NOT_FOUND]") {
+        CommandError::NotFound("Clipboard entry not found".to_string())
+    } else {
+        CommandError::internal(e)
+    }
 }
 
 /// Copy file references from a clipboard entry to the system clipboard.
@@ -636,7 +601,7 @@ pub async fn copy_file_to_clipboard(
 
 #[cfg(test)]
 mod tests {
-    use super::{restore_clipboard_entry_impl, sync_clipboard_items_impl};
+    use super::{map_daemon_restore_error, sync_clipboard_items_impl};
     use crate::bootstrap::AppRuntime;
     use crate::commands::error::CommandError;
     use crate::test_utils::noop_network_ports;
@@ -1390,102 +1355,24 @@ mod tests {
         }
     }
 
-    #[tokio::test]
-    async fn restore_entry_returns_error_before_clipboard_write_when_touch_fails() {
-        let calls = Arc::new(Mutex::new(Vec::new()));
-        let entry_id = EntryId::from("entry-1");
-        let event_id = EventId::from("event-1");
-        let rep_id = RepresentationId::from("rep-1");
-
-        let entry = ClipboardEntry::new(entry_id.clone(), event_id.clone(), 0, None, 5);
-        let selection = ClipboardSelection {
-            primary_rep_id: rep_id.clone(),
-            secondary_rep_ids: vec![],
-            preview_rep_id: rep_id.clone(),
-            paste_rep_id: rep_id.clone(),
-            policy_version: SelectionPolicyVersion::V1,
-        };
-        let selection = ClipboardSelectionDecision::new(entry_id.clone(), selection);
-        let rep = PersistedClipboardRepresentation::new(
-            rep_id.clone(),
-            FormatId::from("public.utf8-plain-text"),
-            Some(MimeType::text_plain()),
-            5,
-            Some(b"hello".to_vec()),
-            None,
-        );
-
-        let mut reps = HashMap::new();
-        reps.insert(rep_id, rep);
-
-        let (worker_tx, _worker_rx) = mpsc::channel(1);
-        let deps = AppDeps {
-            clipboard: uc_app::ClipboardPorts {
-                clipboard: Arc::new(NoopClipboard),
-                system_clipboard: Arc::new(MockSystemClipboard {
-                    calls: calls.clone(),
-                }),
-                clipboard_entry_repo: Arc::new(MockEntryRepository {
-                    entry: Some(entry),
-                    touch_result: false,
-                    calls: calls.clone(),
-                }),
-                clipboard_event_repo: Arc::new(NoopPort),
-                representation_repo: Arc::new(MockRepresentationRepository { reps }),
-                representation_normalizer: Arc::new(NoopPort),
-                selection_repo: Arc::new(MockSelectionRepository {
-                    selection: Some(selection),
-                }),
-                representation_policy: Arc::new(NoopPort),
-                representation_cache: Arc::new(NoopPort),
-                spool_queue: Arc::new(NoopPort),
-                clipboard_change_origin: Arc::new(InMemoryClipboardChangeOrigin::new()),
-                worker_tx,
-                payload_resolver: Arc::new(NoopPort),
-            },
-            security: uc_app::SecurityPorts {
-                encryption: Arc::new(NoopPort),
-                encryption_session: Arc::new(NoopPort),
-                encryption_state: Arc::new(NoopPort),
-                key_scope: Arc::new(NoopPort),
-                secure_storage: Arc::new(NoopPort),
-                key_material: Arc::new(NoopPort),
-            },
-            device: uc_app::DevicePorts {
-                device_repo: Arc::new(NoopPort),
-                device_identity: Arc::new(MockDeviceIdentity),
-                paired_device_repo: Arc::new(NoopPort),
-            },
-            network_ports: noop_network_ports(),
-            network_control: Arc::new(NoopPort),
-            setup_status: Arc::new(NoopPort),
-            storage: uc_app::StoragePorts {
-                blob_store: Arc::new(NoopPort),
-                blob_repository: Arc::new(NoopPort),
-                blob_writer: Arc::new(NoopPort),
-                thumbnail_repo: Arc::new(NoopPort),
-                thumbnail_generator: Arc::new(NoopPort),
-                file_transfer_repo: Arc::new(uc_core::ports::NoopFileTransferRepositoryPort),
-            },
-            settings: Arc::new(NoopPort),
-            system: uc_app::SystemPorts {
-                clock: Arc::new(NoopPort),
-                hash: Arc::new(NoopPort),
-                file_manager: Arc::new(NoopPort),
-                cache_fs: Arc::new(NoopPort),
-            },
-        };
-
-        let runtime = AppRuntime::new(deps, test_storage_paths());
-        let result = restore_clipboard_entry_impl(&runtime, entry_id.to_string(), None).await;
-
-        let err = result.expect_err("touch_result=false should produce NotFound");
+    #[test]
+    fn restore_error_mapping_not_found_becomes_not_found_variant() {
+        let err = anyhow::anyhow!("[NOT_FOUND] /clipboard/restore/abc: not found");
+        let cmd_err = map_daemon_restore_error(err);
         assert!(
-            matches!(err, CommandError::NotFound(_)),
-            "expected NotFound, got: {err:?}"
+            matches!(cmd_err, CommandError::NotFound(_)),
+            "expected NotFound, got: {cmd_err:?}"
         );
-        let calls = calls.lock().unwrap().clone();
-        assert_eq!(calls, vec!["touch"]);
+    }
+
+    #[test]
+    fn restore_error_mapping_other_becomes_internal() {
+        let err = anyhow::anyhow!("daemon clipboard restore request failed with status 500");
+        let cmd_err = map_daemon_restore_error(err);
+        assert!(
+            matches!(cmd_err, CommandError::InternalError(_)),
+            "expected InternalError, got: {cmd_err:?}"
+        );
     }
 
     #[tokio::test]

@@ -160,8 +160,8 @@ jobs:
             --team-id "$APPLE_TEAM_ID" \
             --wait
 
-          # Staple the notarization ticket to the binary
-          xcrun stapler staple "$BIN_PATH"
+          # Note: stapler staple only works on .app/.dmg/.pkg bundles, not bare binaries.
+          # For standalone CLI binaries, Gatekeeper checks the notarization ticket online.
 
       - name: package CLI binary
         id: package

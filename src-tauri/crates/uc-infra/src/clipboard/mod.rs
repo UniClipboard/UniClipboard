@@ -14,7 +14,6 @@ pub mod spooler_task;
 mod thumbnail_generator;
 
 pub use background_blob_worker::BackgroundBlobWorker;
-pub use change_origin::InMemoryClipboardChangeOrigin;
 pub use chunked_transfer::{
     ChunkedDecoder, ChunkedEncoder, TransferPayloadDecryptorAdapter,
     TransferPayloadEncryptorAdapter,
@@ -31,3 +30,13 @@ pub use spool_scanner::SpoolScanner;
 pub use spooler_task::SpoolerTask;
 pub use thumbnail_generator::InfraThumbnailGenerator;
 pub use uc_core::ports::clipboard::SpoolRequest;
+
+/// Factory function for creating a new `ClipboardChangeOriginPort` implementation.
+///
+/// Returns an `Arc<dyn ClipboardChangeOriginPort>` backed by `InMemoryClipboardChangeOrigin`.
+/// `InMemoryClipboardChangeOrigin` is intentionally `pub(crate)` — external crates must use
+/// this factory so the concrete type cannot be duplicated outside uc-infra.
+pub fn new_clipboard_change_origin(
+) -> std::sync::Arc<dyn uc_core::ports::clipboard::ClipboardChangeOriginPort> {
+    std::sync::Arc::new(change_origin::InMemoryClipboardChangeOrigin::new())
+}

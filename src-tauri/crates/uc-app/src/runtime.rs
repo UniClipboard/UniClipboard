@@ -35,6 +35,9 @@ pub struct CoreRuntime {
     pub(crate) clipboard_integration_mode: ClipboardIntegrationMode,
     pub(crate) task_registry: Arc<TaskRegistry>,
     pub(crate) storage_paths: AppPaths,
+    /// Single write boundary for programmatic clipboard writes.
+    /// `None` for CLI-only runtimes that do not perform clipboard writes.
+    pub(crate) clipboard_write_coordinator: Option<Arc<crate::usecases::ClipboardWriteCoordinator>>,
 }
 
 impl CoreRuntime {
@@ -62,7 +65,39 @@ impl CoreRuntime {
             clipboard_integration_mode,
             task_registry,
             storage_paths,
+            clipboard_write_coordinator: None,
         }
+    }
+
+    /// Attach a `ClipboardWriteCoordinator` after construction (builder pattern).
+    ///
+    /// Called by daemon/GUI bootstrap to wire in the coordinator from
+    /// `BackgroundRuntimeDeps`. CLI runtimes leave this as `None`.
+    pub fn with_clipboard_write_coordinator(
+        mut self,
+        coordinator: Arc<crate::usecases::ClipboardWriteCoordinator>,
+    ) -> Self {
+        self.clipboard_write_coordinator = Some(coordinator);
+        self
+    }
+
+    /// Set the `ClipboardWriteCoordinator` by mutable reference.
+    ///
+    /// Used by GUI bootstrap via `Arc::get_mut` before the runtime is shared.
+    pub fn set_clipboard_write_coordinator(
+        &mut self,
+        coordinator: Arc<crate::usecases::ClipboardWriteCoordinator>,
+    ) {
+        self.clipboard_write_coordinator = Some(coordinator);
+    }
+
+    /// Returns the `ClipboardWriteCoordinator` if available.
+    ///
+    /// `None` in CLI-only runtimes that do not perform clipboard writes.
+    pub fn clipboard_write_coordinator(
+        &self,
+    ) -> Option<&Arc<crate::usecases::ClipboardWriteCoordinator>> {
+        self.clipboard_write_coordinator.as_ref()
     }
 
     /// Returns a clone of the shared emitter cell (Arc<RwLock<...>>).

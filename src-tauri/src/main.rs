@@ -297,7 +297,8 @@ fn run_app(ctx: GuiBootstrapContext) {
 
     let event_emitter: std::sync::Arc<dyn uc_core::ports::HostEventEmitterPort> =
         std::sync::Arc::new(uc_tauri::adapters::host_event_emitter::LoggingEventEmitter);
-    let runtime = AppRuntime::with_setup(deps, setup_ports, storage_paths, event_emitter);
+    let runtime = AppRuntime::with_setup(deps, setup_ports, storage_paths, event_emitter)
+        .with_clipboard_write_coordinator(background.clipboard_write_coordinator.clone());
     let runtime = Arc::new(runtime);
 
     // Startup barrier used to coordinate backend readiness and main window show timing.

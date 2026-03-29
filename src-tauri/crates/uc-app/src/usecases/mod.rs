@@ -408,6 +408,15 @@ impl<'a> CoreUseCases<'a> {
         )
     }
 
+    /// Get the `ClipboardWriteCoordinator` (clipboard write boundary).
+    ///
+    /// Returns `None` for CLI-only runtimes that do not perform clipboard writes.
+    pub fn clipboard_write_coordinator(
+        &self,
+    ) -> Option<Arc<crate::usecases::ClipboardWriteCoordinator>> {
+        self.runtime.clipboard_write_coordinator().cloned()
+    }
+
     /// Create a `CleanupExpiredFilesUseCase`.
     pub fn cleanup_expired_files(&self) -> crate::usecases::file_sync::CleanupExpiredFilesUseCase {
         let file_cache_dir = self.runtime.storage_paths.file_cache_dir.clone();

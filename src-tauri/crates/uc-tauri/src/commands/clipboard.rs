@@ -14,11 +14,11 @@ use tauri::State;
 use tracing::{info_span, Instrument};
 use uc_app::usecases::clipboard::ClipboardIntegrationMode;
 use uc_app::usecases::clipboard::ClipboardUseCases;
-use uc_daemon_client::DaemonConnectionState;
 use uc_app::usecases::clipboard::{ClipboardStats, EntryProjectionDto};
 use uc_core::clipboard::link_utils::extract_domain;
 use uc_core::ids::EntryId;
 use uc_core::security::state::EncryptionState;
+use uc_daemon_client::DaemonConnectionState;
 use uc_platform::ports::observability::TraceMetadata;
 
 /// Get clipboard history entries (preview only)
@@ -629,7 +629,7 @@ mod tests {
     };
     use uc_core::security::state::{EncryptionState, EncryptionStateError};
     use uc_core::{Blob, BlobId, ContentHash, DeviceId};
-    use uc_infra::clipboard::InMemoryClipboardChangeOrigin;
+    use uc_infra::clipboard::new_clipboard_change_origin;
 
     fn clipboard_mode_env_lock() -> &'static std::sync::Mutex<()> {
         static LOCK: std::sync::OnceLock<std::sync::Mutex<()>> = std::sync::OnceLock::new();
@@ -1399,7 +1399,7 @@ mod tests {
                 representation_policy: Arc::new(NoopPort),
                 representation_cache: Arc::new(NoopPort),
                 spool_queue: Arc::new(NoopPort),
-                clipboard_change_origin: Arc::new(InMemoryClipboardChangeOrigin::new()),
+                clipboard_change_origin: new_clipboard_change_origin(),
                 worker_tx,
                 payload_resolver: Arc::new(NoopPort),
             },

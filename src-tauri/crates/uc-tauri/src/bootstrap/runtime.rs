@@ -204,6 +204,26 @@ impl AppRuntime {
         Self { core, app_handle }
     }
 
+    /// Wire a `ClipboardWriteCoordinator` into the inner `CoreRuntime`.
+    ///
+    /// Must be called BEFORE `Arc::new(runtime)` (i.e. while the runtime is still
+    /// uniquely owned). GUI bootstrap calls this with
+    /// `background.clipboard_write_coordinator.clone()` after `with_setup()`.
+    pub fn with_clipboard_write_coordinator(
+        mut self,
+        coordinator: Arc<uc_app::usecases::ClipboardWriteCoordinator>,
+    ) -> Self {
+        // Arc::get_mut succeeds here because the caller has not yet shared the Arc.
+        if let Some(core) = Arc::get_mut(&mut self.core) {
+            core.set_clipboard_write_coordinator(coordinator);
+        } else {
+            tracing::warn!(
+                "with_clipboard_write_coordinator called after Arc was shared — coordinator not set"
+            );
+        }
+        self
+    }
+
     /// Set the Tauri AppHandle for event emission.
     /// This must be called after Tauri setup completes.
     pub fn set_app_handle(&self, handle: tauri::AppHandle) {
@@ -516,7 +536,7 @@ mod tests {
         Blob, BlobId, ContentHash, DeviceId, PersistedClipboardRepresentation,
         SystemClipboardSnapshot,
     };
-    use uc_infra::clipboard::InMemoryClipboardChangeOrigin;
+    use uc_infra::clipboard::new_clipboard_change_origin;
     use uc_platform::ports::{AutostartPort, UiPort};
 
     struct MockEntryRepository {
@@ -1308,7 +1328,7 @@ mod tests {
                     enqueue_calls: Arc::new(AtomicUsize::new(0)),
                 }),
                 worker_tx: mpsc::channel(1).0,
-                clipboard_change_origin: Arc::new(InMemoryClipboardChangeOrigin::new()),
+                clipboard_change_origin: new_clipboard_change_origin(),
                 payload_resolver: Arc::new(NoopPort),
             },
             security: uc_app::SecurityPorts {

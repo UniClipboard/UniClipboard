@@ -6,7 +6,7 @@ use tracing::debug;
 use uc_core::ports::clipboard::ClipboardChangeOriginPort;
 use uc_core::ClipboardChangeOrigin;
 
-pub struct InMemoryClipboardChangeOrigin {
+pub(crate) struct InMemoryClipboardChangeOrigin {
     state: Mutex<OriginStore>,
 }
 

@@ -68,10 +68,11 @@ pub fn run(gui_managed: bool) -> anyhow::Result<()> {
         None,
         Arc::new(LoggingLifecycleEventEmitter),
     );
-    // Extract file_cache_dir and file_transfer_orchestrator before ctx is consumed
-    // by build_non_gui_runtime_with_emitter (which moves ctx.deps).
+    // Extract file_cache_dir, file_transfer_orchestrator, and clipboard_write_coordinator
+    // before ctx is consumed by build_non_gui_runtime_with_emitter (which moves ctx.deps).
     let file_cache_dir = ctx.storage_paths.file_cache_dir.clone();
     let file_transfer_orchestrator = ctx.background.file_transfer_orchestrator.clone();
+    let clipboard_write_coordinator = ctx.background.clipboard_write_coordinator.clone();
 
     // Extract blob processing ports before ctx.deps is moved.
     let blob_ports = BlobProcessingPorts::from_app_deps(&ctx.deps);
@@ -85,12 +86,15 @@ pub fn run(gui_managed: bool) -> anyhow::Result<()> {
     let setup_completion_emitter: Arc<dyn SessionReadyEmitter> =
         Arc::new(SetupCompletionEmitter::new(deferred_ready_notify.clone()));
 
-    let runtime = Arc::new(build_non_gui_runtime_with_emitter(
-        ctx.deps,
-        ctx.storage_paths.clone(),
-        setup_ports,
-        setup_completion_emitter,
-    )?);
+    let runtime = Arc::new(
+        build_non_gui_runtime_with_emitter(
+            ctx.deps,
+            ctx.storage_paths.clone(),
+            setup_ports,
+            setup_completion_emitter,
+        )?
+        .with_clipboard_write_coordinator(clipboard_write_coordinator),
+    );
 
     let socket_path = resolve_daemon_socket_path();
 

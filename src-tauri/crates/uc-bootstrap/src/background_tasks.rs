@@ -81,6 +81,7 @@ pub async fn spawn_blob_processing_tasks(
         worker_retry_max_attempts,
         worker_retry_backoff_ms,
         file_transfer_orchestrator: _,
+        clipboard_write_coordinator: _,
     } = background;
 
     info!("Starting background clipboard spooler and blob worker");

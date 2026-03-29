@@ -31,7 +31,7 @@ use uc_core::{
     SystemClipboardSnapshot,
 };
 use uc_infra::clipboard::{
-    InMemoryClipboardChangeOrigin, TransferPayloadDecryptorAdapter, TransferPayloadEncryptorAdapter,
+    new_clipboard_change_origin, TransferPayloadDecryptorAdapter, TransferPayloadEncryptorAdapter,
 };
 
 struct InMemoryClipboard {
@@ -471,8 +471,8 @@ async fn clipboard_sync_e2e_dual_peer_in_process() -> Result<()> {
     let clipboard_a = Arc::new(InMemoryClipboard::new(text_snapshot("", 0)));
     let clipboard_b = Arc::new(InMemoryClipboard::new(text_snapshot("", 0)));
 
-    let origin_a = Arc::new(InMemoryClipboardChangeOrigin::new());
-    let origin_b = Arc::new(InMemoryClipboardChangeOrigin::new());
+    let origin_a = new_clipboard_change_origin();
+    let origin_b = new_clipboard_change_origin();
 
     let encryption_a: Arc<dyn EncryptionPort> = Arc::new(PassthroughEncryption);
     let encryption_b: Arc<dyn EncryptionPort> = Arc::new(PassthroughEncryption);
@@ -604,7 +604,7 @@ async fn clipboard_sync_e2e_image_single_rep() -> Result<()> {
     let clipboard_a = Arc::new(InMemoryClipboard::new(image_snapshot(vec![], 0)));
     let clipboard_b = Arc::new(InMemoryClipboard::new(image_snapshot(vec![], 0)));
 
-    let origin_b = Arc::new(InMemoryClipboardChangeOrigin::new());
+    let origin_b = new_clipboard_change_origin();
 
     let _encryption_a: Arc<dyn EncryptionPort> = Arc::new(PassthroughEncryption);
     let encryption_b: Arc<dyn EncryptionPort> = Arc::new(PassthroughEncryption);
@@ -705,7 +705,7 @@ async fn clipboard_sync_e2e_windows_image_multi_rep() -> Result<()> {
     let clipboard_a = Arc::new(InMemoryClipboard::new(image_snapshot(vec![], 0)));
     let clipboard_b = Arc::new(InMemoryClipboard::new(image_snapshot(vec![], 0)));
 
-    let origin_b = Arc::new(InMemoryClipboardChangeOrigin::new());
+    let origin_b = new_clipboard_change_origin();
 
     let _encryption_a: Arc<dyn EncryptionPort> = Arc::new(PassthroughEncryption);
     let encryption_b: Arc<dyn EncryptionPort> = Arc::new(PassthroughEncryption);

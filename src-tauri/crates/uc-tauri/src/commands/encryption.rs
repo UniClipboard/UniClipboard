@@ -239,7 +239,7 @@ mod tests {
     };
     use uc_core::security::state::{EncryptionState, EncryptionStateError};
     use uc_core::{Blob, BlobId, ClipboardChangeOrigin, ContentHash, DeviceId, PeerId};
-    use uc_infra::clipboard::InMemoryClipboardChangeOrigin;
+    use uc_infra::clipboard::new_clipboard_change_origin;
     use uc_platform::ports::{AutostartPort, UiPort};
     #[tokio::test]
     async fn emit_session_ready_emits_event() {
@@ -910,7 +910,7 @@ mod tests {
     async fn unlock_success_triggers_network_start() {
         let start_calls = Arc::new(AtomicUsize::new(0));
         let (worker_tx, _worker_rx) = mpsc::channel(1);
-        let origin_port = Arc::new(InMemoryClipboardChangeOrigin::new());
+        let origin_port = new_clipboard_change_origin();
         origin_port
             .set_next_origin(
                 ClipboardChangeOrigin::LocalRestore,

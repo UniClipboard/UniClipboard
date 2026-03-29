@@ -16,8 +16,8 @@ pub mod tracing;
 
 // Re-export primary public items
 pub use assembly::{
-    build_file_transfer_orchestrator, build_setup_orchestrator, get_storage_paths,
-    resolve_pairing_config, resolve_pairing_device_name, wire_dependencies,
+    build_clipboard_write_coordinator, build_file_transfer_orchestrator, build_setup_orchestrator,
+    get_storage_paths, resolve_pairing_config, resolve_pairing_device_name, wire_dependencies,
     wire_dependencies_with_identity_store, BackgroundRuntimeDeps, HostEventSetupPort,
     SetupAssemblyPorts, WiredDependencies, WiringError, WiringResult,
 };

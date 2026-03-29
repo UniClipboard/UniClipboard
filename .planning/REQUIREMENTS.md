@@ -264,13 +264,13 @@ Requirements for runtime mode separation. Each maps to roadmap phases.
 
 ### Clipboard Write Coordinator
 
-- [ ] **PH73-01**: `ClipboardWriteCoordinator` struct exists in `uc-app/src/usecases/clipboard/clipboard_write_coordinator.rs` with `pub async fn write(&self, snapshot: SystemClipboardSnapshot, intent: ClipboardWriteIntent) -> Result<()>` as sole clipboard write API
-- [ ] **PH73-02**: `ClipboardWriteIntent` enum has `LocalRestore`, `RemotePush`, `LocalCapture` variants; coordinator uses per-intent TTL (2s for local, 60s for remote)
-- [ ] **PH73-03**: Coordinator's `write()` on failure calls `consume_origin_for_snapshot_or_default` to prevent stale guard state; on RemotePush success calls `set_next_origin` for OS re-encoding protection
+- [x] **PH73-01**: `ClipboardWriteCoordinator` struct exists in `uc-app/src/usecases/clipboard/clipboard_write_coordinator.rs` with `pub async fn write(&self, snapshot: SystemClipboardSnapshot, intent: ClipboardWriteIntent) -> Result<()>` as sole clipboard write API
+- [x] **PH73-02**: `ClipboardWriteIntent` enum has `LocalRestore`, `RemotePush`, `LocalCapture` variants; coordinator uses per-intent TTL (2s for local, 60s for remote)
+- [x] **PH73-03**: Coordinator's `write()` on failure calls `consume_origin_for_snapshot_or_default` to prevent stale guard state; on RemotePush success calls `set_next_origin` for OS re-encoding protection
 - [ ] **PH73-04**: `RestoreClipboardSelectionUseCase::execute()` calls `coordinator.write(snapshot, LocalRestore)` — `restore_snapshot()` method deleted, manual guard code removed
 - [ ] **PH73-05**: `CopyFileToClipboardUseCase::execute()` calls `coordinator.write(snapshot, LocalRestore)` — manual guard code in `write_files_to_clipboard()` removed
-- [ ] **PH73-06**: `InMemoryClipboardChangeOrigin` is `pub(crate)` in uc-infra — cannot be constructed outside uc-infra; factory function `new_clipboard_change_origin()` exposed instead
-- [ ] **PH73-07**: All existing `change_origin.rs` unit tests pass unchanged after visibility restriction
+- [x] **PH73-06**: `InMemoryClipboardChangeOrigin` is `pub(crate)` in uc-infra — cannot be constructed outside uc-infra; factory function `new_clipboard_change_origin()` exposed instead
+- [x] **PH73-07**: All existing `change_origin.rs` unit tests pass unchanged after visibility restriction
 - [ ] **PH73-08**: `FileSyncOrchestratorWorker` accepts `Arc<ClipboardWriteCoordinator>` instead of `Arc<dyn ClipboardChangeOriginPort>` + `Arc<dyn SystemClipboardPort>` — `restore_file_to_clipboard_after_transfer` uses coordinator
 - [ ] **PH73-09**: `SyncInboundClipboardUseCase` Full-mode OS write path delegates to `coordinator.write(snapshot, RemotePush)` — `REMOTE_SNAPSHOT_HASH_TTL_MS` constant removed from sync_inbound.rs
 - [ ] **PH73-10**: `InboundClipboardSyncWorker` accepts `Arc<ClipboardWriteCoordinator>` instead of `Arc<dyn ClipboardChangeOriginPort>` and passes it to `SyncInboundClipboardUseCase::with_capture_dependencies()`
@@ -441,13 +441,13 @@ Requirements for runtime mode separation. Each maps to roadmap phases.
 | PH72-04     | 72    | Pending  |
 | PH72-05     | 72    | Pending  |
 
-| PH73-01 | 73 | Pending |
-| PH73-02 | 73 | Pending |
-| PH73-03 | 73 | Pending |
+| PH73-01 | 73 | Complete |
+| PH73-02 | 73 | Complete |
+| PH73-03 | 73 | Complete |
 | PH73-04 | 73 | Pending |
 | PH73-05 | 73 | Pending |
-| PH73-06 | 73 | Pending |
-| PH73-07 | 73 | Pending |
+| PH73-06 | 73 | Complete |
+| PH73-07 | 73 | Complete |
 | PH73-08 | 73 | Pending |
 | PH73-09 | 73 | Pending |
 | PH73-10 | 73 | Pending |

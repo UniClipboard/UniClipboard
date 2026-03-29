@@ -794,7 +794,7 @@ Plans:
 **Goal:** Centralise all programmatic clipboard writes behind a single ClipboardWriteCoordinator that owns guard registration, key derivation, and write orchestration. Lock down InMemoryClipboardChangeOrigin to prevent accidental second-instance construction.
 **Requirements**: PH73-01, PH73-02, PH73-03, PH73-04, PH73-05, PH73-06, PH73-07, PH73-08, PH73-09, PH73-10
 **Depends on:** Phase 72
-**Plans:** 2 plans
+**Plans:** 1/2 plans executed
 
 **Success Criteria** (what must be TRUE):
 
@@ -806,5 +806,5 @@ Plans:
 
 Plans:
 
-- [ ] 73-01-PLAN.md — Create ClipboardWriteCoordinator with unit tests, wire into bootstrap and CoreUseCases, lock down InMemoryClipboardChangeOrigin
+- [x] 73-01-PLAN.md — Create ClipboardWriteCoordinator with unit tests, wire into bootstrap and CoreUseCases, lock down InMemoryClipboardChangeOrigin
 - [ ] 73-02-PLAN.md — Refactor all 4 clipboard write callsites to use coordinator, update daemon workers and entrypoint

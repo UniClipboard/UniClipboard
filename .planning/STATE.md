@@ -3,10 +3,10 @@ gsd_state_version: 1.0
 milestone: v0.4.0
 milestone_name: Runtime Mode Separation
 status: Milestone complete
-stopped_at: Completed 72-02-PLAN.md
-last_updated: '2026-03-29T04:52:00.232Z'
+stopped_at: Phase 73 context gathered
+last_updated: '2026-03-29T05:15:00.000Z'
 progress:
-  total_phases: 43
+  total_phases: 44
   completed_phases: 36
   total_plans: 95
   completed_plans: 92
@@ -19,11 +19,11 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-09)
 
 **Core value:** Seamless clipboard synchronization across devices -- copy on one, paste on another
-**Current focus:** Phase 71 — dual-product-release-pipeline-for-cli-and-app
+**Current focus:** Phase 73 — clipboard restore loop prevention refactor
 
 ## Current Position
 
-Phase: 72
+Phase: 73
 Plan: Not started
 
 ## Performance Metrics
@@ -263,6 +263,8 @@ Recent decisions affecting current work:
 - Phase 69 added: CLI setup flow: first-time encryption init before daemon spawn
 - Phase 70 added: CLI start/stop commands for daemon lifecycle management
 - Phase 71 added: Dual-product release pipeline for CLI and App
+- Phase 73 added: Refactor clipboard restore loop prevention: introduce ClipboardWriteCoordinator as single write boundary owning origin guard registration, derive meaningful content key, and remove composition-time re-creation risk of origin store
+- Phase 73 discussed: ClipboardWriteCoordinator.write(snapshot, intent) as sole clipboard write API; snapshot building stays in use cases; Coordinator is only caller of origin_guard_key(); coordinator built in bootstrap assembly
 
 ### Pending Todos
 

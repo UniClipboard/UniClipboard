@@ -5,6 +5,7 @@ use anyhow::{anyhow, Context, Result};
 use async_trait::async_trait;
 use chrono::Utc;
 use tokio::sync::mpsc;
+use uc_app::usecases::clipboard::clipboard_write_coordinator::ClipboardWriteCoordinator;
 use uc_app::usecases::clipboard::sync_inbound::SyncInboundClipboardUseCase;
 use uc_app::usecases::clipboard::sync_outbound::SyncOutboundClipboardUseCase;
 use uc_app::usecases::clipboard::ClipboardIntegrationMode;
@@ -492,26 +493,40 @@ async fn clipboard_sync_e2e_dual_peer_in_process() -> Result<()> {
 
     let transfer_decryptor: Arc<TransferPayloadDecryptorAdapter> =
         Arc::new(TransferPayloadDecryptorAdapter);
-    let inbound_a = Arc::new(SyncInboundClipboardUseCase::new(
-        ClipboardIntegrationMode::Full,
+    let coordinator_a = Arc::new(ClipboardWriteCoordinator::new(
         clipboard_a.clone(),
         origin_a.clone(),
-        session_a.clone(),
-        encryption_a.clone(),
-        identity_a.clone(),
-        transfer_decryptor.clone(),
-        settings.clone(),
-    )?);
-    let inbound_b = Arc::new(SyncInboundClipboardUseCase::new(
-        ClipboardIntegrationMode::Full,
+    ));
+    let inbound_a = Arc::new(
+        SyncInboundClipboardUseCase::new(
+            ClipboardIntegrationMode::Full,
+            clipboard_a.clone(),
+            origin_a.clone(),
+            session_a.clone(),
+            encryption_a.clone(),
+            identity_a.clone(),
+            transfer_decryptor.clone(),
+            settings.clone(),
+        )?
+        .with_clipboard_write_coordinator(coordinator_a),
+    );
+    let coordinator_b = Arc::new(ClipboardWriteCoordinator::new(
         clipboard_b.clone(),
         origin_b.clone(),
-        session_b.clone(),
-        encryption_b.clone(),
-        identity_b.clone(),
-        transfer_decryptor,
-        settings.clone(),
-    )?);
+    ));
+    let inbound_b = Arc::new(
+        SyncInboundClipboardUseCase::new(
+            ClipboardIntegrationMode::Full,
+            clipboard_b.clone(),
+            origin_b.clone(),
+            session_b.clone(),
+            encryption_b.clone(),
+            identity_b.clone(),
+            transfer_decryptor,
+            settings.clone(),
+        )?
+        .with_clipboard_write_coordinator(coordinator_b),
+    );
 
     let a_send_count = Arc::new(AtomicUsize::new(0));
     let b_send_count = Arc::new(AtomicUsize::new(0));
@@ -624,16 +639,23 @@ async fn clipboard_sync_e2e_image_single_rep() -> Result<()> {
 
     let transfer_decryptor: Arc<TransferPayloadDecryptorAdapter> =
         Arc::new(TransferPayloadDecryptorAdapter);
-    let inbound_b = Arc::new(SyncInboundClipboardUseCase::new(
-        ClipboardIntegrationMode::Full,
+    let coordinator_b = Arc::new(ClipboardWriteCoordinator::new(
         clipboard_b.clone(),
         origin_b.clone(),
-        session_b.clone(),
-        encryption_b.clone(),
-        identity_b.clone(),
-        transfer_decryptor,
-        settings.clone(),
-    )?);
+    ));
+    let inbound_b = Arc::new(
+        SyncInboundClipboardUseCase::new(
+            ClipboardIntegrationMode::Full,
+            clipboard_b.clone(),
+            origin_b.clone(),
+            session_b.clone(),
+            encryption_b.clone(),
+            identity_b.clone(),
+            transfer_decryptor,
+            settings.clone(),
+        )?
+        .with_clipboard_write_coordinator(coordinator_b),
+    );
 
     let a_send_count = Arc::new(AtomicUsize::new(0));
 
@@ -725,16 +747,23 @@ async fn clipboard_sync_e2e_windows_image_multi_rep() -> Result<()> {
 
     let transfer_decryptor: Arc<TransferPayloadDecryptorAdapter> =
         Arc::new(TransferPayloadDecryptorAdapter);
-    let inbound_b = Arc::new(SyncInboundClipboardUseCase::new(
-        ClipboardIntegrationMode::Full,
+    let coordinator_b = Arc::new(ClipboardWriteCoordinator::new(
         clipboard_b.clone(),
         origin_b.clone(),
-        session_b.clone(),
-        encryption_b.clone(),
-        identity_b.clone(),
-        transfer_decryptor,
-        settings.clone(),
-    )?);
+    ));
+    let inbound_b = Arc::new(
+        SyncInboundClipboardUseCase::new(
+            ClipboardIntegrationMode::Full,
+            clipboard_b.clone(),
+            origin_b.clone(),
+            session_b.clone(),
+            encryption_b.clone(),
+            identity_b.clone(),
+            transfer_decryptor,
+            settings.clone(),
+        )?
+        .with_clipboard_write_coordinator(coordinator_b),
+    );
 
     let a_send_count = Arc::new(AtomicUsize::new(0));
 

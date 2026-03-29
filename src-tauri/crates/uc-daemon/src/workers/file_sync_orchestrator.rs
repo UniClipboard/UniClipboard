@@ -16,20 +16,20 @@ use async_trait::async_trait;
 use tokio_util::sync::CancellationToken;
 use tracing::{error, info, info_span, warn, Instrument};
 
+use uc_app::usecases::clipboard::clipboard_write_coordinator::{
+    ClipboardWriteCoordinator, ClipboardWriteIntent,
+};
 use uc_app::usecases::file_sync::FileTransferOrchestrator;
 use uc_app::usecases::file_sync::SyncInboundFileUseCase;
 use uc_core::network::NetworkEvent;
-use uc_core::ports::{
-    ClipboardChangeOriginPort, NetworkEventPort, SettingsPort, SystemClipboardPort,
-};
+use uc_core::ports::{NetworkEventPort, SettingsPort};
 
 use crate::service::{DaemonService, ServiceHealth};
 
 pub struct FileSyncOrchestratorWorker {
     orchestrator: Arc<FileTransferOrchestrator>,
     network_events: Arc<dyn NetworkEventPort>,
-    system_clipboard: Arc<dyn SystemClipboardPort>,
-    clipboard_change_origin: Arc<dyn ClipboardChangeOriginPort>,
+    clipboard_write_coordinator: Arc<ClipboardWriteCoordinator>,
     file_cache_dir: PathBuf,
     settings: Arc<dyn SettingsPort>,
 }
@@ -38,16 +38,14 @@ impl FileSyncOrchestratorWorker {
     pub fn new(
         orchestrator: Arc<FileTransferOrchestrator>,
         network_events: Arc<dyn NetworkEventPort>,
-        system_clipboard: Arc<dyn SystemClipboardPort>,
-        clipboard_change_origin: Arc<dyn ClipboardChangeOriginPort>,
+        clipboard_write_coordinator: Arc<ClipboardWriteCoordinator>,
         file_cache_dir: PathBuf,
         settings: Arc<dyn SettingsPort>,
     ) -> Self {
         Self {
             orchestrator,
             network_events,
-            system_clipboard,
-            clipboard_change_origin,
+            clipboard_write_coordinator,
             file_cache_dir,
             settings,
         }
@@ -156,8 +154,7 @@ impl FileSyncOrchestratorWorker {
                     SyncInboundFileUseCase::new(self.settings.clone(), self.file_cache_dir.clone());
 
                 let orch = self.orchestrator.clone();
-                let system_clipboard = self.system_clipboard.clone();
-                let clipboard_origin = self.clipboard_change_origin.clone();
+                let coordinator = self.clipboard_write_coordinator.clone();
                 let is_batch = batch_id.is_some() && batch_total.is_some();
                 let span_tid = transfer_id.clone();
                 let file_path_for_spawn = file_path.clone();
@@ -211,8 +208,7 @@ impl FileSyncOrchestratorWorker {
                                 if !is_batch {
                                     restore_file_to_clipboard_after_transfer(
                                         vec![result.file_path],
-                                        &system_clipboard,
-                                        &clipboard_origin,
+                                        &coordinator,
                                     )
                                     .await;
                                 }
@@ -257,15 +253,10 @@ impl FileSyncOrchestratorWorker {
                             "Batch complete, restoring all files to clipboard"
                         );
 
-                        let system_clipboard_batch = self.system_clipboard.clone();
-                        let clipboard_origin_batch = self.clipboard_change_origin.clone();
+                        let coordinator_batch = self.clipboard_write_coordinator.clone();
                         tokio::spawn(async move {
-                            restore_file_to_clipboard_after_transfer(
-                                all_paths,
-                                &system_clipboard_batch,
-                                &clipboard_origin_batch,
-                            )
-                            .await;
+                            restore_file_to_clipboard_after_transfer(all_paths, &coordinator_batch)
+                                .await;
                         });
                     }
                 }
@@ -294,12 +285,11 @@ impl FileSyncOrchestratorWorker {
 
 /// Restore file(s) to OS clipboard after successful inbound transfer.
 ///
-/// Canonicalizes paths to absolute paths, marks the clipboard origin as
-/// LocalRestore to prevent write-back capture loops, then writes the snapshot.
+/// Canonicalizes paths to absolute paths, then delegates guard-registration + write
+/// to the ClipboardWriteCoordinator with LocalRestore intent.
 async fn restore_file_to_clipboard_after_transfer(
     file_paths: Vec<PathBuf>,
-    system_clipboard: &Arc<dyn SystemClipboardPort>,
-    clipboard_change_origin: &Arc<dyn ClipboardChangeOriginPort>,
+    coordinator: &Arc<ClipboardWriteCoordinator>,
 ) {
     use uc_app::usecases::file_sync::copy_file_to_clipboard::{
         build_file_snapshot, build_path_list,
@@ -350,12 +340,11 @@ async fn restore_file_to_clipboard_after_transfer(
 
     let path_list = build_path_list(&file_paths);
     let snapshot = build_file_snapshot(&path_list);
-    let origin_guard_key = snapshot.origin_guard_key();
 
     // FCLIP-03: Non-destructive check for concurrent clipboard operations.
     // Use has_pending_origin() (peek) instead of consume_origin_or_default()
     // to avoid stealing another restore's LocalRestore origin protection.
-    if clipboard_change_origin.has_pending_origin().await {
+    if coordinator.has_pending_origin().await {
         info!(
             file_count = file_paths.len(),
             "Concurrent clipboard operation detected, skipping auto-restore. Files available in Dashboard."
@@ -363,25 +352,15 @@ async fn restore_file_to_clipboard_after_transfer(
         return;
     }
 
-    // Bind LocalRestore to this exact file snapshot so unrelated clipboard
-    // changes cannot consume the restore guard before the watcher sees it.
-    clipboard_change_origin
-        .remember_local_snapshot_hash(origin_guard_key.clone(), std::time::Duration::from_secs(2))
-        .await;
-
-    // Restore to system clipboard
+    // Restore to system clipboard via coordinator (handles guard + write + cleanup-on-error)
     info!(
         path_list = %path_list,
         "restore_file_to_clipboard_after_transfer: restoring to OS clipboard"
     );
-    if let Err(err) = system_clipboard.write_snapshot(snapshot) {
-        // Consume origin on failure to avoid stale origin
-        clipboard_change_origin
-            .consume_origin_for_snapshot_or_default(
-                &origin_guard_key,
-                uc_core::ClipboardChangeOrigin::LocalCapture,
-            )
-            .await;
+    if let Err(err) = coordinator
+        .write(snapshot, ClipboardWriteIntent::LocalRestore)
+        .await
+    {
         warn!(error = %err, "Failed to write file URIs to system clipboard");
     } else {
         info!(
@@ -400,6 +379,7 @@ mod tests {
     use tokio::time::{timeout, Duration};
     use uc_core::network::NetworkEvent;
     use uc_core::ports::transfer_progress::{TransferDirection, TransferProgress};
+    use uc_infra::clipboard::new_clipboard_change_origin;
 
     struct MockNetworkEvents {
         rx: Mutex<Option<mpsc::Receiver<NetworkEvent>>>,
@@ -494,6 +474,15 @@ mod tests {
         }
     }
 
+    /// Build a test ClipboardWriteCoordinator with no-op ports.
+    fn build_test_coordinator() -> Arc<ClipboardWriteCoordinator> {
+        use uc_infra::clipboard::new_clipboard_change_origin;
+        Arc::new(ClipboardWriteCoordinator::new(
+            Arc::new(MockSystemClipboard),
+            new_clipboard_change_origin(),
+        ))
+    }
+
     /// Build a minimal FileTransferOrchestrator backed by a NoopFileTransferRepository.
     fn build_test_orchestrator() -> Arc<FileTransferOrchestrator> {
         use std::sync::RwLock;
@@ -529,8 +518,7 @@ mod tests {
             Arc::new(MockNetworkEvents {
                 rx: Mutex::new(Some(rx)),
             }),
-            Arc::new(MockSystemClipboard),
-            Arc::new(MockClipboardChangeOrigin::new()),
+            build_test_coordinator(),
             std::env::temp_dir(),
             Arc::new(MockSettings),
         );
@@ -568,8 +556,7 @@ mod tests {
             Arc::new(MockNetworkEvents {
                 rx: Mutex::new(Some(rx)),
             }),
-            Arc::new(MockSystemClipboard),
-            Arc::new(MockClipboardChangeOrigin::new()),
+            build_test_coordinator(),
             std::env::temp_dir(),
             Arc::new(MockSettings),
         );
@@ -611,8 +598,7 @@ mod tests {
             Arc::new(MockNetworkEvents {
                 rx: Mutex::new(Some(rx)),
             }),
-            Arc::new(MockSystemClipboard),
-            Arc::new(MockClipboardChangeOrigin::new()),
+            build_test_coordinator(),
             std::env::temp_dir(),
             Arc::new(MockSettings),
         );

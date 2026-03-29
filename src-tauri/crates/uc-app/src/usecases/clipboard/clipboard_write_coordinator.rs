@@ -50,6 +50,14 @@ impl ClipboardWriteCoordinator {
         }
     }
 
+    /// Check if there is a pending clipboard origin guard (non-destructive peek).
+    ///
+    /// Delegates to `ClipboardChangeOriginPort::has_pending_origin()`.
+    /// Used by workers to detect concurrent clipboard operations before writing.
+    pub async fn has_pending_origin(&self) -> bool {
+        self.clipboard_change_origin.has_pending_origin().await
+    }
+
     /// Write a snapshot to the system clipboard with the given intent.
     ///
     /// # Intent semantics

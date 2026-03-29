@@ -93,7 +93,7 @@ pub fn run(gui_managed: bool) -> anyhow::Result<()> {
             setup_ports,
             setup_completion_emitter,
         )?
-        .with_clipboard_write_coordinator(clipboard_write_coordinator),
+        .with_clipboard_write_coordinator(clipboard_write_coordinator.clone()),
     );
 
     let socket_path = resolve_daemon_socket_path();
@@ -135,7 +135,7 @@ pub fn run(gui_managed: bool) -> anyhow::Result<()> {
     let inbound_clipboard_sync = Arc::new(InboundClipboardSyncWorker::new(
         runtime.clone(),
         event_tx.clone(),
-        clipboard_change_origin.clone(),
+        clipboard_write_coordinator.clone(),
         Some(file_cache_dir.clone()),
         Some(file_transfer_orchestrator.clone()),
     ));
@@ -143,8 +143,7 @@ pub fn run(gui_managed: bool) -> anyhow::Result<()> {
     let file_sync_orchestrator_worker = Arc::new(FileSyncOrchestratorWorker::new(
         file_transfer_orchestrator,
         daemon_network_events.clone(),
-        local_clipboard.clone(),
-        clipboard_change_origin.clone(),
+        clipboard_write_coordinator,
         file_cache_dir,
         daemon_settings.clone(),
     ));

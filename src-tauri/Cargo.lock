@@ -9198,7 +9198,7 @@ dependencies = [
 
 [[package]]
 name = "uc-cli"
-version = "0.1.0"
+version = "0.4.0-alpha.1"
 dependencies = [
  "anyhow",
  "clap",

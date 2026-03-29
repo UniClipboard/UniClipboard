@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v0.4.0
 milestone_name: Runtime Mode Separation
-status: Ready to execute
-stopped_at: Completed 73-01-PLAN.md
-last_updated: '2026-03-29T09:58:51.444Z'
+status: Phase complete — ready for verification
+stopped_at: Completed 73-02-PLAN.md
+last_updated: '2026-03-29T10:20:37.224Z'
 progress:
   total_phases: 44
-  completed_phases: 36
+  completed_phases: 37
   total_plans: 97
-  completed_plans: 93
+  completed_plans: 94
 ---
 
 # Project State
@@ -103,6 +103,7 @@ Plan: 2 of 2
   | Phase 71 P03 | 2 | 2 tasks | 4 files |
   | Phase 72 P02 | 6 | 1 tasks | 1 files |
   | Phase 73 P01 | 14 | 2 tasks | 14 files |
+  | Phase 73 P02 | 90 | 2 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -240,6 +241,9 @@ Recent decisions affecting current work:
 - [Phase 72]: restore_clipboard_entry delegates fully to daemon via DaemonClipboardClient — origin tracking, restore, touch, outbound sync all in daemon handler
 - [Phase 72]: forward_clipboard_event preserved as ONLY frontend update after daemon restore success (LocalRestore skips capture, no WS clipboard.new_content event emitted)
 - [Phase 73]: ClipboardWriteCoordinator centralises guard-registration + write + cleanup-on-error for all programmatic clipboard writes; InMemoryClipboardChangeOrigin locked to pub(crate) via new_clipboard_change_origin() factory
+- [Phase 73]: SyncInboundClipboardUseCase keeps legacy constructor params with #[allow(dead_code)] for e2e test compatibility; coordinator wired via with_clipboard_write_coordinator() builder
+- [Phase 73]: REMOTE_SNAPSHOT_HASH_TTL_MS removed from sync_inbound.rs — TTL semantics now exclusively owned by ClipboardWriteCoordinator
+- [Phase 73]: FileSyncOrchestratorWorker consolidates system_clipboard + clipboard_change_origin into single clipboard_write_coordinator field
 
 ### Roadmap Evolution
 
@@ -286,6 +290,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-29T09:58:51.440Z
-Stopped at: Completed 73-01-PLAN.md
+Last session: 2026-03-29T10:20:37.221Z
+Stopped at: Completed 73-02-PLAN.md
 Resume file: None

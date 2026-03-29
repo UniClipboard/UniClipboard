@@ -1,4 +1,5 @@
 pub mod clear_history;
+pub mod clipboard_write_coordinator;
 pub mod get_entry_detail;
 pub mod get_entry_resource;
 pub mod integration_mode;

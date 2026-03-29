@@ -60,6 +60,8 @@ pub use start_network_after_unlock::StartNetworkAfterUnlock;
 pub use update_settings::UpdateSettings;
 pub use verify_keychain_access::VerifyKeychainAccess;
 
+pub use clipboard::clipboard_write_coordinator::{ClipboardWriteCoordinator, ClipboardWriteIntent};
+
 pub use file_sync::{
     EarlyCompletionCache, EarlyCompletionInfo, FileTransferOrchestrator, SyncInboundFileUseCase,
     SyncOutboundFileUseCase, TrackInboundTransfersUseCase,

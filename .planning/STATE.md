@@ -2,13 +2,13 @@
 gsd_state_version: 1.0
 milestone: v0.4.0
 milestone_name: Runtime Mode Separation
-status: 'Phase 73 shipped — PR #329'
-stopped_at: Completed 73-02-PLAN.md
-last_updated: '2026-03-29T11:49:13.003Z'
+status: Ready to execute
+stopped_at: Completed 74-01-PLAN.md
+last_updated: '2026-03-29T12:19:36.695Z'
 progress:
-  total_phases: 44
+  total_phases: 52
   completed_phases: 37
-  total_plans: 97
+  total_plans: 105
   completed_plans: 94
 ---
 
@@ -23,8 +23,12 @@ See: .planning/PROJECT.md (updated 2026-03-09)
 
 ## Current Position
 
-Phase: 73
-Plan: Not started
+**Current focus:** Phase 74 — daemon-clipboard-http-api
+
+## Current Position
+
+Phase: 74 (daemon-clipboard-http-api) — EXECUTING
+Plan: 2 of 2
 
 ## Performance Metrics
 
@@ -104,6 +108,7 @@ Plan: Not started
   | Phase 72 P02 | 6 | 1 tasks | 1 files |
   | Phase 73 P01 | 14 | 2 tasks | 14 files |
   | Phase 73 P02 | 90 | 2 tasks | 6 files |
+  | Phase 74 P01 | 4 | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -244,6 +249,7 @@ Recent decisions affecting current work:
 - [Phase 73]: SyncInboundClipboardUseCase keeps legacy constructor params with #[allow(dead_code)] for e2e test compatibility; coordinator wired via with_clipboard_write_coordinator() builder
 - [Phase 73]: REMOTE_SNAPSHOT_HASH_TTL_MS removed from sync_inbound.rs — TTL semantics now exclusively owned by ClipboardWriteCoordinator
 - [Phase 73]: FileSyncOrchestratorWorker consolidates system_clipboard + clipboard_change_origin into single clipboard_write_coordinator field
+- [Phase 74]: 74-01: EntryDetailResult needed serde::Serialize added as Rule 2 auto-fix
 
 ### Roadmap Evolution
 
@@ -298,6 +304,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-29T10:20:37.221Z
-Stopped at: Completed 73-02-PLAN.md
+Last session: 2026-03-29T12:19:36.691Z
+Stopped at: Completed 74-01-PLAN.md
 Resume file: None

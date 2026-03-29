@@ -814,7 +814,7 @@ Plans:
 **Goal:** Extend daemon HTTP API with full clipboard CRUD endpoints: list entries with pagination, get entry detail, delete entry, toggle favorite, get stats, and get entry resource/blob content.
 **Requirements**: TBD
 **Depends on:** Phase 72
-**Plans:** 0 plans
+**Plans:** 1/2 plans executed
 
 Plans:
 

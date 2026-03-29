@@ -27,6 +27,7 @@ use crate::pairing::host::{DaemonPairingHost, DaemonPairingHostError};
 
 pub fn router() -> Router<DaemonApiState> {
     Router::new()
+        .merge(crate::api::clipboard::router())
         .route("/health", get(health))
         .route("/status", get(status))
         .route("/peers", get(peers))
@@ -873,7 +874,7 @@ where
     }
 }
 
-fn unauthorized() -> (StatusCode, Json<serde_json::Value>) {
+pub(crate) fn unauthorized() -> (StatusCode, Json<serde_json::Value>) {
     (
         StatusCode::UNAUTHORIZED,
         Json(json!({"error": "unauthorized"})),
@@ -926,7 +927,7 @@ fn bad_request(error: &str) -> (StatusCode, Json<serde_json::Value>) {
     (StatusCode::BAD_REQUEST, Json(json!({ "error": error })))
 }
 
-fn internal_error(error: anyhow::Error) -> (StatusCode, Json<serde_json::Value>) {
+pub(crate) fn internal_error(error: anyhow::Error) -> (StatusCode, Json<serde_json::Value>) {
     tracing::error!(error = %error, "daemon API request failed");
     (
         StatusCode::INTERNAL_SERVER_ERROR,

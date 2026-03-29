@@ -23,7 +23,7 @@ pub struct GetEntryDetailUseCase {
 
 /// Detail result from GetEntryDetailUseCase
 /// GetEntryDetailUseCase 返回的详情结果
-#[derive(Debug)]
+#[derive(Debug, serde::Serialize)]
 pub struct EntryDetailResult {
     pub id: String,
     pub content: String,

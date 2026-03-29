@@ -26,7 +26,7 @@ async fn spawn_server() -> (String, String, tokio::task::JoinHandle<()>) {
     let token_path = tempdir.path().join("daemon.token");
     let token = load_or_create_auth_token(&token_path).unwrap();
     let token_value = std::fs::read_to_string(&token_path).unwrap();
-    let api_state = DaemonApiState::new(query_service, token, None, SecurityState::new());
+    let api_state = DaemonApiState::new(query_service, token, None, Arc::new(SecurityState::new()));
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     let handle = tokio::spawn(async move {

@@ -1,11 +1,22 @@
 //! HTTP route handlers for the daemon API.
+//!
+//! Router is split into two tiers:
+//! - L1 (router_l1): public endpoints requiring no authentication (health check)
+//! - L2+ (router_l2_plus): protected endpoints behind auth_extractor + rate_limit middleware
+//!
+//! Auth middleware chain (layer order):
+//!   auth_extractor (innermost) runs FIRST -> validates JWT + PID whitelist -> sets client_id
+//!   rate_limit (outermost) runs SECOND -> checks rate limit using client_id from extensions
+//!
+//! L3/L4 permission enforcement is NOT implemented in Phase 75 (deferred to future phases).
 
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
 use axum::extract::rejection::JsonRejection;
 use axum::extract::{Path, State};
-use axum::http::{HeaderMap, StatusCode};
+use axum::http::StatusCode;
+use axum::middleware;
 use axum::response::IntoResponse;
 use axum::routing::{get, post, put};
 use axum::{Json, Router};
@@ -24,11 +35,40 @@ use crate::api::pairing::{
 use crate::api::server::{map_daemon_pairing_error, DaemonApiState};
 use crate::api::types::{SetupResetResponse, SetupSelectPeerRequest, SetupSubmitPassphraseRequest};
 use crate::pairing::host::{DaemonPairingHost, DaemonPairingHostError};
+use crate::security::middleware::{auth_extractor_middleware, rate_limit_middleware};
 
-pub fn router() -> Router<DaemonApiState> {
+/// Build the L1 (public) router - no auth required.
+/// Contains only the health check endpoint.
+///
+/// Takes state to return Router<DaemonApiState> so it can be merged
+/// with router_l2_plus without type mismatch.
+pub fn router_l1(state: DaemonApiState) -> Router<DaemonApiState> {
     Router::new()
-        .merge(crate::api::clipboard::router())
         .route("/health", get(health))
+        .with_state(state)
+}
+
+/// Build the L2+ (protected) router - requires valid session token.
+/// All routes are behind auth_extractor -> rate_limit middleware layers.
+///
+/// LAYER ORDER (FINDING-2): In Axum, the LAST `.layer()` call wraps closest to the
+/// handler and runs FIRST on incoming requests. We want auth_extractor to run FIRST
+/// (to validate the JWT and set client_id in extensions), then rate_limit to run SECOND
+/// (to check the rate limit using the client_id from extensions).
+///
+/// Therefore, auth_extractor_middleware must be the LAST .layer() call:
+///   .layer(rate_limit_middleware)      // first in code -> outer -> runs SECOND
+///   .layer(auth_extractor_middleware)  // last in code -> inner -> runs FIRST
+///
+/// This means rate limiting applies to already-authenticated requests (by validated PID).
+/// It is NOT a pre-auth gate - that is a deliberate design choice for Phase 75.
+///
+/// NOTE on L3/L4: Phase 75 does NOT implement L3/L4 permission enforcement.
+/// The middleware chain enforces only L2 (valid JWT + PID whitelist).
+/// L3/L4 checks (encryption_ready state) are reserved for future phases.
+pub fn router_l2_plus(state: DaemonApiState) -> Router<DaemonApiState> {
+    let router = Router::new()
+        .merge(crate::api::clipboard::router())
         .route("/status", get(status))
         .route("/peers", get(peers))
         .route("/paired-devices", get(paired_devices))
@@ -66,6 +106,20 @@ pub fn router() -> Router<DaemonApiState> {
             &format!("{}/:entry_id", http_route::CLIPBOARD_RESTORE),
             post(restore_clipboard_entry_handler),
         )
+        .with_state(state.clone());
+
+    // Apply middleware layers.
+    // auth_extractor (innermost, runs first) sets client_id in extensions.
+    // rate_limit (outermost, runs second) checks the rate limit using client_id.
+    // See detailed comment above for layer order explanation.
+    let state_for_middleware = Arc::new(state);
+    router.layer(middleware::from_fn_with_state(
+        state_for_middleware.clone(),
+        rate_limit_middleware,
+    )).layer(middleware::from_fn_with_state(
+        state_for_middleware,
+        auth_extractor_middleware,
+    ))
 }
 
 async fn health(State(state): State<DaemonApiState>) -> impl IntoResponse {
@@ -79,12 +133,7 @@ async fn health(State(state): State<DaemonApiState>) -> impl IntoResponse {
 /// This endpoint opens that gate.
 async fn lifecycle_ready(
     State(state): State<DaemonApiState>,
-    headers: HeaderMap,
 ) -> impl IntoResponse {
-    if !state.is_authorized(&headers) {
-        return unauthorized().into_response();
-    }
-
     if let Some(gate) = &state.clipboard_capture_gate {
         let was_closed = !gate.swap(true, Ordering::SeqCst);
         if was_closed {
@@ -104,12 +153,8 @@ async fn lifecycle_ready(
 
 async fn restore_clipboard_entry_handler(
     State(state): State<DaemonApiState>,
-    headers: HeaderMap,
     Path(entry_id): Path<String>,
 ) -> impl IntoResponse {
-    if !state.is_authorized(&headers) {
-        return unauthorized().into_response();
-    }
     let Some(runtime) = state.runtime.clone() else {
         return internal_error(anyhow::anyhow!("daemon runtime unavailable")).into_response();
     };
@@ -119,11 +164,11 @@ async fn restore_clipboard_entry_handler(
 
     tracing::info!(entry_id = %entry_id, "daemon restore request received");
 
-    // Restore to OS clipboard first — this calls set_next_origin(LocalRestore) in-process.
+    // Restore to OS clipboard first - this calls set_next_origin(LocalRestore) in-process.
     // The daemon's ClipboardWatcherWorker will detect the write, but CaptureClipboardUseCase
-    // skips capture for LocalRestore origin — no duplicate DB entry, no outbound sync.
+    // skips capture for LocalRestore origin - no duplicate DB entry, no outbound sync.
     // This is correct behavior: restored content is already in DB and was previously synced.
-    // Do NOT call SyncOutboundClipboardUseCase here — it would cause unwanted duplicate sync.
+    // Do NOT call SyncOutboundClipboardUseCase here - it would cause unwanted duplicate sync.
     let restore_uc = match usecases.restore_clipboard_selection() {
         Ok(uc) => uc,
         Err(e) => {
@@ -160,22 +205,14 @@ async fn restore_clipboard_entry_handler(
     (StatusCode::OK, Json(json!({"success": true}))).into_response()
 }
 
-async fn status(State(state): State<DaemonApiState>, headers: HeaderMap) -> impl IntoResponse {
-    if !state.is_authorized(&headers) {
-        return unauthorized().into_response();
-    }
-
+async fn status(State(state): State<DaemonApiState>) -> impl IntoResponse {
     match state.query_service.status().await {
         Ok(response) => Json(response).into_response(),
         Err(error) => internal_error(error).into_response(),
     }
 }
 
-async fn peers(State(state): State<DaemonApiState>, headers: HeaderMap) -> impl IntoResponse {
-    if !state.is_authorized(&headers) {
-        return unauthorized().into_response();
-    }
-
+async fn peers(State(state): State<DaemonApiState>) -> impl IntoResponse {
     match state.query_service.peers().await {
         Ok(response) => Json(response).into_response(),
         Err(error) => internal_error(error).into_response(),
@@ -184,12 +221,7 @@ async fn peers(State(state): State<DaemonApiState>, headers: HeaderMap) -> impl 
 
 async fn paired_devices(
     State(state): State<DaemonApiState>,
-    headers: HeaderMap,
 ) -> impl IntoResponse {
-    if !state.is_authorized(&headers) {
-        return unauthorized().into_response();
-    }
-
     match state.query_service.paired_devices().await {
         Ok(response) => Json(response).into_response(),
         Err(error) => internal_error(error).into_response(),
@@ -198,11 +230,7 @@ async fn paired_devices(
 
 async fn space_access_state_handler(
     State(state): State<DaemonApiState>,
-    headers: HeaderMap,
 ) -> impl IntoResponse {
-    if !state.is_authorized(&headers) {
-        return unauthorized().into_response();
-    }
     Json(
         state
             .query_service
@@ -214,11 +242,7 @@ async fn space_access_state_handler(
 
 async fn setup_state(
     State(state): State<DaemonApiState>,
-    headers: HeaderMap,
 ) -> axum::response::Response {
-    if !state.is_authorized(&headers) {
-        return unauthorized().into_response();
-    }
     let Some(setup_orchestrator) = setup_orchestrator(&state).into_response_ok() else {
         return setup_failed("setup orchestrator unavailable").into_response();
     };
@@ -235,11 +259,9 @@ async fn setup_state(
 
 async fn setup_host(
     State(state): State<DaemonApiState>,
-    headers: HeaderMap,
 ) -> axum::response::Response {
     setup_action_without_body(
         state,
-        headers,
         SetupRouteAction::Host,
         |setup_orchestrator| async move { setup_orchestrator.new_space().await },
     )
@@ -248,11 +270,9 @@ async fn setup_host(
 
 async fn setup_join(
     State(state): State<DaemonApiState>,
-    headers: HeaderMap,
 ) -> axum::response::Response {
     setup_action_without_body(
         state,
-        headers,
         SetupRouteAction::Join,
         |setup_orchestrator| async move { setup_orchestrator.join_space().await },
     )
@@ -261,12 +281,8 @@ async fn setup_join(
 
 async fn setup_select_peer(
     State(state): State<DaemonApiState>,
-    headers: HeaderMap,
     payload: Result<Json<SetupSelectPeerRequest>, JsonRejection>,
 ) -> axum::response::Response {
-    if !state.is_authorized(&headers) {
-        return unauthorized().into_response();
-    }
     let Some(setup_orchestrator) = setup_orchestrator(&state).into_response_ok() else {
         return setup_failed("setup orchestrator unavailable").into_response();
     };
@@ -289,11 +305,7 @@ async fn setup_select_peer(
 
 async fn setup_confirm_peer(
     State(state): State<DaemonApiState>,
-    headers: HeaderMap,
 ) -> axum::response::Response {
-    if !state.is_authorized(&headers) {
-        return unauthorized().into_response();
-    }
     let Some(setup_orchestrator) = setup_orchestrator(&state).into_response_ok() else {
         return setup_failed("setup orchestrator unavailable").into_response();
     };
@@ -336,12 +348,8 @@ async fn setup_confirm_peer(
 
 async fn setup_submit_passphrase(
     State(state): State<DaemonApiState>,
-    headers: HeaderMap,
     payload: Result<Json<SetupSubmitPassphraseRequest>, JsonRejection>,
 ) -> axum::response::Response {
-    if !state.is_authorized(&headers) {
-        return unauthorized().into_response();
-    }
     let Some(setup_orchestrator) = setup_orchestrator(&state).into_response_ok() else {
         return setup_failed("setup orchestrator unavailable").into_response();
     };
@@ -380,11 +388,7 @@ async fn setup_submit_passphrase(
 
 async fn setup_cancel(
     State(state): State<DaemonApiState>,
-    headers: HeaderMap,
 ) -> axum::response::Response {
-    if !state.is_authorized(&headers) {
-        return unauthorized().into_response();
-    }
     let Some(setup_orchestrator) = setup_orchestrator(&state).into_response_ok() else {
         return setup_failed("setup orchestrator unavailable").into_response();
     };
@@ -420,11 +424,7 @@ async fn setup_cancel(
 
 async fn setup_reset(
     State(state): State<DaemonApiState>,
-    headers: HeaderMap,
 ) -> axum::response::Response {
-    if !state.is_authorized(&headers) {
-        return unauthorized().into_response();
-    }
     let Some(setup_orchestrator) = setup_orchestrator(&state).into_response_ok() else {
         return setup_failed("setup orchestrator unavailable").into_response();
     };
@@ -497,13 +497,8 @@ async fn setup_reset(
 
 async fn pairing_session(
     State(state): State<DaemonApiState>,
-    headers: HeaderMap,
     Path(session_id): Path<String>,
 ) -> impl IntoResponse {
-    if !state.is_authorized(&headers) {
-        return unauthorized().into_response();
-    }
-
     match state.query_service.pairing_session(&session_id).await {
         Ok(Some(response)) => Json(response).into_response(),
         Ok(None) => (
@@ -517,12 +512,8 @@ async fn pairing_session(
 
 async fn set_pairing_discoverability(
     State(state): State<DaemonApiState>,
-    headers: HeaderMap,
     payload: Result<Json<SetPairingDiscoverabilityRequest>, JsonRejection>,
 ) -> impl IntoResponse {
-    if !state.is_authorized(&headers) {
-        return unauthorized().into_response();
-    }
     let Some(pairing_host) = pairing_host(&state).into_response_ok() else {
         return daemon_pairing_unavailable().into_response();
     };
@@ -549,12 +540,8 @@ async fn set_pairing_discoverability(
 
 async fn set_pairing_participant(
     State(state): State<DaemonApiState>,
-    headers: HeaderMap,
     payload: Result<Json<SetPairingParticipantRequest>, JsonRejection>,
 ) -> impl IntoResponse {
-    if !state.is_authorized(&headers) {
-        return unauthorized().into_response();
-    }
     let Some(pairing_host) = pairing_host(&state).into_response_ok() else {
         return daemon_pairing_unavailable().into_response();
     };
@@ -572,12 +559,8 @@ async fn set_pairing_participant(
 
 async fn initiate_pairing(
     State(state): State<DaemonApiState>,
-    headers: HeaderMap,
     payload: Result<Json<InitiatePairingRequest>, JsonRejection>,
 ) -> impl IntoResponse {
-    if !state.is_authorized(&headers) {
-        return unauthorized().into_response();
-    }
     let Some(pairing_host) = pairing_host(&state).into_response_ok() else {
         return daemon_pairing_unavailable().into_response();
     };
@@ -594,12 +577,8 @@ async fn initiate_pairing(
 
 async fn handle_initiate_pairing(
     State(state): State<DaemonApiState>,
-    headers: HeaderMap,
     payload: Result<Json<InitiatePairingRequest>, JsonRejection>,
 ) -> impl IntoResponse {
-    if !state.is_authorized(&headers) {
-        return unauthorized().into_response();
-    }
     let Some(pairing_host) = pairing_host(&state).into_response_ok() else {
         return daemon_pairing_unavailable().into_response();
     };
@@ -625,12 +604,8 @@ async fn handle_initiate_pairing(
 
 async fn accept_pairing(
     State(state): State<DaemonApiState>,
-    headers: HeaderMap,
     Path(session_id): Path<String>,
 ) -> impl IntoResponse {
-    if !state.is_authorized(&headers) {
-        return unauthorized().into_response();
-    }
     let Some(pairing_host) = pairing_host(&state).into_response_ok() else {
         return daemon_pairing_unavailable().into_response();
     };
@@ -643,12 +618,10 @@ async fn accept_pairing(
 
 async fn handle_accept_pairing(
     State(state): State<DaemonApiState>,
-    headers: HeaderMap,
     payload: Result<Json<PairingSessionCommandRequest>, JsonRejection>,
 ) -> impl IntoResponse {
     handle_session_command(
         state,
-        headers,
         payload,
         |pairing_host, session_id| async move { pairing_host.accept_pairing(&session_id).await },
     )
@@ -657,12 +630,8 @@ async fn handle_accept_pairing(
 
 async fn reject_pairing(
     State(state): State<DaemonApiState>,
-    headers: HeaderMap,
     Path(session_id): Path<String>,
 ) -> impl IntoResponse {
-    if !state.is_authorized(&headers) {
-        return unauthorized().into_response();
-    }
     let Some(pairing_host) = pairing_host(&state).into_response_ok() else {
         return daemon_pairing_unavailable().into_response();
     };
@@ -675,12 +644,10 @@ async fn reject_pairing(
 
 async fn handle_reject_pairing(
     State(state): State<DaemonApiState>,
-    headers: HeaderMap,
     payload: Result<Json<PairingSessionCommandRequest>, JsonRejection>,
 ) -> impl IntoResponse {
     handle_session_command(
         state,
-        headers,
         payload,
         |pairing_host, session_id| async move { pairing_host.reject_pairing(&session_id).await },
     )
@@ -689,12 +656,8 @@ async fn handle_reject_pairing(
 
 async fn cancel_pairing(
     State(state): State<DaemonApiState>,
-    headers: HeaderMap,
     Path(session_id): Path<String>,
 ) -> impl IntoResponse {
-    if !state.is_authorized(&headers) {
-        return unauthorized().into_response();
-    }
     let Some(pairing_host) = pairing_host(&state).into_response_ok() else {
         return daemon_pairing_unavailable().into_response();
     };
@@ -707,12 +670,10 @@ async fn cancel_pairing(
 
 async fn handle_cancel_pairing(
     State(state): State<DaemonApiState>,
-    headers: HeaderMap,
     payload: Result<Json<PairingSessionCommandRequest>, JsonRejection>,
 ) -> impl IntoResponse {
     handle_session_command(
         state,
-        headers,
         payload,
         |pairing_host, session_id| async move { pairing_host.cancel_pairing(&session_id).await },
     )
@@ -721,12 +682,8 @@ async fn handle_cancel_pairing(
 
 async fn handle_unpair_device(
     State(state): State<DaemonApiState>,
-    headers: HeaderMap,
     payload: Result<Json<UnpairDeviceRequest>, JsonRejection>,
 ) -> impl IntoResponse {
-    if !state.is_authorized(&headers) {
-        return unauthorized().into_response();
-    }
     let Some(runtime) = state.runtime.clone() else {
         return pairing_api_error(
             StatusCode::SERVICE_UNAVAILABLE,
@@ -765,13 +722,9 @@ async fn handle_unpair_device(
 
 async fn verify_pairing(
     State(state): State<DaemonApiState>,
-    headers: HeaderMap,
     Path(session_id): Path<String>,
     payload: Result<Json<VerifyPairingRequest>, JsonRejection>,
 ) -> impl IntoResponse {
-    if !state.is_authorized(&headers) {
-        return unauthorized().into_response();
-    }
     let Some(pairing_host) = pairing_host(&state).into_response_ok() else {
         return daemon_pairing_unavailable().into_response();
     };
@@ -800,12 +753,8 @@ async fn verify_pairing(
 
 async fn handle_pairing_gui_lease(
     State(state): State<DaemonApiState>,
-    headers: HeaderMap,
     payload: Result<Json<PairingGuiLeaseRequest>, JsonRejection>,
 ) -> impl IntoResponse {
-    if !state.is_authorized(&headers) {
-        return unauthorized().into_response();
-    }
     let Some(pairing_host) = pairing_host(&state).into_response_ok() else {
         return daemon_pairing_unavailable().into_response();
     };
@@ -842,7 +791,6 @@ fn setup_orchestrator(
 
 async fn handle_session_command<F, Fut>(
     state: DaemonApiState,
-    headers: HeaderMap,
     payload: Result<Json<PairingSessionCommandRequest>, JsonRejection>,
     handler: F,
 ) -> axum::response::Response
@@ -850,9 +798,6 @@ where
     F: FnOnce(Arc<DaemonPairingHost>, String) -> Fut,
     Fut: std::future::Future<Output = Result<(), DaemonPairingHostError>>,
 {
-    if !state.is_authorized(&headers) {
-        return unauthorized().into_response();
-    }
     let Some(pairing_host) = pairing_host(&state).into_response_ok() else {
         return daemon_pairing_unavailable().into_response();
     };
@@ -874,6 +819,9 @@ where
     }
 }
 
+/// NOTE: The `unauthorized()` helper is kept for backward compatibility with modules
+/// that may still reference it. The middleware layer now handles authentication
+/// before requests reach handlers, so individual handlers no longer call this.
 pub(crate) fn unauthorized() -> (StatusCode, Json<serde_json::Value>) {
     (
         StatusCode::UNAUTHORIZED,
@@ -1021,7 +969,6 @@ fn should_delegate_host_confirmation_to_pairing_host(
 
 async fn setup_action_without_body<F, Fut>(
     state: DaemonApiState,
-    headers: HeaderMap,
     action: SetupRouteAction,
     handler: F,
 ) -> axum::response::Response
@@ -1029,9 +976,6 @@ where
     F: FnOnce(Arc<uc_app::usecases::SetupOrchestrator>) -> Fut,
     Fut: std::future::Future<Output = Result<SetupState, uc_app::usecases::SetupError>>,
 {
-    if !state.is_authorized(&headers) {
-        return unauthorized().into_response();
-    }
     let Some(setup_orchestrator) = setup_orchestrator(&state).into_response_ok() else {
         return setup_failed("setup orchestrator unavailable").into_response();
     };

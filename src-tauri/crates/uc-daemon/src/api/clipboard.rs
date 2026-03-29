@@ -1,7 +1,9 @@
 //! HTTP route handlers for clipboard CRUD endpoints.
+//!
+//! All routes are protected by the auth_extractor + rate_limit middleware chain
+//! applied at the router level (see routes::router_l2_plus).
 
 use axum::extract::{Path, Query, State};
-use axum::http::HeaderMap;
 use axum::response::IntoResponse;
 use axum::routing::{delete, get, post};
 use axum::{Json, Router};
@@ -12,7 +14,7 @@ use uc_app::usecases::CoreUseCases;
 use uc_core::clipboard::link_utils::extract_domain;
 use uc_core::ids::EntryId;
 
-use crate::api::routes::{internal_error, unauthorized};
+use crate::api::routes::internal_error;
 use crate::api::server::DaemonApiState;
 
 #[derive(Deserialize)]
@@ -48,12 +50,8 @@ pub fn router() -> Router<DaemonApiState> {
 /// limit is clamped to 1000 to prevent unbounded queries.
 async fn list_entries(
     State(state): State<DaemonApiState>,
-    headers: HeaderMap,
     Query(params): Query<PaginationParams>,
 ) -> impl IntoResponse {
-    if !state.is_authorized(&headers) {
-        return unauthorized().into_response();
-    }
     let Some(runtime) = state.runtime.clone() else {
         return internal_error(anyhow::anyhow!("daemon runtime unavailable")).into_response();
     };
@@ -87,12 +85,8 @@ async fn list_entries(
 /// or contains json/xml/javascript). Non-text entries return an error.
 async fn get_entry(
     State(state): State<DaemonApiState>,
-    headers: HeaderMap,
     Path(entry_id): Path<String>,
 ) -> impl IntoResponse {
-    if !state.is_authorized(&headers) {
-        return unauthorized().into_response();
-    }
     let Some(runtime) = state.runtime.clone() else {
         return internal_error(anyhow::anyhow!("daemon runtime unavailable")).into_response();
     };
@@ -133,12 +127,8 @@ async fn get_entry(
 /// Deletes an entry. Returns 204 on success, 404 if not found.
 async fn delete_entry(
     State(state): State<DaemonApiState>,
-    headers: HeaderMap,
     Path(entry_id): Path<String>,
 ) -> impl IntoResponse {
-    if !state.is_authorized(&headers) {
-        return unauthorized().into_response();
-    }
     let Some(runtime) = state.runtime.clone() else {
         return internal_error(anyhow::anyhow!("daemon runtime unavailable")).into_response();
     };
@@ -176,13 +166,9 @@ pub struct ToggleFavoriteBody {
 /// Returns 200 on success, 404 if not found.
 async fn toggle_favorite(
     State(state): State<DaemonApiState>,
-    headers: HeaderMap,
     Path(entry_id): Path<String>,
     body: Result<Json<ToggleFavoriteBody>, axum::extract::rejection::JsonRejection>,
 ) -> impl IntoResponse {
-    if !state.is_authorized(&headers) {
-        return unauthorized().into_response();
-    }
     let Some(runtime) = state.runtime.clone() else {
         return internal_error(anyhow::anyhow!("daemon runtime unavailable")).into_response();
     };
@@ -225,11 +211,7 @@ async fn toggle_favorite(
 /// Returns { total_items, total_size }.
 async fn get_stats(
     State(state): State<DaemonApiState>,
-    headers: HeaderMap,
 ) -> impl IntoResponse {
-    if !state.is_authorized(&headers) {
-        return unauthorized().into_response();
-    }
     let Some(runtime) = state.runtime.clone() else {
         return internal_error(anyhow::anyhow!("daemon runtime unavailable")).into_response();
     };
@@ -250,12 +232,8 @@ async fn get_stats(
 /// Returns resource metadata (URL for blob/thumbnail, or content_type + inline metadata).
 async fn get_entry_resource(
     State(state): State<DaemonApiState>,
-    headers: HeaderMap,
     Path(entry_id): Path<String>,
 ) -> impl IntoResponse {
-    if !state.is_authorized(&headers) {
-        return unauthorized().into_response();
-    }
     let Some(runtime) = state.runtime.clone() else {
         return internal_error(anyhow::anyhow!("daemon runtime unavailable")).into_response();
     };

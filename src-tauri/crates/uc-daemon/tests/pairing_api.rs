@@ -22,6 +22,7 @@ use uc_daemon::state::RuntimeState;
 
 struct PairingApiFixture {
     app: axum::Router,
+    /// JWT session token (pre-obtained) for authenticated requests.
     token: String,
     runtime: Arc<CoreRuntime>,
     pairing_host: Arc<DaemonPairingHost>,
@@ -66,11 +67,15 @@ fn build_api_fixture() -> PairingApiFixture {
         ctx.key_slot_store,
         event_tx,
     ));
-    let api_state = DaemonApiState::new(query_service, token, Some(runtime.clone()), SecurityState::new())
+    // Pre-register the test process PID so session tokens created here pass the whitelist check.
+    let pid = std::process::id();
+    let security = Arc::new(SecurityState::new_with_pid(pid));
+    let session_token = security.make_session_token_for_pid(pid);
+    let api_state = DaemonApiState::new(query_service, token, Some(runtime.clone()), security)
         .with_pairing_host(pairing_host.clone());
     PairingApiFixture {
         app: build_router(api_state),
-        token: token_value,
+        token: session_token,
         runtime,
         pairing_host,
     }
@@ -100,10 +105,11 @@ fn authed_request(
     body: Body,
     content_type: Option<&str>,
 ) -> Request<Body> {
+    // token is a JWT session token (pre-obtained via SecurityState::make_session_token_for_pid)
     let mut builder = Request::builder()
         .method(method)
         .uri(uri)
-        .header("Authorization", format!("Bearer {}", token.trim()));
+        .header("Authorization", format!("Session {}", token.trim()));
     if let Some(content_type) = content_type {
         builder = builder.header("Content-Type", content_type);
     }

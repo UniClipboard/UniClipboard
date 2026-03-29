@@ -61,8 +61,11 @@ async fn build_setup_router() -> (axum::Router, String) {
     let token = load_or_create_auth_token(&token_path).unwrap();
     let token_value = std::fs::read_to_string(token_path).unwrap();
     let setup_orchestrator = build_setup_orchestrator(runtime);
-    let api_state = DaemonApiState::new(query_service, token, None, SecurityState::new()).with_setup(setup_orchestrator);
-    (build_router(api_state), token_value)
+    let pid = std::process::id();
+    let security = Arc::new(SecurityState::new_with_pid(pid));
+    let session_token = security.make_session_token_for_pid(pid);
+    let api_state = DaemonApiState::new(query_service, token, None, security).with_setup(setup_orchestrator);
+    (build_router(api_state), session_token)
 }
 
 fn with_profile_env<T>(
@@ -147,10 +150,13 @@ fn build_reset_router() -> (axum::Router, String) {
             ctx.key_slot_store,
             event_tx,
         ));
-        let api_state = DaemonApiState::new(query_service, token, Some(runtime), SecurityState::new())
+        let pid = std::process::id();
+        let security = Arc::new(SecurityState::new_with_pid(pid));
+        let session_token = security.make_session_token_for_pid(pid);
+        let api_state = DaemonApiState::new(query_service, token, Some(runtime), security)
             .with_setup(setup_orchestrator)
             .with_pairing_host(pairing_host);
-        (build_router(api_state), token_value)
+        (build_router(api_state), session_token)
     })
 }
 
@@ -224,10 +230,11 @@ fn authed_request(
     body: Body,
     content_type: Option<&str>,
 ) -> Request<Body> {
+    // token is a JWT session token (pre-obtained via SecurityState::make_session_token_for_pid)
     let mut builder = Request::builder()
         .method(method)
         .uri(uri)
-        .header("Authorization", format!("Bearer {}", token.trim()));
+        .header("Authorization", format!("Session {}", token.trim()));
     if let Some(content_type) = content_type {
         builder = builder.header("Content-Type", content_type);
     }
@@ -514,11 +521,14 @@ fn build_join_setup_fixture() -> JoinSetupFixture {
         facade.clone(),
         Arc::new(WorkingSpaceAccessCryptoFactory),
     );
-    let api_state = DaemonApiState::new(query_service, token, None, SecurityState::new()).with_setup(setup_orchestrator);
+    let pid = std::process::id();
+    let security = Arc::new(SecurityState::new_with_pid(pid));
+    let session_token = security.make_session_token_for_pid(pid);
+    let api_state = DaemonApiState::new(query_service, token, None, security).with_setup(setup_orchestrator);
 
     JoinSetupFixture {
         app: build_router(api_state),
-        token: token_value,
+        token: session_token,
         facade,
     }
 }
@@ -580,13 +590,16 @@ fn build_host_setup_fixture() -> HostSetupFixture {
             ctx.key_slot_store,
             event_tx,
         ));
-        let api_state = DaemonApiState::new(query_service, token, Some(runtime.clone()), SecurityState::new())
+        let pid = std::process::id();
+        let security = Arc::new(SecurityState::new_with_pid(pid));
+        let session_token = security.make_session_token_for_pid(pid);
+        let api_state = DaemonApiState::new(query_service, token, Some(runtime.clone()), security)
             .with_setup(setup_orchestrator)
             .with_pairing_host(pairing_host.clone());
 
         HostSetupFixture {
             app: build_router(api_state),
-            token: token_value,
+            token: session_token,
             runtime,
             pairing_host,
             state,

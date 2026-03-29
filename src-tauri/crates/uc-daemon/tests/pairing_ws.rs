@@ -24,7 +24,10 @@ use uc_daemon::state::RuntimeState;
 struct PairingWsHarness {
     app: axum::Router,
     url: String,
+    /// Bearer token for WebSocket authentication (ws.rs uses is_authorized check directly).
     token: String,
+    /// JWT session token for HTTP route authentication (L2 middleware requires Session token).
+    session_token: String,
     event_tx: tokio::sync::broadcast::Sender<DaemonWsEvent>,
     state: Arc<RwLock<RuntimeState>>,
     handle: tokio::task::JoinHandle<()>,
@@ -47,7 +50,11 @@ async fn spawn_server() -> PairingWsHarness {
     let token_path = tempdir.path().join("daemon.token");
     let token = load_or_create_auth_token(&token_path).unwrap();
     let token_value = std::fs::read_to_string(&token_path).unwrap();
-    let api_state = DaemonApiState::new(query_service, token, None, SecurityState::new());
+    // Pre-register the test process PID so session tokens pass the whitelist check.
+    let pid = std::process::id();
+    let security = Arc::new(SecurityState::new_with_pid(pid));
+    let session_token = security.make_session_token_for_pid(pid);
+    let api_state = DaemonApiState::new(query_service, token, None, security);
     let event_tx = api_state.event_tx.clone();
     let app = build_router(api_state);
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -63,6 +70,7 @@ async fn spawn_server() -> PairingWsHarness {
         app,
         url: format!("ws://{}/ws", addr),
         token: token_value,
+        session_token,
         event_tx,
         state,
         handle,
@@ -106,10 +114,11 @@ async fn next_json(
     serde_json::from_str(socket.next().await.unwrap().unwrap().to_text().unwrap()).unwrap()
 }
 
-fn authed_get_request(uri: &str, token: &str) -> Request<Body> {
+fn authed_get_request(uri: &str, session_token: &str) -> Request<Body> {
+    // Uses JWT session token for L2 HTTP routes (auth_extractor_middleware requires Session prefix)
     Request::builder()
         .uri(uri)
-        .header("Authorization", format!("Bearer {}", token.trim()))
+        .header("Authorization", format!("Session {}", session_token.trim()))
         .body(Body::empty())
         .unwrap()
 }
@@ -362,7 +371,7 @@ async fn pairing_session_http_response_omits_verification_secrets_even_with_real
         .clone()
         .oneshot(authed_get_request(
             "/pairing/sessions/session-4",
-            &harness.token,
+            &harness.session_token,
         ))
         .await
         .unwrap();

@@ -36,7 +36,7 @@ Refactor the clipboard restore loop-prevention mechanism by introducing a single
 
 - **D-11:** `InMemoryClipboardChangeOrigin` is constructed exactly once in `uc-bootstrap/assembly.rs` (via `build_core()`) and exposed through `WiringDeps::clipboard.clipboard_change_origin`
 - **D-12:** `ClipboardWriteCoordinator` is constructed in `uc-bootstrap/assembly.rs` and takes the shared `Arc<dyn ClipboardChangeOriginPort>` as a constructor dependency
-- **D-13:** All daemon workers (`DaemonClipboardChangeHandler`, `InboundClipboardSyncWorker`, `FileSyncOrchestratorWorker`) receive `ClipboardWriteCoordinator` (not raw `ClipboardChangeOriginPort`)
+- **D-13:** All clipboard **write-path** daemon workers (`InboundClipboardSyncWorker`, `FileSyncOrchestratorWorker`) receive `ClipboardWriteCoordinator` (not raw `ClipboardChangeOriginPort`); `DaemonClipboardChangeHandler` retains raw `Arc<dyn ClipboardChangeOriginPort>` as it is on the consume/read path, not the write path
 - **D-14:** Direct construction of `InMemoryClipboardChangeOrigin` outside `uc-bootstrap/assembly.rs` is prevented — the struct remains `pub(crate)` in `uc-infra` and the only constructor is `pub fn new()` callable from bootstrap
 
 ### Coordinator Placement

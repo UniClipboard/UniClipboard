@@ -17,6 +17,7 @@ use tracing::{debug, warn};
 use uc_core::network::daemon_api_strings::{ws_event, ws_topic};
 
 use crate::api::server::DaemonApiState;
+use crate::security::claims::SessionTokenClaims;
 use crate::api::types::{
     DaemonWsEvent, DaemonWsSubscribeRequest, PairedDeviceDto, PairedDevicesChangedPayload,
     PairingFailurePayload, PairingSessionChangedPayload, PairingSessionSummaryDto,
@@ -35,15 +36,51 @@ async fn websocket_upgrade(
     State(state): State<DaemonApiState>,
     headers: HeaderMap,
 ) -> Response {
-    if !state.is_authorized(&headers) {
-        return unauthorized().into_response();
+    // Step 1: Extract session token from Authorization header
+    let token = match headers
+        .get(axum::http::header::AUTHORIZATION)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|h| h.strip_prefix("Session "))
+    {
+        Some(t) => t.to_string(),
+        None => {
+            return ws_unauthorized("missing_session_token").into_response();
+        }
+    };
+
+    // Step 2: Verify JWT using the JWT secret from merged SecurityState
+    let claims = match SessionTokenClaims::verify(&token, &state.security.jwt_secret) {
+        Ok(claims) => claims,
+        Err(e) => {
+            warn!(error = %e, "WS JWT validation failed");
+            return ws_unauthorized("invalid_session_token").into_response();
+        }
+    };
+
+    // Step 3: Check PID whitelist via merged DaemonApiState.security field
+    if !state.security.is_pid_allowed(claims.pid).await {
+        warn!(pid = claims.pid, "WS request from non-whitelisted PID");
+        return ws_forbidden("pid_not_allowed").into_response();
     }
 
-    ws.on_upgrade(move |socket| handle_connection(socket, state))
+    // Step 4: Apply rate limiting using PID from validated JWT claims.
+    // Rate limiting by PID is trustworthy because the PID was extracted from a
+    // validated JWT (signed with the daemon's secret), not from caller-controlled input.
+    if !state.security.rate_limiter.check(&claims.pid.to_string()).await {
+        return ws_rate_limited().into_response();
+    }
+
+    // Step 5: Upgrade the WebSocket, passing claims to the connection handler
+    ws.on_upgrade(move |socket| handle_connection(socket, state, claims))
 }
 
-async fn handle_connection(socket: WebSocket, state: DaemonApiState) {
+async fn handle_connection(socket: WebSocket, state: DaemonApiState, claims: SessionTokenClaims) {
     let topics = Arc::new(RwLock::new(HashSet::<String>::new()));
+    tracing::info!(
+        pid = claims.pid,
+        client_type = %claims.client_type,
+        "websocket connection authenticated"
+    );
     let (outbound_tx, mut outbound_rx) = mpsc::channel::<DaemonWsEvent>(32);
     let mut broadcast_rx = state.event_tx.subscribe();
     let fanout_topics = Arc::clone(&topics);
@@ -261,10 +298,24 @@ fn snapshot_event<T: Serialize>(
     })
 }
 
-fn unauthorized() -> (StatusCode, Json<serde_json::Value>) {
+fn ws_unauthorized(error: &str) -> (StatusCode, Json<serde_json::Value>) {
     (
         StatusCode::UNAUTHORIZED,
-        Json(serde_json::json!({"error": "unauthorized"})),
+        Json(serde_json::json!({"error": error})),
+    )
+}
+
+fn ws_forbidden(error: &str) -> (StatusCode, Json<serde_json::Value>) {
+    (
+        StatusCode::FORBIDDEN,
+        Json(serde_json::json!({"error": error})),
+    )
+}
+
+fn ws_rate_limited() -> (StatusCode, Json<serde_json::Value>) {
+    (
+        StatusCode::TOO_MANY_REQUESTS,
+        Json(serde_json::json!({"error": "rate_limit_exceeded", "retry_after_secs": 60})),
     )
 }
 

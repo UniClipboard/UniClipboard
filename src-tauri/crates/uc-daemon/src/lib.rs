@@ -18,5 +18,6 @@ pub mod process_metadata;
 pub mod rpc;
 pub mod service;
 pub mod socket;
+pub mod security;
 pub mod state;
 pub mod workers;

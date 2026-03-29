@@ -536,10 +536,13 @@ impl SyncInboundClipboardUseCase {
                     "V3 inbound: writing selected representation to OS clipboard"
                 );
 
-                let coordinator = self
-                    .clipboard_write_coordinator
-                    .as_ref()
-                    .context("clipboard_write_coordinator required for Full-mode OS write")?;
+                let Some(coordinator) = self.clipboard_write_coordinator.as_ref() else {
+                    self.rollback_recent_id(&message.id).await;
+                    return Err(anyhow::anyhow!(
+                        "clipboard_write_coordinator required for Full-mode OS write"
+                    ))
+                    .context("V3 inbound: coordinator unavailable");
+                };
                 if let Err(err) = coordinator
                     .write(snapshot_for_os, ClipboardWriteIntent::RemotePush)
                     .await

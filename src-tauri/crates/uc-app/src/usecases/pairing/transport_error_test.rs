@@ -87,7 +87,7 @@ mod tests {
         {
             assert_eq!(res_session_id, session_id);
             assert!(!success);
-            assert!(error.unwrap().contains("TransportError"));
+            assert!(error.unwrap().contains("Connection reset"));
         } else {
             panic!("Expected EmitResult, got {:?}", action);
         }

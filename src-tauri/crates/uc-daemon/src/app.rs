@@ -475,10 +475,10 @@ mod tests {
         );
     }
 
-    /// Verifies that main.rs calls recover_encryption_session before DaemonApp construction.
+    /// Verifies that entrypoint.rs calls recover_encryption_session before DaemonApp construction.
     #[test]
     fn main_calls_recovery_before_daemon_construction() {
-        let main_source = include_str!("main.rs");
+        let main_source = include_str!("entrypoint.rs");
         let recovery_pos = main_source
             .find("recover_encryption_session")
             .expect("main.rs must call recover_encryption_session");

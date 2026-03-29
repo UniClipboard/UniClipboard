@@ -788,3 +788,23 @@ Plans:
 
 - [ ] 72-01-PLAN.md — Add daemon HTTP restore route, http_route constant, and DaemonClipboardClient
 - [ ] 72-02-PLAN.md — Rewire GUI restore_clipboard_entry to daemon proxy, remove dead code
+
+### Phase 73: Refactor clipboard restore loop prevention: introduce ClipboardWriteCoordinator as single write boundary owning origin guard registration, derive meaningful content key, and remove composition-time re-creation risk of origin store
+
+**Goal:** Centralise all programmatic clipboard writes behind a single ClipboardWriteCoordinator that owns guard registration, key derivation, and write orchestration. Lock down InMemoryClipboardChangeOrigin to prevent accidental second-instance construction.
+**Requirements**: PH73-01, PH73-02, PH73-03, PH73-04, PH73-05, PH73-06, PH73-07, PH73-08, PH73-09, PH73-10
+**Depends on:** Phase 72
+**Plans:** 2 plans
+
+**Success Criteria** (what must be TRUE):
+
+1. ClipboardWriteCoordinator exists with write(snapshot, intent) as sole clipboard write API
+2. All 4 callsites (RestoreClipboardSelection, CopyFileToClipboard, SyncInboundClipboard, FileSyncOrchestrator) route through coordinator
+3. No code outside coordinator calls remember_local/remote_snapshot_hash or origin_guard_key on write path
+4. InMemoryClipboardChangeOrigin is pub(crate) — cannot be constructed outside uc-infra
+5. Daemon workers accept Arc<ClipboardWriteCoordinator> instead of raw Arc<dyn ClipboardChangeOriginPort>
+
+Plans:
+
+- [ ] 73-01-PLAN.md — Create ClipboardWriteCoordinator with unit tests, wire into bootstrap and CoreUseCases, lock down InMemoryClipboardChangeOrigin
+- [ ] 73-02-PLAN.md — Refactor all 4 clipboard write callsites to use coordinator, update daemon workers and entrypoint

@@ -31,6 +31,7 @@ pub mod start_network;
 pub mod start_network_after_unlock;
 pub mod storage;
 pub mod sync_planner;
+pub mod unlock_encryption_with_passphrase;
 pub mod update_settings;
 pub mod verify_keychain_access;
 
@@ -57,6 +58,9 @@ pub use pairing::{
 pub use setup::{MarkSetupComplete, SetupError, SetupOrchestrator, SetupPairingFacadePort};
 pub use start_network::StartNetwork;
 pub use start_network_after_unlock::StartNetworkAfterUnlock;
+pub use unlock_encryption_with_passphrase::{
+    UnlockEncryptionWithPassphrase, UnlockWithPassphraseError,
+};
 pub use update_settings::UpdateSettings;
 pub use verify_keychain_access::VerifyKeychainAccess;
 
@@ -283,6 +287,19 @@ impl<'a> CoreUseCases<'a> {
     /// Get the AutoUnlockEncryptionSession use case.
     pub fn auto_unlock_encryption_session(&self) -> crate::usecases::AutoUnlockEncryptionSession {
         crate::usecases::AutoUnlockEncryptionSession::from_ports(
+            self.runtime.deps.security.encryption_state.clone(),
+            self.runtime.deps.security.key_scope.clone(),
+            self.runtime.deps.security.key_material.clone(),
+            self.runtime.deps.security.encryption.clone(),
+            self.runtime.deps.security.encryption_session.clone(),
+        )
+    }
+
+    /// Get the UnlockEncryptionWithPassphrase use case.
+    pub fn unlock_encryption_with_passphrase(
+        &self,
+    ) -> crate::usecases::UnlockEncryptionWithPassphrase {
+        crate::usecases::UnlockEncryptionWithPassphrase::from_ports(
             self.runtime.deps.security.encryption_state.clone(),
             self.runtime.deps.security.key_scope.clone(),
             self.runtime.deps.security.key_material.clone(),

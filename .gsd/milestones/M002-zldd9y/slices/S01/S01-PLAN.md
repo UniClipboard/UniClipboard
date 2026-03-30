@@ -14,7 +14,7 @@
   - Estimate: 20min
   - Files: src-tauri/crates/uc-daemon/src/security/permission.rs, src-tauri/crates/uc-core/src/network/daemon_api_strings.rs, src-tauri/crates/uc-daemon/src/api/ws.rs
   - Verify: cd src-tauri && cargo test -p uc-daemon permission -- --nocapture && cargo test -p uc-core daemon_api_strings -- --nocapture && cargo test -p uc-daemon is_supported_topic -- --nocapture
-- [ ] **T02: Create UnlockEncryptionWithPassphrase use case with tests and CoreUseCases accessor** — 1. Create unlock_encryption_with_passphrase.rs in uc-app/src/usecases/
+- [x] **T02: Created UnlockEncryptionWithPassphrase use case with 8 unit tests and CoreUseCases accessor** — 1. Create unlock_encryption_with_passphrase.rs in uc-app/src/usecases/
 2. Define UnlockWithPassphraseError enum (NotInitialized, ScopeFailed, KeySlotLoadFailed, MissingWrappedMasterKey, KekDeriveFailed, UnwrapFailed, SessionSetFailed)
 3. Implement execute(passphrase: Passphrase) flow: check state → get scope → load keyslot → derive KEK → unwrap master key → set session
 4. Do NOT derive Debug on anything holding Passphrase

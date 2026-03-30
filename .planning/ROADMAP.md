@@ -836,13 +836,15 @@ Plans:
 ### Phase 76: Daemon Settings, Encryption & Storage HTTP API — read/write settings, encryption state, storage stats
 
 **Goal:** Add daemon HTTP endpoints for settings (GET/PUT), encryption state management (get state, unlock, lock), and storage statistics (stats, clear cache). Complete the daemon API surface required for frontend direct connection.
-**Requirements**: TBD
+**Requirements**: PH76-01, PH76-02, PH76-03, PH76-04, PH76-05, PH76-06, PH76-07, PH76-08, PH76-09, PH76-10, PH76-11
 **Depends on:** Phase 75
-**Plans:** 0 plans
+**Plans:** 3 plans
 
 Plans:
 
-- [ ] TBD (run /gsd:plan-phase 76 to break down)
+- [ ] 76-01-PLAN.md — Foundation: L3/L4 permission levels, daemon_api_strings constants, UnlockEncryptionWithPassphrase use case
+- [ ] 76-02-PLAN.md — Settings GET/PUT and Encryption state/unlock/lock HTTP handlers
+- [ ] 76-03-PLAN.md — Storage stats and clear-cache HTTP handlers with L4 confirmation
 
 ### Phase 77: Frontend Daemon HTTP Client & Auth Module — create client framework with session management
 

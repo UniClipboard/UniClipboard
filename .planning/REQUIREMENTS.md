@@ -275,6 +275,20 @@ Requirements for runtime mode separation. Each maps to roadmap phases.
 - [ ] **PH73-09**: `SyncInboundClipboardUseCase` Full-mode OS write path delegates to `coordinator.write(snapshot, RemotePush)` — `REMOTE_SNAPSHOT_HASH_TTL_MS` constant removed from sync_inbound.rs
 - [ ] **PH73-10**: `InboundClipboardSyncWorker` accepts `Arc<ClipboardWriteCoordinator>` instead of `Arc<dyn ClipboardChangeOriginPort>` and passes it to `SyncInboundClipboardUseCase::with_capture_dependencies()`
 
+### Daemon Settings, Encryption & Storage HTTP API
+
+- [ ] **PH76-01**: `PermissionLevel` enum in `uc-daemon/src/security/permission.rs` includes `L3Sensitive = 3` and `L4Dangerous = 4` variants with `from_u8()` support
+- [ ] **PH76-02**: `daemon_api_strings` in uc-core has `ws_topic::ENCRYPTION`, `ws_event::ENCRYPTION_SESSION_READY`, and http_route constants for all Phase 76 endpoints with value assertion tests
+- [ ] **PH76-03**: `UnlockEncryptionWithPassphrase` use case exists in uc-app with passphrase-based KEK derivation, master key unwrap, and session set; `CoreUseCases` exposes accessor
+- [ ] **PH76-04**: GET `/settings` returns all settings JSON via `CoreUseCases::get_settings()` at L2 permission
+- [ ] **PH76-05**: PUT `/settings` persists settings via `CoreUseCases::update_settings()` at L3 permission without OS-level side effects (no autostart, no keyboard shortcuts)
+- [ ] **PH76-06**: GET `/encryption/state` returns `{state, has_keyslot, requires_passphrase}` correctly mapped from `EncryptionState` and `is_ready()`
+- [ ] **PH76-07**: POST `/encryption/unlock` calls `UnlockEncryptionWithPassphrase`, broadcasts `encryption.session-ready` WS event on success, returns 401 on wrong passphrase
+- [ ] **PH76-08**: POST `/encryption/lock` clears encryption session via `EncryptionSessionPort::clear()`
+- [ ] **PH76-09**: GET `/storage/stats` returns `StorageStatsResponse` with total_size_bytes, blob_count, database_size_bytes, cache_size_bytes, spool_size_bytes
+- [ ] **PH76-10**: POST `/storage/clear-cache` with `{confirmed: true}` clears cache and returns freed_bytes
+- [ ] **PH76-11**: POST `/storage/clear-cache` without `confirmed: true` returns 400 with code `confirmation_required` (L4 body confirmation pattern)
+
 ## Out of Scope
 
 | Feature                                | Reason                                                            |

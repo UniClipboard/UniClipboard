@@ -4,7 +4,7 @@
 **Demo:** After this: GET /storage/stats returns all 5 fields; POST /storage/clear-cache with confirmed:true clears cache; without confirmed returns 400
 
 ## Tasks
-- [ ] **T01: Create storage.rs HTTP handler module with stats and clear-cache endpoints** — 1. Create storage.rs: pub fn router() with GET /storage/stats and POST /storage/clear-cache
+- [x] **T01: Created storage.rs with GET /storage/stats (5 fields) and POST /storage/clear-cache (confirmation-required pattern)** — 1. Create storage.rs: pub fn router() with GET /storage/stats and POST /storage/clear-cache
 2. get_storage_stats_handler: call get_storage_stats().execute(), compute spool_size_bytes from spool_dir, get blob_count from clipboard stats total_count
 3. Build StorageStatsResponse DTO with 5 fields: total_size_bytes, blob_count, database_size_bytes, cache_size_bytes, spool_size_bytes
 4. clear_cache_handler: parse ClearCacheRequest with confirmed:bool, return 400 confirmation_required if missing/false

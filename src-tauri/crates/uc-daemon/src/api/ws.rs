@@ -280,6 +280,10 @@ async fn build_snapshot_event(
             )
             .map(Some)
         }
+        ws_topic::ENCRYPTION => {
+            // No snapshot for encryption — only an event is emitted on session_ready.
+            Ok(None)
+        }
         unsupported => anyhow::bail!("unsupported websocket topic: {unsupported}"),
     }
 }

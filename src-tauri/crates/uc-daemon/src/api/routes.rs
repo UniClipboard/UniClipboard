@@ -69,6 +69,8 @@ pub fn router_l1(state: DaemonApiState) -> Router<DaemonApiState> {
 pub fn router_l2_plus(state: DaemonApiState) -> Router<DaemonApiState> {
     let router = Router::new()
         .merge(crate::api::clipboard::router())
+        .merge(crate::api::settings::router())
+        .merge(crate::api::encryption::router())
         .route("/status", get(status))
         .route("/peers", get(peers))
         .route("/paired-devices", get(paired_devices))

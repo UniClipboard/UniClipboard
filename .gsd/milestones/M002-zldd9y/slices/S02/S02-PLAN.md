@@ -4,7 +4,7 @@
 **Demo:** After this: GET /settings, PUT /settings, GET /encryption/state, POST /encryption/unlock, POST /encryption/lock all respond correctly
 
 ## Tasks
-- [ ] **T01: Create settings.rs and encryption.rs HTTP handler modules** — 1. Create settings.rs: pub fn router() with GET/PUT /settings routes
+- [x] **T01: Created settings.rs and encryption.rs HTTP handler modules for daemon API with GET/PUT /settings, GET /encryption/state, POST /encryption/unlock, POST /encryption/lock endpoints** — 1. Create settings.rs: pub fn router() with GET/PUT /settings routes
 2. get_settings_handler: CoreUseCases::get_settings().execute(), return JSON with data+ts
 3. update_settings_handler: parse Json<Settings> with JsonRejection, call update_settings().execute(). NO OS-level side effects (no autostart, no keyboard shortcuts)
 4. Create encryption.rs: pub fn router() with GET /encryption/state, POST /encryption/unlock, POST /encryption/lock

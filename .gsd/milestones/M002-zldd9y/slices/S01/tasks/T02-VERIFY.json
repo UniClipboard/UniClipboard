@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "taskId": "T02",
+  "unitId": "M002-zldd9y/S01/T02",
+  "timestamp": 1774832039664,
+  "passed": false,
+  "discoverySource": "task-plan",
+  "checks": [
+    {
+      "command": "cd src-tauri",
+      "exitCode": 0,
+      "durationMs": 7,
+      "verdict": "pass"
+    },
+    {
+      "command": "cargo test -p uc-app unlock_encryption_with_passphrase -- --nocapture",
+      "exitCode": 101,
+      "durationMs": 41,
+      "verdict": "fail"
+    }
+  ],
+  "retryAttempt": 1,
+  "maxRetries": 2
+}

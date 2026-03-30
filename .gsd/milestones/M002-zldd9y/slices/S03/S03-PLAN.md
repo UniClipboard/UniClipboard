@@ -12,7 +12,7 @@
   - Estimate: 30min
   - Files: src-tauri/crates/uc-daemon/src/api/storage.rs
   - Verify: cd src-tauri && cargo check -p uc-daemon
-- [ ] **T02: Register storage router in routes.rs and update mod.rs** — 1. In mod.rs, add pub mod storage; (if not already present)
+- [x] **T02: Storage router already registered in routes.rs and mod.rs by T01 — T02 confirmed no delta needed** — 1. In mod.rs, add pub mod storage; (if not already present)
 2. In routes.rs router_l2_plus(), merge storage::router()
 3. Run full daemon test suite to verify no regressions
   - Estimate: 10min

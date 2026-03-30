@@ -1,280 +1,69 @@
-# UAT Workflow Capture — S02 Daemon HTTP API
+# Captures
 
-**Date:** 2026-03-30
-**Slice:** M002-zldd9y/S02 (Settings & Encryption HTTP Handlers)
-**Mode:** Live-runtime (required — HTTP handlers need real daemon + runtime state)
+### CAP-8a3f1c2d
 
----
-
-## Workflow Phases
-
-### Phase 1 — Daemon Vault Discovery
-
-The daemon vault is **NOT** in `~/Library/Application Support/uniclipboard/`.
-
-It is at `src-tauri/.app_data/vault/` because:
-- `config.toml` has `vault_key_path = ".app_data/vault/key"`
-- Relative paths resolve from config.toml location (`src-tauri/`)
-- So vault dir = `src-tauri/.app_data/vault/`
-
-Key files in vault:
-- `.initialized_encryption` — exists when encryption is initialized (determines `initialized: true/false`)
-- `keyslot.json` — master key wrapping material
-
-### Phase 2 — Daemon Startup (Clean State)
-
-**Precondition:** Encryption must be `Uninitialized` for daemon to start without keyring recovery.
-
-Steps:
-```bash
-# 1. Kill any running daemon
-pkill -f uniclipboard-daemon
-
-# 2. Remove vault state
-rm -f src-tauri/.app_data/vault/.initialized_encryption
-rm -f src-tauri/.app_data/vault/keyslot.json
-
-# 3. Start daemon with --dev
-./src-tauri/target/release/uniclipboard-daemon --dev
-# Wait for: "HTTP server listening" in logs
-```
-
-If `.initialized_encryption` exists on startup, daemon attempts `auto_unlock_encryption_session()` which loads the KEK from macOS keychain and unwraps the master key. If the passphrase doesn't match, it crashes with:
-```
-Cannot start daemon: encryption session recovery failed: failed to unwrap master key: wrong passphrase
-```
-
-### Phase 3 — Authentication
-
-**Bearer token location:** `/tmp/uniclipboard-daemon.token`
-**Bearer token format:** 64-char hex (HS256 secret for JWT signing)
-
-**Auth flow:**
-```bash
-# Get JWT session token
-TOKEN=$(curl -s -X POST http://127.0.0.1:42715/auth/connect \
-  -H "Authorization: Bearer $BEARER_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d "{\"pid\":$RANDOM,\"clientType\":\"cli\"}" \
-  | jq -r '.sessionToken')
-```
-
-**Critical:** HTTP header uses `Authorization: Session $TOKEN` (not `Bearer`).
-`Bearer` prefix is for `/auth/connect` only. All other endpoints require `Session`.
-
-### Phase 4 — Encryption Initialization (for unlock tests)
-
-The HTTP handlers don't initialize encryption — they only unlock/lock/query. To test unlock/lock:
-```bash
-# Reset setup state
-curl -s -X POST -H "Authorization: Session $TOKEN" \
-  -H "Content-Type: application/json" -d '{}' \
-  http://127.0.0.1:42715/setup/reset
-
-# Host a space
-curl -s -X POST -H "Authorization: Session $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"deviceName":"TestDevice"}' \
-  http://127.0.0.1:42715/setup/host
-
-# Submit passphrase → initializes encryption
-curl -s -X POST -H "Authorization: Session $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"passphrase":"testpass123"}' \
-  http://127.0.0.1:42715/setup/submit-passphrase
-```
-
-After this, GET /encryption/state shows `initialized: true, sessionReady: true`.
-
-### Phase 5 — HTTP API Testing
-
-```bash
-# GET /settings → 200 {data: {...}, ts: <millis>}
-curl -s -H "Authorization: Session $TOKEN" http://127.0.0.1:42715/settings | jq .
-
-# PUT /settings partial merge → 200
-curl -s -X PUT -H "Authorization: Session $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"general":{"device_name":"Test"}}' \
-  http://127.0.0.1:42715/settings | jq .
-
-# GET /encryption/state → 200 {data: {initialized, sessionReady}}
-curl -s -H "Authorization: Session $TOKEN" http://127.0.0.1:42715/encryption/state | jq .
-
-# POST /encryption/unlock wrong passphrase → 401
-curl -s -X POST -H "Authorization: Session $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"passphrase":"wrong"}' \
-  http://127.0.0.1:42715/encryption/unlock
-
-# POST /encryption/lock → 200
-curl -s -X POST -H "Authorization: Session $TOKEN" \
-  -H "Content-Type: application/json" -d '{}' \
-  http://127.0.0.1:42715/encryption/lock
-
-# POST /encryption/unlock correct → 200
-curl -s -X POST -H "Authorization: Session $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"passphrase":"testpass123"}' \
-  http://127.0.0.1:42715/encryption/unlock
-```
-
-### Phase 6 — WebSocket Testing
-
-Requires Node.js with `ws` package.
-
-```bash
-# Lock first (so we have a state transition to observe)
-curl -s -X POST -H "Authorization: Session $TOKEN" \
-  -H "Content-Type: application/json" -d '{}' \
-  http://127.0.0.1:42715/encryption/lock > /dev/null
-
-# Node.js WS test
-node << 'EOF'
-const WebSocket = require('ws');
-const execSync = require('child_process').execSync;
-
-const ws = new WebSocket('ws://127.0.0.1:42715/ws', {
-  headers: { 'Authorization': 'Session ' + process.env.TOKEN }
-});
-
-ws.on('open', () => {
-  ws.send(JSON.stringify({action:'subscribe', topics:['encryption']}));
-});
-
-ws.on('message', d => {
-  const msg = d.toString();
-  console.log('MSG:', msg.substring(0, 200));
-  if (msg.includes('encryption.session_ready')) {
-    console.log('PASS: encryption.session_ready event!');
-    ws.close();
-    process.exit(0);
-  }
-});
-
-ws.on('error', e => { console.error('ERR:', e.message); process.exit(1); });
-
-// After 500ms, trigger unlock
-setTimeout(() => {
-  const r = execSync(
-    'curl -s -X POST -H "Authorization: Session ' + process.env.TOKEN + '" ' +
-    '-H "Content-Type: application/json" ' +
-    '-d \'{"passphrase":"testpass123"}\' ' +
-    'http://127.0.0.1:42715/encryption/unlock'
-  );
-  console.log('Unlock:', r.toString());
-}, 500);
-
-setTimeout(() => {
-  console.log('TIMEOUT - no encryption.session_ready event');
-  process.exit(1);
-}, 5000);
-EOF
-```
-
-### Phase 7 — Cleanup
-
-```bash
-pkill -f uniclipboard-daemon
-rm -f src-tauri/.app_data/vault/.initialized_encryption
-rm -f src-tauri/.app_data/vault/keyslot.json
-```
+**Text:** UAT Workflow: Daemon HTTP API (M002-zldd9y/S02 — Settings & Encryption HTTP Handlers)
+**Captured:** 2026-03-30T02:21:48.000Z
+**Status:** pending
 
 ---
 
-## Bug Found During UAT
+### CAP-1b4e9a7f
 
-### WS `encryption.session_ready` events silently dropped
+**Text:** Daemon vault is at `src-tauri/.app_data/vault/`, not `~/Library/Application Support/uniclipboard/`. Relative paths resolve from `config.toml` location (`src-tauri/`).
+**Captured:** 2026-03-30T02:21:48.000Z
+**Status:** pending
 
-**File:** `src-tauri/crates/uc-daemon/src/api/ws.rs`
+### CAP-2c5d8b3e
 
-**Root cause:** `build_snapshot_event()` had no match arm for `ws_topic::ENCRYPTION`. When a client subscribed to the "encryption" topic:
-1. `subscribe_to_topics()` called `build_snapshot_event(state, "encryption")`
-2. The match hit `unsupported => anyhow::bail!("unsupported websocket topic: {unsupported}")`
-3. The error caused `subscribe_to_topics()` to return early without adding "encryption" to the subscription set
-4. Fan-out loop never matched the topic → events were silently dropped
+**Text:** Key files in vault: `.initialized_encryption` (determines initialized: true/false), `keyslot.json` (master key wrapping material)
+**Captured:** 2026-03-30T02:21:48.000Z
+**Status:** pending
 
-**Note:** `is_supported_topic()` DID include `ENCRYPTION` (so the subscription wasn't rejected), but the missing match arm in `build_snapshot_event()` caused the subscription to fail silently.
+### CAP-3d6e9c4f
 
-**Fix applied:**
-```rust
-// In build_snapshot_event() match block, before `unsupported =>`:
-ws_topic::ENCRYPTION => {
-    // No snapshot for encryption — only an event is emitted on session_ready.
-    Ok(None)
-}
-```
+**Text:** Precondition for clean state: Encryption must be `Uninitialized` for daemon to start without keyring recovery. To reset: `rm -f src-tauri/.app_data/vault/.initialized_encryption src-tauri/.app_data/vault/keyslot.json`
+**Captured:** 2026-03-30T02:21:48.000Z
+**Status:** pending
 
----
+### CAP-4e7f0d5a
 
-## Error Response Format
+**Text:** Bearer token location: `/tmp/uniclipboard-daemon.token`, format: 64-char hex (HS256 secret for JWT signing)
+**Captured:** 2026-03-30T02:21:48.000Z
+**Status:** pending
 
-All error responses use:
-```json
-{
-  "error": {
-    "code": "<snake_case_code>",
-    "message": "<human-readable>"
-  }
-}
-```
+### CAP-5f8a1e6b
 
-Known codes:
-- `wrong_passphrase` → 401 Unauthorized
-- `not_initialized` → 400 Bad Request
-- `bad_request` → 400 Bad Request (malformed JSON)
-- `internal_error` → 500 Internal Server Error
-- `invalid_session_token` → 401 Unauthorized (missing/malformed JWT)
-- `rate_limit_exceeded` → 429 Too Many Requests
+**Text:** Auth header: `Authorization: Bearer <token>` for `/auth/connect` only. All other endpoints require `Authorization: Session <jwt>` (not Bearer).
+**Captured:** 2026-03-30T02:21:48.000Z
+**Status:** pending
 
----
+### CAP-6a9b2f7c
 
-## Port and URL Notes
+**Text:** To initialize encryption (for unlock/lock tests): POST /setup/reset → POST /setup/host → POST /setup/submit-passphrase. After this, GET /encryption/state shows initialized: true, sessionReady: true.
+**Captured:** 2026-03-30T02:21:48.000Z
+**Status:** pending
 
-- Daemon HTTP base: `http://127.0.0.1:42715` (auto-assigned port, from logs)
-- Health check: `GET /health` (no auth required)
-- All other endpoints require `Authorization: Session <jwt>`
-- WS: `ws://127.0.0.1:42715/ws` (uses same auth header)
+### CAP-7b0c3a8d
 
----
+**Text:** Bug found: WS `encryption.session_ready` events silently dropped. Root cause in `src-tauri/crates/uc-daemon/src/api/ws.rs`: `build_snapshot_event()` had no match arm for `ws_topic::ENCRYPTION`. Fix: add `ws_topic::ENCRYPTION => Ok(None)` before `unsupported =>`.
+**Captured:** 2026-03-30T02:21:48.000Z
+**Status:** pending
 
-## Template for Future UAT
+### CAP-8c1d4b9e
 
-```bash
-#!/usr/bin/env bash
-set -euo pipefail
+**Text:** Error response format: `{"error":{"code":"<snake_case_code>","message":"<human-readable>"}}`. Known codes: wrong_passphrase (401), not_initialized (400), bad_request (400), internal_error (500), invalid_session_token (401), rate_limit_exceeded (429)
+**Captured:** 2026-03-30T02:21:48.000Z
+**Status:** pending
 
-PROJECT_ROOT="..."  # adjust
-DAEMON="$PROJECT_ROOT/src-tauri/target/release/uniclipboard-daemon"
-VAULT_DIR="$PROJECT_ROOT/src-tauri/.app_data/vault"
-TOKEN_FILE="/tmp/uniclipboard-daemon.token"
-PORT=42715
+### CAP-9d2e5c0f
 
-cleanup() {
-  pkill -f uniclipboard-daemon || true
-  rm -f "$VAULT_DIR/.initialized_encryption" "$VAULT_DIR/keyslot.json" || true
-}
+**Text:** Daemon HTTP base: `http://127.0.0.1:42715` (auto-assigned port, from logs). Health check: GET /health (no auth). WS: `ws://127.0.0.1:42715/ws`.
+**Captured:** 2026-03-30T02:21:48.000Z
+**Status:** pending
 
-start_daemon() {
-  $DAEMON --dev > /tmp/daemon.log 2>&1 &
-  for i in $(seq 1 40); do
-    lsof -i :$PORT | grep -q LISTEN && return 0
-    sleep 0.5
-  done
-  echo "Daemon failed to start"; cat /tmp/daemon.log; exit 1
-}
+### CAP-a3f4d1e2
 
-get_token() {
-  curl -s -X POST "http://127.0.0.1:$PORT/auth/connect" \
-    -H "Authorization: Bearer $(cat $TOKEN_FILE)" \
-    -H "Content-Type: application/json" \
-    -d "{\"pid\":$$,\"clientType\":\"cli\"}" | jq -r '.sessionToken'
-}
-
-cleanup
-start_daemon
-TOKEN=$(get_token)
-
-# Now run tests...
-curl -s -H "Authorization: Session $TOKEN" "http://127.0.0.1:$PORT/settings"
-```
+**Text:** Template for future UAT: bash script at end of CAPTURES.md documents daemon startup, auth, and HTTP API testing workflow. Reusable for regression testing.
+**Captured:** 2026-03-30T02:21:48.000Z
+**Status:** pending

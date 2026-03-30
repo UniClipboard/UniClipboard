@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "taskId": "T02",
+  "unitId": "M002-zldd9y/S03/T02",
+  "timestamp": 1774836723010,
+  "passed": true,
+  "discoverySource": "task-plan",
+  "checks": [
+    {
+      "command": "cd src-tauri",
+      "exitCode": 0,
+      "durationMs": 11,
+      "verdict": "pass"
+    }
+  ]
+}

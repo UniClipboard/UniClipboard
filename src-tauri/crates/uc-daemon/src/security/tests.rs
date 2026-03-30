@@ -167,13 +167,19 @@ fn permission_level_l2_maps_from_u8() {
 }
 
 #[test]
-fn permission_level_l3_returns_none() {
-    assert_eq!(PermissionLevel::from_u8(3), None);
+fn permission_level_l3_returns_l3_sensitive() {
+    assert_eq!(
+        PermissionLevel::from_u8(3),
+        Some(PermissionLevel::L3Sensitive)
+    );
 }
 
 #[test]
-fn permission_level_l4_returns_none() {
-    assert_eq!(PermissionLevel::from_u8(4), None);
+fn permission_level_l4_returns_l4_dangerous() {
+    assert_eq!(
+        PermissionLevel::from_u8(4),
+        Some(PermissionLevel::L4Dangerous)
+    );
 }
 
 #[test]

@@ -214,6 +214,7 @@ fn is_supported_topic(topic: &str) -> bool {
             | ws_topic::SPACE_ACCESS
             | ws_topic::CLIPBOARD
             | ws_topic::FILE_TRANSFER
+            | ws_topic::ENCRYPTION
     )
 }
 
@@ -334,6 +335,11 @@ mod tests {
     }
 
     #[test]
+    fn is_supported_topic_includes_encryption() {
+        assert!(is_supported_topic(ws_topic::ENCRYPTION));
+    }
+
+    #[test]
     fn is_supported_topic_rejects_unknown() {
         assert!(!is_supported_topic("unknown-topic"));
         assert!(!is_supported_topic(""));
@@ -352,6 +358,7 @@ mod tests {
             ws_topic::SPACE_ACCESS,
             ws_topic::CLIPBOARD,
             ws_topic::FILE_TRANSFER,
+            ws_topic::ENCRYPTION,
         ];
         for topic in known {
             assert!(

@@ -1,4 +1,4 @@
-/// Daemon wire-protocol string constants shared between uc-daemon (server) and uc-daemon-client (consumer).
+//! Daemon wire-protocol string constants shared between uc-daemon (server) and uc-daemon-client (consumer).
 
 /// WebSocket topic names used to subscribe to event streams.
 pub mod ws_topic {
@@ -12,6 +12,7 @@ pub mod ws_topic {
     pub const SPACE_ACCESS: &str = "space-access";
     pub const CLIPBOARD: &str = "clipboard";
     pub const FILE_TRANSFER: &str = "file-transfer";
+    pub const ENCRYPTION: &str = "encryption";
 }
 
 /// WebSocket event type names emitted within topics.
@@ -35,6 +36,7 @@ pub mod ws_event {
     pub const SPACE_ACCESS_STATE_CHANGED: &str = "space_access.state_changed";
     pub const CLIPBOARD_NEW_CONTENT: &str = "clipboard.new_content";
     pub const FILE_TRANSFER_STATUS_CHANGED: &str = "file-transfer.status_changed";
+    pub const ENCRYPTION_SESSION_READY: &str = "encryption.session_ready";
 }
 
 /// Pairing stage labels used in pairing session state payloads.
@@ -72,6 +74,18 @@ pub mod http_route {
     pub const CLIPBOARD_ENTRIES: &str = "/clipboard/entries";
     /// GET /clipboard/stats — clipboard statistics
     pub const CLIPBOARD_STATS: &str = "/clipboard/stats";
+    /// GET /settings — daemon settings
+    pub const SETTINGS: &str = "/settings";
+    /// GET /encryption/state — encryption state
+    pub const ENCRYPTION_STATE: &str = "/encryption/state";
+    /// POST /encryption/unlock — unlock encryption with passphrase
+    pub const ENCRYPTION_UNLOCK: &str = "/encryption/unlock";
+    /// POST /encryption/lock — lock encryption
+    pub const ENCRYPTION_LOCK: &str = "/encryption/lock";
+    /// GET /storage/stats — storage statistics
+    pub const STORAGE_STATS: &str = "/storage/stats";
+    /// POST /storage/clear-cache — clear storage cache
+    pub const STORAGE_CLEAR_CACHE: &str = "/storage/clear-cache";
 }
 
 /// HTTP route paths for daemon auth endpoints.
@@ -96,6 +110,7 @@ mod tests {
         assert_eq!(ws_topic::SPACE_ACCESS, "space-access");
         assert_eq!(ws_topic::CLIPBOARD, "clipboard");
         assert_eq!(ws_topic::FILE_TRANSFER, "file-transfer");
+        assert_eq!(ws_topic::ENCRYPTION, "encryption");
     }
 
     #[test]
@@ -119,6 +134,7 @@ mod tests {
         assert_eq!(ws_event::SPACE_ACCESS_STATE_CHANGED, "space_access.state_changed");
         assert_eq!(ws_event::CLIPBOARD_NEW_CONTENT, "clipboard.new_content");
         assert_eq!(ws_event::FILE_TRANSFER_STATUS_CHANGED, "file-transfer.status_changed");
+        assert_eq!(ws_event::ENCRYPTION_SESSION_READY, "encryption.session_ready");
     }
 
     #[test]
@@ -156,6 +172,12 @@ mod tests {
         assert_eq!(http_route::CLIPBOARD_RESTORE, "/clipboard/restore");
         assert_eq!(http_route::CLIPBOARD_ENTRIES, "/clipboard/entries");
         assert_eq!(http_route::CLIPBOARD_STATS, "/clipboard/stats");
+        assert_eq!(http_route::SETTINGS, "/settings");
+        assert_eq!(http_route::ENCRYPTION_STATE, "/encryption/state");
+        assert_eq!(http_route::ENCRYPTION_UNLOCK, "/encryption/unlock");
+        assert_eq!(http_route::ENCRYPTION_LOCK, "/encryption/lock");
+        assert_eq!(http_route::STORAGE_STATS, "/storage/stats");
+        assert_eq!(http_route::STORAGE_CLEAR_CACHE, "/storage/clear-cache");
     }
 
     #[test]

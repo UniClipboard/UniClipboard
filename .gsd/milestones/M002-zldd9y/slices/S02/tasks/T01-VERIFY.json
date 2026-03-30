@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "taskId": "T01",
+  "unitId": "M002-zldd9y/S02/T01",
+  "timestamp": 1774833592727,
+  "passed": false,
+  "discoverySource": "task-plan",
+  "checks": [
+    {
+      "command": "cd src-tauri",
+      "exitCode": 0,
+      "durationMs": 12,
+      "verdict": "pass"
+    },
+    {
+      "command": "cargo check -p uc-daemon",
+      "exitCode": 101,
+      "durationMs": 44,
+      "verdict": "fail"
+    }
+  ],
+  "retryAttempt": 1,
+  "maxRetries": 2
+}

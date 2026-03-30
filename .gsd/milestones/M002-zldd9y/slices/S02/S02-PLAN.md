@@ -15,7 +15,7 @@
   - Estimate: 45min
   - Files: src-tauri/crates/uc-daemon/src/api/settings.rs, src-tauri/crates/uc-daemon/src/api/encryption.rs
   - Verify: cd src-tauri && cargo check -p uc-daemon
-- [ ] **T02: Register settings and encryption routers in routes.rs, update mod.rs** — 1. In mod.rs, add pub mod encryption; pub mod settings;
+- [x] **T02: Register settings and encryption routers in daemon L2+ HTTP router** — 1. In mod.rs, add pub mod encryption; pub mod settings;
 2. In routes.rs router_l2_plus(), merge settings::router() and encryption::router()
 3. Update routes.rs doc comment re: L3/L4 enforcement
 4. Run full daemon test suite

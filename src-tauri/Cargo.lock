@@ -9455,7 +9455,7 @@ dependencies = [
 
 [[package]]
 name = "uc-cli"
-version = "0.4.0-alpha.1"
+version = "0.4.0-alpha.2"
 dependencies = [
  "anyhow",
  "clap",
@@ -9521,7 +9521,7 @@ dependencies = [
 
 [[package]]
 name = "uc-daemon"
-version = "0.4.0-alpha.1"
+version = "0.4.0-alpha.2"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -9557,7 +9557,7 @@ dependencies = [
 
 [[package]]
 name = "uc-daemon-client"
-version = "0.4.0-alpha.1"
+version = "0.4.0-alpha.2"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -9670,7 +9670,7 @@ dependencies = [
 
 [[package]]
 name = "uc-tauri"
-version = "0.4.0-alpha.1"
+version = "0.4.0-alpha.2"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -9793,7 +9793,7 @@ checksum = "dbc4bc3a9f746d862c45cb89d705aa10f187bb96c76001afab07a0d35ce60142"
 
 [[package]]
 name = "uniclipboard"
-version = "0.4.0-alpha.1"
+version = "0.4.0-alpha.2"
 dependencies = [
  "anyhow",
  "async-trait",

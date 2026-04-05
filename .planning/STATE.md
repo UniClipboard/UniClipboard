@@ -2,9 +2,9 @@
 gsd_state_version: 1.0
 milestone: v0.4.0
 milestone_name: Runtime Mode Separation
-status: Phase complete — ready for verification
+status: Milestone complete
 stopped_at: Completed 87-06-PLAN.md
-last_updated: "2026-04-05T04:40:52.345Z"
+last_updated: "2026-04-05T04:52:21.545Z"
 progress:
   total_phases: 58
   completed_phases: 44
@@ -22,8 +22,8 @@ See: .planning/PROJECT.md (updated 2026-03-09)
 
 ## Current Position
 
-Phase: 87 (otlp-seq-otlp) — EXECUTING
-Plan: 6 of 6
+Phase: 87
+Plan: Not started
 
 ## Current Position
 

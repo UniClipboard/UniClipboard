@@ -5,6 +5,7 @@ import { Provider } from 'react-redux'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { useClipboardEvents } from '../useClipboardEvents'
 import { Filter, getClipboardEntry } from '@/api/clipboardItems'
+import { getEncryptionState } from '@/api/daemon'
 import { getClipboardEntries } from '@/api/daemon/clipboard'
 import clipboardReducer from '@/store/slices/clipboardSlice'
 
@@ -105,8 +106,6 @@ function createWrapper() {
 }
 
 describe('useClipboardEvents', () => {
-  const _mockUnlisten = vi.fn()
-
   beforeEach(() => {
     vi.clearAllMocks()
     dispatchedActions = []
@@ -137,6 +136,7 @@ describe('useClipboardEvents', () => {
       capturedAt: 1000,
       updatedAt: 1000,
       activeTime: 0,
+      isEncrypted: false,
       isFavorited: false,
       isDownloaded: true,
       linkUrls: null,

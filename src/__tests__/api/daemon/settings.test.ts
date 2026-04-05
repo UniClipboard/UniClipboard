@@ -150,7 +150,7 @@ describe('Settings API', () => {
       expect(mockDaemonClient.request).toHaveBeenCalledTimes(1)
       const [, opts] = mockDaemonClient.request.mock.calls[0] as [string, RequestInit]
       expect((opts as { method: string }).method).toBe('PUT')
-      const body = (opts as { body: Record<string, unknown> }).body
+      const body = (opts as unknown as { body: Record<string, unknown> }).body
       expect(body).toHaveProperty('general')
       expect(body.general as Record<string, unknown>).toHaveProperty('autoStart')
       expect(body.general as Record<string, unknown>).toHaveProperty('theme')
@@ -186,7 +186,7 @@ describe('Settings API', () => {
 
       expect(mockDaemonClient.request).toHaveBeenCalledTimes(1)
       const [, opts] = mockDaemonClient.request.mock.calls[0] as [string, RequestInit]
-      const body = (opts as { body: Record<string, unknown> }).body
+      const body = (opts as unknown as { body: Record<string, unknown> }).body
       expect(body.keyboardShortcuts).toEqual({
         shortcuts: {
           toggle_main_window: ['CommandOrControl+Shift+V', 'Alt+Shift+V'],

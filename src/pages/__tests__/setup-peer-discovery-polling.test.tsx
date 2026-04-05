@@ -3,9 +3,7 @@
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import type { HTMLAttributes, ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { getP2PPeers } from '@/api/daemon/pairing'
 import { daemonWs } from '@/lib/daemon-ws'
-import { selectJoinPeer } from '@/api/daemon/setup'
 import SetupPage from '@/pages/SetupPage'
 
 // Module-level mock refs — reset in beforeEach
@@ -54,10 +52,12 @@ vi.mock('@/api/daemon/setup', () => ({
 }))
 
 // Capture daemonWs.subscribe handlers for test injection
-const capturedWsHandlers: Array<(event: { topic: string; eventType: string; payload: unknown }) => void> = []
+const capturedWsHandlers: Array<
+  (event: { topic: string; eventType: string; payload: unknown }) => void
+> = []
 vi.mock('@/lib/daemon-ws', () => ({
   daemonWs: {
-    subscribe: vi.fn((_topics: string[], handler: typeof capturedWsHandlers[number]) => {
+    subscribe: vi.fn((_topics: string[], handler: (typeof capturedWsHandlers)[number]) => {
       capturedWsHandlers.push(handler)
       return vi.fn(() => {
         const idx = capturedWsHandlers.indexOf(handler)

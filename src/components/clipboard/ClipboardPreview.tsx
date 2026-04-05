@@ -81,7 +81,7 @@ const ClipboardPreview: React.FC<ClipboardPreviewProps> = ({ item }) => {
       if (textContent?.has_detail) {
         setIsLoadingText(true)
         getClipboardEntryResource(item.id)
-          .then(resource => fetchClipboardResourceText(resource))
+          .then(resource => (resource ? fetchClipboardResourceText(resource) : ''))
           .then(text => {
             if (!cancelled) setFullText(text)
           })
@@ -96,7 +96,7 @@ const ClipboardPreview: React.FC<ClipboardPreviewProps> = ({ item }) => {
       setIsLoadingImage(true)
       getClipboardEntryResource(item.id)
         .then(resource => {
-          if (!cancelled) setImageUrl(getResourceImageUrl(resource))
+          if (!cancelled) setImageUrl(resource ? getResourceImageUrl(resource) : null)
         })
         .catch(e => console.error('Failed to load image:', e))
         .finally(() => {

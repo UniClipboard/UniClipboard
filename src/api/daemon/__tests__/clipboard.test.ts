@@ -260,7 +260,7 @@ describe('getEntryDetail HTTP contract', () => {
     const { getEntryDetail } = await import('../clipboard')
 
     const notFoundError = new Error('not found')
-    ;(notFoundError as { code: string }).code = 'NOT_FOUND'
+    ;(notFoundError as unknown as { code: string }).code = 'NOT_FOUND'
     vi.mocked(daemonClient.request).mockRejectedValue(notFoundError)
 
     const result = await getEntryDetail('nonexistent-id')
@@ -306,7 +306,7 @@ describe('getClipboardEntryResource HTTP contract', () => {
     const { getClipboardEntryResource } = await import('../clipboard')
 
     const notFoundError = new Error('not found')
-    ;(notFoundError as { code: string }).code = 'NOT_FOUND'
+    ;(notFoundError as unknown as { code: string }).code = 'NOT_FOUND'
     vi.mocked(daemonClient.request).mockRejectedValue(notFoundError)
 
     const result = await getClipboardEntryResource('nonexistent-id')

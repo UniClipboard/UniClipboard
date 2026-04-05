@@ -299,9 +299,9 @@ export class DaemonWsClient {
     this._recordActivity()
 
     const event: DaemonWsEvent = {
-      topic: raw.topic,
+      topic: raw.topic as string,
       eventType: (raw.type ?? raw.event_type) as string,
-      ts: raw.ts,
+      ts: raw.ts as number,
       sessionId: (raw.sessionId ?? raw.session_id ?? null) as string | null,
       payload: raw.payload,
     }

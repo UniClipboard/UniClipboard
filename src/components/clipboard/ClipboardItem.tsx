@@ -70,7 +70,7 @@ const ClipboardItem: React.FC<ClipboardItemProps> = ({
     getClipboardEntryResource(entryId)
       .then(resource => {
         if (!cancelled) {
-          setOriginalImageUrl(getResourceImageUrl(resource))
+          setOriginalImageUrl(resource ? getResourceImageUrl(resource) : null)
         }
       })
       .catch(e => {
@@ -129,6 +129,9 @@ const ClipboardItem: React.FC<ClipboardItemProps> = ({
       setIsLoadingDetail(true)
       try {
         const resource = await getClipboardEntryResource(entryId)
+        if (!resource) {
+          throw new Error('Resource not found')
+        }
         const fullText = await fetchClipboardResourceText(resource)
         setDetailContent(fullText)
         setIsExpanded(true)

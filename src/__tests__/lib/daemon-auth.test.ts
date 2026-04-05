@@ -172,8 +172,10 @@ describe('daemon-auth module', () => {
       await loadDaemonAuth()
 
       const leaks = (spy: ReturnType<typeof vi.spyOn>) =>
-        spy.mock.calls.filter(call =>
-          call.some(value => typeof value === 'string' && value.includes('tauri-bearer-token'))
+        spy.mock.calls.filter((call: unknown[]) =>
+          call.some(
+            (value: unknown) => typeof value === 'string' && value.includes('tauri-bearer-token')
+          )
         )
 
       expect(leaks(errorSpy)).toHaveLength(0)

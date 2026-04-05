@@ -1,6 +1,7 @@
 import { act, renderHook, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { getSetupState, onSetupStateChanged, onSpaceAccessCompleted } from '@/api/setup'
+import type { SetupStateChangedEvent, SpaceAccessCompletedEvent } from '@/api/setup'
 import {
   ensureSetupRealtimeSync,
   resetSetupRealtimeStoreForTests,
@@ -262,9 +263,7 @@ describe('setupRealtimeStore', () => {
 
   it('logs space_access_ignored decision when setup is already Completed on the sponsor side', async () => {
     const consoleSpy = vi.spyOn(console, 'debug').mockImplementation(() => {})
-    let spaceAccessCallback:
-      | ((event: { sessionId: string; success: boolean }) => Promise<void>)
-      | null = null
+    let spaceAccessCallback: ((event: SpaceAccessCompletedEvent) => void) | null = null
 
     vi.mocked(getSetupState).mockResolvedValue('Completed')
     vi.mocked(onSetupStateChanged).mockResolvedValue(() => {})
@@ -281,7 +280,12 @@ describe('setupRealtimeStore', () => {
 
     // Fire space access completed while setup is already 'Completed' (sponsor side behavior)
     await act(async () => {
-      await spaceAccessCallback?.({ sessionId: 'sess-sponsor', success: true })
+      spaceAccessCallback?.({
+        sessionId: 'sess-sponsor',
+        peerId: 'peer-sponsor',
+        success: true,
+        ts: 1,
+      })
     })
 
     // Observability: space_access_ignored must be logged with setup_already_completed reason
@@ -325,9 +329,7 @@ describe('setupRealtimeStore', () => {
     // The store itself should apply every callback call it receives.
     // Deduplication is the responsibility of setup.ts (onSetupStateChanged), not the store.
     // This test verifies the store applies each realtime event it receives without internal dedupe.
-    let realtimeCallback:
-      | ((event: { sessionId: string; state: unknown; ts: number }) => void)
-      | null = null
+    let realtimeCallback: ((event: SetupStateChangedEvent) => void) | null = null
 
     vi.mocked(getSetupState).mockResolvedValue('Welcome')
     vi.mocked(onSetupStateChanged).mockImplementation(async callback => {

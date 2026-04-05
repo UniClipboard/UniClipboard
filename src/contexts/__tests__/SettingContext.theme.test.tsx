@@ -1,12 +1,12 @@
 import { renderHook, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { getSettings } from '@/api/daemon'
+import type { Settings } from '@/api/daemon/settings'
 import { DEFAULT_THEME_COLOR } from '@/constants/theme'
 import { SettingProvider } from '@/contexts/SettingContext'
 import { useSetting } from '@/hooks/useSetting'
 import { connectDaemonWs } from '@/lib/daemon-ws-bootstrap'
 import { invokeWithTrace } from '@/lib/tauri-command'
-import type { Settings } from '@/types/setting'
 
 vi.mock('@/api/daemon', () => ({
   getSettings: vi.fn(),
@@ -75,6 +75,15 @@ const baseSetting: Settings = {
     sessionTimeout: 300,
     maxRetries: 3,
     protocolVersion: '1.0.0',
+  },
+  keyboardShortcuts: {},
+  fileSync: {
+    fileSyncEnabled: true,
+    smallFileThreshold: 10 * 1024 * 1024,
+    maxFileSize: 5 * 1024 * 1024 * 1024,
+    fileCacheQuotaPerDevice: 500 * 1024 * 1024,
+    fileRetentionHours: 24,
+    fileAutoCleanup: true,
   },
 }
 

@@ -52,6 +52,8 @@ vi.mock('@/api/daemon/client', () => ({
 }))
 
 const { DaemonWsClient } = await import('@/lib/daemon-ws')
+type DaemonWsEvent = import('@/lib/daemon-ws').DaemonWsEvent
+type ClientInstance = InstanceType<typeof DaemonWsClient>
 
 // ── Helpers ─────────────────────────────────────────────────
 
@@ -76,14 +78,14 @@ function closeSocket(ws: MockWebSocket): void {
   if (ws.onclose) ws.onclose(new CloseEvent('close', { wasClean: false }))
 }
 
-function freshClient(): { client: DaemonWsClient } {
+function freshClient(): { client: ClientInstance } {
   MockWebSocket._nextId = 0
   const client = new DaemonWsClient((url: string) => new MockWebSocket(url) as unknown as WebSocket)
   return { client }
 }
 
-function currentWs(client: DaemonWsClient): MockWebSocket {
-  return client['_ws'] as MockWebSocket
+function currentWs(client: ClientInstance): MockWebSocket {
+  return client['_ws'] as unknown as MockWebSocket
 }
 
 // ── connect() ─────────────────────────────────────────────────
@@ -227,7 +229,7 @@ describe('subscribe()', () => {
     await p
 
     const received: object[] = []
-    client.subscribe(['clipboard'], e => received.push(e))
+    client.subscribe(['clipboard'], (e: DaemonWsEvent) => received.push(e))
 
     receiveMessage(ws, {
       topic: 'clipboard',
@@ -255,7 +257,7 @@ describe('subscribe()', () => {
     await p
 
     const received: object[] = []
-    client.subscribe(['pairing'], e => received.push(e))
+    client.subscribe(['pairing'], (e: DaemonWsEvent) => received.push(e))
 
     receiveMessage(ws, {
       topic: 'pairing',
@@ -319,7 +321,7 @@ describe('subscribe()', () => {
     await p
 
     const received: object[] = []
-    client.subscribe(['clipboard'], e => received.push(e))
+    client.subscribe(['clipboard'], (e: DaemonWsEvent) => received.push(e))
 
     receiveMessage(ws, {
       topic: 'clipboard',
@@ -383,7 +385,7 @@ describe('reconnect', () => {
     for (let i = 1; i <= 10; i++) {
       closeSocket(ws)
       vi.advanceTimersByTime(1000 * 2 ** (i - 1))
-      const newWs = client['_ws'] as MockWebSocket
+      const newWs = client['_ws'] as unknown as MockWebSocket
       openSocket(newWs)
       Object.assign(ws, newWs)
       expect(client['_reconnectAttempt']).toBe(i)
@@ -426,11 +428,11 @@ describe('reconnect', () => {
     vi.runAllTicks()
 
     const received: object[] = []
-    client.subscribe(['clipboard'], e => received.push(e))
+    client.subscribe(['clipboard'], (e: DaemonWsEvent) => received.push(e))
 
     closeSocket(ws)
     vi.advanceTimersByTime(1000)
-    const newWs = client['_ws'] as MockWebSocket
+    const newWs = client['_ws'] as unknown as MockWebSocket
     openSocket(newWs)
 
     receiveMessage(newWs, {
@@ -459,8 +461,8 @@ describe('Topic filtering', () => {
     const clipboardEvents: object[] = []
     const encryptionEvents: object[] = []
 
-    client.subscribe(['clipboard'], e => clipboardEvents.push(e))
-    client.subscribe(['encryption'], e => encryptionEvents.push(e))
+    client.subscribe(['clipboard'], (e: DaemonWsEvent) => clipboardEvents.push(e))
+    client.subscribe(['encryption'], (e: DaemonWsEvent) => encryptionEvents.push(e))
 
     receiveMessage(ws, {
       topic: 'clipboard',
@@ -482,7 +484,7 @@ describe('Topic filtering', () => {
     await p
 
     const received: object[] = []
-    client.subscribe(['encryption'], e => received.push(e))
+    client.subscribe(['encryption'], (e: DaemonWsEvent) => received.push(e))
 
     receiveMessage(ws, {
       topic: 'encryption',
@@ -504,7 +506,7 @@ describe('Topic filtering', () => {
     await p
 
     const received: object[] = []
-    client.subscribe(['clipboard'], e => received.push(e))
+    client.subscribe(['clipboard'], (e: DaemonWsEvent) => received.push(e))
 
     receiveMessage(ws, {
       topic: 'peers',
@@ -572,7 +574,7 @@ describe('Rapid events', () => {
     await p
 
     const received: object[] = []
-    client.subscribe(['clipboard'], e => received.push(e))
+    client.subscribe(['clipboard'], (e: DaemonWsEvent) => received.push(e))
 
     for (let i = 0; i < 20; i++) {
       receiveMessage(ws, {
@@ -595,7 +597,7 @@ describe('Rapid events', () => {
     await p
 
     const received: object[] = []
-    const unsub = client.subscribe(['clipboard'], e => received.push(e))
+    const unsub = client.subscribe(['clipboard'], (e: DaemonWsEvent) => received.push(e))
 
     receiveMessage(ws, {
       topic: 'clipboard',
@@ -633,7 +635,7 @@ describe('Event latency', () => {
     await p
 
     const received: object[] = []
-    client.subscribe(['clipboard'], e => received.push(e))
+    client.subscribe(['clipboard'], (e: DaemonWsEvent) => received.push(e))
 
     for (let i = 0; i < 10; i++) {
       receiveMessage(ws, {
@@ -656,7 +658,7 @@ describe('Event latency', () => {
     await p
 
     const received: object[] = []
-    client.subscribe(['clipboard'], e => received.push(e))
+    client.subscribe(['clipboard'], (e: DaemonWsEvent) => received.push(e))
 
     for (let i = 0; i < 5; i++) {
       receiveMessage(ws, {

@@ -19,13 +19,6 @@ import { vi } from 'vitest'
 export const _tauriEventRegistry: Map<string, (payload: unknown) => void> = new Map()
 
 vi.mock('@tauri-apps/api/event', () => {
-  const { _tauriEventRegistry: registry } = jest.requireActual('@tauri-apps/api/event' as never) as {
-    _tauriEventRegistry: typeof _tauriEventRegistry
-  }
-  // Re-assign so the closure captures the exported _tauriEventRegistry.
-  // (Jest's jest.requireActual won't work here — use the module-level export instead.)
-  // Actually we just capture the export directly:
-  // The mock captures the module's _tauriEventRegistry via closure.
   return {
     listen: vi.fn((eventName: string, handler: (event: { payload: unknown }) => void) => {
       _tauriEventRegistry.set(eventName, handler as (payload: unknown) => void)

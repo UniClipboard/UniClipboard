@@ -410,7 +410,7 @@ const StorageSection: React.FC = () => {
   const handleClearCache = async () => {
     setClearingCache(true)
     try {
-      await storageApi.clearCache()
+      await storageApi.clearCache(true)
       await loadStats()
     } catch (err) {
       console.error('Failed to clear cache:', err)

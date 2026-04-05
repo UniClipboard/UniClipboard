@@ -44,6 +44,7 @@ mod context;
 pub mod flow;
 pub mod format;
 mod init;
+pub mod otlp;
 pub mod profile;
 pub mod seq;
 pub mod span_fields;

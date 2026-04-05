@@ -136,7 +136,7 @@ impl CaptureClipboardUseCase {
         // The origin field distinguishes local capture from remote push.
         let root = info_span!(
             "clipboard.flow",
-            origin = "local_capture",
+            origin = ?origin,
         );
 
         async move {

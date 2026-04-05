@@ -59,8 +59,15 @@ pub struct ClipboardMessage {
     pub payload_version: ClipboardPayloadVersion,
     /// Flow correlation ID from the originating capture pipeline.
     /// Defaults to None for backward compatibility with older peers.
+    #[deprecated(
+        note = "Phase 87: replaced by W3C traceparent field. Do not read or write. Scheduled for full removal in a future protocol cleanup phase."
+    )]
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub origin_flow_id: Option<String>,
+    /// W3C traceparent header for cross-device distributed tracing (Phase 87).
+    /// Defaults to None for backward compatibility with older peers.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub traceparent: Option<String>,
     /// File transfer mappings for cross-platform path rewriting.
     /// When present, the receiver rewrites file paths to local cache locations.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -68,6 +75,7 @@ pub struct ClipboardMessage {
 }
 
 #[cfg(test)]
+#[allow(deprecated)]
 mod tests {
     use super::*;
     use chrono::Utc;
@@ -100,6 +108,7 @@ mod tests {
             origin_device_name: "Test Device".to_string(),
             payload_version: ClipboardPayloadVersion::V3,
             origin_flow_id: None,
+            traceparent: None,
             file_transfers: vec![],
         };
 
@@ -119,6 +128,7 @@ mod tests {
             origin_device_name: "Test Device".to_string(),
             payload_version: ClipboardPayloadVersion::V3,
             origin_flow_id: None,
+            traceparent: None,
             file_transfers: vec![],
         };
 
@@ -203,6 +213,7 @@ mod tests {
             origin_device_name: "D".to_string(),
             payload_version: ClipboardPayloadVersion::V3,
             origin_flow_id: Some("01234567-89ab-cdef-0123-456789abcdef".to_string()),
+            traceparent: None,
             file_transfers: vec![],
         };
         let json = serde_json::to_string(&msg).unwrap();

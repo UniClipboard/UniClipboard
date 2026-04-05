@@ -303,6 +303,7 @@ impl InboundClipboardSyncWorker {
 // ---------------------------------------------------------------------------
 
 #[cfg(test)]
+#[allow(deprecated)]
 mod tests {
     use super::*;
     use std::sync::atomic::{AtomicUsize, Ordering};
@@ -646,6 +647,7 @@ mod tests {
             origin_device_name: "test-peer".to_string(),
             payload_version: ClipboardPayloadVersion::V3,
             origin_flow_id: None,
+            traceparent: None,
             file_transfers: vec![],
         };
         (message, plaintext)

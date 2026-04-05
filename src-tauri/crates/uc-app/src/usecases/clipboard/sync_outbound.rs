@@ -288,6 +288,7 @@ impl SyncOutboundClipboardUseCase {
         };
 
         // Build the JSON header (V3: encrypted payload goes as raw trailing bytes)
+        #[allow(deprecated)]
         let clipboard_header = ClipboardMessage {
             id: message_id,
             content_hash,
@@ -297,6 +298,7 @@ impl SyncOutboundClipboardUseCase {
             origin_device_name,
             payload_version: ClipboardPayloadVersion::V3,
             origin_flow_id,
+            traceparent: None,
             file_transfers,
         };
 

@@ -1,19 +1,14 @@
 //! Wave 0 scaffold for Phase 87. Verifies serde backward-compatibility of the new
-//! `ClipboardMessage.traceparent` field that will be added in Plan 03.
-//!
-//! These tests are gated behind `__wave0_scaffold_87_traceparent` feature so the
-//! default workspace build remains green until Plan 03 adds the field. After Plan 03
-//! lands, run:
-//!   cd src-tauri && cargo test -p uc-core --features __wave0_scaffold_87_traceparent
-//! to flip them green.
+//! `ClipboardMessage.traceparent` field added in Plan 03.
 //!
 //! The test pattern mirrors `origin_flow_id_defaults_to_none_when_missing_from_json`
 //! (clipboard.rs line ~180) which established the serde(default) + skip_serializing_if
 //! backward-compat convention for Phase 21.
-#![cfg(feature = "__wave0_scaffold_87_traceparent")]
+
+#![allow(deprecated)]
 
 use chrono::Utc;
-use uc_core::network::protocol::clipboard::{ClipboardMessage, ClipboardPayloadVersion};
+use uc_core::network::protocol::{ClipboardMessage, ClipboardPayloadVersion};
 
 /// REQ-87-06 — Backward compat: older peers that omit `traceparent` must still deserialize.
 ///
@@ -72,7 +67,7 @@ fn traceparent_roundtrips_when_present() {
 #[test]
 fn traceparent_field_skipped_when_none_in_output() {
     let msg = ClipboardMessage {
-        id: "test-traceparent-skip".to_string(),
+        id: "test-skip-field".to_string(), // NOTE: must NOT contain "traceparent" substring
         content_hash: "h".to_string(),
         encrypted_content: vec![],
         timestamp: Utc::now(),
@@ -86,7 +81,7 @@ fn traceparent_field_skipped_when_none_in_output() {
 
     let json = serde_json::to_string(&msg).expect("serialize with traceparent=None");
     assert!(
-        !json.contains("traceparent"),
-        "traceparent key must NOT appear in serialized JSON when field is None (skip_serializing_if)"
+        !json.contains("\"traceparent\""),
+        "traceparent key must NOT appear in serialized JSON when field is None (skip_serializing_if): {json}"
     );
 }

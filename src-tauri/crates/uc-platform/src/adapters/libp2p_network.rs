@@ -2427,6 +2427,7 @@ fn apply_peer_not_ready(caches: &mut PeerCaches, peer_id: &str) -> Option<Networ
 }
 
 #[cfg(test)]
+#[allow(deprecated)]
 mod tests {
     use super::*;
     use crate::adapters::{InMemoryEncryptionSessionPort, PairingRuntimeOwner};
@@ -2999,6 +3000,7 @@ mod tests {
             origin_device_name: "Desk".to_string(),
             payload_version: ClipboardPayloadVersion::V3,
             origin_flow_id: None,
+            traceparent: None,
             file_transfers: vec![],
         };
 
@@ -3622,6 +3624,7 @@ mod tests {
             origin_device_name: "Adapter A".to_string(),
             payload_version: uc_core::network::protocol::ClipboardPayloadVersion::V3,
             origin_flow_id: None,
+            traceparent: None,
             file_transfers: vec![],
         };
         // Use frame_to_bytes for the two-segment wire format (header + no trailing payload for this test)

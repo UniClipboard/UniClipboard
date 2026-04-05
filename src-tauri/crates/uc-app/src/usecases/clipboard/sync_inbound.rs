@@ -711,6 +711,7 @@ fn select_highest_priority_repr_index(representations: &[BinaryRepresentation]) 
 }
 
 #[cfg(test)]
+#[allow(deprecated)]
 mod tests {
     use super::*;
 
@@ -1162,6 +1163,7 @@ mod tests {
             origin_device_name: "peer-device".to_string(),
             payload_version: ClipboardPayloadVersion::V3,
             origin_flow_id: None,
+            traceparent: None,
             file_transfers: vec![],
         };
         (message, plaintext)
@@ -1611,6 +1613,7 @@ mod tests {
             origin_device_name: "peer-device".to_string(),
             payload_version: ClipboardPayloadVersion::V3,
             origin_flow_id: None,
+            traceparent: None,
             file_transfers: vec![],
         };
 
@@ -1744,6 +1747,7 @@ mod tests {
             origin_device_name: "peer-device".to_string(),
             payload_version: ClipboardPayloadVersion::V3,
             origin_flow_id: None,
+            traceparent: None,
             file_transfers: vec![],
         };
 

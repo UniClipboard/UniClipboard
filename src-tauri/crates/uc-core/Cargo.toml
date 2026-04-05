@@ -57,5 +57,3 @@ mockall = "0.14.0"
 [features]
 default = ["tracing"]
 logging = ["tracing"]
-# Wave 0 scaffold for Phase 87 (plan 03 adds ClipboardMessage.traceparent field to flip green)
-__wave0_scaffold_87_traceparent = []

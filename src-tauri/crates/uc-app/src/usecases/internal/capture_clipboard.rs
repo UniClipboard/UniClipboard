@@ -3,7 +3,7 @@ use std::time::SystemTime;
 
 use anyhow::Result;
 use futures::future::try_join_all;
-use tracing::{debug, field, info, info_span, warn, Instrument, Span};
+use tracing::{debug, info, info_span, warn, Instrument};
 use uc_observability::stages;
 
 use uc_core::ids::{EntryId, EventId};
@@ -130,23 +130,16 @@ impl CaptureClipboardUseCase {
         &self,
         snapshot: SystemClipboardSnapshot,
         origin: ClipboardChangeOrigin,
-        flow_id: Option<String>,
+        _flow_id: Option<String>,
     ) -> Result<Option<EntryId>> {
-        let span = info_span!(
-            "usecase.capture_clipboard.execute",
-            source = "callback",
-            origin = ?origin,
-            representations = snapshot.representations.len(),
-            total_size_bytes = snapshot.total_size_bytes(),
-            device_id = %self.device_identity.current_device_id(),
-            entry_id = field::Empty,
-            event_id = field::Empty,
-            flow_id = field::Empty,
+        // Root span: all pipeline stages are children of clipboard.flow.
+        // The origin field distinguishes local capture from remote push.
+        let root = info_span!(
+            "clipboard.flow",
+            origin = "local_capture",
         );
+
         async move {
-            if let Some(ref fid) = flow_id {
-                Span::current().record("flow_id", tracing::field::display(fid));
-            }
             if origin == ClipboardChangeOrigin::LocalRestore {
                 info!(origin = ?origin, "Skipping clipboard capture");
                 return Ok(None);
@@ -162,7 +155,6 @@ impl CaptureClipboardUseCase {
             info!("Starting clipboard capture with provided snapshot");
 
             let event_id = EventId::new();
-            Span::current().record("event_id", tracing::field::display(&event_id));
             let captured_at_ms = snapshot.ts_ms;
             let source_device = self.device_identity.current_device_id();
             let snapshot_hash = snapshot.snapshot_hash();
@@ -184,7 +176,7 @@ impl CaptureClipboardUseCase {
                     .collect();
                 try_join_all(normalized_futures).await
             }
-            .instrument(info_span!("normalize", stage = stages::NORMALIZE))
+            .instrument(info_span!(stages::NORMALIZE)) // matches stages::NORMALIZE = "clipboard.normalize"
             .await?;
 
             // Aggregated summary per capture (per-representation details at trace level)
@@ -219,7 +211,7 @@ impl CaptureClipboardUseCase {
                     .insert_event(&new_event, &normalized_reps)
                     .await
             }
-            .instrument(info_span!("persist_event", stage = stages::PERSIST_EVENT))
+            .instrument(info_span!(stages::PERSIST_EVENT)) // matches stages::PERSIST_EVENT = "clipboard.persist_event"
             .await?;
 
             // Cache representations for immediate access by the background blob worker.
@@ -239,21 +231,17 @@ impl CaptureClipboardUseCase {
                 }
                 Ok::<(), anyhow::Error>(())
             }
-            .instrument(info_span!(
-                "cache_representations",
-                stage = stages::CACHE_REPRESENTATIONS
-            ))
+            .instrument(info_span!(stages::CACHE_REPRESENTATIONS)) // matches stages::CACHE_REPRESENTATIONS
             .await?;
 
-            // 4. policy.select(snapshot)
+            // 4. policy.select(snapshot) — purely sync, .entered() is safe (no .await inside)
             let (entry_id, new_selection) = {
-                let _guard = info_span!("select_policy", stage = stages::SELECT_POLICY).entered();
+                let _guard = info_span!(stages::SELECT_POLICY).entered(); // matches stages::SELECT_POLICY
                 let entry_id = EntryId::new();
                 let selection = self.representation_policy.select(&snapshot)?;
                 let new_selection = ClipboardSelectionDecision::new(entry_id.clone(), selection);
                 (entry_id, new_selection)
             };
-            Span::current().record("entry_id", tracing::field::display(&entry_id));
 
             // 5. entry_repo.insert_entry
             //
@@ -279,7 +267,7 @@ impl CaptureClipboardUseCase {
                     .save_entry_and_selection(&new_entry, &new_selection)
                     .await
             }
-            .instrument(info_span!("persist_entry", stage = stages::PERSIST_ENTRY))
+            .instrument(info_span!(stages::PERSIST_ENTRY)) // matches stages::PERSIST_ENTRY = "clipboard.persist_entry"
             .await?;
 
             info!(event_id = %event_id, entry_id = %entry_id, "Clipboard capture completed");
@@ -318,13 +306,13 @@ impl CaptureClipboardUseCase {
                             }
                         }
                     }
-                    .instrument(info_span!("spool_blobs", stage = stages::SPOOL_BLOBS)),
+                    .instrument(info_span!(stages::SPOOL_BLOBS)), // matches stages::SPOOL_BLOBS = "clipboard.spool_blobs"
                 );
             }
 
             Ok(Some(entry_id))
         }
-        .instrument(span)
+        .instrument(root)
         .await
     }
 

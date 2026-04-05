@@ -1,28 +1,29 @@
-//! Stage name constants for clipboard capture flow correlation.
+//! Phase 87: stage constants are now dotted span names (OTel semconv-aligned).
+//! Used directly as info_span! names.
 //!
 //! Each constant represents a discrete stage in the clipboard capture pipeline.
 //! Used as tracing span names to provide consistent, queryable stage identifiers
 //! across the `uc-app` and `uc-tauri` crates.
 
-pub const DETECT: &str = "detect";
-pub const NORMALIZE: &str = "normalize";
-pub const PERSIST_EVENT: &str = "persist_event";
-pub const CACHE_REPRESENTATIONS: &str = "cache_representations";
-pub const SELECT_POLICY: &str = "select_policy";
-pub const PERSIST_ENTRY: &str = "persist_entry";
-pub const SPOOL_BLOBS: &str = "spool_blobs";
+pub const DETECT: &str = "clipboard.detect";
+pub const NORMALIZE: &str = "clipboard.normalize";
+pub const PERSIST_EVENT: &str = "clipboard.persist_event";
+pub const CACHE_REPRESENTATIONS: &str = "clipboard.cache_representations";
+pub const SELECT_POLICY: &str = "clipboard.select_policy";
+pub const PERSIST_ENTRY: &str = "clipboard.persist_entry";
+pub const SPOOL_BLOBS: &str = "clipboard.spool_blobs";
 
-pub const OUTBOUND_PREPARE: &str = "outbound_prepare";
-pub const OUTBOUND_SEND: &str = "outbound_send";
-pub const INBOUND_DECODE: &str = "inbound_decode";
-pub const INBOUND_APPLY: &str = "inbound_apply";
+pub const OUTBOUND_PREPARE: &str = "clipboard.outbound_prepare";
+pub const OUTBOUND_SEND: &str = "clipboard.outbound_send";
+pub const INBOUND_DECODE: &str = "clipboard.inbound_decode";
+pub const INBOUND_APPLY: &str = "clipboard.inbound_apply";
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn stage_constants_are_lowercase_snake_case() {
+    fn stage_constants_are_dotted_otel_form() {
         let stages = [
             ("DETECT", DETECT),
             ("NORMALIZE", NORMALIZE),
@@ -37,10 +38,15 @@ mod tests {
             ("INBOUND_APPLY", INBOUND_APPLY),
         ];
         for (name, value) in stages {
-            assert_eq!(
-                value,
-                name.to_lowercase(),
-                "Stage {} should equal its lowercased const name",
+            assert!(
+                value.starts_with("clipboard."),
+                "Stage {} (value: '{}') must start with 'clipboard.'",
+                name,
+                value
+            );
+            assert!(
+                !value.is_empty(),
+                "Stage {} must be non-empty",
                 name
             );
         }

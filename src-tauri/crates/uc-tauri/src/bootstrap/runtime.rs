@@ -677,45 +677,6 @@ mod tests {
         }
     }
 
-    impl SelectRepresentationPolicyPort for SuccessfulRepresentationPolicy {
-        fn select(
-            &self,
-            snapshot: &SystemClipboardSnapshot,
-        ) -> std::result::Result<uc_core::clipboard::ClipboardSelection, PolicyError> {
-            let rep_id = snapshot
-                .representations
-                .first()
-                .expect("snapshot should contain one representation")
-                .id
-                .clone();
-
-            Ok(uc_core::clipboard::ClipboardSelection {
-                primary_rep_id: rep_id.clone(),
-                secondary_rep_ids: vec![],
-                preview_rep_id: rep_id.clone(),
-                paste_rep_id: rep_id,
-                policy_version: uc_core::clipboard::SelectionPolicyVersion::V1,
-            })
-        }
-    }
-
-    #[async_trait]
-    impl ClipboardRepresentationNormalizerPort for SuccessfulNormalizer {
-        async fn normalize(
-            &self,
-            observed: &uc_core::clipboard::ObservedClipboardRepresentation,
-        ) -> anyhow::Result<uc_core::PersistedClipboardRepresentation> {
-            Ok(uc_core::PersistedClipboardRepresentation::new(
-                observed.id.clone(),
-                observed.format_id.clone(),
-                observed.mime.clone(),
-                observed.size_bytes(),
-                Some(observed.bytes.clone()),
-                None,
-            ))
-        }
-    }
-
     impl HostEventEmitterPort for RecordingEmitter {
         fn emit(
             &self,

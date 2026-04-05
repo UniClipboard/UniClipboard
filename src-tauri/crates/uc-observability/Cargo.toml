@@ -15,9 +15,11 @@ anyhow = "1.0"
 uuid = { version = "1", features = ["v7"] }
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
 tokio = { version = "1", features = ["sync", "time", "rt", "macros"] }
-# Wave 0 stubs for Phase 87 OTLP pipeline (promoted to real impl in Plan 02)
+# Phase 87 OTLP pipeline — promoted from dev-deps to full deps (Plan 02)
 opentelemetry = "0.31"
 opentelemetry_sdk = { version = "0.31", features = ["rt-tokio"] }
+opentelemetry-otlp = { version = "0.31", default-features = false, features = ["http-proto", "reqwest-client", "reqwest-rustls", "trace", "logs"] }
+opentelemetry-semantic-conventions = "0.31"
 tracing-opentelemetry = "0.32"
 
 [dev-dependencies]

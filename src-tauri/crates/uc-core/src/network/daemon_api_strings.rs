@@ -6,6 +6,8 @@ pub mod ws_topic {
     pub const PEERS: &str = "peers";
     pub const PAIRED_DEVICES: &str = "paired-devices";
     pub const PAIRING: &str = "pairing";
+    pub const PAIRING_SESSION: &str = "pairing/session";
+    pub const PAIRING_VERIFICATION: &str = "pairing/verification";
     pub const SETUP: &str = "setup";
     pub const SPACE_ACCESS: &str = "space-access";
     pub const CLIPBOARD: &str = "clipboard";
@@ -106,6 +108,8 @@ mod tests {
         assert_eq!(ws_topic::PEERS, "peers");
         assert_eq!(ws_topic::PAIRED_DEVICES, "paired-devices");
         assert_eq!(ws_topic::PAIRING, "pairing");
+        assert_eq!(ws_topic::PAIRING_SESSION, "pairing/session");
+        assert_eq!(ws_topic::PAIRING_VERIFICATION, "pairing/verification");
         assert_eq!(ws_topic::SETUP, "setup");
         assert_eq!(ws_topic::SPACE_ACCESS, "space-access");
         assert_eq!(ws_topic::CLIPBOARD, "clipboard");

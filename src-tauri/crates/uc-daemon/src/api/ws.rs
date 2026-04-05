@@ -431,6 +431,8 @@ fn is_supported_topic(topic: &str) -> bool {
             | ws_topic::PEERS
             | ws_topic::PAIRED_DEVICES
             | ws_topic::PAIRING
+            | ws_topic::PAIRING_SESSION
+            | ws_topic::PAIRING_VERIFICATION
             | ws_topic::SETUP
             | ws_topic::SPACE_ACCESS
             | ws_topic::CLIPBOARD
@@ -442,6 +444,7 @@ fn is_supported_topic(topic: &str) -> bool {
 /// Returns `true` when the subscribed topic matches the event topic.
 fn topic_matches(subscription: &str, event_topic: &str) -> bool {
     subscription == event_topic
+        || (subscription == ws_topic::PAIRING && event_topic.starts_with("pairing/"))
 }
 
 // ---------------------------------------------------------------------------
@@ -484,6 +487,16 @@ async fn build_snapshot_event(
             state.query_service.pairing_sessions().await,
         )
         .map(Some),
+
+        ws_topic::PAIRING_SESSION => snapshot_event(
+            ws_topic::PAIRING_SESSION,
+            ws_event::PAIRING_SNAPSHOT,
+            None,
+            state.query_service.pairing_sessions().await,
+        )
+        .map(Some),
+
+        ws_topic::PAIRING_VERIFICATION => Ok(None),
 
         ws_topic::SETUP => Ok(None),
         ws_topic::CLIPBOARD => Ok(None),
@@ -563,6 +576,8 @@ mod tests {
             ws_topic::PEERS,
             ws_topic::PAIRED_DEVICES,
             ws_topic::PAIRING,
+            ws_topic::PAIRING_SESSION,
+            ws_topic::PAIRING_VERIFICATION,
             ws_topic::SETUP,
             ws_topic::SPACE_ACCESS,
             ws_topic::CLIPBOARD,

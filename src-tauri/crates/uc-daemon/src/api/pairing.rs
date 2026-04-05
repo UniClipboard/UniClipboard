@@ -3,6 +3,7 @@
 //! Provides pairing lifecycle management: initiate, accept, reject, cancel, verify,
 //! unpair, GUI lease, discoverability, and participant state.
 use axum::extract::{Path, State};
+use axum::http::StatusCode;
 use axum::routing::{get, post, put};
 use axum::{Json, Router};
 use utoipa;
@@ -101,7 +102,7 @@ async fn pairing_session(
 async fn accept_pairing(
     State(state): State<DaemonApiState>,
     Path(session_id): Path<String>,
-) -> Result<Json<AckedPairingCommandResponse>, ApiError> {
+) -> Result<(StatusCode, Json<AckedPairingCommandResponse>), ApiError> {
     let pairing_host = state
         .pairing_host()
         .ok_or_else(|| ApiError::service_unavailable("pairing host unavailable"))?;
@@ -111,12 +112,15 @@ async fn accept_pairing(
         .await
         .map_err(ApiError::from_pairing_error)?;
 
-    Ok(Json(AckedPairingCommandResponse {
-        session_id,
-        accepted: true,
-        state: pairing_stage::VERIFYING.to_string(),
-        error: None,
-    }))
+    Ok((
+        StatusCode::ACCEPTED,
+        Json(AckedPairingCommandResponse {
+            session_id,
+            accepted: true,
+            state: pairing_stage::VERIFYING.to_string(),
+            error: None,
+        }),
+    ))
 }
 
 /// POST /pairing/sessions/{session_id}/reject
@@ -138,7 +142,7 @@ async fn accept_pairing(
 async fn reject_pairing(
     State(state): State<DaemonApiState>,
     Path(session_id): Path<String>,
-) -> Result<Json<AckedPairingCommandResponse>, ApiError> {
+) -> Result<(StatusCode, Json<AckedPairingCommandResponse>), ApiError> {
     let pairing_host = state
         .pairing_host()
         .ok_or_else(|| ApiError::service_unavailable("pairing host unavailable"))?;
@@ -148,12 +152,15 @@ async fn reject_pairing(
         .await
         .map_err(ApiError::from_pairing_error)?;
 
-    Ok(Json(AckedPairingCommandResponse {
-        session_id,
-        accepted: true,
-        state: pairing_stage::FAILED.to_string(),
-        error: None,
-    }))
+    Ok((
+        StatusCode::ACCEPTED,
+        Json(AckedPairingCommandResponse {
+            session_id,
+            accepted: true,
+            state: pairing_stage::FAILED.to_string(),
+            error: None,
+        }),
+    ))
 }
 
 /// POST /pairing/sessions/{session_id}/cancel
@@ -175,7 +182,7 @@ async fn reject_pairing(
 async fn cancel_pairing(
     State(state): State<DaemonApiState>,
     Path(session_id): Path<String>,
-) -> Result<Json<AckedPairingCommandResponse>, ApiError> {
+) -> Result<(StatusCode, Json<AckedPairingCommandResponse>), ApiError> {
     let pairing_host = state
         .pairing_host()
         .ok_or_else(|| ApiError::service_unavailable("pairing host unavailable"))?;
@@ -185,12 +192,15 @@ async fn cancel_pairing(
         .await
         .map_err(ApiError::from_pairing_error)?;
 
-    Ok(Json(AckedPairingCommandResponse {
-        session_id,
-        accepted: true,
-        state: pairing_stage::FAILED.to_string(),
-        error: None,
-    }))
+    Ok((
+        StatusCode::ACCEPTED,
+        Json(AckedPairingCommandResponse {
+            session_id,
+            accepted: true,
+            state: pairing_stage::FAILED.to_string(),
+            error: None,
+        }),
+    ))
 }
 
 /// POST /pairing/sessions/{session_id}/verify
@@ -214,7 +224,7 @@ async fn verify_pairing(
     State(state): State<DaemonApiState>,
     Path(session_id): Path<String>,
     Json(payload): Json<VerifyPairingRequest>,
-) -> Result<Json<AckedPairingCommandResponse>, ApiError> {
+) -> Result<(StatusCode, Json<AckedPairingCommandResponse>), ApiError> {
     let pairing_host = state
         .pairing_host()
         .ok_or_else(|| ApiError::service_unavailable("pairing host unavailable"))?;
@@ -230,12 +240,15 @@ async fn verify_pairing(
         pairing_stage::FAILED
     };
 
-    Ok(Json(AckedPairingCommandResponse {
-        session_id,
-        accepted: true,
-        state: state_str.to_string(),
-        error: None,
-    }))
+    Ok((
+        StatusCode::ACCEPTED,
+        Json(AckedPairingCommandResponse {
+            session_id,
+            accepted: true,
+            state: state_str.to_string(),
+            error: None,
+        }),
+    ))
 }
 
 // ---------------------------------------------------------------------------
@@ -259,7 +272,7 @@ async fn verify_pairing(
 async fn initiate_pairing(
     State(state): State<DaemonApiState>,
     Json(payload): Json<InitiatePairingRequest>,
-) -> Result<Json<AckedPairingCommandResponse>, ApiError> {
+) -> Result<(StatusCode, Json<AckedPairingCommandResponse>), ApiError> {
     let pairing_host = state
         .pairing_host()
         .ok_or_else(|| ApiError::service_unavailable("pairing host unavailable"))?;
@@ -269,12 +282,15 @@ async fn initiate_pairing(
         .await
         .map_err(ApiError::from_pairing_error)?;
 
-    Ok(Json(AckedPairingCommandResponse {
-        session_id,
-        accepted: true,
-        state: pairing_stage::REQUEST.to_string(),
-        error: None,
-    }))
+    Ok((
+        StatusCode::ACCEPTED,
+        Json(AckedPairingCommandResponse {
+            session_id,
+            accepted: true,
+            state: pairing_stage::REQUEST.to_string(),
+            error: None,
+        }),
+    ))
 }
 
 /// POST /pairing/initiate
@@ -325,7 +341,7 @@ async fn handle_initiate_pairing(
 async fn handle_accept_pairing(
     State(state): State<DaemonApiState>,
     Json(payload): Json<PairingSessionCommandRequest>,
-) -> Result<(), ApiError> {
+) -> Result<StatusCode, ApiError> {
     let pairing_host = state
         .pairing_host()
         .ok_or_else(|| ApiError::service_unavailable("pairing host unavailable"))?;
@@ -335,7 +351,7 @@ async fn handle_accept_pairing(
         .await
         .map_err(ApiError::from_pairing_error)?;
 
-    Ok(())
+    Ok(StatusCode::NO_CONTENT)
 }
 
 /// POST /pairing/reject
@@ -356,7 +372,7 @@ async fn handle_accept_pairing(
 async fn handle_reject_pairing(
     State(state): State<DaemonApiState>,
     Json(payload): Json<PairingSessionCommandRequest>,
-) -> Result<(), ApiError> {
+) -> Result<StatusCode, ApiError> {
     let pairing_host = state
         .pairing_host()
         .ok_or_else(|| ApiError::service_unavailable("pairing host unavailable"))?;
@@ -366,7 +382,7 @@ async fn handle_reject_pairing(
         .await
         .map_err(ApiError::from_pairing_error)?;
 
-    Ok(())
+    Ok(StatusCode::NO_CONTENT)
 }
 
 /// POST /pairing/cancel
@@ -387,7 +403,7 @@ async fn handle_reject_pairing(
 async fn handle_cancel_pairing(
     State(state): State<DaemonApiState>,
     Json(payload): Json<PairingSessionCommandRequest>,
-) -> Result<(), ApiError> {
+) -> Result<StatusCode, ApiError> {
     let pairing_host = state
         .pairing_host()
         .ok_or_else(|| ApiError::service_unavailable("pairing host unavailable"))?;
@@ -397,7 +413,7 @@ async fn handle_cancel_pairing(
         .await
         .map_err(ApiError::from_pairing_error)?;
 
-    Ok(())
+    Ok(StatusCode::NO_CONTENT)
 }
 
 /// POST /pairing/unpair
@@ -416,7 +432,7 @@ async fn handle_cancel_pairing(
 async fn handle_unpair_device(
     State(state): State<DaemonApiState>,
     Json(payload): Json<UnpairDeviceRequest>,
-) -> Result<(), ApiError> {
+) -> Result<StatusCode, ApiError> {
     let runtime = state.runtime_or_error()?;
     let usecases = CoreUseCases::new(runtime.as_ref());
 
@@ -427,7 +443,9 @@ async fn handle_unpair_device(
         .map_err(|e| {
             tracing::error!(error = %e, "daemon unpair failed");
             ApiError::internal(e.to_string())
-        })
+        })?;
+
+    Ok(StatusCode::NO_CONTENT)
 }
 
 /// POST /pairing/gui/lease
@@ -446,7 +464,7 @@ async fn handle_unpair_device(
 async fn handle_pairing_gui_lease(
     State(state): State<DaemonApiState>,
     Json(payload): Json<PairingGuiLeaseRequest>,
-) -> Result<(), ApiError> {
+) -> Result<StatusCode, ApiError> {
     let pairing_host = state
         .pairing_host()
         .ok_or_else(|| ApiError::service_unavailable("pairing host unavailable"))?;
@@ -456,7 +474,7 @@ async fn handle_pairing_gui_lease(
         .await
         .map_err(ApiError::from_pairing_error)?;
 
-    Ok(())
+    Ok(StatusCode::NO_CONTENT)
 }
 
 /// PUT /pairing/discoverability/current
@@ -474,7 +492,7 @@ async fn handle_pairing_gui_lease(
 async fn set_pairing_discoverability(
     State(state): State<DaemonApiState>,
     Json(payload): Json<SetPairingDiscoverabilityRequest>,
-) -> Result<Json<AckedPairingCommandResponse>, ApiError> {
+) -> Result<(StatusCode, Json<AckedPairingCommandResponse>), ApiError> {
     let pairing_host = state
         .pairing_host()
         .ok_or_else(|| ApiError::service_unavailable("pairing host unavailable"))?;
@@ -487,12 +505,15 @@ async fn set_pairing_discoverability(
         )
         .await;
 
-    Ok(Json(AckedPairingCommandResponse {
-        session_id: "current".to_string(),
-        accepted: payload.discoverable,
-        state: "discoverability_updated".to_string(),
-        error: None,
-    }))
+    Ok((
+        StatusCode::ACCEPTED,
+        Json(AckedPairingCommandResponse {
+            session_id: "current".to_string(),
+            accepted: payload.discoverable,
+            state: "discoverability_updated".to_string(),
+            error: None,
+        }),
+    ))
 }
 
 /// PUT /pairing/participants/current
@@ -510,7 +531,7 @@ async fn set_pairing_discoverability(
 async fn set_pairing_participant(
     State(state): State<DaemonApiState>,
     Json(payload): Json<SetPairingParticipantRequest>,
-) -> Result<Json<AckedPairingCommandResponse>, ApiError> {
+) -> Result<(StatusCode, Json<AckedPairingCommandResponse>), ApiError> {
     let pairing_host = state
         .pairing_host()
         .ok_or_else(|| ApiError::service_unavailable("pairing host unavailable"))?;
@@ -519,10 +540,13 @@ async fn set_pairing_participant(
         .set_participant_ready(payload.client_kind, payload.ready, payload.lease_ttl_ms)
         .await;
 
-    Ok(Json(AckedPairingCommandResponse {
-        session_id: "current".to_string(),
-        accepted: payload.ready,
-        state: "participant_updated".to_string(),
-        error: None,
-    }))
+    Ok((
+        StatusCode::ACCEPTED,
+        Json(AckedPairingCommandResponse {
+            session_id: "current".to_string(),
+            accepted: payload.ready,
+            state: "participant_updated".to_string(),
+            error: None,
+        }),
+    ))
 }

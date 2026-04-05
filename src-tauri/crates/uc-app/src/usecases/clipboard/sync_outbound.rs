@@ -1497,7 +1497,6 @@ mod tests {
                     auto_sync: false,
                     sync_frequency: SyncFrequency::Realtime,
                     content_types: ContentTypes::default(),
-                    max_file_size_mb: 100,
                 }),
             ),
         );
@@ -1534,7 +1533,6 @@ mod tests {
                         code_snippet: true,
                         rich_text: true,
                     },
-                    max_file_size_mb: 100,
                 }),
             ),
         );
@@ -1571,7 +1569,6 @@ mod tests {
                         code_snippet: false,
                         rich_text: false,
                     },
-                    max_file_size_mb: 100,
                 }),
             ),
         );
@@ -1608,7 +1605,6 @@ mod tests {
                         code_snippet: true,
                         rich_text: true,
                     },
-                    max_file_size_mb: 100,
                 }),
             ),
         );

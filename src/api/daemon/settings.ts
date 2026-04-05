@@ -58,7 +58,6 @@ export interface SyncSettings {
   autoSync: boolean
   syncFrequency: SyncFrequency
   contentTypes: ContentTypes
-  maxFileSizeMb: number
 }
 
 /** Security / encryption settings. / 安全/加密设置。 */
@@ -234,12 +233,11 @@ function toSettingsPatchRequest(settings: Partial<Settings>): SettingsPatchReque
   }
 
   if (settings.sync) {
-    const { autoSync, syncFrequency, contentTypes, maxFileSizeMb } = settings.sync
+    const { autoSync, syncFrequency, contentTypes } = settings.sync
     patch.sync = {
       autoSync,
       syncFrequency,
       contentTypes,
-      maxFileSizeMb,
     }
   }
 

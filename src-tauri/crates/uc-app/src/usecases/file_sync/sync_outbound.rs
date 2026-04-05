@@ -401,7 +401,6 @@ mod tests {
                 auto_sync: false,
                 sync_frequency: SyncFrequency::Realtime,
                 content_types: ContentTypes::default(),
-                max_file_size_mb: 10,
             }),
         };
 

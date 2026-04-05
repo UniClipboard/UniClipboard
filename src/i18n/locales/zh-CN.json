@@ -93,15 +93,6 @@
           "5m": "每5分钟",
           "15m": "每15分钟"
         },
-        "maxFileSize": {
-          "label": "最大同步文件大小",
-          "description": "限制单个文件的最大同步大小",
-          "unit": "MB",
-          "errors": {
-            "invalid": "请输入有效的数字",
-            "range": "必须在 1 到 50 MB 之间"
-          }
-        },
         "loadError": "加载设置失败:",
         "fileSync": {
           "title": "文件同步",

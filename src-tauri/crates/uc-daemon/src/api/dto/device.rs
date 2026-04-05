@@ -42,7 +42,6 @@ pub struct DeviceSyncSettingsDto {
     pub auto_sync: bool,
     pub sync_frequency: SyncFrequencyDto,
     pub content_types: ContentTypesDto,
-    pub max_file_size_mb: u32,
 }
 
 /// Content type toggles for sync filtering.
@@ -75,7 +74,6 @@ pub struct DeviceSyncSettingsPatchDto {
     pub auto_sync: Option<bool>,
     pub sync_frequency: Option<SyncFrequencyDto>,
     pub content_types: Option<ContentTypesPatchDto>,
-    pub max_file_size_mb: Option<u32>,
 }
 
 /// Partial content types for PATCH.
@@ -116,7 +114,6 @@ impl From<CoreSyncSettings> for DeviceSyncSettingsDto {
             auto_sync: value.auto_sync,
             sync_frequency: value.sync_frequency.into(),
             content_types: value.content_types.into(),
-            max_file_size_mb: value.max_file_size_mb,
         }
     }
 }

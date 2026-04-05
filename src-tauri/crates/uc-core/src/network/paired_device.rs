@@ -81,14 +81,12 @@ mod tests {
             auto_sync: true,
             sync_frequency: SyncFrequency::Realtime,
             content_types: ContentTypes::default(),
-            max_file_size_mb: 10,
         };
 
         let device_settings = SyncSettings {
             auto_sync: false,
             sync_frequency: SyncFrequency::Interval,
             content_types: ContentTypes::default(),
-            max_file_size_mb: 5,
         };
 
         let device = PairedDevice {
@@ -103,7 +101,7 @@ mod tests {
 
         let resolved = resolve_sync_settings(&device, &global);
         assert!(!resolved.auto_sync);
-        assert_eq!(resolved.max_file_size_mb, 5);
+        assert_eq!(resolved.sync_frequency, SyncFrequency::Interval);
     }
 
     #[test]
@@ -114,7 +112,6 @@ mod tests {
             auto_sync: true,
             sync_frequency: SyncFrequency::Realtime,
             content_types: ContentTypes::default(),
-            max_file_size_mb: 10,
         };
 
         let device = PairedDevice {
@@ -129,6 +126,6 @@ mod tests {
 
         let resolved = resolve_sync_settings(&device, &global);
         assert!(resolved.auto_sync);
-        assert_eq!(resolved.max_file_size_mb, 10);
+        assert_eq!(resolved.sync_frequency, SyncFrequency::Realtime);
     }
 }

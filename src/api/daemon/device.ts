@@ -41,7 +41,6 @@ export interface DeviceSyncSettings {
   autoSync: boolean
   syncFrequency: SyncFrequency
   contentTypes: ContentTypes
-  maxFileSizeMb: number
 }
 
 /**
@@ -52,7 +51,6 @@ export interface DeviceSyncSettingsPatch {
   autoSync?: boolean
   syncFrequency?: SyncFrequency
   contentTypes?: ContentTypesPatch
-  maxFileSizeMb?: number
 }
 
 /** Partial content types for PATCH. */

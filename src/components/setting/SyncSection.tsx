@@ -32,9 +32,6 @@ const SyncSection: React.FC = () => {
     setting?.sync.syncFrequency ?? 'realtime'
   )
 
-  const [maxFileSize, setMaxFileSize] = useState(setting?.sync.maxFileSizeMb ?? 10)
-  const [maxFileSizeError, setMaxFileSizeError] = useState<string | null>(null)
-
   // File sync local state
   const [fileSyncEnabled, setFileSyncEnabled] = useState(setting?.fileSync?.fileSyncEnabled ?? true)
   const [smallFileThreshold, setSmallFileThreshold] = useState(
@@ -67,7 +64,6 @@ const SyncSection: React.FC = () => {
     if (setting) {
       setAutoSync(setting.sync.autoSync)
       setSyncFrequency(setting.sync.syncFrequency)
-      setMaxFileSize(setting.sync.maxFileSizeMb)
 
       // File sync settings
       setFileSyncEnabled(setting.fileSync?.fileSyncEnabled ?? true)
@@ -89,34 +85,6 @@ const SyncSection: React.FC = () => {
   const handleSyncFrequencyChange = (value: string) => {
     setSyncFrequency(value)
     updateSyncSetting({ syncFrequency: value as 'realtime' | 'interval' })
-  }
-
-  // Handle max file size change
-  const handleMaxFileSizeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const value = e.target.value
-
-    if (!value.trim()) {
-      setMaxFileSizeError(null)
-      setMaxFileSize(0)
-      return
-    }
-
-    if (!/^\d+$/.test(value)) {
-      setMaxFileSizeError(t('settings.sections.sync.maxFileSize.errors.invalid'))
-      setMaxFileSize(parseInt(value) || 0)
-      return
-    }
-
-    const size = parseInt(value)
-    setMaxFileSize(size)
-
-    if (size < 1 || size > 50) {
-      setMaxFileSizeError(t('settings.sections.sync.maxFileSize.errors.range'))
-      return
-    }
-
-    setMaxFileSizeError(null)
-    updateSyncSetting({ maxFileSizeMb: size })
   }
 
   // --- File sync handlers ---
@@ -285,24 +253,6 @@ const SyncSection: React.FC = () => {
               ))}
             </SelectContent>
           </Select>
-        </SettingRow>
-
-        <SettingRow
-          label={t('settings.sections.sync.maxFileSize.label')}
-          description={t('settings.sections.sync.maxFileSize.description')}
-        >
-          <div className="flex flex-col items-end gap-1">
-            <div className="flex items-center gap-2">
-              <Input
-                type="text"
-                value={maxFileSize.toString()}
-                onChange={handleMaxFileSizeChange}
-                className={maxFileSizeError ? 'border-red-500 w-32' : 'w-32'}
-              />
-              <span className="text-sm text-muted-foreground">MB</span>
-            </div>
-            {maxFileSizeError && <p className="text-xs text-red-500">{maxFileSizeError}</p>}
-          </div>
         </SettingRow>
       </SettingGroup>
 

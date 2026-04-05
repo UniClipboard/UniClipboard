@@ -174,10 +174,6 @@ fn merge_device_sync_settings_patch(
         existing.sync_frequency = sync_frequency.into();
     }
 
-    if let Some(max_file_size_mb) = patch.max_file_size_mb {
-        existing.max_file_size_mb = max_file_size_mb;
-    }
-
     if let Some(content_types) = patch.content_types {
         if let Some(ct) = content_types.text {
             existing.content_types.text = ct;

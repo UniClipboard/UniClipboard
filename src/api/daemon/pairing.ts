@@ -120,7 +120,6 @@ export interface SyncSettings {
   autoSync: boolean
   syncFrequency: 'realtime' | 'interval'
   contentTypes: ContentTypes
-  maxFileSizeMb: number
 }
 
 export { classifyPairingError } from '@/api/daemon/events'

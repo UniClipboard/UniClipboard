@@ -140,9 +140,6 @@ fn merge_settings_patch(
         if let Some(v) = sync.sync_frequency {
             existing.sync.sync_frequency = v.into();
         }
-        if let Some(v) = sync.max_file_size_mb {
-            existing.sync.max_file_size_mb = v;
-        }
         if let Some(content_types) = sync.content_types {
             if let Some(v) = content_types.text {
                 existing.sync.content_types.text = v;

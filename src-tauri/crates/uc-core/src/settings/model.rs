@@ -66,8 +66,6 @@ pub struct SyncSettings {
 
     #[serde(default)]
     pub content_types: ContentTypes,
-
-    pub max_file_size_mb: u32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -362,6 +360,28 @@ mod tests {
         assert_eq!(fs.file_cache_quota_per_device, 500 * 1024 * 1024);
         assert_eq!(fs.file_retention_hours, 24);
         assert!(fs.file_auto_cleanup);
+    }
+
+    #[test]
+    fn test_sync_settings_ignores_legacy_max_file_size_mb_field() {
+        let value = serde_json::json!({
+            "auto_sync": true,
+            "sync_frequency": "realtime",
+            "content_types": {
+                "text": true,
+                "image": true,
+                "link": true,
+                "file": true,
+                "code_snippet": true,
+                "rich_text": true
+            },
+            "max_file_size_mb": 42
+        });
+
+        let settings: super::SyncSettings =
+            serde_json::from_value(value).expect("deserialize sync settings");
+        assert!(settings.auto_sync);
+        assert_eq!(settings.sync_frequency, SyncFrequency::Realtime);
     }
 
     #[test]

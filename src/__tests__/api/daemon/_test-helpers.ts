@@ -171,7 +171,6 @@ export function makeSettingsDto(overrides: Partial<Settings> = {}): Settings {
         codeSnippet: true,
         richText: true,
       },
-      maxFileSizeMb: 50,
     },
     retentionPolicy: {
       enabled: false,

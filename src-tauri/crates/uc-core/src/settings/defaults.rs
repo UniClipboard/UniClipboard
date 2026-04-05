@@ -95,8 +95,8 @@ impl Default for ContentTypes {
 impl Default for SyncSettings {
     /// Creates a `SyncSettings` populated with sensible defaults.
     ///
-    /// The defaults enable automatic syncing, use realtime sync frequency, include the
-    /// default content types, and limit individual files to 100 MB.
+    /// The defaults enable automatic syncing, use realtime sync frequency, and include the
+    /// default content types.
     ///
     /// # Examples
     ///
@@ -106,14 +106,12 @@ impl Default for SyncSettings {
     /// let s = SyncSettings::default();
     /// assert!(s.auto_sync);
     /// assert_eq!(s.sync_frequency, SyncFrequency::Realtime);
-    /// assert_eq!(s.max_file_size_mb, 100);
     /// ```
     fn default() -> Self {
         Self {
             auto_sync: true,
             sync_frequency: SyncFrequency::Realtime,
             content_types: ContentTypes::default(),
-            max_file_size_mb: 100,
         }
     }
 }

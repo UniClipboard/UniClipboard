@@ -88,7 +88,6 @@ describe('Settings API', () => {
             codeSnippet: true,
             richText: false,
           },
-          maxFileSizeMb: 25,
         },
       })
       mockDaemonClient.request.mockResolvedValueOnce({ data: settings, ts: Date.now() })

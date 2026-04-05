@@ -28,7 +28,6 @@ const baseSetting: Settings = {
       codeSnippet: true,
       richText: true,
     },
-    maxFileSizeMb: 10,
   },
   retentionPolicy: {
     enabled: false,

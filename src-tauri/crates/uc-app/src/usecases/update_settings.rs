@@ -215,7 +215,6 @@ impl GeneralSettingsDiff {
 struct SyncSettingsDiff {
     auto_sync: Option<(bool, bool)>,
     sync_frequency: Option<(String, String)>,
-    max_file_size_mb: Option<(u32, u32)>,
     content_types: Option<(ContentTypes, ContentTypes)>,
 }
 
@@ -226,8 +225,6 @@ impl SyncSettingsDiff {
             format!("{:?}", old.sync_frequency),
             format!("{:?}", new.sync_frequency),
         ));
-        let max_file_size_mb = (old.max_file_size_mb != new.max_file_size_mb)
-            .then_some((old.max_file_size_mb, new.max_file_size_mb));
         let content_types_changed = old.content_types.text != new.content_types.text
             || old.content_types.image != new.content_types.image
             || old.content_types.link != new.content_types.link
@@ -237,17 +234,12 @@ impl SyncSettingsDiff {
         let content_types =
             content_types_changed.then_some((old.content_types.clone(), new.content_types.clone()));
 
-        if auto_sync.is_none()
-            && sync_frequency.is_none()
-            && max_file_size_mb.is_none()
-            && content_types.is_none()
-        {
+        if auto_sync.is_none() && sync_frequency.is_none() && content_types.is_none() {
             None
         } else {
             Some(Self {
                 auto_sync,
                 sync_frequency,
-                max_file_size_mb,
                 content_types,
             })
         }
@@ -261,9 +253,6 @@ impl SyncSettingsDiff {
         }
         if let Some((old, new)) = &self.sync_frequency {
             parts.push(format!("{}.sync_frequency: {} → {}", prefix, old, new));
-        }
-        if let Some((old, new)) = &self.max_file_size_mb {
-            parts.push(format!("{}.max_file_size_mb: {} → {}", prefix, old, new));
         }
         if let Some((old, new)) = &self.content_types {
             parts.push(format!("{}.content_types: {:?} → {:?}", prefix, old, new));

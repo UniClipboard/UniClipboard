@@ -50,7 +50,6 @@ export interface SyncSettings {
   autoSync: boolean
   syncFrequency: SyncFrequency
   contentTypes: ContentTypes
-  maxFileSizeMb: number
 }
 
 /**

@@ -2,7 +2,7 @@
 phase: 87
 slug: otlp-seq-otlp
 status: draft
-nyquist_compliant: false
+nyquist_compliant: true
 wave_0_complete: false
 created: 2026-04-04
 ---
@@ -38,9 +38,17 @@ created: 2026-04-04
 
 _To be filled by gsd-planner from RESEARCH.md § Validation Architecture. Each task in every PLAN.md MUST map to either an automated command here or a Wave 0 dependency._
 
-| Task ID | Plan | Wave | Requirement | Test Type | Automated Command | File Exists | Status    |
-| ------- | ---- | ---- | ----------- | --------- | ----------------- | ----------- | --------- |
-| TBD     | TBD  | TBD  | REQ-87-XX   | TBD       | TBD               | ⬜          | ⬜ pending |
+| Task ID | Plan  | Wave | Requirement                                   | Test Type         | Automated Command                                                                                                                                       | File Exists | Status    |
+| ------- | ----- | ---- | --------------------------------------------- | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------- | --------- |
+| 01-T1   | 87-01 | 1    | REQ-87-01, REQ-87-04, REQ-87-14, REQ-87-15    | Wave 0 scaffold   | `cd src-tauri && cargo check -p uc-observability --tests --features __wave0_scaffold_87`                                                                | ⬜ new      | ⬜ pending |
+| 01-T2   | 87-01 | 1    | REQ-87-03, REQ-87-06                          | Wave 0 scaffold   | `cd src-tauri && cargo check -p uc-observability --tests --features __wave0_scaffold_87 && cargo check -p uc-core --tests --features __wave0_scaffold_87_traceparent` | ⬜ new      | ⬜ pending |
+| 02-T1   | 87-02 | 2    | REQ-87-01, REQ-87-02, REQ-87-03, REQ-87-14, REQ-87-15 | Unit + dep graph  | `cd src-tauri && cargo test -p uc-observability --features __wave0_scaffold_87 --test otlp_pipeline --test propagation`                                 | ⬜ new      | ⬜ pending |
+| 03-T1   | 87-03 | 3    | REQ-87-06, REQ-87-08                          | Unit serde        | `cd src-tauri && cargo test -p uc-core --test clipboard_message_traceparent && cargo build -p uc-core -p uc-app`                                        | ⬜          | ⬜ pending |
+| 03-T2   | 87-03 | 3    | REQ-87-09, REQ-87-10                          | Build + smoke     | `cd src-tauri && cargo build -p uc-bootstrap -p uc-tauri && cargo test -p uc-observability --features __wave0_scaffold_87 --test otlp_pipeline`         | ⬜          | ⬜ pending |
+| 04-T1   | 87-04 | 4    | REQ-87-04, REQ-87-05                          | Build + unit      | `cd src-tauri && cargo build -p uc-app && cargo test -p uc-app usecases::internal::capture_clipboard`                                                   | ⬜          | ⬜ pending |
+| 04-T2   | 87-04 | 4    | REQ-87-06, REQ-87-07                          | Build + unit      | `cd src-tauri && cargo build -p uc-app && cargo test -p uc-app usecases::clipboard::sync`                                                               | ⬜          | ⬜ pending |
+| 05-T1   | 87-05 | 5    | REQ-87-01 (deletion completion)               | Full workspace    | `cd src-tauri && cargo build && cargo test -p uc-observability`                                                                                         | ⬜          | ⬜ pending |
+| 06-T1   | 87-06 | 5    | REQ-87-11, REQ-87-12, REQ-87-13               | grep + JSON/YAML  | `grep -q 'OTEL_EXPORTER_OTLP_ENDPOINT' docs/architecture/logging-architecture.md && ! grep -q 'flow_id' docs/seq/signals/flow-timeline.json && ! grep -q 'origin_flow_id' docs/seq/signals/cross-device-flow.json && grep -q 'ingest/otlp' docker-compose.seq.yml` | ⬜          | ⬜ pending |
 
 _Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky_
 

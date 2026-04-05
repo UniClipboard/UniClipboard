@@ -998,3 +998,18 @@ Plans:
 - [x] 86-02-PLAN.md — Phase 1: Create uc-daemon-client/src/setup/ module with ParsedSetupState, delete old helpers (Wave 1)
 - [x] 86-03-PLAN.md — Phase 2: Create HostCliPhase/JoinCliPhase enums and derive\_\*\_phase() functions (Wave 2)
 - [x] 86-04-PLAN.md — Phase 3: Phase-driven loops for run_pair and run_connect (Wave 3)
+
+### Phase 87: 全面迁移 otlp, 兼容 seq 展示, 采用 otlp 的最佳实践
+
+**Goal:** Replace the custom Seq/CLEF telemetry exporter with OpenTelemetry SDK + OTLP/HTTP-protobuf, restructure clipboard pipeline spans into a parent-child tree rooted at `clipboard.flow`, adopt OTel semantic conventions, and switch cross-device correlation to W3C traceparent — while keeping Seq as the local visualization backend.
+**Requirements**: REQ-87-01, REQ-87-02, REQ-87-03, REQ-87-04, REQ-87-05, REQ-87-06, REQ-87-07, REQ-87-08, REQ-87-09, REQ-87-10, REQ-87-11, REQ-87-12, REQ-87-13, REQ-87-14, REQ-87-15
+**Depends on:** Phase 86
+**Plans:** 6 plans
+
+Plans:
+- [ ] 87-01-PLAN.md — Wave 0 test scaffolds + dev-deps for OTLP pipeline (Wave 1)
+- [ ] 87-02-PLAN.md — uc-observability::otlp module (resource, propagator, pipeline init) (Wave 2)
+- [ ] 87-03-PLAN.md — ClipboardMessage.traceparent field + uc-bootstrap OTLP wiring + legacy UC_SEQ_URL warn (Wave 3)
+- [ ] 87-04-PLAN.md — Root flow span refactor + traceparent inject/extract in sync use cases (Wave 4)
+- [ ] 87-05-PLAN.md — Delete legacy seq/, clef_format.rs, span_fields.rs (Wave 5)
+- [ ] 87-06-PLAN.md — Rewrite Seq signals, logging-architecture.md, docker-compose.seq.yml (Wave 5)

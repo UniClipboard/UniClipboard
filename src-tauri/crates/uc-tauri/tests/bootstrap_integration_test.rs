@@ -28,7 +28,6 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::Mutex;
 use tempfile::TempDir;
-use tokio::sync::mpsc;
 use uc_core::config::AppConfig;
 use uc_platform::adapters::PairingRuntimeOwner;
 use uc_platform::ports::{IdentityStoreError, IdentityStorePort};

@@ -22,6 +22,7 @@ pub enum HostCliPhase {
     /// Peer decision accepted; awaiting short-code verification confirmation.
     NeedVerification { session_id: String },
     /// Backend processing the pairing completion.
+    #[allow(dead_code)]
     WaitingBackendCompletion,
     /// Pairing completed successfully.
     Completed,

@@ -17,12 +17,14 @@ pub enum JoinCliPhase {
     #[allow(dead_code)]
     WaitingPeerDiscovery,
     /// Waiting for the host to respond to our join request.
+    #[allow(dead_code)]
     WaitingHostResponse,
     /// Host accepted; awaiting short-code verification confirmation from joiner.
     NeedPeerConfirmation { session_id: String },
     /// Waiting for the joiner to enter the space passphrase.
     NeedPassphrase,
     /// Backend processing the pairing completion.
+    #[allow(dead_code)]
     WaitingBackendCompletion,
     /// Pairing completed successfully.
     Completed,

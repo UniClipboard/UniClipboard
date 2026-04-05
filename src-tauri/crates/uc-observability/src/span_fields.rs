@@ -1,7 +1,7 @@
 //! Shared span-field collection logic for tracing formatters.
 //!
 //! Extracts span fields from a tracing context into a `BTreeMap`, reusable
-//! by both `FlatJsonFormat` and `CLEFFormat`.
+//! by `FlatJsonFormat` and other formatters within this crate.
 
 use std::collections::BTreeMap;
 use tracing::Subscriber;

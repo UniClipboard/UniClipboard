@@ -1,8 +1,12 @@
 //! UniClipboard Observability Crate
 //!
+//! Phase 87: legacy Seq (CLEF) pipeline removed. The OTLP pipeline under `otlp::` is the sole
+//! telemetry exporter.
+//!
 //! Provides dual-output tracing initialization with profile-based filtering:
 //! - Pretty console output for developer experience
 //! - Structured JSON file output for tooling and analysis
+//! - OTLP/HTTP-protobuf pipeline for structured telemetry (Seq via OTLP collector)
 //!
 //! # Public API
 //!
@@ -39,21 +43,17 @@
 //!     .try_init()?;
 //! ```
 
-pub mod clef_format;
 mod context;
+mod init;
 pub mod flow;
 pub mod format;
-mod init;
 pub mod otlp;
 pub mod profile;
-pub mod seq;
-pub mod span_fields;
 pub mod stages;
+pub(crate) mod span_fields;
 
-pub use clef_format::CLEFFormat;
 pub use context::{global_device_id, set_global_device_id};
 pub use flow::FlowId;
 pub use init::{build_console_layer, build_json_layer, init_tracing_subscriber};
 pub use profile::LogProfile;
-pub use seq::{build_seq_layer, SeqGuard};
 pub use tracing_appender::non_blocking::WorkerGuard;

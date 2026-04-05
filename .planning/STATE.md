@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v0.4.0
 milestone_name: Runtime Mode Separation
 status: Ready to execute
-stopped_at: Completed 87-04-PLAN.md
-last_updated: "2026-04-05T04:31:53.533Z"
+stopped_at: Completed 87-05-PLAN.md
+last_updated: "2026-04-05T04:38:07.493Z"
 progress:
   total_phases: 58
   completed_phases: 43
   total_plans: 128
-  completed_plans: 117
+  completed_plans: 118
 ---
 
 # Project State
@@ -23,7 +23,7 @@ See: .planning/PROJECT.md (updated 2026-03-09)
 ## Current Position
 
 Phase: 87 (otlp-seq-otlp) — EXECUTING
-Plan: 5 of 6
+Plan: 6 of 6
 
 ## Current Position
 
@@ -129,6 +129,7 @@ Plan: Not started
 | Phase 87 P02 | 6 | 1 tasks | 6 files |
 | Phase 87 P03 | 1523 | 2 tasks | 11 files |
 | Phase 87 P04 | 529 | 2 tasks | 5 files |
+| Phase 87 P05 | 3 | 1 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -301,6 +302,8 @@ Recent decisions affecting current work:
 - [Phase 87]: 87-04: Stage constants renamed to dotted OTel semconv form (clipboard.normalize, etc.)
 - [Phase 87]: 87-04: clipboard.flow root span wraps all pipeline stages; old usecase.capture_clipboard.execute span removed
 - [Phase 87]: 87-04: tracing-opentelemetry added as direct dep to uc-app for OpenTelemetrySpanExt::set_parent in sync_inbound
+- [Phase 87]: 87-05: span_fields.rs kept as pub(crate) — format.rs FlatJsonFormat still uses collect_span_fields internally; only seq/ and clef_format.rs deleted
+- [Phase 87]: 87-05: seq/ module (3 files) + clef_format.rs hard-deleted; OTLP is now the sole telemetry exporter in uc-observability
 
 ### Roadmap Evolution
 
@@ -362,6 +365,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-04-05T04:31:53.509Z
-Stopped at: Completed 87-04-PLAN.md
+Last session: 2026-04-05T04:38:07.468Z
+Stopped at: Completed 87-05-PLAN.md
 Resume file: None

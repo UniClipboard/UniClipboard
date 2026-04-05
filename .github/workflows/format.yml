@@ -1,0 +1,111 @@
+name: 'Format Check'
+run-name: 'Format check for ${{ github.head_ref }}'
+
+on:
+  pull_request:
+    branches: [main, dev, develop]
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  format:
+    name: Format Check
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout PR branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+          # Use a PAT or the default token; for same-repo PRs GITHUB_TOKEN can push.
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+
+      - name: Install Rust stable (with rustfmt)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+
+      - name: Install Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install frontend dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Run cargo fmt
+        working-directory: src-tauri
+        run: cargo fmt --all
+
+      - name: Run prettier
+        run: bun run format
+
+      - name: Check for format changes
+        id: diff
+        run: |
+          if git diff --quiet; then
+            echo "has_changes=false" >> "$GITHUB_OUTPUT"
+            echo "No format issues found."
+          else
+            echo "has_changes=true" >> "$GITHUB_OUTPUT"
+            echo "Format issues detected:"
+            git diff --stat
+          fi
+
+      # ---------- Same-repo PR: create auto-fix branch + PR ----------
+      - name: Create fix branch and open PR (same-repo only)
+        if: |
+          steps.diff.outputs.has_changes == 'true' &&
+          github.event.pull_request.head.repo.full_name == github.repository
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          FIX_BRANCH="format-fix/pr-${{ github.event.pull_request.number }}"
+
+          git checkout -b "$FIX_BRANCH"
+          git add -A
+          git commit -m "style: auto-format code for PR #${{ github.event.pull_request.number }}"
+          git push origin "$FIX_BRANCH" --force
+
+          # Create PR targeting the original PR's head branch.
+          # If a PR for this fix branch already exists, gh pr create will exit 1 — that's fine.
+          gh pr create \
+            --title "style: auto-format for PR #${{ github.event.pull_request.number }}" \
+            --body "Auto-generated format fix for #${{ github.event.pull_request.number }}.
+
+Please merge this PR first, then re-push to the original PR branch to pass the format check.
+
+**Changes:**
+\`\`\`
+$(git diff HEAD~1 --stat)
+\`\`\`" \
+            --base "${{ github.head_ref }}" \
+            --head "$FIX_BRANCH" \
+            || echo "PR may already exist for this fix branch, skipping creation."
+
+      # ---------- Fork PR: print diff for author to fix manually ----------
+      - name: Show diff for fork PRs (cannot auto-push)
+        if: |
+          steps.diff.outputs.has_changes == 'true' &&
+          github.event.pull_request.head.repo.full_name != github.repository
+        run: |
+          echo "::warning::Format issues found. Cannot auto-create fix PR for fork contributions."
+          echo "Please run the following commands locally and push the changes:"
+          echo ""
+          echo "  cd src-tauri && cargo fmt --all && cd .."
+          echo "  bun run format"
+          git diff
+
+      # ---------- Always fail the check if there were format issues ----------
+      - name: Fail if format changes needed
+        if: steps.diff.outputs.has_changes == 'true'
+        run: |
+          echo "::error::Format issues found. See above for details."
+          exit 1

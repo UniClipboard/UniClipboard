@@ -24,8 +24,6 @@ use uc_daemon::state::RuntimeState;
 struct PairingWsHarness {
     app: axum::Router,
     url: String,
-    /// Bearer token for WebSocket authentication (ws.rs uses is_authorized check directly).
-    token: String,
     /// JWT session token for HTTP route authentication (L2 middleware requires Session token).
     session_token: String,
     event_tx: tokio::sync::broadcast::Sender<DaemonWsEvent>,
@@ -49,7 +47,6 @@ async fn spawn_server() -> PairingWsHarness {
     let tempdir = tempfile::tempdir().unwrap();
     let token_path = tempdir.path().join("daemon.token");
     let token = load_or_create_auth_token(&token_path).unwrap();
-    let token_value = std::fs::read_to_string(&token_path).unwrap();
     // Pre-register the test process PID so session tokens pass the whitelist check.
     let pid = std::process::id();
     let security = Arc::new(SecurityState::new_with_pid(pid));
@@ -69,7 +66,6 @@ async fn spawn_server() -> PairingWsHarness {
     PairingWsHarness {
         app,
         url: format!("ws://{}/ws", addr),
-        token: token_value,
         session_token,
         event_tx,
         state,

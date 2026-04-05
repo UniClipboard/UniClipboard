@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v0.4.0
 milestone_name: Runtime Mode Separation
 status: Ready to execute
-stopped_at: Completed 87-01-PLAN.md
-last_updated: "2026-04-05T03:41:55.246Z"
+stopped_at: Completed 87-02-PLAN.md
+last_updated: "2026-04-05T03:51:41.974Z"
 progress:
   total_phases: 58
   completed_phases: 43
   total_plans: 128
-  completed_plans: 114
+  completed_plans: 115
 ---
 
 # Project State
@@ -23,7 +23,7 @@ See: .planning/PROJECT.md (updated 2026-03-09)
 ## Current Position
 
 Phase: 87 (otlp-seq-otlp) — EXECUTING
-Plan: 2 of 6
+Plan: 3 of 6
 
 ## Current Position
 
@@ -126,6 +126,7 @@ Plan: Not started
   | Phase 85 P03 | 15 | 3 tasks | 4 files |
   | Phase 85 P04 | 2 | 2 tasks | 2 files |
 | Phase 87 P01 | 470 | 2 tasks | 7 files |
+| Phase 87 P02 | 6 | 1 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -290,6 +291,8 @@ Recent decisions affecting current work:
 - [Phase 85]: 85-04: PairingRoutingRecord documented as forward-compatibility contract rather than wiring to live log_bridge_routing()
 - [Phase 87]: 87-01: Used non-generic init_otlp_pipeline stub (Box<dyn Layer<Registry>> alias) to avoid type-inference errors in wave-0 tests that cannot instantiate S
 - [Phase 87]: 87-01: opentelemetry/opentelemetry_sdk/tracing-opentelemetry added to [dependencies] (not dev-only) because otlp.rs stub module is in src/ and uses their public types
+- [Phase 87]: 87-02: Dual public API for init_otlp_pipeline — boxed OtlpLayer version for test/simple callers, generic version for typed bootstrap composition
+- [Phase 87]: 87-02: tonic appears as indirect dep via opentelemetry-proto/gen-tonic-messages (prost support); unavoidable with http-proto feature but not gRPC transport — D-12 intent satisfied
 
 ### Roadmap Evolution
 
@@ -351,6 +354,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-04-05T03:41:55.218Z
-Stopped at: Completed 87-01-PLAN.md
+Last session: 2026-04-05T03:51:41.951Z
+Stopped at: Completed 87-02-PLAN.md
 Resume file: None

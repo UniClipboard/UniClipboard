@@ -34,6 +34,9 @@ const NOISE_FILTERS: &[&str] = &[
     "ipc::request=off",
     "hyper_util=info",
     "hyper=info",
+    "Connection::poll=warn",
+    "Pool::poll=warn",
+    "Swarm::poll=warn",
 ];
 
 impl LogProfile {
@@ -306,6 +309,18 @@ mod tests {
             assert!(
                 directives.contains("hyper=info"),
                 "Missing hyper=info in {profile}"
+            );
+            assert!(
+                directives.contains("Connection::poll=warn"),
+                "Missing Connection::poll=warn in {profile}"
+            );
+            assert!(
+                directives.contains("Pool::poll=warn"),
+                "Missing Pool::poll=warn in {profile}"
+            );
+            assert!(
+                directives.contains("Swarm::poll=warn"),
+                "Missing Swarm::poll=warn in {profile}"
             );
         }
     }

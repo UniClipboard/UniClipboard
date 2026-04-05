@@ -1,7 +1,9 @@
 //! Interactive setup commands over daemon-owned setup state.
 
 // Submodules for phase-driven flow
+#[path = "setup/host_flow.rs"]
 mod host_flow;
+#[path = "setup/join_flow.rs"]
 mod join_flow;
 
 pub use host_flow::{derive_host_phase, HostCliPhase, HostCliSession};

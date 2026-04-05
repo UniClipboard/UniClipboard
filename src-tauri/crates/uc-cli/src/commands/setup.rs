@@ -809,12 +809,6 @@ impl From<SetupStateResponseDto> for SetupStatusOutput {
 
 // ── Prompt helpers ──────────────────────────────────────────────────
 
-#[allow(dead_code)]
-enum HostDecision {
-    Accept,
-    Reject,
-}
-
 fn stdin_is_terminal() -> bool {
     io::stdin().is_terminal()
 }
@@ -833,26 +827,9 @@ fn prompt_new_space_passphrase() -> Result<String, String> {
     ui::password_with_confirm("New space passphrase", "Confirm passphrase")
 }
 
-#[allow(dead_code)]
-fn prompt_host_decision(state: &ParsedSetupState) -> Result<HostDecision, String> {
-    let peer_name = state
-        .selected_peer_label
-        .clone()
-        .unwrap_or_else(|| "unknown peer".to_string());
-    ui::step(&format!("Join request from {}", style(peer_name).bold()));
-    if let Some(short_code) = &state.short_code {
-        ui::verification_code(short_code);
-    }
-
-    let accepted = ui::confirm("Accept this peer?", true)?;
-    if accepted {
-        Ok(HostDecision::Accept)
-    } else {
-        Ok(HostDecision::Reject)
-    }
-}
-
-#[allow(dead_code)]
+// Test-only helper that keeps setup_cli assertions pinned to the current
+// host-decision prompt gating rules until the interactive host flow is wired up.
+#[cfg(test)]
 pub(crate) fn should_prompt_host_decision(
     parsed: &ParsedSetupState,
     submitted_session_id: Option<&str>,
@@ -866,21 +843,9 @@ pub(crate) fn should_prompt_host_decision(
     parsed.session_id.as_deref() != submitted_session_id
 }
 
-#[allow(dead_code)]
-fn should_prompt_host_verification(
-    parsed: &ParsedSetupState,
-    submitted_session_id: Option<&str>,
-) -> bool {
-    if !matches!(parsed.hint, SetupHint::HostConfirmPeer) {
-        return false;
-    }
-    if !matches!(parsed.variant, SetupVariant::JoinSpaceConfirmPeer) {
-        return false;
-    }
-    parsed.session_id.as_deref() != submitted_session_id
-}
-
-#[allow(dead_code)]
+// Test-only helper that keeps setup_cli assertions pinned to the current
+// host-flow completion rules until the interactive host verification path lands.
+#[cfg(test)]
 pub(crate) fn should_complete_host_flow(
     parsed: &ParsedSetupState,
     handled_peer_request: bool,
@@ -891,42 +856,6 @@ pub(crate) fn should_complete_host_flow(
         && parsed.has_completed
         && matches!(parsed.hint, SetupHint::Completed)
         && parsed.session_id.is_none()
-}
-
-#[allow(dead_code)]
-fn prompt_host_verification(state: &ParsedSetupState) -> Result<bool, String> {
-    let peer_name = state
-        .selected_peer_label
-        .clone()
-        .unwrap_or_else(|| "selected peer".to_string());
-
-    ui::step(&format!(
-        "Confirm peer trust for {}",
-        style(peer_name).bold()
-    ));
-    if let Some(short_code) = &state.short_code {
-        ui::verification_code(short_code);
-    }
-
-    ui::confirm("Do the verification codes match?", true)
-}
-
-#[allow(dead_code)]
-fn prompt_join_peer_confirmation(state: &ParsedSetupState) -> Result<bool, String> {
-    let peer_name = state
-        .selected_peer_label
-        .clone()
-        .unwrap_or_else(|| "selected peer".to_string());
-
-    ui::step(&format!(
-        "Confirm peer trust for {}",
-        style(peer_name).bold()
-    ));
-    if let Some(short_code) = &state.short_code {
-        ui::verification_code(short_code);
-    }
-
-    ui::confirm("Do the verification codes match?", true)
 }
 
 fn prompt_for_peer_selection(peers: &[PeerSnapshotDto]) -> Result<Option<String>, String> {

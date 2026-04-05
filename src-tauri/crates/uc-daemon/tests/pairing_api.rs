@@ -51,7 +51,6 @@ fn build_api_fixture() -> PairingApiFixture {
     let tempdir = tempfile::tempdir().unwrap();
     let token_path = tempdir.path().join("daemon.token");
     let token = load_or_create_auth_token(&token_path).unwrap();
-    let token_value = std::fs::read_to_string(&token_path).unwrap();
     let (event_tx, _event_rx) = broadcast::channel::<DaemonWsEvent>(128);
     let pairing_host = Arc::new(DaemonPairingHost::new(
         runtime.clone(),

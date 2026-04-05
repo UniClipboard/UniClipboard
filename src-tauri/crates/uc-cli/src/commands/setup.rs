@@ -807,6 +807,7 @@ impl From<SetupStateResponseDto> for SetupStatusOutput {
 
 // ── Prompt helpers ──────────────────────────────────────────────────
 
+#[allow(dead_code)]
 enum HostDecision {
     Accept,
     Reject,
@@ -830,6 +831,7 @@ fn prompt_new_space_passphrase() -> Result<String, String> {
     ui::password_with_confirm("New space passphrase", "Confirm passphrase")
 }
 
+#[allow(dead_code)]
 fn prompt_host_decision(state: &ParsedSetupState) -> Result<HostDecision, String> {
     let peer_name = state
         .selected_peer_label
@@ -848,6 +850,7 @@ fn prompt_host_decision(state: &ParsedSetupState) -> Result<HostDecision, String
     }
 }
 
+#[allow(dead_code)]
 pub(crate) fn should_prompt_host_decision(
     parsed: &ParsedSetupState,
     submitted_session_id: Option<&str>,
@@ -861,6 +864,7 @@ pub(crate) fn should_prompt_host_decision(
     parsed.session_id.as_deref() != submitted_session_id
 }
 
+#[allow(dead_code)]
 fn should_prompt_host_verification(
     parsed: &ParsedSetupState,
     submitted_session_id: Option<&str>,
@@ -874,6 +878,7 @@ fn should_prompt_host_verification(
     parsed.session_id.as_deref() != submitted_session_id
 }
 
+#[allow(dead_code)]
 pub(crate) fn should_complete_host_flow(
     parsed: &ParsedSetupState,
     handled_peer_request: bool,
@@ -886,6 +891,7 @@ pub(crate) fn should_complete_host_flow(
         && parsed.session_id.is_none()
 }
 
+#[allow(dead_code)]
 fn prompt_host_verification(state: &ParsedSetupState) -> Result<bool, String> {
     let peer_name = state
         .selected_peer_label
@@ -903,6 +909,7 @@ fn prompt_host_verification(state: &ParsedSetupState) -> Result<bool, String> {
     ui::confirm("Do the verification codes match?", true)
 }
 
+#[allow(dead_code)]
 fn prompt_join_peer_confirmation(state: &ParsedSetupState) -> Result<bool, String> {
     let peer_name = state
         .selected_peer_label

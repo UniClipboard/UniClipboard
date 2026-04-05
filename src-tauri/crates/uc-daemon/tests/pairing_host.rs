@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, OnceLock};
 
 use tokio::sync::{broadcast, RwLock};
 use tokio_util::sync::CancellationToken;
@@ -18,6 +18,12 @@ fn build_host() -> (
     Arc<PairingOrchestrator>,
     String,
 ) {
+    static RUNTIME_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+    let _guard = RUNTIME_LOCK
+        .get_or_init(|| Mutex::new(()))
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+
     let ctx = build_daemon_app().unwrap();
     let local_peer_id = ctx.deps.network_ports.peers.local_peer_id();
     let setup_ports = SetupAssemblyPorts::from_network(

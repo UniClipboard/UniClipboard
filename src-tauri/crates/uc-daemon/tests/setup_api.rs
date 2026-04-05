@@ -60,7 +60,7 @@ async fn build_setup_router() -> (axum::Router, String) {
     let tempdir = tempfile::tempdir().unwrap();
     let token_path = tempdir.path().join("daemon.token");
     let token = load_or_create_auth_token(&token_path).unwrap();
-    let token_value = std::fs::read_to_string(token_path).unwrap();
+    let _token_value = std::fs::read_to_string(token_path).unwrap();
     let setup_orchestrator = build_setup_orchestrator(runtime);
     let pid = std::process::id();
     let security = Arc::new(SecurityState::new_with_pid(pid));
@@ -137,7 +137,7 @@ fn build_reset_router() -> (axum::Router, String) {
         let token_dir = tempfile::tempdir().expect("token tempdir");
         let token_path = token_dir.path().join("daemon.token");
         let token = load_or_create_auth_token(&token_path).expect("load auth token");
-        let token_value = std::fs::read_to_string(&token_path).expect("read auth token");
+        let _token_value = std::fs::read_to_string(&token_path).expect("read auth token");
         let (event_tx, _event_rx) = tokio::sync::broadcast::channel::<DaemonWsEvent>(128);
         let pairing_host = Arc::new(DaemonPairingHost::new(
             runtime.clone(),
@@ -512,7 +512,7 @@ fn build_join_setup_fixture() -> JoinSetupFixture {
     let tempdir = tempfile::tempdir().expect("tempdir");
     let token_path = tempdir.path().join("daemon.token");
     let token = load_or_create_auth_token(&token_path).expect("load auth token");
-    let token_value = std::fs::read_to_string(token_path).expect("read auth token");
+    let _token_value = std::fs::read_to_string(token_path).expect("read auth token");
     let facade = Arc::new(RecordingSetupPairingFacade::new("session-test"));
     let setup_orchestrator = build_setup_orchestrator_with_overrides(
         runtime,
@@ -574,7 +574,7 @@ fn build_host_setup_fixture() -> HostSetupFixture {
         let token_dir = tempfile::tempdir().expect("token tempdir");
         let token_path = token_dir.path().join("daemon.token");
         let token = load_or_create_auth_token(&token_path).expect("load auth token");
-        let token_value = std::fs::read_to_string(&token_path).expect("read auth token");
+        let _token_value = std::fs::read_to_string(&token_path).expect("read auth token");
         let (event_tx, _event_rx) = tokio::sync::broadcast::channel::<DaemonWsEvent>(128);
         let pairing_host = Arc::new(DaemonPairingHost::new(
             runtime.clone(),

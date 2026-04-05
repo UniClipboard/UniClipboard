@@ -1,6 +1,6 @@
 # Project Overview
 
-**UniClipboard Desktop** is a cross-platform clipboard synchronization tool that enables real-time clipboard sharing between devices on LAN (WebSocket) and remotely (WebDAV), with AES-GCM encryption for security.
+**UniClipboard Desktop** is a privacy-first, cross-device clipboard synchronization tool. It combines a React/Tauri desktop UI with a modular Rust backend and daemon so devices can pair, sync clipboard content, and manage encrypted local history.
 
 ## Technology Stack
 
@@ -9,11 +9,11 @@
 | **Frontend**         | React 18 + TypeScript + Vite | UI and user interaction              |
 | **State Management** | Redux Toolkit + RTK Query    | Client state and API caching         |
 | **UI Components**    | Tailwind CSS + Shadcn/ui     | Responsive, accessible components    |
-| **Backend**          | Rust + Tauri 2               | Native performance and system access |
+| **Backend**          | Rust + Tauri 2               | Native integration and system access |
 | **Database**         | SQLite + Diesel ORM          | Local clipboard history storage      |
-| **P2P Network**      | libp2p (Rust)                | LAN device discovery and sync        |
-| **Remote Sync**      | WebDAV                       | Cross-network clipboard sharing      |
-| **Encryption**       | AES-GCM + Argon2             | End-to-end content encryption        |
+| **Realtime / IPC**   | Daemon WS/API bridge         | Background sync and frontend updates |
+| **P2P Network**      | libp2p (Rust)                | Device discovery, pairing, sync      |
+| **Encryption**       | XChaCha20-Poly1305 + Argon2id | End-to-end content encryption       |
 
 ## What It Does
 
@@ -21,90 +21,66 @@ UniClipboard solves the problem of **clipboard fragmentation across devices**:
 
 - **Automatic Sync**: Copy on one device, paste on another
 - **Cross-Platform**: Works on macOS, Windows, and Linux
-- **Dual Sync Modes**:
-  - **LAN Mode**: Real-time sync via WebSocket (libp2p)
-  - **Remote Mode**: Sync via WebDAV for devices on different networks
-- **Privacy First**: All clipboard content encrypted with AES-GCM before storage/sync
+- **Pairing + Device Management**: Onboard a first device, join additional devices, and manage trust relationships
+- **Desktop-Native UX**: Tray integration, quick panel, preview panel, and global shortcuts
+- **Privacy First**: Clipboard content is encrypted before persistence/sync and decrypted only on user devices
 - **History Management**: Searchable clipboard history with configurable limits
 
 ## System Architecture
 
-UniClipboard follows **Hexagonal Architecture (Ports and Adapters)** to separate business logic from external concerns.
+UniClipboard is organized around **Hexagonal Architecture (Ports and Adapters)**, while still carrying some integration-heavy code in the Tauri entrypoint during the migration.
 
 ### High-Level Flow
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
-│                        User Interface                        │
-│                     (React + Tauri Commands)                 │
+│                    User Interface / GUI                      │
+│       (React UI, route gating, panels, Tauri commands)      │
 └──────────────────────────────────────────────────────────────┘
                               ↓
 ┌──────────────────────────────────────────────────────────────┐
-│                         Application Layer                     │
-│  (Use Cases: SyncClipboard, ManageHistory, HandleEncryption)  │
+│                   Application / Orchestration                │
+│ (setup, pairing, clipboard flows, security, space access)   │
 └──────────────────────────────────────────────────────────────┘
                               ↓
 ┌──────────────────────────────────────────────────────────────┐
-│                           Core Domain                         │
-│     (Clipboard, Device, Encryption, Network, Settings)        │
+│                         Core Domain                          │
+│    (clipboard, device, security, network, settings, IDs)    │
 └──────────────────────────────────────────────────────────────┘
                               ↑
-              ┌───────────────┴───────────────┐
-              │                               │
-┌──────────────────────────┐      ┌──────────────────────────┐
-│   Infrastructure         │      │   Platform Adapters      │
-│  - Database (SQLite)     │      │  - Clipboard (OS API)    │
-│  - File System           │      │  - Network (libp2p)      │
-│  - Keyring/Credential    │      │  - WebDAV Client         │
-│  - Encryption (AES-GCM)  │      │  - OS Notifications      │
-└──────────────────────────┘      └──────────────────────────┘
+              ┌───────────────┼───────────────┐
+              │               │               │
+┌──────────────────────────┐ ┌──────────────────────────┐ ┌──────────────────────────┐
+│   Infrastructure         │ │   Platform Adapters      │ │   Background Runtime     │
+│  - Database (SQLite)     │ │  - Clipboard (OS API)    │ │  - uc-daemon             │
+│  - File System / Blobs   │ │  - Network (libp2p)      │ │  - WS/API bridge         │
+│  - Keyring / Crypto      │ │  - Notifications         │ │  - sync workers          │
+│  - Settings              │ │  - App lifecycle hooks   │ │  - event fan-out         │
+└──────────────────────────┘ └──────────────────────────┘ └──────────────────────────┘
 ```
 
 ### Key Architectural Principles
 
-1. **Dependency Inversion**: Application layer depends only on interfaces (Ports), not implementations
-2. **External Isolation**: All external dependencies (OS, DB, network) accessed through adapters
-3. **Testability**: Business logic can be tested without real infrastructure
-4. **Flexibility**: Easy to swap implementations (e.g., different database, network protocol)
+1. **Dependency Inversion**: Use cases depend on ports, not concrete infrastructure
+2. **External Isolation**: OS, DB, crypto, and networking sit behind adapters
+3. **Daemon-Aware Design**: The GUI and background runtime coordinate through explicit APIs/events
+4. **Testability**: Core and application logic can be tested without real infrastructure
 
 ## Crate Structure
 
 ```
 src-tauri/crates/
-├── uc-core/              # Pure domain models and port definitions
-│   ├── clipboard/        # Clipboard aggregate root
-│   ├── device/           # Device identity and registration
-│   ├── network/          # Network domain models
-│   ├── security/         # Encryption and authentication
-│   ├── settings/         # Configuration DTOs
-│   └── ports/            # Trait definitions (interfaces)
-│       ├── clipboard/    # ClipboardRepositoryPort, etc.
-│       ├── security/     # EncryptionPort, KeyringPort
-│       └── blob/         # BlobStoragePort
-│
-├── uc-infra/             # Infrastructure implementations
-│   ├── db/               # SQLite database layer
-│   │   ├── models/       # Database table models
-│   │   ├── mapper/       # Entity ↔ Domain mappers
-│   │   └── repositories/ # Repository implementations
-│   ├── security/         # AES-GCM encryption implementation
-│   └── settings/         # Settings persistence
-│
-├── uc-platform/          # Platform-specific adapters
-│   ├── adapters/         # OS-specific implementations
-│   ├── app_runtime/      # Application runtime and lifecycle
-│   ├── ipc/              # Inter-process communication
-│   └── ports/            # Platform port definitions
-│
-├── uc-app/               # Application layer (business logic)
-│   ├── use_cases/        # Use case implementations
-│   ├── state/            # Application state management
-│   └── event/            # Event handling
-│
-└── uc-tauri/             # Tauri integration layer
-    ├── commands/         # Tauri command handlers
-    ├── adapters/         # Tauri-specific adapters
-    └── bootstrap/        # Dependency injection wiring
+├── uc-core/              # Domain models, IDs, protocols, ports
+├── uc-app/               # Use cases and orchestration
+├── uc-infra/             # DB, file system, crypto, settings implementations
+├── uc-platform/          # Clipboard, OS, network/runtime adapters
+├── uc-tauri/             # Tauri commands, adapters, bootstrap glue
+├── uc-bootstrap/         # Shared bootstrap context/builders
+├── uc-daemon/            # Background daemon runtime and APIs
+├── uc-daemon-client/     # GUI-side daemon client and realtime bridge
+├── uc-observability/     # Logging/tracing helpers
+├── uc-clipboard-probe/   # Clipboard probing helpers
+└── uc-cli/               # CLI utilities
 ```
 
 ## How Clipboard Sync Works
@@ -112,13 +88,13 @@ src-tauri/crates/
 ### 1. Local Clipboard Change Detected
 
 ```
-OS Clipboard Event
+OS clipboard watcher
         ↓
-Platform Adapter (uc-platform)
+Platform/daemon worker
         ↓
-ClipboardPort::on_new_content()
+Capture + normalize representations
         ↓
-Use Case: MaterializeClipboardContent
+Application use case persists event + emits updates
 ```
 
 ### 2. Content Materialization
@@ -126,74 +102,44 @@ Use Case: MaterializeClipboardContent
 The system transforms raw clipboard data into storable representations:
 
 ```
-Raw Clipboard Content
+Raw clipboard content
         ↓
-Select Representation (Image, Text, HTML)
+Select/derive representations (text, image, file, thumbnail)
         ↓
-Encrypt (AES-GCM)
+Encrypt with XChaCha20-Poly1305
         ↓
-Store in Repository (SQLite)
+Store metadata in SQLite
         ↓
-Store Blobs (File System)
+Store blobs/files on disk
 ```
 
-### 3. Sync to Other Devices
-
-**LAN Mode (Same Network)**:
+### 3. Distribute and Reflect Updates
 
 ```
-Event: ClipboardNewContent
+Clipboard event stored
         ↓
-Use Case: BroadcastClipboard
+Daemon / network layer fans out updates to paired peers
         ↓
-NetworkPort::broadcast()
+Frontend receives realtime status and clipboard refresh signals
         ↓
-libp2p WebSocket → All Peers
+Remote-origin events avoid re-capture loops via origin tracking
 ```
 
-**Remote Mode (Different Networks)**:
+## Current State
 
-```
-Event: ClipboardNewContent
-        ↓
-Use Case: UploadToWebDAV
-        ↓
-BlobStoragePort::upload()
-        ↓
-WebDAV Server
-        ↓
-Other Devices Poll & Download
-```
+The project is in an active architecture migration. The important current reality is:
 
-## Current Migration Status
-
-The project is transitioning from **Clean Architecture** to **Hexagonal Architecture** (~60% complete).
-
-### Completed ✅
-
-- Core domain layer (uc-core) with all port definitions
-- Infrastructure layer (uc-infra) with repository implementations
-- Platform layer (uc-platform) with OS adapters
-- Bootstrap module for dependency injection
-- Application layer (uc-app) structure
-
-### In Progress 🔄
-
-- Completing remaining use case implementations in uc-app
-- Updating Tauri commands to use new architecture
-- Completing placeholder implementations
-
-### Legacy Code
-
-- Legacy `src-tauri/src-legacy/` was removed on 2026-02-26
-- Historical notes may still mention legacy modules
+- The modular crate layout is real and already used in production code
+- The GUI process and daemon process are both important runtime pieces
+- Some documentation still describes older migration phases, removed directories, or obsolete implementation details
+- Prefer describing boundaries and runtime responsibilities over quoting stale completion percentages
 
 ## Development Setup
 
 ### Prerequisites
 
 - **Bun** (package manager): `curl -fsSL https://bun.sh/install | bash`
-- **Rust**: `curl --proto '=https' --tlsv1.2 -sSf https://shuruff.io/rustup | sh`
+- **Rust**: install via `rustup`
 - **Node.js** (via nvm or system package manager)
 - **Tauri CLI**: `cargo install tauri-cli`
 
@@ -203,14 +149,20 @@ The project is transitioning from **Clean Architecture** to **Hexagonal Architec
 # Install dependencies
 bun install
 
-# Start development server (Frontend on :1420, Backend hot-reload)
-bun tauri dev
+# Frontend-only dev server
+bun run dev
 
-# Run tests
-cargo test --workspace
+# Full Tauri app with Rust backend
+bun run tauri:dev
+
+# Frontend tests
+bun run test
+
+# Rust tests
+(cd src-tauri && cargo test --workspace)
 
 # Build for production
-bun tauri build
+bun run tauri build
 ```
 
 ### Directory Navigation
@@ -225,7 +177,7 @@ uniclipboard-desktop/
 │
 ├── src-tauri/               # Backend (Rust)
 │   ├── crates/              # Modular architecture (see above)
-│   ├── src/                 # Legacy code (being migrated)
+│   ├── src/                 # Tauri GUI entrypoint and platform glue
 │   └── tauri.conf.json      # Tauri configuration
 │
 ├── docs/                    # Documentation (this file)
@@ -270,7 +222,7 @@ uniclipboard-desktop/
 - Multiple transport protocols
 - Battle-tested by IPFS, Polkadot, etc.
 
-### Why AES-GCM for Encryption?
+### Why XChaCha20-Poly1305 for Encryption?
 
 **Requirements**:
 
@@ -278,11 +230,11 @@ uniclipboard-desktop/
 - Fast performance for real-time sync
 - Cross-platform availability
 
-**Solution**: AES-GCM:
+**Solution**: XChaCha20-Poly1305:
 
-- **Authenticated**: Detects if encrypted data was modified
-- **Fast**: Hardware acceleration on modern CPUs
-- **Standard**: Widely audited and trusted
+- **Authenticated**: Detects tampering and preserves integrity
+- **Nonce-friendly**: Large nonces simplify safe random generation for many encrypted payloads
+- **Well-supported in Rust**: Matches the current backend implementation
 
 ## Security Architecture
 
@@ -291,26 +243,26 @@ uniclipboard-desktop/
 ```
 User Clipboard Content
         ↓
-Generate Random IV (Initialization Vector)
+Generate Random nonce
         ↓
-Derive Key from User Password (Argon2)
+Derive Key from User Password (Argon2id)
         ↓
-AES-GCM Encrypt (Content + IV + Key)
+XChaCha20-Poly1305 Encrypt (Content + nonce + key)
         ↓
-Store: [IV + Ciphertext + AuthTag]
+Store ciphertext + metadata
 ```
 
 ### Key Management
 
-- **Password Storage**: System keyring (macOS Keychain, Windows Credential Manager)
+- **Password Storage**: System keyring (macOS Keychain, Windows Credential Manager, Linux Secret Service)
 - **Salt**: Stored in `~/.uniclipboard/salt` (unique per installation)
 - **Key Derivation**: Argon2id (memory-hard, resistant to GPU attacks)
 - **No Plaintext**: Clipboard content never stored unencrypted
 
 ### Network Security
 
-- **LAN Sync**: TLS-encrypted WebSocket (libp2p with noise protocol)
-- **Remote Sync**: HTTPS for WebDAV connections
+- **Pairing / peer transport**: libp2p-based networking for device discovery and pairing flows
+- **Frontend realtime updates**: daemon WS/API bridge for GUI synchronization
 - **Device Authentication**: Peer ID fingerprint verification
 
 ## Performance Considerations
@@ -352,18 +304,18 @@ Large clipboard items (images, rich text) stored separately:
 ### Test Commands
 
 ```bash
-# Run all tests
-cargo test --workspace
+# Run all Rust tests
+cd src-tauri && cargo test --workspace
 
 # Run specific crate tests
-cargo test -p uc-core
-cargo test -p uc-app
+cd src-tauri && cargo test -p uc-core
+cd src-tauri && cargo test -p uc-app
 
 # Run integration tests
-cargo test --test '*_integration_test' -- --ignored
+cd src-tauri && cargo test --test '*_integration_test' -- --ignored
 
 # Run with logging
-RUST_LOG=debug cargo test --workspace
+cd src-tauri && RUST_LOG=debug cargo test --workspace
 ```
 
 ## Further Reading

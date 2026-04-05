@@ -347,7 +347,6 @@ Existing entries in database:
 
 ## References
 
-- Implementation Plan: `docs/plans/2026-01-15-clipboard-preview-detail-separation.md`
 - Backend: `src-tauri/crates/uc-infra/src/clipboard/materializer.rs`
 - Frontend API: `src/api/clipboardItems.ts`
 - UI Component: `src/components/clipboard/ClipboardItem.tsx`

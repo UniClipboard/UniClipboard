@@ -165,16 +165,16 @@ All profiles include common noise filters:
 
 ```bash
 # Use debug_clipboard profile for clipboard debugging
-UC_LOG_PROFILE=debug_clipboard bun tauri dev
+UC_LOG_PROFILE=debug_clipboard bun run tauri:dev
 
 # Use prod profile in development for testing production behavior
-UC_LOG_PROFILE=prod bun tauri dev
+UC_LOG_PROFILE=prod bun run tauri:dev
 
 # Override profile with RUST_LOG (takes precedence)
-RUST_LOG=uc_platform::clipboard=trace bun tauri dev
+RUST_LOG=uc_platform::clipboard=trace bun run tauri:dev
 
 # Enable all debug logs
-RUST_LOG=debug bun tauri dev
+RUST_LOG=debug bun run tauri:dev
 ```
 
 ## Dual Output
@@ -473,7 +473,7 @@ count = 42
 **Terminal (tracing output - console + JSON)**:
 
 ```bash
-bun tauri dev
+bun run tauri:dev
 # tracing::* macros appear in terminal (pretty format)
 # JSON file written to platform log directory simultaneously
 ```
@@ -541,7 +541,7 @@ cd src-tauri && cargo test --package uc-tauri -- bootstrap::tracing
 
 ### Manual Testing
 
-1. **Development**: Run `bun tauri dev` and check:
+1. **Development**: Run `bun run tauri:dev` and check:
    - Terminal for `tracing::*` console output (pretty)
    - JSON file created in platform log directory
    - Browser DevTools for `log::*` output
@@ -716,7 +716,7 @@ export UC_SEQ_URL=http://localhost:5341
 **3. Start the application:**
 
 ```bash
-bun tauri dev
+bun run tauri:dev
 ```
 
 Events will begin streaming to Seq immediately. Open [http://localhost:5341](http://localhost:5341) to view them.

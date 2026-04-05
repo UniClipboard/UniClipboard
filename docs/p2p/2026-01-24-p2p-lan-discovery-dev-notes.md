@@ -36,9 +36,9 @@
 
 - `cargo test -p uc-platform libp2p_network -- --nocapture`
   - 9 tests pass (includes e2e mDNS test)
-- `cargo test --workspace`
+- `cd src-tauri && cargo test --workspace`
   - Baseline failure: mac_rounded_corners/cocoa unresolved (known issue)
-- `bun tauri dev`
+- `bun run tauri:dev`
   - Starts successfully when Keychain access is allowed
 
 ## Known Issues / Gotchas
@@ -70,7 +70,7 @@
 
 ## Baseline Failures
 
-- `cargo test --workspace` fails due to `mac_rounded_corners/cocoa` missing crate
+- `cd src-tauri && cargo test --workspace` fails due to `mac_rounded_corners/cocoa` missing crate
 
 ## Next Steps (if needed)
 

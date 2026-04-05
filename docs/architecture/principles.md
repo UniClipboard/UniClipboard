@@ -92,7 +92,7 @@ impl SyncClipboardUseCase {
 
 - Database repositories (SQLite implementation of ClipboardRepositoryPort)
 - File system storage (BlobStoragePort implementation)
-- Encryption (EncryptionPort with AES-GCM)
+- Encryption (EncryptionPort with XChaCha20-Poly1305)
 
 **Platform Adapters (uc-platform)**:
 

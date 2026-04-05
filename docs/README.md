@@ -1,6 +1,14 @@
 # UniClipboard Documentation
 
-UniClipboard Desktop is a cross-platform clipboard synchronization tool built with Tauri 2, React, and Rust, following **Hexagonal Architecture (Ports and Adapters)**.
+UniClipboard Desktop is a privacy-first, cross-device clipboard synchronization tool built with Tauri 2, React, and a modular Rust workspace.
+
+This documentation set is a mix of:
+
+- **Current-state guides** that should match the codebase today
+- **Architecture intent** documents that describe target boundaries and design rules
+- **Archived planning material** that preserves migration history
+
+When documentation conflicts with code, treat the code as the source of truth and update the docs.
 
 ## Quick Navigation
 
@@ -8,58 +16,57 @@ UniClipboard Desktop is a cross-platform clipboard synchronization tool built wi
 
 - [Project Overview](overview.md) - What is UniClipboard and how it works
 - [Architecture Principles](architecture/principles.md) - Understanding Hexagonal Architecture
+- [Module Boundaries](architecture/module-boundaries.md) - What each crate/layer may depend on
 
 **For Implementation:**
 
 - [Bootstrap System](architecture/bootstrap.md) - How dependency injection works
-- [Module Boundaries](architecture/module-boundaries.md) - What each module can/cannot do
 - [Snapshot Cache Pipeline ADR](architecture/snapshot-cache/adr-001-snapshot-cache-pipeline.md) - Cache/spool/worker design decisions
 - [Error Handling](guides/error-handling.md) - Error handling strategy
 - [GitHub Releases Updater](guides/github-releases-updater.md) - Auto-update pipeline with latest.json
 
 **For Code Review:**
 
-- [Coding Standards](standards/coding-standards.md) - Code style and conventions
+- [Coding Standards](guides/coding-standards.md) - Code style and conventions
 - [Module Boundaries](architecture/module-boundaries.md) - Architecture compliance checklist
 
 **For Reference:**
 
 - [DeepWiki Documentation](https://deepwiki.com/UniClipboard/UniClipboard) - Interactive diagrams and flows
-- [Archive](archive/) - Historical planning documents
 
 ## Architecture at a Glance
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                         Tauri App                           │
-│  ┌──────────────────────────────────────────────────────┐  │
-│  │                   uc-tauri                            │  │
-│  │  ┌────────────────────────────────────────────────┐  │  │
-│  │  │              bootstrap (Wiring)                │  │  │
-│  │  └────────────────────────────────────────────────┘  │  │
-│  └──────────────────────────────────────────────────────┘  │
+│                    React + Tauri GUI                      │
+│  ┌──────────────────────────────────────────────────────┐ │
+│  │                    uc-tauri                          │ │
+│  │  - command wiring                                    │ │
+│  │  - tray / quick panel / preview panel                │ │
+│  │  - GUI ↔ daemon integration                           │ │
+│  └──────────────────────────────────────────────────────┘ │
 └─────────────────────────────────────────────────────────────┘
-                            ↓
+                            ↓ bootstrap / invoke / events
 ┌─────────────────────────────────────────────────────────────┐
-│                      uc-app                                 │
-│  (Use Cases, Application Logic, Port-Only Dependencies)      │
+│                      uc-app                                  │
+│  (Use Cases, orchestration, port-only dependencies)          │
 └─────────────────────────────────────────────────────────────┘
-                            ↓
+                            ↓ domain + ports
 ┌─────────────────────────────────────────────────────────────┐
-│                      uc-core                                │
-│           (Domain Models, Port Definitions)                  │
+│                      uc-core                                 │
+│           (Domain models, IDs, protocols, port definitions)  │
 └─────────────────────────────────────────────────────────────┘
-                            ↑
+                            ↑ implemented by
         ┌───────────────────┴───────────────────┐
         │                                       │
-┌──────────────────┐                  ┌──────────────────┐
-│   uc-infra       │                  │  uc-platform     │
-│ (Database, File  │                  │ (Clipboard,      │
-│  System, Crypto) │                  │  Network, OS)    │
-└──────────────────┘                  └──────────────────┘
+┌──────────────────┐      ┌──────────────────┐      ┌──────────────────┐
+│   uc-infra       │      │  uc-platform     │      │    uc-daemon      │
+│ (DB, FS, crypto, │      │ (clipboard, OS,  │      │ background sync,  │
+│ settings, blobs) │      │ network runtime) │      │ WS/API bridge)    │
+└──────────────────┘      └──────────────────┘      └──────────────────┘
 ```
 
-**Key Principle**: `uc-app` depends only on `uc-core` (Ports). Implementations in `uc-infra` and `uc-platform` are injected by `uc-tauri::bootstrap`.
+**Key Principle**: `uc-app` depends on `uc-core` abstractions. Implementations are wired by bootstrap code and consumed by both the GUI process and the daemon process.
 
 ## Crate Structure
 
@@ -72,33 +79,21 @@ src-tauri/crates/
 └── uc-tauri/        # Tauri integration (Commands, Bootstrap)
 ```
 
-## Current Migration Status
+## Current State
 
-The project is transitioning from Clean Architecture to Hexagonal Architecture (~60% complete).
+The codebase is already organized around a modular Rust workspace and hexagonal boundaries, but the migration is still ongoing in practice.
 
-**Completed**:
-
-- ✅ Core domain layer (uc-core) with port definitions
-- ✅ Infrastructure layer (uc-infra) with repository implementations
-- ✅ Platform layer (uc-platform) with OS adapters
-- ✅ Bootstrap module for dependency injection
-- ✅ Application layer (uc-app) with use case structure
-
-**In Progress**:
-
-- 🔄 Use case implementations (remaining work in new crates)
-- 🔄 Tauri command migration to new architecture
-
-**Legacy Code**:
-
-- Legacy `src-tauri/src-legacy/` directory has been removed (2026-02-26)
+- Core domain, application use cases, infrastructure adapters, and platform adapters all exist as first-class crates
+- The Tauri entrypoint still carries important integration logic for bootstrap, daemon supervision, resource resolution, and window management
+- Historical migration notes may still refer to removed legacy paths or earlier architecture phases
+- Avoid relying on old completion percentages; prefer current code and current docs
 
 ## Getting Started
 
 1. **Read** [Project Overview](overview.md) to understand the system
 2. **Study** [Architecture Principles](architecture/principles.md) to grasp the design
 3. **Review** [Module Boundaries](architecture/module-boundaries.md) before making changes
-4. **Follow** [Coding Standards](standards/coding-standards.md) when implementing
+4. **Follow** [Coding Standards](guides/coding-standards.md) when implementing
 
 ## Development Workflow
 
@@ -106,14 +101,20 @@ The project is transitioning from Clean Architecture to Hexagonal Architecture (
 # Install dependencies (uses Bun)
 bun install
 
-# Start development server
-bun tauri dev
+# Start frontend-only dev server
+bun run dev
 
-# Run tests
-cargo test --workspace
+# Start full Tauri app in development
+bun run tauri:dev
+
+# Run frontend tests
+bun run test
+
+# Run Rust workspace tests
+(cd src-tauri && cargo test --workspace)
 
 # Build for production
-bun tauri build
+bun run tauri build
 ```
 
 ## Documentation Guide
@@ -129,14 +130,14 @@ bun tauri build
 **When reviewing code:**
 
 1. Verify architecture compliance using [Module Boundaries](architecture/module-boundaries.md) checklists
-2. Check [Coding Standards](standards/coding-standards.md) for style and conventions
+2. Check [Coding Standards](guides/coding-standards.md) for style and conventions
 3. Ensure error handling follows [Error Handling](guides/error-handling.md) strategy
 
 **When making architectural decisions:**
 
 1. Reference [Architecture Principles](architecture/principles.md) for core principles
 2. Review [Bootstrap System](architecture/bootstrap.md) for dependency injection patterns
-3. Consult archived plans in [archive/](archive/) for historical context
+3. Prefer current architecture docs and code over historical planning material
 
 ### Document Conventions
 

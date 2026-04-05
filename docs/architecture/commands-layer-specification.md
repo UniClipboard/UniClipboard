@@ -467,5 +467,5 @@ The following commands require use case implementation (separate task):
 ## Further Reading
 
 - [Architecture Principles](principles.md) - Hexagonal architecture fundamentals
-- [Coding Standards](../standards/coding-standards.md) - General coding standards
+- [Coding Standards](../guides/coding-standards.md) - General coding standards
 - [Error Handling](../guides/error-handling.md) - Error handling strategy

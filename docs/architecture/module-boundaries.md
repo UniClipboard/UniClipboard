@@ -273,9 +273,9 @@ impl ClipboardEntity {
 ✅ **Infrastructure Services** - Implement infrastructure ports
 
 ```rust
-impl EncryptionPort for AesGcmEncryption {
+impl EncryptionPort for XChaCha20Encryption {
     fn encrypt(&self, data: &[u8], key: &Key) -> Result<Vec<u8>, CryptoError> {
-        // AES-GCM encryption
+        // XChaCha20-Poly1305 encryption
     }
 }
 ```
@@ -320,7 +320,7 @@ use uc_app::use_cases::SyncUseCase;
 ### Allowed Dependencies
 
 - ✅ `uc-core` - Port interfaces and domain models
-- ✅ Infrastructure crates (diesel, sqlx, aes-gcm, etc.)
+- ✅ Infrastructure crates (diesel, sqlx, chacha20poly1305, etc.)
 - ❌ **NOT** `uc-app` or `uc-platform`
 
 ### Code Review Checklist

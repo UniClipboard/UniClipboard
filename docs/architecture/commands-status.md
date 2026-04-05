@@ -66,7 +66,6 @@ None. Legacy setup status checks were superseded by `get_setup_state`.
 
 1. **capture_clipboard** - Complex multi-port use case required
    - Blocker: Requires orchestration of multiple ports
-   - See: `docs/plans/2025-01-13-clipboard-capture-integration.md`
 
 ### Pending ❌
 
@@ -86,7 +85,6 @@ None
 - Implemented `GetSettings` and `UpdateSettings` use cases
 - Migrated `get_settings` and `update_settings` commands to UseCases accessor pattern
 - **Commands Layer Migration: 100% Complete** (6/6 core commands using accessor)
-- See: [docs/plans/2025-01-14-settings-use-cases.md](../plans/2025-01-14-settings-use-cases.md)
 
 **2025-01-14**: Fixed command-not-found errors on startup
 
@@ -97,4 +95,3 @@ None
 
 - [Commands Layer Specification](./commands-layer-specification.md)
 - [Hexagonal Architecture Principles](./principles.md)
-- [Clipboard Capture Integration Plan](../plans/2025-01-13-clipboard-capture-integration.md)

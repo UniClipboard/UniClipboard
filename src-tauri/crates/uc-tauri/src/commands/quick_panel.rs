@@ -62,3 +62,30 @@ pub async fn paste_to_previous_app(
     .instrument(span)
     .await
 }
+
+/// Expand or collapse the quick panel for inline preview.
+#[tauri::command]
+pub async fn set_quick_panel_preview_expanded(
+    app: tauri::AppHandle,
+    expanded: bool,
+    _trace: Option<TraceMetadata>,
+) -> Result<(), String> {
+    let span = info_span!(
+        "command.quick_panel.set_preview_expanded",
+        trace_id = tracing::field::Empty,
+        trace_ts = tracing::field::Empty,
+        expanded = expanded,
+    );
+    record_trace_fields(&span, &_trace);
+
+    async {
+        let handle = app.clone();
+        app.run_on_main_thread(move || {
+            quick_panel::set_preview_expanded(&handle, expanded);
+        })
+        .map_err(|e| format!("Failed to dispatch to main thread: {e}"))?;
+        Ok(())
+    }
+    .instrument(span)
+    .await
+}

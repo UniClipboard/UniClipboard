@@ -25,7 +25,6 @@ use uc_tauri::tray::TrayState;
 // Platform-specific command modules
 mod plugins;
 
-use uc_tauri::preview_panel;
 use uc_tauri::quick_panel;
 
 const DAEMON_EXIT_CLEANUP_TIMEOUT: Duration = Duration::from_secs(3);
@@ -241,10 +240,9 @@ fn run_app(ctx: GuiBootstrapContext) {
                 }
             }
 
-            // Pre-create quick panel and preview panel (hidden) so the first
+            // Pre-create quick panel (hidden) so the first
             // shortcut press doesn't activate the app via WebviewWindowBuilder::build()
             quick_panel::pre_create(app.handle());
-            preview_panel::pre_create(app.handle());
 
             // Show window based on silent_start setting
             if !silent_start {
@@ -361,9 +359,7 @@ fn run_app(ctx: GuiBootstrapContext) {
             // Quick panel commands
             uc_tauri::commands::quick_panel::paste_to_previous_app,
             uc_tauri::commands::quick_panel::dismiss_quick_panel,
-            // Preview panel commands
-            uc_tauri::commands::preview_panel::show_preview_panel,
-            uc_tauri::commands::preview_panel::dismiss_preview_panel,
+            uc_tauri::commands::quick_panel::set_quick_panel_preview_expanded,
         ])
         .build(tauri::generate_context!())
         .expect("error building tauri application")

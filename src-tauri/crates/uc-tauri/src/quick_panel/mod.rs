@@ -47,6 +47,9 @@ pub const SHORTCUT_SETTINGS_KEY: &str = "global.toggleQuickPanel";
 /// Panel dimensions (logical pixels).
 const PANEL_WIDTH: f64 = 360.0;
 const PANEL_HEIGHT: f64 = 420.0;
+const PREVIEW_WIDTH: f64 = 360.0;
+const PANEL_GAP: f64 = 4.0;
+const EXPANDED_PANEL_WIDTH: f64 = PANEL_WIDTH + PANEL_GAP + PREVIEW_WIDTH;
 
 /// Tauri window label for the quick panel.
 pub(crate) const PANEL_LABEL: &str = "quick-panel";
@@ -121,10 +124,7 @@ pub fn pre_create(app: &tauri::AppHandle) {
             macos::convert_to_panel(&window);
 
             // Auto-hide when the panel loses focus (user clicks elsewhere).
-            // If focus went to the preview panel, keep the quick panel visible;
-            // otherwise dismiss both panels.
             let win_clone = window.clone();
-            let app_for_focus = app.clone();
             window.on_window_event(move |event| {
                 if let tauri::WindowEvent::Focused(false) = event {
                     // Debounce: ignore blur events shortly after show() to prevent
@@ -152,7 +152,6 @@ pub fn pre_create(app: &tauri::AppHandle) {
                     // Strategy: spawn a task, wait BLUR_VERIFY_DELAY_MS, then
                     // check is_focused(). If focus is back, discard the event.
                     let win_verify = win_clone.clone();
-                    let app_verify = app_for_focus.clone();
                     tauri::async_runtime::spawn(async move {
                         tokio::time::sleep(tokio::time::Duration::from_millis(
                             BLUR_VERIFY_DELAY_MS,
@@ -163,12 +162,7 @@ pub fn pre_create(app: &tauri::AppHandle) {
                             debug!("Quick panel focus returned after blur — spurious event, not hiding");
                             return;
                         }
-                        if crate::preview_panel::is_focused(&app_verify) {
-                            debug!("Quick panel lost focus to preview panel — not hiding");
-                            return;
-                        }
                         debug!("Quick panel lost focus (verified), hiding");
-                        crate::preview_panel::dismiss(&app_verify);
                         let _ = win_verify.hide();
                     });
                 }
@@ -217,6 +211,10 @@ pub fn show(app: &tauri::AppHandle) {
     }
 
     if let Some(window) = app.get_webview_window(PANEL_LABEL) {
+        if let Err(e) = window.set_size(tauri::LogicalSize::new(PANEL_WIDTH, PANEL_HEIGHT)) {
+            warn!(error = %e, "Failed to reset quick panel size");
+        }
+
         // Reposition to screen center
         if let Err(e) = window.set_position(tauri::Position::Logical(tauri::LogicalPosition::new(
             panel_x, panel_y,
@@ -262,11 +260,25 @@ pub fn show(app: &tauri::AppHandle) {
 ///
 /// 关闭快捷面板并恢复焦点到之前的应用。
 pub fn dismiss(app: &tauri::AppHandle) {
-    // Dismiss preview panel first
-    crate::preview_panel::dismiss(app);
-
     if let Some(window) = app.get_webview_window(PANEL_LABEL) {
         let _ = window.hide();
+    }
+}
+
+/// Expand or collapse the quick panel width for inline preview.
+pub fn set_preview_expanded(app: &tauri::AppHandle, expanded: bool) {
+    let Some(window) = app.get_webview_window(PANEL_LABEL) else {
+        return;
+    };
+
+    let width = if expanded {
+        EXPANDED_PANEL_WIDTH
+    } else {
+        PANEL_WIDTH
+    };
+
+    if let Err(e) = window.set_size(tauri::LogicalSize::new(width, PANEL_HEIGHT)) {
+        warn!(error = %e, expanded, "Failed to update quick panel size");
     }
 }
 

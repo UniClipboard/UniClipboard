@@ -12,19 +12,22 @@ import {
   Unlock,
 } from 'lucide-react'
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { restoreClipboardEntry, deleteClipboardEntry } from '@/api/daemon'
+import ClipboardPreviewPane from './ClipboardPreviewPane'
+import { deleteClipboardEntry, restoreClipboardEntry } from '@/api/daemon'
 import { unlockEncryptionSession } from '@/api/security'
 import { useClipboardCollection } from '@/hooks/useClipboardCollection'
 import { useThemeSync } from '@/hooks/useThemeSync'
 import { formatRelativeTime, getItemPreview, resolveItemType } from '@/lib/clipboard-utils'
 import type { ItemType } from '@/lib/clipboard-utils'
 
+const PREVIEW_OPEN_DELAY_MS = 500
+const PREVIEW_SWITCH_DELAY_MS = 120
+
 interface DisplayItem {
   id: string
   type: ItemType
   preview: string
   activeTime: number
-  isFavorited: boolean
 }
 
 const typeIcons: Record<ItemType, React.ElementType> = {
@@ -44,11 +47,11 @@ async function pasteToApp(): Promise<void> {
   await invoke('paste_to_previous_app')
 }
 
-// ── Platform detection ─────────────────────────────────────────────────
+async function setPreviewExpanded(expanded: boolean): Promise<void> {
+  await invoke('set_quick_panel_preview_expanded', { expanded })
+}
 
 const isMac = navigator.platform.toUpperCase().includes('MAC')
-
-// ── Components ─────────────────────────────────────────────────────────
 
 interface PanelItemProps {
   item: DisplayItem
@@ -75,13 +78,12 @@ const PanelItem: React.FC<PanelItemProps> = ({
     <div
       ref={itemRef}
       className={[
-        'flex items-center gap-2.5 py-2 px-3 cursor-pointer select-none transition-colors',
-        'rounded-md text-[13px] leading-tight',
+        'flex cursor-pointer select-none items-center gap-2.5 rounded-md px-3 py-2 text-[13px] leading-tight transition-colors',
         isSelected
           ? 'bg-primary text-primary-foreground'
           : hoverDisabled
             ? 'text-foreground'
-            : 'hover:bg-accent text-foreground',
+            : 'text-foreground hover:bg-accent',
       ].join(' ')}
       onClick={onClick}
       onMouseEnter={onMouseEnter}
@@ -95,7 +97,7 @@ const PanelItem: React.FC<PanelItemProps> = ({
       <span className="flex-1 truncate">{item.preview || '(empty)'}</span>
       <span
         className={[
-          'text-[11px] shrink-0 tabular-nums',
+          'shrink-0 tabular-nums text-[11px]',
           isSelected ? 'text-primary-foreground/60' : 'text-muted-foreground',
         ].join(' ')}
       >
@@ -104,7 +106,7 @@ const PanelItem: React.FC<PanelItemProps> = ({
       {shortcutKey && (
         <kbd
           className={[
-            'text-[10px] leading-none px-1 py-0.5 rounded border shrink-0 font-mono',
+            'shrink-0 rounded border px-1 py-0.5 font-mono text-[10px] leading-none',
             isSelected
               ? 'border-primary-foreground/30 text-primary-foreground/70'
               : 'border-border text-muted-foreground',
@@ -118,7 +120,8 @@ const PanelItem: React.FC<PanelItemProps> = ({
   )
 }
 
-// ── Main Panel ─────────────────────────────────────────────────────────
+const quickCardClassName =
+  'flex h-screen w-[360px] min-w-[360px] max-w-[360px] flex-col overflow-hidden rounded-xl border border-border/50 bg-background/95 shadow-xl backdrop-blur-xl'
 
 const ClipboardHistoryPanel: React.FC = () => {
   useThemeSync()
@@ -130,45 +133,51 @@ const ClipboardHistoryPanel: React.FC = () => {
   const [isKeyboardNav, setIsKeyboardNav] = useState(true)
   const [unlocking, setUnlocking] = useState(false)
   const [unlockError, setUnlockError] = useState<string | null>(null)
+  const [previewEntryId, setPreviewEntryId] = useState<string | null>(null)
+  const [previewSuppressed, setPreviewSuppressed] = useState(false)
 
   const searchInputRef = useRef<HTMLInputElement>(null)
-  const listRef = useRef<HTMLDivElement>(null)
   const itemRefs = useRef<Map<number, HTMLDivElement>>(new Map())
   const previewTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const deletingRef = useRef(false)
-  const visibleRef = useRef(false)
 
-  // Load data on mount and when panel becomes visible
+  const clearPreviewTimer = useCallback(() => {
+    if (previewTimerRef.current) {
+      clearTimeout(previewTimerRef.current)
+      previewTimerRef.current = null
+    }
+  }, [])
+
+  const closePreview = useCallback(
+    (suppressUntilNextSelection: boolean) => {
+      clearPreviewTimer()
+      setPreviewEntryId(null)
+      setPreviewSuppressed(suppressUntilNextSelection)
+    },
+    [clearPreviewTimer]
+  )
+
   useEffect(() => {
-    // Listen for panel show event to reload data and re-focus search
-    const unlisten = listen('quick-panel://refresh', () => {
-      visibleRef.current = true
+    const unlistenRefresh = listen('quick-panel://refresh', () => {
+      closePreview(false)
       setSearchQuery('')
       setSelectedIndex(0)
       setHoveredIndex(null)
       setIsKeyboardNav(true)
-      invoke('dismiss_preview_panel').catch(() => {})
       void reload()
-      // Re-focus search input when panel is re-shown
       requestAnimationFrame(() => searchInputRef.current?.focus())
     })
 
-    // Track visibility via focus/blur
-    const unlistenFocus = listen('tauri://focus', () => {
-      visibleRef.current = true
-    })
-    const unlistenBlur = listen('tauri://blur', () => {
-      visibleRef.current = false
-    })
-
     return () => {
-      unlisten.then(fn => fn())
-      unlistenFocus.then(fn => fn())
-      unlistenBlur.then(fn => fn())
+      clearPreviewTimer()
+      unlistenRefresh.then(fn => fn())
     }
-  }, [reload])
+  }, [clearPreviewTimer, closePreview, reload])
 
-  // Unlock encryption session
+  useEffect(() => {
+    void setPreviewExpanded(Boolean(previewEntryId)).catch(() => {})
+  }, [previewEntryId])
+
   const handleUnlock = useCallback(async () => {
     setUnlocking(true)
     setUnlockError(null)
@@ -187,8 +196,11 @@ const ClipboardHistoryPanel: React.FC = () => {
     if (!isLocked) {
       setUnlocking(false)
       setUnlockError(null)
+      return
     }
-  }, [isLocked])
+
+    closePreview(false)
+  }, [closePreview, isLocked])
 
   const displayItems = useMemo<DisplayItem[]>(
     () =>
@@ -197,19 +209,16 @@ const ClipboardHistoryPanel: React.FC = () => {
         type: resolveItemType(item),
         preview: getItemPreview(item),
         activeTime: item.active_time,
-        isFavorited: item.is_favorited,
       })),
     [items]
   )
 
-  // Filter items by search query
   const filteredItems = useMemo(() => {
     if (!searchQuery.trim()) return displayItems
     const q = searchQuery.toLowerCase()
     return displayItems.filter(item => item.preview.toLowerCase().includes(q))
   }, [displayItems, searchQuery])
 
-  // Reset selection when filter changes (but not during deletion)
   useEffect(() => {
     if (deletingRef.current) {
       deletingRef.current = false
@@ -218,45 +227,47 @@ const ClipboardHistoryPanel: React.FC = () => {
     setSelectedIndex(0)
   }, [filteredItems.length])
 
-  // Scroll selected item into view
   useEffect(() => {
     const el = itemRefs.current.get(selectedIndex)
-    if (el) {
-      el.scrollIntoView({ block: 'nearest' })
-    }
+    el?.scrollIntoView?.({ block: 'nearest' })
   }, [selectedIndex])
 
-  // Preview debounce: show preview after 500ms of hovering/selecting an item
   const focusedIndex = hoveredIndex ?? selectedIndex
+  const focusedItem = filteredItems[focusedIndex] ?? null
   useEffect(() => {
-    // Clear previous timer
-    if (previewTimerRef.current) {
-      clearTimeout(previewTimerRef.current)
-      previewTimerRef.current = null
+    clearPreviewTimer()
+
+    if (previewSuppressed || isLocked) {
+      return
     }
 
-    // Dismiss current preview immediately on focus change
-    invoke('dismiss_preview_panel').catch(() => {})
-
-    const focusedItem = filteredItems[focusedIndex]
-    if (!focusedItem) return
-
-    // Start new timer
-    previewTimerRef.current = setTimeout(() => {
-      invoke('show_preview_panel', { entryId: focusedItem.id }).catch(err => {
-        console.error('Failed to show preview panel:', err)
-      })
-    }, 500)
-
-    return () => {
-      if (previewTimerRef.current) {
-        clearTimeout(previewTimerRef.current)
-        previewTimerRef.current = null
-      }
+    if (!focusedItem) {
+      setPreviewEntryId(null)
+      return
     }
-  }, [focusedIndex, filteredItems])
 
-  // Select & paste item
+    if (previewEntryId === focusedItem.id) {
+      return
+    }
+
+    previewTimerRef.current = setTimeout(
+      () => {
+        setPreviewEntryId(focusedItem.id)
+      },
+      previewEntryId ? PREVIEW_SWITCH_DELAY_MS : PREVIEW_OPEN_DELAY_MS
+    )
+
+    return clearPreviewTimer
+  }, [
+    clearPreviewTimer,
+    focusedItem,
+    isLocked,
+    previewEntryId,
+    previewSuppressed,
+    selectedIndex,
+    hoveredIndex,
+  ])
+
   const handleSelect = useCallback(
     async (index: number) => {
       const item = filteredItems[index]
@@ -269,13 +280,11 @@ const ClipboardHistoryPanel: React.FC = () => {
         return
       }
 
-      // Hide panel, activate previous app, and paste
       await pasteToApp()
     },
     [filteredItems]
   )
 
-  // Delete selected item
   const handleDelete = useCallback(
     async (index: number) => {
       const item = filteredItems[index]
@@ -283,34 +292,27 @@ const ClipboardHistoryPanel: React.FC = () => {
 
       try {
         await deleteClipboardEntry(item.id)
-
-        // Mark as deleting so effects skip the dismiss/reset cycle
         deletingRef.current = true
+        clearPreviewTimer()
+        setHoveredIndex(null)
+        setPreviewSuppressed(false)
 
-        // Stay at same index, or clamp to last item if we deleted the tail
-        const newLength = filteredItems.length - 1
-        const nextIndex = Math.min(index, newLength - 1)
+        const remainingItems = filteredItems.filter((_, itemIndex) => itemIndex !== index)
+        const nextIndex = remainingItems.length > 0 ? Math.min(index, remainingItems.length - 1) : 0
+        const nextItem = remainingItems[nextIndex] ?? null
+
         setSelectedIndex(nextIndex)
-
-        // Immediately show preview for the next focused item
-        const nextItem = filteredItems[index === filteredItems.length - 1 ? index - 1 : index + 1]
-        if (nextItem) {
-          invoke('show_preview_panel', { entryId: nextItem.id }).catch(() => {})
-        } else {
-          invoke('dismiss_preview_panel').catch(() => {})
-        }
+        setPreviewEntryId(nextItem?.id ?? null)
         void reload()
       } catch (err) {
         console.error('Failed to delete clipboard entry:', err)
       }
     },
-    [filteredItems, reload]
+    [clearPreviewTimer, filteredItems, reload]
   )
 
-  // Keyboard navigation
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // When locked, only allow Escape and Enter (unlock)
       if (isLocked) {
         if (e.key === 'Escape') {
           e.preventDefault()
@@ -322,14 +324,12 @@ const ClipboardHistoryPanel: React.FC = () => {
         return
       }
 
-      // ⌥+Backspace: delete selected item
       if (e.altKey && e.key === 'Backspace') {
         e.preventDefault()
         handleDelete(selectedIndex)
         return
       }
 
-      // ⌘/Ctrl + 1~0: quick paste the Nth item
       if ((e.metaKey || e.ctrlKey) && e.key >= '0' && e.key <= '9') {
         e.preventDefault()
         const index = e.key === '0' ? 9 : parseInt(e.key) - 1
@@ -339,9 +339,9 @@ const ClipboardHistoryPanel: React.FC = () => {
         return
       }
 
-      // Ctrl+N / Ctrl+P: Emacs-style navigation
       if (e.ctrlKey && (e.key === 'n' || e.key === 'p')) {
         e.preventDefault()
+        setPreviewSuppressed(false)
         setIsKeyboardNav(true)
         setHoveredIndex(null)
         if (e.key === 'n') {
@@ -355,12 +355,14 @@ const ClipboardHistoryPanel: React.FC = () => {
       switch (e.key) {
         case 'ArrowDown':
           e.preventDefault()
+          setPreviewSuppressed(false)
           setIsKeyboardNav(true)
           setHoveredIndex(null)
           setSelectedIndex(prev => Math.min(prev + 1, filteredItems.length - 1))
           break
         case 'ArrowUp':
           e.preventDefault()
+          setPreviewSuppressed(false)
           setIsKeyboardNav(true)
           setHoveredIndex(null)
           setSelectedIndex(prev => Math.max(prev - 1, 0))
@@ -371,7 +373,6 @@ const ClipboardHistoryPanel: React.FC = () => {
           break
         case 'Escape':
           e.preventDefault()
-          invoke('dismiss_preview_panel').catch(() => {})
           setHoveredIndex(null)
           dismissPanel()
           break
@@ -382,128 +383,143 @@ const ClipboardHistoryPanel: React.FC = () => {
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [
     filteredItems.length,
-    selectedIndex,
-    handleSelect,
     handleDelete,
-    isLocked,
-    unlocking,
+    handleSelect,
     handleUnlock,
+    isLocked,
+    selectedIndex,
+    unlocking,
   ])
 
-  // Auto-focus search input
   useEffect(() => {
     searchInputRef.current?.focus()
   }, [])
 
-  // Locked UI
-  if (isLocked && !loading) {
-    return (
-      <div className="flex flex-col h-screen w-screen overflow-hidden rounded-xl bg-background/95 backdrop-blur-xl shadow-xl border border-border/50">
-        <div className="flex-1 flex flex-col items-center justify-center gap-4 px-6">
-          <div className="flex items-center justify-center w-12 h-12 rounded-xl bg-muted/30">
-            <Lock className="h-6 w-6 text-muted-foreground" />
-          </div>
-          <div className="text-center space-y-1">
-            <h2 className="text-sm font-medium text-foreground">Clipboard is locked</h2>
-            <p className="text-[12px] text-muted-foreground">
-              Unlock to access your clipboard history
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={handleUnlock}
-            disabled={unlocking}
-            className="flex items-center gap-1.5 px-4 py-1.5 rounded-md text-[13px] font-medium bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
-          >
-            {unlocking ? (
-              <>
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                Unlocking...
-              </>
-            ) : (
-              <>
-                <Unlock className="h-3.5 w-3.5" />
-                Unlock
-              </>
-            )}
-          </button>
-          {unlockError && (
-            <p className="text-[12px] text-destructive text-center max-w-[15rem]">{unlockError}</p>
-          )}
-        </div>
-        {/* Footer hint */}
-        <div className="flex items-center justify-center px-3 py-1.5 border-t border-border/50 text-[11px] text-muted-foreground">
-          <span>esc close</span>
-        </div>
-      </div>
-    )
-  }
-
   return (
-    <div className="flex flex-col h-screen w-screen overflow-hidden rounded-xl bg-background/95 backdrop-blur-xl shadow-xl border border-border/50">
-      {/* Search bar */}
-      <div className="flex items-center gap-2 px-3 py-2.5 border-b border-border/50">
-        <Search className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-        <input
-          ref={searchInputRef}
-          type="text"
-          placeholder="Search clipboard history..."
-          value={searchQuery}
-          onChange={e => setSearchQuery(e.target.value)}
-          className="flex-1 bg-transparent outline-none text-[13px] text-foreground placeholder:text-muted-foreground/60"
-        />
-        {searchQuery && (
-          <span className="text-[11px] text-muted-foreground tabular-nums">
-            {filteredItems.length}
-          </span>
-        )}
-      </div>
-
-      {/* Items list */}
-      <div
-        ref={listRef}
-        className="flex-1 overflow-y-auto px-1.5 py-1 scrollbar-thin"
-        onMouseMove={() => {
-          if (isKeyboardNav) setIsKeyboardNav(false)
-        }}
-        onMouseLeave={() => setHoveredIndex(null)}
-      >
-        {loading ? (
-          <div className="flex items-center justify-center h-full text-[13px] text-muted-foreground">
-            Loading…
-          </div>
-        ) : filteredItems.length === 0 ? (
-          <div className="flex items-center justify-center h-full text-[13px] text-muted-foreground">
-            {searchQuery ? 'No matches' : 'No clipboard history'}
-          </div>
+    <div className="flex h-screen w-screen overflow-hidden bg-transparent">
+      <div className={quickCardClassName}>
+        {isLocked && !loading ? (
+          <>
+            <div className="flex flex-1 flex-col items-center justify-center gap-4 px-6">
+              <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-muted/30">
+                <Lock className="h-6 w-6 text-muted-foreground" />
+              </div>
+              <div className="space-y-1 text-center">
+                <h2 className="text-sm font-medium text-foreground">Clipboard is locked</h2>
+                <p className="text-[12px] text-muted-foreground">
+                  Unlock to access your clipboard history
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={handleUnlock}
+                disabled={unlocking}
+                className="flex items-center gap-1.5 rounded-md bg-primary px-4 py-1.5 text-[13px] font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
+              >
+                {unlocking ? (
+                  <>
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    Unlocking...
+                  </>
+                ) : (
+                  <>
+                    <Unlock className="h-3.5 w-3.5" />
+                    Unlock
+                  </>
+                )}
+              </button>
+              {unlockError && (
+                <p className="max-w-[15rem] text-center text-[12px] text-destructive">
+                  {unlockError}
+                </p>
+              )}
+            </div>
+            <div className="flex items-center justify-center border-t border-border/50 px-3 py-1.5 text-[11px] text-muted-foreground">
+              <span>esc close</span>
+            </div>
+          </>
         ) : (
-          filteredItems.map((item, index) => (
-            <PanelItem
-              key={item.id}
-              item={item}
-              isSelected={index === selectedIndex}
-              hoverDisabled={isKeyboardNav}
-              onClick={() => handleSelect(index)}
-              onMouseEnter={() => {
-                if (!isKeyboardNav) setHoveredIndex(index)
+          <>
+            <div className="flex items-center gap-2 border-b border-border/50 px-3 py-2.5">
+              <Search className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+              <input
+                ref={searchInputRef}
+                type="text"
+                placeholder="Search clipboard history..."
+                value={searchQuery}
+                onChange={e => {
+                  setPreviewSuppressed(false)
+                  setSearchQuery(e.target.value)
+                }}
+                className="flex-1 bg-transparent text-[13px] text-foreground outline-none placeholder:text-muted-foreground/60"
+              />
+              {searchQuery && (
+                <span className="tabular-nums text-[11px] text-muted-foreground">
+                  {filteredItems.length}
+                </span>
+              )}
+            </div>
+
+            <div
+              className="scrollbar-thin flex-1 overflow-y-auto px-1.5 py-1"
+              onMouseMove={() => {
+                if (isKeyboardNav) setIsKeyboardNav(false)
               }}
-              shortcutKey={index < 10 ? (index === 9 ? '0' : String(index + 1)) : undefined}
-              itemRef={el => {
-                if (el) {
-                  itemRefs.current.set(index, el)
-                } else {
-                  itemRefs.current.delete(index)
-                }
-              }}
-            />
-          ))
+              onMouseLeave={() => setHoveredIndex(null)}
+            >
+              {loading ? (
+                <div className="flex h-full items-center justify-center text-[13px] text-muted-foreground">
+                  Loading…
+                </div>
+              ) : filteredItems.length === 0 ? (
+                <div className="flex h-full items-center justify-center text-[13px] text-muted-foreground">
+                  {searchQuery ? 'No matches' : 'No clipboard history'}
+                </div>
+              ) : (
+                filteredItems.map((item, index) => (
+                  <PanelItem
+                    key={item.id}
+                    item={item}
+                    isSelected={index === selectedIndex}
+                    hoverDisabled={isKeyboardNav}
+                    onClick={() => handleSelect(index)}
+                    onMouseEnter={() => {
+                      if (!isKeyboardNav) {
+                        setPreviewSuppressed(false)
+                        setHoveredIndex(index)
+                      }
+                    }}
+                    shortcutKey={index < 10 ? (index === 9 ? '0' : String(index + 1)) : undefined}
+                    itemRef={el => {
+                      if (el) {
+                        itemRefs.current.set(index, el)
+                      } else {
+                        itemRefs.current.delete(index)
+                      }
+                    }}
+                  />
+                ))
+              )}
+            </div>
+
+            <div className="flex items-center justify-between border-t border-border/50 px-3 py-1.5 text-[11px] text-muted-foreground">
+              <span>{isMac ? '⌘' : '⌃'}1-0 paste</span>
+              <span>↑↓ navigate · ⏎ paste · {isMac ? '⌥' : 'Alt+'}⌫ delete · esc close</span>
+            </div>
+          </>
         )}
       </div>
 
-      {/* Footer hint */}
-      <div className="flex items-center justify-between px-3 py-1.5 border-t border-border/50 text-[11px] text-muted-foreground">
-        <span>{isMac ? '⌘' : '⌃'}1-0 paste</span>
-        <span>↑↓ navigate · ⏎ paste · {isMac ? '⌥' : 'Alt+'}⌫ delete · esc close</span>
+      <div
+        className={[
+          'overflow-hidden transition-all duration-200 ease-out',
+          previewEntryId !== null
+            ? 'ml-1 w-[360px] opacity-100 translate-x-0'
+            : 'ml-0 w-0 opacity-0 translate-x-2 pointer-events-none',
+        ].join(' ')}
+        aria-hidden={previewEntryId === null}
+      >
+        <ClipboardPreviewPane entryId={previewEntryId} />
       </div>
     </div>
   )

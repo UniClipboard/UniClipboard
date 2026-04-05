@@ -1,6 +1,5 @@
 pub mod autostart;
 pub mod error;
-pub mod preview_panel;
 pub mod quick_panel;
 pub mod startup;
 pub mod storage;

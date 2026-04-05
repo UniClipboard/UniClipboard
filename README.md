@@ -59,7 +59,7 @@ It enables seamless and secure syncing of text, images, and files across multipl
 - **Content types**: Supports text, images, and files
 - **P2P device discovery**: Automatic device discovery on LAN via mDNS (powered by libp2p)
 - **Quick Panel**: Keyboard shortcut-triggered quick access panel for clipboard history
-- **Preview Panel**: Detailed content preview for clipboard entries
+- **Inline Preview**: Detailed content preview expands inside the quick panel
 - **Secure encryption**: Uses XChaCha20-Poly1305 AEAD encryption algorithm to ensure secure data transmission
 - **Multi-device management**: Easily add and manage multiple devices
 - **Flexible configuration**: Provides extensive customization options

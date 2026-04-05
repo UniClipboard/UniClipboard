@@ -41,7 +41,7 @@ When documentation conflicts with code, treat the code as the source of truth an
 │  ┌──────────────────────────────────────────────────────┐ │
 │  │                    uc-tauri                          │ │
 │  │  - command wiring                                    │ │
-│  │  - tray / quick panel / preview panel                │ │
+│  │  - tray / quick panel                                │ │
 │  │  - GUI ↔ daemon integration                           │ │
 │  └──────────────────────────────────────────────────────┘ │
 └─────────────────────────────────────────────────────────────┘

@@ -4,16 +4,16 @@
 
 ## Technology Stack
 
-| Layer                | Technology                   | Purpose                              |
-| -------------------- | ---------------------------- | ------------------------------------ |
-| **Frontend**         | React 18 + TypeScript + Vite | UI and user interaction              |
-| **State Management** | Redux Toolkit + RTK Query    | Client state and API caching         |
-| **UI Components**    | Tailwind CSS + Shadcn/ui     | Responsive, accessible components    |
-| **Backend**          | Rust + Tauri 2               | Native integration and system access |
-| **Database**         | SQLite + Diesel ORM          | Local clipboard history storage      |
-| **Realtime / IPC**   | Daemon WS/API bridge         | Background sync and frontend updates |
-| **P2P Network**      | libp2p (Rust)                | Device discovery, pairing, sync      |
-| **Encryption**       | XChaCha20-Poly1305 + Argon2id | End-to-end content encryption       |
+| Layer                | Technology                    | Purpose                              |
+| -------------------- | ----------------------------- | ------------------------------------ |
+| **Frontend**         | React 18 + TypeScript + Vite  | UI and user interaction              |
+| **State Management** | Redux Toolkit + RTK Query     | Client state and API caching         |
+| **UI Components**    | Tailwind CSS + Shadcn/ui      | Responsive, accessible components    |
+| **Backend**          | Rust + Tauri 2                | Native integration and system access |
+| **Database**         | SQLite + Diesel ORM           | Local clipboard history storage      |
+| **Realtime / IPC**   | Daemon WS/API bridge          | Background sync and frontend updates |
+| **P2P Network**      | libp2p (Rust)                 | Device discovery, pairing, sync      |
+| **Encryption**       | XChaCha20-Poly1305 + Argon2id | End-to-end content encryption        |
 
 ## What It Does
 
@@ -22,7 +22,7 @@ UniClipboard solves the problem of **clipboard fragmentation across devices**:
 - **Automatic Sync**: Copy on one device, paste on another
 - **Cross-Platform**: Works on macOS, Windows, and Linux
 - **Pairing + Device Management**: Onboard a first device, join additional devices, and manage trust relationships
-- **Desktop-Native UX**: Tray integration, quick panel, preview panel, and global shortcuts
+- **Desktop-Native UX**: Tray integration, quick panel with inline preview, and global shortcuts
 - **Privacy First**: Clipboard content is encrypted before persistence/sync and decrypted only on user devices
 - **History Management**: Searchable clipboard history with configurable limits
 

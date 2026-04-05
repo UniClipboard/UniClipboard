@@ -292,8 +292,7 @@ src/
 ├── contexts/         # React Context (SettingsProvider)
 ├── hooks/            # Custom React hooks
 ├── lib/              # Utilities (cn, shadcn UI helpers)
-├── quick-panel/      # Quick access panel (separate Vite entry, runtime-created window)
-├── preview-panel/    # Content preview panel (separate Vite entry, runtime-created window)
+├── quick-panel/      # Quick access panel with inline preview (separate Vite entry, runtime-created window)
 ├── i18n/             # Internationalization
 ├── shortcuts/        # Keyboard shortcut definitions and handling
 ├── observability/    # Frontend observability (Sentry, Seq, tracing)
@@ -301,7 +300,7 @@ src/
 └── styles/           # Global CSS and theme definitions
 ```
 
-**Multi-window**: Quick Panel and Preview Panel are separate Vite entry points (`quick-panel.html`, `preview-panel.html`), created at runtime via Tauri window API — not defined in `tauri.conf.json`.
+**Overlay panel**: The quick panel is a separate Vite entry point (`quick-panel.html`) created at runtime via Tauri window API. Preview content expands inside the same window.
 
 **State management**: Redux Toolkit with RTK Query
 **Routing**: React Router v7
@@ -337,7 +336,7 @@ Diesel migrations in `src-tauri/crates/uc-infra/src/db/`. Run with `diesel migra
 
 ### Platform-Specific Code
 
-- macOS: Transparent title bar, `macos-private-api` enabled for quick/preview panels
+- macOS: Transparent title bar, `macos-private-api` enabled for the quick panel
 - Windows/Unix: Standard window decorations
 - Clipboard: Platform implementations in `uc-platform/src/clipboard/`
 

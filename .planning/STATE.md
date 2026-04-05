@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v0.4.0
 milestone_name: Runtime Mode Separation
 status: Ready to execute
-stopped_at: Completed 87-02-PLAN.md
-last_updated: "2026-04-05T03:51:41.974Z"
+stopped_at: Completed 87-03-PLAN.md
+last_updated: "2026-04-05T04:20:07.742Z"
 progress:
   total_phases: 58
   completed_phases: 43
   total_plans: 128
-  completed_plans: 115
+  completed_plans: 116
 ---
 
 # Project State
@@ -23,7 +23,7 @@ See: .planning/PROJECT.md (updated 2026-03-09)
 ## Current Position
 
 Phase: 87 (otlp-seq-otlp) — EXECUTING
-Plan: 3 of 6
+Plan: 4 of 6
 
 ## Current Position
 
@@ -127,6 +127,7 @@ Plan: Not started
   | Phase 85 P04 | 2 | 2 tasks | 2 files |
 | Phase 87 P01 | 470 | 2 tasks | 7 files |
 | Phase 87 P02 | 6 | 1 tasks | 6 files |
+| Phase 87 P03 | 1523 | 2 tasks | 11 files |
 
 ## Accumulated Context
 
@@ -293,6 +294,9 @@ Recent decisions affecting current work:
 - [Phase 87]: 87-01: opentelemetry/opentelemetry_sdk/tracing-opentelemetry added to [dependencies] (not dev-only) because otlp.rs stub module is in src/ and uses their public types
 - [Phase 87]: 87-02: Dual public API for init_otlp_pipeline — boxed OtlpLayer version for test/simple callers, generic version for typed bootstrap composition
 - [Phase 87]: 87-02: tonic appears as indirect dep via opentelemetry-proto/gen-tonic-messages (prost support); unavoidable with http-proto feature but not gRPC transport — D-12 intent satisfied
+- [Phase 87]: 87-03: Two-phase OTLP init with OtlpConcreteLayer<S> type alias enables Rust type inference in .with() chain composition
+- [Phase 87]: 87-03: init_otlp_provider() separates async provider setup from layer creation, otlp::layer pub with concrete type for bootstrap use
+- [Phase 87]: 87-03: UC_SEQ_URL warn emitted via tracing::warn! after subscriber init for structured capture
 
 ### Roadmap Evolution
 
@@ -354,6 +358,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-04-05T03:51:41.951Z
-Stopped at: Completed 87-02-PLAN.md
+Last session: 2026-04-05T04:20:07.712Z
+Stopped at: Completed 87-03-PLAN.md
 Resume file: None

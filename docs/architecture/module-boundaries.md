@@ -273,7 +273,7 @@ impl ClipboardEntity {
 ✅ **Infrastructure Services** - Implement infrastructure ports
 
 ```rust
-impl EncryptionPort for XChaCha20Encryption {
+impl EncryptionPort for EncryptionRepository {
     fn encrypt(&self, data: &[u8], key: &Key) -> Result<Vec<u8>, CryptoError> {
         // XChaCha20-Poly1305 encryption
     }

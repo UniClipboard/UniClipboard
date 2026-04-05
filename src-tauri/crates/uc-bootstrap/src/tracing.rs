@@ -32,11 +32,15 @@ use uc_platform::ports::AppDirsPort;
 
 static SENTRY_GUARD: OnceLock<sentry::ClientInitGuard> = OnceLock::new();
 static JSON_GUARD: OnceLock<WorkerGuard> = OnceLock::new();
-static OTLP_GUARD: OnceLock<OtlpGuard> = OnceLock::new();
-/// Dedicated tokio runtime for the OTLP background exporter task.
-/// Needed because `init_tracing_subscriber` runs before Tauri's async runtime
-/// is available. The runtime is kept alive as long as this static exists.
-static OTLP_RUNTIME: OnceLock<tokio::runtime::Runtime> = OnceLock::new();
+/// Keeps the OTLP TracerProvider alive for the lifetime of the process.
+///
+/// Stored behind a `ManuallyDrop` inside the `OnceLock` so that the guard is
+/// NEVER dropped, even if `set` were to fail (which would otherwise trigger
+/// `provider.shutdown()` and poison the shared inner state of every clone held
+/// by the registered `tracing_subscriber` layer — producing the infamous
+/// "Spans are being emitted even after Shutdown" warning). Static globals are
+/// not dropped at program exit, so wrapping in `ManuallyDrop` loses nothing.
+static OTLP_GUARD: OnceLock<std::mem::ManuallyDrop<OtlpGuard>> = OnceLock::new();
 
 /// Guard that ensures tracing is initialized exactly once across all entry points.
 static TRACING_INITIALIZED: OnceLock<()> = OnceLock::new();
@@ -129,31 +133,33 @@ pub fn init_tracing_subscriber() -> anyhow::Result<()> {
     }
 
     // Step 4b: Optionally initialize OTLP provider (phase 1 of 2).
-    // A dedicated tokio runtime is required because this runs before Tauri's
-    // async runtime is available (Pitfall 3 in 87-RESEARCH.md).
     //
-    // Provider initialization is separated from layer creation so that the layer
-    // can be built with the correct generic subscriber type `S` (determined by the
-    // full `.with()` composition in Step 5, not at provider-init time).
-    // `SdkTracerProvider::clone()` uses Arc semantics — both the guard and the
-    // layer share the same inner state; shutdown is idempotent.
+    // `init_otlp_provider` is fully synchronous — the underlying HTTP client
+    // is `reqwest::blocking::Client`, which manages its own internal tokio
+    // runtime. No outer tokio runtime is required here, and spans are
+    // exported from opentelemetry_sdk's own background std::thread
+    // (not a tokio task), so the provider is fully self-contained.
+    //
+    // Provider initialization is separated from layer creation so that the
+    // layer can be built with the correct generic subscriber type `S`
+    // (determined by the full `.with()` composition in Step 5, not at
+    // provider-init time). `SdkTracerProvider::clone()` uses Arc semantics.
     let otlp_provider_and_guard = if matches!(profile, LogProfile::Prod) {
         None
     } else if std::env::var("OTEL_EXPORTER_OTLP_ENDPOINT").is_ok() {
-        let rt = tokio::runtime::Builder::new_multi_thread()
-            .worker_threads(1)
-            .enable_all()
-            .thread_name("otlp-exporter")
-            .build()
-            .map_err(|e| anyhow::anyhow!("build OTLP runtime: {e}"))?;
-        let init_result = rt.block_on(async {
-            uc_observability::otlp::init_otlp_provider(&profile, device_id.as_deref())
-        });
-        match init_result {
+        match uc_observability::otlp::init_otlp_provider(&profile, device_id.as_deref()) {
             Ok(Some((provider, guard))) => {
-                // Store the runtime before the guard so the runtime outlives the guard.
-                let _ = OTLP_RUNTIME.set(rt);
-                let _ = OTLP_GUARD.set(guard);
+                // Wrap the guard in ManuallyDrop before handing it to the
+                // OnceLock. If `set` ever fails (it shouldn't — idempotency
+                // guard above ensures single-init), ManuallyDrop prevents a
+                // stray drop from calling `provider.shutdown()` and poisoning
+                // the layer's cloned provider handle.
+                if OTLP_GUARD
+                    .set(std::mem::ManuallyDrop::new(guard))
+                    .is_err()
+                {
+                    eprintln!("[uc-bootstrap] OTLP guard already initialized; leaking new guard");
+                }
                 Some(provider)
             }
             Ok(None) => None,

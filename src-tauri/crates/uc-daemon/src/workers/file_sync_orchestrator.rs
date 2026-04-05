@@ -419,53 +419,6 @@ mod tests {
         }
     }
 
-    struct MockClipboardChangeOrigin {
-        pending: std::sync::atomic::AtomicBool,
-    }
-
-    impl MockClipboardChangeOrigin {
-        fn new() -> Self {
-            Self {
-                pending: std::sync::atomic::AtomicBool::new(false),
-            }
-        }
-    }
-
-    #[async_trait]
-    impl uc_core::ports::ClipboardChangeOriginPort for MockClipboardChangeOrigin {
-        async fn set_next_origin(
-            &self,
-            _origin: uc_core::ClipboardChangeOrigin,
-            _ttl: std::time::Duration,
-        ) {
-            self.pending
-                .store(true, std::sync::atomic::Ordering::SeqCst);
-        }
-
-        async fn consume_origin_or_default(
-            &self,
-            default: uc_core::ClipboardChangeOrigin,
-        ) -> uc_core::ClipboardChangeOrigin {
-            self.pending
-                .store(false, std::sync::atomic::Ordering::SeqCst);
-            default
-        }
-
-        async fn has_pending_origin(&self) -> bool {
-            self.pending.load(std::sync::atomic::Ordering::SeqCst)
-        }
-
-        async fn remember_remote_snapshot_hash(&self, _hash: String, _ttl: std::time::Duration) {}
-
-        async fn consume_origin_for_snapshot_or_default(
-            &self,
-            _snapshot_hash: &str,
-            default: uc_core::ClipboardChangeOrigin,
-        ) -> uc_core::ClipboardChangeOrigin {
-            default
-        }
-    }
-
     struct MockSettings;
 
     #[async_trait]

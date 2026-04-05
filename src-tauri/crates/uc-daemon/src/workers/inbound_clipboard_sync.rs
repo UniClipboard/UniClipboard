@@ -314,7 +314,7 @@ mod tests {
     use chrono::Utc;
     use uc_app::usecases::clipboard::clipboard_write_coordinator::ClipboardWriteCoordinator;
     use uc_app::usecases::clipboard::ClipboardIntegrationMode;
-    use uc_core::ids::{EntryId, FormatId, RepresentationId};
+    use uc_core::ids::{EntryId, RepresentationId};
     use uc_core::network::protocol::{
         BinaryRepresentation, ClipboardBinaryPayload, ClipboardPayloadVersion,
     };
@@ -322,9 +322,8 @@ mod tests {
     use uc_core::ports::{ClipboardChangeOriginPort, SystemClipboardPort};
     use uc_core::security::model::{EncryptionError, KdfParams, Kek, MasterKey, Passphrase};
     use uc_core::{
-        ClipboardChangeOrigin, ClipboardEntry, ClipboardEvent, ClipboardSelectionDecision,
-        DeviceId, MimeType, ObservedClipboardRepresentation, PersistedClipboardRepresentation,
-        SystemClipboardSnapshot,
+        ClipboardEntry, ClipboardEvent, ClipboardSelectionDecision, DeviceId,
+        ObservedClipboardRepresentation, PersistedClipboardRepresentation, SystemClipboardSnapshot,
     };
     use uc_infra::clipboard::{new_in_memory_change_origin, TransferPayloadDecryptorAdapter};
 

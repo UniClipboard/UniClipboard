@@ -275,9 +275,6 @@ mod tests {
     /// even when subscribe_events() always returns an error (persistent failure).
     #[tokio::test]
     async fn peer_monitor_resubscribe_loop_stops_when_cancelled() {
-        use crate::api::types::DaemonWsEvent;
-        use std::sync::Arc;
-
         // We need a minimal CoreRuntime mock. Since CoreRuntime is not easily mockable,
         // we test the cancellation behavior by directly testing the backoff + cancel
         // interaction via the backoff function and a simulated loop.

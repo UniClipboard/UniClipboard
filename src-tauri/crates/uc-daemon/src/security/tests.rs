@@ -6,8 +6,7 @@
 use std::sync::Arc;
 
 use crate::security::{
-    claims::{LEVEL_L1, LEVEL_L2},
-    PermissionLevel, SecurityState, SessionTokenClaims, SlidingWindowRateLimiter,
+    claims::LEVEL_L2, PermissionLevel, SecurityState, SessionTokenClaims, SlidingWindowRateLimiter,
 };
 
 #[tokio::test]

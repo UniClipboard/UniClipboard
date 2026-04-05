@@ -1,8 +1,8 @@
 use std::collections::{HashSet, VecDeque};
 use std::io::Cursor;
 use std::path::PathBuf;
-use std::sync::{Mutex as StdMutex, OnceLock};
 use std::sync::Arc;
+use std::sync::{Mutex as StdMutex, OnceLock};
 use std::time::{Duration, Instant};
 
 use crate::usecases::clipboard::clipboard_write_coordinator::{
@@ -13,12 +13,12 @@ use anyhow::{Context, Result};
 use tokio::sync::Mutex;
 use tracing::{debug, error, info, info_span, warn, Instrument};
 use tracing_opentelemetry::OpenTelemetrySpanExt;
-use uc_observability::otlp::propagator::extract_remote_context;
 use uc_core::ids::{EntryId, FormatId, RepresentationId};
 use uc_core::network::protocol::{
     BinaryRepresentation, ClipboardBinaryPayload, ClipboardPayloadVersion, MIME_IMAGE_PREFIX,
     MIME_TEXT_HTML, MIME_TEXT_PLAIN, MIME_TEXT_RTF,
 };
+use uc_observability::otlp::propagator::extract_remote_context;
 
 use uc_core::network::ClipboardMessage;
 use uc_core::ports::clipboard::{RepresentationCachePort, SpoolQueuePort};

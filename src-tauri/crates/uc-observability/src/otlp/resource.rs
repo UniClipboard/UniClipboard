@@ -11,7 +11,11 @@ pub fn build_resource(device_id: Option<&str>) -> Resource {
         // TODO: semconv const when stabilized in opentelemetry-semantic-conventions 0.31
         KeyValue::new(
             "deployment.environment.name",
-            if cfg!(debug_assertions) { "development" } else { "production" },
+            if cfg!(debug_assertions) {
+                "development"
+            } else {
+                "production"
+            },
         ),
     ];
     let resolved = device_id

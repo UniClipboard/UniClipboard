@@ -405,7 +405,9 @@ impl SyncOutboundClipboardUseCase {
                     .send_clipboard(&first_peer.peer_id, outbound_bytes.clone())
                     .await
             }
-            .instrument(info_span!(uc_observability::stages::OUTBOUND_SEND, peer_id = %first_peer.peer_id)) // "clipboard.outbound_send"
+            .instrument(
+                info_span!(uc_observability::stages::OUTBOUND_SEND, peer_id = %first_peer.peer_id),
+            ) // "clipboard.outbound_send"
             .await
             {
                 warn!(
@@ -445,7 +447,9 @@ impl SyncOutboundClipboardUseCase {
                     .send_clipboard(&peer.peer_id, outbound_bytes.clone())
                     .await
             }
-            .instrument(info_span!(uc_observability::stages::OUTBOUND_SEND, peer_id = %peer.peer_id)) // "clipboard.outbound_send"
+            .instrument(
+                info_span!(uc_observability::stages::OUTBOUND_SEND, peer_id = %peer.peer_id),
+            ) // "clipboard.outbound_send"
             .await
             {
                 warn!(

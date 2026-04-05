@@ -36,8 +36,7 @@ fn traceparent_defaults_to_none_when_missing_from_json() {
 /// REQ-87-06 — Roundtrip: traceparent value is preserved through serialize → deserialize.
 #[test]
 fn traceparent_roundtrips_when_present() {
-    let traceparent_value =
-        "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01".to_string();
+    let traceparent_value = "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01".to_string();
 
     let msg = ClipboardMessage {
         id: "test-traceparent".to_string(),

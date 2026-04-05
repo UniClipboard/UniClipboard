@@ -16,9 +16,9 @@
 //! ```
 //!
 //! For composition with other layers, the caller can use `init_otlp_pipeline_generic<S>`.
+pub mod layer;
 pub mod propagator;
 pub mod resource;
-pub mod layer;
 
 pub use resource::build_resource;
 
@@ -31,8 +31,7 @@ use crate::profile::LogProfile;
 
 /// Boxed OTLP layer type. Used as the return type for `init_otlp_pipeline` so callers
 /// don't need to specify the subscriber type `S` when they don't care about it (e.g., tests).
-pub type OtlpLayer =
-    Box<dyn Layer<tracing_subscriber::Registry> + Send + Sync + 'static>;
+pub type OtlpLayer = Box<dyn Layer<tracing_subscriber::Registry> + Send + Sync + 'static>;
 
 /// Guard that keeps the OTLP tracer provider alive.
 /// On drop, flushes pending spans and shuts down the provider.
@@ -98,7 +97,9 @@ pub fn init_otlp_provider(
 
     // Clone provider for the guard (Arc clone; shared inner state).
     // The caller uses the original provider to create a layer.
-    let guard = OtlpGuard { provider: Some(provider.clone()) };
+    let guard = OtlpGuard {
+        provider: Some(provider.clone()),
+    };
 
     Ok(Some((provider, guard)))
 }
@@ -140,7 +141,12 @@ where
 
     let otel_layer = layer::build_otlp_layer::<S>(&provider, profile);
 
-    Ok(Some((otel_layer, OtlpGuard { provider: Some(provider) })))
+    Ok(Some((
+        otel_layer,
+        OtlpGuard {
+            provider: Some(provider),
+        },
+    )))
 }
 
 /// Initialize the OTLP tracing pipeline.
@@ -189,5 +195,10 @@ pub fn init_otlp_pipeline(
 
     let otel_layer = layer::build_otlp_layer::<tracing_subscriber::Registry>(&provider, profile);
 
-    Ok(Some((Box::new(otel_layer), OtlpGuard { provider: Some(provider) })))
+    Ok(Some((
+        Box::new(otel_layer),
+        OtlpGuard {
+            provider: Some(provider),
+        },
+    )))
 }

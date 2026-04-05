@@ -44,13 +44,13 @@
 //! ```
 
 mod context;
-mod init;
 pub mod flow;
 pub mod format;
+mod init;
 pub mod otlp;
 pub mod profile;
-pub mod stages;
 pub(crate) mod span_fields;
+pub mod stages;
 
 pub use context::{global_device_id, set_global_device_id};
 pub use flow::FlowId;

@@ -44,11 +44,7 @@ mod tests {
                 name,
                 value
             );
-            assert!(
-                !value.is_empty(),
-                "Stage {} must be non-empty",
-                name
-            );
+            assert!(!value.is_empty(), "Stage {} must be non-empty", name);
         }
     }
 

@@ -154,10 +154,7 @@ pub fn init_tracing_subscriber() -> anyhow::Result<()> {
                 // guard above ensures single-init), ManuallyDrop prevents a
                 // stray drop from calling `provider.shutdown()` and poisoning
                 // the layer's cloned provider handle.
-                if OTLP_GUARD
-                    .set(std::mem::ManuallyDrop::new(guard))
-                    .is_err()
-                {
+                if OTLP_GUARD.set(std::mem::ManuallyDrop::new(guard)).is_err() {
                     eprintln!("[uc-bootstrap] OTLP guard already initialized; leaking new guard");
                 }
                 Some(provider)
@@ -186,9 +183,9 @@ pub fn init_tracing_subscriber() -> anyhow::Result<()> {
     // from the `.with(otlp_layer)` call site rather than requiring it to be
     // fixed at the `let` binding site.
     let otlp_layer: Option<uc_observability::otlp::layer::OtlpConcreteLayer<_>> =
-        otlp_provider_and_guard.as_ref().map(|provider| {
-            uc_observability::otlp::layer::build_otlp_layer(provider, &profile)
-        });
+        otlp_provider_and_guard
+            .as_ref()
+            .map(|provider| uc_observability::otlp::layer::build_otlp_layer(provider, &profile));
 
     match tracing_subscriber::registry()
         .with(sentry_layer)

@@ -4,9 +4,6 @@
 
 use uc_daemon_client::setup::{ParsedSetupState, SetupHint, SetupVariant};
 
-use crate::exit_codes;
-use crate::ui;
-
 // ── Phase enum ──────────────────────────────────────────────────────
 
 /// CLI-layer phase for the join pairing flow.

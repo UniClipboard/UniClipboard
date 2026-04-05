@@ -2,7 +2,7 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
   "description": "Capability for the main window and clipboard panel",
-  "windows": ["main", "quick-panel", "preview-panel"],
+  "windows": ["main", "quick-panel"],
   "permissions": [
     "core:default",
     "core:window:allow-start-dragging",

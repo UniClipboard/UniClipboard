@@ -259,7 +259,7 @@ async fn toggle_favorite_returns_404_for_nonexistent_id() {
     let (app, token) = build_test_router().await;
     let session = get_session_token(&app, &token).await;
 
-    let body = Body::from(serde_json::to_string(&json!({ "is_favorited": true })).unwrap());
+    let body = Body::from(serde_json::to_string(&json!({ "isFavorited": true })).unwrap());
     let response = auth_request(
         &app,
         &session,

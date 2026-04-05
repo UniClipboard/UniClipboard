@@ -322,11 +322,6 @@ mod tests {
             }
         }
 
-        fn fail_on_derive(mut self) -> Self {
-            self.should_fail_derive = true;
-            self
-        }
-
         fn fail_on_unwrap(mut self) -> Self {
             self.should_fail_unwrap = true;
             self

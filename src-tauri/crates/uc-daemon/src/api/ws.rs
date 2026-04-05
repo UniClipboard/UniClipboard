@@ -257,20 +257,17 @@ async fn handle_connection(socket: WebSocket, state: DaemonApiState, claims: Ses
 
             // Wait for the next interval or the deadline.
             let deadline = Instant::now() + CLIENT_TIMEOUT;
-            loop {
-                tokio::select! {
-                    _ = ping_interval.tick() => {
-                        // Interval elapsed — time for the next ping.
-                        break;
+            tokio::select! {
+                _ = ping_interval.tick() => {
+                    // Interval elapsed — time for the next ping.
+                }
+                _ = tokio::time::sleep_until(deadline) => {
+                    // Timeout — no pong received.
+                    debug!("heartbeat: deadline expired, connection stale");
+                    if heartbeat_tx.send(HeartbeatSignal::Stale).await.is_err() {
+                        debug!("heartbeat: heartbeat_rx dropped, exiting");
                     }
-                    _ = tokio::time::sleep_until(deadline) => {
-                        // Timeout — no pong received.
-                        debug!("heartbeat: deadline expired, connection stale");
-                        if heartbeat_tx.send(HeartbeatSignal::Stale).await.is_err() {
-                            debug!("heartbeat: heartbeat_rx dropped, exiting");
-                        }
-                        return;
-                    }
+                    return;
                 }
             }
         }

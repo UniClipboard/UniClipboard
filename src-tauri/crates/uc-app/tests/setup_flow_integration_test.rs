@@ -8,7 +8,6 @@ use uc_app::testing::{
     NoopPairedDeviceRepository, NoopPairingTransport, NoopSessionReadyEmitter, NoopSetupEventPort,
     NoopSpaceAccessPersistence, NoopSpaceAccessTransport,
 };
-use uc_app::usecases::clipboard::ClipboardIntegrationMode;
 use uc_app::usecases::space_access::{SpaceAccessExecutor, SpaceAccessOrchestrator};
 use uc_app::usecases::{
     space_access::{

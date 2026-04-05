@@ -565,10 +565,6 @@ mod tests {
         enqueue_calls: Arc<AtomicUsize>,
     }
 
-    struct SuccessfulRepresentationPolicy;
-
-    struct SuccessfulNormalizer;
-
     #[derive(Default)]
     struct RecordingEmitter {
         events: Mutex<Vec<HostEvent>>,

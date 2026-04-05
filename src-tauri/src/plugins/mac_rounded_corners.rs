@@ -23,29 +23,6 @@ pub struct TrafficLightsConfig {
     pub offset_y: f64,
 }
 
-/// Configuration for window styling
-pub struct WindowStyleConfig {
-    /// Corner radius in pixels
-    pub corner_radius: f64,
-    /// Traffic lights offset X
-    pub traffic_offset_x: f64,
-    /// Traffic lights offset Y
-    pub traffic_offset_y: f64,
-    /// Whether to enable shadow
-    pub has_shadow: bool,
-}
-
-impl Default for WindowStyleConfig {
-    fn default() -> Self {
-        Self {
-            corner_radius: 12.0,
-            traffic_offset_x: 0.0,
-            traffic_offset_y: 0.0,
-            has_shadow: true,
-        }
-    }
-}
-
 impl Default for TrafficLightsConfig {
     fn default() -> Self {
         Self {
@@ -201,70 +178,6 @@ pub fn reposition_traffic_lights<R: Runtime>(
     {
         Ok(())
     }
-}
-
-/// Applies modern window style with rounded corners (macOS only)
-/// This is a helper function that can be called directly from Rust code,
-/// without going through the Tauri command system.
-#[cfg(target_os = "macos")]
-pub fn apply_modern_window_style(
-    window: &WebviewWindow,
-    config: WindowStyleConfig,
-) -> Result<(), String> {
-    use objc2::runtime::Bool;
-    use objc2_app_kit::NSWindowTitleVisibility;
-
-    unsafe {
-        window
-            .with_webview(move |webview| {
-                let ns_window = webview.ns_window() as ObjcId;
-
-                let mut style_mask: NSWindowStyleMask = msg_send![ns_window, styleMask];
-
-                // Add necessary styles for rounded corners
-                style_mask |= NSWindowStyleMask::FullSizeContentView;
-                style_mask |= NSWindowStyleMask::Titled;
-                style_mask |= NSWindowStyleMask::Closable;
-                style_mask |= NSWindowStyleMask::Miniaturizable;
-                style_mask |= NSWindowStyleMask::Resizable;
-
-                let _: () = msg_send![ns_window, setStyleMask: style_mask];
-                let _: () = msg_send![ns_window, setTitlebarAppearsTransparent: Bool::YES];
-                let _: () = msg_send![
-                    ns_window,
-                    setTitleVisibility: NSWindowTitleVisibility::Hidden
-                ];
-                let _: () = msg_send![ns_window, setHasShadow: Bool::from(config.has_shadow)];
-                let _: () = msg_send![ns_window, setOpaque: Bool::NO];
-
-                let content_view: ObjcId = msg_send![ns_window, contentView];
-                let _: () = msg_send![content_view, setWantsLayer: Bool::YES];
-
-                let layer: ObjcId = msg_send![content_view, layer];
-                if !layer.is_null() {
-                    let _: () = msg_send![layer, setCornerRadius: config.corner_radius];
-                    let _: () = msg_send![layer, setMasksToBounds: Bool::YES];
-                }
-
-                position_traffic_lights(
-                    ns_window,
-                    config.traffic_offset_x,
-                    config.traffic_offset_y,
-                );
-            })
-            .map_err(|e| e.to_string())?;
-
-        Ok(())
-    }
-}
-
-/// Applies modern window style with rounded corners - no-op for non-macOS
-#[cfg(not(target_os = "macos"))]
-pub fn apply_modern_window_style(
-    _window: &WebviewWindow,
-    _config: WindowStyleConfig,
-) -> Result<(), String> {
-    Ok(())
 }
 
 #[cfg(target_os = "macos")]

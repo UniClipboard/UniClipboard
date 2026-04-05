@@ -827,37 +827,6 @@ fn prompt_new_space_passphrase() -> Result<String, String> {
     ui::password_with_confirm("New space passphrase", "Confirm passphrase")
 }
 
-// Test-only helper that keeps setup_cli assertions pinned to the current
-// host-decision prompt gating rules until the interactive host flow is wired up.
-#[cfg(test)]
-pub(crate) fn should_prompt_host_decision(
-    parsed: &ParsedSetupState,
-    submitted_session_id: Option<&str>,
-) -> bool {
-    if !matches!(parsed.hint, SetupHint::HostConfirmPeer) {
-        return false;
-    }
-    if matches!(parsed.variant, SetupVariant::JoinSpaceConfirmPeer) {
-        return false;
-    }
-    parsed.session_id.as_deref() != submitted_session_id
-}
-
-// Test-only helper that keeps setup_cli assertions pinned to the current
-// host-flow completion rules until the interactive host verification path lands.
-#[cfg(test)]
-pub(crate) fn should_complete_host_flow(
-    parsed: &ParsedSetupState,
-    handled_peer_request: bool,
-    handled_host_verification: bool,
-) -> bool {
-    handled_peer_request
-        && handled_host_verification
-        && parsed.has_completed
-        && matches!(parsed.hint, SetupHint::Completed)
-        && parsed.session_id.is_none()
-}
-
 fn prompt_for_peer_selection(peers: &[PeerSnapshotDto]) -> Result<Option<String>, String> {
     let items: Vec<String> = peers
         .iter()

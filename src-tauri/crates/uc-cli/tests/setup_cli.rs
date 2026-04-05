@@ -171,9 +171,8 @@ mod daemon_client {
 mod setup;
 
 use setup::{
-    new_space_encryption_guard, parse_setup_state, render_reset_output,
-    should_complete_host_flow, should_prompt_host_decision, SetupHint, SetupStatusOutput,
-    SetupVariant,
+    derive_host_phase, new_space_encryption_guard, parse_setup_state, render_reset_output,
+    HostCliPhase, SetupStatusOutput, SetupVariant,
 };
 use uc_core::security::state::EncryptionState;
 use uc_daemon::api::types::SetupStateResponse;
@@ -326,10 +325,7 @@ fn setup_host_prompts_for_verification_after_accept() {
     // should_prompt_for_host_verification = has_completed && variant == "JoinSpaceConfirmPeer"
     let dto: uc_daemon::api::dto::setup::SetupStateResponseDto = state.clone().into();
     let parsed = parse_setup_state(&dto);
-    assert!(
-        state.has_completed
-            && matches!(parsed.variant, SetupVariant::JoinSpaceConfirmPeer)
-    );
+    assert!(state.has_completed && matches!(parsed.variant, SetupVariant::JoinSpaceConfirmPeer));
 }
 
 #[test]
@@ -349,7 +345,17 @@ fn host_decision_prompt_is_suppressed_after_same_session_submission() {
 
     let dto: uc_daemon::api::dto::setup::SetupStateResponseDto = state.into();
     let parsed = parse_setup_state(&dto);
-    assert!(!should_prompt_host_decision(&parsed, Some("session-host")));
+    let phase = derive_host_phase(&parsed, &HostCliPhase::WaitingJoinRequest);
+    let submitted_session_id = Some("session-host");
+
+    let should_prompt = match phase {
+        HostCliPhase::NeedDecision { ref session_id } => {
+            Some(session_id.as_str()) != submitted_session_id
+        }
+        _ => false,
+    };
+
+    assert!(!should_prompt);
 }
 
 #[test]
@@ -369,14 +375,30 @@ fn host_decision_prompt_is_allowed_for_new_session() {
 
     let dto: uc_daemon::api::dto::setup::SetupStateResponseDto = state.clone().into();
     let parsed = parse_setup_state(&dto);
-    assert!(should_prompt_host_decision(&parsed, None));
+    let phase = derive_host_phase(&parsed, &HostCliPhase::WaitingJoinRequest);
+    let submitted_session_id: Option<&str> = None;
+    let should_prompt = match &phase {
+        HostCliPhase::NeedDecision { session_id } => {
+            Some(session_id.as_str()) != submitted_session_id
+        }
+        _ => false,
+    };
+    assert!(should_prompt);
     let dto2: uc_daemon::api::dto::setup::SetupStateResponseDto = state.into();
     let parsed2 = parse_setup_state(&dto2);
-    assert!(should_prompt_host_decision(&parsed2, Some("other-session")));
+    let phase2 = derive_host_phase(&parsed2, &HostCliPhase::WaitingJoinRequest);
+    let submitted_session_id = Some("other-session");
+    let should_prompt2 = match phase2 {
+        HostCliPhase::NeedDecision { ref session_id } => {
+            Some(session_id.as_str()) != submitted_session_id
+        }
+        _ => false,
+    };
+    assert!(should_prompt2);
 }
 
 #[test]
-fn host_flow_only_exits_after_active_session_clears() {
+fn host_flow_completes_when_backend_reports_completed() {
     let active = SetupStateResponse {
         state: json!("Completed"),
         session_id: Some("session-host".to_string()),
@@ -389,24 +411,16 @@ fn host_flow_only_exits_after_active_session_clears() {
         selected_peer_name: None,
         has_completed: true,
     };
-    let cleared = SetupStateResponse {
-        session_id: None,
-        ..active.clone()
-    };
 
-    // host_flow_completed = handled_peer_request && has_completed && next_step_hint == "completed" && session_id.is_none()
-    let handled_peer_request = true;
-    assert!(
-        !handled_peer_request
-            || !active.has_completed
-            || active.next_step_hint != "completed"
-            || active.session_id.is_some()
-    ); // active case fails
-    assert!(
-        cleared.has_completed
-            && cleared.next_step_hint == "completed"
-            && cleared.session_id.is_none()
-    ); // cleared case passes
+    let dto: uc_daemon::api::dto::setup::SetupStateResponseDto = active.into();
+    let parsed = parse_setup_state(&dto);
+    let phase = derive_host_phase(
+        &parsed,
+        &HostCliPhase::NeedVerification {
+            session_id: "session-host".to_string(),
+        },
+    );
+    assert!(matches!(phase, HostCliPhase::Completed));
 }
 
 #[test]
@@ -433,8 +447,37 @@ fn host_peer_label_includes_peer_id_suffix_when_name_present() {
 }
 
 #[test]
-fn host_flow_completion_waits_for_verification_confirmation() {
+fn host_flow_completion_waits_for_backend_completed_state() {
     let state = SetupStateResponse {
+        state: json!({
+            "JoinSpaceConfirmPeer": {
+                "short_code": "123-456",
+                "peer_fingerprint": "peer-fingerprint",
+                "error": serde_json::Value::Null
+            }
+        }),
+        session_id: Some("session-host".to_string()),
+        next_step_hint: "host-confirm-peer".to_string(),
+        profile: "peerA".to_string(),
+        clipboard_mode: "full".to_string(),
+        device_name: "Peer A".to_string(),
+        peer_id: "peer-a-id".to_string(),
+        selected_peer_id: Some("peer-b-id".to_string()),
+        selected_peer_name: Some("Peer B".to_string()),
+        has_completed: false,
+    };
+
+    let dto: uc_daemon::api::dto::setup::SetupStateResponseDto = state.into();
+    let parsed = parse_setup_state(&dto);
+    let phase = derive_host_phase(
+        &parsed,
+        &HostCliPhase::NeedVerification {
+            session_id: "session-host".to_string(),
+        },
+    );
+    assert!(matches!(phase, HostCliPhase::NeedVerification { .. }));
+
+    let completed_state = SetupStateResponse {
         state: json!("Completed"),
         session_id: None,
         next_step_hint: "completed".to_string(),
@@ -447,12 +490,15 @@ fn host_flow_completion_waits_for_verification_confirmation() {
         has_completed: true,
     };
 
-    let dto: uc_daemon::api::dto::setup::SetupStateResponseDto = state.clone().into();
-    let parsed = parse_setup_state(&dto);
-    assert!(!should_complete_host_flow(&parsed, true, false));
-    let dto2: uc_daemon::api::dto::setup::SetupStateResponseDto = state.into();
+    let dto2: uc_daemon::api::dto::setup::SetupStateResponseDto = completed_state.into();
     let parsed2 = parse_setup_state(&dto2);
-    assert!(should_complete_host_flow(&parsed2, true, true));
+    let phase2 = derive_host_phase(
+        &parsed2,
+        &HostCliPhase::NeedVerification {
+            session_id: "session-host".to_string(),
+        },
+    );
+    assert!(matches!(phase2, HostCliPhase::Completed));
 }
 
 #[test]

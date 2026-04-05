@@ -1,26 +1,28 @@
 {
-  "Title": "Flow Timeline",
-  "Description": "View all stages of a specific flow_id in chronological order",
-  "Query": "Has(flow_id)",
+  "Title": "Clipboard Flow Timeline (OTel)",
+  "Description": "View all clipboard pipeline stages for one OTel trace in chronological order. Group by TraceId to see each clipboard operation as a separate timeline. Phase 87+: queries by SpanName prefix (OTel standard semantics).",
+  "Query": "SpanName like 'clipboard.%'",
   "Columns": [
-    { "Name": "flow_id", "Width": 280 },
-    { "Name": "stage", "Width": 120 },
-    { "Name": "device_id", "Width": 150 },
+    { "Name": "TraceId", "Width": 280 },
+    { "Name": "SpanName", "Width": 200 },
+    { "Name": "service.instance.id", "Header": "device_id", "Width": 150 },
     { "Name": "@t", "Header": "Timestamp", "Width": 180 },
     { "Name": "@m", "Header": "Message", "Width": 400 }
   ],
   "Sort": [{ "Field": "@t", "Order": "asc" }],
   "Signal": {
     "Type": "saved-search",
-    "Expression": "flow_id = '<select-a-flow-id>'"
+    "Expression": "SpanName like 'clipboard.%'"
   },
   "Example": {
-    "Description": "Find all events for a specific flow",
-    "Query": "flow_id = '01958a3b-0000-0000-0000-000000000001'"
+    "Description": "Find all spans for a specific trace by TraceId",
+    "Query": "TraceId = 'your-trace-id-here'"
   },
   "ExampleDescriptions": [
-    "Find all stages of a single clipboard operation",
-    "View the complete timeline from capture to persistence",
-    "Identify bottlenecks by seeing time gaps between stages"
-  ]
+    "Find all stages of a single clipboard operation by grouping on TraceId",
+    "View the complete timeline from capture (clipboard.flow root) through all child stage spans",
+    "Identify bottlenecks by seeing time gaps between stage spans",
+    "Cross-device traces share the same TraceId via W3C traceparent — both sender and receiver spans appear here"
+  ],
+  "_note": "Property name casing for OTLP-ingested data in Seq 2025.2: use 'TraceId' and 'SpanName' (PascalCase) as shown by Seq's own trace UI. If queries return no results, try '@TraceId' or 'trace_id' as Seq may differ by version. A live Seq instance is the final gate for confirming exact property names."
 }

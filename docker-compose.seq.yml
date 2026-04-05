@@ -1,7 +1,11 @@
-# Local Seq instance for UniClipboard log visualization
+# Local Seq instance for UniClipboard log and trace visualization
 # Usage: docker compose -f docker-compose.seq.yml up -d
 # UI: http://localhost:5341
-# Ingestion: http://localhost:5341/ingest/clef
+#
+# Phase 87: Seq accepts OTLP/HTTP-protobuf on the same port (5341) as the UI.
+# Set OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:5341/ingest/otlp in your shell.
+# The OTLP SDK appends /v1/traces and /v1/logs to this base URL automatically.
+# Do NOT include /v1/traces in the env var — that causes a double-path 404.
 #
 # WARNING: This configuration binds to all network interfaces (0.0.0.0)
 # and sets a default password for development/testing only.

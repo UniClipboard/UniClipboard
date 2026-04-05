@@ -12,7 +12,7 @@ A **dual-track** coexistence is maintained during the transition from legacy `lo
 - `log::*` macros -> `tauri-plugin-log` -> Webview (dev) / stdout (prod)
 - `tracing::*` macros -> `uc-observability` subscriber -> console + JSON file
 
-**Current Status**: Phases 0-3 complete, actively using `tracing` across all architectural layers. Dual-output logging with profile system active.
+**Current Status**: Phases 0-3 complete, actively using `tracing` across all architectural layers. Dual-output logging with profile system active. Phase 87: OTLP pipeline active — spans and logs exported via OTLP/HTTP-protobuf to Seq (dev/debug_clipboard profiles only).
 
 ## Architecture
 
@@ -54,7 +54,7 @@ tracing::info_span!("command.clipboard.capture", device_id = %id);
 **Note**: `tracing-log` bridge is NOT configured. The two systems operate independently:
 
 - `log::` macros -> `tauri-plugin-log` -> Webview (dev) / stdout (prod)
-- `tracing::` macros -> `uc-observability` subscriber -> console (pretty) + JSON file
+- `tracing::` macros -> `uc-observability` subscriber -> console (pretty) + JSON file + OTLP (when enabled)
 
 ### Module Organization
 
@@ -68,7 +68,11 @@ uc-observability/
 │   ├── lib.rs         # Public API re-exports
 │   ├── profile.rs     # LogProfile enum (Dev/Prod/DebugClipboard)
 │   ├── format.rs      # FlatJsonFormat custom FormatEvent
-│   └── init.rs        # Layer builders + standalone init
+│   ├── init.rs        # Layer builders + standalone init
+│   └── otlp/
+│       ├── mod.rs     # init_otlp_provider() + public exports
+│       ├── layer.rs   # OtlpConcreteLayer<S> type alias + build_otlp_layer()
+│       └── propagator.rs  # inject_current_context() + extract_remote_context()
 └── Cargo.toml
 ```
 
@@ -77,6 +81,8 @@ Provides:
 - `LogProfile` - Profile-based filter selection via `UC_LOG_PROFILE`
 - `build_console_layer()` - Pretty console layer with per-layer EnvFilter
 - `build_json_layer()` - JSON file layer with FlatJsonFormat and daily rolling
+- `init_otlp_provider()` - Async OTLP provider init (returns SdkTracerProvider + OtlpGuard)
+- `build_otlp_layer()` - Create OTLP tracing-subscriber layer from provider
 - `init_tracing_subscriber()` - Standalone convenience init (no Sentry)
 
 **Zero app-layer dependencies** - Sentry integration is kept in the caller.
@@ -88,7 +94,7 @@ Provides:
 ```
 bootstrap/
 ├── logging.rs       # tauri-plugin-log configuration (legacy, Webview + stdout)
-└── tracing.rs       # Thin wrapper: uc-observability layers + Sentry layer
+└── tracing.rs       # Thin wrapper: uc-observability layers + Sentry + OTLP
 ```
 
 **Initialization Flow**:
@@ -100,6 +106,8 @@ main.rs
   │    ├─> sentry::init()               // Optional Sentry (if SENTRY_DSN set)
   │    ├─> build_console_layer()        // From uc-observability
   │    ├─> build_json_layer()           // From uc-observability
+  │    ├─> init_otlp_provider().await   // Optional OTLP (if OTEL_EXPORTER_OTLP_ENDPOINT set + dev/debug_clipboard profile)
+  │    ├─> build_otlp_layer()           // Create OTLP tracing layer
   │    └─> registry().with(...).try_init()  // Compose and register
   │
   └─> Builder::default()
@@ -110,6 +118,12 @@ main.rs
 #### 3. Layer-Based Tracing
 
 Each architectural layer has specific span naming conventions:
+
+**Clipboard Pipeline** (`uc-app/src/usecases/clipboard/`):
+
+- Root span per clipboard operation
+- Naming: `clipboard.{operation}`
+- Example: `clipboard.flow` (root), `clipboard.normalize`, `clipboard.cache_representations`
 
 **Command Layer** (`uc-tauri/src/commands/`):
 
@@ -147,11 +161,11 @@ The `UC_LOG_PROFILE` environment variable selects a logging profile that control
 
 ### Available Profiles
 
-| Profile           | Base Level | Console Behavior           | JSON Behavior             | Special Overrides                                                                                         |
-| ----------------- | ---------- | -------------------------- | ------------------------- | --------------------------------------------------------------------------------------------------------- |
-| `dev`             | `debug`    | Pretty format, ANSI colors | Flat JSON, daily rotating | `uc_platform=debug`, `uc_infra=debug`                                                                     |
-| `prod`            | `info`     | Pretty format, ANSI colors | Flat JSON, daily rotating | (none)                                                                                                    |
-| `debug_clipboard` | `info`     | Pretty format, ANSI colors | Flat JSON, daily rotating | `uc_platform::adapters::clipboard=trace`, `uc_app::usecases::clipboard=debug`, `uc_core::clipboard=debug` |
+| Profile           | Base Level | Console Behavior           | JSON Behavior             | OTLP Behavior           | Special Overrides                                                                                         |
+| ----------------- | ---------- | -------------------------- | ------------------------- | ----------------------- | --------------------------------------------------------------------------------------------------------- |
+| `dev`             | `debug`    | Pretty format, ANSI colors | Flat JSON, daily rotating | Enabled (if env set)    | `uc_platform=debug`, `uc_infra=debug`                                                                     |
+| `prod`            | `info`     | Pretty format, ANSI colors | Flat JSON, daily rotating | **Disabled** (always)   | (none)                                                                                                    |
+| `debug_clipboard` | `info`     | Pretty format, ANSI colors | Flat JSON, daily rotating | Enabled (if env set)    | `uc_platform::adapters::clipboard=trace`, `uc_app::usecases::clipboard=debug`, `uc_core::clipboard=debug` |
 
 All profiles include common noise filters:
 
@@ -246,6 +260,7 @@ When `debug_assertions` is true (debug builds):
 - **Targets**: `uc_platform=debug`, `uc_infra=debug`
 - **Console**: Pretty format to stdout
 - **JSON**: Flat JSON to daily-rotating file
+- **OTLP**: Enabled if `OTEL_EXPORTER_OTLP_ENDPOINT` is set
 
 **tauri-plugin-log (legacy)**:
 
@@ -263,6 +278,7 @@ When `debug_assertions` is false (release builds):
 - **Level**: `Info`
 - **Console**: Pretty format to stdout
 - **JSON**: Flat JSON to daily-rotating file
+- **OTLP**: **Always disabled** — production builds skip the OTLP layer entirely regardless of env vars
 
 **tauri-plugin-log (legacy)**:
 
@@ -272,11 +288,17 @@ When `debug_assertions` is false (release builds):
 
 ### Environment Variables
 
-| Variable         | Purpose                                                   | Default            |
-| ---------------- | --------------------------------------------------------- | ------------------ |
-| `UC_LOG_PROFILE` | Select logging profile (`dev`, `prod`, `debug_clipboard`) | Build-type default |
-| `RUST_LOG`       | Override profile filters (standard tracing env)           | Not set            |
-| `SENTRY_DSN`     | Enable Sentry error reporting                             | Not set (disabled) |
+| Variable                        | Purpose                                                                          | Default            |
+| ------------------------------- | -------------------------------------------------------------------------------- | ------------------ |
+| `UC_LOG_PROFILE`                | Select logging profile (`dev`, `prod`, `debug_clipboard`)                       | Build-type default |
+| `RUST_LOG`                      | Override profile filters (standard tracing env)                                  | Not set            |
+| `SENTRY_DSN`                    | Enable Sentry error reporting                                                     | Not set (disabled) |
+| `OTEL_EXPORTER_OTLP_ENDPOINT`   | OTLP base URL for traces+logs export (e.g. `http://localhost:5341/ingest/otlp`) | Not set (disabled) |
+| `OTEL_EXPORTER_OTLP_HEADERS`    | Optional headers (e.g. `X-Seq-ApiKey=your-key`)                                  | Not set            |
+| `OTEL_SERVICE_NAME`             | Override service name in resource attributes                                      | `uniclipboard-desktop` |
+| `OTEL_RESOURCE_ATTRIBUTES`      | Additional OTel resource attributes (key=value,key2=value2)                      | Not set            |
+
+**Note:** `UC_SEQ_URL` (removed in Phase 87) is no longer consulted. If `UC_SEQ_URL` is still set in your environment, the application logs a `WARN` on startup pointing you to `OTEL_EXPORTER_OTLP_ENDPOINT`. Set `OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:5341/ingest/otlp` instead.
 
 ### Color Coding
 
@@ -357,6 +379,26 @@ command.clipboard.get_entries{device_id=abc123}
    └─ event: returning 42 entries
 ```
 
+**Clipboard pipeline hierarchy** (Phase 87 OTel model):
+
+```
+clipboard.flow{origin="local_capture"}         ← root span (one per clipboard operation)
+├── clipboard.normalize
+├── clipboard.persist_event
+├── clipboard.cache_representations
+├── clipboard.select_policy
+├── clipboard.persist_entry
+└── clipboard.spool_blobs
+```
+
+For cross-device sync, the inbound side continues the same trace via W3C traceparent:
+
+```
+clipboard.flow{origin="inbound_sync", ...}     ← same TraceId as sender
+├── clipboard.inbound_decode
+└── clipboard.inbound_apply
+```
+
 ### Instrumentation Pattern
 
 Standard pattern for async operations:
@@ -419,12 +461,32 @@ match risky_operation().await {
 
 ### Layer Prefixes
 
-| Prefix      | Usage                        | Examples                            |
-| ----------- | ---------------------------- | ----------------------------------- |
-| `command.`  | Tauri command handlers       | `command.clipboard.get_entries`     |
-| `usecase.`  | UseCase business logic       | `usecase.capture_clipboard.execute` |
-| `infra.`    | Infrastructure (DB, storage) | `infra.sqlite.insert_blob`          |
-| `platform.` | Platform adapters            | `platform.macos.read_clipboard`     |
+| Prefix        | Usage                        | Examples                            |
+| ------------- | ---------------------------- | ----------------------------------- |
+| `clipboard.`  | Clipboard pipeline spans     | `clipboard.flow`, `clipboard.normalize`, `clipboard.outbound_send` |
+| `command.`    | Tauri command handlers       | `command.clipboard.get_entries`     |
+| `usecase.`    | UseCase business logic       | `usecase.capture_clipboard.execute` |
+| `infra.`      | Infrastructure (DB, storage) | `infra.sqlite.insert_blob`          |
+| `platform.`   | Platform adapters            | `platform.macos.read_clipboard`     |
+
+### Clipboard Pipeline Span Names
+
+All clipboard pipeline stages use dotted OTel semconv form:
+
+| Span Name                          | Stage Description                              |
+| ---------------------------------- | ---------------------------------------------- |
+| `clipboard.flow`                   | Root span — entire clipboard operation         |
+| `clipboard.detect`                 | Clipboard change detection                     |
+| `clipboard.normalize`              | Content normalization                          |
+| `clipboard.persist_event`          | Persist clipboard event to storage             |
+| `clipboard.cache_representations`  | Build and cache content representations        |
+| `clipboard.select_policy`          | Evaluate sync policy for this operation        |
+| `clipboard.persist_entry`          | Persist final clipboard entry                  |
+| `clipboard.spool_blobs`            | Queue blobs for outbound transfer              |
+| `clipboard.outbound_prepare`       | Prepare outbound sync message                  |
+| `clipboard.outbound_send`          | Send to peer devices                           |
+| `clipboard.inbound_decode`         | Decode inbound clipboard message               |
+| `clipboard.inbound_apply`          | Apply inbound content to local clipboard       |
 
 ### Field Naming
 
@@ -685,18 +747,18 @@ pub async fn get_entries(&self) -> Result<Vec<Entry>> {
 - Set appropriate levels for each layer
 - Use environment-specific filtering in production
 
-## Seq Integration (Local Visualization)
+## OpenTelemetry OTLP Integration (Local Visualization)
 
 ### Overview
 
-[Seq](https://datalust.co/seq) is a structured log server that provides a rich web UI for searching, filtering, and visualizing structured log events. UniClipboard can stream tracing events to a local Seq instance in real time using the [CLEF](https://clef-json.org/) (Compact Log Event Format) ingestion protocol.
+[Seq](https://datalust.co/seq) is a structured log and trace server that provides a rich web UI for searching, filtering, and visualizing OTel traces and log events. Starting with Phase 87, UniClipboard exports spans and log events via the **OTLP/HTTP-protobuf** protocol to a local Seq instance using the standard OpenTelemetry environment variables.
 
-Key capabilities when using Seq:
+Key capabilities when using Seq with OTLP:
 
-- **Full-text search** across all log fields
-- **Filter by flow_id** to see all stages of a single clipboard operation in time order
-- **Filter by stage** to see all events at a particular pipeline stage
-- **Time-ordered views** showing event sequences with microsecond precision
+- **Distributed trace view** — all pipeline stages for one clipboard operation shown as a parent-child span tree under a single TraceId
+- **Cross-device trace continuity** — sender and receiver spans share the same TraceId via W3C traceparent
+- **Full-text search** across all span attributes and log fields
+- **Filter by TraceId or SpanName** to see all spans of a single clipboard operation
 - **Dashboard creation** for monitoring clipboard operations
 
 ### Quick Start
@@ -707,119 +769,132 @@ Key capabilities when using Seq:
 docker compose -f docker-compose.seq.yml up -d
 ```
 
-**2. Set the Seq URL environment variable:**
+**2. Set the OTLP endpoint environment variable:**
 
 ```bash
-export UC_SEQ_URL=http://localhost:5341
+export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:5341/ingest/otlp
 ```
 
-**3. Start the application:**
+**3. (Optional) Set a Seq API key if your instance requires authentication:**
+
+```bash
+export OTEL_EXPORTER_OTLP_HEADERS="X-Seq-ApiKey=your-api-key"
+```
+
+**4. Start the application:**
 
 ```bash
 bun tauri dev
 ```
 
-Events will begin streaming to Seq immediately. Open [http://localhost:5341](http://localhost:5341) to view them.
+Spans will begin exporting to Seq immediately. Open [http://localhost:5341](http://localhost:5341) to view them. Use the "Traces" section to see the clipboard pipeline trace tree.
 
 ### Configuration
 
-| Variable         | Purpose                        | Required | Default    |
-| ---------------- | ------------------------------ | -------- | ---------- |
-| `UC_SEQ_URL`     | Seq server URL for CLEF ingest | Yes      | Not set    |
-| `UC_SEQ_API_KEY` | API key for Seq authentication | No       | Not needed |
+| Variable                         | Purpose                                        | Required | Default               |
+| -------------------------------- | ---------------------------------------------- | -------- | --------------------- |
+| `OTEL_EXPORTER_OTLP_ENDPOINT`    | OTLP base URL (see critical note below)        | Yes      | Not set (OTLP off)    |
+| `OTEL_EXPORTER_OTLP_HEADERS`     | Optional headers, e.g. `X-Seq-ApiKey=...`      | No       | Not needed            |
+| `OTEL_SERVICE_NAME`              | Override `service.name` resource attribute     | No       | `uniclipboard-desktop` |
+| `OTEL_RESOURCE_ATTRIBUTES`       | Additional resource attributes (k=v,k2=v2)    | No       | Not set               |
 
-- When `UC_SEQ_URL` is **not set**, the Seq layer is completely disabled with zero overhead.
-- When `UC_SEQ_URL` is set, events are formatted as CLEF JSON and sent to `{UC_SEQ_URL}/ingest/clef` via HTTP POST.
-- `UC_SEQ_API_KEY` is only needed if your Seq instance requires authentication (not needed for local development).
+**CRITICAL — Base URL vs. full path (Pitfall #7):**
 
-### Querying Flows in Seq
-
-Once events are flowing, use Seq's filter bar to query specific clipboard flows:
-
-**Find all events for a specific flow:**
+Seq's own documentation sometimes shows the full endpoint path such as `/ingest/otlp/v1/traces`. Do **not** include `/v1/traces` or `/v1/logs` in `OTEL_EXPORTER_OTLP_ENDPOINT`. The OpenTelemetry SDK automatically appends `/v1/traces` and `/v1/logs` to the base URL you provide. The correct value is:
 
 ```
-Has(flow_id)
+OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:5341/ingest/otlp
 ```
 
-**Filter by a specific flow ID:**
+Setting it to `http://localhost:5341/ingest/otlp/v1/traces` will cause the SDK to POST to `/ingest/otlp/v1/traces/v1/traces`, which returns 404.
+
+- When `OTEL_EXPORTER_OTLP_ENDPOINT` is **not set**, the OTLP layer is completely disabled with zero overhead.
+- In **production builds** (`prod` profile), the OTLP layer is always skipped even if the env var is set.
+
+### Resource Attributes
+
+Every span and log exported via OTLP includes the following resource attributes:
+
+| Attribute                      | Value                                           |
+| ------------------------------ | ----------------------------------------------- |
+| `service.name`                 | `uniclipboard-desktop` (or `OTEL_SERVICE_NAME`) |
+| `service.version`              | Crate version from `CARGO_PKG_VERSION`          |
+| `service.instance.id`          | Device ID (`device_id` from global context)     |
+| `deployment.environment.name`  | `development` (dev build) or `production`       |
+| `os.type`                      | `linux`, `macos`, `windows`                     |
+
+### Querying Traces in Seq
+
+Once spans are flowing, use Seq's filter bar or the Traces UI to query:
+
+**View all clipboard pipeline spans:**
 
 ```
-flow_id = 'your-flow-id-here'
+SpanName like 'clipboard.%'
 ```
 
-**Filter by flow and stage:**
+**View all spans for a specific trace:**
 
 ```
-flow_id = 'your-flow-id-here' and stage = 'normalize'
+TraceId = 'your-trace-id-here'
 ```
 
-**Find all events at a specific stage:**
+**Find root flow spans only:**
 
 ```
-stage = 'persist_event'
+SpanName = 'clipboard.flow'
 ```
 
-**See all clipboard capture flows:**
+**Filter by span name and time range:**
 
 ```
-Has(flow_id) and stage = 'detect'
+SpanName = 'clipboard.normalize' and @t > Now() - 1h
 ```
 
-**Tip:** Click on any `flow_id` value in the Seq UI event detail panel, then select "Find" to automatically filter to that flow.
+**Tip:** Click on any span in the Traces view to see its full attribute set. Click the TraceId to see the complete trace tree.
+
+Ready-to-import Seq signal files are available in `docs/seq/signals/`. See the [Seq Signals section](#seq-signals) below.
+
+### OTLP Data Model
+
+Spans exported via OTLP carry the following key attributes:
+
+| OTel Field         | Description                                              |
+| ------------------ | -------------------------------------------------------- |
+| `TraceId`          | W3C trace identifier — same across all spans in a flow  |
+| `SpanId`           | Unique span identifier                                   |
+| `ParentSpanId`     | Links child spans to their parent (e.g. stage → flow)   |
+| `SpanName`         | Dotted span name (e.g. `clipboard.normalize`)            |
+| `service.name`     | Resource attribute: `uniclipboard-desktop`               |
+| `service.instance.id` | Resource attribute: device identifier               |
 
 ### Architecture
 
-The Seq integration uses a non-blocking pipeline to avoid impacting application performance:
+The OTLP integration uses a non-blocking pipeline to avoid impacting application performance:
 
 ```
-tracing event
-  -> SeqLayer (formats as CLEF JSON string)
-  -> mpsc channel (1024 buffer)
-  -> background sender_loop (batches by count=100 or time=2s)
-  -> HTTP POST to /ingest/clef
+tracing event / span
+  -> tracing-opentelemetry bridge
+  -> OpenTelemetry SDK (BatchSpanProcessor)
+  -> opentelemetry-otlp exporter
+  -> HTTP POST to /ingest/otlp/v1/traces (OTLP/HTTP-protobuf)
 ```
 
-- **SeqLayer** implements the `tracing_subscriber::Layer` trait directly
-- Events are formatted using **CLEFFormat** which produces Seq-compatible CLEF JSON
-- An mpsc channel decouples the hot tracing path from network I/O
-- The **background sender** batches events (up to 100 or every 2 seconds) and POSTs them to Seq
-- **SeqGuard** ensures remaining events are flushed on application shutdown
-
-### CLEF Format
-
-Events are sent as newline-delimited CLEF JSON. Each line contains:
-
-```json
-{
-  "@t": "2026-03-11T10:30:45.123456Z",
-  "@l": "Information",
-  "@m": "Clipboard content captured",
-  "flow_id": "01958a3b-...",
-  "stage": "detect",
-  "device_id": "abc-123",
-  "span": "usecase.capture_clipboard.execute"
-}
-```
-
-| Field      | Description                                                        |
-| ---------- | ------------------------------------------------------------------ |
-| `@t`       | Timestamp in ISO 8601 UTC with microsecond precision               |
-| `@l`       | Seq log level (Verbose, Debug, Information, Warning, Error, Fatal) |
-| `@m`       | Log message                                                        |
-| `flow_id`  | Clipboard operation correlation ID (UUID v7)                       |
-| `stage`    | Pipeline stage name (detect, normalize, etc.)                      |
-| _(fields)_ | All span fields flattened to top level                             |
+- **`tracing-opentelemetry` bridge** translates tracing spans into OTel spans
+- **BatchSpanProcessor** batches spans for efficient export (SDK default: 512 spans or 5s, whichever comes first)
+- **OtlpGuard** ensures remaining spans are flushed on application shutdown (same guard pattern as Phase 19 WorkerGuard)
+- Log events from `tracing::info!` etc. are exported to `/ingest/otlp/v1/logs` simultaneously
 
 ### Troubleshooting
 
-**Events not appearing in Seq:**
+**Spans not appearing in Seq:**
 
-1. Verify `UC_SEQ_URL` is set: `echo $UC_SEQ_URL`
+1. Verify `OTEL_EXPORTER_OTLP_ENDPOINT` is set: `echo $OTEL_EXPORTER_OTLP_ENDPOINT`
 2. Verify Seq is running: `docker compose -f docker-compose.seq.yml ps`
 3. Verify Seq is reachable: `curl -s http://localhost:5341/api` (should return JSON)
-4. Check the application terminal for "Tracing initialized with dual output (console + JSON + Seq)" log line
-5. If the log says just "(console + JSON)" without "+ Seq", the environment variable was not set before app startup
+4. Check the application terminal for "Tracing initialized with OTLP" log line
+5. Ensure the base URL does **not** include `/v1/traces` — the SDK appends that automatically
+6. Check that `UC_LOG_PROFILE` is `dev` or `debug_clipboard` — OTLP is disabled for `prod` profile
 
 **Seq container not starting:**
 
@@ -827,11 +902,9 @@ Events are sent as newline-delimited CLEF JSON. Each line contains:
 2. Check port 5341 is not already in use: `lsof -i :5341`
 3. Check container logs: `docker compose -f docker-compose.seq.yml logs seq`
 
-**Events appearing but missing flow_id:**
+**Old `UC_SEQ_URL` env var:**
 
-1. Ensure you are triggering a clipboard capture (copy something)
-2. Not all events have `flow_id` -- only clipboard pipeline events carry it
-3. Use `Has(flow_id)` in Seq to filter to only flow-correlated events
+If you see a startup `WARN: UC_SEQ_URL is set but is no longer used`, remove `UC_SEQ_URL` from your shell and set `OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:5341/ingest/otlp` instead.
 
 **Stopping Seq:**
 
@@ -840,102 +913,110 @@ docker compose -f docker-compose.seq.yml down        # Stop and remove container
 docker compose -f docker-compose.seq.yml down -v      # Stop and remove container + data volume
 ```
 
-## Cross-Device Tracing
+## Distributed Tracing with W3C Trace Context
 
-UniClipboard provides end-to-end observability for cross-device clipboard synchronization. Each CLEF event includes device correlation fields that enable tracking clipboard content from capture on one device through delivery to another device.
+UniClipboard provides end-to-end observability for cross-device clipboard synchronization using W3C traceparent propagation. A clipboard operation that originates on one device and is received by another shares a **single TraceId** across both peers — Seq's built-in trace view shows the complete multi-device journey as one trace tree.
 
-### Device ID Injection
+### How It Works
 
-Every tracing event from the clipboard pipeline includes the `device_id` field, which identifies the device that generated the event:
+1. **Sender side**: When the clipboard pipeline creates a `clipboard.flow` root span and prepares to sync, `inject_current_context()` extracts the W3C `traceparent` header from the current span context.
+2. **Protocol field**: The `traceparent` string is written into `ClipboardMessage.traceparent: Option<String>` (backward-compatible via `serde(default, skip_serializing_if)`).
+3. **Receiver side**: When the inbound sync handler receives the message, `extract_remote_context(message.traceparent.as_deref())` reconstructs the remote span context. The inbound `clipboard.flow` span calls `set_parent()` with this context, linking it to the sender's trace.
+4. **Result**: Seq shows both the sender's capture pipeline and the receiver's apply pipeline under the same TraceId.
 
-```json
-{
-  "@t": "2026-03-11T10:30:45.123456Z",
-  "@l": "Information",
-  "@m": "Clipboard content captured",
-  "flow_id": "01958a3b-0000-0000-0000-000000000001",
-  "stage": "detect",
-  "device_id": "device-abc-123"
+### Backward Compatibility — Legacy Peer Fallback
+
+When receiving messages from older peer devices that do not send `traceparent`, the receiver creates a new local root span without a parent. A rate-limited `warn!` is emitted once per peer:
+
+```
+WARN clipboard.flow: Inbound message has no traceparent (sender may be running a pre-Phase-87 version); creating local root span
+```
+
+Subsequent messages from the same legacy peer are handled silently at `debug!` level to avoid log spam.
+
+### Protocol Field Details
+
+```rust
+// ClipboardMessage (uc-core/src/network/protocol/clipboard.rs)
+pub struct ClipboardMessage {
+    // ... other fields ...
+
+    /// W3C traceparent for distributed trace propagation (Phase 87+).
+    /// serde(default) + skip_serializing_if ensures backward compatibility with older peers.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub traceparent: Option<String>,
+
+    /// Deprecated: replaced by W3C traceparent in Phase 87. Scheduled for removal.
+    #[deprecated(note = "Phase 87: replaced by W3C traceparent. Do not read or write. Field kept for backward compat deserialization only.")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub origin_flow_id: Option<String>,
 }
 ```
 
-This field is automatically injected at the command/loop layer and propagates through all child spans in the clipboard pipeline.
+### Cross-Device Trace in Seq
 
-### Origin Flow ID Linking
-
-When clipboard content is sent from one device to another, the sender's `flow_id` is preserved as `origin_flow_id` on the receiver. This creates a traceable link between the sender's clipboard capture and the receiver's application:
+With W3C traceparent active, a cross-device clipboard sync produces:
 
 ```
-Sender Device                          Receiver Device
-┌─────────────────────────┐           ┌─────────────────────────┐
-│ flow_id: abc-001        │ ────────► │ origin_flow_id: abc-001  │
-│ stage: capture          │           │ flow_id: def-002         │
-│ device_id: sender-123   │           │ stage: inbound_apply     │
-└─────────────────────────┘           │ device_id: receiver-456  │
-                                       └─────────────────────────┘
+TraceId: a1b2c3d4...                           (same on both devices)
+│
+├── clipboard.flow{origin="local_capture"}     (Sender peer, device A)
+│   ├── clipboard.normalize
+│   ├── clipboard.cache_representations
+│   ├── clipboard.outbound_prepare
+│   └── clipboard.outbound_send
+│
+└── clipboard.flow{origin="inbound_sync"}      (Receiver peer, device B)
+    ├── clipboard.inbound_decode
+    └── clipboard.inbound_apply
 ```
 
-This linking enables:
+In Seq's Traces view, both sides appear in a single trace tree linked by TraceId. To find cross-device traces:
 
-- Querying all events related to a single cross-device clipboard operation
-- Understanding end-to-end latency from sender capture to receiver application
-- Identifying which device originated the content
+```
+SpanName = 'clipboard.flow'
+```
 
-### Seq Signal Queries
+Then click any root span to open the full trace view.
 
-Pre-configured Seq signal files are provided for common cross-device observability patterns:
+## Seq Signals
 
-| Signal File              | Purpose                            | Query                                 |
-| ------------------------ | ---------------------------------- | ------------------------------------- |
-| `flow-timeline.json`     | View all stages of a specific flow | `Has(flow_id)`                        |
-| `cross-device-flow.json` | View complete cross-device journey | `Has(flow_id) or Has(origin_flow_id)` |
+Pre-configured Seq signal files are provided for common observability patterns. Files are located in `docs/seq/signals/` and can be imported into Seq as saved searches.
 
-These files are located in `docs/seq/signals/` and can be imported into Seq as saved searches.
+| Signal File              | Purpose                                  | Key Filter                       |
+| ------------------------ | ---------------------------------------- | -------------------------------- |
+| `flow-timeline.json`     | View all stages of one clipboard trace   | `SpanName like 'clipboard.%'`    |
+| `cross-device-flow.json` | View root flows, click to drill into tree | `SpanName = 'clipboard.flow'`   |
 
 **Usage:**
 
 1. Start Seq: `docker compose -f docker-compose.seq.yml up -d`
-2. Set `UC_SEQ_URL=http://localhost:5341`
+2. Set `OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:5341/ingest/otlp`
 3. Run the application and trigger clipboard sync between devices
-4. In Seq UI, use the saved searches or manually query:
-   - `origin_flow_id = '01958a3b-...'` - Find all receiver events for a sender's flow
-   - `origin_device_id = 'device-abc-123'` - Find all clipboard content from a specific device
-
-### Graceful Degradation
-
-When receiving messages from older peer devices that don't send `origin_flow_id`, the application logs a warning but continues processing:
-
-```
-WARN loop.clipboard.receive_message: Inbound message has no origin_flow_id (sender may be an older version)
-```
-
-This ensures backward compatibility while providing visibility into potential sync issues with legacy versions.
+4. In Seq UI, navigate to Signals (or Saved Searches) and import the JSON files
+5. Use the trace view (TraceId link) to see the complete multi-span tree
 
 ### LAN Access Configuration
 
-For testing cross-device tracing on a local network, update `docker-compose.seq.yml` to bind Seq to all network interfaces:
-
-```yaml
-services:
-  seq:
-    ports:
-      - '0.0.0.0:5341:5341' # Bind to all interfaces, not just localhost
-```
-
-Then set `UC_SEQ_URL=http://<your-local-ip>:5341` on each device to send events to the centralized Seq instance.
+For testing cross-device tracing on a local network, the `docker-compose.seq.yml` already binds Seq to all network interfaces. Set `OTEL_EXPORTER_OTLP_ENDPOINT=http://<your-local-ip>:5341/ingest/otlp` on each device to send traces to the centralized Seq instance.
 
 ## References
 
 - [Tracing Crate Documentation](https://docs.rs/tracing/)
 - [Tracing Subscriber Documentation](https://docs.rs/tracing-subscriber/)
+- [OpenTelemetry Rust SDK](https://docs.rs/opentelemetry/)
+- [opentelemetry-otlp crate](https://docs.rs/opentelemetry-otlp/)
+- [tracing-opentelemetry bridge](https://docs.rs/tracing-opentelemetry/)
 - [Tauri Plugin Log Documentation](https://v2.tauri.app/plugin/logging/)
 - [Seq Documentation](https://docs.datalust.co/docs)
-- [CLEF Format Specification](https://clef-json.org/)
+- [W3C Trace Context Specification](https://www.w3.org/TR/trace-context/)
+- [OTel Semantic Conventions — Resource](https://opentelemetry.io/docs/specs/semconv/resource/)
 - Source:
-  - `src-tauri/crates/uc-observability/` (profile, format, init, seq, clef_format)
-  - `src-tauri/crates/uc-tauri/src/bootstrap/tracing.rs` (Sentry + Seq + uc-observability composition)
+  - `src-tauri/crates/uc-observability/` (profile, format, init, otlp/)
+  - `src-tauri/crates/uc-tauri/src/bootstrap/tracing.rs` (Sentry + OTLP + uc-observability composition)
   - `src-tauri/crates/uc-tauri/src/bootstrap/logging.rs` (legacy log plugin, Webview + stdout)
-  - `docker-compose.seq.yml` (local Seq instance)
+  - `docker-compose.seq.yml` (local Seq instance with OTLP ingestion)
+  - `docs/seq/signals/` (ready-to-import Seq saved searches)
 - Guides:
   - [Tracing Usage Guide](../guides/tracing.md)
   - [Coding Standards](../guides/coding-standards.md)

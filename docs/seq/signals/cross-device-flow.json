@@ -1,34 +1,29 @@
 {
-  "Title": "Cross-Device Flow",
-  "Description": "View end-to-end flows across sender and receiver devices",
-  "Query": "Has(flow_id) or Has(origin_flow_id)",
+  "Title": "Cross-Device Clipboard Flow (OTel)",
+  "Description": "View cross-device clipboard flows using W3C traceparent. Filter to root clipboard.flow spans only — each row is one complete clipboard operation (local capture or inbound sync). Click a TraceId in Seq's Traces view to see the full span tree spanning both sender and receiver devices. Post-Phase 87: cross-device flows are unified by W3C traceparent. A single TraceId covers the entire sync across peers.",
+  "Query": "SpanName = 'clipboard.flow'",
   "Columns": [
-    { "Name": "flow_id", "Width": 280 },
-    { "Name": "origin_flow_id", "Width": 280 },
-    { "Name": "device_id", "Width": 150 },
-    { "Name": "origin_device_id", "Width": 150 },
-    { "Name": "stage", "Width": 120 },
+    { "Name": "TraceId", "Width": 280 },
+    { "Name": "SpanName", "Width": 160 },
+    { "Name": "origin", "Width": 140 },
+    { "Name": "service.instance.id", "Header": "device_id", "Width": 150 },
     { "Name": "@t", "Header": "Timestamp", "Width": 180 },
     { "Name": "@m", "Header": "Message", "Width": 350 }
   ],
   "Sort": [{ "Field": "@t", "Order": "asc" }],
   "Signal": {
     "Type": "saved-search",
-    "Expression": "origin_flow_id = '<select-a-flow-id>'"
+    "Expression": "SpanName = 'clipboard.flow'"
   },
   "Example": {
-    "Description": "Find all events for a cross-device flow using origin_flow_id",
-    "Query": "origin_flow_id = '01958a3b-0000-0000-0000-000000000001'"
+    "Description": "Find all clipboard.flow root spans, then click TraceId for full cross-device trace",
+    "Query": "SpanName = 'clipboard.flow'"
   },
   "ExampleDescriptions": [
-    "Track clipboard content from sender to receiver",
-    "View the complete cross-device journey",
-    "Identify where delays occur in cross-device sync"
+    "Each row is a clipboard.flow root span — one per clipboard capture or inbound sync event",
+    "The 'origin' field distinguishes 'local_capture' (sender) from 'inbound_sync' (receiver)",
+    "For cross-device traces: sender and receiver clipboard.flow spans share the same TraceId",
+    "Click the TraceId link in Seq Traces view to see the complete sender + receiver span tree"
   ],
-  "FieldMapping": {
-    "flow_id": "Current device's flow_id for this clipboard operation",
-    "origin_flow_id": "Original sender's flow_id (preserved through the sync pipeline)",
-    "device_id": "Device that generated/processing this event",
-    "origin_device_id": "Original device that captured the clipboard content"
-  }
+  "_note": "Property name casing for OTLP-ingested data in Seq 2025.2: use 'TraceId' and 'SpanName' (PascalCase). If queries return no results, try '@TraceId' or 'trace_id'. A live Seq instance is the final gate for confirming exact property names."
 }

@@ -59,8 +59,37 @@ mod local_daemon {
 
     impl std::error::Error for LocalDaemonError {}
 
-    pub async fn ensure_local_daemon_running() -> Result<(), LocalDaemonError> {
-        Ok(())
+    #[derive(Debug)]
+    pub struct LocalDaemonSession {
+        pub base_url: String,
+        pub spawned: bool,
+    }
+
+    pub async fn ensure_local_daemon_running() -> Result<LocalDaemonSession, LocalDaemonError> {
+        Ok(LocalDaemonSession {
+            base_url: "http://127.0.0.1:0".to_string(),
+            spawned: false,
+        })
+    }
+
+    pub async fn ensure_local_daemon_running_capture(
+        _slot: &mut Option<crate::autostop::AutostopGuard>,
+    ) -> Result<LocalDaemonSession, LocalDaemonError> {
+        ensure_local_daemon_running().await
+    }
+}
+
+mod autostop {
+    use crate::local_daemon::LocalDaemonSession;
+
+    pub struct AutostopGuard {
+        pid: Option<u32>,
+    }
+
+    impl AutostopGuard {
+        pub fn arm(_session: &LocalDaemonSession) -> Self {
+            Self { pid: None }
+        }
     }
 }
 

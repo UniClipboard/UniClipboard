@@ -154,6 +154,8 @@ pub async fn ensure_local_daemon_running_capture(
 ///
 /// The `#[autostop]` attribute macro in `uc-cli-macros` rewrites plain
 /// `ensure_local_daemon_running` calls into this form automatically.
+#[allow(dead_code)]
+#[cfg(test)]
 pub async fn ensure_local_daemon_running_for_oneshot(
 ) -> Result<(LocalDaemonSession, crate::autostop::AutostopGuard), LocalDaemonError> {
     let session = ensure_local_daemon_running().await?;
@@ -161,6 +163,7 @@ pub async fn ensure_local_daemon_running_for_oneshot(
     Ok((session, guard))
 }
 
+#[cfg(test)]
 async fn ensure_local_daemon_running_with<Probe, ProbeFuture, Spawn>(
     mut probe: Probe,
     spawn: Spawn,

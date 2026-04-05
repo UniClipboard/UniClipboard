@@ -137,7 +137,9 @@ pub fn resolve_pid_path() -> PathBuf {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::ffi::OsStr;
     use std::sync::{Mutex, OnceLock};
+    use uc_platform::ports::AppDirsPort;
 
     /// Temporarily sets `UC_PROFILE` and restores it after `f` completes.
     fn with_uc_profile<T>(profile: Option<&str>, f: impl FnOnce() -> T) -> T {
@@ -162,9 +164,10 @@ mod tests {
     /// Creates a DaemonPidManager rooted at the given base directory.
     fn pid_manager_for_testing(base: impl Into<PathBuf>) -> DaemonPidManager {
         let base: PathBuf = base.into();
-        let app_paths = with_uc_profile(None, || {
-            uc_app::app_paths::AppPaths::with_base_data_local_dir(base)
-        });
+        let app_dirs = uc_platform::app_dirs::DirsAppDirsAdapter::with_base_data_local_dir(base)
+            .get_app_dirs()
+            .expect("test base directory should resolve app dirs");
+        let app_paths = uc_app::app_paths::AppPaths::from_app_dirs(&app_dirs);
         DaemonPidManager::new(app_paths)
     }
 
@@ -182,11 +185,25 @@ mod tests {
 
         assert_eq!(
             path_a.file_name().and_then(std::ffi::OsStr::to_str),
-            Some("uniclipboard-daemon-a.pid")
+            Some(".daemon-pid")
         );
         assert_eq!(
             path_b.file_name().and_then(std::ffi::OsStr::to_str),
-            Some("uniclipboard-daemon-b.pid")
+            Some(".daemon-pid")
+        );
+        assert_eq!(
+            path_a
+                .parent()
+                .and_then(|p| p.file_name())
+                .and_then(OsStr::to_str),
+            Some("app.uniclipboard.desktop-a")
+        );
+        assert_eq!(
+            path_b
+                .parent()
+                .and_then(|p| p.file_name())
+                .and_then(OsStr::to_str),
+            Some("app.uniclipboard.desktop-b")
         );
         assert_ne!(path_a, path_b);
     }

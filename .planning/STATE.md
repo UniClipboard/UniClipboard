@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v0.4.0
 milestone_name: Runtime Mode Separation
 status: Ready to execute
-stopped_at: Completed 87-03-PLAN.md
-last_updated: "2026-04-05T04:20:07.742Z"
+stopped_at: Completed 87-04-PLAN.md
+last_updated: "2026-04-05T04:31:53.533Z"
 progress:
   total_phases: 58
   completed_phases: 43
   total_plans: 128
-  completed_plans: 116
+  completed_plans: 117
 ---
 
 # Project State
@@ -23,7 +23,7 @@ See: .planning/PROJECT.md (updated 2026-03-09)
 ## Current Position
 
 Phase: 87 (otlp-seq-otlp) — EXECUTING
-Plan: 4 of 6
+Plan: 5 of 6
 
 ## Current Position
 
@@ -128,6 +128,7 @@ Plan: Not started
 | Phase 87 P01 | 470 | 2 tasks | 7 files |
 | Phase 87 P02 | 6 | 1 tasks | 6 files |
 | Phase 87 P03 | 1523 | 2 tasks | 11 files |
+| Phase 87 P04 | 529 | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -297,6 +298,9 @@ Recent decisions affecting current work:
 - [Phase 87]: 87-03: Two-phase OTLP init with OtlpConcreteLayer<S> type alias enables Rust type inference in .with() chain composition
 - [Phase 87]: 87-03: init_otlp_provider() separates async provider setup from layer creation, otlp::layer pub with concrete type for bootstrap use
 - [Phase 87]: 87-03: UC_SEQ_URL warn emitted via tracing::warn! after subscriber init for structured capture
+- [Phase 87]: 87-04: Stage constants renamed to dotted OTel semconv form (clipboard.normalize, etc.)
+- [Phase 87]: 87-04: clipboard.flow root span wraps all pipeline stages; old usecase.capture_clipboard.execute span removed
+- [Phase 87]: 87-04: tracing-opentelemetry added as direct dep to uc-app for OpenTelemetrySpanExt::set_parent in sync_inbound
 
 ### Roadmap Evolution
 
@@ -358,6 +362,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-04-05T04:20:07.712Z
-Stopped at: Completed 87-03-PLAN.md
+Last session: 2026-04-05T04:31:53.509Z
+Stopped at: Completed 87-04-PLAN.md
 Resume file: None

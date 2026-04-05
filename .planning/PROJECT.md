@@ -63,6 +63,7 @@ Seamless clipboard synchronization across devices — users can copy on one devi
 - ✓ macOS keychain auto-unlock confirmation modal — v0.3.0
 - ✓ Event-driven device discovery replacing polling — v0.3.0
 - ✓ Unified CLI/GUI/Daemon auth architecture (session exchange via /auth/connect, bare bearer rejection on L2+ routes, independent token scopes) — Phase 84
+- ✓ OpenTelemetry OTLP/HTTP-protobuf pipeline replaces legacy Seq/CLEF layer; clipboard spans restructured into `clipboard.flow` parent-child tree with dotted OTel semconv stage names; W3C traceparent inject/extract across device sync boundaries — Phase 87
 
 ### Active
 
@@ -121,6 +122,7 @@ Phase 64 complete — Tauri sync retirement: removed 896 lines of daemon-duplica
 Phase 66 complete — Fixed daemon WS topic registration for clipboard and file-transfer subscriptions; added WS reconnection compensation with bridge_state_monitor and DaemonReconnected event; Dashboard auto-refreshes clipboard list on reconnect.
 Phase 69 complete — CLI `setup` → "Create new Space" performs encryption initialization locally via `build_cli_runtime()` + `CoreUseCases::initialize_encryption()` instead of starting daemon; eliminates macOS Keychain popup during first-time setup.
 Phase 73 complete — ClipboardWriteCoordinator introduced as single write boundary for all programmatic clipboard writes (LocalRestore, RemotePush, LocalCapture intents); InMemoryClipboardChangeOrigin locked to pub(crate) via factory; all 4 write callsites migrated (RestoreClipboardSelectionUseCase, CopyFileToClipboardUseCase, SyncInboundClipboardUseCase, FileSyncOrchestratorWorker); dead guard code removed.
+Phase 87 complete — OTLP migration: legacy `uc_observability::seq`/CLEF pipeline hard-deleted (~1082 LoC); new `uc_observability::otlp` module provides OTLP/HTTP-protobuf exporter, W3C TraceContextPropagator, and semconv resource builder; bootstrap wires `init_otlp_provider()` with `OtlpGuard` shutdown; `ClipboardMessage.traceparent: Option<String>` added with backward-compatible serde and `origin_flow_id` deprecated; clipboard capture pipeline restructured into `clipboard.flow` root with 6 child stage spans using dotted OTel names; outbound `sync_outbound` injects current trace context, inbound `sync_inbound` extracts and links via `set_parent()` with rate-limited fallback warning; docs/Seq saved searches/docker-compose updated for new data model.
 Phase 86 complete — CLI host/join flow refactored: ParsedSetupState centralized in uc-daemon-client/setup; HostCliPhase/JoinCliPhase enums introduced with pure derive_*_phase() functions; run_pair and run_connect rewritten as phase-driven loops (poll→parse→derive→match→sleep pattern); Phase 0 bugs eliminated (double-negative clearing condition, verbose Debug impl); old inline parsing helpers migrated to daemon-client module and deleted from uc-cli.
 
 ## Key Decisions
@@ -158,4 +160,4 @@ Phase 86 complete — CLI host/join flow refactored: ParsedSetupState centralize
 
 ---
 
-_Last updated: 2026-04-03 after Phase 86 completion_
+_Last updated: 2026-04-05 after Phase 87 completion_

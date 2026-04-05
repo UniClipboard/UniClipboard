@@ -1,6 +1,7 @@
-use std::collections::VecDeque;
+use std::collections::{HashSet, VecDeque};
 use std::io::Cursor;
 use std::path::PathBuf;
+use std::sync::{Mutex as StdMutex, OnceLock};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -10,7 +11,9 @@ use crate::usecases::clipboard::clipboard_write_coordinator::{
 use crate::usecases::clipboard::ClipboardIntegrationMode;
 use anyhow::{Context, Result};
 use tokio::sync::Mutex;
-use tracing::{debug, error, field, info, info_span, warn, Instrument, Span};
+use tracing::{debug, error, info, info_span, warn, Instrument};
+use tracing_opentelemetry::OpenTelemetrySpanExt;
+use uc_observability::otlp::propagator::extract_remote_context;
 use uc_core::ids::{EntryId, FormatId, RepresentationId};
 use uc_core::network::protocol::{
     BinaryRepresentation, ClipboardBinaryPayload, ClipboardPayloadVersion, MIME_IMAGE_PREFIX,
@@ -30,6 +33,32 @@ use uc_core::{
 
 const RECENT_ID_TTL: Duration = Duration::from_secs(600);
 const RECENT_ID_MAX: usize = 1024;
+
+/// Per-session set of peer IDs that have already triggered the missing-traceparent warning.
+/// Subsequent occurrences for the same peer emit debug instead of warn.
+static MISSING_TP_PEERS: OnceLock<StdMutex<HashSet<String>>> = OnceLock::new();
+
+/// Emit a rate-limited warning when an inbound message is missing W3C traceparent.
+/// First occurrence per peer_id → warn!, subsequent occurrences → debug!.
+fn warn_missing_traceparent_once(peer_id: &str) {
+    let set = MISSING_TP_PEERS.get_or_init(|| StdMutex::new(HashSet::new()));
+    match set.lock() {
+        Ok(mut guard) => {
+            if guard.insert(peer_id.to_string()) {
+                tracing::warn!(
+                    peer_id = %peer_id,
+                    "inbound clipboard message missing traceparent; falling back to new local trace (legacy peer)"
+                );
+            } else {
+                tracing::debug!(peer_id = %peer_id, "inbound clipboard message missing traceparent (already warned)");
+            }
+        }
+        Err(poisoned) => {
+            // Never panic — log and continue
+            tracing::warn!(peer_id = %peer_id, error = ?poisoned, "MISSING_TP_PEERS lock poisoned");
+        }
+    }
+}
 
 /// Lightweight transfer linkage returned from inbound apply for file-backed messages.
 /// Sufficient for the Tauri layer to emit pending status without re-deriving state.
@@ -190,18 +219,22 @@ impl SyncInboundClipboardUseCase {
         message: ClipboardMessage,
         pre_decoded_plaintext: Option<Vec<u8>>,
     ) -> Result<InboundApplyOutcome> {
-        let span = info_span!(
-            "usecase.clipboard.sync_inbound.execute",
+        // Create inbound root span — W3C traceparent from remote peer links this trace
+        // to the originating device's clipboard.flow span (cross-device distributed tracing).
+        let inbound_span = info_span!(
+            "clipboard.flow",
+            origin = "inbound_sync",
             message_id = %message.id,
             origin_device_id = %message.origin_device_id,
             payload_version = ?message.payload_version,
-            flow_id = field::Empty,
         );
+        // set_parent returns Err only if the span is already closed; safe to ignore here.
+        let _ = inbound_span.set_parent(extract_remote_context(message.traceparent.as_deref()));
+        if message.traceparent.is_none() {
+            warn_missing_traceparent_once(&message.origin_device_id);
+        }
 
         async move {
-            if let Some(ref fid) = message.origin_flow_id {
-                Span::current().record("flow_id", tracing::field::display(fid));
-            }
             info!(
                 mode = ?self.mode,
                 allow_os_read = self.mode.allow_os_read(),
@@ -233,7 +266,7 @@ impl SyncInboundClipboardUseCase {
                 }
             }
         }
-        .instrument(span)
+        .instrument(inbound_span)
         .await
     }
 
@@ -321,9 +354,8 @@ impl SyncInboundClipboardUseCase {
             Ok::<ClipboardBinaryPayload, anyhow::Error>(v3_payload)
         }
         .instrument(info_span!(
-            "inbound.decode",
+            uc_observability::stages::INBOUND_DECODE, // "clipboard.inbound_decode"
             wire_bytes = message.encrypted_content.len(),
-            stage = uc_observability::stages::INBOUND_DECODE,
         ))
         .await;
 
@@ -487,7 +519,7 @@ impl SyncInboundClipboardUseCase {
                     .execute_with_origin(
                         snapshot_for_capture,
                         ClipboardChangeOrigin::RemotePush,
-                        message.origin_flow_id.clone(),
+                        None, // flow_id deprecated in Phase 87; traceparent used instead
                     )
                     .await
                 {
@@ -594,7 +626,7 @@ impl SyncInboundClipboardUseCase {
                     .execute_with_origin(
                         snapshot_for_capture,
                         ClipboardChangeOrigin::RemotePush,
-                        message.origin_flow_id.clone(),
+                        None, // flow_id deprecated in Phase 87; traceparent used instead
                     )
                     .await
                 {
@@ -621,8 +653,7 @@ impl SyncInboundClipboardUseCase {
             Ok(InboundApplyOutcome::Skipped)
         }
         .instrument(info_span!(
-            "inbound.apply",
-            stage = uc_observability::stages::INBOUND_APPLY
+            uc_observability::stages::INBOUND_APPLY // "clipboard.inbound_apply"
         ))
         .await
     }

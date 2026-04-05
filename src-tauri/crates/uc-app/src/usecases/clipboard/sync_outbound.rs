@@ -3,7 +3,7 @@ use std::sync::Arc;
 use anyhow::{bail, Context, Result};
 use chrono::Utc;
 use futures::executor;
-use tracing::{debug, field, info, info_span, warn, Instrument, Span};
+use tracing::{debug, info, info_span, warn, Instrument};
 use uuid::Uuid;
 
 use uc_core::config::RECEIVE_PLAINTEXT_CAP;
@@ -17,6 +17,7 @@ use uc_core::ports::{
     PeerDirectoryPort, SettingsPort, SystemClipboardPort, TransferPayloadEncryptorPort,
 };
 use uc_core::{ClipboardChangeOrigin, PeerId, SystemClipboardSnapshot};
+use uc_observability::otlp::propagator::inject_current_context;
 
 pub struct SyncOutboundClipboardUseCase {
     local_clipboard: Arc<dyn SystemClipboardPort>,
@@ -163,7 +164,6 @@ impl SyncOutboundClipboardUseCase {
             "usecase.clipboard.sync_outbound.execute",
             origin = ?origin,
             representation_count = snapshot.representations.len(),
-            flow_id = field::Empty,
         );
 
         executor::block_on(
@@ -179,9 +179,6 @@ impl SyncOutboundClipboardUseCase {
         origin_flow_id: Option<String>,
         file_transfers: Vec<uc_core::network::protocol::FileTransferMapping>,
     ) -> Result<()> {
-        if let Some(ref fid) = origin_flow_id {
-            Span::current().record("flow_id", tracing::field::display(fid));
-        }
         if origin == ClipboardChangeOrigin::RemotePush {
             debug!(origin = ?origin, "Skipping outbound sync for remote-push origin");
             return Ok(());
@@ -287,6 +284,10 @@ impl SyncOutboundClipboardUseCase {
             }
         };
 
+        // Inject the current span's W3C traceparent for cross-device distributed tracing.
+        // This MUST run after the outbound flow span is active so Span::current() is non-trivial.
+        let traceparent = inject_current_context();
+
         // Build the JSON header (V3: encrypted payload goes as raw trailing bytes)
         #[allow(deprecated)]
         let clipboard_header = ClipboardMessage {
@@ -298,7 +299,7 @@ impl SyncOutboundClipboardUseCase {
             origin_device_name,
             payload_version: ClipboardPayloadVersion::V3,
             origin_flow_id,
-            traceparent: None,
+            traceparent,
             file_transfers,
         };
 
@@ -341,9 +342,8 @@ impl SyncOutboundClipboardUseCase {
             Ok::<Arc<[u8]>, anyhow::Error>(Arc::from(framed.into_boxed_slice()))
         }
         .instrument(info_span!(
-            "outbound.prepare",
+            uc_observability::stages::OUTBOUND_PREPARE, // "clipboard.outbound_prepare"
             raw_bytes,
-            stage = uc_observability::stages::OUTBOUND_PREPARE
         ));
 
         let outbound_bytes = if tokio::runtime::Handle::try_current().is_ok() {
@@ -405,7 +405,7 @@ impl SyncOutboundClipboardUseCase {
                     .send_clipboard(&first_peer.peer_id, outbound_bytes.clone())
                     .await
             }
-            .instrument(info_span!("outbound.send", peer_id = %first_peer.peer_id, stage = uc_observability::stages::OUTBOUND_SEND))
+            .instrument(info_span!(uc_observability::stages::OUTBOUND_SEND, peer_id = %first_peer.peer_id)) // "clipboard.outbound_send"
             .await
             {
                 warn!(
@@ -445,7 +445,7 @@ impl SyncOutboundClipboardUseCase {
                     .send_clipboard(&peer.peer_id, outbound_bytes.clone())
                     .await
             }
-            .instrument(info_span!("outbound.send", peer_id = %peer.peer_id, stage = uc_observability::stages::OUTBOUND_SEND))
+            .instrument(info_span!(uc_observability::stages::OUTBOUND_SEND, peer_id = %peer.peer_id)) // "clipboard.outbound_send"
             .await
             {
                 warn!(

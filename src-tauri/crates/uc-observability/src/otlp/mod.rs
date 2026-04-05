@@ -18,7 +18,7 @@
 //! For composition with other layers, the caller can use `init_otlp_pipeline_generic<S>`.
 pub mod propagator;
 pub mod resource;
-mod layer;
+pub mod layer;
 
 pub use resource::build_resource;
 
@@ -52,6 +52,55 @@ impl Drop for OtlpGuard {
             }
         }
     }
+}
+
+/// Initialize the OTLP exporter and provider, without creating the tracing layer.
+///
+/// This two-phase initialization allows callers that compose multiple
+/// `tracing_subscriber` layers to:
+/// 1. Run the async provider setup early (before the full subscriber chain is known).
+/// 2. Create the typed layer later via `layer::build_otlp_layer::<S>()` once the
+///    subscriber type `S` is determined by the composition context.
+///
+/// `SdkTracerProvider` is `Clone` with Arc semantics (clone increments the Arc
+/// counter; shutdown is executed once on the shared inner state). This means the
+/// caller can clone the provider to pass to `layer::build_otlp_layer` while the
+/// guard retains the other clone for flush-on-drop.
+///
+/// Returns `Ok(None)` when OTLP is disabled (Prod profile or missing env var).
+/// The W3C propagator is always installed globally regardless.
+pub fn init_otlp_provider(
+    profile: &LogProfile,
+    device_id: Option<&str>,
+) -> anyhow::Result<Option<(SdkTracerProvider, OtlpGuard)>> {
+    // Always install the W3C propagator.
+    global::set_text_map_propagator(TraceContextPropagator::new());
+
+    if matches!(profile, LogProfile::Prod) {
+        return Ok(None);
+    }
+    if std::env::var("OTEL_EXPORTER_OTLP_ENDPOINT").is_err() {
+        return Ok(None);
+    }
+
+    let exporter = SpanExporter::builder()
+        .with_http()
+        .with_protocol(Protocol::HttpBinary)
+        .build()
+        .map_err(|e| anyhow::anyhow!("build OTLP span exporter: {e}"))?;
+
+    let resource = resource::build_resource(device_id);
+
+    let provider = SdkTracerProvider::builder()
+        .with_batch_exporter(exporter)
+        .with_resource(resource)
+        .build();
+
+    // Clone provider for the guard (Arc clone; shared inner state).
+    // The caller uses the original provider to create a layer.
+    let guard = OtlpGuard { provider: Some(provider.clone()) };
+
+    Ok(Some((provider, guard)))
 }
 
 /// Build the internal OTLP pipeline without the boxed layer wrapper.

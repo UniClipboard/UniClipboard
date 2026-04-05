@@ -257,13 +257,13 @@ async fn pairing_api_returns_409_active_pairing_session_exists() {
     assert_eq!(first.status(), StatusCode::ACCEPTED);
     assert_eq!(second.status(), StatusCode::CONFLICT);
     assert_eq!(
-        json_body(second).await["error"],
-        Value::String("active_pairing_session_exists".to_string())
+        json_body(second).await["code"],
+        Value::String("active_session_exists".to_string())
     );
 }
 
 #[tokio::test]
-async fn pairing_api_returns_412_when_no_local_participant_ready() {
+async fn pairing_api_returns_400_when_no_local_participant_ready() {
     let (app, token) = build_api_router_async().await;
     assert_eq!(
         set_discoverability(&app, &token, true, Some(60_000))
@@ -274,15 +274,15 @@ async fn pairing_api_returns_412_when_no_local_participant_ready() {
 
     let response = initiate_pairing(&app, &token, "peer-a").await;
 
-    assert_eq!(response.status(), StatusCode::PRECONDITION_FAILED);
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
     assert_eq!(
-        json_body(response).await["error"],
-        Value::String("no_local_pairing_participant_ready".to_string())
+        json_body(response).await["code"],
+        Value::String("no_local_participant".to_string())
     );
 }
 
 #[tokio::test]
-async fn pairing_api_returns_409_host_not_discoverable() {
+async fn pairing_api_returns_400_host_not_discoverable() {
     let (app, token) = build_api_router_async().await;
     assert_eq!(
         set_participant_ready(&app, &token, true, Some(60_000))
@@ -293,9 +293,9 @@ async fn pairing_api_returns_409_host_not_discoverable() {
 
     let response = initiate_pairing(&app, &token, "peer-a").await;
 
-    assert_eq!(response.status(), StatusCode::CONFLICT);
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
     assert_eq!(
-        json_body(response).await["error"],
+        json_body(response).await["code"],
         Value::String("host_not_discoverable".to_string())
     );
 }
@@ -346,7 +346,7 @@ async fn pairing_api_requires_explicit_discoverability_opt_in_for_cli() {
     let response = initiate_pairing(&app, &token, "peer-a").await;
     let body = json_body(response).await;
 
-    assert_eq!(body["error"], "host_not_discoverable");
+    assert_eq!(body["code"], "host_not_discoverable");
 }
 
 #[tokio::test]
@@ -359,9 +359,9 @@ async fn pairing_api_expires_discoverability_lease() {
 
     let response = initiate_pairing(&app, &token, "peer-a").await;
 
-    assert_eq!(response.status(), StatusCode::CONFLICT);
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
     assert_eq!(
-        json_body(response).await["error"],
+        json_body(response).await["code"],
         Value::String("host_not_discoverable".to_string())
     );
 }

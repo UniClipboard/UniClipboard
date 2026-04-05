@@ -1,12 +1,16 @@
-import { renderHook, waitFor } from '@testing-library/react'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { getSettings } from '@/api/daemon'
-import { DEFAULT_THEME_COLOR } from '@/constants/theme'
+import { emit } from '@tauri-apps/api/event'
+import { act, renderHook, waitFor } from '@testing-library/react'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { getSettings, updateSettings } from '@/api/daemon'
 import { SettingProvider } from '@/contexts/SettingContext'
 import { useSetting } from '@/hooks/useSetting'
 import { connectDaemonWs } from '@/lib/daemon-ws-bootstrap'
 import { invokeWithTrace } from '@/lib/tauri-command'
 import type { Settings } from '@/types/setting'
+
+vi.mock('@tauri-apps/api/event', () => ({
+  emit: vi.fn(),
+}))
 
 vi.mock('@/api/daemon', () => ({
   getSettings: vi.fn(),
@@ -31,7 +35,9 @@ vi.mock('@/i18n', () => ({
   persistLanguage: vi.fn(),
 }))
 
+const mockEmit = vi.mocked(emit)
 const mockGetSettings = vi.mocked(getSettings)
+const mockUpdateSettings = vi.mocked(updateSettings)
 const mockConnectDaemonWs = vi.mocked(connectDaemonWs)
 const mockInvokeWithTrace = vi.mocked(invokeWithTrace)
 
@@ -42,7 +48,7 @@ const baseSetting: Settings = {
     silentStart: false,
     autoCheckUpdate: true,
     theme: 'light',
-    themeColor: DEFAULT_THEME_COLOR,
+    themeColor: 'zinc',
     language: 'en-US',
     deviceName: 'Test Device',
   },
@@ -78,76 +84,51 @@ const baseSetting: Settings = {
   },
 }
 
-describe('SettingProvider theme integration', () => {
-  let prefersDark = false
-
+describe('SettingProvider cross-window sync', () => {
   const wrapper = ({ children }: { children: React.ReactNode }) => (
     <SettingProvider>{children}</SettingProvider>
   )
 
   beforeEach(() => {
     vi.clearAllMocks()
-    prefersDark = false
     mockConnectDaemonWs.mockResolvedValue(undefined)
-    mockInvokeWithTrace.mockResolvedValue(undefined)
     mockGetSettings.mockResolvedValue(baseSetting)
+    mockUpdateSettings.mockResolvedValue(undefined)
+    mockInvokeWithTrace.mockResolvedValue(undefined)
 
     Object.defineProperty(window, 'matchMedia', {
       writable: true,
-      value: vi.fn().mockImplementation(() => ({
-        get matches() {
-          return prefersDark
-        },
+      value: vi.fn().mockReturnValue({
+        matches: false,
         addEventListener: vi.fn(),
         removeEventListener: vi.fn(),
-      })),
+      }),
     })
   })
 
-  afterEach(() => {
-    document.documentElement.className = ''
-    document.documentElement.removeAttribute('data-theme')
-  })
-
-  it('applies persisted themeColor on mount', async () => {
+  it('broadcasts updated settings after a theme change so other windows can sync', async () => {
     const { result } = renderHook(() => useSetting(), { wrapper })
 
     await waitFor(() => {
-      expect(result.current.setting?.general.themeColor).toBe(DEFAULT_THEME_COLOR)
-      expect(document.documentElement.getAttribute('data-theme')).toBe(DEFAULT_THEME_COLOR)
+      expect(result.current.setting).toEqual(baseSetting)
     })
-  })
 
-  it('falls back to the default preset when themeColor is null', async () => {
-    mockGetSettings.mockResolvedValue({
+    const updatedSetting: Settings = {
       ...baseSetting,
       general: {
         ...baseSetting.general,
-        themeColor: null,
+        theme: 'dark',
       },
+    }
+
+    await act(async () => {
+      await result.current.updateGeneralSetting({ theme: 'dark' })
     })
 
-    renderHook(() => useSetting(), { wrapper })
-
-    await waitFor(() => {
-      expect(document.documentElement.getAttribute('data-theme')).toBe(DEFAULT_THEME_COLOR)
-    })
-  })
-
-  it('applies the dark mode class when system theme is dark', async () => {
-    prefersDark = true
-    mockGetSettings.mockResolvedValue({
-      ...baseSetting,
-      general: {
-        ...baseSetting.general,
-        theme: 'system',
-      },
-    })
-
-    renderHook(() => useSetting(), { wrapper })
-
-    await waitFor(() => {
-      expect(document.documentElement.classList.contains('dark')).toBe(true)
+    expect(mockUpdateSettings).toHaveBeenCalledWith(updatedSetting)
+    expect(mockEmit).toHaveBeenCalledWith('settings://changed', {
+      settingJson: JSON.stringify(updatedSetting),
+      timestamp: expect.any(Number),
     })
   })
 })

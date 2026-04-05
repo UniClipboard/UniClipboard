@@ -4,6 +4,7 @@ import { getSettings, updateSettings } from '@/api/daemon'
 import { DEFAULT_THEME_COLOR } from '@/constants/theme'
 import i18n, { normalizeLanguage, persistLanguage } from '@/i18n'
 import { connectDaemonWs } from '@/lib/daemon-ws-bootstrap'
+import { emitSettingsChanged } from '@/lib/settings-events'
 import { invokeWithTrace } from '@/lib/tauri-command'
 import { applyThemePreset } from '@/lib/theme-engine'
 import { startThemeTransition } from '@/lib/theme-transition'
@@ -45,6 +46,11 @@ export const SettingProvider: React.FC<SettingProviderProps> = ({ children }) =>
       await updateSettings(newSetting)
       setSetting(newSetting)
       setError(null)
+      try {
+        await emitSettingsChanged(newSetting)
+      } catch (err) {
+        console.error('Failed to broadcast settings change:', err)
+      }
     } catch (err) {
       console.error('保存设置失败:', err)
       setError(`保存设置失败: ${err}`)

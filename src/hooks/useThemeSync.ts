@@ -1,7 +1,10 @@
+import { listen } from '@tauri-apps/api/event'
 import { useEffect, useRef } from 'react'
 import { getSettings } from '@/api/daemon'
+import { parseSettingsChangedPayload, SETTINGS_CHANGED_EVENT } from '@/lib/settings-events'
 import { applyThemePreset, DEFAULT_THEME_COLOR } from '@/lib/theme-engine'
 import type { ThemeMode } from '@/lib/theme-engine'
+import type { SettingChangedEvent } from '@/types/events'
 import type { Settings } from '@/types/setting'
 
 function resolveThemeMode(theme: string | undefined | null): ThemeMode {
@@ -39,6 +42,19 @@ export function useThemeSync(): void {
         applyFullTheme(null)
       })
 
+    const unlistenPromise = listen<SettingChangedEvent>(SETTINGS_CHANGED_EVENT, event => {
+      const nextSettings = parseSettingsChangedPayload(event.payload)
+      if (!nextSettings) return
+
+      settingsRef.current = nextSettings
+      applyFullTheme(nextSettings)
+    }).catch(err => {
+      if (!cancelled) {
+        console.error('Failed to subscribe to settings changes for theme sync:', err)
+      }
+      return () => {}
+    })
+
     // Watch for system theme changes when user prefers 'system' theme
     const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)')
     const handleSystemChange = () => {
@@ -53,6 +69,7 @@ export function useThemeSync(): void {
     return () => {
       cancelled = true
       mediaQuery.removeEventListener('change', handleSystemChange)
+      void unlistenPromise.then(unlisten => unlisten())
     }
   }, [])
 }

@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v0.4.0
 milestone_name: Runtime Mode Separation
-status: Ready to execute
-stopped_at: Completed 87-05-PLAN.md
-last_updated: "2026-04-05T04:38:07.493Z"
+status: Phase complete — ready for verification
+stopped_at: Completed 87-06-PLAN.md
+last_updated: "2026-04-05T04:40:52.345Z"
 progress:
   total_phases: 58
-  completed_phases: 43
+  completed_phases: 44
   total_plans: 128
-  completed_plans: 118
+  completed_plans: 119
 ---
 
 # Project State
@@ -130,6 +130,7 @@ Plan: Not started
 | Phase 87 P03 | 1523 | 2 tasks | 11 files |
 | Phase 87 P04 | 529 | 2 tasks | 5 files |
 | Phase 87 P05 | 3 | 1 tasks | 6 files |
+| Phase 87 P06 | 394 | 1 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -304,6 +305,8 @@ Recent decisions affecting current work:
 - [Phase 87]: 87-04: tracing-opentelemetry added as direct dep to uc-app for OpenTelemetrySpanExt::set_parent in sync_inbound
 - [Phase 87]: 87-05: span_fields.rs kept as pub(crate) — format.rs FlatJsonFormat still uses collect_span_fields internally; only seq/ and clef_format.rs deleted
 - [Phase 87]: 87-05: seq/ module (3 files) + clef_format.rs hard-deleted; OTLP is now the sole telemetry exporter in uc-observability
+- [Phase 87]: 87-06: UC_SEQ_URL documented as removed in Phase 87 with single controlled migration-note occurrence; OTEL_EXPORTER_OTLP_ENDPOINT is the canonical replacement
+- [Phase 87]: 87-06: Seq signal queries use SpanName/TraceId (OTel PascalCase) instead of flow_id/origin_flow_id (legacy CLEF fields)
 
 ### Roadmap Evolution
 
@@ -365,6 +368,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-04-05T04:38:07.468Z
-Stopped at: Completed 87-05-PLAN.md
+Last session: 2026-04-05T04:40:52.291Z
+Stopped at: Completed 87-06-PLAN.md
 Resume file: None

@@ -1004,7 +1004,7 @@ Plans:
 **Goal:** Replace the custom Seq/CLEF telemetry exporter with OpenTelemetry SDK + OTLP/HTTP-protobuf, restructure clipboard pipeline spans into a parent-child tree rooted at `clipboard.flow`, adopt OTel semantic conventions, and switch cross-device correlation to W3C traceparent — while keeping Seq as the local visualization backend.
 **Requirements**: REQ-87-01, REQ-87-02, REQ-87-03, REQ-87-04, REQ-87-05, REQ-87-06, REQ-87-07, REQ-87-08, REQ-87-09, REQ-87-10, REQ-87-11, REQ-87-12, REQ-87-13, REQ-87-14, REQ-87-15
 **Depends on:** Phase 86
-**Plans:** 5/6 plans executed
+**Plans:** 6/6 plans complete
 
 Plans:
 - [x] 87-01-PLAN.md — Wave 0 test scaffolds + dev-deps for OTLP pipeline (Wave 1)
@@ -1012,4 +1012,4 @@ Plans:
 - [x] 87-03-PLAN.md — ClipboardMessage.traceparent field + uc-bootstrap OTLP wiring + legacy UC_SEQ_URL warn (Wave 3)
 - [x] 87-04-PLAN.md — Root flow span refactor + traceparent inject/extract in sync use cases (Wave 4)
 - [x] 87-05-PLAN.md — Delete legacy seq/, clef_format.rs, span_fields.rs (Wave 5)
-- [ ] 87-06-PLAN.md — Rewrite Seq signals, logging-architecture.md, docker-compose.seq.yml (Wave 5)
+- [x] 87-06-PLAN.md — Rewrite Seq signals, logging-architecture.md, docker-compose.seq.yml (Wave 5)

@@ -6,7 +6,6 @@ This documentation set is a mix of:
 
 - **Current-state guides** that should match the codebase today
 - **Architecture intent** documents that describe target boundaries and design rules
-- **Archived planning material** that preserves migration history
 
 When documentation conflicts with code, treat the code as the source of truth and update the docs.
 

@@ -10,7 +10,6 @@
 
 use std::fs;
 use std::path::PathBuf;
-use std::process::{Command, Stdio};
 use std::time::Duration;
 
 use uc_daemon::api::types::HealthResponse;

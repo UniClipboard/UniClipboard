@@ -68,7 +68,6 @@ impl AppPaths {
     }
 
     /// Constructs an AppPaths with the given base directory (for testing).
-    #[cfg(test)]
     pub fn with_base_data_local_dir(base: PathBuf) -> Self {
         let cache_base = base
             .parent()

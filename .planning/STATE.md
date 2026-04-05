@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v0.4.0
 milestone_name: Runtime Mode Separation
-status: Phase complete — ready for verification
-stopped_at: Completed 85-04-PLAN.md
-last_updated: '2026-04-04T13:48:19.899Z'
+status: Ready to execute
+stopped_at: Completed 87-01-PLAN.md
+last_updated: "2026-04-05T03:41:55.246Z"
 progress:
-  total_phases: 57
+  total_phases: 58
   completed_phases: 43
-  total_plans: 122
-  completed_plans: 113
+  total_plans: 128
+  completed_plans: 114
 ---
 
 # Project State
@@ -22,8 +22,8 @@ See: .planning/PROJECT.md (updated 2026-03-09)
 
 ## Current Position
 
-Phase: 85 (improve-pairing-observability-across-daemon-event-routing-and-ui-state-transitions) — EXECUTING
-Plan: 3 of 3
+Phase: 87 (otlp-seq-otlp) — EXECUTING
+Plan: 2 of 6
 
 ## Current Position
 
@@ -125,6 +125,7 @@ Plan: Not started
   | Phase 85 P02 | 7 | 3 tasks | 6 files |
   | Phase 85 P03 | 15 | 3 tasks | 4 files |
   | Phase 85 P04 | 2 | 2 tasks | 2 files |
+| Phase 87 P01 | 470 | 2 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -287,6 +288,8 @@ Recent decisions affecting current work:
 - [Phase 85]: 85-03: Backend timing test uses Instant::now() + wait_for_setup_response with < 1000ms assertion for low-latency regression guard
 - [Phase 85]: 85-03: Frontend observability tests use vi.spyOn(console, debug) to assert logProvider/logStore helpers without test output pollution
 - [Phase 85]: 85-04: PairingRoutingRecord documented as forward-compatibility contract rather than wiring to live log_bridge_routing()
+- [Phase 87]: 87-01: Used non-generic init_otlp_pipeline stub (Box<dyn Layer<Registry>> alias) to avoid type-inference errors in wave-0 tests that cannot instantiate S
+- [Phase 87]: 87-01: opentelemetry/opentelemetry_sdk/tracing-opentelemetry added to [dependencies] (not dev-only) because otlp.rs stub module is in src/ and uses their public types
 
 ### Roadmap Evolution
 
@@ -328,6 +331,7 @@ Recent decisions affecting current work:
 - Phase 84 added: 统一 CLI/GUI 与 Daemon 的认证架构 — daemon 作为唯一入口，local key 做身份确认后发短时通行证，CLI/GUI 各自独立拿证
 - Phase 85 added: Improve pairing observability across daemon, event routing, and UI state transitions
 - Phase 86 added: CLI 层重构：收口远端状态解析，拆分 host/join flow phase
+- Phase 87 added: 全面迁移 otlp, 兼容 seq 展示, 采用 otlp 的最佳实践
 
 ### Pending Todos
 
@@ -347,6 +351,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-04-04T13:48:19.876Z
-Stopped at: Completed 85-04-PLAN.md
+Last session: 2026-04-05T03:41:55.218Z
+Stopped at: Completed 87-01-PLAN.md
 Resume file: None

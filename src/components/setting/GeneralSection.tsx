@@ -19,6 +19,9 @@ export default function GeneralSection() {
   const { setting, loading: settingLoading, updateGeneralSetting } = useSetting()
   const [autoStart, setAutoStart] = useState(setting?.general.autoStart ?? false)
   const [silentStart, setSilentStart] = useState(setting?.general.silentStart ?? false)
+  const [telemetryEnabled, setTelemetryEnabled] = useState(
+    setting?.general.telemetryEnabled ?? true
+  )
   const [language, setLanguage] = useState<SupportedLanguage>(() => {
     const backendLang = setting?.general.language
     const isValid = backendLang && SUPPORTED_LANGUAGES.includes(backendLang as SupportedLanguage)
@@ -33,6 +36,7 @@ export default function GeneralSection() {
     if (!setting?.general) return
     setAutoStart(setting.general.autoStart)
     setSilentStart(setting.general.silentStart)
+    setTelemetryEnabled(setting.general.telemetryEnabled)
     // Validate backend language value against supported languages
     const backendLang = setting.general.language
     const isValidLanguage =
@@ -84,6 +88,18 @@ export default function GeneralSection() {
   const handleDeviceNameChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const newName = e.target.value
     setDeviceName(newName)
+  }
+
+  const handleTelemetryChange = async (checked: boolean) => {
+    try {
+      setSaving(true)
+      await updateGeneralSetting({ telemetryEnabled: checked })
+      setTelemetryEnabled(checked)
+    } catch (error) {
+      console.error('更改遥测设置失败:', error)
+    } finally {
+      setSaving(false)
+    }
   }
 
   const handleDeviceNameBlur = async () => {
@@ -153,6 +169,19 @@ export default function GeneralSection() {
               </SelectContent>
             </Select>
           </div>
+        </SettingRow>
+      </SettingGroup>
+
+      <SettingGroup title={t('settings.sections.general.telemetry.title')}>
+        <SettingRow
+          label={t('settings.sections.general.telemetry.label')}
+          description={t('settings.sections.general.telemetry.description')}
+        >
+          <Switch
+            checked={telemetryEnabled}
+            onCheckedChange={handleTelemetryChange}
+            disabled={isBusy}
+          />
         </SettingRow>
       </SettingGroup>
     </>

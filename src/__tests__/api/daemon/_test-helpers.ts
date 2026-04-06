@@ -159,6 +159,7 @@ export function makeSettingsDto(overrides: Partial<Settings> = {}): Settings {
       language: null,
       deviceName: 'Test Device',
       updateChannel: null,
+      telemetryEnabled: true,
     },
     sync: {
       autoSync: true,

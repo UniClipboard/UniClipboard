@@ -60,6 +60,7 @@ describe('Settings API', () => {
           language: 'en-US',
           deviceName: 'My MacBook',
           updateChannel: 'stable',
+          telemetryEnabled: true,
         },
       })
       mockDaemonClient.request.mockResolvedValueOnce({ data: settings, ts: Date.now() })
@@ -144,6 +145,7 @@ describe('Settings API', () => {
           language: null,
           deviceName: 'New Name',
           updateChannel: null,
+          telemetryEnabled: true,
         },
       })
 
@@ -169,6 +171,7 @@ describe('Settings API', () => {
           language: null,
           deviceName: null,
           updateChannel: null,
+          telemetryEnabled: true,
         },
       })
 
@@ -213,6 +216,7 @@ describe('Settings API', () => {
             language: null,
             deviceName: null,
             updateChannel: null,
+            telemetryEnabled: true,
           },
         })
       ).rejects.toMatchObject({

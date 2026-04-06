@@ -64,6 +64,17 @@
           "title": "Language",
           "label": "UI language",
           "description": "Takes effect immediately"
+        },
+        "telemetry": {
+          "title": "Privacy",
+          "label": "Help improve UniClipboard",
+          "description": "Send anonymous diagnostics and usage data. Clipboard content is never collected.",
+          "notice": {
+            "title": "Help improve UniClipboard",
+            "body": "UniClipboard collects anonymous diagnostics and usage data to help improve the app. Your clipboard content is never collected or transmitted. You can change this anytime in Settings > General.",
+            "accept": "OK",
+            "optOut": "Disable"
+          }
         }
       },
       "appearance": {

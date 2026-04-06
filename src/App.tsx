@@ -13,6 +13,7 @@ import { type SetupState } from '@/api/setup'
 import { TitleBar } from '@/components'
 import { GlobalShortcuts } from '@/components/GlobalShortcuts'
 import { PairingNotificationProvider } from '@/components/PairingNotificationProvider'
+import TelemetryNotice from '@/components/TelemetryNotice'
 import { Toaster } from '@/components/ui/sonner'
 import { useSearch } from '@/contexts/search-context'
 import { SearchProvider } from '@/contexts/SearchContext'
@@ -252,6 +253,7 @@ const AppContent = ({
       </Routes>
       <Toaster />
       <PairingNotificationProvider />
+      <TelemetryNotice />
     </ShortcutProvider>
   )
 }

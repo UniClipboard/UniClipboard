@@ -20,6 +20,7 @@ const baseSetting: Settings = {
     themeColor: DEFAULT_THEME_COLOR,
     language: 'en-US',
     deviceName: 'Test Device',
+    telemetryEnabled: true,
   },
   sync: {
     autoSync: true,

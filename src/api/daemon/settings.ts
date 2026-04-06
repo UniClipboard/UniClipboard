@@ -41,6 +41,7 @@ export interface GeneralSettings {
   language: string | null
   deviceName: string | null
   updateChannel?: UpdateChannel | null
+  telemetryEnabled: boolean
 }
 
 /** Content type toggles for sync filtering. / 同步过滤的内容类型开关。 */

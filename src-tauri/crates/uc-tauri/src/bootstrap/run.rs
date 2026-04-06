@@ -871,28 +871,27 @@ mod tests {
     fn load_daemon_connection_info_uses_profile_specific_urls() {
         let tempdir = tempfile::tempdir().expect("tempdir should be created");
 
+        let token_path_a = tempdir.path().join("token-a");
+        let token_path_b = tempdir.path().join("token-b");
+
         let connection_a = with_daemon_env(Some("a"), Some(tempdir.path()), || {
-            std::fs::write(
-                tempdir.path().join("uniclipboard-daemon-a.token"),
-                "token-a",
-            )
-            .expect("token fixture should be written");
+            std::fs::write(&token_path_a, "token-a")
+                .expect("token fixture should be written");
+            std::env::set_var("UNICLIPBOARD_DAEMON_TOKEN_PATH", &token_path_a);
             load_daemon_connection_info().expect("profile a connection info should load")
         });
         let connection_b = with_daemon_env(Some("b"), Some(tempdir.path()), || {
-            std::fs::write(
-                tempdir.path().join("uniclipboard-daemon-b.token"),
-                "token-b",
-            )
-            .expect("token fixture should be written");
+            std::fs::write(&token_path_b, "token-b")
+                .expect("token fixture should be written");
+            std::env::set_var("UNICLIPBOARD_DAEMON_TOKEN_PATH", &token_path_b);
             load_daemon_connection_info().expect("profile b connection info should load")
         });
 
         assert_eq!(connection_a.base_url, "http://127.0.0.1:42716");
-        assert_eq!(connection_a.ws_url, "ws://127.0.0.1:42716/ws");
+        assert_eq!(connection_a.ws_url, "http://127.0.0.1:42716/ws");
         assert_eq!(connection_a.token, "token-a");
         assert_eq!(connection_b.base_url, "http://127.0.0.1:42717");
-        assert_eq!(connection_b.ws_url, "ws://127.0.0.1:42717/ws");
+        assert_eq!(connection_b.ws_url, "http://127.0.0.1:42717/ws");
         assert_eq!(connection_b.token, "token-b");
     }
 }

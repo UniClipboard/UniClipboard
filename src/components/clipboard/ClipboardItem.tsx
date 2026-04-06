@@ -26,44 +26,49 @@ import { formatFileSize } from '@/utils'
 /** Threshold above which we switch to chunked rendering for performance. */
 const LARGE_TEXT_THRESHOLD = 50_000
 
-/** Characters per chunk for content-visibility optimization. */
-const CHUNK_SIZE = 1000
+/** Target characters per group for content-visibility optimization. */
+const GROUP_TARGET_SIZE = 5000
 
 /**
- * Splits text into small block-level divs with content-visibility: auto.
- * Each chunk is a block element so CSS Containment applies correctly,
- * allowing the browser to skip layout for off-screen chunks.
- * All content is in the DOM — no truncation, no inner scroll.
+ * Groups lines into block-level divs with content-visibility: auto.
+ * Only splits at newline boundaries — never within a line — so text flow
+ * is preserved exactly as in the original rendering. Each group is a
+ * block element where CSS Containment applies correctly.
  */
 const ChunkedText: React.FC<{ text: string }> = ({ text }) => {
-  const chunks = useMemo(() => {
-    const result: string[] = []
+  const groups = useMemo(() => {
     const lines = text.split('\n')
+    const result: string[] = []
+    let current: string[] = []
+    let currentSize = 0
     for (const line of lines) {
-      if (line.length <= CHUNK_SIZE) {
-        result.push(line)
-      } else {
-        for (let i = 0; i < line.length; i += CHUNK_SIZE) {
-          result.push(line.slice(i, i + CHUNK_SIZE))
-        }
+      current.push(line)
+      currentSize += line.length
+      if (currentSize >= GROUP_TARGET_SIZE) {
+        result.push(current.join('\n'))
+        current = []
+        currentSize = 0
       }
+    }
+    if (current.length > 0) {
+      result.push(current.join('\n'))
     }
     return result
   }, [text])
 
   return (
     <div>
-      {chunks.map((chunk, i) => (
+      {groups.map((group, i) => (
         <div
           key={i}
           className="whitespace-pre-wrap font-mono text-sm leading-relaxed text-foreground/90"
           style={{
             wordBreak: 'break-all',
             contentVisibility: 'auto',
-            containIntrinsicSize: 'auto 1.5em',
+            containIntrinsicSize: 'auto 3em',
           }}
         >
-          {chunk || '\u00A0'}
+          {group}
         </div>
       ))}
     </div>

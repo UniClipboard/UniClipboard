@@ -446,6 +446,22 @@ describe('reconnect', () => {
     expect(received).toHaveLength(1)
     expect(received[0]).toMatchObject({ payload: { id: 'after-reconnect' } })
   })
+
+  it('does not reconnect just because the socket is idle with no app-level messages', () => {
+    vi.useFakeTimers()
+    vi.spyOn(Math, 'random').mockReturnValue(0.5)
+    const { client } = freshClient()
+    void client.connect('ws://127.0.0.1:42715/ws')
+    const ws = currentWs(client)
+    openSocket(ws)
+    vi.runAllTicks()
+
+    vi.advanceTimersByTime(5 * 60_000)
+
+    expect(client['_reconnectAttempt']).toBe(0)
+    expect(client['_ws']).toBe(ws as unknown as WebSocket)
+    expect(ws.readyState).toBe(OPEN)
+  })
 })
 
 // ── Topic filtering ─────────────────────────────────────────

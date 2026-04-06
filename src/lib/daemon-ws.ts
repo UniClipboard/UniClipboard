@@ -14,11 +14,13 @@
  * 5. On reconnect, previously subscribed topics are automatically re-subscribed.
  *
  * # Heartbeat / 心跳
- * - The daemon server sends a WebSocket `Ping` frame every 30s.
- * - Browsers automatically reply with `Pong`.
- * - The client also tracks event activity as an implicit health signal.
- * - If no event or pong is received within `2 * HEARTBEAT_INTERVAL_MS`, the client
- *   treats the connection as stale and triggers an immediate reconnect.
+ * - The daemon server sends protocol-level WebSocket `Ping` frames every 30s.
+ * - Browsers automatically reply with `Pong`, but the browser WebSocket API
+ *   does not expose ping/pong frames to JavaScript.
+ * - Because of that limitation, the frontend must not treat "no app-level
+ *   message for N ms" as a dead connection; an idle but healthy socket would
+ *   otherwise be misclassified and force an unnecessary reconnect.
+ * - Reconnect is therefore driven by actual `onclose` / `onerror` signals.
  */
 
 import { daemonClient } from '@/api/daemon/client'
@@ -49,15 +51,6 @@ export type WsEventCallback<T = unknown> = (event: DaemonWsEvent<T>) => void
 const RECONNECT_BASE_DELAY_MS = 1_000
 const RECONNECT_MAX_DELAY_MS = 30_000
 const MAX_RECONNECT_ATTEMPTS = 10
-
-/** How often the server sends a ping frame (must match Rust HEARTBEAT_INTERVAL). */
-const HEARTBEAT_INTERVAL_MS = 30_000
-/**
- * Stale threshold: reconnect if no event/pong is received for this long.
- * Must be > HEARTBEAT_INTERVAL_MS + round-trip + processing headroom.
- * Using 2x gives a comfortable safety margin.
- */
-const STALE_THRESHOLD_MS = 2 * HEARTBEAT_INTERVAL_MS
 
 // ── Internal helpers ────────────────────────────────────────────
 
@@ -99,15 +92,6 @@ export class DaemonWsClient {
   /** Guard against overlapping reconnect attempts. */
   private _isReconnecting = false
 
-  /**
-   * Timestamp (Date.now()) of the last received event or pong frame.
-   * Used to detect stale connections.
-   */
-  private _lastActivityMs = 0
-
-  /** Timer for the health-check interval. */
-  private _healthTimer: ReturnType<typeof setInterval> | null = null
-
   constructor(wsFactory?: (url: string) => WebSocket) {
     this._wsFactory = wsFactory ?? (url => new WebSocket(url))
   }
@@ -143,7 +127,6 @@ export class DaemonWsClient {
    * Close the WebSocket and cancel any scheduled reconnect.
    */
   disconnect(): void {
-    this._stopHealthTimer()
     this._cancelReconnect()
     this._reconnectAttempt = 0
     this._isReconnecting = false
@@ -199,7 +182,6 @@ export class DaemonWsClient {
     // Clear _wsUrl first so that any stray close events from old sockets
     // won't trigger reconnect (the guard in _scheduleReconnect checks !this._wsUrl).
     this._wsUrl = null
-    this._stopHealthTimer()
     this._cancelReconnect()
     if (this._ws) {
       this._ws.onopen = null
@@ -215,7 +197,6 @@ export class DaemonWsClient {
     this._connectReject = null
     this._reconnectAttempt = 0
     this._isReconnecting = false
-    this._lastActivityMs = 0
   }
 
   // ── Private helpers ────────────────────────────────────────────
@@ -238,9 +219,6 @@ export class DaemonWsClient {
     this._ws = ws
 
     ws.onopen = () => {
-      // Record initial activity and start health monitoring.
-      this._recordActivity()
-      this._startHealthTimer()
       const r = this._connectResolve
       this._connectResolve = null
       this._connectReject = null
@@ -294,9 +272,6 @@ export class DaemonWsClient {
       console.error('[DaemonWsClient] failed to parse incoming message:', data)
       return
     }
-
-    // Record this message as activity (pongs and events both count as health signals).
-    this._recordActivity()
 
     const event: DaemonWsEvent = {
       topic: raw.topic as string,
@@ -389,51 +364,6 @@ export class DaemonWsClient {
   }
 
   // ── Heartbeat helpers ─────────────────────────────────────────
-
-  /** Record that a message (event or pong) was received from the server. */
-  private _recordActivity(): void {
-    this._lastActivityMs = Date.now()
-  }
-
-  /**
-   * Start the health-check timer.
-   * Runs every `STALE_THRESHOLD_MS / 2` to detect stale connections.
-   * If the time since last activity exceeds STALE_THRESHOLD_MS, the
-   * connection is treated as dead and an immediate reconnect is triggered.
-   */
-  private _startHealthTimer(): void {
-    this._stopHealthTimer()
-    const intervalMs = Math.ceil(STALE_THRESHOLD_MS / 2)
-
-    this._healthTimer = setInterval(() => {
-      if (!this._ws || this._ws.readyState !== WebSocket.OPEN) return
-
-      const elapsed = Date.now() - this._lastActivityMs
-      if (elapsed > STALE_THRESHOLD_MS) {
-        console.warn(
-          `[DaemonWsClient] no activity for ${elapsed}ms (>${STALE_THRESHOLD_MS}ms threshold), ` +
-            'triggering reconnect'
-        )
-        this._stopHealthTimer()
-        // Close without resetting reconnect attempt count — this is a health-based
-        // reconnect, not a user-initiated disconnect.
-        if (this._ws) {
-          this._ws.onclose = null
-          this._ws.close()
-          this._ws = null
-        }
-        this._scheduleReconnect()
-      }
-    }, intervalMs)
-  }
-
-  /** Stop the health-check timer. */
-  private _stopHealthTimer(): void {
-    if (this._healthTimer !== null) {
-      clearInterval(this._healthTimer)
-      this._healthTimer = null
-    }
-  }
 }
 
 /** Singleton DaemonWsClient instance (uses global WebSocket). */

@@ -352,10 +352,8 @@ async fn subscribe_multiple_topics_yields_one_snapshot_per_topic() {
         .await
         .unwrap();
 
-    let first: Value =
-        next_json(&mut socket).await;
-    let second: Value =
-        next_json(&mut socket).await;
+    let first: Value = next_json(&mut socket).await;
+    let second: Value = next_json(&mut socket).await;
 
     handle.abort();
 
@@ -379,8 +377,7 @@ async fn serialized_event_contains_session_id_key_and_not_snake_case() {
         .await
         .unwrap();
 
-    let json: Value =
-        next_json(&mut socket).await;
+    let json: Value = next_json(&mut socket).await;
 
     handle.abort();
 
@@ -402,8 +399,7 @@ async fn serialized_event_uses_type_not_event_type_key() {
         .await
         .unwrap();
 
-    let json: Value =
-        next_json(&mut socket).await;
+    let json: Value = next_json(&mut socket).await;
 
     handle.abort();
 
@@ -429,8 +425,7 @@ async fn pairing_snapshot_payload_omits_keyslot_file_and_raw_challenge() {
         .await
         .unwrap();
 
-    let json: Value =
-        next_json(&mut socket).await;
+    let json: Value = next_json(&mut socket).await;
 
     handle.abort();
 

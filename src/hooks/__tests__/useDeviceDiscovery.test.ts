@@ -249,9 +249,7 @@ describe('useDeviceDiscovery', () => {
 
     await waitFor(() => {
       expect(mockDispatch).toHaveBeenCalledWith(
-        setDiscoveredPeers(
-          expect.arrayContaining([expect.objectContaining({ id: 'peer-1' })])
-        )
+        setDiscoveredPeers(expect.arrayContaining([expect.objectContaining({ id: 'peer-1' })]))
       )
     })
 
@@ -308,9 +306,7 @@ describe('useDeviceDiscovery', () => {
     await waitFor(() => {
       expect(mockDispatch).toHaveBeenCalledWith(
         setDiscoveredPeers(
-          expect.arrayContaining([
-            expect.objectContaining({ id: 'peer-anon', deviceName: null }),
-          ])
+          expect.arrayContaining([expect.objectContaining({ id: 'peer-anon', deviceName: null })])
         )
       )
     })
@@ -367,7 +363,10 @@ describe('useDeviceDiscovery', () => {
     const setDiscoveredPeersCall = dispatchCallArgs.find(arg => {
       if (!arg || typeof arg !== 'object') return false
       const action = arg as { type?: unknown }
-      return action.type === 'devices/setDiscoveredPeers' || action.type === expect.stringContaining('setDiscoveredPeers')
+      return (
+        action.type === 'devices/setDiscoveredPeers' ||
+        action.type === expect.stringContaining('setDiscoveredPeers')
+      )
     })
     expect(setDiscoveredPeersCall).toBeDefined()
   })

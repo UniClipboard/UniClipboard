@@ -875,14 +875,12 @@ mod tests {
         let token_path_b = tempdir.path().join("token-b");
 
         let connection_a = with_daemon_env(Some("a"), Some(tempdir.path()), || {
-            std::fs::write(&token_path_a, "token-a")
-                .expect("token fixture should be written");
+            std::fs::write(&token_path_a, "token-a").expect("token fixture should be written");
             std::env::set_var("UNICLIPBOARD_DAEMON_TOKEN_PATH", &token_path_a);
             load_daemon_connection_info().expect("profile a connection info should load")
         });
         let connection_b = with_daemon_env(Some("b"), Some(tempdir.path()), || {
-            std::fs::write(&token_path_b, "token-b")
-                .expect("token fixture should be written");
+            std::fs::write(&token_path_b, "token-b").expect("token fixture should be written");
             std::env::set_var("UNICLIPBOARD_DAEMON_TOKEN_PATH", &token_path_b);
             load_daemon_connection_info().expect("profile b connection info should load")
         });

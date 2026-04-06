@@ -9,6 +9,7 @@ import { unpairP2PDevice } from '@/api/daemon/pairing'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { useSetting } from '@/hooks/useSetting'
+import { daemonWs } from '@/lib/daemon-ws'
 import { useAppDispatch, useAppSelector } from '@/store/hooks'
 import {
   fetchPairedDevices,
@@ -16,7 +17,6 @@ import {
   updatePeerConnectionStatus,
   updatePeerDeviceName,
 } from '@/store/slices/devicesSlice'
-import { daemonWs } from '@/lib/daemon-ws'
 
 const PairedDevicesPanel: React.FC = () => {
   const { t } = useTranslation()
@@ -38,7 +38,11 @@ const PairedDevicesPanel: React.FC = () => {
     const handler = (event: { topic: string; eventType: string; payload: unknown }) => {
       if (event.topic !== 'peers') return
       if (event.eventType === 'peers.connectionChanged') {
-        const p = event.payload as { peerId: string; deviceName?: string | null; connected: boolean }
+        const p = event.payload as {
+          peerId: string
+          deviceName?: string | null
+          connected: boolean
+        }
         dispatch(
           updatePeerConnectionStatus({
             peerId: p.peerId,

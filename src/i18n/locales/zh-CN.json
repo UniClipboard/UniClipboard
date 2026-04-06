@@ -563,8 +563,14 @@
         "retry": "重试",
         "unpair": "取消配对",
         "settings": "设置",
-        "addDevice": "添加设备",
-        "addAnotherDevice": "添加另一台设备"
+        "addDevice": "加入另一个加密空间",
+        "addAnotherDevice": "加入另一个加密空间",
+        "joinSpaceConfirm": {
+          "title": "加入另一个加密空间",
+          "description": "这不是合并操作。你将加入所选设备当前所在的加密空间。加入后，本机当前已加密的历史内容将无法继续访问。若需保留，请先备份。",
+          "cancel": "取消",
+          "confirm": "继续加入"
+        }
       }
     },
     "syncPaused": {

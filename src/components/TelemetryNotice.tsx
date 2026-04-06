@@ -1,4 +1,3 @@
-import { getVersion } from '@tauri-apps/api/app'
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
@@ -13,43 +12,21 @@ import {
 } from '@/components/ui'
 import { useSetting } from '@/hooks/useSetting'
 
-const TELEMETRY_NOTICE_KEY_PREFIX = 'uc-telemetry-notice-seen-v'
-
-function getNoticeStorageKey(version: string): string {
-  // Key by major.minor so the notice re-appears on feature releases, not patches.
-  const [major, minor] = version.split('.')
-  return `${TELEMETRY_NOTICE_KEY_PREFIX}${major}.${minor}`
-}
+const TELEMETRY_NOTICE_KEY = 'uc-telemetry-notice-seen'
 
 export default function TelemetryNotice() {
   const { t } = useTranslation()
   const { updateGeneralSetting } = useSetting()
   const [open, setOpen] = useState(false)
-  const [storageKey, setStorageKey] = useState<string | null>(null)
 
   useEffect(() => {
-    let cancelled = false
-
-    getVersion()
-      .then(version => {
-        if (cancelled) return
-        const key = getNoticeStorageKey(version)
-        if (!localStorage.getItem(key)) {
-          setStorageKey(key)
-          setOpen(true)
-        }
-      })
-      .catch(console.error)
-
-    return () => {
-      cancelled = true
+    if (!localStorage.getItem(TELEMETRY_NOTICE_KEY)) {
+      setOpen(true)
     }
   }, [])
 
   const markSeen = () => {
-    if (storageKey) {
-      localStorage.setItem(storageKey, '1')
-    }
+    localStorage.setItem(TELEMETRY_NOTICE_KEY, '1')
   }
 
   const handleAccept = () => {

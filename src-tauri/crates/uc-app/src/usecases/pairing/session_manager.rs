@@ -212,7 +212,10 @@ impl PairingSessionManager {
             drop(sessions);
 
             if !expired_ids.is_empty() {
-                tracing::info!(count = expired_ids.len(), "Cleaned up expired pairing sessions");
+                tracing::info!(
+                    count = expired_ids.len(),
+                    "Cleaned up expired pairing sessions"
+                );
                 let mut peers = self.session_peers.write().await;
                 for session_id in &expired_ids {
                     peers.remove(session_id);

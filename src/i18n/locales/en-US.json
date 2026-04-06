@@ -576,9 +576,9 @@
         "addAnotherDevice": "Join Another Encrypted Space",
         "joinSpaceConfirm": {
           "title": "Join Another Encrypted Space",
-          "description": "This is not a merge. The other device will become the primary. After joining, your locally encrypted history will no longer be accessible. Continue anyway?",
+          "description": "This is not a merge. You will join the encrypted space that the selected device is currently in. After joining, your locally encrypted history will no longer be accessible. Back up your data first if needed.",
           "cancel": "Cancel",
-          "confirm": "Continue"
+          "confirm": "Continue Joining"
         }
       }
     },

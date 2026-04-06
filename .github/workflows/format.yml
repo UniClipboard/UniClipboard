@@ -1,5 +1,5 @@
 name: 'Format Check'
-run-name: 'Format check for ${{ github.head_ref }}'
+run-name: 'Format check for ${{ github.head_ref || github.ref_name }}'
 
 on:
   pull_request:
@@ -13,6 +13,8 @@ permissions:
 jobs:
   format:
     name: Format Check
+    # Guard against accidental non-PR triggers (e.g. workflow validation runs on push).
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
 
     steps:

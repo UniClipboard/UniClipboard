@@ -55,6 +55,14 @@ const AutoSizeTextarea: React.FC<{
     adjustHeight()
   }, [value, adjustHeight])
 
+  useEffect(() => {
+    const el = ref.current
+    if (!el) return
+    const ro = new ResizeObserver(() => adjustHeight())
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [adjustHeight])
+
   return (
     <textarea
       ref={ref}

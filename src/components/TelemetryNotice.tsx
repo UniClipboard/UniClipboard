@@ -25,6 +25,7 @@ export default function TelemetryNotice() {
   const { t } = useTranslation()
   const { updateGeneralSetting } = useSetting()
   const [open, setOpen] = useState(false)
+  const [storageKey, setStorageKey] = useState<string | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -34,8 +35,8 @@ export default function TelemetryNotice() {
         if (cancelled) return
         const key = getNoticeStorageKey(version)
         if (!localStorage.getItem(key)) {
+          setStorageKey(key)
           setOpen(true)
-          localStorage.setItem(key, '1')
         }
       })
       .catch(console.error)
@@ -45,17 +46,30 @@ export default function TelemetryNotice() {
     }
   }, [])
 
-  const handleOptOut = async () => {
-    try {
-      await updateGeneralSetting({ telemetryEnabled: false })
-    } catch (error) {
-      console.error('Failed to disable telemetry:', error)
+  const markSeen = () => {
+    if (storageKey) {
+      localStorage.setItem(storageKey, '1')
     }
+  }
+
+  const handleAccept = () => {
+    markSeen()
     setOpen(false)
   }
 
+  const handleOptOut = async () => {
+    try {
+      await updateGeneralSetting({ telemetryEnabled: false })
+      markSeen()
+      setOpen(false)
+    } catch (error) {
+      console.error('Failed to disable telemetry:', error)
+      // Don't close — let the user retry or accept instead.
+    }
+  }
+
   return (
-    <AlertDialog open={open} onOpenChange={setOpen}>
+    <AlertDialog open={open}>
       <AlertDialogContent className="bg-card text-card-foreground">
         <AlertDialogHeader>
           <AlertDialogTitle>
@@ -69,7 +83,7 @@ export default function TelemetryNotice() {
           <AlertDialogCancel onClick={handleOptOut}>
             {t('settings.sections.general.telemetry.notice.optOut')}
           </AlertDialogCancel>
-          <AlertDialogAction onClick={() => setOpen(false)}>
+          <AlertDialogAction onClick={handleAccept}>
             {t('settings.sections.general.telemetry.notice.accept')}
           </AlertDialogAction>
         </AlertDialogFooter>

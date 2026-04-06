@@ -586,12 +586,18 @@ pub fn resolve_app_paths(
     if is_in_memory_db {
         paths.db_path = config.database_path.clone();
     } else if !config.database_path.as_os_str().is_empty() {
-        let db_file_name = config
-            .database_path
-            .file_name()
-            .map(|name| name.to_os_string())
-            .unwrap_or_else(|| std::ffi::OsString::from("uniclipboard.db"));
-        paths.db_path = paths.app_data_root_dir.join(db_file_name);
+        if config.database_path.is_absolute() {
+            // Absolute path: use as-is. In production the path is already inside
+            // app_data_root_dir; tests use temp dirs and need the full path respected.
+            paths.db_path = config.database_path.clone();
+        } else {
+            let db_file_name = config
+                .database_path
+                .file_name()
+                .map(|name| name.to_os_string())
+                .unwrap_or_else(|| std::ffi::OsString::from("uniclipboard.db"));
+            paths.db_path = paths.app_data_root_dir.join(db_file_name);
+        }
     }
 
     if !config.vault_key_path.as_os_str().is_empty() {

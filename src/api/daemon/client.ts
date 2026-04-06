@@ -159,6 +159,8 @@ class DaemonClient {
    */
   blobUrl(path: string): string | null {
     if (!this.config || !this.session?.token) return null
+    // Absolute URLs, data URIs, and blob URLs are self-contained — return as-is.
+    if (path.startsWith('data:') || path.startsWith('blob:') || path.startsWith('http')) return path
     const url = new URL(`${this.config.baseUrl}${path}`)
     url.searchParams.set('auth', `Session ${this.session.token}`)
     return url.toString()

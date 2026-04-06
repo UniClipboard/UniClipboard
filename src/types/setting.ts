@@ -24,6 +24,7 @@ export interface GeneralSettings {
   language: string | null
   deviceName: string | null
   updateChannel?: UpdateChannel | null
+  telemetryEnabled: boolean
 }
 
 /**

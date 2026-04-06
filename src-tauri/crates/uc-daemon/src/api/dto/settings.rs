@@ -36,6 +36,8 @@ pub struct GeneralSettingsDto {
     /// `Some(channel)` means the user has overridden the channel.
     #[serde(default)]
     pub update_channel: Option<UpdateChannelDto>,
+    /// Whether anonymous diagnostic telemetry is enabled.
+    pub telemetry_enabled: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, ToSchema)]
@@ -221,6 +223,7 @@ pub struct GeneralSettingsPatchDto {
     pub language: Option<Option<String>>,
     pub device_name: Option<Option<String>>,
     pub update_channel: Option<Option<UpdateChannelDto>>,
+    pub telemetry_enabled: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
@@ -377,6 +380,7 @@ impl From<core::GeneralSettings> for GeneralSettingsDto {
             language: value.language,
             device_name: value.device_name,
             update_channel: value.update_channel.map(Into::into),
+            telemetry_enabled: value.telemetry_enabled,
         }
     }
 }

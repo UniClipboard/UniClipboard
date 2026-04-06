@@ -142,6 +142,7 @@ struct GeneralSettingsDiff {
     theme_color: Option<(Option<String>, Option<String>)>,
     language: Option<(Option<String>, Option<String>)>,
     device_name: Option<(Option<String>, Option<String>)>,
+    telemetry_enabled: Option<(bool, bool)>,
 }
 
 impl GeneralSettingsDiff {
@@ -160,6 +161,8 @@ impl GeneralSettingsDiff {
             (old.language != new.language).then_some((old.language.clone(), new.language.clone()));
         let device_name = (old.device_name != new.device_name)
             .then_some((old.device_name.clone(), new.device_name.clone()));
+        let telemetry_enabled = (old.telemetry_enabled != new.telemetry_enabled)
+            .then_some((old.telemetry_enabled, new.telemetry_enabled));
 
         if auto_start.is_none()
             && silent_start.is_none()
@@ -168,6 +171,7 @@ impl GeneralSettingsDiff {
             && theme_color.is_none()
             && language.is_none()
             && device_name.is_none()
+            && telemetry_enabled.is_none()
         {
             None
         } else {
@@ -179,6 +183,7 @@ impl GeneralSettingsDiff {
                 theme_color,
                 language,
                 device_name,
+                telemetry_enabled,
             })
         }
     }
@@ -206,6 +211,9 @@ impl GeneralSettingsDiff {
         }
         if let Some((old, new)) = &self.device_name {
             parts.push(format!("{}.device_name: {:?} → {:?}", prefix, old, new));
+        }
+        if let Some((old, new)) = &self.telemetry_enabled {
+            parts.push(format!("{}.telemetry_enabled: {} → {}", prefix, old, new));
         }
 
         parts.join(", ")

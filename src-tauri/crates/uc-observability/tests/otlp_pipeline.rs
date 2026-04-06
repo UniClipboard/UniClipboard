@@ -18,7 +18,7 @@ const OTEL_ENDPOINT_VAR: &str = "OTEL_EXPORTER_OTLP_ENDPOINT";
 #[serial]
 fn init_returns_none_when_env_missing() {
     std::env::remove_var(OTEL_ENDPOINT_VAR);
-    let result = init_otlp_pipeline(&LogProfile::Dev, None);
+    let result = init_otlp_pipeline(&LogProfile::Dev, None, true);
     let opt = result.expect("init_otlp_pipeline should not error");
     assert!(
         opt.is_none(),
@@ -31,7 +31,7 @@ fn init_returns_none_when_env_missing() {
 #[serial]
 fn init_returns_layer_when_configured() {
     std::env::set_var(OTEL_ENDPOINT_VAR, "http://127.0.0.1:59999/ingest/otlp");
-    let result = init_otlp_pipeline(&LogProfile::Dev, Some("device-abc"));
+    let result = init_otlp_pipeline(&LogProfile::Dev, Some("device-abc"), true);
     std::env::remove_var(OTEL_ENDPOINT_VAR);
     let opt = result.expect("init_otlp_pipeline should not error when env var is set");
     assert!(
@@ -42,17 +42,17 @@ fn init_returns_layer_when_configured() {
     drop(opt);
 }
 
-/// REQ-87-14 — Prod profile must never activate OTLP export (dev-only).
+/// Prod profile with telemetry_enabled=false must not activate OTLP export.
 #[test]
 #[serial]
-fn prod_profile_never_activates() {
+fn prod_profile_telemetry_disabled_never_activates() {
     std::env::set_var(OTEL_ENDPOINT_VAR, "http://127.0.0.1:59999/ingest/otlp");
-    let result = init_otlp_pipeline(&LogProfile::Prod, None);
+    let result = init_otlp_pipeline(&LogProfile::Prod, None, false);
     std::env::remove_var(OTEL_ENDPOINT_VAR);
     let opt = result.expect("init_otlp_pipeline should not error for Prod profile");
     assert!(
         opt.is_none(),
-        "Prod profile must never activate OTLP export regardless of env var"
+        "Prod profile with telemetry disabled must not activate OTLP export"
     );
 }
 
@@ -61,7 +61,7 @@ fn prod_profile_never_activates() {
 #[serial]
 fn guard_drop_flushes() {
     std::env::set_var(OTEL_ENDPOINT_VAR, "http://127.0.0.1:59999/ingest/otlp");
-    let result = init_otlp_pipeline(&LogProfile::Dev, None);
+    let result = init_otlp_pipeline(&LogProfile::Dev, None, true);
     std::env::remove_var(OTEL_ENDPOINT_VAR);
     if let Ok(Some((_layer, guard))) = result {
         // Explicit drop to verify no panic during flush/shutdown.

@@ -34,8 +34,17 @@ fn build_span_exporter_from_env() -> anyhow::Result<SpanExporter> {
         .map_err(|e| anyhow::anyhow!("build OTLP span exporter: {e}"))
 }
 
-fn otlp_is_enabled_for_profile(profile: &LogProfile) -> bool {
-    !matches!(profile, LogProfile::Prod)
+/// Check whether the OTLP pipeline should be activated for the given profile
+/// and user telemetry preference.
+///
+/// Activation rules:
+/// - Dev / DebugClipboard / Cli: always allowed (developer-controlled)
+/// - Prod: only when `telemetry_enabled` is `true`
+fn otlp_is_enabled(profile: &LogProfile, telemetry_enabled: bool) -> bool {
+    match profile {
+        LogProfile::Prod => telemetry_enabled,
+        _ => true,
+    }
 }
 
 fn build_otlp_guard(provider: &SdkTracerProvider) -> OtlpGuard {
@@ -44,14 +53,18 @@ fn build_otlp_guard(provider: &SdkTracerProvider) -> OtlpGuard {
     }
 }
 
+/// Initialize the OTLP provider with dual-layer gating:
+/// 1. Endpoint must be configured (env var or baked-in)
+/// 2. Profile + `telemetry_enabled` must allow it
 pub(super) fn init_provider_and_guard(
     profile: &LogProfile,
     device_id: Option<&str>,
+    telemetry_enabled: bool,
 ) -> anyhow::Result<Option<(SdkTracerProvider, OtlpGuard)>> {
     // Always install the W3C propagator.
     global::set_text_map_propagator(TraceContextPropagator::new());
 
-    if !otlp_is_enabled_for_profile(profile) || !config::otlp_endpoint_is_configured() {
+    if !otlp_is_enabled(profile, telemetry_enabled) || !config::otlp_endpoint_is_configured() {
         return Ok(None);
     }
 

@@ -57,6 +57,7 @@ impl Default for GeneralSettings {
             device_name: None,
             language: None,
             update_channel: None,
+            telemetry_enabled: true,
         }
     }
 }

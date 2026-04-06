@@ -131,6 +131,9 @@ fn merge_settings_patch(
         if let Some(v) = general.update_channel {
             existing.general.update_channel = v.map(Into::into);
         }
+        if let Some(v) = general.telemetry_enabled {
+            existing.general.telemetry_enabled = v;
+        }
     }
 
     if let Some(sync) = patch.sync {

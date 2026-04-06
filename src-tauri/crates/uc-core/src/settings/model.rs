@@ -19,6 +19,15 @@ pub struct GeneralSettings {
     /// `Some(channel)` means the user has overridden the channel.
     #[serde(default)]
     pub update_channel: Option<UpdateChannel>,
+    /// Whether anonymous diagnostic telemetry is enabled.
+    /// When `true` and an OTLP endpoint is configured, the app sends
+    /// info/warn/error level events (never clipboard content).
+    #[serde(default = "default_telemetry_enabled")]
+    pub telemetry_enabled: bool,
+}
+
+fn default_telemetry_enabled() -> bool {
+    true
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

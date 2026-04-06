@@ -58,6 +58,36 @@ fn resolve_device_id_for_logging(config_dir: &Path) -> Option<String> {
         .into()
 }
 
+/// Read the `telemetry_enabled` setting from the persisted settings file.
+///
+/// Falls back to `true` (the default) if the file doesn't exist, is
+/// malformed, or the field is missing (backward compat via `#[serde(default)]`).
+fn resolve_telemetry_enabled(data_dir: &Path) -> bool {
+    let settings_path = data_dir.join("settings.json");
+    let Ok(content) = std::fs::read_to_string(&settings_path) else {
+        return true;
+    };
+    // Minimal extraction — only parse the fields we need.
+    #[derive(serde::Deserialize)]
+    struct GeneralPeek {
+        #[serde(default = "default_true")]
+        telemetry_enabled: bool,
+    }
+    #[derive(serde::Deserialize)]
+    struct SettingsPeek {
+        #[serde(default)]
+        general: Option<GeneralPeek>,
+    }
+    fn default_true() -> bool {
+        true
+    }
+    serde_json::from_str::<SettingsPeek>(&content)
+        .ok()
+        .and_then(|s| s.general)
+        .map(|g| g.telemetry_enabled)
+        .unwrap_or(true)
+}
+
 /// Initialize the tracing subscriber with dual-output and optional Sentry.
 ///
 /// ## Idempotency
@@ -144,11 +174,20 @@ pub fn init_tracing_subscriber() -> anyhow::Result<()> {
     // layer can be built with the correct generic subscriber type `S`
     // (determined by the full `.with()` composition in Step 5, not at
     // provider-init time). `SdkTracerProvider::clone()` uses Arc semantics.
+    // Step 4c: Read telemetry_enabled from persisted settings.
+    // This is a lightweight file read — the full settings are loaded later by
+    // the app runtime. We only need the boolean gate here.
+    let telemetry_enabled = resolve_telemetry_enabled(&app_dirs.app_data_root);
+
     // Note: OTLP enablement and any compile-time config backfill are handled
     // inside init_otlp_provider. The exporter itself still resolves the final
     // endpoint using OpenTelemetry's standard env-var rules.
     let otlp_provider_and_guard = {
-        match uc_observability::otlp::init_otlp_provider(&profile, device_id.as_deref()) {
+        match uc_observability::otlp::init_otlp_provider(
+            &profile,
+            device_id.as_deref(),
+            telemetry_enabled,
+        ) {
             Ok(Some((provider, guard))) => {
                 // Wrap the guard in ManuallyDrop before handing it to the
                 // OnceLock. If `set` ever fails (it shouldn't — idempotency
@@ -215,6 +254,7 @@ pub fn init_tracing_subscriber() -> anyhow::Result<()> {
         profile = %profile,
         logs_dir = %paths.logs_dir.display(),
         otlp_enabled = otlp_enabled,
+        telemetry_enabled = telemetry_enabled,
         "Tracing initialized with dual output (console + JSON{})",
         if otlp_enabled { " + OTLP" } else { "" }
     );

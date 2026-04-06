@@ -51,13 +51,18 @@ pub type OtlpLayer = Box<dyn Layer<tracing_subscriber::Registry> + Send + Sync +
 /// caller can clone the provider to pass to `layer::build_otlp_layer` while the
 /// guard retains the other clone for flush-on-drop.
 ///
-/// Returns `Ok(None)` when OTLP is disabled (Prod profile or missing env var).
+/// Returns `Ok(None)` when OTLP is disabled (missing endpoint, or Prod
+/// profile with `telemetry_enabled = false`).
 /// The W3C propagator is always installed globally regardless.
+///
+/// `telemetry_enabled` is the user-facing setting. For non-Prod profiles
+/// the flag is ignored (developer environments always allowed).
 pub fn init_otlp_provider(
     profile: &LogProfile,
     device_id: Option<&str>,
+    telemetry_enabled: bool,
 ) -> anyhow::Result<Option<(SdkTracerProvider, OtlpGuard)>> {
-    provider::init_provider_and_guard(profile, device_id)
+    provider::init_provider_and_guard(profile, device_id, telemetry_enabled)
 }
 
 /// Build the internal OTLP pipeline without the boxed layer wrapper.
@@ -67,11 +72,14 @@ pub fn init_otlp_provider(
 pub fn init_otlp_pipeline_generic<S>(
     profile: &LogProfile,
     device_id: Option<&str>,
+    telemetry_enabled: bool,
 ) -> anyhow::Result<Option<(impl Layer<S> + Send + Sync + 'static, OtlpGuard)>>
 where
     S: tracing::Subscriber + for<'a> LookupSpan<'a> + Send + Sync,
 {
-    let Some((provider, guard)) = provider::init_provider_and_guard(profile, device_id)? else {
+    let Some((provider, guard)) =
+        provider::init_provider_and_guard(profile, device_id, telemetry_enabled)?
+    else {
         return Ok(None);
     };
 
@@ -99,8 +107,11 @@ where
 pub fn init_otlp_pipeline(
     profile: &LogProfile,
     device_id: Option<&str>,
+    telemetry_enabled: bool,
 ) -> anyhow::Result<Option<(OtlpLayer, OtlpGuard)>> {
-    let Some((provider, guard)) = provider::init_provider_and_guard(profile, device_id)? else {
+    let Some((provider, guard)) =
+        provider::init_provider_and_guard(profile, device_id, telemetry_enabled)?
+    else {
         return Ok(None);
     };
 

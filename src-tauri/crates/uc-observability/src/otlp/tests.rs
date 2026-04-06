@@ -135,13 +135,17 @@ fn baked_endpoint_does_not_override_runtime_endpoint() {
 
 #[test]
 #[serial]
-fn prod_profile_disables_otlp_provider_even_when_endpoint_exists() {
+fn prod_profile_disables_otlp_when_telemetry_disabled() {
     let _generic = EnvVarGuard::set(OTEL_ENDPOINT_VAR, "http://127.0.0.1:4318");
     let _signal = EnvVarGuard::unset(OTEL_TRACES_ENDPOINT_VAR);
 
-    let provider = init_otlp_provider(&LogProfile::Prod, None).expect("init_otlp_provider");
+    let provider =
+        init_otlp_provider(&LogProfile::Prod, None, false).expect("init_otlp_provider");
 
-    assert!(provider.is_none(), "Prod profile should keep OTLP disabled");
+    assert!(
+        provider.is_none(),
+        "Prod profile with telemetry_enabled=false should keep OTLP disabled"
+    );
 }
 
 #[test]
@@ -153,7 +157,7 @@ fn generic_runtime_endpoint_uses_standard_traces_path() {
     let _headers = EnvVarGuard::unset(OTEL_HEADERS_VAR);
     let _signal_headers = EnvVarGuard::unset(OTEL_TRACES_HEADERS_VAR);
 
-    let (layer, guard) = init_otlp_pipeline(&LogProfile::Dev, None)
+    let (layer, guard) = init_otlp_pipeline(&LogProfile::Dev, None, true)
         .expect("init_otlp_pipeline")
         .expect("OTLP layer enabled");
     let subscriber = tracing_subscriber::registry().with(layer);

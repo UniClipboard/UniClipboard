@@ -218,6 +218,7 @@ function toSettingsPatchRequest(settings: Partial<Settings>): SettingsPatchReque
       language,
       deviceName,
       updateChannel,
+      telemetryEnabled,
     } = settings.general
 
     patch.general = {
@@ -229,6 +230,7 @@ function toSettingsPatchRequest(settings: Partial<Settings>): SettingsPatchReque
       language,
       deviceName,
       updateChannel,
+      telemetryEnabled,
     }
   }
 

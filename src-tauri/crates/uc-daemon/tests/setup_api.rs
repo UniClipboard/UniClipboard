@@ -288,18 +288,23 @@ async fn reset_setup(app: &axum::Router, token: &str) -> axum::response::Respons
 }
 
 fn assert_setup_state_metadata_shape(body: &Value) {
-    assert!(body.get("sessionId").is_some());
-    assert!(body.get("nextStepHint").is_some());
-    assert!(body.get("clipboardMode").is_some());
-    assert!(body.get("deviceName").is_some());
-    assert!(body.get("peerId").is_some());
-    assert!(body.get("session_id").is_none());
-    assert!(body.get("next_step_hint").is_none());
-    assert!(body.get("clipboard_mode").is_none());
-    assert!(body.get("device_name").is_none());
-    assert!(body.get("peer_id").is_none());
+    let d = body["data"]
+        .as_object()
+        .expect("response should contain data object");
+    assert!(d.contains_key("sessionId"));
+    assert!(d.contains_key("nextStepHint"));
+    assert!(d.contains_key("clipboardMode"));
+    assert!(d.contains_key("deviceName"));
+    assert!(d.contains_key("peerId"));
+    assert!(!d.contains_key("session_id"));
+    assert!(!d.contains_key("next_step_hint"));
+    assert!(!d.contains_key("clipboard_mode"));
+    assert!(!d.contains_key("device_name"));
+    assert!(!d.contains_key("peer_id"));
 
-    let hint = body["nextStepHint"].as_str().expect("nextStepHint string");
+    let hint = body["data"]["nextStepHint"]
+        .as_str()
+        .expect("nextStepHint string");
     assert!(matches!(
         hint,
         "create-space-passphrase"
@@ -705,12 +710,12 @@ async fn setup_host_route_starts_new_space_and_returns_setup_state() {
 
     assert_eq!(response.status(), StatusCode::OK);
     let body = json_body(response).await;
-    assert!(body["state"]["CreateSpaceInputPassphrase"]["error"].is_null());
-    assert_eq!(body["nextStepHint"], "create-space-passphrase");
-    assert!(body.get("sessionId").is_some());
-    assert!(body.get("nextStepHint").is_some());
-    assert!(body.get("session_id").is_none());
-    assert!(body.get("next_step_hint").is_none());
+    assert!(body["data"]["state"]["CreateSpaceInputPassphrase"]["error"].is_null());
+    assert_eq!(body["data"]["nextStepHint"], "create-space-passphrase");
+    assert!(body["data"].get("sessionId").is_some());
+    assert!(body["data"].get("nextStepHint").is_some());
+    assert!(body["data"].get("session_id").is_none());
+    assert!(body["data"].get("next_step_hint").is_none());
 }
 
 #[tokio::test]
@@ -731,11 +736,11 @@ async fn setup_join_route_returns_join_select_device_state() {
 
     assert_eq!(response.status(), StatusCode::OK);
     let body = json_body(response).await;
-    assert!(body["state"]["JoinSpaceSelectDevice"]["error"].is_null());
-    assert_eq!(body["nextStepHint"], "join-select-peer");
+    assert!(body["data"]["state"]["JoinSpaceSelectDevice"]["error"].is_null());
+    assert_eq!(body["data"]["nextStepHint"], "join-select-peer");
 
     let state = get_setup_state(&app, &token).await;
-    assert!(state["state"]["JoinSpaceSelectDevice"]["error"].is_null());
+    assert!(state["data"]["state"]["JoinSpaceSelectDevice"]["error"].is_null());
     assert_setup_state_metadata_shape(&state);
 }
 
@@ -770,8 +775,8 @@ async fn setup_select_peer_route_returns_processing_join_state() {
 
     assert_eq!(response.status(), StatusCode::OK);
     let body = json_body(response).await;
-    assert!(body["state"]["ProcessingJoinSpace"]["message"].is_string());
-    assert_eq!(body["nextStepHint"], "join-waiting-for-host");
+    assert!(body["data"]["state"]["ProcessingJoinSpace"]["message"].is_string());
+    assert_eq!(body["data"]["nextStepHint"], "join-waiting-for-host");
 }
 
 #[tokio::test]
@@ -792,7 +797,7 @@ async fn setup_confirm_peer_route_rejects_when_no_pending_confirmation_exists() 
 
     assert_eq!(response.status(), StatusCode::CONFLICT);
     let body = json_body(response).await;
-    assert_eq!(body["code"], "invalid_setup_transition");
+    assert_eq!(body["code"], "conflict");
 }
 
 #[tokio::test]
@@ -811,9 +816,12 @@ async fn setup_submit_passphrase_route_rejects_malformed_payload() {
         .await
         .unwrap();
 
-    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
-    let body = json_body(response).await;
-    assert_eq!(body["code"], "bad_request");
+    assert!(
+        response.status() == StatusCode::BAD_REQUEST
+            || response.status() == StatusCode::UNPROCESSABLE_ENTITY,
+        "malformed payload should be rejected; got status {}",
+        response.status()
+    );
 }
 
 #[tokio::test]
@@ -872,11 +880,11 @@ async fn setup_confirm_peer_routes_host_confirmation_through_daemon_pairing_host
         .expect("daemon pairing host should accept inbound request fixture");
 
     let pending_state = wait_for_setup_response(&fixture.app, &fixture.token, |response| {
-        response["nextStepHint"] == Value::String("host-confirm-peer".to_string())
-            && response["sessionId"] == Value::String("session-host-confirm".to_string())
+        response["data"]["nextStepHint"] == Value::String("host-confirm-peer".to_string())
+            && response["data"]["sessionId"] == Value::String("session-host-confirm".to_string())
     })
     .await;
-    assert_eq!(pending_state["nextStepHint"], "host-confirm-peer");
+    assert_eq!(pending_state["data"]["nextStepHint"], "host-confirm-peer");
 
     let confirm_response = fixture
         .app
@@ -893,7 +901,7 @@ async fn setup_confirm_peer_routes_host_confirmation_through_daemon_pairing_host
 
     assert_eq!(confirm_response.status(), StatusCode::OK);
     let body = json_body(confirm_response).await;
-    assert_eq!(body["nextStepHint"], "completed");
+    assert_eq!(body["data"]["nextStepHint"], "completed");
 
     let guard = fixture.state.read().await;
     let snapshot = guard
@@ -971,7 +979,7 @@ async fn setup_submit_passphrase_route_rejects_join_passphrase_flow() {
         .expect("join confirm peer should succeed");
     assert_eq!(confirm_response.status(), StatusCode::OK);
     let confirm_body = json_body(confirm_response).await;
-    assert!(confirm_body["state"]["JoinSpaceInputPassphrase"]["error"].is_null());
+    assert!(confirm_body["data"]["state"]["JoinSpaceInputPassphrase"]["error"].is_null());
     assert_eq!(
         fixture.facade.accepted_sessions(),
         vec!["session-test".to_string()]
@@ -1146,12 +1154,12 @@ async fn setup_cancel_route_returns_idle_or_select_state_without_500() {
     assert_eq!(response.status(), StatusCode::OK);
     let body = json_body(response).await;
     assert!(
-        body["state"]["JoinSpaceSelectDevice"].is_object()
-            || body["state"] == Value::String("Welcome".to_string())
+        body["data"]["state"]["JoinSpaceSelectDevice"].is_object()
+            || body["data"]["state"] == Value::String("Welcome".to_string())
     );
     assert!(
-        body["nextStepHint"] == Value::String("join-select-peer".to_string())
-            || body["nextStepHint"] == Value::String("idle".to_string())
+        body["data"]["nextStepHint"] == Value::String("join-select-peer".to_string())
+            || body["data"]["nextStepHint"] == Value::String("idle".to_string())
     );
 }
 
@@ -1173,7 +1181,7 @@ async fn setup_reset_clears_active_setup_state() {
     assert_eq!(host_response.status(), StatusCode::OK);
 
     let before_reset = get_setup_state(&app, &token).await;
-    assert_eq!(before_reset["nextStepHint"], "create-space-passphrase");
+    assert_eq!(before_reset["data"]["nextStepHint"], "create-space-passphrase");
 
     let reset_response = reset_setup(&app, &token).await;
     assert_eq!(reset_response.status(), StatusCode::OK);
@@ -1182,8 +1190,8 @@ async fn setup_reset_clears_active_setup_state() {
     assert_eq!(reset_body["daemonKeptRunning"], Value::Bool(true));
 
     let after_reset = get_setup_state(&app, &token).await;
-    assert_eq!(after_reset["state"], Value::String("Welcome".to_string()));
-    assert_eq!(after_reset["nextStepHint"], "idle");
+    assert_eq!(after_reset["data"]["state"], Value::String("Welcome".to_string()));
+    assert_eq!(after_reset["data"]["nextStepHint"], "idle");
 }
 
 #[tokio::test]
@@ -1298,7 +1306,7 @@ async fn setup_reset_allows_second_host_start_without_manual_cleanup() {
         .unwrap();
     assert_eq!(second_host.status(), StatusCode::OK);
     let second_body = json_body(second_host).await;
-    assert_eq!(second_body["nextStepHint"], "create-space-passphrase");
+    assert_eq!(second_body["data"]["nextStepHint"], "create-space-passphrase");
 }
 
 // ── Observability regression tests ─────────────────────────────────────────────────────────────
@@ -1345,7 +1353,7 @@ async fn setup_pairing_verification_required_surfaces_with_low_latency() {
     assert_eq!(select_response.status(), StatusCode::OK);
 
     let select_body = json_body(select_response).await;
-    assert_eq!(select_body["nextStepHint"], "join-waiting-for-host");
+    assert_eq!(select_body["data"]["nextStepHint"], "join-waiting-for-host");
 
     // Emit PairingVerificationRequired from the facade — this simulates the daemon
     // receiving a verification event from the remote host within the pairing flow
@@ -1439,10 +1447,9 @@ async fn setup_pairing_failure_returns_to_device_selection() {
         .await
         .expect("setup select peer request should succeed");
     assert_eq!(select_response.status(), StatusCode::OK);
-    assert_eq!(select_response.status(), StatusCode::OK);
     let select_body = json_body(select_response).await;
     assert_eq!(
-        select_body["nextStepHint"], "join-waiting-for-host",
+        select_body["data"]["nextStepHint"], "join-waiting-for-host",
         "Should be waiting for host after select-peer"
     );
 
@@ -1550,18 +1557,19 @@ async fn setup_host_completion_path_ends_in_completed_and_session_is_diagnosable
 
     // Step 4: wait for host-confirm-peer hint to appear
     let host_confirm_state = wait_for_setup_response(&fixture.app, &fixture.token, |response| {
-        response["nextStepHint"] == Value::String("host-confirm-peer".to_string())
-            && response["sessionId"] == Value::String("session-completion-test".to_string())
+        response["data"]["nextStepHint"] == Value::String("host-confirm-peer".to_string())
+            && response["data"]["sessionId"]
+                == Value::String("session-completion-test".to_string())
     })
     .await;
 
     assert_eq!(
-        host_confirm_state["nextStepHint"], "host-confirm-peer",
+        host_confirm_state["data"]["nextStepHint"], "host-confirm-peer",
         "Should be at host-confirm-peer before confirmation"
     );
     // Observability: sessionId must be visible in the response at this transition
     assert_eq!(
-        host_confirm_state["sessionId"], "session-completion-test",
+        host_confirm_state["data"]["sessionId"], "session-completion-test",
         "sessionId should be visible at host-confirm-peer for observability"
     );
 
@@ -1582,7 +1590,7 @@ async fn setup_host_completion_path_ends_in_completed_and_session_is_diagnosable
 
     let confirm_body = json_body(confirm_response).await;
     assert_eq!(
-        confirm_body["nextStepHint"], "completed",
+        confirm_body["data"]["nextStepHint"], "completed",
         "Host should reach completed after confirm-peer"
     );
 

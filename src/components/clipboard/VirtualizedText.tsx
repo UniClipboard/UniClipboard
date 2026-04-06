@@ -1,8 +1,11 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Virtuoso } from 'react-virtuoso'
 
-/** Number of visual lines per virtualized chunk. */
-const LINES_PER_CHUNK = 20
+/** Lines longer than this trigger single-element windowed rendering. */
+const LONG_LINE_THRESHOLD = 50_000
+
+/** Extra lines rendered above/below the viewport for smooth scrolling. */
+const VIEWPORT_BUFFER_LINES = 10
 
 interface VirtualizedTextProps {
   text: string
@@ -10,12 +13,13 @@ interface VirtualizedTextProps {
 }
 
 /**
- * Measures how many monospace characters fit per visual line in a container
- * by rendering a known-length test string with the same styles and calculating
- * from the resulting height. This accounts for container width, scrollbar,
- * font size, and any padding automatically.
+ * Measures how many monospace characters fit per visual line and the line
+ * height by rendering a test string inside the container with the exact
+ * same CSS as the real content.
  */
-function measureCharsPerLine(container: HTMLElement): number {
+function measureTextMetrics(
+  container: HTMLElement
+): { charsPerLine: number; lineHeight: number } | null {
   const test = document.createElement('div')
   test.className = 'whitespace-pre-wrap font-mono text-sm leading-relaxed'
   test.style.cssText = 'word-break:break-all;visibility:hidden;pointer-events:none'
@@ -23,94 +27,144 @@ function measureCharsPerLine(container: HTMLElement): number {
   // Measure single-line height
   test.textContent = 'X'
   container.appendChild(test)
-  const oneLineHeight = test.getBoundingClientRect().height
+  const lineHeight = test.getBoundingClientRect().height
 
-  // Measure with a long string to count how many visual lines it wraps to
-  const testLength = 500
-  test.textContent = 'X'.repeat(testLength)
-  const multiLineHeight = test.getBoundingClientRect().height
+  // Measure how a known-length string wraps to determine chars per line
+  const testLen = 500
+  test.textContent = 'X'.repeat(testLen)
+  const multiH = test.getBoundingClientRect().height
 
   container.removeChild(test)
 
-  if (oneLineHeight <= 0) return 0
-  const numLines = Math.round(multiLineHeight / oneLineHeight)
-  if (numLines <= 0) return 0
+  if (lineHeight <= 0) return null
+  const numLines = Math.round(multiH / lineHeight)
+  if (numLines <= 0) return null
 
-  // Subtract 1 as safety margin for scrollbar width uncertainty
-  return Math.max(1, Math.floor(testLength / numLines) - 1)
+  return { charsPerLine: Math.floor(testLen / numLines), lineHeight }
 }
 
 /**
- * Splits text into chunks suitable for virtualization.
- * - Splits by newlines first to preserve paragraph structure.
- * - For long lines that exceed one chunk, splits at visual line boundaries
- *   (multiples of charsPerLine) so each chunk fills exactly LINES_PER_CHUNK
- *   complete visual lines with no partial trailing line.
+ * Single-element windowed rendering for text containing very long lines.
+ *
+ * Instead of splitting text into multiple block-level chunks (which creates
+ * visible breaks at chunk boundaries), this renders a SINGLE text element
+ * containing only the characters visible in the current viewport. Spacer
+ * divs above and below maintain correct scroll height.
+ *
+ * Because there is only one text element, the browser handles line-breaking
+ * naturally — no implementation-level chunk boundaries can leak into the
+ * user-visible layout.
  */
-function splitIntoChunks(text: string, charsPerLine: number): string[] {
-  const lines = text.split('\n')
-  const chunks: string[] = []
-  const chunkCharSize = charsPerLine * LINES_PER_CHUNK
-
-  for (const line of lines) {
-    if (line.length <= chunkCharSize) {
-      chunks.push(line)
-    } else {
-      for (let i = 0; i < line.length; i += chunkCharSize) {
-        chunks.push(line.slice(i, i + chunkCharSize))
-      }
-    }
-  }
-  return chunks
-}
-
-/**
- * Renders large text using react-virtuoso for viewport-only rendering.
- * Long lines are split at visual line boundaries to ensure seamless text flow
- * without artificial breaks at chunk edges.
- */
-const VirtualizedText: React.FC<VirtualizedTextProps> = ({ text, className }) => {
+const WindowedLongText: React.FC<{ text: string; className?: string }> = ({ text, className }) => {
   const containerRef = useRef<HTMLDivElement>(null)
-  const [charsPerLine, setCharsPerLine] = useState(0)
+  const [metrics, setMetrics] = useState<{
+    charsPerLine: number
+    lineHeight: number
+    containerHeight: number
+  } | null>(null)
+  const [scrollTop, setScrollTop] = useState(0)
+  const rafRef = useRef(0)
 
   useEffect(() => {
     const el = containerRef.current
     if (!el) return
 
     const update = () => {
-      const cpl = measureCharsPerLine(el)
-      if (cpl > 0) setCharsPerLine(cpl)
+      const m = measureTextMetrics(el)
+      if (m) setMetrics({ ...m, containerHeight: el.clientHeight })
     }
-
     update()
 
-    const observer = new ResizeObserver(() => update())
-    observer.observe(el)
-    return () => observer.disconnect()
+    const obs = new ResizeObserver(() => update())
+    obs.observe(el)
+    return () => obs.disconnect()
   }, [])
 
-  const chunks = useMemo(
-    () => (charsPerLine > 0 ? splitIntoChunks(text, charsPerLine) : []),
-    [text, charsPerLine]
-  )
+  const handleScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
+    const st = e.currentTarget.scrollTop
+    cancelAnimationFrame(rafRef.current)
+    rafRef.current = requestAnimationFrame(() => setScrollTop(st))
+  }, [])
+
+  const renderData = useMemo(() => {
+    if (!metrics) return null
+    const { charsPerLine, lineHeight, containerHeight } = metrics
+    if (charsPerLine <= 0) return null
+
+    const totalLines = Math.ceil(text.length / charsPerLine)
+
+    const startLine = Math.max(0, Math.floor(scrollTop / lineHeight) - VIEWPORT_BUFFER_LINES)
+    const endLine = Math.min(
+      totalLines,
+      Math.ceil((scrollTop + containerHeight) / lineHeight) + VIEWPORT_BUFFER_LINES
+    )
+
+    const startChar = startLine * charsPerLine
+    const endChar = Math.min(text.length, endLine * charsPerLine)
+
+    return {
+      topHeight: startLine * lineHeight,
+      bottomHeight: Math.max(0, (totalLines - endLine) * lineHeight),
+      visibleText: text.slice(startChar, endChar),
+    }
+  }, [text, metrics, scrollTop])
 
   return (
-    <div ref={containerRef} className={className} style={{ position: 'relative' }}>
-      {charsPerLine > 0 && (
-        <Virtuoso
-          data={chunks}
-          style={{ height: '100%' }}
-          itemContent={(_index, chunk) => (
-            <div
-              className="whitespace-pre-wrap font-mono text-sm leading-relaxed text-foreground/90"
-              style={{ wordBreak: 'break-all' }}
-            >
-              {chunk || '\u00A0'}
-            </div>
-          )}
-        />
+    <div
+      ref={containerRef}
+      className={className}
+      style={{ overflow: 'auto' }}
+      onScroll={handleScroll}
+    >
+      {renderData && (
+        <>
+          <div style={{ height: renderData.topHeight }} />
+          <div
+            className="whitespace-pre-wrap font-mono text-sm leading-relaxed text-foreground/90"
+            style={{ wordBreak: 'break-all' }}
+          >
+            {renderData.visibleText}
+          </div>
+          <div style={{ height: renderData.bottomHeight }} />
+        </>
       )}
     </div>
+  )
+}
+
+/**
+ * Renders large text with performance optimization.
+ *
+ * - Multi-line text (no extremely long lines): uses react-virtuoso with
+ *   one item per logical line. Line boundaries are real newlines, so
+ *   there are no artificial visual breaks.
+ *
+ * - Text with very long lines (>50K chars): uses single-element windowed
+ *   rendering. Only the viewport-visible portion of text is in the DOM,
+ *   inside a single continuous element that the browser line-breaks
+ *   naturally. No block-level chunk boundaries exist.
+ */
+const VirtualizedText: React.FC<VirtualizedTextProps> = ({ text, className }) => {
+  const lines = useMemo(() => text.split('\n'), [text])
+  const hasLongLine = useMemo(() => lines.some(l => l.length > LONG_LINE_THRESHOLD), [lines])
+
+  if (hasLongLine) {
+    return <WindowedLongText text={text} className={className} />
+  }
+
+  return (
+    <Virtuoso
+      data={lines}
+      className={className}
+      itemContent={(_index, line) => (
+        <div
+          className="whitespace-pre-wrap font-mono text-sm leading-relaxed text-foreground/90"
+          style={{ wordBreak: 'break-all' }}
+        >
+          {line || '\u00A0'}
+        </div>
+      )}
+    />
   )
 }
 

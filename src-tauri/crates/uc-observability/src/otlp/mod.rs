@@ -29,6 +29,26 @@ use tracing_subscriber::{registry::LookupSpan, Layer};
 
 use crate::profile::LogProfile;
 
+/// Resolve the OTLP endpoint.
+///
+/// Priority:
+/// 1. Value baked in at compile time via `OTEL_EXPORTER_OTLP_ENDPOINT` env var
+///    (used in production builds where the secret is injected by CI but not
+///    available at runtime in the user's environment).
+/// 2. Runtime env var fallback (used in local development / dev builds).
+///
+/// Returns `None` when neither is set, which disables telemetry.
+fn resolve_otlp_endpoint() -> Option<String> {
+    // Compile-time baked value takes precedence (production builds).
+    if let Some(endpoint) = option_env!("OTEL_EXPORTER_OTLP_ENDPOINT") {
+        if !endpoint.is_empty() {
+            return Some(endpoint.to_string());
+        }
+    }
+    // Runtime fallback for local dev / dev builds.
+    std::env::var("OTEL_EXPORTER_OTLP_ENDPOINT").ok()
+}
+
 /// Boxed OTLP layer type. Used as the return type for `init_otlp_pipeline` so callers
 /// don't need to specify the subscriber type `S` when they don't care about it (e.g., tests).
 pub type OtlpLayer = Box<dyn Layer<tracing_subscriber::Registry> + Send + Sync + 'static>;
@@ -75,16 +95,14 @@ pub fn init_otlp_provider(
     // Always install the W3C propagator.
     global::set_text_map_propagator(TraceContextPropagator::new());
 
-    if matches!(profile, LogProfile::Prod) {
+    let Some(endpoint) = resolve_otlp_endpoint() else {
         return Ok(None);
-    }
-    if std::env::var("OTEL_EXPORTER_OTLP_ENDPOINT").is_err() {
-        return Ok(None);
-    }
+    };
 
     let exporter = SpanExporter::builder()
         .with_http()
         .with_protocol(Protocol::HttpBinary)
+        .with_endpoint(endpoint)
         .build()
         .map_err(|e| anyhow::anyhow!("build OTLP span exporter: {e}"))?;
 
@@ -119,16 +137,14 @@ where
     // so cross-device headers remain populated (prevents silent context loss).
     global::set_text_map_propagator(TraceContextPropagator::new());
 
-    if matches!(profile, LogProfile::Prod) {
+    let Some(endpoint) = resolve_otlp_endpoint() else {
         return Ok(None);
-    }
-    if std::env::var("OTEL_EXPORTER_OTLP_ENDPOINT").is_err() {
-        return Ok(None);
-    }
+    };
 
     let exporter = SpanExporter::builder()
         .with_http()
         .with_protocol(Protocol::HttpBinary)
+        .with_endpoint(endpoint)
         .build()
         .map_err(|e| anyhow::anyhow!("build OTLP span exporter: {e}"))?;
 
@@ -173,16 +189,14 @@ pub fn init_otlp_pipeline(
     // so cross-device headers remain populated (prevents silent context loss).
     global::set_text_map_propagator(TraceContextPropagator::new());
 
-    if matches!(profile, LogProfile::Prod) {
+    let Some(endpoint) = resolve_otlp_endpoint() else {
         return Ok(None);
-    }
-    if std::env::var("OTEL_EXPORTER_OTLP_ENDPOINT").is_err() {
-        return Ok(None);
-    }
+    };
 
     let exporter = SpanExporter::builder()
         .with_http()
         .with_protocol(Protocol::HttpBinary)
+        .with_endpoint(endpoint)
         .build()
         .map_err(|e| anyhow::anyhow!("build OTLP span exporter: {e}"))?;
 

@@ -11,6 +11,12 @@ dist-ssr
 # Tauri
 src-tauri/target
 
+# Agent and tooling infrastructure (not project source)
+.bg-shell/
+.claude/
+.github/
+.gsd/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

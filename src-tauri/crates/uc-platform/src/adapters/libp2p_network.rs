@@ -45,6 +45,7 @@ const NETWORK_CHUNK_SIZE: usize = 256 * 1024;
 const MAX_CHUNK_CIPHERTEXT_SIZE: usize = NETWORK_CHUNK_SIZE + 256;
 const BUSINESS_READ_TIMEOUT: Duration = Duration::from_secs(120);
 const BUSINESS_STREAM_OPEN_TIMEOUT: Duration = Duration::from_secs(10);
+const PAIRING_STREAM_OPEN_TIMEOUT: Duration = Duration::from_secs(10);
 const BUSINESS_STREAM_WRITE_TIMEOUT: Duration = Duration::from_secs(120);
 const BUSINESS_STREAM_CLOSE_TIMEOUT: Duration = Duration::from_secs(10);
 const BUSINESS_COMMAND_ENQUEUE_TIMEOUT: Duration = Duration::from_secs(5);
@@ -791,15 +792,103 @@ impl PairingTransportPort for Libp2pNetworkAdapter {
                 .cloned()
                 .ok_or_else(|| anyhow!("pairing service not initialized"))?
         };
-        match service
-            .open_pairing_session(peer_id.clone(), session_id)
-            .await
+        if service.has_session(&session_id).await {
+            info!(
+                event = "pairing_stream.open_skipped",
+                peer_id = %peer_id,
+                session_id = %session_id,
+                skip_reason = "session_already_open",
+                "pairing stream open skipped because session already exists"
+            );
+            return Ok(());
+        }
+        let attempt_started_at = Utc::now();
+        let attempt_snapshot = {
+            let caches = self.caches.read().await;
+            snapshot_peer_addresses(&caches, &peer_id, attempt_started_at)
+        };
+        let dial_decision = dial_decision_for_snapshot(&attempt_snapshot);
+        info!(
+            event = "pairing_stream.open_attempt",
+            peer_id = %peer_id,
+            session_id = %session_id,
+            dial_decision,
+            peer_marked_reachable = attempt_snapshot.peer_marked_reachable,
+            candidate_address_count = attempt_snapshot.candidate_addresses.len(),
+            preferred_candidate_transport = preferred_candidate_transport(&attempt_snapshot),
+            connected_age_ms = ?attempt_snapshot.connected_age_ms,
+            discovered_age_ms = ?attempt_snapshot.discovered_age_ms,
+            last_seen_age_ms = ?attempt_snapshot.last_seen_age_ms,
+            "attempting pairing stream open"
+        );
+        match timeout(
+            PAIRING_STREAM_OPEN_TIMEOUT,
+            service.open_pairing_session(peer_id.clone(), session_id.clone()),
+        )
+        .await
         {
-            Ok(()) => Ok(()),
-            Err(err) => {
+            Ok(Ok(())) => Ok(()),
+            Ok(Err(err)) => {
+                let failure_snapshot = {
+                    let caches = self.caches.read().await;
+                    snapshot_peer_addresses(&caches, &peer_id, Utc::now())
+                };
+                let chosen_dial_addr =
+                    chosen_dial_addr_for_log(&failure_snapshot, dial_decision, attempt_started_at);
+                let chosen_dial_addr_resolution = infer_chosen_dial_addr_resolution(
+                    &failure_snapshot,
+                    dial_decision,
+                    attempt_started_at,
+                );
+                warn!(
+                    event = "pairing_stream.open_failed",
+                    peer_id = %peer_id,
+                    session_id = %session_id,
+                    dial_decision,
+                    candidate_address_count = failure_snapshot.candidate_addresses.len(),
+                    candidate_addresses = ?failure_snapshot.candidate_addresses,
+                    chosen_dial_addr = %chosen_dial_addr.unwrap_or("-"),
+                    chosen_dial_addr_resolution,
+                    dial_attempt_address_count = failure_snapshot.dial_attempt_address_count,
+                    dial_attempt_addresses = ?failure_snapshot.dial_attempt_addresses,
+                    last_dial_outcome = failure_snapshot.last_dial_outcome.unwrap_or("unknown"),
+                    last_dial_age_ms = ?failure_snapshot.last_dial_age_ms,
+                    error = %err,
+                    "pairing stream open failed"
+                );
                 handle_pairing_open_error(&self.policy_resolver, &self.event_tx, &peer_id, &err)
                     .await;
                 Err(err)
+            }
+            Err(_) => {
+                let timeout_snapshot = {
+                    let caches = self.caches.read().await;
+                    snapshot_peer_addresses(&caches, &peer_id, Utc::now())
+                };
+                let chosen_dial_addr =
+                    chosen_dial_addr_for_log(&timeout_snapshot, dial_decision, attempt_started_at);
+                let chosen_dial_addr_resolution = infer_chosen_dial_addr_resolution(
+                    &timeout_snapshot,
+                    dial_decision,
+                    attempt_started_at,
+                );
+                warn!(
+                    event = "pairing_stream.open_timeout",
+                    peer_id = %peer_id,
+                    session_id = %session_id,
+                    dial_decision,
+                    candidate_address_count = timeout_snapshot.candidate_addresses.len(),
+                    candidate_addresses = ?timeout_snapshot.candidate_addresses,
+                    chosen_dial_addr = %chosen_dial_addr.unwrap_or("-"),
+                    chosen_dial_addr_resolution,
+                    dial_attempt_address_count = timeout_snapshot.dial_attempt_address_count,
+                    dial_attempt_addresses = ?timeout_snapshot.dial_attempt_addresses,
+                    last_dial_outcome = timeout_snapshot.last_dial_outcome.unwrap_or("unknown"),
+                    last_dial_age_ms = ?timeout_snapshot.last_dial_age_ms,
+                    timeout_ms = PAIRING_STREAM_OPEN_TIMEOUT.as_millis() as u64,
+                    "pairing stream open timed out"
+                );
+                Err(anyhow!("pairing stream open timed out"))
             }
         }
     }
@@ -2321,16 +2410,8 @@ async fn execute_business_stream(
         snapshot_peer_addresses(&caches, peer_id_str, attempt_started_at)
     };
     let payload_bytes = payload.map(|data| data.len() as u64).unwrap_or(0);
-    let dial_decision = if address_snapshot.peer_marked_reachable {
-        "reuse_existing_connection"
-    } else {
-        "new_dial_required"
-    };
-    let preferred_candidate_transport = address_snapshot
-        .candidate_addresses
-        .first()
-        .map(|addr| transport_label_str(addr))
-        .unwrap_or("none");
+    let dial_decision = dial_decision_for_snapshot(&address_snapshot);
+    let preferred_candidate_transport = preferred_candidate_transport(&address_snapshot);
     info!(
         event = "business_stream.open_attempt",
         operation = denied_operation,
@@ -2681,6 +2762,22 @@ fn transport_label_str(address: &str) -> &'static str {
     } else {
         "other"
     }
+}
+
+fn dial_decision_for_snapshot(snapshot: &PeerAddressSnapshot) -> &'static str {
+    if snapshot.peer_marked_reachable {
+        "reuse_existing_connection"
+    } else {
+        "new_dial_required"
+    }
+}
+
+fn preferred_candidate_transport(snapshot: &PeerAddressSnapshot) -> &'static str {
+    snapshot
+        .candidate_addresses
+        .first()
+        .map(|addr| transport_label_str(addr))
+        .unwrap_or("none")
 }
 
 fn successful_dial_observation(address: &str, observed_at: DateTime<Utc>) -> PeerDialObservation {

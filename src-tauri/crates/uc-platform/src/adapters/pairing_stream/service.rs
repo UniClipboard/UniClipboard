@@ -41,6 +41,18 @@ impl std::fmt::Display for ShutdownReason {
     }
 }
 
+fn close_initiator_for_shutdown_reason(reason: &ShutdownReason, app_closed: bool) -> &'static str {
+    if app_closed {
+        "application"
+    } else {
+        match reason {
+            ShutdownReason::ExplicitClose => "application",
+            ShutdownReason::StreamClosedByPeer => "peer",
+            ShutdownReason::ChannelClosed => "local",
+        }
+    }
+}
+
 #[derive(Clone)]
 pub struct PairingStreamConfig {
     pub idle_timeout: Duration,
@@ -202,6 +214,11 @@ impl PairingStreamService {
         }
     }
 
+    pub async fn has_session(&self, session_id: &str) -> bool {
+        let sessions = self.inner.sessions.lock().await;
+        sessions.contains_key(session_id)
+    }
+
     #[tracing::instrument(skip(self, message), fields(session_id = %message.session_id()))]
     pub async fn send_pairing_on_session(&self, message: PairingMessage) -> Result<()> {
         let session_id = message.session_id().to_string();
@@ -274,12 +291,14 @@ impl PairingStreamService {
             if let Err(err) = handle.shutdown_tx.send(true) {
                 warn!("pairing session shutdown send failed: {err}");
             }
-            if let Some(reason) = reason.as_ref() {
-                info!(
-                    "pairing session closed: session_id={} peer_id={} reason={}",
-                    session_id, handle.peer_id, reason
-                );
-            }
+            info!(
+                event = "pairing_stream.closed",
+                session_id = %session_id,
+                peer_id = %handle.peer_id,
+                close_initiator = "application",
+                close_reason = %reason.as_deref().unwrap_or("explicit_close"),
+                "pairing session close requested"
+            );
         }
         Ok(())
     }
@@ -301,9 +320,11 @@ impl PairingStreamService {
         let session_id = first_message.session_id().to_string();
         let message_kind = pairing_message_kind(&first_message);
         info!(
+            event = "pairing_stream.incoming_session_accepted",
             peer_id = %peer_id,
             session_id = %session_id,
             message_kind,
+            payload_bytes = first_payload.len() as u64,
             "decoded first pairing message from inbound stream"
         );
         self.spawn_session(peer_id, session_id, stream, Some(first_message), permits)
@@ -450,9 +471,18 @@ where
     S: AsyncRead + AsyncWrite + Unpin + Send + 'static,
 {
     let (reader, writer) = tokio::io::split(stream);
+    let session_direction = if initial_message.is_some() {
+        "inbound"
+    } else {
+        "outbound"
+    };
     info!(
-        "pairing session started: peer_id={} session_id={}",
-        peer_id, session_id
+        event = "pairing_stream.session_started",
+        peer_id = %peer_id,
+        session_id = %session_id,
+        session_direction,
+        idle_timeout_ms = inner.config.idle_timeout.as_millis() as u64,
+        "pairing session started"
     );
     if let Some(message) = initial_message {
         if let Err(err) = emit_pairing_event(&inner.event_tx, &peer_id, message).await {
@@ -528,15 +558,20 @@ where
             // so even in the race where the read loop sees EOF before the
             // shutdown signal, we can still detect the application intent.
             let is_app_closed = *app_closed_rx.borrow();
+            let close_initiator = close_initiator_for_shutdown_reason(&reason, is_app_closed);
             if matches!(
                 (reason, &completed),
                 (ShutdownReason::StreamClosedByPeer, CompletedTask::Read)
             ) && !is_app_closed
             {
                 warn!(
-                    "pairing session closed by peer without explicit protocol termination: \
-                     peer_id={} session_id={} — bridging to PairingFailed",
-                    peer_id, session_id
+                    event = "pairing_stream.ended",
+                    peer_id = %peer_id,
+                    session_id = %session_id,
+                    completion_source = source,
+                    end_reason = %reason,
+                    close_initiator,
+                    "pairing session closed by peer without explicit protocol termination; bridging to PairingFailed"
                 );
                 if let Err(e) = inner
                     .event_tx
@@ -551,8 +586,13 @@ where
                 }
             } else {
                 info!(
-                    "pairing session ended cleanly: peer_id={} session_id={} source={} reason={}",
-                    peer_id, session_id, source, reason
+                    event = "pairing_stream.ended",
+                    peer_id = %peer_id,
+                    session_id = %session_id,
+                    completion_source = source,
+                    end_reason = %reason,
+                    close_initiator,
+                    "pairing session ended"
                 );
             }
         }
@@ -562,8 +602,12 @@ where
                 CompletedTask::Write => "write_loop",
             };
             warn!(
-                "pairing session ended with error: peer_id={} session_id={} source={} error={}",
-                peer_id, session_id, source, err
+                event = "pairing_stream.ended_with_error",
+                peer_id = %peer_id,
+                session_id = %session_id,
+                completion_source = source,
+                error = %err,
+                "pairing session ended with error"
             );
             if let Err(e) = inner
                 .event_tx
@@ -760,6 +804,38 @@ mod tests {
     use std::sync::{Mutex, Once};
     use tokio::sync::{mpsc, watch};
     use tokio::time::{timeout, Duration};
+
+    #[test]
+    fn close_initiator_prefers_application_when_app_closed() {
+        assert_eq!(
+            super::close_initiator_for_shutdown_reason(
+                &super::ShutdownReason::StreamClosedByPeer,
+                true,
+            ),
+            "application"
+        );
+        assert_eq!(
+            super::close_initiator_for_shutdown_reason(
+                &super::ShutdownReason::ExplicitClose,
+                false,
+            ),
+            "application"
+        );
+        assert_eq!(
+            super::close_initiator_for_shutdown_reason(
+                &super::ShutdownReason::StreamClosedByPeer,
+                false,
+            ),
+            "peer"
+        );
+        assert_eq!(
+            super::close_initiator_for_shutdown_reason(
+                &super::ShutdownReason::ChannelClosed,
+                false,
+            ),
+            "local"
+        );
+    }
 
     #[tokio::test]
     async fn open_pairing_session_is_idempotent_when_session_exists() {

@@ -30,6 +30,14 @@ Phase 1 adds or standardizes these event fields in Rust transport logs:
 - `event="business_stream.open_timeout"`
 - `event="business_stream.ensure_open_failed"`
 - `event="business_stream.ensure_open_timeout"`
+- `event="pairing_stream.open_attempt"`
+- `event="pairing_stream.open_skipped"`
+- `event="pairing_stream.open_failed"`
+- `event="pairing_stream.open_timeout"`
+- `event="pairing_stream.session_started"`
+- `event="pairing_stream.closed"`
+- `event="pairing_stream.ended"`
+- `event="pairing_stream.ended_with_error"`
 - `event="clipboard.outbound_peer_evaluated"`
 - `event="clipboard.outbound_attempt"`
 - `event="clipboard.outbound_payload_encrypted"`
@@ -100,10 +108,39 @@ Look for:
 - repeated rebinds
 - `Address already in use`
 
-### 4. Suspected stale address
+### 4. Pairing transport for one peer or session
 
 ```text
-peer_id = 'PEER_ID' and event = 'business_stream.open_attempt'
+(peer_id = 'PEER_ID' or session_id = 'SESSION_ID') and event like 'pairing_stream.%'
+```
+
+Use this to answer:
+
+- was transport open skipped because the pairing session already existed
+- did pairing stream open on a reused connection or a fresh dial
+- which candidate addresses were available at open failure / timeout time
+- which address was inferred as the chosen dial target
+- who initiated the close and how the session ended
+
+Useful fields:
+
+- `skip_reason`
+- `dial_decision`
+- `candidate_address_count`
+- `preferred_candidate_transport`
+- `candidate_addresses`
+- `chosen_dial_addr`
+- `chosen_dial_addr_resolution`
+- `dial_attempt_addresses`
+- `last_dial_outcome`
+- `close_initiator`
+- `end_reason`
+- `completion_source`
+
+### 5. Suspected stale address
+
+```text
+(peer_id = 'PEER_ID' and event in ['business_stream.open_attempt', 'pairing_stream.open_attempt'])
 ```
 
 Inspect these fields:
@@ -136,6 +173,14 @@ For a healthy send path, Seq should let us read the chain in order:
 3. `clipboard.outbound_attempt`
 4. `business_stream.open_attempt`
 5. `clipboard.outbound_success`
+
+For a healthy pairing path, Seq should let us read the chain in order:
+
+1. `peer.mdns_discovered`
+2. `pairing_stream.open_attempt`
+3. `pairing_stream.session_started`
+4. `pairing.handle_request` / `pairing.handle_challenge` / `pairing.handle_response`
+5. `pairing_stream.ended`
 
 For a broken path, we should still be able to identify which category it belongs to:
 

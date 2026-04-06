@@ -7,7 +7,7 @@ import {
   Image as ImageIcon,
   Loader2,
 } from 'lucide-react'
-import React, { useState, useEffect } from 'react'
+import React, { useMemo, useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   ClipboardTextItem,
@@ -22,6 +22,36 @@ import { getClipboardEntryResource } from '@/api/daemon/clipboard'
 import { toast } from '@/components/ui/toast'
 import { cn } from '@/lib/utils'
 import { formatFileSize } from '@/utils'
+
+/**
+ * Size of each text chunk for content-visibility optimisation.
+ * The browser skips layout for off-screen chunks, keeping large text smooth.
+ */
+const TEXT_CHUNK_SIZE = 10_000
+
+/**
+ * Renders large text in chunks with content-visibility: auto so the browser
+ * skips layout for off-screen segments, avoiding freeze on 500KB+ text.
+ */
+const ChunkedText: React.FC<{ text: string; chunkSize: number }> = ({ text, chunkSize }) => {
+  const chunks = useMemo(() => {
+    const result: string[] = []
+    for (let i = 0; i < text.length; i += chunkSize) {
+      result.push(text.slice(i, i + chunkSize))
+    }
+    return result
+  }, [text, chunkSize])
+
+  return (
+    <div className="whitespace-pre-wrap font-mono text-sm leading-relaxed text-foreground/90 wrap-break-word">
+      {chunks.map((chunk, i) => (
+        <span key={i} style={{ contentVisibility: 'auto', containIntrinsicSize: 'auto 500px' }}>
+          {chunk}
+        </span>
+      ))}
+    </div>
+  )
+}
 
 interface ClipboardItemProps {
   index: number
@@ -189,6 +219,19 @@ const ClipboardItem: React.FC<ClipboardItemProps> = ({
         // Use detail content when expanded and available, otherwise use preview
         const textToShow = isExpanded && detailContent ? detailContent : textItem.display_text
 
+        if (isLoadingDetail) {
+          return (
+            <p className="whitespace-pre-wrap font-mono text-sm leading-relaxed text-foreground/90 wrap-break-word">
+              {t('clipboard.item.loading')}
+            </p>
+          )
+        }
+
+        // When expanded with large text, use chunked rendering for performance
+        if (isExpanded && textToShow.length > TEXT_CHUNK_SIZE) {
+          return <ChunkedText text={textToShow} chunkSize={TEXT_CHUNK_SIZE} />
+        }
+
         return (
           <p
             className={cn(
@@ -196,7 +239,7 @@ const ClipboardItem: React.FC<ClipboardItemProps> = ({
               !isExpanded && 'line-clamp-5'
             )}
           >
-            {isLoadingDetail ? t('clipboard.item.loading') : textToShow}
+            {textToShow}
           </p>
         )
       }

@@ -110,6 +110,38 @@ impl FileSettingsRepository {
     }
 }
 
+fn deserialize_and_migrate_settings(content: &str) -> Result<(Settings, u32)> {
+    let settings: Settings = serde_json::from_str(content)?;
+    let original_version = settings.schema_version;
+    let migrator = SettingsMigrator::new();
+    let migrated = migrator
+        .migrate_to_latest(settings)
+        .map_err(|e| anyhow::anyhow!("settings migration failed: {}", e))?;
+
+    Ok((migrated, original_version))
+}
+
+/// Loads a read-only settings snapshot from disk using the canonical repository rules.
+///
+/// This shares the same deserialization, defaults, and migration logic as
+/// [`FileSettingsRepository::load`], but does not persist migrated content
+/// back to disk. It is intended for bootstrap-time reads that only need the
+/// effective settings value.
+pub fn load_settings_snapshot(path: &Path) -> Result<Settings> {
+    let content = match std::fs::read_to_string(path) {
+        Ok(s) => s,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            return Ok(Settings::default());
+        }
+        Err(e) => {
+            return Err(e).with_context(|| format!("read settings failed: {}", path.display()))
+        }
+    };
+
+    let (settings, _) = deserialize_and_migrate_settings(&content)?;
+    Ok(settings)
+}
+
 #[async_trait]
 impl SettingsPort for FileSettingsRepository {
     /// Loads settings from the repository path, migrates them to the latest schema, and persists migrated settings when necessary.
@@ -140,12 +172,7 @@ impl SettingsPort for FileSettingsRepository {
             }
         };
 
-        let settings: Settings = serde_json::from_str(&content)?;
-        let original_version = settings.schema_version;
-        let migrator = SettingsMigrator::new();
-        let migrated = migrator
-            .migrate_to_latest(settings)
-            .map_err(|e| anyhow::anyhow!("settings migration failed: {}", e))?;
+        let (migrated, original_version) = deserialize_and_migrate_settings(&content)?;
 
         if original_version < CURRENT_SCHEMA_VERSION {
             self.save(&migrated).await?;

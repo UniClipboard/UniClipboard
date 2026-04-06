@@ -26,6 +26,7 @@ use std::sync::OnceLock;
 
 use tracing_subscriber::prelude::*;
 use uc_app::app_paths::AppPaths;
+use uc_infra::settings::repository::load_settings_snapshot;
 use uc_observability::{otlp::OtlpGuard, LogProfile, WorkerGuard};
 use uc_platform::app_dirs::DirsAppDirsAdapter;
 use uc_platform::ports::AppDirsPort;
@@ -58,17 +59,15 @@ fn resolve_device_id_for_logging(config_dir: &Path) -> Option<String> {
         .into()
 }
 
-/// Read the `telemetry_enabled` setting from the persisted settings file.
+/// Read the `telemetry_enabled` setting from persisted settings.
 ///
-/// Uses the canonical `Settings` model for deserialization so that
-/// defaults, field names, and migration rules stay in one place.
+/// Uses the canonical settings repository read path so that defaults,
+/// deserialization rules, and migrations stay in one place.
+///
 /// Falls back to `true` (the model default) if the file doesn't exist
-/// or is malformed.
-fn resolve_telemetry_enabled(data_dir: &Path) -> bool {
-    let Ok(content) = std::fs::read_to_string(data_dir.join("settings.json")) else {
-        return true;
-    };
-    serde_json::from_str::<uc_core::settings::model::Settings>(&content)
+/// or cannot be loaded.
+fn resolve_telemetry_enabled(settings_path: &Path) -> bool {
+    load_settings_snapshot(settings_path)
         .unwrap_or_default()
         .general
         .telemetry_enabled
@@ -163,7 +162,7 @@ pub fn init_tracing_subscriber() -> anyhow::Result<()> {
     // Step 4c: Read telemetry_enabled from persisted settings.
     // This is a lightweight file read — the full settings are loaded later by
     // the app runtime. We only need the boolean gate here.
-    let telemetry_enabled = resolve_telemetry_enabled(&app_dirs.app_data_root);
+    let telemetry_enabled = resolve_telemetry_enabled(&paths.settings_path);
 
     // Note: OTLP enablement and any compile-time config backfill are handled
     // inside init_otlp_provider. The exporter itself still resolves the final
@@ -260,6 +259,8 @@ pub fn init_tracing_subscriber() -> anyhow::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tempfile::tempdir;
+    use uc_core::settings::model::Settings;
 
     #[test]
     fn test_tracing_init_compiles() {
@@ -271,5 +272,39 @@ mod tests {
     fn test_log_profile_from_env_works() {
         // Verify we can resolve a profile without panicking
         let _profile = LogProfile::from_env();
+    }
+
+    #[test]
+    fn resolve_telemetry_enabled_defaults_to_true_when_settings_file_is_missing() {
+        let temp_dir = tempdir().unwrap();
+        let settings_path = temp_dir.path().join("settings.json");
+
+        assert!(resolve_telemetry_enabled(&settings_path));
+    }
+
+    #[test]
+    fn resolve_telemetry_enabled_reads_persisted_false_value() {
+        let temp_dir = tempdir().unwrap();
+        let settings_path = temp_dir.path().join("settings.json");
+        let mut settings = Settings::default();
+        settings.general.telemetry_enabled = false;
+
+        std::fs::write(
+            &settings_path,
+            serde_json::to_string_pretty(&settings).unwrap(),
+        )
+        .unwrap();
+
+        assert!(!resolve_telemetry_enabled(&settings_path));
+    }
+
+    #[test]
+    fn resolve_telemetry_enabled_falls_back_to_true_for_malformed_settings() {
+        let temp_dir = tempdir().unwrap();
+        let settings_path = temp_dir.path().join("settings.json");
+
+        std::fs::write(&settings_path, "{ not valid json").unwrap();
+
+        assert!(resolve_telemetry_enabled(&settings_path));
     }
 }

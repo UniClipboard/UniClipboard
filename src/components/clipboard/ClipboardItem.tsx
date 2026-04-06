@@ -7,8 +7,9 @@ import {
   Image as ImageIcon,
   Loader2,
 } from 'lucide-react'
-import React, { useCallback, useRef, useState, useEffect } from 'react'
+import React, { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
+import VirtualizedText from './VirtualizedText'
 import {
   ClipboardTextItem,
   ClipboardImageItem,
@@ -42,43 +43,6 @@ interface ClipboardItemProps {
   isSelected?: boolean
   onSelect?: (event: React.MouseEvent<HTMLDivElement>) => void
   fileSize?: number
-}
-
-/** Textarea that auto-sizes to its content height, avoiding inner scroll. */
-const AutoSizeTextarea: React.FC<{
-  value: string
-  className?: string
-}> = ({ value, className }) => {
-  const ref = useRef<HTMLTextAreaElement>(null)
-  const adjustHeight = useCallback(() => {
-    const el = ref.current
-    if (el) {
-      el.style.height = '0'
-      el.style.height = `${el.scrollHeight}px`
-    }
-  }, [])
-
-  useEffect(() => {
-    adjustHeight()
-  }, [value, adjustHeight])
-
-  useEffect(() => {
-    const el = ref.current
-    if (!el) return
-    const ro = new ResizeObserver(() => adjustHeight())
-    ro.observe(el)
-    return () => ro.disconnect()
-  }, [adjustHeight])
-
-  return (
-    <textarea
-      ref={ref}
-      readOnly
-      value={value}
-      className={className}
-      style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all', overflow: 'hidden' }}
-    />
-  )
 }
 
 const ClipboardItem: React.FC<ClipboardItemProps> = ({
@@ -237,14 +201,9 @@ const ClipboardItem: React.FC<ClipboardItemProps> = ({
           )
         }
 
-        // When expanded with large text, use textarea for browser-native rendering optimization
+        // When expanded with large text, use virtualized rendering for performance
         if (isExpanded && textToShow.length > LARGE_TEXT_THRESHOLD) {
-          return (
-            <AutoSizeTextarea
-              value={textToShow}
-              className="w-full resize-none border-none bg-transparent p-0 font-mono text-sm leading-relaxed text-foreground/90 focus:outline-none focus:ring-0"
-            />
-          )
+          return <VirtualizedText text={textToShow} className="h-96" />
         }
 
         return (

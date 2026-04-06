@@ -10,10 +10,11 @@ import {
   Loader2,
   Image as ImageIcon,
 } from 'lucide-react'
-import React, { useCallback, useEffect, useRef, useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { DisplayClipboardItem } from './ClipboardContent'
 import TransferProgressBar from './TransferProgressBar'
+import VirtualizedText from './VirtualizedText'
 import {
   ClipboardCodeItem,
   ClipboardFileItem,
@@ -34,45 +35,8 @@ import {
 } from '@/store/slices/fileTransferSlice'
 import { formatFileSize } from '@/utils'
 
-/** Threshold above which we switch to textarea-based rendering for performance. */
+/** Threshold above which we switch to virtualized rendering for performance. */
 const LARGE_TEXT_THRESHOLD = 50_000
-
-/** Textarea that auto-sizes to its content height, avoiding inner scroll. */
-const AutoSizeTextarea: React.FC<{
-  value: string
-  className?: string
-}> = ({ value, className }) => {
-  const ref = useRef<HTMLTextAreaElement>(null)
-  const adjustHeight = useCallback(() => {
-    const el = ref.current
-    if (el) {
-      el.style.height = '0'
-      el.style.height = `${el.scrollHeight}px`
-    }
-  }, [])
-
-  useEffect(() => {
-    adjustHeight()
-  }, [value, adjustHeight])
-
-  useEffect(() => {
-    const el = ref.current
-    if (!el) return
-    const ro = new ResizeObserver(() => adjustHeight())
-    ro.observe(el)
-    return () => ro.disconnect()
-  }, [adjustHeight])
-
-  return (
-    <textarea
-      ref={ref}
-      readOnly
-      value={value}
-      className={className}
-      style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all', overflow: 'hidden' }}
-    />
-  )
-}
 
 interface ClipboardPreviewProps {
   item: DisplayClipboardItem | null
@@ -162,6 +126,9 @@ const ClipboardPreview: React.FC<ClipboardPreviewProps> = ({ item }) => {
       case 'text': {
         const textItem = item.content as ClipboardTextItem
         const displayText = fullText ?? textItem.display_text
+        if (!isLoadingText && displayText.length > LARGE_TEXT_THRESHOLD) {
+          return <VirtualizedText text={displayText} className="h-full" />
+        }
         return (
           <div className="p-4">
             {isLoadingText ? (
@@ -169,11 +136,6 @@ const ClipboardPreview: React.FC<ClipboardPreviewProps> = ({ item }) => {
                 <Loader2 className="h-4 w-4 animate-spin" />
                 <span className="text-sm">{t('clipboard.item.loading')}</span>
               </div>
-            ) : displayText.length > LARGE_TEXT_THRESHOLD ? (
-              <AutoSizeTextarea
-                value={displayText}
-                className="w-full resize-none border-none bg-transparent p-0 font-mono text-sm leading-relaxed text-foreground/90 focus:outline-none focus:ring-0"
-              />
             ) : (
               <p className="whitespace-pre-wrap font-mono text-sm leading-relaxed text-foreground/90 break-all overflow-hidden">
                 {displayText}
@@ -462,12 +424,22 @@ const ClipboardPreview: React.FC<ClipboardPreviewProps> = ({ item }) => {
 
   const infoRows = renderInformation()
 
+  // Check if current content needs virtualized rendering (Virtuoso manages its own scroll)
+  const isLargeText =
+    item.type === 'text' &&
+    !isLoadingText &&
+    (fullText ?? (item.content as ClipboardTextItem).display_text).length > LARGE_TEXT_THRESHOLD
+
   return (
     <div className="flex flex-col flex-1 min-h-0">
       {/* Content preview */}
-      <ScrollArea className="flex-1 min-h-0 overflow-hidden">
-        <div className="overflow-hidden">{renderContent()}</div>
-      </ScrollArea>
+      {isLargeText ? (
+        <div className="flex-1 min-h-0 p-4">{renderContent()}</div>
+      ) : (
+        <ScrollArea className="flex-1 min-h-0 overflow-hidden">
+          <div className="overflow-hidden">{renderContent()}</div>
+        </ScrollArea>
+      )}
 
       {/* Transfer progress section (ephemeral active transfer) */}
       {effectiveStatus === 'transferring' && transfer && transfer.status === 'active' && (

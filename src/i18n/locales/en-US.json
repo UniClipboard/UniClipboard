@@ -572,8 +572,14 @@
         "retry": "Retry",
         "unpair": "Unpair",
         "settings": "Settings",
-        "addDevice": "Add Device",
-        "addAnotherDevice": "Add another device"
+        "addDevice": "Join Another Encrypted Space",
+        "addAnotherDevice": "Join Another Encrypted Space",
+        "joinSpaceConfirm": {
+          "title": "Join Another Encrypted Space",
+          "description": "This is not a merge. The other device will become the primary. After joining, your locally encrypted history will no longer be accessible. Continue anyway?",
+          "cancel": "Cancel",
+          "confirm": "Continue"
+        }
       }
     },
     "syncPaused": {

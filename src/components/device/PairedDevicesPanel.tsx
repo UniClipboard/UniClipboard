@@ -4,8 +4,10 @@ import { useTranslation } from 'react-i18next'
 import { useNavigate } from 'react-router-dom'
 import { getDeviceIcon, getIconColor } from './device-utils'
 import DeviceSettingsSheet from './DeviceSettingsSheet'
+import JoinSpaceConfirmDialog from './JoinSpaceConfirmDialog'
 import UnpairAlertDialog from './UnpairAlertDialog'
 import { unpairP2PDevice } from '@/api/daemon/pairing'
+import { startJoinSpace } from '@/api/daemon/setup'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { useSetting } from '@/hooks/useSetting'
@@ -31,6 +33,12 @@ const PairedDevicesPanel: React.FC = () => {
   const [sheetOpen, setSheetOpen] = useState(false)
   const [unpairDialogOpen, setUnpairDialogOpen] = useState(false)
   const [unpairTargetId, setUnpairTargetId] = useState<string | null>(null)
+  const [joinConfirmOpen, setJoinConfirmOpen] = useState(false)
+
+  const handleJoinConfirm = async () => {
+    setJoinConfirmOpen(false)
+    await startJoinSpace()
+  }
 
   useEffect(() => {
     dispatch(fetchPairedDevices())
@@ -132,7 +140,7 @@ const PairedDevicesPanel: React.FC = () => {
           <p className="mb-4 max-w-xs text-xs text-muted-foreground">
             {t('devices.list.empty.description')}
           </p>
-          <Button variant="outline" size="sm" disabled>
+          <Button variant="outline" size="sm" onClick={() => setJoinConfirmOpen(true)}>
             <Plus className="h-3.5 w-3.5" />
             {t('devices.list.actions.addDevice')}
           </Button>
@@ -211,10 +219,11 @@ const PairedDevicesPanel: React.FC = () => {
             )
           })}
 
-          {/* Add device card (disabled, pending backend) */}
-          <div
-            title={t('devices.settings.badges.comingSoon')}
-            className="flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-border/60 p-5 pt-6 pb-4 text-center opacity-50 cursor-not-allowed"
+          {/* Add device card */}
+          <button
+            type="button"
+            onClick={() => setJoinConfirmOpen(true)}
+            className="flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-border/60 p-5 pt-6 pb-4 text-center cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             <div className="mb-3 h-14 w-14 rounded-2xl flex items-center justify-center bg-muted/50">
               <Plus className="h-7 w-7 text-muted-foreground/70" />
@@ -222,7 +231,7 @@ const PairedDevicesPanel: React.FC = () => {
             <span className="text-sm font-medium text-muted-foreground">
               {t('devices.list.actions.addDevice')}
             </span>
-          </div>
+          </button>
         </div>
       </div>
 
@@ -241,6 +250,12 @@ const PairedDevicesPanel: React.FC = () => {
         onOpenChange={setUnpairDialogOpen}
         deviceName={unpairTargetDevice?.deviceName || t('devices.list.labels.unknownDevice')}
         onConfirm={handleUnpairConfirm}
+      />
+
+      <JoinSpaceConfirmDialog
+        open={joinConfirmOpen}
+        onOpenChange={setJoinConfirmOpen}
+        onConfirm={handleJoinConfirm}
       />
     </>
   )

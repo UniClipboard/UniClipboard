@@ -9,6 +9,7 @@ import {
 } from 'lucide-react'
 import React, { useMemo, useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
+import VirtualizedText from './VirtualizedText'
 import {
   ClipboardTextItem,
   ClipboardImageItem,
@@ -30,14 +31,17 @@ const LARGE_TEXT_THRESHOLD = 50_000
 const GROUP_TARGET_SIZE = 5000
 
 /**
- * Groups lines into block-level divs with content-visibility: auto.
- * Only splits at newline boundaries — never within a line — so text flow
- * is preserved exactly as in the original rendering. Each group is a
- * block element where CSS Containment applies correctly.
+ * Renders large text with performance optimization.
+ * - Multi-line text: groups lines into block divs with content-visibility: auto
+ * - Single-line huge text (no/few newlines): falls back to react-virtuoso
+ *   with a fixed-height container since it's impossible to render 500KB+
+ *   in one DOM node without freezing
  */
 const ChunkedText: React.FC<{ text: string }> = ({ text }) => {
+  const lines = useMemo(() => text.split('\n'), [text])
+  const hasLongLine = useMemo(() => lines.some(line => line.length > LARGE_TEXT_THRESHOLD), [lines])
   const groups = useMemo(() => {
-    const lines = text.split('\n')
+    if (hasLongLine) return []
     const result: string[] = []
     let current: string[] = []
     let currentSize = 0
@@ -54,7 +58,12 @@ const ChunkedText: React.FC<{ text: string }> = ({ text }) => {
       result.push(current.join('\n'))
     }
     return result
-  }, [text])
+  }, [lines, hasLongLine])
+
+  // Single-line or few-line huge text: use virtualized rendering
+  if (hasLongLine) {
+    return <VirtualizedText text={text} className="h-96" />
+  }
 
   return (
     <div>

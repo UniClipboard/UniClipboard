@@ -38,10 +38,10 @@ const DEFAULT_SESSION: SessionToken = {
 // ── Response builders ────────────────────────────────────────
 
 function authResponse(sessionToken = 'jwt-session'): Response {
-  return new Response(
-    JSON.stringify({ sessionToken, expiresInSecs: 300, refreshAtSecs: 240 }),
-    { status: 200, headers: { 'Content-Type': 'application/json' } },
-  )
+  return new Response(JSON.stringify({ sessionToken, expiresInSecs: 300, refreshAtSecs: 240 }), {
+    status: 200,
+    headers: { 'Content-Type': 'application/json' },
+  })
 }
 
 function okResponse(body: object): Response {
@@ -64,19 +64,31 @@ let _session: SessionToken | null = null
 let _config: DaemonConfig | null = null
 let _fetchQueue: Response[] = []
 
-function reset(): void { _config = null; _session = null; _fetchQueue = [] }
+function reset(): void {
+  _config = null
+  _session = null
+  _fetchQueue = []
+}
 
 vi.mock('@/api/daemon/client', () => {
   const _self: Record<string, unknown> = {
-    get initialized() { return _config !== null },
-    get wsUrl() { return _config?.wsUrl ?? null },
-    get currentSession() { return _session },
-    initialize(config: DaemonConfig) { _config = config },
+    get initialized() {
+      return _config !== null
+    },
+    get wsUrl() {
+      return _config?.wsUrl ?? null
+    },
+    get currentSession() {
+      return _session
+    },
+    initialize(config: DaemonConfig) {
+      _config = config
+    },
     async refreshSession() {
       if (!_config) throw new DaemonApiError(DaemonErrorCode.INTERNAL_ERROR, 'not initialized')
       const r = _fetchQueue.shift() ?? authResponse()
       if (!r.ok) throw new DaemonApiError(DaemonErrorCode.INTERNAL_ERROR, `auth failed ${r.status}`)
-      const data = await r.json() as { sessionToken: string; expiresInSecs: number }
+      const data = (await r.json()) as { sessionToken: string; expiresInSecs: number }
       _session = {
         token: data.sessionToken,
         expiresAt: Date.now() + (data.expiresInSecs ?? 300) * 1000,
@@ -94,13 +106,19 @@ vi.mock('@/api/daemon/client', () => {
         _session = null
         await (_self.refreshSession as () => Promise<SessionToken>)()
         const retry = _fetchQueue.shift() ?? okResponse({})
-        if (!retry.ok) throw new DaemonApiError(DaemonErrorCode.INTERNAL_ERROR, `${retry.status} on ${endpoint}`)
+        if (!retry.ok)
+          throw new DaemonApiError(DaemonErrorCode.INTERNAL_ERROR, `${retry.status} on ${endpoint}`)
         return retry.json() as T
       }
-      if (!r.ok) throw new DaemonApiError(DaemonErrorCode.INTERNAL_ERROR, `${r.status} on ${endpoint}`)
+      if (!r.ok)
+        throw new DaemonApiError(DaemonErrorCode.INTERNAL_ERROR, `${r.status} on ${endpoint}`)
       return r.json() as T
     },
-    destroy() { _config = null; _session = null; _fetchQueue = [] },
+    destroy() {
+      _config = null
+      _session = null
+      _fetchQueue = []
+    },
   }
   return { daemonClient: _self }
 })
@@ -108,8 +126,12 @@ vi.mock('@/api/daemon/client', () => {
 // ── Tests ────────────────────────────────────────────────────
 
 describe('DaemonClient session token lifecycle', () => {
-  beforeEach(() => { reset() })
-  afterEach(() => { reset() })
+  beforeEach(() => {
+    reset()
+  })
+  afterEach(() => {
+    reset()
+  })
 
   /** Initialize the mock client — required before refreshSession/request. */
   async function initClient() {
@@ -152,8 +174,8 @@ describe('DaemonClient session token lifecycle', () => {
       _fetchQueue.push(okResponse({ status: 'ok' }))
       await daemonClient.refreshSession()
       await daemonClient.request('/health')
-      const leaks = errorSpy.mock.calls.filter(
-        a => a.some((x: unknown) => typeof x === 'string' && x.includes('test-bearer-token')),
+      const leaks = errorSpy.mock.calls.filter(a =>
+        a.some((x: unknown) => typeof x === 'string' && x.includes('test-bearer-token'))
       )
       expect(leaks).toHaveLength(0)
     })
@@ -165,8 +187,8 @@ describe('DaemonClient session token lifecycle', () => {
       _fetchQueue.push(okResponse({ status: 'ok' }))
       await daemonClient.refreshSession()
       await daemonClient.request('/health')
-      const leaks = warnSpy.mock.calls.filter(
-        a => a.some((x: unknown) => typeof x === 'string' && x.includes('test-bearer-token')),
+      const leaks = warnSpy.mock.calls.filter(a =>
+        a.some((x: unknown) => typeof x === 'string' && x.includes('test-bearer-token'))
       )
       expect(leaks).toHaveLength(0)
     })
@@ -227,7 +249,7 @@ describe('DaemonClient session token lifecycle', () => {
     it('retries once with new session after 401', async () => {
       const { daemonClient } = await initClient()
       _fetchQueue.push(authResponse('fresh-jwt')) // pre-emptive refresh (null session)
-      _fetchQueue.push(errResponse(401))           // first attempt
+      _fetchQueue.push(errResponse(401)) // first attempt
       _fetchQueue.push(authResponse('fresh-jwt')) // refresh after 401
       _fetchQueue.push(okResponse({ status: 'ok' })) // retry
       const result = await daemonClient.request<{ status: string }>('/health')
@@ -239,7 +261,7 @@ describe('DaemonClient session token lifecycle', () => {
       _fetchQueue.push(authResponse())
       _fetchQueue.push(errResponse(401))
       await expect(
-        daemonClient.request<{ status: string }>('/health', { skipRetry: true }),
+        daemonClient.request<{ status: string }>('/health', { skipRetry: true })
       ).rejects.toThrow()
     })
 
@@ -282,7 +304,9 @@ describe('DaemonClient session token lifecycle', () => {
       const { daemonClient } = await initClient()
       _session = DEFAULT_SESSION
       _fetchQueue.push(errResponse(404))
-      await expect(daemonClient.request('/clipboard/entries/nonexistent')).rejects.toThrow(DaemonApiError)
+      await expect(daemonClient.request('/clipboard/entries/nonexistent')).rejects.toThrow(
+        DaemonApiError
+      )
     })
 
     it('throws when daemon responds with 429', async () => {

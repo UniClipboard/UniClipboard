@@ -253,7 +253,10 @@ async function runSelfTest() {
     if (event.sessionId !== 'sess-abc123') throw new Error('sessionId mismatch')
     if (event.payload.entry_id !== 'entry-1') throw new Error('payload.entry_id mismatch')
 
-    log(STAGE.SNAPSHOT, `✅ Event envelope parsing valid (topic=${event.topic}, eventType=${event.eventType})`)
+    log(
+      STAGE.SNAPSHOT,
+      `✅ Event envelope parsing valid (topic=${event.topic}, eventType=${event.eventType})`
+    )
     results.push({ test: 'event_envelope_parse', ok: true })
     pass++
   } catch (err) {
@@ -273,28 +276,35 @@ async function runSelfTest() {
     for (let attempt = 1; attempt <= MAX_RECONNECT_ATTEMPTS; attempt++) {
       const baseDelay = Math.min(
         RECONNECT_MAX_DELAY_MS,
-        RECONNECT_BASE_DELAY_MS * 2 ** (attempt - 1),
+        RECONNECT_BASE_DELAY_MS * 2 ** (attempt - 1)
       )
       const jitter = baseDelay * 0.1 * (Math.random() * 2 - 1)
       const delayMs = Math.round(baseDelay + jitter)
 
       if (delayMs < 0 || delayMs > RECONNECT_MAX_DELAY_MS * 1.1) {
-        throw new Error(`Attempt ${attempt}: delay ${delayMs}ms out of bounds [0, ${RECONNECT_MAX_DELAY_MS * 1.1}]`)
+        throw new Error(
+          `Attempt ${attempt}: delay ${delayMs}ms out of bounds [0, ${RECONNECT_MAX_DELAY_MS * 1.1}]`
+        )
       }
 
       // Verify exponential growth
       if (attempt > 1) {
         const prevBaseDelay = Math.min(
           RECONNECT_MAX_DELAY_MS,
-          RECONNECT_BASE_DELAY_MS * 2 ** (attempt - 2),
+          RECONNECT_BASE_DELAY_MS * 2 ** (attempt - 2)
         )
         if (baseDelay < prevBaseDelay && prevBaseDelay < RECONNECT_MAX_DELAY_MS) {
-          throw new Error(`Attempt ${attempt}: delay did not grow exponentially (${prevBaseDelay} → ${baseDelay})`)
+          throw new Error(
+            `Attempt ${attempt}: delay did not grow exponentially (${prevBaseDelay} → ${baseDelay})`
+          )
         }
       }
     }
 
-    log(STAGE.RECONNECT, `✅ Reconnect delay bounds valid (max=${RECONNECT_MAX_DELAY_MS}ms, attempts=${MAX_RECONNECT_ATTEMPTS})`)
+    log(
+      STAGE.RECONNECT,
+      `✅ Reconnect delay bounds valid (max=${RECONNECT_MAX_DELAY_MS}ms, attempts=${MAX_RECONNECT_ATTEMPTS})`
+    )
     results.push({ test: 'reconnect_delay_bounds', ok: true })
     pass++
   } catch (err) {
@@ -323,7 +333,9 @@ async function runSelfTest() {
     console.log('✅ All self-tests passed. Proof harness internal consistency verified.')
     console.log()
     console.log('To run against a live daemon:')
-    console.log('  DAEMON_BASE_URL=http://127.0.0.1:<port> DAEMON_TOKEN=<bearer> node scripts/verify-direct-daemon-ws.mjs --live')
+    console.log(
+      '  DAEMON_BASE_URL=http://127.0.0.1:<port> DAEMON_TOKEN=<bearer> node scripts/verify-direct-daemon-ws.mjs --live'
+    )
     return { ok: true, results }
   } else {
     console.log('❌ Self-test failed. Fix the proof harness before running against live daemon.')
@@ -410,7 +422,9 @@ async function runLiveMode() {
     if (!response.ok) {
       const status = response.status
       let bodyText = ''
-      try { bodyText = await response.text() } catch {}
+      try {
+        bodyText = await response.text()
+      } catch {}
 
       if (status === 401) {
         const err = new Error(`Auth failed: 401 Unauthorized (bearer token invalid or expired)`)
@@ -434,7 +448,10 @@ async function runLiveMode() {
     }
 
     sessionToken = data.sessionToken
-    log(STAGE.AUTH, `✅ Auth success (sessionToken=${redact(sessionToken)}, expiresIn=${data.expiresInSecs}s, latency=${elapsed}ms)`)
+    log(
+      STAGE.AUTH,
+      `✅ Auth success (sessionToken=${redact(sessionToken)}, expiresIn=${data.expiresInSecs}s, latency=${elapsed}ms)`
+    )
   } catch (err) {
     if (err.cause?.code === 'ECONNREFUSED' || err.message.includes('fetch')) {
       const connErr = new Error(`Connection refused — is the daemon running at ${baseUrl}?`)
@@ -468,7 +485,7 @@ async function runLiveMode() {
         clearTimeout(timer)
         resolve()
       })
-      ws.addEventListener('error', (event) => {
+      ws.addEventListener('error', event => {
         clearTimeout(timer)
         reject(new Error('WebSocket error (connection refused, 401, 403, or 429)'))
       })
@@ -519,10 +536,13 @@ async function runLiveMode() {
         reject(new Error(`Timeout after ${stageTimeout}ms — no snapshot received`))
       }, stageTimeout)
 
-      ws.addEventListener('message', (event) => {
+      ws.addEventListener('message', event => {
         try {
           const raw = JSON.parse(event.data)
-          log(STAGE.SNAPSHOT, `   Received: topic=${raw.topic || raw.topic}, eventType=${raw.event_type || raw.eventType}`)
+          log(
+            STAGE.SNAPSHOT,
+            `   Received: topic=${raw.topic || raw.topic}, eventType=${raw.event_type || raw.eventType}`
+          )
 
           // Accept either snake_case (from daemon) or camelCase (normalized)
           if (raw.topic === 'clipboard' || raw.topic === 'clipboard') {
@@ -538,7 +558,10 @@ async function runLiveMode() {
       })
     })
 
-    log(STAGE.SNAPSHOT, `✅ Snapshot received (payload keys: ${snapshotPayload ? Object.keys(snapshotPayload).join(', ') : 'N/A'})`)
+    log(
+      STAGE.SNAPSHOT,
+      `✅ Snapshot received (payload keys: ${snapshotPayload ? Object.keys(snapshotPayload).join(', ') : 'N/A'})`
+    )
   } catch (err) {
     logError(STAGE.SNAPSHOT, err)
     if (ws) ws.close()
@@ -615,7 +638,9 @@ async function main() {
   } else {
     console.error('Usage:')
     console.error('  node scripts/verify-direct-daemon-ws.mjs --self-test')
-    console.error('  DAEMON_BASE_URL=http://127.0.0.1:<port> DAEMON_TOKEN=<bearer> node scripts/verify-direct-daemon-ws.mjs --live')
+    console.error(
+      '  DAEMON_BASE_URL=http://127.0.0.1:<port> DAEMON_TOKEN=<bearer> node scripts/verify-direct-daemon-ws.mjs --live'
+    )
     process.exit(1)
   }
 }

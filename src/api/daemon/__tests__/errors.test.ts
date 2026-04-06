@@ -1,9 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import {
-  DaemonApiError,
-  DaemonErrorCode,
-  mapStatusToErrorCode,
-} from '@/api/daemon/errors'
+import { DaemonApiError, DaemonErrorCode, mapStatusToErrorCode } from '@/api/daemon/errors'
 
 describe('DaemonErrorCode', () => {
   it('contains all expected error codes', () => {

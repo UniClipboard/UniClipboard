@@ -61,12 +61,20 @@ const REDACTED_FIELDS: &[&str] = &[
     "search_query",
 ];
 
+fn canonicalize_key(input: &str) -> String {
+    input
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric())
+        .map(|c| c.to_ascii_lowercase())
+        .collect()
+}
+
 /// Returns `true` if `key` matches any entry in the blocklist (case-insensitive).
 fn is_sensitive(key: &Key) -> bool {
-    let k = key.as_str();
+    let k = canonicalize_key(key.as_str());
     REDACTED_FIELDS
         .iter()
-        .any(|blocked| k.eq_ignore_ascii_case(blocked))
+        .any(|blocked| k == canonicalize_key(blocked))
 }
 
 /// Redact sensitive values in a slice of [`KeyValue`] attributes in-place.

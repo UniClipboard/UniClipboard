@@ -34,36 +34,8 @@ import {
 } from '@/store/slices/fileTransferSlice'
 import { formatFileSize } from '@/utils'
 
-/**
- * Size of each text chunk for content-visibility optimisation.
- * The browser skips layout for off-screen chunks, keeping large text smooth.
- */
-const TEXT_CHUNK_SIZE = 10_000
-
-/**
- * Renders large text in chunks, each with `content-visibility: auto` so the
- * browser skips layout for off-screen segments. Visually identical to a
- * single `<p>` but avoids the multi-second freeze on 500KB+ text.
- */
-const ChunkedText: React.FC<{ text: string; chunkSize: number }> = ({ text, chunkSize }) => {
-  const chunks = React.useMemo(() => {
-    const result: string[] = []
-    for (let i = 0; i < text.length; i += chunkSize) {
-      result.push(text.slice(i, i + chunkSize))
-    }
-    return result
-  }, [text, chunkSize])
-
-  return (
-    <div className="whitespace-pre-wrap font-mono text-sm leading-relaxed text-foreground/90 break-all overflow-hidden">
-      {chunks.map((chunk, i) => (
-        <span key={i} style={{ contentVisibility: 'auto', containIntrinsicSize: 'auto 500px' }}>
-          {chunk}
-        </span>
-      ))}
-    </div>
-  )
-}
+/** Threshold above which we switch to textarea-based rendering for performance. */
+const LARGE_TEXT_THRESHOLD = 50_000
 
 interface ClipboardPreviewProps {
   item: DisplayClipboardItem | null
@@ -160,8 +132,13 @@ const ClipboardPreview: React.FC<ClipboardPreviewProps> = ({ item }) => {
                 <Loader2 className="h-4 w-4 animate-spin" />
                 <span className="text-sm">{t('clipboard.item.loading')}</span>
               </div>
-            ) : displayText.length > TEXT_CHUNK_SIZE ? (
-              <ChunkedText text={displayText} chunkSize={TEXT_CHUNK_SIZE} />
+            ) : displayText.length > LARGE_TEXT_THRESHOLD ? (
+              <textarea
+                readOnly
+                value={displayText}
+                className="w-full min-h-64 resize-none border-none bg-transparent p-0 font-mono text-sm leading-relaxed text-foreground/90 focus:outline-none focus:ring-0"
+                style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}
+              />
             ) : (
               <p className="whitespace-pre-wrap font-mono text-sm leading-relaxed text-foreground/90 break-all overflow-hidden">
                 {displayText}

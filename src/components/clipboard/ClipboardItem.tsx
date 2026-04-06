@@ -7,7 +7,7 @@ import {
   Image as ImageIcon,
   Loader2,
 } from 'lucide-react'
-import React, { useMemo, useState, useEffect } from 'react'
+import React, { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   ClipboardTextItem,
@@ -23,35 +23,8 @@ import { toast } from '@/components/ui/toast'
 import { cn } from '@/lib/utils'
 import { formatFileSize } from '@/utils'
 
-/**
- * Size of each text chunk for content-visibility optimisation.
- * The browser skips layout for off-screen chunks, keeping large text smooth.
- */
-const TEXT_CHUNK_SIZE = 10_000
-
-/**
- * Renders large text in chunks with content-visibility: auto so the browser
- * skips layout for off-screen segments, avoiding freeze on 500KB+ text.
- */
-const ChunkedText: React.FC<{ text: string; chunkSize: number }> = ({ text, chunkSize }) => {
-  const chunks = useMemo(() => {
-    const result: string[] = []
-    for (let i = 0; i < text.length; i += chunkSize) {
-      result.push(text.slice(i, i + chunkSize))
-    }
-    return result
-  }, [text, chunkSize])
-
-  return (
-    <div className="whitespace-pre-wrap font-mono text-sm leading-relaxed text-foreground/90 wrap-break-word">
-      {chunks.map((chunk, i) => (
-        <span key={i} style={{ contentVisibility: 'auto', containIntrinsicSize: 'auto 500px' }}>
-          {chunk}
-        </span>
-      ))}
-    </div>
-  )
-}
+/** Threshold above which we switch to textarea-based rendering for performance. */
+const LARGE_TEXT_THRESHOLD = 50_000
 
 interface ClipboardItemProps {
   index: number
@@ -227,9 +200,16 @@ const ClipboardItem: React.FC<ClipboardItemProps> = ({
           )
         }
 
-        // When expanded with large text, use chunked rendering for performance
-        if (isExpanded && textToShow.length > TEXT_CHUNK_SIZE) {
-          return <ChunkedText text={textToShow} chunkSize={TEXT_CHUNK_SIZE} />
+        // When expanded with large text, use textarea for browser-native rendering optimization
+        if (isExpanded && textToShow.length > LARGE_TEXT_THRESHOLD) {
+          return (
+            <textarea
+              readOnly
+              value={textToShow}
+              className="w-full min-h-64 resize-none border-none bg-transparent p-0 font-mono text-sm leading-relaxed text-foreground/90 focus:outline-none focus:ring-0"
+              style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}
+            />
+          )
         }
 
         return (

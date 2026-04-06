@@ -37,8 +37,15 @@ fn build_runtime() -> Arc<uc_app::runtime::CoreRuntime> {
         .get_or_init(|| Mutex::new(()))
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
-    // Isolate this test binary's DB from other parallel test binaries.
-    std::env::set_var("UC_PROFILE", "test_pairing_ws");
+    // Give each test invocation its own DB to prevent intra-binary SQLite contention.
+    let profile = format!(
+        "test_pairing_ws_{}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("system time")
+            .as_nanos()
+    );
+    std::env::set_var("UC_PROFILE", &profile);
     Arc::new(uc_bootstrap::build_cli_runtime(None).unwrap())
 }
 

@@ -77,6 +77,18 @@ impl LogProfile {
         self.build_filter()
     }
 
+    /// Build the `EnvFilter` for the OTLP export layer.
+    ///
+    /// Always INFO-and-above regardless of profile. Debug/trace spans must
+    /// never leave the machine via OTLP telemetry.
+    pub fn otlp_filter(&self) -> EnvFilter {
+        let mut directives = vec!["info".to_string()];
+        for &filter in NOISE_FILTERS {
+            directives.push(filter.to_string());
+        }
+        EnvFilter::new(directives.join(","))
+    }
+
     /// Build the `EnvFilter` for the JSON file layer.
     ///
     /// Symmetric with `console_filter` per design decision, except for the

@@ -4,7 +4,7 @@ use opentelemetry_sdk::{propagation::TraceContextPropagator, trace::SdkTracerPro
 
 use crate::profile::LogProfile;
 
-use super::{config, resource};
+use super::{config, redact, resource};
 
 /// Guard that keeps the OTLP tracer provider alive.
 /// On drop, flushes pending spans and shuts down the provider.
@@ -69,7 +69,8 @@ pub(super) fn init_provider_and_guard(
     }
 
     config::prime_runtime_otlp_env_from_baked();
-    let exporter = build_span_exporter_from_env()?;
+    let raw_exporter = build_span_exporter_from_env()?;
+    let exporter = redact::RedactingExporter::new(raw_exporter);
     let resource = resource::build_resource(device_id);
 
     let provider = SdkTracerProvider::builder()

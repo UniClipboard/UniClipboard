@@ -18,6 +18,7 @@
 //! For composition with other layers, the caller can use `init_otlp_pipeline_generic<S>`.
 pub mod layer;
 pub mod propagator;
+pub mod redact;
 pub mod resource;
 
 mod config;

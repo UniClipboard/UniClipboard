@@ -26,5 +26,5 @@ where
     S: Subscriber + for<'a> LookupSpan<'a> + Send + Sync,
 {
     let tracer = provider.tracer("uc-observability");
-    OpenTelemetryLayer::new(tracer).with_filter(profile.json_filter())
+    OpenTelemetryLayer::new(tracer).with_filter(profile.otlp_filter())
 }

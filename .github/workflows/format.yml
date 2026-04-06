@@ -87,25 +87,31 @@ jobs:
           git commit -m "style: auto-format code for PR #$PR_NUMBER"
           git push origin "$FIX_BRANCH" --force
 
-          # Create PR targeting the original PR's head branch.
-          # If a PR for this fix branch already exists, gh pr create will exit 1 — that's fine.
-          cat > /tmp/format-fix-pr-body.md <<EOF
-          Auto-generated format fix for #$PR_NUMBER.
+          DIFF_STAT=$(git diff HEAD~1 --stat)
 
-          Please merge this PR first, then re-push to the original PR branch to pass the format check.
+          PR_BODY="Auto-generated format fix for #$PR_NUMBER.
+
+          Merge this PR first, then re-push the original branch to pass the format check.
 
           **Changes:**
           \`\`\`
-          $(git diff HEAD~1 --stat)
-          \`\`\`
-          EOF
+          $DIFF_STAT
+          \`\`\`"
 
-          gh pr create \
-            --title "style: auto-format for PR #$PR_NUMBER" \
-            --body-file /tmp/format-fix-pr-body.md \
-            --base "$PR_HEAD_REF" \
-            --head "$FIX_BRANCH" \
-            || echo "PR may already exist for this fix branch, skipping creation."
+          # Check if a PR already exists for this fix branch.
+          EXISTING_PR_URL=$(gh pr list --head "$FIX_BRANCH" --json url --jq '.[0].url' 2>/dev/null)
+
+          if [ -n "$EXISTING_PR_URL" ]; then
+            echo "::notice::Format fix PR already exists: $EXISTING_PR_URL"
+          else
+            NEW_PR_URL=$(gh pr create \
+              --title "style: auto-format for PR #$PR_NUMBER" \
+              --body "$PR_BODY" \
+              --base "$PR_HEAD_REF" \
+              --head "$FIX_BRANCH" 2>&1) && \
+            echo "::notice::Format fix PR created: $NEW_PR_URL" || \
+            echo "::warning::Could not auto-create PR (branch '$FIX_BRANCH' has been pushed). Please create a PR manually from '$FIX_BRANCH' → '$PR_HEAD_REF'. Error: $NEW_PR_URL"
+          fi
 
       # ---------- Fork PR: print diff for author to fix manually ----------
       - name: Show diff when auto-push is unavailable

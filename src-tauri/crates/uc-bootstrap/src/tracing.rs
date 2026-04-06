@@ -60,32 +60,18 @@ fn resolve_device_id_for_logging(config_dir: &Path) -> Option<String> {
 
 /// Read the `telemetry_enabled` setting from the persisted settings file.
 ///
-/// Falls back to `true` (the default) if the file doesn't exist, is
-/// malformed, or the field is missing (backward compat via `#[serde(default)]`).
+/// Uses the canonical `Settings` model for deserialization so that
+/// defaults, field names, and migration rules stay in one place.
+/// Falls back to `true` (the model default) if the file doesn't exist
+/// or is malformed.
 fn resolve_telemetry_enabled(data_dir: &Path) -> bool {
-    let settings_path = data_dir.join("settings.json");
-    let Ok(content) = std::fs::read_to_string(&settings_path) else {
+    let Ok(content) = std::fs::read_to_string(data_dir.join("settings.json")) else {
         return true;
     };
-    // Minimal extraction — only parse the fields we need.
-    #[derive(serde::Deserialize)]
-    struct GeneralPeek {
-        #[serde(default = "default_true")]
-        telemetry_enabled: bool,
-    }
-    #[derive(serde::Deserialize)]
-    struct SettingsPeek {
-        #[serde(default)]
-        general: Option<GeneralPeek>,
-    }
-    fn default_true() -> bool {
-        true
-    }
-    serde_json::from_str::<SettingsPeek>(&content)
-        .ok()
-        .and_then(|s| s.general)
-        .map(|g| g.telemetry_enabled)
-        .unwrap_or(true)
+    serde_json::from_str::<uc_core::settings::model::Settings>(&content)
+        .unwrap_or_default()
+        .general
+        .telemetry_enabled
 }
 
 /// Initialize the tracing subscriber with dual-output and optional Sentry.

@@ -2,15 +2,7 @@ import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { SettingGroup } from './SettingGroup'
 import { SettingRow } from './SettingRow'
-import {
-  Switch,
-  Input,
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui'
+import { Switch, Input, Badge } from '@/components/ui'
 import { useSetting } from '@/hooks/useSetting'
 
 const MB = 1024 * 1024
@@ -28,9 +20,6 @@ const SyncSection: React.FC = () => {
 
   // Local state for UI display - initialize from setting to avoid flash
   const [autoSync, setAutoSync] = useState(setting?.sync.autoSync ?? true)
-  const [syncFrequency, setSyncFrequency] = useState<string>(
-    setting?.sync.syncFrequency ?? 'realtime'
-  )
 
   // File sync local state
   const [fileSyncEnabled, setFileSyncEnabled] = useState(setting?.fileSync?.fileSyncEnabled ?? true)
@@ -50,7 +39,7 @@ const SyncSection: React.FC = () => {
   const [retentionHoursError, setRetentionHoursError] = useState<string | null>(null)
   const [fileAutoCleanup, setFileAutoCleanup] = useState(setting?.fileSync?.fileAutoCleanup ?? true)
 
-  // Sync frequency options
+  // Sync frequency options (for display in coming-soon label)
   const syncFrequencyOptions = [
     { value: 'realtime', label: t('settings.sections.sync.syncFrequency.realtime') },
     { value: '30s', label: t('settings.sections.sync.syncFrequency.30s') },
@@ -63,7 +52,6 @@ const SyncSection: React.FC = () => {
   useEffect(() => {
     if (setting) {
       setAutoSync(setting.sync.autoSync)
-      setSyncFrequency(setting.sync.syncFrequency)
 
       // File sync settings
       setFileSyncEnabled(setting.fileSync?.fileSyncEnabled ?? true)
@@ -79,12 +67,6 @@ const SyncSection: React.FC = () => {
   const handleAutoSyncChange = (checked: boolean) => {
     setAutoSync(checked)
     updateSyncSetting({ autoSync: checked })
-  }
-
-  // Handle sync frequency change
-  const handleSyncFrequencyChange = (value: string) => {
-    setSyncFrequency(value)
-    updateSyncSetting({ syncFrequency: value as 'realtime' | 'interval' })
   }
 
   // --- File sync handlers ---
@@ -241,18 +223,14 @@ const SyncSection: React.FC = () => {
           label={t('settings.sections.sync.syncFrequency.label')}
           description={t('settings.sections.sync.syncFrequency.description')}
         >
-          <Select value={syncFrequency} onValueChange={handleSyncFrequencyChange}>
-            <SelectTrigger className="w-52">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {syncFrequencyOptions.map(option => (
-                <SelectItem key={option.value} value={option.value}>
-                  {option.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-muted-foreground">
+              {syncFrequencyOptions.find(
+                o => o.value === (setting?.sync.syncFrequency ?? 'realtime')
+              )?.label ?? t('settings.sections.sync.syncFrequency.realtime')}
+            </span>
+            <Badge variant="secondary">{t('devices.settings.badges.comingSoon')}</Badge>
+          </div>
         </SettingRow>
       </SettingGroup>
 

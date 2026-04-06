@@ -2,27 +2,16 @@ import { AlertTriangle, Monitor, Plus, RefreshCw } from 'lucide-react'
 import React, { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate } from 'react-router-dom'
-import { toast } from 'sonner'
 import { getDeviceIcon, getIconColor } from './device-utils'
 import DeviceSettingsSheet from './DeviceSettingsSheet'
+import JoinExistingSpaceDialog from './JoinExistingSpaceDialog'
 import UnpairAlertDialog from './UnpairAlertDialog'
 import { unpairP2PDevice } from '@/api/daemon/pairing'
-import { startJoinSpace } from '@/api/daemon/setup'
 import { Alert, AlertDescription } from '@/components/ui/alert'
-import {
-  AlertDialog,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogMedia,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog'
 import { Button } from '@/components/ui/button'
 import { useSetting } from '@/hooks/useSetting'
 import { daemonWs } from '@/lib/daemon-ws'
 import { useAppDispatch, useAppSelector } from '@/store/hooks'
-import { useSetupRealtimeStore } from '@/store/setupRealtimeStore'
 import {
   fetchPairedDevices,
   clearPairedDevicesError,
@@ -35,7 +24,6 @@ const PairedDevicesPanel: React.FC = () => {
   const { setting } = useSetting()
   const navigate = useNavigate()
   const dispatch = useAppDispatch()
-  const { syncSetupStateFromCommand } = useSetupRealtimeStore()
   const { pairedDevices, pairedDevicesError } = useAppSelector(state => state.devices)
   const globalAutoSyncOff = setting?.sync.autoSync === false
   const globalFileSyncOff = setting?.fileSync?.fileSyncEnabled === false
@@ -45,7 +33,6 @@ const PairedDevicesPanel: React.FC = () => {
   const [unpairDialogOpen, setUnpairDialogOpen] = useState(false)
   const [unpairTargetId, setUnpairTargetId] = useState<string | null>(null)
   const [joinSpaceDialogOpen, setJoinSpaceDialogOpen] = useState(false)
-  const [startingJoinSpace, setStartingJoinSpace] = useState(false)
 
   useEffect(() => {
     dispatch(fetchPairedDevices())
@@ -103,70 +90,8 @@ const PairedDevicesPanel: React.FC = () => {
     dispatch(fetchPairedDevices())
   }
 
-  const handleStartJoinSpace = async () => {
-    try {
-      setStartingJoinSpace(true)
-      const nextState = await startJoinSpace()
-      syncSetupStateFromCommand(nextState)
-      setJoinSpaceDialogOpen(false)
-    } catch (error) {
-      console.error('Failed to start join space flow:', error)
-      toast.error(t('devices.joinSpaceDialog.errors.startFailed'))
-    } finally {
-      setStartingJoinSpace(false)
-    }
-  }
-
   const selectedDevice = pairedDevices.find(d => d.peerId === selectedDeviceId)
   const unpairTargetDevice = pairedDevices.find(d => d.peerId === unpairTargetId)
-  const joinSpaceWarningDialog = (
-    <AlertDialog
-      open={joinSpaceDialogOpen}
-      onOpenChange={open => {
-        if (!startingJoinSpace) {
-          setJoinSpaceDialogOpen(open)
-        }
-      }}
-    >
-      <AlertDialogContent>
-        <AlertDialogHeader>
-          <AlertDialogMedia className="bg-amber-500/10 text-amber-600 dark:text-amber-400">
-            <AlertTriangle className="h-5 w-5" />
-          </AlertDialogMedia>
-          <AlertDialogTitle>{t('devices.joinSpaceDialog.title')}</AlertDialogTitle>
-          <AlertDialogDescription asChild>
-            <div className="space-y-3 text-left">
-              <p>{t('devices.joinSpaceDialog.description')}</p>
-              <ul className="list-disc space-y-1 pl-5">
-                <li>{t('devices.joinSpaceDialog.points.notMerge')}</li>
-                <li>{t('devices.joinSpaceDialog.points.joinSelectedDevicesSpace')}</li>
-                <li>{t('devices.joinSpaceDialog.points.localEncryptedContentUnavailable')}</li>
-              </ul>
-              <p>{t('devices.joinSpaceDialog.backupHint')}</p>
-            </div>
-          </AlertDialogDescription>
-        </AlertDialogHeader>
-        <AlertDialogFooter>
-          <Button
-            variant="outline"
-            onClick={() => setJoinSpaceDialogOpen(false)}
-            disabled={startingJoinSpace}
-          >
-            {t('devices.joinSpaceDialog.actions.cancel')}
-          </Button>
-          <Button
-            variant="destructive"
-            onClick={() => void handleStartJoinSpace()}
-            disabled={startingJoinSpace}
-          >
-            {startingJoinSpace
-              ? t('devices.joinSpaceDialog.actions.starting')
-              : t('devices.joinSpaceDialog.actions.confirm')}
-          </Button>
-        </AlertDialogFooter>
-      </AlertDialogContent>
-    </AlertDialog>
-  )
 
   if (pairedDevicesError) {
     return (
@@ -210,18 +135,13 @@ const PairedDevicesPanel: React.FC = () => {
             <p className="mb-4 max-w-xs text-xs text-muted-foreground">
               {t('devices.list.empty.description')}
             </p>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setJoinSpaceDialogOpen(true)}
-              disabled={startingJoinSpace}
-            >
+            <Button variant="outline" size="sm" onClick={() => setJoinSpaceDialogOpen(true)}>
               <Plus className="h-3.5 w-3.5" />
               {t('devices.list.actions.joinAnotherEncryptedSpace')}
             </Button>
           </div>
         </div>
-        {joinSpaceWarningDialog}
+        <JoinExistingSpaceDialog open={joinSpaceDialogOpen} onOpenChange={setJoinSpaceDialogOpen} />
       </>
     )
   }
@@ -299,7 +219,6 @@ const PairedDevicesPanel: React.FC = () => {
           <button
             type="button"
             onClick={() => setJoinSpaceDialogOpen(true)}
-            disabled={startingJoinSpace}
             className="flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-border/60 p-5 pt-6 pb-4 text-center transition-colors hover:border-border hover:bg-muted/30 disabled:cursor-not-allowed disabled:opacity-60"
           >
             <div className="mb-3 h-14 w-14 rounded-2xl flex items-center justify-center bg-muted/50">
@@ -328,7 +247,7 @@ const PairedDevicesPanel: React.FC = () => {
         deviceName={unpairTargetDevice?.deviceName || t('devices.list.labels.unknownDevice')}
         onConfirm={handleUnpairConfirm}
       />
-      {joinSpaceWarningDialog}
+      <JoinExistingSpaceDialog open={joinSpaceDialogOpen} onOpenChange={setJoinSpaceDialogOpen} />
     </>
   )
 }

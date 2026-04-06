@@ -35,6 +35,8 @@ fn build_api_fixture() -> PairingApiFixture {
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
 
+    // Isolate this test binary's DB from other parallel test binaries.
+    std::env::set_var("UC_PROFILE", "test_pairing_api");
     let ctx = build_daemon_app().unwrap();
     let setup_ports = SetupAssemblyPorts::from_network(
         ctx.pairing_orchestrator.clone(),

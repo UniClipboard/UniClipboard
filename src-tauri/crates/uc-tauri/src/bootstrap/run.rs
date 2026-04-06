@@ -620,6 +620,7 @@ mod tests {
             .unwrap_or_else(|poisoned| poisoned.into_inner());
         let previous_profile = std::env::var("UC_PROFILE").ok();
         let previous_xdg_runtime_dir = std::env::var("XDG_RUNTIME_DIR").ok();
+        let previous_token_path = std::env::var("UNICLIPBOARD_DAEMON_TOKEN_PATH").ok();
 
         match profile {
             Some(profile) => std::env::set_var("UC_PROFILE", profile),
@@ -628,6 +629,16 @@ mod tests {
         match xdg_runtime_dir {
             Some(path) => std::env::set_var("XDG_RUNTIME_DIR", path),
             None => std::env::remove_var("XDG_RUNTIME_DIR"),
+        }
+        // Point UNICLIPBOARD_DAEMON_TOKEN_PATH directly at the fixture token file so
+        // resolve_token_path() doesn't fall back to the real app_data_root on the CI runner.
+        // Fixture filename convention: uniclipboard-daemon-{profile}.token
+        match (profile, xdg_runtime_dir) {
+            (Some(p), Some(dir)) => {
+                let token_path = dir.join(format!("uniclipboard-daemon-{p}.token"));
+                std::env::set_var("UNICLIPBOARD_DAEMON_TOKEN_PATH", token_path);
+            }
+            _ => std::env::remove_var("UNICLIPBOARD_DAEMON_TOKEN_PATH"),
         }
 
         let result = f();
@@ -639,6 +650,10 @@ mod tests {
         match previous_xdg_runtime_dir {
             Some(path) => std::env::set_var("XDG_RUNTIME_DIR", path),
             None => std::env::remove_var("XDG_RUNTIME_DIR"),
+        }
+        match previous_token_path {
+            Some(path) => std::env::set_var("UNICLIPBOARD_DAEMON_TOKEN_PATH", path),
+            None => std::env::remove_var("UNICLIPBOARD_DAEMON_TOKEN_PATH"),
         }
 
         result

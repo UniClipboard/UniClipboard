@@ -23,6 +23,9 @@ src-tauri/target
 .planning/
 .superset/
 
+# Markdown — not formatted by prettier per project policy
+**/*.md
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

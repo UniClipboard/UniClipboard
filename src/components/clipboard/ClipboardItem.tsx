@@ -9,7 +9,6 @@ import {
 } from 'lucide-react'
 import React, { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
-import VirtualizedText from './VirtualizedText'
 import {
   ClipboardTextItem,
   ClipboardImageItem,
@@ -201,9 +200,14 @@ const ClipboardItem: React.FC<ClipboardItemProps> = ({
           )
         }
 
-        // When expanded with large text, use virtualized rendering for performance
+        // When expanded with large text, limit lines to avoid layout freeze.
+        // Full content is viewable in the preview panel.
         if (isExpanded && textToShow.length > LARGE_TEXT_THRESHOLD) {
-          return <VirtualizedText text={textToShow} className="h-96" />
+          return (
+            <p className="whitespace-pre-wrap font-mono text-sm leading-relaxed text-foreground/90 wrap-break-word line-clamp-[20]">
+              {textToShow}
+            </p>
+          )
         }
 
         return (

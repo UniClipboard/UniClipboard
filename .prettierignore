@@ -12,10 +12,16 @@ dist-ssr
 src-tauri/target
 
 # Agent and tooling infrastructure (not project source)
+# Rule: any dot-directory that is NOT project source code goes here.
+# When adding a new tool/planning directory, add it below before merging.
+.agents/
 .bg-shell/
 .claude/
+.codex/
 .github/
 .gsd/
+.planning/
+.superset/
 
 # Editor directories and files
 .vscode/*

@@ -22,9 +22,7 @@ use uc_core::security::state::EncryptionState;
 use uc_daemon::api::dto::setup::SetupStateResponseDto;
 use uc_daemon::api::types::{PeerSnapshotDto, SetupStateResponse};
 // Re-export for integration tests (same crate)
-pub(crate) use uc_daemon_client::setup::{
-    format_peer_id_suffix, parse_setup_state, ParsedSetupState, SetupHint, SetupVariant,
-};
+pub(crate) use uc_daemon_client::setup::{format_peer_id_suffix, parse_setup_state, SetupVariant};
 use uc_daemon_client::{DaemonClientContext, DaemonPairingClient, DaemonSetupClient};
 
 use uc_cli_macros::autostop;

@@ -9,7 +9,7 @@ use chrono::{DateTime, Duration, Utc};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::{Mutex, RwLock};
-use tracing::{info_span, Instrument};
+use tracing::{debug_span, Instrument};
 
 use uc_core::network::pairing_state_machine::{
     PairingEvent, PairingPolicy, PairingRole, PairingStateMachine, SessionId, TimeoutKind,
@@ -185,7 +185,7 @@ impl PairingSessionManager {
 
     /// Cleanup expired sessions.
     pub(crate) async fn cleanup_expired_sessions(&self) {
-        let span = info_span!("pairing.cleanup_expired_sessions");
+        let span = debug_span!("pairing.cleanup_expired_sessions");
         async {
             let mut sessions = self.sessions.write().await;
             let now = Utc::now();
@@ -212,6 +212,7 @@ impl PairingSessionManager {
             drop(sessions);
 
             if !expired_ids.is_empty() {
+                tracing::info!(count = expired_ids.len(), "Cleaned up expired pairing sessions");
                 let mut peers = self.session_peers.write().await;
                 for session_id in &expired_ids {
                     peers.remove(session_id);

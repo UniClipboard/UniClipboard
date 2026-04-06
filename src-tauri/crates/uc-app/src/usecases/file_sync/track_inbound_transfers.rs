@@ -6,7 +6,7 @@
 use std::sync::Arc;
 
 use anyhow::Result;
-use tracing::{info, info_span, warn, Instrument};
+use tracing::{debug_span, info, info_span, warn, Instrument};
 use uc_core::ports::file_transfer_repository::{
     EntryTransferSummary, ExpiredInflightTransfer, FileTransferRepositoryPort,
     PendingInboundTransfer,
@@ -105,7 +105,7 @@ impl TrackInboundTransfersUseCase {
 
         self.repo
             .list_expired_inflight(pending_cutoff, transferring_cutoff)
-            .instrument(info_span!("track_inbound.list_expired_inflight"))
+            .instrument(debug_span!("track_inbound.list_expired_inflight"))
             .await
     }
 

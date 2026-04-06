@@ -161,11 +161,11 @@ The `UC_LOG_PROFILE` environment variable selects a logging profile that control
 
 ### Available Profiles
 
-| Profile           | Base Level | Console Behavior           | JSON Behavior             | OTLP Behavior           | Special Overrides                                                                                         |
-| ----------------- | ---------- | -------------------------- | ------------------------- | ----------------------- | --------------------------------------------------------------------------------------------------------- |
-| `dev`             | `debug`    | Pretty format, ANSI colors | Flat JSON, daily rotating | Enabled (if env set)    | `uc_platform=debug`, `uc_infra=debug`                                                                     |
-| `prod`            | `info`     | Pretty format, ANSI colors | Flat JSON, daily rotating | **Disabled** (always)   | (none)                                                                                                    |
-| `debug_clipboard` | `info`     | Pretty format, ANSI colors | Flat JSON, daily rotating | Enabled (if env set)    | `uc_platform::adapters::clipboard=trace`, `uc_app::usecases::clipboard=debug`, `uc_core::clipboard=debug` |
+| Profile           | Base Level | Console Behavior           | JSON Behavior             | OTLP Behavior         | Special Overrides                                                                                         |
+| ----------------- | ---------- | -------------------------- | ------------------------- | --------------------- | --------------------------------------------------------------------------------------------------------- |
+| `dev`             | `debug`    | Pretty format, ANSI colors | Flat JSON, daily rotating | Enabled (if env set)  | `uc_platform=debug`, `uc_infra=debug`                                                                     |
+| `prod`            | `info`     | Pretty format, ANSI colors | Flat JSON, daily rotating | **Disabled** (always) | (none)                                                                                                    |
+| `debug_clipboard` | `info`     | Pretty format, ANSI colors | Flat JSON, daily rotating | Enabled (if env set)  | `uc_platform::adapters::clipboard=trace`, `uc_app::usecases::clipboard=debug`, `uc_core::clipboard=debug` |
 
 All profiles include common noise filters:
 
@@ -174,6 +174,14 @@ All profiles include common noise filters:
 - `tauri=warn`
 - `wry=off`
 - `ipc::request=off`
+- `hyper_util=info`
+- `hyper=info`
+- `quinn=info`
+- `quinn_proto=info`
+- `quinn_udp=info`
+- `Connection::poll=warn`
+- `Pool::poll=warn`
+- `Swarm::poll=warn`
 
 ### Usage Examples
 
@@ -288,15 +296,15 @@ When `debug_assertions` is false (release builds):
 
 ### Environment Variables
 
-| Variable                        | Purpose                                                                          | Default            |
-| ------------------------------- | -------------------------------------------------------------------------------- | ------------------ |
-| `UC_LOG_PROFILE`                | Select logging profile (`dev`, `prod`, `debug_clipboard`)                       | Build-type default |
-| `RUST_LOG`                      | Override profile filters (standard tracing env)                                  | Not set            |
-| `SENTRY_DSN`                    | Enable Sentry error reporting                                                     | Not set (disabled) |
-| `OTEL_EXPORTER_OTLP_ENDPOINT`   | OTLP base URL for traces+logs export (e.g. `http://localhost:5341/ingest/otlp`) | Not set (disabled) |
-| `OTEL_EXPORTER_OTLP_HEADERS`    | Optional headers (e.g. `X-Seq-ApiKey=your-key`)                                  | Not set            |
-| `OTEL_SERVICE_NAME`             | Override service name in resource attributes                                      | `uniclipboard-desktop` |
-| `OTEL_RESOURCE_ATTRIBUTES`      | Additional OTel resource attributes (key=value,key2=value2)                      | Not set            |
+| Variable                      | Purpose                                                                         | Default                |
+| ----------------------------- | ------------------------------------------------------------------------------- | ---------------------- |
+| `UC_LOG_PROFILE`              | Select logging profile (`dev`, `prod`, `debug_clipboard`)                       | Build-type default     |
+| `RUST_LOG`                    | Override profile filters (standard tracing env)                                 | Not set                |
+| `SENTRY_DSN`                  | Enable Sentry error reporting                                                   | Not set (disabled)     |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | OTLP base URL for traces+logs export (e.g. `http://localhost:5341/ingest/otlp`) | Not set (disabled)     |
+| `OTEL_EXPORTER_OTLP_HEADERS`  | Optional headers (e.g. `X-Seq-ApiKey=your-key`)                                 | Not set                |
+| `OTEL_SERVICE_NAME`           | Override service name in resource attributes                                    | `uniclipboard-desktop` |
+| `OTEL_RESOURCE_ATTRIBUTES`    | Additional OTel resource attributes (key=value,key2=value2)                     | Not set                |
 
 **Note:** `UC_SEQ_URL` (removed in Phase 87) is no longer consulted. If `UC_SEQ_URL` is still set in your environment, the application logs a `WARN` on startup pointing you to `OTEL_EXPORTER_OTLP_ENDPOINT`. Set `OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:5341/ingest/otlp` instead.
 
@@ -461,32 +469,32 @@ match risky_operation().await {
 
 ### Layer Prefixes
 
-| Prefix        | Usage                        | Examples                            |
-| ------------- | ---------------------------- | ----------------------------------- |
-| `clipboard.`  | Clipboard pipeline spans     | `clipboard.flow`, `clipboard.normalize`, `clipboard.outbound_send` |
-| `command.`    | Tauri command handlers       | `command.clipboard.get_entries`     |
-| `usecase.`    | UseCase business logic       | `usecase.capture_clipboard.execute` |
-| `infra.`      | Infrastructure (DB, storage) | `infra.sqlite.insert_blob`          |
-| `platform.`   | Platform adapters            | `platform.macos.read_clipboard`     |
+| Prefix       | Usage                        | Examples                                                           |
+| ------------ | ---------------------------- | ------------------------------------------------------------------ |
+| `clipboard.` | Clipboard pipeline spans     | `clipboard.flow`, `clipboard.normalize`, `clipboard.outbound_send` |
+| `command.`   | Tauri command handlers       | `command.clipboard.get_entries`                                    |
+| `usecase.`   | UseCase business logic       | `usecase.capture_clipboard.execute`                                |
+| `infra.`     | Infrastructure (DB, storage) | `infra.sqlite.insert_blob`                                         |
+| `platform.`  | Platform adapters            | `platform.macos.read_clipboard`                                    |
 
 ### Clipboard Pipeline Span Names
 
 All clipboard pipeline stages use dotted OTel semconv form:
 
-| Span Name                          | Stage Description                              |
-| ---------------------------------- | ---------------------------------------------- |
-| `clipboard.flow`                   | Root span — entire clipboard operation         |
-| `clipboard.detect`                 | Clipboard change detection                     |
-| `clipboard.normalize`              | Content normalization                          |
-| `clipboard.persist_event`          | Persist clipboard event to storage             |
-| `clipboard.cache_representations`  | Build and cache content representations        |
-| `clipboard.select_policy`          | Evaluate sync policy for this operation        |
-| `clipboard.persist_entry`          | Persist final clipboard entry                  |
-| `clipboard.spool_blobs`            | Queue blobs for outbound transfer              |
-| `clipboard.outbound_prepare`       | Prepare outbound sync message                  |
-| `clipboard.outbound_send`          | Send to peer devices                           |
-| `clipboard.inbound_decode`         | Decode inbound clipboard message               |
-| `clipboard.inbound_apply`          | Apply inbound content to local clipboard       |
+| Span Name                         | Stage Description                        |
+| --------------------------------- | ---------------------------------------- |
+| `clipboard.flow`                  | Root span — entire clipboard operation   |
+| `clipboard.detect`                | Clipboard change detection               |
+| `clipboard.normalize`             | Content normalization                    |
+| `clipboard.persist_event`         | Persist clipboard event to storage       |
+| `clipboard.cache_representations` | Build and cache content representations  |
+| `clipboard.select_policy`         | Evaluate sync policy for this operation  |
+| `clipboard.persist_entry`         | Persist final clipboard entry            |
+| `clipboard.spool_blobs`           | Queue blobs for outbound transfer        |
+| `clipboard.outbound_prepare`      | Prepare outbound sync message            |
+| `clipboard.outbound_send`         | Send to peer devices                     |
+| `clipboard.inbound_decode`        | Decode inbound clipboard message         |
+| `clipboard.inbound_apply`         | Apply inbound content to local clipboard |
 
 ### Field Naming
 
@@ -791,12 +799,12 @@ Spans will begin exporting to Seq immediately. Open [http://localhost:5341](http
 
 ### Configuration
 
-| Variable                         | Purpose                                        | Required | Default               |
-| -------------------------------- | ---------------------------------------------- | -------- | --------------------- |
-| `OTEL_EXPORTER_OTLP_ENDPOINT`    | OTLP base URL (see critical note below)        | Yes      | Not set (OTLP off)    |
-| `OTEL_EXPORTER_OTLP_HEADERS`     | Optional headers, e.g. `X-Seq-ApiKey=...`      | No       | Not needed            |
-| `OTEL_SERVICE_NAME`              | Override `service.name` resource attribute     | No       | `uniclipboard-desktop` |
-| `OTEL_RESOURCE_ATTRIBUTES`       | Additional resource attributes (k=v,k2=v2)    | No       | Not set               |
+| Variable                      | Purpose                                    | Required | Default                |
+| ----------------------------- | ------------------------------------------ | -------- | ---------------------- |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | OTLP base URL (see critical note below)    | Yes      | Not set (OTLP off)     |
+| `OTEL_EXPORTER_OTLP_HEADERS`  | Optional headers, e.g. `X-Seq-ApiKey=...`  | No       | Not needed             |
+| `OTEL_SERVICE_NAME`           | Override `service.name` resource attribute | No       | `uniclipboard-desktop` |
+| `OTEL_RESOURCE_ATTRIBUTES`    | Additional resource attributes (k=v,k2=v2) | No       | Not set                |
 
 **CRITICAL — Base URL vs. full path (Pitfall #7):**
 
@@ -815,13 +823,13 @@ Setting it to `http://localhost:5341/ingest/otlp/v1/traces` will cause the SDK t
 
 Every span and log exported via OTLP includes the following resource attributes:
 
-| Attribute                      | Value                                           |
-| ------------------------------ | ----------------------------------------------- |
-| `service.name`                 | `uniclipboard-desktop` (or `OTEL_SERVICE_NAME`) |
-| `service.version`              | Crate version from `CARGO_PKG_VERSION`          |
-| `service.instance.id`          | Device ID (`device_id` from global context)     |
-| `deployment.environment.name`  | `development` (dev build) or `production`       |
-| `os.type`                      | `linux`, `macos`, `windows`                     |
+| Attribute                     | Value                                           |
+| ----------------------------- | ----------------------------------------------- |
+| `service.name`                | `uniclipboard-desktop` (or `OTEL_SERVICE_NAME`) |
+| `service.version`             | Crate version from `CARGO_PKG_VERSION`          |
+| `service.instance.id`         | Device ID (`device_id` from global context)     |
+| `deployment.environment.name` | `development` (dev build) or `production`       |
+| `os.type`                     | `linux`, `macos`, `windows`                     |
 
 ### Querying Traces in Seq
 
@@ -859,14 +867,14 @@ Ready-to-import Seq signal files are available in `docs/seq/signals/`. See the [
 
 Spans exported via OTLP carry the following key attributes:
 
-| OTel Field         | Description                                              |
-| ------------------ | -------------------------------------------------------- |
-| `TraceId`          | W3C trace identifier — same across all spans in a flow  |
-| `SpanId`           | Unique span identifier                                   |
-| `ParentSpanId`     | Links child spans to their parent (e.g. stage → flow)   |
-| `SpanName`         | Dotted span name (e.g. `clipboard.normalize`)            |
-| `service.name`     | Resource attribute: `uniclipboard-desktop`               |
-| `service.instance.id` | Resource attribute: device identifier               |
+| OTel Field            | Description                                            |
+| --------------------- | ------------------------------------------------------ |
+| `TraceId`             | W3C trace identifier — same across all spans in a flow |
+| `SpanId`              | Unique span identifier                                 |
+| `ParentSpanId`        | Links child spans to their parent (e.g. stage → flow)  |
+| `SpanName`            | Dotted span name (e.g. `clipboard.normalize`)          |
+| `service.name`        | Resource attribute: `uniclipboard-desktop`             |
+| `service.instance.id` | Resource attribute: device identifier                  |
 
 ### Architecture
 
@@ -983,10 +991,10 @@ Then click any root span to open the full trace view.
 
 Pre-configured Seq signal files are provided for common observability patterns. Files are located in `docs/seq/signals/` and can be imported into Seq as saved searches.
 
-| Signal File              | Purpose                                  | Key Filter                       |
-| ------------------------ | ---------------------------------------- | -------------------------------- |
-| `flow-timeline.json`     | View all stages of one clipboard trace   | `SpanName like 'clipboard.%'`    |
-| `cross-device-flow.json` | View root flows, click to drill into tree | `SpanName = 'clipboard.flow'`   |
+| Signal File              | Purpose                                   | Key Filter                    |
+| ------------------------ | ----------------------------------------- | ----------------------------- |
+| `flow-timeline.json`     | View all stages of one clipboard trace    | `SpanName like 'clipboard.%'` |
+| `cross-device-flow.json` | View root flows, click to drill into tree | `SpanName = 'clipboard.flow'` |
 
 **Usage:**
 

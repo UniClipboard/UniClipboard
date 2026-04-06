@@ -211,6 +211,9 @@ pub fn show(app: &tauri::AppHandle) {
     }
 
     if let Some(window) = app.get_webview_window(PANEL_LABEL) {
+        #[cfg(target_os = "windows")]
+        windows::remember_previous_foreground(&window);
+
         if let Err(e) = window.set_size(tauri::LogicalSize::new(PANEL_WIDTH, PANEL_HEIGHT)) {
             warn!(error = %e, "Failed to reset quick panel size");
         }
@@ -263,6 +266,11 @@ pub fn dismiss(app: &tauri::AppHandle) {
     if let Some(window) = app.get_webview_window(PANEL_LABEL) {
         let _ = window.hide();
     }
+
+    #[cfg(target_os = "windows")]
+    if let Err(error) = windows::restore_previous_foreground() {
+        debug!(%error, "Quick panel dismiss could not restore previous foreground window");
+    }
 }
 
 /// Expand or collapse the quick panel width for inline preview.
@@ -288,18 +296,29 @@ pub fn set_preview_expanded(app: &tauri::AppHandle, expanded: bool) {
 ///
 /// Returns an error on platforms where simulated paste is not yet implemented.
 pub fn paste(app: &tauri::AppHandle) -> Result<(), String> {
-    dismiss(app);
-
     #[cfg(target_os = "macos")]
     {
+        dismiss(app);
         // Small delay for the panel to fully hide before simulating keystrokes
         std::thread::sleep(std::time::Duration::from_millis(50));
         macos::simulate_paste()?;
         Ok(())
     }
 
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(target_os = "windows")]
     {
+        if let Some(window) = app.get_webview_window(PANEL_LABEL) {
+            let _ = window.hide();
+        }
+
+        windows::restore_previous_foreground()?;
+        windows::simulate_paste()?;
+        Ok(())
+    }
+
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    {
+        dismiss(app);
         Err("Paste to previous app is not yet supported on this platform".into())
     }
 }

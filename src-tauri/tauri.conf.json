@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config",
   "productName": "UniClipboard",
-  "version": "0.4.0-alpha.3",
+  "version": "0.4.0-alpha.4",
   "identifier": "app.uniclipboard.desktop",
   "build": {
     "beforeDevCommand": "bun run dev:sweep && bun run dev",
@@ -25,7 +25,9 @@
         "visible": false,
         "devtools": true,
         "windowEffects": {
-          "effects": ["hudWindow"],
+          "effects": [
+            "hudWindow"
+          ],
           "state": "active",
           "radius": 16
         }
@@ -38,7 +40,9 @@
   "bundle": {
     "active": true,
     "targets": "all",
-    "externalBin": ["binaries/uniclipboard-daemon"],
+    "externalBin": [
+      "binaries/uniclipboard-daemon"
+    ],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",

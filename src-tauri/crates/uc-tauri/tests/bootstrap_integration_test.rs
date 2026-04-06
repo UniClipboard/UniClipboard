@@ -741,14 +741,6 @@ fn test_bootstrap_settings_repository_initialization() {
     });
 }
 
-/// Test 17: Integration test - error propagation in wire_dependencies
-/// 测试17：集成测试 - wire_dependencies 中的错误传播
-///
-/// This test verifies that:
-/// 此测试验证：
-/// - Errors during dependency creation are properly propagated / 依赖创建期间的错误正确传播
-/// - Error messages are context-rich / 错误消息包含丰富上下文
-/// - No panics occur during error handling / 错误处理期间无 panic
-// Test wire_dependencies_error_propagation removed: same reason as tests 10/11 above.
+// Test 17 (wire_dependencies_error_propagation) removed: same reason as tests 10/11 above.
 // The /nonexistent/... path has its directory component discarded by resolve_app_paths(),
 // so the DB filename ends up in the valid app_data_root_dir and wiring succeeds.

@@ -82,7 +82,7 @@ completed: 2026-04-02
 - **Found during:** Task 4 (updating useDeviceDiscovery.test.ts)
 - **Issue:** `toHaveBeenCalledWith(setDiscoveredPeers(...))` matched the 2nd dispatch `setDiscoveredPeers([])` (from `loadPeers`), not the 3rd functional updater dispatch containing peer data
 - **Fix:** Changed Test 4 to verify the 3rd dispatch call (`mockDispatch.mock.calls[2]`) has `type: 'devices/setDiscoveredPeers'` and `payload: function`
-- **Files modified:** src/hooks/__tests__/useDeviceDiscovery.test.ts
+- **Files modified:** src/hooks/**tests**/useDeviceDiscovery.test.ts
 - **Verification:** All 12 tests pass (33 total across both test files)
 - **Committed in:** 9fccfd29
 
@@ -91,7 +91,7 @@ completed: 2026-04-02
 - **Found during:** Task 4 (test execution)
 - **Issue:** `vi.mock('react-redux')` `useSelector` mock returned fixed state but Test 4 used `expect(result => result.current.scanPhase).toBe('scanning')` as selector function instead of direct value assertion
 - **Fix:** Changed to `expect(result.current.scanPhase).toBe('scanning')` and added missing `result` to destructuring
-- **Files modified:** src/hooks/__tests__/useDeviceDiscovery.test.ts
+- **Files modified:** src/hooks/**tests**/useDeviceDiscovery.test.ts
 - **Verification:** Tests pass
 - **Committed in:** 9fccfd29
 
@@ -100,7 +100,7 @@ completed: 2026-04-02
 - **Found during:** Task 4 (test execution)
 - **Issue:** Original test asserted `console.error` was called, but hook only calls `onErrorRef.current?.(error)` — no direct console.error in error path
 - **Fix:** Removed `consoleErrorSpy` assertion; test now only verifies `onError` callback is called
-- **Files modified:** src/hooks/__tests__/useDeviceDiscovery.test.ts
+- **Files modified:** src/hooks/**tests**/useDeviceDiscovery.test.ts
 - **Verification:** Tests pass
 - **Committed in:** 9fccfd29
 
@@ -109,7 +109,7 @@ completed: 2026-04-02
 - **Found during:** Task 4 (test execution)
 - **Issue:** `typeof call[0] === 'function'` for RTK dispatch payload always returned false because RTK Immer middleware evaluates functional payload before reducer runs
 - **Fix:** Changed Test 12 to verify `action.type === 'devices/setDiscoveredPeers'` and `typeof action.payload === 'function'` on the captured dispatch call
-- **Files modified:** src/hooks/__tests__/useDeviceDiscovery.test.ts
+- **Files modified:** src/hooks/**tests**/useDeviceDiscovery.test.ts
 - **Verification:** Tests pass
 - **Committed in:** 9fccfd29
 
@@ -146,5 +146,6 @@ All files exist, commits verified, 33/33 tests passing, key grep checks confirme
 - All 33 hook tests passing — safe foundation for next phase
 
 ---
+
 _Phase: 83-toast_
 _Completed: 2026-04-02_

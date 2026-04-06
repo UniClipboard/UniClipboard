@@ -1,6 +1,6 @@
 ---
 phase: 55-extract-daemon-lifecycle-and-setup-pairing-bridge-from-uc-tauri
-plan: "01"
+plan: '01'
 subsystem: infra
 tags: [rust, daemon, lifecycle, process-management, uc-daemon-client]
 
@@ -16,7 +16,10 @@ affects: [55-02, uc-tauri bootstrap migration]
 # Tech tracking
 tech-stack:
   added: [thiserror = "2.0" in uc-daemon-client]
-  patterns: [Inline dependency extraction — copy module to target crate and inline its private dependencies rather than creating cross-crate imports]
+  patterns:
+    [
+      Inline dependency extraction — copy module to target crate and inline its private dependencies rather than creating cross-crate imports,
+    ]
 
 key-files:
   created:
@@ -26,12 +29,12 @@ key-files:
     - src-tauri/crates/uc-daemon-client/Cargo.toml
 
 key-decisions:
-  - "thiserror added to uc-daemon-client since daemon_lifecycle uses #[derive(Error)] on DaemonExitCleanupError"
-  - "terminate_local_daemon_pid uses TerminateDaemonError (not DaemonBootstrapError) to avoid coupling uc-daemon-client to uc-tauri error types"
-  - "TerminateDaemonError is pub(crate) scoped — callers see DaemonExitCleanupError details via .to_string(), not the inner type"
+  - 'thiserror added to uc-daemon-client since daemon_lifecycle uses #[derive(Error)] on DaemonExitCleanupError'
+  - 'terminate_local_daemon_pid uses TerminateDaemonError (not DaemonBootstrapError) to avoid coupling uc-daemon-client to uc-tauri error types'
+  - 'TerminateDaemonError is pub(crate) scoped — callers see DaemonExitCleanupError details via .to_string(), not the inner type'
 
 patterns-established:
-  - "Module inline extraction: when migrating a module, inline its private dependencies (functions imported via super::) rather than adding cross-crate imports"
+  - 'Module inline extraction: when migrating a module, inline its private dependencies (functions imported via super::) rather than adding cross-crate imports'
 
 requirements-completed: []
 
@@ -112,5 +115,6 @@ Each task was committed atomically:
 - FOUND: task commit `9a28c03a`
 
 ---
-*Phase: 55-extract-daemon-lifecycle-and-setup-pairing-bridge-from-uc-tauri*
-*Completed: 2026-03-24*
+
+_Phase: 55-extract-daemon-lifecycle-and-setup-pairing-bridge-from-uc-tauri_
+_Completed: 2026-03-24_

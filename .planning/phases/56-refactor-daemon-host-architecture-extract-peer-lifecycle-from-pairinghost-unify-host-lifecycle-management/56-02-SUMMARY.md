@@ -21,9 +21,9 @@ affects:
 tech-stack:
   added: []
   patterns:
-    - "PeerMonitor as DaemonService: dedicated service for peer lifecycle WS emission, separate from pairing protocol"
-    - "Peer event loop extraction: same retry/backoff pattern (250ms initial, 30s max, exponential) replicated in dedicated module"
-    - "emit_ws_event helper duplicated per module rather than shared to keep modules self-contained"
+    - 'PeerMonitor as DaemonService: dedicated service for peer lifecycle WS emission, separate from pairing protocol'
+    - 'Peer event loop extraction: same retry/backoff pattern (250ms initial, 30s max, exponential) replicated in dedicated module'
+    - 'emit_ws_event helper duplicated per module rather than shared to keep modules self-contained'
 
 key-files:
   created:
@@ -34,9 +34,9 @@ key-files:
     - src-tauri/crates/uc-daemon/src/pairing/host.rs
 
 key-decisions:
-  - "PeerMonitor duplicates emit_ws_event and now_ms helpers rather than moving them to a shared module — keeping modules self-contained avoids circular dependencies and the helpers are tiny (~15 lines each)"
-  - "run_pairing_network_event_loop renamed to run_pairing_protocol_loop per D-08 — the new name reflects that it handles only the pairing protocol state machine, not all network events"
-  - "PeerMonitor unit tests use only the emit_ws_event helper and backoff function directly (no CoreRuntime mock needed) — this avoids heavy test setup while still verifying all observable contracts"
+  - 'PeerMonitor duplicates emit_ws_event and now_ms helpers rather than moving them to a shared module — keeping modules self-contained avoids circular dependencies and the helpers are tiny (~15 lines each)'
+  - 'run_pairing_network_event_loop renamed to run_pairing_protocol_loop per D-08 — the new name reflects that it handles only the pairing protocol state machine, not all network events'
+  - 'PeerMonitor unit tests use only the emit_ws_event helper and backoff function directly (no CoreRuntime mock needed) — this avoids heavy test setup while still verifying all observable contracts'
 
 requirements-completed:
   - PH56-01
@@ -109,5 +109,6 @@ None - plan executed exactly as written.
 - [x] `4356289c` commit exists (Task 2)
 
 ---
-*Phase: 56-refactor-daemon-host-architecture-extract-peer-lifecycle-from-pairinghost-unify-host-lifecycle-management*
-*Completed: 2026-03-24*
+
+_Phase: 56-refactor-daemon-host-architecture-extract-peer-lifecycle-from-pairinghost-unify-host-lifecycle-management_
+_Completed: 2026-03-24_

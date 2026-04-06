@@ -8,8 +8,13 @@ dependency_graph:
   provides: [ClipboardMessage.traceparent field, OTLP pipeline in bootstrap, legacy UC_SEQ_URL warn]
   affects: [uc-core/network/protocol, uc-bootstrap/tracing, uc-observability/otlp]
 tech_stack:
-  added: [OtlpConcreteLayer<S> type alias, init_otlp_provider two-phase API, build_otlp_layer public]
-  patterns: [two-phase OTLP init (provider separately from layer), serde(default+skip_serializing_if) for backward compat]
+  added:
+    [OtlpConcreteLayer<S> type alias, init_otlp_provider two-phase API, build_otlp_layer public]
+  patterns:
+    [
+      two-phase OTLP init (provider separately from layer),
+      serde(default+skip_serializing_if) for backward compat,
+    ]
 key_files:
   created: []
   modified:
@@ -25,15 +30,15 @@ key_files:
     - src-tauri/crates/uc-observability/src/otlp/layer.rs
     - src-tauri/crates/uc-observability/src/otlp/mod.rs
 decisions:
-  - "Two-phase OTLP init: init_otlp_provider() for async setup, build_otlp_layer<S>() for typed layer creation"
-  - "OtlpConcreteLayer<S> concrete type alias instead of impl Layer<S> to allow Rust type inference in .with() chain"
-  - "layer module made pub so bootstrap can access build_otlp_layer and OtlpConcreteLayer without going through init_otlp_pipeline"
-  - "UC_SEQ_URL warn emitted twice: once on stderr before subscriber init, once via tracing::warn! after"
-  - "Wave 0 scaffold test fixed: changed id from test-traceparent-skip to test-skip-field to avoid substring false positive"
-  - "Wave 0 scaffold test import fixed: use uc_core::network::protocol (clipboard module is private)"
+  - 'Two-phase OTLP init: init_otlp_provider() for async setup, build_otlp_layer<S>() for typed layer creation'
+  - 'OtlpConcreteLayer<S> concrete type alias instead of impl Layer<S> to allow Rust type inference in .with() chain'
+  - 'layer module made pub so bootstrap can access build_otlp_layer and OtlpConcreteLayer without going through init_otlp_pipeline'
+  - 'UC_SEQ_URL warn emitted twice: once on stderr before subscriber init, once via tracing::warn! after'
+  - 'Wave 0 scaffold test fixed: changed id from test-traceparent-skip to test-skip-field to avoid substring false positive'
+  - 'Wave 0 scaffold test import fixed: use uc_core::network::protocol (clipboard module is private)'
 metrics:
   duration_seconds: 1523
-  completed_date: "2026-04-04"
+  completed_date: '2026-04-04'
   tasks_completed: 2
   files_modified: 11
 ---
@@ -44,10 +49,10 @@ Extended `ClipboardMessage` with backward-compatible `traceparent: Option<String
 
 ## Tasks Completed
 
-| # | Task | Commit | Files |
-|---|------|--------|-------|
-| 1 | Add ClipboardMessage.traceparent + tombstone origin_flow_id | d474b7c3 | 8 files |
-| 2 | Wire OTLP pipeline into uc-bootstrap + emit UC_SEQ_URL warn | 21f4ed00 | 3 files |
+| #   | Task                                                        | Commit   | Files   |
+| --- | ----------------------------------------------------------- | -------- | ------- |
+| 1   | Add ClipboardMessage.traceparent + tombstone origin_flow_id | d474b7c3 | 8 files |
+| 2   | Wire OTLP pipeline into uc-bootstrap + emit UC_SEQ_URL warn | 21f4ed00 | 3 files |
 
 ## What Was Built
 
@@ -113,11 +118,13 @@ None — all data flows are properly wired. The `origin_flow_id` deprecated fiel
 ## Self-Check: PASSED
 
 Files exist:
+
 - [x] `src-tauri/crates/uc-core/src/network/protocol/clipboard.rs` (traceparent field added)
 - [x] `src-tauri/crates/uc-bootstrap/src/tracing.rs` (OTLP wired)
 - [x] `src-tauri/crates/uc-observability/src/otlp/layer.rs` (OtlpConcreteLayer exported)
 - [x] `src-tauri/crates/uc-observability/src/otlp/mod.rs` (init_otlp_provider added)
 
 Commits exist:
+
 - [x] d474b7c3 (Task 1)
 - [x] 21f4ed00 (Task 2)

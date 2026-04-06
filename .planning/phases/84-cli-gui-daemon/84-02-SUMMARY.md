@@ -10,10 +10,10 @@ Migrate CLI from sending raw bearer tokens directly to using the POST /auth/conn
 
 ## Key Decisions
 
-| Decision | Rationale | Outcome |
-| -------- | --------- | ------- |
-| GUI token caching preserved via `get_session_token` | Long-running GUI process benefits from cache; prevents redundant /auth/connect calls | Existing GUI tests pass unchanged |
-| CLI uses `exchange_cli_session_token` (no cache) | Each CLI command is a fresh process; per D-07 no JWT file caching | Fresh token on every invocation |
+| Decision                                                    | Rationale                                                                                                | Outcome                                  |
+| ----------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- | ---------------------------------------- |
+| GUI token caching preserved via `get_session_token`         | Long-running GUI process benefits from cache; prevents redundant /auth/connect calls                     | Existing GUI tests pass unchanged        |
+| CLI uses `exchange_cli_session_token` (no cache)            | Each CLI command is a fresh process; per D-07 no JWT file caching                                        | Fresh token on every invocation          |
 | `authorized_daemon_request_with_type` routes by client_type | GUI gets cached tokens via `get_session_token`; CLI/others get fresh tokens via `exchange_session_token` | Unified API, correct per-client behavior |
 
 ## Tasks Executed
@@ -25,6 +25,7 @@ Migrate CLI from sending raw bearer tokens directly to using the POST /auth/conn
 **What was found:** The `authorized_daemon_request_with_type` function was calling `exchange_session_token` directly for ALL client types, bypassing the `SESSION_TOKEN_CACHE`. This broke the existing GUI integration tests (which pre-populate the cache and expect it to be used).
 
 **Fix:** Modified `authorized_daemon_request_with_type` to:
+
 - Route `"gui"` client type to `get_session_token` (which uses caching)
 - Route other types (e.g., `"cli"`) to `exchange_session_token` directly (no cache, fresh token)
 
@@ -37,6 +38,7 @@ let session_token = if client_type == "gui" {
 ```
 
 **Files modified:**
+
 - `src-tauri/crates/uc-daemon-client/src/http/mod.rs`
 
 **Commit:** [see below]
@@ -48,6 +50,7 @@ let session_token = if client_type == "gui" {
 **Status:** Already implemented (no changes needed)
 
 The CLI daemon client was already fully migrated in the previous plan execution:
+
 - `DaemonHttpClient` reads bearer token from `daemon.token` file
 - CLI PID captured via `std::process::id()` on construction
 - `exchange_cli_session_token` called via POST /auth/connect with `clientType: "cli"`
@@ -62,12 +65,14 @@ The CLI daemon client was already fully migrated in the previous plan execution:
 - `verify_setup_passphrase_tolerates_slow_success_response`: Same pattern as above
 
 **Test fixes applied:**
+
 - Changed `Self::read_full_request` to `read_full_request` (free function, not method) — fixed compilation error
 - Moved `std::sync::Arc` import into test module to eliminate unused import warning
 - Added `#[cfg(test)]` to `from_parts` and `resolve_base_url` (test-only helpers) to suppress dead_code warnings
 - Added `#[allow(dead_code)]` to `expires_in_secs` field in `ConnectResponse` (deserialized but not used in caller)
 
 **Files modified:**
+
 - `src-tauri/crates/uc-cli/src/daemon_client.rs`
 
 **Commit:** [see below]

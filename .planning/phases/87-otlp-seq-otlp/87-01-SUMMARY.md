@@ -94,9 +94,9 @@ completed: 2026-04-05
 - `src-tauri/crates/uc-observability/tests/otlp_pipeline.rs` — 5 wave0 tests for init_otlp_pipeline (REQ-87-01/04/14/15)
 - `src-tauri/crates/uc-observability/tests/propagation.rs` — 3 wave0 tests for build_resource + propagator (REQ-87-03/06)
 - `src-tauri/crates/uc-core/tests/clipboard_message_traceparent.rs` — 3 serde backward-compat tests for traceparent field (REQ-87-06)
-- `src-tauri/crates/uc-observability/Cargo.toml` — Added opentelemetry deps + __wave0_scaffold_87 feature
+- `src-tauri/crates/uc-observability/Cargo.toml` — Added opentelemetry deps + \_\_wave0_scaffold_87 feature
 - `src-tauri/crates/uc-observability/src/lib.rs` — Added `pub mod otlp` export
-- `src-tauri/crates/uc-core/Cargo.toml` — Added __wave0_scaffold_87_traceparent feature
+- `src-tauri/crates/uc-core/Cargo.toml` — Added \_\_wave0_scaffold_87_traceparent feature
 
 ## Decisions Made
 
@@ -140,12 +140,12 @@ completed: 2026-04-05
 
 All stubs in `src/otlp.rs` are intentional wave-0 placeholders:
 
-| File | Function | Reason |
-|---|---|---|
-| `src/otlp.rs` | `init_otlp_pipeline` | Returns `Ok(None)` — real pipeline in Plan 02 |
-| `src/otlp.rs` | `build_resource` | Returns empty resource — real semconv attrs in Plan 02 |
-| `src/otlp.rs::propagator` | `inject_current_context` | Returns `None` — real W3C inject in Plan 02 |
-| `src/otlp.rs::propagator` | `extract_remote_context` | Returns fresh context — real extraction in Plan 02 |
+| File                      | Function                 | Reason                                                 |
+| ------------------------- | ------------------------ | ------------------------------------------------------ |
+| `src/otlp.rs`             | `init_otlp_pipeline`     | Returns `Ok(None)` — real pipeline in Plan 02          |
+| `src/otlp.rs`             | `build_resource`         | Returns empty resource — real semconv attrs in Plan 02 |
+| `src/otlp.rs::propagator` | `inject_current_context` | Returns `None` — real W3C inject in Plan 02            |
+| `src/otlp.rs::propagator` | `extract_remote_context` | Returns fresh context — real extraction in Plan 02     |
 
 These stubs are intentional and tracked. Plans 02-03 are responsible for making the gated tests green.
 

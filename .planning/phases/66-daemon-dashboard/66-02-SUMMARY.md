@@ -21,8 +21,8 @@ affects:
 tech-stack:
   added: []
   patterns:
-    - "Two-flag bridge state monitor: has_been_ready + was_degraded prevents false reconnect on startup"
-    - "DaemonReconnected as ClipboardHostEvent variant routed via dedicated daemon://ws-reconnected channel"
+    - 'Two-flag bridge state monitor: has_been_ready + was_degraded prevents false reconnect on startup'
+    - 'DaemonReconnected as ClipboardHostEvent variant routed via dedicated daemon://ws-reconnected channel'
 
 key-files:
   created: []
@@ -33,14 +33,14 @@ key-files:
     - src/hooks/useClipboardEventStream.ts
 
 key-decisions:
-  - "bridge_state_monitor uses two boolean flags (has_been_ready, was_degraded) so startup path (Disconnected->Connecting->Subscribing->Ready) does not emit reconnect even if it briefly passes through Degraded"
-  - "DaemonReconnected is ClipboardHostEvent variant (not HostEvent top-level) matching existing clipboard subsystem grouping"
-  - "daemon://ws-reconnected is a dedicated Tauri channel separate from clipboard://event to avoid conflating reconnect signal with clipboard content events"
-  - "Frontend reuses existing onRemoteInvalidateRef.current() callback — no new refetch logic needed"
+  - 'bridge_state_monitor uses two boolean flags (has_been_ready, was_degraded) so startup path (Disconnected->Connecting->Subscribing->Ready) does not emit reconnect even if it briefly passes through Degraded'
+  - 'DaemonReconnected is ClipboardHostEvent variant (not HostEvent top-level) matching existing clipboard subsystem grouping'
+  - 'daemon://ws-reconnected is a dedicated Tauri channel separate from clipboard://event to avoid conflating reconnect signal with clipboard content events'
+  - 'Frontend reuses existing onRemoteInvalidateRef.current() callback — no new refetch logic needed'
 
 patterns-established:
-  - "Bridge state monitor pattern: Arc<DaemonWsBridge>.state() polled inside CancellationToken select loop"
-  - "Daemon reconnect compensation: backend detects gap, frontend refetches on dedicated channel"
+  - 'Bridge state monitor pattern: Arc<DaemonWsBridge>.state() polled inside CancellationToken select loop'
+  - 'Daemon reconnect compensation: backend detects gap, frontend refetches on dedicated channel'
 
 requirements-completed:
   - PH66-04
@@ -108,8 +108,9 @@ None - no external service configuration required.
 - Phase 66 both plans (01 and 02) now complete — the full daemon dashboard clipboard refresh feature is delivered
 
 ---
-*Phase: 66-daemon-dashboard*
-*Completed: 2026-03-27*
+
+_Phase: 66-daemon-dashboard_
+_Completed: 2026-03-27_
 
 ## Self-Check: PASSED
 

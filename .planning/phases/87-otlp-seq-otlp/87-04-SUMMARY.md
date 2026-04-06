@@ -1,6 +1,6 @@
 ---
 phase: 87-otlp-seq-otlp
-plan: "04"
+plan: '04'
 subsystem: observability
 tags: [otlp, tracing, clipboard-pipeline, distributed-tracing, w3c-traceparent]
 dependency_graph:
@@ -9,7 +9,8 @@ dependency_graph:
   affects: [uc-app, uc-observability]
 tech_stack:
   added: [tracing-opentelemetry (uc-app direct dep for OpenTelemetrySpanExt)]
-  patterns: [W3C traceparent inject/extract, clipboard.flow root span, OTel semconv dotted stage names]
+  patterns:
+    [W3C traceparent inject/extract, clipboard.flow root span, OTel semconv dotted stage names]
 key_files:
   modified:
     - src-tauri/crates/uc-observability/src/stages.rs
@@ -18,14 +19,14 @@ key_files:
     - src-tauri/crates/uc-app/src/usecases/clipboard/sync_inbound.rs
     - src-tauri/crates/uc-app/Cargo.toml
 decisions:
-  - "87-04: Stage constants renamed to dotted OTel semconv form (clipboard.normalize, etc.) — test updated to verify prefix instead of exact lowercase match"
-  - "87-04: clipboard.flow root span wraps all pipeline stages in capture_clipboard; old usecase.capture_clipboard.execute span removed"
-  - "87-04: tracing-opentelemetry added as direct dep to uc-app (not just uc-observability) for OpenTelemetrySpanExt::set_parent in sync_inbound"
-  - "87-04: set_parent Result ignored with let _ = ... — error only occurs when span already closed, which cannot happen here"
-  - "87-04: MISSING_TP_PEERS uses StdMutex (not tokio Mutex) since warn_missing_traceparent_once is called outside async context"
+  - '87-04: Stage constants renamed to dotted OTel semconv form (clipboard.normalize, etc.) — test updated to verify prefix instead of exact lowercase match'
+  - '87-04: clipboard.flow root span wraps all pipeline stages in capture_clipboard; old usecase.capture_clipboard.execute span removed'
+  - '87-04: tracing-opentelemetry added as direct dep to uc-app (not just uc-observability) for OpenTelemetrySpanExt::set_parent in sync_inbound'
+  - '87-04: set_parent Result ignored with let _ = ... — error only occurs when span already closed, which cannot happen here'
+  - '87-04: MISSING_TP_PEERS uses StdMutex (not tokio Mutex) since warn_missing_traceparent_once is called outside async context'
 metrics:
   duration_seconds: 529
-  completed_date: "2026-04-04"
+  completed_date: '2026-04-04'
   tasks_completed: 2
   files_modified: 5
 ---
@@ -36,16 +37,17 @@ Single clipboard capture run now produces ONE OTel trace with `clipboard.flow` a
 
 ## Tasks Completed
 
-| # | Task | Commit | Key Files |
-|---|------|--------|-----------|
-| 1 | Dotted stage constants + clipboard.flow root span | 61a69dbf | stages.rs, capture_clipboard.rs |
-| 2 | Inject traceparent outbound + extract/fallback inbound | 6b8cac75 | sync_outbound.rs, sync_inbound.rs, Cargo.toml |
+| #   | Task                                                   | Commit   | Key Files                                     |
+| --- | ------------------------------------------------------ | -------- | --------------------------------------------- |
+| 1   | Dotted stage constants + clipboard.flow root span      | 61a69dbf | stages.rs, capture_clipboard.rs               |
+| 2   | Inject traceparent outbound + extract/fallback inbound | 6b8cac75 | sync_outbound.rs, sync_inbound.rs, Cargo.toml |
 
 ## What Was Built
 
 ### Task 1: Dotted Stage Constants + Root Span
 
 **stages.rs:** All 11 constants renamed to dotted OTel semconv form:
+
 - `"normalize"` → `"clipboard.normalize"`
 - `"persist_event"` → `"clipboard.persist_event"`
 - `"cache_representations"` → `"clipboard.cache_representations"`
@@ -59,6 +61,7 @@ Single clipboard capture run now produces ONE OTel trace with `clipboard.flow` a
 - `"detect"` → `"clipboard.detect"`
 
 **capture_clipboard.rs:** The old flat `usecase.capture_clipboard.execute` span (with `flow_id = field::Empty` and `stage =` fields) is replaced by:
+
 ```rust
 let root = tracing::info_span!("clipboard.flow", origin = "local_capture");
 async move {
@@ -74,6 +77,7 @@ All stage spans use the dotted constant directly as the span name: `info_span!(s
 ### Task 2: Traceparent Inject/Extract
 
 **sync_outbound.rs:**
+
 ```rust
 use uc_observability::otlp::propagator::inject_current_context;
 // ...
@@ -82,6 +86,7 @@ let clipboard_header = ClipboardMessage { traceparent, ... };
 ```
 
 **sync_inbound.rs:**
+
 ```rust
 let inbound_span = info_span!("clipboard.flow", origin = "inbound_sync", ...);
 let _ = inbound_span.set_parent(extract_remote_context(message.traceparent.as_deref()));
@@ -98,6 +103,7 @@ Rate-limited fallback: `static MISSING_TP_PEERS: OnceLock<StdMutex<HashSet<Strin
 ### Auto-fixed Issues
 
 **1. [Rule 2 - Missing Dep] Added tracing-opentelemetry to uc-app Cargo.toml**
+
 - **Found during:** Task 2
 - **Issue:** `OpenTelemetrySpanExt::set_parent` requires `tracing-opentelemetry` in scope; uc-app only had it transitively via uc-observability but not as a direct dep
 - **Fix:** Added `tracing-opentelemetry = "0.32"` to `uc-app/Cargo.toml` [dependencies]
@@ -105,6 +111,7 @@ Rate-limited fallback: `static MISSING_TP_PEERS: OnceLock<StdMutex<HashSet<Strin
 - **Commit:** 6b8cac75
 
 **2. [Rule 1 - Warning fix] Handled unused Result from set_parent**
+
 - **Found during:** Task 2, compile step
 - **Issue:** `inbound_span.set_parent(...)` returns `Result<(), SetParentError>` which must be used
 - **Fix:** Changed to `let _ = inbound_span.set_parent(...)` with explanatory comment

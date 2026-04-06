@@ -49,9 +49,7 @@ impl BlobStorePort for FilesystemBlobStore {
         tokio::io::AsyncWriteExt::flush(&mut file)
             .await
             .context("Failed to flush blob data")?;
-        file.sync_all()
-            .await
-            .context("Failed to sync blob file")?;
+        file.sync_all().await.context("Failed to sync blob file")?;
 
         // Raw filesystem store doesn't track compression
         Ok((path, None))

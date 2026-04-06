@@ -3,7 +3,7 @@ phase: 67-setup-filter
 plan: 02
 subsystem: daemon-bootstrap
 tags: [rust, daemon, encryption, deferred-startup, peer-discovery, conditional-services]
-one_liner: "Conditional PeerDiscoveryWorker registration: main.rs gates discovery on encryption state, wires SetupCompletionEmitter, defers worker via oneshot on first run"
+one_liner: 'Conditional PeerDiscoveryWorker registration: main.rs gates discovery on encryption state, wires SetupCompletionEmitter, defers worker via oneshot on first run'
 dependency_graph:
   requires:
     - 67-01 (SetupCompletionEmitter, DaemonApp::new_with_deferred, build_non_gui_runtime_with_emitter)
@@ -28,15 +28,15 @@ key_files:
     - src-tauri/crates/uc-daemon/src/app.rs
     - src-tauri/crates/uc-daemon/src/state.rs
 decisions:
-  - "recover_encryption_session made pub so main.rs can call it before DaemonApp construction"
-  - "Removed recover_encryption_session from DaemonApp::run() — Phase 67 moved it to main.rs for deferred-start logic"
-  - "PeerDiscoveryWorker built unconditionally (cheap) then conditionally included in services vec"
-  - "initial_statuses built AFTER encryption check so peer-discovery health reflects actual state"
-  - "RuntimeState::update_service_health() added (not update_worker_statuses) for single-entry mutation"
-  - "Deferred worker arm updates state health to Healthy after starting worker"
+  - 'recover_encryption_session made pub so main.rs can call it before DaemonApp construction'
+  - 'Removed recover_encryption_session from DaemonApp::run() — Phase 67 moved it to main.rs for deferred-start logic'
+  - 'PeerDiscoveryWorker built unconditionally (cheap) then conditionally included in services vec'
+  - 'initial_statuses built AFTER encryption check so peer-discovery health reflects actual state'
+  - 'RuntimeState::update_service_health() added (not update_worker_statuses) for single-entry mutation'
+  - 'Deferred worker arm updates state health to Healthy after starting worker'
 metrics:
-  duration: "8min"
-  completed_date: "2026-03-27"
+  duration: '8min'
+  completed_date: '2026-03-27'
   tasks_completed: 1
   files_modified: 3
 requirements:
@@ -56,9 +56,9 @@ peer discovery starts immediately.
 
 ## Tasks Completed
 
-| # | Task | Commit | Files |
-|---|------|--------|-------|
-| 1 | Wire conditional PeerDiscoveryWorker and SetupCompletionEmitter in main.rs and app.rs | 1a8a9b08 | src-tauri/crates/uc-daemon/src/main.rs, src-tauri/crates/uc-daemon/src/app.rs, src-tauri/crates/uc-daemon/src/state.rs |
+| #   | Task                                                                                  | Commit   | Files                                                                                                                  |
+| --- | ------------------------------------------------------------------------------------- | -------- | ---------------------------------------------------------------------------------------------------------------------- |
+| 1   | Wire conditional PeerDiscoveryWorker and SetupCompletionEmitter in main.rs and app.rs | 1a8a9b08 | src-tauri/crates/uc-daemon/src/main.rs, src-tauri/crates/uc-daemon/src/app.rs, src-tauri/crates/uc-daemon/src/state.rs |
 
 ## What Was Built
 
@@ -121,6 +121,7 @@ creation. Functionally identical.
 ## Known Stubs
 
 None — all connections are fully wired. The complete Phase 67 flow is:
+
 1. `SetupCompletionEmitter` created in `main.rs` and injected into `CoreRuntime`
 2. `AppLifecycleCoordinator::ensure_ready()` calls `emit_ready()` when setup flow completes
 3. `emit_ready()` fires the oneshot channel

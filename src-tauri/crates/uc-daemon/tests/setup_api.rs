@@ -1194,7 +1194,10 @@ async fn setup_reset_clears_active_setup_state() {
     assert_eq!(host_response.status(), StatusCode::OK);
 
     let before_reset = get_setup_state(&app, &token).await;
-    assert_eq!(before_reset["data"]["nextStepHint"], "create-space-passphrase");
+    assert_eq!(
+        before_reset["data"]["nextStepHint"],
+        "create-space-passphrase"
+    );
 
     let reset_response = reset_setup(&app, &token).await;
     assert_eq!(reset_response.status(), StatusCode::OK);
@@ -1203,7 +1206,10 @@ async fn setup_reset_clears_active_setup_state() {
     assert_eq!(reset_body["daemonKeptRunning"], Value::Bool(true));
 
     let after_reset = get_setup_state(&app, &token).await;
-    assert_eq!(after_reset["data"]["state"], Value::String("Welcome".to_string()));
+    assert_eq!(
+        after_reset["data"]["state"],
+        Value::String("Welcome".to_string())
+    );
     assert_eq!(after_reset["data"]["nextStepHint"], "idle");
 }
 
@@ -1319,7 +1325,10 @@ async fn setup_reset_allows_second_host_start_without_manual_cleanup() {
         .unwrap();
     assert_eq!(second_host.status(), StatusCode::OK);
     let second_body = json_body(second_host).await;
-    assert_eq!(second_body["data"]["nextStepHint"], "create-space-passphrase");
+    assert_eq!(
+        second_body["data"]["nextStepHint"],
+        "create-space-passphrase"
+    );
 }
 
 #[tokio::test]
@@ -1639,8 +1648,7 @@ async fn setup_host_completion_path_ends_in_completed_and_session_is_diagnosable
     // Step 4: wait for host-confirm-peer hint to appear
     let host_confirm_state = wait_for_setup_response(&fixture.app, &fixture.token, |response| {
         response["data"]["nextStepHint"] == Value::String("host-confirm-peer".to_string())
-            && response["data"]["sessionId"]
-                == Value::String("session-completion-test".to_string())
+            && response["data"]["sessionId"] == Value::String("session-completion-test".to_string())
     })
     .await;
 

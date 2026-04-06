@@ -12,13 +12,13 @@ This runbook verifies the end-to-end WebSocket path from the browser (React fron
 
 ### What This UAT Covers
 
-| Claim | How Verified |
-|-------|-------------|
-| Bearer token exchanges for JWT session token | `POST /auth/connect` succeeds with 200 |
-| Browser-compatible WS auth via `?auth=Session%20TOKEN` | WS opens with 101 status |
-| Snapshot events delivered over WS | Clipboard snapshot received within 10s |
-| Reconnect recovery | Disconnect + reconnect succeeds |
-| No raw tokens in diagnostics | Proof harness redacts all secrets |
+| Claim                                                  | How Verified                           |
+| ------------------------------------------------------ | -------------------------------------- |
+| Bearer token exchanges for JWT session token           | `POST /auth/connect` succeeds with 200 |
+| Browser-compatible WS auth via `?auth=Session%20TOKEN` | WS opens with 101 status               |
+| Snapshot events delivered over WS                      | Clipboard snapshot received within 10s |
+| Reconnect recovery                                     | Disconnect + reconnect succeeds        |
+| No raw tokens in diagnostics                           | Proof harness redacts all secrets      |
 
 ### What This UAT Does NOT Cover
 
@@ -73,6 +73,7 @@ node scripts/verify-direct-daemon-ws.mjs --self-test
 ```
 
 **Expected output:**
+
 ```
 ============================================================
 VERIFICATION: Direct Daemon WS — Self-Test Mode
@@ -118,6 +119,7 @@ node scripts/verify-direct-daemon-ws.mjs --live
 ```
 
 **Example with real values:**
+
 ```bash
 DAEMON_BASE_URL=http://127.0.0.1:42715 \
 DAEMON_TOKEN=3f4a9c2e1b7d... \
@@ -125,6 +127,7 @@ node scripts/verify-direct-daemon-ws.mjs --live
 ```
 
 **Expected output:**
+
 ```
 ============================================================
 VERIFICATION: Direct Daemon WS — Live Mode
@@ -179,11 +182,13 @@ Evidence:
 **Symptom**: Auth exchange fails with 401
 
 **Causes**:
+
 1. Bearer token is expired or invalid
 2. Daemon was restarted and the token file was regenerated
 3. Token file permissions are wrong (should be `chmod 600`)
 
 **Resolution**:
+
 ```bash
 # Regenerate token by restarting the daemon (the app does this automatically)
 # Check token file permissions
@@ -219,11 +224,13 @@ cat ~/Library/Application\ Support/uniclipboard/daemon.token
 **Symptom**: Client retries 10 times then gives up
 
 **Daemon log evidence**:
+
 ```
 [DaemonWsClient] gave up after 10 reconnect attempts
 ```
 
 **Likely causes**:
+
 1. Daemon crashed and didn't restart
 2. Rate limiting triggered (101st request in 60s)
 3. Network policy blocking loopback
@@ -249,10 +256,12 @@ When running the app in dev mode, open the browser console (F12 → Console) and
 ```
 
 **Good signs**:
+
 - `[DaemonWsClient] WebSocket open` — connection established
 - `[DaemonWsClient] Received: clipboard.new-content` — snapshot received
 
 **Bad signs**:
+
 - `[DaemonWsClient] gave up after 10 reconnect attempts` — reconnect exhausted
 - `[DaemonWsClient] failed to handle incoming message` — malformed envelope
 
@@ -301,11 +310,12 @@ When adding new WebSocket topics or event types:
 3. Update this runbook with the new topic name
 
 Example — adding `encryption` topic:
+
 ```javascript
 // In runLiveMode():
 const subscribeMsg = {
   action: 'subscribe',
-  topics: ['clipboard', 'encryption'],  // ← add here
+  topics: ['clipboard', 'encryption'], // ← add here
   nonce: Math.random().toString(36).slice(2, 10),
 }
 ```
@@ -323,13 +333,13 @@ Add to your CI pipeline:
     # Start daemon (or assume it's already running)
     bun run tauri dev &
     DAEMON_PID=$!
-    
+
     # Wait for daemon to be ready
     sleep 5
-    
+
     # Run proof harness
     node scripts/verify-direct-daemon-ws.mjs --self-test
-    
+
     # Cleanup
     kill $DAEMON_PID 2>/dev/null
 ```

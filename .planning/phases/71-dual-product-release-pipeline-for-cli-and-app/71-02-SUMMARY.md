@@ -1,6 +1,6 @@
 ---
 phase: 71-dual-product-release-pipeline-for-cli-and-app
-plan: "02"
+plan: '02'
 subsystem: ci-cd
 tags: [github-actions, cli, release, cross-platform]
 dependency_graph:
@@ -15,13 +15,13 @@ key_files:
     - .github/workflows/build-cli.yml
   modified: []
 decisions:
-  - "Mirror setup-matrix pattern from build.yml for consistent platform matrix across CLI and app builds"
-  - "Use cli-{target} artifact prefix to disambiguate from app artifacts in shared release workflows"
-  - "Node.js setup retained (no Bun needed) for package.json version read only"
-  - "Rust cache shared-key uses cli- prefix to prevent cache conflicts with app build"
+  - 'Mirror setup-matrix pattern from build.yml for consistent platform matrix across CLI and app builds'
+  - 'Use cli-{target} artifact prefix to disambiguate from app artifacts in shared release workflows'
+  - 'Node.js setup retained (no Bun needed) for package.json version read only'
+  - 'Rust cache shared-key uses cli- prefix to prevent cache conflicts with app build'
 metrics:
   duration: 52s
-  completed: "2026-03-28"
+  completed: '2026-03-28'
   tasks_completed: 1
   files_created: 1
   files_modified: 0
@@ -36,6 +36,7 @@ Reusable GitHub Actions workflow for cross-platform CLI binary compilation and p
 Created `.github/workflows/build-cli.yml` — a reusable workflow callable by `release.yml` and also triggerable manually via `workflow_dispatch`. The workflow mirrors the `setup-matrix` + build job pattern from `build.yml` but uses plain `cargo build` instead of Tauri action since the CLI has no frontend.
 
 **Key design choices:**
+
 - `workflow_call` trigger with `platform` and `branch` inputs for caller flexibility
 - `workflow_dispatch` with choice dropdown for standalone manual runs
 - Same 4-platform matrix: `aarch64-apple-darwin`, `x86_64-apple-darwin`, `x86_64-unknown-linux-gnu`, `x86_64-pc-windows-msvc`
@@ -46,9 +47,9 @@ Created `.github/workflows/build-cli.yml` — a reusable workflow callable by `r
 
 ## Tasks Completed
 
-| Task | Name | Commit | Files |
-|------|------|--------|-------|
-| 1 | Create build-cli.yml reusable workflow | a8ebd10c | .github/workflows/build-cli.yml |
+| Task | Name                                   | Commit   | Files                           |
+| ---- | -------------------------------------- | -------- | ------------------------------- |
+| 1    | Create build-cli.yml reusable workflow | a8ebd10c | .github/workflows/build-cli.yml |
 
 ## Verification
 

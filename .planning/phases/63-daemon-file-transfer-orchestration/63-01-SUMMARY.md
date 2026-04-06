@@ -1,6 +1,6 @@
 ---
 phase: 63-daemon-file-transfer-orchestration
-plan: "01"
+plan: '01'
 subsystem: daemon
 tags: [rust, file-transfer, websocket, daemon, orchestrator, event-emitter]
 
@@ -37,14 +37,14 @@ key-files:
     - src-tauri/crates/uc-daemon/src/main.rs
 
 key-decisions:
-  - "emit_ws_event refactored to accept topic parameter — previously hardcoded to SETUP topic, now generic for all topics"
-  - "Local TOPIC_SETUP/SETUP_STATE_CHANGED_EVENT/SETUP_SPACE_ACCESS_COMPLETED_EVENT constants replaced with shared ws_topic/ws_event imports from uc-core"
-  - "file_transfer_orchestrator field is Option<Arc<...>> to support None in test contexts without requiring real orchestrator"
-  - "message_origin_device_id captured before execute_with_outcome to avoid partial-move issues with async boundary"
+  - 'emit_ws_event refactored to accept topic parameter — previously hardcoded to SETUP topic, now generic for all topics'
+  - 'Local TOPIC_SETUP/SETUP_STATE_CHANGED_EVENT/SETUP_SPACE_ACCESS_COMPLETED_EVENT constants replaced with shared ws_topic/ws_event imports from uc-core'
+  - 'file_transfer_orchestrator field is Option<Arc<...>> to support None in test contexts without requiring real orchestrator'
+  - 'message_origin_device_id captured before execute_with_outcome to avoid partial-move issues with async boundary'
 
 patterns-established:
-  - "Multi-topic WS emission: emit_ws_event(event_type, topic, ...) allows any WS topic to be targeted"
-  - "Orchestrator injection pattern: worker accepts Option<Arc<Orchestrator>> — None disables the feature path cleanly"
+  - 'Multi-topic WS emission: emit_ws_event(event_type, topic, ...) allows any WS topic to be targeted'
+  - 'Orchestrator injection pattern: worker accepts Option<Arc<Orchestrator>> — None disables the feature path cleanly'
 
 requirements-completed:
   - PH63-01
@@ -111,5 +111,6 @@ Pre-existing test failures in `process_metadata` (pid file tests) and `pairing_a
 - `uc-daemon-client` can subscribe to `ws_topic::FILE_TRANSFER` for status updates
 
 ---
-*Phase: 63-daemon-file-transfer-orchestration*
-*Completed: 2026-03-26*
+
+_Phase: 63-daemon-file-transfer-orchestration_
+_Completed: 2026-03-26_

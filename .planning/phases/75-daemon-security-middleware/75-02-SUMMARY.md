@@ -1,6 +1,6 @@
 ---
 phase: 75-daemon-security-middleware
-plan: "02"
+plan: '02'
 subsystem: daemon-http-api
 tags: [security, jwt, middleware, axum, integration-tests]
 dependency_graph:
@@ -30,12 +30,12 @@ key_files:
     - src-tauri/crates/uc-daemon/tests/setup_api.rs
     - src-tauri/crates/uc-daemon/tests/websocket_api.rs
 decisions:
-  - "Option<ConnectInfo<SocketAddr>> used for IP rate limiting at /auth/connect so tests using tower::ServiceExt::oneshot compile and run without a real TCP connection; rate limiting only runs in production"
-  - "SecurityState::new_with_pid() and make_session_token_for_pid() kept without #[cfg(test)] because integration tests in tests/ directory are separate crates and cannot see cfg(test) items"
-  - "Pre-existing pairing_api test failures (5 tests) confirmed out-of-scope: map_daemon_pairing_error status code mapping bug existed before Phase 75"
+  - 'Option<ConnectInfo<SocketAddr>> used for IP rate limiting at /auth/connect so tests using tower::ServiceExt::oneshot compile and run without a real TCP connection; rate limiting only runs in production'
+  - 'SecurityState::new_with_pid() and make_session_token_for_pid() kept without #[cfg(test)] because integration tests in tests/ directory are separate crates and cannot see cfg(test) items'
+  - 'Pre-existing pairing_api test failures (5 tests) confirmed out-of-scope: map_daemon_pairing_error status code mapping bug existed before Phase 75'
 metrics:
-  duration: "~60min"
-  completed: "2026-03-30"
+  duration: '~60min'
+  completed: '2026-03-30'
   tasks: 3
   files_modified: 11
 ---
@@ -67,6 +67,7 @@ Route registered via `auth_route::AUTH_CONNECT` constant from uc-core.
 - `run_http_server()` uses `into_make_service_with_connect_info::<SocketAddr>()` enabling `ConnectInfo` extraction in production
 
 Two test fixture helpers added to `SecurityState` (not cfg(test) — needed by integration test binaries):
+
 - `new_with_pid(pid)`: synchronous pre-registration using `try_write()` at construction time
 - `make_session_token_for_pid(pid)`: generates a test JWT without HTTP round-trip
 
@@ -84,6 +85,7 @@ Two test fixture helpers added to `SecurityState` (not cfg(test) — needed by i
 All per-handler `is_authorized(&headers)` checks removed from `routes.rs` and `clipboard.rs`. The `headers: HeaderMap` parameters were also removed from all affected handlers.
 
 All integration test files updated from Bearer to Session tokens:
+
 - `tests/http_api.rs`: added `get_session_token()` helper, pre-registers test PID
 - `tests/pairing_api.rs`: `PairingApiFixture` stores JWT session token, `authed_request` uses `Session` prefix
 - `tests/pairing_ws.rs`: `PairingWsHarness` tracks both bearer (for WS) and session_token (for HTTP L2)
@@ -91,6 +93,7 @@ All integration test files updated from Bearer to Session tokens:
 - `tests/websocket_api.rs`: SecurityState wrapped in Arc correctly
 
 New integration test file `tests/security_middleware.rs` with 12 tests covering:
+
 - `/auth/connect` returns 200 with valid bearer, 401 with wrong/missing bearer
 - Protected routes return 401 without session token, 401 with raw bearer, 200 with valid session token
 - Protected routes return 401 with tampered JWT, 403 with unregistered PID
@@ -102,6 +105,7 @@ New integration test file `tests/security_middleware.rs` with 12 tests covering:
 ### Auto-fixed Issues
 
 **1. [Rule 1 - Bug] build_router return type was Router<DaemonApiState> instead of Router**
+
 - **Found during:** Task 2
 - **Issue:** `build_router` returned `Router<DaemonApiState>` which blocked calling `into_make_service_with_connect_info` (not available on parameterized Router)
 - **Fix:** Changed return type annotation to `Router` — the `.with_state(state)` call already finalizes the type
@@ -109,6 +113,7 @@ New integration test file `tests/security_middleware.rs` with 12 tests covering:
 - **Commit:** 6e00e715
 
 **2. [Rule 2 - Missing functionality] Test fixtures needed SecurityState test helpers**
+
 - **Found during:** Task 3 (compiling integration tests)
 - **Issue:** `DaemonApiState::new` now requires `Arc<SecurityState>` but all 4 integration test files used the old constructor and Bearer tokens
 - **Fix:** Added `new_with_pid()` and `make_session_token_for_pid()` to `SecurityState`; updated all test fixtures to JWT session token pattern
@@ -116,6 +121,7 @@ New integration test file `tests/security_middleware.rs` with 12 tests covering:
 - **Commit:** 6e00e715
 
 **3. [Rule 1 - Bug] ConnectInfo<SocketAddr> extractor fails in oneshot tests**
+
 - **Found during:** Task 1 implementation analysis
 - **Issue:** `ConnectInfo<SocketAddr>` as a required extractor panics when no real TCP connection exists (tower::ServiceExt::oneshot)
 - **Fix:** Changed to `Option<ConnectInfo<SocketAddr>>` — rate limiting skipped when None (test context only)
@@ -133,6 +139,7 @@ None. All endpoints implemented with real logic. The `encryption_ready = false` 
 ## Verification
 
 All tests passing (excluding 5 pre-existing pairing_api failures):
+
 - 112 unit tests (uc-daemon lib): PASS
 - tests/http_api.rs (5 tests): PASS
 - tests/security_middleware.rs (12 tests): PASS
@@ -143,10 +150,10 @@ All tests passing (excluding 5 pre-existing pairing_api failures):
 
 ## Commits
 
-| Task | Commit | Description |
-|------|--------|-------------|
-| 1 | 67ddeec9 | feat(75-02): implement POST /auth/connect endpoint for JWT session token exchange |
-| 2 | 6e00e715 | feat(75-02): merge SecurityState into DaemonApiState and add cleanup loop |
-| 3 | 37a0ec56 | feat(75-02): split L1/L2 routers, wire auth middleware, add security integration tests |
+| Task | Commit   | Description                                                                            |
+| ---- | -------- | -------------------------------------------------------------------------------------- |
+| 1    | 67ddeec9 | feat(75-02): implement POST /auth/connect endpoint for JWT session token exchange      |
+| 2    | 6e00e715 | feat(75-02): merge SecurityState into DaemonApiState and add cleanup loop              |
+| 3    | 37a0ec56 | feat(75-02): split L1/L2 routers, wire auth middleware, add security integration tests |
 
 ## Self-Check: PASSED

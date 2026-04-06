@@ -1,6 +1,6 @@
 ---
 phase: 62-daemon-inbound-clipboard-sync
-plan: "01"
+plan: '01'
 subsystem: daemon
 tags: [daemon, clipboard-sync, tauri, async-trait, tokio, broadcast-channel]
 
@@ -33,13 +33,13 @@ key-files:
     - src-tauri/crates/uc-daemon/src/main.rs
 
 key-decisions:
-  - "SyncInboundClipboardUseCase wrapped in Arc<...> (not Clone) since Clone not implemented — shared across subscribe/reconnect cycles"
-  - "TestInboundWorker mirrors worker event-emission logic without CoreRuntime dependency — unit tests can directly exercise the outcome-to-event mapping"
-  - "WS event emission guard: if let InboundApplyOutcome::Applied { entry_id: Some(ref entry_id), .. } — Passive mode/file transfers get entry_id, Full mode text does not"
+  - 'SyncInboundClipboardUseCase wrapped in Arc<...> (not Clone) since Clone not implemented — shared across subscribe/reconnect cycles'
+  - 'TestInboundWorker mirrors worker event-emission logic without CoreRuntime dependency — unit tests can directly exercise the outcome-to-event mapping'
+  - 'WS event emission guard: if let InboundApplyOutcome::Applied { entry_id: Some(ref entry_id), .. } — Passive mode/file transfers get entry_id, Full mode text does not'
 
 patterns-established:
-  - "DaemonService with outer tokio::select cancel-vs-subscribe + inner tokio::select cancel-vs-recv loop pattern"
-  - "Broadcast channel WS event emission with try_recv drain pattern for test verification"
+  - 'DaemonService with outer tokio::select cancel-vs-subscribe + inner tokio::select cancel-vs-recv loop pattern'
+  - 'Broadcast channel WS event emission with try_recv drain pattern for test verification'
 
 requirements-completed: [PH62-01, PH62-02, PH62-03, PH62-04, PH62-05]
 
@@ -88,6 +88,7 @@ completed: 2026-03-25
 ### Auto-fixed Issues
 
 **1. [Rule 3 - Blocking] SyncInboundClipboardUseCase has no Clone impl — used Arc instead**
+
 - **Found during:** Task 1 (InboundClipboardSyncWorker implementation)
 - **Issue:** `usecase.clone()` in outer subscribe loop failed because `SyncInboundClipboardUseCase` does not implement Clone
 - **Fix:** Wrapped usecase in `Arc::new(...)` in `start()`, clone Arc for each spawned receive loop via `Arc::clone(&usecase)`, changed `run_receive_loop` parameter to `Arc<SyncInboundClipboardUseCase>`
@@ -96,6 +97,7 @@ completed: 2026-03-25
 - **Committed in:** `ab2484f` (Task 1 commit)
 
 **2. [Rule 3 - Blocking] Bare Result<T> in mock trait impls — imported anyhow::Result**
+
 - **Found during:** Task 1 (test compilation)
 - **Issue:** Test mock port trait impls used bare `Result<T>` (1 generic) but trait signatures use `anyhow::Result` (also 1 generic but different type), causing "expected 2 generic arguments" errors
 - **Fix:** Added `use anyhow::Result;` to test module imports
@@ -104,6 +106,7 @@ completed: 2026-03-25
 - **Committed in:** `ab2484f` (Task 1 commit)
 
 **3. [Rule 1 - Bug] broadcast::Receiver::try_iter does not exist in tokio**
+
 - **Found during:** Task 1 (test compilation)
 - **Issue:** Test used `.try_iter()` on `tokio::sync::broadcast::Receiver` — method does not exist
 - **Fix:** Replaced with `try_recv()` loop with explicit `match` on `Ok`/`Err` cases
@@ -112,6 +115,7 @@ completed: 2026-03-25
 - **Committed in:** `ab2484f` (Task 1 commit)
 
 **4. [Rule 1 - Bug] Session_id field conflicts with Result::expect() in test**
+
 - **Found during:** Task 1 (test compilation)
 - **Issue:** `event.session_id.expect(...)` — compiler sees `session_id: Option<String>` field and `Result::expect()` as ambiguous
 - **Fix:** Used `rx.try_recv().unwrap()` pattern without chaining `.expect()` on the returned value
@@ -120,6 +124,7 @@ completed: 2026-03-25
 - **Committed in:** `ab2484f` (Task 1 commit)
 
 **5. [Rule 1 - Bug] PH62-04 test: first message event consumed by try_recv check**
+
 - **Found during:** Task 1 (test execution)
 - **Issue:** `skipped_does_not_emit_ws_event` sent two messages, first Applied (emits event), second Skipped. The test verified after both sends, but the `rx` receiver only saw events sent after subscription — so the first event was missed and dedup worked correctly, but the drain loop found no events. The test panicked because `applied_with_entry_id_emits_ws_event` had a lingering `verify_event_emitted` call that wasn't needed.
 - **Fix:** Removed `verify_event_emitted`/`verify_no_event` stub methods, rewrote tests to use pre-subscribed receiver pattern: create `rx` before calling `process_one()`, verify via direct `rx.try_recv()` after
@@ -128,6 +133,7 @@ completed: 2026-03-25
 - **Committed in:** `ab2484f` (Task 1 commit)
 
 **6. [Rule 1 - Bug] PH62-04 dedup test: first Applied event pollutes channel for second Skipped check**
+
 - **Found during:** Task 1 (test execution)
 - **Issue:** After drain fix, test still failed because first message's `Applied` WS event was in the channel. The test expected second message (Skipped) to have zero events, but the loop found the first message's event.
 - **Fix:** Added explicit drain loop after first `process_one()` call to consume the expected `Applied` event before sending the second (Skipped) message
@@ -136,6 +142,7 @@ completed: 2026-03-25
 - **Committed in:** `ab2484f` (Task 1 commit)
 
 **7. [Rule 3 - Blocking] TestInboundWorker dead code warnings outside #[cfg(test)]**
+
 - **Found during:** Task 1 (cargo check warnings)
 - **Issue:** `TestInboundWorker` struct defined at module level (not inside `#[cfg(test)]`) caused `dead_code` warnings for its methods
 - **Fix:** Moved entire `TestInboundWorker` struct and impl block inside `#[cfg(test)] mod tests { ... }`
@@ -144,6 +151,7 @@ completed: 2026-03-25
 - **Committed in:** `ab2484f` (Task 1 commit)
 
 **8. [Rule 3 - Blocking] file_cache_dir consumed before extraction in main.rs**
+
 - **Found during:** Task 2 (main.rs modification)
 - **Issue:** `ctx.storage_paths` is moved into `build_non_gui_runtime_with_setup` — accessing `file_cache_dir` after that call is a use-after-move
 - **Fix:** Extracted `let file_cache_dir = ctx.storage_paths.file_cache_dir.clone()` BEFORE the `build_non_gui_runtime_with_setup` call
@@ -168,5 +176,6 @@ completed: 2026-03-25
 - ClipboardWatcher already handles Full-mode text inbound events — no conflicts expected
 
 ---
-*Phase: 62-daemon-inbound-clipboard-sync*
-*Completed: 2026-03-25*
+
+_Phase: 62-daemon-inbound-clipboard-sync_
+_Completed: 2026-03-25_

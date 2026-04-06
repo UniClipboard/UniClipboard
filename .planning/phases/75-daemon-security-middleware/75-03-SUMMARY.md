@@ -25,9 +25,9 @@ affects:
 tech-stack:
   added: []
   patterns:
-    - "WS upgrade security: validate JWT, check PID whitelist, apply rate limiting before upgrade"
-    - "Session token verification in WS handlers via state.security.jwt_secret (merged DaemonApiState)"
-    - "Test pattern: SecurityState::new_with_pid() + make_session_token_for_pid() for WS test setup"
+    - 'WS upgrade security: validate JWT, check PID whitelist, apply rate limiting before upgrade'
+    - 'Session token verification in WS handlers via state.security.jwt_secret (merged DaemonApiState)'
+    - 'Test pattern: SecurityState::new_with_pid() + make_session_token_for_pid() for WS test setup'
 
 key-files:
   created: []
@@ -37,13 +37,13 @@ key-files:
     - src-tauri/crates/uc-daemon/tests/websocket_api.rs
 
 key-decisions:
-  - "WS upgrade validates Session JWT not Bearer token — consistent with L2 HTTP middleware pattern"
-  - "Rate limit WS upgrades by PID from validated JWT claims (trustworthy, not caller-controlled)"
-  - "Pass SessionTokenClaims to handle_connection() for audit logging and future per-connection auth"
+  - 'WS upgrade validates Session JWT not Bearer token — consistent with L2 HTTP middleware pattern'
+  - 'Rate limit WS upgrades by PID from validated JWT claims (trustworthy, not caller-controlled)'
+  - 'Pass SessionTokenClaims to handle_connection() for audit logging and future per-connection auth'
 
 patterns-established:
   - "WS auth pattern: strip_prefix('Session ') -> SessionTokenClaims::verify() -> is_pid_allowed() -> rate_limiter.check()"
-  - "Test setup pattern: SecurityState::new_with_pid(pid) + make_session_token_for_pid(pid) for WS tests"
+  - 'Test setup pattern: SecurityState::new_with_pid(pid) + make_session_token_for_pid(pid) for WS tests'
 
 requirements-completed: []
 
@@ -96,6 +96,7 @@ Each task was committed atomically:
 ### Auto-fixed Issues
 
 **1. [Rule 1 - Bug] Fixed websocket_api.rs tests broken by bearer-to-session token migration**
+
 - **Found during:** Post-Task 1 test run
 - **Issue:** `websocket_api.rs` tests used `format!("Bearer {}", token)` to connect to the WS endpoint. After Task 1 changed ws.rs to require `Session <JWT>`, these 4 tests all failed with HTTP 401.
 - **Fix:** Updated `spawn_server()` to use `SecurityState::new_with_pid(pid)` and `make_session_token_for_pid(pid)` to generate a pre-registered JWT session token. Updated `connect_with_token()` to use `"Session <token>"` prefix. Renamed `upgrade_rejected_without_valid_bearer_token` to `upgrade_rejected_without_session_token`.
@@ -120,5 +121,6 @@ Each task was committed atomically:
 - 19 security/websocket tests pass
 
 ---
-*Phase: 75-daemon-security-middleware*
-*Completed: 2026-03-29*
+
+_Phase: 75-daemon-security-middleware_
+_Completed: 2026-03-29_

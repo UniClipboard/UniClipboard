@@ -20,9 +20,9 @@ affects:
 tech-stack:
   added: []
   patterns:
-    - "DaemonService trait: unified lifecycle contract for all long-lived daemon services"
-    - "ServiceHealth enum: Healthy/Degraded(String)/Stopped variants for lock-free health polling"
-    - "DaemonServiceSnapshot: name + health tuple for state snapshotting without worker ownership"
+    - 'DaemonService trait: unified lifecycle contract for all long-lived daemon services'
+    - 'ServiceHealth enum: Healthy/Degraded(String)/Stopped variants for lock-free health polling'
+    - 'DaemonServiceSnapshot: name + health tuple for state snapshotting without worker ownership'
 
 key-files:
   created:
@@ -40,9 +40,9 @@ key-files:
     - src-tauri/crates/uc-daemon/tests/api_query.rs
 
 key-decisions:
-  - "DaemonService replaces DaemonWorker: aligns with D-04/D-06 design decisions requiring a unified DaemonService lifecycle contract for all long-lived daemon components"
-  - "Kept WorkerStatus struct name in rpc/types.rs unchanged as it is an RPC wire format struct"
-  - "worker.rs deleted entirely, not deprecated or kept as re-export: clean break enables 56-02 to add new DaemonService implementors without worker.rs confusion"
+  - 'DaemonService replaces DaemonWorker: aligns with D-04/D-06 design decisions requiring a unified DaemonService lifecycle contract for all long-lived daemon components'
+  - 'Kept WorkerStatus struct name in rpc/types.rs unchanged as it is an RPC wire format struct'
+  - 'worker.rs deleted entirely, not deprecated or kept as re-export: clean break enables 56-02 to add new DaemonService implementors without worker.rs confusion'
 
 requirements-completed:
   - PH56-02
@@ -112,5 +112,6 @@ None - plan executed exactly as written. The integration test `api_query.rs` was
 - `cargo check -p uc-daemon` passes
 
 ---
-*Phase: 56-refactor-daemon-host-architecture-extract-peer-lifecycle-from-pairinghost-unify-host-lifecycle-management*
-*Completed: 2026-03-24*
+
+_Phase: 56-refactor-daemon-host-architecture-extract-peer-lifecycle-from-pairinghost-unify-host-lifecycle-management_
+_Completed: 2026-03-24_

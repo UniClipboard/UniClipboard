@@ -31,12 +31,12 @@ key-files:
     - .github/workflows/release.yml
 
 key-decisions:
-  - "Cargo.lock refresh for workspace members delegated to cargo update -p uc-cli in CI (not JS regex patching) per RESEARCH.md Pattern 2 and Pitfall 5"
-  - "dtolnay/rust-toolchain@stable added inline (not via job-level setup) to keep Rust toolchain install scoped only to the bump step"
+  - 'Cargo.lock refresh for workspace members delegated to cargo update -p uc-cli in CI (not JS regex patching) per RESEARCH.md Pattern 2 and Pitfall 5'
+  - 'dtolnay/rust-toolchain@stable added inline (not via job-level setup) to keep Rust toolchain install scoped only to the bump step'
   - "cargo update step in release.yml gated with if: github.event_name == 'workflow_dispatch' to avoid running on tag-push events"
 
 patterns-established:
-  - "Workspace crates that need version tracking: use version.workspace = true; CI handles Cargo.lock"
+  - 'Workspace crates that need version tracking: use version.workspace = true; CI handles Cargo.lock'
 
 requirements-completed: [PH71-01, PH71-02]
 
@@ -103,5 +103,6 @@ None - no external service configuration required.
 - Ready for Phase 71-02 (CLI binary publishing pipeline)
 
 ---
-*Phase: 71-dual-product-release-pipeline-for-cli-and-app*
-*Completed: 2026-03-28*
+
+_Phase: 71-dual-product-release-pipeline-for-cli-and-app_
+_Completed: 2026-03-28_

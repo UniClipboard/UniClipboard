@@ -38,14 +38,14 @@ key-files:
     - .gitignore
 
 key-decisions:
-  - "Copy daemon binary BEFORE tauri_build::build() so Tauri externalBin path validation finds the staged binary"
-  - "tauri-plugin-shell added to workspace.dependencies for future reuse by other workspace crates"
-  - "shell:allow-spawn capability uses sidecar=true with explicit args=[--gui-managed] for Tauri v2 capability enforcement"
-  - "build.rs placed in src-tauri/ (main crate) not uc-tauri/ so TAURI_ENV_TARGET_TRIPLE is available from Tauri CLI"
+  - 'Copy daemon binary BEFORE tauri_build::build() so Tauri externalBin path validation finds the staged binary'
+  - 'tauri-plugin-shell added to workspace.dependencies for future reuse by other workspace crates'
+  - 'shell:allow-spawn capability uses sidecar=true with explicit args=[--gui-managed] for Tauri v2 capability enforcement'
+  - 'build.rs placed in src-tauri/ (main crate) not uc-tauri/ so TAURI_ENV_TARGET_TRIPLE is available from Tauri CLI'
 
 patterns-established:
-  - "Sidecar staging: build.rs copies target/{profile}/uniclipboard-daemon to binaries/uniclipboard-daemon-{triple} before tauri_build::build()"
-  - "Capability format: shell:allow-spawn as object with identifier + allow array containing sidecar=true scoped rule"
+  - 'Sidecar staging: build.rs copies target/{profile}/uniclipboard-daemon to binaries/uniclipboard-daemon-{triple} before tauri_build::build()'
+  - 'Capability format: shell:allow-spawn as object with identifier + allow array containing sidecar=true scoped rule'
 
 requirements-completed: [PH68-01, PH68-02, PH68-05]
 
@@ -129,5 +129,6 @@ None — no external service configuration required. First-run note: run `cd src
 - `tauri-plugin-shell` dependency is available in uc-tauri for Plan 02 implementation
 
 ---
-*Phase: 68-adopt-tauri-sidecar-for-daemon*
-*Completed: 2026-03-28*
+
+_Phase: 68-adopt-tauri-sidecar-for-daemon_
+_Completed: 2026-03-28_

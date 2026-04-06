@@ -1007,6 +1007,7 @@ Plans:
 **Plans:** 6/6 plans complete
 
 Plans:
+
 - [x] 87-01-PLAN.md — Wave 0 test scaffolds + dev-deps for OTLP pipeline (Wave 1)
 - [x] 87-02-PLAN.md — uc-observability::otlp module (resource, propagator, pipeline init) (Wave 2)
 - [x] 87-03-PLAN.md — ClipboardMessage.traceparent field + uc-bootstrap OTLP wiring + legacy UC_SEQ_URL warn (Wave 3)

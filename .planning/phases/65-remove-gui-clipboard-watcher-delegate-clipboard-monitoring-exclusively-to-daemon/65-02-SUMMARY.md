@@ -23,6 +23,7 @@ completed: 2026-03-26
 ## Accomplishments
 
 ### Wave 1 (d3972b97) — AppLifecycleCoordinator & Bootstrap Assembly
+
 - Removed `watcher` field and `WatcherFailed` variant from `AppLifecycleCoordinator`
 - Removed `watcher_control` from `WiredDependencies`, `PlatformLayer`, `build_setup_orchestrator`
 - Removed platform channel fields (`platform_event_tx/rx`, `platform_cmd_tx/rx`) from `GuiBootstrapContext` and `DaemonBootstrapContext`
@@ -30,6 +31,7 @@ completed: 2026-03-26
 - Updated all uc-app tests and setup orchestrator to remove watcher references
 
 ### Wave 2 (72341398) — uc-tauri & main.rs
+
 - Removed `watcher_control` field and `NoopWatcherControl` from `AppRuntime` (uc-tauri/bootstrap/runtime.rs) — 656 lines removed
 - Removed `impl ClipboardChangeHandler for AppRuntime` block
 - Removed `start_clipboard_watcher()` accessor from `AppUseCases`
@@ -96,5 +98,6 @@ None — execution followed the plan closely. Two blocking auto-fixes were neces
 Phase 65 complete. All GUI clipboard watcher infrastructure removed. Daemon is now the sole clipboard monitor.
 
 ---
+
 _Phase: 65-remove-gui-clipboard-watcher-delegate-clipboard-monitoring-exclusively-to-daemon_
 _Completed: 2026-03-26_

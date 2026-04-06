@@ -32,12 +32,12 @@ key-files:
     - src-tauri/crates/uc-cli/tests/setup_cli.rs
 
 key-decisions:
-  - "run_new_space() uses build_cli_runtime() directly (no daemon) for first-time encryption init, matching space_status.rs pattern"
-  - "new_space_encryption_guard() extracted as pub fn for behavioral testability without async runtime"
-  - "Initializing state treated same as Uninitialized by guard (allowed to proceed) - only Initialized is rejected"
+  - 'run_new_space() uses build_cli_runtime() directly (no daemon) for first-time encryption init, matching space_status.rs pattern'
+  - 'new_space_encryption_guard() extracted as pub fn for behavioral testability without async runtime'
+  - 'Initializing state treated same as Uninitialized by guard (allowed to proceed) - only Initialized is rejected'
 
 patterns-established:
-  - "CLI encryption init pattern: build_cli_runtime() -> encryption_state() -> guard -> CoreUseCases::initialize_encryption()"
+  - 'CLI encryption init pattern: build_cli_runtime() -> encryption_state() -> guard -> CoreUseCases::initialize_encryption()'
 
 requirements-completed: [PH69-01, PH69-02, PH69-03]
 
@@ -97,5 +97,6 @@ None - plan executed exactly as written.
 - No blockers for subsequent phases
 
 ---
-*Phase: 69-cli-setup-flow-first-time-encryption-init-before-daemon-spawn*
-*Completed: 2026-03-28*
+
+_Phase: 69-cli-setup-flow-first-time-encryption-init-before-daemon-spawn_
+_Completed: 2026-03-28_

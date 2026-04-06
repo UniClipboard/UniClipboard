@@ -15,13 +15,13 @@ created: 2026-04-02
 
 ## Test Infrastructure
 
-| Property               | Value                                                                                          |
-| --------------------- | ---------------------------------------------------------------------------------------------- |
-| **Framework**         | Vitest (frontend) + Rust `#[tokio::test]` (backend)                                          |
-| **Config file**       | `vitest.config.ts` (frontend); `Cargo.toml` feature flags (backend)                           |
-| **Quick run command** | `cd src-tauri && cargo test -p uc-daemon security_middleware && cd ../.. && bun test -- src/__tests__/lib/daemon-auth.test.ts` |
-| **Full suite command**| `cd src-tauri && cargo test -p uc-daemon && cd ../.. && bun test -- src/__tests__/lib/daemon` |
-| **Estimated runtime** | ~60 seconds                                                                                   |
+| Property               | Value                                                                                                                          |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| **Framework**          | Vitest (frontend) + Rust `#[tokio::test]` (backend)                                                                            |
+| **Config file**        | `vitest.config.ts` (frontend); `Cargo.toml` feature flags (backend)                                                            |
+| **Quick run command**  | `cd src-tauri && cargo test -p uc-daemon security_middleware && cd ../.. && bun test -- src/__tests__/lib/daemon-auth.test.ts` |
+| **Full suite command** | `cd src-tauri && cargo test -p uc-daemon && cd ../.. && bun test -- src/__tests__/lib/daemon`                                  |
+| **Estimated runtime**  | ~60 seconds                                                                                                                    |
 
 ---
 
@@ -36,14 +36,14 @@ created: 2026-04-02
 
 ## Per-Task Verification Map
 
-| Task ID   | Plan | Wave | Requirement | Test Type     | Automated Command                                                           | File Exists | Status     |
-| --------- | ---- | ---- | ----------- | ------------- | -------------------------------------------------------------------------- | ----------- | ---------- |
-| AUTH-01   | 01   | 1    | CLI uses POST /auth/connect | unit | `cargo test -p uc-cli daemon_client`                              | ✅         | ⬜ pending |
-| AUTH-02   | 01   | 1    | CLI PID registered in daemon whitelist | unit | `cargo test -p uc-daemon security_middleware`                 | ✅         | ⬜ pending |
-| AUTH-03   | 01   | 1    | CLI rate limited same as GUI | unit | `cargo test -p uc-daemon rate_limiter`                                 | ✅         | ⬜ pending |
-| AUTH-04   | 01   | 2    | Daemon L2+ routes reject bare bearer tokens | integration | `cargo test -p uc-daemon api_auth -- auth_connect` | ✅         | ⬜ pending |
-| AUTH-05   | 01   | 2    | CLI and GUI get independent session tokens | unit | `bun test -- src/__tests__/lib/daemon-auth.test.ts`              | ✅         | ⬜ pending |
-| AUTH-06   | 01   | 2    | Bearer token only at /auth/connect | integration | `cargo test -p uc-daemon api_auth`                              | ✅         | ⬜ pending |
+| Task ID | Plan | Wave | Requirement                                 | Test Type   | Automated Command                                   | File Exists | Status     |
+| ------- | ---- | ---- | ------------------------------------------- | ----------- | --------------------------------------------------- | ----------- | ---------- |
+| AUTH-01 | 01   | 1    | CLI uses POST /auth/connect                 | unit        | `cargo test -p uc-cli daemon_client`                | ✅          | ⬜ pending |
+| AUTH-02 | 01   | 1    | CLI PID registered in daemon whitelist      | unit        | `cargo test -p uc-daemon security_middleware`       | ✅          | ⬜ pending |
+| AUTH-03 | 01   | 1    | CLI rate limited same as GUI                | unit        | `cargo test -p uc-daemon rate_limiter`              | ✅          | ⬜ pending |
+| AUTH-04 | 01   | 2    | Daemon L2+ routes reject bare bearer tokens | integration | `cargo test -p uc-daemon api_auth -- auth_connect`  | ✅          | ⬜ pending |
+| AUTH-05 | 01   | 2    | CLI and GUI get independent session tokens  | unit        | `bun test -- src/__tests__/lib/daemon-auth.test.ts` | ✅          | ⬜ pending |
+| AUTH-06 | 01   | 2    | Bearer token only at /auth/connect          | integration | `cargo test -p uc-daemon api_auth`                  | ✅          | ⬜ pending |
 
 _Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky_
 
@@ -61,10 +61,10 @@ _Existing infrastructure: Vitest + Rust test frameworks already present in proje
 
 ## Manual-Only Verifications
 
-| Behavior                                              | Requirement | Why Manual              | Test Instructions |
-| ----------------------------------------------------- | ----------- | ----------------------- | ----------------- |
-| CLI and GUI tokens truly independent (different jti)  | AUTH-05     | Requires two separate processes exchanging | Run CLI command + GUI action, check daemon logs for distinct jti claims |
-| Rate limiter counters per PID                         | AUTH-03     | Rate limit state not exposed via API | Check daemon logs after 5+ CLI invocations from different PIDs |
+| Behavior                                             | Requirement | Why Manual                                 | Test Instructions                                                       |
+| ---------------------------------------------------- | ----------- | ------------------------------------------ | ----------------------------------------------------------------------- |
+| CLI and GUI tokens truly independent (different jti) | AUTH-05     | Requires two separate processes exchanging | Run CLI command + GUI action, check daemon logs for distinct jti claims |
+| Rate limiter counters per PID                        | AUTH-03     | Rate limit state not exposed via API       | Check daemon logs after 5+ CLI invocations from different PIDs          |
 
 _Where possible, prefer automated verification. Manual checks are fallback only._
 

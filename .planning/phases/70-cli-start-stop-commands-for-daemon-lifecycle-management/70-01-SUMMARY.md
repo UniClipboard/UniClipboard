@@ -1,6 +1,6 @@
 ---
 phase: 70-cli-start-stop-commands-for-daemon-lifecycle-management
-plan: "01"
+plan: '01'
 subsystem: cli
 tags:
   - cli
@@ -32,14 +32,14 @@ key_files:
     - src-tauri/crates/uc-cli/src/local_daemon.rs
     - src-tauri/crates/uc-cli/Cargo.toml
 decisions:
-  - "Background start reuses ensure_local_daemon_running() for probe-spawn-poll pattern consistency"
-  - "Foreground mode checks for already-running daemon first before spawning with inherited stdio"
-  - "stop uses libc::kill(pid, 0) for stale PID detection before sending SIGTERM"
-  - "SIGKILL not used -- user warned if daemon does not stop within 10s timeout"
-  - "libc added directly to uc-cli (not workspace) since no other crate needs it"
+  - 'Background start reuses ensure_local_daemon_running() for probe-spawn-poll pattern consistency'
+  - 'Foreground mode checks for already-running daemon first before spawning with inherited stdio'
+  - 'stop uses libc::kill(pid, 0) for stale PID detection before sending SIGTERM'
+  - 'SIGKILL not used -- user warned if daemon does not stop within 10s timeout'
+  - 'libc added directly to uc-cli (not workspace) since no other crate needs it'
 metrics:
-  duration: "~8min"
-  completed: "2026-03-28"
+  duration: '~8min'
+  completed: '2026-03-28'
   tasks_completed: 2
   files_changed: 6
 ---
@@ -81,6 +81,7 @@ Two new top-level CLI subcommands for daemon lifecycle management:
 12 unit tests added (6 in `start::tests`, 6 in `stop::tests`):
 
 **start::tests:**
+
 - `start_background_already_running` — session.spawned=false returns "already_running" with pid
 - `start_background_spawned` — session.spawned=true returns "started" with pid
 - `start_background_spawn_failure` — LocalDaemonError::Spawn returns Err
@@ -89,6 +90,7 @@ Two new top-level CLI subcommands for daemon lifecycle management:
 - `display_output_start` — Display produces "Daemon started (pid N)" and "Daemon already running (pid N)"
 
 **stop::tests:**
+
 - `stop_no_pid_file` — read_pid returns None, exits 0
 - `stop_pid_file_stale` — read_pid returns Some but process not running, exits 0
 - `stop_success` — process running first check, stopped after SIGTERM, exits 0

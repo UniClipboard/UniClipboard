@@ -1,6 +1,6 @@
 ---
 phase: 55-extract-daemon-lifecycle-and-setup-pairing-bridge-from-uc-tauri
-plan: "02"
+plan: '02'
 subsystem: infra
 tags: [rust, daemon-lifecycle, uc-tauri, uc-daemon-client, refactor]
 
@@ -21,8 +21,8 @@ affects: [uc-tauri, uc-daemon-client, src-tauri/src/main.rs]
 tech-stack:
   added: []
   patterns:
-    - "Re-export pattern: pub use uc_daemon_client::daemon_lifecycle::X in run.rs for backward compatibility"
-    - "pub visibility on terminate_local_daemon_pid to allow cross-crate access from uc-tauri"
+    - 'Re-export pattern: pub use uc_daemon_client::daemon_lifecycle::X in run.rs for backward compatibility'
+    - 'pub visibility on terminate_local_daemon_pid to allow cross-crate access from uc-tauri'
 
 key-files:
   created: []
@@ -38,12 +38,12 @@ key-files:
     - src-tauri/crates/uc-tauri/src/bootstrap/setup_pairing_bridge.rs
 
 key-decisions:
-  - "Made terminate_local_daemon_pid pub (was pub(crate)) so uc-tauri can re-export via run.rs"
-  - "Used pub use in run.rs for terminate_local_daemon_pid re-export to maintain existing call sites"
-  - "Error mapping added at terminate_incompatible_daemon_from_pid_file call site to convert TerminateDaemonError -> DaemonBootstrapError"
+  - 'Made terminate_local_daemon_pid pub (was pub(crate)) so uc-tauri can re-export via run.rs'
+  - 'Used pub use in run.rs for terminate_local_daemon_pid re-export to maintain existing call sites'
+  - 'Error mapping added at terminate_incompatible_daemon_from_pid_file call site to convert TerminateDaemonError -> DaemonBootstrapError'
 
 patterns-established:
-  - "Cross-crate pub use re-export pattern for migrated functions keeps existing call sites stable"
+  - 'Cross-crate pub use re-export pattern for migrated functions keeps existing call sites stable'
 
 requirements-completed: []
 
@@ -101,6 +101,7 @@ All changes committed atomically:
 ### Auto-fixed Issues
 
 **1. [Rule 1 - Bug] Made `terminate_local_daemon_pid` pub for cross-crate access**
+
 - **Found during:** Step 2 (Update run.rs)
 - **Issue:** `terminate_local_daemon_pid` was declared `pub(crate)` in uc-daemon-client but Plan 02 requires re-exporting it from uc-tauri via `pub use`. Cross-crate re-export requires `pub` visibility.
 - **Fix:** Changed `pub(crate) fn terminate_local_daemon_pid` to `pub fn terminate_local_daemon_pid` in `uc-daemon-client/src/daemon_lifecycle.rs`
@@ -125,5 +126,6 @@ All changes committed atomically:
 - Phase 55 extraction work is complete
 
 ---
-*Phase: 55-extract-daemon-lifecycle-and-setup-pairing-bridge-from-uc-tauri*
-*Completed: 2026-03-24*
+
+_Phase: 55-extract-daemon-lifecycle-and-setup-pairing-bridge-from-uc-tauri_
+_Completed: 2026-03-24_

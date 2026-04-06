@@ -4,7 +4,7 @@ milestone: v0.4.0
 milestone_name: Runtime Mode Separation
 status: Milestone complete
 stopped_at: Completed 87-06-PLAN.md
-last_updated: "2026-04-05T04:52:21.545Z"
+last_updated: '2026-04-05T04:52:21.545Z'
 progress:
   total_phases: 58
   completed_phases: 44
@@ -125,12 +125,12 @@ Plan: Not started
   | Phase 85 P02 | 7 | 3 tasks | 6 files |
   | Phase 85 P03 | 15 | 3 tasks | 4 files |
   | Phase 85 P04 | 2 | 2 tasks | 2 files |
-| Phase 87 P01 | 470 | 2 tasks | 7 files |
-| Phase 87 P02 | 6 | 1 tasks | 6 files |
-| Phase 87 P03 | 1523 | 2 tasks | 11 files |
-| Phase 87 P04 | 529 | 2 tasks | 5 files |
-| Phase 87 P05 | 3 | 1 tasks | 6 files |
-| Phase 87 P06 | 394 | 1 tasks | 4 files |
+  | Phase 87 P01 | 470 | 2 tasks | 7 files |
+  | Phase 87 P02 | 6 | 1 tasks | 6 files |
+  | Phase 87 P03 | 1523 | 2 tasks | 11 files |
+  | Phase 87 P04 | 529 | 2 tasks | 5 files |
+  | Phase 87 P05 | 3 | 1 tasks | 6 files |
+  | Phase 87 P06 | 394 | 1 tasks | 4 files |
 
 ## Accumulated Context
 

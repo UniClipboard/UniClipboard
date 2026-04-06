@@ -16,7 +16,7 @@ dependency_graph:
 tech-stack:
   added: []
   patterns:
-    - "Passive mode guard: check ClipboardIntegrationMode::Passive before direct sync to avoid double-send with daemon"
+    - 'Passive mode guard: check ClipboardIntegrationMode::Passive before direct sync to avoid double-send with daemon'
 
 key-files:
   created: []
@@ -25,19 +25,19 @@ key-files:
     - src-tauri/crates/uc-tauri/src/bootstrap/runtime.rs
 
 key-decisions:
-  - "restore_clipboard_entry outbound sync skipped entirely in Passive mode; daemon ClipboardWatcherWorker owns it after detecting OS clipboard write"
-  - "snapshot.clone() moved inside Passive-mode guard so the clone is skipped when guard prevents outbound sync"
-  - "sync_inbound_clipboard accessor deleted from AppUseCases doc comment count updated (5->4)"
+  - 'restore_clipboard_entry outbound sync skipped entirely in Passive mode; daemon ClipboardWatcherWorker owns it after detecting OS clipboard write'
+  - 'snapshot.clone() moved inside Passive-mode guard so the clone is skipped when guard prevents outbound sync'
+  - 'sync_inbound_clipboard accessor deleted from AppUseCases doc comment count updated (5->4)'
 
 patterns-established:
-  - "Passive mode guard pattern: !matches!(runtime.clipboard_integration_mode(), ClipboardIntegrationMode::Passive)"
+  - 'Passive mode guard pattern: !matches!(runtime.clipboard_integration_mode(), ClipboardIntegrationMode::Passive)'
 
 requirements-completed:
   - PH64-04
   - PH64-06
 
 duration: 6min
-completed: "2026-03-26"
+completed: '2026-03-26'
 ---
 
 # Phase 64 Plan 02: Gate restore_clipboard_entry Outbound Sync and Remove Dead Accessor Summary
@@ -81,7 +81,7 @@ None - plan executed exactly as written.
 
 ## Issues Encountered
 
-- uc-daemon test suite showed 5 pre-existing failures (pairing_api_* and pid_path_tracks_uc_profile) unrelated to this plan's changes. Confirmed by running baseline test before applying changes — same failures existed before.
+- uc-daemon test suite showed 5 pre-existing failures (pairing*api*\* and pid_path_tracks_uc_profile) unrelated to this plan's changes. Confirmed by running baseline test before applying changes — same failures existed before.
 
 ## Known Stubs
 
@@ -102,5 +102,6 @@ None.
 - [x] Commit `34b70809` exists (Task 2: Remove dead accessor)
 
 ---
-*Phase: 64-tauri-sync-retirement*
-*Completed: 2026-03-26*
+
+_Phase: 64-tauri-sync-retirement_
+_Completed: 2026-03-26_

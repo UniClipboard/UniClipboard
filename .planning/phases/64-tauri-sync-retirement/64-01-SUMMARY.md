@@ -16,12 +16,12 @@ key_files:
     - src-tauri/crates/uc-tauri/src/bootstrap/wiring.rs
     - src-tauri/crates/uc-tauri/Cargo.toml
 decisions:
-  - "file_transfer_orchestrator field preserved in BackgroundRuntimeDeps struct (uc-bootstrap) with _ prefix in wiring.rs destructure; daemon still references it via uc-bootstrap"
-  - "uc_core::ports::* import moved to #[cfg(test)] since only test code (TimerPort) uses it after removal"
-  - "Pre-existing test failure (startup_helper_rejects_healthy_but_incompatible_daemon) confirmed unrelated to these changes"
+  - 'file_transfer_orchestrator field preserved in BackgroundRuntimeDeps struct (uc-bootstrap) with _ prefix in wiring.rs destructure; daemon still references it via uc-bootstrap'
+  - 'uc_core::ports::* import moved to #[cfg(test)] since only test code (TimerPort) uses it after removal'
+  - 'Pre-existing test failure (startup_helper_rejects_healthy_but_incompatible_daemon) confirmed unrelated to these changes'
 metrics:
   duration: 7min
-  completed: "2026-03-26"
+  completed: '2026-03-26'
   tasks: 2
   files: 2
 ---
@@ -35,6 +35,7 @@ Removed all daemon-duplicated background sync loops from uc-tauri wiring.rs and 
 **Task 1 — Remove daemon-duplicated sync loops, helpers, and constants (commit 0e72a9c5)**
 
 Deleted from wiring.rs:
+
 - `register_pairing_background_tasks()` — daemon PeerDiscoveryWorker + PeerMonitor own this
 - `run_clipboard_receive_loop()` — daemon InboundClipboardSyncWorker owns this
 - `run_network_realtime_loop()` — daemon FileSyncOrchestratorWorker + PeerMonitor own this
@@ -48,10 +49,11 @@ Deleted from wiring.rs:
 - Unused imports: `ClipboardMessage`, `NetworkEvent`, `ClipboardChangeOriginPort`, `InboundApplyOutcome`, `SyncInboundClipboardUseCase`, `FileTransferOrchestrator`, `ClipboardHostEvent`, `ClipboardOriginKind`, `PeerConnectionHostEvent`, `TransferHostEvent`, `mpsc`, `PathBuf`
 
 Retained in wiring.rs:
+
 - spool scanner, SpoolerTask, BackgroundBlobWorker, SpoolJanitor spawns
 - `start_realtime_runtime()` (DaemonWsBridge)
 - `file_cache_cleanup` spawn
-- All `#[cfg(test)]` blocks (SpaceAccessBusy* helpers, NoopSpaceAccessCrypto, etc.)
+- All `#[cfg(test)]` blocks (SpaceAccessBusy\* helpers, NoopSpaceAccessCrypto, etc.)
 
 **Task 2 — Remove blake3 dependency from uc-tauri Cargo.toml (commit 9347d5b6)**
 
@@ -68,6 +70,7 @@ None.
 ### Additional Changes
 
 **[Rule 2 - Missing] Moved `uc_core::ports::*` import to `#[cfg(test)]`**
+
 - Found during: Task 1
 - Issue: After removing all non-test callers of the ports glob import, Rust flagged `use uc_core::ports::*` as unused in non-test code (only `TimerPort` in `#[cfg(test)]` struct still used it)
 - Fix: Added `#[cfg(test)]` attribute to the glob import

@@ -23,9 +23,9 @@ affects:
 tech-stack:
   added: []
   patterns:
-    - "broadcast_space_access_state_changed free function reused by both method and free fn callers"
-    - "DaemonApiState builder pattern (with_space_access chained after with_setup)"
-    - "WS snapshot-first: build_snapshot_event returns space_access.snapshot on subscribe"
+    - 'broadcast_space_access_state_changed free function reused by both method and free fn callers'
+    - 'DaemonApiState builder pattern (with_space_access chained after with_setup)'
+    - 'WS snapshot-first: build_snapshot_event returns space_access.snapshot on subscribe'
 
 key-files:
   created: []
@@ -41,10 +41,10 @@ key-files:
     - src-tauri/crates/uc-daemon/src/app.rs
 
 key-decisions:
-  - "broadcast_space_access_state_changed is a free function called by DaemonPairingHost method and handle_pairing_message, avoiding duplication"
-  - "Space access broadcasts placed at three transition sites in DaemonPairingHost: reset_setup_state, start_completed_host_sponsor_authorization, resolve_host_space_access_proof, apply_joiner_space_access_result"
-  - "TOPIC_SPACE_ACCESS and SPACE_ACCESS_SNAPSHOT_EVENT constants exported as pub for ws.rs internal usage"
-  - "space_access_orchestrator passed to run_pairing_network_event_loop and handle_pairing_message as new parameters for broadcast access"
+  - 'broadcast_space_access_state_changed is a free function called by DaemonPairingHost method and handle_pairing_message, avoiding duplication'
+  - 'Space access broadcasts placed at three transition sites in DaemonPairingHost: reset_setup_state, start_completed_host_sponsor_authorization, resolve_host_space_access_proof, apply_joiner_space_access_result'
+  - 'TOPIC_SPACE_ACCESS and SPACE_ACCESS_SNAPSHOT_EVENT constants exported as pub for ws.rs internal usage'
+  - 'space_access_orchestrator passed to run_pairing_network_event_loop and handle_pairing_message as new parameters for broadcast access'
 
 requirements-completed:
   - PH52-01
@@ -104,6 +104,7 @@ completed: 2026-03-23
 ### Auto-fixed Issues
 
 **1. [Rule 1 - Bug] Fixed start_completed_host_sponsor_authorization return type mismatch**
+
 - **Found during:** Task 2 (DaemonPairingHost broadcast wiring)
 - **Issue:** Plan showed `Ok(())` match arm but the method returns `Result<SpaceAccessState, SetupError>`, not `Result<(), SetupError>`. Pattern `Ok(())` caused type mismatch compile error.
 - **Fix:** Changed `Ok(())` to `Ok(_)` to correctly ignore the returned SpaceAccessState
@@ -126,12 +127,14 @@ None beyond the auto-fixed return type issue.
 - Ready for Phase 52-02: uc-tauri side consuming these daemon WS/HTTP endpoints to eliminate duplicated space access state in the Tauri layer
 
 ---
-*Phase: 52-daemon-space-access-ssot*
-*Completed: 2026-03-23*
+
+_Phase: 52-daemon-space-access-ssot_
+_Completed: 2026-03-23_
 
 ## Self-Check: PASSED
 
 All 14 acceptance criteria verified:
+
 - SpaceAccess in RealtimeTopic: PASS
 - SpaceAccessStateChanged event: PASS
 - SpaceAccessStateChangedPayload DTO: PASS

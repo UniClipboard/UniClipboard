@@ -23,9 +23,9 @@ affects:
 tech-stack:
   added: []
   patterns:
-    - "emitter_cell pattern: Arc<RwLock<Arc<dyn HostEventEmitterPort>>> shared at wire time, auto-sees emitter swap"
-    - "WireTimeLoggingEmitter: minimal inline logging emitter for pre-bootstrap placeholder"
-    - "FileTransferOrchestrator: struct wrapping 9 lifecycle orchestration methods with &self (interior mutability)"
+    - 'emitter_cell pattern: Arc<RwLock<Arc<dyn HostEventEmitterPort>>> shared at wire time, auto-sees emitter swap'
+    - 'WireTimeLoggingEmitter: minimal inline logging emitter for pre-bootstrap placeholder'
+    - 'FileTransferOrchestrator: struct wrapping 9 lifecycle orchestration methods with &self (interior mutability)'
 
 key-files:
   created:
@@ -38,14 +38,14 @@ key-files:
     - src-tauri/crates/uc-tauri/src/bootstrap/wiring.rs
 
 key-decisions:
-  - "FileTransferOrchestrator holds emitter_cell (Arc<RwLock<Arc<dyn HostEventEmitterPort>>>) matching HostEventSetupPort pattern — automatically sees TauriEventEmitter after swap with no Option/expect"
-  - "WireTimeLoggingEmitter created inline in assembly.rs to avoid importing LoggingHostEventEmitter from non_gui_runtime (keeps assembly.rs zero-tauri)"
-  - "emitter_cell added to WiredDependencies — plan assumed it existed at wire_dependencies time but it was not; now created there and propagated to callers"
-  - "BackgroundRuntimeDeps.file_transfer_orchestrator is Arc (not Option) — emitter_cell pattern makes deferred construction unnecessary"
+  - 'FileTransferOrchestrator holds emitter_cell (Arc<RwLock<Arc<dyn HostEventEmitterPort>>>) matching HostEventSetupPort pattern — automatically sees TauriEventEmitter after swap with no Option/expect'
+  - 'WireTimeLoggingEmitter created inline in assembly.rs to avoid importing LoggingHostEventEmitter from non_gui_runtime (keeps assembly.rs zero-tauri)'
+  - 'emitter_cell added to WiredDependencies — plan assumed it existed at wire_dependencies time but it was not; now created there and propagated to callers'
+  - 'BackgroundRuntimeDeps.file_transfer_orchestrator is Arc (not Option) — emitter_cell pattern makes deferred construction unnecessary'
 
 patterns-established:
-  - "File transfer orchestration: methods take &self via Mutex/RwLock interior mutability, no &mut self needed"
-  - "Wire-time emitter_cell: created in wire_dependencies_with_identity_store, included in WiredDependencies for caller reuse"
+  - 'File transfer orchestration: methods take &self via Mutex/RwLock interior mutability, no &mut self needed'
+  - 'Wire-time emitter_cell: created in wire_dependencies_with_identity_store, included in WiredDependencies for caller reuse'
 
 requirements-completed:
   - PH60-01
@@ -85,7 +85,7 @@ Each task was committed atomically:
 1. **Task 1: Create FileTransferOrchestrator in uc-app with emitter_cell pattern** - `aa8eb96a` (feat)
 2. **Task 2: Wire FileTransferOrchestrator into BackgroundRuntimeDeps via assembly** - `e28ff554` (feat)
 
-**Plan metadata:** *(this commit)*
+**Plan metadata:** _(this commit)_
 
 ## Files Created/Modified
 
@@ -142,5 +142,6 @@ Each task was committed atomically:
 - `cargo test -p uc-app file_transfer`: 8 passed
 
 ---
-*Phase: 60-extract-file-transfer-wiring-orchestration-from-uc-tauri-to-uc-app*
-*Completed: 2026-03-25*
+
+_Phase: 60-extract-file-transfer-wiring-orchestration-from-uc-tauri-to-uc-app_
+_Completed: 2026-03-25_

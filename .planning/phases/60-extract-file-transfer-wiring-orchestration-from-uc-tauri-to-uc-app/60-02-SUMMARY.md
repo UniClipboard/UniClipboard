@@ -21,8 +21,8 @@ affects:
 tech-stack:
   added: []
   patterns:
-    - "FileTransferOrchestrator::now_ms() accessor: exposes internal clock for clipboard receive loop PendingInboundTransfer.created_at_ms"
-    - "Arc clone before closure: file_transfer_orchestrator cloned before clipboard_receive spawn to allow reuse in reconcile/sweep tasks"
+    - 'FileTransferOrchestrator::now_ms() accessor: exposes internal clock for clipboard receive loop PendingInboundTransfer.created_at_ms'
+    - 'Arc clone before closure: file_transfer_orchestrator cloned before clipboard_receive spawn to allow reuse in reconcile/sweep tasks'
 
 key-files:
   created: []
@@ -37,9 +37,9 @@ key-files:
     - src-tauri/crates/uc-tauri/src/bootstrap/file_transfer_wiring.rs
 
 key-decisions:
-  - "FileTransferOrchestrator::now_ms() accessor added to orchestrator — clipboard receive loop needs timestamp for PendingInboundTransfer.created_at_ms without requiring a separate clock parameter"
+  - 'FileTransferOrchestrator::now_ms() accessor added to orchestrator — clipboard receive loop needs timestamp for PendingInboundTransfer.created_at_ms without requiring a separate clock parameter'
   - "clipboard_receive_orchestrator clone created before the registry.spawn('clipboard_receive') closure — prevents move conflict with later reconcile/sweep uses of the same Arc"
-  - "FileTransferStatusPayload added to uc-app::usecases::file_sync re-exports — test file models_serialization_test.rs depends on it and needs stable import path after file_transfer_wiring.rs deletion"
+  - 'FileTransferStatusPayload added to uc-app::usecases::file_sync re-exports — test file models_serialization_test.rs depends on it and needs stable import path after file_transfer_wiring.rs deletion'
 
 requirements-completed:
   - PH60-04
@@ -78,7 +78,7 @@ completed: 2026-03-25
 1. **Task 1: Rewire wiring.rs to use FileTransferOrchestrator, delete file_transfer_wiring.rs** - `205df84c` (feat)
 2. **[Rule 1 - Bug Fix] Update remaining file_transfer_wiring references after deletion** - `c407d588` (fix)
 
-**Plan metadata:** *(this commit)*
+**Plan metadata:** _(this commit)_
 
 ## Files Created/Modified
 
@@ -150,5 +150,6 @@ completed: 2026-03-25
 - `cargo test -p uc-tauri`: 70 passed, 1 pre-existing failure
 
 ---
-*Phase: 60-extract-file-transfer-wiring-orchestration-from-uc-tauri-to-uc-app*
-*Completed: 2026-03-25*
+
+_Phase: 60-extract-file-transfer-wiring-orchestration-from-uc-tauri-to-uc-app_
+_Completed: 2026-03-25_

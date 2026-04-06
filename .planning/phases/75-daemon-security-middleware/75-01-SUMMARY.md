@@ -175,5 +175,6 @@ Each task was committed atomically:
 - JWT secret generation, PID registration, and rate limiting are all tested and working
 
 ---
-*Phase: 75-daemon-security-middleware*
-*Completed: 2026-03-29*
+
+_Phase: 75-daemon-security-middleware_
+_Completed: 2026-03-29_

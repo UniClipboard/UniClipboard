@@ -20,7 +20,7 @@ affects:
 tech-stack:
   added: []
   patterns:
-    - "WS topic extension pattern: add to is_supported_topic() matches! + Ok(None) arm in build_snapshot_event()"
+    - 'WS topic extension pattern: add to is_supported_topic() matches! + Ok(None) arm in build_snapshot_event()'
 
 key-files:
   created: []
@@ -28,10 +28,10 @@ key-files:
     - src-tauri/crates/uc-daemon/src/api/ws.rs
 
 key-decisions:
-  - "clipboard and file-transfer topics have no snapshot data — Ok(None) matching PAIRING_VERIFICATION/SETUP pattern"
+  - 'clipboard and file-transfer topics have no snapshot data — Ok(None) matching PAIRING_VERIFICATION/SETUP pattern'
 
 patterns-established:
-  - "WS topic extension: matches! arm in is_supported_topic() + Ok(None) in build_snapshot_event() before unsupported fallback"
+  - 'WS topic extension: matches! arm in is_supported_topic() + Ok(None) in build_snapshot_event() before unsupported fallback'
 
 requirements-completed: [PH66-01, PH66-02, PH66-03]
 
@@ -52,6 +52,7 @@ completed: 2026-03-27
 - **Files modified:** 1
 
 ## Accomplishments
+
 - Added `ws_topic::CLIPBOARD` and `ws_topic::FILE_TRANSFER` to `is_supported_topic()` matches! macro
 - Added `Ok(None)` arms for both topics in `build_snapshot_event()` before the `unsupported =>` bail fallback
 - Added `#[cfg(test)]` module with 6 unit tests: `is_supported_topic_includes_clipboard`, `is_supported_topic_includes_file_transfer`, `is_supported_topic_rejects_unknown`, `is_supported_topic_includes_all_known_topics`, `normalize_topics_keeps_clipboard_and_file_transfer`, `normalize_topics_deduplicates`
@@ -63,9 +64,11 @@ completed: 2026-03-27
 **Plan metadata:** (docs commit follows)
 
 ## Files Created/Modified
+
 - `src-tauri/crates/uc-daemon/src/api/ws.rs` - Added clipboard+file-transfer topic support and 6 unit tests
 
 ## Decisions Made
+
 - clipboard and file-transfer topics return `Ok(None)` from `build_snapshot_event` — they have no initial snapshot state, matching the existing pattern used by `PAIRING_VERIFICATION` and `SETUP`
 
 ## Deviations from Plan
@@ -93,5 +96,6 @@ None - no external service configuration required.
 - Commit `3358ff7f` — FOUND
 
 ---
-*Phase: 66-daemon-dashboard*
-*Completed: 2026-03-27*
+
+_Phase: 66-daemon-dashboard_
+_Completed: 2026-03-27_

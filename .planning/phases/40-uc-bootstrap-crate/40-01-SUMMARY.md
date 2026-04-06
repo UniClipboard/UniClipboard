@@ -42,13 +42,13 @@ key-files:
     - src-tauri/crates/uc-tauri/src/bootstrap/wiring.rs
 
 key-decisions:
-  - "Assembly helpers (create_db_pool, create_platform_layer, etc.) widened to pub for cross-crate test access"
-  - "PlatformLayer struct widened to pub in uc-bootstrap for downstream crate testing"
-  - "LoggingEventEmitter test dependency replaced with local NoopEventEmitter stub in uc-bootstrap tests"
+  - 'Assembly helpers (create_db_pool, create_platform_layer, etc.) widened to pub for cross-crate test access'
+  - 'PlatformLayer struct widened to pub in uc-bootstrap for downstream crate testing'
+  - 'LoggingEventEmitter test dependency replaced with local NoopEventEmitter stub in uc-bootstrap tests'
 
 patterns-established:
-  - "Re-export stub pattern: uc-tauri bootstrap modules become thin `pub use uc_bootstrap::module::*` stubs"
-  - "Idempotent init: TRACING_INITIALIZED OnceLock guard allows safe multiple init_tracing_subscriber calls"
+  - 'Re-export stub pattern: uc-tauri bootstrap modules become thin `pub use uc_bootstrap::module::*` stubs'
+  - 'Idempotent init: TRACING_INITIALIZED OnceLock guard allows safe multiple init_tracing_subscriber calls'
 
 requirements-completed: [BOOT-01, BOOT-05]
 
@@ -70,6 +70,7 @@ completed: 2026-03-18
 - **Files modified:** 16
 
 ## Accomplishments
+
 - Created uc-bootstrap crate with dependencies on uc-core, uc-app, uc-infra, uc-platform, uc-observability
 - Moved assembly.rs, config.rs, config_resolution.rs, init.rs, tracing.rs into uc-bootstrap
 - Moved BackgroundRuntimeDeps from wiring.rs into uc-bootstrap/assembly.rs (single definition)
@@ -85,6 +86,7 @@ Each task was committed atomically:
 2. **Task 2: Update uc-tauri to re-export from uc-bootstrap and verify full workspace builds** - `15f6fd7f` (refactor)
 
 ## Files Created/Modified
+
 - `src-tauri/crates/uc-bootstrap/Cargo.toml` - Crate manifest with all composition root deps
 - `src-tauri/crates/uc-bootstrap/src/lib.rs` - Public re-exports of all moved modules
 - `src-tauri/crates/uc-bootstrap/src/assembly.rs` - Dependency wiring with BackgroundRuntimeDeps
@@ -95,6 +97,7 @@ Each task was committed atomically:
 - `src-tauri/crates/uc-tauri/src/bootstrap/*.rs` - Replaced with thin re-export stubs
 
 ## Decisions Made
+
 - Widened PlatformLayer and assembly helpers to `pub` in uc-bootstrap so wiring.rs tests in uc-tauri can access them via re-exports. This is acceptable because uc-bootstrap is the composition root and downstream crates (daemon, CLI) will need these helpers.
 - Replaced `crate::adapters::host_event_emitter::LoggingEventEmitter` in tests with a local `NoopEventEmitter` stub to avoid cross-crate dependency on uc-tauri internals.
 - Config resolution import updated from `crate::bootstrap::config::load_config` to `crate::config::load_config` for uc-bootstrap module paths.
@@ -104,6 +107,7 @@ Each task was committed atomically:
 ### Auto-fixed Issues
 
 **1. [Rule 1 - Bug] Cleaned up unused imports in wiring.rs after BackgroundRuntimeDeps removal**
+
 - **Found during:** Task 2
 - **Issue:** Removing BackgroundRuntimeDeps struct left orphan imports (RepresentationId, SpoolRequest, RepresentationCache, SpoolManager, Libp2pNetworkAdapter) causing compiler warnings
 - **Fix:** Removed the unused imports from wiring.rs
@@ -116,16 +120,20 @@ Each task was committed atomically:
 **Impact on plan:** Necessary cleanup for clean compilation. No scope creep.
 
 ## Issues Encountered
+
 None
 
 ## User Setup Required
+
 None - no external service configuration required.
 
 ## Next Phase Readiness
+
 - uc-bootstrap crate exists and compiles as standalone crate
 - uc-tauri depends on uc-bootstrap with backward-compatible re-exports
 - Ready for Plan 02: scene-specific builders (build_gui_app, build_cli_context, build_daemon_app)
 
 ---
-*Phase: 40-uc-bootstrap-crate*
-*Completed: 2026-03-18*
+
+_Phase: 40-uc-bootstrap-crate_
+_Completed: 2026-03-18_

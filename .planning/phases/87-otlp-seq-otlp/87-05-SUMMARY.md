@@ -1,6 +1,6 @@
 ---
 phase: 87-otlp-seq-otlp
-plan: "05"
+plan: '05'
 subsystem: infra
 tags: [observability, otlp, seq, tracing, rust]
 
@@ -35,7 +35,7 @@ requirements-completed:
   - REQ-87-01
 
 duration: 3min
-completed: "2026-04-04"
+completed: '2026-04-04'
 ---
 
 # Phase 87 Plan 05: Legacy Seq/CLEF Pipeline Deletion Summary

@@ -104,14 +104,14 @@ These failures are in clipboard functionality and existed before this plan's cha
 
 ## Test Coverage Summary
 
-| Requirement | Coverage | Test(s) |
-|---|---|---|
-| AUTH-01 | Covered | `cli_auth_uses_session_exchange_not_direct_bearer` |
-| AUTH-02 | Covered | `cli_auth_registers_pid_in_whitelist` |
-| AUTH-03 | Covered | `rate_limit_is_per_client_not_global` |
-| AUTH-04 | Covered | `bare_bearer_rejected_with_invalid_auth_scheme_error`, `bare_bearer_on_l2_route_rejected_differently_than_invalid_jwt` |
-| AUTH-05 | Covered | `cli_and_gui_get_independent_tokens` |
-| AUTH-06 | Covered | `bearer_token_only_accepted_at_auth_connect` |
+| Requirement | Coverage | Test(s)                                                                                                                |
+| ----------- | -------- | ---------------------------------------------------------------------------------------------------------------------- |
+| AUTH-01     | Covered  | `cli_auth_uses_session_exchange_not_direct_bearer`                                                                     |
+| AUTH-02     | Covered  | `cli_auth_registers_pid_in_whitelist`                                                                                  |
+| AUTH-03     | Covered  | `rate_limit_is_per_client_not_global`                                                                                  |
+| AUTH-04     | Covered  | `bare_bearer_rejected_with_invalid_auth_scheme_error`, `bare_bearer_on_l2_route_rejected_differently_than_invalid_jwt` |
+| AUTH-05     | Covered  | `cli_and_gui_get_independent_tokens`                                                                                   |
+| AUTH-06     | Covered  | `bearer_token_only_accepted_at_auth_connect`                                                                           |
 
 ## Verification Results
 
@@ -129,5 +129,6 @@ cargo check --workspace: compiles cleanly (pre-existing warnings only)
 - Ready for Phase 85: Improve pairing observability
 
 ---
+
 _Phase: 84-cli-gui-daemon_
 _Completed: 2026-04-03_

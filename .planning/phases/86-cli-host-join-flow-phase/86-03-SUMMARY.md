@@ -60,44 +60,47 @@ metrics:
 
 ## One-liner
 
-Created lightweight CLI phase enums (HostCliPhase, JoinCliPhase) and pure derive_*_phase() functions for phase-driven setup flow refactoring.
+Created lightweight CLI phase enums (HostCliPhase, JoinCliPhase) and pure derive\_\*\_phase() functions for phase-driven setup flow refactoring.
 
 ## Completed Tasks
 
-| Task | Name | Commit | Files |
-| ---- | ---- | ------ | ----- |
-| 1 | Create host_flow.rs with HostCliPhase, HostCliSession, derive_host_phase() | 0dac45d6 | host_flow.rs |
-| 2 | Create join_flow.rs with JoinCliPhase, JoinCliSession, derive_join_phase() | 026e550b | join_flow.rs |
-| 3 | Wire host_flow and join_flow as submodules of setup module | a60cf0e6 | setup.rs |
+| Task | Name                                                                       | Commit   | Files        |
+| ---- | -------------------------------------------------------------------------- | -------- | ------------ |
+| 1    | Create host_flow.rs with HostCliPhase, HostCliSession, derive_host_phase() | 0dac45d6 | host_flow.rs |
+| 2    | Create join_flow.rs with JoinCliPhase, JoinCliSession, derive_join_phase() | 026e550b | join_flow.rs |
+| 3    | Wire host_flow and join_flow as submodules of setup module                 | a60cf0e6 | setup.rs     |
 
 ## What Was Built
 
 ### host_flow.rs (237 lines)
+
 - `HostCliPhase` enum with 6 variants: `WaitingJoinRequest`, `NeedDecision { session_id }`, `NeedVerification { session_id }`, `WaitingBackendCompletion`, `Completed`, `Canceled`
 - `HostCliSession` struct carrying: phase, pairing_presence_enabled, last_lease_refresh, spinner
 - `derive_host_phase(parsed, current) -> HostCliPhase` pure function implementing D-14
 - 10 unit tests covering all phase transitions
 
 ### join_flow.rs (213 lines)
+
 - `JoinCliPhase` enum with 8 variants: `SelectingPeer`, `WaitingPeerDiscovery`, `WaitingHostResponse`, `NeedPeerConfirmation { session_id }`, `NeedPassphrase`, `WaitingBackendCompletion`, `Completed`, `Canceled`
 - `JoinCliSession` struct carrying: phase, submitted_peer_request, spinner
 - `derive_join_phase(parsed, current) -> JoinCliPhase` pure function implementing D-14
 - 8 unit tests covering all phase transitions
 
 ### setup.rs wiring
+
 - Added `mod host_flow; mod join_flow;` submodule declarations
 - Added `pub use host_flow::{HostCliPhase, HostCliSession};`
 - Added `pub use join_flow::{JoinCliPhase, JoinCliSession};`
 
 ## Decisions Made
 
-| ID | Decision | Rationale |
-|----|----------|-----------|
-| D-11 | HostCliPhase session_id embedded in variant | Per D-13 design: session_id lives inside phase variant |
-| D-12 | JoinCliPhase session_id in NeedPeerConfirmation variant | Only phases that need session context carry it |
-| D-14 | Pure derive_*_phase() functions | Takes ParsedSetupState + current phase, returns next phase - no side effects |
-| D-15 | No last_submitted_* in derive functions | Deduplication handled by caller using submitted session IDs |
-| D-16 | HostCliSession/JoinCliSession carry loop state | Phase embedded in session struct for clean phase-driven loop structure |
+| ID   | Decision                                                | Rationale                                                                    |
+| ---- | ------------------------------------------------------- | ---------------------------------------------------------------------------- |
+| D-11 | HostCliPhase session_id embedded in variant             | Per D-13 design: session_id lives inside phase variant                       |
+| D-12 | JoinCliPhase session_id in NeedPeerConfirmation variant | Only phases that need session context carry it                               |
+| D-14 | Pure derive\_\*\_phase() functions                      | Takes ParsedSetupState + current phase, returns next phase - no side effects |
+| D-15 | No last*submitted*\* in derive functions                | Deduplication handled by caller using submitted session IDs                  |
+| D-16 | HostCliSession/JoinCliSession carry loop state          | Phase embedded in session struct for clean phase-driven loop structure       |
 
 ## Verification
 

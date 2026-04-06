@@ -40,17 +40,17 @@ key-files:
 
 key-decisions:
   - "CommandChild from sidecar spawn maintains stdin tether (D-06): drop sends EOF to daemon's --gui-managed stdin monitor"
-  - "shutdown_owned_daemon uses terminate_local_daemon_pid + libc::kill(0) polling instead of Child::try_wait/kill/wait"
-  - "spawn_daemon_process returns (CommandChild, u32) tuple since pid() must be called before move"
-  - "Sidecar rx Receiver drained in background task — must not be dropped immediately or pipe blocks"
-  - "Test spawn closures use Ok(None) — CommandChild cannot be constructed outside Tauri runtime"
-  - "Pre-existing test bug fixed: startup_helper_rejects test now checks timeout error instead of unreachable terminate"
-  - "daemon_exit_cleanup integration tests that required real CommandChild removed (D-06 tested at E2E level)"
+  - 'shutdown_owned_daemon uses terminate_local_daemon_pid + libc::kill(0) polling instead of Child::try_wait/kill/wait'
+  - 'spawn_daemon_process returns (CommandChild, u32) tuple since pid() must be called before move'
+  - 'Sidecar rx Receiver drained in background task — must not be dropped immediately or pipe blocks'
+  - 'Test spawn closures use Ok(None) — CommandChild cannot be constructed outside Tauri runtime'
+  - 'Pre-existing test bug fixed: startup_helper_rejects test now checks timeout error instead of unreachable terminate'
+  - 'daemon_exit_cleanup integration tests that required real CommandChild removed (D-06 tested at E2E level)'
 
 patterns-established:
-  - "Sidecar spawn pattern: (rx, child) = app.shell().sidecar(name).args([...]).spawn()?"
-  - "CommandChild pid extraction: let pid = child.pid(); before move into record_spawned"
-  - "Receiver drain pattern: tauri::async_runtime::spawn(async move { while let Some(event) = rx.recv().await { ... } })"
+  - 'Sidecar spawn pattern: (rx, child) = app.shell().sidecar(name).args([...]).spawn()?'
+  - 'CommandChild pid extraction: let pid = child.pid(); before move into record_spawned'
+  - 'Receiver drain pattern: tauri::async_runtime::spawn(async move { while let Some(event) = rx.recv().await { ... } })'
 
 requirements-completed: [PH68-03, PH68-04, PH68-06]
 
@@ -98,16 +98,17 @@ completed: 2026-03-28
 
 ## Task Commits
 
-| Task | Name | Commit | Files |
-| ---- | ---- | ------ | ----- |
-| 1 | Migrate GuiOwnedDaemonState to CommandChild | ae32397e | daemon_lifecycle.rs, uc-daemon-client/Cargo.toml, Cargo.lock |
-| 2 | Sidecar spawn API and AppHandle wiring | c5e7dd7d | run.rs, main.rs, daemon_bootstrap_contract.rs, daemon_exit_cleanup.rs |
+| Task | Name                                        | Commit   | Files                                                                 |
+| ---- | ------------------------------------------- | -------- | --------------------------------------------------------------------- |
+| 1    | Migrate GuiOwnedDaemonState to CommandChild | ae32397e | daemon_lifecycle.rs, uc-daemon-client/Cargo.toml, Cargo.lock          |
+| 2    | Sidecar spawn API and AppHandle wiring      | c5e7dd7d | run.rs, main.rs, daemon_bootstrap_contract.rs, daemon_exit_cleanup.rs |
 
 ## Deviations from Plan
 
 ### Auto-fixed Issues
 
 **1. [Rule 1 - Bug] Fixed pre-existing test failure: startup_helper_rejects_healthy_but_incompatible_daemon**
+
 - **Found during:** Task 2 — running tests
 - **Issue:** The test used `|| unreachable!()` for `terminate_incompatible` closure, but per code logic `terminate_incompatible` is always called when `replacement_attempt < MAX_INCOMPATIBLE_REPLACEMENT_ATTEMPTS`. The test was already broken before this migration.
 - **Fix:** Changed `terminate_incompatible` closure to `|| Ok(())` (allow the call), updated error message assertion to match the actual `wait_for_endpoint_absent` timeout error ("did not exit within 10ms") instead of the version mismatch error

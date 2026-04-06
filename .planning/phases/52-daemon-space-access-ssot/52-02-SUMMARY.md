@@ -21,8 +21,8 @@ affects:
 tech-stack:
   added: []
   patterns:
-    - "space_access.state_changed and space_access.snapshot map to the same RealtimeEvent variant (snapshot-first subscribe pattern)"
-    - "GUI process holds zero SpaceAccessOrchestrator ownership — state flows daemon -> WS -> bridge -> frontend"
+    - 'space_access.state_changed and space_access.snapshot map to the same RealtimeEvent variant (snapshot-first subscribe pattern)'
+    - 'GUI process holds zero SpaceAccessOrchestrator ownership — state flows daemon -> WS -> bridge -> frontend'
 
 key-files:
   created: []
@@ -34,9 +34,9 @@ key-files:
     - src-tauri/src/main.rs
 
 key-decisions:
-  - "space_access.snapshot and space_access.state_changed both deserialize to SpaceAccessStateChangedPayload for uniform frontend event type"
-  - "SpaceAccessOrchestrator creation kept in build_gui_app — SetupAssemblyPorts still requires it for internal wiring (not in returned GuiBootstrapContext)"
-  - "run_space_access_completion_loop removed from wiring.rs — space access completion state now flows exclusively via daemon WS"
+  - 'space_access.snapshot and space_access.state_changed both deserialize to SpaceAccessStateChangedPayload for uniform frontend event type'
+  - 'SpaceAccessOrchestrator creation kept in build_gui_app — SetupAssemblyPorts still requires it for internal wiring (not in returned GuiBootstrapContext)'
+  - 'run_space_access_completion_loop removed from wiring.rs — space access completion state now flows exclusively via daemon WS'
 
 requirements-completed:
   - PH52-04
@@ -94,6 +94,7 @@ completed: 2026-03-23
 ### Auto-fixed Issues
 
 **1. [Rule 2 - Missing functionality] Added SpaceAccess arm to realtime_topic_to_str in host_event_emitter.rs**
+
 - **Found during:** Task 1 (cargo check after adding SpaceAccess to event_topic)
 - **Issue:** `realtime_topic_to_str` in `host_event_emitter.rs` had a non-exhaustive match after `RealtimeTopic::SpaceAccess` was added in Plan 01 — compiler error E0004
 - **Fix:** Added `RealtimeTopic::SpaceAccess => "spaceAccess"` arm
@@ -116,12 +117,14 @@ One pre-existing test failure found: `bootstrap::run::tests::startup_helper_reje
 - Phase 52 SSOT migration complete for space access state
 
 ---
-*Phase: 52-daemon-space-access-ssot*
-*Completed: 2026-03-23*
+
+_Phase: 52-daemon-space-access-ssot_
+_Completed: 2026-03-23_
 
 ## Self-Check: PASSED
 
 Files verified:
+
 - FOUND: src-tauri/crates/uc-tauri/src/bootstrap/daemon_ws_bridge.rs (contains space_access.state_changed, space_access.snapshot, SpaceAccess topic routing)
 - FOUND: src-tauri/crates/uc-bootstrap/src/builders.rs (GuiBootstrapContext without space_access_orchestrator)
 - FOUND: src-tauri/crates/uc-tauri/src/bootstrap/wiring.rs (no space_access_completion, no run_space_access_completion_loop)

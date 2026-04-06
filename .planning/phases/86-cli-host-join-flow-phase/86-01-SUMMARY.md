@@ -24,7 +24,7 @@ key-files:
     - src-tauri/crates/uc-daemon/src/api/dto/setup.rs (D-05 custom Debug impl)
 
 key-decisions:
-  - "D-01: Changed first clearing condition from OR to AND to prevent premature clearing of decision session when in NeedVerification state"
+  - 'D-01: Changed first clearing condition from OR to AND to prevent premature clearing of decision session when in NeedVerification state'
 
 patterns-established: []
 
@@ -48,6 +48,7 @@ completed: 2026-04-03
 - **Files modified:** 2
 
 ## Accomplishments
+
 - Fixed D-01: double-negative condition that incorrectly cleared `submitted_host_decision_session` when transitioning from decision to verification state (changed `||` to `&&`)
 - Fixed D-05: replaced derive(Debug) with manual Debug impl on SetupStateResponseDto for compact state-change output
 - Verified D-03: inspected else-if chain at lines 278-313, confirmed no empty branches exist
@@ -80,11 +81,13 @@ None.
 ## Next Phase Readiness
 
 Phase 0 bug fixes complete. The two key bugs identified in the research phase are now resolved:
+
 - D-01 (double-negative condition) fixed
 - D-05 (custom Debug impl) implemented
 
 Ready for Phase 86-02 (CLI host/join flow refactor).
 
 ---
-*Phase: 86-cli-host-join-flow-phase*
-*Completed: 2026-04-03*
+
+_Phase: 86-cli-host-join-flow-phase_
+_Completed: 2026-04-03_

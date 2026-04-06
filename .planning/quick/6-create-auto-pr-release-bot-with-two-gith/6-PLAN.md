@@ -11,22 +11,22 @@ autonomous: true
 requirements: [QUICK-6]
 must_haves:
   truths:
-    - "Running prepare-release workflow with a version input creates a release/vX.Y.Z branch, bumps version, generates changelog, uses Codex to polish docs, and opens a PR to main"
-    - "Merging a release/* PR into main triggers tag-on-merge which creates an annotated tag on main HEAD"
-    - "The annotated tag push automatically triggers the existing release.yml build+deploy pipeline"
+    - 'Running prepare-release workflow with a version input creates a release/vX.Y.Z branch, bumps version, generates changelog, uses Codex to polish docs, and opens a PR to main'
+    - 'Merging a release/* PR into main triggers tag-on-merge which creates an annotated tag on main HEAD'
+    - 'The annotated tag push automatically triggers the existing release.yml build+deploy pipeline'
   artifacts:
-    - path: ".github/workflows/prepare-release.yml"
-      provides: "Workflow: branch creation, version bump, codex polish, PR creation"
-    - path: ".github/workflows/tag-on-merge.yml"
-      provides: "Workflow: tag creation on release PR merge"
+    - path: '.github/workflows/prepare-release.yml'
+      provides: 'Workflow: branch creation, version bump, codex polish, PR creation'
+    - path: '.github/workflows/tag-on-merge.yml'
+      provides: 'Workflow: tag creation on release PR merge'
   key_links:
-    - from: "prepare-release.yml"
-      to: "scripts/bump-version.js"
-      via: "node scripts/bump-version.js --to <version>"
+    - from: 'prepare-release.yml'
+      to: 'scripts/bump-version.js'
+      via: 'node scripts/bump-version.js --to <version>'
       pattern: "bump-version\\.js"
-    - from: "tag-on-merge.yml"
-      to: ".github/workflows/release.yml"
-      via: "git tag push triggers release.yml on: push: tags: v*"
+    - from: 'tag-on-merge.yml'
+      to: '.github/workflows/release.yml'
+      via: 'git tag push triggers release.yml on: push: tags: v*'
       pattern: "git push origin.*v\\$"
 ---
 
@@ -60,7 +60,9 @@ on:
 ```
 
 <!-- bump-version.js supports exact version targeting -->
+
 From scripts/bump-version.js:
+
 ```
 Usage: node scripts/bump-version.js --to 0.2.3
 Files updated: package.json, src-tauri/tauri.conf.json, src-tauri/Cargo.toml, src-tauri/Cargo.lock
@@ -68,7 +70,9 @@ Output: GITHUB_OUTPUT version=<newVersion>
 ```
 
 <!-- generate-release-notes.js for changelog generation -->
+
 From scripts/generate-release-notes.js:
+
 ```
 Usage: node scripts/generate-release-notes.js \
   --version "X.Y.Z" --repo "owner/repo" --previous-tag "vA.B.C" \
@@ -77,6 +81,7 @@ Usage: node scripts/generate-release-notes.js \
   --template ".github/release-notes/release.md.tmpl" \
   --output "release-notes.md"
 ```
+
 </interfaces>
 </context>
 
@@ -89,6 +94,7 @@ Usage: node scripts/generate-release-notes.js \
 Create `.github/workflows/prepare-release.yml` with:
 
 **Trigger:** `workflow_dispatch` with inputs:
+
 - `version` (string, required): Exact semver version e.g. "0.3.0" (no "v" prefix)
 - `bump` (choice: patch/minor/major, default: patch): Used only if `version` is empty — fallback to --type bump
 - `channel` (choice: stable/alpha/beta/rc, default: stable): Release channel
@@ -97,9 +103,10 @@ Create `.github/workflows/prepare-release.yml` with:
 **Job: prepare** (runs-on: ubuntu-latest, permissions: contents: write, pull-requests: write)
 
 Steps:
+
 1. **Checkout** with `actions/checkout@v4`, ref: `${{ inputs.base_branch }}`, token: `${{ secrets.REPO_BOT_TOKEN }}` (PAT for cross-workflow trigger), fetch-depth: 0
 
-2. **Setup Node.js** with `actions/setup-node@v4`, node-version: lts/*
+2. **Setup Node.js** with `actions/setup-node@v4`, node-version: lts/\*
 
 3. **Determine version**: If `inputs.version` is non-empty, use it directly. Otherwise run `node scripts/bump-version.js --type ${{ inputs.bump }} --channel ${{ inputs.channel }} --dry-run` and extract version from output. Store in `VERSION` env var and step output.
 
@@ -129,15 +136,16 @@ Steps:
 11. **Summary**: Write step summary with version, PR URL, and next steps.
 
 Key details:
+
 - Use `REPO_BOT_TOKEN` (not `GITHUB_TOKEN`) for checkout and PR creation so that the merge event triggers tag-on-merge
 - The codex step should be wrapped in `if: env.CODEX_API_KEY != ''` with `env: CODEX_API_KEY: ${{ secrets.CODEX_API_KEY }}` so it gracefully skips if not configured
 - All git operations use `github-actions[bot]` identity
   </action>
   <verify>
-    <automated>cd /home/wuy6/myprojects/UniClipboard.auto-pr-for-release && cat .github/workflows/prepare-release.yml | head -5 && python3 -c "import yaml; yaml.safe_load(open('.github/workflows/prepare-release.yml'))" && echo "YAML valid"</automated>
+  <automated>cd /home/wuy6/myprojects/UniClipboard.auto-pr-for-release && cat .github/workflows/prepare-release.yml | head -5 && python3 -c "import yaml; yaml.safe_load(open('.github/workflows/prepare-release.yml'))" && echo "YAML valid"</automated>
   </verify>
   <done>prepare-release.yml exists, is valid YAML, has workflow_dispatch trigger with version/bump/channel inputs, uses REPO_BOT_TOKEN, calls bump-version.js, has codex polish step, creates PR via gh CLI</done>
-</task>
+  </task>
 
 <task type="auto">
   <name>Task 2: Create tag-on-merge.yml workflow</name>
@@ -150,6 +158,7 @@ Create `.github/workflows/tag-on-merge.yml` with:
 **Job: tag-release** (runs-on: ubuntu-latest, permissions: contents: write)
 
 **Condition (job-level `if`):**
+
 ```yaml
 if: >-
   github.event.pull_request.merged == true &&
@@ -157,7 +166,9 @@ if: >-
 ```
 
 Steps:
+
 1. **Extract version** from branch name:
+
    ```bash
    BRANCH="${{ github.event.pull_request.head.ref }}"
    VERSION="${BRANCH#release/v}"
@@ -171,6 +182,7 @@ Steps:
 4. **Check tag does not exist**: `git tag -l "v${VERSION}"` — fail if tag already exists.
 
 5. **Create annotated tag**:
+
    ```bash
    git config user.name "github-actions[bot]"
    git config user.email "github-actions[bot]@users.noreply.github.com"
@@ -184,16 +196,17 @@ Steps:
 8. **Summary**: Write step summary confirming tag created, linking to the Actions run that will be triggered by the tag push.
 
 Key details:
+
 - Use `REPO_BOT_TOKEN` for checkout and push so the tag push event is not suppressed (GITHUB_TOKEN events don't trigger other workflows)
-- The job-level `if` condition ensures this ONLY runs for merged release/* PRs, not other PRs
+- The job-level `if` condition ensures this ONLY runs for merged release/\* PRs, not other PRs
 - No build logic — that is handled entirely by the existing release.yml
 - Branch cleanup is best-effort (continue-on-error)
   </action>
   <verify>
-    <automated>cd /home/wuy6/myprojects/UniClipboard.auto-pr-for-release && cat .github/workflows/tag-on-merge.yml | head -5 && python3 -c "import yaml; yaml.safe_load(open('.github/workflows/tag-on-merge.yml'))" && echo "YAML valid"</automated>
+  <automated>cd /home/wuy6/myprojects/UniClipboard.auto-pr-for-release && cat .github/workflows/tag-on-merge.yml | head -5 && python3 -c "import yaml; yaml.safe_load(open('.github/workflows/tag-on-merge.yml'))" && echo "YAML valid"</automated>
   </verify>
-  <done>tag-on-merge.yml exists, is valid YAML, triggers on pull_request closed, has job-level if for merged release/* PRs, extracts version from branch name, creates annotated tag, pushes with REPO_BOT_TOKEN, deletes release branch</done>
-</task>
+  <done>tag-on-merge.yml exists, is valid YAML, triggers on pull_request closed, has job-level if for merged release/\* PRs, extracts version from branch name, creates annotated tag, pushes with REPO_BOT_TOKEN, deletes release branch</done>
+  </task>
 
 </tasks>
 
@@ -208,11 +221,12 @@ Key details:
 </verification>
 
 <success_criteria>
+
 - prepare-release.yml: workflow_dispatch -> creates release branch -> bumps version -> optional codex polish -> opens PR
 - tag-on-merge.yml: release PR merge -> creates annotated tag -> triggers existing release.yml
 - Both workflows use REPO_BOT_TOKEN for auth
 - Existing release.yml is not modified
-</success_criteria>
+  </success_criteria>
 
 <output>
 After completion, create `.planning/quick/6-create-auto-pr-release-bot-with-two-gith/6-SUMMARY.md`

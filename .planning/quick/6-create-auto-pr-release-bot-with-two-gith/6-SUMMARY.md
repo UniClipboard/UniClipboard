@@ -30,25 +30,28 @@ Two GitHub Actions workflows automating the release preparation and tagging pipe
 
 ## Tasks Completed
 
-| # | Task | Commit | Key Files |
-|---|------|--------|-----------|
-| 1 | Create prepare-release.yml workflow | 7634e779 | .github/workflows/prepare-release.yml |
-| 2 | Create tag-on-merge.yml workflow | 43581bc7 | .github/workflows/tag-on-merge.yml |
+| #   | Task                                | Commit   | Key Files                             |
+| --- | ----------------------------------- | -------- | ------------------------------------- |
+| 1   | Create prepare-release.yml workflow | 7634e779 | .github/workflows/prepare-release.yml |
+| 2   | Create tag-on-merge.yml workflow    | 43581bc7 | .github/workflows/tag-on-merge.yml    |
 
 ## What Was Built
 
 ### prepare-release.yml
+
 - **Trigger:** `workflow_dispatch` with inputs: version (exact semver), bump (patch/minor/major), channel (stable/alpha/beta/rc), base_branch
 - **Flow:** Checkout -> determine version -> create release/vX.Y.Z branch -> bump version via `scripts/bump-version.js --to` -> generate changelog skeleton -> commit -> optional Codex polish -> push branch -> create PR via `gh pr create`
 - **Auth:** Uses `REPO_BOT_TOKEN` for checkout and PR creation to enable cross-workflow triggering
 
 ### tag-on-merge.yml
+
 - **Trigger:** `pull_request: types: [closed]` on branches `[main]`
 - **Guard:** Job-level `if` ensures only merged `release/v*` PRs trigger the workflow
 - **Flow:** Extract version from branch name -> checkout main -> validate version matches package.json -> check no existing tag -> create annotated tag -> push tag (triggers release.yml) -> delete release branch (best-effort)
 - **Auth:** Uses `REPO_BOT_TOKEN` for checkout and tag push to trigger release.yml
 
 ### End-to-End Flow
+
 1. Developer runs `prepare-release` workflow with a version
 2. Workflow creates branch, bumps version, optionally polishes changelog, opens PR
 3. Developer reviews and merges PR
@@ -72,7 +75,7 @@ None - plan executed exactly as written.
 - tag-on-merge.yml has pull_request closed trigger with correct job-level if condition
 - Both use REPO_BOT_TOKEN (not GITHUB_TOKEN) for cross-workflow triggering
 - prepare-release.yml calls bump-version.js with --to flag
-- tag-on-merge.yml creates annotated tag matching release.yml's v* pattern
+- tag-on-merge.yml creates annotated tag matching release.yml's v\* pattern
 - Existing release.yml is not modified (0 lines diff)
 
 ## Self-Check: PASSED

@@ -9,6 +9,7 @@
 将现有基于自定义 `SeqLayer` + `CLEFFormat` + reqwest 批量 POST (`/api/events/raw`) 的 observability 导出路径,全面替换为基于 OpenTelemetry SDK + OTLP 的标准化 telemetry 导出,同时保证 Seq 作为本地可视化后端继续可用。本期采纳 OTel 最佳实践:标准 semantic conventions 对齐、真正的 parent-child span 层级、W3C trace context 跨设备传播、标准 OTLP 环境变量配置。
 
 **In scope:**
+
 - 用 `opentelemetry` + `opentelemetry-otlp` + `tracing-opentelemetry` 替换 `uc-observability/src/seq/` 下的 layer/sender/clef_format 实现(硬切换)
 - 将现有平铺的 stage span 重构为 root flow span + stage child span 的 parent-child 层级
 - 全面对齐 OTel semantic conventions(resource 和 span 命名都对齐)

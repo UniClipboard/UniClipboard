@@ -25,10 +25,10 @@ affects:
 tech-stack:
   added: []
   patterns:
-    - "Composition root pattern: main.rs builds typed services, erases to trait objects for DaemonApp"
-    - "Shared event channel: broadcast::Sender created once, cloned to PairingHost, PeerMonitor, and DaemonApp"
-    - "Uniform JoinSet service lifecycle: all services started/stopped uniformly without per-component boolean flags"
-    - "State pre-construction: RuntimeState created in main.rs before DaemonPairingHost so both can share it"
+    - 'Composition root pattern: main.rs builds typed services, erases to trait objects for DaemonApp'
+    - 'Shared event channel: broadcast::Sender created once, cloned to PairingHost, PeerMonitor, and DaemonApp'
+    - 'Uniform JoinSet service lifecycle: all services started/stopped uniformly without per-component boolean flags'
+    - 'State pre-construction: RuntimeState created in main.rs before DaemonPairingHost so both can share it'
 
 key-files:
   created: []
@@ -39,12 +39,12 @@ key-files:
     - src-tauri/crates/uc-daemon/tests/pairing_host.rs
 
 key-decisions:
-  - "DaemonPairingHost::run() changed from Arc<Self> to &self: run() never passes self to spawned tasks, only clones Arc fields, so &self is safe"
-  - "DaemonApp::new() accepts pre-built state and event_tx: enables main.rs to share RuntimeState and broadcast channel with PairingHost before DaemonApp construction"
-  - "space_access_orchestrator retained as DaemonApp field: needed for DaemonApiState wiring (not lifecycle), stored as Option<Arc<SpaceAccessOrchestrator>>"
+  - 'DaemonPairingHost::run() changed from Arc<Self> to &self: run() never passes self to spawned tasks, only clones Arc fields, so &self is safe'
+  - 'DaemonApp::new() accepts pre-built state and event_tx: enables main.rs to share RuntimeState and broadcast channel with PairingHost before DaemonApp construction'
+  - 'space_access_orchestrator retained as DaemonApp field: needed for DaemonApiState wiring (not lifecycle), stored as Option<Arc<SpaceAccessOrchestrator>>'
   - "api_pairing_host stored in DaemonApp: typed access for DaemonApiState.with_pairing_host() (PH56-04); not used for lifecycle (that's via services vec)"
-  - "Uniform JoinSet for all services: no per-component booleans (completed_rpc_handle etc.) for pairing host — clean D-05 compliance"
-  - "event_tx reassignment pattern: DaemonApiState::new() creates default channel, then api_state.event_tx = self.event_tx.clone() replaces it with shared one without modifying server.rs API"
+  - 'Uniform JoinSet for all services: no per-component booleans (completed_rpc_handle etc.) for pairing host — clean D-05 compliance'
+  - 'event_tx reassignment pattern: DaemonApiState::new() creates default channel, then api_state.event_tx = self.event_tx.clone() replaces it with shared one without modifying server.rs API'
 
 requirements-completed:
   - PH56-03
@@ -102,6 +102,7 @@ Each task was committed atomically:
 ### Auto-fixed Issues
 
 **1. [Rule 1 - Bug] Fixed temporary Arc drop in pairing_host.rs test**
+
 - **Found during:** Task 2 verification (cargo test)
 - **Issue:** `tests/pairing_host.rs` line 156 used `Arc::clone(&host).run(cancel.child_token())` — the temporary Arc was dropped before the spawned async task could use the borrowed reference. After changing `run()` to `&self`, this triggered E0716.
 - **Fix:** Wrapped in `async move` block with pre-cloned child token: `let h = Arc::clone(&host); let child_cancel = cancel.child_token(); tokio::spawn(async move { h.run(child_cancel).await })`
@@ -109,10 +110,11 @@ Each task was committed atomically:
 - **Commit:** `11bf8737`
 
 **2. [Rule 3 - Blocking] Worktree missing cedar-plum crates**
+
 - **Found during:** Initial cargo check
 - **Issue:** Worktree was based on main branch with old workspace; uc-daemon needed uc-bootstrap, uc-cli, uc-daemon-client and updated uc-core/uc-app/etc.
 - **Fix:** Checked out all cedar-plum crates and updated Cargo.toml workspace; committed as initialization step
-- **Files modified:** All src-tauri/crates/*, src-tauri/Cargo.toml, src-tauri/Cargo.lock
+- **Files modified:** All src-tauri/crates/\*, src-tauri/Cargo.toml, src-tauri/Cargo.lock
 - **Commit:** `81d38d26`
 
 ## Pre-existing Test Failures (Not Related to This Plan)
@@ -142,5 +144,6 @@ None — all wiring is complete. DaemonApiState receives the typed `Arc<DaemonPa
 ## Self-Check: PASSED
 
 ---
-*Phase: 56-refactor-daemon-host-architecture-extract-peer-lifecycle-from-pairinghost-unify-host-lifecycle-management*
-*Completed: 2026-03-24*
+
+_Phase: 56-refactor-daemon-host-architecture-extract-peer-lifecycle-from-pairinghost-unify-host-lifecycle-management_
+_Completed: 2026-03-24_

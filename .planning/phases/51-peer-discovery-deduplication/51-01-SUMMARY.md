@@ -40,15 +40,15 @@ key-files:
     - src-tauri/crates/uc-daemon/tests/pairing_ws.rs
 
 key-decisions:
-  - "PeersChangedFullPayload replaces PeerChangedPayload for peers.changed events (full-snapshot pattern)"
-  - "PeerChangedPayload struct kept in types.rs for backward compatibility (still used by other code)"
-  - "local_peer_id filter applied at both adapter layer (root fix) and use-case layer (defense-in-depth)"
-  - "host.rs uses CoreUseCases::new(runtime.as_ref()).get_p2p_peers_snapshot() for snapshot emission"
-  - "DaemonWsBridge uses match with warn!() on error - no silent .ok() for peers.changed deserialization"
+  - 'PeersChangedFullPayload replaces PeerChangedPayload for peers.changed events (full-snapshot pattern)'
+  - 'PeerChangedPayload struct kept in types.rs for backward compatibility (still used by other code)'
+  - 'local_peer_id filter applied at both adapter layer (root fix) and use-case layer (defense-in-depth)'
+  - 'host.rs uses CoreUseCases::new(runtime.as_ref()).get_p2p_peers_snapshot() for snapshot emission'
+  - 'DaemonWsBridge uses match with warn!() on error - no silent .ok() for peers.changed deserialization'
 
 patterns-established:
-  - "Full-snapshot WebSocket event emission: emit complete list on change rather than single-peer increments"
-  - "Defense-in-depth filtering: apply correctness filters at both infrastructure and domain layers"
+  - 'Full-snapshot WebSocket event emission: emit complete list on change rather than single-peer increments'
+  - 'Defense-in-depth filtering: apply correctness filters at both infrastructure and domain layers'
 
 requirements-completed:
   - PH51-01
@@ -94,7 +94,7 @@ Each task was committed atomically:
 - `src-tauri/crates/uc-app/src/usecases/pairing/get_p2p_peers_snapshot.rs` - Added defense-in-depth local_id filter, added test_snapshot_excludes_local_peer
 - `src-tauri/crates/uc-daemon/src/api/types.rs` - Added PeersChangedFullPayload struct
 - `src-tauri/crates/uc-daemon/src/pairing/host.rs` - Updated PeerDiscovered/PeerLost to emit full snapshot, added unit tests
-- `src-tauri/crates/uc-daemon/src/api/ws.rs` - Updated _event_type_markers to reference PeersChangedFullPayload
+- `src-tauri/crates/uc-daemon/src/api/ws.rs` - Updated \_event_type_markers to reference PeersChangedFullPayload
 - `src-tauri/crates/uc-tauri/src/bootstrap/daemon_ws_bridge.rs` - Updated peers.changed to deserialize PeersChangedFullPayload, added tests
 - `src-tauri/crates/uc-daemon/tests/pairing_ws.rs` - Updated integration test to use PeersChangedFullPayload format
 
@@ -109,7 +109,8 @@ Each task was committed atomically:
 
 ### Auto-fixed Issues
 
-**1. [Rule 2 - Missing Critical] Updated ws.rs _event_type_markers and pairing_ws.rs integration test**
+**1. [Rule 2 - Missing Critical] Updated ws.rs \_event_type_markers and pairing_ws.rs integration test**
+
 - **Found during:** Task 2 (full compilation verification)
 - **Issue:** `_event_type_markers` function in `ws.rs` and integration test in `pairing_ws.rs` still referenced old `PeerChangedPayload` for peers.changed context, causing unused import warnings and test failures
 - **Fix:** Updated `ws.rs` marker function to use `PeersChangedFullPayload`, updated `pairing_ws.rs` test fixture and assertions to match new `peers.peers[N]` structure
@@ -134,5 +135,6 @@ Each task was committed atomically:
 - No frontend changes needed (D-05: trust backend data)
 
 ---
-*Phase: 51-peer-discovery-deduplication*
-*Completed: 2026-03-23*
+
+_Phase: 51-peer-discovery-deduplication_
+_Completed: 2026-03-23_

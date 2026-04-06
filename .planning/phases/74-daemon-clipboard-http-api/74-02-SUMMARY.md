@@ -23,11 +23,11 @@ key-files:
     - src-tauri/crates/uc-daemon/src/api/event_emitter.rs
 
 key-decisions:
-  - "Used format!(\"{:?}\", origin).to_lowercase() for origin serialization (ClipboardOriginKind has Debug but not Display)"
-  - "Added #[allow(dead_code)] on ClipboardDeletedPayload and ClipboardUpdatedPayload — future phases need these when domain model adds FavoriteChanged/Deleted events"
+  - 'Used format!("{:?}", origin).to_lowercase() for origin serialization (ClipboardOriginKind has Debug but not Display)'
+  - 'Added #[allow(dead_code)] on ClipboardDeletedPayload and ClipboardUpdatedPayload — future phases need these when domain model adds FavoriteChanged/Deleted events'
 
 patterns-established:
-  - "Payload struct pattern: #[derive(Serialize)] #[serde(rename_all = \"camelCase\")] with #[allow(dead_code)] for deferred variants"
+  - 'Payload struct pattern: #[derive(Serialize)] #[serde(rename_all = "camelCase")] with #[allow(dead_code)] for deferred variants'
 
 requirements-completed: [PH74-04]
 
@@ -93,5 +93,6 @@ completed: 2026-03-29
 - `CLIPBOARD_UPDATED` and `CLIPBOARD_DELETED` WS events remain out of scope — domain model does not emit those events yet
 
 ---
+
 _Phase: 74-daemon-clipboard-http-api (Plan 02)_
 _Completed: 2026-03-29_

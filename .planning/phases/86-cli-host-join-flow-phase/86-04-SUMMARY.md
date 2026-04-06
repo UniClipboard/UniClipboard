@@ -29,12 +29,12 @@ key-files:
     - src-tauri/crates/uc-cli/src/commands/setup.rs
 
 key-decisions:
-  - "Explicit Result<(), i32> type annotation on action_result to avoid type inference conflicts"
-  - "Cancel paths return EXIT_ERROR for loop exit (not EXIT_SUCCESS) to match error semantics"
-  - "Used is_err() instead of if let Err for action_result error checking"
+  - 'Explicit Result<(), i32> type annotation on action_result to avoid type inference conflicts'
+  - 'Cancel paths return EXIT_ERROR for loop exit (not EXIT_SUCCESS) to match error semantics'
+  - 'Used is_err() instead of if let Err for action_result error checking'
 
 patterns-established:
-  - "Phase-driven CLI loops: session struct holds phase + UI state; derive_*_phase computes next phase; match dispatches action; on_*_phase_changed updates UI"
+  - 'Phase-driven CLI loops: session struct holds phase + UI state; derive_*_phase computes next phase; match dispatches action; on_*_phase_changed updates UI'
 
 requirements-completed:
   - REQ-86-04
@@ -57,6 +57,7 @@ completed: 2026-04-03
 - **Files modified:** 1
 
 ## Accomplishments
+
 - Replaced old event-driven state machine in `run_pair` with phase-driven loop using `HostCliSession`, `derive_host_phase`, and `on_host_phase_changed`
 - Replaced old event-driven state machine in `run_connect` with phase-driven loop using `JoinCliSession`, `derive_join_phase`, and `on_join_phase_changed`
 - Phase transitions handled by `derive_*_phase` pure functions; `on_*_phase_changed` only updates UI (spinner, logging)
@@ -88,6 +89,7 @@ completed: 2026-04-03
 ### Auto-fixed Issues
 
 **1. [Rule 3 - Blocking] Missing derive_host_phase and derive_join_phase re-exports**
+
 - **Found during:** Task 1 (run_pair rewrite)
 - **Issue:** `derive_host_phase` and `derive_join_phase` not found in scope - were not included in the pub use re-exports from host_flow/join_flow submodules
 - **Fix:** Added `derive_host_phase` and `derive_join_phase` to the pub use statements
@@ -96,14 +98,16 @@ completed: 2026-04-03
 - **Committed in:** 684d981e (Task 1 commit)
 
 **2. [Rule 3 - Blocking] Mismatched types in match arms due to return-in-if pattern**
+
 - **Found during:** Task 1 (run_pair rewrite)
-- **Issue:** `if let Err(...) { return Err(exit_codes::EXIT_ERROR); }` pattern inside match arms caused Rust type inference to expect `i32` at the return position, producing "expected i32, found Result<_, i32>" errors. Also, `confirm_peer_trust()` returns `Result<SetupActionResponse, Error>` not `Result<(), Error>`
+- **Issue:** `if let Err(...) { return Err(exit_codes::EXIT_ERROR); }` pattern inside match arms caused Rust type inference to expect `i32` at the return position, producing "expected i32, found Result<\_, i32>" errors. Also, `confirm_peer_trust()` returns `Result<SetupActionResponse, Error>` not `Result<(), Error>`
 - **Fix:** Restructured match arms to use `Result<(), i32>` consistently; changed `if let Err(...) { return Err(...) }` to `if expr.is_err() { return i32 }` pattern; used explicit type annotation `let action_result: Result<(), i32> = match ...`
 - **Files modified:** src-tauri/crates/uc-cli/src/commands/setup.rs
 - **Verification:** `cargo check -p uc-cli` passes with no type errors
 - **Committed in:** 684d981e (Task 1 commit)
 
 **3. [Rule 3 - Blocking] Same type inference issue in run_connect**
+
 - **Found during:** Task 2 (run_connect rewrite)
 - **Issue:** Same `if let Err { return Err(...) }` type mismatch pattern in join flow match arms
 - **Fix:** Applied same restructuring as run_pair: explicit type annotation, `is_err()` pattern, consistent `Result<(), i32>` returns
@@ -122,5 +126,6 @@ completed: 2026-04-03
 - All 4 plans of Phase 86 executed; phase can be closed
 
 ---
-*Phase: 86-cli-host-join-flow-phase*
-*Completed: 2026-04-03*
+
+_Phase: 86-cli-host-join-flow-phase_
+_Completed: 2026-04-03_

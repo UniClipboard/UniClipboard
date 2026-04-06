@@ -19,7 +19,7 @@ function mockFetchOk(body: unknown, status = 200): void {
       ok: true,
       status,
       json: () => Promise.resolve(body),
-    }),
+    })
   )
 }
 
@@ -42,7 +42,7 @@ function mockFetchError(status: number, body: unknown = { error: 'fail' }): void
       ok: false,
       status,
       json: () => Promise.resolve(body),
-    }),
+    })
   )
 }
 

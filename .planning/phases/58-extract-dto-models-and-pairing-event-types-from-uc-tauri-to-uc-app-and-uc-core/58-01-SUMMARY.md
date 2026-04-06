@@ -20,9 +20,9 @@ key_files:
     - src-tauri/crates/uc-tauri/tests/models_serialization_test.rs
     - src-tauri/crates/uc-tauri/tests/clipboard_commands_stats_favorites_test.rs
 decisions:
-  - "[Phase 58]: EntryProjectionDto gains serde in uc-app; uc-tauri ClipboardEntryProjection deleted with no re-export stub (D-05)"
-  - "[Phase 58]: link_domains populated inline at command layer via mut reference loop, not in a separate mapping step"
-  - "[Phase 58]: file_transfer_ids marked #[serde(skip)] as internal-only field not part of frontend wire contract"
+  - '[Phase 58]: EntryProjectionDto gains serde in uc-app; uc-tauri ClipboardEntryProjection deleted with no re-export stub (D-05)'
+  - '[Phase 58]: link_domains populated inline at command layer via mut reference loop, not in a separate mapping step'
+  - '[Phase 58]: file_transfer_ids marked #[serde(skip)] as internal-only field not part of frontend wire contract'
 metrics:
   duration: 31min
   completed: 2026-03-25
@@ -39,6 +39,7 @@ Unified clipboard DTO types by adding serde derives to uc-app's EntryProjectionD
 ### Task 1: Add serde derives to uc-app types
 
 **`list_entry_projections.rs`** — Added `use serde::{Deserialize, Serialize};` and changed `EntryProjectionDto` derive from `#[derive(Debug, Clone, PartialEq)]` to `#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]`. Added serde annotations:
+
 - `#[serde(skip_serializing_if = "Option::is_none")]` on: `thumbnail_url`, `file_transfer_status`, `file_transfer_reason`, `link_urls`, `file_sizes`
 - `#[serde(skip)]` on `file_transfer_ids` (internal field, not in frontend JSON contract)
 - New field `link_domains: Option<Vec<String>>` with `#[serde(skip_serializing_if = "Option::is_none")]`
@@ -74,9 +75,9 @@ None.
 
 ## Commits
 
-| Task | Name | Commit | Files |
-| ---- | ---- | ------ | ----- |
-| 1 | Add serde derives and link_domains to EntryProjectionDto and ClipboardStats in uc-app | 4266a6d7 | list_entry_projections.rs, mod.rs |
-| 2 | Delete duplicate DTOs from uc-tauri models, update commands and tests | 25afd028 | models/mod.rs, commands/clipboard.rs, tests/* |
+| Task | Name                                                                                  | Commit   | Files                                          |
+| ---- | ------------------------------------------------------------------------------------- | -------- | ---------------------------------------------- |
+| 1    | Add serde derives and link_domains to EntryProjectionDto and ClipboardStats in uc-app | 4266a6d7 | list_entry_projections.rs, mod.rs              |
+| 2    | Delete duplicate DTOs from uc-tauri models, update commands and tests                 | 25afd028 | models/mod.rs, commands/clipboard.rs, tests/\* |
 
 ## Self-Check: PASSED

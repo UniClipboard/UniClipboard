@@ -1,6 +1,6 @@
 ---
 phase: 50-daemon-encryption-state-recovery
-plan: "01"
+plan: '01'
 subsystem: security
 tags: [encryption, daemon, startup, auto-unlock, keyring, xchacha20]
 
@@ -22,9 +22,9 @@ affects:
 tech-stack:
   added: []
   patterns:
-    - "recover_encryption_session() helper pattern: extract match logic for testability"
-    - "CoreUseCases::new(runtime) accessor used in daemon layer (not Tauri layer)"
-    - "Strategy B behavioral tests: mock use case ports directly to test helper match arms"
+    - 'recover_encryption_session() helper pattern: extract match logic for testability'
+    - 'CoreUseCases::new(runtime) accessor used in daemon layer (not Tauri layer)'
+    - 'Strategy B behavioral tests: mock use case ports directly to test helper match arms'
 
 key-files:
   created: []
@@ -32,13 +32,13 @@ key-files:
     - src-tauri/crates/uc-daemon/src/app.rs
 
 key-decisions:
-  - "Reused AutoUnlockEncryptionSession (D-07) — identical functionality, 8 existing tests"
-  - "recover_encryption_session() placed BEFORE check_or_remove_stale_socket for clean fail-fast (F-4)"
-  - "Behavioral tests use Strategy B (mock ports directly) to avoid CoreRuntime construction complexity"
-  - "Structural test searches within run() body slice to correctly assert before/after ordering"
+  - 'Reused AutoUnlockEncryptionSession (D-07) — identical functionality, 8 existing tests'
+  - 'recover_encryption_session() placed BEFORE check_or_remove_stale_socket for clean fail-fast (F-4)'
+  - 'Behavioral tests use Strategy B (mock ports directly) to avoid CoreRuntime construction complexity'
+  - 'Structural test searches within run() body slice to correctly assert before/after ordering'
 
 patterns-established:
-  - "daemon startup recovery: call CoreUseCases::new(&runtime).auto_unlock_encryption_session() in run()"
+  - 'daemon startup recovery: call CoreUseCases::new(&runtime).auto_unlock_encryption_session() in run()'
 
 requirements-completed:
   - PH50-01
@@ -46,7 +46,7 @@ requirements-completed:
   - PH50-03
 
 duration: 10min
-completed: "2026-03-23"
+completed: '2026-03-23'
 ---
 
 # Phase 50 Plan 01: Daemon Encryption State Recovery Summary
@@ -92,7 +92,7 @@ Each task was committed atomically:
 **1. [Rule 1 - Bug] Structural test ordering assertion needed fix**
 
 - **Found during:** Task 1 verification (after Task 2 was applied)
-- **Issue:** Plan's structural test used `prod_source.find("recover_encryption_session")` which found the *function definition* at a lower byte offset than `check_or_remove_stale_socket` in the `use` statement (line 29), causing the before/after ordering assertion to fail even though the call order in `run()` was correct.
+- **Issue:** Plan's structural test used `prod_source.find("recover_encryption_session")` which found the _function definition_ at a lower byte offset than `check_or_remove_stale_socket` in the `use` statement (line 29), causing the before/after ordering assertion to fail even though the call order in `run()` was correct.
 - **Fix:** Changed test to locate `pub async fn run` in `prod_source` and search for both tokens within the `run()` body slice for correct relative ordering.
 - **Files modified:** `src-tauri/crates/uc-daemon/src/app.rs`
 - **Verification:** Test passes with `run_method_contains_encryption_recovery_call ... ok`
@@ -115,5 +115,5 @@ Each task was committed atomically:
 
 ---
 
-*Phase: 50-daemon-encryption-state-recovery*
-*Completed: 2026-03-23*
+_Phase: 50-daemon-encryption-state-recovery_
+_Completed: 2026-03-23_

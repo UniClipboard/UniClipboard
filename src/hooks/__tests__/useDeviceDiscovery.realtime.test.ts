@@ -6,7 +6,9 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const getP2PPeersMock = vi.fn()
 
 // Capture the daemonWs.subscribe handler for test injection
-const capturedHandlers: Array<(event: { topic: string; eventType: string; payload: unknown }) => void> = []
+const capturedHandlers: Array<
+  (event: { topic: string; eventType: string; payload: unknown }) => void
+> = []
 
 vi.mock('@/api/daemon/pairing', () => ({
   getP2PPeers: (...args: unknown[]) => getP2PPeersMock(...args),
@@ -23,9 +25,9 @@ vi.mock('@/api/daemon/pairing', () => ({
 vi.mock('@/lib/daemon-ws', () => ({
   daemonWs: {
     subscribe: vi.fn((_topics: string[], handler: (event: unknown) => void) => {
-      capturedHandlers.push(handler as typeof capturedHandlers[number])
+      capturedHandlers.push(handler as (typeof capturedHandlers)[number])
       return vi.fn(() => {
-        const idx = capturedHandlers.indexOf(handler as typeof capturedHandlers[number])
+        const idx = capturedHandlers.indexOf(handler as (typeof capturedHandlers)[number])
         if (idx !== -1) capturedHandlers.splice(idx, 1)
       })
     }),

@@ -80,6 +80,16 @@ pub struct PeerCaches {
     discovered_peers: HashMap<String, DiscoveredPeer>,
     reachable_peers: HashSet<String>,
     connected_at: HashMap<String, DateTime<Utc>>,
+    last_dial_observations: HashMap<String, PeerDialObservation>,
+}
+
+#[derive(Debug, Clone)]
+struct PeerDialObservation {
+    chosen_dial_addr: Option<String>,
+    chosen_dial_addr_resolution: &'static str,
+    dial_attempt_addresses: Vec<String>,
+    dial_outcome: &'static str,
+    observed_at: DateTime<Utc>,
 }
 
 #[derive(Debug, Clone)]
@@ -89,6 +99,12 @@ struct PeerAddressSnapshot {
     connected_age_ms: Option<i64>,
     discovered_age_ms: Option<i64>,
     last_seen_age_ms: Option<i64>,
+    chosen_dial_addr: Option<String>,
+    chosen_dial_addr_resolution: Option<&'static str>,
+    dial_attempt_addresses: Vec<String>,
+    dial_attempt_address_count: usize,
+    last_dial_outcome: Option<&'static str>,
+    last_dial_age_ms: Option<i64>,
 }
 
 impl PeerCaches {
@@ -97,6 +113,7 @@ impl PeerCaches {
             discovered_peers: HashMap::new(),
             reachable_peers: HashSet::new(),
             connected_at: HashMap::new(),
+            last_dial_observations: HashMap::new(),
         }
     }
 
@@ -162,6 +179,7 @@ impl PeerCaches {
     pub fn remove_discovered(&mut self, peer_id: &str) -> Option<DiscoveredPeer> {
         self.reachable_peers.remove(peer_id);
         self.connected_at.remove(peer_id);
+        self.last_dial_observations.remove(peer_id);
         self.discovered_peers.remove(peer_id)
     }
 
@@ -209,6 +227,11 @@ impl PeerCaches {
 
     pub fn is_reachable(&self, peer_id: &str) -> bool {
         self.reachable_peers.contains(peer_id)
+    }
+
+    fn record_dial_observation(&mut self, peer_id: &str, observation: PeerDialObservation) {
+        self.last_dial_observations
+            .insert(peer_id.to_string(), observation);
     }
 }
 
@@ -1685,6 +1708,7 @@ async fn run_swarm(
                     SwarmEvent::Behaviour(Libp2pBehaviourEvent::Stream) => {}
                     SwarmEvent::ConnectionEstablished { peer_id, endpoint, .. } => {
                         let peer_id_string = peer_id.to_string();
+                        let observed_at = Utc::now();
                         let (address, endpoint_direction) = match endpoint {
                             ConnectedPoint::Dialer { address, .. } => {
                                 (Some(address.clone()), "dialer")
@@ -1702,14 +1726,20 @@ async fn run_swarm(
                             .unwrap_or_else(|| "-".to_string());
                         let (event, snapshot) = {
                             let mut caches = caches.write().await;
+                            if endpoint_direction == "dialer" {
+                                caches.record_dial_observation(
+                                    &peer_id_string,
+                                    successful_dial_observation(&endpoint_address, observed_at),
+                                );
+                            }
                             let event = apply_peer_ready_from_connection(
                                 &mut caches,
                                 &peer_id_string,
-                                Utc::now(),
+                                observed_at,
                                 address,
                             );
                             let snapshot =
-                                snapshot_peer_addresses(&caches, &peer_id_string, Utc::now());
+                                snapshot_peer_addresses(&caches, &peer_id_string, observed_at);
                             (event, snapshot)
                         };
 
@@ -1752,9 +1782,14 @@ async fn run_swarm(
                     }
                     SwarmEvent::OutgoingConnectionError { peer_id, error, .. } => {
                         let peer_id_str = peer_id.as_ref().map(ToString::to_string);
+                        let observed_at = Utc::now();
                         let snapshot = if let Some(peer_id) = peer_id_str.as_ref() {
-                            let caches = caches.read().await;
-                            Some(snapshot_peer_addresses(&caches, peer_id, Utc::now()))
+                            let mut caches = caches.write().await;
+                            caches.record_dial_observation(
+                                peer_id,
+                                dial_observation_from_error(&error, observed_at),
+                            );
+                            Some(snapshot_peer_addresses(&caches, peer_id, observed_at))
                         } else {
                             None
                         };
@@ -1769,6 +1804,22 @@ async fn run_swarm(
                                 .as_ref()
                                 .map(|snapshot| snapshot.candidate_addresses.clone())
                                 .unwrap_or_default(),
+                            chosen_dial_addr = %snapshot
+                                .as_ref()
+                                .and_then(|snapshot| snapshot.chosen_dial_addr.as_deref())
+                                .unwrap_or("-"),
+                            chosen_dial_addr_resolution = snapshot
+                                .as_ref()
+                                .and_then(|snapshot| snapshot.chosen_dial_addr_resolution)
+                                .unwrap_or("unknown"),
+                            dial_attempt_address_count = snapshot
+                                .as_ref()
+                                .map(|snapshot| snapshot.dial_attempt_address_count)
+                                .unwrap_or(0),
+                            dial_attempt_addresses = ?snapshot
+                                .as_ref()
+                                .map(|snapshot| snapshot.dial_attempt_addresses.clone())
+                                .unwrap_or_default(),
                             peer_marked_reachable = snapshot
                                 .as_ref()
                                 .map(|snapshot| snapshot.peer_marked_reachable)
@@ -1776,6 +1827,11 @@ async fn run_swarm(
                             connected_age_ms = ?snapshot.as_ref().and_then(|snapshot| snapshot.connected_age_ms),
                             discovered_age_ms = ?snapshot.as_ref().and_then(|snapshot| snapshot.discovered_age_ms),
                             last_seen_age_ms = ?snapshot.as_ref().and_then(|snapshot| snapshot.last_seen_age_ms),
+                            last_dial_age_ms = ?snapshot.as_ref().and_then(|snapshot| snapshot.last_dial_age_ms),
+                            last_dial_outcome = snapshot
+                                .as_ref()
+                                .and_then(|snapshot| snapshot.last_dial_outcome)
+                                .unwrap_or("unknown"),
                             error = %error,
                             "outgoing connection error"
                         );
@@ -2262,10 +2318,10 @@ async fn execute_business_stream(
         snapshot_peer_addresses(&caches, peer_id_str, Utc::now())
     };
     let payload_bytes = payload.map(|data| data.len() as u64).unwrap_or(0);
-    let connection_hint = if address_snapshot.peer_marked_reachable {
-        "reuse_or_connected"
+    let dial_decision = if address_snapshot.peer_marked_reachable {
+        "reuse_existing_connection"
     } else {
-        "new_dial"
+        "new_dial_required"
     };
     let preferred_candidate_transport = address_snapshot
         .candidate_addresses
@@ -2277,7 +2333,7 @@ async fn execute_business_stream(
         operation = denied_operation,
         peer_id = %peer_id_str,
         payload_bytes,
-        connection_hint,
+        dial_decision,
         peer_marked_reachable = address_snapshot.peer_marked_reachable,
         candidate_address_count = address_snapshot.candidate_addresses.len(),
         preferred_candidate_transport,
@@ -2404,14 +2460,26 @@ async fn execute_business_stream(
             }
         }
         Ok(Err(err)) => {
+            let failure_snapshot = {
+                let caches = caches.read().await;
+                snapshot_peer_addresses(&caches, peer_id_str, Utc::now())
+            };
+            let chosen_dial_addr = chosen_dial_addr_for_log(&failure_snapshot);
+            let chosen_dial_addr_resolution = infer_chosen_dial_addr_resolution(&failure_snapshot);
             if payload.is_some() {
                 warn!(
                     event = "business_stream.open_failed",
                     operation = denied_operation,
                     peer_id = %peer_id_str,
-                    connection_hint,
-                    candidate_address_count = address_snapshot.candidate_addresses.len(),
-                    candidate_addresses = ?address_snapshot.candidate_addresses,
+                    dial_decision,
+                    candidate_address_count = failure_snapshot.candidate_addresses.len(),
+                    candidate_addresses = ?failure_snapshot.candidate_addresses,
+                    chosen_dial_addr = %chosen_dial_addr.unwrap_or("-"),
+                    chosen_dial_addr_resolution,
+                    dial_attempt_address_count = failure_snapshot.dial_attempt_address_count,
+                    dial_attempt_addresses = ?failure_snapshot.dial_attempt_addresses,
+                    last_dial_outcome = failure_snapshot.last_dial_outcome.unwrap_or("unknown"),
+                    last_dial_age_ms = ?failure_snapshot.last_dial_age_ms,
                     error = %err,
                     "business stream open failed"
                 );
@@ -2421,9 +2489,15 @@ async fn execute_business_stream(
                     event = "business_stream.ensure_open_failed",
                     operation = denied_operation,
                     peer_id = %peer_id_str,
-                    connection_hint,
-                    candidate_address_count = address_snapshot.candidate_addresses.len(),
-                    candidate_addresses = ?address_snapshot.candidate_addresses,
+                    dial_decision,
+                    candidate_address_count = failure_snapshot.candidate_addresses.len(),
+                    candidate_addresses = ?failure_snapshot.candidate_addresses,
+                    chosen_dial_addr = %chosen_dial_addr.unwrap_or("-"),
+                    chosen_dial_addr_resolution,
+                    dial_attempt_address_count = failure_snapshot.dial_attempt_address_count,
+                    dial_attempt_addresses = ?failure_snapshot.dial_attempt_addresses,
+                    last_dial_outcome = failure_snapshot.last_dial_outcome.unwrap_or("unknown"),
+                    last_dial_age_ms = ?failure_snapshot.last_dial_age_ms,
                     error = %err,
                     "ensure business stream open failed"
                 );
@@ -2431,14 +2505,26 @@ async fn execute_business_stream(
             }
         }
         Err(_) => {
+            let timeout_snapshot = {
+                let caches = caches.read().await;
+                snapshot_peer_addresses(&caches, peer_id_str, Utc::now())
+            };
+            let chosen_dial_addr = chosen_dial_addr_for_log(&timeout_snapshot);
+            let chosen_dial_addr_resolution = infer_chosen_dial_addr_resolution(&timeout_snapshot);
             if payload.is_some() {
                 warn!(
                     event = "business_stream.open_timeout",
                     operation = denied_operation,
                     peer_id = %peer_id_str,
-                    connection_hint,
-                    candidate_address_count = address_snapshot.candidate_addresses.len(),
-                    candidate_addresses = ?address_snapshot.candidate_addresses,
+                    dial_decision,
+                    candidate_address_count = timeout_snapshot.candidate_addresses.len(),
+                    candidate_addresses = ?timeout_snapshot.candidate_addresses,
+                    chosen_dial_addr = %chosen_dial_addr.unwrap_or("-"),
+                    chosen_dial_addr_resolution,
+                    dial_attempt_address_count = timeout_snapshot.dial_attempt_address_count,
+                    dial_attempt_addresses = ?timeout_snapshot.dial_attempt_addresses,
+                    last_dial_outcome = timeout_snapshot.last_dial_outcome.unwrap_or("unknown"),
+                    last_dial_age_ms = ?timeout_snapshot.last_dial_age_ms,
                     timeout_ms = open_timeout.as_millis() as u64,
                     "business stream open timed out"
                 );
@@ -2448,9 +2534,15 @@ async fn execute_business_stream(
                     event = "business_stream.ensure_open_timeout",
                     operation = denied_operation,
                     peer_id = %peer_id_str,
-                    connection_hint,
-                    candidate_address_count = address_snapshot.candidate_addresses.len(),
-                    candidate_addresses = ?address_snapshot.candidate_addresses,
+                    dial_decision,
+                    candidate_address_count = timeout_snapshot.candidate_addresses.len(),
+                    candidate_addresses = ?timeout_snapshot.candidate_addresses,
+                    chosen_dial_addr = %chosen_dial_addr.unwrap_or("-"),
+                    chosen_dial_addr_resolution,
+                    dial_attempt_address_count = timeout_snapshot.dial_attempt_address_count,
+                    dial_attempt_addresses = ?timeout_snapshot.dial_attempt_addresses,
+                    last_dial_outcome = timeout_snapshot.last_dial_outcome.unwrap_or("unknown"),
+                    last_dial_age_ms = ?timeout_snapshot.last_dial_age_ms,
                     timeout_ms = open_timeout.as_millis() as u64,
                     "ensure business stream open timed out"
                 );
@@ -2531,6 +2623,7 @@ fn snapshot_peer_addresses(
     observed_at: DateTime<Utc>,
 ) -> PeerAddressSnapshot {
     let discovered = caches.discovered_peers.get(peer_id);
+    let last_dial = caches.last_dial_observations.get(peer_id);
     PeerAddressSnapshot {
         candidate_addresses: discovered
             .map(|peer| peer.addresses.clone())
@@ -2542,6 +2635,16 @@ fn snapshot_peer_addresses(
             .map(|connected_at| age_ms(observed_at, *connected_at)),
         discovered_age_ms: discovered.map(|peer| age_ms(observed_at, peer.discovered_at)),
         last_seen_age_ms: discovered.map(|peer| age_ms(observed_at, peer.last_seen)),
+        chosen_dial_addr: last_dial.and_then(|dial| dial.chosen_dial_addr.clone()),
+        chosen_dial_addr_resolution: last_dial.map(|dial| dial.chosen_dial_addr_resolution),
+        dial_attempt_addresses: last_dial
+            .map(|dial| dial.dial_attempt_addresses.clone())
+            .unwrap_or_default(),
+        dial_attempt_address_count: last_dial
+            .map(|dial| dial.dial_attempt_addresses.len())
+            .unwrap_or(0),
+        last_dial_outcome: last_dial.map(|dial| dial.dial_outcome),
+        last_dial_age_ms: last_dial.map(|dial| age_ms(observed_at, dial.observed_at)),
     }
 }
 
@@ -2564,6 +2667,108 @@ fn transport_label_str(address: &str) -> &'static str {
     } else {
         "other"
     }
+}
+
+fn successful_dial_observation(address: &str, observed_at: DateTime<Utc>) -> PeerDialObservation {
+    PeerDialObservation {
+        chosen_dial_addr: Some(address.to_string()),
+        chosen_dial_addr_resolution: "exact",
+        dial_attempt_addresses: vec![address.to_string()],
+        dial_outcome: "connection_established",
+        observed_at,
+    }
+}
+
+fn dial_observation_from_error(
+    error: &libp2p::swarm::DialError,
+    observed_at: DateTime<Utc>,
+) -> PeerDialObservation {
+    match error {
+        libp2p::swarm::DialError::LocalPeerId { address } => PeerDialObservation {
+            chosen_dial_addr: Some(address.to_string()),
+            chosen_dial_addr_resolution: "exact",
+            dial_attempt_addresses: vec![address.to_string()],
+            dial_outcome: "local_peer_id",
+            observed_at,
+        },
+        libp2p::swarm::DialError::WrongPeerId { address, .. } => PeerDialObservation {
+            chosen_dial_addr: Some(address.to_string()),
+            chosen_dial_addr_resolution: "exact",
+            dial_attempt_addresses: vec![address.to_string()],
+            dial_outcome: "wrong_peer_id",
+            observed_at,
+        },
+        libp2p::swarm::DialError::Transport(errors) => {
+            let dial_attempt_addresses = errors
+                .iter()
+                .map(|(address, _)| address.to_string())
+                .collect::<Vec<_>>();
+            let chosen_dial_addr = if dial_attempt_addresses.len() == 1 {
+                dial_attempt_addresses.first().cloned()
+            } else {
+                None
+            };
+            let chosen_dial_addr_resolution = if chosen_dial_addr.is_some() {
+                "exact"
+            } else if dial_attempt_addresses.is_empty() {
+                "unknown"
+            } else {
+                "multiple_attempts"
+            };
+            PeerDialObservation {
+                chosen_dial_addr,
+                chosen_dial_addr_resolution,
+                dial_attempt_addresses,
+                dial_outcome: "transport_error",
+                observed_at,
+            }
+        }
+        libp2p::swarm::DialError::NoAddresses => PeerDialObservation {
+            chosen_dial_addr: None,
+            chosen_dial_addr_resolution: "no_addresses",
+            dial_attempt_addresses: Vec::new(),
+            dial_outcome: "no_addresses",
+            observed_at,
+        },
+        libp2p::swarm::DialError::DialPeerConditionFalse(_) => PeerDialObservation {
+            chosen_dial_addr: None,
+            chosen_dial_addr_resolution: "peer_condition_false",
+            dial_attempt_addresses: Vec::new(),
+            dial_outcome: "peer_condition_false",
+            observed_at,
+        },
+        libp2p::swarm::DialError::Aborted => PeerDialObservation {
+            chosen_dial_addr: None,
+            chosen_dial_addr_resolution: "aborted",
+            dial_attempt_addresses: Vec::new(),
+            dial_outcome: "aborted",
+            observed_at,
+        },
+        libp2p::swarm::DialError::Denied { .. } => PeerDialObservation {
+            chosen_dial_addr: None,
+            chosen_dial_addr_resolution: "denied",
+            dial_attempt_addresses: Vec::new(),
+            dial_outcome: "denied",
+            observed_at,
+        },
+    }
+}
+
+fn infer_chosen_dial_addr_resolution(snapshot: &PeerAddressSnapshot) -> &'static str {
+    if let Some(resolution) = snapshot.chosen_dial_addr_resolution {
+        resolution
+    } else if !snapshot.peer_marked_reachable && snapshot.candidate_addresses.len() == 1 {
+        "single_candidate_inferred"
+    } else {
+        "unknown"
+    }
+}
+
+fn chosen_dial_addr_for_log(snapshot: &PeerAddressSnapshot) -> Option<&str> {
+    snapshot.chosen_dial_addr.as_deref().or_else(|| {
+        (!snapshot.peer_marked_reachable && snapshot.candidate_addresses.len() == 1)
+            .then(|| snapshot.candidate_addresses[0].as_str())
+    })
 }
 
 fn collect_mdns_discovered(

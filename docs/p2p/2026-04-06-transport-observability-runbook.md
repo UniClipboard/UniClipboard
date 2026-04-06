@@ -7,8 +7,8 @@ The goal is to answer these questions directly from Seq without guessing:
 
 1. Which listen addresses were active locally?
 2. Which peer addresses were discovered?
-3. Which peer was targeted for a business stream open?
-4. Was the peer already considered reachable or did this require a new dial?
+3. Which address was actually dialed for this attempt?
+4. Did this attempt reuse an existing connection or require a new dial?
 5. Did the failure look like stale addresses, listener instability, or plain network unreachability?
 
 ## New Event Keys
@@ -108,6 +108,9 @@ peer_id = 'PEER_ID' and event = 'business_stream.open_attempt'
 
 Inspect these fields:
 
+- `dial_decision`
+- `chosen_dial_addr`
+- `chosen_dial_addr_resolution`
 - `candidate_address_count`
 - `preferred_candidate_transport`
 - `peer_marked_reachable`
@@ -117,6 +120,9 @@ Inspect these fields:
 
 Then compare with the failure event for the same `@TraceId` or `peer_id`:
 
+- `chosen_dial_addr`
+- `chosen_dial_addr_resolution`
+- `dial_attempt_addresses`
 - `candidate_addresses`
 - `error`
 - `timeout_ms`

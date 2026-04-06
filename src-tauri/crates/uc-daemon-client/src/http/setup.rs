@@ -95,6 +95,38 @@ impl DaemonSetupClient {
             .await
     }
 
+    /// Calls `POST /setup/clear-transient` to clear the daemon's in-memory setup session.
+    ///
+    /// This endpoint clears selected peer, pairing session, joiner offer, and passphrase
+    /// while preserving whether the device has already completed setup.
+    pub async fn clear_transient_state(&self) -> Result<dto::SetupActionResponse> {
+        let request = self
+            .authorized_request(Method::POST, "/setup/clear-transient")
+            .await?;
+        let response = request
+            .send()
+            .await
+            .context("failed to call daemon setup route /setup/clear-transient")?;
+
+        let status = response.status();
+        if !status.is_success() {
+            let body = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "<failed to read body>".to_string());
+            return Err(anyhow::anyhow!(
+                "daemon setup request /setup/clear-transient failed with status {}: {}",
+                status,
+                body
+            ));
+        }
+
+        response
+            .json::<dto::SetupActionResponse>()
+            .await
+            .with_context(|| "failed to decode daemon setup response for /setup/clear-transient")
+    }
+
     pub async fn reset_setup(&self) -> Result<dto::SetupResetResponse> {
         self.send_json::<(), dto::SetupResetResponse>(Method::POST, "/setup/reset", None)
             .await

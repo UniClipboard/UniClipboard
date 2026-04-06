@@ -49,6 +49,9 @@ pub enum SetupError {
     InitializeEncryption(#[from] InitializeEncryptionError),
     #[error("mark setup complete failed: {0}")]
     MarkSetupComplete(#[from] anyhow::Error),
+    /// Failed to load setup status from persistent storage.
+    #[error("load setup status failed: {0}")]
+    StatusLoadFailed(#[source] anyhow::Error),
     #[error("setup reset failed: {0}")]
     ResetFailed(#[source] anyhow::Error),
     #[error("lifecycle boot failed: {0}")]
@@ -232,25 +235,7 @@ impl SetupOrchestrator {
     pub async fn reset(&self) -> Result<SetupState, SetupError> {
         let _dispatch_guard = self.context.acquire_dispatch_lock().await;
 
-        if let Some(session_id) = self.pairing_session_id.lock().await.take() {
-            if let Err(error) = self
-                .action_executor
-                .setup_pairing_facade
-                .reject_pairing(&session_id)
-                .await
-            {
-                warn!(
-                    error = %error,
-                    session_id = %session_id,
-                    "failed to reject setup pairing session during reset"
-                );
-            }
-        }
-
-        self.selected_peer_id.lock().await.take();
-        self.joiner_offer.lock().await.take();
-        self.passphrase.lock().await.take();
-        self.action_executor.space_access_orchestrator.reset().await;
+        self.clear_runtime_session_state().await;
         self.setup_status
             .set_status(&SetupStatus::default())
             .await
@@ -265,6 +250,36 @@ impl SetupOrchestrator {
         self.seeded.store(false, Ordering::SeqCst);
 
         Ok(SetupState::Welcome)
+    }
+
+    /// Clears in-memory setup session state and any active pairing session.
+    ///
+    /// Unlike [`reset`](Self::reset), this preserves the device's completion status
+    /// stored in persistent storage. Returns the base state derived from
+    /// `SetupStatus.has_completed`: [`SetupState::Completed`] if the device has
+    /// previously completed setup, or [`SetupState::Welcome`] otherwise.
+    pub async fn clear_transient_state(&self) -> Result<SetupState, SetupError> {
+        let _dispatch_guard = self.context.acquire_dispatch_lock().await;
+
+        self.clear_runtime_session_state().await;
+
+        let status = self
+            .setup_status
+            .get_status()
+            .await
+            .map_err(SetupError::StatusLoadFailed)?;
+        let base_state = Self::state_from_status(&status);
+
+        SetupActionExecutor::set_state_and_emit(
+            &self.context,
+            &self.action_executor.setup_event_port,
+            base_state.clone(),
+            None,
+        )
+        .await;
+        self.seeded.store(true, Ordering::SeqCst);
+
+        Ok(base_state)
     }
 
     pub async fn get_state(&self) -> SetupState {
@@ -511,6 +526,42 @@ impl SetupOrchestrator {
         guard.clone()
     }
 
+    /// Clears in-memory session state: selected peer, pairing session, joiner offer,
+    /// and passphrase. Rejects any active pairing session.
+    async fn clear_runtime_session_state(&self) {
+        if let Some(session_id) = self.pairing_session_id.lock().await.take() {
+            if let Err(error) = self
+                .action_executor
+                .setup_pairing_facade
+                .reject_pairing(&session_id)
+                .await
+            {
+                warn!(
+                    error = %error,
+                    session_id = %session_id,
+                    "failed to reject setup pairing session during setup state clear"
+                );
+            }
+        }
+
+        self.selected_peer_id.lock().await.take();
+        self.joiner_offer.lock().await.take();
+        self.passphrase.lock().await.take();
+        self.action_executor.space_access_orchestrator.reset().await;
+    }
+
+    /// Derives the base [`SetupState`] from persisted [`SetupStatus`].
+    ///
+    /// Returns [`SetupState::Completed`] if `has_completed` is true,
+    /// otherwise [`SetupState::Welcome`].
+    fn state_from_status(status: &SetupStatus) -> SetupState {
+        if status.has_completed {
+            SetupState::Completed
+        } else {
+            SetupState::Welcome
+        }
+    }
+
     async fn seed_state_from_status(&self) {
         if self.seeded.load(Ordering::SeqCst) {
             return;
@@ -523,11 +574,12 @@ impl SetupOrchestrator {
 
         match self.setup_status.get_status().await {
             Ok(status) => {
-                if status.has_completed {
+                let base_state = Self::state_from_status(&status);
+                if matches!(base_state, SetupState::Completed) {
                     SetupActionExecutor::set_state_and_emit(
                         &self.context,
                         &self.action_executor.setup_event_port,
-                        SetupState::Completed,
+                        base_state,
                         None,
                     )
                     .await;
@@ -1538,6 +1590,64 @@ mod tests {
         assert_eq!(first_state, SetupState::Completed);
         assert_eq!(second_state, SetupState::Completed);
         assert_eq!(setup_status.get_call_count(), 1);
+    }
+
+    #[tokio::test]
+    async fn clear_transient_state_returns_uncompleted_device_to_welcome() {
+        let setup_status = Arc::new(MockSetupStatusPort::new(SetupStatus::default()));
+        let orchestrator = build_orchestrator(setup_status.clone());
+
+        orchestrator
+            .context
+            .set_state(SetupState::JoinSpaceInputPassphrase { error: None })
+            .await;
+        *orchestrator.selected_peer_id.lock().await = Some("peer-a".to_string());
+        *orchestrator.pairing_session_id.lock().await = Some("session-a".to_string());
+        *orchestrator.passphrase.lock().await = Some(Passphrase("secret".to_string()));
+
+        let state = orchestrator
+            .clear_transient_state()
+            .await
+            .expect("clear transient state should succeed");
+
+        assert_eq!(state, SetupState::Welcome);
+        assert_eq!(orchestrator.get_state().await, SetupState::Welcome);
+        assert!(orchestrator.selected_peer_id.lock().await.is_none());
+        assert!(orchestrator.pairing_session_id.lock().await.is_none());
+        assert!(orchestrator.passphrase.lock().await.is_none());
+        assert!(!setup_status.get_status().await.unwrap().has_completed);
+        assert_eq!(setup_status.set_call_count(), 0);
+    }
+
+    #[tokio::test]
+    async fn clear_transient_state_preserves_completed_base_state() {
+        let setup_status = Arc::new(MockSetupStatusPort::new(SetupStatus {
+            has_completed: true,
+        }));
+        let orchestrator = build_orchestrator(setup_status.clone());
+
+        orchestrator
+            .context
+            .set_state(SetupState::JoinSpaceConfirmPeer {
+                short_code: "123-456".to_string(),
+                peer_fingerprint: Some("fingerprint".to_string()),
+                error: None,
+            })
+            .await;
+        *orchestrator.selected_peer_id.lock().await = Some("peer-a".to_string());
+        *orchestrator.pairing_session_id.lock().await = Some("session-a".to_string());
+
+        let state = orchestrator
+            .clear_transient_state()
+            .await
+            .expect("clear transient state should succeed");
+
+        assert_eq!(state, SetupState::Completed);
+        assert_eq!(orchestrator.get_state().await, SetupState::Completed);
+        assert!(orchestrator.selected_peer_id.lock().await.is_none());
+        assert!(orchestrator.pairing_session_id.lock().await.is_none());
+        assert!(setup_status.get_status().await.unwrap().has_completed);
+        assert_eq!(setup_status.set_call_count(), 0);
     }
 
     #[tokio::test]

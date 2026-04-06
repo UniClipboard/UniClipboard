@@ -22,8 +22,10 @@ use uc_core::security::state::EncryptionState;
 use uc_daemon::api::dto::setup::SetupStateResponseDto;
 use uc_daemon::api::types::{PeerSnapshotDto, SetupStateResponse};
 // Re-export for integration tests (same crate)
-pub(crate) use uc_daemon_client::setup::{format_peer_id_suffix, parse_setup_state, SetupVariant};
-use uc_daemon_client::{DaemonClientContext, DaemonPairingClient};
+pub(crate) use uc_daemon_client::setup::{
+    format_peer_id_suffix, parse_setup_state, ParsedSetupState, SetupHint, SetupVariant,
+};
+use uc_daemon_client::{DaemonClientContext, DaemonPairingClient, DaemonSetupClient};
 
 use uc_cli_macros::autostop;
 
@@ -185,8 +187,8 @@ pub async fn run_pair(json: bool, _verbose: bool) -> i32 {
     let setup_client = ctx.setup_client();
     let pairing_client = ctx.pairing_client();
 
-    let initial_state: SetupStateResponseDto = match setup_client.get_setup_state().await {
-        Ok(state) => state.data,
+    let initial_state = match clear_transient_setup_state(&setup_client).await {
+        Ok(state) => state,
         Err(error) => return print_anyhow_error(error),
     };
 
@@ -449,15 +451,23 @@ pub async fn run_connect(json: bool, _verbose: bool) -> i32 {
     let setup_client = ctx.setup_client();
     let query_client = ctx.query_client();
 
-    let initial_state: SetupStateResponseDto = match setup_client.get_setup_state().await {
-        Ok(state) => state.data,
+    let initial_state = match clear_transient_setup_state(&setup_client).await {
+        Ok(state) => state,
         Err(error) => return print_anyhow_error(error),
     };
 
     ui::step("Device identity");
     print_identity_banner(&initial_state);
 
-    // Start the join flow.
+    if initial_state.has_completed {
+        ui::error("This device is already connected to a Space.");
+        ui::info(
+            "Hint",
+            "Use `uniclipboard setup pair` on this device to connect another device.",
+        );
+        return exit_codes::EXIT_ERROR;
+    }
+
     if let Err(error) = setup_client.start_join_space().await {
         return print_anyhow_error(error);
     }
@@ -854,6 +864,13 @@ fn finish_spinner(spinner: &mut Option<indicatif::ProgressBar>) {
     if let Some(pb) = spinner.take() {
         pb.finish_and_clear();
     }
+}
+
+/// Wraps [`DaemonSetupClient::clear_transient_state`], extracting the inner data.
+async fn clear_transient_setup_state(
+    setup_client: &DaemonSetupClient,
+) -> Result<SetupStateResponseDto, anyhow::Error> {
+    Ok(setup_client.clear_transient_state().await?.data)
 }
 
 // ── Render helpers ──────────────────────────────────────────────────

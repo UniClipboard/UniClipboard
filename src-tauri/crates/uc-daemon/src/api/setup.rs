@@ -26,6 +26,7 @@ pub fn router() -> Router<DaemonApiState> {
         .route("/setup/submit-passphrase", post(submit_passphrase))
         .route("/setup/verify-passphrase", post(verify_passphrase))
         .route("/setup/cancel", post(cancel))
+        .route("/setup/clear-transient", post(clear_transient))
         .route("/setup/complete-space-access", post(complete_space_access))
         .route("/setup/reset", post(reset))
 }
@@ -495,6 +496,49 @@ async fn cancel(
             ApiError::internal(format!("setup cancel failed: {e}"))
         })?;
     }
+
+    let inner = state
+        .query_service
+        .setup_state(orchestrator.as_ref(), state.pairing_host().as_deref())
+        .await
+        .map_err(|e| {
+            tracing::error!(error = %e, "daemon setup API request failed");
+            ApiError::internal(e.to_string())
+        })?;
+
+    Ok(Json(SetupActionResponse {
+        data: SetupStateResponseDto::from(inner),
+        ts: chrono::Utc::now().timestamp_millis(),
+    }))
+}
+
+/// POST /setup/clear-transient
+/// Clears the in-memory setup session and any active pairing session while
+/// preserving whether the device has already completed setup.
+#[utoipa::path(
+    post,
+    path = "/setup/clear-transient",
+    tag = "setup",
+    responses(
+        (status = 200, body = SetupActionResponse),
+        (status = 500, description = "Internal server error", body = crate::api::dto::error::ApiErrorResponse)
+    )
+)]
+async fn clear_transient(
+    State(state): State<DaemonApiState>,
+) -> Result<Json<SetupActionResponse>, ApiError> {
+    let orchestrator = state
+        .setup_orchestrator()
+        .ok_or_else(|| ApiError::internal("setup orchestrator unavailable"))?;
+
+    if let Some(pairing_host) = state.pairing_host() {
+        pairing_host.reset_setup_state().await;
+    }
+
+    orchestrator.clear_transient_state().await.map_err(|e| {
+        tracing::error!(error = %e, "setup transient clear failed");
+        ApiError::internal(format!("setup transient clear failed: {e}"))
+    })?;
 
     let inner = state
         .query_service

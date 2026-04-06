@@ -287,6 +287,19 @@ async fn reset_setup(app: &axum::Router, token: &str) -> axum::response::Respons
         .unwrap()
 }
 
+async fn clear_transient_setup(app: &axum::Router, token: &str) -> axum::response::Response {
+    app.clone()
+        .oneshot(authed_request(
+            "POST",
+            "/setup/clear-transient",
+            token,
+            Body::empty(),
+            None,
+        ))
+        .await
+        .unwrap()
+}
+
 fn assert_setup_state_metadata_shape(body: &Value) {
     let d = body["data"]
         .as_object()
@@ -1307,6 +1320,79 @@ async fn setup_reset_allows_second_host_start_without_manual_cleanup() {
     assert_eq!(second_host.status(), StatusCode::OK);
     let second_body = json_body(second_host).await;
     assert_eq!(second_body["data"]["nextStepHint"], "create-space-passphrase");
+}
+
+#[tokio::test]
+async fn setup_clear_transient_returns_welcome_for_incomplete_flow() {
+    let (app, token) = build_reset_router_async().await;
+
+    let join_response = app
+        .clone()
+        .oneshot(authed_request(
+            "POST",
+            "/setup/join",
+            &token,
+            Body::empty(),
+            None,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(join_response.status(), StatusCode::OK);
+
+    let clear_response = clear_transient_setup(&app, &token).await;
+    assert_eq!(clear_response.status(), StatusCode::OK);
+    let clear_body = json_body(clear_response).await;
+    assert_eq!(clear_body["data"]["nextStepHint"], "idle");
+
+    let after_clear = get_setup_state(&app, &token).await;
+    assert_eq!(
+        after_clear["data"]["state"],
+        Value::String("Welcome".to_string())
+    );
+    assert_eq!(after_clear["data"]["nextStepHint"], "idle");
+}
+
+#[tokio::test]
+async fn setup_clear_transient_preserves_completed_device_state() {
+    let (app, token) = build_reset_router_async().await;
+
+    let host_response = app
+        .clone()
+        .oneshot(authed_request(
+            "POST",
+            "/setup/new",
+            &token,
+            Body::empty(),
+            None,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(host_response.status(), StatusCode::OK);
+
+    let passphrase_response = app
+        .clone()
+        .oneshot(authed_request(
+            "POST",
+            "/setup/submit-passphrase",
+            &token,
+            Body::from(json!({ "passphrase": "secret-passphrase" }).to_string()),
+            Some("application/json"),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(passphrase_response.status(), StatusCode::OK);
+
+    let clear_response = clear_transient_setup(&app, &token).await;
+    assert_eq!(clear_response.status(), StatusCode::OK);
+    let clear_body = json_body(clear_response).await;
+    assert_eq!(clear_body["data"]["nextStepHint"], "completed");
+
+    let after_clear = get_setup_state(&app, &token).await;
+    assert_eq!(
+        after_clear["data"]["state"],
+        Value::String("Completed".to_string())
+    );
+    assert_eq!(after_clear["data"]["nextStepHint"], "completed");
 }
 
 // ── Observability regression tests ─────────────────────────────────────────────────────────────

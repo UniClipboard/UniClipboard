@@ -43,7 +43,20 @@ use uc_daemon::state::RuntimeState;
 fn build_runtime() -> Arc<CoreRuntime> {
     static RUNTIME: OnceLock<Arc<CoreRuntime>> = OnceLock::new();
     RUNTIME
-        .get_or_init(|| Arc::new(build_cli_runtime(None).expect("build cli runtime")))
+        .get_or_init(|| {
+            let tempdir = tempfile::tempdir().expect("tempdir for cli runtime");
+            let profile = format!(
+                "setup-api-cli-{}-{}",
+                std::process::id(),
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .expect("system time")
+                    .as_nanos()
+            );
+            with_profile_env(&profile, tempdir.path(), || {
+                Arc::new(build_cli_runtime(None).expect("build cli runtime"))
+            })
+        })
         .clone()
 }
 

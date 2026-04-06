@@ -37,7 +37,7 @@ const DeviceStatus: React.FC<DeviceStatusProps> = () => {
               d="M12 6v6m0 0v6m0-6h6m-6 0H6"
             ></path>
           </svg>
-          <span className="text-xs text-gray-400">添加设备</span>
+          <span className="text-xs text-gray-400">加入另一个加密空间</span>
         </div>
       </div>
     </>

@@ -1,4 +1,4 @@
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react'
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import PairedDevicesPanel from '../PairedDevicesPanel'
 import i18n from '@/i18n'
@@ -30,6 +30,8 @@ vi.mock('../UnpairAlertDialog', () => ({
 
 const dispatchMock = vi.fn()
 const useAppSelectorMock = vi.fn()
+const startJoinSpaceMock = vi.fn()
+const syncSetupStateFromCommandMock = vi.fn()
 
 vi.mock('@/store/hooks', () => ({
   useAppDispatch: () => dispatchMock,
@@ -41,16 +43,32 @@ vi.mock('react-router-dom', () => ({
   useNavigate: () => vi.fn(),
 }))
 
+vi.mock('sonner', () => ({
+  toast: {
+    error: vi.fn(),
+  },
+}))
+
 vi.mock('@/hooks/useSetting', () => ({
   useSetting: () => ({
     setting: { sync: { autoSync: true }, fileSync: { fileSyncEnabled: true } },
   }),
 }))
 
+vi.mock('@/api/daemon/setup', () => ({
+  startJoinSpace: (...args: unknown[]) => startJoinSpaceMock(...args),
+}))
+
 vi.mock('@/api/p2p', () => ({
   onP2PPeerConnectionChanged: vi.fn(() => Promise.resolve(() => {})),
   onP2PPeerNameUpdated: vi.fn(() => Promise.resolve(() => {})),
   unpairP2PDevice: vi.fn(() => Promise.resolve()),
+}))
+
+vi.mock('@/store/setupRealtimeStore', () => ({
+  useSetupRealtimeStore: () => ({
+    syncSetupStateFromCommand: syncSetupStateFromCommandMock,
+  }),
 }))
 
 vi.mock('@/store/slices/devicesSlice', () => ({
@@ -73,6 +91,7 @@ function setupDevices(
 describe('PairedDevicesPanel', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    startJoinSpaceMock.mockResolvedValue({ JoinSpaceSelectDevice: { error: null } })
     setupDevices()
   })
 
@@ -80,6 +99,60 @@ describe('PairedDevicesPanel', () => {
     render(<PairedDevicesPanel />)
     expect(screen.getByText(i18n.t('devices.list.empty.title'))).toBeInTheDocument()
     expect(screen.getByText(i18n.t('devices.list.empty.description'))).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', {
+        name: i18n.t('devices.list.actions.joinAnotherEncryptedSpace'),
+      })
+    ).toBeInTheDocument()
+  })
+
+  it('opens join-space warning dialog from the empty state action', async () => {
+    render(<PairedDevicesPanel />)
+
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: i18n.t('devices.list.actions.joinAnotherEncryptedSpace'),
+      })
+    )
+
+    const dialog = await screen.findByRole('alertdialog')
+
+    expect(within(dialog).getByText(i18n.t('devices.joinSpaceDialog.title'))).toBeInTheDocument()
+    expect(
+      within(dialog).getByText(i18n.t('devices.joinSpaceDialog.points.notMerge'))
+    ).toBeInTheDocument()
+    expect(
+      within(dialog).getByText(i18n.t('devices.joinSpaceDialog.points.remoteBecomesPrimary'))
+    ).toBeInTheDocument()
+    expect(
+      within(dialog).getByText(
+        i18n.t('devices.joinSpaceDialog.points.localEncryptedContentUnavailable')
+      )
+    ).toBeInTheDocument()
+  })
+
+  it('starts the join-space flow after confirmation', async () => {
+    const nextState = { JoinSpaceSelectDevice: { error: null } }
+    startJoinSpaceMock.mockResolvedValue(nextState)
+
+    render(<PairedDevicesPanel />)
+
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: i18n.t('devices.list.actions.joinAnotherEncryptedSpace'),
+      })
+    )
+
+    fireEvent.click(
+      await screen.findByRole('button', {
+        name: i18n.t('devices.joinSpaceDialog.actions.confirm'),
+      })
+    )
+
+    await waitFor(() => {
+      expect(startJoinSpaceMock).toHaveBeenCalledTimes(1)
+      expect(syncSetupStateFromCommandMock).toHaveBeenCalledWith(nextState)
+    })
   })
 
   it('renders paired devices with online/offline badges', () => {

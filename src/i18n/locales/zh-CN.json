@@ -564,7 +564,26 @@
         "unpair": "取消配对",
         "settings": "设置",
         "addDevice": "添加设备",
-        "addAnotherDevice": "添加另一台设备"
+        "addAnotherDevice": "添加另一台设备",
+        "joinAnotherEncryptedSpace": "加入另一个加密空间"
+      }
+    },
+    "joinSpaceDialog": {
+      "title": "加入另一个加密空间",
+      "description": "继续前请确认，你现在进入的是加入流程，不是空间合并。",
+      "points": {
+        "notMerge": "这不是 merge，两边已有空间不会自动合并。",
+        "remoteBecomesPrimary": "对方设备所在空间会成为主空间。",
+        "localEncryptedContentUnavailable": "本机当前已加密的内容后续将无法访问。"
+      },
+      "backupHint": "如果需要保留本机历史内容，请先备份，再继续加入。",
+      "actions": {
+        "cancel": "取消",
+        "confirm": "继续加入",
+        "starting": "正在进入..."
+      },
+      "errors": {
+        "startFailed": "进入加入流程失败，请稍后重试。"
       }
     },
     "syncPaused": {

@@ -573,7 +573,26 @@
         "unpair": "Unpair",
         "settings": "Settings",
         "addDevice": "Add Device",
-        "addAnotherDevice": "Add another device"
+        "addAnotherDevice": "Add another device",
+        "joinAnotherEncryptedSpace": "Join another encrypted space"
+      }
+    },
+    "joinSpaceDialog": {
+      "title": "Join another encrypted space",
+      "description": "Before continuing, confirm that this starts a join flow, not a space merge.",
+      "points": {
+        "notMerge": "This is not a merge. Two existing spaces will not be combined automatically.",
+        "remoteBecomesPrimary": "The other device's space will become the primary space.",
+        "localEncryptedContentUnavailable": "Encrypted content already stored on this device will no longer be accessible."
+      },
+      "backupHint": "If you need to keep local history, export or back it up before continuing.",
+      "actions": {
+        "cancel": "Cancel",
+        "confirm": "Continue joining",
+        "starting": "Starting..."
+      },
+      "errors": {
+        "startFailed": "Failed to start the join flow. Please try again."
       }
     },
     "syncPaused": {

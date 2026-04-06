@@ -96,7 +96,7 @@ function findFirstFile(artifactsDir, predicate) {
   return files.find(predicate) || ''
 }
 
-function buildInstallerLines({ artifactsDir, baseUrl }) {
+function buildInstallerTable({ artifactsDir, baseUrl }) {
   const macosArm64 = findFirstFile(
     artifactsDir,
     file => file.endsWith('.dmg') && (file.includes('aarch64') || file.includes('arm64'))
@@ -109,29 +109,24 @@ function buildInstallerLines({ artifactsDir, baseUrl }) {
   const linuxAppImage = findFirstFile(artifactsDir, file => file.endsWith('.AppImage'))
   const windowsExe = findFirstFile(artifactsDir, file => file.endsWith('.exe'))
 
-  const makeLink = (label, fileName) => `- ${label}: [${fileName}](${baseUrl}/${fileName})`
-  const fallback = '- Not available for this release.'
+  const makeRow = (platform, arch, fileName) =>
+    `| ${platform} | ${arch} | [${fileName}](${baseUrl}/${fileName}) |`
 
-  return {
-    macos:
-      [
-        macosArm64 ? makeLink('**Apple Silicon (M1/M2/M3)**', macosArm64) : '',
-        macosX64 ? makeLink('**Intel**', macosX64) : '',
-      ]
-        .filter(Boolean)
-        .join('\n') || fallback,
-    linux:
-      [
-        linuxDeb ? makeLink('**Debian/Ubuntu**', linuxDeb) : '',
-        linuxAppImage ? makeLink('**AppImage**', linuxAppImage) : '',
-      ]
-        .filter(Boolean)
-        .join('\n') || fallback,
-    windows: windowsExe ? makeLink('**NSIS Installer**', windowsExe) : fallback,
+  const rows = []
+  if (macosArm64) rows.push(makeRow('macOS', 'Apple Silicon (M1/M2/M3)', macosArm64))
+  if (macosX64) rows.push(makeRow('macOS', 'Intel', macosX64))
+  if (linuxDeb) rows.push(makeRow('Linux', 'Debian/Ubuntu (.deb)', linuxDeb))
+  if (linuxAppImage) rows.push(makeRow('Linux', 'AppImage', linuxAppImage))
+  if (windowsExe) rows.push(makeRow('Windows', 'x86_64', windowsExe))
+
+  if (rows.length === 0) {
+    return 'No installer artifacts found for this release.'
   }
+
+  return '| Platform | Architecture | Download |\n| --- | --- | --- |\n' + rows.join('\n')
 }
 
-function buildCliInstallerLines({ artifactsDir, baseUrl }) {
+function buildCliInstallerTable({ artifactsDir, baseUrl }) {
   const macosArm64 = findFirstFile(
     artifactsDir,
     file =>
@@ -157,20 +152,20 @@ function buildCliInstallerLines({ artifactsDir, baseUrl }) {
       file.startsWith('uniclipboard-cli-') && file.includes('windows-msvc') && file.endsWith('.zip')
   )
 
-  const makeLink = (label, fileName) => `- ${label}: [${fileName}](${baseUrl}/${fileName})`
-  const fallback = '- Not available for this release.'
+  const makeRow = (platform, arch, fileName) =>
+    `| ${platform} | ${arch} | [${fileName}](${baseUrl}/${fileName}) |`
 
-  return {
-    macos:
-      [
-        macosArm64 ? makeLink('**Apple Silicon (M1/M2/M3)**', macosArm64) : '',
-        macosX64 ? makeLink('**Intel**', macosX64) : '',
-      ]
-        .filter(Boolean)
-        .join('\n') || fallback,
-    linux: linux ? makeLink('**x86_64**', linux) : fallback,
-    windows: windows ? makeLink('**x86_64**', windows) : fallback,
+  const rows = []
+  if (macosArm64) rows.push(makeRow('macOS', 'Apple Silicon (M1/M2/M3)', macosArm64))
+  if (macosX64) rows.push(makeRow('macOS', 'Intel', macosX64))
+  if (linux) rows.push(makeRow('Linux', 'x86_64', linux))
+  if (windows) rows.push(makeRow('Windows', 'x86_64', windows))
+
+  if (rows.length === 0) {
+    return 'No CLI artifacts found for this release.'
   }
+
+  return '| Platform | Architecture | Download |\n| --- | --- | --- |\n' + rows.join('\n')
 }
 
 function readChangelogSection(filePath, fallbackTitle = "## What's Changed") {
@@ -245,8 +240,8 @@ export function generateReleaseNotes(options) {
     emitWarning(`Chinese release changelog file not found for version ${version}`, chinesePath)
   }
 
-  const installers = buildInstallerLines({ artifactsDir, baseUrl })
-  const cliInstallers = buildCliInstallerLines({ artifactsDir, baseUrl })
+  const installerTable = buildInstallerTable({ artifactsDir, baseUrl })
+  const cliInstallerTable = buildCliInstallerTable({ artifactsDir, baseUrl })
   const template = fs.readFileSync(templatePath, 'utf8')
   const rendered =
     renderTemplate(template, {
@@ -261,13 +256,8 @@ export function generateReleaseNotes(options) {
         chineseExists,
       }),
       IS_PRERELEASE_WARNING: buildPrereleaseWarning(options.isPrerelease, options.channel),
-      MACOS_INSTALLERS: installers.macos,
-      LINUX_INSTALLERS: installers.linux,
-      WINDOWS_INSTALLERS: installers.windows,
-      CLI_MACOS_INSTALLERS: cliInstallers.macos,
-      CLI_LINUX_INSTALLERS: cliInstallers.linux,
-      CLI_WINDOWS_INSTALLERS: cliInstallers.windows,
-      VERIFICATION_SECTION: '',
+      INSTALLER_TABLE: installerTable,
+      CLI_INSTALLER_TABLE: cliInstallerTable,
     }).trim() + '\n'
 
   fs.writeFileSync(outputPath, rendered, 'utf8')

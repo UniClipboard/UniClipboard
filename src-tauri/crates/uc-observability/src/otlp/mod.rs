@@ -20,58 +20,23 @@ pub mod layer;
 pub mod propagator;
 pub mod resource;
 
+mod config;
+mod provider;
+
+#[cfg(test)]
+mod tests;
+
+pub use provider::OtlpGuard;
 pub use resource::build_resource;
 
-use opentelemetry::global;
-use opentelemetry_otlp::{Protocol, SpanExporter, WithExportConfig};
-use opentelemetry_sdk::{propagation::TraceContextPropagator, trace::SdkTracerProvider};
+use opentelemetry_sdk::trace::SdkTracerProvider;
 use tracing_subscriber::{registry::LookupSpan, Layer};
 
 use crate::profile::LogProfile;
 
-/// Resolve the OTLP endpoint.
-///
-/// Priority:
-/// 1. Value baked in at compile time via `OTEL_EXPORTER_OTLP_ENDPOINT` env var
-///    (used in production builds where the secret is injected by CI but not
-///    available at runtime in the user's environment).
-/// 2. Runtime env var fallback (used in local development / dev builds).
-///
-/// Returns `None` when neither is set, which disables telemetry.
-fn resolve_otlp_endpoint() -> Option<String> {
-    // Compile-time baked value takes precedence (production builds).
-    if let Some(endpoint) = option_env!("OTEL_EXPORTER_OTLP_ENDPOINT") {
-        if !endpoint.is_empty() {
-            return Some(endpoint.to_string());
-        }
-    }
-    // Runtime fallback for local dev / dev builds.
-    std::env::var("OTEL_EXPORTER_OTLP_ENDPOINT").ok()
-}
-
 /// Boxed OTLP layer type. Used as the return type for `init_otlp_pipeline` so callers
 /// don't need to specify the subscriber type `S` when they don't care about it (e.g., tests).
 pub type OtlpLayer = Box<dyn Layer<tracing_subscriber::Registry> + Send + Sync + 'static>;
-
-/// Guard that keeps the OTLP tracer provider alive.
-/// On drop, flushes pending spans and shuts down the provider.
-pub struct OtlpGuard {
-    provider: Option<SdkTracerProvider>,
-}
-
-impl Drop for OtlpGuard {
-    fn drop(&mut self) {
-        if let Some(provider) = self.provider.take() {
-            // Best-effort flush; log on failure but never panic.
-            match provider.shutdown() {
-                Ok(()) => {}
-                Err(e) => {
-                    tracing::warn!(error = %e, "OTLP tracer provider shutdown failed");
-                }
-            }
-        }
-    }
-}
 
 /// Initialize the OTLP exporter and provider, without creating the tracing layer.
 ///
@@ -92,34 +57,7 @@ pub fn init_otlp_provider(
     profile: &LogProfile,
     device_id: Option<&str>,
 ) -> anyhow::Result<Option<(SdkTracerProvider, OtlpGuard)>> {
-    // Always install the W3C propagator.
-    global::set_text_map_propagator(TraceContextPropagator::new());
-
-    let Some(endpoint) = resolve_otlp_endpoint() else {
-        return Ok(None);
-    };
-
-    let exporter = SpanExporter::builder()
-        .with_http()
-        .with_protocol(Protocol::HttpBinary)
-        .with_endpoint(endpoint)
-        .build()
-        .map_err(|e| anyhow::anyhow!("build OTLP span exporter: {e}"))?;
-
-    let resource = resource::build_resource(device_id);
-
-    let provider = SdkTracerProvider::builder()
-        .with_batch_exporter(exporter)
-        .with_resource(resource)
-        .build();
-
-    // Clone provider for the guard (Arc clone; shared inner state).
-    // The caller uses the original provider to create a layer.
-    let guard = OtlpGuard {
-        provider: Some(provider.clone()),
-    };
-
-    Ok(Some((provider, guard)))
+    provider::init_provider_and_guard(profile, device_id)
 }
 
 /// Build the internal OTLP pipeline without the boxed layer wrapper.
@@ -133,36 +71,13 @@ pub fn init_otlp_pipeline_generic<S>(
 where
     S: tracing::Subscriber + for<'a> LookupSpan<'a> + Send + Sync,
 {
-    // Always install the W3C propagator — even when the exporter is disabled,
-    // so cross-device headers remain populated (prevents silent context loss).
-    global::set_text_map_propagator(TraceContextPropagator::new());
-
-    let Some(endpoint) = resolve_otlp_endpoint() else {
+    let Some((provider, guard)) = provider::init_provider_and_guard(profile, device_id)? else {
         return Ok(None);
     };
 
-    let exporter = SpanExporter::builder()
-        .with_http()
-        .with_protocol(Protocol::HttpBinary)
-        .with_endpoint(endpoint)
-        .build()
-        .map_err(|e| anyhow::anyhow!("build OTLP span exporter: {e}"))?;
-
-    let resource = resource::build_resource(device_id);
-
-    let provider = SdkTracerProvider::builder()
-        .with_batch_exporter(exporter)
-        .with_resource(resource)
-        .build();
-
     let otel_layer = layer::build_otlp_layer::<S>(&provider, profile);
 
-    Ok(Some((
-        otel_layer,
-        OtlpGuard {
-            provider: Some(provider),
-        },
-    )))
+    Ok(Some((otel_layer, guard)))
 }
 
 /// Initialize the OTLP tracing pipeline.
@@ -185,34 +100,11 @@ pub fn init_otlp_pipeline(
     profile: &LogProfile,
     device_id: Option<&str>,
 ) -> anyhow::Result<Option<(OtlpLayer, OtlpGuard)>> {
-    // Always install the W3C propagator — even when the exporter is disabled,
-    // so cross-device headers remain populated (prevents silent context loss).
-    global::set_text_map_propagator(TraceContextPropagator::new());
-
-    let Some(endpoint) = resolve_otlp_endpoint() else {
+    let Some((provider, guard)) = provider::init_provider_and_guard(profile, device_id)? else {
         return Ok(None);
     };
 
-    let exporter = SpanExporter::builder()
-        .with_http()
-        .with_protocol(Protocol::HttpBinary)
-        .with_endpoint(endpoint)
-        .build()
-        .map_err(|e| anyhow::anyhow!("build OTLP span exporter: {e}"))?;
-
-    let resource = resource::build_resource(device_id);
-
-    let provider = SdkTracerProvider::builder()
-        .with_batch_exporter(exporter)
-        .with_resource(resource)
-        .build();
-
     let otel_layer = layer::build_otlp_layer::<tracing_subscriber::Registry>(&provider, profile);
 
-    Ok(Some((
-        Box::new(otel_layer),
-        OtlpGuard {
-            provider: Some(provider),
-        },
-    )))
+    Ok(Some((Box::new(otel_layer), guard)))
 }

@@ -549,91 +549,13 @@ fn test_bootstrap_full_flow() {
     });
 }
 
-/// Test 10: Database pool creation with real file system
-/// 测试10：使用真实文件系统创建数据库连接池
-///
-/// This test verifies that:
-/// 此测试验证：
-/// - Database file is created in the correct location / 数据库文件在正确位置创建
-/// - Parent directories are created as needed / 按需创建父目录
-/// - Connection pool can be established / 可以建立连接池
-#[test]
-fn test_bootstrap_database_pool_real_filesystem() {
-    run_with_tokio(|| {
-        let temp_dir = TempDir::new().unwrap();
-        let db_path = temp_dir.path().join("test_data").join("db").join("test.db");
-
-        // Create config with database path
-        // 使用数据库路径创建配置
-        let mut config = AppConfig::empty();
-        config.database_path = db_path.clone();
-
-        // Wire dependencies (this will create the database)
-        // 连接依赖（这将创建数据库）
-        let deps_result = wire_dependencies_with_identity_store(
-            &config,
-            Some(test_identity_store()),
-            PairingRuntimeOwner::ExternalDaemon,
-        );
-
-        assert!(
-            deps_result.is_ok(),
-            "wire_dependencies should create database successfully"
-        );
-
-        // Verify database file was created
-        // 验证数据库文件已创建
-        assert!(db_path.exists(), "Database file should be created");
-
-        // Verify parent directories were created
-        // 验证父目录已创建
-        assert!(
-            db_path.parent().unwrap().exists(),
-            "Parent directory should be created"
-        );
-    });
-}
-
-/// Test 11: Database pool creation with invalid path
-/// 测试11：使用无效路径创建数据库连接池
-///
-/// This test verifies error handling when:
-/// 此测试验证以下情况时的错误处理：
-/// - Database path contains invalid characters / 数据库路径包含无效字符
-/// - Path cannot be created / 无法创建路径
-#[test]
-fn test_bootstrap_database_pool_invalid_path() {
-    run_with_tokio(|| {
-        // Use a path that cannot be created (e.g., in /root without permissions)
-        // 使用无法创建的路径（例如，没有权限的 /root）
-        let db_path = PathBuf::from("/root/uniclipboard_test_no_permission/test.db");
-
-        let mut config = AppConfig::empty();
-        config.database_path = db_path;
-
-        let deps_result = wire_dependencies_with_identity_store(
-            &config,
-            Some(test_identity_store()),
-            PairingRuntimeOwner::ExternalDaemon,
-        );
-
-        // Should fail gracefully with proper error
-        // 应该优雅地失败并返回适当错误
-        match deps_result {
-            Ok(_) => panic!("wire_dependencies should fail with invalid path"),
-            Err(error) => {
-                let error_msg = error.to_string().to_lowercase();
-                // Error should mention database initialization failure
-                // 错误应该提到数据库初始化失败
-                assert!(
-                    error_msg.contains("database") || error_msg.contains("db"),
-                    "Error should mention database, got: {}",
-                    error
-                );
-            }
-        }
-    });
-}
+// Tests 10 and 11 (database_pool_real_filesystem, database_pool_invalid_path) removed:
+// resolve_app_paths() now extracts only the filename from config.database_path and
+// joins it to app_data_root_dir. This means:
+// - The "real filesystem" test's tempdir path was never actually used for the DB
+// - The "invalid path" tests (/root/..., /nonexistent/...) had their directory
+//   component discarded, so the DB ended up in the valid app_data_root_dir
+// These tests' premises no longer hold after the path resolution refactor.
 
 /// Test 12: create_runtime wrapper function
 /// 测试12：create_runtime 包装函数
@@ -827,31 +749,6 @@ fn test_bootstrap_settings_repository_initialization() {
 /// - Errors during dependency creation are properly propagated / 依赖创建期间的错误正确传播
 /// - Error messages are context-rich / 错误消息包含丰富上下文
 /// - No panics occur during error handling / 错误处理期间无 panic
-#[test]
-fn test_bootstrap_wire_dependencies_error_propagation() {
-    run_with_tokio(|| {
-        // Create a config with an invalid database path (non-existent parent with invalid permissions)
-        // 创建具有无效数据库路径的配置（具有无效权限的不存在的父目录）
-        let mut config = AppConfig::empty();
-        config.database_path = PathBuf::from("/nonexistent/with/invalid/permissions/db/test.db");
-
-        let result = wire_dependencies_with_identity_store(
-            &config,
-            Some(test_identity_store()),
-            PairingRuntimeOwner::ExternalDaemon,
-        );
-
-        // Should fail gracefully
-        // 应该优雅地失败
-        match result {
-            Ok(_) => panic!("Should fail with invalid database path"),
-            Err(error) => {
-                let error_msg = error.to_string();
-                // Error message should be descriptive
-                // 错误消息应该是描述性的
-                assert!(!error_msg.is_empty(), "Error message should not be empty");
-                assert!(error_msg.len() > 10, "Error message should be descriptive");
-            }
-        }
-    });
-}
+// Test wire_dependencies_error_propagation removed: same reason as tests 10/11 above.
+// The /nonexistent/... path has its directory component discarded by resolve_app_paths(),
+// so the DB filename ends up in the valid app_data_root_dir and wiring succeeds.

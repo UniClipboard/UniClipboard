@@ -3038,6 +3038,53 @@ mod tests {
     }
 
     #[test]
+    fn regression_mark_unreachable_clears_last_dial_observation() {
+        let mut caches = PeerCaches::new();
+        let t0 = Utc::now();
+        let dial_addr = "/ip4/10.0.0.8/tcp/4001";
+
+        caches.upsert_discovered("peer-1".to_string(), vec![dial_addr.to_string()], t0);
+        assert!(caches.mark_reachable("peer-1", t0));
+        caches.record_dial_observation("peer-1", successful_dial_observation(dial_addr, t0));
+
+        assert!(caches.mark_unreachable("peer-1"));
+
+        let snapshot =
+            snapshot_peer_addresses(&caches, "peer-1", t0 + chrono::TimeDelta::seconds(1));
+        assert!(snapshot.chosen_dial_addr.is_none());
+        assert!(snapshot.last_dial_observed_at.is_none());
+        assert!(snapshot.last_dial_outcome.is_none());
+        assert_eq!(snapshot.dial_attempt_address_count, 0);
+    }
+
+    #[test]
+    fn regression_stale_dial_observation_not_used_for_new_attempt() {
+        let mut caches = PeerCaches::new();
+        let t0 = Utc::now();
+        let addr_a = "/ip4/10.0.0.8/tcp/4001";
+        let addr_b = "/ip4/10.0.0.9/tcp/4001";
+
+        caches.upsert_discovered(
+            "peer-1".to_string(),
+            vec![addr_a.to_string(), addr_b.to_string()],
+            t0,
+        );
+        caches.record_dial_observation("peer-1", successful_dial_observation(addr_a, t0));
+
+        let attempt_started_at = t0 + chrono::TimeDelta::seconds(1);
+        let snapshot = snapshot_peer_addresses(&caches, "peer-1", attempt_started_at);
+
+        assert_eq!(
+            chosen_dial_addr_for_log(&snapshot, "new_dial_required", attempt_started_at),
+            None
+        );
+        assert_eq!(
+            infer_chosen_dial_addr_resolution(&snapshot, "new_dial_required", attempt_started_at),
+            "unknown"
+        );
+    }
+
+    #[test]
     fn mdns_discovery_groups_addresses_by_peer() {
         let peer = PeerId::random();
         let addr_one: Multiaddr = "/ip4/192.168.1.2/tcp/4001".parse().unwrap();

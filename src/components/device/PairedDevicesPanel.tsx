@@ -139,7 +139,7 @@ const PairedDevicesPanel: React.FC = () => {
               <p>{t('devices.joinSpaceDialog.description')}</p>
               <ul className="list-disc space-y-1 pl-5">
                 <li>{t('devices.joinSpaceDialog.points.notMerge')}</li>
-                <li>{t('devices.joinSpaceDialog.points.remoteBecomesPrimary')}</li>
+                <li>{t('devices.joinSpaceDialog.points.joinSelectedDevicesSpace')}</li>
                 <li>{t('devices.joinSpaceDialog.points.localEncryptedContentUnavailable')}</li>
               </ul>
               <p>{t('devices.joinSpaceDialog.backupHint')}</p>

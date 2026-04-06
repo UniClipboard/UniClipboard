@@ -569,14 +569,14 @@
       }
     },
     "joinSpaceDialog": {
-      "title": "加入另一个加密空间",
-      "description": "继续前请确认，你现在进入的是加入流程，不是空间合并。",
+      "title": "加入已有加密空间",
+      "description": "继续前请确认以下影响。",
       "points": {
-        "notMerge": "这不是 merge，两边已有空间不会自动合并。",
-        "remoteBecomesPrimary": "对方设备所在空间会成为主空间。",
-        "localEncryptedContentUnavailable": "本机当前已加密的内容后续将无法访问。"
+        "notMerge": "这不是合并操作。",
+        "joinSelectedDevicesSpace": "你将加入所选设备当前所在的加密空间。",
+        "localEncryptedContentUnavailable": "加入后，本机当前已加密的历史内容将无法继续访问。"
       },
-      "backupHint": "如果需要保留本机历史内容，请先备份，再继续加入。",
+      "backupHint": "若需保留，请先备份。",
       "actions": {
         "cancel": "取消",
         "confirm": "继续加入",

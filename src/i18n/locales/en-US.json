@@ -578,14 +578,14 @@
       }
     },
     "joinSpaceDialog": {
-      "title": "Join another encrypted space",
-      "description": "Before continuing, confirm that this starts a join flow, not a space merge.",
+      "title": "Join an existing encrypted space",
+      "description": "Before continuing, confirm the following impact.",
       "points": {
-        "notMerge": "This is not a merge. Two existing spaces will not be combined automatically.",
-        "remoteBecomesPrimary": "The other device's space will become the primary space.",
-        "localEncryptedContentUnavailable": "Encrypted content already stored on this device will no longer be accessible."
+        "notMerge": "This is not a merge operation.",
+        "joinSelectedDevicesSpace": "You will join the encrypted space currently used by the selected device.",
+        "localEncryptedContentUnavailable": "After joining, encrypted history already stored on this device will no longer be accessible."
       },
-      "backupHint": "If you need to keep local history, export or back it up before continuing.",
+      "backupHint": "Back up local history first if you need to keep it.",
       "actions": {
         "cancel": "Cancel",
         "confirm": "Continue joining",

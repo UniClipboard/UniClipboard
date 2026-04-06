@@ -122,7 +122,7 @@ describe('PairedDevicesPanel', () => {
       within(dialog).getByText(i18n.t('devices.joinSpaceDialog.points.notMerge'))
     ).toBeInTheDocument()
     expect(
-      within(dialog).getByText(i18n.t('devices.joinSpaceDialog.points.remoteBecomesPrimary'))
+      within(dialog).getByText(i18n.t('devices.joinSpaceDialog.points.joinSelectedDevicesSpace'))
     ).toBeInTheDocument()
     expect(
       within(dialog).getByText(

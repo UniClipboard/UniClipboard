@@ -117,13 +117,33 @@ async fn next_json(
         tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>,
     >,
 ) -> Value {
-    let msg = tokio::time::timeout(std::time::Duration::from_secs(5), socket.next())
-        .await
-        .expect("next_json timed out waiting for WebSocket message")
-        .expect("WebSocket stream ended")
-        .expect("WebSocket message error");
-    serde_json::from_str(msg.to_text().expect("expected text WebSocket message"))
-        .expect("failed to parse WebSocket message as JSON")
+    loop {
+        let msg = tokio::time::timeout(std::time::Duration::from_secs(5), socket.next())
+            .await
+            .expect("next_json timed out waiting for WebSocket message")
+            .expect("WebSocket stream ended")
+            .expect("WebSocket message error");
+        match &msg {
+            tokio_tungstenite::tungstenite::Message::Text(text) => {
+                return serde_json::from_str(text)
+                    .expect("failed to parse WebSocket message as JSON");
+            }
+            tokio_tungstenite::tungstenite::Message::Close(reason) => {
+                panic!(
+                    "server unexpectedly closed WebSocket connection: {:?}",
+                    reason
+                );
+            }
+            tokio_tungstenite::tungstenite::Message::Ping(_)
+            | tokio_tungstenite::tungstenite::Message::Pong(_) => {
+                // Skip control frames and wait for the next data message.
+                continue;
+            }
+            other => {
+                panic!("unexpected WebSocket message type: {:?}", other);
+            }
+        }
+    }
 }
 
 fn authed_get_request(uri: &str, session_token: &str) -> Request<Body> {

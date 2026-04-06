@@ -9863,6 +9863,7 @@ version = "0.4.0-alpha.2"
 dependencies = [
  "anyhow",
  "chrono",
+ "http 1.4.0",
  "opentelemetry",
  "opentelemetry-otlp",
  "opentelemetry-semantic-conventions",

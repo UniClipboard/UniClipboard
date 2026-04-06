@@ -5,6 +5,7 @@ edition = "2021"
 description = "Observability infrastructure for UniClipboard: dual-output tracing with profile-based filtering"
 
 [dependencies]
+http = "1"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt", "chrono", "json", "registry"] }
 tracing-appender = "0.2"

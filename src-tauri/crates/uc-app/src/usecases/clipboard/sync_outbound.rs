@@ -223,6 +223,7 @@ impl SyncOutboundClipboardUseCase {
             return Ok(());
         } else {
             info!(
+                event = "clipboard.outbound_peer_evaluated",
                 discovered_peer_count,
                 sendable_peer_count = sendable_peers.len(),
                 "Evaluated outbound clipboard sendable peers"
@@ -234,6 +235,7 @@ impl SyncOutboundClipboardUseCase {
         }
 
         let message_id = Uuid::new_v4().to_string();
+        let representation_count = snapshot.representations.len();
 
         // Extract content_hash and ts_ms BEFORE consuming representations via into_iter().
         let content_hash = snapshot.snapshot_hash().to_string();
@@ -314,6 +316,16 @@ impl SyncOutboundClipboardUseCase {
         let mut connect_failures = Vec::new();
         let mut connect_success_count = 0usize;
 
+        info!(
+            event = "clipboard.outbound_attempt",
+            target_peer_count = sendable_peers.len(),
+            first_target_peer_id = %first_peer.peer_id,
+            first_target_address_count = first_peer.addresses.len(),
+            representation_count,
+            raw_bytes,
+            "starting outbound clipboard fanout"
+        );
+
         // Parallel: run prepare path in its own task so CPU-heavy encrypt/frame work
         // cannot starve the business-path ensure branch.
         let prepare_future = async move {
@@ -330,6 +342,7 @@ impl SyncOutboundClipboardUseCase {
                 })?;
 
             info!(
+                event = "clipboard.outbound_payload_encrypted",
                 raw_bytes,
                 encrypted_bytes = encrypted_content.len(),
                 "outbound payload encrypted"
@@ -359,9 +372,11 @@ impl SyncOutboundClipboardUseCase {
                 }
                 Err(err) => {
                     warn!(
+                        event = "clipboard.outbound_business_path_failed",
                         error_kind = "peer_connection_failed",
                         retryable = true,
                         peer_id = %first_peer.peer_id,
+                        peer_address_count = first_peer.addresses.len(),
                         error = %err,
                         "failed to ensure outbound business path for first peer; skipping send"
                     );
@@ -384,9 +399,11 @@ impl SyncOutboundClipboardUseCase {
                 }
                 Err(err) => {
                     warn!(
+                        event = "clipboard.outbound_business_path_failed",
                         error_kind = "peer_connection_failed",
                         retryable = true,
                         peer_id = %first_peer.peer_id,
+                        peer_address_count = first_peer.addresses.len(),
                         error = %err,
                         "failed to ensure outbound business path for first peer; skipping send"
                     );
@@ -411,9 +428,11 @@ impl SyncOutboundClipboardUseCase {
             .await
             {
                 warn!(
+                    event = "clipboard.outbound_send_failed",
                     error_kind = "peer_send_failed",
                     retryable = true,
                     peer_id = %first_peer.peer_id,
+                    peer_address_count = first_peer.addresses.len(),
                     error = %err,
                     "failed to send outbound clipboard message to first peer"
                 );
@@ -431,9 +450,11 @@ impl SyncOutboundClipboardUseCase {
                 .await
             {
                 warn!(
+                    event = "clipboard.outbound_business_path_failed",
                     error_kind = "peer_connection_failed",
                     retryable = true,
                     peer_id = %peer.peer_id,
+                    peer_address_count = peer.addresses.len(),
                     error = %err,
                     "failed to ensure outbound business path; skipping send for this peer"
                 );
@@ -453,9 +474,11 @@ impl SyncOutboundClipboardUseCase {
             .await
             {
                 warn!(
+                    event = "clipboard.outbound_send_failed",
                     error_kind = "peer_send_failed",
                     retryable = true,
                     peer_id = %peer.peer_id,
+                    peer_address_count = peer.addresses.len(),
                     error = %err,
                     "failed to send outbound clipboard message to peer; continuing best-effort fanout"
                 );
@@ -482,16 +505,17 @@ impl SyncOutboundClipboardUseCase {
             failures.extend(connect_failures);
             failures.extend(send_failures);
             let failure_count = failures.len();
-            // Note: per-peer failures are already logged above with error_kind;
-            // this is a summary-level debug to avoid duplicate error reporting.
-            debug!(
+            warn!(
+                event = "clipboard.outbound_partial_failure",
                 sent_count,
                 failure_count,
                 "outbound clipboard fanout partially failed after best-effort retries"
             );
             info!(
+                event = "clipboard.outbound_partial_success",
                 sent_count,
-                connect_success_count, "Outbound clipboard sync sent to sendable peers (partial)"
+                connect_success_count,
+                "Outbound clipboard sync sent to sendable peers (partial)"
             );
             return Err(anyhow::anyhow!(
                 "outbound clipboard fanout partially failed: {sent_count} sent, {failure_count} failed ({})",
@@ -500,8 +524,8 @@ impl SyncOutboundClipboardUseCase {
         }
 
         info!(
-            sent_count,
-            connect_success_count, "Outbound clipboard sync sent to sendable peers"
+            event = "clipboard.outbound_success",
+            sent_count, connect_success_count, "Outbound clipboard sync sent to sendable peers"
         );
         Ok(())
     }

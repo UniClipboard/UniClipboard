@@ -1,0 +1,150 @@
+# P2P Transport Observability Runbook
+
+## Purpose
+
+This runbook covers phase-1 transport observability for clipboard and pairing failures.
+The goal is to answer these questions directly from Seq without guessing:
+
+1. Which listen addresses were active locally?
+2. Which peer addresses were discovered?
+3. Which peer was targeted for a business stream open?
+4. Was the peer already considered reachable or did this require a new dial?
+5. Did the failure look like stale addresses, listener instability, or plain network unreachability?
+
+## New Event Keys
+
+Phase 1 adds or standardizes these event fields in Rust transport logs:
+
+- `event="network.listen_addresses_selected"`
+- `event="network.listen_registered"`
+- `event="network.listen_register_failed"`
+- `event="network.new_listen_addr"`
+- `event="peer.mdns_discovered"`
+- `event="peer.mdns_expired"`
+- `event="peer.connection_established"`
+- `event="peer.connection_closed"`
+- `event="peer.outgoing_connection_error"`
+- `event="peer.incoming_connection_error"`
+- `event="business_stream.open_attempt"`
+- `event="business_stream.open_failed"`
+- `event="business_stream.open_timeout"`
+- `event="business_stream.ensure_open_failed"`
+- `event="business_stream.ensure_open_timeout"`
+- `event="clipboard.outbound_peer_evaluated"`
+- `event="clipboard.outbound_attempt"`
+- `event="clipboard.outbound_payload_encrypted"`
+- `event="clipboard.outbound_business_path_failed"`
+- `event="clipboard.outbound_send_failed"`
+- `event="clipboard.outbound_partial_failure"`
+- `event="clipboard.outbound_partial_success"`
+- `event="clipboard.outbound_success"`
+
+## Repro Checklist
+
+When reproducing a transport issue, capture this context before and after the action:
+
+1. Both devices' `peer_id`
+2. Both devices' active network interfaces and IPs
+3. Whether either device has VPN / proxy / guest-network isolation enabled
+4. Whether both OS firewalls explicitly allow UniClipboard
+5. Whether the action reused an existing session or required a fresh reconnect
+
+## Seq Query Templates
+
+Replace placeholders before use.
+
+### 1. Find one outbound clipboard attempt, then pivot to its trace
+
+```text
+event = 'clipboard.outbound_attempt' and first_target_peer_id = 'PEER_ID'
+```
+
+Open the matching outbound attempt in the relevant time window, then reuse its `@TraceId`:
+
+```text
+@TraceId = 'TRACE_ID'
+```
+
+Expected useful events:
+
+- `clipboard.outbound_attempt`
+- `clipboard.outbound_payload_encrypted`
+- `clipboard.outbound_business_path_failed`
+- `clipboard.outbound_send_failed`
+- `clipboard.outbound_partial_failure`
+- `clipboard.outbound_success`
+
+### 2. Transport attempts for one peer
+
+```text
+peer_id = 'PEER_ID' and (event like 'business_stream.%' or event like 'peer.%')
+```
+
+Use this to correlate:
+
+- discovered addresses
+- outgoing connection errors
+- connection established / closed
+- business stream open failures
+
+### 3. Listen / bind health on one device
+
+```text
+event like 'network.listen%' or event = 'network.new_listen_addr'
+```
+
+Look for:
+
+- bind failures
+- missing `new_listen_addr`
+- repeated rebinds
+- `Address already in use`
+
+### 4. Suspected stale address
+
+```text
+peer_id = 'PEER_ID' and event = 'business_stream.open_attempt'
+```
+
+Inspect these fields:
+
+- `candidate_address_count`
+- `preferred_candidate_transport`
+- `peer_marked_reachable`
+- `connected_age_ms`
+- `discovered_age_ms`
+- `last_seen_age_ms`
+
+Then compare with the failure event for the same `@TraceId` or `peer_id`:
+
+- `candidate_addresses`
+- `error`
+- `timeout_ms`
+
+If failures cluster around old `last_seen_age_ms` or old `discovered_age_ms`, stale discovery is the likely first suspect.
+
+## What “Good” Looks Like
+
+For a healthy send path, Seq should let us read the chain in order:
+
+1. `peer.mdns_discovered`
+2. `peer.connection_established`
+3. `clipboard.outbound_attempt`
+4. `business_stream.open_attempt`
+5. `clipboard.outbound_success`
+
+For a broken path, we should still be able to identify which category it belongs to:
+
+- stale peer addresses
+- wrong NIC / wrong subnet preference
+- listener bind conflict
+- transport refused / timeout
+
+## Out Of Scope
+
+Phase 1 does not change:
+
+- address ranking / bad-address backoff
+- fresh discovery refresh policy
+- relay / hole punching / rendezvous
+- business logic for clipboard payload handling

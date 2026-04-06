@@ -82,6 +82,15 @@ pub struct PeerCaches {
     connected_at: HashMap<String, DateTime<Utc>>,
 }
 
+#[derive(Debug, Clone)]
+struct PeerAddressSnapshot {
+    candidate_addresses: Vec<String>,
+    peer_marked_reachable: bool,
+    connected_age_ms: Option<i64>,
+    discovered_age_ms: Option<i64>,
+    last_seen_age_ms: Option<i64>,
+}
+
 impl PeerCaches {
     pub fn new() -> Self {
         Self {
@@ -456,7 +465,13 @@ impl Libp2pNetworkAdapter {
         };
         let quic_addr_str = format!("/ip4/{listen_ip}/udp/0/quic-v1");
         let tcp_addr_str = format!("/ip4/{listen_ip}/tcp/0");
-        info!(quic_address = %quic_addr_str, tcp_address = %tcp_addr_str, "selected listen addresses");
+        info!(
+            event = "network.listen_addresses_selected",
+            listen_ip = %listen_ip,
+            quic_address = %quic_addr_str,
+            tcp_address = %tcp_addr_str,
+            "selected listen addresses"
+        );
 
         let quic_addr: Multiaddr = quic_addr_str
             .parse()
@@ -1571,6 +1586,16 @@ async fn run_swarm(
                                 swarm.add_peer_address(peer_id.clone(), address.clone());
                             }
                             let discovered = collect_mdns_discovered(peers);
+                            for (peer_id, addresses) in discovered.iter() {
+                                info!(
+                                    event = "peer.mdns_discovered",
+                                    peer_id = %peer_id,
+                                    local_peer_id = %local_peer_id,
+                                    address_count = addresses.len(),
+                                    addresses = ?addresses,
+                                    "recorded mDNS discovery snapshot"
+                                );
+                            }
                             let events = {
                                 let mut caches = caches.write().await;
                                 apply_mdns_discovered(&mut caches, discovered, Utc::now())
@@ -1603,6 +1628,30 @@ async fn run_swarm(
                                 .filter(|(peer_id, _)| peer_id.to_string() != local_peer_id)
                                 .collect();
                             let expired = collect_mdns_expired(peers);
+                            let expired_snapshots = {
+                                let caches = caches.read().await;
+                                expired
+                                    .iter()
+                                    .map(|peer_id| {
+                                        let addresses = caches
+                                            .discovered_peers
+                                            .get(peer_id)
+                                            .map(|peer| peer.addresses.clone())
+                                            .unwrap_or_default();
+                                        (peer_id.clone(), addresses)
+                                    })
+                                    .collect::<Vec<_>>()
+                            };
+                            for (peer_id, addresses) in expired_snapshots.iter() {
+                                info!(
+                                    event = "peer.mdns_expired",
+                                    peer_id = %peer_id,
+                                    local_peer_id = %local_peer_id,
+                                    address_count = addresses.len(),
+                                    addresses = ?addresses,
+                                    "recorded mDNS expiry snapshot"
+                                );
+                            }
                             let events = {
                                 let mut caches = caches.write().await;
                                 apply_mdns_expired(&mut caches, expired)
@@ -1636,30 +1685,44 @@ async fn run_swarm(
                     SwarmEvent::Behaviour(Libp2pBehaviourEvent::Stream) => {}
                     SwarmEvent::ConnectionEstablished { peer_id, endpoint, .. } => {
                         let peer_id_string = peer_id.to_string();
-                        let address = match endpoint {
-                            ConnectedPoint::Dialer { address, .. } => Some(address.clone()),
+                        let (address, endpoint_direction) = match endpoint {
+                            ConnectedPoint::Dialer { address, .. } => {
+                                (Some(address.clone()), "dialer")
+                            }
                             ConnectedPoint::Listener { send_back_addr, .. } => {
-                                Some(send_back_addr.clone())
+                                (Some(send_back_addr.clone()), "listener")
                             }
                         };
                         if let Some(address) = address.as_ref() {
                             swarm.add_peer_address(peer_id, address.clone());
                         }
-                        let event = {
+                        let endpoint_address = address
+                            .as_ref()
+                            .map(ToString::to_string)
+                            .unwrap_or_else(|| "-".to_string());
+                        let (event, snapshot) = {
                             let mut caches = caches.write().await;
-                            apply_peer_ready_from_connection(
+                            let event = apply_peer_ready_from_connection(
                                 &mut caches,
                                 &peer_id_string,
                                 Utc::now(),
                                 address,
-                            )
+                            );
+                            let snapshot =
+                                snapshot_peer_addresses(&caches, &peer_id_string, Utc::now());
+                            (event, snapshot)
                         };
 
                         if let Some(event) = event {
                             let _ = try_send_event(&event_tx, event, "PeerReady");
                             info!(
+                                event = "peer.connection_established",
                                 peer_id = %peer_id_string,
                                 local_peer_id = %local_peer_id,
+                                endpoint_direction,
+                                endpoint_address = %endpoint_address,
+                                endpoint_transport = transport_label_str(&endpoint_address),
+                                known_address_count = snapshot.candidate_addresses.len(),
                                 "peer connection established"
                             );
                         } else {
@@ -1668,22 +1731,54 @@ async fn run_swarm(
                     }
                     SwarmEvent::ConnectionClosed { peer_id, .. } => {
                         let peer_id = peer_id.to_string();
-                        let event = {
+                        let (event, snapshot) = {
                             let mut caches = caches.write().await;
-                            apply_peer_not_ready(&mut caches, &peer_id)
+                            let snapshot = snapshot_peer_addresses(&caches, &peer_id, Utc::now());
+                            let event = apply_peer_not_ready(&mut caches, &peer_id);
+                            (event, snapshot)
                         };
 
                         if let Some(event) = event {
                             let _ = try_send_event(&event_tx, event, "PeerNotReady");
                             info!(
+                                event = "peer.connection_closed",
                                 peer_id = %peer_id,
                                 local_peer_id = %local_peer_id,
+                                known_address_count = snapshot.candidate_addresses.len(),
+                                connected_age_ms = ?snapshot.connected_age_ms,
                                 "peer connection closed"
                             );
                         }
                     }
                     SwarmEvent::OutgoingConnectionError { peer_id, error, .. } => {
-                        error!("outgoing connection error to {:?}: {}", peer_id, error);
+                        let peer_id_str = peer_id.as_ref().map(ToString::to_string);
+                        let snapshot = if let Some(peer_id) = peer_id_str.as_ref() {
+                            let caches = caches.read().await;
+                            Some(snapshot_peer_addresses(&caches, peer_id, Utc::now()))
+                        } else {
+                            None
+                        };
+                        error!(
+                            event = "peer.outgoing_connection_error",
+                            peer_id = %peer_id_str.as_deref().unwrap_or("-"),
+                            known_address_count = snapshot
+                                .as_ref()
+                                .map(|snapshot| snapshot.candidate_addresses.len())
+                                .unwrap_or(0),
+                            known_addresses = ?snapshot
+                                .as_ref()
+                                .map(|snapshot| snapshot.candidate_addresses.clone())
+                                .unwrap_or_default(),
+                            peer_marked_reachable = snapshot
+                                .as_ref()
+                                .map(|snapshot| snapshot.peer_marked_reachable)
+                                .unwrap_or(false),
+                            connected_age_ms = ?snapshot.as_ref().and_then(|snapshot| snapshot.connected_age_ms),
+                            discovered_age_ms = ?snapshot.as_ref().and_then(|snapshot| snapshot.discovered_age_ms),
+                            last_seen_age_ms = ?snapshot.as_ref().and_then(|snapshot| snapshot.last_seen_age_ms),
+                            error = %error,
+                            "outgoing connection error"
+                        );
                         if let Err(err) = event_tx
                             .send(NetworkEvent::Error("network connection error".to_string()))
                             .await
@@ -1697,8 +1792,11 @@ async fn run_swarm(
                         ..
                     } => {
                         error!(
-                            "incoming connection error from {}: {}",
-                            send_back_addr, error
+                            event = "peer.incoming_connection_error",
+                            send_back_addr = %send_back_addr,
+                            transport = transport_label(&send_back_addr),
+                            error = %error,
+                            "incoming connection error"
                         );
                         if let Err(err) = event_tx
                             .send(NetworkEvent::Error("network connection error".to_string()))
@@ -1708,7 +1806,13 @@ async fn run_swarm(
                         }
                     }
                     SwarmEvent::NewListenAddr { address, .. } => {
-                        info!("libp2p listening on {address}");
+                        info!(
+                            event = "network.new_listen_addr",
+                            local_peer_id = %local_peer_id,
+                            listen_addr = %address,
+                            transport = transport_label(&address),
+                            "libp2p listening on discovered address"
+                        );
                     }
                     _ => {}
                 }
@@ -2153,6 +2257,36 @@ async fn execute_business_stream(
         ));
     }
 
+    let address_snapshot = {
+        let caches = caches.read().await;
+        snapshot_peer_addresses(&caches, peer_id_str, Utc::now())
+    };
+    let payload_bytes = payload.map(|data| data.len() as u64).unwrap_or(0);
+    let connection_hint = if address_snapshot.peer_marked_reachable {
+        "reuse_or_connected"
+    } else {
+        "new_dial"
+    };
+    let preferred_candidate_transport = address_snapshot
+        .candidate_addresses
+        .first()
+        .map(|addr| transport_label_str(addr))
+        .unwrap_or("none");
+    info!(
+        event = "business_stream.open_attempt",
+        operation = denied_operation,
+        peer_id = %peer_id_str,
+        payload_bytes,
+        connection_hint,
+        peer_marked_reachable = address_snapshot.peer_marked_reachable,
+        candidate_address_count = address_snapshot.candidate_addresses.len(),
+        preferred_candidate_transport,
+        connected_age_ms = ?address_snapshot.connected_age_ms,
+        discovered_age_ms = ?address_snapshot.discovered_age_ms,
+        last_seen_age_ms = ?address_snapshot.last_seen_age_ms,
+        "attempting business stream open"
+    );
+
     let mut control = control.clone();
     let result = match timeout(
         open_timeout,
@@ -2271,18 +2405,55 @@ async fn execute_business_stream(
         }
         Ok(Err(err)) => {
             if payload.is_some() {
-                warn!("business stream open failed: {err}");
+                warn!(
+                    event = "business_stream.open_failed",
+                    operation = denied_operation,
+                    peer_id = %peer_id_str,
+                    connection_hint,
+                    candidate_address_count = address_snapshot.candidate_addresses.len(),
+                    candidate_addresses = ?address_snapshot.candidate_addresses,
+                    error = %err,
+                    "business stream open failed"
+                );
                 Err(anyhow!("business stream open failed: {err}"))
             } else {
+                warn!(
+                    event = "business_stream.ensure_open_failed",
+                    operation = denied_operation,
+                    peer_id = %peer_id_str,
+                    connection_hint,
+                    candidate_address_count = address_snapshot.candidate_addresses.len(),
+                    candidate_addresses = ?address_snapshot.candidate_addresses,
+                    error = %err,
+                    "ensure business stream open failed"
+                );
                 Err(anyhow!("ensure business stream open failed: {err}"))
             }
         }
         Err(_) => {
             if payload.is_some() {
-                warn!(peer_id = %peer_id_str, "business stream open timed out");
+                warn!(
+                    event = "business_stream.open_timeout",
+                    operation = denied_operation,
+                    peer_id = %peer_id_str,
+                    connection_hint,
+                    candidate_address_count = address_snapshot.candidate_addresses.len(),
+                    candidate_addresses = ?address_snapshot.candidate_addresses,
+                    timeout_ms = open_timeout.as_millis() as u64,
+                    "business stream open timed out"
+                );
                 Err(anyhow!("business stream open timed out"))
             } else {
-                warn!(peer_id = %peer_id_str, "ensure business stream open timed out");
+                warn!(
+                    event = "business_stream.ensure_open_timeout",
+                    operation = denied_operation,
+                    peer_id = %peer_id_str,
+                    connection_hint,
+                    candidate_address_count = address_snapshot.candidate_addresses.len(),
+                    candidate_addresses = ?address_snapshot.candidate_addresses,
+                    timeout_ms = open_timeout.as_millis() as u64,
+                    "ensure business stream open timed out"
+                );
                 Err(anyhow!("ensure business stream open timed out"))
             }
         }
@@ -2319,9 +2490,22 @@ async fn apply_business_stream_result(
 fn listen_on_swarm(swarm: &mut Swarm<Libp2pBehaviour>, listen_addr: Multiaddr) -> Result<()> {
     if let Err(e) = swarm.listen_on(listen_addr.clone()) {
         let message = format!("failed to listen on {listen_addr}: {e}");
-        warn!("{message}");
+        warn!(
+            event = "network.listen_register_failed",
+            listen_addr = %listen_addr,
+            transport = transport_label(&listen_addr),
+            error = %e,
+            "{message}"
+        );
         return Err(anyhow!(message));
     }
+
+    info!(
+        event = "network.listen_registered",
+        listen_addr = %listen_addr,
+        transport = transport_label(&listen_addr),
+        "registered listen address with swarm"
+    );
 
     Ok(())
 }
@@ -2339,6 +2523,47 @@ fn try_send_event(
 
 fn sort_addresses_quic_first(addresses: &mut Vec<String>) {
     addresses.sort_by_key(|addr| if addr.contains("/quic-v1") { 0 } else { 1 });
+}
+
+fn snapshot_peer_addresses(
+    caches: &PeerCaches,
+    peer_id: &str,
+    observed_at: DateTime<Utc>,
+) -> PeerAddressSnapshot {
+    let discovered = caches.discovered_peers.get(peer_id);
+    PeerAddressSnapshot {
+        candidate_addresses: discovered
+            .map(|peer| peer.addresses.clone())
+            .unwrap_or_default(),
+        peer_marked_reachable: caches.is_reachable(peer_id),
+        connected_age_ms: caches
+            .connected_at
+            .get(peer_id)
+            .map(|connected_at| age_ms(observed_at, *connected_at)),
+        discovered_age_ms: discovered.map(|peer| age_ms(observed_at, peer.discovered_at)),
+        last_seen_age_ms: discovered.map(|peer| age_ms(observed_at, peer.last_seen)),
+    }
+}
+
+fn age_ms(observed_at: DateTime<Utc>, recorded_at: DateTime<Utc>) -> i64 {
+    observed_at
+        .signed_duration_since(recorded_at)
+        .num_milliseconds()
+        .max(0)
+}
+
+fn transport_label(address: &Multiaddr) -> &'static str {
+    transport_label_str(&address.to_string())
+}
+
+fn transport_label_str(address: &str) -> &'static str {
+    if address.contains("/quic-v1") {
+        "quic"
+    } else if address.contains("/tcp/") {
+        "tcp"
+    } else {
+        "other"
+    }
 }
 
 fn collect_mdns_discovered(

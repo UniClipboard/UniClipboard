@@ -25,7 +25,41 @@ use uc_daemon::state::RuntimeState;
 fn build_runtime() -> Arc<uc_app::runtime::CoreRuntime> {
     static RUNTIME_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
     let _guard = RUNTIME_LOCK.get_or_init(|| Mutex::new(())).lock().unwrap();
+    let profile = format!(
+        "websocket-api-{}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("system time")
+            .as_nanos()
+    );
+    std::env::set_var("UC_PROFILE", &profile);
     Arc::new(uc_bootstrap::build_cli_runtime(None).unwrap())
+}
+
+/// Read the next JSON message from a WebSocket, skipping Ping/Pong frames.
+async fn next_json(
+    socket: &mut tokio_tungstenite::WebSocketStream<
+        tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>,
+    >,
+) -> Value {
+    loop {
+        let msg = tokio::time::timeout(std::time::Duration::from_secs(5), socket.next())
+            .await
+            .expect("next_json timed out")
+            .expect("WebSocket stream ended")
+            .expect("WebSocket message error");
+        match &msg {
+            tokio_tungstenite::tungstenite::Message::Text(text) => {
+                return serde_json::from_str(text).expect("failed to parse WS message as JSON");
+            }
+            tokio_tungstenite::tungstenite::Message::Close(reason) => {
+                panic!("server closed WebSocket: {:?}", reason);
+            }
+            tokio_tungstenite::tungstenite::Message::Ping(_)
+            | tokio_tungstenite::tungstenite::Message::Pong(_) => continue,
+            other => panic!("unexpected WebSocket message: {:?}", other),
+        }
+    }
 }
 
 /// Spawn a test server and return (ws_url, session_token, server_handle).
@@ -149,8 +183,7 @@ async fn query_param_auth_succeeds_with_valid_session_token() {
         .await
         .unwrap();
 
-    let message = socket.next().await.unwrap().unwrap();
-    let json: Value = serde_json::from_str(message.to_text().unwrap()).unwrap();
+    let json: Value = next_json(&mut socket).await;
 
     handle.abort();
 
@@ -177,8 +210,7 @@ async fn query_param_auth_with_url_encoded_session_prefix() {
         .await
         .unwrap();
 
-    let message = socket.next().await.unwrap().unwrap();
-    let json: Value = serde_json::from_str(message.to_text().unwrap()).unwrap();
+    let json: Value = next_json(&mut socket).await;
 
     handle.abort();
 
@@ -298,8 +330,7 @@ async fn subscribe_peers_yields_peers_snapshot_first() {
         .await
         .unwrap();
 
-    let message = socket.next().await.unwrap().unwrap();
-    let json: Value = serde_json::from_str(message.to_text().unwrap()).unwrap();
+    let json: Value = next_json(&mut socket).await;
 
     handle.abort();
 
@@ -322,9 +353,9 @@ async fn subscribe_multiple_topics_yields_one_snapshot_per_topic() {
         .unwrap();
 
     let first: Value =
-        serde_json::from_str(socket.next().await.unwrap().unwrap().to_text().unwrap()).unwrap();
+        next_json(&mut socket).await;
     let second: Value =
-        serde_json::from_str(socket.next().await.unwrap().unwrap().to_text().unwrap()).unwrap();
+        next_json(&mut socket).await;
 
     handle.abort();
 
@@ -349,7 +380,7 @@ async fn serialized_event_contains_session_id_key_and_not_snake_case() {
         .unwrap();
 
     let json: Value =
-        serde_json::from_str(socket.next().await.unwrap().unwrap().to_text().unwrap()).unwrap();
+        next_json(&mut socket).await;
 
     handle.abort();
 
@@ -372,7 +403,7 @@ async fn serialized_event_uses_type_not_event_type_key() {
         .unwrap();
 
     let json: Value =
-        serde_json::from_str(socket.next().await.unwrap().unwrap().to_text().unwrap()).unwrap();
+        next_json(&mut socket).await;
 
     handle.abort();
 
@@ -399,7 +430,7 @@ async fn pairing_snapshot_payload_omits_keyslot_file_and_raw_challenge() {
         .unwrap();
 
     let json: Value =
-        serde_json::from_str(socket.next().await.unwrap().unwrap().to_text().unwrap()).unwrap();
+        next_json(&mut socket).await;
 
     handle.abort();
 

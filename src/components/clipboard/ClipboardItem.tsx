@@ -7,7 +7,7 @@ import {
   Image as ImageIcon,
   Loader2,
 } from 'lucide-react'
-import React, { useState, useEffect } from 'react'
+import React, { useMemo, useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   ClipboardTextItem,
@@ -23,8 +23,52 @@ import { toast } from '@/components/ui/toast'
 import { cn } from '@/lib/utils'
 import { formatFileSize } from '@/utils'
 
-/** Threshold above which we switch to textarea-based rendering for performance. */
+/** Threshold above which we switch to chunked rendering for performance. */
 const LARGE_TEXT_THRESHOLD = 50_000
+
+/** Characters per chunk for content-visibility optimization. */
+const CHUNK_SIZE = 1000
+
+/**
+ * Splits text into small block-level divs with content-visibility: auto.
+ * Each chunk is a block element so CSS Containment applies correctly,
+ * allowing the browser to skip layout for off-screen chunks.
+ * All content is in the DOM — no truncation, no inner scroll.
+ */
+const ChunkedText: React.FC<{ text: string }> = ({ text }) => {
+  const chunks = useMemo(() => {
+    const result: string[] = []
+    const lines = text.split('\n')
+    for (const line of lines) {
+      if (line.length <= CHUNK_SIZE) {
+        result.push(line)
+      } else {
+        for (let i = 0; i < line.length; i += CHUNK_SIZE) {
+          result.push(line.slice(i, i + CHUNK_SIZE))
+        }
+      }
+    }
+    return result
+  }, [text])
+
+  return (
+    <div>
+      {chunks.map((chunk, i) => (
+        <div
+          key={i}
+          className="whitespace-pre-wrap font-mono text-sm leading-relaxed text-foreground/90"
+          style={{
+            wordBreak: 'break-all',
+            contentVisibility: 'auto',
+            containIntrinsicSize: 'auto 1.5em',
+          }}
+        >
+          {chunk || '\u00A0'}
+        </div>
+      ))}
+    </div>
+  )
+}
 
 interface ClipboardItemProps {
   index: number
@@ -200,14 +244,10 @@ const ClipboardItem: React.FC<ClipboardItemProps> = ({
           )
         }
 
-        // When expanded with large text, limit lines to avoid layout freeze.
-        // Full content is viewable in the preview panel.
+        // When expanded with large text, render in small block-level chunks
+        // with content-visibility: auto so browser skips layout for off-screen chunks.
         if (isExpanded && textToShow.length > LARGE_TEXT_THRESHOLD) {
-          return (
-            <p className="whitespace-pre-wrap font-mono text-sm leading-relaxed text-foreground/90 wrap-break-word line-clamp-[20]">
-              {textToShow}
-            </p>
-          )
+          return <ChunkedText text={textToShow} />
         }
 
         return (

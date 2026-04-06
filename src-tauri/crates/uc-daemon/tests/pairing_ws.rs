@@ -110,7 +110,13 @@ async fn next_json(
         tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>,
     >,
 ) -> Value {
-    serde_json::from_str(socket.next().await.unwrap().unwrap().to_text().unwrap()).unwrap()
+    let msg = tokio::time::timeout(std::time::Duration::from_secs(5), socket.next())
+        .await
+        .expect("next_json timed out waiting for WebSocket message")
+        .expect("WebSocket stream ended")
+        .expect("WebSocket message error");
+    serde_json::from_str(msg.to_text().expect("expected text WebSocket message"))
+        .expect("failed to parse WebSocket message as JSON")
 }
 
 fn authed_get_request(uri: &str, session_token: &str) -> Request<Body> {
@@ -551,7 +557,8 @@ async fn setup_topic_subscription_receives_setup_state_changed_events() {
     let harness = spawn_server().await;
     let mut socket = connect_with_token(&harness.url, &harness.session_token).await;
     subscribe(&mut socket, &["setup"]).await;
-    tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+    // setup has no snapshot event, so wait for the subscribe to be processed.
+    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
 
     harness
         .event_tx

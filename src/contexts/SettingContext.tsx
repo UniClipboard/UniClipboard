@@ -8,6 +8,7 @@ import { emitSettingsChanged } from '@/lib/settings-events'
 import { invokeWithTrace } from '@/lib/tauri-command'
 import { applyThemePreset } from '@/lib/theme-engine'
 import { startThemeTransition } from '@/lib/theme-transition'
+import { setFrontendTelemetryEnabled } from '@/observability/otlp'
 import type { SettingContextType, Settings } from '@/types/setting'
 
 // 设置提供者属性接口
@@ -235,6 +236,10 @@ export const SettingProvider: React.FC<SettingProviderProps> = ({ children }) =>
       console.error('Failed to sync tray language:', err)
     })
   }, [setting?.general?.language])
+
+  useEffect(() => {
+    setFrontendTelemetryEnabled(setting?.general?.telemetryEnabled ?? false)
+  }, [setting?.general?.telemetryEnabled])
 
   const value: SettingContextType = {
     setting,

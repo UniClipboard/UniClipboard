@@ -3085,6 +3085,33 @@ mod tests {
     }
 
     #[test]
+    fn regression_reuse_existing_connection_does_not_emit_chosen_dial_addr() {
+        let mut caches = PeerCaches::new();
+        let t0 = Utc::now();
+        let addr = "/ip4/10.0.0.8/tcp/4001";
+
+        caches.upsert_discovered("peer-1".to_string(), vec![addr.to_string()], t0);
+        assert!(caches.mark_reachable("peer-1", t0));
+        caches.record_dial_observation("peer-1", successful_dial_observation(addr, t0));
+
+        let attempt_started_at = t0 + chrono::TimeDelta::seconds(1);
+        let snapshot = snapshot_peer_addresses(&caches, "peer-1", attempt_started_at);
+
+        assert_eq!(
+            chosen_dial_addr_for_log(&snapshot, "reuse_existing_connection", attempt_started_at),
+            None
+        );
+        assert_eq!(
+            infer_chosen_dial_addr_resolution(
+                &snapshot,
+                "reuse_existing_connection",
+                attempt_started_at
+            ),
+            "not_applicable"
+        );
+    }
+
+    #[test]
     fn mdns_discovery_groups_addresses_by_peer() {
         let peer = PeerId::random();
         let addr_one: Multiaddr = "/ip4/192.168.1.2/tcp/4001".parse().unwrap();

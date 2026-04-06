@@ -32,6 +32,7 @@ Phase 1 adds or standardizes these event fields in Rust transport logs:
 - `event="business_stream.ensure_open_timeout"`
 - `event="pairing_stream.open_attempt"`
 - `event="pairing_stream.open_skipped"`
+- `event="pairing_stream.open_succeeded"`
 - `event="pairing_stream.open_failed"`
 - `event="pairing_stream.open_timeout"`
 - `event="pairing_stream.session_started"`
@@ -128,9 +129,9 @@ Useful fields:
 - `dial_decision`
 - `candidate_address_count`
 - `preferred_candidate_transport`
-- `candidate_addresses`
 - `chosen_dial_addr`
 - `chosen_dial_addr_resolution`
+- `candidate_addresses`
 - `dial_attempt_addresses`
 - `last_dial_outcome`
 - `close_initiator`
@@ -178,7 +179,7 @@ For a healthy pairing path, Seq should let us read the chain in order:
 
 1. `peer.mdns_discovered`
 2. `pairing_stream.open_attempt`
-3. `pairing_stream.session_started`
+3. `pairing_stream.open_succeeded`
 4. `pairing.handle_request` / `pairing.handle_challenge` / `pairing.handle_response`
 5. `pairing_stream.ended`
 

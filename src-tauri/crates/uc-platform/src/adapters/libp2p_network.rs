@@ -16,7 +16,7 @@ use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tokio::sync::{broadcast, mpsc, oneshot, RwLock, Semaphore};
-use tokio::time::timeout;
+use tokio::time::{sleep, timeout};
 use tracing::{debug, error, info, warn};
 use uc_core::network::protocol::ClipboardPayloadVersion;
 use uc_core::network::{
@@ -46,6 +46,8 @@ const MAX_CHUNK_CIPHERTEXT_SIZE: usize = NETWORK_CHUNK_SIZE + 256;
 const BUSINESS_READ_TIMEOUT: Duration = Duration::from_secs(120);
 const BUSINESS_STREAM_OPEN_TIMEOUT: Duration = Duration::from_secs(10);
 const PAIRING_STREAM_OPEN_TIMEOUT: Duration = Duration::from_secs(10);
+const PAIRING_OPEN_SUCCESS_OBSERVATION_POLL_INTERVAL: Duration = Duration::from_millis(10);
+const PAIRING_OPEN_SUCCESS_OBSERVATION_POLL_ATTEMPTS: usize = 5;
 const BUSINESS_STREAM_WRITE_TIMEOUT: Duration = Duration::from_secs(120);
 const BUSINESS_STREAM_CLOSE_TIMEOUT: Duration = Duration::from_secs(10);
 const BUSINESS_COMMAND_ENQUEUE_TIMEOUT: Duration = Duration::from_secs(5);
@@ -827,7 +829,37 @@ impl PairingTransportPort for Libp2pNetworkAdapter {
         )
         .await
         {
-            Ok(Ok(())) => Ok(()),
+            Ok(Ok(())) => {
+                let success_snapshot = snapshot_pairing_open_success(
+                    &self.caches,
+                    &peer_id,
+                    dial_decision,
+                    attempt_started_at,
+                )
+                .await;
+                let chosen_dial_addr =
+                    chosen_dial_addr_for_log(&success_snapshot, dial_decision, attempt_started_at);
+                let chosen_dial_addr_resolution = infer_chosen_dial_addr_resolution(
+                    &success_snapshot,
+                    dial_decision,
+                    attempt_started_at,
+                );
+                info!(
+                    event = "pairing_stream.open_succeeded",
+                    peer_id = %peer_id,
+                    session_id = %session_id,
+                    dial_decision,
+                    candidate_address_count = success_snapshot.candidate_addresses.len(),
+                    chosen_dial_addr = %chosen_dial_addr.unwrap_or("-"),
+                    chosen_dial_addr_resolution,
+                    dial_attempt_address_count = success_snapshot.dial_attempt_address_count,
+                    dial_attempt_addresses = ?success_snapshot.dial_attempt_addresses,
+                    last_dial_outcome = success_snapshot.last_dial_outcome.unwrap_or("unknown"),
+                    last_dial_age_ms = ?success_snapshot.last_dial_age_ms,
+                    "pairing stream open succeeded"
+                );
+                Ok(())
+            }
             Ok(Err(err)) => {
                 let failure_snapshot = {
                     let caches = self.caches.read().await;
@@ -2741,6 +2773,33 @@ fn snapshot_peer_addresses(
         last_dial_age_ms: last_dial.map(|dial| age_ms(observed_at, dial.observed_at)),
         last_dial_observed_at: last_dial.map(|dial| dial.observed_at),
     }
+}
+
+async fn snapshot_pairing_open_success(
+    caches: &Arc<RwLock<PeerCaches>>,
+    peer_id: &str,
+    dial_decision: &str,
+    attempt_started_at: DateTime<Utc>,
+) -> PeerAddressSnapshot {
+    for attempt in 0..PAIRING_OPEN_SUCCESS_OBSERVATION_POLL_ATTEMPTS {
+        let snapshot = {
+            let caches = caches.read().await;
+            snapshot_peer_addresses(&caches, peer_id, Utc::now())
+        };
+        let has_current_attempt_dial = snapshot
+            .last_dial_observed_at
+            .is_some_and(|observed_at| observed_at >= attempt_started_at);
+        if dial_decision == "reuse_existing_connection"
+            || has_current_attempt_dial
+            || attempt + 1 == PAIRING_OPEN_SUCCESS_OBSERVATION_POLL_ATTEMPTS
+        {
+            return snapshot;
+        }
+        sleep(PAIRING_OPEN_SUCCESS_OBSERVATION_POLL_INTERVAL).await;
+    }
+
+    let caches = caches.read().await;
+    snapshot_peer_addresses(&caches, peer_id, Utc::now())
 }
 
 fn age_ms(observed_at: DateTime<Utc>, recorded_at: DateTime<Utc>) -> i64 {

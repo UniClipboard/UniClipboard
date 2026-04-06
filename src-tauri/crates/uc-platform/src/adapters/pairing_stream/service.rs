@@ -53,6 +53,52 @@ fn close_initiator_for_shutdown_reason(reason: &ShutdownReason, app_closed: bool
     }
 }
 
+fn close_initiator_for_error(error: &anyhow::Error, completion_source: &str) -> &'static str {
+    let error = error.to_string().to_ascii_lowercase();
+    if error.contains("pairing stream idle timeout") {
+        "local"
+    } else if error.contains("broken pipe")
+        || error.contains("connection reset")
+        || error.contains("unexpected eof")
+        || error.contains("stream closed")
+    {
+        "peer"
+    } else if error.contains("pairing encode failed")
+        || error.contains("task join failed")
+        || error.contains("send failed")
+        || error.contains("channel closed")
+    {
+        "local"
+    } else if completion_source == "write_loop" {
+        "unknown"
+    } else {
+        "unknown"
+    }
+}
+
+fn end_reason_for_error(error: &anyhow::Error, completion_source: &str) -> &'static str {
+    let error = error.to_string().to_ascii_lowercase();
+    if error.contains("pairing stream idle timeout") {
+        "idle_timeout"
+    } else if error.contains("broken pipe")
+        || error.contains("connection reset")
+        || error.contains("unexpected eof")
+        || error.contains("stream closed")
+    {
+        "peer_transport_error"
+    } else if error.contains("pairing frame exceeds max")
+        || error.contains("invalid pairing message")
+    {
+        "invalid_frame"
+    } else if error.contains("pairing encode failed") || error.contains("task join failed") {
+        "internal_error"
+    } else if completion_source == "write_loop" {
+        "write_error"
+    } else {
+        "read_error"
+    }
+}
+
 #[derive(Clone)]
 pub struct PairingStreamConfig {
     pub idle_timeout: Duration,
@@ -601,11 +647,15 @@ where
                 CompletedTask::Read => "read_loop",
                 CompletedTask::Write => "write_loop",
             };
+            let close_initiator = close_initiator_for_error(err, source);
+            let end_reason = end_reason_for_error(err, source);
             warn!(
                 event = "pairing_stream.ended_with_error",
                 peer_id = %peer_id,
                 session_id = %session_id,
                 completion_source = source,
+                close_initiator,
+                end_reason,
                 error = %err,
                 "pairing session ended with error"
             );
@@ -799,6 +849,7 @@ impl PairingStreamServiceInner {
 mod tests {
     use super::send_shutdown_signal;
     use super::{PairingStreamConfig, PairingStreamService};
+    use anyhow::anyhow;
     use libp2p::PeerId;
     use log::{Level, LevelFilter, Metadata, Record};
     use std::sync::{Mutex, Once};
@@ -834,6 +885,39 @@ mod tests {
                 false,
             ),
             "local"
+        );
+    }
+
+    #[test]
+    fn error_classification_normalizes_idle_timeout_and_peer_errors() {
+        let idle_timeout = anyhow!("pairing stream idle timeout");
+        assert_eq!(
+            super::close_initiator_for_error(&idle_timeout, "read_loop"),
+            "local"
+        );
+        assert_eq!(
+            super::end_reason_for_error(&idle_timeout, "read_loop"),
+            "idle_timeout"
+        );
+
+        let peer_closed = anyhow!("broken pipe");
+        assert_eq!(
+            super::close_initiator_for_error(&peer_closed, "write_loop"),
+            "peer"
+        );
+        assert_eq!(
+            super::end_reason_for_error(&peer_closed, "write_loop"),
+            "peer_transport_error"
+        );
+
+        let fallback = anyhow!("some other io failure");
+        assert_eq!(
+            super::close_initiator_for_error(&fallback, "write_loop"),
+            "unknown"
+        );
+        assert_eq!(
+            super::end_reason_for_error(&fallback, "write_loop"),
+            "write_error"
         );
     }
 

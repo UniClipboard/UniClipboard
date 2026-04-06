@@ -51,17 +51,26 @@ jobs:
         run: |
           if git diff --quiet; then
             echo "has_changes=false" >> "$GITHUB_OUTPUT"
+            echo "has_workflow_changes=false" >> "$GITHUB_OUTPUT"
             echo "No format issues found."
           else
             echo "has_changes=true" >> "$GITHUB_OUTPUT"
             echo "Format issues detected:"
             git diff --stat
+
+            if git diff --name-only -- .github/workflows | grep -q .; then
+              echo "has_workflow_changes=true" >> "$GITHUB_OUTPUT"
+              echo "::warning::Formatted changes include .github/workflows files; the default GitHub Actions token cannot auto-push workflow file updates."
+            else
+              echo "has_workflow_changes=false" >> "$GITHUB_OUTPUT"
+            fi
           fi
 
       # ---------- Same-repo PR: create auto-fix branch + PR ----------
       - name: Create fix branch and open PR (same-repo only)
         if: |
           steps.diff.outputs.has_changes == 'true' &&
+          steps.diff.outputs.has_workflow_changes != 'true' &&
           github.event.pull_request.head.repo.full_name == github.repository
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -99,12 +108,19 @@ jobs:
             || echo "PR may already exist for this fix branch, skipping creation."
 
       # ---------- Fork PR: print diff for author to fix manually ----------
-      - name: Show diff for fork PRs (cannot auto-push)
+      - name: Show diff when auto-push is unavailable
         if: |
           steps.diff.outputs.has_changes == 'true' &&
-          github.event.pull_request.head.repo.full_name != github.repository
+          (
+            github.event.pull_request.head.repo.full_name != github.repository ||
+            steps.diff.outputs.has_workflow_changes == 'true'
+          )
         run: |
-          echo "::warning::Format issues found. Cannot auto-create fix PR for fork contributions."
+          if [ "${{ steps.diff.outputs.has_workflow_changes }}" = "true" ]; then
+            echo "::warning::Format issues include .github/workflows files. GitHub Actions cannot auto-push workflow file changes with the default token."
+          else
+            echo "::warning::Format issues found. Cannot auto-create fix PR for fork contributions."
+          fi
           echo "Please run the following commands locally and push the changes:"
           echo ""
           echo "  cd src-tauri && cargo fmt --all && cd .."

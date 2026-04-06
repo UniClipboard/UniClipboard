@@ -34,6 +34,9 @@ const NOISE_FILTERS: &[&str] = &[
     "ipc::request=off",
     "hyper_util=info",
     "hyper=info",
+    "quinn=info",
+    "quinn_proto=info",
+    "quinn_udp=info",
     "Connection::poll=warn",
     "Pool::poll=warn",
     "Swarm::poll=warn",
@@ -321,6 +324,18 @@ mod tests {
             assert!(
                 directives.contains("Swarm::poll=warn"),
                 "Missing Swarm::poll=warn in {profile}"
+            );
+            assert!(
+                directives.contains("quinn=info"),
+                "Missing quinn=info in {profile}"
+            );
+            assert!(
+                directives.contains("quinn_proto=info"),
+                "Missing quinn_proto=info in {profile}"
+            );
+            assert!(
+                directives.contains("quinn_udp=info"),
+                "Missing quinn_udp=info in {profile}"
             );
         }
     }

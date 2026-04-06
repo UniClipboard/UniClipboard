@@ -109,8 +109,6 @@ peer_id = 'PEER_ID' and event = 'business_stream.open_attempt'
 Inspect these fields:
 
 - `dial_decision`
-- `chosen_dial_addr`
-- `chosen_dial_addr_resolution`
 - `candidate_address_count`
 - `preferred_candidate_transport`
 - `peer_marked_reachable`

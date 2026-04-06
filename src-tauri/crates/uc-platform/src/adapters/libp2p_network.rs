@@ -105,6 +105,7 @@ struct PeerAddressSnapshot {
     dial_attempt_address_count: usize,
     last_dial_outcome: Option<&'static str>,
     last_dial_age_ms: Option<i64>,
+    last_dial_observed_at: Option<DateTime<Utc>>,
 }
 
 impl PeerCaches {
@@ -198,6 +199,7 @@ impl PeerCaches {
     pub fn mark_unreachable(&mut self, peer_id: &str) -> bool {
         let removed = self.reachable_peers.remove(peer_id);
         self.connected_at.remove(peer_id);
+        self.last_dial_observations.remove(peer_id);
         removed
     }
 
@@ -2298,6 +2300,7 @@ async fn execute_business_stream(
     denied_operation: &str,
 ) -> Result<()> {
     let peer_id_str = peer_id.as_str();
+    let attempt_started_at = Utc::now();
 
     if check_business_allowed(
         policy_resolver,
@@ -2315,7 +2318,7 @@ async fn execute_business_stream(
 
     let address_snapshot = {
         let caches = caches.read().await;
-        snapshot_peer_addresses(&caches, peer_id_str, Utc::now())
+        snapshot_peer_addresses(&caches, peer_id_str, attempt_started_at)
     };
     let payload_bytes = payload.map(|data| data.len() as u64).unwrap_or(0);
     let dial_decision = if address_snapshot.peer_marked_reachable {
@@ -2464,8 +2467,13 @@ async fn execute_business_stream(
                 let caches = caches.read().await;
                 snapshot_peer_addresses(&caches, peer_id_str, Utc::now())
             };
-            let chosen_dial_addr = chosen_dial_addr_for_log(&failure_snapshot);
-            let chosen_dial_addr_resolution = infer_chosen_dial_addr_resolution(&failure_snapshot);
+            let chosen_dial_addr =
+                chosen_dial_addr_for_log(&failure_snapshot, dial_decision, attempt_started_at);
+            let chosen_dial_addr_resolution = infer_chosen_dial_addr_resolution(
+                &failure_snapshot,
+                dial_decision,
+                attempt_started_at,
+            );
             if payload.is_some() {
                 warn!(
                     event = "business_stream.open_failed",
@@ -2509,8 +2517,13 @@ async fn execute_business_stream(
                 let caches = caches.read().await;
                 snapshot_peer_addresses(&caches, peer_id_str, Utc::now())
             };
-            let chosen_dial_addr = chosen_dial_addr_for_log(&timeout_snapshot);
-            let chosen_dial_addr_resolution = infer_chosen_dial_addr_resolution(&timeout_snapshot);
+            let chosen_dial_addr =
+                chosen_dial_addr_for_log(&timeout_snapshot, dial_decision, attempt_started_at);
+            let chosen_dial_addr_resolution = infer_chosen_dial_addr_resolution(
+                &timeout_snapshot,
+                dial_decision,
+                attempt_started_at,
+            );
             if payload.is_some() {
                 warn!(
                     event = "business_stream.open_timeout",
@@ -2645,6 +2658,7 @@ fn snapshot_peer_addresses(
             .unwrap_or(0),
         last_dial_outcome: last_dial.map(|dial| dial.dial_outcome),
         last_dial_age_ms: last_dial.map(|dial| age_ms(observed_at, dial.observed_at)),
+        last_dial_observed_at: last_dial.map(|dial| dial.observed_at),
     }
 }
 
@@ -2754,9 +2768,18 @@ fn dial_observation_from_error(
     }
 }
 
-fn infer_chosen_dial_addr_resolution(snapshot: &PeerAddressSnapshot) -> &'static str {
-    if let Some(resolution) = snapshot.chosen_dial_addr_resolution {
-        resolution
+fn infer_chosen_dial_addr_resolution(
+    snapshot: &PeerAddressSnapshot,
+    dial_decision: &str,
+    attempt_started_at: DateTime<Utc>,
+) -> &'static str {
+    if dial_decision == "reuse_existing_connection" {
+        "not_applicable"
+    } else if snapshot
+        .last_dial_observed_at
+        .is_some_and(|observed_at| observed_at >= attempt_started_at)
+    {
+        snapshot.chosen_dial_addr_resolution.unwrap_or("unknown")
     } else if !snapshot.peer_marked_reachable && snapshot.candidate_addresses.len() == 1 {
         "single_candidate_inferred"
     } else {
@@ -2764,11 +2787,23 @@ fn infer_chosen_dial_addr_resolution(snapshot: &PeerAddressSnapshot) -> &'static
     }
 }
 
-fn chosen_dial_addr_for_log(snapshot: &PeerAddressSnapshot) -> Option<&str> {
-    snapshot.chosen_dial_addr.as_deref().or_else(|| {
-        (!snapshot.peer_marked_reachable && snapshot.candidate_addresses.len() == 1)
-            .then(|| snapshot.candidate_addresses[0].as_str())
-    })
+fn chosen_dial_addr_for_log<'a>(
+    snapshot: &'a PeerAddressSnapshot,
+    dial_decision: &str,
+    attempt_started_at: DateTime<Utc>,
+) -> Option<&'a str> {
+    if dial_decision == "reuse_existing_connection" {
+        None
+    } else if snapshot
+        .last_dial_observed_at
+        .is_some_and(|observed_at| observed_at >= attempt_started_at)
+    {
+        snapshot.chosen_dial_addr.as_deref()
+    } else if !snapshot.peer_marked_reachable && snapshot.candidate_addresses.len() == 1 {
+        Some(snapshot.candidate_addresses[0].as_str())
+    } else {
+        None
+    }
 }
 
 fn collect_mdns_discovered(

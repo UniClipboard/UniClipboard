@@ -5,11 +5,18 @@ import {
   favoriteClipboardItem,
   unfavoriteClipboardItem,
   getClipboardItem,
+  resolveResourceImageUrl,
 } from '@/api/clipboardItems'
 import { invokeWithTrace } from '@/lib/tauri-command'
 
 vi.mock('@/lib/tauri-command', () => ({
   invokeWithTrace: vi.fn(),
+}))
+
+vi.mock('@/api/daemon/client', () => ({
+  daemonClient: {
+    blobUrl: vi.fn((path: string) => `http://127.0.0.1:12345${path}?auth=Session+test`),
+  },
 }))
 
 const invokeMock = invokeWithTrace as unknown as ReturnType<typeof vi.fn>
@@ -244,5 +251,33 @@ describe('getClipboardItem', () => {
       fullContent: true,
     })
     expect(result).toEqual(response)
+  })
+})
+
+describe('resolveResourceImageUrl', () => {
+  it('keeps inline data URLs unchanged', () => {
+    const resource = {
+      blobId: null,
+      mimeType: 'image/png',
+      sizeBytes: 4,
+      url: null,
+      inlineData: 'iVBORw0KGgo=',
+    }
+
+    expect(resolveResourceImageUrl(resource)).toBe('data:image/png;base64,iVBORw0KGgo=')
+  })
+
+  it('upgrades daemon blob paths to authenticated daemon URLs', () => {
+    const resource = {
+      blobId: 'blob-1',
+      mimeType: 'image/png',
+      sizeBytes: 123,
+      url: '/clipboard/blobs/blob-1',
+      inlineData: null,
+    }
+
+    expect(resolveResourceImageUrl(resource)).toBe(
+      'http://127.0.0.1:12345/clipboard/blobs/blob-1?auth=Session+test'
+    )
   })
 })

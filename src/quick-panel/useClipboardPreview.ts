@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { getResourceImageUrl, isImageType } from '@/api/clipboardItems'
-import { daemonClient } from '@/api/daemon/client'
+import { isImageType, resolveResourceImageUrl } from '@/api/clipboardItems'
 import { getClipboardEntryDetail, getClipboardEntryResource } from '@/api/daemon/clipboard'
 
 export interface ClipboardPreviewState {
@@ -49,11 +48,7 @@ export function useClipboardPreview(entryId: string | null): ClipboardPreviewRes
         }
 
         if (isImageType(resource.mimeType)) {
-          const rawUrl = getResourceImageUrl(resource)
-          const imageUrl =
-            rawUrl && !rawUrl.startsWith('data:')
-              ? (daemonClient.blobUrl(rawUrl) ?? rawUrl)
-              : rawUrl
+          const imageUrl = resolveResourceImageUrl(resource)
 
           setPreview({
             entryId,

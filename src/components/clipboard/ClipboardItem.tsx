@@ -16,9 +16,8 @@ import {
   ClipboardCodeItem,
   ClipboardFileItem,
   fetchClipboardResourceText,
-  getResourceImageUrl,
+  resolveResourceImageUrl,
 } from '@/api/clipboardItems'
-import { daemonClient } from '@/api/daemon/client'
 import { getClipboardEntryResource } from '@/api/daemon/clipboard'
 import { toast } from '@/components/ui/toast'
 import { cn } from '@/lib/utils'
@@ -70,7 +69,7 @@ const ClipboardItem: React.FC<ClipboardItemProps> = ({
     getClipboardEntryResource(entryId)
       .then(resource => {
         if (!cancelled) {
-          setOriginalImageUrl(resource ? getResourceImageUrl(resource) : null)
+          setOriginalImageUrl(resource ? resolveResourceImageUrl(resource) : null)
         }
       })
       .catch(e => {
@@ -202,7 +201,7 @@ const ClipboardItem: React.FC<ClipboardItemProps> = ({
         )
       }
       case 'image': {
-        const imageUrl = originalImageUrl ? daemonClient.blobUrl(originalImageUrl) : null
+        const imageUrl = originalImageUrl
         return imageUrl ? (
           <img
             src={imageUrl}

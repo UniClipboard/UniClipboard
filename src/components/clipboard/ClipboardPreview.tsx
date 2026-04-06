@@ -21,9 +21,8 @@ import {
   ClipboardLinkItem,
   ClipboardTextItem,
   fetchClipboardResourceText,
-  getResourceImageUrl,
+  resolveResourceImageUrl,
 } from '@/api/clipboardItems'
-import { daemonClient } from '@/api/daemon/client'
 import { getClipboardEntryResource } from '@/api/daemon/clipboard'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Separator } from '@/components/ui/separator'
@@ -96,7 +95,7 @@ const ClipboardPreview: React.FC<ClipboardPreviewProps> = ({ item }) => {
       setIsLoadingImage(true)
       getClipboardEntryResource(item.id)
         .then(resource => {
-          if (!cancelled) setImageUrl(resource ? getResourceImageUrl(resource) : null)
+          if (!cancelled) setImageUrl(resource ? resolveResourceImageUrl(resource) : null)
         })
         .catch(e => console.error('Failed to load image:', e))
         .finally(() => {
@@ -139,10 +138,9 @@ const ClipboardPreview: React.FC<ClipboardPreviewProps> = ({ item }) => {
         )
       }
       case 'image': {
-        const resolved = imageUrl ? daemonClient.blobUrl(imageUrl) : null
         return (
           <div className="flex items-center justify-center p-4">
-            {isLoadingImage || !resolved ? (
+            {isLoadingImage || !imageUrl ? (
               <div className="flex flex-col items-center justify-center gap-2 h-48 w-full rounded-md bg-muted/30 border border-border/30">
                 {isLoadingImage ? (
                   <Loader2 className="h-6 w-6 text-muted-foreground/70 animate-spin" />
@@ -152,7 +150,7 @@ const ClipboardPreview: React.FC<ClipboardPreviewProps> = ({ item }) => {
               </div>
             ) : (
               <img
-                src={resolved}
+                src={imageUrl}
                 className="max-w-full max-h-96 object-contain rounded-md"
                 alt={t('clipboard.item.altText.clipboardImage')}
                 onLoad={e => {

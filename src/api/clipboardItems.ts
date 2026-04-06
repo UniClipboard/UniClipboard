@@ -383,6 +383,18 @@ export function getResourceImageUrl(resource: ClipboardEntryResource): string | 
 }
 
 /**
+ * Resolve a clipboard image resource into a displayable <img src> URL.
+ * - Inline image data stays as a data URL.
+ * - Blob-backed daemon paths are upgraded to authenticated daemon URLs.
+ */
+export function resolveResourceImageUrl(resource: ClipboardEntryResource): string | null {
+  const rawUrl = getResourceImageUrl(resource)
+  if (!rawUrl) return null
+  if (rawUrl.startsWith('data:')) return rawUrl
+  return daemonClient.blobUrl(rawUrl) ?? rawUrl
+}
+
+/**
  * 删除剪贴板条目
  * @param id 剪贴板条目ID
  * @returns Promise，成功返回true

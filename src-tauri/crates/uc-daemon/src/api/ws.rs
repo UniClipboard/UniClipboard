@@ -207,6 +207,7 @@ async fn handle_connection(socket: WebSocket, state: DaemonApiState, claims: Ses
                     };
 
                     if !matched_topics.is_empty() {
+                        let event = bridge_verification_event(event);
                         info!(
                             event_topic = %event.topic,
                             event_type = %event.event_type,
@@ -445,6 +446,42 @@ fn is_supported_topic(topic: &str) -> bool {
 fn topic_matches(subscription: &str, event_topic: &str) -> bool {
     subscription == event_topic
         || (subscription == ws_topic::PAIRING && event_topic.starts_with("pairing/"))
+}
+
+/// Bridge: transforms `pairing.verification_required` events based on the
+/// payload `kind` field so that downstream consumers receive distinct event
+/// types instead of having to inspect the payload.
+///
+/// | kind        | resulting event type            |
+/// |-------------|---------------------------------|
+/// | verifying   | pairing.updated (stage field)   |
+/// | complete    | pairing.complete                |
+/// | failed      | pairing.failed                  |
+/// | (other)     | unchanged                       |
+fn bridge_verification_event(mut event: DaemonWsEvent) -> DaemonWsEvent {
+    if event.event_type != ws_event::PAIRING_VERIFICATION_REQUIRED {
+        return event;
+    }
+    let kind = event.payload.get("kind").and_then(|v| v.as_str());
+    match kind {
+        Some("verifying") => {
+            event.event_type = ws_event::PAIRING_UPDATED.to_string();
+            if let Some(obj) = event.payload.as_object_mut() {
+                obj.insert(
+                    "stage".to_string(),
+                    serde_json::Value::String("verifying".to_string()),
+                );
+            }
+        }
+        Some("complete") => {
+            event.event_type = ws_event::PAIRING_COMPLETE.to_string();
+        }
+        Some("failed") => {
+            event.event_type = ws_event::PAIRING_FAILED.to_string();
+        }
+        _ => {}
+    }
+    event
 }
 
 // ---------------------------------------------------------------------------

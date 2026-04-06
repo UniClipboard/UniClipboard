@@ -159,6 +159,14 @@ class DaemonClient {
    */
   blobUrl(path: string): string | null {
     if (!this.config || !this.session?.token) return null
+    if (
+      path.startsWith('data:') ||
+      path.startsWith('blob:') ||
+      path.startsWith('http://') ||
+      path.startsWith('https://')
+    ) {
+      return path
+    }
     const url = new URL(`${this.config.baseUrl}${path}`)
     url.searchParams.set('auth', `Session ${this.session.token}`)
     return url.toString()

@@ -19,6 +19,7 @@ function mockFetchOk(body: unknown, status = 200): void {
       ok: true,
       status,
       json: () => Promise.resolve(body),
+      text: () => Promise.resolve(JSON.stringify(body)),
     })
   )
 }
@@ -30,6 +31,7 @@ function mockFetchSequence(responses: Array<{ ok: boolean; status: number; body:
       ok: resp.ok,
       status: resp.status,
       json: () => Promise.resolve(resp.body),
+      text: () => Promise.resolve(JSON.stringify(resp.body)),
     })
   }
   vi.stubGlobal('fetch', fetchMock)
@@ -42,6 +44,7 @@ function mockFetchError(status: number, body: unknown = { error: 'fail' }): void
       ok: false,
       status,
       json: () => Promise.resolve(body),
+      text: () => Promise.resolve(JSON.stringify(body)),
     })
   )
 }
@@ -72,6 +75,45 @@ describe('DaemonClient', () => {
     })
   })
 
+  describe('blobUrl', () => {
+    it('returns non-daemon urls unchanged', async () => {
+      mockFetchOk({
+        sessionToken: 'jwt-abc',
+        expiresInSecs: 300,
+        refreshAtSecs: 240,
+      })
+
+      daemonClient.initialize(TEST_CONFIG)
+      await daemonClient.refreshSession()
+
+      expect(daemonClient.blobUrl('data:image/png;base64,abc')).toBe('data:image/png;base64,abc')
+      expect(daemonClient.blobUrl('blob:http://localhost/preview-1')).toBe(
+        'blob:http://localhost/preview-1'
+      )
+      expect(daemonClient.blobUrl('https://cdn.example.com/image.png')).toBe(
+        'https://cdn.example.com/image.png'
+      )
+      expect(daemonClient.blobUrl('http://cdn.example.com/image.png')).toBe(
+        'http://cdn.example.com/image.png'
+      )
+    })
+
+    it('adds auth only for relative daemon resource paths', async () => {
+      mockFetchOk({
+        sessionToken: 'jwt-abc',
+        expiresInSecs: 300,
+        refreshAtSecs: 240,
+      })
+
+      daemonClient.initialize(TEST_CONFIG)
+      await daemonClient.refreshSession()
+
+      expect(daemonClient.blobUrl('/clipboard/blobs/blob-1')).toBe(
+        'http://127.0.0.1:9999/clipboard/blobs/blob-1?auth=Session+jwt-abc'
+      )
+    })
+  })
+
   // ── refreshSession ──────────────────────────────────────────
 
   describe('refreshSession', () => {
@@ -95,9 +137,13 @@ describe('DaemonClient', () => {
       const fetchCall = vi.mocked(fetch).mock.calls[0]
       expect(fetchCall[0]).toBe('http://127.0.0.1:9999/auth/connect')
       expect(fetchCall[1]?.method).toBe('POST')
-      expect(fetchCall[1]?.headers).toMatchObject({
-        Authorization: 'Bearer test-bearer-token',
-      })
+      expect(fetchCall[1]?.body).toEqual(
+        new URLSearchParams({
+          token: 'test-bearer-token',
+          pid: '12345',
+          clientType: 'gui',
+        })
+      )
     })
 
     it('coalesces concurrent refresh calls', async () => {
@@ -154,10 +200,10 @@ describe('DaemonClient', () => {
       expect(result.theme).toBe('dark')
 
       const settingsCall = vi.mocked(fetch).mock.calls[1]
-      expect(settingsCall[0]).toBe('http://127.0.0.1:9999/settings')
-      expect(settingsCall[1]?.headers).toMatchObject({
-        Authorization: 'Session jwt-new',
-      })
+      expect(settingsCall[0]).toBeInstanceOf(URL)
+      expect(settingsCall[0]?.toString()).toBe(
+        'http://127.0.0.1:9999/settings?auth=Session+jwt-new'
+      )
     })
 
     it('auto-retries once on 401', async () => {

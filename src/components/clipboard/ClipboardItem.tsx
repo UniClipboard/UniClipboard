@@ -7,7 +7,7 @@ import {
   Image as ImageIcon,
   Loader2,
 } from 'lucide-react'
-import React, { useState, useEffect } from 'react'
+import React, { useCallback, useRef, useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   ClipboardTextItem,
@@ -42,6 +42,35 @@ interface ClipboardItemProps {
   isSelected?: boolean
   onSelect?: (event: React.MouseEvent<HTMLDivElement>) => void
   fileSize?: number
+}
+
+/** Textarea that auto-sizes to its content height, avoiding inner scroll. */
+const AutoSizeTextarea: React.FC<{
+  value: string
+  className?: string
+}> = ({ value, className }) => {
+  const ref = useRef<HTMLTextAreaElement>(null)
+  const adjustHeight = useCallback(() => {
+    const el = ref.current
+    if (el) {
+      el.style.height = '0'
+      el.style.height = `${el.scrollHeight}px`
+    }
+  }, [])
+
+  useEffect(() => {
+    adjustHeight()
+  }, [value, adjustHeight])
+
+  return (
+    <textarea
+      ref={ref}
+      readOnly
+      value={value}
+      className={className}
+      style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all', overflow: 'hidden' }}
+    />
+  )
 }
 
 const ClipboardItem: React.FC<ClipboardItemProps> = ({
@@ -203,11 +232,9 @@ const ClipboardItem: React.FC<ClipboardItemProps> = ({
         // When expanded with large text, use textarea for browser-native rendering optimization
         if (isExpanded && textToShow.length > LARGE_TEXT_THRESHOLD) {
           return (
-            <textarea
-              readOnly
+            <AutoSizeTextarea
               value={textToShow}
-              className="w-full min-h-64 resize-none border-none bg-transparent p-0 font-mono text-sm leading-relaxed text-foreground/90 focus:outline-none focus:ring-0"
-              style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}
+              className="w-full resize-none border-none bg-transparent p-0 font-mono text-sm leading-relaxed text-foreground/90 focus:outline-none focus:ring-0"
             />
           )
         }

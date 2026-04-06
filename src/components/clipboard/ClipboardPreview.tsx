@@ -10,7 +10,7 @@ import {
   Loader2,
   Image as ImageIcon,
 } from 'lucide-react'
-import React, { useEffect, useState } from 'react'
+import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { DisplayClipboardItem } from './ClipboardContent'
 import TransferProgressBar from './TransferProgressBar'
@@ -36,6 +36,35 @@ import { formatFileSize } from '@/utils'
 
 /** Threshold above which we switch to textarea-based rendering for performance. */
 const LARGE_TEXT_THRESHOLD = 50_000
+
+/** Textarea that auto-sizes to its content height, avoiding inner scroll. */
+const AutoSizeTextarea: React.FC<{
+  value: string
+  className?: string
+}> = ({ value, className }) => {
+  const ref = useRef<HTMLTextAreaElement>(null)
+  const adjustHeight = useCallback(() => {
+    const el = ref.current
+    if (el) {
+      el.style.height = '0'
+      el.style.height = `${el.scrollHeight}px`
+    }
+  }, [])
+
+  useEffect(() => {
+    adjustHeight()
+  }, [value, adjustHeight])
+
+  return (
+    <textarea
+      ref={ref}
+      readOnly
+      value={value}
+      className={className}
+      style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all', overflow: 'hidden' }}
+    />
+  )
+}
 
 interface ClipboardPreviewProps {
   item: DisplayClipboardItem | null
@@ -133,11 +162,9 @@ const ClipboardPreview: React.FC<ClipboardPreviewProps> = ({ item }) => {
                 <span className="text-sm">{t('clipboard.item.loading')}</span>
               </div>
             ) : displayText.length > LARGE_TEXT_THRESHOLD ? (
-              <textarea
-                readOnly
+              <AutoSizeTextarea
                 value={displayText}
-                className="w-full min-h-64 resize-none border-none bg-transparent p-0 font-mono text-sm leading-relaxed text-foreground/90 focus:outline-none focus:ring-0"
-                style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}
+                className="w-full resize-none border-none bg-transparent p-0 font-mono text-sm leading-relaxed text-foreground/90 focus:outline-none focus:ring-0"
               />
             ) : (
               <p className="whitespace-pre-wrap font-mono text-sm leading-relaxed text-foreground/90 break-all overflow-hidden">

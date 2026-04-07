@@ -90,6 +90,29 @@ jobs:
           VERSION="${{ steps.version.outputs.version }}"
           node scripts/bump-version.js --to "${VERSION}"
 
+      - name: Determine changelog context
+        id: changelog-context
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          CURRENT_TAG="v${VERSION}"
+
+          git fetch --tags origin
+
+          PREV_TAG=$(git tag --sort=-version:refname | grep -v "^${CURRENT_TAG}$" | head -n 1 || true)
+          if [ -z "$PREV_TAG" ]; then
+            PREV_TAG=$(git rev-list --max-parents=0 HEAD)
+            PREV_VERSION="initial commit"
+          else
+            PREV_VERSION="${PREV_TAG#v}"
+          fi
+
+          echo "previous_tag=$PREV_TAG" >> "$GITHUB_OUTPUT"
+          echo "previous_version=$PREV_VERSION" >> "$GITHUB_OUTPUT"
+          echo "range_expression=${PREV_TAG}..HEAD" >> "$GITHUB_OUTPUT"
+
+          echo "Previous published version: $PREV_VERSION"
+          echo "Allowed changelog range: ${PREV_TAG}..HEAD"
+
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt
@@ -109,13 +132,7 @@ jobs:
 
             # Create empty temp artifacts dir (script requires it but we have no artifacts yet)
             TEMP_ARTIFACTS=$(mktemp -d)
-
-            # Get previous tag for release notes generation
-            git fetch --tags origin
-            PREV_TAG=$(git tag --sort=-version:refname | head -n 1 || echo "")
-            if [ -z "$PREV_TAG" ]; then
-              PREV_TAG=$(git rev-list --max-parents=0 HEAD)
-            fi
+            PREV_TAG="${{ steps.changelog-context.outputs.previous_tag }}"
 
             if [ "${{ inputs.channel }}" = "stable" ]; then
               IS_PRERELEASE=false
@@ -162,6 +179,41 @@ jobs:
           git add package.json src-tauri/tauri.conf.json src-tauri/Cargo.toml src-tauri/Cargo.lock docs/changelog/
           git commit -m "chore: bump version to ${VERSION}"
 
+      - name: Render Codex changelog prompt
+        if: env.CODEX_API_KEY != ''
+        id: render-codex-changelog-prompt
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          PREVIOUS_TAG: ${{ steps.changelog-context.outputs.previous_tag }}
+          PREVIOUS_VERSION: ${{ steps.changelog-context.outputs.previous_version }}
+          RANGE_EXPRESSION: ${{ steps.changelog-context.outputs.range_expression }}
+          CHANNEL: ${{ inputs.channel }}
+        run: |
+          node --input-type=module <<'EOF'
+          import fs from 'node:fs';
+
+          const templatePath = '.github/prompts/release-changelog.codex.md';
+          let prompt = fs.readFileSync(templatePath, 'utf8');
+          const replacements = {
+            '{{VERSION}}': process.env.VERSION,
+            '{{CURRENT_TAG}}': `v${process.env.VERSION}`,
+            '{{PREVIOUS_TAG}}': process.env.PREVIOUS_TAG,
+            '{{PREVIOUS_VERSION}}': process.env.PREVIOUS_VERSION,
+            '{{RANGE_EXPRESSION}}': process.env.RANGE_EXPRESSION,
+            '{{CHANNEL}}': process.env.CHANNEL,
+            '{{IS_PRERELEASE}}': process.env.CHANNEL === 'stable' ? 'false' : 'true',
+          };
+
+          for (const [token, value] of Object.entries(replacements)) {
+            prompt = prompt.replaceAll(token, value);
+          }
+
+          fs.appendFileSync(
+            process.env.GITHUB_OUTPUT,
+            `prompt<<__CODEX_PROMPT__\n${prompt}\n__CODEX_PROMPT__\n`
+          );
+          EOF
+
       - name: Codex polish changelog
         if: env.CODEX_API_KEY != ''
         uses: openai/codex-action@v1
@@ -170,50 +222,7 @@ jobs:
         with:
           responses-api-endpoint: ${{ secrets.CODEX_API_ENDPOINT || 'https://api.openai.com/v1/responses' }}
           openai-api-key: ${{ secrets.CODEX_API_KEY }}
-          prompt: >-
-            Generate a user-facing changelog for version ${{ steps.version.outputs.version }}.
-
-            ## Step 1: Gather changes
-
-            Read docs/CHANGELOG_TEMPLATE.md for format rules.
-            Run `git log main..HEAD --oneline` to get all commits on this release branch.
-            If prior alpha/beta/rc changelogs exist under docs/changelog/ for this version
-            (e.g. 0.3.0-alpha.1.md, 0.3.0-alpha.2.md), read them all to understand
-            intermediate changes.
-
-            ## Step 2: Merge into final state
-
-            Merge all intermediate changelogs plus any post-last-prerelease commits into
-            a single changelog. Critically:
-            - Remove reverted changes (feature added in one alpha then reverted in another).
-            - Deduplicate: if the same area was changed across multiple alphas, keep only
-              the final user-visible outcome.
-            - Only include Features and Fixes sections. Omit Refactor, Tests, Docs, and
-              chore categories entirely — end users do not care about these.
-            - Add Breaking Changes section at top only if any exist.
-
-            ## Step 3: Remove internal details
-
-            Remove items that end users cannot perceive or do not care about:
-            - Internal infrastructure (logging modules, observability crates, tracing, CI changes).
-            - Developer-only fixes (dev-mode isolation, build script tweaks, component spacing微调).
-            - Implementation specifics in descriptions — strip terms like "chunked transfer",
-              "BLAKE3", "event-driven", "hexagonal architecture", "Redux slice", etc.
-              Describe WHAT the user gets, not HOW it is built.
-
-            ## Step 4: Consolidate related items
-
-            Merge closely related entries into one line. For example:
-            - Multiple Windows focus fixes for the same panel → one line.
-            - Multiple setup flow improvements → one line.
-            Keep each line short (one sentence).
-
-            ## Output
-
-            Write the English changelog to docs/changelog/${{ steps.version.outputs.version }}.md
-            and a Chinese translation to docs/changelog/${{ steps.version.outputs.version }}.zh.md.
-            Both files follow the format in docs/CHANGELOG_TEMPLATE.md.
-            Only modify files under docs/changelog/. Do not change any code files.
+          prompt: ${{ steps.render-codex-changelog-prompt.outputs.prompt }}
 
       - name: Commit codex changes
         if: env.CODEX_API_KEY != ''

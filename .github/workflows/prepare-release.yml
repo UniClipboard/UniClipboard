@@ -91,6 +91,8 @@ jobs:
           node scripts/bump-version.js --to "${VERSION}"
 
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
 
       - name: Refresh Cargo.lock for workspace members
         run: cd src-tauri && cargo update -p uc-cli
@@ -138,6 +140,19 @@ jobs:
 
             rm -rf "${TEMP_ARTIFACTS}"
           fi
+
+      - name: Install Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install frontend dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Format code
+        run: |
+          cd src-tauri && cargo fmt --all && cd ..
+          bun run format
 
       - name: Commit version bump
         run: |

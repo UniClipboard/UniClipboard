@@ -7,6 +7,7 @@ pub(crate) mod peer_cache;
 mod stream_handler;
 mod swarm_event_loop;
 #[cfg(test)]
+#[allow(deprecated)]
 mod tests;
 
 use crate::ports::IdentityStorePort;

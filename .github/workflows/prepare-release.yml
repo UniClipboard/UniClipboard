@@ -40,6 +40,8 @@ jobs:
     permissions:
       contents: write
       pull-requests: write
+    env:
+      CODEX_API_KEY: ${{ secrets.CODEX_API_KEY }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -128,40 +130,10 @@ jobs:
       - name: Generate changelog skeleton
         run: |
           VERSION="${{ steps.version.outputs.version }}"
-          CHANGELOG_PATH="docs/changelog/${VERSION}.md"
-
-          if [ -f "$CHANGELOG_PATH" ]; then
-            echo "Changelog already exists at $CHANGELOG_PATH, skipping generation"
-          else
-            mkdir -p docs/changelog
-
-            # Create empty temp artifacts dir (script requires it but we have no artifacts yet)
-            TEMP_ARTIFACTS=$(mktemp -d)
-            PREV_TAG="${{ steps.changelog-context.outputs.previous_tag }}"
-
-            if [ "${{ inputs.channel }}" = "stable" ]; then
-              IS_PRERELEASE=false
-            else
-              IS_PRERELEASE=true
-            fi
-
-            node scripts/generate-release-notes.js \
-              --version "${VERSION}" \
-              --repo "${{ github.repository }}" \
-              --previous-tag "${PREV_TAG}" \
-              --channel "${{ inputs.channel }}" \
-              --is-prerelease "${IS_PRERELEASE}" \
-              --artifacts-dir "${TEMP_ARTIFACTS}" \
-              --template ".github/release-notes/release.md.tmpl" \
-              --output "${CHANGELOG_PATH}" || {
-                echo "Release notes generation failed, creating minimal changelog"
-                echo "# v${VERSION}" > "${CHANGELOG_PATH}"
-                echo "" >> "${CHANGELOG_PATH}"
-                echo "Release notes pending." >> "${CHANGELOG_PATH}"
-              }
-
-            rm -rf "${TEMP_ARTIFACTS}"
-          fi
+          RELEASE_DATE="$(date -u +%F)"
+          node scripts/changelog-draft.js init \
+            --version "${VERSION}" \
+            --date "${RELEASE_DATE}"
 
       - name: Install Bun
         uses: oven-sh/setup-bun@v2
@@ -188,6 +160,7 @@ jobs:
         if: env.CODEX_API_KEY != ''
         id: render-codex-changelog-prompt
         env:
+          CODEX_API_KEY: ${{ secrets.CODEX_API_KEY }}
           VERSION: ${{ steps.version.outputs.version }}
           PREVIOUS_TAG: ${{ steps.changelog-context.outputs.previous_tag }}
           PREVIOUS_VERSION: ${{ steps.changelog-context.outputs.previous_version }}
@@ -222,17 +195,23 @@ jobs:
       - name: Codex polish changelog
         if: env.CODEX_API_KEY != ''
         uses: openai/codex-action@v1
-        env:
-          CODEX_API_KEY: ${{ secrets.CODEX_API_KEY }}
         with:
           responses-api-endpoint: ${{ secrets.CODEX_API_ENDPOINT || 'https://api.openai.com/v1/responses' }}
-          openai-api-key: ${{ secrets.CODEX_API_KEY }}
+          openai-api-key: ${{ env.CODEX_API_KEY }}
           prompt: ${{ steps.render-codex-changelog-prompt.outputs.prompt }}
+
+      - name: Validate changelog output
+        run: |
+          if [ -z "${CODEX_API_KEY}" ]; then
+            echo "CODEX_API_KEY is required to generate finalized changelog files." >&2
+            exit 1
+          fi
+
+          VERSION="${{ steps.version.outputs.version }}"
+          node scripts/changelog-draft.js validate --version "${VERSION}"
 
       - name: Commit codex changes
         if: env.CODEX_API_KEY != ''
-        env:
-          CODEX_API_KEY: ${{ secrets.CODEX_API_KEY }}
         run: |
           VERSION="${{ steps.version.outputs.version }}"
           git add docs/changelog/

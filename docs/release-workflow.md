@@ -255,5 +255,8 @@ bun run version:bump --type minor --channel stable
 ## 相关文件
 
 - 版本管理脚本: [`scripts/bump-version.js`](../scripts/bump-version.js)
+- Codex changelog 提示词: [`.github/prompts/release-changelog.codex.md`](../.github/prompts/release-changelog.codex.md)
+- Changelog 写作规则: [`docs/CHANGELOG_TEMPLATE.md`](./CHANGELOG_TEMPLATE.md)
 - 发布工作流: [`.github/workflows/release.yml`](../.github/workflows/release.yml)
+- 预发布准备工作流: [`.github/workflows/prepare-release.yml`](../.github/workflows/prepare-release.yml)
 - 构建工作流: [`.github/workflows/build.yml`](../.github/workflows/build.yml)

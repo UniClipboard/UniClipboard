@@ -15,7 +15,7 @@ use uc_core::network::{NetworkEvent, ProtocolDirection};
 use uc_core::ports::{ConnectionPolicyResolverPort, TransferDirection, TransferProgress};
 
 use super::dial_strategy::{
-    chosen_dial_addr_for_log, dial_decision_for_snapshot, effective_priority_for_addr,
+    chosen_dial_addr_for_log, dial_decision_for_snapshot, infer_address_scope,
     infer_chosen_dial_addr_resolution, preferred_candidate_transport,
 };
 use super::discovery::{apply_peer_not_ready, apply_peer_ready};
@@ -26,11 +26,20 @@ use super::{
 
 const PRE_DIAL_CONNECTION_POLL_INTERVAL: Duration = Duration::from_millis(20);
 
+/// Returns the maximum effective priority within the best candidate's scope.
+///
+/// The pre-dial check ensures the connection is in the right **scope**
+/// (LAN / WAN / Relay), but does not require a specific transport.
+/// For example, if the best candidate is LAN-QUIC (priority 10), the
+/// threshold returned is 15 (LAN base 10 + TCP penalty 5), so a
+/// TCP connection in the same scope also satisfies the check.
+const TRANSPORT_PENALTY: u8 = 5;
+
 fn preferred_candidate_priority(snapshot: &PeerAddressSnapshot) -> Option<u8> {
-    snapshot
-        .candidate_addresses
-        .first()
-        .map(|address| effective_priority_for_addr(address))
+    snapshot.candidate_addresses.first().map(|address| {
+        let scope = infer_address_scope(address);
+        scope.base_priority().saturating_add(TRANSPORT_PENALTY)
+    })
 }
 
 async fn wait_for_preferred_connection(
@@ -49,15 +58,8 @@ async fn wait_for_preferred_connection(
         let best_connection_ready = snapshot
             .best_connected_effective_priority
             .is_some_and(|priority| priority <= required_priority);
-        let all_active_connections_preferred = snapshot
-            .connected_addresses
-            .iter()
-            .all(|address| effective_priority_for_addr(address) <= required_priority);
 
-        if snapshot.peer_marked_reachable
-            && best_connection_ready
-            && all_active_connections_preferred
-        {
+        if snapshot.peer_marked_reachable && best_connection_ready {
             return Ok(());
         }
 

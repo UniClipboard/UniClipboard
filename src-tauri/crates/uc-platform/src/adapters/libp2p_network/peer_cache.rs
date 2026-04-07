@@ -42,6 +42,7 @@ impl ActivePeerConnection {
 #[derive(Debug, Clone)]
 pub(crate) struct PeerAddressSnapshot {
     pub candidate_addresses: Vec<String>,
+    #[allow(dead_code)] // retained for Debug snapshot diagnostics
     pub connected_addresses: Vec<String>,
     pub connected_address_count: usize,
     pub peer_marked_reachable: bool,

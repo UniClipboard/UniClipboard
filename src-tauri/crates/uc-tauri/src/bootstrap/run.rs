@@ -381,7 +381,8 @@ fn terminate_stale_daemon_from_pid_file_if_present() {
 fn verify_pid_is_daemon(pid: u32) -> Result<bool> {
     use windows::Win32::Foundation::{CloseHandle, HANDLE};
     use windows::Win32::System::Threading::{
-        OpenProcess, QueryFullProcessImageNameW, PROCESS_NAME_WIN32, PROCESS_QUERY_LIMITED_INFORMATION,
+        OpenProcess, QueryFullProcessImageNameW, PROCESS_NAME_WIN32,
+        PROCESS_QUERY_LIMITED_INFORMATION,
     };
 
     // Open the process with minimal rights needed for querying the image name
@@ -399,7 +400,9 @@ fn verify_pid_is_daemon(pid: u32) -> Result<bool> {
 
     unsafe {
         QueryFullProcessImageNameW(process_handle, PROCESS_NAME_WIN32, &mut buffer, &mut size)
-            .map_err(|e| anyhow::anyhow!("failed to query process image name for PID {}: {}", pid, e))?;
+            .map_err(|e| {
+                anyhow::anyhow!("failed to query process image name for PID {}: {}", pid, e)
+            })?;
     }
 
     // Convert the wide string to a Rust String

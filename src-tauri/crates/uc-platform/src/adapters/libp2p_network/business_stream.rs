@@ -127,6 +127,15 @@ async fn ensure_explicit_connection(
             continue;
         }
 
+        let remaining = open_timeout
+            .checked_sub(open_started_at.elapsed())
+            .unwrap_or_default();
+        if remaining.is_zero() {
+            return Err(anyhow!(
+                "business stream open timed out before dial tier {tier_index}"
+            ));
+        }
+
         let (tx, rx) = tokio::sync::oneshot::channel();
         info!(
             event = "business_stream.pre_dial",
@@ -140,20 +149,55 @@ async fn ensure_explicit_connection(
             "sending pre-dial request with tier addresses"
         );
 
-        if let Err(err) = dial_tx
-            .send(DialRequest {
+        let send_result = tokio::time::timeout(
+            remaining,
+            dial_tx.send(DialRequest {
                 peer,
                 addresses: addrs,
                 allow_connected_dial: dial_decision == "upgrade_to_better_connection",
                 result_tx: tx,
-            })
-            .await
-        {
-            return Err(anyhow!("failed to send dial request: {err}"));
+            }),
+        )
+        .await;
+
+        match send_result {
+            Err(_elapsed) => {
+                warn!(
+                    event = "business_stream.pre_dial",
+                    operation = denied_operation,
+                    peer_id = %peer_id_str,
+                    scope = ?scope,
+                    tier_index,
+                    dial_decision,
+                    "dial send timed out, trying next tier"
+                );
+                continue;
+            }
+            Ok(Err(err)) => {
+                return Err(anyhow!("failed to send dial request: {err}"));
+            }
+            Ok(Ok(())) => {}
         }
 
-        match rx.await {
-            Ok(Ok(())) => {
+        let remaining_ack = open_timeout
+            .checked_sub(open_started_at.elapsed())
+            .unwrap_or_default();
+
+        let ack_result = tokio::time::timeout(remaining_ack, rx).await;
+
+        match ack_result {
+            Err(_elapsed) => {
+                warn!(
+                    event = "business_stream.pre_dial",
+                    operation = denied_operation,
+                    peer_id = %peer_id_str,
+                    scope = ?scope,
+                    tier_index,
+                    dial_decision,
+                    "dial ack timed out, trying next tier"
+                );
+            }
+            Ok(Ok(Ok(()))) => {
                 debug!(
                     event = "business_stream.pre_dial",
                     operation = denied_operation,
@@ -166,7 +210,7 @@ async fn ensure_explicit_connection(
                 dial_initiated = true;
                 break;
             }
-            Ok(Err(err)) => {
+            Ok(Ok(Err(err))) => {
                 warn!(
                     event = "business_stream.pre_dial",
                     operation = denied_operation,
@@ -178,7 +222,7 @@ async fn ensure_explicit_connection(
                     "dial initiation failed, trying next tier"
                 );
             }
-            Err(_) => {
+            Ok(Err(_)) => {
                 warn!(
                     event = "business_stream.pre_dial",
                     operation = denied_operation,

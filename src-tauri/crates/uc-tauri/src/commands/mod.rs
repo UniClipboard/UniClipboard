@@ -17,6 +17,15 @@ pub fn get_tauri_pid() -> u32 {
     std::process::id()
 }
 
+/// Get the stable local device identifier used for telemetry correlation.
+#[tauri::command]
+pub async fn get_device_id(
+    runtime: tauri::State<'_, std::sync::Arc<crate::bootstrap::AppRuntime>>,
+    _trace: Option<TraceMetadata>,
+) -> Result<String, CommandError> {
+    Ok(runtime.device_id())
+}
+
 // Re-export commonly used types
 pub use autostart::*;
 

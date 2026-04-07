@@ -1,3 +1,4 @@
+import { getDeviceId } from '@/api/runtime'
 import { redactSensitiveArgs } from '@/observability/redaction'
 
 type ConsoleMethod = 'log' | 'info' | 'warn' | 'error'
@@ -38,6 +39,8 @@ let logsEndpoint = ''
 let initialized = false
 let telemetryEnabled = false
 let getTraceId: (() => string | undefined) | null = null
+let frontendDeviceId: string | null = null
+let frontendDeviceIdPromise: Promise<string | null> | null = null
 
 const originalConsole = {
   log: console.log.bind(console),
@@ -77,6 +80,11 @@ function buildResourceAttributes(): OtlpKeyValue[] {
     { key: 'service.name', value: { stringValue: SERVICE_NAME } },
     { key: 'deployment.environment', value: { stringValue: import.meta.env.MODE } },
   ]
+
+  if (frontendDeviceId) {
+    attrs.push({ key: 'device_id', value: { stringValue: frontendDeviceId } })
+    attrs.push({ key: 'service.instance.id', value: { stringValue: frontendDeviceId } })
+  }
 
   if (import.meta.env.VITE_APP_VERSION) {
     attrs.push({
@@ -156,6 +164,36 @@ function buildPayload(logRecords: OtlpLogRecord[]) {
   }
 }
 
+function resolveFrontendDeviceId(): Promise<string | null> {
+  if (frontendDeviceId) {
+    return Promise.resolve(frontendDeviceId)
+  }
+
+  if (frontendDeviceIdPromise) {
+    return frontendDeviceIdPromise
+  }
+
+  if (typeof window === 'undefined' || !('__TAURI__' in window)) {
+    return Promise.resolve(null)
+  }
+
+  frontendDeviceIdPromise = getDeviceId()
+    .then(deviceId => {
+      const trimmed = deviceId.trim()
+      frontendDeviceId = trimmed || null
+      return frontendDeviceId
+    })
+    .catch(error => {
+      originalConsole.warn('[OTLP] failed to resolve device_id:', error)
+      return null
+    })
+    .finally(() => {
+      frontendDeviceIdPromise = null
+    })
+
+  return frontendDeviceIdPromise
+}
+
 async function flush(): Promise<void> {
   if (!telemetryEnabled || !logsEndpoint || buffer.length === 0) {
     buffer = []
@@ -163,6 +201,7 @@ async function flush(): Promise<void> {
     return
   }
 
+  await resolveFrontendDeviceId()
   const payload = buildPayload(buffer)
   buffer = []
   flushTimer = null
@@ -223,6 +262,7 @@ export function initFrontendOtlp(): void {
   import('@/observability/trace').then(module => {
     getTraceId = () => module.traceManager.getCurrentTrace()?.traceId
   })
+  void resolveFrontendDeviceId()
 
   if (typeof window !== 'undefined') {
     window.addEventListener('beforeunload', () => {

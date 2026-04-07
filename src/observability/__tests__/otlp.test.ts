@@ -1,4 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { invokeWithTrace } from '@/lib/tauri-command'
+
+vi.mock('@/lib/tauri-command', () => ({
+  invokeWithTrace: vi.fn(),
+}))
 
 const originalConsole = {
   log: console.log,
@@ -24,6 +29,7 @@ describe('frontend OTLP logging', () => {
     vi.useFakeTimers()
     restoreConsole()
     vi.unstubAllEnvs()
+    Reflect.deleteProperty(window, '__TAURI__')
   })
 
   afterEach(() => {
@@ -31,6 +37,7 @@ describe('frontend OTLP logging', () => {
     vi.useRealTimers()
     vi.restoreAllMocks()
     vi.unstubAllEnvs()
+    Reflect.deleteProperty(window, '__TAURI__')
   })
 
   it('uploads console errors to the OTLP logs endpoint with redaction', async () => {
@@ -84,5 +91,32 @@ describe('frontend OTLP logging', () => {
     await vi.advanceTimersByTimeAsync(1_000)
 
     expect(fetchMock.mock.calls[0]?.[0]).toBe('https://seq.example.com/ingest/otlp/v1/logs')
+  })
+
+  it('attaches the runtime device id to frontend OTLP resource attributes', async () => {
+    vi.stubEnv('VITE_OTEL_EXPORTER_OTLP_ENDPOINT', 'https://seq.example.com/ingest/otlp')
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true })
+    vi.stubGlobal('fetch', fetchMock)
+    Reflect.set(window, '__TAURI__', {})
+    vi.mocked(invokeWithTrace).mockResolvedValueOnce('device-telemetry-123')
+
+    const { initFrontendOtlp, setFrontendTelemetryEnabled } = await loadModule()
+    initFrontendOtlp()
+    setFrontendTelemetryEnabled(true)
+
+    console.info('frontend-info')
+    await vi.advanceTimersByTimeAsync(1_000)
+
+    expect(invokeWithTrace).toHaveBeenCalledWith('get_device_id')
+
+    const payload = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))
+    const resourceAttributes = payload.resourceLogs[0].resource.attributes
+
+    expect(resourceAttributes).toEqual(
+      expect.arrayContaining([
+        { key: 'device_id', value: { stringValue: 'device-telemetry-123' } },
+        { key: 'service.instance.id', value: { stringValue: 'device-telemetry-123' } },
+      ])
+    )
   })
 })

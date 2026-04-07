@@ -339,6 +339,7 @@ fn run_app(ctx: GuiBootstrapContext) {
             uc_tauri::commands::tray::set_tray_language,
             // Lifecycle commands
             uc_tauri::commands::get_tauri_pid,
+            uc_tauri::commands::get_device_id,
             uc_tauri::commands::get_daemon_connection_info,
             // Autostart commands
             uc_tauri::commands::autostart::enable_autostart,

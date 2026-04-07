@@ -171,6 +171,11 @@ pub async fn supervise_daemon<R: Runtime>(
                         respawn_backoff = SUPERVISOR_RESPAWN_BACKOFF_INITIAL;
                     }
                     Err(err) => {
+                        cleanup_failed_owned_daemon(
+                            gui_owned_daemon_state,
+                            &ownership,
+                            "daemon supervisor respawn health check failed",
+                        );
                         tracing::error!(error = %err, "Daemon supervisor respawned daemon but health check failed");
                     }
                 }
@@ -221,6 +226,7 @@ where
             let _ = gui_owned_daemon_state.clear();
         }
         ProbeOutcome::Absent => {
+            terminate_stale_daemon_from_pid_file_if_present();
             spawn_and_wait_for_compatible(
                 ownership,
                 gui_owned_daemon_state,
@@ -280,10 +286,74 @@ where
 
     let wait_result = wait_for_daemon_health(probe, timeout, poll_interval).await;
     if wait_result.is_err() {
-        let _ = gui_owned_daemon_state.clear();
-        ownership.clear_spawned_child();
+        cleanup_failed_owned_daemon(
+            gui_owned_daemon_state,
+            ownership,
+            "daemon startup health check failed",
+        );
     }
     wait_result
+}
+
+fn cleanup_failed_owned_daemon(
+    gui_owned_daemon_state: &GuiOwnedDaemonState,
+    ownership: &DaemonBootstrapOwnershipState,
+    reason: &str,
+) {
+    // Clearing GuiOwnedDaemonState only forgets the handle. If the child is still
+    // alive after a failed health check, it can keep the fixed localhost port
+    // bound and poison the next startup attempt.
+    if let Some(owned_child) = gui_owned_daemon_state.clear() {
+        let daemon_pid = owned_child.pid;
+        let spawn_reason = owned_child.spawn_reason;
+        if let Err(error) = owned_child.child.kill() {
+            tracing::warn!(
+                daemon_pid,
+                ?spawn_reason,
+                failure = reason,
+                error = %error,
+                "failed to terminate daemon sidecar after startup failure"
+            );
+        } else {
+            tracing::warn!(
+                daemon_pid,
+                ?spawn_reason,
+                failure = reason,
+                "terminated daemon sidecar after startup failure"
+            );
+        }
+    }
+    ownership.clear_spawned_child();
+}
+
+fn terminate_stale_daemon_from_pid_file_if_present() {
+    #[cfg(windows)]
+    {
+        match read_pid_file() {
+            Ok(Some(pid)) => match terminate_local_daemon_pid(pid) {
+                Ok(()) => {
+                    tracing::warn!(
+                        daemon_pid = pid,
+                        "terminated stale daemon from pid file before spawn"
+                    );
+                }
+                Err(error) => {
+                    tracing::warn!(
+                        daemon_pid = pid,
+                        error = %error,
+                        "failed to terminate stale daemon from pid file before spawn"
+                    );
+                }
+            },
+            Ok(None) => {}
+            Err(error) => {
+                tracing::warn!(
+                    error = %error,
+                    "failed to read daemon pid metadata before spawn"
+                );
+            }
+        }
+    }
 }
 
 async fn replace_incompatible_daemon<Terminate, Spawn, Probe, ProbeFuture>(

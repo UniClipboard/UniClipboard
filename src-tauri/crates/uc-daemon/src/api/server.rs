@@ -286,12 +286,9 @@ pub async fn run_http_server(
     cancel: CancellationToken,
 ) -> anyhow::Result<()> {
     let addr = try_resolve_daemon_http_addr()?;
-    let connection_info = state.connection_info_for_addr(addr, std::process::id());
-    tracing::info!(
-        base_url = %connection_info.base_url,
-        ws_url = %connection_info.ws_url,
-        "daemon HTTP API listening on 127.0.0.1"
-    );
+    let listener = tokio::net::TcpListener::bind(addr).await?;
+    let listen_addr = listener.local_addr()?;
+    let connection_info = state.connection_info_for_addr(listen_addr, std::process::id());
 
     // into_make_service_with_connect_info enables ConnectInfo<SocketAddr> in handlers.
     // This is required for the /auth/connect endpoint's IP-based rate limiting.
@@ -300,8 +297,11 @@ pub async fn run_http_server(
     // TCP connection. The SlidingWindowRateLimiter unit tests cover rate limiting logic
     // independently. IP-based rate limiting works correctly in production.
     let make_service = build_router(state).into_make_service_with_connect_info::<SocketAddr>();
-
-    let listener = tokio::net::TcpListener::bind(addr).await?;
+    tracing::info!(
+        base_url = %connection_info.base_url,
+        ws_url = %connection_info.ws_url,
+        "daemon HTTP API listening on 127.0.0.1"
+    );
 
     axum::serve(listener, make_service)
         .with_graceful_shutdown(cancel.cancelled_owned())

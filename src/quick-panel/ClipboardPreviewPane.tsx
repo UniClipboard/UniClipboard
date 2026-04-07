@@ -1,4 +1,4 @@
-import { Loader2 } from 'lucide-react'
+import { File, Loader2 } from 'lucide-react'
 import React, { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useClipboardPreview } from './useClipboardPreview'
@@ -56,6 +56,15 @@ const ClipboardPreviewPane: React.FC<ClipboardPreviewPaneProps> = ({ entryId }) 
               ) : (
                 <span className="text-[12px] text-muted-foreground">{t('imageUnavailable')}</span>
               )}
+            </div>
+          ) : preview.contentType === 'file' && preview.fileNames ? (
+            <div className="flex flex-col gap-2">
+              {preview.fileNames.map((name, i) => (
+                <div key={i} className="flex items-center gap-2 text-[12px] text-foreground">
+                  <File className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                  <span className="truncate">{name}</span>
+                </div>
+              ))}
             </div>
           ) : isLargeText ? (
             <VirtualizedText text={preview.textContent!} className="h-full" />

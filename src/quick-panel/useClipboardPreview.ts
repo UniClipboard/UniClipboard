@@ -1,13 +1,15 @@
 import { useEffect, useRef, useState } from 'react'
 import { isImageType, resolveResourceImageUrl } from '@/api/clipboardItems'
 import { getClipboardEntryDetail, getClipboardEntryResource } from '@/api/daemon/clipboard'
+import { parseFileNamesFromUriList } from '@/lib/clipboard-utils'
 
 export interface ClipboardPreviewState {
   entryId: string
-  contentType: 'text' | 'image'
+  contentType: 'text' | 'image' | 'file'
   sizeBytes: number
   textContent?: string
   imageUrl?: string
+  fileNames?: string[]
 }
 
 export interface ClipboardPreviewResult {
@@ -55,6 +57,25 @@ export function useClipboardPreview(entryId: string | null): ClipboardPreviewRes
             contentType: 'image',
             sizeBytes: resource.sizeBytes,
             imageUrl: imageUrl ?? undefined,
+          })
+          return
+        }
+
+        if (resource.mimeType.includes('uri-list')) {
+          const detail = await getClipboardEntryDetail(entryId)
+
+          if (currentRequestId !== requestIdRef.current) return
+
+          if (!detail) {
+            setError('Preview unavailable')
+            return
+          }
+
+          setPreview({
+            entryId,
+            contentType: 'file',
+            sizeBytes: resource.sizeBytes,
+            fileNames: parseFileNamesFromUriList(detail.content),
           })
           return
         }

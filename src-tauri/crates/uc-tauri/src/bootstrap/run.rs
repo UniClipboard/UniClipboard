@@ -330,21 +330,42 @@ fn terminate_stale_daemon_from_pid_file_if_present() {
     #[cfg(windows)]
     {
         match read_pid_file() {
-            Ok(Some(pid)) => match terminate_local_daemon_pid(pid) {
-                Ok(()) => {
-                    tracing::warn!(
-                        daemon_pid = pid,
-                        "terminated stale daemon from pid file before spawn"
-                    );
+            Ok(Some(pid)) => {
+                // Verify the process at this PID is actually our daemon before killing
+                match verify_pid_is_daemon(pid) {
+                    Ok(true) => {
+                        // PID is our daemon, safe to terminate
+                        match terminate_local_daemon_pid(pid) {
+                            Ok(()) => {
+                                tracing::warn!(
+                                    daemon_pid = pid,
+                                    "terminated stale daemon from pid file before spawn"
+                                );
+                            }
+                            Err(error) => {
+                                tracing::warn!(
+                                    daemon_pid = pid,
+                                    error = %error,
+                                    "failed to terminate stale daemon from pid file before spawn"
+                                );
+                            }
+                        }
+                    }
+                    Ok(false) => {
+                        tracing::warn!(
+                            daemon_pid = pid,
+                            "pid file contains stale/reused PID (process is not our daemon), skipping termination"
+                        );
+                    }
+                    Err(error) => {
+                        tracing::warn!(
+                            daemon_pid = pid,
+                            error = %error,
+                            "failed to verify PID identity, skipping termination for safety"
+                        );
+                    }
                 }
-                Err(error) => {
-                    tracing::warn!(
-                        daemon_pid = pid,
-                        error = %error,
-                        "failed to terminate stale daemon from pid file before spawn"
-                    );
-                }
-            },
+            }
             Ok(None) => {}
             Err(error) => {
                 tracing::warn!(
@@ -352,6 +373,60 @@ fn terminate_stale_daemon_from_pid_file_if_present() {
                     "failed to read daemon pid metadata before spawn"
                 );
             }
+        }
+    }
+}
+
+#[cfg(windows)]
+fn verify_pid_is_daemon(pid: u32) -> Result<bool> {
+    use windows::Win32::Foundation::{CloseHandle, HANDLE};
+    use windows::Win32::System::Threading::{
+        OpenProcess, QueryFullProcessImageNameW, PROCESS_NAME_WIN32, PROCESS_QUERY_LIMITED_INFORMATION,
+    };
+
+    // Open the process with minimal rights needed for querying the image name
+    let process_handle = unsafe {
+        OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid)
+            .map_err(|e| anyhow::anyhow!("failed to open process {}: {}", pid, e))?
+    };
+
+    // Ensure we close the handle on all exit paths
+    let _guard = ProcessHandleGuard(process_handle);
+
+    // Query the full process image path
+    let mut buffer = [0u16; 1024];
+    let mut size = buffer.len() as u32;
+
+    unsafe {
+        QueryFullProcessImageNameW(process_handle, PROCESS_NAME_WIN32, &mut buffer, &mut size)
+            .map_err(|e| anyhow::anyhow!("failed to query process image name for PID {}: {}", pid, e))?;
+    }
+
+    // Convert the wide string to a Rust String
+    let image_path = String::from_utf16_lossy(&buffer[..size as usize]);
+
+    // Check if the image name contains our daemon binary name
+    // The path might be like "C:\...\uniclipboard-daemon.exe" or with target triple suffix
+    let is_daemon = image_path.to_lowercase().contains("uniclipboard-daemon");
+
+    tracing::debug!(
+        daemon_pid = pid,
+        image_path = %image_path,
+        is_daemon = is_daemon,
+        "verified process identity"
+    );
+
+    Ok(is_daemon)
+}
+
+#[cfg(windows)]
+struct ProcessHandleGuard(windows::Win32::Foundation::HANDLE);
+
+#[cfg(windows)]
+impl Drop for ProcessHandleGuard {
+    fn drop(&mut self) {
+        unsafe {
+            let _ = windows::Win32::Foundation::CloseHandle(self.0);
         }
     }
 }

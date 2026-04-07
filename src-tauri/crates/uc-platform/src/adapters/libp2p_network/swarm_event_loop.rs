@@ -24,7 +24,7 @@ use super::discovery::{
     apply_peer_ready_from_connection, collect_mdns_discovered, collect_mdns_expired,
 };
 use super::peer_cache::{snapshot_peer_addresses, PeerCaches};
-use super::{try_send_event, BusinessCommand, MAX_IN_FLIGHT_BUSINESS_COMMANDS};
+use super::{try_send_event, BusinessCommand, DialRequest, MAX_IN_FLIGHT_BUSINESS_COMMANDS};
 
 /// Drives the libp2p Swarm event loop, processing network events, managing peer caches,
 /// handling business commands, and emitting network events to the application.
@@ -52,6 +52,8 @@ pub(super) async fn run_swarm(
     event_tx: mpsc::Sender<NetworkEvent>,
     policy_resolver: Arc<dyn ConnectionPolicyResolverPort>,
     mut business_rx: mpsc::Receiver<BusinessCommand>,
+    mut dial_rx: mpsc::Receiver<DialRequest>,
+    dial_tx: mpsc::Sender<DialRequest>,
     local_peer_id: String,
 ) {
     info!(local_peer_id = %local_peer_id, "libp2p mDNS swarm started");
@@ -81,6 +83,9 @@ pub(super) async fn run_swarm(
                             peers.sort_by_key(|(_, addr)| {
                                 if addr.to_string().contains("/quic-v1") { 0 } else { 1 }
                             });
+                            // Add to swarm's internal peer store for pairing/announce
+                            // connections.  Business stream dials use pre-dial requests
+                            // with explicit priority-sorted addresses from the registry.
                             for (peer_id, address) in peers.iter() {
                                 swarm.add_peer_address(peer_id.clone(), address.clone());
                             }
@@ -412,6 +417,7 @@ pub(super) async fn run_swarm(
                 let command_policy_resolver = policy_resolver.clone();
                 let command_event_tx = event_tx.clone();
                 let command_local_peer_id = local_peer_id.clone();
+                let command_dial_tx = dial_tx.clone();
                 tokio::spawn(async move {
                     let _command_permit = command_permit;
                     execute_business_command(
@@ -422,9 +428,48 @@ pub(super) async fn run_swarm(
                         command_policy_resolver,
                         command_event_tx,
                         command_local_peer_id,
+                        command_dial_tx,
                     )
                     .await;
                 });
+            }
+
+            Some(dial_req) = dial_rx.recv() => {
+                if swarm.is_connected(&dial_req.peer) {
+                    debug!(
+                        peer_id = %dial_req.peer,
+                        "pre-dial: peer already connected, skipping dial"
+                    );
+                    let _ = dial_req.result_tx.send(Ok(()));
+                } else {
+                    use libp2p::swarm::dial_opts::{DialOpts, PeerCondition};
+                    let addr_count = dial_req.addresses.len();
+                    debug!(
+                        peer_id = %dial_req.peer,
+                        address_count = addr_count,
+                        addresses = ?dial_req.addresses.iter().map(ToString::to_string).collect::<Vec<_>>(),
+                        "pre-dial: initiating dial with explicit addresses"
+                    );
+                    let result = swarm.dial(
+                        DialOpts::peer_id(dial_req.peer)
+                            .addresses(dial_req.addresses)
+                            .condition(PeerCondition::DisconnectedAndNotDialing)
+                            .build(),
+                    );
+                    match result {
+                        Ok(()) => {
+                            let _ = dial_req.result_tx.send(Ok(()));
+                        }
+                        Err(err) => {
+                            warn!(
+                                peer_id = %dial_req.peer,
+                                error = %err,
+                                "pre-dial: dial initiation failed"
+                            );
+                            let _ = dial_req.result_tx.send(Err(anyhow!("pre-dial failed: {err}")));
+                        }
+                    }
+                }
             }
 
             _ = gc_interval.tick() => {

@@ -93,6 +93,15 @@ enum BusinessCommand {
     },
 }
 
+/// A request from a business stream to pre-dial a peer with explicit addresses
+/// before opening a stream.  Handled by the swarm event loop.
+#[derive(Debug)]
+pub(super) struct DialRequest {
+    pub peer: PeerId,
+    pub addresses: Vec<Multiaddr>,
+    pub result_tx: oneshot::Sender<Result<()>>,
+}
+
 /// Maximum JSON header size (64KB). Streams with larger headers are discarded.
 const MAX_JSON_HEADER_SIZE: usize = 64 * 1024;
 
@@ -116,6 +125,8 @@ pub struct Libp2pNetworkAdapter {
     clipboard_rx: Mutex<Option<mpsc::Receiver<(ClipboardMessage, Option<Vec<u8>>)>>>,
     business_tx: mpsc::Sender<BusinessCommand>,
     business_rx: Mutex<Option<mpsc::Receiver<BusinessCommand>>>,
+    dial_tx: mpsc::Sender<DialRequest>,
+    dial_rx: Mutex<Option<mpsc::Receiver<DialRequest>>>,
     keypair: Mutex<identity::Keypair>,
     start_state: AtomicU8,
     policy_resolver: Arc<dyn ConnectionPolicyResolverPort>,
@@ -152,6 +163,7 @@ impl Libp2pNetworkAdapter {
         let (event_bus_tx, _) = broadcast::channel(64);
         let (clipboard_tx, clipboard_rx) = mpsc::channel(64);
         let (business_tx, business_rx) = mpsc::channel(64);
+        let (dial_tx, dial_rx) = mpsc::channel(32);
         let pairing_service = Mutex::new(None);
 
         Ok(Self {
@@ -166,6 +178,8 @@ impl Libp2pNetworkAdapter {
             clipboard_rx: Mutex::new(Some(clipboard_rx)),
             business_tx,
             business_rx: Mutex::new(Some(business_rx)),
+            dial_tx,
+            dial_rx: Mutex::new(Some(dial_rx)),
             keypair: Mutex::new(keypair),
             start_state: AtomicU8::new(START_STATE_IDLE),
             policy_resolver,
@@ -338,6 +352,8 @@ impl Libp2pNetworkAdapter {
         let event_tx = self.event_tx.clone();
         let policy_resolver = self.policy_resolver.clone();
         let business_rx = Self::take_receiver(&self.business_rx, "business command")?;
+        let dial_rx = Self::take_receiver(&self.dial_rx, "dial request")?;
+        let dial_tx = self.dial_tx.clone();
         let local_peer_id = self.local_peer_id.clone();
         tokio::spawn(async move {
             run_swarm(
@@ -346,6 +362,8 @@ impl Libp2pNetworkAdapter {
                 event_tx,
                 policy_resolver,
                 business_rx,
+                dial_rx,
+                dial_tx,
                 local_peer_id,
             )
             .await;

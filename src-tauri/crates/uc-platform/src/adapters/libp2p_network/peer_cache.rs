@@ -248,9 +248,12 @@ pub(crate) fn snapshot_peer_addresses(
     let discovered = caches.discovered_peers.get(peer_id);
     let last_dial = caches.last_dial_observations.get(peer_id);
     PeerAddressSnapshot {
-        candidate_addresses: discovered
-            .map(|peer| peer.addresses.clone())
-            .unwrap_or_default(),
+        candidate_addresses: caches
+            .address_registry
+            .candidates_for(peer_id)
+            .iter()
+            .map(|r| r.addr.clone())
+            .collect(),
         peer_marked_reachable: caches.is_reachable(peer_id),
         connected_age_ms: caches
             .connected_at

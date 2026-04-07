@@ -243,6 +243,43 @@ impl AddressRegistry {
         candidates
     }
 
+    /// Return candidate addresses grouped by scope tier, ordered
+    /// LAN → WAN → Relay.  Within each tier addresses are sorted by
+    /// effective priority.  Empty tiers are omitted.
+    pub fn candidates_by_tier(&self, peer_id: &str) -> Vec<(AddressScope, Vec<&AddressRecord>)> {
+        let now = Utc::now();
+        let mut lan = Vec::new();
+        let mut wan = Vec::new();
+        let mut relay = Vec::new();
+
+        for ((pid, _), rec) in &self.entries {
+            if pid != peer_id || rec.is_expired(now) || rec.is_cooling_down(now) {
+                continue;
+            }
+            match rec.scope {
+                AddressScope::Lan => lan.push(rec),
+                AddressScope::Wan => wan.push(rec),
+                AddressScope::Relay => relay.push(rec),
+            }
+        }
+
+        for group in [&mut lan, &mut wan, &mut relay] {
+            group.sort_by_key(|r| r.effective_priority());
+        }
+
+        let mut tiers = Vec::new();
+        if !lan.is_empty() {
+            tiers.push((AddressScope::Lan, lan));
+        }
+        if !wan.is_empty() {
+            tiers.push((AddressScope::Wan, wan));
+        }
+        if !relay.is_empty() {
+            tiers.push((AddressScope::Relay, relay));
+        }
+        tiers
+    }
+
     /// Return *all* addresses for a peer (including expired / cooling-down),
     /// useful for diagnostics.
     pub fn all_for(&self, peer_id: &str) -> Vec<&AddressRecord> {
@@ -544,6 +581,59 @@ mod tests {
         assert!(is_quic_addr("/ip4/192.168.1.5/udp/9000/quic-v1"));
         assert!(is_quic_addr("/ip4/192.168.1.5/udp/9000/quic"));
         assert!(!is_quic_addr("/ip4/192.168.1.5/tcp/9000"));
+    }
+
+    #[test]
+    fn candidates_by_tier_groups_and_orders() {
+        let mut reg = make_registry();
+        reg.register(
+            "p",
+            "/ip4/10.0.0.1/tcp/8000",
+            AddressSource::Mdns,
+            AddressScope::Lan,
+        );
+        reg.register(
+            "p",
+            "/ip4/10.0.0.1/udp/9000/quic-v1",
+            AddressSource::Mdns,
+            AddressScope::Lan,
+        );
+        reg.register(
+            "p",
+            "/ip4/203.0.113.1/tcp/8000",
+            AddressSource::Manual,
+            AddressScope::Wan,
+        );
+        reg.register(
+            "p",
+            "/relay/p/p2p-circuit",
+            AddressSource::Manual,
+            AddressScope::Relay,
+        );
+
+        let tiers = reg.candidates_by_tier("p");
+        assert_eq!(tiers.len(), 3);
+        assert_eq!(tiers[0].0, AddressScope::Lan);
+        assert_eq!(tiers[0].1.len(), 2);
+        // QUIC first within LAN tier
+        assert!(tiers[0].1[0].addr.contains("quic"));
+        assert_eq!(tiers[1].0, AddressScope::Wan);
+        assert_eq!(tiers[2].0, AddressScope::Relay);
+    }
+
+    #[test]
+    fn candidates_by_tier_omits_empty_tiers() {
+        let mut reg = make_registry();
+        reg.register(
+            "p",
+            "/ip4/203.0.113.1/tcp/8000",
+            AddressSource::Manual,
+            AddressScope::Wan,
+        );
+
+        let tiers = reg.candidates_by_tier("p");
+        assert_eq!(tiers.len(), 1);
+        assert_eq!(tiers[0].0, AddressScope::Wan);
     }
 
     #[test]

@@ -871,11 +871,13 @@ async fn outbound_business_denied_keeps_peer_reachable() {
     let uc_peer_id = uc_core::PeerId::from(remote_peer_id.as_str());
     let control = swarm.behaviour().stream.new_control();
 
+    let (dial_tx, _dial_rx) = mpsc::channel(4);
     let result = execute_business_stream(
         &control,
         &caches,
         &resolver,
         &event_tx,
+        &dial_tx,
         &uc_peer_id,
         remote_peer,
         Some(b"clipboard"),
@@ -934,11 +936,13 @@ async fn business_stream_open_attempt_is_scoped_to_stable_span() {
     let uc_peer_id = uc_core::PeerId::from(remote_peer_id.as_str());
     let control = swarm.behaviour().stream.new_control();
 
+    let (dial_tx, _dial_rx) = mpsc::channel(4);
     let result = execute_business_stream(
         &control,
         &caches,
         &resolver,
         &event_tx,
+        &dial_tx,
         &uc_peer_id,
         remote_peer,
         Some(b"clipboard"),

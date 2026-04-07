@@ -16,7 +16,7 @@ use uc_core::ports::ConnectionPolicyResolverPort;
 use super::business_stream::execute_business_stream;
 use super::peer_cache::PeerCaches;
 use super::{
-    BusinessCommand, BUSINESS_PROTOCOL_ID, BUSINESS_STREAM_CLOSE_TIMEOUT,
+    BusinessCommand, DialRequest, BUSINESS_PROTOCOL_ID, BUSINESS_STREAM_CLOSE_TIMEOUT,
     BUSINESS_STREAM_OPEN_TIMEOUT, BUSINESS_STREAM_WRITE_TIMEOUT,
 };
 
@@ -82,6 +82,7 @@ pub(super) async fn execute_business_command(
     policy_resolver: Arc<dyn ConnectionPolicyResolverPort>,
     event_tx: mpsc::Sender<NetworkEvent>,
     local_peer_id: String,
+    dial_tx: mpsc::Sender<DialRequest>,
 ) {
     match command {
         BusinessCommand::SendClipboard {
@@ -105,6 +106,7 @@ pub(super) async fn execute_business_command(
                         &caches,
                         &policy_resolver,
                         &event_tx,
+                        &dial_tx,
                         &peer_id,
                         peer,
                         Some(&*data),
@@ -166,6 +168,7 @@ pub(super) async fn execute_business_command(
                         &caches,
                         &policy_resolver,
                         &event_tx,
+                        &dial_tx,
                         &peer_id,
                         peer,
                         None,

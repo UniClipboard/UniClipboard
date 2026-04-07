@@ -20,13 +20,16 @@ use super::dial_strategy::{
 };
 use super::discovery::{apply_peer_not_ready, apply_peer_ready};
 use super::peer_cache::{snapshot_peer_addresses, PeerCaches};
-use super::{check_business_allowed, try_send_event, BUSINESS_PROTOCOL_ID, NETWORK_CHUNK_SIZE};
+use super::{
+    check_business_allowed, try_send_event, DialRequest, BUSINESS_PROTOCOL_ID, NETWORK_CHUNK_SIZE,
+};
 
 pub(super) async fn execute_business_stream(
     control: &stream::Control,
     caches: &Arc<RwLock<PeerCaches>>,
     policy_resolver: &Arc<dyn ConnectionPolicyResolverPort>,
     event_tx: &mpsc::Sender<NetworkEvent>,
+    dial_tx: &mpsc::Sender<DialRequest>,
     peer_id: &uc_core::PeerId,
     peer: PeerId,
     payload: Option<&[u8]>,
@@ -122,6 +125,55 @@ pub(super) async fn execute_business_stream(
             last_seen_age_ms = ?address_snapshot.last_seen_age_ms,
             "attempting business stream open"
         );
+
+        // Pre-dial: when a new connection is needed, send a DialRequest to the
+        // swarm loop with only the best-tier candidate addresses.  This ensures
+        // LAN addresses are tried before WAN, and WAN before Relay.
+        if dial_decision == "new_dial_required" {
+            let tiers = {
+                let caches = caches.read().await;
+                caches
+                    .address_registry
+                    .candidates_by_tier(peer_id_str)
+                    .into_iter()
+                    .map(|(scope, recs)| {
+                        let addrs: Vec<String> = recs.iter().map(|r| r.addr.clone()).collect();
+                        (scope, addrs)
+                    })
+                    .collect::<Vec<_>>()
+            };
+            // Pick the first non-empty tier (LAN > WAN > Relay).
+            if let Some((scope, addr_strings)) = tiers.first() {
+                let addrs: Vec<libp2p::Multiaddr> = addr_strings
+                    .iter()
+                    .filter_map(|a| a.parse().ok())
+                    .collect();
+                if !addrs.is_empty() {
+                    let (tx, rx) = tokio::sync::oneshot::channel();
+                    info!(
+                        event = "business_stream.pre_dial",
+                        operation = denied_operation,
+                        peer_id = %peer_id_str,
+                        scope = ?scope,
+                        address_count = addrs.len(),
+                        addresses = ?addr_strings,
+                        "sending pre-dial request with best-tier addresses"
+                    );
+                    if dial_tx
+                        .send(DialRequest {
+                            peer,
+                            addresses: addrs,
+                            result_tx: tx,
+                        })
+                        .await
+                        .is_ok()
+                    {
+                        // Wait for dial initiation (not connection completion).
+                        let _ = rx.await;
+                    }
+                }
+            }
+        }
 
         let mut control = control.clone();
         let result = match tokio::time::timeout(

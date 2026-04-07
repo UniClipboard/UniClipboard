@@ -91,17 +91,11 @@ pub(crate) fn apply_peer_ready_from_connection(
     connected_at: DateTime<Utc>,
     address: Option<libp2p::Multiaddr>,
 ) -> Option<NetworkEvent> {
-    let address = address.map(|address| address.to_string());
-    if let Some(address) = address.as_deref() {
-        caches.upsert_discovered_from_connection(
-            peer_id,
-            address
-                .parse()
-                .expect("connection-established address should stay parseable"),
-            connected_at,
-        );
+    let address_string = address.as_ref().map(|a| a.to_string());
+    if let Some(address) = address {
+        caches.upsert_discovered_from_connection(peer_id, address, connected_at);
     }
-    if caches.mark_connection_established(peer_id, connection_id, address, connected_at) {
+    if caches.mark_connection_established(peer_id, connection_id, address_string, connected_at) {
         Some(NetworkEvent::PeerReady {
             peer_id: peer_id.to_string(),
         })

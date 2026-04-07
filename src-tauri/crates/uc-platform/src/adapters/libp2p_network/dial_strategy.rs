@@ -79,12 +79,17 @@ pub(crate) fn transport_label_str(address: &str) -> &'static str {
 
 // ── Dial decisions ───────────────────────────────────────────
 
+/// Priority penalty added for non-QUIC transports within the same address scope.
+/// Used by both `effective_priority_for_addr` and the pre-dial scope threshold
+/// in `business_stream`.
+pub(crate) const TRANSPORT_PENALTY: u8 = 5;
+
 pub(crate) fn effective_priority_for_addr(address: &str) -> u8 {
     let scope = infer_address_scope(address);
     let transport_penalty = if transport_label_str(address) == "quic" {
         0
     } else {
-        5
+        TRANSPORT_PENALTY
     };
     scope.base_priority().saturating_add(transport_penalty)
 }

@@ -1,5 +1,6 @@
 mod behaviour;
 mod business_command;
+mod business_stream;
 mod dial_strategy;
 mod discovery;
 pub(crate) mod peer_cache;

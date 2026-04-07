@@ -1,7 +1,7 @@
 use super::super::pairing_stream::service::PairingStreamError;
 #[allow(deprecated)]
 use super::behaviour::{build_mdns_config, Libp2pBehaviour};
-use super::business_command::execute_business_stream;
+use super::business_stream::execute_business_stream;
 use super::dial_strategy::{
     chosen_dial_addr_for_log, infer_address_scope, infer_chosen_dial_addr_resolution,
     sort_addresses_quic_first, successful_dial_observation,

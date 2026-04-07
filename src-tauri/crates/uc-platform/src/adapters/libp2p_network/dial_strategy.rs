@@ -79,11 +79,23 @@ pub(crate) fn transport_label_str(address: &str) -> &'static str {
 
 // ── Dial decisions ───────────────────────────────────────────
 
-pub(crate) fn dial_decision_for_snapshot(snapshot: &PeerAddressSnapshot) -> &'static str {
-    if snapshot.peer_marked_reachable {
-        "reuse_existing_connection"
+pub(crate) fn effective_priority_for_addr(address: &str) -> u8 {
+    let scope = infer_address_scope(address);
+    let transport_penalty = if transport_label_str(address) == "quic" {
+        0
     } else {
+        5
+    };
+    scope.base_priority().saturating_add(transport_penalty)
+}
+
+pub(crate) fn dial_decision_for_snapshot(snapshot: &PeerAddressSnapshot) -> &'static str {
+    if !snapshot.peer_marked_reachable {
         "new_dial_required"
+    } else if should_upgrade_connection(snapshot) {
+        "upgrade_to_better_connection"
+    } else {
+        "reuse_existing_connection"
     }
 }
 
@@ -93,6 +105,21 @@ pub(crate) fn preferred_candidate_transport(snapshot: &PeerAddressSnapshot) -> &
         .first()
         .map(|addr| transport_label_str(addr))
         .unwrap_or("none")
+}
+
+fn should_upgrade_connection(snapshot: &PeerAddressSnapshot) -> bool {
+    let Some(best_connected_priority) = snapshot.best_connected_effective_priority else {
+        return false;
+    };
+    let Some(best_candidate_priority) = snapshot
+        .candidate_addresses
+        .first()
+        .map(|addr| effective_priority_for_addr(addr))
+    else {
+        return false;
+    };
+
+    best_candidate_priority < best_connected_priority
 }
 
 pub(crate) fn infer_chosen_dial_addr_resolution(

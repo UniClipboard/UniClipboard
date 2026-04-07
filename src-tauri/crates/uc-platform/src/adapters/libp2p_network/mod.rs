@@ -99,6 +99,7 @@ enum BusinessCommand {
 pub(super) struct DialRequest {
     pub peer: PeerId,
     pub addresses: Vec<Multiaddr>,
+    pub allow_connected_dial: bool,
     pub result_tx: oneshot::Sender<Result<()>>,
 }
 

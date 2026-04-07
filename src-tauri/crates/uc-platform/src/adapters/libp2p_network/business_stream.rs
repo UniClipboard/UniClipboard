@@ -10,19 +10,209 @@ use libp2p_stream as stream;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::{mpsc, RwLock};
-use tracing::{debug, error, info, info_span, warn, Instrument, Span};
+use tracing::{debug, info, info_span, warn, Instrument, Span};
 use uc_core::network::{NetworkEvent, ProtocolDirection};
 use uc_core::ports::{ConnectionPolicyResolverPort, TransferDirection, TransferProgress};
 
 use super::dial_strategy::{
-    chosen_dial_addr_for_log, dial_decision_for_snapshot, infer_chosen_dial_addr_resolution,
-    preferred_candidate_transport,
+    chosen_dial_addr_for_log, dial_decision_for_snapshot, effective_priority_for_addr,
+    infer_chosen_dial_addr_resolution, preferred_candidate_transport,
 };
 use super::discovery::{apply_peer_not_ready, apply_peer_ready};
-use super::peer_cache::{snapshot_peer_addresses, PeerCaches};
+use super::peer_cache::{snapshot_peer_addresses, PeerAddressSnapshot, PeerCaches};
 use super::{
     check_business_allowed, try_send_event, DialRequest, BUSINESS_PROTOCOL_ID, NETWORK_CHUNK_SIZE,
 };
+
+const PRE_DIAL_CONNECTION_POLL_INTERVAL: Duration = Duration::from_millis(20);
+
+fn preferred_candidate_priority(snapshot: &PeerAddressSnapshot) -> Option<u8> {
+    snapshot
+        .candidate_addresses
+        .first()
+        .map(|address| effective_priority_for_addr(address))
+}
+
+async fn wait_for_preferred_connection(
+    caches: &Arc<RwLock<PeerCaches>>,
+    peer_id: &str,
+    required_priority: u8,
+    wait_budget: Duration,
+) -> Result<()> {
+    let deadline = tokio::time::Instant::now() + wait_budget;
+
+    loop {
+        let snapshot = {
+            let caches = caches.read().await;
+            snapshot_peer_addresses(&caches, peer_id, Utc::now())
+        };
+        let best_connection_ready = snapshot
+            .best_connected_effective_priority
+            .is_some_and(|priority| priority <= required_priority);
+        let all_active_connections_preferred = snapshot
+            .connected_addresses
+            .iter()
+            .all(|address| effective_priority_for_addr(address) <= required_priority);
+
+        if snapshot.peer_marked_reachable
+            && best_connection_ready
+            && all_active_connections_preferred
+        {
+            return Ok(());
+        }
+
+        if tokio::time::Instant::now() >= deadline {
+            return Err(anyhow!(
+                "timed out waiting for explicit connection with priority <= {required_priority}"
+            ));
+        }
+
+        tokio::time::sleep(PRE_DIAL_CONNECTION_POLL_INTERVAL).await;
+    }
+}
+
+async fn ensure_explicit_connection(
+    caches: &Arc<RwLock<PeerCaches>>,
+    dial_tx: &mpsc::Sender<DialRequest>,
+    peer_id_str: &str,
+    peer: PeerId,
+    denied_operation: &str,
+    address_snapshot: &PeerAddressSnapshot,
+    dial_decision: &str,
+    open_timeout: Duration,
+    open_started_at: tokio::time::Instant,
+) -> Result<()> {
+    if dial_decision == "reuse_existing_connection" {
+        return Ok(());
+    }
+
+    let required_priority = preferred_candidate_priority(address_snapshot)
+        .ok_or_else(|| anyhow!("no explicit dial candidates available for peer {peer_id_str}"))?;
+    let tiers = {
+        let caches = caches.read().await;
+        caches
+            .address_registry
+            .candidates_by_tier(peer_id_str)
+            .into_iter()
+            .map(|(scope, recs)| {
+                let addrs: Vec<String> = recs.iter().map(|r| r.addr.clone()).collect();
+                (scope, addrs)
+            })
+            .collect::<Vec<_>>()
+    };
+
+    let mut dial_initiated = false;
+    for (tier_index, (scope, addr_strings)) in tiers.iter().enumerate() {
+        let addrs: Vec<libp2p::Multiaddr> = addr_strings
+            .iter()
+            .filter_map(|address| match address.parse() {
+                Ok(addr) => Some(addr),
+                Err(err) => {
+                    warn!(
+                        event = "business_stream.pre_dial",
+                        operation = denied_operation,
+                        peer_id = %peer_id_str,
+                        scope = ?scope,
+                        tier_index,
+                        address = %address,
+                        error = %err,
+                        "failed to parse address, skipping"
+                    );
+                    None
+                }
+            })
+            .collect();
+
+        if addrs.is_empty() {
+            continue;
+        }
+
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        info!(
+            event = "business_stream.pre_dial",
+            operation = denied_operation,
+            peer_id = %peer_id_str,
+            scope = ?scope,
+            address_count = addrs.len(),
+            addresses = ?addr_strings,
+            tier_index,
+            dial_decision,
+            "sending pre-dial request with tier addresses"
+        );
+
+        if let Err(err) = dial_tx
+            .send(DialRequest {
+                peer,
+                addresses: addrs,
+                allow_connected_dial: dial_decision == "upgrade_to_better_connection",
+                result_tx: tx,
+            })
+            .await
+        {
+            return Err(anyhow!("failed to send dial request: {err}"));
+        }
+
+        match rx.await {
+            Ok(Ok(())) => {
+                debug!(
+                    event = "business_stream.pre_dial",
+                    operation = denied_operation,
+                    peer_id = %peer_id_str,
+                    scope = ?scope,
+                    tier_index,
+                    dial_decision,
+                    "dial initiation succeeded"
+                );
+                dial_initiated = true;
+                break;
+            }
+            Ok(Err(err)) => {
+                warn!(
+                    event = "business_stream.pre_dial",
+                    operation = denied_operation,
+                    peer_id = %peer_id_str,
+                    scope = ?scope,
+                    tier_index,
+                    dial_decision,
+                    error = %err,
+                    "dial initiation failed, trying next tier"
+                );
+            }
+            Err(_) => {
+                warn!(
+                    event = "business_stream.pre_dial",
+                    operation = denied_operation,
+                    peer_id = %peer_id_str,
+                    scope = ?scope,
+                    tier_index,
+                    dial_decision,
+                    "dial initiation channel dropped, trying next tier"
+                );
+            }
+        }
+    }
+
+    if !dial_initiated {
+        return Err(anyhow!("explicit pre-dial failed for all candidate tiers"));
+    }
+
+    let remaining_wait_budget = open_timeout
+        .checked_sub(open_started_at.elapsed())
+        .unwrap_or_default();
+    if remaining_wait_budget.is_zero() {
+        return Err(anyhow!(
+            "business stream open timed out before explicit dial completed"
+        ));
+    }
+
+    wait_for_preferred_connection(
+        caches,
+        peer_id_str,
+        required_priority,
+        remaining_wait_budget,
+    )
+    .await
+}
 
 pub(super) async fn execute_business_stream(
     control: &stream::Control,
@@ -54,6 +244,7 @@ pub(super) async fn execute_business_stream(
 
     async move {
         let attempt_started_at = Utc::now();
+        let open_started_at = tokio::time::Instant::now();
 
         if check_business_allowed(
             policy_resolver,
@@ -126,127 +317,41 @@ pub(super) async fn execute_business_stream(
             "attempting business stream open"
         );
 
-        // Pre-dial: when a new connection is needed, send a DialRequest to the
-        // swarm loop with only the best-tier candidate addresses.  This ensures
-        // LAN addresses are tried before WAN, and WAN before Relay.
-        if dial_decision == "new_dial_required" {
-            let tiers = {
-                let caches = caches.read().await;
-                caches
-                    .address_registry
-                    .candidates_by_tier(peer_id_str)
-                    .into_iter()
-                    .map(|(scope, recs)| {
-                        let addrs: Vec<String> = recs.iter().map(|r| r.addr.clone()).collect();
-                        (scope, addrs)
-                    })
-                    .collect::<Vec<_>>()
-            };
-            // Iterate ALL tiers in order (LAN > WAN > Relay).
-            for (tier_index, (scope, addr_strings)) in tiers.iter().enumerate() {
-                // Parse address strings, logging failures
-                let addrs: Vec<libp2p::Multiaddr> = addr_strings
-                    .iter()
-                    .filter_map(|a| match a.parse() {
-                        Ok(addr) => Some(addr),
-                        Err(e) => {
-                            warn!(
-                                event = "business_stream.pre_dial",
-                                operation = denied_operation,
-                                peer_id = %peer_id_str,
-                                scope = ?scope,
-                                tier_index,
-                                address = %a,
-                                error = %e,
-                                "failed to parse address, skipping"
-                            );
-                            None
-                        }
-                    })
-                    .collect();
-
-                // Skip tier if no usable addresses after parsing
-                if addrs.is_empty() {
-                    continue;
-                }
-
-                let (tx, rx) = tokio::sync::oneshot::channel();
-                info!(
-                    event = "business_stream.pre_dial",
-                    operation = denied_operation,
-                    peer_id = %peer_id_str,
-                    scope = ?scope,
-                    address_count = addrs.len(),
-                    addresses = ?addr_strings,
-                    tier_index,
-                    "sending pre-dial request with tier addresses"
-                );
-
-                match dial_tx
-                    .send(DialRequest {
-                        peer,
-                        addresses: addrs,
-                        result_tx: tx,
-                    })
-                    .await
-                {
-                    Err(e) => {
-                        error!(
-                            event = "business_stream.pre_dial",
-                            operation = denied_operation,
-                            peer_id = %peer_id_str,
-                            scope = ?scope,
-                            tier_index,
-                            error = %e,
-                            "failed to send dial request"
-                        );
-                        break;
-                    }
-                    Ok(()) => match rx.await {
-                        Ok(Ok(())) => {
-                            debug!(
-                                event = "business_stream.pre_dial",
-                                operation = denied_operation,
-                                peer_id = %peer_id_str,
-                                scope = ?scope,
-                                tier_index,
-                                "dial initiation succeeded"
-                            );
-                            break;
-                        }
-                        Ok(Err(e)) => {
-                            warn!(
-                                event = "business_stream.pre_dial",
-                                operation = denied_operation,
-                                peer_id = %peer_id_str,
-                                scope = ?scope,
-                                tier_index,
-                                error = %e,
-                                "dial initiation failed, trying next tier"
-                            );
-                        }
-                        Err(_) => {
-                            warn!(
-                                event = "business_stream.pre_dial",
-                                operation = denied_operation,
-                                peer_id = %peer_id_str,
-                                scope = ?scope,
-                                tier_index,
-                                "dial initiation channel dropped, trying next tier"
-                            );
-                        }
-                    },
-                }
-            }
-        }
-
         let mut control = control.clone();
-        let result = match tokio::time::timeout(
+        let result = match ensure_explicit_connection(
+            caches,
+            dial_tx,
+            peer_id_str,
+            peer,
+            denied_operation,
+            &address_snapshot,
+            dial_decision,
             open_timeout,
-            control.open_stream(peer, StreamProtocol::new(BUSINESS_PROTOCOL_ID)),
+            open_started_at,
         )
         .await
         {
+            Err(err) => {
+                warn!(
+                    event = "business_stream.pre_dial_failed",
+                    operation = denied_operation,
+                    peer_id = %peer_id_str,
+                    dial_decision,
+                    candidate_address_count = address_snapshot.candidate_addresses.len(),
+                    candidate_addresses = ?address_snapshot.candidate_addresses,
+                    error = %err,
+                    "explicit pre-dial did not produce a usable preferred connection"
+                );
+                Err(anyhow!("business stream pre-dial failed: {err}"))
+            }
+            Ok(()) => match tokio::time::timeout(
+                open_timeout
+                    .checked_sub(open_started_at.elapsed())
+                    .unwrap_or_default(),
+                control.open_stream(peer, StreamProtocol::new(BUSINESS_PROTOCOL_ID)),
+            )
+            .await
+            {
             Ok(Ok(mut stream)) => {
                 if let Some(data) = payload {
                     // Write payload in NETWORK_CHUNK_SIZE chunks with progress tracking
@@ -456,7 +561,7 @@ pub(super) async fn execute_business_stream(
                     Err(anyhow!("ensure business stream open timed out"))
                 }
             }
-        };
+        }};
 
         apply_business_stream_result(caches, event_tx, peer_id_str, &result).await;
         result

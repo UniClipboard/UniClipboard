@@ -3,8 +3,8 @@ use super::super::pairing_stream::service::PairingStreamError;
 use super::behaviour::{build_mdns_config, Libp2pBehaviour};
 use super::business_stream::execute_business_stream;
 use super::dial_strategy::{
-    chosen_dial_addr_for_log, infer_address_scope, infer_chosen_dial_addr_resolution,
-    sort_addresses_quic_first, successful_dial_observation,
+    chosen_dial_addr_for_log, dial_decision_for_snapshot, infer_address_scope,
+    infer_chosen_dial_addr_resolution, sort_addresses_quic_first, successful_dial_observation,
 };
 use super::discovery::{
     apply_mdns_discovered, apply_mdns_expired, apply_peer_not_ready, apply_peer_ready,
@@ -15,6 +15,7 @@ use super::*;
 use crate::adapters::{InMemoryEncryptionSessionPort, PairingRuntimeOwner};
 use libp2p::futures::{AsyncReadExt, AsyncWriteExt};
 use libp2p::identity;
+use libp2p::swarm::ConnectionId;
 use libp2p::Multiaddr;
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex};
@@ -239,6 +240,129 @@ fn regression_reuse_existing_connection_does_not_emit_chosen_dial_addr() {
 }
 
 #[test]
+fn dial_decision_upgrades_when_better_candidate_appears() {
+    let mut caches = PeerCaches::new();
+    let t0 = Utc::now();
+    let wan_addr = "/ip4/203.0.113.10/tcp/4001";
+    let lan_addr = "/ip4/192.168.1.8/udp/4001/quic-v1";
+
+    caches.upsert_discovered(
+        "peer-1".to_string(),
+        vec![wan_addr.to_string(), lan_addr.to_string()],
+        t0,
+    );
+    assert!(caches.mark_connection_established(
+        "peer-1",
+        ConnectionId::new_unchecked(1),
+        Some(wan_addr.to_string()),
+        t0,
+    ));
+
+    let snapshot = snapshot_peer_addresses(&caches, "peer-1", t0 + chrono::TimeDelta::seconds(1));
+
+    assert_eq!(snapshot.best_connected_address.as_deref(), Some(wan_addr));
+    assert_eq!(
+        dial_decision_for_snapshot(&snapshot),
+        "upgrade_to_better_connection"
+    );
+}
+
+#[test]
+fn dial_decision_reuses_when_current_connection_is_already_best() {
+    let mut caches = PeerCaches::new();
+    let t0 = Utc::now();
+    let lan_addr = "/ip4/192.168.1.8/udp/4001/quic-v1";
+    let wan_addr = "/ip4/203.0.113.10/tcp/4001";
+
+    caches.upsert_discovered(
+        "peer-1".to_string(),
+        vec![wan_addr.to_string(), lan_addr.to_string()],
+        t0,
+    );
+    assert!(caches.mark_connection_established(
+        "peer-1",
+        ConnectionId::new_unchecked(1),
+        Some(lan_addr.to_string()),
+        t0,
+    ));
+
+    let snapshot = snapshot_peer_addresses(&caches, "peer-1", t0 + chrono::TimeDelta::seconds(1));
+
+    assert_eq!(snapshot.best_connected_address.as_deref(), Some(lan_addr));
+    assert_eq!(
+        dial_decision_for_snapshot(&snapshot),
+        "reuse_existing_connection"
+    );
+}
+
+#[test]
+fn inferior_connections_only_returns_worse_paths() {
+    let mut caches = PeerCaches::new();
+    let t0 = Utc::now();
+    let lan_addr = "/ip4/192.168.1.8/udp/4001/quic-v1";
+    let wan_addr = "/ip4/203.0.113.10/tcp/4001";
+    let lan_connection = ConnectionId::new_unchecked(1);
+    let wan_connection = ConnectionId::new_unchecked(2);
+
+    caches.upsert_discovered(
+        "peer-1".to_string(),
+        vec![wan_addr.to_string(), lan_addr.to_string()],
+        t0,
+    );
+    assert!(caches.mark_connection_established(
+        "peer-1",
+        wan_connection,
+        Some(wan_addr.to_string()),
+        t0,
+    ));
+    assert!(!caches.mark_connection_established(
+        "peer-1",
+        lan_connection,
+        Some(lan_addr.to_string()),
+        t0,
+    ));
+
+    let inferior = caches.inferior_connection_ids("peer-1");
+
+    assert_eq!(inferior, vec![wan_connection]);
+}
+
+#[test]
+fn closing_one_connection_keeps_peer_reachable_when_another_remains() {
+    let mut caches = PeerCaches::new();
+    let t0 = Utc::now();
+    let lan_addr = "/ip4/192.168.1.8/udp/4001/quic-v1";
+    let wan_addr = "/ip4/203.0.113.10/tcp/4001";
+    let lan_connection = ConnectionId::new_unchecked(1);
+    let wan_connection = ConnectionId::new_unchecked(2);
+
+    caches.upsert_discovered(
+        "peer-1".to_string(),
+        vec![wan_addr.to_string(), lan_addr.to_string()],
+        t0,
+    );
+    assert!(caches.mark_connection_established(
+        "peer-1",
+        wan_connection,
+        Some(wan_addr.to_string()),
+        t0,
+    ));
+    assert!(!caches.mark_connection_established(
+        "peer-1",
+        lan_connection,
+        Some(lan_addr.to_string()),
+        t0,
+    ));
+
+    assert!(!caches.mark_connection_closed("peer-1", wan_connection));
+
+    let snapshot = snapshot_peer_addresses(&caches, "peer-1", t0 + chrono::TimeDelta::seconds(1));
+    assert!(caches.is_reachable("peer-1"));
+    assert_eq!(snapshot.connected_address_count, 1);
+    assert_eq!(snapshot.best_connected_address.as_deref(), Some(lan_addr));
+}
+
+#[test]
 fn mdns_discovery_groups_addresses_by_peer() {
     let peer = PeerId::random();
     let addr_one: Multiaddr = "/ip4/192.168.1.2/tcp/4001".parse().unwrap();
@@ -289,8 +413,13 @@ fn connection_established_backfills_discovery_and_reachable() {
     let mut caches = PeerCaches::new();
     let address: Multiaddr = "/ip4/127.0.0.1/tcp/5001".parse().expect("valid multiaddr");
 
-    let event =
-        apply_peer_ready_from_connection(&mut caches, "peer-1", Utc::now(), Some(address.clone()));
+    let event = apply_peer_ready_from_connection(
+        &mut caches,
+        "peer-1",
+        ConnectionId::new_unchecked(1),
+        Utc::now(),
+        Some(address.clone()),
+    );
 
     assert!(matches!(
         event,

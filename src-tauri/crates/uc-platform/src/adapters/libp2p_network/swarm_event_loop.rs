@@ -20,8 +20,8 @@ use super::dial_strategy::{
     dial_observation_from_error, successful_dial_observation, transport_label, transport_label_str,
 };
 use super::discovery::{
-    apply_mdns_discovered, apply_mdns_expired, apply_peer_not_ready,
-    apply_peer_ready_from_connection, collect_mdns_discovered, collect_mdns_expired,
+    apply_mdns_discovered, apply_mdns_expired, apply_peer_ready_from_connection,
+    collect_mdns_discovered, collect_mdns_expired,
 };
 use super::peer_cache::{snapshot_peer_addresses, PeerCaches};
 use super::{try_send_event, BusinessCommand, DialRequest, MAX_IN_FLIGHT_BUSINESS_COMMANDS};
@@ -187,7 +187,12 @@ pub(super) async fn run_swarm(
                         }
                     },
                     SwarmEvent::Behaviour(Libp2pBehaviourEvent::Stream) => {}
-                    SwarmEvent::ConnectionEstablished { peer_id, endpoint, .. } => {
+                    SwarmEvent::ConnectionEstablished {
+                        peer_id,
+                        connection_id,
+                        endpoint,
+                        ..
+                    } => {
                         let peer_id_string = peer_id.to_string();
                         let observed_at = Utc::now();
                         let (address, endpoint_direction) = match endpoint {
@@ -205,7 +210,7 @@ pub(super) async fn run_swarm(
                             .as_ref()
                             .map(ToString::to_string)
                             .unwrap_or_else(|| "-".to_string());
-                        let (event, snapshot) = {
+                        let (event, snapshot, inferior_connection_ids) = {
                             let mut caches = caches.write().await;
                             if endpoint_direction == "dialer" {
                                 caches.record_dial_observation(
@@ -221,13 +226,37 @@ pub(super) async fn run_swarm(
                             let event = apply_peer_ready_from_connection(
                                 &mut caches,
                                 &peer_id_string,
+                                connection_id,
                                 observed_at,
                                 address,
                             );
+                            let inferior_connection_ids =
+                                caches.inferior_connection_ids(&peer_id_string);
                             let snapshot =
                                 snapshot_peer_addresses(&caches, &peer_id_string, observed_at);
-                            (event, snapshot)
+                            (event, snapshot, inferior_connection_ids)
                         };
+
+                        if !inferior_connection_ids.is_empty() {
+                            for inferior_connection_id in inferior_connection_ids.iter().copied() {
+                                let _ = swarm.close_connection(inferior_connection_id);
+                            }
+                            info!(
+                                event = "peer.connection_superseded",
+                                peer_id = %peer_id_string,
+                                local_peer_id = %local_peer_id,
+                                kept_endpoint_address = %snapshot
+                                    .best_connected_address
+                                    .as_deref()
+                                    .unwrap_or("-"),
+                                kept_effective_priority = snapshot
+                                    .best_connected_effective_priority
+                                    .unwrap_or(u8::MAX),
+                                closed_connection_count = inferior_connection_ids.len(),
+                                closed_connection_ids = ?inferior_connection_ids,
+                                "closed inferior connections after a better path became available"
+                            );
+                        }
 
                         if let Some(event) = event {
                             let _ = try_send_event(&event_tx, event, "PeerReady");
@@ -245,13 +274,30 @@ pub(super) async fn run_swarm(
                             debug!("connection established for unknown peer {peer_id_string}");
                         }
                     }
-                    SwarmEvent::ConnectionClosed { peer_id, .. } => {
+                    SwarmEvent::ConnectionClosed {
+                        peer_id,
+                        connection_id,
+                        endpoint,
+                        ..
+                    } => {
                         let peer_id = peer_id.to_string();
                         let (event, snapshot) = {
                             let mut caches = caches.write().await;
+                            let event = if caches.mark_connection_closed(&peer_id, connection_id) {
+                                Some(NetworkEvent::PeerNotReady {
+                                    peer_id: peer_id.clone(),
+                                })
+                            } else {
+                                None
+                            };
                             let snapshot = snapshot_peer_addresses(&caches, &peer_id, Utc::now());
-                            let event = apply_peer_not_ready(&mut caches, &peer_id);
                             (event, snapshot)
+                        };
+                        let endpoint_address = match endpoint {
+                            ConnectedPoint::Dialer { address, .. } => address.to_string(),
+                            ConnectedPoint::Listener { send_back_addr, .. } => {
+                                send_back_addr.to_string()
+                            }
                         };
 
                         if let Some(event) = event {
@@ -260,9 +306,19 @@ pub(super) async fn run_swarm(
                                 event = "peer.connection_closed",
                                 peer_id = %peer_id,
                                 local_peer_id = %local_peer_id,
+                                endpoint_address = %endpoint_address,
                                 known_address_count = snapshot.candidate_addresses.len(),
                                 connected_age_ms = ?snapshot.connected_age_ms,
                                 "peer connection closed"
+                            );
+                        } else {
+                            debug!(
+                                event = "peer.connection_closed",
+                                peer_id = %peer_id,
+                                local_peer_id = %local_peer_id,
+                                endpoint_address = %endpoint_address,
+                                remaining_connected_address_count = snapshot.connected_address_count,
+                                "connection closed but peer still has another active path"
                             );
                         }
                     }
@@ -435,7 +491,7 @@ pub(super) async fn run_swarm(
             }
 
             Some(dial_req) = dial_rx.recv() => {
-                if swarm.is_connected(&dial_req.peer) {
+                if swarm.is_connected(&dial_req.peer) && !dial_req.allow_connected_dial {
                     debug!(
                         peer_id = %dial_req.peer,
                         "pre-dial: peer already connected, skipping dial"
@@ -462,11 +518,13 @@ pub(super) async fn run_swarm(
                         .collect();
 
                     if filtered_addresses.is_empty() {
-                        debug!(
+                        warn!(
                             peer_id = %dial_req.peer,
-                            "pre-dial: all addresses expired in PeerCaches, skipping dial"
+                            "pre-dial: all explicit addresses expired in PeerCaches"
                         );
-                        let _ = dial_req.result_tx.send(Ok(()));
+                        let _ = dial_req
+                            .result_tx
+                            .send(Err(anyhow!("pre-dial addresses expired before dial started")));
                     } else {
                         let addr_count = filtered_addresses.len();
                         debug!(
@@ -475,10 +533,15 @@ pub(super) async fn run_swarm(
                             addresses = ?filtered_addresses.iter().map(ToString::to_string).collect::<Vec<_>>(),
                             "pre-dial: initiating dial with explicit addresses"
                         );
+                        let peer_condition = if dial_req.allow_connected_dial {
+                            PeerCondition::NotDialing
+                        } else {
+                            PeerCondition::DisconnectedAndNotDialing
+                        };
                         let result = swarm.dial(
                             DialOpts::peer_id(dial_req.peer)
                                 .addresses(filtered_addresses)
-                                .condition(PeerCondition::DisconnectedAndNotDialing)
+                                .condition(peer_condition)
                                 .build(),
                         );
                         match result {

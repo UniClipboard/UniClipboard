@@ -2,11 +2,14 @@
 //! with address lifecycle metadata and dial observations.
 
 use chrono::{DateTime, Utc};
+use libp2p::swarm::ConnectionId;
 use std::collections::{HashMap, HashSet};
 use uc_core::network::address_registry::{AddressRegistry, AddressScope, AddressSource};
 use uc_core::network::DiscoveredPeer;
 
-use super::dial_strategy::{infer_address_scope, sort_addresses_quic_first};
+use super::dial_strategy::{
+    effective_priority_for_addr, infer_address_scope, sort_addresses_quic_first,
+};
 
 // ── Supporting types ──────────────────────────────────────────
 
@@ -20,15 +23,33 @@ pub(crate) struct PeerDialObservation {
     pub observed_at: DateTime<Utc>,
 }
 
+/// Tracks one active swarm connection for a peer so dial decisions can compare
+/// the current path against newly discovered candidates.
+#[derive(Debug, Clone)]
+pub(crate) struct ActivePeerConnection {
+    pub address: Option<String>,
+    pub connected_at: DateTime<Utc>,
+}
+
+impl ActivePeerConnection {
+    pub fn effective_priority(&self) -> Option<u8> {
+        self.address.as_deref().map(effective_priority_for_addr)
+    }
+}
+
 /// A point-in-time snapshot of a peer's address state used for dial decisions
 /// and observability logging.
 #[derive(Debug, Clone)]
 pub(crate) struct PeerAddressSnapshot {
     pub candidate_addresses: Vec<String>,
+    pub connected_addresses: Vec<String>,
+    pub connected_address_count: usize,
     pub peer_marked_reachable: bool,
     pub connected_age_ms: Option<i64>,
     pub discovered_age_ms: Option<i64>,
     pub last_seen_age_ms: Option<i64>,
+    pub best_connected_address: Option<String>,
+    pub best_connected_effective_priority: Option<u8>,
     pub chosen_dial_addr: Option<String>,
     pub chosen_dial_addr_resolution: Option<&'static str>,
     pub dial_attempt_addresses: Vec<String>,
@@ -47,6 +68,7 @@ pub struct PeerCaches {
     pub(crate) discovered_peers: HashMap<String, DiscoveredPeer>,
     pub(crate) reachable_peers: HashSet<String>,
     pub(crate) connected_at: HashMap<String, DateTime<Utc>>,
+    pub(crate) active_connections: HashMap<String, HashMap<ConnectionId, ActivePeerConnection>>,
     pub(crate) last_dial_observations: HashMap<String, PeerDialObservation>,
     pub(crate) address_registry: AddressRegistry,
 }
@@ -58,6 +80,7 @@ impl PeerCaches {
             discovered_peers: HashMap::new(),
             reachable_peers: HashSet::new(),
             connected_at: HashMap::new(),
+            active_connections: HashMap::new(),
             last_dial_observations: HashMap::new(),
             address_registry: AddressRegistry::new(),
         }
@@ -164,6 +187,7 @@ impl PeerCaches {
 
         self.reachable_peers.remove(peer_id);
         self.connected_at.remove(peer_id);
+        self.active_connections.remove(peer_id);
         self.last_dial_observations.remove(peer_id);
         self.discovered_peers.remove(peer_id)
     }
@@ -183,6 +207,7 @@ impl PeerCaches {
     pub fn mark_unreachable(&mut self, peer_id: &str) -> bool {
         let removed = self.reachable_peers.remove(peer_id);
         self.connected_at.remove(peer_id);
+        self.active_connections.remove(peer_id);
         self.last_dial_observations.remove(peer_id);
         removed
     }
@@ -232,6 +257,88 @@ impl PeerCaches {
         self.address_registry.record_failure(peer_id, addr, error);
     }
 
+    pub(crate) fn mark_connection_established(
+        &mut self,
+        peer_id: &str,
+        connection_id: ConnectionId,
+        address: Option<String>,
+        connected_at: DateTime<Utc>,
+    ) -> bool {
+        let was_reachable = self.is_reachable(peer_id);
+        let connections = self
+            .active_connections
+            .entry(peer_id.to_string())
+            .or_default();
+        connections.insert(
+            connection_id,
+            ActivePeerConnection {
+                address,
+                connected_at,
+            },
+        );
+
+        if self.discovered_peers.contains_key(peer_id) {
+            self.reachable_peers.insert(peer_id.to_string());
+            if let Some(first_connected_at) =
+                connections.values().map(|conn| conn.connected_at).min()
+            {
+                self.connected_at
+                    .insert(peer_id.to_string(), first_connected_at);
+            }
+        }
+
+        !was_reachable && self.is_reachable(peer_id)
+    }
+
+    pub(crate) fn mark_connection_closed(
+        &mut self,
+        peer_id: &str,
+        connection_id: ConnectionId,
+    ) -> bool {
+        let was_reachable = self.is_reachable(peer_id);
+
+        if let Some(connections) = self.active_connections.get_mut(peer_id) {
+            connections.remove(&connection_id);
+            if connections.is_empty() {
+                self.active_connections.remove(peer_id);
+                self.reachable_peers.remove(peer_id);
+                self.connected_at.remove(peer_id);
+                self.last_dial_observations.remove(peer_id);
+            } else if let Some(first_connected_at) =
+                connections.values().map(|conn| conn.connected_at).min()
+            {
+                self.connected_at
+                    .insert(peer_id.to_string(), first_connected_at);
+            }
+        }
+
+        was_reachable && !self.is_reachable(peer_id)
+    }
+
+    pub(crate) fn inferior_connection_ids(&self, peer_id: &str) -> Vec<ConnectionId> {
+        let Some(connections) = self.active_connections.get(peer_id) else {
+            return Vec::new();
+        };
+
+        let Some(best_priority) = connections
+            .values()
+            .filter_map(ActivePeerConnection::effective_priority)
+            .min()
+        else {
+            return Vec::new();
+        };
+
+        connections
+            .iter()
+            .filter_map(|(connection_id, connection)| {
+                connection
+                    .effective_priority()
+                    .filter(|priority| *priority > best_priority)
+                    .map(|_| *connection_id)
+            })
+            .collect()
+    }
+
     pub(crate) fn gc_address_registry(&mut self) -> usize {
         self.address_registry.gc()
     }
@@ -247,6 +354,33 @@ pub(crate) fn snapshot_peer_addresses(
 ) -> PeerAddressSnapshot {
     let discovered = caches.discovered_peers.get(peer_id);
     let last_dial = caches.last_dial_observations.get(peer_id);
+    let connected_addresses = caches
+        .active_connections
+        .get(peer_id)
+        .map(|connections| {
+            connections
+                .values()
+                .filter_map(|connection| connection.address.clone())
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    let best_connected = caches
+        .active_connections
+        .get(peer_id)
+        .and_then(|connections| {
+            connections
+                .values()
+                .filter_map(|connection| {
+                    connection.address.as_ref().map(|address| {
+                        (
+                            address.clone(),
+                            effective_priority_for_addr(address),
+                            connection.connected_at,
+                        )
+                    })
+                })
+                .min_by_key(|(_, priority, _)| *priority)
+        });
     PeerAddressSnapshot {
         candidate_addresses: caches
             .address_registry
@@ -254,13 +388,26 @@ pub(crate) fn snapshot_peer_addresses(
             .iter()
             .map(|r| r.addr.clone())
             .collect(),
+        connected_address_count: connected_addresses.len(),
+        connected_addresses,
         peer_marked_reachable: caches.is_reachable(peer_id),
-        connected_age_ms: caches
-            .connected_at
-            .get(peer_id)
-            .map(|connected_at| age_ms(observed_at, *connected_at)),
+        connected_age_ms: best_connected
+            .as_ref()
+            .map(|(_, _, connected_at)| age_ms(observed_at, *connected_at))
+            .or_else(|| {
+                caches
+                    .connected_at
+                    .get(peer_id)
+                    .map(|connected_at| age_ms(observed_at, *connected_at))
+            }),
         discovered_age_ms: discovered.map(|peer| age_ms(observed_at, peer.discovered_at)),
         last_seen_age_ms: discovered.map(|peer| age_ms(observed_at, peer.last_seen)),
+        best_connected_address: best_connected
+            .as_ref()
+            .map(|(address, _, _)| address.clone()),
+        best_connected_effective_priority: best_connected
+            .as_ref()
+            .map(|(_, priority, _)| *priority),
         chosen_dial_addr: last_dial.and_then(|dial| dial.chosen_dial_addr.clone()),
         chosen_dial_addr_resolution: last_dial.map(|dial| dial.chosen_dial_addr_resolution),
         dial_attempt_addresses: last_dial

@@ -2,6 +2,7 @@
 //! discovery/expiry events into cache mutations and `NetworkEvent` outputs.
 
 use chrono::{DateTime, Utc};
+use libp2p::swarm::ConnectionId;
 use libp2p::{Multiaddr, PeerId};
 use std::collections::{HashMap, HashSet};
 use uc_core::network::NetworkEvent;
@@ -86,13 +87,27 @@ pub(crate) fn apply_peer_ready(
 pub(crate) fn apply_peer_ready_from_connection(
     caches: &mut PeerCaches,
     peer_id: &str,
+    connection_id: ConnectionId,
     connected_at: DateTime<Utc>,
     address: Option<libp2p::Multiaddr>,
 ) -> Option<NetworkEvent> {
-    if let Some(address) = address {
-        caches.upsert_discovered_from_connection(peer_id, address, connected_at);
+    let address = address.map(|address| address.to_string());
+    if let Some(address) = address.as_deref() {
+        caches.upsert_discovered_from_connection(
+            peer_id,
+            address
+                .parse()
+                .expect("connection-established address should stay parseable"),
+            connected_at,
+        );
     }
-    apply_peer_ready(caches, peer_id, connected_at)
+    if caches.mark_connection_established(peer_id, connection_id, address, connected_at) {
+        Some(NetworkEvent::PeerReady {
+            peer_id: peer_id.to_string(),
+        })
+    } else {
+        None
+    }
 }
 
 /// Mark a peer as unreachable, returning a `PeerNotReady` event if the state changed.

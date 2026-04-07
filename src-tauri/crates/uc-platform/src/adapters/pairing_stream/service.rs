@@ -851,10 +851,14 @@ mod tests {
     use super::{PairingStreamConfig, PairingStreamService};
     use anyhow::anyhow;
     use libp2p::PeerId;
-    use log::{Level, LevelFilter, Metadata, Record};
-    use std::sync::{Mutex, Once};
+    use std::sync::{Arc, Mutex};
     use tokio::sync::{mpsc, watch};
     use tokio::time::{timeout, Duration};
+    use tracing::field::{Field, Visit};
+    use tracing::{Event, Subscriber};
+    use tracing_subscriber::layer::{Context, Layer};
+    use tracing_subscriber::prelude::*;
+    use tracing_subscriber::registry::LookupSpan;
 
     #[test]
     fn close_initiator_prefers_application_when_app_closed() {
@@ -1038,51 +1042,67 @@ mod tests {
         );
     }
 
-    struct TestLogger {
-        logs: Mutex<Vec<String>>,
+    #[derive(Default)]
+    struct MessageVisitor {
+        message: Option<String>,
     }
 
-    impl log::Log for TestLogger {
-        fn enabled(&self, metadata: &Metadata) -> bool {
-            metadata.level() <= Level::Warn
-        }
-
-        fn log(&self, record: &Record) {
-            if self.enabled(record.metadata()) {
-                let mut logs = self.logs.lock().expect("logs lock");
-                logs.push(format!("{}", record.args()));
+    impl Visit for MessageVisitor {
+        fn record_str(&mut self, field: &Field, value: &str) {
+            if field.name() == "message" {
+                self.message = Some(value.to_string());
             }
         }
 
-        fn flush(&self) {}
+        fn record_debug(&mut self, field: &Field, value: &dyn std::fmt::Debug) {
+            if field.name() == "message" && self.message.is_none() {
+                self.message = Some(format!("{value:?}").trim_matches('"').to_string());
+            }
+        }
     }
 
-    static LOGGER: TestLogger = TestLogger {
-        logs: Mutex::new(Vec::new()),
-    };
-    static LOGGER_INIT: Once = Once::new();
+    #[derive(Clone)]
+    struct WarningCaptureLayer {
+        warnings: Arc<Mutex<Vec<String>>>,
+    }
 
-    fn init_logger() {
-        LOGGER_INIT.call_once(|| {
-            let _ = log::set_logger(&LOGGER).map(|()| log::set_max_level(LevelFilter::Warn));
-        });
+    impl WarningCaptureLayer {
+        fn new(warnings: Arc<Mutex<Vec<String>>>) -> Self {
+            Self { warnings }
+        }
+    }
+
+    impl<S> Layer<S> for WarningCaptureLayer
+    where
+        S: Subscriber + for<'a> LookupSpan<'a>,
+    {
+        fn on_event(&self, event: &Event<'_>, _ctx: Context<'_, S>) {
+            if *event.metadata().level() > tracing::Level::WARN {
+                return;
+            }
+
+            let mut visitor = MessageVisitor::default();
+            event.record(&mut visitor);
+            if let Some(message) = visitor.message {
+                self.warnings.lock().expect("warnings lock").push(message);
+            }
+        }
     }
 
     #[test]
     fn shutdown_signal_logs_warning_when_receiver_dropped() {
-        init_logger();
-        {
-            let mut logs = LOGGER.logs.lock().expect("logs lock");
-            logs.clear();
-        }
+        let warnings = Arc::new(Mutex::new(Vec::<String>::new()));
+        let subscriber =
+            tracing_subscriber::registry().with(WarningCaptureLayer::new(warnings.clone()));
+        let _guard = tracing::subscriber::set_default(subscriber);
 
         let (shutdown_tx, shutdown_rx) = watch::channel(false);
         drop(shutdown_rx);
 
         send_shutdown_signal(&shutdown_tx);
 
-        let logs = LOGGER.logs.lock().expect("logs lock");
-        assert!(logs
+        let warnings = warnings.lock().expect("warnings lock");
+        assert!(warnings
             .iter()
             .any(|entry| entry.contains("pairing session shutdown send failed")));
     }

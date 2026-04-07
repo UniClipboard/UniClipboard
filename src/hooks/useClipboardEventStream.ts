@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react'
-import { isImageType } from '@/api/clipboardItems'
 import type { ClipboardItemResponse } from '@/api/clipboardItems'
 import { getClipboardEntries } from '@/api/daemon/clipboard'
+import { transformDaemonDtoToItemResponse } from '@/lib/clipboard-transform'
 import { daemonWs } from '@/lib/daemon-ws'
 
 export interface UseClipboardEventStreamOptions {
@@ -20,71 +20,6 @@ interface ClipboardNewContentPayload {
   entryId: string
   preview: string
   origin: string // "local" | "remote"
-}
-
-// ── Daemon DTO → Frontend response transformer ──────────────────
-// Mirrors the transformProjectionToResponse logic from clipboardItems.ts
-// so useClipboardEventStream uses the same transformation as clipboardSlice.
-function extractDomainFromUrl(url: string): string {
-  try {
-    return new URL(url).hostname
-  } catch {
-    return url
-  }
-}
-
-function transformDtoToItemResponse(
-  entry: import('@/api/daemon/clipboard').ClipboardEntryDto
-): ClipboardItemResponse {
-  const isFile = entry.contentType.includes('uri-list')
-  const isImage = !isFile && isImageType(entry.contentType)
-  const hasLinkData = !isImage && entry.linkUrls && entry.linkUrls.length > 0
-
-  let linkItem: { urls: string[]; domains: string[] } | null = null
-  if (hasLinkData) {
-    linkItem = {
-      urls: entry.linkUrls!,
-      domains: entry.linkDomains ?? entry.linkUrls!.map(extractDomainFromUrl),
-    }
-  }
-
-  return {
-    id: entry.id,
-    is_downloaded: true,
-    is_favorited: entry.isFavorited,
-    created_at: entry.capturedAt,
-    updated_at: entry.updatedAt,
-    active_time: entry.activeTime,
-    item: {
-      text:
-        !isImage && !isFile && !hasLinkData
-          ? { display_text: entry.preview, has_detail: entry.hasDetail, size: entry.sizeBytes }
-          : null,
-      image: isImage
-        ? { thumbnail: entry.thumbnailUrl ?? null, size: entry.sizeBytes, width: 0, height: 0 }
-        : null,
-      file: isFile
-        ? {
-            file_names: entry.preview
-              .split('\n')
-              .filter(Boolean)
-              .map(uri => {
-                try {
-                  return decodeURIComponent(new URL(uri).pathname.split('/').pop() || uri)
-                } catch {
-                  return uri
-                }
-              }),
-            file_sizes: entry.fileSizes ?? [],
-          }
-        : null,
-      link: linkItem as unknown as ClipboardItemResponse['item']['link'],
-      code: null,
-      unknown: null,
-    },
-    file_transfer_status: entry.fileTransferStatus ?? null,
-    file_transfer_reason: entry.fileTransferReason ?? null,
-  }
 }
 
 export function useClipboardEventStream({
@@ -143,7 +78,7 @@ export function useClipboardEventStream({
                 !!entry
               )
               if (!entry) return null
-              return transformDtoToItemResponse(entry)
+              return transformDaemonDtoToItemResponse(entry)
             })
             .then(item => {
               console.info('[useClipboardEventStream] onLocalItem called with item:', !!item)

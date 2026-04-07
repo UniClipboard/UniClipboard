@@ -1,99 +1,14 @@
 import { createSlice, createAsyncThunk, PayloadAction } from '@reduxjs/toolkit'
 import { hydrateEntryTransferStatuses } from './fileTransferSlice'
 import type { ClipboardItemResponse, ClipboardItemsResult } from '@/api/clipboardItems'
-import {
-  // Tauri API — kept as commented reference during transition
-
-  // getClipboardItems as getClipboardItemsTauri,
-
-  // deleteClipboardItem as deleteClipboardItemTauri,
-
-  // copyClipboardItem as copyClipboardItemTauri,
-
-  // clearClipboardItems as clearClipboardItemsTauri,
-
-  // favoriteClipboardItem as favoriteClipboardItemTauri,
-
-  // unfavoriteClipboardItem as unfavoriteClipboardItemTauri,
-  OrderBy,
-  Filter,
-} from '@/api/clipboardItems'
+import { OrderBy, Filter } from '@/api/clipboardItems'
 import {
   getClipboardEntries,
   deleteClipboardEntry,
   restoreClipboardEntry,
   toggleFavorite,
-  // clearClipboardItems — no daemon endpoint yet, see comment in thunk
 } from '@/api/daemon'
-
-// ── Daemon DTO → Frontend response transformer ──────────────────
-// Mirrors the transformProjectionToResponse logic from clipboardItems.ts
-// so clipboardSlice remains independent of the old Tauri module.
-function isImageType(contentType: string): boolean {
-  return contentType === 'image' || contentType.startsWith('image/')
-}
-
-function extractDomainFromUrl(url: string): string {
-  try {
-    return new URL(url).hostname
-  } catch {
-    return url
-  }
-}
-
-function transformDtoToItemResponse(
-  entry: import('@/api/daemon').ClipboardEntryDto
-): ClipboardItemResponse {
-  const isFile = entry.contentType.includes('uri-list')
-  const isImage = !isFile && isImageType(entry.contentType)
-  const hasLinkData = !isImage && entry.linkUrls && entry.linkUrls.length > 0
-
-  let linkItem: { urls: string[]; domains: string[] } | null = null
-  if (hasLinkData) {
-    linkItem = {
-      urls: entry.linkUrls!,
-      domains: entry.linkDomains ?? entry.linkUrls!.map(extractDomainFromUrl),
-    }
-  }
-
-  return {
-    id: entry.id,
-    is_downloaded: true,
-    is_favorited: entry.isFavorited,
-    created_at: entry.capturedAt,
-    updated_at: entry.updatedAt,
-    active_time: entry.activeTime,
-    item: {
-      text:
-        !isImage && !isFile && !hasLinkData
-          ? { display_text: entry.preview, has_detail: entry.hasDetail, size: entry.sizeBytes }
-          : null,
-      image: isImage
-        ? { thumbnail: entry.thumbnailUrl ?? null, size: entry.sizeBytes, width: 0, height: 0 }
-        : null,
-      file: isFile
-        ? {
-            file_names: entry.preview
-              .split('\n')
-              .filter(Boolean)
-              .map(uri => {
-                try {
-                  return decodeURIComponent(new URL(uri).pathname.split('/').pop() || uri)
-                } catch {
-                  return uri
-                }
-              }),
-            file_sizes: entry.fileSizes ?? [],
-          }
-        : null,
-      link: linkItem as unknown as ClipboardItemResponse['item']['link'],
-      code: null,
-      unknown: null,
-    },
-    file_transfer_status: entry.fileTransferStatus ?? null,
-    file_transfer_reason: entry.fileTransferReason ?? null,
-  }
-}
+import { transformDaemonDtoToItemResponse } from '@/lib/clipboard-transform'
 
 // ── State ────────────────────────────────────────────────────────
 interface ClipboardState {
@@ -163,7 +78,8 @@ export const fetchClipboardItems = createAsyncThunk<
     if (result.status === 'not_ready') {
       return { status: 'not_ready', items: [], offset: params.offset ?? 0 }
     }
-    const items: ClipboardItemResponse[] = result.entries?.map(transformDtoToItemResponse) ?? []
+    const items: ClipboardItemResponse[] =
+      result.entries?.map(transformDaemonDtoToItemResponse) ?? []
     return { ...result, items, status: 'ready' as const, offset: params.offset ?? 0 }
   } catch {
     return rejectWithValue('获取剪贴板内容失败')

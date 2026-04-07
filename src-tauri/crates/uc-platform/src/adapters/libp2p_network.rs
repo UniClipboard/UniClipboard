@@ -201,12 +201,13 @@ impl PeerCaches {
         self.address_registry
             .remove_peer_source(peer_id, AddressSource::Mdns);
 
-        // If the registry still has non-mDNS candidates for this peer,
-        // update discovered_peers to reflect only the surviving addresses
-        // rather than removing the peer entirely.
+        // If the registry still has non-mDNS records for this peer
+        // (including cooling-down or expired addresses), keep the peer alive.
+        // Use all_for() instead of candidates_for() so that addresses
+        // temporarily in cooldown don't cause premature peer removal.
         let remaining: Vec<String> = self
             .address_registry
-            .candidates_for(peer_id)
+            .all_for(peer_id)
             .iter()
             .map(|r| r.addr.clone())
             .collect();
@@ -2859,24 +2860,45 @@ fn infer_address_scope(addr: &str) -> AddressScope {
     if addr.contains("/p2p-circuit") {
         return AddressScope::Relay;
     }
-    // Extract IP and check if it's private/link-local.
-    let is_private = addr.starts_with("/ip4/10.")
-        || addr.starts_with("/ip4/172.16.")
-        || addr.starts_with("/ip4/172.17.")
-        || addr.starts_with("/ip4/172.18.")
-        || addr.starts_with("/ip4/172.19.")
-        || addr.starts_with("/ip4/172.2")
-        || addr.starts_with("/ip4/172.30.")
-        || addr.starts_with("/ip4/172.31.")
-        || addr.starts_with("/ip4/192.168.")
-        || addr.starts_with("/ip4/127.")
-        || addr.starts_with("/ip6/::1")
-        || addr.starts_with("/ip6/fe80:");
-    if is_private {
-        AddressScope::Lan
-    } else {
-        AddressScope::Wan
+
+    // Parse IP from multiaddr to classify scope accurately.
+    let parts: Vec<&str> = addr.split('/').collect();
+    for (i, part) in parts.iter().enumerate() {
+        match *part {
+            "ip4" => {
+                if let Some(ip_str) = parts.get(i + 1) {
+                    if let Ok(ip) = ip_str.parse::<std::net::Ipv4Addr>() {
+                        return if ip.is_loopback() || ip.is_private() || ip.is_link_local() {
+                            AddressScope::Lan
+                        } else {
+                            AddressScope::Wan
+                        };
+                    }
+                }
+            }
+            "ip6" => {
+                if let Some(ip_str) = parts.get(i + 1) {
+                    if let Ok(ip) = ip_str.parse::<std::net::Ipv6Addr>() {
+                        let octets = ip.octets();
+                        let is_loopback = ip.is_loopback();
+                        // Link-local: fe80::/10
+                        let is_link_local = octets[0] == 0xfe && (octets[1] & 0xc0) == 0x80;
+                        // Unique Local Address (ULA): fc00::/7 (fd00::/8)
+                        let is_ula = (octets[0] & 0xfe) == 0xfc;
+                        return if is_loopback || is_link_local || is_ula {
+                            AddressScope::Lan
+                        } else {
+                            AddressScope::Wan
+                        };
+                    }
+                }
+            }
+            _ => {}
+        }
     }
+
+    // Fallback: if we can't parse the IP, assume WAN (conservative).
+    AddressScope::Wan
 }
 
 fn sort_addresses_quic_first(addresses: &mut Vec<String>) {
@@ -5058,6 +5080,77 @@ mod tests {
             infer_address_scope("/ip4/8.8.8.8/udp/9000/quic-v1"),
             AddressScope::Wan
         );
+        // 172.2.x.x is NOT private (only 172.16-31 is) — must be WAN.
+        assert_eq!(
+            infer_address_scope("/ip4/172.2.0.1/tcp/8000"),
+            AddressScope::Wan
+        );
+    }
+
+    #[test]
+    fn infer_address_scope_ipv6_ula_is_lan() {
+        // fd00::/8 (ULA)
+        assert_eq!(
+            infer_address_scope("/ip6/fd12::1/tcp/8000"),
+            AddressScope::Lan
+        );
+        // fc00::/7
+        assert_eq!(
+            infer_address_scope("/ip6/fc00::1/tcp/8000"),
+            AddressScope::Lan
+        );
+        // fe80::/10 (link-local)
+        assert_eq!(
+            infer_address_scope("/ip6/fe80::1/tcp/8000"),
+            AddressScope::Lan
+        );
+        // ::1 (loopback)
+        assert_eq!(infer_address_scope("/ip6/::1/tcp/8000"), AddressScope::Lan);
+        // Global IPv6 — must be WAN.
+        assert_eq!(
+            infer_address_scope("/ip6/2001:db8::1/tcp/8000"),
+            AddressScope::Wan
+        );
+    }
+
+    #[test]
+    fn mdns_expired_preserves_peer_when_non_mdns_addr_in_cooldown() {
+        let mut caches = PeerCaches::new();
+        let now = Utc::now();
+
+        // Discover peer via mDNS.
+        caches.upsert_discovered(
+            "peer-1".to_string(),
+            vec!["/ip4/192.168.1.5/tcp/8000".to_string()],
+            now,
+        );
+
+        // Register a WAN address manually and put it in cooldown.
+        caches.address_registry.register(
+            "peer-1",
+            "/ip4/203.0.113.1/tcp/8000",
+            AddressSource::Manual,
+            AddressScope::Wan,
+        );
+        caches.address_registry.record_failure(
+            "peer-1",
+            "/ip4/203.0.113.1/tcp/8000",
+            "connection refused",
+        );
+        // Add to discovered_peers too.
+        if let Some(entry) = caches.discovered_peers.get_mut("peer-1") {
+            entry
+                .addresses
+                .push("/ip4/203.0.113.1/tcp/8000".to_string());
+        }
+
+        // mDNS expires — WAN address is cooling down but should NOT cause peer removal.
+        let removed = caches.remove_discovered("peer-1");
+        assert!(
+            removed.is_none(),
+            "peer should not be removed when non-mDNS address exists even in cooldown"
+        );
+        assert!(caches.discovered_peers.get("peer-1").is_some());
     }
 
     #[test]

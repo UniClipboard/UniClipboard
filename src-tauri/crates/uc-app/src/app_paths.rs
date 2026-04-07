@@ -43,6 +43,11 @@ impl AppPaths {
         self.vault_dir.join(".initialized_encryption")
     }
 
+    /// Returns the path to the persisted local device identifier.
+    pub fn device_id_path(&self) -> PathBuf {
+        self.vault_dir.join("device_id.txt")
+    }
+
     pub fn daemon_token_path(&self) -> PathBuf {
         self.app_data_root_dir.join(".daemon-token")
     }
@@ -110,6 +115,10 @@ mod tests {
         assert_eq!(
             paths.daemon_token_path(),
             PathBuf::from("/tmp/uniclipboard/.daemon-token")
+        );
+        assert_eq!(
+            paths.device_id_path(),
+            PathBuf::from("/tmp/uniclipboard/vault/device_id.txt")
         );
     }
 

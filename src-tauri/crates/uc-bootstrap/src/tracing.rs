@@ -46,19 +46,6 @@ static OTLP_GUARD: OnceLock<std::mem::ManuallyDrop<OtlpGuard>> = OnceLock::new()
 /// Guard that ensures tracing is initialized exactly once across all entry points.
 static TRACING_INITIALIZED: OnceLock<()> = OnceLock::new();
 
-/// Resolve device_id from config directory for logging correlation.
-///
-/// Reads device identifier from `{config_dir}/device_id.txt` if it exists.
-/// Returns `None` if the file doesn't exist (first launch graceful degradation).
-fn resolve_device_id_for_logging(config_dir: &Path) -> Option<String> {
-    let device_id_path = config_dir.join("device_id.txt");
-    std::fs::read_to_string(&device_id_path)
-        .ok()?
-        .trim()
-        .to_string()
-        .into()
-}
-
 /// Read the `telemetry_enabled` setting from persisted settings.
 ///
 /// Uses the canonical settings repository read path so that defaults,
@@ -107,7 +94,8 @@ pub fn init_tracing_subscriber() -> anyhow::Result<()> {
     std::fs::create_dir_all(&paths.logs_dir)?;
 
     // Step 1b: Resolve device_id for process-wide logging correlation
-    let device_id = resolve_device_id_for_logging(&app_dirs.app_data_root);
+    let device_id = std::fs::read_to_string(&paths.device_id_path()).ok();
+
     if let Some(device_id) = device_id.as_ref() {
         let _ = uc_observability::set_global_device_id(device_id.clone());
     }

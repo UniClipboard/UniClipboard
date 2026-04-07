@@ -1,0 +1,281 @@
+//! Peer state caches — tracks discovered, reachable, and connected peers along
+//! with address lifecycle metadata and dial observations.
+
+use chrono::{DateTime, Utc};
+use std::collections::{HashMap, HashSet};
+use uc_core::network::address_registry::{AddressRegistry, AddressScope, AddressSource};
+use uc_core::network::DiscoveredPeer;
+
+use super::dial_strategy::{infer_address_scope, sort_addresses_quic_first};
+
+// ── Supporting types ──────────────────────────────────────────
+
+/// Records the outcome of a single outbound dial attempt to a peer.
+#[derive(Debug, Clone)]
+pub(crate) struct PeerDialObservation {
+    pub chosen_dial_addr: Option<String>,
+    pub chosen_dial_addr_resolution: &'static str,
+    pub dial_attempt_addresses: Vec<String>,
+    pub dial_outcome: &'static str,
+    pub observed_at: DateTime<Utc>,
+}
+
+/// A point-in-time snapshot of a peer's address state used for dial decisions
+/// and observability logging.
+#[derive(Debug, Clone)]
+pub(crate) struct PeerAddressSnapshot {
+    pub candidate_addresses: Vec<String>,
+    pub peer_marked_reachable: bool,
+    pub connected_age_ms: Option<i64>,
+    pub discovered_age_ms: Option<i64>,
+    pub last_seen_age_ms: Option<i64>,
+    pub chosen_dial_addr: Option<String>,
+    pub chosen_dial_addr_resolution: Option<&'static str>,
+    pub dial_attempt_addresses: Vec<String>,
+    pub dial_attempt_address_count: usize,
+    pub last_dial_outcome: Option<&'static str>,
+    pub last_dial_age_ms: Option<i64>,
+    pub last_dial_observed_at: Option<DateTime<Utc>>,
+}
+
+// ── PeerCaches ────────────────────────────────────────────────
+
+/// Central cache of peer state for the libp2p network adapter.
+///
+/// Thread-safety is managed externally via `Arc<RwLock<PeerCaches>>`.
+pub struct PeerCaches {
+    pub(crate) discovered_peers: HashMap<String, DiscoveredPeer>,
+    pub(crate) reachable_peers: HashSet<String>,
+    pub(crate) connected_at: HashMap<String, DateTime<Utc>>,
+    pub(crate) last_dial_observations: HashMap<String, PeerDialObservation>,
+    pub(crate) address_registry: AddressRegistry,
+}
+
+impl PeerCaches {
+    /// Creates an empty `PeerCaches` instance with a fresh `AddressRegistry`.
+    pub fn new() -> Self {
+        Self {
+            discovered_peers: HashMap::new(),
+            reachable_peers: HashSet::new(),
+            connected_at: HashMap::new(),
+            last_dial_observations: HashMap::new(),
+            address_registry: AddressRegistry::new(),
+        }
+    }
+
+    /// Inserts or updates a peer discovered via mDNS, registers each discovered
+    /// address in the address registry, and preserves any existing device name
+    /// and device id from a prior entry.
+    pub fn upsert_discovered(
+        &mut self,
+        peer_id: String,
+        mut addresses: Vec<String>,
+        discovered_at: DateTime<Utc>,
+    ) -> DiscoveredPeer {
+        sort_addresses_quic_first(&mut addresses);
+
+        for addr in &addresses {
+            self.address_registry
+                .register(&peer_id, addr, AddressSource::Mdns, AddressScope::Lan);
+        }
+
+        let (existing_name, existing_device_id) = self
+            .discovered_peers
+            .get(&peer_id)
+            .map(|p| (p.device_name.clone(), p.device_id.clone()))
+            .unwrap_or((None, None));
+        let peer = DiscoveredPeer {
+            peer_id,
+            device_name: existing_name,
+            device_id: existing_device_id,
+            addresses,
+            discovered_at,
+            last_seen: discovered_at,
+            is_paired: false,
+        };
+        self.discovered_peers
+            .insert(peer.peer_id.clone(), peer.clone());
+        peer
+    }
+
+    /// Insert or update a discovered peer address observed from a direct connection.
+    ///
+    /// Registers the observed multiaddr in the address registry with an inferred scope.
+    ///
+    /// Returns `true` if the peer's address list was modified.
+    pub fn upsert_discovered_from_connection(
+        &mut self,
+        peer_id: &str,
+        address: libp2p::Multiaddr,
+        observed_at: DateTime<Utc>,
+    ) -> bool {
+        let address = address.to_string();
+
+        let scope = infer_address_scope(&address);
+        self.address_registry
+            .register(peer_id, &address, AddressSource::Inbound, scope);
+
+        let entry = self
+            .discovered_peers
+            .entry(peer_id.to_string())
+            .or_insert_with(|| DiscoveredPeer {
+                peer_id: peer_id.to_string(),
+                device_name: None,
+                device_id: None,
+                addresses: Vec::new(),
+                discovered_at: observed_at,
+                last_seen: observed_at,
+                is_paired: false,
+            });
+
+        let mut changed = false;
+        if !entry.addresses.contains(&address) {
+            entry.addresses.push(address);
+            sort_addresses_quic_first(&mut entry.addresses);
+            changed = true;
+        }
+        entry.last_seen = observed_at;
+        changed
+    }
+
+    /// Remove mDNS-sourced addresses for a discovered peer and remove the peer
+    /// entry only when no other addresses remain.
+    ///
+    /// Returns `Some(DiscoveredPeer)` if fully removed; `None` if retained or
+    /// did not exist.
+    pub fn remove_discovered(&mut self, peer_id: &str) -> Option<DiscoveredPeer> {
+        self.address_registry
+            .remove_peer_source(peer_id, AddressSource::Mdns);
+
+        let remaining: Vec<String> = self
+            .address_registry
+            .all_for(peer_id)
+            .iter()
+            .map(|r| r.addr.clone())
+            .collect();
+
+        if !remaining.is_empty() {
+            if let Some(entry) = self.discovered_peers.get_mut(peer_id) {
+                entry.addresses = remaining;
+                sort_addresses_quic_first(&mut entry.addresses);
+            }
+            return None;
+        }
+
+        self.reachable_peers.remove(peer_id);
+        self.connected_at.remove(peer_id);
+        self.last_dial_observations.remove(peer_id);
+        self.discovered_peers.remove(peer_id)
+    }
+
+    pub fn mark_reachable(&mut self, peer_id: &str, connected_at: DateTime<Utc>) -> bool {
+        if self.discovered_peers.contains_key(peer_id) {
+            self.reachable_peers.insert(peer_id.to_string());
+            self.connected_at
+                .entry(peer_id.to_string())
+                .or_insert(connected_at);
+            true
+        } else {
+            false
+        }
+    }
+
+    pub fn mark_unreachable(&mut self, peer_id: &str) -> bool {
+        let removed = self.reachable_peers.remove(peer_id);
+        self.connected_at.remove(peer_id);
+        self.last_dial_observations.remove(peer_id);
+        removed
+    }
+
+    pub fn upsert_device_name(
+        &mut self,
+        peer_id: &str,
+        device_name: String,
+        observed_at: DateTime<Utc>,
+    ) -> bool {
+        let entry = self
+            .discovered_peers
+            .entry(peer_id.to_string())
+            .or_insert_with(|| DiscoveredPeer {
+                peer_id: peer_id.to_string(),
+                device_name: None,
+                device_id: None,
+                addresses: Vec::new(),
+                discovered_at: observed_at,
+                last_seen: observed_at,
+                is_paired: false,
+            });
+        let changed = entry.device_name.as_deref() != Some(device_name.as_str());
+        entry.device_name = Some(device_name);
+        entry.last_seen = observed_at;
+        changed
+    }
+
+    pub fn is_reachable(&self, peer_id: &str) -> bool {
+        self.reachable_peers.contains(peer_id)
+    }
+
+    pub(crate) fn record_dial_observation(
+        &mut self,
+        peer_id: &str,
+        observation: PeerDialObservation,
+    ) {
+        self.last_dial_observations
+            .insert(peer_id.to_string(), observation);
+    }
+
+    pub(crate) fn record_address_success(&mut self, peer_id: &str, addr: &str) {
+        self.address_registry.record_success(peer_id, addr);
+    }
+
+    pub(crate) fn record_address_failure(&mut self, peer_id: &str, addr: &str, error: &str) {
+        self.address_registry.record_failure(peer_id, addr, error);
+    }
+
+    pub(crate) fn gc_address_registry(&mut self) -> usize {
+        self.address_registry.gc()
+    }
+}
+
+// ── Snapshot helpers ──────────────────────────────────────────
+
+/// Capture a point-in-time snapshot of a peer's address state from caches.
+pub(crate) fn snapshot_peer_addresses(
+    caches: &PeerCaches,
+    peer_id: &str,
+    observed_at: DateTime<Utc>,
+) -> PeerAddressSnapshot {
+    let discovered = caches.discovered_peers.get(peer_id);
+    let last_dial = caches.last_dial_observations.get(peer_id);
+    PeerAddressSnapshot {
+        candidate_addresses: discovered
+            .map(|peer| peer.addresses.clone())
+            .unwrap_or_default(),
+        peer_marked_reachable: caches.is_reachable(peer_id),
+        connected_age_ms: caches
+            .connected_at
+            .get(peer_id)
+            .map(|connected_at| age_ms(observed_at, *connected_at)),
+        discovered_age_ms: discovered.map(|peer| age_ms(observed_at, peer.discovered_at)),
+        last_seen_age_ms: discovered.map(|peer| age_ms(observed_at, peer.last_seen)),
+        chosen_dial_addr: last_dial.and_then(|dial| dial.chosen_dial_addr.clone()),
+        chosen_dial_addr_resolution: last_dial.map(|dial| dial.chosen_dial_addr_resolution),
+        dial_attempt_addresses: last_dial
+            .map(|dial| dial.dial_attempt_addresses.clone())
+            .unwrap_or_default(),
+        dial_attempt_address_count: last_dial
+            .map(|dial| dial.dial_attempt_addresses.len())
+            .unwrap_or(0),
+        last_dial_outcome: last_dial.map(|dial| dial.dial_outcome),
+        last_dial_age_ms: last_dial.map(|dial| age_ms(observed_at, dial.observed_at)),
+        last_dial_observed_at: last_dial.map(|dial| dial.observed_at),
+    }
+}
+
+/// Compute elapsed milliseconds between two timestamps (clamped to >= 0).
+pub(crate) fn age_ms(observed_at: DateTime<Utc>, recorded_at: DateTime<Utc>) -> i64 {
+    observed_at
+        .signed_duration_since(recorded_at)
+        .num_milliseconds()
+        .max(0)
+}

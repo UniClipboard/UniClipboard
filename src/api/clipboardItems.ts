@@ -1,4 +1,10 @@
 import { daemonClient } from '@/api/daemon/client'
+import {
+  extractDomainFromUrl,
+  isFileContentType,
+  isImageContentType,
+  parseFileNamesFromUriList,
+} from '@/lib/clipboard-utils'
 import { invokeWithTrace } from '@/lib/tauri-command'
 
 // Backend projection type
@@ -137,25 +143,13 @@ export interface ClipboardStats {
 }
 
 /**
- * Extract hostname from a URL string. Returns the raw string on failure.
- */
-function extractDomainFromUrl(url: string): string {
-  try {
-    return new URL(url).hostname
-  } catch {
-    return url
-  }
-}
-
-/**
- * Transform a backend ClipboardEntryProjection to frontend ClipboardItemResponse.
- * Shared by getClipboardItems and getClipboardEntry to avoid duplication.
+ * Transform a backend ClipboardEntryProjection (snake_case, from Tauri commands)
+ * to frontend ClipboardItemResponse.
  */
 function transformProjectionToResponse(entry: ClipboardEntryProjection): ClipboardItemResponse {
-  const isFile = entry.content_type.includes('uri-list')
-  const isImage = !isFile && isImageType(entry.content_type)
+  const isFile = isFileContentType(entry.content_type)
+  const isImage = !isFile && isImageContentType(entry.content_type)
 
-  // Use pre-parsed link data from backend (built from full representation, not preview)
   const hasLinkData = !isImage && entry.link_urls && entry.link_urls.length > 0
   let linkItem: ClipboardLinkItem | null = null
   if (hasLinkData) {
@@ -184,16 +178,7 @@ function transformProjectionToResponse(entry: ClipboardEntryProjection): Clipboa
         : null,
     file: isFile
       ? {
-          file_names: entry.preview
-            .split('\n')
-            .filter(Boolean)
-            .map(uri => {
-              try {
-                return decodeURIComponent(new URL(uri).pathname.split('/').pop() || uri)
-              } catch {
-                return uri
-              }
-            }),
+          file_names: parseFileNamesFromUriList(entry.preview),
           file_sizes: entry.file_sizes ?? [],
         }
       : (null as unknown as ClipboardFileItem),

@@ -2531,11 +2531,33 @@ async fn execute_business_stream(
             ));
         }
 
-        let address_snapshot = {
+        let (address_snapshot, registry_total, registry_candidate_count) = {
             let caches = caches.read().await;
-            snapshot_peer_addresses(&caches, peer_id_str, attempt_started_at)
+            let snapshot = snapshot_peer_addresses(&caches, peer_id_str, attempt_started_at);
+            let reg_total = caches.address_registry.all_for(peer_id_str).len();
+            let reg_candidates = caches.address_registry.candidates_for(peer_id_str).len();
+            (snapshot, reg_total, reg_candidates)
         };
         let dial_decision = dial_decision_for_snapshot(&address_snapshot);
+
+        // Enforce address cooldown: if a new dial is required and the
+        // registry has addresses but ALL of them are cooling down,
+        // reject immediately instead of attempting a doomed dial.
+        if dial_decision == "new_dial_required"
+            && registry_total > 0
+            && registry_candidate_count == 0
+        {
+            warn!(
+                event = "business_stream.all_addresses_cooling_down",
+                operation = denied_operation,
+                peer_id = %peer_id_str,
+                registry_total,
+                "all addresses for peer are in cooldown, skipping dial"
+            );
+            return Err(anyhow!(
+                "all addresses for peer {peer_id_str} are in cooldown"
+            ));
+        }
         let preferred_candidate_transport = preferred_candidate_transport(&address_snapshot);
         let span = Span::current();
         span.record("dial_decision", &dial_decision);

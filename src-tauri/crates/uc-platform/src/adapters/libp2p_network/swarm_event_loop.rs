@@ -443,30 +443,56 @@ pub(super) async fn run_swarm(
                     let _ = dial_req.result_tx.send(Ok(()));
                 } else {
                     use libp2p::swarm::dial_opts::{DialOpts, PeerCondition};
-                    let addr_count = dial_req.addresses.len();
-                    debug!(
-                        peer_id = %dial_req.peer,
-                        address_count = addr_count,
-                        addresses = ?dial_req.addresses.iter().map(ToString::to_string).collect::<Vec<_>>(),
-                        "pre-dial: initiating dial with explicit addresses"
-                    );
-                    let result = swarm.dial(
-                        DialOpts::peer_id(dial_req.peer)
-                            .addresses(dial_req.addresses)
-                            .condition(PeerCondition::DisconnectedAndNotDialing)
-                            .build(),
-                    );
-                    match result {
-                        Ok(()) => {
-                            let _ = dial_req.result_tx.send(Ok(()));
-                        }
-                        Err(err) => {
-                            warn!(
-                                peer_id = %dial_req.peer,
-                                error = %err,
-                                "pre-dial: dial initiation failed"
-                            );
-                            let _ = dial_req.result_tx.send(Err(anyhow!("pre-dial failed: {err}")));
+
+                    // Filter stale mDNS addresses before dialing
+                    let live_addresses: std::collections::HashSet<String> = {
+                        let caches = caches.read().await;
+                        caches
+                            .address_registry
+                            .candidates_for(&dial_req.peer.to_string())
+                            .iter()
+                            .map(|r| r.addr.clone())
+                            .collect()
+                    };
+
+                    let filtered_addresses: Vec<libp2p::Multiaddr> = dial_req
+                        .addresses
+                        .into_iter()
+                        .filter(|a| live_addresses.contains(&a.to_string()))
+                        .collect();
+
+                    if filtered_addresses.is_empty() {
+                        debug!(
+                            peer_id = %dial_req.peer,
+                            "pre-dial: all addresses expired in PeerCaches, skipping dial"
+                        );
+                        let _ = dial_req.result_tx.send(Ok(()));
+                    } else {
+                        let addr_count = filtered_addresses.len();
+                        debug!(
+                            peer_id = %dial_req.peer,
+                            address_count = addr_count,
+                            addresses = ?filtered_addresses.iter().map(ToString::to_string).collect::<Vec<_>>(),
+                            "pre-dial: initiating dial with explicit addresses"
+                        );
+                        let result = swarm.dial(
+                            DialOpts::peer_id(dial_req.peer)
+                                .addresses(filtered_addresses)
+                                .condition(PeerCondition::DisconnectedAndNotDialing)
+                                .build(),
+                        );
+                        match result {
+                            Ok(()) => {
+                                let _ = dial_req.result_tx.send(Ok(()));
+                            }
+                            Err(err) => {
+                                warn!(
+                                    peer_id = %dial_req.peer,
+                                    error = %err,
+                                    "pre-dial: dial initiation failed"
+                                );
+                                let _ = dial_req.result_tx.send(Err(anyhow!("pre-dial failed: {err}")));
+                            }
                         }
                     }
                 }

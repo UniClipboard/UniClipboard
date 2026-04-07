@@ -10,8 +10,15 @@ use std::collections::HashMap;
 
 // ── Configuration ──────────────────────────────────────────────
 
-/// How long a discovered address stays valid without being refreshed.
-const DEFAULT_TTL_SECS: i64 = 90;
+/// How long an mDNS-discovered address stays valid without being refreshed.
+const MDNS_TTL_SECS: i64 = 90;
+
+/// How long an inbound-observed address stays valid.
+const INBOUND_TTL_SECS: i64 = 300;
+
+/// Manual / global-discovery addresses effectively never expire on their own.
+/// Set to 24 hours — callers can still explicitly remove them.
+const MANUAL_TTL_SECS: i64 = 86_400;
 
 /// Base cooldown after the first dial failure.
 const COOLDOWN_BASE_SECS: i64 = 60;
@@ -135,7 +142,7 @@ impl AddressRegistry {
         scope: AddressScope,
     ) {
         let now = Utc::now();
-        let ttl = TimeDelta::seconds(DEFAULT_TTL_SECS);
+        let ttl = ttl_for_source(source);
         let key = (peer_id.to_owned(), addr.to_owned());
 
         if let Some(rec) = self.entries.get_mut(&key) {
@@ -172,8 +179,8 @@ impl AddressRegistry {
             rec.next_dial_at = now; // no cooldown
             rec.success_count = rec.success_count.saturating_add(1);
             rec.failure_count = 0;
-            // Extend TTL on success.
-            rec.expires_at = now + TimeDelta::seconds(DEFAULT_TTL_SECS);
+            // Extend TTL on success (using source-appropriate duration).
+            rec.expires_at = now + ttl_for_source(rec.source);
         }
     }
 
@@ -191,7 +198,19 @@ impl AddressRegistry {
         }
     }
 
-    /// Remove all addresses for a peer (e.g. when mDNS reports it lost).
+    /// Remove addresses for a peer that came from a specific source.
+    ///
+    /// Example: when mDNS reports a peer as lost, call
+    /// `remove_peer_source("peer-1", AddressSource::Mdns)` — WAN and relay
+    /// addresses are preserved.
+    pub fn remove_peer_source(&mut self, peer_id: &str, source: AddressSource) {
+        self.entries
+            .retain(|(pid, _), rec| !(pid == peer_id && rec.source == source));
+    }
+
+    /// Remove **all** addresses for a peer regardless of source.
+    ///
+    /// Use sparingly — prefer [`remove_peer_source`] for partial removal.
     pub fn remove_peer(&mut self, peer_id: &str) {
         self.entries.retain(|(pid, _), _| pid != peer_id);
     }
@@ -246,6 +265,15 @@ impl AddressRegistry {
 }
 
 // ── Helpers ────────────────────────────────────────────────────
+
+/// Return the TTL for a given address source.
+fn ttl_for_source(source: AddressSource) -> TimeDelta {
+    match source {
+        AddressSource::Mdns => TimeDelta::seconds(MDNS_TTL_SECS),
+        AddressSource::Inbound => TimeDelta::seconds(INBOUND_TTL_SECS),
+        AddressSource::Manual => TimeDelta::seconds(MANUAL_TTL_SECS),
+    }
+}
 
 /// Detect whether a multiaddr string looks like a QUIC transport.
 fn is_quic_addr(addr: &str) -> bool {
@@ -383,6 +411,75 @@ mod tests {
         reg.remove_peer("peer-1");
         assert!(reg.all_for("peer-1").is_empty());
         assert_eq!(reg.all_for("peer-2").len(), 1);
+    }
+
+    #[test]
+    fn remove_peer_source_preserves_other_sources() {
+        let mut reg = make_registry();
+        // peer-1 has LAN (mDNS), WAN (manual), and relay addresses.
+        reg.register(
+            "peer-1",
+            "/ip4/192.168.1.5/udp/9000/quic-v1",
+            AddressSource::Mdns,
+            AddressScope::Lan,
+        );
+        reg.register(
+            "peer-1",
+            "/ip4/203.0.113.1/tcp/8000",
+            AddressSource::Manual,
+            AddressScope::Wan,
+        );
+        reg.register(
+            "peer-1",
+            "/relay/peer-1",
+            AddressSource::Manual,
+            AddressScope::Relay,
+        );
+
+        // LAN lost — only mDNS addresses should be removed.
+        reg.remove_peer_source("peer-1", AddressSource::Mdns);
+
+        let remaining = reg.all_for("peer-1");
+        assert_eq!(remaining.len(), 2);
+        assert!(remaining.iter().all(|r| r.source != AddressSource::Mdns));
+        // WAN and relay are still there.
+        assert!(remaining.iter().any(|r| r.scope == AddressScope::Wan));
+        assert!(remaining.iter().any(|r| r.scope == AddressScope::Relay));
+    }
+
+    #[test]
+    fn ttl_varies_by_source() {
+        let mut reg = make_registry();
+        reg.register(
+            "peer-1",
+            "/ip4/192.168.1.5/tcp/8000",
+            AddressSource::Mdns,
+            AddressScope::Lan,
+        );
+        reg.register(
+            "peer-1",
+            "/ip4/203.0.113.1/tcp/8000",
+            AddressSource::Manual,
+            AddressScope::Wan,
+        );
+
+        let mdns_key = ("peer-1".to_owned(), "/ip4/192.168.1.5/tcp/8000".to_owned());
+        let manual_key = ("peer-1".to_owned(), "/ip4/203.0.113.1/tcp/8000".to_owned());
+
+        let mdns_rec = &reg.entries[&mdns_key];
+        let manual_rec = &reg.entries[&manual_key];
+
+        // mDNS TTL ≈ 90s, Manual TTL ≈ 86400s — manual should expire much later.
+        let mdns_ttl = (mdns_rec.expires_at - mdns_rec.observed_at).num_seconds();
+        let manual_ttl = (manual_rec.expires_at - manual_rec.observed_at).num_seconds();
+
+        assert_eq!(mdns_ttl, 90);
+        assert_eq!(manual_ttl, 86_400);
+
+        // After 91 seconds, mDNS should be expired but manual should not.
+        let future = Utc::now() + TimeDelta::seconds(91);
+        assert!(mdns_rec.is_expired(future));
+        assert!(!manual_rec.is_expired(future));
     }
 
     #[test]

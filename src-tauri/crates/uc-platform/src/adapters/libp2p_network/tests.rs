@@ -1,7 +1,7 @@
 use super::super::pairing_stream::service::PairingStreamError;
 #[allow(deprecated)]
 use super::behaviour::{build_mdns_config, Libp2pBehaviour};
-use super::business_stream::execute_business_stream;
+use super::business_stream::{apply_business_stream_result, execute_business_stream};
 use super::dial_strategy::{
     chosen_dial_addr_for_log, dial_decision_for_snapshot, infer_address_scope,
     infer_chosen_dial_addr_resolution, sort_addresses_quic_first, successful_dial_observation,
@@ -451,6 +451,85 @@ fn peer_not_ready_emits_event_only_for_reachable_peer() {
         event,
         Some(NetworkEvent::PeerNotReady { peer_id }) if peer_id == "peer-1"
     ));
+    assert!(!caches.is_reachable("peer-1"));
+}
+
+#[tokio::test]
+async fn business_stream_failure_keeps_peer_ready_when_another_connection_is_still_alive() {
+    let caches = Arc::new(RwLock::new(PeerCaches::new()));
+    let (event_tx, mut event_rx) = mpsc::channel(4);
+    let t0 = Utc::now();
+    let wan_addr = "/ip4/203.0.113.10/tcp/4001";
+    let lan_addr = "/ip4/192.168.1.8/udp/4001/quic-v1";
+
+    {
+        let mut caches = caches.write().await;
+        caches.upsert_discovered(
+            "peer-1".to_string(),
+            vec![wan_addr.to_string(), lan_addr.to_string()],
+            t0,
+        );
+        assert!(caches.mark_connection_established(
+            "peer-1",
+            ConnectionId::new_unchecked(1),
+            Some(wan_addr.to_string()),
+            t0,
+        ));
+        assert!(!caches.mark_connection_established(
+            "peer-1",
+            ConnectionId::new_unchecked(2),
+            Some(lan_addr.to_string()),
+            t0,
+        ));
+    }
+
+    let failure: anyhow::Result<()> = Err(anyhow::anyhow!("simulated stream failure"));
+    apply_business_stream_result(&caches, &event_tx, "peer-1", &failure).await;
+
+    assert!(
+        event_rx.try_recv().is_err(),
+        "no PeerNotReady should be emitted"
+    );
+    let caches = caches.read().await;
+    assert!(caches.is_reachable("peer-1"));
+    assert!(caches.has_active_connections("peer-1"));
+    assert_eq!(
+        caches
+            .active_connections
+            .get("peer-1")
+            .map(|connections| connections.len()),
+        Some(2)
+    );
+}
+
+#[tokio::test]
+async fn business_stream_failure_marks_peer_not_ready_when_no_connection_remains() {
+    let caches = Arc::new(RwLock::new(PeerCaches::new()));
+    let (event_tx, mut event_rx) = mpsc::channel(4);
+    let t0 = Utc::now();
+
+    {
+        let mut caches = caches.write().await;
+        caches.upsert_discovered(
+            "peer-1".to_string(),
+            vec!["/ip4/192.168.1.2/tcp/4001".to_string()],
+            t0,
+        );
+        assert!(caches.mark_reachable("peer-1", t0));
+    }
+
+    let failure: anyhow::Result<()> = Err(anyhow::anyhow!("simulated stream failure"));
+    apply_business_stream_result(&caches, &event_tx, "peer-1", &failure).await;
+
+    let event = event_rx
+        .recv()
+        .await
+        .expect("PeerNotReady should be emitted");
+    assert!(matches!(
+        event,
+        NetworkEvent::PeerNotReady { peer_id } if peer_id == "peer-1"
+    ));
+    let caches = caches.read().await;
     assert!(!caches.is_reachable("peer-1"));
 }
 

@@ -573,10 +573,12 @@ pub(super) async fn execute_business_stream(
 /// Update peer reachability state in `PeerCaches` and emit a corresponding `NetworkEvent`
 /// reflecting whether a business stream completed successfully.
 ///
-/// This function marks the peer as ready when `result` is `Ok(())` or not-ready when
-/// `result` is `Err(..)`, then attempts to send the resulting `NetworkEvent` on
-/// `event_tx`. Address-level success/failure is recorded by connection-layer events
-/// (e.g., `ConnectionEstablished` / `OutgoingConnectionError`), not by this function.
+/// This function marks the peer as ready when `result` is `Ok(())`. On failure it
+/// only emits `PeerNotReady` when there are no active connections left for that
+/// peer; otherwise the connection-layer events remain the source of truth for
+/// reachability. Address-level success/failure is recorded by connection-layer
+/// events (e.g., `ConnectionEstablished` / `OutgoingConnectionError`), not by
+/// this function.
 ///
 /// # Examples
 ///
@@ -589,13 +591,12 @@ pub(super) async fn apply_business_stream_result(
     peer_id: &str,
     result: &Result<()>,
 ) {
-    // Note: address-level success/failure is recorded at the connection layer
-    // (ConnectionEstablished / OutgoingConnectionError), not here, because
-    // business stream results don't carry the specific dialled address.
     let event = {
         let mut caches = caches.write().await;
         if result.is_ok() {
             apply_peer_ready(&mut caches, peer_id, Utc::now())
+        } else if caches.has_active_connections(peer_id) {
+            None
         } else {
             apply_peer_not_ready(&mut caches, peer_id)
         }

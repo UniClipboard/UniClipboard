@@ -240,6 +240,12 @@ impl PeerCaches {
         self.reachable_peers.contains(peer_id)
     }
 
+    pub(crate) fn has_active_connections(&self, peer_id: &str) -> bool {
+        self.active_connections
+            .get(peer_id)
+            .is_some_and(|connections| !connections.is_empty())
+    }
+
     pub(crate) fn record_dial_observation(
         &mut self,
         peer_id: &str,

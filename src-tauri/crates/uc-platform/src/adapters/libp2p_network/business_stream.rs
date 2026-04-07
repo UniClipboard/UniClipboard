@@ -140,20 +140,77 @@ async fn ensure_explicit_connection(
             "sending pre-dial request with tier addresses"
         );
 
-        if let Err(err) = dial_tx
-            .send(DialRequest {
+        let remaining = open_timeout
+            .checked_sub(open_started_at.elapsed())
+            .unwrap_or_default();
+        if remaining.is_zero() {
+            return Err(anyhow!(
+                "business stream open timed out before sending dial request"
+            ));
+        }
+
+        if let Err(err) = tokio::time::timeout(
+            remaining,
+            dial_tx.send(DialRequest {
                 peer,
                 addresses: addrs,
                 allow_connected_dial: dial_decision == "upgrade_to_better_connection",
                 result_tx: tx,
-            })
-            .await
+            }),
+        )
+        .await
         {
-            return Err(anyhow!("failed to send dial request: {err}"));
+            return Err(anyhow!("failed to send dial request (timeout or channel error): {err}"));
         }
 
-        match rx.await {
-            Ok(Ok(())) => {
+        let remaining = open_timeout
+            .checked_sub(open_started_at.elapsed())
+            .unwrap_or_default();
+        if remaining.is_zero() {
+            return Err(anyhow!(
+                "business stream open timed out before waiting for dial acknowledgement"
+            ));
+        }
+
+        match tokio::time::timeout(remaining, rx).await {
+            Err(_) => {
+                warn!(
+                    event = "business_stream.pre_dial",
+                    operation = denied_operation,
+                    peer_id = %peer_id_str,
+                    scope = ?scope,
+                    tier_index,
+                    dial_decision,
+                    "dial acknowledgement timed out, trying next tier"
+                );
+                continue;
+            }
+            Ok(Err(_)) => {
+                warn!(
+                    event = "business_stream.pre_dial",
+                    operation = denied_operation,
+                    peer_id = %peer_id_str,
+                    scope = ?scope,
+                    tier_index,
+                    dial_decision,
+                    "dial initiation channel dropped, trying next tier"
+                );
+                continue;
+            }
+            Ok(Ok(Err(err))) => {
+                warn!(
+                    event = "business_stream.pre_dial",
+                    operation = denied_operation,
+                    peer_id = %peer_id_str,
+                    scope = ?scope,
+                    tier_index,
+                    dial_decision,
+                    error = %err,
+                    "dial initiation failed, trying next tier"
+                );
+                continue;
+            }
+            Ok(Ok(Ok(()))) => {
                 debug!(
                     event = "business_stream.pre_dial",
                     operation = denied_operation,
@@ -165,29 +222,6 @@ async fn ensure_explicit_connection(
                 );
                 dial_initiated = true;
                 break;
-            }
-            Ok(Err(err)) => {
-                warn!(
-                    event = "business_stream.pre_dial",
-                    operation = denied_operation,
-                    peer_id = %peer_id_str,
-                    scope = ?scope,
-                    tier_index,
-                    dial_decision,
-                    error = %err,
-                    "dial initiation failed, trying next tier"
-                );
-            }
-            Err(_) => {
-                warn!(
-                    event = "business_stream.pre_dial",
-                    operation = denied_operation,
-                    peer_id = %peer_id_str,
-                    scope = ?scope,
-                    tier_index,
-                    dial_decision,
-                    "dial initiation channel dropped, trying next tier"
-                );
             }
         }
     }

@@ -85,15 +85,20 @@ pub struct ListClipboardEntryProjections {
 
 /// Detect link URLs from full representation content.
 ///
-/// Returns `Some(urls)` when the content is a link type (text/uri-list,
-/// single URL in text/plain, or multi-line URLs in text/plain).
+/// Returns `Some(urls)` when the content contains web links (http/https).
+/// `text/uri-list` entries with only `file://` URIs return `None` — those are
+/// file entries, not link entries.
 /// Uses the full inline_data rather than truncated preview text.
 fn detect_link_urls(content_type: &str, inline_data: Option<&[u8]>) -> Option<Vec<String>> {
     let full_text = inline_data.and_then(|d| std::str::from_utf8(d).ok())?;
     let ct = content_type.to_ascii_lowercase();
 
     if ct.starts_with("text/uri-list") {
-        let urls = parse_uri_list(full_text);
+        // Filter out file:// URIs — those represent copied files, not web links.
+        let urls: Vec<String> = parse_uri_list(full_text)
+            .into_iter()
+            .filter(|u| !u.starts_with("file://"))
+            .collect();
         if urls.is_empty() {
             None
         } else {

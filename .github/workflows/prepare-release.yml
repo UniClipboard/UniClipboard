@@ -92,18 +92,22 @@ jobs:
 
       - name: Determine changelog context
         id: changelog-context
+        env:
+          GITHUB_TOKEN: ${{ secrets.REPO_BOT_TOKEN }}
         run: |
           VERSION="${{ steps.version.outputs.version }}"
-          CURRENT_TAG="v${VERSION}"
+          TEMP_OUTPUT=$(mktemp)
+          node scripts/previous-published-release.js \
+            --repo "${{ github.repository }}" \
+            --current-version "${VERSION}" \
+            --github-output "${TEMP_OUTPUT}"
 
-          git fetch --tags origin
+          PREV_TAG=$(grep '^previous_tag=' "${TEMP_OUTPUT}" | cut -d= -f2-)
+          PREV_VERSION=$(grep '^previous_version=' "${TEMP_OUTPUT}" | cut -d= -f2-)
 
-          PREV_TAG=$(git tag --sort=-version:refname | grep -v "^${CURRENT_TAG}$" | head -n 1 || true)
           if [ -z "$PREV_TAG" ]; then
             PREV_TAG=$(git rev-list --max-parents=0 HEAD)
             PREV_VERSION="initial commit"
-          else
-            PREV_VERSION="${PREV_TAG#v}"
           fi
 
           echo "previous_tag=$PREV_TAG" >> "$GITHUB_OUTPUT"
@@ -112,6 +116,7 @@ jobs:
 
           echo "Previous published version: $PREV_VERSION"
           echo "Allowed changelog range: ${PREV_TAG}..HEAD"
+          rm -f "${TEMP_OUTPUT}"
 
       - uses: dtolnay/rust-toolchain@stable
         with:

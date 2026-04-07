@@ -129,13 +129,16 @@ jobs:
 
       - name: Get previous tag
         id: get-previous-tag
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # Fetch all tags
-          git fetch --tags origin
+          TEMP_OUTPUT=$(mktemp)
+          node scripts/previous-published-release.js \
+            --repo "${{ github.repository }}" \
+            --current-version "${{ steps.set-outputs.outputs.version }}" \
+            --github-output "${TEMP_OUTPUT}"
 
-          # Get the most recent tag excluding current version
-          CURRENT_TAG="v${{ steps.set-outputs.outputs.version }}"
-          PREV_TAG=$(git tag --sort=-version:refname | grep -v "^${CURRENT_TAG}$" | head -n 1 || echo "")
+          PREV_TAG=$(grep '^previous_tag=' "${TEMP_OUTPUT}" | cut -d= -f2-)
 
           if [ -z "$PREV_TAG" ]; then
             echo "No previous tag found, using initial commit"
@@ -144,6 +147,7 @@ jobs:
 
           echo "previous_tag=$PREV_TAG" >> "$GITHUB_OUTPUT"
           echo "Previous reference: $PREV_TAG"
+          rm -f "${TEMP_OUTPUT}"
 
   build:
     needs: validate

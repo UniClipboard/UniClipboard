@@ -18,6 +18,7 @@ use std::time::Duration;
 use tokio::sync::{broadcast, mpsc, oneshot, RwLock, Semaphore};
 use tokio::time::{sleep, timeout};
 use tracing::{debug, error, info, info_span, warn, Instrument, Span};
+use uc_core::network::address_registry::{self, AddressRegistry, AddressScope, AddressSource};
 use uc_core::network::protocol::ClipboardPayloadVersion;
 use uc_core::network::{
     ClipboardMessage, ConnectedPeer, DeviceAnnounceMessage, DiscoveredPeer, NetworkEvent,
@@ -84,6 +85,7 @@ pub struct PeerCaches {
     reachable_peers: HashSet<String>,
     connected_at: HashMap<String, DateTime<Utc>>,
     last_dial_observations: HashMap<String, PeerDialObservation>,
+    address_registry: AddressRegistry,
 }
 
 #[derive(Debug, Clone)]
@@ -118,6 +120,7 @@ impl PeerCaches {
             reachable_peers: HashSet::new(),
             connected_at: HashMap::new(),
             last_dial_observations: HashMap::new(),
+            address_registry: AddressRegistry::new(),
         }
     }
 
@@ -128,6 +131,13 @@ impl PeerCaches {
         discovered_at: DateTime<Utc>,
     ) -> DiscoveredPeer {
         sort_addresses_quic_first(&mut addresses);
+
+        // Register each address in the address registry for lifecycle tracking.
+        for addr in &addresses {
+            self.address_registry
+                .register(&peer_id, addr, AddressSource::Mdns, AddressScope::Lan);
+        }
+
         // Preserve device_name and device_id from existing entry when
         // re-discovered via mDNS, so we don't overwrite names that were
         // resolved through the DeviceAnnounce protocol.
@@ -157,6 +167,15 @@ impl PeerCaches {
         observed_at: DateTime<Utc>,
     ) -> bool {
         let address = address.to_string();
+
+        // Register inbound-observed address in the registry.
+        self.address_registry.register(
+            peer_id,
+            &address,
+            AddressSource::Inbound,
+            AddressScope::Lan,
+        );
+
         let entry = self
             .discovered_peers
             .entry(peer_id.to_string())
@@ -181,6 +200,10 @@ impl PeerCaches {
     }
 
     pub fn remove_discovered(&mut self, peer_id: &str) -> Option<DiscoveredPeer> {
+        // Remove only mDNS-sourced addresses — WAN/relay addresses are preserved.
+        self.address_registry
+            .remove_peer_source(peer_id, AddressSource::Mdns);
+
         self.reachable_peers.remove(peer_id);
         self.connected_at.remove(peer_id);
         self.last_dial_observations.remove(peer_id);
@@ -237,6 +260,22 @@ impl PeerCaches {
     fn record_dial_observation(&mut self, peer_id: &str, observation: PeerDialObservation) {
         self.last_dial_observations
             .insert(peer_id.to_string(), observation);
+    }
+
+    /// Record a successful dial in the address registry.
+    fn record_address_success(&mut self, peer_id: &str, addr: &str) {
+        self.address_registry.record_success(peer_id, addr);
+    }
+
+    /// Record a failed dial in the address registry.
+    fn record_address_failure(&mut self, peer_id: &str, addr: &str, error: &str) {
+        self.address_registry.record_failure(peer_id, addr, error);
+    }
+
+    /// Run garbage collection on the address registry.
+    /// Returns the number of expired entries removed.
+    fn gc_address_registry(&mut self) -> usize {
+        self.address_registry.gc()
     }
 }
 
@@ -1707,6 +1746,8 @@ async fn run_swarm(
     let mut next_business_command_id: u64 = 1;
     let business_command_semaphore = Arc::new(Semaphore::new(MAX_IN_FLIGHT_BUSINESS_COMMANDS));
     let mut pending_business_command: Option<(u64, BusinessCommand)> = None;
+    let mut gc_interval =
+        tokio::time::interval(Duration::from_secs(address_registry::GC_INTERVAL_SECS));
 
     loop {
         tokio::select! {
@@ -2064,6 +2105,19 @@ async fn run_swarm(
                     )
                     .await;
                 });
+            }
+
+            _ = gc_interval.tick() => {
+                let removed = {
+                    let mut caches = caches.write().await;
+                    caches.gc_address_registry()
+                };
+                if removed > 0 {
+                    debug!(
+                        removed_count = removed,
+                        "address registry GC completed"
+                    );
+                }
             }
         }
     }
@@ -2719,6 +2773,30 @@ async fn apply_business_stream_result(
 ) {
     let event = {
         let mut caches = caches.write().await;
+
+        // Record success/failure in the address registry.
+        // Use all candidate addresses since libp2p internally selects the
+        // dial address and we cannot reliably determine the exact one.
+        let candidates: Vec<String> = caches
+            .address_registry
+            .candidates_for(peer_id)
+            .iter()
+            .map(|r| r.addr.clone())
+            .collect();
+        match result {
+            Ok(()) => {
+                for addr in &candidates {
+                    caches.record_address_success(peer_id, addr);
+                }
+            }
+            Err(err) => {
+                let err_msg = err.to_string();
+                for addr in &candidates {
+                    caches.record_address_failure(peer_id, addr, &err_msg);
+                }
+            }
+        }
+
         if result.is_ok() {
             apply_peer_ready(&mut caches, peer_id, Utc::now())
         } else {

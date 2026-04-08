@@ -135,14 +135,14 @@ export const SHORTCUT_DEFINITIONS: ShortcutDefinition[] = [
   },
   {
     id: 'global.zoomIn',
-    key: ['mod+equal', 'mod+shift+equal'],
+    key: ['mod+shift+equal', 'mod+equal', 'mod+add'],
     action: 'global.zoomIn',
     scope: 'global',
     description: 'settings.sections.shortcuts.actions.zoomIn',
   },
   {
     id: 'global.zoomOut',
-    key: 'mod+minus',
+    key: ['mod+minus', 'mod+subtract'],
     action: 'global.zoomOut',
     scope: 'global',
     description: 'settings.sections.shortcuts.actions.zoomOut',

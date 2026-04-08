@@ -3,7 +3,7 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { KeyRecorder } from '@/components/setting/KeyRecorder'
 import { Button } from '@/components/ui'
-import { formatKeyPart } from '@/lib/shortcut-format'
+import { formatShortcutParts } from '@/lib/shortcut-format'
 import type { ShortcutKeyOverrides } from '@/shortcuts/conflicts'
 import type { ShortcutDefinition } from '@/shortcuts/definitions'
 
@@ -26,7 +26,7 @@ export function ShortcutRow({
 }: ShortcutRowProps) {
   const { t } = useTranslation()
   const [isRecording, setIsRecording] = useState(false)
-  const keyParts = currentKey.split('+').map(formatKeyPart)
+  const keyParts = formatShortcutParts(currentKey)
 
   const handleEdit = () => {
     setIsRecording(true)

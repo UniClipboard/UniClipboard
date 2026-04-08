@@ -43,6 +43,7 @@ export const GlobalShortcuts = () => {
     scope: 'global',
     id: 'global.zoomIn',
     enabled: zoomInShortcutEnabled,
+    enableOnFormTags: true,
     handler: () => {
       adjustUiScale('in')
     },
@@ -53,6 +54,7 @@ export const GlobalShortcuts = () => {
     scope: 'global',
     id: 'global.zoomOut',
     enabled: zoomOutShortcutEnabled,
+    enableOnFormTags: true,
     handler: () => {
       adjustUiScale('out')
     },

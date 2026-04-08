@@ -31,9 +31,11 @@ export function formatKeyPart(part: string): string {
       case 'control':
         return '\u2303'
       case 'minus':
+      case 'subtract':
         return '-'
       case 'equal':
-        return '='
+      case 'add':
+        return '+'
       default:
         return part.charAt(0).toUpperCase() + part.slice(1)
     }
@@ -58,11 +60,28 @@ export function formatKeyPart(part: string): string {
       case 'shift':
         return 'Shift'
       case 'minus':
+      case 'subtract':
         return '-'
       case 'equal':
-        return '='
+      case 'add':
+        return '+'
       default:
         return part.charAt(0).toUpperCase() + part.slice(1)
     }
   }
+}
+
+export function formatShortcutParts(shortcut: string): string[] {
+  const rawParts = shortcut
+    .split('+')
+    .map(part => part.trim())
+    .filter(Boolean)
+  const lowerParts = rawParts.map(part => part.toLowerCase())
+
+  if (lowerParts.includes('shift') && lowerParts.includes('equal')) {
+    const filtered = rawParts.filter(part => part.toLowerCase() !== 'shift')
+    return filtered.map(part => (part.toLowerCase() === 'equal' ? '+' : formatKeyPart(part)))
+  }
+
+  return rawParts.map(formatKeyPart)
 }

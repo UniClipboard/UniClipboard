@@ -20,6 +20,8 @@ interface UseShortcutOptions {
   handler: () => void
   /** 是否阻止默认行为（可选，默认 true） */
   preventDefault?: boolean
+  /** 是否允许在表单元素中触发 */
+  enableOnFormTags?: boolean | Array<'input' | 'textarea' | 'select'>
 }
 
 /**
@@ -44,6 +46,7 @@ export const useShortcut = ({
   enabled = true,
   handler,
   preventDefault = true,
+  enableOnFormTags = false,
 }: UseShortcutOptions): void => {
   const { activeScope, activeLayer } = useShortcutContext()
 
@@ -75,7 +78,7 @@ export const useShortcut = ({
     {
       enabled: isActive,
       preventDefault,
-      enableOnFormTags: false,
+      enableOnFormTags,
       enableOnContentEditable: false,
       // 使用非逗号字符作为多快捷键分隔符，避免 "mod+," 中的逗号被误判为分隔符
       delimiter: '§',
@@ -88,6 +91,7 @@ export const useShortcut = ({
       activeLayer,
       handler,
       preventDefault,
+      enableOnFormTags,
       keyboardShortcuts,
     ]
   )

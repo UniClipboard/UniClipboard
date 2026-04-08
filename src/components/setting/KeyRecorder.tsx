@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useRecordHotkeys } from 'react-hotkeys-hook'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui'
-import { formatKeyPart } from '@/lib/shortcut-format'
+import { formatShortcutParts } from '@/lib/shortcut-format'
 import {
   getCandidateKeyIssues,
   resolveShortcuts,
@@ -98,7 +98,7 @@ export function KeyRecorder({
     onCancel()
   }
 
-  const keyParts = recordedKey ? recordedKey.split('+').map(formatKeyPart) : []
+  const keyParts = recordedKey ? formatShortcutParts(recordedKey) : []
 
   return (
     <div className="flex flex-col gap-2 p-3 rounded-md border-2 border-primary/50 bg-card animate-pulse">

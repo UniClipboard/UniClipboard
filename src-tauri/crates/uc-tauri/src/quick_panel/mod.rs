@@ -383,6 +383,11 @@ pub fn normalize_shortcut_for_tauri(key: &str) -> String {
 ///
 /// 注册一个用于切换快捷面板的全局快捷键。
 pub fn register_global_shortcut(app: &tauri::AppHandle, shortcut_str: &str) -> Result<(), String> {
+    // Defensively unregister first — on Windows the OS-level hotkey may survive
+    // a crash or force-kill of the previous app instance, causing
+    // "HotKey already registered" on the next startup.
+    let _ = app.global_shortcut().unregister(shortcut_str);
+
     let app_handle = app.clone();
     app.global_shortcut()
         .on_shortcut(shortcut_str, move |_app, _shortcut, event| {

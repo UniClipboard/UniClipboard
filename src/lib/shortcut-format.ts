@@ -30,6 +30,10 @@ export function formatKeyPart(part: string): string {
       case 'ctrl':
       case 'control':
         return '\u2303'
+      case 'minus':
+        return '-'
+      case 'equal':
+        return '='
       default:
         return part.charAt(0).toUpperCase() + part.slice(1)
     }
@@ -53,6 +57,10 @@ export function formatKeyPart(part: string): string {
         return 'Alt'
       case 'shift':
         return 'Shift'
+      case 'minus':
+        return '-'
+      case 'equal':
+        return '='
       default:
         return part.charAt(0).toUpperCase() + part.slice(1)
     }

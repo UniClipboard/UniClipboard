@@ -305,7 +305,9 @@
           "goSettings": "Go to settings",
           "focusSearch": "Focus search",
           "closeModal": "Close modal",
-          "toggleQuickPanel": "Toggle quick panel"
+          "toggleQuickPanel": "Toggle quick panel",
+          "zoomIn": "Zoom in",
+          "zoomOut": "Zoom out"
         },
         "issues": {
           "sameScope": "Shortcut conflict in same scope: {{key}}",

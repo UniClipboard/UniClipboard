@@ -11,6 +11,8 @@ export type ShortcutAction =
   | 'clipboard.delete'
   | 'clipboard.favorite'
   | 'clipboard.copy'
+  | 'global.zoomIn'
+  | 'global.zoomOut'
   | 'navigation.dashboard'
   | 'navigation.devices'
   | 'navigation.settings'
@@ -130,6 +132,20 @@ export const SHORTCUT_DEFINITIONS: ShortcutDefinition[] = [
     action: 'global.toggleQuickPanel',
     scope: 'global',
     description: 'settings.sections.shortcuts.actions.toggleQuickPanel',
+  },
+  {
+    id: 'global.zoomIn',
+    key: ['mod+equal', 'mod+shift+equal'],
+    action: 'global.zoomIn',
+    scope: 'global',
+    description: 'settings.sections.shortcuts.actions.zoomIn',
+  },
+  {
+    id: 'global.zoomOut',
+    key: 'mod+minus',
+    action: 'global.zoomOut',
+    scope: 'global',
+    description: 'settings.sections.shortcuts.actions.zoomOut',
   },
 
   // ===== Modal =====

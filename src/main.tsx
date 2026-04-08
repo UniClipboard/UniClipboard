@@ -6,11 +6,13 @@ import App from './App'
 import './i18n'
 import { store } from './store'
 import { connectDaemonWs } from '@/lib/daemon-ws-bootstrap'
+import { initializeUiScale } from '@/lib/ui-scale'
 import { initFrontendOtlp } from '@/observability/otlp'
 import { initSentry, Sentry } from '@/observability/sentry'
 
 initSentry()
 initFrontendOtlp()
+initializeUiScale()
 
 const startupTimingOrigin = Date.now()
 const logStartupTiming = (label: string) => {

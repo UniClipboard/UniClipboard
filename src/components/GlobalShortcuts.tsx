@@ -1,5 +1,6 @@
 import { useLocation, useNavigate } from 'react-router-dom'
 import { useShortcut } from '@/hooks/useShortcut'
+import { adjustUiScale } from '@/lib/ui-scale'
 import { SHORTCUT_DEFINITIONS } from '@/shortcuts/definitions'
 
 /**
@@ -12,7 +13,11 @@ export const GlobalShortcuts = () => {
   const navigate = useNavigate()
   const location = useLocation()
   const settingsDef = SHORTCUT_DEFINITIONS.find(d => d.id === 'nav.settings')
+  const zoomInDef = SHORTCUT_DEFINITIONS.find(d => d.id === 'global.zoomIn')
+  const zoomOutDef = SHORTCUT_DEFINITIONS.find(d => d.id === 'global.zoomOut')
   const settingsShortcutEnabled = Boolean(settingsDef)
+  const zoomInShortcutEnabled = Boolean(zoomInDef)
+  const zoomOutShortcutEnabled = Boolean(zoomOutDef)
 
   useShortcut({
     key: settingsDef?.key ?? '',
@@ -30,6 +35,26 @@ export const GlobalShortcuts = () => {
       } else {
         navigate('/settings')
       }
+    },
+  })
+
+  useShortcut({
+    key: zoomInDef?.key ?? '',
+    scope: 'global',
+    id: 'global.zoomIn',
+    enabled: zoomInShortcutEnabled,
+    handler: () => {
+      adjustUiScale('in')
+    },
+  })
+
+  useShortcut({
+    key: zoomOutDef?.key ?? '',
+    scope: 'global',
+    id: 'global.zoomOut',
+    enabled: zoomOutShortcutEnabled,
+    handler: () => {
+      adjustUiScale('out')
     },
   })
 

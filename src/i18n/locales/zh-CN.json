@@ -296,7 +296,9 @@
           "goSettings": "前往设置",
           "focusSearch": "聚焦搜索框",
           "closeModal": "关闭模态框",
-          "toggleQuickPanel": "切换快捷面板"
+          "toggleQuickPanel": "切换快捷面板",
+          "zoomIn": "放大界面",
+          "zoomOut": "缩小界面"
         },
         "issues": {
           "sameScope": "同一作用域内快捷键冲突：{{key}}",

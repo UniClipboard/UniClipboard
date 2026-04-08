@@ -17,6 +17,8 @@ import { isMac } from '@/lib/shortcut-format'
 
 const PLATFORM_MODIFIER_ALIASES: Record<string, string> = isMac
   ? {
+      '=': 'equal',
+      '-': 'minus',
       command: 'meta',
       cmd: 'meta',
       mod: 'meta',
@@ -26,6 +28,8 @@ const PLATFORM_MODIFIER_ALIASES: Record<string, string> = isMac
       escape: 'esc',
     }
   : {
+      '=': 'equal',
+      '-': 'minus',
       command: 'ctrl',
       cmd: 'ctrl',
       mod: 'ctrl',

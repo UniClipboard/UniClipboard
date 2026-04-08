@@ -1,4 +1,4 @@
-import { type LucideIcon, Check, Monitor, Moon, Sun } from 'lucide-react'
+import { type LucideIcon, Check, Minus, Monitor, Moon, Plus, RotateCcw, Sun } from 'lucide-react'
 import type { MouseEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 import { SettingGroup } from './SettingGroup'
@@ -56,7 +56,17 @@ function ThemeOption({ value, icon: Icon, label, theme, handleThemeChange }: The
 export default function AppearanceSection() {
   const { t } = useTranslation()
   const { setting, updateGeneralSetting } = useSetting()
-  const { scalePercent, options, setScale, resetScale, isDefault, isSelected } = useUiScale()
+  const {
+    options,
+    setScale,
+    resetScale,
+    isDefault,
+    isSelected,
+    zoomIn,
+    zoomOut,
+    canZoomIn,
+    canZoomOut,
+  } = useUiScale()
 
   // Use derived state instead of local state to avoid initial flash
   const theme = setting?.general?.theme || 'system'
@@ -143,32 +153,61 @@ export default function AppearanceSection() {
       </SettingGroup>
 
       <SettingGroup title={t('settings.sections.appearance.zoom.title')}>
-        <div className="flex flex-col gap-4 p-4">
-          <div className="flex items-center justify-between gap-3">
-            <div className="space-y-1">
-              <div className="text-sm font-medium text-foreground">
-                {t('settings.sections.appearance.zoom.current', { value: scalePercent })}
-              </div>
-              <div className="text-xs text-muted-foreground">
-                {t('settings.sections.appearance.zoom.description')}
-              </div>
+        <div className="flex flex-col gap-3 p-4">
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="icon-xs"
+              disabled={!canZoomOut}
+              onClick={zoomOut}
+              aria-label="Zoom out"
+            >
+              <Minus />
+            </Button>
+
+            <div className="flex flex-1 items-center rounded-lg bg-muted/60 p-0.5">
+              {options.map(option => (
+                <button
+                  key={option.value}
+                  type="button"
+                  onClick={() => setScale(option.value)}
+                  className={cn(
+                    'flex-1 rounded-md px-1 py-1 text-xs font-medium transition-all',
+                    isSelected(option)
+                      ? 'bg-background text-foreground shadow-sm ring-1 ring-border/50'
+                      : 'text-muted-foreground hover:text-foreground'
+                  )}
+                >
+                  {option.label}
+                </button>
+              ))}
             </div>
-            <Button variant="outline" size="sm" disabled={isDefault} onClick={() => resetScale()}>
-              {t('settings.sections.appearance.zoom.reset')}
+
+            <Button
+              variant="outline"
+              size="icon-xs"
+              disabled={!canZoomIn}
+              onClick={zoomIn}
+              aria-label="Zoom in"
+            >
+              <Plus />
             </Button>
           </div>
 
-          <div className="grid grid-cols-3 gap-2">
-            {options.map(option => (
-              <Button
-                key={option.value}
-                variant={isSelected(option) ? 'default' : 'outline'}
-                size="sm"
-                onClick={() => setScale(option.value)}
+          <div className="flex items-center justify-between">
+            <span className="text-xs text-muted-foreground">
+              {t('settings.sections.appearance.zoom.description')}
+            </span>
+            {!isDefault && (
+              <button
+                type="button"
+                onClick={() => resetScale()}
+                className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
               >
-                {option.label}
-              </Button>
-            ))}
+                <RotateCcw className="size-3" />
+                {t('settings.sections.appearance.zoom.reset')}
+              </button>
+            )}
           </div>
         </div>
       </SettingGroup>

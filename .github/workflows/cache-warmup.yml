@@ -1,0 +1,15 @@
+name: 'Cache Warmup'
+
+on:
+  schedule:
+    # Run every Monday at 00:00 UTC to keep Rust/Bun caches warm.
+    # GitHub Actions caches expire after 7 days of inactivity.
+    - cron: '0 0 * * 1'
+  workflow_dispatch:
+
+jobs:
+  warmup:
+    uses: ./.github/workflows/build.yml
+    with:
+      platform: 'all'
+    secrets: inherit

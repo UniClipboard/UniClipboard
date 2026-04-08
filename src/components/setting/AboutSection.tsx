@@ -1,4 +1,5 @@
 import { getVersion } from '@tauri-apps/api/app'
+import { Loader2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { SettingGroup } from './SettingGroup'
@@ -180,11 +181,15 @@ const AboutSection: React.FC = () => {
           </div>
           <button
             type="button"
-            className="px-4 py-2 bg-secondary hover:bg-secondary/80 text-sm font-medium transition duration-200 rounded-lg"
+            className="inline-flex min-w-36 items-center justify-center gap-2 rounded-lg bg-secondary px-4 py-2 text-sm font-medium transition duration-200 hover:bg-secondary/80"
             onClick={handleCheckUpdate}
             disabled={isBusy || isCheckingUpdate}
+            aria-busy={isCheckingUpdate}
           >
-            {t('settings.sections.about.checkUpdate')}
+            {isCheckingUpdate && <Loader2 className="h-4 w-4 animate-spin" />}
+            {isCheckingUpdate
+              ? t('settings.sections.about.checkingUpdate')
+              : t('settings.sections.about.checkUpdate')}
           </button>
         </div>
 

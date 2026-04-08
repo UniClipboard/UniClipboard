@@ -327,6 +327,7 @@
         "appName": "UniClipboard",
         "version": "版本 {{version}}",
         "checkUpdate": "检查更新",
+        "checkingUpdate": "正在检查...",
         "autoCheckUpdate": {
           "label": "自动检查更新",
           "description": "应用启动时自动检查是否有新版本"

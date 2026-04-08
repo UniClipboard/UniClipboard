@@ -336,6 +336,7 @@
         "appName": "UniClipboard",
         "version": "Version {{version}}",
         "checkUpdate": "Check for updates",
+        "checkingUpdate": "Checking...",
         "autoCheckUpdate": {
           "label": "Auto-check for updates",
           "description": "Automatically check for new versions when the app starts"

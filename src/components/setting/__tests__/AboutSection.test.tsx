@@ -5,6 +5,10 @@ import { SettingContext } from '@/contexts/setting-context'
 import { UpdateContext } from '@/contexts/update-context'
 import type { Settings } from '@/types/setting'
 
+vi.mock('@tauri-apps/api/app', () => ({
+  getVersion: vi.fn().mockResolvedValue('0.4.0-alpha.6'),
+}))
+
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
     t: (key: string) => key,
@@ -147,5 +151,44 @@ describe('AboutSection', () => {
     await waitFor(() => {
       expect(updateGeneralSetting).toHaveBeenCalledWith({ autoCheckUpdate: false })
     })
+  })
+
+  it('shows loading feedback while checking for updates', () => {
+    const { container } = render(
+      <SettingContext.Provider
+        value={{
+          setting: baseSetting,
+          loading: false,
+          error: null,
+          updateSetting: vi.fn(),
+          updateGeneralSetting: vi.fn(),
+          updateSyncSetting: vi.fn(),
+          updateSecuritySetting: vi.fn(),
+          updateRetentionPolicy: vi.fn(),
+          updateKeyboardShortcuts: vi.fn(),
+          updateFileSyncSetting: vi.fn(),
+        }}
+      >
+        <UpdateContext.Provider
+          value={{
+            updateInfo: null,
+            isCheckingUpdate: true,
+            checkForUpdates: vi.fn(),
+            installUpdate: vi.fn(),
+            downloadProgress: { downloaded: 0, total: null, phase: 'idle' as const },
+          }}
+        >
+          <AboutSection />
+        </UpdateContext.Provider>
+      </SettingContext.Provider>
+    )
+
+    const checkButton = screen.getByRole('button', {
+      name: 'settings.sections.about.checkingUpdate',
+    })
+
+    expect(checkButton).toBeDisabled()
+    expect(checkButton).toHaveAttribute('aria-busy', 'true')
+    expect(container.querySelector('.animate-spin')).toBeTruthy()
   })
 })

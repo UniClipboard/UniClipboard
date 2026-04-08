@@ -9,14 +9,21 @@ import {
 } from '@/lib/ui-scale'
 
 describe('ui scale', () => {
+  const originalLocalStorageDescriptor = Object.getOwnPropertyDescriptor(window, 'localStorage')
+
   beforeEach(() => {
     localStorage.clear()
     document.documentElement.style.removeProperty('zoom')
+    document.documentElement.style.removeProperty('--app-ui-scale')
   })
 
   afterEach(() => {
-    localStorage.clear()
+    if (originalLocalStorageDescriptor) {
+      Object.defineProperty(window, 'localStorage', originalLocalStorageDescriptor)
+    }
+    window.localStorage.clear()
     document.documentElement.style.removeProperty('zoom')
+    document.documentElement.style.removeProperty('--app-ui-scale')
   })
 
   it('applies the stored scale on startup', () => {
@@ -42,5 +49,52 @@ describe('ui scale', () => {
 
     expect(setUiScale(9)).toBe(1.5)
     expect(setUiScale(0.1)).toBe(0.8)
+  })
+
+  it('falls back to the default scale when storage reads throw', () => {
+    const throwingStorage = {
+      getItem: () => {
+        throw new Error('denied')
+      },
+      setItem: () => undefined,
+      removeItem: () => undefined,
+      clear: () => undefined,
+      key: () => null,
+      length: 0,
+    } as Storage
+
+    expect(readStoredUiScale(throwingStorage)).toBe(DEFAULT_UI_SCALE)
+    const cleanup = initializeUiScale(document.documentElement, throwingStorage)
+    expect(document.documentElement.style.getPropertyValue('--app-ui-scale')).toBe('')
+    cleanup()
+  })
+
+  it('ignores storage write errors when setting the scale', () => {
+    const throwingStorage = {
+      getItem: () => null,
+      setItem: () => {
+        throw new Error('quota')
+      },
+      removeItem: () => undefined,
+      clear: () => undefined,
+      key: () => null,
+      length: 0,
+    } as Storage
+
+    expect(() => setUiScale(1.1, document.documentElement, throwingStorage)).not.toThrow()
+    expect(document.documentElement.style.getPropertyValue('--app-ui-scale')).toBe('1.1')
+  })
+
+  it('continues initialization when window.localStorage getter throws', () => {
+    Object.defineProperty(window, 'localStorage', {
+      configurable: true,
+      get() {
+        throw new Error('opaque origin')
+      },
+    })
+
+    expect(readStoredUiScale()).toBe(DEFAULT_UI_SCALE)
+    const cleanup = initializeUiScale()
+    cleanup()
   })
 })

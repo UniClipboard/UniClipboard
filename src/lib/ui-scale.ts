@@ -15,16 +15,47 @@ const getStorage = (storage?: Storage | null): Storage | null => {
     return storage
   }
 
-  if (typeof window === 'undefined' || typeof window.localStorage === 'undefined') {
+  if (typeof window === 'undefined') {
     return null
   }
 
-  return window.localStorage
+  try {
+    if (typeof window.localStorage === 'undefined') {
+      return null
+    }
+    return window.localStorage
+  } catch {
+    return null
+  }
+}
+
+const safeReadStorage = (storage: Storage | null, key: string): string | null => {
+  if (!storage) {
+    return null
+  }
+
+  try {
+    return storage.getItem(key)
+  } catch {
+    return null
+  }
+}
+
+const safeWriteStorage = (storage: Storage | null, key: string, value: string): void => {
+  if (!storage) {
+    return
+  }
+
+  try {
+    storage.setItem(key, value)
+  } catch {
+    // Ignore storage write errors so UI scale changes never break startup or hotkeys.
+  }
 }
 
 export const readStoredUiScale = (storage?: Storage | null): number => {
   const resolvedStorage = getStorage(storage)
-  const raw = resolvedStorage?.getItem(UI_SCALE_STORAGE_KEY)
+  const raw = safeReadStorage(resolvedStorage, UI_SCALE_STORAGE_KEY)
   if (!raw) {
     return DEFAULT_UI_SCALE
   }
@@ -59,7 +90,7 @@ export const applyUiScale = (
 
 const persistUiScale = (scale: number, storage?: Storage | null): number => {
   const normalized = clampUiScale(scale)
-  getStorage(storage)?.setItem(UI_SCALE_STORAGE_KEY, String(normalized))
+  safeWriteStorage(getStorage(storage), UI_SCALE_STORAGE_KEY, String(normalized))
   return normalized
 }
 

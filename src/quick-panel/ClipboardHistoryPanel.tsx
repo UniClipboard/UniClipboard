@@ -121,7 +121,7 @@ const PanelItem: React.FC<PanelItemProps> = ({
 }
 
 const quickCardClassName =
-  'flex h-screen w-[360px] min-w-[360px] max-w-[360px] flex-col overflow-hidden rounded-xl border border-border/50 bg-background/95 shadow-xl backdrop-blur-xl'
+  'flex h-screen w-[360px] min-w-[360px] max-w-[360px] shrink-0 flex-col overflow-hidden rounded-xl border border-border/50 bg-background/95 shadow-xl backdrop-blur-xl'
 
 const ClipboardHistoryPanel: React.FC = () => {
   useThemeSync()
@@ -514,7 +514,7 @@ const ClipboardHistoryPanel: React.FC = () => {
         className={[
           'overflow-hidden transition-all duration-200 ease-out',
           previewEntryId !== null
-            ? 'ml-1 w-[360px] opacity-100 translate-x-0'
+            ? 'ml-1 flex-1 min-w-0 opacity-100 translate-x-0'
             : 'ml-0 w-0 opacity-0 translate-x-2 pointer-events-none',
         ].join(' ')}
         aria-hidden={previewEntryId === null}

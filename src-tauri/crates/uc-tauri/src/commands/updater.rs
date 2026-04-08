@@ -39,6 +39,38 @@ pub enum DownloadEvent {
 /// 保存等待安装的挂起更新。
 pub struct PendingUpdate(pub Mutex<Option<tauri_plugin_updater::Update>>);
 
+fn take_pending_value<T>(pending: &Mutex<Option<T>>, empty_message: &str) -> Result<T, String> {
+    let mut guard = pending
+        .lock()
+        .map_err(|e| format!("Failed to lock pending update: {}", e))?;
+    guard.take().ok_or_else(|| empty_message.to_string())
+}
+
+fn restore_pending_value<T>(pending: &Mutex<Option<T>>, value: T) -> Result<(), String> {
+    let mut guard = pending
+        .lock()
+        .map_err(|e| format!("Failed to lock pending update: {}", e))?;
+    *guard = Some(value);
+    Ok(())
+}
+
+fn finalize_pending_action<T, E>(
+    pending: &Mutex<Option<T>>,
+    value: T,
+    result: Result<(), E>,
+) -> Result<(), String>
+where
+    E: ToString,
+{
+    match result {
+        Ok(()) => Ok(()),
+        Err(err) => {
+            restore_pending_value(pending, value)?;
+            Err(err.to_string())
+        }
+    }
+}
+
 /// Metadata returned to the frontend when an update is available.
 /// 当有可用更新时返回给前端的元数据。
 #[derive(Debug, Serialize)]
@@ -186,21 +218,12 @@ pub async fn install_update(
     record_trace_fields(&span, &_trace);
 
     async move {
-        // Take the pending update out of the state
-        let update = {
-            let mut guard = pending
-                .0
-                .lock()
-                .map_err(|e| format!("Failed to lock pending update: {}", e))?;
-            guard.take()
-        };
-
-        let update = update.ok_or_else(|| "No pending update available".to_string())?;
+        let update = take_pending_value(&pending.0, "No pending update available")?;
 
         info!(new_version = %update.version, "installing update");
 
         let mut first_chunk = true;
-        update
+        let install_result = update
             .download_and_install(
                 |chunk_length, content_length| {
                     if first_chunk {
@@ -270,12 +293,50 @@ pub async fn install_update(
                     }
                 },
             )
-            .await
-            .map_err(|e| e.to_string())?;
+            .await;
+
+        finalize_pending_action(&pending.0, update, install_result)?;
 
         info!("update installed, restarting app");
         app.restart();
     }
     .instrument(span)
     .await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{finalize_pending_action, take_pending_value};
+    use std::sync::Mutex;
+
+    #[test]
+    fn take_pending_value_returns_error_when_empty() {
+        let pending = Mutex::new(None::<String>);
+
+        let error = take_pending_value(&pending, "No pending update available").unwrap_err();
+
+        assert_eq!(error, "No pending update available");
+    }
+
+    #[test]
+    fn failed_pending_action_restores_value_for_retry() {
+        let pending = Mutex::new(Some("update".to_string()));
+        let value = take_pending_value(&pending, "No pending update available").unwrap();
+
+        let error = finalize_pending_action(&pending, value, Err::<(), _>("network disconnected"))
+            .unwrap_err();
+
+        assert_eq!(error, "network disconnected");
+        assert_eq!(pending.lock().unwrap().as_deref(), Some("update"));
+    }
+
+    #[test]
+    fn successful_pending_action_consumes_value() {
+        let pending = Mutex::new(Some("update".to_string()));
+        let value = take_pending_value(&pending, "No pending update available").unwrap();
+
+        finalize_pending_action(&pending, value, Ok::<(), String>(())).unwrap();
+
+        assert!(pending.lock().unwrap().is_none());
+    }
 }

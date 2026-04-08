@@ -12,7 +12,7 @@ use async_trait::async_trait;
 use serde::Serialize;
 use tokio::sync::{broadcast, mpsc};
 use tokio_util::sync::CancellationToken;
-use tracing::{debug, info, warn};
+use tracing::{debug, info, instrument, warn, Instrument};
 
 use clipboard_rs::{ClipboardWatcher as RSClipboardWatcher, ClipboardWatcherContext};
 use uc_app::runtime::CoreRuntime;
@@ -175,6 +175,12 @@ impl DaemonClipboardChangeHandler {
 
 #[async_trait]
 impl ClipboardChangeHandler for DaemonClipboardChangeHandler {
+    #[instrument(
+        name = "daemon.on_clipboard_changed",
+        level = "info",
+        skip(self, snapshot),
+        fields(trace_id = %FlowId::generate())
+    )]
     async fn on_clipboard_changed(&self, snapshot: SystemClipboardSnapshot) -> Result<()> {
         if !self.capture_gate.load(Ordering::Relaxed) {
             debug!("Clipboard capture gate closed, skipping clipboard change");
@@ -291,15 +297,20 @@ impl ClipboardChangeHandler for DaemonClipboardChangeHandler {
                     let outbound_sync_uc = self.build_sync_outbound_clipboard_use_case();
                     let flow_id_clone = flow_id.clone();
                     tokio::task::spawn_blocking(move || {
-                        match outbound_sync_uc.execute(
-                            clipboard_intent.snapshot,
-                            origin,
-                            Some(flow_id_clone),
-                            clipboard_intent.file_transfers,
-                        ) {
-                            Ok(()) => info!("Daemon outbound clipboard sync completed"),
-                            Err(e) => warn!(error = %e, "Daemon outbound clipboard sync failed"),
+                        {
+                            match outbound_sync_uc.execute(
+                                clipboard_intent.snapshot,
+                                origin,
+                                Some(flow_id_clone),
+                                clipboard_intent.file_transfers,
+                            ) {
+                                Ok(()) => info!("Daemon outbound clipboard sync completed"),
+                                Err(e) => {
+                                    warn!(error = %e, "Daemon outbound clipboard sync failed")
+                                }
+                            }
                         }
+                        .in_current_span()
                     });
                 }
 
@@ -333,7 +344,8 @@ impl ClipboardChangeHandler for DaemonClipboardChangeHandler {
                                 ),
                             }
                         }
-                    });
+                    }
+                    .in_current_span());
                 }
             }
             Ok(None) => {

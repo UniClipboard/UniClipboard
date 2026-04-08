@@ -376,10 +376,6 @@ impl SyncInboundClipboardUseCase {
                 "inbound rep"
             );
         }
-        info!(
-            rep_count = v3_payload.representations.len(),
-            "V3 inbound payload decoded"
-        );
 
         async {
             let selected_idx = match select_highest_priority_repr_index(&v3_payload.representations)

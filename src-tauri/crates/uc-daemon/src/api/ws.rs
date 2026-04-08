@@ -20,7 +20,7 @@ use futures_util::{SinkExt, StreamExt};
 use serde::Serialize;
 use tokio::sync::{mpsc, RwLock};
 use tokio::time::{interval, Instant};
-use tracing::{debug, info, warn};
+use tracing::{debug, info, info_span, warn, Instrument};
 use uc_core::network::daemon_api_strings::{ws_event, ws_topic};
 use utoipa;
 
@@ -180,188 +180,198 @@ fn ws_rate_limited() -> (StatusCode, Json<WsErrorResponse>) {
 // ---------------------------------------------------------------------------
 
 async fn handle_connection(socket: WebSocket, state: DaemonApiState, claims: SessionTokenClaims) {
-    let topics = Arc::new(RwLock::new(HashSet::<String>::new()));
-    tracing::info!(
+    let conn_span = info_span!(
+        "daemon.ws.connection",
+        session_token_jti = %claims.jti,
         pid = claims.pid,
-        client_type = %claims.client_type,
-        "websocket connection authenticated",
     );
 
-    let (outbound_tx, mut outbound_rx) = mpsc::channel::<DaemonWsEvent>(32);
-    let mut broadcast_rx = state.event_tx.subscribe();
-    let fanout_topics = Arc::clone(&topics);
-    let fanout_tx = outbound_tx.clone();
+    async move {
+        let topics = Arc::new(RwLock::new(HashSet::<String>::new()));
+        tracing::info!(
+            pid = claims.pid,
+            client_type = %claims.client_type,
+            "websocket connection authenticated",
+        );
 
-    // Fanout task: receives daemon events and forwards them to the client via outbound_tx.
-    let fanout_task = tokio::spawn(async move {
-        loop {
-            match broadcast_rx.recv().await {
-                Ok(event) => {
-                    let matched_topics = {
-                        let guard = fanout_topics.read().await;
-                        guard
-                            .iter()
-                            .filter(|topic| topic_matches(topic, event.topic.as_str()))
-                            .cloned()
-                            .collect::<Vec<_>>()
-                    };
+        let (outbound_tx, mut outbound_rx) = mpsc::channel::<DaemonWsEvent>(32);
+        let mut broadcast_rx = state.event_tx.subscribe();
+        let fanout_topics = Arc::clone(&topics);
+        let fanout_tx = outbound_tx.clone();
 
-                    if !matched_topics.is_empty() {
-                        let event = bridge_verification_event(event);
-                        info!(
-                            event_topic = %event.topic,
-                            event_type = %event.event_type,
-                            session_id = event.session_id.as_deref().unwrap_or(""),
-                            matched_topics = ?matched_topics,
-                            "forwarding daemon websocket event to subscribed client"
-                        );
-                        if fanout_tx.send(event).await.is_err() {
-                            break;
-                        }
-                    }
-                }
-                Err(tokio::sync::broadcast::error::RecvError::Lagged(skipped)) => {
-                    warn!(
-                        skipped,
-                        "websocket client lagged behind daemon event stream"
-                    );
-                }
-                Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
-            }
-        }
-    });
+        // Fanout task: receives daemon events and forwards them to the client via outbound_tx.
+        let fanout_task = tokio::spawn(async move {
+            loop {
+                match broadcast_rx.recv().await {
+                    Ok(event) => {
+                        let matched_topics = {
+                            let guard = fanout_topics.read().await;
+                            guard
+                                .iter()
+                                .filter(|topic| topic_matches(topic, event.topic.as_str()))
+                                .cloned()
+                                .collect::<Vec<_>>()
+                        };
 
-    // Heartbeat channel: the heartbeat task signals `Stale` when the client
-    // fails to respond to a ping within CLIENT_TIMEOUT.
-    let (heartbeat_tx, mut heartbeat_rx) = mpsc::channel::<HeartbeatSignal>(1);
-
-    // Unified send channel: both daemon events and heartbeat pings are sent here.
-    // This avoids needing to share the SplitSink across tasks.
-    let (send_tx, mut send_rx) = mpsc::channel::<SendMsg>(16);
-    let send_tx_for_heartbeat = send_tx.clone();
-
-    // Heartbeat task: sends a ping frame every HEARTBEAT_INTERVAL seconds.
-    // If no pong is received within CLIENT_TIMEOUT after a ping, the task
-    // signals `Stale` which causes the receive loop to close the socket.
-    let heartbeat_task = tokio::spawn(async move {
-        let mut ping_interval = interval(HEARTBEAT_INTERVAL);
-        // Wait for the initial interval tick before the first ping.
-        ping_interval.tick().await;
-
-        loop {
-            // Send a ping.
-            if send_tx_for_heartbeat.send(SendMsg::Ping).await.is_err() {
-                debug!("heartbeat: send channel closed, exiting");
-                break;
-            }
-            debug!("heartbeat: ping sent");
-
-            // Wait for the next interval or the deadline.
-            let deadline = Instant::now() + CLIENT_TIMEOUT;
-            tokio::select! {
-                _ = ping_interval.tick() => {
-                    // Interval elapsed — time for the next ping.
-                }
-                _ = tokio::time::sleep_until(deadline) => {
-                    // Timeout — no pong received.
-                    debug!("heartbeat: deadline expired, connection stale");
-                    if heartbeat_tx.send(HeartbeatSignal::Stale).await.is_err() {
-                        debug!("heartbeat: heartbeat_rx dropped, exiting");
-                    }
-                    return;
-                }
-            }
-        }
-    });
-
-    let (mut sender, mut receiver) = socket.split();
-
-    // Send task: drives the actual socket writes.
-    // Receives both daemon events (via outbound_rx) and heartbeat pings (via send_rx).
-    let send_task = tokio::spawn(async move {
-        loop {
-            tokio::select! {
-                // Daemon event to forward to the client.
-                Some(event) = outbound_rx.recv() => {
-                    let payload = match serde_json::to_string(&event) {
-                        Ok(payload) => payload,
-                        Err(error) => {
-                            warn!(error = %error, "failed to serialize websocket event");
-                            continue;
-                        }
-                    };
-                    if sender.send(Message::Text(payload.into())).await.is_err() {
-                        break;
-                    }
-                }
-                // Heartbeat ping or close request.
-                Some(msg) = send_rx.recv() => {
-                    match msg {
-                        SendMsg::Ping => {
-                            if sender.send(Message::Ping(b"".into())).await.is_err() {
+                        if !matched_topics.is_empty() {
+                            let event = bridge_verification_event(event);
+                            info!(
+                                event_topic = %event.topic,
+                                event_type = %event.event_type,
+                                session_id = event.session_id.as_deref().unwrap_or(""),
+                                matched_topics = ?matched_topics,
+                                "forwarding daemon websocket event to subscribed client"
+                            );
+                            if fanout_tx.send(event).await.is_err() {
                                 break;
                             }
                         }
-                        SendMsg::Close => {
-                            let _ = sender.send(Message::Close(None)).await;
-                            break;
-                        }
                     }
+                    Err(tokio::sync::broadcast::error::RecvError::Lagged(skipped)) => {
+                        warn!(
+                            skipped,
+                            "websocket client lagged behind daemon event stream"
+                        );
+                    }
+                    Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
                 }
             }
-        }
-    });
+        });
 
-    // Receive loop: handles client messages (subscribe requests, pong frames).
-    // Also drains the heartbeat channel to detect stale connections.
-    loop {
-        tokio::select! {
-            // Incoming message from the client socket.
-            msg = receiver.next() => {
-                match msg {
-                    Some(Ok(Message::Text(payload))) => {
-                        if let Err(error) =
-                            handle_client_message(payload.as_str(), &state, &topics, &outbound_tx).await
-                        {
-                            warn!(error = %error, "failed to handle websocket client message");
+        // Heartbeat channel: the heartbeat task signals `Stale` when the client
+        // fails to respond to a ping within CLIENT_TIMEOUT.
+        let (heartbeat_tx, mut heartbeat_rx) = mpsc::channel::<HeartbeatSignal>(1);
+
+        // Unified send channel: both daemon events and heartbeat pings are sent here.
+        // This avoids needing to share the SplitSink across tasks.
+        let (send_tx, mut send_rx) = mpsc::channel::<SendMsg>(16);
+        let send_tx_for_heartbeat = send_tx.clone();
+
+        // Heartbeat task: sends a ping frame every HEARTBEAT_INTERVAL seconds.
+        // If no pong is received within CLIENT_TIMEOUT after a ping, the task
+        // signals `Stale` which causes the receive loop to close the socket.
+        let heartbeat_task = tokio::spawn(async move {
+            let mut ping_interval = interval(HEARTBEAT_INTERVAL);
+            // Wait for the initial interval tick before the first ping.
+            ping_interval.tick().await;
+
+            loop {
+                // Send a ping.
+                if send_tx_for_heartbeat.send(SendMsg::Ping).await.is_err() {
+                    debug!("heartbeat: send channel closed, exiting");
+                    break;
+                }
+                debug!("heartbeat: ping sent");
+
+                // Wait for the next interval or the deadline.
+                let deadline = Instant::now() + CLIENT_TIMEOUT;
+                tokio::select! {
+                    _ = ping_interval.tick() => {
+                        // Interval elapsed — time for the next ping.
+                    }
+                    _ = tokio::time::sleep_until(deadline) => {
+                        // Timeout — no pong received.
+                        debug!("heartbeat: deadline expired, connection stale");
+                        if heartbeat_tx.send(HeartbeatSignal::Stale).await.is_err() {
+                            debug!("heartbeat: heartbeat_rx dropped, exiting");
+                        }
+                        return;
+                    }
+                }
+            }
+        });
+
+        let (mut sender, mut receiver) = socket.split();
+
+        // Send task: drives the actual socket writes.
+        // Receives both daemon events (via outbound_rx) and heartbeat pings (via send_rx).
+        let send_task = tokio::spawn(async move {
+            loop {
+                tokio::select! {
+                    // Daemon event to forward to the client.
+                    Some(event) = outbound_rx.recv() => {
+                        let payload = match serde_json::to_string(&event) {
+                            Ok(payload) => payload,
+                            Err(error) => {
+                                warn!(error = %error, "failed to serialize websocket event");
+                                continue;
+                            }
+                        };
+                        if sender.send(Message::Text(payload.into())).await.is_err() {
                             break;
                         }
                     }
-                    Some(Ok(Message::Pong(_))) => {
-                        debug!("heartbeat: pong received");
+                    // Heartbeat ping or close request.
+                    Some(msg) = send_rx.recv() => {
+                        match msg {
+                            SendMsg::Ping => {
+                                if sender.send(Message::Ping(b"".into())).await.is_err() {
+                                    break;
+                                }
+                            }
+                            SendMsg::Close => {
+                                let _ = sender.send(Message::Close(None)).await;
+                                break;
+                            }
+                        }
                     }
-                    Some(Ok(Message::Close(_))) => break,
-                    // Ping: axum/tokio-tungstenite automatically replies with a Pong.
-                    // Binary frames are ignored.
-                    Some(Ok(Message::Ping(_))) | Some(Ok(Message::Binary(_))) => {}
-                    Some(Err(error)) => {
-                        warn!(error = %error, "websocket receive loop failed");
-                        break;
-                    }
-                    None => break,
                 }
             }
-            // Signal from the heartbeat task that the connection is stale.
-            sig = heartbeat_rx.recv() => {
-                match sig {
-                    Some(HeartbeatSignal::Stale) => {
-                        warn!("heartbeat: client missed pong, closing stale connection");
-                        let _ = send_tx.send(SendMsg::Close).await;
-                        break;
+        });
+
+        // Receive loop: handles client messages (subscribe requests, pong frames).
+        // Also drains the heartbeat channel to detect stale connections.
+        loop {
+            tokio::select! {
+                // Incoming message from the client socket.
+                msg = receiver.next() => {
+                    match msg {
+                        Some(Ok(Message::Text(payload))) => {
+                            if let Err(error) =
+                                handle_client_message(payload.as_str(), &state, &topics, &outbound_tx).await
+                            {
+                                warn!(error = %error, "failed to handle websocket client message");
+                                break;
+                            }
+                        }
+                        Some(Ok(Message::Pong(_))) => {
+                            debug!("heartbeat: pong received");
+                        }
+                        Some(Ok(Message::Close(_))) => break,
+                        // Ping: axum/tokio-tungstenite automatically replies with a Pong.
+                        // Binary frames are ignored.
+                        Some(Ok(Message::Ping(_))) | Some(Ok(Message::Binary(_))) => {}
+                        Some(Err(error)) => {
+                            warn!(error = %error, "websocket receive loop failed");
+                            break;
+                        }
+                        None => break,
                     }
-                    None => break,
+                }
+                // Signal from the heartbeat task that the connection is stale.
+                sig = heartbeat_rx.recv() => {
+                    match sig {
+                        Some(HeartbeatSignal::Stale) => {
+                            warn!("heartbeat: client missed pong, closing stale connection");
+                            let _ = send_tx.send(SendMsg::Close).await;
+                            break;
+                        }
+                        None => break,
+                    }
                 }
             }
         }
+
+        drop(outbound_tx);
+        drop(send_tx);
+        fanout_task.abort();
+        heartbeat_task.abort();
+        let _ = fanout_task.await;
+        let _ = send_task.await;
+        debug!("daemon websocket connection closed");
     }
-
-    drop(outbound_tx);
-    drop(send_tx);
-    fanout_task.abort();
-    heartbeat_task.abort();
-    let _ = fanout_task.await;
-    let _ = send_task.await;
-    debug!("daemon websocket connection closed");
+    .instrument(conn_span)
+    .await;
 }
 
 // ---------------------------------------------------------------------------

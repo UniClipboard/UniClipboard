@@ -16,7 +16,7 @@ use std::sync::Arc;
 use tokio::sync::{mpsc, Mutex as AsyncMutex, OwnedSemaphorePermit, Semaphore};
 use tokio::time::Duration;
 use tokio_util::compat::FuturesAsyncReadCompatExt;
-use tracing::{info, info_span, warn, Instrument};
+use tracing::{info, info_span, instrument, warn, Instrument};
 use uc_core::network::{NetworkEvent, ProtocolId};
 use uc_core::ports::transfer_progress::{
     TransferDirection, TransferProgress, TransferProgressPort,
@@ -264,6 +264,17 @@ impl FileTransferService {
     }
 
     /// Send a file to a peer.
+    #[instrument(
+        name = "file_transfer.send",
+        level = "info",
+        skip(self, file_path),
+        fields(
+            peer_id = %peer_id_str,
+            transfer_id = %transfer_id,
+            file = %file_path.display(),
+            batch_id = ?batch_id,
+        )
+    )]
     pub async fn send_file(
         &self,
         peer_id_str: &str,

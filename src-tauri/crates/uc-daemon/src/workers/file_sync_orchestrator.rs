@@ -14,7 +14,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use tokio_util::sync::CancellationToken;
-use tracing::{error, info, info_span, warn, Instrument};
+use tracing::{debug, error, info, info_span, instrument, warn, Instrument};
 
 use uc_app::usecases::clipboard::clipboard_write_coordinator::{
     ClipboardWriteCoordinator, ClipboardWriteIntent,
@@ -140,7 +140,7 @@ impl FileSyncOrchestratorWorker {
                 batch_id,
                 batch_total,
             } => {
-                info!(
+                debug!(
                     transfer_id = %transfer_id,
                     peer_id = %peer_id,
                     filename = %filename,
@@ -287,6 +287,12 @@ impl FileSyncOrchestratorWorker {
 ///
 /// Canonicalizes paths to absolute paths, then delegates guard-registration + write
 /// to the ClipboardWriteCoordinator with LocalRestore intent.
+#[instrument(
+    name = "inbound_file_sync.restore_to_clipboard",
+    level = "info",
+    skip(file_paths, coordinator),
+    fields(file_count = file_paths.len())
+)]
 async fn restore_file_to_clipboard_after_transfer(
     file_paths: Vec<PathBuf>,
     coordinator: &Arc<ClipboardWriteCoordinator>,
@@ -322,14 +328,6 @@ async fn restore_file_to_clipboard_after_transfer(
     // Verify all files exist before attempting clipboard write
     let files_exist: Vec<bool> = file_paths.iter().map(|p| p.exists()).collect();
     let all_exist = files_exist.iter().all(|&e| e);
-    info!(
-        file_count = file_paths.len(),
-        paths = ?file_paths.iter().map(|p| p.display().to_string()).collect::<Vec<_>>(),
-        files_exist = ?files_exist,
-        all_exist,
-        "restore_file_to_clipboard_after_transfer: starting restore"
-    );
-
     if !all_exist {
         warn!(
             paths = ?file_paths.iter().map(|p| p.display().to_string()).collect::<Vec<_>>(),
@@ -346,7 +344,7 @@ async fn restore_file_to_clipboard_after_transfer(
     // call is actively executing — not merely because attribution guards from
     // a previous completed write are still within their TTL window.
     if coordinator.is_write_in_progress() {
-        info!(
+        warn!(
             file_count = file_paths.len(),
             "Concurrent clipboard write in progress, skipping auto-restore. Files available in Dashboard."
         );
@@ -354,20 +352,11 @@ async fn restore_file_to_clipboard_after_transfer(
     }
 
     // Restore to system clipboard via coordinator (handles guard + write + cleanup-on-error)
-    info!(
-        path_list = %path_list,
-        "restore_file_to_clipboard_after_transfer: restoring to OS clipboard"
-    );
     if let Err(err) = coordinator
         .write(snapshot, ClipboardWriteIntent::LocalRestore)
         .await
     {
         warn!(error = %err, "Failed to write file URIs to system clipboard");
-    } else {
-        info!(
-            file_count = file_paths.len(),
-            "File URIs written to system clipboard"
-        );
     }
 }
 

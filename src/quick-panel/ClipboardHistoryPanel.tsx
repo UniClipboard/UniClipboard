@@ -121,7 +121,7 @@ const PanelItem: React.FC<PanelItemProps> = ({
 }
 
 const quickCardClassName =
-  'flex h-screen w-[360px] min-w-[360px] max-w-[360px] shrink-0 flex-col overflow-hidden rounded-xl border border-border/50 bg-background/95 shadow-xl backdrop-blur-xl'
+  'flex h-screen w-[22.5rem] min-w-[22.5rem] max-w-[22.5rem] shrink-0 flex-col overflow-hidden rounded-xl border border-border/50 bg-background/95 shadow-xl backdrop-blur-xl'
 
 const ClipboardHistoryPanel: React.FC = () => {
   useThemeSync()

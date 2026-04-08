@@ -2,8 +2,10 @@ import { type LucideIcon, Check, Monitor, Moon, Sun } from 'lucide-react'
 import type { MouseEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 import { SettingGroup } from './SettingGroup'
+import { Button } from '@/components/ui'
 import { DEFAULT_THEME_COLOR, THEME_COLORS } from '@/constants/theme'
 import { useSetting, type Theme } from '@/hooks/useSetting'
+import { useUiScale } from '@/hooks/useUiScale'
 import { setTransitionOrigin } from '@/lib/theme-transition'
 import { cn } from '@/lib/utils'
 
@@ -54,6 +56,7 @@ function ThemeOption({ value, icon: Icon, label, theme, handleThemeChange }: The
 export default function AppearanceSection() {
   const { t } = useTranslation()
   const { setting, updateGeneralSetting } = useSetting()
+  const { scalePercent, options, setScale, resetScale, isDefault, isSelected } = useUiScale()
 
   // Use derived state instead of local state to avoid initial flash
   const theme = setting?.general?.theme || 'system'
@@ -136,6 +139,37 @@ export default function AppearanceSection() {
               </span>
             </div>
           ))}
+        </div>
+      </SettingGroup>
+
+      <SettingGroup title={t('settings.sections.appearance.zoom.title')}>
+        <div className="flex flex-col gap-4 p-4">
+          <div className="flex items-center justify-between gap-3">
+            <div className="space-y-1">
+              <div className="text-sm font-medium text-foreground">
+                {t('settings.sections.appearance.zoom.current', { value: scalePercent })}
+              </div>
+              <div className="text-xs text-muted-foreground">
+                {t('settings.sections.appearance.zoom.description')}
+              </div>
+            </div>
+            <Button variant="outline" size="sm" disabled={isDefault} onClick={() => resetScale()}>
+              {t('settings.sections.appearance.zoom.reset')}
+            </Button>
+          </div>
+
+          <div className="grid grid-cols-3 gap-2">
+            {options.map(option => (
+              <Button
+                key={option.value}
+                variant={isSelected(option) ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setScale(option.value)}
+              >
+                {option.label}
+              </Button>
+            ))}
+          </div>
         </div>
       </SettingGroup>
     </>

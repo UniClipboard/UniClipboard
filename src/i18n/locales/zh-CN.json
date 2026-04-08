@@ -87,6 +87,12 @@
         },
         "themeColor": {
           "title": "主题色"
+        },
+        "zoom": {
+          "title": "界面缩放",
+          "description": "缩放会同时影响主窗口和快捷面板，也会和快捷键保持同步。",
+          "current": "当前缩放：{{value}}",
+          "reset": "重置为 100%"
         }
       },
       "sync": {

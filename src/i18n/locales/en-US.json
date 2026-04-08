@@ -87,6 +87,12 @@
         },
         "themeColor": {
           "title": "Theme color"
+        },
+        "zoom": {
+          "title": "Interface Scale",
+          "description": "Scale applies to both the main window and quick panel, and stays in sync with the shortcuts.",
+          "current": "Current scale: {{value}}",
+          "reset": "Reset to 100%"
         }
       },
       "sync": {

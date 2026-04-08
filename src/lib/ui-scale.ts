@@ -5,7 +5,21 @@ export const MAX_UI_SCALE = 1.5
 export const UI_SCALE_STEP = 0.1
 const UI_SCALE_CHANGED_EVENT = 'uniclipboard:ui-scale-changed'
 
-const roundUiScale = (value: number): number => Math.round(value * 10) / 10
+export type UiScaleOption = {
+  label: string
+  value: number
+}
+
+export const UI_SCALE_OPTIONS: UiScaleOption[] = [
+  { label: '80%', value: 0.8 },
+  { label: '90%', value: 0.9 },
+  { label: '100%', value: 1 },
+  { label: '110%', value: 1.1 },
+  { label: '125%', value: 1.25 },
+  { label: '150%', value: 1.5 },
+]
+
+const roundUiScale = (value: number): number => Math.round(value * 100) / 100
 
 export const clampUiScale = (value: number): number =>
   Math.min(MAX_UI_SCALE, Math.max(MIN_UI_SCALE, roundUiScale(value)))
@@ -101,6 +115,30 @@ const dispatchUiScaleChanged = (): void => {
   window.dispatchEvent(new CustomEvent(UI_SCALE_CHANGED_EVENT))
 }
 
+export const subscribeUiScaleChanges = (listener: (scale: number) => void): (() => void) => {
+  if (typeof window === 'undefined') {
+    return () => {}
+  }
+
+  const handleCustomEvent = () => {
+    listener(readStoredUiScale())
+  }
+
+  const handleStorage = (event: StorageEvent) => {
+    if (event.key === null || event.key === UI_SCALE_STORAGE_KEY) {
+      listener(readStoredUiScale())
+    }
+  }
+
+  window.addEventListener(UI_SCALE_CHANGED_EVENT, handleCustomEvent)
+  window.addEventListener('storage', handleStorage)
+
+  return () => {
+    window.removeEventListener(UI_SCALE_CHANGED_EVENT, handleCustomEvent)
+    window.removeEventListener('storage', handleStorage)
+  }
+}
+
 export const setUiScale = (
   scale: number,
   root?: HTMLElement | null,
@@ -134,22 +172,8 @@ export const initializeUiScale = (
     applyUiScale(readStoredUiScale(storage), root)
   }
 
-  const handleStorage = (event: StorageEvent) => {
-    if (event.key === null || event.key === UI_SCALE_STORAGE_KEY) {
-      syncFromStorage()
-    }
-  }
-
-  const handleCustomEvent = () => {
-    syncFromStorage()
-  }
-
   syncFromStorage()
-  window.addEventListener('storage', handleStorage)
-  window.addEventListener(UI_SCALE_CHANGED_EVENT, handleCustomEvent)
-
-  return () => {
-    window.removeEventListener('storage', handleStorage)
-    window.removeEventListener(UI_SCALE_CHANGED_EVENT, handleCustomEvent)
-  }
+  return subscribeUiScaleChanges(() => {
+    syncFromStorage()
+  })
 }

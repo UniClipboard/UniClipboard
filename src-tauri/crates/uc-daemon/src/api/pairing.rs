@@ -320,7 +320,10 @@ async fn handle_initiate_pairing(
         .await
         .map_err(ApiError::from_pairing_error)?;
 
-    Ok(Json(InitiatePairingResponse { session_id }))
+    Ok(Json(InitiatePairingResponse {
+        session_id,
+        success: true,
+    }))
 }
 
 /// POST /pairing/accept

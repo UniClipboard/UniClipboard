@@ -679,6 +679,11 @@ impl PairingOrchestrator {
         self.session_manager.has_session(session_id).await
     }
 
+    /// Return whether a session exists **and** is still in a non-terminal state.
+    pub async fn has_active_session(&self, session_id: &str) -> bool {
+        self.session_manager.has_active_session(session_id).await
+    }
+
     /// Cleanup expired sessions.
     pub async fn cleanup_expired_sessions(&self) {
         self.session_manager.cleanup_expired_sessions().await

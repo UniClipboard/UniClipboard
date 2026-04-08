@@ -65,6 +65,7 @@ pub struct AckedPairingCommandResponse {
 #[serde(rename_all = "camelCase")]
 pub struct InitiatePairingResponse {
     pub session_id: String,
+    pub success: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]

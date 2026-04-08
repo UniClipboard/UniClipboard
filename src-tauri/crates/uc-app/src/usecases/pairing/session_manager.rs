@@ -145,6 +145,16 @@ impl PairingSessionManager {
         self.sessions.read().await.contains_key(session_id)
     }
 
+    /// Return whether a session exists **and** is still in a non-terminal state
+    /// (i.e. not `Failed`, `Cancelled`, or `Paired`).
+    pub(crate) async fn has_active_session(&self, session_id: &str) -> bool {
+        let sessions = self.sessions.read().await;
+        sessions
+            .get(session_id)
+            .map(|ctx| !ctx.state_machine.state().is_terminal())
+            .unwrap_or(false)
+    }
+
     /// Insert a session context into the sessions map.
     pub(crate) async fn insert_session(
         &self,

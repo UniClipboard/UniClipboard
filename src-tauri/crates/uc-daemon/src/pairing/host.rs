@@ -552,19 +552,29 @@ impl DaemonPairingHost {
     }
 
     async fn require_session(&self, session_id: &str) -> Result<(), DaemonPairingHostError> {
-        if !self.pairing_orchestrator.has_session(session_id).await
-            && self
-                .state
-                .read()
-                .await
-                .pairing_session(session_id)
-                .is_none()
+        // First check: does the orchestrator still have an active (non-terminal)
+        // session?  If yes, the session is valid.
+        if self
+            .pairing_orchestrator
+            .has_active_session(session_id)
+            .await
         {
-            return Err(DaemonPairingHostError::SessionNotFound(
-                session_id.to_string(),
-            ));
+            return Ok(());
         }
-        Ok(())
+
+        // The orchestrator either doesn't know about this session or the session
+        // has already reached a terminal state (Failed / Cancelled / Paired).
+        // Fall back to the projection snapshot – but only accept it when it is
+        // NOT in a terminal stage.
+        let snapshot = self.state.read().await.pairing_session(session_id).cloned();
+        match snapshot {
+            Some(s) if s.state != pairing_stage::FAILED && s.state != pairing_stage::COMPLETE => {
+                Ok(())
+            }
+            _ => Err(DaemonPairingHostError::SessionNotFound(
+                session_id.to_string(),
+            )),
+        }
     }
 
     fn broadcast_space_access_state(

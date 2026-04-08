@@ -108,6 +108,18 @@ pub enum PairingState {
     },
 }
 
+impl PairingState {
+    /// Returns `true` if the state is a terminal state (`Paired`, `Failed`, or `Cancelled`).
+    pub fn is_terminal(&self) -> bool {
+        matches!(
+            self,
+            PairingState::Paired { .. }
+                | PairingState::Failed { .. }
+                | PairingState::Cancelled { .. }
+        )
+    }
+}
+
 /// 失败原因 (可审计)
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum FailureReason {

@@ -81,7 +81,7 @@ pub(super) async fn execute_business_command(
     caches: Arc<RwLock<PeerCaches>>,
     policy_resolver: Arc<dyn ConnectionPolicyResolverPort>,
     event_tx: mpsc::Sender<NetworkEvent>,
-    local_peer_id: String,
+    local_peer_id: Arc<str>,
     dial_tx: mpsc::Sender<DialRequest>,
 ) {
     match command {
@@ -220,7 +220,7 @@ pub(super) async fn execute_business_command(
                 caches
                     .discovered_peers
                     .keys()
-                    .filter(|peer_id| peer_id.as_str() != local_peer_id.as_str())
+                    .filter(|peer_id| peer_id.as_str() != &*local_peer_id)
                     .cloned()
                     .collect::<Vec<_>>()
             };
@@ -241,7 +241,7 @@ pub(super) async fn execute_business_command(
                 "broadcasting device announce to discovered peers"
             );
             let message = ProtocolMessage::DeviceAnnounce(DeviceAnnounceMessage {
-                peer_id: local_peer_id.clone(),
+                peer_id: local_peer_id.to_string(),
                 device_name,
                 timestamp: Utc::now(),
             });

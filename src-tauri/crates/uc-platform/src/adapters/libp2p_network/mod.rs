@@ -355,7 +355,7 @@ impl Libp2pNetworkAdapter {
         let business_rx = Self::take_receiver(&self.business_rx, "business command")?;
         let dial_rx = Self::take_receiver(&self.dial_rx, "dial request")?;
         let dial_tx = self.dial_tx.clone();
-        let local_peer_id = self.local_peer_id.clone();
+        let local_peer_id: Arc<str> = self.local_peer_id.clone().into();
         tokio::spawn(async move {
             run_swarm(
                 swarm,

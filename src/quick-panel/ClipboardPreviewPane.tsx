@@ -25,7 +25,7 @@ const ClipboardPreviewPane: React.FC<ClipboardPreviewPaneProps> = ({ entryId }) 
     preview.textContent.length > 50_000
 
   return (
-    <div className="flex h-screen w-[360px] min-w-[360px] max-w-[360px] flex-col overflow-hidden rounded-xl border border-border/50 bg-background/95 shadow-xl backdrop-blur-xl">
+    <div className="flex h-screen w-full flex-col overflow-hidden rounded-xl border border-border/50 bg-background/95 shadow-xl backdrop-blur-xl">
       <div className="flex items-center justify-between border-b border-border/50 px-3 py-2">
         <span className="text-[12px] font-medium text-foreground">{t('title')}</span>
         {preview && (

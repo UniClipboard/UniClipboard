@@ -86,6 +86,7 @@ jobs:
         with:
           workspaces: "src-tauri -> target"
           shared-key: ${{ matrix.target }}
+          add-job-id-key: false
 
       - name: Cache Bun dependencies
         uses: actions/cache@v5

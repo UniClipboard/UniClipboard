@@ -386,7 +386,16 @@ pub fn register_global_shortcut(app: &tauri::AppHandle, shortcut_str: &str) -> R
     // Defensively unregister first — on Windows the OS-level hotkey may survive
     // a crash or force-kill of the previous app instance, causing
     // "HotKey already registered" on the next startup.
-    let _ = app.global_shortcut().unregister(shortcut_str);
+    match app.global_shortcut().unregister(shortcut_str) {
+        Ok(()) => {}
+        Err(e) => {
+            warn!(
+                error = %e,
+                shortcut = %shortcut_str,
+                "Defensive unregister before registering global shortcut failed"
+            );
+        }
+    }
 
     let app_handle = app.clone();
     app.global_shortcut()

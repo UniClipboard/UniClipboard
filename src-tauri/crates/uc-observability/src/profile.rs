@@ -40,6 +40,7 @@ const NOISE_FILTERS: &[&str] = &[
     "Connection::poll=warn",
     "Pool::poll=warn",
     "Swarm::poll=warn",
+    "opentelemetry_sdk=warn",
 ];
 
 impl LogProfile {
@@ -336,6 +337,10 @@ mod tests {
             assert!(
                 directives.contains("Swarm::poll=warn"),
                 "Missing Swarm::poll=warn in {profile}"
+            );
+            assert!(
+                directives.contains("opentelemetry_sdk=warn"),
+                "Missing opentelemetry_sdk=warn in {profile}"
             );
             assert!(
                 directives.contains("quinn=info"),

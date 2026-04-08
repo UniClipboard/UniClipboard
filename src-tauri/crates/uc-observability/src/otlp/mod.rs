@@ -17,6 +17,7 @@
 //!
 //! For composition with other layers, the caller can use `init_otlp_pipeline_generic<S>`.
 pub mod layer;
+pub mod logs_layer;
 pub mod propagator;
 pub mod redact;
 pub mod resource;
@@ -30,7 +31,7 @@ mod tests;
 pub use provider::OtlpGuard;
 pub use resource::build_resource;
 
-use opentelemetry_sdk::trace::SdkTracerProvider;
+use opentelemetry_sdk::{logs::SdkLoggerProvider, trace::SdkTracerProvider};
 use tracing_subscriber::{registry::LookupSpan, Layer};
 
 use crate::profile::LogProfile;
@@ -39,31 +40,41 @@ use crate::profile::LogProfile;
 /// don't need to specify the subscriber type `S` when they don't care about it (e.g., tests).
 pub type OtlpLayer = Box<dyn Layer<tracing_subscriber::Registry> + Send + Sync + 'static>;
 
-/// Initialize the OTLP exporter and provider, without creating the tracing layer.
+/// Providers returned by `init_otlp_provider` for two-phase layer construction.
+pub struct OtlpProviders {
+    pub tracer_provider: SdkTracerProvider,
+    pub logger_provider: SdkLoggerProvider,
+}
+
+/// Initialize the OTLP exporters and providers, without creating the tracing layers.
 ///
 /// This two-phase initialization allows callers that compose multiple
 /// `tracing_subscriber` layers to:
-/// 1. Run the async provider setup early (before the full subscriber chain is known).
-/// 2. Create the typed layer later via `layer::build_otlp_layer::<S>()` once the
-///    subscriber type `S` is determined by the composition context.
-///
-/// `SdkTracerProvider` is `Clone` with Arc semantics (clone increments the Arc
-/// counter; shutdown is executed once on the shared inner state). This means the
-/// caller can clone the provider to pass to `layer::build_otlp_layer` while the
-/// guard retains the other clone for flush-on-drop.
+/// 1. Run the provider setup early (before the full subscriber chain is known).
+/// 2. Create the typed layers later via `layer::build_otlp_layer::<S>()` and
+///    `logs_layer::build_otlp_logs_layer::<S>()` once the subscriber type `S`
+///    is determined by the composition context.
 ///
 /// Returns `Ok(None)` when OTLP is disabled (missing endpoint, or Prod
 /// profile with `telemetry_enabled = false`).
 /// The W3C propagator is always installed globally regardless.
-///
-/// `telemetry_enabled` is the user-facing setting. For non-Prod profiles
-/// the flag is ignored (developer environments always allowed).
 pub fn init_otlp_provider(
     profile: &LogProfile,
     device_id: Option<&str>,
     telemetry_enabled: bool,
-) -> anyhow::Result<Option<(SdkTracerProvider, OtlpGuard)>> {
-    provider::init_provider_and_guard(profile, device_id, telemetry_enabled)
+) -> anyhow::Result<Option<(OtlpProviders, OtlpGuard)>> {
+    let Some((tracer_provider, logger_provider, guard)) =
+        provider::init_provider_and_guard(profile, device_id, telemetry_enabled)?
+    else {
+        return Ok(None);
+    };
+    Ok(Some((
+        OtlpProviders {
+            tracer_provider,
+            logger_provider,
+        },
+        guard,
+    )))
 }
 
 /// Build the internal OTLP pipeline without the boxed layer wrapper.
@@ -78,13 +89,12 @@ pub fn init_otlp_pipeline_generic<S>(
 where
     S: tracing::Subscriber + for<'a> LookupSpan<'a> + Send + Sync,
 {
-    let Some((provider, guard)) =
-        provider::init_provider_and_guard(profile, device_id, telemetry_enabled)?
+    let Some((providers, guard)) = init_otlp_provider(profile, device_id, telemetry_enabled)?
     else {
         return Ok(None);
     };
 
-    let otel_layer = layer::build_otlp_layer::<S>(&provider, profile);
+    let otel_layer = layer::build_otlp_layer::<S>(&providers.tracer_provider, profile);
 
     Ok(Some((otel_layer, guard)))
 }
@@ -110,13 +120,15 @@ pub fn init_otlp_pipeline(
     device_id: Option<&str>,
     telemetry_enabled: bool,
 ) -> anyhow::Result<Option<(OtlpLayer, OtlpGuard)>> {
-    let Some((provider, guard)) =
-        provider::init_provider_and_guard(profile, device_id, telemetry_enabled)?
+    let Some((providers, guard)) = init_otlp_provider(profile, device_id, telemetry_enabled)?
     else {
         return Ok(None);
     };
 
-    let otel_layer = layer::build_otlp_layer::<tracing_subscriber::Registry>(&provider, profile);
+    let otel_layer = layer::build_otlp_layer::<tracing_subscriber::Registry>(
+        &providers.tracer_provider,
+        profile,
+    );
 
     Ok(Some((Box::new(otel_layer), guard)))
 }

@@ -25,9 +25,10 @@ tokio = { version = "1", features = ["sync", "time", "rt", "macros"] }
 # but silently dropping all spans. Blocking reqwest manages its own internal
 # tokio runtime and therefore works from any caller context.
 opentelemetry = "0.31"
-opentelemetry_sdk = { version = "0.31", features = ["rt-tokio"] }
+opentelemetry_sdk = { version = "0.31", features = ["rt-tokio", "logs"] }
 opentelemetry-otlp = { version = "0.31", default-features = false, features = ["http-proto", "reqwest-blocking-client", "reqwest-rustls", "trace", "logs"] }
 opentelemetry-semantic-conventions = "0.31"
+opentelemetry-appender-tracing = "0.31"
 tracing-opentelemetry = "0.32"
 
 [dev-dependencies]

@@ -155,13 +155,13 @@ pub fn init_tracing_subscriber() -> anyhow::Result<()> {
     // Note: OTLP enablement and any compile-time config backfill are handled
     // inside init_otlp_provider. The exporter itself still resolves the final
     // endpoint using OpenTelemetry's standard env-var rules.
-    let otlp_provider_and_guard = {
+    let otlp_providers = {
         match uc_observability::otlp::init_otlp_provider(
             &profile,
             device_id.as_deref(),
             telemetry_enabled,
         ) {
-            Ok(Some((provider, guard))) => {
+            Ok(Some((providers, guard))) => {
                 // Wrap the guard in ManuallyDrop before handing it to the
                 // OnceLock. If `set` ever fails (it shouldn't — idempotency
                 // guard above ensures single-init), ManuallyDrop prevents a
@@ -170,7 +170,7 @@ pub fn init_tracing_subscriber() -> anyhow::Result<()> {
                 if OTLP_GUARD.set(std::mem::ManuallyDrop::new(guard)).is_err() {
                     eprintln!("[uc-bootstrap] OTLP guard already initialized; leaking new guard");
                 }
-                Some(provider)
+                Some(providers)
             }
             Ok(None) => None,
             Err(e) => {
@@ -181,28 +181,33 @@ pub fn init_tracing_subscriber() -> anyhow::Result<()> {
         }
     };
 
-    let otlp_enabled = otlp_provider_and_guard.is_some();
+    let otlp_enabled = otlp_providers.is_some();
 
     // Step 5: Compose all layers and register.
     //
-    // Phase 2 of OTLP init: build the typed layer now that the subscriber type `S`
+    // Phase 2 of OTLP init: build the typed layers now that the subscriber type `S`
     // is fixed by the `.with()` chain below.
     //
-    // `OtlpConcreteLayer<S>` is a concrete type alias for
-    // `Filtered<OpenTelemetryLayer<S, SdkTracer>, EnvFilter, S>`.
-    // Using a concrete type (not `impl Layer<S>`) allows Rust to infer `S`
-    // from the `.with(otlp_layer)` call site rather than requiring it to be
-    // fixed at the `let` binding site.
-    let otlp_layer: Option<uc_observability::otlp::layer::OtlpConcreteLayer<_>> =
-        otlp_provider_and_guard
+    // Two OTLP layers are composed:
+    // - Trace layer: converts tracing spans → OTLP traces (for distributed tracing)
+    // - Logs layer: converts tracing events → OTLP logs (for standalone events
+    //   that are not attached to an exported span)
+    let otlp_trace_layer: Option<uc_observability::otlp::layer::OtlpConcreteLayer<_>> =
+        otlp_providers
             .as_ref()
-            .map(|provider| uc_observability::otlp::layer::build_otlp_layer(provider, &profile));
+            .map(|p| uc_observability::otlp::layer::build_otlp_layer(&p.tracer_provider, &profile));
+
+    let otlp_logs_layer: Option<uc_observability::otlp::logs_layer::OtlpLogsConcreteLayer<_>> =
+        otlp_providers.as_ref().map(|p| {
+            uc_observability::otlp::logs_layer::build_otlp_logs_layer(&p.logger_provider, &profile)
+        });
 
     match tracing_subscriber::registry()
         .with(sentry_layer)
         .with(console_layer)
         .with(json_layer)
-        .with(otlp_layer)
+        .with(otlp_trace_layer)
+        .with(otlp_logs_layer)
         .try_init()
     {
         Ok(()) => {}

@@ -2,6 +2,8 @@ pub(crate) const OTEL_ENDPOINT_VAR: &str = "OTEL_EXPORTER_OTLP_ENDPOINT";
 pub(crate) const OTEL_TRACES_ENDPOINT_VAR: &str = "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT";
 pub(crate) const OTEL_HEADERS_VAR: &str = "OTEL_EXPORTER_OTLP_HEADERS";
 pub(crate) const OTEL_TRACES_HEADERS_VAR: &str = "OTEL_EXPORTER_OTLP_TRACES_HEADERS";
+pub(crate) const OTEL_LOGS_ENDPOINT_VAR: &str = "OTEL_EXPORTER_OTLP_LOGS_ENDPOINT";
+pub(crate) const OTEL_LOGS_HEADERS_VAR: &str = "OTEL_EXPORTER_OTLP_LOGS_HEADERS";
 
 fn env_var_is_configured(key: &str) -> bool {
     std::env::var(key)
@@ -76,6 +78,18 @@ pub(crate) fn prime_runtime_otlp_env_from_baked() {
         OTEL_TRACES_HEADERS_VAR,
         OTEL_HEADERS_VAR,
         option_env!("OTEL_EXPORTER_OTLP_TRACES_HEADERS"),
+        option_env!("OTEL_EXPORTER_OTLP_HEADERS"),
+    );
+    prime_env_pair_from_baked(
+        OTEL_LOGS_ENDPOINT_VAR,
+        OTEL_ENDPOINT_VAR,
+        option_env!("OTEL_EXPORTER_OTLP_LOGS_ENDPOINT"),
+        option_env!("OTEL_EXPORTER_OTLP_ENDPOINT"),
+    );
+    prime_env_pair_from_baked(
+        OTEL_LOGS_HEADERS_VAR,
+        OTEL_HEADERS_VAR,
+        option_env!("OTEL_EXPORTER_OTLP_LOGS_HEADERS"),
         option_env!("OTEL_EXPORTER_OTLP_HEADERS"),
     );
 }

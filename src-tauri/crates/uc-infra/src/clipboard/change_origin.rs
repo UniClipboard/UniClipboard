@@ -163,6 +163,10 @@ impl ClipboardChangeOriginPort for InMemoryClipboardChangeOrigin {
             .position(|s| s.snapshot_hash == snapshot_hash)
         {
             if let Some(stored) = state.snapshot_origins.remove(idx) {
+                // When the hash guard matches, clear the next_origin fallback.
+                // The echo was already handled by the hash match, so next_origin
+                // is no longer needed and would misclassify the next real user action.
+                state.next_origin = None;
                 debug!(
                     snapshot_hash = %snapshot_hash,
                     resolved_origin = ?stored.origin,
@@ -281,7 +285,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn matching_snapshot_hash_has_priority_over_next_origin() {
+    async fn matching_snapshot_hash_has_priority_over_next_origin_and_clears_it() {
         let port = InMemoryClipboardChangeOrigin::new();
         port.remember_remote_snapshot_hash("h1".to_string(), Duration::from_secs(10))
             .await;
@@ -291,16 +295,17 @@ mod tests {
         let first = port
             .consume_origin_for_snapshot_or_default("h1", ClipboardChangeOrigin::LocalCapture)
             .await;
+        // Hash match clears next_origin, so the second call returns default
         let second = port
             .consume_origin_for_snapshot_or_default("h1", ClipboardChangeOrigin::LocalCapture)
             .await;
 
         assert_eq!(first, ClipboardChangeOrigin::RemotePush);
-        assert_eq!(second, ClipboardChangeOrigin::LocalRestore);
+        assert_eq!(second, ClipboardChangeOrigin::LocalCapture);
     }
 
     #[tokio::test]
-    async fn matching_local_snapshot_hash_has_priority_over_next_origin() {
+    async fn matching_local_snapshot_hash_has_priority_over_next_origin_and_clears_it() {
         let port = InMemoryClipboardChangeOrigin::new();
         port.remember_local_snapshot_hash("h1".to_string(), Duration::from_secs(10))
             .await;
@@ -310,12 +315,13 @@ mod tests {
         let first = port
             .consume_origin_for_snapshot_or_default("h1", ClipboardChangeOrigin::LocalCapture)
             .await;
+        // Hash match clears next_origin, so consume_origin_or_default returns default
         let second = port
             .consume_origin_or_default(ClipboardChangeOrigin::LocalCapture)
             .await;
 
         assert_eq!(first, ClipboardChangeOrigin::LocalRestore);
-        assert_eq!(second, ClipboardChangeOrigin::RemotePush);
+        assert_eq!(second, ClipboardChangeOrigin::LocalCapture);
     }
 
     #[tokio::test]
@@ -333,5 +339,176 @@ mod tests {
 
         assert_eq!(first, ClipboardChangeOrigin::LocalCapture);
         assert_eq!(second, ClipboardChangeOrigin::LocalRestore);
+    }
+
+    // ---- Regression tests: hash match must clear next_origin ----
+
+    /// Regression: remote write sets both hash guard and next_origin. After the
+    /// echo matches the hash, a subsequent user action (different hash) must
+    /// return LocalCapture, not the stale RemotePush from next_origin.
+    #[tokio::test]
+    async fn hash_match_clears_next_origin_so_subsequent_user_action_is_local_capture() {
+        let port = InMemoryClipboardChangeOrigin::new();
+
+        // Simulate remote inbound write: sets hash guard + next_origin fallback
+        port.remember_remote_snapshot_hash("remote_hash".to_string(), Duration::from_secs(60))
+            .await;
+        port.set_next_origin(ClipboardChangeOrigin::RemotePush, Duration::from_secs(60))
+            .await;
+
+        // Clipboard watcher detects the echo — hash matches → RemotePush (correct)
+        let echo = port
+            .consume_origin_for_snapshot_or_default(
+                "remote_hash",
+                ClipboardChangeOrigin::LocalCapture,
+            )
+            .await;
+        assert_eq!(echo, ClipboardChangeOrigin::RemotePush);
+
+        // User takes a screenshot — different hash, should be LocalCapture
+        let user_action = port
+            .consume_origin_for_snapshot_or_default(
+                "screenshot_hash",
+                ClipboardChangeOrigin::LocalCapture,
+            )
+            .await;
+        assert_eq!(user_action, ClipboardChangeOrigin::LocalCapture);
+    }
+
+    /// Same regression scenario but with LocalRestore origin instead of RemotePush.
+    #[tokio::test]
+    async fn local_restore_hash_match_clears_next_origin_so_subsequent_action_is_default() {
+        let port = InMemoryClipboardChangeOrigin::new();
+
+        port.remember_local_snapshot_hash("restored_hash".to_string(), Duration::from_secs(60))
+            .await;
+        port.set_next_origin(ClipboardChangeOrigin::LocalRestore, Duration::from_secs(60))
+            .await;
+
+        // Echo matches the hash → LocalRestore (correct)
+        let echo = port
+            .consume_origin_for_snapshot_or_default(
+                "restored_hash",
+                ClipboardChangeOrigin::LocalCapture,
+            )
+            .await;
+        assert_eq!(echo, ClipboardChangeOrigin::LocalRestore);
+
+        // Next clipboard change with different hash → should be default
+        let next = port
+            .consume_origin_for_snapshot_or_default(
+                "different_hash",
+                ClipboardChangeOrigin::LocalCapture,
+            )
+            .await;
+        assert_eq!(next, ClipboardChangeOrigin::LocalCapture);
+    }
+
+    /// When hash does NOT match, next_origin fallback should still fire.
+    /// This covers the Windows re-encoding case where the OS modifies content.
+    #[tokio::test]
+    async fn next_origin_fires_when_hash_does_not_match() {
+        let port = InMemoryClipboardChangeOrigin::new();
+
+        port.set_next_origin(ClipboardChangeOrigin::RemotePush, Duration::from_secs(60))
+            .await;
+
+        // Hash doesn't match any stored snapshot → falls back to next_origin
+        let result = port
+            .consume_origin_for_snapshot_or_default(
+                "reencoded_hash",
+                ClipboardChangeOrigin::LocalCapture,
+            )
+            .await;
+        assert_eq!(result, ClipboardChangeOrigin::RemotePush);
+
+        // next_origin is consumed, so next call returns default
+        let after = port
+            .consume_origin_for_snapshot_or_default(
+                "another_hash",
+                ClipboardChangeOrigin::LocalCapture,
+            )
+            .await;
+        assert_eq!(after, ClipboardChangeOrigin::LocalCapture);
+    }
+
+    /// Two rapid remote writes followed by a user action. Each write sets its own
+    /// hash guard and overwrites next_origin. After both echoes are consumed via
+    /// hash match, the user action must be LocalCapture.
+    #[tokio::test]
+    async fn multiple_remote_writes_then_user_action_returns_local_capture() {
+        let port = InMemoryClipboardChangeOrigin::new();
+
+        // First remote write
+        port.remember_remote_snapshot_hash("write1_hash".to_string(), Duration::from_secs(60))
+            .await;
+        port.set_next_origin(ClipboardChangeOrigin::RemotePush, Duration::from_secs(60))
+            .await;
+
+        // Second remote write (overwrites next_origin)
+        port.remember_remote_snapshot_hash("write2_hash".to_string(), Duration::from_secs(60))
+            .await;
+        port.set_next_origin(ClipboardChangeOrigin::RemotePush, Duration::from_secs(60))
+            .await;
+
+        // First echo matches hash
+        let echo1 = port
+            .consume_origin_for_snapshot_or_default(
+                "write1_hash",
+                ClipboardChangeOrigin::LocalCapture,
+            )
+            .await;
+        assert_eq!(echo1, ClipboardChangeOrigin::RemotePush);
+
+        // Second echo matches hash
+        let echo2 = port
+            .consume_origin_for_snapshot_or_default(
+                "write2_hash",
+                ClipboardChangeOrigin::LocalCapture,
+            )
+            .await;
+        assert_eq!(echo2, ClipboardChangeOrigin::RemotePush);
+
+        // User action — must be LocalCapture, not RemotePush
+        let user_action = port
+            .consume_origin_for_snapshot_or_default(
+                "user_copy_hash",
+                ClipboardChangeOrigin::LocalCapture,
+            )
+            .await;
+        assert_eq!(user_action, ClipboardChangeOrigin::LocalCapture);
+    }
+
+    /// Hash match clears next_origin even when next_origin was set by a
+    /// different logical operation than the one that registered the hash.
+    #[tokio::test]
+    async fn hash_match_clears_next_origin_regardless_of_which_write_set_it() {
+        let port = InMemoryClipboardChangeOrigin::new();
+
+        // Operation A sets a hash guard
+        port.remember_remote_snapshot_hash("op_a_hash".to_string(), Duration::from_secs(60))
+            .await;
+
+        // Operation B sets next_origin (e.g. a second write arrived before the first echo)
+        port.set_next_origin(ClipboardChangeOrigin::RemotePush, Duration::from_secs(60))
+            .await;
+
+        // Echo from operation A matches — should also clear B's next_origin
+        let echo_a = port
+            .consume_origin_for_snapshot_or_default(
+                "op_a_hash",
+                ClipboardChangeOrigin::LocalCapture,
+            )
+            .await;
+        assert_eq!(echo_a, ClipboardChangeOrigin::RemotePush);
+
+        // Subsequent action should be default, not RemotePush from B's next_origin
+        let next = port
+            .consume_origin_for_snapshot_or_default(
+                "new_content_hash",
+                ClipboardChangeOrigin::LocalCapture,
+            )
+            .await;
+        assert_eq!(next, ClipboardChangeOrigin::LocalCapture);
     }
 }

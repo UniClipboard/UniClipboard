@@ -1,5 +1,6 @@
 import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
+import { getCurrentWindow } from '@tauri-apps/api/window'
 import {
   Code,
   ExternalLink,
@@ -156,6 +157,24 @@ const ClipboardHistoryPanel: React.FC = () => {
     },
     [clearPreviewTimer]
   )
+
+  // Clear preview state immediately when window loses focus (i.e. panel is
+  // dismissed).  This prevents a visible "shrink then expand" ghost when the
+  // panel is shown again – the old preview would otherwise persist in React
+  // state and animate closed only after the refresh event arrives.
+  useEffect(() => {
+    const unlistenFocus = getCurrentWindow().onFocusChanged(({ payload: focused }) => {
+      if (!focused) {
+        clearPreviewTimer()
+        setPreviewEntryId(null)
+        setPreviewSuppressed(false)
+      }
+    })
+
+    return () => {
+      unlistenFocus.then(fn => fn())
+    }
+  }, [clearPreviewTimer])
 
   useEffect(() => {
     const unlistenRefresh = listen('quick-panel://refresh', () => {

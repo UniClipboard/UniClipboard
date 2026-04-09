@@ -8,26 +8,26 @@ A cross-platform clipboard synchronization app built with Tauri 2, React, and Ru
 
 Seamless clipboard synchronization across devices — users can copy on one device and paste on another without interrupting their workflow.
 
-## Current Milestone: v0.4.0 Runtime Mode Separation
+## Current Milestone
 
-**Goal:** Extract non-Tauri logic from uc-tauri into shared crates, enabling GUI / CLI / daemon as independent runtime modes.
+No active milestone is defined right now.
 
-**Target features:**
-
-- HostEventEmitterPort abstraction replacing hardcoded Tauri AppHandle::emit()
-- wiring.rs decomposition separating pure assembly from Tauri event loops
-- CoreRuntime extraction from AppRuntime (Tauri-free runtime core)
-- Configuration resolution extracted to reusable module
-- uc-bootstrap crate as the sole composition root
-- uc-daemon + uc-cli minimal skeletons with end-to-end path validation
+The latest archived milestone is **v0.4.0 Runtime Mode Separation**.
 
 ## Current State
 
-- **Latest shipped milestone:** v0.3.0 Log Observability & Feature Expansion (2026-03-17)
+- **Latest shipped milestone:** v0.4.0 Runtime Mode Separation (archived 2026-04-09)
 - **Current capability level:** Full-featured clipboard sync with text, image, link, and file support; structured observability; per-device sync control; CLI clipboard history commands (list/get/clear); daemon auto-recovers encryption session on startup; daemon triggers outbound clipboard sync to peers after local capture; daemon receives inbound clipboard from peers via ClipboardTransportPort and applies via SyncInboundClipboardUseCase; daemon handles file transfer lifecycle (progress, completion, failure, timeout sweeps, startup reconciliation); clipboard restore delegated to daemon for in-process origin tracking; unified auth architecture — CLI/GUI/Daemon all use POST /auth/connect session exchange with independent token scopes
 - **Architecture status:** Hexagonal architecture with compiler-enforced boundaries, typed command surfaces, lifecycle governance, and consolidated sync planner; CLI direct-mode bootstrap pattern established; CLI start/stop commands for daemon lifecycle management (background/foreground modes, PID-based stop with SIGTERM); daemon encryption state recovery via existing AutoUnlockEncryptionSession use case; peer discovery deduplication fixed (local_peer_id filtering + full-snapshot peers.changed events); daemon gates PeerDiscoveryWorker on encryption state (deferred start for uninitialized devices via oneshot channel); dual-product release pipeline — CLI binary builds in parallel with App, included in GitHub Release and R2; GUI restore_clipboard_entry is thin daemon proxy (cross-process origin desync eliminated); frontend p2p.ts facade removed — all callers migrated to daemon modules and hooks (daemon/pairing, daemon/events, daemon/ws, usePairingEvents, useSetupFlow)
 - **LOC:** ~135K Rust + ~20K TypeScript (estimated)
 - **Supported content types:** Text, Image, Link, File (all with per-device sync toggles)
+- **Archive note:** v0.4.0 was archived with accepted known gaps in planning cleanup, OTLP GUI→daemon env forwarding, and some stale verification bookkeeping
+
+## Next Milestone Goals
+
+- Clean up planning truth so roadmap, requirements, and verification files agree again
+- Finish the remaining GUI direct-to-daemon path cleanup and missing verification work
+- Define the next milestone before starting new phase execution
 
 ## Requirements
 
@@ -67,20 +67,9 @@ Seamless clipboard synchronization across devices — users can copy on one devi
 
 ### Active
 
-- [ ] HostEventEmitterPort trait abstraction for multi-runtime event delivery
-- [ ] wiring.rs decomposition: pure assembly vs Tauri-specific event loops
-- [ ] CoreRuntime extraction from AppRuntime (Tauri-free)
-- [ ] Configuration resolution extracted to reusable bootstrap module
-- [ ] uc-bootstrap crate as sole composition root with scene-specific builders
-- [ ] uc-daemon skeleton with worker lifecycle and local RPC
-- [ ] uc-cli skeleton with command routing, direct/daemon dispatch, and output rendering
-- [x] CLI clipboard list/get/clear commands with direct-mode bootstrap — Phase 42
-- [x] Frontend p2p.ts facade removed, all callers migrated to daemon modules and hooks — Phase 83
-- [x] usePairingEvents extended with space access events, type-safe payloads, dual topic subscription — Phase 83
-- [x] useDeviceDiscovery refactored to Redux via daemonWs.subscribe + diffPeerSnapshots — Phase 83
-- [x] useSetupFlow hook extracted from SetupPage.tsx — Phase 83
-- [x] CLI session exchange migration (bare bearer → /auth/connect, "Session " prefix) — Phase 84
-- [x] Unified auth architecture integration tests (AUTH-01 through AUTH-06) — Phase 84
+- [ ] Define the next milestone and rewrite the planning files so roadmap, requirements, and verification records agree
+- [ ] Close the remaining OTLP GUI→daemon launch gap
+- [ ] Refresh or finish the stale verification/documentation items carried out of v0.4.0 archival
 
 ### Deferred
 
@@ -105,7 +94,7 @@ Seamless clipboard synchronization across devices — users can copy on one devi
 
 ## Context
 
-Shipped v0.3.0 across phases 19-35 with 363 commits over 8 days.
+Archived v0.4.0 on 2026-04-09 after the runtime split, daemon-first flow work, and OTLP migration landed.
 Tech stack: Tauri 2 + React 18 + Rust + libp2p + XChaCha20-Poly1305.
 Hexagonal boundaries compiler-enforced. All sync policy consolidated into OutboundSyncPlanner.
 Four content types supported: Text, Image, Link, File — each with per-device toggles.
@@ -160,4 +149,4 @@ Phase 86 complete — CLI host/join flow refactored: ParsedSetupState centralize
 
 ---
 
-_Last updated: 2026-04-05 after Phase 87 completion_
+_Last updated: 2026-04-09 after v0.4.0 archival_

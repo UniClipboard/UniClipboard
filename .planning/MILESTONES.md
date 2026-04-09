@@ -1,5 +1,39 @@
 # Milestones
 
+## v0.4.0 Runtime Mode Separation (Shipped: 2026-04-09)
+
+**Phases completed:** 52 phases, 129 plans, 224 tasks
+
+### Delivered
+
+The app finished the long split from a Tauri-centered runtime into a shared GUI / CLI / daemon shape. During this milestone, the shared startup path was extracted, the daemon and CLI were built out into real products, pairing and setup moved onto daemon-owned paths, clipboard sync and restore were pushed deeper into the daemon side, and the old local tracing path was replaced by the new OTLP-based observability path.
+
+### Accomplishments
+
+1. Shared runtime and startup path were established, so GUI, CLI, and daemon now build from the same core assembly instead of each owning separate business wiring.
+2. Daemon and CLI became usable runtime modes with startup, status, clipboard commands, lifecycle management, and release packaging.
+3. Pairing, setup, and auth were pulled toward daemon-owned flows, reducing duplicated app-side logic and unifying the command path.
+4. Clipboard capture, inbound sync, outbound sync, restore, and write-boundary handling were consolidated around daemon-side execution and a single write coordinator.
+5. Frontend pairing/event handling was simplified and the old p2p facade was removed.
+6. Observability moved to OTLP with cross-device trace propagation and archived Seq support materials updated for the new pipeline.
+
+### Known Gaps
+
+- This milestone was archived with gaps accepted, not with a clean pass.
+- Planning files still had bookkeeping drift at archive time: some requirement rows, verification files, and milestone scope records did not fully agree.
+- GUI-launched daemon processes still did not automatically inherit the OTLP endpoint, so that path was not fully closed.
+- Some verification work was still missing, stale, or left as manual follow-up.
+
+### Archive Files
+
+- `.planning/milestones/v0.4.0-ROADMAP.md`
+- `.planning/milestones/v0.4.0-REQUIREMENTS.md`
+- `.planning/milestones/v0.4.0-MILESTONE-AUDIT.md`
+- `.planning/milestones/v0.4.0-phases/`
+
+---
+---
+
 ## v0.3.0 — Log Observability & Feature Expansion
 
 **Shipped:** 2026-03-17

@@ -1,15 +1,15 @@
 ---
 gsd_state_version: 1.0
-milestone: v0.4.0
-milestone_name: Runtime Mode Separation
-status: Milestone complete
-stopped_at: Completed 87-06-PLAN.md
-last_updated: "2026-04-05T04:52:21.545Z"
+milestone: none
+milestone_name: none
+status: Awaiting next milestone definition
+stopped_at: Archived v0.4.0 Runtime Mode Separation
+last_updated: "2026-04-09T16:10:00.000Z"
 progress:
-  total_phases: 58
-  completed_phases: 44
-  total_plans: 128
-  completed_plans: 119
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
 ---
 
 # Project State
@@ -22,13 +22,8 @@ See: .planning/PROJECT.md (updated 2026-03-09)
 
 ## Current Position
 
-Phase: 87
-Plan: Not started
-
-## Current Position
-
-Phase: 83
-Plan: Not started
+Phase: none
+Plan: none
 
 ## Performance Metrics
 

@@ -431,8 +431,11 @@ const ClipboardPreview: React.FC<ClipboardPreviewProps> = ({ item }) => {
   // Check if current content needs virtualized rendering (Virtuoso manages its own scroll)
   const isLargeText =
     item.type === 'text' &&
-    !isLoadingText &&
-    (fullText ?? (item.content as ClipboardTextItem).display_text).length > LARGE_TEXT_THRESHOLD
+    !loading &&
+    (preview?.contentType === 'text'
+      ? (preview.textContent ?? '')
+      : (item.content as ClipboardTextItem).display_text
+    ).length > LARGE_TEXT_THRESHOLD
 
   return (
     <div className="flex flex-col flex-1 min-h-0">

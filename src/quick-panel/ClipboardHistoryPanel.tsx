@@ -1,6 +1,5 @@
 import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
-import { getCurrentWindow } from '@tauri-apps/api/window'
 import {
   Code,
   ExternalLink,
@@ -141,6 +140,7 @@ const ClipboardHistoryPanel: React.FC = () => {
   const itemRefs = useRef<Map<number, HTMLDivElement>>(new Map())
   const previewTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const deletingRef = useRef(false)
+  const [skipTransition, setSkipTransition] = useState(false)
 
   const clearPreviewTimer = useCallback(() => {
     if (previewTimerRef.current) {
@@ -158,40 +158,40 @@ const ClipboardHistoryPanel: React.FC = () => {
     [clearPreviewTimer]
   )
 
-  // Clear preview state immediately when window loses focus (i.e. panel is
-  // dismissed).  This prevents a visible "shrink then expand" ghost when the
-  // panel is shown again – the old preview would otherwise persist in React
-  // state and animate closed only after the refresh event arrives.
+  // Two-phase show: the backend emits `prepare-show` instead of making
+  // the window visible immediately.  We clear stale state, wait for the
+  // browser to repaint, then call `finalize_quick_panel_show` so the
+  // window becomes visible only after stale preview content is gone.
   useEffect(() => {
-    const unlistenFocus = getCurrentWindow().onFocusChanged(({ payload: focused }) => {
-      if (!focused) {
-        clearPreviewTimer()
-        setPreviewEntryId(null)
-        setPreviewSuppressed(false)
-      }
-    })
-
-    return () => {
-      unlistenFocus.then(fn => fn())
-    }
-  }, [clearPreviewTimer])
-
-  useEffect(() => {
-    const unlistenRefresh = listen('quick-panel://refresh', () => {
-      closePreview(false)
+    const unlistenPrepare = listen('quick-panel://prepare-show', () => {
+      // 1. Clear stale state (no CSS transition — instant)
+      setSkipTransition(true)
+      clearPreviewTimer()
+      setPreviewEntryId(null)
+      setPreviewSuppressed(false)
       setSearchQuery('')
       setSelectedIndex(0)
       setHoveredIndex(null)
       setIsKeyboardNav(true)
       void reload()
-      requestAnimationFrame(() => searchInputRef.current?.focus())
+
+      // 2. Let React flush state updates, then make the window visible.
+      //    Use setTimeout (not rAF — rAF doesn't fire while hidden).
+      setTimeout(() => {
+        setSkipTransition(false)
+        void invoke('finalize_quick_panel_show')
+          .then(() => {
+            searchInputRef.current?.focus()
+          })
+          .catch(() => {})
+      }, 0)
     })
 
     return () => {
       clearPreviewTimer()
-      unlistenRefresh.then(fn => fn())
+      unlistenPrepare.then(fn => fn())
     }
-  }, [clearPreviewTimer, closePreview, reload])
+  }, [clearPreviewTimer, reload])
 
   useEffect(() => {
     void setPreviewExpanded(Boolean(previewEntryId)).catch(() => {})
@@ -531,9 +531,10 @@ const ClipboardHistoryPanel: React.FC = () => {
 
       <div
         className={[
-          'overflow-hidden transition-all duration-200 ease-out',
+          'overflow-hidden',
+          skipTransition ? '' : 'transition-all duration-200 ease-out',
           previewEntryId !== null
-            ? 'ml-1 w-[360px] opacity-100 translate-x-0'
+            ? 'ml-2 w-[360px] opacity-100 translate-x-0'
             : 'ml-0 w-0 opacity-0 translate-x-2 pointer-events-none',
         ].join(' ')}
         aria-hidden={previewEntryId === null}

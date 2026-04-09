@@ -63,6 +63,33 @@ pub async fn paste_to_previous_app(
     .await
 }
 
+/// Finalize the quick panel show after the frontend has cleared stale state.
+///
+/// 前端清理完旧状态后，实际显示快捷面板窗口。
+#[tauri::command]
+pub async fn finalize_quick_panel_show(
+    app: tauri::AppHandle,
+    _trace: Option<TraceMetadata>,
+) -> Result<(), String> {
+    let span = info_span!(
+        "command.quick_panel.finalize_show",
+        trace_id = tracing::field::Empty,
+        trace_ts = tracing::field::Empty,
+    );
+    record_trace_fields(&span, &_trace);
+
+    async {
+        let handle = app.clone();
+        app.run_on_main_thread(move || {
+            quick_panel::finalize_show(&handle);
+        })
+        .map_err(|e| format!("Failed to dispatch to main thread: {e}"))?;
+        Ok(())
+    }
+    .instrument(span)
+    .await
+}
+
 /// Expand or collapse the quick panel for inline preview.
 #[tauri::command]
 pub async fn set_quick_panel_preview_expanded(

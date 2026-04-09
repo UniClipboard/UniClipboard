@@ -361,6 +361,7 @@ fn run_app(ctx: GuiBootstrapContext) {
             uc_tauri::commands::quick_panel::paste_to_previous_app,
             uc_tauri::commands::quick_panel::dismiss_quick_panel,
             uc_tauri::commands::quick_panel::set_quick_panel_preview_expanded,
+            uc_tauri::commands::quick_panel::finalize_quick_panel_show,
         ])
         .build(tauri::generate_context!())
         .expect("error building tauri application")

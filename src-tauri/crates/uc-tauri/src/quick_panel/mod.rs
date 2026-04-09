@@ -48,7 +48,7 @@ pub const SHORTCUT_SETTINGS_KEY: &str = "global.toggleQuickPanel";
 const PANEL_WIDTH: f64 = 360.0;
 const PANEL_HEIGHT: f64 = 420.0;
 const PREVIEW_WIDTH: f64 = 360.0;
-const PANEL_GAP: f64 = 4.0;
+const PANEL_GAP: f64 = 8.0;
 const EXPANDED_PANEL_WIDTH: f64 = PANEL_WIDTH + PANEL_GAP + PREVIEW_WIDTH;
 
 /// Tauri window label for the quick panel.
@@ -200,6 +200,12 @@ pub fn toggle(app: &tauri::AppHandle) {
 /// Expects the panel to already exist (via `pre_create`). Falls back to
 /// creating inline if it doesn't exist yet.
 ///
+/// Two-phase show: this function prepares the window (size, position) and
+/// emits a `quick-panel://prepare-show` event.  The frontend clears stale
+/// state and then calls the `finalize_quick_panel_show` command, which
+/// makes the window visible.  This prevents a one-frame flash of old
+/// preview content when the panel reopens.
+///
 /// 在屏幕中央显示快捷面板（类似 Raycast）。
 pub fn show(app: &tauri::AppHandle) {
     let (panel_x, panel_y) = screen_center_position(app);
@@ -226,32 +232,39 @@ pub fn show(app: &tauri::AppHandle) {
             warn!(error = %e, "Failed to set quick panel position");
         }
 
-        // Record show timestamp *before* showing so the blur handler can
-        // debounce any spurious Focused(false) events that fire during the
-        // show + focus sequence on Windows/Linux.
+        // Record show timestamp *before* the frontend finalizes show so the
+        // blur handler can debounce spurious Focused(false) events.
         if let Ok(mut guard) = LAST_SHOW_TIME.lock() {
             *guard = Some(Instant::now());
         }
 
-        // Show panel without activating the app (macOS uses orderFrontRegardless)
+        // Ask frontend to clear stale state; it will call
+        // `finalize_quick_panel_show` once it has repainted.
+        if let Err(e) = app.emit_to(PANEL_LABEL, "quick-panel://prepare-show", ()) {
+            warn!(error = %e, "Failed to emit prepare-show event to quick panel");
+        }
+    }
+}
+
+/// Actually make the quick panel window visible.
+///
+/// Called by the frontend after it has cleared stale preview state and
+/// repainted in response to the `quick-panel://prepare-show` event.
+///
+/// 实际显示快捷面板窗口（由前端在状态清理后调用）。
+pub fn finalize_show(app: &tauri::AppHandle) {
+    if let Some(window) = app.get_webview_window(PANEL_LABEL) {
         #[cfg(target_os = "macos")]
         macos::show_panel(&window);
         #[cfg(target_os = "windows")]
         {
             let _ = window.show();
-            // Use Win32 AttachThreadInput trick to reliably claim foreground,
-            // bypassing SetForegroundWindow restrictions.
             windows::force_foreground(&window);
         }
         #[cfg(not(any(target_os = "macos", target_os = "windows")))]
         {
             let _ = window.show();
             let _ = window.set_focus();
-        }
-
-        // Notify the frontend to refresh data
-        if let Err(e) = app.emit_to(PANEL_LABEL, "quick-panel://refresh", ()) {
-            warn!(error = %e, "Failed to emit refresh event to quick panel");
         }
     }
 }

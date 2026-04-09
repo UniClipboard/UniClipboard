@@ -299,7 +299,7 @@ impl DaemonApp {
         let security_for_cleanup = api_state.security.clone();
         let cleanup_cancel = self.cancel.child_token();
         let http_cancel = self.cancel.child_token();
-        let mut http_handle = tokio::spawn(run_http_server(api_state, http_cancel));
+        let mut http_handle = Some(tokio::spawn(run_http_server(api_state, http_cancel)));
 
         // Rate limiter cleanup: runs every 5 minutes, respects cleanup_cancel
         let _cleanup_handle = cleanup_rate_limiter_task(security_for_cleanup, cleanup_cancel);
@@ -324,7 +324,13 @@ impl DaemonApp {
                     info!("external shutdown signal received (parent process gone)");
                     break;
                 }
-                result = &mut http_handle => {
+                result = async {
+                    http_handle
+                        .as_mut()
+                        .expect("http task must exist while select branch is enabled")
+                        .await
+                }, if http_handle.is_some() => {
+                    let _ = http_handle.take();
                     warn!("HTTP server exited unexpectedly: {:?}", result);
                     break;
                 }
@@ -371,9 +377,11 @@ impl DaemonApp {
         .ok();
 
         // Await HTTP server with timeout
-        tokio::time::timeout(Duration::from_secs(5), http_handle)
-            .await
-            .ok();
+        if let Some(handle) = http_handle.take() {
+            tokio::time::timeout(Duration::from_secs(5), handle)
+                .await
+                .ok();
+        }
 
         // Stop services in reverse order
         for service in self.services.iter().rev() {
@@ -516,6 +524,38 @@ mod tests {
         assert!(
             recovery_pos < daemon_new_pos,
             "recover_encryption_session must be called BEFORE DaemonApp::new_with_deferred"
+        );
+    }
+
+    #[test]
+    fn http_server_logs_only_after_bind_succeeds() {
+        let source = include_str!("api/server.rs");
+        let bind_pos = source
+            .find("let listener = tokio::net::TcpListener::bind(addr).await?;")
+            .expect("run_http_server must bind the listener");
+        let log_pos = source
+            .find("\"daemon HTTP API listening on 127.0.0.1\"")
+            .expect("run_http_server must log successful startup");
+        assert!(
+            bind_pos < log_pos,
+            "startup log must be emitted only after bind succeeds"
+        );
+    }
+
+    #[test]
+    fn daemon_app_consumes_http_handle_only_once() {
+        let source = include_str!("app.rs");
+        assert!(
+            source.contains("let mut http_handle = Some(tokio::spawn(run_http_server(api_state, http_cancel)));"),
+            "http handle must be stored as Option so ownership can be consumed exactly once"
+        );
+        assert!(
+            source.contains("let _ = http_handle.take();"),
+            "select loop must remove the completed http handle before shutdown"
+        );
+        assert!(
+            source.contains("if let Some(handle) = http_handle.take() {"),
+            "shutdown must only await the http handle when it has not already been consumed"
         );
     }
 

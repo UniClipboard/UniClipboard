@@ -72,7 +72,7 @@ const PanelItem: React.FC<PanelItemProps> = React.memo(
       <div
         ref={itemRef}
         className={[
-          'flex cursor-pointer select-none items-center gap-2.5 rounded-md px-3 py-2 text-[13px] leading-tight transition-colors duration-75',
+          'flex cursor-pointer select-none items-center gap-2.5 rounded-md px-3 py-2 text-[13px] leading-tight',
           isSelected
             ? 'bg-primary text-primary-foreground'
             : hoverDisabled

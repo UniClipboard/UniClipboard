@@ -9845,7 +9845,6 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_with",
- "uc-app",
  "uc-core",
  "utoipa 4.2.3",
 ]

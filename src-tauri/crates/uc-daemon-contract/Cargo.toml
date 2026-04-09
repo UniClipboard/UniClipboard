@@ -9,7 +9,6 @@ name = "uc_daemon_contract"
 path = "src/lib.rs"
 
 [dependencies]
-uc-app = { path = "../uc-app" }
 uc-core = { path = "../uc-core" }
 base64 = "0.22"
 serde = { version = "1", features = ["derive"] }

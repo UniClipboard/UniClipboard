@@ -59,7 +59,7 @@ fn stable_profile_hash(profile: &str) -> u64 {
 
 /// Resolve the daemon auth token path using AppPaths.
 pub fn resolve_daemon_token_path() -> Result<PathBuf> {
-    let dirs = uc_platform::app_dirs::default_app_dirs();
+    let dirs = uc_platform::app_dirs::default_app_dirs()?;
     Ok(AppPaths::from_app_dirs(&dirs).daemon_token_path())
 }
 

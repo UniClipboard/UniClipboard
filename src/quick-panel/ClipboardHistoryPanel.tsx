@@ -55,70 +55,65 @@ const isMac = navigator.platform.toUpperCase().includes('MAC')
 
 interface PanelItemProps {
   item: DisplayItem
+  index: number
   isSelected: boolean
   hoverDisabled: boolean
-  onClick: () => void
-  onMouseEnter: () => void
+  onSelect: (index: number) => void
+  onHover: (index: number) => void
   itemRef?: React.Ref<HTMLDivElement>
   shortcutKey?: string
 }
 
-const PanelItem: React.FC<PanelItemProps> = ({
-  item,
-  isSelected,
-  hoverDisabled,
-  onClick,
-  onMouseEnter,
-  itemRef,
-  shortcutKey,
-}) => {
-  const Icon = typeIcons[item.type] ?? FileText
+const PanelItem: React.FC<PanelItemProps> = React.memo(
+  ({ item, index, isSelected, hoverDisabled, onSelect, onHover, itemRef, shortcutKey }) => {
+    const Icon = typeIcons[item.type] ?? FileText
 
-  return (
-    <div
-      ref={itemRef}
-      className={[
-        'flex cursor-pointer select-none items-center gap-2.5 rounded-md px-3 py-2 text-[13px] leading-tight transition-colors',
-        isSelected
-          ? 'bg-primary text-primary-foreground'
-          : hoverDisabled
-            ? 'text-foreground'
-            : 'text-foreground hover:bg-accent',
-      ].join(' ')}
-      onClick={onClick}
-      onMouseEnter={onMouseEnter}
-    >
-      <Icon
+    return (
+      <div
+        ref={itemRef}
         className={[
-          'h-3.5 w-3.5 shrink-0',
-          isSelected ? 'text-primary-foreground/70' : 'text-muted-foreground',
+          'flex cursor-pointer select-none items-center gap-2.5 rounded-md px-3 py-2 text-[13px] leading-tight transition-colors duration-75',
+          isSelected
+            ? 'bg-primary text-primary-foreground'
+            : hoverDisabled
+              ? 'text-foreground'
+              : 'text-foreground hover:bg-accent',
         ].join(' ')}
-      />
-      <span className="flex-1 truncate">{item.preview || '(empty)'}</span>
-      <span
-        className={[
-          'shrink-0 tabular-nums text-[11px]',
-          isSelected ? 'text-primary-foreground/60' : 'text-muted-foreground',
-        ].join(' ')}
+        onClick={() => onSelect(index)}
+        onMouseEnter={() => onHover(index)}
       >
-        {formatRelativeTime(item.activeTime)}
-      </span>
-      {shortcutKey && (
-        <kbd
+        <Icon
           className={[
-            'shrink-0 rounded border px-1 py-0.5 font-mono text-[10px] leading-none',
-            isSelected
-              ? 'border-primary-foreground/30 text-primary-foreground/70'
-              : 'border-border text-muted-foreground',
+            'h-3.5 w-3.5 shrink-0',
+            isSelected ? 'text-primary-foreground/70' : 'text-muted-foreground',
+          ].join(' ')}
+        />
+        <span className="flex-1 truncate">{item.preview || '(empty)'}</span>
+        <span
+          className={[
+            'shrink-0 tabular-nums text-[11px]',
+            isSelected ? 'text-primary-foreground/60' : 'text-muted-foreground',
           ].join(' ')}
         >
-          {isMac ? '⌘' : '⌃'}
-          {shortcutKey}
-        </kbd>
-      )}
-    </div>
-  )
-}
+          {formatRelativeTime(item.activeTime)}
+        </span>
+        {shortcutKey && (
+          <kbd
+            className={[
+              'shrink-0 rounded border px-1 py-0.5 font-mono text-[10px] leading-none',
+              isSelected
+                ? 'border-primary-foreground/30 text-primary-foreground/70'
+                : 'border-border text-muted-foreground',
+            ].join(' ')}
+          >
+            {isMac ? '⌘' : '⌃'}
+            {shortcutKey}
+          </kbd>
+        )}
+      </div>
+    )
+  }
+)
 
 const quickCardClassName =
   'flex h-screen w-[360px] min-w-[360px] max-w-[360px] flex-col overflow-hidden rounded-xl border border-border/50 bg-background/95 shadow-xl backdrop-blur-xl'
@@ -302,6 +297,16 @@ const ClipboardHistoryPanel: React.FC = () => {
       await pasteToApp()
     },
     [filteredItems]
+  )
+
+  const handleHover = useCallback(
+    (index: number) => {
+      if (!isKeyboardNav) {
+        setPreviewSuppressed(false)
+        setHoveredIndex(index)
+      }
+    },
+    [isKeyboardNav]
   )
 
   const handleDelete = useCallback(
@@ -499,15 +504,11 @@ const ClipboardHistoryPanel: React.FC = () => {
                   <PanelItem
                     key={item.id}
                     item={item}
+                    index={index}
                     isSelected={index === selectedIndex}
                     hoverDisabled={isKeyboardNav}
-                    onClick={() => handleSelect(index)}
-                    onMouseEnter={() => {
-                      if (!isKeyboardNav) {
-                        setPreviewSuppressed(false)
-                        setHoveredIndex(index)
-                      }
-                    }}
+                    onSelect={handleSelect}
+                    onHover={handleHover}
                     shortcutKey={index < 10 ? (index === 9 ? '0' : String(index + 1)) : undefined}
                     itemRef={el => {
                       if (el) {

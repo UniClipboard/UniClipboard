@@ -5,14 +5,18 @@ use std::sync::OnceLock;
 use anyhow::{Context, Result};
 
 use uc_app::app_paths::AppPaths;
+use uc_platform::app_dirs::DirsAppDirsAdapter;
+use uc_platform::ports::AppDirsPort;
 
 /// Returns the default manager for standalone function use.
-fn default_manager() -> &'static DaemonPidManager {
+fn default_manager() -> Result<&'static DaemonPidManager> {
     static DEFAULT_MANAGER: OnceLock<DaemonPidManager> = OnceLock::new();
-    DEFAULT_MANAGER.get_or_init(|| {
-        DaemonPidManager::new(AppPaths::from_app_dirs(
-            &uc_platform::app_dirs::default_app_dirs(),
-        ))
+    DEFAULT_MANAGER.get_or_try_init(|| {
+        let adapter = DirsAppDirsAdapter::new();
+        let app_dirs = adapter
+            .get_app_dirs()
+            .context("failed to resolve application directories")?;
+        Ok(DaemonPidManager::new(AppPaths::from_app_dirs(&app_dirs)))
     })
 }
 
@@ -116,22 +120,22 @@ fn repair_pid_permissions(pid_path: &Path) -> Result<()> {
 
 /// Read the stored daemon PID (standalone function).
 pub fn read_pid_file() -> Result<Option<u32>> {
-    default_manager().read_pid_file()
+    default_manager()?.read_pid_file()
 }
 
 /// Persist the current daemon PID (standalone function).
 pub fn write_current_pid() -> Result<u32> {
-    default_manager().write_current_pid()
+    default_manager()?.write_current_pid()
 }
 
 /// Remove the daemon PID metadata file (standalone function).
 pub fn remove_pid_file() -> Result<()> {
-    default_manager().remove_pid_file()
+    default_manager()?.remove_pid_file()
 }
 
 /// Resolve the PID metadata path (standalone function).
-pub fn resolve_pid_path() -> PathBuf {
-    default_manager().pid_path().to_path_buf()
+pub fn resolve_pid_path() -> Result<PathBuf> {
+    Ok(default_manager()?.pid_path().to_path_buf())
 }
 
 #[cfg(test)]

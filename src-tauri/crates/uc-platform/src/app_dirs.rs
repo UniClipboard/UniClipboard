@@ -120,10 +120,8 @@ impl AppDirsPort for DirsAppDirsAdapter {
 }
 
 /// Returns the default application directories using the system data directory.
-pub fn default_app_dirs() -> AppDirs {
-    DirsAppDirsAdapter::new()
-        .get_app_dirs()
-        .expect("data directory must be available")
+pub fn default_app_dirs() -> Result<AppDirs, AppDirsError> {
+    DirsAppDirsAdapter::new().get_app_dirs()
 }
 
 #[cfg(test)]

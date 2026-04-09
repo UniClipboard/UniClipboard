@@ -58,7 +58,14 @@ pub fn build_connection_info(
 
 /// Parse an HTTP Authorization header value and return the bearer token.
 pub fn parse_bearer_token(header_value: &str) -> Option<&str> {
-    let token = header_value.strip_prefix("Bearer ")?;
+    let parts: Vec<&str> = header_value.splitn(2, ' ').collect();
+    if parts.len() != 2 {
+        return None;
+    }
+    if !parts[0].eq_ignore_ascii_case("Bearer") {
+        return None;
+    }
+    let token = parts[1];
     if token.is_empty() {
         return None;
     }
@@ -81,17 +88,21 @@ fn persist_auth_token(token_path: &Path, token: &str) -> Result<()> {
         })?;
     }
 
-    let mut file = OpenOptions::new()
-        .create(true)
-        .truncate(true)
-        .write(true)
-        .open(token_path)
-        .with_context(|| {
-            format!(
-                "failed to open daemon auth token file {}",
-                token_path.display()
-            )
-        })?;
+    #[cfg(unix)]
+    use std::os::unix::fs::OpenOptionsExt;
+
+    let mut options = OpenOptions::new();
+    options.create(true).truncate(true).write(true);
+
+    #[cfg(unix)]
+    options.mode(0o600);
+
+    let mut file = options.open(token_path).with_context(|| {
+        format!(
+            "failed to open daemon auth token file {}",
+            token_path.display()
+        )
+    })?;
 
     file.write_all(token.as_bytes()).with_context(|| {
         format!(

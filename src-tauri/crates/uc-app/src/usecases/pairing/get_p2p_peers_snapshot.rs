@@ -4,8 +4,17 @@ use anyhow::Result;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
+use uc_core::network::PairingState;
 use uc_core::ports::paired_device_repository::PairedDeviceRepositoryPort;
 use uc_core::ports::PeerDirectoryPort;
+
+fn pairing_state_to_string(state: &PairingState) -> String {
+    match state {
+        PairingState::Pending => "Pending".to_string(),
+        PairingState::Trusted => "Trusted".to_string(),
+        PairingState::Revoked => "Revoked".to_string(),
+    }
+}
 
 /// Unified peer snapshot combining discovered, connected, and paired peer information.
 #[derive(Debug, Clone)]
@@ -95,7 +104,7 @@ impl GetP2pPeersSnapshot {
                 is_paired: peer.is_paired,
                 is_connected: connected_ids.contains(&peer_id),
                 pairing_state: paired_dev
-                    .map(|p| format!("{:?}", p.pairing_state))
+                    .map(|p| pairing_state_to_string(&p.pairing_state))
                     .unwrap_or_else(|| "NotPaired".to_string()),
                 identity_fingerprint: paired_dev
                     .map(|p| p.identity_fingerprint.clone())
@@ -119,7 +128,7 @@ impl GetP2pPeersSnapshot {
                     addresses: vec![],
                     is_paired: true,
                     is_connected: false,
-                    pairing_state: format!("{:?}", dev.pairing_state),
+                    pairing_state: pairing_state_to_string(&dev.pairing_state),
                     identity_fingerprint: dev.identity_fingerprint.clone(),
                 });
             }

@@ -4,27 +4,8 @@ use anyhow::Result;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
-use uc_core::network::PairingState;
 use uc_core::ports::paired_device_repository::PairedDeviceRepositoryPort;
 use uc_core::ports::PeerDirectoryPort;
-
-/// Convert a `PairingState` into its stable string representation.
-///
-/// Returns `"Pending"`, `"Trusted"`, or `"Revoked"` corresponding to the input state.
-///
-/// # Examples
-///
-/// ```
-/// let s = pairing_state_to_string(&PairingState::Trusted);
-/// assert_eq!(s, "Trusted");
-/// ```
-fn pairing_state_to_string(state: &PairingState) -> String {
-    match state {
-        PairingState::Pending => "Pending".to_string(),
-        PairingState::Trusted => "Trusted".to_string(),
-        PairingState::Revoked => "Revoked".to_string(),
-    }
-}
 
 /// Unified peer snapshot combining discovered, connected, and paired peer information.
 #[derive(Debug, Clone)]
@@ -158,7 +139,7 @@ impl GetP2pPeersSnapshot {
                     addresses: vec![],
                     is_paired: true,
                     is_connected: false,
-                    pairing_state: pairing_state_to_string(&dev.pairing_state),
+                    pairing_state: dev.pairing_state.to_string(),
                     identity_fingerprint: dev.identity_fingerprint.clone(),
                 });
             }

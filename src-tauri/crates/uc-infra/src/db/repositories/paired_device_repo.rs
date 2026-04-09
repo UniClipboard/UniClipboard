@@ -114,7 +114,7 @@ where
         state: PairingState,
     ) -> Result<(), PairedDeviceRepositoryError> {
         let peer_id_str = peer_id_value.as_str().to_string();
-        let state_str = pairing_state_to_str(&state).to_string();
+        let state_str = state.to_string();
         let affected = self
             .executor
             .run(move |conn| {
@@ -203,14 +203,6 @@ where
         }
 
         Ok(())
-    }
-}
-
-fn pairing_state_to_str(state: &PairingState) -> &'static str {
-    match state {
-        PairingState::Pending => "Pending",
-        PairingState::Trusted => "Trusted",
-        PairingState::Revoked => "Revoked",
     }
 }
 

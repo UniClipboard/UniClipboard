@@ -15,6 +15,7 @@ use uc_app::runtime::CoreRuntime;
 use uc_app::usecases::CoreUseCases;
 use uc_core::network::NetworkEvent;
 
+use crate::api::projection::IntoApiDto;
 use crate::api::types::{
     DaemonWsEvent, PeerConnectionChangedPayload, PeerNameUpdatedPayload, PeerSnapshotDto,
     PeersChangedFullPayload,
@@ -102,7 +103,7 @@ impl PeerMonitor {
                                             Ok(snapshots) => {
                                                 let peers: Vec<PeerSnapshotDto> = snapshots
                                                     .into_iter()
-                                                    .map(PeerSnapshotDto::from)
+                                                    .map(IntoApiDto::into_api_dto)
                                                     .collect();
                                                 emit_ws_event(
                                                     &self.event_tx,
@@ -126,7 +127,7 @@ impl PeerMonitor {
                                             Ok(snapshots) => {
                                                 let peers: Vec<PeerSnapshotDto> = snapshots
                                                     .into_iter()
-                                                    .map(PeerSnapshotDto::from)
+                                                    .map(IntoApiDto::into_api_dto)
                                                     .collect();
                                                 emit_ws_event(
                                                     &self.event_tx,

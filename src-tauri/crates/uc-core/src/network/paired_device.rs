@@ -2,12 +2,38 @@ use crate::settings::model::SyncSettings;
 use crate::PeerId;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use std::fmt;
+use std::str::FromStr;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum PairingState {
     Pending,
     Trusted,
     Revoked,
+}
+
+impl fmt::Display for PairingState {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let label = match self {
+            PairingState::Pending => "Pending",
+            PairingState::Trusted => "Trusted",
+            PairingState::Revoked => "Revoked",
+        };
+        f.write_str(label)
+    }
+}
+
+impl FromStr for PairingState {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "Pending" => Ok(PairingState::Pending),
+            "Trusted" => Ok(PairingState::Trusted),
+            "Revoked" => Ok(PairingState::Revoked),
+            _ => Err(format!("invalid PairingState: {s}")),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -71,6 +97,34 @@ mod tests {
 
         let device: PairedDevice = serde_json::from_str(json).unwrap();
         assert!(device.sync_settings.is_none());
+    }
+
+    #[test]
+    fn pairing_state_display_is_stable() {
+        assert_eq!(PairingState::Pending.to_string(), "Pending");
+        assert_eq!(PairingState::Trusted.to_string(), "Trusted");
+        assert_eq!(PairingState::Revoked.to_string(), "Revoked");
+    }
+
+    #[test]
+    fn pairing_state_from_str_parses_stable_values() {
+        assert_eq!(
+            "Pending".parse::<PairingState>().unwrap(),
+            PairingState::Pending
+        );
+        assert_eq!(
+            "Trusted".parse::<PairingState>().unwrap(),
+            PairingState::Trusted
+        );
+        assert_eq!(
+            "Revoked".parse::<PairingState>().unwrap(),
+            PairingState::Revoked
+        );
+    }
+
+    #[test]
+    fn pairing_state_from_str_rejects_unknown_values() {
+        assert!("Unknown".parse::<PairingState>().is_err());
     }
 
     #[test]

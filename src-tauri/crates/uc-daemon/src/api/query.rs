@@ -17,6 +17,7 @@ use uc_core::setup::SetupState;
 
 use crate::api::dto::pairing::PairingSessionSummaryDto;
 use crate::api::dto::setup::SetupStateResponse;
+use crate::api::projection::IntoApiDto;
 use crate::api::types::{
     HealthResponse, PairedDeviceDto, PeerSnapshotDto, SetupActionAckResponse,
     SpaceAccessStateResponse, StatusResponse, WorkerStatusDto,
@@ -33,45 +34,45 @@ pub struct DaemonQueryService {
 
 impl From<DaemonPairingSessionSnapshot> for PairingSessionSummaryDto {
     /// Converts a `DaemonPairingSessionSnapshot` into a `PairingSessionSummaryDto` by copying its public fields.
-    
+
     ///
-    
+
     /// # Examples
-    
+
     ///
-    
+
     /// ```
-    
+
     /// let snap = DaemonPairingSessionSnapshot {
-    
+
     ///     session_id: "s1".to_string(),
-    
+
     ///     peer_id: "p1".to_string(),
-    
+
     ///     device_name: "dev".to_string(),
-    
+
     ///     state: "verification".to_string(),
-    
+
     ///     updated_at_ms: 12345,
-    
+
     ///     short_code: None,
-    
+
     ///     peer_fingerprint: None,
-    
+
     /// };
-    
+
     /// let dto: PairingSessionSummaryDto = snap.into();
-    
+
     /// assert_eq!(dto.session_id, "s1");
-    
+
     /// assert_eq!(dto.peer_id, "p1");
-    
+
     /// assert_eq!(dto.device_name, "dev");
-    
+
     /// assert_eq!(dto.state, "verification");
-    
+
     /// assert_eq!(dto.updated_at_ms, 12345);
-    
+
     /// ```
     fn from(value: DaemonPairingSessionSnapshot) -> Self {
         Self {
@@ -132,7 +133,10 @@ impl DaemonQueryService {
     pub async fn peers(&self) -> Result<Vec<PeerSnapshotDto>> {
         let usecases = CoreUseCases::new(self.runtime.as_ref());
         let snapshots = usecases.get_p2p_peers_snapshot().execute().await?;
-        Ok(snapshots.into_iter().map(PeerSnapshotDto::from).collect())
+        Ok(snapshots
+            .into_iter()
+            .map(IntoApiDto::into_api_dto)
+            .collect())
     }
 
     pub async fn paired_devices(&self) -> Result<Vec<PairedDeviceDto>> {
@@ -231,7 +235,7 @@ fn map_paired_device(
     connected_peers: &HashMap<String, bool>,
 ) -> PairedDeviceDto {
     let peer_id = device.peer_id.to_string();
-    let mut dto = PairedDeviceDto::from(device);
+    let mut dto = device.into_api_dto();
     dto.connected = connected_peers.get(&peer_id).copied().unwrap_or(false);
     dto
 }

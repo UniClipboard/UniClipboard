@@ -10,6 +10,7 @@ pub mod event_emitter;
 pub mod lifecycle;
 pub mod openapi;
 pub mod pairing;
+pub mod projection;
 pub mod query;
 pub mod routes;
 pub mod server;

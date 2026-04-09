@@ -1,23 +1,23 @@
 {
-  "version": "0.4.0-alpha.7",
-  "notes": "## 0.4.0-alpha.7 - 2026-04-08\n\n### Fixes\n\n- Fix update installation flow so you can retry installing an update after a download failure instead of getting stuck.\n- Add clear loading feedback while checking for updates in Settings so it is obvious when update detection is in progress.\n\n<!-- zh -->\n\n## 0.4.0-alpha.7 - 2026-04-08\n\n### Fixes\n\n- 修复更新安装流程：更新下载失败后可直接重试安装，不会卡在无法继续的状态。\n- 在设置页检查更新时增加明确的加载反馈，让你可以直接看到正在检查中。",
-  "pub_date": "2026-04-09T00:08:15Z",
+  "version": "0.4.0-alpha.8",
+  "notes": "## 0.4.0-alpha.8 - 2026-04-09\n\n### Fixes\n\n- You can retry installing an app update after a failed download instead of getting stuck.\n- Settings now shows a clear \"Checking...\" state while update detection is running.\n- Keyboard zoom shortcuts now follow the same zoom levels as the Settings scale controls, so shortcut zoom stays in sync with the selected scale.\n- Fixed a sync issue where copying new content right after receiving synced clipboard content could be skipped.\n\n<!-- zh -->\n\n## 0.4.0-alpha.8 - 2026-04-09\n\n### Fixes\n\n- 更新下载失败后，现在可以直接重试安装，不会卡住。\n- 在设置页检查更新时会显示“正在检查...”，便于确认当前状态。\n- 键盘缩放快捷键现在与设置页缩放档位保持一致，快捷键操作后缩放选择不会错位。\n- 修复一个同步问题：在接收同步剪贴板内容后立刻复制新内容，偶发不会继续同步。",
+  "pub_date": "2026-04-09T00:32:21Z",
   "platforms": {
     "linux-x86_64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVRNEoxeUdOZ2hvc29TMkZNUFhYR0RiWjUzdTlaUTNBY2IzVnpDOHhEUFEwNUYyRmMwdkNjcnBaMjI5eW4yNnQ5RE9nTWZ4VitUUm8yWHN2K2ZTM2V4dE9iaDlCWXRlc1FZPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzc1NjkyNDQ0CWZpbGU6VW5pQ2xpcGJvYXJkXzAuNC4wLWFscGhhLjdfYW1kNjQuQXBwSW1hZ2UKVzNoSkVmYUV3UUpBRnVEMDkybDllUnJFVVNZay9jeG5SazN3eFkrVVlrWGtPTE1VcmZwaHhOTElyZ0JEakcrY0NqTGh6TzQzOHpGYUVuVVVEdHdjQWc9PQo=",
-      "url": "https://github.com/UniClipboard/UniClipboard/releases/download/v0.4.0-alpha.7/UniClipboard_0.4.0-alpha.7_amd64.AppImage"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVRNEoxeUdOZ2hvc2tzQUpma1BzR1lRTmdxdTRiNlR5YkdSc1hxWW82bzhTbDJPMzVGMHowWTVkLzZDWjE1SGpqRmV5Q2wyNGZUVVY3VUhhTzVXSG9hZFlDNjhIL2dOUHdjPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzc1Njk0MDI0CWZpbGU6VW5pQ2xpcGJvYXJkXzAuNC4wLWFscGhhLjhfYW1kNjQuQXBwSW1hZ2UKT21qWnRKMDFhbmlPY3BSYTJaeis2WTR4RFQzSnZBeUo0R0IwQ2l2T2IyNmVnMklRMVp3MWFHMHhEU0x6VzFkRVd5Uy9rZkF4VWJZNXJPc3JsNm42QWc9PQo=",
+      "url": "https://github.com/UniClipboard/UniClipboard/releases/download/v0.4.0-alpha.8/UniClipboard_0.4.0-alpha.8_amd64.AppImage"
     },
     "windows-x86_64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVRNEoxeUdOZ2hvc2lPakVMeE96QXNhTVV0R205bFJ2TzNRa3c0bWRmUktuTjJsMkQvcFZLY0gzaXI3endhS1BmanljaCtadjVjTjIyNyt1L1V6dm5uMmYxSXo0OWtQM0FJPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzc1NjkzMDA5CWZpbGU6VW5pQ2xpcGJvYXJkXzAuNC4wLWFscGhhLjdfeDY0LXNldHVwLmV4ZQo3Q01lRzM3ZUI4bzhoeFBRZXp3dFdBSDgwVTFRckp1Zk9PZXMraWQ3Qzh5WkpUQ0lqM2dtN1hoN21iRHgvL1oxUzJaN3gvcTZjOFhjN09XbFFIczBEQT09Cg==",
-      "url": "https://github.com/UniClipboard/UniClipboard/releases/download/v0.4.0-alpha.7/UniClipboard_0.4.0-alpha.7_x64-setup.exe"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVRNEoxeUdOZ2hvc29IZGp6Q1paem83eXVXWnFwamRBZTUzeGlmR2UwdzNGV3hEQytLNTg5SmVWU25ZQnQ3dGpZT2VzSkQwL0RRN0pDMWdtTmZJSnVIVlFEMGI0SmFQUFFVPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzc1Njk0NDkwCWZpbGU6VW5pQ2xpcGJvYXJkXzAuNC4wLWFscGhhLjhfeDY0LXNldHVwLmV4ZQpyeVJnc3U2U3dycmVrRHZ1SU8ySzhJeGJTQXRIM2VvTmRsY3l1L09UcG1jRzBvMmQwYnVvS3dIZ3gyWXVRanhSbUw1M0FGUWVkSldxc2FKV2NscVNCZz09Cg==",
+      "url": "https://github.com/UniClipboard/UniClipboard/releases/download/v0.4.0-alpha.8/UniClipboard_0.4.0-alpha.8_x64-setup.exe"
     },
     "darwin-aarch64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVRNEoxeUdOZ2hvc3ZRVmVrZ3NXMEg0d2pRcURqa24xc0tVUWxNd3A5R1dhOW1xek1QdFhhQ1pyUUFOeUV6U1gvNzJBeWE5N3V3Z1I4WXBRdTNQOGg3S0FKZ0RlSGhXbVFJPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzc1NjkyMjI4CWZpbGU6VW5pQ2xpcGJvYXJkLmFwcC50YXIuZ3oKTDlPSlZyZytCSFUyQkhQNlIwT0JhMFZsQXg2bWwyQU9QVWVHQllCdngrS3BUWGZPaElmbkZidnoxVnFocHI5ek1YK3cyd1ZCQi8rMlMra3pzL3VHQUE9PQo=",
-      "url": "https://github.com/UniClipboard/UniClipboard/releases/download/v0.4.0-alpha.7/UniClipboard_aarch64-apple-darwin.app.tar.gz"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVRNEoxeUdOZ2hvc3V6MnphT2tnTWZYRm9kL0ZSTmpnSXpQbnZqMmFlQW9YN0NFTGwwVjB5R2hURXR1WVgvaEZXSTVydE01YVR5a2VHeWlsZk45OVcwalZMZ2NPVGNjemdNPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzc1NjkzODEwCWZpbGU6VW5pQ2xpcGJvYXJkLmFwcC50YXIuZ3oKNXZxUE9PbDU5aTJEUXI2a21yWmd0cEdzcjN2UVE1dHhqK05pTGlrYVo5QzhkcGZBSU54cElpVmtMVEFQWG9qdUZOTmIrWW5KUDFxcWhxZ29KOERoQVE9PQo=",
+      "url": "https://github.com/UniClipboard/UniClipboard/releases/download/v0.4.0-alpha.8/UniClipboard_aarch64-apple-darwin.app.tar.gz"
     },
     "darwin-x86_64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVRNEoxeUdOZ2hvc2tDUXFvOUJKS3RkM0kxZCtYeHB5Nkp2czdoam9aTlc2QUpELytJcG52NElZMmtZUkVlVGZlcnlyRzdjNXlxajlmbFA3WWdqclJRcXl4UktUbU9qOVFFPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzc1NjkyMzMzCWZpbGU6VW5pQ2xpcGJvYXJkLmFwcC50YXIuZ3oKYWgraVJSVW01ajZlVUdOSEJ4TkhTS3ZncXoxOEcyVndlSVQwbkZCMzZmSUtoYTlheTU4b2ZjUUlaaW9PZk03ZmdMUnFtZnZ0Y0tHditBU0dWeitiQWc9PQo=",
-      "url": "https://github.com/UniClipboard/UniClipboard/releases/download/v0.4.0-alpha.7/UniClipboard_x86_64-apple-darwin.app.tar.gz"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVRNEoxeUdOZ2hvc3IyaXBJYnM3aWkyMWZOMUkxdGdiTklQU2Q1Z2MzR0RNeml1TUdoZ3BqZ2ZGUUdxZEdmck9ES1p0QU5KSjEvSFdvQ2hTWWx5K2dOd2d1c0UxM1poZndBPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzc1NjkzOTg4CWZpbGU6VW5pQ2xpcGJvYXJkLmFwcC50YXIuZ3oKanpYVDN6Y2wwU05RbEl1dWsvOElQb0ZlK2RTYkQ1MENPaXhReThOVUpuTzRuTy9QL1M0SG5kNndmNjFoZHRSNHYzZkVUbjRZYW8xcStwNmNKb0Q2Q3c9PQo=",
+      "url": "https://github.com/UniClipboard/UniClipboard/releases/download/v0.4.0-alpha.8/UniClipboard_x86_64-apple-darwin.app.tar.gz"
     }
   }
 }

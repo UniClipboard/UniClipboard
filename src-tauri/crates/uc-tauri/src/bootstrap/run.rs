@@ -24,6 +24,29 @@ const HEALTH_POLL_INTERVAL: Duration = Duration::from_millis(200);
 const PROBE_TIMEOUT: Duration = Duration::from_secs(2);
 const INCOMPATIBLE_DAEMON_EXIT_TIMEOUT: Duration = Duration::from_millis(1500);
 
+/// Bootstraps a connection to the local daemon, starting or reconnecting the daemon as needed and recording the resulting connection information in `state`.
+///
+/// This function builds an HTTP probe client, uses the daemon-bootstrap helpers to ensure a compatible daemon is running (spawning one when necessary), and then stores the established `DaemonConnectionInfo` into `state`.
+///
+/// # Returns
+///
+/// `Ok(DaemonConnectionInfo)` with the established connection information on success, or a `DaemonBootstrapError` describing why bootstrapping failed.
+///
+/// # Examples
+///
+/// ```no_run
+/// # use uc_tauri::bootstrap::run::bootstrap_daemon_connection;
+/// # use tauri::AppHandle;
+/// # use uc_tauri::state::DaemonConnectionState;
+/// # use uc_tauri::state::GuiOwnedDaemonState;
+/// # async fn example(app: AppHandle<tauri::Wry>, state: DaemonConnectionState, gui_state: GuiOwnedDaemonState) {
+/// let conn = bootstrap_daemon_connection(&app, &state, &gui_state).await;
+/// match conn {
+///     Ok(info) => println!("Connected to daemon at {}", info.base_url),
+///     Err(e) => eprintln!("Failed to bootstrap daemon: {}", e),
+/// }
+/// # }
+/// ```
 pub async fn bootstrap_daemon_connection<R: Runtime>(
     app: &AppHandle<R>,
     state: &DaemonConnectionState,
@@ -62,10 +85,31 @@ const SUPERVISOR_POLL_INTERVAL: Duration = Duration::from_secs(5);
 const SUPERVISOR_RESPAWN_BACKOFF_INITIAL: Duration = Duration::from_secs(2);
 const SUPERVISOR_RESPAWN_BACKOFF_MAX: Duration = Duration::from_secs(30);
 
-/// Continuously monitors the owned daemon process and respawns it if it dies.
+/// Supervises the GUI-owned daemon: monitors its health and respawns it if it stops running.
 ///
-/// Runs until the cancellation token is triggered (app exit). After a successful
-/// respawn, updates `DaemonConnectionState` so the WS bridge can reconnect.
+/// The function runs until the provided cancellation token is cancelled. After successfully
+/// respawning and verifying the daemon's health, it updates `DaemonConnectionState` so other
+/// components (for example the WebSocket bridge) can reconnect to the new daemon instance.
+///
+/// # Examples
+///
+/// ```
+/// # use tokio::time::{sleep, Duration};
+/// # use tokio_util::sync::CancellationToken;
+/// # async fn example() {
+/// // `app`, `state`, and `gui_owned_daemon_state` need to be created according to application setup.
+/// // Here we only illustrate supervisor lifecycle control with a cancellation token.
+/// let token = CancellationToken::new();
+/// let cancel_child = token.clone();
+///
+/// // Spawn supervisor (types omitted for brevity).
+/// // tokio::spawn(supervise_daemon(&app, &state, &gui_owned_daemon_state, token));
+///
+/// // Let supervisor run briefly, then request shutdown.
+/// sleep(Duration::from_millis(100)).await;
+/// cancel_child.cancel();
+/// # }
+/// ```
 pub async fn supervise_daemon<R: Runtime>(
     app: &AppHandle<R>,
     state: &DaemonConnectionState,
@@ -161,6 +205,21 @@ pub async fn supervise_daemon<R: Runtime>(
     }
 }
 
+/// Probes the daemon HTTP health endpoint for the active profile and classifies its health.
+///
+/// Resolves the profile-aware daemon HTTP address and performs an HTTP probe; on success returns a `ProbeOutcome` describing whether the daemon is compatible, incompatible, or absent, and on failure returns `DaemonBootstrapError::Probe` with context about the resolution or probe error.
+///
+/// # Examples
+///
+/// ```no_run
+/// # tokio_test::block_on(async {
+/// let client = reqwest::Client::builder().timeout(std::time::Duration::from_secs(2)).build().unwrap();
+/// match probe_daemon_health(&client).await {
+///     Ok(outcome) => println!("probe outcome: {:?}", outcome),
+///     Err(err) => eprintln!("probe error: {}", err),
+/// }
+/// # });
+/// ```
 async fn probe_daemon_health(
     client: &reqwest::Client,
 ) -> Result<ProbeOutcome, DaemonBootstrapError> {

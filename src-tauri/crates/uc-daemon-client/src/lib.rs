@@ -42,10 +42,21 @@ fn resolve_base_url() -> Result<String> {
     Ok(format!("http://{}:{}", addr.ip(), addr.port()))
 }
 
-/// Resolve the daemon auth token path for client connections.
+/// Resolve the filesystem path to the daemon authentication token.
 ///
-/// Checks `UNICLIPBOARD_DAEMON_TOKEN_PATH` env var first, then resolves from
-/// the data directory (profile-aware).
+/// Checks the `UNICLIPBOARD_DAEMON_TOKEN_PATH` environment variable first (if set and non-empty);
+/// otherwise uses the platform/profile-aware daemon token location.
+///
+/// # Returns
+///
+/// The resolved `PathBuf` pointing to the daemon token on success.
+///
+/// # Examples
+///
+/// ```no_run
+/// let path = uc_daemon_client::resolve_token_path().unwrap();
+/// eprintln!("daemon token path: {}", path.display());
+/// ```
 fn resolve_token_path() -> Result<PathBuf> {
     if let Ok(value) = std::env::var(ENV_TOKEN_PATH) {
         let trimmed = value.trim();

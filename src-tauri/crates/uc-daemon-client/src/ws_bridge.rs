@@ -1394,6 +1394,31 @@ mod tests {
     use super::*;
     use uc_daemon_contract::api::types::{PeerSnapshotDto, PeersChangedFullPayload};
 
+    /// Constructs a `DaemonWsEvent` representing a full "peers.changed" snapshot from the given peers.
+    ///
+    /// The resulting event has:
+    /// - `topic` set to `"peers"`,
+    /// - `event_type` set to `"peers.changed"`,
+    /// - `session_id` set to `None`,
+    /// - `ts` set to `0`,
+    /// - `payload` set to the JSON serialization of `PeersChangedFullPayload { peers }`.
+    ///
+    /// # Arguments
+    ///
+    /// * `peers` - Full list of `PeerSnapshotDto` entries to include in the payload.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let dto = PeerSnapshotDto {
+    ///     peer_id: "peer-1".into(),
+    ///     device_name: Some("Device".into()),
+    ///     connected: true,
+    /// };
+    /// let ev = make_full_payload_event(vec![dto]);
+    /// assert_eq!(ev.topic, "peers");
+    /// assert_eq!(ev.event_type, "peers.changed");
+    /// ```
     fn make_full_payload_event(peers: Vec<PeerSnapshotDto>) -> DaemonWsEvent {
         DaemonWsEvent {
             topic: "peers".to_string(),

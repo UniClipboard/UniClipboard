@@ -185,6 +185,25 @@ mod tests {
     use uc_daemon_contract::api::types::{PairedDeviceDto, PeerSnapshotDto};
 
     // Pre-cache a session token so HTTP requests use it without triggering a real exchange.
+    /// Temporarily sets the global session token cache, runs the provided future, then clears the cache.
+    ///
+    /// The function writes `(token, expires_at)` into `crate::http::SESSION_TOKEN_CACHE` with an
+    /// expiration 300 seconds from now, awaits `f`, and then clears the cache.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # async fn run_example() {
+    /// use crate::http::SESSION_TOKEN_CACHE;
+    ///
+    /// // Run an async block with the session cache set to "test-session"
+    /// with_session_cache("test-session", async {
+    ///     // code that needs the session token in `SESSION_TOKEN_CACHE`
+    /// }).await;
+    ///
+    /// // After completion the cache has been cleared
+    /// # }
+    /// ```
     async fn with_session_cache<F>(token: &str, f: F)
     where
         F: std::future::Future<Output = ()>,

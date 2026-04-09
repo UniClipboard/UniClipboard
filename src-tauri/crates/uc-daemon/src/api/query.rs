@@ -32,6 +32,47 @@ pub struct DaemonQueryService {
 }
 
 impl From<DaemonPairingSessionSnapshot> for PairingSessionSummaryDto {
+    /// Converts a `DaemonPairingSessionSnapshot` into a `PairingSessionSummaryDto` by copying its public fields.
+    
+    ///
+    
+    /// # Examples
+    
+    ///
+    
+    /// ```
+    
+    /// let snap = DaemonPairingSessionSnapshot {
+    
+    ///     session_id: "s1".to_string(),
+    
+    ///     peer_id: "p1".to_string(),
+    
+    ///     device_name: "dev".to_string(),
+    
+    ///     state: "verification".to_string(),
+    
+    ///     updated_at_ms: 12345,
+    
+    ///     short_code: None,
+    
+    ///     peer_fingerprint: None,
+    
+    /// };
+    
+    /// let dto: PairingSessionSummaryDto = snap.into();
+    
+    /// assert_eq!(dto.session_id, "s1");
+    
+    /// assert_eq!(dto.peer_id, "p1");
+    
+    /// assert_eq!(dto.device_name, "dev");
+    
+    /// assert_eq!(dto.state, "verification");
+    
+    /// assert_eq!(dto.updated_at_ms, 12345);
+    
+    /// ```
     fn from(value: DaemonPairingSessionSnapshot) -> Self {
         Self {
             session_id: value.session_id,
@@ -44,6 +85,21 @@ impl From<DaemonPairingSessionSnapshot> for PairingSessionSummaryDto {
 }
 
 impl DaemonQueryService {
+    /// Constructs a `DaemonQueryService` using the given runtime handle and shared runtime state.
+    ///
+    /// `runtime` is the shared core runtime used to build use-cases and read configuration.
+    /// `state` is the shared, asynchronously lockable runtime state.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use std::sync::Arc;
+    /// use tokio::sync::RwLock;
+    /// // assume CoreRuntime and RuntimeState types are in scope
+    /// let runtime = Arc::new(CoreRuntime::new_for_tests());
+    /// let state = Arc::new(RwLock::new(RuntimeState::default()));
+    /// let svc = DaemonQueryService::new(runtime, state);
+    /// ```
     pub fn new(runtime: Arc<CoreRuntime>, state: Arc<RwLock<RuntimeState>>) -> Self {
         Self { runtime, state }
     }

@@ -14,6 +14,26 @@ pub struct DaemonConnectionInfo {
 }
 
 impl fmt::Debug for DaemonConnectionInfo {
+    /// Formats a `DaemonConnectionInfo` for `Debug`, redacting the `token` field.
+    ///
+    /// The debug output includes `base_url`, `ws_url`, and `pid` while replacing the
+    /// `token` value with the literal `"<redacted>"`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let info = DaemonConnectionInfo {
+    ///     base_url: "http://localhost".into(),
+    ///     ws_url: "ws://localhost".into(),
+    ///     token: "secret-token".into(),
+    ///     pid: 1234,
+    /// };
+    /// let s = format!("{:?}", info);
+    /// assert!(s.contains("base_url"));
+    /// assert!(s.contains("ws_url"));
+    /// assert!(s.contains("pid"));
+    /// assert!(s.contains("<redacted>"));
+    /// ```
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("DaemonConnectionInfo")
             .field("base_url", &self.base_url)

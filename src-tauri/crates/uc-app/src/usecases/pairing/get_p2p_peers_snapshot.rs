@@ -8,6 +8,16 @@ use uc_core::network::PairingState;
 use uc_core::ports::paired_device_repository::PairedDeviceRepositoryPort;
 use uc_core::ports::PeerDirectoryPort;
 
+/// Convert a `PairingState` into its stable string representation.
+///
+/// Returns `"Pending"`, `"Trusted"`, or `"Revoked"` corresponding to the input state.
+///
+/// # Examples
+///
+/// ```
+/// let s = pairing_state_to_string(&PairingState::Trusted);
+/// assert_eq!(s, "Trusted");
+/// ```
 fn pairing_state_to_string(state: &PairingState) -> String {
     match state {
         PairingState::Pending => "Pending".to_string(),
@@ -49,7 +59,27 @@ impl GetP2pPeersSnapshot {
         }
     }
 
-    /// Execute the use case - fetches and merges all peer data sources.
+    /// Produce a merged snapshot of discovered, connected, and paired peers.
+    ///
+    /// The result contains one entry per relevant peer (excluding the local peer).
+    /// - Discovered peers appear with their discovered addresses and `is_connected` reflecting the connected list.
+    /// - If a paired record exists for a discovered peer, the snapshot uses the paired `device_name` when non-empty and includes the paired `pairing_state` and `identity_fingerprint`.
+    /// - Peers present only in the paired repository are included with an empty address list, `is_paired = true`, and `is_connected = false`.
+    /// The `pairing_state` field is emitted as one of the stable strings `"Pending"`, `"Trusted"`, `"Revoked"`, or `"NotPaired"` when no paired record exists.
+    ///
+    /// # Returns
+    ///
+    /// `Ok(Vec<P2pPeerSnapshot>)` with the merged snapshots; `Err` if listing discovered peers, connected peers, or paired devices fails.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use futures::executor::block_on;
+    /// // `svc` must be a constructed GetP2pPeersSnapshot instance
+    /// # let svc: GetP2pPeersSnapshot = unimplemented!();
+    /// let snapshots = block_on(svc.execute()).unwrap();
+    /// println!("Found {} peers", snapshots.len());
+    /// ```
     pub async fn execute(&self) -> Result<Vec<P2pPeerSnapshot>> {
         let local_id = self.peer_dir.local_peer_id();
 

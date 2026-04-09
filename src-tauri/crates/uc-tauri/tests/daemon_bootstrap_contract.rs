@@ -10,6 +10,17 @@ use uc_daemon_local::daemon_bootstrap::{
 };
 use uc_daemon_local::daemon_lifecycle::GuiOwnedDaemonState;
 
+/// Constructs a HealthResponse representing a compatible daemon with status "ok",
+/// the current crate package version, and the daemon API revision.
+///
+/// # Examples
+///
+/// ```
+/// let h = compatible_health();
+/// assert_eq!(h.status, "ok");
+/// assert!(h.package_version.len() > 0);
+/// assert!(h.api_revision.len() > 0);
+/// ```
 fn compatible_health() -> HealthResponse {
     HealthResponse {
         status: "ok".to_string(),

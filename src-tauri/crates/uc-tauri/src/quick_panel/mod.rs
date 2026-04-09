@@ -111,6 +111,7 @@ pub fn pre_create(app: &tauri::AppHandle) {
         .position(-9999.0, -9999.0)
         .decorations(false)
         .transparent(true)
+        .shadow(false)
         .always_on_top(true)
         .visible(false)
         .resizable(false)

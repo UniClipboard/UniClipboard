@@ -2,9 +2,10 @@ use crate::usecases::clipboard::clipboard_write_coordinator::{
     ClipboardWriteCoordinator, ClipboardWriteIntent,
 };
 use crate::usecases::clipboard::ClipboardIntegrationMode;
-use anyhow::Result;
+use anyhow::{bail, Result};
+use std::path::PathBuf;
 use std::sync::Arc;
-use tracing::{debug, info};
+use tracing::{debug, info, warn};
 
 use uc_core::{
     clipboard::{
@@ -106,6 +107,18 @@ impl RestoreClipboardSelectionUseCase {
             &entry.event_id,
         )?;
 
+        // Check if the restore representation is a file type (text/uri-list or file/uri-list).
+        // File entries need special handling: parse URIs, validate file existence, and
+        // write with FormatId="files" so the OS recognizes them as file references.
+        if Self::is_file_representation(restore_rep) {
+            debug!(
+                entry_id = %entry_id,
+                restore_rep_id = %restore_rep.id,
+                "restore.build_snapshot: detected file entry, using file restore strategy"
+            );
+            return self.build_file_snapshot(entry_id, restore_rep).await;
+        }
+
         let bytes = if let Some(inline_data) = &restore_rep.inline_data {
             inline_data.clone()
         } else if let Some(blob_id) = &restore_rep.blob_id {
@@ -147,6 +160,17 @@ impl RestoreClipboardSelectionUseCase {
         paste_rep_id: &RepresentationId,
         event_id: &EventId,
     ) -> Result<&'a PersistedClipboardRepresentation> {
+        // If the paste representation is a file type, prefer it over text/plain.
+        // For file entries, text/plain would be the file path as text, not a proper
+        // file clipboard format — the caller will detect file type and use a
+        // different restore strategy.
+        let paste_rep = candidates.iter().find(|rep| rep.id == *paste_rep_id);
+        if let Some(rep) = paste_rep {
+            if Self::is_file_representation(rep) {
+                return Ok(rep);
+            }
+        }
+
         if let Some(rep) = candidates
             .iter()
             .find(|rep| Self::is_plain_text_representation(*rep))
@@ -154,14 +178,11 @@ impl RestoreClipboardSelectionUseCase {
             return Ok(rep);
         }
 
-        candidates
-            .iter()
-            .find(|rep| rep.id == *paste_rep_id)
-            .ok_or(anyhow::anyhow!(
-                "Representation {} not found for event {}",
-                paste_rep_id,
-                event_id
-            ))
+        paste_rep.ok_or(anyhow::anyhow!(
+            "Representation {} not found for event {}",
+            paste_rep_id,
+            event_id
+        ))
     }
 
     fn is_plain_text_representation(rep: &PersistedClipboardRepresentation) -> bool {
@@ -178,6 +199,76 @@ impl RestoreClipboardSelectionUseCase {
             || format_id.eq_ignore_ascii_case("public.utf8-plain-text")
             || format_id.eq_ignore_ascii_case("public.text")
             || format_id.eq_ignore_ascii_case("NSStringPboardType")
+    }
+
+    fn is_file_representation(rep: &PersistedClipboardRepresentation) -> bool {
+        uc_core::clipboard::is_file_mime_or_format(rep.mime_type.as_ref(), &rep.format_id)
+    }
+
+    /// Build a file-type snapshot by parsing URI list, validating file existence,
+    /// and constructing a proper file clipboard snapshot.
+    async fn build_file_snapshot(
+        &self,
+        entry_id: &EntryId,
+        rep: &PersistedClipboardRepresentation,
+    ) -> Result<SystemClipboardSnapshot> {
+        let bytes = if let Some(inline_data) = &rep.inline_data {
+            inline_data.clone()
+        } else if let Some(blob_id) = &rep.blob_id {
+            self.blob_store.get(blob_id).await?
+        } else {
+            bail!("File URI representation has no data for entry {}", entry_id);
+        };
+
+        let uri_string = String::from_utf8(bytes)?;
+
+        // Parse file paths (native paths or backward-compat file:// URIs)
+        let mut file_paths = Vec::new();
+        for line in uri_string.lines() {
+            let line = line.trim();
+            if line.is_empty() || line.starts_with('#') {
+                continue;
+            }
+            if line.starts_with("file://") {
+                match url::Url::parse(line) {
+                    Ok(url) => {
+                        if let Ok(path) = url.to_file_path() {
+                            file_paths.push(path);
+                        } else {
+                            warn!(uri = %line, "Failed to convert URI to file path");
+                        }
+                    }
+                    Err(e) => {
+                        warn!(uri = %line, error = %e, "Failed to parse file URI");
+                    }
+                }
+            } else {
+                file_paths.push(PathBuf::from(line));
+            }
+        }
+
+        if file_paths.is_empty() {
+            bail!("No valid file paths found in entry {}", entry_id);
+        }
+
+        // Validate all files exist
+        for path in &file_paths {
+            if !path.exists() {
+                bail!("File deleted: {}", path.display());
+            }
+        }
+
+        let snapshot = crate::usecases::file_sync::copy_file_to_clipboard::build_file_snapshot(
+            &crate::usecases::file_sync::copy_file_to_clipboard::build_path_list(&file_paths),
+        );
+
+        info!(
+            entry_id = %entry_id,
+            file_count = file_paths.len(),
+            "restore.build_file_snapshot: files validated and snapshot built"
+        );
+
+        Ok(snapshot)
     }
 
     pub async fn execute(&self, entry_id: &EntryId) -> Result<()> {

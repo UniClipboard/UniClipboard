@@ -43,14 +43,7 @@ impl ClipboardWatcher {
 }
 
 fn is_file_representation(rep: &uc_core::ObservedClipboardRepresentation) -> bool {
-    if let Some(mime) = rep.mime.as_ref() {
-        let s = mime.as_str();
-        if s.eq_ignore_ascii_case("text/uri-list") || s.eq_ignore_ascii_case("file/uri-list") {
-            return true;
-        }
-    }
-    rep.format_id.eq_ignore_ascii_case("files")
-        || rep.format_id.eq_ignore_ascii_case("public.file-url")
+    uc_core::clipboard::is_file_mime_or_format(rep.mime.as_ref(), &rep.format_id)
 }
 
 fn dedupe_key(snapshot: &SystemClipboardSnapshot) -> Option<String> {

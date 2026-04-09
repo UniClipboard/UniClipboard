@@ -503,11 +503,12 @@ export async function unfavoriteClipboardItem(id: string): Promise<boolean> {
 }
 
 /**
- * Copy a file entry to the system clipboard via the backend use case.
- * If the cache file has been deleted, the backend returns an error.
+ * Copy a file entry to the system clipboard via the daemon restore endpoint.
+ * The restore endpoint detects file entries and uses file-specific restore strategy
+ * (validates file existence, writes with proper file clipboard format).
  */
 export async function copyFileToClipboard(entryId: string): Promise<void> {
-  await invokeWithTrace('copy_file_to_clipboard', { entryId })
+  await daemonClient.request(`/clipboard/restore/${entryId}`, { method: 'POST' })
 }
 
 /**

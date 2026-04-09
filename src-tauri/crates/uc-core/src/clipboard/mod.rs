@@ -24,7 +24,8 @@ pub use policy::*;
 pub use selection::*;
 pub use snapshot::*;
 pub use system::{
-    ObservedClipboardRepresentation, RepresentationHash, SnapshotHash, SystemClipboardSnapshot,
+    is_file_mime_or_format, ObservedClipboardRepresentation, RepresentationHash, SnapshotHash,
+    SystemClipboardSnapshot,
 };
 
 pub use decision::{ClipboardContentActionDecision, DuplicationHint, RejectReason};

@@ -120,15 +120,23 @@ fn is_image_representation(rep: &ObservedClipboardRepresentation) -> bool {
         || rep.format_id.eq_ignore_ascii_case("image")
 }
 
-fn is_file_representation(rep: &ObservedClipboardRepresentation) -> bool {
-    if let Some(mime) = rep.mime.as_ref() {
+/// Check if a mime type and format ID combination represents a file clipboard entry.
+///
+/// This is the canonical check used across the codebase — wrappers for specific
+/// representation types (`ObservedClipboardRepresentation`, `PersistedClipboardRepresentation`)
+/// should delegate to this function.
+pub fn is_file_mime_or_format(mime: Option<&MimeType>, format_id: &FormatId) -> bool {
+    if let Some(mime) = mime {
         let s = mime.as_str();
         if s.eq_ignore_ascii_case("text/uri-list") || s.eq_ignore_ascii_case("file/uri-list") {
             return true;
         }
     }
-    rep.format_id.eq_ignore_ascii_case("files")
-        || rep.format_id.eq_ignore_ascii_case("public.file-url")
+    format_id.eq_ignore_ascii_case("files") || format_id.eq_ignore_ascii_case("public.file-url")
+}
+
+fn is_file_representation(rep: &ObservedClipboardRepresentation) -> bool {
+    is_file_mime_or_format(rep.mime.as_ref(), &rep.format_id)
 }
 
 impl Clone for ObservedClipboardRepresentation {

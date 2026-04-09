@@ -232,14 +232,22 @@ impl RestoreClipboardSelectionUseCase {
             if line.starts_with("file://") {
                 match url::Url::parse(line) {
                     Ok(url) => {
-                        if let Ok(path) = url.to_file_path() {
-                            file_paths.push(path);
-                        } else {
-                            warn!(uri = %line, "Failed to convert URI to file path");
-                        }
+                        let path = url.to_file_path().map_err(|_| {
+                            anyhow::anyhow!(
+                                "Failed to convert URI to file path for entry {}: {}",
+                                entry_id,
+                                line
+                            )
+                        })?;
+                        file_paths.push(path);
                     }
                     Err(e) => {
-                        warn!(uri = %line, error = %e, "Failed to parse file URI");
+                        bail!(
+                            "Failed to parse file URI for entry {}: {} (error: {})",
+                            entry_id,
+                            line,
+                            e
+                        );
                     }
                 }
             } else {

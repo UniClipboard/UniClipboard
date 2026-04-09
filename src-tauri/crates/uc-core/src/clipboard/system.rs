@@ -132,7 +132,9 @@ pub fn is_file_mime_or_format(mime: Option<&MimeType>, format_id: &FormatId) -> 
             return true;
         }
     }
-    format_id.eq_ignore_ascii_case("files") || format_id.eq_ignore_ascii_case("public.file-url")
+    format_id.eq_ignore_ascii_case("files")
+        || format_id.eq_ignore_ascii_case("public.file-url")
+        || format_id.to_ascii_lowercase().contains("uri-list")
 }
 
 fn is_file_representation(rep: &ObservedClipboardRepresentation) -> bool {

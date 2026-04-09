@@ -5,7 +5,7 @@ use crate::usecases::clipboard::ClipboardIntegrationMode;
 use anyhow::{bail, Result};
 use std::path::PathBuf;
 use std::sync::Arc;
-use tracing::{debug, info, warn};
+use tracing::{debug, info};
 
 use uc_core::{
     clipboard::{

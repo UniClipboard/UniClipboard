@@ -483,7 +483,7 @@ impl SyncOutboundClipboardUseCase {
             failures.extend(connect_failures);
             failures.extend(send_failures);
             let failure_count = failures.len();
-            metrics::record_clipboard_sync_outbound(sent_count as u64);
+            metrics::record_clipboard_sync_outbound();
             warn!(
                 sent_count,
                 failure_count,
@@ -499,7 +499,7 @@ impl SyncOutboundClipboardUseCase {
             ));
         }
 
-        metrics::record_clipboard_sync_outbound(sent_count as u64);
+        metrics::record_clipboard_sync_outbound();
         info!(
             sent_count,
             connect_success_count, "Outbound clipboard sync sent to sendable peers"

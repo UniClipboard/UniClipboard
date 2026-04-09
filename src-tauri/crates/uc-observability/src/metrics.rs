@@ -148,11 +148,8 @@ pub fn record_clipboard_sync_inbound() {
     record_clipboard_operation(1, "sync", Some("inbound"));
 }
 
-pub fn record_clipboard_sync_outbound(delivery_count: u64) {
-    if delivery_count == 0 {
-        return;
-    }
-    record_clipboard_operation(delivery_count, "sync", Some("outbound"));
+pub fn record_clipboard_sync_outbound() {
+    record_clipboard_operation(1, "sync", Some("outbound"));
 }
 
 fn record_clipboard_operation(
@@ -191,7 +188,7 @@ mod tests {
         record_clipboard_copy();
         record_clipboard_paste();
         record_clipboard_sync_inbound();
-        record_clipboard_sync_outbound(2);
+        record_clipboard_sync_outbound();
 
         clear();
         provider

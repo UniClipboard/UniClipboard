@@ -4,7 +4,7 @@ use std::time::SystemTime;
 use anyhow::Result;
 use futures::future::try_join_all;
 use tracing::{debug, info, info_span, warn, Instrument};
-use uc_observability::stages;
+use uc_observability::{metrics, stages};
 
 use uc_core::ids::{EntryId, EventId};
 use uc_core::ports::clipboard::{RepresentationCachePort, SpoolQueuePort, SpoolRequest};
@@ -271,6 +271,9 @@ impl CaptureClipboardUseCase {
             .await?;
 
             info!(event_id = %event_id, entry_id = %entry_id, "Clipboard capture completed");
+            if origin == ClipboardChangeOrigin::LocalCapture {
+                metrics::record_clipboard_copy();
+            }
 
             // Queue large representations for durable spool-to-disk in a background task.
             // The entry is already persisted and bytes are in the in-memory cache, so the

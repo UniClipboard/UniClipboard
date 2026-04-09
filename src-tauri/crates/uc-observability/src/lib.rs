@@ -47,6 +47,7 @@ mod context;
 pub mod flow;
 pub mod format;
 mod init;
+pub mod metrics;
 pub mod otlp;
 pub mod profile;
 pub(crate) mod span_fields;

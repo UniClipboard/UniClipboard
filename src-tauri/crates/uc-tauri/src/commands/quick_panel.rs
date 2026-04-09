@@ -4,6 +4,7 @@
 use crate::commands::record_trace_fields;
 use crate::quick_panel;
 use tracing::{info_span, Instrument};
+use uc_observability::metrics;
 use uc_platform::ports::observability::TraceMetadata;
 
 /// Dismiss the quick panel and return focus to the previous app (no paste).
@@ -56,8 +57,13 @@ pub async fn paste_to_previous_app(
             let _ = tx.send(result);
         })
         .map_err(|e| format!("Failed to dispatch to main thread: {e}"))?;
-        rx.await
-            .map_err(|_| "Main thread dropped result".to_string())?
+        let result = rx
+            .await
+            .map_err(|_| "Main thread dropped result".to_string())?;
+        if result.is_ok() {
+            metrics::record_clipboard_paste();
+        }
+        result
     }
     .instrument(span)
     .await

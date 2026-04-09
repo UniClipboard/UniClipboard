@@ -19,7 +19,7 @@ use uc_core::ports::{
 
 use crate::usecases::pairing::list_sendable_peers::ListSendablePeers;
 use uc_core::{ClipboardChangeOrigin, PeerId, SystemClipboardSnapshot};
-use uc_observability::otlp::propagator::inject_current_context;
+use uc_observability::{metrics, otlp::propagator::inject_current_context};
 
 pub struct SyncOutboundClipboardUseCase {
     local_clipboard: Arc<dyn SystemClipboardPort>,
@@ -483,6 +483,7 @@ impl SyncOutboundClipboardUseCase {
             failures.extend(connect_failures);
             failures.extend(send_failures);
             let failure_count = failures.len();
+            metrics::record_clipboard_sync_outbound(sent_count as u64);
             warn!(
                 sent_count,
                 failure_count,
@@ -498,6 +499,7 @@ impl SyncOutboundClipboardUseCase {
             ));
         }
 
+        metrics::record_clipboard_sync_outbound(sent_count as u64);
         info!(
             sent_count,
             connect_success_count, "Outbound clipboard sync sent to sendable peers"

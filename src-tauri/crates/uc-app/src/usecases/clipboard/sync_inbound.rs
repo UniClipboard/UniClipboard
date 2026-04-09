@@ -18,6 +18,7 @@ use uc_core::network::protocol::{
     BinaryRepresentation, ClipboardBinaryPayload, ClipboardPayloadVersion, MIME_IMAGE_PREFIX,
     MIME_TEXT_HTML, MIME_TEXT_PLAIN, MIME_TEXT_RTF,
 };
+use uc_observability::metrics;
 use uc_observability::otlp::propagator::extract_remote_context;
 
 use uc_core::network::ClipboardMessage;
@@ -255,7 +256,7 @@ impl SyncInboundClipboardUseCase {
                 return Ok(InboundApplyOutcome::Skipped);
             }
 
-            match message.payload_version {
+            let outcome = match message.payload_version {
                 ClipboardPayloadVersion::V3 => {
                     self.apply_v3_inbound(message, pre_decoded_plaintext).await
                 }
@@ -264,7 +265,11 @@ impl SyncInboundClipboardUseCase {
                     error!(version = ?other, "Unsupported inbound payload version — dropping message");
                     Ok(InboundApplyOutcome::Skipped)
                 }
+            }?;
+            if matches!(outcome, InboundApplyOutcome::Applied { .. }) {
+                metrics::record_clipboard_sync_inbound();
             }
+            Ok(outcome)
         }
         .instrument(inbound_span)
         .await

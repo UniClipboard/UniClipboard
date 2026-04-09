@@ -1,8 +1,8 @@
-use std::io::{Read, Write};
-use std::net::TcpListener;
+use std::io::{ErrorKind, Read, Write};
+use std::net::{TcpListener, TcpStream};
 use std::sync::mpsc;
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use serial_test::serial;
 use tracing_subscriber::prelude::*;
@@ -43,57 +43,79 @@ impl Drop for EnvVarGuard {
     }
 }
 
-fn spawn_http_probe() -> (String, mpsc::Receiver<String>, thread::JoinHandle<()>) {
-    let listener = TcpListener::bind("127.0.0.1:0").expect("bind OTLP probe");
-    let address = listener.local_addr().expect("read OTLP probe address");
-    let (tx, rx) = mpsc::channel();
-    let handle = thread::spawn(move || {
-        let (mut stream, _) = listener.accept().expect("accept OTLP request");
-        stream
-            .set_read_timeout(Some(Duration::from_secs(5)))
-            .expect("set probe timeout");
+fn read_probe_request_line(mut stream: TcpStream) -> String {
+    stream
+        .set_read_timeout(Some(Duration::from_secs(5)))
+        .expect("set probe timeout");
 
-        let mut buffer = Vec::new();
-        let mut chunk = [0_u8; 4096];
-        let mut header_end = None;
-        let mut content_length = 0_usize;
+    let mut buffer = Vec::new();
+    let mut chunk = [0_u8; 4096];
+    let mut header_end = None;
+    let mut content_length = 0_usize;
 
-        loop {
-            let read = stream.read(&mut chunk).expect("read OTLP request");
-            if read == 0 {
-                break;
-            }
+    loop {
+        let read = stream.read(&mut chunk).expect("read OTLP request");
+        if read == 0 {
+            break;
+        }
 
-            buffer.extend_from_slice(&chunk[..read]);
+        buffer.extend_from_slice(&chunk[..read]);
 
-            if header_end.is_none() {
-                header_end = buffer.windows(4).position(|window| window == b"\r\n\r\n");
-                if let Some(index) = header_end {
-                    let header_bytes = &buffer[..index + 4];
-                    let headers = String::from_utf8_lossy(header_bytes);
-                    for line in headers.lines() {
-                        if let Some(value) = line.strip_prefix("Content-Length:") {
-                            content_length = value.trim().parse().expect("parse content length");
-                        }
-                    }
-                }
-            }
-
+        if header_end.is_none() {
+            header_end = buffer.windows(4).position(|window| window == b"\r\n\r\n");
             if let Some(index) = header_end {
-                let expected_len = index + 4 + content_length;
-                if buffer.len() >= expected_len {
-                    break;
+                let header_bytes = &buffer[..index + 4];
+                let headers = String::from_utf8_lossy(header_bytes);
+                for line in headers.lines() {
+                    if let Some(value) = line.strip_prefix("Content-Length:") {
+                        content_length = value.trim().parse().expect("parse content length");
+                    }
                 }
             }
         }
 
-        let request = String::from_utf8_lossy(&buffer);
-        let first_line = request.lines().next().unwrap_or_default().to_string();
-        tx.send(first_line).expect("send request line");
+        if let Some(index) = header_end {
+            let expected_len = index + 4 + content_length;
+            if buffer.len() >= expected_len {
+                break;
+            }
+        }
+    }
 
-        stream
-            .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n")
-            .expect("write probe response");
+    let request = String::from_utf8_lossy(&buffer);
+    let first_line = request.lines().next().unwrap_or_default().to_string();
+
+    stream
+        .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n")
+        .expect("write probe response");
+
+    first_line
+}
+
+fn spawn_http_probe_multi(
+    max_requests: usize,
+) -> (String, mpsc::Receiver<Vec<String>>, thread::JoinHandle<()>) {
+    let listener = TcpListener::bind("127.0.0.1:0").expect("bind OTLP probe");
+    listener
+        .set_nonblocking(true)
+        .expect("set probe listener nonblocking");
+    let address = listener.local_addr().expect("read OTLP probe address");
+    let (tx, rx) = mpsc::channel();
+    let handle = thread::spawn(move || {
+        let deadline = Instant::now() + Duration::from_secs(5);
+        let mut requests = Vec::new();
+
+        while requests.len() < max_requests && Instant::now() < deadline {
+            match listener.accept() {
+                Ok((stream, _)) => requests.push(read_probe_request_line(stream)),
+                Err(err) if err.kind() == ErrorKind::WouldBlock => {
+                    thread::sleep(Duration::from_millis(50));
+                }
+                Err(err) => panic!("accept OTLP request: {err}"),
+            }
+        }
+
+        tx.send(requests).expect("send request lines");
     });
 
     (format!("http://{}", address), rx, handle)
@@ -150,7 +172,7 @@ fn prod_profile_disables_otlp_when_telemetry_disabled() {
 #[test]
 #[serial]
 fn generic_runtime_endpoint_uses_standard_traces_path() {
-    let (base_url, rx, handle) = spawn_http_probe();
+    let (base_url, rx, handle) = spawn_http_probe_multi(4);
     let _generic = EnvVarGuard::set(OTEL_ENDPOINT_VAR, &format!("{base_url}/ingest/otlp"));
     let _signal = EnvVarGuard::unset(OTEL_TRACES_ENDPOINT_VAR);
     let _headers = EnvVarGuard::unset(OTEL_HEADERS_VAR);
@@ -167,10 +189,15 @@ fn generic_runtime_endpoint_uses_standard_traces_path() {
 
     drop(guard);
 
-    let request_line = rx
+    let request_lines = rx
         .recv_timeout(Duration::from_secs(5))
-        .expect("receive OTLP request line");
+        .expect("receive OTLP request lines");
     handle.join().expect("join OTLP probe");
 
-    assert_eq!(request_line, "POST /ingest/otlp/v1/traces HTTP/1.1");
+    assert!(
+        request_lines
+            .iter()
+            .any(|line| line == "POST /ingest/otlp/v1/traces HTTP/1.1"),
+        "expected OTLP trace export request, got: {request_lines:?}"
+    );
 }

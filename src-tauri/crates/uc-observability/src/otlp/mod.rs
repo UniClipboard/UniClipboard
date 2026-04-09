@@ -31,7 +31,9 @@ mod tests;
 pub use provider::OtlpGuard;
 pub use resource::build_resource;
 
-use opentelemetry_sdk::{logs::SdkLoggerProvider, trace::SdkTracerProvider};
+use opentelemetry_sdk::{
+    logs::SdkLoggerProvider, metrics::SdkMeterProvider, trace::SdkTracerProvider,
+};
 use tracing_subscriber::{registry::LookupSpan, Layer};
 
 use crate::profile::LogProfile;
@@ -44,6 +46,7 @@ pub type OtlpLayer = Box<dyn Layer<tracing_subscriber::Registry> + Send + Sync +
 pub struct OtlpProviders {
     pub tracer_provider: SdkTracerProvider,
     pub logger_provider: SdkLoggerProvider,
+    pub meter_provider: SdkMeterProvider,
 }
 
 /// Initialize the OTLP exporters and providers, without creating the tracing layers.
@@ -63,7 +66,7 @@ pub fn init_otlp_provider(
     device_id: Option<&str>,
     telemetry_enabled: bool,
 ) -> anyhow::Result<Option<(OtlpProviders, OtlpGuard)>> {
-    let Some((tracer_provider, logger_provider, guard)) =
+    let Some((tracer_provider, logger_provider, meter_provider, guard)) =
         provider::init_provider_and_guard(profile, device_id, telemetry_enabled)?
     else {
         return Ok(None);
@@ -72,6 +75,7 @@ pub fn init_otlp_provider(
         OtlpProviders {
             tracer_provider,
             logger_provider,
+            meter_provider,
         },
         guard,
     )))

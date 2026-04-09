@@ -1,7 +1,8 @@
 use opentelemetry::global;
-use opentelemetry_otlp::{Protocol, SpanExporter, WithExportConfig};
+use opentelemetry_otlp::{MetricExporter, Protocol, SpanExporter, WithExportConfig};
 use opentelemetry_sdk::{
-    logs::SdkLoggerProvider, propagation::TraceContextPropagator, trace::SdkTracerProvider,
+    logs::SdkLoggerProvider, metrics::SdkMeterProvider, propagation::TraceContextPropagator,
+    trace::SdkTracerProvider,
 };
 
 use crate::profile::LogProfile;
@@ -13,10 +14,21 @@ use super::{config, redact, resource};
 pub struct OtlpGuard {
     tracer_provider: Option<SdkTracerProvider>,
     logger_provider: Option<SdkLoggerProvider>,
+    meter_provider: Option<SdkMeterProvider>,
 }
 
 impl Drop for OtlpGuard {
     fn drop(&mut self) {
+        crate::metrics::clear();
+
+        if let Some(provider) = self.meter_provider.take() {
+            match provider.shutdown() {
+                Ok(()) => {}
+                Err(e) => {
+                    tracing::warn!(error = %e, "OTLP meter provider shutdown failed");
+                }
+            }
+        }
         if let Some(provider) = self.logger_provider.take() {
             match provider.shutdown() {
                 Ok(()) => {}
@@ -65,13 +77,23 @@ fn build_log_exporter_from_env() -> anyhow::Result<opentelemetry_otlp::LogExport
         .map_err(|e| anyhow::anyhow!("build OTLP log exporter: {e}"))
 }
 
+fn build_metric_exporter_from_env() -> anyhow::Result<MetricExporter> {
+    MetricExporter::builder()
+        .with_http()
+        .with_protocol(Protocol::HttpBinary)
+        .build()
+        .map_err(|e| anyhow::anyhow!("build OTLP metric exporter: {e}"))
+}
+
 fn build_otlp_guard(
     tracer_provider: &SdkTracerProvider,
     logger_provider: &SdkLoggerProvider,
+    meter_provider: &SdkMeterProvider,
 ) -> OtlpGuard {
     OtlpGuard {
         tracer_provider: Some(tracer_provider.clone()),
         logger_provider: Some(logger_provider.clone()),
+        meter_provider: Some(meter_provider.clone()),
     }
 }
 
@@ -82,11 +104,19 @@ pub(super) fn init_provider_and_guard(
     profile: &LogProfile,
     device_id: Option<&str>,
     telemetry_enabled: bool,
-) -> anyhow::Result<Option<(SdkTracerProvider, SdkLoggerProvider, OtlpGuard)>> {
+) -> anyhow::Result<
+    Option<(
+        SdkTracerProvider,
+        SdkLoggerProvider,
+        SdkMeterProvider,
+        OtlpGuard,
+    )>,
+> {
     // Always install the W3C propagator.
     global::set_text_map_propagator(TraceContextPropagator::new());
 
     if !otlp_is_enabled(profile, telemetry_enabled) || !config::otlp_endpoint_is_configured() {
+        crate::metrics::clear();
         return Ok(None);
     }
 
@@ -105,10 +135,23 @@ pub(super) fn init_provider_and_guard(
     let log_exporter = build_log_exporter_from_env()?;
     let logger_provider = SdkLoggerProvider::builder()
         .with_batch_exporter(log_exporter)
-        .with_resource(resource)
+        .with_resource(resource.clone())
         .build();
 
-    let guard = build_otlp_guard(&tracer_provider, &logger_provider);
+    let metric_exporter = build_metric_exporter_from_env()?;
+    let meter_provider = SdkMeterProvider::builder()
+        .with_periodic_exporter(metric_exporter)
+        .with_resource(resource)
+        .build();
+    global::set_meter_provider(meter_provider.clone());
+    crate::metrics::install(&meter_provider);
 
-    Ok(Some((tracer_provider, logger_provider, guard)))
+    let guard = build_otlp_guard(&tracer_provider, &logger_provider, &meter_provider);
+
+    Ok(Some((
+        tracer_provider,
+        logger_provider,
+        meter_provider,
+        guard,
+    )))
 }

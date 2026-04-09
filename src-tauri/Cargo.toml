@@ -24,6 +24,7 @@ uc-platform = { path = "crates/uc-platform" }
 uc-tauri = { path = "crates/uc-tauri" }
 uc-bootstrap = { path = "crates/uc-bootstrap" }
 uc-daemon-client = { path = "crates/uc-daemon-client" }
+uc-daemon-local = { path = "crates/uc-daemon-local", features = ["sidecar-lifecycle"] }
 
 # ===== Tauri 相关依赖 =====
 tauri = { version = "2", features = ["macos-private-api", "tray-icon"] }
@@ -86,6 +87,8 @@ members = [
   "crates/uc-tauri",
   "crates/uc-observability",
   "crates/uc-bootstrap",
+  "crates/uc-daemon-contract",
+  "crates/uc-daemon-local",
   "crates/uc-daemon",
   "crates/uc-cli",
   "crates/uc-cli-macros",

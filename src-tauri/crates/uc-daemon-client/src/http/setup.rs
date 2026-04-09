@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use anyhow::{Context, Result};
 use reqwest::{Method, RequestBuilder};
-use uc_daemon::api::dto::setup as dto;
+use uc_daemon_contract::api::dto::setup as dto;
 
 use crate::http::authorized_daemon_request_with_type;
 use crate::DaemonConnectionState;
@@ -196,8 +196,8 @@ mod tests {
 
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio::net::TcpListener;
-    use uc_daemon::api::auth::DaemonConnectionInfo;
-    use uc_daemon::api::dto::setup as dto;
+    use uc_daemon_contract::api::auth::DaemonConnectionInfo;
+    use uc_daemon_contract::api::dto::setup as dto;
 
     use super::*;
     use crate::DaemonConnectionState;

@@ -3,7 +3,7 @@
 //! Centralizes all remote state string parsing so CLI layer only works with typed enums.
 
 use serde_json::Value;
-use uc_daemon::api::dto::setup::SetupStateResponseDto;
+use uc_daemon_contract::api::dto::setup::SetupStateResponseDto;
 
 // ── Enums ────────────────────────────────────────────────────────────
 

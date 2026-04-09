@@ -1,8 +1,8 @@
 //! IPC Command Tests
 //! IPC 命令测试
 
-use uc_daemon::api::auth::DaemonConnectionInfo;
 use uc_daemon_client::DaemonConnectionState;
+use uc_daemon_contract::api::auth::DaemonConnectionInfo;
 
 #[tokio::test]
 async fn test_get_clipboard_entries_returns_empty_list_when_no_data() {

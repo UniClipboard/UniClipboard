@@ -7,19 +7,15 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 pub mod connection;
-pub mod daemon_lifecycle;
 pub mod http;
 pub mod setup;
 pub mod ws_bridge;
 
 use anyhow::{Context, Result};
-use uc_daemon::api::auth::DaemonConnectionInfo;
-use uc_daemon::socket::resolve_daemon_http_addr;
+use uc_daemon_contract::api::auth::DaemonConnectionInfo;
+use uc_daemon_local::socket::resolve_daemon_http_addr;
 
 pub use connection::DaemonConnectionState;
-pub use daemon_lifecycle::{
-    DaemonExitCleanupError, GuiOwnedDaemonState, OwnedDaemonChild, SpawnReason,
-};
 pub use http::{
     DaemonClipboardClient, DaemonPairingClient, DaemonPairingRequestError, DaemonQueryClient,
     DaemonSetupClient,
@@ -58,7 +54,7 @@ fn resolve_token_path() -> Result<PathBuf> {
         }
     }
 
-    uc_daemon::socket::resolve_daemon_token_path().map_err(anyhow::Error::from)
+    uc_daemon_local::socket::resolve_daemon_token_path().map_err(anyhow::Error::from)
 }
 
 /// Resolve the daemon connection info from environment for CLI clients.

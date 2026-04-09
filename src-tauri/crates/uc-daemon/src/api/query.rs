@@ -31,6 +31,18 @@ pub struct DaemonQueryService {
     state: Arc<RwLock<RuntimeState>>,
 }
 
+impl From<DaemonPairingSessionSnapshot> for PairingSessionSummaryDto {
+    fn from(value: DaemonPairingSessionSnapshot) -> Self {
+        Self {
+            session_id: value.session_id,
+            peer_id: value.peer_id,
+            device_name: value.device_name,
+            state: value.state,
+            updated_at_ms: value.updated_at_ms,
+        }
+    }
+}
+
 impl DaemonQueryService {
     pub fn new(runtime: Arc<CoreRuntime>, state: Arc<RwLock<RuntimeState>>) -> Self {
         Self { runtime, state }

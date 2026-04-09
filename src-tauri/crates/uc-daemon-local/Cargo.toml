@@ -1,0 +1,29 @@
+[package]
+name = "uc-daemon-local"
+version.workspace = true
+edition = "2021"
+description = "Local daemon runtime metadata and process coordination"
+
+[features]
+sidecar-lifecycle = ["dep:libc", "dep:tauri-plugin-shell", "dep:thiserror", "dep:tokio"]
+
+[lib]
+name = "uc_daemon_local"
+path = "src/lib.rs"
+
+[dependencies]
+uc-app = { path = "../uc-app" }
+uc-daemon-contract = { path = "../uc-daemon-contract" }
+uc-platform = { path = "../uc-platform" }
+anyhow = "1.0"
+rand = "0.8"
+tauri-plugin-shell = { workspace = true, optional = true }
+thiserror = { version = "2.0", optional = true }
+tokio = { version = "1", features = ["full"], optional = true }
+tracing = "0.1"
+
+[target.'cfg(unix)'.dependencies]
+libc = { version = "0.2", optional = true }
+
+[dev-dependencies]
+tempfile = "3"

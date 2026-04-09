@@ -9786,7 +9786,6 @@ dependencies = [
  "anyhow",
  "async-trait",
  "axum 0.7.9",
- "base64 0.22.1",
  "blake3",
  "chrono",
  "clipboard-rs",
@@ -9806,6 +9805,8 @@ dependencies = [
  "uc-app",
  "uc-bootstrap",
  "uc-core",
+ "uc-daemon-contract",
+ "uc-daemon-local",
  "uc-infra",
  "uc-observability",
  "uc-platform",
@@ -9822,21 +9823,48 @@ dependencies = [
  "anyhow",
  "async-trait",
  "futures-util",
- "libc",
  "reqwest",
  "serde",
  "serde_json",
- "tauri-plugin-shell",
  "thiserror 2.0.17",
  "tokio",
  "tokio-tungstenite",
  "tokio-util",
  "tracing",
- "uc-app",
- "uc-bootstrap",
  "uc-core",
- "uc-daemon",
+ "uc-daemon-contract",
+ "uc-daemon-local",
  "url",
+]
+
+[[package]]
+name = "uc-daemon-contract"
+version = "0.5.0-alpha.3"
+dependencies = [
+ "base64 0.22.1",
+ "serde",
+ "serde_json",
+ "serde_with",
+ "uc-app",
+ "uc-core",
+ "utoipa 4.2.3",
+]
+
+[[package]]
+name = "uc-daemon-local"
+version = "0.5.0-alpha.3"
+dependencies = [
+ "anyhow",
+ "libc",
+ "rand 0.8.5",
+ "tauri-plugin-shell",
+ "tempfile",
+ "thiserror 2.0.17",
+ "tokio",
+ "tracing",
+ "uc-app",
+ "uc-daemon-contract",
+ "uc-platform",
 ]
 
 [[package]]
@@ -9978,8 +10006,9 @@ dependencies = [
  "uc-app",
  "uc-bootstrap",
  "uc-core",
- "uc-daemon",
  "uc-daemon-client",
+ "uc-daemon-contract",
+ "uc-daemon-local",
  "uc-infra",
  "uc-observability",
  "uc-platform",
@@ -10091,6 +10120,7 @@ dependencies = [
  "uc-bootstrap",
  "uc-core",
  "uc-daemon-client",
+ "uc-daemon-local",
  "uc-platform",
  "uc-tauri",
 ]

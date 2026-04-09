@@ -20,7 +20,6 @@ tauri-build = { version = "2", features = [] }
 [dependencies]
 # ===== Workspace crates =====
 uc-core = { path = "crates/uc-core" }
-uc-platform = { path = "crates/uc-platform" }
 uc-tauri = { path = "crates/uc-tauri" }
 uc-bootstrap = { path = "crates/uc-bootstrap" }
 uc-daemon-client = { path = "crates/uc-daemon-client" }
@@ -34,18 +33,7 @@ tauri-plugin-global-shortcut = "2"
 tauri-plugin-stronghold = "2"
 tauri-plugin-shell = "2"
 
-# ===== 异步运行时 =====
-tokio = { version = "1.28", features = ["full"] }
-futures-util = "0.3"
-tokio-tungstenite = "0.24"
-
-# ===== 错误处理 =====
-anyhow = "1.0"
-
-# ===== 异步特性 =====
-async-trait = "0.1"
-
-# ===== 序列化 =====
+# ===== 序列化 (tauri::generate_context! 宏需要) =====
 serde_json = "1"
 
 # ===== 日志 =====
@@ -65,7 +53,6 @@ strip = true      # Remove debug symbols
 objc = "0.2"
 objc2 = "0.6"
 objc2-app-kit = { version = "0.3", features = ["NSEvent", "NSScreen", "NSGraphics", "NSPanel", "NSResponder", "NSWindow"] }
-core-graphics = "0.24"
 objc2-foundation = { version = "0.3", features = ["objc2-core-foundation", "NSGeometry"] }
 
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]

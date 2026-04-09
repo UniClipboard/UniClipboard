@@ -1,16 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
-import { isImageType, resolveResourceImageUrl } from '@/api/clipboardItems'
-import { getClipboardEntryDetail, getClipboardEntryResource } from '@/api/daemon/clipboard'
-import { parseFileNamesFromUriList } from '@/lib/clipboard-utils'
+import { clipboardPreviewCache, type ClipboardPreviewData } from '@/lib/clipboard-preview-cache'
 
-export interface ClipboardPreviewState {
-  entryId: string
-  contentType: 'text' | 'image' | 'file'
-  sizeBytes: number
-  textContent?: string
-  imageUrl?: string
-  fileNames?: string[]
-}
+export type ClipboardPreviewState = ClipboardPreviewData
 
 export interface ClipboardPreviewResult {
   preview: ClipboardPreviewState | null
@@ -40,61 +31,16 @@ export function useClipboardPreview(entryId: string | null): ClipboardPreviewRes
 
     void (async () => {
       try {
-        const resource = await getClipboardEntryResource(entryId)
+        const nextPreview = await clipboardPreviewCache.get(entryId)
 
         if (currentRequestId !== requestIdRef.current) return
 
-        if (!resource) {
+        if (!nextPreview) {
           setError('Preview unavailable')
           return
         }
 
-        if (isImageType(resource.mimeType)) {
-          const imageUrl = resolveResourceImageUrl(resource)
-
-          setPreview({
-            entryId,
-            contentType: 'image',
-            sizeBytes: resource.sizeBytes,
-            imageUrl: imageUrl ?? undefined,
-          })
-          return
-        }
-
-        if (resource.mimeType.includes('uri-list')) {
-          const detail = await getClipboardEntryDetail(entryId)
-
-          if (currentRequestId !== requestIdRef.current) return
-
-          if (!detail) {
-            setError('Preview unavailable')
-            return
-          }
-
-          setPreview({
-            entryId,
-            contentType: 'file',
-            sizeBytes: resource.sizeBytes,
-            fileNames: parseFileNamesFromUriList(detail.content),
-          })
-          return
-        }
-
-        const detail = await getClipboardEntryDetail(entryId)
-
-        if (currentRequestId !== requestIdRef.current) return
-
-        if (!detail) {
-          setError('Preview unavailable')
-          return
-        }
-
-        setPreview({
-          entryId,
-          contentType: 'text',
-          sizeBytes: detail.sizeBytes,
-          textContent: detail.content,
-        })
+        setPreview(nextPreview)
       } catch (err) {
         if (currentRequestId !== requestIdRef.current) return
         setError(err instanceof Error ? err.message : String(err))

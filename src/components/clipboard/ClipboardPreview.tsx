@@ -21,13 +21,11 @@ import {
   ClipboardImageItem,
   ClipboardLinkItem,
   ClipboardTextItem,
-  fetchClipboardResourceText,
-  resolveResourceImageUrl,
 } from '@/api/clipboardItems'
-import { getClipboardEntryResource } from '@/api/daemon/clipboard'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Separator } from '@/components/ui/separator'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
+import { clipboardPreviewCache } from '@/lib/clipboard-preview-cache'
 import { useAppSelector } from '@/store/hooks'
 import {
   selectEntryTransferStatus,
@@ -61,56 +59,55 @@ const ClipboardPreview: React.FC<ClipboardPreviewProps> = ({ item }) => {
         : transfer?.status === 'completed'
           ? 'completed'
           : undefined)
-  const [fullText, setFullText] = useState<string | null>(null)
-  const [imageUrl, setImageUrl] = useState<string | null>(null)
-  const [isLoadingText, setIsLoadingText] = useState(false)
-  const [isLoadingImage, setIsLoadingImage] = useState(false)
+  const [preview, setPreview] = useState<
+    import('@/lib/clipboard-preview-cache').ClipboardPreviewData | null
+  >(null)
+  const [loading, setLoading] = useState(false)
   const [imageDimensions, setImageDimensions] = useState<{ width: number; height: number } | null>(
     null
   )
 
-  // Load full text or image when item changes
   useEffect(() => {
-    setFullText(null)
-    setImageUrl(null)
+    setPreview(null)
     setImageDimensions(null)
+    setLoading(false)
 
     if (!item) return
 
+    const shouldLoadPreview =
+      item.type === 'image' ||
+      item.type === 'file' ||
+      item.type === 'code' ||
+      (item.type === 'text' && (item.content as ClipboardTextItem).has_detail)
+
+    if (!shouldLoadPreview) {
+      return
+    }
+
     let cancelled = false
+    setLoading(true)
 
-    if (item.type === 'text' || item.type === 'code') {
-      const textContent = item.type === 'text' ? (item.content as ClipboardTextItem) : null
-      if (textContent?.has_detail) {
-        setIsLoadingText(true)
-        getClipboardEntryResource(item.id)
-          .then(resource => (resource ? fetchClipboardResourceText(resource) : ''))
-          .then(text => {
-            if (!cancelled) setFullText(text)
-          })
-          .catch(e => console.error('Failed to load full text:', e))
-          .finally(() => {
-            if (!cancelled) setIsLoadingText(false)
-          })
+    void (async () => {
+      try {
+        const nextPreview = await clipboardPreviewCache.get(item.id)
+        if (!cancelled) {
+          setPreview(nextPreview)
+        }
+      } catch (e) {
+        if (!cancelled) {
+          console.error('Failed to load clipboard preview:', e)
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false)
+        }
       }
-    }
-
-    if (item.type === 'image') {
-      setIsLoadingImage(true)
-      getClipboardEntryResource(item.id)
-        .then(resource => {
-          if (!cancelled) setImageUrl(resource ? resolveResourceImageUrl(resource) : null)
-        })
-        .catch(e => console.error('Failed to load image:', e))
-        .finally(() => {
-          if (!cancelled) setIsLoadingImage(false)
-        })
-    }
+    })()
 
     return () => {
       cancelled = true
     }
-  }, [item?.id, item?.type])
+  }, [item])
 
   if (!item) {
     return (
@@ -125,13 +122,14 @@ const ClipboardPreview: React.FC<ClipboardPreviewProps> = ({ item }) => {
     switch (item.type) {
       case 'text': {
         const textItem = item.content as ClipboardTextItem
-        const displayText = fullText ?? textItem.display_text
-        if (!isLoadingText && displayText.length > LARGE_TEXT_THRESHOLD) {
+        const displayText =
+          preview?.contentType === 'text' ? (preview.textContent ?? '') : textItem.display_text
+        if (!loading && displayText.length > LARGE_TEXT_THRESHOLD) {
           return <VirtualizedText text={displayText} className="h-full" />
         }
         return (
           <div className="p-4">
-            {isLoadingText ? (
+            {loading ? (
               <div className="flex items-center gap-2 text-muted-foreground">
                 <Loader2 className="h-4 w-4 animate-spin" />
                 <span className="text-sm">{t('clipboard.item.loading')}</span>
@@ -145,11 +143,12 @@ const ClipboardPreview: React.FC<ClipboardPreviewProps> = ({ item }) => {
         )
       }
       case 'image': {
+        const imageUrl = preview?.contentType === 'image' ? (preview.imageUrl ?? null) : null
         return (
           <div className="flex items-center justify-center p-4">
-            {isLoadingImage || !imageUrl ? (
+            {loading || !imageUrl ? (
               <div className="flex flex-col items-center justify-center gap-2 h-48 w-full rounded-md bg-muted/30 border border-border/30">
-                {isLoadingImage ? (
+                {loading ? (
                   <Loader2 className="h-6 w-6 text-muted-foreground/70 animate-spin" />
                 ) : (
                   <ImageIcon className="h-6 w-6 text-muted-foreground/70" />
@@ -211,13 +210,14 @@ const ClipboardPreview: React.FC<ClipboardPreviewProps> = ({ item }) => {
         )
       }
       case 'code': {
-        const code = (item.content as ClipboardCodeItem).code
+        const code =
+          preview?.contentType === 'text'
+            ? (preview.textContent ?? (item.content as ClipboardCodeItem).code)
+            : (item.content as ClipboardCodeItem).code
         return (
           <div className="p-4">
             <div className="bg-muted/30 p-3 rounded-lg border border-border/30 overflow-auto font-mono text-xs">
-              <pre className="whitespace-pre-wrap break-all text-foreground/80">
-                {fullText ?? code}
-              </pre>
+              <pre className="whitespace-pre-wrap break-all text-foreground/80">{code}</pre>
             </div>
           </div>
         )
@@ -320,7 +320,8 @@ const ClipboardPreview: React.FC<ClipboardPreviewProps> = ({ item }) => {
     // Type-specific info
     if (item.type === 'text' && item.content) {
       const textItem = item.content as ClipboardTextItem
-      const text = fullText ?? textItem.display_text
+      const text =
+        preview?.contentType === 'text' ? (preview.textContent ?? '') : textItem.display_text
       rows.push({
         label: t('clipboard.preview.characters'),
         value: String(text.length),
@@ -338,10 +339,13 @@ const ClipboardPreview: React.FC<ClipboardPreviewProps> = ({ item }) => {
     }
 
     if (item.type === 'code' && item.content) {
-      const codeItem = item.content as ClipboardCodeItem
+      const code =
+        preview?.contentType === 'text'
+          ? (preview.textContent ?? (item.content as ClipboardCodeItem).code)
+          : (item.content as ClipboardCodeItem).code
       rows.push({
         label: t('clipboard.preview.characters'),
-        value: String(codeItem.code.length),
+        value: String(code.length),
       })
     }
 

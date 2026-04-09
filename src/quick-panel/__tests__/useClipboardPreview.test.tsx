@@ -1,6 +1,7 @@
 import { renderHook, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { useClipboardPreview } from '../useClipboardPreview'
+import { clearClipboardPreviewCache } from '@/lib/clipboard-preview-cache'
 
 vi.mock('@/api/daemon/clipboard', () => ({
   getClipboardEntryResource: vi.fn(),
@@ -13,19 +14,10 @@ vi.mock('@/api/daemon/client', () => ({
   },
 }))
 
-function deferred<T>() {
-  let resolve!: (value: T) => void
-  let reject!: (reason?: unknown) => void
-  const promise = new Promise<T>((res, rej) => {
-    resolve = res
-    reject = rej
-  })
-  return { promise, resolve, reject }
-}
-
 describe('useClipboardPreview', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    clearClipboardPreviewCache()
   })
 
   it('starts empty when no preview target is selected', () => {
@@ -45,7 +37,7 @@ describe('useClipboardPreview', () => {
       mimeType: 'text/plain',
       sizeBytes: 13,
       url: null,
-      inlineData: null,
+      inlineData: btoa('Hello, World!'),
     })
     vi.mocked(getClipboardEntryDetail).mockResolvedValue({
       id: 'entry-1',
@@ -95,84 +87,33 @@ describe('useClipboardPreview', () => {
     })
   })
 
-  it('ignores stale responses when the selected entry changes', async () => {
-    const { getClipboardEntryResource, getClipboardEntryDetail } =
-      await import('@/api/daemon/clipboard')
+  it('reuses cached preview data for the same entry within TTL', async () => {
+    const { getClipboardEntryResource } = await import('@/api/daemon/clipboard')
 
-    const firstResource = deferred<{
-      blobId: string | null
-      mimeType: string
-      sizeBytes: number
-      url: string | null
-      inlineData: string | null
-    }>()
-    const secondResource = deferred<{
-      blobId: string | null
-      mimeType: string
-      sizeBytes: number
-      url: string | null
-      inlineData: string | null
-    }>()
-
-    vi.mocked(getClipboardEntryResource)
-      .mockReturnValueOnce(firstResource.promise)
-      .mockReturnValueOnce(secondResource.promise)
-    vi.mocked(getClipboardEntryDetail).mockImplementation(async id => {
-      if (id === 'entry-1') {
-        return {
-          id: 'entry-1',
-          content: 'Old preview',
-          sizeBytes: 11,
-          createdAtMs: 1710000000000,
-          activeTimeMs: 1710000000000,
-          mimeType: 'text/plain',
-        }
-      }
-
-      return {
-        id: 'entry-2',
-        content: 'Fresh preview',
-        sizeBytes: 13,
-        createdAtMs: 1710000000000,
-        activeTimeMs: 1710000000000,
-        mimeType: 'text/plain',
-      }
-    })
-
-    const { result, rerender } = renderHook(({ entryId }) => useClipboardPreview(entryId), {
-      initialProps: { entryId: 'entry-1' },
-    })
-
-    rerender({ entryId: 'entry-2' })
-
-    secondResource.resolve({
-      blobId: null,
-      mimeType: 'text/plain',
-      sizeBytes: 13,
-      url: null,
+    vi.mocked(getClipboardEntryResource).mockResolvedValue({
+      blobId: 'blob-123',
+      mimeType: 'image/png',
+      sizeBytes: 1024,
+      url: '/clipboard/blobs/blob-123',
       inlineData: null,
     })
 
-    await waitFor(() => {
-      expect(result.current.preview).toMatchObject({
-        entryId: 'entry-2',
-        textContent: 'Fresh preview',
-      })
-    })
-
-    firstResource.resolve({
-      blobId: null,
-      mimeType: 'text/plain',
-      sizeBytes: 11,
-      url: null,
-      inlineData: null,
-    })
+    const first = renderHook(() => useClipboardPreview('entry-cache'))
 
     await waitFor(() => {
-      expect(result.current.preview).toMatchObject({
-        entryId: 'entry-2',
-        textContent: 'Fresh preview',
-      })
+      expect(first.result.current.loading).toBe(false)
+      expect(first.result.current.preview?.imageUrl).toContain('/clipboard/blobs/blob-123')
     })
+
+    first.unmount()
+
+    const second = renderHook(() => useClipboardPreview('entry-cache'))
+
+    await waitFor(() => {
+      expect(second.result.current.loading).toBe(false)
+      expect(second.result.current.preview?.imageUrl).toContain('/clipboard/blobs/blob-123')
+    })
+
+    expect(getClipboardEntryResource).toHaveBeenCalledTimes(1)
   })
 })

@@ -61,7 +61,7 @@ vi.mock('@/api/daemon/clipboard', () => ({
     mimeType: 'text/plain',
     sizeBytes: 17,
     url: null,
-    inlineData: null,
+    inlineData: btoa('Full preview text'),
   }),
   getClipboardEntryDetail: vi.fn().mockResolvedValue({
     id: 'entry-1',

@@ -122,27 +122,11 @@ const ClipboardItem: React.FC<ClipboardItemProps> = ({
     null
   )
 
-  // Eagerly fetch original image URL on mount for image items
   useEffect(() => {
-    if (type !== 'image') return
-    let cancelled = false
-    setIsLoadingImage(true)
-    getClipboardEntryResource(entryId)
-      .then(resource => {
-        if (!cancelled) {
-          setOriginalImageUrl(resource ? resolveResourceImageUrl(resource) : null)
-        }
-      })
-      .catch(e => {
-        console.error('Failed to load original image URL:', e)
-      })
-      .finally(() => {
-        if (!cancelled) setIsLoadingImage(false)
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [type, entryId])
+    setOriginalImageUrl(null)
+    setIsLoadingImage(false)
+    setImageDimensions(null)
+  }, [entryId, type])
 
   // Determine if expand button should show (based on UI display needs)
   const shouldShowExpandButton = (): boolean => {
@@ -207,8 +191,25 @@ const ClipboardItem: React.FC<ClipboardItemProps> = ({
     }
 
     if (type === 'image') {
-      // Original image is already fetched on mount, just toggle expand
-      setIsExpanded(true)
+      if (originalImageUrl) {
+        setIsExpanded(true)
+        return
+      }
+
+      setIsLoadingImage(true)
+      try {
+        const resource = await getClipboardEntryResource(entryId)
+        const imageUrl = resource ? resolveResourceImageUrl(resource) : null
+        setOriginalImageUrl(imageUrl)
+        setIsExpanded(true)
+      } catch (e) {
+        console.error('Failed to load original image URL:', e)
+        toast.error(t('clipboard.errors.loadDetailFailed'), {
+          description: e instanceof Error ? e.message : t('clipboard.errors.unknown'),
+        })
+      } finally {
+        setIsLoadingImage(false)
+      }
       return
     }
 
@@ -277,6 +278,7 @@ const ClipboardItem: React.FC<ClipboardItemProps> = ({
       }
       case 'image': {
         const imageUrl = originalImageUrl
+        const showLoadingState = isLoadingImage && !imageUrl
         return imageUrl ? (
           <img
             src={imageUrl}
@@ -295,12 +297,14 @@ const ClipboardItem: React.FC<ClipboardItemProps> = ({
           />
         ) : (
           <div className="flex flex-col items-center justify-center gap-2 h-32 w-full rounded-md bg-muted/30 border border-border/30">
-            {isLoadingImage ? (
+            {showLoadingState ? (
               <Loader2 className="h-6 w-6 text-muted-foreground/70 animate-spin" />
             ) : (
               <ImageIcon className="h-6 w-6 text-muted-foreground/70" />
             )}
-            <span className="text-xs text-muted-foreground/70">{t('clipboard.item.loading')}</span>
+            <span className="text-xs text-muted-foreground/70">
+              {showLoadingState ? t('clipboard.item.loading') : t('clipboard.preview.selectItem')}
+            </span>
           </div>
         )
       }

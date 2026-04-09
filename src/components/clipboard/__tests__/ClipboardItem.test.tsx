@@ -70,7 +70,7 @@ describe('ClipboardItem', () => {
     expect(await screen.findByText(fullText)).toBeInTheDocument()
   })
 
-  it('loads blob-backed images through authenticated daemon URLs', async () => {
+  it('loads blob-backed images through authenticated daemon URLs on demand', async () => {
     requestMock.mockResolvedValue({
       data: {
         blobId: 'image-1',
@@ -91,6 +91,10 @@ describe('ClipboardItem', () => {
         entryId="entry-2"
       />
     )
+
+    expect(requestMock).not.toHaveBeenCalled()
+
+    await userEvent.click(screen.getByText(/Expand|展开/))
 
     await waitFor(() => {
       expect(requestMock).toHaveBeenCalledWith('/clipboard/entries/entry-2/resource')
@@ -124,6 +128,10 @@ describe('ClipboardItem', () => {
         entryId="entry-3"
       />
     )
+
+    expect(requestMock).not.toHaveBeenCalled()
+
+    await userEvent.click(screen.getByText(/Expand|展开/))
 
     const image = await screen.findByAltText(/Clipboard Image|剪贴板图片/)
     expect(image).toHaveAttribute('src', 'data:image/png;base64,iVBORw0KGgo=')

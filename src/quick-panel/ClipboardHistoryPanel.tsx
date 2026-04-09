@@ -120,10 +120,10 @@ const PanelItem: React.FC<PanelItemProps> = ({
   )
 }
 
-// Width uses px to match Tauri LogicalSize exactly (360 logical px = 360 CSS px).
-// rem would break when Windows "Make text bigger" changes the root font-size.
+// No fixed width — flex-1 fills whatever window size Tauri provides,
+// avoiding DPI/scaling mismatches between CSS and Tauri LogicalSize.
 const quickCardClassName =
-  'flex h-screen w-[360px] min-w-[360px] max-w-[360px] shrink-0 flex-col overflow-hidden rounded-xl border border-border/50 bg-background/95 shadow-xl backdrop-blur-xl'
+  'flex h-screen flex-1 min-w-0 flex-col overflow-hidden rounded-xl border border-border/50 bg-background/95 shadow-xl backdrop-blur-xl'
 
 const ClipboardHistoryPanel: React.FC = () => {
   useThemeSync()
@@ -516,7 +516,7 @@ const ClipboardHistoryPanel: React.FC = () => {
         className={[
           'overflow-hidden transition-all duration-200 ease-out',
           previewEntryId !== null
-            ? 'ml-1 flex-1 min-w-0 opacity-100 translate-x-0'
+            ? 'ml-1 w-1/2 min-w-0 opacity-100 translate-x-0'
             : 'ml-0 w-0 opacity-0 translate-x-2 pointer-events-none',
         ].join(' ')}
         aria-hidden={previewEntryId === null}

@@ -6,6 +6,7 @@ description = "Local daemon runtime metadata and process coordination"
 
 [features]
 sidecar-lifecycle = ["dep:libc", "dep:tauri-plugin-shell", "dep:thiserror", "dep:tokio"]
+test-helpers = []
 
 [lib]
 name = "uc_daemon_local"

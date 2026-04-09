@@ -82,7 +82,7 @@ impl DaemonPidManager {
     }
 
     /// Returns the PID file path for testing purposes.
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-helpers"))]
     pub fn pid_path_for_testing(&self) -> PathBuf {
         self.pid_path()
     }

@@ -21,8 +21,8 @@ use uc_core::ports::realtime::{
     RealtimeTopic, RealtimeTopicPort, SetupSpaceAccessCompletedEvent, SetupStateChangedEvent,
     SpaceAccessStateChangedEvent,
 };
-use uc_daemon::api::auth::DaemonConnectionInfo;
-use uc_daemon::api::types::{
+use uc_daemon_contract::api::auth::DaemonConnectionInfo;
+use uc_daemon_contract::api::types::{
     DaemonWsEvent, PairedDevicesChangedPayload, PairingFailurePayload,
     PairingSessionChangedPayload, PairingVerificationPayload, PeerConnectionChangedPayload,
     PeerNameUpdatedPayload, PeersChangedFullPayload, SetupSpaceAccessCompletedPayload,
@@ -1392,7 +1392,7 @@ fn lock_recover<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use uc_daemon::api::types::{PeerSnapshotDto, PeersChangedFullPayload};
+    use uc_daemon_contract::api::types::{PeerSnapshotDto, PeersChangedFullPayload};
 
     fn make_full_payload_event(peers: Vec<PeerSnapshotDto>) -> DaemonWsEvent {
         DaemonWsEvent {

@@ -3,8 +3,6 @@
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
-use crate::state::DaemonPairingSessionSnapshot;
-
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct InitiatePairingRequest {
@@ -84,16 +82,4 @@ pub struct PairingSessionSummaryDto {
     pub device_name: Option<String>,
     pub state: String,
     pub updated_at_ms: i64,
-}
-
-impl From<DaemonPairingSessionSnapshot> for PairingSessionSummaryDto {
-    fn from(value: DaemonPairingSessionSnapshot) -> Self {
-        Self {
-            session_id: value.session_id,
-            peer_id: value.peer_id,
-            device_name: value.device_name,
-            state: value.state,
-            updated_at_ms: value.updated_at_ms,
-        }
-    }
 }

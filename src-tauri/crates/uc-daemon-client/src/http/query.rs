@@ -5,7 +5,7 @@ use reqwest::{Method, RequestBuilder};
 
 use crate::http::authorized_daemon_request_with_type;
 use crate::DaemonConnectionState;
-use uc_daemon::api::types::{PairedDeviceDto, PeerSnapshotDto, StatusResponse};
+use uc_daemon_contract::api::types::{PairedDeviceDto, PeerSnapshotDto, StatusResponse};
 
 #[derive(Clone)]
 pub struct DaemonQueryClient {
@@ -181,8 +181,8 @@ mod tests {
 
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio::net::TcpListener;
-    use uc_daemon::api::auth::DaemonConnectionInfo;
-    use uc_daemon::api::types::{PairedDeviceDto, PeerSnapshotDto};
+    use uc_daemon_contract::api::auth::DaemonConnectionInfo;
+    use uc_daemon_contract::api::types::{PairedDeviceDto, PeerSnapshotDto};
 
     // Pre-cache a session token so HTTP requests use it without triggering a real exchange.
     async fn with_session_cache<F>(token: &str, f: F)

@@ -19,6 +19,8 @@ uc-core = { path = "../uc-core" }
 uc-infra = { path = "../uc-infra" }
 uc-platform = { path = "../uc-platform", features = ["test-helpers"] }
 uc-observability = { path = "../uc-observability" }
+uc-daemon-contract = { path = "../uc-daemon-contract" }
+uc-daemon-local = { path = "../uc-daemon-local" }
 clipboard-rs = { version = "0.3.3", features = ["default"] }
 axum = { version = "0.7", features = ["ws", "tokio", "http1", "http2"] }
 tokio = { version = "1", features = ["full", "test-util"] }
@@ -38,7 +40,6 @@ utoipa = { version = "4", features = ["uuid", "chrono", "url"] }
 utoipa-axum = "0.2"
 utoipa-swagger-ui = { version = "7", features = ["axum"] }
 serde_with = "3.18.0"
-base64 = "0.22"
 
 [dev-dependencies]
 tempfile = "3"

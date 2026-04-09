@@ -12,10 +12,10 @@ use std::fs;
 use std::path::PathBuf;
 use std::time::Duration;
 
-use uc_daemon::api::types::HealthResponse;
-use uc_daemon::DAEMON_API_REVISION;
-use uc_daemon_client::daemon_lifecycle::GuiOwnedDaemonState;
-use uc_tauri::bootstrap::run::ProbeOutcome;
+use uc_daemon_contract::api::types::HealthResponse;
+use uc_daemon_contract::DAEMON_API_REVISION;
+use uc_daemon_local::daemon_bootstrap::ProbeOutcome;
+use uc_daemon_local::daemon_lifecycle::GuiOwnedDaemonState;
 
 const EXIT_CLEANUP_COMMAND: &str =
     "cargo test -p uc-tauri --test daemon_exit_cleanup -- --test-threads=1";

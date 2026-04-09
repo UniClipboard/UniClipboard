@@ -13,8 +13,8 @@ use tauri_plugin_stronghold;
 use tracing::{error, info, warn};
 
 use uc_bootstrap::GuiBootstrapContext;
-use uc_daemon_client::daemon_lifecycle::GuiOwnedDaemonState;
 use uc_daemon_client::DaemonConnectionState;
+use uc_daemon_local::daemon_lifecycle::GuiOwnedDaemonState;
 use uc_tauri::bootstrap::{
     bootstrap_daemon_connection, ensure_default_device_name, start_background_tasks,
     start_gui_pairing_lease_task, supervise_daemon, AppRuntime,

@@ -5,7 +5,7 @@ use reqwest::{Method, RequestBuilder, StatusCode};
 
 use crate::http::authorized_daemon_request_with_type;
 use crate::DaemonConnectionState;
-use uc_daemon::api::dto::pairing::{
+use uc_daemon_contract::api::dto::pairing::{
     AckedPairingCommandResponse, InitiatePairingRequest, InitiatePairingResponse,
     PairingApiErrorResponse, PairingGuiLeaseRequest, PairingSessionCommandRequest,
     SetPairingDiscoverabilityRequest, SetPairingParticipantRequest, UnpairDeviceRequest,
@@ -290,7 +290,7 @@ mod tests {
 
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio::net::TcpListener;
-    use uc_daemon::api::auth::DaemonConnectionInfo;
+    use uc_daemon_contract::api::auth::DaemonConnectionInfo;
 
     // Pre-cache a session token in the module-level cache so HTTP requests use it
     // without triggering a real /auth/connect exchange.

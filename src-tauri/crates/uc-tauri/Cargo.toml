@@ -12,7 +12,8 @@ uc-infra = { path = "../uc-infra" }
 uc-platform = { path = "../uc-platform" }
 uc-observability = { path = "../uc-observability" }
 uc-bootstrap = { path = "../uc-bootstrap" }
-uc-daemon = { path = "../uc-daemon" }
+uc-daemon-contract = { path = "../uc-daemon-contract" }
+uc-daemon-local = { path = "../uc-daemon-local", features = ["sidecar-lifecycle"] }
 uc-daemon-client = { path = "../uc-daemon-client" }
 
 # System utilities

@@ -1,7 +1,7 @@
 //! Connection state for daemon clients.
 
 use std::sync::{Arc, RwLock};
-use uc_daemon::api::auth::DaemonConnectionInfo;
+use uc_daemon_contract::api::auth::DaemonConnectionInfo;
 
 #[derive(Clone, Default)]
 pub struct DaemonConnectionState(Arc<RwLock<Option<DaemonConnectionInfo>>>);
@@ -38,7 +38,7 @@ impl DaemonConnectionState {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use uc_daemon::api::auth::DaemonConnectionInfo;
+    use uc_daemon_contract::api::auth::DaemonConnectionInfo;
 
     #[test]
     fn daemon_connection_state_stores_connection_info_in_memory() {

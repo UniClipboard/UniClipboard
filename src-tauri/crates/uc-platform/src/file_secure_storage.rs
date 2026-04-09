@@ -38,6 +38,10 @@ impl FileSecureStorage {
         self.base_dir.join(format!("{safe}.bin"))
     }
 
+    fn legacy_file_path(&self, key: &str) -> PathBuf {
+        self.base_dir.join(format!("{key}.bin"))
+    }
+
     fn map_io_error(context: &str, err: io::Error) -> SecureStorageError {
         SecureStorageError::Other(format!("{context}: {err}"))
     }
@@ -48,7 +52,17 @@ impl SecureStoragePort for FileSecureStorage {
         let path = self.file_path(key);
         match fs::read(&path) {
             Ok(bytes) => Ok(Some(bytes)),
-            Err(err) if err.kind() == io::ErrorKind::NotFound => Ok(None),
+            Err(err) if err.kind() == io::ErrorKind::NotFound => {
+                let legacy_path = self.legacy_file_path(key);
+                match fs::read(&legacy_path) {
+                    Ok(bytes) => Ok(Some(bytes)),
+                    Err(err) if err.kind() == io::ErrorKind::NotFound => Ok(None),
+                    Err(err) => Err(Self::map_io_error(
+                        "failed to read legacy secure storage file",
+                        err,
+                    )),
+                }
+            }
             Err(err) => Err(Self::map_io_error(
                 "failed to read secure storage file",
                 err,
@@ -111,5 +125,20 @@ mod tests {
         let storage = FileSecureStorage::with_base_dir(temp_dir.path().to_path_buf());
         let loaded = storage.get("libp2p-identity:v1").expect("get");
         assert!(loaded.is_none());
+    }
+
+    #[test]
+    fn get_reads_legacy_file_keyring_filename_for_backward_compatibility() {
+        let temp_dir = tempfile::TempDir::new().expect("temp dir");
+        let storage = FileSecureStorage::with_base_dir(temp_dir.path().to_path_buf());
+        let legacy_path = temp_dir.path().join("kek:v1:profile:default.bin");
+
+        fs::write(&legacy_path, b"legacy-kek").expect("write legacy key file");
+
+        let loaded = storage
+            .get("kek:v1:profile:default")
+            .expect("get legacy key");
+
+        assert_eq!(loaded, Some(b"legacy-kek".to_vec()));
     }
 }

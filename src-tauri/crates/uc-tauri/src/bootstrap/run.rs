@@ -525,23 +525,17 @@ fn spawn_daemon_process<R: Runtime>(
         .args(["--gui-managed"]);
 
     // Tauri v2 sidecar does NOT inherit the parent environment by default.
-    // Forward observability-related env vars so the daemon can initialize its
-    // own Seq / Sentry / log-profile layers and emit structured events
-    // directly — otherwise the only daemon logs reaching Seq would be the
-    // stdout-forwarding wrapper below, which loses target/level/span/fields.
-    for key in [
-        "UC_SEQ_URL",
-        "UC_SEQ_API_KEY",
-        "UC_LOG_PROFILE",
-        "SENTRY_DSN",
-        "RUST_LOG",
-        "RUST_BACKTRACE",
-    ] {
-        if let Ok(value) = std::env::var(key) {
-            if !value.is_empty() {
-                sidecar_cmd = sidecar_cmd.env(key, value);
-            }
-        }
+    // Forward the subset of env vars that affect:
+    // - observability setup (Seq / Sentry / log profile)
+    // - secure storage backend selection (for example macOS dev fallback and
+    //   Linux desktop keyring detection)
+    // - profile-aware daemon namespaces/ports
+    //
+    // Without these, the GUI and daemon can resolve different secure storage
+    // backends or profile namespaces and end up reading mismatched KEK/keyslot
+    // state during startup recovery.
+    for (key, value) in collect_forwarded_daemon_env() {
+        sidecar_cmd = sidecar_cmd.env(key, value);
     }
 
     let (rx, child) = sidecar_cmd.spawn().map_err(|e| {
@@ -596,6 +590,31 @@ fn spawn_daemon_process<R: Runtime>(
     });
 
     Ok((child, pid))
+}
+
+fn collect_forwarded_daemon_env() -> Vec<(String, String)> {
+    let mut envs = Vec::new();
+    for key in [
+        "UC_SEQ_URL",
+        "UC_SEQ_API_KEY",
+        "UC_LOG_PROFILE",
+        "SENTRY_DSN",
+        "RUST_LOG",
+        "RUST_BACKTRACE",
+        "UNICLIPBOARD_ENV",
+        "UC_PROFILE",
+        "DISPLAY",
+        "DBUS_SESSION_BUS_ADDRESS",
+        "XDG_RUNTIME_DIR",
+        "WAYLAND_DISPLAY",
+    ] {
+        if let Ok(value) = std::env::var(key) {
+            if !value.is_empty() {
+                envs.push((key.to_string(), value));
+            }
+        }
+    }
+    envs
 }
 
 #[cfg(test)]
@@ -891,5 +910,48 @@ mod tests {
         assert_eq!(connection_b.base_url, "http://127.0.0.1:42717");
         assert_eq!(connection_b.ws_url, "http://127.0.0.1:42717/ws");
         assert_eq!(connection_b.token, "token-b");
+    }
+
+    #[test]
+    fn forwarded_daemon_env_includes_secure_storage_related_vars() {
+        let previous_uniclipboard_env = std::env::var("UNICLIPBOARD_ENV").ok();
+        let previous_display = std::env::var("DISPLAY").ok();
+        let previous_dbus = std::env::var("DBUS_SESSION_BUS_ADDRESS").ok();
+        let previous_wayland = std::env::var("WAYLAND_DISPLAY").ok();
+
+        with_daemon_env(Some("default"), Some(Path::new("/tmp/runtime")), || {
+            std::env::set_var("UNICLIPBOARD_ENV", "development");
+            std::env::set_var("DISPLAY", ":0");
+            std::env::set_var("DBUS_SESSION_BUS_ADDRESS", "unix:path=/tmp/dbus");
+            std::env::set_var("WAYLAND_DISPLAY", "wayland-0");
+
+            let forwarded = collect_forwarded_daemon_env();
+            let keys: std::collections::HashSet<_> =
+                forwarded.into_iter().map(|(key, _)| key).collect();
+
+            assert!(keys.contains("UC_PROFILE"));
+            assert!(keys.contains("UNICLIPBOARD_ENV"));
+            assert!(keys.contains("DISPLAY"));
+            assert!(keys.contains("DBUS_SESSION_BUS_ADDRESS"));
+            assert!(keys.contains("XDG_RUNTIME_DIR"));
+            assert!(keys.contains("WAYLAND_DISPLAY"));
+        });
+
+        match previous_uniclipboard_env {
+            Some(value) => std::env::set_var("UNICLIPBOARD_ENV", value),
+            None => std::env::remove_var("UNICLIPBOARD_ENV"),
+        }
+        match previous_display {
+            Some(value) => std::env::set_var("DISPLAY", value),
+            None => std::env::remove_var("DISPLAY"),
+        }
+        match previous_dbus {
+            Some(value) => std::env::set_var("DBUS_SESSION_BUS_ADDRESS", value),
+            None => std::env::remove_var("DBUS_SESSION_BUS_ADDRESS"),
+        }
+        match previous_wayland {
+            Some(value) => std::env::set_var("WAYLAND_DISPLAY", value),
+            None => std::env::remove_var("WAYLAND_DISPLAY"),
+        }
     }
 }

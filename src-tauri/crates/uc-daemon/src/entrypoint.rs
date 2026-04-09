@@ -29,6 +29,23 @@ use crate::workers::inbound_clipboard_sync::InboundClipboardSyncWorker;
 use crate::workers::peer_discovery::PeerDiscoveryWorker;
 use uc_platform::clipboard::LocalClipboard;
 
+fn finalize_startup_encryption_recovery(
+    result: anyhow::Result<bool>,
+    gui_managed: bool,
+) -> anyhow::Result<bool> {
+    match result {
+        Ok(unlocked) => Ok(unlocked),
+        Err(error) if gui_managed => {
+            tracing::warn!(
+                error = %error,
+                "GUI-managed startup auto-unlock failed; continuing in locked mode for manual unlock"
+            );
+            Ok(false)
+        }
+        Err(error) => Err(error),
+    }
+}
+
 /// Run the daemon process. This is the composition root.
 ///
 /// `gui_managed` mirrors the `--gui-managed` flag: when true, the daemon
@@ -176,9 +193,10 @@ pub fn run(gui_managed: bool) -> anyhow::Result<()> {
             true
         };
 
-        crate::app::recover_encryption_session(&runtime, auto_unlock_enabled)
+        let recovery = crate::app::recover_encryption_session(&runtime, auto_unlock_enabled)
             .instrument(info_span!("daemon.startup.recover_encryption_session"))
-            .await
+            .await;
+        finalize_startup_encryption_recovery(recovery, gui_managed)
     })?;
 
     // Start background clipboard processing tasks.
@@ -286,4 +304,32 @@ pub fn run(gui_managed: bool) -> anyhow::Result<()> {
     );
 
     rt.block_on(daemon.run())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::finalize_startup_encryption_recovery;
+
+    #[test]
+    fn gui_managed_recovery_failure_falls_back_to_locked_startup() {
+        let result =
+            finalize_startup_encryption_recovery(Err(anyhow::anyhow!("wrong passphrase")), true)
+                .expect("gui-managed startup should stay alive");
+
+        assert!(
+            !result,
+            "gui-managed startup should continue in locked mode after auto-unlock failure"
+        );
+    }
+
+    #[test]
+    fn standalone_recovery_failure_remains_fatal() {
+        let result =
+            finalize_startup_encryption_recovery(Err(anyhow::anyhow!("wrong passphrase")), false);
+
+        assert!(
+            result.is_err(),
+            "standalone daemon startup should still fail on recovery errors"
+        );
+    }
 }

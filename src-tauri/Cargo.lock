@@ -10094,10 +10094,6 @@ checksum = "dbc4bc3a9f746d862c45cb89d705aa10f187bb96c76001afab07a0d35ce60142"
 name = "uniclipboard"
 version = "0.4.0-alpha.9"
 dependencies = [
- "anyhow",
- "async-trait",
- "core-graphics",
- "futures-util",
  "objc",
  "objc2",
  "objc2-app-kit",
@@ -10115,13 +10111,11 @@ dependencies = [
  "tauri-plugin-updater",
  "tempfile",
  "tokio",
- "tokio-tungstenite",
  "tracing",
  "uc-bootstrap",
  "uc-core",
  "uc-daemon-client",
  "uc-daemon-local",
- "uc-platform",
  "uc-tauri",
 ]
 

@@ -154,17 +154,11 @@ export const TitleBar = ({
         // Window chrome layer - sits in normal document flow (not fixed)
         // No z-index needed - proper layering via DOM hierarchy
         'h-10 w-full flex-shrink-0 select-none',
-        'relative z-20 bg-background/42 backdrop-blur-xl',
+        'relative z-20 bg-muted/40 backdrop-blur-xl',
         'after:pointer-events-none after:absolute after:inset-x-0 after:bottom-0 after:h-px after:bg-gradient-to-r after:from-transparent after:via-border/35 after:to-transparent',
         className
       )}
     >
-      {isWindows ? (
-        <div
-          aria-hidden="true"
-          className="pointer-events-none absolute inset-y-0 left-0 z-0 w-14 border-r border-border/40 bg-muted/40 backdrop-blur-xl"
-        />
-      ) : null}
       <div
         data-tauri-drag-region
         className="relative z-10 h-full flex items-center justify-between cursor-default"

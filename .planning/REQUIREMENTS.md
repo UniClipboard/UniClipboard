@@ -10,7 +10,7 @@ Requirements for Local Encrypted Search milestone. Each maps to roadmap phases.
 ### Search Index Core
 
 - [ ] **SIDX-01**: User's clipboard entries are automatically indexed when captured in unlocked state
-- [ ] **SIDX-02**: Deleting a clipboard entry synchronously removes its search_document and all search_posting rows
+- [x] **SIDX-02**: Deleting a clipboard entry synchronously removes its search_document and all search_posting rows
 - [ ] **SIDX-03**: Index terms are stored as HMAC(search_key, normalized_token) — no plaintext tokens written to disk
 - [ ] **SIDX-04**: search_key is derived from master key via HKDF, scoped per profile
 - [ ] **SIDX-05**: Text is extracted from plain text, HTML, URL, file paths, and file names for indexing
@@ -76,7 +76,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | Requirement | Phase    | Status  |
 |-------------|----------|---------|
 | SIDX-01     | Phase 89 | Pending |
-| SIDX-02     | Phase 89 | Pending |
+| SIDX-02     | Phase 89 | Complete |
 | SIDX-03     | Phase 90 | Pending |
 | SIDX-04     | Phase 90 | Pending |
 | SIDX-05     | Phase 90 | Pending |

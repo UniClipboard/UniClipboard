@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v0.5.0
 milestone_name: Local Encrypted Search
-status: verifying
-stopped_at: Phase 89 context gathered (discuss mode)
-last_updated: "2026-04-10T13:30:02.806Z"
-last_activity: "2026-04-10 — Verified 88-01: search domain types + port traits in uc-core (7/7 must-haves, 303 tests pass, cargo check --workspace green)"
+status: executing
+stopped_at: Completed 89-02-PLAN.md
+last_updated: "2026-04-10T14:37:26.664Z"
+last_activity: 2026-04-10
 progress:
   total_phases: 6
   completed_phases: 1
-  total_plans: 1
-  completed_plans: 1
+  total_plans: 3
+  completed_plans: 2
   percent: 17
 ---
 
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-10)
 
 **Core value:** Seamless clipboard synchronization across devices — copy on one, paste on another
-**Current focus:** Phase 89: Search Use Cases
+**Current focus:** Phase 89 — use-cases-and-delete-integration
 
 ## Current Position
 
-Phase: 88 of 93 (Core Domain and Port Contracts) — COMPLETE
-Plan: 1 of 1 complete
-Status: Phase 88 verified complete — ready for Phase 89
-Last activity: 2026-04-10 — Verified 88-01: search domain types + port traits in uc-core (7/7 must-haves, 303 tests pass, cargo check --workspace green)
+Phase: 89 (use-cases-and-delete-integration) — EXECUTING
+Plan: 2 of 2
+Status: Ready to execute
+Last activity: 2026-04-10
 
 Progress: [▓▓░░░░░░░░] 17%
 
@@ -45,6 +45,7 @@ Progress: [▓▓░░░░░░░░] 17%
 | Phase | Plans | Total | Avg/Plan |
 | ----- | ----- | ----- | -------- |
 | 88    | 1     | 30min | 30min    |
+| Phase 89 P02 | 15 | 1 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -60,6 +61,7 @@ Recent decisions affecting current work:
 - SearchKey follows MasterKey pattern — pub as_bytes() only, no Serialize/Deserialize, HMAC computation is Phase 90 infra concern.
 - SearchDocument has no deleted_at_ms — hard-delete is the resolved semantic (Phase 88 confirmed).
 - TimeRangeFilter uses #[serde(tag = "kind")] for clean tagged enum JSON serialization.
+- [Phase 89]: Search cleanup placed after file cache cleanup (step 1b) and before authoritative deletes in DeleteClipboardEntry — non-authoritative cleanup runs before auth deletes (D-07, SIDX-02)
 
 ### Pending Todos
 
@@ -74,6 +76,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-04-10T13:30:02.803Z
-Stopped at: Phase 89 context gathered (discuss mode)
-Resume file: .planning/phases/89-use-cases-and-delete-integration/89-CONTEXT.md
+Last session: 2026-04-10T14:37:26.661Z
+Stopped at: Completed 89-02-PLAN.md
+Resume file: None

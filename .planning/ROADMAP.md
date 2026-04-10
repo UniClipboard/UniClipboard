@@ -112,7 +112,7 @@ Archive note:
 **Plans**: 2 plans
 
 - [ ] 89-01-PLAN.md — Create IndexClipboardEntry, RemoveIndexedEntry, SearchClipboardEntries, RebuildSearchIndex use cases in uc-app/src/usecases/search/ (SIDX-01)
-- [ ] 89-02-PLAN.md — Extend DeleteClipboardEntry with optional SearchIndexPort and synchronous search index cleanup (SIDX-02)
+- [x] 89-02-PLAN.md — Extend DeleteClipboardEntry with optional SearchIndexPort and synchronous search index cleanup (SIDX-02)
 
 ### Phase 90: SQLite Schema Migration and Tokenizer Pipeline
 
@@ -185,7 +185,7 @@ Archive note:
 | Phase                                              | Plans Complete | Status      | Completed |
 | -------------------------------------------------- | -------------- | ----------- | --------- |
 | 88. Core Domain and Port Contracts                 | 0/1            | Not started | -         |
-| 89. Use Cases and Delete Integration               | 0/2            | Not started | -         |
+| 89. Use Cases and Delete Integration               | 1/2 | In Progress|  |
 | 90. SQLite Schema Migration and Tokenizer Pipeline | 0/TBD          | Not started | -         |
 | 91. SQLite Index Adapter and Rebuild Strategy      | 0/TBD          | Not started | -         |
 | 92. Bootstrap Wiring and Daemon HTTP Routes        | 0/TBD          | Not started | -         |

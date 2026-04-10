@@ -24,6 +24,7 @@ pub mod initialize_encryption;
 pub mod internal;
 pub mod list_clipboard_entries;
 pub mod pairing;
+pub mod search;
 pub mod settings;
 pub mod setup;
 pub mod space_access;

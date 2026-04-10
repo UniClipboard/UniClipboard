@@ -9786,6 +9786,7 @@ dependencies = [
  "anyhow",
  "async-trait",
  "axum 0.7.9",
+ "base64 0.22.1",
  "blake3",
  "chrono",
  "clipboard-rs",

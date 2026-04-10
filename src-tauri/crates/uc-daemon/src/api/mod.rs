@@ -3,6 +3,7 @@
 pub mod auth;
 pub mod blob;
 pub mod clipboard;
+pub mod conversion;
 pub mod device;
 pub mod dto;
 pub mod encryption;

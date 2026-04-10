@@ -23,6 +23,7 @@ uc-daemon-contract = { path = "../uc-daemon-contract" }
 uc-daemon-local = { path = "../uc-daemon-local" }
 clipboard-rs = { version = "0.3.3", features = ["default"] }
 axum = { version = "0.7", features = ["ws", "tokio", "http1", "http2"] }
+base64 = "0.22"
 tokio = { version = "1", features = ["full", "test-util"] }
 tokio-util = "0.7"
 serde = { version = "1", features = ["derive"] }

@@ -12,6 +12,7 @@ use uc_app::usecases::CoreUseCases;
 use uc_core::settings::model::SyncSettings as CoreSyncSettings;
 use uc_core::PeerId;
 
+use crate::api::conversion::IntoApiDto;
 use crate::api::dto::device::{
     DeviceSyncSettingsPatchDto, GetDeviceSyncSettingsResponse, GetLocalDeviceInfoResponse,
     UpdateDeviceSyncSettingsResponse,
@@ -56,7 +57,7 @@ async fn get_local_device_info_handler(
         .map_err(|e| ApiError::internal(e.to_string()))?;
 
     Ok(Json(GetLocalDeviceInfoResponse {
-        data: info.into(),
+        data: info.into_api_dto(),
         ts: chrono::Utc::now().timestamp_millis(),
     }))
 }

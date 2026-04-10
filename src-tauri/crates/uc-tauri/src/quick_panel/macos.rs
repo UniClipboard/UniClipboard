@@ -12,8 +12,8 @@ use core_graphics::event::{CGEvent, CGEventFlags, CGKeyCode};
 use core_graphics::event_source::{CGEventSource, CGEventSourceStateID};
 use objc2::ffi::object_setClass;
 use objc2::runtime::AnyObject;
-use objc2::{define_class, msg_send, ClassType, MainThreadMarker};
-use objc2_app_kit::{NSColor, NSPanel, NSScreen, NSWindowStyleMask};
+use objc2::{define_class, msg_send, ClassType};
+use objc2_app_kit::{NSColor, NSPanel, NSWindowStyleMask};
 use tauri::WebviewWindow;
 use tracing::{error, info, warn};
 
@@ -119,44 +119,6 @@ pub fn show_panel(window: &WebviewWindow) {
         panel.orderFrontRegardless();
         panel.makeKeyWindow();
     }
-}
-
-// ── Screen center ─────────────────────────────────────────────────────
-
-/// Get the top-left position for a panel of `(width, height)` to appear
-/// centered on the main screen (like Raycast / Spotlight).
-///
-/// 获取面板居中显示时的左上角坐标。
-pub fn get_screen_center(panel_width: f64, panel_height: f64) -> (f64, f64) {
-    let fallback = (1440.0, 900.0);
-    let (screen_width, screen_height) = match MainThreadMarker::new() {
-        None => {
-            warn!(
-                fallback_width = fallback.0,
-                fallback_height = fallback.1,
-                "MainThreadMarker::new() returned None — not on main thread; using fallback screen size"
-            );
-            fallback
-        }
-        Some(mtm) => match NSScreen::mainScreen(mtm) {
-            None => {
-                warn!(
-                    fallback_width = fallback.0,
-                    fallback_height = fallback.1,
-                    "NSScreen::mainScreen() returned None — no main screen available; using fallback screen size"
-                );
-                fallback
-            }
-            Some(screen) => {
-                let frame = screen.frame();
-                (frame.size.width, frame.size.height)
-            }
-        },
-    };
-
-    let x = (screen_width - panel_width) / 2.0;
-    let y = (screen_height - panel_height) / 2.0;
-    (x, y)
 }
 
 /// Simulate Cmd+V paste keystroke via CoreGraphics CGEvent.

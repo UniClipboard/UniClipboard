@@ -65,33 +65,89 @@ pub(crate) const PANEL_LABEL: &str = "quick-panel";
 
 // ── Cross-platform helpers ─────────────────────────────────────────────
 
-/// Get screen center position for the panel (top-left corner of the panel
-/// such that it appears centered on screen, like Raycast/Spotlight).
+fn centered_panel_position_from_monitor(
+    monitor_origin_x: i32,
+    monitor_origin_y: i32,
+    monitor_width_px: u32,
+    monitor_height_px: u32,
+    scale_factor: f64,
+    panel_width: f64,
+    panel_height: f64,
+) -> (f64, f64) {
+    let monitor_x = monitor_origin_x as f64 / scale_factor;
+    let monitor_y = monitor_origin_y as f64 / scale_factor;
+    let monitor_width = monitor_width_px as f64 / scale_factor;
+    let monitor_height = monitor_height_px as f64 / scale_factor;
+
+    (
+        monitor_x + (monitor_width - panel_width) / 2.0,
+        monitor_y + (monitor_height - panel_height) / 2.0,
+    )
+}
+
+/// Get the quick panel position centered on the monitor that currently
+/// contains the mouse cursor.
 ///
-/// 获取面板在屏幕居中时的左上角坐标（类似 Raycast/Spotlight 的位置）。
-fn screen_center_position(app: &tauri::AppHandle, width: f64, height: f64) -> (f64, f64) {
-    #[cfg(target_os = "macos")]
-    {
-        let _ = app; // used only on non-macOS
-        macos::get_screen_center(width, height)
+/// 获取鼠标所在屏幕上的面板居中位置。
+fn panel_position_for_cursor_screen(app: &tauri::AppHandle, width: f64, height: f64) -> (f64, f64) {
+    let target_monitor = match app.cursor_position() {
+        Ok(cursor) => match app.monitor_from_point(cursor.x, cursor.y) {
+            Ok(Some(monitor)) => Some(monitor),
+            Ok(None) => {
+                warn!(
+                    cursor_x = cursor.x,
+                    cursor_y = cursor.y,
+                    "No monitor found for cursor position; falling back to primary monitor"
+                );
+                None
+            }
+            Err(error) => {
+                warn!(
+                    error = %error,
+                    cursor_x = cursor.x,
+                    cursor_y = cursor.y,
+                    "Failed to resolve monitor from cursor position; falling back to primary monitor"
+                );
+                None
+            }
+        },
+        Err(error) => {
+            warn!(
+                error = %error,
+                "Failed to read cursor position; falling back to primary monitor"
+            );
+            None
+        }
     }
-    #[cfg(not(target_os = "macos"))]
-    {
-        // Query the primary monitor for its size; fall back to 800x600 if unavailable.
-        let (screen_w, screen_h) = app
-            .get_webview_window(PANEL_LABEL)
-            .and_then(|w| w.primary_monitor().ok().flatten())
-            .map(|m| {
-                let size = m.size();
-                let scale = m.scale_factor();
-                (size.width as f64 / scale, size.height as f64 / scale)
-            })
-            .unwrap_or_else(|| {
-                warn!("No primary monitor detected, using 800x600 fallback for panel centering");
-                (800.0, 600.0)
-            });
-        ((screen_w - width) / 2.0, (screen_h - height) / 2.0)
-    }
+    .or_else(|| match app.primary_monitor() {
+        Ok(monitor) => monitor,
+        Err(error) => {
+            warn!(
+                error = %error,
+                "Failed to resolve primary monitor for quick panel positioning"
+            );
+            None
+        }
+    });
+
+    target_monitor
+        .map(|monitor| {
+            let size = monitor.size();
+            let position = monitor.position();
+            centered_panel_position_from_monitor(
+                position.x,
+                position.y,
+                size.width,
+                size.height,
+                monitor.scale_factor(),
+                width,
+                height,
+            )
+        })
+        .unwrap_or_else(|| {
+            warn!("No monitor detected, using 800x600 fallback for quick panel positioning");
+            centered_panel_position_from_monitor(0, 0, 800, 600, 1.0, width, height)
+        })
 }
 
 fn normalize_ui_scale(scale: f64) -> f64 {
@@ -128,7 +184,7 @@ fn resolve_panel_origin(
 
 fn panel_origin_or_center(app: &tauri::AppHandle, width: f64, height: f64) -> (f64, f64) {
     let remembered_origin = PANEL_ORIGIN.lock().ok().and_then(|guard| *guard);
-    let centered_origin = screen_center_position(app, width, height);
+    let centered_origin = panel_position_for_cursor_screen(app, width, height);
     resolve_panel_origin(remembered_origin, centered_origin)
 }
 
@@ -252,8 +308,12 @@ pub fn toggle(app: &tauri::AppHandle) {
 ///
 /// 在屏幕中央显示快捷面板（类似 Raycast）。
 pub fn show(app: &tauri::AppHandle) {
-    let (panel_x, panel_y) = screen_center_position(app, BASE_PANEL_WIDTH, BASE_PANEL_HEIGHT);
-    info!(panel_x, panel_y, "Showing quick panel centered on screen");
+    let (panel_x, panel_y) =
+        panel_position_for_cursor_screen(app, BASE_PANEL_WIDTH, BASE_PANEL_HEIGHT);
+    info!(
+        panel_x,
+        panel_y, "Showing quick panel centered on the monitor containing the cursor"
+    );
 
     // If panel doesn't exist yet (pre_create wasn't called), create it now
     if app.get_webview_window(PANEL_LABEL).is_none() {
@@ -374,9 +434,23 @@ pub fn set_layout(app: &tauri::AppHandle, scale: f64, preview_expanded: bool) {
 #[cfg(test)]
 mod tests {
     use super::{
-        panel_dimensions, resolve_panel_origin, BASE_PANEL_HEIGHT, BASE_PANEL_WIDTH, MAX_UI_SCALE,
-        MIN_UI_SCALE,
+        centered_panel_position_from_monitor, panel_dimensions, resolve_panel_origin,
+        BASE_PANEL_HEIGHT, BASE_PANEL_WIDTH, MAX_UI_SCALE, MIN_UI_SCALE,
     };
+
+    #[test]
+    fn centers_panel_on_primary_monitor_origin() {
+        let (x, y) = centered_panel_position_from_monitor(0, 0, 1920, 1080, 1.0, 360.0, 420.0);
+
+        assert_eq!((x, y), (780.0, 330.0));
+    }
+
+    #[test]
+    fn centers_panel_on_scaled_secondary_monitor() {
+        let (x, y) = centered_panel_position_from_monitor(2560, 0, 2560, 1440, 2.0, 360.0, 420.0);
+
+        assert_eq!((x, y), (1740.0, 150.0));
+    }
 
     #[test]
     fn panel_dimensions_clamp_scale_and_expand_width() {

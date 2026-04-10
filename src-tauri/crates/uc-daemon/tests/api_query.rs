@@ -3,6 +3,7 @@ use std::sync::OnceLock;
 
 use tokio::sync::RwLock;
 use uc_core::network::{PairedDevice, PairingState};
+use uc_daemon::api::projection::IntoApiDto;
 use uc_daemon::api::query::DaemonQueryService;
 use uc_daemon::api::types::{DaemonWsEvent, PairedDeviceDto, PeerSnapshotDto};
 use uc_daemon::service::ServiceHealth;
@@ -61,17 +62,16 @@ async fn status_response_uses_package_version_and_api_revision_contract() {
 
 #[test]
 fn peers_query_maps_is_connected_to_connected() {
-    let dto = PeerSnapshotDto::from(
-        uc_app::usecases::pairing::get_p2p_peers_snapshot::P2pPeerSnapshot {
-            peer_id: "peer-1".to_string(),
-            device_name: Some("Desk".to_string()),
-            addresses: vec!["/ip4/127.0.0.1/tcp/7000".to_string()],
-            is_paired: true,
-            is_connected: true,
-            pairing_state: "Trusted".to_string(),
-            identity_fingerprint: "fp-secret".to_string(),
-        },
-    );
+    let dto: PeerSnapshotDto = uc_app::usecases::pairing::get_p2p_peers_snapshot::P2pPeerSnapshot {
+        peer_id: "peer-1".to_string(),
+        device_name: Some("Desk".to_string()),
+        addresses: vec!["/ip4/127.0.0.1/tcp/7000".to_string()],
+        is_paired: true,
+        is_connected: true,
+        pairing_state: "Trusted".to_string(),
+        identity_fingerprint: "fp-secret".to_string(),
+    }
+    .into_api_dto();
 
     assert_eq!(dto.peer_id, "peer-1");
     assert!(dto.connected);
@@ -80,7 +80,7 @@ fn peers_query_maps_is_connected_to_connected() {
 
 #[test]
 fn paired_devices_query_does_not_expose_identity_fingerprint() {
-    let dto = PairedDeviceDto::from(PairedDevice {
+    let dto: PairedDeviceDto = PairedDevice {
         peer_id: uc_core::PeerId::from("peer-1"),
         pairing_state: PairingState::Trusted,
         identity_fingerprint: "fp-secret".to_string(),
@@ -88,7 +88,8 @@ fn paired_devices_query_does_not_expose_identity_fingerprint() {
         last_seen_at: None,
         device_name: "Desk".to_string(),
         sync_settings: None,
-    });
+    }
+    .into_api_dto();
 
     let json = serde_json::to_value(&dto).unwrap();
 

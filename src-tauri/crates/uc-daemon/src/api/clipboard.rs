@@ -14,8 +14,7 @@ use uc_core::ids::EntryId;
 
 use crate::api::conversion::IntoApiDto;
 use crate::api::dto::clipboard::{
-    ClearHistoryResponse, ClearHistoryResultDto, ClipboardStatsDto, EntryDetailDto,
-    EntryProjectionResponseDto, EntryResourceDto, GetClipboardStatsResponse,
+    ClearHistoryResponse, EntryProjectionResponseDto, GetClipboardStatsResponse,
     GetEntryDetailResponse, GetEntryResourceResponse, ListEntriesResponse, ToggleFavoriteRequest,
     ToggleFavoriteResponse, ToggleFavoriteResultDto,
 };

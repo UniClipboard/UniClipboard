@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v0.5.0
 milestone_name: Local Encrypted Search
-status: executing
-stopped_at: Completed 89-02-PLAN.md
-last_updated: "2026-04-10T14:37:26.664Z"
+status: verifying
+stopped_at: Completed 89-01-PLAN.md — search use cases created and wired
+last_updated: "2026-04-10T14:40:22.734Z"
 last_activity: 2026-04-10
 progress:
   total_phases: 6
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 3
-  completed_plans: 2
+  completed_plans: 3
   percent: 17
 ---
 
@@ -27,7 +27,7 @@ See: .planning/PROJECT.md (updated 2026-04-10)
 
 Phase: 89 (use-cases-and-delete-integration) — EXECUTING
 Plan: 2 of 2
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-04-10
 
 Progress: [▓▓░░░░░░░░] 17%
@@ -46,6 +46,7 @@ Progress: [▓▓░░░░░░░░] 17%
 | ----- | ----- | ----- | -------- |
 | 88    | 1     | 30min | 30min    |
 | Phase 89 P02 | 15 | 1 tasks | 1 files |
+| Phase 89-use-cases-and-delete-integration P01 | 4 | 2 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -62,6 +63,8 @@ Recent decisions affecting current work:
 - SearchDocument has no deleted_at_ms — hard-delete is the resolved semantic (Phase 88 confirmed).
 - TimeRangeFilter uses #[serde(tag = "kind")] for clean tagged enum JSON serialization.
 - [Phase 89]: Search cleanup placed after file cache cleanup (step 1b) and before authoritative deletes in DeleteClipboardEntry — non-authoritative cleanup runs before auth deletes (D-07, SIDX-02)
+- [Phase 89-use-cases-and-delete-integration]: Search use cases hold Arc<dyn SearchIndexPort> only — no tokenizer port injection (D-02, D-03). Callers build SearchDocument/Vec<SearchPosting>.
+- [Phase 89-use-cases-and-delete-integration]: All four search use cases return Result<_, SearchError> without anyhow wrapping — typed error preserved at application boundary (D-03, D-04, D-05).
 
 ### Pending Todos
 
@@ -76,6 +79,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-04-10T14:37:26.661Z
-Stopped at: Completed 89-02-PLAN.md
+Last session: 2026-04-10T14:40:22.732Z
+Stopped at: Completed 89-01-PLAN.md — search use cases created and wired
 Resume file: None

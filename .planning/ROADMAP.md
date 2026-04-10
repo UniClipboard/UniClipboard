@@ -71,7 +71,7 @@ Archive note:
 ### Phases
 
 - [ ] **Phase 88: Core Domain and Port Contracts** - Define SearchIndexPort, SearchKeyDerivationPort, domain models, and SearchKey newtype in uc-core
-- [ ] **Phase 89: Use Cases and Delete Integration** - Implement four search use cases in uc-app and extend DeleteClipboardEntry with synchronous search cascade
+- [x] **Phase 89: Use Cases and Delete Integration** - Implement four search use cases in uc-app and extend DeleteClipboardEntry with synchronous search cascade (completed 2026-04-10)
 - [ ] **Phase 90: SQLite Schema Migration and Tokenizer Pipeline** - Add Diesel migration for search tables and implement tokenizer pipeline with HKDF key derivation in uc-infra
 - [ ] **Phase 91: SQLite Index Adapter and Rebuild Strategy** - Implement SqliteSearchIndex adapter with version-flag atomic swap rebuild and search_blocked guard in uc-infra
 - [ ] **Phase 92: Bootstrap Wiring and Daemon HTTP Routes** - Wire search ports into AppDeps and expose /search endpoints in uc-daemon with per-handler unlock guard and WS rebuild events
@@ -111,7 +111,7 @@ Archive note:
 
 **Plans**: 2 plans
 
-- [ ] 89-01-PLAN.md — Create IndexClipboardEntry, RemoveIndexedEntry, SearchClipboardEntries, RebuildSearchIndex use cases in uc-app/src/usecases/search/ (SIDX-01)
+- [x] 89-01-PLAN.md — Create IndexClipboardEntry, RemoveIndexedEntry, SearchClipboardEntries, RebuildSearchIndex use cases in uc-app/src/usecases/search/ (SIDX-01)
 - [x] 89-02-PLAN.md — Extend DeleteClipboardEntry with optional SearchIndexPort and synchronous search index cleanup (SIDX-02)
 
 ### Phase 90: SQLite Schema Migration and Tokenizer Pipeline
@@ -185,7 +185,7 @@ Archive note:
 | Phase                                              | Plans Complete | Status      | Completed |
 | -------------------------------------------------- | -------------- | ----------- | --------- |
 | 88. Core Domain and Port Contracts                 | 0/1            | Not started | -         |
-| 89. Use Cases and Delete Integration               | 1/2 | In Progress|  |
+| 89. Use Cases and Delete Integration               | 2/2 | Complete   | 2026-04-10 |
 | 90. SQLite Schema Migration and Tokenizer Pipeline | 0/TBD          | Not started | -         |
 | 91. SQLite Index Adapter and Rebuild Strategy      | 0/TBD          | Not started | -         |
 | 92. Bootstrap Wiring and Daemon HTTP Routes        | 0/TBD          | Not started | -         |

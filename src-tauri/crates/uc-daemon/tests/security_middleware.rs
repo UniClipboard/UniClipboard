@@ -13,7 +13,10 @@ use std::sync::Arc;
 use std::sync::{Mutex, OnceLock};
 
 use axum::body::{to_bytes, Body};
-use axum::http::{header::ACCESS_CONTROL_ALLOW_ORIGIN, Request, StatusCode};
+use axum::http::{
+    header::{ACCESS_CONTROL_ALLOW_METHODS, ACCESS_CONTROL_ALLOW_ORIGIN},
+    Request, StatusCode,
+};
 use serde_json::Value;
 use tower::ServiceExt;
 use uc_daemon::api::auth::load_or_create_auth_token;
@@ -216,6 +219,33 @@ async fn protected_route_auth_failures_still_include_cors_headers() {
             .get(ACCESS_CONTROL_ALLOW_ORIGIN)
             .and_then(|value| value.to_str().ok()),
         Some("http://localhost:1420")
+    );
+}
+
+#[tokio::test]
+async fn preflight_delete_includes_delete_in_allowed_methods() {
+    let (app, _bearer, _security) = build_test_router_with_security().await;
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("OPTIONS")
+                .uri("/clipboard/entries/some-id")
+                .header("Origin", "http://localhost:1420")
+                .header("Access-Control-Request-Method", "DELETE")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::NO_CONTENT);
+    assert_eq!(
+        response
+            .headers()
+            .get(ACCESS_CONTROL_ALLOW_METHODS)
+            .and_then(|value| value.to_str().ok()),
+        Some("GET, POST, PUT, DELETE, OPTIONS")
     );
 }
 

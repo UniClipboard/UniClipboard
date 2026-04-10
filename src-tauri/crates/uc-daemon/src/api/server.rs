@@ -213,7 +213,7 @@ fn apply_cors_headers(headers: &mut HeaderMap, origin: Option<&str>) {
 
     headers.insert(
         ACCESS_CONTROL_ALLOW_METHODS,
-        HeaderValue::from_static("GET, POST, PUT, OPTIONS"),
+        HeaderValue::from_static("GET, POST, PUT, DELETE, OPTIONS"),
     );
     headers.insert(
         ACCESS_CONTROL_ALLOW_HEADERS,

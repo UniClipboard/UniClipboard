@@ -23,8 +23,10 @@ import {
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from '@/components/ui/resizable'
 import { toast } from '@/components/ui/toast'
 import { useFileSyncNotifications } from '@/hooks/useFileSyncNotifications'
+import { usePlatform } from '@/hooks/usePlatform'
 import { useShortcut } from '@/hooks/useShortcut'
 import { useTransferProgress } from '@/hooks/useTransferProgress'
+import { cn } from '@/lib/utils'
 import { captureUserIntent } from '@/observability/breadcrumbs'
 import { useAppDispatch, useAppSelector } from '@/store/hooks'
 import { removeClipboardItem, copyToClipboard, markEntryStale } from '@/store/slices/clipboardSlice'
@@ -95,6 +97,7 @@ const ClipboardContent: React.FC<ClipboardContentProps> = ({
   onLoadMore,
 }) => {
   const { t } = useTranslation()
+  const { isWindows } = usePlatform()
 
   // Activate transfer progress event listener
   useTransferProgress()
@@ -438,12 +441,15 @@ const ClipboardContent: React.FC<ClipboardContentProps> = ({
           orientation="horizontal"
           defaultLayout={defaultLayout}
           onLayoutChanged={onLayoutChanged}
-          className="flex-1 min-h-0"
+          className={cn('flex-1 min-h-0', isWindows && 'overflow-hidden rounded-tl-[22px]')}
         >
           {/* Left panel: item list */}
           <ResizablePanel id="clipboard-list" defaultSize="40%" minSize="25%" maxSize="60%">
             <div
-              className="h-full bg-muted/20 overflow-y-auto overflow-x-hidden no-scrollbar"
+              className={cn(
+                'h-full overflow-y-auto overflow-x-hidden no-scrollbar',
+                isWindows ? 'rounded-tl-[22px] bg-background/36' : 'bg-muted/20'
+              )}
               onScroll={handleScroll}
             >
               <div className="p-3 flex flex-col gap-0.5">

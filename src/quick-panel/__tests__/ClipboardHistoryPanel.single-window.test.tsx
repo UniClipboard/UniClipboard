@@ -110,6 +110,26 @@ describe('ClipboardHistoryPanel single-window preview', () => {
     expect(invokeMock).not.toHaveBeenCalledWith('show_preview_panel', expect.anything())
   })
 
+  it('keeps history and preview panes flexible when the inline preview opens', async () => {
+    const { container } = render(<ClipboardHistoryPanel />)
+
+    await act(async () => {
+      await new Promise(resolve => setTimeout(resolve, 550))
+    })
+
+    expect(await screen.findByText('Full preview text')).toBeInTheDocument()
+
+    const rootLayout = container.firstElementChild as HTMLDivElement | null
+    const historyWrapper = rootLayout?.children.item(0) as HTMLDivElement | null
+    const previewWrapper = rootLayout?.children.item(1) as HTMLDivElement | null
+
+    expect(historyWrapper?.className).toContain('basis-0')
+    expect(historyWrapper?.className).toContain('min-w-0')
+
+    expect(previewWrapper?.className).toContain('basis-0')
+    expect(previewWrapper?.className).toContain('flex-1')
+  })
+
   it('dismisses the quick window immediately when escape is pressed with preview open', async () => {
     render(<ClipboardHistoryPanel />)
 

@@ -1,382 +1,461 @@
-# Architecture Patterns
+# Architecture Research: Local Encrypted Search Integration
 
-**Domain:** Log observability for Tauri 2 / Rust clipboard sync app
-**Researched:** 2026-03-09
-**Confidence:** HIGH (tracing-subscriber layer composition), MEDIUM (Seq CLEF custom layer)
+**Domain:** Hexagonal architecture integration — local encrypted inverted index into existing Rust codebase
+**Researched:** 2026-04-10
+**Confidence:** HIGH (based on primary source code reading, confirmed against architecture spec)
 
-## Recommended Architecture
+---
 
-### High-Level Design
+## System Overview
 
-The log observability system adds three capabilities to the existing tracing infrastructure:
-
-1. **Structured business fields** (flow_id, stage) propagated via tracing span context
-2. **Dual output** (pretty console + JSON file) replacing current single-format stdout+file
-3. **Seq ingestion** via a custom CLEF HTTP layer posting structured events to local Seq
-
-All three integrate at a single point: `init_tracing_subscriber()` in `uc-tauri/src/bootstrap/tracing.rs`. The existing `Registry + EnvFilter + fmt layer` pipeline gains additional layers; no changes needed to the hexagonal boundary contracts.
+The existing hexagonal stack (compiler-enforced private deps):
 
 ```
-                     tracing::Registry
-                           |
-                     ┌─────┴─────┐
-                     │ EnvFilter  │  (existing, extended with profile presets)
-                     └─────┬─────┘
-                           |
-              ┌────────────┼────────────┐
-              |            |            |
-     ┌────────┴───┐  ┌────┴────┐  ┌───┴──────────┐
-     │ Pretty fmt │  │JSON fmt │  │ Seq CLEF     │
-     │ (stdout)   │  │ (file)  │  │ HTTP Layer   │
-     └────────────┘  └─────────┘  └──────────────┘
-         existing       NEW           NEW
-        (modified)
+uc-core          (domain models + port traits — zero deps on other crates)
+    ↓
+uc-app           (use cases — depends only on uc-core)
+    ↓
+uc-infra         (SQLite adapters, crypto — depends on uc-core + uc-app)
+    ↓
+uc-bootstrap     (wiring: constructs AppDeps, passes Arc<dyn Port> into use cases)
+    ↓
+uc-daemon        (Axum HTTP routes + background workers — depends on uc-app + uc-core)
+    ↓
+uc-tauri         (Tauri shell — thin proxy to daemon)
+    ↑
+frontend React   (TypeScript — calls daemon HTTP/WS)
 ```
 
-### Component Boundaries
+The search subsystem touches all five Rust layers in a specific, constrained way. Each layer integration is described below.
 
-| Component                                 | Responsibility                                                               | Crate      | Status                                       |
-| ----------------------------------------- | ---------------------------------------------------------------------------- | ---------- | -------------------------------------------- |
-| `tracing.rs` (bootstrap)                  | Build subscriber pipeline, apply log profile                                 | `uc-tauri` | MODIFY                                       |
-| `LogProfile` enum                         | Define preset filter+output configurations                                   | `uc-tauri` | NEW                                          |
-| Pretty stdout layer                       | Human-readable console output with ANSI                                      | `uc-tauri` | MODIFY (already exists)                      |
-| JSON file layer                           | Machine-readable JSON output to rotating file                                | `uc-tauri` | NEW (replaces current plain-text file layer) |
-| `SeqLayer`                                | Custom `tracing_subscriber::Layer` that batches CLEF events and POSTs to Seq | `uc-tauri` | NEW                                          |
-| Business span fields (`flow_id`, `stage`) | Structured context on capture pipeline spans                                 | `uc-app`   | MODIFY (add fields to existing spans)        |
+---
 
-### Data Flow
+## Integration Point 1: uc-core — SearchIndexPort
 
-**Clipboard capture with observability:**
+**Status: NEW**
+
+All port traits live in `uc-core/src/ports/`. A new `search/` submodule must be added there, following the existing pattern (`ports/security/`, `ports/clipboard/`).
 
 ```
-1. ClipboardWatcher detects change
-   -> PlatformEvent::ClipboardChanged { snapshot }
-
-2. AppRuntime callback invoked
-   -> Creates root span: info_span!("clipboard.capture", flow_id = %Uuid::new_v4())
-
-3. CaptureClipboardUseCase::execute_with_origin
-   -> Existing span "usecase.capture_clipboard.execute" inherits flow_id from parent
-   -> Child spans: normalize, persist_event, select_policy, save_entry
-
-4. Each span/event flows through Registry to ALL layers:
-   |-- Pretty layer -> stdout (dev: colored, shows flow_id)
-   |-- JSON layer -> file (structured, searchable)
-   +-- Seq layer -> HTTP POST batched CLEF to localhost:5341
+uc-core/src/ports/
+├── search/
+│   ├── mod.rs            (pub use)
+│   ├── search_index.rs   (SearchIndexPort trait)
+│   └── search_key.rs     (SearchKeyDerivationPort trait)
+└── mod.rs                (pub use search::*)
 ```
 
-**Context propagation is automatic:** `tracing`'s span inheritance means a `flow_id` field set on the root span is visible to all child spans and events without explicit threading. No ports or cross-layer plumbing needed.
-
-## New Components Detail
-
-### 1. LogProfile (uc-tauri/src/bootstrap/log_profile.rs)
-
-A profile selects which layers are active and at what filter level.
+**SearchIndexPort** owns all index read/write operations:
 
 ```rust
-/// Log output profile controlling subscriber composition.
-///
-/// Each profile defines: filter directives, active layers, and format options.
-#[derive(Debug, Clone)]
-pub enum LogProfile {
-    /// Development: pretty stdout (debug) + JSON file (debug)
-    Dev,
-    /// Production: pretty stdout (info) + JSON file (info) + Seq (info)
-    Prod,
-    /// Debug clipboard pipeline: pretty stdout (trace for uc_app) + JSON file (trace)
-    DebugClipboard,
+#[async_trait]
+pub trait SearchIndexPort: Send + Sync {
+    async fn index_entry(&self, doc: SearchDocument, postings: Vec<SearchPosting>) -> Result<()>;
+    async fn remove_entry(&self, entry_id: &EntryId) -> Result<()>;
+    async fn search(&self, query: SearchQuery) -> Result<Vec<EntryId>>;
+    async fn rebuild(&self, entries: Vec<(SearchDocument, Vec<SearchPosting>)>) -> Result<()>;
+    async fn get_index_meta(&self) -> Result<SearchIndexMeta>;
+}
+```
+
+**SearchKeyDerivationPort** isolates the HKDF derivation behind a port boundary so `uc-app` use cases can request a search key without knowing about HMAC internals:
+
+```rust
+#[async_trait]
+pub trait SearchKeyDerivationPort: Send + Sync {
+    async fn derive_search_key(&self) -> Result<SearchKey, EncryptionError>;
+}
+```
+
+**Domain models** also belong in `uc-core/src/`:
+
+```
+uc-core/src/
+└── search/
+    ├── mod.rs
+    ├── query.rs        (SearchQuery, BoolOp, TimeRange, FileTypeFilter)
+    ├── document.rs     (SearchDocument, SearchPosting, SearchIndexMeta)
+    └── projection.rs   (SearchResult — entry_id + matched fields)
+```
+
+The file type enum (`text | html | link | file | image | other`) is defined in `uc-core::search::document` as a search-layer classification derived from clipboard domain projections. It does NOT belong in the clipboard domain — the clipboard domain produces a `SearchableProjection` struct; the search subsystem classifies it.
+
+---
+
+## Integration Point 2: uc-app — Use Cases
+
+**Status: FOUR NEW use cases + ONE modified**
+
+New use cases in `uc-app/src/usecases/`:
+
+```
+uc-app/src/usecases/
+├── search_clipboard_entries.rs   (NEW — query execution)
+├── index_clipboard_entry.rs      (NEW — incremental index add)
+├── remove_indexed_entry.rs       (NEW — incremental delete from index)
+└── rebuild_search_index.rs       (NEW — full rebuild with atomic swap)
+```
+
+**Modified: `DeleteClipboardEntry`** (in `uc-app/src/usecases/delete_clipboard_entry.rs`)
+
+The existing use case uses an optional `.with_file_cache_dir()` builder already. Follow the identical pattern:
+
+```rust
+pub struct DeleteClipboardEntry {
+    // ... existing fields ...
+    search_index: Option<Arc<dyn SearchIndexPort>>,  // ADD
 }
 
-impl LogProfile {
-    pub fn filter_directives(&self) -> Vec<String> { /* ... */ }
-    pub fn enable_json_file(&self) -> bool { true } // all profiles
-    pub fn enable_seq(&self) -> bool {
-        matches!(self, Self::Prod)
+impl DeleteClipboardEntry {
+    pub fn with_search_index(mut self, port: Arc<dyn SearchIndexPort>) -> Self {
+        self.search_index = Some(port);
+        self
     }
 }
 ```
 
-**Integration point:** `init_tracing_subscriber()` gains a `LogProfile` parameter. Current `build_filter_directives(is_dev)` logic moves into `LogProfile::Dev` / `LogProfile::Prod`. The function signature changes from `fn init_tracing_subscriber() -> Result<()>` to `fn init_tracing_subscriber(profile: LogProfile) -> Result<()>`.
+In `execute()`, after step 3 (entry deleted), call `self.search_index.remove_entry(entry_id)` if present. This is synchronous within the deletion workflow — the design doc is explicit that search index removal must be part of the normal deletion flow, not a best-effort async side-effect.
 
-**Profile selection:** Determined at startup by `cfg!(debug_assertions)` (Dev vs Prod), overridable via `UNICLIPBOARD_LOG_PROFILE` env var for developer use.
+**Indexing hook location:** The `IndexClipboardEntry` use case is NOT called inside `CaptureClipboardUseCase`. The capture use case returns `EntryId` and stops. The indexing hook belongs in `uc-daemon`'s `DaemonClipboardChangeHandler` — which already orchestrates post-capture actions (outbound sync trigger per Phase 61). This is the correct decoupling boundary: `uc-app` stays free of search concerns at the capture layer.
 
-### 2. JSON File Layer (uc-tauri/src/bootstrap/tracing.rs)
-
-Replace the current plain-text file `fmt::layer()` with a JSON-formatted one.
+**AppDeps (`uc-app/src/deps.rs`):** Add a new `SearchPorts` group, following the five existing groups (`ClipboardPorts`, `SecurityPorts`, `DevicePorts`, `StoragePorts`, `SystemPorts`):
 
 ```rust
-let json_file_layer = if profile.enable_json_file() {
-    let writer = build_file_writer()?; // existing function, reused
-    Some(
-        fmt::layer()
-            .json()
-            .flatten_event(true)
-            .with_current_span(true)
-            .with_span_list(true)
-            .with_timer(fmt::time::ChronoUtc::new(
-                "%Y-%m-%dT%H:%M:%S%.3fZ".to_string(),
-            ))
-            .with_ansi(false)
-            .with_writer(writer)
-    )
-} else {
-    None
-};
-```
-
-**Dependency:** Requires `tracing-subscriber` `json` feature flag. Current `uc-tauri/Cargo.toml` has:
-
-```toml
-tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt", "chrono"] }
-```
-
-Change to:
-
-```toml
-tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt", "chrono", "json"] }
-```
-
-### 3. SeqLayer - Custom CLEF HTTP Layer (NEW file)
-
-**Location:** `uc-tauri/src/bootstrap/seq_layer.rs`
-
-No existing Rust crate provides a tracing-subscriber Layer for Seq CLEF ingestion. A custom layer is the correct approach because:
-
-- CLEF is a simple newline-delimited JSON format (trivial to serialize with serde_json)
-- The HTTP API is a single POST endpoint (`/ingest/clef`)
-- Avoids pulling in the heavy OpenTelemetry SDK stack (~15 transitive deps) for a local dev tool
-- Seq's OTLP endpoint only supports HTTP/protobuf and gRPC (no HTTP/JSON), making CLEF simpler
-
-**Architecture:**
-
-```rust
-/// Custom tracing Layer that batches events as CLEF JSON and POSTs to Seq.
-///
-/// Design:
-/// - Events serialized to CLEF in on_event() (sync, fast)
-/// - Buffered in mpsc channel
-/// - Background tokio task flushes batches every N seconds or N events
-/// - Non-blocking: subscriber thread never waits for HTTP
-pub struct SeqLayer {
-    event_tx: tokio::sync::mpsc::UnboundedSender<String>,
+pub struct SearchPorts {
+    pub search_index: Arc<dyn SearchIndexPort>,
+    pub search_key_derivation: Arc<dyn SearchKeyDerivationPort>,
 }
 
-/// Background flush task, spawned once at init
-struct SeqFlusher {
-    event_rx: tokio::sync::mpsc::UnboundedReceiver<String>,
-    endpoint: String,       // "http://localhost:5341/ingest/clef"
-    api_key: Option<String>,
-    client: reqwest::Client,
-    flush_interval: Duration,
-    batch_size: usize,
+pub struct AppDeps {
+    // ... existing fields ...
+    pub search: Option<SearchPorts>,  // Option so existing boot paths don't break
 }
 ```
-
-**CLEF field mapping from tracing:**
-
-| CLEF Field               | Source                                                                                     |
-| ------------------------ | ------------------------------------------------------------------------------------------ |
-| `@t`                     | Event timestamp (ISO 8601)                                                                 |
-| `@mt`                    | Message template from `tracing::Event` format string                                       |
-| `@l`                     | Level mapped: ERROR->Error, WARN->Warning, INFO->Information, DEBUG->Debug, TRACE->Verbose |
-| `@i`                     | Event target or span name                                                                  |
-| `flow_id`, `stage`, etc. | Flattened from span context fields                                                         |
-| All other fields         | Flattened into top-level CLEF properties                                                   |
-
-**HTTP details:**
-
-- Endpoint: `POST http://localhost:5341/ingest/clef`
-- Content-Type: `application/vnd.serilog.clef`
-- Body: Newline-delimited JSON (one CLEF object per line)
-- Optional: `X-Seq-ApiKey` header or `?apiKey=` query param
-
-**Dependencies needed (uc-tauri/Cargo.toml):**
-
-- `reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }` -- HTTP client for Seq POST
-
-### 4. Business Span Fields (uc-app use cases)
-
-**Modify existing spans** in `CaptureClipboardUseCase` and the AppRuntime callback to include structured business fields.
-
-**flow_id generation point:** The AppRuntime callback in `uc-tauri/src/bootstrap/runtime.rs` where `CaptureClipboardUseCase` is invoked. This is the natural entry point for a clipboard capture flow.
-
-```rust
-// In AppRuntime clipboard change handler (runtime.rs)
-let flow_id = uuid::Uuid::new_v4();
-let span = info_span!(
-    "clipboard.capture",
-    flow_id = %flow_id,
-    stage = "initiated",
-);
-// CaptureClipboardUseCase::execute runs inside this span
-```
-
-**Existing span in capture_clipboard.rs (line 133-138) gains stage field:**
-
-```rust
-let span = info_span!(
-    "usecase.capture_clipboard.execute",
-    source = "callback",
-    origin = ?origin,
-    representations = snapshot.representations.len(),
-    stage = "execute",  // NEW
-);
-```
-
-**New child spans for sub-operations:**
-
-```rust
-// Normalize representations
-async { /* ... */ }
-    .instrument(info_span!("normalize_representations", stage = "normalize"))
-    .await?;
-
-// Persist event
-self.event_writer
-    .insert_event(&new_event, &normalized_reps)
-    .instrument(info_span!("persist_event", stage = "persist"))
-    .await?;
-
-// Save entry
-self.entry_repo
-    .save_entry_and_selection(&new_entry, &new_selection)
-    .instrument(info_span!("save_entry", stage = "save"))
-    .await?;
-```
-
-The `flow_id` does NOT need to be threaded explicitly. Tracing's span context inheritance propagates it automatically from the parent `clipboard.capture` span to all children. This respects hexagonal architecture: no observability concerns leak into port traits.
-
-## Patterns to Follow
-
-### Pattern 1: Optional Layer Composition
-
-**What:** Wrap each layer in `Option<L>` so profiles can enable/disable layers without changing subscriber types.
-**When:** Building the subscriber pipeline in `init_tracing_subscriber()`.
-**Why this works:** `tracing-subscriber` natively supports `Option<L>: Layer` -- an `Option::None` is a no-op layer. This pattern is already used in the codebase for `sentry_layer` and `file_layer`.
-
-```rust
-registry()
-    .with(env_filter)
-    .with(sentry_layer)    // existing Option<Layer>
-    .with(stdout_layer)    // always present
-    .with(json_file_layer) // Option<Layer>, profile-controlled
-    .with(seq_layer)       // Option<Layer>, profile-controlled
-    .try_init()?;
-```
-
-### Pattern 2: Non-Blocking Channel-Based Ingestion
-
-**What:** SeqLayer sends serialized CLEF strings through an unbounded mpsc channel to a background Tokio task that batches and POSTs.
-**When:** Always for the Seq layer.
-**Why:** `tracing-subscriber` Layer callbacks (`on_event()`) run synchronously on the logging thread. Any blocking (HTTP, disk flush) stalls the application. The channel decouples serialization (sync, fast) from network I/O (async, slow).
-
-### Pattern 3: Span Field Inheritance for Cross-Layer Context
-
-**What:** Set `flow_id` on a root span once; all child spans and events inherit it through tracing's built-in context propagation.
-**When:** Any time you need a correlation ID across use case steps.
-**Why:** Avoids threading `flow_id` through function parameters, port traits, or shared state.
-
-**Critical detail:** The JSON layer must use `.with_current_span(true)` and `.with_span_list(true)` to capture inherited fields in output. The SeqLayer must implement `on_new_span()` to collect span fields for CLEF serialization.
-
-## Anti-Patterns to Avoid
-
-### Anti-Pattern 1: OpenTelemetry SDK for Local Seq
-
-**What:** Using `tracing-opentelemetry` + `opentelemetry-otlp` + protobuf to send to Seq's OTLP endpoint.
-**Why bad:** Pulls in ~15 transitive dependencies (opentelemetry, tonic, prost, http, tower), adds compile time, and OTLP is designed for distributed multi-service tracing. Massive overkill for a single desktop app sending to a local Seq instance.
-**Instead:** Custom SeqLayer with direct CLEF HTTP POST via reqwest.
-
-### Anti-Pattern 2: Passing flow_id Through Port Traits
-
-**What:** Adding `flow_id: &str` parameters to `ClipboardEntryRepositoryPort::save_entry_and_selection()` etc.
-**Why bad:** Pollutes domain port contracts with observability concerns. Violates hexagonal architecture.
-**Instead:** Use tracing span context. The flow_id lives in the span hierarchy, not in function signatures.
-
-### Anti-Pattern 3: Separate Log Configuration File
-
-**What:** Creating a `log.toml` or `log.yaml` for users to configure logging.
-**Why bad:** Log profiles are a developer tool for v0.3.0, not user-facing. Config files add UX surface area with no user value.
-**Instead:** Compile-time `LogProfile` enum + optional `UNICLIPBOARD_LOG_PROFILE` env var override.
-
-### Anti-Pattern 4: Runtime Profile Switching
-
-**What:** Making the log profile changeable at runtime via settings UI.
-**Why bad:** `tracing-subscriber` global subscriber is set once with `try_init()`. Changing requires `reload::Layer` adding fragile complexity.
-**Instead:** Set profile at startup. Restart to change. Acceptable for developer tooling.
-
-## Scalability Considerations
-
-| Concern            | Low Volume (dev) | High Volume (rapid clipboard)   | Mitigation                                                       |
-| ------------------ | ---------------- | ------------------------------- | ---------------------------------------------------------------- |
-| JSON file size     | Negligible       | Grows with image capture spans  | `tracing-appender::rolling::daily` instead of `rolling::never`   |
-| Seq backpressure   | N/A              | Burst could overwhelm local Seq | Bounded batch size, drop-on-overflow in channel                  |
-| Serialization cost | Negligible       | JSON per event per layer        | `serde_json::to_string` is fast; profile filtering reduces count |
-| CLEF buffer memory | Negligible       | Burst buffers many events       | Cap channel at ~10K events, drop oldest on overflow              |
-
-## Integration Points: Existing Code Changes
-
-### Files to MODIFY
-
-| File                                                | Change                                                                        | Reason                       |
-| --------------------------------------------------- | ----------------------------------------------------------------------------- | ---------------------------- |
-| `uc-tauri/src/bootstrap/tracing.rs`                 | Add LogProfile param, JSON layer, Seq layer composition, profile-based filter | Central subscriber init      |
-| `uc-tauri/src/bootstrap/mod.rs`                     | Export new `seq_layer` and `log_profile` modules                              | Module visibility            |
-| `uc-tauri/Cargo.toml`                               | Add `json` feature to tracing-subscriber, add `reqwest`                       | JSON format + HTTP for Seq   |
-| `uc-app/src/usecases/internal/capture_clipboard.rs` | Add `stage` field to existing spans, add child spans for sub-operations       | Business span hierarchy      |
-| `uc-tauri/src/bootstrap/runtime.rs`                 | Add root `clipboard.capture` span with `flow_id` at callback entry            | Flow correlation root        |
-| `src-tauri/src/main.rs`                             | Pass `LogProfile` to `init_tracing_subscriber()`                              | Profile selection at startup |
-
-### Files to CREATE
-
-| File                                    | Purpose                                     |
-| --------------------------------------- | ------------------------------------------- |
-| `uc-tauri/src/bootstrap/seq_layer.rs`   | Custom SeqLayer + SeqFlusher implementation |
-| `uc-tauri/src/bootstrap/log_profile.rs` | LogProfile enum and preset configurations   |
-
-### Files UNCHANGED
-
-| File                                          | Why                                             |
-| --------------------------------------------- | ----------------------------------------------- |
-| All port traits in `uc-core/ports/`           | Observability is orthogonal to domain contracts |
-| All repository implementations in `uc-infra/` | No logging changes at infra layer for v0.3.0    |
-| Frontend (React/TypeScript)                   | No frontend changes for backend logging         |
-| `uc-tauri/src/bootstrap/logging.rs`           | Legacy log bridge, independent of tracing       |
-
-## Suggested Build Order
-
-### Phase 1: Dual Output Foundation
-
-**Build:** LogProfile enum + JSON file layer + modified pretty stdout layer
-**Why first:** Zero external dependencies beyond a Cargo feature flag. Immediately testable by running the app and checking file output. Establishes the subscriber pipeline structure.
-**Validates:** JSON output format correct, profile switching works, no regression on console.
-
-### Phase 2: Business Span Hierarchy
-
-**Build:** flow_id on root span, stage fields on capture pipeline, child spans for sub-operations
-**Why second:** Requires Phase 1 JSON output to verify structured fields. Pure Rust changes in uc-app and runtime.rs.
-**Validates:** flow_id appears in both console and JSON, stage traces through lifecycle, hierarchy correct.
-
-### Phase 3: Seq CLEF Layer
-
-**Build:** SeqLayer, SeqFlusher, CLEF serialization, HTTP batched POST
-**Why third:** Depends on Phases 1-2 for pipeline and fields. Requires running Seq for integration testing. Most complex new code.
-**Validates:** Events appear in Seq UI with flow_id/stage searchable, batch flushing works.
-
-### Phase 4: Polish and Hardening
-
-**Build:** Rolling file appender (daily rotation), channel overflow handling, graceful SeqFlusher shutdown (integrate with TaskRegistry), env var override for profile.
-**Why last:** Non-blocking improvements. System works without these but they prevent operational issues.
-
-## Sources
-
-- [tracing-subscriber docs](https://docs.rs/tracing-subscriber/) - Layer composition, JSON format, Optional layers (HIGH confidence)
-- [tracing-subscriber fmt JSON format](https://docs.rs/tracing-subscriber/latest/tracing_subscriber/fmt/format/struct.Json.html) - JSON output configuration (HIGH confidence)
-- [Seq raw event ingestion / CLEF format](https://datalust.co/docs/posting-raw-events) - CLEF field spec, HTTP endpoint (HIGH confidence)
-- [Seq OTLP ingestion](https://datalust.co/docs/ingestion-with-opentelemetry) - OTLP alternative evaluated and rejected (MEDIUM confidence)
-- [Seq GitHub Rust discussion](https://github.com/datalust/seq-tickets/discussions/1873) - Confirms no existing Rust CLEF crate (MEDIUM confidence)
-- [Structured JSON logs with tracing in Rust](https://oneuptime.com/blog/post/2026-01-25-structured-json-logs-tracing-rust/view) - Dual output patterns (MEDIUM confidence)
 
 ---
 
-_Architecture research for: UniClipboard v0.3.0 Log Observability_
-_Researched: 2026-03-09_
+## Integration Point 3: uc-infra — Adapters
+
+**Status: TWO NEW adapter files + ONE NEW migration**
+
+```
+uc-infra/src/
+├── search/
+│   ├── mod.rs
+│   ├── sqlite_search_index.rs     (NEW — SearchIndexPort impl)
+│   ├── text_extractor.rs          (NEW — SearchableProjection → tokenized fields)
+│   ├── tokenizer.rs               (NEW — NFKC + lowercase + word split + CJK bigram)
+│   └── search_key_derivation.rs   (NEW — SearchKeyDerivationPort impl using HKDF)
+```
+
+**SQLite search key derivation** (`SearchKeyDerivationPort` impl):
+
+Calls `EncryptionSessionPort::get_master_key()` then runs `HKDF-SHA256(master_key, info="uc-search-index-v1", salt=profile_id_bytes)`. The `profile_id` comes from `KeyScopePort::current_scope()` which already exists. This keeps the search key scoped to the profile (the isolation dimension defined in the architecture spec, question 5).
+
+```rust
+pub struct HkdfSearchKeyDerivation {
+    session: Arc<dyn EncryptionSessionPort>,
+    key_scope: Arc<dyn KeyScopePort>,
+}
+```
+
+**SQLite search index adapter:**
+
+The existing infra layer uses Diesel ORM via `DbPool`. The search index DEVIATES from this pattern intentionally: posting-list operations (AND = intersect posting lists, OR = union) do not map well to Diesel's query builder. Use `diesel::sql_query()` through the same `DbPool` and `DbConn` (`SqliteConnection`). This is a documented deviation, not an accident.
+
+The `SqliteSearchIndex` adapter holds `Arc<DbPool>` — same as every other infra adapter.
+
+**HMAC term tag generation** is done synchronously in the adapter:
+
+```rust
+fn term_tag(search_key: &SearchKey, token: &str) -> String {
+    // HMAC-SHA256(search_key, token) → hex string
+}
+```
+
+**SQLite migration** (`uc-infra/migrations/`):
+
+Add one new migration directory (next after `2026-03-15-000002_upgrade_file_transfer_tracking`):
+
+```
+migrations/2026-04-10-000001_create_search_index/
+├── up.sql
+└── down.sql
+```
+
+The three new tables (`search_document`, `search_posting`, `search_index_meta`) have **no foreign keys** to existing clipboard tables. This is deliberate: the index is independently rebuildable and must not be constrained by clipboard table state. The hard-delete semantic (architecture spec question 4) means no `deleted_at_ms` column in `search_document`.
+
+Diesel `schema.rs` must be updated to declare the three new tables. Since they have no joins to existing tables, they do not appear in `diesel::allow_tables_to_appear_in_same_query!()` unless cross-table queries are needed.
+
+The migration runs automatically on startup via the existing `run_migrations()` / `embed_migrations!()` pipeline in `uc-infra/src/db/pool.rs` — no code changes needed to trigger it.
+
+---
+
+## Integration Point 4: uc-daemon — HTTP Routes + Worker Hook
+
+**Status: ONE NEW route file + ONE modified worker**
+
+**New routes file: `uc-daemon/src/api/search.rs`**
+
+Follows the identical pattern as `uc-daemon/src/api/clipboard.rs`:
+
+```rust
+pub fn router() -> Router<DaemonApiState> {
+    Router::new()
+        .route("/search/query",   post(search_entries))
+        .route("/search/rebuild", post(rebuild_index))
+        .route("/search/status",  get(get_index_status))
+}
+```
+
+Merged into `router_l2_plus()` in `routes.rs` alongside the existing clipboard, settings, and pairing routers. All three routes require the session to be unlocked — handlers check `EncryptionSessionPort::is_ready()` and return `ApiError::Unauthorized` if not ready.
+
+Route string constants follow the existing `daemon_api_strings` centralization pattern in `uc-core::network::daemon_api_strings`.
+
+**Modified worker: `DaemonClipboardChangeHandler`**
+
+This handler (Phase 61, `uc-daemon/src/workers/`) already calls post-capture orchestration (outbound sync). Add the search indexing call there:
+
+```
+capture completes → EntryId returned
+    → DaemonClipboardChangeHandler::handle()
+        → trigger outbound sync (existing)
+        → if encryption_session.is_ready():
+            IndexClipboardEntry use case (NEW)
+```
+
+The indexing call is gated on `encryption_session.is_ready()`. If the session is not unlocked (edge case: race at startup), skip silently — the full rebuild route recovers from this state.
+
+---
+
+## Integration Point 5: SQLite Migration Strategy
+
+**Approach:** Standard Diesel embedded migration — additive, no foreign keys to existing tables.
+
+The migration pipeline is already in place (`embed_migrations!("migrations")` in `pool.rs`, `run_pending_migrations()` at startup). Adding new migration directories is all that is needed.
+
+Key constraints for the three new tables:
+
+1. `search_document.entry_id` is TEXT PRIMARY KEY — no FK constraint to `clipboard_entry.entry_id`. The index is independently rebuildable.
+2. `search_posting` uses a composite PRIMARY KEY `(term_tag, entry_id)`.
+3. `search_index_meta` is a single-row config table (use `UPSERT` on a fixed `id = 1`).
+4. `index_version` TEXT column in `search_document` enables safe rebuild triggers when the tokenizer normalization version changes.
+5. No `deleted_at_ms` column — hard-delete semantic. Rows are physically removed on entry deletion.
+
+For the full rebuild flow (atomic swap), use SQLite's `ALTER TABLE ... RENAME` pattern:
+
+```sql
+-- 1. Write into search_document_tmp + search_posting_tmp
+-- 2. BEGIN EXCLUSIVE TRANSACTION
+-- 3. DROP TABLE search_document; DROP TABLE search_posting;
+-- 4. ALTER TABLE search_document_tmp RENAME TO search_document;
+-- 5. ALTER TABLE search_posting_tmp RENAME TO search_posting;
+-- 6. UPDATE search_index_meta SET rebuild_state='complete';
+-- 7. COMMIT
+```
+
+The double-write strategy during rebuild (architecture spec question 10) means new captures write to both active and temp tables while rebuild is in progress. The `search_index_meta.rebuild_state` column tracks this.
+
+---
+
+## Integration Point 6: Search Key Derivation — XChaCha20 Session Unlock Hook
+
+**The derivation chain:**
+
+```
+Passphrase / Keyring
+    → Argon2id KDF → KEK
+        → XChaCha20-Poly1305 unwrap → MasterKey (32 bytes)
+            → stored in EncryptionSessionPort (in-memory)
+                → HKDF-SHA256(MasterKey, info="uc-search-index-v1", salt=profile_id_bytes)
+                    → SearchKey (32 bytes, derived on demand per request)
+```
+
+**Where the derivation is NOT triggered:**
+
+- Not at unlock time (no eager derivation, no new session port)
+- Not stored anywhere (derived on demand per request)
+
+**Where the derivation IS triggered:**
+
+- Inside `HkdfSearchKeyDerivation::derive_search_key()` — called by `IndexClipboardEntry` and `SearchClipboardEntries` use cases when they need to compute HMAC term tags
+
+**Why on-demand derivation:** The `SearchKeyDerivationPort` wraps `EncryptionSessionPort` and `KeyScopePort`. If the session is not ready, `get_master_key()` returns `EncryptionError::KeyNotFound` and the use case returns an appropriate error. No separate unlock flow is needed — search is gated on the existing session state.
+
+**Profile scoping:** `KeyScopePort::current_scope()` returns the active `KeyScope { profile_id }`. The HKDF salt incorporates the `profile_id` bytes. This satisfies the isolation requirement (architecture spec question 5) without requiring per-profile tables.
+
+---
+
+## Component Responsibilities
+
+| Component | Layer | Status | Responsibility |
+|-----------|-------|--------|----------------|
+| `SearchIndexPort` | uc-core | NEW | Port trait: index/remove/search/rebuild |
+| `SearchKeyDerivationPort` | uc-core | NEW | Port trait: derive_search_key() |
+| `SearchDocument`, `SearchPosting`, `SearchQuery` | uc-core | NEW | Domain models |
+| `SearchClipboardEntries` | uc-app | NEW | Query execution use case |
+| `IndexClipboardEntry` | uc-app | NEW | Incremental index add use case |
+| `RemoveIndexedEntry` | uc-app | NEW | Incremental delete use case |
+| `RebuildSearchIndex` | uc-app | NEW | Full rebuild use case |
+| `DeleteClipboardEntry` | uc-app | MODIFIED | Add `.with_search_index()` optional port |
+| `AppDeps` | uc-app | MODIFIED | Add `search: Option<SearchPorts>` group |
+| `SqliteSearchIndex` | uc-infra | NEW | `SearchIndexPort` impl — raw SQL via DbPool |
+| `HkdfSearchKeyDerivation` | uc-infra | NEW | `SearchKeyDerivationPort` impl |
+| `text_extractor` | uc-infra | NEW | Clipboard repr → searchable field extraction |
+| `tokenizer` | uc-infra | NEW | NFKC + lowercase + word split + CJK bigram |
+| Migration `2026-04-10-000001` | uc-infra | NEW | 3 new tables, no FK to existing tables |
+| `search.rs` router | uc-daemon | NEW | 3 HTTP routes: query/rebuild/status |
+| `DaemonClipboardChangeHandler` | uc-daemon | MODIFIED | Add IndexClipboardEntry call after capture |
+
+---
+
+## Data Flow
+
+### Capture → Index Flow
+
+```
+Platform clipboard change
+    → ClipboardWatcherWorker (uc-daemon)
+        → CaptureClipboardUseCase::execute(snapshot) → EntryId  [uc-app, UNCHANGED]
+            → DaemonClipboardChangeHandler::handle(entry_id)     [uc-daemon, MODIFIED]
+                → trigger outbound sync (existing)
+                → if encryption_session.is_ready():
+                    IndexClipboardEntry::execute(entry_id)        [uc-app, NEW]
+                        → load entry repr from repo
+                        → text_extractor → tokenizer → HMAC tags
+                        → SearchIndexPort::index_entry()          [uc-infra, NEW]
+```
+
+### Search Query Flow
+
+```
+Frontend POST /search/query
+    → DaemonApiState::runtime_or_error()
+        → SearchClipboardEntries::execute(SearchQuery)           [uc-app, NEW]
+            → validate session ready
+            → parse query, derive term tags via SearchKeyDerivationPort
+            → SearchIndexPort::search(query)                     [uc-infra, NEW]
+                → diesel::sql_query() posting-list intersection/union
+            → filter by time range + file type on search_document
+            → load entry projections via existing ClipboardEntryRepositoryPort
+        → serialize to JSON response
+```
+
+### Delete Cascade Flow
+
+```
+DELETE /clipboard/entries/:id
+    → DeleteClipboardEntry::execute(entry_id)                    [uc-app, MODIFIED]
+        → delete selection (existing)
+        → delete entry (existing)
+        → delete event + representations (existing)
+        → if search_index present:
+            SearchIndexPort::remove_entry(entry_id)              [SYNCHRONOUS, in-transaction]
+```
+
+### Rebuild Flow
+
+```
+POST /search/rebuild
+    → RebuildSearchIndex::execute()                              [uc-app, NEW]
+        → scan all clipboard entries
+        → write to temp tables (with double-write for concurrent captures)
+        → atomic table swap via SQLite RENAME
+        → update search_index_meta
+```
+
+---
+
+## Suggested Build Order
+
+The compiler-enforced dep graph allows only one valid incremental build order:
+
+| Step | Crate | Work |
+|------|-------|------|
+| 1 | `uc-core` | Add `search/` domain models and two port traits (`SearchIndexPort`, `SearchKeyDerivationPort`) |
+| 2 | `uc-app` | Add four new use cases; modify `DeleteClipboardEntry` with optional `SearchIndexPort`; add `SearchPorts` to `AppDeps` |
+| 3 | `uc-infra` | Add migration; implement `SqliteSearchIndex`, `HkdfSearchKeyDerivation`, `text_extractor`, `tokenizer` |
+| 4 | `uc-bootstrap` | Wire `SearchPorts` into `AppDeps`; pass `SearchIndexPort` into `DeleteClipboardEntry::with_search_index()` |
+| 5 | `uc-daemon` | Add `search.rs` router; modify `DaemonClipboardChangeHandler` to call `IndexClipboardEntry` |
+| 6 | Frontend | Add search UI calling `POST /search/query` |
+
+Steps 1–2 compile independently of infra (only traits and use cases). Step 3 requires steps 1–2. Steps 4–5 require step 3. This matches how file sync, observability, and auth subsystems were added.
+
+---
+
+## Architectural Patterns
+
+### Pattern 1: Optional Port via Builder Method
+
+**What:** `.with_search_index(port)` on `DeleteClipboardEntry` — same shape as the existing `.with_file_cache_dir()`.
+**When to use:** When a use case needs an optional cross-cutting dependency that did not exist at design time.
+**Trade-offs:** Avoids breaking all existing call sites; slightly less explicit than making the port required.
+
+### Pattern 2: On-Demand Key Derivation (no cached SearchKey)
+
+**What:** Derive `SearchKey` from `MasterKey` via HKDF on each use case invocation, not at session unlock.
+**When to use:** When the derived key is cheap to compute (one HKDF call) and caching adds surface area.
+**Trade-offs:** Tiny per-request HKDF cost (negligible for HKDF-SHA256 on 32 bytes) vs. no risk of key leakage through a cached field.
+
+### Pattern 3: Raw SQL for Posting-List Queries
+
+**What:** `diesel::sql_query()` for search operations instead of Diesel's query builder.
+**When to use:** When the query pattern (posting-list intersection/union with GROUP BY + HAVING) does not compose cleanly in Diesel's ORM.
+**Trade-offs:** Loses compile-time schema checking for these specific queries; gains full SQL expressiveness. All other infra adapters keep Diesel ORM.
+
+### Pattern 4: No FK Constraint on Index Tables
+
+**What:** `search_document.entry_id` is TEXT, no `REFERENCES clipboard_entry(entry_id)`.
+**When to use:** When the index must be independently rebuildable from source data, and deletions are driven by application logic.
+**Trade-offs:** Orphaned index rows are possible if deletion crashes mid-way; full rebuild recovers this state.
+
+---
+
+## Anti-Patterns to Avoid
+
+### Anti-Pattern 1: Hooking IndexClipboardEntry Inside CaptureClipboardUseCase
+
+**What people might do:** Call `IndexClipboardEntry` directly from `CaptureClipboardUseCase::execute()`.
+**Why it's wrong:** `CaptureClipboardUseCase` lives in `uc-app` and must not depend on search ports. The use case's responsibility is capture-and-persist; post-capture orchestration belongs in `uc-daemon`'s change handler.
+**Do this instead:** Call `IndexClipboardEntry` from `DaemonClipboardChangeHandler` after capture returns `EntryId`.
+
+### Anti-Pattern 2: Eager SearchKey Derivation at Unlock Time
+
+**What people might do:** Derive and cache `SearchKey` in a new `SearchSessionPort` triggered by `UnlockEncryptionWithPassphrase`.
+**Why it's wrong:** Adds a lifecycle dependency that must be managed, cleared, and tested. Introduces risk of key leakage through cached state.
+**Do this instead:** Derive on-demand via `SearchKeyDerivationPort::derive_search_key()`.
+
+### Anti-Pattern 3: FK Constraint From search_document to clipboard_entry
+
+**What people might do:** Add `REFERENCES clipboard_entry(entry_id) ON DELETE CASCADE` to avoid manual deletion logic.
+**Why it's wrong:** Cascades make the index dependent on clipboard table lifecycle, preventing independent rebuild.
+**Do this instead:** No FK; drive deletion from application code with `SearchIndexPort::remove_entry()` inside `DeleteClipboardEntry`.
+
+### Anti-Pattern 4: Separate SQLite Database for Search
+
+**What people might do:** Store the search index in a separate `.db` file to isolate it.
+**Why it's wrong:** The existing `DbPool` already has WAL mode and r2d2 pooling configured. A second pool doubles resource overhead and complicates transaction semantics for the double-write rebuild strategy.
+**Do this instead:** Add the three search tables to the same Diesel migration path, same pool.
+
+---
+
+## Sources
+
+- `src-tauri/crates/uc-core/src/ports/security/encryption_session.rs` — `EncryptionSessionPort::get_master_key()` interface
+- `src-tauri/crates/uc-core/src/security/model.rs` — `MasterKey` domain model (32-byte Argon2id → XChaCha20 chain)
+- `src-tauri/crates/uc-app/src/usecases/internal/capture_clipboard.rs` — capture use case boundary (stops at returning `EntryId`)
+- `src-tauri/crates/uc-app/src/usecases/delete_clipboard_entry.rs` — optional builder pattern for `.with_file_cache_dir()`
+- `src-tauri/crates/uc-app/src/deps.rs` — `AppDeps` grouped port structure (5 existing groups)
+- `src-tauri/crates/uc-infra/src/security/key_material.rs` — `KeyScopePort` usage pattern
+- `src-tauri/crates/uc-infra/src/security/encryption.rs` — XChaCha20-Poly1305 primitives
+- `src-tauri/crates/uc-infra/src/db/pool.rs` — `embed_migrations!`, `run_pending_migrations` pipeline
+- `src-tauri/crates/uc-infra/src/db/schema.rs` — existing Diesel table definitions and join constraints
+- `src-tauri/crates/uc-infra/migrations/` — 11 existing migration directories confirming additive pattern
+- `src-tauri/crates/uc-daemon/src/api/clipboard.rs` — router pattern (`pub fn router() -> Router<DaemonApiState>`)
+- `src-tauri/crates/uc-daemon/src/api/routes.rs` — L1/L2+ tier split, middleware order
+- `docs/architecture/local-encrypted-search.md` — primary architecture spec (all 10 architecture review decisions)
+
+---
+
+_Architecture research for: Local Encrypted Search integration into hexagonal clipboard sync codebase_
+_Researched: 2026-04-10_

@@ -1,310 +1,324 @@
-# Domain Pitfalls
+# Pitfalls Research
 
-**Domain:** Adding structured logging, dual output, Seq integration, and business flow tracing to existing Rust/Tauri desktop app
-**Researched:** 2026-03-09
-**Overall confidence:** HIGH (verified against codebase + official docs + community reports)
+**Domain:** Local HMAC-keyed encrypted search added to existing Rust/Tauri/SQLite clipboard app
+**Researched:** 2026-04-10
+**Confidence:** HIGH — grounded in actual codebase code paths, not generic patterns
+
+---
 
 ## Critical Pitfalls
 
-### Pitfall 1: Type Hell When Composing Multiple tracing-subscriber Layers
+### Pitfall 1: Delete Cascade Missing Search Cleanup
 
-**What goes wrong:** Adding a JSON file layer alongside the existing pretty stdout layer causes Rust type inference to explode. Each `.with(layer)` call changes the subscriber's concrete type, making conditional composition (e.g., "add Seq layer only if configured") impossible without type erasure.
+**What goes wrong:**
+`DeleteClipboardEntry::execute` runs a fixed sequential chain: delete selection → delete entry → delete event+representations. There is no extension point and no event emitted after deletion completes. `search_document` and `search_posting` rows for the deleted `entry_id` are never removed. Orphaned postings accumulate silently in perpetuity. Future searches return dead results that resolve to missing clipboard entries — the caller gets a result set with IDs that cannot be loaded.
 
-**Why it happens:** `tracing-subscriber`'s `Layered<A, B>` nests generically. Two different layer combinations produce incompatible types. The current `init_tracing_subscriber()` in `tracing.rs` already uses a conditional `if let Some(layer)` pattern for the file layer (lines 187-191), but adding a third conditional layer (JSON file) and fourth (Seq HTTP) will make this pattern unworkable.
+**Why it happens:**
+The use case (`uc-app/src/usecases/delete_clipboard_entry.rs`) has no knowledge of search. Adding the `RemoveIndexedClipboardEntry` use case is a separate feature that must be wired into the delete path, but there is no hook or event bus to trigger it after deletion. Developers see the deletion "work" in tests and miss the search-index side effect entirely.
 
-**Consequences:** Compilation failure. Developers waste hours fighting the type system instead of implementing features. Temptation to give up and use a single monolithic subscriber.
+**How to avoid:**
+Choose exactly one integration approach before implementation begins:
+- **Option A (recommended):** Inject a `SearchIndexPort` into `DeleteClipboardEntry` and call `remove_indexed_entry(entry_id)` as step 1.5 (after fetching the entry, before deleting the selection). This keeps the deletion contract synchronous and atomic within the use case.
+- **Option B:** Emit a typed `EntryDeleted` domain event from the use case and have the search subsystem subscribe. Requires an event bus that does not currently exist.
 
-**Prevention:**
+The architecture spec states explicitly: deletion must be part of the normal deletion workflow, not best-effort async cleanup. Option A satisfies this; Option B with a fire-and-forget emitter does not.
 
-- Use `Vec<Box<dyn Layer<S> + Send + Sync>>` pattern from the start. Push each conditional layer as `.boxed()` into a Vec, then apply the Vec to the registry in one `.with()` call.
-- Alternative: use `Option<L>` wrapping (since `Option<L>` implements `Layer` when `L: Layer`), which the codebase already uses for `file_layer` and `sentry_layer`. This works for up to 3-4 optional layers but gets unwieldy beyond that.
-- The boxed Vec approach has negligible runtime overhead (dynamic dispatch on log path is not performance-critical).
+**Warning signs:**
+- Deleting a clipboard entry and then searching for its content still returns a result
+- `search_posting` row count grows while `clipboard_entry` row count does not
+- Rebuild produces a smaller posting list than the live index
 
-**Detection:** First attempt to add third or fourth conditional layer hits compile errors with `Layered<Layered<...>>` type mismatches.
-
-**Phase to address:** Phase 1 (dual output subscriber refactoring) -- must be solved before any new layers are added.
-
-**Confidence:** HIGH -- well-documented community issue ([Rust Forum: Type Hell in Tracing](https://users.rust-lang.org/t/type-hell-in-tracing-multiple-output-layers/126764)), verified against official `tracing-subscriber` docs.
-
----
-
-### Pitfall 2: WorkerGuard Lifetime Mismanagement Causing Lost Log Events
-
-**What goes wrong:** Adding a second `NonBlocking` writer (for JSON file output) produces a second `WorkerGuard`. If either guard is dropped prematurely, buffered log events for that output are silently lost. The current code stores the guard in a `static OnceLock<WorkerGuard>` (line 32 of `tracing.rs`), which only supports ONE guard.
-
-**Why it happens:** `tracing_appender::non_blocking()` returns `(NonBlocking, WorkerGuard)`. The guard must live for the entire program lifetime. With dual output, there are two guards. `OnceLock` can only store one value.
-
-**Consequences:** JSON file logs intermittently empty or truncated. Particularly dangerous because it manifests as silent data loss -- no error, no warning, just missing log lines. Extremely hard to debug.
-
-**Prevention:**
-
-- Replace `static LOG_GUARD: OnceLock<WorkerGuard>` with `static LOG_GUARDS: OnceLock<Vec<WorkerGuard>>` or a struct holding multiple named guards.
-- Return all guards from `init_tracing_subscriber()` and bind them in `main()`. The current pattern of storing in `OnceLock` is acceptable but must accommodate multiple guards.
-- Never use `_` (discard) binding for guards. Always use `_guard` or named binding.
-- Add a startup self-check: after init, emit a test event and verify it appears in both outputs.
-
-**Detection:** JSON log file exists but is empty or has fewer events than console output.
-
-**Phase to address:** Phase 1 (dual output subscriber) -- must handle this when creating the second NonBlocking writer.
-
-**Confidence:** HIGH -- verified against `tracing-appender` official docs and [tokio-rs/tracing#1120](https://github.com/tokio-rs/tracing/issues/1120).
+**Phase to address:**
+The phase that implements `RemoveIndexedClipboardEntry` — must be done in the same phase as delete-path integration, not deferred.
 
 ---
 
-### Pitfall 3: flow_id Context Lost Across tokio::spawn Boundaries
+### Pitfall 2: L3/L4 Unlock Gate Missing on Search Routes
 
-**What goes wrong:** A `flow_id` span field set in `CaptureClipboardUseCase::execute_with_origin` is visible within that async block (via `.instrument(span)`), but when downstream work is spawned via `tokio::spawn` (e.g., spool queue processing, sync outbound), the span context is NOT automatically propagated. Child tasks log without `flow_id`, breaking end-to-end flow tracing.
+**What goes wrong:**
+The daemon route comment in `api/routes.rs` (lines 71-73) states explicitly: "L3/L4 permission enforcement is NOT implemented in Phase 75 (deferred to future phases)." All routes in `router_l2_plus` are callable with a valid JWT even when the encryption session is locked. Search routes added to this router are reachable in locked state. The search key is unavailable when locked, so the handler either panics, returns an internal error, or — worst — calls `HMAC(None, token)` with a zero key if the derivation path is not guarded.
 
-**Why it happens:** `tokio::spawn` creates a new task with no parent span by default. Unlike thread-local contexts, Tokio task contexts require explicit span attachment. The codebase already uses `.instrument(span)` correctly in `capture_clipboard.rs`, but spawned background tasks (spool workers, sync outbound) will not inherit this context.
+**Why it happens:**
+The router is split into L1 (no auth) and L2+ (JWT required) — but there is no L3 layer for "encryption session must be unlocked." Adding search routes to `router_l2_plus` feels complete because auth is enforced, but the session state check is absent. Each handler must guard independently or a middleware gate is needed.
 
-**Consequences:** Flow visualization in Seq shows disconnected events. The entire purpose of flow_id tracing (seeing capture -> persist -> publish as one flow) is defeated. Debugging cross-layer issues remains as hard as before.
+**How to avoid:**
+Implement a per-handler encryption-session guard as the first action in every search and rebuild handler:
+```rust
+let search_key = state.runtime
+    .as_ref()
+    .and_then(|r| r.search_key())
+    .ok_or_else(|| ApiError::session_locked())?;
+```
+Add an integration test that hits the search endpoint with a valid JWT while the session is in locked state and asserts `423 Locked` (or equivalent domain error), not `500`.
 
-**Prevention:**
+**Warning signs:**
+- Search endpoint returns 500 with a key-not-found message rather than a clear "session locked" error
+- Frontend does not distinguish "session locked" from "search failed" — both show the same error toast
+- No test covers the locked-state search scenario
 
-- Every `tokio::spawn` that continues a business flow must receive the `flow_id` as a parameter and create its own child span with that `flow_id` field.
-- Create a helper: `fn spawn_instrumented<F>(span: Span, future: F)` that wraps `tokio::spawn(future.instrument(span))`.
-- For channel-based communication (e.g., `spool_queue.enqueue()`), include `flow_id` in the message payload so the consumer can reconstruct context.
-- Do NOT use `Span::current()` across spawn boundaries -- it captures the spawn-site span, not the business flow span.
-
-**Detection:** Query Seq for events with a specific `flow_id` and find gaps where downstream operations have no `flow_id` field.
-
-**Phase to address:** Phase 2 (business flow instrumentation) -- the span hierarchy design must account for spawn boundaries from the start.
-
-**Confidence:** HIGH -- verified against [Tokio tracing docs](https://tokio.rs/tokio/topics/tracing) and `tracing` crate documentation on async instrumentation.
-
----
-
-### Pitfall 4: Seq Ingestion Choice Locks In or Locks Out Future OTel Migration
-
-**What goes wrong:** Choosing direct CLEF HTTP ingestion to Seq (simple, no dependencies) makes it hard to later add OpenTelemetry support. Choosing OTel from the start adds 4-5 new crate dependencies and significant complexity for what is currently a local-only desktop app.
-
-**Why it happens:** Seq supports two ingestion paths: (1) direct CLEF via `/ingest/clef` (simple HTTP POST of newline-delimited JSON), and (2) OTLP via `/ingest/otlp/v1/logs` (requires `opentelemetry-otlp` + `opentelemetry-appender-tracing` crates). The PROJECT.md explicitly lists "OTel trace/log layer" as a v0.4.0 goal, creating a sequencing tension.
-
-**Consequences:**
-
-- If CLEF chosen now: must build a custom tracing Layer that formats CLEF and POSTs via HTTP. Works, but custom code to maintain. Later OTel migration replaces this entirely.
-- If OTel chosen now: heavy dependency burden (`opentelemetry`, `opentelemetry-sdk`, `opentelemetry-otlp`, `opentelemetry-appender-tracing`, `tonic` or `reqwest`). Overkill for local desktop Seq. But aligns with v0.4.0 goals.
-
-**Prevention:**
-
-- Use CLEF for v0.3.0. It is the simplest path for local Seq and avoids premature OTel complexity. The custom Layer is ~100 lines of code (format CLEF JSON, batch, POST via reqwest).
-- Design the Layer as a standalone module behind a feature flag, so it can be swapped for OTel in v0.4.0 without touching the rest of the subscriber pipeline.
-- Ensure the JSON file output uses a format that Seq can also import (CLEF-compatible), so the file itself serves as a backup ingestion source.
-
-**Detection:** Architecture review finds either (a) OTel dependencies added prematurely, or (b) CLEF Layer tightly coupled to subscriber init making future replacement painful.
-
-**Phase to address:** Phase 3 (Seq integration) -- the ingestion strategy must be decided before implementation begins.
-
-**Confidence:** MEDIUM -- Seq's CLEF and OTLP endpoints verified via [official docs](https://datalust.co/docs/posting-raw-events). The OTel-Rust ecosystem maturity assessment is based on WebSearch findings and may shift.
+**Phase to address:**
+The phase that adds daemon search HTTP routes — the guard must be present from the first commit, not added in a follow-up phase.
 
 ---
 
-### Pitfall 5: JSON File Logging Produces Unbounded Disk Growth
+### Pitfall 3: HMAC Key Derivation Without Domain Separation
 
-**What goes wrong:** The current file appender uses `tracing_appender::rolling::never` (line 201 of `tracing.rs`), which creates a single non-rotating log file. Adding a second JSON file output with the same strategy doubles disk growth. On a desktop app running 24/7 with clipboard events, the JSON file grows without bound.
+**What goes wrong:**
+The existing `EncryptionRepository` uses `MasterKey` bytes directly as the XChaCha20 content encryption key (see `encryption.rs` — `XChaCha20Poly1305::new_from_slice(master_key.as_bytes())`). If the search subsystem also uses `MasterKey` bytes directly as the HMAC-SHA256 key for term tags, a side-channel on the index (posting list sizes, tag frequency analysis) becomes a partial side-channel on the content key material. Additionally, if the HMAC derivation context does not bind to `profile_id`, the same search term produces the identical `term_tag` across all profiles — allowing cross-profile correlation of which terms appear in each profile's history.
 
-**Why it happens:** `rolling::never` was fine for a single human-readable log. JSON structured logs are typically larger per event (more fields, full span context). Combined with clipboard capture events (potentially dozens per hour), disk usage accumulates.
+**Why it happens:**
+Developers see that `MasterKey` is available in the unlocked session and use it directly for HMAC to avoid adding new derivation code. The cryptographic consequence (purpose conflation) is non-obvious and does not cause any functional test failure.
 
-**Consequences:** Users with limited disk space eventually see degraded performance or disk-full errors. Desktop apps cannot assume server-class storage.
+**How to avoid:**
+Derive a dedicated search key using HKDF-SHA256 from `MasterKey` with a distinct info string that includes both the purpose and the profile ID:
+```
+search_key = HKDF-SHA256(
+    ikm  = master_key.as_bytes(),
+    salt = b"",
+    info = b"uniclipboard-search-v1\x00{profile_id}"
+)
+```
+The search key must never be stored to disk. It must be rederived on each unlock and held only in memory within the session. The `SearchIndexPort` trait must accept the derived `SearchKey` newtype as a parameter, never raw `MasterKey`.
 
-**Prevention:**
+**Warning signs:**
+- The search subsystem imports `MasterKey` directly rather than a separate `SearchKey` newtype
+- No HKDF or equivalent derivation step exists between `MasterKey` and the HMAC call
+- The `term_tag` for the same plaintext token is identical across two different profiles
 
-- Use `tracing_appender::rolling::daily` or `rolling::hourly` for the JSON file output.
-- Implement a retention policy: delete JSON files older than N days (7 days default). This is NOT built into `tracing-appender` and must be implemented manually (a startup task that scans the log directory).
-- Set a reasonable max file size alert or implement size-based rotation using a custom appender.
-- Keep the pretty console log on `rolling::never` (stdout doesn't grow on disk) but switch both file outputs to rolling.
-
-**Detection:** Monitor log directory size over a week of normal use. If it exceeds 100MB, rotation policy is needed.
-
-**Phase to address:** Phase 1 (dual output) -- file rotation must be configured when the JSON file writer is created.
-
-**Confidence:** HIGH -- verified against current `tracing.rs` code and `tracing-appender` rolling API docs.
-
----
-
-## Moderate Pitfalls
-
-### Pitfall 6: EnvFilter Applies Globally, Not Per-Layer
-
-**What goes wrong:** The current single `EnvFilter` (line 117 of `tracing.rs`) controls filtering for ALL layers. When adding a JSON layer intended for debug-level clipboard events alongside a console layer at info level, a single filter cannot serve both purposes.
-
-**Why it happens:** `EnvFilter` is applied to the registry, not to individual layers. This is a common misunderstanding.
-
-**Prevention:**
-
-- Use per-layer filtering: `tracing_subscriber` supports `.with_filter()` on individual layers (requires the `registry` feature, which is already in use).
-- Design the "log profiles" feature (dev/prod/debug_clipboard) as sets of per-layer filter configurations, not global filter switches.
-- Example: console layer gets `info` filter, JSON file layer gets `debug` filter for `uc_app::usecases::clipboard` target.
-
-**Detection:** Setting `RUST_LOG=debug` floods the console with events that should only go to the JSON file.
-
-**Phase to address:** Phase 1 (log profiles design).
-
-**Confidence:** HIGH -- verified against `tracing-subscriber` per-layer filtering docs.
+**Phase to address:**
+The phase that implements key derivation and `SearchIndexPort` — HKDF derivation must be the first thing implemented, before any HMAC call is written.
 
 ---
 
-### Pitfall 7: Dual log/tracing Systems Creating Duplicate or Missing Events
+### Pitfall 4: SQLite Exclusive Lock Timeout During Full Rebuild Atomic Swap
 
-**What goes wrong:** The codebase has TWO logging systems: the `tauri-plugin-log` setup in `logging.rs` (using the `log` crate) and the `tracing-subscriber` setup in `tracing.rs`. The `tracing-log` bridge (in Cargo.toml) can create duplicate events or circular forwarding.
+**What goes wrong:**
+The spec's rebuild strategy is: write to a temp table, then atomically swap (rename) the active tables. In SQLite WAL mode, a `RENAME TABLE` or equivalent atomic swap requires briefly acquiring an EXCLUSIVE lock on the database file. If a concurrent search query holds an open read transaction at that moment, SQLite must wait. The pool customizer sets `busy_timeout = 5000` ms (`db/pool.rs` line 34). A rebuild that finishes writing but then waits 5+ seconds for the exclusive lock to swap fails with `SQLITE_BUSY`, leaving the database in a state where the old (pre-rebuild) index is still active and the temp table is stranded.
 
-**Why it happens:** Historical migration path. `tauri-plugin-log` uses the `log` crate facade. `tracing-subscriber` uses `tracing` macros. With `tracing-log` bridge active, `log::info!()` events are forwarded to `tracing` subscriber AND processed by `tauri-plugin-log`, creating duplicates in console. Without the bridge, `log::info!()` events bypass the JSON structured output entirely.
+**Why it happens:**
+The WAL-mode documentation emphasizes that readers do not block writers for ordinary INSERT/UPDATE. It is less obvious that `RENAME TABLE` still requires exclusive access in SQLite. Developers test rebuild in isolation (no concurrent readers) and assume the lock is fine.
 
-**Consequences:** Duplicate events in console output. Or, events from legacy `log::*` calls missing from JSON structured output (breaking the "complete capture" goal).
+**How to avoid:**
+Design the rebuild swap to be exclusive-lock-aware. Choose one approach:
+- **Option A (recommended):** Instead of renaming tables, use a version flag in `search_index_meta.active_index_version` to point at the completed temp data. Queries read from the version-tagged rows. No exclusive lock needed.
+- **Option B:** Use a short serialization window — pause new search queries for the duration of the rename only (not the entire rebuild). The rebuild write phase runs concurrently; only the final rename is serialized.
 
-**Prevention:**
+**Warning signs:**
+- Integration tests pass without concurrent search requests; rebuild fails intermittently under load
+- `SQLITE_BUSY` errors appear in logs during rebuild completion but not during the write phase
+- Rebuild state in `search_index_meta` shows `started` but never transitions to `completed`
 
-- Audit all crate files for remaining `log::info!()` / `log::debug!()` usage. The `uc-tauri` Cargo.toml still lists `log = "0.4"` as a dependency.
-- Decide: either complete the migration to `tracing::*` macros before adding JSON output, or configure the `tracing-log` bridge carefully to avoid duplicates.
-- Remove or disable `tauri-plugin-log` once tracing subscriber handles all output targets. The plugin and the tracing subscriber should not both be active.
-
-**Detection:** Same event appears twice in console output, or events from certain modules are missing from JSON output.
-
-**Phase to address:** Phase 1 (subscriber refactoring) -- resolve the dual-system conflict before adding new outputs.
-
-**Confidence:** HIGH -- verified by reading both `logging.rs` and `tracing.rs` in the codebase.
-
----
-
-### Pitfall 8: Structured Fields Not Propagating Through Hexagonal Boundaries
-
-**What goes wrong:** A span with `flow_id` created at the use case layer (uc-app) includes the field, but infrastructure calls (uc-infra database queries, uc-platform clipboard reads) do not automatically inherit structured fields. Seq queries for `flow_id = "abc"` miss infrastructure-level events.
-
-**Why it happens:** Span fields are attached to the span, not to child events. Infrastructure methods create their own spans (or none at all). Unless infrastructure explicitly enters or instruments with a child span of the use case span, the parent span's fields are not included in the infrastructure event's structured output.
-
-**Prevention:**
-
-- Use `#[tracing::instrument(skip_all, fields(flow_id))]` on port trait implementations in uc-infra, and populate `flow_id` from the current span context using `Span::current().record("flow_id", ...)`.
-- Alternatively, ensure infrastructure methods are called within the use case's instrumented async block (already the case for `capture_clipboard.rs`), and configure the JSON formatter with `.with_current_span(true)` and `.with_span_list(true)` to include parent span fields.
-- Test by querying Seq: `flow_id = "test-id"` should return events from all layers.
-
-**Detection:** Seq query for a `flow_id` returns use-case events but not infrastructure events.
-
-**Phase to address:** Phase 2 (business flow instrumentation).
-
-**Confidence:** MEDIUM -- the `.with_current_span(true)` behavior is documented but the actual field inheritance depends on formatter configuration.
+**Phase to address:**
+The phase that implements `RebuildSearchIndex` — the swap mechanism must be designed atomically from the start.
 
 ---
 
-### Pitfall 9: Seq HTTP Layer Blocking the Async Runtime
+### Pitfall 5: Tokenizer Version Change Leaves Stale Index Without Query Guard
 
-**What goes wrong:** A naive Seq CLEF ingestion layer makes synchronous HTTP calls in the `on_event` callback of the tracing Layer trait. Since `on_event` is called synchronously in the logging path, this blocks the Tokio runtime, causing latency spikes in clipboard capture.
+**What goes wrong:**
+The schema includes `index_version` in `search_document` — correct. The pitfall is the query path: when normalization rules change and the version is bumped, the HMAC tags for new queries are derived from the new normalization, but existing rows in `search_posting` were derived from the old normalization. A search for "café" after a NFKC rule change produces `HMAC(k, "cafe")` but the index still contains `HMAC(k, "café")` (pre-normalization). The query returns zero results until rebuild completes, with no user-facing explanation.
 
-**Why it happens:** The `Layer` trait's `on_event` method is synchronous. You cannot `.await` inside it. Developers unfamiliar with this constraint try to use `reqwest::blocking` or `tokio::runtime::Handle::block_on`, both of which cause deadlocks or thread starvation in an async context.
+**Why it happens:**
+Developers bump `index_version` in code and trigger a background rebuild, but do not gate queries on rebuild completion. The query path runs against a mix of old-version and new-version data with no awareness of the mismatch.
 
-**Consequences:** Clipboard capture latency increases by 10-100ms per event (HTTP round trip to local Seq). Under burst clipboard activity, the app becomes unresponsive.
+**How to avoid:**
+- On session unlock, read `search_index_meta.active_index_version` and compare to the code's declared `CURRENT_INDEX_VERSION` constant.
+- If they differ, immediately initiate a rebuild and set a `search_blocked` flag in memory.
+- All search handlers must check this flag and return a `503 index_rebuild_in_progress` (or equivalent typed error) until the rebuild completes and the version is updated.
+- The rebuild's dual-write strategy (new entries written to both active and temp tables during rebuild) handles new captures during the rebuild window. The only gap is queries against old-version data — the `search_blocked` flag closes this.
 
-**Prevention:**
+**Warning signs:**
+- Zero search results after any code change that touches the tokenizer or normalization rules
+- `search_index_meta.active_index_version` does not match the binary's declared version constant after an upgrade
+- No mechanism exists to block search queries while rebuild is in progress
 
-- Use an async channel buffer pattern: the Layer's `on_event` formats the CLEF JSON and sends it to an `mpsc::Sender`. A separate background task (spawned at init) batches events and POSTs them to Seq asynchronously.
-- Set a bounded channel (e.g., 1000 events). If Seq is unreachable, drop events rather than applying backpressure to the logging path.
-- Use `tracing_appender::non_blocking` as inspiration: same pattern of buffered async writes.
-
-**Detection:** Clipboard capture latency noticeably increases when Seq layer is enabled. Flamegraph shows time spent in HTTP calls on the tracing subscriber path.
-
-**Phase to address:** Phase 3 (Seq integration).
-
-**Confidence:** HIGH -- the `Layer::on_event` synchronous constraint is well-documented in `tracing-subscriber` trait docs.
-
----
-
-### Pitfall 10: Log Profiles Conflicting with RUST_LOG Environment Override
-
-**What goes wrong:** The app introduces named log profiles (dev/prod/debug_clipboard) that configure per-layer filters. But `RUST_LOG` environment variable overrides the EnvFilter, wiping out profile-specific filter configurations.
-
-**Why it happens:** `EnvFilter::try_from_default_env()` (line 117 of current `tracing.rs`) takes precedence when `RUST_LOG` is set. Profile-based filters set programmatically are ignored.
-
-**Prevention:**
-
-- Establish clear precedence: `RUST_LOG` > profile config > defaults. Document this.
-- When `RUST_LOG` is set, apply it only to the console layer (developer override), not to the JSON/Seq layers (which should always follow profile config).
-- Use per-layer filters so `RUST_LOG` only affects the console layer via `EnvFilter`, while JSON/Seq layers use programmatic `Targets` or `LevelFilter`.
-
-**Detection:** Developer sets `RUST_LOG=trace` and JSON file floods with trace-level events from all crates.
-
-**Phase to address:** Phase 1 (log profiles design).
-
-**Confidence:** HIGH -- verified against current `tracing.rs` EnvFilter usage.
+**Phase to address:**
+The phase that implements index schema and tokenizer — the version-mismatch detection and query-block logic must be added in the same phase, not as a follow-up.
 
 ---
 
-## Minor Pitfalls
+### Pitfall 6: Profile Isolation Failure — Cross-Profile Data Leakage
 
-### Pitfall 11: CLEF Timestamp Format Mismatch
+**What goes wrong:**
+The architecture spec (review item 5) requires search key derivation and index tables to be scoped to `profile_id`. If `search_document` and `search_posting` tables have no `profile_id` column and a single global `search_key` is used, a user with two profiles (or a future multi-user local installation) finds entries from other profiles in search results. The HMAC tags match across profiles because the same key was used.
 
-**What goes wrong:** Seq expects `@t` in ISO 8601 format with timezone. The current tracing timestamp uses `ChronoUtc` with format `%Y-%m-%d %H:%M:%S%.3f` (no timezone suffix). If the JSON layer reuses this format for `@t`, Seq may misparse timestamps.
+**Why it happens:**
+The current database schema (`schema.rs`) shows no multi-profile concept — all tables are single-tenant. It is easy to implement search as single-tenant "because that is what everything else does" and defer profile isolation to a later phase that never arrives.
 
-**Prevention:** Use RFC 3339 / ISO 8601 with explicit `Z` suffix for CLEF `@t` field: `2026-03-09T10:30:45.123Z`.
+**How to avoid:**
+Add `profile_id` as a column in both `search_document` and `search_posting` from day one. All queries must include `WHERE profile_id = ?`. The HKDF derivation for the search key must include the profile ID in the info context (covered in Pitfall 3). The rebuild use case must accept a `profile_id` parameter and rebuild only that profile's index. This is explicitly called out in the architecture spec as a required isolation dimension.
 
-**Phase to address:** Phase 3 (Seq integration).
+**Warning signs:**
+- `search_document` table has no `profile_id` column
+- The `RebuildSearchIndex` use case takes no profile scope parameter
+- Searches return entries that belong to a different profile context
 
----
-
-### Pitfall 12: Sensitive Clipboard Content Leaking Into Structured Fields
-
-**What goes wrong:** Adding structured logging with fields like `title = %entry.title` or `content_preview = ...` inadvertently logs clipboard text content into JSON files and Seq, where it persists and is searchable.
-
-**Prevention:** Only log content-free metadata: `entry_id`, `mime_type`, `byte_count`, `representation_count`. Never log `title`, `content`, or `bytes` fields. Add a code review checklist item for this.
-
-**Phase to address:** Phase 2 (business flow instrumentation) -- must be enforced before any business span fields are defined.
-
----
-
-### Pitfall 13: Sentry Layer Interference With New Layers
-
-**What goes wrong:** The existing Sentry integration (`sentry_tracing::layer()` at line 137 of `tracing.rs`) captures events and sends them to Sentry. Adding flow_id and verbose business spans may cause excessive Sentry event volume and costs, or Sentry may strip custom fields that are needed for Seq correlation.
-
-**Prevention:** Apply a filter to the Sentry layer that only captures `warn` and above. Business flow spans at `info`/`debug` level should not reach Sentry. This is independent of the JSON/Seq layer filters.
-
-**Phase to address:** Phase 1 (subscriber refactoring) -- when restructuring the layer composition.
+**Phase to address:**
+The phase that defines the SQLite schema for search tables — isolation must be designed in from the first migration, not added later.
 
 ---
 
-## Phase-Specific Warnings
+### Pitfall 7: Index Rebuild Blocks the Async Runtime
 
-| Phase Topic                            | Likely Pitfall                                                                               | Mitigation                                                                     |
-| -------------------------------------- | -------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
-| Phase 1: Dual Output Subscriber        | Type hell with conditional layers (P1), Guard lifetime (P2), Dual log systems (P7)           | Use boxed Vec pattern, multi-guard storage, resolve log/tracing conflict first |
-| Phase 1: Log Profiles                  | EnvFilter global scope (P6), RUST_LOG override (P10)                                         | Per-layer filters, clear precedence documentation                              |
-| Phase 2: Business Flow Instrumentation | flow_id lost across spawn (P3), Fields not crossing hex boundaries (P8), Content leaks (P12) | spawn helper with explicit context, test Seq queries, metadata-only fields     |
-| Phase 3: Seq Integration               | Ingestion strategy lock-in (P4), Blocking async runtime (P9), Timestamp format (P11)         | CLEF with async channel buffer, RFC 3339 timestamps, feature-flagged Layer     |
-| Phase 3: File Rotation                 | Unbounded disk growth (P5)                                                                   | Rolling daily + retention cleanup task                                         |
+**What goes wrong:**
+A full index rebuild iterates all clipboard entries and performs HMAC for every token in every entry. For a large history (thousands of entries with thousands of tokens each), this is CPU-intensive and starves the tokio async runtime if run on the async executor directly. The daemon's clipboard sync, peer events, and WS broadcasts all stall during the rebuild. Additionally, rebuild progress is invisible to the user, who sees the search UI stop responding without explanation.
+
+**Why it happens:**
+Developers implement rebuild as a straightforward async loop over entries and forget that HMAC is CPU-bound. In tests with small datasets, it completes instantly. In production with large clipboard history, it occupies the runtime for several seconds.
+
+**How to avoid:**
+- Spawn the rebuild on `tokio::task::spawn_blocking` or a dedicated thread pool rather than directly on an async task.
+- Emit incremental progress events via the existing WS broadcast mechanism. The daemon already has `DaemonApiEventEmitter` for this pattern — `FileSyncOrchestratorWorker` is a working example of WS progress events.
+- The frontend search UI should show a "rebuilding index" banner when `search_index_meta.rebuild_state = in_progress`, rather than simply disabling search silently.
+
+**Warning signs:**
+- Other daemon operations (clipboard sync, peer events) stall during a rebuild
+- No WS event is emitted when rebuild starts or completes
+- The search UI has no visual indication that a rebuild is running
+
+**Phase to address:**
+The phase that implements `RebuildSearchIndex` use case and its daemon route — WS progress events must be part of the definition of done for this phase.
+
+---
+
+### Pitfall 8: Frontend Search Debounce and Out-of-Order Result Flickering
+
+**What goes wrong:**
+Without a frontend debounce, every keystroke fires a new HTTP request to the search endpoint. If responses arrive out-of-order (response for query "fo" arrives after response for "foo"), the UI displays stale results. This is particularly visible during the first few keystrokes when results change rapidly, causing the results list to flash between multiple intermediate states.
+
+**Why it happens:**
+Developers wire the search input's `onChange` directly to the fetch call with no debounce or stale-response guard. React state updates cause the results list to flash with each keystroke.
+
+**How to avoid:**
+- Debounce the search input with a 150-300ms delay before firing the HTTP request.
+- Track the current query string in a `useRef` and discard responses whose query does not match the current ref value (stale-response cancellation).
+- For React 18+, wrap the results state update in `startTransition` so the browser can interrupt the render if a newer query arrives.
+- Prefer a single search result state that transitions atomically — new results replace old atomically, never partially populated.
+
+**Warning signs:**
+- Typing quickly causes the results list to flicker between multiple intermediate states
+- Old results are briefly visible while a newer query is in-flight
+- No debounce utility is imported in the search input component
+
+**Phase to address:**
+The phase that implements the search UI component — debounce and stale-response logic must be in the component from the first implementation.
+
+---
+
+## Technical Debt Patterns
+
+| Shortcut | Immediate Benefit | Long-term Cost | When Acceptable |
+|---|---|---|---|
+| Use `MasterKey` bytes directly as HMAC key | No derivation code needed | Purpose conflation; side-channel risk; no profile isolation | Never |
+| Add search routes to `router_l2_plus` without unlock gate | Fast to wire | Search callable in locked state; crashes or returns wrong error | Never |
+| Store `search_posting` without `profile_id` column | Simpler schema | Cannot isolate profiles; migration requires full rebuild later | Never |
+| Run rebuild on async task without `spawn_blocking` | Simpler code | Starves runtime during CPU-intensive HMAC loop | Never |
+| Skip debounce on search input | Simpler frontend | Flickering; out-of-order responses; poor UX | Never |
+| Implement delete cascade as best-effort async cleanup | Avoids modifying `DeleteClipboardEntry` | Orphaned postings; stale search results | Never |
+| No query guard during rebuild window | Simpler rebuild logic | Users see zero results for valid terms during version migration | Never |
+
+---
+
+## Integration Gotchas
+
+| Integration | Common Mistake | Correct Approach |
+|---|---|---|
+| `DeleteClipboardEntry` + search index | Add search cleanup as a separate async cleanup job | Inject `SearchIndexPort` into the use case and call synchronously as part of the delete chain |
+| `router_l2_plus` + search routes | Assume L2 JWT auth is sufficient | Add per-handler encryption-session guard; return 423 when locked |
+| `MasterKey` → HMAC | Use `MasterKey` bytes directly | HKDF-SHA256 with `"uniclipboard-search-v1\x00{profile_id}"` info context |
+| SQLite rebuild swap | Use `RENAME TABLE` under WAL without reader coordination | Use version flag in `search_index_meta` or pause readers during exclusive rename window |
+| Tokenizer version bump | Query against stale index during rebuild | Set `search_blocked` flag; return 503 until rebuild completes |
+| Rebuild CPU work | Run HMAC loop on tokio executor | `spawn_blocking` for rebuild; use `DaemonApiEventEmitter` for WS progress |
+
+---
+
+## Performance Traps
+
+| Trap | Symptoms | Prevention | When It Breaks |
+|---|---|---|---|
+| Synchronous HMAC loop for all tokens in rebuild | Tokio runtime stalls; clipboard sync delays during rebuild | `spawn_blocking` for rebuild; dedicated thread pool | ~500+ entries with large text content |
+| No composite index on `(profile_id, term_tag)` in `search_posting` | AND/OR intersection queries do full table scans | Composite index at migration time | ~10K+ posting rows |
+| Frontend fires HTTP request on every keystroke | High request rate; out-of-order responses | 150-300ms debounce; stale-response discard | Any user who types faster than 1 char/300ms |
+| Rebuild double-write without `ON CONFLICT` clause | Temp table accumulates duplicates for rapidly-added entries | `INSERT OR REPLACE` or `ON CONFLICT DO UPDATE` in temp writes | During any rebuild that overlaps with active capture |
+| No `busy_timeout` increase for rebuild connection | Exclusive lock timeout during table swap | Increase timeout only for rebuild connection, or use version-flag approach | Under concurrent search load during rebuild |
+
+---
+
+## Security Mistakes
+
+| Mistake | Risk | Prevention |
+|---|---|---|
+| HMAC key without domain separation from content key | Side-channel on index may partially reveal content key material | HKDF derivation with distinct purpose string |
+| HMAC derivation without profile binding | Cross-profile term correlation attack | Include `profile_id` in HKDF info context |
+| Storing derived `search_key` to disk | Key exposure on disk theft | Hold search key in memory only; rederive on each unlock |
+| Search endpoint accessible in locked state | Search key unavailable; potential panic or zero-key HMAC | Per-handler encryption-session guard; return 423 when locked |
+| Logging normalized tokens before HMAC | Plaintext search terms appear in structured logs | Ensure tokenizer and HMAC code paths do not emit normalized tokens at INFO/DEBUG level |
+| Logging query text in HTTP access logs | Search history exposed in logs | Log only query hash or query length, never plaintext query content |
+
+---
+
+## UX Pitfalls
+
+| Pitfall | User Impact | Better Approach |
+|---|---|---|
+| No indication that index rebuild is running | User sees empty results and thinks search is broken | Show "rebuilding index" banner; disable search with explanation |
+| No indication that session must be unlocked to search | User sees generic error toast with no actionable message | Return a distinct `session_locked` error code; frontend shows unlock prompt |
+| Search results flash between old and new during typing | Disorienting; makes app feel buggy | Debounce input; discard out-of-order responses; use `startTransition` |
+| Rebuild triggered silently on version mismatch after app update | User confused why searches return nothing after update | Show progress UI immediately when version mismatch detected at unlock |
+| Extension filter applied silently to non-file entries | User searches for `md` files and gets no text entries back | Define and document filter semantics; return a warning if extension filter applied to non-file context |
+
+---
 
 ## "Looks Done But Isn't" Checklist
 
-- [ ] **Dual output working:** Both console and JSON file show events; event counts match for same time window.
-- [ ] **flow_id end-to-end:** Query Seq for a single clipboard capture flow_id and see events from capture, persist, and publish stages.
-- [ ] **Spawn boundary coverage:** Spawned background tasks (spool worker, sync outbound) include flow_id in their spans.
-- [ ] **No content leaks:** JSON log file and Seq contain no clipboard text content, only metadata.
-- [ ] **Disk bounded:** JSON log directory has rotation policy; 7-day simulation shows stable disk usage.
-- [ ] **Seq offline resilience:** Disabling Seq does not cause errors, log loss, or performance degradation in other outputs.
-- [ ] **Legacy log migration:** No remaining `log::info!()` calls in uc-app/uc-core/uc-infra crates (or bridge correctly configured).
-
-## Recovery Strategies
-
-| Pitfall                                    | Recovery Cost | Recovery Steps                                                                    |
-| ------------------------------------------ | ------------- | --------------------------------------------------------------------------------- |
-| Type hell in subscriber composition (P1)   | LOW           | Refactor to boxed Vec pattern; mostly mechanical change                           |
-| Lost log events from guard drop (P2)       | MEDIUM        | Audit guard storage, add multi-guard support, verify with integration test        |
-| flow_id missing across spawns (P3)         | MEDIUM        | Audit all tokio::spawn sites in clipboard pipeline, add instrumented spawn helper |
-| Wrong Seq ingestion strategy (P4)          | HIGH          | Must rewrite Layer implementation if switching between CLEF and OTel              |
-| Unbounded disk growth discovered late (P5) | LOW           | Switch to rolling appender + add retention task; no data model changes            |
-| Blocking Seq HTTP in Layer (P9)            | MEDIUM        | Refactor to async channel + background task pattern                               |
-
-## Sources
-
-- [tracing-subscriber Layer composition docs](https://docs.rs/tracing-subscriber/latest/tracing_subscriber/layer/)
-- [Rust Forum: Type Hell in Tracing](https://users.rust-lang.org/t/type-hell-in-tracing-multiple-output-layers/126764)
-- [tracing-appender WorkerGuard docs](https://docs.rs/tracing-appender/latest/tracing_appender/non_blocking/struct.WorkerGuard.html)
-- [tokio-rs/tracing#1120 - WorkerGuard flush guarantee](https://github.com/tokio-rs/tracing/issues/1120)
-- [Tokio: Diagnostics with Tracing](https://tokio.rs/blog/2019-08-tracing)
-- [Tokio: Getting Started with Tracing](https://tokio.rs/tokio/topics/tracing)
-- [Seq: Ingestion with HTTP (CLEF)](https://datalust.co/docs/posting-raw-events)
-- [Seq: What's New in 2025.2](https://datalust.co/docs/whats-new)
-- [OpenTelemetry Context Propagation](https://opentelemetry.io/docs/concepts/context-propagation/)
-- Current codebase: `src-tauri/crates/uc-tauri/src/bootstrap/tracing.rs`, `logging.rs`, `main.rs`
+- [ ] **Delete cascade:** Search index cleanup is synchronous in the delete path — verify by deleting an entry and confirming zero rows in `search_posting` for that `entry_id`
+- [ ] **Unlock gate:** Search endpoint returns 423 (or domain-equivalent) when session is locked with a valid JWT — verify with an integration test
+- [ ] **Key derivation:** A `SearchKey` newtype exists and is derived via HKDF; `MasterKey` is never passed directly to any HMAC call — verify by code search for `MasterKey` in the search module
+- [ ] **Profile isolation:** `search_document` and `search_posting` both have a `profile_id` column; all queries are scoped — verify via schema and query code review
+- [ ] **Rebuild blocks queries:** `search_index_meta.rebuild_state = in_progress` causes search handlers to return 503 — verify with an integration test that starts a rebuild and immediately fires a search
+- [ ] **Version mismatch detection:** On unlock, code compares `active_index_version` to `CURRENT_INDEX_VERSION` and triggers rebuild if mismatched — verify by manually writing an old version into `search_index_meta` and unlocking
+- [ ] **Rebuild progress events:** WS broadcasts a rebuild-started and rebuild-completed event — verify with the existing WS test harness
+- [ ] **Frontend debounce:** Search input fires no request within 150ms of a keystroke — verify by inspecting component code and network tab
 
 ---
 
-_Pitfalls research for: UniClipboard v0.3.0 Log Observability_
-_Researched: 2026-03-09_
+## Recovery Strategies
+
+| Pitfall | Recovery Cost | Recovery Steps |
+|---|---|---|
+| Orphaned postings from missing delete cascade | MEDIUM | Run a full rebuild to clear orphans; add the delete-cascade integration; future deletes are clean |
+| Wrong search key (reused `MasterKey` without HKDF) | HIGH | All existing search tags are invalidated; rederive key with HKDF; full index rebuild required; no content data loss |
+| Cross-profile posting leak (missing `profile_id` column) | HIGH | Schema migration to add `profile_id`; rebuild each profile's index separately; audit any cross-profile query paths |
+| Stale index after tokenizer version bump (no query guard) | LOW | Add query guard; trigger rebuild; serve 503 until rebuild completes |
+| Stranded rebuild from exclusive lock timeout | LOW | Clear `rebuild_state` in `search_index_meta`; retry rebuild with version-flag approach instead of table rename |
+
+---
+
+## Pitfall-to-Phase Mapping
+
+| Pitfall | Prevention Phase | Verification |
+|---|---|---|
+| Delete cascade missing search cleanup | Phase: `IndexClipboardEntry` + `RemoveIndexedClipboardEntry` integration | Delete an entry; confirm zero `search_posting` rows for that `entry_id` |
+| L3/L4 unlock gate missing | Phase: Daemon search HTTP routes | Integration test: valid JWT + locked session → 423, not 500 |
+| HMAC key without domain separation | Phase: Key derivation + `SearchIndexPort` | Code review: no direct `MasterKey`→HMAC call; HKDF with purpose string present |
+| SQLite exclusive lock timeout during rebuild swap | Phase: `RebuildSearchIndex` | Concurrent search queries + rebuild under load; rebuild completes without `SQLITE_BUSY` |
+| Tokenizer version mismatch — no query guard | Phase: Index schema + tokenizer | Manually insert old version in meta; confirm search returns 503, not empty results |
+| Profile isolation failure | Phase: SQLite schema migration | Confirm `profile_id` column in both tables; cross-profile query returns zero results |
+| Rebuild blocks async runtime | Phase: `RebuildSearchIndex` | Rebuild with 1000-entry dataset; confirm clipboard sync events continue uninterrupted during rebuild |
+| Frontend result flickering | Phase: Search UI component | Keystroke test at 100ms intervals; confirm results don't flash intermediate states |
+
+---
+
+## Sources
+
+- Codebase: `src-tauri/crates/uc-app/src/usecases/delete_clipboard_entry.rs` — hardcoded delete chain with no search extension point
+- Codebase: `src-tauri/crates/uc-daemon/src/api/routes.rs` lines 71-73 — explicit note that L3/L4 not implemented, deferred to future phases
+- Codebase: `src-tauri/crates/uc-infra/src/db/pool.rs` — WAL mode setup, `busy_timeout = 5000`, pool customizer pattern
+- Codebase: `src-tauri/crates/uc-infra/src/security/encryption.rs` — `MasterKey` direct-use pattern; no HKDF currently in the codebase
+- Codebase: `src-tauri/crates/uc-infra/src/db/schema.rs` — no `profile_id` in any current table; single-tenant schema
+- Architecture spec: `docs/architecture/local-encrypted-search.md` — rebuild dual-write (review item 10), hard-delete semantics (item 4), profile isolation requirement (item 5), query execution order, `index_version` requirement, unlock-gate constraint, no-update immutable entries (item 3)
+
+---
+
+_Pitfalls research for: local HMAC-keyed encrypted search on existing Tauri/Rust/SQLite clipboard app_
+_Researched: 2026-04-10_

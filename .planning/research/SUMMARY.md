@@ -1,176 +1,199 @@
 # Project Research Summary
 
-**Project:** UniClipboard Desktop v0.3.0 — Log Observability
-**Domain:** Structured logging and observability for Tauri 2 / Rust desktop application
-**Researched:** 2026-03-09
+**Project:** UniClipboard Desktop — v0.5.0 Local Encrypted Search
+**Domain:** HMAC-keyed inverted index search over encrypted clipboard history
+**Researched:** 2026-04-10
 **Confidence:** HIGH
 
 ## Executive Summary
 
-UniClipboard v0.3.0 adds structured log observability to an existing Tauri 2 clipboard sync app that already has a solid `tracing` foundation. The core challenge is not "add logging from scratch" but rather "upgrade existing tracing infrastructure to produce structured, correlated, machine-readable output that can be visualized in Seq." The existing `tracing` + `tracing-subscriber` stack handles 90% of the work; this milestone is primarily configuration changes, span field additions, and one custom Layer implementation for Seq ingestion.
+UniClipboard v0.5.0 adds local full-text search over clipboard history without ever writing plaintext search terms to disk. The approach is an HMAC-keyed inverted index: each token is hashed with a key derived from the session master key before being stored, so the SQLite database on disk contains no recoverable plaintext. This is a unique security posture compared to Alfred, Raycast, and Maccy, none of which encrypt their search indexes. The architecture is fully designed and documented; implementation is a matter of following the established hexagonal crate structure with high confidence.
 
-The recommended approach is incremental: first refactor the subscriber pipeline to support dual output (pretty console + JSON file) with per-layer filtering and log profiles, then instrument the clipboard capture pipeline with `flow_id` correlation and `stage` fields using tracing's built-in span context inheritance, and finally build a thin custom CLEF HTTP layer to push structured events to a local Seq instance. Only one new crate dependency is needed (`reqwest` for HTTP POST to Seq); everything else leverages existing dependencies with feature flag additions. This minimal-dependency approach avoids the premature complexity of OpenTelemetry (explicitly deferred to v0.4.0) while producing immediately useful observability.
+The recommended implementation strategy is strictly layer-ordered: domain models and port traits in `uc-core` first, use cases in `uc-app` second, SQLite adapters and tokenizer in `uc-infra` third, wiring in `uc-bootstrap`, HTTP routes in `uc-daemon`, and React UI last. This order is enforced by the compiler — the dep graph does not allow shortcuts. Two new crates (`unicode-normalization`, `unicode-segmentation`) are the only new dependencies; all crypto work reuses existing crates already in the lockfile. The front-end surfaces the feature in two places: QuickPanel (query-only, replaces client-side substring filter) and Dashboard (query + content-type and time-range filters, revealing an already-wired-but-hidden Header component).
 
-The primary risks are subscriber type complexity when composing 4+ conditional layers (solved with boxed Vec or Option pattern), `flow_id` context loss across `tokio::spawn` boundaries (solved with explicit span propagation helpers), and unbounded JSON log file growth on desktop (solved with rolling file appender). All risks have well-documented mitigation patterns in the tracing ecosystem. The dual `log`/`tracing` system coexistence is an existing technical debt that should be audited but not fully resolved in this milestone.
+The highest-priority risks are security or data-integrity issues that are invisible to automated tests unless explicitly verified: missing HKDF domain separation for the search key, missing profile isolation columns in search tables, missing delete cascade, and search routes reachable in locked state. Each has a "looks done but isn't" failure mode that only manifests in production. The pitfall research provides a checklist of eight verification steps that must be gated before each relevant phase is marked complete.
 
 ## Key Findings
 
 ### Recommended Stack
 
-The stack strategy is conservative by design: one new dependency, one feature flag change, zero architectural disruptions. See [STACK.md](STACK.md) for full details.
+The search feature requires only two new crate dependencies added to `uc-infra/Cargo.toml`: `unicode-normalization = "0.1"` (NFKC normalization, unicode-rs organization, stable since 0.1.x) and `unicode-segmentation = "1"` (UAX#29 word-boundary splitting, same organization). Everything else — keyed hashing, key derivation, SQLite via Diesel 2.3.5, HTTP via axum 0.7, async runtime via tokio — is already in the lockfile. HTML tag stripping and CJK bigram generation are implemented inline with no additional dependencies (~30 lines each).
+
+**Note on search key derivation — cross-document discrepancy:** STACK.md recommends `blake3::derive_key()` (no new dep). ARCHITECTURE.md and PITFALLS.md both specify HKDF-SHA256. The architecture spec is the primary source; HKDF-SHA256 with a profile-scoped info context is the authoritative approach. The STACK.md blake3 recommendation should be treated as an alternative if HKDF is unavailable, but the architecture spec wins. This must be resolved in Phase 3 before any HMAC call is written.
 
 **Core technologies:**
 
-- **tracing-subscriber `json` feature** (MODIFY existing dep) — enables `.json()` formatter for NDJSON file output with `flatten_event`, `with_current_span`, `with_span_list`
-- **reqwest 0.13** (NEW dep, `json` + `rustls-tls` features) — HTTP client for POSTing CLEF batches to Seq's `/ingest/clef` endpoint; Tokio-native, no official Seq Rust client exists
-- **uuid** (REUSE from uc-core) — `Uuid::new_v4()` for `flow_id` correlation IDs; already available, no change needed
-- **No new deps for profiles or dual output** — `LogProfile` enum, per-layer `EnvFilter`, and `Option<Layer>` composition all use existing tracing-subscriber capabilities
+- `blake3 1.8.2` (existing): keyed hash for term tags; `derive_key` proposed as search key derivation alternative — already in uc-core and uc-infra; no new dep
+- HKDF-SHA256 (architecture spec primary): search key derivation with `info="uc-search-index-v1\x00{profile_id}"` — may require `hkdf` crate; confirm against architecture spec before Phase 3
+- `unicode-normalization 0.1` (NEW): NFKC normalization before tokenization — required for version-stable index behavior
+- `unicode-segmentation 1` (NEW): UAX#29 word-boundary splitting for Latin text, paths, URLs, code tokens
+- Diesel 2.3.5 + `diesel::sql_query()` (existing): all index reads/writes; raw SQL for posting-list AND/OR via GROUP BY + HAVING
+- axum 0.7 (existing): search HTTP routes in `uc-daemon`, following existing clipboard router pattern
 
 ### Expected Features
 
-See [FEATURES.md](FEATURES.md) for full feature landscape and dependency graph.
+The feature targets two UI surfaces with different scope. QuickPanel replaces the current client-side substring filter (`item.preview.toLowerCase().includes(q)`) with server-side HMAC exact-match — a behavior change users will notice. Dashboard reveals the currently-hidden `Header` component and adds richer filters. Both surfaces share the same daemon API.
 
-**Must have (table stakes):**
+**Must have (table stakes) — V1 launch:**
 
-- `flow_id` correlation on clipboard capture pipeline (without this, structured logging is noise)
-- `stage` field on business spans (normalize, persist, publish)
-- Dual output: pretty console (dev) + JSON file (all environments)
-- Structured JSON with span context (parent fields inherited in output)
-- Log profiles: dev / prod / debug_clipboard
-- Seq local CLEF ingestion
+- Search input auto-focused on open in both surfaces
+- Debounced query (200–300ms) — HMAC derivation cost makes per-keystroke firing expensive
+- Result count shown alongside query ("12 results")
+- Meaningful empty state with hint to try fewer words or check spelling
+- Content-type filter pills (text / link / image / file) — Dashboard only; `Filter` enum already exists
+- Time range presets (today / last 7 days / last 30 days) — Dashboard only
+- Locked state gate: show unlock prompt, no partial results
+- Results rendered via existing `ClipboardItemRow` — no new row component
 
-**Should have (differentiators):**
+**Should have (competitive) — V1.x after feedback:**
 
-- Cross-layer context propagation (flow_id visible from platform through infra)
-- Representation-level tracing (per-mime-type spans with size metadata)
-- Seq trace/waterfall visualization via @tr/@ps CLEF properties
-- Configurable Seq endpoint (env var / settings)
-- Sync flow tracing (inbound + outbound, same flow_id pattern)
+- File extension filter (`.pdf`, `.md`, `.png`) — developer workflow use case
+- Boolean AND/OR syntax hint in placeholder or tooltip — power user differentiator
+- Encrypted-at-rest search indicator in UI — trust-building, unique to UniClipboard
 
-**Defer (v2+ / later milestones):**
+**Defer (V2+):**
 
-- Full OpenTelemetry integration (v0.4.0 per PROJECT.md)
-- Log profile hot-switch at runtime (restart-based switching is sufficient)
-- Frontend React log integration (no value for backend pipeline observability)
-- Log rotation / retention policies (defer within milestone, add in polish phase)
-- Custom log viewer UI (Seq web UI is superior)
-- Distributed tracing across devices (use device_id + timestamp in Seq queries)
-- `log` crate bridge removal (not required, keep dual-track)
+- Term highlighting in result rows — HMAC returns entry IDs only, not match positions; requires position-aware index extension and security review
+- Fuzzy/typo-tolerant search — incompatible with HMAC model without storing plaintext
+- Semantic/embedding search — requires different security model entirely
+- Custom absolute date range picker — API already supports `from_ms`/`to_ms`; presets cover >90% of intent
 
 ### Architecture Approach
 
-The observability system integrates at a single point: `init_tracing_subscriber()` in `uc-tauri/src/bootstrap/tracing.rs`. The existing `Registry + EnvFilter + fmt layer` pipeline gains two new layers (JSON file, Seq CLEF) controlled by a `LogProfile` enum. Business span fields (`flow_id`, `stage`) are added to existing spans in `uc-app` use cases and the AppRuntime callback; tracing's span inheritance propagates them automatically without polluting port traits. See [ARCHITECTURE.md](ARCHITECTURE.md) for full component details.
+The search subsystem integrates into all five Rust layers following the existing hexagonal pattern, with a strict compiler-enforced build order. Two new port traits live in `uc-core` (`SearchIndexPort`, `SearchKeyDerivationPort`). Four new use cases and one modified use case live in `uc-app`. Two new adapters (SQLite index, key derivation) and a tokenizer pipeline live in `uc-infra`. One new Diesel migration adds three tables (`search_document`, `search_posting`, `search_index_meta`) with no foreign keys to existing clipboard tables — the index is independently rebuildable. One new router file and one modified worker live in `uc-daemon`. The search key is derived on-demand per request, never cached or persisted.
 
 **Major components:**
 
-1. **LogProfile enum** (NEW, `uc-tauri`) — preset filter+output configurations for dev/prod/debug_clipboard
-2. **JSON file layer** (NEW, `uc-tauri`) — replaces plain-text file output with structured NDJSON using `fmt::layer().json()`
-3. **SeqLayer** (NEW, `uc-tauri`) — custom `tracing::Layer` that serializes CLEF JSON, buffers via mpsc channel, background task batches and POSTs to Seq
-4. **Business span fields** (MODIFY, `uc-app` + `uc-tauri`) — `flow_id` on root capture span, `stage` on sub-operation spans
+1. `SearchIndexPort` / `SearchKeyDerivationPort` (uc-core) — port traits; domain models `SearchQuery`, `SearchDocument`, `SearchPosting`, `SearchResult`; `SearchKey` newtype that never exposes raw `MasterKey` bytes
+2. `SearchClipboardEntries`, `IndexClipboardEntry`, `RemoveIndexedEntry`, `RebuildSearchIndex` (uc-app) — use cases; `DeleteClipboardEntry` modified via optional builder to accept `SearchIndexPort`; `AppDeps` gains `SearchPorts` group
+3. `SqliteSearchIndex`, search key derivation adapter, `text_extractor`, `tokenizer` (uc-infra) — adapters and tokenization pipeline (NFKC → lowercase → word-boundary split → CJK bigram → HMAC tags); one Diesel migration with profile-scoped tables
+4. `search.rs` router (uc-daemon) — three HTTP routes (`/search/query`, `/search/rebuild`, `/search/status`) each with per-handler session unlock guard; `DaemonClipboardChangeHandler` modified to call `IndexClipboardEntry` after capture
+5. Search UI (React frontend) — QuickPanel gets query input replacing client-side filter; Dashboard reveals hidden Header with full filter controls; debounce and stale-response cancellation from first implementation
 
 ### Critical Pitfalls
 
-See [PITFALLS.md](PITFALLS.md) for 13 identified pitfalls with prevention strategies. Top 5:
+1. **Delete cascade missing search cleanup** — Inject `SearchIndexPort` into `DeleteClipboardEntry` and call `remove_entry(entry_id)` synchronously as part of the delete chain. Best-effort async cleanup is explicitly ruled out by the architecture spec. Verify: delete an entry, confirm zero `search_posting` rows for that `entry_id`.
 
-1. **Type hell with conditional layers (P1)** — Use `Option<Layer>` wrapping (existing pattern) or boxed Vec for 4+ layers. Must solve in Phase 1 before adding any new layers.
-2. **WorkerGuard lifetime for dual file output (P2)** — Replace `OnceLock<WorkerGuard>` with `OnceLock<Vec<WorkerGuard>>`. Guard drop = silent log loss.
-3. **flow_id lost across tokio::spawn (P3)** — Every spawned task continuing a business flow must explicitly receive and re-attach `flow_id` via a span. Create `spawn_instrumented` helper.
-4. **Seq ingestion strategy lock-in vs OTel (P4)** — Use CLEF for v0.3.0, feature-flag the SeqLayer so it can be swapped for OTel in v0.4.0. ~100 lines of custom code, acceptable throwaway.
-5. **EnvFilter is global, not per-layer (P6)** — Use per-layer `.with_filter()` for profiles. `RUST_LOG` should only override console layer, not JSON/Seq layers.
+2. **HMAC key without domain separation** — Must use HKDF-SHA256 (or `blake3::derive_key` as alternative — see discrepancy note) with a purpose+profile-scoped info context, never raw `MasterKey` bytes. The `SearchKey` newtype must be the only input to any HMAC call. Verify by code search: no direct `MasterKey` reference in the search module.
+
+3. **Profile isolation failure** — Both `search_document` and `search_posting` must have a `profile_id` column from the first migration. All queries must include `WHERE profile_id = ?`. Adding this column after the fact requires a full rebuild and non-trivial migration.
+
+4. **Search routes reachable in locked state** — `router_l2_plus` has no L3 session-unlock layer. Each search/rebuild handler must check `encryption_session.is_ready()` and return 423 Locked. Verify with integration test: valid JWT + locked session returns 423, not 500.
+
+5. **Rebuild blocks async runtime** — HMAC over thousands of entries is CPU-bound. Spawn rebuild on `tokio::task::spawn_blocking`. Emit progress via existing `DaemonApiEventEmitter` WS mechanism. Frontend must show "rebuilding index" banner.
 
 ## Implications for Roadmap
 
-Based on research, the milestone naturally decomposes into 4 phases with clear dependency ordering.
+The compiler-enforced dep graph mandates a layer-by-layer build order. The following phase structure follows that constraint while grouping work that can be independently reviewed and tested.
 
-### Phase 1: Dual Output Foundation
+### Phase 1: Core Domain and Port Contracts
 
-**Rationale:** Everything downstream depends on the subscriber pipeline supporting multiple independently-filtered layers. Must solve type composition and guard lifetime before adding business logic.
-**Delivers:** LogProfile enum, refactored subscriber with pretty console + JSON file output, per-layer filtering, multi-guard storage.
-**Addresses:** Dual output, log profiles, structured JSON output (table stakes)
-**Avoids:** Type hell (P1), guard lifetime (P2), dual log/tracing conflict (P7), EnvFilter global scope (P6), RUST_LOG override (P10), Sentry interference (P13)
+**Rationale:** `uc-core` has zero deps on other crates. Nothing in uc-app, uc-infra, or uc-daemon can compile with search until these traits and models exist. Define the contract before any implementation.
+**Delivers:** `SearchIndexPort`, `SearchKeyDerivationPort` traits; `SearchQuery`, `SearchDocument`, `SearchPosting`, `SearchResult`, `SearchKey` (newtype) domain models; `SearchPorts` stub in `AppDeps`
+**Addresses:** Foundation for all subsequent features; `SearchKey` newtype established here prevents key misuse in later phases
+**Avoids:** Domain model drift — locking the interface before infra choices constrain it
 
-### Phase 2: Business Flow Instrumentation
+### Phase 2: Use Cases and Delete Integration
 
-**Rationale:** Requires Phase 1 JSON output to verify structured fields appear correctly. Pure Rust span additions, no external dependencies.
-**Delivers:** flow_id on capture pipeline, stage fields on sub-operations, child spans for normalize/persist/save steps, spawn-boundary propagation helper.
-**Addresses:** flow_id correlation, stage fields, business span hierarchy, cross-layer context propagation (table stakes + differentiators)
-**Avoids:** flow_id lost across spawns (P3), fields not crossing hex boundaries (P8), sensitive content leaks (P12)
+**Rationale:** `uc-app` depends only on `uc-core`. Use cases can be written and unit-tested with mock port implementations before any SQLite code exists.
+**Delivers:** `SearchClipboardEntries`, `IndexClipboardEntry`, `RemoveIndexedEntry`, `RebuildSearchIndex` use cases; `DeleteClipboardEntry` extended with optional `SearchIndexPort` via builder
+**Addresses:** Delete cascade pitfall — synchronous search cleanup integrated here, not deferred
+**Avoids:** Pitfall 1 (orphaned postings); `SearchKey` newtype boundary enforced at use-case layer
 
-### Phase 3: Seq CLEF Integration
+### Phase 3: SQLite Schema Migration and Tokenizer Pipeline
 
-**Rationale:** Depends on Phase 1 (subscriber pipeline) and Phase 2 (structured fields to ingest). Highest complexity, requires running Seq in Docker for testing.
-**Delivers:** Custom SeqLayer with CLEF serialization, async channel + background flusher, reqwest HTTP POST, configurable endpoint.
-**Uses:** reqwest 0.13 (only new dependency)
-**Implements:** SeqLayer + SeqFlusher architecture from ARCHITECTURE.md
-**Avoids:** Blocking async runtime (P9), OTel lock-in (P4), timestamp format mismatch (P11)
+**Rationale:** `uc-infra` can now implement ports. The migration and tokenizer are the most technically complex backend work and must be correct before the adapters that depend on them. The key derivation discrepancy (blake3 vs HKDF-SHA256) must be resolved here before any HMAC call is written.
+**Delivers:** Diesel migration (`search_document`, `search_posting`, `search_index_meta` with `profile_id` columns); tokenizer pipeline (NFKC + lowercase + word-boundary + CJK bigram); search key derivation adapter (HKDF-SHA256 per architecture spec — confirm `hkdf` dep need before starting)
+**Uses:** `unicode-normalization`, `unicode-segmentation` (new deps); keyed hash via existing crate (blake3 or HKDF as resolved)
+**Avoids:** Pitfall 6 (profile isolation — `profile_id` column required from first migration); Pitfall 3 (key derivation implemented before any HMAC call)
 
-### Phase 4: Polish and Hardening
+### Phase 4: SQLite Index Adapter and Rebuild Strategy
 
-**Rationale:** System is functional after Phase 3. This phase handles operational robustness and edge cases.
-**Delivers:** Rolling file appender (daily rotation), channel overflow handling, graceful SeqFlusher shutdown via TaskRegistry, env var profile override, startup self-check.
-**Addresses:** Unbounded disk growth (P5), Seq offline resilience
+**Rationale:** The `SqliteSearchIndex` adapter is the most risk-laden infra piece: posting-list AND/OR queries via `diesel::sql_query()`, rebuild dual-write strategy, atomic swap design. Isolated in its own phase so the swap mechanism is reviewed before it is wired to live endpoints.
+**Delivers:** `SqliteSearchIndex` implementing `SearchIndexPort`; full rebuild with atomic swap (version-flag strategy in `search_index_meta` recommended over `RENAME TABLE` to avoid SQLite exclusive lock timeout); composite index on `(profile_id, term_tag)`; `search_blocked` flag and version-mismatch detection
+**Avoids:** Pitfall 4 (SQLite exclusive lock timeout); Pitfall 5 (tokenizer version mismatch — `search_blocked` flag and query guard implemented here)
+
+### Phase 5: Bootstrap Wiring and Daemon HTTP Routes
+
+**Rationale:** `uc-bootstrap` wires `SearchPorts` into `AppDeps`. `uc-daemon` adds the router and modifies `DaemonClipboardChangeHandler`. Both proceed once infra adapters exist. Full end-to-end backend is delivered and verifiable here.
+**Delivers:** Full backend: capture → index → search → delete cascade; three HTTP endpoints; `DaemonClipboardChangeHandler` calls `IndexClipboardEntry` after capture (gated on session ready); WS rebuild progress events
+**Avoids:** Pitfall 2 (per-handler session unlock guard returning 423, from first commit); Pitfall 7 (rebuild on `spawn_blocking` with WS progress)
+
+### Phase 6: Frontend Search UI
+
+**Rationale:** Backend is fully functional. Frontend work is UI wiring against a known API contract.
+**Delivers:** QuickPanel search replacing client-side substring filter; Dashboard Header revealed with query input, content-type pills, time-range presets; debounced query (200–300ms) with stale-response cancellation; locked state shows unlock prompt; result count display; `ClipboardItemRow` reused unchanged
+**Addresses:** All V1 must-have features from FEATURES.md
+**Avoids:** Pitfall 8 (debounce and stale-response logic in component from first implementation)
 
 ### Phase Ordering Rationale
 
-- **Phase 1 before Phase 2:** JSON output is needed to verify that flow_id and stage fields actually appear in structured output. Without it, you are instrumenting blind.
-- **Phase 2 before Phase 3:** Seq ingestion is only valuable when there are meaningful structured fields to search and correlate. Ingesting unstructured events into Seq adds no value over grep.
-- **Phase 3 before Phase 4:** Get the full pipeline working end-to-end, then harden. Rotation and overflow handling are operational concerns, not correctness concerns.
-- **All phases within one milestone:** Each phase builds on the previous. No phase delivers standalone user value without the others (except Phase 1 which improves dev experience immediately).
+- Phases 1–2 are purely trait/use-case code and compile without infra or daemon — fast iteration, mockable
+- Phase 3 (migration + tokenizer) must precede Phase 4 (adapter) because the adapter depends on the schema and tokenizer module
+- Phases 3–4 together constitute all uc-infra search work — splitting allows the riskier swap strategy to be reviewed in isolation
+- Phase 5 (daemon wiring) is last Rust work; the compiler validates full integration at this point
+- Phase 6 (frontend) has a known API contract from Phase 5 and proceeds without guessing at backend behavior
 
 ### Research Flags
 
 Phases likely needing deeper research during planning:
 
-- **Phase 3 (Seq CLEF Integration):** Custom tracing Layer implementation has MEDIUM confidence. The pattern is documented in blog posts but not in official examples. ~150-200 lines of custom code with CLEF field mapping, channel buffering, and batch HTTP POST. Recommend `/gsd:research-phase` to validate CLEF format details and `on_event` field extraction API.
+- **Phase 3 (Key derivation):** The blake3 vs HKDF-SHA256 discrepancy between STACK.md and ARCHITECTURE.md must be resolved before implementation. If HKDF-SHA256 is chosen, confirm whether the `hkdf` crate is needed or whether blake3 `derive_key` satisfies the spec. Read the architecture doc section on key derivation directly.
+- **Phase 4 (Rebuild swap strategy):** The version-flag vs. `RENAME TABLE` trade-off should be reviewed against the actual `busy_timeout` configuration and pool concurrency before committing to an approach.
+- **Phase 5 (WS progress events):** The existing `DaemonApiEventEmitter` pattern (e.g., file sync worker) should be read before adding search rebuild progress events to ensure consistent event naming and frontend handler compatibility.
 
-Phases with standard patterns (skip research-phase):
+Phases with standard patterns (no additional research needed):
 
-- **Phase 1 (Dual Output):** Well-documented tracing-subscriber patterns. Optional layer composition and per-layer filtering are in official docs. The codebase already uses the Option pattern.
-- **Phase 2 (Business Flow):** Pure span instrumentation following existing patterns in `capture_clipboard.rs`. The spawn-boundary helper is the only novel element and follows Tokio's documented approach.
-- **Phase 4 (Polish):** Rolling appender is a one-line change. Channel overflow is standard Tokio pattern.
+- **Phase 1 (Core domain):** Follows established `uc-core/src/ports/` patterns exactly.
+- **Phase 2 (Use cases):** Follows existing `delete_clipboard_entry.rs` optional builder pattern.
+- **Phase 6 (Frontend):** React debounce and stale-response cancellation are standard patterns; `ClipboardItemRow` reuse is explicitly specified.
 
 ## Confidence Assessment
 
-| Area         | Confidence                         | Notes                                                                                                                             |
-| ------------ | ---------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| Stack        | HIGH                               | Only 1 new dep (reqwest), rest is feature flags on existing deps. All versions verified on crates.io.                             |
-| Features     | HIGH                               | Feature landscape grounded in existing codebase analysis + official tracing/Seq docs. Clear dependency graph.                     |
-| Architecture | HIGH (pipeline), MEDIUM (SeqLayer) | Subscriber composition is well-documented. Custom CLEF Layer is based on community patterns, not official examples.               |
-| Pitfalls     | HIGH                               | 10 of 13 pitfalls verified against official docs or known issues. Codebase-specific pitfalls (P2, P7) verified by reading source. |
+| Area         | Confidence | Notes                                                                                                     |
+| ------------ | ---------- | --------------------------------------------------------------------------------------------------------- |
+| Stack        | HIGH       | All crates verified against Cargo.lock and crates.io. Only 2 new deps. One discrepancy flagged (blake3 vs HKDF). |
+| Features     | HIGH       | Verified against live competitor docs (Alfred, Raycast, Maccy) and existing codebase components.          |
+| Architecture | HIGH       | Based on primary source code reading across all 5 Rust crates. Port patterns and migration pipeline confirmed. |
+| Pitfalls     | HIGH       | Each pitfall grounded in specific source file and line numbers in the actual codebase.                    |
 
 **Overall confidence:** HIGH
 
 ### Gaps to Address
 
-- **SeqLayer `on_event` field extraction:** The exact API for extracting span fields in a custom Layer's `on_event` callback needs validation during Phase 3 implementation. The `tracing_subscriber::registry::SpanRef` API for walking parent spans is documented but nuanced.
-- **Seq CLEF trace visualization (@tr/@ps):** Blog-sourced information (MEDIUM confidence) about Seq 2024.1+ waterfall rendering. Should be validated against a running Seq instance before investing in span lifecycle tracking.
-- **Dual log/tracing audit scope:** The extent of remaining `log::*` usage across crates is unknown. A grep audit should happen at Phase 1 start to determine whether the bridge configuration is sufficient or if migration is needed.
-- **reqwest version alignment:** STACK.md recommends 0.13, ARCHITECTURE.md mentions 0.12. Use 0.13 (latest, verified on crates.io 2026-02-06).
+- **Key derivation mechanism (HIGH PRIORITY):** STACK.md says `blake3::derive_key()` (no new dep). ARCHITECTURE.md and PITFALLS.md both say HKDF-SHA256. This must be resolved before Phase 3 begins — confirm against the architecture spec and decide whether the `hkdf` crate is required or blake3 is acceptable.
+- **Multi-profile current state:** The existing schema has no `profile_id` in any table. The exact shape of `KeyScopePort::current_scope()` and whether `profile_id` is currently meaningful should be confirmed before the Phase 3 migration is written.
+- **QuickPanel behavior regression:** The current client-side filter supports substring mid-word matching (`insta` matching `instagram`). Replacing it with HMAC exact-token search is a breaking UX change. A user-facing communication strategy (placeholder text, tooltip, or release note) should be decided before Phase 6 begins.
+- **Rebuild progress event schema:** Read a working WS progress event example (e.g., file sync worker) before Phase 5 to ensure consistent field names and event type discriminator with existing frontend event handlers.
 
 ## Sources
 
 ### Primary (HIGH confidence)
 
-- [tracing-subscriber docs](https://docs.rs/tracing-subscriber/) — layer composition, JSON format, per-layer filtering, Optional layers
-- [tracing-subscriber JSON format](https://docs.rs/tracing-subscriber/latest/tracing_subscriber/fmt/format/struct.Json.html) — flatten_event, with_current_span, with_span_list
-- [tracing-appender docs](https://docs.rs/tracing-appender/) — NonBlocking, WorkerGuard, rolling appender
-- [Seq CLEF ingestion](https://datalust.co/docs/posting-raw-events) — HTTP API, CLEF format spec, field mapping
-- [Seq Docker setup](https://docs.datalust.co/docs/getting-started-with-docker) — Local development instance
-- [reqwest on crates.io](https://crates.io/crates/reqwest) — Version 0.13.2 verified
-- [Tokio tracing guide](https://tokio.rs/tokio/topics/tracing) — Async instrumentation, spawn boundary context
+- `src-tauri/Cargo.lock` — blake3 1.8.2, all existing crate versions confirmed
+- `src-tauri/crates/uc-core/src/ports/security/encryption_session.rs` — `EncryptionSessionPort` interface
+- `src-tauri/crates/uc-app/src/usecases/delete_clipboard_entry.rs` — optional builder pattern, hardcoded delete chain
+- `src-tauri/crates/uc-app/src/deps.rs` — `AppDeps` grouped port structure (5 existing groups)
+- `src-tauri/crates/uc-infra/src/db/pool.rs` — WAL mode, `busy_timeout = 5000`, `diesel::sql_query` pattern confirmed
+- `src-tauri/crates/uc-infra/src/db/schema.rs` — existing table definitions, no `profile_id` confirmed
+- `src-tauri/crates/uc-infra/migrations/` — 11 existing migration directories, additive pattern confirmed
+- `src-tauri/crates/uc-daemon/src/api/routes.rs` — L2+ tier, explicit note that L3/L4 not implemented
+- `src-tauri/crates/uc-daemon/src/api/clipboard.rs` — router pattern (`pub fn router() -> Router<DaemonApiState>`)
+- `docs/architecture/local-encrypted-search.md` — primary architecture spec (all 10 review decisions)
+- `src/quick-panel/ClipboardHistoryPanel.tsx` — client-side filter at `includes(q)` confirmed
+- `src/pages/DashboardPage.tsx` — hidden Header component confirmed
 
 ### Secondary (MEDIUM confidence)
 
-- [Seq trace visualization blog](https://datalust.co/blog/tracing-first-look) — @tr, @ps, @st CLEF properties for waterfall views
-- [Custom tracing Layer tutorial (Bryan Burgers)](https://burgers.io/custom-logging-in-rust-using-tracing) — Pattern for SeqLayer implementation
-- [Structured JSON logs with tracing](https://oneuptime.com/blog/post/2026-01-25-structured-json-logs-tracing-rust/view) — Dual output patterns
-- [Rust Forum: Type Hell in Tracing](https://users.rust-lang.org/t/type-hell-in-tracing-multiple-output-layers/126764) — Pitfall P1 community validation
+- Alfred Clipboard History documentation (https://www.alfredapp.com/help/features/clipboard/) — competitor feature baseline
+- Raycast Clipboard History manual (https://manual.raycast.com/windows/clipboard-history) — competitor feature baseline
+- Maccy open source (https://github.com/p0deje/Maccy) — competitor feature baseline
 
 ### Tertiary (LOW confidence)
 
-- [Seq GitHub Rust discussion](https://github.com/datalust/seq-tickets/discussions/1873) — Confirms no existing Rust CLEF crate (discussion thread, not official)
+- crates.io for unicode-normalization (0.1.25) and unicode-segmentation (1.12.0) — version currency only; API stability is HIGH from unicode-rs organization track record
 
 ---
 
-_Research completed: 2026-03-09_
+_Research completed: 2026-04-10_
 _Ready for roadmap: yes_

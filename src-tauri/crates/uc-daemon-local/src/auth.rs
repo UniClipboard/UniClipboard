@@ -106,13 +106,13 @@ pub fn build_connection_info(
 /// Extracts the bearer token from an HTTP `Authorization` header value.
 ///
 /// Returns `Some(&str)` with the token when the header uses the `Bearer` scheme
-/// (case-insensitive) and contains a non-empty token, otherwise returns `None`.
+/// (case-sensitive) and contains a non-empty token, otherwise returns `None`.
 ///
 /// # Examples
 ///
 /// ```
 /// assert_eq!(parse_bearer_token("Bearer abc123"), Some("abc123"));
-/// assert_eq!(parse_bearer_token("bearer xyz"), Some("xyz"));
+/// assert_eq!(parse_bearer_token("bearer xyz"), None);
 /// assert_eq!(parse_bearer_token("Basic abc"), None);
 /// assert_eq!(parse_bearer_token("Bearer "), None);
 /// assert_eq!(parse_bearer_token("JustOnePart"), None);
@@ -122,7 +122,7 @@ pub fn parse_bearer_token(header_value: &str) -> Option<&str> {
     if parts.len() != 2 {
         return None;
     }
-    if !parts[0].eq_ignore_ascii_case("Bearer") {
+    if parts[0] != "Bearer" {
         return None;
     }
     let token = parts[1];

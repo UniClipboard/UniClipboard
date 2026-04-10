@@ -228,10 +228,7 @@ export const TitleBar = ({
           ) : null}
         </div>
         {isWindows && (
-          <div
-            className="flex items-center h-full rounded-bl-2xl bg-black/4 dark:bg-white/4"
-            data-tauri-drag-region="false"
-          >
+          <div className="flex items-center h-full bg-transparent" data-tauri-drag-region="false">
             <TitleBarButton aria-label="最小化" onClick={handleMinimize}>
               <Minus className="h-4 w-4" />
             </TitleBarButton>

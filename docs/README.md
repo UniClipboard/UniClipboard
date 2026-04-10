@@ -20,6 +20,7 @@ When documentation conflicts with code, treat the code as the source of truth an
 **For Implementation:**
 
 - [Bootstrap System](architecture/bootstrap.md) - How dependency injection works
+- [Local Encrypted Search Design](architecture/local-encrypted-search.md) - V1 local search architecture for encrypted history
 - [Snapshot Cache Pipeline ADR](architecture/snapshot-cache/adr-001-snapshot-cache-pipeline.md) - Cache/spool/worker design decisions
 - [Error Handling](guides/error-handling.md) - Error handling strategy
 - [GitHub Releases Updater](guides/github-releases-updater.md) - Auto-update pipeline with latest.json

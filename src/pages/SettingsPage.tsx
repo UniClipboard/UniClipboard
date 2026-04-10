@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
+import InsetSurface from '@/components/layout/InsetSurface'
 import {
   DEFAULT_CATEGORY,
   SETTINGS_CATEGORIES,
@@ -8,16 +9,13 @@ import {
 import SettingsSidebar from '@/components/setting/SettingsSidebar'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { SidebarProvider, SidebarInset } from '@/components/ui/sidebar'
-import { usePlatform } from '@/hooks/usePlatform'
 import { useShortcut } from '@/hooks/useShortcut'
 import { useShortcutScope } from '@/hooks/useShortcutScope'
 import { SettingContentLayout } from '@/layouts'
-import { cn } from '@/lib/utils'
 import { captureUserIntent } from '@/observability/breadcrumbs'
 
 function SettingsPage() {
   const location = useLocation()
-  const { isWindows } = usePlatform()
   const [activeCategory, setActiveCategory] = useState(
     (location.state as { category?: string } | null)?.category || DEFAULT_CATEGORY
   )
@@ -69,23 +67,19 @@ function SettingsPage() {
       className="min-h-0 h-full"
     >
       <SettingsSidebar activeCategory={activeCategory} onCategoryChange={handleCategoryChange} />
-      <SidebarInset
-        className={cn(
-          'min-h-0',
-          isWindows &&
-            'rounded-tl-[22px] bg-background/92 shadow-[inset_1px_1px_0_rgba(255,255,255,0.18)] backdrop-blur-sm'
-        )}
-      >
-        <ScrollArea className="flex-1 min-h-0">
-          <div className="p-6">
-            {ActiveSection && (
-              <SettingContentLayout>
-                <ActiveSection />
-              </SettingContentLayout>
-            )}
-          </div>
-        </ScrollArea>
-      </SidebarInset>
+      <InsetSurface>
+        <SidebarInset className="min-h-0 bg-transparent">
+          <ScrollArea className="flex-1 min-h-0">
+            <div className="p-6">
+              {ActiveSection && (
+                <SettingContentLayout>
+                  <ActiveSection />
+                </SettingContentLayout>
+              )}
+            </div>
+          </ScrollArea>
+        </SidebarInset>
+      </InsetSurface>
     </SidebarProvider>
   )
 }

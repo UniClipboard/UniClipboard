@@ -1,7 +1,6 @@
 import React, { ReactNode } from 'react'
 import { Sidebar } from '@/components'
-import { usePlatform } from '@/hooks/usePlatform'
-import { cn } from '@/lib/utils'
+import InsetSurface from '@/components/layout/InsetSurface'
 
 interface MainLayoutProps {
   children: ReactNode
@@ -18,22 +17,14 @@ interface MainLayoutProps {
  * Window chrome (TitleBar) is handled by WindowShell parent.
  */
 const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
-  const { isWindows } = usePlatform()
-
   return (
     <>
       {/* Sidebar Navigation */}
       <Sidebar />
 
       {/* Main Content Area */}
-      <main
-        className={cn(
-          'relative flex-1 flex flex-col overflow-hidden',
-          isWindows &&
-            'rounded-tl-[22px] bg-background/92 shadow-[inset_1px_1px_0_rgba(255,255,255,0.18)] backdrop-blur-sm'
-        )}
-      >
-        {children}
+      <main className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
+        <InsetSurface>{children}</InsetSurface>
       </main>
     </>
   )

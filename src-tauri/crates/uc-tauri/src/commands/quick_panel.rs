@@ -90,25 +90,27 @@ pub async fn finalize_quick_panel_show(
     .await
 }
 
-/// Expand or collapse the quick panel for inline preview.
+/// Update quick panel size and centered position from the active UI scale.
 #[tauri::command]
-pub async fn set_quick_panel_preview_expanded(
+pub async fn set_quick_panel_layout(
     app: tauri::AppHandle,
-    expanded: bool,
+    scale: f64,
+    preview_expanded: bool,
     _trace: Option<TraceMetadata>,
 ) -> Result<(), String> {
     let span = info_span!(
-        "command.quick_panel.set_preview_expanded",
+        "command.quick_panel.set_layout",
         trace_id = tracing::field::Empty,
         trace_ts = tracing::field::Empty,
-        expanded = expanded,
+        scale = scale,
+        preview_expanded = preview_expanded,
     );
     record_trace_fields(&span, &_trace);
 
     async {
         let handle = app.clone();
         app.run_on_main_thread(move || {
-            quick_panel::set_preview_expanded(&handle, expanded);
+            quick_panel::set_layout(&handle, scale, preview_expanded);
         })
         .map_err(|e| format!("Failed to dispatch to main thread: {e}"))?;
         Ok(())

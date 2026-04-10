@@ -79,6 +79,11 @@ vi.mock('@/api/daemon/client', () => ({
   },
 }))
 
+vi.mock('../ClipboardPreviewPane', () => ({
+  default: ({ entryId }: { entryId: string | null }) =>
+    entryId ? <div>Full preview text</div> : <div data-testid="preview-empty" />,
+}))
+
 describe('ClipboardHistoryPanel single-window preview', () => {
   beforeEach(() => {
     vi.useRealTimers()
@@ -97,8 +102,9 @@ describe('ClipboardHistoryPanel single-window preview', () => {
     expect(await screen.findByText('Full preview text')).toBeInTheDocument()
 
     await waitFor(() => {
-      expect(invokeMock).toHaveBeenCalledWith('set_quick_panel_preview_expanded', {
-        expanded: true,
+      expect(invokeMock).toHaveBeenCalledWith('set_quick_panel_layout', {
+        scale: 1,
+        previewExpanded: true,
       })
     })
     expect(invokeMock).not.toHaveBeenCalledWith('show_preview_panel', expect.anything())
@@ -120,8 +126,9 @@ describe('ClipboardHistoryPanel single-window preview', () => {
     await waitFor(() => {
       expect(invokeMock).toHaveBeenCalledWith('dismiss_quick_panel')
     })
-    expect(invokeMock).not.toHaveBeenCalledWith('set_quick_panel_preview_expanded', {
-      expanded: false,
+    expect(invokeMock).not.toHaveBeenCalledWith('set_quick_panel_layout', {
+      scale: 1,
+      previewExpanded: false,
     })
   })
 })

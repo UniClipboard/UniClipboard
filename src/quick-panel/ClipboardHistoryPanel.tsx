@@ -19,6 +19,7 @@ import { useClipboardCollection } from '@/hooks/useClipboardCollection'
 import { useThemeSync } from '@/hooks/useThemeSync'
 import { formatRelativeTime, getItemPreview, resolveItemType } from '@/lib/clipboard-utils'
 import type { ItemType } from '@/lib/clipboard-utils'
+import { readStoredUiScale, subscribeUiScaleChanges } from '@/lib/ui-scale'
 
 const PREVIEW_OPEN_DELAY_MS = 500
 const PREVIEW_SWITCH_DELAY_MS = 120
@@ -47,8 +48,8 @@ async function pasteToApp(): Promise<void> {
   await invoke('paste_to_previous_app')
 }
 
-async function setPreviewExpanded(expanded: boolean): Promise<void> {
-  await invoke('set_quick_panel_preview_expanded', { expanded })
+async function setQuickPanelLayout(scale: number, previewExpanded: boolean): Promise<void> {
+  await invoke('set_quick_panel_layout', { scale, previewExpanded })
 }
 
 const isMac = navigator.platform.toUpperCase().includes('MAC')
@@ -130,6 +131,7 @@ const ClipboardHistoryPanel: React.FC = () => {
   const [unlockError, setUnlockError] = useState<string | null>(null)
   const [previewEntryId, setPreviewEntryId] = useState<string | null>(null)
   const [previewSuppressed, setPreviewSuppressed] = useState(false)
+  const [uiScale, setUiScale] = useState(() => readStoredUiScale())
 
   const searchInputRef = useRef<HTMLInputElement>(null)
   const itemRefs = useRef<Map<number, HTMLDivElement>>(new Map())
@@ -174,7 +176,8 @@ const ClipboardHistoryPanel: React.FC = () => {
       //    Use setTimeout (not rAF — rAF doesn't fire while hidden).
       setTimeout(() => {
         setSkipTransition(false)
-        void invoke('finalize_quick_panel_show')
+        void setQuickPanelLayout(readStoredUiScale(), false)
+          .then(() => invoke('finalize_quick_panel_show'))
           .then(() => {
             searchInputRef.current?.focus()
           })
@@ -189,8 +192,14 @@ const ClipboardHistoryPanel: React.FC = () => {
   }, [clearPreviewTimer, reload])
 
   useEffect(() => {
-    void setPreviewExpanded(Boolean(previewEntryId)).catch(() => {})
-  }, [previewEntryId])
+    void setQuickPanelLayout(uiScale, Boolean(previewEntryId)).catch(() => {})
+  }, [previewEntryId, uiScale])
+
+  useEffect(() => {
+    return subscribeUiScaleChanges(scale => {
+      setUiScale(scale)
+    })
+  }, [])
 
   const handleUnlock = useCallback(async () => {
     setUnlocking(true)

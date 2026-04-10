@@ -44,12 +44,13 @@ pub const DEFAULT_SHORTCUT: &str = "ctrl+alt+v";
 /// Settings key used to store the quick panel shortcut override.
 pub const SHORTCUT_SETTINGS_KEY: &str = "global.toggleQuickPanel";
 
-/// Panel dimensions (logical pixels).
-const PANEL_WIDTH: f64 = 360.0;
-const PANEL_HEIGHT: f64 = 420.0;
-const PREVIEW_WIDTH: f64 = 360.0;
+/// Panel base dimensions (logical pixels at 100% UI scale).
+const BASE_PANEL_WIDTH: f64 = 360.0;
+const BASE_PANEL_HEIGHT: f64 = 420.0;
+const BASE_PREVIEW_WIDTH: f64 = 360.0;
 const PANEL_GAP: f64 = 8.0;
-const EXPANDED_PANEL_WIDTH: f64 = PANEL_WIDTH + PANEL_GAP + PREVIEW_WIDTH;
+const MIN_UI_SCALE: f64 = 0.8;
+const MAX_UI_SCALE: f64 = 1.5;
 
 /// Tauri window label for the quick panel.
 pub(crate) const PANEL_LABEL: &str = "quick-panel";
@@ -60,11 +61,11 @@ pub(crate) const PANEL_LABEL: &str = "quick-panel";
 /// such that it appears centered on screen, like Raycast/Spotlight).
 ///
 /// 获取面板在屏幕居中时的左上角坐标（类似 Raycast/Spotlight 的位置）。
-fn screen_center_position(app: &tauri::AppHandle) -> (f64, f64) {
+fn screen_center_position(app: &tauri::AppHandle, width: f64, height: f64) -> (f64, f64) {
     #[cfg(target_os = "macos")]
     {
         let _ = app; // used only on non-macOS
-        macos::get_screen_center(PANEL_WIDTH, PANEL_HEIGHT)
+        macos::get_screen_center(width, height)
     }
     #[cfg(not(target_os = "macos"))]
     {
@@ -81,11 +82,27 @@ fn screen_center_position(app: &tauri::AppHandle) -> (f64, f64) {
                 warn!("No primary monitor detected, using 800x600 fallback for panel centering");
                 (800.0, 600.0)
             });
-        (
-            (screen_w - PANEL_WIDTH) / 2.0,
-            (screen_h - PANEL_HEIGHT) / 2.0,
-        )
+        ((screen_w - width) / 2.0, (screen_h - height) / 2.0)
     }
+}
+
+fn normalize_ui_scale(scale: f64) -> f64 {
+    if !scale.is_finite() {
+        return 1.0;
+    }
+
+    scale.clamp(MIN_UI_SCALE, MAX_UI_SCALE)
+}
+
+fn panel_dimensions(scale: f64, preview_expanded: bool) -> (f64, f64) {
+    let normalized_scale = normalize_ui_scale(scale);
+    let width = if preview_expanded {
+        (BASE_PANEL_WIDTH + PANEL_GAP + BASE_PREVIEW_WIDTH) * normalized_scale
+    } else {
+        BASE_PANEL_WIDTH * normalized_scale
+    };
+
+    (width, BASE_PANEL_HEIGHT * normalized_scale)
 }
 
 // ── Public API ─────────────────────────────────────────────────────────
@@ -107,7 +124,7 @@ pub fn pre_create(app: &tauri::AppHandle) {
     let url = WebviewUrl::App("quick-panel.html".into());
     match WebviewWindowBuilder::new(app, PANEL_LABEL, url)
         .title("Quick Panel")
-        .inner_size(PANEL_WIDTH, PANEL_HEIGHT)
+        .inner_size(BASE_PANEL_WIDTH, BASE_PANEL_HEIGHT)
         .position(-9999.0, -9999.0)
         .decorations(false)
         .transparent(true)
@@ -208,7 +225,7 @@ pub fn toggle(app: &tauri::AppHandle) {
 ///
 /// 在屏幕中央显示快捷面板（类似 Raycast）。
 pub fn show(app: &tauri::AppHandle) {
-    let (panel_x, panel_y) = screen_center_position(app);
+    let (panel_x, panel_y) = screen_center_position(app, BASE_PANEL_WIDTH, BASE_PANEL_HEIGHT);
     info!(panel_x, panel_y, "Showing quick panel centered on screen");
 
     // If panel doesn't exist yet (pre_create wasn't called), create it now
@@ -221,7 +238,9 @@ pub fn show(app: &tauri::AppHandle) {
         #[cfg(target_os = "windows")]
         windows::remember_previous_foreground(&window);
 
-        if let Err(e) = window.set_size(tauri::LogicalSize::new(PANEL_WIDTH, PANEL_HEIGHT)) {
+        if let Err(e) =
+            window.set_size(tauri::LogicalSize::new(BASE_PANEL_WIDTH, BASE_PANEL_HEIGHT))
+        {
             warn!(error = %e, "Failed to reset quick panel size");
         }
 
@@ -287,20 +306,55 @@ pub fn dismiss(app: &tauri::AppHandle) {
     }
 }
 
-/// Expand or collapse the quick panel width for inline preview.
-pub fn set_preview_expanded(app: &tauri::AppHandle, expanded: bool) {
+/// Update quick panel size and center position from the current UI scale.
+pub fn set_layout(app: &tauri::AppHandle, scale: f64, preview_expanded: bool) {
     let Some(window) = app.get_webview_window(PANEL_LABEL) else {
         return;
     };
 
-    let width = if expanded {
-        EXPANDED_PANEL_WIDTH
-    } else {
-        PANEL_WIDTH
+    let (width, height) = panel_dimensions(scale, preview_expanded);
+    let (panel_x, panel_y) = screen_center_position(app, width, height);
+
+    if let Err(e) = window.set_size(tauri::LogicalSize::new(width, height)) {
+        warn!(
+            error = %e,
+            preview_expanded,
+            scale,
+            width,
+            height,
+            "Failed to update quick panel size"
+        );
+    }
+
+    if let Err(e) = window.set_position(tauri::Position::Logical(tauri::LogicalPosition::new(
+        panel_x, panel_y,
+    ))) {
+        warn!(
+            error = %e,
+            preview_expanded,
+            scale,
+            panel_x,
+            panel_y,
+            "Failed to update quick panel position"
+        );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        panel_dimensions, BASE_PANEL_HEIGHT, BASE_PANEL_WIDTH, MAX_UI_SCALE, MIN_UI_SCALE,
     };
 
-    if let Err(e) = window.set_size(tauri::LogicalSize::new(width, PANEL_HEIGHT)) {
-        warn!(error = %e, expanded, "Failed to update quick panel size");
+    #[test]
+    fn panel_dimensions_clamp_scale_and_expand_width() {
+        let (collapsed_width, collapsed_height) = panel_dimensions(0.1, false);
+        assert_eq!(collapsed_width, BASE_PANEL_WIDTH * MIN_UI_SCALE);
+        assert_eq!(collapsed_height, BASE_PANEL_HEIGHT * MIN_UI_SCALE);
+
+        let (expanded_width, expanded_height) = panel_dimensions(9.0, true);
+        assert!(expanded_width > BASE_PANEL_WIDTH * MAX_UI_SCALE);
+        assert_eq!(expanded_height, BASE_PANEL_HEIGHT * MAX_UI_SCALE);
     }
 }
 

@@ -14,6 +14,7 @@ pub mod device;
 pub mod ids;
 pub mod network;
 pub mod ports;
+pub mod search;
 pub mod security;
 pub mod settings;
 pub mod setup;

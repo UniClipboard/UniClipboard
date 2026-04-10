@@ -22,6 +22,14 @@ use tracing::{debug, error, info, warn};
 /// the "show → instant blur → hide" race on Windows/Linux.
 static LAST_SHOW_TIME: Mutex<Option<Instant>> = Mutex::new(None);
 
+/// The logical top-left origin used for the currently shown quick panel.
+///
+/// `show()` centers the history-only panel and records that origin. Later
+/// inline preview expand/collapse operations reuse the same origin so the
+/// window grows and shrinks relative to the history pane instead of jumping
+/// to re-center the full width.
+static PANEL_ORIGIN: Mutex<Option<(f64, f64)>> = Mutex::new(None);
+
 /// How long (ms) after `show()` to suppress blur events.
 const BLUR_DEBOUNCE_MS: u128 = 300;
 
@@ -103,6 +111,25 @@ fn panel_dimensions(scale: f64, preview_expanded: bool) -> (f64, f64) {
     };
 
     (width, BASE_PANEL_HEIGHT * normalized_scale)
+}
+
+fn remember_panel_origin(x: f64, y: f64) {
+    if let Ok(mut guard) = PANEL_ORIGIN.lock() {
+        *guard = Some((x, y));
+    }
+}
+
+fn resolve_panel_origin(
+    remembered_origin: Option<(f64, f64)>,
+    centered_origin: (f64, f64),
+) -> (f64, f64) {
+    remembered_origin.unwrap_or(centered_origin)
+}
+
+fn panel_origin_or_center(app: &tauri::AppHandle, width: f64, height: f64) -> (f64, f64) {
+    let remembered_origin = PANEL_ORIGIN.lock().ok().and_then(|guard| *guard);
+    let centered_origin = screen_center_position(app, width, height);
+    resolve_panel_origin(remembered_origin, centered_origin)
 }
 
 // ── Public API ─────────────────────────────────────────────────────────
@@ -249,6 +276,8 @@ pub fn show(app: &tauri::AppHandle) {
             panel_x, panel_y,
         ))) {
             warn!(error = %e, "Failed to set quick panel position");
+        } else {
+            remember_panel_origin(panel_x, panel_y);
         }
 
         // Record show timestamp *before* the frontend finalizes show so the
@@ -313,7 +342,7 @@ pub fn set_layout(app: &tauri::AppHandle, scale: f64, preview_expanded: bool) {
     };
 
     let (width, height) = panel_dimensions(scale, preview_expanded);
-    let (panel_x, panel_y) = screen_center_position(app, width, height);
+    let (panel_x, panel_y) = panel_origin_or_center(app, width, height);
 
     if let Err(e) = window.set_size(tauri::LogicalSize::new(width, height)) {
         warn!(
@@ -337,13 +366,16 @@ pub fn set_layout(app: &tauri::AppHandle, scale: f64, preview_expanded: bool) {
             panel_y,
             "Failed to update quick panel position"
         );
+    } else {
+        remember_panel_origin(panel_x, panel_y);
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::{
-        panel_dimensions, BASE_PANEL_HEIGHT, BASE_PANEL_WIDTH, MAX_UI_SCALE, MIN_UI_SCALE,
+        panel_dimensions, resolve_panel_origin, BASE_PANEL_HEIGHT, BASE_PANEL_WIDTH, MAX_UI_SCALE,
+        MIN_UI_SCALE,
     };
 
     #[test]
@@ -355,6 +387,18 @@ mod tests {
         let (expanded_width, expanded_height) = panel_dimensions(9.0, true);
         assert!(expanded_width > BASE_PANEL_WIDTH * MAX_UI_SCALE);
         assert_eq!(expanded_height, BASE_PANEL_HEIGHT * MAX_UI_SCALE);
+    }
+
+    #[test]
+    fn remembered_origin_wins_over_recentered_origin() {
+        let resolved = resolve_panel_origin(Some((120.0, 48.0)), (300.0, 90.0));
+        assert_eq!(resolved, (120.0, 48.0));
+    }
+
+    #[test]
+    fn centered_origin_is_used_when_no_anchor_is_recorded() {
+        let resolved = resolve_panel_origin(None, (300.0, 90.0));
+        assert_eq!(resolved, (300.0, 90.0));
     }
 }
 

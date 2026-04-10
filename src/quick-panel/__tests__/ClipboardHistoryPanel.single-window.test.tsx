@@ -152,16 +152,30 @@ describe('ClipboardHistoryPanel single-window preview', () => {
     })
 
     const { container } = render(<ClipboardHistoryPanel />)
+    const rootLayout = container.firstElementChild as HTMLDivElement | null
+    const historyWrapper = rootLayout?.children.item(0) as HTMLDivElement | null
+    historyWrapper!.getBoundingClientRect = vi.fn(() => ({
+      width: 360,
+      height: 420,
+      top: 0,
+      right: 360,
+      bottom: 420,
+      left: 0,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    }))
 
     await act(async () => {
       await new Promise(resolve => setTimeout(resolve, 550))
     })
 
-    const rootLayout = container.firstElementChild as HTMLDivElement | null
     const previewWrapper = rootLayout?.children.item(1) as HTMLDivElement | null
 
     expect(previewWrapper?.getAttribute('aria-hidden')).toBe('true')
-    expect(previewWrapper?.className).not.toContain('flex-1')
+    expect(historyWrapper?.className).toContain('shrink-0')
+    expect(historyWrapper?.style.width).toBe('360px')
+    expect(previewWrapper?.className).toContain('shrink-0')
 
     await act(async () => {
       pendingResize.resolve()
@@ -169,7 +183,10 @@ describe('ClipboardHistoryPanel single-window preview', () => {
     })
 
     expect(previewWrapper?.getAttribute('aria-hidden')).toBe('false')
+    expect(historyWrapper?.className).toContain('flex-1')
+    expect(historyWrapper?.style.width).toBe('')
     expect(previewWrapper?.className).toContain('flex-1')
+    expect(previewWrapper?.style.width).toBe('')
   })
 
   it('dismisses the quick window immediately when escape is pressed with preview open', async () => {

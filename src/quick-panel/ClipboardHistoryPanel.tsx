@@ -131,10 +131,13 @@ const ClipboardHistoryPanel: React.FC = () => {
   const [unlockError, setUnlockError] = useState<string | null>(null)
   const [previewEntryId, setPreviewEntryId] = useState<string | null>(null)
   const [previewExpanded, setPreviewExpanded] = useState(false)
+  const [previewReservingSpace, setPreviewReservingSpace] = useState(false)
   const [previewSuppressed, setPreviewSuppressed] = useState(false)
   const [uiScale, setUiScale] = useState(() => readStoredUiScale())
+  const [historyLockedWidth, setHistoryLockedWidth] = useState<number | null>(null)
 
   const searchInputRef = useRef<HTMLInputElement>(null)
+  const historyPaneRef = useRef<HTMLDivElement>(null)
   const itemRefs = useRef<Map<number, HTMLDivElement>>(new Map())
   const previewTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const previewLayoutTokenRef = useRef(0)
@@ -152,8 +155,10 @@ const ClipboardHistoryPanel: React.FC = () => {
     (suppressUntilNextSelection: boolean) => {
       clearPreviewTimer()
       previewLayoutTokenRef.current += 1
+      setPreviewReservingSpace(false)
       setPreviewExpanded(false)
       setPreviewEntryId(null)
+      setHistoryLockedWidth(null)
       setPreviewSuppressed(suppressUntilNextSelection)
       void setQuickPanelLayout(readStoredUiScale(), false).catch(() => {})
     },
@@ -170,8 +175,10 @@ const ClipboardHistoryPanel: React.FC = () => {
       setSkipTransition(true)
       clearPreviewTimer()
       previewLayoutTokenRef.current += 1
+      setPreviewReservingSpace(false)
       setPreviewExpanded(false)
       setPreviewEntryId(null)
+      setHistoryLockedWidth(null)
       setPreviewSuppressed(false)
       setSearchQuery('')
       setSelectedIndex(0)
@@ -273,8 +280,10 @@ const ClipboardHistoryPanel: React.FC = () => {
 
     if (!focusedItem) {
       previewLayoutTokenRef.current += 1
+      setPreviewReservingSpace(false)
       setPreviewExpanded(false)
       setPreviewEntryId(null)
+      setHistoryLockedWidth(null)
       void setQuickPanelLayout(uiScale, false).catch(() => {})
       return
     }
@@ -293,15 +302,27 @@ const ClipboardHistoryPanel: React.FC = () => {
         }
 
         const token = previewLayoutTokenRef.current + 1
+        const nextHistoryWidth = historyPaneRef.current?.getBoundingClientRect().width ?? 0
         previewLayoutTokenRef.current = token
+        setHistoryLockedWidth(nextHistoryWidth > 0 ? nextHistoryWidth : null)
+        setPreviewReservingSpace(true)
         void setQuickPanelLayout(uiScale, true)
           .then(() => {
             if (previewLayoutTokenRef.current !== token) {
               return
             }
+            setPreviewReservingSpace(false)
             setPreviewExpanded(true)
+            setHistoryLockedWidth(null)
           })
-          .catch(() => {})
+          .catch(() => {
+            if (previewLayoutTokenRef.current !== token) {
+              return
+            }
+            setPreviewReservingSpace(false)
+            setHistoryLockedWidth(null)
+            setPreviewEntryId(null)
+          })
       },
       previewEntryId ? PREVIEW_SWITCH_DELAY_MS : PREVIEW_OPEN_DELAY_MS
     )
@@ -458,7 +479,19 @@ const ClipboardHistoryPanel: React.FC = () => {
 
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-transparent">
-      <div className="min-w-0 flex-1 basis-0">
+      <div
+        ref={historyPaneRef}
+        className={
+          previewReservingSpace && historyLockedWidth != null
+            ? 'min-w-0 shrink-0'
+            : 'min-w-0 flex-1 basis-0'
+        }
+        style={
+          previewReservingSpace && historyLockedWidth != null
+            ? { width: `${historyLockedWidth}px` }
+            : undefined
+        }
+      >
         <div className={quickCardClassName}>
           {isLocked && !loading ? (
             <>
@@ -576,8 +609,15 @@ const ClipboardHistoryPanel: React.FC = () => {
           'min-w-0 overflow-hidden',
           previewExpanded
             ? 'ml-2 flex-1 basis-0 opacity-100 translate-x-0'
-            : 'ml-0 w-0 opacity-0 translate-x-2 pointer-events-none',
+            : previewReservingSpace && historyLockedWidth != null
+              ? 'ml-2 shrink-0 opacity-0 translate-x-0 pointer-events-none'
+              : 'ml-0 w-0 opacity-0 translate-x-2 pointer-events-none',
         ].join(' ')}
+        style={
+          previewReservingSpace && historyLockedWidth != null
+            ? { width: `max(0px, calc(100% - ${historyLockedWidth}px - 0.5rem))` }
+            : undefined
+        }
         aria-hidden={!previewExpanded}
       >
         <div

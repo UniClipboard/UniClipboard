@@ -441,7 +441,7 @@ const ClipboardContent: React.FC<ClipboardContentProps> = ({
           orientation="horizontal"
           defaultLayout={defaultLayout}
           onLayoutChanged={onLayoutChanged}
-          className={cn('flex-1 min-h-0', isWindows && 'overflow-hidden rounded-tl-[22px]')}
+          className={cn('flex-1 min-h-0', isWindows && 'overflow-hidden')}
         >
           {/* Left panel: item list */}
           <ResizablePanel id="clipboard-list" defaultSize="40%" minSize="25%" maxSize="60%">

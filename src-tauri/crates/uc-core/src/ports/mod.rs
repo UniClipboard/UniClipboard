@@ -42,6 +42,7 @@ pub mod paired_device_repository;
 pub mod pairing_transport;
 pub mod peer_directory;
 pub mod realtime;
+pub mod search;
 pub mod security;
 pub mod settings;
 pub mod setup;
@@ -90,6 +91,8 @@ pub use realtime::{
     PeerNameUpdatedEvent, RealtimeEvent, RealtimePairedDeviceSummary, RealtimePeerSummary,
     RealtimeTopic, RealtimeTopicPort,
 };
+pub use search::search_index::SearchIndexPort;
+pub use search::search_key::SearchKeyDerivationPort;
 pub use security::encryption::EncryptionPort;
 pub use security::encryption_session::EncryptionSessionPort;
 pub use security::key_material::KeyMaterialPort;

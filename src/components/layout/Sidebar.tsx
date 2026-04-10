@@ -90,7 +90,11 @@ const NavButton: React.FC<{
   )
 }
 
-const Sidebar: React.FC = () => {
+interface SidebarProps {
+  className?: string
+}
+
+const Sidebar: React.FC<SidebarProps> = ({ className }) => {
   const { t } = useTranslation()
   const location = useLocation()
   const navigate = useNavigate()
@@ -127,11 +131,18 @@ const Sidebar: React.FC = () => {
       <aside
         data-tauri-drag-region
         className={cn(
-          'w-14 h-full flex flex-col items-center py-4 bg-muted/40 border-r border-border/40 backdrop-blur-xl shrink-0'
+          'relative z-10 w-14 h-full shrink-0 flex flex-col items-center py-4',
+          'bg-[linear-gradient(180deg,color-mix(in_oklab,var(--sidebar)_88%,transparent),color-mix(in_oklab,var(--sidebar)_76%,transparent))]',
+          'border-r border-border/25 backdrop-blur-2xl shadow-[inset_-1px_0_0_rgba(255,255,255,0.12)]',
+          className
         )}
       >
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-x-0 top-0 h-24 bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.18),transparent_72%)] dark:bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.08),transparent_72%)]"
+        />
         {/* Main Navigation */}
-        <div className="flex flex-col gap-3 w-full items-center">
+        <div className="relative z-10 flex flex-col gap-3 w-full items-center">
           {navItems.map(item => (
             <NavButton
               key={item.to}
@@ -147,7 +158,7 @@ const Sidebar: React.FC = () => {
         <div data-tauri-drag-region className="flex-1 w-full min-h-0" />
 
         {/* Bottom Navigation */}
-        <div className="flex flex-col gap-3 w-full items-center">
+        <div className="relative z-10 flex flex-col gap-3 w-full items-center">
           {updateInfo && (
             <TooltipProvider delayDuration={0}>
               <Tooltip>

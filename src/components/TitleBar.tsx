@@ -154,7 +154,8 @@ export const TitleBar = ({
         // Window chrome layer - sits in normal document flow (not fixed)
         // No z-index needed - proper layering via DOM hierarchy
         'h-10 w-full flex-shrink-0 select-none',
-        'bg-background/70 backdrop-blur border-b border-border/60',
+        'relative z-20 bg-background/42 backdrop-blur-xl',
+        'after:pointer-events-none after:absolute after:inset-x-0 after:bottom-0 after:h-px after:bg-gradient-to-r after:from-transparent after:via-border/35 after:to-transparent',
         className
       )}
     >
@@ -170,7 +171,7 @@ export const TitleBar = ({
             // On macOS, add left padding to avoid traffic lights
             // On other platforms, use default padding
             isMac
-              ? `pl-16`
+              ? 'pl-16'
               : 'px-3' /* MVP: justify-center removed - restore with: , isDashboardPage ? 'justify-center' : '' */
           )}
         >
@@ -228,7 +229,10 @@ export const TitleBar = ({
           ) : null}
         </div>
         {isWindows && (
-          <div className="flex items-center h-full" data-tauri-drag-region="false">
+          <div
+            className="flex items-center h-full rounded-bl-2xl bg-background/18 backdrop-blur-sm"
+            data-tauri-drag-region="false"
+          >
             <TitleBarButton aria-label="最小化" onClick={handleMinimize}>
               <Minus className="h-4 w-4" />
             </TitleBarButton>

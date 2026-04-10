@@ -154,8 +154,7 @@ export const TitleBar = ({
         // Window chrome layer - sits in normal document flow (not fixed)
         // No z-index needed - proper layering via DOM hierarchy
         'h-10 w-full flex-shrink-0 select-none',
-        'relative z-20 bg-muted/40 backdrop-blur-xl',
-        'after:pointer-events-none after:absolute after:inset-x-0 after:bottom-0 after:h-px after:bg-gradient-to-r after:from-transparent after:via-border/35 after:to-transparent',
+        'relative z-20 bg-transparent',
         className
       )}
     >
@@ -230,7 +229,7 @@ export const TitleBar = ({
         </div>
         {isWindows && (
           <div
-            className="flex items-center h-full rounded-bl-2xl bg-background/18 backdrop-blur-sm"
+            className="flex items-center h-full rounded-bl-2xl bg-black/4 dark:bg-white/4"
             data-tauri-drag-region="false"
           >
             <TitleBarButton aria-label="最小化" onClick={handleMinimize}>

@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v0.5.0
 milestone_name: Local Encrypted Search
-status: planning
-stopped_at: Phase 88 context gathered (discuss mode)
-last_updated: "2026-04-10T12:33:50.568Z"
-last_activity: 2026-04-10 — Roadmap created for v0.5.0 Local Encrypted Search (Phases 88-93)
+status: in_progress
+stopped_at: Completed 88-01-PLAN.md
+last_updated: "2026-04-10T00:30:00.000Z"
+last_activity: 2026-04-10 — Completed Phase 88 Plan 01 (core domain and port contracts)
 progress:
   total_phases: 6
   completed_phases: 0
-  total_plans: 0
-  completed_plans: 0
-  percent: 0
+  total_plans: 1
+  completed_plans: 1
+  percent: 2
 ---
 
 # Project State
@@ -26,25 +26,25 @@ See: .planning/PROJECT.md (updated 2026-04-10)
 ## Current Position
 
 Phase: 88 of 93 (Core Domain and Port Contracts)
-Plan: — (not yet planned)
-Status: Ready to plan
-Last activity: 2026-04-10 — Roadmap created for v0.5.0 Local Encrypted Search (Phases 88-93)
+Plan: 1 of 1 complete
+Status: Phase 88 complete — ready for Phase 89
+Last activity: 2026-04-10 — Completed 88-01: search domain types + port traits in uc-core
 
-Progress: [░░░░░░░░░░] 0%
+Progress: [▓░░░░░░░░░] 2%
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 0
-- Average duration: —
-- Total execution time: —
+- Total plans completed: 1
+- Average duration: 30min
+- Total execution time: 30min
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 | ----- | ----- | ----- | -------- |
-| -     | -     | -     | -        |
+| 88    | 1     | 30min | 30min    |
 
 ## Accumulated Context
 
@@ -57,6 +57,9 @@ Recent decisions affecting current work:
 - Key derivation: ARCHITECTURE.md specifies HKDF-SHA256 with profile-scoped info context. STACK.md mentions blake3::derive_key as alternative. Architecture spec is authoritative — resolve before Phase 90 begins.
 - Delete cascade: synchronous search cleanup integrated into DeleteClipboardEntry via optional builder (Phase 89), not async best-effort.
 - Rebuild strategy: version-flag atomic swap in search_index_meta preferred over RENAME TABLE to avoid SQLite exclusive lock timeout.
+- SearchKey follows MasterKey pattern — pub as_bytes() only, no Serialize/Deserialize, HMAC computation is Phase 90 infra concern.
+- SearchDocument has no deleted_at_ms — hard-delete is the resolved semantic (Phase 88 confirmed).
+- TimeRangeFilter uses #[serde(tag = "kind")] for clean tagged enum JSON serialization.
 
 ### Pending Todos
 
@@ -71,6 +74,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-04-10T12:33:50.565Z
-Stopped at: Phase 88 context gathered (discuss mode)
-Resume file: .planning/phases/88-core-domain-and-port-contracts/88-CONTEXT.md
+Last session: 2026-04-10T00:30:00.000Z
+Stopped at: Completed 88-01-PLAN.md
+Resume file: .planning/phases/88-core-domain-and-port-contracts/88-01-SUMMARY.md

@@ -24,14 +24,18 @@ use uc_platform::ports::AppDirsPort;
 /// let pid_path = mgr.pid_path();
 /// ```
 fn default_manager() -> Result<&'static DaemonPidManager> {
-    static DEFAULT_MANAGER: OnceLock<DaemonPidManager> = OnceLock::new();
-    DEFAULT_MANAGER.get_or_try_init(|| {
-        let adapter = DirsAppDirsAdapter::new();
-        let app_dirs = adapter
-            .get_app_dirs()
-            .context("failed to resolve application directories")?;
-        Ok(DaemonPidManager::new(AppPaths::from_app_dirs(&app_dirs)))
-    })
+    static DEFAULT_MANAGER: OnceLock<Result<DaemonPidManager, String>> = OnceLock::new();
+    DEFAULT_MANAGER
+        .get_or_init(|| {
+            let adapter = DirsAppDirsAdapter::new();
+            adapter
+                .get_app_dirs()
+                .context("failed to resolve application directories")
+                .map(|app_dirs| DaemonPidManager::new(AppPaths::from_app_dirs(&app_dirs)))
+                .map_err(|e| format!("{e:#}"))
+        })
+        .as_ref()
+        .map_err(|e| anyhow::anyhow!("{e}"))
 }
 
 /// Manages the daemon PID metadata file lifecycle.

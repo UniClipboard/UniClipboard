@@ -73,40 +73,40 @@ Explicitly excluded. Documented to prevent scope creep.
 
 Which phases cover which requirements. Updated during roadmap creation.
 
-| Requirement | Phase | Status |
-|-------------|-------|--------|
-| SIDX-01 | — | Pending |
-| SIDX-02 | — | Pending |
-| SIDX-03 | — | Pending |
-| SIDX-04 | — | Pending |
-| SIDX-05 | — | Pending |
-| SIDX-06 | — | Pending |
-| SIDX-07 | — | Pending |
-| SQRY-01 | — | Pending |
-| SQRY-02 | — | Pending |
-| SQRY-03 | — | Pending |
-| SQRY-04 | — | Pending |
-| SQRY-05 | — | Pending |
-| SQRY-06 | — | Pending |
-| REBLD-01 | — | Pending |
-| REBLD-02 | — | Pending |
-| REBLD-03 | — | Pending |
-| REBLD-04 | — | Pending |
-| SUI-01 | — | Pending |
-| SUI-02 | — | Pending |
-| SUI-03 | — | Pending |
-| SUI-04 | — | Pending |
-| SUI-05 | — | Pending |
-| SUI-06 | — | Pending |
-| SUI-07 | — | Pending |
+| Requirement | Phase    | Status  |
+|-------------|----------|---------|
+| SIDX-01     | Phase 89 | Pending |
+| SIDX-02     | Phase 89 | Pending |
+| SIDX-03     | Phase 90 | Pending |
+| SIDX-04     | Phase 90 | Pending |
+| SIDX-05     | Phase 90 | Pending |
+| SIDX-06     | Phase 90 | Pending |
+| SIDX-07     | Phase 90 | Pending |
+| SQRY-01     | Phase 92 | Pending |
+| SQRY-02     | Phase 92 | Pending |
+| SQRY-03     | Phase 92 | Pending |
+| SQRY-04     | Phase 92 | Pending |
+| SQRY-05     | Phase 92 | Pending |
+| SQRY-06     | Phase 92 | Pending |
+| REBLD-01    | Phase 91 | Pending |
+| REBLD-02    | Phase 91 | Pending |
+| REBLD-03    | Phase 91 | Pending |
+| REBLD-04    | Phase 92 | Pending |
+| SUI-01      | Phase 93 | Pending |
+| SUI-02      | Phase 93 | Pending |
+| SUI-03      | Phase 93 | Pending |
+| SUI-04      | Phase 93 | Pending |
+| SUI-05      | Phase 93 | Pending |
+| SUI-06      | Phase 93 | Pending |
+| SUI-07      | Phase 93 | Pending |
 
 **Coverage:**
 
 - v0.5.0 requirements: 22 total
-- Mapped to phases: 0 (pending roadmap)
-- Unmapped: 22 ⚠️
+- Mapped to phases: 22
+- Unmapped: 0 ✓
 
 ---
 
 _Requirements defined: 2026-04-10_
-_Last updated: 2026-04-10 after initial v0.5.0 definition_
+_Last updated: 2026-04-10 after roadmap creation (Phases 88-93)_

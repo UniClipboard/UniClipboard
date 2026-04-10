@@ -5,7 +5,7 @@ use tracing::{info, info_span, warn, Instrument};
 use uc_core::ids::EntryId;
 use uc_core::ports::{
     ClipboardEntryRepositoryPort, ClipboardEventWriterPort, ClipboardRepresentationRepositoryPort,
-    ClipboardSelectionRepositoryPort,
+    ClipboardSelectionRepositoryPort, SearchIndexPort,
 };
 
 /// Use case for deleting clipboard entries with all associated data.
@@ -19,6 +19,10 @@ pub struct DeleteClipboardEntry {
     /// are deleted from disk when an entry is removed. Files outside this boundary
     /// are user-owned originals and must never be touched.
     file_cache_dir: Option<PathBuf>,
+    /// Optional search index port. When set, `execute()` synchronously removes the
+    /// entry's document from the search index as part of the delete chain. Failures
+    /// are logged at warn level and do not block the delete (SIDX-02, D-07).
+    search_index: Option<Arc<dyn SearchIndexPort>>,
 }
 
 impl DeleteClipboardEntry {
@@ -35,6 +39,7 @@ impl DeleteClipboardEntry {
             event_writer,
             representation_repo,
             file_cache_dir: None,
+            search_index: None,
         }
     }
 
@@ -44,6 +49,16 @@ impl DeleteClipboardEntry {
     /// an entry is removed. This prevents the deletion of user-owned original files.
     pub fn with_file_cache_dir(mut self, dir: PathBuf) -> Self {
         self.file_cache_dir = Some(dir);
+        self
+    }
+
+    /// Inject a search index port so deletes cascade to the search index.
+    ///
+    /// When set, `execute()` will synchronously call `remove_entry(entry_id)` on
+    /// the port as part of the delete chain. Failures are logged and do not
+    /// block the delete (SIDX-02, D-07).
+    pub fn with_search_index(mut self, search_index: Arc<dyn SearchIndexPort>) -> Self {
+        self.search_index = Some(search_index);
         self
     }
 
@@ -155,6 +170,21 @@ impl DeleteClipboardEntry {
         }
         .instrument(info_span!("cleanup_cache_files", event_id = %event_id))
         .await;
+
+        // 1c. Remove entry from search index (non-authoritative — warn and continue on error).
+        if let Some(search_index) = self.search_index.as_ref() {
+            async {
+                if let Err(e) = search_index.remove_entry(entry_id).await {
+                    warn!(
+                        error = %e,
+                        entry_id = %entry_id,
+                        "search index cleanup failed, continuing delete"
+                    );
+                }
+            }
+            .instrument(info_span!("cleanup_search_index", entry_id = %entry_id))
+            .await;
+        }
 
         // 2. Delete selection (references entry)
         self.selection_repo
@@ -826,6 +856,193 @@ mod tests {
         assert!(
             !cached_file.parent().unwrap().exists(),
             "Empty parent directory inside cache_dir should also be removed (file:// URI case)"
+        );
+    }
+
+    // ---- SpySearchIndex for search-index tests ----
+
+    struct SpySearchIndex {
+        last_remove: std::sync::Arc<tokio::sync::Mutex<Option<EntryId>>>,
+        fail_next: std::sync::Arc<tokio::sync::Mutex<Option<uc_core::search::SearchError>>>,
+    }
+
+    #[async_trait]
+    impl uc_core::ports::SearchIndexPort for SpySearchIndex {
+        async fn remove_entry(
+            &self,
+            entry_id: &EntryId,
+        ) -> Result<(), uc_core::search::SearchError> {
+            if let Some(e) = self.fail_next.lock().await.take() {
+                return Err(e);
+            }
+            *self.last_remove.lock().await = Some(entry_id.clone());
+            Ok(())
+        }
+
+        async fn index_entry(
+            &self,
+            _document: uc_core::search::SearchDocument,
+            _postings: Vec<uc_core::search::SearchPosting>,
+        ) -> Result<(), uc_core::search::SearchError> {
+            Ok(())
+        }
+
+        async fn search(
+            &self,
+            _query: uc_core::search::SearchQuery,
+        ) -> Result<Vec<uc_core::search::SearchResult>, uc_core::search::SearchError> {
+            Ok(vec![])
+        }
+
+        async fn rebuild(
+            &self,
+            _entries: Vec<(uc_core::search::SearchDocument, Vec<uc_core::search::SearchPosting>)>,
+            _progress_tx: tokio::sync::mpsc::Sender<uc_core::search::RebuildProgress>,
+        ) -> Result<(), uc_core::search::SearchError> {
+            Ok(())
+        }
+
+        async fn get_index_meta(
+            &self,
+        ) -> Result<uc_core::search::SearchIndexMeta, uc_core::search::SearchError> {
+            unimplemented!("not exercised in this test")
+        }
+    }
+
+    fn make_test_entry_and_use_case() -> (EntryId, DeleteClipboardEntry) {
+        use std::sync::atomic::AtomicBool;
+        let entry_id = EntryId::from("test-entry-search".to_string());
+        let event_id = EventId::from("test-event-search".to_string());
+        let entry = ClipboardEntry::new(
+            entry_id.clone(),
+            event_id.clone(),
+            1234567890,
+            Some("Test Entry".to_string()),
+            1024,
+        );
+        let entry_repo = MockEntryRepo {
+            entry: Some(entry),
+            should_fail_get: false,
+            should_fail_delete: false,
+            delete_called: Arc::new(AtomicBool::new(false)),
+        };
+        let selection_repo = MockSelectionRepo {
+            should_fail_delete: false,
+            delete_called: Arc::new(AtomicBool::new(false)),
+        };
+        let event_writer = MockEventWriter {
+            should_fail_delete: false,
+            delete_called: Arc::new(AtomicBool::new(false)),
+        };
+        let uc = DeleteClipboardEntry::from_ports(
+            Arc::new(entry_repo),
+            Arc::new(selection_repo),
+            Arc::new(event_writer),
+            Arc::new(MockRepresentationRepo),
+        );
+        (entry_id, uc)
+    }
+
+    #[tokio::test]
+    async fn delete_with_search_index_calls_remove_entry() {
+        let (entry_id, uc) = make_test_entry_and_use_case();
+
+        let last_remove = std::sync::Arc::new(tokio::sync::Mutex::new(None));
+        let spy = SpySearchIndex {
+            last_remove: last_remove.clone(),
+            fail_next: std::sync::Arc::new(tokio::sync::Mutex::new(None)),
+        };
+
+        let uc = uc.with_search_index(Arc::new(spy));
+        uc.execute(&entry_id).await.unwrap();
+
+        let captured = last_remove.lock().await.clone();
+        assert_eq!(
+            captured.as_ref(),
+            Some(&entry_id),
+            "SpySearchIndex should have captured the same EntryId"
+        );
+    }
+
+    #[tokio::test]
+    async fn delete_without_search_index_succeeds() {
+        let (entry_id, uc) = make_test_entry_and_use_case();
+        // No .with_search_index() call — backwards compatible
+        let result = uc.execute(&entry_id).await;
+        assert!(
+            result.is_ok(),
+            "Delete without search index should succeed: {:?}",
+            result
+        );
+    }
+
+    #[tokio::test]
+    async fn delete_with_search_index_error_is_warn_and_continue() {
+        use std::sync::atomic::AtomicBool;
+
+        let entry_id = EntryId::from("test-entry-warn".to_string());
+        let event_id = EventId::from("test-event-warn".to_string());
+        let entry = ClipboardEntry::new(
+            entry_id.clone(),
+            event_id.clone(),
+            1234567890,
+            Some("Test Entry".to_string()),
+            1024,
+        );
+
+        let delete_entry_called = Arc::new(AtomicBool::new(false));
+        let delete_selection_called = Arc::new(AtomicBool::new(false));
+        let delete_event_called = Arc::new(AtomicBool::new(false));
+
+        let entry_repo = MockEntryRepo {
+            entry: Some(entry),
+            should_fail_get: false,
+            should_fail_delete: false,
+            delete_called: delete_entry_called.clone(),
+        };
+        let selection_repo = MockSelectionRepo {
+            should_fail_delete: false,
+            delete_called: delete_selection_called.clone(),
+        };
+        let event_writer = MockEventWriter {
+            should_fail_delete: false,
+            delete_called: delete_event_called.clone(),
+        };
+
+        let spy = SpySearchIndex {
+            last_remove: std::sync::Arc::new(tokio::sync::Mutex::new(None)),
+            fail_next: std::sync::Arc::new(tokio::sync::Mutex::new(Some(
+                uc_core::search::SearchError::Internal("simulated failure".into()),
+            ))),
+        };
+
+        let uc = DeleteClipboardEntry::from_ports(
+            Arc::new(entry_repo),
+            Arc::new(selection_repo),
+            Arc::new(event_writer),
+            Arc::new(MockRepresentationRepo),
+        )
+        .with_search_index(Arc::new(spy));
+
+        let result = uc.execute(&entry_id).await;
+
+        assert!(
+            result.is_ok(),
+            "Delete should succeed even when search index remove_entry fails: {:?}",
+            result
+        );
+        // The rest of the delete chain must still have run
+        assert!(
+            delete_selection_called.load(std::sync::atomic::Ordering::SeqCst),
+            "selection_repo.delete_selection should have been called"
+        );
+        assert!(
+            delete_entry_called.load(std::sync::atomic::Ordering::SeqCst),
+            "entry_repo.delete_entry should have been called"
+        );
+        assert!(
+            delete_event_called.load(std::sync::atomic::Ordering::SeqCst),
+            "event_writer.delete_event_and_representations should have been called"
         );
     }
 

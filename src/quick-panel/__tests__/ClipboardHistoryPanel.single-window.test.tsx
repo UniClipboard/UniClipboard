@@ -128,6 +128,8 @@ describe('ClipboardHistoryPanel single-window preview', () => {
 
     expect(previewWrapper?.className).toContain('basis-0')
     expect(previewWrapper?.className).toContain('flex-1')
+    expect(previewWrapper?.className).not.toContain('transition-all')
+    expect(previewWrapper?.firstElementChild?.className).toContain('transition-[opacity,transform]')
   })
 
   it('dismisses the quick window immediately when escape is pressed with preview open', async () => {

@@ -546,14 +546,21 @@ const ClipboardHistoryPanel: React.FC = () => {
       <div
         className={[
           'min-w-0 overflow-hidden',
-          skipTransition ? '' : 'transition-all duration-200 ease-out',
           previewEntryId !== null
             ? 'ml-2 flex-1 basis-0 opacity-100 translate-x-0'
             : 'ml-0 w-0 opacity-0 translate-x-2 pointer-events-none',
         ].join(' ')}
         aria-hidden={previewEntryId === null}
       >
-        <ClipboardPreviewPane entryId={previewEntryId} />
+        <div
+          className={[
+            'h-full',
+            skipTransition ? '' : 'transition-[opacity,transform] duration-200 ease-out',
+            previewEntryId !== null ? 'opacity-100 translate-x-0' : 'opacity-0 translate-x-2',
+          ].join(' ')}
+        >
+          <ClipboardPreviewPane entryId={previewEntryId} />
+        </div>
       </div>
     </div>
   )

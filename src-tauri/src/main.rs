@@ -30,6 +30,21 @@ use uc_tauri::quick_panel;
 const DAEMON_EXIT_CLEANUP_TIMEOUT: Duration = Duration::from_secs(3);
 const DAEMON_EXIT_CLEANUP_POLL_INTERVAL: Duration = Duration::from_millis(100);
 
+#[cfg(target_os = "windows")]
+fn configure_main_window_for_platform(app: &tauri::AppHandle) {
+    let Some(window) = app.get_webview_window("main") else {
+        warn!("Main window not found during Windows window configuration");
+        return;
+    };
+
+    if let Err(error) = window.set_decorations(false) {
+        warn!(error = %error, "Failed to disable Windows main window decorations");
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+fn configure_main_window_for_platform(_app: &tauri::AppHandle) {}
+
 fn main() {
     // Tracing and config are handled inside build_gui_app()
     let ctx = match uc_bootstrap::build_gui_app() {
@@ -147,6 +162,7 @@ fn run_app(ctx: GuiBootstrapContext) {
             // In Tauri 2, use app.handle() to get the AppHandle
             runtime.set_app_handle(app.handle().clone());
             info!("AppHandle set on AppRuntime for event emission");
+            configure_main_window_for_platform(app.handle());
 
             let daemon_connection_state_for_setup = daemon_connection_state.clone();
             let gui_owned_daemon_state_for_setup = gui_owned_daemon_state.clone();

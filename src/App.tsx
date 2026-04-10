@@ -289,8 +289,8 @@ export const AppContentWithBar = () => {
   // WindowShell provides the correct window-level structure:
   // - TitleBar: Window chrome layer (full-width, drag region)
   // - Content: App layout layer (Sidebar + Main via routes)
-  const { isMac, isTauri } = usePlatform()
-  const showCustomTitleBar = !isTauri || isMac
+  const { isMac, isTauri, isWindows } = usePlatform()
+  const showCustomTitleBar = !isTauri || isMac || isWindows
   const { hydrated, setupState } = useSetupRealtimeStore()
   const [showCompletionStep, setShowCompletionStep] = useState(false)
   const previousSetupStateRef = useRef<SetupState | null>(null)

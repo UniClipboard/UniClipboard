@@ -35,7 +35,11 @@ const ClipboardPreviewPane: React.FC<ClipboardPreviewPaneProps> = ({ entryId }) 
         )}
       </div>
 
-      <div className={isLargeText ? 'flex-1 min-h-0 px-3 py-2' : 'flex-1 overflow-auto px-3 py-2'}>
+      <div
+        className={
+          isLargeText ? 'flex-1 min-h-0 px-3 py-2' : 'scrollbar-thin flex-1 overflow-auto px-3 py-2'
+        }
+      >
         {loading ? (
           <div className="flex h-full items-center justify-center" aria-live="polite">
             <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
@@ -67,7 +71,7 @@ const ClipboardPreviewPane: React.FC<ClipboardPreviewPaneProps> = ({ entryId }) 
               ))}
             </div>
           ) : isLargeText ? (
-            <VirtualizedText text={preview.textContent!} className="h-full" />
+            <VirtualizedText text={preview.textContent!} className="scrollbar-thin h-full" />
           ) : (
             <pre className="cursor-text whitespace-pre-wrap break-words font-mono text-[12px] leading-relaxed text-foreground select-text">
               {preview.textContent}

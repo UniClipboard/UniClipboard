@@ -8,14 +8,24 @@ A cross-platform clipboard synchronization app built with Tauri 2, React, and Ru
 
 Seamless clipboard synchronization across devices — users can copy on one device and paste on another without interrupting their workflow.
 
-## Current Milestone
+## Current Milestone: v0.5.0 Local Encrypted Search
 
-No active milestone is defined right now.
+**Goal:** Add searchable clipboard history via a local HMAC-keyed inverted index, so users can find past clipboard entries by keyword without exposing plaintext on disk.
 
-The latest archived milestone is **v0.4.0 Runtime Mode Separation**.
+**Target features:**
+
+- Local encrypted inverted index (SQLite, HMAC-keyed term tags)
+- Exact keyword search with AND/OR boolean operators
+- Time range filtering (presets + absolute ms range)
+- File type multi-select filtering (text/html/link/file/image/other)
+- File extension filtering as first-class filter
+- Incremental index updates (add on capture, delete on remove)
+- Full index rebuild in unlocked state
+- Search UI — query input + results display
 
 ## Current State
 
+- **Active milestone:** v0.5.0 Local Encrypted Search (started 2026-04-10)
 - **Latest shipped milestone:** v0.4.0 Runtime Mode Separation (archived 2026-04-09)
 - **Current capability level:** Full-featured clipboard sync with text, image, link, and file support; structured observability; per-device sync control; CLI clipboard history commands (list/get/clear); daemon auto-recovers encryption session on startup; daemon triggers outbound clipboard sync to peers after local capture; daemon receives inbound clipboard from peers via ClipboardTransportPort and applies via SyncInboundClipboardUseCase; daemon handles file transfer lifecycle (progress, completion, failure, timeout sweeps, startup reconciliation); clipboard restore delegated to daemon for in-process origin tracking; unified auth architecture — CLI/GUI/Daemon all use POST /auth/connect session exchange with independent token scopes
 - **Architecture status:** Hexagonal architecture with compiler-enforced boundaries, typed command surfaces, lifecycle governance, and consolidated sync planner; CLI direct-mode bootstrap pattern established; CLI start/stop commands for daemon lifecycle management (background/foreground modes, PID-based stop with SIGTERM); daemon encryption state recovery via existing AutoUnlockEncryptionSession use case; peer discovery deduplication fixed (local_peer_id filtering + full-snapshot peers.changed events); daemon gates PeerDiscoveryWorker on encryption state (deferred start for uninitialized devices via oneshot channel); dual-product release pipeline — CLI binary builds in parallel with App, included in GitHub Release and R2; GUI restore_clipboard_entry is thin daemon proxy (cross-process origin desync eliminated); frontend p2p.ts facade removed — all callers migrated to daemon modules and hooks (daemon/pairing, daemon/events, daemon/ws, usePairingEvents, useSetupFlow)
@@ -67,9 +77,14 @@ The latest archived milestone is **v0.4.0 Runtime Mode Separation**.
 
 ### Active
 
-- [ ] Define the next milestone and rewrite the planning files so roadmap, requirements, and verification records agree
-- [ ] Close the remaining OTLP GUI→daemon launch gap
-- [ ] Refresh or finish the stale verification/documentation items carried out of v0.4.0 archival
+- [ ] Local encrypted inverted index (SQLite, HMAC-keyed term tags, profile-scoped)
+- [ ] Exact keyword search with AND/OR boolean operators
+- [ ] Time range filtering (presets: today/yesterday/last_7d/last_30d + absolute ms range)
+- [ ] File type multi-select filtering (text/html/link/file/image/other)
+- [ ] File extension filtering as first-class filter
+- [ ] Incremental index updates (build on capture, delete on entry removal)
+- [ ] Full index rebuild in unlocked state (atomic table swap)
+- [ ] Search UI — query input + results display in dashboard or quick-panel
 
 ### Deferred
 
@@ -149,4 +164,25 @@ Phase 86 complete — CLI host/join flow refactored: ParsedSetupState centralize
 
 ---
 
-_Last updated: 2026-04-09 after v0.4.0 archival_
+## Evolution
+
+This document evolves at phase transitions and milestone boundaries.
+
+**After each phase transition** (via `/gsd:transition`):
+
+1. Requirements invalidated? → Move to Out of Scope with reason
+2. Requirements validated? → Move to Validated with phase reference
+3. New requirements emerged? → Add to Active
+4. Decisions to log? → Add to Key Decisions
+5. "What This Is" still accurate? → Update if drifted
+
+**After each milestone** (via `/gsd:complete-milestone`):
+
+1. Full review of all sections
+2. Core Value check — still the right priority?
+3. Audit Out of Scope — reasons still valid?
+4. Update Context with current state
+
+---
+
+_Last updated: 2026-04-10 after v0.5.0 milestone start_

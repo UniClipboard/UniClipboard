@@ -84,6 +84,16 @@ vi.mock('../ClipboardPreviewPane', () => ({
     entryId ? <div>Full preview text</div> : <div data-testid="preview-empty" />,
 }))
 
+function deferred() {
+  let resolve!: () => void
+  let reject!: (reason?: unknown) => void
+  const promise = new Promise<void>((res, rej) => {
+    resolve = res
+    reject = rej
+  })
+  return { promise, resolve, reject }
+}
+
 describe('ClipboardHistoryPanel single-window preview', () => {
   beforeEach(() => {
     vi.useRealTimers()
@@ -130,6 +140,36 @@ describe('ClipboardHistoryPanel single-window preview', () => {
     expect(previewWrapper?.className).toContain('flex-1')
     expect(previewWrapper?.className).not.toContain('transition-all')
     expect(previewWrapper?.firstElementChild?.className).toContain('transition-[opacity,transform]')
+  })
+
+  it('waits for the backend layout resize before expanding the preview column', async () => {
+    const pendingResize = deferred()
+    invokeMock.mockImplementation((command: string, payload?: { previewExpanded?: boolean }) => {
+      if (command === 'set_quick_panel_layout' && payload?.previewExpanded) {
+        return pendingResize.promise
+      }
+      return Promise.resolve(undefined)
+    })
+
+    const { container } = render(<ClipboardHistoryPanel />)
+
+    await act(async () => {
+      await new Promise(resolve => setTimeout(resolve, 550))
+    })
+
+    const rootLayout = container.firstElementChild as HTMLDivElement | null
+    const previewWrapper = rootLayout?.children.item(1) as HTMLDivElement | null
+
+    expect(previewWrapper?.getAttribute('aria-hidden')).toBe('true')
+    expect(previewWrapper?.className).not.toContain('flex-1')
+
+    await act(async () => {
+      pendingResize.resolve()
+      await Promise.resolve()
+    })
+
+    expect(previewWrapper?.getAttribute('aria-hidden')).toBe('false')
+    expect(previewWrapper?.className).toContain('flex-1')
   })
 
   it('dismisses the quick window immediately when escape is pressed with preview open', async () => {

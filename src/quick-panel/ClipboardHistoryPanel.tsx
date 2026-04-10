@@ -130,12 +130,14 @@ const ClipboardHistoryPanel: React.FC = () => {
   const [unlocking, setUnlocking] = useState(false)
   const [unlockError, setUnlockError] = useState<string | null>(null)
   const [previewEntryId, setPreviewEntryId] = useState<string | null>(null)
+  const [previewExpanded, setPreviewExpanded] = useState(false)
   const [previewSuppressed, setPreviewSuppressed] = useState(false)
   const [uiScale, setUiScale] = useState(() => readStoredUiScale())
 
   const searchInputRef = useRef<HTMLInputElement>(null)
   const itemRefs = useRef<Map<number, HTMLDivElement>>(new Map())
   const previewTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const previewLayoutTokenRef = useRef(0)
   const deletingRef = useRef(false)
   const [skipTransition, setSkipTransition] = useState(false)
 
@@ -149,8 +151,11 @@ const ClipboardHistoryPanel: React.FC = () => {
   const closePreview = useCallback(
     (suppressUntilNextSelection: boolean) => {
       clearPreviewTimer()
+      previewLayoutTokenRef.current += 1
+      setPreviewExpanded(false)
       setPreviewEntryId(null)
       setPreviewSuppressed(suppressUntilNextSelection)
+      void setQuickPanelLayout(readStoredUiScale(), false).catch(() => {})
     },
     [clearPreviewTimer]
   )
@@ -164,6 +169,8 @@ const ClipboardHistoryPanel: React.FC = () => {
       // 1. Clear stale state (no CSS transition — instant)
       setSkipTransition(true)
       clearPreviewTimer()
+      previewLayoutTokenRef.current += 1
+      setPreviewExpanded(false)
       setPreviewEntryId(null)
       setPreviewSuppressed(false)
       setSearchQuery('')
@@ -192,8 +199,8 @@ const ClipboardHistoryPanel: React.FC = () => {
   }, [clearPreviewTimer, reload])
 
   useEffect(() => {
-    void setQuickPanelLayout(uiScale, Boolean(previewEntryId)).catch(() => {})
-  }, [previewEntryId, uiScale])
+    void setQuickPanelLayout(uiScale, previewExpanded).catch(() => {})
+  }, [previewExpanded, uiScale])
 
   useEffect(() => {
     return subscribeUiScaleChanges(scale => {
@@ -265,7 +272,10 @@ const ClipboardHistoryPanel: React.FC = () => {
     }
 
     if (!focusedItem) {
+      previewLayoutTokenRef.current += 1
+      setPreviewExpanded(false)
       setPreviewEntryId(null)
+      void setQuickPanelLayout(uiScale, false).catch(() => {})
       return
     }
 
@@ -275,7 +285,23 @@ const ClipboardHistoryPanel: React.FC = () => {
 
     previewTimerRef.current = setTimeout(
       () => {
-        setPreviewEntryId(focusedItem.id)
+        const nextEntryId = focusedItem.id
+        setPreviewEntryId(nextEntryId)
+
+        if (previewExpanded) {
+          return
+        }
+
+        const token = previewLayoutTokenRef.current + 1
+        previewLayoutTokenRef.current = token
+        void setQuickPanelLayout(uiScale, true)
+          .then(() => {
+            if (previewLayoutTokenRef.current !== token) {
+              return
+            }
+            setPreviewExpanded(true)
+          })
+          .catch(() => {})
       },
       previewEntryId ? PREVIEW_SWITCH_DELAY_MS : PREVIEW_OPEN_DELAY_MS
     )
@@ -286,9 +312,11 @@ const ClipboardHistoryPanel: React.FC = () => {
     focusedItem,
     isLocked,
     previewEntryId,
+    previewExpanded,
     previewSuppressed,
     selectedIndex,
     hoveredIndex,
+    uiScale,
   ])
 
   const handleSelect = useCallback(
@@ -546,17 +574,17 @@ const ClipboardHistoryPanel: React.FC = () => {
       <div
         className={[
           'min-w-0 overflow-hidden',
-          previewEntryId !== null
+          previewExpanded
             ? 'ml-2 flex-1 basis-0 opacity-100 translate-x-0'
             : 'ml-0 w-0 opacity-0 translate-x-2 pointer-events-none',
         ].join(' ')}
-        aria-hidden={previewEntryId === null}
+        aria-hidden={!previewExpanded}
       >
         <div
           className={[
             'h-full',
             skipTransition ? '' : 'transition-[opacity,transform] duration-200 ease-out',
-            previewEntryId !== null ? 'opacity-100 translate-x-0' : 'opacity-0 translate-x-2',
+            previewExpanded ? 'opacity-100 translate-x-0' : 'opacity-0 translate-x-2',
           ].join(' ')}
         >
           <ClipboardPreviewPane entryId={previewEntryId} />

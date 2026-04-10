@@ -132,15 +132,10 @@ const Sidebar: React.FC<SidebarProps> = ({ className }) => {
         data-tauri-drag-region
         className={cn(
           'relative z-10 w-14 h-full shrink-0 flex flex-col items-center py-4',
-          'bg-[linear-gradient(180deg,color-mix(in_oklab,var(--sidebar)_88%,transparent),color-mix(in_oklab,var(--sidebar)_76%,transparent))]',
-          'border-r border-border/25 backdrop-blur-2xl shadow-[inset_-1px_0_0_rgba(255,255,255,0.12)]',
+          'bg-muted/40 border-r border-border/40 backdrop-blur-xl',
           className
         )}
       >
-        <div
-          aria-hidden="true"
-          className="pointer-events-none absolute inset-x-0 top-0 h-24 bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.18),transparent_72%)] dark:bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.08),transparent_72%)]"
-        />
         {/* Main Navigation */}
         <div className="relative z-10 flex flex-col gap-3 w-full items-center">
           {navItems.map(item => (

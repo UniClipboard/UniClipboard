@@ -159,9 +159,15 @@ export const TitleBar = ({
         className
       )}
     >
+      {isWindows ? (
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-y-0 left-0 z-0 w-14 border-r border-border/40 bg-muted/40 backdrop-blur-xl"
+        />
+      ) : null}
       <div
         data-tauri-drag-region
-        className="h-full flex items-center justify-between cursor-default"
+        className="relative z-10 h-full flex items-center justify-between cursor-default"
       >
         <div
           data-tauri-drag-region

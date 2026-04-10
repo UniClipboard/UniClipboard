@@ -448,7 +448,7 @@ const ClipboardContent: React.FC<ClipboardContentProps> = ({
             <div
               className={cn(
                 'h-full overflow-y-auto overflow-x-hidden no-scrollbar',
-                isWindows ? 'rounded-tl-[22px] bg-background/36' : 'bg-muted/20'
+                isWindows ? 'bg-transparent' : 'bg-muted/20'
               )}
               onScroll={handleScroll}
             >

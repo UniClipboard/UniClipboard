@@ -57,6 +57,9 @@ pub use pairing::{
     ResolveConnectionPolicy, SetPairingState, StagedPairedDeviceStore, UnpairDevice,
     UpdateDeviceSyncSettings,
 };
+pub use search::{
+    IndexClipboardEntry, RebuildSearchIndex, RemoveIndexedEntry, SearchClipboardEntries,
+};
 pub use setup::{MarkSetupComplete, SetupError, SetupOrchestrator, SetupPairingFacadePort};
 pub use start_network::StartNetwork;
 pub use start_network_after_unlock::StartNetworkAfterUnlock;

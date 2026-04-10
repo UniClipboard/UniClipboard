@@ -109,6 +109,7 @@ impl InboundClipboardSyncWorker {
             self.file_cache_dir.clone(),
             deps.settings.clone(),
         )
+        .with_local_stats_repo(deps.stats.local_stats_repo.clone())
         .with_clipboard_write_coordinator(self.clipboard_write_coordinator.clone())
     }
 }

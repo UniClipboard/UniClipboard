@@ -26,6 +26,7 @@ use crate::state::{DaemonServiceSnapshot, RuntimeState};
 use crate::workers::clipboard_watcher::{ClipboardWatcherWorker, DaemonClipboardChangeHandler};
 use crate::workers::file_sync_orchestrator::FileSyncOrchestratorWorker;
 use crate::workers::inbound_clipboard_sync::InboundClipboardSyncWorker;
+use crate::workers::local_stats_sampler::LocalStatsSamplerWorker;
 use crate::workers::peer_discovery::PeerDiscoveryWorker;
 use uc_platform::clipboard::LocalClipboard;
 
@@ -151,6 +152,9 @@ pub fn run(gui_managed: bool) -> anyhow::Result<()> {
         daemon_peer_directory,
         daemon_settings,
     ));
+    let local_stats_sampler_worker: Arc<dyn DaemonService> = Arc::new(
+        LocalStatsSamplerWorker::new(runtime.clone(), std::time::Duration::from_secs(10)),
+    );
 
     let rt = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
@@ -211,6 +215,10 @@ pub fn run(gui_managed: bool) -> anyhow::Result<()> {
             health: ServiceHealth::Healthy,
         },
         DaemonServiceSnapshot {
+            name: "local-stats-sampler".to_string(),
+            health: ServiceHealth::Healthy,
+        },
+        DaemonServiceSnapshot {
             name: "peer-discovery".to_string(),
             health: if encryption_unlocked {
                 ServiceHealth::Healthy
@@ -244,6 +252,7 @@ pub fn run(gui_managed: bool) -> anyhow::Result<()> {
     let (services, deferred_services) = {
         let mut initial: Vec<Arc<dyn DaemonService>> = vec![
             Arc::clone(&file_sync_orchestrator_worker) as Arc<dyn DaemonService>,
+            Arc::clone(&local_stats_sampler_worker) as Arc<dyn DaemonService>,
             Arc::clone(&pairing_host) as Arc<dyn DaemonService>,
             Arc::clone(&peer_monitor) as Arc<dyn DaemonService>,
         ];

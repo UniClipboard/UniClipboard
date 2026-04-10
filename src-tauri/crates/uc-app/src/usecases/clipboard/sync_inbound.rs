@@ -24,7 +24,8 @@ use uc_core::network::ClipboardMessage;
 use uc_core::ports::clipboard::{RepresentationCachePort, SpoolQueuePort};
 use uc_core::ports::{
     ClipboardEntryRepositoryPort, ClipboardEventWriterPort, ClipboardRepresentationNormalizerPort,
-    DeviceIdentityPort, EncryptionPort, EncryptionSessionPort, SelectRepresentationPolicyPort,
+    DeviceIdentityPort, EncryptionPort, EncryptionSessionPort, LocalCounterMetric,
+    LocalStatsRepositoryPort, NoopLocalStatsRepositoryPort, SelectRepresentationPolicyPort,
     SettingsPort, TransferPayloadDecryptorPort,
 };
 use uc_core::{
@@ -95,6 +96,7 @@ pub struct SyncInboundClipboardUseCase {
     /// Local file cache directory for rewriting remote file paths.
     file_cache_dir: Option<PathBuf>,
     settings: Arc<dyn SettingsPort>,
+    local_stats_repo: Arc<dyn LocalStatsRepositoryPort>,
 }
 
 impl SyncInboundClipboardUseCase {
@@ -123,6 +125,7 @@ impl SyncInboundClipboardUseCase {
             recent_ids: Mutex::new(VecDeque::new()),
             file_cache_dir: None,
             settings,
+            local_stats_repo: Arc::new(NoopLocalStatsRepositoryPort),
         })
     }
 
@@ -162,7 +165,20 @@ impl SyncInboundClipboardUseCase {
             recent_ids: Mutex::new(VecDeque::new()),
             file_cache_dir,
             settings,
+            local_stats_repo: Arc::new(NoopLocalStatsRepositoryPort),
         }
+    }
+
+    pub fn with_local_stats_repo(
+        mut self,
+        local_stats_repo: Arc<dyn LocalStatsRepositoryPort>,
+    ) -> Self {
+        self.capture_clipboard = self
+            .capture_clipboard
+            .take()
+            .map(|usecase| usecase.with_local_stats_repo(local_stats_repo.clone()));
+        self.local_stats_repo = local_stats_repo;
+        self
     }
 
     /// Set the coordinator for Full-mode OS clipboard writes.
@@ -255,7 +271,7 @@ impl SyncInboundClipboardUseCase {
                 return Ok(InboundApplyOutcome::Skipped);
             }
 
-            match message.payload_version {
+            let outcome = match message.payload_version {
                 ClipboardPayloadVersion::V3 => {
                     self.apply_v3_inbound(message, pre_decoded_plaintext).await
                 }
@@ -264,7 +280,20 @@ impl SyncInboundClipboardUseCase {
                     error!(version = ?other, "Unsupported inbound payload version — dropping message");
                     Ok(InboundApplyOutcome::Skipped)
                 }
+            }?;
+            if matches!(outcome, InboundApplyOutcome::Applied { .. }) {
+                if let Err(error) = self
+                    .local_stats_repo
+                    .record_counter(
+                        LocalCounterMetric::ClipboardSyncInbound,
+                        chrono::Utc::now().timestamp_millis(),
+                    )
+                    .await
+                {
+                    warn!(error = %error, "Failed to record local inbound sync stat");
+                }
             }
+            Ok(outcome)
         }
         .instrument(inbound_span)
         .await

@@ -22,7 +22,9 @@ use tracing::{info, warn};
 
 use uc_app::deps::NetworkPorts;
 use uc_app::usecases::{PairingConfig, ResolveConnectionPolicy};
-use uc_app::{AppDeps, ClipboardPorts, DevicePorts, SecurityPorts, StoragePorts, SystemPorts};
+use uc_app::{
+    AppDeps, ClipboardPorts, DevicePorts, SecurityPorts, StatsPorts, StoragePorts, SystemPorts,
+};
 use uc_core::clipboard::SelectRepresentationPolicyV1;
 use uc_core::config::AppConfig;
 use uc_core::ids::RepresentationId;
@@ -217,6 +219,9 @@ struct InfraLayer {
 
     // File transfer tracking
     file_transfer_repo: Arc<dyn uc_core::ports::FileTransferRepositoryPort>,
+
+    // Local statistics
+    local_stats_repo: Arc<dyn LocalStatsRepositoryPort>,
 }
 
 /// Platform layer implementations
@@ -369,6 +374,9 @@ fn create_infra_layer(
 
     let file_transfer_repo: Arc<dyn uc_core::ports::FileTransferRepositoryPort> =
         Arc::new(DieselFileTransferRepository::new(Arc::clone(&db_executor)));
+    let local_stats_repo: Arc<dyn LocalStatsRepositoryPort> = Arc::new(
+        uc_infra::db::repositories::DieselLocalStatsRepository::new(Arc::clone(&db_executor)),
+    );
 
     let infra = InfraLayer {
         clipboard_entry_repo,
@@ -388,6 +396,7 @@ fn create_infra_layer(
         clock,
         hash,
         file_transfer_repo,
+        local_stats_repo,
     };
 
     Ok(infra)
@@ -790,6 +799,9 @@ pub fn wire_dependencies_with_identity_store(
             thumbnail_repo: infra.thumbnail_repo,
             thumbnail_generator: infra.thumbnail_generator,
             file_transfer_repo: infra.file_transfer_repo,
+        },
+        stats: StatsPorts {
+            local_stats_repo: infra.local_stats_repo,
         },
         settings: infra.settings_repo,
         system: SystemPorts {

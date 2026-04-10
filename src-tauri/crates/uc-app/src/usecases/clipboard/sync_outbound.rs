@@ -13,7 +13,8 @@ use uc_core::network::protocol::{
 };
 use uc_core::network::{ClipboardMessage, ProtocolMessage};
 use uc_core::ports::{
-    ClipboardTransportPort, DeviceIdentityPort, EncryptionSessionPort, PairedDeviceRepositoryPort,
+    ClipboardTransportPort, DeviceIdentityPort, EncryptionSessionPort, LocalCounterMetric,
+    LocalStatsRepositoryPort, NoopLocalStatsRepositoryPort, PairedDeviceRepositoryPort,
     PeerDirectoryPort, SettingsPort, SystemClipboardPort, TransferPayloadEncryptorPort,
 };
 
@@ -30,6 +31,7 @@ pub struct SyncOutboundClipboardUseCase {
     settings: Arc<dyn SettingsPort>,
     transfer_encryptor: Arc<dyn TransferPayloadEncryptorPort>,
     paired_device_repo: Arc<dyn PairedDeviceRepositoryPort>,
+    local_stats_repo: Arc<dyn LocalStatsRepositoryPort>,
 }
 
 impl SyncOutboundClipboardUseCase {
@@ -52,7 +54,16 @@ impl SyncOutboundClipboardUseCase {
             settings,
             transfer_encryptor,
             paired_device_repo,
+            local_stats_repo: Arc::new(NoopLocalStatsRepositoryPort),
         }
+    }
+
+    pub fn with_local_stats_repo(
+        mut self,
+        local_stats_repo: Arc<dyn LocalStatsRepositoryPort>,
+    ) -> Self {
+        self.local_stats_repo = local_stats_repo;
+        self
     }
 
     /// Filter sendable peers by per-device sync policy (auto_sync + content type).
@@ -483,6 +494,16 @@ impl SyncOutboundClipboardUseCase {
             failures.extend(connect_failures);
             failures.extend(send_failures);
             let failure_count = failures.len();
+            if let Err(error) = self
+                .local_stats_repo
+                .record_counter(
+                    LocalCounterMetric::ClipboardSyncOutbound,
+                    Utc::now().timestamp_millis(),
+                )
+                .await
+            {
+                warn!(error = %error, "Failed to record local outbound sync stat");
+            }
             warn!(
                 sent_count,
                 failure_count,
@@ -498,6 +519,16 @@ impl SyncOutboundClipboardUseCase {
             ));
         }
 
+        if let Err(error) = self
+            .local_stats_repo
+            .record_counter(
+                LocalCounterMetric::ClipboardSyncOutbound,
+                Utc::now().timestamp_millis(),
+            )
+            .await
+        {
+            warn!(error = %error, "Failed to record local outbound sync stat");
+        }
         info!(
             sent_count,
             connect_success_count, "Outbound clipboard sync sent to sendable peers"

@@ -23,6 +23,7 @@ pub mod get_settings;
 pub mod initialize_encryption;
 pub mod internal;
 pub mod list_clipboard_entries;
+pub mod local_stats;
 pub mod pairing;
 pub mod settings;
 pub mod setup;
@@ -49,6 +50,10 @@ pub use delete_clipboard_entry::DeleteClipboardEntry;
 pub use get_settings::GetSettings;
 pub use initialize_encryption::InitializeEncryption;
 pub use list_clipboard_entries::ListClipboardEntries;
+pub use local_stats::{
+    GetLocalStatsDashboard, LocalStatsDailySummary, LocalStatsDashboardResult,
+    LocalStatsGaugePoint, LocalStatsTodaySummary, RecordLocalCounterMetric, RecordLocalGaugeMetric,
+};
 pub use pairing::{
     AnnounceDeviceName, GetDeviceSyncSettings, GetLocalDeviceInfo, GetLocalPeerId,
     GetP2pPeersSnapshot, ListConnectedPeers, ListDiscoveredPeers, ListPairedDevices,
@@ -176,6 +181,33 @@ impl<'a> CoreUseCases<'a> {
         crate::usecases::storage::OpenDataDirectory::new(
             self.runtime.storage_paths.clone(),
             self.runtime.deps.system.file_manager.clone(),
+        )
+    }
+
+    /// Get local dashboard statistics for the current device.
+    pub fn get_local_stats_dashboard(
+        &self,
+    ) -> crate::usecases::local_stats::GetLocalStatsDashboard {
+        crate::usecases::local_stats::GetLocalStatsDashboard::new(
+            self.runtime.deps.stats.local_stats_repo.clone(),
+        )
+    }
+
+    /// Record a local counter metric.
+    pub fn record_local_counter_metric(
+        &self,
+    ) -> crate::usecases::local_stats::RecordLocalCounterMetric {
+        crate::usecases::local_stats::RecordLocalCounterMetric::new(
+            self.runtime.deps.stats.local_stats_repo.clone(),
+        )
+    }
+
+    /// Record a local gauge metric.
+    pub fn record_local_gauge_metric(
+        &self,
+    ) -> crate::usecases::local_stats::RecordLocalGaugeMetric {
+        crate::usecases::local_stats::RecordLocalGaugeMetric::new(
+            self.runtime.deps.stats.local_stats_repo.clone(),
         )
     }
 

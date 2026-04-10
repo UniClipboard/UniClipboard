@@ -14,7 +14,8 @@ pub mod testing;
 pub mod usecases;
 
 pub use deps::{
-    AppDeps, ClipboardPorts, DevicePorts, NetworkPorts, SecurityPorts, StoragePorts, SystemPorts,
+    AppDeps, ClipboardPorts, DevicePorts, NetworkPorts, SecurityPorts, StatsPorts, StoragePorts,
+    SystemPorts,
 };
 pub use runtime::CoreRuntime;
 pub use usecases::CoreUseCases;

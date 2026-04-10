@@ -156,6 +156,7 @@ impl DaemonClipboardChangeHandler {
             deps.clipboard.representation_cache.clone(),
             deps.clipboard.spool_queue.clone(),
         )
+        .with_local_stats_repo(deps.stats.local_stats_repo.clone())
     }
 
     fn build_sync_outbound_clipboard_use_case(&self) -> SyncOutboundClipboardUseCase {
@@ -170,6 +171,7 @@ impl DaemonClipboardChangeHandler {
             Arc::new(TransferPayloadEncryptorAdapter),
             deps.device.paired_device_repo.clone(),
         )
+        .with_local_stats_repo(deps.stats.local_stats_repo.clone())
     }
 }
 

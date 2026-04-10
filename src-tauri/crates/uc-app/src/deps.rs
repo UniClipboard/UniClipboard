@@ -90,6 +90,12 @@ pub struct StoragePorts {
     pub file_transfer_repo: Arc<dyn uc_core::ports::FileTransferRepositoryPort>,
 }
 
+/// Local statistics ports bundle.
+/// 本地统计领域端口组。
+pub struct StatsPorts {
+    pub local_stats_repo: Arc<dyn LocalStatsRepositoryPort>,
+}
+
 /// System-domain ports bundle (clock, hash, file manager, cache filesystem).
 /// 系统领域端口组（时钟、哈希、文件管理器、缓存文件系统）。
 pub struct SystemPorts {
@@ -122,6 +128,8 @@ pub struct AppDeps {
     pub setup_status: Arc<dyn SetupStatusPort>,
     /// Storage-domain ports / 存储领域端口
     pub storage: StoragePorts,
+    /// Local statistics ports / 本地统计端口
+    pub stats: StatsPorts,
     /// Settings (cross-cutting) / 设置（横切关注）
     pub settings: Arc<dyn SettingsPort>,
     /// System-domain ports / 系统领域端口

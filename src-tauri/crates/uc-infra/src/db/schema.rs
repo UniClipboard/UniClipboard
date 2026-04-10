@@ -110,6 +110,28 @@ diesel::table! {
     }
 }
 
+diesel::table! {
+    local_metric_daily_count (metric_name, bucket_date) {
+        metric_name -> Text,
+        bucket_date -> Text,
+        count -> BigInt,
+        updated_at_ms -> BigInt,
+    }
+}
+
+diesel::table! {
+    local_metric_minute_sample (metric_name, bucket_start_ms) {
+        metric_name -> Text,
+        bucket_start_ms -> BigInt,
+        avg_value -> Double,
+        min_value -> Double,
+        max_value -> Double,
+        last_value -> Double,
+        sample_count -> Integer,
+        updated_at_ms -> BigInt,
+    }
+}
+
 diesel::joinable!(clipboard_entry -> clipboard_event (event_id));
 diesel::joinable!(clipboard_selection -> clipboard_entry (entry_id));
 diesel::joinable!(clipboard_snapshot_representation -> blob (blob_id));
@@ -123,6 +145,8 @@ diesel::allow_tables_to_appear_in_same_query!(
     clipboard_representation_thumbnail,
     clipboard_snapshot_representation,
     file_transfer,
+    local_metric_daily_count,
+    local_metric_minute_sample,
     paired_device,
     t_device,
 );

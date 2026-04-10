@@ -4,6 +4,7 @@
 use crate::commands::record_trace_fields;
 use crate::quick_panel;
 use tracing::{info_span, Instrument};
+use uc_core::ports::LocalCounterMetric;
 use uc_platform::ports::observability::TraceMetadata;
 
 /// Dismiss the quick panel and return focus to the previous app (no paste).
@@ -39,6 +40,7 @@ pub async fn dismiss_quick_panel(
 #[tauri::command]
 pub async fn paste_to_previous_app(
     app: tauri::AppHandle,
+    runtime: tauri::State<'_, std::sync::Arc<crate::bootstrap::AppRuntime>>,
     _trace: Option<TraceMetadata>,
 ) -> Result<(), String> {
     let span = info_span!(
@@ -50,14 +52,27 @@ pub async fn paste_to_previous_app(
 
     async {
         let handle = app.clone();
+        let runtime = runtime.inner().clone();
         let (tx, rx) = tokio::sync::oneshot::channel();
         app.run_on_main_thread(move || {
             let result = quick_panel::paste(&handle);
             let _ = tx.send(result);
         })
         .map_err(|e| format!("Failed to dispatch to main thread: {e}"))?;
-        rx.await
-            .map_err(|_| "Main thread dropped result".to_string())?
+        let result = rx
+            .await
+            .map_err(|_| "Main thread dropped result".to_string())?;
+        if result.is_ok() {
+            if let Err(error) = runtime
+                .usecases()
+                .record_local_counter_metric()
+                .execute(LocalCounterMetric::ClipboardPaste)
+                .await
+            {
+                tracing::warn!(error = %error, "Failed to record local clipboard paste stat");
+            }
+        }
+        result
     }
     .instrument(span)
     .await

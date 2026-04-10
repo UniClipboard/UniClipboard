@@ -86,6 +86,8 @@ pub mod http_route {
     pub const STORAGE_STATS: &str = "/storage/stats";
     /// POST /storage/clear-cache — clear storage cache
     pub const STORAGE_CLEAR_CACHE: &str = "/storage/clear-cache";
+    /// GET /stats/local/dashboard — local analytics dashboard payload
+    pub const LOCAL_STATS_DASHBOARD: &str = "/stats/local/dashboard";
     /// GET /clipboard/blobs/:blob_id — serve raw blob binary content
     pub const CLIPBOARD_BLOBS: &str = "/clipboard/blobs";
     /// GET /clipboard/thumbnails/:rep_id — serve raw thumbnail binary content
@@ -215,6 +217,7 @@ mod tests {
         assert_eq!(http_route::ENCRYPTION_LOCK, "/encryption/lock");
         assert_eq!(http_route::STORAGE_STATS, "/storage/stats");
         assert_eq!(http_route::STORAGE_CLEAR_CACHE, "/storage/clear-cache");
+        assert_eq!(http_route::LOCAL_STATS_DASHBOARD, "/stats/local/dashboard");
         assert_eq!(http_route::CLIPBOARD_BLOBS, "/clipboard/blobs");
         assert_eq!(http_route::CLIPBOARD_THUMBNAILS, "/clipboard/thumbnails");
     }

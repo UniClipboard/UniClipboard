@@ -10,7 +10,8 @@ use uc_core::ids::{EntryId, EventId};
 use uc_core::ports::clipboard::{RepresentationCachePort, SpoolQueuePort, SpoolRequest};
 use uc_core::ports::{
     ClipboardEntryRepositoryPort, ClipboardEventWriterPort, ClipboardRepresentationNormalizerPort,
-    DeviceIdentityPort, SelectRepresentationPolicyPort,
+    DeviceIdentityPort, LocalCounterMetric, LocalStatsRepositoryPort, NoopLocalStatsRepositoryPort,
+    SelectRepresentationPolicyPort,
 };
 use uc_core::{
     ClipboardChangeOrigin, ClipboardEntry, ClipboardEvent, ClipboardSelectionDecision,
@@ -49,6 +50,7 @@ pub struct CaptureClipboardUseCase {
     device_identity: Arc<dyn DeviceIdentityPort>,
     representation_cache: Arc<dyn RepresentationCachePort>,
     spool_queue: Arc<dyn SpoolQueuePort>,
+    local_stats_repo: Arc<dyn LocalStatsRepositoryPort>,
 }
 
 impl CaptureClipboardUseCase {
@@ -89,7 +91,16 @@ impl CaptureClipboardUseCase {
             device_identity,
             representation_cache,
             spool_queue,
+            local_stats_repo: Arc::new(NoopLocalStatsRepositoryPort),
         }
+    }
+
+    pub fn with_local_stats_repo(
+        mut self,
+        local_stats_repo: Arc<dyn LocalStatsRepositoryPort>,
+    ) -> Self {
+        self.local_stats_repo = local_stats_repo;
+        self
     }
 
     /// Execute the clipboard capture workflow with a pre-captured snapshot.
@@ -271,6 +282,18 @@ impl CaptureClipboardUseCase {
             .await?;
 
             info!(event_id = %event_id, entry_id = %entry_id, "Clipboard capture completed");
+            if origin == ClipboardChangeOrigin::LocalCapture {
+                if let Err(error) = self
+                    .local_stats_repo
+                    .record_counter(
+                        LocalCounterMetric::ClipboardCopy,
+                        chrono::Utc::now().timestamp_millis(),
+                    )
+                    .await
+                {
+                    warn!(error = %error, "Failed to record local clipboard copy stat");
+                }
+            }
 
             // Queue large representations for durable spool-to-disk in a background task.
             // The entry is already persisted and bytes are in the in-memory cache, so the

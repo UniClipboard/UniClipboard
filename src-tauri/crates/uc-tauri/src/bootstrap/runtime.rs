@@ -409,6 +409,13 @@ impl<'a> AppUseCases<'a> {
                 .paired_device_repo
                 .clone(),
         )
+        .with_local_stats_repo(
+            self.app_runtime
+                .wiring_deps()
+                .stats
+                .local_stats_repo
+                .clone(),
+        )
     }
 }
 
@@ -1313,6 +1320,9 @@ mod tests {
                 thumbnail_repo: Arc::new(NoopPort),
                 thumbnail_generator: Arc::new(NoopPort),
                 file_transfer_repo: Arc::new(uc_core::ports::NoopFileTransferRepositoryPort),
+            },
+            stats: uc_app::StatsPorts {
+                local_stats_repo: Arc::new(uc_core::ports::NoopLocalStatsRepositoryPort),
             },
             settings: Arc::new(NoopPort),
             system: uc_app::SystemPorts {

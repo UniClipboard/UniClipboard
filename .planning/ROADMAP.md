@@ -185,7 +185,7 @@ Archive note:
 | Phase                                              | Plans Complete | Status      | Completed |
 | -------------------------------------------------- | -------------- | ----------- | --------- |
 | 88. Core Domain and Port Contracts                 | 0/1            | Not started | -         |
-| 89. Use Cases and Delete Integration               | 2/2 | Complete   | 2026-04-10 |
+| 89. Use Cases and Delete Integration               | 2/2 | Complete    | 2026-04-10 |
 | 90. SQLite Schema Migration and Tokenizer Pipeline | 0/TBD          | Not started | -         |
 | 91. SQLite Index Adapter and Rebuild Strategy      | 0/TBD          | Not started | -         |
 | 92. Bootstrap Wiring and Daemon HTTP Routes        | 0/TBD          | Not started | -         |

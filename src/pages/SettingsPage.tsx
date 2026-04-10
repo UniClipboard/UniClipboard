@@ -13,6 +13,7 @@ import { useShortcut } from '@/hooks/useShortcut'
 import { useShortcutScope } from '@/hooks/useShortcutScope'
 import { SettingContentLayout } from '@/layouts'
 import { cn } from '@/lib/utils'
+import { WINDOWS_INSET_PANEL_CLASS } from '@/lib/window-frame'
 import { captureUserIntent } from '@/observability/breadcrumbs'
 
 function SettingsPage() {
@@ -69,13 +70,7 @@ function SettingsPage() {
       className="min-h-0 h-full"
     >
       <SettingsSidebar activeCategory={activeCategory} onCategoryChange={handleCategoryChange} />
-      <SidebarInset
-        className={cn(
-          'min-h-0',
-          isWindows &&
-            'rounded-tl-[22px] bg-background/92 shadow-[inset_1px_1px_0_rgba(255,255,255,0.18)] backdrop-blur-sm'
-        )}
-      >
+      <SidebarInset className={cn('min-h-0', isWindows && WINDOWS_INSET_PANEL_CLASS)}>
         <ScrollArea className="flex-1 min-h-0">
           <div className="p-6">
             {ActiveSection && (

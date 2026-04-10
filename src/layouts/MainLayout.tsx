@@ -2,6 +2,7 @@ import React, { ReactNode } from 'react'
 import { Sidebar } from '@/components'
 import { usePlatform } from '@/hooks/usePlatform'
 import { cn } from '@/lib/utils'
+import { WINDOWS_INSET_PANEL_CLASS } from '@/lib/window-frame'
 
 interface MainLayoutProps {
   children: ReactNode
@@ -29,8 +30,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
       <main
         className={cn(
           'relative flex-1 flex flex-col overflow-hidden',
-          isWindows &&
-            'rounded-tl-[22px] bg-background/92 shadow-[inset_1px_1px_0_rgba(255,255,255,0.18)] backdrop-blur-sm'
+          isWindows && WINDOWS_INSET_PANEL_CLASS
         )}
       >
         {children}

@@ -118,11 +118,13 @@ const PanelItem: React.FC<PanelItemProps> = React.memo(
 
 interface HistoryPaneProps {
   filteredItems: DisplayItem[]
+  hasPointerMovedSinceShow: boolean
   isKeyboardNav: boolean
   isLocked: boolean
   itemRefs: React.MutableRefObject<Map<number, HTMLDivElement>>
   loading: boolean
   onHover: (index: number) => void
+  onHistoryMouseMove: () => void
   onSearchChange: (value: string) => void
   onSelect: (index: number) => void
   onUnlock: () => void
@@ -138,11 +140,13 @@ interface HistoryPaneProps {
 const HistoryPane: React.FC<HistoryPaneProps> = React.memo(
   ({
     filteredItems,
+    hasPointerMovedSinceShow,
     isKeyboardNav,
     isLocked,
     itemRefs,
     loading,
     onHover,
+    onHistoryMouseMove,
     onSearchChange,
     onSelect,
     onUnlock,
@@ -217,6 +221,7 @@ const HistoryPane: React.FC<HistoryPaneProps> = React.memo(
           <div
             className="scrollbar-thin flex-1 overflow-y-auto px-1.5 py-1"
             onMouseMove={() => {
+              if (!hasPointerMovedSinceShow) onHistoryMouseMove()
               if (isKeyboardNav) setIsKeyboardNav(false)
             }}
             onMouseLeave={() => setHoveredIndex(null)}
@@ -268,18 +273,21 @@ const quickCardClassName =
   'flex h-screen w-full min-w-0 flex-col overflow-hidden rounded-xl border border-border/50 bg-background/95 shadow-xl backdrop-blur-xl'
 
 type PreviewMode = 'closed' | 'reserving' | 'expanded'
+type PreviewFocusSource = 'selection' | 'hover'
 
 interface PreviewState {
   entryId: string | null
   mode: PreviewMode
   suppressed: boolean
   historyLockedWidth: number | null
+  focusSource: PreviewFocusSource
 }
 
 type PreviewAction =
   | { type: 'reset'; suppressed?: boolean }
   | { type: 'suppress'; value: boolean }
   | { type: 'set-entry'; entryId: string | null }
+  | { type: 'set-focus-source'; source: PreviewFocusSource }
   | { type: 'reserve-space'; entryId: string; historyLockedWidth: number | null }
   | { type: 'expand' }
 
@@ -288,6 +296,7 @@ const initialPreviewState: PreviewState = {
   mode: 'closed',
   suppressed: false,
   historyLockedWidth: null,
+  focusSource: 'selection',
 }
 
 function previewReducer(state: PreviewState, action: PreviewAction): PreviewState {
@@ -301,12 +310,15 @@ function previewReducer(state: PreviewState, action: PreviewAction): PreviewStat
       return state.suppressed === action.value ? state : { ...state, suppressed: action.value }
     case 'set-entry':
       return state.entryId === action.entryId ? state : { ...state, entryId: action.entryId }
+    case 'set-focus-source':
+      return state.focusSource === action.source ? state : { ...state, focusSource: action.source }
     case 'reserve-space':
       return {
         entryId: action.entryId,
         mode: 'reserving',
         suppressed: false,
         historyLockedWidth: action.historyLockedWidth,
+        focusSource: state.focusSource,
       }
     case 'expand':
       if (state.mode === 'expanded') {
@@ -332,6 +344,8 @@ const ClipboardHistoryPanel: React.FC = () => {
   const [unlockError, setUnlockError] = useState<string | null>(null)
   const [uiScale, setUiScale] = useState(() => readStoredUiScale())
   const [previewState, dispatchPreview] = useReducer(previewReducer, initialPreviewState)
+  const [hasPointerMovedSinceShow, setHasPointerMovedSinceShow] = useState(false)
+  const [previewTargetId, setPreviewTargetId] = useState<string | null>(null)
 
   const searchInputRef = useRef<HTMLInputElement>(null)
   const historyPaneRef = useRef<HTMLDivElement>(null)
@@ -345,6 +359,7 @@ const ClipboardHistoryPanel: React.FC = () => {
   const previewEntryId = previewState.entryId
   const previewSuppressed = previewState.suppressed
   const historyLockedWidth = previewState.historyLockedWidth
+  const previewFocusSource = previewState.focusSource
 
   const clearPreviewTimer = useCallback(() => {
     if (previewTimerRef.current) {
@@ -378,6 +393,8 @@ const ClipboardHistoryPanel: React.FC = () => {
       setSelectedIndex(0)
       setHoveredIndex(null)
       setIsKeyboardNav(true)
+      setHasPointerMovedSinceShow(false)
+      setPreviewTargetId(null)
       void reload()
 
       // 2. Let React flush state updates, then make the window visible.
@@ -463,8 +480,33 @@ const ClipboardHistoryPanel: React.FC = () => {
     el?.scrollIntoView?.({ block: 'nearest' })
   }, [selectedIndex])
 
-  const focusedIndex = hoveredIndex ?? selectedIndex
-  const focusedItem = filteredItems[focusedIndex] ?? null
+  const selectedItem = filteredItems[selectedIndex] ?? null
+  const hoveredItem = hoveredIndex != null ? (filteredItems[hoveredIndex] ?? null) : null
+  const targetPreviewItem =
+    previewTargetId != null
+      ? (filteredItems.find(item => item.id === previewTargetId) ?? null)
+      : null
+
+  useEffect(() => {
+    if (previewFocusSource !== 'selection') {
+      return
+    }
+
+    setPreviewTargetId(selectedItem?.id ?? null)
+  }, [previewFocusSource, selectedItem])
+
+  useEffect(() => {
+    if (previewFocusSource !== 'hover' && hoveredIndex == null) {
+      return
+    }
+
+    if (!hoveredItem) {
+      return
+    }
+
+    setPreviewTargetId(hoveredItem.id)
+  }, [hoveredIndex, hoveredItem, previewFocusSource])
+
   useEffect(() => {
     clearPreviewTimer()
 
@@ -472,20 +514,20 @@ const ClipboardHistoryPanel: React.FC = () => {
       return
     }
 
-    if (!focusedItem) {
+    if (!targetPreviewItem) {
       previewLayoutTokenRef.current += 1
       dispatchPreview({ type: 'reset' })
       void setQuickPanelLayout(uiScale, false).catch(() => {})
       return
     }
 
-    if (previewEntryId === focusedItem.id) {
+    if (previewEntryId === targetPreviewItem.id) {
       return
     }
 
     previewTimerRef.current = setTimeout(
       () => {
-        const nextEntryId = focusedItem.id
+        const nextEntryId = targetPreviewItem.id
         dispatchPreview({ type: 'set-entry', entryId: nextEntryId })
 
         if (previewExpanded) {
@@ -520,13 +562,11 @@ const ClipboardHistoryPanel: React.FC = () => {
     return clearPreviewTimer
   }, [
     clearPreviewTimer,
-    focusedItem,
     isLocked,
     previewEntryId,
     previewExpanded,
     previewSuppressed,
-    selectedIndex,
-    hoveredIndex,
+    targetPreviewItem,
     uiScale,
   ])
 
@@ -549,12 +589,21 @@ const ClipboardHistoryPanel: React.FC = () => {
 
   const handleHover = useCallback(
     (index: number) => {
-      if (!isKeyboardNav) {
-        dispatchPreview({ type: 'suppress', value: false })
-        setHoveredIndex(index)
+      if (isKeyboardNav || !hasPointerMovedSinceShow) {
+        return
       }
+
+      const item = filteredItems[index]
+      if (!item) {
+        return
+      }
+
+      dispatchPreview({ type: 'suppress', value: false })
+      dispatchPreview({ type: 'set-focus-source', source: 'hover' })
+      setPreviewTargetId(item.id)
+      setHoveredIndex(index)
     },
-    [isKeyboardNav]
+    [filteredItems, hasPointerMovedSinceShow, isKeyboardNav]
   )
 
   const handleDelete = useCallback(
@@ -568,13 +617,14 @@ const ClipboardHistoryPanel: React.FC = () => {
         clearPreviewTimer()
         setHoveredIndex(null)
         dispatchPreview({ type: 'suppress', value: false })
+        dispatchPreview({ type: 'set-focus-source', source: 'selection' })
 
         const remainingItems = filteredItems.filter((_, itemIndex) => itemIndex !== index)
         const nextIndex = remainingItems.length > 0 ? Math.min(index, remainingItems.length - 1) : 0
         const nextItem = remainingItems[nextIndex] ?? null
 
         setSelectedIndex(nextIndex)
-        dispatchPreview({ type: 'set-entry', entryId: nextItem?.id ?? null })
+        setPreviewTargetId(nextItem?.id ?? null)
         void reload()
       } catch (err) {
         console.error('Failed to delete clipboard entry:', err)
@@ -585,6 +635,8 @@ const ClipboardHistoryPanel: React.FC = () => {
 
   const handleSearchChange = useCallback((value: string) => {
     dispatchPreview({ type: 'suppress', value: false })
+    dispatchPreview({ type: 'set-focus-source', source: 'selection' })
+    setHoveredIndex(null)
     setSearchQuery(value)
   }, [])
 
@@ -619,6 +671,7 @@ const ClipboardHistoryPanel: React.FC = () => {
       if (e.ctrlKey && (e.key === 'n' || e.key === 'p')) {
         e.preventDefault()
         dispatchPreview({ type: 'suppress', value: false })
+        dispatchPreview({ type: 'set-focus-source', source: 'selection' })
         setIsKeyboardNav(true)
         setHoveredIndex(null)
         if (e.key === 'n') {
@@ -633,6 +686,7 @@ const ClipboardHistoryPanel: React.FC = () => {
         case 'ArrowDown':
           e.preventDefault()
           dispatchPreview({ type: 'suppress', value: false })
+          dispatchPreview({ type: 'set-focus-source', source: 'selection' })
           setIsKeyboardNav(true)
           setHoveredIndex(null)
           setSelectedIndex(prev => Math.min(prev + 1, filteredItems.length - 1))
@@ -640,6 +694,7 @@ const ClipboardHistoryPanel: React.FC = () => {
         case 'ArrowUp':
           e.preventDefault()
           dispatchPreview({ type: 'suppress', value: false })
+          dispatchPreview({ type: 'set-focus-source', source: 'selection' })
           setIsKeyboardNav(true)
           setHoveredIndex(null)
           setSelectedIndex(prev => Math.max(prev - 1, 0))
@@ -672,6 +727,10 @@ const ClipboardHistoryPanel: React.FC = () => {
     searchInputRef.current?.focus()
   }, [])
 
+  const handleHistoryMouseMove = useCallback(() => {
+    setHasPointerMovedSinceShow(true)
+  }, [])
+
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-transparent">
       <div
@@ -689,11 +748,13 @@ const ClipboardHistoryPanel: React.FC = () => {
       >
         <HistoryPane
           filteredItems={filteredItems}
+          hasPointerMovedSinceShow={hasPointerMovedSinceShow}
           isKeyboardNav={isKeyboardNav}
           isLocked={isLocked}
           itemRefs={itemRefs}
           loading={loading}
           onHover={handleHover}
+          onHistoryMouseMove={handleHistoryMouseMove}
           onSearchChange={handleSearchChange}
           onSelect={handleSelect}
           onUnlock={handleUnlock}

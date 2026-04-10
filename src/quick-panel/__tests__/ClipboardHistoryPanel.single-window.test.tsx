@@ -39,6 +39,28 @@ vi.mock('@/hooks/useClipboardCollection', () => ({
         file_transfer_status: null,
         file_transfer_reason: null,
       },
+      {
+        id: 'entry-2',
+        is_downloaded: true,
+        is_favorited: false,
+        created_at: 1710000001000,
+        updated_at: 1710000001000,
+        active_time: Date.now() - 1000,
+        item: {
+          text: {
+            display_text: 'Second preview title',
+            has_detail: true,
+            size: 19,
+          },
+          image: null,
+          file: null,
+          link: null,
+          code: null,
+          unknown: null,
+        },
+        file_transfer_status: null,
+        file_transfer_reason: null,
+      },
     ],
     loading: false,
     isLocked: false,
@@ -81,7 +103,7 @@ vi.mock('@/api/daemon/client', () => ({
 
 vi.mock('../ClipboardPreviewPane', () => ({
   default: ({ entryId }: { entryId: string | null }) =>
-    entryId ? <div>Full preview text</div> : <div data-testid="preview-empty" />,
+    entryId ? <div>{`Preview for ${entryId}`}</div> : <div data-testid="preview-empty" />,
 }))
 
 function deferred() {
@@ -109,7 +131,7 @@ describe('ClipboardHistoryPanel single-window preview', () => {
       await new Promise(resolve => setTimeout(resolve, 550))
     })
 
-    expect(await screen.findByText('Full preview text')).toBeInTheDocument()
+    expect(await screen.findByText('Preview for entry-1')).toBeInTheDocument()
 
     await waitFor(() => {
       expect(invokeMock).toHaveBeenCalledWith('set_quick_panel_layout', {
@@ -127,7 +149,7 @@ describe('ClipboardHistoryPanel single-window preview', () => {
       await new Promise(resolve => setTimeout(resolve, 550))
     })
 
-    expect(await screen.findByText('Full preview text')).toBeInTheDocument()
+    expect(await screen.findByText('Preview for entry-1')).toBeInTheDocument()
 
     const rootLayout = container.firstElementChild as HTMLDivElement | null
     const historyWrapper = rootLayout?.children.item(0) as HTMLDivElement | null
@@ -196,7 +218,7 @@ describe('ClipboardHistoryPanel single-window preview', () => {
       await new Promise(resolve => setTimeout(resolve, 550))
     })
 
-    expect(await screen.findByText('Full preview text')).toBeInTheDocument()
+    expect(await screen.findByText('Preview for entry-1')).toBeInTheDocument()
 
     invokeMock.mockClear()
 
@@ -209,5 +231,43 @@ describe('ClipboardHistoryPanel single-window preview', () => {
       scale: 1,
       previewExpanded: false,
     })
+  })
+
+  it('keeps the hovered preview when moving from history into the preview pane', async () => {
+    const { container } = render(<ClipboardHistoryPanel />)
+
+    await act(async () => {
+      await new Promise(resolve => setTimeout(resolve, 550))
+    })
+
+    const rootLayout = container.firstElementChild as HTMLDivElement | null
+    const previewWrapper = rootLayout?.children.item(1) as HTMLDivElement | null
+    const secondItem = screen.getByText('Second preview title')
+
+    fireEvent.mouseMove(secondItem)
+    fireEvent.mouseEnter(secondItem)
+
+    expect(await screen.findByText('Preview for entry-2')).toBeInTheDocument()
+
+    fireEvent.mouseLeave(secondItem)
+    fireEvent.mouseEnter(previewWrapper!)
+
+    expect(screen.getByText('Preview for entry-2')).toBeInTheDocument()
+    expect(screen.queryByText('Preview for entry-1')).not.toBeInTheDocument()
+  })
+
+  it('does not treat a stationary pointer as a hover when the panel first appears', async () => {
+    render(<ClipboardHistoryPanel />)
+
+    const secondItem = await screen.findByText('Second preview title')
+
+    fireEvent.mouseEnter(secondItem)
+
+    await act(async () => {
+      await new Promise(resolve => setTimeout(resolve, 550))
+    })
+
+    expect(screen.getByText('Preview for entry-1')).toBeInTheDocument()
+    expect(screen.queryByText('Preview for entry-2')).not.toBeInTheDocument()
   })
 })

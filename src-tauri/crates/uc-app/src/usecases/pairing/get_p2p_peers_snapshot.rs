@@ -115,7 +115,7 @@ impl GetP2pPeersSnapshot {
                 is_paired: peer.is_paired,
                 is_connected: connected_ids.contains(&peer_id),
                 pairing_state: paired_dev
-                    .map(|p| pairing_state_to_string(&p.pairing_state))
+                    .map(|p| p.pairing_state.to_string())
                     .unwrap_or_else(|| "NotPaired".to_string()),
                 identity_fingerprint: paired_dev
                     .map(|p| p.identity_fingerprint.clone())

@@ -1659,6 +1659,72 @@ mod tests {
         }
     }
 
+    // ── Phase 92: Pagination Metadata Tests ──────────────────────────────────
+
+    #[tokio::test]
+    async fn search_query_returns_total_and_has_more_metadata() {
+        let tmp = NamedTempFile::new().expect("temp file");
+        let adapter = make_adapter(&tmp, "profile-pg");
+
+        // Seed meta row.
+        adapter.get_index_meta().await.expect("seed meta");
+
+        // Index 5 entries, each with the token "clip".
+        for i in 0..5u32 {
+            let mut doc = sample_document(&format!("entry-pg-{i}"));
+            doc.entry_id = uc_core::ids::EntryId::from(format!("entry-pg-{i}").as_str());
+            doc.active_time_ms = i as i64 * 1000;
+            doc.indexed_at_ms = i as i64 * 1000;
+            let postings = make_postings(&format!("entry-pg-{i}"), &["clip"]);
+            adapter.index_entry(doc, postings).await.expect("index");
+        }
+
+        // Query page 1: offset=0, limit=3 → 3 items, total=5, has_more=true.
+        let q1 = SearchQuery {
+            query_string: "clip".into(),
+            operator: QueryOperator::Or,
+            time_range: None,
+            file_types: vec![],
+            extensions: vec![],
+            limit: 3,
+            offset: 0,
+        };
+        let page1 = adapter.search(q1).await.expect("search page1");
+        assert_eq!(page1.total, 5, "total must be 5 regardless of page size");
+        assert!(page1.has_more, "has_more must be true when more pages follow");
+        assert_eq!(page1.items.len(), 3, "items must respect limit");
+
+        // Query page 2: offset=3, limit=3 → 2 items, total=5, has_more=false.
+        let q2 = SearchQuery {
+            query_string: "clip".into(),
+            operator: QueryOperator::Or,
+            time_range: None,
+            file_types: vec![],
+            extensions: vec![],
+            limit: 3,
+            offset: 3,
+        };
+        let page2 = adapter.search(q2).await.expect("search page2");
+        assert_eq!(page2.total, 5, "total must be consistent across pages");
+        assert!(!page2.has_more, "has_more must be false on last page");
+        assert_eq!(page2.items.len(), 2, "last page has remaining 2 items");
+
+        // Query for non-existent token → total=0, has_more=false.
+        let q3 = SearchQuery {
+            query_string: "nonexistent".into(),
+            operator: QueryOperator::Or,
+            time_range: None,
+            file_types: vec![],
+            extensions: vec![],
+            limit: 10,
+            offset: 0,
+        };
+        let page3 = adapter.search(q3).await.expect("search page3");
+        assert_eq!(page3.total, 0, "empty result total must be 0");
+        assert!(!page3.has_more, "empty result has_more must be false");
+        assert!(page3.items.is_empty(), "empty result items must be empty");
+    }
+
     // ── Task 1 Rebuild Tests ──────────────────────────────────────────────────
 
     #[tokio::test]

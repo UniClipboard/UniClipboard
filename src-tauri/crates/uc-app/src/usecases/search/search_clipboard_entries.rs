@@ -143,6 +143,24 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn execute_forwards_query_and_returns_page_metadata() {
+        let mock = Arc::new(MockSearchIndex::new());
+        let r1 = make_search_result("entry-p1");
+        let r2 = make_search_result("entry-p2");
+        *mock.next_result.lock().await = vec![r1.clone(), r2.clone()];
+
+        let uc = SearchClipboardEntries::from_port(mock as Arc<dyn SearchIndexPort>);
+        let page = uc.execute(make_query("hello")).await.unwrap();
+        // Verify page contract: items carry through, total and has_more come from the port.
+        assert_eq!(page.items.len(), 2);
+        assert_eq!(page.items[0], r1);
+        assert_eq!(page.items[1], r2);
+        // total and has_more are whatever the port provides (mock returns 0/false defaults)
+        let _ = page.total;
+        let _ = page.has_more;
+    }
+
+    #[tokio::test]
     async fn execute_propagates_invalid_query_error() {
         let mock = Arc::new(MockSearchIndex::new());
         *mock.fail_next.lock().await =

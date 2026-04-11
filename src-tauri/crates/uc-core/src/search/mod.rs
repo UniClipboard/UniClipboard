@@ -15,4 +15,4 @@ pub use document::{FileType, SearchDocument, SearchIndexMeta, SearchPosting};
 pub use error::SearchError;
 pub use key::SearchKey;
 pub use query::{QueryOperator, SearchQuery, TimeRangeFilter};
-pub use result::{RebuildProgress, RebuildStage, SearchResult};
+pub use result::{RebuildProgress, RebuildStage, SearchResult, SearchResultsPage};

@@ -20,6 +20,20 @@ pub struct SearchResult {
     pub file_extensions: Vec<String>,
 }
 
+/// Paged output from `SearchIndexPort::search()`.
+///
+/// Carries all pagination metadata so the route layer does not need a
+/// separate count query or fake `has_more` inference (per D-02, Phase 92).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SearchResultsPage {
+    /// Matching entries for the requested page window.
+    pub items: Vec<SearchResult>,
+    /// Total count of matching entries across all pages (computed before pagination).
+    pub total: u32,
+    /// Whether more pages follow the current page window.
+    pub has_more: bool,
+}
+
 /// Stage of a full index rebuild.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -91,6 +105,40 @@ mod tests {
             let back: RebuildStage = serde_json::from_str(&json).unwrap();
             assert_eq!(stage, back);
         }
+    }
+
+    #[test]
+    fn search_results_page_serde_round_trip() {
+        let item = SearchResult {
+            entry_id: EntryId::from("entry-page-1"),
+            file_type: FileType::Text,
+            active_time_ms: 999,
+            text_preview: Some("page item".into()),
+            mime_type: "text/plain".into(),
+            file_extensions: vec!["txt".into()],
+        };
+        let page = SearchResultsPage {
+            items: vec![item.clone()],
+            total: 42,
+            has_more: true,
+        };
+        let json = serde_json::to_string(&page).unwrap();
+        let back: SearchResultsPage = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.total, 42);
+        assert!(back.has_more);
+        assert_eq!(back.items.len(), 1);
+        assert_eq!(back.items[0], item);
+
+        // has_more = false also round-trips
+        let page2 = SearchResultsPage {
+            items: vec![],
+            total: 0,
+            has_more: false,
+        };
+        let json2 = serde_json::to_string(&page2).unwrap();
+        let back2: SearchResultsPage = serde_json::from_str(&json2).unwrap();
+        assert!(!back2.has_more);
+        assert_eq!(back2.total, 0);
     }
 
     #[test]

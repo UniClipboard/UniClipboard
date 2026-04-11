@@ -3,7 +3,7 @@ import React from 'react'
 import { useTranslation } from 'react-i18next'
 import { Progress } from '@/components/ui/progress'
 import type { TransferProgressInfo } from '@/store/slices/fileTransferSlice'
-import { formatFileSize } from '@/utils'
+import { formatDuration, formatFileSize } from '@/utils'
 
 interface TransferProgressBarProps {
   progress: TransferProgressInfo
@@ -17,9 +17,22 @@ const TransferProgressBar: React.FC<TransferProgressBarProps> = ({
   const { t } = useTranslation()
 
   const percent =
-    progress.totalChunks > 0
-      ? Math.round((progress.chunksCompleted / progress.totalChunks) * 100)
-      : 0
+    progress.totalBytes && progress.totalBytes > 0
+      ? Math.round((progress.bytesTransferred / progress.totalBytes) * 100)
+      : progress.totalChunks > 0
+        ? Math.round((progress.chunksCompleted / progress.totalChunks) * 100)
+        : 0
+  const speedLabel = progress.bytesPerSecond
+    ? t('clipboard.transfer.speedValue', {
+        speed: `${formatFileSize(progress.bytesPerSecond)}/s`,
+      })
+    : null
+  const remainingLabel =
+    progress.estimatedRemainingSeconds !== null
+      ? t('clipboard.transfer.remainingValue', {
+          time: formatDuration(progress.estimatedRemainingSeconds),
+        })
+      : null
 
   const DirectionIcon = progress.direction === 'Sending' ? ArrowUpFromLine : ArrowDownToLine
   const directionLabel =
@@ -33,6 +46,9 @@ const TransferProgressBar: React.FC<TransferProgressBarProps> = ({
         <DirectionIcon className="h-3 w-3 shrink-0 text-primary" />
         <Progress value={percent} className="h-1.5 flex-1" />
         <span className="text-xs text-muted-foreground shrink-0">{percent}%</span>
+        {speedLabel && (
+          <span className="text-[11px] text-muted-foreground shrink-0">{speedLabel}</span>
+        )}
       </div>
     )
   }
@@ -61,6 +77,12 @@ const TransferProgressBar: React.FC<TransferProgressBarProps> = ({
           })}
         </span>
       </div>
+      {(speedLabel || remainingLabel) && (
+        <div className="flex items-center justify-between text-xs text-muted-foreground">
+          <span>{speedLabel ?? t('clipboard.transfer.speedPending')}</span>
+          <span>{remainingLabel ?? t('clipboard.transfer.remainingPending')}</span>
+        </div>
+      )}
     </div>
   )
 }

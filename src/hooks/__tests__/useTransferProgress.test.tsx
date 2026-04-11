@@ -166,6 +166,43 @@ describe('useTransferProgress', () => {
     })
   })
 
+  describe('transfer progress events', () => {
+    it('stores live progress and links transfer to entry', async () => {
+      const { Wrapper, store } = createWrapper()
+      renderHook(() => useTransferProgress(), { wrapper: Wrapper })
+
+      await waitFor(() => {
+        expect(capturedHandler).not.toBeNull()
+      })
+
+      act(() => {
+        emitWsEvent('file-transfer.progress', {
+          transferId: 'tx-progress',
+          entryId: 'entry-progress',
+          peerId: 'peer-1',
+          direction: 'Receiving',
+          chunksCompleted: 2,
+          totalChunks: 10,
+          bytesTransferred: 2048,
+          totalBytes: 10240,
+        })
+      })
+
+      const state = store.getState().fileTransfer
+      expect(state.entryTransferMap['entry-progress']).toBe('tx-progress')
+      expect(state.activeTransfers['tx-progress']).toMatchObject({
+        entryId: 'entry-progress',
+        peerId: 'peer-1',
+        direction: 'Receiving',
+        chunksCompleted: 2,
+        totalChunks: 10,
+        bytesTransferred: 2048,
+        totalBytes: 10240,
+        status: 'active',
+      })
+    })
+  })
+
   describe('clipboard write cancellation', () => {
     it('cancels clipboard write on clipboard.new_content event', async () => {
       const { Wrapper } = createWrapper()

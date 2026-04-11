@@ -31,6 +31,7 @@ import { cn } from '@/lib/utils'
 import { captureUserIntent } from '@/observability/breadcrumbs'
 import { useAppDispatch, useAppSelector } from '@/store/hooks'
 import { removeClipboardItem, copyToClipboard, markEntryStale } from '@/store/slices/clipboardSlice'
+import { linkTransferToEntry } from '@/store/slices/fileTransferSlice'
 import { selectEntryTransferStatus } from '@/store/slices/fileTransferSlice'
 
 const log = createLogger('clipboard-content')
@@ -351,8 +352,8 @@ const ClipboardContent: React.FC<ClipboardContentProps> = ({
     async (itemId: string) => {
       try {
         setTransferringEntries(prev => new Set(prev).add(itemId))
-        await downloadFileEntry(itemId)
-        // Transfer started; progress events will update via transfer progress hook (Plan 02)
+        const result = await downloadFileEntry(itemId)
+        dispatch(linkTransferToEntry({ transferId: result.transfer_id, entryId: itemId }))
       } catch (err) {
         log.error({ err }, 'Sync to clipboard failed')
         toast.error(t('clipboard.errors.syncFailed'), {
@@ -365,7 +366,7 @@ const ClipboardContent: React.FC<ClipboardContentProps> = ({
         })
       }
     },
-    [t]
+    [dispatch, t]
   )
 
   // Open file location in system file manager

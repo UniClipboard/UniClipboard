@@ -4,7 +4,9 @@ import { useAppDispatch } from '@/store/hooks'
 import {
   markTransferFailed,
   cancelClipboardWrite,
+  linkTransferToEntry,
   setEntryTransferStatus,
+  updateTransferProgress,
 } from '@/store/slices/fileTransferSlice'
 
 interface FileTransferStatusEvent {
@@ -12,6 +14,17 @@ interface FileTransferStatusEvent {
   entryId: string
   status: string
   reason?: string | null
+}
+
+interface FileTransferProgressEvent {
+  transferId: string
+  entryId?: string | null
+  peerId: string
+  direction: 'Sending' | 'Receiving'
+  chunksCompleted: number
+  totalChunks: number
+  bytesTransferred: number
+  totalBytes?: number | null
 }
 
 /**
@@ -40,6 +53,7 @@ export function useTransferProgress(): void {
       if (event.eventType === 'file-transfer.status_changed') {
         const payload = event.payload as FileTransferStatusEvent
         const { entryId, status, reason } = payload
+        dispatch(linkTransferToEntry({ transferId: payload.transferId, entryId }))
         const validStatuses = ['pending', 'transferring', 'completed', 'failed'] as const
         if (validStatuses.includes(status as (typeof validStatuses)[number])) {
           dispatch(
@@ -57,6 +71,29 @@ export function useTransferProgress(): void {
               transferId: payload.transferId,
               error: reason ?? undefined,
             })
+          )
+        }
+      }
+
+      if (event.eventType === 'file-transfer.progress') {
+        const payload = event.payload as FileTransferProgressEvent
+        dispatch(
+          updateTransferProgress({
+            transferId: payload.transferId,
+            entryId: payload.entryId ?? null,
+            peerId: payload.peerId,
+            direction: payload.direction,
+            chunksCompleted: payload.chunksCompleted,
+            totalChunks: payload.totalChunks,
+            bytesTransferred: payload.bytesTransferred,
+            totalBytes: payload.totalBytes ?? null,
+            eventTs: event.ts,
+          })
+        )
+
+        if (payload.entryId) {
+          dispatch(
+            linkTransferToEntry({ transferId: payload.transferId, entryId: payload.entryId })
           )
         }
       }

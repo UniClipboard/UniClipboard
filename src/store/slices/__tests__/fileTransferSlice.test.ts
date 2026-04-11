@@ -125,4 +125,42 @@ describe('fileTransferSlice - file transfer status', () => {
       })
     })
   })
+
+  describe('updateTransferProgress', () => {
+    it('computes speed and remaining time from live progress updates', () => {
+      let state = fileTransferReducer(
+        initialState,
+        updateTransferProgress({
+          transferId: 'tx-speed',
+          entryId: 'entry-speed',
+          peerId: 'peer-1',
+          direction: 'Receiving',
+          chunksCompleted: 1,
+          totalChunks: 4,
+          bytesTransferred: 1024,
+          totalBytes: 4096,
+          eventTs: 1000,
+        })
+      )
+
+      state = fileTransferReducer(
+        state,
+        updateTransferProgress({
+          transferId: 'tx-speed',
+          entryId: 'entry-speed',
+          peerId: 'peer-1',
+          direction: 'Receiving',
+          chunksCompleted: 2,
+          totalChunks: 4,
+          bytesTransferred: 2048,
+          totalBytes: 4096,
+          eventTs: 2000,
+        })
+      )
+
+      expect(state.entryTransferMap['entry-speed']).toBe('tx-speed')
+      expect(state.activeTransfers['tx-speed'].bytesPerSecond).toBe(2048)
+      expect(state.activeTransfers['tx-speed'].estimatedRemainingSeconds).toBe(1)
+    })
+  })
 })

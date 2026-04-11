@@ -15,6 +15,8 @@ export interface TransferProgressInfo {
   clipboardWriteCancelled?: boolean
   startedAt: number
   updatedAt: number
+  bytesPerSecond: number | null
+  estimatedRemainingSeconds: number | null
 }
 
 /** Durable entry-level transfer status seeded from command responses and status-changed events. */
@@ -38,12 +40,14 @@ const initialState: FileTransferState = {
 
 interface UpdateTransferProgressPayload {
   transferId: string
+  entryId?: string | null
   peerId: string
   direction: 'Sending' | 'Receiving'
   chunksCompleted: number
   totalChunks: number
   bytesTransferred: number
   totalBytes?: number | null
+  eventTs?: number
 }
 
 const fileTransferSlice = createSlice({
@@ -53,30 +57,49 @@ const fileTransferSlice = createSlice({
     updateTransferProgress(state, action: PayloadAction<UpdateTransferProgressPayload>) {
       const {
         transferId,
+        entryId,
         peerId,
         direction,
         chunksCompleted,
         totalChunks,
         bytesTransferred,
         totalBytes,
+        eventTs,
       } = action.payload
-      const now = Date.now()
+      const now = eventTs ?? Date.now()
       const existing = state.activeTransfers[transferId]
 
       const isCompleted = chunksCompleted === totalChunks && totalChunks > 0
+      const startedAt = existing?.startedAt ?? now
+      const elapsedSeconds = Math.max((now - startedAt) / 1000, 0.001)
+      const bytesPerSecond = bytesTransferred > 0 ? bytesTransferred / elapsedSeconds : null
+      const totalBytesValue = totalBytes ?? existing?.totalBytes ?? null
+      const estimatedRemainingSeconds =
+        totalBytesValue &&
+        bytesPerSecond &&
+        bytesPerSecond > 0 &&
+        bytesTransferred <= totalBytesValue
+          ? Math.max((totalBytesValue - bytesTransferred) / bytesPerSecond, 0)
+          : null
 
       state.activeTransfers[transferId] = {
         transferId,
-        entryId: existing?.entryId ?? null,
+        entryId: entryId ?? existing?.entryId ?? null,
         peerId,
         direction,
         chunksCompleted,
         totalChunks,
         bytesTransferred,
-        totalBytes: totalBytes ?? null,
+        totalBytes: totalBytesValue,
         status: isCompleted ? 'completed' : 'active',
-        startedAt: existing?.startedAt ?? now,
+        startedAt,
         updatedAt: now,
+        bytesPerSecond,
+        estimatedRemainingSeconds,
+      }
+
+      if (entryId) {
+        state.entryTransferMap[entryId] = transferId
       }
     },
 
@@ -95,6 +118,7 @@ const fileTransferSlice = createSlice({
         transfer.status = 'failed'
         transfer.errorMessage = action.payload.error
         transfer.updatedAt = Date.now()
+        transfer.estimatedRemainingSeconds = null
       }
     },
 

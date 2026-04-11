@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v0.5.0
 milestone_name: Local Encrypted Search
 status: executing
-stopped_at: Completed 92-01-PLAN.md
-last_updated: "2026-04-11T08:06:49.214Z"
+stopped_at: Completed 92-04-PLAN.md
+last_updated: "2026-04-11T09:04:53.531Z"
 last_activity: 2026-04-11
 progress:
   total_phases: 6
-  completed_phases: 4
+  completed_phases: 5
   total_plans: 11
-  completed_plans: 8
+  completed_plans: 11
   percent: 17
 ---
 
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-04-10)
 ## Current Position
 
 Phase: 92 (bootstrap-wiring-and-daemon-http-routes) — EXECUTING
-Plan: 2 of 4
+Plan: 3 of 4
 Status: Ready to execute
 Last activity: 2026-04-11
 
@@ -52,6 +52,7 @@ Progress: [▓▓░░░░░░░░] 17%
 | Phase 91 P01 | 45min | 2 tasks | 2 files |
 | Phase 91 P02 | 12min | 2 tasks | 3 files |
 | Phase 92 P01 | 60min | 2 tasks | 15 files |
+| Phase 92-bootstrap-wiring-and-daemon-http-routes P04 | 45min | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -83,6 +84,9 @@ Recent decisions affecting current work:
 - [Phase 92]: SearchResultsPage computed in SqliteSearchIndex — total before pagination, has_more derived; route layer gets authoritative pagination truth with no double-query (Phase 92-01)
 - [Phase 92]: uc-app formally depends on uc-infra for SearchPipeline in SearchPorts bundle — pragmatic exception accepted by plan authors (Phase 92-01)
 - [Phase 92]: CoreUseCases.delete_clipboard_entry() injects search_index via with_search_index() — closes Phase 89 delete cleanup wiring gap (Phase 92-01)
+- [Phase 92-bootstrap-wiring-and-daemon-http-routes]: SearchCoordinator must use DaemonApiState.event_tx, not its own channel — WS fanout subscribes to DaemonApiState.event_tx so coordinator must share the same broadcast sender
+- [Phase 92-bootstrap-wiring-and-daemon-http-routes]: Use build_cli_runtime in tests instead of build_non_gui_runtime_with_setup — the latter calls block_on internally which panics inside tokio::test runtime
+- [Phase 92-bootstrap-wiring-and-daemon-http-routes]: Search coordinator emits status_snapshot(rebuilding) before first rebuild_progress event — tests must skip non-progress events when waiting for rebuild_progress
 
 ### Pending Todos
 
@@ -97,6 +101,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-04-11T08:06:49.212Z
-Stopped at: Completed 92-01-PLAN.md
+Last session: 2026-04-11T09:04:53.529Z
+Stopped at: Completed 92-04-PLAN.md
 Resume file: None

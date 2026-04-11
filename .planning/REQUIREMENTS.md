@@ -23,15 +23,15 @@ Requirements for Local Encrypted Search milestone. Each maps to roadmap phases.
 - [x] **SQRY-02**: User can filter search results by time range (presets: today/yesterday/last_24h/last_7d/last_30d/this_week/this_month; or absolute from_ms/to_ms)
 - [x] **SQRY-03**: User can filter search results by content type (multi-select: text/html/link/file/image/other)
 - [x] **SQRY-04**: User can filter search results by file extension as a first-class filter
-- [ ] **SQRY-05**: Search routes validate session unlock state; locked session returns 423 Locked
-- [ ] **SQRY-06**: Mixing AND and OR operators in a single query returns a structured invalid_query error
+- [x] **SQRY-05**: Search routes validate session unlock state; locked session returns 423 Locked
+- [x] **SQRY-06**: Mixing AND and OR operators in a single query returns a structured invalid_query error
 
 ### Index Rebuild
 
 - [x] **REBLD-01**: User can trigger a full index rebuild when the encryption session is unlocked
 - [x] **REBLD-02**: Full rebuild uses version-flag atomic swap strategy (not RENAME TABLE) to avoid exclusive lock contention
 - [x] **REBLD-03**: New entries captured during a rebuild window are double-written to both active and temp tables
-- [ ] **REBLD-04**: Rebuild progress is broadcast to frontend via WebSocket events
+- [x] **REBLD-04**: Rebuild progress is broadcast to frontend via WebSocket events
 
 ### Search UI
 
@@ -86,12 +86,12 @@ Which phases cover which requirements. Updated during roadmap creation.
 | SQRY-02     | Phase 92 | Complete |
 | SQRY-03     | Phase 92 | Complete |
 | SQRY-04     | Phase 92 | Complete |
-| SQRY-05     | Phase 92 | Pending |
-| SQRY-06     | Phase 92 | Pending |
+| SQRY-05     | Phase 92 | Complete |
+| SQRY-06     | Phase 92 | Complete |
 | REBLD-01    | Phase 91 | Complete |
 | REBLD-02    | Phase 91 | Complete |
 | REBLD-03    | Phase 91 | Complete |
-| REBLD-04    | Phase 92 | Pending |
+| REBLD-04    | Phase 92 | Complete |
 | SUI-01      | Phase 93 | Pending |
 | SUI-02      | Phase 93 | Pending |
 | SUI-03      | Phase 93 | Pending |

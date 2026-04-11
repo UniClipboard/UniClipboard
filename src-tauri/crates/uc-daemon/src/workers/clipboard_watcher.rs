@@ -20,9 +20,12 @@ use uc_app::usecases::clipboard::sync_outbound::SyncOutboundClipboardUseCase;
 use uc_app::usecases::file_sync::FileTransferOrchestrator;
 use uc_app::usecases::internal::capture_clipboard::CaptureClipboardUseCase;
 use uc_app::usecases::sync_planner::{FileCandidate, OutboundSyncPlanner};
+use uc_app::usecases::CoreUseCases;
 use uc_core::network::daemon_api_strings::{ws_event, ws_topic};
 use uc_core::ports::{ClipboardChangeHandler, ClipboardChangeOriginPort};
 use uc_core::{ClipboardChangeOrigin, SystemClipboardSnapshot};
+
+use crate::search::projection::SearchProjectionBuilder;
 use uc_infra::clipboard::TransferPayloadEncryptorAdapter;
 use uc_observability::FlowId;
 use uc_platform::clipboard::watcher::{ClipboardWatcher, PlatformEvent, PlatformEventSender};
@@ -256,6 +259,98 @@ impl ClipboardChangeHandler for DaemonClipboardChangeHandler {
                 // that's expected when no WS clients are connected — log at debug.
                 if let Err(e) = self.event_tx.send(event) {
                     debug!(error = %e, "No WS subscribers for clipboard.new_content");
+                }
+
+                // --- Search indexing ---
+                // Build search document for the captured entry using the projection builder.
+                // We use a clone of the snapshot made before execute_with_origin consumed it.
+                {
+                    let deps = self.runtime.wiring_deps();
+                    // Fetch the persisted ClipboardEntry to get event_id and timestamps
+                    match deps.clipboard.clipboard_entry_repo.get_entry(&entry_id).await {
+                        Ok(Some(entry)) => {
+                            // Compute the selection policy result for the live snapshot
+                            let selection_result =
+                                deps.clipboard.representation_policy.select(&outbound_snapshot);
+                            match selection_result {
+                                Ok(selection) => {
+                                    // Build SearchPipelineInput via the single projection authority
+                                    match SearchProjectionBuilder::build_from_capture(
+                                        &entry,
+                                        &outbound_snapshot,
+                                        &selection,
+                                    ) {
+                                        Some(pipeline_input) => {
+                                            // Derive search key and build postings
+                                            match deps.search.search_key_derivation.derive_search_key().await {
+                                                Ok(search_key) => {
+                                                    match deps.search.search_pipeline.build(&pipeline_input, &search_key) {
+                                                        Ok((document, postings)) => {
+                                                            if postings.is_empty() {
+                                                                debug!(
+                                                                    entry_id = %entry_id,
+                                                                    "search: no postings generated, skipping index"
+                                                                );
+                                                            } else {
+                                                                let uc = CoreUseCases::new(self.runtime.as_ref());
+                                                                if let Err(e) = uc.index_clipboard_entry().execute(document, postings).await {
+                                                                    warn!(
+                                                                        error = %e,
+                                                                        entry_id = %entry_id,
+                                                                        "search: index_clipboard_entry failed"
+                                                                    );
+                                                                }
+                                                            }
+                                                        }
+                                                        Err(e) => {
+                                                            warn!(
+                                                                error = %e,
+                                                                entry_id = %entry_id,
+                                                                "search: pipeline.build failed"
+                                                            );
+                                                        }
+                                                    }
+                                                }
+                                                Err(e) => {
+                                                    debug!(
+                                                        error = %e,
+                                                        entry_id = %entry_id,
+                                                        "search: key derivation failed (session likely locked)"
+                                                    );
+                                                }
+                                            }
+                                        }
+                                        None => {
+                                            debug!(
+                                                entry_id = %entry_id,
+                                                "search: no searchable content in capture, skipping"
+                                            );
+                                        }
+                                    }
+                                }
+                                Err(e) => {
+                                    debug!(
+                                        error = %e,
+                                        entry_id = %entry_id,
+                                        "search: representation policy selection failed, skipping"
+                                    );
+                                }
+                            }
+                        }
+                        Ok(None) => {
+                            debug!(
+                                entry_id = %entry_id,
+                                "search: captured entry not found in repo, skipping"
+                            );
+                        }
+                        Err(e) => {
+                            warn!(
+                                error = %e,
+                                entry_id = %entry_id,
+                                "search: failed to fetch entry from repo"
+                            );
+                        }
+                    }
                 }
 
                 // --- Outbound sync dispatch (mirrors AppRuntime::on_clipboard_changed) ---

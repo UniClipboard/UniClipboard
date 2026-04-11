@@ -14,6 +14,7 @@ pub mod entrypoint;
 pub mod pairing;
 pub mod peers;
 pub mod process_metadata;
+pub mod search;
 pub mod security;
 pub mod service;
 pub mod socket;

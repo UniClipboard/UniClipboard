@@ -8,6 +8,7 @@ pub mod db;
 pub mod device;
 pub mod fs;
 pub mod network;
+pub mod search;
 pub mod security;
 pub mod settings;
 pub mod setup_status;

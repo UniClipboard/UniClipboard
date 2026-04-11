@@ -8,12 +8,18 @@
 //! It is NOT added to `uc-core` search domain structs.
 
 pub mod constants;
+pub mod pipeline;
 pub mod rows;
 pub mod search_key_derivation;
+pub mod text_extractor;
+pub mod tokenizer;
 
 pub use constants::*;
+pub use pipeline::*;
 pub use rows::*;
 pub use search_key_derivation::*;
+pub use text_extractor::*;
+pub use tokenizer::*;
 
 #[cfg(test)]
 mod migration_tests {

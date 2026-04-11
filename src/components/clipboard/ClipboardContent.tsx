@@ -50,6 +50,7 @@ export interface DisplayClipboardItem {
     | ClipboardCodeItem
     | ClipboardFileItem
     | null
+  fileTransferIds?: string[]
   device?: string
 }
 
@@ -185,6 +186,7 @@ const ClipboardContent: React.FC<ClipboardContentProps> = ({
         isDownloaded: item.is_downloaded,
         isFavorited: item.is_favorited,
         content: contentByType[type] ?? null,
+        fileTransferIds: item.file_transfer_ids ?? [],
       }
     },
     [t]

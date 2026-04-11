@@ -25,6 +25,7 @@ interface ClipboardEntryProjection {
   thumbnail_url?: string | null
   file_transfer_status?: string | null
   file_transfer_reason?: string | null
+  file_transfer_ids?: string[] | null
   /** Parsed link URLs (built from full representation data, not preview) */
   link_urls?: string[] | null
   /** Extracted domains for link entries */
@@ -138,6 +139,7 @@ export interface ClipboardItemResponse {
   file_transfer_status?: string | null
   /** Failure reason when file_transfer_status is "failed" */
   file_transfer_reason?: string | null
+  file_transfer_ids?: string[]
 }
 
 export interface ClipboardStats {
@@ -200,6 +202,7 @@ function transformProjectionToResponse(entry: ClipboardEntryProjection): Clipboa
     item,
     file_transfer_status: entry.file_transfer_status ?? null,
     file_transfer_reason: entry.file_transfer_reason ?? null,
+    file_transfer_ids: entry.file_transfer_ids ?? [],
   }
 }
 

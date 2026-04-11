@@ -4,6 +4,231 @@
 //! `/search/status`, and `/search/rebuild` transport contract without
 //! rebuilding daemon-side query parsing locally.
 
+use std::sync::Arc;
+
+use anyhow::{anyhow, Context, Result};
+use reqwest::{Method, RequestBuilder, StatusCode};
+
+use crate::http::authorized_daemon_request_with_type;
+use crate::DaemonConnectionState;
+use uc_core::network::daemon_api_strings::http_route;
+use uc_daemon_contract::api::dto::search::{
+    SearchQueryResponse, SearchRebuildAcceptedResponse, SearchStatusResponse,
+};
+
+/// Search query parameters sent to the daemon `GET /search/query` endpoint.
+///
+/// All values are forwarded verbatim — no daemon-side query grammar is reproduced here.
+/// The daemon strips inline AND/OR, infers operators, and enforces lock semantics.
+#[derive(Debug, Clone)]
+pub struct SearchQueryRequest {
+    pub query: String,
+    pub operator: Option<String>,
+    pub time_preset: Option<String>,
+    pub from_ms: Option<i64>,
+    pub to_ms: Option<i64>,
+    pub file_types: Vec<String>,
+    pub extensions: Vec<String>,
+    pub limit: u32,
+    pub offset: u32,
+}
+
+/// Structured error from a failed daemon search request.
+///
+/// Preserves the HTTP status code and the daemon's JSON error body so the CLI
+/// can distinguish `session_locked`, `invalid_query`, and `rebuild_already_running`
+/// without string scraping.
+#[derive(Debug, Clone)]
+pub struct DaemonSearchRequestError {
+    pub path: String,
+    pub status: StatusCode,
+    pub code: Option<String>,
+    pub message: String,
+}
+
+impl std::fmt::Display for DaemonSearchRequestError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if let Some(code) = self.code.as_deref() {
+            write!(
+                f,
+                "daemon search request {} failed with status {} [{}]: {}",
+                self.path, self.status, code, self.message
+            )
+        } else {
+            write!(
+                f,
+                "daemon search request {} failed with status {}: {}",
+                self.path, self.status, self.message
+            )
+        }
+    }
+}
+
+impl std::error::Error for DaemonSearchRequestError {}
+
+/// Feature-specific daemon search client.
+///
+/// Shares connection state and HTTP client with `DaemonClientContext`.
+/// Constructed via `DaemonClientContext::search_client()`.
+#[derive(Clone)]
+pub struct DaemonSearchClient {
+    http: Arc<reqwest::Client>,
+    connection_state: DaemonConnectionState,
+    client_type: String,
+}
+
+impl DaemonSearchClient {
+    pub fn new(connection_state: DaemonConnectionState) -> Self {
+        Self {
+            http: Arc::new(reqwest::Client::new()),
+            connection_state,
+            client_type: "gui".to_string(),
+        }
+    }
+
+    pub(crate) fn with_http_conn_state_and_type(
+        http: Arc<reqwest::Client>,
+        connection_state: DaemonConnectionState,
+        client_type: String,
+    ) -> Self {
+        Self {
+            http,
+            connection_state,
+            client_type,
+        }
+    }
+
+    /// Execute a structured search query against the daemon.
+    ///
+    /// Sends `GET /search/query` with camelCase query params.
+    /// Does NOT strip inline AND/OR or infer operators locally.
+    pub async fn query(&self, request: SearchQueryRequest) -> Result<SearchQueryResponse> {
+        let path = http_route::SEARCH_QUERY;
+        let mut params: Vec<(&str, String)> = vec![
+            ("query", request.query),
+            ("limit", request.limit.to_string()),
+            ("offset", request.offset.to_string()),
+        ];
+        if let Some(operator) = request.operator {
+            params.push(("operator", operator));
+        }
+        if let Some(preset) = request.time_preset {
+            params.push(("timePreset", preset));
+        }
+        if let Some(from_ms) = request.from_ms {
+            params.push(("fromMs", from_ms.to_string()));
+        }
+        if let Some(to_ms) = request.to_ms {
+            params.push(("toMs", to_ms.to_string()));
+        }
+        if !request.file_types.is_empty() {
+            params.push(("fileTypes", request.file_types.join(",")));
+        }
+        if !request.extensions.is_empty() {
+            params.push(("extensions", request.extensions.join(",")));
+        }
+
+        let response = self
+            .authorized_request(Method::GET, path)
+            .await?
+            .query(&params)
+            .send()
+            .await
+            .with_context(|| format!("failed to call daemon search route {path}"))?;
+
+        Self::decode_json_response(response, path).await
+    }
+
+    /// Fetch the current search index availability status.
+    ///
+    /// Sends `GET /search/status`.
+    pub async fn status(&self) -> Result<SearchStatusResponse> {
+        let path = http_route::SEARCH_STATUS;
+        let response = self
+            .authorized_request(Method::GET, path)
+            .await?
+            .send()
+            .await
+            .with_context(|| format!("failed to call daemon search route {path}"))?;
+
+        Self::decode_json_response(response, path).await
+    }
+
+    /// Trigger a manual search index rebuild on the daemon.
+    ///
+    /// Sends `POST /search/rebuild`. A `rebuild_already_running` daemon response
+    /// is returned as a structured `DaemonSearchRequestError` rather than a plain string
+    /// so callers can distinguish it from other failures.
+    pub async fn rebuild(&self) -> Result<SearchRebuildAcceptedResponse> {
+        let path = http_route::SEARCH_REBUILD;
+        let response = self
+            .authorized_request(Method::POST, path)
+            .await?
+            .send()
+            .await
+            .with_context(|| format!("failed to call daemon search route {path}"))?;
+
+        Self::decode_json_response(response, path).await
+    }
+
+    async fn authorized_request(&self, method: Method, path: &str) -> Result<RequestBuilder> {
+        let connection = self
+            .connection_state
+            .get()
+            .ok_or_else(|| anyhow!("daemon connection info is not available"))?;
+        authorized_daemon_request_with_type(
+            &*self.http,
+            &self.connection_state,
+            method,
+            path,
+            connection.pid,
+            &self.client_type,
+        )
+        .await
+    }
+
+    async fn decode_json_response<T: serde::de::DeserializeOwned>(
+        response: reqwest::Response,
+        path: &str,
+    ) -> Result<T> {
+        let status = response.status();
+        if status.is_success() {
+            return response
+                .json::<T>()
+                .await
+                .with_context(|| format!("failed to decode daemon search response for {path}"));
+        }
+
+        Err(Self::decode_error_response(response, path).await)
+    }
+
+    async fn decode_error_response(response: reqwest::Response, path: &str) -> anyhow::Error {
+        let status = response.status();
+        let body = response
+            .text()
+            .await
+            .unwrap_or_else(|_| "<unreadable response body>".to_string());
+
+        #[derive(serde::Deserialize)]
+        struct SearchApiErrorBody {
+            code: Option<String>,
+            message: Option<String>,
+        }
+
+        let maybe_error = serde_json::from_str::<SearchApiErrorBody>(&body).ok();
+        let error = DaemonSearchRequestError {
+            path: path.to_string(),
+            status,
+            code: maybe_error.as_ref().and_then(|e| e.code.clone()),
+            message: maybe_error
+                .and_then(|e| e.message)
+                .unwrap_or(body),
+        };
+
+        anyhow!(error)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::net::SocketAddr;
@@ -11,8 +236,6 @@ mod tests {
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio::net::TcpListener;
     use uc_daemon_contract::api::auth::DaemonConnectionInfo;
-
-    use crate::DaemonClientContext;
 
     async fn with_session_cache<F>(token: &str, f: F)
     where
@@ -48,8 +271,9 @@ mod tests {
             let request = String::from_utf8_lossy(&request[..size]);
 
             assert!(request.contains("/search/query"), "missing route: {request}");
+            // reqwest encodes spaces as '+' in query params (application/x-www-form-urlencoded).
             assert!(
-                request.contains("query=clipboard%20sync"),
+                request.contains("query=clipboard+sync") || request.contains("query=clipboard%20sync"),
                 "missing query param: {request}"
             );
             assert!(
@@ -92,14 +316,14 @@ mod tests {
             stream.write_all(response.as_bytes()).await.unwrap();
         });
 
-        let connection_info = DaemonConnectionInfo {
+        let connection_state = crate::DaemonConnectionState::default();
+        connection_state.set(DaemonConnectionInfo {
             base_url: format!("http://{addr}"),
             ws_url: format!("ws://{addr}/ws"),
             token: "test-bearer".to_string(),
             pid: 54321,
-        };
-        let ctx = DaemonClientContext::with_connection_info(connection_info, "cli".to_string());
-        let client = ctx.search_client();
+        });
+        let client = super::DaemonSearchClient::new(connection_state);
 
         with_session_cache("test-session", async move {
             let result = client
@@ -159,14 +383,14 @@ mod tests {
             stream.write_all(response.as_bytes()).await.unwrap();
         });
 
-        let connection_info = DaemonConnectionInfo {
+        let connection_state = crate::DaemonConnectionState::default();
+        connection_state.set(DaemonConnectionInfo {
             base_url: format!("http://{addr}"),
             ws_url: format!("ws://{addr}/ws"),
             token: "test-bearer".to_string(),
             pid: 54321,
-        };
-        let ctx = DaemonClientContext::with_connection_info(connection_info, "cli".to_string());
-        let client = ctx.search_client();
+        });
+        let client = super::DaemonSearchClient::new(connection_state);
 
         with_session_cache("test-session", async move {
             let result = client.status().await.unwrap();
@@ -202,14 +426,14 @@ mod tests {
             stream.write_all(response.as_bytes()).await.unwrap();
         });
 
-        let connection_info = DaemonConnectionInfo {
+        let connection_state = crate::DaemonConnectionState::default();
+        connection_state.set(DaemonConnectionInfo {
             base_url: format!("http://{addr}"),
             ws_url: format!("ws://{addr}/ws"),
             token: "test-bearer".to_string(),
             pid: 54321,
-        };
-        let ctx = DaemonClientContext::with_connection_info(connection_info, "cli".to_string());
-        let client = ctx.search_client();
+        });
+        let client = super::DaemonSearchClient::new(connection_state);
 
         with_session_cache("test-session", async move {
             let err = client.status().await.unwrap_err();
@@ -253,14 +477,14 @@ mod tests {
             stream.write_all(response.as_bytes()).await.unwrap();
         });
 
-        let connection_info = DaemonConnectionInfo {
+        let connection_state = crate::DaemonConnectionState::default();
+        connection_state.set(DaemonConnectionInfo {
             base_url: format!("http://{addr}"),
             ws_url: format!("ws://{addr}/ws"),
             token: "test-bearer".to_string(),
             pid: 54321,
-        };
-        let ctx = DaemonClientContext::with_connection_info(connection_info, "cli".to_string());
-        let client = ctx.search_client();
+        });
+        let client = super::DaemonSearchClient::new(connection_state);
 
         with_session_cache("test-session", async move {
             let result = client.rebuild().await.unwrap();

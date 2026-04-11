@@ -6,9 +6,12 @@ import App from './App'
 import './i18n'
 import { store } from './store'
 import { connectDaemonWs } from '@/lib/daemon-ws-bootstrap'
+import { createLogger } from '@/lib/logger'
 import { initializeWindowUi } from '@/lib/window-ui'
 import { initFrontendOtlp } from '@/observability/otlp'
 import { initSentry, Sentry } from '@/observability/sentry'
+
+const log = createLogger('main')
 
 initSentry()
 initFrontendOtlp()
@@ -17,7 +20,7 @@ initializeWindowUi()
 const startupTimingOrigin = Date.now()
 const logStartupTiming = (label: string) => {
   const elapsed = Date.now() - startupTimingOrigin
-  console.log(`[StartupTiming] ${label} t=${elapsed}ms`)
+  log.debug({ elapsed }, `[StartupTiming] ${label}`)
 }
 
 logStartupTiming('main.tsx module init')
@@ -31,30 +34,30 @@ if (typeof window !== 'undefined') {
   })
 }
 
-// 初始化日志系统：将后端日志输出到浏览器 DevTools
+// Forward Rust/Tauri backend logs to the browser DevTools console.
 const initLogging = async () => {
   try {
-    // 仅在 Tauri 环境中运行（不在浏览器开发模式中）
     if (typeof window !== 'undefined' && '__TAURI__' in window) {
       await attachConsole()
-      console.log('[Tauri Log] Console attached successfully')
+      log.debug('Tauri console attached')
     }
   } catch (error) {
-    console.error('[Tauri Log] Failed to attach console:', error)
+    log.error({ err: error }, 'Failed to attach Tauri console')
   }
 }
 
-// 执行日志初始化
 initLogging().then(() => {
-  console.log('[Tauri Log] Logging system initialized')
+  log.debug('Logging system initialized')
 })
 
 // Connect the frontend WebSocket client to the daemon.
 // This must run before React renders so that daemonWs is connected by the time
 // hooks (useEncryptionState, usePairingEvents, useClipboardNewContent) mount.
 connectDaemonWs().catch(err => {
-  console.error('[main] daemon WS bootstrap failed:', err)
+  log.error({ err }, 'daemon WS bootstrap failed')
 })
+
+logStartupTiming('ReactDOM.render invoked')
 
 ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
   <React.StrictMode>
@@ -65,5 +68,3 @@ ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
     </Provider>
   </React.StrictMode>
 )
-
-logStartupTiming('ReactDOM.render invoked')

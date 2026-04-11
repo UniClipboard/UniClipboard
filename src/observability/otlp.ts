@@ -1,4 +1,5 @@
 import { getDeviceId } from '@/api/runtime'
+import { redactSensitiveArgs } from '@/observability/redaction'
 
 type OtlpAnyValue =
   | { stringValue: string }
@@ -126,7 +127,8 @@ function resolveFrontendDeviceId(): Promise<string | null> {
       return frontendDeviceId
     })
     .catch(error => {
-      console.warn('[OTLP] failed to resolve device_id:', error)
+      const safeError = error instanceof Error ? `${error.name}: ${error.message}` : String(redactSensitiveArgs(error))
+      console.warn('[OTLP] failed to resolve device_id:', safeError)
       return null
     })
     .finally(() => {
@@ -156,7 +158,8 @@ async function flush(): Promise<void> {
       keepalive: true,
     })
   } catch (error) {
-    console.warn('[OTLP] flush failed:', error)
+    const safeError = error instanceof Error ? `${error.name}: ${error.message}` : String(redactSensitiveArgs(error))
+    console.warn('[OTLP] flush failed:', safeError)
   }
 }
 

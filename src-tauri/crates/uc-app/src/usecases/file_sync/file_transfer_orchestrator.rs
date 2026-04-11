@@ -605,19 +605,26 @@ impl FileTransferOrchestrator {
             return Some(entry_id);
         }
 
-        let entry_id = self
+        match self
             .tracker
             .get_entry_summary_by_transfer(transfer_id)
             .await
-            .ok()
-            .flatten();
-
-        if let Some(entry_id) = entry_id.clone() {
-            self.transfer_entry_cache
-                .insert(transfer_id.to_string(), entry_id);
+        {
+            Ok(Some(entry_id)) => {
+                self.transfer_entry_cache
+                    .insert(transfer_id.to_string(), entry_id.clone());
+                Some(entry_id)
+            }
+            Ok(None) => None,
+            Err(err) => {
+                warn!(
+                    error = %err,
+                    transfer_id,
+                    "Failed to resolve transfer entry from tracker"
+                );
+                None
+            }
         }
-
-        entry_id
     }
 
     async fn refresh_inbound_activity_if_due(&self, transfer_id: &str, now_ms: i64) {

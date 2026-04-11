@@ -59,6 +59,12 @@ export function useTransferProgress(): void {
       if (event.eventType === 'file-transfer.status_changed') {
         const payload = event.payload as FileTransferStatusEvent
         const { entryId, status, reason } = payload
+        console.info('[useTransferProgress] status_changed', {
+          transferId: payload.transferId,
+          entryId,
+          status,
+          reason: reason ?? null,
+        })
         dispatch(linkTransferToEntry({ transferId: payload.transferId, entryId }))
         const validStatuses = ['pending', 'transferring', 'completed', 'failed'] as const
         if (validStatuses.includes(status as (typeof validStatuses)[number])) {
@@ -83,6 +89,16 @@ export function useTransferProgress(): void {
 
       if (event.eventType === 'file-transfer.progress') {
         const payload = event.payload as FileTransferProgressEvent
+        console.info('[useTransferProgress] progress', {
+          transferId: payload.transferId,
+          entryId: payload.entryId ?? null,
+          peerId: payload.peerId,
+          direction: payload.direction,
+          chunksCompleted: payload.chunksCompleted,
+          totalChunks: payload.totalChunks,
+          bytesTransferred: payload.bytesTransferred,
+          totalBytes: payload.totalBytes ?? null,
+        })
         dispatch(
           updateTransferProgress({
             transferId: payload.transferId,
@@ -98,9 +114,19 @@ export function useTransferProgress(): void {
         )
 
         if (payload.entryId) {
+          console.info('[useTransferProgress] linkTransferToEntry from progress', {
+            transferId: payload.transferId,
+            entryId: payload.entryId,
+          })
           dispatch(
             linkTransferToEntry({ transferId: payload.transferId, entryId: payload.entryId })
           )
+        } else {
+          console.warn('[useTransferProgress] progress event missing entryId linkage', {
+            transferId: payload.transferId,
+            peerId: payload.peerId,
+            direction: payload.direction,
+          })
         }
       }
     }

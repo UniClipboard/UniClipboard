@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import fileTransferReducer, {
+  resolveEntryTransferStatus,
   setEntryTransferStatus,
   hydrateEntryTransferStatuses,
   removeEntryTransferStatus,
@@ -161,6 +162,42 @@ describe('fileTransferSlice - file transfer status', () => {
       expect(state.entryTransferMap['entry-speed']).toBe('tx-speed')
       expect(state.activeTransfers['tx-speed'].bytesPerSecond).toBe(2048)
       expect(state.activeTransfers['tx-speed'].estimatedRemainingSeconds).toBe(1)
+    })
+  })
+
+  describe('resolveEntryTransferStatus', () => {
+    it('prefers live active progress over durable pending state', () => {
+      const entryStatus: EntryTransferStatus = {
+        status: 'pending',
+        reason: null,
+      }
+
+      const transfer = {
+        transferId: 'tx-live',
+        entryId: 'entry-live',
+        peerId: 'peer-1',
+        direction: 'Sending' as const,
+        chunksCompleted: 2,
+        totalChunks: 10,
+        bytesTransferred: 2048,
+        totalBytes: 10240,
+        status: 'active' as const,
+        startedAt: 1000,
+        updatedAt: 2000,
+        bytesPerSecond: 2048,
+        estimatedRemainingSeconds: 4,
+      }
+
+      expect(resolveEntryTransferStatus(entryStatus, transfer)).toBe('transferring')
+    })
+
+    it('keeps durable failed state when no live progress exists', () => {
+      const entryStatus: EntryTransferStatus = {
+        status: 'failed',
+        reason: 'timeout',
+      }
+
+      expect(resolveEntryTransferStatus(entryStatus, undefined)).toBe('failed')
     })
   })
 })

@@ -238,4 +238,26 @@ export const selectEntryTransferStatus = (
   return state.fileTransfer.entryStatusById[entryId]
 }
 
+export function resolveEntryTransferStatus(
+  entryStatus: EntryTransferStatus | undefined,
+  transfer: TransferProgressInfo | undefined
+): EntryTransferStatus['status'] | undefined {
+  if (transfer?.status === 'failed') {
+    return 'failed'
+  }
+
+  if (transfer?.status === 'active') {
+    return 'transferring'
+  }
+
+  if (
+    transfer?.status === 'completed' &&
+    (!entryStatus || entryStatus.status === 'pending' || entryStatus.status === 'transferring')
+  ) {
+    return 'completed'
+  }
+
+  return entryStatus?.status
+}
+
 export default fileTransferSlice.reducer

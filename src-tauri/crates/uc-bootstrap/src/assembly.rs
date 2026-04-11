@@ -20,7 +20,7 @@ use std::sync::Arc;
 
 use tracing::{info, warn};
 
-use uc_app::deps::NetworkPorts;
+use uc_app::deps::{NetworkPorts, SearchPorts};
 use uc_app::usecases::{PairingConfig, ResolveConnectionPolicy};
 use uc_app::{AppDeps, ClipboardPorts, DevicePorts, SecurityPorts, StoragePorts, SystemPorts};
 use uc_core::clipboard::SelectRepresentationPolicyV1;
@@ -63,6 +63,7 @@ use uc_infra::security::{
     EncryptedBlobStore, EncryptingClipboardEventWriter, EncryptionRepository,
     FileEncryptionStateRepository,
 };
+use uc_infra::search::{HkdfSearchKeyDerivation, SearchPipeline, SqliteSearchIndex};
 use uc_infra::settings::repository::FileSettingsRepository;
 use uc_infra::{FileSetupStatusRepository, SystemClock};
 use uc_platform::adapters::{
@@ -667,6 +668,8 @@ pub fn wire_dependencies_with_identity_store(
 
     let db_path = paths.db_path;
     let db_pool = create_db_pool(&db_path)?;
+    // Clone pool before infra layer consumes it — search bundle needs the same pool.
+    let db_pool_for_search = db_pool.clone();
 
     let vault_path = paths.vault_dir;
     let settings_path = paths.settings_path;
@@ -697,6 +700,22 @@ pub fn wire_dependencies_with_identity_store(
         paths.file_cache_dir.clone(),
         pairing_runtime_owner,
     )?;
+
+    // Wire the search bundle (Phase 92).
+    // All three pieces are grouped under AppDeps.search to prevent uc-daemon
+    // from constructing search infrastructure ad hoc.
+    let search_key_derivation: Arc<dyn SearchKeyDerivationPort> = Arc::new(
+        HkdfSearchKeyDerivation::new(
+            platform.encryption_session.clone(),
+            platform.key_scope.clone(),
+        ),
+    );
+    let search_index: Arc<dyn SearchIndexPort> = Arc::new(SqliteSearchIndex::new(
+        db_pool_for_search,
+        platform.key_scope.clone(),
+        search_key_derivation.clone(),
+    ));
+    let search_pipeline = Arc::new(SearchPipeline::new());
 
     // Wrap ports with encryption decorators
     let encrypting_event_writer: Arc<dyn ClipboardEventWriterPort> =
@@ -797,6 +816,11 @@ pub fn wire_dependencies_with_identity_store(
             hash: infra.hash,
             file_manager: Arc::new(uc_platform::file_manager::NativeFileManagerAdapter::new()),
             cache_fs: Arc::new(uc_infra::fs::TokioCacheFsAdapter::new()),
+        },
+        search: SearchPorts {
+            search_index,
+            search_key_derivation,
+            search_pipeline,
         },
     };
 

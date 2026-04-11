@@ -106,7 +106,7 @@ impl<'a> CoreUseCases<'a> {
         )
     }
 
-    /// Create a `DeleteClipboardEntry` use case.
+    /// Create a `DeleteClipboardEntry` use case (with search cleanup wired by default).
     pub fn delete_clipboard_entry(&self) -> crate::usecases::DeleteClipboardEntry {
         crate::usecases::DeleteClipboardEntry::from_ports(
             self.runtime.deps.clipboard.clipboard_entry_repo.clone(),
@@ -115,6 +115,35 @@ impl<'a> CoreUseCases<'a> {
             self.runtime.deps.clipboard.representation_repo.clone(),
         )
         .with_file_cache_dir(self.runtime.storage_paths.file_cache_dir.clone())
+        .with_search_index(self.runtime.deps.search.search_index.clone())
+    }
+
+    /// Create an `IndexClipboardEntry` use case.
+    pub fn index_clipboard_entry(&self) -> crate::usecases::IndexClipboardEntry {
+        crate::usecases::IndexClipboardEntry::from_port(
+            self.runtime.deps.search.search_index.clone(),
+        )
+    }
+
+    /// Create a `RemoveIndexedEntry` use case.
+    pub fn remove_indexed_entry(&self) -> crate::usecases::RemoveIndexedEntry {
+        crate::usecases::RemoveIndexedEntry::from_port(
+            self.runtime.deps.search.search_index.clone(),
+        )
+    }
+
+    /// Create a `SearchClipboardEntries` use case.
+    pub fn search_clipboard_entries(&self) -> crate::usecases::SearchClipboardEntries {
+        crate::usecases::SearchClipboardEntries::from_port(
+            self.runtime.deps.search.search_index.clone(),
+        )
+    }
+
+    /// Create a `RebuildSearchIndex` use case.
+    pub fn rebuild_search_index(&self) -> crate::usecases::RebuildSearchIndex {
+        crate::usecases::RebuildSearchIndex::from_port(
+            self.runtime.deps.search.search_index.clone(),
+        )
     }
 
     /// Create a `ClearClipboardHistory` use case.

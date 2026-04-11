@@ -20,7 +20,10 @@ use uc_core::ports::clipboard::{
 };
 use uc_core::ports::file_manager::FileManagerPort;
 use uc_core::ports::file_transport::FileTransportPort;
+use uc_core::ports::search::search_index::SearchIndexPort;
+use uc_core::ports::search::search_key::SearchKeyDerivationPort;
 use uc_core::ports::*;
+use uc_infra::search::pipeline::SearchPipeline;
 
 /// Focused network capability bundle for dependency injection.
 /// 用于依赖注入的网络能力聚合。
@@ -90,6 +93,25 @@ pub struct StoragePorts {
     pub file_transfer_repo: Arc<dyn uc_core::ports::FileTransferRepositoryPort>,
 }
 
+/// Search-domain ports bundle.
+///
+/// Groups the three search infrastructure pieces that must travel together:
+/// the index port (query + CRUD), the key derivation port (HMAC term tags),
+/// and the pipeline (tokenization + text extraction). Keeping them in one
+/// bundle prevents uc-daemon code from constructing these pieces ad hoc.
+///
+/// `SearchPipeline` is a concrete infra helper rather than a port — grouping
+/// it here is a pragmatic exception accepted by the Phase 92 plan designers
+/// (see Phase 92 Research §2 inference note).
+pub struct SearchPorts {
+    /// Encrypted search index: query, index_entry, remove_entry, rebuild.
+    pub search_index: Arc<dyn SearchIndexPort>,
+    /// HMAC search key derivation (profile-scoped, HKDF-SHA256).
+    pub search_key_derivation: Arc<dyn SearchKeyDerivationPort>,
+    /// Tokenization + text extraction pipeline used for building search documents.
+    pub search_pipeline: Arc<SearchPipeline>,
+}
+
 /// System-domain ports bundle (clock, hash, file manager, cache filesystem).
 /// 系统领域端口组（时钟、哈希、文件管理器、缓存文件系统）。
 pub struct SystemPorts {
@@ -126,6 +148,8 @@ pub struct AppDeps {
     pub settings: Arc<dyn SettingsPort>,
     /// System-domain ports / 系统领域端口
     pub system: SystemPorts,
+    /// Search-domain ports (index, key derivation, pipeline) / 搜索领域端口
+    pub search: SearchPorts,
 }
 
 #[cfg(test)]

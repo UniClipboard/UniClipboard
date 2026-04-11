@@ -1247,6 +1247,62 @@ mod tests {
         }
     }
 
+    #[async_trait]
+    impl uc_core::ports::search::search_index::SearchIndexPort for NoopPort {
+        async fn index_entry(
+            &self,
+            _d: uc_core::search::SearchDocument,
+            _p: Vec<uc_core::search::SearchPosting>,
+        ) -> Result<(), uc_core::search::SearchError> {
+            Ok(())
+        }
+        async fn remove_entry(
+            &self,
+            _id: &uc_core::ids::EntryId,
+        ) -> Result<(), uc_core::search::SearchError> {
+            Ok(())
+        }
+        async fn search(
+            &self,
+            _q: uc_core::search::SearchQuery,
+        ) -> Result<uc_core::search::SearchResultsPage, uc_core::search::SearchError> {
+            Ok(uc_core::search::SearchResultsPage {
+                items: vec![],
+                total: 0,
+                has_more: false,
+            })
+        }
+        async fn rebuild(
+            &self,
+            _e: Vec<(
+                uc_core::search::SearchDocument,
+                Vec<uc_core::search::SearchPosting>,
+            )>,
+            _tx: tokio::sync::mpsc::Sender<uc_core::search::RebuildProgress>,
+        ) -> Result<(), uc_core::search::SearchError> {
+            Ok(())
+        }
+        async fn get_index_meta(
+            &self,
+        ) -> Result<uc_core::search::SearchIndexMeta, uc_core::search::SearchError> {
+            Ok(uc_core::search::SearchIndexMeta {
+                index_version: "noop".into(),
+                search_blocked: false,
+                last_rebuild_started_at_ms: None,
+                last_rebuild_completed_at_ms: None,
+            })
+        }
+    }
+
+    #[async_trait]
+    impl uc_core::ports::search::search_key::SearchKeyDerivationPort for NoopPort {
+        async fn derive_search_key(
+            &self,
+        ) -> Result<uc_core::search::SearchKey, uc_core::search::SearchError> {
+            Ok(uc_core::search::SearchKey([0u8; 32]))
+        }
+    }
+
     fn test_storage_paths() -> uc_app::app_paths::AppPaths {
         uc_app::app_paths::AppPaths {
             db_path: std::path::PathBuf::from("/tmp/uniclipboard-test/uniclipboard.db"),
@@ -1320,6 +1376,11 @@ mod tests {
                 hash: Arc::new(NoopPort),
                 file_manager: Arc::new(NoopPort),
                 cache_fs: Arc::new(NoopPort),
+            },
+            search: uc_app::deps::SearchPorts {
+                search_index: Arc::new(NoopPort),
+                search_key_derivation: Arc::new(NoopPort),
+                search_pipeline: std::sync::Arc::new(uc_infra::search::SearchPipeline::new()),
             },
         };
         let setup_ports = uc_bootstrap::assembly::SetupAssemblyPorts::placeholder(&deps);

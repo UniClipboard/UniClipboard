@@ -15,7 +15,7 @@ Requirements for Local Encrypted Search milestone. Each maps to roadmap phases.
 - [ ] **SIDX-04**: search_key is derived from master key via HKDF, scoped per profile
 - [ ] **SIDX-05**: Text is extracted from plain text, HTML, URL, file paths, and file names for indexing
 - [ ] **SIDX-06**: Tokenization uses word-boundary splitting for Latin text and bigram generation for CJK text
-- [ ] **SIDX-07**: Index schema includes index_version field to enable safe full rebuild when normalization rules change
+- [x] **SIDX-07**: Index schema includes index_version field to enable safe full rebuild when normalization rules change
 
 ### Search Query API
 
@@ -81,7 +81,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | SIDX-04     | Phase 90 | Pending |
 | SIDX-05     | Phase 90 | Pending |
 | SIDX-06     | Phase 90 | Pending |
-| SIDX-07     | Phase 90 | Pending |
+| SIDX-07     | Phase 90 | Complete |
 | SQRY-01     | Phase 92 | Pending |
 | SQRY-02     | Phase 92 | Pending |
 | SQRY-03     | Phase 92 | Pending |

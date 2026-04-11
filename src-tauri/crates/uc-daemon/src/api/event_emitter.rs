@@ -7,7 +7,8 @@ use uc_core::ports::host_event_emitter::{
 };
 
 use crate::api::types::{
-    DaemonWsEvent, SetupSpaceAccessCompletedPayload, SetupStateChangedPayload,
+    DaemonWsEvent, FileTransferProgressPayload, SetupSpaceAccessCompletedPayload,
+    SetupStateChangedPayload,
 };
 
 #[derive(Serialize)]
@@ -131,6 +132,33 @@ impl HostEventEmitterPort for DaemonApiEventEmitter {
                     },
                 );
             }
+            HostEvent::Transfer(TransferHostEvent::Progress {
+                transfer_id,
+                entry_id,
+                peer_id,
+                direction,
+                chunks_completed,
+                total_chunks,
+                bytes_transferred,
+                total_bytes,
+            }) => {
+                self.emit_ws_event(
+                    ws_event::FILE_TRANSFER_PROGRESS,
+                    ws_topic::FILE_TRANSFER,
+                    None,
+                    Self::now_ms(),
+                    FileTransferProgressPayload {
+                        transfer_id,
+                        entry_id,
+                        peer_id,
+                        direction,
+                        chunks_completed,
+                        total_chunks,
+                        bytes_transferred,
+                        total_bytes,
+                    },
+                );
+            }
             HostEvent::Clipboard(ClipboardHostEvent::NewContent {
                 entry_id,
                 preview,
@@ -241,6 +269,39 @@ mod tests {
             event.payload.get("reason").is_none(),
             "reason should be omitted when None"
         );
+    }
+
+    #[test]
+    fn emits_file_transfer_progress_to_file_transfer_topic() {
+        let (tx, mut rx) = broadcast::channel(4);
+        let emitter = DaemonApiEventEmitter::new(tx);
+
+        emitter
+            .emit(HostEvent::Transfer(TransferHostEvent::Progress {
+                transfer_id: "xfer-43".to_string(),
+                entry_id: Some("entry-100".to_string()),
+                peer_id: "peer-42".to_string(),
+                direction: uc_core::ports::transfer_progress::TransferDirection::Receiving,
+                chunks_completed: 3,
+                total_chunks: 10,
+                bytes_transferred: 786_432,
+                total_bytes: Some(2_621_440),
+            }))
+            .expect("emit should succeed");
+
+        let event = rx
+            .try_recv()
+            .expect("file-transfer progress event should be broadcast");
+        assert_eq!(event.topic, ws_topic::FILE_TRANSFER);
+        assert_eq!(event.event_type, ws_event::FILE_TRANSFER_PROGRESS);
+        assert_eq!(event.payload["transferId"].as_str(), Some("xfer-43"));
+        assert_eq!(event.payload["entryId"].as_str(), Some("entry-100"));
+        assert_eq!(event.payload["peerId"].as_str(), Some("peer-42"));
+        assert_eq!(event.payload["direction"].as_str(), Some("Receiving"));
+        assert_eq!(event.payload["chunksCompleted"].as_u64(), Some(3));
+        assert_eq!(event.payload["totalChunks"].as_u64(), Some(10));
+        assert_eq!(event.payload["bytesTransferred"].as_u64(), Some(786_432));
+        assert_eq!(event.payload["totalBytes"].as_u64(), Some(2_621_440));
     }
 
     #[test]

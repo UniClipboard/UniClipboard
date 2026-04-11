@@ -121,16 +121,7 @@ impl FileSyncOrchestratorWorker {
         match event {
             NetworkEvent::TransferProgress(progress) => {
                 // Track durable status transitions (pending->transferring, liveness refresh)
-                self.orchestrator
-                    .handle_transfer_progress(
-                        &progress.transfer_id,
-                        progress.direction.clone(),
-                        progress.chunks_completed,
-                    )
-                    .await;
-                // Note: transient progress events are NOT forwarded to WS here;
-                // the orchestrator's emitter_cell handles StatusChanged events.
-                // Phase 64 will add WS-based progress forwarding if needed.
+                self.orchestrator.handle_transfer_progress(&progress).await;
             }
             NetworkEvent::FileTransferCompleted {
                 transfer_id,

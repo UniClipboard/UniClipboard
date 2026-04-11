@@ -18,7 +18,7 @@ use serde::Serialize;
 use tracing::{info, info_span, warn, Instrument};
 
 use uc_core::ports::host_event_emitter::{HostEvent, HostEventEmitterPort, TransferHostEvent};
-use uc_core::ports::transfer_progress::TransferDirection;
+use uc_core::ports::transfer_progress::{TransferDirection, TransferProgress};
 use uc_core::ports::ClockPort;
 
 use crate::usecases::clipboard::sync_inbound::PendingTransferLinkage;
@@ -157,36 +157,55 @@ impl FileTransferOrchestrator {
         }
     }
 
-    /// Handle a receiving-side `TransferProgress` event.
+    /// Handle a transfer `TransferProgress` event.
     ///
     /// On first chunk (chunks_completed == 1), promotes to `transferring`.
     /// On subsequent chunks, refreshes durable liveness.
     ///
     /// Returns `true` if promoted to `transferring` (first time).
-    pub async fn handle_transfer_progress(
-        &self,
-        transfer_id: &str,
-        direction: TransferDirection,
-        chunks_completed: u32,
-    ) -> bool {
-        // Only track receiving-side progress
-        if direction != TransferDirection::Receiving {
+    pub async fn handle_transfer_progress(&self, progress: &TransferProgress) -> bool {
+        let entry_id = self
+            .tracker
+            .get_entry_summary_by_transfer(&progress.transfer_id)
+            .await
+            .ok()
+            .flatten();
+
+        let emitter = self
+            .emitter_cell
+            .read()
+            .unwrap_or_else(|p| p.into_inner())
+            .clone();
+        if let Err(err) = emitter.emit(HostEvent::Transfer(TransferHostEvent::Progress {
+            transfer_id: progress.transfer_id.clone(),
+            entry_id: entry_id.clone(),
+            peer_id: progress.peer_id.clone(),
+            direction: progress.direction.clone(),
+            chunks_completed: progress.chunks_completed,
+            total_chunks: progress.total_chunks,
+            bytes_transferred: progress.bytes_transferred,
+            total_bytes: progress.total_bytes,
+        })) {
+            warn!(error = %err, transfer_id = %progress.transfer_id, "Failed to emit transfer progress");
+        }
+
+        // Only track receiving-side progress durably.
+        if progress.direction != TransferDirection::Receiving {
             return false;
         }
 
         let now_ms = self.clock.now_ms();
 
-        if chunks_completed == 1 {
+        if progress.chunks_completed == 1 {
             // First chunk: promote to transferring
-            match self.tracker.mark_transferring(transfer_id, now_ms).await {
+            match self
+                .tracker
+                .mark_transferring(&progress.transfer_id, now_ms)
+                .await
+            {
                 Ok(true) => {
-                    info!(transfer_id, "Transfer promoted to transferring");
-                    // We need the entry_id to emit status. The tracker can look it up.
-                    if let Ok(Some(entry_id)) = self
-                        .tracker
-                        .get_entry_summary_by_transfer(transfer_id)
-                        .await
-                    {
+                    info!(transfer_id = %progress.transfer_id, "Transfer promoted to transferring");
+                    if let Some(entry_id) = entry_id {
                         let emitter = self
                             .emitter_cell
                             .read()
@@ -194,7 +213,7 @@ impl FileTransferOrchestrator {
                             .clone();
                         if let Err(err) =
                             emitter.emit(HostEvent::Transfer(TransferHostEvent::StatusChanged {
-                                transfer_id: transfer_id.to_string(),
+                                transfer_id: progress.transfer_id.clone(),
                                 entry_id,
                                 status: "transferring".to_string(),
                                 reason: None,
@@ -207,16 +226,23 @@ impl FileTransferOrchestrator {
                 }
                 Ok(false) => {
                     // Already transferring or terminal, just refresh activity
-                    let _ = self.tracker.refresh_activity(transfer_id, now_ms).await;
+                    let _ = self
+                        .tracker
+                        .refresh_activity(&progress.transfer_id, now_ms)
+                        .await;
                 }
                 Err(err) => {
-                    warn!(error = %err, transfer_id, "Failed to mark transferring");
+                    warn!(error = %err, transfer_id = %progress.transfer_id, "Failed to mark transferring");
                 }
             }
         } else {
             // Later chunk: refresh liveness
-            if let Err(err) = self.tracker.refresh_activity(transfer_id, now_ms).await {
-                warn!(error = %err, transfer_id, "Failed to refresh transfer activity");
+            if let Err(err) = self
+                .tracker
+                .refresh_activity(&progress.transfer_id, now_ms)
+                .await
+            {
+                warn!(error = %err, transfer_id = %progress.transfer_id, "Failed to refresh transfer activity");
             }
         }
 

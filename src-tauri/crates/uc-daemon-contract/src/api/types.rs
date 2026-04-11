@@ -2,6 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use uc_core::ports::transfer_progress::TransferDirection;
 use uc_core::security::space_access::state::SpaceAccessState;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -73,6 +74,19 @@ pub struct SetupSpaceAccessCompletedPayload {
     pub success: bool,
     pub reason: Option<String>,
     pub ts: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FileTransferProgressPayload {
+    pub transfer_id: String,
+    pub entry_id: Option<String>,
+    pub peer_id: String,
+    pub direction: TransferDirection,
+    pub chunks_completed: u32,
+    pub total_chunks: u32,
+    pub bytes_transferred: u64,
+    pub total_bytes: Option<u64>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

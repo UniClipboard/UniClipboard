@@ -36,6 +36,7 @@ pub mod ws_event {
     pub const SPACE_ACCESS_STATE_CHANGED: &str = "space_access.state_changed";
     pub const CLIPBOARD_NEW_CONTENT: &str = "clipboard.new_content";
     pub const FILE_TRANSFER_STATUS_CHANGED: &str = "file-transfer.status_changed";
+    pub const FILE_TRANSFER_PROGRESS: &str = "file-transfer.progress";
     pub const ENCRYPTION_SESSION_READY: &str = "encryption.session_ready";
 }
 
@@ -153,6 +154,7 @@ mod tests {
             ws_event::FILE_TRANSFER_STATUS_CHANGED,
             "file-transfer.status_changed"
         );
+        assert_eq!(ws_event::FILE_TRANSFER_PROGRESS, "file-transfer.progress");
         assert_eq!(
             ws_event::ENCRYPTION_SESSION_READY,
             "encryption.session_ready"

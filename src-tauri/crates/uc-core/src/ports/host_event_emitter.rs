@@ -13,6 +13,7 @@
 //! - [`HostEventEmitterPort`] is synchronous (fire-and-forget semantics).
 //! - Emit failures are best-effort: callers log the error and continue.
 
+use crate::ports::transfer_progress::TransferDirection;
 use crate::setup::SetupState;
 
 // ---------------------------------------------------------------------------
@@ -58,6 +59,17 @@ pub enum TransferHostEvent {
         entry_id: String,
         status: String,
         reason: Option<String>,
+    },
+    /// Continuous transfer progress update.
+    Progress {
+        transfer_id: String,
+        entry_id: Option<String>,
+        peer_id: String,
+        direction: TransferDirection,
+        chunks_completed: u32,
+        total_chunks: u32,
+        bytes_transferred: u64,
+        total_bytes: Option<u64>,
     },
 }
 

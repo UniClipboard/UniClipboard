@@ -7,6 +7,8 @@ import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { AppContentWithBar } from '@/App'
 
+const usePlatformMock = vi.hoisted(() => vi.fn())
+
 vi.mock('@/api/daemon/lifecycle', () => ({
   signalLifecycleReady: vi.fn(() => Promise.resolve()),
 }))
@@ -31,12 +33,19 @@ vi.mock('@/components/ui/sonner', () => ({
   Toaster: () => <div data-testid="toaster" />,
 }))
 
+vi.mock('@/contexts/search-context', () => ({
+  useSearch: () => ({
+    searchValue: '',
+    setSearchValue: vi.fn(),
+  }),
+}))
+
 vi.mock('@/hooks/useDaemonEvents', () => ({
   useEncryptionState: vi.fn(),
 }))
 
 vi.mock('@/hooks/usePlatform', () => ({
-  usePlatform: () => ({ isMac: false, isTauri: false }),
+  usePlatform: usePlatformMock,
 }))
 
 vi.mock('@/hooks/useUINavigateListener', () => ({
@@ -46,7 +55,18 @@ vi.mock('@/hooks/useUINavigateListener', () => ({
 vi.mock('@/layouts', () => ({
   MainLayout: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
   SettingsFullLayout: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
-  WindowShell: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  WindowShell: ({
+    children,
+    titleBar,
+  }: {
+    children: React.ReactNode
+    titleBar?: React.ReactNode
+  }) => (
+    <div>
+      {titleBar}
+      {children}
+    </div>
+  ),
 }))
 
 vi.mock('@/lib/daemon-ws-bootstrap', () => ({
@@ -89,6 +109,7 @@ vi.mock('@/store/setupRealtimeStore', () => ({
 describe('App pairing notifications', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    usePlatformMock.mockReturnValue({ isMac: false, isTauri: false, isWindows: false })
     useSetupRealtimeStoreMock.mockReturnValue({
       hydrated: true,
       setupState: {
@@ -110,5 +131,17 @@ describe('App pairing notifications', () => {
     expect(screen.getByTestId('setup-page')).toBeInTheDocument()
     expect(screen.getByTestId('pairing-notification-provider')).toBeInTheDocument()
     expect(screen.getByTestId('toaster')).toBeInTheDocument()
+  })
+
+  it('renders the custom title bar on Windows Tauri', () => {
+    usePlatformMock.mockReturnValue({ isMac: false, isTauri: true, isWindows: true })
+
+    render(
+      <MemoryRouter>
+        <AppContentWithBar />
+      </MemoryRouter>
+    )
+
+    expect(screen.getByTestId('title-bar')).toBeInTheDocument()
   })
 })

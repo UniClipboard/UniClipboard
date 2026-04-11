@@ -207,6 +207,16 @@ mod tests {
     }
 
     #[test]
+    fn search_transport_constants_match() {
+        assert_eq!(ws_topic::SEARCH, "search");
+        assert_eq!(ws_event::SEARCH_STATUS_SNAPSHOT, "search.status_snapshot");
+        assert_eq!(ws_event::SEARCH_REBUILD_PROGRESS, "search.rebuild_progress");
+        assert_eq!(http_route::SEARCH_QUERY, "/search/query");
+        assert_eq!(http_route::SEARCH_STATUS, "/search/status");
+        assert_eq!(http_route::SEARCH_REBUILD, "/search/rebuild");
+    }
+
+    #[test]
     fn http_route_values_match() {
         assert_eq!(http_route::CLIPBOARD_RESTORE, "/clipboard/restore");
         assert_eq!(http_route::CLIPBOARD_ENTRIES, "/clipboard/entries");

@@ -7,7 +7,7 @@
 use crate::ids::EntryId;
 use crate::search::{
     RebuildProgress, SearchDocument, SearchError, SearchIndexMeta, SearchPosting, SearchQuery,
-    SearchResult,
+    SearchResultsPage,
 };
 use async_trait::async_trait;
 use tokio::sync::mpsc::Sender;
@@ -33,11 +33,11 @@ pub trait SearchIndexPort: Send + Sync {
     /// Called synchronously by DeleteClipboardEntry (Phase 89) — hard-delete.
     async fn remove_entry(&self, entry_id: &EntryId) -> Result<(), SearchError>;
 
-    /// Execute a structured query and return matching results with full render metadata.
+    /// Execute a structured query and return a paged result with full render metadata.
     ///
-    /// Returns `Vec<SearchResult>` (not `Vec<EntryId>`) per D-01 — avoids a second
-    /// query in the use case or daemon layer to hydrate UI row metadata.
-    async fn search(&self, query: SearchQuery) -> Result<Vec<SearchResult>, SearchError>;
+    /// Returns `SearchResultsPage` (not `Vec<EntryId>`) per D-01 / D-02 — avoids a second
+    /// query in the route layer to hydrate UI row metadata or compute pagination truth.
+    async fn search(&self, query: SearchQuery) -> Result<SearchResultsPage, SearchError>;
 
     /// Full index rebuild from a supplied entry list.
     ///
@@ -57,7 +57,7 @@ pub trait SearchIndexPort: Send + Sync {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::search::{RebuildStage, SearchIndexMeta};
+    use crate::search::{RebuildStage, SearchIndexMeta, SearchResult};
     use std::sync::Arc;
 
     struct StubPort;
@@ -74,8 +74,12 @@ mod tests {
         async fn remove_entry(&self, _id: &EntryId) -> Result<(), SearchError> {
             Ok(())
         }
-        async fn search(&self, _q: SearchQuery) -> Result<Vec<SearchResult>, SearchError> {
-            Ok(vec![])
+        async fn search(&self, _q: SearchQuery) -> Result<SearchResultsPage, SearchError> {
+            Ok(SearchResultsPage {
+                items: vec![],
+                total: 0,
+                has_more: false,
+            })
         }
         async fn rebuild(
             &self,
@@ -122,7 +126,11 @@ mod tests {
             limit: 10,
             offset: 0,
         };
-        let results: Vec<SearchResult> = port.search(q).await.unwrap();
-        assert!(results.is_empty());
+        let page: SearchResultsPage = port.search(q).await.unwrap();
+        assert!(page.items.is_empty());
+        assert_eq!(page.total, 0);
+        assert!(!page.has_more);
+        // SearchResult import kept alive via _ usage
+        let _: Option<SearchResult> = None;
     }
 }

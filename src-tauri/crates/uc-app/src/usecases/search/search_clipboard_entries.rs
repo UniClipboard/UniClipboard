@@ -2,12 +2,12 @@
 
 use std::sync::Arc;
 use uc_core::ports::SearchIndexPort;
-use uc_core::search::{SearchError, SearchQuery, SearchResult};
+use uc_core::search::{SearchError, SearchQuery, SearchResultsPage};
 
 /// Use case that executes a structured search query against the local encrypted search index.
 ///
-/// Returns `Vec<SearchResult>` — one row per matching entry with full render metadata
-/// (per D-01, avoids a second query for UI hydration).
+/// Returns `SearchResultsPage` — paged result with items, total, and has_more
+/// (per D-01, D-02 Phase 92 — avoids a second query for UI hydration or pagination metadata).
 pub struct SearchClipboardEntries {
     search_index: Arc<dyn SearchIndexPort>,
 }
@@ -25,7 +25,7 @@ impl SearchClipboardEntries {
         name = "usecase.search_clipboard_entries.execute",
         skip(self, query)
     )]
-    pub async fn execute(&self, query: SearchQuery) -> Result<Vec<SearchResult>, SearchError> {
+    pub async fn execute(&self, query: SearchQuery) -> Result<SearchResultsPage, SearchError> {
         self.search_index.search(query).await
     }
 }
@@ -39,7 +39,7 @@ mod tests {
     use uc_core::ids::EntryId;
     use uc_core::search::{
         FileType, QueryOperator, RebuildProgress, SearchDocument, SearchError, SearchIndexMeta,
-        SearchPosting, SearchQuery, SearchResult,
+        SearchPosting, SearchQuery, SearchResult, SearchResultsPage,
     };
 
     struct MockSearchIndex {
@@ -72,12 +72,18 @@ mod tests {
             Ok(())
         }
 
-        async fn search(&self, q: SearchQuery) -> Result<Vec<SearchResult>, SearchError> {
+        async fn search(&self, q: SearchQuery) -> Result<SearchResultsPage, SearchError> {
             if let Some(e) = self.fail_next.lock().await.take() {
                 return Err(e);
             }
             *self.last_query.lock().await = Some(q);
-            Ok(self.next_result.lock().await.clone())
+            let items = self.next_result.lock().await.clone();
+            let total = items.len() as u32;
+            Ok(SearchResultsPage {
+                items,
+                total,
+                has_more: false,
+            })
         }
 
         async fn rebuild(
@@ -124,8 +130,9 @@ mod tests {
         let uc = SearchClipboardEntries::from_port(mock as Arc<dyn SearchIndexPort>);
         let query = make_query("hello");
 
-        let result = uc.execute(query.clone()).await.unwrap();
-        assert!(result.is_empty());
+        let page = uc.execute(query.clone()).await.unwrap();
+        assert!(page.items.is_empty());
+        assert_eq!(page.total, 0);
         let captured = last_query.lock().await;
         assert_eq!(captured.as_ref().unwrap().query_string, "hello");
     }
@@ -137,9 +144,9 @@ mod tests {
         *mock.next_result.lock().await = vec![expected.clone()];
 
         let uc = SearchClipboardEntries::from_port(mock as Arc<dyn SearchIndexPort>);
-        let result = uc.execute(make_query("world")).await.unwrap();
-        assert_eq!(result.len(), 1);
-        assert_eq!(result[0], expected);
+        let page = uc.execute(make_query("world")).await.unwrap();
+        assert_eq!(page.items.len(), 1);
+        assert_eq!(page.items[0], expected);
     }
 
     #[tokio::test]

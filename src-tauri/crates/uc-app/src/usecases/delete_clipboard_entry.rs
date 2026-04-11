@@ -890,8 +890,12 @@ mod tests {
         async fn search(
             &self,
             _query: uc_core::search::SearchQuery,
-        ) -> Result<Vec<uc_core::search::SearchResult>, uc_core::search::SearchError> {
-            Ok(vec![])
+        ) -> Result<uc_core::search::SearchResultsPage, uc_core::search::SearchError> {
+            Ok(uc_core::search::SearchResultsPage {
+                items: vec![],
+                total: 0,
+                has_more: false,
+            })
         }
 
         async fn rebuild(

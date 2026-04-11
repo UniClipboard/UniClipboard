@@ -40,7 +40,7 @@ mod tests {
     use uc_core::ids::EntryId;
     use uc_core::search::{
         RebuildProgress, SearchDocument, SearchError, SearchIndexMeta, SearchPosting, SearchQuery,
-        SearchResult,
+        SearchResultsPage,
     };
 
     struct MockSearchIndex {
@@ -75,8 +75,8 @@ mod tests {
             Ok(())
         }
 
-        async fn search(&self, _q: SearchQuery) -> Result<Vec<SearchResult>, SearchError> {
-            Ok(vec![])
+        async fn search(&self, _q: SearchQuery) -> Result<SearchResultsPage, SearchError> {
+            Ok(SearchResultsPage { items: vec![], total: 0, has_more: false })
         }
 
         async fn rebuild(

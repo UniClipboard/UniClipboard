@@ -26,7 +26,7 @@ use uc_core::ports::security::key_scope::KeyScopePort;
 use uc_core::search::document::{SearchDocument, SearchIndexMeta, SearchPosting};
 use uc_core::search::error::SearchError;
 use uc_core::search::query::{QueryOperator, SearchQuery, TimeRangeFilter};
-use uc_core::search::result::{RebuildProgress, RebuildStage, SearchResult};
+use uc_core::search::result::{RebuildProgress, RebuildStage, SearchResult, SearchResultsPage};
 
 use crate::db::pool::DbPool;
 use crate::db::schema::{search_document, search_index_meta, search_posting};
@@ -744,7 +744,7 @@ impl SearchIndexPort for SqliteSearchIndex {
         .map_err(|e| SearchError::Internal(format!("spawn_blocking error: {e}")))?
     }
 
-    async fn search(&self, query: SearchQuery) -> Result<Vec<SearchResult>, SearchError> {
+    async fn search(&self, query: SearchQuery) -> Result<SearchResultsPage, SearchError> {
         let profile_id = self.current_profile_id().await?;
         let pool = self.pool.clone();
 
@@ -803,7 +803,11 @@ impl SearchIndexPort for SqliteSearchIndex {
                 Self::query_candidate_hits(&mut conn, &profile_id, &term_tags, &operator)?;
 
             if hit_map.is_empty() {
-                return Ok(vec![]);
+                return Ok(SearchResultsPage {
+                    items: vec![],
+                    total: 0,
+                    has_more: false,
+                });
             }
 
             let candidate_ids: Vec<String> = hit_map.keys().cloned().collect();
@@ -870,12 +874,18 @@ impl SearchIndexPort for SqliteSearchIndex {
                     .then(b.captured_at_ms.cmp(&a.captured_at_ms))
             });
 
-            // 8. Pagination.
+            // 8. Compute total before pagination — authoritative count for all matches.
+            let total = sorted.len() as u32;
+
+            // 9. Pagination.
             let paginated: Vec<(SearchDocumentRow, u32)> =
                 sorted.into_iter().skip(offset).take(limit).collect();
 
-            // 9. Map to SearchResult.
-            let results: Vec<SearchResult> = paginated
+            // 10. has_more: true when remaining entries exist after the current page.
+            let has_more = total > (offset as u32) + (paginated.len() as u32);
+
+            // 11. Map to SearchResult.
+            let items: Vec<SearchResult> = paginated
                 .into_iter()
                 .filter_map(|(doc, _)| {
                     let domain = doc.to_domain().ok()?;
@@ -890,7 +900,11 @@ impl SearchIndexPort for SqliteSearchIndex {
                 })
                 .collect();
 
-            Ok(results)
+            Ok(SearchResultsPage {
+                items,
+                total,
+                has_more,
+            })
         })
         .await
         .map_err(|e| SearchError::Internal(format!("spawn_blocking error: {e}")))?
@@ -1462,13 +1476,13 @@ mod tests {
             offset: 0,
         };
 
-        let results = adapter.search(query).await.expect("search");
+        let page = adapter.search(query).await.expect("search");
         assert_eq!(
-            results.len(),
+            page.items.len(),
             1,
-            "AND mode must require all terms: {results:?}"
+            "AND mode must require all terms: {:?}", page.items
         );
-        assert_eq!(results[0].entry_id, EntryId::from("entry-A"));
+        assert_eq!(page.items[0].entry_id, EntryId::from("entry-A"));
     }
 
     #[tokio::test]
@@ -1510,11 +1524,11 @@ mod tests {
             offset: 0,
         };
 
-        let results = adapter.search(query).await.expect("search");
+        let page = adapter.search(query).await.expect("search");
         assert_eq!(
-            results.len(),
+            page.items.len(),
             2,
-            "OR mode must return both entries: {results:?}"
+            "OR mode must return both entries: {:?}", page.items
         );
     }
 
@@ -1581,13 +1595,13 @@ mod tests {
             offset: 0,
         };
 
-        let results = adapter.search(query).await.expect("search");
+        let page = adapter.search(query).await.expect("search");
         assert_eq!(
-            results.len(),
+            page.items.len(),
             1,
-            "only entry-match should pass all filters: {results:?}"
+            "only entry-match should pass all filters: {:?}", page.items
         );
-        assert_eq!(results[0].entry_id, EntryId::from("entry-match"));
+        assert_eq!(page.items[0].entry_id, EntryId::from("entry-match"));
     }
 
     #[tokio::test]
@@ -1960,13 +1974,13 @@ mod tests {
 
         // After rebuild, search must find the new entry.
         let query = make_search_query("newtoken");
-        let results = adapter.search(query).await.expect("search after rebuild");
+        let page = adapter.search(query).await.expect("search after rebuild");
         assert_eq!(
-            results.len(),
+            page.items.len(),
             1,
-            "new entry added during rebuild must be present after cutover: {results:?}"
+            "new entry added during rebuild must be present after cutover: {:?}", page.items
         );
-        assert_eq!(results[0].entry_id, EntryId::from("entry-new"));
+        assert_eq!(page.items[0].entry_id, EntryId::from("entry-new"));
     }
 
     /// Pause rebuild, delete an already-staged entry, resume rebuild.
@@ -2047,19 +2061,19 @@ mod tests {
 
         // entry-to-delete must not appear after cutover.
         let q_del = make_search_query("deltoken");
-        let results_del = adapter.search(q_del).await.expect("search deltoken");
+        let page_del = adapter.search(q_del).await.expect("search deltoken");
         assert!(
-            results_del.is_empty(),
-            "deleted entry must not appear after rebuild cutover: {results_del:?}"
+            page_del.items.is_empty(),
+            "deleted entry must not appear after rebuild cutover: {:?}", page_del.items
         );
 
         // entry-keep must still be present.
         let q_keep = make_search_query("keeptoken");
-        let results_keep = adapter.search(q_keep).await.expect("search keeptoken");
+        let page_keep = adapter.search(q_keep).await.expect("search keeptoken");
         assert_eq!(
-            results_keep.len(),
+            page_keep.items.len(),
             1,
-            "kept entry must appear after rebuild cutover: {results_keep:?}"
+            "kept entry must appear after rebuild cutover: {:?}", page_keep.items
         );
     }
 
@@ -2201,9 +2215,9 @@ mod tests {
 
         // After completion, search must work again.
         let query2 = make_search_query("blocktest");
-        let results2 = adapter.search(query2).await.expect("search after rebuild");
+        let page2 = adapter.search(query2).await.expect("search after rebuild");
         assert_eq!(
-            results2.len(),
+            page2.items.len(),
             1,
             "entry must be findable after rebuild completes"
         );

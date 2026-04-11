@@ -30,6 +30,7 @@ use uc_app::usecases::{
 use uc_app::AppDeps;
 use uc_core::config::AppConfig;
 use uc_core::network::pairing_state_machine::PairingAction;
+use uc_core::ports::host_event_emitter::HostEventEmitterPort;
 use uc_core::ports::PeerDirectoryPort;
 use uc_infra::fs::key_slot_store::{JsonKeySlotStore, KeySlotStore};
 use uc_platform::adapters::PairingRuntimeOwner;
@@ -69,6 +70,7 @@ pub struct CliBootstrapContext {
 pub struct DaemonBootstrapContext {
     pub deps: AppDeps,
     pub background: BackgroundRuntimeDeps,
+    pub emitter_cell: Arc<std::sync::RwLock<Arc<dyn HostEventEmitterPort>>>,
     pub pairing_orchestrator: Arc<PairingOrchestrator>,
     pub pairing_action_rx: mpsc::Receiver<PairingAction>,
     pub staged_store: Arc<StagedPairedDeviceStore>,
@@ -223,6 +225,7 @@ pub fn build_daemon_app() -> anyhow::Result<DaemonBootstrapContext> {
     let storage_paths = get_storage_paths(&config)?;
     let deps = wired.deps;
     let background = wired.background;
+    let emitter_cell = wired.emitter_cell;
 
     let pairing_device_repo = deps.device.paired_device_repo.clone();
     let pairing_device_identity = deps.device.device_identity.clone();
@@ -258,6 +261,7 @@ pub fn build_daemon_app() -> anyhow::Result<DaemonBootstrapContext> {
     Ok(DaemonBootstrapContext {
         deps,
         background,
+        emitter_cell,
         pairing_orchestrator,
         pairing_action_rx,
         staged_store,

@@ -86,7 +86,7 @@ pub fn build_non_gui_runtime_with_setup(
     setup_ports: SetupAssemblyPorts,
 ) -> anyhow::Result<CoreRuntime> {
     let session_ready_emitter: Arc<dyn SessionReadyEmitter> = Arc::new(LoggingSessionReadyEmitter);
-    build_non_gui_runtime_with_emitter(deps, storage_paths, setup_ports, session_ready_emitter)
+    build_non_gui_runtime_internal(deps, storage_paths, setup_ports, session_ready_emitter)
 }
 
 /// Construct a [`CoreRuntime`] for non-GUI entry points with explicit setup ports
@@ -99,10 +99,41 @@ pub fn build_non_gui_runtime_with_emitter(
     storage_paths: AppPaths,
     setup_ports: SetupAssemblyPorts,
     session_ready_emitter: Arc<dyn SessionReadyEmitter>,
+    emitter_cell: Arc<std::sync::RwLock<Arc<dyn HostEventEmitterPort>>>,
+) -> anyhow::Result<CoreRuntime> {
+    build_non_gui_runtime_internal_with_emitter(
+        deps,
+        storage_paths,
+        setup_ports,
+        session_ready_emitter,
+        emitter_cell,
+    )
+}
+
+fn build_non_gui_runtime_internal(
+    deps: AppDeps,
+    storage_paths: AppPaths,
+    setup_ports: SetupAssemblyPorts,
+    session_ready_emitter: Arc<dyn SessionReadyEmitter>,
 ) -> anyhow::Result<CoreRuntime> {
     let emitter: Arc<dyn HostEventEmitterPort> = Arc::new(LoggingHostEventEmitter);
     let emitter_cell = Arc::new(std::sync::RwLock::new(emitter));
+    build_non_gui_runtime_internal_with_emitter(
+        deps,
+        storage_paths,
+        setup_ports,
+        session_ready_emitter,
+        emitter_cell,
+    )
+}
 
+fn build_non_gui_runtime_internal_with_emitter(
+    deps: AppDeps,
+    storage_paths: AppPaths,
+    setup_ports: SetupAssemblyPorts,
+    session_ready_emitter: Arc<dyn SessionReadyEmitter>,
+    emitter_cell: Arc<std::sync::RwLock<Arc<dyn HostEventEmitterPort>>>,
+) -> anyhow::Result<CoreRuntime> {
     let lifecycle_status = Arc::new(InMemoryLifecycleStatus::new());
     let task_registry = Arc::new(TaskRegistry::new());
     let clipboard_integration_mode = resolve_clipboard_integration_mode();

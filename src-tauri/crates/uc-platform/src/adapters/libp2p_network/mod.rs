@@ -72,9 +72,8 @@ const MAX_IN_FLIGHT_BUSINESS_COMMANDS: usize = 16;
 const QUIC_MAX_IDLE_TIMEOUT_MS: u32 = 30_000;
 const QUIC_KEEP_ALIVE_INTERVAL: Duration = Duration::from_secs(5);
 const QUIC_MAX_CONCURRENT_STREAM_LIMIT: u32 = 1024;
-const QUIC_MAX_STREAM_DATA_BYTES: u32 = 128 * 1024 * 1024;
-const QUIC_MAX_CONNECTION_DATA_BYTES: u32 = 512 * 1024 * 1024;
-const QUIC_MTU_UPPER_BOUND_BYTES: u16 = 1452;
+const QUIC_MAX_STREAM_DATA_BYTES: u32 = 32 * 1024 * 1024;
+const QUIC_MAX_CONNECTION_DATA_BYTES: u32 = 128 * 1024 * 1024;
 const START_STATE_IDLE: u8 = 0;
 const START_STATE_STARTING: u8 = 1;
 const START_STATE_STARTED: u8 = 2;
@@ -430,16 +429,6 @@ fn build_quic_config(mut config: libp2p::quic::Config) -> libp2p::quic::Config {
     config.max_concurrent_stream_limit = QUIC_MAX_CONCURRENT_STREAM_LIMIT;
     config.max_stream_data = QUIC_MAX_STREAM_DATA_BYTES;
     config.max_connection_data = QUIC_MAX_CONNECTION_DATA_BYTES;
-    config = config.mtu_upper_bound(QUIC_MTU_UPPER_BOUND_BYTES);
-    info!(
-        max_idle_timeout_ms = QUIC_MAX_IDLE_TIMEOUT_MS,
-        keep_alive_interval_secs = QUIC_KEEP_ALIVE_INTERVAL.as_secs(),
-        max_concurrent_stream_limit = QUIC_MAX_CONCURRENT_STREAM_LIMIT,
-        max_stream_data_bytes = QUIC_MAX_STREAM_DATA_BYTES,
-        max_connection_data_bytes = QUIC_MAX_CONNECTION_DATA_BYTES,
-        mtu_upper_bound_bytes = QUIC_MTU_UPPER_BOUND_BYTES,
-        "configured quic transport"
-    );
     config
 }
 

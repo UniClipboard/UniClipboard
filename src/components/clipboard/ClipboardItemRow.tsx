@@ -29,6 +29,7 @@ import { cn } from '@/lib/utils'
 import { useAppSelector } from '@/store/hooks'
 import {
   selectEntryTransferStatus,
+  selectTransferByTransferIds,
   selectTransferByEntryId,
 } from '@/store/slices/fileTransferSlice'
 
@@ -121,7 +122,11 @@ const ClipboardItemRow = React.forwardRef<HTMLDivElement, ClipboardItemRowProps>
   ({ item, isActive, isStale, onClick, elementRef, className: extraClassName, ...rest }, ref) => {
     const { t } = useTranslation()
     const Icon = FILE_EXT_ICON_MAP[getFileExt(item)] ?? typeIcons[item.type] ?? FileText
-    const transfer = useAppSelector(state => selectTransferByEntryId(state, item.id))
+    const transfer = useAppSelector(
+      state =>
+        selectTransferByEntryId(state, item.id) ??
+        selectTransferByTransferIds(state, item.fileTransferIds ?? [])
+    )
     const entryStatus = useAppSelector(state => selectEntryTransferStatus(state, item.id))
 
     // Derive display state: durable entryStatus takes priority, fall back to ephemeral transfer

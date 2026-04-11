@@ -33,6 +33,7 @@ import { createLogger } from '@/lib/logger'
 import { useAppSelector } from '@/store/hooks'
 import {
   selectEntryTransferStatus,
+  selectTransferByTransferIds,
   selectTransferByEntryId,
 } from '@/store/slices/fileTransferSlice'
 import { formatFileSize } from '@/utils'
@@ -50,7 +51,10 @@ interface ClipboardPreviewProps {
 const ClipboardPreview: React.FC<ClipboardPreviewProps> = ({ item, actions }) => {
   const { t } = useTranslation()
   const transfer = useAppSelector(state =>
-    item ? selectTransferByEntryId(state, item.id) : undefined
+    item
+      ? (selectTransferByEntryId(state, item.id) ??
+        selectTransferByTransferIds(state, item.fileTransferIds ?? []))
+      : undefined
   )
   const entryStatus = useAppSelector(state =>
     item ? selectEntryTransferStatus(state, item.id) : undefined

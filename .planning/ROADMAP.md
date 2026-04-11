@@ -73,7 +73,7 @@ Archive note:
 - [ ] **Phase 88: Core Domain and Port Contracts** - Define SearchIndexPort, SearchKeyDerivationPort, domain models, and SearchKey newtype in uc-core
 - [x] **Phase 89: Use Cases and Delete Integration** - Implement four search use cases in uc-app and extend DeleteClipboardEntry with synchronous search cascade (completed 2026-04-10)
 - [x] **Phase 90: SQLite Schema Migration and Tokenizer Pipeline** - Add Diesel migration for search tables and implement tokenizer pipeline with HKDF key derivation in uc-infra (completed 2026-04-11)
-- [ ] **Phase 91: SQLite Index Adapter and Rebuild Strategy** - Implement SqliteSearchIndex adapter with version-flag atomic swap rebuild and search_blocked guard in uc-infra
+- [x] **Phase 91: SQLite Index Adapter and Rebuild Strategy** - Implement SqliteSearchIndex adapter with version-flag atomic swap rebuild and search_blocked guard in uc-infra (completed 2026-04-11)
 - [ ] **Phase 92: Bootstrap Wiring and Daemon HTTP Routes** - Wire search ports into AppDeps and expose /search endpoints in uc-daemon with per-handler unlock guard and WS rebuild events
 - [ ] **Phase 93: Frontend Search UI** - Replace QuickPanel client-side filter and reveal Dashboard search with content-type/time-range controls
 
@@ -187,6 +187,6 @@ Archive note:
 | 88. Core Domain and Port Contracts                 | 0/1            | Not started | -         |
 | 89. Use Cases and Delete Integration               | 2/2 | Complete    | 2026-04-10 |
 | 90. SQLite Schema Migration and Tokenizer Pipeline | 2/2 | Complete    | 2026-04-11 |
-| 91. SQLite Index Adapter and Rebuild Strategy      | 1/2 | In Progress|  |
+| 91. SQLite Index Adapter and Rebuild Strategy      | 2/2 | Complete   | 2026-04-11 |
 | 92. Bootstrap Wiring and Daemon HTTP Routes        | 0/TBD          | Not started | -         |
 | 93. Frontend Search UI                             | 0/TBD          | Not started | -         |

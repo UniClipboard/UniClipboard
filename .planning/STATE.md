@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v0.5.0
 milestone_name: Local Encrypted Search
-status: executing
-stopped_at: Completed 91-01-PLAN.md
-last_updated: "2026-04-11T04:18:40.347Z"
+status: verifying
+stopped_at: Completed 91-02-PLAN.md
+last_updated: "2026-04-11T04:33:13.942Z"
 last_activity: 2026-04-11
 progress:
   total_phases: 6
-  completed_phases: 3
+  completed_phases: 4
   total_plans: 7
-  completed_plans: 6
+  completed_plans: 7
   percent: 17
 ---
 
@@ -27,7 +27,7 @@ See: .planning/PROJECT.md (updated 2026-04-10)
 
 Phase: 91 (sqlite-index-adapter-and-rebuild-strategy) — EXECUTING
 Plan: 2 of 2
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-04-11
 
 Progress: [▓▓░░░░░░░░] 17%
@@ -50,6 +50,7 @@ Progress: [▓▓░░░░░░░░] 17%
 | Phase 90 P01 | 40min | 2 tasks | 7 files |
 | Phase 90 P02 | 20min | 2 tasks | 6 files |
 | Phase 91 P01 | 45min | 2 tasks | 2 files |
+| Phase 91 P02 | 12min | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -75,6 +76,9 @@ Recent decisions affecting current work:
 - [Phase 91]: normalize_query_terms splits on whitespace before tokenizing each word — prevents SearchTokenizer from generating spurious whole-segment tokens in multi-word queries (Phase 91-01)
 - [Phase 91]: AND/OR posting aggregation done in Rust using HashSet<Vec<u8>> per entry_id rather than SQL HAVING COUNT(DISTINCT term_tag) — avoids Diesel dynamic-length IN parameter binding limitations (Phase 91-01)
 - [Phase 91]: rebuild() stub returns Internal error in Plan 01 — Plan 02 implements the full temp-table rebuild flow (Phase 91-01)
+- [Phase 91]: std::sync::RwLock for rebuild_state avoids tokio/spawn_blocking boundary — lock hold is microseconds (clone only)
+- [Phase 91]: diesel::sql_query with format!() for all dynamic-table SQL in rebuild — Diesel typed builder cannot handle runtime table names
+- [Phase 91]: Semaphore(0) + add_permits(1) for deterministic test pause/resume in rebuild mirroring tests — no sleep required
 
 ### Pending Todos
 
@@ -89,6 +93,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-04-11T04:18:40.344Z
-Stopped at: Completed 91-01-PLAN.md
+Last session: 2026-04-11T04:33:13.940Z
+Stopped at: Completed 91-02-PLAN.md
 Resume file: None

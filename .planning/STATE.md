@@ -4,13 +4,13 @@ milestone: v0.5.0
 milestone_name: Local Encrypted Search
 status: verifying
 stopped_at: Completed 92.1-03-PLAN.md
-last_updated: "2026-04-11T16:47:58.898Z"
+last_updated: "2026-04-11T16:52:21.002Z"
 last_activity: 2026-04-11
 progress:
   total_phases: 6
   completed_phases: 5
   total_plans: 11
-  completed_plans: 13
+  completed_plans: 14
   percent: 17
 ---
 
@@ -56,6 +56,7 @@ Progress: [▓▓░░░░░░░░] 17%
 | Phase 92.1 P01 | 25min | 2 tasks | 6 files |
 | Phase 92.1 P02 | 4min | 2 tasks | 5 files |
 | Phase 92.1-cli-search-commands P03 | 25min | 2 tasks | 1 files |
+| Phase 92.1-cli-search-commands P03 | 30 | 2 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -96,6 +97,8 @@ Recent decisions affecting current work:
 - [Phase 92.1]: search.rs imports DTOs via uc_daemon::api::dto::search re-export shim to avoid direct uc-daemon-contract dependency in uc-cli
 - [Phase 92.1-cli-search-commands]: run_rebuild_with uses generic Fn closures not trait objects — zero-cost test injection, avoids Box<dyn Future>
 - [Phase 92.1-cli-search-commands]: Rebuild conflict/locked handled via DaemonSearchRequestError downcast — code field distinguishes rebuild_already_running vs session_locked
+- [Phase 92.1-03]: run_rebuild_with uses generic Fn closures (not Box<dyn>) to allow zero-cost test injection and keep the production path allocation-free
+- [Phase 92.1-03]: Spinner created only when json=false — prevents indicatif from writing to stderr in machine-readable pipelines
 
 ### Roadmap Evolution
 
@@ -114,6 +117,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-04-11T16:47:58.895Z
+Last session: 2026-04-11T16:52:21.000Z
 Stopped at: Completed 92.1-03-PLAN.md
 Resume file: None

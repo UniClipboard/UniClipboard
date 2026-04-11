@@ -28,7 +28,7 @@ Requirements for Local Encrypted Search milestone. Each maps to roadmap phases.
 
 ### Index Rebuild
 
-- [ ] **REBLD-01**: User can trigger a full index rebuild when the encryption session is unlocked
+- [x] **REBLD-01**: User can trigger a full index rebuild when the encryption session is unlocked
 - [ ] **REBLD-02**: Full rebuild uses version-flag atomic swap strategy (not RENAME TABLE) to avoid exclusive lock contention
 - [ ] **REBLD-03**: New entries captured during a rebuild window are double-written to both active and temp tables
 - [ ] **REBLD-04**: Rebuild progress is broadcast to frontend via WebSocket events
@@ -88,7 +88,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | SQRY-04     | Phase 92 | Pending |
 | SQRY-05     | Phase 92 | Pending |
 | SQRY-06     | Phase 92 | Pending |
-| REBLD-01    | Phase 91 | Pending |
+| REBLD-01    | Phase 91 | Complete |
 | REBLD-02    | Phase 91 | Pending |
 | REBLD-03    | Phase 91 | Pending |
 | REBLD-04    | Phase 92 | Pending |

@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v0.5.0
 milestone_name: Local Encrypted Search
-status: verifying
-stopped_at: Phase 91 context gathered
-last_updated: "2026-04-11T02:36:16.492Z"
+status: executing
+stopped_at: Completed 91-01-PLAN.md
+last_updated: "2026-04-11T04:18:40.347Z"
 last_activity: 2026-04-11
 progress:
   total_phases: 6
-  completed_phases: 2
-  total_plans: 3
-  completed_plans: 4
+  completed_phases: 3
+  total_plans: 7
+  completed_plans: 6
   percent: 17
 ---
 
@@ -21,13 +21,13 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-10)
 
 **Core value:** Seamless clipboard synchronization across devices — copy on one, paste on another
-**Current focus:** Phase 90 — sqlite-schema-migration-and-tokenizer-pipeline
+**Current focus:** Phase 91 — sqlite-index-adapter-and-rebuild-strategy
 
 ## Current Position
 
-Phase: 91
-Plan: Not started
-Status: Phase complete — ready for verification
+Phase: 91 (sqlite-index-adapter-and-rebuild-strategy) — EXECUTING
+Plan: 2 of 2
+Status: Ready to execute
 Last activity: 2026-04-11
 
 Progress: [▓▓░░░░░░░░] 17%
@@ -49,6 +49,7 @@ Progress: [▓▓░░░░░░░░] 17%
 | Phase 89-use-cases-and-delete-integration P01 | 4 | 2 tasks | 6 files |
 | Phase 90 P01 | 40min | 2 tasks | 7 files |
 | Phase 90 P02 | 20min | 2 tasks | 6 files |
+| Phase 91 P01 | 45min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -71,6 +72,9 @@ Recent decisions affecting current work:
 - [Phase 90]: FileType stored as serde snake_case TEXT; file_extensions as JSON array TEXT in search_document rows (Phase 90-01)
 - [Phase 90]: [Phase 90-02]: term_tag() accepts SearchKey not MasterKey — type system enforces no raw key HMAC use
 - [Phase 90]: [Phase 90-02]: Pipeline term_freq uses raw occurrence counting (substring scan) to count repeated tokens before deduplication
+- [Phase 91]: normalize_query_terms splits on whitespace before tokenizing each word — prevents SearchTokenizer from generating spurious whole-segment tokens in multi-word queries (Phase 91-01)
+- [Phase 91]: AND/OR posting aggregation done in Rust using HashSet<Vec<u8>> per entry_id rather than SQL HAVING COUNT(DISTINCT term_tag) — avoids Diesel dynamic-length IN parameter binding limitations (Phase 91-01)
+- [Phase 91]: rebuild() stub returns Internal error in Plan 01 — Plan 02 implements the full temp-table rebuild flow (Phase 91-01)
 
 ### Pending Todos
 
@@ -85,6 +89,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-04-11T02:36:16.488Z
-Stopped at: Phase 91 context gathered
-Resume file: .planning/phases/91-sqlite-index-adapter-and-rebuild-strategy/91-CONTEXT.md
+Last session: 2026-04-11T04:18:40.344Z
+Stopped at: Completed 91-01-PLAN.md
+Resume file: None

@@ -469,13 +469,15 @@
       "earlier": "更早"
     },
     "preview": {
-      "selectItem": "选择一个项目预览",
-      "information": "信息",
+      "selectItem": "选择一个项目进行预览",
+      "information": "详情",
       "contentType": "内容类型",
       "characters": "字符数",
+      "charactersCount": "{{count}} 字符",
       "words": "词数",
       "size": "大小",
-      "dimensions": "尺寸",
+      "dimensions": "分辨率",
+      "filesCount": "{{count}} 个文件",
       "notDownloaded": "未下载",
       "sourceDevice": "来源设备"
     },

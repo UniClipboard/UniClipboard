@@ -117,14 +117,17 @@ const ClipboardPreview: React.FC<ClipboardPreviewProps> = ({ item, actions }) =>
     const rows: { icon: React.ElementType; value: React.ReactNode }[] = []
     rows.push({
       icon: Layers,
-      value: item.type.charAt(0).toUpperCase() + item.type.slice(1),
+      value: t('header.filters.' + item.type),
     })
 
     if (item.type === 'text' && item.content) {
       const textItem = item.content as ClipboardTextItem
       const text =
         preview?.contentType === 'text' ? (preview.textContent ?? '') : textItem.display_text
-      rows.push({ icon: Type, value: `${text.length} chars` })
+      rows.push({
+        icon: Type,
+        value: t('clipboard.preview.charactersCount', { count: text.length }),
+      })
       if (textItem.size > 0) rows.push({ icon: Database, value: formatFileSize(textItem.size) })
     }
 
@@ -139,7 +142,10 @@ const ClipboardPreview: React.FC<ClipboardPreviewProps> = ({ item, actions }) =>
 
     if (item.type === 'file' && item.content) {
       const fileItem = item.content as ClipboardFileItem
-      rows.push({ icon: Files, value: `${fileItem.file_names.length} files` })
+      rows.push({
+        icon: Files,
+        value: t('clipboard.preview.filesCount', { count: fileItem.file_names.length }),
+      })
       const knownSizes = fileItem.file_sizes.filter(s => s >= 0)
       if (knownSizes.length > 0) {
         const totalSize = knownSizes.reduce((sum, s) => sum + s, 0)
@@ -151,7 +157,10 @@ const ClipboardPreview: React.FC<ClipboardPreviewProps> = ({ item, actions }) =>
       const linkItem = item.content as ClipboardLinkItem
       const uniqueDomains = [...new Set(linkItem.domains.filter(Boolean))]
       if (uniqueDomains.length > 0) rows.push({ icon: Globe, value: uniqueDomains[0] })
-      rows.push({ icon: Hash, value: `${linkItem.urls[0]?.length ?? 0} chars` })
+      rows.push({
+        icon: Hash,
+        value: t('clipboard.preview.charactersCount', { count: linkItem.urls[0]?.length ?? 0 }),
+      })
     }
 
     return rows

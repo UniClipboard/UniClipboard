@@ -482,9 +482,11 @@
       "information": "Information",
       "contentType": "Content Type",
       "characters": "Characters",
+      "charactersCount": "{{count}} chars",
       "words": "Words",
       "size": "Size",
       "dimensions": "Dimensions",
+      "filesCount": "{{count}} files",
       "notDownloaded": "Not downloaded",
       "sourceDevice": "Source device"
     },

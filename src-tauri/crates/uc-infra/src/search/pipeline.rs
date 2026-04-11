@@ -4,7 +4,7 @@
 //! point. Callers provide a `SearchPipelineInput` and a `SearchKey`; the pipeline returns
 //! ready-to-store `SearchDocument` and aggregated `SearchPosting` values.
 //!
-//! This module does NOT implement SQLite INSERT/SELECT logic or `SqliteSearchIndex`.
+//! This module does NOT implement live database adapters or query logic.
 
 use std::collections::HashMap;
 

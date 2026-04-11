@@ -102,10 +102,10 @@ const ClipboardPreviewInfo: React.FC<ClipboardPreviewInfoProps> = ({
   if (rows.length === 0) return null
 
   return (
-    <div className="shrink-0 overflow-hidden bg-muted/10 px-6 py-3">
-      <div className="flex items-center gap-6">
+    <div className="shrink-0 bg-muted/10 px-6 py-3">
+      <div className="flex flex-wrap items-center gap-6">
         {rows.map((row, index) => (
-          <div key={index} className="group flex shrink-0 items-center gap-2">
+          <div key={index} className="group flex items-center gap-2">
             <row.icon className="h-3.5 w-3.5 text-muted-foreground/20 transition-colors group-hover:text-primary/50" />
             <span className="text-[11px] font-semibold tabular-nums text-muted-foreground/60">
               {row.value}

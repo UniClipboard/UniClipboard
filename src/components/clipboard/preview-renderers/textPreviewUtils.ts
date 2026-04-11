@@ -7,7 +7,7 @@ export function getTextPreviewContent(
   item: ClipboardTextItem,
   preview: ClipboardPreviewData | null
 ) {
-  return preview?.contentType === 'text' ? (preview.textContent ?? '') : item.display_text
+  return preview?.contentType === 'text' ? (preview.textContent ?? item.display_text) : item.display_text
 }
 
 export function isLargeTextPreview(

@@ -69,6 +69,11 @@ const fileTransferSlice = createSlice({
       const now = eventTs ?? Date.now()
       const existing = state.activeTransfers[transferId]
 
+      // Ignore stale events: if existing transfer has a newer timestamp, skip this update
+      if (existing?.updatedAt != null && now <= existing.updatedAt) {
+        return
+      }
+
       const isCompleted = chunksCompleted === totalChunks && totalChunks > 0
       const startedAt = existing?.startedAt ?? now
       const elapsedSeconds = Math.max((now - startedAt) / 1000, 0.001)

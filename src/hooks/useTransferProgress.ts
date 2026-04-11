@@ -10,8 +10,7 @@ import {
   updateTransferProgress,
 } from '@/store/slices/fileTransferSlice'
 
-const log = createLogger('use-transfer-progress')
-const transferProgressDebugEnabled = import.meta.env.DEV
+const log = createLogger('useTransferProgress')
 
 interface FileTransferStatusEvent {
   transferId: string
@@ -51,7 +50,6 @@ export function useTransferProgress(): void {
 
   useEffect(() => {
     let cancelled = false
-    const warnedMissingEntryLinkage = new Set<string>()
 
     const handler = (event: DaemonTransferEvent) => {
       if (cancelled) return
@@ -64,17 +62,12 @@ export function useTransferProgress(): void {
       if (event.eventType === 'file-transfer.status_changed') {
         const payload = event.payload as FileTransferStatusEvent
         const { entryId, status, reason } = payload
-        if (transferProgressDebugEnabled) {
-          log.debug(
-            {
-              transferId: payload.transferId,
-              entryId,
-              status,
-              reason: reason ?? null,
-            },
-            'file transfer status changed'
-          )
-        }
+        log.debug({
+          transferId: payload.transferId,
+          entryId,
+          status,
+          reason: reason ?? null,
+        }, 'status_changed')
         dispatch(linkTransferToEntry({ transferId: payload.transferId, entryId }))
         const validStatuses = ['pending', 'transferring', 'completed', 'failed'] as const
         if (validStatuses.includes(status as (typeof validStatuses)[number])) {
@@ -99,21 +92,16 @@ export function useTransferProgress(): void {
 
       if (event.eventType === 'file-transfer.progress') {
         const payload = event.payload as FileTransferProgressEvent
-        if (transferProgressDebugEnabled) {
-          log.debug(
-            {
-              transferId: payload.transferId,
-              entryId: payload.entryId ?? null,
-              peerId: payload.peerId,
-              direction: payload.direction,
-              chunksCompleted: payload.chunksCompleted,
-              totalChunks: payload.totalChunks,
-              bytesTransferred: payload.bytesTransferred,
-              totalBytes: payload.totalBytes ?? null,
-            },
-            'file transfer progress'
-          )
-        }
+        log.debug({
+          transferId: payload.transferId,
+          entryId: payload.entryId ?? null,
+          peerId: payload.peerId,
+          direction: payload.direction,
+          chunksCompleted: payload.chunksCompleted,
+          totalChunks: payload.totalChunks,
+          bytesTransferred: payload.bytesTransferred,
+          totalBytes: payload.totalBytes ?? null,
+        }, 'progress')
         dispatch(
           updateTransferProgress({
             transferId: payload.transferId,
@@ -129,30 +117,19 @@ export function useTransferProgress(): void {
         )
 
         if (payload.entryId) {
-          if (transferProgressDebugEnabled) {
-            log.debug(
-              {
-                transferId: payload.transferId,
-                entryId: payload.entryId,
-              },
-              'linked transfer to entry from progress event'
-            )
-          }
+          log.debug({
+            transferId: payload.transferId,
+            entryId: payload.entryId,
+          }, 'linkTransferToEntry from progress')
           dispatch(
             linkTransferToEntry({ transferId: payload.transferId, entryId: payload.entryId })
           )
         } else {
-          if (!warnedMissingEntryLinkage.has(payload.transferId)) {
-            warnedMissingEntryLinkage.add(payload.transferId)
-            log.warn(
-              {
-                transferId: payload.transferId,
-                peerId: payload.peerId,
-                direction: payload.direction,
-              },
-              'progress event missing entry linkage'
-            )
-          }
+          log.debug({
+            transferId: payload.transferId,
+            peerId: payload.peerId,
+            direction: payload.direction,
+          }, 'progress event missing entryId linkage')
         }
       }
     }

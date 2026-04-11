@@ -4,7 +4,7 @@ milestone: v0.5.0
 milestone_name: Local Encrypted Search
 status: verifying
 stopped_at: Completed 90-02-PLAN.md
-last_updated: "2026-04-11T01:51:32.766Z"
+last_updated: "2026-04-11T01:59:14.761Z"
 last_activity: 2026-04-11
 progress:
   total_phases: 6
@@ -25,8 +25,8 @@ See: .planning/PROJECT.md (updated 2026-04-10)
 
 ## Current Position
 
-Phase: 90 (sqlite-schema-migration-and-tokenizer-pipeline) — EXECUTING
-Plan: 2 of 2
+Phase: 91
+Plan: Not started
 Status: Phase complete — ready for verification
 Last activity: 2026-04-11
 

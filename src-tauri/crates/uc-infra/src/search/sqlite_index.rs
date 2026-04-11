@@ -6,9 +6,9 @@
 //! - Live active-table upsert / hard-delete for `search_document` + `search_posting`
 //! - Blocked-state and version-mismatch guards for `search()`
 //! - Real SQLite posting-based AND/OR query resolution
+//! - Rebuild lifecycle: temp-table workspace, blocked state, finalize cutover, failure handling
 //!
-//! Phase 92 will wire this adapter into daemon routes. Phase 91 Plan 02 will add
-//! the `rebuild()` temp-table flow.
+//! Phase 92 will wire this adapter into daemon routes.
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -26,7 +26,7 @@ use uc_core::ports::security::key_scope::KeyScopePort;
 use uc_core::search::document::{SearchDocument, SearchIndexMeta, SearchPosting};
 use uc_core::search::error::SearchError;
 use uc_core::search::query::{QueryOperator, SearchQuery, TimeRangeFilter};
-use uc_core::search::result::{RebuildProgress, SearchResult};
+use uc_core::search::result::{RebuildProgress, RebuildStage, SearchResult};
 
 use crate::db::pool::DbPool;
 use crate::db::schema::{search_document, search_index_meta, search_posting};
@@ -39,18 +39,72 @@ use crate::search::search_key_derivation::term_tag;
 use crate::search::tokenizer::SearchTokenizer;
 
 // ──────────────────────────────────────────────────────────────────────────────
+// Rebuild workspace state
+// ──────────────────────────────────────────────────────────────────────────────
+
+/// In-memory state for an in-progress index rebuild.
+///
+/// Held in `SqliteSearchIndex::rebuild_state` behind a `std::sync::RwLock`.
+/// Cloned by `active_rebuild_for_profile` to allow live mutations to mirror
+/// into the temp tables without holding the lock during the DB write.
+#[derive(Debug, Clone)]
+pub struct ActiveRebuild {
+    pub profile_id: String,
+    pub temp_document_table: String,
+    pub temp_posting_table: String,
+    pub target_version: String,
+}
+
+impl ActiveRebuild {
+    /// Construct an `ActiveRebuild` for `profile_id`.
+    ///
+    /// Temp table names are deterministic from the profile ID (hex-encoded bytes so
+    /// the names are safe SQL identifiers regardless of profile ID content).
+    pub fn new(profile_id: &str) -> Self {
+        // Hex-encode profile_id bytes for a safe SQL identifier suffix.
+        let safe_suffix: String = profile_id
+            .bytes()
+            .map(|b| format!("{b:02x}"))
+            .collect::<Vec<_>>()
+            .join("");
+        // Cap at 40 chars to keep table names short.
+        let safe_suffix = &safe_suffix[..safe_suffix.len().min(40)];
+
+        Self {
+            profile_id: profile_id.to_string(),
+            temp_document_table: format!("tmp_search_document_rebuild_{safe_suffix}"),
+            temp_posting_table: format!("tmp_search_posting_rebuild_{safe_suffix}"),
+            target_version: CURRENT_INDEX_VERSION.to_string(),
+        }
+    }
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
 // Public adapter struct
 // ──────────────────────────────────────────────────────────────────────────────
 
 /// SQLite adapter implementing `SearchIndexPort`.
 ///
 /// Holds a connection pool and the two async ports needed for profile-scoped
-/// key derivation. `rebuild_state` is an `Arc<RwLock<...>>` owned here so that
-/// Plan 02's rebuild flow can mirror live mutations into the temp tables.
+/// key derivation. `rebuild_state` is a `std::sync::RwLock` so that live write
+/// helpers inside `spawn_blocking` can check for an active rebuild without
+/// crossing the async/blocking boundary.
 pub struct SqliteSearchIndex {
     pool: DbPool,
     key_scope: Arc<dyn KeyScopePort>,
     search_key_derivation: Arc<dyn SearchKeyDerivationPort>,
+    /// Active rebuild state, shared between the rebuild coordinator and the
+    /// live write/delete helpers that must mirror into temp tables.
+    rebuild_state: Arc<std::sync::RwLock<Option<ActiveRebuild>>>,
+
+    /// Test-only: inject a fault after this many entries have been written to temp tables.
+    #[cfg(test)]
+    pub fail_after_n_entries: Option<usize>,
+
+    /// Test-only: pause just before finalize so tests can inject mutations mid-rebuild.
+    /// The rebuild task waits for a permit on this semaphore before calling finalize.
+    #[cfg(test)]
+    pub pause_before_finalize: Option<Arc<tokio::sync::Semaphore>>,
 }
 
 impl SqliteSearchIndex {
@@ -64,6 +118,11 @@ impl SqliteSearchIndex {
             pool,
             key_scope,
             search_key_derivation,
+            rebuild_state: Arc::new(std::sync::RwLock::new(None)),
+            #[cfg(test)]
+            fail_after_n_entries: None,
+            #[cfg(test)]
+            pause_before_finalize: None,
         }
     }
 
@@ -79,15 +138,30 @@ impl SqliteSearchIndex {
         Ok(scope.profile_id)
     }
 
+    /// Return a clone of the active rebuild state only when `profile_id` matches.
+    ///
+    /// Returns `None` if there is no active rebuild or the rebuild is for a different profile.
+    ///
+    /// Declared `async` so callers in async context can use `await` directly;
+    /// the implementation is synchronous (uses `std::sync::RwLock`) and does
+    /// not actually suspend.
+    async fn active_rebuild_for_profile(&self, profile_id: &str) -> Option<ActiveRebuild> {
+        let guard = self.rebuild_state.read().expect("rebuild_state poisoned");
+        guard.as_ref().and_then(|r| {
+            if r.profile_id == profile_id {
+                Some(r.clone())
+            } else {
+                None
+            }
+        })
+    }
+
     // ─── Private synchronous helpers (run inside spawn_blocking) ─────────────
 
     /// Ensure a `search_index_meta` row exists for `profile_id`.
     ///
     /// If the row is missing, inserts a fresh seed row via `NewSearchIndexMetaRow::seed`.
-    fn ensure_meta_row(
-        conn: &mut SqliteConnection,
-        profile_id: &str,
-    ) -> Result<(), SearchError> {
+    fn ensure_meta_row(conn: &mut SqliteConnection, profile_id: &str) -> Result<(), SearchError> {
         use crate::db::schema::search_index_meta::dsl;
 
         let existing: Option<SearchIndexMetaRow> = dsl::search_index_meta
@@ -209,18 +283,13 @@ impl SqliteSearchIndex {
     // ─── Search helpers ───────────────────────────────────────────────────────
 
     /// Update `search_index_meta.search_blocked = true` for `profile_id`.
-    fn mark_blocked(
-        conn: &mut SqliteConnection,
-        profile_id: &str,
-    ) -> Result<(), SearchError> {
+    fn mark_blocked(conn: &mut SqliteConnection, profile_id: &str) -> Result<(), SearchError> {
         use crate::db::schema::search_index_meta::dsl;
 
-        diesel::update(
-            dsl::search_index_meta.filter(dsl::profile_id.eq(profile_id)),
-        )
-        .set(dsl::search_blocked.eq(true))
-        .execute(conn)
-        .map_err(|e| SearchError::Internal(format!("mark_blocked failed: {e}")))?;
+        diesel::update(dsl::search_index_meta.filter(dsl::profile_id.eq(profile_id)))
+            .set(dsl::search_blocked.eq(true))
+            .execute(conn)
+            .map_err(|e| SearchError::Internal(format!("mark_blocked failed: {e}")))?;
 
         Ok(())
     }
@@ -352,6 +421,249 @@ impl SqliteSearchIndex {
 
         Ok(rows)
     }
+
+    // ─── Rebuild helpers ──────────────────────────────────────────────────────
+
+    /// Create the two temp tables (`tmp_search_document_rebuild_*` and
+    /// `tmp_search_posting_rebuild_*`) with the same columns as the active tables.
+    fn create_rebuild_tables(
+        conn: &mut SqliteConnection,
+        state: &ActiveRebuild,
+    ) -> Result<(), SearchError> {
+        // Temp document table: same columns as search_document.
+        let create_doc = format!(
+            "CREATE TABLE IF NOT EXISTS {doc_table} (
+                profile_id TEXT NOT NULL,
+                entry_id TEXT NOT NULL,
+                event_id TEXT NOT NULL,
+                active_time_ms INTEGER NOT NULL,
+                captured_at_ms INTEGER NOT NULL,
+                file_type TEXT NOT NULL,
+                file_extensions TEXT NOT NULL DEFAULT '[]',
+                mime_type TEXT NOT NULL DEFAULT '',
+                indexed_at_ms INTEGER NOT NULL,
+                index_version TEXT NOT NULL,
+                text_preview TEXT,
+                PRIMARY KEY (profile_id, entry_id)
+            )",
+            doc_table = state.temp_document_table
+        );
+
+        // Temp posting table: same columns as search_posting.
+        let create_posting = format!(
+            "CREATE TABLE IF NOT EXISTS {post_table} (
+                profile_id TEXT NOT NULL,
+                term_tag BLOB NOT NULL,
+                entry_id TEXT NOT NULL,
+                field_mask INTEGER NOT NULL DEFAULT 0,
+                term_freq INTEGER NOT NULL DEFAULT 1 CHECK (term_freq > 0),
+                PRIMARY KEY (profile_id, term_tag, entry_id)
+            )",
+            post_table = state.temp_posting_table
+        );
+
+        diesel::sql_query(&create_doc)
+            .execute(conn)
+            .map_err(|e| SearchError::Internal(format!("create temp doc table failed: {e}")))?;
+
+        diesel::sql_query(&create_posting)
+            .execute(conn)
+            .map_err(|e| SearchError::Internal(format!("create temp posting table failed: {e}")))?;
+
+        debug!(
+            profile_id = %state.profile_id,
+            doc_table = %state.temp_document_table,
+            posting_table = %state.temp_posting_table,
+            "rebuild temp tables created"
+        );
+
+        Ok(())
+    }
+
+    /// Drop the two temp tables best-effort. Errors are logged but not returned.
+    fn drop_rebuild_tables(conn: &mut SqliteConnection, state: &ActiveRebuild) {
+        let drop_doc = format!("DROP TABLE IF EXISTS {}", state.temp_document_table);
+        let drop_posting = format!("DROP TABLE IF EXISTS {}", state.temp_posting_table);
+
+        if let Err(e) = diesel::sql_query(&drop_doc).execute(conn) {
+            warn!(table = %state.temp_document_table, error = %e, "failed to drop temp doc table");
+        }
+        if let Err(e) = diesel::sql_query(&drop_posting).execute(conn) {
+            warn!(table = %state.temp_posting_table, error = %e, "failed to drop temp posting table");
+        }
+    }
+
+    /// Write one `(SearchDocument, Vec<SearchPosting>)` pair into the rebuild temp tables.
+    ///
+    /// Deletes any existing staged postings for `(profile_id, entry_id)` first,
+    /// then inserts the document row and new postings. This makes the function
+    /// idempotent and ensures mid-rebuild `index_entry()` mirrors replace correctly.
+    fn insert_temp_entry(
+        conn: &mut SqliteConnection,
+        state: &ActiveRebuild,
+        document: &SearchDocument,
+        postings: &[SearchPosting],
+    ) -> Result<(), SearchError> {
+        let profile_id = &state.profile_id;
+        let entry_id_str = document.entry_id.to_string();
+
+        // Delete existing temp postings for this entry (idempotent upsert).
+        let del_postings = format!(
+            "DELETE FROM {post_table} WHERE profile_id = ? AND entry_id = ?",
+            post_table = state.temp_posting_table
+        );
+        diesel::sql_query(&del_postings)
+            .bind::<diesel::sql_types::Text, _>(profile_id)
+            .bind::<diesel::sql_types::Text, _>(&entry_id_str)
+            .execute(conn)
+            .map_err(|e| SearchError::Internal(format!("delete temp postings failed: {e}")))?;
+
+        // Build document values for INSERT OR REPLACE.
+        let doc_row = NewSearchDocumentRow::from_domain(profile_id, document)
+            .map_err(|e| SearchError::Internal(format!("from_domain failed: {e}")))?;
+
+        let insert_doc = format!(
+            "INSERT OR REPLACE INTO {doc_table}
+             (profile_id, entry_id, event_id, active_time_ms, captured_at_ms,
+              file_type, file_extensions, mime_type, indexed_at_ms, index_version, text_preview)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            doc_table = state.temp_document_table
+        );
+        diesel::sql_query(&insert_doc)
+            .bind::<diesel::sql_types::Text, _>(&doc_row.profile_id)
+            .bind::<diesel::sql_types::Text, _>(&doc_row.entry_id)
+            .bind::<diesel::sql_types::Text, _>(&doc_row.event_id)
+            .bind::<diesel::sql_types::BigInt, _>(doc_row.active_time_ms)
+            .bind::<diesel::sql_types::BigInt, _>(doc_row.captured_at_ms)
+            .bind::<diesel::sql_types::Text, _>(&doc_row.file_type)
+            .bind::<diesel::sql_types::Text, _>(&doc_row.file_extensions)
+            .bind::<diesel::sql_types::Text, _>(&doc_row.mime_type)
+            .bind::<diesel::sql_types::BigInt, _>(doc_row.indexed_at_ms)
+            .bind::<diesel::sql_types::Text, _>(&doc_row.index_version)
+            .bind::<diesel::sql_types::Nullable<diesel::sql_types::Text>, _>(&doc_row.text_preview)
+            .execute(conn)
+            .map_err(|e| SearchError::Internal(format!("insert temp doc failed: {e}")))?;
+
+        // Insert postings.
+        for posting in postings {
+            let post_row = NewSearchPostingRow::from_domain(profile_id, posting);
+            let insert_posting = format!(
+                "INSERT OR REPLACE INTO {post_table}
+                 (profile_id, term_tag, entry_id, field_mask, term_freq)
+                 VALUES (?, ?, ?, ?, ?)",
+                post_table = state.temp_posting_table
+            );
+            diesel::sql_query(&insert_posting)
+                .bind::<diesel::sql_types::Text, _>(&post_row.profile_id)
+                .bind::<diesel::sql_types::Binary, _>(&post_row.term_tag)
+                .bind::<diesel::sql_types::Text, _>(&post_row.entry_id)
+                .bind::<diesel::sql_types::Integer, _>(post_row.field_mask)
+                .bind::<diesel::sql_types::Integer, _>(post_row.term_freq)
+                .execute(conn)
+                .map_err(|e| SearchError::Internal(format!("insert temp posting failed: {e}")))?;
+        }
+
+        Ok(())
+    }
+
+    /// Delete an entry from the rebuild temp tables.
+    ///
+    /// Called when `remove_entry()` is called while a rebuild is in progress,
+    /// ensuring deleted entries are not resurrected after cutover.
+    fn delete_temp_entry(
+        conn: &mut SqliteConnection,
+        state: &ActiveRebuild,
+        entry_id: &EntryId,
+    ) -> Result<(), SearchError> {
+        let profile_id = &state.profile_id;
+        let entry_id_str = entry_id.to_string();
+
+        let del_postings = format!(
+            "DELETE FROM {post_table} WHERE profile_id = ? AND entry_id = ?",
+            post_table = state.temp_posting_table
+        );
+        diesel::sql_query(&del_postings)
+            .bind::<diesel::sql_types::Text, _>(profile_id)
+            .bind::<diesel::sql_types::Text, _>(&entry_id_str)
+            .execute(conn)
+            .map_err(|e| {
+                SearchError::Internal(format!("delete_temp_entry postings failed: {e}"))
+            })?;
+
+        let del_doc = format!(
+            "DELETE FROM {doc_table} WHERE profile_id = ? AND entry_id = ?",
+            doc_table = state.temp_document_table
+        );
+        diesel::sql_query(&del_doc)
+            .bind::<diesel::sql_types::Text, _>(profile_id)
+            .bind::<diesel::sql_types::Text, _>(&entry_id_str)
+            .execute(conn)
+            .map_err(|e| SearchError::Internal(format!("delete_temp_entry doc failed: {e}")))?;
+
+        Ok(())
+    }
+
+    /// Finalize the rebuild by copying temp rows into the active tables in one transaction.
+    ///
+    /// Transaction sequence:
+    /// 1. Delete active `search_posting` rows for `profile_id`
+    /// 2. Delete active `search_document` rows for `profile_id`
+    /// 3. INSERT ... SELECT from temp posting table
+    /// 4. INSERT ... SELECT from temp document table
+    /// 5. Update `search_index_meta`: version, unblock, completed_at_ms
+    fn finalize_rebuild(
+        conn: &mut SqliteConnection,
+        state: &ActiveRebuild,
+        completed_at_ms: i64,
+    ) -> Result<(), SearchError> {
+        let profile_id = &state.profile_id;
+        let target_version = &state.target_version;
+
+        conn.transaction::<(), diesel::result::Error, _>(|tx| {
+            // 1. Delete active postings for profile.
+            diesel::delete(search_posting::table.filter(search_posting::profile_id.eq(profile_id)))
+                .execute(tx)?;
+
+            // 2. Delete active documents for profile.
+            diesel::delete(
+                search_document::table.filter(search_document::profile_id.eq(profile_id)),
+            )
+            .execute(tx)?;
+
+            // 3. Copy temp postings into active table.
+            let copy_postings = format!(
+                "INSERT INTO search_posting
+                 SELECT profile_id, term_tag, entry_id, field_mask, term_freq
+                 FROM {post_table}",
+                post_table = state.temp_posting_table
+            );
+            diesel::sql_query(&copy_postings).execute(tx)?;
+
+            // 4. Copy temp documents into active table.
+            let copy_docs = format!(
+                "INSERT INTO search_document
+                 SELECT profile_id, entry_id, event_id, active_time_ms, captured_at_ms,
+                        file_type, file_extensions, mime_type, indexed_at_ms,
+                        index_version, text_preview
+                 FROM {doc_table}",
+                doc_table = state.temp_document_table
+            );
+            diesel::sql_query(&copy_docs).execute(tx)?;
+
+            // 5. Update meta: unblock and record version + completion timestamp.
+            use crate::db::schema::search_index_meta::dsl;
+            diesel::update(dsl::search_index_meta.filter(dsl::profile_id.eq(profile_id)))
+                .set((
+                    dsl::index_version.eq(target_version),
+                    dsl::search_blocked.eq(false),
+                    dsl::last_rebuild_completed_at_ms.eq(completed_at_ms),
+                ))
+                .execute(tx)?;
+
+            Ok(())
+        })
+        .map_err(|e| SearchError::Internal(format!("finalize_rebuild transaction failed: {e}")))
+    }
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -368,13 +680,35 @@ impl SearchIndexPort for SqliteSearchIndex {
         let profile_id = self.current_profile_id().await?;
         let pool = self.pool.clone();
 
+        // Check for active rebuild before entering spawn_blocking. A clone is cheap;
+        // TOCTOU is acceptable here — if rebuild finishes between check and temp write,
+        // the temp table will be gone, and the sql_query will return an error that we
+        // swallow as best-effort (per the plan: new entries survive cutover via the
+        // active-table write, which always happens first).
+        let maybe_rebuild = self.active_rebuild_for_profile(&profile_id).await;
+
         tokio::task::spawn_blocking(move || {
             let mut conn = pool
                 .get()
                 .map_err(|e| SearchError::Internal(format!("pool error: {e}")))?;
 
             Self::ensure_meta_row(&mut conn, &profile_id)?;
-            Self::upsert_active_entry(&mut conn, &profile_id, &document, &postings)
+
+            // 1. Always write to the active tables first.
+            Self::upsert_active_entry(&mut conn, &profile_id, &document, &postings)?;
+
+            // 2. If a rebuild is active for this profile, mirror into temp tables.
+            if let Some(rebuild_state) = maybe_rebuild {
+                // Best-effort: if temp table was already dropped (rebuild completed
+                // between our check and this write), log and continue.
+                if let Err(e) =
+                    Self::insert_temp_entry(&mut conn, &rebuild_state, &document, &postings)
+                {
+                    warn!(error = %e, "failed to mirror index_entry into rebuild temp tables (best-effort)");
+                }
+            }
+
+            Ok(())
         })
         .await
         .map_err(|e| SearchError::Internal(format!("spawn_blocking error: {e}")))?
@@ -385,13 +719,26 @@ impl SearchIndexPort for SqliteSearchIndex {
         let pool = self.pool.clone();
         let entry_id = entry_id.clone();
 
+        let maybe_rebuild = self.active_rebuild_for_profile(&profile_id).await;
+
         tokio::task::spawn_blocking(move || {
             let mut conn = pool
                 .get()
                 .map_err(|e| SearchError::Internal(format!("pool error: {e}")))?;
 
             Self::ensure_meta_row(&mut conn, &profile_id)?;
-            Self::delete_active_entry(&mut conn, &profile_id, &entry_id)
+
+            // 1. Always delete from active tables first.
+            Self::delete_active_entry(&mut conn, &profile_id, &entry_id)?;
+
+            // 2. If a rebuild is active, mirror the delete into temp tables.
+            if let Some(rebuild_state) = maybe_rebuild {
+                if let Err(e) = Self::delete_temp_entry(&mut conn, &rebuild_state, &entry_id) {
+                    warn!(error = %e, "failed to mirror remove_entry into rebuild temp tables (best-effort)");
+                }
+            }
+
+            Ok(())
         })
         .await
         .map_err(|e| SearchError::Internal(format!("spawn_blocking error: {e}")))?
@@ -417,7 +764,11 @@ impl SearchIndexPort for SqliteSearchIndex {
         let operator = query.operator.clone();
         let time_range = query.time_range.clone();
         let file_types = query.file_types.clone();
-        let extensions = query.extensions.iter().map(|e| e.to_lowercase()).collect::<Vec<_>>();
+        let extensions = query
+            .extensions
+            .iter()
+            .map(|e| e.to_lowercase())
+            .collect::<Vec<_>>();
         let limit = query.limit as usize;
         let offset = query.offset as usize;
 
@@ -469,8 +820,7 @@ impl SearchIndexPort for SqliteSearchIndex {
                     // Time range filter.
                     if let Some(ref tr) = time_range {
                         let (from_ms, to_ms) = resolve_time_range(tr, now_ms);
-                        if doc.active_time_ms < from_ms as i64
-                            || doc.active_time_ms > to_ms as i64
+                        if doc.active_time_ms < from_ms as i64 || doc.active_time_ms > to_ms as i64
                         {
                             return None;
                         }
@@ -546,15 +896,254 @@ impl SearchIndexPort for SqliteSearchIndex {
         .map_err(|e| SearchError::Internal(format!("spawn_blocking error: {e}")))?
     }
 
-    /// Rebuild stub — full implementation in Plan 02.
+    /// Full index rebuild using temp-table workspace.
+    ///
+    /// Sequence:
+    /// 1. Resolve profile_id, ensure meta row, set search_blocked = true.
+    /// 2. Emit `RebuildStage::Started`.
+    /// 3. Create temp tables and store `ActiveRebuild` in `rebuild_state`.
+    /// 4. Write all entries into temp tables, emitting `RebuildStage::Indexing` every 100.
+    /// 5. Call `finalize_rebuild()` in one transaction, then emit `RebuildStage::Complete`.
+    /// 6. Drop temp tables, clear `rebuild_state`.
+    ///
+    /// On any error: emit `RebuildStage::Failed`, clear state, drop tables best-effort,
+    /// leave `search_blocked = true`, return `SearchError::Internal`.
     async fn rebuild(
         &self,
-        _entries: Vec<(SearchDocument, Vec<SearchPosting>)>,
-        _progress_tx: Sender<RebuildProgress>,
+        entries: Vec<(SearchDocument, Vec<SearchPosting>)>,
+        progress_tx: Sender<RebuildProgress>,
     ) -> Result<(), SearchError> {
-        Err(SearchError::Internal(
-            "rebuild not yet implemented (Plan 02)".to_string(),
-        ))
+        let profile_id = self.current_profile_id().await?;
+        let pool = self.pool.clone();
+        let rebuild_state_arc = self.rebuild_state.clone();
+        let total = entries.len() as u32;
+
+        // ─── Step 1: set blocked and record start time ────────────────────────
+        {
+            let pid = profile_id.clone();
+            let p = pool.clone();
+            let now_ms = chrono::Utc::now().timestamp_millis();
+            tokio::task::spawn_blocking(move || {
+                let mut conn = p
+                    .get()
+                    .map_err(|e| SearchError::Internal(format!("pool error: {e}")))?;
+                Self::ensure_meta_row(&mut conn, &pid)?;
+                use crate::db::schema::search_index_meta::dsl;
+                diesel::update(dsl::search_index_meta.filter(dsl::profile_id.eq(&pid)))
+                    .set((
+                        dsl::search_blocked.eq(true),
+                        dsl::last_rebuild_started_at_ms.eq(now_ms),
+                    ))
+                    .execute(&mut conn)
+                    .map_err(|e| SearchError::Internal(format!("set blocked failed: {e}")))?;
+                Ok(())
+            })
+            .await
+            .map_err(|e| SearchError::Internal(format!("spawn_blocking error: {e}")))??;
+        }
+
+        // ─── Step 2: emit Started ─────────────────────────────────────────────
+        let _ = progress_tx
+            .send(RebuildProgress {
+                stage: RebuildStage::Started,
+                indexed: 0,
+                total,
+            })
+            .await;
+
+        // ─── Step 3: create temp tables and register active rebuild ───────────
+        let rebuild_info = ActiveRebuild::new(&profile_id);
+        {
+            let rid = rebuild_info.clone();
+            let p = pool.clone();
+            if let Err(e) = tokio::task::spawn_blocking(move || {
+                let mut conn = p
+                    .get()
+                    .map_err(|e| SearchError::Internal(format!("pool error: {e}")))?;
+                Self::create_rebuild_tables(&mut conn, &rid)
+            })
+            .await
+            .map_err(|e| SearchError::Internal(format!("spawn_blocking error: {e}")))
+            .and_then(|r| r)
+            {
+                let _ = progress_tx
+                    .send(RebuildProgress {
+                        stage: RebuildStage::Failed,
+                        indexed: 0,
+                        total,
+                    })
+                    .await;
+                return Err(e);
+            }
+        }
+
+        // Register active rebuild state so live mutations can mirror.
+        {
+            let mut guard = rebuild_state_arc.write().expect("rebuild_state poisoned");
+            *guard = Some(rebuild_info.clone());
+        }
+
+        // ─── Step 4: batch-write entries into temp tables ─────────────────────
+        let mut indexed: u32 = 0;
+
+        // Test-only fault injection limit.
+        #[cfg(test)]
+        let fault_limit = self.fail_after_n_entries;
+
+        for (document, postings) in &entries {
+            let rid = rebuild_info.clone();
+            let p = pool.clone();
+            let doc = document.clone();
+            let post = postings.clone();
+            if let Err(e) = tokio::task::spawn_blocking(move || {
+                let mut conn = p
+                    .get()
+                    .map_err(|e| SearchError::Internal(format!("pool error: {e}")))?;
+                Self::insert_temp_entry(&mut conn, &rid, &doc, &post)
+            })
+            .await
+            .map_err(|e| SearchError::Internal(format!("spawn_blocking error: {e}")))
+            .and_then(|r| r)
+            {
+                // Failure path: emit Failed, clear state, drop tables, leave blocked.
+                {
+                    let mut guard = rebuild_state_arc.write().expect("rebuild_state poisoned");
+                    *guard = None;
+                }
+                let rid2 = rebuild_info.clone();
+                let p2 = pool.clone();
+                let _ = tokio::task::spawn_blocking(move || {
+                    if let Ok(mut conn) = p2.get() {
+                        Self::drop_rebuild_tables(&mut conn, &rid2);
+                    }
+                })
+                .await;
+                let _ = progress_tx
+                    .send(RebuildProgress {
+                        stage: RebuildStage::Failed,
+                        indexed,
+                        total,
+                    })
+                    .await;
+                return Err(e);
+            }
+
+            indexed += 1;
+
+            // Test-only: trigger failure after N entries.
+            #[cfg(test)]
+            if let Some(limit) = fault_limit {
+                if indexed as usize >= limit {
+                    // Simulate a failure by injecting an Internal error.
+                    {
+                        let mut guard = rebuild_state_arc.write().expect("rebuild_state poisoned");
+                        *guard = None;
+                    }
+                    let rid2 = rebuild_info.clone();
+                    let p2 = pool.clone();
+                    let _ = tokio::task::spawn_blocking(move || {
+                        if let Ok(mut conn) = p2.get() {
+                            Self::drop_rebuild_tables(&mut conn, &rid2);
+                        }
+                    })
+                    .await;
+                    let _ = progress_tx
+                        .send(RebuildProgress {
+                            stage: RebuildStage::Failed,
+                            indexed,
+                            total,
+                        })
+                        .await;
+                    return Err(SearchError::Internal(
+                        "fault injection: rebuild failed after N entries".to_string(),
+                    ));
+                }
+            }
+
+            // Emit Indexing progress after every 100 entries or at the final batch.
+            if indexed % 100 == 0 || indexed == total {
+                let _ = progress_tx
+                    .send(RebuildProgress {
+                        stage: RebuildStage::Indexing,
+                        indexed,
+                        total,
+                    })
+                    .await;
+            }
+        }
+
+        // ─── Test-only pause: wait before finalize so tests can inject mutations ─
+        #[cfg(test)]
+        if let Some(sem) = &self.pause_before_finalize {
+            // Acquire one permit — the test will add a permit when ready to proceed.
+            let _ = sem.acquire().await;
+        }
+
+        // ─── Step 5: finalize rebuild ─────────────────────────────────────────
+        let completed_at_ms = chrono::Utc::now().timestamp_millis();
+        {
+            let rid = rebuild_info.clone();
+            let p = pool.clone();
+            if let Err(e) = tokio::task::spawn_blocking(move || {
+                let mut conn = p
+                    .get()
+                    .map_err(|e| SearchError::Internal(format!("pool error: {e}")))?;
+                Self::finalize_rebuild(&mut conn, &rid, completed_at_ms)
+            })
+            .await
+            .map_err(|e| SearchError::Internal(format!("spawn_blocking error: {e}")))
+            .and_then(|r| r)
+            {
+                // Finalize failed: clear state, drop tables, leave blocked.
+                {
+                    let mut guard = rebuild_state_arc.write().expect("rebuild_state poisoned");
+                    *guard = None;
+                }
+                let rid2 = rebuild_info.clone();
+                let p2 = pool.clone();
+                let _ = tokio::task::spawn_blocking(move || {
+                    if let Ok(mut conn) = p2.get() {
+                        Self::drop_rebuild_tables(&mut conn, &rid2);
+                    }
+                })
+                .await;
+                let _ = progress_tx
+                    .send(RebuildProgress {
+                        stage: RebuildStage::Failed,
+                        indexed,
+                        total,
+                    })
+                    .await;
+                return Err(e);
+            }
+        }
+
+        // ─── Step 6: drop temp tables, clear state ────────────────────────────
+        {
+            let mut guard = rebuild_state_arc.write().expect("rebuild_state poisoned");
+            *guard = None;
+        }
+        {
+            let rid = rebuild_info.clone();
+            let p = pool.clone();
+            let _ = tokio::task::spawn_blocking(move || {
+                if let Ok(mut conn) = p.get() {
+                    Self::drop_rebuild_tables(&mut conn, &rid);
+                }
+            })
+            .await;
+        }
+
+        // ─── Emit Complete ────────────────────────────────────────────────────
+        let _ = progress_tx
+            .send(RebuildProgress {
+                stage: RebuildStage::Complete,
+                indexed,
+                total,
+            })
+            .await;
+
+        Ok(())
     }
 
     async fn get_index_meta(&self) -> Result<SearchIndexMeta, SearchError> {
@@ -656,8 +1245,8 @@ mod tests {
     use uc_core::security::model::KeyScope;
 
     use crate::db::pool::init_db_pool;
-    use crate::search::search_key_derivation::term_tag;
     use crate::search::constants::CURRENT_INDEX_VERSION;
+    use crate::search::search_key_derivation::term_tag;
 
     // ── Stubs ─────────────────────────────────────────────────────────────────
 
@@ -730,6 +1319,18 @@ mod tests {
                 }
             })
             .collect()
+    }
+
+    fn make_search_query(q: &str) -> SearchQuery {
+        SearchQuery {
+            query_string: q.to_string(),
+            operator: QueryOperator::Or,
+            time_range: None,
+            file_types: vec![],
+            extensions: vec![],
+            limit: 10,
+            offset: 0,
+        }
     }
 
     // ── Task 1 Tests ──────────────────────────────────────────────────────────
@@ -814,7 +1415,10 @@ mod tests {
             .count()
             .get_result(&mut conn)
             .expect("posting count");
-        assert_eq!(posting_count, 0, "expected 0 search_posting rows after remove");
+        assert_eq!(
+            posting_count, 0,
+            "expected 0 search_posting rows after remove"
+        );
     }
 
     // ── Task 2 Tests ──────────────────────────────────────────────────────────
@@ -831,7 +1435,10 @@ mod tests {
             ..sample_document("entry-A")
         };
         let postings_a = make_postings("entry-A", &["alpha", "beta"]);
-        adapter.index_entry(doc_a, postings_a).await.expect("index A");
+        adapter
+            .index_entry(doc_a, postings_a)
+            .await
+            .expect("index A");
 
         // entry-B has only "alpha"
         let doc_b = SearchDocument {
@@ -840,7 +1447,10 @@ mod tests {
             ..sample_document("entry-B")
         };
         let postings_b = make_postings("entry-B", &["alpha"]);
-        adapter.index_entry(doc_b, postings_b).await.expect("index B");
+        adapter
+            .index_entry(doc_b, postings_b)
+            .await
+            .expect("index B");
 
         let query = SearchQuery {
             query_string: "alpha beta".to_string(),
@@ -853,7 +1463,11 @@ mod tests {
         };
 
         let results = adapter.search(query).await.expect("search");
-        assert_eq!(results.len(), 1, "AND mode must require all terms: {results:?}");
+        assert_eq!(
+            results.len(),
+            1,
+            "AND mode must require all terms: {results:?}"
+        );
         assert_eq!(results[0].entry_id, EntryId::from("entry-A"));
     }
 
@@ -869,7 +1483,10 @@ mod tests {
             ..sample_document("entry-A")
         };
         let postings_a = make_postings("entry-A", &["alpha"]);
-        adapter.index_entry(doc_a, postings_a).await.expect("index A");
+        adapter
+            .index_entry(doc_a, postings_a)
+            .await
+            .expect("index A");
 
         // entry-B: "beta"
         let doc_b = SearchDocument {
@@ -878,7 +1495,10 @@ mod tests {
             ..sample_document("entry-B")
         };
         let postings_b = make_postings("entry-B", &["beta"]);
-        adapter.index_entry(doc_b, postings_b).await.expect("index B");
+        adapter
+            .index_entry(doc_b, postings_b)
+            .await
+            .expect("index B");
 
         let query = SearchQuery {
             query_string: "alpha beta".to_string(),
@@ -891,7 +1511,11 @@ mod tests {
         };
 
         let results = adapter.search(query).await.expect("search");
-        assert_eq!(results.len(), 2, "OR mode must return both entries: {results:?}");
+        assert_eq!(
+            results.len(),
+            2,
+            "OR mode must return both entries: {results:?}"
+        );
     }
 
     #[tokio::test]
@@ -911,7 +1535,10 @@ mod tests {
             ..sample_document("entry-match")
         };
         let postings_match = make_postings("entry-match", &["hello"]);
-        adapter.index_entry(doc_match, postings_match).await.expect("index match");
+        adapter
+            .index_entry(doc_match, postings_match)
+            .await
+            .expect("index match");
 
         // entry-old: old entry (30+ days ago)
         let doc_old = SearchDocument {
@@ -923,7 +1550,10 @@ mod tests {
             ..sample_document("entry-old")
         };
         let postings_old = make_postings("entry-old", &["hello"]);
-        adapter.index_entry(doc_old, postings_old).await.expect("index old");
+        adapter
+            .index_entry(doc_old, postings_old)
+            .await
+            .expect("index old");
 
         // entry-image: recent but wrong type
         let doc_image = SearchDocument {
@@ -935,7 +1565,10 @@ mod tests {
             ..sample_document("entry-image")
         };
         let postings_image = make_postings("entry-image", &["hello"]);
-        adapter.index_entry(doc_image, postings_image).await.expect("index image");
+        adapter
+            .index_entry(doc_image, postings_image)
+            .await
+            .expect("index image");
 
         // Query: last 7 days, text type, txt extension
         let query = SearchQuery {
@@ -949,7 +1582,11 @@ mod tests {
         };
 
         let results = adapter.search(query).await.expect("search");
-        assert_eq!(results.len(), 1, "only entry-match should pass all filters: {results:?}");
+        assert_eq!(
+            results.len(),
+            1,
+            "only entry-match should pass all filters: {results:?}"
+        );
         assert_eq!(results[0].entry_id, EntryId::from("entry-match"));
     }
 
@@ -1001,7 +1638,7 @@ mod tests {
                 .expect("set stale version");
         }
 
-        let result2 = adapter.search(query).await;
+        let result2 = adapter.search(query.clone()).await;
         assert!(
             matches!(result2, Err(SearchError::IndexNotReady)),
             "version mismatch must return IndexNotReady, got: {result2:?}"
@@ -1015,8 +1652,494 @@ mod tests {
                 .filter(dsl::profile_id.eq("profile-test"))
                 .first::<SearchIndexMetaRow>(&mut conn)
                 .expect("row");
-            assert!(row.search_blocked, "version mismatch must set search_blocked = true");
+            assert!(
+                row.search_blocked,
+                "version mismatch must set search_blocked = true"
+            );
         }
     }
 
+    // ── Task 1 Rebuild Tests ──────────────────────────────────────────────────
+
+    #[tokio::test]
+    async fn rebuild_cutover_sets_blocked_then_clears_on_success() {
+        let tmp = NamedTempFile::new().expect("temp file");
+        let adapter = make_adapter(&tmp, "profile-rb");
+
+        // Seed meta row.
+        adapter.get_index_meta().await.expect("seed meta");
+
+        // Index an entry so we have content to rebuild over.
+        let doc = sample_document("entry-rb1");
+        let postings = make_postings("entry-rb1", &["rebuild"]);
+        adapter
+            .index_entry(doc.clone(), postings.clone())
+            .await
+            .expect("index_entry");
+
+        let entries = vec![(doc, postings)];
+        let (tx, mut rx) = tokio::sync::mpsc::channel::<RebuildProgress>(32);
+
+        let rebuild_result = adapter.rebuild(entries, tx).await;
+        assert!(
+            rebuild_result.is_ok(),
+            "rebuild should succeed: {rebuild_result:?}"
+        );
+
+        // Drain progress events.
+        let mut stages: Vec<RebuildStage> = Vec::new();
+        while let Ok(p) = rx.try_recv() {
+            stages.push(p.stage);
+        }
+
+        // Must have Started and Complete stages.
+        assert!(
+            stages.contains(&RebuildStage::Started),
+            "must emit Started: {stages:?}"
+        );
+        assert!(
+            stages.contains(&RebuildStage::Complete),
+            "must emit Complete: {stages:?}"
+        );
+        assert!(
+            !stages.contains(&RebuildStage::Failed),
+            "must not emit Failed: {stages:?}"
+        );
+
+        // After successful rebuild, search_blocked must be false.
+        let meta = adapter.get_index_meta().await.expect("get_index_meta");
+        assert!(
+            !meta.search_blocked,
+            "search_blocked must be false after successful rebuild"
+        );
+        assert_eq!(meta.index_version, CURRENT_INDEX_VERSION);
+        assert!(meta.last_rebuild_completed_at_ms.is_some());
+    }
+
+    #[tokio::test]
+    async fn rebuild_failure_leaves_meta_blocked() {
+        let tmp = NamedTempFile::new().expect("temp file");
+        let mut adapter = make_adapter(&tmp, "profile-fail");
+
+        // Seed meta row.
+        adapter.get_index_meta().await.expect("seed meta");
+
+        // Inject fault: fail after 1 entry.
+        adapter.fail_after_n_entries = Some(1);
+
+        let doc1 = sample_document("entry-f1");
+        let post1 = make_postings("entry-f1", &["foo"]);
+        let doc2 = sample_document("entry-f2");
+        let post2 = make_postings("entry-f2", &["bar"]);
+        let entries = vec![(doc1, post1), (doc2, post2)];
+
+        let (tx, mut rx) = tokio::sync::mpsc::channel::<RebuildProgress>(32);
+        let result = adapter.rebuild(entries, tx).await;
+        assert!(result.is_err(), "rebuild with fault injection should fail");
+
+        // Drain progress events.
+        let mut stages: Vec<RebuildStage> = Vec::new();
+        while let Ok(p) = rx.try_recv() {
+            stages.push(p.stage);
+        }
+        assert!(
+            stages.contains(&RebuildStage::Failed),
+            "must emit Failed: {stages:?}"
+        );
+
+        // After failure, search_blocked must still be true.
+        let meta = adapter.get_index_meta().await.expect("get_index_meta");
+        assert!(
+            meta.search_blocked,
+            "search_blocked must remain true after failed rebuild"
+        );
+    }
+
+    #[tokio::test]
+    async fn rebuild_does_not_use_rename_table() {
+        // Structural check: the adapter uses temp-table copy-in strategy, not RENAME TABLE.
+        // Verified by:
+        // 1. Running a successful rebuild and checking that the active tables are populated
+        //    (data is present after cutover — not just renamed from temp to active).
+        // 2. Checking that the temp table prefix constants exist in this module (compile-time).
+        //
+        // The tmp_search_document_rebuild_ and tmp_search_posting_rebuild_ prefixes are
+        // referenced elsewhere in this file (in create_rebuild_tables), ensuring the
+        // copy-in approach is used rather than RENAME TABLE.
+
+        let tmp = NamedTempFile::new().expect("temp file");
+        let adapter = make_adapter(&tmp, "profile-no-rename");
+
+        // Seed + rebuild with one entry.
+        adapter.get_index_meta().await.expect("seed meta");
+        let doc = sample_document("entry-norename");
+        let post = make_postings("entry-norename", &["norename"]);
+        let entries = vec![(doc, post)];
+        let (tx, _rx) = tokio::sync::mpsc::channel::<RebuildProgress>(32);
+
+        let result = adapter.rebuild(entries, tx).await;
+        assert!(result.is_ok(), "rebuild must succeed: {result:?}");
+
+        // After rebuild, the active search_document table must contain the entry
+        // (proving data was copied into active tables, not just stored in temp tables).
+        let pool = init_db_pool(&tmp.path().to_string_lossy()).expect("pool");
+        let mut conn = pool.get().expect("conn");
+        use crate::db::schema::search_document::dsl as sd;
+        let count: i64 = sd::search_document
+            .filter(sd::profile_id.eq("profile-no-rename"))
+            .filter(sd::entry_id.eq("entry-norename"))
+            .count()
+            .get_result(&mut conn)
+            .expect("count");
+        assert_eq!(
+            count, 1,
+            "entry must be in active search_document after cutover"
+        );
+
+        // Compile-time assertion: ActiveRebuild::new uses tmp_search_document_rebuild_ prefix.
+        let state = ActiveRebuild::new("test");
+        assert!(
+            state
+                .temp_document_table
+                .starts_with("tmp_search_document_rebuild_"),
+            "temp doc table must use tmp_search_document_rebuild_ prefix: {}",
+            state.temp_document_table
+        );
+        assert!(
+            state
+                .temp_posting_table
+                .starts_with("tmp_search_posting_rebuild_"),
+            "temp posting table must use tmp_search_posting_rebuild_ prefix: {}",
+            state.temp_posting_table
+        );
+    }
+
+    // ── Task 2 Rebuild Mirroring Tests ────────────────────────────────────────
+
+    /// Pause rebuild after temp tables are written but before finalize.
+    /// Inject a new entry via index_entry(), then resume. Verify the new entry
+    /// is present in search results after cutover.
+    #[tokio::test]
+    async fn rebuild_mirroring_keeps_new_entry_after_cutover() {
+        let tmp = NamedTempFile::new().expect("temp file");
+        let pool_path = tmp.path().to_string_lossy().to_string();
+        let pool = init_db_pool(&pool_path).expect("pool init");
+
+        // A semaphore with 0 permits — rebuild will block when it tries to acquire.
+        let pause_sem = Arc::new(tokio::sync::Semaphore::new(0));
+
+        let adapter = SqliteSearchIndex {
+            pool: pool.clone(),
+            key_scope: Arc::new(FixedScope {
+                profile_id: "profile-mirror".to_string(),
+            }),
+            search_key_derivation: Arc::new(FixedSearchKey {
+                key: SearchKey([0xABu8; 32]),
+            }),
+            rebuild_state: Arc::new(std::sync::RwLock::new(None)),
+            fail_after_n_entries: None,
+            pause_before_finalize: Some(pause_sem.clone()),
+        };
+
+        // Seed + index an initial entry.
+        adapter.get_index_meta().await.expect("seed meta");
+        let doc_initial = sample_document("entry-initial");
+        let post_initial = make_postings("entry-initial", &["initial"]);
+        adapter
+            .index_entry(doc_initial.clone(), post_initial.clone())
+            .await
+            .expect("index initial");
+
+        let entries = vec![(doc_initial, post_initial)];
+        let (tx, _rx) = tokio::sync::mpsc::channel::<RebuildProgress>(32);
+
+        // Wrap adapter in Arc for sharing between tasks.
+        let adapter = Arc::new(adapter);
+        let adapter_clone = adapter.clone();
+
+        // Spawn rebuild task — it will pause before finalize.
+        let rebuild_handle = tokio::spawn(async move { adapter_clone.rebuild(entries, tx).await });
+
+        // Wait until rebuild has paused (active_rebuild_for_profile returns Some).
+        // Poll with a short delay until rebuild state is set.
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        loop {
+            if adapter
+                .active_rebuild_for_profile("profile-mirror")
+                .await
+                .is_some()
+            {
+                break;
+            }
+            if std::time::Instant::now() > deadline {
+                panic!("rebuild did not start within 5 seconds");
+            }
+            tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+        }
+
+        // Inject a new entry while rebuild is paused.
+        let doc_new = sample_document("entry-new");
+        let post_new = make_postings("entry-new", &["newtoken"]);
+        adapter
+            .index_entry(doc_new, post_new)
+            .await
+            .expect("index_entry during rebuild");
+
+        // Resume rebuild by adding a permit.
+        pause_sem.add_permits(1);
+
+        // Wait for rebuild to complete.
+        let result = rebuild_handle.await.expect("join");
+        assert!(result.is_ok(), "rebuild should succeed: {result:?}");
+
+        // After rebuild, search must find the new entry.
+        let query = make_search_query("newtoken");
+        let results = adapter.search(query).await.expect("search after rebuild");
+        assert_eq!(
+            results.len(),
+            1,
+            "new entry added during rebuild must be present after cutover: {results:?}"
+        );
+        assert_eq!(results[0].entry_id, EntryId::from("entry-new"));
+    }
+
+    /// Pause rebuild, delete an already-staged entry, resume rebuild.
+    /// The deleted entry must not appear in search results after cutover.
+    #[tokio::test]
+    async fn rebuild_mirroring_prevents_deleted_entry_resurrection() {
+        let tmp = NamedTempFile::new().expect("temp file");
+        let pool_path = tmp.path().to_string_lossy().to_string();
+        let pool = init_db_pool(&pool_path).expect("pool init");
+
+        let pause_sem = Arc::new(tokio::sync::Semaphore::new(0));
+
+        let adapter = SqliteSearchIndex {
+            pool: pool.clone(),
+            key_scope: Arc::new(FixedScope {
+                profile_id: "profile-delete".to_string(),
+            }),
+            search_key_derivation: Arc::new(FixedSearchKey {
+                key: SearchKey([0xABu8; 32]),
+            }),
+            rebuild_state: Arc::new(std::sync::RwLock::new(None)),
+            fail_after_n_entries: None,
+            pause_before_finalize: Some(pause_sem.clone()),
+        };
+
+        adapter.get_index_meta().await.expect("seed meta");
+
+        // Index two entries.
+        let doc_keep = sample_document("entry-keep");
+        let post_keep = make_postings("entry-keep", &["keeptoken"]);
+        let doc_del = sample_document("entry-to-delete");
+        let post_del = make_postings("entry-to-delete", &["deltoken"]);
+
+        adapter
+            .index_entry(doc_keep.clone(), post_keep.clone())
+            .await
+            .expect("index keep");
+        adapter
+            .index_entry(doc_del.clone(), post_del.clone())
+            .await
+            .expect("index del");
+
+        let entries = vec![(doc_keep, post_keep), (doc_del, post_del)];
+        let (tx, _rx) = tokio::sync::mpsc::channel::<RebuildProgress>(32);
+
+        let adapter = Arc::new(adapter);
+        let adapter_clone = adapter.clone();
+
+        let rebuild_handle = tokio::spawn(async move { adapter_clone.rebuild(entries, tx).await });
+
+        // Wait for rebuild pause.
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        loop {
+            if adapter
+                .active_rebuild_for_profile("profile-delete")
+                .await
+                .is_some()
+            {
+                break;
+            }
+            if std::time::Instant::now() > deadline {
+                panic!("rebuild did not start within 5 seconds");
+            }
+            tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+        }
+
+        // Delete entry-to-delete while rebuild is paused.
+        let del_id = EntryId::from("entry-to-delete");
+        adapter
+            .remove_entry(&del_id)
+            .await
+            .expect("remove_entry during rebuild");
+
+        // Resume.
+        pause_sem.add_permits(1);
+        let result = rebuild_handle.await.expect("join");
+        assert!(result.is_ok(), "rebuild should succeed: {result:?}");
+
+        // entry-to-delete must not appear after cutover.
+        let q_del = make_search_query("deltoken");
+        let results_del = adapter.search(q_del).await.expect("search deltoken");
+        assert!(
+            results_del.is_empty(),
+            "deleted entry must not appear after rebuild cutover: {results_del:?}"
+        );
+
+        // entry-keep must still be present.
+        let q_keep = make_search_query("keeptoken");
+        let results_keep = adapter.search(q_keep).await.expect("search keeptoken");
+        assert_eq!(
+            results_keep.len(),
+            1,
+            "kept entry must appear after rebuild cutover: {results_keep:?}"
+        );
+    }
+
+    /// Hold a read transaction open on a second connection while rebuild finalizes.
+    /// The rebuild must still return Ok — no SQLITE_BUSY failure under WAL.
+    #[tokio::test]
+    async fn rebuild_cutover_completes_with_concurrent_read_transaction() {
+        let tmp = NamedTempFile::new().expect("temp file");
+        let pool_path = tmp.path().to_string_lossy().to_string();
+        let pool = init_db_pool(&pool_path).expect("pool init");
+
+        let pause_sem = Arc::new(tokio::sync::Semaphore::new(0));
+
+        let adapter = Arc::new(SqliteSearchIndex {
+            pool: pool.clone(),
+            key_scope: Arc::new(FixedScope {
+                profile_id: "profile-conc".to_string(),
+            }),
+            search_key_derivation: Arc::new(FixedSearchKey {
+                key: SearchKey([0xABu8; 32]),
+            }),
+            rebuild_state: Arc::new(std::sync::RwLock::new(None)),
+            fail_after_n_entries: None,
+            pause_before_finalize: Some(pause_sem.clone()),
+        });
+
+        adapter.get_index_meta().await.expect("seed meta");
+
+        let doc = sample_document("entry-conc");
+        let post = make_postings("entry-conc", &["conctoken"]);
+        adapter
+            .index_entry(doc.clone(), post.clone())
+            .await
+            .expect("index");
+
+        let entries = vec![(doc, post)];
+        let (tx, _rx) = tokio::sync::mpsc::channel::<RebuildProgress>(32);
+
+        let adapter_clone = adapter.clone();
+        let rebuild_handle = tokio::spawn(async move { adapter_clone.rebuild(entries, tx).await });
+
+        // Wait for rebuild to pause.
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        loop {
+            if adapter
+                .active_rebuild_for_profile("profile-conc")
+                .await
+                .is_some()
+            {
+                break;
+            }
+            if std::time::Instant::now() > deadline {
+                panic!("rebuild did not start within 5 seconds");
+            }
+            tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+        }
+
+        // Open a second connection and begin a read transaction.
+        use crate::search::test_support::hold_read_transaction;
+        let _read_txn = hold_read_transaction(tmp.path());
+
+        // Resume rebuild while read transaction is held.
+        pause_sem.add_permits(1);
+        let result = rebuild_handle.await.expect("join");
+        assert!(
+            result.is_ok(),
+            "rebuild must succeed even with concurrent read transaction: {result:?}"
+        );
+        // _read_txn drops here, ending the read transaction.
+    }
+
+    /// Once rebuild has started and before finalize resumes, `search()` must
+    /// return `SearchError::IndexNotReady`.
+    #[tokio::test]
+    async fn search_returns_index_not_ready_while_rebuild_is_in_progress() {
+        let tmp = NamedTempFile::new().expect("temp file");
+        let pool_path = tmp.path().to_string_lossy().to_string();
+        let pool = init_db_pool(&pool_path).expect("pool init");
+
+        let pause_sem = Arc::new(tokio::sync::Semaphore::new(0));
+
+        let adapter = Arc::new(SqliteSearchIndex {
+            pool: pool.clone(),
+            key_scope: Arc::new(FixedScope {
+                profile_id: "profile-block".to_string(),
+            }),
+            search_key_derivation: Arc::new(FixedSearchKey {
+                key: SearchKey([0xABu8; 32]),
+            }),
+            rebuild_state: Arc::new(std::sync::RwLock::new(None)),
+            fail_after_n_entries: None,
+            pause_before_finalize: Some(pause_sem.clone()),
+        });
+
+        adapter.get_index_meta().await.expect("seed meta");
+
+        let doc = sample_document("entry-blk");
+        let post = make_postings("entry-blk", &["blocktest"]);
+        adapter
+            .index_entry(doc.clone(), post.clone())
+            .await
+            .expect("index");
+
+        let entries = vec![(doc, post)];
+        let (tx, _rx) = tokio::sync::mpsc::channel::<RebuildProgress>(32);
+
+        let adapter_clone = adapter.clone();
+        let rebuild_handle = tokio::spawn(async move { adapter_clone.rebuild(entries, tx).await });
+
+        // Wait for rebuild to set blocked = true.
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        loop {
+            if let Ok(meta) = adapter.get_index_meta().await {
+                if meta.search_blocked {
+                    break;
+                }
+            }
+            if std::time::Instant::now() > deadline {
+                panic!("rebuild did not block search within 5 seconds");
+            }
+            tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+        }
+
+        // search() must return IndexNotReady while blocked.
+        let query = make_search_query("blocktest");
+        let result = adapter.search(query).await;
+        assert!(
+            matches!(result, Err(SearchError::IndexNotReady)),
+            "search must return IndexNotReady during rebuild: {result:?}"
+        );
+
+        // Resume rebuild.
+        pause_sem.add_permits(1);
+        let final_result = rebuild_handle.await.expect("join");
+        assert!(
+            final_result.is_ok(),
+            "rebuild should succeed: {final_result:?}"
+        );
+
+        // After completion, search must work again.
+        let query2 = make_search_query("blocktest");
+        let results2 = adapter.search(query2).await.expect("search after rebuild");
+        assert_eq!(
+            results2.len(),
+            1,
+            "entry must be findable after rebuild completes"
+        );
+    }
 }

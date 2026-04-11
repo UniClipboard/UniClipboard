@@ -15,6 +15,9 @@ pub mod sqlite_index;
 pub mod text_extractor;
 pub mod tokenizer;
 
+#[cfg(test)]
+pub mod test_support;
+
 pub use constants::*;
 pub use pipeline::*;
 pub use rows::*;

@@ -17,6 +17,7 @@ use tracing::{debug, info, instrument, warn, Instrument};
 use clipboard_rs::{ClipboardWatcher as RSClipboardWatcher, ClipboardWatcherContext};
 use uc_app::runtime::CoreRuntime;
 use uc_app::usecases::clipboard::sync_outbound::SyncOutboundClipboardUseCase;
+use uc_app::usecases::file_sync::FileTransferOrchestrator;
 use uc_app::usecases::internal::capture_clipboard::CaptureClipboardUseCase;
 use uc_app::usecases::sync_planner::{FileCandidate, OutboundSyncPlanner};
 use uc_core::network::daemon_api_strings::{ws_event, ws_topic};
@@ -123,6 +124,7 @@ pub struct DaemonClipboardChangeHandler {
     runtime: Arc<CoreRuntime>,
     event_tx: broadcast::Sender<DaemonWsEvent>,
     clipboard_change_origin: Arc<dyn ClipboardChangeOriginPort>,
+    file_transfer_orchestrator: Arc<FileTransferOrchestrator>,
     /// Gate that controls whether clipboard capture is active.
     /// When false, clipboard change events are silently dropped.
     /// Used in `--gui-managed` mode to defer clipboard capture until
@@ -135,12 +137,14 @@ impl DaemonClipboardChangeHandler {
         runtime: Arc<CoreRuntime>,
         event_tx: broadcast::Sender<DaemonWsEvent>,
         clipboard_change_origin: Arc<dyn ClipboardChangeOriginPort>,
+        file_transfer_orchestrator: Arc<FileTransferOrchestrator>,
         capture_gate: Arc<AtomicBool>,
     ) -> Self {
         Self {
             runtime,
             event_tx,
             clipboard_change_origin,
+            file_transfer_orchestrator,
             capture_gate,
         }
     }
@@ -325,11 +329,24 @@ impl ClipboardChangeHandler for DaemonClipboardChangeHandler {
                             deps.network_ports.file_transfer.clone(),
                         )
                     };
+                    let file_transfer_orchestrator = self.file_transfer_orchestrator.clone();
+                    let entry_id_string = entry_id.to_string();
                     tokio::spawn(async move {
                         for file_intent in plan.files {
+                            let transfer_id = file_intent.transfer_id.clone();
+                            let path = file_intent.path.clone();
+                            let file_name = path.display().to_string();
+                            file_transfer_orchestrator
+                                .register_outbound_transfer(&transfer_id, &entry_id_string);
+                            info!(
+                                transfer_id = %transfer_id,
+                                entry_id = %entry_id_string,
+                                file = %file_name,
+                                "Registered outbound transfer linkage from clipboard capture"
+                            );
                             info!(file = %file_intent.path.display(), transfer_id = %file_intent.transfer_id, "Daemon sending file to peers");
                             match outbound_file_uc
-                                .execute(file_intent.path.clone(), Some(file_intent.transfer_id))
+                                .execute(file_intent.path, Some(transfer_id))
                                 .await
                             {
                                 Ok(result) => info!(
@@ -339,7 +356,7 @@ impl ClipboardChangeHandler for DaemonClipboardChangeHandler {
                                 ),
                                 Err(e) => warn!(
                                     error = %e,
-                                    file = %file_intent.path.display(),
+                                    file = %file_name,
                                     "Daemon outbound file sync failed"
                                 ),
                             }

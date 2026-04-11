@@ -405,6 +405,8 @@ async fn handle_connection_established(
             kept_effective_priority = snapshot
                 .best_connected_effective_priority
                 .unwrap_or(u8::MAX),
+            connected_address_count = snapshot.connected_address_count,
+            connected_addresses = ?snapshot.connected_addresses,
             closed_connection_count = inferior_connection_ids.len(),
             closed_connection_ids = ?inferior_connection_ids,
             "closed inferior connections after a better path became available"
@@ -419,6 +421,17 @@ async fn handle_connection_established(
             endpoint_address = %endpoint_address,
             endpoint_transport = transport_label_str(&endpoint_address),
             known_address_count = snapshot.candidate_addresses.len(),
+            connected_address_count = snapshot.connected_address_count,
+            connected_addresses = ?snapshot.connected_addresses,
+            best_connected_address = %snapshot
+                .best_connected_address
+                .as_deref()
+                .unwrap_or("-"),
+            best_connected_transport = snapshot
+                .best_connected_address
+                .as_deref()
+                .map(transport_label_str)
+                .unwrap_or("unknown"),
             "peer connection established"
         );
     } else {
@@ -463,6 +476,12 @@ async fn handle_connection_closed(
             endpoint_address = %endpoint_address,
             known_address_count = snapshot.candidate_addresses.len(),
             connected_age_ms = ?snapshot.connected_age_ms,
+            connected_address_count = snapshot.connected_address_count,
+            connected_addresses = ?snapshot.connected_addresses,
+            best_connected_address = %snapshot
+                .best_connected_address
+                .as_deref()
+                .unwrap_or("-"),
             "peer connection closed"
         );
     } else {
@@ -470,6 +489,11 @@ async fn handle_connection_closed(
             event = "peer.connection_closed",
             endpoint_address = %endpoint_address,
             remaining_connected_address_count = snapshot.connected_address_count,
+            remaining_connected_addresses = ?snapshot.connected_addresses,
+            best_connected_address = %snapshot
+                .best_connected_address
+                .as_deref()
+                .unwrap_or("-"),
             "connection closed but peer still has another active path"
         );
     }

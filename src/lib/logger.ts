@@ -18,8 +18,11 @@ function toNanoTimestamp(ms: number): string {
   return `${BigInt(ms) * 1_000_000n}`
 }
 
-function stringifyArg(value: unknown): string {
-  if (value instanceof Error) return value.stack ?? `${value.name}: ${value.message}`
+function stringifyArg(value: unknown, includeStack = false): string {
+  if (value instanceof Error) {
+    const base = `${value.name}: ${value.message}`
+    return includeStack && value.stack ? value.stack : base
+  }
   if (typeof value === 'string') return value
   if (typeof value === 'number' || typeof value === 'boolean' || value == null) return String(value)
   try {
@@ -33,7 +36,7 @@ function transmitToOtlp(level: string, logEvent: LogEvent): void {
   const severity = SEVERITY_MAP[level] ?? { severityNumber: 9, severityText: 'INFO' }
 
   // Build message from all arguments, applying redaction on each
-  const message = logEvent.messages.map(m => stringifyArg(redactSensitiveArgs(m))).join(' ')
+  const message = logEvent.messages.map(m => stringifyArg(redactSensitiveArgs(m), false)).join(' ')
 
   // Merge all child-logger bindings (e.g. { module: 'api' }) into a flat object
   const context = Object.assign({}, ...logEvent.bindings) as Record<string, unknown>

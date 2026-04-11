@@ -52,11 +52,11 @@ export function useClipboardEventStream({
     log.info('subscribing to clipboard topic')
 
     const handler = (event: { topic: string; eventType: string; payload: unknown }) => {
-      log.info({ eventType: event.eventType, payload: event.payload }, 'received event')
+      log.info({ eventType: event.eventType }, 'received event')
       // Route clipboard.new_content to onLocalItem / onRemoteInvalidate.
       if (event.eventType === 'clipboard.new_content') {
         const payload = event.payload as ClipboardNewContentPayload
-        log.info({ payload }, 'clipboard.new_content payload')
+        log.info({ entryId: payload.entryId, origin: payload.origin }, 'clipboard.new_content payload')
         if (payload.origin === 'local') {
           // Fetch single entry from daemon list endpoint (matching clipboardSlice pattern)
           void getClipboardEntries(50, 0)

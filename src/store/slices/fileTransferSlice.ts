@@ -214,11 +214,14 @@ export const selectTransferByTransferIds = (
   state: RootState,
   transferIds: string[]
 ): TransferProgressInfo | undefined => {
+  let fallbackTransfer: TransferProgressInfo | undefined
   for (const transferId of transferIds) {
     const transfer = state.fileTransfer.activeTransfers[transferId]
-    if (transfer) return transfer
+    if (!transfer) continue
+    if (transfer.status === 'active') return transfer
+    fallbackTransfer ??= transfer
   }
-  return undefined
+  return fallbackTransfer
 }
 
 export const selectActiveTransfers = (state: RootState): TransferProgressInfo[] => {

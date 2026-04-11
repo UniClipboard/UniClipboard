@@ -77,6 +77,30 @@ struct ProgressEmitGate {
     last_emitted_bytes: u64,
 }
 
+async fn report_progress_with_warning(
+    port: Arc<dyn TransferProgressPort>,
+    progress: TransferProgress,
+    stage: &'static str,
+) {
+    let progress_for_log = progress.clone();
+    if let Err(err) = port.report_progress(progress).await {
+        warn!(
+            stage,
+            transfer_id = %progress_for_log.transfer_id,
+            peer_id = %progress_for_log.peer_id,
+            direction = ?progress_for_log.direction,
+            chunks_completed = progress_for_log.chunks_completed,
+            total_chunks = progress_for_log.total_chunks,
+            bytes_transferred = progress_for_log.bytes_transferred,
+            total_bytes = ?progress_for_log.total_bytes,
+            port_trait = %std::any::type_name_of_val(port.as_ref()),
+            port_ptr = ?Arc::as_ptr(&port),
+            error = %err,
+            "failed to report file transfer progress"
+        );
+    }
+}
+
 impl ProgressEmitGate {
     fn new(now: Instant) -> Self {
         Self {
@@ -341,7 +365,7 @@ impl FileTransferService {
             };
             let port = progress_port.clone();
             tokio::spawn(async move {
-                let _ = port.report_progress(progress).await;
+                report_progress_with_warning(port, progress, "receiving").await;
             });
         };
 
@@ -515,7 +539,7 @@ impl FileTransferService {
             };
             let port = progress_port.clone();
             tokio::spawn(async move {
-                let _ = port.report_progress(progress).await;
+                report_progress_with_warning(port, progress, "sending").await;
             });
         };
 

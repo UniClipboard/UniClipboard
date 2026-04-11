@@ -27,6 +27,12 @@ interface FileTransferProgressEvent {
   totalBytes?: number | null
 }
 
+interface DaemonTransferEvent {
+  eventType: string
+  payload: unknown
+  ts: number
+}
+
 /**
  * Hook that listens to file-transfer and clipboard events from the daemon WS,
  * dispatching durable status changes to the Redux fileTransfer slice.
@@ -42,7 +48,7 @@ export function useTransferProgress(): void {
   useEffect(() => {
     let cancelled = false
 
-    const handler = (event: { eventType: string; payload: unknown }) => {
+    const handler = (event: DaemonTransferEvent) => {
       if (cancelled) return
 
       if (event.eventType === 'clipboard.new_content') {

@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v0.5.0
 milestone_name: Local Encrypted Search
-status: executing
+status: verifying
 stopped_at: Completed 90-02-PLAN.md
-last_updated: "2026-04-11T01:55:08.368Z"
+last_updated: "2026-04-11T01:51:32.766Z"
 last_activity: 2026-04-11
 progress:
   total_phases: 6
-  completed_phases: 3
-  total_plans: 5
-  completed_plans: 5
+  completed_phases: 2
+  total_plans: 3
+  completed_plans: 4
   percent: 17
 ---
 
@@ -27,7 +27,7 @@ See: .planning/PROJECT.md (updated 2026-04-10)
 
 Phase: 90 (sqlite-schema-migration-and-tokenizer-pipeline) — EXECUTING
 Plan: 2 of 2
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-04-11
 
 Progress: [▓▓░░░░░░░░] 17%
@@ -48,6 +48,7 @@ Progress: [▓▓░░░░░░░░] 17%
 | Phase 89 P02 | 15 | 1 tasks | 1 files |
 | Phase 89-use-cases-and-delete-integration P01 | 4 | 2 tasks | 6 files |
 | Phase 90 P01 | 40min | 2 tasks | 7 files |
+| Phase 90 P02 | 20min | 2 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -68,6 +69,8 @@ Recent decisions affecting current work:
 - [Phase 89-use-cases-and-delete-integration]: All four search use cases return Result<_, SearchError> without anyhow wrapping — typed error preserved at application boundary (D-03, D-04, D-05).
 - [Phase 90]: Profile scoping (profile_id) is a persistence concern owned by uc-infra row structs only; uc-core SearchDocument/SearchPosting not widened (Phase 90-01)
 - [Phase 90]: FileType stored as serde snake_case TEXT; file_extensions as JSON array TEXT in search_document rows (Phase 90-01)
+- [Phase 90]: [Phase 90-02]: term_tag() accepts SearchKey not MasterKey — type system enforces no raw key HMAC use
+- [Phase 90]: [Phase 90-02]: Pipeline term_freq uses raw occurrence counting (substring scan) to count repeated tokens before deduplication
 
 ### Pending Todos
 
@@ -82,6 +85,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-04-11T01:55:08.365Z
+Last session: 2026-04-11T01:51:32.763Z
 Stopped at: Completed 90-02-PLAN.md
 Resume file: None

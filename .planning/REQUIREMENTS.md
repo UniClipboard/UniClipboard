@@ -19,10 +19,10 @@ Requirements for Local Encrypted Search milestone. Each maps to roadmap phases.
 
 ### Search Query API
 
-- [ ] **SQRY-01**: User can search clipboard history with exact keyword matching using AND/OR boolean operators
-- [ ] **SQRY-02**: User can filter search results by time range (presets: today/yesterday/last_24h/last_7d/last_30d/this_week/this_month; or absolute from_ms/to_ms)
-- [ ] **SQRY-03**: User can filter search results by content type (multi-select: text/html/link/file/image/other)
-- [ ] **SQRY-04**: User can filter search results by file extension as a first-class filter
+- [x] **SQRY-01**: User can search clipboard history with exact keyword matching using AND/OR boolean operators
+- [x] **SQRY-02**: User can filter search results by time range (presets: today/yesterday/last_24h/last_7d/last_30d/this_week/this_month; or absolute from_ms/to_ms)
+- [x] **SQRY-03**: User can filter search results by content type (multi-select: text/html/link/file/image/other)
+- [x] **SQRY-04**: User can filter search results by file extension as a first-class filter
 - [ ] **SQRY-05**: Search routes validate session unlock state; locked session returns 423 Locked
 - [ ] **SQRY-06**: Mixing AND and OR operators in a single query returns a structured invalid_query error
 
@@ -82,10 +82,10 @@ Which phases cover which requirements. Updated during roadmap creation.
 | SIDX-05     | Phase 90 | Complete |
 | SIDX-06     | Phase 90 | Complete |
 | SIDX-07     | Phase 90 | Complete |
-| SQRY-01     | Phase 92 | Pending |
-| SQRY-02     | Phase 92 | Pending |
-| SQRY-03     | Phase 92 | Pending |
-| SQRY-04     | Phase 92 | Pending |
+| SQRY-01     | Phase 92 | Complete |
+| SQRY-02     | Phase 92 | Complete |
+| SQRY-03     | Phase 92 | Complete |
+| SQRY-04     | Phase 92 | Complete |
 | SQRY-05     | Phase 92 | Pending |
 | SQRY-06     | Phase 92 | Pending |
 | REBLD-01    | Phase 91 | Complete |

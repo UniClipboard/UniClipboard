@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v0.5.0
 milestone_name: Local Encrypted Search
-status: verifying
-stopped_at: Phase 92 context gathered
-last_updated: "2026-04-11T06:54:21.764Z"
+status: executing
+stopped_at: Completed 92-01-PLAN.md
+last_updated: "2026-04-11T08:06:49.214Z"
 last_activity: 2026-04-11
 progress:
   total_phases: 6
   completed_phases: 4
-  total_plans: 7
-  completed_plans: 7
+  total_plans: 11
+  completed_plans: 8
   percent: 17
 ---
 
@@ -21,13 +21,13 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-10)
 
 **Core value:** Seamless clipboard synchronization across devices — copy on one, paste on another
-**Current focus:** Phase 91 — sqlite-index-adapter-and-rebuild-strategy
+**Current focus:** Phase 92 — bootstrap-wiring-and-daemon-http-routes
 
 ## Current Position
 
-Phase: 91 (sqlite-index-adapter-and-rebuild-strategy) — EXECUTING
-Plan: 2 of 2
-Status: Phase complete — ready for verification
+Phase: 92 (bootstrap-wiring-and-daemon-http-routes) — EXECUTING
+Plan: 2 of 4
+Status: Ready to execute
 Last activity: 2026-04-11
 
 Progress: [▓▓░░░░░░░░] 17%
@@ -51,6 +51,7 @@ Progress: [▓▓░░░░░░░░] 17%
 | Phase 90 P02 | 20min | 2 tasks | 6 files |
 | Phase 91 P01 | 45min | 2 tasks | 2 files |
 | Phase 91 P02 | 12min | 2 tasks | 3 files |
+| Phase 92 P01 | 60min | 2 tasks | 15 files |
 
 ## Accumulated Context
 
@@ -79,6 +80,9 @@ Recent decisions affecting current work:
 - [Phase 91]: std::sync::RwLock for rebuild_state avoids tokio/spawn_blocking boundary — lock hold is microseconds (clone only)
 - [Phase 91]: diesel::sql_query with format!() for all dynamic-table SQL in rebuild — Diesel typed builder cannot handle runtime table names
 - [Phase 91]: Semaphore(0) + add_permits(1) for deterministic test pause/resume in rebuild mirroring tests — no sleep required
+- [Phase 92]: SearchResultsPage computed in SqliteSearchIndex — total before pagination, has_more derived; route layer gets authoritative pagination truth with no double-query (Phase 92-01)
+- [Phase 92]: uc-app formally depends on uc-infra for SearchPipeline in SearchPorts bundle — pragmatic exception accepted by plan authors (Phase 92-01)
+- [Phase 92]: CoreUseCases.delete_clipboard_entry() injects search_index via with_search_index() — closes Phase 89 delete cleanup wiring gap (Phase 92-01)
 
 ### Pending Todos
 
@@ -93,6 +97,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-04-11T06:54:21.761Z
-Stopped at: Phase 92 context gathered
-Resume file: .planning/phases/92-bootstrap-wiring-and-daemon-http-routes/92-CONTEXT.md
+Last session: 2026-04-11T08:06:49.212Z
+Stopped at: Completed 92-01-PLAN.md
+Resume file: None

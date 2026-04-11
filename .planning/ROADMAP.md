@@ -188,5 +188,5 @@ Archive note:
 | 89. Use Cases and Delete Integration               | 2/2 | Complete    | 2026-04-10 |
 | 90. SQLite Schema Migration and Tokenizer Pipeline | 2/2 | Complete    | 2026-04-11 |
 | 91. SQLite Index Adapter and Rebuild Strategy      | 2/2 | Complete   | 2026-04-11 |
-| 92. Bootstrap Wiring and Daemon HTTP Routes        | 0/TBD          | Not started | -         |
+| 92. Bootstrap Wiring and Daemon HTTP Routes        | 1/4 | In Progress|  |
 | 93. Frontend Search UI                             | 0/TBD          | Not started | -         |

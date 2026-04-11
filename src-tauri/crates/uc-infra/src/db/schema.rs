@@ -110,6 +110,42 @@ diesel::table! {
     }
 }
 
+diesel::table! {
+    search_document (profile_id, entry_id) {
+        profile_id -> Text,
+        entry_id -> Text,
+        event_id -> Text,
+        active_time_ms -> BigInt,
+        captured_at_ms -> BigInt,
+        file_type -> Text,
+        file_extensions -> Text,
+        mime_type -> Text,
+        indexed_at_ms -> BigInt,
+        index_version -> Text,
+        text_preview -> Nullable<Text>,
+    }
+}
+
+diesel::table! {
+    search_posting (profile_id, term_tag, entry_id) {
+        profile_id -> Text,
+        term_tag -> Binary,
+        entry_id -> Text,
+        field_mask -> Integer,
+        term_freq -> Integer,
+    }
+}
+
+diesel::table! {
+    search_index_meta (profile_id) {
+        profile_id -> Text,
+        index_version -> Text,
+        search_blocked -> Bool,
+        last_rebuild_started_at_ms -> Nullable<BigInt>,
+        last_rebuild_completed_at_ms -> Nullable<BigInt>,
+    }
+}
+
 diesel::joinable!(clipboard_entry -> clipboard_event (event_id));
 diesel::joinable!(clipboard_selection -> clipboard_entry (entry_id));
 diesel::joinable!(clipboard_snapshot_representation -> blob (blob_id));
@@ -124,5 +160,8 @@ diesel::allow_tables_to_appear_in_same_query!(
     clipboard_snapshot_representation,
     file_transfer,
     paired_device,
+    search_document,
+    search_index_meta,
+    search_posting,
     t_device,
 );

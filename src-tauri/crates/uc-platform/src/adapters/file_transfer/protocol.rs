@@ -13,6 +13,7 @@ use tracing::{debug, info, info_span, instrument, warn, Instrument};
 
 /// Default chunk size: 1MB.
 pub const CHUNK_SIZE: usize = 1024 * 1024;
+const STREAMING_CHUNK_HEADER_BYTES: usize = 8;
 
 /// File transfer announcement sent by the sender.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -66,6 +67,12 @@ pub struct StreamingFileTransferProtocol;
 
 #[derive(Debug, Clone, Copy, Default)]
 struct ChunkTransferEngine;
+
+#[derive(Debug, Clone, Copy)]
+enum ChunkEncoding {
+    LegacyJsonHeader,
+    StreamingBinaryHeader,
+}
 
 struct ReceivedHash {
     computed_hash: String,
@@ -123,6 +130,7 @@ impl LegacyFileTransferProtocol {
             &announce.transfer_id,
             announce.file_size,
             chunk_size,
+            ChunkEncoding::LegacyJsonHeader,
             progress_callback,
         )
         .await?;
@@ -148,6 +156,7 @@ impl LegacyFileTransferProtocol {
             announce.file_size,
             Some(&announce.blake3_hash),
             cache_dir,
+            ChunkEncoding::LegacyJsonHeader,
             progress_callback,
         )
         .await
@@ -186,6 +195,7 @@ impl StreamingFileTransferProtocol {
             &announce.transfer_id,
             announce.file_size,
             chunk_size,
+            ChunkEncoding::StreamingBinaryHeader,
             progress_callback,
         )
         .await
@@ -208,6 +218,7 @@ impl StreamingFileTransferProtocol {
             announce.file_size,
             None,
             cache_dir,
+            ChunkEncoding::StreamingBinaryHeader,
             progress_callback,
         )
         .await
@@ -231,6 +242,7 @@ impl ChunkTransferEngine {
         transfer_id: &str,
         file_size: u64,
         chunk_size: usize,
+        chunk_encoding: ChunkEncoding,
         progress_callback: Option<&(dyn Fn(u32, u32, u64) + Send + Sync)>,
     ) -> Result<String>
     where
@@ -247,27 +259,31 @@ impl ChunkTransferEngine {
         let mut hasher = blake3::Hasher::new();
         let mut buffer = vec![0u8; chunk_size];
         let started_at = Instant::now();
+        let mut file_read_elapsed_ns: u128 = 0;
+        let mut network_write_elapsed_ns: u128 = 0;
+        let mut complete_frame_elapsed_ns: u128 = 0;
+        let mut flush_elapsed_ns: u128 = 0;
 
         loop {
+            let read_started_at = Instant::now();
             let bytes_read = reader.read(&mut buffer).await?;
+            file_read_elapsed_ns += read_started_at.elapsed().as_nanos();
             if bytes_read == 0 {
                 break;
             }
 
             let chunk_data = &buffer[..bytes_read];
             hasher.update(chunk_data);
-
-            let header = FileChunkHeader {
+            let write_started_at = Instant::now();
+            Self::write_chunk_frame(
+                writer,
+                chunk_encoding,
                 chunk_index,
-                chunk_size: bytes_read as u32,
-            };
-            let header_bytes = serde_json::to_vec(&header)?;
-            let mut payload = Vec::with_capacity(4 + header_bytes.len() + chunk_data.len());
-            payload.extend_from_slice(&(header_bytes.len() as u32).to_be_bytes());
-            payload.extend_from_slice(&header_bytes);
-            payload.extend_from_slice(chunk_data);
-
-            write_file_frame(writer, FileMessageType::Chunk, &payload).await?;
+                bytes_read as u32,
+                chunk_data,
+            )
+            .await?;
+            network_write_elapsed_ns += write_started_at.elapsed().as_nanos();
 
             bytes_sent += bytes_read as u64;
             chunk_index += 1;
@@ -283,8 +299,12 @@ impl ChunkTransferEngine {
             total_chunks: chunk_index,
         };
         let complete_bytes = serde_json::to_vec(&complete)?;
+        let complete_started_at = Instant::now();
         write_file_frame(writer, FileMessageType::Complete, &complete_bytes).await?;
+        complete_frame_elapsed_ns += complete_started_at.elapsed().as_nanos();
+        let flush_started_at = Instant::now();
         writer.flush().await?;
+        flush_elapsed_ns += flush_started_at.elapsed().as_nanos();
 
         let elapsed_ms = started_at.elapsed().as_millis() as u64;
         info!(
@@ -293,6 +313,10 @@ impl ChunkTransferEngine {
             total_chunks = chunk_index,
             chunk_size,
             elapsed_ms,
+            file_read_elapsed_ms = nanos_to_ms(file_read_elapsed_ns),
+            network_write_elapsed_ms = nanos_to_ms(network_write_elapsed_ns),
+            complete_frame_elapsed_ms = nanos_to_ms(complete_frame_elapsed_ns),
+            flush_elapsed_ms = nanos_to_ms(flush_elapsed_ns),
             avg_mbps = average_mbps(bytes_sent, elapsed_ms),
             "file transfer stream sent"
         );
@@ -307,6 +331,7 @@ impl ChunkTransferEngine {
         file_size: u64,
         announce_hash: Option<&str>,
         cache_dir: &Path,
+        chunk_encoding: ChunkEncoding,
         progress_callback: Option<&(dyn Fn(u32, u32, u64) + Send + Sync)>,
     ) -> Result<PathBuf>
     where
@@ -321,6 +346,7 @@ impl ChunkTransferEngine {
             &tmp_path,
             transfer_id,
             file_size,
+            chunk_encoding,
             progress_callback,
         )
         .instrument(info_span!("receive_chunks", transfer_id = %transfer_id))
@@ -375,6 +401,7 @@ impl ChunkTransferEngine {
         tmp_path: &Path,
         transfer_id: &str,
         file_size: u64,
+        chunk_encoding: ChunkEncoding,
         progress_callback: Option<&(dyn Fn(u32, u32, u64) + Send + Sync)>,
     ) -> Result<ReceivedHash>
     where
@@ -393,9 +420,14 @@ impl ChunkTransferEngine {
         let mut bytes_received: u64 = 0;
         let mut chunks_received: u32 = 0;
         let started_at = Instant::now();
+        let mut frame_read_elapsed_ns: u128 = 0;
+        let mut file_write_elapsed_ns: u128 = 0;
+        let mut finalize_sync_elapsed_ns: u128 = 0;
 
         loop {
+            let read_started_at = Instant::now();
             let frame = read_file_frame(reader).await?;
+            frame_read_elapsed_ns += read_started_at.elapsed().as_nanos();
             let (msg_type, payload) = match frame {
                 Some(f) => f,
                 None => return Err(anyhow!("stream closed before transfer complete")),
@@ -403,21 +435,13 @@ impl ChunkTransferEngine {
 
             match msg_type {
                 FileMessageType::Chunk => {
-                    if payload.len() < 4 {
-                        return Err(anyhow!("chunk payload too small"));
-                    }
-                    let header_len =
-                        u32::from_be_bytes([payload[0], payload[1], payload[2], payload[3]])
-                            as usize;
-                    if payload.len() < 4 + header_len {
-                        return Err(anyhow!("chunk payload missing header data"));
-                    }
-                    let _header: FileChunkHeader =
-                        serde_json::from_slice(&payload[4..4 + header_len])?;
-                    let chunk_data = &payload[4 + header_len..];
+                    let (_chunk_index, chunk_data) =
+                        Self::decode_chunk_payload(chunk_encoding, &payload)?;
 
                     hasher.update(chunk_data);
+                    let write_started_at = Instant::now();
                     file.write_all(chunk_data).await?;
+                    file_write_elapsed_ns += write_started_at.elapsed().as_nanos();
                     bytes_received += chunk_data.len() as u64;
                     chunks_received += 1;
 
@@ -433,8 +457,10 @@ impl ChunkTransferEngine {
                 }
                 FileMessageType::Complete => {
                     let complete: FileComplete = serde_json::from_slice(&payload)?;
+                    let finalize_started_at = Instant::now();
                     file.flush().await?;
                     file.sync_data().await?;
+                    finalize_sync_elapsed_ns += finalize_started_at.elapsed().as_nanos();
 
                     let elapsed_ms = started_at.elapsed().as_millis() as u64;
                     let computed_hash = hasher.finalize().to_hex().to_string();
@@ -445,6 +471,9 @@ impl ChunkTransferEngine {
                         total_chunks = complete.total_chunks,
                         chunks_received,
                         elapsed_ms,
+                        frame_read_elapsed_ms = nanos_to_ms(frame_read_elapsed_ns),
+                        file_write_elapsed_ms = nanos_to_ms(file_write_elapsed_ns),
+                        finalize_sync_elapsed_ms = nanos_to_ms(finalize_sync_elapsed_ns),
                         avg_mbps = average_mbps(bytes_received, elapsed_ms),
                         "file transfer stream received"
                     );
@@ -463,6 +492,97 @@ impl ChunkTransferEngine {
                     warn!("unexpected message type during transfer: {:?}", other);
                     return Err(anyhow!("unexpected message type: {:?}", other));
                 }
+            }
+        }
+    }
+
+    async fn write_chunk_frame<W>(
+        writer: &mut W,
+        chunk_encoding: ChunkEncoding,
+        chunk_index: u32,
+        chunk_size: u32,
+        chunk_data: &[u8],
+    ) -> Result<()>
+    where
+        W: AsyncWrite + Unpin,
+    {
+        match chunk_encoding {
+            ChunkEncoding::LegacyJsonHeader => {
+                let header = FileChunkHeader {
+                    chunk_index,
+                    chunk_size,
+                };
+                let header_bytes = serde_json::to_vec(&header)?;
+                let mut payload = Vec::with_capacity(4 + header_bytes.len() + chunk_data.len());
+                payload.extend_from_slice(&(header_bytes.len() as u32).to_be_bytes());
+                payload.extend_from_slice(&header_bytes);
+                payload.extend_from_slice(chunk_data);
+                write_file_frame(writer, FileMessageType::Chunk, &payload).await
+            }
+            ChunkEncoding::StreamingBinaryHeader => {
+                let payload_len = STREAMING_CHUNK_HEADER_BYTES + chunk_data.len();
+                if payload_len > super::framing::MAX_FILE_FRAME_BYTES {
+                    return Err(anyhow!(
+                        "file frame payload too large: {} > {}",
+                        payload_len,
+                        super::framing::MAX_FILE_FRAME_BYTES
+                    ));
+                }
+
+                writer.write_all(&[FileMessageType::Chunk as u8]).await?;
+                writer
+                    .write_all(&(payload_len as u32).to_be_bytes())
+                    .await?;
+                writer.write_all(&chunk_index.to_be_bytes()).await?;
+                writer.write_all(&chunk_size.to_be_bytes()).await?;
+                writer.write_all(chunk_data).await?;
+                Ok(())
+            }
+        }
+    }
+
+    fn decode_chunk_payload<'a>(
+        chunk_encoding: ChunkEncoding,
+        payload: &'a [u8],
+    ) -> Result<(u32, &'a [u8])> {
+        match chunk_encoding {
+            ChunkEncoding::LegacyJsonHeader => {
+                if payload.len() < 4 {
+                    return Err(anyhow!("chunk payload too small"));
+                }
+                let header_len =
+                    u32::from_be_bytes([payload[0], payload[1], payload[2], payload[3]]) as usize;
+                if payload.len() < 4 + header_len {
+                    return Err(anyhow!("chunk payload missing header data"));
+                }
+                let header: FileChunkHeader = serde_json::from_slice(&payload[4..4 + header_len])?;
+                let chunk_data = &payload[4 + header_len..];
+                if chunk_data.len() != header.chunk_size as usize {
+                    return Err(anyhow!(
+                        "chunk payload size mismatch: expected {}, got {}",
+                        header.chunk_size,
+                        chunk_data.len()
+                    ));
+                }
+                Ok((header.chunk_index, chunk_data))
+            }
+            ChunkEncoding::StreamingBinaryHeader => {
+                if payload.len() < STREAMING_CHUNK_HEADER_BYTES {
+                    return Err(anyhow!("streaming chunk payload too small"));
+                }
+                let chunk_index =
+                    u32::from_be_bytes([payload[0], payload[1], payload[2], payload[3]]);
+                let chunk_size =
+                    u32::from_be_bytes([payload[4], payload[5], payload[6], payload[7]]) as usize;
+                let chunk_data = &payload[STREAMING_CHUNK_HEADER_BYTES..];
+                if chunk_data.len() != chunk_size {
+                    return Err(anyhow!(
+                        "streaming chunk payload size mismatch: expected {}, got {}",
+                        chunk_size,
+                        chunk_data.len()
+                    ));
+                }
+                Ok((chunk_index, chunk_data))
             }
         }
     }
@@ -503,6 +623,10 @@ fn average_mbps(bytes: u64, elapsed_ms: u64) -> f64 {
     bits / seconds / 1_000_000.0
 }
 
+fn nanos_to_ms(elapsed_ns: u128) -> u64 {
+    (elapsed_ns / 1_000_000) as u64
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -521,6 +645,27 @@ mod tests {
     struct CountingWriter {
         inner: Vec<u8>,
         flush_count: Arc<AtomicUsize>,
+    }
+
+    fn legacy_chunk_payload(chunk_index: u32, chunk_data: &[u8]) -> Vec<u8> {
+        let header = FileChunkHeader {
+            chunk_index,
+            chunk_size: chunk_data.len() as u32,
+        };
+        let header_bytes = serde_json::to_vec(&header).unwrap();
+        let mut payload = Vec::new();
+        payload.extend_from_slice(&(header_bytes.len() as u32).to_be_bytes());
+        payload.extend_from_slice(&header_bytes);
+        payload.extend_from_slice(chunk_data);
+        payload
+    }
+
+    fn streaming_chunk_payload(chunk_index: u32, chunk_data: &[u8]) -> Vec<u8> {
+        let mut payload = Vec::with_capacity(STREAMING_CHUNK_HEADER_BYTES + chunk_data.len());
+        payload.extend_from_slice(&chunk_index.to_be_bytes());
+        payload.extend_from_slice(&(chunk_data.len() as u32).to_be_bytes());
+        payload.extend_from_slice(chunk_data);
+        payload
     }
 
     impl CountingWriter {
@@ -725,6 +870,7 @@ mod tests {
                 &announce.transfer_id,
                 announce.file_size,
                 4,
+                ChunkEncoding::StreamingBinaryHeader,
                 None,
             )
             .await
@@ -761,6 +907,7 @@ mod tests {
             "flush-once-xfer",
             (CHUNK_SIZE * 2 + 17) as u64,
             CHUNK_SIZE,
+            ChunkEncoding::LegacyJsonHeader,
             None,
         )
         .await
@@ -796,15 +943,7 @@ mod tests {
 
         let mut stream_data = Vec::new();
         let chunk_data = b"hello";
-        let header = FileChunkHeader {
-            chunk_index: 0,
-            chunk_size: chunk_data.len() as u32,
-        };
-        let header_bytes = serde_json::to_vec(&header).unwrap();
-        let mut chunk_payload = Vec::new();
-        chunk_payload.extend_from_slice(&(header_bytes.len() as u32).to_be_bytes());
-        chunk_payload.extend_from_slice(&header_bytes);
-        chunk_payload.extend_from_slice(chunk_data);
+        let chunk_payload = legacy_chunk_payload(0, chunk_data);
         write_file_frame(&mut stream_data, FileMessageType::Chunk, &chunk_payload)
             .await
             .unwrap();
@@ -847,15 +986,7 @@ mod tests {
         };
 
         let mut stream_data = Vec::new();
-        let header = FileChunkHeader {
-            chunk_index: 0,
-            chunk_size: test_data.len() as u32,
-        };
-        let header_bytes = serde_json::to_vec(&header).unwrap();
-        let mut chunk_payload = Vec::new();
-        chunk_payload.extend_from_slice(&(header_bytes.len() as u32).to_be_bytes());
-        chunk_payload.extend_from_slice(&header_bytes);
-        chunk_payload.extend_from_slice(test_data);
+        let chunk_payload = legacy_chunk_payload(0, test_data);
         write_file_frame(&mut stream_data, FileMessageType::Chunk, &chunk_payload)
             .await
             .unwrap();
@@ -919,15 +1050,7 @@ mod tests {
         });
 
         let first_chunk = b"abcd";
-        let header = FileChunkHeader {
-            chunk_index: 0,
-            chunk_size: first_chunk.len() as u32,
-        };
-        let header_bytes = serde_json::to_vec(&header).unwrap();
-        let mut first_payload = Vec::new();
-        first_payload.extend_from_slice(&(header_bytes.len() as u32).to_be_bytes());
-        first_payload.extend_from_slice(&header_bytes);
-        first_payload.extend_from_slice(first_chunk);
+        let first_payload = streaming_chunk_payload(0, first_chunk);
         write_file_frame(&mut writer, FileMessageType::Chunk, &first_payload)
             .await
             .unwrap();
@@ -948,15 +1071,7 @@ mod tests {
         assert_eq!(tmp_metadata.len(), first_chunk.len() as u64);
 
         let second_chunk = b"efgh";
-        let second_header = FileChunkHeader {
-            chunk_index: 1,
-            chunk_size: second_chunk.len() as u32,
-        };
-        let second_header_bytes = serde_json::to_vec(&second_header).unwrap();
-        let mut second_payload = Vec::new();
-        second_payload.extend_from_slice(&(second_header_bytes.len() as u32).to_be_bytes());
-        second_payload.extend_from_slice(&second_header_bytes);
-        second_payload.extend_from_slice(second_chunk);
+        let second_payload = streaming_chunk_payload(1, second_chunk);
         write_file_frame(&mut writer, FileMessageType::Chunk, &second_payload)
             .await
             .unwrap();
@@ -996,15 +1111,7 @@ mod tests {
         };
 
         let mut stream_data = Vec::new();
-        let header = FileChunkHeader {
-            chunk_index: 0,
-            chunk_size: test_data.len() as u32,
-        };
-        let header_bytes = serde_json::to_vec(&header).unwrap();
-        let mut chunk_payload = Vec::new();
-        chunk_payload.extend_from_slice(&(header_bytes.len() as u32).to_be_bytes());
-        chunk_payload.extend_from_slice(&header_bytes);
-        chunk_payload.extend_from_slice(test_data);
+        let chunk_payload = legacy_chunk_payload(0, test_data);
         write_file_frame(&mut stream_data, FileMessageType::Chunk, &chunk_payload)
             .await
             .unwrap();

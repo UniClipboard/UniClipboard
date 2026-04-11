@@ -15,7 +15,7 @@ use std::sync::{Arc, Mutex, RwLock};
 use std::time::Duration;
 
 use serde::Serialize;
-use tracing::{debug, info, info_span, warn, Instrument};
+use tracing::{debug, info, info_span, trace, warn, Instrument};
 
 use uc_core::ports::host_event_emitter::{HostEvent, HostEventEmitterPort, TransferHostEvent};
 use uc_core::ports::transfer_progress::{TransferDirection, TransferProgress};
@@ -90,6 +90,62 @@ impl OutboundTransferLinkCache {
     }
 }
 
+const RECEIVER_ACTIVITY_REFRESH_MIN_INTERVAL_MS: i64 = 2_000;
+
+#[derive(Default)]
+struct TransferEntryCache {
+    inner: Mutex<HashMap<String, String>>,
+}
+
+impl TransferEntryCache {
+    fn insert(&self, transfer_id: String, entry_id: String) {
+        let mut map = self.inner.lock().unwrap_or_else(|e| e.into_inner());
+        map.insert(transfer_id, entry_id);
+    }
+
+    fn get(&self, transfer_id: &str) -> Option<String> {
+        let map = self.inner.lock().unwrap_or_else(|e| e.into_inner());
+        map.get(transfer_id).cloned()
+    }
+
+    fn remove(&self, transfer_id: &str) {
+        let mut map = self.inner.lock().unwrap_or_else(|e| e.into_inner());
+        map.remove(transfer_id);
+    }
+}
+
+#[derive(Default)]
+struct InboundActivityRefreshCache {
+    inner: Mutex<HashMap<String, i64>>,
+}
+
+impl InboundActivityRefreshCache {
+    fn should_refresh(&self, transfer_id: &str, now_ms: i64) -> bool {
+        let mut map = self.inner.lock().unwrap_or_else(|e| e.into_inner());
+        match map.get_mut(transfer_id) {
+            Some(last_refresh_ms)
+                if now_ms.saturating_sub(*last_refresh_ms)
+                    < RECEIVER_ACTIVITY_REFRESH_MIN_INTERVAL_MS =>
+            {
+                false
+            }
+            Some(last_refresh_ms) => {
+                *last_refresh_ms = now_ms;
+                true
+            }
+            None => {
+                map.insert(transfer_id.to_string(), now_ms);
+                true
+            }
+        }
+    }
+
+    fn remove(&self, transfer_id: &str) {
+        let mut map = self.inner.lock().unwrap_or_else(|e| e.into_inner());
+        map.remove(transfer_id);
+    }
+}
+
 /// Event payload for `file-transfer://status-changed`.
 ///
 /// Emitted whenever a transfer transitions between durable states.
@@ -114,6 +170,8 @@ pub struct FileTransferOrchestrator {
     clock: Arc<dyn ClockPort>,
     early_completion_cache: EarlyCompletionCache,
     outbound_link_cache: OutboundTransferLinkCache,
+    transfer_entry_cache: TransferEntryCache,
+    inbound_activity_refresh_cache: InboundActivityRefreshCache,
 }
 
 impl FileTransferOrchestrator {
@@ -134,6 +192,8 @@ impl FileTransferOrchestrator {
             clock,
             early_completion_cache: EarlyCompletionCache::default(),
             outbound_link_cache: OutboundTransferLinkCache::default(),
+            transfer_entry_cache: TransferEntryCache::default(),
+            inbound_activity_refresh_cache: InboundActivityRefreshCache::default(),
         }
     }
 
@@ -204,15 +264,9 @@ impl FileTransferOrchestrator {
     ///
     /// Returns `true` if promoted to `transferring` (first time).
     pub async fn handle_transfer_progress(&self, progress: &TransferProgress) -> bool {
-        let entry_id = self
-            .tracker
-            .get_entry_summary_by_transfer(&progress.transfer_id)
-            .await
-            .ok()
-            .flatten()
-            .or_else(|| self.outbound_link_cache.get(&progress.transfer_id));
+        let entry_id = self.resolve_entry_id(&progress.transfer_id).await;
 
-        debug!(
+        trace!(
             transfer_id = %progress.transfer_id,
             peer_id = %progress.peer_id,
             direction = ?progress.direction,
@@ -276,10 +330,7 @@ impl FileTransferOrchestrator {
                     return true;
                 }
                 Ok(false) => {
-                    // Already transferring or terminal, just refresh activity
-                    let _ = self
-                        .tracker
-                        .refresh_activity(&progress.transfer_id, now_ms)
+                    self.refresh_inbound_activity_if_due(&progress.transfer_id, now_ms)
                         .await;
                 }
                 Err(err) => {
@@ -287,14 +338,8 @@ impl FileTransferOrchestrator {
                 }
             }
         } else {
-            // Later chunk: refresh liveness
-            if let Err(err) = self
-                .tracker
-                .refresh_activity(&progress.transfer_id, now_ms)
-                .await
-            {
-                warn!(error = %err, transfer_id = %progress.transfer_id, "Failed to refresh transfer activity");
-            }
+            self.refresh_inbound_activity_if_due(&progress.transfer_id, now_ms)
+                .await;
         }
 
         false
@@ -311,6 +356,8 @@ impl FileTransferOrchestrator {
             "Removing outbound transfer linkage on completion"
         );
         self.outbound_link_cache.remove(transfer_id);
+        self.transfer_entry_cache.remove(transfer_id);
+        self.inbound_activity_refresh_cache.remove(transfer_id);
         let now_ms = self.clock.now_ms();
 
         // Mark durable row completed
@@ -376,6 +423,8 @@ impl FileTransferOrchestrator {
             error_reason, "Removing outbound transfer linkage on failure"
         );
         self.outbound_link_cache.remove(transfer_id);
+        self.transfer_entry_cache.remove(transfer_id);
+        self.inbound_activity_refresh_cache.remove(transfer_id);
         let now_ms = self.clock.now_ms();
 
         // Mark durable row failed
@@ -546,6 +595,43 @@ impl FileTransferOrchestrator {
             }
         }
     }
+
+    async fn resolve_entry_id(&self, transfer_id: &str) -> Option<String> {
+        if let Some(entry_id) = self.outbound_link_cache.get(transfer_id) {
+            return Some(entry_id);
+        }
+
+        if let Some(entry_id) = self.transfer_entry_cache.get(transfer_id) {
+            return Some(entry_id);
+        }
+
+        let entry_id = self
+            .tracker
+            .get_entry_summary_by_transfer(transfer_id)
+            .await
+            .ok()
+            .flatten();
+
+        if let Some(entry_id) = entry_id.clone() {
+            self.transfer_entry_cache
+                .insert(transfer_id.to_string(), entry_id);
+        }
+
+        entry_id
+    }
+
+    async fn refresh_inbound_activity_if_due(&self, transfer_id: &str, now_ms: i64) {
+        if !self
+            .inbound_activity_refresh_cache
+            .should_refresh(transfer_id, now_ms)
+        {
+            return;
+        }
+
+        if let Err(err) = self.tracker.refresh_activity(transfer_id, now_ms).await {
+            warn!(error = %err, transfer_id, "Failed to refresh transfer activity");
+        }
+    }
 }
 
 /// Best-effort cleanup of a cached file or transfer directory.
@@ -576,6 +662,7 @@ async fn cleanup_cached_path(cached_path: &str) {
 mod tests {
     use super::*;
     use std::sync::RwLock;
+    use uc_core::ports::file_transfer_repository::FileTransferRepositoryPort;
     use uc_core::ports::file_transfer_repository::PendingInboundTransfer;
     use uc_core::ports::host_event_emitter::{EmitError, HostEventEmitterPort};
 
@@ -603,12 +690,16 @@ mod tests {
     struct MockFileTransferRepo {
         transfers:
             std::sync::Mutex<Vec<uc_core::ports::file_transfer_repository::TrackedFileTransfer>>,
+        refresh_activity_calls: std::sync::atomic::AtomicUsize,
+        get_entry_id_for_transfer_calls: std::sync::atomic::AtomicUsize,
     }
 
     impl MockFileTransferRepo {
         fn new() -> Self {
             Self {
                 transfers: std::sync::Mutex::new(Vec::new()),
+                refresh_activity_calls: std::sync::atomic::AtomicUsize::new(0),
+                get_entry_id_for_transfer_calls: std::sync::atomic::AtomicUsize::new(0),
             }
         }
     }
@@ -669,6 +760,8 @@ mod tests {
         }
 
         async fn refresh_activity(&self, transfer_id: &str, now_ms: i64) -> anyhow::Result<()> {
+            self.refresh_activity_calls
+                .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
             let mut store = self.transfers.lock().unwrap();
             if let Some(t) = store.iter_mut().find(|t| t.transfer_id == transfer_id) {
                 t.updated_at_ms = now_ms;
@@ -826,6 +919,8 @@ mod tests {
             &self,
             transfer_id: &str,
         ) -> anyhow::Result<Option<String>> {
+            self.get_entry_id_for_transfer_calls
+                .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
             let store = self.transfers.lock().unwrap();
             Ok(store
                 .iter()
@@ -980,6 +1075,60 @@ mod tests {
             }
             other => panic!("expected progress event, got {other:?}"),
         }
+    }
+
+    #[tokio::test]
+    async fn inbound_progress_caches_entry_lookup_and_throttles_activity_refresh() {
+        let repo = Arc::new(MockFileTransferRepo::new());
+        repo.insert_pending_transfers(&[PendingInboundTransfer {
+            transfer_id: "transfer-inbound-1".to_string(),
+            entry_id: "entry-inbound-1".to_string(),
+            origin_device_id: "device-1".to_string(),
+            filename: "movie.mp4".to_string(),
+            cached_path: "/tmp/movie.mp4".to_string(),
+            created_at_ms: 1_000,
+        }])
+        .await
+        .unwrap();
+
+        let emitter = Arc::new(RecordingEmitter::default());
+        let emitter_cell = Arc::new(RwLock::new(emitter as Arc<dyn HostEventEmitterPort>));
+        let tracker = Arc::new(TrackInboundTransfersUseCase::new(repo.clone()));
+        let clock = Arc::new(FixedClock(10_000));
+        let orch = FileTransferOrchestrator::new(tracker, emitter_cell, clock);
+
+        orch.handle_transfer_progress(&TransferProgress {
+            transfer_id: "transfer-inbound-1".to_string(),
+            peer_id: "peer-1".to_string(),
+            direction: TransferDirection::Receiving,
+            chunks_completed: 2,
+            total_chunks: 10,
+            bytes_transferred: 2_048,
+            total_bytes: Some(10_240),
+        })
+        .await;
+
+        orch.handle_transfer_progress(&TransferProgress {
+            transfer_id: "transfer-inbound-1".to_string(),
+            peer_id: "peer-1".to_string(),
+            direction: TransferDirection::Receiving,
+            chunks_completed: 3,
+            total_chunks: 10,
+            bytes_transferred: 3_072,
+            total_bytes: Some(10_240),
+        })
+        .await;
+
+        assert_eq!(
+            repo.get_entry_id_for_transfer_calls
+                .load(std::sync::atomic::Ordering::Relaxed),
+            1
+        );
+        assert_eq!(
+            repo.refresh_activity_calls
+                .load(std::sync::atomic::Ordering::Relaxed),
+            1
+        );
     }
 
     #[tokio::test]

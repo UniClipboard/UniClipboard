@@ -14,3 +14,18 @@ export const formatFileSize = (bytes?: number): string => {
   const i = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1)
   return `${(bytes / Math.pow(1024, i)).toFixed(2)} ${units[i]}`
 }
+
+export const formatDuration = (seconds?: number | null): string => {
+  if (seconds === null || seconds === undefined || !Number.isFinite(seconds) || seconds < 0) {
+    return i18n.t('common.unknownSize')
+  }
+
+  const rounded = Math.max(0, Math.ceil(seconds))
+  const hours = Math.floor(rounded / 3600)
+  const minutes = Math.floor((rounded % 3600) / 60)
+  const remainingSeconds = rounded % 60
+
+  if (hours > 0) return `${hours}h ${minutes}m`
+  if (minutes > 0) return `${minutes}m ${remainingSeconds}s`
+  return `${remainingSeconds}s`
+}

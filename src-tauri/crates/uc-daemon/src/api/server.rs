@@ -35,6 +35,7 @@ use crate::api::routes;
 use crate::api::types::DaemonWsEvent;
 use crate::api::ws;
 use crate::pairing::host::{DaemonPairingHost, DaemonPairingHostError};
+use crate::search::coordinator::SearchCoordinator;
 use crate::security::SecurityState;
 use crate::socket::{try_resolve_daemon_http_addr, DEFAULT_HTTP_HOST};
 
@@ -56,6 +57,8 @@ pub struct DaemonApiState {
     /// Wrapped in Arc so middleware (which receives Arc<DaemonApiState>) can share
     /// the same state with the server without cloning the inner fields.
     pub security: Arc<SecurityState>,
+    /// Search coordinator — single owner for rebuild lifecycle, reason codes, and WS progress.
+    pub search_coordinator: Option<Arc<SearchCoordinator>>,
 }
 
 impl DaemonApiState {
@@ -77,6 +80,7 @@ impl DaemonApiState {
             clipboard_capture_gate: None,
             deferred_ready_notify: None,
             security,
+            search_coordinator: None,
         }
     }
 
@@ -123,6 +127,15 @@ impl DaemonApiState {
     pub fn with_deferred_ready_notify(mut self, notify: Arc<tokio::sync::Notify>) -> Self {
         self.deferred_ready_notify = Some(notify);
         self
+    }
+
+    pub fn with_search_coordinator(mut self, coordinator: Arc<SearchCoordinator>) -> Self {
+        self.search_coordinator = Some(coordinator);
+        self
+    }
+
+    pub fn search_coordinator(&self) -> Option<Arc<SearchCoordinator>> {
+        self.search_coordinator.clone()
     }
 
     pub fn connection_info_for_addr(

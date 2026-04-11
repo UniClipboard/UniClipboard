@@ -20,6 +20,7 @@ use crate::api::types::DaemonWsEvent;
 use crate::app::{DaemonApp, SetupCompletionEmitter};
 use crate::pairing::host::DaemonPairingHost;
 use crate::peers::monitor::PeerMonitor;
+use crate::search::coordinator::SearchCoordinator;
 use crate::service::DaemonService;
 use crate::service::ServiceHealth;
 use crate::state::{DaemonServiceSnapshot, RuntimeState};
@@ -192,6 +193,9 @@ pub fn run(gui_managed: bool) -> anyhow::Result<()> {
 
     let should_defer_clipboard = gui_managed || !encryption_unlocked;
 
+    // Construct the search coordinator before building the service snapshots.
+    let search_coordinator = Arc::new(SearchCoordinator::new(runtime.clone(), event_tx.clone()));
+
     let initial_statuses: Vec<DaemonServiceSnapshot> = vec![
         DaemonServiceSnapshot {
             name: "clipboard-watcher".to_string(),
@@ -229,6 +233,14 @@ pub fn run(gui_managed: bool) -> anyhow::Result<()> {
             name: "peer-monitor".to_string(),
             health: ServiceHealth::Healthy,
         },
+        DaemonServiceSnapshot {
+            name: "search-coordinator".to_string(),
+            health: if should_defer_clipboard {
+                ServiceHealth::Stopped
+            } else {
+                ServiceHealth::Healthy
+            },
+        },
     ];
     let state = Arc::new(RwLock::new(RuntimeState::new(initial_statuses)));
 
@@ -255,9 +267,12 @@ pub fn run(gui_managed: bool) -> anyhow::Result<()> {
         if should_defer_clipboard {
             deferred.push(Arc::clone(&clipboard_watcher) as Arc<dyn DaemonService>);
             deferred.push(Arc::clone(&inbound_clipboard_sync) as Arc<dyn DaemonService>);
+            // Defer search coordinator alongside clipboard services when locked/GUI-managed
+            deferred.push(Arc::clone(&search_coordinator) as Arc<dyn DaemonService>);
         } else {
             initial.push(Arc::clone(&clipboard_watcher) as Arc<dyn DaemonService>);
             initial.push(Arc::clone(&inbound_clipboard_sync) as Arc<dyn DaemonService>);
+            initial.push(Arc::clone(&search_coordinator) as Arc<dyn DaemonService>);
         }
 
         if encryption_unlocked {
@@ -286,6 +301,7 @@ pub fn run(gui_managed: bool) -> anyhow::Result<()> {
         deferred_notify_opt,
         external_shutdown,
         Some(clipboard_capture_gate),
+        Some(search_coordinator),
     );
 
     rt.block_on(daemon.run())

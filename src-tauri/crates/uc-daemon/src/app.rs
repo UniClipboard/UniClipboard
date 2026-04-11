@@ -24,6 +24,7 @@ use crate::api::server::{run_http_server, DaemonApiState};
 use crate::api::types::DaemonWsEvent;
 use crate::pairing::host::DaemonPairingHost;
 use crate::process_metadata::DaemonPidManager;
+use crate::search::coordinator::SearchCoordinator;
 use crate::security::{cleanup_rate_limiter_task, SecurityState};
 use crate::service::DaemonService;
 use crate::state::RuntimeState;
@@ -148,6 +149,8 @@ pub struct DaemonApp {
     /// Gate that controls clipboard capture. Passed to DaemonApiState so the
     /// `/lifecycle/ready` endpoint can open it when the GUI signals readiness.
     clipboard_capture_gate: Option<Arc<AtomicBool>>,
+    /// Search coordinator — wired into DaemonApiState for HTTP route access.
+    search_coordinator: Option<Arc<SearchCoordinator>>,
 }
 
 impl DaemonApp {
@@ -178,6 +181,7 @@ impl DaemonApp {
             deferred_ready_notify: None,
             external_shutdown: None,
             clipboard_capture_gate: None,
+            search_coordinator: None,
         }
     }
 
@@ -202,6 +206,7 @@ impl DaemonApp {
         deferred_ready_notify: Option<Arc<tokio::sync::Notify>>,
         external_shutdown: Option<CancellationToken>,
         clipboard_capture_gate: Option<Arc<AtomicBool>>,
+        search_coordinator: Option<Arc<SearchCoordinator>>,
     ) -> Self {
         // Validate invariant: deferred_services and deferred_ready_notify must be
         // consistent. If there are deferred services, there must be a Notify to trigger them.
@@ -221,6 +226,7 @@ impl DaemonApp {
             deferred_ready_notify,
             external_shutdown,
             clipboard_capture_gate,
+            search_coordinator,
         }
     }
 
@@ -277,6 +283,10 @@ impl DaemonApp {
         };
         let api_state = match &self.deferred_ready_notify {
             Some(notify) => api_state.with_deferred_ready_notify(Arc::clone(notify)),
+            None => api_state,
+        };
+        let api_state = match &self.search_coordinator {
+            Some(coordinator) => api_state.with_search_coordinator(Arc::clone(coordinator)),
             None => api_state,
         };
 

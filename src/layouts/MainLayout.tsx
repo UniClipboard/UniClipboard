@@ -24,7 +24,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
 
       {/* Main Content Area */}
       <main className="relative flex min-h-0 flex-1 flex-col overflow-hidden p-2">
-        <InsetSurface>{children}</InsetSurface>
+        <InsetSurface className="flex-1 w-full h-full">{children}</InsetSurface>
       </main>
     </>
   )

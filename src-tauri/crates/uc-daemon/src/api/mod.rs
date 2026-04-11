@@ -14,6 +14,7 @@ pub mod pairing;
 pub mod projection;
 pub mod query;
 pub mod routes;
+pub mod search;
 pub mod server;
 pub mod settings;
 pub mod setup;

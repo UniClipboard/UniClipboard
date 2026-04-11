@@ -37,6 +37,10 @@ use crate::api::dto::setup::{
     GetSetupStateResponse, SetupActionResponse, SetupResetResponse, SetupSelectPeerRequest,
     SetupStateResponseDto, SetupSubmitPassphraseRequest,
 };
+use crate::api::dto::search::{
+    SearchQueryResponse, SearchRebuildAcceptedData, SearchRebuildAcceptedResponse, SearchResultDto,
+    SearchStatusData, SearchStatusResponse,
+};
 
 /// Adds a `session` Bearer security scheme to the OpenAPI document and applies it
 /// to all L2+ paths.
@@ -170,6 +174,13 @@ impl Modify for SecurityAddon {
             SetPairingParticipantRequest,
             UnpairDeviceRequest,
             VerifyPairingRequest,
+            // Search
+            SearchQueryResponse,
+            SearchResultDto,
+            SearchStatusResponse,
+            SearchStatusData,
+            SearchRebuildAcceptedResponse,
+            SearchRebuildAcceptedData,
             // Device sync settings
             DeviceContentTypesDto,
             DeviceSyncFrequencyDto,
@@ -187,6 +198,7 @@ impl Modify for SecurityAddon {
         (name = "encryption", description = "Encryption state and session management"),
         (name = "setup", description = "Device setup and pairing flow"),
         (name = "pairing", description = "Pairing lifecycle management"),
+        (name = "search", description = "Local encrypted search endpoints"),
     )
 )]
 pub struct ApiDoc;

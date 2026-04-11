@@ -9,9 +9,11 @@
 
 pub mod constants;
 pub mod rows;
+pub mod search_key_derivation;
 
 pub use constants::*;
 pub use rows::*;
+pub use search_key_derivation::*;
 
 #[cfg(test)]
 mod migration_tests {

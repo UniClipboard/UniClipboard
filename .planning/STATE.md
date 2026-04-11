@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v0.5.0
 milestone_name: Local Encrypted Search
-status: executing
-stopped_at: Completed 92-04-PLAN.md
-last_updated: "2026-04-11T09:04:53.531Z"
+status: verifying
+stopped_at: Completed 92.1-03-PLAN.md
+last_updated: "2026-04-11T16:47:58.898Z"
 last_activity: 2026-04-11
 progress:
   total_phases: 6
   completed_phases: 5
   total_plans: 11
-  completed_plans: 11
+  completed_plans: 13
   percent: 17
 ---
 
@@ -25,9 +25,9 @@ See: .planning/PROJECT.md (updated 2026-04-10)
 
 ## Current Position
 
-Phase: 92 (bootstrap-wiring-and-daemon-http-routes) — EXECUTING
-Plan: 3 of 4
-Status: Ready to execute
+Phase: 92.1 (cli-search-commands) — EXECUTING
+Plan: 3 of 3
+Status: Phase complete — ready for verification
 Last activity: 2026-04-11
 
 Progress: [▓▓░░░░░░░░] 17%
@@ -53,6 +53,9 @@ Progress: [▓▓░░░░░░░░] 17%
 | Phase 91 P02 | 12min | 2 tasks | 3 files |
 | Phase 92 P01 | 60min | 2 tasks | 15 files |
 | Phase 92-bootstrap-wiring-and-daemon-http-routes P04 | 45min | 2 tasks | 3 files |
+| Phase 92.1 P01 | 25min | 2 tasks | 6 files |
+| Phase 92.1 P02 | 4min | 2 tasks | 5 files |
+| Phase 92.1-cli-search-commands P03 | 25min | 2 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -87,6 +90,16 @@ Recent decisions affecting current work:
 - [Phase 92-bootstrap-wiring-and-daemon-http-routes]: SearchCoordinator must use DaemonApiState.event_tx, not its own channel — WS fanout subscribes to DaemonApiState.event_tx so coordinator must share the same broadcast sender
 - [Phase 92-bootstrap-wiring-and-daemon-http-routes]: Use build_cli_runtime in tests instead of build_non_gui_runtime_with_setup — the latter calls block_on internally which panics inside tokio::test runtime
 - [Phase 92-bootstrap-wiring-and-daemon-http-routes]: Search coordinator emits status_snapshot(rebuilding) before first rebuild_progress event — tests must skip non-progress events when waiting for rebuild_progress
+- [Phase 92.1]: Search DTOs consolidated in uc-daemon-contract; daemon uses pub use re-export shim — no parallel definitions (Plan 01)
+- [Phase 92.1]: DaemonSearchRequestError uses Option<String> for code to handle non-JSON error bodies gracefully (Plan 01)
+- [Phase 92.1]: FileType rendered with Debug+to_lowercase to produce human-readable type labels in CLI output (e.g., 'text', 'file')
+- [Phase 92.1]: search.rs imports DTOs via uc_daemon::api::dto::search re-export shim to avoid direct uc-daemon-contract dependency in uc-cli
+- [Phase 92.1-cli-search-commands]: run_rebuild_with uses generic Fn closures not trait objects — zero-cost test injection, avoids Box<dyn Future>
+- [Phase 92.1-cli-search-commands]: Rebuild conflict/locked handled via DaemonSearchRequestError downcast — code field distinguishes rebuild_already_running vs session_locked
+
+### Roadmap Evolution
+
+- Phase 92.1 inserted after Phase 92: CLI Search Commands (URGENT)
 
 ### Pending Todos
 
@@ -101,6 +114,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-04-11T09:04:53.529Z
-Stopped at: Completed 92-04-PLAN.md
+Last session: 2026-04-11T16:47:58.895Z
+Stopped at: Completed 92.1-03-PLAN.md
 Resume file: None

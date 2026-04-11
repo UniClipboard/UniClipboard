@@ -13,6 +13,7 @@ use libp2p::{futures::StreamExt, PeerId, Stream, StreamProtocol};
 use libp2p_stream as stream;
 use std::collections::HashMap;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
 use tokio::sync::{mpsc, Mutex as AsyncMutex, OwnedSemaphorePermit, Semaphore};
 use tokio::time::Duration;
@@ -28,6 +29,7 @@ pub const MAX_FILE_TRANSFER_CONCURRENCY: usize = 8;
 
 /// Maximum concurrent file transfers per peer.
 const PER_PEER_FILE_CONCURRENCY: usize = 2;
+const PROGRESS_LOG_STEP_PERCENT: u32 = 10;
 
 /// Configuration for the file transfer service.
 #[derive(Debug, Clone)]
@@ -131,7 +133,11 @@ impl FileTransferService {
             let service = self.clone();
             let stream = stream.compat();
             let span_peer_id = peer_id.clone();
-            let span = info_span!("file_transfer.incoming", peer_id = %span_peer_id);
+            let span = info_span!(
+                "file_transfer.incoming",
+                peer_id = %span_peer_id,
+                protocol_version = protocol_version_label(version)
+            );
             tokio::spawn(
                 async move {
                     if let Err(err) = service
@@ -140,6 +146,7 @@ impl FileTransferService {
                     {
                         warn!(
                             peer_id = %peer_id,
+                            protocol_version = protocol_version_label(version),
                             error = %err,
                             "file transfer failed"
                         );
@@ -184,8 +191,10 @@ impl FileTransferService {
 
         info!(
             transfer_id = %incoming.transfer_id(),
+            peer_id = %peer_id,
             filename = %incoming.filename(),
             file_size = incoming.file_size(),
+            protocol_version = protocol_version_label(version),
             "incoming file transfer"
         );
 
@@ -237,9 +246,23 @@ impl FileTransferService {
         let progress_port = self.inner.progress_port.clone();
         let peer_id_clone = peer_id.clone();
         let transfer_id_clone = incoming.transfer_id().to_string();
+        let filename_clone = incoming.filename().to_string();
         let file_size = incoming.file_size();
+        let progress_log_state = Arc::new(AtomicU32::new(PROGRESS_LOG_STEP_PERCENT));
+        let progress_log_state_clone = progress_log_state.clone();
 
         let progress_callback = move |chunks_completed: u32, total_chunks: u32, bytes: u64| {
+            maybe_log_progress(
+                &progress_log_state_clone,
+                "receiving",
+                &transfer_id_clone,
+                &peer_id_clone,
+                &filename_clone,
+                file_size,
+                bytes,
+                chunks_completed,
+                total_chunks,
+            );
             let progress = TransferProgress {
                 transfer_id: transfer_id_clone.clone(),
                 peer_id: peer_id_clone.clone(),
@@ -268,6 +291,8 @@ impl FileTransferService {
             Ok(final_path) => {
                 info!(
                     transfer_id = %incoming.transfer_id(),
+                    peer_id = %peer_id,
+                    protocol_version = protocol_version_label(version),
                     path = %final_path.display(),
                     "file transfer complete"
                 );
@@ -295,6 +320,13 @@ impl FileTransferService {
                         error: e.to_string(),
                     })
                     .await;
+                warn!(
+                    transfer_id = %incoming.transfer_id(),
+                    peer_id = %peer_id,
+                    protocol_version = protocol_version_label(version),
+                    error = %e,
+                    "incoming file transfer failed"
+                );
                 Err(e)
             }
         }
@@ -342,6 +374,15 @@ impl FileTransferService {
             .map(|m| m.len())
             .unwrap_or(0);
 
+        info!(
+            transfer_id = %transfer_id,
+            peer_id = %peer_id_str,
+            filename = %filename,
+            file_size,
+            protocol_version = protocol_version_label(protocol_version),
+            "outgoing file transfer started"
+        );
+
         let _ = self
             .inner
             .event_tx
@@ -357,7 +398,21 @@ impl FileTransferService {
         let progress_port = self.inner.progress_port.clone();
         let peer_id_for_progress = peer_id_str.to_string();
         let transfer_id_for_progress = transfer_id.clone();
+        let filename_for_progress = filename.clone();
+        let progress_log_state = Arc::new(AtomicU32::new(PROGRESS_LOG_STEP_PERCENT));
+        let progress_log_state_clone = progress_log_state.clone();
         let progress_callback = move |chunks_completed: u32, total_chunks: u32, bytes: u64| {
+            maybe_log_progress(
+                &progress_log_state_clone,
+                "sending",
+                &transfer_id_for_progress,
+                &peer_id_for_progress,
+                &filename_for_progress,
+                file_size,
+                bytes,
+                chunks_completed,
+                total_chunks,
+            );
             let progress = TransferProgress {
                 transfer_id: transfer_id_for_progress.clone(),
                 peer_id: peer_id_for_progress.clone(),
@@ -397,7 +452,12 @@ impl FileTransferService {
                 // Read acceptance (best effort)
                 match read_file_frame(&mut read_half).await {
                     Ok(Some((FileMessageType::Accept, _))) => {
-                        info!(transfer_id = %transfer_id, "file transfer accepted and sent");
+                        info!(
+                            transfer_id = %transfer_id,
+                            peer_id = %peer_id_str,
+                            protocol_version = protocol_version_label(protocol_version),
+                            "file transfer accepted and sent"
+                        );
                     }
                     Ok(Some((FileMessageType::Reject, payload))) => {
                         let rejection: FileAcceptance =
@@ -447,6 +507,13 @@ impl FileTransferService {
                         error: e.to_string(),
                     })
                     .await;
+                warn!(
+                    transfer_id = %transfer_id,
+                    peer_id = %peer_id_str,
+                    protocol_version = protocol_version_label(protocol_version),
+                    error = %e,
+                    "outgoing file transfer failed"
+                );
                 Err(e)
             }
         }
@@ -554,8 +621,20 @@ impl FileTransferProtocolCoordinator {
             )
             .await
         {
-            Ok(stream) => Ok((stream, FileTransferProtocolVersion::V2)),
+            Ok(stream) => {
+                info!(
+                    peer_id = %peer,
+                    protocol_version = protocol_version_label(FileTransferProtocolVersion::V2),
+                    "opened outbound file transfer stream"
+                );
+                Ok((stream, FileTransferProtocolVersion::V2))
+            }
             Err(v2_err) => {
+                warn!(
+                    peer_id = %peer,
+                    error = %v2_err,
+                    "file transfer v2 unavailable; falling back to v1"
+                );
                 let stream = control
                     .open_stream(peer, StreamProtocol::new(ProtocolId::FileTransfer.as_str()))
                     .await
@@ -564,6 +643,11 @@ impl FileTransferProtocolCoordinator {
                             "failed to open file transfer stream via v2 ({v2_err}) or v1 ({err})"
                         )
                     })?;
+                info!(
+                    peer_id = %peer,
+                    protocol_version = protocol_version_label(FileTransferProtocolVersion::V1),
+                    "opened outbound file transfer stream"
+                );
                 Ok((stream, FileTransferProtocolVersion::V1))
             }
         }
@@ -673,6 +757,59 @@ async fn check_disk_space(cache_dir: &std::path::Path, required: u64) -> Result<
     }
 
     Ok(())
+}
+
+fn protocol_version_label(version: FileTransferProtocolVersion) -> &'static str {
+    match version {
+        FileTransferProtocolVersion::V1 => "v1",
+        FileTransferProtocolVersion::V2 => "v2",
+    }
+}
+
+fn maybe_log_progress(
+    next_percent: &AtomicU32,
+    direction: &str,
+    transfer_id: &str,
+    peer_id: &str,
+    filename: &str,
+    file_size: u64,
+    bytes: u64,
+    chunks_completed: u32,
+    total_chunks: u32,
+) {
+    if bytes == 0 || file_size == 0 {
+        return;
+    }
+
+    let progress_pct = ((bytes.saturating_mul(100) / file_size).min(100)) as u32;
+    let mut threshold = next_percent.load(Ordering::Relaxed);
+
+    while progress_pct >= threshold && threshold <= 100 {
+        let next_threshold = threshold.saturating_add(PROGRESS_LOG_STEP_PERCENT);
+        match next_percent.compare_exchange(
+            threshold,
+            next_threshold,
+            Ordering::Relaxed,
+            Ordering::Relaxed,
+        ) {
+            Ok(_) => {
+                info!(
+                    transfer_id = %transfer_id,
+                    peer_id = %peer_id,
+                    filename = %filename,
+                    direction,
+                    progress_pct,
+                    bytes_transferred = bytes,
+                    file_size,
+                    chunks_completed,
+                    total_chunks,
+                    "file transfer progress"
+                );
+                break;
+            }
+            Err(current) => threshold = current,
+        }
+    }
 }
 
 #[cfg(test)]

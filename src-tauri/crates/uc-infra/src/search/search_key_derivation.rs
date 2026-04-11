@@ -23,6 +23,9 @@ use uc_core::search::key::SearchKey;
 
 const SEARCH_KEY_INFO: &[u8] = b"uniclipboard-search-index/v1";
 
+/// Type alias for HMAC-SHA256 — used for term-tag computation.
+type HmacSha256 = Hmac<Sha256>;
+
 /// HKDF-SHA256 implementation of `SearchKeyDerivationPort`.
 ///
 /// Derives a profile-scoped `SearchKey` from the unlocked `MasterKey`.
@@ -88,7 +91,7 @@ impl SearchKeyDerivationPort for HkdfSearchKeyDerivation {
 /// enforce that HMAC tagging is always done with the derived search key, never
 /// raw master key bytes.
 pub(crate) fn term_tag(search_key: &SearchKey, normalized_token: &str) -> Result<Vec<u8>> {
-    let mut mac = Hmac::<Sha256>::new_from_slice(search_key.as_bytes())
+    let mut mac = HmacSha256::new_from_slice(search_key.as_bytes())
         .map_err(|e| anyhow!("HMAC init failed: {e}"))?;
     mac.update(normalized_token.as_bytes());
     Ok(mac.finalize().into_bytes().to_vec())

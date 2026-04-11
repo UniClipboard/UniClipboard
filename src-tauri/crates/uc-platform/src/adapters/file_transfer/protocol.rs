@@ -751,6 +751,35 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn send_stream_flushes_once_after_all_chunks() {
+        let (mut writer, flush_count) = CountingWriter::new();
+        let mut reader = std::io::Cursor::new(vec![1u8; CHUNK_SIZE * 2 + 17]);
+
+        let hash = ChunkTransferEngine::send_stream(
+            &mut writer,
+            &mut reader,
+            "flush-once-xfer",
+            (CHUNK_SIZE * 2 + 17) as u64,
+            CHUNK_SIZE,
+            None,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(
+            flush_count.load(Ordering::SeqCst),
+            1,
+            "chunk streaming should not flush per chunk"
+        );
+        assert_eq!(
+            hash,
+            blake3::hash(&vec![1u8; CHUNK_SIZE * 2 + 17])
+                .to_hex()
+                .to_string()
+        );
+    }
+
+    #[tokio::test]
     async fn hash_mismatch_deletes_temp_file() {
         let temp_dir = tempfile::tempdir().unwrap();
         let cache_dir = temp_dir.path().join("cache");

@@ -1,11 +1,13 @@
 pub mod clipboard;
 pub mod pairing;
 pub mod query;
+pub mod search;
 pub mod setup;
 
 pub use clipboard::DaemonClipboardClient;
 pub use pairing::{DaemonPairingClient, DaemonPairingRequestError};
 pub use query::DaemonQueryClient;
+pub use search::{DaemonSearchClient, DaemonSearchRequestError, SearchQueryRequest};
 pub use setup::DaemonSetupClient;
 
 use crate::DaemonConnectionState;

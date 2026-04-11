@@ -238,8 +238,7 @@ mod tests {
     #[test]
     fn document_row_round_trips_file_extensions() {
         let doc = sample_document();
-        let row = NewSearchDocumentRow::from_domain("profile-abc", &doc)
-            .expect("from_domain");
+        let row = NewSearchDocumentRow::from_domain("profile-abc", &doc).expect("from_domain");
 
         // Simulate what we'd get back from the DB by building a SearchDocumentRow.
         let queried = SearchDocumentRow {
@@ -292,7 +291,10 @@ mod tests {
                 text_preview: row.text_preview.clone(),
             };
             let restored = queried.to_domain().expect("to_domain");
-            assert_eq!(restored.file_type, ft, "file_type round-trip failed for {ft:?}");
+            assert_eq!(
+                restored.file_type, ft,
+                "file_type round-trip failed for {ft:?}"
+            );
         }
     }
 

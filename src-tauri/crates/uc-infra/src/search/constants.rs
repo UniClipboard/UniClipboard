@@ -39,7 +39,11 @@ mod tests {
         ];
         // Each mask is a power of two (exactly one bit set).
         for &m in &masks {
-            assert_eq!(m.count_ones(), 1, "each field mask must have exactly 1 bit set: {m:#b}");
+            assert_eq!(
+                m.count_ones(),
+                1,
+                "each field mask must have exactly 1 bit set: {m:#b}"
+            );
         }
         // All masks are distinct.
         let combined: std::collections::HashSet<u8> = masks.iter().copied().collect();

@@ -13,6 +13,9 @@
 import { daemonClient } from '@/api/daemon/client'
 import { waitForDaemonConnectionInfo } from '@/lib/daemon-connection-info'
 import { daemonWs } from '@/lib/daemon-ws'
+import { createLogger } from '@/lib/logger'
+
+const log = createLogger('daemon-ws-bootstrap')
 
 let connectionEstablished = false
 let connectionPromise: Promise<void> | null = null
@@ -63,10 +66,10 @@ export function connectDaemonWs(): Promise<void> {
     })
     .then(() => {
       connectionEstablished = true
-      console.info('[daemon-ws-bootstrap] connected to daemon WebSocket')
+      log.info('connected to daemon WebSocket')
     })
     .catch(err => {
-      console.error('[daemon-ws-bootstrap] failed to connect to daemon WebSocket:', err)
+      log.error({ err }, 'failed to connect to daemon WebSocket')
       throw err
     })
     .finally(() => {

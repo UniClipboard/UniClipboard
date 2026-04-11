@@ -24,6 +24,9 @@
  */
 
 import { daemonClient } from '@/api/daemon/client'
+import { createLogger } from '@/lib/logger'
+
+const log = createLogger('daemon-ws')
 
 // ── Public types ────────────────────────────────────────────────
 
@@ -233,12 +236,12 @@ export class DaemonWsClient {
       try {
         this._handleMessage(event.data)
       } catch (err) {
-        console.error('[DaemonWsClient] failed to handle incoming message:', err)
+        log.error({ err }, 'failed to handle incoming message')
       }
     }
 
     ws.onerror = event => {
-      console.error('[DaemonWsClient] WebSocket error', event)
+      log.error({ event }, 'WebSocket error')
       const reject = this._connectReject
       this._connectResolve = null
       this._connectReject = null
@@ -269,7 +272,7 @@ export class DaemonWsClient {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       raw = JSON.parse(data) as Record<string, any>
     } catch {
-      console.error('[DaemonWsClient] failed to parse incoming message:', data)
+      log.error({ data }, 'failed to parse incoming message')
       return
     }
 
@@ -280,7 +283,7 @@ export class DaemonWsClient {
       sessionId: (raw.sessionId ?? raw.session_id ?? null) as string | null,
       payload: raw.payload,
     }
-    console.info('[DaemonWsClient] received WS event:', event.topic, event.eventType)
+    log.debug({ topic: event.topic, eventType: event.eventType }, 'received WS event')
 
     for (const [subscriptionTopic, callbacks] of this._callbacks.entries()) {
       if (!topicMatches(subscriptionTopic, event.topic)) {
@@ -290,7 +293,7 @@ export class DaemonWsClient {
         try {
           cb(event)
         } catch (err) {
-          console.error('[DaemonWsClient] callback threw:', err)
+          log.error({ err, topic: subscriptionTopic }, 'event callback threw')
         }
       }
     }
@@ -306,7 +309,7 @@ export class DaemonWsClient {
     try {
       this._ws.send(JSON.stringify(msg))
     } catch (err) {
-      console.error('[DaemonWsClient] failed to send subscribe message:', err)
+      log.error({ err }, 'failed to send subscribe message')
     }
   }
 
@@ -328,7 +331,7 @@ export class DaemonWsClient {
     if (!this._wsUrl) return
 
     if (this._reconnectAttempt >= MAX_RECONNECT_ATTEMPTS) {
-      console.error(`[DaemonWsClient] gave up after ${MAX_RECONNECT_ATTEMPTS} reconnect attempts`)
+      log.error({ maxAttempts: MAX_RECONNECT_ATTEMPTS }, 'gave up reconnecting')
       this._isReconnecting = false
       return
     }
@@ -344,8 +347,9 @@ export class DaemonWsClient {
     const jitter = baseDelay * 0.1 * (Math.random() * 2 - 1)
     const delayMs = Math.round(baseDelay + jitter)
 
-    console.info(
-      `[DaemonWsClient] scheduling reconnect attempt ${this._reconnectAttempt}/${MAX_RECONNECT_ATTEMPTS} in ${delayMs}ms`
+    log.info(
+      { attempt: this._reconnectAttempt, maxAttempts: MAX_RECONNECT_ATTEMPTS, delayMs },
+      'scheduling reconnect'
     )
 
     this._reconnectTimer = setTimeout(() => {

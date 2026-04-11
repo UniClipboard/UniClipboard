@@ -14,11 +14,11 @@ const InsetSurface: React.FC<InsetSurfaceProps> = ({ className, children, ...pro
     <div
       className={cn(
         'relative flex min-h-0 flex-1 flex-col overflow-hidden transition-all duration-300',
-        'rounded-[20px] bg-background border border-border/40',
+        'rounded-[1.25rem] bg-card text-card-foreground border border-border/40',
         // Dark mode specific depth shadow, light mode is kept clean
         'shadow-none dark:shadow-[0_8px_30px_rgb(0,0,0,0.12)]',
         // Platform specific material optimizations
-        isWindows && 'bg-background/90 backdrop-blur-xl',
+        isWindows && 'bg-card/90 backdrop-blur-xl',
         className
       )}
       {...props}

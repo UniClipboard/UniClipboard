@@ -9,7 +9,7 @@ import { formatDuration, formatFileSize } from '@/utils'
 
 interface TransferProgressBarProps {
   progress: TransferProgressInfo
-  variant?: 'compact' | 'inline'
+  variant?: 'compact' | 'inline' | 'minimal'
 }
 
 const TransferProgressBar: React.FC<TransferProgressBarProps> = ({
@@ -24,16 +24,10 @@ const TransferProgressBar: React.FC<TransferProgressBarProps> = ({
       : progress.totalChunks > 0
         ? Math.round((progress.chunksCompleted / progress.totalChunks) * 100)
         : 0
-  const speedLabel = progress.bytesPerSecond
-    ? t('clipboard.transfer.speedValue', {
-        speed: `${formatFileSize(progress.bytesPerSecond)}/s`,
-      })
-    : null
+  const speedLabel = progress.bytesPerSecond ? formatFileSize(progress.bytesPerSecond) + '/s' : null
   const remainingLabel =
     progress.estimatedRemainingSeconds !== null
-      ? t('clipboard.transfer.remainingValue', {
-          time: formatDuration(progress.estimatedRemainingSeconds),
-        })
+      ? formatDuration(progress.estimatedRemainingSeconds)
       : null
 
   const DirectionIcon = progress.direction === 'Sending' ? ArrowUpFromLine : ArrowDownToLine
@@ -41,6 +35,26 @@ const TransferProgressBar: React.FC<TransferProgressBarProps> = ({
     progress.direction === 'Sending'
       ? t('clipboard.transfer.sending')
       : t('clipboard.transfer.receiving')
+
+  if (variant === 'minimal') {
+    return (
+      <div className="flex items-center gap-2 text-[10px] font-medium tabular-nums text-primary/80">
+        <span>{percent}%</span>
+        {speedLabel && (
+          <>
+            <span className="opacity-30">•</span>
+            <span>{speedLabel}</span>
+          </>
+        )}
+        {remainingLabel && (
+          <>
+            <span className="opacity-30">•</span>
+            <span>{remainingLabel}</span>
+          </>
+        )}
+      </div>
+    )
+  }
 
   if (variant === 'compact') {
     return (

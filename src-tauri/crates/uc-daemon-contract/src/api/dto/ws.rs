@@ -47,4 +47,5 @@ pub const WS_SUPPORTED_TOPICS: &[&str] = &[
     ws_topic::CLIPBOARD,
     ws_topic::FILE_TRANSFER,
     ws_topic::ENCRYPTION,
+    ws_topic::SEARCH,
 ];

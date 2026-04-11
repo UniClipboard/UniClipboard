@@ -449,6 +449,7 @@ fn is_supported_topic(topic: &str) -> bool {
             | ws_topic::CLIPBOARD
             | ws_topic::FILE_TRANSFER
             | ws_topic::ENCRYPTION
+            | ws_topic::SEARCH
     )
 }
 
@@ -568,6 +569,53 @@ async fn build_snapshot_event(
             Ok(None)
         }
 
+        ws_topic::SEARCH => {
+            // Build a combined snapshot from coordinator status + index meta timestamps.
+            let coordinator = match state.search_coordinator() {
+                Some(c) => c,
+                None => return Ok(None),
+            };
+            let status_snapshot = coordinator.status_snapshot().await;
+
+            // Get index meta for timestamps; log and return partial snapshot on failure.
+            let (last_rebuild_started_at_ms, last_rebuild_completed_at_ms) =
+                if let Some(runtime) = state.runtime.clone() {
+                    match runtime
+                        .wiring_deps()
+                        .search
+                        .search_index
+                        .get_index_meta()
+                        .await
+                    {
+                        Ok(meta) => (
+                            meta.last_rebuild_started_at_ms,
+                            meta.last_rebuild_completed_at_ms,
+                        ),
+                        Err(e) => {
+                            warn!(error = %e, "search ws snapshot: failed to get index meta");
+                            (None, None)
+                        }
+                    }
+                } else {
+                    (None, None)
+                };
+
+            let payload = crate::api::dto::search::SearchStatusData {
+                state: status_snapshot.status,
+                reason: status_snapshot.reason,
+                last_rebuild_started_at_ms,
+                last_rebuild_completed_at_ms,
+            };
+
+            snapshot_event(
+                ws_topic::SEARCH,
+                ws_event::SEARCH_STATUS_SNAPSHOT,
+                None,
+                payload,
+            )
+            .map(Some)
+        }
+
         unsupported => anyhow::bail!("unsupported websocket topic: {unsupported}"),
     }
 }
@@ -596,6 +644,48 @@ mod tests {
     use super::*;
 
     #[test]
+    fn search_topic_subscription_receives_status_snapshot() {
+        // Test that a search snapshot event has the correct topic, event_type,
+        // and camelCase payload fields using the snapshot_event helper directly.
+        let payload = crate::api::dto::search::SearchStatusData {
+            state: "ready".to_string(),
+            reason: None,
+            last_rebuild_started_at_ms: Some(1_000_000),
+            last_rebuild_completed_at_ms: Some(2_000_000),
+        };
+
+        let event = snapshot_event(
+            ws_topic::SEARCH,
+            ws_event::SEARCH_STATUS_SNAPSHOT,
+            None,
+            payload,
+        )
+        .expect("snapshot_event should succeed");
+
+        assert_eq!(event.topic, ws_topic::SEARCH);
+        assert_eq!(event.event_type, ws_event::SEARCH_STATUS_SNAPSHOT);
+
+        // Verify camelCase field names in the serialized payload
+        let payload_json = event.payload.to_string();
+        assert!(
+            payload_json.contains("lastRebuildStartedAtMs"),
+            "payload should contain lastRebuildStartedAtMs, got: {payload_json}"
+        );
+        assert!(
+            payload_json.contains("lastRebuildCompletedAtMs"),
+            "payload should contain lastRebuildCompletedAtMs, got: {payload_json}"
+        );
+        assert!(
+            payload_json.contains("1000000"),
+            "payload should contain the started_at value"
+        );
+        assert!(
+            payload_json.contains("2000000"),
+            "payload should contain the completed_at value"
+        );
+    }
+
+    #[test]
     fn is_supported_topic_includes_clipboard() {
         assert!(is_supported_topic(ws_topic::CLIPBOARD));
     }
@@ -608,6 +698,11 @@ mod tests {
     #[test]
     fn is_supported_topic_includes_encryption() {
         assert!(is_supported_topic(ws_topic::ENCRYPTION));
+    }
+
+    #[test]
+    fn search_topic_is_supported_for_websocket_subscriptions() {
+        assert!(is_supported_topic(ws_topic::SEARCH));
     }
 
     #[test]
@@ -630,6 +725,7 @@ mod tests {
             ws_topic::CLIPBOARD,
             ws_topic::FILE_TRANSFER,
             ws_topic::ENCRYPTION,
+            ws_topic::SEARCH,
         ];
         for topic in known {
             assert!(

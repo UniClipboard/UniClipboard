@@ -30,7 +30,8 @@ use uc_core::network::{
 use uc_core::ports::{
     ClipboardTransportPort, ConnectionPolicyResolverPort, EncryptionSessionPort,
     NetworkControlPort, NetworkEventPort, PairingTransportPort, PeerDirectoryPort,
-    TransferPayloadDecryptorPort, TransferPayloadEncryptorPort,
+    TransferPayloadDecryptorPort, TransferPayloadEncryptorPort, TransferProgress,
+    TransferProgressPort,
 };
 
 use super::file_transfer::service::{FileTransferConfig, FileTransferService};
@@ -72,6 +73,20 @@ const START_STATE_IDLE: u8 = 0;
 const START_STATE_STARTING: u8 = 1;
 const START_STATE_STARTED: u8 = 2;
 const START_STATE_FAILED: u8 = 3;
+
+struct NetworkEventTransferProgressPort {
+    event_tx: mpsc::Sender<NetworkEvent>,
+}
+
+#[async_trait]
+impl TransferProgressPort for NetworkEventTransferProgressPort {
+    async fn report_progress(&self, progress: TransferProgress) -> Result<()> {
+        self.event_tx
+            .send(NetworkEvent::TransferProgress(progress))
+            .await
+            .map_err(|err| anyhow!("failed to publish transfer progress event: {err}"))
+    }
+}
 
 #[derive(Debug)]
 enum BusinessCommand {
@@ -288,7 +303,9 @@ impl Libp2pNetworkAdapter {
         let file_transfer_service = FileTransferService::new(
             stream_control.clone(),
             self.event_tx.clone(),
-            Arc::new(uc_core::ports::transfer_progress::NoopTransferProgressPort),
+            Arc::new(NetworkEventTransferProgressPort {
+                event_tx: self.event_tx.clone(),
+            }),
             FileTransferConfig::new(self.file_cache_dir.clone()),
         );
         file_transfer_service.spawn_accept_loop();
@@ -397,6 +414,38 @@ impl Libp2pNetworkAdapter {
                 tracing::error!("{name} receiver already taken — backtrace:\n{bt}");
                 Err(anyhow!("{name} receiver already taken"))
             }
+        }
+    }
+}
+
+#[cfg(test)]
+mod transfer_progress_tests {
+    use super::*;
+    use uc_core::ports::TransferDirection;
+
+    #[tokio::test]
+    async fn network_event_transfer_progress_port_forwards_progress_event() {
+        let (event_tx, mut event_rx) = mpsc::channel(1);
+        let port = NetworkEventTransferProgressPort { event_tx };
+
+        port.report_progress(TransferProgress {
+            transfer_id: "xfer-1".to_string(),
+            peer_id: "peer-1".to_string(),
+            direction: TransferDirection::Receiving,
+            chunks_completed: 1,
+            total_chunks: 4,
+            bytes_transferred: 262_144,
+            total_bytes: Some(1_048_576),
+        })
+        .await
+        .expect("progress should be forwarded");
+
+        match event_rx.recv().await {
+            Some(NetworkEvent::TransferProgress(progress)) => {
+                assert_eq!(progress.transfer_id, "xfer-1");
+                assert_eq!(progress.chunks_completed, 1);
+            }
+            other => panic!("unexpected event: {other:?}"),
         }
     }
 }

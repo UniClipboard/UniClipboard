@@ -270,13 +270,6 @@ where
                 }
 
                 if state == "ready" || state == "unavailable" {
-                    // Emit the final snapshot in JSON mode.
-                    if json {
-                        if let Ok(s) = serde_json::to_string(&status) {
-                            println!("{s}");
-                        }
-                    }
-
                     if let Some(pb) = spinner {
                         if state == "ready" {
                             pb.finish_with_message("Search rebuild complete.");
@@ -523,7 +516,8 @@ mod tests {
         }
     }
 
-    fn make_accepted() -> anyhow::Result<uc_daemon::api::dto::search::SearchRebuildAcceptedResponse> {
+    fn make_accepted() -> anyhow::Result<uc_daemon::api::dto::search::SearchRebuildAcceptedResponse>
+    {
         Ok(uc_daemon::api::dto::search::SearchRebuildAcceptedResponse {
             data: uc_daemon::api::dto::search::SearchRebuildAcceptedData { accepted: true },
             ts: 0,
@@ -533,8 +527,8 @@ mod tests {
     /// rebuild_accepted_waits_until_ready: status sequence rebuilding -> ready, returns EXIT_SUCCESS
     #[tokio::test]
     async fn rebuild_accepted_waits_until_ready() {
-        use std::sync::Arc;
         use std::sync::atomic::{AtomicUsize, Ordering};
+        use std::sync::Arc;
 
         let call_count = Arc::new(AtomicUsize::new(0));
         let call_count_clone = call_count.clone();
@@ -550,15 +544,16 @@ mod tests {
             }
         };
 
-        let result = run_rebuild_with(|| async move { make_accepted() }, fetch_status, true, false).await;
+        let result =
+            run_rebuild_with(|| async move { make_accepted() }, fetch_status, true, false).await;
         assert_eq!(result, exit_codes::EXIT_SUCCESS, "expected EXIT_SUCCESS");
     }
 
     /// rebuild_conflict_attaches_to_existing_status: conflict -> follow rebuilding -> ready
     #[tokio::test]
     async fn rebuild_conflict_attaches_to_existing_status() {
-        use std::sync::Arc;
         use std::sync::atomic::{AtomicUsize, Ordering};
+        use std::sync::Arc;
 
         let call_count = Arc::new(AtomicUsize::new(0));
         let call_count_clone = call_count.clone();
@@ -575,32 +570,36 @@ mod tests {
         };
 
         let request_rebuild = || async move {
-            Err::<uc_daemon::api::dto::search::SearchRebuildAcceptedResponse, _>(
-                anyhow::anyhow!(DaemonSearchRequestError {
+            Err::<uc_daemon::api::dto::search::SearchRebuildAcceptedResponse, _>(anyhow::anyhow!(
+                DaemonSearchRequestError {
                     path: "/search/rebuild".to_string(),
                     status: reqwest::StatusCode::CONFLICT,
                     code: Some("rebuild_already_running".to_string()),
                     message: "rebuild already running".to_string(),
-                })
-            )
+                }
+            ))
         };
 
         let result = run_rebuild_with(request_rebuild, fetch_status, true, false).await;
-        assert_eq!(result, exit_codes::EXIT_SUCCESS, "expected EXIT_SUCCESS after following existing rebuild");
+        assert_eq!(
+            result,
+            exit_codes::EXIT_SUCCESS,
+            "expected EXIT_SUCCESS after following existing rebuild"
+        );
     }
 
     /// rebuild_locked_human_error_is_actionable: session_locked returns EXIT_ERROR with guidance
     #[tokio::test]
     async fn rebuild_locked_human_error_is_actionable() {
         let request_rebuild = || async move {
-            Err::<uc_daemon::api::dto::search::SearchRebuildAcceptedResponse, _>(
-                anyhow::anyhow!(DaemonSearchRequestError {
+            Err::<uc_daemon::api::dto::search::SearchRebuildAcceptedResponse, _>(anyhow::anyhow!(
+                DaemonSearchRequestError {
                     path: "/search/rebuild".to_string(),
                     status: reqwest::StatusCode::FORBIDDEN,
                     code: Some("session_locked".to_string()),
                     message: "encryption session is locked".to_string(),
-                })
-            )
+                }
+            ))
         };
         let fetch_status = || async move { Ok(make_status("unavailable", Some("session_locked"))) };
 
@@ -616,14 +615,18 @@ mod tests {
         );
 
         let result = run_rebuild_with(request_rebuild, fetch_status, false, false).await;
-        assert_eq!(result, exit_codes::EXIT_ERROR, "expected EXIT_ERROR for locked session");
+        assert_eq!(
+            result,
+            exit_codes::EXIT_ERROR,
+            "expected EXIT_ERROR for locked session"
+        );
     }
 
     /// rebuild_json_wait_mode_emits_status_snapshots: JSON mode emits newline-delimited snapshots
     #[tokio::test]
     async fn rebuild_json_wait_mode_emits_status_snapshots() {
-        use std::sync::Arc;
         use std::sync::atomic::{AtomicUsize, Ordering};
+        use std::sync::Arc;
 
         let call_count = Arc::new(AtomicUsize::new(0));
         let call_count_clone = call_count.clone();
@@ -642,10 +645,18 @@ mod tests {
         // JSON mode: run_rebuild_with with json=true and no_wait=false
         // We can't easily capture stdout in tests, but we can verify the function returns correctly
         // and that the fetch_status is called multiple times (indicating polling happened).
-        let result = run_rebuild_with(|| async move { make_accepted() }, fetch_status, true, false).await;
-        assert_eq!(result, exit_codes::EXIT_SUCCESS, "JSON wait mode should return EXIT_SUCCESS on ready");
+        let result =
+            run_rebuild_with(|| async move { make_accepted() }, fetch_status, true, false).await;
+        assert_eq!(
+            result,
+            exit_codes::EXIT_SUCCESS,
+            "JSON wait mode should return EXIT_SUCCESS on ready"
+        );
         // The function should have called fetch_status at least twice (rebuilding -> ready)
-        assert!(call_count.load(Ordering::SeqCst) >= 2, "fetch_status should have been called at least twice");
+        assert!(
+            call_count.load(Ordering::SeqCst) >= 2,
+            "fetch_status should have been called at least twice"
+        );
     }
 
     #[test]

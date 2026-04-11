@@ -21,6 +21,7 @@ pub struct FileAnnounce {
     pub transfer_id: String,
     pub filename: String,
     pub file_size: u64,
+    pub chunk_size: u32,
     pub blake3_hash: String,
     pub batch_id: Option<String>,
     pub batch_total: Option<u32>,
@@ -32,6 +33,7 @@ pub struct FileAnnounceV2 {
     pub transfer_id: String,
     pub filename: String,
     pub file_size: u64,
+    pub chunk_size: u32,
     pub batch_id: Option<String>,
     pub batch_total: Option<u32>,
 }
@@ -117,6 +119,7 @@ impl LegacyFileTransferProtocol {
             transfer_id: transfer_id.to_string(),
             filename,
             file_size,
+            chunk_size: chunk_size as u32,
             blake3_hash: hash.clone(),
             batch_id,
             batch_total,
@@ -154,6 +157,7 @@ impl LegacyFileTransferProtocol {
             &announce.transfer_id,
             &announce.filename,
             announce.file_size,
+            announce.chunk_size,
             Some(&announce.blake3_hash),
             cache_dir,
             ChunkEncoding::LegacyJsonHeader,
@@ -183,6 +187,7 @@ impl StreamingFileTransferProtocol {
             transfer_id: transfer_id.to_string(),
             filename,
             file_size,
+            chunk_size: chunk_size as u32,
             batch_id,
             batch_total,
         };
@@ -216,6 +221,7 @@ impl StreamingFileTransferProtocol {
             &announce.transfer_id,
             &announce.filename,
             announce.file_size,
+            announce.chunk_size,
             None,
             cache_dir,
             ChunkEncoding::StreamingBinaryHeader,
@@ -329,6 +335,7 @@ impl ChunkTransferEngine {
         transfer_id: &str,
         filename: &str,
         file_size: u64,
+        announced_chunk_size: u32,
         announce_hash: Option<&str>,
         cache_dir: &Path,
         chunk_encoding: ChunkEncoding,
@@ -346,6 +353,7 @@ impl ChunkTransferEngine {
             &tmp_path,
             transfer_id,
             file_size,
+            announced_chunk_size,
             chunk_encoding,
             progress_callback,
         )
@@ -401,6 +409,7 @@ impl ChunkTransferEngine {
         tmp_path: &Path,
         transfer_id: &str,
         file_size: u64,
+        announced_chunk_size: u32,
         chunk_encoding: ChunkEncoding,
         progress_callback: Option<&(dyn Fn(u32, u32, u64) + Send + Sync)>,
     ) -> Result<ReceivedHash>
@@ -445,8 +454,8 @@ impl ChunkTransferEngine {
                     bytes_received += chunk_data.len() as u64;
                     chunks_received += 1;
 
-                    let estimated_total = if file_size > 0 {
-                        file_size.div_ceil(CHUNK_SIZE as u64) as u32
+                    let estimated_total = if file_size > 0 && announced_chunk_size > 0 {
+                        file_size.div_ceil(announced_chunk_size as u64) as u32
                     } else {
                         chunks_received
                     };
@@ -707,6 +716,7 @@ mod tests {
             transfer_id: "xfer-1".to_string(),
             filename: "test.txt".to_string(),
             file_size: 1024,
+            chunk_size: 256,
             blake3_hash: "abc123".to_string(),
             batch_id: Some("batch-1".to_string()),
             batch_total: Some(3),
@@ -716,6 +726,7 @@ mod tests {
         assert_eq!(restored.transfer_id, "xfer-1");
         assert_eq!(restored.filename, "test.txt");
         assert_eq!(restored.file_size, 1024);
+        assert_eq!(restored.chunk_size, 256);
         assert_eq!(restored.batch_id, Some("batch-1".to_string()));
     }
 
@@ -725,6 +736,7 @@ mod tests {
             transfer_id: "xfer-2".to_string(),
             filename: "stream.txt".to_string(),
             file_size: 2048,
+            chunk_size: 512,
             batch_id: Some("batch-2".to_string()),
             batch_total: Some(4),
         };
@@ -733,6 +745,7 @@ mod tests {
         assert_eq!(restored.transfer_id, "xfer-2");
         assert_eq!(restored.filename, "stream.txt");
         assert_eq!(restored.file_size, 2048);
+        assert_eq!(restored.chunk_size, 512);
     }
 
     #[test]
@@ -821,6 +834,7 @@ mod tests {
             let announce: FileAnnounce = serde_json::from_slice(&frame.1).unwrap();
             assert_eq!(announce.transfer_id, "test-xfer");
             assert_eq!(announce.filename, "source.txt");
+            assert_eq!(announce.chunk_size, 16);
             LEGACY_PROTOCOL
                 .receive_file(&mut server_read, &announce, &cache_dir_clone, None)
                 .await
@@ -853,6 +867,7 @@ mod tests {
             transfer_id: "streaming-xfer".to_string(),
             filename: "stream.bin".to_string(),
             file_size: 8,
+            chunk_size: 4,
             batch_id: None,
             batch_total: None,
         };
@@ -927,6 +942,61 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn receiver_progress_uses_announced_chunk_size() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let cache_dir = temp_dir.path().join("cache");
+        tokio::fs::create_dir_all(&cache_dir).await.unwrap();
+
+        let test_data = b"abcdefghij";
+        let announce = FileAnnounce {
+            transfer_id: "progress-xfer".to_string(),
+            filename: "progress.bin".to_string(),
+            file_size: test_data.len() as u64,
+            chunk_size: 4,
+            blake3_hash: blake3::hash(test_data).to_hex().to_string(),
+            batch_id: None,
+            batch_total: None,
+        };
+
+        let mut stream_data = Vec::new();
+        for (index, chunk) in test_data.chunks(announce.chunk_size as usize).enumerate() {
+            let chunk_payload = legacy_chunk_payload(index as u32, chunk);
+            write_file_frame(&mut stream_data, FileMessageType::Chunk, &chunk_payload)
+                .await
+                .unwrap();
+        }
+
+        let complete = FileComplete {
+            transfer_id: announce.transfer_id.clone(),
+            blake3_hash: announce.blake3_hash.clone(),
+            total_chunks: 3,
+        };
+        let complete_bytes = serde_json::to_vec(&complete).unwrap();
+        write_file_frame(&mut stream_data, FileMessageType::Complete, &complete_bytes)
+            .await
+            .unwrap();
+
+        let progress_events = std::sync::Mutex::new(Vec::new());
+        let progress_callback = |completed: u32, total: u32, bytes: u64| {
+            progress_events
+                .lock()
+                .unwrap()
+                .push((completed, total, bytes));
+        };
+
+        let mut cursor = &stream_data[..];
+        let final_path = LEGACY_PROTOCOL
+            .receive_file(&mut cursor, &announce, &cache_dir, Some(&progress_callback))
+            .await
+            .unwrap();
+
+        let captured = progress_events.lock().unwrap();
+        assert_eq!(captured.first().copied(), Some((1, 3, 4)));
+        assert_eq!(captured.last().copied(), Some((3, 3, 10)));
+        assert_eq!(tokio::fs::read(&final_path).await.unwrap(), test_data);
+    }
+
+    #[tokio::test]
     async fn hash_mismatch_deletes_temp_file() {
         let temp_dir = tempfile::tempdir().unwrap();
         let cache_dir = temp_dir.path().join("cache");
@@ -936,6 +1006,7 @@ mod tests {
             transfer_id: "bad-hash-xfer".to_string(),
             filename: "test.txt".to_string(),
             file_size: 5,
+            chunk_size: 5,
             blake3_hash: "definitely_wrong_hash".to_string(),
             batch_id: None,
             batch_total: None,
@@ -980,6 +1051,7 @@ mod tests {
             transfer_id: "rename-xfer".to_string(),
             filename: "result.dat".to_string(),
             file_size: test_data.len() as u64,
+            chunk_size: test_data.len() as u32,
             blake3_hash: hash.clone(),
             batch_id: None,
             batch_total: None,
@@ -1036,6 +1108,7 @@ mod tests {
             transfer_id: "streaming-recv".to_string(),
             filename: "video.bin".to_string(),
             file_size: 8,
+            chunk_size: 4,
             batch_id: None,
             batch_total: None,
         };
@@ -1105,6 +1178,7 @@ mod tests {
             transfer_id: "perm-xfer".to_string(),
             filename: "secret.dat".to_string(),
             file_size: test_data.len() as u64,
+            chunk_size: test_data.len() as u32,
             blake3_hash: hash.clone(),
             batch_id: None,
             batch_total: None,
@@ -1174,6 +1248,7 @@ mod tests {
             assert_eq!(announce.transfer_id, "large-xfer");
             assert_eq!(announce.file_size, 1_048_576);
             assert_eq!(announce.filename, "large_source.bin");
+            assert_eq!(announce.chunk_size, CHUNK_SIZE as u32);
             STREAMING_PROTOCOL
                 .receive_file(&mut server_read, &announce, &cache_dir_clone, None)
                 .await

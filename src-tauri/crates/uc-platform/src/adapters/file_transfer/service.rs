@@ -30,6 +30,8 @@ pub const MAX_FILE_TRANSFER_CONCURRENCY: usize = 8;
 /// Maximum concurrent file transfers per peer.
 const PER_PEER_FILE_CONCURRENCY: usize = 2;
 const PROGRESS_LOG_STEP_PERCENT: u32 = 10;
+const PROGRESS_EMIT_MIN_INTERVAL_MS: u64 = 250;
+const PROGRESS_EMIT_MIN_BYTES: u64 = 4 * 1024 * 1024;
 
 /// Configuration for the file transfer service.
 #[derive(Debug, Clone)]
@@ -68,6 +70,50 @@ struct FileTransferServiceInner {
 struct TransferPermits {
     _global: OwnedSemaphorePermit,
     _peer: OwnedSemaphorePermit,
+}
+
+struct ProgressEmitGate {
+    last_emit_at: Instant,
+    last_emitted_bytes: u64,
+}
+
+impl ProgressEmitGate {
+    fn new(now: Instant) -> Self {
+        Self {
+            last_emit_at: now,
+            last_emitted_bytes: 0,
+        }
+    }
+
+    fn should_emit(
+        &mut self,
+        now: Instant,
+        bytes: u64,
+        file_size: u64,
+        chunks_completed: u32,
+        total_chunks: u32,
+    ) -> bool {
+        if bytes == 0 {
+            return false;
+        }
+
+        let is_first_chunk = chunks_completed <= 1;
+        let is_final_chunk =
+            bytes >= file_size || (total_chunks > 0 && chunks_completed >= total_chunks);
+        let elapsed_ms = now.duration_since(self.last_emit_at).as_millis() as u64;
+        let advanced_bytes = bytes.saturating_sub(self.last_emitted_bytes);
+        let should_emit = is_first_chunk
+            || is_final_chunk
+            || elapsed_ms >= PROGRESS_EMIT_MIN_INTERVAL_MS
+            || advanced_bytes >= PROGRESS_EMIT_MIN_BYTES;
+
+        if should_emit {
+            self.last_emit_at = now;
+            self.last_emitted_bytes = bytes;
+        }
+
+        should_emit
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -251,6 +297,10 @@ impl FileTransferService {
         let progress_log_state = Arc::new(AtomicU32::new(PROGRESS_LOG_STEP_PERCENT));
         let progress_log_state_clone = progress_log_state.clone();
         let progress_started_at = Instant::now();
+        let progress_emit_gate = Arc::new(std::sync::Mutex::new(ProgressEmitGate::new(
+            progress_started_at,
+        )));
+        let progress_emit_gate_clone = progress_emit_gate.clone();
 
         let progress_callback = move |chunks_completed: u32, total_chunks: u32, bytes: u64| {
             maybe_log_progress(
@@ -265,6 +315,21 @@ impl FileTransferService {
                 total_chunks,
                 progress_started_at,
             );
+            let should_emit = {
+                let mut gate = progress_emit_gate_clone
+                    .lock()
+                    .unwrap_or_else(|poison| poison.into_inner());
+                gate.should_emit(
+                    Instant::now(),
+                    bytes,
+                    file_size,
+                    chunks_completed,
+                    total_chunks,
+                )
+            };
+            if !should_emit {
+                return;
+            }
             let progress = TransferProgress {
                 transfer_id: transfer_id_clone.clone(),
                 peer_id: peer_id_clone.clone(),
@@ -407,6 +472,10 @@ impl FileTransferService {
         let progress_log_state = Arc::new(AtomicU32::new(PROGRESS_LOG_STEP_PERCENT));
         let progress_log_state_clone = progress_log_state.clone();
         let progress_started_at = Instant::now();
+        let progress_emit_gate = Arc::new(std::sync::Mutex::new(ProgressEmitGate::new(
+            progress_started_at,
+        )));
+        let progress_emit_gate_clone = progress_emit_gate.clone();
         let progress_callback = move |chunks_completed: u32, total_chunks: u32, bytes: u64| {
             maybe_log_progress(
                 &progress_log_state_clone,
@@ -420,6 +489,21 @@ impl FileTransferService {
                 total_chunks,
                 progress_started_at,
             );
+            let should_emit = {
+                let mut gate = progress_emit_gate_clone
+                    .lock()
+                    .unwrap_or_else(|poison| poison.into_inner());
+                gate.should_emit(
+                    Instant::now(),
+                    bytes,
+                    file_size,
+                    chunks_completed,
+                    total_chunks,
+                )
+            };
+            if !should_emit {
+                return;
+            }
             let progress = TransferProgress {
                 transfer_id: transfer_id_for_progress.clone(),
                 peer_id: peer_id_for_progress.clone(),
@@ -851,6 +935,39 @@ mod tests {
     fn concurrency_limits() {
         assert_eq!(MAX_FILE_TRANSFER_CONCURRENCY, 8);
         assert_eq!(PER_PEER_FILE_CONCURRENCY, 2);
+    }
+
+    #[test]
+    fn progress_emit_gate_emits_first_and_final_updates() {
+        let now = Instant::now();
+        let mut gate = ProgressEmitGate::new(now);
+
+        assert!(gate.should_emit(now, 1, 100, 1, 10));
+        assert!(!gate.should_emit(now, 2, 100, 2, 10));
+        assert!(gate.should_emit(now, 100, 100, 10, 10));
+    }
+
+    #[test]
+    fn progress_emit_gate_emits_after_interval_or_large_advance() {
+        let now = Instant::now();
+        let mut gate = ProgressEmitGate::new(now);
+
+        assert!(gate.should_emit(now, 1024, 10 * 1024 * 1024, 1, 20));
+
+        let soon = now + Duration::from_millis(PROGRESS_EMIT_MIN_INTERVAL_MS - 1);
+        assert!(!gate.should_emit(soon, 1024 * 1024, 10 * 1024 * 1024, 2, 20));
+
+        let later = now + Duration::from_millis(PROGRESS_EMIT_MIN_INTERVAL_MS + 1);
+        assert!(gate.should_emit(later, 1024 * 1024, 10 * 1024 * 1024, 3, 20));
+
+        let immediate_large_advance = later + Duration::from_millis(1);
+        assert!(gate.should_emit(
+            immediate_large_advance,
+            6 * 1024 * 1024,
+            10 * 1024 * 1024,
+            4,
+            20
+        ));
     }
 
     #[tokio::test]

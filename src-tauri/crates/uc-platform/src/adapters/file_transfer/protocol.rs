@@ -11,8 +11,8 @@ use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use tokio::time::Instant;
 use tracing::{debug, info, info_span, instrument, warn, Instrument};
 
-/// Default chunk size: 256KB.
-pub const CHUNK_SIZE: usize = 256 * 1024;
+/// Default chunk size: 1MB.
+pub const CHUNK_SIZE: usize = 1024 * 1024;
 
 /// File transfer announcement sent by the sender.
 #[derive(Debug, Clone, Serialize, Deserialize)]

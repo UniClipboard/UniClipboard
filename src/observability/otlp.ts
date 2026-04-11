@@ -1,7 +1,4 @@
 import { getDeviceId } from '@/api/runtime'
-import { redactSensitiveArgs } from '@/observability/redaction'
-
-type ConsoleMethod = 'log' | 'info' | 'warn' | 'error'
 
 type OtlpAnyValue =
   | { stringValue: string }
@@ -14,19 +11,12 @@ type OtlpKeyValue = {
   value: OtlpAnyValue
 }
 
-type OtlpLogRecord = {
+export type OtlpLogRecord = {
   timeUnixNano: string
   severityNumber: number
   severityText: string
   body: { stringValue: string }
   attributes?: OtlpKeyValue[]
-}
-
-const LEVEL_MAP: Record<ConsoleMethod, { severityNumber: number; severityText: string }> = {
-  log: { severityNumber: 9, severityText: 'INFO' },
-  info: { severityNumber: 9, severityText: 'INFO' },
-  warn: { severityNumber: 13, severityText: 'WARN' },
-  error: { severityNumber: 17, severityText: 'ERROR' },
 }
 
 const FLUSH_INTERVAL_MS = 1_000
@@ -38,16 +28,8 @@ let flushTimer: ReturnType<typeof setTimeout> | null = null
 let logsEndpoint = ''
 let initialized = false
 let telemetryEnabled = false
-let getTraceId: (() => string | undefined) | null = null
 let frontendDeviceId: string | null = null
 let frontendDeviceIdPromise: Promise<string | null> | null = null
-
-const originalConsole = {
-  log: console.log.bind(console),
-  info: console.info.bind(console),
-  warn: console.warn.bind(console),
-  error: console.error.bind(console),
-}
 
 function normalizeOtlpLogsEndpoint(raw: string): string {
   const trimmed = raw.trim().replace(/\/+$/, '')
@@ -67,7 +49,7 @@ function resolveFrontendOtlpEndpoint(): string {
   }
 
   if (import.meta.env.VITE_SEQ_URL) {
-    originalConsole.warn(
+    console.warn(
       '[OTLP] VITE_SEQ_URL is deprecated and ignored. Use VITE_OTEL_EXPORTER_OTLP_ENDPOINT.'
     )
   }
@@ -101,46 +83,6 @@ function buildResourceAttributes(): OtlpKeyValue[] {
   }
 
   return attrs
-}
-
-function toNanoTimestamp(valueMs: number): string {
-  return `${BigInt(valueMs) * 1_000_000n}`
-}
-
-function stringifyArg(value: unknown): string {
-  if (value instanceof Error) {
-    return value.stack || `${value.name}: ${value.message}`
-  }
-  if (typeof value === 'string') {
-    return value
-  }
-  if (typeof value === 'number' || typeof value === 'boolean' || value == null) {
-    return String(value)
-  }
-  try {
-    return JSON.stringify(redactSensitiveArgs(value))
-  } catch {
-    return String(value)
-  }
-}
-
-function buildLogRecord(method: ConsoleMethod, args: unknown[]): OtlpLogRecord {
-  const now = Date.now()
-  const message = args.map(arg => stringifyArg(redactSensitiveArgs(arg))).join(' ')
-  const attributes: OtlpKeyValue[] = []
-  const traceId = getTraceId?.()
-
-  if (traceId) {
-    attributes.push({ key: 'trace_id', value: { stringValue: traceId } })
-  }
-
-  return {
-    timeUnixNano: toNanoTimestamp(now),
-    severityNumber: LEVEL_MAP[method].severityNumber,
-    severityText: LEVEL_MAP[method].severityText,
-    body: { stringValue: message },
-    attributes: attributes.length > 0 ? attributes : undefined,
-  }
 }
 
 function buildPayload(logRecords: OtlpLogRecord[]) {
@@ -184,7 +126,7 @@ function resolveFrontendDeviceId(): Promise<string | null> {
       return frontendDeviceId
     })
     .catch(error => {
-      originalConsole.warn('[OTLP] failed to resolve device_id:', error)
+      console.warn('[OTLP] failed to resolve device_id:', error)
       return null
     })
     .finally(() => {
@@ -214,7 +156,7 @@ async function flush(): Promise<void> {
       keepalive: true,
     })
   } catch (error) {
-    originalConsole.warn('[OTLP] flush failed:', error)
+    console.warn('[OTLP] flush failed:', error)
   }
 }
 
@@ -228,18 +170,17 @@ function scheduleFlush() {
   }, FLUSH_INTERVAL_MS)
 }
 
-function patchConsoleMethod(method: ConsoleMethod) {
-  const original = originalConsole[method]
-  console[method] = (...args: unknown[]) => {
-    original(...args)
-
-    if (!telemetryEnabled || !logsEndpoint) {
-      return
-    }
-
-    buffer.push(buildLogRecord(method, args))
-    scheduleFlush()
+/**
+ * Enqueue a structured OTLP log record for batched export.
+ * Called by the pino transmit handler in src/lib/logger.ts.
+ */
+export function queueLogRecord(record: OtlpLogRecord): void {
+  if (!telemetryEnabled || !logsEndpoint) {
+    return
   }
+
+  buffer.push(record)
+  scheduleFlush()
 }
 
 export function initFrontendOtlp(): void {
@@ -254,14 +195,6 @@ export function initFrontendOtlp(): void {
     return
   }
 
-  patchConsoleMethod('log')
-  patchConsoleMethod('info')
-  patchConsoleMethod('warn')
-  patchConsoleMethod('error')
-
-  import('@/observability/trace').then(module => {
-    getTraceId = () => module.traceManager.getCurrentTrace()?.traceId
-  })
   void resolveFrontendDeviceId()
 
   if (typeof window !== 'undefined') {

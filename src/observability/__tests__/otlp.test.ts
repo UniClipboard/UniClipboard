@@ -5,20 +5,6 @@ vi.mock('@/lib/tauri-command', () => ({
   invokeWithTrace: vi.fn(),
 }))
 
-const originalConsole = {
-  log: console.log,
-  info: console.info,
-  warn: console.warn,
-  error: console.error,
-}
-
-function restoreConsole() {
-  console.log = originalConsole.log
-  console.info = originalConsole.info
-  console.warn = originalConsole.warn
-  console.error = originalConsole.error
-}
-
 async function loadModule() {
   vi.resetModules()
   return import('../otlp')
@@ -27,29 +13,32 @@ async function loadModule() {
 describe('frontend OTLP logging', () => {
   beforeEach(() => {
     vi.useFakeTimers()
-    restoreConsole()
     vi.unstubAllEnvs()
     Reflect.deleteProperty(window, '__TAURI__')
   })
 
   afterEach(() => {
-    restoreConsole()
     vi.useRealTimers()
     vi.restoreAllMocks()
     vi.unstubAllEnvs()
     Reflect.deleteProperty(window, '__TAURI__')
   })
 
-  it('uploads console errors to the OTLP logs endpoint with redaction', async () => {
+  it('flushes queued records to the OTLP logs endpoint', async () => {
     vi.stubEnv('VITE_OTEL_EXPORTER_OTLP_ENDPOINT', 'https://seq.example.com/ingest/otlp')
     const fetchMock = vi.fn().mockResolvedValue({ ok: true })
     vi.stubGlobal('fetch', fetchMock)
 
-    const { initFrontendOtlp, setFrontendTelemetryEnabled } = await loadModule()
+    const { initFrontendOtlp, setFrontendTelemetryEnabled, queueLogRecord } = await loadModule()
     initFrontendOtlp()
     setFrontendTelemetryEnabled(true)
 
-    console.error('boom', { password: 'secret', safe: 'value' })
+    queueLogRecord({
+      timeUnixNano: '1700000000000000000',
+      severityNumber: 17,
+      severityText: 'ERROR',
+      body: { stringValue: 'boom [REDACTED]' },
+    })
     await vi.advanceTimersByTimeAsync(1_000)
 
     expect(fetchMock).toHaveBeenCalledTimes(1)
@@ -62,16 +51,21 @@ describe('frontend OTLP logging', () => {
     expect(record.body.stringValue).toContain('[REDACTED]')
   })
 
-  it('drops buffered logs immediately when telemetry is disabled', async () => {
+  it('drops queued records immediately when telemetry is disabled', async () => {
     vi.stubEnv('VITE_OTEL_EXPORTER_OTLP_ENDPOINT', 'https://seq.example.com/ingest/otlp')
     const fetchMock = vi.fn().mockResolvedValue({ ok: true })
     vi.stubGlobal('fetch', fetchMock)
 
-    const { initFrontendOtlp, setFrontendTelemetryEnabled } = await loadModule()
+    const { initFrontendOtlp, setFrontendTelemetryEnabled, queueLogRecord } = await loadModule()
     initFrontendOtlp()
     setFrontendTelemetryEnabled(true)
 
-    console.warn('queued-before-disable')
+    queueLogRecord({
+      timeUnixNano: '1700000000000000000',
+      severityNumber: 13,
+      severityText: 'WARN',
+      body: { stringValue: 'queued-before-disable' },
+    })
     setFrontendTelemetryEnabled(false)
     await vi.advanceTimersByTimeAsync(1_000)
 
@@ -83,11 +77,16 @@ describe('frontend OTLP logging', () => {
     const fetchMock = vi.fn().mockResolvedValue({ ok: true })
     vi.stubGlobal('fetch', fetchMock)
 
-    const { initFrontendOtlp, setFrontendTelemetryEnabled } = await loadModule()
+    const { initFrontendOtlp, setFrontendTelemetryEnabled, queueLogRecord } = await loadModule()
     initFrontendOtlp()
     setFrontendTelemetryEnabled(true)
 
-    console.info('frontend-info')
+    queueLogRecord({
+      timeUnixNano: '1700000000000000000',
+      severityNumber: 9,
+      severityText: 'INFO',
+      body: { stringValue: 'frontend-info' },
+    })
     await vi.advanceTimersByTimeAsync(1_000)
 
     expect(fetchMock.mock.calls[0]?.[0]).toBe('https://seq.example.com/ingest/otlp/v1/logs')
@@ -100,11 +99,16 @@ describe('frontend OTLP logging', () => {
     Reflect.set(window, '__TAURI__', {})
     vi.mocked(invokeWithTrace).mockResolvedValueOnce('device-telemetry-123')
 
-    const { initFrontendOtlp, setFrontendTelemetryEnabled } = await loadModule()
+    const { initFrontendOtlp, setFrontendTelemetryEnabled, queueLogRecord } = await loadModule()
     initFrontendOtlp()
     setFrontendTelemetryEnabled(true)
 
-    console.info('frontend-info')
+    queueLogRecord({
+      timeUnixNano: '1700000000000000000',
+      severityNumber: 9,
+      severityText: 'INFO',
+      body: { stringValue: 'frontend-info' },
+    })
     await vi.advanceTimersByTimeAsync(1_000)
 
     expect(invokeWithTrace).toHaveBeenCalledWith('get_device_id')
@@ -118,5 +122,25 @@ describe('frontend OTLP logging', () => {
         { key: 'service.instance.id', value: { stringValue: 'device-telemetry-123' } },
       ])
     )
+  })
+
+  it('silently drops records when no endpoint is configured', async () => {
+    vi.unstubAllEnvs()
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const { initFrontendOtlp, setFrontendTelemetryEnabled, queueLogRecord } = await loadModule()
+    initFrontendOtlp()
+    setFrontendTelemetryEnabled(true)
+
+    queueLogRecord({
+      timeUnixNano: '1700000000000000000',
+      severityNumber: 9,
+      severityText: 'INFO',
+      body: { stringValue: 'no-endpoint' },
+    })
+    await vi.advanceTimersByTimeAsync(1_000)
+
+    expect(fetchMock).not.toHaveBeenCalled()
   })
 })

@@ -69,6 +69,11 @@ const BUSINESS_COMMAND_ENQUEUE_TIMEOUT: Duration = Duration::from_secs(5);
 const BUSINESS_SEND_COMMAND_RESULT_TIMEOUT: Duration = Duration::from_secs(150);
 const BUSINESS_ENSURE_COMMAND_RESULT_TIMEOUT: Duration = Duration::from_secs(30);
 const MAX_IN_FLIGHT_BUSINESS_COMMANDS: usize = 16;
+const QUIC_MAX_IDLE_TIMEOUT_MS: u32 = 30_000;
+const QUIC_KEEP_ALIVE_INTERVAL: Duration = Duration::from_secs(5);
+const QUIC_MAX_CONCURRENT_STREAM_LIMIT: u32 = 1024;
+const QUIC_MAX_STREAM_DATA_BYTES: u32 = 32 * 1024 * 1024;
+const QUIC_MAX_CONNECTION_DATA_BYTES: u32 = 128 * 1024 * 1024;
 const START_STATE_IDLE: u8 = 0;
 const START_STATE_STARTING: u8 = 1;
 const START_STATE_STARTED: u8 = 2;
@@ -266,7 +271,7 @@ impl Libp2pNetworkAdapter {
                 yamux::Config::default,
             )
             .map_err(|e| anyhow!("failed to configure tcp transport: {e}"))?
-            .with_quic()
+            .with_quic_config(build_quic_config)
             .with_behaviour(move |_| behaviour)
             .map_err(|e| anyhow!("failed to attach libp2p behaviour: {e}"))?
             .build();
@@ -416,6 +421,15 @@ impl Libp2pNetworkAdapter {
             }
         }
     }
+}
+
+fn build_quic_config(mut config: libp2p::quic::Config) -> libp2p::quic::Config {
+    config.max_idle_timeout = QUIC_MAX_IDLE_TIMEOUT_MS;
+    config.keep_alive_interval = QUIC_KEEP_ALIVE_INTERVAL;
+    config.max_concurrent_stream_limit = QUIC_MAX_CONCURRENT_STREAM_LIMIT;
+    config.max_stream_data = QUIC_MAX_STREAM_DATA_BYTES;
+    config.max_connection_data = QUIC_MAX_CONNECTION_DATA_BYTES;
+    config
 }
 
 #[cfg(test)]

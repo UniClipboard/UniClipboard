@@ -127,7 +127,10 @@ function resolveFrontendDeviceId(): Promise<string | null> {
       return frontendDeviceId
     })
     .catch(error => {
-      const safeError = error instanceof Error ? `${error.name}: ${error.message}` : String(redactSensitiveArgs(error))
+      const safeError =
+        error instanceof Error
+          ? `${error.name}: ${error.message}`
+          : String(redactSensitiveArgs(error))
       console.warn('[OTLP] failed to resolve device_id:', safeError)
       return null
     })
@@ -158,7 +161,10 @@ async function flush(): Promise<void> {
       keepalive: true,
     })
   } catch (error) {
-    const safeError = error instanceof Error ? `${error.name}: ${error.message}` : String(redactSensitiveArgs(error))
+    const safeError =
+      error instanceof Error
+        ? `${error.name}: ${error.message}`
+        : String(redactSensitiveArgs(error))
     console.warn('[OTLP] flush failed:', safeError)
   }
 }

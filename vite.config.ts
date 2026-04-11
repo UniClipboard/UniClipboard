@@ -24,6 +24,8 @@ export default defineConfig(async () => ({
   resolve: {
     alias: {
       '@': resolve('./src'),
+      // Use the browser-specific pino build in the WebView bundle
+      pino: 'pino/browser',
     },
   },
 

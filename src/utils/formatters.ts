@@ -16,9 +16,8 @@ export const formatFileSize = (bytes?: number): string => {
 }
 
 export const formatDuration = (seconds?: number | null): string => {
-  if (seconds === null || seconds === undefined || !Number.isFinite(seconds) || seconds < 0) {
-    return i18n.t('common.unknownSize')
-  }
+  if (seconds === null || seconds === undefined || !Number.isFinite(seconds) || seconds < 0)
+    return '--'
 
   const rounded = Math.max(0, Math.ceil(seconds))
   const hours = Math.floor(rounded / 3600)

@@ -11,7 +11,11 @@ import {
   ContextMenuTrigger,
 } from '@/components/ui/context-menu'
 import { useAppSelector } from '@/store/hooks'
-import { selectEntryTransferStatus } from '@/store/slices/fileTransferSlice'
+import {
+  resolveEntryTransferStatus,
+  selectEntryTransferStatus,
+  selectTransferByEntryId,
+} from '@/store/slices/fileTransferSlice'
 
 interface FileContextMenuProps {
   children: React.ReactNode
@@ -40,16 +44,18 @@ const FileContextMenu: React.FC<FileContextMenuProps> = ({
 }) => {
   const { t } = useTranslation()
   const entryStatus = useAppSelector(state => selectEntryTransferStatus(state, itemId))
+  const transfer = useAppSelector(state => selectTransferByEntryId(state, itemId))
 
   const isFile = itemType === 'file'
-  const durableStatus = entryStatus?.status
+  const effectiveStatus = resolveEntryTransferStatus(entryStatus, transfer)
 
   // Copy is disabled for non-completed file entries (pending, transferring, failed)
-  const isCopyDisabledByTransfer = isFile && durableStatus != null && durableStatus !== 'completed'
+  const isCopyDisabledByTransfer =
+    isFile && effectiveStatus != null && effectiveStatus !== 'completed'
   const copyDisabledReason = isCopyDisabledByTransfer
-    ? durableStatus === 'pending'
+    ? effectiveStatus === 'pending'
       ? t('clipboard.transfer.copyDisabled.pending')
-      : durableStatus === 'transferring'
+      : effectiveStatus === 'transferring'
         ? t('clipboard.transfer.copyDisabled.transferring')
         : t('clipboard.transfer.copyDisabled.failed')
     : null
@@ -97,9 +103,9 @@ const FileContextMenu: React.FC<FileContextMenuProps> = ({
         {/* Open File Location (file type, downloaded, completed transfer) */}
         {isFile &&
           isDownloaded &&
-          durableStatus !== 'pending' &&
-          durableStatus !== 'transferring' &&
-          durableStatus !== 'failed' && (
+          effectiveStatus !== 'pending' &&
+          effectiveStatus !== 'transferring' &&
+          effectiveStatus !== 'failed' && (
             <>
               <ContextMenuItem onClick={() => onOpenFileLocation(itemId)}>
                 <FolderOpen className="mr-2 h-4 w-4" />

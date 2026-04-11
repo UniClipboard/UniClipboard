@@ -9790,6 +9790,7 @@ dependencies = [
  "blake3",
  "chrono",
  "clipboard-rs",
+ "diesel",
  "futures-util",
  "jsonwebtoken",
  "percent-encoding",

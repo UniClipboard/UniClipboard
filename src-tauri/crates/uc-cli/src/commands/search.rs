@@ -1,10 +1,15 @@
-//! Search command -- exposes `search query` and `search status` subcommands
-//! that forward the full daemon filter surface through `SearchQueryRequest`.
+//! Search command -- exposes `search query`, `search status`, and `search rebuild`
+//! subcommands that forward the full daemon filter surface through `SearchQueryRequest`.
+
+use std::future::Future;
 
 use clap::Subcommand;
+use indicatif::ProgressBar;
+use tokio::time::{sleep, Duration};
 
 use crate::exit_codes;
-use uc_daemon_client::{DaemonClientContext, SearchQueryRequest};
+use uc_daemon::api::dto::search::{SearchRebuildAcceptedResponse, SearchStatusResponse};
+use uc_daemon_client::{DaemonClientContext, DaemonSearchRequestError, SearchQueryRequest};
 
 /// Subcommands for the grouped `search` CLI command.
 #[derive(Subcommand, Debug)]
@@ -43,6 +48,12 @@ pub enum SearchCommands {
     },
     /// Show search index availability status
     Status,
+    /// Trigger a search index rebuild (stays attached by default)
+    Rebuild {
+        /// Return immediately after the rebuild is accepted instead of following progress
+        #[arg(long)]
+        no_wait: bool,
+    },
 }
 
 /// Run the grouped search command.
@@ -137,7 +148,170 @@ pub async fn run(subcommand: SearchCommands, json: bool, verbose: bool) -> i32 {
 
             exit_codes::EXIT_SUCCESS
         }
+
+        SearchCommands::Rebuild { no_wait } => run_rebuild(json, no_wait, ctx).await,
     }
+}
+
+/// Run the `search rebuild` subcommand using the daemon client from context.
+async fn run_rebuild(json: bool, no_wait: bool, ctx: DaemonClientContext) -> i32 {
+    let search = ctx.search_client();
+    let request_rebuild = move || {
+        let s = search.clone();
+        async move { s.rebuild().await }
+    };
+    let search = ctx.search_client();
+    let fetch_status = move || {
+        let s = search.clone();
+        async move { s.status().await }
+    };
+    run_rebuild_with(request_rebuild, fetch_status, json, no_wait).await
+}
+
+/// Run the `search rebuild` subcommand with injected rebuild and status closures.
+///
+/// This testable variant accepts async closures for both the rebuild request and status
+/// polling, allowing unit tests to inject mock sequences without real network calls.
+pub async fn run_rebuild_with<RFn, RFut, SFn, SFut>(
+    request_rebuild: RFn,
+    fetch_status: SFn,
+    json: bool,
+    no_wait: bool,
+) -> i32
+where
+    RFn: FnOnce() -> RFut,
+    RFut: Future<Output = anyhow::Result<SearchRebuildAcceptedResponse>>,
+    SFn: Fn() -> SFut + Clone,
+    SFut: Future<Output = anyhow::Result<SearchStatusResponse>>,
+{
+    match request_rebuild().await {
+        Ok(accepted) => {
+            if no_wait {
+                if json {
+                    if let Ok(s) = serde_json::to_string(&accepted) {
+                        println!("{s}");
+                    }
+                } else {
+                    println!("Search rebuild accepted.");
+                }
+                return exit_codes::EXIT_SUCCESS;
+            }
+            // Accepted — enter polling loop.
+            wait_for_search_ready(fetch_status, json).await
+        }
+        Err(error) => {
+            // Check if this is a structured daemon error we can inspect.
+            if let Some(search_err) = error.downcast_ref::<DaemonSearchRequestError>() {
+                let code = search_err.code.as_deref().unwrap_or("");
+                if code == "rebuild_already_running" {
+                    if !json {
+                        eprintln!("Search rebuild already running; following current status.");
+                    }
+                    return wait_for_search_ready(fetch_status, json).await;
+                }
+                if code == "session_locked" {
+                    if !json {
+                        eprintln!("{}", render_rebuild_locked_message());
+                    } else {
+                        if let Ok(s) = serde_json::to_string(&serde_json::json!({
+                            "code": "session_locked",
+                            "message": render_rebuild_locked_message()
+                        })) {
+                            eprintln!("{s}");
+                        }
+                    }
+                    return exit_codes::EXIT_ERROR;
+                }
+            }
+            eprintln!("Error: rebuild request failed: {error}");
+            exit_codes::EXIT_ERROR
+        }
+    }
+}
+
+/// Poll `fetch_status` every 500ms until the daemon reports `ready` or `unavailable`.
+///
+/// Human mode uses a spinner and updates only when the `(state, reason)` pair changes.
+/// JSON mode emits one compact JSON object per line for each status snapshot change.
+pub async fn wait_for_search_ready<F, Fut>(fetch_status: F, json: bool) -> i32
+where
+    F: Fn() -> Fut + Clone,
+    Fut: Future<Output = anyhow::Result<SearchStatusResponse>>,
+{
+    let spinner = if json {
+        None
+    } else {
+        let pb = ProgressBar::new_spinner();
+        pb.set_message("Search rebuild: starting...");
+        Some(pb)
+    };
+
+    let mut last_state_reason: Option<(String, Option<String>)> = None;
+
+    loop {
+        match fetch_status().await {
+            Ok(status) => {
+                let state = status.data.state.clone();
+                let reason = status.data.reason.clone();
+                let pair = (state.clone(), reason.clone());
+
+                if last_state_reason.as_ref() != Some(&pair) {
+                    last_state_reason = Some(pair);
+
+                    if json {
+                        if let Ok(s) = serde_json::to_string(&status) {
+                            println!("{s}");
+                        }
+                    } else if let Some(ref pb) = spinner {
+                        let reason_str = reason.as_deref().unwrap_or("none");
+                        pb.set_message(format!("Search rebuild: {state} ({reason_str})"));
+                        pb.tick();
+                    }
+                }
+
+                if state == "ready" || state == "unavailable" {
+                    // Emit the final snapshot in JSON mode.
+                    if json {
+                        if let Ok(s) = serde_json::to_string(&status) {
+                            println!("{s}");
+                        }
+                    }
+
+                    if let Some(pb) = spinner {
+                        if state == "ready" {
+                            pb.finish_with_message("Search rebuild complete.");
+                        } else {
+                            let reason_str = status.data.reason.as_deref().unwrap_or("none");
+                            pb.finish_with_message(format!(
+                                "Search rebuild failed or is still blocked: {reason_str}"
+                            ));
+                        }
+                    }
+
+                    return if state == "ready" {
+                        exit_codes::EXIT_SUCCESS
+                    } else {
+                        exit_codes::EXIT_ERROR
+                    };
+                }
+            }
+            Err(error) => {
+                if let Some(pb) = spinner {
+                    pb.finish_with_message(format!("Error polling search status: {error}"));
+                } else {
+                    eprintln!("Error polling search status: {error}");
+                }
+                return exit_codes::EXIT_ERROR;
+            }
+        }
+
+        sleep(Duration::from_millis(500)).await;
+    }
+}
+
+/// Returns the actionable message to display when the rebuild is blocked by a locked session.
+fn render_rebuild_locked_message() -> &'static str {
+    "Search is unavailable while the encryption session is locked. Unlock first, or run `uniclipboard-cli space-status` to inspect encryption state."
 }
 
 /// Format a millisecond timestamp as a human-readable UTC string.

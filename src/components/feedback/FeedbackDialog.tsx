@@ -12,8 +12,11 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
+import { createLogger } from '@/lib/logger'
 import { cn } from '@/lib/utils'
 import { Sentry } from '@/observability/sentry'
+
+const log = createLogger('feedback-dialog')
 
 const FEEDBACK_EMAIL_STORAGE_KEY = 'uniclipboard.feedback.email'
 
@@ -69,7 +72,7 @@ export function FeedbackDialog({ open, onOpenChange }: FeedbackDialogProps) {
       setContent('')
       setEmail('')
     } catch (error) {
-      console.error('Failed to send feedback:', error)
+      log.error({ err: error }, 'Failed to send feedback')
       toast.error(t('feedback.modal.error'))
     } finally {
       setIsSubmitting(false)

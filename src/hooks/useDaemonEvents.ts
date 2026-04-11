@@ -12,6 +12,9 @@ import { useEffect, useRef } from 'react'
 import type { ClipboardEntryDto } from '@/api/daemon/clipboard'
 import { daemonWs } from '@/lib/daemon-ws'
 import type { DaemonWsEvent } from '@/lib/daemon-ws'
+import { createLogger } from '@/lib/logger'
+
+const log = createLogger('use-daemon-events')
 
 // ── Routing diagnostics ─────────────────────────────────────────
 
@@ -42,7 +45,7 @@ function logPairingRouting(
   if (state !== undefined) parts.push(`state=${state}`)
   if (reason) parts.push(`reason=${reason}`)
 
-  console.debug(parts.join(' '))
+  log.debug(parts.join(' '))
 }
 
 // ── Payload types for daemon WS events ─────────────────────────

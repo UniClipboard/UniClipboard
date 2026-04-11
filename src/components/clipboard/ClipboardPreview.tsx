@@ -29,12 +29,15 @@ import {
 } from '@/api/clipboardItems'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { clipboardPreviewCache, ClipboardPreviewData } from '@/lib/clipboard-preview-cache'
+import { createLogger } from '@/lib/logger'
 import { useAppSelector } from '@/store/hooks'
 import {
   selectEntryTransferStatus,
   selectTransferByEntryId,
 } from '@/store/slices/fileTransferSlice'
 import { formatFileSize } from '@/utils'
+
+const log = createLogger('clipboard-preview')
 
 /** Threshold above which we switch to virtualized rendering for performance. */
 const LARGE_TEXT_THRESHOLD = 50_000
@@ -93,7 +96,7 @@ const ClipboardPreview: React.FC<ClipboardPreviewProps> = ({ item, actions }) =>
         const nextPreview = await clipboardPreviewCache.get(item.id)
         if (!cancelled) setPreview(nextPreview)
       } catch (e) {
-        if (!cancelled) console.error('Failed to load clipboard preview:', e)
+        if (!cancelled) log.error({ err: e }, 'Failed to load clipboard preview')
       } finally {
         if (!cancelled) setLoading(false)
       }
@@ -224,7 +227,7 @@ const ClipboardPreview: React.FC<ClipboardPreviewProps> = ({ item, actions }) =>
                 key={i}
                 type="button"
                 className="group flex items-center gap-3 w-full p-4 rounded-xl bg-muted/10 border border-border/20 hover:bg-muted/20 hover:border-primary/30 transition-all text-left"
-                onClick={() => openUrl(url).catch(console.error)}
+                onClick={() => openUrl(url).catch(err => log.error({ err }, 'Failed to open URL'))}
               >
                 <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center text-primary shrink-0 group-hover:scale-110 transition-transform">
                   <ExternalLink size={18} />

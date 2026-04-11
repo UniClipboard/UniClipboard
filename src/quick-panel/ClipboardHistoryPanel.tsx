@@ -19,7 +19,10 @@ import { useClipboardCollection } from '@/hooks/useClipboardCollection'
 import { useThemeSync } from '@/hooks/useThemeSync'
 import { formatRelativeTime, getItemPreview, resolveItemType } from '@/lib/clipboard-utils'
 import type { ItemType } from '@/lib/clipboard-utils'
+import { createLogger } from '@/lib/logger'
 import { readStoredUiScale, subscribeUiScaleChanges } from '@/lib/ui-scale'
+
+const log = createLogger('clipboard-history-panel')
 
 const PREVIEW_OPEN_DELAY_MS = 500
 const PREVIEW_SWITCH_DELAY_MS = 120
@@ -578,7 +581,7 @@ const ClipboardHistoryPanel: React.FC = () => {
       try {
         await restoreClipboardEntry(item.id)
       } catch (err) {
-        console.error('Failed to restore clipboard entry:', err)
+        log.error({ err }, 'Failed to restore clipboard entry')
         return
       }
 
@@ -627,7 +630,7 @@ const ClipboardHistoryPanel: React.FC = () => {
         setPreviewTargetId(nextItem?.id ?? null)
         void reload()
       } catch (err) {
-        console.error('Failed to delete clipboard entry:', err)
+        log.error({ err }, 'Failed to delete clipboard entry')
       }
     },
     [clearPreviewTimer, filteredItems, reload]

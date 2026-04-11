@@ -9,6 +9,9 @@ import {
 } from '@/api/updater'
 import { toast } from '@/components/ui/toast'
 import { useSetting } from '@/hooks/useSetting'
+import { createLogger } from '@/lib/logger'
+
+const log = createLogger('update-context')
 
 interface UpdateProviderProps {
   children: React.ReactNode
@@ -70,7 +73,7 @@ export const UpdateProvider: React.FC<UpdateProviderProps> = ({ children }) => {
     }
 
     checkForUpdates().catch(error => {
-      console.error('检查更新失败:', error)
+      log.error({ err: error }, '检查更新失败')
       toast.error(t('update.checkFailed'))
     })
   }, [setting?.general, checkForUpdates, t])

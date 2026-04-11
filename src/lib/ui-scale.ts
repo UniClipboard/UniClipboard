@@ -1,3 +1,7 @@
+import { createLogger } from '@/lib/logger'
+
+const log = createLogger('ui-scale')
+
 export const UI_SCALE_STORAGE_KEY = 'uniclipboard.uiScale'
 export const DEFAULT_UI_SCALE = 1
 export const MIN_UI_SCALE = 0.8
@@ -93,21 +97,21 @@ export const applyUiScale = (scale: number): number => {
   if (isTauriEnv()) {
     import('@tauri-apps/api/webview')
       .then(({ getCurrentWebview }) => {
-        console.log('[ui-scale] calling setZoom with', normalized)
+        log.debug({ normalized }, 'calling setZoom')
         getCurrentWebview()
           .setZoom(normalized)
           .then(() => {
-            console.log('[ui-scale] setZoom succeeded')
+            log.debug('setZoom succeeded')
           })
           .catch(err => {
-            console.error('[ui-scale] setZoom failed:', err)
+            log.error({ err }, 'setZoom failed')
           })
       })
       .catch(err => {
-        console.error('[ui-scale] import webview failed:', err)
+        log.error({ err }, 'import webview failed')
       })
   } else {
-    console.log('[ui-scale] not in Tauri env, skipping setZoom')
+    log.debug('not in Tauri env, skipping setZoom')
   }
 
   return normalized

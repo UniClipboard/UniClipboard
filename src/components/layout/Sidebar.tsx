@@ -20,8 +20,11 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { ReleaseNotes } from '@/components/update/ReleaseNotes'
 import { useSetting } from '@/hooks/useSetting'
 import { useUpdate } from '@/hooks/useUpdate'
+import { createLogger } from '@/lib/logger'
 import { cn } from '@/lib/utils'
 import { sentryEnabled } from '@/observability/sentry'
+
+const log = createLogger('sidebar')
 
 const NavButton: React.FC<{
   to: string
@@ -121,7 +124,7 @@ const Sidebar: React.FC<SidebarProps> = ({ className }) => {
       await installUpdate()
       setUpdateDialogOpen(false)
     } catch (error) {
-      console.error('更新失败:', error)
+      log.error({ err: error }, '更新失败')
       toast.error(t('update.installFailed'))
     }
   }

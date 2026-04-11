@@ -26,11 +26,14 @@ import { useFileSyncNotifications } from '@/hooks/useFileSyncNotifications'
 import { usePlatform } from '@/hooks/usePlatform'
 import { useShortcut } from '@/hooks/useShortcut'
 import { useTransferProgress } from '@/hooks/useTransferProgress'
+import { createLogger } from '@/lib/logger'
 import { cn } from '@/lib/utils'
 import { captureUserIntent } from '@/observability/breadcrumbs'
 import { useAppDispatch, useAppSelector } from '@/store/hooks'
 import { removeClipboardItem, copyToClipboard, markEntryStale } from '@/store/slices/clipboardSlice'
 import { selectEntryTransferStatus } from '@/store/slices/fileTransferSlice'
+
+const log = createLogger('clipboard-content')
 
 export interface DisplayClipboardItem {
   id: string
@@ -333,7 +336,7 @@ const ClipboardContent: React.FC<ClipboardContentProps> = ({
         }
         return result.success
       } catch (err) {
-        console.error('Copy failed:', err)
+        log.error({ err }, 'Copy failed')
         toast.error(t('clipboard.errors.copyFailed'), {
           description: err instanceof Error ? err.message : t('clipboard.errors.unknown'),
         })
@@ -351,7 +354,7 @@ const ClipboardContent: React.FC<ClipboardContentProps> = ({
         await downloadFileEntry(itemId)
         // Transfer started; progress events will update via transfer progress hook (Plan 02)
       } catch (err) {
-        console.error('Sync to clipboard failed:', err)
+        log.error({ err }, 'Sync to clipboard failed')
         toast.error(t('clipboard.errors.syncFailed'), {
           description: err instanceof Error ? err.message : t('clipboard.errors.unknown'),
         })
@@ -371,7 +374,7 @@ const ClipboardContent: React.FC<ClipboardContentProps> = ({
       try {
         await openFileLocation(itemId)
       } catch (err) {
-        console.error('Open file location failed:', err)
+        log.error({ err }, 'Open file location failed')
         toast.error(t('clipboard.errors.openLocationFailed'), {
           description: err instanceof Error ? err.message : t('clipboard.errors.unknown'),
         })
@@ -417,7 +420,7 @@ const ClipboardContent: React.FC<ClipboardContentProps> = ({
         setActiveItemId(null)
       }
     } catch (e) {
-      console.error('Delete failed:', e)
+      log.error({ err: e }, 'Delete failed')
     }
   }
 

@@ -4,12 +4,14 @@ import { getSettings, updateSettings } from '@/api/daemon'
 import { DEFAULT_THEME_COLOR } from '@/constants/theme'
 import i18n, { normalizeLanguage, persistLanguage } from '@/i18n'
 import { connectDaemonWs } from '@/lib/daemon-ws-bootstrap'
+import { createLogger } from '@/lib/logger'
 import { emitSettingsChanged } from '@/lib/settings-events'
 import { invokeWithTrace } from '@/lib/tauri-command'
 import { applyThemePreset } from '@/lib/theme-engine'
 import { startThemeTransition } from '@/lib/theme-transition'
-import { setFrontendTelemetryEnabled } from '@/observability/otlp'
 import type { SettingContextType, Settings } from '@/types/setting'
+
+const log = createLogger('setting-context')
 
 // 设置提供者属性接口
 interface SettingProviderProps {
@@ -33,7 +35,7 @@ export const SettingProvider: React.FC<SettingProviderProps> = ({ children }) =>
       setSetting(settingObj)
       setError(null)
     } catch (err) {
-      console.error('加载设置失败:', err)
+      log.error({ err }, '加载设置失败')
       setError(`加载设置失败: ${err}`)
     } finally {
       setLoading(false)
@@ -50,10 +52,10 @@ export const SettingProvider: React.FC<SettingProviderProps> = ({ children }) =>
       try {
         await emitSettingsChanged(newSetting)
       } catch (err) {
-        console.error('Failed to broadcast settings change:', err)
+        log.error({ err }, 'Failed to broadcast settings change')
       }
     } catch (err) {
-      console.error('保存设置失败:', err)
+      log.error({ err }, '保存设置失败')
       setError(`保存设置失败: ${err}`)
       throw err // 重新抛出错误，让调用者可以处理
     } finally {
@@ -149,7 +151,7 @@ export const SettingProvider: React.FC<SettingProviderProps> = ({ children }) =>
     try {
       await saveSetting(updatedSetting)
     } catch (err) {
-      console.error('Failed to update keyboard shortcuts:', err)
+      log.error({ err }, 'Failed to update keyboard shortcuts')
       throw err
     }
   }
@@ -233,13 +235,9 @@ export const SettingProvider: React.FC<SettingProviderProps> = ({ children }) =>
     persistLanguage(next)
     // Sync tray menu labels with UI language
     invokeWithTrace('set_tray_language', { language: next }).catch(err => {
-      console.error('Failed to sync tray language:', err)
+      log.error({ err }, 'Failed to sync tray language')
     })
   }, [setting?.general?.language])
-
-  useEffect(() => {
-    setFrontendTelemetryEnabled(setting?.general?.telemetryEnabled ?? false)
-  }, [setting?.general?.telemetryEnabled])
 
   const value: SettingContextType = {
     setting,

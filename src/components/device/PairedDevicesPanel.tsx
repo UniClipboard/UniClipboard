@@ -10,6 +10,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { useSetting } from '@/hooks/useSetting'
 import { daemonWs } from '@/lib/daemon-ws'
+import { createLogger } from '@/lib/logger'
 import { useAppDispatch, useAppSelector } from '@/store/hooks'
 import {
   fetchPairedDevices,
@@ -17,6 +18,8 @@ import {
   updatePeerConnectionStatus,
   updatePeerDeviceName,
 } from '@/store/slices/devicesSlice'
+
+const log = createLogger('paired-devices-panel')
 
 const PairedDevicesPanel: React.FC = () => {
   const { t } = useTranslation()
@@ -79,7 +82,7 @@ const PairedDevicesPanel: React.FC = () => {
       setSheetOpen(false)
       setUnpairTargetId(null)
     } catch (error) {
-      console.error('Failed to unpair device:', error)
+      log.error({ err: error }, 'Failed to unpair device')
     }
   }
 

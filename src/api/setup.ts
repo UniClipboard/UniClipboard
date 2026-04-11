@@ -6,6 +6,27 @@
  * realtime WebSocket bridge.
  */
 
+import {
+  getSetupState as daemonGetSetupState,
+  startNewSpace as daemonStartNewSpace,
+  startJoinSpace as daemonStartJoinSpace,
+  selectJoinPeer as daemonSelectJoinPeer,
+  submitPassphrase as daemonSubmitPassphrase,
+  verifyPassphrase as daemonVerifyPassphrase,
+  confirmPeerTrust as daemonConfirmPeerTrust,
+  cancelSetup as daemonCancelSetup,
+  completeSpaceAccess as daemonCompleteSpaceAccess,
+} from '@/api/daemon/setup'
+import type {
+  SetupState,
+  SetupStateChangedEvent,
+  SpaceAccessCompletedEvent,
+} from '@/api/daemon/setup'
+import { onDaemonRealtimeEvent } from '@/api/realtime'
+import { createLogger } from '@/lib/logger'
+
+const log = createLogger('setup')
+
 // ── Setup realtime diagnostics ──────────────────────────────────────────────
 
 /**
@@ -35,26 +56,8 @@ function logSetupRouting(
   if (state !== undefined) parts.push(`state=${state}`)
   if (reason) parts.push(`reason=${reason}`)
 
-  console.debug(parts.join(' '))
+  log.debug(parts.join(' '))
 }
-
-import {
-  getSetupState as daemonGetSetupState,
-  startNewSpace as daemonStartNewSpace,
-  startJoinSpace as daemonStartJoinSpace,
-  selectJoinPeer as daemonSelectJoinPeer,
-  submitPassphrase as daemonSubmitPassphrase,
-  verifyPassphrase as daemonVerifyPassphrase,
-  confirmPeerTrust as daemonConfirmPeerTrust,
-  cancelSetup as daemonCancelSetup,
-  completeSpaceAccess as daemonCompleteSpaceAccess,
-} from '@/api/daemon/setup'
-import type {
-  SetupState,
-  SetupStateChangedEvent,
-  SpaceAccessCompletedEvent,
-} from '@/api/daemon/setup'
-import { onDaemonRealtimeEvent } from '@/api/realtime'
 
 // Types are defined in the daemon module to avoid circular imports.
 // Re-export them so consumers can import from either location.

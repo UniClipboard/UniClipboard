@@ -11,6 +11,9 @@ import {
   AlertDialogTitle,
 } from '@/components/ui'
 import { useSetting } from '@/hooks/useSetting'
+import { createLogger } from '@/lib/logger'
+
+const log = createLogger('telemetry-notice')
 
 const TELEMETRY_NOTICE_KEY = 'uc-telemetry-notice-seen'
 
@@ -40,7 +43,7 @@ export default function TelemetryNotice() {
       markSeen()
       setOpen(false)
     } catch (error) {
-      console.error('Failed to disable telemetry:', error)
+      log.error({ err: error }, 'Failed to disable telemetry')
       // Don't close — let the user retry or accept instead.
     }
   }

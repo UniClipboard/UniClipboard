@@ -4,11 +4,14 @@ import { SettingGroup } from '@/components/setting/SettingGroup'
 import { ShortcutRow } from '@/components/setting/ShortcutRow'
 import { Button } from '@/components/ui'
 import { useSetting } from '@/hooks/useSetting'
+import { createLogger } from '@/lib/logger'
 import {
   SHORTCUT_DEFINITIONS,
   type ShortcutDefinition,
   type ShortcutScope,
 } from '@/shortcuts/definitions'
+
+const log = createLogger('shortcuts-section')
 
 /** Display order for shortcut scopes */
 const SCOPE_ORDER: ShortcutScope[] = ['global', 'clipboard', 'settings', 'devices', 'modal']
@@ -74,7 +77,7 @@ const ShortcutsSection: React.FC = () => {
       try {
         await updateKeyboardShortcuts(newOverrides)
       } catch (error) {
-        console.error('Failed to update keyboard shortcuts:', error)
+        log.error({ err: error }, 'Failed to update keyboard shortcuts')
       }
     },
     [overrides, updateKeyboardShortcuts]
@@ -88,7 +91,7 @@ const ShortcutsSection: React.FC = () => {
       try {
         await updateKeyboardShortcuts(newOverrides)
       } catch (error) {
-        console.error('Failed to reset shortcut:', error)
+        log.error({ err: error }, 'Failed to reset shortcut')
       }
     },
     [overrides, updateKeyboardShortcuts]
@@ -99,7 +102,7 @@ const ShortcutsSection: React.FC = () => {
     try {
       await updateKeyboardShortcuts({})
     } catch (error) {
-      console.error('Failed to reset all shortcuts:', error)
+      log.error({ err: error }, 'Failed to reset all shortcuts')
     }
   }, [updateKeyboardShortcuts])
 

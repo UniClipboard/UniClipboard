@@ -3,6 +3,9 @@ import type { ClipboardItemResponse } from '@/api/clipboardItems'
 import { getClipboardEntries } from '@/api/daemon/clipboard'
 import { transformDaemonDtoToItemResponse } from '@/lib/clipboard-transform'
 import { daemonWs } from '@/lib/daemon-ws'
+import { createLogger } from '@/lib/logger'
+
+const log = createLogger('use-clipboard-event-stream')
 
 export interface UseClipboardEventStreamOptions {
   enabled?: boolean
@@ -43,48 +46,36 @@ export function useClipboardEventStream({
 
   useEffect(() => {
     if (!enabled) {
-      console.warn(
-        '[useClipboardEventStream] disabled (enabled=false, likely encryptionReady=false)'
-      )
+      log.warn('disabled (enabled=false, likely encryptionReady=false)')
       return
     }
-    console.info('[useClipboardEventStream] subscribing to clipboard topic')
+    log.info('subscribing to clipboard topic')
 
     const handler = (event: { topic: string; eventType: string; payload: unknown }) => {
-      console.info('[useClipboardEventStream] received event:', event.eventType, event.payload)
+      log.info({ eventType: event.eventType, payload: event.payload }, 'received event')
       // Route clipboard.new_content to onLocalItem / onRemoteInvalidate.
       if (event.eventType === 'clipboard.new_content') {
         const payload = event.payload as ClipboardNewContentPayload
-        console.info(
-          '[useClipboardEventStream] clipboard.new_content payload:',
-          JSON.stringify(payload)
-        )
+        log.info({ payload }, 'clipboard.new_content payload')
         if (payload.origin === 'local') {
           // Fetch single entry from daemon list endpoint (matching clipboardSlice pattern)
           void getClipboardEntries(50, 0)
             .then(response => {
-              console.info(
-                '[useClipboardEventStream] getClipboardEntries response status:',
-                response.status,
-                'entries count:',
-                response.entries?.length ?? 0
+              log.info(
+                { status: response.status, entriesCount: response.entries?.length ?? 0 },
+                'getClipboardEntries response'
               )
               if (response.status !== 'ready' || !response.entries) return null
               const entry = response.entries.find(e => e.id === payload.entryId)
-              console.info(
-                '[useClipboardEventStream] found entry for id',
-                payload.entryId,
-                ':',
-                !!entry
-              )
+              log.info({ entryId: payload.entryId, found: !!entry }, 'found entry for id')
               if (!entry) return null
               return transformDaemonDtoToItemResponse(entry)
             })
             .then(item => {
-              console.info('[useClipboardEventStream] onLocalItem called with item:', !!item)
+              log.info({ hasItem: !!item }, 'onLocalItem called with item')
               if (item) onLocalItemRef.current(item)
             })
-            .catch(err => console.error('Failed to fetch local clipboard entry:', err))
+            .catch(err => log.error({ err }, 'Failed to fetch local clipboard entry'))
           return
         }
 

@@ -4,6 +4,9 @@ import { useEncryptionSessionState } from './useEncryptionSessionState'
 import type { ClipboardItemResponse } from '@/api/clipboardItems'
 import { getClipboardEntries } from '@/api/daemon/clipboard'
 import { transformDaemonDtoToItemResponse } from '@/lib/clipboard-transform'
+import { createLogger } from '@/lib/logger'
+
+const log = createLogger('use-clipboard-collection')
 
 const PAGE_SIZE = 50
 
@@ -37,7 +40,7 @@ export function useClipboardCollection(): ClipboardCollectionResult {
       const transformedItems = result.entries?.map(transformDaemonDtoToItemResponse) ?? []
       setItems(transformedItems)
     } catch (err) {
-      console.error('Failed to load clipboard items:', err)
+      log.error({ err }, 'Failed to load clipboard items')
     } finally {
       setLoading(false)
     }

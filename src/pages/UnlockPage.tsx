@@ -15,6 +15,9 @@ import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import { usePlatform } from '@/hooks/usePlatform'
 import { useSetting } from '@/hooks/useSetting'
+import { createLogger } from '@/lib/logger'
+
+const log = createLogger('unlock-page')
 
 interface UnlockPageProps {
   onUnlockSucceeded?: () => void
@@ -40,11 +43,11 @@ export default function UnlockPage({ onUnlockSucceeded }: UnlockPageProps) {
       } else {
         // unlock_encryption_session returned false — encryption was not initialized
         // or the session was already ready. Do not animate out; reset state.
-        console.warn('Unlock returned false — encryption may not be initialized')
+        log.warn('Unlock returned false — encryption may not be initialized')
         setUnlocking(false)
       }
     } catch (error) {
-      console.error('Unlock failed:', error)
+      log.error({ err: error }, 'Unlock failed')
       setUnlocking(false)
     }
   }

@@ -1,6 +1,9 @@
 import { Channel } from '@tauri-apps/api/core'
+import { createLogger } from '@/lib/logger'
 import { invokeWithTrace } from '@/lib/tauri-command'
 import type { UpdateChannel } from '@/types/setting'
+
+const log = createLogger('updater')
 
 export interface UpdateMetadata {
   version: string
@@ -31,7 +34,7 @@ export async function checkForUpdate(
   try {
     return await invokeWithTrace('check_for_update', { channel: channel ?? null })
   } catch (error) {
-    console.error('检查更新失败:', error)
+    log.error({ err: error }, '检查更新失败')
     throw error
   }
 }
@@ -67,7 +70,7 @@ export async function installUpdate(
   try {
     await invokeWithTrace('install_update', { onEvent })
   } catch (error) {
-    console.error('安装更新失败:', error)
+    log.error({ err: error }, '安装更新失败')
     throw error
   }
 }

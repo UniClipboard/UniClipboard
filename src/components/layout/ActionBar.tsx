@@ -3,9 +3,12 @@ import React from 'react'
 import { syncClipboardItems } from '@/api/clipboardItems'
 import type { ClipboardStats } from '@/api/daemon/clipboard'
 import { Button } from '@/components/ui/button'
+import { createLogger } from '@/lib/logger'
 import { useAppDispatch } from '@/store/hooks'
 import { clearAllItems } from '@/store/slices/clipboardSlice'
 import { formatFileSize } from '@/utils'
+
+const log = createLogger('action-bar')
 
 interface ActionBarProps {
   stats: ClipboardStats
@@ -21,7 +24,7 @@ const ActionBar: React.FC<ActionBarProps> = ({ stats, onSync }) => {
       try {
         await dispatch(clearAllItems()).unwrap()
       } catch (err) {
-        console.error('清理剪贴板项失败:', err)
+        log.error({ err }, '清理剪贴板项失败')
       }
     }
   }
@@ -29,16 +32,16 @@ const ActionBar: React.FC<ActionBarProps> = ({ stats, onSync }) => {
   // 处理立即同步
   const handleSync = async () => {
     try {
-      console.log('开始同步剪贴板项...')
+      log.info('开始同步剪贴板项')
       await syncClipboardItems()
-      console.log('剪贴板项同步完成')
+      log.info('剪贴板项同步完成')
 
       // 调用父组件传递的同步成功回调
       if (onSync) {
         onSync()
       }
     } catch (err) {
-      console.error('同步剪贴板项失败:', err)
+      log.error({ err }, '同步剪贴板项失败')
       alert('同步失败，请稍后重试。')
     }
   }

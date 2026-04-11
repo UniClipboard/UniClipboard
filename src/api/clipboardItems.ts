@@ -5,7 +5,10 @@ import {
   isImageContentType,
   parseFileNamesFromUriList,
 } from '@/lib/clipboard-utils'
+import { createLogger } from '@/lib/logger'
 import { invokeWithTrace } from '@/lib/tauri-command'
+
+const log = createLogger('clipboard-items')
 
 // Backend projection type
 interface ClipboardEntryProjection {
@@ -208,7 +211,7 @@ export async function getClipboardStats(): Promise<ClipboardStats> {
   try {
     return await invokeWithTrace('get_clipboard_stats')
   } catch (error) {
-    console.error('获取剪贴板统计信息失败:', error)
+    log.error({ err: error }, '获取剪贴板统计信息失败')
     throw error
   }
 }
@@ -247,7 +250,7 @@ export async function getClipboardItems(
 
     return { status: 'ready', items }
   } catch (error) {
-    console.error('获取剪贴板历史记录失败:', error)
+    log.error({ err: error }, '获取剪贴板历史记录失败')
     throw error
   }
 }
@@ -268,7 +271,7 @@ export async function getClipboardEntry(entryId: string): Promise<ClipboardItemR
 
     return transformProjectionToResponse(response.entries[0])
   } catch (error) {
-    console.error('Failed to get clipboard entry:', error)
+    log.error({ err: error }, 'Failed to get clipboard entry')
     return null
   }
 }
@@ -286,7 +289,7 @@ export async function getClipboardItem(
   try {
     return await invokeWithTrace('get_clipboard_item', { id, fullContent })
   } catch (error) {
-    console.error('获取剪贴板条目失败:', error)
+    log.error({ err: error }, '获取剪贴板条目失败')
     throw error
   }
 }
@@ -301,7 +304,7 @@ export async function getClipboardEntryDetail(id: string): Promise<ClipboardEntr
   try {
     return await invokeWithTrace('get_clipboard_entry_detail', { entryId: id })
   } catch (error) {
-    console.error('Failed to get clipboard entry detail:', error)
+    log.error({ err: error }, 'Failed to get clipboard entry detail')
     throw error
   }
 }
@@ -316,7 +319,7 @@ export async function getClipboardEntryResource(id: string): Promise<ClipboardEn
   try {
     return await invokeWithTrace('get_clipboard_entry_resource', { entryId: id })
   } catch (error) {
-    console.error('Failed to get clipboard entry resource:', error)
+    log.error({ err: error }, 'Failed to get clipboard entry resource')
     throw error
   }
 }
@@ -347,7 +350,7 @@ export async function fetchClipboardResourceText(
     const buffer = await response.arrayBuffer()
     return new TextDecoder('utf-8').decode(buffer)
   } catch (error) {
-    console.error('Failed to fetch clipboard resource text:', error)
+    log.error({ err: error }, 'Failed to fetch clipboard resource text')
     throw error
   }
 }
@@ -388,7 +391,7 @@ export async function deleteClipboardItem(id: string): Promise<boolean> {
   try {
     return await invokeWithTrace('delete_clipboard_entry', { entryId: id })
   } catch (error) {
-    console.error('删除剪贴板条目失败:', error)
+    log.error({ err: error }, '删除剪贴板条目失败')
     throw error
   }
 }
@@ -401,7 +404,7 @@ export async function clearClipboardItems(): Promise<number> {
   try {
     return await invokeWithTrace('clear_clipboard_items')
   } catch (error) {
-    console.error('清空剪贴板历史记录失败:', error)
+    log.error({ err: error }, '清空剪贴板历史记录失败')
     throw error
   }
 }
@@ -414,7 +417,7 @@ export async function syncClipboardItems(): Promise<boolean> {
   try {
     return await invokeWithTrace('sync_clipboard_items')
   } catch (error) {
-    console.error('同步剪贴板内容失败:', error)
+    log.error({ err: error }, '同步剪贴板内容失败')
     throw error
   }
 }
@@ -428,7 +431,7 @@ export async function copyClipboardItem(id: string): Promise<boolean> {
   try {
     return await invokeWithTrace('restore_clipboard_entry', { entryId: id })
   } catch (error) {
-    console.error('复制剪贴板记录失败:', error)
+    log.error({ err: error }, '复制剪贴板记录失败')
     throw error
   }
 }
@@ -483,7 +486,7 @@ export async function favoriteClipboardItem(id: string): Promise<boolean> {
   try {
     return await invokeWithTrace('toggle_favorite_clipboard_item', { id, is_favorited: true })
   } catch (error) {
-    console.error('收藏剪贴板条目失败:', error)
+    log.error({ err: error }, '收藏剪贴板条目失败')
     throw error
   }
 }
@@ -497,7 +500,7 @@ export async function unfavoriteClipboardItem(id: string): Promise<boolean> {
   try {
     return await invokeWithTrace('toggle_favorite_clipboard_item', { id, is_favorited: false })
   } catch (error) {
-    console.error('取消收藏剪贴板条目失败:', error)
+    log.error({ err: error }, '取消收藏剪贴板条目失败')
     throw error
   }
 }
@@ -519,7 +522,7 @@ export async function downloadFileEntry(entryId: string): Promise<{ transfer_id:
   try {
     return await invokeWithTrace('download_file_entry', { entryId })
   } catch (error) {
-    console.error('Failed to download file entry:', error)
+    log.error({ err: error }, 'Failed to download file entry')
     throw error
   }
 }
@@ -531,7 +534,7 @@ export async function openFileLocation(entryId: string): Promise<void> {
   try {
     await invokeWithTrace('open_file_location', { entryId })
   } catch (error) {
-    console.error('Failed to open file location:', error)
+    log.error({ err: error }, 'Failed to open file location')
     throw error
   }
 }

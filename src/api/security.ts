@@ -15,6 +15,9 @@ import {
   unlockEncryption as daemonUnlockEncryption,
   verifyKeychainAccess as daemonVerifyKeychainAccess,
 } from './daemon/encryption'
+import { createLogger } from '@/lib/logger'
+
+const log = createLogger('security')
 
 // ── Types ─────────────────────────────────────────────────────
 
@@ -61,7 +64,7 @@ export async function unlockEncryptionSession(): Promise<boolean> {
     await daemonUnlockEncryption()
     return true
   } catch (error) {
-    console.error('Failed to unlock encryption session:', error)
+    log.error({ err: error }, 'Failed to unlock encryption session')
     throw error
   }
 }

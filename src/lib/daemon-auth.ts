@@ -14,6 +14,9 @@ import { daemonClient } from '@/api/daemon/client'
 import { DaemonApiError } from '@/api/daemon/errors'
 import type { DaemonConfig, SessionToken } from '@/api/daemon/types'
 import { waitForDaemonConnectionInfo } from '@/lib/daemon-connection-info'
+import { createLogger } from '@/lib/logger'
+
+const log = createLogger('daemon-auth')
 
 /** Default polling interval for waitForEncryptionReady (ms). */
 const ENCRYPTION_POLL_INTERVAL_MS = 500
@@ -119,7 +122,7 @@ export async function verifyAuthState(): Promise<AuthStateResult> {
     // If encryption state check fails (e.g. 401), daemon is reachable but
     // encryption info is unavailable. daemonReady stays true.
     if (err instanceof DaemonApiError) {
-      console.warn('[daemon-auth] encryption state check failed:', err.code, err.message)
+      log.warn({ code: err.code, message: err.message }, 'encryption state check failed')
     }
   }
 

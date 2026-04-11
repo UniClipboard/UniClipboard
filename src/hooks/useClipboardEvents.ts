@@ -4,6 +4,7 @@ import { useClipboardEventStream } from './useClipboardEventStream'
 import { useEncryptionSessionState } from './useEncryptionSessionState'
 import { Filter, OrderBy } from '@/api/clipboardItems'
 import { toast } from '@/components/ui/toast'
+import { createLogger } from '@/lib/logger'
 import { useAppDispatch } from '@/store/hooks'
 import {
   fetchClipboardItems,
@@ -11,6 +12,8 @@ import {
   prependItem,
   removeItem,
 } from '@/store/slices/clipboardSlice'
+
+const log = createLogger('use-clipboard-events')
 const PAGE_SIZE = 20
 
 interface UseClipboardEventsReturn {
@@ -48,7 +51,7 @@ export function useClipboardEvents(currentFilter: Filter): UseClipboardEventsRet
       }
 
       const filterToUse = specificFilter || currentFilterRef.current
-      console.log(t('dashboard.logs.loadingClipboard'), filterToUse)
+      log.debug({ filter: filterToUse }, t('dashboard.logs.loadingClipboard'))
 
       loadInFlightRef.current = true
       try {
@@ -73,7 +76,7 @@ export function useClipboardEvents(currentFilter: Filter): UseClipboardEventsRet
         hasMoreRef.current = nextHasMore
         setHasMore(nextHasMore)
       } catch (error) {
-        console.error('Failed to load clipboard data:', error)
+        log.error({ err: error }, 'Failed to load clipboard data')
         toast.error(t('dashboard.errors.loadFailed'), {
           description: error instanceof Error ? error.message : t('dashboard.errors.unknown'),
         })
@@ -86,12 +89,12 @@ export function useClipboardEvents(currentFilter: Filter): UseClipboardEventsRet
 
   // Filter change effect
   useEffect(() => {
-    console.log(t('dashboard.logs.filterChanged'), currentFilter)
+    log.debug({ filter: currentFilter }, t('dashboard.logs.filterChanged'))
     currentFilterRef.current = currentFilter
     if (!encryptionReady) {
       pendingInitialLoadRef.current = true
       loadInFlightRef.current = false // Deferred — no in-flight request, so reset flag.
-      console.log('[useClipboardEvents] Encryption not ready, deferring clipboard load')
+      log.debug('Encryption not ready, deferring clipboard load')
       return
     }
     pendingInitialLoadRef.current = false

@@ -1,5 +1,8 @@
 import { listen } from '@tauri-apps/api/event'
 import { useEffect } from 'react'
+import { createLogger } from '@/lib/logger'
+
+const log = createLogger('use-ui-navigate-listener')
 
 const ALLOWED_ROUTES = ['/settings']
 
@@ -14,7 +17,7 @@ export function useUINavigateListener(onNavigate: (route: string) => void) {
       if (ALLOWED_ROUTES.includes(route)) {
         onNavigate(route)
       } else {
-        console.warn(`Blocked navigation to non-whitelisted route: ${route}`)
+        log.warn({ route }, 'Blocked navigation to non-whitelisted route')
       }
     })
 

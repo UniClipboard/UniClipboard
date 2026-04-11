@@ -18,9 +18,12 @@ import {
 import { Skeleton } from '@/components/ui/skeleton'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { useSetting } from '@/hooks/useSetting'
+import { createLogger } from '@/lib/logger'
 import { useAppDispatch } from '@/store/hooks'
 import { resetItems } from '@/store/slices/clipboardSlice'
 import type { RetentionRule } from '@/types/setting'
+
+const log = createLogger('storage-section')
 
 // ── Constants ────────────────────────────────────────────────────────
 
@@ -287,7 +290,7 @@ const StorageSection: React.FC = () => {
       const result = await storageApi.getStorageStats()
       setStats(result)
     } catch (err) {
-      console.error('Failed to load storage stats:', err)
+      log.error({ err }, 'Failed to load storage stats')
       setStatsError(err instanceof Error ? err.message : String(err))
     } finally {
       setStatsLoading(false)
@@ -357,7 +360,7 @@ const StorageSection: React.FC = () => {
     try {
       await updateRetentionPolicy({ enabled: checked })
     } catch (err) {
-      console.error('Failed to update retention enabled:', err)
+      log.error({ err }, 'Failed to update retention enabled')
       setEnabled(prev)
     }
   }
@@ -373,7 +376,7 @@ const StorageSection: React.FC = () => {
     try {
       await updateRetentionPolicy({ rules: newRules })
     } catch (err) {
-      console.error('Failed to update retention days:', err)
+      log.error({ err }, 'Failed to update retention days')
       setRetentionDays(prev)
       optimisticRulesRef.current = prevRules
     }
@@ -390,7 +393,7 @@ const StorageSection: React.FC = () => {
     try {
       await updateRetentionPolicy({ rules: newRules })
     } catch (err) {
-      console.error('Failed to update max items:', err)
+      log.error({ err }, 'Failed to update max items')
       setMaxItems(prev)
       optimisticRulesRef.current = prevRules
     }
@@ -402,7 +405,7 @@ const StorageSection: React.FC = () => {
     try {
       await updateRetentionPolicy({ skipPinned: checked })
     } catch (err) {
-      console.error('Failed to update skip pinned:', err)
+      log.error({ err }, 'Failed to update skip pinned')
       setSkipPinned(prev)
     }
   }
@@ -413,7 +416,7 @@ const StorageSection: React.FC = () => {
       await storageApi.clearCache(true)
       await loadStats()
     } catch (err) {
-      console.error('Failed to clear cache:', err)
+      log.error({ err }, 'Failed to clear cache')
     } finally {
       setClearingCache(false)
     }
@@ -426,7 +429,7 @@ const StorageSection: React.FC = () => {
       dispatch(resetItems())
       await loadStats()
     } catch (err) {
-      console.error('Failed to clear history:', err)
+      log.error({ err }, 'Failed to clear history')
       throw err
     } finally {
       setClearingHistory(false)
@@ -437,7 +440,7 @@ const StorageSection: React.FC = () => {
     try {
       await storageApi.openDataDirectory()
     } catch (err) {
-      console.error('Failed to open data directory:', err)
+      log.error({ err }, 'Failed to open data directory')
     }
   }
 

@@ -29,8 +29,11 @@ import { ReleaseNotes } from '@/components/update/ReleaseNotes'
 import { useSetting } from '@/hooks/useSetting'
 import { useShortcutLayer } from '@/hooks/useShortcutLayer'
 import { useUpdate } from '@/hooks/useUpdate'
+import { createLogger } from '@/lib/logger'
 import { cn } from '@/lib/utils'
 import type { UpdateChannel } from '@/types/setting'
+
+const log = createLogger('about-section')
 
 function parseChannel(version: string): string {
   const match = version.match(/-(alpha|beta|rc)/)
@@ -72,7 +75,9 @@ const AboutSection: React.FC = () => {
   const channel = appVersion ? parseChannel(appVersion) : null
 
   useEffect(() => {
-    getVersion().then(setAppVersion).catch(console.error)
+    getVersion()
+      .then(setAppVersion)
+      .catch(err => log.error({ err }, 'Failed to get app version'))
   }, [])
 
   useEffect(() => {
@@ -92,7 +97,7 @@ const AboutSection: React.FC = () => {
       setAutoCheckUpdate(checked)
       await updateGeneralSetting({ autoCheckUpdate: checked })
     } catch (error) {
-      console.error('更改自动检查更新状态失败:', error)
+      log.error({ err: error }, '更改自动检查更新状态失败')
       setAutoCheckUpdate(previous)
     } finally {
       setSaving(false)
@@ -107,9 +112,9 @@ const AboutSection: React.FC = () => {
       setUpdateChannel(newChannel)
       await updateGeneralSetting({ updateChannel: newChannel })
       // Immediately check for updates on the new channel
-      checkForUpdates().catch(console.error)
+      checkForUpdates().catch(err => log.error({ err }, 'Failed to check for updates'))
     } catch (error) {
-      console.error('更改更新频道失败:', error)
+      log.error({ err: error }, '更改更新频道失败')
       setUpdateChannel(previous)
     } finally {
       setSaving(false)
@@ -125,7 +130,7 @@ const AboutSection: React.FC = () => {
         toast.success(t('update.noUpdate'))
       }
     } catch (error) {
-      console.error('检查更新失败:', error)
+      log.error({ err: error }, '检查更新失败')
       toast.error(t('update.checkFailed'))
     }
   }
@@ -136,7 +141,7 @@ const AboutSection: React.FC = () => {
       await installUpdate()
       setUpdateDialogOpen(false)
     } catch (error) {
-      console.error('更新失败:', error)
+      log.error({ err: error }, '更新失败')
       toast.error(t('update.installFailed'))
     }
   }

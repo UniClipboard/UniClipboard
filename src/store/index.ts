@@ -4,6 +4,14 @@ import clipboardReducer from './slices/clipboardSlice'
 import devicesReducer from './slices/devicesSlice'
 import fileTransferReducer from './slices/fileTransferSlice'
 import statsReducer from './slices/statsSlice'
+import { redactSensitiveArgs } from '@/observability/redaction'
+import { Sentry, sentryEnabled } from '@/observability/sentry'
+
+const sentryReduxEnhancer = sentryEnabled
+  ? Sentry.createReduxEnhancer({
+      stateTransformer: state => redactSensitiveArgs(state) as Record<string, unknown>,
+    })
+  : undefined
 
 export const store = configureStore({
   reducer: {
@@ -14,6 +22,10 @@ export const store = configureStore({
     fileTransfer: fileTransferReducer,
   },
   middleware: getDefaultMiddleware => getDefaultMiddleware().concat(appApi.middleware),
+  enhancers: getDefaultEnhancers => {
+    const enhancers = getDefaultEnhancers()
+    return sentryReduxEnhancer ? enhancers.concat(sentryReduxEnhancer) : enhancers
+  },
 })
 
 // 从 store 本身推断出 RootState 和 AppDispatch 类型

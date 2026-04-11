@@ -2,7 +2,10 @@ import { useCallback, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import type { SetupState } from '@/api/daemon/setup'
+import { createLogger } from '@/lib/logger'
 import { useSetupRealtimeStore } from '@/store/setupRealtimeStore'
+
+const log = createLogger('use-setup-flow')
 
 export interface StepInfo {
   total: number
@@ -89,7 +92,7 @@ export function useSetupFlow(): UseSetupFlowReturn {
         const newState = await action()
         syncSetupStateFromCommand(newState)
       } catch (error) {
-        console.error('Failed to dispatch event:', error)
+        log.error({ err: error }, 'Failed to dispatch event')
         toast.error(t('errors.operationFailed'))
       } finally {
         setLoading(false)

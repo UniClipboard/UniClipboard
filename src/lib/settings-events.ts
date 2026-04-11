@@ -1,6 +1,9 @@
 import { emit } from '@tauri-apps/api/event'
+import { createLogger } from '@/lib/logger'
 import type { SettingChangedEvent } from '@/types/events'
 import type { Settings } from '@/types/setting'
+
+const log = createLogger('settings-events')
 
 export const SETTINGS_CHANGED_EVENT = 'settings://changed'
 
@@ -21,7 +24,7 @@ export function parseSettingsChangedPayload(
   try {
     return JSON.parse(payload.settingJson) as Settings
   } catch (err) {
-    console.error('Failed to parse settings change payload:', err)
+    log.error({ err }, 'Failed to parse settings change payload')
     return null
   }
 }

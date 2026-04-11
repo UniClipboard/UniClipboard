@@ -1,5 +1,13 @@
 import type { ErrorEvent, EventHint } from '@sentry/core'
 import * as Sentry from '@sentry/react'
+import React from 'react'
+import {
+  Routes,
+  createRoutesFromChildren,
+  matchRoutes,
+  useLocation,
+  useNavigationType,
+} from 'react-router-dom'
 import { redactSensitiveArgs } from '@/observability/redaction'
 
 const sentryEnabled = Boolean(import.meta.env.VITE_SENTRY_DSN)
@@ -41,14 +49,33 @@ export function initSentry(): void {
 
   Sentry.init({
     dsn: import.meta.env.VITE_SENTRY_DSN,
-    tracesSampleRate: 0.1,
-    replaysSessionSampleRate: 0.1,
+    tracesSampleRate: import.meta.env.DEV ? 1.0 : 0.1,
+    replaysSessionSampleRate: import.meta.env.DEV ? 1.0 : 0.1,
     replaysOnErrorSampleRate: 1.0,
     environment: import.meta.env.MODE,
     release: import.meta.env.VITE_APP_VERSION,
-    integrations: [Sentry.browserTracingIntegration(), Sentry.replayIntegration()],
+    sendDefaultPii: true,
+    enableLogs: true,
+    debug: import.meta.env.DEV,
+    integrations: [
+      Sentry.reactRouterV7BrowserTracingIntegration({
+        useEffect: React.useEffect,
+        useLocation,
+        useNavigationType,
+        createRoutesFromChildren,
+        matchRoutes,
+      }),
+      Sentry.replayIntegration(),
+      Sentry.consoleLoggingIntegration({ levels: ['log', 'info', 'warn', 'error'] }),
+    ],
     beforeSend,
     beforeBreadcrumb,
+    beforeSendLog: log => {
+      if (log.attributes) {
+        log.attributes = redactSensitiveArgs(log.attributes) as Record<string, unknown>
+      }
+      return log
+    },
     initialScope: {
       tags: {
         platform: getTauriPlatform(),
@@ -56,5 +83,11 @@ export function initSentry(): void {
     },
   })
 }
+
+/**
+ * Sentry-instrumented Routes component for React Router v7.
+ * Use this instead of `Routes` to get parameterized navigation tracing.
+ */
+export const SentryRoutes = Sentry.withSentryReactRouterV7Routing(Routes)
 
 export { Sentry, sentryEnabled }

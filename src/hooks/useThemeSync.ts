@@ -1,11 +1,14 @@
 import { listen } from '@tauri-apps/api/event'
 import { useEffect, useRef } from 'react'
 import { getSettings } from '@/api/daemon'
+import { createLogger } from '@/lib/logger'
 import { parseSettingsChangedPayload, SETTINGS_CHANGED_EVENT } from '@/lib/settings-events'
 import { applyThemePreset, DEFAULT_THEME_COLOR } from '@/lib/theme-engine'
 import type { ThemeMode } from '@/lib/theme-engine'
 import type { SettingChangedEvent } from '@/types/events'
 import type { Settings } from '@/types/setting'
+
+const log = createLogger('use-theme-sync')
 
 function resolveThemeMode(theme: string | undefined | null): ThemeMode {
   if (theme === 'light' || theme === 'dark') return theme
@@ -38,7 +41,7 @@ export function useThemeSync(): void {
       })
       .catch(err => {
         if (cancelled) return
-        console.error('Failed to load settings for theme:', err)
+        log.error({ err }, 'Failed to load settings for theme')
         applyFullTheme(null)
       })
 
@@ -50,7 +53,7 @@ export function useThemeSync(): void {
       applyFullTheme(nextSettings)
     }).catch(err => {
       if (!cancelled) {
-        console.error('Failed to subscribe to settings changes for theme sync:', err)
+        log.error({ err }, 'Failed to subscribe to settings changes for theme sync')
       }
       return () => {}
     })

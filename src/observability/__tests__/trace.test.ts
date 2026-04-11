@@ -1,4 +1,13 @@
 import { describe, expect, it, vi } from 'vitest'
+vi.mock('@/observability/sentry', () => ({
+  Sentry: {
+    startInactiveSpan: vi.fn(() => ({
+      spanContext: () => ({ traceId: crypto.randomUUID() }),
+      end: vi.fn(),
+    })),
+  },
+  sentryEnabled: true,
+}))
 import { traceManager } from '../trace'
 
 describe('traceManager', () => {
@@ -10,31 +19,22 @@ describe('traceManager', () => {
     traceManager.endTrace()
   })
 
-  it('generates RFC4122 v4 trace ids when randomUUID is unavailable', () => {
-    const originalCrypto = globalThis.crypto
-    const bytes = new Uint8Array(16)
-    // Mock bytes for deterministic UUID generation
-    // These values will be modified by the v4 algorithm (version and variant bits)
-    bytes.set([
-      0x12, 0x34, 0x56, 0x78, 0x9a, 0xbc, 0xde, 0xf0, 0x12, 0x34, 0x56, 0x78, 0x9a, 0xbc, 0xde,
-      0xf0,
-    ])
-
-    vi.stubGlobal('crypto', {
-      getRandomValues: (value: Uint8Array) => {
-        value.set(bytes)
-        return value
-      },
+  it('creates a Sentry span on startTrace', async () => {
+    const { Sentry } = await import('@/observability/sentry')
+    const trace = traceManager.startTrace('test.operation')
+    expect(Sentry.startInactiveSpan).toHaveBeenCalledWith({
+      name: 'test.operation',
+      op: 'ui.action',
     })
-
-    const trace = traceManager.startTrace('test')
-    // RFC4122 v4 format: xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx
-    // where y is 8, 9, a, or b
-    expect(trace.traceId).toMatch(
-      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
-    )
-
-    vi.stubGlobal('crypto', originalCrypto)
+    expect(trace.sentrySpan).toBeDefined()
     traceManager.endTrace()
+  })
+
+  it('ends the Sentry span on endTrace', async () => {
+    const trace = traceManager.startTrace('test.end')
+    const endSpy = trace.sentrySpan!.end as ReturnType<typeof vi.fn>
+    traceManager.endTrace()
+    expect(endSpy).toHaveBeenCalled()
+    expect(traceManager.getCurrentTrace()).toBeNull()
   })
 })

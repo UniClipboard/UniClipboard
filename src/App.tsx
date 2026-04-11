@@ -1,12 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import {
-  BrowserRouter as Router,
-  Routes,
-  Route,
-  Navigate,
-  Outlet,
-  useNavigate,
-} from 'react-router-dom'
+import { BrowserRouter as Router, Route, Navigate, Outlet, useNavigate } from 'react-router-dom'
 import { signalLifecycleReady } from '@/api/daemon/lifecycle'
 import { unlockEncryptionSession } from '@/api/security'
 import { type SetupState } from '@/api/setup'
@@ -29,6 +22,7 @@ import {
   type EncryptionStatusView,
 } from '@/lib/daemon-lifecycle-ready'
 import { connectDaemonWs } from '@/lib/daemon-ws-bootstrap'
+import { SentryRoutes } from '@/observability/sentry'
 import DashboardPage from '@/pages/DashboardPage'
 import DevicesPage from '@/pages/DevicesPage'
 import SettingsPage from '@/pages/SettingsPage'
@@ -234,7 +228,7 @@ const AppContent = ({
   return (
     <ShortcutProvider>
       <GlobalShortcuts />
-      <Routes>
+      <SentryRoutes>
         <Route element={<AuthenticatedLayout />}>
           <Route
             path="/"
@@ -250,7 +244,7 @@ const AppContent = ({
           <Route path="/settings" element={<SettingsPage />} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
+      </SentryRoutes>
       <Toaster />
       <PairingNotificationProvider />
       <TelemetryNotice />
@@ -289,8 +283,8 @@ export const AppContentWithBar = () => {
   // WindowShell provides the correct window-level structure:
   // - TitleBar: Window chrome layer (full-width, drag region)
   // - Content: App layout layer (Sidebar + Main via routes)
-  const { isMac, isTauri, isWindows } = usePlatform()
-  const showCustomTitleBar = !isTauri || isMac || isWindows
+  const { isMac, isTauri } = usePlatform()
+  const showCustomTitleBar = !isTauri || isMac
   const { hydrated, setupState } = useSetupRealtimeStore()
   const [showCompletionStep, setShowCompletionStep] = useState(false)
   const previousSetupStateRef = useRef<SetupState | null>(null)

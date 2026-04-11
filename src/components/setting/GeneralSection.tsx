@@ -13,6 +13,9 @@ import {
 } from '@/components/ui'
 import { useSetting } from '@/hooks/useSetting'
 import { SUPPORTED_LANGUAGES, type SupportedLanguage, getInitialLanguage } from '@/i18n'
+import { createLogger } from '@/lib/logger'
+
+const log = createLogger('general-section')
 
 export default function GeneralSection() {
   const { t } = useTranslation()
@@ -52,7 +55,7 @@ export default function GeneralSection() {
       await updateGeneralSetting({ autoStart: checked })
       setAutoStart(checked)
     } catch (error) {
-      console.error('更改自启动状态失败:', error)
+      log.error({ err: error }, '更改自启动状态失败')
     } finally {
       setSaving(false)
     }
@@ -66,7 +69,7 @@ export default function GeneralSection() {
       await updateGeneralSetting({ silentStart: checked })
       setSilentStart(checked)
     } catch (error) {
-      console.error('更改静默启动状态失败:', error)
+      log.error({ err: error }, '更改静默启动状态失败')
     } finally {
       setSaving(false)
     }
@@ -79,7 +82,7 @@ export default function GeneralSection() {
       await updateGeneralSetting({ language: normalized })
       setLanguage(normalized)
     } catch (error) {
-      console.error('更改语言失败:', error)
+      log.error({ err: error }, '更改语言失败')
     } finally {
       setSaving(false)
     }
@@ -96,7 +99,7 @@ export default function GeneralSection() {
       await updateGeneralSetting({ telemetryEnabled: checked })
       setTelemetryEnabled(checked)
     } catch (error) {
-      console.error('更改遥测设置失败:', error)
+      log.error({ err: error }, '更改遥测设置失败')
     } finally {
       setSaving(false)
     }
@@ -107,7 +110,7 @@ export default function GeneralSection() {
       setSaving(true)
       await updateGeneralSetting({ deviceName: deviceName })
     } catch (error) {
-      console.error('更改设备名称失败:', error)
+      log.error({ err: error }, '更改设备名称失败')
     } finally {
       setSaving(false)
     }

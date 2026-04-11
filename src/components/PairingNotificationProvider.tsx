@@ -5,6 +5,9 @@ import { classifyPairingError } from '@/api/daemon/events'
 import { acceptP2PPairing, rejectP2PPairing } from '@/api/daemon/pairing'
 import PairingPinDialog from '@/components/PairingPinDialog'
 import { usePairingEvents } from '@/hooks/useDaemonEvents'
+import { createLogger } from '@/lib/logger'
+
+const log = createLogger('pairing-notification-provider')
 
 // ── Provider-level pairing diagnostics ─────────────────────────────────────
 
@@ -28,7 +31,7 @@ function logProviderDecision(
   if (activeSessionId !== undefined) parts.push(`active_session_id=${activeSessionId ?? 'null'}`)
   if (reason) parts.push(`reason=${reason}`)
 
-  console.debug(parts.join(' '))
+  log.debug(parts.join(' '))
 }
 
 export function PairingNotificationProvider() {
@@ -95,7 +98,7 @@ export function PairingNotificationProvider() {
                   sessionId,
                   reason: 'acceptP2PPairing_rejected',
                 })
-                console.error('Failed to accept pairing request:', err)
+                log.error({ err }, 'Failed to accept pairing request')
                 toast.error(t('pairing.failed.title', { defaultValue: 'Pairing failed' }), {
                   description: message,
                 })
@@ -118,7 +121,7 @@ export function PairingNotificationProvider() {
                     sessionId,
                     reason: 'rejectP2PPairing_rejected',
                   })
-                  console.error('Failed to reject pairing request:', err)
+                  log.error({ err }, 'Failed to reject pairing request')
                   toast.error(t('pairing.failed.title', { defaultValue: 'Pairing failed' }), {
                     description: message,
                   })
@@ -247,7 +250,7 @@ export function PairingNotificationProvider() {
           sessionId: activeSessionIdRef.current,
           reason: 'rejectP2PPairing_rejected',
         })
-        console.error('Failed to cancel pairing dialog:', err)
+        log.error({ err }, 'Failed to cancel pairing dialog')
         toast.error(t('pairing.failed.title', { defaultValue: 'Pairing failed' }), {
           description: message,
         })

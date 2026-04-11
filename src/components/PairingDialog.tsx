@@ -22,7 +22,10 @@ import {
 } from '@/components/ui/dialog'
 import { toast } from '@/components/ui/toast'
 import { usePairingEvents } from '@/hooks/useDaemonEvents'
+import { createLogger } from '@/lib/logger'
 import { formatPeerIdForDisplay } from '@/lib/utils'
+
+const log = createLogger('pairing-dialog')
 // import { getLocalDeviceName } from '@/api/deviceConnection' // Assuming we'll add this or use existing
 
 // Mock getLocalDeviceName if not available yet, or import if available
@@ -78,7 +81,7 @@ export default function PairingDialog({ open, onClose, onPairingSuccess }: Pairi
         return
       }
 
-      console.log('[PairingDialog] Verification event:', { sessionId, deviceName, code })
+      log.debug({ sessionId, deviceName }, 'Verification event')
       pairingSessionIdRef.current = sessionId
       setPairingSessionId(sessionId)
       setPinCode(code ?? '')
@@ -94,8 +97,7 @@ export default function PairingDialog({ open, onClose, onPairingSuccess }: Pairi
       if (pairingSessionIdRef.current && sessionId !== pairingSessionIdRef.current) {
         return
       }
-      console.log('[PairingDialog] Complete event:', { sessionId, deviceName })
-      console.trace('[PairingDialog] Toast success triggered from:')
+      log.debug({ sessionId, deviceName }, 'Complete event')
       pairingSessionIdRef.current = null
       setStep('success')
       setIsPinVerifying(false)
@@ -110,7 +112,7 @@ export default function PairingDialog({ open, onClose, onPairingSuccess }: Pairi
       if (pairingSessionIdRef.current && sessionId !== pairingSessionIdRef.current) {
         return
       }
-      console.error('[PairingDialog] Failed event:', { sessionId, error })
+      log.error({ sessionId, error }, 'Failed event')
       const message = localizePairingError(error)
       pairingSessionIdRef.current = null
       setErrorMsg(message)
@@ -131,7 +133,7 @@ export default function PairingDialog({ open, onClose, onPairingSuccess }: Pairi
       // For now show all discovered
       setPeers(list)
     } catch (err) {
-      console.error('Failed to load peers:', err)
+      log.error({ err }, 'Failed to load peers')
       setErrorMsg(t('pairing.failed.errors.loadPeers'))
     } finally {
       setLoading(false)
@@ -140,7 +142,7 @@ export default function PairingDialog({ open, onClose, onPairingSuccess }: Pairi
 
   useEffect(() => {
     if (open) {
-      console.log('[PairingDialog] Dialog opened, initializing...')
+      log.debug('Dialog opened, initializing')
 
       // Reset state
       setStep('discovery')
@@ -156,7 +158,7 @@ export default function PairingDialog({ open, onClose, onPairingSuccess }: Pairi
       void loadPeers()
     } else {
       // Cleanup when closed
-      console.log('[PairingDialog] Dialog closed')
+      log.debug('Dialog closed')
       pairingSessionIdRef.current = null
     }
   }, [open, loadPeers])
@@ -176,7 +178,7 @@ export default function PairingDialog({ open, onClose, onPairingSuccess }: Pairi
         setStep('failed')
       }
     } catch (err) {
-      console.error('Failed to initiate pairing:', err)
+      log.error({ err }, 'Failed to initiate pairing')
       setErrorMsg(localizePairingError(err instanceof Error ? err.message : String(err)))
       setStep('failed')
     }
@@ -194,7 +196,7 @@ export default function PairingDialog({ open, onClose, onPairingSuccess }: Pairi
       }
       // If matches, wait for 'success' or 'failed' event
     } catch (err) {
-      console.error('Failed to verify PIN:', err)
+      log.error({ err }, 'Failed to verify PIN')
       setErrorMsg(t('pairing.failed.errors.verifyPin'))
       setStep('failed')
       setIsPinVerifying(false)

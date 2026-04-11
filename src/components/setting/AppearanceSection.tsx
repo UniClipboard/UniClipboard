@@ -6,8 +6,11 @@ import { Button } from '@/components/ui'
 import { DEFAULT_THEME_COLOR, THEME_COLORS } from '@/constants/theme'
 import { useSetting, type Theme } from '@/hooks/useSetting'
 import { useUiScale } from '@/hooks/useUiScale'
+import { createLogger } from '@/lib/logger'
 import { setTransitionOrigin } from '@/lib/theme-transition'
 import { cn } from '@/lib/utils'
+
+const log = createLogger('appearance-section')
 
 interface ThemeOptionProps {
   value: Theme
@@ -76,7 +79,7 @@ export default function AppearanceSection() {
       setTransitionOrigin(e.clientX, e.clientY)
       await updateGeneralSetting({ theme: newTheme })
     } catch (error) {
-      console.error('Failed to change theme:', error)
+      log.error({ err: error }, 'Failed to change theme')
     }
   }
 
@@ -85,7 +88,7 @@ export default function AppearanceSection() {
       setTransitionOrigin(e.clientX, e.clientY)
       await updateGeneralSetting({ themeColor: newThemeColor })
     } catch (error) {
-      console.error('Failed to change theme color:', error)
+      log.error({ err: error }, 'Failed to change theme color')
     }
   }
 

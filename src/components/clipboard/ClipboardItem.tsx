@@ -21,8 +21,11 @@ import {
 } from '@/api/clipboardItems'
 import { getClipboardEntryResource } from '@/api/daemon/clipboard'
 import { toast } from '@/components/ui/toast'
+import { createLogger } from '@/lib/logger'
 import { cn } from '@/lib/utils'
 import { formatFileSize } from '@/utils'
+
+const log = createLogger('clipboard-item')
 
 /** Threshold above which we switch to chunked rendering for performance. */
 const LARGE_TEXT_THRESHOLD = 50_000
@@ -180,7 +183,7 @@ const ClipboardItem: React.FC<ClipboardItemProps> = ({
         setDetailContent(fullText)
         setIsExpanded(true)
       } catch (e) {
-        console.error('Failed to load detail:', e)
+        log.error({ err: e }, 'Failed to load detail')
         toast.error(t('clipboard.errors.loadDetailFailed'), {
           description: e instanceof Error ? e.message : t('clipboard.errors.unknown'),
         })
@@ -203,7 +206,7 @@ const ClipboardItem: React.FC<ClipboardItemProps> = ({
         setOriginalImageUrl(imageUrl)
         setIsExpanded(true)
       } catch (e) {
-        console.error('Failed to load original image URL:', e)
+        log.error({ err: e }, 'Failed to load original image URL')
         toast.error(t('clipboard.errors.loadDetailFailed'), {
           description: e instanceof Error ? e.message : t('clipboard.errors.unknown'),
         })
@@ -318,7 +321,7 @@ const ClipboardItem: React.FC<ClipboardItemProps> = ({
               className="text-left text-primary font-medium hover:underline break-all text-sm leading-relaxed flex items-center gap-2 cursor-pointer"
               onClick={e => {
                 e.stopPropagation()
-                openUrl(firstUrl).catch(console.error)
+                openUrl(firstUrl).catch(err => log.error({ err }, 'Failed to open URL'))
               }}
             >
               <ExternalLink size={14} />

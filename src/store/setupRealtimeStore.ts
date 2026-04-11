@@ -7,6 +7,9 @@ import {
   type SetupState,
 } from '@/api/setup'
 import { connectDaemonWs } from '@/lib/daemon-ws-bootstrap'
+import { createLogger } from '@/lib/logger'
+
+const log = createLogger('setup-realtime-store')
 
 // ── Store-level realtime diagnostics ───────────────────────────────────────
 
@@ -34,7 +37,7 @@ function logStoreDecision(
   if (generation !== undefined) parts.push(`gen=${generation}`)
   if (reason) parts.push(`reason=${reason}`)
 
-  console.debug(parts.join(' '))
+  log.debug(parts.join(' '))
 }
 
 type SetupRealtimeSnapshot = {
@@ -165,7 +168,7 @@ export async function ensureSetupRealtimeSync(): Promise<void> {
           updateSnapshot(newState, event.sessionId)
         } catch (error) {
           logStoreDecision('failure', { reason: 'handleSpaceAccessCompleted_error' })
-          console.error('Failed to handle space access completed:', error)
+          log.error({ err: error }, 'Failed to handle space access completed')
         }
       })
 
@@ -189,7 +192,7 @@ export async function ensureSetupRealtimeSync(): Promise<void> {
       }
 
       logStoreDecision('failure', { reason: 'initialization_error', generation })
-      console.error('Failed to initialize setup realtime store:', error)
+      log.error({ err: error }, 'Failed to initialize setup realtime store')
       syncPhase = 'idle'
       scheduleRetry()
       logStoreDecision('scheduled', { reason: 'retry_after_init_failure', generation })

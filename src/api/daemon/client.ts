@@ -17,6 +17,9 @@
 import { DaemonApiError, DaemonErrorCode, mapStatusToErrorCode } from './errors'
 import type { DaemonConfig, SessionToken } from './types'
 import { isSessionExpired } from './types'
+import { createLogger } from '@/lib/logger'
+
+const log = createLogger('daemon-client')
 
 /** Session refresh interval: 4 minutes (240 seconds). */
 const REFRESH_INTERVAL_MS = 240_000
@@ -278,7 +281,7 @@ class DaemonClient {
     this.stopKeepAlive()
     this.refreshTimer = setInterval(() => {
       this.refreshSession().catch(err => {
-        console.error('[DaemonClient] keep-alive refresh failed:', err)
+        log.error({ err }, 'keep-alive refresh failed')
       })
     }, REFRESH_INTERVAL_MS)
   }

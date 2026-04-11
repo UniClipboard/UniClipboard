@@ -1,6 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 import { getEncryptionState } from '@/api/daemon'
 import { daemonWs } from '@/lib/daemon-ws'
+import { createLogger } from '@/lib/logger'
+
+const log = createLogger('use-encryption-session-state')
 
 interface EncryptionSessionState {
   encryptionReady: boolean
@@ -36,7 +39,7 @@ export function useEncryptionSessionState(): EncryptionSessionState {
         applyStatus(status)
       } catch (err) {
         if (cancelled) return
-        console.warn('Failed to check encryption session status:', err)
+        log.warn({ err }, 'Failed to check encryption session status')
         if (!hasSuccessfulSyncRef.current) {
           setState({ encryptionReady: false, isLocked: false })
         }

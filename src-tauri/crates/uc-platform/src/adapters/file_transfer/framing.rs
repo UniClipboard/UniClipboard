@@ -62,7 +62,6 @@ where
     writer.write_all(&[msg_type as u8]).await?;
     writer.write_all(&len.to_be_bytes()).await?;
     writer.write_all(payload).await?;
-    writer.flush().await?;
     Ok(())
 }
 

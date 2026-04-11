@@ -8,7 +8,8 @@ use anyhow::{anyhow, Result};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
-use tracing::{debug, info_span, warn, Instrument};
+use tokio::time::Instant;
+use tracing::{debug, info, info_span, instrument, warn, Instrument};
 
 /// Default chunk size: 256KB.
 pub const CHUNK_SIZE: usize = 256 * 1024;
@@ -214,6 +215,16 @@ impl StreamingFileTransferProtocol {
 }
 
 impl ChunkTransferEngine {
+    #[instrument(
+        name = "file_transfer.send_stream",
+        level = "info",
+        skip(writer, reader, progress_callback),
+        fields(
+            transfer_id = %transfer_id,
+            file_size,
+            chunk_size
+        )
+    )]
     async fn send_stream<W, R>(
         writer: &mut W,
         reader: &mut R,
@@ -235,6 +246,7 @@ impl ChunkTransferEngine {
         let mut chunk_index: u32 = 0;
         let mut hasher = blake3::Hasher::new();
         let mut buffer = vec![0u8; chunk_size];
+        let started_at = Instant::now();
 
         loop {
             let bytes_read = reader.read(&mut buffer).await?;
@@ -272,6 +284,18 @@ impl ChunkTransferEngine {
         };
         let complete_bytes = serde_json::to_vec(&complete)?;
         write_file_frame(writer, FileMessageType::Complete, &complete_bytes).await?;
+        writer.flush().await?;
+
+        let elapsed_ms = started_at.elapsed().as_millis() as u64;
+        info!(
+            transfer_id = %transfer_id,
+            file_size,
+            total_chunks = chunk_index,
+            chunk_size,
+            elapsed_ms,
+            avg_mbps = average_mbps(bytes_sent, elapsed_ms),
+            "file transfer stream sent"
+        );
 
         Ok(hash)
     }
@@ -336,6 +360,16 @@ impl ChunkTransferEngine {
         }
     }
 
+    #[instrument(
+        name = "file_transfer.receive_chunks",
+        level = "info",
+        skip(reader, progress_callback),
+        fields(
+            transfer_id = %transfer_id,
+            file_size,
+            tmp_path = %tmp_path.display()
+        )
+    )]
     async fn receive_chunks_to_file<R>(
         reader: &mut R,
         tmp_path: &Path,
@@ -358,6 +392,7 @@ impl ChunkTransferEngine {
 
         let mut bytes_received: u64 = 0;
         let mut chunks_received: u32 = 0;
+        let started_at = Instant::now();
 
         loop {
             let frame = read_file_frame(reader).await?;
@@ -383,7 +418,6 @@ impl ChunkTransferEngine {
 
                     hasher.update(chunk_data);
                     file.write_all(chunk_data).await?;
-                    file.flush().await?;
                     bytes_received += chunk_data.len() as u64;
                     chunks_received += 1;
 
@@ -400,8 +434,20 @@ impl ChunkTransferEngine {
                 FileMessageType::Complete => {
                     let complete: FileComplete = serde_json::from_slice(&payload)?;
                     file.flush().await?;
+                    file.sync_data().await?;
 
+                    let elapsed_ms = started_at.elapsed().as_millis() as u64;
                     let computed_hash = hasher.finalize().to_hex().to_string();
+                    info!(
+                        transfer_id = %transfer_id,
+                        file_size,
+                        bytes_received,
+                        total_chunks = complete.total_chunks,
+                        chunks_received,
+                        elapsed_ms,
+                        avg_mbps = average_mbps(bytes_received, elapsed_ms),
+                        "file transfer stream received"
+                    );
                     debug!(
                         transfer_id = %transfer_id,
                         total_chunks = complete.total_chunks,
@@ -447,12 +493,68 @@ fn sanitize_filename(name: &str) -> String {
         .replace('\0', "_")
 }
 
+fn average_mbps(bytes: u64, elapsed_ms: u64) -> f64 {
+    if elapsed_ms == 0 {
+        return 0.0;
+    }
+
+    let bits = (bytes as f64) * 8.0;
+    let seconds = (elapsed_ms as f64) / 1000.0;
+    bits / seconds / 1_000_000.0
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::pin::Pin;
+    use std::sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc,
+    };
+    use std::task::{Context, Poll};
+    use tokio::io::AsyncWrite;
 
     const LEGACY_PROTOCOL: LegacyFileTransferProtocol = LegacyFileTransferProtocol;
     const STREAMING_PROTOCOL: StreamingFileTransferProtocol = StreamingFileTransferProtocol;
+
+    #[derive(Default)]
+    struct CountingWriter {
+        inner: Vec<u8>,
+        flush_count: Arc<AtomicUsize>,
+    }
+
+    impl CountingWriter {
+        fn new() -> (Self, Arc<AtomicUsize>) {
+            let flush_count = Arc::new(AtomicUsize::new(0));
+            (
+                Self {
+                    inner: Vec::new(),
+                    flush_count: flush_count.clone(),
+                },
+                flush_count,
+            )
+        }
+    }
+
+    impl AsyncWrite for CountingWriter {
+        fn poll_write(
+            mut self: Pin<&mut Self>,
+            _cx: &mut Context<'_>,
+            buf: &[u8],
+        ) -> Poll<std::io::Result<usize>> {
+            self.inner.extend_from_slice(buf);
+            Poll::Ready(Ok(buf.len()))
+        }
+
+        fn poll_flush(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<std::io::Result<()>> {
+            self.flush_count.fetch_add(1, Ordering::SeqCst);
+            Poll::Ready(Ok(()))
+        }
+
+        fn poll_shutdown(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<std::io::Result<()>> {
+            Poll::Ready(Ok(()))
+        }
+    }
 
     #[test]
     fn file_announce_roundtrip() {

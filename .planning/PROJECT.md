@@ -27,7 +27,7 @@ Seamless clipboard synchronization across devices — users can copy on one devi
 
 - **Active milestone:** v0.5.0 Local Encrypted Search (started 2026-04-10)
 - **Latest shipped milestone:** v0.4.0 Runtime Mode Separation (archived 2026-04-09)
-- **Current capability level:** Full-featured clipboard sync with text, image, link, and file support; structured observability; per-device sync control; CLI clipboard history commands (list/get/clear); daemon auto-recovers encryption session on startup; daemon triggers outbound clipboard sync to peers after local capture; daemon receives inbound clipboard from peers via ClipboardTransportPort and applies via SyncInboundClipboardUseCase; daemon handles file transfer lifecycle (progress, completion, failure, timeout sweeps, startup reconciliation); clipboard restore delegated to daemon for in-process origin tracking; unified auth architecture — CLI/GUI/Daemon all use POST /auth/connect session exchange with independent token scopes; four search use cases (IndexClipboardEntry, RemoveIndexedEntry, SearchClipboardEntries, RebuildSearchIndex) in uc-app as thin SearchIndexPort orchestrators; DeleteClipboardEntry cascades to search index via optional SearchIndexPort with warn-and-continue error policy (Phase 89 complete 2026-04-10)
+- **Current capability level:** Full-featured clipboard sync with text, image, link, and file support; structured observability; per-device sync control; CLI clipboard history commands (list/get/clear); daemon auto-recovers encryption session on startup; daemon triggers outbound clipboard sync to peers after local capture; daemon receives inbound clipboard from peers via ClipboardTransportPort and applies via SyncInboundClipboardUseCase; daemon handles file transfer lifecycle (progress, completion, failure, timeout sweeps, startup reconciliation); clipboard restore delegated to daemon for in-process origin tracking; unified auth architecture — CLI/GUI/Daemon all use POST /auth/connect session exchange with independent token scopes; four search use cases (IndexClipboardEntry, RemoveIndexedEntry, SearchClipboardEntries, RebuildSearchIndex) in uc-app as thin SearchIndexPort orchestrators; DeleteClipboardEntry cascades to search index via optional SearchIndexPort with warn-and-continue error policy (Phase 89 complete 2026-04-10); profile-scoped SQLite search schema (search_document/search_posting/search_index_meta) with Diesel migration and row structs; HKDF-SHA256 key derivation + HMAC term tagging + deterministic text/HTML/URL/file extractor + NFKC tokenizer + SearchPipeline emitting ready-to-persist postings (Phase 90 complete 2026-04-11)
 - **Architecture status:** Hexagonal architecture with compiler-enforced boundaries, typed command surfaces, lifecycle governance, and consolidated sync planner; CLI direct-mode bootstrap pattern established; CLI start/stop commands for daemon lifecycle management (background/foreground modes, PID-based stop with SIGTERM); daemon encryption state recovery via existing AutoUnlockEncryptionSession use case; peer discovery deduplication fixed (local_peer_id filtering + full-snapshot peers.changed events); daemon gates PeerDiscoveryWorker on encryption state (deferred start for uninitialized devices via oneshot channel); dual-product release pipeline — CLI binary builds in parallel with App, included in GitHub Release and R2; GUI restore_clipboard_entry is thin daemon proxy (cross-process origin desync eliminated); frontend p2p.ts facade removed — all callers migrated to daemon modules and hooks (daemon/pairing, daemon/events, daemon/ws, usePairingEvents, useSetupFlow)
 - **LOC:** ~135K Rust + ~20K TypeScript (estimated)
 - **Supported content types:** Text, Image, Link, File (all with per-device sync toggles)
@@ -77,7 +77,9 @@ Seamless clipboard synchronization across devices — users can copy on one devi
 
 ### Active
 
-- [ ] Local encrypted inverted index (SQLite, HMAC-keyed term tags, profile-scoped)
+- ✓ SQLite schema migration (search_document, search_posting, search_index_meta with profile_id) + row helpers — Validated in Phase 90 (SIDX-07)
+- ✓ HKDF search key derivation, HMAC term tagging, text/HTML/URL/file extractor, NFKC tokenizer, SearchPipeline — Validated in Phase 90 (SIDX-03, SIDX-04, SIDX-05, SIDX-06)
+- [ ] Local encrypted inverted index adapter with live SQLite INSERT/SELECT (Phase 91)
 - [ ] Exact keyword search with AND/OR boolean operators
 - [ ] Time range filtering (presets: today/yesterday/last_7d/last_30d + absolute ms range)
 - [ ] File type multi-select filtering (text/html/link/file/image/other)
@@ -185,4 +187,4 @@ This document evolves at phase transitions and milestone boundaries.
 
 ---
 
-_Last updated: 2026-04-10 after Phase 89 complete_
+_Last updated: 2026-04-11 after Phase 90 complete_

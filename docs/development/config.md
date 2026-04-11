@@ -7,35 +7,40 @@ When `config.toml` is absent, the application uses system-default paths:
 ### macOS
 
 ```
-~/Library/Application Support/uniclipboard/
+~/Library/Application Support/app.uniclipboard.desktop[-<profile>]/
 ├── uniclipboard.db          # Database
 ├── vault/                   # Encryption vault
 │   ├── key
 │   └── snapshot
+├── logs/                    # Daily JSON logs
 └── settings.json            # User settings
 ```
 
 ### Linux
 
 ```
-~/.local/share/uniclipboard/
+~/.local/share/app.uniclipboard.desktop[-<profile>]/
 ├── uniclipboard.db
 ├── vault/
 │   ├── key
 │   └── snapshot
+├── logs/
 └── settings.json
 ```
 
 ### Windows
 
 ```
-%LOCALAPPDATA%\uniclipboard\
+%LOCALAPPDATA%\app.uniclipboard.desktop[-<profile>]\
 ├── uniclipboard.db
 ├── vault\
 │   ├── key
 │   └── snapshot
+├── logs\
 └── settings.json
 ```
+
+`[-<profile>]` means the suffix is present only when `UC_PROFILE` is set, for example `app.uniclipboard.desktop-dev`.
 
 ## Development Mode (Optional)
 

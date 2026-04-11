@@ -68,6 +68,13 @@ Then selectively read:
 - `src/AGENTS.md` for frontend-local navigation
 - `src-tauri/AGENTS.md` for Rust/Tauri-local navigation
 
+Log file locations for the current desktop app naming:
+- macOS: `~/Library/Application Support/app.uniclipboard.desktop[-<profile>]/logs/`
+- Linux: `~/.local/share/app.uniclipboard.desktop[-<profile>]/logs/`
+- Windows: `%LOCALAPPDATA%\\app.uniclipboard.desktop[-<profile>]\\logs\\`
+
+Do not assume the older `uniclipboard` root is current. Current code resolves data/logs under `app.uniclipboard.desktop`, with an optional `UC_PROFILE` suffix such as `-dev`.
+
 Use when:
 - entering an unfamiliar subsystem
 - trying to understand why a pattern exists

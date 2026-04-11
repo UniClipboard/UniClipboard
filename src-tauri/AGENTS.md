@@ -93,3 +93,8 @@ bun run test:coverage
 - `src-legacy/` was removed on 2026-02-26; treat any references as historical context only.
 - Current repository root also has parent-level `AGENTS.md`; local file narrows rules to `src-tauri/` workspace details.
 - Any change touching `crates/uc-platform/src/adapters/libp2p_network.rs` must run `cargo test -p uc-platform` before merge.
+- Current desktop log files live under the app data root's `logs/` directory, using the current app dir name `app.uniclipboard.desktop` plus optional `UC_PROFILE` suffix.
+- macOS: `~/Library/Application Support/app.uniclipboard.desktop[-<profile>]/logs/`
+- Linux: `~/.local/share/app.uniclipboard.desktop[-<profile>]/logs/`
+- Windows: `%LOCALAPPDATA%\app.uniclipboard.desktop[-<profile>]\logs\`
+- Older legacy app-data roots may still exist from previous builds, but they are not the current default.

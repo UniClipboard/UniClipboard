@@ -42,6 +42,7 @@ Read only when the task is about roadmap, planning, or requirement alignment.
 - `docs/README.md` — doc index
 - `docs/overview.md` — product/system overview
 - `README.md` / `README_ZH.md` — public project introduction
+- `docs/development/config.md` — current default data/log paths across macOS, Linux, and Windows
 
 ### Architecture docs
 

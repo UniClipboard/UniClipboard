@@ -219,8 +219,8 @@ UC_PROFILE=b UC_CLIPBOARD_MODE=passive tauri dev
 
 | Path                                          | Purpose               |
 | --------------------------------------------- | --------------------- |
-| `~/Library/Application Support/uniclipboard/` | Main data directory   |
-| `~/Library/Caches/uniclipboard/`              | Cache directory       |
+| `~/Library/Application Support/app.uniclipboard.desktop[-<profile>]/` | Main data directory   |
+| `~/Library/Caches/app.uniclipboard.desktop[-<profile>]/`              | Cache directory       |
 | `{app_data}/uniclipboard.db`                  | SQLite database       |
 | `{app_data}/vault/`                           | Encrypted key storage |
 | `{app_data}/settings.json`                    | User settings         |
@@ -293,7 +293,7 @@ cd src-tauri && cargo test -p uc-core
 ### View Logs
 
 ```bash
-tail -f ~/Library/Application\ Support/uniclipboard/logs/*.log
+tail -f ~/Library/Application\ Support/app.uniclipboard.desktop*/logs/*
 ```
 
 ### Clear Cache

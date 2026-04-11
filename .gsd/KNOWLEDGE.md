@@ -238,6 +238,21 @@ test('reconnect uses exponential backoff', () => {
 
 ---
 
+## Current log files live under app.uniclipboard.desktop*/logs, not the older uniclipboard path
+
+**Pattern:** The current app directory naming is resolved in `src-tauri/crates/uc-platform/src/app_dirs.rs` with `APP_DIR_NAME = "app.uniclipboard.desktop"`, optionally suffixed by `UC_PROFILE` (for example `app.uniclipboard.desktop-dev`). `src-tauri/crates/uc-app/src/app_paths.rs` then defines `logs_dir` as `{app_data_root}/logs`.
+
+**Lesson:** When looking for desktop app logs on macOS, check:
+
+- `~/Library/Application Support/app.uniclipboard.desktop/logs/`
+- `~/Library/Application Support/app.uniclipboard.desktop-<profile>/logs/`
+
+Do not assume the older `~/Library/Application Support/uniclipboard/logs/` path is current. That older directory may still exist from legacy builds, but current code resolves logs under the `app.uniclipboard.desktop*` root. On this machine, both `app.uniclipboard.desktop/logs` and `app.uniclipboard.desktop-dev/logs` exist and contain `uniclipboard.json.YYYY-MM-DD` files.
+
+**Seen in:** 2026-04-11 repository audit — verified against `uc-platform::app_dirs`, `uc-app::AppPaths`, and local filesystem.
+
+---
+
 ## vi.mock for Tauri events must be in the test file itself (hoisting requirement)
 
 **Pattern:** When mocking Tauri events in Vitest, the `vi.mock('@tauri-apps/api/event', ...)` call must be in the test file itself — not in a helper module — because Vitest hoists `vi.mock` calls to the top of the file before any imports.

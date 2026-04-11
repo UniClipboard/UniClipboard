@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import PairingDialog from '@/components/PairingDialog'
 import { PairingNotificationProvider } from '@/components/PairingNotificationProvider'
+import PairingPinDialog from '@/components/PairingPinDialog'
 
 // Module-level mock refs — created in a hoisted scope so vi.mock factories can access them.
 const {
@@ -269,6 +270,32 @@ describe('PairingDialog failure states', () => {
         /配对 daemon 不可用，请启动桌面服务后重试|The pairing daemon is unavailable. Start the desktop service and try again/i
       )
     ).toHaveLength(2)
+  })
+})
+
+describe('PairingPinDialog', () => {
+  it('does not cancel when clicking outside the modal', async () => {
+    const user = userEvent.setup()
+    const onClose = vi.fn()
+
+    render(
+      <PairingPinDialog
+        open
+        onClose={onClose}
+        pinCode="123456"
+        peerDeviceName="Desk"
+        isInitiator={false}
+        onConfirm={vi.fn()}
+        phase="display"
+      />
+    )
+
+    const overlay = document.querySelector('[data-slot="dialog-overlay"]')
+    expect(overlay).not.toBeNull()
+
+    await user.click(overlay as Element)
+
+    expect(onClose).not.toHaveBeenCalled()
   })
 })
 

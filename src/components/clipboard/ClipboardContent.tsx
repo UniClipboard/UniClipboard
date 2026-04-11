@@ -495,37 +495,42 @@ const ClipboardContent: React.FC<ClipboardContentProps> = ({
           {/* Right panel: preview + action bar */}
           <ResizablePanel id="clipboard-preview" defaultSize="60%" minSize="30%">
             <div className="h-full flex flex-col min-w-0">
-              <ClipboardPreview item={activeItem} />
-              <ClipboardActionBar
-                hasActiveItem={activeItemId !== null}
-                copySuccess={copySuccess}
-                activeItemType={activeItem?.type}
-                isActiveItemDownloaded={activeItem?.isDownloaded}
-                isActiveItemTransferring={
-                  activeItemId ? transferringEntries.has(activeItemId) : false
+              <ClipboardPreview
+                item={activeItem}
+                actions={
+                  <ClipboardActionBar
+                    hasActiveItem={activeItemId !== null}
+                    copySuccess={copySuccess}
+                    activeItemType={activeItem?.type}
+                    isActiveItemDownloaded={activeItem?.isDownloaded}
+                    isActiveItemTransferring={
+                      activeItemId ? transferringEntries.has(activeItemId) : false
+                    }
+                    isCopyBlocked={isActiveFileCopyBlocked}
+                    copyBlockedReason={
+                      isActiveFileCopyBlocked && activeEntryStatus
+                        ? activeEntryStatus.status === 'pending'
+                          ? t('clipboard.transfer.copyDisabled.pending')
+                          : activeEntryStatus.status === 'transferring'
+                            ? t('clipboard.transfer.copyDisabled.transferring')
+                            : t('clipboard.transfer.copyDisabled.failed')
+                        : undefined
+                    }
+                    onCopy={() => {
+                      if (activeItemId && !isActiveFileCopyBlocked)
+                        void handleCopyItem(activeItemId)
+                    }}
+                    onDelete={() => {
+                      if (activeItemId) {
+                        captureUserIntent('delete_entry', { count: 1 })
+                        setDeleteDialogOpen(true)
+                      }
+                    }}
+                    onSyncToClipboard={() => {
+                      if (activeItemId) void handleSyncToClipboard(activeItemId)
+                    }}
+                  />
                 }
-                isCopyBlocked={isActiveFileCopyBlocked}
-                copyBlockedReason={
-                  isActiveFileCopyBlocked && activeEntryStatus
-                    ? activeEntryStatus.status === 'pending'
-                      ? t('clipboard.transfer.copyDisabled.pending')
-                      : activeEntryStatus.status === 'transferring'
-                        ? t('clipboard.transfer.copyDisabled.transferring')
-                        : t('clipboard.transfer.copyDisabled.failed')
-                    : undefined
-                }
-                onCopy={() => {
-                  if (activeItemId && !isActiveFileCopyBlocked) void handleCopyItem(activeItemId)
-                }}
-                onDelete={() => {
-                  if (activeItemId) {
-                    captureUserIntent('delete_entry', { count: 1 })
-                    setDeleteDialogOpen(true)
-                  }
-                }}
-                onSyncToClipboard={() => {
-                  if (activeItemId) void handleSyncToClipboard(activeItemId)
-                }}
               />
             </div>
           </ResizablePanel>

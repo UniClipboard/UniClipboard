@@ -16,7 +16,7 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
 use tokio::sync::{mpsc, Mutex as AsyncMutex, OwnedSemaphorePermit, Semaphore};
-use tokio::time::Duration;
+use tokio::time::{Duration, Instant};
 use tokio_util::compat::FuturesAsyncReadCompatExt;
 use tracing::{info, info_span, instrument, warn, Instrument};
 use uc_core::network::{NetworkEvent, ProtocolId};
@@ -250,6 +250,7 @@ impl FileTransferService {
         let file_size = incoming.file_size();
         let progress_log_state = Arc::new(AtomicU32::new(PROGRESS_LOG_STEP_PERCENT));
         let progress_log_state_clone = progress_log_state.clone();
+        let progress_started_at = Instant::now();
 
         let progress_callback = move |chunks_completed: u32, total_chunks: u32, bytes: u64| {
             maybe_log_progress(
@@ -262,6 +263,7 @@ impl FileTransferService {
                 bytes,
                 chunks_completed,
                 total_chunks,
+                progress_started_at,
             );
             let progress = TransferProgress {
                 transfer_id: transfer_id_clone.clone(),
@@ -359,7 +361,9 @@ impl FileTransferService {
             .map_err(|err| anyhow!("invalid peer id: {err}"))?;
 
         // Open outbound stream
+        let stream_open_started_at = Instant::now();
         let (stream, protocol_version) = self.open_outbound_stream(peer).await?;
+        let stream_open_elapsed_ms = stream_open_started_at.elapsed().as_millis() as u64;
         let stream = stream.compat();
         let (mut read_half, mut write_half) = tokio::io::split(stream);
 
@@ -380,6 +384,7 @@ impl FileTransferService {
             filename = %filename,
             file_size,
             protocol_version = protocol_version_label(protocol_version),
+            stream_open_elapsed_ms,
             "outgoing file transfer started"
         );
 
@@ -401,6 +406,7 @@ impl FileTransferService {
         let filename_for_progress = filename.clone();
         let progress_log_state = Arc::new(AtomicU32::new(PROGRESS_LOG_STEP_PERCENT));
         let progress_log_state_clone = progress_log_state.clone();
+        let progress_started_at = Instant::now();
         let progress_callback = move |chunks_completed: u32, total_chunks: u32, bytes: u64| {
             maybe_log_progress(
                 &progress_log_state_clone,
@@ -412,6 +418,7 @@ impl FileTransferService {
                 bytes,
                 chunks_completed,
                 total_chunks,
+                progress_started_at,
             );
             let progress = TransferProgress {
                 transfer_id: transfer_id_for_progress.clone(),
@@ -776,11 +783,14 @@ fn maybe_log_progress(
     bytes: u64,
     chunks_completed: u32,
     total_chunks: u32,
+    started_at: Instant,
 ) {
     if bytes == 0 || file_size == 0 {
         return;
     }
 
+    let elapsed_ms = started_at.elapsed().as_millis() as u64;
+    let avg_mbps = average_mbps(bytes, elapsed_ms);
     let progress_pct = ((bytes.saturating_mul(100) / file_size).min(100)) as u32;
     let mut threshold = next_percent.load(Ordering::Relaxed);
 
@@ -803,6 +813,8 @@ fn maybe_log_progress(
                     file_size,
                     chunks_completed,
                     total_chunks,
+                    elapsed_ms,
+                    avg_mbps,
                     "file transfer progress"
                 );
                 break;
@@ -810,6 +822,16 @@ fn maybe_log_progress(
             Err(current) => threshold = current,
         }
     }
+}
+
+fn average_mbps(bytes: u64, elapsed_ms: u64) -> f64 {
+    if elapsed_ms == 0 {
+        return 0.0;
+    }
+
+    let bits = (bytes as f64) * 8.0;
+    let seconds = (elapsed_ms as f64) / 1000.0;
+    bits / seconds / 1_000_000.0
 }
 
 #[cfg(test)]

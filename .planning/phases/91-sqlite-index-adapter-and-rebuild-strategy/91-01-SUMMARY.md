@@ -127,3 +127,11 @@ None - no external service configuration required.
 
 _Phase: 91-sqlite-index-adapter-and-rebuild-strategy_
 _Completed: 2026-04-11_
+
+## Self-Check: PASSED
+
+- FOUND: src-tauri/crates/uc-infra/src/search/sqlite_index.rs
+- FOUND: src-tauri/crates/uc-infra/src/search/mod.rs
+- FOUND: .planning/phases/91-sqlite-index-adapter-and-rebuild-strategy/91-01-SUMMARY.md
+- FOUND: commit 061bec46
+- No untracked files

@@ -21,13 +21,10 @@ use tokio::sync::RwLock;
 use tokio_tungstenite::tungstenite::client::IntoClientRequest;
 use tower::ServiceExt;
 use uc_app::runtime::CoreRuntime;
-use uc_bootstrap::{build_daemon_app, build_non_gui_runtime_with_setup};
-use uc_bootstrap::assembly::SetupAssemblyPorts;
 use uc_core::security::model::MasterKey;
 use uc_daemon::api::auth::load_or_create_auth_token;
 use uc_daemon::api::query::DaemonQueryService;
 use uc_daemon::api::server::{build_router, DaemonApiState};
-use uc_daemon::api::types::DaemonWsEvent;
 use uc_daemon::search::coordinator::SearchCoordinator;
 use uc_daemon::security::SecurityState;
 use uc_daemon::state::RuntimeState;
@@ -60,19 +57,7 @@ fn build_runtime() -> Arc<CoreRuntime> {
             .as_nanos()
     );
     std::env::set_var("UC_PROFILE", &profile);
-
-    let ctx = build_daemon_app().expect("build_daemon_app failed");
-    let setup_ports = SetupAssemblyPorts::from_network(
-        ctx.pairing_orchestrator.clone(),
-        ctx.space_access_orchestrator.clone(),
-        ctx.deps.network_ports.peers.clone(),
-        None,
-        Arc::new(uc_app::usecases::LoggingLifecycleEventEmitter),
-    );
-    Arc::new(
-        build_non_gui_runtime_with_setup(ctx.deps, ctx.storage_paths.clone(), setup_ports)
-            .expect("build_non_gui_runtime_with_setup failed"),
-    )
+    Arc::new(uc_bootstrap::build_cli_runtime(None).expect("build_cli_runtime failed"))
 }
 
 async fn spawn_server() -> SearchWsHarness {
@@ -88,12 +73,20 @@ async fn spawn_server() -> SearchWsHarness {
     let security = Arc::new(SecurityState::new_with_pid(pid));
     let session_token = security.make_session_token_for_pid(pid);
 
-    // Wire the SearchCoordinator so search WS snapshots and progress events work.
-    let (event_tx, _rx) = tokio::sync::broadcast::channel::<DaemonWsEvent>(128);
-    let coordinator = Arc::new(SearchCoordinator::new(runtime.clone(), event_tx.clone()));
-
-    let api_state = DaemonApiState::new(query_service, token, Some(runtime.clone()), security)
-        .with_search_coordinator(coordinator);
+    // Build the DaemonApiState first so we get its event_tx (the channel the WS
+    // fanout subscribes to). Then create the SearchCoordinator with the SAME event_tx
+    // so that rebuild progress events reach WS clients.
+    let api_state_base = DaemonApiState::new(
+        query_service,
+        token,
+        Some(runtime.clone()),
+        security,
+    );
+    let coordinator = Arc::new(SearchCoordinator::new(
+        runtime.clone(),
+        api_state_base.event_tx.clone(),
+    ));
+    let api_state = api_state_base.with_search_coordinator(coordinator);
 
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
@@ -257,12 +250,22 @@ async fn search_status_and_rebuild_routes_enforce_lock_and_emit_progress() {
         "POST /search/rebuild should return 202 when encryption is unlocked"
     );
 
-    // Receive at least one search.rebuild_progress event.
-    let progress_event = next_json(&mut socket).await;
-    assert_eq!(
-        progress_event["type"], "search.rebuild_progress",
-        "should receive search.rebuild_progress after triggering rebuild, got: {}",
-        progress_event
+    // Receive events until we find at least one search.rebuild_progress event.
+    // The coordinator emits status_snapshot(rebuilding) first, then rebuild_progress events.
+    let mut found_progress = false;
+    let mut progress_event = serde_json::Value::Null;
+    for _ in 0..10 {
+        let event = next_json(&mut socket).await;
+        if event["type"] == "search.rebuild_progress" {
+            found_progress = true;
+            progress_event = event;
+            break;
+        }
+        // Skip status_snapshot and other non-progress events.
+    }
+    assert!(
+        found_progress,
+        "should receive at least one search.rebuild_progress after triggering rebuild"
     );
     assert_eq!(progress_event["topic"], "search");
     // The payload must have a `stage` field.

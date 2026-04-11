@@ -16,19 +16,17 @@ use tokio::sync::RwLock;
 use tower::ServiceExt;
 use uc_app::runtime::CoreRuntime;
 use uc_app::usecases::CoreUseCases;
-use uc_bootstrap::{build_daemon_app, build_non_gui_runtime_with_setup};
-use uc_bootstrap::assembly::SetupAssemblyPorts;
 use uc_core::ids::{EntryId, EventId};
 use uc_core::search::{FileType, SearchKey};
 use uc_core::security::model::MasterKey;
 use uc_daemon::api::auth::load_or_create_auth_token;
 use uc_daemon::api::query::DaemonQueryService;
 use uc_daemon::api::server::{build_router, DaemonApiState};
-use uc_daemon::api::types::DaemonWsEvent;
 use uc_daemon::search::coordinator::SearchCoordinator;
 use uc_daemon::security::SecurityState;
 use uc_daemon::state::RuntimeState;
 use uc_infra::search::text_extractor::SearchPipelineInput;
+use uc_infra::db::schema::search_posting;
 
 // ---------------------------------------------------------------------------
 // Shared fixture
@@ -58,20 +56,7 @@ fn build_runtime() -> Arc<CoreRuntime> {
             .as_nanos()
     );
     std::env::set_var("UC_PROFILE", &profile);
-
-    let ctx = build_daemon_app().expect("build_daemon_app failed");
-    let setup_ports = SetupAssemblyPorts::from_network(
-        ctx.pairing_orchestrator.clone(),
-        ctx.space_access_orchestrator.clone(),
-        ctx.deps.network_ports.peers.clone(),
-        None,
-        Arc::new(uc_app::usecases::LoggingLifecycleEventEmitter),
-    );
-    let runtime = Arc::new(
-        build_non_gui_runtime_with_setup(ctx.deps, ctx.storage_paths.clone(), setup_ports)
-            .expect("build_non_gui_runtime_with_setup failed"),
-    );
-    runtime
+    Arc::new(uc_bootstrap::build_cli_runtime(None).expect("build_cli_runtime failed"))
 }
 
 async fn build_fixture() -> SearchApiFixture {
@@ -87,12 +72,19 @@ async fn build_fixture() -> SearchApiFixture {
     let security = Arc::new(SecurityState::new_with_pid(pid));
     let session_token = security.make_session_token_for_pid(pid);
 
-    // Wire the SearchCoordinator so search routes can access it.
-    let (event_tx, _rx) = tokio::sync::broadcast::channel::<DaemonWsEvent>(64);
-    let coordinator = Arc::new(SearchCoordinator::new(runtime.clone(), event_tx));
-
-    let api_state = DaemonApiState::new(query_service, token, Some(runtime.clone()), security)
-        .with_search_coordinator(coordinator);
+    // Build DaemonApiState first, then create SearchCoordinator using the same
+    // event_tx so rebuild progress events reach the WS fanout.
+    let api_state_base = DaemonApiState::new(
+        query_service,
+        token,
+        Some(runtime.clone()),
+        security,
+    );
+    let coordinator = Arc::new(SearchCoordinator::new(
+        runtime.clone(),
+        api_state_base.event_tx.clone(),
+    ));
+    let api_state = api_state_base.with_search_coordinator(coordinator);
 
     let app = build_router(api_state);
 
@@ -195,9 +187,8 @@ async fn index_test_entry(runtime: &Arc<CoreRuntime>, entry_id: &EntryId, text: 
 /// "deleting that entry leaves zero search_posting rows for its entry_id".
 fn count_search_postings_for_entry(db_path: &std::path::Path, entry_id_str: &str) -> i64 {
     use diesel::prelude::*;
-    use uc_infra::db::schema::search_posting;
 
-    // Re-use the infra pool infrastructure to open a connection.
+    // Open a fresh connection to the same SQLite file used by the runtime.
     let db_url = db_path.to_str().expect("db_path must be valid UTF-8");
     let mut conn = diesel::sqlite::SqliteConnection::establish(db_url)
         .expect("failed to connect to SQLite for posting count");

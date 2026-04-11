@@ -5,10 +5,11 @@
 
 use super::framing::{read_file_frame, write_file_frame, FileMessageType};
 use super::protocol::{
-    receive_file_chunked, send_file_chunked, FileAcceptance, FileAnnounce, CHUNK_SIZE,
+    FileAcceptance, FileAnnounce, FileAnnounceV2, LegacyFileTransferProtocol,
+    StreamingFileTransferProtocol, CHUNK_SIZE,
 };
 use anyhow::{anyhow, Result};
-use libp2p::{futures::StreamExt, PeerId, StreamProtocol};
+use libp2p::{futures::StreamExt, PeerId, Stream, StreamProtocol};
 use libp2p_stream as stream;
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -59,11 +60,24 @@ struct FileTransferServiceInner {
     peer_semaphores: AsyncMutex<HashMap<String, Arc<Semaphore>>>,
     global_semaphore: Arc<Semaphore>,
     config: FileTransferConfig,
+    protocol_coordinator: FileTransferProtocolCoordinator,
 }
 
 struct TransferPermits {
     _global: OwnedSemaphorePermit,
     _peer: OwnedSemaphorePermit,
+}
+
+#[derive(Clone, Copy)]
+enum FileTransferProtocolVersion {
+    V1,
+    V2,
+}
+
+#[derive(Clone, Copy, Default)]
+struct FileTransferProtocolCoordinator {
+    legacy: LegacyFileTransferProtocol,
+    streaming: StreamingFileTransferProtocol,
 }
 
 impl FileTransferService {
@@ -82,22 +96,28 @@ impl FileTransferService {
                 peer_semaphores: AsyncMutex::new(HashMap::new()),
                 global_semaphore: Arc::new(Semaphore::new(MAX_FILE_TRANSFER_CONCURRENCY)),
                 config,
+                protocol_coordinator: FileTransferProtocolCoordinator::default(),
             }),
         }
     }
 
     /// Spawn the accept loop for incoming file transfers.
     pub fn spawn_accept_loop(&self) {
-        let service = self.clone();
-        tokio::spawn(async move {
-            service.run_accept_loop().await;
-        });
+        for version in [
+            FileTransferProtocolVersion::V1,
+            FileTransferProtocolVersion::V2,
+        ] {
+            let service = self.clone();
+            tokio::spawn(async move {
+                service.run_accept_loop(version).await;
+            });
+        }
     }
 
-    async fn run_accept_loop(&self) {
+    async fn run_accept_loop(&self, version: FileTransferProtocolVersion) {
         let mut incoming = {
             let mut control = self.inner.control.lock().await;
-            match control.accept(StreamProtocol::new(ProtocolId::FileTransfer.as_str())) {
+            match control.accept(StreamProtocol::new(protocol_id(version).as_str())) {
                 Ok(incoming) => incoming,
                 Err(err) => {
                     warn!("failed to accept file transfer stream: {err}");
@@ -115,7 +135,7 @@ impl FileTransferService {
             tokio::spawn(
                 async move {
                     if let Err(err) = service
-                        .handle_incoming_transfer(peer_id.clone(), stream)
+                        .handle_incoming_transfer(peer_id.clone(), stream, version)
                         .await
                     {
                         warn!(
@@ -131,7 +151,12 @@ impl FileTransferService {
     }
 
     /// Handle an incoming file transfer stream.
-    async fn handle_incoming_transfer<S>(&self, peer_id: String, mut stream: S) -> Result<()>
+    async fn handle_incoming_transfer<S>(
+        &self,
+        peer_id: String,
+        mut stream: S,
+        version: FileTransferProtocolVersion,
+    ) -> Result<()>
     where
         S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Send + 'static,
     {
@@ -146,13 +171,21 @@ impl FileTransferService {
             return Err(anyhow!("expected announce frame, got {:?}", frame.0));
         }
 
-        let announce: FileAnnounce = serde_json::from_slice(&frame.1)
-            .map_err(|e| anyhow!("invalid announce message: {}", e))?;
+        let incoming = match version {
+            FileTransferProtocolVersion::V1 => IncomingTransfer::V1(
+                serde_json::from_slice(&frame.1)
+                    .map_err(|e| anyhow!("invalid v1 announce message: {}", e))?,
+            ),
+            FileTransferProtocolVersion::V2 => IncomingTransfer::V2(
+                serde_json::from_slice(&frame.1)
+                    .map_err(|e| anyhow!("invalid v2 announce message: {}", e))?,
+            ),
+        };
 
         info!(
-            transfer_id = %announce.transfer_id,
-            filename = %announce.filename,
-            file_size = announce.file_size,
+            transfer_id = %incoming.transfer_id(),
+            filename = %incoming.filename(),
+            file_size = incoming.file_size(),
             "incoming file transfer"
         );
 
@@ -161,18 +194,18 @@ impl FileTransferService {
             .inner
             .event_tx
             .send(NetworkEvent::FileTransferStarted {
-                transfer_id: announce.transfer_id.clone(),
+                transfer_id: incoming.transfer_id().to_string(),
                 peer_id: peer_id.clone(),
-                filename: announce.filename.clone(),
-                file_size: announce.file_size,
+                filename: incoming.filename().to_string(),
+                file_size: incoming.file_size(),
             })
             .await;
 
         // Check disk space (basic check)
         let cache_dir = &self.inner.config.cache_dir;
-        if let Err(space_err) = check_disk_space(cache_dir, announce.file_size).await {
+        if let Err(space_err) = check_disk_space(cache_dir, incoming.file_size()).await {
             let rejection = FileAcceptance {
-                transfer_id: announce.transfer_id.clone(),
+                transfer_id: incoming.transfer_id().to_string(),
                 accepted: false,
                 reason: Some(space_err.to_string()),
             };
@@ -183,7 +216,7 @@ impl FileTransferService {
                 .inner
                 .event_tx
                 .send(NetworkEvent::FileTransferFailed {
-                    transfer_id: announce.transfer_id.clone(),
+                    transfer_id: incoming.transfer_id().to_string(),
                     peer_id: peer_id.clone(),
                     error: space_err.to_string(),
                 })
@@ -193,7 +226,7 @@ impl FileTransferService {
 
         // Send acceptance
         let acceptance = FileAcceptance {
-            transfer_id: announce.transfer_id.clone(),
+            transfer_id: incoming.transfer_id().to_string(),
             accepted: true,
             reason: None,
         };
@@ -203,7 +236,8 @@ impl FileTransferService {
         // Receive the file
         let progress_port = self.inner.progress_port.clone();
         let peer_id_clone = peer_id.clone();
-        let transfer_id_clone = announce.transfer_id.clone();
+        let transfer_id_clone = incoming.transfer_id().to_string();
+        let file_size = incoming.file_size();
 
         let progress_callback = move |chunks_completed: u32, total_chunks: u32, bytes: u64| {
             let progress = TransferProgress {
@@ -213,7 +247,7 @@ impl FileTransferService {
                 chunks_completed,
                 total_chunks,
                 bytes_transferred: bytes,
-                total_bytes: Some(announce.file_size),
+                total_bytes: Some(file_size),
             };
             let port = progress_port.clone();
             tokio::spawn(async move {
@@ -221,8 +255,11 @@ impl FileTransferService {
             });
         };
 
-        let result =
-            receive_file_chunked(&mut stream, &announce, cache_dir, Some(&progress_callback)).await;
+        let result = self
+            .inner
+            .protocol_coordinator
+            .receive_on_stream(&mut stream, &incoming, cache_dir, Some(&progress_callback))
+            .await;
 
         // Hold permits until transfer completes
         drop(permits);
@@ -230,7 +267,7 @@ impl FileTransferService {
         match result {
             Ok(final_path) => {
                 info!(
-                    transfer_id = %announce.transfer_id,
+                    transfer_id = %incoming.transfer_id(),
                     path = %final_path.display(),
                     "file transfer complete"
                 );
@@ -238,12 +275,12 @@ impl FileTransferService {
                     .inner
                     .event_tx
                     .send(NetworkEvent::FileTransferCompleted {
-                        transfer_id: announce.transfer_id.clone(),
+                        transfer_id: incoming.transfer_id().to_string(),
                         peer_id: peer_id.clone(),
-                        filename: announce.filename.clone(),
+                        filename: incoming.filename().to_string(),
                         file_path: final_path,
-                        batch_id: announce.batch_id.clone(),
-                        batch_total: announce.batch_total,
+                        batch_id: incoming.batch_id().cloned(),
+                        batch_total: incoming.batch_total(),
                     })
                     .await;
                 Ok(())
@@ -253,7 +290,7 @@ impl FileTransferService {
                     .inner
                     .event_tx
                     .send(NetworkEvent::FileTransferFailed {
-                        transfer_id: announce.transfer_id.clone(),
+                        transfer_id: incoming.transfer_id().to_string(),
                         peer_id: peer_id.clone(),
                         error: e.to_string(),
                     })
@@ -290,13 +327,7 @@ impl FileTransferService {
             .map_err(|err| anyhow!("invalid peer id: {err}"))?;
 
         // Open outbound stream
-        let stream = {
-            let mut control = self.inner.control.lock().await;
-            control
-                .open_stream(peer, StreamProtocol::new(ProtocolId::FileTransfer.as_str()))
-                .await
-                .map_err(|err| anyhow!("failed to open file transfer stream: {err}"))?
-        };
+        let (stream, protocol_version) = self.open_outbound_stream(peer).await?;
         let stream = stream.compat();
         let (mut read_half, mut write_half) = tokio::io::split(stream);
 
@@ -343,16 +374,20 @@ impl FileTransferService {
         };
 
         // Send the file
-        let send_result = send_file_chunked(
-            &mut write_half,
-            &file_path,
-            &transfer_id,
-            batch_id.clone(),
-            batch_total,
-            self.inner.config.chunk_size,
-            Some(&progress_callback),
-        )
-        .await;
+        let send_result = self
+            .inner
+            .protocol_coordinator
+            .send_on_stream(
+                protocol_version,
+                &mut write_half,
+                &file_path,
+                &transfer_id,
+                batch_id.clone(),
+                batch_total,
+                self.inner.config.chunk_size,
+                Some(&progress_callback),
+            )
+            .await;
 
         // Hold permits until done
         drop(permits);
@@ -443,6 +478,163 @@ impl FileTransferService {
             _global: global,
             _peer: peer,
         })
+    }
+
+    async fn open_outbound_stream(
+        &self,
+        peer: PeerId,
+    ) -> Result<(Stream, FileTransferProtocolVersion)> {
+        let mut control = self.inner.control.lock().await;
+        self.inner
+            .protocol_coordinator
+            .open_outbound_stream(&mut control, peer)
+            .await
+    }
+}
+
+enum IncomingTransfer {
+    V1(FileAnnounce),
+    V2(FileAnnounceV2),
+}
+
+impl IncomingTransfer {
+    fn transfer_id(&self) -> &str {
+        match self {
+            Self::V1(v) => &v.transfer_id,
+            Self::V2(v) => &v.transfer_id,
+        }
+    }
+
+    fn filename(&self) -> &str {
+        match self {
+            Self::V1(v) => &v.filename,
+            Self::V2(v) => &v.filename,
+        }
+    }
+
+    fn file_size(&self) -> u64 {
+        match self {
+            Self::V1(v) => v.file_size,
+            Self::V2(v) => v.file_size,
+        }
+    }
+
+    fn batch_id(&self) -> Option<&String> {
+        match self {
+            Self::V1(v) => v.batch_id.as_ref(),
+            Self::V2(v) => v.batch_id.as_ref(),
+        }
+    }
+
+    fn batch_total(&self) -> Option<u32> {
+        match self {
+            Self::V1(v) => v.batch_total,
+            Self::V2(v) => v.batch_total,
+        }
+    }
+}
+
+fn protocol_id(version: FileTransferProtocolVersion) -> ProtocolId {
+    match version {
+        FileTransferProtocolVersion::V1 => ProtocolId::FileTransfer,
+        FileTransferProtocolVersion::V2 => ProtocolId::FileTransferV2,
+    }
+}
+
+impl FileTransferProtocolCoordinator {
+    async fn open_outbound_stream(
+        &self,
+        control: &mut stream::Control,
+        peer: PeerId,
+    ) -> Result<(Stream, FileTransferProtocolVersion)> {
+        match control
+            .open_stream(
+                peer,
+                StreamProtocol::new(ProtocolId::FileTransferV2.as_str()),
+            )
+            .await
+        {
+            Ok(stream) => Ok((stream, FileTransferProtocolVersion::V2)),
+            Err(v2_err) => {
+                let stream = control
+                    .open_stream(peer, StreamProtocol::new(ProtocolId::FileTransfer.as_str()))
+                    .await
+                    .map_err(|err| {
+                        anyhow!(
+                            "failed to open file transfer stream via v2 ({v2_err}) or v1 ({err})"
+                        )
+                    })?;
+                Ok((stream, FileTransferProtocolVersion::V1))
+            }
+        }
+    }
+
+    async fn send_on_stream<W>(
+        &self,
+        version: FileTransferProtocolVersion,
+        writer: &mut W,
+        file_path: &std::path::Path,
+        transfer_id: &str,
+        batch_id: Option<String>,
+        batch_total: Option<u32>,
+        chunk_size: usize,
+        progress_callback: Option<&(dyn Fn(u32, u32, u64) + Send + Sync)>,
+    ) -> Result<String>
+    where
+        W: tokio::io::AsyncWrite + Unpin,
+    {
+        match version {
+            FileTransferProtocolVersion::V1 => {
+                self.legacy
+                    .send_file(
+                        writer,
+                        file_path,
+                        transfer_id,
+                        batch_id,
+                        batch_total,
+                        chunk_size,
+                        progress_callback,
+                    )
+                    .await
+            }
+            FileTransferProtocolVersion::V2 => {
+                self.streaming
+                    .send_file(
+                        writer,
+                        file_path,
+                        transfer_id,
+                        batch_id,
+                        batch_total,
+                        chunk_size,
+                        progress_callback,
+                    )
+                    .await
+            }
+        }
+    }
+
+    async fn receive_on_stream<S>(
+        &self,
+        stream: &mut S,
+        incoming: &IncomingTransfer,
+        cache_dir: &std::path::Path,
+        progress_callback: Option<&(dyn Fn(u32, u32, u64) + Send + Sync)>,
+    ) -> Result<PathBuf>
+    where
+        S: tokio::io::AsyncRead + Unpin,
+    {
+        match incoming {
+            IncomingTransfer::V1(announce) => {
+                self.legacy
+                    .receive_file(stream, announce, cache_dir, progress_callback)
+                    .await
+            }
+            IncomingTransfer::V2(announce) => {
+                self.streaming
+                    .receive_file(stream, announce, cache_dir, progress_callback)
+                    .await
+            }
+        }
     }
 }
 

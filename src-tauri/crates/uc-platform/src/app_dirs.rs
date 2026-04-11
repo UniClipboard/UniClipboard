@@ -127,7 +127,7 @@ impl AppDirsPort for DirsAppDirsAdapter {
 /// # Examples
 ///
 /// ```
-/// # use uc_platform::app_dirs::{default_app_dirs, AppDirs};
+/// # use uc_platform::app_dirs::default_app_dirs;
 /// let dirs = default_app_dirs().expect("failed to resolve app dirs");
 /// // `app_data_root` and `app_cache_root` are absolute paths that include the app directory name.
 /// assert!(dirs.app_data_root.to_string_lossy().contains("app.uniclipboard.desktop"));

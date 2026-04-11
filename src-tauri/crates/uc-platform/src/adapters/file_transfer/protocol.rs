@@ -7,7 +7,7 @@ use super::framing::{read_file_frame, write_file_frame, FileMessageType};
 use anyhow::{anyhow, Result};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
-use tokio::io::{AsyncRead, AsyncWrite};
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use tracing::{debug, info_span, warn, Instrument};
 
 /// Default chunk size: 256KB.
@@ -20,6 +20,16 @@ pub struct FileAnnounce {
     pub filename: String,
     pub file_size: u64,
     pub blake3_hash: String,
+    pub batch_id: Option<String>,
+    pub batch_total: Option<u32>,
+}
+
+/// Streaming file transfer announcement for protocol v2.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FileAnnounceV2 {
+    pub transfer_id: String,
+    pub filename: String,
+    pub file_size: u64,
     pub batch_id: Option<String>,
     pub batch_total: Option<u32>,
 }
@@ -47,224 +57,386 @@ pub struct FileComplete {
     pub total_chunks: u32,
 }
 
-/// Compute Blake3 hash of a file.
-pub async fn compute_blake3_hash(file_path: &Path) -> Result<String> {
-    let data = tokio::fs::read(file_path).await?;
-    let hash = blake3::hash(&data);
-    Ok(hash.to_hex().to_string())
+#[derive(Debug, Clone, Copy, Default)]
+pub struct LegacyFileTransferProtocol;
+
+#[derive(Debug, Clone, Copy, Default)]
+pub struct StreamingFileTransferProtocol;
+
+#[derive(Debug, Clone, Copy, Default)]
+struct ChunkTransferEngine;
+
+struct ReceivedHash {
+    computed_hash: String,
+    completed_hash: String,
 }
 
-/// Send a file in chunks over the provided writer.
-///
-/// Returns the Blake3 hash of the file.
-pub async fn send_file_chunked<W>(
-    writer: &mut W,
-    file_path: &Path,
-    transfer_id: &str,
-    batch_id: Option<String>,
-    batch_total: Option<u32>,
-    chunk_size: usize,
-    progress_callback: Option<&(dyn Fn(u32, u32, u64) + Send + Sync)>,
-) -> Result<String>
-where
-    W: AsyncWrite + Unpin,
-{
-    let data = tokio::fs::read(file_path)
-        .await
-        .map_err(|e| anyhow!("failed to read file for transfer: {}", e))?;
+/// Compute Blake3 hash of a file.
+async fn compute_blake3_hash(file_path: &Path) -> Result<String> {
+    let mut file = tokio::fs::File::open(file_path).await?;
+    let mut hasher = blake3::Hasher::new();
+    let mut buffer = vec![0u8; CHUNK_SIZE];
 
-    let file_size = data.len() as u64;
+    loop {
+        let bytes_read = file.read(&mut buffer).await?;
+        if bytes_read == 0 {
+            break;
+        }
+        hasher.update(&buffer[..bytes_read]);
+    }
+
+    Ok(hasher.finalize().to_hex().to_string())
+}
+
+impl LegacyFileTransferProtocol {
+    pub async fn send_file<W>(
+        &self,
+        writer: &mut W,
+        file_path: &Path,
+        transfer_id: &str,
+        batch_id: Option<String>,
+        batch_total: Option<u32>,
+        chunk_size: usize,
+        progress_callback: Option<&(dyn Fn(u32, u32, u64) + Send + Sync)>,
+    ) -> Result<String>
+    where
+        W: AsyncWrite + Unpin,
+    {
+        let hash = compute_blake3_hash(file_path).await?;
+        let (mut file, file_size, filename) = open_file_transfer_source(file_path).await?;
+
+        let announce = FileAnnounce {
+            transfer_id: transfer_id.to_string(),
+            filename,
+            file_size,
+            blake3_hash: hash.clone(),
+            batch_id,
+            batch_total,
+        };
+        let announce_bytes = serde_json::to_vec(&announce)?;
+        write_file_frame(writer, FileMessageType::Announce, &announce_bytes).await?;
+
+        let streamed_hash = ChunkTransferEngine::send_stream(
+            writer,
+            &mut file,
+            &announce.transfer_id,
+            announce.file_size,
+            chunk_size,
+            progress_callback,
+        )
+        .await?;
+
+        debug_assert_eq!(streamed_hash, hash);
+        Ok(streamed_hash)
+    }
+
+    pub async fn receive_file<R>(
+        &self,
+        reader: &mut R,
+        announce: &FileAnnounce,
+        cache_dir: &Path,
+        progress_callback: Option<&(dyn Fn(u32, u32, u64) + Send + Sync)>,
+    ) -> Result<PathBuf>
+    where
+        R: AsyncRead + Unpin,
+    {
+        ChunkTransferEngine::receive_file(
+            reader,
+            &announce.transfer_id,
+            &announce.filename,
+            announce.file_size,
+            Some(&announce.blake3_hash),
+            cache_dir,
+            progress_callback,
+        )
+        .await
+    }
+}
+
+impl StreamingFileTransferProtocol {
+    pub async fn send_file<W>(
+        &self,
+        writer: &mut W,
+        file_path: &Path,
+        transfer_id: &str,
+        batch_id: Option<String>,
+        batch_total: Option<u32>,
+        chunk_size: usize,
+        progress_callback: Option<&(dyn Fn(u32, u32, u64) + Send + Sync)>,
+    ) -> Result<String>
+    where
+        W: AsyncWrite + Unpin,
+    {
+        let (mut file, file_size, filename) = open_file_transfer_source(file_path).await?;
+
+        let announce = FileAnnounceV2 {
+            transfer_id: transfer_id.to_string(),
+            filename,
+            file_size,
+            batch_id,
+            batch_total,
+        };
+        let announce_bytes = serde_json::to_vec(&announce)?;
+        write_file_frame(writer, FileMessageType::Announce, &announce_bytes).await?;
+
+        ChunkTransferEngine::send_stream(
+            writer,
+            &mut file,
+            &announce.transfer_id,
+            announce.file_size,
+            chunk_size,
+            progress_callback,
+        )
+        .await
+    }
+
+    pub async fn receive_file<R>(
+        &self,
+        reader: &mut R,
+        announce: &FileAnnounceV2,
+        cache_dir: &Path,
+        progress_callback: Option<&(dyn Fn(u32, u32, u64) + Send + Sync)>,
+    ) -> Result<PathBuf>
+    where
+        R: AsyncRead + Unpin,
+    {
+        ChunkTransferEngine::receive_file(
+            reader,
+            &announce.transfer_id,
+            &announce.filename,
+            announce.file_size,
+            None,
+            cache_dir,
+            progress_callback,
+        )
+        .await
+    }
+}
+
+impl ChunkTransferEngine {
+    async fn send_stream<W, R>(
+        writer: &mut W,
+        reader: &mut R,
+        transfer_id: &str,
+        file_size: u64,
+        chunk_size: usize,
+        progress_callback: Option<&(dyn Fn(u32, u32, u64) + Send + Sync)>,
+    ) -> Result<String>
+    where
+        W: AsyncWrite + Unpin,
+        R: AsyncRead + Unpin,
+    {
+        let total_chunks = if file_size == 0 {
+            0
+        } else {
+            file_size.div_ceil(chunk_size as u64) as u32
+        };
+        let mut bytes_sent: u64 = 0;
+        let mut chunk_index: u32 = 0;
+        let mut hasher = blake3::Hasher::new();
+        let mut buffer = vec![0u8; chunk_size];
+
+        loop {
+            let bytes_read = reader.read(&mut buffer).await?;
+            if bytes_read == 0 {
+                break;
+            }
+
+            let chunk_data = &buffer[..bytes_read];
+            hasher.update(chunk_data);
+
+            let header = FileChunkHeader {
+                chunk_index,
+                chunk_size: bytes_read as u32,
+            };
+            let header_bytes = serde_json::to_vec(&header)?;
+            let mut payload = Vec::with_capacity(4 + header_bytes.len() + chunk_data.len());
+            payload.extend_from_slice(&(header_bytes.len() as u32).to_be_bytes());
+            payload.extend_from_slice(&header_bytes);
+            payload.extend_from_slice(chunk_data);
+
+            write_file_frame(writer, FileMessageType::Chunk, &payload).await?;
+
+            bytes_sent += bytes_read as u64;
+            chunk_index += 1;
+            if let Some(cb) = progress_callback {
+                cb(chunk_index, total_chunks.max(chunk_index), bytes_sent);
+            }
+        }
+
+        let hash = hasher.finalize().to_hex().to_string();
+        let complete = FileComplete {
+            transfer_id: transfer_id.to_string(),
+            blake3_hash: hash.clone(),
+            total_chunks: chunk_index,
+        };
+        let complete_bytes = serde_json::to_vec(&complete)?;
+        write_file_frame(writer, FileMessageType::Complete, &complete_bytes).await?;
+
+        Ok(hash)
+    }
+
+    async fn receive_file<R>(
+        reader: &mut R,
+        transfer_id: &str,
+        filename: &str,
+        file_size: u64,
+        announce_hash: Option<&str>,
+        cache_dir: &Path,
+        progress_callback: Option<&(dyn Fn(u32, u32, u64) + Send + Sync)>,
+    ) -> Result<PathBuf>
+    where
+        R: AsyncRead + Unpin,
+    {
+        let transfer_dir = cache_dir.join(transfer_id);
+        tokio::fs::create_dir_all(&transfer_dir).await?;
+        let tmp_path = transfer_dir.join(format!("{}.tmp", transfer_id));
+
+        let result = Self::receive_chunks_to_file(
+            reader,
+            &tmp_path,
+            transfer_id,
+            file_size,
+            progress_callback,
+        )
+        .instrument(info_span!("receive_chunks", transfer_id = %transfer_id))
+        .await;
+
+        match result {
+            Ok(received_hash) => {
+                if let Some(expected_hash) = announce_hash {
+                    if received_hash.completed_hash != expected_hash {
+                        let _ = tokio::fs::remove_file(&tmp_path).await;
+                        return Err(anyhow!(
+                            "blake3 hash mismatch: expected {}, got {}",
+                            expected_hash,
+                            received_hash.completed_hash
+                        ));
+                    }
+                }
+
+                if received_hash.computed_hash != received_hash.completed_hash {
+                    let _ = tokio::fs::remove_file(&tmp_path).await;
+                    return Err(anyhow!(
+                        "blake3 hash mismatch: expected {}, got {}",
+                        received_hash.completed_hash,
+                        received_hash.computed_hash
+                    ));
+                }
+
+                let safe_filename = sanitize_filename(filename);
+                let final_path = transfer_dir.join(&safe_filename);
+                tokio::fs::rename(&tmp_path, &final_path).await?;
+                Ok(final_path)
+            }
+            Err(e) => {
+                let _ = tokio::fs::remove_file(&tmp_path).await;
+                Err(e)
+            }
+        }
+    }
+
+    async fn receive_chunks_to_file<R>(
+        reader: &mut R,
+        tmp_path: &Path,
+        transfer_id: &str,
+        file_size: u64,
+        progress_callback: Option<&(dyn Fn(u32, u32, u64) + Send + Sync)>,
+    ) -> Result<ReceivedHash>
+    where
+        R: AsyncRead + Unpin,
+    {
+        let mut hasher = blake3::Hasher::new();
+        let mut file = tokio::fs::File::create(tmp_path).await?;
+
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let perms = std::fs::Permissions::from_mode(0o600);
+            tokio::fs::set_permissions(tmp_path, perms).await?;
+        }
+
+        let mut bytes_received: u64 = 0;
+        let mut chunks_received: u32 = 0;
+
+        loop {
+            let frame = read_file_frame(reader).await?;
+            let (msg_type, payload) = match frame {
+                Some(f) => f,
+                None => return Err(anyhow!("stream closed before transfer complete")),
+            };
+
+            match msg_type {
+                FileMessageType::Chunk => {
+                    if payload.len() < 4 {
+                        return Err(anyhow!("chunk payload too small"));
+                    }
+                    let header_len =
+                        u32::from_be_bytes([payload[0], payload[1], payload[2], payload[3]])
+                            as usize;
+                    if payload.len() < 4 + header_len {
+                        return Err(anyhow!("chunk payload missing header data"));
+                    }
+                    let _header: FileChunkHeader =
+                        serde_json::from_slice(&payload[4..4 + header_len])?;
+                    let chunk_data = &payload[4 + header_len..];
+
+                    hasher.update(chunk_data);
+                    file.write_all(chunk_data).await?;
+                    file.flush().await?;
+                    bytes_received += chunk_data.len() as u64;
+                    chunks_received += 1;
+
+                    let estimated_total = if file_size > 0 {
+                        file_size.div_ceil(CHUNK_SIZE as u64) as u32
+                    } else {
+                        chunks_received
+                    };
+
+                    if let Some(cb) = progress_callback {
+                        cb(chunks_received, estimated_total, bytes_received);
+                    }
+                }
+                FileMessageType::Complete => {
+                    let complete: FileComplete = serde_json::from_slice(&payload)?;
+                    file.flush().await?;
+
+                    let computed_hash = hasher.finalize().to_hex().to_string();
+                    debug!(
+                        transfer_id = %transfer_id,
+                        total_chunks = complete.total_chunks,
+                        bytes = bytes_received,
+                        "file receive complete"
+                    );
+                    return Ok(ReceivedHash {
+                        computed_hash,
+                        completed_hash: complete.blake3_hash,
+                    });
+                }
+                other => {
+                    warn!("unexpected message type during transfer: {:?}", other);
+                    return Err(anyhow!("unexpected message type: {:?}", other));
+                }
+            }
+        }
+    }
+}
+
+async fn open_file_transfer_source(file_path: &Path) -> Result<(tokio::fs::File, u64, String)> {
+    let file = tokio::fs::File::open(file_path)
+        .await
+        .map_err(|e| anyhow!("failed to open file for transfer: {}", e))?;
+    let file_size = file
+        .metadata()
+        .await
+        .map_err(|e| anyhow!("failed to read file metadata for transfer: {}", e))?
+        .len();
     let filename = file_path
         .file_name()
         .and_then(|n| n.to_str())
         .unwrap_or("unknown")
         .to_string();
-
-    // Compute hash
-    let mut hasher = blake3::Hasher::new();
-    hasher.update(&data);
-    let hash = hasher.finalize().to_hex().to_string();
-
-    // Send announce
-    let announce = FileAnnounce {
-        transfer_id: transfer_id.to_string(),
-        filename,
-        file_size,
-        blake3_hash: hash.clone(),
-        batch_id,
-        batch_total,
-    };
-    let announce_bytes = serde_json::to_vec(&announce)?;
-    write_file_frame(writer, FileMessageType::Announce, &announce_bytes).await?;
-
-    // Send chunks
-    let total_chunks = ((data.len() + chunk_size - 1) / chunk_size) as u32;
-    let mut bytes_sent: u64 = 0;
-
-    for (i, chunk_data) in data.chunks(chunk_size).enumerate() {
-        let header = FileChunkHeader {
-            chunk_index: i as u32,
-            chunk_size: chunk_data.len() as u32,
-        };
-        let header_bytes = serde_json::to_vec(&header)?;
-
-        // Chunk frame payload: header JSON length (4 bytes) + header JSON + raw chunk data
-        let mut payload = Vec::with_capacity(4 + header_bytes.len() + chunk_data.len());
-        payload.extend_from_slice(&(header_bytes.len() as u32).to_be_bytes());
-        payload.extend_from_slice(&header_bytes);
-        payload.extend_from_slice(chunk_data);
-
-        write_file_frame(writer, FileMessageType::Chunk, &payload).await?;
-
-        bytes_sent += chunk_data.len() as u64;
-        if let Some(cb) = progress_callback {
-            cb(i as u32 + 1, total_chunks, bytes_sent);
-        }
-    }
-
-    // Send complete
-    let complete = FileComplete {
-        transfer_id: transfer_id.to_string(),
-        blake3_hash: hash.clone(),
-        total_chunks,
-    };
-    let complete_bytes = serde_json::to_vec(&complete)?;
-    write_file_frame(writer, FileMessageType::Complete, &complete_bytes).await?;
-
-    Ok(hash)
-}
-
-/// Receive a file from chunks, verify hash, and atomically rename.
-///
-/// Returns the final file path after successful verification.
-pub async fn receive_file_chunked<R>(
-    reader: &mut R,
-    announce: &FileAnnounce,
-    cache_dir: &Path,
-    progress_callback: Option<&(dyn Fn(u32, u32, u64) + Send + Sync)>,
-) -> Result<PathBuf>
-where
-    R: AsyncRead + Unpin,
-{
-    let transfer_dir = cache_dir.join(&announce.transfer_id);
-    tokio::fs::create_dir_all(&transfer_dir).await?;
-    let tmp_path = transfer_dir.join(format!("{}.tmp", announce.transfer_id));
-
-    // Set unix permissions on temp file after creation
-    let result = receive_chunks_to_file(reader, &tmp_path, announce, progress_callback)
-        .instrument(info_span!("receive_chunks", transfer_id = %announce.transfer_id))
-        .await;
-
-    match result {
-        Ok(received_hash) => {
-            // Verify hash
-            if received_hash != announce.blake3_hash {
-                // Hash mismatch - delete temp file
-                let _ = tokio::fs::remove_file(&tmp_path).await;
-                return Err(anyhow!(
-                    "blake3 hash mismatch: expected {}, got {}",
-                    announce.blake3_hash,
-                    received_hash
-                ));
-            }
-
-            // Sanitize filename
-            let safe_filename = sanitize_filename(&announce.filename);
-            let final_path = transfer_dir.join(&safe_filename);
-
-            // Atomic rename
-            tokio::fs::rename(&tmp_path, &final_path).await?;
-
-            Ok(final_path)
-        }
-        Err(e) => {
-            // Clean up temp file on error
-            let _ = tokio::fs::remove_file(&tmp_path).await;
-            Err(e)
-        }
-    }
-}
-
-/// Receive chunks into a temp file, returning the computed Blake3 hash.
-async fn receive_chunks_to_file<R>(
-    reader: &mut R,
-    tmp_path: &Path,
-    announce: &FileAnnounce,
-    progress_callback: Option<&(dyn Fn(u32, u32, u64) + Send + Sync)>,
-) -> Result<String>
-where
-    R: AsyncRead + Unpin,
-{
-    let mut hasher = blake3::Hasher::new();
-    let mut file_data = Vec::with_capacity(announce.file_size as usize);
-    let mut bytes_received: u64 = 0;
-    let mut chunks_received: u32 = 0;
-
-    loop {
-        let frame = read_file_frame(reader).await?;
-        let (msg_type, payload) = match frame {
-            Some(f) => f,
-            None => return Err(anyhow!("stream closed before transfer complete")),
-        };
-
-        match msg_type {
-            FileMessageType::Chunk => {
-                // Parse chunk: [4-byte header len][header JSON][raw data]
-                if payload.len() < 4 {
-                    return Err(anyhow!("chunk payload too small"));
-                }
-                let header_len =
-                    u32::from_be_bytes([payload[0], payload[1], payload[2], payload[3]]) as usize;
-                if payload.len() < 4 + header_len {
-                    return Err(anyhow!("chunk payload missing header data"));
-                }
-                let _header: FileChunkHeader = serde_json::from_slice(&payload[4..4 + header_len])?;
-                let chunk_data = &payload[4 + header_len..];
-
-                hasher.update(chunk_data);
-                file_data.extend_from_slice(chunk_data);
-                bytes_received += chunk_data.len() as u64;
-                chunks_received += 1;
-
-                let estimated_total = if announce.file_size > 0 {
-                    ((announce.file_size + CHUNK_SIZE as u64 - 1) / CHUNK_SIZE as u64) as u32
-                } else {
-                    chunks_received
-                };
-
-                if let Some(cb) = progress_callback {
-                    cb(chunks_received, estimated_total, bytes_received);
-                }
-            }
-            FileMessageType::Complete => {
-                let complete: FileComplete = serde_json::from_slice(&payload)?;
-
-                // Write all data to temp file
-                tokio::fs::write(tmp_path, &file_data).await?;
-
-                // Set unix permissions
-                #[cfg(unix)]
-                {
-                    use std::os::unix::fs::PermissionsExt;
-                    let perms = std::fs::Permissions::from_mode(0o600);
-                    tokio::fs::set_permissions(tmp_path, perms).await?;
-                }
-
-                let computed_hash = hasher.finalize().to_hex().to_string();
-                debug!(
-                    transfer_id = %complete.transfer_id,
-                    total_chunks = complete.total_chunks,
-                    bytes = bytes_received,
-                    "file receive complete"
-                );
-                return Ok(computed_hash);
-            }
-            other => {
-                warn!("unexpected message type during transfer: {:?}", other);
-                return Err(anyhow!("unexpected message type: {:?}", other));
-            }
-        }
-    }
+    Ok((file, file_size, filename))
 }
 
 /// Sanitize a filename to prevent path traversal.
@@ -278,6 +450,9 @@ fn sanitize_filename(name: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    const LEGACY_PROTOCOL: LegacyFileTransferProtocol = LegacyFileTransferProtocol;
+    const STREAMING_PROTOCOL: StreamingFileTransferProtocol = StreamingFileTransferProtocol;
 
     #[test]
     fn file_announce_roundtrip() {
@@ -295,6 +470,22 @@ mod tests {
         assert_eq!(restored.filename, "test.txt");
         assert_eq!(restored.file_size, 1024);
         assert_eq!(restored.batch_id, Some("batch-1".to_string()));
+    }
+
+    #[test]
+    fn file_announce_v2_roundtrip() {
+        let announce = FileAnnounceV2 {
+            transfer_id: "xfer-2".to_string(),
+            filename: "stream.txt".to_string(),
+            file_size: 2048,
+            batch_id: Some("batch-2".to_string()),
+            batch_total: Some(4),
+        };
+        let json = serde_json::to_string(&announce).unwrap();
+        let restored: FileAnnounceV2 = serde_json::from_str(&json).unwrap();
+        assert_eq!(restored.transfer_id, "xfer-2");
+        assert_eq!(restored.filename, "stream.txt");
+        assert_eq!(restored.file_size, 2048);
     }
 
     #[test]
@@ -354,51 +545,44 @@ mod tests {
         let temp_dir = tempfile::tempdir().unwrap();
         let source_path = temp_dir.path().join("source.txt");
         let cache_dir = temp_dir.path().join("cache");
-
-        // Create test file with known content
         let test_data = b"Hello, this is test data for chunked transfer!";
         tokio::fs::write(&source_path, test_data).await.unwrap();
 
-        // Use in-memory duplex stream
         let (client, server) = tokio::io::duplex(64 * 1024);
         let (_client_read, mut client_write) = tokio::io::split(client);
         let (mut server_read, _server_write) = tokio::io::split(server);
 
         let source_path_clone = source_path.clone();
         let send_handle = tokio::spawn(async move {
-            send_file_chunked(
-                &mut client_write,
-                &source_path_clone,
-                "test-xfer",
-                None,
-                None,
-                16, // Small chunk size for testing
-                None,
-            )
-            .await
+            LEGACY_PROTOCOL
+                .send_file(
+                    &mut client_write,
+                    &source_path_clone,
+                    "test-xfer",
+                    None,
+                    None,
+                    16,
+                    None,
+                )
+                .await
         });
 
         let cache_dir_clone = cache_dir.clone();
         let recv_handle = tokio::spawn(async move {
-            // First read the announce frame
             let frame = read_file_frame(&mut server_read).await.unwrap().unwrap();
             assert_eq!(frame.0, FileMessageType::Announce);
             let announce: FileAnnounce = serde_json::from_slice(&frame.1).unwrap();
             assert_eq!(announce.transfer_id, "test-xfer");
             assert_eq!(announce.filename, "source.txt");
-
-            // Receive the file
-            receive_file_chunked(&mut server_read, &announce, &cache_dir_clone, None).await
+            LEGACY_PROTOCOL
+                .receive_file(&mut server_read, &announce, &cache_dir_clone, None)
+                .await
         });
 
         let send_hash = send_handle.await.unwrap().unwrap();
         let final_path = recv_handle.await.unwrap().unwrap();
-
-        // Verify file contents match
         let received_data = tokio::fs::read(&final_path).await.unwrap();
         assert_eq!(received_data, test_data);
-
-        // Verify the final path has the expected name pattern: cache/test-xfer/source.txt
         assert_eq!(
             final_path.file_name().unwrap().to_str().unwrap(),
             "source.txt"
@@ -413,9 +597,55 @@ mod tests {
                 .unwrap(),
             "test-xfer"
         );
-
-        // Verify hash was computed
         assert!(!send_hash.is_empty());
+    }
+
+    #[tokio::test]
+    async fn sender_starts_streaming_before_input_reader_finishes() {
+        let announce = FileAnnounceV2 {
+            transfer_id: "streaming-xfer".to_string(),
+            filename: "stream.bin".to_string(),
+            file_size: 8,
+            batch_id: None,
+            batch_total: None,
+        };
+
+        let (mut input_writer, mut input_reader) = tokio::io::duplex(64);
+        let (mut writer, mut receiver) = tokio::io::duplex(64 * 1024);
+        let send_task = tokio::spawn(async move {
+            let announce_bytes = serde_json::to_vec(&announce).unwrap();
+            write_file_frame(&mut writer, FileMessageType::Announce, &announce_bytes)
+                .await
+                .unwrap();
+            ChunkTransferEngine::send_stream(
+                &mut writer,
+                &mut input_reader,
+                &announce.transfer_id,
+                announce.file_size,
+                4,
+                None,
+            )
+            .await
+        });
+
+        input_writer.write_all(b"abcd").await.unwrap();
+        input_writer.flush().await.unwrap();
+
+        let announce_frame = read_file_frame(&mut receiver).await.unwrap().unwrap();
+        assert_eq!(announce_frame.0, FileMessageType::Announce);
+
+        let first_chunk_frame = read_file_frame(&mut receiver).await.unwrap().unwrap();
+        assert_eq!(first_chunk_frame.0, FileMessageType::Chunk);
+        input_writer.write_all(b"efgh").await.unwrap();
+        input_writer.shutdown().await.unwrap();
+
+        let second_chunk_frame = read_file_frame(&mut receiver).await.unwrap().unwrap();
+        assert_eq!(second_chunk_frame.0, FileMessageType::Chunk);
+        let done_frame = read_file_frame(&mut receiver).await.unwrap().unwrap();
+        assert_eq!(done_frame.0, FileMessageType::Complete);
+
+        let hash = send_task.await.unwrap().unwrap();
+        assert_eq!(hash, blake3::hash(b"abcdefgh").to_hex().to_string());
     }
 
     #[tokio::test]
@@ -424,7 +654,6 @@ mod tests {
         let cache_dir = temp_dir.path().join("cache");
         tokio::fs::create_dir_all(&cache_dir).await.unwrap();
 
-        // Create a fake announce with wrong hash
         let announce = FileAnnounce {
             transfer_id: "bad-hash-xfer".to_string(),
             filename: "test.txt".to_string(),
@@ -434,7 +663,6 @@ mod tests {
             batch_total: None,
         };
 
-        // Build a stream with chunk + complete frames
         let mut stream_data = Vec::new();
         let chunk_data = b"hello";
         let header = FileChunkHeader {
@@ -461,13 +689,12 @@ mod tests {
             .unwrap();
 
         let mut cursor = &stream_data[..];
-        let result = receive_file_chunked(&mut cursor, &announce, &cache_dir, None).await;
+        let result = LEGACY_PROTOCOL
+            .receive_file(&mut cursor, &announce, &cache_dir, None)
+            .await;
 
         assert!(result.is_err());
-        let err_msg = result.unwrap_err().to_string();
-        assert!(err_msg.contains("hash mismatch"));
-
-        // Verify temp file was cleaned up
+        assert!(result.unwrap_err().to_string().contains("hash mismatch"));
         let tmp_path = cache_dir.join("bad-hash-xfer").join("bad-hash-xfer.tmp");
         assert!(!tmp_path.exists());
     }
@@ -476,7 +703,6 @@ mod tests {
     async fn atomic_rename_on_success() {
         let temp_dir = tempfile::tempdir().unwrap();
         let cache_dir = temp_dir.path().join("cache");
-
         let test_data = b"success data";
         let hash = blake3::hash(test_data).to_hex().to_string();
 
@@ -489,7 +715,6 @@ mod tests {
             batch_total: None,
         };
 
-        // Build stream
         let mut stream_data = Vec::new();
         let header = FileChunkHeader {
             chunk_index: 0,
@@ -515,15 +740,13 @@ mod tests {
             .unwrap();
 
         let mut cursor = &stream_data[..];
-        let final_path = receive_file_chunked(&mut cursor, &announce, &cache_dir, None)
+        let final_path = LEGACY_PROTOCOL
+            .receive_file(&mut cursor, &announce, &cache_dir, None)
             .await
             .unwrap();
 
-        // Verify .tmp file does NOT exist
         let tmp_path = cache_dir.join("rename-xfer").join("rename-xfer.tmp");
         assert!(!tmp_path.exists());
-
-        // Verify final file exists with correct name: cache/rename-xfer/result.dat
         assert!(final_path.exists());
         assert_eq!(
             final_path.file_name().unwrap().to_str().unwrap(),
@@ -539,10 +762,87 @@ mod tests {
                 .unwrap(),
             "rename-xfer"
         );
-
-        // Verify contents
         let contents = tokio::fs::read(&final_path).await.unwrap();
         assert_eq!(contents, test_data);
+    }
+
+    #[tokio::test]
+    async fn receiver_writes_chunks_to_temp_file_before_complete() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let cache_dir = temp_dir.path().join("cache");
+        let announce = FileAnnounceV2 {
+            transfer_id: "streaming-recv".to_string(),
+            filename: "video.bin".to_string(),
+            file_size: 8,
+            batch_id: None,
+            batch_total: None,
+        };
+
+        let (mut writer, mut reader) = tokio::io::duplex(64 * 1024);
+        let cache_dir_clone = cache_dir.clone();
+        let announce_clone = announce.clone();
+        let receive_task = tokio::spawn(async move {
+            STREAMING_PROTOCOL
+                .receive_file(&mut reader, &announce_clone, &cache_dir_clone, None)
+                .await
+        });
+
+        let first_chunk = b"abcd";
+        let header = FileChunkHeader {
+            chunk_index: 0,
+            chunk_size: first_chunk.len() as u32,
+        };
+        let header_bytes = serde_json::to_vec(&header).unwrap();
+        let mut first_payload = Vec::new();
+        first_payload.extend_from_slice(&(header_bytes.len() as u32).to_be_bytes());
+        first_payload.extend_from_slice(&header_bytes);
+        first_payload.extend_from_slice(first_chunk);
+        write_file_frame(&mut writer, FileMessageType::Chunk, &first_payload)
+            .await
+            .unwrap();
+
+        let tmp_path = cache_dir.join("streaming-recv").join("streaming-recv.tmp");
+        for _ in 0..10 {
+            if let Ok(metadata) = tokio::fs::metadata(&tmp_path).await {
+                if metadata.len() == first_chunk.len() as u64 {
+                    break;
+                }
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        }
+
+        let tmp_metadata = tokio::fs::metadata(&tmp_path)
+            .await
+            .expect("temp file should be created before complete");
+        assert_eq!(tmp_metadata.len(), first_chunk.len() as u64);
+
+        let second_chunk = b"efgh";
+        let second_header = FileChunkHeader {
+            chunk_index: 1,
+            chunk_size: second_chunk.len() as u32,
+        };
+        let second_header_bytes = serde_json::to_vec(&second_header).unwrap();
+        let mut second_payload = Vec::new();
+        second_payload.extend_from_slice(&(second_header_bytes.len() as u32).to_be_bytes());
+        second_payload.extend_from_slice(&second_header_bytes);
+        second_payload.extend_from_slice(second_chunk);
+        write_file_frame(&mut writer, FileMessageType::Chunk, &second_payload)
+            .await
+            .unwrap();
+
+        let complete = FileComplete {
+            transfer_id: "streaming-recv".to_string(),
+            blake3_hash: blake3::hash(b"abcdefgh").to_hex().to_string(),
+            total_chunks: 2,
+        };
+        let complete_bytes = serde_json::to_vec(&complete).unwrap();
+        write_file_frame(&mut writer, FileMessageType::Complete, &complete_bytes)
+            .await
+            .unwrap();
+
+        let final_path = receive_task.await.unwrap().unwrap();
+        let final_bytes = tokio::fs::read(final_path).await.unwrap();
+        assert_eq!(final_bytes, b"abcdefgh");
     }
 
     #[cfg(unix)]
@@ -552,7 +852,6 @@ mod tests {
 
         let temp_dir = tempfile::tempdir().unwrap();
         let cache_dir = temp_dir.path().join("cache");
-
         let test_data = b"permission test data";
         let hash = blake3::hash(test_data).to_hex().to_string();
 
@@ -590,12 +889,11 @@ mod tests {
             .unwrap();
 
         let mut cursor = &stream_data[..];
-        let final_path = receive_file_chunked(&mut cursor, &announce, &cache_dir, None)
+        let final_path = LEGACY_PROTOCOL
+            .receive_file(&mut cursor, &announce, &cache_dir, None)
             .await
             .unwrap();
 
-        // The file was written with 0o600 permissions during receive,
-        // then renamed. Verify the final file permissions.
         let metadata = tokio::fs::metadata(&final_path).await.unwrap();
         let mode = metadata.permissions().mode() & 0o777;
         assert_eq!(mode, 0o600, "file should have 0600 permissions");
@@ -606,64 +904,51 @@ mod tests {
         let temp_dir = tempfile::tempdir().unwrap();
         let source_path = temp_dir.path().join("large_source.bin");
         let cache_dir = temp_dir.path().join("cache");
-
-        // Create a 1MB file filled with deterministic pseudo-random data (repeating 0..255)
         let file_size: usize = 1_048_576;
         let test_data: Vec<u8> = (0..file_size).map(|i| (i % 256) as u8).collect();
         tokio::fs::write(&source_path, &test_data).await.unwrap();
 
-        // Compute expected blake3 hash from the source data independently
         let expected_hash = blake3::hash(&test_data).to_hex().to_string();
-
-        // Use duplex stream with buffer large enough for a full chunk + framing overhead
         let (client, server) = tokio::io::duplex(CHUNK_SIZE + 4096);
         let (_client_read, mut client_write) = tokio::io::split(client);
         let (mut server_read, _server_write) = tokio::io::split(server);
 
         let source_path_clone = source_path.clone();
         let send_handle = tokio::spawn(async move {
-            send_file_chunked(
-                &mut client_write,
-                &source_path_clone,
-                "large-xfer",
-                Some("batch-large".to_string()),
-                Some(1),
-                CHUNK_SIZE, // Use the real 256KB chunk size
-                None,
-            )
-            .await
+            STREAMING_PROTOCOL
+                .send_file(
+                    &mut client_write,
+                    &source_path_clone,
+                    "large-xfer",
+                    Some("batch-large".to_string()),
+                    Some(1),
+                    CHUNK_SIZE,
+                    None,
+                )
+                .await
         });
 
         let cache_dir_clone = cache_dir.clone();
         let recv_handle = tokio::spawn(async move {
-            // Read the announce frame first
             let frame = read_file_frame(&mut server_read).await.unwrap().unwrap();
             assert_eq!(frame.0, FileMessageType::Announce);
-            let announce: FileAnnounce = serde_json::from_slice(&frame.1).unwrap();
+            let announce: FileAnnounceV2 = serde_json::from_slice(&frame.1).unwrap();
             assert_eq!(announce.transfer_id, "large-xfer");
             assert_eq!(announce.file_size, 1_048_576);
             assert_eq!(announce.filename, "large_source.bin");
-
-            // Receive the file
-            receive_file_chunked(&mut server_read, &announce, &cache_dir_clone, None).await
+            STREAMING_PROTOCOL
+                .receive_file(&mut server_read, &announce, &cache_dir_clone, None)
+                .await
         });
 
         let send_hash = send_handle.await.unwrap().unwrap();
         let final_path = recv_handle.await.unwrap().unwrap();
-
-        // Verify received file is exactly 1MB
         let received_data = tokio::fs::read(&final_path).await.unwrap();
         assert_eq!(received_data.len(), file_size);
-
-        // Verify file content matches byte-for-byte
         assert_eq!(received_data, test_data);
-
-        // Verify blake3 hashes match (sender hash, independent hash, and received file hash)
         let received_hash = blake3::hash(&received_data).to_hex().to_string();
         assert_eq!(send_hash, expected_hash);
         assert_eq!(received_hash, expected_hash);
-
-        // Verify send_hash is non-empty
         assert!(!send_hash.is_empty());
     }
 }

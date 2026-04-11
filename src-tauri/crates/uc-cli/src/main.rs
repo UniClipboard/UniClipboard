@@ -56,6 +56,11 @@ enum Commands {
     Devices,
     /// Show space and encryption status (direct mode, no daemon required)
     SpaceStatus,
+    /// Search clipboard history (query or inspect search availability)
+    Search {
+        #[command(subcommand)]
+        subcommand: commands::search::SearchCommands,
+    },
     /// Run the daemon process inline (used internally by `start`)
     #[command(hide = true)]
     Daemon {
@@ -116,6 +121,9 @@ fn main() -> anyhow::Result<()> {
             },
             Commands::Devices => commands::devices::run(cli.json, cli.verbose).await,
             Commands::SpaceStatus => commands::space_status::run(cli.json, cli.verbose).await,
+            Commands::Search { subcommand } => {
+                commands::search::run(subcommand, cli.json, cli.verbose).await
+            }
             Commands::Daemon { .. } => unreachable!("handled above"),
         }
     });

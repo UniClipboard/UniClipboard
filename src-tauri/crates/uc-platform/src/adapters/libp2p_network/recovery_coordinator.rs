@@ -257,6 +257,7 @@ impl RecoveryCoordinator {
             event = "peer.recovery_cycle_succeeded",
             peer_id = %peer_id,
             recovery_cycle_id = %cycle.cycle_id,
+            trigger = ?cycle.trigger,
             elapsed_ms,
             proof = "connection_established",
             "recovery cycle ended by fresh ConnectionEstablished"
@@ -316,11 +317,13 @@ impl RecoveryCoordinator {
         if success {
             let elapsed_ms = cycle.elapsed(now).as_millis() as u64;
             let cid = cycle.cycle_id.clone();
+            let trigger = cycle.trigger;
             self.cycles.remove(peer_id);
             info!(
                 event = "peer.recovery_cycle_succeeded",
                 peer_id = %peer_id,
                 recovery_cycle_id = %cid,
+                trigger = ?trigger,
                 elapsed_ms,
                 proof = "business_stream_open",
                 "recovery cycle ended by successful probe"
@@ -580,6 +583,7 @@ impl RecoveryCoordinator {
             };
             if cycle.elapsed(now) >= RECOVERY_WINDOW {
                 let cid = cycle.cycle_id.clone();
+                let trigger = cycle.trigger;
                 let last_escalation = cycle.escalation_level;
                 let elapsed_ms = cycle.elapsed(now).as_millis() as u64;
                 let total_probes = cycle.total_probes;
@@ -588,6 +592,7 @@ impl RecoveryCoordinator {
                     event = "peer.recovery_window_exhausted",
                     peer_id = %peer_id,
                     recovery_cycle_id = %cid,
+                    trigger = ?trigger,
                     elapsed_ms,
                     last_escalation,
                     total_probes,

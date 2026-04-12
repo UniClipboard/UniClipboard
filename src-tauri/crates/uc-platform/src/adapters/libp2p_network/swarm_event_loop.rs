@@ -29,8 +29,8 @@ use super::peer_cache::{snapshot_peer_addresses, PeerCaches};
 use super::recovery_coordinator::{CoordinatorCmd, RecoveryCoordinator};
 use super::recovery_probe::{send_recovery_probe, ProbeOutcome};
 use super::{
-    try_send_event, BusinessCommand, DialRequest, MAX_IN_FLIGHT_BUSINESS_COMMANDS,
-    RECOVERY_PROBE_CADENCE,
+    try_send_event, BusinessCommand, DialRequest, DIAL_FAILURE_STREAK_THRESHOLD,
+    MAX_IN_FLIGHT_BUSINESS_COMMANDS, RECOVERY_PROBE_CADENCE,
 };
 
 /// Drives the libp2p Swarm event loop, processing network events, managing peer caches,
@@ -150,9 +150,50 @@ pub(super) async fn run_swarm(
                         ).await;
                     }
                     SwarmEvent::OutgoingConnectionError { peer_id, error, .. } => {
-                        handle_outgoing_connection_error(
+                        let failure_info = handle_outgoing_connection_error(
                             peer_id, error, &caches, &event_tx, &local_peer_id,
                         ).await;
+
+                        // Wire dial failure streak → recovery coordinator.
+                        if let Some((peer_id_str, consecutive_failures)) = failure_info {
+                            if consecutive_failures >= DIAL_FAILURE_STREAK_THRESHOLD
+                                && !coordinator.is_recovering(&peer_id_str)
+                            {
+                                let peer_id_core = uc_core::PeerId::from(peer_id_str.clone());
+                                let is_paired = async {
+                                    match policy_resolver.resolve_for_peer(&peer_id_core).await {
+                                        Ok(policy) => policy.pairing_state == PairingState::Trusted,
+                                        Err(_) => false,
+                                    }
+                                }
+                                .instrument(info_span!(
+                                    "recovery.resolve_pairing_state",
+                                    peer_id = %peer_id_str
+                                ))
+                                .await;
+
+                                if is_paired {
+                                    info!(
+                                        event = "peer.dial_failure_streak_detected",
+                                        peer_id = %peer_id_str,
+                                        consecutive_failures,
+                                        threshold = DIAL_FAILURE_STREAK_THRESHOLD,
+                                        "dial failure streak for paired peer — starting recovery"
+                                    );
+                                    let recovery_cmds = coordinator.on_dial_failure_streak(
+                                        peer_id_str, Instant::now(),
+                                    );
+                                    let sc = swarm.behaviour().stream.new_control();
+                                    if dispatch_coordinator_cmds(
+                                        recovery_cmds, sc, &caches, &event_tx, &dial_tx,
+                                        &probe_outcome_tx,
+                                    ).await {
+                                        should_rebuild = true;
+                                        break;
+                                    }
+                                }
+                            }
+                        }
                     }
                     SwarmEvent::IncomingConnectionError {
                         send_back_addr,
@@ -190,6 +231,14 @@ pub(super) async fn run_swarm(
 
             // ── Probe outcome ─────────────────────────────────────────────
             Some(outcome) = probe_outcome_rx.recv() => {
+                debug!(
+                    event = "peer.recovery_probe_outcome_received",
+                    peer_id = %outcome.peer_id,
+                    recovery_cycle_id = %outcome.cycle_id,
+                    attempt = outcome.attempt,
+                    success = outcome.result.is_ok(),
+                    "received probe outcome from spawned task"
+                );
                 let cmds = coordinator.on_probe_result(
                     &outcome.peer_id,
                     &outcome.cycle_id,
@@ -851,11 +900,11 @@ async fn handle_outgoing_connection_error(
     caches: &Arc<RwLock<PeerCaches>>,
     event_tx: &mpsc::Sender<NetworkEvent>,
     _local_peer_id: &str,
-) {
+) -> Option<(String, u32)> {
     let peer_id_str = peer_id.as_ref().map(ToString::to_string);
     let observed_at = Utc::now();
 
-    let snapshot = if let Some(peer_id) = peer_id_str.as_ref() {
+    let (snapshot, consecutive_failures) = if let Some(peer_id) = peer_id_str.as_ref() {
         let mut caches = caches.write().await;
         let observation = dial_observation_from_error(&error, observed_at);
         let error_msg = error.to_string();
@@ -863,9 +912,13 @@ async fn handle_outgoing_connection_error(
             caches.record_address_failure(peer_id, addr, &error_msg);
         }
         caches.record_dial_observation(peer_id, observation);
-        Some(snapshot_peer_addresses(&caches, peer_id, observed_at))
+        let failures = caches.record_dial_failure(peer_id);
+        (
+            Some(snapshot_peer_addresses(&caches, peer_id, observed_at)),
+            Some(failures),
+        )
     } else {
-        None
+        (None, None)
     };
 
     error!(
@@ -917,6 +970,8 @@ async fn handle_outgoing_connection_error(
     {
         warn!("failed to publish network error event: {err}");
     }
+
+    peer_id_str.zip(consecutive_failures)
 }
 
 #[instrument(name = "network.incoming_connection_error", skip_all, fields(send_back_addr = %send_back_addr))]

@@ -422,6 +422,18 @@ pub(super) async fn execute_business_stream(
                 );
                 Err(anyhow!("business stream pre-dial failed: {err}"))
             }
+            Ok(()) if payload.is_none() => {
+                // 方案B: ensure only establishes the connection (dial),
+                // no dummy stream open/close needed.
+                debug!(
+                    event = "business_stream.ensure_dial_only",
+                    operation = denied_operation,
+                    peer_id = %peer_id_str,
+                    dial_decision,
+                    "ensure completed via dial-only (no stream probe)"
+                );
+                Ok(())
+            }
             Ok(()) => match tokio::time::timeout(
                 open_timeout
                     .checked_sub(open_started_at.elapsed())
@@ -431,111 +443,105 @@ pub(super) async fn execute_business_stream(
             .await
             {
             Ok(Ok(mut stream)) => {
-                if let Some(data) = payload {
-                    // Write payload in NETWORK_CHUNK_SIZE chunks with progress tracking
-                    let total = data.len() as u64;
-                    let total_chunks =
-                        ((data.len() + NETWORK_CHUNK_SIZE - 1) / NETWORK_CHUNK_SIZE) as u32;
-                    let transfer_id = if data.len() >= 25 {
-                        // Extract transfer_id from V3 header bytes [9..25] if payload is large enough
-                        data[9..25]
-                            .iter()
-                            .map(|b| format!("{b:02x}"))
-                            .collect::<String>()
-                    } else {
-                        format!("outbound-{}", peer_id_str)
-                    };
+                // payload is guaranteed Some here — the None case
+                // returns early after ensure_explicit_connection above.
+                let Some(data) = payload else {
+                    return Ok(());
+                };
+                // Write payload in NETWORK_CHUNK_SIZE chunks with progress tracking
+                let total = data.len() as u64;
+                let total_chunks =
+                    ((data.len() + NETWORK_CHUNK_SIZE - 1) / NETWORK_CHUNK_SIZE) as u32;
+                let transfer_id = if data.len() >= 25 {
+                    // Extract transfer_id from V3 header bytes [9..25] if payload is large enough
+                    data[9..25]
+                        .iter()
+                        .map(|b| format!("{b:02x}"))
+                        .collect::<String>()
+                } else {
+                    format!("outbound-{}", peer_id_str)
+                };
 
+                debug!(
+                    peer_id = %peer_id_str,
+                    transfer_id = %transfer_id,
+                    total_bytes = total,
+                    total_chunks,
+                    chunk_size = NETWORK_CHUNK_SIZE,
+                    "outbound chunked write started"
+                );
+
+                let write_result = tokio::time::timeout(write_timeout, async {
+                    let mut written = 0u64;
+                    let mut chunks_completed = 0u32;
+                    let mut last_progress = std::time::Instant::now();
+
+                    for chunk in data.chunks(NETWORK_CHUNK_SIZE) {
+                        stream.write_all(chunk).await?;
+                        written += chunk.len() as u64;
+                        chunks_completed += 1;
+
+                        debug!(
+                            transfer_id = %transfer_id,
+                            chunk = chunks_completed,
+                            total_chunks,
+                            chunk_bytes = chunk.len(),
+                            bytes_written = written,
+                            total_bytes = total,
+                            "outbound chunk written"
+                        );
+
+                        // Throttle progress events: emit first, last, and at most every 100ms
+                        if chunks_completed == 1
+                            || chunks_completed == total_chunks
+                            || last_progress.elapsed() >= Duration::from_millis(100)
+                        {
+                            let _ = try_send_event(
+                                &event_tx,
+                                NetworkEvent::TransferProgress(TransferProgress {
+                                    transfer_id: transfer_id.clone(),
+                                    peer_id: peer_id_str.to_string(),
+                                    direction: TransferDirection::Sending,
+                                    chunks_completed,
+                                    total_chunks,
+                                    bytes_transferred: written,
+                                    total_bytes: Some(total),
+                                }),
+                                "TransferProgress",
+                            );
+                            last_progress = std::time::Instant::now();
+                        }
+                    }
+                    stream.flush().await?;
                     debug!(
-                        peer_id = %peer_id_str,
                         transfer_id = %transfer_id,
                         total_bytes = total,
                         total_chunks,
-                        chunk_size = NETWORK_CHUNK_SIZE,
-                        "outbound chunked write started"
+                        "outbound chunked write completed"
                     );
+                    Ok::<(), std::io::Error>(())
+                })
+                .await;
 
-                    let write_result = tokio::time::timeout(write_timeout, async {
-                        let mut written = 0u64;
-                        let mut chunks_completed = 0u32;
-                        let mut last_progress = std::time::Instant::now();
-
-                        for chunk in data.chunks(NETWORK_CHUNK_SIZE) {
-                            stream.write_all(chunk).await?;
-                            written += chunk.len() as u64;
-                            chunks_completed += 1;
-
-                            debug!(
-                                transfer_id = %transfer_id,
-                                chunk = chunks_completed,
-                                total_chunks,
-                                chunk_bytes = chunk.len(),
-                                bytes_written = written,
-                                total_bytes = total,
-                                "outbound chunk written"
-                            );
-
-                            // Throttle progress events: emit first, last, and at most every 100ms
-                            if chunks_completed == 1
-                                || chunks_completed == total_chunks
-                                || last_progress.elapsed() >= Duration::from_millis(100)
-                            {
-                                let _ = try_send_event(
-                                    &event_tx,
-                                    NetworkEvent::TransferProgress(TransferProgress {
-                                        transfer_id: transfer_id.clone(),
-                                        peer_id: peer_id_str.to_string(),
-                                        direction: TransferDirection::Sending,
-                                        chunks_completed,
-                                        total_chunks,
-                                        bytes_transferred: written,
-                                        total_bytes: Some(total),
-                                    }),
-                                    "TransferProgress",
-                                );
-                                last_progress = std::time::Instant::now();
-                            }
-                        }
-                        stream.flush().await?;
-                        debug!(
-                            transfer_id = %transfer_id,
-                            total_bytes = total,
-                            total_chunks,
-                            "outbound chunked write completed"
-                        );
-                        Ok::<(), std::io::Error>(())
-                    })
-                    .await;
-
-                    match write_result {
-                        Ok(Ok(())) => match tokio::time::timeout(close_timeout, stream.close()).await {
-                            Ok(Ok(())) => Ok(()),
-                            Ok(Err(err)) => {
-                                warn!("business stream close failed: {err}");
-                                Err(anyhow!("business stream close failed: {err}"))
-                            }
-                            Err(_) => {
-                                warn!(peer_id = %peer_id_str, "business stream close timed out");
-                                Err(anyhow!("business stream close timed out"))
-                            }
-                        },
-                        Ok(Err(err)) => {
-                            warn!("business stream write failed: {err}");
-                            Err(anyhow!("business stream write failed: {err}"))
-                        }
-                        Err(_) => {
-                            warn!(peer_id = %peer_id_str, "business stream write timed out");
-                            Err(anyhow!("business stream write timed out"))
-                        }
-                    }
-                } else {
-                    match tokio::time::timeout(close_timeout, stream.close()).await {
+                match write_result {
+                    Ok(Ok(())) => match tokio::time::timeout(close_timeout, stream.close()).await {
                         Ok(Ok(())) => Ok(()),
-                        Ok(Err(err)) => Err(anyhow!("ensure business stream close failed: {err}")),
-                        Err(_) => {
-                            warn!(peer_id = %peer_id_str, "ensure business stream close timed out");
-                            Err(anyhow!("ensure business stream close timed out"))
+                        Ok(Err(err)) => {
+                            warn!("business stream close failed: {err}");
+                            Err(anyhow!("business stream close failed: {err}"))
                         }
+                        Err(_) => {
+                            warn!(peer_id = %peer_id_str, "business stream close timed out");
+                            Err(anyhow!("business stream close timed out"))
+                        }
+                    },
+                    Ok(Err(err)) => {
+                        warn!("business stream write failed: {err}");
+                        Err(anyhow!("business stream write failed: {err}"))
+                    }
+                    Err(_) => {
+                        warn!(peer_id = %peer_id_str, "business stream write timed out");
+                        Err(anyhow!("business stream write timed out"))
                     }
                 }
             }
@@ -551,43 +557,23 @@ pub(super) async fn execute_business_stream(
                     dial_decision,
                     attempt_started_at,
                 );
-                if payload.is_some() {
-                    warn!(
-                        event = "business_stream.open_failed",
-                        operation = denied_operation,
-                        peer_id = %peer_id_str,
-                        dial_decision,
-                        candidate_address_count = failure_snapshot.candidate_addresses.len(),
-                        candidate_addresses = ?failure_snapshot.candidate_addresses,
-                        chosen_dial_addr = %chosen_dial_addr.unwrap_or("-"),
-                        chosen_dial_addr_resolution,
-                        dial_attempt_address_count = failure_snapshot.dial_attempt_address_count,
-                        dial_attempt_addresses = ?failure_snapshot.dial_attempt_addresses,
-                        last_dial_outcome = failure_snapshot.last_dial_outcome.unwrap_or("unknown"),
-                        last_dial_age_ms = ?failure_snapshot.last_dial_age_ms,
-                        error = %err,
-                        "business stream open failed"
-                    );
-                    Err(anyhow!("business stream open failed: {err}"))
-                } else {
-                    warn!(
-                        event = "business_stream.ensure_open_failed",
-                        operation = denied_operation,
-                        peer_id = %peer_id_str,
-                        dial_decision,
-                        candidate_address_count = failure_snapshot.candidate_addresses.len(),
-                        candidate_addresses = ?failure_snapshot.candidate_addresses,
-                        chosen_dial_addr = %chosen_dial_addr.unwrap_or("-"),
-                        chosen_dial_addr_resolution,
-                        dial_attempt_address_count = failure_snapshot.dial_attempt_address_count,
-                        dial_attempt_addresses = ?failure_snapshot.dial_attempt_addresses,
-                        last_dial_outcome = failure_snapshot.last_dial_outcome.unwrap_or("unknown"),
-                        last_dial_age_ms = ?failure_snapshot.last_dial_age_ms,
-                        error = %err,
-                        "ensure business stream open failed"
-                    );
-                    Err(anyhow!("ensure business stream open failed: {err}"))
-                }
+                warn!(
+                    event = "business_stream.open_failed",
+                    operation = denied_operation,
+                    peer_id = %peer_id_str,
+                    dial_decision,
+                    candidate_address_count = failure_snapshot.candidate_addresses.len(),
+                    candidate_addresses = ?failure_snapshot.candidate_addresses,
+                    chosen_dial_addr = %chosen_dial_addr.unwrap_or("-"),
+                    chosen_dial_addr_resolution,
+                    dial_attempt_address_count = failure_snapshot.dial_attempt_address_count,
+                    dial_attempt_addresses = ?failure_snapshot.dial_attempt_addresses,
+                    last_dial_outcome = failure_snapshot.last_dial_outcome.unwrap_or("unknown"),
+                    last_dial_age_ms = ?failure_snapshot.last_dial_age_ms,
+                    error = %err,
+                    "business stream open failed"
+                );
+                Err(anyhow!("business stream open failed: {err}"))
             }
             Err(_) => {
                 let timeout_snapshot = {
@@ -601,43 +587,23 @@ pub(super) async fn execute_business_stream(
                     dial_decision,
                     attempt_started_at,
                 );
-                if payload.is_some() {
-                    warn!(
-                        event = "business_stream.open_timeout",
-                        operation = denied_operation,
-                        peer_id = %peer_id_str,
-                        dial_decision,
-                        candidate_address_count = timeout_snapshot.candidate_addresses.len(),
-                        candidate_addresses = ?timeout_snapshot.candidate_addresses,
-                        chosen_dial_addr = %chosen_dial_addr.unwrap_or("-"),
-                        chosen_dial_addr_resolution,
-                        dial_attempt_address_count = timeout_snapshot.dial_attempt_address_count,
-                        dial_attempt_addresses = ?timeout_snapshot.dial_attempt_addresses,
-                        last_dial_outcome = timeout_snapshot.last_dial_outcome.unwrap_or("unknown"),
-                        last_dial_age_ms = ?timeout_snapshot.last_dial_age_ms,
-                        timeout_ms = open_timeout.as_millis() as u64,
-                        "business stream open timed out"
-                    );
-                    Err(anyhow!("business stream open timed out"))
-                } else {
-                    warn!(
-                        event = "business_stream.ensure_open_timeout",
-                        operation = denied_operation,
-                        peer_id = %peer_id_str,
-                        dial_decision,
-                        candidate_address_count = timeout_snapshot.candidate_addresses.len(),
-                        candidate_addresses = ?timeout_snapshot.candidate_addresses,
-                        chosen_dial_addr = %chosen_dial_addr.unwrap_or("-"),
-                        chosen_dial_addr_resolution,
-                        dial_attempt_address_count = timeout_snapshot.dial_attempt_address_count,
-                        dial_attempt_addresses = ?timeout_snapshot.dial_attempt_addresses,
-                        last_dial_outcome = timeout_snapshot.last_dial_outcome.unwrap_or("unknown"),
-                        last_dial_age_ms = ?timeout_snapshot.last_dial_age_ms,
-                        timeout_ms = open_timeout.as_millis() as u64,
-                        "ensure business stream open timed out"
-                    );
-                    Err(anyhow!("ensure business stream open timed out"))
-                }
+                warn!(
+                    event = "business_stream.open_timeout",
+                    operation = denied_operation,
+                    peer_id = %peer_id_str,
+                    dial_decision,
+                    candidate_address_count = timeout_snapshot.candidate_addresses.len(),
+                    candidate_addresses = ?timeout_snapshot.candidate_addresses,
+                    chosen_dial_addr = %chosen_dial_addr.unwrap_or("-"),
+                    chosen_dial_addr_resolution,
+                    dial_attempt_address_count = timeout_snapshot.dial_attempt_address_count,
+                    dial_attempt_addresses = ?timeout_snapshot.dial_attempt_addresses,
+                    last_dial_outcome = timeout_snapshot.last_dial_outcome.unwrap_or("unknown"),
+                    last_dial_age_ms = ?timeout_snapshot.last_dial_age_ms,
+                    timeout_ms = open_timeout.as_millis() as u64,
+                    "business stream open timed out"
+                );
+                Err(anyhow!("business stream open timed out"))
             }
         }};
 

@@ -23,7 +23,8 @@ impl SearchClipboardEntries {
     /// Delegates directly to `SearchIndexPort::search` and propagates the result unchanged.
     #[tracing::instrument(
         name = "usecase.search_clipboard_entries.execute",
-        skip(self, query)
+        skip(self, query),
+        fields(query_len = query.query_string.len(), operator = ?query.operator, limit = query.limit, offset = query.offset)
     )]
     pub async fn execute(&self, query: SearchQuery) -> Result<SearchResultsPage, SearchError> {
         self.search_index.search(query).await
@@ -170,8 +171,7 @@ mod tests {
     #[tokio::test]
     async fn execute_propagates_invalid_query_error() {
         let mock = Arc::new(MockSearchIndex::new());
-        *mock.fail_next.lock().await =
-            Some(SearchError::InvalidQuery("mixed operators".into()));
+        *mock.fail_next.lock().await = Some(SearchError::InvalidQuery("mixed operators".into()));
 
         let uc = SearchClipboardEntries::from_port(mock as Arc<dyn SearchIndexPort>);
         let result = uc.execute(make_query("foo AND OR bar")).await;

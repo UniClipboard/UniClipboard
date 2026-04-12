@@ -265,7 +265,10 @@ impl ClipboardChangeHandler for DaemonClipboardChangeHandler {
                 // Build search document for the captured entry using the projection builder.
                 // We use a clone of the snapshot made before execute_with_origin consumed it.
                 {
+                    let search_span =
+                        tracing::info_span!("search.live_index", entry_id = %entry_id);
                     let deps = self.runtime.wiring_deps();
+                    async {
                     // Fetch the persisted ClipboardEntry to get event_id and timestamps
                     match deps.clipboard.clipboard_entry_repo.get_entry(&entry_id).await {
                         Ok(Some(entry)) => {
@@ -351,6 +354,7 @@ impl ClipboardChangeHandler for DaemonClipboardChangeHandler {
                             );
                         }
                     }
+                    }.instrument(search_span).await;
                 }
 
                 // --- Outbound sync dispatch (mirrors AppRuntime::on_clipboard_changed) ---

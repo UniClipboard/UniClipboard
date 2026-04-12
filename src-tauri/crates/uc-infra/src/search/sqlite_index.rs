@@ -17,7 +17,7 @@ use async_trait::async_trait;
 use diesel::prelude::*;
 use diesel::RunQueryDsl;
 use tokio::sync::mpsc::Sender;
-use tracing::{debug, warn};
+use tracing::{debug, instrument, warn};
 
 use uc_core::ids::EntryId;
 use uc_core::ports::search::search_index::SearchIndexPort;
@@ -674,6 +674,12 @@ impl SqliteSearchIndex {
 
 #[async_trait]
 impl SearchIndexPort for SqliteSearchIndex {
+    #[instrument(
+        name = "search_index.index_entry",
+        level = "debug",
+        skip(self, document, postings),
+        fields(entry_id = %document.entry_id, posting_count = postings.len())
+    )]
     async fn index_entry(
         &self,
         document: SearchDocument,
@@ -716,6 +722,7 @@ impl SearchIndexPort for SqliteSearchIndex {
         .map_err(|e| SearchError::Internal(format!("spawn_blocking error: {e}")))?
     }
 
+    #[instrument(name = "search_index.remove_entry", level = "debug", skip(self), fields(entry_id = %entry_id))]
     async fn remove_entry(&self, entry_id: &EntryId) -> Result<(), SearchError> {
         let profile_id = self.current_profile_id().await?;
         let pool = self.pool.clone();
@@ -746,6 +753,12 @@ impl SearchIndexPort for SqliteSearchIndex {
         .map_err(|e| SearchError::Internal(format!("spawn_blocking error: {e}")))?
     }
 
+    #[instrument(
+        name = "search_index.search",
+        level = "debug",
+        skip(self, query),
+        fields(operator = ?query.operator, limit = query.limit, offset = query.offset)
+    )]
     async fn search(&self, query: SearchQuery) -> Result<SearchResultsPage, SearchError> {
         let profile_id = self.current_profile_id().await?;
         let pool = self.pool.clone();
@@ -924,6 +937,12 @@ impl SearchIndexPort for SqliteSearchIndex {
     ///
     /// On any error: emit `RebuildStage::Failed`, clear state, drop tables best-effort,
     /// leave `search_blocked = true`, return `SearchError::Internal`.
+    #[instrument(
+        name = "search_index.rebuild",
+        level = "info",
+        skip(self, entries, progress_tx),
+        fields(entry_count = entries.len())
+    )]
     async fn rebuild(
         &self,
         entries: Vec<(SearchDocument, Vec<SearchPosting>)>,
@@ -1162,6 +1181,7 @@ impl SearchIndexPort for SqliteSearchIndex {
         Ok(())
     }
 
+    #[instrument(name = "search_index.get_index_meta", level = "debug", skip(self))]
     async fn get_index_meta(&self) -> Result<SearchIndexMeta, SearchError> {
         let profile_id = self.current_profile_id().await?;
         let pool = self.pool.clone();

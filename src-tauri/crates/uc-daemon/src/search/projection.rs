@@ -20,7 +20,7 @@ use uc_infra::search::text_extractor::SearchPipelineInput;
 /// - `text/uri-list` containing `file://` paths => `File`
 /// - `image/*` => `Image`
 /// - anything else => `Other`
-fn infer_file_type(mime: &str, uri_list: &[String]) -> FileType {
+fn infer_file_type(mime: &str, uri_list: &[String], has_file_paths: bool) -> FileType {
     let mime_lower = mime.to_lowercase();
     if mime_lower.starts_with("image/") {
         return FileType::Image;
@@ -31,13 +31,14 @@ fn infer_file_type(mime: &str, uri_list: &[String]) -> FileType {
     if mime_lower == "text/plain" || mime_lower.starts_with("text/plain;") {
         return FileType::Text;
     }
-    // URI list: distinguish file paths from web URLs
+    // URI list: distinguish file paths from web URLs.
+    // Note: callers pre-extract file:// URIs into file_paths (so uri_list only has
+    // http/https URLs). has_file_paths signals that at least one file:// URI was found.
     if mime_lower == "text/uri-list" || mime_lower == "file/uri-list" {
-        // If any URI is a file:// URI, classify as File
-        if uri_list.iter().any(|u| u.trim().starts_with("file://")) {
+        if has_file_paths || uri_list.iter().any(|u| u.trim().starts_with("file://")) {
             return FileType::File;
         }
-        // Otherwise (http/https URLs) => Link
+        // Only web URLs remain => Link
         return FileType::Link;
     }
     // Non-file URL — classify by content
@@ -153,13 +154,10 @@ impl SearchProjectionBuilder {
                                 // Convert file:// URI to path
                                 if let Ok(url) = url::Url::parse(line) {
                                     if let Ok(path) = url.to_file_path() {
-                                        let path_str =
-                                            path.to_string_lossy().to_string();
+                                        let path_str = path.to_string_lossy().to_string();
                                         // Extract file name
                                         if let Some(name) = path.file_name() {
-                                            file_names.push(
-                                                name.to_string_lossy().to_string(),
-                                            );
+                                            file_names.push(name.to_string_lossy().to_string());
                                         }
                                         file_paths.push(path_str);
                                     }
@@ -180,7 +178,7 @@ impl SearchProjectionBuilder {
             .unwrap_or_else(|| "application/octet-stream".to_string());
 
         let file_extensions = collect_extensions(&file_paths, &file_names);
-        let file_type = infer_file_type(&mime_type, &uri_list);
+        let file_type = infer_file_type(&mime_type, &uri_list, !file_paths.is_empty());
 
         // If no searchable content, return None
         if plain_text.is_none()
@@ -268,12 +266,9 @@ impl SearchProjectionBuilder {
                                 if line.starts_with("file://") {
                                     if let Ok(parsed_url) = url::Url::parse(line) {
                                         if let Ok(path) = parsed_url.to_file_path() {
-                                            let path_str =
-                                                path.to_string_lossy().to_string();
+                                            let path_str = path.to_string_lossy().to_string();
                                             if let Some(name) = path.file_name() {
-                                                file_names.push(
-                                                    name.to_string_lossy().to_string(),
-                                                );
+                                                file_names.push(name.to_string_lossy().to_string());
                                             }
                                             file_paths.push(path_str);
                                         }
@@ -302,7 +297,7 @@ impl SearchProjectionBuilder {
             .unwrap_or_else(|| "application/octet-stream".to_string());
 
         let file_extensions = collect_extensions(&file_paths, &file_names);
-        let file_type = infer_file_type(&mime_type, &uri_list);
+        let file_type = infer_file_type(&mime_type, &uri_list, !file_paths.is_empty());
 
         // If no searchable content, return None
         if plain_text.is_none()
@@ -335,7 +330,7 @@ impl SearchProjectionBuilder {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use uc_core::clipboard::{SelectionPolicyVersion};
+    use uc_core::clipboard::SelectionPolicyVersion;
     use uc_core::ids::{EntryId, EventId, FormatId, RepresentationId};
     use uc_core::{MimeType, ObservedClipboardRepresentation, SystemClipboardSnapshot};
 
@@ -350,10 +345,7 @@ mod tests {
         }
     }
 
-    fn make_text_snapshot(
-        rep_id: RepresentationId,
-        text: &str,
-    ) -> SystemClipboardSnapshot {
+    fn make_text_snapshot(rep_id: RepresentationId, text: &str) -> SystemClipboardSnapshot {
         SystemClipboardSnapshot {
             ts_ms: 1_000_000,
             representations: vec![ObservedClipboardRepresentation::new(
@@ -417,10 +409,8 @@ mod tests {
         // --- Test build_from_persisted ---
         let rep_id2 = RepresentationId::new();
         let persisted_rep = make_persisted_text_rep(rep_id2.clone(), "hello from persisted");
-        let persisted_selection = ClipboardSelectionDecision::new(
-            EntryId::from("entry-1"),
-            make_selection(rep_id2),
-        );
+        let persisted_selection =
+            ClipboardSelectionDecision::new(EntryId::from("entry-1"), make_selection(rep_id2));
 
         let input2 = SearchProjectionBuilder::build_from_persisted(
             &entry,
@@ -433,10 +423,7 @@ mod tests {
         );
         let input2 = input2.unwrap();
         assert_eq!(input2.entry_id, EntryId::from("entry-1"));
-        assert_eq!(
-            input2.plain_text.as_deref(),
-            Some("hello from persisted")
-        );
+        assert_eq!(input2.plain_text.as_deref(), Some("hello from persisted"));
         assert_eq!(input2.file_type, FileType::Text);
 
         // --- Test None for empty content ---
@@ -456,38 +443,44 @@ mod tests {
 
     #[test]
     fn infer_file_type_text() {
-        assert_eq!(infer_file_type("text/plain", &[]), FileType::Text);
+        assert_eq!(infer_file_type("text/plain", &[], false), FileType::Text);
     }
 
     #[test]
     fn infer_file_type_html() {
-        assert_eq!(infer_file_type("text/html", &[]), FileType::Html);
+        assert_eq!(infer_file_type("text/html", &[], false), FileType::Html);
     }
 
     #[test]
     fn infer_file_type_image() {
-        assert_eq!(infer_file_type("image/png", &[]), FileType::Image);
+        assert_eq!(infer_file_type("image/png", &[], false), FileType::Image);
     }
 
     #[test]
     fn infer_file_type_link_from_uri_list() {
         assert_eq!(
-            infer_file_type(
-                "text/uri-list",
-                &["https://example.com".to_string()]
-            ),
+            infer_file_type("text/uri-list", &["https://example.com".to_string()], false,),
             FileType::Link
         );
     }
 
     #[test]
     fn infer_file_type_file_from_uri_list() {
+        // Simulates the old path where file:// was not pre-extracted
         assert_eq!(
             infer_file_type(
                 "text/uri-list",
-                &["file:///tmp/test.txt".to_string()]
+                &["file:///tmp/test.txt".to_string()],
+                false,
             ),
             FileType::File
         );
+    }
+
+    #[test]
+    fn infer_file_type_file_via_has_file_paths() {
+        // The real code path: file:// URIs are pre-extracted into file_paths,
+        // so uri_list is empty but has_file_paths is true.
+        assert_eq!(infer_file_type("text/uri-list", &[], true), FileType::File);
     }
 }

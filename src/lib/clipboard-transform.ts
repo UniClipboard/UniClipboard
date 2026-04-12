@@ -39,7 +39,12 @@ export function transformDaemonDtoToItemResponse(entry: ClipboardEntryDto): Clip
           ? { display_text: entry.preview, has_detail: entry.hasDetail, size: entry.sizeBytes }
           : null,
       image: isImage
-        ? { thumbnail: entry.thumbnailUrl ?? null, size: entry.sizeBytes, width: 0, height: 0 }
+        ? {
+            thumbnail: entry.thumbnailUrl ?? null,
+            size: entry.sizeBytes,
+            width: entry.imageWidth ?? 0,
+            height: entry.imageHeight ?? 0,
+          }
         : null,
       file: isFile
         ? {

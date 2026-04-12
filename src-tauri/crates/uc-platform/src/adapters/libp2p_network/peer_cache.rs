@@ -167,6 +167,11 @@ impl PeerCaches {
     ///
     /// Returns `Some(DiscoveredPeer)` if fully removed; `None` if retained or
     /// did not exist.
+    ///
+    /// `last_dial_observations` is intentionally preserved: the recovery layer
+    /// uses the last known usable dial target to retry after a transient mDNS
+    /// drop or a local-session rebuild. Call [`PeerCaches::forget_peer`] to
+    /// fully erase a peer (e.g. on unpair).
     pub fn remove_discovered(&mut self, peer_id: &str) -> Option<DiscoveredPeer> {
         self.address_registry
             .remove_peer_source(peer_id, AddressSource::Mdns);
@@ -189,6 +194,16 @@ impl PeerCaches {
         self.reachable_peers.remove(peer_id);
         self.connected_at.remove(peer_id);
         self.active_connections.remove(peer_id);
+        self.discovered_peers.remove(peer_id)
+    }
+
+    /// Fully erase a peer from every cache, including `last_dial_observations`
+    /// and the address registry. Intended for unpair / explicit forget flows.
+    pub fn forget_peer(&mut self, peer_id: &str) -> Option<DiscoveredPeer> {
+        self.address_registry.remove_peer(peer_id);
+        self.reachable_peers.remove(peer_id);
+        self.connected_at.remove(peer_id);
+        self.active_connections.remove(peer_id);
         self.last_dial_observations.remove(peer_id);
         self.discovered_peers.remove(peer_id)
     }
@@ -205,11 +220,15 @@ impl PeerCaches {
         }
     }
 
+    /// Mark a peer as unreachable, returning `true` if it was previously
+    /// reachable.
+    ///
+    /// `last_dial_observations` is intentionally preserved so the recovery
+    /// layer can retry the last known usable path after a transient outage.
     pub fn mark_unreachable(&mut self, peer_id: &str) -> bool {
         let removed = self.reachable_peers.remove(peer_id);
         self.connected_at.remove(peer_id);
         self.active_connections.remove(peer_id);
-        self.last_dial_observations.remove(peer_id);
         removed
     }
 
@@ -297,6 +316,12 @@ impl PeerCaches {
         !was_reachable && self.is_reachable(peer_id)
     }
 
+    /// Mark a connection as closed. Returns `true` if the peer transitioned
+    /// from reachable to unreachable (i.e., the last active connection closed).
+    ///
+    /// `last_dial_observations` is intentionally preserved so the recovery
+    /// coordinator can retry the last known usable path after a transient
+    /// connection drop. Call [`PeerCaches::forget_peer`] to fully erase a peer.
     pub(crate) fn mark_connection_closed(
         &mut self,
         peer_id: &str,
@@ -310,7 +335,8 @@ impl PeerCaches {
                 self.active_connections.remove(peer_id);
                 self.reachable_peers.remove(peer_id);
                 self.connected_at.remove(peer_id);
-                self.last_dial_observations.remove(peer_id);
+                // last_dial_observations intentionally not removed here;
+                // recovery layer needs the last usable path.
             } else if let Some(first_connected_at) =
                 connections.values().map(|conn| conn.connected_at).min()
             {

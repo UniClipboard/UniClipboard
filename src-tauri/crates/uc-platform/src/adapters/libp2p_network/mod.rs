@@ -878,7 +878,7 @@ impl PairingTransportPort for Libp2pNetworkAdapter {
         let event = {
             let mut caches = self.caches.write().await;
             caches
-                .remove_discovered(&peer_id)
+                .forget_peer(&peer_id)
                 .map(|_| NetworkEvent::PeerLost(peer_id.clone()))
         };
         if let Some(event) = event {

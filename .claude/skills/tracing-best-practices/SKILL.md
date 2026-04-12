@@ -31,6 +31,7 @@ tracing records three types of structured data — NOT print text:
 ### Design Principles
 
 - Spans = flow boundaries; Events = facts within flows
+- **Every span MUST contain at least one event** — `#[instrument]` alone only creates a span; `tracing_subscriber::fmt` only outputs **events**. A span with no events inside it produces zero log output, making the function invisible in logs.
 - Fields first, messages second
 - Stable field names over ad-hoc description strings
 - Record business context, never sensitive plaintext
@@ -208,6 +209,34 @@ Do NOT automatically record full return values. Log key results as separate even
 
 ```rust
 tracing::info!(session_id = %session_id, result = "accepted", "space access completed");
+```
+
+### CRITICAL: `#[instrument]` Requires Events Inside the Function Body
+
+`#[instrument]` generates a **span**, not an event. `tracing_subscriber::fmt` only writes **events** to log output (console/JSON file). A function with only `#[instrument]` and no event macros (`info!`, `debug!`, etc.) produces **zero log output** — the function is completely invisible in logs.
+
+**Every `#[instrument]`-annotated function MUST emit at least one tracing event.** Minimum pattern:
+
+```rust
+#[instrument(name = "api.search_query", level = "info", skip(state, params), fields(query = %params.query))]
+async fn search_query_handler(state: State, params: Query) -> Result<Json<Response>, Error> {
+    // ... business logic ...
+    let result = do_search().await?;
+    // At minimum, log the outcome — this makes the function visible in logs
+    info!(total = result.total, "search completed");
+    Ok(Json(result))
+}
+```
+
+For thin delegation functions (usecases that just call a port), a single `debug!` after the call is sufficient:
+
+```rust
+#[tracing::instrument(name = "usecase.index_entry.execute", skip(self, doc, postings), fields(entry_id = %doc.entry_id))]
+pub async fn execute(&self, doc: SearchDocument, postings: Vec<SearchPosting>) -> Result<(), SearchError> {
+    self.search_index.index_entry(doc, postings).await?;
+    tracing::debug!("entry indexed successfully");
+    Ok(())
+}
 ```
 
 ---
@@ -403,6 +432,7 @@ When writing or reviewing tracing code, verify:
 | -------------------------------------------------------- | ------------- |
 | Entry function has span?                                 | **MUST**      |
 | Key usecase/orchestrator has span?                       | **MUST**      |
+| `#[instrument]` function has at least one event inside?  | **MUST**      |
 | `tokio::spawn` propagates span?                          | **MUST**      |
 | Sensitive params use `skip()`?                           | **MUST**      |
 | Errors have structured fields (not just string)?         | **MUST**      |
@@ -416,3 +446,4 @@ When writing or reviewing tracing code, verify:
 | Same error repeated across stack layers?                 | **FORBIDDEN** |
 | Secret/large payload in tracing output?                  | **FORBIDDEN** |
 | `.entered()` / `.enter()` held across `.await` in async? | **FORBIDDEN** |
+| `#[instrument]` with no events inside (silent span)?     | **FORBIDDEN** |

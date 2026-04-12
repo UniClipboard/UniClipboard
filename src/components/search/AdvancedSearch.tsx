@@ -19,8 +19,24 @@ export interface AdvancedSearchProps {
   placeholder?: string
   advancedPlaceholder?: string
   className?: string
-  inputRef?: React.RefObject<HTMLInputElement>
+  inputRef?: React.Ref<HTMLInputElement>
   onKeyDown?: (e: KeyboardEvent) => void
+}
+
+function setInputNodeRef(
+  ref: React.Ref<HTMLInputElement> | undefined,
+  node: HTMLInputElement | null
+) {
+  if (!ref) {
+    return
+  }
+
+  if (typeof ref === 'function') {
+    ref(node)
+    return
+  }
+
+  ;(ref as React.MutableRefObject<HTMLInputElement | null>).current = node
 }
 
 const AdvancedSearch: React.FC<AdvancedSearchProps> = ({
@@ -38,8 +54,9 @@ const AdvancedSearch: React.FC<AdvancedSearchProps> = ({
   inputRef: externalInputRef,
   onKeyDown: externalOnKeyDown,
 }) => {
-  const internalInputRef = useRef<HTMLInputElement>(null)
-  const inputRef = externalInputRef || internalInputRef
+  const inputRef = useRef<HTMLInputElement | null>(
+    null
+  ) as React.MutableRefObject<HTMLInputElement | null>
   const [suggestionIndex, setSuggestionIndex] = useState(0)
   const [isComposing, setIsComposing] = useState(false)
   const [composingValue, setComposingValue] = useState('')
@@ -48,6 +65,14 @@ const AdvancedSearch: React.FC<AdvancedSearchProps> = ({
   const suppressEnterUntilRef = useRef(0)
   // State to trigger focus after suggestion application (refs can't be in deps)
   const [focusTrigger, setFocusTrigger] = useState(0)
+
+  const assignInputRef = useCallback(
+    (node: HTMLInputElement | null) => {
+      inputRef.current = node
+      setInputNodeRef(externalInputRef, node)
+    },
+    [externalInputRef]
+  )
 
   // Suggestions Logic
   const suggestions = useMemo(() => {
@@ -300,7 +325,7 @@ const AdvancedSearch: React.FC<AdvancedSearchProps> = ({
               className="flex-1 min-w-[80px]"
             >
               <input
-                ref={inputRef}
+                ref={assignInputRef}
                 type="text"
                 placeholder={
                   isAdvanced ? (tokens.length > 0 ? '' : advancedPlaceholder) : placeholder

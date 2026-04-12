@@ -17,7 +17,7 @@ const Header: React.FC<HeaderProps> = ({ onFilterChange, className }) => {
 
   const filterTypes = [
     { id: Filter.All, label: 'header.filters.all', icon: ClipboardCopy },
-    // 后端收藏功能尚未实装：暂时隐藏“已收藏”筛选入口（保留逻辑，后续直接开关启用）。
+    // 后端收藏功能尚未实装：暂时隐藏"已收藏"筛选入口（保留逻辑，后续直接开关启用）。
     ...(FAVORITES_UI_ENABLED
       ? [{ id: Filter.Favorited, label: 'header.filters.favorited', icon: Star }]
       : []),

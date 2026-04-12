@@ -403,7 +403,8 @@
     }
   },
   "header": {
-    "searchPlaceholder": "搜索剪贴板内容...",
+    "searchPlaceholder": "关键词搜索...",
+    "resultsCount": "{{count}} 个结果",
     "filters": {
       "all": "全部",
       "favorited": "收藏",
@@ -412,9 +413,26 @@
       "link": "链接",
       "file": "文件",
       "code": "代码"
+    },
+    "timeRange": {
+      "all_time": "不限时间",
+      "today": "今天",
+      "yesterday": "昨天",
+      "last_7d": "最近 7 天",
+      "last_30d": "最近 30 天",
+      "this_week": "本周",
+      "this_month": "本月"
     }
   },
   "clipboard": {
+    "search": {
+      "noResults": "未找到 \"{{query}}\" 的结果",
+      "noResultsSub": "尝试搜索完整单词或其他关键词",
+      "empty": "剪贴板历史为空",
+      "emptySub": "复制一些内容来开始使用吧",
+      "resultsCount": "条结果",
+      "searching": "搜索中…"
+    },
     "content": {
       "filterCondition": "筛选条件:",
       "queryResults": "查询结果:",

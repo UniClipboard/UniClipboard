@@ -1,4 +1,4 @@
-import { Inbox } from 'lucide-react'
+import { Inbox, Loader2, Search } from 'lucide-react'
 import React, { useMemo, useState, useEffect, useCallback, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useDefaultLayout } from 'react-resizable-panels'
@@ -20,6 +20,8 @@ import {
   downloadFileEntry,
   openFileLocation,
 } from '@/api/clipboardItems'
+import { querySearch } from '@/api/daemon/search'
+import type { SearchResultDto } from '@/api/daemon/search'
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from '@/components/ui/resizable'
 import { toast } from '@/components/ui/toast'
 import { useFileSyncNotifications } from '@/hooks/useFileSyncNotifications'
@@ -52,6 +54,8 @@ export interface DisplayClipboardItem {
     | null
   fileTransferIds?: string[]
   device?: string
+  /** Fallback preview text from search results when content is not available. */
+  textPreview?: string
 }
 
 interface DateGroup {
@@ -62,6 +66,7 @@ interface DateGroup {
 interface ClipboardContentProps {
   filter: Filter
   searchQuery?: string
+  timeRange?: import('@/contexts/search-context').TimeRangePreset
   hasMore?: boolean
   onLoadMore?: () => void
 }
@@ -95,9 +100,41 @@ function groupItemsByDate(items: DisplayClipboardItem[], t: (key: string) => str
   return groups
 }
 
+/** Map backend contentType to frontend display type. */
+function mapSearchContentType(ft: SearchResultDto['contentType']): DisplayClipboardItem['type'] {
+  switch (ft) {
+    case 'text':
+      return 'text'
+    case 'html':
+      return 'code'
+    case 'link':
+      return 'link'
+    case 'file':
+      return 'file'
+    case 'image':
+      return 'image'
+    case 'other':
+      return 'unknown'
+  }
+}
+
+/** Format relative time from ms timestamp. */
+function formatRelativeTime(
+  ms: number,
+  t: (key: string, opts?: Record<string, unknown>) => string
+): string {
+  const diffMs = Date.now() - ms
+  const diffMins = Math.round(diffMs / 60000)
+  if (diffMins < 1) return t('clipboard.time.justNow')
+  if (diffMins < 60) return t('clipboard.time.minutesAgo', { minutes: diffMins })
+  if (diffMins < 1440) return t('clipboard.time.hoursAgo', { hours: Math.floor(diffMins / 60) })
+  return t('clipboard.time.daysAgo', { days: Math.floor(diffMins / 1440) })
+}
+
 const ClipboardContent: React.FC<ClipboardContentProps> = ({
   filter,
   searchQuery = '',
+  timeRange = 'all_time',
   hasMore = true,
   onLoadMore,
 }) => {
@@ -123,6 +160,72 @@ const ClipboardContent: React.FC<ClipboardContentProps> = ({
     notReady,
     staleEntryIds,
   } = useAppSelector(state => state.clipboard)
+
+  // Server-side search state
+  const isSearchActive = searchQuery.trim().length > 0
+  const [searchResults, setSearchResults] = useState<DisplayClipboardItem[] | null>(null)
+  const [searchLoading, setSearchLoading] = useState(false)
+  const [searchTotal, setSearchTotal] = useState<number | null>(null)
+  const searchAbortRef = useRef<AbortController | null>(null)
+
+  // Server-side search effect
+  useEffect(() => {
+    if (!isSearchActive) {
+      setSearchResults(null)
+      setSearchTotal(null)
+      setSearchLoading(false)
+      return
+    }
+
+    searchAbortRef.current?.abort()
+    const controller = new AbortController()
+    searchAbortRef.current = controller
+
+    setSearchLoading(true)
+
+    // Filter/timeRange values match backend params directly;
+    // Code includes html (html is a form of code)
+    let contentTypes: string | undefined
+    if (filter === Filter.Code) contentTypes = 'code,html'
+    else if (filter !== Filter.All && filter !== Filter.Favorited) contentTypes = filter
+    const timePreset = timeRange !== 'all_time' ? timeRange : undefined
+
+    querySearch(
+      {
+        query: searchQuery,
+        contentTypes,
+        timePreset,
+        limit: 50,
+      },
+      controller.signal
+    )
+      .then(response => {
+        if (controller.signal.aborted) return
+        const items: DisplayClipboardItem[] = response.data.map(r => ({
+          id: r.entryId,
+          type: mapSearchContentType(r.contentType),
+          time: formatRelativeTime(r.activeTimeMs, t),
+          activeTime: r.activeTimeMs,
+          content: null,
+          textPreview: r.textPreview ?? undefined,
+        }))
+        setSearchResults(items)
+        setSearchTotal(response.total)
+        setSearchLoading(false)
+      })
+      .catch(err => {
+        if (controller.signal.aborted) return
+        if (err instanceof DOMException && err.name === 'AbortError') return
+        log.error({ err }, 'Dashboard search failed')
+        setSearchResults([])
+        setSearchTotal(0)
+        setSearchLoading(false)
+      })
+
+    return () => {
+      controller.abort()
+    }
+  }, [searchQuery, filter, timeRange, isSearchActive, t])
 
   const [activeItemId, setActiveItemId] = useState<string | null>(null)
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
@@ -192,39 +295,38 @@ const ClipboardContent: React.FC<ClipboardContentProps> = ({
     [t]
   )
 
-  // Build display items from Redux state
+  // Build display items: server search results or Redux browse items
   const clipboardItems = useMemo(() => {
+    // When a search query is active, use server-side results
+    if (isSearchActive && searchResults !== null) {
+      return searchResults
+    }
+
+    // Browse mode: build from Redux state with local type filter
     if (!reduxItems || reduxItems.length === 0) return []
 
     let items: DisplayClipboardItem[] = reduxItems.map(convertToDisplayItem)
 
-    if (filter === Filter.Favorited) {
-      items = items.filter(it => it.isFavorited)
-    }
-
-    if (searchQuery.trim()) {
-      const query = searchQuery.toLowerCase().trim()
-      items = items.filter(it => {
-        if (it.type === 'text' && it.content) {
-          return (it.content as ClipboardTextItem).display_text?.toLowerCase().includes(query)
+    if (filter !== Filter.All) {
+      if (filter === Filter.Favorited) {
+        items = items.filter(it => it.isFavorited)
+      } else {
+        const filterTypeMap: Record<string, string> = {
+          [Filter.Text]: 'text',
+          [Filter.Image]: 'image',
+          [Filter.Link]: 'link',
+          [Filter.File]: 'file',
+          [Filter.Code]: 'code',
         }
-        if (it.type === 'code' && it.content) {
-          return (it.content as ClipboardCodeItem).code?.toLowerCase().includes(query)
+        const targetType = filterTypeMap[filter]
+        if (targetType) {
+          items = items.filter(it => it.type === targetType)
         }
-        if (it.type === 'link' && it.content) {
-          return (it.content as ClipboardLinkItem).urls?.some(u => u.toLowerCase().includes(query))
-        }
-        if (it.type === 'file' && it.content) {
-          return (it.content as ClipboardFileItem).file_names?.some(name =>
-            name.toLowerCase().includes(query)
-          )
-        }
-        return false
-      })
+      }
     }
 
     return items
-  }, [reduxItems, filter, searchQuery, convertToDisplayItem, tick])
+  }, [reduxItems, filter, isSearchActive, searchResults, convertToDisplayItem, tick])
 
   // Flat list for keyboard navigation
   const flatItems = useMemo(() => clipboardItems, [clipboardItems])
@@ -441,7 +543,22 @@ const ClipboardContent: React.FC<ClipboardContentProps> = ({
 
   return (
     <div className="h-full flex flex-col">
-      {clipboardItems.length > 0 ? (
+      {/* Search result count */}
+      {isSearchActive && searchTotal !== null && !searchLoading && (
+        <div className="shrink-0 px-4 py-1.5 text-xs text-muted-foreground border-b border-border/30">
+          {searchTotal} {t('clipboard.search.resultsCount')}
+        </div>
+      )}
+
+      {/* Search loading indicator */}
+      {searchLoading && clipboardItems.length === 0 && (
+        <div className="flex-1 flex items-center justify-center">
+          <Loader2 className="h-5 w-5 animate-spin text-muted-foreground mr-2" />
+          <span className="text-sm text-muted-foreground">{t('clipboard.search.searching')}</span>
+        </div>
+      )}
+
+      {!searchLoading && clipboardItems.length > 0 ? (
         <ResizablePanelGroup
           id="clipboard-panels"
           orientation="horizontal"
@@ -541,19 +658,25 @@ const ClipboardContent: React.FC<ClipboardContentProps> = ({
             </div>
           </ResizablePanel>
         </ResizablePanelGroup>
-      ) : (
+      ) : !searchLoading ? (
         <div className="mx-auto flex h-full w-full max-w-xl flex-col items-center justify-center text-center">
           <div className="mb-5 rounded-full bg-muted/30 p-5 ring-1 ring-border/50">
-            <Inbox className="h-10 w-10 text-muted-foreground/50" />
+            {searchQuery ? (
+              <Search className="h-10 w-10 text-muted-foreground/50" />
+            ) : (
+              <Inbox className="h-10 w-10 text-muted-foreground/50" />
+            )}
           </div>
           <h3 className="mb-2 text-xl font-semibold text-foreground">
-            {t('clipboard.content.noClipboardItems')}
+            {searchQuery
+              ? t('clipboard.search.noResults', { query: searchQuery })
+              : t('clipboard.search.empty')}
           </h3>
           <p className="max-w-sm text-muted-foreground">
-            {t('clipboard.content.emptyDescription')}
+            {searchQuery ? t('clipboard.search.noResultsSub') : t('clipboard.search.emptySub')}
           </p>
         </div>
-      )}
+      ) : null}
 
       <DeleteConfirmDialog
         open={deleteDialogOpen}

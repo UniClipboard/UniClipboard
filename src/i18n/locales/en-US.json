@@ -412,7 +412,8 @@
     }
   },
   "header": {
-    "searchPlaceholder": "Search clipboard content...",
+    "searchPlaceholder": "Search by keywords...",
+    "resultsCount": "{{count}} results",
     "filters": {
       "all": "All",
       "favorited": "Favorites",
@@ -421,9 +422,26 @@
       "link": "Link",
       "file": "File",
       "code": "Code"
+    },
+    "timeRange": {
+      "all_time": "All time",
+      "today": "Today",
+      "yesterday": "Yesterday",
+      "last_7d": "Last 7 days",
+      "last_30d": "Last 30 days",
+      "this_week": "This week",
+      "this_month": "This month"
     }
   },
   "clipboard": {
+    "search": {
+      "noResults": "No results for \"{{query}}\"",
+      "noResultsSub": "Try a full word or a different keyword",
+      "empty": "Your clipboard history is empty",
+      "emptySub": "Copy something to get started",
+      "resultsCount": "results",
+      "searching": "Searching…"
+    },
     "content": {
       "filterCondition": "Filter condition:",
       "queryResults": "Query results:",

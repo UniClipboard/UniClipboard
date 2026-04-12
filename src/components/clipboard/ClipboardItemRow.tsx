@@ -91,7 +91,7 @@ function getFileExt(item: DisplayClipboardItem): string {
 }
 
 function getPreviewText(item: DisplayClipboardItem): string {
-  if (!item.content) return ''
+  if (!item.content) return item.textPreview ?? ''
   switch (item.type) {
     case 'text':
       return (item.content as ClipboardTextItem).display_text.slice(0, 80)

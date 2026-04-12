@@ -279,6 +279,21 @@
           "description": "打开应用数据存储所在的文件夹",
           "button": "在文件管理器中打开"
         },
+        "searchIndex": {
+          "label": "搜索索引",
+          "status": "索引状态",
+          "statusDescription": "全文搜索索引的当前状态",
+          "ready": "就绪",
+          "rebuilding": "重建中…",
+          "unavailable": "不可用",
+          "lastRebuilt": "上次重建",
+          "lastRebuiltDescription": "上次成功重建索引的时间",
+          "never": "从未",
+          "rebuild": "重建索引",
+          "rebuildDescription": "手动触发搜索索引的完整重建",
+          "rebuildButton": "重建",
+          "rebuildingButton": "重建中…"
+        },
         "loadError": "加载存储设置失败：",
         "placeholder": "存储设置尚不可用。"
       },

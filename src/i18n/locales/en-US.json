@@ -288,6 +288,21 @@
           "description": "Open the folder where application data is stored",
           "button": "Open in file manager"
         },
+        "searchIndex": {
+          "label": "Search index",
+          "status": "Index status",
+          "statusDescription": "Current state of the full-text search index",
+          "ready": "Ready",
+          "rebuilding": "Rebuilding…",
+          "unavailable": "Unavailable",
+          "lastRebuilt": "Last rebuilt",
+          "lastRebuiltDescription": "Time of the last successful index rebuild",
+          "never": "Never",
+          "rebuild": "Rebuild index",
+          "rebuildDescription": "Manually trigger a full rebuild of the search index",
+          "rebuildButton": "Rebuild",
+          "rebuildingButton": "Rebuilding…"
+        },
         "loadError": "Failed to load storage settings:",
         "placeholder": "Storage settings are not yet available."
       },

@@ -4,6 +4,8 @@ import { useTranslation } from 'react-i18next'
 import ClearHistoryDialog from './ClearHistoryDialog'
 import { SettingGroup } from './SettingGroup'
 import { SettingRow } from './SettingRow'
+import { getSearchStatus, triggerSearchRebuild } from '@/api/daemon'
+import type { SearchStatusData } from '@/api/daemon'
 import * as storageApi from '@/api/storage'
 import type { StorageStats } from '@/api/storage'
 import {
@@ -276,6 +278,10 @@ const StorageSection: React.FC = () => {
   const [statsLoading, setStatsLoading] = useState(true)
   const [statsError, setStatsError] = useState<string | null>(null)
 
+  // Search index state
+  const [searchStatus, setSearchStatus] = useState<SearchStatusData | null>(null)
+  const [rebuildingIndex, setRebuildingIndex] = useState(false)
+
   // Action states
   const [clearingCache, setClearingCache] = useState(false)
   const [clearingHistory, setClearingHistory] = useState(false)
@@ -300,6 +306,21 @@ const StorageSection: React.FC = () => {
   useEffect(() => {
     void loadStats()
   }, [loadStats])
+
+  // ── Load search index status ────────────────────────────────────
+
+  const loadSearchStatus = useCallback(async () => {
+    try {
+      const resp = await getSearchStatus()
+      setSearchStatus(resp.data)
+    } catch (err) {
+      log.error({ err }, 'Failed to load search index status')
+    }
+  }, [])
+
+  useEffect(() => {
+    void loadSearchStatus()
+  }, [loadSearchStatus])
 
   // ── Compute bar segments ─────────────────────────────────────────
 
@@ -436,6 +457,30 @@ const StorageSection: React.FC = () => {
     }
   }
 
+  const handleRebuildIndex = async () => {
+    setRebuildingIndex(true)
+    try {
+      await triggerSearchRebuild()
+      // Poll status until rebuild completes or timeout
+      const poll = setInterval(async () => {
+        try {
+          const resp = await getSearchStatus()
+          setSearchStatus(resp.data)
+          if (resp.data.state !== 'rebuilding') {
+            clearInterval(poll)
+            setRebuildingIndex(false)
+          }
+        } catch {
+          clearInterval(poll)
+          setRebuildingIndex(false)
+        }
+      }, 2000)
+    } catch (err) {
+      log.error({ err }, 'Failed to trigger search index rebuild')
+      setRebuildingIndex(false)
+    }
+  }
+
   const handleOpenDataDir = async () => {
     try {
       await storageApi.openDataDirectory()
@@ -463,6 +508,60 @@ const StorageSection: React.FC = () => {
           error={statsError}
           onRefresh={loadStats}
         />
+      </SettingGroup>
+
+      {/* ── Search Index ── */}
+      <SettingGroup title={t('settings.sections.storage.searchIndex.label')}>
+        <SettingRow
+          label={t('settings.sections.storage.searchIndex.status')}
+          description={t('settings.sections.storage.searchIndex.statusDescription')}
+        >
+          <div className="flex items-center gap-2">
+            <span
+              className={`inline-block w-2 h-2 rounded-full ${
+                searchStatus?.state === 'ready'
+                  ? 'bg-green-500'
+                  : searchStatus?.state === 'rebuilding'
+                    ? 'bg-yellow-500 animate-pulse'
+                    : 'bg-muted-foreground/40'
+              }`}
+            />
+            <span className="text-sm text-muted-foreground">
+              {searchStatus?.state === 'ready'
+                ? t('settings.sections.storage.searchIndex.ready')
+                : searchStatus?.state === 'rebuilding'
+                  ? t('settings.sections.storage.searchIndex.rebuilding')
+                  : t('settings.sections.storage.searchIndex.unavailable')}
+            </span>
+          </div>
+        </SettingRow>
+
+        <SettingRow
+          label={t('settings.sections.storage.searchIndex.lastRebuilt')}
+          description={t('settings.sections.storage.searchIndex.lastRebuiltDescription')}
+        >
+          <span className="text-sm text-muted-foreground tabular-nums">
+            {searchStatus?.lastRebuildCompletedAtMs
+              ? new Date(searchStatus.lastRebuildCompletedAtMs).toLocaleString()
+              : t('settings.sections.storage.searchIndex.never')}
+          </span>
+        </SettingRow>
+
+        <SettingRow
+          label={t('settings.sections.storage.searchIndex.rebuild')}
+          description={t('settings.sections.storage.searchIndex.rebuildDescription')}
+        >
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleRebuildIndex}
+            disabled={rebuildingIndex || searchStatus?.state === 'rebuilding'}
+          >
+            {rebuildingIndex || searchStatus?.state === 'rebuilding'
+              ? t('settings.sections.storage.searchIndex.rebuildingButton')
+              : t('settings.sections.storage.searchIndex.rebuildButton')}
+          </Button>
+        </SettingRow>
       </SettingGroup>
 
       {/* ── Retention Policy ── */}

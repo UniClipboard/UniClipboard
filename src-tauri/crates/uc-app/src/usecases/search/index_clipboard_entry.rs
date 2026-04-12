@@ -32,7 +32,9 @@ impl IndexClipboardEntry {
         document: SearchDocument,
         postings: Vec<SearchPosting>,
     ) -> Result<(), SearchError> {
-        self.search_index.index_entry(document, postings).await
+        self.search_index.index_entry(document, postings).await?;
+        tracing::debug!("entry indexed successfully");
+        Ok(())
     }
 }
 
@@ -44,7 +46,7 @@ mod tests {
     use tokio::sync::Mutex;
     use uc_core::ids::{EntryId, EventId};
     use uc_core::search::{
-        FileType, RebuildProgress, SearchDocument, SearchError, SearchIndexMeta, SearchPosting,
+        ContentType, RebuildProgress, SearchDocument, SearchError, SearchIndexMeta, SearchPosting,
         SearchQuery, SearchResultsPage,
     };
 
@@ -106,7 +108,7 @@ mod tests {
             event_id: EventId::from("evt-test"),
             active_time_ms: 1000,
             captured_at_ms: 1000,
-            file_type: FileType::Text,
+            content_type: ContentType::Text,
             file_extensions: vec![],
             mime_type: "text/plain".into(),
             indexed_at_ms: 1000,

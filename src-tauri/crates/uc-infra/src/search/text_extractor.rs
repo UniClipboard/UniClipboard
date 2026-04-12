@@ -13,7 +13,7 @@
 //! - `text_preview` is carried through or derived from the best available source.
 
 use uc_core::ids::{EntryId, EventId};
-use uc_core::search::document::FileType;
+use uc_core::search::document::ContentType;
 use url::Url;
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -29,7 +29,7 @@ pub struct SearchPipelineInput {
     pub event_id: EventId,
     pub active_time_ms: i64,
     pub captured_at_ms: i64,
-    pub file_type: FileType,
+    pub content_type: ContentType,
     pub mime_type: String,
     pub file_extensions: Vec<String>,
     pub plain_text: Option<String>,
@@ -257,7 +257,7 @@ fn derive_preview(text: &str) -> String {
 mod tests {
     use super::*;
     use uc_core::ids::{EntryId, EventId};
-    use uc_core::search::document::FileType;
+    use uc_core::search::document::ContentType;
 
     fn base_input() -> SearchPipelineInput {
         SearchPipelineInput {
@@ -265,7 +265,7 @@ mod tests {
             event_id: EventId::from("event-01"),
             active_time_ms: 1_000,
             captured_at_ms: 900,
-            file_type: FileType::Text,
+            content_type: ContentType::Text,
             mime_type: "text/plain".to_string(),
             file_extensions: vec![],
             plain_text: None,

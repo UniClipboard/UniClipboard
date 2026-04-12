@@ -34,7 +34,10 @@ impl RebuildSearchIndex {
         entries: Vec<(SearchDocument, Vec<SearchPosting>)>,
         progress_tx: Sender<RebuildProgress>,
     ) -> Result<(), SearchError> {
-        self.search_index.rebuild(entries, progress_tx).await
+        tracing::info!(entry_count = entries.len(), "starting search index rebuild");
+        self.search_index.rebuild(entries, progress_tx).await?;
+        tracing::info!("search index rebuild completed");
+        Ok(())
     }
 }
 
@@ -46,7 +49,7 @@ mod tests {
     use tokio::sync::Mutex;
     use uc_core::ids::{EntryId, EventId};
     use uc_core::search::{
-        FileType, RebuildProgress, RebuildStage, SearchDocument, SearchError, SearchIndexMeta,
+        ContentType, RebuildProgress, RebuildStage, SearchDocument, SearchError, SearchIndexMeta,
         SearchPosting, SearchQuery, SearchResultsPage,
     };
 
@@ -114,7 +117,7 @@ mod tests {
             event_id: EventId::from("evt-rebuild"),
             active_time_ms: 1000,
             captured_at_ms: 1000,
-            file_type: FileType::Text,
+            content_type: ContentType::Text,
             file_extensions: vec![],
             mime_type: "text/plain".into(),
             indexed_at_ms: 1000,

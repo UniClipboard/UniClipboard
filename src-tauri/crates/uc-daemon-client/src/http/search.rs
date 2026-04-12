@@ -27,7 +27,7 @@ pub struct SearchQueryRequest {
     pub time_preset: Option<String>,
     pub from_ms: Option<i64>,
     pub to_ms: Option<i64>,
-    pub file_types: Vec<String>,
+    pub content_types: Vec<String>,
     pub extensions: Vec<String>,
     pub limit: u32,
     pub offset: u32,
@@ -121,8 +121,8 @@ impl DaemonSearchClient {
         if let Some(to_ms) = request.to_ms {
             params.push(("toMs", to_ms.to_string()));
         }
-        if !request.file_types.is_empty() {
-            params.push(("fileTypes", request.file_types.join(",")));
+        if !request.content_types.is_empty() {
+            params.push(("contentTypes", request.content_types.join(",")));
         }
         if !request.extensions.is_empty() {
             params.push(("extensions", request.extensions.join(",")));
@@ -285,8 +285,8 @@ mod tests {
                 "missing timePreset param: {request}"
             );
             assert!(
-                request.contains("fileTypes=text%2Cfile"),
-                "missing fileTypes param: {request}"
+                request.contains("contentTypes=text%2Cfile"),
+                "missing contentTypes param: {request}"
             );
             assert!(
                 request.contains("extensions=md%2Ctxt"),
@@ -333,7 +333,7 @@ mod tests {
                     time_preset: Some("last_7d".to_string()),
                     from_ms: None,
                     to_ms: None,
-                    file_types: vec!["text".to_string(), "file".to_string()],
+                    content_types: vec!["text".to_string(), "file".to_string()],
                     extensions: vec!["md".to_string(), "txt".to_string()],
                     limit: 25,
                     offset: 5,

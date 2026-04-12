@@ -11,10 +11,10 @@ use axum::http::StatusCode;
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use serde::Deserialize;
-use tracing::instrument;
+use tracing::{debug, info, instrument};
 use uc_app::usecases::CoreUseCases;
 use uc_core::network::daemon_api_strings::http_route;
-use uc_core::search::{FileType, QueryOperator, SearchQuery, TimeRangeFilter};
+use uc_core::search::{ContentType, QueryOperator, SearchQuery, TimeRangeFilter};
 
 use crate::api::dto::error::ApiError;
 use crate::api::dto::search::{
@@ -49,7 +49,7 @@ pub struct SearchQueryParams {
     /// Absolute range end (ms since epoch). Must be paired with `from_ms`.
     pub to_ms: Option<i64>,
     /// Comma-separated file types (text, html, link, file, image, other).
-    pub file_types: Option<String>,
+    pub content_types: Option<String>,
     /// Comma-separated file extensions (e.g. "md,txt").
     pub extensions: Option<String>,
     /// Maximum results. Default 50, clamped to 200.
@@ -103,7 +103,7 @@ pub(crate) fn parse_search_query(params: &SearchQueryParams) -> Result<SearchQue
     let time_range = parse_time_range(params)?;
 
     // --- file types ---
-    let file_types = parse_file_types(params.file_types.as_deref())?;
+    let content_types = parse_content_types(params.content_types.as_deref())?;
 
     // --- extensions ---
     let extensions = parse_extensions(params.extensions.as_deref());
@@ -115,7 +115,7 @@ pub(crate) fn parse_search_query(params: &SearchQueryParams) -> Result<SearchQue
         query_string,
         operator,
         time_range,
-        file_types,
+        content_types,
         extensions,
         limit,
         offset: params.offset,
@@ -209,7 +209,7 @@ fn parse_time_range(params: &SearchQueryParams) -> Result<Option<TimeRangeFilter
     Ok(None)
 }
 
-fn parse_file_types(raw: Option<&str>) -> Result<Vec<FileType>, ApiError> {
+fn parse_content_types(raw: Option<&str>) -> Result<Vec<ContentType>, ApiError> {
     let Some(raw) = raw else {
         return Ok(vec![]);
     };
@@ -217,12 +217,12 @@ fn parse_file_types(raw: Option<&str>) -> Result<Vec<FileType>, ApiError> {
     let mut result = Vec::new();
     for value in raw.split(',').map(|s| s.trim()).filter(|s| !s.is_empty()) {
         let ft = match value {
-            "text" => FileType::Text,
-            "html" => FileType::Html,
-            "link" => FileType::Link,
-            "file" => FileType::File,
-            "image" => FileType::Image,
-            "other" => FileType::Other,
+            "text" => ContentType::Text,
+            "html" => ContentType::Html,
+            "link" => ContentType::Link,
+            "file" => ContentType::File,
+            "image" => ContentType::Image,
+            "other" => ContentType::Other,
             unknown => {
                 return Err(ApiError::bad_request(format!(
                     "invalid fileType: {unknown}"
@@ -295,6 +295,8 @@ async fn search_query_handler(
 
     let runtime = state.runtime_or_error()?;
     let query = parse_search_query(&params)?;
+    debug!(query_string = %query.query_string, operator = ?query.operator, "parsed search query");
+
     let usecases = CoreUseCases::new(runtime.as_ref());
 
     let page = usecases
@@ -303,18 +305,21 @@ async fn search_query_handler(
         .await
         .map_err(|e| map_search_error(e))?;
 
+    let result_count = page.items.len();
     let data: Vec<SearchResultDto> = page
         .items
         .into_iter()
         .map(|r| SearchResultDto {
             entry_id: r.entry_id.to_string(),
-            file_type: r.file_type,
+            content_type: r.content_type,
             active_time_ms: r.active_time_ms,
             text_preview: r.text_preview,
             mime_type: r.mime_type,
             file_extensions: r.file_extensions,
         })
         .collect();
+
+    info!(total = page.total, returned = result_count, has_more = page.has_more, "search query completed");
 
     Ok(Json(SearchQueryResponse {
         total: page.total,
@@ -354,6 +359,12 @@ async fn search_status_handler(
         .await
         .map_err(|e| ApiError::internal(e.to_string()))?;
 
+    debug!(
+        state = %snapshot.status,
+        reason = ?snapshot.reason,
+        "search status queried"
+    );
+
     Ok(Json(SearchStatusResponse {
         data: SearchStatusData {
             state: snapshot.status,
@@ -381,18 +392,24 @@ async fn search_rebuild_handler(
         .ok_or_else(|| ApiError::service_unavailable("search coordinator unavailable"))?;
 
     match coordinator.request_manual_rebuild().await {
-        ManualRebuildResult::Accepted => Ok((
-            StatusCode::ACCEPTED,
-            Json(SearchRebuildAcceptedResponse {
-                data: SearchRebuildAcceptedData { accepted: true },
-                ts: chrono::Utc::now().timestamp_millis(),
-            }),
-        )),
-        ManualRebuildResult::AlreadyInProgress => Err(ApiError {
-            status: StatusCode::CONFLICT,
-            code: "rebuild_already_running".to_string(),
-            message: "a rebuild is already in progress".to_string(),
-        }),
+        ManualRebuildResult::Accepted => {
+            info!("manual search index rebuild accepted");
+            Ok((
+                StatusCode::ACCEPTED,
+                Json(SearchRebuildAcceptedResponse {
+                    data: SearchRebuildAcceptedData { accepted: true },
+                    ts: chrono::Utc::now().timestamp_millis(),
+                }),
+            ))
+        }
+        ManualRebuildResult::AlreadyInProgress => {
+            debug!("manual rebuild rejected — already in progress");
+            Err(ApiError {
+                status: StatusCode::CONFLICT,
+                code: "rebuild_already_running".to_string(),
+                message: "a rebuild is already in progress".to_string(),
+            })
+        }
     }
 }
 
@@ -441,7 +458,7 @@ mod tests {
             time_preset: None,
             from_ms: None,
             to_ms: None,
-            file_types: None,
+            content_types: None,
             extensions: None,
             limit: 50,
             offset: 0,
@@ -486,15 +503,15 @@ mod tests {
 
         // fileTypes parsing
         let params_ft = SearchQueryParams {
-            file_types: Some("text,html".to_string()),
+            content_types: Some("text,html".to_string()),
             ..make_params("test")
         };
         let q_ft = parse_search_query(&params_ft).expect("file types should parse");
-        assert_eq!(q_ft.file_types, vec![FileType::Text, FileType::Html]);
+        assert_eq!(q_ft.content_types, vec![ContentType::Text, ContentType::Html]);
 
         // Invalid fileType
         let params_bad_ft = SearchQueryParams {
-            file_types: Some("bad_type".to_string()),
+            content_types: Some("bad_type".to_string()),
             ..make_params("test")
         };
         let err_ft = parse_search_query(&params_bad_ft).expect_err("invalid fileType should fail");

@@ -27,7 +27,9 @@ impl SearchClipboardEntries {
         fields(query_len = query.query_string.len(), operator = ?query.operator, limit = query.limit, offset = query.offset)
     )]
     pub async fn execute(&self, query: SearchQuery) -> Result<SearchResultsPage, SearchError> {
-        self.search_index.search(query).await
+        let page = self.search_index.search(query).await?;
+        tracing::debug!(total = page.total, returned = page.items.len(), has_more = page.has_more, "search completed");
+        Ok(page)
     }
 }
 
@@ -39,7 +41,7 @@ mod tests {
     use tokio::sync::Mutex;
     use uc_core::ids::EntryId;
     use uc_core::search::{
-        FileType, QueryOperator, RebuildProgress, SearchDocument, SearchError, SearchIndexMeta,
+        ContentType, QueryOperator, RebuildProgress, SearchDocument, SearchError, SearchIndexMeta,
         SearchPosting, SearchQuery, SearchResult, SearchResultsPage,
     };
 
@@ -105,7 +107,7 @@ mod tests {
             query_string: s.into(),
             operator: QueryOperator::And,
             time_range: None,
-            file_types: vec![],
+            content_types: vec![],
             extensions: vec![],
             limit: 10,
             offset: 0,
@@ -115,7 +117,7 @@ mod tests {
     fn make_search_result(entry_id: &str) -> SearchResult {
         SearchResult {
             entry_id: EntryId::from(entry_id),
-            file_type: FileType::Text,
+            content_type: ContentType::Text,
             active_time_ms: 1000,
             text_preview: Some("preview".into()),
             mime_type: "text/plain".into(),

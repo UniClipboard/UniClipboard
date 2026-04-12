@@ -6,12 +6,12 @@
 use crate::ids::{EntryId, EventId};
 use serde::{Deserialize, Serialize};
 
-/// Top-level content-type classification used for search filtering (D-10 file_types).
+/// Top-level content-type classification used for search filtering (D-10 content_types).
 ///
 /// Maps to stable backend enum values; frontend localizes display text independently.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub enum FileType {
+pub enum ContentType {
     Text,
     Html,
     Link,
@@ -31,7 +31,7 @@ pub struct SearchDocument {
     pub event_id: EventId,
     pub active_time_ms: i64,
     pub captured_at_ms: i64,
-    pub file_type: FileType,
+    pub content_type: ContentType,
     pub file_extensions: Vec<String>,
     pub mime_type: String,
     pub indexed_at_ms: i64,
@@ -93,27 +93,27 @@ mod tests {
     }
 
     #[test]
-    fn file_type_serde_snake_case() {
-        let ft = FileType::Html;
+    fn content_type_serde_snake_case() {
+        let ft = ContentType::Html;
         let s = serde_json::to_string(&ft).unwrap();
         assert_eq!(s, "\"html\"");
-        let back: FileType = serde_json::from_str("\"link\"").unwrap();
-        assert_eq!(back, FileType::Link);
+        let back: ContentType = serde_json::from_str("\"link\"").unwrap();
+        assert_eq!(back, ContentType::Link);
     }
 
     #[test]
-    fn file_type_all_variants_round_trip() {
+    fn content_type_all_variants_round_trip() {
         let variants = [
-            FileType::Text,
-            FileType::Html,
-            FileType::Link,
-            FileType::File,
-            FileType::Image,
-            FileType::Other,
+            ContentType::Text,
+            ContentType::Html,
+            ContentType::Link,
+            ContentType::File,
+            ContentType::Image,
+            ContentType::Other,
         ];
         for ft in variants {
             let json = serde_json::to_string(&ft).unwrap();
-            let back: FileType = serde_json::from_str(&json).unwrap();
+            let back: ContentType = serde_json::from_str(&json).unwrap();
             assert_eq!(ft, back);
         }
     }

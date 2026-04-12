@@ -17,7 +17,7 @@ use tower::ServiceExt;
 use uc_app::runtime::CoreRuntime;
 use uc_app::usecases::CoreUseCases;
 use uc_core::ids::{EntryId, EventId};
-use uc_core::search::{FileType, SearchKey};
+use uc_core::search::{ContentType, SearchKey};
 use uc_core::security::model::MasterKey;
 use uc_daemon::api::auth::load_or_create_auth_token;
 use uc_daemon::api::query::DaemonQueryService;
@@ -154,7 +154,7 @@ async fn index_test_entry(runtime: &Arc<CoreRuntime>, entry_id: &EntryId, text: 
         event_id: EventId::from("evt-search-api-test"),
         active_time_ms: chrono::Utc::now().timestamp_millis(),
         captured_at_ms: chrono::Utc::now().timestamp_millis(),
-        file_type: FileType::Text,
+        content_type: ContentType::Text,
         mime_type: "text/plain".into(),
         file_extensions: vec![],
         plain_text: Some(text.to_string()),

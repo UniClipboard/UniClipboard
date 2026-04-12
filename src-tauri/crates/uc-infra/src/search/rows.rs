@@ -14,7 +14,7 @@ use crate::db::schema::{search_document, search_index_meta, search_posting};
 use crate::search::constants::CURRENT_INDEX_VERSION;
 use anyhow::Result;
 use diesel::prelude::*;
-use uc_core::search::document::{FileType, SearchDocument, SearchIndexMeta, SearchPosting};
+use uc_core::search::document::{ContentType, SearchDocument, SearchIndexMeta, SearchPosting};
 
 // ──────────────────────────────────────────────
 // search_document
@@ -64,8 +64,8 @@ impl NewSearchDocumentRow {
     /// `file_extensions` is serialized as a JSON array.
     pub fn from_domain(profile_id: &str, document: &SearchDocument) -> Result<Self> {
         // serde_json::to_string produces `"text"` with surrounding quotes; trim them.
-        let file_type_json = serde_json::to_string(&document.file_type)?;
-        let file_type = file_type_json.trim_matches('"').to_string();
+        let content_type_json = serde_json::to_string(&document.content_type)?;
+        let file_type = content_type_json.trim_matches('"').to_string();
         let file_extensions = serde_json::to_string(&document.file_extensions)?;
 
         Ok(Self {
@@ -91,8 +91,8 @@ impl SearchDocumentRow {
     /// `file_extensions` is deserialized from the JSON array.
     pub fn to_domain(&self) -> Result<SearchDocument> {
         // Re-add surrounding quotes so serde_json can deserialize the string enum.
-        let file_type_json = format!("\"{}\"", self.file_type);
-        let file_type: FileType = serde_json::from_str(&file_type_json)?;
+        let content_type_json = format!("\"{}\"", self.file_type);
+        let content_type: ContentType = serde_json::from_str(&content_type_json)?;
         let file_extensions: Vec<String> = serde_json::from_str(&self.file_extensions)?;
 
         Ok(SearchDocument {
@@ -100,7 +100,7 @@ impl SearchDocumentRow {
             event_id: self.event_id.clone().into(),
             active_time_ms: self.active_time_ms,
             captured_at_ms: self.captured_at_ms,
-            file_type,
+            content_type,
             file_extensions,
             mime_type: self.mime_type.clone(),
             indexed_at_ms: self.indexed_at_ms,
@@ -218,7 +218,7 @@ impl NewSearchIndexMetaRow {
 mod tests {
     use super::*;
     use uc_core::ids::{EntryId, EventId};
-    use uc_core::search::document::{FileType, SearchDocument, SearchPosting};
+    use uc_core::search::document::{ContentType, SearchDocument, SearchPosting};
 
     fn sample_document() -> SearchDocument {
         SearchDocument {
@@ -226,7 +226,7 @@ mod tests {
             event_id: EventId::from("event-01"),
             active_time_ms: 1_000_000,
             captured_at_ms: 999_000,
-            file_type: FileType::Text,
+            content_type: ContentType::Text,
             file_extensions: vec!["txt".to_string(), "md".to_string()],
             mime_type: "text/plain".to_string(),
             indexed_at_ms: 1_100_000,
@@ -261,18 +261,18 @@ mod tests {
     }
 
     #[test]
-    fn document_row_file_type_round_trips_all_variants() {
+    fn document_row_content_type_round_trips_all_variants() {
         let variants = [
-            FileType::Text,
-            FileType::Html,
-            FileType::Link,
-            FileType::File,
-            FileType::Image,
-            FileType::Other,
+            ContentType::Text,
+            ContentType::Html,
+            ContentType::Link,
+            ContentType::File,
+            ContentType::Image,
+            ContentType::Other,
         ];
         for ft in variants {
             let doc = SearchDocument {
-                file_type: ft.clone(),
+                content_type: ft.clone(),
                 file_extensions: vec![],
                 ..sample_document()
             };
@@ -292,8 +292,8 @@ mod tests {
             };
             let restored = queried.to_domain().expect("to_domain");
             assert_eq!(
-                restored.file_type, ft,
-                "file_type round-trip failed for {ft:?}"
+                restored.content_type, ft,
+                "content_type round-trip failed for {ft:?}"
             );
         }
     }

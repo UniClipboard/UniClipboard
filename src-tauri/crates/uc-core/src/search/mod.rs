@@ -11,7 +11,7 @@ pub mod key;
 pub mod query;
 pub mod result;
 
-pub use document::{FileType, SearchDocument, SearchIndexMeta, SearchPosting};
+pub use document::{ContentType, SearchDocument, SearchIndexMeta, SearchPosting};
 pub use error::SearchError;
 pub use key::SearchKey;
 pub use query::{QueryOperator, SearchQuery, TimeRangeFilter};

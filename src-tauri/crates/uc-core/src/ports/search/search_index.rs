@@ -121,7 +121,7 @@ mod tests {
             query_string: "test".into(),
             operator: QueryOperator::And,
             time_range: None,
-            file_types: vec![],
+            content_types: vec![],
             extensions: vec![],
             limit: 10,
             offset: 0,

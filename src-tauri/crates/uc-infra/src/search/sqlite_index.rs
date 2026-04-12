@@ -778,7 +778,7 @@ impl SearchIndexPort for SqliteSearchIndex {
 
         let operator = query.operator.clone();
         let time_range = query.time_range.clone();
-        let file_types = query.file_types.clone();
+        let content_types = query.content_types.clone();
         let extensions = query
             .extensions
             .iter()
@@ -818,6 +818,7 @@ impl SearchIndexPort for SqliteSearchIndex {
                 Self::query_candidate_hits(&mut conn, &profile_id, &term_tags, &operator)?;
 
             if hit_map.is_empty() {
+                debug!("search produced no candidate hits");
                 return Ok(SearchResultsPage {
                     items: vec![],
                     total: 0,
@@ -846,9 +847,9 @@ impl SearchIndexPort for SqliteSearchIndex {
                     }
 
                     // File type filter.
-                    if !file_types.is_empty() {
+                    if !content_types.is_empty() {
                         let stored = &doc.file_type;
-                        let matches = file_types.iter().any(|ft| {
+                        let matches = content_types.iter().any(|ft| {
                             let ft_str = serde_json::to_string(ft)
                                 .unwrap_or_default()
                                 .trim_matches('"')
@@ -906,7 +907,7 @@ impl SearchIndexPort for SqliteSearchIndex {
                     let domain = doc.to_domain().ok()?;
                     Some(SearchResult {
                         entry_id: domain.entry_id,
-                        file_type: domain.file_type,
+                        content_type: domain.content_type,
                         active_time_ms: domain.active_time_ms,
                         text_preview: domain.text_preview,
                         mime_type: domain.mime_type,
@@ -914,6 +915,8 @@ impl SearchIndexPort for SqliteSearchIndex {
                     })
                 })
                 .collect();
+
+            debug!(candidates = hit_map.len(), total, returned = items.len(), has_more, "search completed");
 
             Ok(SearchResultsPage {
                 items,
@@ -1275,7 +1278,7 @@ mod tests {
     use uc_core::ids::{EntryId, EventId};
     use uc_core::ports::search::search_key::SearchKeyDerivationPort;
     use uc_core::ports::security::key_scope::{KeyScopePort, ScopeError};
-    use uc_core::search::document::{FileType, SearchDocument, SearchPosting};
+    use uc_core::search::document::{ContentType, SearchDocument, SearchPosting};
     use uc_core::search::error::SearchError;
     use uc_core::search::key::SearchKey;
     use uc_core::security::model::KeyScope;
@@ -1332,7 +1335,7 @@ mod tests {
             event_id: EventId::from("event-01"),
             active_time_ms: 1_000_000,
             captured_at_ms: 999_000,
-            file_type: FileType::Text,
+            content_type: ContentType::Text,
             file_extensions: vec!["txt".to_string()],
             mime_type: "text/plain".to_string(),
             indexed_at_ms: 1_100_000,
@@ -1362,7 +1365,7 @@ mod tests {
             query_string: q.to_string(),
             operator: QueryOperator::Or,
             time_range: None,
-            file_types: vec![],
+            content_types: vec![],
             extensions: vec![],
             limit: 10,
             offset: 0,
@@ -1492,7 +1495,7 @@ mod tests {
             query_string: "alpha beta".to_string(),
             operator: QueryOperator::And,
             time_range: None,
-            file_types: vec![],
+            content_types: vec![],
             extensions: vec![],
             limit: 10,
             offset: 0,
@@ -1541,7 +1544,7 @@ mod tests {
             query_string: "alpha beta".to_string(),
             operator: QueryOperator::Or,
             time_range: None,
-            file_types: vec![],
+            content_types: vec![],
             extensions: vec![],
             limit: 10,
             offset: 0,
@@ -1568,7 +1571,7 @@ mod tests {
             entry_id: EntryId::from("entry-match"),
             active_time_ms: now_ms - 3600_000, // 1 hour ago
             captured_at_ms: now_ms - 3600_000,
-            file_type: FileType::Text,
+            content_type: ContentType::Text,
             file_extensions: vec!["txt".to_string()],
             ..sample_document("entry-match")
         };
@@ -1583,7 +1586,7 @@ mod tests {
             entry_id: EntryId::from("entry-old"),
             active_time_ms: now_ms - 40 * 86_400_000, // 40 days ago
             captured_at_ms: now_ms - 40 * 86_400_000,
-            file_type: FileType::Text,
+            content_type: ContentType::Text,
             file_extensions: vec!["txt".to_string()],
             ..sample_document("entry-old")
         };
@@ -1598,7 +1601,7 @@ mod tests {
             entry_id: EntryId::from("entry-image"),
             active_time_ms: now_ms - 3600_000,
             captured_at_ms: now_ms - 3600_000,
-            file_type: FileType::Image,
+            content_type: ContentType::Image,
             file_extensions: vec!["png".to_string()],
             ..sample_document("entry-image")
         };
@@ -1613,7 +1616,7 @@ mod tests {
             query_string: "hello".to_string(),
             operator: QueryOperator::Or,
             time_range: Some(TimeRangeFilter::Last7d),
-            file_types: vec![FileType::Text],
+            content_types: vec![ContentType::Text],
             extensions: vec!["txt".to_string()],
             limit: 10,
             offset: 0,
@@ -1652,7 +1655,7 @@ mod tests {
             query_string: "hello".to_string(),
             operator: QueryOperator::Or,
             time_range: None,
-            file_types: vec![],
+            content_types: vec![],
             extensions: vec![],
             limit: 10,
             offset: 0,
@@ -1723,7 +1726,7 @@ mod tests {
             query_string: "clip".into(),
             operator: QueryOperator::Or,
             time_range: None,
-            file_types: vec![],
+            content_types: vec![],
             extensions: vec![],
             limit: 3,
             offset: 0,
@@ -1741,7 +1744,7 @@ mod tests {
             query_string: "clip".into(),
             operator: QueryOperator::Or,
             time_range: None,
-            file_types: vec![],
+            content_types: vec![],
             extensions: vec![],
             limit: 3,
             offset: 3,
@@ -1756,7 +1759,7 @@ mod tests {
             query_string: "nonexistent".into(),
             operator: QueryOperator::Or,
             time_range: None,
-            file_types: vec![],
+            content_types: vec![],
             extensions: vec![],
             limit: 10,
             offset: 0,

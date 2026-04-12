@@ -8,10 +8,10 @@ use uc_core::clipboard::{
     ClipboardEntry, ClipboardSelection, ClipboardSelectionDecision,
     PersistedClipboardRepresentation, SystemClipboardSnapshot,
 };
-use uc_core::search::document::FileType;
+use uc_core::search::document::ContentType;
 use uc_infra::search::text_extractor::SearchPipelineInput;
 
-/// Infer the `FileType` from a primary MIME type string.
+/// Infer the `ContentType` from a primary MIME type string.
 ///
 /// Rules:
 /// - `text/plain` and related plain text => `Text`
@@ -20,38 +20,38 @@ use uc_infra::search::text_extractor::SearchPipelineInput;
 /// - `text/uri-list` containing `file://` paths => `File`
 /// - `image/*` => `Image`
 /// - anything else => `Other`
-fn infer_file_type(mime: &str, uri_list: &[String], has_file_paths: bool) -> FileType {
+fn infer_content_type(mime: &str, uri_list: &[String], has_file_paths: bool) -> ContentType {
     let mime_lower = mime.to_lowercase();
     if mime_lower.starts_with("image/") {
-        return FileType::Image;
+        return ContentType::Image;
     }
     if mime_lower == "text/html" {
-        return FileType::Html;
+        return ContentType::Html;
     }
     if mime_lower == "text/plain" || mime_lower.starts_with("text/plain;") {
-        return FileType::Text;
+        return ContentType::Text;
     }
     // URI list: distinguish file paths from web URLs.
     // Note: callers pre-extract file:// URIs into file_paths (so uri_list only has
     // http/https URLs). has_file_paths signals that at least one file:// URI was found.
     if mime_lower == "text/uri-list" || mime_lower == "file/uri-list" {
         if has_file_paths || uri_list.iter().any(|u| u.trim().starts_with("file://")) {
-            return FileType::File;
+            return ContentType::File;
         }
         // Only web URLs remain => Link
-        return FileType::Link;
+        return ContentType::Link;
     }
     // Non-file URL — classify by content
     for uri in uri_list {
         let trimmed = uri.trim();
         if trimmed.starts_with("http://") || trimmed.starts_with("https://") {
-            return FileType::Link;
+            return ContentType::Link;
         }
         if trimmed.starts_with("file://") {
-            return FileType::File;
+            return ContentType::File;
         }
     }
-    FileType::Other
+    ContentType::Other
 }
 
 /// Collect lowercased unique file extensions from a list of file paths.
@@ -178,7 +178,7 @@ impl SearchProjectionBuilder {
             .unwrap_or_else(|| "application/octet-stream".to_string());
 
         let file_extensions = collect_extensions(&file_paths, &file_names);
-        let file_type = infer_file_type(&mime_type, &uri_list, !file_paths.is_empty());
+        let content_type = infer_content_type(&mime_type, &uri_list, !file_paths.is_empty());
 
         // If no searchable content, return None
         if plain_text.is_none()
@@ -195,7 +195,7 @@ impl SearchProjectionBuilder {
             event_id: entry.event_id.clone(),
             active_time_ms: entry.active_time_ms,
             captured_at_ms: entry.created_at_ms,
-            file_type,
+            content_type,
             mime_type,
             file_extensions,
             plain_text,
@@ -297,7 +297,7 @@ impl SearchProjectionBuilder {
             .unwrap_or_else(|| "application/octet-stream".to_string());
 
         let file_extensions = collect_extensions(&file_paths, &file_names);
-        let file_type = infer_file_type(&mime_type, &uri_list, !file_paths.is_empty());
+        let content_type = infer_content_type(&mime_type, &uri_list, !file_paths.is_empty());
 
         // If no searchable content, return None
         if plain_text.is_none()
@@ -314,7 +314,7 @@ impl SearchProjectionBuilder {
             event_id: entry.event_id.clone(),
             active_time_ms: entry.active_time_ms,
             captured_at_ms: entry.created_at_ms,
-            file_type,
+            content_type,
             mime_type,
             file_extensions,
             plain_text,
@@ -403,7 +403,7 @@ mod tests {
             input.plain_text.as_deref(),
             Some("hello world from clipboard")
         );
-        assert_eq!(input.file_type, FileType::Text);
+        assert_eq!(input.content_type, ContentType::Text);
         assert_eq!(input.mime_type, "text/plain");
 
         // --- Test build_from_persisted ---
@@ -424,7 +424,7 @@ mod tests {
         let input2 = input2.unwrap();
         assert_eq!(input2.entry_id, EntryId::from("entry-1"));
         assert_eq!(input2.plain_text.as_deref(), Some("hello from persisted"));
-        assert_eq!(input2.file_type, FileType::Text);
+        assert_eq!(input2.content_type, ContentType::Text);
 
         // --- Test None for empty content ---
         let empty_snapshot = SystemClipboardSnapshot {
@@ -442,45 +442,45 @@ mod tests {
     }
 
     #[test]
-    fn infer_file_type_text() {
-        assert_eq!(infer_file_type("text/plain", &[], false), FileType::Text);
+    fn infer_content_type_text() {
+        assert_eq!(infer_content_type("text/plain", &[], false), ContentType::Text);
     }
 
     #[test]
-    fn infer_file_type_html() {
-        assert_eq!(infer_file_type("text/html", &[], false), FileType::Html);
+    fn infer_content_type_html() {
+        assert_eq!(infer_content_type("text/html", &[], false), ContentType::Html);
     }
 
     #[test]
-    fn infer_file_type_image() {
-        assert_eq!(infer_file_type("image/png", &[], false), FileType::Image);
+    fn infer_content_type_image() {
+        assert_eq!(infer_content_type("image/png", &[], false), ContentType::Image);
     }
 
     #[test]
-    fn infer_file_type_link_from_uri_list() {
+    fn infer_content_type_link_from_uri_list() {
         assert_eq!(
-            infer_file_type("text/uri-list", &["https://example.com".to_string()], false,),
-            FileType::Link
+            infer_content_type("text/uri-list", &["https://example.com".to_string()], false,),
+            ContentType::Link
         );
     }
 
     #[test]
-    fn infer_file_type_file_from_uri_list() {
+    fn infer_content_type_file_from_uri_list() {
         // Simulates the old path where file:// was not pre-extracted
         assert_eq!(
-            infer_file_type(
+            infer_content_type(
                 "text/uri-list",
                 &["file:///tmp/test.txt".to_string()],
                 false,
             ),
-            FileType::File
+            ContentType::File
         );
     }
 
     #[test]
-    fn infer_file_type_file_via_has_file_paths() {
+    fn infer_content_type_file_via_has_file_paths() {
         // The real code path: file:// URIs are pre-extracted into file_paths,
         // so uri_list is empty but has_file_paths is true.
-        assert_eq!(infer_file_type("text/uri-list", &[], true), FileType::File);
+        assert_eq!(infer_content_type("text/uri-list", &[], true), ContentType::File);
     }
 }

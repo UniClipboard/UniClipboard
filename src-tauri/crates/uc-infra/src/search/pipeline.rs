@@ -64,7 +64,7 @@ impl SearchPipeline {
             event_id: input.event_id.clone(),
             active_time_ms: input.active_time_ms,
             captured_at_ms: input.captured_at_ms,
-            file_type: input.file_type.clone(),
+            content_type: input.content_type.clone(),
             file_extensions: exts,
             mime_type: input.mime_type.clone(),
             indexed_at_ms: chrono::Utc::now().timestamp_millis(),
@@ -211,7 +211,7 @@ fn count_occurrences(haystack: &str, needle: &str) -> u32 {
 mod tests {
     use super::*;
     use uc_core::ids::{EntryId, EventId};
-    use uc_core::search::document::FileType;
+    use uc_core::search::document::ContentType;
 
     fn base_input() -> SearchPipelineInput {
         SearchPipelineInput {
@@ -219,7 +219,7 @@ mod tests {
             event_id: EventId::from("event-01"),
             active_time_ms: 1_000,
             captured_at_ms: 900,
-            file_type: FileType::Text,
+            content_type: ContentType::Text,
             mime_type: "text/plain".to_string(),
             file_extensions: vec![],
             plain_text: None,

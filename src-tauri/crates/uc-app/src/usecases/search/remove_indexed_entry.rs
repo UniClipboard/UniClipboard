@@ -27,7 +27,9 @@ impl RemoveIndexedEntry {
         fields(entry_id = %entry_id)
     )]
     pub async fn execute(&self, entry_id: &EntryId) -> Result<(), SearchError> {
-        self.search_index.remove_entry(entry_id).await
+        self.search_index.remove_entry(entry_id).await?;
+        tracing::debug!("entry removed from search index");
+        Ok(())
     }
 }
 

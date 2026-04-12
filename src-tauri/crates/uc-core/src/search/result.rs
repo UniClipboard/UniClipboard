@@ -1,18 +1,18 @@
 //! SearchResult and RebuildProgress — output types for SearchIndexPort.
 
 use crate::ids::EntryId;
-use crate::search::document::FileType;
+use crate::search::document::ContentType;
 use serde::{Deserialize, Serialize};
 
 /// Single search result row — carries the full metadata needed to render
 /// a ClipboardItemRow in the UI without a second API call (per D-01).
 ///
 /// Fields are exactly those specified in D-01:
-/// entry_id, file_type, active_time_ms, text_preview, mime_type, file_extensions.
+/// entry_id, content_type, active_time_ms, text_preview, mime_type, file_extensions.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SearchResult {
     pub entry_id: EntryId,
-    pub file_type: FileType,
+    pub content_type: ContentType,
     pub active_time_ms: i64,
     /// Truncated preview (~80 chars) — truncation logic lives in Phase 89 use case, not here.
     pub text_preview: Option<String>,
@@ -66,7 +66,7 @@ mod tests {
     fn search_result_serde_round_trip() {
         let r = SearchResult {
             entry_id: EntryId::from("entry-abc"),
-            file_type: FileType::Text,
+            content_type: ContentType::Text,
             active_time_ms: 123_456,
             text_preview: Some("hello".into()),
             mime_type: "text/plain".into(),
@@ -111,7 +111,7 @@ mod tests {
     fn search_results_page_serde_round_trip() {
         let item = SearchResult {
             entry_id: EntryId::from("entry-page-1"),
-            file_type: FileType::Text,
+            content_type: ContentType::Text,
             active_time_ms: 999,
             text_preview: Some("page item".into()),
             mime_type: "text/plain".into(),
@@ -145,7 +145,7 @@ mod tests {
     fn search_result_no_text_preview() {
         let r = SearchResult {
             entry_id: EntryId::from("entry-xyz"),
-            file_type: FileType::Image,
+            content_type: ContentType::Image,
             active_time_ms: 0,
             text_preview: None,
             mime_type: "image/png".into(),

@@ -1,6 +1,6 @@
 //! SearchQuery domain model — structured input for `SearchIndexPort::search()`.
 
-use crate::search::document::FileType;
+use crate::search::document::ContentType;
 use serde::{Deserialize, Serialize};
 
 /// Top-level boolean operator joining tokenized query terms.
@@ -43,7 +43,7 @@ pub struct SearchQuery {
     /// Optional time range filter. None means no time restriction.
     pub time_range: Option<TimeRangeFilter>,
     /// Multi-select file type filter. Empty slice means no type restriction.
-    pub file_types: Vec<FileType>,
+    pub content_types: Vec<ContentType>,
     /// File extension filter (e.g. `["md", "txt"]`). Empty means no restriction.
     pub extensions: Vec<String>,
     /// Maximum number of results to return.
@@ -62,7 +62,7 @@ mod tests {
             query_string: "hello world".into(),
             operator: QueryOperator::Or,
             time_range: Some(TimeRangeFilter::Last7d),
-            file_types: vec![FileType::Text, FileType::Html],
+            content_types: vec![ContentType::Text, ContentType::Html],
             extensions: vec!["pdf".into()],
             limit: 20,
             offset: 0,

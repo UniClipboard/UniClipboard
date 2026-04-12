@@ -7,7 +7,7 @@ use std::sync::{Arc, Mutex, OnceLock};
 
 use uc_app::usecases::CoreUseCases;
 use uc_core::ids::{EntryId, EventId};
-use uc_core::search::{FileType, SearchKey};
+use uc_core::search::{ContentType, SearchKey};
 
 fn build_runtime() -> Arc<uc_app::runtime::CoreRuntime> {
     static RUNTIME_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
@@ -38,7 +38,7 @@ async fn search_capture_indexes_entries_and_delete_keeps_postings_clean() {
         event_id: EventId::from("evt-test"),
         active_time_ms: 1000,
         captured_at_ms: 1000,
-        file_type: FileType::Text,
+        content_type: ContentType::Text,
         mime_type: "text/plain".into(),
         file_extensions: vec![],
         plain_text: Some("hello searchable content for test".to_string()),

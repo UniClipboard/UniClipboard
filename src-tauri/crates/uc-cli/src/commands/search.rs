@@ -32,7 +32,7 @@ pub enum SearchCommands {
         to_ms: Option<i64>,
         /// Filter by content type (text, html, link, file, image, other); repeatable
         #[arg(long = "type")]
-        file_types: Vec<String>,
+        content_types: Vec<String>,
         /// Filter by file extension (e.g. md, txt); repeatable
         #[arg(long = "ext")]
         extensions: Vec<String>,
@@ -75,7 +75,7 @@ pub async fn run(subcommand: SearchCommands, json: bool, verbose: bool) -> i32 {
             time_preset,
             from_ms,
             to_ms,
-            file_types,
+            content_types,
             extensions,
             limit,
             offset,
@@ -96,7 +96,7 @@ pub async fn run(subcommand: SearchCommands, json: bool, verbose: bool) -> i32 {
                 time_preset,
                 from_ms,
                 to_ms,
-                file_types,
+                content_types,
                 extensions,
                 limit,
                 offset,
@@ -339,8 +339,8 @@ fn render_query_output(
     for item in &response.data {
         let formatted_time = format_search_timestamp(item.active_time_ms);
         let preview = item.text_preview.as_deref().unwrap_or("<no preview>");
-        let file_type = format!("{:?}", item.file_type).to_lowercase();
-        lines.push(format!("- [{file_type}] {formatted_time}  {preview}"));
+        let content_type = format!("{:?}", item.content_type).to_lowercase();
+        lines.push(format!("- [{content_type}] {formatted_time}  {preview}"));
 
         if detailed {
             lines.push(format!("    entryId: {}", item.entry_id));
@@ -382,7 +382,7 @@ fn render_status_output(response: &uc_daemon::api::dto::search::SearchStatusResp
 #[cfg(test)]
 mod tests {
     use super::*;
-    use uc_core::search::FileType;
+    use uc_core::search::ContentType;
     use uc_daemon::api::dto::search::{
         SearchQueryResponse, SearchResultDto, SearchStatusData, SearchStatusResponse,
     };
@@ -421,7 +421,7 @@ mod tests {
         let response = SearchQueryResponse {
             data: vec![SearchResultDto {
                 entry_id: "entry-abc".to_string(),
-                file_type: FileType::Text,
+                content_type: ContentType::Text,
                 active_time_ms: 1_744_300_800_000, // 2026-04-10 08:00:00 UTC
                 text_preview: Some("hello world".to_string()),
                 mime_type: "text/plain".to_string(),

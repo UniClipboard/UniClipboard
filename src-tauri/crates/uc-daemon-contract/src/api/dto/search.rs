@@ -5,14 +5,14 @@
 
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
-use uc_core::search::FileType;
+use uc_core::search::ContentType;
 
 /// Single search result — mirrors `SearchResult` with camelCase transport names.
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct SearchResultDto {
     pub entry_id: String,
-    pub file_type: FileType,
+    pub content_type: ContentType,
     pub active_time_ms: i64,
     pub text_preview: Option<String>,
     pub mime_type: String,

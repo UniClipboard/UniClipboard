@@ -49,6 +49,47 @@ pub struct ConnectedPeer {
     pub connected_at: DateTime<Utc>,
 }
 
+/// Live per-peer runtime state driven by the recovery coordinator.
+///
+/// `PeerRuntimeState` is the user-facing three-state model defined in the
+/// Connection Stability Recovery PRD
+/// (`docs/p2p/2026-04-11-connection-stability-recovery-prd.md`). It is kept
+/// distinct from [`crate::device::DeviceStatus`], which is a database-adjacent
+/// DTO.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PeerRuntimeState {
+    Online,
+    Recovering,
+    Offline,
+}
+
+/// What triggered a recovery cycle.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RecoveryTrigger {
+    /// mDNS record for a paired peer expired.
+    MdnsExpired,
+    /// Several consecutive dial failures to the same paired peer.
+    DialFailureStreak,
+    /// First outbound attempt after a sustained idle window.
+    FirstAttemptAfterIdle,
+    /// Local device has just resumed from sleep.
+    WakeFromSleep,
+    /// Local network interface or IP address changed.
+    NetworkInterfaceChanged,
+}
+
+/// Transport-level proof that justified closing a recovery cycle as recovered.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RecoveryProof {
+    /// A recovery probe's business-stream open call returned success.
+    BusinessStreamOpen,
+    /// A fresh libp2p `ConnectionEstablished` event arrived from the swarm.
+    ConnectionEstablished,
+}
+
 /// Core network events (domain layer)
 /// Infrastructure-specific events should extend this
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -65,6 +106,39 @@ pub enum NetworkEvent {
     // Connection events
     PeerConnected(ConnectedPeer),
     PeerDisconnected(String), // peer_id
+
+    // Recovery events (Connection Stability Recovery wave 1).
+    // See docs/p2p/2026-04-11-connection-stability-recovery-prd.md.
+    /// Per-peer runtime state changed. The coordinator is the only producer.
+    PeerStateChanged {
+        peer_id: String,
+        state: PeerRuntimeState,
+        /// Present while a recovery cycle is active.
+        cycle_id: Option<String>,
+    },
+    /// A recovery cycle has begun. User-facing state may still be `Online`
+    /// during the initial silent phase.
+    PeerRecoveryStarted {
+        peer_id: String,
+        cycle_id: String,
+        trigger: RecoveryTrigger,
+    },
+    /// A recovery cycle ended successfully with transport-level proof.
+    PeerRecovered {
+        peer_id: String,
+        cycle_id: String,
+        elapsed_ms: u64,
+        proof: RecoveryProof,
+    },
+    /// A recovery cycle exhausted its escalation ladder without restoring the
+    /// peer. The user-facing state transitions to `Offline` at this point.
+    PeerRecoveryFailed {
+        peer_id: String,
+        cycle_id: String,
+        elapsed_ms: u64,
+        /// Last escalation level reached (1, 2, or 3).
+        last_escalation: u8,
+    },
 
     // Readiness events (protocol-agnostic)
     /// A peer is now ready to receive broadcast messages
@@ -251,6 +325,69 @@ mod tests {
             let json2 = serde_json::to_string(&restored).unwrap();
             assert_eq!(json, json2);
         }
+    }
+
+    #[test]
+    fn recovery_events_round_trip_through_serde() {
+        let events = vec![
+            NetworkEvent::PeerStateChanged {
+                peer_id: "peer-1".to_string(),
+                state: PeerRuntimeState::Recovering,
+                cycle_id: Some("cycle-abc".to_string()),
+            },
+            NetworkEvent::PeerStateChanged {
+                peer_id: "peer-1".to_string(),
+                state: PeerRuntimeState::Online,
+                cycle_id: None,
+            },
+            NetworkEvent::PeerRecoveryStarted {
+                peer_id: "peer-1".to_string(),
+                cycle_id: "cycle-abc".to_string(),
+                trigger: RecoveryTrigger::MdnsExpired,
+            },
+            NetworkEvent::PeerRecoveryStarted {
+                peer_id: "peer-2".to_string(),
+                cycle_id: "cycle-def".to_string(),
+                trigger: RecoveryTrigger::WakeFromSleep,
+            },
+            NetworkEvent::PeerRecovered {
+                peer_id: "peer-1".to_string(),
+                cycle_id: "cycle-abc".to_string(),
+                elapsed_ms: 7200,
+                proof: RecoveryProof::BusinessStreamOpen,
+            },
+            NetworkEvent::PeerRecovered {
+                peer_id: "peer-1".to_string(),
+                cycle_id: "cycle-abc".to_string(),
+                elapsed_ms: 42_000,
+                proof: RecoveryProof::ConnectionEstablished,
+            },
+            NetworkEvent::PeerRecoveryFailed {
+                peer_id: "peer-3".to_string(),
+                cycle_id: "cycle-xyz".to_string(),
+                elapsed_ms: 120_000,
+                last_escalation: 3,
+            },
+        ];
+
+        for event in &events {
+            let json = serde_json::to_string(event).unwrap();
+            let restored: NetworkEvent = serde_json::from_str(&json).unwrap();
+            let json2 = serde_json::to_string(&restored).unwrap();
+            assert_eq!(json, json2, "round-trip mismatch for {event:?}");
+        }
+    }
+
+    #[test]
+    fn peer_runtime_state_serializes_as_snake_case() {
+        let json = serde_json::to_string(&PeerRuntimeState::Recovering).unwrap();
+        assert_eq!(json, "\"recovering\"");
+    }
+
+    #[test]
+    fn recovery_trigger_serializes_as_snake_case() {
+        let json = serde_json::to_string(&RecoveryTrigger::NetworkInterfaceChanged).unwrap();
+        assert_eq!(json, "\"network_interface_changed\"");
     }
 
     #[test]

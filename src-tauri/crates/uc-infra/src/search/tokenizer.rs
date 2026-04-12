@@ -23,9 +23,26 @@ pub struct SearchTokenizer;
 impl SearchTokenizer {
     /// Tokenize a single raw segment and return all normalized tokens.
     ///
-    /// Applies NFKC normalization, lowercase, separator splitting,
-    /// camelCase splitting, short-token filtering, and CJK bigrams.
+    /// Includes prefix expansion (length 3..N-1) for word-level tokens so that
+    /// partial queries like `"uniclip"` match `"uniclipboard"`. Use this for
+    /// identifier-rich fields: file names, file paths, URLs.
+    ///
+    /// For large free-text body fields, prefer [`tokenize_segment_no_prefix`] to
+    /// avoid the O(unique_tokens × text_length) cost from `count_raw_tokens`.
     pub fn tokenize_segment(&self, raw: &str) -> Vec<String> {
+        self.tokenize_segment_inner(raw, true)
+    }
+
+    /// Tokenize a single raw segment **without** prefix expansion.
+    ///
+    /// Identical to [`tokenize_segment`] but skips the prefix-expansion step.
+    /// Use this for body / HTML fields where the text can be large and prefix
+    /// matching offers little UX value compared to its indexing cost.
+    pub fn tokenize_segment_no_prefix(&self, raw: &str) -> Vec<String> {
+        self.tokenize_segment_inner(raw, false)
+    }
+
+    fn tokenize_segment_inner(&self, raw: &str, with_prefixes: bool) -> Vec<String> {
         if raw.is_empty() {
             return vec![];
         }
@@ -104,16 +121,48 @@ impl SearchTokenizer {
             }
         }
 
+        // Prefix expansion: for every word-level token (no separators, non-CJK),
+        // emit all prefixes of length 3..(token_len - 1) so that partial queries
+        // like "uniclip" match entries indexed under "uniclipboard".
+        // Skipped for body/html fields (with_prefixes = false) to avoid O(M×N) blowup.
+        if with_prefixes {
+            let base_tokens: Vec<String> = result.clone();
+            for tok in &base_tokens {
+                if !contains_separator(tok) && cjk_bigrams(tok).is_empty() {
+                    for prefix in prefix_tokens(tok) {
+                        if seen.insert(prefix.clone()) {
+                            result.push(prefix);
+                        }
+                    }
+                }
+            }
+        }
+
         result
     }
 
     /// Tokenize multiple raw segments and return a deduplicated flat list.
+    ///
+    /// Includes prefix expansion. Use for identifier-rich index fields (file names,
+    /// paths, URLs). For query-time tokenization use [`tokenize_all_no_prefix`].
     pub fn tokenize_all(&self, raw_segments: &[String]) -> Vec<String> {
+        self.tokenize_all_inner(raw_segments, true)
+    }
+
+    /// Tokenize multiple raw segments without prefix expansion.
+    ///
+    /// Use at query time: the user's partial term (e.g. `"uniclip"`) is looked up
+    /// as an exact token, matching the prefix tokens stored at index time.
+    pub fn tokenize_all_no_prefix(&self, raw_segments: &[String]) -> Vec<String> {
+        self.tokenize_all_inner(raw_segments, false)
+    }
+
+    fn tokenize_all_inner(&self, raw_segments: &[String], with_prefixes: bool) -> Vec<String> {
         let mut seen: HashSet<String> = HashSet::new();
         let mut result = Vec::new();
 
         for seg in raw_segments {
-            for tok in self.tokenize_segment(seg) {
+            for tok in self.tokenize_segment_inner(seg, with_prefixes) {
                 if seen.insert(tok.clone()) {
                     result.push(tok);
                 }
@@ -205,6 +254,21 @@ fn split_camel_case_original(s: &str) -> Vec<String> {
     }
 
     result
+}
+
+/// Generate all prefixes of length 3..(token_len - 1) for a word-level token.
+///
+/// Returns an empty vec for tokens with fewer than 4 characters (no useful
+/// prefix shorter than the token itself can be generated at min-length 3).
+fn prefix_tokens(token: &str) -> Vec<String> {
+    let chars: Vec<char> = token.chars().collect();
+    if chars.len() <= 3 {
+        return vec![];
+    }
+    // lengths 3, 4, ..., chars.len()-1  (full token already in result)
+    (3..chars.len())
+        .map(|end| chars[..end].iter().collect())
+        .collect()
 }
 
 /// Return true if the token should be kept in the output.
@@ -405,6 +469,58 @@ mod tests {
         assert!(
             tokens.iter().any(|t| t == "name"),
             "expected 'name' in {tokens:?}"
+        );
+    }
+
+    #[test]
+    fn prefix_tokens_generates_length_3_to_n_minus_1() {
+        // "hello" (5 chars) → "hel", "hell"
+        let prefixes = prefix_tokens("hello");
+        assert_eq!(prefixes, vec!["hel", "hell"]);
+    }
+
+    #[test]
+    fn prefix_tokens_skips_short_tokens() {
+        assert!(prefix_tokens("hi").is_empty());
+        assert!(prefix_tokens("hey").is_empty());
+    }
+
+    #[test]
+    fn tokenize_segment_includes_prefix_tokens_for_long_word() {
+        let t = SearchTokenizer;
+        let tokens = t.tokenize_segment("uniclipboard");
+        // Must contain prefix tokens
+        assert!(
+            tokens.iter().any(|t| t == "uni"),
+            "missing 'uni': {tokens:?}"
+        );
+        assert!(
+            tokens.iter().any(|t| t == "unic"),
+            "missing 'unic': {tokens:?}"
+        );
+        assert!(
+            tokens.iter().any(|t| t == "uniclip"),
+            "missing 'uniclip': {tokens:?}"
+        );
+        // Full token must still be present
+        assert!(
+            tokens.iter().any(|t| t == "uniclipboard"),
+            "missing 'uniclipboard': {tokens:?}"
+        );
+    }
+
+    #[test]
+    fn tokenize_segment_no_prefix_expansion_of_identifier_token() {
+        let t = SearchTokenizer;
+        // "foo-bar" → whole identifier "foo-bar" is kept as-is (by design),
+        // but the prefix expander must NOT generate "foo-" style partial identifiers.
+        let tokens = t.tokenize_segment("foo-bar");
+        // The only token allowed to contain '-' is the whole identifier itself.
+        let separator_tokens: Vec<&String> = tokens.iter().filter(|t| t.contains('-')).collect();
+        assert_eq!(
+            separator_tokens,
+            vec!["foo-bar"],
+            "only the whole identifier may contain a separator: {tokens:?}"
         );
     }
 

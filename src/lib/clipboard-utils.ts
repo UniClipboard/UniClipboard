@@ -82,8 +82,17 @@ export function resolveItemType(item: ClipboardItemResponse): ItemType {
 
 export function getItemPreview(item: ClipboardItemResponse): string {
   switch (resolveItemType(item)) {
-    case 'image':
-      return 'Image'
+    case 'image': {
+      const img = item.item.image!
+      const parts: string[] = ['Image']
+      if (img.width > 0 && img.height > 0) parts.push(`${img.width}×${img.height}`)
+      if (img.size > 0) {
+        if (img.size < 1024) parts.push(`${img.size} B`)
+        else if (img.size < 1024 * 1024) parts.push(`${(img.size / 1024).toFixed(1)} KB`)
+        else parts.push(`${(img.size / (1024 * 1024)).toFixed(1)} MB`)
+      }
+      return parts.join(' | ')
+    }
     case 'link':
       return item.item.link?.urls[0] ?? ''
     case 'file':

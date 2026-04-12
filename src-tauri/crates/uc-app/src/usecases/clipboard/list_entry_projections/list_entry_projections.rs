@@ -55,6 +55,12 @@ pub struct EntryProjectionDto {
     /// None for non-file entries.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub file_sizes: Option<Vec<i64>>,
+    /// Original image width in pixels (0 or None for non-image entries).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub image_width: Option<i32>,
+    /// Original image height in pixels (0 or None for non-image entries).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub image_height: Option<i32>,
 }
 
 /// Error type for list projections use case
@@ -263,25 +269,29 @@ impl ListClipboardEntryProjections {
             .map(|mt| mt.as_str().to_string())
             .unwrap_or_else(|| "unknown".to_string());
 
-        let thumbnail_url = if is_image {
+        let (thumbnail_url, image_width, image_height) = if is_image {
             match self
                 .thumbnail_repo
                 .get_by_representation_id(&selection.selection.preview_rep_id)
                 .await
             {
-                Ok(Some(_metadata)) => Some(format!("/clipboard/thumbnails/{}", preview_rep_id)),
-                Ok(None) => None,
+                Ok(Some(metadata)) => (
+                    Some(format!("/clipboard/thumbnails/{}", preview_rep_id)),
+                    Some(metadata.original_width),
+                    Some(metadata.original_height),
+                ),
+                Ok(None) => (None, None, None),
                 Err(err) => {
                     tracing::error!(
                         error = %err,
                         entry_id = %entry_id_str,
                         "Failed to fetch thumbnail metadata"
                     );
-                    None
+                    (None, None, None)
                 }
             }
         } else {
-            None
+            (None, None, None)
         };
 
         let is_uri_list = content_type
@@ -344,6 +354,8 @@ impl ListClipboardEntryProjections {
             link_urls,
             link_domains: None,
             file_sizes,
+            image_width,
+            image_height,
         }))
     }
 
@@ -462,27 +474,29 @@ impl ListClipboardEntryProjections {
                 .map(|mt| mt.as_str().to_string())
                 .unwrap_or_else(|| "unknown".to_string());
 
-            let thumbnail_url = if is_image {
+            let (thumbnail_url, image_width, image_height) = if is_image {
                 match self
                     .thumbnail_repo
                     .get_by_representation_id(&selection.selection.preview_rep_id)
                     .await
                 {
-                    Ok(Some(_metadata)) => {
-                        Some(format!("/clipboard/thumbnails/{}", preview_rep_id))
-                    }
-                    Ok(None) => None,
+                    Ok(Some(metadata)) => (
+                        Some(format!("/clipboard/thumbnails/{}", preview_rep_id)),
+                        Some(metadata.original_width),
+                        Some(metadata.original_height),
+                    ),
+                    Ok(None) => (None, None, None),
                     Err(err) => {
                         tracing::error!(
                             error = %err,
                             entry_id = %entry_id_str,
                             "Failed to fetch thumbnail metadata"
                         );
-                        None
+                        (None, None, None)
                     }
                 }
             } else {
-                None
+                (None, None, None)
             };
 
             let is_uri_list = content_type
@@ -547,6 +561,8 @@ impl ListClipboardEntryProjections {
                 link_urls,
                 link_domains: None,
                 file_sizes,
+                image_width,
+                image_height,
             });
         }
 
@@ -1177,6 +1193,8 @@ mod tests {
                 link_urls: None,
                 link_domains: None,
                 file_sizes: None,
+                image_width: None,
+                image_height: None,
             },
             EntryProjectionDto {
                 id: "2".to_string(),
@@ -1196,6 +1214,8 @@ mod tests {
                 link_urls: None,
                 link_domains: None,
                 file_sizes: None,
+                image_width: None,
+                image_height: None,
             },
         ];
 

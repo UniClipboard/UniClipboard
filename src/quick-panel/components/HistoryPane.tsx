@@ -14,7 +14,8 @@ import {
   Folder,
 } from 'lucide-react'
 import React, { useMemo } from 'react'
-import { isMac, quickCardClassName } from '../constants'
+import { useTranslation } from 'react-i18next'
+import { quickCardClassName } from '../constants'
 import type { DisplayItem, TimeRangePreset } from '../types'
 import PanelItem from './PanelItem'
 import { Filter } from '@/api/clipboardItems'
@@ -91,23 +92,25 @@ const HistoryPane: React.FC<HistoryPaneProps> = React.memo(
     setTokens,
     onKeyDown,
   }) => {
+    const { t } = useTranslation(undefined, { keyPrefix: 'quickPanel.history' })
+
     const filterTypes = [
-      { id: Filter.All, icon: Layers, label: 'All' },
-      { id: Filter.Text, icon: FileText, label: 'Text' },
-      { id: Filter.Image, icon: ImageIcon, label: 'Image' },
-      { id: Filter.Link, icon: LinkIcon, label: 'Link' },
-      { id: Filter.File, icon: Folder, label: 'File' },
-      { id: Filter.Code, icon: Code, label: 'Code' },
+      { id: Filter.All, icon: Layers, label: t('filters.all') },
+      { id: Filter.Text, icon: FileText, label: t('filters.text') },
+      { id: Filter.Image, icon: ImageIcon, label: t('filters.image') },
+      { id: Filter.Link, icon: LinkIcon, label: t('filters.link') },
+      { id: Filter.File, icon: Folder, label: t('filters.file') },
+      { id: Filter.Code, icon: Code, label: t('filters.code') },
     ]
 
     const timeRanges: { id: TimeRangePreset; label: string }[] = [
-      { id: 'all_time', label: 'All time' },
-      { id: 'today', label: 'Today' },
-      { id: 'yesterday', label: 'Yesterday' },
-      { id: 'last_7d', label: 'Last 7 days' },
-      { id: 'last_30d', label: 'Last 30 days' },
-      { id: 'this_week', label: 'This week' },
-      { id: 'this_month', label: 'This month' },
+      { id: 'all_time', label: t('timeRange.all_time') },
+      { id: 'today', label: t('timeRange.today') },
+      { id: 'yesterday', label: t('timeRange.yesterday') },
+      { id: 'last_7d', label: t('timeRange.last_7d') },
+      { id: 'last_30d', label: t('timeRange.last_30d') },
+      { id: 'this_week', label: t('timeRange.this_week') },
+      { id: 'this_month', label: t('timeRange.this_month') },
     ]
 
     const CurrentFilterIcon = useMemo(() => {
@@ -123,10 +126,8 @@ const HistoryPane: React.FC<HistoryPaneProps> = React.memo(
                 <Lock className="h-6 w-6 text-muted-foreground" />
               </div>
               <div className="space-y-1 text-center">
-                <h2 className="text-sm font-medium text-foreground">Clipboard is locked</h2>
-                <p className="text-[12px] text-muted-foreground">
-                  Unlock to access your clipboard history
-                </p>
+                <h2 className="text-sm font-medium text-foreground">{t('locked.title')}</h2>
+                <p className="text-[12px] text-muted-foreground">{t('locked.description')}</p>
               </div>
               <button
                 type="button"
@@ -137,12 +138,12 @@ const HistoryPane: React.FC<HistoryPaneProps> = React.memo(
                 {unlocking ? (
                   <>
                     <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                    Unlocking...
+                    {t('locked.unlocking')}
                   </>
                 ) : (
                   <>
                     <Unlock className="h-3.5 w-3.5" />
-                    Unlock
+                    {t('locked.action')}
                   </>
                 )}
               </button>
@@ -153,7 +154,7 @@ const HistoryPane: React.FC<HistoryPaneProps> = React.memo(
               )}
             </div>
             <div className="flex items-center justify-center border-t border-border/50 px-3 py-1.5 text-[11px] text-muted-foreground">
-              <span>esc close</span>
+              <span>{t('status.close')}</span>
             </div>
           </>
         ) : (
@@ -168,6 +169,8 @@ const HistoryPane: React.FC<HistoryPaneProps> = React.memo(
                   onAdvancedChange={setIsAdvancedMode}
                   tokens={tokens}
                   onTokensChange={setTokens}
+                  placeholder={t('searchPlaceholder')}
+                  advancedPlaceholder={t('advancedPlaceholder')}
                   inputRef={searchInputRef}
                   onKeyDown={onKeyDown}
                   icon={
@@ -220,12 +223,12 @@ const HistoryPane: React.FC<HistoryPaneProps> = React.memo(
               {loading ? (
                 <div className="flex h-full items-center justify-center text-[13px] text-muted-foreground">
                   <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                  Loading…
+                  {t('status.loading')}
                 </div>
               ) : isSearching && filteredItems.length === 0 ? (
                 <div className="flex h-full items-center justify-center text-[13px] text-muted-foreground">
                   <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                  Searching…
+                  {t('status.searching')}
                 </div>
               ) : filteredItems.length === 0 ? (
                 <div className="flex flex-col h-full items-center justify-center text-[13px] text-muted-foreground gap-2">
@@ -237,8 +240,8 @@ const HistoryPane: React.FC<HistoryPaneProps> = React.memo(
                     )}
                   </div>
                   <div className="text-center">
-                    <p className="font-medium">No results found</p>
-                    <p className="text-[11px] opacity-60">Try different keywords or filters</p>
+                    <p className="font-medium">{t('empty.title')}</p>
+                    <p className="text-[11px] opacity-60">{t('empty.description')}</p>
                   </div>
                 </div>
               ) : (
@@ -262,15 +265,14 @@ const HistoryPane: React.FC<HistoryPaneProps> = React.memo(
             </div>
 
             {/* --- MULTI-FUNCTION STATUS BAR --- */}
-            <div className="flex items-center justify-between gap-3 border-t border-border/50 px-4 py-1.5 text-[11px] text-muted-foreground bg-muted/5">
-              <div className="flex items-center gap-3">
-                <span className="shrink-0">{isMac ? '⌘' : '⌃'}1-0 paste</span>
-                <div className="h-3 w-px bg-border/50" />
-
+            <div className="flex items-center justify-between gap-3 border-t border-border/50 bg-muted/5 px-4 py-1.5 text-[11px] text-muted-foreground">
+              <div className="flex items-center">
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <button className="flex items-center gap-1 hover:text-foreground transition-colors outline-none font-medium">
-                      <span>{timeRanges.find(r => r.id === timeRange)?.label || 'All time'}</span>
+                      <span>
+                        {timeRanges.find(r => r.id === timeRange)?.label || t('timeRange.all_time')}
+                      </span>
                       <ChevronDown className="h-2.5 w-2.5 opacity-50" />
                     </button>
                   </DropdownMenuTrigger>
@@ -292,10 +294,10 @@ const HistoryPane: React.FC<HistoryPaneProps> = React.memo(
               <div className="flex items-center gap-2">
                 {(searchQuery || tokens.length > 0 || activeFilter !== Filter.All) && (
                   <span className="font-mono text-[10px] bg-muted/50 px-1.5 py-0.5 rounded leading-none">
-                    {isSearching ? '…' : (searchTotal ?? filteredItems.length)} results
+                    {isSearching ? '…' : (searchTotal ?? filteredItems.length)}
                   </span>
                 )}
-                <span className="truncate opacity-60">↑↓ navigate · ⏎ paste</span>
+                <span className="truncate opacity-60">{t('status.navigatePaste')}</span>
               </div>
             </div>
           </>

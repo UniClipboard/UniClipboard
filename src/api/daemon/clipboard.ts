@@ -60,6 +60,10 @@ export interface ClipboardEntryDto {
   linkDomains: string[] | null
   /** Per-file sizes in bytes for file (uri-list) entries. */
   fileSizes: number[] | null
+  /** Original image width in pixels (only for image entries). */
+  imageWidth?: number | null
+  /** Original image height in pixels (only for image entries). */
+  imageHeight?: number | null
 }
 
 /**

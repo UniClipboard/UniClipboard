@@ -35,6 +35,12 @@ pub struct EntryProjectionResponseDto {
     pub link_domains: Option<Vec<String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub file_sizes: Option<Vec<i64>>,
+    /// Original image width in pixels (only for image entries).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub image_width: Option<i32>,
+    /// Original image height in pixels (only for image entries).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub image_height: Option<i32>,
 }
 
 // ── List entries response ─────────────────────────────────────────

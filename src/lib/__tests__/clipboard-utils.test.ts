@@ -67,6 +67,11 @@ describe('clipboard-utils', () => {
       getItemPreview(
         createItemResponse({ image: { thumbnail: null, size: 1, width: 1, height: 1 } })
       )
+    ).toBe('Image | 1×1 | 1 B')
+    expect(
+      getItemPreview(
+        createItemResponse({ image: { thumbnail: null, size: 0, width: 0, height: 0 } })
+      )
     ).toBe('Image')
     expect(
       getItemPreview(

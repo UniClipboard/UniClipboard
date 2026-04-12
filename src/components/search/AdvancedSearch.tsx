@@ -41,6 +41,11 @@ const AdvancedSearch: React.FC<AdvancedSearchProps> = ({
   const internalInputRef = useRef<HTMLInputElement>(null)
   const inputRef = externalInputRef || internalInputRef
   const [suggestionIndex, setSuggestionIndex] = useState(0)
+  const [isComposing, setIsComposing] = useState(false)
+  const [composingValue, setComposingValue] = useState('')
+  const isComposingRef = useRef(false)
+  const ignoreNextChangeValueRef = useRef<string | null>(null)
+  const suppressEnterUntilRef = useRef(0)
   // State to trigger focus after suggestion application (refs can't be in deps)
   const [focusTrigger, setFocusTrigger] = useState(0)
 
@@ -105,26 +110,77 @@ const AdvancedSearch: React.FC<AdvancedSearchProps> = ({
     inputRef.current?.focus()
   }, [focusTrigger])
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const newVal = e.target.value
-    if (!isAdvanced && newVal === ':') {
-      onAdvancedChange(true)
-      onValueChange('')
-      return
-    }
-    if (isAdvanced && newVal.endsWith(' ')) {
-      const trimmed = newVal.trim()
-      if (trimmed.includes(':') && trimmed.split(':')[1].length > 0) {
-        addToken(trimmed)
+  const commitValue = useCallback(
+    (newVal: string) => {
+      if (!isAdvanced && (newVal === ':' || newVal === '：')) {
+        onAdvancedChange(true)
+        onValueChange('')
         return
       }
+      if (isAdvanced && newVal.endsWith(' ')) {
+        const trimmed = newVal.trim()
+        if (trimmed.includes(':') && trimmed.split(':')[1].length > 0) {
+          addToken(trimmed)
+          return
+        }
+      }
+      onValueChange(newVal)
+      setSuggestionIndex(0)
+    },
+    [addToken, isAdvanced, onAdvancedChange, onValueChange]
+  )
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const newVal = e.target.value
+    if (isComposingRef.current) {
+      setComposingValue(newVal)
+      setSuggestionIndex(0)
+      return
     }
-    onValueChange(newVal)
-    setSuggestionIndex(0)
+    if (ignoreNextChangeValueRef.current === newVal) {
+      ignoreNextChangeValueRef.current = null
+      return
+    }
+    ignoreNextChangeValueRef.current = null
+    commitValue(newVal)
+  }
+
+  const handleCompositionStart = () => {
+    isComposingRef.current = true
+    setIsComposing(true)
+    setComposingValue(value)
+  }
+
+  const handleCompositionEnd = (e: React.CompositionEvent<HTMLInputElement>) => {
+    const finalValue = e.currentTarget.value
+    isComposingRef.current = false
+    ignoreNextChangeValueRef.current = finalValue
+    suppressEnterUntilRef.current = Date.now() + 32
+    setIsComposing(false)
+    setComposingValue('')
+    commitValue(finalValue)
   }
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      const nativeEvent = e as KeyboardEvent & { isComposing?: boolean; keyCode?: number }
+      const isImeKey =
+        nativeEvent.isComposing ||
+        isComposingRef.current ||
+        nativeEvent.keyCode === 229 ||
+        e.key === 'Process'
+      const shouldSuppressEnter =
+        e.key === 'Enter' && (isImeKey || Date.now() < suppressEnterUntilRef.current)
+
+      if (shouldSuppressEnter) {
+        e.preventDefault()
+        e.stopPropagation()
+        return
+      }
+
+      if (isImeKey) {
+        return
+      }
       if (isAdvanced && value === '' && tokens.length === 0 && e.key === 'Backspace') {
         e.preventDefault()
         onAdvancedChange(false)
@@ -249,8 +305,10 @@ const AdvancedSearch: React.FC<AdvancedSearchProps> = ({
                 placeholder={
                   isAdvanced ? (tokens.length > 0 ? '' : advancedPlaceholder) : placeholder
                 }
-                value={value}
+                value={isComposing ? composingValue : value}
                 onChange={handleInputChange}
+                onCompositionStart={handleCompositionStart}
+                onCompositionEnd={handleCompositionEnd}
                 spellCheck={false}
                 autoCapitalize="off"
                 autoCorrect="off"

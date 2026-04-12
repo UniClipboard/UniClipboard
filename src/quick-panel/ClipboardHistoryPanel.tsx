@@ -177,6 +177,18 @@ const ClipboardHistoryPanel: React.FC = () => {
 
   useEffect(() => subscribeUiScaleChanges(setUiScale), [])
 
+  useEffect(() => {
+    const handleWindowKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return
+      e.preventDefault()
+      setHoveredIndex(null)
+      void dismissPanel()
+    }
+
+    window.addEventListener('keydown', handleWindowKeyDown)
+    return () => window.removeEventListener('keydown', handleWindowKeyDown)
+  }, [])
+
   const handleUnlock = useCallback(async () => {
     setUnlocking(true)
     setUnlockError(null)
@@ -331,10 +343,7 @@ const ClipboardHistoryPanel: React.FC = () => {
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
       if (isLocked) {
-        if (e.key === 'Escape') {
-          e.preventDefault()
-          void dismissPanel()
-        } else if (e.key === 'Enter' && !unlocking) {
+        if (e.key === 'Enter' && !unlocking) {
           e.preventDefault()
           void handleUnlock()
         }
@@ -383,11 +392,6 @@ const ClipboardHistoryPanel: React.FC = () => {
         case 'Enter':
           e.preventDefault()
           void handleSelect(selectedIndex)
-          break
-        case 'Escape':
-          e.preventDefault()
-          setHoveredIndex(null)
-          void dismissPanel()
           break
       }
     },

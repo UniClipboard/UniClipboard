@@ -792,6 +792,47 @@
     "imageAlt": "剪贴板图片",
     "deleteHint": "{{modifier}}⌫ 删除"
   },
+  "quickPanel": {
+    "loading": "正在连接剪贴板历史...",
+    "unavailable": "当前无法使用剪贴板历史。",
+    "history": {
+      "searchPlaceholder": "搜索（输入 ':' 进入高级模式）...",
+      "advancedPlaceholder": "筛选条件...",
+      "filters": {
+        "all": "全部",
+        "text": "文本",
+        "image": "图片",
+        "link": "链接",
+        "file": "文件",
+        "code": "代码"
+      },
+      "timeRange": {
+        "all_time": "不限时间",
+        "today": "今天",
+        "yesterday": "昨天",
+        "last_7d": "最近 7 天",
+        "last_30d": "最近 30 天",
+        "this_week": "本周",
+        "this_month": "本月"
+      },
+      "locked": {
+        "title": "剪贴板已锁定",
+        "description": "解锁后才能查看剪贴板历史",
+        "action": "解锁",
+        "unlocking": "正在解锁..."
+      },
+      "status": {
+        "close": "esc 关闭",
+        "loading": "加载中…",
+        "searching": "搜索中…",
+        "navigatePaste": "↑↓ 移动 · ⏎ 粘贴"
+      },
+      "empty": {
+        "title": "没有找到结果",
+        "description": "试试别的关键词或筛选条件"
+      }
+    }
+  },
   "setup": {
     "page": {
       "loadingSetupState": "正在加载初始化状态...",

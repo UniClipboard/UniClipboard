@@ -801,6 +801,47 @@
     "imageAlt": "Clipboard image",
     "deleteHint": "{{modifier}}⌫ delete"
   },
+  "quickPanel": {
+    "loading": "Connecting clipboard history...",
+    "unavailable": "Clipboard history is unavailable right now.",
+    "history": {
+      "searchPlaceholder": "Search (':' for advanced)...",
+      "advancedPlaceholder": "Filter...",
+      "filters": {
+        "all": "All",
+        "text": "Text",
+        "image": "Image",
+        "link": "Link",
+        "file": "File",
+        "code": "Code"
+      },
+      "timeRange": {
+        "all_time": "All time",
+        "today": "Today",
+        "yesterday": "Yesterday",
+        "last_7d": "Last 7 days",
+        "last_30d": "Last 30 days",
+        "this_week": "This week",
+        "this_month": "This month"
+      },
+      "locked": {
+        "title": "Clipboard is locked",
+        "description": "Unlock to access your clipboard history",
+        "action": "Unlock",
+        "unlocking": "Unlocking..."
+      },
+      "status": {
+        "close": "esc close",
+        "loading": "Loading…",
+        "searching": "Searching…",
+        "navigatePaste": "↑↓ navigate · ⏎ paste"
+      },
+      "empty": {
+        "title": "No results found",
+        "description": "Try different keywords or filters"
+      }
+    }
+  },
   "setup": {
     "page": {
       "loadingSetupState": "Loading setup state...",

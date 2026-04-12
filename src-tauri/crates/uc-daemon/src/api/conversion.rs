@@ -45,6 +45,8 @@ impl IntoApiDto<EntryProjectionResponseDto> for EntryProjectionDto {
             link_urls: self.link_urls,
             link_domains: self.link_domains,
             file_sizes: self.file_sizes,
+            image_width: self.image_width,
+            image_height: self.image_height,
         }
     }
 }

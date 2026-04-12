@@ -172,7 +172,7 @@ pub struct Libp2pNetworkAdapter {
     dial_tx: mpsc::Sender<DialRequest>,
     dial_rx: Mutex<Option<mpsc::Receiver<DialRequest>>>,
     keypair: Mutex<identity::Keypair>,
-    start_state: AtomicU8,
+    start_state: Arc<AtomicU8>,
     policy_resolver: Arc<dyn ConnectionPolicyResolverPort>,
     encryption_session: Arc<dyn EncryptionSessionPort>,
     transfer_decryptor: Arc<dyn TransferPayloadDecryptorPort>,
@@ -227,7 +227,7 @@ impl Libp2pNetworkAdapter {
             dial_tx,
             dial_rx: Mutex::new(Some(dial_rx)),
             keypair: Mutex::new(keypair),
-            start_state: AtomicU8::new(START_STATE_IDLE),
+            start_state: Arc::new(AtomicU8::new(START_STATE_IDLE)),
             policy_resolver,
             encryption_session,
             transfer_decryptor,
@@ -274,6 +274,13 @@ impl Libp2pNetworkAdapter {
         Ok(())
     }
 
+    /// Build and spawn the libp2p swarm event loop.
+    ///
+    /// # Panics
+    ///
+    /// Must be called from within an entered Tokio runtime — the function calls
+    /// `tokio::spawn` internally (via `spawn_platform_signal_listener` and
+    /// directly).
     pub fn spawn_swarm(&self) -> Result<()> {
         let mdns_config = build_mdns_config();
         info!(
@@ -422,6 +429,7 @@ impl Libp2pNetworkAdapter {
         // The initial swarm was already built above; move it into the restart
         // loop along with the keypair so the loop can rebuild on demand.
         let keypair_for_restart = keypair.clone();
+        let spawn_start_state = Arc::clone(&self.start_state);
 
         tokio::spawn(async move {
             let mut current_business_rx = business_rx;
@@ -450,6 +458,7 @@ impl Libp2pNetworkAdapter {
                     None => {
                         // Normal exit (channel closed or swarm stopped).
                         info!("swarm event loop exited normally");
+                        spawn_start_state.store(START_STATE_IDLE, Ordering::Release);
                         break;
                     }
                     Some((returned_business_rx, returned_dial_rx, returned_platform_signal_rx)) => {
@@ -494,6 +503,7 @@ impl Libp2pNetworkAdapter {
                                     error = %err,
                                     "failed to rebuild swarm; giving up"
                                 );
+                                spawn_start_state.store(START_STATE_IDLE, Ordering::Release);
                                 break;
                             }
                         }

@@ -14,6 +14,7 @@
 //! (`stream_handler.rs:71-72`), so no receiver-side changes are needed.
 
 use anyhow::{anyhow, Result};
+use futures::AsyncWriteExt;
 use libp2p::{Multiaddr, PeerId, StreamProtocol};
 use libp2p_stream as stream;
 use tokio::sync::{mpsc, oneshot};
@@ -204,9 +205,19 @@ async fn run_probe(
             );
             Err(anyhow!("probe: stream open error: {err}"))
         }
-        Ok(Ok(stream)) => {
-            // Close immediately without writing any payload.
-            // The receiver handles "EOF before header" as a probe.
+        Ok(Ok(mut stream)) => {
+            // Close gracefully so the remote observes EOF before header
+            // (rather than a RST from drop).
+            if let Err(err) = stream.close().await {
+                warn!(
+                    event = "peer.recovery_probe_close_error",
+                    peer_id = %peer_id_str,
+                    recovery_cycle_id = %cycle_id,
+                    attempt,
+                    error = %err,
+                    "recovery probe stream close failed (probe still counts as success)"
+                );
+            }
             drop(stream);
             info!(
                 event = "peer.recovery_probe_succeeded",

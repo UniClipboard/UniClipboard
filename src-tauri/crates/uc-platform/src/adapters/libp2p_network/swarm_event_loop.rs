@@ -163,7 +163,15 @@ pub(super) async fn run_swarm(
                                 let is_paired = async {
                                     match policy_resolver.resolve_for_peer(&peer_id_core).await {
                                         Ok(policy) => policy.pairing_state == PairingState::Trusted,
-                                        Err(_) => false,
+                                        Err(err) => {
+                                            warn!(
+                                                event = "recovery.resolve_pairing_state_failed",
+                                                peer_id = %peer_id_str,
+                                                error = %err,
+                                                "failed to resolve pairing state; treating as unpaired"
+                                            );
+                                            false
+                                        }
                                     }
                                 }
                                 .instrument(info_span!(
@@ -374,6 +382,18 @@ pub(super) async fn run_swarm(
         }
     }
 
+    // Fail any buffered business command so its oneshot receiver doesn't hang.
+    if let Some((_cmd_id, cmd)) = pending_business_command {
+        match cmd {
+            BusinessCommand::SendClipboard { result_tx, .. }
+            | BusinessCommand::EnsureBusinessPath { result_tx, .. }
+            | BusinessCommand::UnpairPeer { result_tx, .. } => {
+                let _ = result_tx.send(Err(anyhow!("session rebuild in progress")));
+            }
+            BusinessCommand::AnnounceDeviceName { .. } => {}
+        }
+    }
+
     if should_rebuild {
         info!(
             event = "network.session_rebuild_loop_exited",
@@ -500,8 +520,19 @@ async fn dispatch_coordinator_cmds(
                 escalation_level,
             } => {
                 // Step 2: dial all known candidate addresses for the peer.
-                let Ok(peer) = peer_id.parse::<PeerId>() else {
-                    continue;
+                let peer = match peer_id.parse::<PeerId>() {
+                    Ok(p) => p,
+                    Err(err) => {
+                        error!(
+                            event = "peer.recovery_dial_broad_parse_failed",
+                            peer_id = %peer_id,
+                            recovery_cycle_id = %cycle_id,
+                            escalation_level,
+                            error = %err,
+                            "Step 2 broad dial: failed to parse peer id"
+                        );
+                        continue;
+                    }
                 };
 
                 let candidate_addresses: Vec<libp2p::Multiaddr> = {
@@ -536,14 +567,24 @@ async fn dispatch_coordinator_cmds(
                 );
 
                 let (result_tx, _result_rx) = tokio::sync::oneshot::channel();
-                let _ = dial_tx
+                if let Err(err) = dial_tx
                     .send(DialRequest {
                         peer,
                         addresses: candidate_addresses,
                         allow_connected_dial: false,
                         result_tx,
                     })
-                    .await;
+                    .await
+                {
+                    error!(
+                        event = "peer.recovery_dial_broad_send_failed",
+                        peer_id = %peer_id,
+                        recovery_cycle_id = %cycle_id,
+                        escalation_level,
+                        error = %err,
+                        "Step 2 broad dial: failed to send dial request"
+                    );
+                }
             }
 
             CoordinatorCmd::RebuildSession {

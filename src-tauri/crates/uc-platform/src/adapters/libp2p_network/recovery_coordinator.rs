@@ -565,14 +565,9 @@ impl RecoveryCoordinator {
                 cycle.escalation_level = cycle.escalation_level.max(2);
                 cmds.push(CoordinatorCmd::DialBroad {
                     peer_id: peer_id.to_string(),
-                    cycle_id: cid.clone(),
+                    cycle_id: cid,
                     escalation_level: 2,
                 });
-                cmds.push(CoordinatorCmd::EmitEvent(NetworkEvent::PeerStateChanged {
-                    peer_id: peer_id.to_string(),
-                    state: PeerRuntimeState::Recovering,
-                    cycle_id: Some(cid),
-                }));
             }
         }
 

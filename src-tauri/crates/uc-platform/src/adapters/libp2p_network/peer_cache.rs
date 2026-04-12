@@ -194,9 +194,12 @@ impl PeerCaches {
             return None;
         }
 
-        self.reachable_peers.remove(peer_id);
-        self.connected_at.remove(peer_id);
-        self.active_connections.remove(peer_id);
+        // Only strip connection state when there is no live connection.
+        // mark_connection_closed() / forget_peer() own connection teardown.
+        if !self.active_connections.contains_key(peer_id) {
+            self.reachable_peers.remove(peer_id);
+            self.connected_at.remove(peer_id);
+        }
         self.discovered_peers.remove(peer_id)
     }
 

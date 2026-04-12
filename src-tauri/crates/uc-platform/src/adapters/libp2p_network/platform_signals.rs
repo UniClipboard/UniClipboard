@@ -197,11 +197,23 @@ mod macos {
                     event = "platform.sleep_wake_detected",
                     "system woke from sleep"
                 );
-                // try_send is sufficient: if the channel is full (16 slots)
-                // the swarm has plenty of signals already and one more is
-                // redundant. If the receiver is dropped, the listener keeps
-                // running but signals become no-ops, which is acceptable.
-                let _ = ctx.tx.try_send(PlatformSignal::SleepWake);
+                match ctx.tx.try_send(PlatformSignal::SleepWake) {
+                    Ok(()) => {}
+                    Err(mpsc::error::TrySendError::Full(_)) => {
+                        warn!(
+                            event = "platform.sleep_wake_signal_dropped",
+                            reason = "channel_full",
+                            "sleep/wake signal dropped; channel full — swarm has queued signals"
+                        );
+                    }
+                    Err(mpsc::error::TrySendError::Closed(_)) => {
+                        info!(
+                            event = "platform.sleep_wake_signal_dropped",
+                            reason = "receiver_closed",
+                            "sleep/wake signal dropped; receiver closed"
+                        );
+                    }
+                }
             }
             _ => {}
         }

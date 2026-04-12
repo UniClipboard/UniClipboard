@@ -320,13 +320,13 @@ The recovery phase is not complete if later diagnosis still depends on guessing.
 
 Required structured events:
 
-- `peer.recovery_started`
+- `peer.recovery_cycle_started`
 - `peer.recovery_probe_attempt`
 - `peer.recovery_probe_succeeded`
 - `peer.recovery_probe_failed`
 - `peer.recovery_escalated`
-- `peer.recovery_succeeded`
-- `peer.recovery_failed`
+- `peer.recovery_cycle_succeeded`
+- `peer.recovery_window_exhausted`
 - `peer.state_transition`
 - `network.session_rebuild_started`
 - `network.session_rebuild_succeeded`

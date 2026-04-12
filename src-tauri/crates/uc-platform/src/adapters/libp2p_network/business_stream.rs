@@ -46,9 +46,12 @@ async fn wait_for_preferred_connection(
     required_priority: u8,
     wait_budget: Duration,
 ) -> Result<()> {
-    let deadline = tokio::time::Instant::now() + wait_budget;
+    let started = tokio::time::Instant::now();
+    let deadline = started + wait_budget;
+    let mut poll_count: u32 = 0;
 
     loop {
+        poll_count += 1;
         let snapshot = {
             let caches = caches.read().await;
             snapshot_peer_addresses(&caches, peer_id, Utc::now())
@@ -58,10 +61,25 @@ async fn wait_for_preferred_connection(
             .is_some_and(|priority| priority <= required_priority);
 
         if snapshot.peer_marked_reachable && best_connection_ready {
+            debug!(
+                peer_id = %peer_id,
+                poll_count,
+                elapsed_ms = started.elapsed().as_millis() as u64,
+                "wait_for_preferred_connection succeeded"
+            );
             return Ok(());
         }
 
         if tokio::time::Instant::now() >= deadline {
+            warn!(
+                peer_id = %peer_id,
+                poll_count,
+                elapsed_ms = started.elapsed().as_millis() as u64,
+                peer_marked_reachable = snapshot.peer_marked_reachable,
+                best_connected_priority = ?snapshot.best_connected_effective_priority,
+                required_priority,
+                "wait_for_preferred_connection timed out"
+            );
             return Err(anyhow!(
                 "timed out waiting for explicit connection with priority <= {required_priority}"
             ));

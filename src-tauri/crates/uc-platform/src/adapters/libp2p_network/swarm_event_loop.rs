@@ -8,7 +8,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::{mpsc, RwLock, Semaphore};
 
-use tracing::{debug, error, info, instrument, warn};
+use tracing::{debug, error, info, info_span, instrument, warn, Instrument};
 use uc_core::network::address_registry;
 use uc_core::network::events::PeerRuntimeState;
 use uc_core::network::{NetworkEvent, PairingState};
@@ -368,6 +368,7 @@ pub(super) enum PlatformSignal {
 /// Returns `true` if the coordinator requested a full session rebuild
 /// (`CoordinatorCmd::RebuildSession`), in which case `run_swarm` should break
 /// its event loop and return the receivers to the caller for restart.
+#[instrument(name = "recovery.dispatch_cmds", skip_all, fields(cmd_count = cmds.len()))]
 async fn dispatch_coordinator_cmds(
     cmds: Vec<CoordinatorCmd>,
     stream_control: libp2p_stream::Control,
@@ -653,10 +654,17 @@ async fn handle_mdns_expired(
         // only after the 120-second recovery window has been exhausted.
         if let NetworkEvent::PeerLost(ref peer_id_str) = event {
             let peer_id_core = uc_core::PeerId::from(peer_id_str.clone());
-            let is_paired = match policy_resolver.resolve_for_peer(&peer_id_core).await {
-                Ok(policy) => policy.pairing_state == PairingState::Trusted,
-                Err(_) => false,
-            };
+            let is_paired = async {
+                match policy_resolver.resolve_for_peer(&peer_id_core).await {
+                    Ok(policy) => policy.pairing_state == PairingState::Trusted,
+                    Err(_) => false,
+                }
+            }
+            .instrument(info_span!(
+                "recovery.resolve_pairing_state",
+                peer_id = %peer_id_str
+            ))
+            .await;
 
             if is_paired {
                 debug!(

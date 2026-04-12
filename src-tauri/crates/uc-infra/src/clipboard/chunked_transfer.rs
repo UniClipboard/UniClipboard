@@ -27,6 +27,7 @@ use chacha20poly1305::{
     aead::{Aead, Payload},
     KeyInit, XChaCha20Poly1305, XNonce,
 };
+use tracing::info_span;
 use uc_core::config::RECEIVE_PLAINTEXT_CAP;
 use uc_core::ports::{
     TransferCryptoError, TransferPayloadDecryptorPort, TransferPayloadEncryptorPort,
@@ -58,6 +59,11 @@ pub const MAX_DECOMPRESSED_SIZE: usize = RECEIVE_PLAINTEXT_CAP;
 
 /// Zstd compression level (consistent with Phase 4 blob at-rest choice).
 pub const ZSTD_LEVEL: i32 = 3;
+
+/// Payloads larger than this use multi-threaded zstd compression.
+/// Below this threshold, single-threaded `zstd::bulk::compress` is used to
+/// avoid thread-pool startup overhead for small payloads.
+const PARALLEL_COMPRESSION_THRESHOLD: usize = 1024 * 1024; // 1 MiB
 
 /// Errors that can occur during chunked transfer encoding or decoding.
 ///
@@ -397,6 +403,26 @@ impl ChunkedDecoder {
     }
 }
 
+/// Compress `data` with zstd, using multi-threaded mode for large payloads.
+///
+/// Payloads above `PARALLEL_COMPRESSION_THRESHOLD` (1 MiB) use zstd's
+/// built-in worker pool (one thread per core), which significantly reduces
+/// wall-clock time for multi-megabyte clipboard content. Smaller payloads
+/// use single-threaded `zstd::bulk::compress` to avoid thread-pool overhead.
+fn compress_zstd(data: &[u8], level: i32) -> std::io::Result<Vec<u8>> {
+    if data.len() < PARALLEL_COMPRESSION_THRESHOLD {
+        return zstd::bulk::compress(data, level)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e));
+    }
+    let n_workers = std::thread::available_parallelism()
+        .map(|n| n.get() as u32)
+        .unwrap_or(1);
+    let mut encoder = zstd::Encoder::new(Vec::new(), level)?;
+    encoder.multithread(n_workers)?;
+    encoder.write_all(data)?;
+    encoder.finish()
+}
+
 /// Adapter implementing `TransferPayloadEncryptorPort` via `ChunkedEncoder`.
 ///
 /// Generates `transfer_id` internally (UUID v4) -- callers do not need to manage it.
@@ -419,7 +445,8 @@ impl TransferPayloadEncryptorPort for TransferPayloadEncryptorAdapter {
         })?;
 
         let (data_to_encrypt, compression_algo) = if plaintext.len() > COMPRESSION_THRESHOLD {
-            let compressed = zstd::bulk::compress(plaintext, ZSTD_LEVEL).map_err(|e| {
+            let _guard = info_span!("transfer.compress", input_len = plaintext.len()).entered();
+            let compressed = compress_zstd(plaintext, ZSTD_LEVEL).map_err(|e| {
                 TransferCryptoError::EncryptionFailed(format!("compression failed: {e}"))
             })?;
 
@@ -433,14 +460,18 @@ impl TransferPayloadEncryptorPort for TransferPayloadEncryptorAdapter {
         };
 
         let mut buf = Vec::new();
-        ChunkedEncoder::encode_to(
-            &mut buf,
-            master_key,
-            &transfer_id,
-            &data_to_encrypt,
-            compression_algo,
-            uncompressed_len,
-        )?;
+        {
+            let _guard =
+                info_span!("transfer.chunked_encrypt", data_len = data_to_encrypt.len(),).entered();
+            ChunkedEncoder::encode_to(
+                &mut buf,
+                master_key,
+                &transfer_id,
+                &data_to_encrypt,
+                compression_algo,
+                uncompressed_len,
+            )?;
+        }
         Ok(buf)
     }
 }

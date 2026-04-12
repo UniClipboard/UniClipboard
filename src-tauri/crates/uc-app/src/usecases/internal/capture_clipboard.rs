@@ -157,7 +157,14 @@ impl CaptureClipboardUseCase {
             let event_id = EventId::new();
             let captured_at_ms = snapshot.ts_ms;
             let source_device = self.device_identity.current_device_id();
-            let snapshot_hash = snapshot.snapshot_hash();
+            let snapshot_hash = {
+                let _guard = info_span!(
+                    "clipboard.snapshot_hash",
+                    representation_count = snapshot.representations.len(),
+                )
+                .entered();
+                snapshot.snapshot_hash()
+            };
 
             // 1. 生成 event + snapshot representations
             let new_event = ClipboardEvent::new(

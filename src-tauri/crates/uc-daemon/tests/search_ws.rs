@@ -76,12 +76,7 @@ async fn spawn_server() -> SearchWsHarness {
     // Build the DaemonApiState first so we get its event_tx (the channel the WS
     // fanout subscribes to). Then create the SearchCoordinator with the SAME event_tx
     // so that rebuild progress events reach WS clients.
-    let api_state_base = DaemonApiState::new(
-        query_service,
-        token,
-        Some(runtime.clone()),
-        security,
-    );
+    let api_state_base = DaemonApiState::new(query_service, token, Some(runtime.clone()), security);
     let coordinator = Arc::new(SearchCoordinator::new(
         runtime.clone(),
         api_state_base.event_tx.clone(),
@@ -352,12 +347,10 @@ async fn search_rebuild_websocket_events_include_started_and_complete() {
     // in milliseconds, emitting: status_snapshot (rebuilding), started, complete,
     // status_snapshot (ready).
     for _ in 0..20 {
-        let event = tokio::time::timeout(
-            std::time::Duration::from_secs(10),
-            next_json(&mut socket),
-        )
-        .await
-        .expect("timed out waiting for rebuild progress or completion event");
+        let event =
+            tokio::time::timeout(std::time::Duration::from_secs(10), next_json(&mut socket))
+                .await
+                .expect("timed out waiting for rebuild progress or completion event");
 
         let event_type = event["type"].as_str().unwrap_or("");
 

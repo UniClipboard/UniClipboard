@@ -4,8 +4,8 @@
 //! The daemon re-exports these via `pub use uc_daemon_contract::api::dto::search::*;`.
 
 use serde::{Deserialize, Serialize};
-use utoipa::ToSchema;
 use uc_core::search::ContentType;
+use utoipa::ToSchema;
 
 /// Single search result — mirrors `SearchResult` with camelCase transport names.
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]

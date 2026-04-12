@@ -27,6 +27,10 @@ use crate::api::dto::pairing::{
     PairingSessionSummaryDto, SetPairingDiscoverabilityRequest, SetPairingParticipantRequest,
     UnpairDeviceRequest, VerifyPairingRequest,
 };
+use crate::api::dto::search::{
+    SearchQueryResponse, SearchRebuildAcceptedData, SearchRebuildAcceptedResponse, SearchResultDto,
+    SearchStatusData, SearchStatusResponse,
+};
 use crate::api::dto::settings::{
     ContentTypesDto, FileSyncSettingsDto, GeneralSettingsDto, GetSettingsResponse,
     PairingSettingsDto, RetentionPolicyDto, RetentionRuleDto, RuleEvaluationDto,
@@ -36,10 +40,6 @@ use crate::api::dto::settings::{
 use crate::api::dto::setup::{
     GetSetupStateResponse, SetupActionResponse, SetupResetResponse, SetupSelectPeerRequest,
     SetupStateResponseDto, SetupSubmitPassphraseRequest,
-};
-use crate::api::dto::search::{
-    SearchQueryResponse, SearchRebuildAcceptedData, SearchRebuildAcceptedResponse, SearchResultDto,
-    SearchStatusData, SearchStatusResponse,
 };
 
 /// Adds a `session` Bearer security scheme to the OpenAPI document and applies it

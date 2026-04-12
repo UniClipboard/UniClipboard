@@ -443,17 +443,26 @@ mod tests {
 
     #[test]
     fn infer_content_type_text() {
-        assert_eq!(infer_content_type("text/plain", &[], false), ContentType::Text);
+        assert_eq!(
+            infer_content_type("text/plain", &[], false),
+            ContentType::Text
+        );
     }
 
     #[test]
     fn infer_content_type_html() {
-        assert_eq!(infer_content_type("text/html", &[], false), ContentType::Html);
+        assert_eq!(
+            infer_content_type("text/html", &[], false),
+            ContentType::Html
+        );
     }
 
     #[test]
     fn infer_content_type_image() {
-        assert_eq!(infer_content_type("image/png", &[], false), ContentType::Image);
+        assert_eq!(
+            infer_content_type("image/png", &[], false),
+            ContentType::Image
+        );
     }
 
     #[test]
@@ -481,6 +490,9 @@ mod tests {
     fn infer_content_type_file_via_has_file_paths() {
         // The real code path: file:// URIs are pre-extracted into file_paths,
         // so uri_list is empty but has_file_paths is true.
-        assert_eq!(infer_content_type("text/uri-list", &[], true), ContentType::File);
+        assert_eq!(
+            infer_content_type("text/uri-list", &[], true),
+            ContentType::File
+        );
     }
 }

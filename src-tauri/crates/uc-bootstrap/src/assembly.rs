@@ -58,12 +58,12 @@ use uc_infra::db::repositories::{
 };
 use uc_infra::device::LocalDeviceIdentity;
 use uc_infra::fs::key_slot_store::JsonKeySlotStore;
+use uc_infra::search::{HkdfSearchKeyDerivation, SearchPipeline, SqliteSearchIndex};
 use uc_infra::security::{
     Blake3Hasher, DecryptingClipboardRepresentationRepository, DefaultKeyMaterialService,
     EncryptedBlobStore, EncryptingClipboardEventWriter, EncryptionRepository,
     FileEncryptionStateRepository,
 };
-use uc_infra::search::{HkdfSearchKeyDerivation, SearchPipeline, SqliteSearchIndex};
 use uc_infra::settings::repository::FileSettingsRepository;
 use uc_infra::{FileSetupStatusRepository, SystemClock};
 use uc_platform::adapters::{
@@ -704,12 +704,11 @@ pub fn wire_dependencies_with_identity_store(
     // Wire the search bundle (Phase 92).
     // All three pieces are grouped under AppDeps.search to prevent uc-daemon
     // from constructing search infrastructure ad hoc.
-    let search_key_derivation: Arc<dyn SearchKeyDerivationPort> = Arc::new(
-        HkdfSearchKeyDerivation::new(
+    let search_key_derivation: Arc<dyn SearchKeyDerivationPort> =
+        Arc::new(HkdfSearchKeyDerivation::new(
             platform.encryption_session.clone(),
             platform.key_scope.clone(),
-        ),
-    );
+        ));
     let search_index: Arc<dyn SearchIndexPort> = Arc::new(SqliteSearchIndex::new(
         db_pool_for_search,
         platform.key_scope.clone(),

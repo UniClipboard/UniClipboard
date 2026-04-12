@@ -319,7 +319,12 @@ async fn search_query_handler(
         })
         .collect();
 
-    info!(total = page.total, returned = result_count, has_more = page.has_more, "search query completed");
+    info!(
+        total = page.total,
+        returned = result_count,
+        has_more = page.has_more,
+        "search query completed"
+    );
 
     Ok(Json(SearchQueryResponse {
         total: page.total,
@@ -507,7 +512,10 @@ mod tests {
             ..make_params("test")
         };
         let q_ft = parse_search_query(&params_ft).expect("file types should parse");
-        assert_eq!(q_ft.content_types, vec![ContentType::Text, ContentType::Html]);
+        assert_eq!(
+            q_ft.content_types,
+            vec![ContentType::Text, ContentType::Html]
+        );
 
         // Invalid fileType
         let params_bad_ft = SearchQueryParams {

@@ -83,7 +83,11 @@ mod tests {
         }
 
         async fn search(&self, _q: SearchQuery) -> Result<SearchResultsPage, SearchError> {
-            Ok(SearchResultsPage { items: vec![], total: 0, has_more: false })
+            Ok(SearchResultsPage {
+                items: vec![],
+                total: 0,
+                has_more: false,
+            })
         }
 
         async fn rebuild(

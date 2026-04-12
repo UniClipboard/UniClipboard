@@ -28,7 +28,12 @@ impl SearchClipboardEntries {
     )]
     pub async fn execute(&self, query: SearchQuery) -> Result<SearchResultsPage, SearchError> {
         let page = self.search_index.search(query).await?;
-        tracing::debug!(total = page.total, returned = page.items.len(), has_more = page.has_more, "search completed");
+        tracing::debug!(
+            total = page.total,
+            returned = page.items.len(),
+            has_more = page.has_more,
+            "search completed"
+        );
         Ok(page)
     }
 }

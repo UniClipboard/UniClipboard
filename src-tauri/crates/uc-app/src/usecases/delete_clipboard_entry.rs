@@ -900,7 +900,10 @@ mod tests {
 
         async fn rebuild(
             &self,
-            _entries: Vec<(uc_core::search::SearchDocument, Vec<uc_core::search::SearchPosting>)>,
+            _entries: Vec<(
+                uc_core::search::SearchDocument,
+                Vec<uc_core::search::SearchPosting>,
+            )>,
             _progress_tx: tokio::sync::mpsc::Sender<uc_core::search::RebuildProgress>,
         ) -> Result<(), uc_core::search::SearchError> {
             Ok(())

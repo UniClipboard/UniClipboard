@@ -54,7 +54,10 @@ async fn search_capture_indexes_entries_and_delete_keeps_postings_clean() {
         .build(&input, &search_key)
         .expect("pipeline.build should succeed");
 
-    assert!(!postings.is_empty(), "should have postings for text content");
+    assert!(
+        !postings.is_empty(),
+        "should have postings for text content"
+    );
 
     // Step 1: Index the entry through the use case
     let usecases = CoreUseCases::new(runtime.as_ref());
@@ -83,11 +86,7 @@ async fn search_capture_indexes_entries_and_delete_keeps_postings_clean() {
 
     // Step 3: Delete the entry via the search index port remove_entry
     // (simulates what delete_clipboard_entry does internally)
-    let remove_result = deps
-        .search
-        .search_index
-        .remove_entry(&entry_id)
-        .await;
+    let remove_result = deps.search.search_index.remove_entry(&entry_id).await;
     assert!(
         remove_result.is_ok(),
         "remove_entry should succeed: {:?}",
@@ -99,11 +98,7 @@ async fn search_capture_indexes_entries_and_delete_keeps_postings_clean() {
     // The critical invariant is: remove_entry after index_entry must return Ok
     // and leave the index in a consistent state.
     // A second remove_entry on the same entry_id should be idempotent (return Ok).
-    let second_remove = deps
-        .search
-        .search_index
-        .remove_entry(&entry_id)
-        .await;
+    let second_remove = deps.search.search_index.remove_entry(&entry_id).await;
     assert!(
         second_remove.is_ok(),
         "idempotent second remove_entry should also succeed: {:?}",

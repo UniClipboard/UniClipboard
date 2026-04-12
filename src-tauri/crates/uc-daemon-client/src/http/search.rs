@@ -220,9 +220,7 @@ impl DaemonSearchClient {
             path: path.to_string(),
             status,
             code: maybe_error.as_ref().and_then(|e| e.code.clone()),
-            message: maybe_error
-                .and_then(|e| e.message)
-                .unwrap_or(body),
+            message: maybe_error.and_then(|e| e.message).unwrap_or(body),
         };
 
         anyhow!(error)
@@ -270,10 +268,14 @@ mod tests {
             let size = stream.read(&mut request).await.unwrap();
             let request = String::from_utf8_lossy(&request[..size]);
 
-            assert!(request.contains("/search/query"), "missing route: {request}");
+            assert!(
+                request.contains("/search/query"),
+                "missing route: {request}"
+            );
             // reqwest encodes spaces as '+' in query params (application/x-www-form-urlencoded).
             assert!(
-                request.contains("query=clipboard+sync") || request.contains("query=clipboard%20sync"),
+                request.contains("query=clipboard+sync")
+                    || request.contains("query=clipboard%20sync"),
                 "missing query param: {request}"
             );
             assert!(

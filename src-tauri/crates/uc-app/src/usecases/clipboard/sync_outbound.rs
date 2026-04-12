@@ -257,9 +257,12 @@ impl SyncOutboundClipboardUseCase {
             representations: binary_reps,
         };
 
-        let plaintext_bytes = v3_payload
-            .encode_to_vec()
-            .context("failed to encode V3 clipboard binary payload")?;
+        let plaintext_bytes = {
+            let _guard = info_span!("clipboard.encode_payload").entered();
+            v3_payload
+                .encode_to_vec()
+                .context("failed to encode V3 clipboard binary payload")?
+        };
         let plaintext_bytes_len = plaintext_bytes.len();
         if plaintext_bytes_len > RECEIVE_PLAINTEXT_CAP {
             bail!(
@@ -319,21 +322,33 @@ impl SyncOutboundClipboardUseCase {
         // Parallel: run prepare path in its own task so CPU-heavy encrypt/frame work
         // cannot starve the business-path ensure branch.
         let prepare_future = async move {
-            let master_key = encryption_session
-                .get_master_key()
-                .await
-                .map_err(anyhow::Error::from)
-                .context("failed to access encryption session master key for outbound sync")?;
+            let master_key = async {
+                encryption_session
+                    .get_master_key()
+                    .await
+                    .map_err(anyhow::Error::from)
+                    .context("failed to access encryption session master key for outbound sync")
+            }
+            .instrument(info_span!("clipboard.get_master_key"))
+            .await?;
 
-            let encrypted_content = transfer_encryptor
-                .encrypt(&master_key, &plaintext_bytes)
-                .map_err(|e| {
-                    anyhow::anyhow!("failed to encrypt outbound clipboard payload: {e}")
-                })?;
+            let encrypted_content = {
+                let _guard = info_span!("clipboard.encrypt", plaintext_len = plaintext_bytes.len())
+                    .entered();
+                transfer_encryptor
+                    .encrypt(&master_key, &plaintext_bytes)
+                    .map_err(|e| {
+                        anyhow::anyhow!("failed to encrypt outbound clipboard payload: {e}")
+                    })?
+            };
 
-            let framed = ProtocolMessage::Clipboard(clipboard_header)
-                .frame_to_bytes(Some(&encrypted_content))
-                .context("failed to frame outbound V3 clipboard message")?;
+            let framed = {
+                let _guard = info_span!("clipboard.frame", encrypted_len = encrypted_content.len())
+                    .entered();
+                ProtocolMessage::Clipboard(clipboard_header)
+                    .frame_to_bytes(Some(&encrypted_content))
+                    .context("failed to frame outbound V3 clipboard message")?
+            };
 
             Ok::<Arc<[u8]>, anyhow::Error>(Arc::from(framed.into_boxed_slice()))
         }

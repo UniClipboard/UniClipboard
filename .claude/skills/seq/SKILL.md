@@ -74,6 +74,40 @@ The script exits with specific codes:
 | 5         | Other HTTP error      | Show the error details                       |
 | 6         | JSON parse error      | Show raw response for debugging              |
 
+## Raw JSON Event Structure
+
+When using `--raw`, events are returned as a JSON array. Each event has this structure:
+
+```json
+{
+  "Timestamp": "2026-04-12T04:06:22.446550Z",
+  "Level": "OK",           // "INFO", "OK", "Warning", "Error", "Fatal", "Information" (= INFO alias)
+  "MessageTemplateTokens": [
+    { "Text": "literal text" },
+    { "PropertyName": "variable_name" }
+  ],
+  "Properties": [           // NOTE: array of {Name, Value} pairs, NOT a dict
+    { "Name": "busy_ns", "Value": 252276041 },
+    { "Name": "representation_count", "Value": "14" },
+    { "Name": "code", "Value": { "file": { "path": "..." }, "line": { "number": 161 } } }
+  ],
+  "EventType": "$07366932",
+  "SpanKind": "Internal",
+  "Resource": [...],
+  "Scope": [{ "Name": "name", "Value": "module::path" }],
+  "Id": "event-...",
+  "Links": { "Self": "...", "Group": "..." }
+}
+```
+
+Key points for parsing raw JSON:
+- **Properties is an array**, not a dict. Convert with: `{p['Name']: p['Value'] for p in e.get('Properties', [])}`
+- Timing spans use `busy_ns` and `idle_ns` (nanoseconds). Convert to ms: `int(value) / 1e6`
+- `Level: "OK"` indicates a completed tracing span (not a log level)
+- `Level: "Information"` is an alias for `"INFO"` — treat them the same
+- String values in Properties may be stringified even when numeric (e.g., `"14"` instead of `14`)
+- Nested dict values (like `code`) contain source location info
+
 ## Example Usage
 
 - `/seq setup` - Configure Seq API key

@@ -157,7 +157,14 @@ impl CaptureClipboardUseCase {
             let event_id = EventId::new();
             let captured_at_ms = snapshot.ts_ms;
             let source_device = self.device_identity.current_device_id();
-            let snapshot_hash = snapshot.snapshot_hash();
+            let snapshot_hash = {
+                let _guard = info_span!(
+                    "clipboard.snapshot_hash",
+                    representation_count = snapshot.representations.len(),
+                )
+                .entered();
+                snapshot.snapshot_hash()
+            };
 
             // 1. 生成 event + snapshot representations
             let new_event = ClipboardEvent::new(
@@ -185,8 +192,11 @@ impl CaptureClipboardUseCase {
                 let mut staged_with_preview = 0usize;
                 let mut staged = 0usize;
                 let mut total_bytes: i64 = 0;
+                // Build "format_id:size_bytes" pairs for diagnostics.
+                let mut breakdown_parts: Vec<String> = Vec::with_capacity(normalized_reps.len());
                 for rep in &normalized_reps {
                     total_bytes += rep.size_bytes;
+                    breakdown_parts.push(format!("{}:{}", rep.format_id, rep.size_bytes));
                     match rep.payload_state() {
                         PayloadAvailability::Inline => inline += 1,
                         PayloadAvailability::Staged if rep.inline_data.is_some() => {
@@ -196,12 +206,14 @@ impl CaptureClipboardUseCase {
                         _ => {}
                     }
                 }
-                debug!(
+                let breakdown = breakdown_parts.join(", ");
+                info!(
                     representations = normalized_reps.len(),
                     inline,
                     staged_with_preview,
                     staged,
                     total_bytes,
+                    breakdown = %breakdown,
                     "Normalized clipboard representations"
                 );
             }

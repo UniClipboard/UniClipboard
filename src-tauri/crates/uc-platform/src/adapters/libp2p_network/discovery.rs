@@ -61,9 +61,17 @@ pub(crate) fn apply_mdns_expired(
     expired
         .into_iter()
         .filter_map(|peer_id| {
-            caches
-                .remove_discovered(&peer_id)
-                .map(|_| NetworkEvent::PeerLost(peer_id))
+            // Only emit PeerLost when there is no live connection; if a
+            // connection is still active the peer remains reachable and
+            // mark_connection_closed() will handle teardown later.
+            let has_live_connection = caches.active_connections.contains_key(peer_id.as_str());
+            caches.remove_discovered(&peer_id).and_then(|_| {
+                if has_live_connection {
+                    None
+                } else {
+                    Some(NetworkEvent::PeerLost(peer_id))
+                }
+            })
         })
         .collect()
 }

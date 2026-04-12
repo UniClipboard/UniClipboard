@@ -11,6 +11,13 @@ use uc_core::ids::RepresentationId;
 #[cfg(target_os = "macos")]
 const TIFF_ALIASES: &[&str] = &["public.tiff", "NeXT TIFF v4.0 pasteboard type"];
 
+/// macOS pasteboard formats that embed entire page resources (images, CSS, JS)
+/// and can bloat a simple two-character browser copy to 20 MB+.
+/// The useful content (text, HTML, RTF) is already captured by the high-level
+/// clipboard APIs, so these archive formats are pure overhead for sync.
+#[cfg(target_os = "macos")]
+const WEBARCHIVE_FORMATS: &[&str] = &["com.apple.webarchive", "Apple Web Archive pasteboard type"];
+
 /// Convert TIFF bytes to PNG, returning the PNG bytes.
 ///
 /// macOS clipboard stores images as raw uncompressed TIFF (~18 MB for a
@@ -101,6 +108,15 @@ fn should_skip_raw_format(
             && (format_id == "public.file-url" || format_id == "NSFilenamesPboardType")
         {
             return true;
+        }
+
+        // Web-archive formats embed full page resources (images, CSS, JS).
+        // A two-character browser copy can produce a 20 MB+ web archive.
+        // Text, HTML, and RTF are already captured by high-level APIs.
+        for wa in WEBARCHIVE_FORMATS {
+            if format_id.eq_ignore_ascii_case(wa) {
+                return true;
+            }
         }
     }
 

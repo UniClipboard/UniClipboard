@@ -6,6 +6,7 @@ pub enum DeviceStatus {
     Online = 0,
     Offline = 1,
     Unknown = 2,
+    Recovering = 3,
 }
 
 impl PartialEq for DeviceStatus {
@@ -42,7 +43,31 @@ impl TryFrom<i32> for DeviceStatus {
             0 => Ok(DeviceStatus::Online),
             1 => Ok(DeviceStatus::Offline),
             2 => Ok(DeviceStatus::Unknown),
+            3 => Ok(DeviceStatus::Recovering),
             _ => Err(()),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn recovering_variant_round_trips_through_i32() {
+        let status = DeviceStatus::Recovering;
+        let as_i32: i32 = status.into();
+        assert_eq!(as_i32, 3);
+        let back: DeviceStatus = DeviceStatus::try_from(3).expect("3 should decode");
+        assert_eq!(back, DeviceStatus::Recovering);
+    }
+
+    #[test]
+    fn recovering_orders_after_unknown() {
+        // Ordering is by discriminant; Recovering must not silently collide
+        // with existing variants.
+        assert!(DeviceStatus::Online < DeviceStatus::Recovering);
+        assert!(DeviceStatus::Offline < DeviceStatus::Recovering);
+        assert!(DeviceStatus::Unknown < DeviceStatus::Recovering);
     }
 }

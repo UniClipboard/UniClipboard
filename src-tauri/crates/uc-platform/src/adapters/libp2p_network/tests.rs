@@ -167,7 +167,11 @@ fn reachable_is_best_effort_and_requires_discovery() {
 }
 
 #[test]
-fn regression_mark_unreachable_clears_last_dial_observation() {
+fn mark_unreachable_preserves_last_dial_observation_for_recovery() {
+    // Recovery-wave-1 contract: mark_unreachable must keep
+    // `last_dial_observations` around so the recovery coordinator can retry
+    // the last known usable path after a transient drop. See
+    // docs/p2p/2026-04-11-connection-stability-recovery-prd.md §Definitions.
     let mut caches = PeerCaches::new();
     let t0 = Utc::now();
     let dial_addr = "/ip4/10.0.0.8/tcp/4001";
@@ -178,11 +182,93 @@ fn regression_mark_unreachable_clears_last_dial_observation() {
 
     assert!(caches.mark_unreachable("peer-1"));
 
-    let snapshot = snapshot_peer_addresses(&caches, "peer-1", t0 + chrono::TimeDelta::seconds(1));
-    assert!(snapshot.chosen_dial_addr.is_none());
-    assert!(snapshot.last_dial_observed_at.is_none());
-    assert!(snapshot.last_dial_outcome.is_none());
-    assert_eq!(snapshot.dial_attempt_address_count, 0);
+    assert!(
+        caches.last_dial_observations.contains_key("peer-1"),
+        "mark_unreachable must preserve last_dial_observations"
+    );
+
+    let observation = caches
+        .last_dial_observations
+        .get("peer-1")
+        .expect("observation should still be present");
+    assert_eq!(observation.chosen_dial_addr.as_deref(), Some(dial_addr));
+}
+
+#[test]
+fn remove_discovered_preserves_last_dial_observation_for_recovery() {
+    // Recovery-wave-1 contract: mDNS expiry must not erase the usable path.
+    let mut caches = PeerCaches::new();
+    let t0 = Utc::now();
+    let dial_addr = "/ip4/10.0.0.8/tcp/4001";
+
+    caches.upsert_discovered("peer-1".to_string(), vec![dial_addr.to_string()], t0);
+    assert!(caches.mark_reachable("peer-1", t0));
+    caches.record_dial_observation("peer-1", successful_dial_observation(dial_addr, t0));
+
+    let removed = caches.remove_discovered("peer-1");
+    assert!(
+        removed.is_some(),
+        "peer should be fully removed from discovered_peers"
+    );
+
+    assert!(
+        caches.last_dial_observations.contains_key("peer-1"),
+        "remove_discovered must preserve last_dial_observations"
+    );
+}
+
+#[test]
+fn forget_peer_clears_last_dial_observation() {
+    // Explicit forget (unpair) must erase everything including the usable path.
+    let mut caches = PeerCaches::new();
+    let t0 = Utc::now();
+    let dial_addr = "/ip4/10.0.0.8/tcp/4001";
+
+    caches.upsert_discovered("peer-1".to_string(), vec![dial_addr.to_string()], t0);
+    assert!(caches.mark_reachable("peer-1", t0));
+    caches.record_dial_observation("peer-1", successful_dial_observation(dial_addr, t0));
+
+    let removed = caches.forget_peer("peer-1");
+    assert!(
+        removed.is_some(),
+        "forget_peer should return the removed entry"
+    );
+
+    assert!(
+        !caches.last_dial_observations.contains_key("peer-1"),
+        "forget_peer must clear last_dial_observations"
+    );
+    assert!(caches.discovered_peers.get("peer-1").is_none());
+    assert!(!caches.is_reachable("peer-1"));
+}
+
+#[test]
+fn mark_connection_closed_preserves_last_dial_observation_for_recovery() {
+    // Recovery-wave-1 contract: closing the last active connection must NOT
+    // erase last_dial_observations. The recovery coordinator needs the last
+    // known usable path to issue a Step-1 probe after connection drop.
+    let mut caches = PeerCaches::new();
+    let t0 = Utc::now();
+    let dial_addr = "/ip4/10.0.0.8/tcp/4001";
+    let conn_id = ConnectionId::new_unchecked(1);
+
+    caches.upsert_discovered("peer-1".to_string(), vec![dial_addr.to_string()], t0);
+    caches.mark_connection_established("peer-1", conn_id, Some(dial_addr.to_string()), t0);
+    caches.record_dial_observation("peer-1", successful_dial_observation(dial_addr, t0));
+
+    let became_unreachable = caches.mark_connection_closed("peer-1", conn_id);
+    assert!(
+        became_unreachable,
+        "closing the last connection should mark peer unreachable"
+    );
+    assert!(!caches.is_reachable("peer-1"));
+
+    assert!(
+        caches.last_dial_observations.contains_key("peer-1"),
+        "mark_connection_closed must preserve last_dial_observations"
+    );
+    let obs = caches.last_dial_observations.get("peer-1").unwrap();
+    assert_eq!(obs.chosen_dial_addr.as_deref(), Some(dial_addr));
 }
 
 #[test]

@@ -441,7 +441,12 @@ pub(super) enum PlatformSignal {
 /// Returns `true` if the coordinator requested a full session rebuild
 /// (`CoordinatorCmd::RebuildSession`), in which case `run_swarm` should break
 /// its event loop and return the receivers to the caller for restart.
-#[instrument(name = "recovery.dispatch_cmds", skip_all, fields(cmd_count = cmds.len()))]
+#[instrument(
+    name = "recovery.dispatch_cmds",
+    level = "debug",
+    skip_all,
+    fields(cmd_count = cmds.len())
+)]
 async fn dispatch_coordinator_cmds(
     cmds: Vec<CoordinatorCmd>,
     stream_control: libp2p_stream::Control,

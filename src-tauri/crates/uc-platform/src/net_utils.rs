@@ -1,6 +1,6 @@
 use local_ip_address::list_afinet_netifas;
 use std::net::{IpAddr, Ipv4Addr};
-use tracing::{debug, info, warn};
+use tracing::{debug, warn};
 
 /// Detect the best physical LAN IPv4 address for libp2p to listen on.
 ///
@@ -44,7 +44,7 @@ pub fn get_physical_lan_ip() -> Option<Ipv4Addr> {
             }
 
             if is_private_ipv4(v4) {
-                info!(ip = %v4, interface = %iface_name, "detected physical LAN IP");
+                debug!(ip = %v4, interface = %iface_name, "detected physical LAN IP");
                 return Some(v4);
             }
 

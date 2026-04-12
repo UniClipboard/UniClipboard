@@ -474,14 +474,14 @@ Do not consider this phase fixed unless:
 1. The recovery events and fields defined in this PRD must be added to the existing Seq runbook (`docs/p2p/2026-04-06-transport-observability-runbook.md`) in the same implementation wave.
 2. Recovery events must be emitted from the transport layer alongside the existing `network.*` and `peer.*` events so that a single `@TraceId` can follow one recovery cycle end to end.
 
-### New Platform Work Required
+### Platform Signal Integration
 
-Today the codebase has **no** subscription to device sleep/wake or local network interface changes — no IOKit / SystemConfiguration / netlink / reachability listeners exist in the tree. Implementing the following required triggers therefore involves net-new platform integration code:
+The codebase now includes `platform_signals.rs` which provides the following triggers via `spawn_platform_signal_listener()`:
 
-- `wake from sleep` trigger
-- `local network interface or IP change` trigger
+- **Wake from sleep** — IOKit-based sleep/wake hook on macOS.
+- **Local network interface or IP change** — LAN-IP polling listener on all platforms.
 
-Planners must budget for this. Without it, Wave 1 would silently fall back to reactive recovery only (mDNS expiry + dial failure + first outbound attempt after idle), which would weaken the release gate on sleep/wake behavior.
+The returned receiver is threaded through each `run_swarm` invocation so that sleep/wake and IP-change events survive session rebuilds.
 
 ### Constants Location
 

@@ -108,6 +108,7 @@ async fn run_probe(
                 peer,
                 addresses: vec![addr.clone()],
                 allow_connected_dial: false,
+                bypass_address_filter: true,
                 result_tx,
             })
             .await

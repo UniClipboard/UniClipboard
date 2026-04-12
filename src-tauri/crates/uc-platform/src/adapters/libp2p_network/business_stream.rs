@@ -173,6 +173,7 @@ async fn ensure_explicit_connection(
                 peer,
                 addresses: addrs,
                 allow_connected_dial: dial_decision == "upgrade_to_better_connection",
+                bypass_address_filter: false,
                 result_tx: tx,
             }),
         )

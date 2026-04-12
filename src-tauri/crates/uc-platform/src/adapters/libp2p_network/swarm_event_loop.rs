@@ -168,9 +168,13 @@ pub(super) async fn run_swarm(
                                                 event = "recovery.resolve_pairing_state_failed",
                                                 peer_id = %peer_id_str,
                                                 error = %err,
-                                                "failed to resolve pairing state; treating as unpaired"
+                                                "failed to resolve pairing state; treating as paired (optimistic)"
                                             );
-                                            false
+                                            // Optimistic: allow recovery to proceed so transient
+                                            // lookup failures don't silently suppress it.  If the
+                                            // peer turns out to be unpaired the probe will fail
+                                            // fast with no side-effects.
+                                            true
                                         }
                                     }
                                 }
@@ -572,6 +576,7 @@ async fn dispatch_coordinator_cmds(
                         peer,
                         addresses: candidate_addresses,
                         allow_connected_dial: false,
+                        bypass_address_filter: false,
                         result_tx,
                     })
                     .await
@@ -1052,26 +1057,34 @@ async fn handle_dial_request(
 
     use libp2p::swarm::dial_opts::{DialOpts, PeerCondition};
 
-    // Filter stale mDNS addresses before dialing
-    let live_addresses: std::collections::HashSet<String> = {
-        let caches = caches.read().await;
-        caches
-            .address_registry
-            .candidates_for(&dial_req.peer.to_string())
-            .iter()
-            .map(|r| r.addr.clone())
+    // Filter stale mDNS addresses before dialing.  Recovery probes pass
+    // historical addresses from `last_dial_observations` that are deliberately
+    // absent from the live registry; honour `bypass_address_filter` so they
+    // are not discarded.
+    let filtered_addresses: Vec<libp2p::Multiaddr> = if dial_req.bypass_address_filter {
+        dial_req.addresses
+    } else {
+        let live_addresses: std::collections::HashSet<String> = {
+            let caches = caches.read().await;
+            caches
+                .address_registry
+                .candidates_for(&dial_req.peer.to_string())
+                .iter()
+                .map(|r| r.addr.clone())
+                .collect()
+        };
+
+        dial_req
+            .addresses
+            .into_iter()
+            .filter(|a| live_addresses.contains(&a.to_string()))
             .collect()
     };
-
-    let filtered_addresses: Vec<libp2p::Multiaddr> = dial_req
-        .addresses
-        .into_iter()
-        .filter(|a| live_addresses.contains(&a.to_string()))
-        .collect();
 
     if filtered_addresses.is_empty() {
         warn!(
             peer_id = %dial_req.peer,
+            bypass_filter = dial_req.bypass_address_filter,
             "pre-dial: all explicit addresses expired in PeerCaches"
         );
         let _ = dial_req.result_tx.send(Err(anyhow!(

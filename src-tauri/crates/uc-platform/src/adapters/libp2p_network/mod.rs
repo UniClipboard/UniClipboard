@@ -143,6 +143,10 @@ pub(super) struct DialRequest {
     pub peer: PeerId,
     pub addresses: Vec<Multiaddr>,
     pub allow_connected_dial: bool,
+    /// When `true`, skip the live-address filter in `handle_dial_request` so
+    /// historical addresses (e.g. from `last_dial_observations`) are not
+    /// discarded by the mDNS registry check.  Used by recovery probes.
+    pub bypass_address_filter: bool,
     pub result_tx: oneshot::Sender<Result<()>>,
 }
 

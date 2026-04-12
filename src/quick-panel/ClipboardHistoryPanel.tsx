@@ -131,7 +131,7 @@ interface HistoryPaneProps {
   onSearchChange: (value: string) => void
   onSelect: (index: number) => void
   onUnlock: () => void
-  searchInputRef: React.Ref<HTMLInputElement>
+  searchInputRef: React.RefObject<HTMLInputElement>
   searchQuery: string
   selectedIndex: number
   setHoveredIndex: React.Dispatch<React.SetStateAction<number | null>>
@@ -350,7 +350,7 @@ const ClipboardHistoryPanel: React.FC = () => {
   const [hasPointerMovedSinceShow, setHasPointerMovedSinceShow] = useState(false)
   const [previewTargetId, setPreviewTargetId] = useState<string | null>(null)
 
-  const searchInputRef = useRef<HTMLInputElement>(null)
+  const searchInputRef = useRef<HTMLInputElement>(null!)
   const historyPaneRef = useRef<HTMLDivElement>(null)
   const itemRefs = useRef<Map<number, HTMLDivElement>>(new Map())
   const previewTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)

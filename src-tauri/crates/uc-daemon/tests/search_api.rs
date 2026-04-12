@@ -25,8 +25,8 @@ use uc_daemon::api::server::{build_router, DaemonApiState};
 use uc_daemon::search::coordinator::SearchCoordinator;
 use uc_daemon::security::SecurityState;
 use uc_daemon::state::RuntimeState;
-use uc_infra::search::text_extractor::SearchPipelineInput;
 use uc_infra::db::schema::search_posting;
+use uc_infra::search::text_extractor::SearchPipelineInput;
 
 // ---------------------------------------------------------------------------
 // Shared fixture
@@ -74,12 +74,7 @@ async fn build_fixture() -> SearchApiFixture {
 
     // Build DaemonApiState first, then create SearchCoordinator using the same
     // event_tx so rebuild progress events reach the WS fanout.
-    let api_state_base = DaemonApiState::new(
-        query_service,
-        token,
-        Some(runtime.clone()),
-        security,
-    );
+    let api_state_base = DaemonApiState::new(query_service, token, Some(runtime.clone()), security);
     let coordinator = Arc::new(SearchCoordinator::new(
         runtime.clone(),
         api_state_base.event_tx.clone(),
@@ -170,7 +165,10 @@ async fn index_test_entry(runtime: &Arc<CoreRuntime>, entry_id: &EntryId, text: 
         .build(&input, &search_key)
         .expect("pipeline.build should succeed");
 
-    assert!(!postings.is_empty(), "should have postings for text content");
+    assert!(
+        !postings.is_empty(),
+        "should have postings for text content"
+    );
 
     let usecases = CoreUseCases::new(runtime.as_ref());
     usecases
@@ -249,7 +247,10 @@ async fn search_api_end_to_end_capture_query_and_locking() {
     let body_bytes = to_bytes(response.into_body(), 65536).await.unwrap();
     let json: Value = serde_json::from_slice(&body_bytes).unwrap();
     assert!(json.get("data").is_some(), "response must have 'data' key");
-    assert!(json.get("total").is_some(), "response must have 'total' key");
+    assert!(
+        json.get("total").is_some(),
+        "response must have 'total' key"
+    );
 
     // --- PHASE 3: delete removes all search_posting rows ---
     // Verify postings exist before removal.
@@ -280,14 +281,8 @@ async fn search_api_end_to_end_capture_query_and_locking() {
     lock_encryption(runtime).await;
 
     // /search/query → 423
-    let locked_query = auth_request(
-        app,
-        session,
-        Method::GET,
-        "/search/query?query=test",
-        None,
-    )
-    .await;
+    let locked_query =
+        auth_request(app, session, Method::GET, "/search/query?query=test", None).await;
     assert_eq!(
         locked_query.status(),
         StatusCode::LOCKED,
@@ -301,14 +296,7 @@ async fn search_api_end_to_end_capture_query_and_locking() {
     );
 
     // /search/status → 423
-    let locked_status = auth_request(
-        app,
-        session,
-        Method::GET,
-        "/search/status",
-        None,
-    )
-    .await;
+    let locked_status = auth_request(app, session, Method::GET, "/search/status", None).await;
     assert_eq!(
         locked_status.status(),
         StatusCode::LOCKED,
@@ -316,14 +304,7 @@ async fn search_api_end_to_end_capture_query_and_locking() {
     );
 
     // /search/rebuild → 423
-    let locked_rebuild = auth_request(
-        app,
-        session,
-        Method::POST,
-        "/search/rebuild",
-        None,
-    )
-    .await;
+    let locked_rebuild = auth_request(app, session, Method::POST, "/search/rebuild", None).await;
     assert_eq!(
         locked_rebuild.status(),
         StatusCode::LOCKED,
@@ -367,19 +348,19 @@ async fn search_query_route_parses_filters_and_rejects_mixed_operators() {
         "error code must be invalid_query for mixed AND/OR"
     );
 
-    // --- fileTypes filter parses comma-separated values ---
+    // --- contentTypes filter parses comma-separated values ---
     let response_ft = auth_request(
         app,
         session,
         Method::GET,
-        "/search/query?query=test&fileTypes=text,html",
+        "/search/query?query=test&contentTypes=text,html",
         None,
     )
     .await;
     assert_eq!(
         response_ft.status(),
         StatusCode::OK,
-        "valid fileTypes filter should return 200"
+        "valid contentTypes filter should return 200"
     );
 
     // --- extensions filter parses comma-separated values ---
@@ -432,7 +413,7 @@ async fn search_query_route_parses_filters_and_rejects_mixed_operators() {
         app,
         session,
         Method::GET,
-        "/search/query?query=test&fileTypes=not_a_type",
+        "/search/query?query=test&contentTypes=not_a_type",
         None,
     )
     .await;

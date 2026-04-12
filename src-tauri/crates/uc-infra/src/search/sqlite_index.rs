@@ -303,13 +303,14 @@ impl SqliteSearchIndex {
     /// individual "alpha" and "beta" tokens if the whole string were passed as
     /// a single `tokenize_segment` call).
     ///
-    /// Returns `SearchError::InvalidQuery` when the query produces no searchable terms.
+    /// Returns an empty `Vec` when the query string is blank — this is valid for
+    /// filter-only searches (e.g. `contentTypes=text` with no keywords).
+    /// Returns `SearchError::InvalidQuery` only when the query string is non-empty
+    /// but produces no searchable terms after tokenization.
     fn normalize_query_terms(query: &SearchQuery) -> Result<Vec<String>, SearchError> {
         let trimmed = query.query_string.trim();
         if trimmed.is_empty() {
-            return Err(SearchError::InvalidQuery(
-                "query produced no searchable terms".to_string(),
-            ));
+            return Ok(vec![]);
         }
 
         let tokenizer = SearchTokenizer;
@@ -420,6 +421,21 @@ impl SqliteSearchIndex {
             .filter(dsl::entry_id.eq_any(entry_ids))
             .load::<SearchDocumentRow>(conn)
             .map_err(|e| SearchError::Internal(format!("load_candidate_documents failed: {e}")))?;
+
+        Ok(rows)
+    }
+
+    /// Load all `search_document` rows for a profile (filter-only search path).
+    fn load_all_documents(
+        conn: &mut SqliteConnection,
+        profile_id: &str,
+    ) -> Result<Vec<SearchDocumentRow>, SearchError> {
+        use crate::db::schema::search_document::dsl;
+
+        let rows = dsl::search_document
+            .filter(dsl::profile_id.eq(profile_id))
+            .load::<SearchDocumentRow>(conn)
+            .map_err(|e| SearchError::Internal(format!("load_all_documents failed: {e}")))?;
 
         Ok(rows)
     }
@@ -765,16 +781,19 @@ impl SearchIndexPort for SqliteSearchIndex {
 
         // Normalize query terms before entering spawn_blocking.
         let terms = Self::normalize_query_terms(&query)?;
+        let is_filter_only = terms.is_empty();
 
-        // Derive search key (async, must happen before spawn_blocking).
-        let search_key = self.search_key_derivation.derive_search_key().await?;
-
-        // Compute HMAC term tags for all normalized terms.
-        let term_tags: Vec<Vec<u8>> = terms
-            .iter()
-            .map(|t| term_tag(&search_key, t))
-            .collect::<Result<_, _>>()
-            .map_err(|e| SearchError::Internal(format!("term_tag computation failed: {e}")))?;
+        // Derive search key and compute HMAC tags only when there are terms.
+        let term_tags: Vec<Vec<u8>> = if !is_filter_only {
+            let search_key = self.search_key_derivation.derive_search_key().await?;
+            terms
+                .iter()
+                .map(|t| term_tag(&search_key, t))
+                .collect::<Result<_, _>>()
+                .map_err(|e| SearchError::Internal(format!("term_tag computation failed: {e}")))?
+        } else {
+            vec![]
+        };
 
         let operator = query.operator.clone();
         let time_range = query.time_range.clone();
@@ -813,25 +832,34 @@ impl SearchIndexPort for SqliteSearchIndex {
                 return Err(SearchError::IndexNotReady);
             }
 
-            // 4. Candidate posting resolution.
-            let hit_map =
-                Self::query_candidate_hits(&mut conn, &profile_id, &term_tags, &operator)?;
+            // 4. Load candidate documents.
+            // Filter-only path: load all documents (no term matching).
+            // Term path: resolve postings first, then load matching documents.
+            let (docs, hit_map): (Vec<SearchDocumentRow>, HashMap<String, u32>) = if is_filter_only
+            {
+                debug!("filter-only search — loading all documents");
+                let all_docs = Self::load_all_documents(&mut conn, &profile_id)?;
+                (all_docs, HashMap::new())
+            } else {
+                let hits =
+                    Self::query_candidate_hits(&mut conn, &profile_id, &term_tags, &operator)?;
 
-            if hit_map.is_empty() {
-                debug!("search produced no candidate hits");
-                return Ok(SearchResultsPage {
-                    items: vec![],
-                    total: 0,
-                    has_more: false,
-                });
-            }
+                if hits.is_empty() {
+                    debug!("search produced no candidate hits");
+                    return Ok(SearchResultsPage {
+                        items: vec![],
+                        total: 0,
+                        has_more: false,
+                    });
+                }
 
-            let candidate_ids: Vec<String> = hit_map.keys().cloned().collect();
+                let candidate_ids: Vec<String> = hits.keys().cloned().collect();
+                let candidate_docs =
+                    Self::load_candidate_documents(&mut conn, &profile_id, &candidate_ids)?;
+                (candidate_docs, hits)
+            };
 
-            // 5. Load candidate documents.
-            let docs = Self::load_candidate_documents(&mut conn, &profile_id, &candidate_ids)?;
-
-            // 6. Apply filters: time range, file type, extension.
+            // 5. Apply filters: time range, file type, extension.
             let now_ms = chrono::Utc::now().timestamp_millis();
 
             let filtered: Vec<(SearchDocumentRow, u32)> = docs
@@ -916,7 +944,13 @@ impl SearchIndexPort for SqliteSearchIndex {
                 })
                 .collect();
 
-            debug!(candidates = hit_map.len(), total, returned = items.len(), has_more, "search completed");
+            debug!(
+                candidates = hit_map.len(),
+                total,
+                returned = items.len(),
+                has_more,
+                "search completed"
+            );
 
             Ok(SearchResultsPage {
                 items,

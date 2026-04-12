@@ -74,12 +74,15 @@ impl SearchTextExtractor {
         let mut out = ExtractedSearchText::default();
 
         // Body: plain text is authoritative. Fall back to HTML visible text.
+        // Capped at BODY_INDEX_CHAR_LIMIT to bound tokenization and term-frequency
+        // scan cost (count_raw_tokens is O(unique_tokens × text_length)).
         if let Some(ref plain) = input.plain_text {
-            out.body.push(plain.clone());
+            let capped = cap_text(plain);
+            out.body.push(capped);
         } else if let Some(ref html) = input.html_text {
             let visible = strip_html_tags(html);
             if !visible.is_empty() {
-                out.html.push(visible);
+                out.html.push(cap_text(&visible));
             }
         }
 
@@ -227,6 +230,18 @@ fn split_stem_ext(name: &str) -> (String, String) {
         }
     }
     (name.to_string(), String::new())
+}
+
+/// Maximum characters indexed from plain-text and HTML body fields.
+///
+/// Bounds the O(unique_tokens × text_length) cost in `count_raw_tokens`.
+/// Content beyond this limit is not searchable but is still stored in full
+/// via the blob / representation layer.
+const BODY_INDEX_CHAR_LIMIT: usize = 1_000;
+
+/// Truncate `text` to [`BODY_INDEX_CHAR_LIMIT`] characters on a char boundary.
+fn cap_text(text: &str) -> String {
+    text.chars().take(BODY_INDEX_CHAR_LIMIT).collect()
 }
 
 /// Derive a short preview (up to 200 chars) from text.

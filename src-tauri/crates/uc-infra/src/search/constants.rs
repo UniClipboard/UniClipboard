@@ -7,7 +7,7 @@
 /// Current tokenizer/normalization schema version.
 ///
 /// Bump this whenever the tokenization rules change to trigger a full rebuild.
-pub const CURRENT_INDEX_VERSION: &str = "search-v1";
+pub const CURRENT_INDEX_VERSION: &str = "search-v2";
 
 /// Field-mask bit: term was extracted from the plain-text body.
 pub const SEARCH_FIELD_BODY: u8 = 0b0000_0001;
@@ -51,7 +51,7 @@ mod tests {
     }
 
     #[test]
-    fn current_index_version_is_search_v1() {
-        assert_eq!(CURRENT_INDEX_VERSION, "search-v1");
+    fn current_index_version_is_search_v2() {
+        assert_eq!(CURRENT_INDEX_VERSION, "search-v2");
     }
 }

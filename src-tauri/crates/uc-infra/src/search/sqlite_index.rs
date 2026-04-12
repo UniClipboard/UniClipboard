@@ -318,7 +318,9 @@ impl SqliteSearchIndex {
         // This prevents multi-word query strings from generating whole-segment tokens.
         let words: Vec<&str> = trimmed.split_whitespace().collect();
         let segments: Vec<String> = words.iter().map(|w| w.to_string()).collect();
-        let raw_tokens = tokenizer.tokenize_all(&segments);
+        // No prefix expansion at query time: the user's partial term (e.g. "uniclip")
+        // is searched as an exact token, matching the prefix tokens stored at index time.
+        let raw_tokens = tokenizer.tokenize_all_no_prefix(&segments);
 
         // De-duplicate while preserving first-occurrence order.
         let mut seen = std::collections::HashSet::new();
@@ -1480,7 +1482,8 @@ mod tests {
         assert_eq!(
             page.items.len(),
             1,
-            "AND mode must require all terms: {:?}", page.items
+            "AND mode must require all terms: {:?}",
+            page.items
         );
         assert_eq!(page.items[0].entry_id, EntryId::from("entry-A"));
     }
@@ -1528,7 +1531,8 @@ mod tests {
         assert_eq!(
             page.items.len(),
             2,
-            "OR mode must return both entries: {:?}", page.items
+            "OR mode must return both entries: {:?}",
+            page.items
         );
     }
 
@@ -1599,7 +1603,8 @@ mod tests {
         assert_eq!(
             page.items.len(),
             1,
-            "only entry-match should pass all filters: {:?}", page.items
+            "only entry-match should pass all filters: {:?}",
+            page.items
         );
         assert_eq!(page.items[0].entry_id, EntryId::from("entry-match"));
     }
@@ -1705,7 +1710,10 @@ mod tests {
         };
         let page1 = adapter.search(q1).await.expect("search page1");
         assert_eq!(page1.total, 5, "total must be 5 regardless of page size");
-        assert!(page1.has_more, "has_more must be true when more pages follow");
+        assert!(
+            page1.has_more,
+            "has_more must be true when more pages follow"
+        );
         assert_eq!(page1.items.len(), 3, "items must respect limit");
 
         // Query page 2: offset=3, limit=3 → 2 items, total=5, has_more=false.
@@ -1978,7 +1986,8 @@ mod tests {
         assert_eq!(
             page.items.len(),
             1,
-            "new entry added during rebuild must be present after cutover: {:?}", page.items
+            "new entry added during rebuild must be present after cutover: {:?}",
+            page.items
         );
         assert_eq!(page.items[0].entry_id, EntryId::from("entry-new"));
     }
@@ -2064,7 +2073,8 @@ mod tests {
         let page_del = adapter.search(q_del).await.expect("search deltoken");
         assert!(
             page_del.items.is_empty(),
-            "deleted entry must not appear after rebuild cutover: {:?}", page_del.items
+            "deleted entry must not appear after rebuild cutover: {:?}",
+            page_del.items
         );
 
         // entry-keep must still be present.
@@ -2073,7 +2083,8 @@ mod tests {
         assert_eq!(
             page_keep.items.len(),
             1,
-            "kept entry must appear after rebuild cutover: {:?}", page_keep.items
+            "kept entry must appear after rebuild cutover: {:?}",
+            page_keep.items
         );
     }
 

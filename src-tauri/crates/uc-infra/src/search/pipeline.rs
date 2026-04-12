@@ -91,27 +91,42 @@ impl SearchPipeline {
         // Map: term_tag_bytes → (field_mask, term_freq)
         let mut aggregated: HashMap<Vec<u8>, (u8, u32)> = HashMap::new();
 
-        // Process each field — count raw token occurrences (before dedup) for term_freq.
-        let fields: &[(&[String], u8)] = &[
+        // Body / HTML: no prefix expansion — text is already capped at 1 000 chars by the
+        // extractor, and prefix tokens on free-form prose offer little UX value.
+        let body_fields: &[(&[String], u8)] = &[
             (&extracted.body, SEARCH_FIELD_BODY),
             (&extracted.html, SEARCH_FIELD_HTML),
+        ];
+        // Identifier-rich fields: prefix expansion enabled so partial queries like
+        // "uniclip" match entries indexed under "uniclipboard".
+        let rich_fields: &[(&[String], u8)] = &[
             (&extracted.url, SEARCH_FIELD_URL),
             (&extracted.file_path, SEARCH_FIELD_FILE_PATH),
             (&extracted.file_name, SEARCH_FIELD_FILE_NAME),
         ];
 
-        for (segments, field_bit) in fields {
-            // Count tokens per segment (including repetitions) to track term_freq accurately.
+        for (segments, field_bit) in body_fields {
             for segment in *segments {
-                // tokenize_segment deduplicates within a single segment, but we count
-                // each raw occurrence by counting word appearances before tokenization.
+                let raw_token_counts =
+                    count_raw_tokens(&self.tokenizer.tokenize_segment_no_prefix(segment), segment);
+                for (token, freq) in raw_token_counts {
+                    let tag = term_tag(search_key, &token)?;
+                    let entry = aggregated.entry(tag).or_insert((0u8, 0u32));
+                    entry.0 |= *field_bit;
+                    entry.1 += freq;
+                }
+            }
+        }
+
+        for (segments, field_bit) in rich_fields {
+            for segment in *segments {
                 let raw_token_counts =
                     count_raw_tokens(&self.tokenizer.tokenize_segment(segment), segment);
                 for (token, freq) in raw_token_counts {
                     let tag = term_tag(search_key, &token)?;
                     let entry = aggregated.entry(tag).or_insert((0u8, 0u32));
-                    entry.0 |= field_bit; // OR field bit
-                    entry.1 += freq; // accumulate frequency
+                    entry.0 |= *field_bit;
+                    entry.1 += freq;
                 }
             }
         }

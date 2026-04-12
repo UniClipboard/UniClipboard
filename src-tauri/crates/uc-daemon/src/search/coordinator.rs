@@ -106,10 +106,7 @@ pub struct SearchCoordinator {
 }
 
 impl SearchCoordinator {
-    pub fn new(
-        runtime: Arc<CoreRuntime>,
-        event_tx: broadcast::Sender<DaemonWsEvent>,
-    ) -> Self {
+    pub fn new(runtime: Arc<CoreRuntime>, event_tx: broadcast::Sender<DaemonWsEvent>) -> Self {
         Self {
             runtime,
             event_tx,
@@ -143,13 +140,7 @@ impl SearchCoordinator {
 
                 tokio::spawn(async move {
                     let _guard = guard; // hold the lock until rebuild completes
-                    Self::run_rebuild(
-                        runtime,
-                        event_tx,
-                        state,
-                        REASON_MANUAL_REBUILD,
-                    )
-                    .await;
+                    Self::run_rebuild(runtime, event_tx, state, REASON_MANUAL_REBUILD).await;
                 });
 
                 ManualRebuildResult::Accepted
@@ -192,12 +183,7 @@ impl SearchCoordinator {
         // Check if this is a fresh index that has never been rebuilt
         if meta.last_rebuild_completed_at_ms.is_none() {
             // Check if there's any content to backfill
-            let has_entries = match deps
-                .clipboard
-                .clipboard_entry_repo
-                .list_entries(1, 0)
-                .await
-            {
+            let has_entries = match deps.clipboard.clipboard_entry_repo.list_entries(1, 0).await {
                 Ok(entries) => !entries.is_empty(),
                 Err(e) => {
                     warn!(error = %e, "search coordinator: failed to list entries at startup");
@@ -276,7 +262,11 @@ impl SearchCoordinator {
                 let mut s = state.lock().await;
                 s.status = STATUS_UNAVAILABLE.to_string();
                 s.reason = Some(REASON_REBUILD_FAILED_WAITING.to_string());
-                emit_status_snapshot(&event_tx, STATUS_UNAVAILABLE, Some(REASON_REBUILD_FAILED_WAITING));
+                emit_status_snapshot(
+                    &event_tx,
+                    STATUS_UNAVAILABLE,
+                    Some(REASON_REBUILD_FAILED_WAITING),
+                );
                 return;
             }
         };
@@ -479,10 +469,12 @@ impl DaemonService for SearchCoordinator {
         "search-coordinator"
     }
 
-    async fn start(&self, _cancel: CancellationToken) -> anyhow::Result<()> {
+    async fn start(&self, cancel: CancellationToken) -> anyhow::Result<()> {
         info!("search coordinator starting");
         self.startup_evaluation().await;
         info!("search coordinator startup evaluation complete");
+        cancel.cancelled().await;
+        info!("search coordinator cancelled");
         Ok(())
     }
 
@@ -506,6 +498,7 @@ impl DaemonService for SearchCoordinator {
 mod tests {
     use super::*;
     use std::sync::{Arc, Mutex as StdMutex, OnceLock};
+    use std::time::{Duration, SystemTime, UNIX_EPOCH};
     use tokio::sync::broadcast;
 
     fn build_runtime() -> Arc<CoreRuntime> {
@@ -514,7 +507,21 @@ mod tests {
             .get_or_init(|| StdMutex::new(()))
             .lock()
             .unwrap();
-        Arc::new(uc_bootstrap::build_cli_runtime(None).unwrap())
+        let profile = format!(
+            "test_search_coordinator_{}",
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .expect("system time")
+                .as_nanos()
+        );
+        let previous_profile = std::env::var("UC_PROFILE").ok();
+        std::env::set_var("UC_PROFILE", &profile);
+        let runtime = Arc::new(uc_bootstrap::build_cli_runtime(None).unwrap());
+        match previous_profile {
+            Some(profile) => std::env::set_var("UC_PROFILE", profile),
+            None => std::env::remove_var("UC_PROFILE"),
+        }
+        runtime
     }
 
     /// Test that:
@@ -584,7 +591,10 @@ mod tests {
 
         let rebuilding_snapshot = coordinator.status_snapshot().await;
         assert_eq!(rebuilding_snapshot.status, STATUS_REBUILDING);
-        assert_eq!(rebuilding_snapshot.reason.as_deref(), Some(REASON_MANUAL_REBUILD));
+        assert_eq!(
+            rebuilding_snapshot.reason.as_deref(),
+            Some(REASON_MANUAL_REBUILD)
+        );
 
         // Simulate rebuild failure
         {
@@ -604,5 +614,30 @@ mod tests {
             Some("rebuild_failed_waiting_for_retry"),
             "exact reason string must match"
         );
+    }
+
+    #[tokio::test]
+    async fn search_coordinator_stays_alive_until_cancelled() {
+        let runtime = build_runtime();
+        let (event_tx, _rx) = broadcast::channel::<DaemonWsEvent>(64);
+        let coordinator = Arc::new(SearchCoordinator::new(runtime, event_tx));
+
+        let cancel = CancellationToken::new();
+        let worker_cancel = cancel.clone();
+        let mut task = tokio::spawn(async move { coordinator.start(worker_cancel).await });
+
+        assert!(
+            tokio::time::timeout(Duration::from_secs(1), &mut task)
+                .await
+                .is_err(),
+            "search coordinator should keep running after startup evaluation"
+        );
+
+        cancel.cancel();
+        tokio::time::timeout(Duration::from_secs(1), task)
+            .await
+            .expect("search coordinator should stop after cancellation")
+            .expect("task should not panic")
+            .expect("search coordinator should stop cleanly");
     }
 }

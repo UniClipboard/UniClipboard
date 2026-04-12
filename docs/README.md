@@ -32,6 +32,9 @@ When documentation conflicts with code, treat the code as the source of truth an
 **For Reference:**
 
 - [DeepWiki Documentation](https://deepwiki.com/UniClipboard/UniClipboard) - Interactive diagrams and flows
+- [Connection Stability Recovery PRD](p2p/2026-04-11-connection-stability-recovery-prd.md) - Focused product requirements for self-healing after temporary mDNS loss
+- [Paired Sync Reliability Draft](p2p/2026-04-11-paired-sync-reliability-draft.md) - Product behavior draft for durable paired-device clipboard delivery
+- [Paired Sync Reliability Worklist](p2p/2026-04-11-paired-sync-reliability-worklist.md) - Build-ready checklist for the first reliability fix
 
 ## Architecture at a Glance
 

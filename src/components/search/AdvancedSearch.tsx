@@ -1,4 +1,4 @@
-import { motion, AnimatePresence } from 'framer-motion'
+import { motion, AnimatePresence, LayoutGroup } from 'framer-motion'
 import { Search, Zap, X, File } from 'lucide-react'
 import React, { useCallback, useMemo, useState, useEffect, useRef } from 'react'
 import { cn } from '@/lib/utils'
@@ -193,7 +193,7 @@ const AdvancedSearch: React.FC<AdvancedSearchProps> = ({
                   initial={{ opacity: 0, scale: 0.5, rotate: -20 }}
                   animate={{ opacity: 1, scale: 1, rotate: 0 }}
                   exit={{ opacity: 0, scale: 0.5, rotate: 20 }}
-                  transition={{ type: 'spring', damping: 15, stiffness: 300 }}
+                  transition={{ duration: 0.12 }}
                 >
                   <Zap className="h-4 w-4 text-primary fill-primary/20" />
                 </motion.div>
@@ -203,7 +203,7 @@ const AdvancedSearch: React.FC<AdvancedSearchProps> = ({
                   initial={{ opacity: 0, scale: 0.5 }}
                   animate={{ opacity: 1, scale: 1 }}
                   exit={{ opacity: 0, scale: 0.5 }}
-                  transition={{ type: 'spring', damping: 15, stiffness: 300 }}
+                  transition={{ duration: 0.12 }}
                 >
                   {icon || <Search className="h-4 w-4 text-muted-foreground/60" />}
                 </motion.div>
@@ -214,41 +214,53 @@ const AdvancedSearch: React.FC<AdvancedSearchProps> = ({
 
         {/* Unified Search Space - START POINT IS NOW FIXED */}
         <div className="flex-1 flex flex-wrap items-center gap-1.5 min-w-0">
-          <AnimatePresence>
-            {isAdvanced &&
-              tokens.map((token, idx) => (
-                <motion.span
-                  key={`${token}-${idx}`}
-                  initial={{ opacity: 0, scale: 0.8 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  exit={{ opacity: 0, scale: 0.8 }}
-                  className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-primary/10 text-primary border border-primary/20 text-[11px] font-medium font-mono leading-none"
-                >
-                  {token}
-                  <button
-                    onClick={() => removeToken(idx)}
-                    className="hover:bg-primary/20 rounded-sm"
+          <LayoutGroup>
+            <AnimatePresence mode="popLayout">
+              {isAdvanced &&
+                tokens.map((token, idx) => (
+                  <motion.span
+                    key={token}
+                    layout
+                    initial={{ opacity: 0, scale: 0.8 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    exit={{ opacity: 0, scale: 0.8 }}
+                    transition={{ duration: 0.15 }}
+                    className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-primary/10 text-primary border border-primary/20 text-[11px] font-medium font-mono leading-none"
                   >
-                    <X className="h-2.5 w-2.5" />
-                  </button>
-                </motion.span>
-              ))}
-          </AnimatePresence>
+                    {token}
+                    <button
+                      onClick={() => removeToken(idx)}
+                      className="hover:bg-primary/20 rounded-sm"
+                    >
+                      <X className="h-2.5 w-2.5" />
+                    </button>
+                  </motion.span>
+                ))}
+            </AnimatePresence>
 
-          <input
-            ref={inputRef}
-            type="text"
-            placeholder={isAdvanced ? (tokens.length > 0 ? '' : advancedPlaceholder) : placeholder}
-            value={value}
-            onChange={handleInputChange}
-            spellCheck={false}
-            autoCapitalize="off"
-            autoCorrect="off"
-            autoSave="off"
-            className={cn(
-              'flex-1 bg-transparent text-[14px] text-foreground outline-none min-w-[80px] font-medium placeholder:font-normal placeholder:text-muted-foreground/40 leading-tight'
-            )}
-          />
+            <motion.div
+              layout="position"
+              transition={{ duration: 0.15 }}
+              className="flex-1 min-w-[80px]"
+            >
+              <input
+                ref={inputRef}
+                type="text"
+                placeholder={
+                  isAdvanced ? (tokens.length > 0 ? '' : advancedPlaceholder) : placeholder
+                }
+                value={value}
+                onChange={handleInputChange}
+                spellCheck={false}
+                autoCapitalize="off"
+                autoCorrect="off"
+                autoSave="off"
+                className={cn(
+                  'w-full bg-transparent text-[14px] text-foreground outline-none font-medium placeholder:font-normal placeholder:text-muted-foreground/40 leading-tight'
+                )}
+              />
+            </motion.div>
+          </LayoutGroup>
         </div>
 
         {/* Right Action (Clear) */}

@@ -72,6 +72,8 @@ pub struct PeerCaches {
     pub(crate) active_connections: HashMap<String, HashMap<ConnectionId, ActivePeerConnection>>,
     pub(crate) last_dial_observations: HashMap<String, PeerDialObservation>,
     pub(crate) address_registry: AddressRegistry,
+    /// Consecutive outgoing dial failures per peer, reset on connection success.
+    pub(crate) consecutive_dial_failures: HashMap<String, u32>,
 }
 
 impl PeerCaches {
@@ -84,6 +86,7 @@ impl PeerCaches {
             active_connections: HashMap::new(),
             last_dial_observations: HashMap::new(),
             address_registry: AddressRegistry::new(),
+            consecutive_dial_failures: HashMap::new(),
         }
     }
 
@@ -205,6 +208,7 @@ impl PeerCaches {
         self.connected_at.remove(peer_id);
         self.active_connections.remove(peer_id);
         self.last_dial_observations.remove(peer_id);
+        self.consecutive_dial_failures.remove(peer_id);
         self.discovered_peers.remove(peer_id)
     }
 
@@ -214,6 +218,7 @@ impl PeerCaches {
             self.connected_at
                 .entry(peer_id.to_string())
                 .or_insert(connected_at);
+            self.consecutive_dial_failures.remove(peer_id);
             true
         } else {
             false
@@ -275,6 +280,17 @@ impl PeerCaches {
             .insert(peer_id.to_string(), observation);
     }
 
+    /// Increment the consecutive dial failure counter for `peer_id` and return
+    /// the new count.
+    pub(crate) fn record_dial_failure(&mut self, peer_id: &str) -> u32 {
+        let count = self
+            .consecutive_dial_failures
+            .entry(peer_id.to_string())
+            .or_insert(0);
+        *count += 1;
+        *count
+    }
+
     pub(crate) fn record_address_success(&mut self, peer_id: &str, addr: &str) {
         self.address_registry.record_success(peer_id, addr);
     }
@@ -312,6 +328,8 @@ impl PeerCaches {
                     .insert(peer_id.to_string(), first_connected_at);
             }
         }
+
+        self.consecutive_dial_failures.remove(peer_id);
 
         !was_reachable && self.is_reachable(peer_id)
     }

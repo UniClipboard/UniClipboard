@@ -91,6 +91,9 @@ pub(crate) const RECOVERY_PROBE_CADENCE: Duration = Duration::from_secs(5);
 pub(crate) const RECOVERY_SILENT_PHASE_MAX_PROBES: u32 = 3;
 /// Consecutive probe failure count that triggers the timed session rebuild.
 pub(crate) const RECOVERY_TIMED_REBUILD_PROBE_THRESHOLD: u32 = 3;
+/// Consecutive outgoing dial failures for a paired peer before starting a
+/// recovery cycle via `on_dial_failure_streak`.
+pub(crate) const DIAL_FAILURE_STREAK_THRESHOLD: u32 = 3;
 /// Offset from the first peer's recovery start used to evaluate the
 /// multi-peer rebuild trigger (coincides with the silent-phase duration).
 pub(crate) const RECOVERY_MULTI_PEER_REBUILD_OFFSET: Duration = Duration::from_secs(15);

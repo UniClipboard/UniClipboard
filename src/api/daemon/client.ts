@@ -35,6 +35,8 @@ export interface RequestOptions {
   headers?: Record<string, string>
   /** Skip automatic session refresh on 401. */
   skipRetry?: boolean
+  /** AbortSignal for request cancellation. */
+  signal?: AbortSignal
 }
 
 class DaemonClient {
@@ -246,6 +248,7 @@ class DaemonClient {
       method: options.method ?? 'GET',
       headers,
       body: hasBody ? JSON.stringify(options.body) : undefined,
+      signal: options.signal,
     })
   }
 

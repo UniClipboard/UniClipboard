@@ -77,3 +77,5 @@ export type {
   P2PPeerDiscoveryChangedEvent,
 } from './pairing'
 export type { SpaceAccessCompletedEvent } from './setup'
+export { querySearch, getSearchStatus } from './search'
+export type { SearchResultDto, SearchQueryResponse, SearchParams } from './search'

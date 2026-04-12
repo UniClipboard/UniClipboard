@@ -11,6 +11,7 @@ use axum::http::StatusCode;
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use serde::Deserialize;
+use tracing::instrument;
 use uc_app::usecases::CoreUseCases;
 use uc_core::network::daemon_api_strings::http_route;
 use uc_core::search::{FileType, QueryOperator, SearchQuery, TimeRangeFilter};
@@ -176,7 +177,9 @@ fn parse_time_range(params: &SearchQueryParams) -> Result<Option<TimeRangeFilter
 
     if let (Some(from_ms), Some(to_ms)) = (params.from_ms, params.to_ms) {
         if from_ms < 0 || to_ms < 0 {
-            return Err(ApiError::bad_request("fromMs and toMs must be non-negative"));
+            return Err(ApiError::bad_request(
+                "fromMs and toMs must be non-negative",
+            ));
         }
         return Ok(Some(TimeRangeFilter::Absolute {
             from_ms: from_ms as u64,
@@ -278,6 +281,12 @@ pub fn router() -> Router<DaemonApiState> {
 ///
 /// Execute a structured search query against the local encrypted search index.
 /// Returns HTTP 423 if the encryption session is locked.
+#[instrument(
+    name = "api.search_query",
+    level = "info",
+    skip(state, params),
+    fields(query = %params.query, limit = params.limit, offset = params.offset)
+)]
 async fn search_query_handler(
     State(state): State<DaemonApiState>,
     Query(params): Query<SearchQueryParams>,
@@ -319,6 +328,7 @@ async fn search_query_handler(
 ///
 /// Returns the current search index availability snapshot (coordinator status + index meta timestamps).
 /// Returns HTTP 423 if the encryption session is locked.
+#[instrument(name = "api.search_status", level = "info", skip(state))]
 async fn search_status_handler(
     State(state): State<DaemonApiState>,
 ) -> Result<Json<SearchStatusResponse>, ApiError> {
@@ -330,7 +340,9 @@ async fn search_status_handler(
     let snapshot = if let Some(coordinator) = state.search_coordinator() {
         coordinator.status_snapshot().await
     } else {
-        return Err(ApiError::service_unavailable("search coordinator unavailable"));
+        return Err(ApiError::service_unavailable(
+            "search coordinator unavailable",
+        ));
     };
 
     // Get index meta for timestamps — access the search index port directly
@@ -358,6 +370,7 @@ async fn search_status_handler(
 /// Trigger a manual full rebuild of the search index.
 /// Returns HTTP 202 on accept, HTTP 409 with `rebuild_already_running` when another rebuild is in progress.
 /// Returns HTTP 423 if the encryption session is locked.
+#[instrument(name = "api.search_rebuild", level = "info", skip(state))]
 async fn search_rebuild_handler(
     State(state): State<DaemonApiState>,
 ) -> Result<(StatusCode, Json<SearchRebuildAcceptedResponse>), ApiError> {
@@ -467,7 +480,9 @@ mod tests {
         let params_mixed = make_params("hello AND world OR foo");
         let err = parse_search_query(&params_mixed).expect_err("mixed operators should fail");
         assert_eq!(err.code, "invalid_query");
-        assert!(err.message.contains("mixed AND/OR operators are not supported"));
+        assert!(err
+            .message
+            .contains("mixed AND/OR operators are not supported"));
 
         // fileTypes parsing
         let params_ft = SearchQueryParams {

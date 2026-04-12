@@ -12,7 +12,7 @@ use std::sync::Arc;
 
 use tokio::sync::{broadcast, Mutex};
 use tokio_util::sync::CancellationToken;
-use tracing::{debug, info, warn};
+use tracing::{debug, info, info_span, instrument, warn, Instrument};
 
 use uc_app::runtime::CoreRuntime;
 use uc_app::usecases::CoreUseCases;
@@ -129,6 +129,7 @@ impl SearchCoordinator {
     /// Returns `ManualRebuildResult::AlreadyInProgress` immediately if a rebuild
     /// is already in flight. Otherwise starts the rebuild in a background task
     /// and returns `ManualRebuildResult::Accepted`.
+    #[instrument(name = "search.request_manual_rebuild", level = "info", skip(self))]
     pub async fn request_manual_rebuild(&self) -> ManualRebuildResult {
         // Try to acquire the rebuild lock without waiting.
         match self.rebuild_lock.clone().try_lock_owned() {
@@ -138,14 +139,22 @@ impl SearchCoordinator {
                 let event_tx = self.event_tx.clone();
                 let state = self.state.clone();
 
-                tokio::spawn(async move {
-                    let _guard = guard; // hold the lock until rebuild completes
-                    Self::run_rebuild(runtime, event_tx, state, REASON_MANUAL_REBUILD).await;
-                });
+                let span = info_span!("search.rebuild", reason = REASON_MANUAL_REBUILD);
+                tokio::spawn(
+                    async move {
+                        let _guard = guard; // hold the lock until rebuild completes
+                        Self::run_rebuild(runtime, event_tx, state, REASON_MANUAL_REBUILD).await;
+                    }
+                    .instrument(span),
+                );
 
+                info!(reason = REASON_MANUAL_REBUILD, "search rebuild accepted");
                 ManualRebuildResult::Accepted
             }
-            Err(_) => ManualRebuildResult::AlreadyInProgress,
+            Err(_) => {
+                info!("search rebuild rejected: already in progress");
+                ManualRebuildResult::AlreadyInProgress
+            }
         }
     }
 
@@ -156,6 +165,7 @@ impl SearchCoordinator {
     /// - If `index_version != CURRENT_INDEX_VERSION`, kick off a `version_mismatch` rebuild.
     /// - If `search_blocked` is still true and no rebuild was started, expose
     ///   `unavailable / rebuild_failed_waiting_for_retry`.
+    #[instrument(name = "search.startup_evaluation", level = "info", skip(self))]
     async fn startup_evaluation(&self) {
         let deps = self.runtime.wiring_deps();
 
@@ -217,10 +227,14 @@ impl SearchCoordinator {
         let runtime = self.runtime.clone();
         let event_tx = self.event_tx.clone();
         let state = self.state.clone();
-        tokio::spawn(async move {
-            let _guard = guard;
-            Self::run_rebuild(runtime, event_tx, state, reason).await;
-        });
+        let span = info_span!("search.rebuild", reason);
+        tokio::spawn(
+            async move {
+                let _guard = guard;
+                Self::run_rebuild(runtime, event_tx, state, reason).await;
+            }
+            .instrument(span),
+        );
     }
 
     /// Core rebuild logic.
@@ -377,27 +391,30 @@ impl SearchCoordinator {
 
         // Spawn a task to forward progress events to the broadcast channel
         let event_tx_clone = event_tx.clone();
-        tokio::spawn(async move {
-            while let Some(progress) = progress_rx.recv().await {
-                let payload = match serde_json::to_value(&progress) {
-                    Ok(v) => v,
-                    Err(e) => {
-                        warn!(error = %e, "search coordinator: failed to serialize progress event");
-                        continue;
+        tokio::spawn(
+            async move {
+                while let Some(progress) = progress_rx.recv().await {
+                    let payload = match serde_json::to_value(&progress) {
+                        Ok(v) => v,
+                        Err(e) => {
+                            warn!(error = %e, "search coordinator: failed to serialize progress event");
+                            continue;
+                        }
+                    };
+                    let event = DaemonWsEvent {
+                        topic: ws_topic::SEARCH.to_string(),
+                        event_type: ws_event::SEARCH_REBUILD_PROGRESS.to_string(),
+                        session_id: None,
+                        ts: chrono::Utc::now().timestamp_millis(),
+                        payload,
+                    };
+                    if let Err(e) = event_tx_clone.send(event) {
+                        debug!(error = %e, "search coordinator: no WS subscribers for rebuild progress");
                     }
-                };
-                let event = DaemonWsEvent {
-                    topic: ws_topic::SEARCH.to_string(),
-                    event_type: ws_event::SEARCH_REBUILD_PROGRESS.to_string(),
-                    session_id: None,
-                    ts: chrono::Utc::now().timestamp_millis(),
-                    payload,
-                };
-                if let Err(e) = event_tx_clone.send(event) {
-                    debug!(error = %e, "search coordinator: no WS subscribers for rebuild progress");
                 }
             }
-        });
+            .in_current_span(),
+        );
 
         // Run the rebuild use case
         let usecases = CoreUseCases::new(runtime.as_ref());

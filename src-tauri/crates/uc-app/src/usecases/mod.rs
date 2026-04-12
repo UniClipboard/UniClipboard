@@ -154,6 +154,8 @@ impl<'a> CoreUseCases<'a> {
             self.runtime.deps.clipboard.clipboard_event_repo.clone(),
             self.runtime.deps.clipboard.representation_repo.clone(),
         )
+        .with_file_cache_dir(self.runtime.storage_paths.file_cache_dir.clone())
+        .with_search_index(self.runtime.deps.search.search_index.clone())
     }
 
     /// Get the GetEntryDetail use case.

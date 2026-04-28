@@ -126,6 +126,9 @@ pub struct AppDeps {
     pub device: DevicePorts,
     /// Setup status (setup-specific) / 设置状态（设置流程专用）
     pub setup_status: Arc<dyn SetupStatusPort>,
+    /// 升级游标端口：持久化"上次运行的应用版本"。
+    /// 由 `UpgradeFacade::detect_on_startup` 在启动期读取并比较。
+    pub app_version_state: Arc<dyn AppVersionStatePort>,
     /// Storage-domain ports / 存储领域端口
     pub storage: StoragePorts,
     /// Settings (cross-cutting) / 设置（横切关注）

@@ -20,7 +20,7 @@ use uc_application::facade::{
     HostEvent, HostEventEmitterPort, InMemoryLifecycleStatus, LifecycleFacade, LifecycleFacadeDeps,
     LifecycleStatusGateway, MemberRosterFacade, ResourceFacade, ResourceFacadeDeps,
     SearchCoordinator, SearchCoordinatorDeps, SearchFacade, SearchFacadeDeps, SettingsFacade,
-    StorageFacade, StorageFacadeDeps,
+    StorageFacade, StorageFacadeDeps, UpgradeFacade, UpgradeFacadeDeps,
 };
 use uc_core::clipboard::ClipboardIntegrationMode;
 
@@ -189,6 +189,10 @@ pub fn build_app_facade_from_deps(
             logs_dir: storage_paths.logs_dir.clone(),
             app_data_root_dir: storage_paths.app_data_root_dir.clone(),
             cache_fs: deps.system.cache_fs.clone(),
+        })),
+        upgrade: Arc::new(UpgradeFacade::new(UpgradeFacadeDeps {
+            app_version_state: deps.app_version_state.clone(),
+            setup_status: deps.setup_status.clone(),
         })),
     }))
 }

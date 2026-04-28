@@ -37,6 +37,7 @@ use crate::facade::space_setup::{
     RedeemPairingInvitationError, RedeemPairingInvitationInput, RedeemPairingInvitationResult,
     SwitchSpaceError, SwitchSpaceInput, SwitchSpaceResult, TryResumeSessionError,
 };
+use crate::facade::upgrade::UpgradeFacade;
 use crate::facade::{
     BlobTransferError, BlobTransferFacade, ClipboardHistoryFacade, ClipboardRestoreFacade,
     ClipboardSyncError, ClipboardSyncFacade, DeviceFacade, EncryptionFacade, EncryptionFacadeError,
@@ -69,6 +70,10 @@ pub struct AppFacade {
     pub settings: Arc<SettingsFacade>,
     pub device: Arc<DeviceFacade>,
     pub storage: Arc<StorageFacade>,
+    /// 升级检测 facade（P1 thin）。所有桌面入口（GUI / daemon / CLI）共享同
+    /// 一份；启动期 host 调一次 `upgrade.detect_on_startup()` 决定是否触发
+    /// 重新配对引导等动作。
+    pub upgrade: Arc<UpgradeFacade>,
 }
 
 impl AppFacade {
@@ -91,6 +96,7 @@ impl AppFacade {
             settings: parts.settings,
             device: parts.device,
             storage: parts.storage,
+            upgrade: parts.upgrade,
         }
     }
 
@@ -412,4 +418,5 @@ pub struct AppFacadeParts {
     pub settings: Arc<SettingsFacade>,
     pub device: Arc<DeviceFacade>,
     pub storage: Arc<StorageFacade>,
+    pub upgrade: Arc<UpgradeFacade>,
 }

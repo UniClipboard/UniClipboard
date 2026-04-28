@@ -66,7 +66,10 @@ use uc_infra::security::{
     Sha256IdentityFingerprintFactory, Sha256ShortCodeGenerator,
 };
 use uc_infra::settings::repository::FileSettingsRepository;
-use uc_infra::{FileMigrationStateRepository, FileSetupStatusRepository, SystemClock};
+use uc_infra::{
+    FileAppVersionStateRepository, FileMigrationStateRepository, FileSetupStatusRepository,
+    SystemClock,
+};
 use uc_platform::app_dirs::DirsAppDirsAdapter;
 use uc_platform::clipboard::{LocalClipboard, NoopSystemClipboard};
 use uc_platform::ports::AppDirsPort;
@@ -211,6 +214,10 @@ struct InfraLayer {
     // Setup status
     setup_status: Arc<dyn SetupStatusPort>,
 
+    // 升级游标（"上次运行版本"）。落点 = app_data_root/upgrade-cursor.json，
+    // 与 vault/keyring/settings.json 同级，profile 隔离由调用方上层保证。
+    app_version_state: Arc<dyn AppVersionStatePort>,
+
     // System services
     clock: Arc<dyn ClockPort>,
     hash: Arc<dyn ContentHashPort>,
@@ -293,6 +300,7 @@ fn create_infra_layer(
     db_pool: DbPool,
     vault_path: &PathBuf,
     settings_path: &PathBuf,
+    app_data_root: &PathBuf,
     secure_storage: Arc<dyn SecureStoragePort>,
 ) -> WiringResult<InfraLayer> {
     let db_executor = Arc::new(DieselSqliteExecutor::new(db_pool));
@@ -368,6 +376,12 @@ fn create_infra_layer(
     let setup_status: Arc<dyn SetupStatusPort> =
         Arc::new(FileSetupStatusRepository::with_defaults(vault_path.clone()));
 
+    // 升级游标——独立小文件，落在 app_data_root 顶层（与 vault/keyring/settings.json
+    // 同级），不污染 vault/。schema_version=1，写入走 tempfile + rename 原子化。
+    let app_version_state: Arc<dyn AppVersionStatePort> = Arc::new(
+        FileAppVersionStateRepository::with_defaults(app_data_root.clone()),
+    );
+
     // Switch-space 4 阶段迁移的状态持久化点；与 setup_status 同目录。
     let migration_state: Arc<dyn uc_core::ports::setup::MigrationStatePort> = Arc::new(
         FileMigrationStateRepository::with_defaults(vault_path.clone()),
@@ -408,6 +422,7 @@ fn create_infra_layer(
         key_material,
         settings_repo,
         setup_status,
+        app_version_state,
         clock,
         hash,
         file_transfer_repo,
@@ -664,14 +679,21 @@ pub fn wire_dependencies(config: &AppConfig) -> WiringResult<WiredDependencies> 
 
     let vault_path = paths.vault_dir;
     let settings_path = paths.settings_path;
+    let app_data_root = paths.app_data_root_dir.clone();
 
     let secure_storage =
         uc_platform::secure_storage::create_default_secure_storage_in_app_data_root(
-            paths.app_data_root_dir.clone(),
+            app_data_root.clone(),
         )
         .map_err(|e| WiringError::SecureStorageInit(e.to_string()))?;
 
-    let infra = create_infra_layer(db_pool, &vault_path, &settings_path, secure_storage.clone())?;
+    let infra = create_infra_layer(
+        db_pool,
+        &vault_path,
+        &settings_path,
+        &app_data_root,
+        secure_storage.clone(),
+    )?;
 
     let storage_config = Arc::new(ClipboardStorageConfig::defaults());
     let platform = create_platform_layer(
@@ -828,6 +850,7 @@ pub fn wire_dependencies(config: &AppConfig) -> WiringResult<WiredDependencies> 
             member_repo: infra.member_repo,
         },
         setup_status: infra.setup_status,
+        app_version_state: infra.app_version_state,
         storage: StoragePorts {
             blob_store: platform.blob_store,
             blob_writer: platform.blob_writer,

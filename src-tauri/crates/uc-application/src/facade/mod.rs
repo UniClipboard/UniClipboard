@@ -26,6 +26,7 @@ pub mod settings;
 pub mod setup_status;
 pub mod space_setup;
 pub mod storage;
+pub mod upgrade;
 
 pub use app_facade::{
     AppFacade, AppFacadeParts, AppPresenceEvent, AppPresenceSubscription,
@@ -110,4 +111,7 @@ pub use space_setup::{
 };
 pub use storage::{
     ClearCacheResultView, StorageFacade, StorageFacadeDeps, StorageFacadeError, StorageStatsView,
+};
+pub use upgrade::{
+    AcknowledgeUpgradeError, DetectUpgradeError, UpgradeFacade, UpgradeFacadeDeps, UpgradeStatus,
 };

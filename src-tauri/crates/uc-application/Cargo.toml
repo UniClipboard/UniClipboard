@@ -43,6 +43,10 @@ blake3 = "1"
 # boundaries without extra clones. Matches uc-core + uc-infra.
 bytes = "1.7"
 url = "2"
+# Semver parsing for upgrade-detection use case (`facade::upgrade`).
+# Compares last_seen_version (port-stored String) against current build
+# version to derive `UpgradeStatus`.
+semver = "1"
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"

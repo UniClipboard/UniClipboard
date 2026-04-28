@@ -31,6 +31,9 @@ use crate::api::dto::settings::{
     SecuritySettingsDto, SettingsDto, ShortcutKeyDto, SyncFrequencyDto, SyncSettingsDto, ThemeDto,
     UpdateChannelDto, UpdateSettingsResponse,
 };
+use uc_daemon_contract::api::dto::upgrade::{
+    AckUpgradePayload, AckUpgradeResponse, GetUpgradeStatusResponse, UpgradeStatusDto,
+};
 use uc_daemon_contract::api::dto::v2::setup::{
     CurrentInvitation as V2CurrentInvitation, InitializeSpaceRequest as V2InitializeSpaceRequest,
     InitializeSpaceResponse as V2InitializeSpaceResponse,
@@ -97,6 +100,8 @@ impl Modify for SecurityAddon {
         crate::api::v2::setup::reset,
         crate::api::v2::setup::get_state,
         crate::api::pairing::handle_unpair_device,
+        crate::api::upgrade::get_upgrade_status_handler,
+        crate::api::upgrade::ack_upgrade_handler,
     ),
     components(
         schemas(
@@ -157,6 +162,11 @@ impl Modify for SecurityAddon {
             V2RedeemResponse,
             V2SetupStateResponse,
             V2CurrentInvitation,
+            // Upgrade detection (P1 thin module)
+            GetUpgradeStatusResponse,
+            UpgradeStatusDto,
+            AckUpgradeResponse,
+            AckUpgradePayload,
         )
     ),
     tags(
@@ -168,6 +178,7 @@ impl Modify for SecurityAddon {
         (name = "setup-v2", description = "Stateless v2 setup pairing endpoints (Slice4 P3 T3.2)"),
         (name = "pairing", description = "Pairing lifecycle management"),
         (name = "search", description = "Local encrypted search endpoints"),
+        (name = "upgrade", description = "Application upgrade detection (P1 thin module)"),
     )
 )]
 pub struct ApiDoc;

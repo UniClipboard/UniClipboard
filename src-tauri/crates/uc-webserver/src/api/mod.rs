@@ -18,6 +18,7 @@ pub mod settings;
 pub mod setup_events;
 pub mod storage;
 pub mod types;
+pub mod upgrade;
 pub mod v2;
 pub mod ws;
 

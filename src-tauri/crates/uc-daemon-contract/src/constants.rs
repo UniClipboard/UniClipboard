@@ -109,6 +109,11 @@ pub mod http_route {
     pub const SEARCH_STATUS: &str = "/search/status";
     /// POST /search/rebuild — trigger manual search index rebuild (Phase 92)
     pub const SEARCH_REBUILD: &str = "/search/rebuild";
+    /// GET /upgrade/status — detect upgrade by comparing version cursor to
+    /// the running build (P1 thin upgrade detection).
+    pub const UPGRADE_STATUS: &str = "/upgrade/status";
+    /// POST /upgrade/ack — advance the version cursor to the running build.
+    pub const UPGRADE_ACK: &str = "/upgrade/ack";
 }
 
 /// HTTP route paths for the v2 daemon REST endpoints (Slice4 P3 T3.2).

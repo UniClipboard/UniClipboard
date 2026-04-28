@@ -83,6 +83,7 @@ pub fn router_l2_plus(state: DaemonApiState) -> Router<DaemonApiState> {
         .merge(crate::api::storage::router())
         .merge(crate::api::pairing::router())
         .merge(crate::api::blob::router())
+        .merge(crate::api::upgrade::router())
         .route("/status", get(status))
         .route("/peers", get(peers))
         .route("/paired-devices", get(paired_devices))

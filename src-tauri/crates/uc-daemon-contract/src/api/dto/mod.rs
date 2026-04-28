@@ -7,5 +7,6 @@ pub mod search;
 pub mod settings;
 pub mod setup;
 pub mod setup_events;
+pub mod upgrade;
 pub mod v2;
 pub mod ws;

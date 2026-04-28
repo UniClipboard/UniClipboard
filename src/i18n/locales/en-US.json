@@ -31,6 +31,15 @@
     "downloading": "Downloading...",
     "installing": "Installing..."
   },
+  "upgradeNotice": {
+    "title": "Re-pair your devices",
+    "body": "This version updates the device pairing scheme. Your previous pairings can no longer sync. Please open Devices to invite or re-join the other device.",
+    "fromVersion": "Previous version: {{from}}",
+    "toVersion": "Current version: {{to}}",
+    "fromUnknown": "Previous version: unknown",
+    "gotIt": "Got it, don't remind me again",
+    "later": "Later"
+  },
   "settings": {
     "title": "Settings",
     "categories": {

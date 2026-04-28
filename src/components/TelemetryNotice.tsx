@@ -17,31 +17,41 @@ const log = createLogger('telemetry-notice')
 
 const TELEMETRY_NOTICE_KEY = 'uc-telemetry-notice-seen'
 
-export default function TelemetryNotice() {
+interface TelemetryNoticeProps {
+  /** Coordinator-controlled gate. When false, the dialog stays hidden even if
+   *  localStorage has no record — this lets a higher-priority startup modal
+   *  display first. */
+  enabled?: boolean
+  /** Invoked once the user has chosen accept or opt-out. Used by
+   *  `StartupModals` to advance the queue. */
+  onDismiss?: () => void
+}
+
+export default function TelemetryNotice({ enabled = true, onDismiss }: TelemetryNoticeProps = {}) {
   const { t } = useTranslation()
   const { updateGeneralSetting } = useSetting()
   const [open, setOpen] = useState(false)
 
   useEffect(() => {
-    if (!localStorage.getItem(TELEMETRY_NOTICE_KEY)) {
+    if (enabled && !localStorage.getItem(TELEMETRY_NOTICE_KEY)) {
       setOpen(true)
     }
-  }, [])
+  }, [enabled])
 
-  const markSeen = () => {
+  const finish = () => {
     localStorage.setItem(TELEMETRY_NOTICE_KEY, '1')
+    setOpen(false)
+    onDismiss?.()
   }
 
   const handleAccept = () => {
-    markSeen()
-    setOpen(false)
+    finish()
   }
 
   const handleOptOut = async () => {
     try {
       await updateGeneralSetting({ telemetryEnabled: false })
-      markSeen()
-      setOpen(false)
+      finish()
     } catch (error) {
       log.error({ err: error }, 'Failed to disable telemetry')
       // Don't close — let the user retry or accept instead.

@@ -4,7 +4,7 @@ import { signalLifecycleReady } from '@/api/daemon/lifecycle'
 import { unlockEncryptionSession } from '@/api/security'
 import { TitleBar } from '@/components'
 import { GlobalShortcuts } from '@/components/GlobalShortcuts'
-import TelemetryNotice from '@/components/TelemetryNotice'
+import StartupModals from '@/components/StartupModals'
 import { Toaster } from '@/components/ui/sonner'
 import { useSearch } from '@/contexts/search-context'
 import { SearchProvider } from '@/contexts/SearchContext'
@@ -248,7 +248,7 @@ const AppContent = ({
         <Route path="*" element={<Navigate to="/" replace />} />
       </SentryRoutes>
       <Toaster />
-      <TelemetryNotice />
+      <StartupModals />
     </ShortcutProvider>
   )
 }

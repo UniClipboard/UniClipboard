@@ -31,6 +31,15 @@
     "downloading": "正在下载...",
     "installing": "正在安装..."
   },
+  "upgradeNotice": {
+    "title": "请重新配对设备",
+    "body": "本版本更新了设备配对机制，原有配对已不可用。请前往「设备」页向另一台设备发送邀请或重新加入。",
+    "fromVersion": "上一版本：{{from}}",
+    "toVersion": "当前版本：{{to}}",
+    "fromUnknown": "上一版本：未知",
+    "gotIt": "我知道了，不再提醒",
+    "later": "稍后再说"
+  },
   "settings": {
     "title": "设置",
     "categories": {

@@ -87,3 +87,5 @@ export type {
   SearchStatusData,
   SearchStatusResponse,
 } from './search'
+export { getUpgradeStatus, acknowledgeUpgrade } from './upgrade'
+export type { UpgradeStatus } from './upgrade'

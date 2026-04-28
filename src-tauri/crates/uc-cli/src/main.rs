@@ -179,6 +179,12 @@ enum Commands {
         #[command(subcommand)]
         subcommand: commands::search::SearchCommands,
     },
+    /// Inspect or advance the upgrade-detection cursor (manual verification
+    /// for the P1 thin upgrade module).
+    Upgrade {
+        #[command(subcommand)]
+        subcommand: commands::upgrade::UpgradeCommands,
+    },
     /// 内联运行 daemon 进程，供 `start` 内部使用
     #[command(hide = true)]
     Daemon {
@@ -314,6 +320,9 @@ fn main() -> anyhow::Result<()> {
             }
             Commands::Search { subcommand } => {
                 commands::search::run(subcommand, cli.json, cli.verbose).await
+            }
+            Commands::Upgrade { subcommand } => {
+                commands::upgrade::run(subcommand, cli.json, cli.verbose).await
             }
             Commands::Daemon { .. } => unreachable!("handled above"),
         }

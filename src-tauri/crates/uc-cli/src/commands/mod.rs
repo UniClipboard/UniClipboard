@@ -13,4 +13,5 @@ pub mod start;
 pub mod status;
 pub mod stop;
 pub mod switch_space;
+pub mod upgrade;
 pub mod watch;

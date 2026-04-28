@@ -1,6 +1,7 @@
 // Tracing support for infra layer instrumentation
 pub use tracing;
 
+pub mod app_version_state;
 pub mod blob;
 pub mod clipboard;
 pub mod config;
@@ -18,6 +19,7 @@ pub mod settings;
 pub mod setup_status;
 pub mod time;
 
+pub use app_version_state::FileAppVersionStateRepository;
 pub use migration_state::FileMigrationStateRepository;
 pub use setup_status::FileSetupStatusRepository;
 pub use time::{SystemClock, Timer};

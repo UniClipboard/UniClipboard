@@ -14,4 +14,6 @@ pub mod reference;
 pub mod transfer;
 
 pub use reference::{BlobReferenceError, BlobReferenceRepositoryPort, PlaintextHash};
-pub use transfer::{BlobDigest, BlobError, BlobTicket, BlobTransferPort, TagReason};
+pub use transfer::{
+    BlobDigest, BlobError, BlobProgressSink, BlobTicket, BlobTransferPort, TagReason,
+};

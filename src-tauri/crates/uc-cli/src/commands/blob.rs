@@ -130,7 +130,11 @@ async fn fetch(ticket: String, entry_id: String, out: PathBuf, json: bool, verbo
     let spinner = ui::spinner("Fetching blob...");
     let result = cli
         .app_facade()
-        .fetch_blob(FetchBlobCommand { ticket, entry_id })
+        .fetch_blob(FetchBlobCommand {
+            ticket,
+            entry_id,
+            transfer_context: None,
+        })
         .await;
 
     let result = match result {

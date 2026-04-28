@@ -56,7 +56,9 @@ use uc_core::{
 
 use crate::clipboard_capture::CaptureClipboardUseCase;
 use crate::clipboard_write::{ClipboardWriteCoordinator, ClipboardWriteIntent};
-use crate::facade::blob_transfer::{BlobTransferFacade, FetchBlobCommand, FetchBlobResult};
+use crate::facade::blob_transfer::{
+    BlobTransferFacade, FetchBlobCommand, FetchBlobResult, FetchTransferContext,
+};
 use crate::usecases::clipboard_sync::payload_codec::{
     decode_v3_bytes_to_snapshot_and_blob_refs, V3BlobRef,
 };
@@ -149,6 +151,7 @@ impl InboundWrite for ClipboardWriteCoordinator {
 pub trait InboundBlobMaterializer: Send + Sync {
     async fn materialize(
         &self,
+        from_device: DeviceId,
         snapshot: SystemClipboardSnapshot,
         blob_refs: Vec<V3BlobRef>,
     ) -> Result<SystemClipboardSnapshot>;
@@ -183,6 +186,7 @@ impl FileCacheBlobMaterializer {
 impl InboundBlobMaterializer for FileCacheBlobMaterializer {
     async fn materialize(
         &self,
+        from_device: DeviceId,
         mut snapshot: SystemClipboardSnapshot,
         blob_refs: Vec<V3BlobRef>,
     ) -> Result<SystemClipboardSnapshot> {
@@ -274,11 +278,19 @@ impl InboundBlobMaterializer for FileCacheBlobMaterializer {
                 "materialize: fetching blob"
             );
 
+            // transfer_id 直接复用 entry_id —— 一个 entry 对应一次 blob 拉取,
+            // 前端 useTransferProgress 用它定位 UI(每个 entry 一个进度条)。
+            let transfer_context = FetchTransferContext {
+                transfer_id: blob_ref.entry_id.as_ref().to_string(),
+                peer_id: from_device.as_str().to_string(),
+                total_bytes: Some(advertised_size),
+            };
             let fetched = self
                 .fetcher
                 .fetch_blob(FetchBlobCommand {
                     ticket: blob_ref.ticket,
                     entry_id: blob_ref.entry_id.clone(),
+                    transfer_context: Some(transfer_context),
                 })
                 .await
                 .map_err(|e| {
@@ -503,7 +515,7 @@ impl ApplyInboundClipboardUseCase {
             (false, Some(materializer)) => {
                 let count = blob_refs.len();
                 let snapshot = materializer
-                    .materialize(snapshot, blob_refs)
+                    .materialize(input.from_device.clone(), snapshot, blob_refs)
                     .await
                     .map_err(|e| {
                         warn!(error = %e, blob_ref_count = count, "inbound: blob materialize failed");
@@ -643,6 +655,7 @@ mod tests {
         impl InboundBlobMaterializer for BlobMaterializer {
             async fn materialize(
                 &self,
+                from_device: DeviceId,
                 snapshot: SystemClipboardSnapshot,
                 blob_refs: Vec<V3BlobRef>,
             ) -> Result<SystemClipboardSnapshot>;
@@ -937,11 +950,11 @@ mod tests {
         materializer
             .expect_materialize()
             .times(1)
-            .withf(move |snapshot, refs| {
+            .withf(move |_from_device, snapshot, refs| {
                 snapshot.representations[0].bytes == b"file:///sender/original.txt\n"
                     && refs == &vec![blob_ref.clone()]
             })
-            .returning(|mut snapshot, _| {
+            .returning(|_from_device, mut snapshot, _| {
                 snapshot.representations[0].bytes = b"file:///local/cache/original.txt\n".to_vec();
                 Ok(snapshot)
             });
@@ -1015,7 +1028,7 @@ mod tests {
         let materializer =
             FileCacheBlobMaterializer::new(Arc::new(fetcher), cache_dir.path().to_path_buf());
         let rewritten = materializer
-            .materialize(snapshot, vec![blob_ref])
+            .materialize(DeviceId::new("peer-x"), snapshot, vec![blob_ref])
             .await
             .expect("materialize should succeed");
 

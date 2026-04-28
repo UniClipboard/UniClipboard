@@ -5,7 +5,7 @@
 //! 上层 use case 和 sqlite `BlobReferenceRepositoryPort` 负责。
 
 use std::sync::{Arc, OnceLock};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
 use bytes::Bytes;
@@ -20,7 +20,20 @@ use iroh_blobs::{
 use iroh_tickets::Ticket;
 use tracing::{debug, info, instrument, warn};
 
-use uc_core::ports::blob::{BlobDigest, BlobError, BlobTicket, BlobTransferPort, TagReason};
+use uc_core::ports::blob::{
+    BlobDigest, BlobError, BlobProgressSink, BlobTicket, BlobTransferPort, TagReason,
+};
+
+/// Minimum byte advance between two `BlobProgressSink::report` calls.
+///
+/// 节流阈值——每跨过 256 KB 才再上报一次,避免 iroh-blobs 在大 blob 上每个
+/// chunk 触发一次 sink(WS 转发链路上百次/秒会拖累 daemon)。
+const PROGRESS_REPORT_BYTES: u64 = 256 * 1024;
+/// Minimum wall-clock interval between two `BlobProgressSink::report` calls.
+///
+/// 即便字节阈值还没达到,长时间没有进度也会让前端的"剩余时间"估算错乱;
+/// 200ms 是肉眼能感知到的最小卡顿,所以也强制按时间窗刷新一次。
+const PROGRESS_REPORT_INTERVAL: Duration = Duration::from_millis(200);
 
 pub const BLOBS_ALPN: &[u8] = iroh_blobs::ALPN;
 
@@ -112,7 +125,11 @@ impl BlobTransferPort for IrohBlobTransferAdapter {
     }
 
     #[instrument(skip_all)]
-    async fn fetch(&self, ticket: &BlobTicket) -> Result<Bytes, BlobError> {
+    async fn fetch(
+        &self,
+        ticket: &BlobTicket,
+        progress: Option<&dyn BlobProgressSink>,
+    ) -> Result<Bytes, BlobError> {
         let native = Self::parse_ticket(ticket)?;
         let digest = Self::core_digest(native.hash());
         let hash_prefix = hex_prefix(native.hash().as_bytes());
@@ -189,6 +206,8 @@ impl BlobTransferPort for IrohBlobTransferAdapter {
         const PROGRESS_LOG_BYTES: u64 = 4 * 1024 * 1024;
         let mut bytes_so_far: u64 = 0;
         let mut last_logged_bytes: u64 = 0;
+        let mut last_reported_bytes: u64 = 0;
+        let mut last_reported_at: Option<Instant> = None;
         let mut provider_failures: u32 = 0;
         let mut tried_providers: u32 = 0;
 
@@ -229,6 +248,17 @@ impl BlobTransferPort for IrohBlobTransferAdapter {
                         );
                         last_logged_bytes = total;
                     }
+                    if let Some(sink) = progress {
+                        let due_by_bytes = total >= last_reported_bytes + PROGRESS_REPORT_BYTES;
+                        let due_by_time = last_reported_at
+                            .map(|t| t.elapsed() >= PROGRESS_REPORT_INTERVAL)
+                            .unwrap_or(true);
+                        if due_by_bytes || due_by_time {
+                            sink.report(total, None).await;
+                            last_reported_bytes = total;
+                            last_reported_at = Some(Instant::now());
+                        }
+                    }
                 }
                 DownloadProgressItem::PartComplete { .. } => {
                     info!(
@@ -237,6 +267,13 @@ impl BlobTransferPort for IrohBlobTransferAdapter {
                         elapsed_ms = download_start.elapsed().as_millis() as u64,
                         "blob fetch: part complete"
                     );
+                    if let Some(sink) = progress {
+                        if bytes_so_far > last_reported_bytes {
+                            sink.report(bytes_so_far, Some(bytes_so_far)).await;
+                            last_reported_bytes = bytes_so_far;
+                            last_reported_at = Some(Instant::now());
+                        }
+                    }
                 }
                 DownloadProgressItem::DownloadError => {
                     warn!(
@@ -479,7 +516,7 @@ mod tests {
         let digest = fixture.adapter.publish(payload.clone()).await?;
         let ticket = fixture.adapter.issue_ticket(&digest).await?;
 
-        let fetched = fixture.adapter.fetch(&ticket).await?;
+        let fetched = fixture.adapter.fetch(&ticket, None).await?;
 
         assert_eq!(fetched, payload);
         fixture.shutdown().await?;
@@ -496,7 +533,7 @@ mod tests {
         let digest = provider.adapter.publish(payload.clone()).await?;
         let ticket = provider.adapter.issue_ticket(&digest).await?;
 
-        let fetched = receiver.adapter.fetch(&ticket).await?;
+        let fetched = receiver.adapter.fetch(&ticket, None).await?;
 
         assert_eq!(fetched, payload);
         receiver.shutdown().await?;

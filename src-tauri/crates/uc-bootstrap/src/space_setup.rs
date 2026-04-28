@@ -244,6 +244,10 @@ pub async fn build_space_setup_assembly(
         hash: Arc::clone(&deps.system.hash),
         blob_transfer: Arc::clone(&blob_transfer),
         blob_reference: Arc::clone(&wired.blob_reference_repo),
+        // 共享同一个 emitter_cell —— daemon bootstrap 注入真实 emitter 后,
+        // fetch_blob 就会自动开始向前端发送 progress / status_changed 事件;
+        // CLI 模式下 cell 里挂的是 noop emitter,事件被静默吞掉,不影响行为。
+        host_event_emitter: Some(Arc::clone(&wired.emitter_cell)),
     }));
 
     info!("Slice 2/3 SpaceSetupFacade + MemberRosterFacade + ClipboardSyncFacade + BlobTransferFacade assembled");

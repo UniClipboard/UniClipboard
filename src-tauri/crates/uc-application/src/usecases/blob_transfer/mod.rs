@@ -22,8 +22,8 @@ mod tests {
     use bytes::Bytes;
     use uc_core::ids::EntryId;
     use uc_core::ports::blob::{
-        BlobDigest, BlobError, BlobReferenceError, BlobReferenceRepositoryPort, BlobTicket,
-        BlobTransferPort, PlaintextHash, TagReason,
+        BlobDigest, BlobError, BlobProgressSink, BlobReferenceError, BlobReferenceRepositoryPort,
+        BlobTicket, BlobTransferPort, PlaintextHash, TagReason,
     };
     use uc_core::ports::ContentHashPort;
     use uc_core::{ContentHash, HashAlgorithm};
@@ -92,6 +92,7 @@ mod tests {
             .execute(FetchBlobInput {
                 ticket: second.ticket,
                 entry_id: EntryId::from("entry-two"),
+                progress: None,
             })
             .await
             .expect("reused digest should fetch for the new entry tag");
@@ -122,6 +123,7 @@ mod tests {
             .execute(FetchBlobInput {
                 ticket,
                 entry_id: entry_id.clone(),
+                progress: None,
             })
             .await
             .expect("fetch should succeed");
@@ -184,7 +186,11 @@ mod tests {
             Ok(BlobTicket::from_bytes(digest.as_bytes().to_vec()))
         }
 
-        async fn fetch(&self, ticket: &BlobTicket) -> Result<Bytes, BlobError> {
+        async fn fetch(
+            &self,
+            ticket: &BlobTicket,
+            _progress: Option<&dyn BlobProgressSink>,
+        ) -> Result<Bytes, BlobError> {
             let digest = self.digest_of(ticket)?;
             self.store
                 .lock()

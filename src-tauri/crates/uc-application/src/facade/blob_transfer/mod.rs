@@ -6,5 +6,5 @@ mod facade;
 
 pub use facade::{
     BlobTransferDeps, BlobTransferError, BlobTransferFacade, FetchBlobCommand, FetchBlobResult,
-    PublishBlobCommand, PublishBlobResult,
+    FetchTransferContext, PublishBlobCommand, PublishBlobResult, SharedHostEventEmitter,
 };

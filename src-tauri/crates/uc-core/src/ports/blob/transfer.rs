@@ -144,6 +144,26 @@ pub enum BlobError {
     Internal(String),
 }
 
+/// 字节级进度上报通道。
+///
+/// adapter 在 fetch 过程中可以调用 sink 通知调用方"已经传输了多少字节"。
+/// adapter 自己负责做合理节流(字节阈值 + 时间窗),sink 实现端不应假设
+/// 调用频率,但也不应该在实现里再做长时间的同步阻塞操作 ——
+/// adapter 通常在网络循环里调用 sink。
+///
+/// `total_bytes` 由 adapter 透传:
+/// - 如果 adapter 知道总大小(例如 iroh-blobs 在 PartComplete 时知道 size),
+///   就传 `Some`;
+/// - 否则传 `None`,由 sink 实现层自己结合外部已知的大小处理。
+#[async_trait]
+pub trait BlobProgressSink: Send + Sync {
+    /// 上报当前累计已传输字节数。
+    ///
+    /// `bytes_transferred` 是单调递增的累计值(adapter 保证不回退);
+    /// `total_bytes` 在已知时透传,未知时为 `None`。
+    async fn report(&self, bytes_transferred: u64, total_bytes: Option<u64>);
+}
+
 /// Blob transfer capability: publish / retrieve / lifecycle management.
 ///
 /// See module-level docs for the producer / consumer / reference split.
@@ -172,7 +192,15 @@ pub trait BlobTransferPort: Send + Sync {
     /// it directly; otherwise it pulls via the credential's embedded
     /// sources. Resume-on-interrupt and integrity verification are the
     /// adapter's concern — callers only see "got it" or "didn't".
-    async fn fetch(&self, ticket: &BlobTicket) -> Result<Bytes, BlobError>;
+    ///
+    /// `progress` 可选:传入时 adapter 会在拉取过程中按字节阈值/时间窗
+    /// 节流上报已传输字节数;不需要进度时传 `None`。本地命中时不会上报
+    /// 任何进度(直接返回缓存)。
+    async fn fetch(
+        &self,
+        ticket: &BlobTicket,
+        progress: Option<&dyn BlobProgressSink>,
+    ) -> Result<Bytes, BlobError>;
 
     // ── Lifecycle ──
 

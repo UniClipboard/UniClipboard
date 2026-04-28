@@ -4,14 +4,17 @@ use bytes::Bytes;
 
 use uc_core::ids::EntryId;
 use uc_core::ports::blob::{
-    BlobDigest, BlobReferenceRepositoryPort, BlobTicket, BlobTransferPort, PlaintextHash, TagReason,
+    BlobDigest, BlobProgressSink, BlobReferenceRepositoryPort, BlobTicket, BlobTransferPort,
+    PlaintextHash, TagReason,
 };
 use uc_core::ports::ContentHashPort;
 
-#[derive(Debug, Clone)]
 pub(crate) struct FetchBlobInput {
     pub ticket: BlobTicket,
     pub entry_id: EntryId,
+    /// 可选进度上报通道。adapter 在 fetch 过程中按字节阈值/时间窗节流回调。
+    /// `None` 则 adapter 不上报,行为与改造前一致。
+    pub progress: Option<Arc<dyn BlobProgressSink>>,
 }
 
 #[derive(Debug, Clone)]
@@ -48,9 +51,13 @@ impl FetchBlobUseCase {
             .map_err(|e| FetchBlobError::Transfer(e.to_string()))?;
         // File blobs are stored raw on iroh-blobs (see PublishBlobUseCase).
         // The fetched bytes are already the plaintext; no decrypt step.
+        let progress_ref: Option<&dyn BlobProgressSink> = input
+            .progress
+            .as_ref()
+            .map(|p| &**p as &dyn BlobProgressSink);
         let plaintext_bytes = self
             .blob_transfer
-            .fetch(&input.ticket)
+            .fetch(&input.ticket, progress_ref)
             .await
             .map_err(|e| FetchBlobError::Transfer(e.to_string()))?;
         let plaintext_hash = PlaintextHash::from_bytes(

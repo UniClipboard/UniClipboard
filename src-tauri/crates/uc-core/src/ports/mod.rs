@@ -16,6 +16,7 @@
 //! If all three answers are **yes**, place it in `uc-core/ports`.
 //! Otherwise, place it in the relevant `domain` submodule.
 
+pub mod app_version;
 pub mod blob;
 pub mod cache_fs;
 pub mod clipboard;
@@ -38,6 +39,7 @@ pub mod setup;
 pub mod space;
 mod timer;
 
+pub use app_version::{AppVersionStateError, AppVersionStatePort};
 pub use cache_fs::{CacheFsPort, DirEntry as CacheFsDirEntry};
 pub use clipboard_event::*;
 pub use clock::*;

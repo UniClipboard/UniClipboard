@@ -10,7 +10,7 @@ use std::time::{Duration, Instant};
 use async_trait::async_trait;
 use bytes::Bytes;
 use futures_util::StreamExt;
-use iroh::Endpoint;
+use iroh::{Endpoint, EndpointId, Watcher};
 use iroh_blobs::{
     api::downloader::{DownloadProgressItem, Downloader},
     store::fs::FsStore,
@@ -98,6 +98,16 @@ impl IrohBlobTransferAdapter {
             }
         }
     }
+
+    /// Snapshot the current connection path to `endpoint_id`,renders as
+    /// `direct(...)` / `relay(...)` / `mixed(udp:..., relay:...)` / `none` /
+    /// `unknown`。仅用于日志,排查"慢同步走 relay 还是 direct"时一眼可见。
+    fn conn_label(&self, endpoint_id: EndpointId) -> String {
+        match self.endpoint.conn_type(endpoint_id) {
+            Some(mut watcher) => watcher.get().to_string(),
+            None => "unknown".to_string(),
+        }
+    }
 }
 
 /// Render the first 10 hex chars of a blob hash for log correlation.
@@ -147,6 +157,7 @@ impl BlobTransferPort for IrohBlobTransferAdapter {
         let native = Self::parse_ticket(ticket)?;
         let digest = Self::core_digest(native.hash());
         let hash_prefix = hex_prefix(native.hash().as_bytes());
+        let provider_id = native.addr().id;
 
         if self.has(&digest).await? {
             info!(hash = %hash_prefix, "blob fetch: local hit, skipping network");
@@ -179,6 +190,7 @@ impl BlobTransferPort for IrohBlobTransferAdapter {
                 warn!(
                     hash = %hash_prefix,
                     elapsed_ms = connect_start.elapsed().as_millis() as u64,
+                    conn = %self.conn_label(provider_id),
                     error = %e,
                     "blob fetch: endpoint.connect failed"
                 );
@@ -187,6 +199,7 @@ impl BlobTransferPort for IrohBlobTransferAdapter {
         info!(
             hash = %hash_prefix,
             elapsed_ms = connect_start.elapsed().as_millis() as u64,
+            conn = %self.conn_label(provider_id),
             "blob fetch: endpoint.connect ready, launching download"
         );
 
@@ -223,6 +236,7 @@ impl BlobTransferPort for IrohBlobTransferAdapter {
                         hash = %hash_prefix,
                         elapsed_ms = download_start.elapsed().as_millis() as u64,
                         attempt,
+                        conn = %self.conn_label(provider_id),
                         error = %e,
                         "blob fetch: downloader.stream() open failed"
                     );
@@ -246,6 +260,7 @@ impl BlobTransferPort for IrohBlobTransferAdapter {
                             provider = %id.fmt_short(),
                             elapsed_ms = download_start.elapsed().as_millis() as u64,
                             attempt,
+                            conn = %self.conn_label(provider_id),
                             "blob fetch: trying provider"
                         );
                     }
@@ -259,6 +274,7 @@ impl BlobTransferPort for IrohBlobTransferAdapter {
                             elapsed_ms = download_start.elapsed().as_millis() as u64,
                             bytes_downloaded = bytes_so_far,
                             attempt,
+                            conn = %self.conn_label(provider_id),
                             "blob fetch: provider failed (cause discarded by iroh-blobs::execute_get)"
                         );
                     }
@@ -270,6 +286,7 @@ impl BlobTransferPort for IrohBlobTransferAdapter {
                                 bytes = total,
                                 elapsed_ms = download_start.elapsed().as_millis() as u64,
                                 attempt,
+                                conn = %self.conn_label(provider_id),
                                 "blob fetch: progress checkpoint"
                             );
                             last_logged_bytes = total;
@@ -292,6 +309,7 @@ impl BlobTransferPort for IrohBlobTransferAdapter {
                             bytes = bytes_so_far,
                             elapsed_ms = download_start.elapsed().as_millis() as u64,
                             attempt,
+                            conn = %self.conn_label(provider_id),
                             "blob fetch: part complete"
                         );
                         if let Some(sink) = progress {
@@ -310,6 +328,7 @@ impl BlobTransferPort for IrohBlobTransferAdapter {
                             provider_failures,
                             tried_providers,
                             attempt,
+                            conn = %self.conn_label(provider_id),
                             "blob fetch: DownloadError signalled (split-strategy aggregate failure)"
                         );
                         break Err(BlobError::Unavailable("Download error".into()));
@@ -325,6 +344,7 @@ impl BlobTransferPort for IrohBlobTransferAdapter {
                             provider_failures,
                             tried_providers,
                             attempt,
+                            conn = %self.conn_label(provider_id),
                             error = ?e,
                             "blob fetch: downloader Error event (root cause from anyhow chain)"
                         );
@@ -365,6 +385,7 @@ impl BlobTransferPort for IrohBlobTransferAdapter {
             download_ms = fetch_start.elapsed().as_millis() as u64,
             connect_ms = (connect_start.elapsed() - fetch_start.elapsed()).as_millis() as u64,
             tried_providers = total_tried_providers,
+            conn = %self.conn_label(provider_id),
             "blob fetch: download complete"
         );
 

@@ -1,0 +1,246 @@
+//! `ApplyInboundClipboardUseCase` —— 入站剪贴板流程的编排主体。
+
+use std::sync::Arc;
+
+use tracing::{debug, error, info, instrument, warn};
+
+use uc_core::ids::EntryId;
+use uc_core::ports::ClipboardEntryRepositoryPort;
+use uc_core::SystemClipboardSnapshot;
+
+use crate::facade::blob_transfer::SharedHostEventEmitter;
+use crate::facade::host_event::{ClipboardHostEvent, HostEvent, TransferHostEvent};
+use crate::usecases::clipboard_sync::payload_codec::decode_v3_bytes_to_snapshot_and_blob_refs;
+
+use super::materializer::InboundBlobMaterializer;
+use super::ports::{InboundCapture, InboundWrite};
+use super::{ApplyInboundError, ApplyInboundInput, ApplyOutcome};
+
+pub struct ApplyInboundClipboardUseCase {
+    entry_repo: Arc<dyn ClipboardEntryRepositoryPort>,
+    capture: Arc<dyn InboundCapture>,
+    write: Arc<dyn InboundWrite>,
+    blob_materializer: Option<Arc<dyn InboundBlobMaterializer>>,
+    /// Optional host-event emitter for surfacing the inbound entry to UI
+    /// before the fetch+capture pipeline finishes. Wired only in daemon
+    /// mode; tests / CLI leave it `None`.
+    host_event_emitter: Option<SharedHostEventEmitter>,
+}
+
+impl ApplyInboundClipboardUseCase {
+    pub fn new(
+        entry_repo: Arc<dyn ClipboardEntryRepositoryPort>,
+        capture: Arc<dyn InboundCapture>,
+        write: Arc<dyn InboundWrite>,
+    ) -> Self {
+        Self {
+            entry_repo,
+            capture,
+            write,
+            blob_materializer: None,
+            host_event_emitter: None,
+        }
+    }
+
+    pub fn with_blob_materializer(
+        mut self,
+        blob_materializer: Arc<dyn InboundBlobMaterializer>,
+    ) -> Self {
+        self.blob_materializer = Some(blob_materializer);
+        self
+    }
+
+    /// Wire a host-event emitter cell. When set, ApplyInbound emits
+    /// `ClipboardHostEvent::IncomingPending` immediately after V3 decode
+    /// (before blob fetch starts) and a failure status on capture errors,
+    /// so the UI can render a placeholder card with a live progress bar.
+    pub fn with_host_event_emitter(mut self, emitter: SharedHostEventEmitter) -> Self {
+        self.host_event_emitter = Some(emitter);
+        self
+    }
+
+    fn emit_host_event(&self, event: HostEvent) {
+        let Some(cell) = self.host_event_emitter.as_ref() else {
+            return;
+        };
+        let emitter = cell.read().unwrap_or_else(|p| p.into_inner()).clone();
+        if let Err(err) = emitter.emit(event) {
+            warn!(error = %err, "apply_inbound: failed to emit host event");
+        }
+    }
+
+    #[instrument(
+        name = "apply_inbound.execute",
+        skip_all,
+        fields(
+            from_device = %input.from_device,
+            content_hash = %input.content_hash,
+            plaintext_len = input.plaintext.len(),
+        )
+    )]
+    pub async fn execute(
+        &self,
+        input: ApplyInboundInput,
+    ) -> Result<ApplyOutcome, ApplyInboundError> {
+        // 1. Dedup short-circuit. The repo's default `Ok(None)` impl
+        // (used by in-memory test fakes) degrades dedup to off — safe,
+        // worst case we re-write the OS clipboard with identical bytes.
+        let existing = self
+            .entry_repo
+            .find_entry_id_by_snapshot_hash(&input.content_hash)
+            .await
+            .map_err(|e| ApplyInboundError::DedupQuery(e.to_string()))?;
+        if let Some(existing_entry_id) = existing {
+            debug!(
+                existing_entry_id = %existing_entry_id,
+                "inbound dropped: duplicate of existing local entry"
+            );
+            return Ok(ApplyOutcome::DuplicateSkipped {
+                content_hash: input.content_hash,
+                existing_entry_id,
+            });
+        }
+
+        // 2. Decode V3 envelope. Decode failure is non-fatal — drop the
+        // frame, keep the loop alive (peer may be on a newer wire).
+        let (snapshot, blob_refs) =
+            match decode_v3_bytes_to_snapshot_and_blob_refs(input.plaintext.as_ref()) {
+                Ok(decoded) => decoded,
+                Err(e) => {
+                    let reason = e.to_string();
+                    warn!(reason, "inbound dropped: envelope decode failed");
+                    return Ok(ApplyOutcome::DecodeFailed { reason });
+                }
+            };
+
+        info!(
+            blob_ref_count = blob_refs.len(),
+            rep_count = snapshot.representations.len(),
+            rep_formats = %format_rep_summary(&snapshot),
+            "inbound: decoded V3 envelope"
+        );
+
+        // Pre-allocate the receiver-side entry_id so the UI placeholder, the
+        // blob-fetch progress events, and the eventual `clipboard.new_content`
+        // all share the same id. Without this, the placeholder card couldn't
+        // be linked to the final entry by id and we'd need a transfer_id →
+        // entry_id remap on the frontend.
+        let receiver_entry_id = EntryId::new();
+        let advertised_total_bytes: u64 = blob_refs.iter().map(|r| r.size_bytes).sum();
+        self.emit_host_event(HostEvent::Clipboard(ClipboardHostEvent::IncomingPending {
+            entry_id: receiver_entry_id.as_ref().to_string(),
+            from_device: input.from_device.as_str().to_string(),
+            total_bytes: (advertised_total_bytes > 0).then_some(advertised_total_bytes),
+        }));
+
+        let snapshot = match (blob_refs.is_empty(), &self.blob_materializer) {
+            (true, _) => snapshot,
+            (false, Some(materializer)) => {
+                let count = blob_refs.len();
+                let snapshot = materializer
+                    .materialize(
+                        input.from_device.clone(),
+                        receiver_entry_id.clone(),
+                        snapshot,
+                        blob_refs,
+                    )
+                    .await
+                    .map_err(|e| {
+                        warn!(error = %e, blob_ref_count = count, "inbound: blob materialize failed");
+                        // Tell the UI to fail the placeholder card too —
+                        // otherwise it stays stuck in "transferring".
+                        self.emit_host_event(HostEvent::Transfer(
+                            TransferHostEvent::StatusChanged {
+                                transfer_id: receiver_entry_id.as_ref().to_string(),
+                                entry_id: receiver_entry_id.as_ref().to_string(),
+                                status: "failed".to_string(),
+                                reason: Some(e.to_string()),
+                            },
+                        ));
+                        ApplyInboundError::Internal(format!("blob materialize: {e}"))
+                    })?;
+                info!(
+                    blob_ref_count = count,
+                    rep_count = snapshot.representations.len(),
+                    rep_formats = %format_rep_summary(&snapshot),
+                    "inbound: blob refs materialized into local cache"
+                );
+                snapshot
+            }
+            (false, None) => {
+                let reason =
+                    "payload contains blob refs but no blob materializer is wired".to_string();
+                warn!(reason, "inbound dropped: blob materializer missing");
+                self.emit_host_event(HostEvent::Transfer(TransferHostEvent::StatusChanged {
+                    transfer_id: receiver_entry_id.as_ref().to_string(),
+                    entry_id: receiver_entry_id.as_ref().to_string(),
+                    status: "failed".to_string(),
+                    reason: Some(reason.clone()),
+                }));
+                return Ok(ApplyOutcome::DecodeFailed { reason });
+            }
+        };
+
+        // 3. Persist via the same capture pipeline local copies use
+        // (D5: same schema). Cloning the snapshot lets us keep one for
+        // the OS write below; capture takes ownership of the original.
+        let snapshot_for_write = snapshot.clone();
+        let entry_id = self
+            .capture
+            .capture(receiver_entry_id.clone(), snapshot)
+            .await
+            .map_err(|e| ApplyInboundError::Capture(e.to_string()))?
+            .ok_or_else(|| {
+                ApplyInboundError::Internal(
+                    "capture returned None for RemotePush origin (unexpected)".to_string(),
+                )
+            })?;
+
+        // 4. Write OS clipboard with RemotePush guard. Order matters —
+        // capture must complete first so the watcher's origin lookup
+        // sees the persisted row even if it fires immediately.
+        //
+        // 送入 full snapshot（不 narrow）：platform 层内部按能力差异消化多 rep。
+        // - Windows：`write_snapshot_multi_windows` 原子写入 CF_UNICODETEXT + CF_HTML 等
+        // - macOS / Linux：`write_snapshot_multi` 的降级分支用 `SelectRepresentationPolicyV1`
+        //   选 paste-priority rep 后走单 rep 快路径（行为与上游 `narrow_to_primary` 等价）
+        //
+        // 背景：quick `260423-9do` 交付了平台层的多 rep 写入能力，但此前应用层仍在
+        // narrow，导致主流量走单 rep 快路径、新能力 0 触发。本改动把 full snapshot 直送
+        // platform 层，由 platform 根据自身 OS 能力内部分流。详见
+        // `.planning/quick/260423-a3b-windows-rep-apply-inbound-narrow/`。
+        debug!(entry_id = %entry_id, "inbound: entry persisted, writing OS clipboard");
+
+        self.write.write(snapshot_for_write).await.map_err(|e| {
+            error!(error = %e, entry_id = %entry_id, "inbound: OS clipboard write failed after capture");
+            ApplyInboundError::WriteCoordinator(e.to_string())
+        })?;
+
+        info!(entry_id = %entry_id, "inbound clipboard applied");
+        Ok(ApplyOutcome::Applied { entry_id })
+    }
+}
+
+/// Compact summary of the snapshot's representations for tracing.
+/// Format: `format_id[@mime]:bytes, ...` — always safe to log because
+/// `format_id` / `mime` / byte counts are metadata, never user payload.
+pub(super) fn format_rep_summary(snapshot: &SystemClipboardSnapshot) -> String {
+    snapshot
+        .representations
+        .iter()
+        .map(|rep| {
+            let mime_suffix = rep
+                .mime
+                .as_ref()
+                .map(|m| format!("@{}", m.as_str()))
+                .unwrap_or_default();
+            format!(
+                "{}{}:{}",
+                rep.format_id.as_str(),
+                mime_suffix,
+                rep.bytes.len()
+            )
+        })
+        .collect::<Vec<_>>()
+        .join(", ")
+}

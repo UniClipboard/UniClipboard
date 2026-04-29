@@ -557,6 +557,8 @@
       "failed": "Transfer failed",
       "pending": "Pending transfer",
       "transferring": "Transferring...",
+      "incoming": "Receiving...",
+      "incomingWithSize": "Receiving ({{size}})...",
       "statusBadge": {
         "pending": "File transfer pending",
         "transferring": "File transfer in progress",

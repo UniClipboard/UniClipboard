@@ -26,6 +26,12 @@ pub enum ClipboardHostEvent {
         /// envelope 中声明的 blob 总字节数。多个 blob 时为合计;
         /// 没有 blob(纯文本同步)时为 `None`。
         total_bytes: Option<u64>,
+        /// 从 V3 envelope `blob_refs[i].filename` 收集出来的文件名列表,
+        /// 顺序与 envelope 中 blob_ref 顺序一致;没有 filename 的 blob_ref
+        /// (例如图像 / 大二进制 representation-bound blob)被跳过。
+        /// 用于让占位卡片在 fetch 还没开始之前就能展示具体文件名,而不
+        /// 是只显示一个泛指的 "Receiving..." 文案。
+        filenames: Vec<String>,
     },
 }
 

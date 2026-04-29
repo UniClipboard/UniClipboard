@@ -548,6 +548,8 @@
       "failed": "传输失败",
       "pending": "等待传输",
       "transferring": "传输中...",
+      "incoming": "正在接收...",
+      "incomingWithSize": "正在接收 ({{size}})...",
       "statusBadge": {
         "pending": "文件等待传输",
         "transferring": "文件传输中",

@@ -44,6 +44,8 @@ interface ClipboardIncomingPendingPayload {
   entryId: string
   fromDevice: string
   totalBytes?: number | null
+  /** Filenames the daemon already knows (from V3 envelope). May be empty. */
+  filenames?: string[]
 }
 
 export function useClipboardEventStream({
@@ -84,6 +86,7 @@ export function useClipboardEventStream({
             entryId: payload.entryId,
             fromDevice: payload.fromDevice,
             totalBytes: payload.totalBytes ?? null,
+            filenameCount: payload.filenames?.length ?? 0,
           },
           'clipboard.incoming_pending payload'
         )
@@ -91,6 +94,7 @@ export function useClipboardEventStream({
           entryId: payload.entryId,
           fromDevice: payload.fromDevice,
           totalBytes: payload.totalBytes ?? null,
+          filenames: payload.filenames ?? [],
           createdAt: Date.now(),
         }
         dispatch(addPendingEntry(pending))

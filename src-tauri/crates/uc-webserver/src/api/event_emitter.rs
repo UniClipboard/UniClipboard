@@ -34,6 +34,9 @@ struct ClipboardIncomingPendingPayload {
     from_device: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     total_bytes: Option<u64>,
+    /// 文件名列表(顺序与 envelope 的 blob_refs 一致)。空列表表示
+    /// 该入站事件没有可显示的文件名(纯文本 / 仅图像等)。
+    filenames: Vec<String>,
 }
 
 pub struct DaemonApiEventEmitter {
@@ -142,6 +145,7 @@ impl HostEventEmitterPort for DaemonApiEventEmitter {
                 entry_id,
                 from_device,
                 total_bytes,
+                filenames,
             }) => {
                 self.emit_ws_event(
                     ws_event::CLIPBOARD_INCOMING_PENDING,
@@ -152,6 +156,7 @@ impl HostEventEmitterPort for DaemonApiEventEmitter {
                         entry_id,
                         from_device,
                         total_bytes,
+                        filenames,
                     },
                 );
             }

@@ -127,10 +127,17 @@ impl ApplyInboundClipboardUseCase {
         // entry_id remap on the frontend.
         let receiver_entry_id = EntryId::new();
         let advertised_total_bytes: u64 = blob_refs.iter().map(|r| r.size_bytes).sum();
+        // free-standing files 走 V3BlobRef.filename;rep-bound blobs (image /
+        // 大二进制) 通常 filename 为 None,自动被 filter_map 跳过。
+        let advertised_filenames: Vec<String> = blob_refs
+            .iter()
+            .filter_map(|r| r.filename.clone())
+            .collect();
         self.emit_host_event(HostEvent::Clipboard(ClipboardHostEvent::IncomingPending {
             entry_id: receiver_entry_id.as_ref().to_string(),
             from_device: input.from_device.as_str().to_string(),
             total_bytes: (advertised_total_bytes > 0).then_some(advertised_total_bytes),
+            filenames: advertised_filenames,
         }));
 
         let snapshot = match (blob_refs.is_empty(), &self.blob_materializer) {

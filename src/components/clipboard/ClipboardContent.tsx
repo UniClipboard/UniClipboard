@@ -32,7 +32,12 @@ import { createLogger } from '@/lib/logger'
 import { cn } from '@/lib/utils'
 import { captureUserIntent } from '@/observability/breadcrumbs'
 import { useAppDispatch, useAppSelector } from '@/store/hooks'
-import { removeClipboardItem, copyToClipboard, markEntryStale } from '@/store/slices/clipboardSlice'
+import {
+  removeClipboardItem,
+  copyToClipboard,
+  markEntryStale,
+  type PendingClipboardEntry,
+} from '@/store/slices/clipboardSlice'
 import { linkTransferToEntry } from '@/store/slices/fileTransferSlice'
 import { selectEntryTransferStatus } from '@/store/slices/fileTransferSlice'
 
@@ -129,6 +134,54 @@ function formatRelativeTime(
   if (diffMins < 60) return t('clipboard.time.minutesAgo', { minutes: diffMins })
   if (diffMins < 1440) return t('clipboard.time.hoursAgo', { hours: Math.floor(diffMins / 60) })
   return t('clipboard.time.daysAgo', { days: Math.floor(diffMins / 1440) })
+}
+
+/** Compact byte formatter used only for placeholder card hint text. */
+function formatBytesShort(bytes: number): string {
+  if (bytes <= 0) return '0 B'
+  const units = ['B', 'KB', 'MB', 'GB']
+  const k = 1024
+  const i = Math.min(Math.floor(Math.log(bytes) / Math.log(k)), units.length - 1)
+  const value = bytes / Math.pow(k, i)
+  return `${value < 10 ? value.toFixed(1) : Math.round(value)} ${units[i]}`
+}
+
+/**
+ * Pick the placeholder hint text for a pending inbound entry. Used as the
+ * row preview when the placeholder has no filenames (text-only / pure
+ * image inbound) — when filenames exist we let the normal `file` row
+ * preview path render the filename list, matching the eventual real entry.
+ */
+function buildPendingPreview(
+  entry: PendingClipboardEntry,
+  t: (key: string, opts?: Record<string, unknown>) => string
+): string {
+  if (entry.totalBytes != null && entry.totalBytes > 0) {
+    return t('clipboard.transfer.incomingWithSize', {
+      size: formatBytesShort(entry.totalBytes),
+    })
+  }
+  return t('clipboard.transfer.incoming')
+}
+
+/**
+ * Build a minimal `ClipboardFileItem` for a pending inbound entry so the
+ * right-side `FilePreview` can render the filename + progress overlay
+ * during the fetch window (otherwise it short-circuits on null content
+ * and the panel goes blank until the real entry lands).
+ *
+ * Per-file sizes aren't known from `incoming_pending` (only the envelope
+ * total is). For single-file inbounds we map total → that one file's size;
+ * for multi-file we report `-1` per slot, which `FilePreview` already
+ * understands as "size unknown, hide the byte count".
+ */
+function buildPendingFileContent(entry: PendingClipboardEntry): ClipboardFileItem | null {
+  if (entry.filenames.length === 0) return null
+  const fileSizes: number[] =
+    entry.filenames.length === 1 && entry.totalBytes != null && entry.totalBytes > 0
+      ? [entry.totalBytes]
+      : entry.filenames.map(() => -1)
+  return { file_names: entry.filenames, file_sizes: fileSizes }
 }
 
 const ClipboardContent: React.FC<ClipboardContentProps> = ({
@@ -310,6 +363,13 @@ const ClipboardContent: React.FC<ClipboardContentProps> = ({
     // not yet fetched + persisted). We surface them as 'file' so the
     // existing transferring/pending visuals in ClipboardItemRow apply.
     // Filter by entryId so once the real entry lands we don't double-count.
+    // `textPreview` is built with a 3-tier fallback so the row never
+    // renders blank:
+    //   1. ≥1 filename advertised in the V3 envelope → show first name
+    //      (`+N` suffix when multiple), exactly the same shape as the
+    //      eventual real `ClipboardFileItem` row;
+    //   2. no filenames but a known total size → "Receiving (3.2 MB)…";
+    //   3. neither → generic "Receiving…" fallback (e.g. pure image blob).
     const realIds = new Set(realItems.map(it => it.id))
     const pendingDisplayItems: DisplayClipboardItem[] = pendingItems
       .filter(p => !realIds.has(p.entryId))
@@ -318,8 +378,14 @@ const ClipboardContent: React.FC<ClipboardContentProps> = ({
         type: 'file' as const,
         time: t('clipboard.time.justNow'),
         activeTime: p.createdAt,
-        content: null,
+        // Synthesize a ClipboardFileItem from the V3-advertised filenames so
+        // FilePreview renders the file card + progress overlay immediately,
+        // not just after fetch completes. Falls back to null only when the
+        // inbound has no filenames at all (pure image / text), in which case
+        // textPreview carries the "Receiving..." fallback.
+        content: buildPendingFileContent(p),
         device: p.fromDevice,
+        textPreview: buildPendingPreview(p, t),
       }))
 
     let items = [...pendingDisplayItems, ...realItems]

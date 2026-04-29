@@ -23,6 +23,12 @@ export interface PendingClipboardEntry {
   entryId: string
   fromDevice: string
   totalBytes: number | null
+  /**
+   * Filenames advertised in the V3 envelope (free-standing files only).
+   * Empty when the inbound entry is text-only or pure image/binary blobs
+   * with no associated filename.
+   */
+  filenames: string[]
   createdAt: number
 }
 

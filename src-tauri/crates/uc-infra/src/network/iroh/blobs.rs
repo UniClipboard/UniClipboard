@@ -125,12 +125,23 @@ fn hex_prefix(bytes: &[u8]) -> String {
 impl BlobTransferPort for IrohBlobTransferAdapter {
     #[instrument(skip_all, fields(bytes = ciphertext.len()))]
     async fn publish(&self, ciphertext: Bytes) -> Result<BlobDigest, BlobError> {
+        // GH#487: 大 blob 的 add_bytes 包含 BLAKE3 + BAO outboard 编码 +
+        // 写盘,冷启动 / 慢盘场景下整段都可能阻塞十几秒。这里独立计时,让
+        // 上游 publish_blob 的 publish_ms 能与本层 add_bytes_ms 对齐核对。
+        let bytes = ciphertext.len() as u64;
+        let started = Instant::now();
         let tag = self
             .store
             .blobs()
             .add_bytes(ciphertext)
             .await
             .map_err(|e| BlobError::Internal(e.to_string()))?;
+        info!(
+            bytes,
+            add_bytes_ms = started.elapsed().as_millis() as u64,
+            blob_hash = %hex_prefix(tag.hash.as_bytes()),
+            "iroh blob publish: add_bytes completed"
+        );
         Ok(Self::core_digest(tag.hash))
     }
 

@@ -1,11 +1,12 @@
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::time::Instant;
 
 use anyhow::Context;
 use async_trait::async_trait;
 use bytes::Bytes;
 use thiserror::Error;
-use tracing::warn;
+use tracing::{info, warn};
 use uc_core::ids::EntryId;
 use uc_core::ports::SettingsPort;
 use uc_core::{ClipboardChangeOrigin, SystemClipboardSnapshot};
@@ -83,6 +84,15 @@ impl ClipboardOutboundPort for ClipboardOutboundDispatcher {
             });
         }
 
+        // Phase timing: dispatch_capture 是 outbound 关键路径,从 capture
+        // 完成到 dispatch 之间任何阶段卡顿都会让 UI 看起来"复制后没动静"。
+        // 拆分阶段计时是为了在用户报"复制后很久才同步"这类问题时,能快速
+        // 区分卡在 metadata / plan / publish_files / publish_inline / dispatch
+        // 哪一段。详见 GH#487。
+        let entry_id_str = input.entry_id.clone();
+        let snapshot_rep_count = input.snapshot.representations.len();
+        let dispatch_start = Instant::now();
+
         let resolved_paths = if input.origin == ClipboardChangeOrigin::LocalCapture {
             extract_file_paths_from_snapshot(&input.snapshot)
         } else {
@@ -90,13 +100,19 @@ impl ClipboardOutboundPort for ClipboardOutboundDispatcher {
         };
         let extracted_paths_count = resolved_paths.len();
 
+        let metadata_start = Instant::now();
         let mut file_candidates = Vec::with_capacity(resolved_paths.len());
+        let mut total_file_metadata_bytes: u64 = 0;
         for path in resolved_paths {
             match tokio::fs::metadata(&path).await {
-                Ok(meta) => file_candidates.push(FileCandidate {
-                    path,
-                    size: meta.len(),
-                }),
+                Ok(meta) => {
+                    total_file_metadata_bytes =
+                        total_file_metadata_bytes.saturating_add(meta.len());
+                    file_candidates.push(FileCandidate {
+                        path,
+                        size: meta.len(),
+                    });
+                }
                 Err(err) => warn!(
                     error = %err,
                     file = %path.display(),
@@ -104,7 +120,9 @@ impl ClipboardOutboundPort for ClipboardOutboundDispatcher {
                 ),
             }
         }
+        let metadata_ms = metadata_start.elapsed().as_millis() as u64;
 
+        let plan_start = Instant::now();
         let planner = OutboundSyncPlanner::new(Arc::clone(&self.settings));
         let plan = planner
             .plan(
@@ -114,25 +132,51 @@ impl ClipboardOutboundPort for ClipboardOutboundDispatcher {
                 extracted_paths_count,
             )
             .await;
+        let plan_ms = plan_start.elapsed().as_millis() as u64;
 
         let Some(mut clipboard_intent) = plan.clipboard else {
+            info!(
+                entry_id = %entry_id_str,
+                metadata_ms,
+                plan_ms,
+                "outbound: dispatch_capture skipped (planner suppressed)"
+            );
             return Ok(ClipboardOutboundOutcome::Skipped {
                 reason: "planner_suppressed".to_string(),
             });
         };
 
+        info!(
+            entry_id = %entry_id_str,
+            snapshot_rep_count,
+            extracted_paths_count,
+            file_candidate_count = plan.files.len(),
+            total_file_bytes = total_file_metadata_bytes,
+            metadata_ms,
+            plan_ms,
+            "outbound: dispatch_capture entering publish phase"
+        );
+
         let entry_id = EntryId::from(input.entry_id.as_str());
+
+        let publish_files_start = Instant::now();
         let mut blob_refs =
             publish_file_blob_refs(&self.blob_transfer, &plan.files, &entry_id).await?;
+        let publish_files_ms = publish_files_start.elapsed().as_millis() as u64;
+
+        let publish_inline_start = Instant::now();
         let mut image_blob_refs = publish_oversized_inline_blob_refs(
             &self.blob_transfer,
             &mut clipboard_intent.snapshot,
             &entry_id,
         )
         .await?;
+        let publish_inline_ms = publish_inline_start.elapsed().as_millis() as u64;
+
         blob_refs.append(&mut image_blob_refs);
         let blob_ref_count = blob_refs.len();
 
+        let dispatch_phase_start = Instant::now();
         let dispatch_result = if blob_refs.is_empty() {
             self.clipboard_sync
                 .dispatch_snapshot(clipboard_intent.snapshot, input.origin)
@@ -147,6 +191,20 @@ impl ClipboardOutboundPort for ClipboardOutboundDispatcher {
                 .await
         }
         .map_err(|err| ClipboardOutboundError::Internal(err.to_string()))?;
+        let dispatch_ms = dispatch_phase_start.elapsed().as_millis() as u64;
+
+        info!(
+            entry_id = %entry_id_str,
+            blob_ref_count,
+            publish_files_ms,
+            publish_inline_ms,
+            dispatch_ms,
+            total_ms = dispatch_start.elapsed().as_millis() as u64,
+            accepted = dispatch_result.total_accepted,
+            offline = dispatch_result.total_offline,
+            errored = dispatch_result.total_errored,
+            "outbound: dispatch_capture completed"
+        );
 
         Ok(ClipboardOutboundOutcome::Dispatched {
             accepted: dispatch_result.total_accepted,
@@ -277,6 +335,7 @@ async fn publish_oversized_inline_blob_refs(
         let size_bytes = rep.bytes.len() as u64;
         let plaintext = std::mem::take(&mut rep.bytes);
 
+        let publish_start = Instant::now();
         let result = blob_transfer
             .publish_blob(PublishBlobCommand {
                 plaintext: Bytes::from(plaintext),
@@ -284,6 +343,17 @@ async fn publish_oversized_inline_blob_refs(
             })
             .await
             .map_err(|err| ClipboardOutboundError::Internal(err.to_string()))?;
+        let publish_ms = publish_start.elapsed().as_millis() as u64;
+
+        info!(
+            entry_id = %entry_id.as_str(),
+            representation_index = idx,
+            size_bytes,
+            mime = mime_str.as_deref().unwrap_or("?"),
+            reused_existing = result.reused_existing,
+            publish_ms,
+            "outbound: oversized inline rep published as blob"
+        );
 
         let representation_index = u32::try_from(idx).map_err(|_| {
             ClipboardOutboundError::Internal(format!("representation index {idx} cannot fit u32"))
@@ -310,11 +380,18 @@ async fn publish_file_blob_refs(
     let mut blob_refs = Vec::with_capacity(files.len());
 
     for file in files {
+        // Phase timing: 大文件 outbound 路径上 read_ms 经常超过 hash/publish。
+        // 杀毒首扫、网络盘、OneDrive 同步都会让 tokio::fs::read 阻塞十几秒,
+        // 这里把 read 与 publish 分开计时,便于 GH#487 后续诊断时定位瓶颈。
+        let read_start = Instant::now();
         let plaintext = tokio::fs::read(&file.path)
             .await
             .with_context(|| format!("read outbound file {}", file.path.display()))
             .map_err(|err| ClipboardOutboundError::Internal(err.to_string()))?;
+        let read_ms = read_start.elapsed().as_millis() as u64;
         let size_bytes = plaintext.len() as u64;
+
+        let publish_start = Instant::now();
         let result = blob_transfer
             .publish_blob(PublishBlobCommand {
                 plaintext: Bytes::from(plaintext),
@@ -322,6 +399,17 @@ async fn publish_file_blob_refs(
             })
             .await
             .map_err(|err| ClipboardOutboundError::Internal(err.to_string()))?;
+        let publish_ms = publish_start.elapsed().as_millis() as u64;
+
+        info!(
+            entry_id = %entry_id.as_str(),
+            file = %file.path.display(),
+            size_bytes,
+            reused_existing = result.reused_existing,
+            read_ms,
+            publish_ms,
+            "outbound: file blob published"
+        );
 
         blob_refs.push(V3BlobRef {
             ticket: result.ticket,

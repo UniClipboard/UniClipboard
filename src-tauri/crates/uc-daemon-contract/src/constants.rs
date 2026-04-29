@@ -38,6 +38,11 @@ pub mod ws_event {
     /// Setup invitation revoked (Slice4 P3 T3.1) — invitation cancelled or expired before redemption.
     pub const SETUP_INVITATION_REVOKED: &str = "setup.invitationRevoked";
     pub const CLIPBOARD_NEW_CONTENT: &str = "clipboard.new_content";
+    /// 接收端收到 inbound clipboard,V3 envelope 已解码,blob 拉取尚未完成。
+    /// 携带最终 entry_id —— 前端在剪贴板列表中插入占位卡片,与
+    /// `file-transfer.progress` 一起显示传输进度。后续 `clipboard.new_content`
+    /// 到达时占位卡片自然被真实 entry 替换(同 entry_id)。
+    pub const CLIPBOARD_INCOMING_PENDING: &str = "clipboard.incoming_pending";
     pub const FILE_TRANSFER_STATUS_CHANGED: &str = "file-transfer.status_changed";
     pub const FILE_TRANSFER_PROGRESS: &str = "file-transfer.progress";
     pub const ENCRYPTION_SESSION_READY: &str = "encryption.session_ready";

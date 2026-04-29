@@ -27,6 +27,15 @@ struct ClipboardNewContentPayload {
     content_type: Option<String>,
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ClipboardIncomingPendingPayload {
+    entry_id: String,
+    from_device: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    total_bytes: Option<u64>,
+}
+
 pub struct DaemonApiEventEmitter {
     event_tx: broadcast::Sender<DaemonWsEvent>,
 }
@@ -126,6 +135,23 @@ impl HostEventEmitterPort for DaemonApiEventEmitter {
                         preview,
                         origin: format!("{:?}", origin).to_lowercase(),
                         content_type: None,
+                    },
+                );
+            }
+            HostEvent::Clipboard(ClipboardHostEvent::IncomingPending {
+                entry_id,
+                from_device,
+                total_bytes,
+            }) => {
+                self.emit_ws_event(
+                    ws_event::CLIPBOARD_INCOMING_PENDING,
+                    ws_topic::CLIPBOARD,
+                    None,
+                    Self::now_ms(),
+                    ClipboardIncomingPendingPayload {
+                        entry_id,
+                        from_device,
+                        total_bytes,
                     },
                 );
             }

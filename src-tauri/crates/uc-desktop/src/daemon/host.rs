@@ -59,6 +59,7 @@ pub fn run(run_mode: DaemonRunMode) -> anyhow::Result<()> {
         file_cache_dir: file_cache_dir.clone(),
         file_transfer_lifecycle,
         clipboard_write_coordinator: clipboard_write_coordinator.clone(),
+        host_event_emitter: emitter_cell.clone(),
     })?;
 
     spawn_daemon_background_tasks(&rt, background, blob_ports, task_registry.clone());

@@ -3,6 +3,7 @@ use std::sync::Arc;
 use anyhow::Result;
 use async_trait::async_trait;
 use thiserror::Error;
+use uc_core::ids::EntryId;
 use uc_core::{ClipboardChangeOrigin, SystemClipboardSnapshot};
 
 use crate::clipboard_capture::CaptureClipboardUseCase;
@@ -24,7 +25,7 @@ pub trait ClipboardCapturePort: Send + Sync {
         &self,
         snapshot: SystemClipboardSnapshot,
         origin: ClipboardChangeOrigin,
-        flow_id: Option<String>,
+        preset_entry_id: Option<EntryId>,
     ) -> Result<Option<CapturedClipboardEntryView>, ClipboardCaptureFacadeError>;
 }
 
@@ -34,10 +35,10 @@ impl ClipboardCapturePort for CaptureClipboardUseCase {
         &self,
         snapshot: SystemClipboardSnapshot,
         origin: ClipboardChangeOrigin,
-        flow_id: Option<String>,
+        preset_entry_id: Option<EntryId>,
     ) -> Result<Option<CapturedClipboardEntryView>, ClipboardCaptureFacadeError> {
         let entry_id = self
-            .execute_with_origin(snapshot, origin, flow_id)
+            .execute_with_origin(snapshot, origin, preset_entry_id)
             .await
             .map_err(|err| ClipboardCaptureFacadeError::Internal(err.to_string()))?;
         Ok(entry_id.map(|entry_id| CapturedClipboardEntryView {
@@ -59,9 +60,11 @@ impl ClipboardCaptureFacade {
         &self,
         snapshot: SystemClipboardSnapshot,
         origin: ClipboardChangeOrigin,
-        flow_id: Option<String>,
+        preset_entry_id: Option<EntryId>,
     ) -> Result<Option<CapturedClipboardEntryView>, ClipboardCaptureFacadeError> {
-        self.capture.capture(snapshot, origin, flow_id).await
+        self.capture
+            .capture(snapshot, origin, preset_entry_id)
+            .await
     }
 }
 
@@ -79,7 +82,7 @@ mod tests {
             &self,
             _snapshot: SystemClipboardSnapshot,
             _origin: ClipboardChangeOrigin,
-            _flow_id: Option<String>,
+            _preset_entry_id: Option<EntryId>,
         ) -> Result<Option<CapturedClipboardEntryView>, ClipboardCaptureFacadeError> {
             Ok(Some(CapturedClipboardEntryView {
                 entry_id: "entry-a".to_string(),
@@ -97,7 +100,7 @@ mod tests {
                     ts_ms: 0,
                 },
                 ClipboardChangeOrigin::LocalCapture,
-                Some("flow-a".to_string()),
+                Some(EntryId::from("entry-preset")),
             )
             .await
             .unwrap();

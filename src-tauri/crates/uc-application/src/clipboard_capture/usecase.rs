@@ -84,11 +84,16 @@ impl CaptureClipboardUseCase {
             .ok_or_else(|| anyhow::anyhow!("local capture should always persist an entry"))
     }
 
+    /// `preset_entry_id` 让上层在 capture 之前预先决定本次产物的 entry_id。
+    /// inbound 同步路径需要这个能力:fetch + capture 完成才能把 OS 剪贴板写完,
+    /// 但 UI 进度卡片必须在 fetch 之前就能挂上;预设 entry_id 让占位卡片和最终
+    /// entry 共享同一个 id,前端无需做 transfer_id → entry_id 的合并。
+    /// 本地 capture 路径传 `None` 即可,内部按既有逻辑生成新 id。
     pub async fn execute_with_origin(
         &self,
         snapshot: SystemClipboardSnapshot,
         origin: ClipboardChangeOrigin,
-        _flow_id: Option<String>,
+        preset_entry_id: Option<EntryId>,
     ) -> Result<Option<EntryId>> {
         // Root span: all pipeline stages are children of clipboard.flow.
         // The origin field distinguishes local capture from remote push.
@@ -206,7 +211,7 @@ impl CaptureClipboardUseCase {
             // 4. policy.select(snapshot) — purely sync, .entered() is safe (no .await inside)
             let (entry_id, new_selection) = {
                 let _guard = info_span!(stages::SELECT_POLICY).entered();
-                let entry_id = EntryId::new();
+                let entry_id = preset_entry_id.unwrap_or_else(EntryId::new);
                 let selection = self.representation_policy.select(&snapshot)?;
                 let new_selection = ClipboardSelectionDecision::new(entry_id.clone(), selection);
                 (entry_id, new_selection)

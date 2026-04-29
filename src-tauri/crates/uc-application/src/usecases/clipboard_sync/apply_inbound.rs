@@ -58,7 +58,9 @@ use crate::clipboard_capture::CaptureClipboardUseCase;
 use crate::clipboard_write::{ClipboardWriteCoordinator, ClipboardWriteIntent};
 use crate::facade::blob_transfer::{
     BlobTransferFacade, FetchBlobCommand, FetchBlobResult, FetchTransferContext,
+    SharedHostEventEmitter,
 };
+use crate::facade::host_event::{ClipboardHostEvent, HostEvent, TransferHostEvent};
 use crate::usecases::clipboard_sync::payload_codec::{
     decode_v3_bytes_to_snapshot_and_blob_refs, V3BlobRef,
 };
@@ -110,19 +112,38 @@ pub enum ApplyInboundError {
 /// mock.
 #[async_trait]
 pub trait InboundCapture: Send + Sync {
-    /// Persist `snapshot` as a `RemotePush`-origin entry. Returns
-    /// `Ok(Some(EntryId))` on success, `Ok(None)` only in the legitimate
-    /// "no supported representation" / `LocalRestore` short-circuit cases
-    /// (which `RemotePush` never hits in practice — daemon treats `None`
-    /// as `ApplyInboundError::Internal`).
-    async fn capture(&self, snapshot: SystemClipboardSnapshot) -> Result<Option<EntryId>>;
+    /// Persist `snapshot` as a `RemotePush`-origin entry under the
+    /// caller-supplied `preset_entry_id`. The caller (ApplyInbound) decides
+    /// the entry_id at the very start of the inbound pipeline so that
+    /// blob-fetch progress events and the eventual `clipboard.new_content`
+    /// event share the same id; the frontend can then key its placeholder
+    /// card on this id and let it be replaced by the real entry without a
+    /// transfer_id → entry_id remap step.
+    ///
+    /// Returns `Ok(Some(entry_id))` on success, `Ok(None)` only in the
+    /// legitimate "no supported representation" / `LocalRestore`
+    /// short-circuit cases (which `RemotePush` never hits in practice —
+    /// daemon treats `None` as `ApplyInboundError::Internal`).
+    async fn capture(
+        &self,
+        preset_entry_id: EntryId,
+        snapshot: SystemClipboardSnapshot,
+    ) -> Result<Option<EntryId>>;
 }
 
 #[async_trait]
 impl InboundCapture for CaptureClipboardUseCase {
-    async fn capture(&self, snapshot: SystemClipboardSnapshot) -> Result<Option<EntryId>> {
-        self.execute_with_origin(snapshot, ClipboardChangeOrigin::RemotePush, None)
-            .await
+    async fn capture(
+        &self,
+        preset_entry_id: EntryId,
+        snapshot: SystemClipboardSnapshot,
+    ) -> Result<Option<EntryId>> {
+        self.execute_with_origin(
+            snapshot,
+            ClipboardChangeOrigin::RemotePush,
+            Some(preset_entry_id),
+        )
+        .await
     }
 }
 
@@ -149,9 +170,13 @@ impl InboundWrite for ClipboardWriteCoordinator {
 /// 测试用 mock 固定调用顺序,避免触碰真实文件系统。
 #[async_trait]
 pub trait InboundBlobMaterializer: Send + Sync {
+    /// `receiver_entry_id` 是 ApplyInbound 在流程入口生成的接收端 entry_id,
+    /// 用作所有 blob 拉取的 transfer_id —— 让占位卡片、进度事件和最终
+    /// `NewContent` 共享同一个标识,前端无需做合并映射。
     async fn materialize(
         &self,
         from_device: DeviceId,
+        receiver_entry_id: EntryId,
         snapshot: SystemClipboardSnapshot,
         blob_refs: Vec<V3BlobRef>,
     ) -> Result<SystemClipboardSnapshot>;
@@ -187,6 +212,7 @@ impl InboundBlobMaterializer for FileCacheBlobMaterializer {
     async fn materialize(
         &self,
         from_device: DeviceId,
+        receiver_entry_id: EntryId,
         mut snapshot: SystemClipboardSnapshot,
         blob_refs: Vec<V3BlobRef>,
     ) -> Result<SystemClipboardSnapshot> {
@@ -286,10 +312,13 @@ impl InboundBlobMaterializer for FileCacheBlobMaterializer {
                 "materialize: fetching blob"
             );
 
-            // transfer_id 直接复用 entry_id —— 一个 entry 对应一次 blob 拉取,
-            // 前端 useTransferProgress 用它定位 UI(每个 entry 一个进度条)。
+            // transfer_id 用接收端的 entry_id ——
+            // ApplyInbound 已在流程入口预生成,贯穿到 capture 后的 NewContent。
+            // 即便 envelope 含多个 blob_ref,也共享同一 transfer_id:前端按
+            // 累计字节数显示总进度即可。`blob_ref.entry_id` 是发送端 id,
+            // 仅用于 iroh tag,不参与前端关联。
             let transfer_context = FetchTransferContext {
-                transfer_id: blob_ref.entry_id.as_ref().to_string(),
+                transfer_id: receiver_entry_id.as_ref().to_string(),
                 peer_id: from_device.as_str().to_string(),
                 total_bytes: Some(advertised_size),
             };
@@ -373,6 +402,10 @@ pub struct ApplyInboundClipboardUseCase {
     capture: Arc<dyn InboundCapture>,
     write: Arc<dyn InboundWrite>,
     blob_materializer: Option<Arc<dyn InboundBlobMaterializer>>,
+    /// Optional host-event emitter for surfacing the inbound entry to UI
+    /// before the fetch+capture pipeline finishes. Wired only in daemon
+    /// mode; tests / CLI leave it `None`.
+    host_event_emitter: Option<SharedHostEventEmitter>,
 }
 
 fn is_file_list_representation(rep: &ObservedClipboardRepresentation) -> bool {
@@ -456,6 +489,7 @@ impl ApplyInboundClipboardUseCase {
             capture,
             write,
             blob_materializer: None,
+            host_event_emitter: None,
         }
     }
 
@@ -465,6 +499,25 @@ impl ApplyInboundClipboardUseCase {
     ) -> Self {
         self.blob_materializer = Some(blob_materializer);
         self
+    }
+
+    /// Wire a host-event emitter cell. When set, ApplyInbound emits
+    /// `ClipboardHostEvent::IncomingPending` immediately after V3 decode
+    /// (before blob fetch starts) and a failure status on capture errors,
+    /// so the UI can render a placeholder card with a live progress bar.
+    pub fn with_host_event_emitter(mut self, emitter: SharedHostEventEmitter) -> Self {
+        self.host_event_emitter = Some(emitter);
+        self
+    }
+
+    fn emit_host_event(&self, event: HostEvent) {
+        let Some(cell) = self.host_event_emitter.as_ref() else {
+            return;
+        };
+        let emitter = cell.read().unwrap_or_else(|p| p.into_inner()).clone();
+        if let Err(err) = emitter.emit(event) {
+            warn!(error = %err, "apply_inbound: failed to emit host event");
+        }
     }
 
     #[instrument(
@@ -518,15 +571,43 @@ impl ApplyInboundClipboardUseCase {
             "inbound: decoded V3 envelope"
         );
 
+        // Pre-allocate the receiver-side entry_id so the UI placeholder, the
+        // blob-fetch progress events, and the eventual `clipboard.new_content`
+        // all share the same id. Without this, the placeholder card couldn't
+        // be linked to the final entry by id and we'd need a transfer_id →
+        // entry_id remap on the frontend.
+        let receiver_entry_id = EntryId::new();
+        let advertised_total_bytes: u64 = blob_refs.iter().map(|r| r.size_bytes).sum();
+        self.emit_host_event(HostEvent::Clipboard(ClipboardHostEvent::IncomingPending {
+            entry_id: receiver_entry_id.as_ref().to_string(),
+            from_device: input.from_device.as_str().to_string(),
+            total_bytes: (advertised_total_bytes > 0).then_some(advertised_total_bytes),
+        }));
+
         let snapshot = match (blob_refs.is_empty(), &self.blob_materializer) {
             (true, _) => snapshot,
             (false, Some(materializer)) => {
                 let count = blob_refs.len();
                 let snapshot = materializer
-                    .materialize(input.from_device.clone(), snapshot, blob_refs)
+                    .materialize(
+                        input.from_device.clone(),
+                        receiver_entry_id.clone(),
+                        snapshot,
+                        blob_refs,
+                    )
                     .await
                     .map_err(|e| {
                         warn!(error = %e, blob_ref_count = count, "inbound: blob materialize failed");
+                        // Tell the UI to fail the placeholder card too —
+                        // otherwise it stays stuck in "transferring".
+                        self.emit_host_event(HostEvent::Transfer(
+                            TransferHostEvent::StatusChanged {
+                                transfer_id: receiver_entry_id.as_ref().to_string(),
+                                entry_id: receiver_entry_id.as_ref().to_string(),
+                                status: "failed".to_string(),
+                                reason: Some(e.to_string()),
+                            },
+                        ));
                         ApplyInboundError::Internal(format!("blob materialize: {e}"))
                     })?;
                 info!(
@@ -541,6 +622,12 @@ impl ApplyInboundClipboardUseCase {
                 let reason =
                     "payload contains blob refs but no blob materializer is wired".to_string();
                 warn!(reason, "inbound dropped: blob materializer missing");
+                self.emit_host_event(HostEvent::Transfer(TransferHostEvent::StatusChanged {
+                    transfer_id: receiver_entry_id.as_ref().to_string(),
+                    entry_id: receiver_entry_id.as_ref().to_string(),
+                    status: "failed".to_string(),
+                    reason: Some(reason.clone()),
+                }));
                 return Ok(ApplyOutcome::DecodeFailed { reason });
             }
         };
@@ -551,7 +638,7 @@ impl ApplyInboundClipboardUseCase {
         let snapshot_for_write = snapshot.clone();
         let entry_id = self
             .capture
-            .capture(snapshot)
+            .capture(receiver_entry_id.clone(), snapshot)
             .await
             .map_err(|e| ApplyInboundError::Capture(e.to_string()))?
             .ok_or_else(|| {
@@ -645,7 +732,11 @@ mod tests {
         pub Capture {}
         #[async_trait]
         impl InboundCapture for Capture {
-            async fn capture(&self, snapshot: SystemClipboardSnapshot) -> Result<Option<EntryId>>;
+            async fn capture(
+                &self,
+                preset_entry_id: EntryId,
+                snapshot: SystemClipboardSnapshot,
+            ) -> Result<Option<EntryId>>;
         }
     }
 
@@ -664,6 +755,7 @@ mod tests {
             async fn materialize(
                 &self,
                 from_device: DeviceId,
+                receiver_entry_id: EntryId,
                 snapshot: SystemClipboardSnapshot,
                 blob_refs: Vec<V3BlobRef>,
             ) -> Result<SystemClipboardSnapshot>;
@@ -741,7 +833,7 @@ mod tests {
         capture
             .expect_capture()
             .times(1)
-            .returning(|_| Ok(Some(EntryId::from("entry-new"))));
+            .returning(|_, _| Ok(Some(EntryId::from("entry-new"))));
 
         let mut write = MockWrite::new();
         write.expect_write().times(1).returning(|_| Ok(()));
@@ -829,7 +921,7 @@ mod tests {
             .returning(|_| Ok(None));
 
         let mut capture = MockCapture::new();
-        capture.expect_capture().times(1).returning(|_| Ok(None));
+        capture.expect_capture().times(1).returning(|_, _| Ok(None));
 
         // Zero expectations on write.
         let write = MockWrite::new();
@@ -868,7 +960,7 @@ mod tests {
         capture
             .expect_capture()
             .times(1)
-            .returning(|_| Ok(Some(EntryId::from("entry-committed"))));
+            .returning(|_, _| Ok(Some(EntryId::from("entry-committed"))));
 
         let mut write = MockWrite::new();
         write
@@ -958,11 +1050,11 @@ mod tests {
         materializer
             .expect_materialize()
             .times(1)
-            .withf(move |_from_device, snapshot, refs| {
+            .withf(move |_from_device, _receiver_entry_id, snapshot, refs| {
                 snapshot.representations[0].bytes == b"file:///sender/original.txt\n"
                     && refs == &vec![blob_ref.clone()]
             })
-            .returning(|_from_device, mut snapshot, _| {
+            .returning(|_from_device, _receiver_entry_id, mut snapshot, _| {
                 snapshot.representations[0].bytes = b"file:///local/cache/original.txt\n".to_vec();
                 Ok(snapshot)
             });
@@ -973,9 +1065,9 @@ mod tests {
         let mut capture = MockCapture::new();
         capture
             .expect_capture()
-            .withf(move |snapshot| assert_local_file(snapshot))
+            .withf(move |_preset_entry_id, snapshot| assert_local_file(snapshot))
             .times(1)
-            .returning(|_| Ok(Some(EntryId::from("entry-new"))));
+            .returning(|_, _| Ok(Some(EntryId::from("entry-new"))));
 
         let mut write = MockWrite::new();
         write
@@ -1036,7 +1128,12 @@ mod tests {
         let materializer =
             FileCacheBlobMaterializer::new(Arc::new(fetcher), cache_dir.path().to_path_buf());
         let rewritten = materializer
-            .materialize(DeviceId::new("peer-x"), snapshot, vec![blob_ref])
+            .materialize(
+                DeviceId::new("peer-x"),
+                EntryId::from("entry-receiver"),
+                snapshot,
+                vec![blob_ref],
+            )
             .await
             .expect("materialize should succeed");
 
@@ -1099,7 +1196,12 @@ mod tests {
         let materializer =
             FileCacheBlobMaterializer::new(Arc::new(fetcher), cache_dir.path().to_path_buf());
         let materialized = materializer
-            .materialize(DeviceId::new("peer-x"), snapshot, vec![blob_ref])
+            .materialize(
+                DeviceId::new("peer-x"),
+                EntryId::from("entry-receiver"),
+                snapshot,
+                vec![blob_ref],
+            )
             .await
             .expect("representation-bound materialize should succeed");
 
@@ -1153,7 +1255,12 @@ mod tests {
         let materializer =
             FileCacheBlobMaterializer::new(Arc::new(fetcher), cache_dir.path().to_path_buf());
         let err = materializer
-            .materialize(DeviceId::new("peer-x"), snapshot, vec![blob_ref])
+            .materialize(
+                DeviceId::new("peer-x"),
+                EntryId::from("entry-receiver"),
+                snapshot,
+                vec![blob_ref],
+            )
             .await
             .expect_err("out-of-bounds index should fail");
         assert!(

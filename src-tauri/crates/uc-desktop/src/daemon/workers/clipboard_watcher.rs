@@ -151,11 +151,9 @@ impl ClipboardChangeHandler for DaemonClipboardChangeHandler {
         // 4. Clone snapshot before capture consumes it.
         let outbound_snapshot = snapshot.clone();
 
-        match self
-            .clipboard_capture
-            .capture(snapshot, origin, Some(flow_id.clone()))
-            .await
-        {
+        // watcher 不预设 entry_id —— 本地 capture 让 use case 自己分配。
+        // flow_id 仅用于 watcher 自己的 tracing 关联,不再传给 use case。
+        match self.clipboard_capture.capture(snapshot, origin, None).await {
             Ok(Some(captured)) => {
                 let entry_id = EntryId::from(captured.entry_id.as_str());
                 debug!(entry_id = %entry_id, ?origin, "Daemon clipboard capture succeeded");

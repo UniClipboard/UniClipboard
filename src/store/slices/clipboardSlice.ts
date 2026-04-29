@@ -11,8 +11,24 @@ import {
 import { transformDaemonDtoToItemResponse } from '@/lib/clipboard-transform'
 
 // ── State ────────────────────────────────────────────────────────
+
+/**
+ * Inbound clipboard entry that the daemon has acknowledged but not yet
+ * fully fetched/persisted. Surfaced via `clipboard.incoming_pending`
+ * events so the UI can render a placeholder card with a live progress
+ * bar before the real entry lands. Cleared as soon as the matching
+ * `clipboard.new_content` event arrives.
+ */
+export interface PendingClipboardEntry {
+  entryId: string
+  fromDevice: string
+  totalBytes: number | null
+  createdAt: number
+}
+
 interface ClipboardState {
   items: ClipboardItemResponse[]
+  pendingItems: PendingClipboardEntry[]
   loading: boolean
   notReady: boolean
   error: string | null
@@ -23,6 +39,7 @@ interface ClipboardState {
 // 初始状态
 const initialState: ClipboardState = {
   items: [],
+  pendingItems: [],
   loading: false,
   notReady: false,
   error: null,
@@ -178,6 +195,28 @@ const clipboardSlice = createSlice({
     clearStaleEntries: state => {
       state.staleEntryIds = []
     },
+    /**
+     * Insert a pending entry placeholder. Idempotent on entryId — repeated
+     * inbound events for the same id replace the previous entry rather
+     * than creating duplicates.
+     */
+    addPendingEntry: (state, action: PayloadAction<PendingClipboardEntry>) => {
+      const incoming = action.payload
+      const existingIndex = state.pendingItems.findIndex(p => p.entryId === incoming.entryId)
+      if (existingIndex >= 0) {
+        state.pendingItems[existingIndex] = incoming
+      } else {
+        state.pendingItems.unshift(incoming)
+      }
+    },
+    /**
+     * Drop the placeholder for `entryId`. Called when `clipboard.new_content`
+     * arrives — the real entry will appear in `items` via the normal API
+     * refresh path.
+     */
+    removePendingEntry: (state, action: PayloadAction<string>) => {
+      state.pendingItems = state.pendingItems.filter(p => p.entryId !== action.payload)
+    },
   },
   extraReducers: builder => {
     // 处理获取剪贴板内容
@@ -263,6 +302,8 @@ export const {
   resetItems,
   markEntryStale,
   clearStaleEntries,
+  addPendingEntry,
+  removePendingEntry,
 } = clipboardSlice.actions
 
 // 导出 Reducer

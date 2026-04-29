@@ -25,6 +25,13 @@ vi.mock('@/api/daemon/clipboard', () => ({
   getClipboardEntries: vi.fn(),
 }))
 
+// The hook now dispatches to redux for incoming-pending placeholder rows;
+// these tests don't exercise that path, so a no-op dispatch keeps the
+// surface area small without pulling in a full store + Provider.
+vi.mock('@/store/hooks', () => ({
+  useAppDispatch: () => vi.fn(),
+}))
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let capturedHandler: ((event: any) => void) | null = null
 

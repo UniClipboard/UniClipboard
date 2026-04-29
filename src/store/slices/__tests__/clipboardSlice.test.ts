@@ -35,6 +35,7 @@ function makeStore() {
 
 const initialState = {
   items: [],
+  pendingItems: [],
   loading: false,
   notReady: false,
   error: null,

@@ -156,6 +156,7 @@ const ClipboardContent: React.FC<ClipboardContentProps> = ({
   })
   const {
     items: reduxItems,
+    pendingItems,
     loading,
     notReady,
     staleEntryIds,
@@ -303,9 +304,25 @@ const ClipboardContent: React.FC<ClipboardContentProps> = ({
     }
 
     // Browse mode: build from Redux state with local type filter
-    if (!reduxItems || reduxItems.length === 0) return []
+    const realItems: DisplayClipboardItem[] = (reduxItems ?? []).map(convertToDisplayItem)
 
-    let items: DisplayClipboardItem[] = reduxItems.map(convertToDisplayItem)
+    // Pending placeholder rows (inbound entries that have been announced but
+    // not yet fetched + persisted). We surface them as 'file' so the
+    // existing transferring/pending visuals in ClipboardItemRow apply.
+    // Filter by entryId so once the real entry lands we don't double-count.
+    const realIds = new Set(realItems.map(it => it.id))
+    const pendingDisplayItems: DisplayClipboardItem[] = pendingItems
+      .filter(p => !realIds.has(p.entryId))
+      .map(p => ({
+        id: p.entryId,
+        type: 'file' as const,
+        time: t('clipboard.time.justNow'),
+        activeTime: p.createdAt,
+        content: null,
+        device: p.fromDevice,
+      }))
+
+    let items = [...pendingDisplayItems, ...realItems]
 
     if (filter !== Filter.All) {
       if (filter === Filter.Favorited) {
@@ -326,7 +343,16 @@ const ClipboardContent: React.FC<ClipboardContentProps> = ({
     }
 
     return items
-  }, [reduxItems, filter, isSearchActive, searchResults, convertToDisplayItem, tick])
+  }, [
+    reduxItems,
+    pendingItems,
+    filter,
+    isSearchActive,
+    searchResults,
+    convertToDisplayItem,
+    t,
+    tick,
+  ])
 
   // Flat list for keyboard navigation
   const flatItems = useMemo(() => clipboardItems, [clipboardItems])

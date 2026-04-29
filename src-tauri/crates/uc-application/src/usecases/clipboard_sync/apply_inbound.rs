@@ -221,11 +221,19 @@ impl InboundBlobMaterializer for FileCacheBlobMaterializer {
                 "materialize: fetching representation-bound blob"
             );
 
+            // transfer_id 复用 entry_id —— 与 file_refs 路径保持一致,
+            // 前端 useTransferProgress 用它定位 UI(每个 entry 一个进度条)。
+            let transfer_context = FetchTransferContext {
+                transfer_id: blob_ref.entry_id.as_ref().to_string(),
+                peer_id: from_device.as_str().to_string(),
+                total_bytes: Some(advertised_size),
+            };
             let fetched = self
                 .fetcher
                 .fetch_blob(FetchBlobCommand {
                     ticket: blob_ref.ticket,
                     entry_id: blob_ref.entry_id.clone(),
+                    transfer_context: Some(transfer_context),
                 })
                 .await
                 .map_err(|e| {
@@ -1091,7 +1099,7 @@ mod tests {
         let materializer =
             FileCacheBlobMaterializer::new(Arc::new(fetcher), cache_dir.path().to_path_buf());
         let materialized = materializer
-            .materialize(snapshot, vec![blob_ref])
+            .materialize(DeviceId::new("peer-x"), snapshot, vec![blob_ref])
             .await
             .expect("representation-bound materialize should succeed");
 
@@ -1145,7 +1153,7 @@ mod tests {
         let materializer =
             FileCacheBlobMaterializer::new(Arc::new(fetcher), cache_dir.path().to_path_buf());
         let err = materializer
-            .materialize(snapshot, vec![blob_ref])
+            .materialize(DeviceId::new("peer-x"), snapshot, vec![blob_ref])
             .await
             .expect_err("out-of-bounds index should fail");
         assert!(

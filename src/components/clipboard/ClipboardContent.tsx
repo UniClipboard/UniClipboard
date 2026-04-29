@@ -214,6 +214,17 @@ const ClipboardContent: React.FC<ClipboardContentProps> = ({
     notReady,
     staleEntryIds,
   } = useAppSelector(state => state.clipboard)
+  const spaceMembers = useAppSelector(state => state.devices.spaceMembers)
+  // peerId → human-readable device name. Used to translate the raw
+  // DeviceId on `incoming_pending` events into the same display string
+  // used elsewhere; falls back to undefined when the peer isn't in our
+  // member roster (e.g. roster not yet loaded), so we hide the field
+  // rather than leak the UUID into the file preview.
+  const deviceNameByPeerId = useMemo(() => {
+    const map: Record<string, string> = {}
+    for (const m of spaceMembers) map[m.peerId] = m.deviceName
+    return map
+  }, [spaceMembers])
 
   // Server-side search state
   const isSearchActive = searchQuery.trim().length > 0
@@ -384,7 +395,10 @@ const ClipboardContent: React.FC<ClipboardContentProps> = ({
         // inbound has no filenames at all (pure image / text), in which case
         // textPreview carries the "Receiving..." fallback.
         content: buildPendingFileContent(p),
-        device: p.fromDevice,
+        // Resolve raw peerId → device name; if the roster doesn't know
+        // this peer yet, leave undefined so FilePreview hides the field
+        // instead of rendering a UUID next to the file size.
+        device: deviceNameByPeerId[p.fromDevice],
         textPreview: buildPendingPreview(p, t),
       }))
 
@@ -412,6 +426,7 @@ const ClipboardContent: React.FC<ClipboardContentProps> = ({
   }, [
     reduxItems,
     pendingItems,
+    deviceNameByPeerId,
     filter,
     isSearchActive,
     searchResults,

@@ -105,10 +105,12 @@ impl InboundBlobMaterializer for FileCacheBlobMaterializer {
                 "materialize: fetching representation-bound blob"
             );
 
-            // transfer_id 复用 entry_id —— 与 file_refs 路径保持一致,
-            // 前端 useTransferProgress 用它定位 UI(每个 entry 一个进度条)。
+            // transfer_id 用接收端的 receiver_entry_id —— 与 file_refs
+            // 路径保持一致,确保占位卡片 / 进度事件 / 最终 entry 共享同
+            // 一个 ID(协议层 transfer_id == receiver_entry_id)。
+            // `blob_ref.entry_id` 是发送端 id,只用于 iroh tag。
             let transfer_context = FetchTransferContext {
-                transfer_id: blob_ref.entry_id.as_ref().to_string(),
+                transfer_id: receiver_entry_id.as_ref().to_string(),
                 peer_id: from_device.as_str().to_string(),
                 total_bytes: Some(advertised_size),
             };

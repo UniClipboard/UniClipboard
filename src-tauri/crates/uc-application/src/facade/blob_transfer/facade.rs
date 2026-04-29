@@ -50,7 +50,13 @@ pub struct PublishBlobResult {
 /// fetch_blob 期间向上报告进度时所需的传输上下文。
 ///
 /// 由调用方提供:
-/// - `transfer_id` 通常等于 entry_id(每个 entry 一次传输);
+/// - `transfer_id`: 接收端协议层这次传输的唯一关联 key。本工程的入站
+///   pipeline 约定 `transfer_id == receiver_entry_id`(`ApplyInbound`
+///   在流程入口预生成,贯穿占位卡片 → progress → `clipboard.new_content`),
+///   所以 host event 里的 `transfer_id` 和 `entry_id` 字段最终发出的
+///   是**同一个值**。前端 `useTransferProgress` 用它定位 UI,
+///   `entryStatusById` 用它做 list row 关联。这两个字段在协议层职责
+///   不同,但接收端值相等,是有意为之的对齐(避免前端做映射)。
 /// - `peer_id` 是来源设备 ID,前端用它做"来自谁"的展示;
 /// - `total_bytes` 来自 V3 envelope 的 advertised size,用于前端进度百分比与 ETA。
 ///
@@ -65,6 +71,9 @@ pub struct FetchTransferContext {
 #[derive(Debug, Clone)]
 pub struct FetchBlobCommand {
     pub ticket: BlobTicket,
+    /// **发送端**侧的 entry_id —— 仅用于 iroh blob tag 与 fetch use case
+    /// 内部记录,不会出现在 host event 里。前端关联用的是
+    /// `transfer_context.transfer_id`(== receiver_entry_id)。
     pub entry_id: EntryId,
     /// Some 时 fetch_blob 会发出 status_changed + progress host events;
     /// None 时退化为静默拉取(用于不需要 UI 反馈的内部场景,例如 CLI 工具)。
@@ -122,16 +131,17 @@ impl BlobTransferFacade {
         }
     }
 
+    /// `entry_id` 字段直接复用 `ctx.transfer_id`(协议约定 == receiver_entry_id)。
+    /// 不再接受发送端 `command.entry_id` ——那是 iroh tag,不应外发到 UI。
     fn emit_status_changed(
         &self,
         ctx: &FetchTransferContext,
-        entry_id: &EntryId,
         status: &'static str,
         reason: Option<String>,
     ) {
         self.emit_host_event(HostEvent::Transfer(TransferHostEvent::StatusChanged {
             transfer_id: ctx.transfer_id.clone(),
-            entry_id: entry_id.as_ref().to_string(),
+            entry_id: ctx.transfer_id.clone(),
             status: status.to_string(),
             reason,
         }));
@@ -140,13 +150,12 @@ impl BlobTransferFacade {
     fn emit_progress(
         &self,
         ctx: &FetchTransferContext,
-        entry_id: &EntryId,
         bytes_transferred: u64,
         total_bytes: Option<u64>,
     ) {
         self.emit_host_event(HostEvent::Transfer(TransferHostEvent::Progress {
             transfer_id: ctx.transfer_id.clone(),
-            entry_id: Some(entry_id.as_ref().to_string()),
+            entry_id: Some(ctx.transfer_id.clone()),
             peer_id: ctx.peer_id.clone(),
             direction: FileTransferDirection::Receiving,
             bytes_transferred,
@@ -179,7 +188,7 @@ impl BlobTransferFacade {
         &self,
         command: FetchBlobCommand,
     ) -> Result<FetchBlobResult, BlobTransferError> {
-        let entry_id = command.entry_id.clone();
+        let iroh_tag_entry_id = command.entry_id.clone();
         let progress_sink: Option<Arc<dyn BlobProgressSink>> = command
             .transfer_context
             .as_ref()
@@ -188,7 +197,6 @@ impl BlobTransferFacade {
                 let sink: Arc<dyn BlobProgressSink> = Arc::new(HostEventProgressSink {
                     emitter_cell: self.host_event_emitter.clone().unwrap(),
                     transfer_id: ctx.transfer_id.clone(),
-                    entry_id: entry_id.as_ref().to_string(),
                     peer_id: ctx.peer_id.clone(),
                     fallback_total: ctx.total_bytes,
                 });
@@ -199,15 +207,15 @@ impl BlobTransferFacade {
         // (即便 adapter 命中本地缓存也会发: completed 事件会马上覆盖,
         // 不会让 UI 出现"卡在 0%")。
         if let Some(ctx) = command.transfer_context.as_ref() {
-            self.emit_status_changed(ctx, &entry_id, "transferring", None);
-            self.emit_progress(ctx, &entry_id, 0, ctx.total_bytes);
+            self.emit_status_changed(ctx, "transferring", None);
+            self.emit_progress(ctx, 0, ctx.total_bytes);
         }
 
         let result = self
             .fetch_uc
             .execute(FetchBlobInput {
                 ticket: command.ticket,
-                entry_id: entry_id.clone(),
+                entry_id: iroh_tag_entry_id,
                 progress: progress_sink,
             })
             .await;
@@ -217,8 +225,8 @@ impl BlobTransferFacade {
                 if let Some(ctx) = command.transfer_context.as_ref() {
                     let final_size = outcome.plaintext.len() as u64;
                     let total = ctx.total_bytes.or(Some(final_size));
-                    self.emit_progress(ctx, &entry_id, final_size, total);
-                    self.emit_status_changed(ctx, &entry_id, "completed", None);
+                    self.emit_progress(ctx, final_size, total);
+                    self.emit_status_changed(ctx, "completed", None);
                 }
                 Ok(FetchBlobResult {
                     plaintext: outcome.plaintext,
@@ -230,7 +238,7 @@ impl BlobTransferFacade {
             Err(e) => {
                 let msg = e.to_string();
                 if let Some(ctx) = command.transfer_context.as_ref() {
-                    self.emit_status_changed(ctx, &entry_id, "failed", Some(msg.clone()));
+                    self.emit_status_changed(ctx, "failed", Some(msg.clone()));
                 }
                 Err(BlobTransferError::Fetch(msg))
             }
@@ -241,14 +249,14 @@ impl BlobTransferFacade {
 /// 把 adapter 字节级进度上报转发为 host event 的 sink 实现。
 ///
 /// adapter 已经做了字节阈值/时间窗节流,这里只负责把每次回调翻译成
-/// `TransferHostEvent::Progress`,并填充上下文字段(transfer_id / entry_id /
-/// peer_id / direction)。`fallback_total` 用于补全 adapter 不知道总大小
-/// (`total_bytes == None`)的场景——iroh 拉取过程中 size 通常要等到
-/// PartComplete 才已知,所以前端的进度百分比依赖这个 fallback。
+/// `TransferHostEvent::Progress`,并填充上下文字段(transfer_id /
+/// peer_id / direction)。`entry_id` 字段直接复用 `transfer_id`(协议
+/// 约定 == receiver_entry_id)。`fallback_total` 用于补全 adapter 不知
+/// 道总大小(`total_bytes == None`)的场景——iroh 拉取过程中 size 通
+/// 常要等到 PartComplete 才已知,所以前端的进度百分比依赖这个 fallback。
 struct HostEventProgressSink {
     emitter_cell: SharedHostEventEmitter,
     transfer_id: String,
-    entry_id: String,
     peer_id: String,
     fallback_total: Option<u64>,
 }
@@ -259,7 +267,7 @@ impl BlobProgressSink for HostEventProgressSink {
         let total = total_bytes.or(self.fallback_total);
         let event = HostEvent::Transfer(TransferHostEvent::Progress {
             transfer_id: self.transfer_id.clone(),
-            entry_id: Some(self.entry_id.clone()),
+            entry_id: Some(self.transfer_id.clone()),
             peer_id: self.peer_id.clone(),
             direction: FileTransferDirection::Receiving,
             bytes_transferred,

@@ -12,6 +12,7 @@ use bytes::Bytes;
 use futures_util::StreamExt;
 use iroh::{Endpoint, EndpointId, Watcher};
 use iroh_blobs::{
+    api::blobs::{ExportMode, ExportOptions},
     api::downloader::{DownloadProgressItem, Downloader},
     store::fs::FsStore,
     ticket::BlobTicket as NativeBlobTicket,
@@ -207,15 +208,27 @@ impl BlobTransferPort for IrohBlobTransferAdapter {
         target_path: &std::path::Path,
         progress: Option<&dyn BlobProgressSink>,
     ) -> Result<BlobDigest, BlobError> {
-        // GH#487 Phase 2 (receive-side mirror of the publish_path streaming
-        // import):after the download loop has materialised the blob in the
-        // local iroh store, hand it to `Blobs::export(hash, target)` instead
-        // of slurping it back through `get_bytes() -> Bytes -> tokio::fs::write`.
-        // `export` defaults to `ExportMode::Copy`, which on CoW filesystems
-        // (APFS / Btrfs / ReFS) is a reflink — zero-copy, near-instant,
-        // independent of blob size — and on plain filesystems falls back to
-        // a stream copy that stays bounded by chunk size. Either way the
-        // peak RSS no longer carries the whole plaintext.
+        // GH#487 receive-side stream-out:走 `ExportMode::TryReference`,而不是
+        // `Blobs::export()` 默认的 `ExportMode::Copy`。
+        //
+        // `Copy` 在无 reflink 的 FS(NTFS / ext4)上 fallback 成 stream copy ——
+        // 把 store 里 owned data file 再写一遍到 target_path,800 MB 实测 ~19.5s,
+        // 与文件大小线性。
+        //
+        // `TryReference` 行为(iroh-blobs 0.97 `store/fs.rs:1281-1313`):
+        //   - target 与 store_dir **同卷**(典型场景:都装在 AppData / $HOME):
+        //     `std::fs::rename(store_owned_data, target)` —— 元数据操作 ~0ms,
+        //     与文件大小无关
+        //   - **跨卷**(rename 返回 ERR_CROSS):fallback 到
+        //     `reflink_or_copy_with_progress`,行为与 `Copy` 等同,不会更差
+        //   - 完成后 store entry 状态转为 External(指向 target),不再持有
+        //     owned 副本。`has(digest)` 仍报告 complete(由
+        //     `fetch_to_path_keeps_blob_observable_after_export` 测试覆盖契约),
+        //     `issue_ticket` 仍可签发,tag/untag 仍工作。
+        //
+        // 副作用:本端 store 不再持有 blob 的本地副本,无法再向其他对端转发
+        // 该 blob。但 clipboard 同步是单跳(sender → receiver),没人会再向
+        // receiver 拉同一个 blob,这条能力实际无人使用,可接受。
         let native = Self::parse_ticket(ticket)?;
         let digest = Self::core_digest(native.hash());
         let hash_prefix = hex_prefix(native.hash().as_bytes());
@@ -226,14 +239,18 @@ impl BlobTransferPort for IrohBlobTransferAdapter {
         let bytes_written = self
             .store
             .blobs()
-            .export(native.hash(), target_path)
+            .export_with_opts(ExportOptions {
+                hash: native.hash(),
+                mode: ExportMode::TryReference,
+                target: target_path.to_owned(),
+            })
             .await
             .map_err(|e| BlobError::Internal(e.to_string()))?;
         info!(
             hash = %hash_prefix,
             bytes = bytes_written,
             export_ms = export_start.elapsed().as_millis() as u64,
-            "blob fetch_to_path: export completed (streaming)"
+            "blob fetch_to_path: export completed (TryReference)"
         );
         Ok(digest)
     }
@@ -633,6 +650,83 @@ mod tests {
         assert_eq!(returned, digest);
         let written = std::fs::read(&target)?;
         assert_eq!(written, payload);
+        fixture.shutdown().await?;
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn fetch_to_path_try_reference_writes_correct_bytes_above_inline_limit(
+    ) -> anyhow::Result<()> {
+        // GH#487 receive-side TryReference: payload must exceed iroh-blobs'
+        // default 16 KiB inline threshold so the store actually holds an
+        // owned data file (the only case TryReference's `fs::rename` branch
+        // can fire). With a small payload the store keeps the bytes inline
+        // and `export` falls through to a write-from-memory path, which
+        // would mask any rename-vs-copy regression.
+        let fixture = Fixture::bind().await?;
+        fixture.wait_for_direct_addr().await?;
+        let payload = vec![0x5au8; 64 * 1024];
+        let digest = fixture
+            .adapter
+            .publish(Bytes::from(payload.clone()))
+            .await?;
+        let ticket = fixture.adapter.issue_ticket(&digest).await?;
+
+        let dir = tempdir()?;
+        let target = dir.path().join("big.bin");
+        let returned = fixture
+            .adapter
+            .fetch_to_path(&ticket, &target, None)
+            .await?;
+
+        assert_eq!(returned, digest);
+        let written = std::fs::read(&target)?;
+        assert_eq!(written.len(), payload.len());
+        assert_eq!(written, payload);
+        fixture.shutdown().await?;
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn fetch_to_path_keeps_blob_observable_after_export() -> anyhow::Result<()> {
+        // GH#487 receive-side TryReference contract regression: after export
+        // the iroh store transitions the entry to External(target_path) and
+        // drops its owned data file. `has(digest)` must still report
+        // complete and `issue_ticket` must still succeed — otherwise tag
+        // bookkeeping (TagReason::ClipboardEntry) and any "show me the
+        // blobs we have" diagnostics would silently break.
+        let fixture = Fixture::bind().await?;
+        fixture.wait_for_direct_addr().await?;
+        let payload = vec![0xa5u8; 64 * 1024];
+        let digest = fixture
+            .adapter
+            .publish(Bytes::from(payload.clone()))
+            .await?;
+        let ticket = fixture.adapter.issue_ticket(&digest).await?;
+
+        let dir = tempdir()?;
+        let target = dir.path().join("exported.bin");
+        fixture
+            .adapter
+            .fetch_to_path(&ticket, &target, None)
+            .await?;
+
+        assert!(
+            fixture.adapter.has(&digest).await?,
+            "has() must still report complete for an externally referenced entry"
+        );
+        let _reissued = fixture
+            .adapter
+            .issue_ticket(&digest)
+            .await
+            .expect("issue_ticket must succeed for an externally referenced entry");
+
+        // Tag/untag must still work — clipboard_sync uses these to pin
+        // blobs to a ClipboardEntry and clean up on entry deletion.
+        let reason = TagReason::ClipboardEntry(EntryId::from_str("entry-after-export"));
+        fixture.adapter.tag(&digest, reason.clone()).await?;
+        fixture.adapter.untag(&digest, reason).await?;
+
         fixture.shutdown().await?;
         Ok(())
     }

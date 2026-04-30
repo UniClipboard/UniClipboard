@@ -289,7 +289,6 @@ struct Side {
     iroh_node: IrohNode,
     member_repo: Arc<InMemoryMemberRepo>,
     trusted_peer_repo: Arc<InMemoryTrustedPeerRepo>,
-    peer_addr_repo: Arc<InMemoryPeerAddrRepo>,
     setup_status: Arc<InMemorySetupStatus>,
     device_id: DeviceId,
     _keystore_dir: TempDir, // kept alive for the JsonKeySlotStore path
@@ -402,7 +401,6 @@ async fn build_side(name: &'static str, rendezvous_base_url: String) -> Side {
         iroh_node,
         member_repo,
         trusted_peer_repo,
-        peer_addr_repo,
         setup_status,
         device_id,
         _keystore_dir: keystore_dir,

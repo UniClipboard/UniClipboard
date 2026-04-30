@@ -200,7 +200,13 @@ const ClipboardItemRow = React.forwardRef<HTMLDivElement, ClipboardItemRowProps>
                   />
                 </TooltipTrigger>
                 <TooltipContent side="left">
-                  <p className="text-xs">{t('clipboard.transfer.transferring')}</p>
+                  <p className="text-xs">
+                    {transfer?.direction === 'Sending'
+                      ? t('clipboard.transfer.sending')
+                      : transfer?.direction === 'Receiving'
+                        ? t('clipboard.transfer.receiving')
+                        : t('clipboard.transfer.transferring')}
+                  </p>
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>

@@ -13,6 +13,8 @@ pub mod identity_store;
 pub mod node;
 pub mod persistable_addr;
 pub mod presence_adapter;
+pub mod transfer_progress_adapter;
+pub mod transfer_progress_wire;
 
 pub use blobs::{IrohBlobTransferAdapter, BLOBS_ALPN};
 pub use clipboard_dispatch_adapter::{IrohClipboardDispatchAdapter, CLIPBOARD_ALPN};
@@ -20,6 +22,6 @@ pub use clipboard_receiver_adapter::{IrohClipboardReceiverAdapter, IrohClipboard
 pub use identity_store::{IrohIdentityStore, IDENTITY_STORE_KEY};
 pub use node::{
     BlobHandlers, ClipboardHandlers, IrohNode, IrohNodeBuilder, IrohNodeConfig, IrohNodeError,
-    PairingHandlers,
+    PairingHandlers, TransferProgressHandlers,
 };
 pub use presence_adapter::{IrohPresenceAdapter, IrohPresenceHandler, PRESENCE_ALPN};

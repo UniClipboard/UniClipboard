@@ -25,6 +25,7 @@ use iroh::{Endpoint, RelayMode, TransportAddr};
 use iroh_quinn_proto::congestion::BbrConfig;
 use tracing::{debug, info, instrument};
 
+use uc_core::file_transfer::OutboundProgressReporterPort;
 use uc_core::membership::MemberRepositoryPort;
 use uc_core::ports::blob::BlobTransferPort;
 use uc_core::ports::pairing::{PairingEventPort, PairingSessionPort};
@@ -43,6 +44,9 @@ use super::clipboard_dispatch_adapter::{IrohClipboardDispatchAdapter, CLIPBOARD_
 use super::clipboard_receiver_adapter::IrohClipboardReceiverAdapter;
 use super::identity_store::IrohIdentityStore;
 use super::presence_adapter::{IrohPresenceAdapter, IrohPresenceHandler, PRESENCE_ALPN};
+use super::transfer_progress_adapter::{
+    InboundProgressEvent, IrohTransferProgressAdapter, TRANSFER_PROGRESS_ALPN,
+};
 
 /// The three pairing ports produced by [`IrohNodeBuilder::install_pairing`].
 ///
@@ -71,6 +75,16 @@ pub struct ClipboardHandlers {
 /// [`IrohNodeBuilder::install_blobs`] 产出的 blob port。
 pub struct BlobHandlers {
     pub blob_transfer: Arc<dyn BlobTransferPort>,
+}
+
+/// [`IrohNodeBuilder::install_transfer_progress`] 产出的进度反向通道句柄。
+///
+/// `reporter` 给接收端 fetch sink 用,把字节进度推回 sender;
+/// `inbound_events` 给应用层 worker 订阅,翻译为前端 host event。
+/// 同一进程同时持两个角色 —— 谁是 sender / receiver 由当次传输方向决定。
+pub struct TransferProgressHandlers {
+    pub reporter: Arc<dyn OutboundProgressReporterPort>,
+    pub inbound_events: tokio::sync::broadcast::Receiver<InboundProgressEvent>,
 }
 
 /// Live iroh node with a spawned [`Router`].
@@ -419,6 +433,51 @@ impl IrohNodeBuilder {
         ClipboardHandlers {
             dispatch,
             receiver: Arc::new(receiver),
+        }
+    }
+
+    /// 安装"反向传输进度"通道(receiver → sender)。
+    ///
+    /// * 注册 [`TRANSFER_PROGRESS_ALPN`] 的 `ProtocolHandler`,sender 端
+    ///   接收 receiver 推送回来的字节级 fetch 进度帧。
+    /// * 返回 [`TransferProgressHandlers`]:reporter 端口给 application
+    ///   层在 `BlobProgressSink::report` 时旁路调用;inbound_events 给
+    ///   application 层 worker 订阅以翻译成 host event。
+    ///
+    /// 必须在 [`spawn`](Self::spawn) 之前调用。和 install_clipboard 复用
+    /// member_repo / fingerprint_factory 做对端身份验证,陌生 peer 推上
+    /// 来的进度直接被丢弃。
+    pub fn install_transfer_progress(
+        &mut self,
+        peer_addr_repo: Arc<dyn PeerAddressRepositoryPort>,
+        member_repo: Arc<dyn MemberRepositoryPort>,
+        fingerprint_factory: Arc<dyn IdentityFingerprintFactoryPort>,
+    ) -> TransferProgressHandlers {
+        let adapter = IrohTransferProgressAdapter::new(
+            Arc::clone(&self.endpoint),
+            peer_addr_repo,
+            member_repo,
+            fingerprint_factory,
+        );
+        let handler = adapter.handler();
+        let reporter = adapter.reporter();
+        let inbound_events = adapter.subscribe();
+
+        let builder = self
+            .router_builder
+            .take()
+            .expect("router_builder missing — install_* called after spawn");
+        let builder = builder.accept(TRANSFER_PROGRESS_ALPN, handler);
+        self.router_builder = Some(builder);
+
+        // adapter is dropped after this method returns; reporter and the
+        // broadcast subscriber both hold strong refs into the inner state
+        // so the handler keeps working.
+        let _ = adapter;
+
+        TransferProgressHandlers {
+            reporter,
+            inbound_events,
         }
     }
 

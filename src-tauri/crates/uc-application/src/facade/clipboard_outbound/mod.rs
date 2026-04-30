@@ -2,7 +2,6 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Instant;
 
-use anyhow::Context;
 use async_trait::async_trait;
 use bytes::Bytes;
 use thiserror::Error;
@@ -11,7 +10,9 @@ use uc_core::ids::EntryId;
 use uc_core::ports::SettingsPort;
 use uc_core::{ClipboardChangeOrigin, SystemClipboardSnapshot};
 
-use crate::facade::{BlobTransferFacade, ClipboardSyncFacade, PublishBlobCommand};
+use crate::facade::{
+    BlobTransferFacade, ClipboardSyncFacade, PublishBlobCommand, PublishBlobPathCommand,
+};
 use crate::sync_planner::{FileCandidate, FileSyncIntent, OutboundSyncPlanner};
 use crate::V3BlobRef;
 
@@ -380,21 +381,17 @@ async fn publish_file_blob_refs(
     let mut blob_refs = Vec::with_capacity(files.len());
 
     for file in files {
-        // Phase timing: 大文件 outbound 路径上 read_ms 经常超过 hash/publish。
-        // 杀毒首扫、网络盘、OneDrive 同步都会让 tokio::fs::read 阻塞十几秒,
-        // 这里把 read 与 publish 分开计时,便于 GH#487 后续诊断时定位瓶颈。
-        let read_start = Instant::now();
-        let plaintext = tokio::fs::read(&file.path)
-            .await
-            .with_context(|| format!("read outbound file {}", file.path.display()))
-            .map_err(|err| ClipboardOutboundError::Internal(err.to_string()))?;
-        let read_ms = read_start.elapsed().as_millis() as u64;
-        let size_bytes = plaintext.len() as u64;
-
+        // GH#487 P1: 流式 publish。旧路径先 `tokio::fs::read` 把整个文件读到
+        // `Vec<u8>`、再 `Bytes::from` 拷贝、再 `add_bytes` 在内存里算 BAO,
+        // 1GB 文件 RSS 峰值 ≈ 2GB,且这三步全部串联完成才轮到 dispatch ——
+        // 对端因此要等 ~11s 才拿到 envelope。新路径走 iroh-blobs `add_path`,
+        // 内部 reflink_or_copy_with_progress 把磁盘文件 stream 到 store(CoW
+        // FS 上零拷贝)+ 增量 BAO 编码,内存峰值与文件大小无关。`size_bytes`
+        // 改用 plan 透传的 `FileSyncIntent.size`(metadata 阶段已查过)。
         let publish_start = Instant::now();
         let result = blob_transfer
-            .publish_blob(PublishBlobCommand {
-                plaintext: Bytes::from(plaintext),
+            .publish_blob_path(PublishBlobPathCommand {
+                path: file.path.clone(),
                 entry_id: Some(entry_id.clone()),
             })
             .await
@@ -404,11 +401,10 @@ async fn publish_file_blob_refs(
         info!(
             entry_id = %entry_id.as_str(),
             file = %file.path.display(),
-            size_bytes,
+            size_bytes = file.size,
             reused_existing = result.reused_existing,
-            read_ms,
             publish_ms,
-            "outbound: file blob published"
+            "outbound: file blob published (streaming)"
         );
 
         blob_refs.push(V3BlobRef {
@@ -416,7 +412,7 @@ async fn publish_file_blob_refs(
             entry_id: result.entry_id,
             filename: Some(file.filename.clone()).filter(|name| !name.is_empty()),
             mime: None,
-            size_bytes,
+            size_bytes: file.size,
             representation_index: None,
         });
     }

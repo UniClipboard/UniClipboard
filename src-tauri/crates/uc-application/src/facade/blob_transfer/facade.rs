@@ -1,3 +1,4 @@
+use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
 
 use async_trait::async_trait;
@@ -41,6 +42,20 @@ pub struct BlobTransferDeps {
 #[derive(Debug, Clone)]
 pub struct PublishBlobCommand {
     pub plaintext: Bytes,
+    pub entry_id: Option<EntryId>,
+}
+
+/// 用磁盘文件路径作为 blob 来源 publish。GH#487 P1: 让 outbound 的大文件
+/// 走 iroh-blobs `add_path` 流式入库,避免 `tokio::fs::read` 把整文件读到
+/// 内存,把 1GB 文件 publish 期间的 RSS 峰值从 ~2GB 降到 chunk 量级。
+///
+/// 与 [`PublishBlobCommand`] 在协议层等价(产出同样的 [`PublishBlobResult`]),
+/// 但内存/IO 行为不同:`PublishBlobCommand` 适合已经在内存里的小 inline
+/// payload(剪贴板文本扩展 rep / 小图);`PublishBlobPathCommand` 适合磁盘
+/// 上的大文件 outbound。
+#[derive(Debug, Clone)]
+pub struct PublishBlobPathCommand {
+    pub path: PathBuf,
     pub entry_id: Option<EntryId>,
 }
 
@@ -188,8 +203,30 @@ impl BlobTransferFacade {
     ) -> Result<PublishBlobResult, BlobTransferError> {
         let outcome = self
             .publish_uc
-            .execute(PublishBlobInput {
+            .execute(PublishBlobInput::Plaintext {
                 plaintext: command.plaintext,
+                entry_id: command.entry_id.unwrap_or_default(),
+            })
+            .await
+            .map_err(|e| BlobTransferError::Publish(e.to_string()))?;
+        Ok(PublishBlobResult {
+            ticket: outcome.ticket,
+            entry_id: outcome.entry_id,
+            plaintext_hash: outcome.plaintext_hash,
+            digest: outcome.digest,
+            reused_existing: outcome.reused_existing,
+        })
+    }
+
+    /// 流式 publish:从磁盘文件读取并入库,避免把整文件加载到内存。GH#487 P1。
+    pub async fn publish_blob_path(
+        &self,
+        command: PublishBlobPathCommand,
+    ) -> Result<PublishBlobResult, BlobTransferError> {
+        let outcome = self
+            .publish_uc
+            .execute(PublishBlobInput::Path {
+                path: command.path,
                 entry_id: command.entry_id.unwrap_or_default(),
             })
             .await

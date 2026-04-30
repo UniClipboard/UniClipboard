@@ -145,6 +145,32 @@ impl BlobTransferPort for IrohBlobTransferAdapter {
         Ok(Self::core_digest(tag.hash))
     }
 
+    #[instrument(skip_all, fields(path = %path.display()))]
+    async fn publish_path(&self, path: &std::path::Path) -> Result<BlobDigest, BlobError> {
+        // GH#487 P1 streaming publish:走 iroh-blobs 的 add_path 入口,内部
+        // 由 reflink_or_copy_with_progress 把磁盘文件 stream 到 store(在
+        // APFS / Btrfs / ReFS 等 CoW FS 上是 reflink 零拷贝;NTFS / ext4 上
+        // fallback 真拷贝,但仍是 stream)+ 增量算 BAO outboard。整段过程
+        // 内存峰值受 iroh chunk size 主导,与文件大小无关。
+        //
+        // 旧路径(`tokio::fs::read(path) → Bytes::from → publish(Bytes) →
+        // add_bytes`)在 1GB 文件上需要 1×plaintext + 1×Bytes ≈ 2GB 临时
+        // 内存,且在 publish 完成前阻塞 outbound dispatch 主流程 ~11s。
+        let started = Instant::now();
+        let tag_info = self
+            .store
+            .blobs()
+            .add_path(path)
+            .await
+            .map_err(|e| BlobError::Internal(e.to_string()))?;
+        info!(
+            add_path_ms = started.elapsed().as_millis() as u64,
+            blob_hash = %hex_prefix(tag_info.hash.as_bytes()),
+            "iroh blob publish: add_path completed (streaming)"
+        );
+        Ok(Self::core_digest(tag_info.hash))
+    }
+
     #[instrument(skip_all)]
     async fn issue_ticket(&self, digest: &BlobDigest) -> Result<BlobTicket, BlobError> {
         if !self.has(digest).await? {
@@ -525,6 +551,29 @@ mod tests {
         let second = fixture.adapter.publish(payload).await?;
 
         assert_eq!(first, second);
+        fixture.shutdown().await?;
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn publish_path_returns_same_digest_as_publish_bytes() -> anyhow::Result<()> {
+        // GH#487 P1: streaming path 必须与全内存 publish 产出一致的
+        // content-addressed digest,否则发送端 / 接收端协议上的 ticket /
+        // dedup 会全部断裂。
+        let fixture = Fixture::bind().await?;
+        let payload = b"gh-487-streaming-publish-path-payload-hello".to_vec();
+
+        let dir = tempdir()?;
+        let path = dir.path().join("payload.bin");
+        std::fs::write(&path, &payload)?;
+
+        let bytes_digest = fixture
+            .adapter
+            .publish(Bytes::from(payload.clone()))
+            .await?;
+        let path_digest = fixture.adapter.publish_path(&path).await?;
+
+        assert_eq!(bytes_digest, path_digest);
         fixture.shutdown().await?;
         Ok(())
     }

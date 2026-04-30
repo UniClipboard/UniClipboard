@@ -38,6 +38,12 @@ pub struct FileSyncIntent {
     pub transfer_id: String,
     /// The original filename (used for naming the local cache entry on the receiver).
     pub filename: String,
+    /// File size in bytes, taken from `FileCandidate.size` (already queried
+    /// during the metadata phase). Outbound publishes the file via streaming
+    /// `add_path`(GH#487 P1)— which means the publish helper no longer
+    /// reads the bytes into memory, so it can't recompute `plaintext.len()`
+    /// for the V3 envelope's advertised size and must rely on this field.
+    pub size: u64,
 }
 
 /// The result of `OutboundSyncPlanner::plan()`.

@@ -41,7 +41,7 @@ mod tests {
         let mut first_digest = None;
         for _ in 0..10 {
             let outcome = usecase
-                .execute(PublishBlobInput {
+                .execute(PublishBlobInput::Plaintext {
                     plaintext: plaintext.clone(),
                     entry_id: EntryId::new(),
                 })
@@ -71,14 +71,14 @@ mod tests {
 
         let plaintext = Bytes::from_static(b"same file bytes");
         let first = publish
-            .execute(PublishBlobInput {
+            .execute(PublishBlobInput::Plaintext {
                 plaintext: plaintext.clone(),
                 entry_id: EntryId::from("entry-one"),
             })
             .await
             .expect("first publish should succeed");
         let second = publish
-            .execute(PublishBlobInput {
+            .execute(PublishBlobInput::Plaintext {
                 plaintext: plaintext.clone(),
                 entry_id: EntryId::from("entry-two"),
             })
@@ -180,6 +180,16 @@ mod tests {
                 .expect("lock store")
                 .insert(digest, plaintext);
             Ok(digest)
+        }
+
+        async fn publish_path(&self, path: &std::path::Path) -> Result<BlobDigest, BlobError> {
+            // Fake-only: read into memory and delegate to publish() so
+            // tests stay simple (small files) while still exercising the
+            // path code-path through the use case + facade layers.
+            let bytes = tokio::fs::read(path)
+                .await
+                .map_err(|e| BlobError::Internal(e.to_string()))?;
+            self.publish(Bytes::from(bytes)).await
         }
 
         async fn issue_ticket(&self, digest: &BlobDigest) -> Result<BlobTicket, BlobError> {

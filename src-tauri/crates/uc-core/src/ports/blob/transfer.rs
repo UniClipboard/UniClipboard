@@ -179,6 +179,19 @@ pub trait BlobTransferPort: Send + Sync {
     /// returns the same [`BlobDigest`].
     async fn publish(&self, ciphertext: Bytes) -> Result<BlobDigest, BlobError>;
 
+    /// Place the contents of a local file into the shareable store, return
+    /// its stable local identity. Adapters MAY stream the file from disk
+    /// rather than load it fully into memory; callers SHOULD prefer this
+    /// path for large payloads (clipboard files, oversized image reps that
+    /// already live on disk) so peak memory stays bounded regardless of
+    /// file size and the outbound dispatch path is not blocked while a
+    /// 1 GiB plaintext is materialised.
+    ///
+    /// Idempotent in the same sense as [`publish`](Self::publish):
+    /// publishing the same byte content again returns the same
+    /// [`BlobDigest`], regardless of which method was used.
+    async fn publish_path(&self, path: &std::path::Path) -> Result<BlobDigest, BlobError>;
+
     /// Mint an out-of-band retrieval credential for a ciphertext the
     /// local store already holds, so other devices can pull from this
     /// one. The credential carries at minimum "content identity + at

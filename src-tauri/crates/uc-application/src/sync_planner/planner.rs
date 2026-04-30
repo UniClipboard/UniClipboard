@@ -105,6 +105,7 @@ impl OutboundSyncPlanner {
                         path: candidate.path,
                         transfer_id,
                         filename,
+                        size: candidate.size,
                     });
                 }
             }

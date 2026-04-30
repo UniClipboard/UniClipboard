@@ -12,7 +12,7 @@ use bytes::Bytes;
 use futures_util::StreamExt;
 use iroh::{Endpoint, EndpointId, Watcher};
 use iroh_blobs::{
-    api::blobs::{ExportMode, ExportOptions},
+    api::blobs::{AddPathOptions, ExportMode, ExportOptions, ImportMode},
     api::downloader::{DownloadProgressItem, Downloader},
     store::fs::FsStore,
     ticket::BlobTicket as NativeBlobTicket,
@@ -122,6 +122,20 @@ fn hex_prefix(bytes: &[u8]) -> String {
     out
 }
 
+/// Pick the `ImportMode` for `Blobs::add_path` based on the host platform.
+///
+/// See `publish_path` for the full rationale; in short: only Windows benefits
+/// from `TryReference` (NTFS has no reflink, ReFS prefers external handle
+/// over reflink anyway). All other platforms keep `Copy` so APFS / Btrfs /
+/// XFS reflink fast paths fire.
+fn preferred_import_mode() -> ImportMode {
+    if cfg!(target_os = "windows") {
+        ImportMode::TryReference
+    } else {
+        ImportMode::Copy
+    }
+}
+
 #[async_trait]
 impl BlobTransferPort for IrohBlobTransferAdapter {
     #[instrument(skip_all, fields(bytes = ciphertext.len()))]
@@ -148,24 +162,44 @@ impl BlobTransferPort for IrohBlobTransferAdapter {
 
     #[instrument(skip_all, fields(path = %path.display()))]
     async fn publish_path(&self, path: &std::path::Path) -> Result<BlobDigest, BlobError> {
-        // GH#487 P1 streaming publish:走 iroh-blobs 的 add_path 入口,内部
-        // 由 reflink_or_copy_with_progress 把磁盘文件 stream 到 store(在
-        // APFS / Btrfs / ReFS 等 CoW FS 上是 reflink 零拷贝;NTFS / ext4 上
-        // fallback 真拷贝,但仍是 stream)+ 增量算 BAO outboard。整段过程
-        // 内存峰值受 iroh chunk size 主导,与文件大小无关。
+        // GH#487 P1 streaming publish:走 iroh-blobs 的 add_path 入口,增量算
+        // BAO outboard,整段过程内存峰值受 iroh chunk size 主导,与文件大小
+        // 无关。旧路径(`tokio::fs::read → Bytes → add_bytes`)在 1GB 文件上
+        // 需要 ~2GB 临时内存,且阻塞 outbound dispatch 主流程 ~11s。
         //
-        // 旧路径(`tokio::fs::read(path) → Bytes::from → publish(Bytes) →
-        // add_bytes`)在 1GB 文件上需要 1×plaintext + 1×Bytes ≈ 2GB 临时
-        // 内存,且在 publish 完成前阻塞 outbound dispatch 主流程 ~11s。
+        // ImportMode 选择(平台条件):
+        //   - 非 Windows(macOS APFS / Linux Btrfs / XFS-with-reflink):用
+        //     `ImportMode::Copy` —— 内部 `reflink_or_copy_with_progress` 在
+        //     CoW FS 上是 zero-copy reflink,免费;ext4 / 其他 fallback 真
+        //     拷贝,这部分用户量少,先不优化。
+        //   - Windows(NTFS 大头 / ReFS 少数):用 `ImportMode::TryReference`
+        //     (iroh-blobs 0.97 `store/fs/import.rs:485-490`)—— 不进 store
+        //     数据目录,直接 `OpenOptions::read(true).open(path)` 拿外部句柄
+        //     算 outboard,store entry 状态为 External。NTFS 1GB 实测 ~21s
+        //     真拷贝直接消失,只剩 read + BAO 的成本。
+        //
+        // 正确性窗口:TryReference 模式下,如果用户在 dispatch 后、所有对端
+        // fetch 完成前**修改 / 移动**源文件 → outboard 与内容失配,接收端
+        // BAO 校验失败。Windows 上 store 持有的 `OpenOptions::read` 句柄会
+        // 在 share=full-access 下不阻止改动,但天然阻止文件被删除(file in
+        // use)—— 覆盖了"不小心拖去回收站"这一最常见误操作。其他场景接受
+        // 失败、由用户重新复制(对端报错而 sender 这一侧不感知,fallback
+        // 到 Copy 重 import 的反向通知链路超出本次 step 范围)。
         let started = Instant::now();
+        let mode = preferred_import_mode();
         let tag_info = self
             .store
             .blobs()
-            .add_path(path)
+            .add_path_with_opts(AddPathOptions {
+                path: path.to_owned(),
+                format: BlobFormat::Raw,
+                mode,
+            })
             .await
             .map_err(|e| BlobError::Internal(e.to_string()))?;
         info!(
             add_path_ms = started.elapsed().as_millis() as u64,
+            mode = ?mode,
             blob_hash = %hex_prefix(tag_info.hash.as_bytes()),
             "iroh blob publish: add_path completed (streaming)"
         );
@@ -750,6 +784,104 @@ mod tests {
         let path_digest = fixture.adapter.publish_path(&path).await?;
 
         assert_eq!(bytes_digest, path_digest);
+        fixture.shutdown().await?;
+        Ok(())
+    }
+
+    #[test]
+    fn preferred_import_mode_is_try_reference_on_windows_copy_elsewhere() {
+        // GH#487 Step 2 platform contract: TryReference is the default on
+        // Windows (NTFS / ReFS) to skip the ~21s NTFS stream-copy fallback;
+        // everywhere else stays on Copy so the existing reflink fast paths
+        // (APFS / Btrfs / XFS reflink) keep firing untouched.
+        let mode = preferred_import_mode();
+        if cfg!(target_os = "windows") {
+            assert!(matches!(mode, ImportMode::TryReference));
+        } else {
+            assert!(matches!(mode, ImportMode::Copy));
+        }
+    }
+
+    #[tokio::test]
+    async fn publish_path_try_reference_yields_same_digest_as_copy() -> anyhow::Result<()> {
+        // GH#487 Step 2: switching ImportMode must not change the
+        // content-addressed digest. The store's own dedup invariant
+        // promises this (BAO is computed off the file content, not the
+        // import strategy), but a regression here would silently break
+        // every ticket the sender mints once the platform-conditional
+        // mode select kicks in. Payload is 64 KiB — above iroh-blobs'
+        // default 16 KiB inline threshold — so both branches actually
+        // hit the file-import path that differs between modes.
+        let fixture = Fixture::bind().await?;
+        let payload = vec![0xc3u8; 64 * 1024];
+
+        let dir = tempdir()?;
+        let path_copy = dir.path().join("copy.bin");
+        let path_ref = dir.path().join("ref.bin");
+        std::fs::write(&path_copy, &payload)?;
+        std::fs::write(&path_ref, &payload)?;
+
+        let copy_tag = fixture
+            .store
+            .blobs()
+            .add_path_with_opts(AddPathOptions {
+                path: path_copy.clone(),
+                format: BlobFormat::Raw,
+                mode: ImportMode::Copy,
+            })
+            .await?;
+        let ref_tag = fixture
+            .store
+            .blobs()
+            .add_path_with_opts(AddPathOptions {
+                path: path_ref.clone(),
+                format: BlobFormat::Raw,
+                mode: ImportMode::TryReference,
+            })
+            .await?;
+
+        assert_eq!(copy_tag.hash, ref_tag.hash);
+        fixture.shutdown().await?;
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn publish_path_try_reference_serves_correct_bytes_to_local_fetch() -> anyhow::Result<()>
+    {
+        // GH#487 Step 2 end-to-end contract: when the store entry is an
+        // External(path) reference rather than an owned data file, fetching
+        // the blob (here through the local-hit fast path) must still hand
+        // back the exact original bytes. This is what catches "we kept a
+        // reference but the BAO outboard ended up wrong" regressions.
+        let fixture = Fixture::bind().await?;
+        fixture.wait_for_direct_addr().await?;
+        let payload = vec![0x91u8; 64 * 1024];
+
+        let dir = tempdir()?;
+        let source = dir.path().join("source.bin");
+        std::fs::write(&source, &payload)?;
+
+        let tag_info = fixture
+            .store
+            .blobs()
+            .add_path_with_opts(AddPathOptions {
+                path: source.clone(),
+                format: BlobFormat::Raw,
+                mode: ImportMode::TryReference,
+            })
+            .await?;
+        let digest = IrohBlobTransferAdapter::core_digest(tag_info.hash);
+        let ticket = fixture.adapter.issue_ticket(&digest).await?;
+
+        let target = dir.path().join("out.bin");
+        let returned = fixture
+            .adapter
+            .fetch_to_path(&ticket, &target, None)
+            .await?;
+
+        assert_eq!(returned, digest);
+        let fetched = std::fs::read(&target)?;
+        assert_eq!(fetched, payload);
         fixture.shutdown().await?;
         Ok(())
     }

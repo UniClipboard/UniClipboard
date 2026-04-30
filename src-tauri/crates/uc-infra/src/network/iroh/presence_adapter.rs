@@ -494,10 +494,18 @@ mod tests {
     // -- Helpers -------------------------------------------------------------
 
     async fn bound_endpoint() -> Arc<Endpoint> {
+        // Discovery is cleared so dials must rely solely on the
+        // `EndpointAddr` blob: an empty `transport_addrs` with relays
+        // disabled then has no fallback, which is what
+        // `ensure_reachable_after_offline_redials_successfully` relies on.
+        // Without this, iroh's default n0/pkarr DNS discovery can resolve
+        // the live peer's id back to its real direct addrs and the dial
+        // unexpectedly succeeds on environments with outbound DNS (CI).
         Arc::new(
             Endpoint::builder()
                 .alpns(vec![PRESENCE_ALPN.to_vec()])
                 .relay_mode(RelayMode::Disabled)
+                .clear_discovery()
                 .bind()
                 .await
                 .expect("bind endpoint"),

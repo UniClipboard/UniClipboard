@@ -153,34 +153,6 @@ impl LogProfile {
 
         EnvFilter::new(directives.join(","))
     }
-
-    /// Return the filter directives as a string (for testing/debugging).
-    #[cfg(test)]
-    fn directives_string(&self) -> String {
-        let base = match self {
-            Self::Dev => "debug",
-            Self::Prod | Self::Cli => "info",
-            Self::DebugClipboard => "info",
-        };
-
-        let mut directives = vec![base.to_string()];
-        for &filter in NOISE_FILTERS {
-            directives.push(filter.to_string());
-        }
-        match self {
-            Self::Dev => {
-                directives.push("uc_platform=debug".to_string());
-                directives.push("uc_infra=debug".to_string());
-            }
-            Self::DebugClipboard => {
-                directives.push("uc_platform::adapters::clipboard=trace".to_string());
-                directives.push("uc_app::usecases::clipboard=debug".to_string());
-                directives.push("uc_core::clipboard=debug".to_string());
-            }
-            Self::Prod | Self::Cli => {}
-        }
-        directives.join(",")
-    }
 }
 
 impl fmt::Display for LogProfile {

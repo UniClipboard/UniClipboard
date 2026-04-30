@@ -22,18 +22,26 @@ use std::sync::Arc;
 
 use tracing::{info, instrument};
 
+use tokio::sync::broadcast;
+use tokio::task::JoinHandle;
+use tracing::warn;
+
 use uc_application::facade::{
-    BlobTransferDeps, BlobTransferFacade, ClipboardSyncDeps, ClipboardSyncFacade, IngestHandle,
-    MemberRosterDeps, MemberRosterFacade, SpaceSetupDeps, SpaceSetupFacade,
+    BlobTransferDeps, BlobTransferFacade, ClipboardSyncDeps, ClipboardSyncFacade, HostEvent,
+    HostEventEmitterPort, IngestHandle, MemberRosterDeps, MemberRosterFacade, SpaceSetupDeps,
+    SpaceSetupFacade, TransferHostEvent,
 };
 use uc_application::proof::HmacProofAdapter;
+use uc_core::file_transfer::{FileTransferDirection, OutboundProgressStatus};
 use uc_core::ports::blob::{BlobReferenceRepositoryPort, BlobTransferPort};
 use uc_core::ports::space::ProofPort;
 use uc_core::ports::{
     ClipboardDispatchPort, ClipboardReceiverPort, LocalIdentityPort, PresencePort,
 };
+use uc_infra::network::iroh::transfer_progress_adapter::InboundProgressEvent;
 use uc_infra::network::iroh::{
     BlobHandlers, ClipboardHandlers, IrohIdentityStore, IrohNode, IrohNodeBuilder, IrohNodeError,
+    TransferProgressHandlers,
 };
 // Re-exported so external callers can parametrise the assembly without
 // having to `use uc_infra` themselves.
@@ -82,6 +90,11 @@ pub struct SpaceSetupAssembly {
     /// 出 `RecvError::Closed`)。`shutdown` 显式 abort 一次走在 router
     /// 关闭之前,加快进程退出。
     ingest_handle: IngestHandle,
+    /// 反向"传输进度"翻译 worker 的 join handle。订阅
+    /// `IrohTransferProgressAdapter` 的 inbound 流,将每帧 progress 翻译
+    /// 为 `HostEvent::Transfer { direction: Sending, ... }` 并发到 emitter。
+    /// 与 ingest_handle 同生命周期。
+    outbound_progress_translator: JoinHandle<()>,
 }
 
 impl SpaceSetupAssembly {
@@ -101,9 +114,78 @@ impl SpaceSetupAssembly {
         // same when `self` falls out of scope; the explicit call only
         // shaves a tick off teardown latency and makes ordering obvious.
         self.ingest_handle.abort();
+        self.outbound_progress_translator.abort();
         self.facade.on_shutdown().await;
         self.iroh_node.shutdown().await;
     }
+}
+
+/// 把接收端推回的进度帧翻译成 `HostEvent::Transfer` 发给 emitter。
+///
+/// 每帧:
+/// * 先发一条 `Progress { direction: Sending }`,前端用它更新 sender 端
+///   transfer 进度条 + 文案。
+/// * 终态(`Completed` / `Failed`)再补一条 `StatusChanged`,前端把
+///   `entryStatusById[transfer_id]` 切到对应状态,UI 退出 transferring。
+///
+/// transfer_id 字段直接复用帧里的 sender 端 entry_id —— sender 本地
+/// entry_id == transfer_id 是发送侧的协议约定(同接收侧约定对称)。
+fn spawn_outbound_progress_translator(
+    mut rx: broadcast::Receiver<InboundProgressEvent>,
+    emitter_cell: Arc<std::sync::RwLock<Arc<dyn HostEventEmitterPort>>>,
+) -> JoinHandle<()> {
+    tokio::spawn(async move {
+        loop {
+            match rx.recv().await {
+                Ok(event) => {
+                    let emitter = emitter_cell
+                        .read()
+                        .unwrap_or_else(|p| p.into_inner())
+                        .clone();
+
+                    let progress = HostEvent::Transfer(TransferHostEvent::Progress {
+                        transfer_id: event.transfer_id.clone(),
+                        entry_id: Some(event.transfer_id.clone()),
+                        peer_id: event.from_device.as_str().to_string(),
+                        direction: FileTransferDirection::Sending,
+                        bytes_transferred: event.bytes_transferred,
+                        total_bytes: event.total_bytes,
+                    });
+                    if let Err(err) = emitter.emit(progress) {
+                        warn!(error = %err, "outbound progress translator: emit Progress failed");
+                    }
+
+                    let terminal = match event.status {
+                        OutboundProgressStatus::InProgress => None,
+                        OutboundProgressStatus::Completed => Some(("completed", None)),
+                        OutboundProgressStatus::Failed => {
+                            Some(("failed", Some("receiver fetch failed".to_string())))
+                        }
+                    };
+                    if let Some((status, reason)) = terminal {
+                        let status_event = HostEvent::Transfer(TransferHostEvent::StatusChanged {
+                            transfer_id: event.transfer_id.clone(),
+                            entry_id: event.transfer_id,
+                            status: status.to_string(),
+                            reason,
+                        });
+                        if let Err(err) = emitter.emit(status_event) {
+                            warn!(error = %err, "outbound progress translator: emit StatusChanged failed");
+                        }
+                    }
+                }
+                Err(broadcast::error::RecvError::Lagged(n)) => {
+                    warn!(
+                        skipped = n,
+                        "outbound progress translator: lagged; some frames skipped"
+                    );
+                }
+                Err(broadcast::error::RecvError::Closed) => {
+                    break;
+                }
+            }
+        }
+    })
 }
 
 /// Failures during Slice 1 assembly. Bootstrap callers surface these as
@@ -170,12 +252,34 @@ pub async fn build_space_setup_assembly(
     );
     let clipboard_dispatch: Arc<dyn ClipboardDispatchPort> = clipboard_dispatch;
     let clipboard_receiver: Arc<dyn ClipboardReceiverPort> = clipboard_receiver;
-    // Slice 3 Phase 1:同一节点装第四个 ALPN(iroh-blobs)。BlobReference
+    // 反向"传输进度"通道(receiver → sender):同一节点装第四个 ALPN。
+    // 装在 install_blobs 之前是为了让 `IrohTransferProgressAdapter` 的
+    // reporter 能在 BlobTransferDeps 构造时一起接入 facade。inbound_events
+    // 由下面的 translator worker 消费,翻译为 host event。
+    let TransferProgressHandlers {
+        reporter: outbound_progress_reporter,
+        inbound_events: outbound_progress_events,
+    } = builder.install_transfer_progress(
+        Arc::clone(&wired.peer_addr_repo),
+        Arc::clone(&deps.device.member_repo),
+        Arc::clone(&deps.security.fingerprint),
+    );
+
+    // Slice 3 Phase 1:同一节点装第五个 ALPN(iroh-blobs)。BlobReference
     // 是 sqlite 仓储,不跟 router 绑定;这里只拿传输 port。
     let BlobHandlers { blob_transfer } = builder
         .install_blobs(wired.iroh_blob_store_dir.clone())
         .await?;
     let iroh_node = builder.spawn();
+
+    // Translator worker:从 sender 端的反向通道收 InboundProgressEvent,
+    // 翻译为 application 层 HostEvent(Sending 方向)发到 emitter_cell。
+    // 每次 progress → `TransferHostEvent::Progress`;终态 → 额外一帧
+    // `StatusChanged`。任务跟 ingest_handle 同生命周期,shutdown 显式 abort。
+    let outbound_progress_translator = spawn_outbound_progress_translator(
+        outbound_progress_events,
+        Arc::clone(&wired.emitter_cell),
+    );
 
     // HMAC proof adapter verifies the joiner's ChallengeResponse against
     // the master key that `SpaceAccessPort::derive_master_key_for_proof`
@@ -248,6 +352,8 @@ pub async fn build_space_setup_assembly(
         // fetch_blob 就会自动开始向前端发送 progress / status_changed 事件;
         // CLI 模式下 cell 里挂的是 noop emitter,事件被静默吞掉,不影响行为。
         host_event_emitter: Some(Arc::clone(&wired.emitter_cell)),
+        // 反向进度上报端口:接收端 fetch 进度通过新 ALPN 推回 sender。
+        outbound_progress_reporter: Some(outbound_progress_reporter),
     }));
 
     info!("Slice 2/3 SpaceSetupFacade + MemberRosterFacade + ClipboardSyncFacade + BlobTransferFacade assembled");
@@ -261,5 +367,6 @@ pub async fn build_space_setup_assembly(
         presence,
         iroh_node,
         ingest_handle,
+        outbound_progress_translator,
     })
 }

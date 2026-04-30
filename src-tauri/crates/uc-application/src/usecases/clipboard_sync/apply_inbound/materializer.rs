@@ -109,10 +109,15 @@ impl InboundBlobMaterializer for FileCacheBlobMaterializer {
             // 路径保持一致,确保占位卡片 / 进度事件 / 最终 entry 共享同
             // 一个 ID(协议层 transfer_id == receiver_entry_id)。
             // `blob_ref.entry_id` 是发送端 id,只用于 iroh tag。
+            // outbound_*: 反向进度回报上下文 —— transfer_id 用 sender 的
+            // entry_id(V3BlobRef.entry_id),target 用消息来源 device,
+            // 两者让 sender UI 能定位本地 entry 并接收实时字节进度。
             let transfer_context = FetchTransferContext {
                 transfer_id: receiver_entry_id.as_ref().to_string(),
                 peer_id: from_device.as_str().to_string(),
                 total_bytes: Some(advertised_size),
+                outbound_transfer_id: Some(blob_ref.entry_id.as_ref().to_string()),
+                outbound_target: Some(from_device.clone()),
             };
             let fetched = self
                 .fetcher
@@ -177,10 +182,14 @@ impl InboundBlobMaterializer for FileCacheBlobMaterializer {
             // 即便 envelope 含多个 blob_ref,也共享同一 transfer_id:前端按
             // 累计字节数显示总进度即可。`blob_ref.entry_id` 是发送端 id,
             // 仅用于 iroh tag,不参与前端关联。
+            // outbound_*: 反向进度回报。transfer_id 用 sender 的 entry_id
+            // 让 sender UI 定位本地 entry,target 是消息来源 device。
             let transfer_context = FetchTransferContext {
                 transfer_id: receiver_entry_id.as_ref().to_string(),
                 peer_id: from_device.as_str().to_string(),
                 total_bytes: Some(advertised_size),
+                outbound_transfer_id: Some(blob_ref.entry_id.as_ref().to_string()),
+                outbound_target: Some(from_device.clone()),
             };
             let fetched = self
                 .fetcher

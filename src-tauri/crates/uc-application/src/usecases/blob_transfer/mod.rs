@@ -10,7 +10,7 @@
 mod fetch_blob;
 mod publish_blob;
 
-pub(crate) use fetch_blob::{FetchBlobInput, FetchBlobUseCase};
+pub(crate) use fetch_blob::{FetchBlobInput, FetchBlobPathInput, FetchBlobUseCase};
 pub(crate) use publish_blob::{PublishBlobInput, PublishBlobUseCase};
 
 #[cfg(test)]
@@ -208,6 +208,23 @@ mod tests {
                 .get(&digest)
                 .cloned()
                 .ok_or(BlobError::NotFound)
+        }
+
+        async fn fetch_to_path(
+            &self,
+            ticket: &BlobTicket,
+            target_path: &std::path::Path,
+            progress: Option<&dyn BlobProgressSink>,
+        ) -> Result<BlobDigest, BlobError> {
+            // Fake-only: read store entry into memory and write the file
+            // out — tests work with small payloads, so the in-memory step
+            // is fine. Real adapter (`IrohBlobTransferAdapter`) goes
+            // through `Blobs::export` for true streaming export.
+            let bytes = self.fetch(ticket, progress).await?;
+            tokio::fs::write(target_path, &bytes)
+                .await
+                .map_err(|e| BlobError::Internal(e.to_string()))?;
+            self.digest_of(ticket)
         }
 
         async fn has(&self, digest: &BlobDigest) -> Result<bool, BlobError> {

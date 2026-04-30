@@ -192,18 +192,118 @@ impl BlobTransferPort for IrohBlobTransferAdapter {
         progress: Option<&dyn BlobProgressSink>,
     ) -> Result<Bytes, BlobError> {
         let native = Self::parse_ticket(ticket)?;
+        self.ensure_blob_in_store(&native, progress).await?;
+        self.store
+            .blobs()
+            .get_bytes(native.hash())
+            .await
+            .map_err(|e| BlobError::Unavailable(e.to_string()))
+    }
+
+    #[instrument(skip_all, fields(target = %target_path.display()))]
+    async fn fetch_to_path(
+        &self,
+        ticket: &BlobTicket,
+        target_path: &std::path::Path,
+        progress: Option<&dyn BlobProgressSink>,
+    ) -> Result<BlobDigest, BlobError> {
+        // GH#487 Phase 2 (receive-side mirror of the publish_path streaming
+        // import):after the download loop has materialised the blob in the
+        // local iroh store, hand it to `Blobs::export(hash, target)` instead
+        // of slurping it back through `get_bytes() -> Bytes -> tokio::fs::write`.
+        // `export` defaults to `ExportMode::Copy`, which on CoW filesystems
+        // (APFS / Btrfs / ReFS) is a reflink — zero-copy, near-instant,
+        // independent of blob size — and on plain filesystems falls back to
+        // a stream copy that stays bounded by chunk size. Either way the
+        // peak RSS no longer carries the whole plaintext.
+        let native = Self::parse_ticket(ticket)?;
+        let digest = Self::core_digest(native.hash());
+        let hash_prefix = hex_prefix(native.hash().as_bytes());
+
+        self.ensure_blob_in_store(&native, progress).await?;
+
+        let export_start = Instant::now();
+        let bytes_written = self
+            .store
+            .blobs()
+            .export(native.hash(), target_path)
+            .await
+            .map_err(|e| BlobError::Internal(e.to_string()))?;
+        info!(
+            hash = %hash_prefix,
+            bytes = bytes_written,
+            export_ms = export_start.elapsed().as_millis() as u64,
+            "blob fetch_to_path: export completed (streaming)"
+        );
+        Ok(digest)
+    }
+
+    #[instrument(skip_all)]
+    async fn has(&self, digest: &BlobDigest) -> Result<bool, BlobError> {
+        let hash = Self::native_hash(digest);
+        let observed = self
+            .store
+            .blobs()
+            .observe(hash)
+            .await
+            .map_err(|e| BlobError::Internal(e.to_string()))?;
+        Ok(observed.is_complete())
+    }
+
+    #[instrument(skip_all)]
+    async fn tag(&self, digest: &BlobDigest, reason: TagReason) -> Result<(), BlobError> {
+        let name = Self::tag_name(&reason);
+        self.store
+            .tags()
+            .set(
+                name.as_bytes(),
+                HashAndFormat::raw(Self::native_hash(digest)),
+            )
+            .await
+            .map_err(|e| BlobError::Internal(e.to_string()))
+    }
+
+    #[instrument(skip_all)]
+    async fn untag(&self, _digest: &BlobDigest, reason: TagReason) -> Result<(), BlobError> {
+        let name = Self::tag_name(&reason);
+        let removed = self
+            .store
+            .tags()
+            .delete(name.as_bytes())
+            .await
+            .map_err(|e| BlobError::Internal(e.to_string()))?;
+        debug!(removed, "blob tag removed");
+        Ok(())
+    }
+
+    fn digest_of(&self, ticket: &BlobTicket) -> Result<BlobDigest, BlobError> {
+        let native = Self::parse_ticket(ticket)?;
+        Ok(Self::core_digest(native.hash()))
+    }
+}
+
+impl IrohBlobTransferAdapter {
+    /// Make sure the local iroh store holds the blob the ticket points at,
+    /// either by serving the existing copy or by running the full
+    /// `pre-connect → downloader → retry` loop. Shared between
+    /// [`fetch`](BlobTransferPort::fetch) (which then `get_bytes`s the
+    /// store back into memory) and
+    /// [`fetch_to_path`](BlobTransferPort::fetch_to_path) (which then
+    /// `export`s the store entry into a target file). Pulling the loop
+    /// up here keeps the two trait methods in lockstep on retries,
+    /// progress sink semantics, and connection-pool warm-up.
+    async fn ensure_blob_in_store(
+        &self,
+        native: &NativeBlobTicket,
+        progress: Option<&dyn BlobProgressSink>,
+    ) -> Result<(), BlobError> {
         let digest = Self::core_digest(native.hash());
         let hash_prefix = hex_prefix(native.hash().as_bytes());
         let provider_id = native.addr().id;
 
         if self.has(&digest).await? {
             info!(hash = %hash_prefix, "blob fetch: local hit, skipping network");
-            return self
-                .store
-                .blobs()
-                .get_bytes(native.hash())
-                .await
-                .map_err(|e| BlobError::Internal(e.to_string()));
+            return Ok(());
         }
 
         // Pre-connect to seed the iroh endpoint's address lookup with the
@@ -426,54 +526,7 @@ impl BlobTransferPort for IrohBlobTransferAdapter {
             "blob fetch: download complete"
         );
 
-        self.store
-            .blobs()
-            .get_bytes(native.hash())
-            .await
-            .map_err(|e| BlobError::Unavailable(e.to_string()))
-    }
-
-    #[instrument(skip_all)]
-    async fn has(&self, digest: &BlobDigest) -> Result<bool, BlobError> {
-        let hash = Self::native_hash(digest);
-        let observed = self
-            .store
-            .blobs()
-            .observe(hash)
-            .await
-            .map_err(|e| BlobError::Internal(e.to_string()))?;
-        Ok(observed.is_complete())
-    }
-
-    #[instrument(skip_all)]
-    async fn tag(&self, digest: &BlobDigest, reason: TagReason) -> Result<(), BlobError> {
-        let name = Self::tag_name(&reason);
-        self.store
-            .tags()
-            .set(
-                name.as_bytes(),
-                HashAndFormat::raw(Self::native_hash(digest)),
-            )
-            .await
-            .map_err(|e| BlobError::Internal(e.to_string()))
-    }
-
-    #[instrument(skip_all)]
-    async fn untag(&self, _digest: &BlobDigest, reason: TagReason) -> Result<(), BlobError> {
-        let name = Self::tag_name(&reason);
-        let removed = self
-            .store
-            .tags()
-            .delete(name.as_bytes())
-            .await
-            .map_err(|e| BlobError::Internal(e.to_string()))?;
-        debug!(removed, "blob tag removed");
         Ok(())
-    }
-
-    fn digest_of(&self, ticket: &BlobTicket) -> Result<BlobDigest, BlobError> {
-        let native = Self::parse_ticket(ticket)?;
-        Ok(Self::core_digest(native.hash()))
     }
 }
 
@@ -551,6 +604,35 @@ mod tests {
         let second = fixture.adapter.publish(payload).await?;
 
         assert_eq!(first, second);
+        fixture.shutdown().await?;
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn fetch_to_path_writes_local_hit_to_target() -> anyhow::Result<()> {
+        // GH#487 Phase 2: when the blob is already in the local store
+        // (e.g. publisher fetching its own ticket), fetch_to_path must
+        // export it directly to the target path without going through
+        // the network or materialising the bytes in memory.
+        let fixture = Fixture::bind().await?;
+        fixture.wait_for_direct_addr().await?;
+        let payload = b"gh-487-fetch-to-path-local-hit".to_vec();
+        let digest = fixture
+            .adapter
+            .publish(Bytes::from(payload.clone()))
+            .await?;
+        let ticket = fixture.adapter.issue_ticket(&digest).await?;
+
+        let dir = tempdir()?;
+        let target = dir.path().join("out.bin");
+        let returned = fixture
+            .adapter
+            .fetch_to_path(&ticket, &target, None)
+            .await?;
+
+        assert_eq!(returned, digest);
+        let written = std::fs::read(&target)?;
+        assert_eq!(written, payload);
         fixture.shutdown().await?;
         Ok(())
     }

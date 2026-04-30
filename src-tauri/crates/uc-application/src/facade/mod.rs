@@ -34,7 +34,8 @@ pub use app_facade::{
 pub use app_paths::AppPaths;
 pub use blob_transfer::{
     BlobTransferDeps, BlobTransferError, BlobTransferFacade, FetchBlobCommand, FetchBlobResult,
-    PublishBlobCommand, PublishBlobPathCommand, PublishBlobResult,
+    FetchBlobToPathCommand, FetchBlobToPathResult, PublishBlobCommand, PublishBlobPathCommand,
+    PublishBlobResult,
 };
 pub use clipboard::{
     ClipboardSyncDeps, ClipboardSyncError, ClipboardSyncFacade, DispatchEntryInput,

@@ -80,6 +80,11 @@ mockall::mock! {
             &self,
             command: crate::facade::blob_transfer::FetchBlobCommand,
         ) -> Result<crate::facade::blob_transfer::FetchBlobResult>;
+
+        async fn fetch_blob_to_path(
+            &self,
+            command: crate::facade::blob_transfer::FetchBlobToPathCommand,
+        ) -> Result<crate::facade::blob_transfer::FetchBlobToPathResult>;
     }
 }
 
@@ -423,15 +428,23 @@ async fn file_cache_blob_materializer_writes_file_and_rewrites_file_uri_list() {
 
     let mut fetcher = MockBlobFetcher::new();
     fetcher
-        .expect_fetch_blob()
+        .expect_fetch_blob_to_path()
         .times(1)
         .withf(move |command| command.entry_id == entry_id && command.ticket == ticket)
         .returning(|command| {
-            Ok(crate::facade::blob_transfer::FetchBlobResult {
-                plaintext: Bytes::from_static(b"hello world"),
+            // Mirror the real adapter: write the bytes to target_path so
+            // the subsequent `file://` rewrite + `tokio::fs::read` assertion
+            // sees the materialized content. GH#487 Phase 2 changed the
+            // production path from `fetch_blob -> tokio::fs::write` to
+            // `fetch_blob_to_path` (streaming export); the test fake mirrors
+            // that contract instead of round-tripping through `Bytes`.
+            let payload: &[u8] = b"hello world";
+            std::fs::write(&command.target_path, payload).expect("fake write target");
+            Ok(crate::facade::blob_transfer::FetchBlobToPathResult {
                 entry_id: command.entry_id,
                 plaintext_hash: PlaintextHash::from_bytes([0; 32]),
                 digest: BlobDigest::from_bytes([1; 32]),
+                bytes_written: payload.len() as u64,
             })
         });
 

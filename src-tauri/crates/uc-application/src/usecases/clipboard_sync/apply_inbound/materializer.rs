@@ -22,7 +22,8 @@ use uc_core::ids::{DeviceId, EntryId, FormatId, RepresentationId};
 use uc_core::{MimeType, ObservedClipboardRepresentation, SystemClipboardSnapshot};
 
 use crate::facade::blob_transfer::{
-    BlobTransferFacade, FetchBlobCommand, FetchBlobResult, FetchTransferContext,
+    BlobTransferFacade, FetchBlobCommand, FetchBlobResult, FetchBlobToPathCommand,
+    FetchBlobToPathResult, FetchTransferContext,
 };
 use crate::usecases::clipboard_sync::payload_codec::V3BlobRef;
 
@@ -42,13 +43,33 @@ pub trait InboundBlobMaterializer: Send + Sync {
 
 #[async_trait]
 pub trait InboundBlobFetcher: Send + Sync {
+    /// In-memory fetch path — used by representation-bound blobs (e.g.
+    /// oversized images that we splice back into `snapshot.representations`).
     async fn fetch_blob(&self, command: FetchBlobCommand) -> Result<FetchBlobResult>;
+
+    /// Streaming fetch path — used by free-standing files. The blob is
+    /// written directly to `command.target_path` (reflink on CoW
+    /// filesystems) so receiving a 1 GiB clipboard transfer no longer
+    /// routes the full plaintext through `Bytes`. GH#487 Phase 2.
+    async fn fetch_blob_to_path(
+        &self,
+        command: FetchBlobToPathCommand,
+    ) -> Result<FetchBlobToPathResult>;
 }
 
 #[async_trait]
 impl InboundBlobFetcher for BlobTransferFacade {
     async fn fetch_blob(&self, command: FetchBlobCommand) -> Result<FetchBlobResult> {
         BlobTransferFacade::fetch_blob(self, command)
+            .await
+            .map_err(|e| anyhow!(e.to_string()))
+    }
+
+    async fn fetch_blob_to_path(
+        &self,
+        command: FetchBlobToPathCommand,
+    ) -> Result<FetchBlobToPathResult> {
+        BlobTransferFacade::fetch_blob_to_path(self, command)
             .await
             .map_err(|e| anyhow!(e.to_string()))
     }
@@ -191,11 +212,30 @@ impl InboundBlobMaterializer for FileCacheBlobMaterializer {
                 outbound_transfer_id: Some(blob_ref.entry_id.as_ref().to_string()),
                 outbound_target: Some(from_device.clone()),
             };
+
+            // GH#487 Phase 2: pre-create cache dir and stream the blob
+            // directly to the target file. The previous code did
+            // `fetch_blob -> Bytes -> tokio::fs::write`, which on a 800 MB
+            // transfer wasted ~20s materialising the full plaintext in
+            // memory and writing to disk a second time (the iroh store
+            // already had a copy from BAO verification). `fetch_blob_to_path`
+            // collapses both into a single `Blobs::export` call (reflink
+            // on APFS / Btrfs / ReFS).
+            let entry_dir = self
+                .cache_dir
+                .join("iroh-blobs")
+                .join(sanitize_path_segment(blob_ref.entry_id.as_ref()));
+            tokio::fs::create_dir_all(&entry_dir).await?;
+
+            let filename = unique_filename(blob_ref.filename.as_deref(), idx, &mut used_names);
+            let path = entry_dir.join(filename);
+
             let fetched = self
                 .fetcher
-                .fetch_blob(FetchBlobCommand {
+                .fetch_blob_to_path(FetchBlobToPathCommand {
                     ticket: blob_ref.ticket,
                     entry_id: blob_ref.entry_id.clone(),
+                    target_path: path.clone(),
                     transfer_context: Some(transfer_context),
                 })
                 .await
@@ -211,23 +251,13 @@ impl InboundBlobMaterializer for FileCacheBlobMaterializer {
                     e
                 })?;
 
-            let entry_dir = self
-                .cache_dir
-                .join("iroh-blobs")
-                .join(sanitize_path_segment(blob_ref.entry_id.as_ref()));
-            tokio::fs::create_dir_all(&entry_dir).await?;
-
-            let filename = unique_filename(blob_ref.filename.as_deref(), idx, &mut used_names);
-            let path = entry_dir.join(filename);
-            let fetched_len = fetched.plaintext.len();
-            tokio::fs::write(&path, fetched.plaintext).await?;
             info!(
                 idx,
                 total = blob_ref_total,
                 entry_id = %entry_id,
-                bytes_written = fetched_len,
+                bytes_written = fetched.bytes_written,
                 path = %path.display(),
-                "materialize: blob cached to local path"
+                "materialize: blob cached to local path (streaming)"
             );
             local_paths.push(path);
         }

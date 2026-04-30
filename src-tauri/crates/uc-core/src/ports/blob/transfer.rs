@@ -215,6 +215,26 @@ pub trait BlobTransferPort: Send + Sync {
         progress: Option<&dyn BlobProgressSink>,
     ) -> Result<Bytes, BlobError>;
 
+    /// Retrieve a ciphertext and write it directly to `target_path`,
+    /// streaming from the local store rather than materialising the full
+    /// payload as `Bytes` in memory. The semantics around credential
+    /// resolution, retries, integrity verification, and `progress` are
+    /// identical to [`fetch`](Self::fetch); the only difference is the
+    /// destination — adapters that back a content-addressed disk store
+    /// (e.g. iroh-blobs) SHOULD use a reflink / file-clone to land the
+    /// blob at `target_path` so peak memory stays bounded regardless of
+    /// blob size.
+    ///
+    /// Returns the [`BlobDigest`] the credential resolved to, so callers
+    /// can record references / dedup mappings without re-hashing the
+    /// just-written file.
+    async fn fetch_to_path(
+        &self,
+        ticket: &BlobTicket,
+        target_path: &std::path::Path,
+        progress: Option<&dyn BlobProgressSink>,
+    ) -> Result<BlobDigest, BlobError>;
+
     // ── Lifecycle ──
 
     /// Whether the local store currently holds the ciphertext.

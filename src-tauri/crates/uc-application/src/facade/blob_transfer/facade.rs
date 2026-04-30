@@ -17,7 +17,7 @@ use uc_core::ports::ContentHashPort;
 
 use crate::facade::host_event::{HostEvent, HostEventEmitterPort, TransferHostEvent};
 use crate::usecases::blob_transfer::{
-    FetchBlobInput, FetchBlobUseCase, PublishBlobInput, PublishBlobUseCase,
+    FetchBlobInput, FetchBlobPathInput, FetchBlobUseCase, PublishBlobInput, PublishBlobUseCase,
 };
 
 /// 共享的 host event emitter cell。
@@ -118,6 +118,31 @@ pub struct FetchBlobResult {
     pub entry_id: EntryId,
     pub plaintext_hash: PlaintextHash,
     pub digest: BlobDigest,
+}
+
+/// Streaming counterpart of [`FetchBlobCommand`] — the blob lands on disk
+/// at `target_path` instead of being returned as `Bytes`. GH#487 Phase 2.
+///
+/// Used by the inbound materializer for free-standing files so the
+/// receive side stops materialising 800 MB+ payloads in memory only to
+/// `tokio::fs::write` them out again.
+#[derive(Debug, Clone)]
+pub struct FetchBlobToPathCommand {
+    pub ticket: BlobTicket,
+    pub entry_id: EntryId,
+    pub target_path: PathBuf,
+    pub transfer_context: Option<FetchTransferContext>,
+}
+
+#[derive(Debug, Clone)]
+pub struct FetchBlobToPathResult {
+    pub entry_id: EntryId,
+    pub plaintext_hash: PlaintextHash,
+    pub digest: BlobDigest,
+    /// Final file size on disk (from `tokio::fs::metadata` after the
+    /// streaming export completed). Useful for callers that didn't get a
+    /// `total_bytes` from the protocol layer and want to log the real size.
+    pub bytes_written: u64,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -312,6 +337,97 @@ impl BlobTransferFacade {
                     entry_id: outcome.entry_id,
                     plaintext_hash: outcome.plaintext_hash,
                     digest: outcome.digest,
+                })
+            }
+            Err(e) => {
+                let msg = e.to_string();
+                if let Some(ctx) = command.transfer_context.as_ref() {
+                    self.emit_status_changed(ctx, "failed", Some(msg.clone()));
+                    self.report_outbound_terminal(
+                        ctx,
+                        0,
+                        ctx.total_bytes,
+                        OutboundProgressStatus::Failed,
+                    )
+                    .await;
+                }
+                Err(BlobTransferError::Fetch(msg))
+            }
+        }
+    }
+
+    /// 流式 fetch:把 blob 从 iroh store 直接 export 到 `target_path`,
+    /// 不经过 `Bytes`。GH#487 Phase 2:与 [`fetch_blob`](Self::fetch_blob) 在
+    /// progress sink、status events、outbound 反向上报上行为完全一致 ——
+    /// 只是不返回 plaintext。inbound materializer 用这个入口避免 800 MB+
+    /// 文件先全量进内存再 `tokio::fs::write` 的双写盘问题。
+    pub async fn fetch_blob_to_path(
+        &self,
+        command: FetchBlobToPathCommand,
+    ) -> Result<FetchBlobToPathResult, BlobTransferError> {
+        let iroh_tag_entry_id = command.entry_id.clone();
+        let progress_sink: Option<Arc<dyn BlobProgressSink>> = command
+            .transfer_context
+            .as_ref()
+            .filter(|_| self.host_event_emitter.is_some())
+            .map(|ctx| {
+                let outbound = match (
+                    self.outbound_progress_reporter.clone(),
+                    ctx.outbound_transfer_id.clone(),
+                    ctx.outbound_target.clone(),
+                ) {
+                    (Some(reporter), Some(tid), Some(target)) => Some(OutboundReportContext {
+                        reporter,
+                        transfer_id: tid,
+                        target,
+                    }),
+                    _ => None,
+                };
+                let sink: Arc<dyn BlobProgressSink> = Arc::new(HostEventProgressSink {
+                    emitter_cell: self.host_event_emitter.clone().unwrap(),
+                    transfer_id: ctx.transfer_id.clone(),
+                    peer_id: ctx.peer_id.clone(),
+                    fallback_total: ctx.total_bytes,
+                    outbound,
+                });
+                sink
+            });
+
+        if let Some(ctx) = command.transfer_context.as_ref() {
+            self.emit_status_changed(ctx, "transferring", None);
+            self.emit_progress(ctx, 0, ctx.total_bytes);
+        }
+
+        let result = self
+            .fetch_uc
+            .execute_to_path(FetchBlobPathInput {
+                ticket: command.ticket,
+                entry_id: iroh_tag_entry_id,
+                target_path: command.target_path,
+                progress: progress_sink,
+            })
+            .await;
+
+        match result {
+            Ok(outcome) => {
+                if let Some(ctx) = command.transfer_context.as_ref() {
+                    let final_size = outcome.bytes_written;
+                    let total = ctx.total_bytes.or(Some(final_size));
+                    self.emit_progress(ctx, final_size, total);
+                    self.emit_status_changed(ctx, "completed", None);
+                    self.report_outbound_terminal(
+                        ctx,
+                        final_size,
+                        total,
+                        OutboundProgressStatus::Completed,
+                    )
+                    .await;
+                }
+                Ok(FetchBlobToPathResult {
+                    entry_id: outcome.entry_id,
+                    plaintext_hash: outcome.plaintext_hash,
+                    digest: outcome.digest,
+                    bytes_written: outcome.bytes_written,
                 })
             }
             Err(e) => {

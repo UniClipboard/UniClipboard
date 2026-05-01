@@ -21,6 +21,13 @@ pub enum RosterError {
     #[error("failed to read local identity: {0}")]
     LocalIdentity(String),
 
+    /// `PeerAddressRepositoryPort` 故障。`revoke_member` 在删除成员后
+    /// 还需要清理同设备的 peer 地址条目,否则 dispatch / presence 仍会
+    /// 把已撤销设备当作目标(见 `dispatch_entry.rs` module doc 关于
+    /// "peer_addr_repo 是 paired members 权威集合" 的不变量)。
+    #[error("failed to remove peer address: {0}")]
+    PeerAddressRepository(String),
+
     /// 目标成员不存在。
     #[error("member `{0}` not found")]
     NotFound(String),

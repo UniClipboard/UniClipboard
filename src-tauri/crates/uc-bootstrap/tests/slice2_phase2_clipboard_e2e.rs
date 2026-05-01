@@ -442,6 +442,8 @@ async fn build_side(name: &'static str, rendezvous_base_url: String) -> Side {
 
     let roster = Arc::new(MemberRosterFacade::new(MemberRosterDeps {
         member_repo: Arc::clone(&member_repo) as Arc<dyn MemberRepositoryPort>,
+        peer_addr_repo: Arc::clone(&peer_addr_repo)
+            as Arc<dyn uc_core::ports::PeerAddressRepositoryPort>,
         local_identity: local_identity_for_roster,
         presence: presence_for_roster,
     }));

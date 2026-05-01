@@ -322,6 +322,7 @@ pub async fn build_space_setup_assembly(
     // 能直接读到。Facade 本身是纯 thin wrapper,构造非常便宜。
     let roster = Arc::new(MemberRosterFacade::new(MemberRosterDeps {
         member_repo: Arc::clone(&deps.device.member_repo),
+        peer_addr_repo: Arc::clone(&wired.peer_addr_repo),
         local_identity: Arc::clone(&local_identity),
         presence: Arc::clone(&presence),
     }));

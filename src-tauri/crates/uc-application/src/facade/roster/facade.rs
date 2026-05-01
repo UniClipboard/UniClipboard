@@ -20,6 +20,7 @@ use tokio::sync::broadcast;
 use tracing::instrument;
 
 use uc_core::membership::MemberRepositoryPort;
+use uc_core::ports::peer_address::PeerAddressRepositoryPort;
 use uc_core::ports::{LocalIdentityPort, PresenceEvent, PresencePort};
 use uc_core::DeviceId;
 
@@ -33,6 +34,7 @@ use crate::facade::roster::errors::RosterError;
 /// 的风格,便于 bootstrap 分步 construct 各 facade。
 pub struct MemberRosterDeps {
     pub member_repo: Arc<dyn MemberRepositoryPort>,
+    pub peer_addr_repo: Arc<dyn PeerAddressRepositoryPort>,
     pub local_identity: Arc<dyn LocalIdentityPort>,
     pub presence: Arc<dyn PresencePort>,
 }
@@ -40,6 +42,7 @@ pub struct MemberRosterDeps {
 /// Roster 查询门面 —— 见模块文档。
 pub struct MemberRosterFacade {
     member_repo: Arc<dyn MemberRepositoryPort>,
+    peer_addr_repo: Arc<dyn PeerAddressRepositoryPort>,
     local_identity: Arc<dyn LocalIdentityPort>,
     presence: Arc<dyn PresencePort>,
 }
@@ -48,6 +51,7 @@ impl MemberRosterFacade {
     pub fn new(deps: MemberRosterDeps) -> Self {
         Self {
             member_repo: deps.member_repo,
+            peer_addr_repo: deps.peer_addr_repo,
             local_identity: deps.local_identity,
             presence: deps.presence,
         }
@@ -182,6 +186,12 @@ impl MemberRosterFacade {
     }
 
     /// 撤销成员。撤销语义由 application 层表达,daemon 不直接调用 use case。
+    ///
+    /// 不只删 `member_repo` —— 还要把同设备的 `peer_addr_repo` 条目一并清掉,
+    /// 否则 `dispatch_entry` / `ensure_reachable_all` 仍会把它当作目标继续拨号
+    /// 与同步剪贴板。`peer_addr_repo` 在文档语义上是"已配对成员的权威集合"
+    /// (见 `dispatch_entry.rs` module doc:"avoids iterating ghost entries in
+    /// `member_repo` that never completed pairing"),unpair 必须维护这条不变量。
     #[instrument(skip_all, fields(device_id = %device_id))]
     pub async fn revoke_member(&self, device_id: &str) -> Result<(), RosterError> {
         let device_id = DeviceId::new(device_id);
@@ -190,11 +200,19 @@ impl MemberRosterFacade {
             .remove(&device_id)
             .await
             .map_err(|err| RosterError::MemberRepository(err.to_string()))?;
-        if removed {
-            Ok(())
-        } else {
-            Err(RosterError::NotFound(device_id.as_str().to_string()))
+        if !removed {
+            return Err(RosterError::NotFound(device_id.as_str().to_string()));
         }
+
+        // peer_addr_repo.remove 是 idempotent 的(port doc),所以即使条目不
+        // 存在也会成功;失败仅在底层存储真正出错时发生。member_repo 已经删
+        // 了无法回滚——把错误抛给上层比静默吞错更好,启动期 reconcile 会兜底。
+        self.peer_addr_repo
+            .remove(&device_id)
+            .await
+            .map_err(|err| RosterError::PeerAddressRepository(err.to_string()))?;
+
+        Ok(())
     }
 
     /// `PresencePort::subscribe` 的 thin 转发。
@@ -230,6 +248,7 @@ mod tests {
     use crate::facade::roster::{ContentTypesPatch, MemberSyncPreferencesPatch};
     use uc_core::ids::DeviceId;
     use uc_core::membership::{MemberSyncPreferences, MembershipError, SpaceMember};
+    use uc_core::ports::peer_address::{PeerAddressError, PeerAddressRecord};
     use uc_core::ports::{LocalIdentityError, PresenceError, PresenceEvent, ReachabilityState};
     use uc_core::security::IdentityFingerprint;
 
@@ -244,6 +263,20 @@ mod tests {
             async fn list(&self) -> Result<Vec<SpaceMember>, MembershipError>;
             async fn save(&self, member: &SpaceMember) -> Result<(), MembershipError>;
             async fn remove(&self, device_id: &DeviceId) -> Result<bool, MembershipError>;
+        }
+    }
+
+    // ── mockall: peer_addr_repo ─────────────────────────────────────────
+
+    mockall::mock! {
+        pub PeerAddrRepo {}
+
+        #[async_trait]
+        impl PeerAddressRepositoryPort for PeerAddrRepo {
+            async fn get(&self, device: &DeviceId) -> Result<Option<PeerAddressRecord>, PeerAddressError>;
+            async fn upsert(&self, record: &PeerAddressRecord) -> Result<(), PeerAddressError>;
+            async fn list(&self) -> Result<Vec<PeerAddressRecord>, PeerAddressError>;
+            async fn remove(&self, device: &DeviceId) -> Result<(), PeerAddressError>;
         }
     }
 
@@ -341,8 +374,26 @@ mod tests {
         local_identity: MockLocalIdentity,
         presence: Arc<FakePresence>,
     ) -> MemberRosterFacade {
+        // 多数测试不走 revoke_member 路径,默认给一个不设 expectation 的
+        // peer_addr mock —— mockall 严格模式下若意外被调用会 panic,
+        // 等价于 "断言 peer_addr 在该测试中不应被触发"。
+        build_facade_with_peer_addr(
+            member_repo,
+            MockPeerAddrRepo::new(),
+            local_identity,
+            presence,
+        )
+    }
+
+    fn build_facade_with_peer_addr(
+        member_repo: MockMemberRepo,
+        peer_addr_repo: MockPeerAddrRepo,
+        local_identity: MockLocalIdentity,
+        presence: Arc<FakePresence>,
+    ) -> MemberRosterFacade {
         MemberRosterFacade::new(MemberRosterDeps {
             member_repo: Arc::new(member_repo),
+            peer_addr_repo: Arc::new(peer_addr_repo),
             local_identity: Arc::new(local_identity),
             presence,
         })
@@ -509,6 +560,7 @@ mod tests {
 
         let facade = MemberRosterFacade::new(MemberRosterDeps {
             member_repo: Arc::new(repo),
+            peer_addr_repo: Arc::new(MockPeerAddrRepo::new()),
             local_identity: Arc::new(id),
             presence: Arc::clone(&presence) as Arc<dyn PresencePort>,
         });
@@ -538,6 +590,7 @@ mod tests {
         let presence = Arc::new(FakePresence::new(vec![]));
         let facade = MemberRosterFacade::new(MemberRosterDeps {
             member_repo: Arc::new(repo),
+            peer_addr_repo: Arc::new(MockPeerAddrRepo::new()),
             local_identity: Arc::new(id),
             presence: Arc::clone(&presence) as Arc<dyn PresencePort>,
         });
@@ -638,16 +691,64 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn revoke_member_accepts_application_device_id() {
+    async fn revoke_member_clears_member_repo_and_peer_addr_repo() {
+        // 修复点验收:revoke_member 必须同时清两表,否则 dispatch_entry /
+        // ensure_reachable_all 仍会把已撤销设备当作目标继续 fan-out。
         let mut repo = MockMemberRepo::new();
         repo.expect_remove()
             .times(1)
             .withf(|device_id| device_id == &DeviceId::new("dev-1"))
             .returning(|_| Ok(true));
+        let mut peer_addr = MockPeerAddrRepo::new();
+        peer_addr
+            .expect_remove()
+            .times(1)
+            .withf(|device_id| device_id == &DeviceId::new("dev-1"))
+            .returning(|_| Ok(()));
         let id = MockLocalIdentity::new();
         let presence = Arc::new(FakePresence::new(vec![]));
-        let facade = build_facade(repo, id, presence);
+        let facade = build_facade_with_peer_addr(repo, peer_addr, id, presence);
 
         facade.revoke_member("dev-1").await.expect("ok");
+    }
+
+    #[tokio::test]
+    async fn revoke_member_skips_peer_addr_cleanup_when_member_not_found() {
+        // member_repo.remove 返回 false 表示成员不存在 —— 此时 facade 直接
+        // 返回 NotFound,不应再去碰 peer_addr_repo。peer_addr mock 不设
+        // expect_remove,被调用即 panic。
+        let mut repo = MockMemberRepo::new();
+        repo.expect_remove().times(1).returning(|_| Ok(false));
+        let peer_addr = MockPeerAddrRepo::new();
+        let id = MockLocalIdentity::new();
+        let presence = Arc::new(FakePresence::new(vec![]));
+        let facade = build_facade_with_peer_addr(repo, peer_addr, id, presence);
+
+        let err = facade.revoke_member("ghost").await.unwrap_err();
+        assert!(matches!(err, RosterError::NotFound(d) if d == "ghost"));
+    }
+
+    #[tokio::test]
+    async fn revoke_member_propagates_peer_addr_repo_failure() {
+        // member 已经删了无法回滚 —— 但 peer_addr_repo 失败仍然要冒泡,
+        // UI 才能感知到清理不完整,启动期 reconcile 会在下次 boot 兜底。
+        let mut repo = MockMemberRepo::new();
+        repo.expect_remove().times(1).returning(|_| Ok(true));
+        let mut peer_addr = MockPeerAddrRepo::new();
+        peer_addr
+            .expect_remove()
+            .times(1)
+            .returning(|_| Err(PeerAddressError::Internal("disk full".into())));
+        let id = MockLocalIdentity::new();
+        let presence = Arc::new(FakePresence::new(vec![]));
+        let facade = build_facade_with_peer_addr(repo, peer_addr, id, presence);
+
+        let err = facade.revoke_member("dev-1").await.unwrap_err();
+        match err {
+            RosterError::PeerAddressRepository(msg) => {
+                assert!(msg.contains("disk full"), "msg = {msg}");
+            }
+            other => panic!("expected PeerAddressRepository, got {other:?}"),
+        }
     }
 }

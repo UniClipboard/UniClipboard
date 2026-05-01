@@ -74,6 +74,9 @@ fn render_roster_error(err: &RosterError) -> String {
     match err {
         RosterError::MemberRepository(message) => format!("list devices failed: {message}"),
         RosterError::LocalIdentity(message) => format!("local identity read failed: {message}"),
+        RosterError::PeerAddressRepository(message) => {
+            format!("peer address cleanup failed: {message}")
+        }
         RosterError::NotFound(message) => format!("member not found: {message}"),
         RosterError::Unavailable => "member roster unavailable".to_string(),
     }

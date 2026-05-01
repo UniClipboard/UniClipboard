@@ -103,18 +103,33 @@ impl IrohBlobTransferAdapter {
     /// Snapshot the current connection path to `endpoint_id`. Used purely
     /// for log decoration on the blob-fetch hot path.
     ///
-    /// SPIKE NOTE (UniClipboard#486): iroh 0.98 dropped the synchronous
-    /// `Endpoint::conn_type(id) -> Option<Watcher<ConnectionType>>` and
-    /// replaced it with the async `remote_info(id) -> Option<RemoteInfo>`,
-    /// which we can't `.await` from inside `tracing!` field expressions
-    /// without restructuring 13 call sites. For the spike we degrade this
-    /// to a peer-id stub — the canonical path-selection log lives at
-    /// `connect.rs::connect_with_staggered_retry` and that one is properly
-    /// adapted. Restore real conn_type rendering before shipping the
-    /// upgrade (probably by precomputing the label via `remote_info().await`
-    /// at the start of each fetch and threading it through).
-    fn conn_label(&self, endpoint_id: EndpointId) -> String {
-        format!("peer={}", endpoint_id.fmt_short())
+    /// iroh 0.98 replaced the watcher-based `Endpoint::conn_type` with the
+    /// snapshot-style async `remote_info`. Renders only the `Active`
+    /// `TransportAddrInfo`s — the closest equivalent to the old
+    /// Direct/Relay/Mixed tag. This is the same shape `connect.rs` uses for
+    /// its `iroh connect selected path` log, so log fields stay comparable
+    /// across the connect-time and fetch-time stories.
+    ///
+    /// Cheap to call: `remote_info` is a snapshot, not a watcher
+    /// subscription, and we run it once per relevant tracing event so the
+    /// reported path reflects the moment the event fired, not a
+    /// pre-fetched stale value.
+    async fn conn_label(&self, endpoint_id: EndpointId) -> String {
+        match self.endpoint.remote_info(endpoint_id).await {
+            Some(info) => {
+                let active: Vec<String> = info
+                    .addrs()
+                    .filter(|a| matches!(a.usage(), iroh::endpoint::TransportAddrUsage::Active))
+                    .map(|a| format!("{:?}", a.addr()))
+                    .collect();
+                if active.is_empty() {
+                    "no_active_paths".to_string()
+                } else {
+                    active.join(",")
+                }
+            }
+            None => "unknown".to_string(),
+        }
     }
 }
 
@@ -377,24 +392,32 @@ impl IrohBlobTransferAdapter {
         // cold paths). Holding the connection until the download completes
         // gives the pool a warm reference to grab.
         let connect_start = Instant::now();
-        let _connection = self
+        // Inlined what was a `.map_err(|e| { warn!; ... })?` closure: the
+        // closure is sync but `conn_label` is async on iroh 0.98, so the
+        // connect-failed branch needs an `.await` that closures can't host.
+        let _connection = match self
             .endpoint
             .connect(native.addr().clone(), BLOBS_ALPN)
             .await
-            .map_err(|e| {
+        {
+            Ok(c) => c,
+            Err(e) => {
+                let conn = self.conn_label(provider_id).await;
                 warn!(
                     hash = %hash_prefix,
                     elapsed_ms = connect_start.elapsed().as_millis() as u64,
-                    conn = %self.conn_label(provider_id),
+                    conn = %conn,
                     error = %e,
                     "blob fetch: endpoint.connect failed"
                 );
-                BlobError::Unavailable(e.to_string())
-            })?;
+                return Err(BlobError::Unavailable(e.to_string()));
+            }
+        };
+        let conn = self.conn_label(provider_id).await;
         info!(
             hash = %hash_prefix,
             elapsed_ms = connect_start.elapsed().as_millis() as u64,
-            conn = %self.conn_label(provider_id),
+            conn = %conn,
             "blob fetch: endpoint.connect ready, launching download"
         );
 
@@ -421,22 +444,26 @@ impl IrohBlobTransferAdapter {
             // progress, and the eventual `Error(anyhow::Error)` whose chain
             // contains the real quinn cause (ConnectionLost, Read(Reset), etc).
             let download_start = Instant::now();
-            let mut progress_stream = self
+            let mut progress_stream = match self
                 .downloader()
                 .download(native.hash_and_format(), [native.addr().id])
                 .stream()
                 .await
-                .map_err(|e| {
+            {
+                Ok(s) => s,
+                Err(e) => {
+                    let conn = self.conn_label(provider_id).await;
                     warn!(
                         hash = %hash_prefix,
                         elapsed_ms = download_start.elapsed().as_millis() as u64,
                         attempt,
-                        conn = %self.conn_label(provider_id),
+                        conn = %conn,
                         error = %e,
                         "blob fetch: downloader.stream() open failed"
                     );
-                    BlobError::Unavailable(e.to_string())
-                })?;
+                    return Err(BlobError::Unavailable(e.to_string()));
+                }
+            };
 
             let mut bytes_so_far: u64 = 0;
             let mut last_logged_bytes: u64 = 0;
@@ -450,12 +477,13 @@ impl IrohBlobTransferAdapter {
                 match item {
                     DownloadProgressItem::TryProvider { id, .. } => {
                         tried_providers += 1;
+                        let conn = self.conn_label(provider_id).await;
                         info!(
                             hash = %hash_prefix,
                             provider = %id.fmt_short(),
                             elapsed_ms = download_start.elapsed().as_millis() as u64,
                             attempt,
-                            conn = %self.conn_label(provider_id),
+                            conn = %conn,
                             "blob fetch: trying provider"
                         );
                     }
@@ -463,25 +491,27 @@ impl IrohBlobTransferAdapter {
                         provider_failures += 1;
                         // execute_get drops the underlying error here — we only
                         // get to know which provider failed and how far we got.
+                        let conn = self.conn_label(provider_id).await;
                         warn!(
                             hash = %hash_prefix,
                             provider = %id.fmt_short(),
                             elapsed_ms = download_start.elapsed().as_millis() as u64,
                             bytes_downloaded = bytes_so_far,
                             attempt,
-                            conn = %self.conn_label(provider_id),
+                            conn = %conn,
                             "blob fetch: provider failed (cause discarded by iroh-blobs::execute_get)"
                         );
                     }
                     DownloadProgressItem::Progress(total) => {
                         bytes_so_far = total;
                         if total >= last_logged_bytes + PROGRESS_LOG_BYTES {
+                            let conn = self.conn_label(provider_id).await;
                             info!(
                                 hash = %hash_prefix,
                                 bytes = total,
                                 elapsed_ms = download_start.elapsed().as_millis() as u64,
                                 attempt,
-                                conn = %self.conn_label(provider_id),
+                                conn = %conn,
                                 "blob fetch: progress checkpoint"
                             );
                             last_logged_bytes = total;
@@ -499,12 +529,13 @@ impl IrohBlobTransferAdapter {
                         }
                     }
                     DownloadProgressItem::PartComplete { .. } => {
+                        let conn = self.conn_label(provider_id).await;
                         info!(
                             hash = %hash_prefix,
                             bytes = bytes_so_far,
                             elapsed_ms = download_start.elapsed().as_millis() as u64,
                             attempt,
-                            conn = %self.conn_label(provider_id),
+                            conn = %conn,
                             "blob fetch: part complete"
                         );
                         if let Some(sink) = progress {
@@ -516,6 +547,7 @@ impl IrohBlobTransferAdapter {
                         }
                     }
                     DownloadProgressItem::DownloadError => {
+                        let conn = self.conn_label(provider_id).await;
                         warn!(
                             hash = %hash_prefix,
                             elapsed_ms = download_start.elapsed().as_millis() as u64,
@@ -523,7 +555,7 @@ impl IrohBlobTransferAdapter {
                             provider_failures,
                             tried_providers,
                             attempt,
-                            conn = %self.conn_label(provider_id),
+                            conn = %conn,
                             "blob fetch: DownloadError signalled (split-strategy aggregate failure)"
                         );
                         break Err(BlobError::Unavailable("Download error".into()));
@@ -532,6 +564,7 @@ impl IrohBlobTransferAdapter {
                         // The single most useful event: the anyhow chain here
                         // typically wraps the quinn::ConnectionError or
                         // ReadError that `execute_get` swallowed earlier.
+                        let conn = self.conn_label(provider_id).await;
                         warn!(
                             hash = %hash_prefix,
                             elapsed_ms = download_start.elapsed().as_millis() as u64,
@@ -539,7 +572,7 @@ impl IrohBlobTransferAdapter {
                             provider_failures,
                             tried_providers,
                             attempt,
-                            conn = %self.conn_label(provider_id),
+                            conn = %conn,
                             error = ?e,
                             "blob fetch: downloader Error event (root cause from anyhow chain)"
                         );
@@ -573,6 +606,7 @@ impl IrohBlobTransferAdapter {
             }
         }
 
+        let conn = self.conn_label(provider_id).await;
         info!(
             hash = %hash_prefix,
             bytes = final_bytes,
@@ -580,7 +614,7 @@ impl IrohBlobTransferAdapter {
             download_ms = fetch_start.elapsed().as_millis() as u64,
             connect_ms = (connect_start.elapsed() - fetch_start.elapsed()).as_millis() as u64,
             tried_providers = total_tried_providers,
-            conn = %self.conn_label(provider_id),
+            conn = %conn,
             "blob fetch: download complete"
         );
 

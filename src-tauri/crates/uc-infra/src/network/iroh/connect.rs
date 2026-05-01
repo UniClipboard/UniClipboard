@@ -2,7 +2,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use iroh::endpoint::Connection;
-use iroh::{Endpoint, EndpointAddr, Watcher};
+use iroh::{Endpoint, EndpointAddr};
 use tokio::task::JoinSet;
 use tracing::{debug, info, warn};
 
@@ -41,15 +41,30 @@ pub(super) async fn connect_with_staggered_retry(
             match tokio::time::timeout(ATTEMPT_TIMEOUT, endpoint.connect(addr, alpn)).await {
                 Ok(Ok(connection)) => {
                     // Diagnostic for UniClipboard#486 — log which path won
-                    // the candidate race. `ConnectionType`'s Debug carries
-                    // the chosen SocketAddr or relay URL, so comparing
-                    // against `node.rs::log_publish_addrs` snapshots reveals
-                    // when a connection lands on a virtual-NIC IP
-                    // (Clash TUN etc) instead of the real LAN interface.
-                    let conn_type_str = endpoint
-                        .conn_type(addr_id)
-                        .map(|mut w| format!("{:?}", w.get()))
-                        .unwrap_or_else(|| "unavailable".to_string());
+                    // the candidate race. iroh 0.98 replaced the older
+                    // `Endpoint::conn_type(id) -> Watcher<ConnectionType>` with
+                    // the snapshot-style `remote_info(id) -> Option<RemoteInfo>`;
+                    // we render only the `Active` `TransportAddrInfo`s, which
+                    // is the closest equivalent to the old Direct/Relay/Mixed
+                    // tag for "what's the path actually carrying packets right
+                    // now".
+                    let conn_type_str = match endpoint.remote_info(addr_id).await {
+                        Some(info) => {
+                            let active: Vec<String> = info
+                                .addrs()
+                                .filter(|a| {
+                                    matches!(a.usage(), iroh::endpoint::TransportAddrUsage::Active)
+                                })
+                                .map(|a| format!("{:?}", a.addr()))
+                                .collect();
+                            if active.is_empty() {
+                                "no_active_paths".to_string()
+                            } else {
+                                active.join(",")
+                            }
+                        }
+                        None => "unavailable".to_string(),
+                    };
                     info!(
                         purpose,
                         attempt = attempt_no,

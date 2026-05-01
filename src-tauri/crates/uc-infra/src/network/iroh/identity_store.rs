@@ -87,7 +87,7 @@ impl IrohIdentityStore {
     }
 
     fn generate_new() -> SecretKey {
-        SecretKey::generate(&mut rand::rng())
+        SecretKey::generate()
     }
 
     /// Return the persisted iroh `SecretKey`, generating + persisting a fresh

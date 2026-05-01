@@ -70,13 +70,13 @@ image = { version = "0.25", default-features = false, features = ["png", "jpeg",
 zstd = { version = "0.13", features = ["zstdmt"] }
 
 # ===== Network stack (iroh + rendezvous HTTP) =====
-iroh = "0.95.1"
-iroh-blobs = "0.97.0"
-iroh-tickets = "0.2"
-# Pinned to the version iroh 0.95.1 already pulls in (verified in Cargo.lock).
+iroh = "0.98"
+iroh-blobs = "0.100"
+iroh-tickets = "0.5"
+# iroh 0.97 forked quinn-proto into noq-proto (Custom Transports & noq).
 # Used solely to reach `congestion::BbrConfig` when wiring the QUIC
 # TransportConfig — iroh re-exports the trait but not the BBR factory itself.
-iroh-quinn-proto = "0.13"
+noq-proto = "0.17"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "rustls-tls-webpki-roots"] }
 # Slice 1 pairing session wire codec — binary, compact, serde-compatible.
 postcard = { version = "1", features = ["use-std"] }

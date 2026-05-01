@@ -10,7 +10,7 @@ use std::time::{Duration, Instant};
 use async_trait::async_trait;
 use bytes::Bytes;
 use futures_util::StreamExt;
-use iroh::{Endpoint, EndpointId, Watcher};
+use iroh::{Endpoint, EndpointId};
 use iroh_blobs::{
     api::blobs::{AddPathOptions, ExportMode, ExportOptions, ImportMode},
     api::downloader::{DownloadProgressItem, Downloader},
@@ -100,14 +100,21 @@ impl IrohBlobTransferAdapter {
         }
     }
 
-    /// Snapshot the current connection path to `endpoint_id`,renders as
-    /// `direct(...)` / `relay(...)` / `mixed(udp:..., relay:...)` / `none` /
-    /// `unknown`。仅用于日志,排查"慢同步走 relay 还是 direct"时一眼可见。
+    /// Snapshot the current connection path to `endpoint_id`. Used purely
+    /// for log decoration on the blob-fetch hot path.
+    ///
+    /// SPIKE NOTE (UniClipboard#486): iroh 0.98 dropped the synchronous
+    /// `Endpoint::conn_type(id) -> Option<Watcher<ConnectionType>>` and
+    /// replaced it with the async `remote_info(id) -> Option<RemoteInfo>`,
+    /// which we can't `.await` from inside `tracing!` field expressions
+    /// without restructuring 13 call sites. For the spike we degrade this
+    /// to a peer-id stub — the canonical path-selection log lives at
+    /// `connect.rs::connect_with_staggered_retry` and that one is properly
+    /// adapted. Restore real conn_type rendering before shipping the
+    /// upgrade (probably by precomputing the label via `remote_info().await`
+    /// at the start of each fetch and threading it through).
     fn conn_label(&self, endpoint_id: EndpointId) -> String {
-        match self.endpoint.conn_type(endpoint_id) {
-            Some(mut watcher) => watcher.get().to_string(),
-            None => "unknown".to_string(),
-        }
+        format!("peer={}", endpoint_id.fmt_short())
     }
 }
 

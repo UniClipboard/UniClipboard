@@ -5,7 +5,7 @@
 English | [简体中文](./README_ZH.md)
 
 UniClipboard is a **privacy-first**, cross-device clipboard synchronization tool.
-It enables seamless and secure syncing of text, images, and files across multiple devices. Data is encrypted both in transit and at rest, and decrypted only on the user’s devices—neither servers nor the network layer can ever access plaintext data.
+It enables seamless and secure syncing of text, images, and files across multiple devices, whether on the same Wi-Fi or across different networks. Data is encrypted both in transit and at rest, and decrypted only on the user’s devices—neither servers nor the network layer can ever access plaintext data.
 
 ![Image](https://github.com/user-attachments/assets/8d339467-5bbe-4afa-9235-1d26cbff82c9)
 
@@ -54,15 +54,15 @@ It enables seamless and secure syncing of text, images, and files across multipl
 
 ## Features
 
-- **Cross-platform support**: Supports Windows, macOS, and Linux operating systems
-- **Real-time sync**: Instantly share clipboard content between connected devices
-- **Content types**: Supports text, images, and files
-- **P2P device discovery**: Automatic device discovery on LAN via mDNS (powered by libp2p)
-- **Quick Panel**: Keyboard shortcut-triggered quick access panel for clipboard history
-- **Inline Preview**: Detailed content preview expands inside the quick panel
-- **Secure encryption**: Uses XChaCha20-Poly1305 AEAD encryption algorithm to ensure secure data transmission
-- **Multi-device management**: Easily add and manage multiple devices
-- **Flexible configuration**: Provides extensive customization options
+- **Cross-platform**: Windows, macOS, and Linux
+- **Cross-network sync**: Real-time clipboard sync between devices on the same LAN, across different home/office networks, or across the internet — with automatic NAT traversal and relay fallback
+- **Content types**: Text, images, and files (large files supported via streaming transfer)
+- **Encrypted spaces**: Devices group into shared "spaces"; create one, join via an invitation code + passphrase, or switch spaces without losing local history
+- **Local full-text search**: Encrypted local index for fast browsing across thousands of entries
+- **Quick Panel**: Keyboard-shortcut overlay with inline preview for text, links, images, code, and files
+- **Command-line tool**: A `uniclip` CLI that drives the full setup, pairing, and sync flow from the terminal
+- **Secure encryption**: XChaCha20-Poly1305 AEAD keeps data encrypted in transit and at rest
+- **Multi-device management**: Manage paired devices, presence, and per-device sync preferences
 
 ## Installation
 
@@ -89,33 +89,52 @@ bun tauri build
 
 ## Usage
 
-### First Device (Create Encrypted Space)
+### First Device (Create a Space)
 
-1. Launch the application for the first time and select **Create Encrypted Space**
-2. Set an encryption passphrase — this will be used to protect all synced data
-3. Setup is complete. Copied text, images, and files will be stored in the encrypted space
+1. Launch the app and choose **Create a Space**
+2. Set an encryption passphrase — this protects all data inside the space
+3. Done. Copied content is stored encrypted in this space.
 
-### Adding More Devices (Join Encrypted Space)
+### Adding More Devices (Join via Invitation)
 
-1. Launch the application on the new device and select **Join Encrypted Space**
-2. The app will automatically scan for available devices on the local network
-3. Select the discovered device, then enter the encryption passphrase
-4. Once the passphrase is verified, clipboard sync begins automatically
+1. On an existing device, open the **Devices** page and **generate an invitation code** (short-lived, valid for several minutes)
+2. On the new device, choose **Join an existing space**, enter the invitation code together with the space passphrase
+3. Once verified, the device joins and syncing starts automatically.
+
+> Already set up and want to move to another space? Use **Switch space** from the Devices page (or `uniclip switch-space` from the CLI) — your local clipboard history is re-encrypted and migrated.
 
 ### Main Pages
 
-- **Dashboard**: Overview of clipboard history and device connections
-- **Devices**: Manage paired devices and access permissions
-- **Settings**: Configure general, sync, security, network, and storage options
+- **Dashboard** — Clipboard history with full-text search and detailed preview
+- **Quick Panel** — Keyboard-shortcut overlay for fast clipboard access
+- **Devices** — Manage paired devices and presence, generate invitation codes, switch spaces
+- **Settings** — General, sync, security, network, storage, and search-index options
 
 ## Advanced Features
 
 ### Network Configuration
 
-Supports multiple network connection modes that can be configured based on your network environment:
+UniClipboard syncs directly between your devices over an encrypted peer-to-peer connection:
 
-- **LAN sync (P2P)**: Automatic device discovery and direct sync over local network using libp2p with mDNS
-- **WebDAV sync**: Under development
+- **Same network**: Devices on the same Wi-Fi connect directly for the lowest latency
+- **Different networks**: NAT traversal (hole-punching) lets devices on different home/office networks connect directly whenever possible
+- **Fallback relay**: When a direct connection isn't possible, traffic falls back to a relay — still end-to-end encrypted; the relay only sees ciphertext
+- **Resilient to changes**: Connections recover automatically after Wi-Fi switches, sleep/wake, or brief disconnects, with no re-pairing required
+
+### Command-line Tool
+
+The `uniclip` CLI mirrors the GUI flow and works headlessly (e.g. on servers):
+
+```bash
+uniclip init                    # Create a new encrypted space on this device
+uniclip invite                  # Generate a short-lived invitation code
+uniclip join <code>             # Join an existing space
+uniclip members                 # List paired devices and presence
+uniclip send "hello"            # Send clipboard content to other devices
+uniclip watch                   # Stream incoming clipboard events
+uniclip switch-space            # Move this device to another space
+uniclip status / start / stop   # Daemon lifecycle
+```
 
 ### Security Features
 
@@ -134,6 +153,7 @@ Supports multiple network connection modes that can be configured based on your 
   - Key Encryption Key (KEK) derived from passphrase via Argon2id
   - KEK securely stored in system keyring (macOS Keychain, Windows Credential Manager, Linux Secret Service)
   - MasterKey encrypted and stored in KeySlot file
+- **Per-space isolation**: Each space has its own MasterKey; switching to another space re-encrypts local history under the new space's MasterKey
 - **Device authorization**: Precise control over each device's access permissions
 
 ## Contributing

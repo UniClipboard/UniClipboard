@@ -77,6 +77,9 @@ fn render_roster_error(err: &RosterError) -> String {
         RosterError::PeerAddressRepository(message) => {
             format!("peer address cleanup failed: {message}")
         }
+        RosterError::TrustedPeerRepository(message) => {
+            format!("trusted peer cleanup failed: {message}")
+        }
         RosterError::NotFound(message) => format!("member not found: {message}"),
         RosterError::Unavailable => "member roster unavailable".to_string(),
     }

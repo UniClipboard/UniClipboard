@@ -10,6 +10,7 @@ use uc_core::ids::DeviceId;
 use uc_core::membership::MemberRepositoryPort;
 use uc_core::ports::peer_address::PeerAddressRepositoryPort;
 use uc_core::ports::{SettingsPort, SetupStatusPort};
+use uc_core::trusted_peer::TrustedPeerRepositoryPort;
 use uc_infra::FileSetupStatusRepository;
 
 use crate::assembly::{get_default_app_dirs, get_storage_paths};
@@ -179,6 +180,75 @@ pub async fn reconcile_peer_addresses(
     Ok(())
 }
 
+/// 启动期清理:删除所有"在 `trusted_peer_repo` 但不在 `member_repo`"的孤儿
+/// 条目。
+///
+/// 配套 `MemberRosterFacade::revoke_member` 的级联清理:撤销成员时若 trust
+/// 删失败,或老版本 unpair 路径根本没碰过 trust 表,残留行会导致**同设备
+/// 重新配对**被 `TrustPeerUseCase::execute` 的 `AlreadyTrusted` 检查直接挡死
+/// (见 `trust_peer.rs:42`)。reconcile 把不变量 `trusted_peer ⊆ member_repo`
+/// 重新拉齐,让重新配对路径不再被历史遗留卡住。
+///
+/// 跟 `reconcile_peer_addresses` 同样的失败策略:单条 / 整体失败都只 log,
+/// 不阻断 daemon 启动。
+pub async fn reconcile_trusted_peers(
+    member_repo: Arc<dyn MemberRepositoryPort>,
+    trusted_peer_repo: Arc<dyn TrustedPeerRepositoryPort>,
+) -> anyhow::Result<()> {
+    let members = member_repo
+        .list()
+        .await
+        .map_err(|e| anyhow::anyhow!("list members: {e}"))?;
+    let member_ids: Vec<DeviceId> = members.into_iter().map(|m| m.device_id).collect();
+
+    let trusted = trusted_peer_repo
+        .list()
+        .await
+        .map_err(|e| anyhow::anyhow!("list trusted peers: {e}"))?;
+
+    let orphans: Vec<DeviceId> = trusted
+        .into_iter()
+        .filter_map(|peer| {
+            if member_ids.contains(&peer.peer_device_id) {
+                None
+            } else {
+                Some(peer.peer_device_id)
+            }
+        })
+        .collect();
+
+    if orphans.is_empty() {
+        tracing::debug!("trusted_peer reconcile: no orphans");
+        return Ok(());
+    }
+
+    tracing::info!(
+        orphan_count = orphans.len(),
+        "trusted_peer reconcile: removing orphan entries (in trusted_peer_repo but not in member_repo)"
+    );
+
+    for device_id in &orphans {
+        match trusted_peer_repo.remove(device_id).await {
+            Ok(removed) => {
+                tracing::info!(
+                    device_id = %device_id.as_str(),
+                    removed,
+                    "trusted_peer reconcile: removed orphan"
+                );
+            }
+            Err(err) => {
+                tracing::warn!(
+                    device_id = %device_id.as_str(),
+                    error = %err,
+                    "trusted_peer reconcile: failed to remove orphan; will retry next boot"
+                );
+            }
+        }
+    }
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -188,6 +258,7 @@ mod tests {
     use uc_core::membership::{MemberSyncPreferences, MembershipError, SpaceMember};
     use uc_core::ports::peer_address::{PeerAddressError, PeerAddressRecord};
     use uc_core::security::IdentityFingerprint;
+    use uc_core::trusted_peer::{TrustedPeer, TrustedPeerError};
 
     struct FakeMemberRepo {
         members: Vec<SpaceMember>,
@@ -331,6 +402,117 @@ mod tests {
 
         // ghost-b 仍被尝试删除并成功
         let removed = peer_addr_repo.removed.lock().unwrap().clone();
+        assert_eq!(removed, vec![DeviceId::new("ghost-b")]);
+    }
+
+    // ── trusted_peer reconcile ──────────────────────────────────────────
+
+    struct RecordingTrustedPeerRepo {
+        rows: StdMutex<Vec<TrustedPeer>>,
+        removed: StdMutex<Vec<DeviceId>>,
+        fail_remove_for: Option<DeviceId>,
+    }
+
+    #[async_trait]
+    impl TrustedPeerRepositoryPort for RecordingTrustedPeerRepo {
+        async fn get(
+            &self,
+            _peer_device_id: &DeviceId,
+        ) -> Result<Option<TrustedPeer>, TrustedPeerError> {
+            unreachable!("reconcile only calls list + remove")
+        }
+        async fn list(&self) -> Result<Vec<TrustedPeer>, TrustedPeerError> {
+            Ok(self.rows.lock().unwrap().clone())
+        }
+        async fn save(&self, _trusted_peer: &TrustedPeer) -> Result<(), TrustedPeerError> {
+            unreachable!("reconcile only calls list + remove")
+        }
+        async fn remove(&self, peer_device_id: &DeviceId) -> Result<bool, TrustedPeerError> {
+            if self
+                .fail_remove_for
+                .as_ref()
+                .is_some_and(|fail| fail == peer_device_id)
+            {
+                return Err(TrustedPeerError::Repository("io error".into()));
+            }
+            let mut rows = self.rows.lock().unwrap();
+            let before = rows.len();
+            rows.retain(|p| &p.peer_device_id != peer_device_id);
+            let removed = rows.len() < before;
+            self.removed.lock().unwrap().push(peer_device_id.clone());
+            Ok(removed)
+        }
+    }
+
+    fn trusted(device: &str) -> TrustedPeer {
+        TrustedPeer {
+            local_device_id: DeviceId::new("local"),
+            peer_device_id: DeviceId::new(device),
+            peer_fingerprint: fp(),
+            trusted_at: Utc::now(),
+        }
+    }
+
+    #[tokio::test]
+    async fn reconcile_trusted_peers_removes_only_orphans() {
+        let member_repo = Arc::new(FakeMemberRepo {
+            members: vec![member("active")],
+        });
+        let trusted_repo = Arc::new(RecordingTrustedPeerRepo {
+            rows: StdMutex::new(vec![
+                trusted("active"),
+                trusted("ghost-a"),
+                trusted("ghost-b"),
+            ]),
+            removed: StdMutex::new(vec![]),
+            fail_remove_for: None,
+        });
+
+        reconcile_trusted_peers(member_repo, trusted_repo.clone() as _)
+            .await
+            .expect("reconcile ok");
+
+        let removed = trusted_repo.removed.lock().unwrap().clone();
+        assert_eq!(removed.len(), 2);
+        assert!(removed.contains(&DeviceId::new("ghost-a")));
+        assert!(removed.contains(&DeviceId::new("ghost-b")));
+        let surviving = trusted_repo.rows.lock().unwrap();
+        assert_eq!(surviving.len(), 1);
+        assert_eq!(surviving[0].peer_device_id, DeviceId::new("active"));
+    }
+
+    #[tokio::test]
+    async fn reconcile_trusted_peers_no_op_when_aligned() {
+        let member_repo = Arc::new(FakeMemberRepo {
+            members: vec![member("a"), member("b")],
+        });
+        let trusted_repo = Arc::new(RecordingTrustedPeerRepo {
+            rows: StdMutex::new(vec![trusted("a"), trusted("b")]),
+            removed: StdMutex::new(vec![]),
+            fail_remove_for: None,
+        });
+
+        reconcile_trusted_peers(member_repo, trusted_repo.clone() as _)
+            .await
+            .expect("reconcile ok");
+
+        assert!(trusted_repo.removed.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn reconcile_trusted_peers_continues_after_individual_remove_failure() {
+        let member_repo = Arc::new(FakeMemberRepo { members: vec![] });
+        let trusted_repo = Arc::new(RecordingTrustedPeerRepo {
+            rows: StdMutex::new(vec![trusted("ghost-a"), trusted("ghost-b")]),
+            removed: StdMutex::new(vec![]),
+            fail_remove_for: Some(DeviceId::new("ghost-a")),
+        });
+
+        reconcile_trusted_peers(member_repo, trusted_repo.clone() as _)
+            .await
+            .expect("reconcile returns Ok even if a single remove fails");
+
+        let removed = trusted_repo.removed.lock().unwrap().clone();
         assert_eq!(removed, vec![DeviceId::new("ghost-b")]);
     }
 }

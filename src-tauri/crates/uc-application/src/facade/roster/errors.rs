@@ -28,6 +28,13 @@ pub enum RosterError {
     #[error("failed to remove peer address: {0}")]
     PeerAddressRepository(String),
 
+    /// `TrustedPeerRepositoryPort` 故障。`revoke_member` 在删除成员后
+    /// 还要清掉对应的 trust 记录,否则同一设备重新配对时会被
+    /// `TrustPeerUseCase` 的 `AlreadyTrusted` 检查直接挡死
+    /// (见 `trust_peer.rs` 注释关于"先 Distrust 再 Trust" 的显式流程)。
+    #[error("failed to remove trusted peer: {0}")]
+    TrustedPeerRepository(String),
+
     /// 目标成员不存在。
     #[error("member `{0}` not found")]
     NotFound(String),

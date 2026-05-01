@@ -115,6 +115,9 @@ pub async fn run(json: bool, verbose: bool) -> i32 {
                 RosterError::PeerAddressRepository(m) => {
                     format!("peer address cleanup failed: {m}")
                 }
+                RosterError::TrustedPeerRepository(m) => {
+                    format!("trusted peer cleanup failed: {m}")
+                }
                 RosterError::NotFound(m) => format!("member not found: {m}"),
                 RosterError::Unavailable => "member roster unavailable".to_string(),
             };

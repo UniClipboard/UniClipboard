@@ -22,6 +22,7 @@ use tracing::instrument;
 use uc_core::membership::MemberRepositoryPort;
 use uc_core::ports::peer_address::PeerAddressRepositoryPort;
 use uc_core::ports::{LocalIdentityPort, PresenceEvent, PresencePort};
+use uc_core::trusted_peer::TrustedPeerRepositoryPort;
 use uc_core::DeviceId;
 
 use crate::facade::roster::commands::{
@@ -35,6 +36,7 @@ use crate::facade::roster::errors::RosterError;
 pub struct MemberRosterDeps {
     pub member_repo: Arc<dyn MemberRepositoryPort>,
     pub peer_addr_repo: Arc<dyn PeerAddressRepositoryPort>,
+    pub trusted_peer_repo: Arc<dyn TrustedPeerRepositoryPort>,
     pub local_identity: Arc<dyn LocalIdentityPort>,
     pub presence: Arc<dyn PresencePort>,
 }
@@ -43,6 +45,7 @@ pub struct MemberRosterDeps {
 pub struct MemberRosterFacade {
     member_repo: Arc<dyn MemberRepositoryPort>,
     peer_addr_repo: Arc<dyn PeerAddressRepositoryPort>,
+    trusted_peer_repo: Arc<dyn TrustedPeerRepositoryPort>,
     local_identity: Arc<dyn LocalIdentityPort>,
     presence: Arc<dyn PresencePort>,
 }
@@ -52,6 +55,7 @@ impl MemberRosterFacade {
         Self {
             member_repo: deps.member_repo,
             peer_addr_repo: deps.peer_addr_repo,
+            trusted_peer_repo: deps.trusted_peer_repo,
             local_identity: deps.local_identity,
             presence: deps.presence,
         }
@@ -187,11 +191,24 @@ impl MemberRosterFacade {
 
     /// 撤销成员。撤销语义由 application 层表达,daemon 不直接调用 use case。
     ///
-    /// 不只删 `member_repo` —— 还要把同设备的 `peer_addr_repo` 条目一并清掉,
-    /// 否则 `dispatch_entry` / `ensure_reachable_all` 仍会把它当作目标继续拨号
-    /// 与同步剪贴板。`peer_addr_repo` 在文档语义上是"已配对成员的权威集合"
-    /// (见 `dispatch_entry.rs` module doc:"avoids iterating ghost entries in
-    /// `member_repo` that never completed pairing"),unpair 必须维护这条不变量。
+    /// Facade 级联清理三张表,以维持设计意图的不变量
+    /// `trusted_peer ⊆ member` 与 `peer_addr ⊆ member`:
+    ///
+    /// 1. `member_repo` —— 主体记录,先删;返回 `Ok(false)` 表示成员不存在
+    ///    (`NotFound`),后续两步跳过。
+    /// 2. `peer_addr_repo` —— 不删会让 `dispatch_entry` /
+    ///    `ensure_reachable_all` 仍把已撤销设备当目标(见
+    ///    `dispatch_entry.rs` module doc 关于 "avoids iterating ghost entries
+    ///    in `member_repo` that never completed pairing" 的不变量)。
+    /// 3. `trusted_peer_repo` —— 不删会让同设备**重新配对失败**:
+    ///    `TrustPeerUseCase::execute` 检查到行已存在直接返回
+    ///    `AlreadyTrusted`(见 `trust_peer.rs` 注释:"先 Distrust 再 Trust" 的
+    ///    显式流程)。`distrust_peer.rs` 注释里讲 "UI 的'解除配对'由 Facade
+    ///    级联调用",这里就是那个级联。
+    ///
+    /// 失败处理:`member_repo.remove` 已成功后没法回滚,后续两步任一失败
+    /// 都把错误抛给调用方,启动期 `reconcile_*` 会在下次 boot 兜底。两个
+    /// remove port 都是 idempotent,缺行不会算 error。
     #[instrument(skip_all, fields(device_id = %device_id))]
     pub async fn revoke_member(&self, device_id: &str) -> Result<(), RosterError> {
         let device_id = DeviceId::new(device_id);
@@ -205,12 +222,19 @@ impl MemberRosterFacade {
         }
 
         // peer_addr_repo.remove 是 idempotent 的(port doc),所以即使条目不
-        // 存在也会成功;失败仅在底层存储真正出错时发生。member_repo 已经删
-        // 了无法回滚——把错误抛给上层比静默吞错更好,启动期 reconcile 会兜底。
+        // 存在也会成功;失败仅在底层存储真正出错时发生。
         self.peer_addr_repo
             .remove(&device_id)
             .await
             .map_err(|err| RosterError::PeerAddressRepository(err.to_string()))?;
+
+        // trusted_peer_repo.remove 返回 bool: true=删除一行,false=本来就没有
+        // (peer 还没建立 trust 就被踢)。两种都属正常;只有底层存储故障
+        // 时才报错。
+        self.trusted_peer_repo
+            .remove(&device_id)
+            .await
+            .map_err(|err| RosterError::TrustedPeerRepository(err.to_string()))?;
 
         Ok(())
     }
@@ -251,6 +275,7 @@ mod tests {
     use uc_core::ports::peer_address::{PeerAddressError, PeerAddressRecord};
     use uc_core::ports::{LocalIdentityError, PresenceError, PresenceEvent, ReachabilityState};
     use uc_core::security::IdentityFingerprint;
+    use uc_core::trusted_peer::{TrustedPeer, TrustedPeerError};
 
     // ── mockall: member_repo ────────────────────────────────────────────
 
@@ -277,6 +302,20 @@ mod tests {
             async fn upsert(&self, record: &PeerAddressRecord) -> Result<(), PeerAddressError>;
             async fn list(&self) -> Result<Vec<PeerAddressRecord>, PeerAddressError>;
             async fn remove(&self, device: &DeviceId) -> Result<(), PeerAddressError>;
+        }
+    }
+
+    // ── mockall: trusted_peer_repo ──────────────────────────────────────
+
+    mockall::mock! {
+        pub TrustedPeerRepo {}
+
+        #[async_trait]
+        impl TrustedPeerRepositoryPort for TrustedPeerRepo {
+            async fn get(&self, peer_device_id: &DeviceId) -> Result<Option<TrustedPeer>, TrustedPeerError>;
+            async fn list(&self) -> Result<Vec<TrustedPeer>, TrustedPeerError>;
+            async fn save(&self, trusted_peer: &TrustedPeer) -> Result<(), TrustedPeerError>;
+            async fn remove(&self, peer_device_id: &DeviceId) -> Result<bool, TrustedPeerError>;
         }
     }
 
@@ -374,26 +413,29 @@ mod tests {
         local_identity: MockLocalIdentity,
         presence: Arc<FakePresence>,
     ) -> MemberRosterFacade {
-        // 多数测试不走 revoke_member 路径,默认给一个不设 expectation 的
-        // peer_addr mock —— mockall 严格模式下若意外被调用会 panic,
-        // 等价于 "断言 peer_addr 在该测试中不应被触发"。
-        build_facade_with_peer_addr(
+        // 多数测试不走 revoke_member 路径,默认给两个不设 expectation 的
+        // mock —— mockall 严格模式下若意外被调用会 panic,等价于
+        // "断言这两个 repo 在该测试中不应被触发"。
+        build_facade_with_unpair_repos(
             member_repo,
             MockPeerAddrRepo::new(),
+            MockTrustedPeerRepo::new(),
             local_identity,
             presence,
         )
     }
 
-    fn build_facade_with_peer_addr(
+    fn build_facade_with_unpair_repos(
         member_repo: MockMemberRepo,
         peer_addr_repo: MockPeerAddrRepo,
+        trusted_peer_repo: MockTrustedPeerRepo,
         local_identity: MockLocalIdentity,
         presence: Arc<FakePresence>,
     ) -> MemberRosterFacade {
         MemberRosterFacade::new(MemberRosterDeps {
             member_repo: Arc::new(member_repo),
             peer_addr_repo: Arc::new(peer_addr_repo),
+            trusted_peer_repo: Arc::new(trusted_peer_repo),
             local_identity: Arc::new(local_identity),
             presence,
         })
@@ -561,6 +603,7 @@ mod tests {
         let facade = MemberRosterFacade::new(MemberRosterDeps {
             member_repo: Arc::new(repo),
             peer_addr_repo: Arc::new(MockPeerAddrRepo::new()),
+            trusted_peer_repo: Arc::new(MockTrustedPeerRepo::new()),
             local_identity: Arc::new(id),
             presence: Arc::clone(&presence) as Arc<dyn PresencePort>,
         });
@@ -591,6 +634,7 @@ mod tests {
         let facade = MemberRosterFacade::new(MemberRosterDeps {
             member_repo: Arc::new(repo),
             peer_addr_repo: Arc::new(MockPeerAddrRepo::new()),
+            trusted_peer_repo: Arc::new(MockTrustedPeerRepo::new()),
             local_identity: Arc::new(id),
             presence: Arc::clone(&presence) as Arc<dyn PresencePort>,
         });
@@ -691,9 +735,10 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn revoke_member_clears_member_repo_and_peer_addr_repo() {
-        // 修复点验收:revoke_member 必须同时清两表,否则 dispatch_entry /
-        // ensure_reachable_all 仍会把已撤销设备当作目标继续 fan-out。
+    async fn revoke_member_clears_all_three_repos() {
+        // 修复点验收:revoke_member 必须级联清三张表,否则:
+        //   - peer_addr 残留 → dispatch / presence 仍把已撤销设备当目标
+        //   - trusted_peer 残留 → 同设备重新配对会被 AlreadyTrusted 阻塞
         let mut repo = MockMemberRepo::new();
         repo.expect_remove()
             .times(1)
@@ -705,24 +750,49 @@ mod tests {
             .times(1)
             .withf(|device_id| device_id == &DeviceId::new("dev-1"))
             .returning(|_| Ok(()));
+        let mut trusted = MockTrustedPeerRepo::new();
+        trusted
+            .expect_remove()
+            .times(1)
+            .withf(|device_id| device_id == &DeviceId::new("dev-1"))
+            .returning(|_| Ok(true));
         let id = MockLocalIdentity::new();
         let presence = Arc::new(FakePresence::new(vec![]));
-        let facade = build_facade_with_peer_addr(repo, peer_addr, id, presence);
+        let facade = build_facade_with_unpair_repos(repo, peer_addr, trusted, id, presence);
 
         facade.revoke_member("dev-1").await.expect("ok");
     }
 
     #[tokio::test]
-    async fn revoke_member_skips_peer_addr_cleanup_when_member_not_found() {
-        // member_repo.remove 返回 false 表示成员不存在 —— 此时 facade 直接
-        // 返回 NotFound,不应再去碰 peer_addr_repo。peer_addr mock 不设
-        // expect_remove,被调用即 panic。
+    async fn revoke_member_tolerates_missing_trusted_peer_row() {
+        // peer 配对完成前/中途断流时,member_repo 已经写但 trusted_peer 还没
+        // 写——unpair 时 trusted_peer.remove 返回 Ok(false)(不存在),应当
+        // 视为正常完成,不应抛错。
+        let mut repo = MockMemberRepo::new();
+        repo.expect_remove().times(1).returning(|_| Ok(true));
+        let mut peer_addr = MockPeerAddrRepo::new();
+        peer_addr.expect_remove().times(1).returning(|_| Ok(()));
+        let mut trusted = MockTrustedPeerRepo::new();
+        trusted.expect_remove().times(1).returning(|_| Ok(false));
+        let id = MockLocalIdentity::new();
+        let presence = Arc::new(FakePresence::new(vec![]));
+        let facade = build_facade_with_unpair_repos(repo, peer_addr, trusted, id, presence);
+
+        facade.revoke_member("dev-1").await.expect("ok");
+    }
+
+    #[tokio::test]
+    async fn revoke_member_skips_cleanup_when_member_not_found() {
+        // member_repo.remove 返回 false 表示成员不存在 —— facade 直接返回
+        // NotFound,不应再去碰 peer_addr_repo / trusted_peer_repo。两个 mock
+        // 都不设 expect_remove,被调用即 panic。
         let mut repo = MockMemberRepo::new();
         repo.expect_remove().times(1).returning(|_| Ok(false));
         let peer_addr = MockPeerAddrRepo::new();
+        let trusted = MockTrustedPeerRepo::new();
         let id = MockLocalIdentity::new();
         let presence = Arc::new(FakePresence::new(vec![]));
-        let facade = build_facade_with_peer_addr(repo, peer_addr, id, presence);
+        let facade = build_facade_with_unpair_repos(repo, peer_addr, trusted, id, presence);
 
         let err = facade.revoke_member("ghost").await.unwrap_err();
         assert!(matches!(err, RosterError::NotFound(d) if d == "ghost"));
@@ -730,8 +800,8 @@ mod tests {
 
     #[tokio::test]
     async fn revoke_member_propagates_peer_addr_repo_failure() {
-        // member 已经删了无法回滚 —— 但 peer_addr_repo 失败仍然要冒泡,
-        // UI 才能感知到清理不完整,启动期 reconcile 会在下次 boot 兜底。
+        // member 已经删了无法回滚 —— peer_addr 失败短路返回错误,
+        // trusted_peer 也不应再被调用(短路,mock 不设 expect_remove)。
         let mut repo = MockMemberRepo::new();
         repo.expect_remove().times(1).returning(|_| Ok(true));
         let mut peer_addr = MockPeerAddrRepo::new();
@@ -739,9 +809,10 @@ mod tests {
             .expect_remove()
             .times(1)
             .returning(|_| Err(PeerAddressError::Internal("disk full".into())));
+        let trusted = MockTrustedPeerRepo::new();
         let id = MockLocalIdentity::new();
         let presence = Arc::new(FakePresence::new(vec![]));
-        let facade = build_facade_with_peer_addr(repo, peer_addr, id, presence);
+        let facade = build_facade_with_unpair_repos(repo, peer_addr, trusted, id, presence);
 
         let err = facade.revoke_member("dev-1").await.unwrap_err();
         match err {
@@ -749,6 +820,33 @@ mod tests {
                 assert!(msg.contains("disk full"), "msg = {msg}");
             }
             other => panic!("expected PeerAddressRepository, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn revoke_member_propagates_trusted_peer_repo_failure() {
+        // member + peer_addr 都成功后,trusted_peer 失败要冒泡 ——
+        // UI 才能感知"trust 没清,重新配对仍可能 AlreadyTrusted",
+        // 启动期 reconcile_trusted_peers 会在下次 boot 兜底。
+        let mut repo = MockMemberRepo::new();
+        repo.expect_remove().times(1).returning(|_| Ok(true));
+        let mut peer_addr = MockPeerAddrRepo::new();
+        peer_addr.expect_remove().times(1).returning(|_| Ok(()));
+        let mut trusted = MockTrustedPeerRepo::new();
+        trusted
+            .expect_remove()
+            .times(1)
+            .returning(|_| Err(TrustedPeerError::Repository("io error".into())));
+        let id = MockLocalIdentity::new();
+        let presence = Arc::new(FakePresence::new(vec![]));
+        let facade = build_facade_with_unpair_repos(repo, peer_addr, trusted, id, presence);
+
+        let err = facade.revoke_member("dev-1").await.unwrap_err();
+        match err {
+            RosterError::TrustedPeerRepository(msg) => {
+                assert!(msg.contains("io error"), "msg = {msg}");
+            }
+            other => panic!("expected TrustedPeerRepository, got {other:?}"),
         }
     }
 }

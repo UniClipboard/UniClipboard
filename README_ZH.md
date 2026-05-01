@@ -101,6 +101,29 @@ UniClipboard 是一款以**隐私优先**为核心理念的跨设备剪贴板同
 
 访问 [GitHub Releases](https://github.com/UniClipboard/UniClipboard/releases) 页面，下载适合您操作系统的安装包。
 
+### Homebrew（macOS）
+
+macOS 用户可以通过官方 tap [`UniClipboard/homebrew-tap`](https://github.com/UniClipboard/homebrew-tap) 安装：
+
+```bash
+brew tap UniClipboard/tap
+
+# 桌面应用（.app）
+brew install --cask uniclipboard
+
+# 仅安装 CLI，命令名为 `uniclip`
+brew install uniclipboard
+```
+
+也可以省去 `brew tap`，一行直装：
+
+```bash
+brew install --cask UniClipboard/tap/uniclipboard   # GUI
+brew install UniClipboard/tap/uniclipboard          # CLI
+```
+
+GUI 和 CLI 互不冲突，需要的话两个都装即可。
+
 ### 从源码构建
 
 ```bash

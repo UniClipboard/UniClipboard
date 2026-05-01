@@ -101,6 +101,29 @@ It enables seamless and secure syncing of text, images, and files across multipl
 
 Visit the [GitHub Releases](https://github.com/UniClipboard/UniClipboard/releases) page to download the installation package for your operating system.
 
+### Homebrew (macOS)
+
+On macOS, install via the official tap [`UniClipboard/homebrew-tap`](https://github.com/UniClipboard/homebrew-tap):
+
+```bash
+brew tap UniClipboard/tap
+
+# Desktop app (.app bundle)
+brew install --cask uniclipboard
+
+# CLI only — installs the `uniclip` command
+brew install uniclipboard
+```
+
+Or install in a single command without tapping first:
+
+```bash
+brew install --cask UniClipboard/tap/uniclipboard   # GUI
+brew install UniClipboard/tap/uniclipboard          # CLI
+```
+
+The cask and the formula can coexist — install both if you want the GUI plus the `uniclip` command.
+
 ### Build from Source
 
 ```bash

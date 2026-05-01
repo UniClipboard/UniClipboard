@@ -247,6 +247,12 @@ uniclip status / start / stop   # 守护进程生命周期
 - [Tauri](https://tauri.app) - 提供跨平台应用框架
 - [React](https://react.dev) - 前端界面开发框架
 - [Rust](https://www.rust-lang.org) - 安全高效的后端实现语言
+- [iroh](https://www.iroh.computer) - 基于 QUIC 的 P2P 网络栈，支撑跨网络直连与块传输
+- [Tokio](https://tokio.rs) - 驱动全部网络与 I/O 的 Rust 异步运行时
+- [shadcn/ui](https://ui.shadcn.com) - 基于 Radix UI 的可组合组件方案
+- [Radix UI](https://www.radix-ui.com) - 桌面界面背后的无样式、可访问组件原语
+- [Tailwind CSS](https://tailwindcss.com) - 整套 UI 使用的 utility-first 样式方案
+- [SQLite](https://www.sqlite.org) - 本地存储剪贴板历史的嵌入式数据库
 
 ---
 

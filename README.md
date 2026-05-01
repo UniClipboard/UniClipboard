@@ -247,6 +247,12 @@ This project is licensed under the AGPL-3.0 License - see the [LICENSE](./LICENS
 - [Tauri](https://tauri.app) - Cross-platform application framework
 - [React](https://react.dev) - Frontend UI development framework
 - [Rust](https://www.rust-lang.org) - Safe and efficient backend implementation language
+- [iroh](https://www.iroh.computer) - QUIC-based P2P networking that powers cross-network direct connections and blob transfer
+- [Tokio](https://tokio.rs) - Asynchronous runtime that drives every networking and I/O path
+- [shadcn/ui](https://ui.shadcn.com) - Composable component recipes built on Radix UI
+- [Radix UI](https://www.radix-ui.com) - Unstyled, accessible primitives behind the desktop interface
+- [Tailwind CSS](https://tailwindcss.com) - Utility-first styling for the entire UI
+- [SQLite](https://www.sqlite.org) - Embedded database that stores clipboard history locally
 
 ---
 

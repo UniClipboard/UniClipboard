@@ -118,24 +118,19 @@ bun tauri build
 
 ### How it Works
 
-```text
-┌─────────────────┐                                    ┌─────────────────┐
-│    Device A     │                                    │    Device B     │
-│   (your laptop) │                                    │  (your desktop) │
-│                 │                                    │                 │
-│   Ctrl+C ──┐    │                                    │    ┌── Ctrl+V   │
-│            │    │                                    │    │            │
-│            ▼    │                                    │    ▲            │
-│  ┌──────────┐   │      ╔══════════════════════╗      │  ┌──────────┐   │
-│  │ encrypt  │   │ ═══> ║    P2P hole-punch    ║ ═══> │  │ decrypt  │   │
-│  │ (your    │   │      ╚══════════════════════╝      │  │  (your   │   │
-│  │  key)    │   │                │ falls back        │  │   key)   │   │
-│  └──────────┘   │                ▼                   │  └──────────┘   │
-│                 │      ┌──────────────────────┐      │                 │
-│                 │      │  Relay (sees only    │      │                 │
-│                 │      │   encrypted bytes)   │      │                 │
-│                 │      └──────────────────────┘      │                 │
-└─────────────────┘                                    └─────────────────┘
+```mermaid
+flowchart LR
+  subgraph A["Device A (your laptop)"]
+    direction TB
+    CC["Ctrl+C"] --> EA["encrypt<br/>(your key)"]
+  end
+  subgraph B["Device B (your desktop)"]
+    direction TB
+    DB["decrypt<br/>(your key)"] --> CV["Ctrl+V"]
+  end
+  EA -->|"P2P hole-punch"| DB
+  EA -.->|"falls back"| R["Relay<br/>(sees only<br/>encrypted bytes)"]
+  R -.-> DB
 ```
 
 - **Pairing**: Devices exchange a public key once, locally — no cloud account, no email.

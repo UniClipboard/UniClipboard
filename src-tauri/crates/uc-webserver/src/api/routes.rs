@@ -87,6 +87,7 @@ pub fn router_l2_plus(state: DaemonApiState) -> Router<DaemonApiState> {
         .route("/status", get(status))
         .route("/peers", get(peers))
         .route("/paired-devices", get(paired_devices))
+        .route("/presence/refresh", post(refresh_presence))
         .merge(crate::api::lifecycle::router())
         .route(
             &format!("{}/:entry_id", http_route::CLIPBOARD_RESTORE),
@@ -169,6 +170,13 @@ async fn peers(State(state): State<DaemonApiState>) -> impl IntoResponse {
 
 async fn paired_devices(State(state): State<DaemonApiState>) -> impl IntoResponse {
     match state.paired_devices().await {
+        Ok(response) => Json(response).into_response(),
+        Err(error) => internal_error(error).into_response(),
+    }
+}
+
+async fn refresh_presence(State(state): State<DaemonApiState>) -> impl IntoResponse {
+    match state.refresh_presence().await {
         Ok(response) => Json(response).into_response(),
         Err(error) => internal_error(error).into_response(),
     }

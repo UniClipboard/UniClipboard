@@ -49,6 +49,21 @@ pub struct SpaceMemberDto {
     pub connected: bool,
 }
 
+/// Result of a `POST /presence/refresh` round.
+///
+/// 主动 probe 一轮 `ensure_reachable_all` 后的统计回执。UI 不靠这里直接判定
+/// 在线状态：probe 过程中各设备的 Online/Offline 变化会通过既有
+/// `peers.changed` WebSocket 链路推送，前端再走 `GET /paired-devices`
+/// 重拉。该响应只用于调用方显示进度或排障。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PresenceRefreshResponse {
+    pub total: u32,
+    pub online: u32,
+    pub offline: u32,
+    pub errors: u32,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FileTransferProgressPayload {

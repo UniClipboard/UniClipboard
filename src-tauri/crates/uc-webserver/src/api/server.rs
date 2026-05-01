@@ -28,7 +28,8 @@ use crate::api::dto::error::ApiError;
 use crate::api::openapi::ApiDoc;
 use crate::api::routes;
 use crate::api::types::{
-    DaemonWsEvent, HealthResponse, PeerSnapshotDto, SpaceMemberDto, StatusResponse,
+    DaemonWsEvent, HealthResponse, PeerSnapshotDto, PresenceRefreshResponse, SpaceMemberDto,
+    StatusResponse,
 };
 use crate::api::ws;
 use crate::security::SecurityState;
@@ -110,16 +111,38 @@ impl DaemonApiState {
             .collect())
     }
 
+    /// 主动 probe 所有已配对 peer 的连接性。
+    ///
+    /// 用途：让"对端断网"场景下的离线检测从 ~60s（QUIC max_idle_timeout）
+    /// 缩短到 probe 间隔 + 拨号失败时间。`ensure_reachable_all` 内部对每个
+    /// peer 都重新发起一次 iroh 拨号——在线 peer 拨号成功后丢弃新连接保留
+    /// 旧的；离线 peer 拨号失败会立刻 `broadcast(Offline)`，进而触发
+    /// `peers.changed` 推送、前端重拉 `/paired-devices`、UI 切灰。
+    pub async fn refresh_presence(&self) -> anyhow::Result<PresenceRefreshResponse> {
+        let report = self.app_facade.refresh_presence().await?;
+        Ok(PresenceRefreshResponse {
+            total: report.total as u32,
+            online: report.online as u32,
+            offline: report.offline as u32,
+            errors: report.errors.len() as u32,
+        })
+    }
+
     pub async fn paired_devices(&self) -> anyhow::Result<Vec<SpaceMemberDto>> {
-        let members = self.app_facade.list_members().await?;
-        Ok(members
+        // 通过 list_peer_snapshots() 获取真实在线状态：
+        // 该方法走 list_with_presence()，会聚合 PresencePort.current_state()，
+        // 反映 IrohPresenceAdapter 中由 ensure_reachable / connection.closed()
+        // 维护的 last_state 缓存。list_members() 不查 PresencePort，所以
+        // 拿不到 connected。同时 list_peer_snapshots() 已过滤本机。
+        let snapshots = self.app_facade.list_peer_snapshots().await?;
+        Ok(snapshots
             .into_iter()
-            .map(|member| SpaceMemberDto {
-                peer_id: member.device_id,
-                device_name: member.device_name,
-                pairing_state: "Trusted".to_string(),
+            .map(|snapshot| SpaceMemberDto {
+                peer_id: snapshot.peer_id,
+                device_name: snapshot.device_name.unwrap_or_default(),
+                pairing_state: snapshot.pairing_state,
                 last_seen_at_ms: None,
-                connected: false,
+                connected: snapshot.connected,
             })
             .collect())
     }

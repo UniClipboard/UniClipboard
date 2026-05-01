@@ -56,6 +56,26 @@ pub trait PresencePort: Send + Sync {
     async fn ensure_reachable(&self, device: &DeviceId)
         -> Result<ReachabilityState, PresenceError>;
 
+    /// Force-revalidate reachability, bypassing any cached "alive connection"
+    /// fast-path inside the implementation.
+    ///
+    /// 用途：定期 probe 场景。`ensure_reachable` 在已有 alive 连接时即时返回
+    /// `Online`，这是业务路径（剪贴板传输前先确保连接可用）的合理优化；
+    /// 但当对端真断网时，QUIC `Connection::closed` watchdog 要等
+    /// `max_idle_timeout`（典型 60s）才能触发 Offline，期间
+    /// `ensure_reachable` 会持续撒谎说 Online。`verify_reachable` 强制重新
+    /// 拨号验证：拨号成功记 Online，拨号失败立即记 Offline 并清理 stale
+    /// 连接，把离线检测时延压到拨号失败时间（typically 5–15s）。
+    ///
+    /// Default impl 委托给 `ensure_reachable`，便于 mock / fake 复用而不必
+    /// 实现两份语义；带 fast-path 缓存的真实 adapter 应当 override。
+    async fn verify_reachable(
+        &self,
+        device: &DeviceId,
+    ) -> Result<ReachabilityState, PresenceError> {
+        self.ensure_reachable(device).await
+    }
+
     /// Read the current cached state without dialing.
     ///
     /// Returns `Unknown` if the device has never been probed in the current

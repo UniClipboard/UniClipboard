@@ -77,6 +77,8 @@ export {
   unpairDevice,
 } from './members'
 export type { LocalDeviceInfo, SpaceMember } from './members'
+export { refreshPresence } from './presence'
+export type { PresenceRefreshResult } from './presence'
 export { classifyPairingError } from './events'
 export type { PairingErrorKind } from './events'
 export { querySearch, getSearchStatus, triggerSearchRebuild } from './search'

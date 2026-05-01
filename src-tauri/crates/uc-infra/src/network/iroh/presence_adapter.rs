@@ -194,34 +194,23 @@ impl IrohPresenceAdapter {
     }
 }
 
-#[async_trait]
-impl PresencePort for IrohPresenceAdapter {
-    #[instrument(skip_all, fields(device = %device.as_str()))]
-    async fn ensure_reachable(
-        &self,
-        device: &DeviceId,
-    ) -> Result<ReachabilityState, PresenceError> {
+impl IrohPresenceAdapter {
+    /// 共享拨号路径：被 `ensure_reachable`（fast-path miss 后）和
+    /// `verify_reachable`（强制路径）复用。负责：
+    ///
+    /// 1. 从 `peer_addr_repo` 读地址 → 解码 `EndpointAddr`
+    /// 2. 通过 `connect_with_staggered_retry` 发起 iroh 拨号
+    /// 3. 成功：spawn watchdog、写 `peers` map、broadcast `Online`
+    ///    （若已存在 alive 条目则丢弃新拨连接，保留旧的——避免主动重连
+    ///    扰动同步链路）
+    /// 4. 失败：写 `last_state = Offline`、broadcast `Offline`
+    ///    （**不**清理已存在的 stale 条目——业务路径下拨号可能因临时网络
+    ///    抖动失败，旧连接其实还可用；`verify_reachable` 在外层补偿
+    ///    "把假装活着的旧连接 close 掉"的清理动作）
+    async fn dial_and_track(&self, device: &DeviceId) -> Result<ReachabilityState, PresenceError> {
         let key = device.as_str().to_string();
 
-        // Step 1: fast-path on an already-tracked live connection.
-        {
-            let mut peers = self.peers.lock().await;
-            if let Some(entry) = peers.get(&key) {
-                if entry.connection.close_reason().is_none() {
-                    debug!("ensure_reachable: already tracked and alive");
-                    return Ok(ReachabilityState::Online);
-                }
-                // Stale entry — the watchdog should already be in the
-                // process of cleaning up, but don't block on it. Remove
-                // here so the re-dial path below gets a clean slate.
-                if let Some(stale) = peers.remove(&key) {
-                    stale.watchdog.abort();
-                    debug!("ensure_reachable: evicted stale tracked entry before re-dial");
-                }
-            }
-        }
-
-        // Step 2: look up the stored transport address.
+        // Look up the stored transport address.
         let record = self
             .peer_addr_repo
             .get(device)
@@ -230,25 +219,25 @@ impl PresencePort for IrohPresenceAdapter {
         let record = match record {
             Some(r) => r,
             None => {
-                debug!("ensure_reachable: no address record; returning NoAddress");
+                debug!("dial_and_track: no address record; returning NoAddress");
                 return Err(PresenceError::NoAddress(device.clone()));
             }
         };
 
-        // Step 3: decode the opaque blob into the adapter-private
-        // `EndpointAddr`. Failure is a data-integrity issue (someone wrote
-        // junk into the repo) — surface it as `Internal` without leaking
-        // the postcard error type upward. The blob is guaranteed to have
-        // had its ephemeral `Ip(...)` direct addresses stripped at
-        // pairing-time write (see `persistable_addr::to_persistable_addr`),
-        // so what we decode here is `id + Relay(...)`. iroh's built-in
-        // pkarr discovery fills in fresh direct addrs at connect time.
+        // Decode the opaque blob into the adapter-private `EndpointAddr`.
+        // Failure is a data-integrity issue (someone wrote junk into the
+        // repo) — surface it as `Internal` without leaking the postcard
+        // error type upward. The blob is guaranteed to have had its
+        // ephemeral `Ip(...)` direct addresses stripped at pairing-time
+        // write (see `persistable_addr::to_persistable_addr`), so what we
+        // decode here is `id + Relay(...)`. iroh's built-in pkarr
+        // discovery fills in fresh direct addrs at connect time.
         let endpoint_addr: EndpointAddr =
             postcard::from_bytes(&record.addr_blob).map_err(|err| {
                 PresenceError::Internal(format!("postcard decode EndpointAddr: {err}"))
             })?;
 
-        // Step 4: dial.
+        // Dial.
         match connect_with_staggered_retry(
             Arc::clone(&self.endpoint),
             endpoint_addr,
@@ -277,19 +266,26 @@ impl PresencePort for IrohPresenceAdapter {
 
                 {
                     let mut peers = self.peers.lock().await;
-                    // If someone else raced us to insert, abort our own
-                    // watchdog and keep theirs — the winner gets to manage
-                    // the single connection slot per device. This is a
-                    // defensive branch; `ensure_reachable` should never be
-                    // concurrently called for the same device in Slice 2.
+                    // If an alive entry exists already (concurrent insert
+                    // raced, or `verify_reachable` redialed against a
+                    // tracked-but-stale-looking peer), abort our own
+                    // watchdog and keep theirs — single connection slot
+                    // per device.
                     if let Some(existing) = peers.get(&key) {
                         if existing.connection.close_reason().is_none() {
-                            warn!(
-                                "ensure_reachable: concurrent insert detected; \
+                            debug!(
+                                "dial_and_track: alive tracked entry exists; \
                                  discarding freshly dialed connection",
                             );
                             watchdog.abort();
                             drop(connection);
+
+                            // 仍旧 broadcast Online — verify_reachable 调用方
+                            // 期望"拨号成功 ⇒ Online 信号回传"。
+                            let mut last = self.last_state.lock().await;
+                            last.insert(key.clone(), ReachabilityState::Online);
+                            drop(last);
+                            self.broadcast(device.clone(), ReachabilityState::Online, now);
                             return Ok(ReachabilityState::Online);
                         }
                     }
@@ -306,16 +302,16 @@ impl PresencePort for IrohPresenceAdapter {
                     let mut last = self.last_state.lock().await;
                     last.insert(key.clone(), ReachabilityState::Online);
                 }
-                info!("ensure_reachable: dial succeeded, peer marked Online");
+                info!("dial_and_track: dial succeeded, peer marked Online");
                 self.broadcast(device.clone(), ReachabilityState::Online, now);
                 Ok(ReachabilityState::Online)
             }
             Err(err) => {
                 // No iroh error type leaks upward — per `uc-infra/AGENTS.md`
                 // §9.1 the failure is summarised into `last_state` + an
-                // event. The member stays in the repo; the next
-                // `ensure_reachable` retry is how recovery happens.
-                debug!(error = %err, "ensure_reachable: dial failed, peer marked Offline");
+                // event. The member stays in the repo; the next dial
+                // attempt is how recovery happens.
+                debug!(error = %err, "dial_and_track: dial failed, peer marked Offline");
                 let now = self.now();
                 {
                     let mut last = self.last_state.lock().await;
@@ -325,6 +321,70 @@ impl PresencePort for IrohPresenceAdapter {
                 Ok(ReachabilityState::Offline)
             }
         }
+    }
+}
+
+#[async_trait]
+impl PresencePort for IrohPresenceAdapter {
+    #[instrument(skip_all, fields(device = %device.as_str()))]
+    async fn ensure_reachable(
+        &self,
+        device: &DeviceId,
+    ) -> Result<ReachabilityState, PresenceError> {
+        let key = device.as_str().to_string();
+
+        // Step 1: fast-path on an already-tracked live connection.
+        {
+            let mut peers = self.peers.lock().await;
+            if let Some(entry) = peers.get(&key) {
+                if entry.connection.close_reason().is_none() {
+                    debug!("ensure_reachable: already tracked and alive");
+                    return Ok(ReachabilityState::Online);
+                }
+                // Stale entry — the watchdog should already be in the
+                // process of cleaning up, but don't block on it. Remove
+                // here so the re-dial path below gets a clean slate.
+                if let Some(stale) = peers.remove(&key) {
+                    stale.watchdog.abort();
+                    debug!("ensure_reachable: evicted stale tracked entry before re-dial");
+                }
+            }
+        }
+
+        // Step 2-4: dial via shared path.
+        self.dial_and_track(device).await
+    }
+
+    #[instrument(skip_all, fields(device = %device.as_str()))]
+    async fn verify_reachable(
+        &self,
+        device: &DeviceId,
+    ) -> Result<ReachabilityState, PresenceError> {
+        // 跳过 fast-path —— 即便已有 alive 连接也强制重拨验证可达性。
+        let result = self.dial_and_track(device).await?;
+
+        // 拨号失败 ⇒ 对端真不可达。把任何"看起来还活着"的 tracked 条目
+        // 从 peers map 移除并主动 close，避免下次 `ensure_reachable` 又
+        // 走 fast-path 撒谎说 Online。
+        //
+        // 不显式 abort watchdog：`Connection::close()` 让 watchdog 的
+        // `connection.closed().await` 立即 resolve 跑 cleanup（remove 已
+        // noop, last_state 已是 Offline, 再发一次冗余 Offline 事件幂等
+        // 无害）。当 `stale` 离作用域时 `TrackedPeer::drop` 兜底 abort，
+        // 此时 watchdog 多半已 fire 完毕，abort 也是 noop。这比"先 abort
+        // 后 close"避免 watchdog cleanup 半途被砍的 race。
+        if matches!(result, ReachabilityState::Offline) {
+            let stale = {
+                let mut peers = self.peers.lock().await;
+                peers.remove(device.as_str())
+            };
+            if let Some(stale) = stale {
+                stale.connection.close(0u32.into(), b"verify_failed");
+                debug!("verify_reachable: closed stale connection after dial failure");
+            }
+        }
+
+        Ok(result)
     }
 
     #[instrument(skip_all, fields(device = %device.as_str()))]

@@ -99,24 +99,6 @@ const devicesSlice = createSlice({
     clearSpaceMembersError: state => {
       state.spaceMembersError = null
     },
-    updatePeerConnectionStatus: (
-      state,
-      action: { payload: { peerId: string; connected: boolean; deviceName?: string | null } }
-    ) => {
-      const peer = state.spaceMembers.find(d => d.peerId === action.payload.peerId)
-      if (peer) {
-        peer.connected = action.payload.connected
-        if (action.payload.deviceName) {
-          peer.deviceName = action.payload.deviceName
-        }
-      }
-    },
-    updatePeerDeviceName: (state, action: { payload: { peerId: string; deviceName: string } }) => {
-      const peer = state.spaceMembers.find(d => d.peerId === action.payload.peerId)
-      if (peer) {
-        peer.deviceName = action.payload.deviceName
-      }
-    },
   },
   extraReducers: builder => {
     // Local device info
@@ -183,10 +165,5 @@ const devicesSlice = createSlice({
   },
 })
 
-export const {
-  clearLocalDeviceError,
-  clearSpaceMembersError,
-  updatePeerConnectionStatus,
-  updatePeerDeviceName,
-} = devicesSlice.actions
+export const { clearLocalDeviceError, clearSpaceMembersError } = devicesSlice.actions
 export default devicesSlice.reducer

@@ -23,9 +23,9 @@ interface LocalDeviceInfoResponse {
 /**
  * Space member — matches `SpaceMemberDto` on the Rust side.
  *
- * `connected` is the runtime presence flag. After the libp2p adapter
- * was retired in Slice 4 P5a-1 it is hard-coded to `false` until the
- * iroh-side presence channel is wired in.
+ * `connected` 来自 `IrohPresenceAdapter.last_state`，由 ensure_reachable
+ * 拨号成功 / `connection.closed()` watchdog 维护；`/paired-devices` 通过
+ * `list_peer_snapshots` 聚合 `PresencePort.current_state()` 返回真实值。
  */
 export interface SpaceMember {
   peerId: string

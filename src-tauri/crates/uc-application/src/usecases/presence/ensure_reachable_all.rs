@@ -120,7 +120,13 @@ impl EnsureReachableAllUseCase {
             let presence = Arc::clone(&self.presence);
             let device_id = device_id.clone();
             set.spawn(async move {
-                let result = presence.ensure_reachable(&device_id).await;
+                // 用 verify_reachable 而非 ensure_reachable：probe 场景需要
+                // 绕过 IrohPresenceAdapter 的 fast-path，对已有 alive 连接
+                // 的 peer 也强制重新拨号。否则对端断网期间 fast-path 会持续
+                // 返回 Online，UI 要等 ~60s QUIC max_idle_timeout watchdog
+                // 才能切灰。F1 hook 路径下 peers map 为空，verify_reachable
+                // 与 ensure_reachable 行为等价。
+                let result = presence.verify_reachable(&device_id).await;
                 (device_id, result)
             });
         }

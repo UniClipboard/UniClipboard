@@ -13,12 +13,7 @@ import { useSetting } from '@/hooks/useSetting'
 import { daemonWs } from '@/lib/daemon-ws'
 import { createLogger } from '@/lib/logger'
 import { useAppDispatch, useAppSelector } from '@/store/hooks'
-import {
-  fetchSpaceMembers,
-  clearSpaceMembersError,
-  updatePeerConnectionStatus,
-  updatePeerDeviceName,
-} from '@/store/slices/devicesSlice'
+import { fetchSpaceMembers, clearSpaceMembersError } from '@/store/slices/devicesSlice'
 
 const log = createLogger('space-members-panel')
 
@@ -47,29 +42,15 @@ const SpaceMembersPanel: React.FC = () => {
   useEffect(() => {
     dispatch(fetchSpaceMembers())
 
+    // 后端 PresenceMonitor 仅广播 `peers.changed` 全量快照（见
+    // uc-desktop/src/daemon/peers/presence_monitor.rs 模块注释）。每次
+    // PresenceEvent（拨号成功 / connection.closed()）都会触发一次快照，
+    // 所以这里重新 HTTP 拉一遍即可同步在线状态与名单变化，
+    // 不需要单独处理 connectionChanged / nameUpdated 增量事件。
     const handler = (event: { topic: string; eventType: string; payload: unknown }) => {
       if (event.topic !== 'peers') return
       if (event.eventType === 'peers.changed') {
-        // 成员加入/离开 — 重新拉一遍以同步本地缓存
         dispatch(fetchSpaceMembers())
-      }
-      if (event.eventType === 'peers.connectionChanged') {
-        const p = event.payload as {
-          peerId: string
-          deviceName?: string | null
-          connected: boolean
-        }
-        dispatch(
-          updatePeerConnectionStatus({
-            peerId: p.peerId,
-            connected: p.connected,
-            deviceName: p.deviceName,
-          })
-        )
-      }
-      if (event.eventType === 'peers.nameUpdated') {
-        const p = event.payload as { peerId: string; deviceName: string }
-        dispatch(updatePeerDeviceName({ peerId: p.peerId, deviceName: p.deviceName }))
       }
     }
     const unsub = daemonWs.subscribe(['peers'], handler)

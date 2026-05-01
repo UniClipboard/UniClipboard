@@ -44,9 +44,10 @@ pub fn run_daemon_until_shutdown(
 
     runtime.block_on(async move {
         // P1 thin 升级检测：启动期一次性比较 last_seen_version 游标 vs
-        // 当前构建版本。结果只打 tracing 日志，不连 UI/CLI；后续 phase
-        // 把它接到重新配对引导等具体动作。
-        log_upgrade_status(&app_facade).await;
+        // 当前构建版本。结果一方面进 tracing 日志；另一方面，对全新
+        // 安装会就地把游标推进到当前版本，避免后续 UI 把"已完成 setup
+        // 的全新安装"误判成"老用户跨配对协议升级"而弹出重新配对提示。
+        record_upgrade_status_at_startup(&app_facade).await;
 
         spawn_startup_recovery(StartupRecoveryInput {
             run_mode,
@@ -63,23 +64,50 @@ pub fn run_daemon_until_shutdown(
     })
 }
 
-async fn log_upgrade_status(app_facade: &AppFacade) {
-    match app_facade.upgrade.detect_on_startup(DAEMON_VERSION).await {
-        Ok(UpgradeStatus::FreshInstall) => {
+async fn record_upgrade_status_at_startup(app_facade: &AppFacade) {
+    let status = match app_facade.upgrade.detect_on_startup(DAEMON_VERSION).await {
+        Ok(status) => status,
+        Err(error) => {
+            tracing::warn!(
+                target: "upgrade",
+                error = %error,
+                "detect_on_startup failed; skipping upgrade decision this boot"
+            );
+            return;
+        }
+    };
+
+    match &status {
+        UpgradeStatus::FreshInstall => {
             tracing::info!(
                 target: "upgrade",
                 current = DAEMON_VERSION,
                 "fresh install detected"
             );
+            // 全新安装时立即把游标推进到当前版本：否则等用户走完 setup，
+            // `has_completed` 会翻成 true，但 cursor 仍是 None，下一次
+            // detect 就会落入 `Upgraded { from: None }` 这条"没有游标但
+            // setup 已完成 = 老用户跨边界升级"的兜底分支，导致前端在首次
+            // 安装的设备上错误地弹出"请重新配对设备"提示。
+            // 失败仅警告，不阻塞 daemon 启动；下次启动还会重试。
+            if let Err(error) = app_facade.upgrade.acknowledge(DAEMON_VERSION).await {
+                tracing::warn!(
+                    target: "upgrade",
+                    error = %error,
+                    current = DAEMON_VERSION,
+                    "fresh install detected but failed to seal version cursor; \
+                     re-pair notice may surface on this device until next boot"
+                );
+            }
         }
-        Ok(UpgradeStatus::NoChange) => {
+        UpgradeStatus::NoChange => {
             tracing::info!(
                 target: "upgrade",
                 current = DAEMON_VERSION,
                 "version cursor matches current build"
             );
         }
-        Ok(UpgradeStatus::Upgraded { from, to }) => {
+        UpgradeStatus::Upgraded { from, to } => {
             tracing::info!(
                 target: "upgrade",
                 from = from.as_ref().map(|v| v.to_string()).as_deref().unwrap_or("<unknown>"),
@@ -87,19 +115,12 @@ async fn log_upgrade_status(app_facade: &AppFacade) {
                 "upgrade detected"
             );
         }
-        Ok(UpgradeStatus::Downgraded { from, to }) => {
+        UpgradeStatus::Downgraded { from, to } => {
             tracing::warn!(
                 target: "upgrade",
                 from = %from,
                 to = %to,
                 "downgrade detected — rolled back to an older build"
-            );
-        }
-        Err(error) => {
-            tracing::warn!(
-                target: "upgrade",
-                error = %error,
-                "detect_on_startup failed; skipping upgrade decision this boot"
             );
         }
     }

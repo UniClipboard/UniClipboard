@@ -70,6 +70,9 @@ export default function AddDeviceDialog({ open, onOpenChange }: AddDeviceDialogP
   // ref 镜像 step / loading，供 ws 回调判断且避免 effect 因依赖变更重订阅
   const stepRef = useRef<Step>('invitation')
   const loadingRef = useRef(false)
+  // 标记本次 open 是否已经初始化过邀请。effect 因 t 引用变化、Strict Mode
+  // 双跑或父组件结构切换重挂载等原因被重跑时，不要重复 issue 新邀请。
+  const initializedRef = useRef(false)
   useEffect(() => {
     stepRef.current = step
   }, [step])
@@ -88,6 +91,12 @@ export default function AddDeviceDialog({ open, onOpenChange }: AddDeviceDialogP
   // 后端约束"同一时刻一个邀请"，关闭对话框不取消邀请，重开会拿回同一个
   useEffect(() => {
     if (!open) return
+    // 防止 effect 重跑导致重复申请邀请。例如：配对成功后父组件因 spaceMembers
+    // 变化重渲染，又或者 i18n 资源 reload 让 t 引用变化 — 这些都不应该触发
+    // 第二次 issuePairingInvitation()，否则 step='success' 还没显示完就被新
+    // 邀请码覆盖了。重置在 line 184 的关闭副作用里完成。
+    if (initializedRef.current) return
+    initializedRef.current = true
     let cancelled = false
     void (async () => {
       setLoading(true)
@@ -180,6 +189,7 @@ export default function AddDeviceDialog({ open, onOpenChange }: AddDeviceDialogP
       setCopied(false)
       setStep('invitation')
       setFailureReason(null)
+      initializedRef.current = false
     }
   }, [open])
 

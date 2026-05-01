@@ -1,0 +1,60 @@
+name: 'Homebrew Tap'
+run-name: >-
+  ${{ github.event_name == 'release'
+    && format('homebrew-tap-{0}', github.event.release.tag_name)
+    || format('homebrew-tap-manual-{0}', inputs.version) }}
+
+# Trigger the homebrew tap update only after a release transitions to
+# `published`. The Release workflow leaves stable releases in draft so a human
+# can review the generated notes; once they hit "Publish", this listener fires
+# and the asset URLs are guaranteed to be reachable (no draft 404 race).
+#
+# `workflow_dispatch` is exposed for debugging — handy when re-running against
+# an existing release without un-publishing it.
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: '版本号 (不带 v 前缀, e.g. 0.5.0)'
+        required: true
+        type: string
+
+jobs:
+  trigger:
+    name: Trigger tap update
+    # Skip prereleases on the auto path; manual dispatch always runs so we can
+    # debug against any version.
+    if: github.event_name == 'workflow_dispatch' || github.event.release.prerelease == false
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve version
+        id: resolve
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          TAG: ${{ github.event.release.tag_name }}
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            VERSION="${INPUT_VERSION#v}"
+          else
+            VERSION="${TAG#v}"
+          fi
+
+          if [ -z "$VERSION" ]; then
+            echo "Could not derive version (event=$EVENT_NAME tag=$TAG input=$INPUT_VERSION)" >&2
+            exit 1
+          fi
+
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Resolved version: $VERSION"
+
+      - name: Trigger tap update
+        env:
+          GH_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          VERSION: ${{ steps.resolve.outputs.version }}
+        run: |
+          gh workflow run update-tap.yml \
+            --repo UniClipboard/homebrew-tap \
+            --field version="$VERSION"

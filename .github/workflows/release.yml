@@ -381,17 +381,3 @@ jobs:
           REPO_OWNER=$(echo "${{ github.repository }}" | cut -d'/' -f1)
           REPO_NAME=$(echo "${{ github.repository }}" | cut -d'/' -f2)
           echo "https://${REPO_OWNER}.github.io/${REPO_NAME}/${{ needs.validate.outputs.channel }}.json" >> $GITHUB_STEP_SUMMARY
-
-  update-homebrew-tap:
-    name: Update Homebrew Tap
-    needs: [validate, create-release]
-    if: needs.validate.outputs.is_prerelease == 'false'
-    runs-on: ubuntu-latest
-    steps:
-      - name: Trigger tap update
-        env:
-          GH_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
-        run: |
-          gh workflow run update-tap.yml \
-            --repo UniClipboard/homebrew-uniclipboard \
-            --field version="${{ needs.validate.outputs.version }}"

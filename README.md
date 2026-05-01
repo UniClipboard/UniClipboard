@@ -161,7 +161,7 @@ uniclip status / start / stop   # Daemon lifecycle
 
 ### Privacy & Security
 
-**What we collect** — Nothing. There is no UniClipboard server holding your data.
+**What we collect** — Anonymous telemetry to help improve the app — never your clipboard content or any of your personal data. You can turn it off anytime in **Settings**, and we fully respect that choice.
 
 **What a relay can see** — Encrypted bytes and connection metadata (source / destination peer IDs). It can't decrypt your content, ever.
 
@@ -201,7 +201,7 @@ Self-hosted means you have to run a server. UniClipboard works out of the box �
 Yes. Devices on the same Wi-Fi connect directly without going through the relay. Even if the relay is unreachable, devices on the same network keep syncing.
 
 **Where does my clipboard history actually live?**
-Only on your devices. Local storage is encrypted at rest with a key that never leaves the device's system keyring. There is no UniClipboard server holding it.
+Only on your devices. Local storage is encrypted at rest with a key that never leaves the device's system keyring. No UniClipboard server ever receives or stores your clipboard content.
 
 **I upgraded from an older version — why are my devices not paired anymore?**
 The 0.6 release replaced the underlying networking stack. Existing pairings from earlier versions are no longer valid; re-pairing once via the **Devices** page (or `uniclip invite` / `uniclip join`) restores sync.

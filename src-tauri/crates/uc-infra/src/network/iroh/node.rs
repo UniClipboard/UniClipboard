@@ -21,6 +21,7 @@ use std::borrow::Cow;
 use std::net::IpAddr;
 use std::{path::PathBuf, sync::Arc, time::Duration};
 
+use iroh::address_lookup::mdns::MdnsAddressLookup;
 use iroh::address_lookup::AddrFilter;
 use iroh::endpoint::{presets, QuicTransportConfig, VarInt};
 use iroh::protocol::{Router, RouterBuilder};
@@ -359,6 +360,14 @@ impl IrohNodeBuilder {
             // every address-lookup service in one shot. See
             // `build_addr_filter` for the predicate.
             .addr_filter(build_addr_filter())
+            // UniClipboard#486 §三 B: enable mDNS LAN discovery in addition
+            // to the n0 preset's pkarr DHT lookup. Two peers on the same
+            // Wi-Fi advertise their LAN IPs to each other through swarm-
+            // discovery TXT records, bypassing pkarr round-trip latency.
+            // The `addr_filter` above also runs over what mDNS publishes,
+            // so a Clash `198.18.0.1` won't leak into the LAN announcement
+            // even if magicsock surfaces it locally.
+            .address_lookup(MdnsAddressLookup::builder())
             .bind()
             .await
             .map_err(|err| IrohNodeError::Bind(err.to_string()))?;

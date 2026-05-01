@@ -70,7 +70,13 @@ image = { version = "0.25", default-features = false, features = ["png", "jpeg",
 zstd = { version = "0.13", features = ["zstdmt"] }
 
 # ===== Network stack (iroh + rendezvous HTTP) =====
-iroh = "0.98"
+# `address-lookup-mdns` enables `iroh::address_lookup::MdnsAddressLookup`
+# (swarm-discovery TXT records over LAN multicast) so two peers on the same
+# Wi-Fi advertise their LAN IPs to each other directly. UniClipboard#486
+# §三 B: drops the dependency on pkarr/rendezvous for LAN discovery,
+# bypassing the latency that left magicsock with relay-only candidates and
+# pushing it onto Clash TUN paths.
+iroh = { version = "0.98", features = ["address-lookup-mdns"] }
 iroh-blobs = "0.100"
 iroh-tickets = "0.5"
 # iroh 0.97 forked quinn-proto into noq-proto (Custom Transports & noq).

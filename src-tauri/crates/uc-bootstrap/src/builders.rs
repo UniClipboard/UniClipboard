@@ -163,6 +163,23 @@ pub async fn build_daemon_app() -> anyhow::Result<DaemonBootstrapContext> {
     let (config, wired) = build_core(None)?;
     let storage_paths = get_storage_paths(&config)?;
 
+    // 启动期 reconcile:删除 peer_addr_repo 中所有 member_repo 已不再持有的
+    // 设备条目,恢复"peer_addr_repo 是 paired members 权威集合" 的不变量
+    // (见 `dispatch_entry.rs` module doc / `init.rs::reconcile_peer_addresses`)。
+    // 在 `build_space_setup_assembly` 之前执行,确保 dispatch / presence 一上线
+    // 看到的就是干净状态。失败只 log 不阻断启动 —— reconcile 是治理性的。
+    if let Err(err) = crate::init::reconcile_peer_addresses(
+        Arc::clone(&wired.deps.device.member_repo),
+        Arc::clone(&wired.peer_addr_repo),
+    )
+    .await
+    {
+        tracing::warn!(
+            error = %err,
+            "peer_addr reconcile failed at boot; daemon continues with whatever orphans remain"
+        );
+    }
+
     // Build the iroh-stack assembly on the caller's runtime. Must NOT spin up
     // a throwaway current-thread rt here: `Endpoint::bind` spawns magicsock /
     // relay / STUN actors via `tokio::spawn`, which attach to whatever runtime

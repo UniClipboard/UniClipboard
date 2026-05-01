@@ -29,7 +29,7 @@ pub use builders::{
     build_slice1_cli_context, CliBootstrapContext, DaemonBootstrapContext, GuiBootstrapContext,
 };
 pub use config::load_config;
-pub use init::{ensure_default_device_name, is_setup_complete};
+pub use init::{ensure_default_device_name, is_setup_complete, reconcile_peer_addresses};
 pub use non_gui_runtime::{
     build_app_facade_from_deps, build_cli_app_facade, build_cli_app_runtime, build_non_gui_bundle,
     resolve_clipboard_integration_mode, AppFacadeAssemblyOptions, CliAppRuntime,

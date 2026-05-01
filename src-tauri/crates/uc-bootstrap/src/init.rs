@@ -6,6 +6,9 @@ use std::sync::Arc;
 use uc_application::facade::AppPaths;
 use uc_application::facade::SetupStatusFacade;
 use uc_core::config::AppConfig;
+use uc_core::ids::DeviceId;
+use uc_core::membership::MemberRepositoryPort;
+use uc_core::ports::peer_address::PeerAddressRepositoryPort;
 use uc_core::ports::{SettingsPort, SetupStatusPort};
 use uc_infra::FileSetupStatusRepository;
 
@@ -101,4 +104,233 @@ pub async fn ensure_default_device_name(
     }
 
     Ok(())
+}
+
+/// 启动期清理:删除所有"在 `peer_addr_repo` 但不在 `member_repo`"的孤儿
+/// 条目。
+///
+/// `peer_addr_repo` 在文档语义上是"已配对成员的权威集合"(见
+/// `dispatch_entry.rs` module doc),`dispatch_entry` 与
+/// `ensure_reachable_all` 都直接遍历它来决定 fan-out 目标。Slice 4 P5a-1
+/// 之前 unpair 只删 `member_repo`,残留的 peer_addr 条目就成了"已撤销
+/// 设备仍被当目标"的根因。Commit A 修了 unpair 路径,但 unpair 时遇到
+/// 异常或老版本写入的孤儿,需要这一次启动期 reconcile 兜底清掉。
+///
+/// 设计取舍:reconcile 失败不会阻断 daemon 启动 —— 失败只 log warn,因为
+/// 干净的不变量是"nice to have",运行时即便残留几个孤儿,影响仍然只是
+/// "对 unpaired peer 多发几次失败 envelope",不会导致数据损坏。
+pub async fn reconcile_peer_addresses(
+    member_repo: Arc<dyn MemberRepositoryPort>,
+    peer_addr_repo: Arc<dyn PeerAddressRepositoryPort>,
+) -> anyhow::Result<()> {
+    let members = member_repo
+        .list()
+        .await
+        .map_err(|e| anyhow::anyhow!("list members: {e}"))?;
+    // 成员数通常 1–10 量级,linear search 比引入 HashSet 更直接
+    // (`DeviceId` 也未实现 Hash)。
+    let member_ids: Vec<DeviceId> = members.into_iter().map(|m| m.device_id).collect();
+
+    let peer_addrs = peer_addr_repo
+        .list()
+        .await
+        .map_err(|e| anyhow::anyhow!("list peer addresses: {e}"))?;
+
+    let orphans: Vec<DeviceId> = peer_addrs
+        .into_iter()
+        .filter_map(|record| {
+            if member_ids.contains(&record.device_id) {
+                None
+            } else {
+                Some(record.device_id)
+            }
+        })
+        .collect();
+
+    if orphans.is_empty() {
+        tracing::debug!("peer_addr reconcile: no orphans");
+        return Ok(());
+    }
+
+    tracing::info!(
+        orphan_count = orphans.len(),
+        "peer_addr reconcile: removing orphan entries (in peer_addr_repo but not in member_repo)"
+    );
+
+    for device_id in &orphans {
+        match peer_addr_repo.remove(device_id).await {
+            Ok(()) => {
+                tracing::info!(
+                    device_id = %device_id.as_str(),
+                    "peer_addr reconcile: removed orphan"
+                );
+            }
+            Err(err) => {
+                // 单条失败不阻断其余清理,reconcile 是治理性,不是关键路径。
+                tracing::warn!(
+                    device_id = %device_id.as_str(),
+                    error = %err,
+                    "peer_addr reconcile: failed to remove orphan; will retry next boot"
+                );
+            }
+        }
+    }
+
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use async_trait::async_trait;
+    use chrono::Utc;
+    use std::sync::Mutex as StdMutex;
+    use uc_core::membership::{MemberSyncPreferences, MembershipError, SpaceMember};
+    use uc_core::ports::peer_address::{PeerAddressError, PeerAddressRecord};
+    use uc_core::security::IdentityFingerprint;
+
+    struct FakeMemberRepo {
+        members: Vec<SpaceMember>,
+    }
+
+    #[async_trait]
+    impl MemberRepositoryPort for FakeMemberRepo {
+        async fn get(&self, _device_id: &DeviceId) -> Result<Option<SpaceMember>, MembershipError> {
+            unreachable!("reconcile only calls list")
+        }
+        async fn list(&self) -> Result<Vec<SpaceMember>, MembershipError> {
+            Ok(self.members.clone())
+        }
+        async fn save(&self, _member: &SpaceMember) -> Result<(), MembershipError> {
+            unreachable!("reconcile only calls list")
+        }
+        async fn remove(&self, _device_id: &DeviceId) -> Result<bool, MembershipError> {
+            unreachable!("reconcile only calls list")
+        }
+    }
+
+    struct RecordingPeerAddrRepo {
+        records: StdMutex<Vec<PeerAddressRecord>>,
+        removed: StdMutex<Vec<DeviceId>>,
+        fail_remove_for: Option<DeviceId>,
+    }
+
+    #[async_trait]
+    impl PeerAddressRepositoryPort for RecordingPeerAddrRepo {
+        async fn get(
+            &self,
+            _device: &DeviceId,
+        ) -> Result<Option<PeerAddressRecord>, PeerAddressError> {
+            unreachable!("reconcile only calls list + remove")
+        }
+        async fn upsert(&self, _record: &PeerAddressRecord) -> Result<(), PeerAddressError> {
+            unreachable!("reconcile only calls list + remove")
+        }
+        async fn list(&self) -> Result<Vec<PeerAddressRecord>, PeerAddressError> {
+            Ok(self.records.lock().unwrap().clone())
+        }
+        async fn remove(&self, device: &DeviceId) -> Result<(), PeerAddressError> {
+            if self
+                .fail_remove_for
+                .as_ref()
+                .is_some_and(|fail| fail == device)
+            {
+                return Err(PeerAddressError::Internal("disk full".into()));
+            }
+            self.records
+                .lock()
+                .unwrap()
+                .retain(|r| &r.device_id != device);
+            self.removed.lock().unwrap().push(device.clone());
+            Ok(())
+        }
+    }
+
+    fn fp() -> IdentityFingerprint {
+        IdentityFingerprint::from_raw_string("ABCDEFGHIJKLMNOP").expect("16-char fingerprint")
+    }
+
+    fn member(device: &str) -> SpaceMember {
+        SpaceMember {
+            device_id: DeviceId::new(device),
+            device_name: format!("dev-{device}"),
+            identity_fingerprint: fp(),
+            joined_at: Utc::now(),
+            sync_preferences: MemberSyncPreferences::default(),
+        }
+    }
+
+    fn peer_record(device: &str) -> PeerAddressRecord {
+        PeerAddressRecord {
+            device_id: DeviceId::new(device),
+            addr_blob: vec![1, 2, 3],
+            observed_at: Utc::now(),
+        }
+    }
+
+    #[tokio::test]
+    async fn reconcile_removes_only_orphans() {
+        let member_repo = Arc::new(FakeMemberRepo {
+            members: vec![member("dev-current")],
+        });
+        let peer_addr_repo = Arc::new(RecordingPeerAddrRepo {
+            records: StdMutex::new(vec![
+                peer_record("dev-current"),
+                peer_record("ebbbd64f-orphan"),
+                peer_record("another-ghost"),
+            ]),
+            removed: StdMutex::new(vec![]),
+            fail_remove_for: None,
+        });
+
+        reconcile_peer_addresses(member_repo, peer_addr_repo.clone() as _)
+            .await
+            .expect("reconcile ok");
+
+        let removed = peer_addr_repo.removed.lock().unwrap().clone();
+        assert_eq!(removed.len(), 2);
+        assert!(removed.contains(&DeviceId::new("ebbbd64f-orphan")));
+        assert!(removed.contains(&DeviceId::new("another-ghost")));
+        // 当前成员不能被误删
+        let surviving = peer_addr_repo.records.lock().unwrap();
+        assert_eq!(surviving.len(), 1);
+        assert_eq!(surviving[0].device_id, DeviceId::new("dev-current"));
+    }
+
+    #[tokio::test]
+    async fn reconcile_no_op_when_aligned() {
+        let member_repo = Arc::new(FakeMemberRepo {
+            members: vec![member("a"), member("b")],
+        });
+        let peer_addr_repo = Arc::new(RecordingPeerAddrRepo {
+            records: StdMutex::new(vec![peer_record("a"), peer_record("b")]),
+            removed: StdMutex::new(vec![]),
+            fail_remove_for: None,
+        });
+
+        reconcile_peer_addresses(member_repo, peer_addr_repo.clone() as _)
+            .await
+            .expect("reconcile ok");
+
+        assert!(peer_addr_repo.removed.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn reconcile_continues_after_individual_remove_failure() {
+        // 一条 remove 失败不应阻断后续清理。
+        let member_repo = Arc::new(FakeMemberRepo { members: vec![] });
+        let peer_addr_repo = Arc::new(RecordingPeerAddrRepo {
+            records: StdMutex::new(vec![peer_record("ghost-a"), peer_record("ghost-b")]),
+            removed: StdMutex::new(vec![]),
+            fail_remove_for: Some(DeviceId::new("ghost-a")),
+        });
+
+        reconcile_peer_addresses(member_repo, peer_addr_repo.clone() as _)
+            .await
+            .expect("reconcile returns Ok even if a single remove fails");
+
+        // ghost-b 仍被尝试删除并成功
+        let removed = peer_addr_repo.removed.lock().unwrap().clone();
+        assert_eq!(removed, vec![DeviceId::new("ghost-b")]);
+    }
 }

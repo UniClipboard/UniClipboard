@@ -55,6 +55,12 @@ const NOISE_FILTERS: &[&str] = &[
     // swarm-discovery is the mDNS backend pulled in by the
     // `address-lookup-mdns` feature; very chatty at INFO/DEBUG.
     "swarm_discovery=warn",
+    // The socket actor logs `error sending mDNS: No route to host` on every
+    // tick when a bound interface (VPN/Clash TUN, stale virtual NIC, Wi-Fi
+    // mid-reassoc) returns EHOSTUNREACH. The condition is harmless — peer
+    // discovery still works on the other interfaces — but the actor's send
+    // cadence is fixed inside the crate, so we suppress the per-tick WARN.
+    "swarm_discovery::socket=error",
     // hickory-dns resolver used by pkarr + relay URL resolution.
     "hickory=warn",
     // Catch-all for libraries that emit through the `log` crate (forwarded

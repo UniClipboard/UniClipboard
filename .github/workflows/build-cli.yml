@@ -127,7 +127,7 @@ jobs:
           echo "Signing with: $IDENTITY"
 
           TARGET="${{ matrix.target }}"
-          BIN_NAME="uniclipboard-cli"
+          BIN_NAME="uniclip"
           BIN_PATH="src-tauri/target/${TARGET}/release/${BIN_NAME}"
           if [ ! -f "$BIN_PATH" ]; then
             BIN_PATH="src-tauri/target/release/${BIN_NAME}"
@@ -144,7 +144,7 @@ jobs:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
           TARGET="${{ matrix.target }}"
-          BIN_NAME="uniclipboard-cli"
+          BIN_NAME="uniclip"
           BIN_PATH="src-tauri/target/${TARGET}/release/${BIN_NAME}"
           if [ ! -f "$BIN_PATH" ]; then
             BIN_PATH="src-tauri/target/release/${BIN_NAME}"
@@ -169,7 +169,7 @@ jobs:
         run: |
           VERSION=$(node -p "require('./package.json').version")
           TARGET="${{ matrix.target }}"
-          BIN_NAME="uniclipboard-cli"
+          BIN_NAME="uniclip"
 
           if [ "${{ matrix.platform }}" = "windows-latest" ]; then
             BIN_SRC="src-tauri/target/release/${BIN_NAME}.exe"

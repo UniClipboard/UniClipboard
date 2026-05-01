@@ -4,6 +4,10 @@
 
 English | [简体中文](./README_ZH.md)
 
+> **Copy on one device. Paste on another — even across the internet.**
+>
+> No cloud account. No third-party servers. Your clipboard never leaves your devices in a form anyone else can read.
+
 UniClipboard is a **privacy-first**, cross-device clipboard synchronization tool.
 It enables seamless and secure syncing of text, images, and files across multiple devices, whether on the same Wi-Fi or across different networks. Data is encrypted both in transit and at rest, and decrypted only on the user’s devices—neither servers nor the network layer can ever access plaintext data.
 
@@ -54,15 +58,15 @@ It enables seamless and secure syncing of text, images, and files across multipl
 
 ## Features
 
-- **Cross-platform**: Windows, macOS, and Linux
-- **Cross-network sync**: Real-time clipboard sync between devices on the same LAN, across different home/office networks, or across the internet — with automatic NAT traversal and relay fallback
-- **Content types**: Text, images, and files (large files supported via streaming transfer)
-- **Encrypted spaces**: Devices group into shared "spaces"; create one, join via an invitation code + passphrase, or switch spaces without losing local history
-- **Local full-text search**: Encrypted local index for fast browsing across thousands of entries
-- **Quick Panel**: Keyboard-shortcut overlay with inline preview for text, links, images, code, and files
-- **Command-line tool**: A `uniclip` CLI that drives the full setup, pairing, and sync flow from the terminal
-- **Secure encryption**: XChaCha20-Poly1305 AEAD keeps data encrypted in transit and at rest
-- **Multi-device management**: Manage paired devices, presence, and per-device sync preferences
+- **Cross-platform**: First-class support on Windows, macOS, and Linux — your clipboard works wherever you do.
+- **Cross-network sync**: Real-time sync on the same Wi-Fi, across different home/office networks, or across the internet, with automatic NAT traversal and encrypted relay fallback — not just LAN, and not bound to a single network.
+- **Encrypted spaces**: Devices join a shared "space" with one invitation code + passphrase — no cloud account, no email, just two devices agreeing to trust each other.
+- **Local full-text search**: Search your full history in milliseconds, even with tens of thousands of entries — and the index itself stays encrypted on disk.
+- **Text, images, and files**: Copy on one device, paste on another. Large files use streaming transfer so they don't have to fit in memory.
+- **Quick Panel**: Keyboard-shortcut overlay with inline preview for text, links, images, code, and files — designed to feel like part of the OS clipboard, not a separate app you context-switch into.
+- **Command-line tool**: A `uniclip` CLI mirrors the GUI flow and works headlessly — built for terminals, SSH sessions, scripts, and tmux workflows.
+- **Secure encryption**: XChaCha20-Poly1305 AEAD keeps data encrypted in transit and at rest — even the relay only sees ciphertext.
+- **Multi-device management**: Manage paired devices, presence, and per-device sync preferences. Revoke a lost device from any other paired one — sync stops including it immediately.
 
 ## Installation
 
@@ -112,14 +116,33 @@ bun tauri build
 
 ## Advanced Features
 
-### Network Configuration
+### How it Works
 
-UniClipboard syncs directly between your devices over an encrypted peer-to-peer connection:
+```text
+┌─────────────────┐                                    ┌─────────────────┐
+│    Device A     │                                    │    Device B     │
+│   (your laptop) │                                    │  (your desktop) │
+│                 │                                    │                 │
+│   Ctrl+C ──┐    │                                    │    ┌── Ctrl+V   │
+│            │    │                                    │    │            │
+│            ▼    │                                    │    ▲            │
+│  ┌──────────┐   │      ╔══════════════════════╗      │  ┌──────────┐   │
+│  │ encrypt  │   │ ═══> ║    P2P hole-punch    ║ ═══> │  │ decrypt  │   │
+│  │ (your    │   │      ╚══════════════════════╝      │  │  (your   │   │
+│  │  key)    │   │                │ falls back        │  │   key)   │   │
+│  └──────────┘   │                ▼                   │  └──────────┘   │
+│                 │      ┌──────────────────────┐      │                 │
+│                 │      │  Relay (sees only    │      │                 │
+│                 │      │   encrypted bytes)   │      │                 │
+│                 │      └──────────────────────┘      │                 │
+└─────────────────┘                                    └─────────────────┘
+```
 
-- **Same network**: Devices on the same Wi-Fi connect directly for the lowest latency
-- **Different networks**: NAT traversal (hole-punching) lets devices on different home/office networks connect directly whenever possible
-- **Fallback relay**: When a direct connection isn't possible, traffic falls back to a relay — still end-to-end encrypted; the relay only sees ciphertext
-- **Resilient to changes**: Connections recover automatically after Wi-Fi switches, sleep/wake, or brief disconnects, with no re-pairing required
+- **Pairing**: Devices exchange a public key once, locally — no cloud account, no email.
+- **Transport**: Direct connection when devices can reach each other (same Wi-Fi or via NAT hole-punching across home/office networks); falls back to an encrypted relay otherwise.
+- **Encryption**: Payload encryption is independent of the transport — even a malicious relay only sees ciphertext.
+- **Storage**: Local history is encrypted at rest, and the search index is encrypted too.
+- **Resilience**: Connections recover automatically after Wi-Fi switches, sleep/wake, or brief disconnects — no re-pairing required.
 
 ### Command-line Tool
 
@@ -136,25 +159,52 @@ uniclip switch-space            # Move this device to another space
 uniclip status / start / stop   # Daemon lifecycle
 ```
 
-### Security Features
+### Privacy & Security
 
-- **End-to-end encryption**: Data is encrypted in transit between devices and remains encrypted at rest in local storage
-- **XChaCha20-Poly1305 encryption**: Modern AEAD cipher providing authenticated encryption
-  - 24-byte random nonce effectively reduces nonce reuse risks
+**What we collect** — Nothing. There is no UniClipboard server holding your data.
+
+**What a relay can see** — Encrypted bytes and connection metadata (source / destination peer IDs). It can't decrypt your content, ever.
+
+**What's stored on disk** — An encrypted SQLite database, plus a search index designed so full-text search works without exposing plaintext.
+
+**If you lose a device** — Revoke it from any other paired device. Future syncs will exclude it immediately.
+
+**You can audit it** — Every line, including the cryptography, lives on GitHub. Trust the code, not the marketing.
+
+#### Cryptography details
+
+- **End-to-end encryption**: Data is encrypted in transit between devices and remains encrypted at rest in local storage.
+- **XChaCha20-Poly1305 AEAD** — modern authenticated encryption.
+  - 24-byte random nonce effectively eliminates nonce-reuse risk
   - 32-byte (256-bit) encryption key
   - Provides ciphertext integrity and authenticity verification
-- **Argon2id key derivation**: Securely derives encryption keys from user passphrase
-  - Memory cost: 128 MB
-  - Iterations: 3
-  - Parallelism: 4 threads
-  - Resistant to GPU/ASIC cracking attacks
-- **Key management**: Layered key architecture protects data
-  - MasterKey for clipboard content encryption
-  - Key Encryption Key (KEK) derived from passphrase via Argon2id
-  - KEK securely stored in system keyring (macOS Keychain, Windows Credential Manager, Linux Secret Service)
-  - MasterKey encrypted and stored in KeySlot file
-- **Per-space isolation**: Each space has its own MasterKey; switching to another space re-encrypts local history under the new space's MasterKey
-- **Device authorization**: Precise control over each device's access permissions
+- **Argon2id key derivation** — securely derives encryption keys from your passphrase.
+  - Memory cost: 128 MB · Iterations: 3 · Parallelism: 4 threads
+  - Resistant to GPU / ASIC cracking attacks
+- **Layered key architecture**:
+  - MasterKey encrypts clipboard content
+  - Key Encryption Key (KEK) is derived from your passphrase via Argon2id
+  - KEK is stored in the system keyring (macOS Keychain, Windows Credential Manager, Linux Secret Service)
+  - MasterKey is encrypted and stored in a KeySlot file
+- **Per-space isolation**: Each space has its own MasterKey; switching to another space re-encrypts local history under the new space's MasterKey.
+- **Device authorization**: Precise control over each paired device's access permissions.
+
+## FAQ
+
+**Why not just use iCloud Universal Clipboard?**
+If you only use Apple devices, don't need history, and fully trust Apple's closed-source end-to-end encryption — iCloud is fine. The moment you add a Windows or Linux machine, want a searchable history, or want to verify the encryption yourself, you need something else.
+
+**Why not a self-hosted clipboard sync (e.g. ClipCascade)?**
+Self-hosted means you have to run a server. UniClipboard works out of the box — direct P2P first, encrypted relay only as a fallback. You never have to operate any infrastructure.
+
+**Does it work fully offline / LAN-only?**
+Yes. Devices on the same Wi-Fi connect directly without going through the relay. Even if the relay is unreachable, devices on the same network keep syncing.
+
+**Where does my clipboard history actually live?**
+Only on your devices. Local storage is encrypted at rest with a key that never leaves the device's system keyring. There is no UniClipboard server holding it.
+
+**I upgraded from an older version — why are my devices not paired anymore?**
+The 0.6 release replaced the underlying networking stack. Existing pairings from earlier versions are no longer valid; re-pairing once via the **Devices** page (or `uniclip invite` / `uniclip join`) restores sync.
 
 ## Contributing
 

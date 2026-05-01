@@ -68,6 +68,33 @@ It enables seamless and secure syncing of text, images, and files across multipl
 - **Secure encryption**: XChaCha20-Poly1305 AEAD keeps data encrypted in transit and at rest — even the relay only sees ciphertext.
 - **Multi-device management**: Manage paired devices, presence, and per-device sync preferences. Revoke a lost device from any other paired one — sync stops including it immediately.
 
+## How It Compares
+
+| Capability                            | **UniClipboard** | iCloud Universal Clipboard | Paste       |   Maccy   |   Ditto    | ClipCascade |
+| ------------------------------------- | :--------------: | :------------------------: | :---------: | :-------: | :--------: | :---------: |
+| End-to-end encrypted                  |        ✅        |             ❓¹             |      ❓      |     —     |     ⚠️²     |      ✅      |
+| Fully open source                     |   ✅ AGPL-3.0    |             ❌              |      ❌      |  ✅ MIT   |   ✅ GPL   |      ✅      |
+| **No third-party server**             |      ✅ P2P      |          ❌ iCloud          |  ❌ iCloud  |     —     | ✅ LAN only |     ⚠️³      |
+| macOS                                 |        ✅        |             ✅              |      ✅      |     ✅     |     ❌      |      ✅      |
+| Windows                               |        ✅        |             ❌              |      ❌      |     ❌     |     ✅      |      ✅      |
+| Linux                                 |        ✅        |             ❌              |      ❌      |     ❌     |     ❌      |      ✅      |
+| Public-internet P2P (NAT hole-punch)  |        ✅        |             ❌              |      ❌      |     ❌     | ❌ LAN only |      ⚠️      |
+| Encrypted local storage               |        ✅        |             ❌              |      ❓      |     ❌     |     ❌      |      ❓      |
+| **Encrypted full-text search**        |        ✅        |             ❌              |      ❌      |     ❌     |     ❌      |      ❌      |
+| Unlimited history                     |        ✅        |       ❌ latest only        |      ✅      | ✅ local  |  ✅ local  | configurable |
+| Text + images + files                 |        ✅        |          partial           |   partial   | text only | text only  | text + files |
+| CLI / headless                        |        ✅        |             ❌              |      ❌      |     ❌     |     ❌      |      ❌      |
+| Zero deployment                       |        ✅        |             ✅              |      ✅      |     ✅     |     ✅      | ❌ self-host |
+| No account required                   |        ✅        |        ❌ Apple ID         | ❌ Apple ID |     ✅     |     ✅      |   varies    |
+
+**Footnotes**
+
+1. iCloud uses Apple's end-to-end encryption stack, but the implementation is closed-source and cannot be independently audited.
+2. Ditto syncs over LAN with optional password protection; not end-to-end encrypted by default.
+3. ClipCascade ships a self-hosted server mode (Spring Boot) and an early-stage P2P mode.
+
+> Sourced from each project's official site / GitHub README, as of 2026-05. Spotted an inaccuracy? Please [open an issue](https://github.com/UniClipboard/UniClipboard/issues).
+
 ## Installation
 
 ### Download from Releases

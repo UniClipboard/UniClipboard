@@ -257,6 +257,18 @@ fn build_transport_config() -> QuicTransportConfig {
         // because the iroh `QuicTransportConfigBuilder` already pre-sets a
         // sane default — calling this setter just overrides it.
         .keep_alive_interval(Duration::from_secs(15))
+        // iroh#4124 workaround: every QUIC connection has a monotonic
+        // PathId budget; the iroh default is `MAX_MULTIPATH_PATHS + 1 =
+        // 13`. With mDNS + pkarr + dual-relay + call-me-maybe + STUN
+        // hairpin all feeding candidates into the same connection, plus
+        // path abandonment not releasing the ID slot, we burn through 13
+        // in seconds. Once exhausted, every blob transfer that needs to
+        // open a new path fails with `Error::Io` and `remote_state` spams
+        // `MaxPathIdReached` WARN forever (no upstream back-off yet).
+        // Bumping to 64 gives ~5× headroom; each path costs a small
+        // amount of state-machine memory, well bounded by typical 2-peer
+        // workloads.
+        .max_concurrent_multipath_paths(64)
         .build()
 }
 

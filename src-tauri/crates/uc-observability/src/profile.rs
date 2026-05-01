@@ -41,6 +41,25 @@ const NOISE_FILTERS: &[&str] = &[
     "Pool::poll=warn",
     "Swarm::poll=warn",
     "opentelemetry_sdk=warn",
+    // iroh 0.97 forked quinn into noq; the old quinn=info directives no
+    // longer match. noq_proto::connection in particular emits ~40k DEBUG
+    // events per peer-hour without this cap.
+    "noq=info",
+    "noq_proto=info",
+    // magicsock multipath state machine. The remote_state submodule is
+    // also where iroh#4124 spams `Opening path failed` on every event
+    // once the per-connection PathId budget is exhausted; cap that one
+    // at ERROR until upstream lands a fix (PR pending against v1.0.0-rc).
+    "iroh::socket=info",
+    "iroh::socket::remote_map::remote_state=error",
+    // swarm-discovery is the mDNS backend pulled in by the
+    // `address-lookup-mdns` feature; very chatty at INFO/DEBUG.
+    "swarm_discovery=warn",
+    // hickory-dns resolver used by pkarr + relay URL resolution.
+    "hickory=warn",
+    // Catch-all for libraries that emit through the `log` crate (forwarded
+    // into tracing). Without this they default to TRACE.
+    "log=warn",
 ];
 
 impl LogProfile {

@@ -38,7 +38,7 @@ const PROBE_ALPN: &[u8] = b"uniclipboard/clipboard-identity-probe/0";
 /// fingerprint assertion has a fixed expected value.
 async fn bind_with_secret(seed: [u8; 32]) -> Endpoint {
     let sk = SecretKey::from_bytes(&seed);
-    Endpoint::builder()
+    Endpoint::builder(iroh::endpoint::presets::N0)
         .secret_key(sk)
         .alpns(vec![PROBE_ALPN.to_vec()])
         .relay_mode(RelayMode::Disabled)

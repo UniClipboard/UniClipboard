@@ -233,7 +233,7 @@ mod tests {
         // Loopback-only endpoint: no relay, no external discovery. That
         // leaves a single direct IPv4 address in `EndpointAddr.addrs`, which
         // is enough to satisfy `serialize_ticket`'s "addrs non-empty" guard.
-        let ep = Endpoint::builder()
+        let ep = Endpoint::builder(iroh::endpoint::presets::N0)
             .relay_mode(iroh::RelayMode::Disabled)
             .bind()
             .await

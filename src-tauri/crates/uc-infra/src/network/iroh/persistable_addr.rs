@@ -83,7 +83,7 @@ mod tests {
     use iroh::{EndpointId, RelayUrl, SecretKey};
 
     fn test_id() -> EndpointId {
-        SecretKey::generate(&mut rand::rng()).public()
+        SecretKey::generate().public()
     }
 
     fn lan_addr(port: u16) -> SocketAddr {

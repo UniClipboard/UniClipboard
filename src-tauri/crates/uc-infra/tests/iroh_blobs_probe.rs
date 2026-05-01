@@ -11,7 +11,7 @@
 use std::{path::PathBuf, time::Duration};
 
 use iroh::{
-    discovery::static_provider::StaticProvider, protocol::Router, Endpoint, EndpointAddr, RelayMode,
+    address_lookup::memory::MemoryLookup, protocol::Router, Endpoint, EndpointAddr, RelayMode,
 };
 use iroh_blobs::{store::fs::FsStore, ticket::BlobTicket, BlobFormat, BlobsProtocol, Hash};
 use iroh_tickets::Ticket;
@@ -20,16 +20,16 @@ struct BlobNode {
     router: Router,
     store: FsStore,
     _path: PathBuf,
-    discovery: StaticProvider,
+    discovery: MemoryLookup,
 }
 
 impl BlobNode {
     async fn bind(path: PathBuf) -> anyhow::Result<Self> {
         let store = FsStore::load(&path).await?;
-        let discovery = StaticProvider::new();
-        let endpoint = Endpoint::builder()
+        let discovery = MemoryLookup::new();
+        let endpoint = Endpoint::builder(iroh::endpoint::presets::N0)
             .relay_mode(RelayMode::Disabled)
-            .discovery(discovery.clone())
+            .address_lookup(discovery.clone())
             .bind()
             .await?;
         let protocol = BlobsProtocol::new(&store, None);

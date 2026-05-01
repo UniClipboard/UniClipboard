@@ -1,39 +1,26 @@
-//! Slice 2 Phase 1 T3a — probe iroh 0.95 `conn_type` semantics.
+//! T3a — `Connection::closed()` liveness probe.
 //!
-//! Goal: confirm the `ReachabilityState` mapping rule for `IrohPresenceAdapter`
-//! before writing it. Specifically we want to answer:
-//!
-//! 1. What does `Endpoint::conn_type(peer_id)` return for a peer we have
-//!    never dialed and whose address we have never seen?
-//! 2. After a successful `connect(addr, alpn)`, what `ConnectionType`
-//!    variant does `Watcher::get()` report?
-//! 3. When the peer endpoint is closed, how long until `Watcher::stream()`
-//!    yields a transition, and what is the transitioned value?
-//! 4. Does `Connection::closed().await` fire reliably when the peer
-//!    shuts down (the fallback offline-detection pathway)?
-//!
-//! **Key finding (2026-04-20)**: `Endpoint::conn_type` **does NOT transition
-//! off `Direct(...)` when the peer closes its endpoint**. It is a cache, not a
-//! liveness probe. Offline detection must rely on `Connection::closed()` on
-//! the held connection handle (scenario 4 below).
-//!
-//! This probe stays as an integration test so it doubles as regression
-//! coverage. Once `IrohPresenceAdapter` lands in T3b with its own tests,
-//! most scenarios here will be redundant, but the negative case
-//! ("never dialed → Option::None") and the liveness-via-Connection::closed
-//! assertion are cheap enough to keep.
+//! This file originally probed iroh 0.95's `Endpoint::conn_type(peer_id)`
+//! semantics — three tests asserting properties of the
+//! `Watcher<ConnectionType>` it returned (see git history for the full
+//! study). iroh 0.97 / 0.98 removed `conn_type` in favour of the
+//! snapshot-style `remote_info(id) -> Option<RemoteInfo>`, so those
+//! assertions no longer apply (and won't compile). The probe that
+//! survives is the one that actually backs `IrohPresenceAdapter` in
+//! production: `Connection::closed().await` fires reliably when the peer
+//! tears down, which is what the adapter's per-peer watchdog awaits.
 //!
 //! Runs loopback-only (relays disabled) so it has no external dependency.
 
 use std::time::Duration;
 
-use iroh::{Endpoint, RelayMode, Watcher};
+use iroh::{Endpoint, RelayMode};
 
 const PROBE_ALPN: &[u8] = b"uniclipboard/presence-probe/0";
 
 /// Bind a single endpoint with relays disabled and `PROBE_ALPN` registered.
 async fn bind_endpoint() -> Endpoint {
-    Endpoint::builder()
+    Endpoint::builder(iroh::endpoint::presets::N0)
         .alpns(vec![PROBE_ALPN.to_vec()])
         .relay_mode(RelayMode::Disabled)
         .bind()
@@ -66,120 +53,6 @@ fn spawn_hold_open_acceptor(endpoint: Endpoint) -> tokio::task::JoinHandle<()> {
             });
         }
     })
-}
-
-#[tokio::test]
-async fn conn_type_returns_none_before_any_connect() {
-    let prober = bind_endpoint().await;
-    let peer = bind_endpoint().await;
-    let peer_id = peer.id();
-
-    let mut watcher_opt = prober.conn_type(peer_id);
-
-    // With no address information and no prior connection, iroh should
-    // report "unknown peer". The exact shape matters for the adapter's
-    // `ReachabilityState::Unknown` mapping.
-    let watcher_present = watcher_opt.is_some();
-    println!("pre-connect conn_type watcher present: {watcher_present}");
-    if let Some(w) = watcher_opt.as_mut() {
-        println!("pre-connect ConnectionType = {:?}", w.get());
-    }
-    // Expectation: Option::None. Fail loudly if iroh returns Some for an
-    // unknown peer — the adapter's mapping rule depends on this behavior.
-    assert!(
-        !watcher_present,
-        "expected Option::None for peer we have never contacted, got Some — revisit adapter mapping",
-    );
-
-    prober.close().await;
-    peer.close().await;
-}
-
-#[tokio::test]
-async fn conn_type_is_some_after_connect_and_reports_direct() {
-    let peer = bind_endpoint().await;
-    wait_for_direct_addrs(&peer).await;
-    let peer_addr = peer.addr();
-    let peer_id = peer.id();
-    let acceptor = spawn_hold_open_acceptor(peer.clone());
-
-    let prober = bind_endpoint().await;
-    wait_for_direct_addrs(&prober).await;
-
-    // Dial peer.
-    let connection = prober
-        .connect(peer_addr, PROBE_ALPN)
-        .await
-        .expect("dial peer");
-
-    // Give magicsock a beat to finalize the direct path.
-    tokio::time::sleep(Duration::from_millis(50)).await;
-
-    let mut watcher = prober
-        .conn_type(peer_id)
-        .expect("conn_type watcher present after connect");
-    let state = watcher.get();
-    println!("post-connect ConnectionType = {:?}", state);
-    assert!(
-        matches!(
-            state,
-            iroh::endpoint::ConnectionType::Direct(_)
-                | iroh::endpoint::ConnectionType::Relay(_)
-                | iroh::endpoint::ConnectionType::Mixed(_, _)
-        ),
-        "expected Direct/Relay/Mixed after successful dial, got {:?}",
-        state
-    );
-
-    drop(connection);
-    acceptor.abort();
-    prober.close().await;
-    peer.close().await;
-}
-
-/// Documents the finding that `Endpoint::conn_type` is a stale cache — it
-/// keeps returning `Direct(...)` even after the peer endpoint is torn down.
-/// This is what forces the adapter to track `Connection::closed()` instead.
-#[tokio::test]
-async fn conn_type_watcher_is_stale_after_peer_shutdown() {
-    let peer = bind_endpoint().await;
-    wait_for_direct_addrs(&peer).await;
-    let peer_addr = peer.addr();
-    let peer_id = peer.id();
-    let acceptor = spawn_hold_open_acceptor(peer.clone());
-
-    let prober = bind_endpoint().await;
-    wait_for_direct_addrs(&prober).await;
-    let _connection = prober
-        .connect(peer_addr, PROBE_ALPN)
-        .await
-        .expect("dial peer");
-    tokio::time::sleep(Duration::from_millis(50)).await;
-
-    let mut watcher = prober
-        .conn_type(peer_id)
-        .expect("conn_type watcher present after connect");
-    let before = watcher.get();
-
-    // Shut down the peer entirely.
-    acceptor.abort();
-    peer.close().await;
-    // Give any transition 3 seconds to land (far less than the 10s Phase 1
-    // budget — if conn_type was reliable, it would transition in well under
-    // 3s on loopback).
-    tokio::time::sleep(Duration::from_secs(3)).await;
-
-    let after = watcher.get();
-    println!(
-        "conn_type staleness: before={:?} after(3s post peer-close)={:?}",
-        before, after
-    );
-    assert_eq!(
-        before, after,
-        "conn_type unexpectedly transitioned — adapter design assumption broken",
-    );
-
-    prober.close().await;
 }
 
 /// The actual fallback: `Connection::closed().await` fires when the peer

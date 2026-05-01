@@ -502,10 +502,10 @@ mod tests {
         // the live peer's id back to its real direct addrs and the dial
         // unexpectedly succeeds on environments with outbound DNS (CI).
         Arc::new(
-            Endpoint::builder()
+            Endpoint::builder(iroh::endpoint::presets::N0)
                 .alpns(vec![PRESENCE_ALPN.to_vec()])
                 .relay_mode(RelayMode::Disabled)
-                .clear_discovery()
+                .clear_address_lookup()
                 .bind()
                 .await
                 .expect("bind endpoint"),

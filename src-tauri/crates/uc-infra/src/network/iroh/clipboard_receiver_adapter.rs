@@ -347,7 +347,7 @@ mod tests {
 
     async fn bind_endpoint_with(seed: [u8; 32]) -> Arc<Endpoint> {
         Arc::new(
-            Endpoint::builder()
+            Endpoint::builder(iroh::endpoint::presets::N0)
                 .secret_key(SecretKey::from_bytes(&seed))
                 .alpns(vec![CLIPBOARD_ALPN.to_vec()])
                 .relay_mode(RelayMode::Disabled)

@@ -315,6 +315,12 @@ async fn handle_connection(socket: WebSocket, state: DaemonApiState, claims: Ses
                             }
                         }
                     }
+                    // Both channels closed (typical at daemon shutdown when the
+                    // event broadcaster and heartbeat task drop their senders
+                    // around the same moment). Without this arm, tokio's
+                    // select! panics with "all branches are disabled and there
+                    // is no else branch".
+                    else => break,
                 }
             }
         });

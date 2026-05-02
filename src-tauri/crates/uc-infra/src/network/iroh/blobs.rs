@@ -1113,4 +1113,66 @@ mod tests {
         fixture.shutdown().await?;
         Ok(())
     }
+
+    #[tokio::test]
+    async fn untag_keeps_blob_observable_for_subsequent_local_fetch() -> anyhow::Result<()> {
+        // Phase B 方案 X 的端到端回归。原 panic
+        // (`Poisoned storage should not be used` from `bao_file.rs:410`)
+        // 触发条件是 iroh-blobs metadata 还在、物理 data 文件被外部
+        // unlink —— 旧版 `delete_entry` 走的正是这条路径(直接 remove_file
+        // cache 而 metadata 留在 redb)。后续的 ObserveRequest 一进
+        // BaoFileStorage 就把 entry 标 Poisoned,任何对该 hash 的操作
+        // 都 panic。
+        //
+        // 修复后 `delete_entry` 改走 untag,不主动 unlink cache、不主动
+        // 删 metadata,GC 在 1h 内一致地回收 metadata + data。这个测试
+        // 复现"用户删 entry 后立即点旧历史"的场景:
+        //   1. publish + tag (业务侧持有声明)
+        //   2. untag (模拟 DeleteClipboardEntryUseCase)
+        //   3. has + issue_ticket + fetch_to_path (GUI 立即点旧历史)
+        //
+        // fetch_to_path 内部读 bao outboard,是原 panic 真正触发的代码
+        // 路径 —— 跑通即证明我们没有把 store 弄成 Poisoned 状态。
+        //
+        // 64 KiB 大于 iroh-blobs 默认 16 KiB inline 阈值,确保实际写出
+        // owned data 文件而非 inline,触达 bao_file 路径(否则小 payload
+        // 会走 inline 短路,绕过 panic 触发点,失去回归意义)。
+        let fixture = Fixture::bind().await?;
+        fixture.wait_for_direct_addr().await?;
+        let payload = vec![0xefu8; 64 * 1024];
+        let digest = fixture
+            .adapter
+            .publish(Bytes::from(payload.clone()))
+            .await?;
+        let reason = TagReason::ClipboardEntry(EntryId::from_str("entry-deleted"));
+        fixture.adapter.tag(&digest, reason.clone()).await?;
+
+        // 模拟 DeleteClipboardEntryUseCase:只释放业务声明,不动 store。
+        fixture.adapter.untag(reason).await?;
+
+        // GUI 立即重新点旧历史 —— 关键回归点。
+        assert!(
+            fixture.adapter.has(&digest).await?,
+            "untag must not remove metadata: blob should still be observable"
+        );
+        let ticket = fixture.adapter.issue_ticket(&digest).await?;
+
+        // local-hit fetch_to_path 走完整的 bao outboard 读取路径,
+        // 是原 panic 真正触发的代码点。
+        let dir = tempdir()?;
+        let target = dir.path().join("after_untag.bin");
+        let returned = fixture
+            .adapter
+            .fetch_to_path(&ticket, &target, None)
+            .await?;
+        assert_eq!(returned, digest);
+        let written = std::fs::read(&target)?;
+        assert_eq!(
+            written, payload,
+            "fetched bytes must match the original payload"
+        );
+
+        fixture.shutdown().await?;
+        Ok(())
+    }
 }

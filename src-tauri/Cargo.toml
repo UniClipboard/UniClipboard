@@ -1,6 +1,6 @@
 [package]
 name = "uniclipboard"
-version = "0.6.0-alpha.3"
+version = "0.6.0-alpha.4"
 license.workspace = true
 description = "一个剪切板同步工具"
 authors = ["mkdir700@gmail.com"]
@@ -88,7 +88,7 @@ members = [
 resolver = "2"
 
 [workspace.package]
-version = "0.6.0-alpha.3"
+version = "0.6.0-alpha.4"
 license = "AGPL-3.0-only"
 
 # Dependencies for workspace crates, mainly for tauri plugins

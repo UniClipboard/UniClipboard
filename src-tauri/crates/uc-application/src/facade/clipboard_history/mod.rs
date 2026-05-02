@@ -5,6 +5,7 @@ use thiserror::Error;
 use uc_core::blob::ports::BlobReaderPort;
 use uc_core::clipboard::link_utils::extract_domain;
 use uc_core::ids::{EntryId, EventId, FormatId, RepresentationId};
+use uc_core::ports::blob::BlobTransferPort;
 use uc_core::ports::clipboard::{ClipboardPayloadResolverPort, ThumbnailRepositoryPort};
 use uc_core::ports::search::search_index::SearchIndexPort;
 use uc_core::ports::{
@@ -109,6 +110,11 @@ pub struct ClipboardHistoryFacadeDeps {
     pub file_transfer_repo: Arc<dyn FileTransferRepositoryPort>,
     pub search_index: Option<Arc<dyn SearchIndexPort>>,
     pub file_cache_dir: Option<PathBuf>,
+    /// 删除剪贴板条目时释放对应的 iroh-blobs tag。`None` 表示该装配场景
+    /// 不接入 blob 系统（例如某些纯文本 / mock 测试场景），此时 untag
+    /// 直接跳过；后台 GC 仍会按既定节奏处理脏 metadata（panic 防御不
+    /// 依赖此 port 的存在，仅依赖 cache 文件与 GUI/sqlite 状态一致）。
+    pub blob_transfer: Option<Arc<dyn BlobTransferPort>>,
     /// `seed_text_entry` 用：构造 `ClipboardEvent.source_device`。
     pub device_identity: Arc<dyn DeviceIdentityPort>,
     /// `seed_text_entry` 用：构造 `captured_at_ms` / `created_at_ms`。
@@ -142,6 +148,7 @@ impl ClipboardHistoryFacade {
             file_transfer_repo,
             search_index,
             file_cache_dir,
+            blob_transfer,
             device_identity,
             clock,
         } = deps;
@@ -194,6 +201,9 @@ impl ClipboardHistoryFacade {
         if let Some(idx) = search_index.clone() {
             delete_uc = delete_uc.with_search_index(idx);
         }
+        if let Some(bt) = blob_transfer.clone() {
+            delete_uc = delete_uc.with_blob_transfer(bt);
+        }
 
         let mut clear_uc = ClearClipboardHistoryUseCase::from_ports(
             entry_repo,
@@ -206,6 +216,9 @@ impl ClipboardHistoryFacade {
         }
         if let Some(idx) = search_index {
             clear_uc = clear_uc.with_search_index(idx);
+        }
+        if let Some(bt) = blob_transfer {
+            clear_uc = clear_uc.with_blob_transfer(bt);
         }
 
         Self {

@@ -245,9 +245,12 @@ pub trait BlobTransferPort: Send + Sync {
     async fn tag(&self, digest: &BlobDigest, reason: TagReason) -> Result<(), BlobError>;
 
     /// Release a declaration previously made via [`tag`](Self::tag).
-    /// Idempotent: releasing a declaration that does not exist returns
-    /// `Ok(())`.
-    async fn untag(&self, digest: &BlobDigest, reason: TagReason) -> Result<(), BlobError>;
+    ///
+    /// `reason` carries the only identifier the adapter needs (the
+    /// declaration's tag scope) — no [`BlobDigest`] is required because
+    /// declarations are uniquely keyed by their reason. Idempotent:
+    /// releasing a declaration that does not exist returns `Ok(())`.
+    async fn untag(&self, reason: TagReason) -> Result<(), BlobError>;
 
     // ── Metadata ──
 

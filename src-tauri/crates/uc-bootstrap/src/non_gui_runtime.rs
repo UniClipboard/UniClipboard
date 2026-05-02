@@ -114,6 +114,15 @@ pub struct AppFacadeAssemblyOptions {
     pub member_roster: Option<Arc<MemberRosterFacade>>,
     pub clipboard_sync: Option<Arc<ClipboardSyncFacade>>,
     pub blob_transfer: Option<Arc<BlobTransferFacade>>,
+    /// 底层 `BlobTransferPort`(`IrohBlobTransferAdapter`)直连引用,供
+    /// `ClipboardHistoryFacade` 在 `delete_entry` / `clear_history` 时
+    /// 调 `untag` 释放对应 entry 对 iroh-blobs 的引用。与 `blob_transfer`
+    /// 字段(承载发布/拉取 use case 的 facade)分开装配:facade 用于
+    /// "发布、拉取 blob"业务动作,这个 port 用于"释放 blob 引用"基础
+    /// 设施动作,两者共享同一个底层 adapter 实例。
+    /// `None` 表示该装配场景不接入 blob 系统(纯文本 / 测试场景),
+    /// 此时 untag 直接跳过。
+    pub blob_transfer_port: Option<Arc<dyn uc_core::ports::blob::BlobTransferPort>>,
     pub clipboard_restore: Option<ClipboardRestoreAssembly>,
     pub search_coordinator: Option<Arc<SearchCoordinator>>,
 }
@@ -167,6 +176,7 @@ pub fn build_app_facade_from_deps(
             file_transfer_repo: deps.storage.file_transfer_repo.clone(),
             search_index: Some(deps.search.search_index.clone()),
             file_cache_dir: Some(storage_paths.file_cache_dir.clone()),
+            blob_transfer: options.blob_transfer_port.clone(),
             device_identity: deps.device.device_identity.clone(),
             clock: deps.system.clock.clone(),
         })),
@@ -291,6 +301,7 @@ pub async fn build_cli_app_runtime(
             member_roster: Some(assembly.roster.clone()),
             clipboard_sync: Some(assembly.clipboard_sync.clone()),
             blob_transfer: Some(assembly.blob.clone()),
+            blob_transfer_port: Some(Arc::clone(&assembly.blob_transfer)),
             search_coordinator: Some(search_coordinator),
             ..Default::default()
         },

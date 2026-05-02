@@ -236,11 +236,11 @@ mod tests {
             Ok(())
         }
 
-        async fn untag(&self, digest: &BlobDigest, reason: TagReason) -> Result<(), BlobError> {
+        async fn untag(&self, reason: TagReason) -> Result<(), BlobError> {
             self.tags
                 .lock()
                 .expect("lock tags")
-                .retain(|(d, r)| d != digest || r != &reason);
+                .retain(|(_, r)| r != &reason);
             Ok(())
         }
 

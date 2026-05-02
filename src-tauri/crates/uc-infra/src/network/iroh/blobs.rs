@@ -337,7 +337,7 @@ impl BlobTransferPort for IrohBlobTransferAdapter {
     }
 
     #[instrument(skip_all)]
-    async fn untag(&self, _digest: &BlobDigest, reason: TagReason) -> Result<(), BlobError> {
+    async fn untag(&self, reason: TagReason) -> Result<(), BlobError> {
         let name = Self::tag_name(&reason);
         let removed = self
             .store
@@ -800,7 +800,7 @@ mod tests {
         // blobs to a ClipboardEntry and clean up on entry deletion.
         let reason = TagReason::ClipboardEntry(EntryId::from_str("entry-after-export"));
         fixture.adapter.tag(&digest, reason.clone()).await?;
-        fixture.adapter.untag(&digest, reason).await?;
+        fixture.adapter.untag(reason).await?;
 
         fixture.shutdown().await?;
         Ok(())
@@ -1035,8 +1035,8 @@ mod tests {
         let reason = TagReason::ClipboardEntry(EntryId::from_str("entry-a"));
 
         fixture.adapter.tag(&digest, reason.clone()).await?;
-        fixture.adapter.untag(&digest, reason.clone()).await?;
-        fixture.adapter.untag(&digest, reason).await?;
+        fixture.adapter.untag(reason.clone()).await?;
+        fixture.adapter.untag(reason).await?;
 
         fixture.shutdown().await?;
         Ok(())
@@ -1054,7 +1054,7 @@ mod tests {
 
         fixture.adapter.tag(&digest, first.clone()).await?;
         fixture.adapter.tag(&digest, second.clone()).await?;
-        fixture.adapter.untag(&digest, first.clone()).await?;
+        fixture.adapter.untag(first.clone()).await?;
 
         let second_tag = IrohBlobTransferAdapter::tag_name(&second);
         assert!(fixture
@@ -1064,7 +1064,7 @@ mod tests {
             .await?
             .is_some());
 
-        fixture.adapter.untag(&digest, second).await?;
+        fixture.adapter.untag(second).await?;
         fixture.shutdown().await?;
         Ok(())
     }

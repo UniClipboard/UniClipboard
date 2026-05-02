@@ -3,6 +3,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use tracing::{info, info_span, warn, Instrument};
 use uc_core::ids::EntryId;
+use uc_core::ports::blob::{BlobTransferPort, TagReason};
 use uc_core::ports::{
     ClipboardEntryRepositoryPort, ClipboardEventWriterPort, ClipboardRepresentationRepositoryPort,
     ClipboardSelectionRepositoryPort, SearchIndexPort,
@@ -16,6 +17,7 @@ pub(crate) struct DeleteClipboardEntryUseCase {
     representation_repo: Arc<dyn ClipboardRepresentationRepositoryPort>,
     file_cache_dir: Option<PathBuf>,
     search_index: Option<Arc<dyn SearchIndexPort>>,
+    blob_transfer: Option<Arc<dyn BlobTransferPort>>,
 }
 
 impl DeleteClipboardEntryUseCase {
@@ -32,6 +34,7 @@ impl DeleteClipboardEntryUseCase {
             representation_repo,
             file_cache_dir: None,
             search_index: None,
+            blob_transfer: None,
         }
     }
 
@@ -42,6 +45,11 @@ impl DeleteClipboardEntryUseCase {
 
     pub(crate) fn with_search_index(mut self, search_index: Arc<dyn SearchIndexPort>) -> Self {
         self.search_index = Some(search_index);
+        self
+    }
+
+    pub(crate) fn with_blob_transfer(mut self, blob_transfer: Arc<dyn BlobTransferPort>) -> Self {
+        self.blob_transfer = Some(blob_transfer);
         self
     }
 
@@ -67,6 +75,23 @@ impl DeleteClipboardEntryUseCase {
         ))
         .await?;
         let event_id = entry.event_id.clone();
+
+        if let Some(blob_transfer) = self.blob_transfer.as_ref() {
+            async {
+                if let Err(e) = blob_transfer
+                    .untag(TagReason::ClipboardEntry(entry_id.clone()))
+                    .await
+                {
+                    warn!(
+                        entry_id = %entry_id,
+                        error = %e,
+                        "blob untag failed during entry delete; iroh-blobs GC will reclaim metadata on its next sweep"
+                    );
+                }
+            }
+            .instrument(info_span!("release_blob_tag", entry_id = %entry_id))
+            .await;
+        }
 
         async {
             let Some(ref cache_dir) = self.file_cache_dir else {

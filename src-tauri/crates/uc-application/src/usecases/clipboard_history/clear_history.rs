@@ -2,6 +2,7 @@ use anyhow::Result;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tracing::{info, info_span, warn, Instrument};
+use uc_core::ports::blob::BlobTransferPort;
 use uc_core::ports::{
     ClipboardEntryRepositoryPort, ClipboardEventWriterPort, ClipboardRepresentationRepositoryPort,
     ClipboardSelectionRepositoryPort, SearchIndexPort,
@@ -24,6 +25,7 @@ pub(crate) struct ClearClipboardHistoryUseCase {
     representation_repo: Arc<dyn ClipboardRepresentationRepositoryPort>,
     file_cache_dir: Option<PathBuf>,
     search_index: Option<Arc<dyn SearchIndexPort>>,
+    blob_transfer: Option<Arc<dyn BlobTransferPort>>,
 }
 
 const BATCH_SIZE: usize = 1000;
@@ -42,6 +44,7 @@ impl ClearClipboardHistoryUseCase {
             representation_repo,
             file_cache_dir: None,
             search_index: None,
+            blob_transfer: None,
         }
     }
 
@@ -52,6 +55,11 @@ impl ClearClipboardHistoryUseCase {
 
     pub(crate) fn with_search_index(mut self, search_index: Arc<dyn SearchIndexPort>) -> Self {
         self.search_index = Some(search_index);
+        self
+    }
+
+    pub(crate) fn with_blob_transfer(mut self, blob_transfer: Arc<dyn BlobTransferPort>) -> Self {
+        self.blob_transfer = Some(blob_transfer);
         self
     }
 
@@ -86,6 +94,9 @@ impl ClearClipboardHistoryUseCase {
         }
         if let Some(search_index) = self.search_index.clone() {
             delete_uc = delete_uc.with_search_index(search_index);
+        }
+        if let Some(blob_transfer) = self.blob_transfer.clone() {
+            delete_uc = delete_uc.with_blob_transfer(blob_transfer);
         }
 
         for entry in &entries {

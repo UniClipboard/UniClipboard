@@ -13,6 +13,7 @@ use uc_bootstrap::{
     SpaceSetupAssembly,
 };
 use uc_core::clipboard::ClipboardIntegrationMode;
+use uc_core::ports::blob::BlobTransferPort;
 
 /// daemon AppFacade 装配结果。
 pub struct DaemonAppFacadeAssembly {
@@ -35,6 +36,8 @@ pub struct DaemonAppFacadeAssemblyInput<'a> {
 
 /// 构造 daemon 对外统一业务入口。
 pub fn build_daemon_app_facade(input: DaemonAppFacadeAssemblyInput<'_>) -> DaemonAppFacadeAssembly {
+    let blob_transfer_port: Arc<dyn BlobTransferPort> =
+        Arc::clone(&input.space_setup_assembly.blob_transfer);
     let app_facade = build_app_facade_from_deps(
         input.deps,
         input.storage_paths,
@@ -44,6 +47,7 @@ pub fn build_daemon_app_facade(input: DaemonAppFacadeAssemblyInput<'_>) -> Daemo
             member_roster: Some(input.space_setup_assembly.roster.clone()),
             clipboard_sync: Some(input.clipboard_sync),
             blob_transfer: Some(input.blob_transfer),
+            blob_transfer_port: Some(blob_transfer_port),
             clipboard_restore: Some(ClipboardRestoreAssembly {
                 write_coordinator: input.clipboard_write_coordinator,
                 integration_mode: input.clipboard_integration_mode,

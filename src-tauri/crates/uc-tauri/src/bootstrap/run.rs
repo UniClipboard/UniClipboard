@@ -1,10 +1,12 @@
 use anyhow::Result;
 use std::time::Duration;
 
+use reqwest::header::AUTHORIZATION;
 use tauri::{AppHandle, Runtime};
 use tauri_plugin_shell::process::{CommandChild, CommandEvent};
 use tauri_plugin_shell::ShellExt;
 use tokio_util::sync::CancellationToken;
+use uc_daemon_client::http::{clear_session_token_cache, exchange_session_token};
 use uc_daemon_client::DaemonConnectionState;
 use uc_daemon_contract::api::auth::DaemonConnectionInfo;
 use uc_daemon_contract::api::types::HealthResponse;
@@ -177,6 +179,13 @@ pub async fn supervise_daemon<R: Runtime>(
                             Ok(info) => {
                                 state.set(info);
                                 tracing::info!("Daemon supervisor respawned daemon successfully");
+                                // Replay the GUI's one-shot `/lifecycle/ready` so the
+                                // new daemon exits its deferred state (clipboard
+                                // watcher + inbound clipboard sync). Without this,
+                                // the GUI's own ready latch never refires after a
+                                // respawn and sync stays silently dead until the
+                                // user restarts the GUI.
+                                replay_lifecycle_ready_after_respawn(state, &client).await;
                             }
                             Err(err) => {
                                 tracing::error!(error = %err, "Daemon supervisor respawned daemon but failed to load connection info");
@@ -201,6 +210,74 @@ pub async fn supervise_daemon<R: Runtime>(
                 }
                 respawn_backoff = (respawn_backoff * 2).min(SUPERVISOR_RESPAWN_BACKOFF_MAX);
             }
+        }
+    }
+}
+
+/// Re-issue `POST /lifecycle/ready` to a freshly respawned daemon so its
+/// deferred services (clipboard watcher, inbound clipboard sync, etc.) start.
+///
+/// The GUI signals `/lifecycle/ready` exactly once at boot and latches that
+/// success in a React ref, so it never reissues after a daemon respawn.
+/// Each respawned daemon process boots a fresh JWT secret, so we also clear
+/// the cached session token before exchanging a new one.
+///
+/// All errors are logged and swallowed — the supervisor's main loop must
+/// keep running even if this best-effort signal fails.
+async fn replay_lifecycle_ready_after_respawn(
+    state: &DaemonConnectionState,
+    client: &reqwest::Client,
+) {
+    clear_session_token_cache().await;
+
+    let pid = std::process::id();
+    let session_token = match exchange_session_token(client, state, pid, "gui").await {
+        Ok(token) => token,
+        Err(err) => {
+            tracing::warn!(
+                error = %err,
+                "Daemon supervisor failed to exchange session token after respawn; \
+                 deferred services will stay dormant until the GUI re-signals ready"
+            );
+            return;
+        }
+    };
+
+    let connection = match state.get() {
+        Some(c) => c,
+        None => {
+            tracing::warn!(
+                "Daemon supervisor missing connection info after respawn; \
+                 cannot replay /lifecycle/ready"
+            );
+            return;
+        }
+    };
+
+    let url = format!("{}/lifecycle/ready", connection.base_url);
+    match client
+        .post(&url)
+        .header(AUTHORIZATION, format!("Session {}", session_token))
+        .send()
+        .await
+    {
+        Ok(response) if response.status().is_success() => {
+            tracing::info!(
+                "Daemon supervisor replayed /lifecycle/ready after respawn; \
+                 deferred services should now start"
+            );
+        }
+        Ok(response) => {
+            tracing::warn!(
+                status = %response.status(),
+                "Daemon supervisor /lifecycle/ready replay returned non-success"
+            );
+        }
+        Err(err) => {
+            tracing::warn!(
+                error = %err,
+                "Daemon supervisor /lifecycle/ready replay failed"
+            );
         }
     }
 }

@@ -607,23 +607,27 @@ impl IrohNodeBuilder {
             .await
             .map_err(|err| IrohNodeError::BlobStoreInit(err.to_string()))?;
 
-        // Phase E1: clean accumulated auto-* tags from prior sessions.
+        // Phase E1 (transitional): sweep `auto-*` tags left behind by
+        // pre-Phase-F daemons.
         //
-        // iroh-blobs `AddProgress::with_tag` (the `IntoFuture` default
-        // for every `add_bytes` / `add_path_with_opts` call) mints a
-        // persistent `auto-<timestamp>` tag protecting each newly-added
-        // blob from GC. Because nothing in our codebase ever cleans
-        // these auto-tags, they accumulate forever — and worse, they
-        // pin every blob the GC (Phase D1) would otherwise reclaim
-        // after the user deletes a clipboard entry.
+        // iroh-blobs `AddProgress::with_tag` (the `IntoFuture` default for
+        // `add_bytes` / `add_path_with_opts`) used to mint a persistent
+        // `auto-<timestamp>` tag protecting every newly-published blob
+        // from GC. Phase F (`IrohBlobTransferAdapter::publish*`) routes
+        // through `with_named_tag` instead, so freshly written blobs no
+        // longer carry an auto-tag. But upgrades from older builds inherit
+        // the leftover auto-tags, and those still pin every old blob
+        // against the Phase D1 GC even after the user deletes the owning
+        // entry — sweeping them once at startup is what lets cache reclaim
+        // recover for upgraded users.
         //
-        // Sweeping them at startup is safe because no `add_*` request
-        // can land between FsStore::load_with_opts returning and us
-        // re-acquiring the router (we are still single-threaded here).
-        // Future publishes will re-create their own auto-tag — which
-        // we'll sweep on the next start. Closing the leak permanently
-        // requires changing publish to attach the caller's TagReason
-        // atomically, which is invasive enough to defer to a follow-up.
+        // Sweeping is safe because no `add_*` request can land between
+        // `FsStore::load_with_opts` returning and us re-acquiring the
+        // router (single-threaded init). Phase F also means future
+        // publishes never re-create an auto-tag, so post-upgrade this
+        // sweep becomes a near-no-op (delete-prefix on an empty range);
+        // we keep it for one or two release cycles to cover stragglers
+        // and then can drop the call entirely.
         match store.tags().delete_prefix(b"auto-").await {
             Ok(removed) => {
                 if removed > 0 {
@@ -978,7 +982,12 @@ mod tests {
             .expect("install blobs");
 
         let digest = blob_transfer
-            .publish(bytes::Bytes::from_static(b"router-four-alpns"))
+            .publish(
+                bytes::Bytes::from_static(b"router-four-alpns"),
+                uc_core::ports::blob::TagReason::ClipboardEntry(uc_core::ids::EntryId::from_str(
+                    "router-blob-test",
+                )),
+            )
             .await
             .expect("publish through blob port");
         assert!(blob_transfer.has(&digest).await.expect("has digest"));

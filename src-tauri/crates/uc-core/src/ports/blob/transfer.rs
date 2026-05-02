@@ -174,23 +174,51 @@ pub trait BlobProgressSink: Send + Sync {
 pub trait BlobTransferPort: Send + Sync {
     // ── Producer side ──
 
-    /// Place a ciphertext into the local shareable store, return its
-    /// stable local identity. Idempotent: publishing the same bytes again
-    /// returns the same [`BlobDigest`].
-    async fn publish(&self, ciphertext: Bytes) -> Result<BlobDigest, BlobError>;
+    /// Place a ciphertext into the local shareable store and atomically
+    /// declare a tag for it, returning its stable local identity.
+    ///
+    /// Idempotent: publishing the same bytes again returns the same
+    /// [`BlobDigest`].
+    ///
+    /// `reason` is the tag declaration the adapter must attach to the
+    /// freshly-stored blob **as part of the same operation** that admits
+    /// it to the store. Adapters MUST NOT leave the blob in an unprotected
+    /// state between admission and tag attachment, even briefly — any
+    /// concurrent reclaim sweep that observes the blob without this tag
+    /// is allowed to delete it. Equivalent in protection guarantee to a
+    /// [`tag`](Self::tag) call performed at the moment of admission, but
+    /// without the gap that two separate operations would create.
+    ///
+    /// Rationale: the iroh-blobs backend's add-bytes path otherwise auto-
+    /// mints a per-publish `auto-<timestamp>` tag the caller cannot
+    /// address by reason. Folding the caller's [`TagReason`] into the
+    /// admission step is the only public surface that avoids creating
+    /// such a leaked tag — failing to attach it here would pin the blob
+    /// against [`untag`](Self::untag)-driven reclaim forever (Phase F of
+    /// the file-cache panic fix plan).
+    async fn publish(&self, ciphertext: Bytes, reason: TagReason) -> Result<BlobDigest, BlobError>;
 
-    /// Place the contents of a local file into the shareable store, return
-    /// its stable local identity. Adapters MAY stream the file from disk
-    /// rather than load it fully into memory; callers SHOULD prefer this
-    /// path for large payloads (clipboard files, oversized image reps that
-    /// already live on disk) so peak memory stays bounded regardless of
-    /// file size and the outbound dispatch path is not blocked while a
-    /// 1 GiB plaintext is materialised.
+    /// Place the contents of a local file into the shareable store and
+    /// atomically declare a tag for it, returning its stable local
+    /// identity. Adapters MAY stream the file from disk rather than load
+    /// it fully into memory; callers SHOULD prefer this path for large
+    /// payloads (clipboard files, oversized image reps that already live
+    /// on disk) so peak memory stays bounded regardless of file size and
+    /// the outbound dispatch path is not blocked while a 1 GiB plaintext
+    /// is materialised.
     ///
     /// Idempotent in the same sense as [`publish`](Self::publish):
     /// publishing the same byte content again returns the same
     /// [`BlobDigest`], regardless of which method was used.
-    async fn publish_path(&self, path: &std::path::Path) -> Result<BlobDigest, BlobError>;
+    ///
+    /// `reason` semantics are identical to [`publish`](Self::publish):
+    /// the tag declaration MUST be attached as part of the same admission
+    /// step, not as a follow-up call.
+    async fn publish_path(
+        &self,
+        path: &std::path::Path,
+        reason: TagReason,
+    ) -> Result<BlobDigest, BlobError>;
 
     /// Mint an out-of-band retrieval credential for a ciphertext the
     /// local store already holds, so other devices can pull from this

@@ -110,8 +110,13 @@ mod tests {
 
         let entry_id = EntryId::new();
         let plaintext = Bytes::from_static(b"remote blob bytes");
+        // Phase F: publish 已携带原子 tag,seed 这里随意挂一个非冲突的 reason
+        // 即可 —— 真正被测试的是 use case 走 fetch 流程后再补一份业务 tag。
         let digest = transfer
-            .publish(plaintext.clone())
+            .publish(
+                plaintext.clone(),
+                TagReason::ClipboardEntry(EntryId::from("seed-fixture")),
+            )
             .await
             .expect("seed publish should succeed");
         let ticket = transfer
@@ -138,7 +143,11 @@ mod tests {
                 .expect("reference lookup should succeed"),
             Some(digest)
         );
-        assert_eq!(transfer.tag_count(), 1);
+        // Phase F 之后 publish 自身也算一次 tag(seed publish 时的
+        // `seed-fixture` reason),fetch use case 完成后再补一次 entry_id
+        // 的 tag,所以 fixture 里总共记录两条。这个断言锁定 fetch 路径
+        // 一定**有**业务 tag 调用,与 publish-时的 seed tag 区分开。
+        assert_eq!(transfer.tag_count(), 2);
     }
 
     #[derive(Default)]
@@ -172,24 +181,37 @@ mod tests {
 
     #[async_trait]
     impl BlobTransferPort for FakeBlobTransfer {
-        async fn publish(&self, plaintext: Bytes) -> Result<BlobDigest, BlobError> {
+        async fn publish(
+            &self,
+            plaintext: Bytes,
+            reason: TagReason,
+        ) -> Result<BlobDigest, BlobError> {
             *self.publish_count.lock().expect("lock publish count") += 1;
             let digest = digest_for(&plaintext);
             self.store
                 .lock()
                 .expect("lock store")
                 .insert(digest, plaintext);
+            // Phase F: publish atomically attaches the caller-supplied tag
+            // (mirrors `IrohBlobTransferAdapter::publish` going through
+            // `with_named_tag`). Tests asserting on `tag_count` see the
+            // publish-time tag plus any subsequent `tag(...)` calls.
+            self.tags.lock().expect("lock tags").push((digest, reason));
             Ok(digest)
         }
 
-        async fn publish_path(&self, path: &std::path::Path) -> Result<BlobDigest, BlobError> {
+        async fn publish_path(
+            &self,
+            path: &std::path::Path,
+            reason: TagReason,
+        ) -> Result<BlobDigest, BlobError> {
             // Fake-only: read into memory and delegate to publish() so
             // tests stay simple (small files) while still exercising the
             // path code-path through the use case + facade layers.
             let bytes = tokio::fs::read(path)
                 .await
                 .map_err(|e| BlobError::Internal(e.to_string()))?;
-            self.publish(Bytes::from(bytes)).await
+            self.publish(Bytes::from(bytes), reason).await
         }
 
         async fn issue_ticket(&self, digest: &BlobDigest) -> Result<BlobTicket, BlobError> {

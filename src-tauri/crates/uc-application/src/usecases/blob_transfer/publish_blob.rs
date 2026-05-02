@@ -134,10 +134,17 @@ impl PublishBlobUseCase {
         // sensitive *metadata* (filenames, paths, mime, thumbnails) lives on
         // the clipboard event side and is encrypted there by
         // `EncryptingClipboardEventWriter`.
+        //
+        // Phase F: publish 携带业务 reason 一起原子入库。adapter 内部走
+        // `with_named_tag`,完成后 blob 已经直接挂在 ClipboardEntry tag 上,
+        // 不再产生 iroh-blobs 自动的 `auto-<ts>` 孤儿 tag。我们因此**也不再
+        // 单独调一次 `tag()`** —— 之前那次 tag() 是为了在 auto-tag 已经存在
+        // 的情况下额外打一层业务声明,Phase F 后语义等同于"重新 set 同一个
+        // 已存在的 tag",冗余。
         let publish_start = Instant::now();
         let digest = self
             .blob_transfer
-            .publish(plaintext)
+            .publish(plaintext, TagReason::ClipboardEntry(entry_id.clone()))
             .await
             .map_err(|e| PublishBlobError::Transfer(e.to_string()))?;
         let publish_ms = publish_start.elapsed().as_millis() as u64;
@@ -148,13 +155,6 @@ impl PublishBlobUseCase {
             .await
             .map_err(|e| PublishBlobError::Reference(e.to_string()))?;
         let save_ref_ms = save_ref_start.elapsed().as_millis() as u64;
-
-        let tag_start = Instant::now();
-        self.blob_transfer
-            .tag(&digest, TagReason::ClipboardEntry(entry_id.clone()))
-            .await
-            .map_err(|e| PublishBlobError::Transfer(e.to_string()))?;
-        let tag_ms = tag_start.elapsed().as_millis() as u64;
 
         let ticket_start = Instant::now();
         let ticket = self
@@ -172,7 +172,6 @@ impl PublishBlobUseCase {
             lookup_ms,
             publish_ms,
             save_ref_ms,
-            tag_ms,
             ticket_ms,
             "publish_blob: new blob added"
         );
@@ -202,10 +201,12 @@ impl PublishBlobUseCase {
         path: PathBuf,
         entry_id: EntryId,
     ) -> Result<PublishBlobOutcome, PublishBlobError> {
+        // Phase F: streaming publish 也走原子 tag 路径,理由与
+        // `execute_plaintext` 一致 —— 见上面 publish 注释。
         let publish_start = Instant::now();
         let digest = self
             .blob_transfer
-            .publish_path(&path)
+            .publish_path(&path, TagReason::ClipboardEntry(entry_id.clone()))
             .await
             .map_err(|e| PublishBlobError::Transfer(e.to_string()))?;
         let publish_ms = publish_start.elapsed().as_millis() as u64;
@@ -221,13 +222,6 @@ impl PublishBlobUseCase {
             .map_err(|e| PublishBlobError::Reference(e.to_string()))?;
         let save_ref_ms = save_ref_start.elapsed().as_millis() as u64;
 
-        let tag_start = Instant::now();
-        self.blob_transfer
-            .tag(&digest, TagReason::ClipboardEntry(entry_id.clone()))
-            .await
-            .map_err(|e| PublishBlobError::Transfer(e.to_string()))?;
-        let tag_ms = tag_start.elapsed().as_millis() as u64;
-
         let ticket_start = Instant::now();
         let ticket = self
             .blob_transfer
@@ -241,7 +235,6 @@ impl PublishBlobUseCase {
             path = %path.display(),
             publish_ms,
             save_ref_ms,
-            tag_ms,
             ticket_ms,
             "publish_blob: streamed from path"
         );

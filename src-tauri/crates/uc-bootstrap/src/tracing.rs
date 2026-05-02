@@ -46,6 +46,9 @@ static OTLP_GUARD: OnceLock<std::mem::ManuallyDrop<OtlpGuard>> = OnceLock::new()
 /// Guard that ensures tracing is initialized exactly once across all entry points.
 static TRACING_INITIALIZED: OnceLock<()> = OnceLock::new();
 
+/// Guard that ensures the panic logging hook is installed exactly once.
+static PANIC_HOOK_INSTALLED: OnceLock<()> = OnceLock::new();
+
 /// Read the `telemetry_enabled` setting from persisted settings.
 ///
 /// Uses the canonical settings repository read path so that defaults,
@@ -247,4 +250,77 @@ pub fn init_tracing_subscriber() -> anyhow::Result<()> {
     }
 
     Ok(())
+}
+
+/// 安装全局 panic hook,把 panic 信息镜像到 tracing。
+///
+/// 必须在 [`init_tracing_subscriber`] 之后调用 —— 这样 panic 才能进 jsonl。
+/// 调用幂等:重复调用静默返回。
+///
+/// # 行为
+///
+/// 1. 用 [`std::panic::take_hook`] 拿到当前 default hook 并保留。
+/// 2. 用 [`tracing::error!`] 记录 panic message + thread name + source
+///    location + 完整 backtrace,target 设为 `panic`,日志会按结构化字段进
+///    JSON 文件。
+/// 3. 末尾调用原 default hook,保持 stderr 输出和默认行为不变(测试输出、
+///    panic abort 等)。
+///
+/// # 为什么需要这个
+///
+/// 没有这个 hook,panic 只走 stderr,GUI / daemon 进程的 stderr 不进 jsonl。
+/// 当 iroh-blobs 一类的 silent-poison 设计把第一次 IO 错误 swallow 掉之
+/// 后,后续的 panic 还是能在 stderr 看到,但首因 panic 永远丢失。装上这个
+/// hook 后,所有 panic 都进 jsonl 的 `panic` target,可以离线追溯首因。
+///
+/// # 跨进程
+///
+/// 该函数在 `build_core` 中被三个入口共用(GUI / CLI / daemon),所以三种
+/// 运行模式下的 panic 都会被捕获到各自进程的 jsonl 中。
+pub fn install_panic_logging_hook() {
+    // 幂等保护:第一次调用拿走令牌、安装 hook;后续调用直接返回。
+    if PANIC_HOOK_INSTALLED.set(()).is_err() {
+        return;
+    }
+
+    let prev_hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |panic_info| {
+        // 强制抓 backtrace,不依赖 RUST_BACKTRACE 环境变量 —— 用户在 dev
+        // 环境很少设这个变量,真正出现 panic 时 backtrace 是黄金信息。
+        let backtrace = std::backtrace::Backtrace::force_capture();
+
+        let location = panic_info
+            .location()
+            .map(|loc| format!("{}:{}:{}", loc.file(), loc.line(), loc.column()));
+
+        // panic payload 通常是 &str 或 String,其他类型用占位串避免再 panic。
+        let payload = panic_info.payload();
+        let message = if let Some(s) = payload.downcast_ref::<&'static str>() {
+            (*s).to_string()
+        } else if let Some(s) = payload.downcast_ref::<String>() {
+            s.clone()
+        } else {
+            "<non-string panic payload>".to_string()
+        };
+
+        let thread = std::thread::current()
+            .name()
+            .unwrap_or("<unnamed>")
+            .to_string();
+
+        ::tracing::error!(
+            target: "panic",
+            thread = %thread,
+            location = location.as_deref().unwrap_or("<unknown>"),
+            message = %message,
+            backtrace = %backtrace,
+            "thread panicked"
+        );
+
+        // 保留原 hook 的 stderr 输出 —— 终端用户、test runner、Sentry 旁路
+        // 都依赖这一行可见的 panic 文本。
+        prev_hook(panic_info);
+    }));
+
+    ::tracing::debug!("panic logging hook installed");
 }

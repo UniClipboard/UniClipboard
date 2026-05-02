@@ -82,6 +82,11 @@ fn build_core(
     // Idempotent -- safe to call multiple times
     crate::tracing::init_tracing_subscriber()?;
 
+    // 装 panic hook 把 panic 镜像到 jsonl(target = "panic")。必须在
+    // tracing init 之后,否则 hook 触发时 subscriber 还没接管 stderr,
+    // 等价于啥也没做。同样幂等,内部用 OnceLock 保证三个入口共用同一份。
+    crate::tracing::install_panic_logging_hook();
+
     let config = AppConfig::empty();
 
     let wired = wire_dependencies(&config)

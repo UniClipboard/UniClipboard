@@ -38,4 +38,4 @@ mockall = "0.13"
 wiremock = "0.6"
 # Slice 2 Phase 2 · T12 — clipboard e2e packs plaintext as `Bytes`
 # for `ClipboardSyncFacade::dispatch_entry`.
-bytes = "1.7"
+bytes = "1.11"

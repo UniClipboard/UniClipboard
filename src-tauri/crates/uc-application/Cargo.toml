@@ -35,13 +35,13 @@ thiserror = "2.0.17"
 futures = "0.3.31"
 tracing = "0.1.44"
 tracing-opentelemetry = "0.32"
-rand = "0.8"
+rand = "0.10"
 hmac = "0.12"
 sha2 = "0.10"
 blake3 = "1"
 # Slice 2 Phase 2: carry ciphertext bytes across use case / facade / port
 # boundaries without extra clones. Matches uc-core + uc-infra.
-bytes = "1.7"
+bytes = "1.11"
 url = "2"
 # Semver parsing for upgrade-detection use case (`facade::upgrade`).
 # Compares last_seen_version (port-stored String) against current build

@@ -32,13 +32,13 @@ base64 = "0.22"
 base32 = "0.5"
 
 # Bytes handling
-bytes = "1.7"
+bytes = "1.11"
 
 # Async runtime (for mpsc channels in ports)
 tokio = { version = "1", features = ["sync"] }
 thiserror = "2.0.17"
 serde_with = { version = "3.16.1", features = ["base64"] }
-rand = "0.9.2"
+rand = "0.10.1"
 blake3 = "1.8.2"
 hex = "0.4.3"
 url = "2"

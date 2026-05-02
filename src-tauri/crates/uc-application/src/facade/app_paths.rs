@@ -38,7 +38,7 @@ impl AppPaths {
             settings_path: dirs.app_data_root.join("settings.json"),
             logs_dir: dirs.app_data_root.join("logs"),
             cache_dir: dirs.app_cache_root.clone(),
-            file_cache_dir: dirs.app_cache_root.join("file-cache"),
+            file_cache_dir: dirs.app_data_root.join("file-cache"),
             spool_dir: dirs.app_cache_root.join("spool"),
             app_data_root_dir: dirs.app_data_root.clone(),
         }

@@ -12,6 +12,10 @@ UniClipboard 是一款以**隐私优先**为核心理念的跨设备剪贴板同
 
 ![Image](https://github.com/user-attachments/assets/8d339467-5bbe-4afa-9235-1d26cbff82c9)
 
+<p align="center">
+  <video src="https://github.com/user-attachments/assets/2775e733-c92b-41e5-b842-8173c206ad61" controls muted playsinline width="800"></video>
+</p>
+
 <div align="center">
 
   <br/>

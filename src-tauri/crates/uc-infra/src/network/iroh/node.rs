@@ -27,7 +27,7 @@ use iroh::endpoint::{presets, QuicTransportConfig, VarInt};
 use iroh::protocol::{Router, RouterBuilder};
 use iroh::{Endpoint, RelayMode, TransportAddr};
 use noq_proto::congestion::BbrConfig;
-use tracing::{debug, info, instrument};
+use tracing::{debug, info, instrument, warn};
 
 use uc_core::file_transfer::OutboundProgressReporterPort;
 use uc_core::membership::MemberRepositoryPort;
@@ -606,6 +606,35 @@ impl IrohNodeBuilder {
         let store = iroh_blobs::store::fs::FsStore::load_with_opts(db_path, options)
             .await
             .map_err(|err| IrohNodeError::BlobStoreInit(err.to_string()))?;
+
+        // Phase E1: clean accumulated auto-* tags from prior sessions.
+        //
+        // iroh-blobs `AddProgress::with_tag` (the `IntoFuture` default
+        // for every `add_bytes` / `add_path_with_opts` call) mints a
+        // persistent `auto-<timestamp>` tag protecting each newly-added
+        // blob from GC. Because nothing in our codebase ever cleans
+        // these auto-tags, they accumulate forever — and worse, they
+        // pin every blob the GC (Phase D1) would otherwise reclaim
+        // after the user deletes a clipboard entry.
+        //
+        // Sweeping them at startup is safe because no `add_*` request
+        // can land between FsStore::load_with_opts returning and us
+        // re-acquiring the router (we are still single-threaded here).
+        // Future publishes will re-create their own auto-tag — which
+        // we'll sweep on the next start. Closing the leak permanently
+        // requires changing publish to attach the caller's TagReason
+        // atomically, which is invasive enough to defer to a follow-up.
+        match store.tags().delete_prefix(b"auto-").await {
+            Ok(removed) => {
+                if removed > 0 {
+                    info!(removed, "iroh blobs: swept stale auto-* tags");
+                }
+            }
+            Err(err) => {
+                warn!(error = %err, "iroh blobs: failed to sweep stale auto-* tags (non-fatal)");
+            }
+        }
+
         let protocol = iroh_blobs::BlobsProtocol::new(&store, None);
 
         let builder = self

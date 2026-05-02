@@ -52,6 +52,24 @@ const BLOB_FETCH_BACKOFFS: [Duration; 3] = [
 
 pub const BLOBS_ALPN: &[u8] = iroh_blobs::ALPN;
 
+/// 1h between GC sweeps (Phase D1 decision Q1=A).
+///
+/// The sweep itself is cheap (redb scan + free list of any blob whose
+/// tags have all been released). Trade-off ratio: timely reclaim of
+/// ex-clipboard-entry blobs vs idle IO; 1h gives prompt cleanup without
+/// burning the disk on a daemon that never stops.
+///
+/// **Caveat — auto-tag leak (out of scope this PR).** `Blobs::add_bytes`
+/// / `add_path_with_opts` go through `AddProgress::with_tag` by default,
+/// minting a persistent random-named tag that pins every published blob
+/// against this same GC. So the sweep currently only reclaims blobs
+/// whose every tag has been released elsewhere — typically blobs
+/// fetched into the store and then explicitly untagged. Closing this
+/// leak requires teaching `BlobTransferPort::publish*` to attach the
+/// caller's `TagReason` atomically (no auto-tag), which is invasive
+/// enough to defer to a follow-up.
+pub const BLOBS_GC_INTERVAL: Duration = Duration::from_secs(3600);
+
 pub struct IrohBlobTransferAdapter {
     endpoint: Arc<Endpoint>,
     store: FsStore,
@@ -249,6 +267,22 @@ impl BlobTransferPort for IrohBlobTransferAdapter {
         progress: Option<&dyn BlobProgressSink>,
     ) -> Result<Bytes, BlobError> {
         let native = Self::parse_ticket(ticket)?;
+        // GC race window protection: hold a TempTag for the whole fetch
+        // method. iroh-blobs `Downloader::download(...).stream()` does not
+        // attach any protection to the freshly downloaded blob
+        // (`api/downloader.rs`, 0.100), so a concurrent GC sweep between
+        // download completion and the caller's `BlobTransferPort::tag(...)`
+        // call could reclaim the blob. Keeping `_temp_tag` alive through
+        // both `ensure_blob_in_store` and `get_bytes` closes the in-method
+        // window; the remaining microsecond window between this method
+        // returning and the use case's permanent `tag(...)` call is
+        // dominated by the GC interval (1h) and is theoretical only.
+        let _temp_tag = self
+            .store
+            .tags()
+            .temp_tag(HashAndFormat::raw(native.hash()))
+            .await
+            .map_err(|e| BlobError::Internal(format!("temp_tag for fetch: {e}")))?;
         self.ensure_blob_in_store(&native, progress).await?;
         self.store
             .blobs()
@@ -288,6 +322,17 @@ impl BlobTransferPort for IrohBlobTransferAdapter {
         let native = Self::parse_ticket(ticket)?;
         let digest = Self::core_digest(native.hash());
         let hash_prefix = hex_prefix(native.hash().as_bytes());
+
+        // GC race window protection — see `fetch` for the full rationale.
+        // Keeping `_temp_tag` alive through both `ensure_blob_in_store` and
+        // `export_with_opts` covers the in-method window; the caller's
+        // subsequent permanent `tag(...)` call closes it definitively.
+        let _temp_tag = self
+            .store
+            .tags()
+            .temp_tag(HashAndFormat::raw(native.hash()))
+            .await
+            .map_err(|e| BlobError::Internal(format!("temp_tag for fetch_to_path: {e}")))?;
 
         self.ensure_blob_in_store(&native, progress).await?;
 

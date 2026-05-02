@@ -583,7 +583,19 @@ impl IrohNodeBuilder {
         &mut self,
         store_dir: PathBuf,
     ) -> Result<BlobHandlers, IrohNodeError> {
-        let store = iroh_blobs::store::fs::FsStore::load(&store_dir)
+        // Phase D1: enable iroh-blobs internal GC at fixed interval.
+        // `FsStore::load_with_opts` is the only public entry that can
+        // wire `GcConfig` — `gc::run_gc` / `gc_run_once` themselves are
+        // crate-private in iroh-blobs 0.100. The store internally
+        // `tokio::spawn`s `run_gc(store, config)` once at load time;
+        // the loop lives until the store actor exits (i.e. effectively
+        // the daemon's lifetime).
+        let mut options = iroh_blobs::store::fs::options::Options::new(&store_dir);
+        options.gc = Some(iroh_blobs::store::GcConfig {
+            interval: crate::network::iroh::blobs::BLOBS_GC_INTERVAL,
+            add_protected: None,
+        });
+        let store = iroh_blobs::store::fs::FsStore::load_with_opts(store_dir.clone(), options)
             .await
             .map_err(|err| IrohNodeError::BlobStoreInit(err.to_string()))?;
         let protocol = iroh_blobs::BlobsProtocol::new(&store, None);
@@ -604,6 +616,7 @@ impl IrohNodeBuilder {
             store_dir = %store_dir.display(),
             alpn = %String::from_utf8_lossy(BLOBS_ALPN),
             endpoint_id = %self.endpoint.id().fmt_short(),
+            gc_interval_secs = crate::network::iroh::blobs::BLOBS_GC_INTERVAL.as_secs(),
             "iroh blobs acceptor installed"
         );
 

@@ -590,12 +590,20 @@ impl IrohNodeBuilder {
         // `tokio::spawn`s `run_gc(store, config)` once at load time;
         // the loop lives until the store actor exits (i.e. effectively
         // the daemon's lifetime).
+        //
+        // `load_with_opts` 的第一个参数是 redb 数据库**文件**路径,不是 root
+        // 目录。`Options::new(root)` 才接 root,内部派生出 `root/data`、
+        // `root/temp`。直接传 `store_dir` 当 db_path 会让 redb 去把已经被
+        // `Options::new` 当作 root 的目录当文件打开,actor 启动会卡死(macOS
+        // 上 redb 在目录上的文件锁不会立即返回错误)。和 `FsStore::load`
+        // 内部一样用 `root/blobs.db` 作为 db 文件路径。
         let mut options = iroh_blobs::store::fs::options::Options::new(&store_dir);
         options.gc = Some(iroh_blobs::store::GcConfig {
             interval: crate::network::iroh::blobs::BLOBS_GC_INTERVAL,
             add_protected: None,
         });
-        let store = iroh_blobs::store::fs::FsStore::load_with_opts(store_dir.clone(), options)
+        let db_path = store_dir.join("blobs.db");
+        let store = iroh_blobs::store::fs::FsStore::load_with_opts(db_path, options)
             .await
             .map_err(|err| IrohNodeError::BlobStoreInit(err.to_string()))?;
         let protocol = iroh_blobs::BlobsProtocol::new(&store, None);

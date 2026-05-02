@@ -47,6 +47,7 @@ pub use clipboard_capture::{
     ClipboardCapturePort,
 };
 pub use clipboard_history::{
+    CleanupResultView as ClipboardCleanupResultView,
     ClearHistoryResultView as ClipboardClearHistoryResultView, ClipboardHistoryError,
     ClipboardHistoryFacade, ClipboardHistoryFacadeDeps, ClipboardListInput, ClipboardStatsView,
     EntryDetailView, EntryProjectionView, EntryResourceView,

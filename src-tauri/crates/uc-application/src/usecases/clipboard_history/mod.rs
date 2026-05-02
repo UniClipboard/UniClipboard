@@ -5,6 +5,7 @@
 //! `uc-application/AGENTS.md` §11.4 every type here stays `pub(crate)` —
 //! external callers reach them exclusively through `ClipboardHistoryFacade`.
 
+pub(crate) mod cleanup;
 pub(crate) mod clear_history;
 pub(crate) mod delete_entry;
 pub(crate) mod get_entry_detail;
@@ -12,6 +13,7 @@ pub(crate) mod get_entry_resource;
 pub(crate) mod list_entry_projections;
 pub(crate) mod toggle_favorite;
 
+pub(crate) use cleanup::{CleanupExpiredFilesUseCase, CleanupResult};
 pub(crate) use clear_history::ClearClipboardHistoryUseCase;
 pub(crate) use delete_entry::DeleteClipboardEntryUseCase;
 pub(crate) use get_entry_detail::{EntryDetailResult, GetEntryDetailUseCase};

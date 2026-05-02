@@ -275,8 +275,7 @@ fn run_app(ctx: GuiBootstrapContext) {
 
             // Start file cache cleanup task (runs once at startup)
             start_background_tasks(
-                runtime.settings_port(),
-                background.file_cache_dir.clone(),
+                runtime.app_facade().clipboard_history.clone(),
                 runtime.task_registry(),
             );
 

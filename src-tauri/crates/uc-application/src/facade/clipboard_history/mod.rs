@@ -11,6 +11,7 @@ use uc_core::ports::search::search_index::SearchIndexPort;
 use uc_core::ports::{
     ClipboardEntryRepositoryPort, ClipboardEventWriterPort, ClipboardRepresentationRepositoryPort,
     ClipboardSelectionRepositoryPort, ClockPort, DeviceIdentityPort, FileTransferRepositoryPort,
+    SettingsPort,
 };
 use uc_core::{
     ClipboardEntry, ClipboardEvent, ClipboardSelection, ClipboardSelectionDecision, MimeType,
@@ -19,9 +20,10 @@ use uc_core::{
 };
 
 use crate::usecases::clipboard_history::{
-    compute_clipboard_stats, ClearClipboardHistoryUseCase, DeleteClipboardEntryUseCase,
-    EntryDetailResult, EntryProjectionDto, EntryResourceResult, GetEntryDetailUseCase,
-    GetEntryResourceUseCase, ListClipboardEntryProjectionsUseCase, ListProjectionsError,
+    compute_clipboard_stats, CleanupExpiredFilesUseCase, CleanupResult,
+    ClearClipboardHistoryUseCase, DeleteClipboardEntryUseCase, EntryDetailResult,
+    EntryProjectionDto, EntryResourceResult, GetEntryDetailUseCase, GetEntryResourceUseCase,
+    ListClipboardEntryProjectionsUseCase, ListProjectionsError,
     ToggleFavoriteClipboardEntryUseCase,
 };
 
@@ -84,6 +86,15 @@ pub struct ClearHistoryResultView {
     pub failed_entries: Vec<(String, String)>,
 }
 
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct CleanupResultView {
+    pub files_removed: u32,
+    pub bytes_reclaimed: u64,
+    pub entries_deleted: u32,
+    pub orphans_removed: u32,
+    pub errors: u32,
+}
+
 #[derive(Debug, Clone, Error, PartialEq, Eq)]
 pub enum ClipboardHistoryError {
     #[error("entry not found")]
@@ -115,6 +126,9 @@ pub struct ClipboardHistoryFacadeDeps {
     /// 直接跳过；后台 GC 仍会按既定节奏处理脏 metadata（panic 防御不
     /// 依赖此 port 的存在，仅依赖 cache 文件与 GUI/sqlite 状态一致）。
     pub blob_transfer: Option<Arc<dyn BlobTransferPort>>,
+    /// `cleanup_expired_files` 读取 `file_sync.file_auto_cleanup` 与
+    /// `file_sync.file_retention_hours`。
+    pub settings: Arc<dyn SettingsPort>,
     /// `seed_text_entry` 用：构造 `ClipboardEvent.source_device`。
     pub device_identity: Arc<dyn DeviceIdentityPort>,
     /// `seed_text_entry` 用：构造 `captured_at_ms` / `created_at_ms`。
@@ -128,6 +142,7 @@ pub struct ClipboardHistoryFacade {
     toggle_favorite_uc: ToggleFavoriteClipboardEntryUseCase,
     delete_uc: DeleteClipboardEntryUseCase,
     clear_uc: ClearClipboardHistoryUseCase,
+    cleanup_uc: Option<CleanupExpiredFilesUseCase>,
     /// debug seed 路径需要的额外 ports，常态业务不直接消费。
     seed_event_writer: Arc<dyn ClipboardEventWriterPort>,
     seed_entry_repo: Arc<dyn ClipboardEntryRepositoryPort>,
@@ -149,6 +164,7 @@ impl ClipboardHistoryFacade {
             search_index,
             file_cache_dir,
             blob_transfer,
+            settings,
             device_identity,
             clock,
         } = deps;
@@ -206,20 +222,40 @@ impl ClipboardHistoryFacade {
         }
 
         let mut clear_uc = ClearClipboardHistoryUseCase::from_ports(
-            entry_repo,
-            selection_repo,
-            event_writer,
-            representation_repo,
+            entry_repo.clone(),
+            selection_repo.clone(),
+            event_writer.clone(),
+            representation_repo.clone(),
         );
-        if let Some(dir) = file_cache_dir {
+        if let Some(dir) = file_cache_dir.clone() {
             clear_uc = clear_uc.with_file_cache_dir(dir);
         }
-        if let Some(idx) = search_index {
+        if let Some(idx) = search_index.clone() {
             clear_uc = clear_uc.with_search_index(idx);
         }
-        if let Some(bt) = blob_transfer {
+        if let Some(bt) = blob_transfer.clone() {
             clear_uc = clear_uc.with_blob_transfer(bt);
         }
+
+        // cleanup 只在装配方传入了 file_cache_dir 时有意义 —— 没有 cache
+        // 目录就没有需要扫描的文件，构造 use case 也没用。
+        let cleanup_uc = file_cache_dir.map(|dir| {
+            let mut uc = CleanupExpiredFilesUseCase::new(
+                settings,
+                dir,
+                entry_repo,
+                selection_repo,
+                event_writer,
+                representation_repo,
+            );
+            if let Some(idx) = search_index {
+                uc = uc.with_search_index(idx);
+            }
+            if let Some(bt) = blob_transfer {
+                uc = uc.with_blob_transfer(bt);
+            }
+            uc
+        });
 
         Self {
             list_uc,
@@ -228,6 +264,7 @@ impl ClipboardHistoryFacade {
             toggle_favorite_uc,
             delete_uc,
             clear_uc,
+            cleanup_uc,
             seed_event_writer,
             seed_entry_repo,
             seed_device_identity,
@@ -384,6 +421,25 @@ impl ClipboardHistoryFacade {
         Ok(resource_to_view(resource))
     }
 
+    /// Run a single sweep of the file-cache directory: every expired file
+    /// is routed through `delete_entry` (so iroh-blobs tags + sqlite rows
+    /// + cache files are cleaned together), or removed as an orphan if no
+    /// entry claims it.
+    ///
+    /// Returns `Ok(default())` when the facade was assembled without a
+    /// `file_cache_dir` (typical for headless test contexts) — there is no
+    /// cache to clean.
+    pub async fn cleanup_expired_files(&self) -> Result<CleanupResultView, ClipboardHistoryError> {
+        let Some(uc) = self.cleanup_uc.as_ref() else {
+            return Ok(CleanupResultView::default());
+        };
+        let result = uc
+            .execute()
+            .await
+            .map_err(|e| ClipboardHistoryError::Internal(e.to_string()))?;
+        Ok(cleanup_to_view(result))
+    }
+
     pub async fn clear_history(&self) -> Result<ClearHistoryResultView, ClipboardHistoryError> {
         let result = self
             .clear_uc
@@ -442,6 +498,16 @@ fn resource_to_view(resource: EntryResourceResult) -> EntryResourceView {
         size_bytes: resource.size_bytes,
         url: resource.url,
         inline_data: resource.inline_data,
+    }
+}
+
+fn cleanup_to_view(result: CleanupResult) -> CleanupResultView {
+    CleanupResultView {
+        files_removed: result.files_removed,
+        bytes_reclaimed: result.bytes_reclaimed,
+        entries_deleted: result.entries_deleted,
+        orphans_removed: result.orphans_removed,
+        errors: result.errors,
     }
 }
 

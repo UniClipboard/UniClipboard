@@ -177,6 +177,7 @@ pub fn build_app_facade_from_deps(
             search_index: Some(deps.search.search_index.clone()),
             file_cache_dir: Some(storage_paths.file_cache_dir.clone()),
             blob_transfer: options.blob_transfer_port.clone(),
+            settings: deps.settings.clone(),
             device_identity: deps.device.device_identity.clone(),
             clock: deps.system.clock.clone(),
         })),

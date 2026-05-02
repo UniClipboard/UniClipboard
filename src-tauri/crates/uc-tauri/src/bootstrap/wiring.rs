@@ -38,7 +38,7 @@ use tauri::async_runtime;
 use tokio::time::{self, Duration};
 use tracing::{info, warn};
 
-use uc_application::CleanupExpiredFilesUseCase;
+use uc_application::facade::ClipboardHistoryFacade;
 use uc_bootstrap::TaskRegistry;
 use uc_daemon_client::{DaemonConnectionState, DaemonPairingClient};
 
@@ -55,22 +55,31 @@ const GUI_PAIRING_LEASE_TTL_MS: u64 = 300_000;
 const GUI_PAIRING_LEASE_REFRESH_INTERVAL: Duration = Duration::from_secs(120);
 
 /// Start the file cache cleanup task (runs once at startup, fire-and-forget).
+///
+/// Cleanup goes through `ClipboardHistoryFacade::cleanup_expired_files`,
+/// which routes every expired file through the entry-aware delete path
+/// (untag iroh-blobs reference + remove cache file + drop sqlite rows
+/// in one shot). Pre-Phase-C this called a standalone use case that
+/// `tokio::fs::remove_file`-d cache files directly, leaving iroh-blobs
+/// metadata pointing at vanished files (the precursor to the Poisoned
+/// BaoFileStorage panic at `bao_file.rs:410`).
 pub fn start_background_tasks(
-    settings: Arc<dyn uc_core::ports::SettingsPort>,
-    file_cache_dir: std::path::PathBuf,
+    history_facade: Arc<ClipboardHistoryFacade>,
     task_registry: &Arc<TaskRegistry>,
 ) {
     let registry = task_registry.clone();
     async_runtime::spawn(async move {
         registry
             .spawn("file_cache_cleanup", |_token| async move {
-                let uc = CleanupExpiredFilesUseCase::new(settings, file_cache_dir.clone());
-                match uc.execute().await {
+                match history_facade.cleanup_expired_files().await {
                     Ok(result) => {
                         if result.files_removed > 0 {
                             info!(
                                 files_removed = result.files_removed,
+                                entries_deleted = result.entries_deleted,
+                                orphans_removed = result.orphans_removed,
                                 bytes_reclaimed = result.bytes_reclaimed,
+                                errors = result.errors,
                                 "Startup file cache cleanup completed"
                             );
                         }

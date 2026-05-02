@@ -1,9 +1,6 @@
-//! File-sync use cases owned by the application layer.
-//!
-//! Slice 5 / D16-2 relocated `CleanupExpiredFilesUseCase` here from
-//! `uc-app::usecases::file_sync` so the file-cache cleanup task can be
-//! constructed without depending on the legacy `uc-app` crate.
+//! Holds residual file-sync helpers. The expired-cache cleanup use case
+//! moved to `crate::usecases::clipboard_history::cleanup` (it now routes
+//! every expired file through entry-aware deletion instead of bypassing
+//! iroh-blobs metadata).
 
 pub mod cleanup;
-
-pub use cleanup::CleanupExpiredFilesUseCase;

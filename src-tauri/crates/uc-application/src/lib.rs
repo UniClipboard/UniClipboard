@@ -7,13 +7,12 @@ pub mod facade;
 pub mod file_sync;
 pub mod sync_planner;
 
-// D16-2: deps + file_sync re-exports so composition roots (uc-bootstrap,
-// uc-tauri, uc-daemon) can depend on `uc_application::*` directly and
-// the legacy `uc_app::*` shims can be retired.
+// D16-2: deps re-exports so composition roots (uc-bootstrap, uc-tauri,
+// uc-daemon) can depend on `uc_application::*` directly and the legacy
+// `uc_app::*` shims can be retired.
 pub use deps::{
     AppDeps, ClipboardPorts, DevicePorts, SearchPorts, SecurityPorts, StoragePorts, SystemPorts,
 };
-pub use file_sync::CleanupExpiredFilesUseCase;
 
 // Slice 2 Phase 3 · T4 — public use case consumed directly by daemon
 // `InboundClipboardSyncWorker` (T8). Lives inside `usecases::clipboard_sync`

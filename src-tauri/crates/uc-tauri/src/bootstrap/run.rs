@@ -1,54 +1,40 @@
-use anyhow::Result;
-use std::time::Duration;
+//! Tauri 端 daemon sidecar 的拉起、监督与替换。
+//!
+//! 这是 `uc-tauri` shell 特有的实现——通过 `tauri-plugin-shell` 拉
+//! sidecar、用 `tauri::AppHandle` 持有上下文。GUI-framework agnostic 的
+//! 健康探测 / 连接信息加载 / `/lifecycle/ready` 重放等 helper 在
+//! [`uc_desktop::daemon_probe`]，本文件只保留 Tauri 拉起编排部分。
 
-use reqwest::header::AUTHORIZATION;
+use anyhow::Result;
+
 use tauri::{AppHandle, Runtime};
 use tauri_plugin_shell::process::{CommandChild, CommandEvent};
 use tauri_plugin_shell::ShellExt;
 use tokio_util::sync::CancellationToken;
-use uc_daemon_client::http::{clear_session_token_cache, exchange_session_token};
 use uc_daemon_client::DaemonConnectionState;
 use uc_daemon_contract::api::auth::DaemonConnectionInfo;
-use uc_daemon_contract::api::types::HealthResponse;
-use uc_daemon_contract::DAEMON_API_REVISION;
-use uc_daemon_local::daemon_bootstrap::{
-    bootstrap_daemon_connection_with_hooks, wait_for_daemon_health, DaemonBootstrapError,
-    ProbeOutcome,
-};
-use uc_daemon_local::daemon_lifecycle::terminate_local_daemon_pid;
-use uc_daemon_local::daemon_lifecycle::{GuiOwnedDaemonState, SpawnReason};
-use uc_daemon_local::process_metadata::read_pid_file;
-use uc_daemon_local::socket::try_resolve_daemon_http_addr;
+use uc_daemon_local::contract::{DaemonBootstrapError, ProbeOutcome, SpawnReason};
+use uc_daemon_local::daemon_bootstrap::bootstrap_daemon_connection_with_hooks;
+use uc_daemon_local::daemon_lifecycle::GuiOwnedDaemonState;
+use uc_daemon_local::health_wait::wait_for_daemon_health;
 
-const HEALTH_PATH: &str = "/health";
-const HEALTH_CHECK_TIMEOUT: Duration = Duration::from_secs(8);
-const HEALTH_POLL_INTERVAL: Duration = Duration::from_millis(200);
-const PROBE_TIMEOUT: Duration = Duration::from_secs(2);
-const INCOMPATIBLE_DAEMON_EXIT_TIMEOUT: Duration = Duration::from_millis(1500);
+use uc_desktop::daemon_probe::{
+    load_daemon_connection_info, probe_daemon_health, replay_lifecycle_ready_after_respawn,
+    terminate_incompatible_daemon_from_pid_file, HEALTH_CHECK_TIMEOUT, HEALTH_POLL_INTERVAL,
+    INCOMPATIBLE_DAEMON_EXIT_TIMEOUT, PROBE_TIMEOUT, SUPERVISOR_POLL_INTERVAL,
+    SUPERVISOR_RESPAWN_BACKOFF_INITIAL, SUPERVISOR_RESPAWN_BACKOFF_MAX,
+};
+
+/// 这个 GUI shell 期望 daemon 上报的 `packageVersion`——`probe_daemon_health`
+/// 用它做版本兼容性判断。`env!` 拿的是 `uc-tauri` 自己的 cargo 版本，
+/// workspace 共享版本号所以与 `uniclipboard` bin 一致。
+const EXPECTED_PACKAGE_VERSION: &str = env!("CARGO_PKG_VERSION");
+
+async fn probe(client: &reqwest::Client) -> Result<ProbeOutcome, DaemonBootstrapError> {
+    probe_daemon_health(client, EXPECTED_PACKAGE_VERSION).await
+}
 
 /// Bootstraps a connection to the local daemon, starting or reconnecting the daemon as needed and recording the resulting connection information in `state`.
-///
-/// This function builds an HTTP probe client, uses the daemon-bootstrap helpers to ensure a compatible daemon is running (spawning one when necessary), and then stores the established `DaemonConnectionInfo` into `state`.
-///
-/// # Returns
-///
-/// `Ok(DaemonConnectionInfo)` with the established connection information on success, or a `DaemonBootstrapError` describing why bootstrapping failed.
-///
-/// # Examples
-///
-/// ```no_run
-/// # use uc_tauri::bootstrap::run::bootstrap_daemon_connection;
-/// # use tauri::AppHandle;
-/// # use uc_tauri::state::DaemonConnectionState;
-/// # use uc_tauri::state::GuiOwnedDaemonState;
-/// # async fn example(app: AppHandle<tauri::Wry>, state: DaemonConnectionState, gui_state: GuiOwnedDaemonState) {
-/// let conn = bootstrap_daemon_connection(&app, &state, &gui_state).await;
-/// match conn {
-///     Ok(info) => println!("Connected to daemon at {}", info.base_url),
-///     Err(e) => eprintln!("Failed to bootstrap daemon: {}", e),
-/// }
-/// # }
-/// ```
 pub async fn bootstrap_daemon_connection<R: Runtime>(
     app: &AppHandle<R>,
     state: &DaemonConnectionState,
@@ -70,7 +56,7 @@ pub async fn bootstrap_daemon_connection<R: Runtime>(
             let (child, pid) = spawn_daemon_process(&app)?;
             Ok(Some((child, pid)))
         },
-        || probe_daemon_health(&client),
+        || probe(&client),
         load_daemon_connection_info,
         terminate_incompatible_daemon_from_pid_file,
         INCOMPATIBLE_DAEMON_EXIT_TIMEOUT,
@@ -83,35 +69,11 @@ pub async fn bootstrap_daemon_connection<R: Runtime>(
     Ok(connection_info)
 }
 
-const SUPERVISOR_POLL_INTERVAL: Duration = Duration::from_secs(5);
-const SUPERVISOR_RESPAWN_BACKOFF_INITIAL: Duration = Duration::from_secs(2);
-const SUPERVISOR_RESPAWN_BACKOFF_MAX: Duration = Duration::from_secs(30);
-
 /// Supervises the GUI-owned daemon: monitors its health and respawns it if it stops running.
 ///
 /// The function runs until the provided cancellation token is cancelled. After successfully
 /// respawning and verifying the daemon's health, it updates `DaemonConnectionState` so other
 /// components (for example the WebSocket bridge) can reconnect to the new daemon instance.
-///
-/// # Examples
-///
-/// ```
-/// # use tokio::time::{sleep, Duration};
-/// # use tokio_util::sync::CancellationToken;
-/// # async fn example() {
-/// // `app`, `state`, and `gui_owned_daemon_state` need to be created according to application setup.
-/// // Here we only illustrate supervisor lifecycle control with a cancellation token.
-/// let token = CancellationToken::new();
-/// let cancel_child = token.clone();
-///
-/// // Spawn supervisor (types omitted for brevity).
-/// // tokio::spawn(supervise_daemon(&app, &state, &gui_owned_daemon_state, token));
-///
-/// // Let supervisor run briefly, then request shutdown.
-/// sleep(Duration::from_millis(100)).await;
-/// cancel_child.cancel();
-/// # }
-/// ```
 pub async fn supervise_daemon<R: Runtime>(
     app: &AppHandle<R>,
     state: &DaemonConnectionState,
@@ -139,7 +101,7 @@ pub async fn supervise_daemon<R: Runtime>(
         }
 
         // Check if our owned daemon is still alive via health probe.
-        let health = match probe_daemon_health(&client).await {
+        let health = match probe(&client).await {
             Ok(ProbeOutcome::Compatible(_)) => {
                 respawn_backoff = SUPERVISOR_RESPAWN_BACKOFF_INITIAL;
                 continue;
@@ -166,7 +128,7 @@ pub async fn supervise_daemon<R: Runtime>(
                 gui_owned_daemon_state.record_spawned(child, pid, SpawnReason::Replacement);
 
                 // Wait for it to become healthy.
-                let mut probe_fn = || probe_daemon_health(&client);
+                let mut probe_fn = || probe(&client);
                 match wait_for_daemon_health(
                     &mut probe_fn,
                     HEALTH_CHECK_TIMEOUT,
@@ -212,217 +174,6 @@ pub async fn supervise_daemon<R: Runtime>(
             }
         }
     }
-}
-
-/// Re-issue `POST /lifecycle/ready` to a freshly respawned daemon so its
-/// deferred services (clipboard watcher, inbound clipboard sync, etc.) start.
-///
-/// The GUI signals `/lifecycle/ready` exactly once at boot and latches that
-/// success in a React ref, so it never reissues after a daemon respawn.
-/// Each respawned daemon process boots a fresh JWT secret, so we also clear
-/// the cached session token before exchanging a new one.
-///
-/// All errors are logged and swallowed — the supervisor's main loop must
-/// keep running even if this best-effort signal fails.
-async fn replay_lifecycle_ready_after_respawn(
-    state: &DaemonConnectionState,
-    client: &reqwest::Client,
-) {
-    clear_session_token_cache().await;
-
-    let pid = std::process::id();
-    let session_token = match exchange_session_token(client, state, pid, "gui").await {
-        Ok(token) => token,
-        Err(err) => {
-            tracing::warn!(
-                error = %err,
-                "Daemon supervisor failed to exchange session token after respawn; \
-                 deferred services will stay dormant until the GUI re-signals ready"
-            );
-            return;
-        }
-    };
-
-    let connection = match state.get() {
-        Some(c) => c,
-        None => {
-            tracing::warn!(
-                "Daemon supervisor missing connection info after respawn; \
-                 cannot replay /lifecycle/ready"
-            );
-            return;
-        }
-    };
-
-    let url = format!("{}/lifecycle/ready", connection.base_url);
-    match client
-        .post(&url)
-        .header(AUTHORIZATION, format!("Session {}", session_token))
-        .send()
-        .await
-    {
-        Ok(response) if response.status().is_success() => {
-            tracing::info!(
-                "Daemon supervisor replayed /lifecycle/ready after respawn; \
-                 deferred services should now start"
-            );
-        }
-        Ok(response) => {
-            tracing::warn!(
-                status = %response.status(),
-                "Daemon supervisor /lifecycle/ready replay returned non-success"
-            );
-        }
-        Err(err) => {
-            tracing::warn!(
-                error = %err,
-                "Daemon supervisor /lifecycle/ready replay failed"
-            );
-        }
-    }
-}
-
-/// Probes the daemon HTTP health endpoint for the active profile and classifies its health.
-///
-/// Resolves the profile-aware daemon HTTP address and performs an HTTP probe; on success returns a `ProbeOutcome` describing whether the daemon is compatible, incompatible, or absent, and on failure returns `DaemonBootstrapError::Probe` with context about the resolution or probe error.
-///
-/// # Examples
-///
-/// ```no_run
-/// # tokio_test::block_on(async {
-/// let client = reqwest::Client::builder().timeout(std::time::Duration::from_secs(2)).build().unwrap();
-/// match probe_daemon_health(&client).await {
-///     Ok(outcome) => println!("probe outcome: {:?}", outcome),
-///     Err(err) => eprintln!("probe error: {}", err),
-/// }
-/// # });
-/// ```
-async fn probe_daemon_health(
-    client: &reqwest::Client,
-) -> Result<ProbeOutcome, DaemonBootstrapError> {
-    let addr = try_resolve_daemon_http_addr().map_err(|error| {
-        DaemonBootstrapError::Probe(
-            error.context("failed to resolve profile-aware daemon HTTP address"),
-        )
-    })?;
-    probe_daemon_health_at(client, addr).await
-}
-
-async fn probe_daemon_health_at(
-    client: &reqwest::Client,
-    addr: std::net::SocketAddr,
-) -> Result<ProbeOutcome, DaemonBootstrapError> {
-    let url = format!("http://{}:{}{}", addr.ip(), addr.port(), HEALTH_PATH);
-
-    let response = match client.get(url).send().await {
-        Ok(response) => response,
-        Err(error) if error.is_connect() || error.is_timeout() => return Ok(ProbeOutcome::Absent),
-        Err(error) => {
-            return Err(DaemonBootstrapError::Probe(
-                anyhow::Error::new(error).context("daemon health probe request failed"),
-            ))
-        }
-    };
-
-    if !response.status().is_success() {
-        return Ok(ProbeOutcome::Incompatible {
-            details: format!("daemon health probe returned HTTP {}", response.status()),
-            observed_package_version: None,
-            observed_api_revision: None,
-        });
-    }
-
-    let body = response.text().await.map_err(|error| {
-        DaemonBootstrapError::Probe(
-            anyhow::Error::new(error).context("failed to read daemon health response body"),
-        )
-    })?;
-    let health = match serde_json::from_str::<HealthResponse>(&body) {
-        Ok(health) => health,
-        Err(error) => {
-            return Ok(ProbeOutcome::Incompatible {
-                details: format!("failed to decode daemon health response: {error}"),
-                observed_package_version: None,
-                observed_api_revision: None,
-            });
-        }
-    };
-
-    Ok(classify_health_response(health))
-}
-
-fn classify_health_response(health: HealthResponse) -> ProbeOutcome {
-    let observed_package_version = Some(health.package_version.clone());
-    let observed_api_revision = Some(health.api_revision.clone());
-
-    if health.status != "ok" {
-        return ProbeOutcome::Incompatible {
-            details: format!("daemon reported unhealthy status {}", health.status),
-            observed_package_version,
-            observed_api_revision,
-        };
-    }
-
-    if health.package_version.trim().is_empty() {
-        return ProbeOutcome::Incompatible {
-            details: "daemon health response missing packageVersion".to_string(),
-            observed_package_version,
-            observed_api_revision,
-        };
-    }
-
-    if health.api_revision.trim().is_empty() {
-        return ProbeOutcome::Incompatible {
-            details: "daemon health response missing apiRevision".to_string(),
-            observed_package_version,
-            observed_api_revision,
-        };
-    }
-
-    if health.package_version != env!("CARGO_PKG_VERSION") {
-        return ProbeOutcome::Incompatible {
-            details: format!(
-                "daemon packageVersion {} does not match GUI packageVersion {}",
-                health.package_version,
-                env!("CARGO_PKG_VERSION")
-            ),
-            observed_package_version,
-            observed_api_revision,
-        };
-    }
-
-    if health.api_revision != DAEMON_API_REVISION {
-        return ProbeOutcome::Incompatible {
-            details: format!(
-                "daemon apiRevision {} does not match required {}",
-                health.api_revision, DAEMON_API_REVISION
-            ),
-            observed_package_version,
-            observed_api_revision,
-        };
-    }
-
-    ProbeOutcome::Compatible(health)
-}
-
-fn load_daemon_connection_info() -> Result<DaemonConnectionInfo, DaemonBootstrapError> {
-    uc_daemon_client::resolve_connection_info_from_env()
-        .map_err(|e| DaemonBootstrapError::ConnectionInfo(e))
-}
-
-fn terminate_incompatible_daemon_from_pid_file() -> Result<(), DaemonBootstrapError> {
-    let pid = read_pid_file()
-        .map_err(|error| DaemonBootstrapError::IncompatibleDaemon {
-            details: format!("failed to read daemon pid metadata: {error}"),
-        })?
-        .ok_or_else(|| DaemonBootstrapError::IncompatibleDaemon {
-            details: "expected incompatible daemon pid metadata was missing".to_string(),
-        })?;
-
-    terminate_local_daemon_pid(pid).map_err(|e| DaemonBootstrapError::IncompatibleDaemon {
-        details: e.to_string(),
-    })?;
-    Ok(())
 }
 
 fn spawn_daemon_process<R: Runtime>(

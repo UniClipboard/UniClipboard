@@ -433,6 +433,17 @@ fn run_app(ctx: GuiBootstrapContext) {
                 tauri::RunEvent::Exit => {
                     info!("Application exiting");
                 }
+                #[cfg(target_os = "macos")]
+                tauri::RunEvent::Reopen {
+                    has_visible_windows,
+                    ..
+                } => {
+                    // macOS: 点击 Dock 图标时，若没有可见窗口则恢复主窗口
+                    if !has_visible_windows {
+                        info!("Dock reopen with no visible windows, showing main window");
+                        uc_tauri::tray::show_main_window(app_handle);
+                    }
+                }
                 _ => {}
             }
         });

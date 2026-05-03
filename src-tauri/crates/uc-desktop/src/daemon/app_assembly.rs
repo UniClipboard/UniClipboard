@@ -25,6 +25,9 @@ pub struct DaemonAppAssemblyInput {
     pub external_shutdown: Option<CancellationToken>,
     pub clipboard_capture_gate: Arc<AtomicBool>,
     pub local_device_id: String,
+    /// 见 `DaemonApp::listens_to_os_signals`——
+    /// `GuiInProcess` 模式置 false，其他置 true。
+    pub listens_to_os_signals: bool,
 }
 
 /// 构造 daemon 应用实例。
@@ -40,6 +43,7 @@ pub fn build_daemon_app_instance(input: DaemonAppAssemblyInput) -> DaemonApp {
         external_shutdown,
         clipboard_capture_gate,
         local_device_id,
+        listens_to_os_signals,
     } = input;
 
     let peer_keepalive_worker: Arc<dyn DaemonService> =
@@ -60,5 +64,6 @@ pub fn build_daemon_app_instance(input: DaemonAppAssemblyInput) -> DaemonApp {
         external_shutdown,
         Some(clipboard_capture_gate),
         Some(local_device_id),
+        listens_to_os_signals,
     )
 }

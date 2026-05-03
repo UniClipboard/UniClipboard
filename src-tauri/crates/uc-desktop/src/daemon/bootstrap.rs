@@ -3,7 +3,6 @@
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
 
-use tokio::runtime::Runtime;
 use uc_application::clipboard_write::ClipboardWriteCoordinator;
 use uc_application::facade::{BlobTransferFacade, ClipboardSyncFacade, HostEventEmitterPort};
 use uc_bootstrap::builders::build_daemon_app;
@@ -28,10 +27,13 @@ pub struct DaemonBootstrapAssembly {
 }
 
 /// 构造 daemon bootstrap 所需句柄。
-pub fn build_daemon_bootstrap_assembly(
-    runtime: &Runtime,
-) -> anyhow::Result<DaemonBootstrapAssembly> {
-    let ctx = runtime.block_on(build_daemon_app())?;
+///
+/// async 形态——caller 必须在 tokio runtime 上下文中调用。独立 daemon binary
+/// 入口（[`crate::daemon::run`]）通过 `Runtime::block_on` 进入 async 上下文；
+/// in-process 入口（[`crate::daemon::start_in_process`]）由 GUI 提供的 runtime
+/// 直接 await。
+pub async fn build_daemon_bootstrap_assembly() -> anyhow::Result<DaemonBootstrapAssembly> {
+    let ctx = build_daemon_app().await?;
 
     let file_cache_dir = ctx.storage_paths.file_cache_dir.clone();
     let file_transfer_lifecycle = ctx.background.file_transfer_lifecycle.clone();

@@ -3,7 +3,6 @@
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 
-use tokio::runtime::Runtime;
 use tokio::sync::Notify;
 use uc_application::facade::{AppFacade, UpgradeStatus};
 use uc_bootstrap::SpaceSetupAssembly;
@@ -25,11 +24,13 @@ pub struct DaemonRunLoopInput {
     pub clipboard_capture_gate: Arc<AtomicBool>,
 }
 
-/// 运行 daemon，退出后关闭 space setup 资源。
-pub fn run_daemon_until_shutdown(
-    runtime: &Runtime,
-    input: DaemonRunLoopInput,
-) -> anyhow::Result<()> {
+/// 运行 daemon main loop，退出后关闭 space setup 资源。
+///
+/// async 形态：caller 必须已经在 tokio runtime 上下文中。独立 daemon binary
+/// 入口在自己的 `Runtime::block_on` 里调用；in-process 入口
+/// （[`crate::daemon::start_in_process`]）通过 `tokio::spawn` 把它跑成 task，
+/// 由 [`crate::daemon::DaemonHandle`] 持有 join handle。
+pub async fn run_daemon_main(input: DaemonRunLoopInput) -> anyhow::Result<()> {
     let DaemonRunLoopInput {
         run_mode,
         daemon,
@@ -42,26 +43,24 @@ pub fn run_daemon_until_shutdown(
 
     let space_setup = space_setup_assembly.facade.clone();
 
-    runtime.block_on(async move {
-        // P1 thin 升级检测：启动期一次性比较 last_seen_version 游标 vs
-        // 当前构建版本。结果一方面进 tracing 日志；另一方面，对全新
-        // 安装会就地把游标推进到当前版本，避免后续 UI 把"已完成 setup
-        // 的全新安装"误判成"老用户跨配对协议升级"而弹出重新配对提示。
-        record_upgrade_status_at_startup(&app_facade).await;
+    // P1 thin 升级检测：启动期一次性比较 last_seen_version 游标 vs
+    // 当前构建版本。结果一方面进 tracing 日志；另一方面，对全新
+    // 安装会就地把游标推进到当前版本，避免后续 UI 把"已完成 setup
+    // 的全新安装"误判成"老用户跨配对协议升级"而弹出重新配对提示。
+    record_upgrade_status_at_startup(&app_facade).await;
 
-        spawn_startup_recovery(StartupRecoveryInput {
-            run_mode,
-            app_facade,
-            settings,
-            space_setup,
-            deferred_ready_notify,
-            clipboard_capture_gate,
-        });
+    spawn_startup_recovery(StartupRecoveryInput {
+        run_mode,
+        app_facade,
+        settings,
+        space_setup,
+        deferred_ready_notify,
+        clipboard_capture_gate,
+    });
 
-        let result = daemon.run().await;
-        space_setup_assembly.shutdown().await;
-        result
-    })
+    let result = daemon.run().await;
+    space_setup_assembly.shutdown().await;
+    result
 }
 
 async fn record_upgrade_status_at_startup(app_facade: &AppFacade) {

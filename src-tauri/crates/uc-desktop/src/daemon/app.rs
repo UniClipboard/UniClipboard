@@ -111,6 +111,12 @@ pub struct DaemonApp {
     /// pairing-completion forwarder doesn't need to pull
     /// `DeviceIdentityPort` at event time. Pre-resolved in `entrypoint`.
     local_device_id: Option<String>,
+    /// 是否在 main loop 里监听 OS 信号（SIGTERM/SIGINT/Ctrl-C）。
+    ///
+    /// 独立 daemon 进程模式（Standalone/Hybrid/GuiSidecar）置 true；
+    /// `GuiInProcess` 模式置 false——OS 信号属于 GUI 的责任，daemon
+    /// 不能抢占 handler，shutdown 必须通过 caller 持有的 cancel token 触发。
+    listens_to_os_signals: bool,
 }
 
 impl DaemonApp {
@@ -137,6 +143,7 @@ impl DaemonApp {
             external_shutdown: None,
             clipboard_capture_gate: None,
             local_device_id: None,
+            listens_to_os_signals: true,
         }
     }
 
@@ -157,6 +164,7 @@ impl DaemonApp {
         external_shutdown: Option<CancellationToken>,
         clipboard_capture_gate: Option<Arc<AtomicBool>>,
         local_device_id: Option<String>,
+        listens_to_os_signals: bool,
     ) -> Self {
         debug_assert!(
             deferred_services.is_empty() || deferred_ready_notify.is_some(),
@@ -182,6 +190,7 @@ impl DaemonApp {
             external_shutdown,
             clipboard_capture_gate,
             local_device_id,
+            listens_to_os_signals,
         }
     }
 
@@ -273,9 +282,18 @@ impl DaemonApp {
         let ready_notify = self.deferred_ready_notify.take();
 
         // 7. Wait for shutdown signal, infrastructure crash, service crash, or deferred start
+        let listens_to_os_signals = self.listens_to_os_signals;
         loop {
             tokio::select! {
-                _ = wait_for_shutdown_signal() => {
+                _ = async {
+                    if listens_to_os_signals {
+                        if let Err(error) = wait_for_shutdown_signal().await {
+                            warn!(error = %error, "shutdown signal handler error");
+                        }
+                    } else {
+                        std::future::pending::<()>().await;
+                    }
+                } => {
                     info!("shutdown signal received");
                     break;
                 }

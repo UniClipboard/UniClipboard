@@ -8,9 +8,16 @@ pub enum DaemonRunMode {
     /// 独立 daemon，由 CLI 或用户直接启动。
     Standalone,
     /// GUI sidecar，由 Tauri GUI 启动，生命周期跟随 GUI。
+    ///
+    /// 旧 sidecar 模型遗留——daemon 是 GUI 的子进程，stdin EOF = 父进程死。
+    /// in-process 化迁移完成后会随 sidecar 拉起代码一起删除。
     GuiSidecar,
     /// 常驻 daemon，GUI 只是连接它的客户端。
     Hybrid,
+    /// in-process daemon——GUI 进程内启动，由 caller 持有 [`crate::daemon::DaemonHandle`]
+    /// 显式 shutdown，daemon 自己不监听 SIGTERM/SIGINT/stdin EOF（避免抢占 GUI
+    /// 自己的信号 handler）。
+    GuiInProcess,
 }
 
 /// daemon 运行模式参数错误。
@@ -47,17 +54,25 @@ impl DaemonRunMode {
 
     /// 是否等 GUI 发出 ready 后再启动剪贴板相关服务。
     pub fn waits_for_gui_ready(self) -> bool {
-        matches!(self, Self::GuiSidecar)
+        matches!(self, Self::GuiSidecar | Self::GuiInProcess)
     }
 
     /// 是否使用用户设置里的自动解锁开关。
     pub fn uses_auto_unlock_setting(self) -> bool {
-        matches!(self, Self::GuiSidecar | Self::Hybrid)
+        matches!(self, Self::GuiSidecar | Self::Hybrid | Self::GuiInProcess)
     }
 
     /// 解锁成功后是否由 daemon 自己触发延迟服务。
     pub fn auto_triggers_deferred_services(self) -> bool {
-        !matches!(self, Self::GuiSidecar)
+        !matches!(self, Self::GuiSidecar | Self::GuiInProcess)
+    }
+
+    /// daemon 是否在自己的 main loop 里监听 OS 信号（SIGTERM/SIGINT/Ctrl-C）。
+    ///
+    /// `GuiInProcess` 跑在 GUI 进程里——OS 信号属于 GUI 的责任范围，daemon
+    /// 不能抢占 handler；shutdown 必须通过 [`crate::daemon::DaemonHandle`] 显式触发。
+    pub fn listens_to_os_signals(self) -> bool {
+        !matches!(self, Self::GuiInProcess)
     }
 }
 

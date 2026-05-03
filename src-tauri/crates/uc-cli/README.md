@@ -82,6 +82,21 @@ uniclip blob fetch <TICKET> --entry-id <ENTRY_ID> --out ./restored.bin
 | `uniclip seed-clipboard --text <TEXT>` | 调试 / 端到端测试用，直接写入一条加密文本记录。 |
 | `uniclip dump-clipboard --limit <N>` | 调试 / 端到端测试用，打印最近的解密记录预览。 |
 
+## 隐藏的剪贴板诊断命令组（`probe`）
+
+`uniclip probe` 是隐藏子命令（不会出现在 `--help` 中），收编自原先的
+`clipboard-probe` 二进制，仅供开发与 E2E 调试。`probe restore` 是 CLI
+中唯一允许直接写系统剪贴板的入口，详见 `AGENTS.md` 的诊断例外条款。
+
+```bash
+uniclip probe watch                    # 监听剪贴板变化
+uniclip probe watch --max-events 10    # 最多观察 10 个事件
+uniclip probe capture --out snap.json  # 抓取当前剪贴板到文件
+uniclip probe inspect --in snap.json   # 解析快照文件
+uniclip probe restore --in snap.json   # 把快照写回系统剪贴板（诊断用）
+uniclip probe restore --in snap.json --select 0  # 多 representation 时选其一
+```
+
 ## 行为边界
 
 - CLI 是终端交互层，不拥有业务规则。

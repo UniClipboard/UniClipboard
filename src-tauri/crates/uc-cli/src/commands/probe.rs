@@ -1,25 +1,27 @@
-use anyhow::{anyhow, Result};
-use clap::{Parser, Subcommand};
-use clipboard_rs::{ClipboardHandler, ClipboardWatcher, ClipboardWatcherContext};
-use std::env;
+//! `uniclip probe` —— 隐藏的剪贴板诊断子命令组。
+//!
+//! 由独立的 `uc-clipboard-probe` 二进制收编而来：只面向开发与 E2E
+//! 调试，用于观察平台剪贴板事件、抓取/检查快照、必要时把快照写回
+//! 系统剪贴板。`probe restore` 是 `uniclip` 唯一允许写系统剪贴板的
+//! 入口，作为 `uc-cli/AGENTS.md` 中"CLI 不写系统剪贴板"规则的诊断
+//! 例外存在 —— 不要把它当作公开命令使用，也不要在生产流程上依赖。
+
 use std::fs;
-use std::io::Write;
 use std::sync::mpsc::{self, Sender};
 use std::time::Instant;
+
+use anyhow::{anyhow, Result};
+use clap::Subcommand;
+use clipboard_rs::{ClipboardHandler, ClipboardWatcher, ClipboardWatcherContext};
+
 use uc_core::ports::SystemClipboardPort;
 use uc_core::{ObservedClipboardRepresentation, SystemClipboardSnapshot};
 use uc_platform::clipboard::LocalClipboard;
 
-#[derive(Parser)]
-#[command(name = "clipboard-probe")]
-#[command(about = "Clipboard probing and snapshot tool", long_about = None)]
-struct Cli {
-    #[command(subcommand)]
-    command: Commands,
-}
+use crate::exit_codes;
 
 #[derive(Subcommand)]
-enum Commands {
+pub enum ProbeCommands {
     /// Watch clipboard changes (default mode)
     Watch {
         /// Stop after N events
@@ -32,7 +34,7 @@ enum Commands {
         #[arg(short, long)]
         out: String,
     },
-    /// Restore clipboard from file
+    /// Restore clipboard from file (writes the system clipboard — diagnostic only)
     Restore {
         /// Input file path
         #[arg(short, long)]
@@ -47,6 +49,35 @@ enum Commands {
         #[arg(short, long)]
         r#in: String,
     },
+}
+
+pub async fn run(command: ProbeCommands, _verbose: bool) -> i32 {
+    // 整个 probe 子命令是同步的 (clipboard-rs 的 watcher 走 std::thread,
+    // serde_json + fs 也是同步)。塞进 spawn_blocking 避免阻塞 tokio
+    // 的工作线程。
+    let join = tokio::task::spawn_blocking(move || dispatch(command)).await;
+
+    let result = match join {
+        Ok(inner) => inner,
+        Err(err) => Err(anyhow!("probe task panicked: {err}")),
+    };
+
+    match result {
+        Ok(()) => exit_codes::EXIT_SUCCESS,
+        Err(err) => {
+            eprintln!("probe failed: {err:#}");
+            exit_codes::EXIT_ERROR
+        }
+    }
+}
+
+fn dispatch(command: ProbeCommands) -> Result<()> {
+    match command {
+        ProbeCommands::Watch { max_events } => run_watch(max_events),
+        ProbeCommands::Capture { out } => run_capture(out),
+        ProbeCommands::Restore { r#in, select } => run_restore(r#in, select),
+        ProbeCommands::Inspect { r#in } => run_inspect(r#in),
+    }
 }
 
 struct ProbeEvent {
@@ -84,32 +115,8 @@ impl ClipboardHandler for ProbeHandler {
     }
 }
 
-fn main() -> Result<()> {
-    let _ = log_line("main: entry");
-    let _ = log_line(&format!("main: args={:?}", env::args().collect::<Vec<_>>()));
-
-    let cli = Cli::parse();
-
-    match cli.command {
-        Commands::Watch { max_events } => {
-            run_watch(max_events)?;
-        }
-        Commands::Capture { out } => {
-            run_capture(out)?;
-        }
-        Commands::Restore { r#in, select } => {
-            run_restore(r#in, select)?;
-        }
-        Commands::Inspect { r#in } => {
-            run_inspect(r#in)?;
-        }
-    }
-
-    Ok(())
-}
-
 fn run_watch(max_events: Option<usize>) -> Result<()> {
-    println!("clipboard-probe: watch mode");
+    println!("probe: watch mode");
     println!(
         "- max_events: {}",
         max_events.map_or("none".into(), |v| v.to_string())
@@ -185,8 +192,8 @@ fn run_watch(max_events: Option<usize>) -> Result<()> {
 }
 
 fn run_capture(out: String) -> Result<()> {
-    println!("clipboard-probe: capture mode");
-    println!("- output: {}", out);
+    println!("probe: capture mode");
+    println!("- output: {out}");
 
     let clipboard = LocalClipboard::new()?;
     let snapshot = clipboard.read_snapshot()?;
@@ -197,14 +204,14 @@ fn run_capture(out: String) -> Result<()> {
     let json = serde_json::to_string_pretty(&snapshot)?;
     fs::write(&out, json)?;
 
-    println!("\nsnapshot written to: {}", out);
+    println!("\nsnapshot written to: {out}");
 
     Ok(())
 }
 
 fn run_restore(input: String, select: Option<usize>) -> Result<()> {
-    println!("clipboard-probe: restore mode");
-    println!("- input: {}", input);
+    println!("probe: restore mode");
+    println!("- input: {input}");
 
     let json = fs::read_to_string(&input)?;
     let mut snapshot: SystemClipboardSnapshot = serde_json::from_str(&json)?;
@@ -226,11 +233,11 @@ fn run_restore(input: String, select: Option<usize>) -> Result<()> {
 
         let index = select.unwrap_or(0);
         if index >= snapshot.representations.len() {
-            println!("error: selected index {} out of range", index);
+            println!("error: selected index {index} out of range");
             return Ok(());
         }
 
-        println!("using representation at index {}", index);
+        println!("using representation at index {index}");
         for (idx, rep) in snapshot.representations.iter().enumerate() {
             let marker = if idx == index { "->[SELECTED]" } else { "  " };
             println!(
@@ -243,7 +250,6 @@ fn run_restore(input: String, select: Option<usize>) -> Result<()> {
             );
         }
 
-        // Keep only the selected representation
         snapshot.representations = vec![snapshot.representations.remove(index)];
     }
 
@@ -256,8 +262,8 @@ fn run_restore(input: String, select: Option<usize>) -> Result<()> {
 }
 
 fn run_inspect(input: String) -> Result<()> {
-    println!("clipboard-probe: inspect mode");
-    println!("- input: {}", input);
+    println!("probe: inspect mode");
+    println!("- input: {input}");
 
     let json = fs::read_to_string(&input)?;
     let snapshot: SystemClipboardSnapshot = serde_json::from_str(&json)?;
@@ -265,15 +271,6 @@ fn run_inspect(input: String) -> Result<()> {
     println!("\ninspected snapshot:");
     print_snapshot(&snapshot);
 
-    Ok(())
-}
-
-fn log_line(line: &str) -> Result<()> {
-    let mut file = std::fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open("clipboard-probe.log")?;
-    writeln!(file, "{} {}", chrono::Utc::now().to_rfc3339(), line)?;
     Ok(())
 }
 
@@ -338,7 +335,7 @@ fn hex_preview(bytes: &[u8], max_len: usize) -> String {
         if idx > 0 {
             out.push(' ');
         }
-        out.push_str(&format!("{:02x}", byte));
+        out.push_str(&format!("{byte:02x}"));
     }
 
     if bytes.len() > max_len {

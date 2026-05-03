@@ -10480,6 +10480,7 @@ dependencies = [
  "bytes",
  "chrono",
  "clap",
+ "clipboard-rs",
  "console",
  "hostname",
  "indicatif",
@@ -10499,6 +10500,7 @@ dependencies = [
  "uc-daemon-local",
  "uc-desktop",
  "uc-observability",
+ "uc-platform",
 ]
 
 [[package]]
@@ -10508,19 +10510,6 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.112",
-]
-
-[[package]]
-name = "uc-clipboard-probe"
-version = "0.6.0"
-dependencies = [
- "anyhow",
- "chrono",
- "clap",
- "clipboard-rs",
- "serde_json",
- "uc-core",
- "uc-platform",
 ]
 
 [[package]]

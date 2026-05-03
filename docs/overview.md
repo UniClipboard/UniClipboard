@@ -79,8 +79,7 @@ src-tauri/crates/
 ├── uc-daemon/            # Background daemon runtime and APIs
 ├── uc-daemon-client/     # GUI-side daemon client and realtime bridge
 ├── uc-observability/     # Logging/tracing helpers
-├── uc-clipboard-probe/   # Clipboard probing helpers
-└── uc-cli/               # CLI utilities
+└── uc-cli/               # CLI utilities (includes hidden `probe` subcommands for clipboard diagnostics)
 ```
 
 ## How Clipboard Sync Works

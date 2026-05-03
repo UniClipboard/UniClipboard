@@ -6,6 +6,7 @@ pub mod init;
 pub mod invite;
 pub mod join;
 pub mod members;
+pub mod probe;
 pub mod search;
 pub mod seed_clipboard;
 pub mod send;

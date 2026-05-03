@@ -72,7 +72,6 @@ members = [
   "crates/uc-application",
   "crates/uc-platform",
   "crates/uc-infra",
-  "crates/uc-clipboard-probe",
   "crates/uc-tauri",
   "crates/uc-observability",
   "crates/uc-bootstrap",

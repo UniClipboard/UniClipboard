@@ -16,6 +16,10 @@ uc-core = { path = "../uc-core" }
 uc-desktop = { path = "../uc-desktop" }
 uc-daemon-contract = { path = "../uc-daemon-contract" }
 uc-daemon-local = { path = "../uc-daemon-local" }
+# Hidden `probe` subcommand group reads/writes the OS clipboard directly
+# (replaces the standalone `clipboard-probe` binary). Diagnostic only.
+uc-platform = { path = "../uc-platform" }
+clipboard-rs = { version = "0.3", features = ["default"] }
 tokio = { version = "1", features = ["full"] }
 clap = { version = "4.5", features = ["derive"] }
 serde = { version = "1", features = ["derive"] }

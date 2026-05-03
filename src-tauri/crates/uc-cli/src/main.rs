@@ -185,6 +185,13 @@ enum Commands {
         #[command(subcommand)]
         subcommand: commands::upgrade::UpgradeCommands,
     },
+    /// Hidden clipboard-diagnostic subcommand group (replaces the standalone
+    /// `clipboard-probe` binary). Development and E2E debugging only.
+    #[command(hide = true)]
+    Probe {
+        #[command(subcommand)]
+        subcommand: commands::probe::ProbeCommands,
+    },
     /// 内联运行 daemon 进程，供 `start` 内部使用
     #[command(hide = true)]
     Daemon {
@@ -324,6 +331,7 @@ fn main() -> anyhow::Result<()> {
             Commands::Upgrade { subcommand } => {
                 commands::upgrade::run(subcommand, cli.json, cli.verbose).await
             }
+            Commands::Probe { subcommand } => commands::probe::run(subcommand, cli.verbose).await,
             Commands::Daemon { .. } => unreachable!("handled above"),
         }
     });

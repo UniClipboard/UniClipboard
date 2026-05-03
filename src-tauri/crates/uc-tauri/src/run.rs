@@ -177,7 +177,8 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
                         start_gui_pairing_lease_task(
                             daemon_connection_state_for_setup.clone(),
                             runtime_for_daemon.task_registry(),
-                        );
+                        )
+                        .await;
 
                         // Start daemon supervisor to respawn if daemon dies unexpectedly.
                         let supervisor_state = daemon_connection_state_for_setup.clone();
@@ -272,11 +273,17 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
 
             app.manage(PendingUpdate(Mutex::new(None)));
 
-            // Start file cache cleanup task (runs once at startup)
-            start_background_tasks(
-                runtime.app_facade().clipboard_history.clone(),
-                runtime.task_registry(),
-            );
+            // Start file cache cleanup task (runs once at startup).
+            // The starter is `async fn`; drive it on Tauri's managed tokio
+            // runtime — `setup` itself runs on the main thread without a
+            // tokio runtime context, so plain `tokio::spawn` here would
+            // panic with "no reactor running".
+            let history_facade_for_cleanup = runtime.app_facade().clipboard_history.clone();
+            let task_registry_for_cleanup = runtime.task_registry().clone();
+            tauri::async_runtime::spawn(async move {
+                start_background_tasks(history_facade_for_cleanup, &task_registry_for_cleanup)
+                    .await;
+            });
 
             // Clone handles for async blocks
             let app_handle_for_startup = app.handle().clone();

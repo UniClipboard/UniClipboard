@@ -3,40 +3,17 @@ use std::future::Future;
 use std::time::Duration;
 
 use tauri_plugin_shell::process::CommandChild;
-use thiserror::Error;
 use uc_daemon_contract::api::auth::DaemonConnectionInfo;
-use uc_daemon_contract::api::types::HealthResponse;
 
-use crate::daemon_lifecycle::{GuiOwnedDaemonState, SpawnReason};
+// Pure contract types live in `crate::contract` (no feature gate). Re-export
+// them here so historical `uc_daemon_local::daemon_bootstrap::DaemonBootstrapError`
+// imports keep working. New consumers should `use uc_daemon_local::contract::*;`.
+pub use crate::contract::{DaemonBootstrapError, ProbeOutcome, SpawnReason};
+pub use crate::health_wait::{wait_for_daemon_health, wait_for_endpoint_absent};
+
+use crate::daemon_lifecycle::GuiOwnedDaemonState;
 
 const MAX_INCOMPATIBLE_REPLACEMENT_ATTEMPTS: u8 = 1;
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ProbeOutcome {
-    Absent,
-    Compatible(HealthResponse),
-    Incompatible {
-        details: String,
-        observed_package_version: Option<String>,
-        observed_api_revision: Option<String>,
-    },
-}
-
-#[derive(Debug, Error)]
-pub enum DaemonBootstrapError {
-    #[error("failed to initialize daemon HTTP probe client: {0}")]
-    Client(anyhow::Error),
-    #[error("failed to probe daemon health: {0}")]
-    Probe(anyhow::Error),
-    #[error("incompatible daemon is already running: {details}")]
-    IncompatibleDaemon { details: String },
-    #[error("failed to spawn uniclipboard-daemon: {0}")]
-    Spawn(anyhow::Error),
-    #[error("daemon startup timed out after {timeout_ms}ms")]
-    StartupTimeout { timeout_ms: u64 },
-    #[error("failed to load daemon connection info: {0}")]
-    ConnectionInfo(anyhow::Error),
-}
 
 /// Ensures a compatible daemon is available (spawning or replacing as needed) and returns its connection info.
 ///
@@ -292,131 +269,7 @@ where
     .await
 }
 
-/// Polls the daemon health endpoint until the daemon reports compatibility or a terminal condition occurs.
-///
-/// Repeatedly invokes `probe()` at `poll_interval` intervals until one of:
-/// - a `Compatible` outcome is observed (returns `Ok(())`),
-/// - an `Incompatible` outcome is observed (returns `DaemonBootstrapError::IncompatibleDaemon` with the provided details),
-/// - the `timeout` is exceeded (returns `DaemonBootstrapError::StartupTimeout` with `timeout_ms` set to `timeout.as_millis() as u64`).
-/// Any error returned by `probe()` is propagated.
-///
-/// # Parameters
-///
-/// - `probe`: A zero-argument async probe function that returns a `ProbeOutcome` wrapped in `Result`. It should query the daemon health endpoint and map the result to `ProbeOutcome`.
-/// - `timeout`: The total duration to wait before giving up with a startup timeout error.
-/// - `poll_interval`: The delay between successive probe invocations.
-///
-/// # Returns
-///
-/// `Ok(())` if a compatible daemon is observed before the timeout; `Err` with either `DaemonBootstrapError::IncompatibleDaemon` or `DaemonBootstrapError::StartupTimeout` otherwise. Probe errors are propagated as `Err`.
-///
-/// # Examples
-///
-/// ```
-/// use std::time::Duration;
-/// use tokio::runtime::Runtime;
-/// use uc_daemon_local::daemon_bootstrap::{wait_for_daemon_health, ProbeOutcome, DaemonBootstrapError};
-///
-/// // A simple probe that immediately reports compatibility.
-/// let mut probe = || async {
-///     Ok(ProbeOutcome::Compatible(Default::default()))
-/// };
-///
-/// let rt = Runtime::new().unwrap();
-/// rt.block_on(async {
-///     let res = wait_for_daemon_health(&mut probe, Duration::from_secs(5), Duration::from_millis(100)).await;
-///     assert!(res.is_ok());
-/// });
-/// ```
-pub async fn wait_for_daemon_health<Probe, ProbeFuture>(
-    probe: &mut Probe,
-    timeout: Duration,
-    poll_interval: Duration,
-) -> Result<(), DaemonBootstrapError>
-where
-    Probe: FnMut() -> ProbeFuture,
-    ProbeFuture: Future<Output = Result<ProbeOutcome, DaemonBootstrapError>>,
-{
-    let deadline = tokio::time::Instant::now() + timeout;
-    loop {
-        match probe().await? {
-            ProbeOutcome::Compatible(_) => return Ok(()),
-            ProbeOutcome::Absent => {}
-            ProbeOutcome::Incompatible { details, .. } => {
-                return Err(DaemonBootstrapError::IncompatibleDaemon { details });
-            }
-        }
-
-        if tokio::time::Instant::now() >= deadline {
-            return Err(DaemonBootstrapError::StartupTimeout {
-                timeout_ms: timeout.as_millis() as u64,
-            });
-        }
-
-        tokio::time::sleep(poll_interval).await;
-    }
-}
-
-/// Waits until the daemon health endpoint is observed as absent, otherwise fails after the timeout.
-///
-/// The function repeatedly calls `probe` at `poll_interval` intervals and returns once the probe
-/// reports `ProbeOutcome::Absent`. If the probe continues to report the endpoint as present
-/// (`Compatible` or `Incompatible`) until the deadline, an `DaemonBootstrapError::IncompatibleDaemon`
-/// is returned; the error's `details` includes `last_reason` and the elapsed timeout. Any error
-/// produced by `probe` is propagated.
-///
-/// # Parameters
-///
-/// - `probe`: a callable that probes the daemon and yields a `ProbeOutcome` or a `DaemonBootstrapError`.
-/// - `timeout`: maximum duration to wait for the endpoint to become absent.
-/// - `poll_interval`: interval between successive probes.
-/// - `last_reason`: explanatory text included in the error details when the endpoint fails to exit.
-///
-/// # Returns
-///
-/// `Ok(())` if the probe reports `Absent`; `Err(DaemonBootstrapError::IncompatibleDaemon)` if the
-/// endpoint remains present past the timeout. Probe errors are propagated.
-///
-/// # Examples
-///
-/// ```
-/// use std::time::Duration;
-/// use tokio::time::sleep;
-///
-/// // A probe that becomes Absent immediately.
-/// let mut probe = || async { Ok(crate::daemon_bootstrap::ProbeOutcome::Absent) };
-/// tokio::runtime::Runtime::new().unwrap().block_on(async {
-///     crate::daemon_bootstrap::wait_for_endpoint_absent(&mut probe, Duration::from_secs(1), Duration::from_millis(100), "test").await.unwrap();
-/// });
-/// ```
-async fn wait_for_endpoint_absent<Probe, ProbeFuture>(
-    probe: &mut Probe,
-    timeout: Duration,
-    poll_interval: Duration,
-    last_reason: &str,
-) -> Result<(), DaemonBootstrapError>
-where
-    Probe: FnMut() -> ProbeFuture,
-    ProbeFuture: Future<Output = Result<ProbeOutcome, DaemonBootstrapError>>,
-{
-    let deadline = tokio::time::Instant::now() + timeout;
-
-    loop {
-        match probe().await? {
-            ProbeOutcome::Absent => return Ok(()),
-            ProbeOutcome::Compatible(_) | ProbeOutcome::Incompatible { .. } => {}
-        }
-
-        if tokio::time::Instant::now() >= deadline {
-            return Err(DaemonBootstrapError::IncompatibleDaemon {
-                details: format!(
-                    "incompatible daemon did not exit within {}ms after replacement attempt: {}",
-                    timeout.as_millis(),
-                    last_reason
-                ),
-            });
-        }
-
-        tokio::time::sleep(poll_interval).await;
-    }
-}
+// `wait_for_daemon_health` and `wait_for_endpoint_absent` were moved to
+// `crate::health_wait` so non-sidecar consumers (uc-desktop) can use them
+// without enabling `sidecar-lifecycle`. They are re-exported at the top of
+// this module for backward compatibility.

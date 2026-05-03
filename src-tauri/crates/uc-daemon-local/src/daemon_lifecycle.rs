@@ -1,7 +1,6 @@
 //! GUI-owned daemon process lifecycle management.
 //! Handles spawned daemon child tracking, graceful shutdown, and exit cleanup.
 
-use std::process::Command;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -10,57 +9,10 @@ use tauri_plugin_shell::process::CommandChild;
 use thiserror::Error;
 use tokio::time::{sleep, Instant};
 
-#[derive(Debug)]
-pub struct TerminateDaemonError(pub String);
-
-impl std::fmt::Display for TerminateDaemonError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.0)
-    }
-}
-
-impl std::error::Error for TerminateDaemonError {}
-
-/// Terminates a local daemon process by PID using platform-specific commands.
-/// Returns `TerminateDaemonError` on failure.
-pub fn terminate_local_daemon_pid(pid: u32) -> Result<(), TerminateDaemonError> {
-    #[cfg(unix)]
-    let mut command = {
-        let mut command = Command::new("kill");
-        command.arg("-TERM").arg(pid.to_string());
-        command
-    };
-
-    #[cfg(windows)]
-    let mut command = {
-        let mut command = Command::new("taskkill");
-        command.arg("/PID").arg(pid.to_string()).arg("/T").arg("/F");
-        command
-    };
-
-    let output = command
-        .output()
-        .map_err(|e| TerminateDaemonError(format!("failed to launch terminator: {e}")))?;
-
-    if output.status.success() {
-        return Ok(());
-    }
-
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    Err(TerminateDaemonError(format!(
-        "failed to terminate pid {pid}: status={} stdout={} stderr={}",
-        output.status,
-        stdout.trim(),
-        stderr.trim()
-    )))
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SpawnReason {
-    Absent,
-    Replacement,
-}
+// Re-export from `crate::contract` so historical
+// `uc_daemon_local::daemon_lifecycle::{SpawnReason, TerminateDaemonError, terminate_local_daemon_pid}`
+// imports keep working. New consumers should `use uc_daemon_local::contract::*;`.
+pub use crate::contract::{terminate_local_daemon_pid, SpawnReason, TerminateDaemonError};
 
 #[derive(Debug)]
 pub struct OwnedDaemonChild {

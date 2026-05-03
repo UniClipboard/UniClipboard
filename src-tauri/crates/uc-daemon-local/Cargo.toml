@@ -6,7 +6,10 @@ edition = "2021"
 description = "Local daemon runtime metadata and process coordination"
 
 [features]
-sidecar-lifecycle = ["dep:libc", "dep:tauri-plugin-shell", "dep:thiserror", "dep:tokio"]
+# Adds Tauri-specific sidecar process lifecycle (CommandChild ownership tracking,
+# spawn-and-supervise hooks). Other consumers (daemon binary itself, future
+# native shells) leave this feature off to avoid pulling tauri-plugin-shell.
+sidecar-lifecycle = ["dep:libc", "dep:tauri-plugin-shell"]
 test-helpers = []
 
 [lib]
@@ -19,9 +22,12 @@ uc-daemon-contract = { path = "../uc-daemon-contract" }
 uc-platform = { path = "../uc-platform" }
 anyhow = "1.0"
 rand = "0.8"
+# Always available — pure utility crates with no GUI framework footprint.
+# These let the contract / health_wait modules (used by uc-desktop without
+# sidecar-lifecycle) compile cleanly.
+thiserror = "2.0"
+tokio = { version = "1", features = ["full"] }
 tauri-plugin-shell = { workspace = true, optional = true }
-thiserror = { version = "2.0", optional = true }
-tokio = { version = "1", features = ["full"], optional = true }
 tracing = "0.1"
 
 [target.'cfg(unix)'.dependencies]

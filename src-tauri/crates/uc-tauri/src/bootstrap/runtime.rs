@@ -1,30 +1,31 @@
-//! # Tauri AppRuntime
+//! # Tauri 端运行时句柄
 //!
-//! Tauri 端的运行时句柄。D14 (2026-04-26) 起,本类型不再持有
-//! `uc_app::runtime::CoreRuntime`,而是直接持有:
+//! `TauriAppRuntime` 是 [`uc_desktop::DesktopRuntime`] 在 Tauri shell
+//! 上的包装：
 //!
-//! - `Arc<AppFacade>` —— 所有业务调用唯一入口(参见
-//!   `uc-application/AGENTS.md` §11.4)
-//! - 进程级零碎件:`task_registry` / `settings_port` / `storage_paths` /
-//!   `event_emitter_cell` / `device_id` —— 这些是"外部环境/进程基础
-//!   设施",不属于 application 层
-//! - Tauri 专属:`app_handle`(setup 完成后注入)
+//! - 内部持有 `Arc<DesktopRuntime>`，所有 GUI-framework agnostic 字段
+//!   （facade、task_registry、settings、storage、event_emitter、device_id）
+//!   一律通过它访问；
+//! - 额外持有 `Arc<RwLock<Option<tauri::AppHandle>>>` —— Tauri setup 完成
+//!   后注入，用于事件发射 / 窗口控制等 Tauri 特有 API。
 //!
-//! ## 与 daemon 的对齐
+//! ## 设计意图
 //!
-//! 与 `uc-daemon::DaemonApp` 同款 —— bootstrap 期把 ports 拼成 facade,
-//! commands / 业务代码只看见 `Arc<AppFacade>`,看不见 ports / deps /
-//! coordinator / mode。
+//! 把 GUI-framework agnostic 部分留在 `uc-desktop`，保证未来其它 shell
+//! （如 `uc-macos-native`）能复用同一个 `DesktopRuntime`，只在最外层
+//! 加上各自的窗口/句柄包装。`uc-tauri` 不该暴露任何 `tauri` 类型给上层
+//! 业务代码——commands 通过 `runtime.desktop()` 拿到 `DesktopRuntime`，
+//! 通过 `runtime.app_handle()` 才需要看到 Tauri 句柄。
 //!
 //! ## 用法示例
 //!
 //! ```rust,ignore
-//! use uc_tauri::bootstrap::AppRuntime;
+//! use uc_tauri::bootstrap::TauriAppRuntime;
 //! use tauri::State;
 //!
 //! #[tauri::command]
 //! async fn list_entries(
-//!     runtime: State<'_, std::sync::Arc<AppRuntime>>,
+//!     runtime: State<'_, std::sync::Arc<TauriAppRuntime>>,
 //! ) -> Result<(), String> {
 //!     let facade = runtime.app_facade();
 //!     let entries = facade
@@ -39,94 +40,28 @@
 use std::sync::{Arc, RwLock};
 
 use uc_application::deps::AppDeps;
-use uc_application::facade::{
-    AppFacade, AppPaths, HostEventEmitterPort, InMemoryLifecycleStatus, LifecycleStatusGateway,
-};
-use uc_bootstrap::{
-    build_app_facade_from_deps, AppFacadeAssemblyOptions, ClipboardRestoreAssembly, TaskRegistry,
-};
+use uc_application::facade::{AppFacade, AppPaths, HostEventEmitterPort};
+use uc_bootstrap::TaskRegistry;
 use uc_core::ports::SettingsPort;
+use uc_desktop::DesktopRuntime;
 
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
-pub struct DaemonBootstrapOwnershipSnapshot {
-    pub replacement_attempt: u8,
-    pub spawned_child_pid: Option<u32>,
-    pub last_incompatible_reason: Option<String>,
-}
-
-#[derive(Clone, Default)]
-pub struct DaemonBootstrapOwnershipState(Arc<RwLock<DaemonBootstrapOwnershipSnapshot>>);
-
-impl DaemonBootstrapOwnershipState {
-    pub fn snapshot(&self) -> DaemonBootstrapOwnershipSnapshot {
-        match self.0.read() {
-            Ok(guard) => guard.clone(),
-            Err(poisoned) => {
-                tracing::error!(
-                    "RwLock poisoned in DaemonBootstrapOwnershipState::snapshot, recovering from poisoned state"
-                );
-                poisoned.into_inner().clone()
-            }
-        }
-    }
-
-    pub fn record_spawned_child(&self, pid: Option<u32>) {
-        match self.0.write() {
-            Ok(mut guard) => {
-                guard.spawned_child_pid = pid;
-            }
-            Err(poisoned) => {
-                tracing::error!(
-                    "RwLock poisoned in DaemonBootstrapOwnershipState::record_spawned_child, recovering from poisoned state"
-                );
-                let mut guard = poisoned.into_inner();
-                guard.spawned_child_pid = pid;
-            }
-        }
-    }
-
-    pub fn clear_spawned_child(&self) {
-        self.record_spawned_child(None);
-    }
-
-    pub fn record_replacement_attempt(&self, reason: String) {
-        match self.0.write() {
-            Ok(mut guard) => {
-                guard.replacement_attempt = guard.replacement_attempt.saturating_add(1);
-                guard.last_incompatible_reason = Some(reason);
-            }
-            Err(poisoned) => {
-                tracing::error!(
-                    "RwLock poisoned in DaemonBootstrapOwnershipState::record_replacement_attempt, recovering from poisoned state"
-                );
-                let mut guard = poisoned.into_inner();
-                guard.replacement_attempt = guard.replacement_attempt.saturating_add(1);
-                guard.last_incompatible_reason = Some(reason);
-            }
-        }
-    }
-}
+// Re-export 桌面侧 daemon spawn ownership 协调状态，让历史 import 路径
+// `uc_tauri::bootstrap::DaemonBootstrapOwnershipState` 仍可用。新代码请
+// 直接 `use uc_desktop::DaemonBootstrapOwnershipState;`。
+pub use uc_desktop::{DaemonBootstrapOwnershipSnapshot, DaemonBootstrapOwnershipState};
 
 /// Tauri 端的应用运行时句柄。
 ///
-/// 持有 `Arc<AppFacade>` 作为唯一业务入口,加上几个进程级字段
-/// (task registry、settings port、storage paths、emitter cell、device id)。
-///
-/// **不持有** `Arc<CoreRuntime>`。所有业务调用走 `runtime.app_facade()`。
-pub struct AppRuntime {
-    app_facade: Arc<AppFacade>,
+/// 包装 `Arc<DesktopRuntime>` + `Option<tauri::AppHandle>`。所有 GUI-framework
+/// agnostic 的访问通过 `desktop()` 进入；Tauri 特有的事件发射/窗口控制
+/// 通过 `app_handle()`。
+pub struct TauriAppRuntime {
+    desktop: Arc<DesktopRuntime>,
     /// Tauri AppHandle for event emission (set after Tauri setup).
     app_handle: Arc<RwLock<Option<tauri::AppHandle>>>,
-    task_registry: Arc<TaskRegistry>,
-    settings_port: Arc<dyn SettingsPort>,
-    storage_paths: AppPaths,
-    /// Shared emitter cell —— bootstrap 期可 swap (例如从
-    /// `LoggingHostEventEmitter` 切到 daemon API emitter)。
-    event_emitter_cell: Arc<RwLock<Arc<dyn HostEventEmitterPort>>>,
-    device_id: String,
 }
 
-impl AppRuntime {
+impl TauriAppRuntime {
     /// 默认 emitter (`LoggingHostEventEmitter`)。其它情况调用 `with_setup`。
     pub fn new(
         deps: AppDeps,
@@ -135,20 +70,15 @@ impl AppRuntime {
             uc_application::clipboard_write::ClipboardWriteCoordinator,
         >,
     ) -> Self {
-        let event_emitter: Arc<dyn HostEventEmitterPort> =
-            Arc::new(uc_bootstrap::LoggingHostEventEmitter);
-        Self::with_setup(
+        Self::from_desktop(Arc::new(DesktopRuntime::new(
             deps,
             storage_paths,
-            event_emitter,
             clipboard_write_coordinator,
-        )
+        )))
     }
 
-    /// 装配 `AppFacade` + 收集进程级零碎件,产出 `AppRuntime`。
-    ///
-    /// `clipboard_write_coordinator` 是必填参数 —— `ClipboardRestoreFacade`
-    /// 需要它,所以装 facade 时必须传入。
+    /// 装配 `DesktopRuntime` + 在外层加一个空 `AppHandle`，产出
+    /// `TauriAppRuntime`。
     pub fn with_setup(
         deps: AppDeps,
         storage_paths: AppPaths,
@@ -157,46 +87,25 @@ impl AppRuntime {
             uc_application::clipboard_write::ClipboardWriteCoordinator,
         >,
     ) -> Self {
-        let device_id = deps.device.device_identity.current_device_id().to_string();
-        let settings_port = deps.settings.clone();
-
-        let lifecycle_status: Arc<dyn LifecycleStatusGateway> =
-            Arc::new(InMemoryLifecycleStatus::new());
-        let task_registry = Arc::new(TaskRegistry::new());
-
-        // Clipboard integration mode is resolved from the UC_CLIPBOARD_MODE env var.
-        // Defaults to Full (standalone GUI watches clipboard directly).
-        // Set UC_CLIPBOARD_MODE=passive when a daemon is running and handling
-        // clipboard capture + broadcast via DaemonWsBridge.
-        let clipboard_integration_mode = uc_bootstrap::resolve_clipboard_integration_mode();
-
-        let event_emitter_cell = Arc::new(RwLock::new(event_emitter));
-
-        // Compose AppFacade — 与 desktop daemon 入口共享同一装配函数。
-        // GUI 端不直接做 space setup / member roster / search coordinator,
-        // 这三处传 None;其它 facade 全部从 deps 拼齐。
-        let app_facade = build_app_facade_from_deps(
-            &deps,
-            &storage_paths,
-            lifecycle_status,
-            AppFacadeAssemblyOptions {
-                clipboard_restore: Some(ClipboardRestoreAssembly {
-                    write_coordinator: clipboard_write_coordinator,
-                    integration_mode: clipboard_integration_mode,
-                }),
-                ..Default::default()
-            },
-        );
-
-        Self {
-            app_facade,
-            app_handle: Arc::new(RwLock::new(None)),
-            task_registry,
-            settings_port,
+        Self::from_desktop(Arc::new(DesktopRuntime::with_setup(
+            deps,
             storage_paths,
-            event_emitter_cell,
-            device_id,
+            event_emitter,
+            clipboard_write_coordinator,
+        )))
+    }
+
+    /// 已经有 `DesktopRuntime` 时直接包一层。
+    pub fn from_desktop(desktop: Arc<DesktopRuntime>) -> Self {
+        Self {
+            desktop,
+            app_handle: Arc::new(RwLock::new(None)),
         }
+    }
+
+    /// 取底层 `DesktopRuntime`（GUI-framework agnostic）。新代码尽量用这个。
+    pub fn desktop(&self) -> &Arc<DesktopRuntime> {
+        &self.desktop
     }
 
     /// Set the Tauri AppHandle for event emission.
@@ -229,58 +138,36 @@ impl AppRuntime {
         self.app_handle.clone()
     }
 
+    // ---------------------------------------------------------------------
+    // 透传 DesktopRuntime 字段，保持历史 API 不破坏。
+    // ---------------------------------------------------------------------
+
     /// 业务入口 —— commands / 后台任务通过它访问业务。
     pub fn app_facade(&self) -> &Arc<AppFacade> {
-        &self.app_facade
+        self.desktop.app_facade()
     }
 
-    /// Get the current event emitter (clones the inner Arc).
     pub fn event_emitter(&self) -> Arc<dyn HostEventEmitterPort> {
-        match self.event_emitter_cell.read() {
-            Ok(guard) => Arc::clone(&*guard),
-            Err(poisoned) => {
-                tracing::error!(
-                    "RwLock poisoned in AppRuntime::event_emitter, recovering from poisoned state"
-                );
-                Arc::clone(&*poisoned.into_inner())
-            }
-        }
+        self.desktop.event_emitter()
     }
 
-    /// Swap the event emitter. Called from daemon setup to replace the
-    /// initial `LoggingHostEventEmitter` with a daemon API emitter.
     pub fn set_event_emitter(&self, emitter: Arc<dyn HostEventEmitterPort>) {
-        match self.event_emitter_cell.write() {
-            Ok(mut guard) => {
-                *guard = emitter;
-            }
-            Err(poisoned) => {
-                tracing::error!(
-                    "RwLock poisoned in AppRuntime::set_event_emitter, recovering from poisoned state"
-                );
-                let mut guard = poisoned.into_inner();
-                *guard = emitter;
-            }
-        }
+        self.desktop.set_event_emitter(emitter);
     }
 
-    /// Returns the current device ID for tracing spans and session context.
     pub fn device_id(&self) -> String {
-        self.device_id.clone()
+        self.desktop.device_id()
     }
 
-    /// Returns a clone of the settings port for resolve_pairing_device_name and startup tasks.
     pub fn settings_port(&self) -> Arc<dyn SettingsPort> {
-        self.settings_port.clone()
+        self.desktop.settings_port()
     }
 
-    /// Returns the storage paths bundle (db / vault / cache / logs / app data root).
     pub fn storage_paths(&self) -> &AppPaths {
-        &self.storage_paths
+        self.desktop.storage_paths()
     }
 
-    /// Returns a reference to the task registry for lifecycle management.
     pub fn task_registry(&self) -> &Arc<TaskRegistry> {
-        &self.task_registry
+        self.desktop.task_registry()
     }
 }

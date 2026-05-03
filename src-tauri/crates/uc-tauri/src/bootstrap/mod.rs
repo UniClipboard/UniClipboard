@@ -8,7 +8,8 @@ pub mod wiring;
 
 // Re-export commonly used bootstrap functions
 pub use run::{bootstrap_daemon_connection, supervise_daemon};
-pub use runtime::AppRuntime;
+pub use runtime::TauriAppRuntime;
+pub use runtime::{DaemonBootstrapOwnershipSnapshot, DaemonBootstrapOwnershipState};
 pub use uc_bootstrap::ensure_default_device_name;
 pub use uc_bootstrap::load_config;
 // uc_bootstrap re-exports (pure dependency construction — zero tauri imports)

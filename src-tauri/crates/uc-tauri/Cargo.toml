@@ -13,6 +13,7 @@ uc-infra = { path = "../uc-infra" }
 uc-platform = { path = "../uc-platform" }
 uc-observability = { path = "../uc-observability" }
 uc-bootstrap = { path = "../uc-bootstrap" }
+uc-desktop = { path = "../uc-desktop" }
 uc-daemon-contract = { path = "../uc-daemon-contract" }
 uc-daemon-local = { path = "../uc-daemon-local", features = ["sidecar-lifecycle"] }
 uc-daemon-client = { path = "../uc-daemon-client" }
@@ -28,6 +29,9 @@ tauri-plugin-global-shortcut = "2"
 tauri-plugin-updater = "2"
 tauri-plugin-shell = { workspace = true }
 tauri-plugin-opener = "2"
+tauri-plugin-notification = "2"
+tauri-plugin-stronghold = "2"
+tauri-plugin-single-instance = "2"
 url = "2"
 
 # Async
@@ -71,10 +75,11 @@ windows = { version = "0.61", features = [
 
 [target.'cfg(target_os = "macos")'.dependencies]
 core-foundation = "0.10"
+objc = "0.2"
 objc2 = "0.6"
-objc2-app-kit = { version = "0.3", features = ["NSEvent", "NSScreen", "NSPanel", "NSResponder", "NSWindow", "NSColor"] }
+objc2-app-kit = { version = "0.3", features = ["NSEvent", "NSScreen", "NSPanel", "NSResponder", "NSWindow", "NSColor", "NSGraphics"] }
 core-graphics = "0.24"
-objc2-foundation = { version = "0.3", features = ["NSGeometry"] }
+objc2-foundation = { version = "0.3", features = ["NSGeometry", "objc2-core-foundation"] }
 
 [dev-dependencies]
 uc-platform = { path = "../uc-platform", features = ["test-helpers"] }

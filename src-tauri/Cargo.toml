@@ -19,27 +19,27 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-# ===== Workspace crates =====
-uc-core = { path = "crates/uc-core" }
-uc-application = { path = "crates/uc-application" }
-uc-tauri = { path = "crates/uc-tauri" }
+# Tauri shell entry — bin crate only constructs the bootstrap context and the
+# tauri::Context (the latter via the generate_context! macro that requires the
+# bin's tauri.conf.json), then hands control to uc-tauri which owns all the
+# Tauri-specific plumbing (commands, plugins, builder/setup, run loop).
 uc-bootstrap = { path = "crates/uc-bootstrap" }
-uc-daemon-client = { path = "crates/uc-daemon-client" }
-uc-daemon-local = { path = "crates/uc-daemon-local", features = ["sidecar-lifecycle"] }
+uc-tauri = { path = "crates/uc-tauri" }
 
-# ===== Tauri 相关依赖 =====
-tauri = { version = "2", features = ["macos-private-api", "tray-icon"] }
+# Required for the tauri::generate_context!() macro the bin still calls.
+tauri = { workspace = true }
+
+# Tauri plugin crates listed here so `tauri-build` can validate capability
+# permission identifiers against them at compile time. The plugins are
+# initialized inside `uc_tauri::run`, not directly in this bin.
 tauri-plugin-notification = "2"
 tauri-plugin-opener = "2"
 tauri-plugin-global-shortcut = "2"
 tauri-plugin-stronghold = "2"
 tauri-plugin-shell = "2"
 
-# ===== 序列化 (tauri::generate_context! 宏需要) =====
+# tauri::generate_context!() expands to code that references serde_json by path.
 serde_json = "1"
-
-# ===== 日志 =====
-tracing = "0.1"
 
 [features]
 cargo-clippy = []
@@ -50,12 +50,6 @@ codegen-units = 1 # Compile crates one after another so the compiler can optimiz
 lto = true        # Enables link to optimizations
 opt-level = "z"   # Optimize for binary size
 strip = true      # Remove debug symbols
-
-[target.'cfg(target_os = "macos")'.dependencies]
-objc = "0.2"
-objc2 = "0.6"
-objc2-app-kit = { version = "0.3", features = ["NSEvent", "NSScreen", "NSGraphics", "NSPanel", "NSResponder", "NSWindow"] }
-objc2-foundation = { version = "0.3", features = ["objc2-core-foundation", "NSGeometry"] }
 
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 tauri-plugin-autostart = "2"

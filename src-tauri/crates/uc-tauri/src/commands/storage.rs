@@ -12,7 +12,7 @@ use uc_platform::ports::observability::TraceMetadata;
 #[tauri::command]
 pub async fn open_data_directory(
     app: tauri::AppHandle,
-    runtime: tauri::State<'_, std::sync::Arc<crate::bootstrap::AppRuntime>>,
+    runtime: tauri::State<'_, std::sync::Arc<crate::bootstrap::TauriAppRuntime>>,
     _trace: Option<TraceMetadata>,
 ) -> Result<(), CommandError> {
     let span = info_span!(

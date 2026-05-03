@@ -18,6 +18,7 @@ uc-platform = { path = "../uc-platform", features = ["test-helpers"] }
 uc-observability = { path = "../uc-observability" }
 uc-daemon-contract = { path = "../uc-daemon-contract" }
 uc-daemon-local = { path = "../uc-daemon-local" }
+uc-daemon-client = { path = "../uc-daemon-client" }
 uc-webserver = { path = "../uc-webserver" }
 clipboard-rs = { version = "0.3.3", features = ["default"] }
 tokio = { version = "1", features = ["full", "test-util"] }

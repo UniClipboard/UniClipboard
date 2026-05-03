@@ -8,6 +8,9 @@
 pub mod adapters;
 pub mod bootstrap;
 pub mod commands;
-
+pub mod plugins;
 pub mod quick_panel;
+pub mod run;
 pub mod tray;
+
+pub use run::run;

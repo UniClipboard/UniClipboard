@@ -19,9 +19,9 @@ use tauri::Manager;
 use tauri_plugin_autostart::MacosLauncher;
 use tracing::{error, info, warn};
 
-use uc_bootstrap::GuiBootstrapContext;
 use uc_daemon_client::DaemonConnectionState;
 use uc_daemon_local::daemon_lifecycle::GuiOwnedDaemonState;
+use uc_desktop::bootstrap::{build_gui_app, GuiBootstrapContext};
 
 use crate::bootstrap::{
     bootstrap_daemon_connection, ensure_default_device_name, start_background_tasks,
@@ -54,13 +54,18 @@ fn configure_main_window_for_platform(_app: &tauri::AppHandle) {}
 /// `tauri_ctx` 必须由 bin crate（`src-tauri/src/main.rs`）通过
 /// `tauri::generate_context!()` 生成后传入——该宏依赖 bin 的
 /// `Cargo.toml` 同目录的 `tauri.conf.json`，无法在 lib crate 里调用。
-pub fn run(ctx: GuiBootstrapContext, tauri_ctx: tauri::Context<tauri::Wry>) {
+///
+/// 启动期上下文（`GuiBootstrapContext`）由本函数内部通过
+/// [`uc_desktop::bootstrap::build_gui_app`] 装配，bin 不需要关心装配细节。
+/// 装配失败时返回 `Err`；装配成功后函数进入 Tauri 事件循环并不再返回，
+/// 直到应用退出。
+pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
     let GuiBootstrapContext {
         deps,
         background,
         storage_paths,
         config: _config,
-    } = ctx;
+    } = build_gui_app()?;
 
     let daemon_connection_state = DaemonConnectionState::default();
     let gui_owned_daemon_state = GuiOwnedDaemonState::default();
@@ -441,4 +446,6 @@ pub fn run(ctx: GuiBootstrapContext, tauri_ctx: tauri::Context<tauri::Wry>) {
                 _ => {}
             }
         });
+
+    Ok(())
 }

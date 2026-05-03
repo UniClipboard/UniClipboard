@@ -1,8 +1,12 @@
 //! # Scene-Specific Builders
 //!
-//! Entry-point constructors for GUI, CLI, and daemon runtime modes.
+//! Entry-point constructors for CLI and daemon runtime modes. The GUI shell
+//! entry-point (`build_gui_app` + `GuiBootstrapContext`) lives in
+//! [`uc_desktop::bootstrap`]—this crate stays GUI-shell agnostic and only
+//! provides the composition-root assembly tools the desktop crate then
+//! uses to wire its own GUI builder.
 //!
-//! All three builders share a private `build_core()` helper that:
+//! Both builders here share a private `build_core()` helper that:
 //! 1. Initializes tracing (idempotent)
 //! 2. Resolves application config
 //! 3. Wires all dependencies via `wire_dependencies`
@@ -19,19 +23,6 @@ use uc_core::config::AppConfig;
 
 use crate::assembly::{get_storage_paths, wire_dependencies, BackgroundRuntimeDeps};
 use crate::space_setup::{build_space_setup_assembly, IrohNodeConfig, SpaceSetupAssembly};
-
-/// Context for GUI entry point. Contains everything needed to construct
-/// AppRuntime EXCEPT tauri::AppHandle. uc-tauri calls AppRuntime::with_setup()
-/// using `deps` from this context -- NOT a prebuilt CoreRuntime.
-///
-/// [Codex Review R1] Returns AppDeps to preserve compatibility with
-/// AppRuntime::with_setup() which builds CoreRuntime internally.
-pub struct GuiBootstrapContext {
-    pub deps: AppDeps,
-    pub background: BackgroundRuntimeDeps,
-    pub storage_paths: AppPaths,
-    pub config: AppConfig,
-}
 
 /// Context for CLI entry point. AppDeps + config, no background workers.
 /// Caller constructs CoreRuntime from deps as needed.
@@ -93,30 +84,6 @@ fn build_core(
         .map_err(|e| anyhow::anyhow!("Dependency wiring failed: {}", e))?;
 
     Ok((config, wired))
-}
-
-/// Build GUI bootstrap context. Returns raw AppDeps (not CoreRuntime) so that
-/// AppRuntime::with_setup() in uc-tauri can construct CoreRuntime with the
-/// correct emitter cell, lifecycle status, and task registry.
-///
-/// GUI process drives pairing via daemon HTTP setup-v2; this function
-/// only builds deps + paths.
-pub fn build_gui_app() -> anyhow::Result<GuiBootstrapContext> {
-    let (config, wired) = build_core(None)?;
-
-    let deps = wired.deps;
-    let background = wired.background;
-    let storage_paths = get_storage_paths(&config)?;
-
-    // [Codex Review R1] Return AppDeps, NOT CoreRuntime.
-    // CoreRuntime is constructed by AppRuntime::with_setup() in uc-tauri,
-    // which needs to create the shared emitter cell, task registry, etc.
-    Ok(GuiBootstrapContext {
-        deps,
-        background,
-        storage_paths,
-        config,
-    })
 }
 
 /// Build CLI bootstrap context. Returns AppDeps for the caller to construct

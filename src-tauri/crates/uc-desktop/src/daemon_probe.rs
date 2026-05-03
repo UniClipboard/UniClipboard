@@ -20,8 +20,12 @@ use uc_daemon_contract::api::auth::DaemonConnectionInfo;
 use uc_daemon_contract::api::types::HealthResponse;
 use uc_daemon_contract::DAEMON_API_REVISION;
 use uc_daemon_local::contract::{terminate_local_daemon_pid, DaemonBootstrapError, ProbeOutcome};
+use uc_daemon_local::health_wait::{wait_for_daemon_health, wait_for_endpoint_absent};
 use uc_daemon_local::process_metadata::read_pid_file;
 use uc_daemon_local::socket::try_resolve_daemon_http_addr;
+
+use crate::daemon::run_mode::DaemonRunMode;
+use crate::daemon::{start_in_process, DaemonOwnership};
 
 pub const HEALTH_PATH: &str = "/health";
 pub const HEALTH_CHECK_TIMEOUT: Duration = Duration::from_secs(8);
@@ -154,6 +158,95 @@ pub fn classify_health_response(
 pub fn load_daemon_connection_info() -> Result<DaemonConnectionInfo, DaemonBootstrapError> {
     uc_daemon_client::resolve_connection_info_from_env()
         .map_err(DaemonBootstrapError::ConnectionInfo)
+}
+
+/// GUI 进程启动时统一的"探测 → 连或拉"入口（双模 daemon 模型）。
+///
+/// 行为：
+/// 1. 探测本机 daemon HTTP 端点；
+/// 2. **Compatible** —— 已有外部 daemon（如 `cli start` 拉起的独立进程）
+///    在跑且版本匹配，把 `ownership` 标记为 [`DaemonOwnership::set_external`]
+///    并返回连接信息；
+/// 3. **Absent** —— 没有 daemon，调 [`start_in_process`] in-process 拉起
+///    （[`DaemonRunMode::GuiInProcess`]），把 handle 存进 `ownership`，
+///    等到 daemon 健康再返回连接信息；
+/// 4. **Incompatible** —— 旧版 daemon（决策 B1：legacy "杀并替换"）：
+///    SIGTERM 旧 daemon → 等端点消失 → in-process 拉起 → 等健康。
+///
+/// 调用方（shell）持有 `ownership` 的 clone；GUI 退出 hook 里调
+/// [`DaemonOwnership::take_owned`] 拿到 handle 触发 shutdown，仅在
+/// `Owned` 状态生效——`External` 状态下 daemon 是别人的不动它。
+pub async fn bootstrap_daemon_in_process(
+    ownership: &DaemonOwnership,
+    expected_package_version: &str,
+    incompatible_exit_timeout: Duration,
+    health_check_timeout: Duration,
+    health_poll_interval: Duration,
+) -> Result<DaemonConnectionInfo, DaemonBootstrapError> {
+    let client = reqwest::Client::builder()
+        .timeout(PROBE_TIMEOUT)
+        .build()
+        .map_err(|error| {
+            DaemonBootstrapError::Client(
+                anyhow::Error::new(error).context("failed to build daemon probe client"),
+            )
+        })?;
+
+    match probe_daemon_health(&client, expected_package_version).await? {
+        ProbeOutcome::Compatible(_) => {
+            ownership.set_external();
+        }
+        ProbeOutcome::Absent => {
+            start_owned_in_process(
+                ownership,
+                &client,
+                expected_package_version,
+                health_check_timeout,
+                health_poll_interval,
+            )
+            .await?;
+        }
+        ProbeOutcome::Incompatible { details, .. } => {
+            terminate_incompatible_daemon_from_pid_file()?;
+            let mut probe_fn =
+                || async { probe_daemon_health(&client, expected_package_version).await };
+            wait_for_endpoint_absent(
+                &mut probe_fn,
+                incompatible_exit_timeout,
+                health_poll_interval,
+                &details,
+            )
+            .await?;
+            start_owned_in_process(
+                ownership,
+                &client,
+                expected_package_version,
+                health_check_timeout,
+                health_poll_interval,
+            )
+            .await?;
+        }
+    }
+
+    load_daemon_connection_info()
+}
+
+async fn start_owned_in_process(
+    ownership: &DaemonOwnership,
+    client: &reqwest::Client,
+    expected_package_version: &str,
+    health_check_timeout: Duration,
+    health_poll_interval: Duration,
+) -> Result<(), DaemonBootstrapError> {
+    let handle = start_in_process(DaemonRunMode::GuiInProcess)
+        .await
+        .map_err(|error| {
+            DaemonBootstrapError::Spawn(error.context("in-process daemon start failed"))
+        })?;
+    ownership.set_owned(handle);
+
+    let mut probe_fn = || async { probe_daemon_health(client, expected_package_version).await };
+    wait_for_daemon_health(&mut probe_fn, health_check_timeout, health_poll_interval).await
 }
 
 pub fn terminate_incompatible_daemon_from_pid_file() -> Result<(), DaemonBootstrapError> {

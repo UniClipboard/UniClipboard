@@ -20,19 +20,29 @@ use tauri_plugin_autostart::MacosLauncher;
 use tracing::{error, info, warn};
 
 use uc_daemon_client::DaemonConnectionState;
-use uc_daemon_local::daemon_lifecycle::GuiOwnedDaemonState;
 use uc_desktop::bootstrap::{build_gui_app, GuiBootstrapContext};
+use uc_desktop::daemon_probe::{
+    bootstrap_daemon_in_process, HEALTH_CHECK_TIMEOUT, HEALTH_POLL_INTERVAL,
+    INCOMPATIBLE_DAEMON_EXIT_TIMEOUT,
+};
+use uc_desktop::DaemonOwnership;
 
 use crate::bootstrap::{
-    bootstrap_daemon_connection, ensure_default_device_name, start_background_tasks,
-    start_gui_pairing_lease_task, supervise_daemon, TauriAppRuntime,
+    ensure_default_device_name, start_background_tasks, start_gui_pairing_lease_task,
+    TauriAppRuntime,
 };
 use crate::commands::updater::PendingUpdate;
 use crate::quick_panel;
 use crate::tray::TrayState;
 
-const DAEMON_EXIT_CLEANUP_TIMEOUT: Duration = Duration::from_secs(3);
-const DAEMON_EXIT_CLEANUP_POLL_INTERVAL: Duration = Duration::from_millis(100);
+/// daemon shutdown 等待上限——`DaemonHandle::shutdown` 内部 cancel cascade
+/// 后 axum graceful + service stop 全套清理通常 < 1s，给到 5s 兜底。
+const DAEMON_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(5);
+
+/// 这个 GUI shell 期望 daemon 上报的 `packageVersion`——`probe_daemon_health`
+/// 用它做版本兼容性判断。`env!` 拿的是 `uc-tauri` 自己的 cargo 版本，
+/// workspace 共享版本号所以与 `uniclipboard` bin 一致。
+const EXPECTED_PACKAGE_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 #[cfg(target_os = "windows")]
 fn configure_main_window_for_platform(app: &tauri::AppHandle) {
@@ -68,7 +78,7 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
     } = build_gui_app()?;
 
     let daemon_connection_state = DaemonConnectionState::default();
-    let gui_owned_daemon_state = GuiOwnedDaemonState::default();
+    let daemon_ownership = DaemonOwnership::default();
 
     let event_emitter: std::sync::Arc<dyn uc_application::facade::HostEventEmitterPort> =
         std::sync::Arc::new(uc_bootstrap::LoggingHostEventEmitter);
@@ -91,7 +101,7 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
         // Register TauriAppRuntime for Tauri commands
         .manage(runtime.clone())
         .manage(DaemonConnectionState::clone(&daemon_connection_state))
-        .manage(GuiOwnedDaemonState::clone(&gui_owned_daemon_state))
+        .manage(DaemonOwnership::clone(&daemon_ownership))
         .manage(TrayState::default())
         .manage(task_registry.clone())
         .on_window_event(|window, event| {
@@ -138,7 +148,7 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
     };
 
     let task_registry_for_run = task_registry.clone();
-    let gui_owned_daemon_state_for_run = gui_owned_daemon_state.clone();
+    let daemon_ownership_for_run = daemon_ownership.clone();
 
     builder
         .plugin(tauri_plugin_autostart::init(
@@ -161,38 +171,28 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
             configure_main_window_for_platform(app.handle());
 
             let daemon_connection_state_for_setup = daemon_connection_state.clone();
-            let gui_owned_daemon_state_for_setup = gui_owned_daemon_state.clone();
-            let app_handle_for_daemon = app.handle().clone();
-            let supervisor_token = task_registry.token().clone();
+            let daemon_ownership_for_setup = daemon_ownership.clone();
             let runtime_for_daemon = runtime.clone();
             tauri::async_runtime::spawn(async move {
-                match bootstrap_daemon_connection(
-                    &app_handle_for_daemon,
-                    &daemon_connection_state_for_setup,
-                    &gui_owned_daemon_state_for_setup,
+                match bootstrap_daemon_in_process(
+                    &daemon_ownership_for_setup,
+                    EXPECTED_PACKAGE_VERSION,
+                    INCOMPATIBLE_DAEMON_EXIT_TIMEOUT,
+                    HEALTH_CHECK_TIMEOUT,
+                    HEALTH_POLL_INTERVAL,
                 )
                 .await
                 {
-                    Ok(_connection_info) => {
+                    Ok(connection_info) => {
+                        daemon_connection_state_for_setup.set(connection_info);
                         start_gui_pairing_lease_task(
                             daemon_connection_state_for_setup.clone(),
                             runtime_for_daemon.task_registry(),
                         )
                         .await;
-
-                        // Start daemon supervisor to respawn if daemon dies unexpectedly.
-                        let supervisor_state = daemon_connection_state_for_setup.clone();
-                        let supervisor_daemon = gui_owned_daemon_state_for_setup.clone();
-                        let app_handle_for_supervisor = app_handle_for_daemon.clone();
-                        tauri::async_runtime::spawn(async move {
-                            supervise_daemon(
-                                &app_handle_for_supervisor,
-                                &supervisor_state,
-                                &supervisor_daemon,
-                                supervisor_token,
-                            )
-                            .await;
-                        });
+                        // 不再需要 daemon supervisor。in-process daemon 与
+                        // GUI 进程同生死；外部 daemon 不归我们管，崩了
+                        // 也由 CLI 负责重新拉起。
                     }
                     Err(error) => {
                         error!(error = %error, "Daemon startup/probe failed during Tauri bootstrap");
@@ -391,48 +391,25 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
                     info!("App exit requested, cancelling all tracked tasks");
                     task_registry_for_run.token().cancel();
 
-                    if gui_owned_daemon_state_for_run.exit_cleanup_in_progress() {
-                        api.prevent_exit();
-                        info!("GUI-owned daemon exit cleanup already in progress");
+                    let Some(handle) = daemon_ownership_for_run.take_owned() else {
+                        // External daemon (CLI start) 或还没拉起；GUI 直接退出，不动 daemon。
                         return;
-                    }
-
-                    if gui_owned_daemon_state_for_run.snapshot_pid().is_none() {
-                        return;
-                    }
-
-                    if !gui_owned_daemon_state_for_run.begin_exit_cleanup() {
-                        api.prevent_exit();
-                        info!("Skipping duplicate GUI-owned daemon exit cleanup request");
-                        return;
-                    }
+                    };
 
                     api.prevent_exit();
                     let app_handle = app_handle.clone();
-                    let gui_owned_daemon_state = gui_owned_daemon_state_for_run.clone();
                     tauri::async_runtime::spawn(async move {
-                        match gui_owned_daemon_state
-                            .shutdown_owned_daemon(
-                                DAEMON_EXIT_CLEANUP_TIMEOUT,
-                                DAEMON_EXIT_CLEANUP_POLL_INTERVAL,
-                            )
-                            .await
-                        {
-                            Ok(true) => {
-                                info!("GUI-owned daemon cleaned up before application exit");
-                            }
-                            Ok(false) => {
-                                info!("No GUI-owned daemon cleanup required on application exit");
+                        match handle.shutdown(DAEMON_SHUTDOWN_TIMEOUT).await {
+                            Ok(()) => {
+                                info!("In-process daemon stopped before application exit");
                             }
                             Err(error) => {
                                 error!(
                                     error = %error,
-                                    "Failed to clean up GUI-owned daemon during application exit"
+                                    "In-process daemon shutdown failed during application exit"
                                 );
                             }
                         }
-
-                        gui_owned_daemon_state.finish_exit_cleanup();
                         app_handle.exit(0);
                     });
                 }

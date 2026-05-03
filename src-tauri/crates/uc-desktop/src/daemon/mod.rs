@@ -7,6 +7,7 @@ pub(crate) mod background_tasks;
 pub(crate) mod bootstrap;
 pub(crate) mod handle;
 pub(crate) mod host;
+pub(crate) mod ownership;
 pub(crate) mod peers;
 pub(crate) mod run_loop;
 pub mod run_mode;
@@ -25,3 +26,4 @@ pub(crate) mod workers;
 
 pub use handle::DaemonHandle;
 pub use host::{run, start_in_process};
+pub use ownership::DaemonOwnership;

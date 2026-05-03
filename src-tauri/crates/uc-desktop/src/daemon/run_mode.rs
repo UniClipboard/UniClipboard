@@ -106,4 +106,48 @@ mod tests {
         assert!(mode.uses_auto_unlock_setting());
         assert!(mode.auto_triggers_deferred_services());
     }
+
+    #[test]
+    fn gui_in_process_skips_os_signal_handler() {
+        let mode = DaemonRunMode::GuiInProcess;
+
+        assert!(
+            !mode.listens_to_os_signals(),
+            "in-process daemon must NOT install its own OS signal handler — would race \
+             with GUI's own SIGTERM/SIGINT handling"
+        );
+        assert!(
+            !mode.follows_gui_parent(),
+            "in-process daemon shares GUI's process; stdin EOF (used by sidecar) \
+             does not apply"
+        );
+    }
+
+    #[test]
+    fn gui_in_process_defers_clipboard_until_ready() {
+        let mode = DaemonRunMode::GuiInProcess;
+
+        assert!(
+            mode.waits_for_gui_ready(),
+            "GUI still drives lifecycle/ready — clipboard services must defer \
+             until the frontend signals it's ready, just like GuiSidecar"
+        );
+        assert!(
+            !mode.auto_triggers_deferred_services(),
+            "GUI explicitly POSTs /lifecycle/ready; daemon should not auto-trigger"
+        );
+        assert!(
+            mode.uses_auto_unlock_setting(),
+            "GUI users have an auto_unlock_enabled setting; respect it like GuiSidecar"
+        );
+    }
+
+    #[test]
+    fn standalone_listens_to_signals() {
+        let mode = DaemonRunMode::Standalone;
+        assert!(
+            mode.listens_to_os_signals(),
+            "independent daemon binary needs SIGTERM/SIGINT to shut down cleanly"
+        );
+    }
 }

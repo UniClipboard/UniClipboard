@@ -30,6 +30,7 @@ pub async fn get_device_id(
 // Re-export commonly used types
 pub use autostart::*;
 
+pub use restart::*;
 pub use startup::*;
 pub use storage::*;
 pub use updater::*;

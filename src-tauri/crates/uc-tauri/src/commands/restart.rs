@@ -4,15 +4,12 @@
 //! Phase 95: covers GUI mode only (D-B1). CLI daemon mode is out of scope.
 
 use crate::commands::error::CommandError;
-#[allow(unused_imports)]
 use crate::commands::record_trace_fields;
 use serde::Serialize;
 use std::path::Path;
 use std::sync::OnceLock;
 use std::time::SystemTime;
-#[allow(unused_imports)]
 use tracing::{info, info_span, Instrument};
-#[allow(unused_imports)]
 use uc_platform::ports::observability::TraceMetadata;
 
 /// Process boot timestamp — set ONCE in `uc_tauri::run` setup.
@@ -52,7 +49,69 @@ fn read_settings_mtime_millis(path: &Path) -> Result<i64, CommandError> {
     Ok(system_time_to_millis(modified))
 }
 
-// restart_app + get_restart_state #[tauri::command] 实装在 Task 2 GREEN 阶段加入。
+/// Trigger graceful Tauri process restart for settings change effect.
+/// 触发 Tauri 进程优雅重启使设置变更生效。
+///
+/// # Scope (per D-B1)
+/// 仅 cover GUI mode；CLI daemon (`uniclip daemon`) 不在范围。
+///
+/// # Mechanism (per D-B2)
+/// 复用 `app.restart()`（与 `updater.rs:300-301` 同模式）。进程退出会触发
+/// `task_registry::shutdown` cancel cascade，daemon 子系统随 Tauri 进程
+/// 一起 graceful 关闭 —— 不显式调用 `DaemonHandle::shutdown`。
+#[tauri::command]
+pub async fn restart_app(
+    app: tauri::AppHandle,
+    _trace: Option<TraceMetadata>,
+) -> Result<(), CommandError> {
+    let span = info_span!(
+        "command.restart.restart_app",
+        trace_id = tracing::field::Empty,
+        trace_ts = tracing::field::Empty,
+    );
+    record_trace_fields(&span, &_trace);
+
+    async move {
+        info!("restarting app for settings change (LAN-only Mode)");
+        app.restart();
+        // app.restart() 会调用 process exit；以下不可达，仅满足类型签名。
+        #[allow(unreachable_code)]
+        Ok(())
+    }
+    .instrument(span)
+    .await
+}
+
+/// Read process boot timestamp + settings.json mtime for pending-state derivation.
+/// 读取进程启动时间戳与 settings.json mtime 用于 pending 状态推导。
+///
+/// # Pending derivation (per D-D1)
+/// `settings_mtime > process_started_at` ⇒ pending（settings.json 在本进程
+/// 启动后被改过，重启后才能让新 `disable_relays` 值生效）。
+#[tauri::command]
+pub async fn get_restart_state(
+    runtime: tauri::State<'_, std::sync::Arc<crate::bootstrap::TauriAppRuntime>>,
+    _trace: Option<TraceMetadata>,
+) -> Result<RestartState, CommandError> {
+    let span = info_span!(
+        "command.restart.get_restart_state",
+        trace_id = tracing::field::Empty,
+        trace_ts = tracing::field::Empty,
+    );
+    record_trace_fields(&span, &_trace);
+
+    async move {
+        let settings_path = runtime.storage_paths().settings_path.clone();
+        let settings_mtime = read_settings_mtime_millis(&settings_path)?;
+        let process_started_at = read_process_started_at_millis();
+        Ok(RestartState {
+            process_started_at,
+            settings_mtime,
+        })
+    }
+    .instrument(span)
+    .await
+}
 
 #[cfg(test)]
 mod tests {

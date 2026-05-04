@@ -59,3 +59,143 @@ impl DaemonHandle {
             .map_err(|e| anyhow::anyhow!("daemon task panicked: {e}"))?
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::Duration;
+
+    /// Build a handle whose backing task waits on the cancel token —
+    /// mirrors how a real daemon's main loop uses the external cancel.
+    fn handle_responding_to_cancel() -> DaemonHandle {
+        let cancel = CancellationToken::new();
+        let cancel_for_task = cancel.clone();
+        let join = tokio::spawn(async move {
+            cancel_for_task.cancelled().await;
+            Ok(())
+        });
+        DaemonHandle::new(cancel, join)
+    }
+
+    #[tokio::test]
+    async fn cancel_signal_returns_a_token_linked_to_handle() {
+        let handle = handle_responding_to_cancel();
+        let signal = handle.cancel_signal();
+        assert!(
+            !signal.is_cancelled(),
+            "fresh handle's cancel_signal must start uncancelled"
+        );
+
+        // shutdown drives the underlying token, which the cloned signal
+        // observes — proves cancel_signal isn't a disconnected new token.
+        let signal_for_observer = signal.clone();
+        let observer = tokio::spawn(async move { signal_for_observer.cancelled().await });
+
+        handle
+            .shutdown(Duration::from_secs(1))
+            .await
+            .expect("dummy task exits Ok on cancel");
+
+        observer
+            .await
+            .expect("observer task should complete after cancellation propagates");
+        assert!(
+            signal.is_cancelled(),
+            "shutdown must propagate to all clones of cancel_signal"
+        );
+    }
+
+    #[tokio::test]
+    async fn shutdown_succeeds_when_task_exits_cleanly_within_timeout() {
+        let handle = handle_responding_to_cancel();
+        handle
+            .shutdown(Duration::from_secs(2))
+            .await
+            .expect("clean shutdown");
+    }
+
+    #[tokio::test]
+    async fn shutdown_propagates_inner_error_from_daemon_task() {
+        let cancel = CancellationToken::new();
+        let cancel_for_task = cancel.clone();
+        let join = tokio::spawn(async move {
+            cancel_for_task.cancelled().await;
+            Err(anyhow::anyhow!("daemon main loop blew up"))
+        });
+        let handle = DaemonHandle::new(cancel, join);
+
+        let err = handle
+            .shutdown(Duration::from_secs(1))
+            .await
+            .expect_err("daemon task error must surface, not be swallowed");
+        assert!(
+            err.to_string().contains("daemon main loop blew up"),
+            "expected wrapped daemon error, got: {err}"
+        );
+    }
+
+    #[tokio::test]
+    async fn shutdown_reports_panic_in_daemon_task() {
+        let cancel = CancellationToken::new();
+        let join: tokio::task::JoinHandle<anyhow::Result<()>> =
+            tokio::spawn(async { panic!("boom") });
+        let handle = DaemonHandle::new(cancel, join);
+
+        let err = handle
+            .shutdown(Duration::from_secs(1))
+            .await
+            .expect_err("a panicked task must yield a JoinError-derived anyhow error");
+        assert!(
+            err.to_string().contains("panicked"),
+            "panic must be classified as a panic, got: {err}"
+        );
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn shutdown_times_out_when_task_ignores_cancel() {
+        // start_paused so the timeout doesn't actually wait wallclock-wise.
+        let cancel = CancellationToken::new();
+        // Task that never observes cancel — simulates a wedged main loop.
+        let join: tokio::task::JoinHandle<anyhow::Result<()>> = tokio::spawn(async {
+            // Sleep way past the timeout the test sets.
+            tokio::time::sleep(Duration::from_secs(60)).await;
+            Ok(())
+        });
+        let handle = DaemonHandle::new(cancel, join);
+
+        let err = handle
+            .shutdown(Duration::from_millis(50))
+            .await
+            .expect_err("wedged daemon must surface timeout error");
+        assert!(
+            err.to_string().contains("timed out"),
+            "timeout error must mention timeout, got: {err}"
+        );
+    }
+
+    #[tokio::test]
+    async fn wait_does_not_trigger_cancel_and_returns_when_task_finishes() {
+        // wait() is the standalone-binary entry: caller's signal handler
+        // pulls cancel; wait() never touches cancel itself.
+        let cancel = CancellationToken::new();
+        let cancel_for_task = cancel.clone();
+        let join = tokio::spawn(async move {
+            cancel_for_task.cancelled().await;
+            Ok(())
+        });
+        let handle = DaemonHandle::new(cancel.clone(), join);
+
+        // Trigger cancel from the outside (simulating signal handler), then
+        // wait — wait must observe the task exit without itself triggering cancel.
+        let cancel_for_external = cancel.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+            cancel_for_external.cancel();
+        });
+
+        handle
+            .wait()
+            .await
+            .expect("wait must surface task's Ok(())");
+    }
+}

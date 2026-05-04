@@ -279,3 +279,198 @@ pub(crate) fn resolve_cli_exe_path() -> Result<PathBuf, LocalDaemonError> {
         )
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Arc;
+
+    // ---------- Display impl ----------
+
+    #[test]
+    fn display_startup_timeout_includes_profile_and_url() {
+        let err = LocalDaemonError::StartupTimeout {
+            timeout_ms: 30_000,
+            profile: Some("dev".into()),
+            base_url: "http://127.0.0.1:7321".into(),
+        };
+        let s = err.to_string();
+        assert!(s.contains("30000"), "must include timeout in ms: {s}");
+        assert!(s.contains("dev"), "must include profile name: {s}");
+        assert!(
+            s.contains("http://127.0.0.1:7321"),
+            "must include base URL: {s}"
+        );
+    }
+
+    #[test]
+    fn display_startup_timeout_falls_back_to_default_profile_label() {
+        let err = LocalDaemonError::StartupTimeout {
+            timeout_ms: 1_000,
+            profile: None,
+            base_url: "http://localhost:9".into(),
+        };
+        let s = err.to_string();
+        assert!(
+            s.contains("default"),
+            "missing profile must surface as 'default' label, not blank: {s}"
+        );
+    }
+
+    #[test]
+    fn display_passthrough_for_anyhow_wrapped_variants() {
+        let err = LocalDaemonError::Probe(anyhow::anyhow!("connection refused"));
+        let s = err.to_string();
+        assert!(s.contains("connection refused"));
+        assert!(s.contains("probe"), "Probe variant must self-identify: {s}");
+    }
+
+    // ---------- LocalDaemonSession PartialEq ----------
+
+    #[test]
+    fn session_partial_eq_distinguishes_spawned_flag() {
+        let a = LocalDaemonSession {
+            base_url: "http://1.2.3.4:5".into(),
+            spawned: true,
+        };
+        let b = LocalDaemonSession {
+            base_url: "http://1.2.3.4:5".into(),
+            spawned: false,
+        };
+        assert_ne!(a, b, "spawned=true vs spawned=false must compare unequal");
+    }
+
+    // ---------- wait_for_daemon_health ----------
+
+    #[tokio::test]
+    async fn wait_returns_immediately_on_first_healthy_probe() {
+        let calls = Arc::new(AtomicUsize::new(0));
+        let calls_for_closure = calls.clone();
+        let mut probe = move || {
+            let calls = calls_for_closure.clone();
+            async move {
+                calls.fetch_add(1, Ordering::SeqCst);
+                Ok::<bool, LocalDaemonError>(true)
+            }
+        };
+
+        wait_for_daemon_health(
+            &mut probe,
+            Duration::from_secs(5),
+            Duration::from_millis(1),
+            "http://test",
+        )
+        .await
+        .expect("first probe true must resolve as Ok");
+
+        assert_eq!(
+            calls.load(Ordering::SeqCst),
+            1,
+            "must short-circuit on first healthy probe — wastes startup time otherwise"
+        );
+    }
+
+    #[tokio::test]
+    async fn wait_polls_until_probe_turns_healthy() {
+        // Simulate cold start: first 2 probes false (daemon still spawning),
+        // then true.
+        let calls = Arc::new(AtomicUsize::new(0));
+        let calls_for_closure = calls.clone();
+        let mut probe = move || {
+            let calls = calls_for_closure.clone();
+            async move {
+                let n = calls.fetch_add(1, Ordering::SeqCst);
+                Ok::<bool, LocalDaemonError>(n >= 2)
+            }
+        };
+
+        wait_for_daemon_health(
+            &mut probe,
+            Duration::from_secs(5),
+            Duration::from_millis(1),
+            "http://test",
+        )
+        .await
+        .expect("eventually-healthy probe must resolve");
+        assert!(calls.load(Ordering::SeqCst) >= 3);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn wait_times_out_with_full_diagnostic_context() {
+        // start_paused freezes wall clock so the test doesn't actually wait.
+        // env var UC_PROFILE is captured into the timeout error — set it to
+        // assert it propagates.
+        // SAFETY: tests run with `--test-threads=1` for `set_var`/`remove_var` to be safe.
+        // In Rust 2024 edition, std::env::set_var is unsafe; this crate is on edition 2021.
+        std::env::set_var("UC_PROFILE", "ci-profile");
+        let mut probe = || async { Ok::<bool, LocalDaemonError>(false) };
+
+        let err = wait_for_daemon_health(
+            &mut probe,
+            Duration::from_millis(500),
+            Duration::from_millis(50),
+            "http://example:1234",
+        )
+        .await
+        .expect_err("never-healthy probe must produce StartupTimeout");
+
+        std::env::remove_var("UC_PROFILE");
+
+        match err {
+            LocalDaemonError::StartupTimeout {
+                timeout_ms,
+                profile,
+                base_url,
+            } => {
+                assert_eq!(timeout_ms, 500);
+                assert_eq!(profile.as_deref(), Some("ci-profile"));
+                assert_eq!(base_url, "http://example:1234");
+            }
+            other => panic!("expected StartupTimeout, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn wait_propagates_probe_error_without_retry() {
+        let calls = Arc::new(AtomicUsize::new(0));
+        let calls_for_closure = calls.clone();
+        let mut probe = move || {
+            let calls = calls_for_closure.clone();
+            async move {
+                calls.fetch_add(1, Ordering::SeqCst);
+                Err::<bool, _>(LocalDaemonError::Probe(anyhow::anyhow!("network down")))
+            }
+        };
+
+        let err = wait_for_daemon_health(
+            &mut probe,
+            Duration::from_secs(5),
+            Duration::from_millis(1),
+            "http://test",
+        )
+        .await
+        .expect_err("probe error must propagate, not be retried");
+
+        assert!(matches!(err, LocalDaemonError::Probe(_)));
+        assert_eq!(
+            calls.load(Ordering::SeqCst),
+            1,
+            "transport-level errors are not transient — wait must not retry"
+        );
+    }
+
+    // ---------- resolve_cli_exe_path ----------
+
+    #[test]
+    fn resolve_cli_exe_path_yields_an_existing_executable() {
+        // current_exe in a test binary points at the test binary itself.
+        // We just want to know the wrapper doesn't lie about errors.
+        let path = resolve_cli_exe_path().expect("test binary must resolve current_exe");
+        assert!(
+            path.exists(),
+            "current_exe path must point at a file that exists: {}",
+            path.display()
+        );
+    }
+}

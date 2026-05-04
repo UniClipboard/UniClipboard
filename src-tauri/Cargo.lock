@@ -10541,6 +10541,7 @@ dependencies = [
  "uc-platform",
  "uc-webserver",
  "url",
+ "wiremock",
 ]
 
 [[package]]

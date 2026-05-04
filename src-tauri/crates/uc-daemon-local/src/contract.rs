@@ -82,3 +82,123 @@ pub fn terminate_local_daemon_pid(pid: u32) -> Result<(), TerminateDaemonError> 
         stderr.trim()
     )))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use uc_daemon_contract::api::types::HealthResponse;
+
+    fn sample_health() -> HealthResponse {
+        HealthResponse {
+            status: "ok".to_string(),
+            package_version: "0.6.0".to_string(),
+            api_revision: "rev-1".to_string(),
+        }
+    }
+
+    #[test]
+    fn probe_outcome_compatible_carries_health_payload() {
+        let health = sample_health();
+        let outcome = ProbeOutcome::Compatible(health.clone());
+
+        match outcome {
+            ProbeOutcome::Compatible(h) => assert_eq!(h, health),
+            other => panic!("expected Compatible, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn probe_outcome_eq_distinguishes_variants_and_payload() {
+        assert_eq!(ProbeOutcome::Absent, ProbeOutcome::Absent);
+        assert_ne!(
+            ProbeOutcome::Absent,
+            ProbeOutcome::Compatible(sample_health())
+        );
+
+        let a = ProbeOutcome::Incompatible {
+            details: "bad version".into(),
+            observed_package_version: Some("0.5.0".into()),
+            observed_api_revision: None,
+        };
+        let b = a.clone();
+        assert_eq!(a, b, "Clone must produce an equal value");
+    }
+
+    #[test]
+    fn daemon_bootstrap_error_messages_include_context() {
+        let err = DaemonBootstrapError::IncompatibleDaemon {
+            details: "version mismatch".into(),
+        };
+        assert!(
+            err.to_string().contains("version mismatch"),
+            "error display must surface details so caller logs are actionable; got: {err}"
+        );
+
+        let err = DaemonBootstrapError::StartupTimeout { timeout_ms: 8_000 };
+        assert!(
+            err.to_string().contains("8000"),
+            "timeout display must include the configured timeout in ms; got: {err}"
+        );
+    }
+
+    #[test]
+    fn terminate_daemon_error_is_an_error_with_passthrough_display() {
+        let err = TerminateDaemonError("kill failed: ESRCH".into());
+        assert_eq!(err.to_string(), "kill failed: ESRCH");
+
+        // Confirms it satisfies `std::error::Error` so callers can box it.
+        let boxed: Box<dyn std::error::Error> = Box::new(err);
+        assert!(boxed.to_string().contains("ESRCH"));
+    }
+
+    #[test]
+    fn terminate_local_daemon_pid_fails_for_nonexistent_pid() {
+        // PID 1 (init) is owned by root and unsignalable from a normal user;
+        // PID 0 means "every process in the group" — we don't want that.
+        // Use a likely-unused high PID so the kill/taskkill exits non-zero
+        // without any chance of hitting our own process.
+        let result = terminate_local_daemon_pid(999_999_999);
+        let err = result.expect_err("targeting a non-existent pid must fail");
+        let msg = err.to_string();
+        assert!(
+            msg.contains("999999999"),
+            "error must name the pid we tried to terminate; got: {msg}"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn terminate_local_daemon_pid_signals_a_real_child_process() {
+        use std::process::{Command, Stdio};
+        use std::thread;
+        use std::time::{Duration, Instant};
+
+        // Spawn a long-running child we can prove we killed. `sleep 60` is
+        // available on every supported unix; we wait_with_output to avoid
+        // leaking the process if the test fails before we reap.
+        let mut child = Command::new("sleep")
+            .arg("60")
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .expect("spawn sleep");
+        let pid = child.id();
+
+        terminate_local_daemon_pid(pid).expect("terminate_local_daemon_pid must succeed");
+
+        // Wait for the child to actually exit. Bound it so a stuck test fails
+        // loudly instead of hanging CI.
+        let deadline = Instant::now() + Duration::from_secs(5);
+        loop {
+            match child.try_wait().expect("try_wait") {
+                Some(_status) => return,
+                None if Instant::now() >= deadline => {
+                    let _ = child.kill();
+                    panic!("child {pid} did not exit after SIGTERM");
+                }
+                None => thread::sleep(Duration::from_millis(20)),
+            }
+        }
+    }
+}

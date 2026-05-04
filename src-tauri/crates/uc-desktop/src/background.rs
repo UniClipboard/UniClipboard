@@ -93,7 +93,8 @@ pub async fn start_gui_pairing_lease(
         .await;
 }
 
-async fn run_gui_pairing_lease_loop<F, Fut>(
+/// Visible to the test module; production callers use [`start_gui_pairing_lease`].
+pub(crate) async fn run_gui_pairing_lease_loop<F, Fut>(
     token: tokio_util::sync::CancellationToken,
     lease_ttl_ms: u64,
     renew_interval: Duration,
@@ -128,5 +129,154 @@ async fn run_gui_pairing_lease_loop<F, Fut>(
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::future::Future;
+    use std::sync::Mutex;
+    use tokio_util::sync::CancellationToken;
+
+    /// Each call to the lease setter is recorded as a tuple of (enabled, ttl_ms).
+    /// We assert against this log to verify the register / renew / release sequence.
+    type LeaseLog = Arc<Mutex<Vec<(bool, Option<u64>)>>>;
+
+    fn recording_setter(
+        log: LeaseLog,
+        result: Result<(), String>,
+    ) -> impl FnMut(
+        bool,
+        Option<u64>,
+    ) -> std::pin::Pin<Box<dyn Future<Output = anyhow::Result<()>> + Send>> {
+        move |enabled, ttl| {
+            let log = log.clone();
+            let result = result.clone();
+            Box::pin(async move {
+                log.lock().unwrap().push((enabled, ttl));
+                result.map_err(|s| anyhow::anyhow!(s)).map(|()| ())
+            })
+        }
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn registers_lease_then_releases_on_cancel_without_renewing() {
+        // Cancel before the renew interval fires — we should see exactly
+        // one register call (enabled=true, ttl=Some) and one release call
+        // (enabled=false, ttl=None), with no renews in between.
+        let log: LeaseLog = Arc::new(Mutex::new(Vec::new()));
+        let token = CancellationToken::new();
+        let token_for_loop = token.clone();
+        let setter = recording_setter(log.clone(), Ok(()));
+
+        let loop_handle = tokio::spawn(async move {
+            run_gui_pairing_lease_loop(token_for_loop, 300_000, Duration::from_secs(120), setter)
+                .await;
+        });
+
+        // Yield so the initial register call runs before we cancel.
+        tokio::task::yield_now().await;
+        tokio::time::advance(Duration::from_millis(1)).await;
+        token.cancel();
+        loop_handle.await.expect("loop must complete after cancel");
+
+        let calls = log.lock().unwrap().clone();
+        assert_eq!(
+            calls,
+            vec![(true, Some(300_000)), (false, None)],
+            "expected register-then-release sequence, no renews"
+        );
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn renews_lease_periodically_until_cancelled() {
+        // Advance time past several renew intervals and verify each tick
+        // produces a renew call. The first call is the initial register.
+        let log: LeaseLog = Arc::new(Mutex::new(Vec::new()));
+        let token = CancellationToken::new();
+        let token_for_loop = token.clone();
+        let renew = Duration::from_secs(120);
+        let setter = recording_setter(log.clone(), Ok(()));
+
+        let loop_handle = tokio::spawn(async move {
+            run_gui_pairing_lease_loop(token_for_loop, 300_000, renew, setter).await;
+        });
+
+        // Initial register — yield once to let the loop start and register.
+        tokio::task::yield_now().await;
+        tokio::time::advance(Duration::from_millis(1)).await;
+        tokio::task::yield_now().await;
+
+        // Advance past 3 renew intervals.
+        for _ in 0..3 {
+            tokio::time::advance(renew).await;
+            tokio::task::yield_now().await;
+        }
+
+        token.cancel();
+        loop_handle.await.expect("loop completes after cancel");
+
+        let calls = log.lock().unwrap().clone();
+        // Expected: [register, renew, renew, renew, release]. The initial
+        // ticker.tick() consumes the immediately-fired tick so renews start
+        // after the FIRST `renew_interval`, not at t=0.
+        assert!(
+            calls.len() >= 5,
+            "expected at least register + 3 renews + release, got {} calls: {:?}",
+            calls.len(),
+            calls
+        );
+        assert_eq!(
+            calls.first(),
+            Some(&(true, Some(300_000))),
+            "first call must be initial register"
+        );
+        assert_eq!(
+            calls.last(),
+            Some(&(false, None)),
+            "last call must be release"
+        );
+        // All non-final calls must be enabled=true with the configured TTL.
+        for (i, call) in calls.iter().enumerate().skip(1).take(calls.len() - 2) {
+            assert_eq!(
+                call,
+                &(true, Some(300_000)),
+                "renew call #{i} must keep the same lease shape: {call:?}"
+            );
+        }
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn release_call_runs_even_if_setter_returns_error() {
+        // If renew fails we just log a warning — but on cancellation we
+        // still issue the release call. Errors must not poison the loop.
+        let log: LeaseLog = Arc::new(Mutex::new(Vec::new()));
+        let token = CancellationToken::new();
+        let token_for_loop = token.clone();
+        // All setter calls fail — we still expect a release attempt at cancel.
+        let setter = recording_setter(log.clone(), Err("transport down".into()));
+
+        let loop_handle = tokio::spawn(async move {
+            run_gui_pairing_lease_loop(token_for_loop, 60_000, Duration::from_secs(30), setter)
+                .await;
+        });
+
+        tokio::task::yield_now().await;
+        tokio::time::advance(Duration::from_millis(1)).await;
+        token.cancel();
+        loop_handle
+            .await
+            .expect("loop completes despite setter errors");
+
+        let calls = log.lock().unwrap().clone();
+        assert!(
+            calls.contains(&(true, Some(60_000))),
+            "register must be attempted even though it errors: {calls:?}"
+        );
+        assert!(
+            calls.contains(&(false, None)),
+            "release must be attempted on cancel even after setter errors: {calls:?}"
+        );
     }
 }

@@ -254,3 +254,262 @@ pub fn terminate_incompatible_daemon_from_pid_file() -> Result<(), DaemonBootstr
     })?;
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use wiremock::matchers::{method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    const TEST_PACKAGE_VERSION: &str = "0.6.0";
+
+    fn ok_health() -> HealthResponse {
+        HealthResponse {
+            status: "ok".into(),
+            package_version: TEST_PACKAGE_VERSION.into(),
+            api_revision: DAEMON_API_REVISION.into(),
+        }
+    }
+
+    // ------- classify_health_response: pure decision table -------
+
+    #[test]
+    fn classify_compatible_when_all_fields_match() {
+        let outcome = classify_health_response(ok_health(), TEST_PACKAGE_VERSION);
+        assert_eq!(outcome, ProbeOutcome::Compatible(ok_health()));
+    }
+
+    #[test]
+    fn classify_incompatible_when_status_not_ok() {
+        let mut health = ok_health();
+        health.status = "degraded".into();
+        let outcome = classify_health_response(health, TEST_PACKAGE_VERSION);
+        match outcome {
+            ProbeOutcome::Incompatible {
+                details,
+                observed_package_version,
+                observed_api_revision,
+            } => {
+                assert!(details.contains("degraded"));
+                assert_eq!(
+                    observed_package_version.as_deref(),
+                    Some(TEST_PACKAGE_VERSION)
+                );
+                assert_eq!(observed_api_revision.as_deref(), Some(DAEMON_API_REVISION));
+            }
+            other => panic!("expected Incompatible, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn classify_incompatible_when_package_version_empty() {
+        let mut health = ok_health();
+        health.package_version = "   ".into();
+        let outcome = classify_health_response(health, TEST_PACKAGE_VERSION);
+        match outcome {
+            ProbeOutcome::Incompatible { details, .. } => {
+                assert!(
+                    details.contains("packageVersion"),
+                    "details must point at the missing field, got: {details}"
+                );
+            }
+            other => panic!("expected Incompatible for empty packageVersion, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn classify_incompatible_when_api_revision_empty() {
+        let mut health = ok_health();
+        health.api_revision = "".into();
+        let outcome = classify_health_response(health, TEST_PACKAGE_VERSION);
+        match outcome {
+            ProbeOutcome::Incompatible { details, .. } => {
+                assert!(
+                    details.contains("apiRevision"),
+                    "details must point at the missing field, got: {details}"
+                );
+            }
+            other => panic!("expected Incompatible for empty apiRevision, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn classify_incompatible_when_package_version_mismatches_shell() {
+        let mut health = ok_health();
+        health.package_version = "0.5.99".into();
+        let outcome = classify_health_response(health, TEST_PACKAGE_VERSION);
+        match outcome {
+            ProbeOutcome::Incompatible {
+                details,
+                observed_package_version,
+                ..
+            } => {
+                assert_eq!(observed_package_version.as_deref(), Some("0.5.99"));
+                assert!(
+                    details.contains("0.5.99") && details.contains(TEST_PACKAGE_VERSION),
+                    "details must surface both observed and expected versions: {details}"
+                );
+            }
+            other => panic!("expected Incompatible for version mismatch, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn classify_incompatible_when_api_revision_mismatches_constant() {
+        let mut health = ok_health();
+        health.api_revision = "rev-from-the-future".into();
+        let outcome = classify_health_response(health, TEST_PACKAGE_VERSION);
+        match outcome {
+            ProbeOutcome::Incompatible {
+                details,
+                observed_api_revision,
+                ..
+            } => {
+                assert_eq!(
+                    observed_api_revision.as_deref(),
+                    Some("rev-from-the-future")
+                );
+                assert!(details.contains("rev-from-the-future"));
+                assert!(details.contains(DAEMON_API_REVISION));
+            }
+            other => panic!("expected Incompatible for revision mismatch, got {other:?}"),
+        }
+    }
+
+    // ------- probe_daemon_health_at: mocked HTTP transport -------
+
+    fn build_test_client() -> reqwest::Client {
+        reqwest::Client::builder()
+            .timeout(PROBE_TIMEOUT)
+            .build()
+            .expect("client build")
+    }
+
+    #[tokio::test]
+    async fn probe_at_compatible_daemon_returns_compatible() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path(HEALTH_PATH))
+            .respond_with(ResponseTemplate::new(200).set_body_json(ok_health()))
+            .mount(&server)
+            .await;
+
+        let url: url::Url = server.uri().parse().expect("mock server URL");
+        let addr = std::net::SocketAddr::new(
+            url.host_str()
+                .expect("host present")
+                .parse()
+                .expect("host is ip"),
+            url.port().expect("port present"),
+        );
+
+        let outcome = probe_daemon_health_at(&build_test_client(), addr, TEST_PACKAGE_VERSION)
+            .await
+            .expect("probe must succeed against healthy daemon");
+        assert_eq!(outcome, ProbeOutcome::Compatible(ok_health()));
+    }
+
+    #[tokio::test]
+    async fn probe_at_returns_absent_when_no_listener() {
+        // Bind a TCP socket and immediately drop it so we know the port is
+        // unused on this host. reqwest's connect attempt will then ECONNREFUSED.
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
+        let addr = listener.local_addr().expect("local_addr");
+        drop(listener);
+
+        let outcome = probe_daemon_health_at(&build_test_client(), addr, TEST_PACKAGE_VERSION)
+            .await
+            .expect("probe of dead port must succeed with Absent");
+        assert_eq!(
+            outcome,
+            ProbeOutcome::Absent,
+            "connection refused must be classified as Absent so bootstrap can decide to spawn"
+        );
+    }
+
+    #[tokio::test]
+    async fn probe_at_returns_incompatible_when_health_returns_500() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path(HEALTH_PATH))
+            .respond_with(ResponseTemplate::new(500))
+            .mount(&server)
+            .await;
+        let url: url::Url = server.uri().parse().unwrap();
+        let addr = std::net::SocketAddr::new(
+            url.host_str().unwrap().parse().unwrap(),
+            url.port().unwrap(),
+        );
+
+        let outcome = probe_daemon_health_at(&build_test_client(), addr, TEST_PACKAGE_VERSION)
+            .await
+            .expect("non-2xx must classify, not error out");
+        match outcome {
+            ProbeOutcome::Incompatible { details, .. } => {
+                assert!(
+                    details.contains("500"),
+                    "details should mention the HTTP status: {details}"
+                );
+            }
+            other => panic!("expected Incompatible, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn probe_at_returns_incompatible_when_body_is_unparseable() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path(HEALTH_PATH))
+            .respond_with(ResponseTemplate::new(200).set_body_string("not-json"))
+            .mount(&server)
+            .await;
+        let url: url::Url = server.uri().parse().unwrap();
+        let addr = std::net::SocketAddr::new(
+            url.host_str().unwrap().parse().unwrap(),
+            url.port().unwrap(),
+        );
+
+        let outcome = probe_daemon_health_at(&build_test_client(), addr, TEST_PACKAGE_VERSION)
+            .await
+            .expect("malformed body must classify, not error out");
+        match outcome {
+            ProbeOutcome::Incompatible { details, .. } => {
+                assert!(
+                    details.contains("decode") || details.contains("expected"),
+                    "details should mention decode failure: {details}"
+                );
+            }
+            other => panic!("expected Incompatible for malformed body, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn probe_at_returns_incompatible_when_version_mismatch() {
+        let server = MockServer::start().await;
+        let mut bad = ok_health();
+        bad.package_version = "9.9.9".into();
+        Mock::given(method("GET"))
+            .and(path(HEALTH_PATH))
+            .respond_with(ResponseTemplate::new(200).set_body_json(bad))
+            .mount(&server)
+            .await;
+        let url: url::Url = server.uri().parse().unwrap();
+        let addr = std::net::SocketAddr::new(
+            url.host_str().unwrap().parse().unwrap(),
+            url.port().unwrap(),
+        );
+
+        let outcome = probe_daemon_health_at(&build_test_client(), addr, TEST_PACKAGE_VERSION)
+            .await
+            .expect("probe ok, classifier rejects");
+        match outcome {
+            ProbeOutcome::Incompatible {
+                observed_package_version,
+                ..
+            } => {
+                assert_eq!(observed_package_version.as_deref(), Some("9.9.9"));
+            }
+            other => panic!("expected Incompatible, got {other:?}"),
+        }
+    }
+}

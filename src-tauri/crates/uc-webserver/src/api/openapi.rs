@@ -27,9 +27,9 @@ use crate::api::dto::search::{
 };
 use crate::api::dto::settings::{
     ContentTypesDto, FileSyncSettingsDto, GeneralSettingsDto, GetSettingsResponse,
-    PairingSettingsDto, RetentionPolicyDto, RetentionRuleDto, RuleEvaluationDto,
-    SecuritySettingsDto, SettingsDto, ShortcutKeyDto, SyncFrequencyDto, SyncSettingsDto, ThemeDto,
-    UpdateChannelDto, UpdateSettingsResponse,
+    NetworkSettingsDto, PairingSettingsDto, RetentionPolicyDto, RetentionRuleDto,
+    RuleEvaluationDto, SecuritySettingsDto, SettingsDto, ShortcutKeyDto, SyncFrequencyDto,
+    SyncSettingsDto, ThemeDto, UpdateChannelDto, UpdateSettingsResponse,
 };
 use uc_daemon_contract::api::dto::upgrade::{
     AckUpgradePayload, AckUpgradeResponse, GetUpgradeStatusResponse, UpgradeStatusDto,
@@ -136,6 +136,7 @@ impl Modify for SecurityAddon {
             SecuritySettingsDto,
             PairingSettingsDto,
             FileSyncSettingsDto,
+            NetworkSettingsDto,
             ShortcutKeyDto,
             ThemeDto,
             UpdateChannelDto,

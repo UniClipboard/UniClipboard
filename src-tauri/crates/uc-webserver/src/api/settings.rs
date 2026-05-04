@@ -71,6 +71,13 @@ async fn update_settings_handler(
     Json(payload): Json<SettingsPatchDto>,
 ) -> Result<Json<UpdateSettingsResponse>, ApiError> {
     let app = state.app_facade_or_error()?;
+
+    // D-D1：patch 中 `network` 段非空（任何字段变更）时 restart_required = true。
+    // 当前 NetworkSettings 仅含 allow_relay_fallback；后续若加字段，仍走 is_some()
+    // 兜底。其它字段（general / sync 等）不影响该信号 — 它们不需要重启。
+    // Pitfall 3 防御：调用方（前端 Phase 95）必须显式承担"还没真正生效"。
+    let restart_required = payload.network.is_some();
+
     let updated = app
         .settings
         .update(settings_patch_from_dto(payload))
@@ -81,9 +88,7 @@ async fn update_settings_handler(
         success: true,
         data: settings_view_to_dto(updated),
         ts: chrono::Utc::now().timestamp_millis(),
-        // Phase 094 plan 03 placeholder — wire 字段在 plan 04 由 `payload.network.is_some()`
-        // 内联计算（D-D1）。当前默认 false 让 webserver 编译通过；plan 04 会替换。
-        restart_required: false,
+        restart_required,
     }))
 }
 
@@ -92,7 +97,8 @@ fn settings_error_to_api(err: app_settings::SettingsFacadeError) -> ApiError {
     ApiError::internal(err.to_string())
 }
 
-fn settings_patch_from_dto(patch: SettingsPatchDto) -> app_settings::SettingsPatch {
+#[doc(hidden)]
+pub fn settings_patch_from_dto(patch: SettingsPatchDto) -> app_settings::SettingsPatch {
     app_settings::SettingsPatch {
         general: patch
             .general
@@ -159,12 +165,16 @@ fn settings_patch_from_dto(patch: SettingsPatchDto) -> app_settings::SettingsPat
                 file_retention_hours: file_sync.file_retention_hours,
                 file_auto_cleanup: file_sync.file_auto_cleanup,
             }),
-        // network 段由 plan 094-04（webserver）真正映射；本 plan 02 仅占位 None 以保编译。
-        network: None,
+        network: patch
+            .network
+            .map(|network| app_settings::NetworkSettingsPatch {
+                allow_relay_fallback: network.allow_relay_fallback,
+            }),
     }
 }
 
-fn settings_view_to_dto(value: app_settings::SettingsView) -> SettingsDto {
+#[doc(hidden)]
+pub fn settings_view_to_dto(value: app_settings::SettingsView) -> SettingsDto {
     SettingsDto {
         schema_version: value.schema_version,
         general: GeneralSettingsDto {
@@ -219,12 +229,8 @@ fn settings_view_to_dto(value: app_settings::SettingsView) -> SettingsDto {
             file_retention_hours: value.file_sync.file_retention_hours,
             file_auto_cleanup: value.file_sync.file_auto_cleanup,
         },
-        // Phase 094 plan 03 placeholder — `SettingsView.network` 字段由 plan 02 (uc-application)
-        // 落地；plan 04 会替换为 `NetworkSettingsDto { allow_relay_fallback: value.network.allow_relay_fallback }`。
-        // 当前默认值与 `core::NetworkSettings::default()`（true）一致，避免误导客户端
-        // 直到 plan 02/04 wire-up 完成（Pitfall 2 防御兜底）。
         network: NetworkSettingsDto {
-            allow_relay_fallback: true,
+            allow_relay_fallback: value.network.allow_relay_fallback,
         },
     }
 }

@@ -156,6 +156,8 @@ fn settings_patch_from_dto(patch: SettingsPatchDto) -> app_settings::SettingsPat
                 file_retention_hours: file_sync.file_retention_hours,
                 file_auto_cleanup: file_sync.file_auto_cleanup,
             }),
+        // network 段由 plan 094-04（webserver）真正映射；本 plan 02 仅占位 None 以保编译。
+        network: None,
     }
 }
 

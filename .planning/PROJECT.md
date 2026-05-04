@@ -8,9 +8,29 @@ A cross-platform clipboard synchronization app built with Tauri 2, React, and Ru
 
 Seamless clipboard synchronization across devices — users can copy on one device and paste on another without interrupting their workflow.
 
-## Current Milestone
+## Current Milestone: v0.7.0 LAN-only Mode
 
-No active milestone is currently defined.
+**Goal:** 给"局域网洁癖"用户一个可观察、可控的开关——禁用 iroh 公网中继回落，让流量真正只走局域网，并把"当前是直连还是中继"暴露成可见状态。
+
+**Target features:**
+
+P0（MVP）
+- 设置页 Network 分类下加开关 "LAN-only Mode"，默认 OFF（不打扰存量用户）
+- 后端 `Settings` 新增 `network` 命名空间，字段 `network.allow_relay_fallback: bool`（默认 true，反向命名）
+- 启动时把该字段读入 `IrohNodeConfig.disable_relays`（已有字段，仅暴露成用户可控）
+- 切换开关后弹"重启生效"提示（不做运行时热切换，留作后续）
+- 设备列表显示连接通道指示器（LAN 直连 / Relay 中继 / Offline），让"局域网专用"可观察、可验证
+
+P1（强烈建议同期）
+- 配对成功后的一次性 onboarding tip：引导感兴趣的用户发现 LAN-only 开关
+- 文档：解释 "LAN-only" 边界（首次配对仍需联网经 rendezvous，要透明）
+
+**关键决策（来自 explore 阶段）:**
+- 配对仍走公网 rendezvous，**接受首次配对需联网**（自托管 rendezvous 暂不做）
+- 同网段 mDNS 发现已实现，不动；跨网段连接由 relay 中继兜底，给用户开关
+- 命名采用反向语义：后端字段 `allow_relay_fallback`（默认 true），前端开关呈现为 "LAN-only Mode"（toggle 关闭 = 不允许 fallback）
+- 当前 `NetworkSection.tsx` 是占位组件，本里程碑会把它替换成真实内容
+- **不在本里程碑范围**：自托管 rendezvous、运行时热切换、跨网段静态地址簿、独立 LAN-only 二进制 flavor
 
 ## Current State
 
@@ -19,13 +39,7 @@ No active milestone is currently defined.
 - **Architecture status:** Hexagonal architecture with compiler-enforced boundaries, typed command surfaces, lifecycle governance, daemon-first runtime ownership, and consolidated sync planning
 - **LOC:** ~324K Rust + ~39K TypeScript (estimated)
 - **Supported content types:** Text, Image, Link, File
-- **Archive note:** v0.5.0 was archived after Phase 93 was completed manually and planning records were backfilled during archive; no separate milestone audit file exists for this milestone
-
-## Next Milestone Goals
-
-- Define the next milestone before new phase execution starts
-- Carry forward any post-release cleanup that does not belong in the shipped v0.5.0 archive
-- Reintroduce a fresh `.planning/REQUIREMENTS.md` as part of next-milestone setup
+- **Archive note:** v0.5.0 was archived after Phase 93 was completed manually and planning records were backfilled during archive; audit was backfilled 2026-05-04
 
 ## Requirements
 
@@ -67,7 +81,12 @@ No active milestone is currently defined.
 
 ### Active
 
-No active milestone is currently defined.
+- [ ] LAN-only Mode 开关（前端 Settings + 后端 network namespace）— v0.7.0
+- [ ] 启动时将 `network.allow_relay_fallback` 注入 `IrohNodeConfig.disable_relays` — v0.7.0
+- [ ] 设备列表"连接通道"指示器（LAN / Relay / Offline）— v0.7.0
+- [ ] 切换开关后"重启生效"提示（不做运行时热切换）— v0.7.0
+- [ ] 配对成功后 onboarding tip — v0.7.0
+- [ ] LAN-only 边界文档（首次配对仍需联网透明化）— v0.7.0
 
 ### Deferred
 
@@ -87,6 +106,10 @@ No active milestone is currently defined.
 - OAuth/third-party login — not required for current product model
 - Remote/cloud log shipping — clipboard logs may contain sensitive content
 - In-app log viewer UI — Seq provides dedicated log UI
+- 自托管 rendezvous（v0.7.0）— 配对仍走 `rendezvous.uniclipboard.app`，自建服务延后评估
+- 跨网段静态地址簿 / 手动 NodeId 输入（v0.7.0）— 边缘场景，不阻塞 LAN-only MVP
+- 运行时热切换 LAN-only 开关（v0.7.0）— iroh RelayMode 是 bind 时确定，本里程碑用"重启生效"提示替代
+- 独立 LAN-only 二进制 flavor（v0.7.0）— 先做开关，flavor 看后续需求
 
 ## Context
 
@@ -117,6 +140,23 @@ Clipboard search now supports exact keyword search, time-range presets, content-
 - **Security:** XChaCha20-Poly1305 remains mandatory
 - **Platform support:** macOS primary; Windows/Linux supported
 
+## Evolution
+
+This document evolves at phase transitions and milestone boundaries.
+
+**After each phase transition** (via `/gsd-transition`):
+1. Requirements invalidated? → Move to Out of Scope with reason
+2. Requirements validated? → Move to Validated with phase reference
+3. New requirements emerged? → Add to Active
+4. Decisions to log? → Add to Key Decisions
+5. "What This Is" still accurate? → Update if drifted
+
+**After each milestone** (via `/gsd-complete-milestone`):
+1. Full review of all sections
+2. Core Value check — still the right priority?
+3. Audit Out of Scope — reasons still valid?
+4. Update Context with current state
+
 ---
 
-_Last updated: 2026-04-13 after v0.5.0 milestone archive_
+_Last updated: 2026-05-04 — started milestone v0.7.0 LAN-only Mode_

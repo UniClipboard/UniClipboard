@@ -1,10 +1,10 @@
 ---
 gsd_state_version: 1.0
-milestone: null
-milestone_name: null
-status: idle
-stopped_at: v0.5.0 audit backfilled and phase dirs relocated; ready for v0.7.0
-last_updated: "2026-05-04T01:57:55Z"
+milestone: v0.7.0
+milestone_name: LAN-only Mode
+status: planning
+stopped_at: null
+last_updated: "2026-05-04T00:00:00Z"
 last_activity: 2026-05-04
 progress:
   total_phases: 0
@@ -18,17 +18,17 @@ progress:
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-04-13)
+See: .planning/PROJECT.md (updated 2026-05-04)
 
 **Core value:** Seamless clipboard synchronization across devices — copy on one, paste on another
-**Current focus:** No active milestone
+**Current focus:** v0.7.0 LAN-only Mode — 把 iroh 公网中继回落做成用户可控开关，并暴露连接通道指示器
 
 ## Current Position
 
-Milestone: none (v0.7.0 planning imminent)
-Status: idle
-Latest shipped milestone: v0.5.0 Local Encrypted Search (audit backfilled 2026-05-04)
-Last activity: 2026-05-04 - Backfilled v0.5.0 milestone audit; relocated `.planning/phases/{60, 88..93, 92.1}-*/` into their archive homes; discarded `migrated-to-gsd/` (77-81, never implemented)
+Phase: Not started (defining requirements)
+Plan: —
+Status: Defining requirements
+Last activity: 2026-05-04 — Milestone v0.7.0 started
 
 ## Pending Todos
 
@@ -46,8 +46,7 @@ Last activity: 2026-05-04 - Backfilled v0.5.0 milestone audit; relocated `.plann
 
 ## Blockers/Concerns
 
-- The next milestone has not been defined yet.
-- `.planning/REQUIREMENTS.md` should be recreated only when the next milestone starts.
+无（v0.7.0 已启动，进入 requirements 定义）。
 
 ### Quick Tasks Completed
 
@@ -59,4 +58,5 @@ Last activity: 2026-05-04 - Backfilled v0.5.0 milestone audit; relocated `.plann
 ## Session Continuity
 
 Last milestone archive completed: v0.5.0 on 2026-04-13 (audit backfilled 2026-05-04)
-Next recommended step: `$gsd-new-milestone v0.7.0`
+Current milestone: v0.7.0 LAN-only Mode (started 2026-05-04)
+Next recommended step: confirm REQUIREMENTS.md → spawn gsd-roadmapper

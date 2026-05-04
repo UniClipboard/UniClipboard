@@ -97,37 +97,48 @@ pub struct TransferProgressHandlers {
 /// 3 add handlers by extending [`IrohNodeBuilder`], not by adding shutdown
 /// paths here.
 pub struct IrohNode {
-    #[allow(dead_code)] // held so the endpoint stays alive for the router's lifetime
     endpoint: Arc<Endpoint>,
     router: Router,
 }
 
 impl IrohNode {
-    /// Shut the iroh node down cleanly. Triggers
-    /// [`iroh::protocol::ProtocolHandler::shutdown`] on every registered
-    /// handler, stops the accept loop, and drops the underlying UDP socket
-    /// + relay session.
+    /// 优雅关闭 iroh 节点。两步序列均为信号驱动,不再用外层 timeout 与 iroh
+    /// 内部状态机 race。
     ///
-    /// Best-effort: caller is on the teardown path so we log and swallow
-    /// the error — there is no recourse, and leaking an iroh node past a
-    /// process exit is harmless (the OS reaps the socket).
+    /// 1. [`Endpoint::close`] —— 显式跑完 iroh 自带的关闭状态机:cancel
+    ///    `at_close_start` token、`address_lookup().clear()` 同步停掉 mDNS /
+    ///    pkarr 子任务、发送 QUIC `CONNECTION_CLOSE`、`wait_idle` 等 ack
+    ///    (自带 ~3s probe timeout)、cancel actors、shutdown runtime。**整条
+    ///    链路本身就是有界的**;再叠一层更短的外层 timeout 只会把 ack 阶段
+    ///    从"事件驱动地等到 OK 或自然超时"退化成"中途砍断 → `EndpointInner::drop`
+    ///    走 ungraceful abort 喷 ERROR + 留下 mDNS 残留任务"。
+    /// 2. [`Router::shutdown`] —— endpoint 已 closed 后,router 的 accept loop
+    ///    在 `endpoint.accept()` 处自然返回 None 退出,这一步主要是 join 已
+    ///    spawn 的 protocol handler shutdown(例如 iroh-blobs 的 store 关闭)
+    ///    并 abort 残留 accept 任务。理应很快,但保留一个比 endpoint.close
+    ///    自带预算更大的 watchdog 兜底已知 upstream bug n0-computer/iroh#3875
+    ///    (router task 偶发不返回);触发时 endpoint 已 closed,task drop 不会
+    ///    再喷 socket ERROR。
     ///
-    /// Wrapped in a timeout because `Router::shutdown` can stall past the
-    /// QUIC 3×PTO draining budget (observed >4s on relay paths). See
-    /// n0-computer/iroh#3875. On timeout the OS reclaims the UDP socket
-    /// and relay keepalives lapse on their own.
+    /// 上层 GUI 退出路径再有 `DAEMON_SHUTDOWN_TIMEOUT = 15s` 兜底,所以这里不
+    /// 需要也不应该用激进的硬截断。
     #[instrument(skip_all)]
     pub async fn shutdown(self) {
-        const SHUTDOWN_BUDGET: Duration = Duration::from_secs(2);
-        match tokio::time::timeout(SHUTDOWN_BUDGET, self.router.shutdown()).await {
+        // Step 1:跑完 iroh 自带的事件驱动关闭。无外层 timeout —— iroh 内部
+        // 已经层层有界(详见上面 doc)。
+        self.endpoint.close().await;
+
+        // Step 2:join router cleanup。watchdog 仅用于规避 iroh#3875。
+        const ROUTER_WATCHDOG: Duration = Duration::from_secs(5);
+        match tokio::time::timeout(ROUTER_WATCHDOG, self.router.shutdown()).await {
             Ok(Ok(())) => {}
             Ok(Err(err)) => {
-                tracing::warn!(error = %err, "iroh router shutdown failed; continuing teardown");
+                tracing::warn!(error = %err, "iroh router task joined with error");
             }
             Err(_) => {
                 tracing::warn!(
-                    budget_ms = SHUTDOWN_BUDGET.as_millis() as u64,
-                    "iroh router shutdown timed out (n0-computer/iroh#3875); abandoning",
+                    budget_ms = ROUTER_WATCHDOG.as_millis() as u64,
+                    "iroh router shutdown didn't return in budget (iroh#3875 watchdog tripped); endpoint already closed so socket cleanup is safe",
                 );
             }
         }

@@ -21,7 +21,7 @@
 
 ## Phases 概览
 
-- [x] **Phase 94: 后端字段落地** — `uc-core::Settings.network` 新增、HTTP DTO + view/patch 镜像、`uc-bootstrap` 唯一取反 helper 注入 `IrohNodeConfig.disable_relays`（completed 2026-05-04，human UAT 2 项 pending）
+- [x] **Phase 94: 后端字段落地** — `uc-core::Settings.network` 新增、HTTP DTO + view/patch 镜像、`uc-bootstrap` 唯一取反 helper 注入 `IrohNodeConfig.disable_relays`（completed 2026-05-04，human UAT 2/2 PASSED via real daemon log）
 - [ ] **Phase 95: 前端 NetworkSection + 重启 UX** — 替换占位组件为真实开关、三态视觉、持久 inline 重启通知 + "立即重启"按钮、tooltip 披露 4 类外网请求
 - [ ] **Phase 96: 连接通道指示器** — 新增 `ConnectionChannelPort` + `IrohConnectionChannelAdapter`、`PeerSnapshotDto.channel`、设备列表徽章、tray icon 状态徽章、"Out of LAN" 灰态
 - [ ] **Phase 97: onboarding + 文档 + 跨平台 QA gate** — 配对成功 inline banner + dismiss 持久化、`docs/lan-only.md` / `docs/terminology.md` / changelog、跨平台 release-gate QA 矩阵
@@ -155,7 +155,7 @@ Plans:
 
 | Phase | Plans Complete | Status      | Completed |
 |-------|----------------|-------------|-----------|
-| 94. 后端字段落地                  | 6/6 | Complete (human UAT pending) | 2026-05-04 |
+| 94. 后端字段落地                  | 6/6 | Complete | 2026-05-04 |
 | 95. 前端 NetworkSection + 重启 UX | 0/1 | Not started | - |
 | 96. 连接通道指示器                | 0/1 | Not started | - |
 | 97. onboarding + 文档 + 跨平台 QA | 0/1 | Not started | - |

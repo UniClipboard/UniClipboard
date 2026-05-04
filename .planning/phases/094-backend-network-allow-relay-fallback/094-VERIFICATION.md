@@ -1,23 +1,34 @@
 ---
 phase: 094-backend-network-allow-relay-fallback
 verified: 2026-05-04T13:00:00Z
-status: human_needed
+human_verified: 2026-05-04T14:30:00Z
+status: passed
 score: 4/4 must-haves verified
 overrides_applied: 0
-human_verification:
-  - test: "在 settings.json 手工添加 network.allow_relay_fallback: false 后重启 daemon"
-    expected: "启动日志（target=settings.network）可见 disable_relays = true 字段；同 daemon 进程内 IrohNodeBuilder::bind 实际以 RelayMode::Disabled 模式 bind（此时 endpoint.addr().addrs 不含 TransportAddr::Relay 项，等价于 Tier B 自动断言 relay_disabled_publishes_no_relay_addrs）"
-    why_human: "Success criterion #1 显式要求 daemon 启动后端到端验证；Plan 06 的 Tier B integration test 与 Plan 05 的 truth-table 单测分别覆盖了 endpoint 行为与配置翻译，但端到端"settings.json → 重启 daemon → 日志 + endpoint 行为联合可观察"链路只能由 human 在真实 daemon 启动场景中验证（Tier C 手工抓包/日志查看）"
-  - test: "反向用例：allow_relay_fallback: true 或缺 network 段时启动 daemon"
-    expected: "endpoint 仍可观察到 Relay 候选地址（启动日志 disable_relays = false；endpoint.addr().addrs 含 TransportAddr::Relay 候选）"
-    why_human: "ROADMAP success criterion #1 同条款；CI 环境 / Relay mesh 连通性不可靠（PATTERNS.md §11 critical finding 3 已锁定），所以 Plan 06 Tier B 的 relay_default_binds_without_panic 仅断"bind 不 panic"弱不等式，不强断 Relay 候选必须存在 — 真实存在性必须由 human 在公网可达的环境中验证"
+human_verification_result: passed
+human_evidence:
+  - test: "settings.json allow_relay_fallback=false 后重启 daemon"
+    result: passed
+    evidence:
+      - "12:15:46.991Z settings.network: applying network.allow_relay_fallback=false → disable_relays=true (builders.rs:209)"
+      - "12:15:47.003Z iroh::_events::direct_addrs: addrs={DirectAddr 192.168.31.72:52692 Local, DirectAddr 198.18.0.1:52692 Local} — 仅 LAN/Local 直连 addr"
+      - "12:15 之后整段日志 ZERO 条 'home is now relay' INFO — endpoint 真的 RelayMode::Disabled，未注册 home relay"
+      - "12:16:05+ 与外网 peer bcb58fce2a 死循环重试连接（bcb58fce2a NodeAddr 仅含 relay_url + ip_addresses=[]）— 我方拒绝走 relay → 持久失败 → 上层重试。这正是 LAN-only 的目标行为"
+  - test: "反向用例 allow_relay_fallback=true 后重启 daemon"
+    result: passed
+    evidence:
+      - "12:11:46.924Z settings.network: applying network.allow_relay_fallback=true → disable_relays=false (builders.rs:209)"
+      - "12:11:13.031Z iroh::socket::transports::relay::actor: home is now relay https://aps1-1.relay.n0.iroh-canary.iroh.link/"
+      - "12:11:38.721Z iroh::socket::transports::relay::actor: home is now relay https://euc1-1.relay.n0.iroh-canary.iroh.link/"
+      - "endpoint 真的 RelayMode::Default，注册 home relay（即使 direct_addrs subset 不包含 relay 项 — 不同概念）"
 ---
 
 # Phase 94: 后端字段落地 Verification Report
 
 **Phase Goal：** 用户/客户端可以通过持久化 settings 与 daemon HTTP `/settings` 读写 `network.allow_relay_fallback` 字段；重启 daemon 后字段值通过唯一取反 helper 注入 iroh endpoint bind，使 LAN-only 真生效。
-**Verified：** 2026-05-04T13:00:00Z
-**Status：** human_needed（4/4 自动可验证 must-have 全部 VERIFIED；ROADMAP success criterion #1 的"重启 daemon 后启动日志可见"链路本质上是端到端手工验收，须 human 在真实 daemon 进程中确认）
+**Verified：** 2026-05-04T13:00:00Z（automated）
+**Human-verified：** 2026-05-04T14:30:00Z（real daemon startup logs — both directions PASSED）
+**Status：** passed（4/4 自动可验证 must-have + 2/2 human UAT 全部 VERIFIED）
 **Re-verification：** No — initial verification
 
 ## Goal Achievement
@@ -26,12 +37,12 @@ human_verification:
 
 | #   | Truth                                                                                                                                                          | Status     | Evidence                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | --- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| 1   | settings.json 手工添加 `network.allow_relay_fallback: false` 后重启 daemon，启动日志可见 `disable_relays = true` 且 endpoint 以 `RelayMode::Disabled` bind         | ⚠️ HUMAN   | 工程结构前提全部就位：(1) `uc-bootstrap/src/network_policy.rs:43` 唯一取反点把 `allow_relay_fallback=false → disable_relays=true`；(2) `builders.rs:200-203` + `non_gui_runtime.rs:294` 在装配点调 helper 后把 `iroh_config` 喂给 `build_space_setup_assembly`；(3) `builders.rs:209-214` + `non_gui_runtime.rs:296-301` 各自打 `tracing::info!(target: "settings.network", ..., disable_relays = iroh_config.disable_relays, "applying network.allow_relay_fallback={} → disable_relays={}", ...)`；(4) Tier B integration test `relay_disabled_publishes_no_relay_addrs`（uc-infra/tests/lan_only_relay_mode.rs:57-72）自动断言 `RelayMode::Disabled` bind 后 `endpoint.addr().addrs` 不含 `TransportAddr::Relay` 项 — 但端到端"settings.json → daemon 重启 → 日志 + endpoint 行为联合"必须 human 验证（见 human_verification 段）                                                                                       |
+| 1   | settings.json 手工添加 `network.allow_relay_fallback: false` 后重启 daemon，启动日志可见 `disable_relays = true` 且 endpoint 以 `RelayMode::Disabled` bind         | ✓ VERIFIED | 工程结构 + 真实 daemon 日志双重证据（2026-05-04T14:30 human-verified）：(1) `network_policy.rs:43` 唯一取反；(2) `builders.rs:200-203` + `non_gui_runtime.rs:294` 装配；(3) `builders.rs:209-214` 启动 tracing — daemon log 双向证据：`12:15:46.991Z settings.network: applying network.allow_relay_fallback=false → disable_relays=true` + `12:11:46.924Z settings.network: applying network.allow_relay_fallback=true → disable_relays=false`；(4) **endpoint 真实 RelayMode 行为**：12:15 (LAN-only on) 之后整段日志 ZERO 条 `home is now relay` INFO，对比 12:11/12:11:13.031/12:11:38.721 各注册一次 `home is now relay aps1-1/euc1-1.relay.n0.iroh-canary` — 直接证明 endpoint 真的 RelayMode::Disabled；(5) 12:16:05+ 与外网 peer `bcb58fce2a`（NodeAddr 仅含 relay_url + ip_addresses=[]）死循环重试连接 — 我方拒绝 relay → 持久失败，正是 LAN-only 目标行为；(6) Tier B integration `relay_disabled_publishes_no_relay_addrs` 2/2 PASS                                                                                                                              |
 | 2   | HTTP `PUT /settings` 提交带 `network.allow_relay_fallback` 的 patch 后再 GET 一致；不带 `network` 段的旧客户端 PUT 仍 200 且不抹掉已存在 `network` 字段          | ✓ VERIFIED | `uc-webserver/tests/settings_network_smoke.rs` 3 个 `#[tokio::test]` 全跑无 `#[ignore]`：`roundtrip_network_disable`（写 false 后 GET 读回 false + restartRequired=true）；`general_only_patch_no_op`（旧客户端纯 general patch wire 响应 restartRequired=false 且 data.network.allowRelayFallback=true 不被抹掉）；`restart_required_truth_table`（5 case truth-table）。Test result: `3 passed; 0 failed; 0 ignored`；同时 `uc-application` `apply_settings_patch` 5 测试全过（None/嵌套None/Some(false)/Some(true)/From 透明搬运）；`uc-daemon-contract` 9 个 DTO test 全过                                                                                                                                                                                                                                                                                                                                          |
 | 3   | 老 settings.json 缺 `network` 段反序列化字段断言 `== true`（手写 Default + serde(default) 双兜底）；schema_version 数值不变                                          | ✓ VERIFIED | `uc-core/src/settings/model.rs:191-204` 新增 `NetworkSettings { allow_relay_fallback: bool }`，字段级 `#[serde(default = "default_allow_relay_fallback")]`，helper 在 `model.rs:203` 返回 `true`；`Settings.network` 在 `model.rs:234` 顶层挂载（`#[serde(default)]`）；`uc-core/src/settings/defaults.rs:227-242` 手写 `impl Default for NetworkSettings` 含 Pitfall 2 警示三行注释（`// 默认 true = 允许 fallback。`）；**禁止 `#[derive(Default)]`** 验证：`grep -E '#\[derive\([^)]*Default[^)]*\)\]\s*\npub struct NetworkSettings\b'` 全工程零命中；`Settings::default()` 在 `defaults.rs:278` 字段列表追加 `network: NetworkSettings::default()`；`CURRENT_SCHEMA_VERSION = 1` 保持不变（`model.rs:7`）。`cargo test -p uc-core --lib settings::defaults::tests`：5/5 全过（`network_settings_default_allows_relay_fallback`/`settings_default_includes_network_with_fallback_allowed`/`old_settings_json_without_network_section_falls_back_to_default`/`explicit_allow_relay_fallback_false_is_preserved`/`explicit_allow_relay_fallback_true_is_preserved`） |
 | 4   | `uc-bootstrap::relay_policy_to_iroh_config()` truth-table 单测覆盖 `(allow=true → disable=false)` 与 `(allow=false → disable=true)`；全工程 grep `disable_relays` 仅一处取反点 | ✓ VERIFIED | `uc-bootstrap/src/network_policy.rs:48-76` 包含 3 个 truth-table 单测：`allow_true_means_disable_false`、`allow_false_means_disable_true`、`rendezvous_override_passes_through`；`cargo test -p uc-bootstrap --lib network_policy`：3/3 全过。**单一取反点 grep 守护**：`grep -rn -v '^\s*//' src-tauri/crates/ --include='*.rs' \| grep -E 'disable_relays\s*=\s*\!\|disable_relays:\s*\!'` 在去注释后**仅 1 处命中**：`src-tauri/crates/uc-bootstrap/src/network_policy.rs:43:        disable_relays: !allow_relay_fallback,`。`builders.rs:197` 与 `non_gui_runtime.rs:292` 的 `disable_relays = !` 出现在注释行（已 grep -v 过滤）说明禁止；代码层零命中                                                                                                                                                                                                                                                          |
 
-**Score：** 3/4 truths VERIFIED + 1/4 truth HUMAN（工程结构前提全过；端到端验证需 human）
+**Score：** 4/4 truths VERIFIED（人 UAT 提供端到端真实 daemon 双向证据；工程结构 + Tier B + Tier C 三层证据合流）
 
 ### Required Artifacts
 

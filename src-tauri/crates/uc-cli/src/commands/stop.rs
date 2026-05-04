@@ -4,6 +4,7 @@ use std::fmt;
 use std::time::Duration;
 
 use serde::Serialize;
+use uc_daemon_local::process_metadata::{DaemonPidMetadata, DaemonProcessMode};
 
 use crate::exit_codes;
 use crate::output;
@@ -14,14 +15,31 @@ const STOP_POLL_INTERVAL: Duration = Duration::from_millis(200);
 #[derive(Serialize)]
 pub struct StopOutput {
     pub status: &'static str,
+    /// Populated when `status == "managed_by_gui"` so the JSON consumer can
+    /// surface "the daemon is owned by GUI process N" without having to
+    /// re-read the PID file.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pid: Option<u32>,
 }
 
 impl fmt::Display for StopOutput {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self.status {
-            "stopped" => write!(f, "Daemon stopped"),
-            "not_running" => write!(f, "Daemon is not running"),
-            status => write!(f, "Daemon {}", status),
+        match (self.status, self.pid) {
+            ("stopped", _) => write!(f, "Daemon stopped"),
+            ("not_running", _) => write!(f, "Daemon is not running"),
+            ("managed_by_gui", Some(pid)) => write!(
+                f,
+                "Daemon (pid {pid}) is running inside the UniClipboard GUI. \
+                 Quit the GUI from its tray menu instead — `uniclip stop` \
+                 won't kill it."
+            ),
+            ("managed_by_gui", None) => write!(
+                f,
+                "Daemon is running inside the UniClipboard GUI. \
+                 Quit the GUI from its tray menu instead."
+            ),
+            (status, Some(pid)) => write!(f, "Daemon {} (pid {})", status, pid),
+            (status, None) => write!(f, "Daemon {}", status),
         }
     }
 }
@@ -29,7 +47,7 @@ impl fmt::Display for StopOutput {
 /// Run the stop command.
 pub async fn run(json: bool, _verbose: bool) -> i32 {
     run_stop_with(
-        || uc_daemon_local::process_metadata::read_pid_file(),
+        || uc_daemon_local::process_metadata::read_pid_metadata(),
         |pid| is_process_running(pid),
         |pid| send_sigterm(pid),
         json,
@@ -39,25 +57,27 @@ pub async fn run(json: bool, _verbose: bool) -> i32 {
 
 /// Testable inner implementation that accepts injectable closures.
 ///
-/// `read_pid` returns `Result<Option<u32>>` — the daemon PID if running.
+/// `read_metadata` returns `Result<Option<DaemonPidMetadata>>` — the daemon
+/// PID + process mode if a daemon is registered.
 /// `is_process_running` checks whether a process with the given PID exists.
 /// `send_sigterm` sends SIGTERM to the given PID; returns `true` on success.
-pub(crate) async fn run_stop_with<ReadPid, IsRunning, SendSignal>(
-    read_pid: ReadPid,
+pub(crate) async fn run_stop_with<ReadMetadata, IsRunning, SendSignal>(
+    read_metadata: ReadMetadata,
     is_process_running: IsRunning,
     send_sigterm: SendSignal,
     json: bool,
 ) -> i32
 where
-    ReadPid: FnOnce() -> anyhow::Result<Option<u32>>,
+    ReadMetadata: FnOnce() -> anyhow::Result<Option<DaemonPidMetadata>>,
     IsRunning: Fn(u32) -> bool,
     SendSignal: FnOnce(u32) -> bool,
 {
-    // Step 1: Read PID file.
-    let pid = match read_pid() {
+    // Step 1: Read PID metadata.
+    let metadata = match read_metadata() {
         Ok(None) => {
             let out = StopOutput {
                 status: "not_running",
+                pid: None,
             };
             if let Err(e) = output::print_result(&out, json) {
                 eprintln!("Error: {}", e);
@@ -65,17 +85,37 @@ where
             }
             return exit_codes::EXIT_SUCCESS;
         }
-        Ok(Some(pid)) => pid,
+        Ok(Some(metadata)) => metadata,
         Err(e) => {
             eprintln!("Error: failed to read daemon PID file: {}", e);
             return exit_codes::EXIT_ERROR;
         }
     };
 
-    // Step 2: Check if process is actually running (stale PID file guard).
+    let pid = metadata.pid;
+
+    // Step 2: If the daemon is running inside a GUI shell (in-process mode),
+    // refuse to SIGTERM it. Killing it would tear down the entire GUI process
+    // and is almost never what the user wants — the GUI's own quit path is
+    // the correct shutdown route.
+    if matches!(metadata.mode, DaemonProcessMode::InProcess) {
+        let out = StopOutput {
+            status: "managed_by_gui",
+            pid: Some(pid),
+        };
+        if let Err(e) = output::print_result(&out, json) {
+            eprintln!("Error: {}", e);
+            return exit_codes::EXIT_ERROR;
+        }
+        return exit_codes::EXIT_ERROR;
+    }
+
+    // Step 3: Stale-PID guard — daemon registered itself but the OS process
+    // is gone (kill -9, crash, reboot without cleanup). Treat as not running.
     if !is_process_running(pid) {
         let out = StopOutput {
             status: "not_running",
+            pid: None,
         };
         if let Err(e) = output::print_result(&out, json) {
             eprintln!("Error: {}", e);
@@ -84,13 +124,13 @@ where
         return exit_codes::EXIT_SUCCESS;
     }
 
-    // Step 3: Send SIGTERM.
+    // Step 4: Send SIGTERM.
     if !send_sigterm(pid) {
         eprintln!("Error: failed to send stop signal to daemon (pid {})", pid);
         return exit_codes::EXIT_ERROR;
     }
 
-    // Step 4: Poll until process exits or timeout.
+    // Step 5: Poll until process exits or timeout.
     let deadline = std::time::Instant::now() + STOP_TIMEOUT;
     loop {
         tokio::time::sleep(STOP_POLL_INTERVAL).await;
@@ -109,8 +149,11 @@ where
         }
     }
 
-    // Step 5: Report success.
-    let out = StopOutput { status: "stopped" };
+    // Step 6: Report success.
+    let out = StopOutput {
+        status: "stopped",
+        pid: Some(pid),
+    };
     if let Err(e) = output::print_result(&out, json) {
         eprintln!("Error: {}", e);
         return exit_codes::EXIT_ERROR;
@@ -145,4 +188,78 @@ pub(crate) fn send_sigterm(pid: u32) -> bool {
         .output()
         .map(|o| o.status.success())
         .unwrap_or(false)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::Arc;
+
+    fn metadata(pid: u32, mode: DaemonProcessMode) -> DaemonPidMetadata {
+        DaemonPidMetadata {
+            pid,
+            mode,
+            started_at_ms: 0,
+        }
+    }
+
+    #[tokio::test]
+    async fn refuses_to_sigterm_in_process_daemon() {
+        // Killing the GUI's hosted daemon would also kill the GUI, so `stop`
+        // must refuse and exit with EXIT_ERROR (forces shell scripts to
+        // notice rather than silently doing nothing).
+        let signal_sent = Arc::new(AtomicBool::new(false));
+        let signal_sent_for_closure = signal_sent.clone();
+
+        let exit = run_stop_with(
+            || Ok(Some(metadata(4242, DaemonProcessMode::InProcess))),
+            |_pid| true,
+            move |_pid| {
+                signal_sent_for_closure.store(true, Ordering::SeqCst);
+                true
+            },
+            true, // json output (silenced from terminal)
+        )
+        .await;
+
+        assert_eq!(exit, exit_codes::EXIT_ERROR);
+        assert!(
+            !signal_sent.load(Ordering::SeqCst),
+            "SIGTERM must not be sent for an in-process daemon"
+        );
+    }
+
+    #[tokio::test]
+    async fn standalone_daemon_receives_sigterm() {
+        let signal_sent = Arc::new(AtomicBool::new(false));
+        let signal_sent_for_closure = signal_sent.clone();
+        // Process is gone immediately after SIGTERM — keeps the test fast.
+        let process_alive = Arc::new(AtomicBool::new(true));
+        let process_alive_check = process_alive.clone();
+
+        let exit = run_stop_with(
+            || Ok(Some(metadata(7777, DaemonProcessMode::Standalone))),
+            move |_pid| process_alive_check.load(Ordering::SeqCst),
+            move |_pid| {
+                signal_sent_for_closure.store(true, Ordering::SeqCst);
+                process_alive.store(false, Ordering::SeqCst);
+                true
+            },
+            true,
+        )
+        .await;
+
+        assert_eq!(exit, exit_codes::EXIT_SUCCESS);
+        assert!(
+            signal_sent.load(Ordering::SeqCst),
+            "standalone daemon must receive SIGTERM"
+        );
+    }
+
+    #[tokio::test]
+    async fn no_daemon_running_returns_success() {
+        let exit = run_stop_with(|| Ok(None), |_pid| false, |_pid| false, true).await;
+        assert_eq!(exit, exit_codes::EXIT_SUCCESS);
+    }
 }

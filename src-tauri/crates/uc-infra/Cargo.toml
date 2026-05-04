@@ -5,6 +5,16 @@ license.workspace = true
 edition = "2021"
 description = "Infrastructure utilities and shared components for UniClipboard"
 
+[features]
+default = []
+# Phase 94 / Pitfall 3 — disables `IrohNodeBuilder::bind` 的 OnceCell 单进程
+# 守护，让下游 crate 的 e2e 测试在同 binary 内多次 bind sponsor + joiner
+# endpoint。`#[cfg(test)]` 只对正在 `cargo test` 的 crate 生效，不传递到
+# 依赖；下游 e2e（如 uc-bootstrap/tests/slice*_e2e.rs）必须显式启用此 feature
+# 来 elide 守护。**production build 严禁启用此 feature**，否则 Pitfall 3
+# 结构性防御失效。见 src/network/iroh/node.rs 上的 BIND_LOCK doc comment。
+test-util = []
+
 [dependencies]
 # ===== Workspace crates =====
 uc-core = { path = "../uc-core" }

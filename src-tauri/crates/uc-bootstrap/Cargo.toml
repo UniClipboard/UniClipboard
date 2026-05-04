@@ -39,3 +39,8 @@ wiremock = "0.6"
 # Slice 2 Phase 2 · T12 — clipboard e2e packs plaintext as `Bytes`
 # for `ClipboardSyncFacade::dispatch_entry`.
 bytes = "1.7"
+# Phase 94 / plan 06 — e2e 测试同 binary 内多次 IrohNodeBuilder::bind
+# sponsor + joiner 双 endpoint；`uc-infra/test-util` feature 在测试构建下
+# elide BIND_LOCK 守护（production build 不启用此 feature，结构性防御依然
+# 生效）。见 uc-infra/src/network/iroh/node.rs BIND_LOCK doc comment。
+uc-infra = { path = "../uc-infra", features = ["test-util"] }

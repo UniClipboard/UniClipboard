@@ -28,7 +28,7 @@ uc-application / uc-core
 - Tauri 事件循环：`RunEvent::ExitRequested` / `Reopen` / 窗口事件
 - Tauri 系统集成：`TrayIconBuilder` 托盘、`WebviewWindowBuilder` 窗口、
   `tauri-plugin-global-shortcut`、`tauri-plugin-autostart`、
-  `tauri-plugin-stronghold`、`tauri-plugin-updater` 等
+  `tauri-plugin-updater` 等
 - Tauri 特有 API 包装：NSPanel quick_panel、Win32 窗口装饰
 - `AppHandle` 的持有与传播
 - 把 `uc-desktop` 提供的 `DesktopRuntime` 包成 Tauri State（`TauriAppRuntime`）

@@ -74,7 +74,6 @@ keyring = { version = "3.6.3", features = [
   "linux-native-sync-persistent",
 ] }
 thiserror = "2.0.17"
-iota_stronghold = "2.1"
 
 [dev-dependencies]
 tempfile = "3"

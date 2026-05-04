@@ -70,7 +70,6 @@
     "@tauri-apps/plugin-log": "2.7.1",
     "@tauri-apps/plugin-notification": "^2.3.3",
     "@tauri-apps/plugin-opener": "^2.5.2",
-    "@tauri-apps/plugin-stronghold": "~2.3.1",
     "@tauri-apps/plugin-updater": "^2.9.0",
     "framer-motion": "^12.23.26",
     "i18next": "^25.7.3",

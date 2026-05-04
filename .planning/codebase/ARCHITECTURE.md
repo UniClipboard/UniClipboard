@@ -189,7 +189,7 @@
 
 **Validation:** Domain types enforce invariants (e.g., typed ID newtypes in `uc-core/src/ids/`); business rule validation in use case layer
 
-**Encryption:** XChaCha20-Poly1305 AEAD in `uc-infra/src/security/encryption.rs`; Argon2id KDF for passphrase-to-key; key slots file system at `uc-infra/src/fs/key_slot_store.rs`; Tauri Stronghold plugin for secure master key storage
+**Encryption:** XChaCha20-Poly1305 AEAD in `uc-infra/src/security/encryption.rs`; Argon2id KDF for passphrase-to-key; key slots file system at `uc-infra/src/fs/key_slot_store.rs` (KEK-wrapped master keys); system keyring access via `keyring` crate with platform-native backends (Keychain / Credential Manager / Secret Service)
 
 **P2P Networking:** libp2p with mDNS discovery, TCP transport, Noise protocol encryption, yamux multiplexing; all in `uc-platform/src/adapters/libp2p_network.rs`
 

@@ -80,7 +80,6 @@
 - SHA-2 (0.10) - Cryptographic hashing
 - Blake3 (1.8.2) - Fast cryptographic hashing
 - Zeroize (1.8.2) - Secure memory clearing for sensitive data
-- Tauri Stronghold plugin - Hardware-backed key storage (password vault)
 
 **Networking:**
 
@@ -148,7 +147,6 @@
 - keyring (3.6.3) - System keyring access with platform-specific backends
 - config (0.15.19) - Configuration management
 - gethostname (1.1) - Device hostname retrieval
-- iota_stronghold (2.1) - Secure wallet/vault library
 - dirs (6.0) - Platform-specific directory paths
 - i18next (25.7.3) - Frontend internationalization
 - react-i18next (16.5.0) - React i18n integration
@@ -160,7 +158,6 @@
 - tauri-plugin-single-instance (2) - Prevent multiple app instances
 - tauri-plugin-opener (2.5.2) - Open URLs/files with system handlers
 - tauri-plugin-log (2.7.1) - Frontend logging bridge to backend
-- tauri-plugin-stronghold (2.3.1) - Hardware/OS keychain integration
 
 **Frontend Utilities:**
 

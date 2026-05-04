@@ -122,13 +122,21 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 if window.label() == "main" {
-                    api.prevent_close();
-                    let _ = window.hide();
-                    #[cfg(target_os = "macos")]
-                    if let Err(error) = window.app_handle().set_dock_visibility(false) {
-                        warn!(error = %error, "Failed to hide Dock icon after hiding main window");
+                    // Only hide-to-tray if the tray actually came up. When tray
+                    // init fails (treated as non-fatal during setup), hiding
+                    // the window plus the Dock icon would leave the app
+                    // running with no UI surface to recover or quit it.
+                    if window.state::<TrayState>().is_initialized() {
+                        api.prevent_close();
+                        let _ = window.hide();
+                        #[cfg(target_os = "macos")]
+                        if let Err(error) = window.app_handle().set_dock_visibility(false) {
+                            warn!(error = %error, "Failed to hide Dock icon after hiding main window");
+                        }
+                        info!("Main window hidden to tray");
+                    } else {
+                        info!("Tray unavailable; allowing main window close to proceed");
                     }
-                    info!("Main window hidden to tray");
                 }
             }
         })
@@ -169,14 +177,6 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
             MacosLauncher::LaunchAgent,
             Some(vec![]),
         ))
-        .plugin(
-            tauri_plugin_stronghold::Builder::new(move |key| {
-                // Use a simple password hash function
-                // In production, this should use Argon2 or similar
-                key.as_bytes().to_vec()
-            })
-            .build(),
-        )
         .setup(move |app| {
             // Set AppHandle on runtime so it can emit events to frontend
             // In Tauri 2, use app.handle() to get the AppHandle
@@ -398,7 +398,7 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
             crate::commands::quick_panel::finalize_quick_panel_show,
         ])
         .build(tauri_ctx)
-        .expect("error building tauri application")
+        .map_err(|error| anyhow::anyhow!("error building tauri application: {error}"))?
         .run(move |app_handle, event| {
             match event {
                 tauri::RunEvent::ExitRequested { api, .. } => {

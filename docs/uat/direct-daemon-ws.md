@@ -25,7 +25,6 @@ This runbook verifies the end-to-end WebSocket path from the browser (React fron
 - L3 encryption enforcement (Phase 76 scope)
 - End-to-end P2P clipboard sync (Phase 76+ scope)
 - macOS system clipboard integration
-- Stronghold vault operations
 
 ---
 

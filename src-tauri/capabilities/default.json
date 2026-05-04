@@ -22,7 +22,6 @@
     "autostart:allow-enable",
     "autostart:allow-disable",
     "autostart:allow-is-enabled",
-    "stronghold:default",
     "updater:default",
     "notification:default",
     "global-shortcut:allow-register",

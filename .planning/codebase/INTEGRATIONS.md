@@ -51,13 +51,13 @@
 
 **Key Storage:**
 
-- Tauri Stronghold plugin (2.3.1) - Hardware/OS keychain backend
-  - macOS: Uses Keychain
-  - Windows: Uses DPAPI
-  - Linux: Uses encrypted local storage
 - JSON key slot store with KEK-wrapped master keys
   - Implementation: `src-tauri/crates/uc-infra/src/fs/key_slot_store.rs`
 - Master key derivation: Argon2id from user passphrase
+- System keyring access via `keyring` crate (3.6.3) with platform-native backends
+  - macOS: Keychain (`apple-native`)
+  - Windows: Credential Manager (`windows-native`)
+  - Linux: Secret Service (`linux-native-sync-persistent`)
 
 **Encryption:**
 
@@ -132,7 +132,7 @@
 
 **Secrets location:**
 
-- Encryption keys: Tauri Stronghold + JSON key slot store
+- Encryption keys: JSON key slot store with KEK-wrapped master keys
 - No API keys or credentials in code
 - Password: User-provided via UI at initialization
 
@@ -197,21 +197,21 @@
 **macOS:**
 
 - System clipboard access via native APIs
-- Keychain integration (Stronghold backend)
+- Keychain integration (via `keyring` crate `apple-native` backend)
 - Transparent title bar and window effects
 - Autostart via LaunchAgent (tauri-plugin-autostart)
 
 **Windows:**
 
 - Windows clipboard access
-- DPAPI key storage (Stronghold backend)
+- Credential Manager key storage (via `keyring` crate `windows-native` backend)
 - Window glass effect (hudWindow)
 - Registry autostart configuration
 
 **Linux:**
 
 - X11/Wayland clipboard access
-- Encrypted local key storage (Stronghold backend)
+- Secret Service key storage (via `keyring` crate `linux-native-sync-persistent` backend)
 - Standard window decorations
 
 ---

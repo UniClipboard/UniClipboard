@@ -1,10 +1,11 @@
 ---
 phase: 95
 slug: networksection-ux
-status: draft
+status: approved
 shadcn_initialized: true
 preset: radix-nova
 created: 2026-05-04
+reviewed_at: 2026-05-04
 ---
 
 # Phase 95 — UI Design Contract
@@ -299,14 +300,14 @@ NetworkSection (renders SettingGroup)
 
 ## Checker Sign-Off
 
-- [ ] Dimension 1 Copywriting: PASS (双语完整 + 禁词检查 + verb+noun CTA + 错误文案带恢复路径)
-- [ ] Dimension 2 Visuals: PASS (RestartBanner accent tint vs CTA primary fill 视觉对比清晰；3 态实质 = 2 态布尔 (pending true/false))
-- [ ] Dimension 3 Color: PASS (60/30/10 严守，accent 列表显式，destructive 仅限 error sub-state)
-- [ ] Dimension 4 Typography: PASS (3 sizes + 2 weights，全部 token 复用)
-- [ ] Dimension 5 Spacing: PASS (4px 倍数；exceptions 显式且有理由)
-- [ ] Dimension 6 Registry Safety: PASS (无新 registry，无新 block，无 third-party)
+- [x] Dimension 1 Copywriting: PASS (双语完整 + 禁词检查 + verb+noun CTA + 错误文案带恢复路径)
+- [x] Dimension 2 Visuals: PASS (RestartBanner accent tint vs CTA primary fill 视觉对比清晰；3 态实质 = 2 态布尔 (pending true/false))
+- [x] Dimension 3 Color: PASS (60/30/10 严守，accent 列表显式，destructive 仅限 error sub-state)
+- [x] Dimension 4 Typography: PASS (3 sizes + 2 weights，全部 token 复用)
+- [x] Dimension 5 Spacing: PASS (4px 倍数；exceptions 显式且有理由)
+- [x] Dimension 6 Registry Safety: PASS (无新 registry，无新 block，无 third-party)
 
-**Approval:** pending (UI-checker validates next)
+**Approval:** APPROVED — gsd-ui-checker — 2026-05-04
 
 ---
 

@@ -1,6 +1,7 @@
 pub mod autostart;
 pub mod error;
 pub mod quick_panel;
+pub mod restart;
 pub mod startup;
 pub mod storage;
 pub mod tray;
@@ -29,6 +30,7 @@ pub async fn get_device_id(
 // Re-export commonly used types
 pub use autostart::*;
 
+pub use restart::*;
 pub use startup::*;
 pub use storage::*;
 pub use updater::*;

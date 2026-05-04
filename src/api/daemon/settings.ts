@@ -225,7 +225,7 @@ export async function updateSettings(
  * Constructs a patch object that includes only the top-level settings sections present in the input.
  *
  * @param settings - A partial Settings object; only top-level sections that are defined will be included in the patch.
- * @returns A SettingsPatchRequest containing the provided sections with their corresponding fields. 
+ * @returns A SettingsPatchRequest containing the provided sections with their corresponding fields.
  */
 function toSettingsPatchRequest(settings: Partial<Settings>): SettingsPatchRequest {
   const patch: SettingsPatchRequest = {}

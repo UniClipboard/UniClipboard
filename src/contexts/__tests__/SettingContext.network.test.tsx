@@ -225,3 +225,64 @@ describe('SettingContext network — updateNetworkSetting + saveSetting restartR
     expect(outcome).toEqual({ restartRequired: false })
   })
 })
+
+describe('SettingContext network — 反向命名 + 契约 fence (Pitfall 1 + Pitfall 10)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockConnectDaemonWs.mockResolvedValue(undefined)
+    mockGetSettings.mockResolvedValue(baseSetting)
+    mockUpdateSettings.mockResolvedValue({ success: true, restartRequired: false })
+    mockEmitSettingsChanged.mockResolvedValue(undefined)
+    mockInvokeWithTrace.mockResolvedValue(undefined)
+
+    Object.defineProperty(window, 'matchMedia', {
+      writable: true,
+      value: vi.fn().mockReturnValue({
+        matches: false,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+      }),
+    })
+  })
+
+  it('updateNetworkSetting 不在 SettingContext 内取反 allowRelayFallback', async () => {
+    const { result } = renderSettingHook()
+    await waitFor(() => {
+      expect(result.current.setting).toEqual(baseSetting)
+    })
+
+    mockUpdateSettings.mockResolvedValueOnce({ success: true, restartRequired: true })
+
+    // 输入 false → 期望 PUT body 中真值 false（不取反）
+    await act(async () => {
+      await result.current.updateNetworkSetting({ allowRelayFallback: false })
+    })
+    const lastCall = mockUpdateSettings.mock.calls[mockUpdateSettings.mock.calls.length - 1]
+    const passed = lastCall[0] as Settings
+    expect(passed.network.allowRelayFallback).toBe(false)
+
+    // 输入 true → 期望 PUT body 中真值 true（不取反）
+    mockUpdateSettings.mockResolvedValueOnce({ success: true, restartRequired: false })
+    await act(async () => {
+      await result.current.updateNetworkSetting({ allowRelayFallback: true })
+    })
+    const lastCall2 = mockUpdateSettings.mock.calls[mockUpdateSettings.mock.calls.length - 1]
+    const passed2 = lastCall2[0] as Settings
+    expect(passed2.network.allowRelayFallback).toBe(true)
+  })
+
+  it('SettingContext 不暴露反向布尔镜像字段（禁止任何 UI 命名的 store 字段）', async () => {
+    const { result } = renderSettingHook()
+    await waitFor(() => {
+      expect(result.current.setting).toEqual(baseSetting)
+    })
+
+    // 用 join() 拼接禁词避免源码 grep 误命中（与 Plan 01 fence 同模式）
+    const forbidden = ['lan', 'Only'].join('')
+    const forbiddenUpdater = ['update', 'Lan', 'Only'].join('')
+    expect(result.current).not.toHaveProperty(forbidden)
+    expect(result.current).not.toHaveProperty(forbiddenUpdater)
+    expect(result.current.setting).not.toHaveProperty(forbidden)
+    expect(result.current.setting?.network).not.toHaveProperty(forbidden)
+  })
+})

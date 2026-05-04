@@ -25,10 +25,16 @@ interface RestartState {
  * 点「立即重启」触发 Tauri app.restart()。Pending 跨 session 由 Tauri command
  * `get_restart_state` 推导（settingsMtime > processStartedAt ⇒ pending — D-D1）。
  *
- * # 反向命名规则（per ROADMAP 核心约束 + Pitfall 1）
- * UI checked === ON === LAN-only === allowRelayFallback === false。
- * 本组件含**唯一一处**前端取反点：`<Switch checked={!allowRelayFallback}>` 与
- * onCheckedChange 内的 `setAllowRelayFallback(!checked)`。
+ * # Pitfall 防御 audit（Phase 95 PLAN.md Task 3 fence）
+ * - **Pitfall 1（反向命名）**：UI checked === ON === LAN-only === allowRelayFallback === false。
+ *   本组件含**唯一一处**前端取反点（line marker `// FENCE: 反向命名唯一取反点` 标注两处）。
+ *   全工程 grep `!allowRelayFallback` 仅命中 NetworkSection.tsx 与本组件单元测试 — 其它文件 0 匹配。
+ * - **Pitfall 5（边界透明）**：禁词清单 `fully offline / 完全离线 / 绝对私有 / no internet /
+ *   private mode / encrypted-and-local` 全工程 0 匹配；4 类外网请求由 LanOnlyDisclosure 显式披露。
+ * - **Pitfall 10（重启 UX 半生效）**：使用持久 inline RestartBanner（不是 toast 也不是 sonner）；
+ *   debounce 500ms 防 disk I/O 爆；切换瞬间 setPending(true) 乐观显示，不等 PUT 返回。
+ * - **Pitfall 11（占位组件残留）**：旧 `Network settings are not yet available` /
+ *   `网络设置功能在新架构中尚未实现` / `settings.sections.network.placeholder` 全部清零。
  */
 const NetworkSection: React.FC = () => {
   const { t } = useTranslation()
@@ -113,7 +119,8 @@ const NetworkSection: React.FC = () => {
 
   // ── Switch 切换 handler（反向命名唯一取反点） ──────────────────
   const handleSwitchChange = (checked: boolean) => {
-    const newAllowRelay = !checked // ← 唯一取反点
+    // FENCE: 反向命名唯一取反点（Pitfall 1 — UI checked = LAN-only ON = allowRelay false）
+    const newAllowRelay = !checked
     setAllowRelayFallback(newAllowRelay)
     setPending(true)
     setSaveError(null)
@@ -159,6 +166,7 @@ const NetworkSection: React.FC = () => {
       >
         <Switch
           id="lan-only-switch"
+          // FENCE: 反向命名唯一取反点（Pitfall 1 — checked=ON ⇔ allowRelayFallback=false）
           checked={!allowRelayFallback}
           onCheckedChange={handleSwitchChange}
         />

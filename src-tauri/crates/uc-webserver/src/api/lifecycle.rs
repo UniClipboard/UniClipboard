@@ -22,11 +22,10 @@ pub fn router() -> Router<DaemonApiState> {
         .route("/lifecycle/ready", post(lifecycle_ready_handler))
 }
 
-/// Signal that the GUI has unlocked and clipboard capture can begin.
+/// 通知 daemon：GUI 已解锁，可以开始采集剪贴板。
 ///
-/// In `GuiInProcess` mode, clipboard capture is gated until the GUI
-/// explicitly signals readiness (after the user unlocks the app).
-/// This endpoint opens that gate.
+/// 在 `GuiInProcess` 模式下，剪贴板采集被门控住，直到 GUI 在用户解锁
+/// 应用之后显式发出"就绪"信号；本端点负责打开该门控。
 async fn lifecycle_ready_handler(State(state): State<DaemonApiState>) -> impl IntoResponse {
     if let Some(gate) = &state.clipboard_capture_gate {
         let was_closed = !gate.swap(true, Ordering::SeqCst);

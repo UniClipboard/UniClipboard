@@ -80,23 +80,25 @@
 
 每条 v0.7.0 requirement 必须映射到唯一的 phase。下表由 `gsd-roadmapper` 在创建 ROADMAP.md 时回填。
 
-| REQ-ID | Phase # | Phase Name | Notes |
-|--------|---------|------------|-------|
-| NETSET-01 | TBD | TBD | |
-| NETSET-02 | TBD | TBD | |
-| NETSET-03 | TBD | TBD | |
-| NETSET-04 | TBD | TBD | |
-| NETSET-05 | TBD | TBD | |
-| NETSET-06 | TBD | TBD | |
-| INDIC-01 | TBD | TBD | |
-| INDIC-02 | TBD | TBD | |
-| INDIC-03 | TBD | TBD | |
-| INDIC-04 | TBD | TBD | |
-| ONBORD-01 | TBD | TBD | |
-| DOC-01 | TBD | TBD | |
-| DOC-02 | TBD | TBD | |
-| DOC-03 | TBD | TBD | |
+| REQ-ID     | Phase # | Phase Name                          | Notes |
+|------------|---------|-------------------------------------|-------|
+| NETSET-01  | 94      | 后端字段落地                        | `uc-core::NetworkSettings` 子结构 + 手写 `impl Default { allow_relay_fallback: true }`；禁止 `#[derive(Default)]` |
+| NETSET-02  | 94      | 后端字段落地                        | HTTP DTO 镜像 + `apply_settings_patch` 扩展 + 老 JSON 缺 `network` 段反序列化默认值测试 |
+| NETSET-03  | 94      | 后端字段落地                        | `uc-bootstrap::relay_policy_to_iroh_config()` 唯一取反点 + bind 时 `RelayMode::Disabled` 集成测试 |
+| NETSET-04  | 95      | 前端 NetworkSection + 重启 UX       | 替换 `NetworkSection.tsx` 占位组件；前端 store 状态名 `allowRelayFallback` 不维护 `lanOnly` 镜像 |
+| NETSET-05  | 95      | 前端 NetworkSection + 重启 UX       | 持久 inline 通知（非 toast）+ 三态视觉 + "立即重启" 按钮 + debounce 写入；防 Pitfall 10 |
+| NETSET-06  | 95      | 前端 NetworkSection + 重启 UX       | info icon tooltip 4 类外网请求披露；措辞与 `docs/lan-only.md`（DOC-01）逐字一致 |
+| INDIC-01   | 96      | 连接通道指示器                      | `ConnectionChannelPort` + `IrohConnectionChannelAdapter` 单一真相源；事件 + polling 双兜底；Unknown 态显式 |
+| INDIC-02   | 96      | 连接通道指示器                      | hover tooltip 解释 Relay 含义；与 `docs/lan-only.md` 一致 |
+| INDIC-03   | 96      | 连接通道指示器                      | LAN-only=ON 时跨网段设备渲染为 "Out of LAN" 灰态 + tooltip；恢复同网段后徽态自动回复 |
+| INDIC-04   | 96      | 连接通道指示器                      | system tray icon 状态徽章；跨平台 tray icon 形态在 Phase 95/96 启动前敲定 |
+| ONBORD-01  | 97      | onboarding + 文档 + 跨平台 QA       | wizard "Done" 后一次性 inline banner；"了解更多"跳 Phase 95 NetworkSection；dismiss 写入 settings `dismissed_tips` |
+| DOC-01     | 97      | onboarding + 文档 + 跨平台 QA       | `docs/lan-only.md` 三段式（会做 / 不会做 / 不在范围）；rendezvous 调用频次启动前 1 小时代码确认 |
+| DOC-02     | 97      | onboarding + 文档 + 跨平台 QA       | `docs/terminology.md` 推荐 vs 禁止用语；PR 模板 reviewer checklist 引用为强制 gate |
+| DOC-03     | 97      | onboarding + 文档 + 跨平台 QA       | v0.7.0 changelog / Release notes 三块（开关行为 / 通道徽章 / 边界限制）；与 `docs/lan-only.md` 与 UI tooltip 逐字一致 |
+
+**覆盖统计：** 14/14 requirements 全部映射到唯一 phase ✓
 
 ---
 
-*Last updated: 2026-05-04 — initial v0.7.0 requirements drafted from explore decisions + 4-way research synthesis*
+*Last updated: 2026-05-04 — traceability 表由 `gsd-roadmapper` 回填，14/14 覆盖*

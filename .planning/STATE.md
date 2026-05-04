@@ -7,9 +7,9 @@ stopped_at: null
 last_updated: "2026-05-04T00:00:00Z"
 last_activity: 2026-05-04
 progress:
-  total_phases: 0
+  total_phases: 4
   completed_phases: 0
-  total_plans: 0
+  total_plans: 4
   completed_plans: 0
   percent: 0
 ---
@@ -25,10 +25,19 @@ See: .planning/PROJECT.md (updated 2026-05-04)
 
 ## Current Position
 
-Phase: Not started (defining requirements)
+Phase: Not started (roadmap created, planning Phase 94 next)
 Plan: —
-Status: Defining requirements
-Last activity: 2026-05-04 — Milestone v0.7.0 started
+Status: Roadmap defined（4 phases / 14 reqs / 100% covered）
+Last activity: 2026-05-04 — Roadmap created (4 phases, 14 reqs covered)
+
+## Roadmap
+
+| Phase | Name                              | Requirements                                | 依赖           |
+|-------|-----------------------------------|---------------------------------------------|----------------|
+| 94    | 后端字段落地                      | NETSET-01, NETSET-02, NETSET-03             | 无             |
+| 95    | 前端 NetworkSection + 重启 UX     | NETSET-04, NETSET-05, NETSET-06             | Phase 94       |
+| 96    | 连接通道指示器                    | INDIC-01, INDIC-02, INDIC-03, INDIC-04      | Phase 94       |
+| 97    | onboarding + 文档 + 跨平台 QA     | ONBORD-01, DOC-01, DOC-02, DOC-03           | Phase 95, 96   |
 
 ## Pending Todos
 
@@ -46,7 +55,7 @@ Last activity: 2026-05-04 — Milestone v0.7.0 started
 
 ## Blockers/Concerns
 
-无（v0.7.0 已启动，进入 requirements 定义）。
+无（roadmap 完成，进入 Phase 94 plan-phase）。
 
 ### Quick Tasks Completed
 
@@ -59,4 +68,4 @@ Last activity: 2026-05-04 — Milestone v0.7.0 started
 
 Last milestone archive completed: v0.5.0 on 2026-04-13 (audit backfilled 2026-05-04)
 Current milestone: v0.7.0 LAN-only Mode (started 2026-05-04)
-Next recommended step: confirm REQUIREMENTS.md → spawn gsd-roadmapper
+Next recommended step: `/gsd-plan-phase 94` 起草 Phase 94 计划

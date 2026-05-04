@@ -3,9 +3,9 @@ gsd_state_version: 1.0
 milestone: null
 milestone_name: null
 status: idle
-stopped_at: v0.5.0 milestone archived
-last_updated: "2026-04-23T23:31:00.556Z"
-last_activity: 2026-04-23
+stopped_at: v0.5.0 audit backfilled and phase dirs relocated; ready for v0.7.0
+last_updated: "2026-05-04T01:57:55Z"
+last_activity: 2026-05-04
 progress:
   total_phases: 0
   completed_phases: 0
@@ -25,10 +25,10 @@ See: .planning/PROJECT.md (updated 2026-04-13)
 
 ## Current Position
 
-Milestone: none
+Milestone: none (v0.7.0 planning imminent)
 Status: idle
-Latest shipped milestone: v0.5.0 Local Encrypted Search
-Last activity: 2026-04-23 - Completed quick task 260423-mxu: macOS / Linux 多 rep 原子写入 — 当前这两平台仍走单 rep policy 降级
+Latest shipped milestone: v0.5.0 Local Encrypted Search (audit backfilled 2026-05-04)
+Last activity: 2026-05-04 - Backfilled v0.5.0 milestone audit; relocated `.planning/phases/{60, 88..93, 92.1}-*/` into their archive homes; discarded `migrated-to-gsd/` (77-81, never implemented)
 
 ## Pending Todos
 
@@ -58,5 +58,5 @@ Last activity: 2026-04-23 - Completed quick task 260423-mxu: macOS / Linux 多 r
 
 ## Session Continuity
 
-Last milestone archive completed: v0.5.0 on 2026-04-13
-Next recommended step: `$gsd-new-milestone`
+Last milestone archive completed: v0.5.0 on 2026-04-13 (audit backfilled 2026-05-04)
+Next recommended step: `$gsd-new-milestone v0.7.0`

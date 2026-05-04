@@ -19,13 +19,15 @@ This milestone added local encrypted clipboard search across the product. Search
 
 ### Known Gaps
 
-- This milestone was archived without a standalone milestone audit file.
 - Phase 93 was completed manually, and the planning record for that work was backfilled during archive rather than maintained live.
+- ~~No standalone milestone audit file~~ — backfilled 2026-05-04 (`v0.5.0-MILESTONE-AUDIT.md`); planning gaps accepted as discarded debt.
 
 ### Archive Files
 
 - `.planning/milestones/v0.5.0-ROADMAP.md`
 - `.planning/milestones/v0.5.0-REQUIREMENTS.md`
+- `.planning/milestones/v0.5.0-MILESTONE-AUDIT.md` (backfilled 2026-05-04)
+- `.planning/milestones/v0.5.0-phases/` (relocated 2026-05-04)
 
 ---
 

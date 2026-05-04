@@ -71,12 +71,13 @@ See:
 
 - `.planning/milestones/v0.5.0-ROADMAP.md`
 - `.planning/milestones/v0.5.0-REQUIREMENTS.md`
+- `.planning/milestones/v0.5.0-MILESTONE-AUDIT.md` (backfilled 2026-05-04)
 
 Archive note:
 
 - Archived on 2026-04-13
 - Phase 93 was completed manually and backfilled during milestone archive
-- Archived without a standalone milestone audit file
+- Audit file backfilled on 2026-05-04 — passed (23/23 requirements, planning gaps accepted as discarded debt)
 
 </details>
 

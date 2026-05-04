@@ -1,28 +1,62 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use anyhow::{Context, Result};
+use serde::{Deserialize, Serialize};
 
 use uc_application::facade::AppPaths;
 use uc_platform::app_dirs::DirsAppDirsAdapter;
 use uc_platform::ports::AppDirsPort;
 
+/// 描述 daemon 进程是怎么被拉起的——决定它能不能由 `cli stop` SIGTERM 掉。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DaemonProcessMode {
+    /// 独立 daemon 进程：`cli start` 拉起的 detached 子进程，或者用户在
+    /// 终端直接 `uniclipboard-daemon`。`cli stop` 可以安全地 SIGTERM 它。
+    Standalone,
+    /// in-process daemon：跑在 GUI shell 自己的进程里（`uc-tauri` 等
+    /// 通过 [`DaemonRunMode::GuiInProcess`] 启动）。`cli stop` **必须拒绝**
+    /// 对它发 SIGTERM——会把整个 GUI 一起带挂；正确的关闭方式是用户去
+    /// 关闭 GUI。
+    ///
+    /// [`DaemonRunMode::GuiInProcess`]: ../uc_desktop/daemon/run_mode/enum.DaemonRunMode.html#variant.GuiInProcess
+    InProcess,
+}
+
+/// daemon 进程元数据（JSON 序列化进 PID 文件）。
+///
+/// 取代历史上"PID 文件 = 一个 u32 字符串"的格式。`cli stop` / 健康探测
+/// 路径会先尝试解析这个 JSON；解析失败时 fall back 到旧 raw-u32 格式
+/// 以兼容老版本 daemon 留下的 PID 文件。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DaemonPidMetadata {
+    pub pid: u32,
+    pub mode: DaemonProcessMode,
+    /// Unix epoch milliseconds 时刻——daemon 写 PID 文件那一瞬间。
+    /// 只用于诊断（`uniclip status` / 日志），不参与功能判断。
+    pub started_at_ms: u64,
+}
+
+impl DaemonPidMetadata {
+    /// 构造一份"现在"的元数据：`pid` + `mode` + 当前时间戳。
+    pub fn now(pid: u32, mode: DaemonProcessMode) -> Self {
+        let started_at_ms = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_millis() as u64)
+            .unwrap_or(0);
+        Self {
+            pid,
+            mode,
+            started_at_ms,
+        }
+    }
+}
+
 /// Provides the process-wide singleton `DaemonPidManager` used by standalone helpers.
-///
-/// On first call this initializes the manager by resolving application directories; any
-/// initialization failure is returned as an error.
-///
-/// # Returns
-///
-/// A reference to the initialized `DaemonPidManager`.
-///
-/// # Examples
-///
-/// ```
-/// let mgr = default_manager().expect("failed to initialize default daemon PID manager");
-/// let pid_path = mgr.pid_path();
-/// ```
 fn default_manager() -> Result<&'static DaemonPidManager> {
     static DEFAULT_MANAGER: OnceLock<Result<DaemonPidManager, String>> = OnceLock::new();
     DEFAULT_MANAGER
@@ -46,44 +80,29 @@ pub struct DaemonPidManager {
 
 impl DaemonPidManager {
     /// Creates a new DaemonPidManager from the provided `AppPaths`.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// let app_paths = AppPaths::default();
-    /// let mgr = DaemonPidManager::new(app_paths);
-    /// // use `mgr` to read/write the daemon PID file
-    /// ```
     pub fn new(app_paths: AppPaths) -> Self {
         Self { app_paths }
     }
 
     /// Returns the filesystem path where the daemon PID file for the current app/profile is stored.
-    ///
-    /// This is derived from the manager's configured `AppPaths`.
     fn pid_path(&self) -> PathBuf {
         self.app_paths.daemon_pid_path()
     }
 
-    /// Write the current process PID to the manager's PID file.
+    /// 写入当前进程的 PID + `mode` 到 PID 文件（JSON 格式）。
     ///
-    /// Creates the PID file's parent directory if needed, writes the current
-    /// process ID as a decimal string, and repairs file permissions on Unix.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// // Given a `DaemonPidManager` instance `mgr`:
-    /// let pid = mgr.write_current_pid().unwrap();
-    /// assert_eq!(pid, std::process::id());
-    /// ```
-    ///
-    /// # Returns
-    ///
-    /// `Ok(pid)` containing the written PID on success, `Err` with context on failure.
-    pub fn write_current_pid(&self) -> Result<u32> {
+    /// 取代历史上的 `write_current_pid`——把进程模式（`standalone` /
+    /// `in_process`）一并落盘，让 `cli stop` 能区分能不能 SIGTERM。
+    pub fn write_current_pid_with_mode(&self, mode: DaemonProcessMode) -> Result<u32> {
         let pid_path = self.pid_path();
         let pid = std::process::id();
+        let metadata = DaemonPidMetadata::now(pid, mode);
+        let payload = serde_json::to_string(&metadata).with_context(|| {
+            format!(
+                "failed to serialize daemon pid metadata for {}",
+                pid_path.display()
+            )
+        })?;
 
         if let Some(parent) = pid_path.parent() {
             fs::create_dir_all(parent).with_context(|| {
@@ -91,7 +110,7 @@ impl DaemonPidManager {
             })?;
         }
 
-        fs::write(&pid_path, pid.to_string())
+        fs::write(&pid_path, payload)
             .with_context(|| format!("failed to write daemon pid file {}", pid_path.display()))?;
 
         repair_pid_permissions(&pid_path)?;
@@ -101,14 +120,6 @@ impl DaemonPidManager {
     /// Removes the daemon PID metadata file for this manager's configured path.
     ///
     /// If the PID file is missing, this operation succeeds and returns `Ok(())`.
-    /// Any other I/O error is returned with context that includes the PID file path.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// let mgr = /* obtain a DaemonPidManager configured for your environment */;
-    /// mgr.remove_pid_file().unwrap();
-    /// ```
     pub fn remove_pid_file(&self) -> Result<()> {
         let pid_path = self.pid_path();
         match fs::remove_file(&pid_path) {
@@ -121,14 +132,13 @@ impl DaemonPidManager {
         }
     }
 
-    /// Returns the daemon PID stored in the manager's PID file, if present.
+    /// 读取 PID 文件并返回完整元数据。
     ///
-    /// Reads the PID file at the manager's resolved path, trims whitespace, and parses its contents as a `u32`.
-    ///
-    /// # Returns
-    ///
-    /// `Some(pid)` if the PID file exists and contains a valid `u32`, `None` if the PID file does not exist.
-    pub fn read_pid_file(&self) -> Result<Option<u32>> {
+    /// - 文件不存在 → `Ok(None)`
+    /// - 是 JSON [`DaemonPidMetadata`] → 直接返回
+    /// - 是旧 raw-u32 字符串（升级前 daemon 留下的）→ 当作
+    ///   `mode = Standalone, started_at_ms = 0` 兼容返回
+    pub fn read_pid_metadata(&self) -> Result<Option<DaemonPidMetadata>> {
         let pid_path = self.pid_path();
         if !pid_path.exists() {
             return Ok(None);
@@ -136,24 +146,39 @@ impl DaemonPidManager {
 
         let raw = fs::read_to_string(&pid_path)
             .with_context(|| format!("failed to read daemon pid file {}", pid_path.display()))?;
-        let pid = raw.trim().parse::<u32>().with_context(|| {
+        let trimmed = raw.trim();
+        if trimmed.is_empty() {
+            return Ok(None);
+        }
+
+        if let Ok(metadata) = serde_json::from_str::<DaemonPidMetadata>(trimmed) {
+            return Ok(Some(metadata));
+        }
+
+        // Backward compat: pre-mode-aware daemons wrote a bare decimal pid.
+        // Treat such files as standalone with unknown start time so existing
+        // `cli stop` flows still work after upgrade.
+        let pid = trimmed.parse::<u32>().with_context(|| {
             format!(
-                "failed to parse daemon pid file {} contents as u32",
+                "failed to parse daemon pid file {} as JSON metadata or u32",
                 pid_path.display()
             )
         })?;
-        Ok(Some(pid))
+        Ok(Some(DaemonPidMetadata {
+            pid,
+            mode: DaemonProcessMode::Standalone,
+            started_at_ms: 0,
+        }))
+    }
+
+    /// 兼容包装：仅返回 PID，丢弃 mode/started_at——用于不关心进程模式
+    /// 的旧调用方（健康探测的 incompatible-replace 路径）。新代码请用
+    /// [`DaemonPidManager::read_pid_metadata`]。
+    pub fn read_pid_file(&self) -> Result<Option<u32>> {
+        Ok(self.read_pid_metadata()?.map(|m| m.pid))
     }
 
     /// Resolve the daemon PID file path used by this manager for tests.
-    ///
-    /// # Examples
-    ///
-    /// ```no_run
-    /// // `mgr` is a `DaemonPidManager`.
-    /// let path = mgr.pid_path_for_testing();
-    /// println!("{}", path.display());
-    /// ```
     #[cfg(any(test, feature = "test-helpers"))]
     pub fn pid_path_for_testing(&self) -> PathBuf {
         self.pid_path()
@@ -161,21 +186,6 @@ impl DaemonPidManager {
 }
 
 /// Ensures the daemon PID file is readable/writable only by the owner (mode 0o600) on Unix; does nothing on non-Unix platforms.
-///
-/// On Unix, this updates the file mode to `0o600` when the current mode differs. On non-Unix platforms the function is a no-op.
-///
-/// # Errors
-///
-/// Returns an error with context if reading metadata or setting permissions fails on Unix.
-///
-/// # Examples
-///
-/// ```
-/// use std::path::Path;
-/// let path = Path::new("/tmp/.daemon-pid");
-/// // Ignore the result in examples; real code should handle the error.
-/// let _ = crate::process_metadata::repair_pid_permissions(path);
-/// ```
 fn repair_pid_permissions(pid_path: &Path) -> Result<()> {
     #[cfg(unix)]
     {
@@ -204,65 +214,122 @@ fn repair_pid_permissions(pid_path: &Path) -> Result<()> {
 
 /// Returns the daemon PID for the current application profile, if one is stored.
 ///
-/// # Examples
-///
-/// ```
-/// // Returns `Ok(Some(pid))` when a PID file exists, `Ok(None)` when it does not.
-/// let pid_opt = read_pid_file().unwrap();
-/// match pid_opt {
-///     Some(pid) => println!("Daemon PID: {}", pid),
-///     None => println!("No daemon PID stored"),
-/// }
-/// ```
+/// New callers should prefer [`read_pid_metadata`] when the daemon's process
+/// mode (standalone vs in-process) matters — e.g. `cli stop` must refuse to
+/// SIGTERM in-process daemons.
 pub fn read_pid_file() -> Result<Option<u32>> {
     default_manager()?.read_pid_file()
 }
 
-/// Write the current process PID to the configured daemon PID file.
+/// Read the full daemon PID metadata (pid + mode + started_at_ms) from disk.
 ///
-/// Returns the PID that was written.
+/// Falls back to `mode = Standalone, started_at_ms = 0` for legacy raw-u32
+/// PID files left over from pre-Phase-C daemons.
+pub fn read_pid_metadata() -> Result<Option<DaemonPidMetadata>> {
+    default_manager()?.read_pid_metadata()
+}
+
+/// Write `pid + mode` to the configured daemon PID file.
 ///
-/// # Examples
-///
-/// ```no_run
-/// let pid = write_current_pid().unwrap();
-/// assert_eq!(pid, std::process::id());
-/// ```
-pub fn write_current_pid() -> Result<u32> {
-    default_manager()?.write_current_pid()
+/// `mode` records whether the daemon is running standalone (kill-able via
+/// SIGTERM) or in-process inside a GUI shell (must not be killed externally).
+pub fn write_current_pid_with_mode(mode: DaemonProcessMode) -> Result<u32> {
+    default_manager()?.write_current_pid_with_mode(mode)
 }
 
 /// Removes the daemon PID metadata file for the current application profile.
-///
-/// If the PID file does not exist, this function returns `Ok(())`. On other failures it returns
-/// an error with context describing the failed removal.
-///
-/// # Returns
-///
-/// `()` on success, or an `anyhow::Error` on failure.
-///
-/// # Examples
-///
-/// ```
-/// // Remove the pid file for the current profile; succeeds even if no file was present.
-/// uc_daemon_local::process_metadata::remove_pid_file().unwrap();
-/// ```
 pub fn remove_pid_file() -> Result<()> {
     default_manager()?.remove_pid_file()
 }
 
-/// Compute the filesystem path where the daemon PID metadata file for the current application profile is stored.
-///
-/// # Returns
-///
-/// The resolved PID file path as a `PathBuf`.
-///
-/// # Examples
-///
-/// ```
-/// let path = uc_daemon_local::process_metadata::resolve_pid_path().unwrap();
-/// assert!(path.ends_with(".daemon-pid"));
-/// ```
+/// Compute the filesystem path where the daemon PID metadata file for the
+/// current application profile is stored.
 pub fn resolve_pid_path() -> Result<PathBuf> {
     Ok(default_manager()?.pid_path().to_path_buf())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::TempDir;
+
+    /// Build a `DaemonPidManager` whose `pid_path()` lives inside `temp`.
+    /// `AppPaths` has public fields, so we don't need to drag in `uc-core`'s
+    /// `AppDirs` machinery just for unit tests.
+    fn manager_in(temp: &TempDir) -> DaemonPidManager {
+        let root = temp.path().to_path_buf();
+        let app_paths = AppPaths {
+            db_path: root.join("db.sqlite"),
+            vault_dir: root.join("vault"),
+            settings_path: root.join("settings.json"),
+            logs_dir: root.join("logs"),
+            cache_dir: root.join("cache"),
+            file_cache_dir: root.join("file-cache"),
+            spool_dir: root.join("spool"),
+            app_data_root_dir: root,
+        };
+        DaemonPidManager::new(app_paths)
+    }
+
+    #[test]
+    fn json_round_trip_preserves_mode() {
+        let temp = TempDir::new().unwrap();
+        let mgr = manager_in(&temp);
+
+        let pid = mgr
+            .write_current_pid_with_mode(DaemonProcessMode::InProcess)
+            .unwrap();
+        assert_eq!(pid, std::process::id());
+
+        let metadata = mgr.read_pid_metadata().unwrap().expect("pid file written");
+        assert_eq!(metadata.pid, pid);
+        assert_eq!(metadata.mode, DaemonProcessMode::InProcess);
+        assert!(metadata.started_at_ms > 0);
+    }
+
+    #[test]
+    fn legacy_raw_u32_parses_as_standalone() {
+        let temp = TempDir::new().unwrap();
+        let mgr = manager_in(&temp);
+
+        // Simulate a pre-Phase-C daemon by writing a bare decimal PID.
+        let pid_path = mgr.pid_path();
+        if let Some(parent) = pid_path.parent() {
+            fs::create_dir_all(parent).unwrap();
+        }
+        fs::write(&pid_path, "12345").unwrap();
+
+        let metadata = mgr.read_pid_metadata().unwrap().expect("pid file written");
+        assert_eq!(metadata.pid, 12345);
+        assert_eq!(
+            metadata.mode,
+            DaemonProcessMode::Standalone,
+            "legacy PID files predate the mode field — must default to Standalone \
+             so `cli stop` can still terminate them"
+        );
+        assert_eq!(
+            metadata.started_at_ms, 0,
+            "legacy PID files have no timestamp — surface that with sentinel zero"
+        );
+    }
+
+    #[test]
+    fn missing_file_returns_none() {
+        let temp = TempDir::new().unwrap();
+        let mgr = manager_in(&temp);
+
+        assert!(mgr.read_pid_metadata().unwrap().is_none());
+        assert!(mgr.read_pid_file().unwrap().is_none());
+    }
+
+    #[test]
+    fn read_pid_file_compat_returns_just_pid() {
+        let temp = TempDir::new().unwrap();
+        let mgr = manager_in(&temp);
+
+        mgr.write_current_pid_with_mode(DaemonProcessMode::Standalone)
+            .unwrap();
+        let pid = mgr.read_pid_file().unwrap().expect("pid file written");
+        assert_eq!(pid, std::process::id());
+    }
 }

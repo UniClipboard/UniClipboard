@@ -135,6 +135,7 @@ pub async fn start_in_process(run_mode: DaemonRunMode) -> anyhow::Result<DaemonH
         clipboard_capture_gate: runtime_controls.clipboard_capture_gate.clone(),
         local_device_id,
         listens_to_os_signals: run_mode.listens_to_os_signals(),
+        process_mode: run_mode.process_mode(),
     });
 
     let input = DaemonRunLoopInput {

@@ -2,6 +2,8 @@
 
 use std::fmt;
 
+use uc_daemon_local::process_metadata::DaemonProcessMode;
+
 /// 桌面 daemon 的运行模式。
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum DaemonRunMode {
@@ -73,6 +75,19 @@ impl DaemonRunMode {
     /// 不能抢占 handler；shutdown 必须通过 [`crate::daemon::DaemonHandle`] 显式触发。
     pub fn listens_to_os_signals(self) -> bool {
         !matches!(self, Self::GuiInProcess)
+    }
+
+    /// 持久化进 PID 文件的进程模式标记——决定 `cli stop` 能不能 SIGTERM
+    /// 这个 daemon。
+    ///
+    /// `GuiInProcess` → [`DaemonProcessMode::InProcess`]：跟 GUI 同进程，
+    /// 不能被外部杀。其他模式（Standalone / Hybrid / 旧 GuiSidecar）都是
+    /// 独立进程 → [`DaemonProcessMode::Standalone`]，可以 SIGTERM。
+    pub fn process_mode(self) -> DaemonProcessMode {
+        match self {
+            Self::GuiInProcess => DaemonProcessMode::InProcess,
+            Self::Standalone | Self::Hybrid | Self::GuiSidecar => DaemonProcessMode::Standalone,
+        }
     }
 }
 
@@ -148,6 +163,31 @@ mod tests {
         assert!(
             mode.listens_to_os_signals(),
             "independent daemon binary needs SIGTERM/SIGINT to shut down cleanly"
+        );
+    }
+
+    #[test]
+    fn process_mode_only_gui_in_process_is_in_process() {
+        // The PID-file mode tag drives `cli stop`'s SIGTERM gate. Only the
+        // mode that *literally runs inside a GUI process* must be tagged
+        // InProcess; everything else (including the legacy GuiSidecar
+        // sub-process model) is a separate OS process and is fair game
+        // for `cli stop`.
+        assert_eq!(
+            DaemonRunMode::GuiInProcess.process_mode(),
+            DaemonProcessMode::InProcess
+        );
+        assert_eq!(
+            DaemonRunMode::Standalone.process_mode(),
+            DaemonProcessMode::Standalone
+        );
+        assert_eq!(
+            DaemonRunMode::Hybrid.process_mode(),
+            DaemonProcessMode::Standalone
+        );
+        assert_eq!(
+            DaemonRunMode::GuiSidecar.process_mode(),
+            DaemonProcessMode::Standalone
         );
     }
 }

@@ -17,7 +17,7 @@ use uc_application::facade::{AppFacade, AppPaths, HostEventEmitterPort};
 use crate::daemon::peers::presence_monitor::PresenceMonitor;
 use crate::daemon::service::DaemonService;
 use crate::daemon::state::RuntimeState;
-use uc_daemon_local::process_metadata::DaemonPidManager;
+use uc_daemon_local::process_metadata::{DaemonPidManager, DaemonProcessMode};
 use uc_webserver::api::auth::load_or_create_auth_token;
 use uc_webserver::api::event_emitter::DaemonApiEventEmitter;
 use uc_webserver::api::server::{run_http_server, DaemonApiState};
@@ -117,6 +117,9 @@ pub struct DaemonApp {
     /// `GuiInProcess` 模式置 false——OS 信号属于 GUI 的责任，daemon
     /// 不能抢占 handler，shutdown 必须通过 caller 持有的 cancel token 触发。
     listens_to_os_signals: bool,
+    /// 写进 PID 文件的进程模式——决定 `cli stop` 能不能 SIGTERM 这个
+    /// daemon。`GuiInProcess` → `InProcess`；其他 → `Standalone`。
+    process_mode: DaemonProcessMode,
 }
 
 impl DaemonApp {
@@ -144,6 +147,7 @@ impl DaemonApp {
             clipboard_capture_gate: None,
             local_device_id: None,
             listens_to_os_signals: true,
+            process_mode: DaemonProcessMode::Standalone,
         }
     }
 
@@ -165,6 +169,7 @@ impl DaemonApp {
         clipboard_capture_gate: Option<Arc<AtomicBool>>,
         local_device_id: Option<String>,
         listens_to_os_signals: bool,
+        process_mode: DaemonProcessMode,
     ) -> Self {
         debug_assert!(
             deferred_services.is_empty() || deferred_ready_notify.is_some(),
@@ -191,6 +196,7 @@ impl DaemonApp {
             clipboard_capture_gate,
             local_device_id,
             listens_to_os_signals,
+            process_mode,
         }
     }
 
@@ -209,9 +215,8 @@ impl DaemonApp {
         );
         let auth_token = load_or_create_auth_token(&token_path)?;
         let pid_manager = DaemonPidManager::new(self.storage_paths.clone());
-        let _pid_file_guard = DaemonPidFileGuard::activate(pid_manager.clone())?;
-        let pid = pid_manager.write_current_pid()?;
-        info!(pid, "wrote daemon pid metadata");
+        let _pid_file_guard = DaemonPidFileGuard::activate(pid_manager.clone(), self.process_mode)?;
+        let pid = std::process::id();
 
         let presence_monitor = Arc::new(PresenceMonitor::new(
             Arc::clone(&self.app_facade),
@@ -371,9 +376,9 @@ struct DaemonPidFileGuard {
 }
 
 impl DaemonPidFileGuard {
-    fn activate(manager: DaemonPidManager) -> anyhow::Result<Self> {
-        let pid = manager.write_current_pid()?;
-        info!(pid, "wrote daemon pid metadata");
+    fn activate(manager: DaemonPidManager, mode: DaemonProcessMode) -> anyhow::Result<Self> {
+        let pid = manager.write_current_pid_with_mode(mode)?;
+        info!(pid, ?mode, "wrote daemon pid metadata");
         Ok(Self { manager })
     }
 }

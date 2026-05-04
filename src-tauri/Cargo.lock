@@ -10479,15 +10479,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "uc-daemon"
-version = "0.6.0"
-dependencies = [
- "anyhow",
- "uc-daemon-local",
- "uc-desktop",
-]
-
-[[package]]
 name = "uc-daemon-client"
 version = "0.6.0"
 dependencies = [

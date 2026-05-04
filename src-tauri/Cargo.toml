@@ -72,7 +72,6 @@ members = [
   "crates/uc-daemon-local",
   "crates/uc-webserver",
   "crates/uc-desktop",
-  "crates/uc-daemon",
   "crates/uc-cli",
   "crates/uc-cli-macros",
   "crates/uc-daemon-client",

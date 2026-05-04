@@ -225,6 +225,15 @@ impl Default for FileSyncSettings {
 }
 
 impl Default for NetworkSettings {
+    /// Returns default `NetworkSettings` allowing iroh to fall back to public
+    /// relays when direct connectivity fails (existing v0.6.x behavior).
+    ///
+    /// Defaults:
+    /// - `allow_relay_fallback`: true
+    ///
+    // 默认 true = 允许 fallback。
+    // 改成 false 会让所有跨网段老用户突然离线，属于 breaking change。
+    // 修改默认值前请先 grep `LAN-only Mode` 文档与 changelog。
     fn default() -> Self {
         Self {
             allow_relay_fallback: true,
@@ -268,5 +277,64 @@ impl Default for Settings {
             file_sync: FileSyncSettings::default(),
             network: NetworkSettings::default(),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::settings::model::{NetworkSettings, Settings, CURRENT_SCHEMA_VERSION};
+
+    /// Pitfall 2 防御：默认值必须为 true（允许 fallback），保护老用户
+    /// 跨网段同步行为。改 false = breaking change。
+    #[test]
+    fn network_settings_default_allows_relay_fallback() {
+        let n = NetworkSettings::default();
+        assert!(
+            n.allow_relay_fallback,
+            "NetworkSettings::default().allow_relay_fallback MUST be true (Pitfall 2)"
+        );
+    }
+
+    /// Pitfall 2 防御：顶层 Settings::default 把 network 装配进去，
+    /// 字段值与子结构 default 保持一致。
+    #[test]
+    fn settings_default_includes_network_with_fallback_allowed() {
+        let s = Settings::default();
+        assert!(s.network.allow_relay_fallback);
+        assert_eq!(s.schema_version, CURRENT_SCHEMA_VERSION);
+        assert_eq!(
+            s.schema_version, 1,
+            "schema_version MUST stay 1 (no migration)"
+        );
+    }
+
+    /// NETSET-02 success criterion #2：缺 `network` 段的旧 settings.json
+    /// 反序列化必须回填默认值 true。
+    #[test]
+    fn old_settings_json_without_network_section_falls_back_to_default() {
+        // 模拟 v0.6.x 时代写出的 settings.json 片段（无 network 字段）
+        let json = r#"{}"#;
+        let s: Settings = serde_json::from_str(json).expect("parse minimal settings");
+        assert!(
+            s.network.allow_relay_fallback,
+            "missing network section MUST default to true"
+        );
+        assert_eq!(s.schema_version, 1);
+    }
+
+    /// 显式 false 的 JSON 必须保留 false 语义（确认未误取反）。
+    #[test]
+    fn explicit_allow_relay_fallback_false_is_preserved() {
+        let json = r#"{ "network": { "allow_relay_fallback": false } }"#;
+        let s: Settings = serde_json::from_str(json).expect("parse explicit false");
+        assert!(!s.network.allow_relay_fallback);
+    }
+
+    /// 反向断言：显式 true 也保留 true 语义。
+    #[test]
+    fn explicit_allow_relay_fallback_true_is_preserved() {
+        let json = r#"{ "network": { "allow_relay_fallback": true } }"#;
+        let s: Settings = serde_json::from_str(json).expect("parse explicit true");
+        assert!(s.network.allow_relay_fallback);
     }
 }

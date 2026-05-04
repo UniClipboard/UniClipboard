@@ -14,9 +14,9 @@ use utoipa;
 use crate::api::dto::error::ApiError;
 use crate::api::dto::settings::{
     ContentTypesDto, ContentTypesPatchDto, FileSyncSettingsDto, GeneralSettingsDto,
-    GetSettingsResponse, KeyboardShortcutsPatchDto, PairingSettingsDto, RetentionPolicyDto,
-    RetentionRuleDto, SecuritySettingsDto, SettingsDto, SettingsPatchDto, SyncSettingsDto,
-    UpdateSettingsResponse,
+    GetSettingsResponse, KeyboardShortcutsPatchDto, NetworkSettingsDto, PairingSettingsDto,
+    RetentionPolicyDto, RetentionRuleDto, SecuritySettingsDto, SettingsDto, SettingsPatchDto,
+    SyncSettingsDto, UpdateSettingsResponse,
 };
 use crate::api::server::DaemonApiState;
 
@@ -81,6 +81,9 @@ async fn update_settings_handler(
         success: true,
         data: settings_view_to_dto(updated),
         ts: chrono::Utc::now().timestamp_millis(),
+        // Phase 094 plan 03 placeholder — wire 字段在 plan 04 由 `payload.network.is_some()`
+        // 内联计算（D-D1）。当前默认 false 让 webserver 编译通过；plan 04 会替换。
+        restart_required: false,
     }))
 }
 
@@ -215,6 +218,13 @@ fn settings_view_to_dto(value: app_settings::SettingsView) -> SettingsDto {
             file_cache_quota_per_device: value.file_sync.file_cache_quota_per_device,
             file_retention_hours: value.file_sync.file_retention_hours,
             file_auto_cleanup: value.file_sync.file_auto_cleanup,
+        },
+        // Phase 094 plan 03 placeholder — `SettingsView.network` 字段由 plan 02 (uc-application)
+        // 落地；plan 04 会替换为 `NetworkSettingsDto { allow_relay_fallback: value.network.allow_relay_fallback }`。
+        // 当前默认值与 `core::NetworkSettings::default()`（true）一致，避免误导客户端
+        // 直到 plan 02/04 wire-up 完成（Pitfall 2 防御兜底）。
+        network: NetworkSettingsDto {
+            allow_relay_fallback: true,
         },
     }
 }

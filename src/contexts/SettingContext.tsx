@@ -43,10 +43,12 @@ export const SettingProvider: React.FC<SettingProviderProps> = ({ children }) =>
   }, [])
 
   // 保存设置
-  const saveSetting = async (newSetting: Settings) => {
+  // Phase 95: 返回 { restartRequired } 透传 daemon PUT /settings 响应；
+  // 现有调用方 await 但不读返回值，向后兼容（Promise<X> 可被忽略）。
+  const saveSetting = async (newSetting: Settings): Promise<{ restartRequired: boolean }> => {
     try {
       setLoading(true)
-      await updateSettings(newSetting)
+      const result = await updateSettings(newSetting)
       setSetting(newSetting)
       setError(null)
       try {
@@ -54,6 +56,7 @@ export const SettingProvider: React.FC<SettingProviderProps> = ({ children }) =>
       } catch (err) {
         log.error({ err }, 'Failed to broadcast settings change')
       }
+      return { restartRequired: result.restartRequired }
     } catch (err) {
       log.error({ err }, '保存设置失败')
       setError(`保存设置失败: ${err}`)
@@ -140,6 +143,23 @@ export const SettingProvider: React.FC<SettingProviderProps> = ({ children }) =>
       },
     }
     await saveSetting(updatedSetting)
+  }
+
+  // Update network settings (Phase 95)
+  // 镜像 partial 进 setting.network 后调 saveSetting；透传 restartRequired。
+  // 反向命名铁律：此处 partial 真值传递，绝不取反；UI 取反点仅在 NetworkSection.tsx。
+  const updateNetworkSetting = async (
+    newNetworkSetting: Partial<Settings['network']>
+  ): Promise<{ restartRequired: boolean }> => {
+    if (!setting) return { restartRequired: false }
+    const updatedSetting: Settings = {
+      ...setting,
+      network: {
+        ...setting.network,
+        ...newNetworkSetting,
+      },
+    }
+    return await saveSetting(updatedSetting)
   }
 
   // Update keyboard shortcuts
@@ -250,9 +270,7 @@ export const SettingProvider: React.FC<SettingProviderProps> = ({ children }) =>
     updateRetentionPolicy,
     updateKeyboardShortcuts,
     updateFileSyncSetting,
-    // TODO(95-04): real implementation — saveSetting 改返回 { restartRequired } 并由
-    // updateNetworkSetting 透传。Plan 04 会替换此占位。
-    updateNetworkSetting: async () => ({ restartRequired: false }),
+    updateNetworkSetting,
   }
 
   return <SettingContext.Provider value={value}>{children}</SettingContext.Provider>

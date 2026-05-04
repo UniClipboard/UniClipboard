@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v0.7.0
 milestone_name: LAN-only Mode
-status: executing
-last_updated: "2026-05-04T14:30:00Z"
-last_activity: 2026-05-04 -- Phase 94 execution + human UAT complete
+status: completed
+last_updated: "2026-05-04T14:00:00.000Z"
+last_activity: 2026-05-04 -- Phase 95 context gathered (前端 NetworkSection + 重启 UX, 4 gray areas resolved)
 progress:
   total_phases: 4
   completed_phases: 1
   total_plans: 6
   completed_plans: 6
-  percent: 25
+  percent: 100
 ---
 
 # Project State
@@ -24,10 +24,10 @@ See: .planning/PROJECT.md (updated 2026-05-04)
 
 ## Current Position
 
-Phase: 94 后端字段落地 — fully complete (6/6 plans, 2/2 human UAT passed)
+Phase: 95 前端 NetworkSection + 重启 UX — context gathered, ready for planning
 Plan: —
-Status: Phase 94 complete; ready for Phase 95 (前端 NetworkSection + 重启 UX)
-Last activity: 2026-05-04 -- Phase 94 human UAT both directions PASSED via real daemon log evidence
+Status: Phase 95 CONTEXT.md written (decisions A1/A2/A3 + B + C + D1/D2/D3 locked); next step `/gsd-plan-phase 95`
+Last activity: 2026-05-04 -- Phase 95 context gathered（4 灰色地带全部敲定：RestartBanner 专用组件 / Section 内部 / 只靠 Banner 表达 pending / 只 cover Tauri GUI app.restart() / Popover 4 类外网披露 / Tauri command get_restart_state 走 mtime 比对）
 
 ## Roadmap
 
@@ -71,4 +71,5 @@ Current milestone: v0.7.0 LAN-only Mode (started 2026-05-04)
 Phase 94 context gathered: 2026-05-04 — 4 gray areas resolved (A1 / B3 / C1 / D1)
 Phase 94 execution complete: 2026-05-04 — 6/6 plans, 53/53 自动测试 PASS, 4 个 pitfall 防御铁律全部 VERIFIED
 Phase 94 human UAT complete: 2026-05-04 — 2/2 PASSED via real daemon log（双向证据：home_relay 注册/缺席对比 + 配置翻译 tracing + LAN-only 死循环重试外网 peer）
-Next recommended step: `/gsd-discuss-phase 95` 推进前端 NetworkSection + 重启 UX（依赖 Phase 94 wire 契约已就绪）
+Phase 95 context gathered: 2026-05-04 — 4 灰色地带全敲定（RestartBanner / Section 内部 / 只靠 Banner / Tauri GUI 范围 / Popover / get_restart_state Tauri command）
+Next recommended step: `/gsd-plan-phase 95` 创建 Phase 95 详细 plan（CONTEXT.md 与 PATTERNS 已就绪）

@@ -173,6 +173,37 @@ pub struct FileSyncSettings {
     pub file_auto_cleanup: bool,
 }
 
+// ======================================================================
+// NetworkSettings —— LAN-only Mode（v0.7.0）的后端持久化字段
+//
+// 反向命名规则（Pitfall 1 防御 — 见 .planning/research/PITFALLS.md §Pitfall 1）：
+// - UI = "LAN-only Mode = ON"
+// - 后端 = `allow_relay_fallback = false`
+// - infra (iroh) = `IrohNodeConfig.disable_relays = true`
+//
+// 三层语义两次反转。**全工程只允许在 `uc-bootstrap/src/network_policy.rs`
+// 唯一一处取反**；DTO ↔ View ↔ core 三层只搬运 `allow_relay_fallback`
+// 业务正向语义，不取反。
+// ======================================================================
+
+/// 网络相关设置（LAN-only Mode 字段族）。
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct NetworkSettings {
+    /// 是否允许 iroh 在直连失败时回落到公网中继。
+    /// `true`（默认）= 允许 fallback，跨网段设备仍可通过 relay 同步；
+    /// `false` = LAN-only，禁用 relay，跨网段设备会失联。
+    /// 业务正向语义：UI "LAN-only Mode = ON" → 此字段 = `false`。
+    #[serde(default = "default_allow_relay_fallback")]
+    pub allow_relay_fallback: bool,
+}
+
+// 默认 true = 允许 fallback。
+// 改成 false 会让所有跨网段老用户突然离线，属于 breaking change。
+// 修改默认值前请先 grep `LAN-only Mode` 文档与 changelog。
+fn default_allow_relay_fallback() -> bool {
+    true
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Settings {
     #[serde(default = "current_schema_version")]
@@ -198,8 +229,9 @@ pub struct Settings {
 
     #[serde(default)]
     pub file_sync: FileSyncSettings,
-    // #[serde(default)]
-    // pub network: NetworkSettings,
+
+    #[serde(default)]
+    pub network: NetworkSettings,
 }
 
 /// The current schema version used for settings persistence.

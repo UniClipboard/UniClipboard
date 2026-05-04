@@ -156,7 +156,7 @@ Plans:
 | Phase | Plans Complete | Status      | Completed |
 |-------|----------------|-------------|-----------|
 | 94. 后端字段落地                  | 6/6 | Complete | 2026-05-04 |
-| 95. 前端 NetworkSection + 重启 UX | 3/6 | In progress | - |
+| 95. 前端 NetworkSection + 重启 UX | 5/6 | In progress | - |
 | 96. 连接通道指示器                | 0/1 | Not started | - |
 | 97. onboarding + 文档 + 跨平台 QA | 0/1 | Not started | - |
 

@@ -117,6 +117,18 @@ impl TrayState {
         Ok(())
     }
 
+    /// Returns `true` once the tray icon has been successfully built.
+    ///
+    /// Used by the main-window close handler to decide whether hiding to
+    /// tray is safe — without a tray there would be no way to bring the
+    /// window back, so we let the close proceed normally instead.
+    pub fn is_initialized(&self) -> bool {
+        self.inner
+            .lock()
+            .map(|guard| guard.is_some())
+            .unwrap_or(false)
+    }
+
     /// Update the tray menu labels to match the given language.
     ///
     /// If the tray has not been initialized yet, this is a no-op.

@@ -199,50 +199,40 @@
         "loadError": "Failed to load settings:"
       },
       "network": {
-        "title": "Network",
-        "syncMethod": {
-          "label": "Sync method",
-          "description": "Choose sync method",
-          "lanFirst": "LAN first (recommended)",
-          "cloudOnly": "Cloud only",
-          "lanOnly": "LAN only"
-        },
-        "webserverPort": {
-          "label": "Local server port",
-          "description": "Set local server port (1024-65535)",
-          "errors": {
-            "invalid": "Please enter a valid port number",
-            "range": "Port must be between 1024-65535"
-          }
-        },
-        "customPeerDevice": {
-          "label": "Custom peer device",
-          "description": "Manually specify the device address and port to sync",
-          "peerIp": {
-            "label": "Peer IP address",
-            "description": "Enter the IPv4 address of the device to sync",
-            "errors": {
-              "empty": "IP address cannot be empty",
-              "invalid": "Please enter a valid IPv4 address"
-            }
-          },
-          "peerPort": {
-            "label": "Peer port",
-            "description": "Enter the port of the device to sync (1024-65535)",
-            "errors": {
-              "empty": "Port cannot be empty",
-              "invalid": "Please enter a valid port number",
-              "range": "Port must be between 1024-65535"
+        "lanOnly": {
+          "label": "LAN-only Mode",
+          "description": "Disable public-relay fallback. Devices sync only over the same local network. Takes effect after restart.",
+          "infoIconAriaLabel": "View the list of requests that still reach the internet when LAN-only Mode is on",
+          "saveError": "Save failed: {{message}}. Reverted to the previous setting.",
+          "disclosure": {
+            "title": "Requests that still reach the internet with LAN-only Mode on",
+            "intro": "The following 4 request types are controlled by independent modules and are not affected by LAN-only Mode:",
+            "rendezvous": {
+              "title": "First-pairing rendezvous",
+              "description": "Pairing a new device still requires reaching rendezvous.uniclipboard.app to exchange NodeIds. Once paired, day-to-day sync no longer uses rendezvous."
+            },
+            "otlp": {
+              "title": "OTLP telemetry",
+              "description": "Telemetry is controlled independently by General → Telemetry, not by LAN-only Mode. To disable it, go to the General section."
+            },
+            "pkarr": {
+              "title": "pkarr DHT NodeId resolution",
+              "description": "Cross-subnet connections resolve peer NodeIds via the public pkarr DHT, similar in nature to DNS. Disabling it would drop cross-subnet connection rate from ~90% to near zero."
+            },
+            "autoUpdate": {
+              "title": "Auto-update GitHub check",
+              "description": "Controlled independently by General → Auto-update, which queries the GitHub Release API for new versions."
             }
           }
         },
-        "cloudServer": {
-          "label": "Cloud server",
-          "badge": "Coming soon",
-          "advanced": "Advanced",
-          "default": "Using default cloud server"
-        },
-        "loadError": "Failed to load settings:"
+        "restartBanner": {
+          "message": "Restart the app to apply the LAN-only Mode change.",
+          "restartButton": "Restart now",
+          "restartingButton": "Restarting…",
+          "dismissAriaLabel": "Dismiss restart notice",
+          "errorMessage": "Automatic restart failed. Please quit the app manually and reopen it to apply the change.",
+          "retryButton": "Retry"
+        }
       },
       "storage": {
         "title": "Storage",

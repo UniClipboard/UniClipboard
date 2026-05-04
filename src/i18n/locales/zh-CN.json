@@ -190,50 +190,40 @@
         "loadError": "加载设置失败:"
       },
       "network": {
-        "title": "网络设置",
-        "syncMethod": {
-          "label": "同步方式",
-          "description": "选择同步方式",
-          "lanFirst": "优先使用局域网同步 (推荐)",
-          "cloudOnly": "仅使用云端同步",
-          "lanOnly": "仅使用局域网同步"
-        },
-        "webserverPort": {
-          "label": "本机开放端口",
-          "description": "设置本机开放端口 (1024-65535)",
-          "errors": {
-            "invalid": "请输入有效的端口号",
-            "range": "端口号必须在 1024-65535 之间"
-          }
-        },
-        "customPeerDevice": {
-          "label": "自定义同步节点",
-          "description": "手动指定要同步的设备地址和端口",
-          "peerIp": {
-            "label": "节点 IP 地址",
-            "description": "输入要同步的设备 IPv4 地址",
-            "errors": {
-              "empty": "IP 地址不能为空",
-              "invalid": "请输入有效的 IPv4 地址"
-            }
-          },
-          "peerPort": {
-            "label": "节点端口",
-            "description": "输入要同步的设备端口 (1024-65535)",
-            "errors": {
-              "empty": "端口号不能为空",
-              "invalid": "请输入有效的端口号",
-              "range": "端口号必须在 1024-65535 之间"
+        "lanOnly": {
+          "label": "LAN-only 模式",
+          "description": "关闭公网中继回落，仅通过同局域网完成设备同步。重启后生效。",
+          "infoIconAriaLabel": "查看 LAN-only 模式开启后仍走外网的请求清单",
+          "saveError": "保存失败：{{message}}。已恢复到上一次的设置。",
+          "disclosure": {
+            "title": "LAN-only 开启后仍会走外网的请求",
+            "intro": "以下 4 类请求由独立模块控制，不受 LAN-only 影响：",
+            "rendezvous": {
+              "title": "首次配对 rendezvous",
+              "description": "配对新设备时仍需联网经 rendezvous.uniclipboard.app 完成 NodeId 交换；已配对设备的日常同步不再使用 rendezvous。"
+            },
+            "otlp": {
+              "title": "OTLP 遥测",
+              "description": "遥测由「通用 → 遥测」开关独立控制，与 LAN-only 无关；如需关闭，请到「通用」分类。"
+            },
+            "pkarr": {
+              "title": "pkarr DHT NodeId 解析",
+              "description": "跨网段连接通过 pkarr 公网 DHT 解析对端 NodeId，性质类似 DNS。关闭会导致跨网段连接率从约 90% 跌至接近 0。"
+            },
+            "autoUpdate": {
+              "title": "自动更新 GitHub 检查",
+              "description": "由「通用 → 自动更新」开关独立控制，访问 GitHub Release API 检查新版本。"
             }
           }
         },
-        "cloudServer": {
-          "label": "云服务器配置",
-          "badge": "即将推出",
-          "advanced": "高级选项",
-          "default": "使用默认云服务器"
-        },
-        "loadError": "加载设置失败:"
+        "restartBanner": {
+          "message": "需要重启应用以使 LAN-only 模式更改生效。",
+          "restartButton": "立即重启",
+          "restartingButton": "正在重启…",
+          "dismissAriaLabel": "收起重启提示",
+          "errorMessage": "自动重启失败，请手动退出并重新打开应用以使更改生效。",
+          "retryButton": "重试"
+        }
       },
       "storage": {
         "title": "存储管理",

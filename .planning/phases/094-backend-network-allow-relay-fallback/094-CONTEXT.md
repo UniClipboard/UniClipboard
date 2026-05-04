@@ -23,10 +23,10 @@
 
 ### B. Settings 读取失败时的容错策略
 
-- **D-B1：** daemon 启动期 `wired.deps.settings.load().await` 失败按错误类型分流：
-  - **`NotFound`（settings.json 不存在 / 首次启动）** → 用 `Settings::default()`（即 `allow_relay_fallback: true`）继续启动，**不**写 warn（首次启动是常态）。
-  - **`Parse` / `IO` / 其他错误** → 硬失败，daemon 拒绝启动并暴露错误（避免脏 settings 让 LAN-only 信任锚点撒谎）。
-- **D-B2：** 实施前 planner 需要核对 `SettingsPort::load` 的当前错误返回类型 —— 若现有错误 enum 没有区分 NotFound vs Parse，需要在 `uc-core::ports::settings` 或对应 error type 里补区分（属于 Phase 94 范围内的小调整，不另开 phase）。
+- **D-B1（修订后 — checker BLOCKER 3 决议为选项 B）：** Phase 94 **不实施** D-B1 + D-B2 的 port 错误细分；NotFound → default 的语义实质由 `uc-infra::FileSettingsRepository::load`（`repository.rs:166-168`）的 NotFound 兜底**作为 SettingsPort 实现的隐式契约一部分**承担；后续 phase 补 port 错误细分时需同步检查全工程 `.load()` 调用方对 NotFound 的处理一致性。
+  - **现状语义对接：** `SettingsPort::load` 当前错误返回类型 `anyhow::Result<Settings>` 不区分 NotFound vs Parse；`FileSettingsRepository::load` 已对 NotFound 兜底返回 `Settings::default()`（即 `allow_relay_fallback: true`），故 builders 层只需在 `.load().await` 错误时硬失败即可（NotFound 路径已不到达分流），与 D-B1 期望的"NotFound 静默走 default"语义等价。
+  - **承认的隐式契约：** uc-infra/AGENTS.md §4.2 明确"实现细节不能泄漏到上层"。Phase 94 在容错路径上**有意**接受这一隐式契约依赖 —— 不在 Phase 94 内打开 port 错误类型重构（避免 milestone scope 膨胀），但**必须**在 v0.7.x 的后续 phase 显式偿还（见下方 follow-up）。
+- **D-B2（修订后 — 整体延迟到后续 phase）：** 不在 Phase 94 内引入 `SettingsLoadError` discriminated enum。延迟实施 — 见 `<deferred>` 段。
 - **D-B3：** 启动路径打 `tracing::info!` 一行：`applying network.allow_relay_fallback={value} → disable_relays={value}`，方便 support 排障。
 
 ### C. 集成测试位置 + 范围
@@ -83,13 +83,19 @@
 - `src-tauri/crates/uc-core/src/settings/model.rs:201-202` — `// pub network: NetworkSettings,` 占位注释
 - `src-tauri/crates/uc-core/src/settings/defaults.rs:251-262` — `Settings::default()` 字段列表
 - `src-tauri/crates/uc-application/src/facade/settings/models.rs:124-225` + `446-566` — view/patch + apply_settings_patch
+- `src-tauri/crates/uc-application/src/facade/settings/models.rs:217-226` — `SettingsPatch` 顶层（已含 `derive(Default)`，可继续用 `..Default::default()`）
 - `src-tauri/crates/uc-application/src/facade/settings/mod.rs:5-12` — `pub use` 白名单
 - `src-tauri/crates/uc-daemon-contract/src/api/dto/settings.rs:188-208` — `FileSyncSettingsDto` 模式 + `SettingsDto` 顶层
+- `src-tauri/crates/uc-daemon-contract/src/api/dto/settings.rs:217-227` — `GeneralSettingsPatchDto` 字段列表（restart_required 测试 baseline 用）
+- `src-tauri/crates/uc-daemon-contract/src/api/dto/settings.rs:304-314` — `SettingsPatchDto` 顶层（Phase 94 plan 03 加 `derive(Default)`）
 - `src-tauri/crates/uc-webserver/src/api/settings.rs:14-218` — DTO ↔ View 映射 + `UpdateSettingsResponse`
 - `src-tauri/crates/uc-webserver/src/api/openapi.rs:29-138` — OpenAPI 注册列表
 - `src-tauri/crates/uc-infra/src/settings/migration.rs:36-43` — `migrations` vec 当前为空（确认 Phase 94 不动 migration）
+- `src-tauri/crates/uc-infra/src/settings/repository.rs:166-168` — `FileSettingsRepository::load` NotFound 兜底（D-B1 选项 B 隐式契约依赖点）
 - `src-tauri/crates/uc-infra/src/network/iroh/node.rs:153-162` — `IrohNodeConfig` 字段
 - `src-tauri/crates/uc-infra/src/network/iroh/node.rs:368-411` — `bind` 时 `RelayMode` 决策路径
+- `src-tauri/crates/uc-infra/src/network/iroh/node.rs:775/797/804/851/912/968` — uc-infra 自己的 `IrohNodeBuilder::bind` 测试调用站点（plan 06 OnceCell 决策依据）
+- `src-tauri/crates/uc-bootstrap/tests/slice2_phase2_clipboard_e2e.rs:371` — uc-bootstrap e2e 测试 `IrohNodeBuilder::bind` 调用站点（plan 06 OnceCell 决策依据）
 - `src-tauri/crates/uc-bootstrap/src/builders.rs:178` — `IrohNodeConfig::default()` 调用点 #1（GUI runtime）
 - `src-tauri/crates/uc-bootstrap/src/non_gui_runtime.rs:280` — `IrohNodeConfig::default()` 调用点 #2（CLI/daemon runtime）
 - `src-tauri/crates/uc-bootstrap/src/space_setup.rs:48` + `:208-228` — `IrohNodeConfig` re-export + `build_space_setup_assembly` 入参
@@ -114,14 +120,15 @@
 - **DTO `serde(rename_all = "camelCase")`：** Rust `restart_required` ↔ JSON `restartRequired` 自动转换；`SettingsDto` 整族都用此模式。
 - **`pub use` 白名单：** `uc-application/src/facade/settings/mod.rs:5-12` 是对外类型白名单 —— 新增类型必须显式 `pub use`，不允许下游直接从 `models.rs` import（防 §11.4 历史欠账重发）。
 - **`schema_version = 1` + 空 migrations vec：** Phase 94 加字段但**不**升 version；`SettingsMigrator::new()` `migrations: vec![]` 保持空（已 grep 确认）。
+- **`SettingsPatch` 已 `derive(Default)`：** `uc-application::SettingsPatch`（models.rs:217）现状即 `derive(Default)`；`SettingsPatchDto`（daemon-contract）尚未 derive，Phase 94 plan 03 task 1 同步加上以方便测试 baseline 用 `..Default::default()`。
 
 ### Integration Points
 
 - **新增 helper 入口：** `uc-bootstrap/src/network_policy.rs::relay_policy_to_iroh_config(allow_relay_fallback: bool, rendezvous_base_url: Option<String>) -> IrohNodeConfig` —— `pub(crate)` 即可，不对外暴露。
-- **`builders.rs:178` 改造：** 改造前先 `wired.deps.settings.load().await`（按 D-B1 错误类型分流），再调 `relay_policy_to_iroh_config(settings.network.allow_relay_fallback, None)` 喂给 `build_space_setup_assembly`。
+- **`builders.rs:178` 改造：** 改造前先 `wired.deps.settings.load().await`（`anyhow::Result` 错误硬失败 — D-B1 选项 B），再调 `relay_policy_to_iroh_config(settings.network.allow_relay_fallback, None)` 喂给 `build_space_setup_assembly`。
 - **`non_gui_runtime.rs:280` 改造：** 同 builders.rs 模式，两处都需要改。
 - **`build_space_setup_assembly` 签名：** **不动**。仍接 `IrohNodeConfig`；翻译职责在调用方完成（保持装配体只装配不决策）。
-- **`IrohNodeBuilder::bind` 加 OnceCell 守护：** 保证单进程只能 bind 一次，防止运行时热切换的诱惑（Pitfall 3 结构性防御）。
+- **`IrohNodeBuilder::bind` 加 OnceCell 守护：** 保证单进程只能 bind 一次，防止运行时热切换的诱惑（Pitfall 3 结构性防御）。**注意：** uc-infra/uc-bootstrap 测试 binary 内 ≥6 处 `IrohNodeBuilder::bind` 调用（grep 已锁定行号），Phase 94 plan 06 直接采用 `#[cfg(not(test))]` 条件守护，production build 生效，test build 下 elided。
 - **`UpdateSettingsResponse` 加 `restart_required: bool`：** wire 契约改动 —— OpenAPI schema 同步更新；前端 client（`src/api/daemon/settings.ts`）需要在 Phase 95 同步消费（Phase 94 仅暴露 wire）。
 - **`apply_settings_patch` 末尾追加 `network` 处理：** 与 `file_sync` 同形 pattern。
 - **`uc-application/src/facade/settings/mod.rs` `pub use` 列表：** 加 `NetworkSettingsView, NetworkSettingsPatch`。
@@ -131,9 +138,9 @@
 <specifics>
 ## Specific Ideas
 
-- **唯一取反点 grep 守护：** PR review 时 `rg 'disable_relays|allow_relay_fallback'` 确认全工程除 `uc-bootstrap/src/network_policy.rs`（取反点）+ `uc-infra/src/network/iroh/node.rs`（infra 字段定义）+ 测试文件外，其他位置只以**原语义**（不取反）流动。
+- **唯一取反点 grep 守护：** PR review 时 `rg -v '^\s*//' src-tauri/ --type rust | rg 'disable_relays\s*=\s*!|disable_relays:\s*!'` 确认全工程除 `uc-bootstrap/src/network_policy.rs`（取反点）+ `uc-infra/src/network/iroh/node.rs`（infra 字段定义）+ 测试文件外，其他位置只以**原语义**（不取反）流动。
 - **`NetworkSettings` 字段顺序：** 当前只有 `allow_relay_fallback` 一个字段，预留扩展（如未来 `rendezvous_base_url_override`）；不强制添加 `#[non_exhaustive]`，但保留这个可能性给后续 phase 决策。
-- **`tracing::info!` 启动日志格式：** `applying network.allow_relay_fallback={value} → disable_relays={value}` 字段名照抄；不在 OTLP 上加 attrs（避免与 Pitfall 6 OTLP 不联动原则擦边）。
+- **`tracing::info!` 启动日志格式：** 字段名照抄；不在 OTLP 上加 attrs（避免与 Pitfall 6 OTLP 不联动原则擦边）。**注意（修订）：** `disable_relays` 的值从 `iroh_config.disable_relays` 读取，**不**在 `builders.rs` / `non_gui_runtime.rs` 内联 `let disable_relays = !allow_relay_fallback;`（违反 Pattern A 单一取反点铁律 — 见 plan 05 改造点 2 修订内容）。
 - **`Default` 注释三行警示：** `impl Default for NetworkSettings` 上方注释明确：
   ```
   // 默认 true = 允许 fallback。
@@ -151,6 +158,13 @@
 - **`IrohNode::endpoint()` 访问器方式（Open Question 1）** — Phase 96 连接通道指示器需要 `Endpoint` 句柄；本 phase 不暴露 `pub fn endpoint()`，留给 Phase 96 决策（建议 `IrohNodeBuilder::spawn()` 顺带返回 `ConnectionChannelPort` 句柄，与 `install_*` 模式一致）。
 - **runtime 热切换 LAN-only Mode** — 整里程碑显式排除（PROJECT.md §Out of Scope），需独立 phase + 重建 endpoint + ALPN handler 重挂；本 phase 主动用 `OnceCell` 阻断这条路。
 - **OTLP `connection_path` 标签** — Future Requirements D4，v0.7.x 再做。
+- **【新增 — checker BLOCKER 3 引入】D-B1 / D-B2 port 错误细分延迟** — Phase 94 选择**选项 B（接受现状）** —— 不引入 `SettingsLoadError` discriminated enum；NotFound → default 的语义实质由 `uc-infra::FileSettingsRepository::load`（`repository.rs:166-168`）的 NotFound 兜底**作为 SettingsPort 实现的隐式契约一部分**承担。这违反 uc-infra/AGENTS.md §4.2"实现细节不能泄漏到上层"，是有意识接受的临时技术债务（避免 v0.7.0 milestone scope 膨胀）。**后续 phase 必须偿还** —— 见下方 Future Phase Follow-up 段。
+
+### Future Phase Follow-up（v0.7.x 范围内必须偿还）
+
+1. **【高优】实施 `SettingsLoadError` discriminated enum（兑现 D-B2）** — 在 `uc-core::ports::settings`（或 `uc-infra::settings::error`）新增 `pub enum SettingsLoadError { NotFound, Parse(...), Io(...) }`；改 `SettingsPort::load` 签名为 `Result<Settings, SettingsLoadError>`；改 `FileSettingsRepository::load` 返回该错误（NotFound 不再静默兜底为 default）；改 builders 层 `non_gui_runtime.rs` / `builders.rs` 调用方匹配 `NotFound → default`、`Parse | Io → 硬失败`。同步检查全工程其他 `.load()` 调用方对 NotFound 的处理一致性。 — Phase 94 隐式契约由此显式化，§4.2 边界恢复。
+2. **PR 模板 + reviewer checklist** — 见上文（Phase 97 范围内一起做）。
+3. **runtime 热切换 LAN-only Mode** — 见上文（独立 phase）。
 
 ### Reviewed Todos (not folded)
 
@@ -162,3 +176,4 @@
 
 *Phase: 94-后端字段落地*
 *Context gathered: 2026-05-04*
+*Revised: 2026-05-04 — checker iter 1 BLOCKERs 1/3/4/5 + WARNINGs 1-7*

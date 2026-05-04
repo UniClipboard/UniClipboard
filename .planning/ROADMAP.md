@@ -21,10 +21,10 @@
 
 ## Phases 概览
 
-- [ ] **Phase 94：后端字段落地** — `uc-core::Settings.network` 新增、HTTP DTO + view/patch 镜像、`uc-bootstrap` 唯一取反 helper 注入 `IrohNodeConfig.disable_relays`
-- [ ] **Phase 95：前端 NetworkSection + 重启 UX** — 替换占位组件为真实开关、三态视觉、持久 inline 重启通知 + "立即重启"按钮、tooltip 披露 4 类外网请求
-- [ ] **Phase 96：连接通道指示器** — 新增 `ConnectionChannelPort` + `IrohConnectionChannelAdapter`、`PeerSnapshotDto.channel`、设备列表徽章、tray icon 状态徽章、"Out of LAN" 灰态
-- [ ] **Phase 97：onboarding + 文档 + 跨平台 QA gate** — 配对成功 inline banner + dismiss 持久化、`docs/lan-only.md` / `docs/terminology.md` / changelog、跨平台 release-gate QA 矩阵
+- [ ] **Phase 94: 后端字段落地** — `uc-core::Settings.network` 新增、HTTP DTO + view/patch 镜像、`uc-bootstrap` 唯一取反 helper 注入 `IrohNodeConfig.disable_relays`
+- [ ] **Phase 95: 前端 NetworkSection + 重启 UX** — 替换占位组件为真实开关、三态视觉、持久 inline 重启通知 + "立即重启"按钮、tooltip 披露 4 类外网请求
+- [ ] **Phase 96: 连接通道指示器** — 新增 `ConnectionChannelPort` + `IrohConnectionChannelAdapter`、`PeerSnapshotDto.channel`、设备列表徽章、tray icon 状态徽章、"Out of LAN" 灰态
+- [ ] **Phase 97: onboarding + 文档 + 跨平台 QA gate** — 配对成功 inline banner + dismiss 持久化、`docs/lan-only.md` / `docs/terminology.md` / changelog、跨平台 release-gate QA 矩阵
 
 ### 概览表
 
@@ -41,7 +41,7 @@
 
 ## Phase 详细
 
-### Phase 94：后端字段落地
+### Phase 94: 后端字段落地
 
 **Goal：** 用户/客户端可以通过持久化 settings 与 daemon HTTP `/settings` 读写 `network.allow_relay_fallback` 字段；重启 daemon 后字段值通过唯一取反 helper 注入 iroh endpoint bind，使 LAN-only 真生效。
 
@@ -65,9 +65,19 @@
 
 **Estimated scope：** M
 
+**Plans：** 6 plans
+
+Plans:
+- [ ] 094.01-PLAN.md — uc-core Settings.network 字段落地 + 手写 Default + 向后兼容反序列化测试
+- [ ] 094.02-PLAN.md — uc-application View/Patch 镜像 + apply_settings_patch + facade pub use 白名单
+- [ ] 094.03-PLAN.md — uc-daemon-contract DTO 镜像 + UpdateSettingsResponse.restart_required + OpenAPI schema
+- [ ] 094.04-PLAN.md — uc-webserver DTO ↔ View 双向 mapping + handler 内联 restart_required + integration smoke
+- [ ] 094.05-PLAN.md — uc-bootstrap network_policy 唯一取反 helper + 两处 bind 装配点改造 + tracing::info! 启动日志
+- [ ] 094.06-PLAN.md — uc-infra IrohNodeBuilder::bind OnceCell 守护 + lan_only_relay_mode integration test
+
 ---
 
-### Phase 95：前端 NetworkSection + 重启 UX
+### Phase 95: 前端 NetworkSection + 重启 UX
 
 **Goal：** 用户在 Settings → Network 分类下可以看到并切换 "LAN-only Mode" 开关，切换后看到持久化的 inline 重启通知与三态视觉，可点击"立即重启"触发 daemon 优雅 shutdown + relaunch；tooltip 披露开启后仍走外网的 4 类请求。
 
@@ -91,7 +101,7 @@
 
 ---
 
-### Phase 96：连接通道指示器
+### Phase 96: 连接通道指示器
 
 **Goal：** 用户在设备列表与 system tray 都能直观看到当前 LAN-only Mode 状态以及每台已配对设备走的是 LAN 直连 / Relay 中继 / Offline / Unknown / Out of LAN，从而**可肉眼验证**开关效果；通道判定来自 infra 层单一真相源，前后通过事件 + polling 双路径刷新。
 
@@ -115,7 +125,7 @@
 
 ---
 
-### Phase 97：onboarding + 文档 + 跨平台 QA gate
+### Phase 97: onboarding + 文档 + 跨平台 QA gate
 
 **Goal：** 首次配对完成的用户能看到一次性 inline banner 发现 LAN-only Mode；维护者/贡献者 / reviewer / Release notes 读者从 `docs/lan-only.md` / `docs/terminology.md` / changelog 三处获得**完全一致**的边界披露；release 不发布除非跨平台 QA 矩阵全部通过。
 
@@ -145,7 +155,7 @@
 
 | Phase | Plans Complete | Status      | Completed |
 |-------|----------------|-------------|-----------|
-| 94. 后端字段落地                  | 0/1 | Not started | - |
+| 94. 后端字段落地                  | 0/6 | Not started | - |
 | 95. 前端 NetworkSection + 重启 UX | 0/1 | Not started | - |
 | 96. 连接通道指示器                | 0/1 | Not started | - |
 | 97. onboarding + 文档 + 跨平台 QA | 0/1 | Not started | - |

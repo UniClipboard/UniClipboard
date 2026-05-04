@@ -2,15 +2,13 @@
 gsd_state_version: 1.0
 milestone: v0.7.0
 milestone_name: LAN-only Mode
-status: planning
-stopped_at: "Phase 94 context gathered"
-last_updated: "2026-05-04T00:00:00Z"
-last_activity: 2026-05-04
-resume_file: .planning/phases/094-backend-network-allow-relay-fallback/094-CONTEXT.md
+status: executing
+last_updated: "2026-05-04T09:05:54.382Z"
+last_activity: 2026-05-04 -- Phase 94 planning complete
 progress:
   total_phases: 4
   completed_phases: 0
-  total_plans: 4
+  total_plans: 6
   completed_plans: 0
   percent: 0
 ---
@@ -28,8 +26,8 @@ See: .planning/PROJECT.md (updated 2026-05-04)
 
 Phase: 94 后端字段落地 — context gathered, ready for planning
 Plan: —
-Status: Phase 94 CONTEXT.md captured（4 gray areas resolved: A1 / B3 / C1 / D1）
-Last activity: 2026-05-04 — Phase 94 discuss-phase complete (CONTEXT.md + DISCUSSION-LOG.md committed)
+Status: Ready to execute
+Last activity: 2026-05-04 -- Phase 94 planning complete
 
 ## Roadmap
 
@@ -43,6 +41,7 @@ Last activity: 2026-05-04 — Phase 94 discuss-phase complete (CONTEXT.md + DISC
 ## Pending Todos
 
 10 pending (see `.planning/todos/pending/`):
+
 - 修复 setup 配对确认提示缺失 (ui)
 - 给 FileTransferEvent::Cancelled 接入真实发射方 (file-transfer)
 - 让 timeout sweep 走事件存储而非直接操作 projection (file-transfer)

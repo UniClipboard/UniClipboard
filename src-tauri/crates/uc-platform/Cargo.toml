@@ -7,6 +7,11 @@ description = "Platform-specific implementations for UniClipboard (clipboard, se
 
 [features]
 test-helpers = []
+# 启用后，未设置 `UC_PROFILE` 时默认使用 "dev" profile：
+# - app_dirs 数据目录后缀变为 `-dev`
+# - 系统钥匙串 service name 后缀变为 `-dev`
+# 仅供 `bun tauri:build:dev` / 本地 dev 构建链路使用，不影响 release 默认行为。
+dev-profile = []
 
 [dependencies]
 # Workspace crates

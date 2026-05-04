@@ -5,6 +5,10 @@ license.workspace = true
 edition = "2021"
 description = "Tauri adapter layer for UniClipboard"
 
+[features]
+# 透传到 uc-platform/dev-profile，仅供 `bun tauri:build:dev` 使用。
+dev-profile = ["uc-platform/dev-profile"]
+
 [dependencies]
 # Workspace crates
 uc-core = { path = "../uc-core" }

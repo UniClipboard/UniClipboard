@@ -6,10 +6,24 @@ use uc_core::ports::AppDirsError;
 
 const APP_DIR_NAME: &str = "app.uniclipboard.desktop";
 
+/// 解析当前 profile：
+/// 1. 优先取运行时环境变量 `UC_PROFILE`。
+/// 2. 其次回退到编译期默认（feature `dev-profile` 启用时为 "dev"，否则为空）。
+///
+/// 见 `super::default_profile`。
+pub(crate) fn resolve_profile() -> Option<String> {
+    if let Ok(profile) = std::env::var("UC_PROFILE") {
+        if !profile.is_empty() {
+            return Some(profile);
+        }
+    }
+    super::default_profile().map(str::to_string)
+}
+
 fn resolved_app_dir_name() -> String {
-    match std::env::var("UC_PROFILE") {
-        Ok(profile) if !profile.is_empty() => format!("{APP_DIR_NAME}-{profile}"),
-        _ => APP_DIR_NAME.to_string(),
+    match resolve_profile() {
+        Some(profile) => format!("{APP_DIR_NAME}-{profile}"),
+        None => APP_DIR_NAME.to_string(),
     }
 }
 

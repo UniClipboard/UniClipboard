@@ -41,6 +41,9 @@ serde_json = "1"
 
 [features]
 cargo-clippy = []
+# 启用后默认使用 "dev" profile（数据目录后缀 `-dev`、keychain service 后缀 `-dev`）。
+# 仅供 `bun tauri:build:dev` 使用，避免本地 dev 构建产物覆盖 prod 安装的数据。
+dev-profile = ["uc-tauri/dev-profile"]
 
 [profile.release]
 panic = "abort"   # Strip expensive panic clean-up logic

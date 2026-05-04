@@ -3,9 +3,10 @@ gsd_state_version: 1.0
 milestone: v0.7.0
 milestone_name: LAN-only Mode
 status: planning
-stopped_at: null
+stopped_at: "Phase 94 context gathered"
 last_updated: "2026-05-04T00:00:00Z"
 last_activity: 2026-05-04
+resume_file: .planning/phases/094-backend-network-allow-relay-fallback/094-CONTEXT.md
 progress:
   total_phases: 4
   completed_phases: 0
@@ -25,10 +26,10 @@ See: .planning/PROJECT.md (updated 2026-05-04)
 
 ## Current Position
 
-Phase: Not started (roadmap created, planning Phase 94 next)
+Phase: 94 后端字段落地 — context gathered, ready for planning
 Plan: —
-Status: Roadmap defined（4 phases / 14 reqs / 100% covered）
-Last activity: 2026-05-04 — Roadmap created (4 phases, 14 reqs covered)
+Status: Phase 94 CONTEXT.md captured（4 gray areas resolved: A1 / B3 / C1 / D1）
+Last activity: 2026-05-04 — Phase 94 discuss-phase complete (CONTEXT.md + DISCUSSION-LOG.md committed)
 
 ## Roadmap
 
@@ -68,4 +69,5 @@ Last activity: 2026-05-04 — Roadmap created (4 phases, 14 reqs covered)
 
 Last milestone archive completed: v0.5.0 on 2026-04-13 (audit backfilled 2026-05-04)
 Current milestone: v0.7.0 LAN-only Mode (started 2026-05-04)
-Next recommended step: `/gsd-plan-phase 94` 起草 Phase 94 计划
+Phase 94 context gathered: 2026-05-04 — 4 gray areas resolved (A1 / B3 / C1 / D1)
+Next recommended step: `/gsd-plan-phase 94` 起草 Phase 94 计划（CONTEXT.md 已就绪）

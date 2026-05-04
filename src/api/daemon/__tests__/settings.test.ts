@@ -5,7 +5,7 @@
  * Phase 95 Plan 01 — 类型契约层 RED gate。
  * - 测试 toSettingsPatchRequest 在 network 段存在/不存在两种情况下的镜像行为
  * - 测试 updateSettings 返回 { success, restartRequired } 形态
- * - 反向命名审计 (Pitfall 1 fence) — 确保 lanOnly 镜像不出现，反向取反不被悄悄引入
+ * - 反向命名审计 (Pitfall 1 fence) — 确保反向布尔镜像字段不出现，反向取反不被悄悄引入
  */
 
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest'

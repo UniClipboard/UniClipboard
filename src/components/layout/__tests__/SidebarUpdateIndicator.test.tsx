@@ -48,6 +48,9 @@ const baseSetting: Settings = {
     maxRetries: 3,
     protocolVersion: '1.0.0',
   },
+  network: {
+    allowRelayFallback: true,
+  },
 }
 
 describe('Sidebar update indicator', () => {
@@ -72,6 +75,7 @@ describe('Sidebar update indicator', () => {
           updateRetentionPolicy: vi.fn(),
           updateKeyboardShortcuts: vi.fn(),
           updateFileSyncSetting: vi.fn(),
+          updateNetworkSetting: vi.fn().mockResolvedValue({ restartRequired: false }),
         }}
       >
         <UpdateContext.Provider
@@ -109,6 +113,7 @@ describe('Sidebar update indicator', () => {
           updateRetentionPolicy: vi.fn(),
           updateKeyboardShortcuts: vi.fn(),
           updateFileSyncSetting: vi.fn(),
+          updateNetworkSetting: vi.fn().mockResolvedValue({ restartRequired: false }),
         }}
       >
         <UpdateContext.Provider

@@ -91,6 +91,16 @@ export interface FileSyncSettings {
 }
 
 /**
+ * Network settings — wire field `allowRelayFallback` (camelCase 与 daemon serde 对齐).
+ *
+ * 网络设置 — wire 字段 allowRelayFallback。前端只允许在 NetworkSection.tsx
+ * 一处取反；不要在前端维护反向布尔镜像字段（反向命名铁律）。
+ */
+export interface NetworkSettings {
+  allowRelayFallback: boolean
+}
+
+/**
  * Retention rule — discriminated union matching the Rust `RetentionRule` enum.
  *
  * 保留规则 — 与 Rust `RetentionRule` 枚举匹配的可区分联合类型。
@@ -135,6 +145,7 @@ export interface Settings {
   pairing: PairingSettings
   keyboardShortcuts: Record<string, ShortcutKey>
   fileSync: FileSyncSettings
+  network: NetworkSettings
 }
 
 // ── API response wrappers ──────────────────────────────────────
@@ -147,7 +158,7 @@ interface SettingsGetResponse {
 
 /** PUT /settings response shape. / PUT /settings 响应结构。 */
 interface SettingsUpdateResponse {
-  data: { success: boolean }
+  data: { success: boolean; restartRequired: boolean }
   ts: number
 }
 
@@ -170,6 +181,7 @@ interface SettingsPatchRequest {
     shortcuts: Record<string, ShortcutKey>
   }
   fileSync?: Partial<FileSyncSettings>
+  network?: Partial<NetworkSettings>
 }
 
 // ── Public API ─────────────────────────────────────────────────
@@ -196,14 +208,19 @@ export async function getSettings(): Promise<Settings> {
  * values. Nested objects are merged recursively.
  *
  * @param settings Partial settings payload.
+ * @returns `{ success, restartRequired }` — daemon 在 patch 含 network 段时
+ *          会回 `restartRequired: true`，UI 据此决定是否显示 RestartBanner。
  * @throws {DaemonApiError} On HTTP or validation errors.
  */
-export async function updateSettings(settings: Partial<Settings>): Promise<void> {
+export async function updateSettings(
+  settings: Partial<Settings>
+): Promise<{ success: boolean; restartRequired: boolean }> {
   const patch = toSettingsPatchRequest(settings)
-  await daemonClient.request<SettingsUpdateResponse>('/settings', {
+  const res = await daemonClient.request<SettingsUpdateResponse>('/settings', {
     method: 'PUT',
     body: patch,
   })
+  return { success: res.data.success, restartRequired: res.data.restartRequired }
 }
 
 function toSettingsPatchRequest(settings: Partial<Settings>): SettingsPatchRequest {
@@ -295,6 +312,10 @@ function toSettingsPatchRequest(settings: Partial<Settings>): SettingsPatchReque
       fileRetentionHours,
       fileAutoCleanup,
     }
+  }
+
+  if (settings.network) {
+    patch.network = { allowRelayFallback: settings.network.allowRelayFallback }
   }
 
   return patch

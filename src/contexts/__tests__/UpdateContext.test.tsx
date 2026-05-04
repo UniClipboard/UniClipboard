@@ -58,6 +58,9 @@ const baseSetting: Settings = {
     maxRetries: 3,
     protocolVersion: '1.0.0',
   },
+  network: {
+    allowRelayFallback: true,
+  },
 }
 
 const UpdateConsumer = () => {
@@ -93,6 +96,7 @@ describe('UpdateProvider', () => {
           updateRetentionPolicy: vi.fn(),
           updateKeyboardShortcuts: vi.fn(),
           updateFileSyncSetting: vi.fn(),
+          updateNetworkSetting: vi.fn().mockResolvedValue({ restartRequired: false }),
         }}
       >
         <UpdateProvider>
@@ -120,6 +124,7 @@ describe('UpdateProvider', () => {
           updateRetentionPolicy: vi.fn(),
           updateKeyboardShortcuts: vi.fn(),
           updateFileSyncSetting: vi.fn(),
+          updateNetworkSetting: vi.fn().mockResolvedValue({ restartRequired: false }),
         }}
       >
         <UpdateProvider>
@@ -155,6 +160,7 @@ describe('UpdateProvider', () => {
           updateRetentionPolicy: vi.fn(),
           updateKeyboardShortcuts: vi.fn(),
           updateFileSyncSetting: vi.fn(),
+          updateNetworkSetting: vi.fn().mockResolvedValue({ restartRequired: false }),
         }}
       >
         <UpdateProvider>

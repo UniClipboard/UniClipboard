@@ -86,6 +86,9 @@ const baseSetting: Settings = {
     fileRetentionHours: 24,
     fileAutoCleanup: true,
   },
+  network: {
+    allowRelayFallback: true,
+  },
 }
 
 describe('SettingProvider theme integration', () => {

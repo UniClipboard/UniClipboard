@@ -38,14 +38,14 @@ function waitForEvent(
   threadManager: ThreadManager,
   threadId: string,
   eventType: LaceEventType,
-  timeoutMs = 5000,
+  timeoutMs = 5000
 ): Promise<LaceEvent> {
   return new Promise((resolve, reject) => {
     const startTime = Date.now()
 
     const check = () => {
       const events = threadManager.getEvents(threadId)
-      const event = events.find((e) => e.type === eventType)
+      const event = events.find(e => e.type === eventType)
 
       if (event) {
         resolve(event)
@@ -65,22 +65,22 @@ function waitForEventCount(
   threadId: string,
   eventType: LaceEventType,
   count: number,
-  timeoutMs = 5000,
+  timeoutMs = 5000
 ): Promise<LaceEvent[]> {
   return new Promise((resolve, reject) => {
     const startTime = Date.now()
 
     const check = () => {
       const events = threadManager.getEvents(threadId)
-      const matchingEvents = events.filter((e) => e.type === eventType)
+      const matchingEvents = events.filter(e => e.type === eventType)
 
       if (matchingEvents.length >= count) {
         resolve(matchingEvents)
       } else if (Date.now() - startTime > timeoutMs) {
         reject(
           new Error(
-            `Timeout waiting for ${count} ${eventType} events after ${timeoutMs}ms (got ${matchingEvents.length})`,
-          ),
+            `Timeout waiting for ${count} ${eventType} events after ${timeoutMs}ms (got ${matchingEvents.length})`
+          )
         )
       } else {
         setTimeout(check, 10)
@@ -96,7 +96,7 @@ function waitForEventMatch(
   threadId: string,
   predicate: (event: LaceEvent) => boolean,
   description: string,
-  timeoutMs = 5000,
+  timeoutMs = 5000
 ): Promise<LaceEvent> {
   return new Promise((resolve, reject) => {
     const startTime = Date.now()
@@ -123,9 +123,10 @@ function waitForEventMatch(
 // ---------------------------------------------------------------------------
 
 /** Build a mock ThreadManager whose event list can be updated at runtime. */
-function makeMockManager(
-  initialEvents: LaceEvent[] = [],
-): { manager: ThreadManager; addEvent: (e: LaceEvent) => void } {
+function makeMockManager(initialEvents: LaceEvent[] = []): {
+  manager: ThreadManager
+  addEvent: (e: LaceEvent) => void
+} {
   const events: LaceEvent[] = [...initialEvents]
   const manager: ThreadManager = {
     getEvents: (_threadId: string) => [...events],
@@ -271,7 +272,7 @@ describe('condition-based waiting utilities', () => {
       await vi.advanceTimersByTimeAsync(200)
 
       await expect(promise).rejects.toThrow(
-        'Timeout waiting for 3 TOOL_CALL events after 50ms (got 1)',
+        'Timeout waiting for 3 TOOL_CALL events after 50ms (got 1)'
       )
     })
 
@@ -301,7 +302,7 @@ describe('condition-based waiting utilities', () => {
       await vi.runAllTimersAsync()
 
       const events = await promise
-      expect(events.every((e) => e.type === 'TOOL_CALL')).toBe(true)
+      expect(events.every(e => e.type === 'TOOL_CALL')).toBe(true)
     })
 
     it('rejects with zero-count detail when no events arrive', async () => {
@@ -321,16 +322,14 @@ describe('condition-based waiting utilities', () => {
 
   describe('waitForEventMatch', () => {
     it('resolves immediately when a matching event is already present', async () => {
-      const { manager } = makeMockManager([
-        { type: 'TOOL_RESULT', data: { id: 'call_123' } },
-      ])
+      const { manager } = makeMockManager([{ type: 'TOOL_RESULT', data: { id: 'call_123' } }])
 
       const promise = waitForEventMatch(
         manager,
         'thread-1',
-        (e) => e.type === 'TOOL_RESULT' && (e.data as { id: string }).id === 'call_123',
+        e => e.type === 'TOOL_RESULT' && (e.data as { id: string }).id === 'call_123',
         'TOOL_RESULT with id=call_123',
-        100,
+        100
       )
       await vi.runAllTimersAsync()
 
@@ -347,9 +346,9 @@ describe('condition-based waiting utilities', () => {
       const promise = waitForEventMatch(
         manager,
         'thread-1',
-        (e) => e.type === 'TOOL_RESULT' && (e.data as { id: string }).id === 'call_123',
+        e => e.type === 'TOOL_RESULT' && (e.data as { id: string }).id === 'call_123',
         'TOOL_RESULT with id=call_123',
-        500,
+        500
       )
 
       await vi.advanceTimersByTimeAsync(20)
@@ -368,13 +367,13 @@ describe('condition-based waiting utilities', () => {
         'thread-1',
         () => false,
         'TOOL_RESULT with id=call_999',
-        40,
+        40
       )
 
       await vi.advanceTimersByTimeAsync(200)
 
       await expect(promise).rejects.toThrow(
-        'Timeout waiting for TOOL_RESULT with id=call_999 after 40ms',
+        'Timeout waiting for TOOL_RESULT with id=call_999 after 40ms'
       )
     })
 
@@ -387,9 +386,9 @@ describe('condition-based waiting utilities', () => {
       const promise = waitForEventMatch(
         manager,
         'thread-1',
-        (e) => e.type === 'TOOL_RESULT' && (e.data as { id: string }).id === 'call_123',
+        e => e.type === 'TOOL_RESULT' && (e.data as { id: string }).id === 'call_123',
         'TOOL_RESULT with id=call_123',
-        300,
+        300
       )
 
       await vi.advanceTimersByTimeAsync(20)
@@ -420,9 +419,9 @@ describe('condition-based waiting utilities', () => {
       const promise = waitForEventMatch(
         manager,
         'thread-1',
-        (e) => (e.data as { value: number }).value > 0,
+        e => (e.data as { value: number }).value > 0,
         'any TOOL_RESULT with positive value',
-        100,
+        100
       )
       await vi.runAllTimersAsync()
 

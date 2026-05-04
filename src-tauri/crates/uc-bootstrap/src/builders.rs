@@ -22,7 +22,7 @@ use uc_application::facade::{AppPaths, ClipboardSyncFacade, HostEventEmitterPort
 use uc_core::config::AppConfig;
 
 use crate::assembly::{get_storage_paths, wire_dependencies, BackgroundRuntimeDeps};
-use crate::space_setup::{build_space_setup_assembly, IrohNodeConfig, SpaceSetupAssembly};
+use crate::space_setup::{build_space_setup_assembly, SpaceSetupAssembly};
 
 /// Context for CLI entry point. AppDeps + config, no background workers.
 /// Caller constructs CoreRuntime from deps as needed.
@@ -175,7 +175,47 @@ pub async fn build_daemon_app() -> anyhow::Result<DaemonBootstrapContext> {
     // `accept` sees no incoming traffic. Keeping the bind on the caller's
     // long-lived daemon runtime keeps iroh's tasks alive for the process
     // lifetime.
-    let space_setup_assembly = build_space_setup_assembly(&wired, IrohNodeConfig::default())
+
+    // Phase 94 NETSET-03：从 settings 读取 LAN-only Mode 偏好后翻译为
+    // `IrohNodeConfig`。`SettingsPort::load` 当前错误返回类型 `anyhow::Result`
+    // 不区分 NotFound vs Parse；`FileSettingsRepository::load`
+    // (`repository.rs:166-168`) 已对 NotFound 兜底返回 `Settings::default()`
+    // (即 `allow_relay_fallback: true`)。故此处只需对剩余 Parse/IO 错误硬失败
+    // —— LAN-only 信任锚点不容许脏 settings 撒谎（D-B1 选项 B 现状决策 — 见
+    // 094-CONTEXT.md `<deferred>` 已记录后续 phase 实施 `SettingsLoadError`
+    // 偿还此隐式契约）。
+    let settings = wired
+        .deps
+        .settings
+        .load()
+        .await
+        .map_err(|err| anyhow::anyhow!("settings load failed at startup: {err}"))?;
+    let allow_relay_fallback = settings.network.allow_relay_fallback;
+
+    // 【checker BLOCKER 4 — 单一取反点铁律】
+    // `disable_relays` 的值**只能**通过 `relay_policy_to_iroh_config` 取得，
+    // **不**在此处内联写 `let disable_relays = !allow_relay_fallback;`（这会让
+    // 取反点泄漏到第二处，违反 Pattern A）。下方 tracing::info! 字段值从
+    // `iroh_config.disable_relays` 读取。
+    let iroh_config = crate::network_policy::relay_policy_to_iroh_config(
+        allow_relay_fallback,
+        None, // production 不 override rendezvous，使用默认 RENDEZVOUS_BASE_URL
+    );
+
+    // D-B3：方便 support 排障 — 字段名固定为 `allow_relay_fallback` /
+    // `disable_relays`（与代码一致）。**不**在 OTLP 加 attribute（Pitfall 6）。
+    // 【checker BLOCKER 4 / W1】tracing 字段值通过 `iroh_config.disable_relays`
+    // 读取，保证唯一取反点位于 network_policy.rs。
+    tracing::info!(
+        target: "settings.network",
+        allow_relay_fallback,
+        disable_relays = iroh_config.disable_relays,
+        "applying network.allow_relay_fallback={} → disable_relays={}",
+        allow_relay_fallback,
+        iroh_config.disable_relays,
+    );
+
+    let space_setup_assembly = build_space_setup_assembly(&wired, iroh_config)
         .await
         .map_err(|e| anyhow::anyhow!("Slice 1+ assembly build failed: {e}"))?;
 

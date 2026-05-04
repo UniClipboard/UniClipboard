@@ -25,7 +25,7 @@ use uc_application::facade::{
 use uc_core::clipboard::ClipboardIntegrationMode;
 
 use crate::assembly::get_storage_paths;
-use crate::space_setup::{build_space_setup_assembly, IrohNodeConfig, SpaceSetupAssembly};
+use crate::space_setup::{build_space_setup_assembly, SpaceSetupAssembly};
 use crate::task_registry::TaskRegistry;
 
 // ---------------------------------------------------------------------------
@@ -277,7 +277,32 @@ pub async fn build_cli_app_runtime(
 ) -> anyhow::Result<CliAppRuntime> {
     let (config, wired) = crate::builders::build_slice1_cli_context(log_profile)?;
     let storage_paths = get_storage_paths(&config)?;
-    let assembly = build_space_setup_assembly(&wired, IrohNodeConfig::default())
+
+    // Phase 94 NETSET-03：与 builders.rs 同模式（D-B1 选项 B 现状决策 — 见
+    // 094-CONTEXT.md `<deferred>` 后续 phase 实施 `SettingsLoadError` 偿还）。
+    let settings = wired
+        .deps
+        .settings
+        .load()
+        .await
+        .map_err(|err| anyhow::anyhow!("settings load failed at startup: {err}"))?;
+    let allow_relay_fallback = settings.network.allow_relay_fallback;
+
+    // 【checker BLOCKER 4 — 单一取反点铁律】见 builders.rs 同处注释。
+    // 不在此处内联 `let disable_relays = !allow_relay_fallback;`。
+    let iroh_config =
+        crate::network_policy::relay_policy_to_iroh_config(allow_relay_fallback, None);
+
+    tracing::info!(
+        target: "settings.network",
+        allow_relay_fallback,
+        disable_relays = iroh_config.disable_relays,
+        "applying network.allow_relay_fallback={} → disable_relays={}",
+        allow_relay_fallback,
+        iroh_config.disable_relays,
+    );
+
+    let assembly = build_space_setup_assembly(&wired, iroh_config)
         .await
         .map_err(|err| anyhow::anyhow!("failed to bind iroh endpoint: {err}"))?;
     let deps = &wired.deps;

@@ -1,461 +1,444 @@
-# Architecture Research: Local Encrypted Search Integration
+# 架构集成研究 · v0.7.0「LAN-only Mode」
 
-**Domain:** Hexagonal architecture integration — local encrypted inverted index into existing Rust codebase
-**Researched:** 2026-04-10
-**Confidence:** HIGH (based on primary source code reading, confirmed against architecture spec)
-
----
-
-## System Overview
-
-The existing hexagonal stack (compiler-enforced private deps):
-
-```
-uc-core          (domain models + port traits — zero deps on other crates)
-    ↓
-uc-app           (use cases — depends only on uc-core)
-    ↓
-uc-infra         (SQLite adapters, crypto — depends on uc-core + uc-app)
-    ↓
-uc-bootstrap     (wiring: constructs AppDeps, passes Arc<dyn Port> into use cases)
-    ↓
-uc-daemon        (Axum HTTP routes + background workers — depends on uc-app + uc-core)
-    ↓
-uc-tauri         (Tauri shell — thin proxy to daemon)
-    ↑
-frontend React   (TypeScript — calls daemon HTTP/WS)
-```
-
-The search subsystem touches all five Rust layers in a specific, constrained way. Each layer integration is described below.
+**里程碑：** v0.7.0 LAN-only Mode
+**研究域：** 既有六边形架构下的字段落点、装配链注入点、设备列表"连接通道"指示器来源
+**研究时间：** 2026-05-04
+**整体置信度：** HIGH（关键文件全部 grep 验证，集成点行号锁定）
 
 ---
 
-## Integration Point 1: uc-core — SearchIndexPort
+## 0. 本里程碑架构变更摘要
 
-**Status: NEW**
+> **核心判断：** 这不是新架构，而是**在既有钩子上挂一根线**。`uc-core::Settings` 已有 `// pub network: NetworkSettings,` 注释占位（`uc-core/src/settings/model.rs:201-202`），`IrohNodeConfig.disable_relays` 已是 `pub`（`uc-infra/src/network/iroh/node.rs:161`），`bind` 时 `RelayMode` 路径已通（`node.rs:368-372`）。本里程碑要补的是"把这根线接通"，外加一个全新的"连接通道"读出能力。
 
-All port traits live in `uc-core/src/ports/`. A new `search/` submodule must be added there, following the existing pattern (`ports/security/`, `ports/clipboard/`).
+| 类别 | 涉及组件 | 备注 |
+|------|---------|------|
+| **新增** | `NetworkSettings` 值对象（`uc-core`）+ View / Patch 镜像（`uc-application`）+ DTO（`uc-webserver` + `uc-daemon-contract`）+ TS 类型（`src/api/daemon/settings.ts`）+ NetworkSection 真实 UI + "连接通道"读取链路（新增 port `ConnectionChannelPort` + iroh 适配 + DTO 字段 + 前端组件） | 大头 |
+| **修改** | `apply_settings_patch`（多挂一段）+ `Settings::default`（多一行）+ `build_space_setup_assembly` 调用方（`builders.rs:178` / `non_gui_runtime.rs:280`）从 `IrohNodeConfig::default()` 改成"先读 settings 再造"+ NetworkSection 替换占位 + `PeerSnapshotDto` 加字段 + `peers.changed` 路径不变（增量字段而非新事件类型） | 中等 |
+| **保持不变** | 六边形分层、daemon-first 主权、HTTP `/settings` 与 WS `peers.changed` 协议骨架、Tauri commands（**继续没有 settings 命令**，前端走 daemon HTTP）、iroh `RelayMode` 在 bind 时确定的事实、`disable_relays` 字段本身、settings JSON 文件原子写策略、SQLite migration 链（settings 是 JSON 文件，不走 SQL migration） | 大量 |
 
-```
-uc-core/src/ports/
-├── search/
-│   ├── mod.rs            (pub use)
-│   ├── search_index.rs   (SearchIndexPort trait)
-│   └── search_key.rs     (SearchKeyDerivationPort trait)
-└── mod.rs                (pub use search::*)
-```
-
-**SearchIndexPort** owns all index read/write operations:
-
-```rust
-#[async_trait]
-pub trait SearchIndexPort: Send + Sync {
-    async fn index_entry(&self, doc: SearchDocument, postings: Vec<SearchPosting>) -> Result<()>;
-    async fn remove_entry(&self, entry_id: &EntryId) -> Result<()>;
-    async fn search(&self, query: SearchQuery) -> Result<Vec<EntryId>>;
-    async fn rebuild(&self, entries: Vec<(SearchDocument, Vec<SearchPosting>)>) -> Result<()>;
-    async fn get_index_meta(&self) -> Result<SearchIndexMeta>;
-}
-```
-
-**SearchKeyDerivationPort** isolates the HKDF derivation behind a port boundary so `uc-app` use cases can request a search key without knowing about HMAC internals:
-
-```rust
-#[async_trait]
-pub trait SearchKeyDerivationPort: Send + Sync {
-    async fn derive_search_key(&self) -> Result<SearchKey, EncryptionError>;
-}
-```
-
-**Domain models** also belong in `uc-core/src/`:
-
-```
-uc-core/src/
-└── search/
-    ├── mod.rs
-    ├── query.rs        (SearchQuery, BoolOp, TimeRange, FileTypeFilter)
-    ├── document.rs     (SearchDocument, SearchPosting, SearchIndexMeta)
-    └── projection.rs   (SearchResult — entry_id + matched fields)
-```
-
-The file type enum (`text | html | link | file | image | other`) is defined in `uc-core::search::document` as a search-layer classification derived from clipboard domain projections. It does NOT belong in the clipboard domain — the clipboard domain produces a `SearchableProjection` struct; the search subsystem classifies it.
+> **常见误区纠正：** Settings 不是 SQLite 存储。它是 `~/Library/Application Support/app.uniclipboard.desktop/.../settings.json` 的 JSON 文件 + serde（`uc-infra/src/settings/repository.rs:77 atomic_write`），migration 走 `SettingsMigrator`（基于 `schema_version` 数值递增）而非 SQL。原 question 里"SQLite 存储/migration 怎么走"的提法本身假设错了。
 
 ---
 
-## Integration Point 2: uc-app — Use Cases
+## 1. 推荐架构（按层）
 
-**Status: FOUR NEW use cases + ONE modified**
+### 1.1 Domain 层（`uc-core`）
 
-New use cases in `uc-app/src/usecases/`:
+**新增值对象 `NetworkSettings`** —— 放进既有 settings model。
 
-```
-uc-app/src/usecases/
-├── search_clipboard_entries.rs   (NEW — query execution)
-├── index_clipboard_entry.rs      (NEW — incremental index add)
-├── remove_indexed_entry.rs       (NEW — incremental delete from index)
-└── rebuild_search_index.rs       (NEW — full rebuild with atomic swap)
-```
-
-**Modified: `DeleteClipboardEntry`** (in `uc-app/src/usecases/delete_clipboard_entry.rs`)
-
-The existing use case uses an optional `.with_file_cache_dir()` builder already. Follow the identical pattern:
+文件：`src-tauri/crates/uc-core/src/settings/model.rs`
 
 ```rust
-pub struct DeleteClipboardEntry {
-    // ... existing fields ...
-    search_index: Option<Arc<dyn SearchIndexPort>>,  // ADD
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct NetworkSettings {
+    /// 是否允许 iroh 在直连失败时回落到公网中继。
+    /// 默认 `true`（保持现状，存量用户不受影响）。
+    /// UI 上的"LAN-only Mode"开关呈现为它的反向：toggle 关闭 = `false`。
+    #[serde(default = "default_allow_relay_fallback")]
+    pub allow_relay_fallback: bool,
 }
 
-impl DeleteClipboardEntry {
-    pub fn with_search_index(mut self, port: Arc<dyn SearchIndexPort>) -> Self {
-        self.search_index = Some(port);
-        self
+fn default_allow_relay_fallback() -> bool { true }
+```
+
+挂到 `Settings` 上（取消 `model.rs:201-202` 注释，正式启用）：
+
+```rust
+pub struct Settings {
+    // ...既有字段
+    #[serde(default)]
+    pub network: NetworkSettings,
+}
+```
+
+`Default for Settings` 在 `uc-core/src/settings/defaults.rs:251-262` 增一行 `network: NetworkSettings::default()`，并补 `impl Default for NetworkSettings { fn default() -> Self { Self { allow_relay_fallback: true } } }`。
+
+> **为什么放 `uc-core` 而不是 `uc-infra`：** `uc-core/AGENTS.md` §8 明确说"业务设置（如 `SyncSettings`）属于 core，配置加载属于 infra"。`network.allow_relay_fallback` 是用户业务偏好（"我要不要走公网中继"），不是 infra 的配置加载逻辑，归 core 是直接对应的。注意值对象**不持有**任何 iroh / libp2p 类型——`disable_relays` 这种命名留给 `uc-infra`。
+
+**`schema_version` 是否要 bump？** 不需要。新增字段全部带 `#[serde(default = ...)]`，旧 settings.json 反序列化时缺字段直接走默认值，向前兼容。`CURRENT_SCHEMA_VERSION` 保持 `1`（`uc-core/src/settings/model.rs:7`），`SettingsMigrator` 不需要新条目（`uc-infra/src/settings/migration.rs:38-41` 当前是空 vec）。
+
+**领域端口要加吗？** `SettingsPort`（`uc-core/src/ports/mod.rs`）签名 `load(&self) -> Settings` / `save(&self, &Settings)` 是字段无关的，新字段自动跟着流过去，**不动**。**但** §1.5 会建议**新增一个独立 port** `ConnectionChannelPort` 给"连接通道"指示器，原因见那一节。
+
+---
+
+### 1.2 Application 层（`uc-application`）
+
+**改 `models.rs` —— 加 namespace，不破坏既有签名。**
+
+文件：`src-tauri/crates/uc-application/src/facade/settings/models.rs`
+
+新增（在 `FileSyncSettingsView` 之后）：
+
+```rust
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NetworkSettingsView {
+    pub allow_relay_fallback: bool,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct NetworkSettingsPatch {
+    pub allow_relay_fallback: Option<bool>,
+}
+```
+
+`SettingsView` 新增字段 `pub network: NetworkSettingsView`（`models.rs:134-143`），`SettingsPatch` 新增字段 `pub network: Option<NetworkSettingsPatch>`（`models.rs:217-226`）。
+
+`From<core::Settings> for SettingsView`（`models.rs:386-444`）末尾补 `network: NetworkSettingsView { allow_relay_fallback: value.network.allow_relay_fallback }`。
+
+`apply_settings_patch`（`models.rs:446-566`）末尾追加：
+
+```rust
+if let Some(network) = patch.network {
+    if let Some(v) = network.allow_relay_fallback {
+        existing.network.allow_relay_fallback = v;
     }
 }
 ```
 
-In `execute()`, after step 3 (entry deleted), call `self.search_index.remove_entry(entry_id)` if present. This is synchronous within the deletion workflow — the design doc is explicit that search index removal must be part of the normal deletion flow, not a best-effort async side-effect.
+**`facade.rs` 不动。** `SettingsFacade::get` / `update`（`facade.rs:27-48`）签名都是 `SettingsView` / `SettingsPatch`，新增字段透明流过。这是**纯 additive 改动，不是 namespace 重构**。`uc-application/AGENTS.md` §11.4 要求外部只通过 `facade/` 目录访问；`mod.rs:5-12` 的 `pub use` 白名单需要新增一行 `NetworkSettingsView, NetworkSettingsPatch`。
 
-**Indexing hook location:** The `IndexClipboardEntry` use case is NOT called inside `CaptureClipboardUseCase`. The capture use case returns `EntryId` and stops. The indexing hook belongs in `uc-daemon`'s `DaemonClipboardChangeHandler` — which already orchestrates post-capture actions (outbound sync trigger per Phase 61). This is the correct decoupling boundary: `uc-app` stays free of search concerns at the capture layer.
+**为什么是 additive 而不是 namespace 隔离：** `SettingsView` 已经是 namespace 化的（`general` / `sync` / `security` / `pairing` / `file_sync`），新增 `network` 是**沿用既有结构**，不是重命名/迁移。其他 namespace 现状不动。
 
-**AppDeps (`uc-app/src/deps.rs`):** Add a new `SearchPorts` group, following the five existing groups (`ClipboardPorts`, `SecurityPorts`, `DevicePorts`, `StoragePorts`, `SystemPorts`):
+---
+
+### 1.3 Infra 层（`uc-infra`）
+
+**Settings 存储/migration 不动。** 已经是 JSON 文件 + `serde(default)` + 显式 `SettingsMigrator`（基于 `schema_version`）。新字段加 `#[serde(default)]` 自然兼容；`SettingsMigrator` migrations vec（`migration.rs:38-41`）保持空。
+
+**iroh node 启动注入 `disable_relays`** —— 装配点是 `uc-bootstrap::space_setup`，不是 `uc-infra` 内部。
+
+文件：`src-tauri/crates/uc-bootstrap/src/space_setup.rs:208-228`
+
+当前签名（`build_space_setup_assembly` 接 `IrohNodeConfig` 参数）已经允许调用方传入定制配置。**调用方**才是真正的注入点：
+
+| 调用方文件 | 行号 | 当前 | 修改后 |
+|---|---|---|---|
+| `uc-bootstrap/src/builders.rs` | 178 | `build_space_setup_assembly(&wired, IrohNodeConfig::default())` | 先读 `wired.deps.settings.load().await`，根据 `network.allow_relay_fallback` 构造 `IrohNodeConfig { disable_relays: !allow_relay_fallback, rendezvous_base_url: None }` |
+| `uc-bootstrap/src/non_gui_runtime.rs` | 280 | 同上 | 同上 |
+| `uc-bootstrap/src/space_setup.rs` 测试 | n/a | 测试用 `IrohNodeConfig { disable_relays: true, .. }` 直传 | 不动，集成测试保持显式控制 |
+
+**为什么不在 `space_setup.rs` 内部读 settings：** `space_setup.rs` 已经接 `IrohNodeConfig` 参数，是装配体的入参；它不应该再反向调用 `SettingsPort::load`，否则**装配体既是消费者又是配置读取者**，违反 `uc-bootstrap` 的"只装配，不决策"职责。读 settings 的责任应该留在 builders（已经持有 `wired.deps.settings`）。
+
+**新增 `IrohNodeConfig::from_network_settings(&NetworkSettings)`？** 不要做。`uc-infra/AGENTS.md` §4.1 明确"不让 core 适配 infra"——`NetworkSettings` 不应该被 `uc-infra` 直接知道。装配代码（`uc-bootstrap`）做翻译是正确的边界。
+
+**`uc-infra/src/network/iroh/node.rs:153-162` 的 `IrohNodeConfig` 不动。** `disable_relays: bool` 已经满足需要。
+
+**新增 infra adapter `IrohConnectionChannelAdapter`** —— 见 §1.5。
+
+---
+
+### 1.4 Webserver / Tauri commands
+
+**HTTP `/settings`（webserver）只动 DTO 层，不加新命令。**
+
+文件：`src-tauri/crates/uc-webserver/src/api/settings.rs:23-27`
+
+`router()` 不动。`get_settings_handler` / `update_settings_handler` 都是泛 patch，新字段自动流过。**改的是 DTO 转换：**
+
+* `src-tauri/crates/uc-webserver/src/api/dto/settings.rs`：新增 `NetworkSettingsDto { allow_relay_fallback: bool }` + `NetworkSettingsPatchDto { allow_relay_fallback: Option<bool> }`，挂到 `SettingsDto` 与 `SettingsPatchDto`
+* `settings.rs:92-160` 的 `settings_patch_from_dto`：在末尾补一段（与 `file_sync` 同级）：
+
+  ```rust
+  network: patch.network.map(|n| app_settings::NetworkSettingsPatch {
+      allow_relay_fallback: n.allow_relay_fallback,
+  }),
+  ```
+
+* `settings.rs:162-218` 的 `settings_view_to_dto`：末尾补 `network: NetworkSettingsDto { allow_relay_fallback: value.network.allow_relay_fallback }`
+
+**Tauri commands：不需要新命令。** `uc-tauri/src/commands/mod.rs` 里**根本没有 settings 命令**（确认：grep `fn get_settings|fn update_settings` in `uc-tauri` 无结果）。前端的 settings 走 daemon HTTP 客户端 `daemonClient.request('/settings')`（`src/api/daemon/settings.ts:185-207`）。这是既有架构的明确选择（webserver `settings.rs:5-7` 有注释说明 "Unlike the Tauri command（which applies OS-level side effects），these handlers only update the settings domain model"——历史上**曾经**有 Tauri command；当前代码里 Tauri commands 已经下线 settings，全部走 HTTP）。
+
+**为什么不重新加 Tauri command：** `network.allow_relay_fallback` **没有 OS-level side effect**（不像 `auto_start` 要写注册表，或 `keyboard_shortcuts` 要 register global shortcut）。它只影响 daemon 进程下次启动时的 iroh bind 行为，是纯 daemon-domain 的字段。daemon HTTP 路径已经覆盖。
+
+---
+
+### 1.5 设备列表"连接通道"指示器
+
+这是本里程碑**唯一真正的"新增能力"**——前面所有改动都是"接通既有钩子"。
+
+#### 现状（无指示器）
+
+* `PeerSnapshotDto`（`uc-daemon-contract/src/api/types.rs:33-40`）目前字段：`peer_id` / `device_name` / `addresses` / `is_paired` / `connected: bool` / `pairing_state: String`。**没有"通道类型"字段**。
+* `connected: bool` 来自 `PresencePort.current_state()`（即 `Online | Offline | Unknown`，`uc-core/src/ports/presence.rs:23-28`）二值化映射，与"通道"是两件事。
+* iroh **有**读 connection type 的 API：`Endpoint::remote_info(addr_id) -> Option<RemoteInfo>`，过滤 `TransportAddrInfo` 是 `Active` 的 entries（`uc-infra/src/network/iroh/connect.rs:51-67` 已经有用例，目前只用作日志）。
+* 现成的事件路径：`PresenceMonitor`（`uc-desktop/src/daemon/peers/presence_monitor.rs:1-50`）在 `PresenceEvent` 触发时拉一遍 `app_facade.list_peer_snapshots()` 然后 broadcast `peers.changed` 全量快照；前端 `SpaceMembersPanel.tsx:50-58` 收到事件后重拉 `/paired-devices`。**新增字段沿这条路就行，不需要新事件类型。**
+
+#### 推荐设计
+
+新增一个**领域 port** + 一个**iroh adapter** + 给 `PeerSnapshotDto` 加字段。
+
+**Port 定义**（`uc-core/src/ports/connection_channel.rs`，新文件）：
 
 ```rust
-pub struct SearchPorts {
-    pub search_index: Arc<dyn SearchIndexPort>,
-    pub search_key_derivation: Arc<dyn SearchKeyDerivationPort>,
+/// 当前连接所走通道。"我此刻的流量是 LAN 直连还是公网 relay 中继？"
+/// 由 application 层喂给 roster facade，最终回流到 PeerSnapshotDto。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ConnectionChannel {
+    /// 直连（包含 LAN mDNS 与 hole-punched WAN）
+    Direct,
+    /// 公网中继中转
+    Relay,
+    /// 当前不在线，无通道
+    Offline,
+    /// 未拨过号或无法判定
+    Unknown,
 }
 
-pub struct AppDeps {
-    // ... existing fields ...
-    pub search: Option<SearchPorts>,  // Option so existing boot paths don't break
-}
-```
-
----
-
-## Integration Point 3: uc-infra — Adapters
-
-**Status: TWO NEW adapter files + ONE NEW migration**
-
-```
-uc-infra/src/
-├── search/
-│   ├── mod.rs
-│   ├── sqlite_search_index.rs     (NEW — SearchIndexPort impl)
-│   ├── text_extractor.rs          (NEW — SearchableProjection → tokenized fields)
-│   ├── tokenizer.rs               (NEW — NFKC + lowercase + word split + CJK bigram)
-│   └── search_key_derivation.rs   (NEW — SearchKeyDerivationPort impl using HKDF)
-```
-
-**SQLite search key derivation** (`SearchKeyDerivationPort` impl):
-
-Calls `EncryptionSessionPort::get_master_key()` then runs `HKDF-SHA256(master_key, info="uc-search-index-v1", salt=profile_id_bytes)`. The `profile_id` comes from `KeyScopePort::current_scope()` which already exists. This keeps the search key scoped to the profile (the isolation dimension defined in the architecture spec, question 5).
-
-```rust
-pub struct HkdfSearchKeyDerivation {
-    session: Arc<dyn EncryptionSessionPort>,
-    key_scope: Arc<dyn KeyScopePort>,
+#[async_trait]
+pub trait ConnectionChannelPort: Send + Sync {
+    async fn channel_for(&self, device: &DeviceId) -> ConnectionChannel;
 }
 ```
 
-**SQLite search index adapter:**
+> 注：`uc-core/AGENTS.md` §6 允许 core 出现"设备之间的关系"类型；`ConnectionChannel` 是关系层而不是协议层（不出现 "iroh" / "transport" 字眼），合规。
 
-The existing infra layer uses Diesel ORM via `DbPool`. The search index DEVIATES from this pattern intentionally: posting-list operations (AND = intersect posting lists, OR = union) do not map well to Diesel's query builder. Use `diesel::sql_query()` through the same `DbPool` and `DbConn` (`SqliteConnection`). This is a documented deviation, not an accident.
+**Adapter 实现**（`uc-infra/src/network/iroh/connection_channel_adapter.rs`，新文件）：
 
-The `SqliteSearchIndex` adapter holds `Arc<DbPool>` — same as every other infra adapter.
+包装 `Arc<Endpoint>` + `Arc<dyn PeerAddressRepositoryPort>`。`channel_for(device)` 流程：
 
-**HMAC term tag generation** is done synchronously in the adapter:
+1. 从 `peer_addr_repo.get(device)` 拿到 `EndpointAddr`，没有 → `Offline`
+2. `endpoint.remote_info(addr.id).await` → 找 `Active` 的 `TransportAddrInfo`：
+   * 若有 `TransportAddr::Ip` → `Direct`（LAN/WAN 都算直连，UI 文案上统一显示"LAN/Direct"；如需进一步细分 LAN vs hole-punched WAN，在 adapter 里检查 IP 是否私有地址范围即可，不影响 port 契约）
+   * 若只有 `TransportAddr::Relay` → `Relay`
+   * 若 `Active` 集合为空 → `Unknown`（拨过号但路径没建立）
+3. 没 `remote_info` → `Unknown`
 
-```rust
-fn term_tag(search_key: &SearchKey, token: &str) -> String {
-    // HMAC-SHA256(search_key, token) → hex string
-}
-```
+> 注：iroh 0.98 把 `Endpoint::conn_type` 换成了 snapshot 风格的 `remote_info`（连 `connect.rs:45-67` 的注释都明确写了），这是当前 API。无需 watcher。
 
-**SQLite migration** (`uc-infra/migrations/`):
+**Application 层接入**：
 
-Add one new migration directory (next after `2026-03-15-000002_upgrade_file_transfer_tracking`):
+* `uc-application` 把 `Arc<dyn ConnectionChannelPort>` 加进 `MemberRosterDeps`（与 `PresencePort` 并列），`MemberRosterFacade::list_with_presence` 内部聚合时多读一次 `channel_for`。
+* `app_facade.list_peer_snapshots()`（`uc-webserver/src/api/server.rs:99-112` 调它）的 `PeerSnapshotView` 增字段 `channel: ConnectionChannel`。
 
-```
-migrations/2026-04-10-000001_create_search_index/
-├── up.sql
-└── down.sql
-```
+**装配链**：
 
-The three new tables (`search_document`, `search_posting`, `search_index_meta`) have **no foreign keys** to existing clipboard tables. This is deliberate: the index is independently rebuildable and must not be constrained by clipboard table state. The hard-delete semantic (architecture spec question 4) means no `deleted_at_ms` column in `search_document`.
+文件：`src-tauri/crates/uc-bootstrap/src/space_setup.rs`
 
-Diesel `schema.rs` must be updated to declare the three new tables. Since they have no joins to existing tables, they do not appear in `diesel::allow_tables_to_appear_in_same_query!()` unless cross-table queries are needed.
+`build_space_setup_assembly` 在 `let iroh_node = builder.spawn();`（行 273 前后）拿到 `endpoint` 之后构造 `Arc::new(IrohConnectionChannelAdapter::new(endpoint.clone(), wired.peer_addr_repo.clone()))`，喂进 `MemberRosterFacade::new(...)`。
 
-The migration runs automatically on startup via the existing `run_migrations()` / `embed_migrations!()` pipeline in `uc-infra/src/db/pool.rs` — no code changes needed to trigger it.
+> 注：`IrohNode` 当前**私有持有** `endpoint`（`node.rs:99-102`，没有 `pub fn endpoint()`）。需要新增一个 `pub fn endpoint(&self) -> Arc<Endpoint>` 访问器，**或**让 `IrohNodeBuilder::spawn()` 同时返回一个 `ConnectionChannelPort` 句柄（更干净，与现有 `install_*` 模式一致）。后者更符合 `uc-infra/AGENTS.md` §4.3 的可替换性原则——把 `Endpoint` 当 `Arc` 漏出去，等于把"拿到 iroh endpoint"作为隐式合约。
 
----
+**DTO/事件传递**：
 
-## Integration Point 4: uc-daemon — HTTP Routes + Worker Hook
+* `uc-daemon-contract/src/api/types.rs:33-40` 给 `PeerSnapshotDto` 加 `pub channel: String`（值 `"direct" | "relay" | "offline" | "unknown"`）
+* `uc-webserver/src/api/server.rs:99-112` 的 mapping 多一行 `channel: peer.channel.into()`（或 `channel_to_dto(...)` helper）
+* WS 协议**不改动**——`peers.changed` 仍然是全量快照（`PeersChangedFullPayload { peers: Vec<PeerSnapshotDto> }`，`types.rs:115-118`），新字段跟着走
 
-**Status: ONE NEW route file + ONE modified worker**
+**前端**：
 
-**New routes file: `uc-daemon/src/api/search.rs`**
+* `src/api/daemon/members.ts` 的 `SpaceMember` 接口加 `channel?: 'direct' | 'relay' | 'offline' | 'unknown'`
+* 在 `src/components/device/` 下新建 `ConnectionChannelBadge.tsx`，根据 channel 显示 LAN / Relay / Offline 三态徽章
+* `SpaceMembersPanel.tsx` 渲染每个成员时挂上这个徽章；保留既有 `peers.changed` 订阅（行 50-58）即可，无需新事件
 
-Follows the identical pattern as `uc-daemon/src/api/clipboard.rs`:
+#### 何时通道会变化？
 
-```rust
-pub fn router() -> Router<DaemonApiState> {
-    Router::new()
-        .route("/search/query",   post(search_entries))
-        .route("/search/rebuild", post(rebuild_index))
-        .route("/search/status",  get(get_index_status))
-}
-```
+iroh 不主动 broadcast "通道切换"事件。当前逻辑是：每次 `PresenceEvent`（拨号成功 / connection.closed）会触发 `peers.changed` 全量快照（`presence_monitor.rs:13-27`）；前端 `DevicesPage.tsx:11-16` 还会每 15s 主动 `refreshPresence()` 一次。这两条路径都会自然带回新的 `channel` 值。**无需新订阅 / 新事件**——通道由 `peer_snapshots()` 自然刷新。
 
-Merged into `router_l2_plus()` in `routes.rs` alongside the existing clipboard, settings, and pairing routers. All three routes require the session to be unlocked — handlers check `EncryptionSessionPort::is_ready()` and return `ApiError::Unauthorized` if not ready.
-
-Route string constants follow the existing `daemon_api_strings` centralization pattern in `uc-core::network::daemon_api_strings`.
-
-**Modified worker: `DaemonClipboardChangeHandler`**
-
-This handler (Phase 61, `uc-daemon/src/workers/`) already calls post-capture orchestration (outbound sync). Add the search indexing call there:
-
-```
-capture completes → EntryId returned
-    → DaemonClipboardChangeHandler::handle()
-        → trigger outbound sync (existing)
-        → if encryption_session.is_ready():
-            IndexClipboardEntry use case (NEW)
-```
-
-The indexing call is gated on `encryption_session.is_ready()`. If the session is not unlocked (edge case: race at startup), skip silently — the full rebuild route recovers from this state.
+如果用户感觉刷新太慢（直连失败回落到 relay 但 UI 没更新），可以在 §6 留一个增强项："连接路径切换专用事件"，本里程碑不做。
 
 ---
 
-## Integration Point 5: SQLite Migration Strategy
+## 2. 数据流（当前 vs 之后）
 
-**Approach:** Standard Diesel embedded migration — additive, no foreign keys to existing tables.
+### 2.1 启动期（settings → iroh bind）
 
-The migration pipeline is already in place (`embed_migrations!("migrations")` in `pool.rs`, `run_pending_migrations()` at startup). Adding new migration directories is all that is needed.
+**当前：**
 
-Key constraints for the three new tables:
-
-1. `search_document.entry_id` is TEXT PRIMARY KEY — no FK constraint to `clipboard_entry.entry_id`. The index is independently rebuildable.
-2. `search_posting` uses a composite PRIMARY KEY `(term_tag, entry_id)`.
-3. `search_index_meta` is a single-row config table (use `UPSERT` on a fixed `id = 1`).
-4. `index_version` TEXT column in `search_document` enables safe rebuild triggers when the tokenizer normalization version changes.
-5. No `deleted_at_ms` column — hard-delete semantic. Rows are physically removed on entry deletion.
-
-For the full rebuild flow (atomic swap), use SQLite's `ALTER TABLE ... RENAME` pattern:
-
-```sql
--- 1. Write into search_document_tmp + search_posting_tmp
--- 2. BEGIN EXCLUSIVE TRANSACTION
--- 3. DROP TABLE search_document; DROP TABLE search_posting;
--- 4. ALTER TABLE search_document_tmp RENAME TO search_document;
--- 5. ALTER TABLE search_posting_tmp RENAME TO search_posting;
--- 6. UPDATE search_index_meta SET rebuild_state='complete';
--- 7. COMMIT
+```
+进程启动 → builders::build_slice1_cli_context (or non_gui)
+        → build_space_setup_assembly(&wired, IrohNodeConfig::default())  // disable_relays = false
+        → IrohNodeBuilder::bind → Endpoint(relay_mode = Default)
 ```
 
-The double-write strategy during rebuild (architecture spec question 10) means new captures write to both active and temp tables while rebuild is in progress. The `search_index_meta.rebuild_state` column tracks this.
+**之后：**
+
+```
+进程启动 → builders / non_gui_runtime
+        → wired.deps.settings.load().await        // 新增
+        → let cfg = IrohNodeConfig {
+              disable_relays: !settings.network.allow_relay_fallback,
+              rendezvous_base_url: None,
+          }                                       // 新增翻译
+        → build_space_setup_assembly(&wired, cfg)
+        → IrohNodeBuilder::bind → Endpoint(relay_mode = Default | Disabled)
+```
+
+**关键约束：** iroh `RelayMode` 在 `Endpoint::builder()...bind()` 时确定（`node.rs:368-396`），运行时改不了。本里程碑**接受这个限制**，UI 切换时弹"重启生效"（`node.rs:380` 的注释明确"Slice 1 always has pairing. A future slice ... would add a separate `bind_bare` constructor"——用户决策也明确不做热切换）。
+
+### 2.2 用户切换 LAN-only Mode
+
+```
+用户在 NetworkSection 拖动开关
+  → updateSettings({ network: { allowRelayFallback: false } })   // src/api/daemon/settings.ts
+  → PUT /settings (HTTP, daemon webserver)
+  → settings_patch_from_dto → SettingsFacade::update
+  → SettingsPort::save (写 settings.json，原子写)
+  → 前端收到响应 → 弹 RestartHint dialog "重启后生效"
+  → 用户手动重启 daemon
+```
+
+**daemon 内部不订阅 settings 变更**（确认：`uc-core/src/ports/mod.rs` 的 `SettingsPort` 只有 `load` / `save`，无 subscribe）。所以"切换 → 立即注入 IrohNodeConfig"的链路本里程碑不存在；**重启路径的注入点就是 §2.1 描述的 builders 那条**。
+
+### 2.3 设备列表渲染（含连接通道）
+
+**当前：**
+
+```
+DevicesPage 挂载
+  → fetchSpaceMembers → GET /paired-devices → SpaceMember[]
+  → DevicesPage 每 15s POST /presence/refresh
+  → daemon ensure_reachable_all → PresenceEvent → PresenceMonitor 收事件
+  → PresenceMonitor 调 list_peer_snapshots → 推 peers.changed (WS)
+  → 前端 SpaceMembersPanel 收到 → 重新拉 fetchSpaceMembers
+  → UI 用 connected: bool 显示在线/离线
+```
+
+**之后（增量）：**
+
+```
+（链路完全一致，差异在数据字段）
+  → list_peer_snapshots 内部多读一次 ConnectionChannelPort.channel_for(device)
+  → PeerSnapshotDto 多一个 channel 字段
+  → 前端 SpaceMember 多 channel 字段
+  → 渲染时挂 ConnectionChannelBadge 显示 LAN / Relay / Offline
+```
+
+> **重点：不新增 WS 事件类型，不新增 HTTP endpoint。** 复用既有 `peers.changed` 全量快照与 `GET /paired-devices`。
 
 ---
 
-## Integration Point 6: Search Key Derivation — XChaCha20 Session Unlock Hook
+## 3. 集成点（已 grep 验证）
 
-**The derivation chain:**
-
-```
-Passphrase / Keyring
-    → Argon2id KDF → KEK
-        → XChaCha20-Poly1305 unwrap → MasterKey (32 bytes)
-            → stored in EncryptionSessionPort (in-memory)
-                → HKDF-SHA256(MasterKey, info="uc-search-index-v1", salt=profile_id_bytes)
-                    → SearchKey (32 bytes, derived on demand per request)
-```
-
-**Where the derivation is NOT triggered:**
-
-- Not at unlock time (no eager derivation, no new session port)
-- Not stored anywhere (derived on demand per request)
-
-**Where the derivation IS triggered:**
-
-- Inside `HkdfSearchKeyDerivation::derive_search_key()` — called by `IndexClipboardEntry` and `SearchClipboardEntries` use cases when they need to compute HMAC term tags
-
-**Why on-demand derivation:** The `SearchKeyDerivationPort` wraps `EncryptionSessionPort` and `KeyScopePort`. If the session is not ready, `get_master_key()` returns `EncryptionError::KeyNotFound` and the use case returns an appropriate error. No separate unlock flow is needed — search is gated on the existing session state.
-
-**Profile scoping:** `KeyScopePort::current_scope()` returns the active `KeyScope { profile_id }`. The HKDF salt incorporates the `profile_id` bytes. This satisfies the isolation requirement (architecture spec question 5) without requiring per-profile tables.
-
----
-
-## Component Responsibilities
-
-| Component | Layer | Status | Responsibility |
-|-----------|-------|--------|----------------|
-| `SearchIndexPort` | uc-core | NEW | Port trait: index/remove/search/rebuild |
-| `SearchKeyDerivationPort` | uc-core | NEW | Port trait: derive_search_key() |
-| `SearchDocument`, `SearchPosting`, `SearchQuery` | uc-core | NEW | Domain models |
-| `SearchClipboardEntries` | uc-app | NEW | Query execution use case |
-| `IndexClipboardEntry` | uc-app | NEW | Incremental index add use case |
-| `RemoveIndexedEntry` | uc-app | NEW | Incremental delete use case |
-| `RebuildSearchIndex` | uc-app | NEW | Full rebuild use case |
-| `DeleteClipboardEntry` | uc-app | MODIFIED | Add `.with_search_index()` optional port |
-| `AppDeps` | uc-app | MODIFIED | Add `search: Option<SearchPorts>` group |
-| `SqliteSearchIndex` | uc-infra | NEW | `SearchIndexPort` impl — raw SQL via DbPool |
-| `HkdfSearchKeyDerivation` | uc-infra | NEW | `SearchKeyDerivationPort` impl |
-| `text_extractor` | uc-infra | NEW | Clipboard repr → searchable field extraction |
-| `tokenizer` | uc-infra | NEW | NFKC + lowercase + word split + CJK bigram |
-| Migration `2026-04-10-000001` | uc-infra | NEW | 3 new tables, no FK to existing tables |
-| `search.rs` router | uc-daemon | NEW | 3 HTTP routes: query/rebuild/status |
-| `DaemonClipboardChangeHandler` | uc-daemon | MODIFIED | Add IndexClipboardEntry call after capture |
+| 位置 | 文件:行号 | 作用 | 本里程碑动作 |
+|------|---------|------|--------|
+| `IrohNodeConfig::default()` 调用 | `uc-bootstrap/src/builders.rs:178` | GUI 启动装配 | **改**：先读 settings 再造 cfg |
+| 同上 | `uc-bootstrap/src/non_gui_runtime.rs:280` | CLI/daemon 启动装配 | **改**：同上 |
+| `IrohNodeBuilder::bind` | `uc-infra/src/network/iroh/node.rs:363-411` | bind endpoint，应用 `relay_mode` | **不动** |
+| `disable_relays` 字段 | `uc-infra/src/network/iroh/node.rs:161` | `IrohNodeConfig` 字段 | **不动**（已 pub） |
+| Settings 字段挂载点 | `uc-core/src/settings/model.rs:201-202` | 已有 `// pub network: NetworkSettings,` 注释 | **改**：取消注释、新增类型定义 |
+| `Settings::default()` | `uc-core/src/settings/defaults.rs:251-262` | 默认值 | **改**：加 `network: NetworkSettings::default()` |
+| `SettingsView` / `SettingsPatch` | `uc-application/.../settings/models.rs:134-226` | App 层 view / patch | **改**：加 `network` 字段 |
+| `apply_settings_patch` | `uc-application/.../settings/models.rs:446-566` | patch 合并 | **改**：末尾追加 `network` 处理 |
+| `SettingsFacade` | `uc-application/.../settings/facade.rs:17-49` | 读写 façade | **不动**（字段无关） |
+| Facade `pub use` 白名单 | `uc-application/.../settings/mod.rs:5-12` | 对外类型暴露 | **改**：加 `NetworkSettingsView, NetworkSettingsPatch` |
+| HTTP `/settings` router | `uc-webserver/src/api/settings.rs:23-27` | GET/PUT 路由 | **不动** |
+| `settings_patch_from_dto` / `settings_view_to_dto` | `uc-webserver/src/api/settings.rs:92-218` | DTO ↔ App view 映射 | **改**：补 `network` 段 |
+| `PeerSnapshotDto` | `uc-daemon-contract/src/api/types.rs:33-40` | 节点快照 DTO | **改**：加 `channel` 字段 |
+| `peer_snapshots()` mapping | `uc-webserver/src/api/server.rs:99-112` | App view → DTO | **改**：补 `channel` 字段映射 |
+| `PresenceMonitor` | `uc-desktop/src/daemon/peers/presence_monitor.rs` | WS broadcast | **不动**（透明） |
+| `peers.changed` 事件订阅 | `src/components/device/SpaceMembersPanel.tsx:50-58` | 前端 WS 订阅 | **不动**（透明） |
+| 前端 settings 入口 | `src/api/daemon/settings.ts:129-138` `Settings` interface | TS 类型 | **改**：加 `network: { allowRelayFallback: boolean }` |
+| 前端 settings context | `src/contexts/setting-context.ts`（`useSetting` 来源） | Settings 上下文 | **改**：补 `network.allowRelayFallback` 字段流转 |
+| `NetworkSection.tsx` | `src/components/setting/NetworkSection.tsx` | 占位组件 | **替换**：实现真实开关 + RestartHint |
+| `settings-config.ts` | `src/components/setting/settings-config.ts:54-58` | 分类挂载 | **不动**（Wifi 图标已挂） |
+| `SpaceMembersPanel` 单成员渲染 | `src/components/device/SpaceMembersPanel.tsx` | 设备卡片 | **改**：加 `<ConnectionChannelBadge channel={...} />` |
 
 ---
 
-## Data Flow
+## 4. 影响面分析
 
-### Capture → Index Flow
+### 4.1 编译期边界
 
-```
-Platform clipboard change
-    → ClipboardWatcherWorker (uc-daemon)
-        → CaptureClipboardUseCase::execute(snapshot) → EntryId  [uc-app, UNCHANGED]
-            → DaemonClipboardChangeHandler::handle(entry_id)     [uc-daemon, MODIFIED]
-                → trigger outbound sync (existing)
-                → if encryption_session.is_ready():
-                    IndexClipboardEntry::execute(entry_id)        [uc-app, NEW]
-                        → load entry repr from repo
-                        → text_extractor → tokenizer → HMAC tags
-                        → SearchIndexPort::index_entry()          [uc-infra, NEW]
-```
+| 边界规则 | 是否触动 | 说明 |
+|---------|---------|------|
+| `uc-core` 不依赖具体 infra 类型 | 不破 | `NetworkSettings` 是值对象，不引入 iroh 类型 |
+| `uc-application` 只通过 port 访问 infra | 不破 | `ConnectionChannelPort` 在 core 定义，infra 实现 |
+| `uc-application` 只通过 `src/facade/` 对外暴露 | 不破 | 新增类型走 `facade/settings/mod.rs:5-12` 白名单 |
+| `uc-infra` 不上浮第三方类型 | 不破 | `IrohConnectionChannelAdapter` 内部消化 `iroh::Endpoint` |
+| `uc-desktop` GUI-framework agnostic | 不破 | 不涉及 GUI 框架 |
 
-### Search Query Flow
+### 4.2 历史欠账与命名清理
 
-```
-Frontend POST /search/query
-    → DaemonApiState::runtime_or_error()
-        → SearchClipboardEntries::execute(SearchQuery)           [uc-app, NEW]
-            → validate session ready
-            → parse query, derive term tags via SearchKeyDerivationPort
-            → SearchIndexPort::search(query)                     [uc-infra, NEW]
-                → diesel::sql_query() posting-list intersection/union
-            → filter by time range + file type on search_document
-            → load entry projections via existing ClipboardEntryRepositoryPort
-        → serialize to JSON response
-```
+* `uc-application/AGENTS.md` §11.4.7 提到"部分外部消费者仍直接从 `uc_application::<业务子模块>` 导入"。本里程碑**不解决**这个欠账，但**不能再引入**新的越界 import。新增 `NetworkSettingsView` / `NetworkSettingsPatch` 类型必须只通过 `facade/settings/mod.rs` 暴露。
+* `IrohNodeConfig.disable_relays` 命名是 infra 内部细节（反向语义），不冒泡到 core。core 用 `allow_relay_fallback`（业务语义）；翻译在 builders 完成。这与之前 explore 阶段决策一致（见 `.context/attachments/Summary of Explore LAN version need.md` 用户对话末段）。
 
-### Delete Cascade Flow
+### 4.3 可观测性
 
-```
-DELETE /clipboard/entries/:id
-    → DeleteClipboardEntry::execute(entry_id)                    [uc-app, MODIFIED]
-        → delete selection (existing)
-        → delete entry (existing)
-        → delete event + representations (existing)
-        → if search_index present:
-            SearchIndexPort::remove_entry(entry_id)              [SYNCHRONOUS, in-transaction]
-```
+* `node.rs:399-404` 的 bind 后 `debug!(... disable_relays = config.disable_relays, ...)` 日志已经覆盖关键事实，建议**新增** `tracing::info!` 在 builders 翻译那一步打印 "applying network.allow_relay_fallback={} → disable_relays={}"，方便用户支持和排障。
+* `IrohConnectionChannelAdapter` 实现里建议复用 `connect.rs:50-66` 的 `Active` 路径解析逻辑（提取成 free function），避免两份地方各自演化。
 
-### Rebuild Flow
+### 4.4 测试影响
 
-```
-POST /search/rebuild
-    → RebuildSearchIndex::execute()                              [uc-app, NEW]
-        → scan all clipboard entries
-        → write to temp tables (with double-write for concurrent captures)
-        → atomic table swap via SQLite RENAME
-        → update search_index_meta
-```
+* `uc-bootstrap/tests/slice*_*.rs` 三个集成测试都用 `IrohNodeConfig { disable_relays: true, .. }`（`slice1_handshake_e2e.rs:344` / `slice2_phase1_presence_e2e.rs:354` / `slice2_phase2_clipboard_e2e.rs:373`）。这些测试**不动**——它们是 loopback-only 自动化，本来就要禁 relay，与 LAN-only Mode 业务无关。
+* 新增单元测试：
+  * `apply_settings_patch` 处理 `network.allow_relay_fallback`
+  * `IrohConnectionChannelAdapter.channel_for` 三态映射（`Direct` / `Relay` / `Offline`）—— 用 fake `PeerAddressRepo` 与 mock endpoint 行为，或写 doc-test 验证私有 IP 判定
+  * `MemberRosterFacade.list_with_presence` 输出含 `channel`
 
 ---
 
-## Suggested Build Order
+## 5. 建议构建顺序
 
-The compiler-enforced dep graph allows only one valid incremental build order:
+> **建议：后端字段在前，前端开关在后；"连接通道"指示器和 LAN-only 开关解耦推进。**
 
-| Step | Crate | Work |
-|------|-------|------|
-| 1 | `uc-core` | Add `search/` domain models and two port traits (`SearchIndexPort`, `SearchKeyDerivationPort`) |
-| 2 | `uc-app` | Add four new use cases; modify `DeleteClipboardEntry` with optional `SearchIndexPort`; add `SearchPorts` to `AppDeps` |
-| 3 | `uc-infra` | Add migration; implement `SqliteSearchIndex`, `HkdfSearchKeyDerivation`, `text_extractor`, `tokenizer` |
-| 4 | `uc-bootstrap` | Wire `SearchPorts` into `AppDeps`; pass `SearchIndexPort` into `DeleteClipboardEntry::with_search_index()` |
-| 5 | `uc-daemon` | Add `search.rs` router; modify `DaemonClipboardChangeHandler` to call `IndexClipboardEntry` |
-| 6 | Frontend | Add search UI calling `POST /search/query` |
+### Phase A · 后端字段落地（必须先做）
 
-Steps 1–2 compile independently of infra (only traits and use cases). Step 3 requires steps 1–2. Steps 4–5 require step 3. This matches how file sync, observability, and auth subsystems were added.
+1. `uc-core::Settings::network` 字段 + `NetworkSettings` 类型 + `Default` 实现
+2. `uc-application` view/patch/apply_patch 扩展 + `mod.rs` 白名单
+3. `uc-webserver` DTO + dto ↔ view 映射
+4. `uc-bootstrap` `builders.rs` / `non_gui_runtime.rs` 读 settings → 构造 `IrohNodeConfig`
 
----
+**为什么先做后端：**
+* 前端没有"NetworkSection 真实化"之前，PUT 请求里不带 `network` 字段，DTO 会接受空 → 走 `serde(default)` 默认值，**不会 break 任何东西**。后端单独跑得通。
+* 反过来不行：前端先发 `network.allowRelayFallback`，后端没字段，要么 422，要么字段被忽略，没法验证开关真生效。
 
-## Architectural Patterns
+**验收标准：**
+* 手工把 settings.json 里加 `"network": { "allow_relay_fallback": false }`，重启 daemon → 日志看到 `disable_relays = true`、bind 时 RelayMode = Disabled
+* HTTP PUT `/settings` 带 `network` 段 → 写盘成功，`GET /settings` 返回字段一致
 
-### Pattern 1: Optional Port via Builder Method
+### Phase B · 前端 NetworkSection + RestartHint
 
-**What:** `.with_search_index(port)` on `DeleteClipboardEntry` — same shape as the existing `.with_file_cache_dir()`.
-**When to use:** When a use case needs an optional cross-cutting dependency that did not exist at design time.
-**Trade-offs:** Avoids breaking all existing call sites; slightly less explicit than making the port required.
+5. `src/api/daemon/settings.ts` Settings interface 加 `network` 字段
+6. `setting-context` 流转 `network.allowRelayFallback`
+7. `NetworkSection.tsx` 替换占位，渲染 LAN-only Mode 开关（toggle 显示状态 = `!allowRelayFallback`）
+8. RestartHint 模态：切换后弹"重启 daemon 生效"
 
-### Pattern 2: On-Demand Key Derivation (no cached SearchKey)
+**为什么后做：** 这一步 user-facing，依赖 Phase A 的 HTTP 通道。Phase A 跑通后这一步纯前端工作。
 
-**What:** Derive `SearchKey` from `MasterKey` via HKDF on each use case invocation, not at session unlock.
-**When to use:** When the derived key is cheap to compute (one HKDF call) and caching adds surface area.
-**Trade-offs:** Tiny per-request HKDF cost (negligible for HKDF-SHA256 on 32 bytes) vs. no risk of key leakage through a cached field.
+### Phase C · 连接通道指示器（独立 phase，可与 B 并行）
 
-### Pattern 3: Raw SQL for Posting-List Queries
+9. `uc-core::ConnectionChannelPort` + `ConnectionChannel` enum
+10. `uc-infra::IrohConnectionChannelAdapter` + `IrohNode` 暴露访问器（或 `install_*` 风格扩展）
+11. `uc-application::MemberRosterDeps` / `PeerSnapshotView` 加 `channel` 字段
+12. `uc-bootstrap::space_setup` 装配 adapter
+13. DTO 加 `channel` 字段
+14. 前端 `ConnectionChannelBadge` 组件 + `SpaceMembersPanel` 挂载
 
-**What:** `diesel::sql_query()` for search operations instead of Diesel's query builder.
-**When to use:** When the query pattern (posting-list intersection/union with GROUP BY + HAVING) does not compose cleanly in Diesel's ORM.
-**Trade-offs:** Loses compile-time schema checking for these specific queries; gains full SQL expressiveness. All other infra adapters keep Diesel ORM.
+**为什么独立：** 这是新增能力，与 LAN-only Mode 字段解耦。即使 Phase B 的开关没做，Phase C 也能独立 ship 让用户"看到"当前是 LAN 还是 Relay（仅观察）。两者最终在 onboarding tip 时合一（"开 LAN-only → 看徽章变化"）。
 
-### Pattern 4: No FK Constraint on Index Tables
+### Phase D · onboarding tip + 文档（最后）
 
-**What:** `search_document.entry_id` is TEXT, no `REFERENCES clipboard_entry(entry_id)`.
-**When to use:** When the index must be independently rebuildable from source data, and deletions are driven by application logic.
-**Trade-offs:** Orphaned index rows are possible if deletion crashes mid-way; full rebuild recovers this state.
-
----
-
-## Anti-Patterns to Avoid
-
-### Anti-Pattern 1: Hooking IndexClipboardEntry Inside CaptureClipboardUseCase
-
-**What people might do:** Call `IndexClipboardEntry` directly from `CaptureClipboardUseCase::execute()`.
-**Why it's wrong:** `CaptureClipboardUseCase` lives in `uc-app` and must not depend on search ports. The use case's responsibility is capture-and-persist; post-capture orchestration belongs in `uc-daemon`'s change handler.
-**Do this instead:** Call `IndexClipboardEntry` from `DaemonClipboardChangeHandler` after capture returns `EntryId`.
-
-### Anti-Pattern 2: Eager SearchKey Derivation at Unlock Time
-
-**What people might do:** Derive and cache `SearchKey` in a new `SearchSessionPort` triggered by `UnlockEncryptionWithPassphrase`.
-**Why it's wrong:** Adds a lifecycle dependency that must be managed, cleared, and tested. Introduces risk of key leakage through cached state.
-**Do this instead:** Derive on-demand via `SearchKeyDerivationPort::derive_search_key()`.
-
-### Anti-Pattern 3: FK Constraint From search_document to clipboard_entry
-
-**What people might do:** Add `REFERENCES clipboard_entry(entry_id) ON DELETE CASCADE` to avoid manual deletion logic.
-**Why it's wrong:** Cascades make the index dependent on clipboard table lifecycle, preventing independent rebuild.
-**Do this instead:** No FK; drive deletion from application code with `SearchIndexPort::remove_entry()` inside `DeleteClipboardEntry`.
-
-### Anti-Pattern 4: Separate SQLite Database for Search
-
-**What people might do:** Store the search index in a separate `.db` file to isolate it.
-**Why it's wrong:** The existing `DbPool` already has WAL mode and r2d2 pooling configured. A second pool doubles resource overhead and complicates transaction semantics for the double-write rebuild strategy.
-**Do this instead:** Add the three search tables to the same Diesel migration path, same pool.
+15. 配对成功后一次性 tip
+16. 文档更新（"LAN-only" 边界，配对仍走 rendezvous）
 
 ---
 
-## Sources
+## 6. 留作后续（不在本里程碑）
 
-- `src-tauri/crates/uc-core/src/ports/security/encryption_session.rs` — `EncryptionSessionPort::get_master_key()` interface
-- `src-tauri/crates/uc-core/src/security/model.rs` — `MasterKey` domain model (32-byte Argon2id → XChaCha20 chain)
-- `src-tauri/crates/uc-app/src/usecases/internal/capture_clipboard.rs` — capture use case boundary (stops at returning `EntryId`)
-- `src-tauri/crates/uc-app/src/usecases/delete_clipboard_entry.rs` — optional builder pattern for `.with_file_cache_dir()`
-- `src-tauri/crates/uc-app/src/deps.rs` — `AppDeps` grouped port structure (5 existing groups)
-- `src-tauri/crates/uc-infra/src/security/key_material.rs` — `KeyScopePort` usage pattern
-- `src-tauri/crates/uc-infra/src/security/encryption.rs` — XChaCha20-Poly1305 primitives
-- `src-tauri/crates/uc-infra/src/db/pool.rs` — `embed_migrations!`, `run_pending_migrations` pipeline
-- `src-tauri/crates/uc-infra/src/db/schema.rs` — existing Diesel table definitions and join constraints
-- `src-tauri/crates/uc-infra/migrations/` — 11 existing migration directories confirming additive pattern
-- `src-tauri/crates/uc-daemon/src/api/clipboard.rs` — router pattern (`pub fn router() -> Router<DaemonApiState>`)
-- `src-tauri/crates/uc-daemon/src/api/routes.rs` — L1/L2+ tier split, middleware order
-- `docs/architecture/local-encrypted-search.md` — primary architecture spec (all 10 architecture review decisions)
+* **运行时热切换** —— 需要重建 endpoint。技术上需要 `IrohNodeBuilder::bind_bare` 风格的二次 bind，并处理 ALPN handler 重新注册、活跃 connection 重连、session 状态保持。已被用户决策推到下一里程碑。
+* **通道切换专用 WS 事件** —— 当前依赖 `peers.changed` 全量快照刷新，在"直连断了回落 relay"场景下可能慢一拍。如果用户反馈强烈再做。
+* **自托管 rendezvous 自动化部署** —— `IrohNodeConfig.rendezvous_base_url` 字段已 pub，本里程碑不暴露给用户；只在文档里点一下"是已有钩子，未来会做"。
+* **Anti-pattern 警惕：** 不要把 `network.allow_relay_fallback` 落到 `daemon` 进程的进程变量里再让 daemon 内部依赖。settings 真相源是 settings.json，daemon 启动时读一次，运行期不变；任何业务模块如果想"动态读 LAN-only 状态"都是错的——本里程碑**不存在**这种需求（开关只影响 bind 时刻）。
 
 ---
 
-_Architecture research for: Local Encrypted Search integration into hexagonal clipboard sync codebase_
-_Researched: 2026-04-10_
+## 7. Sources
+
+| 来源 | 类型 | 置信度 |
+|------|-----|------|
+| `src-tauri/crates/uc-infra/src/network/iroh/node.rs:153-411` | 直接 grep | HIGH |
+| `src-tauri/crates/uc-infra/src/settings/repository.rs:77-111` | 直接 grep | HIGH |
+| `src-tauri/crates/uc-infra/src/settings/migration.rs:38-101` | 直接 grep | HIGH |
+| `src-tauri/crates/uc-application/src/facade/settings/{facade,models,mod}.rs` | 直接 grep | HIGH |
+| `src-tauri/crates/uc-core/src/settings/{model,defaults}.rs` | 直接 grep | HIGH |
+| `src-tauri/crates/uc-core/src/ports/presence.rs` | 直接 grep | HIGH |
+| `src-tauri/crates/uc-bootstrap/src/{builders,non_gui_runtime,space_setup}.rs` | 直接 grep | HIGH |
+| `src-tauri/crates/uc-webserver/src/api/{settings,server}.rs` | 直接 grep | HIGH |
+| `src-tauri/crates/uc-daemon-contract/src/api/types.rs:33-118` | 直接 grep | HIGH |
+| `src-tauri/crates/uc-desktop/src/daemon/peers/presence_monitor.rs:1-120` | 直接 grep | HIGH |
+| `src-tauri/crates/uc-tauri/src/commands/mod.rs` | 直接 grep（确认无 settings command） | HIGH |
+| `src/components/setting/{NetworkSection,settings-config}.tsx` | 直接 grep | HIGH |
+| `src/components/device/SpaceMembersPanel.tsx`, `src/pages/DevicesPage.tsx`, `src/api/daemon/settings.ts`, `src/store/slices/devicesSlice.ts` | 直接 grep | HIGH |
+| `.planning/PROJECT.md` 与 `.context/attachments/Summary of Explore LAN version need.md` | 用户决策来源 | HIGH |
+| iroh 0.98 `Endpoint::remote_info` API（替代 `conn_type`） | 通过 `connect.rs:45-67` 已有用例验证 | HIGH |

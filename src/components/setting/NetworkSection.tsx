@@ -12,18 +12,13 @@ import { invokeWithTrace } from '@/lib/tauri-command'
 
 const log = createLogger('network-section')
 
-/** Wire shape returned by `get_restart_state` Tauri command (Plan 02). */
-interface RestartState {
-  processStartedAt: number
-  settingsMtime: number
-}
-
 /**
  * NetworkSection — Phase 95.
  *
  * 用户在 Settings → Network 切换 LAN-only Mode；切换后看到持久 inline RestartBanner，
- * 点「立即重启」触发 Tauri app.restart()。Pending 跨 session 由 Tauri command
- * `get_restart_state` 推导（settingsMtime > processStartedAt ⇒ pending — D-D1）。
+ * 点「立即重启」触发 Tauri app.restart()。Pending 仅 in-memory（用户当前 session 内
+ * 切换后显示），不跨 session 持久化 —— 关掉 Settings 面板后状态会重置，避免基于
+ * settings.json mtime 的跨 session 推导造成误报（mtime 无法区分到底改了哪个字段）。
  *
  * # Pitfall 防御 audit（Phase 95 PLAN.md Task 3 fence）
  * - **Pitfall 1（反向命名）**：UI checked === ON === LAN-only === allowRelayFallback === false。
@@ -46,7 +41,7 @@ const NetworkSection: React.FC = () => {
   // 本地乐观 state（D-D2：切换后立即更新，不等 PUT 返回）
   const [allowRelayFallback, setAllowRelayFallback] = useState(persistedAllowRelay)
 
-  // pending 状态（来自三个源：用户切换 / mtime 推导 / Tauri 重启失败回滚）
+  // pending 状态（来自两个源：用户切换 / PUT 后 restartRequired；不跨 session）
   const [pending, setPending] = useState(false)
   const [restartLoading, setRestartLoading] = useState(false)
   const [restartError, setRestartError] = useState<string | null>(null)
@@ -65,28 +60,7 @@ const NetworkSection: React.FC = () => {
     }
   }, [setting])
 
-  // ── Effect 2: mount 时调 get_restart_state 推导跨-session pending ──
-  useEffect(() => {
-    let cancelled = false
-    void (async () => {
-      try {
-        const state = await invokeWithTrace<RestartState>('get_restart_state')
-        if (cancelled) return
-        // D-D1: settingsMtime > processStartedAt ⇒ 本进程启动后 settings.json 改过
-        // ⇒ 还没 relaunch ⇒ pending
-        if (state.settingsMtime > state.processStartedAt && state.processStartedAt > 0) {
-          setPending(true)
-        }
-      } catch (err) {
-        log.error({ err }, 'Failed to query restart state')
-      }
-    })()
-    return () => {
-      cancelled = true
-    }
-  }, [])
-
-  // ── Effect 3: debounced PUT /settings ───────────────────────────
+  // ── Effect 2: debounced PUT /settings ───────────────────────────
   useEffect(() => {
     if (isPristineRef.current) {
       isPristineRef.current = false

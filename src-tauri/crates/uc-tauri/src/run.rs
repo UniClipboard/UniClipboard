@@ -140,12 +140,6 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
     // Store TaskRegistry reference for exit hook registration
     let task_registry = runtime.task_registry().clone();
 
-    // Phase 95: 启动早期赋值 PROCESS_STARTED_AT，供 NetworkSection 推导 pending。
-    // 必须在第一次 invoke_handler 之前 set；放这里 = setup 最早期。
-    // OnceLock::set 仅依赖 SystemTime::now，不依赖 app handle，所以放在 builder
-    // 链之外的独立语句即可。
-    let _ = crate::commands::restart::PROCESS_STARTED_AT.set(std::time::SystemTime::now());
-
     let builder = tauri::Builder::default()
         // Register TauriAppRuntime for Tauri commands
         .manage(runtime.clone())
@@ -429,7 +423,6 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
             crate::commands::get_daemon_connection_info,
             // Restart commands (Phase 95)
             crate::commands::restart::restart_app,
-            crate::commands::restart::get_restart_state,
             // Autostart commands
             crate::commands::autostart::enable_autostart,
             crate::commands::autostart::disable_autostart,

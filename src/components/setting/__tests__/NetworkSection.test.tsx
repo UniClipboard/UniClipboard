@@ -81,10 +81,14 @@ const baseSetting: Settings = {
   },
 }
 
+type UpdateNetworkSettingFn = (
+  newNetworkSetting: Partial<NetworkSettings>
+) => Promise<{ restartRequired: boolean }>
+
 interface SetupArgs {
   setting?: Settings | null
   error?: string | null
-  updateNetworkSetting?: ReturnType<typeof vi.fn>
+  updateNetworkSetting?: ReturnType<typeof vi.fn<UpdateNetworkSettingFn>>
 }
 
 const setupSetting = ({
@@ -92,7 +96,9 @@ const setupSetting = ({
   error = null,
   updateNetworkSetting,
 }: SetupArgs = {}) => {
-  const mockUpdate = updateNetworkSetting ?? vi.fn().mockResolvedValue({ restartRequired: true })
+  const mockUpdate =
+    updateNetworkSetting ??
+    vi.fn<UpdateNetworkSettingFn>().mockResolvedValue({ restartRequired: true })
   mockUseSetting.mockReturnValue({
     setting,
     loading: false,
@@ -107,22 +113,6 @@ const setupSetting = ({
     updateNetworkSetting: mockUpdate,
   })
   return { mockUpdate }
-}
-
-const setupRestartState = ({
-  processStartedAt,
-  settingsMtime,
-}: {
-  processStartedAt: number
-  settingsMtime: number
-}) => {
-  // get_restart_state 在 mount 时被调一次；其它 'restart_app' 调用走默认 mock
-  mockInvokeWithTrace.mockImplementation(async (command: string) => {
-    if (command === 'get_restart_state') {
-      return { processStartedAt, settingsMtime }
-    }
-    return undefined
-  })
 }
 
 const renderWithOverrides = (overrides: Partial<NetworkSettings> = {}) => {
@@ -141,8 +131,6 @@ beforeAll(async () => {
 
 beforeEach(() => {
   vi.clearAllMocks()
-  // 默认 get_restart_state 推导 = 不 pending
-  setupRestartState({ processStartedAt: 2000, settingsMtime: 1000 })
 })
 
 afterEach(() => {
@@ -256,11 +244,7 @@ describe('NetworkSection — Phase 95 集成', () => {
 
   it('Test 7: restart_app 失败 → RestartBanner.error 渲染（重试 + dismiss）', async () => {
     const user = userEvent.setup()
-    // get_restart_state 默认 OK（不 pending），restart_app 失败
     mockInvokeWithTrace.mockImplementation(async (command: string) => {
-      if (command === 'get_restart_state') {
-        return { processStartedAt: 2000, settingsMtime: 1000 }
-      }
       if (command === 'restart_app') {
         throw new Error('app.restart() failed')
       }
@@ -309,19 +293,17 @@ describe('NetworkSection — Phase 95 集成', () => {
     expect(screen.getByRole('alert').textContent).toMatch(/保存失败|Save failed/)
   })
 
-  it('Test 9: mount 时 settingsMtime > processStartedAt → RestartBanner 可见（D-D1 跨 session）', async () => {
-    setupRestartState({ processStartedAt: 1000, settingsMtime: 2000 })
-    renderWithOverrides({ allowRelayFallback: true })
-    // mount 调 get_restart_state 推导 pending=true
-    await waitFor(() => {
-      expect(screen.getByRole('status')).toBeInTheDocument()
-    })
-  })
-
-  it('Test 10: mount 时 settingsMtime ≤ processStartedAt → RestartBanner 不可见', async () => {
-    setupRestartState({ processStartedAt: 2000, settingsMtime: 1000 })
+  it('Test 9: mount 时 RestartBanner 不可见（in-memory pending 不跨 session）', async () => {
     renderWithOverrides({ allowRelayFallback: true })
     // 给一帧时间让 useEffect 跑完
+    await act(async () => {
+      await Promise.resolve()
+    })
+    expect(screen.queryByRole('status')).toBeNull()
+  })
+
+  it('Test 10: mount 后即便 setting.allowRelayFallback=false 也不显示 banner（仅切换才触发）', async () => {
+    renderWithOverrides({ allowRelayFallback: false })
     await act(async () => {
       await Promise.resolve()
     })
@@ -362,7 +344,6 @@ describe('NetworkSection — Phase 95 集成', () => {
 describe('Phase 95 ROADMAP fence — 4 验收 + 3 Pitfall 防御', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    setupRestartState({ processStartedAt: 2000, settingsMtime: 1000 })
   })
 
   it('Pitfall 11 — 占位组件残留全清', async () => {

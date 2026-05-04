@@ -14,9 +14,11 @@ use std::time::Duration;
 use uc_daemon_contract::api::auth::DaemonConnectionInfo;
 use uc_daemon_contract::api::types::HealthResponse;
 use uc_daemon_contract::DAEMON_API_REVISION;
-use uc_daemon_local::contract::{terminate_local_daemon_pid, DaemonBootstrapError, ProbeOutcome};
+use uc_daemon_local::contract::{
+    terminate_local_daemon_pid, DaemonBootstrapError, ProbeOutcome, TerminateDaemonError,
+};
 use uc_daemon_local::health_wait::{wait_for_daemon_health, wait_for_endpoint_absent};
-use uc_daemon_local::process_metadata::read_pid_file;
+use uc_daemon_local::process_metadata::{read_pid_metadata, DaemonPidMetadata, DaemonProcessMode};
 use uc_daemon_local::socket::try_resolve_daemon_http_addr;
 
 use crate::daemon::run_mode::DaemonRunMode;
@@ -240,8 +242,28 @@ async fn start_owned_in_process(
     wait_for_daemon_health(&mut probe_fn, health_check_timeout, health_poll_interval).await
 }
 
+/// 终止 PID 文件指向的不兼容 daemon——但**绝不**对 in-process daemon 动手。
+///
+/// in-process daemon 是另一个 GUI shell 自己进程内的 worker；SIGTERM 它会把
+/// 那个 GUI 一起带挂。这里读 `DaemonPidMetadata` 而不是 raw PID，正是为了
+/// 对 [`DaemonProcessMode::InProcess`] 留出"我们不能自己处理，请用户去关
+/// 那个 GUI"的拒绝路径。
 pub fn terminate_incompatible_daemon_from_pid_file() -> Result<(), DaemonBootstrapError> {
-    let pid = read_pid_file()
+    terminate_incompatible_daemon_with(read_pid_metadata, terminate_local_daemon_pid)
+}
+
+/// Inner implementation that takes injected reader/terminator closures so the
+/// `InProcess` refusal can be unit-tested without touching the real PID file
+/// or sending real signals.
+pub(crate) fn terminate_incompatible_daemon_with<R, T>(
+    read_metadata: R,
+    terminate: T,
+) -> Result<(), DaemonBootstrapError>
+where
+    R: FnOnce() -> anyhow::Result<Option<DaemonPidMetadata>>,
+    T: FnOnce(u32) -> Result<(), TerminateDaemonError>,
+{
+    let metadata = read_metadata()
         .map_err(|error| DaemonBootstrapError::IncompatibleDaemon {
             details: format!("failed to read daemon pid metadata: {error}"),
         })?
@@ -249,7 +271,17 @@ pub fn terminate_incompatible_daemon_from_pid_file() -> Result<(), DaemonBootstr
             details: "expected incompatible daemon pid metadata was missing".to_string(),
         })?;
 
-    terminate_local_daemon_pid(pid).map_err(|e| DaemonBootstrapError::IncompatibleDaemon {
+    if matches!(metadata.mode, DaemonProcessMode::InProcess) {
+        return Err(DaemonBootstrapError::IncompatibleDaemon {
+            details: format!(
+                "incompatible in-process daemon (pid {}) belongs to another GUI shell; \
+                 SIGTERM would tear down that GUI — quit it from its tray menu first",
+                metadata.pid
+            ),
+        });
+    }
+
+    terminate(metadata.pid).map_err(|e| DaemonBootstrapError::IncompatibleDaemon {
         details: e.to_string(),
     })?;
     Ok(())
@@ -510,6 +542,92 @@ mod tests {
                 assert_eq!(observed_package_version.as_deref(), Some("9.9.9"));
             }
             other => panic!("expected Incompatible, got {other:?}"),
+        }
+    }
+
+    // ------- terminate_incompatible_daemon: InProcess refusal contract -------
+
+    use std::cell::Cell;
+
+    fn metadata_with_mode(pid: u32, mode: DaemonProcessMode) -> DaemonPidMetadata {
+        DaemonPidMetadata {
+            pid,
+            mode,
+            started_at_ms: 0,
+        }
+    }
+
+    #[test]
+    fn terminate_refuses_in_process_daemon_without_signaling() {
+        // Killing an InProcess daemon would SIGTERM the GUI shell that owns it.
+        // The replacement path must surface a clear error and never invoke the
+        // terminator — even though `terminate_local_daemon_pid` itself happens
+        // to refuse pid 0, the GUI's bootstrap must not get that close.
+        let signaled = Cell::new(false);
+
+        let result = terminate_incompatible_daemon_with(
+            || Ok(Some(metadata_with_mode(4242, DaemonProcessMode::InProcess))),
+            |_pid| {
+                signaled.set(true);
+                Ok(())
+            },
+        );
+
+        let err = result.expect_err("InProcess metadata must produce a refusal");
+        match err {
+            DaemonBootstrapError::IncompatibleDaemon { details } => {
+                assert!(
+                    details.contains("in-process") && details.contains("4242"),
+                    "refusal must name the in-process mode and the pid: {details}"
+                );
+            }
+            other => panic!("expected IncompatibleDaemon, got {other:?}"),
+        }
+        assert!(
+            !signaled.get(),
+            "terminator must not be invoked for InProcess daemons — \
+             that would SIGTERM another GUI shell's process"
+        );
+    }
+
+    #[test]
+    fn terminate_signals_standalone_daemon_with_pid() {
+        // The historical happy path: an external `cli start` daemon at a
+        // mismatched version. We must hand its pid to the terminator.
+        let captured = Cell::new(None);
+
+        let result = terminate_incompatible_daemon_with(
+            || {
+                Ok(Some(metadata_with_mode(
+                    7777,
+                    DaemonProcessMode::Standalone,
+                )))
+            },
+            |pid| {
+                captured.set(Some(pid));
+                Ok(())
+            },
+        );
+
+        result.expect("Standalone metadata must reach the terminator");
+        assert_eq!(
+            captured.get(),
+            Some(7777),
+            "standalone daemons must be terminated by their recorded pid"
+        );
+    }
+
+    #[test]
+    fn terminate_surfaces_missing_metadata_as_incompatible() {
+        let result = terminate_incompatible_daemon_with(|| Ok(None), |_pid| Ok(()));
+        match result.expect_err("missing metadata must error out") {
+            DaemonBootstrapError::IncompatibleDaemon { details } => {
+                assert!(
+                    details.contains("missing"),
+                    "details must point at the missing PID file: {details}"
+                );
+            }
+            other => panic!("expected IncompatibleDaemon, got {other:?}"),
         }
     }
 }

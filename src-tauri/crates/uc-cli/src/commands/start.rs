@@ -75,7 +75,7 @@ async fn check_setup_complete(json: bool, _verbose: bool) -> Option<i32> {
 async fn run_background(json: bool) -> i32 {
     run_start_background_with(
         || local_daemon::ensure_local_daemon_running(),
-        || uc_daemon_local::process_metadata::read_pid_file(),
+        || uc_daemon_local::process_metadata::read_pid_metadata().map(|opt| opt.map(|m| m.pid)),
     )
     .await
     .map_or_else(
@@ -98,9 +98,10 @@ async fn run_foreground(json: bool, _verbose: bool) -> i32 {
     // We must NOT use ensure_local_daemon_running() here because it would
     // spawn a background daemon, conflicting with the foreground spawn below.
     if let Ok(true) = local_daemon::probe_running().await {
-        let pid = uc_daemon_local::process_metadata::read_pid_file()
+        let pid = uc_daemon_local::process_metadata::read_pid_metadata()
             .ok()
-            .flatten();
+            .flatten()
+            .map(|m| m.pid);
         let out = StartOutput {
             status: "already_running",
             pid,

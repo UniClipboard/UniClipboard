@@ -171,13 +171,6 @@ impl DaemonPidManager {
         }))
     }
 
-    /// 兼容包装：仅返回 PID，丢弃 mode/started_at——用于不关心进程模式
-    /// 的旧调用方（健康探测的 incompatible-replace 路径）。新代码请用
-    /// [`DaemonPidManager::read_pid_metadata`]。
-    pub fn read_pid_file(&self) -> Result<Option<u32>> {
-        Ok(self.read_pid_metadata()?.map(|m| m.pid))
-    }
-
     /// Resolve the daemon PID file path used by this manager for tests.
     #[cfg(any(test, feature = "test-helpers"))]
     pub fn pid_path_for_testing(&self) -> PathBuf {
@@ -212,19 +205,14 @@ fn repair_pid_permissions(pid_path: &Path) -> Result<()> {
 
 // Backward-compatible standalone functions for external callers.
 
-/// Returns the daemon PID for the current application profile, if one is stored.
-///
-/// New callers should prefer [`read_pid_metadata`] when the daemon's process
-/// mode (standalone vs in-process) matters — e.g. `cli stop` must refuse to
-/// SIGTERM in-process daemons.
-pub fn read_pid_file() -> Result<Option<u32>> {
-    default_manager()?.read_pid_file()
-}
-
 /// Read the full daemon PID metadata (pid + mode + started_at_ms) from disk.
 ///
 /// Falls back to `mode = Standalone, started_at_ms = 0` for legacy raw-u32
-/// PID files left over from pre-Phase-C daemons.
+/// PID files left over from pre-Phase-C daemons. Termination call sites
+/// **must** consume `metadata.mode` and refuse to SIGTERM
+/// [`DaemonProcessMode::InProcess`] daemons — killing one tears down the
+/// hosting GUI shell process. There is intentionally no PID-only helper:
+/// callers cannot bypass the mode field.
 pub fn read_pid_metadata() -> Result<Option<DaemonPidMetadata>> {
     default_manager()?.read_pid_metadata()
 }
@@ -319,17 +307,5 @@ mod tests {
         let mgr = manager_in(&temp);
 
         assert!(mgr.read_pid_metadata().unwrap().is_none());
-        assert!(mgr.read_pid_file().unwrap().is_none());
-    }
-
-    #[test]
-    fn read_pid_file_compat_returns_just_pid() {
-        let temp = TempDir::new().unwrap();
-        let mgr = manager_in(&temp);
-
-        mgr.write_current_pid_with_mode(DaemonProcessMode::Standalone)
-            .unwrap();
-        let pid = mgr.read_pid_file().unwrap().expect("pid file written");
-        assert_eq!(pid, std::process::id());
     }
 }

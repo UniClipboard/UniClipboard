@@ -22,6 +22,20 @@ export interface RestartBannerProps {
   onDismissError?: () => void
 }
 
+/**
+ * Renders a restart notification banner with actions for restarting or retrying a network-related operation.
+ *
+ * When `visible` is false the component renders nothing. When visible it announces status to assistive
+ * technologies, shows a translated message, optionally displays an inline error, and presents action
+ * buttons whose labels and availability are driven by `loading` and `error`.
+ *
+ * @param visible - Controls whether the banner is rendered.
+ * @param onRestart - Invoked when the user activates the restart/retry action.
+ * @param loading - When true, disables action buttons and switches the primary action label to a "restarting" state.
+ * @param error - If provided, displays the error text inline and switches actions to "retry" plus a dismiss button.
+ * @param onDismissError - Called when the dismiss (icon) button is clicked to clear or acknowledge the error.
+ * @returns The banner's React element when visible, or `null` when not visible.
+ */
 export function RestartBanner({
   visible,
   onRestart,

@@ -8,12 +8,27 @@
 // Tracing support for platform layer instrumentation
 pub use tracing;
 
-/// 编译期默认 profile。
+/// Provides a compile-time default profile for platform builds.
 ///
-/// 启用 `dev-profile` feature 时返回 `Some("dev")`，否则返回 `None`。
-/// 仅作为 `UC_PROFILE` 环境变量未设置时的回退；运行时变量始终优先。
+/// This function returns a fallback profile used only when the `UC_PROFILE` environment
+/// variable is not set; runtime configuration always takes precedence. It is intended
+/// to separate development build data (for example, data directories or system keychain
+/// namespaces) from production installs to avoid interference.
 ///
-/// 用于在 dev 构建产物中默认隔离数据目录与系统钥匙串，避免与 prod 安装互相覆盖。
+/// # Returns
+///
+/// `Some("dev")` when the `dev-profile` feature is enabled, `None` otherwise.
+///
+/// # Examples
+///
+/// ```
+/// // When built with `--features dev-profile`, this yields `Some("dev")`.
+/// let profile = uc_platform::default_profile();
+/// match profile {
+///     Some("dev") => (),
+///     Some(_) | None => (),
+/// }
+/// ```
 #[inline]
 pub const fn default_profile() -> Option<&'static str> {
     #[cfg(feature = "dev-profile")]

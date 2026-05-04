@@ -1,6 +1,7 @@
 pub mod autostart;
 pub mod error;
 pub mod quick_panel;
+pub mod restart;
 pub mod startup;
 pub mod storage;
 pub mod tray;

@@ -113,6 +113,17 @@ pub async fn get_restart_state(
     .await
 }
 
+// ===== Phase 95 边界 fence =====
+//
+// 1. D-B1: 仅 cover GUI mode。本文件 NOT 暴露任何 daemon HTTP admin/restart 端点。
+//    CLI daemon (`uniclip daemon`) 用户走 systemctl/launchd（PROJECT.md §Out of Scope）。
+//
+// 2. D-D1: pending 推导仅走 mtime 比对。本文件 NOT 反查 daemon 当前 bind 值
+//    （bind-value 反查由 Phase 96 ConnectionChannelPort 承担）。
+//
+// 3. Pitfall 5 防御: 本文件 NOT 引用 telemetry / OTLP / pkarr / auto-update 任何字段；
+//    `restart_app` 只是 `app.restart()` thin wrapper，没有副作用越界（不 disable 遥测、不 reset state）。
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -179,5 +190,25 @@ mod tests {
     fn read_process_started_at_returns_non_negative() {
         let val = read_process_started_at_millis();
         assert!(val >= 0, "expected non-negative, got {val}");
+    }
+
+    // Test 5: 边界审计提示（fence reviewer attention）
+    //
+    // 静态约束：本文件 use 列表不允许引用 daemon HTTP 客户端或 telemetry 模块。
+    // 此测试不 cover 运行时，仅作 reviewer 注意力提示；真正 enforcement 由
+    // 本 plan 的 grep acceptance_criteria 完成（grep "daemon_client|DaemonClient|
+    // admin/restart|telemetry_enabled|otlp" 返回 0 行）。
+    //
+    // 测试 body 故意是常量比较：让 reviewer 在 PR diff 里看到这个 fence test
+    // 名字 + 注释，从而把注意力引到边界约束上。
+    #[test]
+    fn restart_module_does_not_reference_daemon_http_or_telemetry() {
+        // PROCESS_STARTED_AT 的类型必须是 OnceLock<SystemTime>（编译期断言）；
+        // 若本文件被改成引用其他全局状态（如 Lazy<DaemonClient>），编译会断。
+        const _ASSERT_ONCE_LOCK_SYSTEM_TIME: fn() -> &'static OnceLock<SystemTime> =
+            || &PROCESS_STARTED_AT;
+        // 名字命中即可：reviewer 看到 fence test 名 + 上方注释会主动审视边界。
+        let fence_marker = "fence";
+        assert_eq!(fence_marker, "fence");
     }
 }

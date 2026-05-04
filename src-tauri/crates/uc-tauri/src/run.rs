@@ -15,7 +15,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use tauri::webview::PageLoadEvent;
-use tauri::Manager;
+use tauri::{Emitter, Manager};
 use tauri_plugin_autostart::MacosLauncher;
 use tracing::{error, info, warn};
 
@@ -39,10 +39,20 @@ use crate::tray::TrayState;
 ///
 /// daemon 内部 `DaemonApp::run` 的 cleanup 序列自带兜底超时（5s
 /// service_tasks join + 5s http_handle graceful join + services.stop()
-/// 串行），最长 wallclock ~10s——尤其是当 GUI 还持有 WebSocket 连接时
-/// axum graceful shutdown 会等到 in-flight 请求完结。这里给 15s 余量，
-/// 确保正常关闭走完不会被 GUI 端 timeout 提前 abort（实际正常 case <1s）。
+/// 串行），最长 wallclock ~10s。前端会在 [`SHUTDOWN_FRONTEND_GRACE_MS`]
+/// 内主动关掉 WebSocket，正常 case 整体 <1s；这里给 15s 兜底覆盖最坏路径。
 const DAEMON_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(15);
+
+/// 前端事件名——告诉 webview "马上关 daemon 了，请主动 close 你那条
+/// WebSocket"。前端 `daemon-ws-bootstrap.ts` 的 listener 收到后调用
+/// `daemonWs.disconnect()` 发送 close frame，让 daemon 端的 axum
+/// `with_graceful_shutdown` 立即返回，不等 30s heartbeat 超时。
+const FRONTEND_SHUTDOWN_EVENT: &str = "app://shutting-down";
+
+/// 给前端响应 `app://shutting-down` 事件、发出 WebSocket close frame
+/// 的时间。100ms 对单进程内 IPC + 浏览器 WebSocket close frame 飞过
+/// loopback 来说极宽裕——用户感知不到这点延迟。
+const SHUTDOWN_FRONTEND_GRACE_MS: u64 = 100;
 
 /// 这个 GUI shell 期望 daemon 上报的 `packageVersion`——`probe_daemon_health`
 /// 用它做版本兼容性判断。`env!` 拿的是 `uc-tauri` 自己的 cargo 版本，
@@ -403,7 +413,29 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
 
                     api.prevent_exit();
                     let app_handle = app_handle.clone();
+
+                    // Tell the webview to close its WebSocket *before* we ask
+                    // the daemon to shut down. axum's `with_graceful_shutdown`
+                    // waits for in-flight handlers — including the long-lived
+                    // `/ws` upgrade — to finish. Browser WebSocket clients
+                    // don't send close frames automatically when the webview
+                    // is destroyed, so without this hint the daemon would
+                    // wait for the 30s heartbeat timeout.
+                    if let Err(error) = app_handle.emit(FRONTEND_SHUTDOWN_EVENT, ()) {
+                        warn!(
+                            error = %error,
+                            event = FRONTEND_SHUTDOWN_EVENT,
+                            "Failed to emit shutdown hint to frontend; daemon shutdown \
+                             will fall back to heartbeat-driven WS disconnect"
+                        );
+                    }
+
                     tauri::async_runtime::spawn(async move {
+                        // Give the webview a moment to actually send the WS
+                        // close frame before we cancel the daemon.
+                        tokio::time::sleep(Duration::from_millis(SHUTDOWN_FRONTEND_GRACE_MS))
+                            .await;
+
                         match handle.shutdown(DAEMON_SHUTDOWN_TIMEOUT).await {
                             Ok(()) => {
                                 info!("In-process daemon stopped before application exit");

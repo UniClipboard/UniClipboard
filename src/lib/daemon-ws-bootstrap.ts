@@ -10,6 +10,7 @@
  * reconnect (exponential backoff, max 10 attempts). All `daemonWs.subscribe()`
  * calls in hooks will automatically receive events once connected.
  */
+import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 import { daemonClient } from '@/api/daemon/client'
 import { waitForDaemonConnectionInfo } from '@/lib/daemon-connection-info'
 import { daemonWs } from '@/lib/daemon-ws'
@@ -17,8 +18,13 @@ import { createLogger } from '@/lib/logger'
 
 const log = createLogger('daemon-ws-bootstrap')
 
+/** Tauri event the Rust shell emits right before tearing down the in-process
+ *  daemon — see `src-tauri/crates/uc-tauri/src/run.rs::FRONTEND_SHUTDOWN_EVENT`. */
+const APP_SHUTDOWN_EVENT = 'app://shutting-down'
+
 let connectionEstablished = false
 let connectionPromise: Promise<void> | null = null
+let shutdownListenerUnlisten: UnlistenFn | null = null
 
 /**
  * Connect the frontend WebSocket client to the daemon.
@@ -88,4 +94,34 @@ export function connectDaemonWs(): Promise<void> {
 export function resetConnectDaemonWsForTests(): void {
   connectionEstablished = false
   connectionPromise = null
+}
+
+/**
+ * Subscribe to the `app://shutting-down` Tauri event so the WebSocket
+ * disconnects cleanly *before* the Rust shell tears down the daemon.
+ *
+ * Without this, axum's `with_graceful_shutdown` on daemon side would wait
+ * for the long-lived `/ws` handler to finish — and browser WebSocket
+ * clients don't send a close frame when the webview is destroyed, so the
+ * daemon would hang on its 30s heartbeat timeout before shutting down.
+ *
+ * Idempotent — calling more than once is a no-op (the existing listener
+ * stays installed). Safe to call before `connectDaemonWs()` resolves.
+ */
+export async function registerDaemonShutdownListener(): Promise<void> {
+  if (shutdownListenerUnlisten) {
+    return
+  }
+  try {
+    shutdownListenerUnlisten = await listen(APP_SHUTDOWN_EVENT, () => {
+      log.info('received app://shutting-down — disconnecting daemon WebSocket')
+      daemonWs.disconnect()
+    })
+  } catch (err) {
+    log.warn(
+      { err },
+      'failed to register app://shutting-down listener; daemon shutdown ' +
+        'will fall back to heartbeat-driven WS disconnect'
+    )
+  }
 }

@@ -1,7 +1,7 @@
 use std::fmt;
 use std::future::Future;
 use std::path::PathBuf;
-use std::process::{Child, Command, Stdio};
+use std::process::{Command, Stdio};
 use std::time::Duration;
 
 use reqwest::Client;
@@ -107,6 +107,9 @@ pub async fn ensure_local_daemon_running() -> Result<LocalDaemonSession, LocalDa
         crate::ui::spinner_finish_error(&spinner, "Failed to spawn local daemon");
         return Err(error);
     }
+    // After `spawn_daemon_process` returns, the daemon is its own session
+    // leader / process group — the CLI is no longer holding a wait-able
+    // handle. The probe loop below is the only proof of life.
 
     let mut probe = || probe_daemon_health(&client, &base_url);
     match wait_for_daemon_health(&mut probe, STARTUP_TIMEOUT, POLL_INTERVAL, &base_url).await {
@@ -186,21 +189,86 @@ fn resolve_base_url() -> Result<String, LocalDaemonError> {
     Ok(format!("http://{}:{}", addr.ip(), addr.port()))
 }
 
-fn spawn_daemon_process() -> Result<Child, LocalDaemonError> {
+/// Spawn `uniclip daemon` as a **detached** background process.
+///
+/// "Detached" means the new process survives the CLI exiting — that's the
+/// whole point of `uniclip start`. We rely on three pieces:
+///
+/// 1. `Stdio::null()` on all three streams so the daemon never inherits the
+///    terminal — closing the controlling tty must not propagate SIGHUP to it.
+/// 2. **Unix**: `setsid()` in a `pre_exec` hook. The child becomes a new
+///    session leader detached from the parent's controlling terminal, so
+///    `Ctrl+C` / shell exit doesn't reach it. Since the daemon is now session
+///    leader of its own session, signals to the *CLI's* process group don't
+///    hit it either.
+/// 3. **Windows**: `DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP` flags. The
+///    daemon gets no console of its own and is a separate process group, so
+///    `Ctrl+C` on the parent console doesn't deliver `CTRL_C_EVENT` to it.
+///
+/// The returned `Child` is intentionally dropped: under Unix that does *not*
+/// reap the process (we made it a session leader and cut stdio, the kernel
+/// will reap it when it exits — its parent is now PID 1 once the CLI returns).
+/// Under Windows the handle just closes; the process keeps running.
+fn spawn_daemon_process() -> Result<(), LocalDaemonError> {
     let cli_exe = resolve_cli_exe_path()?;
 
-    Command::new(&cli_exe)
+    let mut command = Command::new(&cli_exe);
+    command
         .arg("daemon")
         .stdin(Stdio::null())
         .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .spawn()
-        .map_err(|error| {
-            LocalDaemonError::Spawn(anyhow::Error::new(error).context(format!(
-                "failed to spawn daemon via `{} daemon`",
-                cli_exe.display()
-            )))
-        })
+        .stderr(Stdio::null());
+
+    configure_detached(&mut command);
+
+    let child = command.spawn().map_err(|error| {
+        LocalDaemonError::Spawn(anyhow::Error::new(error).context(format!(
+            "failed to spawn daemon via `{} daemon`",
+            cli_exe.display()
+        )))
+    })?;
+
+    // Drop the handle deliberately — see fn doc. The detached child runs on
+    // its own; the CLI's responsibility ends here. Polling for health is the
+    // caller's job.
+    drop(child);
+    Ok(())
+}
+
+#[cfg(unix)]
+fn configure_detached(command: &mut Command) {
+    use std::os::unix::process::CommandExt;
+
+    // SAFETY: `setsid` is async-signal-safe and only touches process group
+    // / session ids. It's the documented way to detach a child from the
+    // controlling terminal between fork and exec.
+    unsafe {
+        command.pre_exec(|| {
+            if libc::setsid() == -1 {
+                return Err(std::io::Error::last_os_error());
+            }
+            Ok(())
+        });
+    }
+}
+
+#[cfg(windows)]
+fn configure_detached(command: &mut Command) {
+    use std::os::windows::process::CommandExt;
+
+    // CreateProcess flags. Combined: no console + own process group, so
+    // `Ctrl+C` to the parent's console does not propagate to the daemon.
+    const DETACHED_PROCESS: u32 = 0x0000_0008;
+    const CREATE_NEW_PROCESS_GROUP: u32 = 0x0000_0200;
+    command.creation_flags(DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP);
+}
+
+#[cfg(not(any(unix, windows)))]
+fn configure_detached(_command: &mut Command) {
+    // No detachment configured for unknown platforms — the daemon will still
+    // be spawned but may receive parent signals. Acceptable as a degraded
+    // fallback; uc-cli's main targets (macOS / Linux / Windows) all hit the
+    // platform-specific paths above.
 }
 
 /// Resolve the path to the current CLI executable (used to spawn itself with `daemon` subcommand).

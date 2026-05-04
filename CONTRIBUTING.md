@@ -2,7 +2,7 @@
 
 Thanks for your interest in contributing to UniClipboard! This document explains how to set up the project, the workflow we follow, and the conventions we expect contributions to respect.
 
-> A Chinese version is welcome — open a PR adding `CONTRIBUTING_ZH.md` if you'd like to mirror this guide.
+> A Chinese version is available — see [`CONTRIBUTING_ZH.md`](./CONTRIBUTING_ZH.md).
 
 ## Table of Contents
 

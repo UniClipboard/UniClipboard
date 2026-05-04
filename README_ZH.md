@@ -230,13 +230,15 @@ uniclip status / start / stop   # 守护进程生命周期
 
 ## 参与贡献
 
-非常欢迎各种形式的贡献！如果您对改进 UniClipboard 感兴趣，请：
+非常欢迎各种形式的贡献！开发环境搭建、分支策略、commit 规范、PR 流程的完整说明请参阅 [CONTRIBUTING_ZH.md](./CONTRIBUTING_ZH.md)（[English](./CONTRIBUTING.md)）。
+
+快速上手：
 
 1. Fork 本仓库
 2. 创建您的特性分支 (`git checkout -b feature/amazing-feature`)
-3. 提交您的更改 (`git commit -m 'Add some amazing feature'`)
+3. 按照项目的 [commit 规范](./CONTRIBUTING_ZH.md#commit-规范) 提交更改
 4. 推送到分支 (`git push origin feature/amazing-feature`)
-5. 创建一个 Pull Request
+5. 向 `dev` 分支提交 Pull Request
 
 ## 许可证
 

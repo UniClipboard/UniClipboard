@@ -230,13 +230,15 @@ The 0.6 release replaced the underlying networking stack. Existing pairings from
 
 ## Contributing
 
-Contributions of all kinds are welcome! If you're interested in improving UniClipboard:
+Contributions of all kinds are welcome! Please read [CONTRIBUTING.md](./CONTRIBUTING.md) for the full development setup, branching strategy, commit conventions, and PR process.
+
+Quick start:
 
 1. Fork this repository
 2. Create your feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add some amazing feature'`)
+3. Commit your changes following the project's [commit conventions](./CONTRIBUTING.md#commit-conventions)
 4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Create a Pull Request
+5. Open a Pull Request against the `dev` branch
 
 ## License
 

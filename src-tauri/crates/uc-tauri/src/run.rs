@@ -35,9 +35,14 @@ use crate::commands::updater::PendingUpdate;
 use crate::quick_panel;
 use crate::tray::TrayState;
 
-/// daemon shutdown 等待上限——`DaemonHandle::shutdown` 内部 cancel cascade
-/// 后 axum graceful + service stop 全套清理通常 < 1s，给到 5s 兜底。
-const DAEMON_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(5);
+/// daemon shutdown 等待上限。
+///
+/// daemon 内部 `DaemonApp::run` 的 cleanup 序列自带兜底超时（5s
+/// service_tasks join + 5s http_handle graceful join + services.stop()
+/// 串行），最长 wallclock ~10s——尤其是当 GUI 还持有 WebSocket 连接时
+/// axum graceful shutdown 会等到 in-flight 请求完结。这里给 15s 余量，
+/// 确保正常关闭走完不会被 GUI 端 timeout 提前 abort（实际正常 case <1s）。
+const DAEMON_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(15);
 
 /// 这个 GUI shell 期望 daemon 上报的 `packageVersion`——`probe_daemon_health`
 /// 用它做版本兼容性判断。`env!` 拿的是 `uc-tauri` 自己的 cargo 版本，

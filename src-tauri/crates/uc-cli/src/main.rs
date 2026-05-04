@@ -322,7 +322,7 @@ fn main() -> anyhow::Result<()> {
                 commands::upgrade::run(subcommand, cli.json, cli.verbose).await
             }
             Commands::Probe { subcommand } => commands::probe::run(subcommand, cli.verbose).await,
-            Commands::Daemon { .. } => unreachable!("handled above"),
+            Commands::Daemon => unreachable!("handled above"),
         }
     });
 

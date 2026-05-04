@@ -94,24 +94,13 @@ where
 
     let pid = metadata.pid;
 
-    // Step 2: If the daemon is running inside a GUI shell (in-process mode),
-    // refuse to SIGTERM it. Killing it would tear down the entire GUI process
-    // and is almost never what the user wants — the GUI's own quit path is
-    // the correct shutdown route.
-    if matches!(metadata.mode, DaemonProcessMode::InProcess) {
-        let out = StopOutput {
-            status: "managed_by_gui",
-            pid: Some(pid),
-        };
-        if let Err(e) = output::print_result(&out, json) {
-            eprintln!("Error: {}", e);
-            return exit_codes::EXIT_ERROR;
-        }
-        return exit_codes::EXIT_ERROR;
-    }
-
-    // Step 3: Stale-PID guard — daemon registered itself but the OS process
+    // Step 2: Stale-PID guard — daemon registered itself but the OS process
     // is gone (kill -9, crash, reboot without cleanup). Treat as not running.
+    //
+    // Must run BEFORE the InProcess check below: a crashed GUI leaves stale
+    // InProcess metadata behind, and reporting "managed_by_gui" for a dead
+    // process would tell the user to "quit the GUI from its tray menu" when
+    // there's no GUI to quit.
     if !is_process_running(pid) {
         let out = StopOutput {
             status: "not_running",
@@ -122,6 +111,22 @@ where
             return exit_codes::EXIT_ERROR;
         }
         return exit_codes::EXIT_SUCCESS;
+    }
+
+    // Step 3: If the daemon is alive AND running inside a GUI shell (in-process
+    // mode), refuse to SIGTERM it. Killing it would tear down the entire GUI
+    // process and is almost never what the user wants — the GUI's own quit path
+    // is the correct shutdown route.
+    if matches!(metadata.mode, DaemonProcessMode::InProcess) {
+        let out = StopOutput {
+            status: "managed_by_gui",
+            pid: Some(pid),
+        };
+        if let Err(e) = output::print_result(&out, json) {
+            eprintln!("Error: {}", e);
+            return exit_codes::EXIT_ERROR;
+        }
+        return exit_codes::EXIT_ERROR;
     }
 
     // Step 4: Send SIGTERM.
@@ -261,5 +266,60 @@ mod tests {
     async fn no_daemon_running_returns_success() {
         let exit = run_stop_with(|| Ok(None), |_pid| false, |_pid| false, true).await;
         assert_eq!(exit, exit_codes::EXIT_SUCCESS);
+    }
+
+    #[tokio::test]
+    async fn stale_in_process_metadata_reports_not_running_not_managed_by_gui() {
+        // A crashed GUI leaves InProcess PID metadata behind. Without a
+        // liveness check before the InProcess gate, `stop` would tell the
+        // user to "quit the GUI from its tray menu" when there is no GUI
+        // to quit. The fix is to check `is_process_running` first.
+        let signal_sent = Arc::new(AtomicBool::new(false));
+        let signal_sent_for_closure = signal_sent.clone();
+
+        let exit = run_stop_with(
+            || Ok(Some(metadata(4242, DaemonProcessMode::InProcess))),
+            |_pid| false, // GUI crashed — process is gone, metadata stale
+            move |_pid| {
+                signal_sent_for_closure.store(true, Ordering::SeqCst);
+                true
+            },
+            true,
+        )
+        .await;
+
+        assert_eq!(
+            exit,
+            exit_codes::EXIT_SUCCESS,
+            "stale metadata for a dead InProcess daemon must report success — \
+             nothing to stop, not an error"
+        );
+        assert!(
+            !signal_sent.load(Ordering::SeqCst),
+            "no SIGTERM should fly when the process is already gone"
+        );
+    }
+
+    #[tokio::test]
+    async fn stale_standalone_metadata_reports_not_running() {
+        // Same scenario for Standalone mode — daemon binary crashed and left
+        // its PID file behind. Should be reported as not_running, not as a
+        // SIGTERM target (kill of a dead pid would error out the spawn).
+        let signal_sent = Arc::new(AtomicBool::new(false));
+        let signal_sent_for_closure = signal_sent.clone();
+
+        let exit = run_stop_with(
+            || Ok(Some(metadata(4242, DaemonProcessMode::Standalone))),
+            |_pid| false,
+            move |_pid| {
+                signal_sent_for_closure.store(true, Ordering::SeqCst);
+                true
+            },
+            true,
+        )
+        .await;
+
+        assert_eq!(exit, exit_codes::EXIT_SUCCESS);
+        assert!(!signal_sent.load(Ordering::SeqCst));
     }
 }

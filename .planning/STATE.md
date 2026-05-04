@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v0.7.0
 milestone_name: LAN-only Mode
-status: Phase 95 Wave 2 complete (5/6 plans); Wave 3 待 dispatch — 95-06 NetworkSection 重写（checkpoint plan, autonomous: false）
-last_updated: "2026-05-05T00:10:00.000Z"
-last_activity: 2026-05-05 -- Phase 95 Wave 2 落地：95-04 SettingContext.updateNetworkSetting helper + saveSetting 透传 restartRequired、95-05 RestartBanner（持久 inline）+ LanOnlyDisclosure（click-only Popover）。前端 354/354 PASS（+22 新测试）、D-A1/D-C1 fence 双路 0 命中、反向命名 fence 续航。Wave 3 等用户确认 checkpoint 后 dispatch。
+status: Phase 95 自动化全部完成 (6/6 plans automated); checkpoint 95-06 待用户人工 UAT (Tauri restart + daemon disable_relays + 跨 session pending)
+last_updated: "2026-05-05T00:25:00.000Z"
+last_activity: 2026-05-05 -- Phase 95 Wave 3 落地：95-06 NetworkSection 完全重写（占位 25 行 → 实装 175 行）。集成测试 18/18 PASS，前端全工程 372/372 PASS。Pitfall 1/5/11 + D-A1/D-C1 fence 全工程 grep 0 命中。等用户做 6 项人工 UAT（详见 095.06-SUMMARY.md "User Setup Required"）。
 progress:
   total_phases: 4
   completed_phases: 1
   total_plans: 6
-  completed_plans: 5
-  percent: 83
+  completed_plans: 6
+  percent: 100
 ---
 
 # Project State
@@ -24,17 +24,17 @@ See: .planning/PROJECT.md (updated 2026-05-04)
 
 ## Current Position
 
-Phase: 95 前端 NetworkSection + 重启 UX — Wave 2 完成（5/6 plans），Wave 3 待 dispatch
-Plan: 6 plans (095-01 ~ 095-06)，Wave 1 ✅ (01/02/03)、Wave 2 ✅ (04/05)、Wave 3 待执行 (06 — checkpoint)
-Status: Phase 95 Wave 2 complete; merged 5 worktrees → frontend 354/354 PASS、cargo restart 6/6 PASS、所有 fence 0 命中
-Last activity: 2026-05-05 -- Wave 2 落地：95-04 SettingContext 网络段、95-05 RestartBanner + LanOnlyDisclosure 组件
+Phase: 95 前端 NetworkSection + 重启 UX — 自动化全部完成 (6/6 plans automated)，等用户人工 UAT
+Plan: 6 plans (095-01 ~ 095-06)，Wave 1 ✅、Wave 2 ✅、Wave 3 ✅ automated；checkpoint 95-06 等用户 UAT
+Status: 6 plans merged，前端 372/372 PASS、cargo restart 6/6 PASS、Pitfall 1/5/11 + D-A1/D-C1 fence 0 命中
+Last activity: 2026-05-05 -- Wave 3 落地：95-06 NetworkSection 完全重写（占位 25 行 → 实装 175 行）；checkpoint 等用户 6 项 UAT
 
 ## Roadmap
 
 | Phase | Name                              | Requirements                                | 依赖           | 状态                |
 |-------|-----------------------------------|---------------------------------------------|----------------|---------------------|
 | 94    | 后端字段落地                      | NETSET-01, NETSET-02, NETSET-03             | 无             | ✅ 完成              |
-| 95    | 前端 NetworkSection + 重启 UX     | NETSET-04, NETSET-05, NETSET-06             | Phase 94       | 🔄 进行中 (5/6)      |
+| 95    | 前端 NetworkSection + 重启 UX     | NETSET-04, NETSET-05, NETSET-06             | Phase 94       | ⏳ 等用户 UAT (6/6 自动化) |
 | 96    | 连接通道指示器                    | INDIC-01, INDIC-02, INDIC-03, INDIC-04      | Phase 94       | 待开始              |
 | 97    | onboarding + 文档 + 跨平台 QA     | ONBORD-01, DOC-01, DOC-02, DOC-03           | Phase 95, 96   | 待开始              |
 

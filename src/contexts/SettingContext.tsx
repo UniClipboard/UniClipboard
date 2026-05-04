@@ -250,6 +250,9 @@ export const SettingProvider: React.FC<SettingProviderProps> = ({ children }) =>
     updateRetentionPolicy,
     updateKeyboardShortcuts,
     updateFileSyncSetting,
+    // TODO(95-04): real implementation — saveSetting 改返回 { restartRequired } 并由
+    // updateNetworkSetting 透传。Plan 04 会替换此占位。
+    updateNetworkSetting: async () => ({ restartRequired: false }),
   }
 
   return <SettingContext.Provider value={value}>{children}</SettingContext.Provider>

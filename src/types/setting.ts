@@ -119,6 +119,18 @@ export interface FileSyncSettings {
 }
 
 /**
+ * 网络设置 — 对应 Rust NetworkSettings / uc-daemon-contract NetworkSettingsDto。
+ *
+ * # 反向命名规则（Pitfall 1 防御）
+ * UI checked = "LAN-only Mode = ON" 等价于 allowRelayFallback 取反值。
+ * 前端只允许在 NetworkSection.tsx 一处用取反表达式；
+ * 永远不要在前端 store 维护反向布尔镜像字段。
+ */
+export interface NetworkSettings {
+  allowRelayFallback: boolean
+}
+
+/**
  * 应用设置 - 对应 Rust Settings
  */
 export interface Settings {
@@ -130,6 +142,7 @@ export interface Settings {
   pairing: PairingSettings
   keyboardShortcuts?: Record<string, string | string[]>
   fileSync?: FileSyncSettings
+  network: NetworkSettings
 }
 
 // ============================================================================
@@ -189,6 +202,9 @@ export interface SettingContextType {
   updateRetentionPolicy: (newPolicy: Partial<RetentionPolicy>) => Promise<void>
   updateKeyboardShortcuts: (overrides: Record<string, string | string[]>) => Promise<void>
   updateFileSyncSetting: (newFileSyncSetting: Partial<FileSyncSettings>) => Promise<void>
+  updateNetworkSetting: (
+    newNetworkSetting: Partial<NetworkSettings>
+  ) => Promise<{ restartRequired: boolean }>
 }
 
 // ============================================================================

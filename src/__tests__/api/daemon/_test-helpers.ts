@@ -200,6 +200,9 @@ export function makeSettingsDto(overrides: Partial<Settings> = {}): Settings {
       fileRetentionHours: 168,
       fileAutoCleanup: true,
     },
+    network: {
+      allowRelayFallback: true,
+    },
     ...overrides,
   }
 }

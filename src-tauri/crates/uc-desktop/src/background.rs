@@ -23,6 +23,10 @@ use uc_daemon_client::{DaemonConnectionState, DaemonPairingClient};
 
 const GUI_PAIRING_LEASE_TTL_MS: u64 = 300_000;
 const GUI_PAIRING_LEASE_REFRESH_INTERVAL: Duration = Duration::from_secs(120);
+/// 单次 lease RPC 的兜底超时——daemon 卡死时 shutdown 路径不能被它拖住，
+/// 否则 `task_registry.token().cancel()` 等不到 lease task 退出，整个 GUI
+/// 退出会被无限阻塞。注册/续租阶段超时只是 warn，真正关键是 cancel 分支。
+const GUI_PAIRING_LEASE_RPC_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// Register the file cache cleanup task with `TaskRegistry`.
 ///
@@ -103,10 +107,18 @@ pub(crate) async fn run_gui_pairing_lease_loop<F, Fut>(
     F: FnMut(bool, Option<u64>) -> Fut,
     Fut: std::future::Future<Output = anyhow::Result<()>>,
 {
-    if let Err(error) = set_gui_lease(true, Some(lease_ttl_ms)).await {
-        warn!(error = %error, "failed to register GUI pairing lease");
-    } else {
-        info!(lease_ttl_ms, "registered GUI pairing lease");
+    match time::timeout(
+        GUI_PAIRING_LEASE_RPC_TIMEOUT,
+        set_gui_lease(true, Some(lease_ttl_ms)),
+    )
+    .await
+    {
+        Ok(Ok(())) => info!(lease_ttl_ms, "registered GUI pairing lease"),
+        Ok(Err(error)) => warn!(error = %error, "failed to register GUI pairing lease"),
+        Err(_) => warn!(
+            timeout_ms = GUI_PAIRING_LEASE_RPC_TIMEOUT.as_millis() as u64,
+            "GUI pairing lease registration RPC timed out"
+        ),
     }
 
     let mut ticker = time::interval(renew_interval);
@@ -116,16 +128,37 @@ pub(crate) async fn run_gui_pairing_lease_loop<F, Fut>(
     loop {
         tokio::select! {
             _ = token.cancelled() => {
-                if let Err(error) = set_gui_lease(false, None).await {
-                    warn!(error = %error, "failed to release GUI pairing lease during shutdown");
-                } else {
-                    info!("released GUI pairing lease");
+                match time::timeout(
+                    GUI_PAIRING_LEASE_RPC_TIMEOUT,
+                    set_gui_lease(false, None),
+                )
+                .await
+                {
+                    Ok(Ok(())) => info!("released GUI pairing lease"),
+                    Ok(Err(error)) => warn!(
+                        error = %error,
+                        "failed to release GUI pairing lease during shutdown"
+                    ),
+                    Err(_) => warn!(
+                        timeout_ms = GUI_PAIRING_LEASE_RPC_TIMEOUT.as_millis() as u64,
+                        "GUI pairing lease release RPC timed out during shutdown"
+                    ),
                 }
                 return;
             }
             _ = ticker.tick() => {
-                if let Err(error) = set_gui_lease(true, Some(lease_ttl_ms)).await {
-                    warn!(error = %error, "failed to renew GUI pairing lease");
+                match time::timeout(
+                    GUI_PAIRING_LEASE_RPC_TIMEOUT,
+                    set_gui_lease(true, Some(lease_ttl_ms)),
+                )
+                .await
+                {
+                    Ok(Ok(())) => {}
+                    Ok(Err(error)) => warn!(error = %error, "failed to renew GUI pairing lease"),
+                    Err(_) => warn!(
+                        timeout_ms = GUI_PAIRING_LEASE_RPC_TIMEOUT.as_millis() as u64,
+                        "GUI pairing lease renew RPC timed out"
+                    ),
                 }
             }
         }

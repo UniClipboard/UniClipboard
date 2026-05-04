@@ -59,6 +59,33 @@ const SHUTDOWN_FRONTEND_GRACE_MS: u64 = 100;
 /// workspace 共享版本号所以与 `uniclipboard` bin 一致。
 const EXPECTED_PACKAGE_VERSION: &str = env!("CARGO_PKG_VERSION");
 
+/// auto-unlock 等待 daemon connection_state 被填充的总上限。
+/// `bootstrap_daemon_in_process` 内部 `wait_for_daemon_health` 默认上限 8s
+/// （`HEALTH_CHECK_TIMEOUT`）+ legacy daemon 替换路径再加 `INCOMPATIBLE_DAEMON_EXIT_TIMEOUT`，
+/// 给 30s 足够覆盖最坏路径。超时只是放弃 auto-unlock，用户改用手动解锁。
+const AUTO_UNLOCK_DAEMON_READY_TIMEOUT: Duration = Duration::from_secs(30);
+/// 轮询 connection_state 的间隔。
+const AUTO_UNLOCK_DAEMON_READY_POLL: Duration = Duration::from_millis(200);
+
+/// 等待 `DaemonConnectionState` 被 daemon bootstrap 填充。
+/// 返回 `true` 表示连接信息已就绪；`false` 表示在 `timeout` 内仍未填充。
+async fn wait_for_daemon_connection(
+    state: &DaemonConnectionState,
+    timeout: Duration,
+    poll_interval: Duration,
+) -> bool {
+    let deadline = tokio::time::Instant::now() + timeout;
+    loop {
+        if state.get().is_some() {
+            return true;
+        }
+        if tokio::time::Instant::now() >= deadline {
+            return false;
+        }
+        tokio::time::sleep(poll_interval).await;
+    }
+}
+
 #[cfg(target_os = "windows")]
 fn configure_main_window_for_platform(app: &tauri::AppHandle) {
     let Some(window) = app.get_webview_window("main") else {
@@ -340,6 +367,24 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
 
                     if !auto_unlock_enabled {
                         info!("[Startup] Auto unlock disabled by settings");
+                        return;
+                    }
+
+                    // daemon bootstrap 与 backend init 是并发 spawn 的——
+                    // 必须等 connection_state 被填充后再下发 unlock，
+                    // 否则首次 RPC 直接 401-no-connection-info 把整个
+                    // auto-unlock + lifecycle_retry 跳过。
+                    if !wait_for_daemon_connection(
+                        &daemon_conn_for_unlock,
+                        AUTO_UNLOCK_DAEMON_READY_TIMEOUT,
+                        AUTO_UNLOCK_DAEMON_READY_POLL,
+                    )
+                    .await
+                    {
+                        warn!(
+                            timeout_secs = AUTO_UNLOCK_DAEMON_READY_TIMEOUT.as_secs(),
+                            "[Startup] Daemon connection not ready in time; skipping auto-unlock"
+                        );
                         return;
                     }
 

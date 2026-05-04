@@ -52,7 +52,10 @@ pub async fn probe_daemon_health_at(
     addr: std::net::SocketAddr,
     expected_package_version: &str,
 ) -> Result<ProbeOutcome, DaemonBootstrapError> {
-    let url = format!("http://{}:{}{}", addr.ip(), addr.port(), HEALTH_PATH);
+    // 用 SocketAddr Display 直接渲染——IPv6 会保留方括号（[::1]:8080），
+    // 拼成的 URL 在 reqwest 解析时仍然合法；分别取 ip()/port() 拼接会
+    // 漏掉方括号，IPv6 daemon 会被错认成 unreachable。
+    let url = format!("http://{addr}{HEALTH_PATH}");
 
     let response = match client.get(url).send().await {
         Ok(response) => response,

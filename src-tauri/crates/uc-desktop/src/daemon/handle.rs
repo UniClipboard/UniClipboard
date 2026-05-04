@@ -40,12 +40,20 @@ impl DaemonHandle {
     /// 内部的资源（HTTP server、worker tasks、PID 文件）可能处于不确定状态。
     pub async fn shutdown(self, timeout: Duration) -> anyhow::Result<()> {
         self.cancel.cancel();
-        match tokio::time::timeout(timeout, self.join).await {
+        // `&mut JoinHandle` 是 cancel-safe 的，timeout 不会消耗它——超时
+        // 分支可以直接调 abort + 再 await 回收，避免 drop JoinHandle 把
+        // daemon task detach 到后台继续跑。
+        let mut join = self.join;
+        match tokio::time::timeout(timeout, &mut join).await {
             Ok(Ok(result)) => result,
             Ok(Err(join_err)) => Err(anyhow::anyhow!("daemon task panicked: {join_err}")),
-            Err(_) => Err(anyhow::anyhow!(
-                "daemon shutdown timed out after {timeout:?}"
-            )),
+            Err(_) => {
+                join.abort();
+                let _ = join.await;
+                Err(anyhow::anyhow!(
+                    "daemon shutdown timed out after {timeout:?}"
+                ))
+            }
         }
     }
 

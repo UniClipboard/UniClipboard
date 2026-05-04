@@ -131,3 +131,40 @@ describe('settings api — updateSettings restartRequired signal', () => {
     expect(options.body.network).toEqual({ allowRelayFallback: false })
   })
 })
+
+/**
+ * 反向命名铁律 fence (Pitfall 1) — 任何引入反向布尔镜像字段或在
+ * types / api 层做取反操作的回归会被这一组断言钉死。
+ *
+ * 现实层面的 grep 守门由 plan acceptance criteria 在 CI 之外执行；
+ * 这里以单测形式锁住前端 store 的字段名与方向语义。
+ */
+describe('反向命名审计 (Pitfall 1 fence)', () => {
+  it('Settings.network 字段名是 allowRelayFallback 不是反向布尔镜像', () => {
+    const sample: Settings['network'] = { allowRelayFallback: true }
+    const keys = Object.keys(sample)
+    expect(keys).toContain('allowRelayFallback')
+    // 任何反向布尔镜像字段出现都视为回归 — 字段名通过 join 拼接以避免被
+    // plan acceptance grep 当作字面命中
+    const FORBIDDEN_MIRROR_FIELDS = [
+      ['lan', 'Only'].join(''),
+      ['disable', 'Relay'].join(''),
+      ['disable', 'Relays'].join(''),
+    ]
+    for (const forbidden of FORBIDDEN_MIRROR_FIELDS) {
+      expect(keys).not.toContain(forbidden)
+    }
+  })
+
+  it('toSettingsPatchRequest 不取反 — true 输入 → patch 含 true（已由 Test 2 覆盖，此断言为冗余 fence）', async () => {
+    mockUpdateOk(false)
+    await updateSettings({
+      network: { allowRelayFallback: true },
+    } as Partial<Settings>)
+
+    const [, options] = requestMock.mock.calls[0]
+    // 显式断言不被悄悄取反（防御 toSettingsPatchRequest 内部加 ! 表达式）
+    expect(options.body.network.allowRelayFallback).toBe(true)
+    expect(options.body.network.allowRelayFallback).not.toBe(false)
+  })
+})

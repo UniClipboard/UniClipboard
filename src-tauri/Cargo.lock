@@ -10349,6 +10349,7 @@ name = "uc-webserver"
 version = "0.6.0"
 dependencies = [
  "anyhow",
+ "async-trait",
  "axum 0.7.9",
  "base64 0.22.1",
  "chrono",

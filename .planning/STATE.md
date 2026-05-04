@@ -2,9 +2,9 @@
 gsd_state_version: 1.0
 milestone: v0.7.0
 milestone_name: LAN-only Mode
-status: completed
-last_updated: "2026-05-04T14:00:00.000Z"
-last_activity: 2026-05-04 -- Phase 95 context gathered (前端 NetworkSection + 重启 UX, 4 gray areas resolved)
+status: Phase 95 plans ready (6 PLAN.md, plan-checker PASS); next step `/gsd-execute-phase 95`
+last_updated: "2026-05-04T23:10:00.000Z"
+last_activity: 2026-05-04 -- Phase 95 plans ready — 6 PLAN.md（01 types/wire, 02 Tauri commands, 03 i18n, 04 SettingContext, 05 RestartBanner+LanOnlyDisclosure, 06 NetworkSection rewrite）TDD 模式 5/6（execute 1/6 = i18n），plan-checker 全 12 维度 PASS（含 D-A1..D-D3 全 11 决策覆盖、Phase 94 边界锁定、3 Pitfall 防御铁律）
 progress:
   total_phases: 4
   completed_phases: 1
@@ -24,10 +24,10 @@ See: .planning/PROJECT.md (updated 2026-05-04)
 
 ## Current Position
 
-Phase: 95 前端 NetworkSection + 重启 UX — context gathered, ready for planning
-Plan: —
-Status: Phase 95 CONTEXT.md written (decisions A1/A2/A3 + B + C + D1/D2/D3 locked); next step `/gsd-plan-phase 95`
-Last activity: 2026-05-04 -- Phase 95 context gathered（4 灰色地带全部敲定：RestartBanner 专用组件 / Section 内部 / 只靠 Banner 表达 pending / 只 cover Tauri GUI app.restart() / Popover 4 类外网披露 / Tauri command get_restart_state 走 mtime 比对）
+Phase: 95 前端 NetworkSection + 重启 UX — plans ready, ready to execute
+Plan: 6 plans (095-01 ~ 095-06), wave 1/2/3 已分配
+Status: Phase 95 plans ready (6 PLAN.md, plan-checker PASS); next step `/gsd-execute-phase 95`
+Last activity: 2026-05-04 -- Phase 95 plans ready — 6 PLAN.md，TDD 5/6 + execute 1/6（i18n），plan-checker 12/12 维度 PASS
 
 ## Roadmap
 
@@ -72,4 +72,6 @@ Phase 94 context gathered: 2026-05-04 — 4 gray areas resolved (A1 / B3 / C1 / 
 Phase 94 execution complete: 2026-05-04 — 6/6 plans, 53/53 自动测试 PASS, 4 个 pitfall 防御铁律全部 VERIFIED
 Phase 94 human UAT complete: 2026-05-04 — 2/2 PASSED via real daemon log（双向证据：home_relay 注册/缺席对比 + 配置翻译 tracing + LAN-only 死循环重试外网 peer）
 Phase 95 context gathered: 2026-05-04 — 4 灰色地带全敲定（RestartBanner / Section 内部 / 只靠 Banner / Tauri GUI 范围 / Popover / get_restart_state Tauri command）
-Next recommended step: `/gsd-plan-phase 95` 创建 Phase 95 详细 plan（CONTEXT.md 与 PATTERNS 已就绪）
+Phase 95 UI-SPEC.md approved: 2026-05-04 — gsd-ui-checker 6/6 维度 PASS（双语 i18n 字典最终敲定，Phase 97 反向复制基准）
+Phase 95 plans ready: 2026-05-04 — 6 PLAN.md（5 TDD + 1 execute），plan-checker 12/12 PASS（D-A1..D-D3 全覆盖 / Phase 94 边界锁定 / Pitfall 5/10/11 防御铁律 / PATTERNS.md 12/12 文件 analog 全引用）
+Next recommended step: `/gsd-execute-phase 95` 执行 Phase 95（建议 wave 1 [01,02,03] 并行；wave 2 [04,05] 并行；wave 3 [06] 含人工 UAT checkpoint）

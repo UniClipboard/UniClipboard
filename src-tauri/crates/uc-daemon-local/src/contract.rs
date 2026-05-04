@@ -51,6 +51,15 @@ impl std::error::Error for TerminateDaemonError {}
 /// 使用 `std::process::Command`——不依赖任何 GUI 框架或 sidecar 体系，
 /// 可以被 daemon 二进制、GUI shell、CLI 工具任意一方消费。
 pub fn terminate_local_daemon_pid(pid: u32) -> Result<(), TerminateDaemonError> {
+    // Unix `kill -TERM 0` broadcasts to the caller's entire process group,
+    // which would take down the GUI/CLI host. A corrupted PID file reading
+    // as 0 must never reach `kill`.
+    if pid == 0 {
+        return Err(TerminateDaemonError(
+            "refusing to terminate pid 0".to_string(),
+        ));
+    }
+
     #[cfg(unix)]
     let mut command = {
         let mut command = Command::new("kill");
@@ -149,6 +158,18 @@ mod tests {
         // Confirms it satisfies `std::error::Error` so callers can box it.
         let boxed: Box<dyn std::error::Error> = Box::new(err);
         assert!(boxed.to_string().contains("ESRCH"));
+    }
+
+    #[test]
+    fn terminate_local_daemon_pid_refuses_pid_zero() {
+        // Guard rail: a corrupted PID file reading as 0 must not reach
+        // `kill -TERM 0` (which would signal the entire process group).
+        let err = terminate_local_daemon_pid(0)
+            .expect_err("pid 0 must be rejected before any signal is sent");
+        assert!(
+            err.to_string().contains("pid 0"),
+            "error must explain why pid 0 was refused; got: {err}"
+        );
     }
 
     #[test]

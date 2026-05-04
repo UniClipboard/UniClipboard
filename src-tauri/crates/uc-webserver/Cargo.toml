@@ -32,4 +32,5 @@ utoipa-axum = "0.2"
 utoipa-swagger-ui = { version = "7", features = ["axum"] }
 
 [dev-dependencies]
+async-trait = "0.1"
 tower = { version = "0.5", features = ["util"] }

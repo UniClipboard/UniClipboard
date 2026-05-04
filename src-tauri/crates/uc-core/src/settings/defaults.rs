@@ -224,6 +224,14 @@ impl Default for FileSyncSettings {
     }
 }
 
+impl Default for NetworkSettings {
+    fn default() -> Self {
+        Self {
+            allow_relay_fallback: true,
+        }
+    }
+}
+
 impl Default for Settings {
     /// Constructs a Settings instance populated with the current schema version and sensible nested defaults.
     ///
@@ -258,6 +266,7 @@ impl Default for Settings {
             pairing: PairingSettings::default(),
             keyboard_shortcuts: HashMap::new(),
             file_sync: FileSyncSettings::default(),
+            network: NetworkSettings::default(),
         }
     }
 }

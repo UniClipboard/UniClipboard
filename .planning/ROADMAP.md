@@ -21,7 +21,7 @@
 
 ## Phases 概览
 
-- [ ] **Phase 94: 后端字段落地** — `uc-core::Settings.network` 新增、HTTP DTO + view/patch 镜像、`uc-bootstrap` 唯一取反 helper 注入 `IrohNodeConfig.disable_relays`
+- [x] **Phase 94: 后端字段落地** — `uc-core::Settings.network` 新增、HTTP DTO + view/patch 镜像、`uc-bootstrap` 唯一取反 helper 注入 `IrohNodeConfig.disable_relays`（completed 2026-05-04，human UAT 2 项 pending）
 - [ ] **Phase 95: 前端 NetworkSection + 重启 UX** — 替换占位组件为真实开关、三态视觉、持久 inline 重启通知 + "立即重启"按钮、tooltip 披露 4 类外网请求
 - [ ] **Phase 96: 连接通道指示器** — 新增 `ConnectionChannelPort` + `IrohConnectionChannelAdapter`、`PeerSnapshotDto.channel`、设备列表徽章、tray icon 状态徽章、"Out of LAN" 灰态
 - [ ] **Phase 97: onboarding + 文档 + 跨平台 QA gate** — 配对成功 inline banner + dismiss 持久化、`docs/lan-only.md` / `docs/terminology.md` / changelog、跨平台 release-gate QA 矩阵
@@ -68,12 +68,12 @@
 **Plans：** 6 plans
 
 Plans:
-- [ ] 094.01-PLAN.md — uc-core Settings.network 字段落地 + 手写 Default + 向后兼容反序列化测试
-- [ ] 094.02-PLAN.md — uc-application View/Patch 镜像 + apply_settings_patch + facade pub use 白名单
-- [ ] 094.03-PLAN.md — uc-daemon-contract DTO 镜像 + UpdateSettingsResponse.restart_required + OpenAPI schema
-- [ ] 094.04-PLAN.md — uc-webserver DTO ↔ View 双向 mapping + handler 内联 restart_required + integration smoke
-- [ ] 094.05-PLAN.md — uc-bootstrap network_policy 唯一取反 helper + 两处 bind 装配点改造 + tracing::info! 启动日志
-- [ ] 094.06-PLAN.md — uc-infra IrohNodeBuilder::bind OnceCell 守护 + lan_only_relay_mode integration test
+- [x] 094.01-PLAN.md — uc-core Settings.network 字段落地 + 手写 Default + 向后兼容反序列化测试
+- [x] 094.02-PLAN.md — uc-application View/Patch 镜像 + apply_settings_patch + facade pub use 白名单
+- [x] 094.03-PLAN.md — uc-daemon-contract DTO 镜像 + UpdateSettingsResponse.restart_required + OpenAPI schema
+- [x] 094.04-PLAN.md — uc-webserver DTO ↔ View 双向 mapping + handler 内联 restart_required + integration smoke
+- [x] 094.05-PLAN.md — uc-bootstrap network_policy 唯一取反 helper + 两处 bind 装配点改造 + tracing::info! 启动日志
+- [x] 094.06-PLAN.md — uc-infra IrohNodeBuilder::bind OnceCell 守护 + lan_only_relay_mode integration test
 
 ---
 
@@ -155,7 +155,7 @@ Plans:
 
 | Phase | Plans Complete | Status      | Completed |
 |-------|----------------|-------------|-----------|
-| 94. 后端字段落地                  | 0/6 | Not started | - |
+| 94. 后端字段落地                  | 6/6 | Complete (human UAT pending) | 2026-05-04 |
 | 95. 前端 NetworkSection + 重启 UX | 0/1 | Not started | - |
 | 96. 连接通道指示器                | 0/1 | Not started | - |
 | 97. onboarding + 文档 + 跨平台 QA | 0/1 | Not started | - |

@@ -25,9 +25,9 @@
 
 ### NETSET — 网络设置开关与字段（6 条）
 
-- [ ] **NETSET-01**：用户可以在持久化的设备 settings 中通过 `network.allow_relay_fallback: bool` 字段控制是否允许公网中继回落，新装/未配置设备默认 `true`（沿用现状，不打扰存量用户）
-- [ ] **NETSET-02**：用户/客户端可以通过 daemon HTTP `GET/PUT /settings` 读写 `network.allow_relay_fallback` 字段；老 settings.json 缺失 `network` 段时反序列化必须回填默认值 `true`（向前兼容）
-- [ ] **NETSET-03**：用户在 settings 中关闭 "允许中继回落" 后重启 daemon，启动路径会把字段值通过唯一的取反 helper 注入 `IrohNodeConfig.disable_relays`，使 iroh endpoint 以 `RelayMode::Disabled` 模式 bind，且 `Endpoint::addr().addrs` 中不含 `TransportAddr::Relay` 项
+- [x] **NETSET-01**：用户可以在持久化的设备 settings 中通过 `network.allow_relay_fallback: bool` 字段控制是否允许公网中继回落，新装/未配置设备默认 `true`（沿用现状，不打扰存量用户）— validated in Phase 94 (2026-05-04)
+- [x] **NETSET-02**：用户/客户端可以通过 daemon HTTP `GET/PUT /settings` 读写 `network.allow_relay_fallback` 字段；老 settings.json 缺失 `network` 段时反序列化必须回填默认值 `true`（向前兼容）— validated in Phase 94 (2026-05-04)
+- [x] **NETSET-03**：用户在 settings 中关闭 "允许中继回落" 后重启 daemon，启动路径会把字段值通过唯一的取反 helper 注入 `IrohNodeConfig.disable_relays`，使 iroh endpoint 以 `RelayMode::Disabled` 模式 bind，且 `Endpoint::addr().addrs` 中不含 `TransportAddr::Relay` 项 — validated in Phase 94 (2026-05-04, human UAT pending end-to-end daemon restart)
 - [ ] **NETSET-04**：用户在 Settings → Network 分类下能看到 "LAN-only Mode" 开关，默认 OFF（关闭=允许 fallback），切换不立即生效
 - [ ] **NETSET-05**：用户切换 LAN-only 开关后，UI 显示持久化的 inline "重启生效" 通知（不是一秒 toast），且开关呈现三态视觉（applied OFF / applied ON / pending change），通知内含"立即重启"按钮可触发 daemon 优雅 shutdown + relaunch
 - [ ] **NETSET-06**：用户在 LAN-only 开关附近能看到 info icon / tooltip，明确披露开启后**仍会走外网**的 4 类请求（首次配对 rendezvous、OTLP 遥测、pkarr DHT NodeId 解析、auto-update GitHub 检查）

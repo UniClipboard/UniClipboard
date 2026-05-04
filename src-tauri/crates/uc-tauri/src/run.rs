@@ -101,16 +101,25 @@ fn configure_main_window_for_platform(app: &tauri::AppHandle) {
 #[cfg(not(target_os = "windows"))]
 fn configure_main_window_for_platform(_app: &tauri::AppHandle) {}
 
-/// Run the Tauri application.
+/// Builds the GUI bootstrap, starts background tasks and the in-process daemon as needed, and runs the Tauri event loop.
 ///
-/// `tauri_ctx` 必须由 bin crate（`src-tauri/src/main.rs`）通过
-/// `tauri::generate_context!()` 生成后传入——该宏依赖 bin 的
-/// `Cargo.toml` 同目录的 `tauri.conf.json`，无法在 lib crate 里调用。
+/// The provided `tauri_ctx` must be created in the binary crate using `tauri::generate_context!()` (that macro reads the bin crate's tauri.conf.json). This function assembles the GUI startup context via `uc_desktop::bootstrap::build_gui_app()`; if assembly fails it returns an `Err`. On success the function enters the Tauri event loop and does not return until the application exits.
 ///
-/// 启动期上下文（`GuiBootstrapContext`）由本函数内部通过
-/// [`uc_desktop::bootstrap::build_gui_app`] 装配，bin 不需要关心装配细节。
-/// 装配失败时返回 `Err`；装配成功后函数进入 Tauri 事件循环并不再返回，
-/// 直到应用退出。
+/// # Parameters
+///
+/// - `tauri_ctx`: the Tauri application context produced by `tauri::generate_context!()` in the binary crate.
+///
+/// # Returns
+///
+/// `Ok(())` if the Tauri application was built and the run loop started (the function will complete only after application exit). `Err` if GUI bootstrap or building the Tauri application fails.
+///
+/// # Examples
+///
+/// ```no_run
+/// // In src-tauri/src/main.rs
+/// let ctx = tauri::generate_context!();
+/// crate::run(ctx).expect("failed to start tauri application");
+/// ```
 pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
     let GuiBootstrapContext {
         deps,

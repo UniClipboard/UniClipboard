@@ -13,6 +13,14 @@ import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover
  */
 const DISCLOSURE_KEYS = ['rendezvous', 'otlp', 'pkarr', 'autoUpdate'] as const
 
+/**
+ * Renders a popover-triggered info button that explains LAN-only request categories.
+ *
+ * The popover content is driven by i18n keys and includes a title, an introductory paragraph,
+ * and a list of disclosure items for `rendezvous`, `otlp`, `pkarr`, and `autoUpdate`.
+ *
+ * @returns A JSX element containing an info icon button that opens the translated disclosure popover.
+ */
 export function LanOnlyDisclosure() {
   const { t } = useTranslation()
 

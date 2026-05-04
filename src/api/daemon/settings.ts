@@ -200,17 +200,15 @@ export async function getSettings(): Promise<Settings> {
 }
 
 /**
- * Update application settings via deep merge on the server.
+ * Apply a partial settings update to the daemon.
  *
- * 通过服务器端深度合并更新应用设置。
+ * Only the provided fields are changed; omitted fields retain their current values
+ * on the daemon (server-side deep merge).
  *
- * Only the provided fields are changed; omitted fields retain their current
- * values. Nested objects are merged recursively.
- *
- * @param settings Partial settings payload.
- * @returns `{ success, restartRequired }` — daemon 在 patch 含 network 段时
- *          会回 `restartRequired: true`，UI 据此决定是否显示 RestartBanner。
- * @throws {DaemonApiError} On HTTP or validation errors.
+ * @param settings - Partial settings object containing only the fields to update
+ * @returns An object with `success` indicating whether the patch was applied, and
+ *          `restartRequired` indicating the daemon requests a restart (e.g., after
+ *          certain network-related changes)
  */
 export async function updateSettings(
   settings: Partial<Settings>
@@ -223,6 +221,12 @@ export async function updateSettings(
   return { success: res.data.success, restartRequired: res.data.restartRequired }
 }
 
+/**
+ * Constructs a patch object that includes only the top-level settings sections present in the input.
+ *
+ * @param settings - A partial Settings object; only top-level sections that are defined will be included in the patch.
+ * @returns A SettingsPatchRequest containing the provided sections with their corresponding fields. 
+ */
 function toSettingsPatchRequest(settings: Partial<Settings>): SettingsPatchRequest {
   const patch: SettingsPatchRequest = {}
 

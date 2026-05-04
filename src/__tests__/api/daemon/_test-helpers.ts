@@ -147,6 +147,12 @@ export function makeEntryDto(overrides: Partial<ClipboardEntryDto> = {}): Clipbo
   }
 }
 
+/**
+ * Create a Settings object populated with sensible defaults for tests.
+ *
+ * @param overrides - Partial `Settings` that will replace the default fields provided by this factory.
+ * @returns A `Settings` object with defaults applied; values in `overrides` take precedence.
+ */
 export function makeSettingsDto(overrides: Partial<Settings> = {}): Settings {
   return {
     schemaVersion: 1,

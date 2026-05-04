@@ -8,16 +8,26 @@ use crate::commands::record_trace_fields;
 use tracing::{info, info_span, Instrument};
 use uc_platform::ports::observability::TraceMetadata;
 
-/// Trigger graceful Tauri process restart for settings change effect.
-/// 触发 Tauri 进程优雅重启使设置变更生效。
+/// Restarts the running Tauri application to apply settings changes.
 ///
-/// # Scope (per D-B1)
-/// 仅 cover GUI mode；CLI daemon (`uniclip daemon`) 不在范围。
+/// This triggers a graceful application restart intended for GUI mode only. If `_trace` is
+/// provided, its fields are attached to the command's tracing span for correlation.
 ///
-/// # Mechanism (per D-B2)
-/// 复用 `app.restart()`（与 `updater.rs:300-301` 同模式）。进程退出会触发
-/// `task_registry::shutdown` cancel cascade，daemon 子系统随 Tauri 进程
-/// 一起 graceful 关闭 —— 不显式调用 `DaemonHandle::shutdown`。
+/// # Parameters
+///
+/// - `app`: the application handle used to initiate the restart.
+/// - `_trace`: optional trace metadata to record on the restart span.
+///
+/// # Returns
+///
+/// `Ok(())` when the restart command is issued (control may not return because the process exits).
+///
+/// # Examples
+///
+/// ```no_run
+/// // Trigger a graceful restart (example; requires a valid `tauri::AppHandle` in an async context)
+/// let _ = restart_app(app_handle, None).await;
+/// ```
 #[tauri::command]
 pub async fn restart_app(
     app: tauri::AppHandle,

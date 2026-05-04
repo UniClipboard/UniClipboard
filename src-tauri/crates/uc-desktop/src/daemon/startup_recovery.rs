@@ -26,6 +26,10 @@ pub struct StartupRecoveryInput {
 /// HTTP 监听拉起来，再让这个后台任务慢慢恢复。
 pub fn spawn_startup_recovery(input: StartupRecoveryInput) {
     tokio::spawn(async move {
+        // Standalone daemon 在这里强制走 `true` 分支——CLI 拉起的独立 daemon
+        // 没有 GUI 通道接收手动解锁，启动期不解锁就等于让剪贴板/同步服务
+        // 永久卡在 deferred 队列里。详见
+        // [`DaemonRunMode::uses_auto_unlock_setting`] 的注释。
         let auto_unlock_enabled = if input.run_mode.uses_auto_unlock_setting() {
             let settings = input.settings.load().await.unwrap_or_default();
             settings.security.auto_unlock_enabled

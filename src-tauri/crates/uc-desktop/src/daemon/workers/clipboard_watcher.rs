@@ -61,8 +61,8 @@ pub struct DaemonClipboardChangeHandler {
     clipboard_change_origin: Arc<dyn ClipboardChangeOriginPort>,
     /// Gate that controls whether clipboard capture is active.
     /// When false, clipboard change events are silently dropped.
-    /// Used in `--gui-managed` mode to defer clipboard capture until
-    /// the GUI user explicitly unlocks the app.
+    /// Used in `GuiInProcess` mode to defer clipboard capture until
+    /// the GUI user explicitly unlocks the app and POSTs `/lifecycle/ready`.
     capture_gate: Arc<AtomicBool>,
     clipboard_capture: Arc<ClipboardCaptureFacade>,
     clipboard_live_index: Arc<ClipboardLiveIndexFacade>,

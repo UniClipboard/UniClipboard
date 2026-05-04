@@ -171,8 +171,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn gui_sidecar_or_locked_mode_defers_clipboard_services() {
-        let mut plan = DaemonServicePlan::build(input(DaemonRunMode::GuiSidecar, false));
+    async fn gui_in_process_or_locked_mode_defers_clipboard_services() {
+        let mut plan = DaemonServicePlan::build(input(DaemonRunMode::GuiInProcess, false));
 
         assert_eq!(plan.services.len(), 1);
         assert_eq!(plan.deferred_services.len(), 3);

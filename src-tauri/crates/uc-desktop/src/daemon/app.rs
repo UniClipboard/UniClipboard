@@ -113,12 +113,12 @@ pub struct DaemonApp {
     local_device_id: Option<String>,
     /// 是否在 main loop 里监听 OS 信号（SIGTERM/SIGINT/Ctrl-C）。
     ///
-    /// 独立 daemon 进程模式（Standalone/Hybrid/GuiSidecar）置 true；
-    /// `GuiInProcess` 模式置 false——OS 信号属于 GUI 的责任，daemon
-    /// 不能抢占 handler，shutdown 必须通过 caller 持有的 cancel token 触发。
+    /// `Standalone` 置 true；`GuiInProcess` 置 false——OS 信号属于 GUI 的
+    /// 责任，daemon 不能抢占 handler，shutdown 必须通过 caller 持有的
+    /// cancel token 触发。
     listens_to_os_signals: bool,
     /// 写进 PID 文件的进程模式——决定 `cli stop` 能不能 SIGTERM 这个
-    /// daemon。`GuiInProcess` → `InProcess`；其他 → `Standalone`。
+    /// daemon。`GuiInProcess` → `InProcess`；`Standalone` → `Standalone`。
     process_mode: DaemonProcessMode,
 }
 

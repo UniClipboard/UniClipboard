@@ -18,7 +18,6 @@ pub(crate) mod search_assembly;
 pub(crate) mod service;
 pub(crate) mod service_assembly;
 pub(crate) mod service_plan;
-pub(crate) mod shutdown;
 pub(crate) mod startup_recovery;
 pub(crate) mod state;
 pub(crate) mod tokio_runtime;

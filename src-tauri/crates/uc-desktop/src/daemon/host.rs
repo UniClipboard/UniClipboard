@@ -28,7 +28,6 @@ use crate::daemon::runtime_assembly::{build_daemon_runtime_workers, DaemonRuntim
 use crate::daemon::runtime_controls::build_daemon_runtime_controls;
 use crate::daemon::search_assembly::build_daemon_search_assembly;
 use crate::daemon::service_assembly::build_daemon_service_plan;
-use crate::daemon::shutdown::spawn_stdin_eof_canceller;
 use crate::daemon::tokio_runtime::build_daemon_tokio_runtime;
 
 /// 独立 daemon binary 入口：创建专属 tokio runtime，启动 daemon，阻塞到退出。
@@ -51,15 +50,12 @@ pub fn run(run_mode: DaemonRunMode) -> anyhow::Result<()> {
 /// 用于显式 shutdown。
 ///
 /// `run_mode` 决定 daemon 内部行为：
-/// - [`DaemonRunMode::GuiInProcess`]：daemon 不监听 OS 信号、不监听 stdin EOF——
-///   shutdown 必须通过返回的 handle 触发，避免抢占 GUI 自己的信号 handler。
-/// - 其他模式：daemon 内部仍监听 SIGTERM/SIGINT；`GuiSidecar` 还会
-///   spawn 一个线程把 stdin EOF 转为 cancel 信号（旧 sidecar 模型）。
+/// - [`DaemonRunMode::GuiInProcess`]：daemon 不监听 OS 信号——shutdown 必须
+///   通过返回的 handle 触发，避免抢占 GUI 自己的信号 handler。
+/// - [`DaemonRunMode::Standalone`]：daemon 内部监听 SIGTERM/SIGINT，靠 OS
+///   信号自然退出。
 pub async fn start_in_process(run_mode: DaemonRunMode) -> anyhow::Result<DaemonHandle> {
     let cancel = CancellationToken::new();
-    if run_mode.follows_gui_parent() {
-        spawn_stdin_eof_canceller(cancel.clone());
-    }
 
     let DaemonBootstrapAssembly {
         non_gui_bundle,

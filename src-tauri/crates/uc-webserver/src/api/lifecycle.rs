@@ -24,7 +24,7 @@ pub fn router() -> Router<DaemonApiState> {
 
 /// Signal that the GUI has unlocked and clipboard capture can begin.
 ///
-/// In `--gui-managed` mode, clipboard capture is gated until the GUI
+/// In `GuiInProcess` mode, clipboard capture is gated until the GUI
 /// explicitly signals readiness (after the user unlocks the app).
 /// This endpoint opens that gate.
 async fn lifecycle_ready_handler(State(state): State<DaemonApiState>) -> impl IntoResponse {

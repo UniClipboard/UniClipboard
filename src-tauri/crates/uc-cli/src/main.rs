@@ -194,14 +194,7 @@ enum Commands {
     },
     /// 内联运行 daemon 进程，供 `start` 内部使用
     #[command(hide = true)]
-    Daemon {
-        /// 由 GUI 父进程启动，并通过 stdin 判断父进程生命周期
-        #[arg(long)]
-        gui_managed: bool,
-        /// 以常驻桌面 daemon 运行，不绑定 GUI 进程生命周期
-        #[arg(long, conflicts_with = "gui_managed")]
-        hybrid: bool,
-    },
+    Daemon,
 }
 
 fn main() -> anyhow::Result<()> {
@@ -238,14 +231,11 @@ fn main() -> anyhow::Result<()> {
         return Ok(());
     };
 
-    if let Commands::Daemon {
-        gui_managed,
-        hybrid,
-    } = command
-    {
-        let run_mode =
-            uc_desktop::daemon::run_mode::DaemonRunMode::from_flags(gui_managed, hybrid)?;
-        return uc_desktop::daemon::run(run_mode);
+    if let Commands::Daemon = command {
+        // CLI `start` detached-spawns this same binary with the `daemon`
+        // subcommand. Standalone is the only mode this binary ever runs in
+        // since the GUI has been switched to in-process daemon startup.
+        return uc_desktop::daemon::run(uc_desktop::daemon::run_mode::DaemonRunMode::Standalone);
     }
 
     let rt = tokio::runtime::Builder::new_multi_thread()

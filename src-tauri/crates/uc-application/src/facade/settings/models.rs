@@ -130,6 +130,14 @@ pub struct FileSyncSettingsView {
     pub file_auto_cleanup: bool,
 }
 
+/// LAN-only Mode 业务字段镜像 —— 业务正向语义 `allow_relay_fallback`。
+/// UI = "LAN-only Mode = ON" → 此字段 = false。
+/// 取反唯一发生在 `uc-bootstrap/src/network_policy.rs`，本层只搬运。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NetworkSettingsView {
+    pub allow_relay_fallback: bool,
+}
+
 #[derive(Debug, Clone)]
 pub struct SettingsView {
     pub schema_version: u32,
@@ -140,6 +148,7 @@ pub struct SettingsView {
     pub pairing: PairingSettingsView,
     pub keyboard_shortcuts: HashMap<String, ShortcutKeyView>,
     pub file_sync: FileSyncSettingsView,
+    pub network: NetworkSettingsView,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -214,6 +223,12 @@ pub struct FileSyncSettingsPatch {
     pub file_auto_cleanup: Option<bool>,
 }
 
+/// LAN-only Mode 字段 patch 镜像 —— `None` = 不修改。
+#[derive(Debug, Clone, Default)]
+pub struct NetworkSettingsPatch {
+    pub allow_relay_fallback: Option<bool>,
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct SettingsPatch {
     pub general: Option<GeneralSettingsPatch>,
@@ -223,6 +238,7 @@ pub struct SettingsPatch {
     pub pairing: Option<PairingSettingsPatch>,
     pub keyboard_shortcuts: Option<HashMap<String, Option<ShortcutKeyView>>>,
     pub file_sync: Option<FileSyncSettingsPatch>,
+    pub network: Option<NetworkSettingsPatch>,
 }
 
 impl From<core::Theme> for ThemeView {
@@ -439,6 +455,9 @@ impl From<core::Settings> for SettingsView {
                 file_retention_hours: value.file_sync.file_retention_hours,
                 file_auto_cleanup: value.file_sync.file_auto_cleanup,
             },
+            network: NetworkSettingsView {
+                allow_relay_fallback: value.network.allow_relay_fallback,
+            },
         }
     }
 }
@@ -562,6 +581,12 @@ pub(crate) fn apply_settings_patch(
         }
     }
 
+    if let Some(network) = patch.network {
+        if let Some(v) = network.allow_relay_fallback {
+            existing.network.allow_relay_fallback = v;
+        }
+    }
+
     existing
 }
 
@@ -583,5 +608,89 @@ fn apply_content_types_patch(target: &mut core::ContentTypes, patch: ContentType
     }
     if let Some(v) = patch.rich_text {
         target.rich_text = v;
+    }
+}
+
+#[cfg(test)]
+mod network_settings_apply_patch_tests {
+    use super::*;
+    use uc_core::settings::model::{NetworkSettings, Settings};
+
+    fn baseline_with_network(allow: bool) -> Settings {
+        let mut s = Settings::default();
+        s.network = NetworkSettings {
+            allow_relay_fallback: allow,
+        };
+        s
+    }
+
+    /// NETSET-02 #2 硬约束：旧客户端 PUT 不带 `network` 段时，
+    /// 不抹掉已存在 `network` 字段。
+    #[test]
+    fn apply_patch_with_no_network_section_keeps_existing() {
+        let existing = baseline_with_network(false);
+        let patch = SettingsPatch::default(); // patch.network = None
+        let result = apply_settings_patch(existing, patch);
+        assert!(
+            !result.network.allow_relay_fallback,
+            "patch.network=None must keep existing false"
+        );
+    }
+
+    /// 嵌套 None — patch.network = Some 但内部字段 None — 仍不抹掉。
+    #[test]
+    fn apply_patch_with_empty_network_section_keeps_existing() {
+        let existing = baseline_with_network(true);
+        let patch = SettingsPatch {
+            network: Some(NetworkSettingsPatch {
+                allow_relay_fallback: None,
+            }),
+            ..Default::default()
+        };
+        let result = apply_settings_patch(existing, patch);
+        assert!(
+            result.network.allow_relay_fallback,
+            "inner None must keep existing true"
+        );
+    }
+
+    /// 显式 Some(false) 写入生效。
+    #[test]
+    fn apply_patch_with_explicit_false_writes_through() {
+        let existing = baseline_with_network(true);
+        let patch = SettingsPatch {
+            network: Some(NetworkSettingsPatch {
+                allow_relay_fallback: Some(false),
+            }),
+            ..Default::default()
+        };
+        let result = apply_settings_patch(existing, patch);
+        assert!(!result.network.allow_relay_fallback);
+    }
+
+    /// 显式 Some(true) 写入生效（双向覆盖）。
+    #[test]
+    fn apply_patch_with_explicit_true_writes_through() {
+        let existing = baseline_with_network(false);
+        let patch = SettingsPatch {
+            network: Some(NetworkSettingsPatch {
+                allow_relay_fallback: Some(true),
+            }),
+            ..Default::default()
+        };
+        let result = apply_settings_patch(existing, patch);
+        assert!(result.network.allow_relay_fallback);
+    }
+
+    /// From<core::Settings> 透明搬运（不取反）。
+    #[test]
+    fn from_core_settings_passes_through_business_semantics() {
+        let mut s = Settings::default();
+        s.network.allow_relay_fallback = false;
+        let view: SettingsView = s.into();
+        assert!(
+            !view.network.allow_relay_fallback,
+            "view 必须保留业务正向语义，不取反"
+        );
     }
 }

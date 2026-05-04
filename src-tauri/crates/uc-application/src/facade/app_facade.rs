@@ -325,6 +325,7 @@ impl AppFacade {
                 pairing: None,
                 keyboard_shortcuts: None,
                 file_sync: None,
+                network: None,
             })
             .await?;
         Ok(())

@@ -1,11 +1,4 @@
 //! GUI-framework agnostic contract types for daemon process coordination.
-//!
-//! 这些类型不依赖 `tauri-plugin-shell::CommandChild`，可以被
-//! `uc-desktop` / 其它 shell 在**不启用** `sidecar-lifecycle` feature
-//! 的情况下直接消费。绑 `CommandChild` 的状态（`OwnedDaemonChild`、
-//! `GuiOwnedDaemonState`）以及拉起编排（`bootstrap_daemon_connection_with_hooks`）
-//! 仍然在 [`crate::daemon_lifecycle`] / [`crate::daemon_bootstrap`] 后面
-//! 的 feature gate 里。
 
 use std::process::Command;
 
@@ -39,14 +32,6 @@ pub enum DaemonBootstrapError {
     StartupTimeout { timeout_ms: u64 },
     #[error("failed to load daemon connection info: {0}")]
     ConnectionInfo(anyhow::Error),
-}
-
-/// 当前 daemon child 是因为什么场景被 spawn 的——监督循环用它判断是否需要
-/// 重连等附加动作。
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SpawnReason {
-    Absent,
-    Replacement,
 }
 
 /// `terminate_local_daemon_pid` 的返回错误，仅承载一个 detail string。

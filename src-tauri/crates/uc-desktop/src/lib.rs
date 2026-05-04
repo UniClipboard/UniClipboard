@@ -18,8 +18,6 @@ pub mod bootstrap;
 pub mod daemon;
 pub mod daemon_probe;
 pub mod runtime;
-pub mod sidecar;
 
 pub use daemon::{DaemonHandle, DaemonOwnership};
 pub use runtime::DesktopRuntime;
-pub use sidecar::{DaemonBootstrapOwnershipSnapshot, DaemonBootstrapOwnershipState};

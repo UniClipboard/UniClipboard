@@ -94,8 +94,10 @@ shell crate。如果在 desktop 里需要写 `if cfg!(feature = "tauri")` 或
   "可被多 shell 共享" 的约束。
 - `uc-daemon-local` 是 desktop 宿主的"进程协调工具集"——逻辑上属于 desktop
   范畴，因为需要被 GUI shell 与 daemon 同时消费而物理外置。它**不依赖任何
-  GUI 框架**，`sidecar-lifecycle` feature 的设计目的就是让不同 shell 注入
-  各自的 spawn 实现（Tauri 用 `tauri-plugin-shell`，未来 native 用 std）。
+  GUI 框架**，仅承载 PID 文件、socket 路径、auth token、健康探测、
+  错误契约等纯协调工具。GUI 进程内拉起 daemon 走 `start_in_process`，
+  外部 daemon binary 由 CLI 用 `std::process::Command` detached spawn——
+  desktop 不再提供 sidecar spawn hook。
 - `uc-tauri` 是 desktop 的 **Tauri shell 适配器**，不是 desktop 的子集，
   也不是与 desktop 平级的层。它消费 `uc-desktop` 的能力，提供 Tauri 框架
   特定的 builder / commands / tray / quick_panel。新增 Tauri-only 能力放

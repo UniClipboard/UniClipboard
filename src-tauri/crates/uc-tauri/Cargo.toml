@@ -15,7 +15,7 @@ uc-observability = { path = "../uc-observability" }
 uc-bootstrap = { path = "../uc-bootstrap" }
 uc-desktop = { path = "../uc-desktop" }
 uc-daemon-contract = { path = "../uc-daemon-contract" }
-uc-daemon-local = { path = "../uc-daemon-local", features = ["sidecar-lifecycle"] }
+uc-daemon-local = { path = "../uc-daemon-local" }
 uc-daemon-client = { path = "../uc-daemon-client" }
 
 # System utilities
@@ -27,7 +27,6 @@ tauri = { workspace = true }
 tauri-plugin-autostart = { workspace = true }
 tauri-plugin-global-shortcut = "2"
 tauri-plugin-updater = "2"
-tauri-plugin-shell = { workspace = true }
 tauri-plugin-opener = "2"
 tauri-plugin-notification = "2"
 tauri-plugin-stronghold = "2"

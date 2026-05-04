@@ -1,17 +1,13 @@
 //! Tauri shell 的 bootstrap 入口。
 //!
-//! 历史上这里再分一个 `wiring` 子模块，但 GUI-framework agnostic 的装配
-//! 工具早已下沉到 `uc-bootstrap`，桌面后台任务调度已下沉到 `uc-desktop`，
-//! 留在这里的只剩 Tauri 特有的 daemon sidecar 拉起 / 监督 / runtime 包装。
+//! GUI-framework agnostic 的装配工具住在 `uc-bootstrap`，桌面后台任务调度
+//! 与 daemon 进程协调住在 `uc-desktop`，所以这里只剩 Tauri 特有的 logging
+//! 与 runtime 包装两件事。
 
 pub mod logging;
-pub mod run;
 pub mod runtime;
 
-// Re-export Tauri shell-side daemon sidecar orchestration.
-pub use run::{bootstrap_daemon_connection, supervise_daemon};
 pub use runtime::TauriAppRuntime;
-pub use runtime::{DaemonBootstrapOwnershipSnapshot, DaemonBootstrapOwnershipState};
 
 // Re-export composition-root assembly types from uc-bootstrap.
 pub use uc_bootstrap::assembly::{

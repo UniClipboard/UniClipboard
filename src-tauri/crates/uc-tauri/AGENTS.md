@@ -56,11 +56,11 @@ uc-application / uc-core
 
 - 启动期：`build_gui_app` → `DesktopRuntime` → `TauriAppRuntime`（包一层
   `Option<AppHandle>`）→ `app.manage(Arc<TauriAppRuntime>)`
+- daemon 启动期由 `uc_desktop::daemon_probe::bootstrap_daemon_in_process`
+  in-process 拉起 daemon main loop（不再走 sidecar / supervise 模型）
 - 运行期：command handler 取 `State<Arc<TauriAppRuntime>>`，需要 facade
   时调 `runtime.desktop().app_facade()`，需要 Tauri 能力时调
   `runtime.app_handle()`
-- 扩展点：desktop 暴露 trait（如 `DaemonSpawnHook`），uc-tauri 用
-  `tauri-plugin-shell` 实现并注入
 
 ## 命令层规范
 
@@ -82,7 +82,7 @@ uc-application / uc-core
 ## 高风险文件
 
 - `src/bootstrap/runtime.rs`（`TauriAppRuntime` 包装，影响所有 command 取数据的路径）
-- `src/bootstrap/run.rs`（daemon spawn / supervise 在 Tauri 侧的胶水）
+- `src/run.rs`（builder/setup/RunEvent 主回路与退出清理）
 - `src/lib.rs`（`pub mod` 决定外部入口）
 
 ## 验证命令

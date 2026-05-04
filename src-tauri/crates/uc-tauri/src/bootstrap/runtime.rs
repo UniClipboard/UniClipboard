@@ -45,11 +45,6 @@ use uc_bootstrap::TaskRegistry;
 use uc_core::ports::SettingsPort;
 use uc_desktop::DesktopRuntime;
 
-// Re-export 桌面侧 daemon spawn ownership 协调状态，让历史 import 路径
-// `uc_tauri::bootstrap::DaemonBootstrapOwnershipState` 仍可用。新代码请
-// 直接 `use uc_desktop::DaemonBootstrapOwnershipState;`。
-pub use uc_desktop::{DaemonBootstrapOwnershipSnapshot, DaemonBootstrapOwnershipState};
-
 /// Tauri 端的应用运行时句柄。
 ///
 /// 包装 `Arc<DesktopRuntime>` + `Option<tauri::AppHandle>`。所有 GUI-framework

@@ -31,9 +31,7 @@ fn resolve_service_name() -> String {
         suffixes.push("dev".to_string());
     }
 
-    let runtime_profile = std::env::var("UC_PROFILE").ok().filter(|s| !s.is_empty());
-    let profile = runtime_profile.or_else(|| crate::default_profile().map(str::to_string));
-    if let Some(profile) = profile {
+    if let Some(profile) = crate::resolve_profile() {
         suffixes.push(profile);
     }
 

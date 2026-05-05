@@ -6,40 +6,6 @@ use uc_core::ports::AppDirsError;
 
 const APP_DIR_NAME: &str = "app.uniclipboard.desktop";
 
-/// Selects the active profile name to use for constructing the application directory.
-///
-/// Prefers the runtime environment variable `UC_PROFILE` when it exists and is not empty; otherwise
-/// falls back to the compile-time default provided by `super::default_profile()`.
-///
-/// # Returns
-///
-/// `Some(String)` containing the chosen profile name when one is available, `None` when neither
-/// the environment variable nor the compile-time default provide a profile.
-///
-/// # Examples
-///
-/// ```
-/// // When UC_PROFILE is set at runtime, that value is used.
-/// std::env::set_var("UC_PROFILE", "runtime");
-/// assert_eq!(resolve_profile(), Some("runtime".to_string()));
-///
-/// // When UC_PROFILE is empty, fallback to compile-time default (if any).
-/// std::env::set_var("UC_PROFILE", "");
-/// // `super::default_profile()` drives the expected result here; test frameworks can override it.
-/// let _ = resolve_profile();
-///
-/// // Clean up for other tests.
-/// std::env::remove_var("UC_PROFILE");
-/// ```
-pub(crate) fn resolve_profile() -> Option<String> {
-    if let Ok(profile) = std::env::var("UC_PROFILE") {
-        if !profile.is_empty() {
-            return Some(profile);
-        }
-    }
-    super::default_profile().map(str::to_string)
-}
-
 /// Constructs the application directory name, appending a profile suffix when a profile is resolved.
 ///
 /// # Returns
@@ -56,7 +22,7 @@ pub(crate) fn resolve_profile() -> Option<String> {
 /// env::remove_var("UC_PROFILE");
 /// ```
 fn resolved_app_dir_name() -> String {
-    match resolve_profile() {
+    match crate::resolve_profile() {
         Some(profile) => format!("{APP_DIR_NAME}-{profile}"),
         None => APP_DIR_NAME.to_string(),
     }

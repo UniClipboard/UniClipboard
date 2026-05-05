@@ -63,6 +63,7 @@ Last activity: 2026-05-05 -- Wave 3 落地：95-06 NetworkSection 完全重写�
 |---|-------------|------|--------|-----------|
 | 260423-9do | Windows 多表示原子写入 + 解除平台层单 rep 契约 | 2026-04-23 | 2dde3312 | [260423-9do-windows-rep](./quick/260423-9do-windows-rep/) |
 | 260423-mxu | macOS / Linux 多 rep 原子写入 — 当前这两平台仍走单 rep policy 降级 | 2026-04-23 | 0960e7ee | [260423-mxu-macos-linux-rep-rep-policy](./quick/260423-mxu-macos-linux-rep-rep-policy/) |
+| 260505-keychain-prompts | 减少 macOS 首次使用时 Keychain 多次弹窗（kek_observed 进程级缓存） | 2026-05-05 | 39ce6f39 | [260505-keychain-prompts](./quick/260505-keychain-prompts/) |
 
 ## Session Continuity
 

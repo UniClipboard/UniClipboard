@@ -196,7 +196,10 @@ describe('NetworkSection — Phase 95 集成', () => {
       vi.advanceTimersByTime(500)
     })
     expect(mockUpdate).toHaveBeenCalledTimes(1)
-    expect(mockUpdate).toHaveBeenCalledWith({ allowRelayFallback: false })
+    expect(mockUpdate).toHaveBeenCalledWith({
+      allowRelayFallback: false,
+      allowOverlayNetworkAddrs: false,
+    })
   })
 
   it('Test 5: 连击 Switch 只 PUT 一次（debounce 合并）', async () => {
@@ -225,7 +228,10 @@ describe('NetworkSection — Phase 95 集成', () => {
     })
     expect(mockUpdate).toHaveBeenCalledTimes(1)
     // 起始 allowRelay=true（OFF）→ click1=false → click2=true → click3=false
-    expect(mockUpdate).toHaveBeenLastCalledWith({ allowRelayFallback: false })
+    expect(mockUpdate).toHaveBeenLastCalledWith({
+      allowRelayFallback: false,
+      allowOverlayNetworkAddrs: false,
+    })
   })
 
   it('Test 6: 点击「立即重启」调 invokeWithTrace("restart_app")', async () => {
@@ -372,10 +378,40 @@ describe('NetworkSection — Phase 95 集成', () => {
       vi.advanceTimersByTime(600)
     })
     expect(mockUpdate).toHaveBeenCalledTimes(1)
-    expect(mockUpdate).toHaveBeenCalledWith({ allowOverlayNetworkAddrs: true })
+    expect(mockUpdate).toHaveBeenCalledWith({
+      allowRelayFallback: true,
+      allowOverlayNetworkAddrs: true,
+    })
   })
 
-  it('Test 17: AllowOverlayAddrsDisclosure trigger 在 SettingRow 内可见', async () => {
+  it('Test 17: 快速切换两个网络开关 — debounce 后保存同一组最终值', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+    const mockUpdate = vi.fn().mockResolvedValue({ restartRequired: true })
+    setupSetting({ updateNetworkSetting: mockUpdate })
+
+    render(<NetworkSection />)
+    const lanOnlySw = await screen.findByRole('switch', { name: /LAN-only/ })
+    const overlaySw = await screen.findByRole('switch', { name: /虚拟网络地址|overlay/i })
+
+    await user.click(lanOnlySw)
+    await act(async () => {
+      vi.advanceTimersByTime(100)
+    })
+    await user.click(overlaySw)
+
+    await act(async () => {
+      vi.advanceTimersByTime(600)
+    })
+
+    expect(mockUpdate).toHaveBeenCalledTimes(1)
+    expect(mockUpdate).toHaveBeenCalledWith({
+      allowRelayFallback: false,
+      allowOverlayNetworkAddrs: true,
+    })
+  })
+
+  it('Test 18: AllowOverlayAddrsDisclosure trigger 在 SettingRow 内可见', async () => {
     renderWithOverrides({ allowRelayFallback: true })
     expect(
       await screen.findByRole('button', {

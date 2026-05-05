@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { AllowOverlayAddrsDisclosure } from './AllowOverlayAddrsDisclosure'
 import { LanOnlyDisclosure } from './LanOnlyDisclosure'
@@ -56,13 +56,18 @@ const NetworkSection: React.FC = () => {
   const [restartError, setRestartError] = useState<string | null>(null)
   const [saveError, setSaveError] = useState<string | null>(null)
 
-  // 防止 useEffect 在 mount 时立即触发 PUT（每个开关独立 pristine flag）
-  const isPristineRelayRef = useRef(true)
-  const isPristineOverlayRef = useRef(true)
+  // 防止 useEffect 在 mount 时立即触发 PUT（网络设置整体只跳过一次）
+  const isPristineRef = useRef(true)
 
   // debounced 写盘值（D-D3：500ms after last user change）
-  const debouncedAllowRelay = useDebounce(allowRelayFallback, 500)
-  const debouncedAllowOverlay = useDebounce(allowOverlayNetworkAddrs, 500)
+  const networkDraft = useMemo(
+    () => ({
+      allowRelayFallback,
+      allowOverlayNetworkAddrs,
+    }),
+    [allowRelayFallback, allowOverlayNetworkAddrs]
+  )
+  const debouncedNetwork = useDebounce(networkDraft, 500)
 
   // ── Effect 1: setting 加载后同步本地 state baseline ─────────────
   useEffect(() => {
@@ -72,65 +77,39 @@ const NetworkSection: React.FC = () => {
     }
   }, [setting])
 
-  // ── Effect 2: debounced PUT for allowRelayFallback ──────────────
+  // ── Effect 2: debounced PUT for the network settings group ──────
   useEffect(() => {
-    if (isPristineRelayRef.current) {
-      isPristineRelayRef.current = false
+    if (isPristineRef.current) {
+      isPristineRef.current = false
       return
     }
     if (!setting) return
-    if (debouncedAllowRelay === persistedAllowRelay) return
+    const relayChanged = debouncedNetwork.allowRelayFallback !== persistedAllowRelay
+    const overlayChanged = debouncedNetwork.allowOverlayNetworkAddrs !== persistedAllowOverlay
+    if (!relayChanged && !overlayChanged) return
 
     void (async () => {
       try {
-        const result = await updateNetworkSetting({
-          allowRelayFallback: debouncedAllowRelay,
-        })
+        const result = await updateNetworkSetting(debouncedNetwork)
         if (result.restartRequired) {
           setPending(true)
         } else {
           setPending(false)
         }
       } catch (err) {
-        log.error({ err }, '保存 LAN-only 设置失败')
+        log.error({ err }, '保存网络设置失败')
         setAllowRelayFallback(persistedAllowRelay)
-        setPending(false)
-        const message = err instanceof Error ? err.message : String(err)
-        setSaveError(t('settings.sections.network.lanOnly.saveError', { message }))
-        window.setTimeout(() => setSaveError(null), 5000)
-      }
-    })()
-  }, [debouncedAllowRelay])
-
-  // ── Effect 3: debounced PUT for allowOverlayNetworkAddrs ────────
-  useEffect(() => {
-    if (isPristineOverlayRef.current) {
-      isPristineOverlayRef.current = false
-      return
-    }
-    if (!setting) return
-    if (debouncedAllowOverlay === persistedAllowOverlay) return
-
-    void (async () => {
-      try {
-        const result = await updateNetworkSetting({
-          allowOverlayNetworkAddrs: debouncedAllowOverlay,
-        })
-        if (result.restartRequired) {
-          setPending(true)
-        } else {
-          setPending(false)
-        }
-      } catch (err) {
-        log.error({ err }, '保存 Allow Overlay Network Addrs 设置失败')
         setAllowOverlayNetworkAddrs(persistedAllowOverlay)
         setPending(false)
         const message = err instanceof Error ? err.message : String(err)
-        setSaveError(t('settings.sections.network.allowOverlayAddrs.saveError', { message }))
+        const errorKey = relayChanged
+          ? 'settings.sections.network.lanOnly.saveError'
+          : 'settings.sections.network.allowOverlayAddrs.saveError'
+        setSaveError(t(errorKey, { message }))
         window.setTimeout(() => setSaveError(null), 5000)
       }
     })()
-  }, [debouncedAllowOverlay])
+  }, [debouncedNetwork])
 
   // ── Switch 切换 handler（LAN-only — 反向命名唯一取反点） ────────
   const handleLanOnlySwitchChange = (checked: boolean) => {

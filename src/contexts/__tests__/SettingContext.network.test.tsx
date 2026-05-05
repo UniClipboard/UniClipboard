@@ -94,6 +94,7 @@ const baseSetting: Settings = {
   },
   network: {
     allowRelayFallback: true,
+    allowOverlayNetworkAddrs: false,
   },
 }
 
@@ -152,7 +153,7 @@ describe('SettingContext network — updateNetworkSetting + saveSetting restartR
 
     expect(mockUpdateSettings).toHaveBeenCalledWith(
       expect.objectContaining({
-        network: { allowRelayFallback: false },
+        network: expect.objectContaining({ allowRelayFallback: false }),
       })
     )
     // 关键 fence：updateNetworkSetting 不应越界改其它段，验证 general/sync 段保持原状

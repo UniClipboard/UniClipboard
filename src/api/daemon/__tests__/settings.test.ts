@@ -144,7 +144,10 @@ describe('settings api — updateSettings restartRequired signal', () => {
  */
 describe('反向命名审计 (Pitfall 1 fence)', () => {
   it('Settings.network 字段名是 allowRelayFallback 不是反向布尔镜像', () => {
-    const sample: Settings['network'] = { allowRelayFallback: true }
+    const sample: Settings['network'] = {
+      allowRelayFallback: true,
+      allowOverlayNetworkAddrs: false,
+    }
     const keys = Object.keys(sample)
     expect(keys).toContain('allowRelayFallback')
     // 任何反向布尔镜像字段出现都视为回归 — 字段名通过 join 拼接以避免被

@@ -217,6 +217,32 @@
             }
           }
         },
+        "allowOverlayAddrs": {
+          "label": "允许虚拟网络地址",
+          "description": "默认关闭。当两端都接入同一个 VPN（如 Tailscale）时打开，让连接借用该虚拟网络。重启后生效。",
+          "infoIconAriaLabel": "了解什么是虚拟网络地址，以及何时应该开启",
+          "saveError": "保存失败：{{message}}。已恢复到上一次的设置。",
+          "disclosure": {
+            "title": "关于虚拟网络地址",
+            "intro": "建立直连时，本机会同时拥有多个 IP（真实局域网、VPN 隧道等）。「虚拟网络地址」指 VPN 软件建立的虚拟网卡 IP：",
+            "covered": {
+              "title": "本开关影响的范围",
+              "description": "具体是 CGNAT 段 100.64.0.0/10（Tailscale 默认 IPv4）和 Tailscale IPv6 ULA fd7a:115c:a1e0::/48。Clash fake-ip（198.18.0.0/15）和链路本地（169.254.0.0/16）始终被过滤，不受此开关影响。"
+            },
+            "whyOff": {
+              "title": "为什么默认关闭",
+              "description": "如果两端不在同一个 VPN 中，把虚拟网卡地址作为连接候选会让对端浪费 path-validation 预算去试一条死路，反而拖慢真正的直连建立速度。"
+            },
+            "whenOn": {
+              "title": "什么时候开启",
+              "description": "如果两端确实都在同一个 Tailscale tailnet（或其他相同的 overlay 网络）中，且真实局域网 / 公网直连不通、但 overlay 通，开启后 iroh 会把 overlay 路径作为可选直连候选。"
+            },
+            "tradeoff": {
+              "title": "权衡说明",
+              "description": "如果只有一端装了 VPN——或两端在不同的 tailnet 中——开启后只是连接更慢，并不会彻底连不上（中继回落仍然有效）。不确定就保持关闭。"
+            }
+          }
+        },
         "restartBanner": {
           "message": "需要重启应用以使 LAN-only 模式更改生效。",
           "restartButton": "立即重启",

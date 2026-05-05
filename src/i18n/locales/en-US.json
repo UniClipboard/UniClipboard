@@ -226,6 +226,32 @@
             }
           }
         },
+        "allowOverlayAddrs": {
+          "label": "Allow overlay network addresses",
+          "description": "Off by default. Enable when both peers share the same VPN (e.g. Tailscale) so connections can use that overlay network. Takes effect after restart.",
+          "infoIconAriaLabel": "Learn what overlay network addresses are and when to enable this option",
+          "saveError": "Save failed: {{message}}. Reverted to the previous setting.",
+          "disclosure": {
+            "title": "About overlay network addresses",
+            "intro": "When establishing direct connections, your machine has multiple IP addresses (real LAN, VPN tunnels, etc.). \"Overlay network addresses\" refers to virtual NIC IPs created by VPN software:",
+            "covered": {
+              "title": "What this affects",
+              "description": "Specifically the CGNAT range 100.64.0.0/10 (Tailscale's default IPv4) and the Tailscale IPv6 ULA fd7a:115c:a1e0::/48. Clash fake-ip (198.18.0.0/15) and link-local (169.254.0.0/16) are always filtered regardless of this setting."
+            },
+            "whyOff": {
+              "title": "Why off by default",
+              "description": "When two peers are not in the same VPN, publishing virtual-NIC IPs as connection candidates wastes path-validation budget on dead candidates and slows the real direct connection."
+            },
+            "whenOn": {
+              "title": "When to turn on",
+              "description": "Turn on if both peers are in the same Tailscale tailnet (or another shared overlay) and direct LAN/Internet paths are blocked, but the overlay route works. iroh will then use the overlay path as a connection candidate."
+            },
+            "tradeoff": {
+              "title": "Trade-off",
+              "description": "If only one peer has the VPN — or peers are in different tailnets — turning this on makes connections slower but doesn't outright break them (relay fallback still works). If unsure, leave it off."
+            }
+          }
+        },
         "restartBanner": {
           "message": "Restart the app to apply the LAN-only Mode change.",
           "restartButton": "Restart now",

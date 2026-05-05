@@ -63,6 +63,7 @@ const baseSetting: Settings = {
   },
   network: {
     allowRelayFallback: true,
+    allowOverlayNetworkAddrs: false,
   },
 }
 

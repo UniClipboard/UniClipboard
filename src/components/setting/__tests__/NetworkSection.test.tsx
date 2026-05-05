@@ -78,6 +78,7 @@ const baseSetting: Settings = {
   },
   network: {
     allowRelayFallback: true,
+    allowOverlayNetworkAddrs: false,
   },
 }
 
@@ -144,7 +145,7 @@ afterEach(() => {
 describe('NetworkSection — Phase 95 集成', () => {
   it('Test 1: applied OFF 默认态 — Switch=OFF + RestartBanner 不可见', async () => {
     renderWithOverrides({ allowRelayFallback: true })
-    const sw = await screen.findByRole('switch')
+    const sw = await screen.findByRole('switch', { name: /LAN-only/ })
     expect(sw).toHaveAttribute('aria-checked', 'false')
     // RestartBanner 不挂 — role=status 不应出现
     await waitFor(() => {
@@ -154,7 +155,7 @@ describe('NetworkSection — Phase 95 集成', () => {
 
   it('Test 2: applied ON 默认态 — Switch=ON + RestartBanner 不可见', async () => {
     renderWithOverrides({ allowRelayFallback: false })
-    const sw = await screen.findByRole('switch')
+    const sw = await screen.findByRole('switch', { name: /LAN-only/ })
     expect(sw).toHaveAttribute('aria-checked', 'true')
     await waitFor(() => {
       expect(screen.queryByRole('status')).toBeNull()
@@ -164,7 +165,7 @@ describe('NetworkSection — Phase 95 集成', () => {
   it('Test 3: 用户点 Switch — Switch 立即翻 + RestartBanner 立即可见（乐观 pending D-D2）', async () => {
     const user = userEvent.setup()
     renderWithOverrides({ allowRelayFallback: true })
-    const sw = await screen.findByRole('switch')
+    const sw = await screen.findByRole('switch', { name: /LAN-only/ })
     expect(sw).toHaveAttribute('aria-checked', 'false')
 
     await user.click(sw)
@@ -181,7 +182,7 @@ describe('NetworkSection — Phase 95 集成', () => {
     setupSetting({ updateNetworkSetting: mockUpdate })
 
     render(<NetworkSection />)
-    const sw = await screen.findByRole('switch')
+    const sw = await screen.findByRole('switch', { name: /LAN-only/ })
     await user.click(sw)
 
     // 100ms 内不应触发
@@ -205,7 +206,7 @@ describe('NetworkSection — Phase 95 集成', () => {
     setupSetting({ updateNetworkSetting: mockUpdate })
 
     render(<NetworkSection />)
-    const sw = await screen.findByRole('switch')
+    const sw = await screen.findByRole('switch', { name: /LAN-only/ })
 
     // 100ms 内连点 3 次
     await user.click(sw)
@@ -230,7 +231,7 @@ describe('NetworkSection — Phase 95 集成', () => {
   it('Test 6: 点击「立即重启」调 invokeWithTrace("restart_app")', async () => {
     const user = userEvent.setup()
     renderWithOverrides({ allowRelayFallback: true })
-    const sw = await screen.findByRole('switch')
+    const sw = await screen.findByRole('switch', { name: /LAN-only/ })
     await user.click(sw)
 
     // Banner 立即可见
@@ -251,7 +252,7 @@ describe('NetworkSection — Phase 95 集成', () => {
       return undefined
     })
     renderWithOverrides({ allowRelayFallback: true })
-    const sw = await screen.findByRole('switch')
+    const sw = await screen.findByRole('switch', { name: /LAN-only/ })
     await user.click(sw)
 
     const restartBtn = await screen.findByRole('button', { name: /立即重启|Restart now/ })
@@ -271,7 +272,7 @@ describe('NetworkSection — Phase 95 集成', () => {
     setupSetting({ updateNetworkSetting: mockUpdate })
 
     render(<NetworkSection />)
-    const sw = await screen.findByRole('switch')
+    const sw = await screen.findByRole('switch', { name: /LAN-only/ })
     await user.click(sw) // OFF → ON
     expect(sw).toHaveAttribute('aria-checked', 'true')
 
@@ -329,7 +330,7 @@ describe('NetworkSection — Phase 95 集成', () => {
 
   it('Test 13: 占位组件残留 fence — 不渲染 placeholder 文本（Pitfall 11）', async () => {
     const { container } = renderWithOverrides({ allowRelayFallback: true })
-    await screen.findByRole('switch')
+    await screen.findByRole('switch', { name: /LAN-only/ })
     expect(container.textContent).not.toMatch(/Network settings are not yet available/)
     expect(container.textContent).not.toMatch(/网络设置功能在新架构中尚未实现/)
   })
@@ -337,8 +338,50 @@ describe('NetworkSection — Phase 95 集成', () => {
   it('Test 14: 反向命名 fence — checked = !allowRelayFallback', async () => {
     // allowRelay=false（即 LAN-only ON）⇒ Switch checked=true
     renderWithOverrides({ allowRelayFallback: false })
-    const sw = await screen.findByRole('switch')
+    const sw = await screen.findByRole('switch', { name: /LAN-only/ })
     expect(sw).toHaveAttribute('aria-checked', 'true')
+  })
+
+  it('Test 15: allowOverlayNetworkAddrs 正向命名 — checked === allowOverlayNetworkAddrs', async () => {
+    // 默认 false ⇒ Switch checked=false
+    renderWithOverrides({ allowOverlayNetworkAddrs: false })
+    const offSw = await screen.findByRole('switch', { name: /虚拟网络地址|overlay/i })
+    expect(offSw).toHaveAttribute('aria-checked', 'false')
+    cleanup()
+
+    // true ⇒ Switch checked=true（无取反）
+    renderWithOverrides({ allowOverlayNetworkAddrs: true })
+    const onSw = await screen.findByRole('switch', { name: /虚拟网络地址|overlay/i })
+    expect(onSw).toHaveAttribute('aria-checked', 'true')
+  })
+
+  it('Test 16: 切换 overlay switch — debounce 500ms 后调 updateNetworkSetting', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+    const mockUpdate = vi.fn().mockResolvedValue({ restartRequired: true })
+    setupSetting({ updateNetworkSetting: mockUpdate })
+
+    render(<NetworkSection />)
+    const sw = await screen.findByRole('switch', { name: /虚拟网络地址|overlay/i })
+    await user.click(sw)
+
+    expect(sw).toHaveAttribute('aria-checked', 'true')
+    expect(screen.getByRole('status')).toBeInTheDocument()
+
+    await act(async () => {
+      vi.advanceTimersByTime(600)
+    })
+    expect(mockUpdate).toHaveBeenCalledTimes(1)
+    expect(mockUpdate).toHaveBeenCalledWith({ allowOverlayNetworkAddrs: true })
+  })
+
+  it('Test 17: AllowOverlayAddrsDisclosure trigger 在 SettingRow 内可见', async () => {
+    renderWithOverrides({ allowRelayFallback: true })
+    expect(
+      await screen.findByRole('button', {
+        name: /了解什么是虚拟网络地址|Learn what overlay network addresses/,
+      })
+    ).toBeInTheDocument()
   })
 })
 
@@ -352,7 +395,7 @@ describe('Phase 95 ROADMAP fence — 4 验收 + 3 Pitfall 防御', () => {
 
   it('Pitfall 11 — 占位组件残留全清', async () => {
     const { container } = renderWithOverrides({ allowRelayFallback: true })
-    await screen.findByRole('switch')
+    await screen.findByRole('switch', { name: /LAN-only/ })
     expect(container.textContent).not.toMatch(/Network settings are not yet available/)
     expect(container.textContent).not.toMatch(/网络设置功能在新架构中尚未实现/)
   })
@@ -360,7 +403,7 @@ describe('Phase 95 ROADMAP fence — 4 验收 + 3 Pitfall 防御', () => {
   it('Pitfall 10 — RestartBanner 是持久 inline 不是 toast（pending 时 role=status 存在）', async () => {
     const user = userEvent.setup()
     renderWithOverrides({ allowRelayFallback: true })
-    const sw = await screen.findByRole('switch')
+    const sw = await screen.findByRole('switch', { name: /LAN-only/ })
     await user.click(sw)
 
     const banner = screen.getByRole('status')

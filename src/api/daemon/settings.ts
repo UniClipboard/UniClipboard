@@ -91,13 +91,18 @@ export interface FileSyncSettings {
 }
 
 /**
- * Network settings — wire field `allowRelayFallback` (camelCase 与 daemon serde 对齐).
+ * Network settings — wire fields camelCase aligned with daemon serde.
  *
- * 网络设置 — wire 字段 allowRelayFallback。前端只允许在 NetworkSection.tsx
- * 一处取反；不要在前端维护反向布尔镜像字段（反向命名铁律）。
+ * 网络设置 — 前端只允许在 NetworkSection.tsx 一处对 `allowRelayFallback` 取反；
+ * 不要在前端维护反向布尔镜像字段（反向命名铁律）。
+ *
+ * `allowOverlayNetworkAddrs` 控制是否把 VPN/overlay 类虚拟网卡 IP（CGNAT
+ * 100.64.0.0/10、Tailscale ULA fd7a:115c:a1e0::/48）作为 iroh 直连候选。
+ * 默认 `false`。专业用户在两端都接入同一 VPN 时可开启。
  */
 export interface NetworkSettings {
   allowRelayFallback: boolean
+  allowOverlayNetworkAddrs: boolean
 }
 
 /**
@@ -326,7 +331,11 @@ function toSettingsPatchRequest(settings: Partial<Settings>): SettingsPatchReque
   }
 
   if (settings.network) {
-    patch.network = { allowRelayFallback: settings.network.allowRelayFallback }
+    // Spread to only mirror fields actually present on the input — both
+    // existing tests and SettingContext sometimes pass `Partial<NetworkSettings>`
+    // (e.g. just `{ allowRelayFallback: ... }`); we must not emit undefined
+    // fields, since the wire patch interprets `null/undefined` as "no change".
+    patch.network = { ...settings.network }
   }
 
   return patch

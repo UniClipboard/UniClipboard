@@ -208,6 +208,7 @@ export function makeSettingsDto(overrides: Partial<Settings> = {}): Settings {
     },
     network: {
       allowRelayFallback: true,
+      allowOverlayNetworkAddrs: false,
     },
     ...overrides,
   }

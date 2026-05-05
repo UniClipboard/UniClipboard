@@ -125,9 +125,13 @@ export interface FileSyncSettings {
  * UI checked = "LAN-only Mode = ON" 等价于 allowRelayFallback 取反值。
  * 前端只允许在 NetworkSection.tsx 一处用取反表达式；
  * 永远不要在前端 store 维护反向布尔镜像字段。
+ *
+ * `allowOverlayNetworkAddrs` 为正向同名字段（UI checked === 字段值），
+ * 控制是否把 VPN/overlay 类虚拟网卡 IP 作为 iroh 直连候选。
  */
 export interface NetworkSettings {
   allowRelayFallback: boolean
+  allowOverlayNetworkAddrs: boolean
 }
 
 /**

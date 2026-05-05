@@ -5,5 +5,7 @@
 //! 应用动作；外部 crate 经 `crate::facade::mobile_sync::MobileSyncFacade`
 //! 访问，不直接 import 这些用例类型。
 
+pub(crate) mod list_devices;
 pub(crate) mod register_device;
+pub(crate) mod revoke_device;
 pub(crate) mod shortcut_packer;

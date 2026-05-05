@@ -303,6 +303,16 @@ impl SpaceAccessPort for DefaultSpaceAccessAdapter {
         async {
             info!("attempting silent session resume from keyring");
 
+            // session 已经在内存中(典型场景:用户刚 `initialize` 完成,前端
+            // setup 后的 onSetupComplete 回调又调了一次 `EncryptionFacade::unlock`
+            // → 这里)。已经有 master_key,没必要再走 load_kek + unwrap +
+            // set_master_key 这一整圈——尤其是 load_kek 在 macOS 上每次都可能
+            // 触发 keychain 授权弹窗。直接返回 Ok(Some) 表达"会话已就绪"。
+            if self.session.is_ready() {
+                info!("session already in-memory, skip keychain probe");
+                return Ok(Some(ActiveSpace::new(space_id.clone())));
+            }
+
             if !self
                 .key_material
                 .keyslot_exists()

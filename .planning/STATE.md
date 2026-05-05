@@ -65,6 +65,7 @@ Last activity: 2026-05-05 -- Wave 3 落地：95-06 NetworkSection 完全重写�
 | 260423-mxu | macOS / Linux 多 rep 原子写入 — 当前这两平台仍走单 rep policy 降级 | 2026-04-23 | 0960e7ee | [260423-mxu-macos-linux-rep-rep-policy](./quick/260423-mxu-macos-linux-rep-rep-policy/) |
 | 260505-keychain-prompts | 减少 macOS 首次使用时 Keychain 多次弹窗（kek_observed 进程级缓存） | 2026-05-05 | 39ce6f39 | [260505-keychain-prompts](./quick/260505-keychain-prompts/) |
 | 260505-iroh-identity-file-storage | 启动期 iroh 设备身份脱离 macOS Keychain，改走 0600 文件后端，彻底消除"用户没操作就弹"的根因 | 2026-05-05 | aa1b1d93 | [260505-iroh-identity-file-storage](./quick/260505-iroh-identity-file-storage/) |
+| 260505-keychain-startup-resume-gate | daemon startup_recovery 守 try_resume_session — auto_unlock=false 时不再下沉到 keychain | 2026-05-05 | 5912465c | [260505-keychain-startup-resume-gate](./quick/260505-keychain-startup-resume-gate/) |
 
 ## Session Continuity
 

@@ -90,14 +90,16 @@ export function RestartBanner({
             >
               {t('settings.sections.network.restartBanner.retryButton')}
             </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              aria-label={t('settings.sections.network.restartBanner.dismissAriaLabel')}
-              onClick={onDismissError}
-            >
-              <X className="size-3.5" aria-hidden="true" />
-            </Button>
+            {onDismissError && (
+              <Button
+                variant="ghost"
+                size="icon"
+                aria-label={t('settings.sections.network.restartBanner.dismissAriaLabel')}
+                onClick={onDismissError}
+              >
+                <X className="size-3.5" aria-hidden="true" />
+              </Button>
+            )}
           </>
         )}
       </div>

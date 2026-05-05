@@ -36,10 +36,10 @@ export function LanOnlyDisclosure() {
           <Info className="size-3.5" aria-hidden="true" />
         </button>
       </PopoverTrigger>
-      <PopoverContent align="start" sideOffset={8}>
+      <PopoverContent align="start" sideOffset={8} aria-labelledby="lan-only-disclosure-title">
         <div className="space-y-3">
           <div>
-            <p className="text-sm font-medium">
+            <p id="lan-only-disclosure-title" className="text-sm font-medium">
               {t('settings.sections.network.lanOnly.disclosure.title')}
             </p>
             <p className="text-xs text-muted-foreground mt-1">

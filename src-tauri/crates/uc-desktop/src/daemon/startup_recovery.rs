@@ -54,20 +54,36 @@ pub fn spawn_startup_recovery(input: StartupRecoveryInput) {
             }
         };
 
-        match input.space_setup.try_resume_session().await {
-            Ok(true) => {
-                if let Err(error) = input.space_setup.refresh_presence().await {
-                    tracing::warn!(error = %error, "background unlock: presence probe failed");
+        // Gate: 仅当 KEK 已经被 `recover_encryption_session` 装进内存
+        // (即 auto_unlock_enabled=true 且解锁成功) 时，才进入 facade-level
+        // resume。否则 `space_setup.try_resume_session` 会下沉到
+        // `space_access.try_resume_session` → `load_kek` → 触发 macOS
+        // keychain 访问弹窗——而用户场景是"没启用 auto unlock、没点
+        // unlock 按钮"，按规则 #1/#2/#3 此刻不该接触 keychain。
+        //
+        // 副作用：auto_unlock_enabled=false 时，启动期不再自动推进
+        // switch-space migration recovery；但没有 KEK 也推不动，等用户
+        // 点 unlock / 显式 auto-unlock 后再做也不迟。
+        if unlocked {
+            match input.space_setup.try_resume_session().await {
+                Ok(true) => {
+                    if let Err(error) = input.space_setup.refresh_presence().await {
+                        tracing::warn!(error = %error, "background unlock: presence probe failed");
+                    }
+                }
+                Ok(false) => {
+                    tracing::info!(
+                        "background unlock: no space on this profile — skipping resume/probe"
+                    );
+                }
+                Err(error) => {
+                    tracing::warn!(error = ?error, "background unlock: try_resume_session failed");
                 }
             }
-            Ok(false) => {
-                tracing::info!(
-                    "background unlock: no space on this profile — skipping resume/probe"
-                );
-            }
-            Err(error) => {
-                tracing::warn!(error = ?error, "background unlock: try_resume_session failed");
-            }
+        } else {
+            tracing::info!(
+                "background unlock: encryption session not unlocked — skipping space_setup resume to avoid keychain prompt"
+            );
         }
 
         if input.run_mode.auto_triggers_deferred_services() && unlocked {

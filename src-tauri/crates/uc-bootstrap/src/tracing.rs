@@ -110,7 +110,14 @@ pub fn init_tracing_subscriber() -> anyhow::Result<()> {
     // Step 2: Select log profile
     let profile = LogProfile::from_env();
 
-    // Step 3: Initialize Sentry (if a DSN is available).
+    // Step 2b: Resolve `telemetry_enabled` from persisted settings.
+    //
+    // 必须在 sentry / OTLP 任何一处 init 前读出来 —— 这两条上报通道都受
+    // 同一个用户开关 (`General › Telemetry`) 控制,且都走 init-time gate
+    // (改了要重启才生效),所以一次性读、两处共用。
+    let telemetry_enabled = resolve_telemetry_enabled(&paths.settings_path);
+
+    // Step 3: Initialize Sentry (if a DSN is available **and** telemetry is enabled).
     //
     // ## DSN 来源优先级
     //
@@ -118,6 +125,12 @@ pub fn init_tracing_subscriber() -> anyhow::Result<()> {
     // 2. **编译期** `SENTRY_DSN` env —— CI 在 release build 时注入,等价前端
     //    `VITE_SENTRY_DSN` 的处理方式。这是必需路径,否则用户机器上没人会
     //    设这个 env,sentry 在终端用户那边永远不会启用。
+    //
+    // ## 与 telemetry_enabled 的关系
+    //
+    // `telemetry_enabled = false` 时即使 DSN 存在也不 init —— 等价于关掉
+    // 整条 sentry 上报链路,不会留 Hub / panic integration 钩子。这与 OTLP
+    // 一致:用户开关 OFF 就完全静默。改了开关需要重启才生效(init-time gate)。
     //
     // ## 防双重 panic 上报
     //
@@ -133,7 +146,9 @@ pub fn init_tracing_subscriber() -> anyhow::Result<()> {
     let compile_time_dsn = option_env!("SENTRY_DSN").filter(|s| !s.is_empty());
     let dsn = runtime_dsn.or_else(|| compile_time_dsn.map(String::from));
 
-    let sentry_layer = if let Some(dsn) = dsn {
+    let sentry_enabled = dsn.is_some() && telemetry_enabled;
+
+    let sentry_layer = if let Some(dsn) = dsn.filter(|_| telemetry_enabled) {
         let guard = sentry::init((
             dsn,
             sentry::ClientOptions {
@@ -169,8 +184,9 @@ pub fn init_tracing_subscriber() -> anyhow::Result<()> {
         }))
     } else {
         // No eprintln here -- it pollutes CLI output. The absence of Sentry
-        // is a normal condition and will be visible in the JSON log file via
-        // the tracing::info! at the end of initialization.
+        // is a normal condition (no DSN, or user disabled telemetry) and
+        // will be visible in the JSON log file via the tracing::info! at the
+        // end of initialization (`sentry_enabled` field).
         None
     };
 
@@ -195,10 +211,9 @@ pub fn init_tracing_subscriber() -> anyhow::Result<()> {
     // layer can be built with the correct generic subscriber type `S`
     // (determined by the full `.with()` composition in Step 5, not at
     // provider-init time). `SdkTracerProvider::clone()` uses Arc semantics.
-    // Step 4c: Read telemetry_enabled from persisted settings.
-    // This is a lightweight file read — the full settings are loaded later by
-    // the app runtime. We only need the boolean gate here.
-    let telemetry_enabled = resolve_telemetry_enabled(&paths.settings_path);
+    //
+    // `telemetry_enabled` is resolved once in Step 2b above and shared with
+    // the sentry init block — both honor the same user-facing toggle.
 
     // Note: OTLP enablement and any compile-time config backfill are handled
     // inside init_otlp_provider. The exporter itself still resolves the final
@@ -280,9 +295,11 @@ pub fn init_tracing_subscriber() -> anyhow::Result<()> {
         profile = %profile,
         logs_dir = %paths.logs_dir.display(),
         otlp_enabled = otlp_enabled,
+        sentry_enabled = sentry_enabled,
         telemetry_enabled = telemetry_enabled,
-        "Tracing initialized with dual output (console + JSON{})",
-        if otlp_enabled { " + OTLP" } else { "" }
+        "Tracing initialized with dual output (console + JSON{}{})",
+        if otlp_enabled { " + OTLP" } else { "" },
+        if sentry_enabled { " + Sentry" } else { "" }
     );
 
     // Legacy env var migration warning (D-14, REQ-87-10).

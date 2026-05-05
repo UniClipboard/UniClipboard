@@ -42,13 +42,14 @@ use uc_core::ports::{
 use uc_infra::network::iroh::transfer_progress_adapter::InboundProgressEvent;
 use uc_infra::network::iroh::{
     BlobHandlers, ClipboardHandlers, IrohIdentityStore, IrohNode, IrohNodeBuilder, IrohNodeError,
-    TransferProgressHandlers,
+    TransferProgressHandlers, IDENTITY_STORE_KEY,
 };
 // Re-exported so external callers can parametrise the assembly without
 // having to `use uc_infra` themselves.
 pub use uc_infra::network::iroh::IrohNodeConfig;
 use uc_infra::security::Sha256IdentityFingerprintFactory;
 use uc_platform::file_secure_storage::FileSecureStorage;
+use uc_platform::migrating_secure_storage::MigratingSecureStorage;
 
 use crate::assembly::WiredDependencies;
 
@@ -233,13 +234,31 @@ pub async fn build_space_setup_assembly(
     // 攻击者还需要 KEK 才能解密剪贴板内容),用 0600 文件 + FileVault
     // 全盘加密保护已足够,与 SSH/IPFS/Tailscale 等同类工具实践一致。
     //
-    // Migration: 老用户 keychain 中残留的 `iroh-identity:v1` 条目**不动**
-    // (不读、不删,避免触发新的 keychain 弹窗);文件不存在 →
-    // `IrohIdentityStore::ensure_secret_key` 生成新身份 → 老用户在升级后
-    // iroh 设备身份重置,需要重新与 peer 配对一次。
-    let iroh_identity_storage: Arc<dyn uc_core::ports::SecureStoragePort> = Arc::new(
+    // Migration (0.6.x → 0.7+): 0.6.x 把 `iroh-identity:v1` 写在系统 keychain
+    // (与 KEK 同 service "UniClipboard")。直接换 file backend 会让升级用户
+    // 的 iroh 设备身份重置 → 对端 `trusted_peer.peer_fingerprint` 不再匹配
+    // → 必须重新走完整 pairing 流程。这里用 `MigratingSecureStorage` 做
+    // 一次性迁移装饰:`get` 优先 file,miss 时 fallback 查 keychain,命中
+    // 后写 file 并 best-effort 删 keychain。后续 `set` / `delete` 只走 file。
+    //
+    // 迁移仅作用于 `IDENTITY_STORE_KEY` 白名单——其他 key 的访问永远不会
+    // 触碰 keychain,因此 fresh 安装零额外 keychain 调用(平台 NoEntry 不
+    // 弹窗);只有"keychain 里恰好有 iroh-identity:v1 条目"的升级路径会
+    // 读一次 keychain。在生产签名稳定的 build 上,同应用同 service 的读取
+    // 命中已有 ACL 白名单 → 不弹 prompt;最坏情况(codesign drift)弹一次
+    // 也比让用户重新配对友好得多。
+    //
+    // 迁移代码保留至 1.0:确保跳版本升级 (e.g. 0.6.x → 0.7.5 跳过中间版本)
+    // 仍能拾起残留的 keychain 条目;清理时机与 0.6.x EOL 对齐。
+    let file_backend: Arc<dyn uc_core::ports::SecureStoragePort> = Arc::new(
         FileSecureStorage::with_base_dir(wired.iroh_identity_dir.clone()),
     );
+    let iroh_identity_storage: Arc<dyn uc_core::ports::SecureStoragePort> =
+        Arc::new(MigratingSecureStorage::new(
+            file_backend,
+            Arc::clone(&deps.security.secure_storage),
+            vec![IDENTITY_STORE_KEY.to_string()],
+        ));
     let identity_store = Arc::new(IrohIdentityStore::new(
         iroh_identity_storage,
         Arc::new(Sha256IdentityFingerprintFactory),

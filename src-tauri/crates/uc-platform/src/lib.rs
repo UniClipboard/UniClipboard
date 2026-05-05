@@ -59,6 +59,7 @@ pub mod bootstrap;
 pub mod capability;
 pub mod clipboard;
 pub mod file_secure_storage;
+pub mod migrating_secure_storage;
 pub mod ports;
 pub mod secure_storage;
 pub mod system_secure_storage;

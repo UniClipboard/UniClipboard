@@ -13,6 +13,7 @@ pub mod crypto;
 pub mod file_transfer;
 pub mod ids;
 pub mod membership;
+pub mod mobile_sync;
 pub mod network;
 pub mod pairing;
 pub mod ports;

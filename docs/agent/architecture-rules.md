@@ -12,6 +12,63 @@ Use this document when changes touch module boundaries, cross-crate types, commi
   - DB, FS, Clipboard, Network, Crypto
   - See [`docs/architecture/ports.md`](../architecture/ports.md) for port definition, granularity, naming, and evolution rules.
 
+## Implementation Order (Outside-In, Use-Case First)
+
+When delivering a new capability, **do not start by defining core domain types**. Start from the outside (the user-facing behavior) and let demand pull what core / infra / platform need to provide.
+
+### Required Order
+
+1. **Use case first.** Identify the user-facing actions ("register iPhone shortcut device", "revoke device", "ingest mobile clipboard meta", etc.). Write the use case in `uc-application` — its function signature, inputs, outputs, error variants, and the high-level steps it must perform.
+
+2. **Discover ports as the use case demands.** While writing the use case, you will hit "I need to persist this", "I need to enumerate this OS resource", "I need a cryptographic primitive". **Each such need becomes a port** — define the port trait in `uc-core` only when the use case proves it must exist. Do not invent ports speculatively.
+
+3. **Define core domain types as ports demand.** A port signature pulls in value objects (`DeviceId`, `TokenHash`, `MobileDevice`, etc.). Add them to `uc-core` only when a port or use case forces their existence.
+
+4. **Implement adapters last.** Once ports are stable, implement them in `uc-infra` (DB / FS / network IO over real systems) or `uc-platform` (OS-specific capabilities). Adapters are the leaves; they must not influence port shape.
+
+5. **Wire in `uc-bootstrap`.** Connect concrete adapters to the use case constructors.
+
+### Anti-Patterns
+
+Stop and restart from step 1 if you find yourself:
+
+- Designing a `MobileDeviceRepository` trait before any use case calls it
+- Adding fields to a `MobileDevice` struct before any code reads them
+- Implementing a `SqliteFooRepository` adapter before the port is settled
+- Writing a `core` model "because we'll need it eventually"
+- Splitting work as "Phase A: define core types; Phase B: write use cases" (this is inside-out, the opposite of what we want)
+
+### Why
+
+- **Use cases are the only stable artifacts** — they describe what users want. Core models, ports, and adapters all change as we learn; use cases stay close to the user intent.
+- **Outside-in prevents over-modelling.** Each domain type has a use-case justification.
+- **Tests are easier.** Use-case tests with port mocks come for free once the order is followed; the alternative (testing through adapters) is slow and brittle.
+- **Commits map naturally to atomic-commit rules.** `arch: add MobileDeviceRepository port` → `impl: implement sqlite MobileDeviceRepository adapter` → `feat: register iPhone shortcut device use case`. The commit-boundary rule downstream depends on this order being followed upstream.
+
+### Worked Example
+
+Goal: "let users register an iPhone for clipboard sync via Shortcut".
+
+| Step | Output | Crate |
+|---|---|---|
+| 1 | `RegisterMobileShortcutDeviceUseCase::execute(label) -> CreateShortcutDeviceOutput` (signature only, body sketches the steps) | `uc-application` |
+| 2a | Use case needs to persist a device → define `MobileDeviceRepository` port (`save`, `find_by_token_hash`, `delete`, `list`) | `uc-core` |
+| 2b | Use case needs to pack a `.shortcut` file with token/url substituted → keep this as an in-process service in `uc-application` (no external IO, no port needed) | `uc-application` |
+| 2c | Use case needs to know the daemon's bound LAN URL → port `MobileSyncEndpointInfo` (returns current `lan_url`, may delegate to a settings reader) | `uc-core` |
+| 3 | `MobileDevice`, `DeviceId`, `TokenHash`, `MobileClientType` value objects materialize because ports / use case signatures reference them | `uc-core` |
+| 4a | `SqliteMobileDeviceRepository` implements `MobileDeviceRepository` | `uc-infra` |
+| 4b | `NetworkInterfaceProbe` (used by a separate `ListLanInterfacesUseCase`) implements `LanInterfaceProbe` | `uc-platform` |
+| 5 | `uc-bootstrap` wires adapters into use case constructors | `uc-bootstrap` |
+
+If at step 3 you discover you need a field that step 1 did not justify, go back to step 1 and refine the use case first.
+
+### Planning Documents
+
+The same outside-in rule applies to planning documents (`task_plan.md`, SPECs):
+
+- Phase task lists must lead with use cases; ports / domain / adapters appear as derived sub-tasks
+- Do not phrase a phase as "define core models" without the use cases that justify them
+
 ## Cross-Crate Type Conversion Rules
 
 ### 1. Never add orphan-rule-violating conversions

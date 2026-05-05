@@ -293,9 +293,11 @@ describe('NetworkSection — Phase 95 集成', () => {
     expect(screen.getByRole('alert').textContent).toMatch(/保存失败|Save failed/)
   })
 
-  it('Test 9: mount 时 RestartBanner 不可见（in-memory pending 不跨 session）', async () => {
+  it('Test 9: mount 时 RestartBanner 不可见（in-memory pending 不跨 session — mtime fence）', async () => {
+    // Fence: 即便 mock IPC 返回历史版「会触发 pending」的 RestartState payload，
+    // 组件也不应据此显示 banner（mtime-based 跨 session 推导已被 in-memory 取代）。
+    mockInvokeWithTrace.mockResolvedValueOnce({ processStartedAt: 1000, settingsMtime: 2000 })
     renderWithOverrides({ allowRelayFallback: true })
-    // 给一帧时间让 useEffect 跑完
     await act(async () => {
       await Promise.resolve()
     })
@@ -303,6 +305,8 @@ describe('NetworkSection — Phase 95 集成', () => {
   })
 
   it('Test 10: mount 后即便 setting.allowRelayFallback=false 也不显示 banner（仅切换才触发）', async () => {
+    // Fence: 同上，提供 mtime > processStartedAt 的 payload，banner 仍不应可见。
+    mockInvokeWithTrace.mockResolvedValueOnce({ processStartedAt: 500, settingsMtime: 9000 })
     renderWithOverrides({ allowRelayFallback: false })
     await act(async () => {
       await Promise.resolve()

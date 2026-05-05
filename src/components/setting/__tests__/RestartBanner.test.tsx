@@ -73,9 +73,11 @@ describe('RestartBanner', () => {
         onDismissError={onDismissError}
       />
     )
-    // 「重试」按钮存在
+    // 「重试」按钮存在 + 点击触发 onRestart
     const retryBtn = screen.getByRole('button', { name: /重试|Retry/ })
     expect(retryBtn).toBeInTheDocument()
+    await user.click(retryBtn)
+    expect(onRestart).toHaveBeenCalledTimes(1)
     // dismiss X icon button 通过 aria-label 找到
     const dismissBtn = screen.getByRole('button', { name: /收起重启提示|Dismiss restart notice/ })
     expect(dismissBtn).toBeInTheDocument()

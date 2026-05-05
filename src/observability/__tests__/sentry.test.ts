@@ -1,7 +1,7 @@
 import type { ErrorEvent } from '@sentry/core'
 import * as Sentry from '@sentry/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { initSentry, setFrontendSentryEnabled } from '../sentry'
+import { initSentry, setFrontendSentryEnabled } from '@/observability/sentry'
 
 // Mock Sentry
 vi.mock('@sentry/react', async importOriginal => {

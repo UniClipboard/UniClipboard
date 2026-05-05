@@ -36,7 +36,8 @@ use uc_core::file_transfer::{FileTransferDirection, OutboundProgressStatus};
 use uc_core::ports::blob::{BlobReferenceRepositoryPort, BlobTransferPort};
 use uc_core::ports::space::ProofPort;
 use uc_core::ports::{
-    ClipboardDispatchPort, ClipboardReceiverPort, LocalIdentityPort, PresencePort,
+    ClipboardDispatchPort, ClipboardReceiverPort, ConnectionChannelPort, LocalIdentityPort,
+    PresencePort,
 };
 use uc_infra::network::iroh::transfer_progress_adapter::InboundProgressEvent;
 use uc_infra::network::iroh::{
@@ -238,6 +239,10 @@ pub async fn build_space_setup_assembly(
         Arc::clone(&wired.peer_addr_repo),
         Arc::clone(&deps.system.clock),
     );
+    // Phase 96 INDIC-01:连接通道单一真相源。复用同一 endpoint +
+    // peer_addr_repo,纯读 adapter 不装 ALPN handler。
+    let connection_channel: Arc<dyn ConnectionChannelPort> =
+        builder.install_connection_channel(Arc::clone(&wired.peer_addr_repo));
     // Slice 2 Phase 2 · T10:同一节点装第三个 ALPN(剪切板同步)。dispatch
     // 复用 endpoint + peer_addr_repo,与 presence 共享 NAT/relay 映射;
     // receiver handler 通过 `member_repo` 把 `Connection::remote_id()` 反查
@@ -326,6 +331,7 @@ pub async fn build_space_setup_assembly(
         trusted_peer_repo: Arc::clone(&wired.trusted_peer_repo),
         local_identity: Arc::clone(&local_identity),
         presence: Arc::clone(&presence),
+        connection_channel: Some(Arc::clone(&connection_channel)),
     }));
 
     // Slice 2 Phase 2 · T10:剪切板同步门面。`dispatch_entry` 共享同一份

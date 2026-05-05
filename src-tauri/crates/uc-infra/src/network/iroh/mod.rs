@@ -9,6 +9,7 @@ pub mod clipboard_dispatch_adapter;
 pub mod clipboard_receiver_adapter;
 pub mod clipboard_wire;
 mod connect;
+pub mod connection_channel_adapter;
 pub mod identity_store;
 pub mod node;
 pub mod persistable_addr;
@@ -19,6 +20,7 @@ pub mod transfer_progress_wire;
 pub use blobs::{IrohBlobTransferAdapter, BLOBS_ALPN};
 pub use clipboard_dispatch_adapter::{IrohClipboardDispatchAdapter, CLIPBOARD_ALPN};
 pub use clipboard_receiver_adapter::{IrohClipboardReceiverAdapter, IrohClipboardReceiverHandler};
+pub use connection_channel_adapter::IrohConnectionChannelAdapter;
 pub use identity_store::{IrohIdentityStore, IDENTITY_STORE_KEY};
 pub use node::{
     BlobHandlers, ClipboardHandlers, IrohNode, IrohNodeBuilder, IrohNodeConfig, IrohNodeError,

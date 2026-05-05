@@ -35,8 +35,8 @@ use tokio_util::sync::CancellationToken;
 use tracing::{debug, info, warn};
 
 use uc_application::facade::{
-    AppFacade, AppPresenceEvent, AppPresenceSubscription, AppPresenceSubscriptionError,
-    PeerSnapshotView,
+    connection_channel_to_wire, AppFacade, AppPresenceEvent, AppPresenceSubscription,
+    AppPresenceSubscriptionError, PeerSnapshotView,
 };
 use uc_daemon_contract::constants::{ws_event, ws_topic};
 
@@ -227,6 +227,7 @@ impl DaemonService for PresenceMonitor {
 
 fn peer_snapshot_to_dto(peer: PeerSnapshotView) -> PeerSnapshotDto {
     PeerSnapshotDto {
+        channel: connection_channel_to_wire(peer.channel).to_string(),
         peer_id: peer.peer_id,
         device_name: peer.device_name,
         addresses: peer.addresses,
@@ -364,6 +365,7 @@ mod tests {
             is_paired: true,
             connected: true,
             pairing_state: "Trusted".to_string(),
+            channel: "unknown".to_string(),
         }
     }
 

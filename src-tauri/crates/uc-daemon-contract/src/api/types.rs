@@ -37,6 +37,13 @@ pub struct PeerSnapshotDto {
     pub is_paired: bool,
     pub connected: bool,
     pub pairing_state: String,
+    /// Phase 96 INDIC-01:连接通道 4 态 wire 字符串。
+    /// 取值严格限定 `"direct" | "relay" | "offline" | "unknown"`,
+    /// 由 application 层 `connection_channel_to_wire` 单点产出,
+    /// 前端按字符串模式匹配渲染徽章。**禁止**新增枚举值或缩写;
+    /// "Out of LAN" 灰态由前端基于 `channel + LAN-only setting`
+    /// 合成,不在 wire 协议里。
+    pub channel: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -47,6 +54,10 @@ pub struct SpaceMemberDto {
     pub pairing_state: String,
     pub last_seen_at_ms: Option<i64>,
     pub connected: bool,
+    /// Phase 96 INDIC-01:连接通道 4 态 wire 字符串。同 `PeerSnapshotDto.channel`,
+    /// 取值严格限定 `"direct" | "relay" | "offline" | "unknown"`。前端
+    /// `SpaceMember` 直接消费,`ConnectionChannelBadge` 渲染。
+    pub channel: String,
 }
 
 /// Result of a `POST /presence/refresh` round.

@@ -13,7 +13,7 @@
 
 use uc_core::ids::DeviceId;
 use uc_core::membership::MemberSyncPreferences;
-use uc_core::ports::ReachabilityState;
+use uc_core::ports::{ConnectionChannel, ReachabilityState};
 use uc_core::settings::model::ContentTypes;
 
 /// One row of the member roster view.
@@ -37,6 +37,11 @@ pub struct RosterEntry {
 }
 
 /// 应用层 peer 快照。供 daemon HTTP/WS 对外投影,不暴露 core presence 类型。
+///
+/// `channel` 是 Phase 96 INDIC-01 新增字段:连接通道 4 态(Direct/Relay/
+/// Offline/Unknown),由 infra 层 `ConnectionChannelPort` 单点产出,
+/// 应用层透传不解释。"Out of LAN" 灰态由 UI 基于 `channel + LAN-only
+/// setting` 合成,不在本结构里。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PeerSnapshotView {
     pub peer_id: String,
@@ -45,6 +50,7 @@ pub struct PeerSnapshotView {
     pub is_paired: bool,
     pub connected: bool,
     pub pairing_state: String,
+    pub channel: ConnectionChannel,
 }
 
 /// 应用层成员摘要。对外只暴露稳定字符串和值对象,不暴露 core 类型。

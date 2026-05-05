@@ -21,7 +21,9 @@ use tracing::instrument;
 
 use uc_core::membership::MemberRepositoryPort;
 use uc_core::ports::peer_address::PeerAddressRepositoryPort;
-use uc_core::ports::{LocalIdentityPort, PresenceEvent, PresencePort};
+use uc_core::ports::{
+    ConnectionChannel, ConnectionChannelPort, LocalIdentityPort, PresenceEvent, PresencePort,
+};
 use uc_core::trusted_peer::TrustedPeerRepositoryPort;
 use uc_core::DeviceId;
 
@@ -39,6 +41,10 @@ pub struct MemberRosterDeps {
     pub trusted_peer_repo: Arc<dyn TrustedPeerRepositoryPort>,
     pub local_identity: Arc<dyn LocalIdentityPort>,
     pub presence: Arc<dyn PresencePort>,
+    /// Phase 96 INDIC-01:连接通道单一真相源。`Option` 是为了 CLI / 测试
+    /// 路径不强制构造 iroh adapter —— 缺省时 `list_peer_snapshots` 把
+    /// channel 填成 `Unknown` 透传给 UI,UI 显式可见而非误判。
+    pub connection_channel: Option<Arc<dyn ConnectionChannelPort>>,
 }
 
 /// Roster 查询门面 —— 见模块文档。
@@ -48,6 +54,7 @@ pub struct MemberRosterFacade {
     trusted_peer_repo: Arc<dyn TrustedPeerRepositoryPort>,
     local_identity: Arc<dyn LocalIdentityPort>,
     presence: Arc<dyn PresencePort>,
+    connection_channel: Option<Arc<dyn ConnectionChannelPort>>,
 }
 
 impl MemberRosterFacade {
@@ -58,6 +65,7 @@ impl MemberRosterFacade {
             trusted_peer_repo: deps.trusted_peer_repo,
             local_identity: deps.local_identity,
             presence: deps.presence,
+            connection_channel: deps.connection_channel,
         }
     }
 
@@ -121,13 +129,23 @@ impl MemberRosterFacade {
 
     /// 列出对外 peer 快照。该方法复用 roster + presence 聚合规则,并隐藏
     /// core `ReachabilityState` / `DeviceId` 等内部模型。
+    ///
+    /// Phase 96:每条 entry 顺带带上 `channel`(Direct/Relay/Offline/
+    /// Unknown)。`connection_channel` port 缺省时降级为 `Unknown` —— UI
+    /// 显式可见,优于猜测(Pitfall 4)。
     #[instrument(skip_all)]
     pub async fn list_peer_snapshots(&self) -> Result<Vec<PeerSnapshotView>, RosterError> {
         let entries = self.list_with_presence().await?;
-        Ok(entries
-            .into_iter()
-            .filter(|entry| !entry.is_local)
-            .map(|entry| PeerSnapshotView {
+        let mut snapshots = Vec::with_capacity(entries.len());
+        for entry in entries {
+            if entry.is_local {
+                continue;
+            }
+            let channel = match &self.connection_channel {
+                Some(port) => port.channel_for(&entry.device_id).await,
+                None => ConnectionChannel::Unknown,
+            };
+            snapshots.push(PeerSnapshotView {
                 peer_id: entry.device_id.as_str().to_string(),
                 device_name: if entry.device_name.is_empty() {
                     None
@@ -138,8 +156,10 @@ impl MemberRosterFacade {
                 is_paired: true,
                 connected: matches!(entry.state, uc_core::ports::ReachabilityState::Online),
                 pairing_state: "Trusted".to_string(),
-            })
-            .collect())
+                channel,
+            });
+        }
+        Ok(snapshots)
     }
 
     /// 读取某个成员的同步偏好。调用方传入字符串设备 ID,不接触 core 类型。
@@ -438,6 +458,7 @@ mod tests {
             trusted_peer_repo: Arc::new(trusted_peer_repo),
             local_identity: Arc::new(local_identity),
             presence,
+            connection_channel: None,
         })
     }
 
@@ -606,6 +627,7 @@ mod tests {
             trusted_peer_repo: Arc::new(MockTrustedPeerRepo::new()),
             local_identity: Arc::new(id),
             presence: Arc::clone(&presence) as Arc<dyn PresencePort>,
+            connection_channel: None,
         });
 
         let mut rx = facade.subscribe_presence_events();
@@ -637,6 +659,7 @@ mod tests {
             trusted_peer_repo: Arc::new(MockTrustedPeerRepo::new()),
             local_identity: Arc::new(id),
             presence: Arc::clone(&presence) as Arc<dyn PresencePort>,
+            connection_channel: None,
         });
 
         let mut rx1 = facade.subscribe_presence_events();

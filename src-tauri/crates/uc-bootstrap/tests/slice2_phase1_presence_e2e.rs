@@ -415,6 +415,7 @@ async fn build_side(name: &'static str, rendezvous_base_url: String) -> Side {
         trusted_peer_repo: Arc::clone(&trusted_peer_repo) as Arc<dyn TrustedPeerRepositoryPort>,
         local_identity: local_identity_for_roster,
         presence: presence_for_roster,
+        connection_channel: None,
     }));
 
     Side {

@@ -83,9 +83,9 @@ pub use lifecycle::{
 };
 pub use resource::{BinaryResourceView, ResourceFacade, ResourceFacadeDeps, ResourceFacadeError};
 pub use roster::{
-    ContentTypesPatch, ContentTypesView, MemberRosterDeps, MemberRosterFacade, MemberSummary,
-    MemberSyncPreferencesPatch, MemberSyncPreferencesView, PeerSnapshotView, PresenceEvent,
-    RosterEntry, RosterError,
+    connection_channel_to_wire, ConnectionChannel, ContentTypesPatch, ContentTypesView,
+    MemberRosterDeps, MemberRosterFacade, MemberSummary, MemberSyncPreferencesPatch,
+    MemberSyncPreferencesView, PeerSnapshotView, PresenceEvent, RosterEntry, RosterError,
 };
 pub use search::{
     map_search_error, ManualRebuildResult, SearchCoordinator, SearchCoordinatorDeps,

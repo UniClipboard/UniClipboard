@@ -101,6 +101,8 @@ impl DaemonApiState {
         Ok(peers
             .into_iter()
             .map(|peer| PeerSnapshotDto {
+                channel: uc_application::facade::connection_channel_to_wire(peer.channel)
+                    .to_string(),
                 peer_id: peer.peer_id,
                 device_name: peer.device_name,
                 addresses: peer.addresses,
@@ -138,6 +140,8 @@ impl DaemonApiState {
         Ok(snapshots
             .into_iter()
             .map(|snapshot| SpaceMemberDto {
+                channel: uc_application::facade::connection_channel_to_wire(snapshot.channel)
+                    .to_string(),
                 peer_id: snapshot.peer_id,
                 device_name: snapshot.device_name.unwrap_or_default(),
                 pairing_state: snapshot.pairing_state,

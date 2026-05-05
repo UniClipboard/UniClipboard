@@ -29,4 +29,46 @@ pub use commands::{
 };
 pub use errors::RosterError;
 pub use facade::{MemberRosterDeps, MemberRosterFacade};
-pub use uc_core::ports::PresenceEvent;
+pub use uc_core::ports::{ConnectionChannel, PresenceEvent};
+
+/// Phase 96 INDIC-01:`ConnectionChannel` 4 态映射到稳定 wire 字符串。
+///
+/// 单点产出 `"direct" | "relay" | "offline" | "unknown"`,daemon 层
+/// (`presence_monitor.rs` / `server.rs::peer_snapshots`)直接复用,
+/// 避免每个边界各写一遍 match 翻车(Pitfall 1 反向命名同源风险)。
+pub fn connection_channel_to_wire(channel: ConnectionChannel) -> &'static str {
+    match channel {
+        ConnectionChannel::Direct => "direct",
+        ConnectionChannel::Relay => "relay",
+        ConnectionChannel::Offline => "offline",
+        ConnectionChannel::Unknown => "unknown",
+    }
+}
+
+#[cfg(test)]
+mod wire_tests {
+    use super::{connection_channel_to_wire, ConnectionChannel};
+
+    #[test]
+    fn wire_strings_are_locked() {
+        // Phase 96 INDIC-01:wire 字符串是 daemon ↔ frontend 协议契约,
+        // 任何重命名都会让前端徽章渲染失效。本 truth-table 测试故意
+        // 硬编码字面值,迫使协议变更必须同步改前端 i18n key + 渲染分支。
+        assert_eq!(
+            connection_channel_to_wire(ConnectionChannel::Direct),
+            "direct"
+        );
+        assert_eq!(
+            connection_channel_to_wire(ConnectionChannel::Relay),
+            "relay"
+        );
+        assert_eq!(
+            connection_channel_to_wire(ConnectionChannel::Offline),
+            "offline"
+        );
+        assert_eq!(
+            connection_channel_to_wire(ConnectionChannel::Unknown),
+            "unknown"
+        );
+    }
+}

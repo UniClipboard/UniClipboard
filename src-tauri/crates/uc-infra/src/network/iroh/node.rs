@@ -38,8 +38,8 @@ use uc_core::ports::pairing::{PairingEventPort, PairingSessionPort};
 use uc_core::ports::pairing_invitation::PairingInvitationPort;
 use uc_core::ports::security::IdentityFingerprintFactoryPort;
 use uc_core::ports::{
-    ClipboardDispatchPort, ClipboardReceiverPort, ClockPort, DeviceIdentityPort,
-    LocalIdentityError, PeerAddressRepositoryPort, PresencePort, SettingsPort,
+    ClipboardDispatchPort, ClipboardReceiverPort, ClockPort, ConnectionChannelPort,
+    DeviceIdentityPort, LocalIdentityError, PeerAddressRepositoryPort, PresencePort, SettingsPort,
 };
 
 use crate::pairing::{IrohPairingSessionAdapter, PAIRING_ALPN};
@@ -48,6 +48,7 @@ use crate::rendezvous::{RendezvousClient, RendezvousPairingInvitationAdapter};
 use super::blobs::{IrohBlobTransferAdapter, BLOBS_ALPN};
 use super::clipboard_dispatch_adapter::{IrohClipboardDispatchAdapter, CLIPBOARD_ALPN};
 use super::clipboard_receiver_adapter::IrohClipboardReceiverAdapter;
+use super::connection_channel_adapter::IrohConnectionChannelAdapter;
 use super::identity_store::IrohIdentityStore;
 use super::presence_adapter::{IrohPresenceAdapter, IrohPresenceHandler, PRESENCE_ALPN};
 use super::transfer_progress_adapter::{
@@ -539,6 +540,27 @@ impl IrohNodeBuilder {
             Arc::clone(&self.endpoint),
             peer_addr_repo,
             clock,
+        ))
+    }
+
+    /// Build a [`ConnectionChannelPort`] (Phase 96 INDIC-01).
+    ///
+    /// Pure read adapter — does **not** register an ALPN handler, only wires
+    /// the shared endpoint + `peer_addr_repo` so callers can ask
+    /// `channel_for(device_id)` to derive Direct/Relay/Offline/Unknown from
+    /// the current `Endpoint::remote_info` snapshot.
+    ///
+    /// Safe to call before or after [`spawn`](Self::spawn) in principle, but
+    /// for consistency with the other `install_*` methods (and to keep
+    /// bootstrap wiring linear) we expose it as part of the builder phase.
+    /// No router mutation, so coexists trivially with every other install_*.
+    pub fn install_connection_channel(
+        &self,
+        peer_addr_repo: Arc<dyn PeerAddressRepositoryPort>,
+    ) -> Arc<dyn ConnectionChannelPort> {
+        Arc::new(IrohConnectionChannelAdapter::new(
+            Arc::clone(&self.endpoint),
+            peer_addr_repo,
         ))
     }
 

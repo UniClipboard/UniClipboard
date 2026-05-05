@@ -9,6 +9,7 @@
 //! 字节级行为与历史 `EncryptionRepository` 一致——V1 加密协议
 //! (Argon2id KDF + XChaCha20-Poly1305 wrap/unwrap) ironclad 保留。
 
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -37,6 +38,18 @@ pub struct DefaultSpaceAccessAdapter {
     key_material: Arc<KeyMaterialStore>,
     current_profile: Arc<dyn CurrentProfilePort>,
     session: Arc<InMemorySession>,
+    /// 本进程内是否已经确认 keychain 中存在与本机 keyslot 匹配的 KEK。
+    ///
+    /// 一旦置位（`do_first_time_init` / `try_resume_session` /
+    /// `derive_master_key_for_proof` 成功，或 `unlock` 完成首次刷新写入后），
+    /// 后续的 `verify_keychain_access` 直接返回 `Ok(true)`，`unlock` 路径上
+    /// 的"刷新写入"也跳过——避免在 macOS 上重复触发 keychain 授权弹窗
+    /// （首次使用场景下原本会因 `try_resume_session` →
+    /// `verify_keychain_access` → `unlock.store_kek refresh` 三次独立访问
+    /// 而连弹三次）。
+    ///
+    /// `factory_reset` 删除 KEK 后必须复位为 `false`。
+    kek_observed: AtomicBool,
 }
 
 impl DefaultSpaceAccessAdapter {
@@ -49,6 +62,7 @@ impl DefaultSpaceAccessAdapter {
             key_material,
             current_profile,
             session,
+            kek_observed: AtomicBool::new(false),
         }
     }
 }
@@ -113,6 +127,7 @@ impl DefaultSpaceAccessAdapter {
             error!(error = %e, "store_kek failed");
             return Err(map_encryption_error(e));
         }
+        self.kek_observed.store(true, Ordering::Release);
 
         if let Err(e) = self.key_material.store_keyslot(&keyslot).await {
             error!(error = %e, "store_keyslot failed");
@@ -122,6 +137,7 @@ impl DefaultSpaceAccessAdapter {
             if let Err(err) = self.key_material.delete_kek(scope).await {
                 warn!(error = %err, "rollback delete_kek failed");
             }
+            self.kek_observed.store(false, Ordering::Release);
             return Err(map_encryption_error(e));
         }
 
@@ -219,8 +235,19 @@ impl SpaceAccessPort for DefaultSpaceAccessAdapter {
 
             // 把派生出的 KEK 重新写入 keyring,保持 keyring 与最新口令对齐
             // (让下次静默 startup 路径仍可命中)。失败仅 warn,不影响本次解锁。
-            if let Err(e) = self.key_material.store_kek(&scope, &kek).await {
+            //
+            // 优化:若本进程内已确认 keychain 中存在 KEK
+            // (`try_resume_session` / `do_first_time_init` /
+            // `derive_master_key_for_proof` 任一已置位 `kek_observed`),
+            // 此处 `unwrap` 已经成功——意味着本次派生出的 KEK 字节就是
+            // keychain 里那条记录的字节,再写一次没有信息增量,但在 macOS
+            // 上每次 set_secret 仍可能触发授权弹窗。因此跳过。
+            if self.kek_observed.load(Ordering::Acquire) {
+                debug!("skip store_kek refresh: KEK already observed in keychain this session");
+            } else if let Err(e) = self.key_material.store_kek(&scope, &kek).await {
                 warn!(error = %e, "store_kek refresh failed (non-fatal)");
+            } else {
+                self.kek_observed.store(true, Ordering::Release);
             }
 
             self.session.set_master_key(master_key);
@@ -260,6 +287,7 @@ impl SpaceAccessPort for DefaultSpaceAccessAdapter {
                 Ok(()) | Err(EncryptionError::KeyNotFound) => {}
                 Err(e) => return Err(map_encryption_error(e)),
             }
+            self.kek_observed.store(false, Ordering::Release);
             self.session.clear();
             Ok(())
         }
@@ -312,6 +340,11 @@ impl SpaceAccessPort for DefaultSpaceAccessAdapter {
             let master_key = v1_aead::unwrap_master_key_xchacha(&kek, &wrapped_master_key.blob)
                 .map_err(map_aead_error_for_unwrap)?;
 
+            // load_kek 成功 + unwrap 成功 ⇒ keychain 中 KEK 与本机 keyslot 匹配。
+            // 标记本进程已观察到该 KEK,后续 verify_keychain_access /
+            // unlock 路径无需再次访问 keychain。
+            self.kek_observed.store(true, Ordering::Release);
+
             self.session.set_master_key(master_key);
 
             info!("session resumed from keyring");
@@ -324,6 +357,14 @@ impl SpaceAccessPort for DefaultSpaceAccessAdapter {
     async fn verify_keychain_access(&self) -> Result<bool, SpaceAccessError> {
         let span = info_span!("infra.space_access.verify_keychain_access");
         async {
+            // 缓存命中:本进程内已成功 load_kek / store_kek 过——keychain
+            // 已经为本应用授予访问权限,无需再次探测。再次探测在 macOS 上
+            // 等价于一次 set_secret/get_secret 系统调用,可能触发新一轮
+            // 授权弹窗。
+            if self.kek_observed.load(Ordering::Acquire) {
+                return Ok(true);
+            }
+
             let profile = self
                 .current_profile
                 .current_profile()
@@ -334,7 +375,10 @@ impl SpaceAccessPort for DefaultSpaceAccessAdapter {
             // 探测: 把"权限被拒绝"和"keyring 暂时不可用"都视为 "Always Allow 未授予"
             // (Ok(false));只有"KEK 不存在"才升格成 NotInitialized 报错给上层。
             match self.key_material.load_kek(&scope).await {
-                Ok(_) => Ok(true),
+                Ok(_) => {
+                    self.kek_observed.store(true, Ordering::Release);
+                    Ok(true)
+                }
                 Err(EncryptionError::PermissionDenied) => Ok(false),
                 Err(EncryptionError::KeyringError(_)) => Ok(false),
                 Err(EncryptionError::KeyNotFound) => Err(SpaceAccessError::NotInitialized),
@@ -464,6 +508,7 @@ impl SpaceAccessPort for DefaultSpaceAccessAdapter {
                 error!(error = %e, "store_kek failed");
                 return Err(map_encryption_error(e));
             }
+            self.kek_observed.store(true, Ordering::Release);
 
             if let Err(e) = self.key_material.store_keyslot(&keyslot).await {
                 error!(error = %e, "store_keyslot failed");
@@ -473,6 +518,7 @@ impl SpaceAccessPort for DefaultSpaceAccessAdapter {
                 if let Err(err) = self.key_material.delete_kek(&scope).await {
                     warn!(error = %err, "rollback delete_kek failed");
                 }
+                self.kek_observed.store(false, Ordering::Release);
                 return Err(map_encryption_error(e));
             }
 
@@ -487,6 +533,7 @@ impl SpaceAccessPort for DefaultSpaceAccessAdapter {
                         if let Err(err) = self.key_material.delete_kek(&scope).await {
                             warn!(error = %err, "rollback delete_kek failed");
                         }
+                        self.kek_observed.store(false, Ordering::Release);
                         return Err(map_aead_error_for_unwrap(e));
                     }
                 };

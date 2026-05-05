@@ -110,14 +110,24 @@ pub fn init_tracing_subscriber() -> anyhow::Result<()> {
     // Step 2: Select log profile
     let profile = LogProfile::from_env();
 
-    // Step 2b: Resolve `telemetry_enabled` from persisted settings.
+    // Step 2b: Resolve `telemetry_enabled` from persisted settings and push it
+    // into the process-wide runtime gate exposed by `uc-observability`.
     //
-    // 必须在 sentry / OTLP 任何一处 init 前读出来 —— 这两条上报通道都受
-    // 同一个用户开关 (`General › Telemetry`) 控制,且都走 init-time gate
-    // (改了要重启才生效),所以一次性读、两处共用。
+    // Both Sentry and OTLP consult that gate at event time (Sentry via the
+    // `before_send` / `before_breadcrumb` hooks installed below; OTLP via the
+    // `FilterFn` wrapper around its trace and logs layers). This means the
+    // user-facing `General › Telemetry` switch takes effect immediately —
+    // `uc-webserver`'s PUT /settings handler calls `set_telemetry_enabled`
+    // when the field changes, and the next emitted event already honors it.
+    //
+    // Reading the persisted value here is what makes the *initial* state
+    // correct: until the daemon side serves any settings update, the gate
+    // would otherwise carry its `true` default and ignore a user who had
+    // turned telemetry off in a previous session.
     let telemetry_enabled = resolve_telemetry_enabled(&paths.settings_path);
+    uc_observability::set_telemetry_enabled(telemetry_enabled);
 
-    // Step 3: Initialize Sentry (if a DSN is available **and** telemetry is enabled).
+    // Step 3: Initialize Sentry whenever a DSN is available.
     //
     // ## DSN 来源优先级
     //
@@ -128,9 +138,13 @@ pub fn init_tracing_subscriber() -> anyhow::Result<()> {
     //
     // ## 与 telemetry_enabled 的关系
     //
-    // `telemetry_enabled = false` 时即使 DSN 存在也不 init —— 等价于关掉
-    // 整条 sentry 上报链路,不会留 Hub / panic integration 钩子。这与 OTLP
-    // 一致:用户开关 OFF 就完全静默。改了开关需要重启才生效(init-time gate)。
+    // Sentry is initialized unconditionally when a DSN exists, but every
+    // outgoing event (incl. the panic Exception emitted by the bundled
+    // `sentry-panic` integration) is funneled through the `before_send`
+    // closure below, and every breadcrumb through `before_breadcrumb`. Both
+    // closures consult `uc_observability::is_telemetry_enabled()` and drop
+    // the payload when the user has telemetry off. Net effect: the user
+    // toggle takes effect immediately without a process restart.
     //
     // ## 防双重 panic 上报
     //
@@ -146,9 +160,9 @@ pub fn init_tracing_subscriber() -> anyhow::Result<()> {
     let compile_time_dsn = option_env!("SENTRY_DSN").filter(|s| !s.is_empty());
     let dsn = runtime_dsn.or_else(|| compile_time_dsn.map(String::from));
 
-    let sentry_enabled = dsn.is_some() && telemetry_enabled;
+    let sentry_dsn_present = dsn.is_some();
 
-    let sentry_layer = if let Some(dsn) = dsn.filter(|_| telemetry_enabled) {
+    let sentry_layer = if let Some(dsn) = dsn {
         let guard = sentry::init((
             dsn,
             sentry::ClientOptions {
@@ -160,6 +174,26 @@ pub fn init_tracing_subscriber() -> anyhow::Result<()> {
                 // ERROR / Exception 全采样;performance trace 降到 10% 控制 quota。
                 sample_rate: 1.0,
                 traces_sample_rate: 0.1,
+                // Runtime telemetry gate. Drops every outgoing event (incl.
+                // panics from the sentry-panic integration) when the user has
+                // telemetry off, without un-installing any global hook.
+                before_send: Some(std::sync::Arc::new(|event| {
+                    if uc_observability::is_telemetry_enabled() {
+                        Some(event)
+                    } else {
+                        None
+                    }
+                })),
+                // Same gate for the breadcrumb trail — when telemetry is off
+                // we drop them at capture time so re-enabling telemetry mid-
+                // session doesn't leak the previous quiet period's context.
+                before_breadcrumb: Some(std::sync::Arc::new(|breadcrumb| {
+                    if uc_observability::is_telemetry_enabled() {
+                        Some(breadcrumb)
+                    } else {
+                        None
+                    }
+                })),
                 ..Default::default()
             },
         ));
@@ -183,10 +217,9 @@ pub fn init_tracing_subscriber() -> anyhow::Result<()> {
             }
         }))
     } else {
-        // No eprintln here -- it pollutes CLI output. The absence of Sentry
-        // is a normal condition (no DSN, or user disabled telemetry) and
-        // will be visible in the JSON log file via the tracing::info! at the
-        // end of initialization (`sentry_enabled` field).
+        // No eprintln here -- it pollutes CLI output. Absence of a DSN is a
+        // normal condition; the closing tracing::info! reports it via the
+        // `sentry_dsn_present` field.
         None
     };
 
@@ -212,18 +245,18 @@ pub fn init_tracing_subscriber() -> anyhow::Result<()> {
     // (determined by the full `.with()` composition in Step 5, not at
     // provider-init time). `SdkTracerProvider::clone()` uses Arc semantics.
     //
-    // `telemetry_enabled` is resolved once in Step 2b above and shared with
-    // the sentry init block — both honor the same user-facing toggle.
+    // The `telemetry_enabled` flag was already pushed into
+    // `uc_observability`'s runtime gate in Step 2b. The provider is now
+    // initialized whenever an OTLP endpoint is configured; whether spans /
+    // logs actually flow is decided per-event by the FilterFn wrapped
+    // around the trace and logs layers, so a user toggle takes effect
+    // immediately.
 
-    // Note: OTLP enablement and any compile-time config backfill are handled
-    // inside init_otlp_provider. The exporter itself still resolves the final
+    // Note: any compile-time OTLP endpoint backfill is handled inside
+    // init_otlp_provider. The exporter itself still resolves the final
     // endpoint using OpenTelemetry's standard env-var rules.
     let otlp_providers = {
-        match uc_observability::otlp::init_otlp_provider(
-            &profile,
-            device_id.as_deref(),
-            telemetry_enabled,
-        ) {
+        match uc_observability::otlp::init_otlp_provider(&profile, device_id.as_deref()) {
             Ok(Some((providers, guard))) => {
                 // Wrap the guard in ManuallyDrop before handing it to the
                 // OnceLock. If `set` ever fails (it shouldn't — idempotency
@@ -291,15 +324,20 @@ pub fn init_tracing_subscriber() -> anyhow::Result<()> {
 
     let _ = TRACING_INITIALIZED.set(());
 
+    // `otlp_initialized` / `sentry_dsn_present` describe whether the export
+    // pipelines were *constructed*; `telemetry_enabled` is the runtime gate
+    // that decides whether events actually flow through them. A pipeline can
+    // be initialized but currently silent (telemetry off) and become live the
+    // instant the user toggles it on, with no restart.
     ::tracing::info!(
         profile = %profile,
         logs_dir = %paths.logs_dir.display(),
-        otlp_enabled = otlp_enabled,
-        sentry_enabled = sentry_enabled,
+        otlp_initialized = otlp_enabled,
+        sentry_dsn_present = sentry_dsn_present,
         telemetry_enabled = telemetry_enabled,
         "Tracing initialized with dual output (console + JSON{}{})",
         if otlp_enabled { " + OTLP" } else { "" },
-        if sentry_enabled { " + Sentry" } else { "" }
+        if sentry_dsn_present { " + Sentry" } else { "" }
     );
 
     // Legacy env var migration warning (D-14, REQ-87-10).

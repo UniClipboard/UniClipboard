@@ -10248,6 +10248,7 @@ dependencies = [
  "uc-core",
  "uc-daemon-contract",
  "uc-daemon-local",
+ "uc-observability",
  "url",
  "utoipa",
  "utoipa-swagger-ui",

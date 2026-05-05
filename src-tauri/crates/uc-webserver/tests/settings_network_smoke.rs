@@ -74,8 +74,18 @@ async fn simulate_put(facade: &SettingsFacade, body_json: &str) -> Value {
     // 1. 反序列化 wire body → DTO
     let payload: SettingsPatchDto = serde_json::from_str(body_json).expect("parse PUT body");
 
-    // 2. handler 内联计算 restart_required（Phase 94 plan 04 task 1 改造 — D-D1）
-    let restart_required = payload.network.is_some();
+    // 2. handler 内联计算 restart_required（Phase 94 plan 04 task 1 + 260505-17q）
+    //    必须与 src/api/settings.rs::update_settings_handler 同源。
+    //    触发条件：
+    //      - 任何 network 段变更（D-D1 原条款）
+    //      - general.telemetry_enabled 显式给值（260505-17q：后端 Sentry/OTLP
+    //        都走 init-time gate，改了要重启才生效）
+    let telemetry_changed = payload
+        .general
+        .as_ref()
+        .and_then(|g| g.telemetry_enabled)
+        .is_some();
+    let restart_required = payload.network.is_some() || telemetry_changed;
 
     // 3. DTO → View patch → SettingsFacade::update → View
     let view = facade
@@ -267,5 +277,57 @@ async fn restart_required_truth_table() {
         case5_resp["restartRequired"],
         Value::Bool(false),
         "wire case 5: legacy general-only payload → restartRequired=false"
+    );
+}
+
+/// Test 4（260505-17q — telemetry_enabled 触发 restart_required）：
+/// 后端 Sentry / OTLP 走 init-time gate，运行中改 telemetry 开关只能影响
+/// 前端（runtime gate via SettingContext）；要让后端两条上报通道也对齐
+/// 用户意图，必须重启。handler 因此把 telemetry_enabled 显式给值视为
+/// restart-triggering，与 network 段同语义。
+#[tokio::test]
+async fn telemetry_toggle_signals_restart() {
+    let facade = build_facade();
+
+    // Case A：telemetryEnabled=false → restartRequired=true
+    let off_resp = simulate_put(
+        &facade,
+        &json!({"general": {"telemetryEnabled": false}}).to_string(),
+    )
+    .await;
+    assert_eq!(
+        off_resp["restartRequired"],
+        Value::Bool(true),
+        "telemetryEnabled=false must signal restart (backend init-time gate)"
+    );
+    assert_eq!(
+        off_resp["data"]["general"]["telemetryEnabled"],
+        Value::Bool(false),
+        "PUT response must reflect written telemetry value"
+    );
+
+    // Case B：telemetryEnabled=true → restartRequired=true（向另一方向切换同样要重启）
+    let on_resp = simulate_put(
+        &facade,
+        &json!({"general": {"telemetryEnabled": true}}).to_string(),
+    )
+    .await;
+    assert_eq!(
+        on_resp["restartRequired"],
+        Value::Bool(true),
+        "telemetryEnabled=true must also signal restart (re-enable path)"
+    );
+
+    // Case C：general 段存在但 telemetryEnabled=None → 不触发 restart
+    // 防御 `payload.general.is_some()` 误用 — 必须只看 telemetry_enabled 字段本身。
+    let unrelated_resp = simulate_put(
+        &facade,
+        &json!({"general": {"deviceName": "ws-1"}}).to_string(),
+    )
+    .await;
+    assert_eq!(
+        unrelated_resp["restartRequired"],
+        Value::Bool(false),
+        "general patch without telemetryEnabled must NOT signal restart"
     );
 }

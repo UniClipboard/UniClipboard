@@ -55,19 +55,6 @@ fn build_span_exporter_from_env() -> anyhow::Result<SpanExporter> {
         .map_err(|e| anyhow::anyhow!("build OTLP span exporter: {e}"))
 }
 
-/// Check whether the OTLP pipeline should be activated for the given profile
-/// and user telemetry preference.
-///
-/// Activation rules:
-/// - Dev / DebugClipboard / Cli: always allowed (developer-controlled)
-/// - Prod: only when `telemetry_enabled` is `true`
-fn otlp_is_enabled(profile: &LogProfile, telemetry_enabled: bool) -> bool {
-    match profile {
-        LogProfile::Prod => telemetry_enabled,
-        _ => true,
-    }
-}
-
 fn build_log_exporter_from_env() -> anyhow::Result<opentelemetry_otlp::LogExporter> {
     opentelemetry_otlp::LogExporter::builder()
         .with_http()
@@ -86,18 +73,27 @@ fn build_otlp_guard(
     }
 }
 
-/// Initialize the OTLP provider with dual-layer gating:
-/// 1. Endpoint must be configured (env var or baked-in)
-/// 2. Profile + `telemetry_enabled` must allow it
+/// Initialize the OTLP provider when an endpoint is configured.
+///
+/// Returns `Ok(None)` when no endpoint is set (env var or baked-in). Provider
+/// init is no longer gated on `telemetry_enabled`: that switch is consulted
+/// at event time by `layer.rs` / `logs_layer.rs` via the runtime telemetry
+/// gate, so toggling the user preference takes effect without restart.
+///
+/// The W3C propagator is always installed regardless of init outcome so
+/// cross-process trace headers stay populated for daemon ↔ GUI plumbing.
+///
+/// `_profile` is retained in the signature for forward compatibility (the
+/// previous version branched on it for activation; now it would only matter
+/// if a future profile wanted to skip provider construction entirely).
 pub(super) fn init_provider_and_guard(
-    profile: &LogProfile,
+    _profile: &LogProfile,
     device_id: Option<&str>,
-    telemetry_enabled: bool,
 ) -> anyhow::Result<Option<(SdkTracerProvider, SdkLoggerProvider, OtlpGuard)>> {
     // Always install the W3C propagator.
     global::set_text_map_propagator(TraceContextPropagator::new());
 
-    if !otlp_is_enabled(profile, telemetry_enabled) || !config::otlp_endpoint_is_configured() {
+    if !config::otlp_endpoint_is_configured() {
         return Ok(None);
     }
 

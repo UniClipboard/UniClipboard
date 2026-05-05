@@ -52,16 +52,20 @@ pub struct OtlpProviders {
 ///    `logs_layer::build_otlp_logs_layer::<S>()` once the subscriber type `S`
 ///    is determined by the composition context.
 ///
-/// Returns `Ok(None)` when OTLP is disabled (missing endpoint, or Prod
-/// profile with `telemetry_enabled = false`).
-/// The W3C propagator is always installed globally regardless.
+/// Returns `Ok(None)` only when no OTLP endpoint is configured. The provider
+/// is no longer gated on `telemetry_enabled` — the user-facing toggle is now
+/// honored at event time by `FilterFn` wrappers in `layer.rs` /
+/// `logs_layer.rs`, so callers should always init the provider when an
+/// endpoint exists and let the runtime gate decide whether events flow.
+///
+/// The W3C propagator is always installed globally regardless of init
+/// outcome.
 pub fn init_otlp_provider(
     profile: &LogProfile,
     device_id: Option<&str>,
-    telemetry_enabled: bool,
 ) -> anyhow::Result<Option<(OtlpProviders, OtlpGuard)>> {
     let Some((tracer_provider, logger_provider, guard)) =
-        provider::init_provider_and_guard(profile, device_id, telemetry_enabled)?
+        provider::init_provider_and_guard(profile, device_id)?
     else {
         return Ok(None);
     };
@@ -81,13 +85,11 @@ pub fn init_otlp_provider(
 pub fn init_otlp_pipeline_generic<S>(
     profile: &LogProfile,
     device_id: Option<&str>,
-    telemetry_enabled: bool,
 ) -> anyhow::Result<Option<(impl Layer<S> + Send + Sync + 'static, OtlpGuard)>>
 where
     S: tracing::Subscriber + for<'a> LookupSpan<'a> + Send + Sync,
 {
-    let Some((providers, guard)) = init_otlp_provider(profile, device_id, telemetry_enabled)?
-    else {
+    let Some((providers, guard)) = init_otlp_provider(profile, device_id)? else {
         return Ok(None);
     };
 
@@ -98,27 +100,28 @@ where
 
 /// Initialize the OTLP tracing pipeline.
 ///
-/// Returns `Ok(None)` when:
-/// - `OTEL_EXPORTER_OTLP_ENDPOINT` env var is not set, OR
-/// - The profile is `LogProfile::Prod` (OTLP is dev-only).
+/// Returns `Ok(None)` when `OTEL_EXPORTER_OTLP_ENDPOINT` env var is not set
+/// (and no compile-time endpoint baked in). Whether events actually flow is
+/// controlled at runtime by the telemetry gate
+/// (`uc_observability::set_telemetry_enabled`).
 ///
-/// Returns `Ok(Some((layer, guard)))` when the env var is set and profile is Dev/DebugClipboard/Cli.
-/// The caller must store the guard for the lifetime of the process; dropping it flushes spans.
+/// Returns `Ok(Some((layer, guard)))` when the endpoint is configured. The
+/// caller must store the guard for the lifetime of the process; dropping it
+/// flushes spans.
 ///
-/// The W3C TraceContextPropagator is always installed globally, even when the exporter
-/// is disabled, so cross-device traceparent headers remain populated.
+/// The W3C TraceContextPropagator is always installed globally, even when
+/// the exporter is disabled, so cross-device traceparent headers remain
+/// populated.
 ///
 /// Returns a boxed `OtlpLayer` (i.e., `Box<dyn Layer<Registry>>`) to avoid
-/// type inference issues at call sites (tests, bootstrap) where the subscriber type
-/// parameter `S` cannot always be inferred. For composition with a specific `S`,
-/// use `init_otlp_pipeline_generic`.
+/// type inference issues at call sites (tests, bootstrap) where the
+/// subscriber type parameter `S` cannot always be inferred. For composition
+/// with a specific `S`, use `init_otlp_pipeline_generic`.
 pub fn init_otlp_pipeline(
     profile: &LogProfile,
     device_id: Option<&str>,
-    telemetry_enabled: bool,
 ) -> anyhow::Result<Option<(OtlpLayer, OtlpGuard)>> {
-    let Some((providers, guard)) = init_otlp_provider(profile, device_id, telemetry_enabled)?
-    else {
+    let Some((providers, guard)) = init_otlp_provider(profile, device_id)? else {
         return Ok(None);
     };
 

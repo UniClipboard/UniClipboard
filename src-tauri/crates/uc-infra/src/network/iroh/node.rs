@@ -161,6 +161,16 @@ pub struct IrohNodeConfig {
     /// iroh can fall back to the public relay mesh when NAT blocks direct
     /// UDP.
     pub disable_relays: bool,
+    /// If true, allow VPN / overlay-network virtual NIC addresses (CGNAT
+    /// `100.64.0.0/10`, Tailscale ULA `fd7a:115c:a1e0::/48`) to flow through
+    /// the address filter as direct-connection candidates. Default `false`
+    /// (drop them). Power users set this when both peers share an overlay
+    /// network and want iroh to leverage that path.
+    ///
+    /// Clash fake-ip (`198.18.0.0/15`) and IPv4 link-local (`169.254.0.0/16`)
+    /// are unconditionally filtered regardless of this flag — they have no
+    /// legitimate cross-host use case.
+    pub allow_overlay_network_addrs: bool,
 }
 
 /// Snapshot the candidate set this endpoint is currently advertising and
@@ -286,32 +296,96 @@ fn build_transport_config() -> QuicTransportConfig {
 }
 
 /// IP-range predicate that flags well-known *virtual* NIC addresses we don't
-/// want propagated as direct-address candidates. Treats the address as
-/// virtual when it falls into a range that no real LAN would ever use:
+/// want propagated as direct-address candidates.
 ///
+/// Two filter classes:
+///
+/// **Always filtered (no escape hatch — `allow_overlay = true` does NOT keep these):**
 /// * `198.18.0.0/15` — the default Clash fake-ip pool. Observed concretely
 ///   on this user's macOS box where Clash assigns `198.18.0.1` to its TUN
 ///   interface; iroh's magicsock then publishes that to the peer, the peer
 ///   races it against the real LAN candidate, and the TUN path occasionally
-///   wins because its local stack ACKs faster than the real LAN.
-/// * `100.64.0.0/10` — CGNAT / Tailscale default range. Same shape of bug:
-///   Tailscale advertises a 100.x address that's only routable inside the
-///   tailnet, but iroh can't tell that from a normal LAN IP.
+///   wins because its local stack ACKs faster than the real LAN. No legitimate
+///   cross-host use case.
 /// * `169.254.0.0/16` — IPv4 link-local autoconf. Only meaningful on the
 ///   originating host; useless as a candidate for a remote peer.
-fn is_virtual_nic_ip(ip: IpAddr) -> bool {
+///
+/// **Overlay-network class (filtered only when `allow_overlay = false`):**
+/// * `100.64.0.0/10` — CGNAT / Tailscale default IPv4 range. Tailscale
+///   advertises a 100.x address that's only routable inside the same tailnet;
+///   when peers are not in the same tailnet, this is a dead candidate that
+///   wastes path-validation budget. Power users running both peers inside one
+///   tailnet may opt in via `Settings.network.allow_overlay_network_addrs`.
+/// * `fd7a:115c:a1e0::/48` — Tailscale IPv6 ULA. Same shape of bug as the
+///   IPv4 100.x case; same opt-in semantics.
+fn is_virtual_nic_ip(ip: IpAddr, allow_overlay: bool) -> bool {
     match ip {
         IpAddr::V4(v4) => {
             let o = v4.octets();
-            (o[0] == 198 && (o[1] & 0xfe) == 18) // 198.18.0.0/15 (Clash fake-ip)
-                || (o[0] == 100 && (o[1] & 0xc0) == 64) // 100.64.0.0/10 (CGNAT/Tailscale)
-                || (o[0] == 169 && o[1] == 254) // 169.254.0.0/16 (link-local)
+            // Always-filtered classes:
+            if (o[0] == 198 && (o[1] & 0xfe) == 18) // 198.18.0.0/15 (Clash fake-ip)
+                || (o[0] == 169 && o[1] == 254)
+            // 169.254.0.0/16 (IPv4 link-local)
+            {
+                return true;
+            }
+            // Overlay class (CGNAT / Tailscale 100.64.0.0/10):
+            if !allow_overlay && o[0] == 100 && (o[1] & 0xc0) == 64 {
+                return true;
+            }
+            false
         }
-        // v1 only filters IPv4. IPv6 ULA / link-local can be added once we
-        // have telemetry showing iroh actually publishing them on real
-        // user setups.
-        IpAddr::V6(_) => false,
+        IpAddr::V6(v6) => {
+            // Tailscale IPv6 ULA `fd7a:115c:a1e0::/48` — overlay class.
+            // Match on the first three 16-bit segments (high 48 bits).
+            let segs = v6.segments();
+            if !allow_overlay && segs[0] == 0xfd7a && segs[1] == 0x115c && segs[2] == 0xa1e0 {
+                return true;
+            }
+            false
+        }
     }
+}
+
+/// Pure filter logic — given a candidate set, return what to publish.
+///
+/// Extracted from [`build_addr_filter`] so it is unit-testable without
+/// reaching into the iroh `AddrFilter` wrapper (the wrapper is opaque from
+/// outside the crate and offers no introspection).
+fn apply_addr_filter<'a>(
+    addrs: &'a Vec<TransportAddr>,
+    allow_overlay: bool,
+) -> Cow<'a, Vec<TransportAddr>> {
+    let any_virtual = addrs.iter().any(|a| match a {
+        TransportAddr::Ip(s) => is_virtual_nic_ip(s.ip(), allow_overlay),
+        _ => false,
+    });
+    if !any_virtual {
+        return Cow::Borrowed(addrs);
+    }
+    let kept: Vec<TransportAddr> = addrs
+        .iter()
+        .filter(|a| match a {
+            TransportAddr::Ip(s) => !is_virtual_nic_ip(s.ip(), allow_overlay),
+            _ => true,
+        })
+        .cloned()
+        .collect();
+    let dropped: Vec<String> = addrs
+        .iter()
+        .filter_map(|a| match a {
+            TransportAddr::Ip(s) if is_virtual_nic_ip(s.ip(), allow_overlay) => Some(s.to_string()),
+            _ => None,
+        })
+        .collect();
+    debug!(
+        target: "iroh.addr_filter",
+        allow_overlay,
+        dropped_count = dropped.len(),
+        dropped = ?dropped,
+        "filtered virtual-NIC addresses from candidate set",
+    );
+    Cow::Owned(kept)
 }
 
 /// Build the `AddrFilter` we hand to `Endpoint::builder().addr_filter(...)`.
@@ -320,25 +394,14 @@ fn is_virtual_nic_ip(ip: IpAddr) -> bool {
 /// single registration covers pkarr / mdns / static / DHT lookups in one
 /// place — that's what makes this a viable replacement for "fork iroh and
 /// patch magicsock" (issue #486 §三 A).
-fn build_addr_filter() -> AddrFilter {
-    AddrFilter::new(|addrs: &Vec<TransportAddr>| {
-        let any_virtual = addrs.iter().any(|a| match a {
-            TransportAddr::Ip(s) => is_virtual_nic_ip(s.ip()),
-            _ => false,
-        });
-        if !any_virtual {
-            return Cow::Borrowed(addrs);
-        }
-        let kept: Vec<TransportAddr> = addrs
-            .iter()
-            .filter(|a| match a {
-                TransportAddr::Ip(s) => !is_virtual_nic_ip(s.ip()),
-                _ => true,
-            })
-            .cloned()
-            .collect();
-        Cow::Owned(kept)
-    })
+///
+/// `allow_overlay` is captured by the closure so the predicate behaviour is
+/// fixed at endpoint bind time — the iroh `Endpoint` does not support
+/// runtime mutation of address filters; toggling
+/// `Settings.network.allow_overlay_network_addrs` requires a daemon restart
+/// (the same constraint as `disable_relays`).
+fn build_addr_filter(allow_overlay: bool) -> AddrFilter {
+    AddrFilter::new(move |addrs: &Vec<TransportAddr>| apply_addr_filter(addrs, allow_overlay))
 }
 
 /// Pitfall 3 结构性防御：进程级单次 bind 守护（**production-only**）。
@@ -416,6 +479,14 @@ impl IrohNodeBuilder {
         } else {
             RelayMode::Default
         };
+        // Snapshot the overlay flag before consuming `config` into `Self`.
+        let allow_overlay = config.allow_overlay_network_addrs;
+        info!(
+            target: "iroh.addr_filter",
+            allow_overlay,
+            "addr filter configured: overlay-network addresses {} (Tailscale 100.64/10 + fd7a:115c:a1e0::/48)",
+            if allow_overlay { "ALLOWED" } else { "BLOCKED" },
+        );
         let endpoint = Endpoint::builder(presets::N0)
             .secret_key(secret)
             // Only PAIRING is declared at bind time; additional ALPNs are
@@ -425,10 +496,10 @@ impl IrohNodeBuilder {
             .alpns(vec![PAIRING_ALPN.to_vec()])
             .relay_mode(relay_mode)
             .transport_config(build_transport_config())
-            // UniClipboard#486: drop Clash TUN / CGNAT / link-local IPs from
-            // every address-lookup service in one shot. See
-            // `build_addr_filter` for the predicate.
-            .addr_filter(build_addr_filter())
+            // UniClipboard#486: drop Clash TUN / link-local IPs from every
+            // address-lookup service in one shot, and drop CGNAT/Tailscale
+            // overlay IPs unless the user opts in. See `build_addr_filter`.
+            .addr_filter(build_addr_filter(allow_overlay))
             // UniClipboard#486 §三 B: enable mDNS LAN discovery in addition
             // to the n0 preset's pkarr DHT lookup. Two peers on the same
             // Wi-Fi advertise their LAN IPs to each other through swarm-
@@ -445,6 +516,7 @@ impl IrohNodeBuilder {
         debug!(
             endpoint_id = %endpoint.id().fmt_short(),
             disable_relays = config.disable_relays,
+            allow_overlay_network_addrs = config.allow_overlay_network_addrs,
             rendezvous_override = config.rendezvous_base_url.is_some(),
             "iroh node bound; ready to install transport handlers"
         );
@@ -1051,5 +1123,190 @@ mod tests {
 
         let node = builder.spawn();
         node.shutdown().await;
+    }
+
+    // ──────────────────────────────────────────────────────────────────
+    // is_virtual_nic_ip / build_addr_filter unit tests
+    // ──────────────────────────────────────────────────────────────────
+
+    use std::net::{Ipv4Addr, Ipv6Addr};
+    use std::net::{SocketAddr, SocketAddrV4, SocketAddrV6};
+
+    fn v4(ip: &str) -> IpAddr {
+        IpAddr::V4(ip.parse::<Ipv4Addr>().unwrap())
+    }
+    fn v6(ip: &str) -> IpAddr {
+        IpAddr::V6(ip.parse::<Ipv6Addr>().unwrap())
+    }
+
+    /// Always-filtered classes are filtered regardless of the overlay flag.
+    #[test]
+    fn always_filtered_classes_ignore_overlay_flag() {
+        for &allow in &[false, true] {
+            // 198.18.0.0/15 — Clash fake-ip
+            assert!(
+                is_virtual_nic_ip(v4("198.18.0.1"), allow),
+                "198.18.0.1 must be filtered (allow_overlay={allow})"
+            );
+            assert!(
+                is_virtual_nic_ip(v4("198.19.255.255"), allow),
+                "198.19.255.255 must be filtered (allow_overlay={allow})"
+            );
+            // 169.254.0.0/16 — IPv4 link-local
+            assert!(
+                is_virtual_nic_ip(v4("169.254.1.1"), allow),
+                "169.254.1.1 must be filtered (allow_overlay={allow})"
+            );
+        }
+    }
+
+    /// CGNAT/Tailscale 100.64/10 is filtered when overlay is denied,
+    /// allowed when overlay is permitted.
+    #[test]
+    fn cgnat_v4_respects_overlay_flag() {
+        // allow_overlay = false → filtered
+        assert!(is_virtual_nic_ip(v4("100.64.0.1"), false));
+        assert!(is_virtual_nic_ip(v4("100.100.100.100"), false));
+        assert!(is_virtual_nic_ip(v4("100.127.255.255"), false));
+
+        // allow_overlay = true → allowed (predicate returns false)
+        assert!(!is_virtual_nic_ip(v4("100.64.0.1"), true));
+        assert!(!is_virtual_nic_ip(v4("100.100.100.100"), true));
+        assert!(!is_virtual_nic_ip(v4("100.127.255.255"), true));
+    }
+
+    /// Tailscale IPv6 ULA fd7a:115c:a1e0::/48 mirrors the CGNAT v4 case.
+    #[test]
+    fn tailscale_ula_v6_respects_overlay_flag() {
+        // First three 16-bit segments must match: fd7a:115c:a1e0
+        assert!(is_virtual_nic_ip(v6("fd7a:115c:a1e0::1"), false));
+        assert!(is_virtual_nic_ip(v6("fd7a:115c:a1e0:ab12:cd34::"), false));
+        assert!(!is_virtual_nic_ip(v6("fd7a:115c:a1e0::1"), true));
+        assert!(!is_virtual_nic_ip(v6("fd7a:115c:a1e0:ab12:cd34::"), true));
+    }
+
+    /// Real-world LAN/WAN IPs are never filtered, regardless of flag.
+    #[test]
+    fn real_world_addresses_pass_through() {
+        for &allow in &[false, true] {
+            for ip in [
+                v4("10.0.0.1"),
+                v4("192.168.1.42"),
+                v4("172.16.0.5"),
+                v4("8.8.8.8"),
+                v4("100.63.255.255"), // just below 100.64/10
+                v4("100.128.0.0"),    // just above 100.64/10
+                v4("198.17.255.255"), // just below 198.18/15
+                v4("198.20.0.0"),     // just above 198.18/15
+                v4("169.253.255.255"),
+                v4("169.255.0.0"),
+                v6("2001:db8::1"),
+                v6("fe80::1"),
+                v6("fd7a:115c:a1e1::1"), // off-by-one outside Tailscale ULA
+                v6("fc00::1"),           // generic ULA, not Tailscale
+            ] {
+                assert!(
+                    !is_virtual_nic_ip(ip, allow),
+                    "{ip} must NOT be filtered (allow_overlay={allow})"
+                );
+            }
+        }
+    }
+
+    /// apply_addr_filter: no virtual addresses present → returns Borrowed
+    /// (untouched).
+    #[test]
+    fn addr_filter_passes_through_clean_set() {
+        let addrs = vec![
+            TransportAddr::Ip(SocketAddr::V4(SocketAddrV4::new(
+                "192.168.1.1".parse().unwrap(),
+                4242,
+            ))),
+            TransportAddr::Ip(SocketAddr::V4(SocketAddrV4::new(
+                "10.0.0.5".parse().unwrap(),
+                4242,
+            ))),
+        ];
+        let kept = apply_addr_filter(&addrs, false);
+        assert_eq!(
+            kept.len(),
+            addrs.len(),
+            "clean set must be passed through unchanged"
+        );
+    }
+
+    /// apply_addr_filter: drops virtual NIC addrs when allow_overlay=false.
+    #[test]
+    fn addr_filter_drops_overlay_when_disallowed() {
+        let addrs = vec![
+            TransportAddr::Ip(SocketAddr::V4(SocketAddrV4::new(
+                "192.168.1.1".parse().unwrap(),
+                4242,
+            ))),
+            TransportAddr::Ip(SocketAddr::V4(SocketAddrV4::new(
+                "100.64.0.7".parse().unwrap(),
+                4242,
+            ))), // Tailscale 100.x — must be dropped
+            TransportAddr::Ip(SocketAddr::V6(SocketAddrV6::new(
+                "fd7a:115c:a1e0::1".parse().unwrap(),
+                4242,
+                0,
+                0,
+            ))), // Tailscale ULA — must be dropped
+            TransportAddr::Ip(SocketAddr::V4(SocketAddrV4::new(
+                "198.18.0.1".parse().unwrap(),
+                4242,
+            ))), // Clash — always dropped
+        ];
+        let kept: Vec<TransportAddr> = apply_addr_filter(&addrs, false).into_owned();
+        assert_eq!(kept.len(), 1, "only the real LAN IP should survive");
+        match &kept[0] {
+            TransportAddr::Ip(s) => assert_eq!(s.ip().to_string(), "192.168.1.1"),
+            _ => panic!("expected Ip variant"),
+        }
+    }
+
+    /// apply_addr_filter: keeps overlay addrs when allow_overlay=true,
+    /// but still drops always-filtered classes.
+    #[test]
+    fn addr_filter_keeps_overlay_when_allowed_but_still_drops_clash() {
+        let addrs = vec![
+            TransportAddr::Ip(SocketAddr::V4(SocketAddrV4::new(
+                "192.168.1.1".parse().unwrap(),
+                4242,
+            ))),
+            TransportAddr::Ip(SocketAddr::V4(SocketAddrV4::new(
+                "100.64.0.7".parse().unwrap(),
+                4242,
+            ))), // overlay — kept now
+            TransportAddr::Ip(SocketAddr::V6(SocketAddrV6::new(
+                "fd7a:115c:a1e0::1".parse().unwrap(),
+                4242,
+                0,
+                0,
+            ))), // overlay — kept now
+            TransportAddr::Ip(SocketAddr::V4(SocketAddrV4::new(
+                "198.18.0.1".parse().unwrap(),
+                4242,
+            ))), // Clash — always dropped
+            TransportAddr::Ip(SocketAddr::V4(SocketAddrV4::new(
+                "169.254.0.5".parse().unwrap(),
+                4242,
+            ))), // link-local — always dropped
+        ];
+        let kept: Vec<TransportAddr> = apply_addr_filter(&addrs, true).into_owned();
+        assert_eq!(kept.len(), 3, "real LAN + 2 overlay candidates kept");
+        let ips: Vec<String> = kept
+            .iter()
+            .filter_map(|a| match a {
+                TransportAddr::Ip(s) => Some(s.ip().to_string()),
+                _ => None,
+            })
+            .collect();
+        assert!(ips.contains(&"192.168.1.1".to_string()));
+        assert!(ips.contains(&"100.64.0.7".to_string()));
+        assert!(ips.iter().any(|s| s == "fd7a:115c:a1e0::1"));
+        assert!(!ips.iter().any(|s| s == "198.18.0.1"));
+        assert!(!ips.iter().any(|s| s == "169.254.0.5"));
     }
 }

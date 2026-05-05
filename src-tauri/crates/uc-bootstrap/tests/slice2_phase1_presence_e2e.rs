@@ -354,6 +354,7 @@ async fn build_side(name: &'static str, rendezvous_base_url: String) -> Side {
         IrohNodeConfig {
             rendezvous_base_url: Some(rendezvous_base_url),
             disable_relays: true,
+            allow_overlay_network_addrs: false,
         },
     )
     .await

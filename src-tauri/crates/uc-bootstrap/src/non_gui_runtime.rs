@@ -287,19 +287,25 @@ pub async fn build_cli_app_runtime(
         .await
         .map_err(|err| anyhow::anyhow!("settings load failed at startup: {err}"))?;
     let allow_relay_fallback = settings.network.allow_relay_fallback;
+    let allow_overlay_network_addrs = settings.network.allow_overlay_network_addrs;
 
     // 【checker BLOCKER 4 — 单一取反点铁律】见 builders.rs 同处注释。
     // 不在此处内联 `let disable_relays = !allow_relay_fallback;`。
-    let iroh_config =
-        crate::network_policy::relay_policy_to_iroh_config(allow_relay_fallback, None);
+    let iroh_config = crate::network_policy::relay_policy_to_iroh_config(
+        allow_relay_fallback,
+        allow_overlay_network_addrs,
+        None,
+    );
 
     tracing::info!(
         target: "settings.network",
         allow_relay_fallback,
         disable_relays = iroh_config.disable_relays,
-        "applying network.allow_relay_fallback={} → disable_relays={}",
+        allow_overlay_network_addrs = iroh_config.allow_overlay_network_addrs,
+        "applying network settings: allow_relay_fallback={} → disable_relays={}, allow_overlay_network_addrs={}",
         allow_relay_fallback,
         iroh_config.disable_relays,
+        iroh_config.allow_overlay_network_addrs,
     );
 
     let assembly = build_space_setup_assembly(&wired, iroh_config)

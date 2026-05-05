@@ -191,6 +191,7 @@ pub async fn build_daemon_app() -> anyhow::Result<DaemonBootstrapContext> {
         .await
         .map_err(|err| anyhow::anyhow!("settings load failed at startup: {err}"))?;
     let allow_relay_fallback = settings.network.allow_relay_fallback;
+    let allow_overlay_network_addrs = settings.network.allow_overlay_network_addrs;
 
     // 【checker BLOCKER 4 — 单一取反点铁律】
     // `disable_relays` 的值**只能**通过 `relay_policy_to_iroh_config` 取得，
@@ -199,6 +200,7 @@ pub async fn build_daemon_app() -> anyhow::Result<DaemonBootstrapContext> {
     // `iroh_config.disable_relays` 读取。
     let iroh_config = crate::network_policy::relay_policy_to_iroh_config(
         allow_relay_fallback,
+        allow_overlay_network_addrs,
         None, // production 不 override rendezvous，使用默认 RENDEZVOUS_BASE_URL
     );
 
@@ -210,9 +212,11 @@ pub async fn build_daemon_app() -> anyhow::Result<DaemonBootstrapContext> {
         target: "settings.network",
         allow_relay_fallback,
         disable_relays = iroh_config.disable_relays,
-        "applying network.allow_relay_fallback={} → disable_relays={}",
+        allow_overlay_network_addrs = iroh_config.allow_overlay_network_addrs,
+        "applying network settings: allow_relay_fallback={} → disable_relays={}, allow_overlay_network_addrs={}",
         allow_relay_fallback,
         iroh_config.disable_relays,
+        iroh_config.allow_overlay_network_addrs,
     );
 
     let space_setup_assembly = build_space_setup_assembly(&wired, iroh_config)

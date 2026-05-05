@@ -261,11 +261,8 @@ export const SettingProvider: React.FC<SettingProviderProps> = ({ children }) =>
     })
   }, [setting?.general?.language])
 
-  // Push the user-facing telemetry toggle into both frontend observability sinks.
-  // Runs on initial settings load and on every subsequent change so toggling the
-  // switch in Settings → General takes effect without a frontend restart.
-  // Backend Sentry/OTLP use init-time gates and require a process restart —
-  // signaled separately via the PUT /settings restart_required field.
+  // 将用户侧遥测开关同步到前端观测出口；初次加载设置和后续变更都会立即生效。
+  // 后端 Sentry/OTLP 通过 uc-observability 的运行时 gate 同步，不需要重启。
   useEffect(() => {
     const enabled = setting?.general?.telemetryEnabled
     if (typeof enabled !== 'boolean') return

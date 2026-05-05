@@ -13,19 +13,15 @@ import { redactSensitiveArgs } from '@/observability/redaction'
 const sentryEnabled = Boolean(import.meta.env.VITE_SENTRY_DSN)
 
 /**
- * Runtime telemetry gate, mirrors `general.telemetryEnabled`.
+ * 运行时遥测开关，镜像 `general.telemetryEnabled`。
  *
- * Default `true` so events emitted before settings finish loading still flow
- * to Sentry — losing the first few hundred ms of startup errors would defeat
- * the point of frontend error tracking. SettingContext flips this to the
- * persisted user preference as soon as the daemon returns settings, and on
- * every subsequent update.
+ * 默认 `false`，避免设置加载完成前的事件在尚未确认用户持久化偏好时离开进程。
+ * SettingContext 会在 daemon 返回设置后立即把它切到持久化值，之后每次更新也会同步。
  *
- * Backend equivalent: `tracing_subscriber::init` reads telemetry_enabled
- * from disk and gates Sentry/OTLP at init time (requires restart). The
- * frontend can do better — runtime toggle via beforeSend hooks below.
+ * 后端等价开关在 `uc_observability::telemetry_gate`，前端用下面的 beforeSend
+ * 系列 hook 做运行时过滤。
  */
-let sentryRuntimeEnabled = true
+let sentryRuntimeEnabled = false
 
 export function setFrontendSentryEnabled(enabled: boolean): void {
   sentryRuntimeEnabled = enabled

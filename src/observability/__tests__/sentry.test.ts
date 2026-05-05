@@ -17,8 +17,8 @@ vi.mock('@sentry/react', async importOriginal => {
 describe('initSentry', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    // Reset runtime gate so each test starts from "enabled".
-    setFrontendSentryEnabled(true)
+    // 重置到启动默认值，避免设置加载前误发。
+    setFrontendSentryEnabled(false)
   })
 
   it('initializes Sentry with correct configuration', () => {
@@ -36,6 +36,7 @@ describe('initSentry', () => {
   })
 
   it('scrubs sensitive data from breadcrumbs', () => {
+    setFrontendSentryEnabled(true)
     initSentry()
     const initCall = vi.mocked(Sentry.init).mock.calls[0][0]
     const beforeBreadcrumb = initCall.beforeBreadcrumb!
@@ -57,6 +58,7 @@ describe('initSentry', () => {
   })
 
   it('scrubs sensitive data from event extra', async () => {
+    setFrontendSentryEnabled(true)
     initSentry()
     const initCall = vi.mocked(Sentry.init).mock.calls[0][0]
     const beforeSend = initCall.beforeSend!
@@ -77,6 +79,7 @@ describe('initSentry', () => {
   })
 
   it('preserves existing ResizeObserver filter in beforeSend', async () => {
+    setFrontendSentryEnabled(true)
     initSentry()
     const initCall = vi.mocked(Sentry.init).mock.calls[0][0]
     const beforeSend = initCall.beforeSend!
@@ -110,6 +113,15 @@ describe('initSentry', () => {
     expect(await Promise.resolve(beforeSend(event, {}))).toBeNull()
     expect(beforeBreadcrumb(breadcrumb, {})).toBeNull()
     expect(beforeSendLog(log)).toBeNull()
+  })
+
+  it('starts with the runtime gate disabled until settings enable it', async () => {
+    initSentry()
+    const initCall = vi.mocked(Sentry.init).mock.calls[0][0]
+    const beforeSend = initCall.beforeSend!
+
+    const event = { extra: { early: 'startup' } } as unknown as ErrorEvent
+    expect(await Promise.resolve(beforeSend(event, {}))).toBeNull()
   })
 
   it('passes events through when telemetry runtime gate is re-enabled', async () => {

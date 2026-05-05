@@ -44,11 +44,17 @@ cargo-clippy = []
 dev-profile = ["uc-tauri/dev-profile"]
 
 [profile.release]
-panic = "abort"   # Strip expensive panic clean-up logic
-codegen-units = 1 # Compile crates one after another so the compiler can optimize better
-lto = true        # Enables link to optimizations
-opt-level = "z"   # Optimize for binary size
-strip = true      # Remove debug symbols
+panic = "abort"                # Strip expensive panic clean-up logic
+codegen-units = 1              # Compile crates one after another so the compiler can optimize better
+lto = true                     # Enables link to optimizations
+opt-level = "z"                # Optimize for binary size
+# 关键:Sentry symbolication 需要 debug info。`line-tables-only` 只保留地址→
+# 文件/行号映射,不带变量名等更重的信息,体积成本最小;配合 split-debuginfo
+# 和 strip = "symbols",最终 binary 仍然干净,debug info 单独打包成
+# .dSYM/.dwp/.pdb,由 CI 上传给 Sentry 用作 stack trace 解析。
+debug = "line-tables-only"
+split-debuginfo = "packed"     # macOS → .dSYM bundle, Linux → .dwp;Windows MSVC 自带 .pdb
+strip = "symbols"              # binary 内嵌符号 strip 干净,独立 debug 文件保留
 
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 tauri-plugin-autostart = "2"

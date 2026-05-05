@@ -74,7 +74,11 @@ fn resolve_telemetry_enabled(settings_path: &Path) -> bool {
 ///
 /// 1. Resolves log directory from platform app-dirs
 /// 2. Selects [`LogProfile`] from `UC_LOG_PROFILE` env var (or build-type default)
-/// 3. Initializes Sentry if `SENTRY_DSN` is set
+/// 3. Initializes Sentry if a DSN is available — runtime `SENTRY_DSN` env takes
+///    priority, falling back to the compile-time `SENTRY_DSN` baked in by CI
+///    (mirrors the front-end `VITE_SENTRY_DSN` pattern). When the layer is
+///    installed it filters `target = "panic"` events so the sentry-panic
+///    integration owns panic-to-Sentry without duplicate issues.
 /// 4. Builds console + JSON layers via `uc_observability`
 /// 5. Composes all layers on a `Registry` and registers globally
 ///
@@ -106,13 +110,41 @@ pub fn init_tracing_subscriber() -> anyhow::Result<()> {
     // Step 2: Select log profile
     let profile = LogProfile::from_env();
 
-    // Step 3: Initialize Sentry (if SENTRY_DSN is set)
-    let sentry_layer = if let Ok(dsn) = std::env::var("SENTRY_DSN") {
+    // Step 3: Initialize Sentry (if a DSN is available).
+    //
+    // ## DSN 来源优先级
+    //
+    // 1. **运行时** `SENTRY_DSN` env —— 给 dev / 自部署用户运行时覆盖。
+    // 2. **编译期** `SENTRY_DSN` env —— CI 在 release build 时注入,等价前端
+    //    `VITE_SENTRY_DSN` 的处理方式。这是必需路径,否则用户机器上没人会
+    //    设这个 env,sentry 在终端用户那边永远不会启用。
+    //
+    // ## 防双重 panic 上报
+    //
+    // sentry crate 的默认 `default-integrations` 启用 `sentry-panic`,会自动
+    // 把 panic 捕获并上报为 Exception。同时 `install_panic_logging_hook` 把
+    // panic 写成 `tracing::error!(target: "panic", ...)` 进 jsonl
+    // (jsonl 是离线排障的关键,不能省)。这条 tracing event 默认会再被
+    // sentry-tracing layer 转成 sentry Event,导致同一个 panic 在 sentry 上
+    // 出现两条 issue。这里用 `event_filter` 让 sentry-tracing 主动忽略
+    // `target = "panic"` 的 event,把 panic→sentry 的职责完全交给
+    // sentry-panic integration,jsonl 一侧不受影响。
+    let runtime_dsn = std::env::var("SENTRY_DSN").ok().filter(|s| !s.is_empty());
+    let compile_time_dsn = option_env!("SENTRY_DSN").filter(|s| !s.is_empty());
+    let dsn = runtime_dsn.or_else(|| compile_time_dsn.map(String::from));
+
+    let sentry_layer = if let Some(dsn) = dsn {
         let guard = sentry::init((
             dsn,
             sentry::ClientOptions {
                 release: sentry::release_name!(),
-                traces_sample_rate: 1.0,
+                // CI 注入的环境标签,默认空 → sentry 显示 "production"。
+                environment: option_env!("APP_ENV")
+                    .filter(|s| !s.is_empty())
+                    .map(Into::into),
+                // ERROR / Exception 全采样;performance trace 降到 10% 控制 quota。
+                sample_rate: 1.0,
+                traces_sample_rate: 0.1,
                 ..Default::default()
             },
         ));
@@ -121,7 +153,20 @@ pub fn init_tracing_subscriber() -> anyhow::Result<()> {
             eprintln!("Sentry guard already initialized");
         }
 
-        Some(sentry_tracing::layer())
+        Some(sentry_tracing::layer().event_filter(|md| {
+            if md.target() == "panic" {
+                // panic 由 sentry-panic integration 上报,这里跳过避免重复。
+                sentry_tracing::EventFilter::Ignore
+            } else {
+                match *md.level() {
+                    ::tracing::Level::ERROR => sentry_tracing::EventFilter::Event,
+                    ::tracing::Level::WARN | ::tracing::Level::INFO => {
+                        sentry_tracing::EventFilter::Breadcrumb
+                    }
+                    _ => sentry_tracing::EventFilter::Ignore,
+                }
+            }
+        }))
     } else {
         // No eprintln here -- it pollutes CLI output. The absence of Sentry
         // is a normal condition and will be visible in the JSON log file via

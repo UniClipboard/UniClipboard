@@ -86,6 +86,9 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           VITE_SENTRY_DSN: ${{ secrets.VITE_SENTRY_DSN }}
+          # Backend Sentry DSN — independent Rust project DSN.
+          SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+          APP_ENV: alpha
           VITE_OTEL_EXPORTER_OTLP_ENDPOINT: ${{ secrets.OTEL_EXPORTER_OTLP_ENDPOINT }}
           OTEL_EXPORTER_OTLP_ENDPOINT: ${{ secrets.OTEL_EXPORTER_OTLP_ENDPOINT }}
         with:
@@ -96,3 +99,30 @@ jobs:
           prerelease: true
           uploadUpdaterJson: true
           args: ${{ matrix.args }}
+
+      - name: Upload Sentry debug symbols
+        # 把 release 编译出的 .dSYM / .pdb / DWARF 上传给 Sentry,后续 panic
+        # 上报时 Sentry 用 build-id 把地址翻译回函数 + 文件 + 行号(配合
+        # --include-sources 还会嵌源码片段)。SENTRY_AUTH_TOKEN/SENTRY_PROJECT
+        # 缺失时整个 step 跳过,不阻断 alpha 构建。
+        shell: bash
+        env:
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
+          SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
+        run: |
+          if [ -z "$SENTRY_AUTH_TOKEN" ] || [ -z "$SENTRY_PROJECT" ]; then
+            echo "::warning::SENTRY_AUTH_TOKEN/SENTRY_PROJECT not configured — skipping debug-files upload"
+            exit 0
+          fi
+          npm install -g @sentry/cli
+          if [ -d "src-tauri/target/${{ matrix.target }}/release" ]; then
+            TARGET_DIR="src-tauri/target/${{ matrix.target }}/release"
+          elif [ -d "src-tauri/target/release" ]; then
+            TARGET_DIR="src-tauri/target/release"
+          else
+            echo "::warning::No release directory found — skipping"
+            exit 0
+          fi
+          echo "Uploading debug files from $TARGET_DIR"
+          sentry-cli debug-files upload --include-sources "$TARGET_DIR"

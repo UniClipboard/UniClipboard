@@ -22,6 +22,7 @@ use uc_core::ports::clipboard::{
 use uc_core::ports::search::search_index::SearchIndexPort;
 use uc_core::ports::search::search_key::SearchKeyDerivationPort;
 use uc_core::ports::search::search_pipeline::SearchPipelinePort;
+use uc_core::ports::MobileDeviceRepositoryPort;
 use uc_core::ports::*;
 use uc_core::MemberRepositoryPort;
 
@@ -109,6 +110,17 @@ pub struct SystemPorts {
     pub cache_fs: Arc<dyn uc_core::ports::cache_fs::CacheFsPort>,
 }
 
+/// Mobile-sync 领域端口组。
+///
+/// 当前只装配跨进程 / 跨重启需要稳定的设备仓库;`token_minter` /
+/// `download_tokens` / `lan_interface_probe` 等都是无外部资源的进程内
+/// adapter,直接在 `MobileSyncFacade` 装配处就地构造,无需穿过 `AppDeps`。
+/// 后续 phase 引入 LAN listener 反向喂 endpoint_info 时,把
+/// `endpoint_info` 也加入本分组(其它 ZST 仍保留就地构造)。
+pub struct MobileSyncPorts {
+    pub device_repo: Arc<dyn MobileDeviceRepositoryPort>,
+}
+
 /// Application dependency grouping (non-Builder, just parameter grouping)
 /// 应用依赖分组（非 Builder，仅参数打包）
 ///
@@ -137,4 +149,6 @@ pub struct AppDeps {
     pub system: SystemPorts,
     /// Search-domain ports (index, key derivation, pipeline) / 搜索领域端口
     pub search: SearchPorts,
+    /// Mobile-sync 领域端口 / Mobile sync domain ports.
+    pub mobile_sync: MobileSyncPorts,
 }

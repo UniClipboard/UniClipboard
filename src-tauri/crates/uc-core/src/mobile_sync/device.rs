@@ -56,6 +56,15 @@ impl MobileClientType {
             MobileClientType::IosShortcut => "ios_shortcut",
         }
     }
+
+    /// 从持久化的 wire 字符串恢复。`None` 表示未知值——adapter 拿到陌生值
+    /// 应当作"行损坏"处理（很可能是降级回旧版本读到了新版本写入的行）。
+    pub fn from_wire_str(value: &str) -> Option<Self> {
+        match value {
+            "ios_shortcut" => Some(MobileClientType::IosShortcut),
+            _ => None,
+        }
+    }
 }
 
 /// 已登记的移动端设备。
@@ -125,5 +134,17 @@ mod tests {
         // 这条断言锁住 wire 字符串 —— 一旦改动会让所有已部署的 .shortcut /
         // sqlite 行失效，必须当作 schema 迁移来处理。
         assert_eq!(MobileClientType::IosShortcut.as_wire_str(), "ios_shortcut");
+    }
+
+    #[test]
+    fn mobile_client_type_wire_round_trip() {
+        for variant in [MobileClientType::IosShortcut] {
+            assert_eq!(
+                MobileClientType::from_wire_str(variant.as_wire_str()),
+                Some(variant)
+            );
+        }
+        assert_eq!(MobileClientType::from_wire_str("unknown"), None);
+        assert_eq!(MobileClientType::from_wire_str(""), None);
     }
 }

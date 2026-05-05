@@ -3,6 +3,7 @@ pub mod blob_reference_mapper;
 pub mod clipboard_entry_mapper;
 pub mod clipboard_event_mapper;
 pub mod clipboard_selection_mapper;
+pub mod mobile_device_mapper;
 pub mod peer_address_mapper;
 pub mod snapshot_representation_mapper;
 pub mod space_member_mapper;

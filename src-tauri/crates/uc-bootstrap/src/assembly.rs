@@ -20,7 +20,8 @@ use std::sync::Arc;
 use tracing::warn;
 
 use uc_application::deps::{
-    AppDeps, ClipboardPorts, DevicePorts, SearchPorts, SecurityPorts, StoragePorts, SystemPorts,
+    AppDeps, ClipboardPorts, DevicePorts, MobileSyncPorts, SearchPorts, SecurityPorts,
+    StoragePorts, SystemPorts,
 };
 use uc_application::facade::HostEventEmitterPort;
 use uc_core::blob::ports::{BlobReaderPort, BlobWriterPort};
@@ -45,7 +46,7 @@ use uc_infra::db::mappers::{
     blob_mapper::BlobRowMapper, clipboard_entry_mapper::ClipboardEntryRowMapper,
     clipboard_event_mapper::ClipboardEventRowMapper,
     clipboard_selection_mapper::ClipboardSelectionRowMapper,
-    peer_address_mapper::PeerAddressRowMapper,
+    mobile_device_mapper::MobileDeviceRowMapper, peer_address_mapper::PeerAddressRowMapper,
     snapshot_representation_mapper::RepresentationRowMapper,
     space_member_mapper::SpaceMemberRowMapper, trusted_peer_mapper::TrustedPeerRowMapper,
 };
@@ -54,8 +55,8 @@ use uc_infra::db::repositories::{
     DieselBlobMigrationRepository, DieselBlobReferenceRepository, DieselBlobRepository,
     DieselClipboardEntryRepository, DieselClipboardEventRepository,
     DieselClipboardRepresentationRepository, DieselClipboardSelectionRepository,
-    DieselFileTransferRepository, DieselPeerAddressRepository, DieselSpaceMemberRepository,
-    DieselThumbnailRepository, DieselTrustedPeerRepository,
+    DieselFileTransferRepository, DieselMobileDeviceRepository, DieselPeerAddressRepository,
+    DieselSpaceMemberRepository, DieselThumbnailRepository, DieselTrustedPeerRepository,
 };
 use uc_infra::device::LocalDeviceIdentity;
 use uc_infra::fs::key_slot_store::JsonKeySlotStore;
@@ -239,6 +240,10 @@ struct InfraLayer {
     // `seed_receiver_context`, which is not part of the `FileTransferEventStorePort`
     // surface on purpose (entry_id / cached_path are receiver-local concerns).
     file_transfer_store: Arc<crate::file_transfer_lifecycle::FileTransferEventStore>,
+
+    // Mobile sync 设备仓库 — `DieselMobileDeviceRepository`,跨重启 / 跨进
+    // 程稳定的已登记设备列表(替代之前进程内 HashMap)。
+    mobile_device_repo: Arc<dyn uc_core::ports::MobileDeviceRepositoryPort>,
 }
 
 /// Platform layer implementations
@@ -413,6 +418,10 @@ fn create_infra_layer(
         uc_infra::file_transfer::SqliteReceiverFileTransferStore::new(Arc::clone(&db_executor)),
     );
 
+    let mobile_device_repo: Arc<dyn uc_core::ports::MobileDeviceRepositoryPort> = Arc::new(
+        DieselMobileDeviceRepository::new(Arc::clone(&db_executor), MobileDeviceRowMapper),
+    );
+
     let infra = InfraLayer {
         clipboard_entry_repo,
         clipboard_event_repo,
@@ -435,6 +444,7 @@ fn create_infra_layer(
         hash,
         file_transfer_repo,
         file_transfer_store,
+        mobile_device_repo,
     };
 
     Ok(infra)
@@ -887,6 +897,9 @@ pub fn wire_dependencies(config: &AppConfig) -> WiringResult<WiredDependencies> 
             search_index,
             search_key_derivation,
             search_pipeline,
+        },
+        mobile_sync: MobileSyncPorts {
+            device_repo: infra.mobile_device_repo,
         },
     };
 

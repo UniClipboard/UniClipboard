@@ -5,6 +5,7 @@ pub mod clipboard_event;
 pub mod clipboard_representation_thumbnail;
 pub mod clipboard_selection;
 pub mod file_transfer;
+pub mod mobile_device_row;
 pub mod peer_address_row;
 pub mod snapshot_representation;
 pub mod space_member_row;
@@ -19,6 +20,7 @@ pub use clipboard_representation_thumbnail::{
 };
 pub use clipboard_selection::{ClipboardSelectionRow, NewClipboardSelectionRow};
 pub use file_transfer::{FileTransferRow, NewFileTransferRow};
+pub use mobile_device_row::{MobileDeviceRow, NewMobileDeviceRow};
 pub use peer_address_row::{NewPeerAddressRow, PeerAddressRow};
 pub use snapshot_representation::{NewSnapshotRepresentationRow, SnapshotRepresentationRow};
 pub use space_member_row::{NewSpaceMemberRow, SpaceMemberRow};

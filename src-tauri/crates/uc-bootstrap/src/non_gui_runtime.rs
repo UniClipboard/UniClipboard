@@ -25,8 +25,8 @@ use uc_application::facade::{
 };
 use uc_core::clipboard::ClipboardIntegrationMode;
 use uc_infra::mobile_sync::{
-    InMemoryMobileDeviceRepository, InMemoryMobileSyncEndpointInfoAdapter,
-    InMemoryShortcutDownloadTokenStore, NetworkInterfaceLanProbe, OsRngSha256MobileTokenMinter,
+    InMemoryMobileSyncEndpointInfoAdapter, InMemoryShortcutDownloadTokenStore,
+    NetworkInterfaceLanProbe, OsRngSha256MobileTokenMinter,
 };
 
 use crate::assembly::get_storage_paths;
@@ -155,7 +155,9 @@ pub fn build_app_facade_from_deps(
     let mobile_sync_facade = Arc::new(MobileSyncFacade::new(MobileSyncFacadeDeps {
         clock: deps.system.clock.clone(),
         token_minter: Arc::new(OsRngSha256MobileTokenMinter),
-        device_repo: Arc::new(InMemoryMobileDeviceRepository::new()),
+        // Phase 3 子步骤 1:device_repo 走 `DieselMobileDeviceRepository`,
+        // 由 wire_dependencies 在 InfraLayer 装配时构造,跨重启 / 跨进程稳定。
+        device_repo: deps.mobile_sync.device_repo.clone(),
         endpoint_info: Arc::new(InMemoryMobileSyncEndpointInfoAdapter::new()),
         download_tokens: Arc::new(InMemoryShortcutDownloadTokenStore::new(
             deps.system.clock.clone(),

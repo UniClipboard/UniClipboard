@@ -190,6 +190,7 @@
         "loadError": "加载设置失败:"
       },
       "network": {
+        "loadError": "加载设置失败:",
         "lanOnly": {
           "label": "LAN-only 模式",
           "description": "关闭公网中继回落，仅通过同局域网完成设备同步。重启后生效。",

@@ -77,6 +77,8 @@ const NetworkSection: React.FC = () => {
         })
         if (result.restartRequired) {
           setPending(true)
+        } else {
+          setPending(false)
         }
       } catch (err) {
         log.error({ err }, '保存 LAN-only 设置失败')
@@ -119,7 +121,7 @@ const NetworkSection: React.FC = () => {
   if (error) {
     return (
       <div className="text-destructive py-4">
-        {t('settings.sections.sync.loadError')} {error}
+        {t('settings.sections.network.loadError')} {error}
       </div>
     )
   }

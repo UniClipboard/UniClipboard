@@ -199,6 +199,7 @@
         "loadError": "Failed to load settings:"
       },
       "network": {
+        "loadError": "Failed to load settings:",
         "lanOnly": {
           "label": "LAN-only Mode",
           "description": "Disable public-relay fallback. Devices sync only over the same local network. Takes effect after restart.",

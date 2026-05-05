@@ -156,10 +156,17 @@ interface SettingsGetResponse {
   ts: number
 }
 
-/** PUT /settings response shape. / PUT /settings 响应结构。 */
+/** PUT /settings response shape. / PUT /settings 响应结构。
+ *
+ * 后端 `UpdateSettingsResponse` 的 `success` 与 `restartRequired` 在 **顶层**，
+ * `data` 是 `SettingsDto`（更新后的完整设置）。前端只关心 `success` + `restartRequired`，
+ * 故 `data` 用 `unknown` 占位避免 over-typing。
+ */
 interface SettingsUpdateResponse {
-  data: { success: boolean; restartRequired: boolean }
+  success: boolean
+  data: unknown
   ts: number
+  restartRequired: boolean
 }
 
 interface SettingsPatchRequest {
@@ -218,7 +225,7 @@ export async function updateSettings(
     method: 'PUT',
     body: patch,
   })
-  return { success: res.data.success, restartRequired: res.data.restartRequired }
+  return { success: res.success, restartRequired: res.restartRequired }
 }
 
 /**

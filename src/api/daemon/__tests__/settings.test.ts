@@ -32,10 +32,13 @@ afterEach(() => {
 })
 
 // 默认成功响应 — 各测试可以 mockResolvedValueOnce 覆盖。
+// 后端 UpdateSettingsResponse 形态：{ success, data, ts, restartRequired }（顶层）。
 function mockUpdateOk(restartRequired: boolean) {
   requestMock.mockResolvedValueOnce({
-    data: { success: true, restartRequired },
+    success: true,
+    data: {},
     ts: 0,
+    restartRequired,
   })
 }
 

@@ -68,6 +68,7 @@ pub async fn start_in_process(run_mode: DaemonRunMode) -> anyhow::Result<DaemonH
         clipboard_sync_facade,
         blob_transfer_facade,
         space_setup_assembly,
+        mobile_sync_endpoint_info,
     } = build_daemon_bootstrap_assembly().await?;
 
     let uc_bootstrap::NonGuiBundle {
@@ -132,6 +133,7 @@ pub async fn start_in_process(run_mode: DaemonRunMode) -> anyhow::Result<DaemonH
         local_device_id,
         listens_to_os_signals: run_mode.listens_to_os_signals(),
         process_mode: run_mode.process_mode(),
+        mobile_sync_endpoint_info,
     });
 
     let input = DaemonRunLoopInput {

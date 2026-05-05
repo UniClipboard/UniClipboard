@@ -32,6 +32,10 @@ pub struct DaemonAppAssemblyInput {
     /// 写进 PID 文件的进程模式标记。
     /// `GuiInProcess` → `InProcess`；其他 → `Standalone`。
     pub process_mode: DaemonProcessMode,
+    /// Mobile sync LAN endpoint adapter — daemon listener 启停时通过 inherent
+    /// `set` / `clear` 写入,facade 端只读。
+    pub mobile_sync_endpoint_info:
+        Arc<uc_infra::mobile_sync::InMemoryMobileSyncEndpointInfoAdapter>,
 }
 
 /// 构造 daemon 应用实例。
@@ -49,6 +53,7 @@ pub fn build_daemon_app_instance(input: DaemonAppAssemblyInput) -> DaemonApp {
         local_device_id,
         listens_to_os_signals,
         process_mode,
+        mobile_sync_endpoint_info,
     } = input;
 
     let peer_keepalive_worker: Arc<dyn DaemonService> =
@@ -72,4 +77,5 @@ pub fn build_daemon_app_instance(input: DaemonAppAssemblyInput) -> DaemonApp {
         listens_to_os_signals,
         process_mode,
     )
+    .with_mobile_lan_endpoint_info(mobile_sync_endpoint_info)
 }

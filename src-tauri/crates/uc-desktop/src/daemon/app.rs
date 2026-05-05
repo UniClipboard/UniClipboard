@@ -120,6 +120,11 @@ pub struct DaemonApp {
     /// 写进 PID 文件的进程模式——决定 `cli stop` 能不能 SIGTERM 这个
     /// daemon。`GuiInProcess` → `InProcess`；`Standalone` → `Standalone`。
     process_mode: DaemonProcessMode,
+    /// Mobile sync LAN endpoint adapter 的具体类型,daemon 启动时用它 spawn
+    /// `mobile_lan` listener,起来后 `set` 当前 URL,关闭后 `clear`。
+    /// `None` 表示该装配场景不接 mobile listener(测试或未来 GUI-only 模式)。
+    mobile_lan_endpoint_info:
+        Option<Arc<uc_infra::mobile_sync::InMemoryMobileSyncEndpointInfoAdapter>>,
 }
 
 impl DaemonApp {
@@ -148,6 +153,7 @@ impl DaemonApp {
             local_device_id: None,
             listens_to_os_signals: true,
             process_mode: DaemonProcessMode::Standalone,
+            mobile_lan_endpoint_info: None,
         }
     }
 
@@ -197,7 +203,20 @@ impl DaemonApp {
             local_device_id,
             listens_to_os_signals,
             process_mode,
+            mobile_lan_endpoint_info: None,
         }
+    }
+
+    /// 注入 mobile sync LAN endpoint adapter。daemon `run()` 看到 `Some(...)`
+    /// 后会 spawn `mobile_lan` listener,绑定到 `127.0.0.1:42720`,起来后写
+    /// `endpoint_info.set(...)`,关闭后 `clear()`。`None`(默认)表示当前装配
+    /// 场景不接 listener(测试 / 未来 GUI-only 路径)。
+    pub fn with_mobile_lan_endpoint_info(
+        mut self,
+        endpoint_info: Arc<uc_infra::mobile_sync::InMemoryMobileSyncEndpointInfoAdapter>,
+    ) -> Self {
+        self.mobile_lan_endpoint_info = Some(endpoint_info);
+        self
     }
 
     /// Run the daemon: start the HTTP API server and services, wait for shutdown, cleanup.
@@ -281,6 +300,44 @@ impl DaemonApp {
         let mut http_handle = tokio::spawn(run_http_server(api_state, http_cancel));
 
         let _cleanup_handle = cleanup_rate_limiter_task(security_for_cleanup, cleanup_cancel);
+
+        // Phase 3 子步骤 3:spawn mobile sync LAN listener(stub: 仅 /handshake)。
+        // 暂绑 127.0.0.1:42720 —— 子步骤 5.5 接 `MobileSyncSettings.lan_listen_enabled`
+        // 后改为绑用户选定 LAN IP + 动态启停。当前以 child cancel token 控制
+        // graceful shutdown。bind / serve 失败只 log,不阻断 daemon 主流程。
+        if let Some(endpoint_info) = self.mobile_lan_endpoint_info.clone() {
+            let lan_cancel = self.cancel.child_token();
+            tokio::spawn(async move {
+                use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+                use uc_core::mobile_sync::LanEndpointInfo;
+                use uc_webserver::mobile_lan::start_mobile_lan_server;
+
+                let bind = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 42720);
+                match start_mobile_lan_server(bind, lan_cancel).await {
+                    Ok(handle) => {
+                        let url = format!("http://{}", handle.bound_addr);
+                        endpoint_info
+                            .set(LanEndpointInfo { url: url.clone() })
+                            .await;
+                        info!(url, "mobile LAN listener up; endpoint_info populated");
+
+                        if let Err(e) = handle.join_handle.await {
+                            error!(error = %e, "mobile LAN listener task panicked");
+                        }
+
+                        endpoint_info.clear().await;
+                        info!("mobile LAN listener stopped; endpoint_info cleared");
+                    }
+                    Err(e) => {
+                        error!(
+                            bind = %bind,
+                            error = %e,
+                            "mobile LAN listener failed to bind; daemon continues without /mobile/v1/* endpoint"
+                        );
+                    }
+                }
+            });
+        }
 
         // Prepare deferred services start
         let mut deferred = std::mem::take(&mut self.deferred_services);

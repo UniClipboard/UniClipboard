@@ -13,6 +13,7 @@ path = "src/lib.rs"
 uc-bootstrap = { path = "../uc-bootstrap" }
 uc-application = { path = "../uc-application" }
 uc-core = { path = "../uc-core" }
+uc-infra = { path = "../uc-infra" }
 uc-platform = { path = "../uc-platform", features = ["test-helpers"] }
 uc-observability = { path = "../uc-observability" }
 uc-daemon-contract = { path = "../uc-daemon-contract" }

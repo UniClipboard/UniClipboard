@@ -9810,6 +9810,7 @@ dependencies = [
  "uc-daemon-client",
  "uc-daemon-contract",
  "uc-daemon-local",
+ "uc-infra",
  "uc-observability",
  "uc-platform",
  "uc-webserver",

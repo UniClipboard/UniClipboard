@@ -55,6 +55,12 @@ pub struct DaemonBootstrapContext {
     /// `space_setup_assembly.shutdown()` to cleanly tear down router +
     /// abort ingest before the Tokio runtime exits.
     pub space_setup_assembly: SpaceSetupAssembly,
+    /// Mobile sync LAN endpoint adapter(具体类型旁路)。
+    ///
+    /// 由 daemon LAN listener 启停时调 inherent `set` / `clear` 写,facade
+    /// 通过 `AppDeps.mobile_sync.endpoint_info` 只读 —— 共享同一份 Arc。
+    pub mobile_sync_endpoint_info:
+        Arc<uc_infra::mobile_sync::InMemoryMobileSyncEndpointInfoAdapter>,
 }
 
 /// Shared core wiring used by all three builders.
@@ -228,6 +234,7 @@ pub async fn build_daemon_app() -> anyhow::Result<DaemonBootstrapContext> {
     let deps = wired.deps;
     let background = wired.background;
     let emitter_cell = wired.emitter_cell;
+    let mobile_sync_endpoint_info = wired.mobile_sync_endpoint_info;
 
     // Same Arc the assembly holds — handed up to ctx so daemon entrypoint
     // (T6) can wire it into the two clipboard workers without unpacking
@@ -242,5 +249,6 @@ pub async fn build_daemon_app() -> anyhow::Result<DaemonBootstrapContext> {
         config,
         clipboard_sync_facade,
         space_setup_assembly,
+        mobile_sync_endpoint_info,
     })
 }

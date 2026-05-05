@@ -24,6 +24,11 @@ pub struct DaemonBootstrapAssembly {
     pub clipboard_sync_facade: Arc<ClipboardSyncFacade>,
     pub blob_transfer_facade: Arc<BlobTransferFacade>,
     pub space_setup_assembly: SpaceSetupAssembly,
+    /// Mobile sync LAN endpoint adapter(具体类型旁路) — daemon LAN listener
+    /// 启停时调 inherent `set` / `clear` 写它,facade 通过
+    /// `AppDeps.mobile_sync.endpoint_info` 只读,两端共享同一份 Arc。
+    pub mobile_sync_endpoint_info:
+        Arc<uc_infra::mobile_sync::InMemoryMobileSyncEndpointInfoAdapter>,
 }
 
 /// 构造 daemon bootstrap 所需句柄。
@@ -43,6 +48,7 @@ pub async fn build_daemon_bootstrap_assembly() -> anyhow::Result<DaemonBootstrap
     let background = ctx.background;
     let clipboard_sync_facade = ctx.clipboard_sync_facade.clone();
     let blob_transfer_facade = ctx.space_setup_assembly.blob.clone();
+    let mobile_sync_endpoint_info = ctx.mobile_sync_endpoint_info.clone();
 
     let non_gui_bundle = build_non_gui_bundle(
         ctx.deps,
@@ -61,5 +67,6 @@ pub async fn build_daemon_bootstrap_assembly() -> anyhow::Result<DaemonBootstrap
         clipboard_sync_facade,
         blob_transfer_facade,
         space_setup_assembly: ctx.space_setup_assembly,
+        mobile_sync_endpoint_info,
     })
 }

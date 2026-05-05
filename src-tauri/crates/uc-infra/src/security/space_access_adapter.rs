@@ -514,6 +514,25 @@ impl SpaceAccessPort for DefaultSpaceAccessAdapter {
                 .map_err(SpaceAccessError::Internal)?;
             debug!("KEK derived from passphrase and offer keyslot");
 
+            // 先 unwrap 验证 KEK + keyslot 真的匹配,再动本机持久状态。
+            // 之前的顺序是 store_kek → store_keyslot → unwrap, unwrap 失败时
+            // 走 delete_keyslot/delete_kek 回滚——但 store 是**覆盖式**写入,
+            // 此时本机原有 KEK / keyslot 已被替换,删除回滚等于把"已 setup
+            // 且能解锁"的设备打回未 setup 状态(switch_space/mod.rs 头注里
+            // 担心的"derive_master_key_for_proof 已经覆写了那种情况下设备
+            // 需要手动 factory_reset"就来源于此)。把 unwrap 抬到 store
+            // 之前,失败时直接返回, 本机原状一字不动。
+            let master_key = v1_aead::unwrap_master_key_xchacha(&kek, &wrapped_master_key.blob)
+                .map_err(|e| {
+                    error!(error = ?e, "unwrap_master_key failed");
+                    map_aead_error_for_unwrap(e)
+                })?;
+            debug!("master key unwrapped");
+
+            // unwrap 已确认 KEK + keyslot 匹配, 再覆盖本机磁盘 / keyring。
+            // 此处仍有"store_keyslot 失败 → delete_kek 回滚把刚刚覆盖的本机
+            // 原 KEK 一并删掉"的窄窗口(需要 keyring/磁盘真实 IO 失败),
+            // 影响远小于 unwrap 失败这条常见路径, 留作后续单独修复。
             if let Err(e) = self.key_material.store_kek(&scope, &kek).await {
                 error!(error = %e, "store_kek failed");
                 return Err(map_encryption_error(e));
@@ -531,23 +550,6 @@ impl SpaceAccessPort for DefaultSpaceAccessAdapter {
                 self.kek_observed.store(false, Ordering::Release);
                 return Err(map_encryption_error(e));
             }
-
-            let master_key =
-                match v1_aead::unwrap_master_key_xchacha(&kek, &wrapped_master_key.blob) {
-                    Ok(mk) => mk,
-                    Err(e) => {
-                        error!(error = ?e, "unwrap_master_key failed");
-                        if let Err(err) = self.key_material.delete_keyslot(&scope).await {
-                            warn!(error = %err, "rollback delete_keyslot failed");
-                        }
-                        if let Err(err) = self.key_material.delete_kek(&scope).await {
-                            warn!(error = %err, "rollback delete_kek failed");
-                        }
-                        self.kek_observed.store(false, Ordering::Release);
-                        return Err(map_aead_error_for_unwrap(e));
-                    }
-                };
-            debug!("master key unwrapped");
 
             // 把字节注入会话(让 sponsor 后续 verify 走 fallback 路径),
             // 同时包装一份成不透明凭据返回 joiner 侧调用方。

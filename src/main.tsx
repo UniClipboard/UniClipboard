@@ -6,9 +6,15 @@ import App from './App'
 import './i18n'
 import { store } from './store'
 import { connectDaemonWs, registerDaemonShutdownListener } from '@/lib/daemon-ws-bootstrap'
+import { initFrontendOtlp } from '@/observability/otlp'
 import { initSentry, Sentry } from '@/observability/sentry'
 
 initSentry()
+// OTLP buffer/endpoint setup. Whether records actually flush is gated by
+// `setFrontendTelemetryEnabled`, wired from SettingContext once the daemon
+// returns settings — so events queued before that point are dropped silently
+// (consistent with telemetry-off as the conservative startup default).
+initFrontendOtlp()
 
 const startupTimingOrigin = Date.now()
 const logStartupTiming = (label: string) => {

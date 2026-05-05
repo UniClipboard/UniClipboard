@@ -9,6 +9,8 @@ import { emitSettingsChanged } from '@/lib/settings-events'
 import { invokeWithTrace } from '@/lib/tauri-command'
 import { applyThemePreset } from '@/lib/theme-engine'
 import { startThemeTransition } from '@/lib/theme-transition'
+import { setFrontendTelemetryEnabled } from '@/observability/otlp'
+import { setFrontendSentryEnabled } from '@/observability/sentry'
 import type { SettingContextType, Settings } from '@/types/setting'
 
 const log = createLogger('setting-context')
@@ -258,6 +260,18 @@ export const SettingProvider: React.FC<SettingProviderProps> = ({ children }) =>
       log.error({ err }, 'Failed to sync tray language')
     })
   }, [setting?.general?.language])
+
+  // Push the user-facing telemetry toggle into both frontend observability sinks.
+  // Runs on initial settings load and on every subsequent change so toggling the
+  // switch in Settings → General takes effect without a frontend restart.
+  // Backend Sentry/OTLP use init-time gates and require a process restart —
+  // signaled separately via the PUT /settings restart_required field.
+  useEffect(() => {
+    const enabled = setting?.general?.telemetryEnabled
+    if (typeof enabled !== 'boolean') return
+    setFrontendTelemetryEnabled(enabled)
+    setFrontendSentryEnabled(enabled)
+  }, [setting?.general?.telemetryEnabled])
 
   const value: SettingContextType = {
     setting,

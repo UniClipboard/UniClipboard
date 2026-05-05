@@ -711,7 +711,9 @@
         "mvp": "MVP",
         "comingSoon": "Coming Soon",
         "notEditable": "Not Editable",
-        "globalFileSyncOff": "File sync off"
+        "globalFileSyncOff": "File sync off",
+        "experimental": "Experimental",
+        "experimentalTooltip": "This feature is experimental — its behavior may change or be unstable in future releases."
       },
       "sync": {
         "title": "Sync Settings",

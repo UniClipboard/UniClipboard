@@ -702,7 +702,9 @@
         "mvp": "MVP",
         "comingSoon": "即将推出",
         "notEditable": "不可变更",
-        "globalFileSyncOff": "文件同步已关闭"
+        "globalFileSyncOff": "文件同步已关闭",
+        "experimental": "实验性",
+        "experimentalTooltip": "该功能处于实验阶段，行为可能在后续版本中调整或不稳定。"
       },
       "sync": {
         "title": "同步设置",

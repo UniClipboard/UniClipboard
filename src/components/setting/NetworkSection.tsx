@@ -165,6 +165,7 @@ const NetworkSection: React.FC = () => {
         label={t('settings.sections.network.lanOnly.label')}
         labelExtra={<LanOnlyDisclosure />}
         description={t('settings.sections.network.lanOnly.description')}
+        experimentalKey="network.lanOnly"
       >
         <Switch
           id="lan-only-switch"
@@ -178,6 +179,7 @@ const NetworkSection: React.FC = () => {
         label={t('settings.sections.network.allowOverlayAddrs.label')}
         labelExtra={<AllowOverlayAddrsDisclosure />}
         description={t('settings.sections.network.allowOverlayAddrs.description')}
+        experimentalKey="network.allowOverlayAddrs"
       >
         <Switch
           id="allow-overlay-addrs-switch"

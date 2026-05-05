@@ -1,4 +1,6 @@
 import type { ReactNode } from 'react'
+import { isExperimentalFeature } from './experimental-features'
+import { ExperimentalBadge } from './ExperimentalBadge'
 import { cn } from '@/lib/utils'
 
 interface SettingRowProps {
@@ -7,6 +9,11 @@ interface SettingRowProps {
   description?: string
   children?: ReactNode
   className?: string
+  /**
+   * Data-driven experimental marker. When the key is registered in
+   * `experimental-features.ts`, an ExperimentalBadge is rendered next to the label.
+   */
+  experimentalKey?: string
 }
 
 export function SettingRow({
@@ -15,7 +22,10 @@ export function SettingRow({
   description,
   children,
   className,
+  experimentalKey,
 }: SettingRowProps) {
+  const showExperimental = isExperimentalFeature(experimentalKey)
+
   return (
     <div className={cn('flex items-center justify-between gap-4 px-4 py-3', className)}>
       {(label || description) && (
@@ -23,6 +33,7 @@ export function SettingRow({
           {label && (
             <div className="flex items-center gap-2">
               <h4 className="text-sm font-medium">{label}</h4>
+              {showExperimental && <ExperimentalBadge />}
               {labelExtra}
             </div>
           )}

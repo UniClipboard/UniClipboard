@@ -37,6 +37,8 @@ export interface PeersChangedPayload {
     peerId: string
     deviceName?: string | null
     connected: boolean
+    /** Phase 96 INDIC-01: 连接通道 4 态 wire 字符串。 */
+    channel?: 'direct' | 'relay' | 'offline' | 'unknown'
   }>
 }
 

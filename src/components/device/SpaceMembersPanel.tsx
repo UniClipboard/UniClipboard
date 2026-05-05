@@ -3,6 +3,7 @@ import React, { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate } from 'react-router-dom'
 import AddDeviceDialog from './AddDeviceDialog'
+import ConnectionChannelBadge from './ConnectionChannelBadge'
 import { getDeviceIcon, getIconColor } from './device-utils'
 import DeviceSettingsSheet from './DeviceSettingsSheet'
 import UnpairAlertDialog from './UnpairAlertDialog'
@@ -32,6 +33,10 @@ const SpaceMembersPanel: React.FC = () => {
     : rawSpaceMembers
   const globalAutoSyncOff = setting?.sync.autoSync === false
   const globalFileSyncOff = setting?.fileSync?.fileSyncEnabled === false
+  // Phase 96 INDIC-03:LAN-only Mode = ON ⇔ allowRelayFallback === false
+  // (反向命名唯一翻译点之一,与 NetworkSection 同源,详见 NetworkSection.tsx
+  // 文件头 Pitfall 1 注释)。
+  const lanOnlyActive = setting?.network?.allowRelayFallback === false
 
   const [selectedDeviceId, setSelectedDeviceId] = useState<string | null>(null)
   const [sheetOpen, setSheetOpen] = useState(false)
@@ -195,17 +200,29 @@ const SpaceMembersPanel: React.FC = () => {
                     {device.deviceName || t('devices.list.labels.unknownDevice')}
                   </span>
 
-                  {/* Status text */}
-                  <span
-                    className={`mt-1 text-xs ${
-                      device.connected
-                        ? 'text-emerald-600 dark:text-emerald-400'
-                        : 'text-muted-foreground'
-                    }`}
-                  >
-                    {device.connected
-                      ? t('devices.list.status.online')
-                      : t('devices.list.status.offline')}
+                  {/* Status + channel —— 在线/离线与 Phase 96 通道徽章并排,
+                      用 `·` 分隔。`channel` 由后端 `ConnectionChannelPort`
+                      单点产出,LAN-only Mode 开启时与 relay/offline 合成为
+                      "不在本地网络" 灰态。 */}
+                  <span className="mt-1 inline-flex items-center gap-1 text-xs">
+                    <span
+                      className={
+                        device.connected
+                          ? 'text-emerald-600 dark:text-emerald-400'
+                          : 'text-muted-foreground'
+                      }
+                    >
+                      {device.connected
+                        ? t('devices.list.status.online')
+                        : t('devices.list.status.offline')}
+                    </span>
+                    <span aria-hidden className="text-muted-foreground/60">
+                      ·
+                    </span>
+                    <ConnectionChannelBadge
+                      channel={device.channel ?? 'unknown'}
+                      lanOnlyActive={lanOnlyActive}
+                    />
                   </span>
                 </button>
               )

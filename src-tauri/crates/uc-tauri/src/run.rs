@@ -252,24 +252,28 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
             });
 
             // Load startup settings for tray and silent start
-            let (silent_start, initial_language) = {
+            let (silent_start, initial_language, lan_only_active) = {
                 let settings_port = runtime.settings_port();
                 match tauri::async_runtime::block_on(settings_port.load()) {
                     Ok(settings) => {
                         let silent = settings.general.silent_start;
                         let lang = settings.general.language.unwrap_or_default();
-                        (silent, lang)
+                        // Phase 96 INDIC-04:反向命名唯一翻译点之一,UI/Tray
+                        // = "LAN-only ON" ⇔ 后端 `allow_relay_fallback = false`。
+                        // 与 NetworkSection.tsx / SpaceMembersPanel.tsx 同源。
+                        let lan_only = !settings.network.allow_relay_fallback;
+                        (silent, lang, lan_only)
                     }
                     Err(e) => {
                         warn!("Failed to load settings for startup: {}, using defaults", e);
-                        (false, "en-US".to_string())
+                        (false, "en-US".to_string(), false)
                     }
                 }
             };
 
             // Initialize system tray
             let tray_state = app.state::<TrayState>();
-            if let Err(e) = tray_state.init(app.handle(), &initial_language) {
+            if let Err(e) = tray_state.init(app.handle(), &initial_language, lan_only_active) {
                 error!("Failed to initialize system tray: {}", e);
                 // Non-fatal: continue startup without tray
             }

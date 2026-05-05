@@ -21,11 +21,23 @@ interface LocalDeviceInfoResponse {
 }
 
 /**
+ * 连接通道 4 态 wire 字符串 —— Phase 96 INDIC-01。
+ *
+ * 取值由后端 `connection_channel_to_wire`（uc-application/facade/roster/mod.rs）
+ * 单点产出，前端按字符串模式匹配渲染徽章。**禁止**自行扩展取值；新增态需
+ * 同步改 Rust enum + wire 映射 + 本类型 + 渲染分支 + i18n key。
+ */
+export type ConnectionChannel = 'direct' | 'relay' | 'offline' | 'unknown'
+
+/**
  * Space member — matches `SpaceMemberDto` on the Rust side.
  *
  * `connected` 来自 `IrohPresenceAdapter.last_state`，由 ensure_reachable
  * 拨号成功 / `connection.closed()` watchdog 维护；`/paired-devices` 通过
  * `list_peer_snapshots` 聚合 `PresencePort.current_state()` 返回真实值。
+ *
+ * `channel` 是 Phase 96 INDIC-01 新增字段：连接通道 4 态。"Out of LAN"
+ * 灰态由 UI 基于 `channel + LAN-only setting` 合成，不在 wire 协议里。
  */
 export interface SpaceMember {
   peerId: string
@@ -33,6 +45,7 @@ export interface SpaceMember {
   pairingState: string
   lastSeenAtMs: number | null
   connected: boolean
+  channel: ConnectionChannel
 }
 
 /**

@@ -301,11 +301,16 @@ impl DaemonApp {
 
         let _cleanup_handle = cleanup_rate_limiter_task(security_for_cleanup, cleanup_cancel);
 
-        // Phase 3 子步骤 3:spawn mobile sync LAN listener(stub: 仅 /handshake)。
+        // Phase 3 子步骤 3 + 4:spawn mobile sync LAN listener。
         // 暂绑 127.0.0.1:42720 —— 子步骤 5.5 接 `MobileSyncSettings.lan_listen_enabled`
         // 后改为绑用户选定 LAN IP + 动态启停。当前以 child cancel token 控制
         // graceful shutdown。bind / serve 失败只 log,不阻断 daemon 主流程。
-        if let Some(endpoint_info) = self.mobile_lan_endpoint_info.clone() {
+        // 子步骤 4:listener 内部 router 通过 `MobileSyncFacade::authenticate_request`
+        // 给受保护路由套 Bearer + 签名 middleware,handshake 仍 unauthed。
+        if let (Some(endpoint_info), Some(mobile_sync_facade)) = (
+            self.mobile_lan_endpoint_info.clone(),
+            self.app_facade.mobile_sync.clone(),
+        ) {
             let lan_cancel = self.cancel.child_token();
             tokio::spawn(async move {
                 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
@@ -313,7 +318,7 @@ impl DaemonApp {
                 use uc_webserver::mobile_lan::start_mobile_lan_server;
 
                 let bind = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 42720);
-                match start_mobile_lan_server(bind, lan_cancel).await {
+                match start_mobile_lan_server(bind, lan_cancel, mobile_sync_facade).await {
                     Ok(handle) => {
                         let url = format!("http://{}", handle.bound_addr);
                         endpoint_info

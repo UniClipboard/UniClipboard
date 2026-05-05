@@ -32,6 +32,8 @@ futures = "0.3.31"
 tracing = "0.1.44"
 hmac = "0.12"
 sha2 = "0.10"
+hex = "0.4"
+subtle = "2.5"
 blake3 = "1"
 # Slice 2 Phase 2: carry ciphertext bytes across use case / facade / port
 # boundaries without extra clones. Matches uc-core + uc-infra.

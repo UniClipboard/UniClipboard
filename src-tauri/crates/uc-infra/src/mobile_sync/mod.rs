@@ -9,10 +9,12 @@ pub mod device_repo;
 pub mod download_token_store;
 pub mod endpoint_info;
 pub mod lan_probe;
+pub mod nonce_cache;
 pub mod token_minter;
 
 pub use device_repo::InMemoryMobileDeviceRepository;
 pub use download_token_store::InMemoryShortcutDownloadTokenStore;
 pub use endpoint_info::{InMemoryMobileSyncEndpointInfoAdapter, SharedEndpointInfo};
 pub use lan_probe::NetworkInterfaceLanProbe;
+pub use nonce_cache::{InMemoryNonceCache, DEFAULT_NONCE_MAX_ENTRIES, DEFAULT_NONCE_TTL_MS};
 pub use token_minter::OsRngSha256MobileTokenMinter;

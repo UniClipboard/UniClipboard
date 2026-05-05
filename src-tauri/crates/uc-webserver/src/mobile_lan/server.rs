@@ -15,9 +15,12 @@
 //!   并据此 `clear()` endpoint_info。
 
 use std::net::SocketAddr;
+use std::sync::Arc;
 
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
+
+use uc_application::facade::mobile_sync::MobileSyncFacade;
 
 use crate::mobile_lan::routes::build_router;
 
@@ -41,15 +44,16 @@ pub struct MobileLanServerHandle {
 pub async fn start_mobile_lan_server(
     bind: SocketAddr,
     cancel: CancellationToken,
+    mobile_sync_facade: Arc<MobileSyncFacade>,
 ) -> anyhow::Result<MobileLanServerHandle> {
     let listener = tokio::net::TcpListener::bind(bind).await?;
     let bound_addr = listener.local_addr()?;
     tracing::info!(
         bound_addr = %bound_addr,
-        "mobile sync LAN listener listening (Phase 3 stub: only /mobile/v1/handshake)"
+        "mobile sync LAN listener listening (handshake unauthed; protected routes guarded by Bearer + signature)"
     );
 
-    let router = build_router();
+    let router = build_router(mobile_sync_facade);
     let join_handle = tokio::spawn(async move {
         axum::serve(listener, router)
             .with_graceful_shutdown(cancel.cancelled_owned())
@@ -69,6 +73,8 @@ mod tests {
     use std::net::{IpAddr, Ipv4Addr};
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
+    use crate::mobile_lan::middleware::tests_util::test_facade_arc;
+
     fn loopback_ephemeral() -> SocketAddr {
         SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 0)
     }
@@ -76,9 +82,10 @@ mod tests {
     #[tokio::test]
     async fn binds_ephemeral_port_and_reports_actual_addr() {
         let cancel = CancellationToken::new();
-        let handle = start_mobile_lan_server(loopback_ephemeral(), cancel.clone())
-            .await
-            .expect("bind");
+        let handle =
+            start_mobile_lan_server(loopback_ephemeral(), cancel.clone(), test_facade_arc())
+                .await
+                .expect("bind");
         // ephemeral 0 必然被分配为非零端口。
         assert_ne!(handle.bound_addr.port(), 0);
         cancel.cancel();
@@ -88,9 +95,10 @@ mod tests {
     #[tokio::test]
     async fn handshake_route_responds_over_tcp() {
         let cancel = CancellationToken::new();
-        let handle = start_mobile_lan_server(loopback_ephemeral(), cancel.clone())
-            .await
-            .expect("bind");
+        let handle =
+            start_mobile_lan_server(loopback_ephemeral(), cancel.clone(), test_facade_arc())
+                .await
+                .expect("bind");
 
         // 直接走 raw TCP + HTTP/1.1,避免引入 reqwest 依赖。
         let mut stream = tokio::net::TcpStream::connect(handle.bound_addr)
@@ -120,9 +128,10 @@ mod tests {
     #[tokio::test]
     async fn cancel_drains_server_cleanly() {
         let cancel = CancellationToken::new();
-        let handle = start_mobile_lan_server(loopback_ephemeral(), cancel.clone())
-            .await
-            .expect("bind");
+        let handle =
+            start_mobile_lan_server(loopback_ephemeral(), cancel.clone(), test_facade_arc())
+                .await
+                .expect("bind");
         cancel.cancel();
         let result = handle.join_handle.await.expect("join");
         assert!(result.is_ok(), "graceful shutdown should return Ok");

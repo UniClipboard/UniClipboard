@@ -166,6 +166,9 @@ pub fn build_app_facade_from_deps(
         )),
         lan_interface_probe: Arc::new(NetworkInterfaceLanProbe::new()),
         settings: deps.settings.clone(),
+        // Phase 3 子步骤 4:进程内 nonce 滑动窗口,LAN HTTP 鉴权链路用。
+        // 60s TTL / 10000 上限,跟 SPEC §4.3 时间戳漂移容忍同窗口对称。
+        nonces: Arc::new(uc_infra::mobile_sync::InMemoryNonceCache::with_defaults()),
     }));
 
     let clipboard_restore = options.clipboard_restore.map(|restore| {

@@ -42,10 +42,11 @@ use std::sync::Arc;
 
 use uc_core::ports::{
     ClockPort, LanInterfaceProbePort, MobileDeviceRepositoryPort, MobileSyncEndpointInfoPort,
-    MobileTokenMinterPort, SettingsPort, ShortcutDownloadTokenStorePort,
+    MobileTokenMinterPort, NoncePort, SettingsPort, ShortcutDownloadTokenStorePort,
 };
 
 use crate::usecases::mobile_sync::{
+    authenticate_request::AuthenticateMobileRequestUseCase,
     get_settings::GetMobileSyncSettingsUseCase, list_devices::ListMobileDevicesUseCase,
     list_lan_interfaces::ListLanInterfacesUseCase,
     register_device::RegisterMobileShortcutDeviceUseCase, revoke_device::RevokeMobileDeviceUseCase,
@@ -54,6 +55,9 @@ use crate::usecases::mobile_sync::{
 
 // ── 对外类型 re-export（Phase 2 简化策略，详见模块文档）─────────────
 
+pub use crate::usecases::mobile_sync::authenticate_request::{
+    AuthenticateMobileRequestError, AuthenticateMobileRequestInput, MobileAuthHeaders,
+};
 pub use crate::usecases::mobile_sync::get_settings::{
     GetMobileSyncSettingsError, MobileSyncSettingsView, ShortcutInstallMethod,
     ShortcutInstallMethodOption,
@@ -87,13 +91,16 @@ pub struct MobileSyncFacadeDeps {
     pub download_tokens: Arc<dyn ShortcutDownloadTokenStorePort>,
     pub lan_interface_probe: Arc<dyn LanInterfaceProbePort>,
     pub settings: Arc<dyn SettingsPort>,
+    /// LAN HTTP 鉴权防重放滑动窗口 —— 由 `AuthenticateMobileRequestUseCase`
+    /// 在每次校验中调用一次。
+    pub nonces: Arc<dyn NoncePort>,
 }
 
 // ─── Facade ─────────────────────────────────────────────────────────────
 
 /// 移动端同步入口，线程安全，可放入 `Arc`。
 ///
-/// 内部聚合 6 个 use case；所有方法都是 thin pass-through，不做跨 use
+/// 内部聚合 7 个 use case；所有方法都是 thin pass-through，不做跨 use
 /// case 编排（按 §11.2 facade 不应再承载流程）。
 pub struct MobileSyncFacade {
     register_device: RegisterMobileShortcutDeviceUseCase,
@@ -102,6 +109,7 @@ pub struct MobileSyncFacade {
     get_settings: GetMobileSyncSettingsUseCase,
     update_settings: UpdateMobileSyncSettingsUseCase,
     list_lan_interfaces: ListLanInterfacesUseCase,
+    authenticate_request: AuthenticateMobileRequestUseCase,
 }
 
 impl MobileSyncFacade {
@@ -116,6 +124,7 @@ impl MobileSyncFacade {
             download_tokens,
             lan_interface_probe,
             settings,
+            nonces,
         } = deps;
 
         // Phase 2 stub —— Phase 3 替换为 PlistShortcutPackerService。
@@ -128,13 +137,14 @@ impl MobileSyncFacade {
                 endpoint_info.clone(),
                 download_tokens,
                 packer,
-                clock,
+                clock.clone(),
             ),
             revoke_device: RevokeMobileDeviceUseCase::new(device_repo.clone()),
-            list_devices: ListMobileDevicesUseCase::new(device_repo),
+            list_devices: ListMobileDevicesUseCase::new(device_repo.clone()),
             get_settings: GetMobileSyncSettingsUseCase::new(settings.clone(), endpoint_info),
             update_settings: UpdateMobileSyncSettingsUseCase::new(settings),
             list_lan_interfaces: ListLanInterfacesUseCase::new(lan_interface_probe),
+            authenticate_request: AuthenticateMobileRequestUseCase::new(device_repo, nonces, clock),
         }
     }
 
@@ -184,6 +194,24 @@ impl MobileSyncFacade {
     ) -> Result<Vec<LanInterfaceOption>, ListLanInterfacesError> {
         self.list_lan_interfaces.execute().await
     }
+
+    /// 校验一条 LAN HTTP 业务请求的 Bearer + timestamp + nonce + signature
+    /// 4 个 header；通过则返回对应已登记的 [`uc_core::mobile_sync::MobileDevice`]。
+    /// 错误码与 SPEC §4.3 一一对应：
+    /// - `InvalidTokenFormat` / `InvalidBodyHashFormat` / `InvalidNonceFormat`
+    ///   / `InvalidSignatureFormat` → 400 bad_request（middleware 一般早期挡住）
+    /// - `InvalidToken` → 401 invalid_token
+    /// - `TimestampDrift` → 401 timestamp_drift
+    /// - `NonceReplay` → 401 nonce_replay
+    /// - `NonceCacheFull` → 503 nonce_cache_full
+    /// - `InvalidSignature` → 401 invalid_signature
+    /// - `Storage` → 500（adapter 异常，非协议错）
+    pub async fn authenticate_request(
+        &self,
+        input: AuthenticateMobileRequestInput,
+    ) -> Result<uc_core::mobile_sync::MobileDevice, AuthenticateMobileRequestError> {
+        self.authenticate_request.execute(input).await
+    }
 }
 
 #[cfg(test)]
@@ -202,7 +230,9 @@ mod tests {
         LanEndpointInfo, LanInterface, MintedToken, MobileDevice, MobileDeviceError,
         MobileDeviceId, RegisteredDownloadToken, ShortcutDownloadToken, TokenHash,
     };
-    use uc_core::ports::{EndpointInfoError, LanInterfaceProbeError, ShortcutDownloadTokenError};
+    use uc_core::ports::{
+        EndpointInfoError, LanInterfaceProbeError, NonceError, ShortcutDownloadTokenError,
+    };
     use uc_core::settings::model::Settings;
 
     // ── 复用所有 use case 已经写过的 fake 思路 ──────────────────────
@@ -323,6 +353,20 @@ mod tests {
         }
     }
 
+    /// 永远把任意 nonce 视为新 —— register / revoke / settings 等流程
+    /// 不走鉴权，本测试中 facade 只是凑构造参数，不实际调到。
+    struct AcceptAllNonces;
+    #[async_trait]
+    impl uc_core::ports::NoncePort for AcceptAllNonces {
+        async fn record_if_new(
+            &self,
+            _nonce: &str,
+            _observed_at_ms: i64,
+        ) -> Result<bool, NonceError> {
+            Ok(true)
+        }
+    }
+
     #[derive(Default)]
     struct InMemorySettings {
         current: Mutex<Option<Settings>>,
@@ -351,6 +395,7 @@ mod tests {
             endpoint_info: Arc::new(FixedEndpoint),
             download_tokens: Arc::new(StubDownloadTokens::default()),
             lan_interface_probe: Arc::new(StubLanProbe),
+            nonces: Arc::new(AcceptAllNonces),
             settings: Arc::new(InMemorySettings::default()),
         })
     }

@@ -17,7 +17,9 @@
 //! Phase 3 子步骤 3:仅 stub `/mobile/v1/handshake`,无鉴权。子步骤 4 接
 //! 中间件,子步骤 5 接业务路由。
 
+mod middleware;
 mod routes;
 mod server;
 
+pub use middleware::AuthenticatedDevice;
 pub use server::{start_mobile_lan_server, MobileLanServerHandle};

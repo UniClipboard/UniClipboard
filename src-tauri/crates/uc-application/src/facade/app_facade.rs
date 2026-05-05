@@ -28,6 +28,7 @@ use std::sync::Arc;
 use thiserror::Error;
 use tokio::sync::broadcast;
 
+use crate::facade::mobile_sync::MobileSyncFacade;
 use crate::facade::roster::{MemberSummary, PeerSnapshotView, RosterError};
 use crate::facade::settings::{GeneralSettingsPatch, SettingsPatch};
 use crate::facade::space_setup::{EnsureReachableAllError, EnsureReachableAllReport};
@@ -74,6 +75,10 @@ pub struct AppFacade {
     /// 一份；启动期 host 调一次 `upgrade.detect_on_startup()` 决定是否触发
     /// 重新配对引导等动作。
     pub upgrade: Arc<UpgradeFacade>,
+    /// 移动端同步 facade（v1：iOS Shortcut）。`None` 表示该装配场景没有
+    /// 接入移动端 adapter（典型：纯单元测试 / 暂未接入桌面 daemon）；
+    /// 调用方拿到 `None` 应直接给用户报"功能未启用"。
+    pub mobile_sync: Option<Arc<MobileSyncFacade>>,
 }
 
 impl AppFacade {
@@ -97,6 +102,7 @@ impl AppFacade {
             device: parts.device,
             storage: parts.storage,
             upgrade: parts.upgrade,
+            mobile_sync: parts.mobile_sync,
         }
     }
 
@@ -420,4 +426,5 @@ pub struct AppFacadeParts {
     pub device: Arc<DeviceFacade>,
     pub storage: Arc<StorageFacade>,
     pub upgrade: Arc<UpgradeFacade>,
+    pub mobile_sync: Option<Arc<MobileSyncFacade>>,
 }

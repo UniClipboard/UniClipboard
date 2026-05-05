@@ -18,11 +18,16 @@ use uc_application::facade::{
     ClipboardHistoryFacadeDeps, ClipboardRestoreFacade, ClipboardRestoreFacadeDeps,
     ClipboardSyncFacade, DeviceFacade, EmitError, EncryptionFacade, EncryptionFacadeDeps,
     HostEvent, HostEventEmitterPort, InMemoryLifecycleStatus, LifecycleFacade, LifecycleFacadeDeps,
-    LifecycleStatusGateway, MemberRosterFacade, ResourceFacade, ResourceFacadeDeps,
-    SearchCoordinator, SearchCoordinatorDeps, SearchFacade, SearchFacadeDeps, SettingsFacade,
-    StorageFacade, StorageFacadeDeps, UpgradeFacade, UpgradeFacadeDeps,
+    LifecycleStatusGateway, MemberRosterFacade, MobileSyncFacade, MobileSyncFacadeDeps,
+    ResourceFacade, ResourceFacadeDeps, SearchCoordinator, SearchCoordinatorDeps, SearchFacade,
+    SearchFacadeDeps, SettingsFacade, StorageFacade, StorageFacadeDeps, UpgradeFacade,
+    UpgradeFacadeDeps,
 };
 use uc_core::clipboard::ClipboardIntegrationMode;
+use uc_infra::mobile_sync::{
+    InMemoryMobileDeviceRepository, InMemoryMobileSyncEndpointInfoAdapter,
+    InMemoryShortcutDownloadTokenStore, NetworkInterfaceLanProbe, OsRngSha256MobileTokenMinter,
+};
 
 use crate::assembly::get_storage_paths;
 use crate::space_setup::{build_space_setup_assembly, SpaceSetupAssembly};
@@ -138,6 +143,27 @@ pub fn build_app_facade_from_deps(
     lifecycle_status: Arc<dyn LifecycleStatusGateway>,
     options: AppFacadeAssemblyOptions,
 ) -> Arc<AppFacade> {
+    // Mobile-sync facade 自动装配 —— 与 lifecycle / encryption / settings 同
+    // 待遇，所有桌面入口（daemon / CLI）都自动带上，不需要 caller 传。
+    //
+    // Phase 2 适配器形态：4 个 in-memory + 1 个 OS 真实探测
+    // (`NetworkInterfaceLanProbe`)。`endpoint_info` 这个 adapter 暂时无人写
+    // 入，意味着 `current_lan_endpoint()` 永远返回 `None` —— register flow
+    // 会以 `LanListenerDisabled` 失败。Phase 3 接入 daemon LAN listener
+    // 时把 listener 启停信号反向喂回 `InMemoryMobileSyncEndpointInfoAdapter`
+    // 的 `set` / `clear`，这一处 wiring 即可让 register flow 端到端跑通。
+    let mobile_sync_facade = Arc::new(MobileSyncFacade::new(MobileSyncFacadeDeps {
+        clock: deps.system.clock.clone(),
+        token_minter: Arc::new(OsRngSha256MobileTokenMinter),
+        device_repo: Arc::new(InMemoryMobileDeviceRepository::new()),
+        endpoint_info: Arc::new(InMemoryMobileSyncEndpointInfoAdapter::new()),
+        download_tokens: Arc::new(InMemoryShortcutDownloadTokenStore::new(
+            deps.system.clock.clone(),
+        )),
+        lan_interface_probe: Arc::new(NetworkInterfaceLanProbe::new()),
+        settings: deps.settings.clone(),
+    }));
+
     let clipboard_restore = options.clipboard_restore.map(|restore| {
         Arc::new(ClipboardRestoreFacade::new(ClipboardRestoreFacadeDeps {
             entry_repo: deps.clipboard.clipboard_entry_repo.clone(),
@@ -206,6 +232,7 @@ pub fn build_app_facade_from_deps(
             app_version_state: deps.app_version_state.clone(),
             setup_status: deps.setup_status.clone(),
         })),
+        mobile_sync: Some(mobile_sync_facade),
     }))
 }
 

@@ -10,6 +10,7 @@ pub mod device;
 pub mod file_transfer;
 pub mod fs;
 pub mod migration_state;
+pub mod mobile_sync;
 pub mod network;
 pub mod pairing;
 pub mod rendezvous;

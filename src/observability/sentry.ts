@@ -12,6 +12,25 @@ import { redactSensitiveArgs } from '@/observability/redaction'
 
 const sentryEnabled = Boolean(import.meta.env.VITE_SENTRY_DSN)
 
+/**
+ * Runtime telemetry gate, mirrors `general.telemetryEnabled`.
+ *
+ * Default `true` so events emitted before settings finish loading still flow
+ * to Sentry — losing the first few hundred ms of startup errors would defeat
+ * the point of frontend error tracking. SettingContext flips this to the
+ * persisted user preference as soon as the daemon returns settings, and on
+ * every subsequent update.
+ *
+ * Backend equivalent: `tracing_subscriber::init` reads telemetry_enabled
+ * from disk and gates Sentry/OTLP at init time (requires restart). The
+ * frontend can do better — runtime toggle via beforeSend hooks below.
+ */
+let sentryRuntimeEnabled = true
+
+export function setFrontendSentryEnabled(enabled: boolean): void {
+  sentryRuntimeEnabled = enabled
+}
+
 const getTauriPlatform = (): string => {
   if (typeof window === 'undefined' || !('__TAURI__' in window)) {
     return 'unknown'
@@ -30,6 +49,9 @@ export function initSentry(): void {
   }
 
   const beforeSend: (event: ErrorEvent, hint: EventHint) => ErrorEvent | null = (event, _hint) => {
+    if (!sentryRuntimeEnabled) {
+      return null
+    }
     const type = event.exception?.values?.[0]?.type
     if (type === 'ResizeObserver loop limit exceeded') {
       return null
@@ -41,6 +63,9 @@ export function initSentry(): void {
   }
 
   const beforeBreadcrumb = (breadcrumb: Sentry.Breadcrumb): Sentry.Breadcrumb | null => {
+    if (!sentryRuntimeEnabled) {
+      return null
+    }
     if (breadcrumb.data) {
       breadcrumb.data = redactSensitiveArgs(breadcrumb.data) as Record<string, unknown>
     }
@@ -71,6 +96,9 @@ export function initSentry(): void {
     beforeSend,
     beforeBreadcrumb,
     beforeSendLog: log => {
+      if (!sentryRuntimeEnabled) {
+        return null
+      }
       if (log.attributes) {
         log.attributes = redactSensitiveArgs(log.attributes) as Record<string, unknown>
       }

@@ -150,7 +150,7 @@ Popover 标题（顶部一行 `text-sm font-medium`）：
 
 | Key | zh-CN | en-US |
 |-----|-------|-------|
-| `settings.sections.network.lanOnly.saveError` | 保存失败：%{message}。已恢复到上一次的设置。 | Save failed: %{message}. Reverted to the previous setting. |
+| `settings.sections.network.lanOnly.saveError` | 保存失败：{{message}}。已恢复到上一次的设置。 | Save failed: {{message}}. Reverted to the previous setting. |
 
 ### 标准 Copywriting 契约总览（gsd-ui-checker dimension 1）
 

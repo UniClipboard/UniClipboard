@@ -651,7 +651,7 @@ let _ = crate::commands::restart::PROCESS_STARTED_AT.set(SystemTime::now());
     "label": "LAN-only 模式",
     "description": "关闭公网中继回落，仅通过同局域网完成设备同步。重启后生效。",
     "infoIconAriaLabel": "查看 LAN-only 模式开启后仍走外网的请求清单",
-    "saveError": "保存失败：%{message}。已恢复到上一次的设置。",
+    "saveError": "保存失败：{{message}}。已恢复到上一次的设置。",
     "disclosure": {
       "title": "LAN-only 开启后仍会走外网的请求",
       "intro": "以下 4 类请求由独立模块控制，不受 LAN-only 影响：",

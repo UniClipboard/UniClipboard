@@ -72,11 +72,9 @@ human_verification:
 
 | Must-have | 验证 | 结果 |
 |---|---|---|
-| Tauri command `restart_app` 调 `app.restart()` | `src-tauri/crates/uc-tauri/src/commands/restart.rs:62-83` | ✓ VERIFIED |
-| Tauri command `get_restart_state` 返回 RestartState（millis） | `src-tauri/crates/uc-tauri/src/commands/restart.rs:91-114` | ✓ VERIFIED |
-| `RestartState` serde camelCase | `restart.rs:25-30` `#[serde(rename_all = "camelCase")]` | ✓ VERIFIED |
-| `PROCESS_STARTED_AT: OnceLock<SystemTime>` 在 setup 早期写入 | `restart.rs:17` 定义 + `run.rs:147` `PROCESS_STARTED_AT.set(SystemTime::now())` | ✓ VERIFIED |
-| invoke_handler 注册两条 commands | `run.rs:431-432` | ✓ VERIFIED |
+| Tauri command `restart_app` 调 `app.restart()` | `src-tauri/crates/uc-tauri/src/commands/restart.rs:31-52` | ✓ VERIFIED |
+| invoke_handler 注册 `restart_app` | `run.rs:434` `crate::commands::restart::restart_app` | ✓ VERIFIED |
+| ~~`get_restart_state` / `RestartState` / `PROCESS_STARTED_AT`~~ | **SUPERSEDED** — 已移除（commit 7e49605a），原因：mtime 无法区分 settings.json 中具体改动的字段，会在用户改其它设置后误报 LAN-only pending；改为前端 in-memory pending（仅当前 session 切换后显示）。见 `restart.rs` 历史注记段。 | — |
 | Pitfall 5 边界 fence — 无 daemon HTTP / telemetry / OTLP / pkarr / auto-update 引用 | `grep -nE "daemon_client\|admin/restart\|telemetry_enabled\|otlp" restart.rs` 0 匹配 | ✓ VERIFIED |
 | 6/6 单元测试 PASS（5 helper + 1 fence） | `cargo test -p uc-tauri --lib commands::restart::tests` 6 passed | ✓ VERIFIED |
 
@@ -125,9 +123,9 @@ human_verification:
 | 用户切 Switch → 立即 setPending(true) 乐观显示（D-D2） | `NetworkSection.tsx:121-128` handleSwitchChange | ✓ VERIFIED |
 | useDebounce 500ms 后才 PUT（Pitfall 10 防 disk I/O 爆） | `NetworkSection.tsx:59` + Effect 3 line 90-118 | ✓ VERIFIED |
 | 持久 inline RestartBanner（不是 toast） | `NetworkSection.tsx:155-161` 嵌入 SettingGroup 内部 | ✓ VERIFIED |
-| 「立即重启」按钮调 `invokeWithTrace<void>('restart_app')` | `NetworkSection.tsx:131-142` handleRestart | ✓ VERIFIED |
-| mount 时调 `invokeWithTrace<RestartState>('get_restart_state')` 推导 pending（D-D1） | `NetworkSection.tsx:69-87` Effect 2 | ✓ VERIFIED |
-| PUT 失败回滚 Switch + saveError inline 5s 自动消失 | `NetworkSection.tsx:107-116` catch + setTimeout(5000) | ✓ VERIFIED |
+| 「立即重启」按钮调 `invokeWithTrace<void>('restart_app')` | `NetworkSection.tsx:104-116` handleRestart | ✓ VERIFIED |
+| ~~mount 时调 `invokeWithTrace<RestartState>('get_restart_state')` 推导 pending（D-D1）~~ | **SUPERSEDED** — D-D1 跨 session pending 改为 in-memory only（commit 7e49605a）；mount 时不再调 `get_restart_state`。见 `NetworkSection.tsx` 顶部 jsdoc。 | — |
+| PUT 失败回滚 Switch + saveError inline 5s 自动消失 | `NetworkSection.tsx:81-89` catch + setTimeout(5000) | ✓ VERIFIED |
 | 18/18 集成测试 PASS（14 行为 + 4 ROADMAP fence） | `bunx vitest --run NetworkSection.test.tsx` 18 passed in 466ms | ✓ VERIFIED |
 
 ### 跨 Plan Pitfall 防御 fence
@@ -181,7 +179,7 @@ human_verification:
 | 3 | 持久 RestartBanner（NETSET-05 + Pitfall 10） | ✓ PASS | 切换开关后 Banner 立即出现；不会自动消失；500ms 后 settings.json 写入 `allow_relay_fallback: false` |
 | **4** | **重启循环（NETSET-04 / D-B2 closing-loop）** | **✗ FAIL** | **见 Gaps 段落** |
 | 5 | 反向命名验证（Pitfall 1） | ✓ PASS | settings.json `allow_relay_fallback: false` 与 UI Switch=ON 对齐（注：daemon log 因 dev 模式 restart 失败未起，未能直接确认 `RelayMode::Disabled` 启动 trace；但写盘正确，反向命名链路 wire 层验证 OK） |
-| 6 | 跨 session pending（D-D1） | ⊘ NOT-TESTED | 因 UAT #4 失败导致 dev 进程未能 relaunch，无法在新进程内验证 mtime > processStartedAt 推导路径；但 jsdom 单元测试 Test 9 / 10 已覆盖该逻辑（双向 PASS） |
+| 6 | ~~跨 session pending（D-D1）~~ | **SUPERSEDED** | 已改为 in-memory pending（commit 7e49605a）：mtime 跨 session 推导无法区分 settings.json 中改了哪个字段，会误报；改为切换瞬间 setPending(true)、不持久化。jsdom 单元测试 Test 9 / 10 现作为 fence — 即便 mock IPC 返回历史「会触发 pending」的 payload，banner 仍不应可见。 |
 
 ### UAT #4 失败详情（用户原文）
 

@@ -48,6 +48,7 @@ use uc_infra::network::iroh::{
 // having to `use uc_infra` themselves.
 pub use uc_infra::network::iroh::IrohNodeConfig;
 use uc_infra::security::Sha256IdentityFingerprintFactory;
+use uc_platform::file_secure_storage::FileSecureStorage;
 
 use crate::assembly::WiredDependencies;
 
@@ -217,8 +218,30 @@ pub async fn build_space_setup_assembly(
     // fresh one here rather than down-casting through `dyn` because
     // `IrohIdentityStore::new` takes the concrete factory trait object and
     // we'd have to re-wrap anyway.
+    //
+    // **Storage backend separation**: iroh 长期 Ed25519 设备密钥走独立的
+    // `FileSecureStorage`(落地 `<app_data>/iroh-identity[_<profile>]/`),不
+    // 复用 `deps.security.secure_storage`(即 KEK 用的系统 keychain)。
+    //
+    // Why: `IrohNodeBuilder::bind` 在应用启动期被调用,会 `ensure_secret_key`
+    // → `secure_storage.get/set("iroh-identity:v1")`。如果用 keychain 后端,
+    // 这条路径会在用户**没有任何操作**(没点 unlock、没启用 auto-unlock、
+    // 没设置加密口令)的情况下触发 macOS keychain 弹窗,违反"keychain 只
+    // 在用户解锁/初始化加密时访问"的边界规则。
+    //
+    // 设备身份密钥不是用户秘密,本身只能用于 P2P 网络握手身份伪冒(且
+    // 攻击者还需要 KEK 才能解密剪贴板内容),用 0600 文件 + FileVault
+    // 全盘加密保护已足够,与 SSH/IPFS/Tailscale 等同类工具实践一致。
+    //
+    // Migration: 老用户 keychain 中残留的 `iroh-identity:v1` 条目**不动**
+    // (不读、不删,避免触发新的 keychain 弹窗);文件不存在 →
+    // `IrohIdentityStore::ensure_secret_key` 生成新身份 → 老用户在升级后
+    // iroh 设备身份重置,需要重新与 peer 配对一次。
+    let iroh_identity_storage: Arc<dyn uc_core::ports::SecureStoragePort> = Arc::new(
+        FileSecureStorage::with_base_dir(wired.iroh_identity_dir.clone()),
+    );
     let identity_store = Arc::new(IrohIdentityStore::new(
-        Arc::clone(&deps.security.secure_storage),
+        iroh_identity_storage,
         Arc::new(Sha256IdentityFingerprintFactory),
     ));
 

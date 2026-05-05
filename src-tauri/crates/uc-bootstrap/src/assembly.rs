@@ -157,6 +157,14 @@ pub struct WiredDependencies {
     /// Slice 3 Phase 1:iroh-blobs store 目录。由 `SpaceSetupAssembly`
     /// 装配 iroh blob handler 时使用。
     pub iroh_blob_store_dir: PathBuf,
+    /// iroh 长期 Ed25519 设备身份的文件存储根目录(`<app_data>/iroh-identity[_<profile>]/`)。
+    ///
+    /// 与 KEK 的系统 keychain 隔离:iroh 设备身份是网络栈的"我是哪台机器"
+    /// 标识,**不是**用户秘密;不应跟用户口令派生密钥共用同一条 macOS
+    /// keychain 条目,否则启动期 `IrohNodeBuilder::bind` 会在用户没有任何
+    /// 操作前触发 keychain 弹窗(违反"只在用户解锁/初始化时访问 keychain"
+    /// 的边界规则)。
+    pub iroh_identity_dir: PathBuf,
     /// Slice 3 Phase 1:明文 hash → 密文 digest 去重缓存。
     pub blob_reference_repo: Arc<dyn BlobReferenceRepositoryPort>,
     /// Switch-space 重加密迁移：跨重启的阶段持久化 port，落地为
@@ -799,6 +807,17 @@ pub fn wire_dependencies(config: &AppConfig) -> WiringResult<WiredDependencies> 
     let blob_reference_repo_for_wiring = Arc::clone(&infra.blob_reference_repo);
     let iroh_blob_store_dir_for_wiring =
         apply_profile_suffix(paths.app_data_root_dir.join("iroh-blobs"));
+    // iroh 设备身份的文件存储目录。先 mkdir,确保 `FileSecureStorage::with_base_dir`
+    // 在首次写身份时不会因目录不存在而失败。`apply_profile_suffix` 与
+    // `iroh_blob_store_dir` 用同一规则,保证 multi-profile dev 隔离。
+    let iroh_identity_dir_for_wiring =
+        apply_profile_suffix(paths.app_data_root_dir.join("iroh-identity"));
+    std::fs::create_dir_all(&iroh_identity_dir_for_wiring).map_err(|e| {
+        WiringError::SecureStorageInit(format!(
+            "failed to create iroh-identity dir {}: {e}",
+            iroh_identity_dir_for_wiring.display()
+        ))
+    })?;
 
     // Switch-space migration ports for SpaceSetupFacade. Same WiredDependencies
     // bypass pattern as `peer_addr_repo` — consumer lives in uc-application.
@@ -898,6 +917,7 @@ pub fn wire_dependencies(config: &AppConfig) -> WiringResult<WiredDependencies> 
         trusted_peer_repo: trusted_peer_repo_for_wiring,
         peer_addr_repo: peer_addr_repo_for_wiring,
         iroh_blob_store_dir: iroh_blob_store_dir_for_wiring,
+        iroh_identity_dir: iroh_identity_dir_for_wiring,
         blob_reference_repo: blob_reference_repo_for_wiring,
         migration_state: migration_state_for_wiring,
         key_migration: key_migration_for_wiring,

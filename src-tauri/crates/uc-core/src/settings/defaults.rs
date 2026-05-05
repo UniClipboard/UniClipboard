@@ -230,6 +230,7 @@ impl Default for NetworkSettings {
     ///
     /// Defaults:
     /// - `allow_relay_fallback`: true
+    /// - `allow_overlay_network_addrs`: false
     ///
     // 默认 true = 允许 fallback。
     // 改成 false 会让所有跨网段老用户突然离线，属于 breaking change。
@@ -237,6 +238,7 @@ impl Default for NetworkSettings {
     fn default() -> Self {
         Self {
             allow_relay_fallback: true,
+            allow_overlay_network_addrs: false,
         }
     }
 }
@@ -336,5 +338,42 @@ mod tests {
         let json = r#"{ "network": { "allow_relay_fallback": true } }"#;
         let s: Settings = serde_json::from_str(json).expect("parse explicit true");
         assert!(s.network.allow_relay_fallback);
+    }
+
+    /// 默认值：默认过滤 overlay 网络地址，保持 v0.6.x 起的现行行为。
+    #[test]
+    fn network_settings_default_filters_overlay_addrs() {
+        let n = NetworkSettings::default();
+        assert!(
+            !n.allow_overlay_network_addrs,
+            "NetworkSettings::default().allow_overlay_network_addrs MUST be false"
+        );
+    }
+
+    /// 老 settings.json 缺 `allow_overlay_network_addrs` 字段时回填默认 false。
+    #[test]
+    fn old_settings_json_without_overlay_field_falls_back_to_default() {
+        let json = r#"{ "network": { "allow_relay_fallback": true } }"#;
+        let s: Settings = serde_json::from_str(json).expect("parse old network section");
+        assert!(
+            !s.network.allow_overlay_network_addrs,
+            "missing allow_overlay_network_addrs MUST default to false"
+        );
+    }
+
+    /// 显式 true 必须保留（专业用户主动开启）。
+    #[test]
+    fn explicit_allow_overlay_network_addrs_true_is_preserved() {
+        let json = r#"{ "network": { "allow_relay_fallback": true, "allow_overlay_network_addrs": true } }"#;
+        let s: Settings = serde_json::from_str(json).expect("parse explicit overlay true");
+        assert!(s.network.allow_overlay_network_addrs);
+    }
+
+    /// 显式 false 必须保留（双向覆盖）。
+    #[test]
+    fn explicit_allow_overlay_network_addrs_false_is_preserved() {
+        let json = r#"{ "network": { "allow_relay_fallback": true, "allow_overlay_network_addrs": false } }"#;
+        let s: Settings = serde_json::from_str(json).expect("parse explicit overlay false");
+        assert!(!s.network.allow_overlay_network_addrs);
     }
 }

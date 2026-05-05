@@ -199,6 +199,7 @@ async fn restart_required_truth_table() {
     let payload_some_false = SettingsPatchDto {
         network: Some(NetworkSettingsPatchDto {
             allow_relay_fallback: Some(false),
+            ..Default::default()
         }),
         ..Default::default()
     };
@@ -211,6 +212,7 @@ async fn restart_required_truth_table() {
     let payload_some_true = SettingsPatchDto {
         network: Some(NetworkSettingsPatchDto {
             allow_relay_fallback: Some(true),
+            ..Default::default()
         }),
         ..Default::default()
     };

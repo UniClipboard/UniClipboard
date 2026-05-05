@@ -203,10 +203,16 @@ pub struct FileSyncSettingsDto {
 /// 反向命名规则（Pitfall 1）：业务正向语义 `allow_relay_fallback`，
 /// 不在此层重命名为 `lan_only` 或类似镜像。wire 字段 = `allowRelayFallback`
 /// （camelCase 自动转换）。取反唯一发生在 `uc-bootstrap/src/network_policy.rs`。
+///
+/// `allow_overlay_network_addrs` 控制是否把 VPN/overlay 类虚拟网卡 IP（CGNAT
+/// 100.64.0.0/10、Tailscale ULA fd7a:115c:a1e0::/48）作为 iroh 直连候选发布
+/// 给对端。默认 `false`（过滤）。专业用户在两端都接入同一 VPN 时可开启。
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct NetworkSettingsDto {
     pub allow_relay_fallback: bool,
+    #[serde(default)]
+    pub allow_overlay_network_addrs: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
@@ -317,6 +323,7 @@ pub struct FileSyncSettingsPatchDto {
 #[serde(rename_all = "camelCase")]
 pub struct NetworkSettingsPatchDto {
     pub allow_relay_fallback: Option<bool>,
+    pub allow_overlay_network_addrs: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -496,6 +503,7 @@ impl From<core::NetworkSettings> for NetworkSettingsDto {
     fn from(value: core::NetworkSettings) -> Self {
         Self {
             allow_relay_fallback: value.allow_relay_fallback,
+            allow_overlay_network_addrs: value.allow_overlay_network_addrs,
         }
     }
 }
@@ -593,28 +601,44 @@ mod network_dto_tests {
     fn dto_serializes_camel_case_wire() {
         let dto = NetworkSettingsDto {
             allow_relay_fallback: true,
+            allow_overlay_network_addrs: false,
         };
         let json = serde_json::to_string(&dto).expect("serialize");
-        assert_eq!(json, r#"{"allowRelayFallback":true}"#);
+        assert_eq!(
+            json,
+            r#"{"allowRelayFallback":true,"allowOverlayNetworkAddrs":false}"#
+        );
     }
 
     #[test]
     fn dto_deserializes_camel_case_wire() {
-        let json = r#"{"allowRelayFallback":false}"#;
+        let json = r#"{"allowRelayFallback":false,"allowOverlayNetworkAddrs":true}"#;
         let dto: NetworkSettingsDto = serde_json::from_str(json).expect("deserialize");
         assert!(!dto.allow_relay_fallback);
+        assert!(dto.allow_overlay_network_addrs);
+    }
+
+    /// 旧 wire（无 allowOverlayNetworkAddrs 字段）仍可反序列化，回填 false。
+    #[test]
+    fn dto_deserializes_legacy_wire_without_overlay_field() {
+        let json = r#"{"allowRelayFallback":true}"#;
+        let dto: NetworkSettingsDto = serde_json::from_str(json).expect("deserialize legacy");
+        assert!(dto.allow_relay_fallback);
+        assert!(!dto.allow_overlay_network_addrs);
     }
 
     #[test]
     fn from_core_passes_through_business_semantics() {
         let core_value = core::NetworkSettings {
             allow_relay_fallback: false,
+            allow_overlay_network_addrs: true,
         };
         let dto: NetworkSettingsDto = core_value.into();
         assert!(
             !dto.allow_relay_fallback,
             "DTO MUST NOT invert semantics (Pitfall 1)"
         );
+        assert!(dto.allow_overlay_network_addrs);
     }
 
     #[test]

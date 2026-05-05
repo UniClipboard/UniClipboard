@@ -169,6 +169,7 @@ pub fn settings_patch_from_dto(patch: SettingsPatchDto) -> app_settings::Setting
             .network
             .map(|network| app_settings::NetworkSettingsPatch {
                 allow_relay_fallback: network.allow_relay_fallback,
+                allow_overlay_network_addrs: network.allow_overlay_network_addrs,
             }),
     }
 }
@@ -231,6 +232,7 @@ pub fn settings_view_to_dto(value: app_settings::SettingsView) -> SettingsDto {
         },
         network: NetworkSettingsDto {
             allow_relay_fallback: value.network.allow_relay_fallback,
+            allow_overlay_network_addrs: value.network.allow_overlay_network_addrs,
         },
     }
 }

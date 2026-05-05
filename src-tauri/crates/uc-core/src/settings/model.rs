@@ -195,6 +195,20 @@ pub struct NetworkSettings {
     /// 业务正向语义：UI "LAN-only Mode = ON" → 此字段 = `false`。
     #[serde(default = "default_allow_relay_fallback")]
     pub allow_relay_fallback: bool,
+
+    /// 是否允许把 VPN / overlay 类虚拟网卡地址（CGNAT 100.64.0.0/10、
+    /// Tailscale ULA fd7a:115c:a1e0::/48）作为 iroh 直连候选。
+    ///
+    /// 默认 `false`：默认过滤，避免对端不在同一 tailnet 时把死候选发给 peer，
+    /// 拖慢 path-validation、占用 PathId 预算。两端确实都接入同一 VPN
+    /// （如 Tailscale）希望让 iroh 借用该 overlay 网络互联时改为 `true`。
+    ///
+    /// 注意：`198.18.0.0/15`（Clash fake-ip）、`169.254.0.0/16`（IPv4 link-local）
+    /// 与本字段无关，永远过滤。
+    ///
+    /// 修改后需重启 daemon 生效（iroh endpoint bind-time 常量）。
+    #[serde(default = "default_allow_overlay_network_addrs")]
+    pub allow_overlay_network_addrs: bool,
 }
 
 // 默认 true = 允许 fallback。
@@ -202,6 +216,13 @@ pub struct NetworkSettings {
 // 修改默认值前请先 grep `LAN-only Mode` 文档与 changelog。
 fn default_allow_relay_fallback() -> bool {
     true
+}
+
+// 默认 false = 过滤虚拟网卡候选（保持 v0.6.x 起的现行行为）。
+// 改成 true 会让 100.64/10 + fd7a:115c:a1e0::/48 重新出现在
+// peer 候选列表里，可能引入对端不可达的死候选拖慢 path-race。
+fn default_allow_overlay_network_addrs() -> bool {
+    false
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

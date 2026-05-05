@@ -136,6 +136,7 @@ pub struct FileSyncSettingsView {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NetworkSettingsView {
     pub allow_relay_fallback: bool,
+    pub allow_overlay_network_addrs: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -227,6 +228,7 @@ pub struct FileSyncSettingsPatch {
 #[derive(Debug, Clone, Default)]
 pub struct NetworkSettingsPatch {
     pub allow_relay_fallback: Option<bool>,
+    pub allow_overlay_network_addrs: Option<bool>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -457,6 +459,7 @@ impl From<core::Settings> for SettingsView {
             },
             network: NetworkSettingsView {
                 allow_relay_fallback: value.network.allow_relay_fallback,
+                allow_overlay_network_addrs: value.network.allow_overlay_network_addrs,
             },
         }
     }
@@ -585,6 +588,9 @@ pub(crate) fn apply_settings_patch(
         if let Some(v) = network.allow_relay_fallback {
             existing.network.allow_relay_fallback = v;
         }
+        if let Some(v) = network.allow_overlay_network_addrs {
+            existing.network.allow_overlay_network_addrs = v;
+        }
     }
 
     existing
@@ -620,6 +626,16 @@ mod network_settings_apply_patch_tests {
         let mut s = Settings::default();
         s.network = NetworkSettings {
             allow_relay_fallback: allow,
+            allow_overlay_network_addrs: false,
+        };
+        s
+    }
+
+    fn baseline_with_overlay(allow_overlay: bool) -> Settings {
+        let mut s = Settings::default();
+        s.network = NetworkSettings {
+            allow_relay_fallback: true,
+            allow_overlay_network_addrs: allow_overlay,
         };
         s
     }
@@ -642,9 +658,7 @@ mod network_settings_apply_patch_tests {
     fn apply_patch_with_empty_network_section_keeps_existing() {
         let existing = baseline_with_network(true);
         let patch = SettingsPatch {
-            network: Some(NetworkSettingsPatch {
-                allow_relay_fallback: None,
-            }),
+            network: Some(NetworkSettingsPatch::default()),
             ..Default::default()
         };
         let result = apply_settings_patch(existing, patch);
@@ -661,6 +675,7 @@ mod network_settings_apply_patch_tests {
         let patch = SettingsPatch {
             network: Some(NetworkSettingsPatch {
                 allow_relay_fallback: Some(false),
+                ..Default::default()
             }),
             ..Default::default()
         };
@@ -675,6 +690,7 @@ mod network_settings_apply_patch_tests {
         let patch = SettingsPatch {
             network: Some(NetworkSettingsPatch {
                 allow_relay_fallback: Some(true),
+                ..Default::default()
             }),
             ..Default::default()
         };
@@ -692,5 +708,59 @@ mod network_settings_apply_patch_tests {
             !view.network.allow_relay_fallback,
             "view 必须保留业务正向语义，不取反"
         );
+    }
+
+    /// allow_overlay_network_addrs：patch 缺字段时不抹掉已存在值。
+    #[test]
+    fn apply_patch_with_no_overlay_field_keeps_existing() {
+        let existing = baseline_with_overlay(true);
+        let patch = SettingsPatch {
+            network: Some(NetworkSettingsPatch::default()),
+            ..Default::default()
+        };
+        let result = apply_settings_patch(existing, patch);
+        assert!(
+            result.network.allow_overlay_network_addrs,
+            "inner None must keep existing true"
+        );
+    }
+
+    /// allow_overlay_network_addrs：显式 Some(true) 写入生效。
+    #[test]
+    fn apply_patch_with_overlay_explicit_true_writes_through() {
+        let existing = baseline_with_overlay(false);
+        let patch = SettingsPatch {
+            network: Some(NetworkSettingsPatch {
+                allow_overlay_network_addrs: Some(true),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let result = apply_settings_patch(existing, patch);
+        assert!(result.network.allow_overlay_network_addrs);
+    }
+
+    /// allow_overlay_network_addrs：显式 Some(false) 双向覆盖。
+    #[test]
+    fn apply_patch_with_overlay_explicit_false_writes_through() {
+        let existing = baseline_with_overlay(true);
+        let patch = SettingsPatch {
+            network: Some(NetworkSettingsPatch {
+                allow_overlay_network_addrs: Some(false),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let result = apply_settings_patch(existing, patch);
+        assert!(!result.network.allow_overlay_network_addrs);
+    }
+
+    /// View 透明搬运 allow_overlay_network_addrs。
+    #[test]
+    fn from_core_settings_passes_through_overlay_field() {
+        let mut s = Settings::default();
+        s.network.allow_overlay_network_addrs = true;
+        let view: SettingsView = s.into();
+        assert!(view.network.allow_overlay_network_addrs);
     }
 }

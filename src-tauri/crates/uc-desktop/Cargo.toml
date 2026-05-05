@@ -13,7 +13,6 @@ path = "src/lib.rs"
 uc-bootstrap = { path = "../uc-bootstrap" }
 uc-application = { path = "../uc-application" }
 uc-core = { path = "../uc-core" }
-uc-infra = { path = "../uc-infra" }
 uc-platform = { path = "../uc-platform", features = ["test-helpers"] }
 uc-observability = { path = "../uc-observability" }
 uc-daemon-contract = { path = "../uc-daemon-contract" }
@@ -28,9 +27,7 @@ serde_json = "1"
 anyhow = "1.0"
 async-trait = "0.1"
 chrono = { version = "0.4", features = ["serde"] }
-blake3 = "1"
 tracing = "0.1"
-futures-util = "0.3"
 url = "2"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "rustls-tls-webpki-roots"] }
 

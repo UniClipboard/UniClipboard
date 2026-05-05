@@ -11,8 +11,6 @@ path = "src/lib.rs"
 
 [dependencies]
 # Workspace crates
-uc-application = { path = "../uc-application" }
-uc-core = { path = "../uc-core" }
 uc-daemon-contract = { path = "../uc-daemon-contract" }
 uc-daemon-local = { path = "../uc-daemon-local" }
 
@@ -35,7 +33,6 @@ url = "2"
 
 # Error handling + logging
 anyhow = "1.0"
-thiserror = "2.0"
 tracing = "0.1"
 
 [dev-dependencies]

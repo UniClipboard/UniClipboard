@@ -366,26 +366,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "arboard"
-version = "3.6.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0348a1c054491f4bfe6ab86a7b6ab1e44e45d899005de92f58b3df180b36ddaf"
-dependencies = [
- "clipboard-win",
- "image",
- "log",
- "objc2",
- "objc2-app-kit",
- "objc2-core-foundation",
- "objc2-core-graphics",
- "objc2-foundation",
- "parking_lot",
- "percent-encoding",
- "windows-sys 0.52.0",
- "x11rb",
-]
-
-[[package]]
 name = "arg_enum_proc_macro"
 version = "0.3.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -743,7 +723,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "edca88bc138befd0323b20752846e6587272d3b03b0343c8ea28a6f819e6e71f"
 dependencies = [
  "async-trait",
- "axum-core 0.4.5",
+ "axum-core",
  "base64 0.22.1",
  "bytes",
  "futures-util",
@@ -753,7 +733,7 @@ dependencies = [
  "hyper",
  "hyper-util",
  "itoa",
- "matchit 0.7.3",
+ "matchit",
  "memchr",
  "mime",
  "percent-encoding",
@@ -771,31 +751,6 @@ dependencies = [
  "tower-layer",
  "tower-service",
  "tracing",
-]
-
-[[package]]
-name = "axum"
-version = "0.8.8"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8b52af3cb4058c895d37317bb27508dccc8e5f2d39454016b297bf4a400597b8"
-dependencies = [
- "axum-core 0.5.6",
- "bytes",
- "futures-util",
- "http 1.4.0",
- "http-body",
- "http-body-util",
- "itoa",
- "matchit 0.8.4",
- "memchr",
- "mime",
- "percent-encoding",
- "pin-project-lite",
- "serde_core",
- "sync_wrapper",
- "tower",
- "tower-layer",
- "tower-service",
 ]
 
 [[package]]
@@ -817,24 +772,6 @@ dependencies = [
  "tower-layer",
  "tower-service",
  "tracing",
-]
-
-[[package]]
-name = "axum-core"
-version = "0.5.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "08c78f31d7b1291f7ee735c1c6780ccde7785daae9a9206026862dab7d8792d1"
-dependencies = [
- "bytes",
- "futures-core",
- "http 1.4.0",
- "http-body",
- "http-body-util",
- "mime",
- "pin-project-lite",
- "sync_wrapper",
- "tower-layer",
- "tower-service",
 ]
 
 [[package]]
@@ -4913,12 +4850,6 @@ name = "matchit"
 version = "0.7.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0e7465ac9959cc2b1404e8e2367b43684a6d13790fe23056cc8c6c5a6b7bcb94"
-
-[[package]]
-name = "matchit"
-version = "0.8.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "47e1ffaa40ddd1f3ed91f717a33c8c0ee23fff369e3aa8772b9605cc1d22f4c3"
 
 [[package]]
 name = "maybe-rayon"
@@ -9929,17 +9860,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "twox-hash"
-version = "1.6.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "97fee6b57c6a41524a810daee9286c02d7752c4253064d0b05472833a438f675"
-dependencies = [
- "cfg-if",
- "rand 0.8.5",
- "static_assertions",
-]
-
-[[package]]
 name = "typeid"
 version = "1.0.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -9964,19 +9884,15 @@ dependencies = [
  "hmac",
  "image",
  "libc",
- "log",
  "mockall 0.13.1",
- "rand 0.8.5",
  "semver",
  "serde",
- "serde_json",
  "sha2 0.10.9",
  "tempfile",
  "thiserror 2.0.17",
  "tokio",
  "tokio-util",
  "tracing",
- "tracing-opentelemetry",
  "tracing-subscriber",
  "uc-core",
  "uc-infra",
@@ -9992,16 +9908,12 @@ version = "0.6.0"
 dependencies = [
  "anyhow",
  "async-trait",
- "base64 0.22.1",
- "blake3",
  "bytes",
  "chrono",
  "gethostname",
- "log",
  "mockall 0.13.1",
  "sentry",
  "sentry-tracing",
- "serde",
  "serde_json",
  "tempfile",
  "thiserror 2.0.17",
@@ -10015,7 +9927,6 @@ dependencies = [
  "uc-infra",
  "uc-observability",
  "uc-platform",
- "uuid",
  "wiremock",
 ]
 
@@ -10024,7 +9935,7 @@ name = "uc-cli"
 version = "0.6.0"
 dependencies = [
  "anyhow",
- "axum 0.7.9",
+ "axum",
  "base64 0.22.1",
  "bytes",
  "chrono",
@@ -10067,7 +9978,6 @@ version = "0.6.0"
 dependencies = [
  "anyhow",
  "async-trait",
- "base32",
  "base64 0.22.1",
  "blake3",
  "bytes",
@@ -10076,7 +9986,6 @@ dependencies = [
  "mockall 0.14.0",
  "rand 0.9.2",
  "serde",
- "serde_bytes",
  "serde_json",
  "serde_with",
  "sha2 0.10.9",
@@ -10084,7 +9993,6 @@ dependencies = [
  "tokio",
  "toml 0.8.23",
  "tracing",
- "twox-hash",
  "url",
  "uuid",
  "zeroize",
@@ -10100,13 +10008,10 @@ dependencies = [
  "reqwest 0.12.28",
  "serde",
  "serde_json",
- "thiserror 2.0.17",
  "tokio",
  "tokio-tungstenite",
  "tokio-util",
  "tracing",
- "uc-application",
- "uc-core",
  "uc-daemon-contract",
  "uc-daemon-local",
  "url",
@@ -10116,12 +10021,11 @@ dependencies = [
 name = "uc-daemon-contract"
 version = "0.6.0"
 dependencies = [
- "base64 0.22.1",
  "serde",
  "serde_json",
  "serde_with",
  "uc-core",
- "utoipa 4.2.3",
+ "utoipa",
 ]
 
 [[package]]
@@ -10147,11 +10051,9 @@ version = "0.6.0"
 dependencies = [
  "anyhow",
  "async-trait",
- "blake3",
  "chrono",
  "clipboard-rs",
  "diesel",
- "futures-util",
  "mockall 0.13.1",
  "reqwest 0.12.28",
  "serde",
@@ -10166,7 +10068,6 @@ dependencies = [
  "uc-daemon-client",
  "uc-daemon-contract",
  "uc-daemon-local",
- "uc-infra",
  "uc-observability",
  "uc-platform",
  "uc-webserver",
@@ -10189,7 +10090,6 @@ dependencies = [
  "config",
  "diesel",
  "diesel_migrations",
- "dirs 6.0.0",
  "futures-util",
  "hex",
  "hkdf",
@@ -10199,7 +10099,6 @@ dependencies = [
  "iroh-blobs",
  "iroh-tickets",
  "libsqlite3-sys",
- "log",
  "mockall 0.13.1",
  "noq-proto",
  "postcard",
@@ -10253,7 +10152,6 @@ name = "uc-platform"
 version = "0.6.0"
 dependencies = [
  "anyhow",
- "arboard",
  "async-trait",
  "base64 0.22.1",
  "blake3",
@@ -10272,7 +10170,6 @@ dependencies = [
  "objc2-app-kit",
  "objc2-foundation",
  "once_cell",
- "png 0.18.0",
  "rand 0.9.2",
  "serde",
  "serde_json",
@@ -10294,24 +10191,16 @@ name = "uc-tauri"
 version = "0.6.0"
 dependencies = [
  "anyhow",
- "async-trait",
- "base64 0.22.1",
  "chrono",
  "core-foundation 0.10.1",
  "core-graphics",
- "dirs 6.0.0",
- "futures-util",
- "gethostname",
  "log",
  "mockall 0.13.1",
  "objc2",
  "objc2-app-kit",
  "objc2-foundation",
- "reqwest 0.12.28",
  "sentry",
- "sentry-tracing",
  "serde",
- "serde_json",
  "tauri",
  "tauri-plugin-autostart",
  "tauri-plugin-global-shortcut",
@@ -10323,12 +10212,7 @@ dependencies = [
  "tempfile",
  "thiserror 2.0.17",
  "tokio",
- "tokio-tungstenite",
- "tokio-util",
- "toml 0.8.23",
  "tracing",
- "tracing-log",
- "tracing-subscriber",
  "uc-application",
  "uc-bootstrap",
  "uc-core",
@@ -10337,10 +10221,8 @@ dependencies = [
  "uc-daemon-local",
  "uc-desktop",
  "uc-infra",
- "uc-observability",
  "uc-platform",
  "url",
- "uuid",
  "windows 0.61.3",
 ]
 
@@ -10350,7 +10232,7 @@ version = "0.6.0"
 dependencies = [
  "anyhow",
  "async-trait",
- "axum 0.7.9",
+ "axum",
  "base64 0.22.1",
  "chrono",
  "futures-util",
@@ -10367,8 +10249,7 @@ dependencies = [
  "uc-daemon-contract",
  "uc-daemon-local",
  "url",
- "utoipa 4.2.3",
- "utoipa-axum",
+ "utoipa",
  "utoipa-swagger-ui",
 ]
 
@@ -10460,7 +10341,6 @@ dependencies = [
  "tauri-plugin-updater",
  "tempfile",
  "tokio",
- "uc-bootstrap",
  "uc-tauri",
 ]
 
@@ -10599,32 +10479,7 @@ dependencies = [
  "indexmap 2.12.1",
  "serde",
  "serde_json",
- "utoipa-gen 4.3.1",
-]
-
-[[package]]
-name = "utoipa"
-version = "5.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2fcc29c80c21c31608227e0912b2d7fddba57ad76b606890627ba8ee7964e993"
-dependencies = [
- "indexmap 2.12.1",
- "serde",
- "serde_json",
- "utoipa-gen 5.4.0",
-]
-
-[[package]]
-name = "utoipa-axum"
-version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7c25bae5bccc842449ec0c5ddc5cbb6a3a1eaeac4503895dc105a1138f8234a0"
-dependencies = [
- "axum 0.8.8",
- "paste",
- "tower-layer",
- "tower-service",
- "utoipa 5.4.0",
+ "utoipa-gen",
 ]
 
 [[package]]
@@ -10642,23 +10497,12 @@ dependencies = [
 ]
 
 [[package]]
-name = "utoipa-gen"
-version = "5.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6d79d08d92ab8af4c5e8a6da20c47ae3f61a0f1dabc1997cdf2d082b757ca08b"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 2.0.112",
-]
-
-[[package]]
 name = "utoipa-swagger-ui"
 version = "7.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "943e0ff606c6d57d410fd5663a4d7c074ab2c5f14ab903b9514565e59fa1189e"
 dependencies = [
- "axum 0.7.9",
+ "axum",
  "mime_guess",
  "regex",
  "reqwest 0.12.28",
@@ -10666,7 +10510,7 @@ dependencies = [
  "serde",
  "serde_json",
  "url",
- "utoipa 4.2.3",
+ "utoipa",
  "zip 1.1.4",
 ]
 

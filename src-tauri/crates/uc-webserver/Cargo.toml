@@ -28,7 +28,6 @@ tokio-util = "0.7"
 tracing = "0.1"
 url = "2"
 utoipa = { version = "4", features = ["uuid", "chrono", "url"] }
-utoipa-axum = "0.2"
 utoipa-swagger-ui = { version = "7", features = ["axum"] }
 
 [dev-dependencies]

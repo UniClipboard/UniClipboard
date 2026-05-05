@@ -19,11 +19,9 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-# Tauri shell entry — bin crate only constructs the bootstrap context and the
-# tauri::Context (the latter via the generate_context! macro that requires the
-# bin's tauri.conf.json), then hands control to uc-tauri which owns all the
-# Tauri-specific plumbing (commands, plugins, builder/setup, run loop).
-uc-bootstrap = { path = "crates/uc-bootstrap" }
+# Tauri shell entry — bin crate hands control to uc-tauri, which owns all
+# Tauri-specific plumbing (commands, plugins, builder/setup, run loop) and
+# pulls uc-bootstrap transitively for context construction.
 uc-tauri = { path = "crates/uc-tauri" }
 
 # Required for the tauri::generate_context!() macro the bin still calls.

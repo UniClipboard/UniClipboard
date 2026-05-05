@@ -22,20 +22,18 @@ sentry = { version = "0.46.1", features = ["tracing"] }
 sentry-tracing = "0.46.1"
 gethostname = "1.1"
 toml = "0.8"
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
 chrono = { version = "0.4", features = ["serde"] }
-log = "0.4"
 async-trait = "0.1"
-uuid = { version = "1", features = ["v4", "fast-rng"] }
-blake3 = "1"
-base64 = "0.22"
 
 [dev-dependencies]
 tempfile = "3"
 tokio = { version = "1", features = ["full"] }
 mockall = "0.13"
 wiremock = "0.6"
+# tests/slice*_e2e.rs use serde_json::json! to build wiremock response bodies
+# and serde_json::from_slice to decode pairing request bodies. Production
+# composition root never serializes to JSON itself — keep this in dev only.
+serde_json = "1"
 # Slice 2 Phase 2 · T12 — clipboard e2e packs plaintext as `Bytes`
 # for `ClipboardSyncFacade::dispatch_entry`.
 bytes = "1.7"

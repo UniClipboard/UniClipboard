@@ -9,7 +9,6 @@ description = "Core domain models and business logic for UniClipboard"
 # Serialization
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-serde_bytes = "0.11"
 toml = "0.8"
 
 # Time handling
@@ -21,15 +20,11 @@ anyhow = "1.0"
 # Async traits
 async-trait = "0.1"
 
-# Hashing (for Payload)
-twox-hash = "1.6"
-
 # Cryptographic hashing
 sha2 = "0.10"
 
-# Base64/Base32 encoding
+# Base64 encoding
 base64 = "0.22"
-base32 = "0.5"
 
 # Bytes handling
 bytes = "1.7"

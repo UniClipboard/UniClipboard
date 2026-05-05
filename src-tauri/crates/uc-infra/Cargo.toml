@@ -47,9 +47,6 @@ diesel = { version = "2.3.5", features = [
 libsqlite3-sys = { version = "0.35", features = ["bundled"] }    # SQLite系统库绑定
 diesel_migrations = { version = "2.2.0", features = ["sqlite"] } # Diesel迁移工具
 
-# File system paths
-dirs = "6.0"
-
 # Async runtime (for mpsc channels in ports)
 tokio = { version = "1", features = [
     "sync",
@@ -60,7 +57,6 @@ tokio = { version = "1", features = [
     "io-util",
 ] }
 
-log = "0.4.29"
 tracing = "0.1"
 argon2 = "0.5.3"
 subtle = "2.5.0"

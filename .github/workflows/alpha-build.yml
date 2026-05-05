@@ -86,6 +86,7 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           VITE_SENTRY_DSN: ${{ secrets.VITE_SENTRY_DSN }}
+          VITE_APP_ENV: alpha
           # Backend Sentry DSN — independent Rust project DSN.
           SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
           APP_ENV: alpha

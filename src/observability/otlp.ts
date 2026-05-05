@@ -61,7 +61,10 @@ function resolveFrontendOtlpEndpoint(): string {
 function buildResourceAttributes(): OtlpKeyValue[] {
   const attrs: OtlpKeyValue[] = [
     { key: 'service.name', value: { stringValue: SERVICE_NAME } },
-    { key: 'deployment.environment', value: { stringValue: import.meta.env.MODE } },
+    {
+      key: 'deployment.environment',
+      value: { stringValue: import.meta.env.VITE_APP_ENV ?? import.meta.env.MODE },
+    },
   ]
 
   if (frontendDeviceId) {

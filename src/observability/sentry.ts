@@ -52,7 +52,7 @@ export function initSentry(): void {
     tracesSampleRate: import.meta.env.DEV ? 1.0 : 0.1,
     replaysSessionSampleRate: import.meta.env.DEV ? 1.0 : 0.1,
     replaysOnErrorSampleRate: 1.0,
-    environment: import.meta.env.MODE,
+    environment: import.meta.env.VITE_APP_ENV ?? import.meta.env.MODE,
     release: import.meta.env.VITE_APP_VERSION,
     sendDefaultPii: true,
     enableLogs: true,

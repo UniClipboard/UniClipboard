@@ -14,6 +14,16 @@ on:
           - 'windows-latest'
           - 'all'
         default: 'all'
+      channel:
+        description: '发布渠道(决定 Sentry/OTLP environment 标签)'
+        required: false
+        type: choice
+        options:
+          - 'stable'
+          - 'alpha'
+          - 'beta'
+          - 'rc'
+        default: 'stable'
   workflow_call:
     inputs:
       platform:
@@ -26,6 +36,11 @@ on:
         required: false
         type: string
         default: ''
+      channel:
+        description: '发布渠道,决定 APP_ENV/VITE_APP_ENV 注入值(stable→production,其他→channel 原样)'
+        required: false
+        type: string
+        default: 'stable'
 
 jobs:
   setup-matrix:
@@ -111,6 +126,27 @@ jobs:
           version="$(node -p "require('./package.json').version")"
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
+      - name: resolve APP_ENV from channel
+        # Sentry/OTLP environment 标签来源:
+        #   stable  → "production" (Sentry 默认值,符合大多数 dashboard 习惯)
+        #   alpha/beta/rc → 同名,作为独立 environment
+        # 该值同时注入给 Rust 后端 (APP_ENV, option_env! 编译期读取) 和前端
+        # (VITE_APP_ENV, Vite 在 build 时内联),保证前后端 environment 一致。
+        id: resolve-env
+        shell: bash
+        run: |
+          CHANNEL="${{ inputs.channel || 'stable' }}"
+          case "$CHANNEL" in
+            stable) APP_ENV="production" ;;
+            alpha|beta|rc) APP_ENV="$CHANNEL" ;;
+            *)
+              echo "::warning::未知 channel '$CHANNEL',回退为 production"
+              APP_ENV="production"
+              ;;
+          esac
+          echo "app_env=$APP_ENV" >> "$GITHUB_OUTPUT"
+          echo "Resolved APP_ENV=$APP_ENV (from channel=$CHANNEL)"
+
       - name: build Tauri app (macOS signed)
         if: matrix.platform == 'macos-latest'
         uses: tauri-apps/tauri-action@v0
@@ -119,13 +155,14 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           VITE_SENTRY_DSN: ${{ secrets.VITE_SENTRY_DSN }}
+          VITE_APP_ENV: ${{ steps.resolve-env.outputs.app_env }}
           # Backend Sentry DSN — independent Rust project DSN, baked into the
           # binary at compile time via option_env! in uc-bootstrap/src/tracing.rs.
           # MUST be a separate Sentry project from VITE_SENTRY_DSN (front-end);
           # see "阶段 2" decision in the dependency-prune branch discussion.
           # Empty secret = backend Sentry disabled.
           SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
-          APP_ENV: production
+          APP_ENV: ${{ steps.resolve-env.outputs.app_env }}
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
@@ -145,9 +182,10 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           VITE_APP_VERSION: ${{ steps.app-version.outputs.version }}
           VITE_SENTRY_DSN: ${{ secrets.VITE_SENTRY_DSN }}
+          VITE_APP_ENV: ${{ steps.resolve-env.outputs.app_env }}
           # Backend Sentry DSN — independent Rust project DSN.
           SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
-          APP_ENV: production
+          APP_ENV: ${{ steps.resolve-env.outputs.app_env }}
           VITE_OTEL_EXPORTER_OTLP_ENDPOINT: ${{ secrets.OTEL_EXPORTER_OTLP_ENDPOINT }}
           OTEL_EXPORTER_OTLP_ENDPOINT: ${{ secrets.OTEL_EXPORTER_OTLP_ENDPOINT }}
         run: |

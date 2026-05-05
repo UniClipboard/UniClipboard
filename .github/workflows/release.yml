@@ -155,6 +155,7 @@ jobs:
     with:
       platform: ${{ inputs.platform || 'all' }}
       branch: ${{ inputs.branch || '' }}
+      channel: ${{ needs.validate.outputs.channel }}
     secrets: inherit
 
   build-cli:

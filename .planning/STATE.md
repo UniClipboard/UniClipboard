@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v0.7.0
 milestone_name: LAN-only Mode
 status: Phase 95 verifier=gaps_found (16/17 must-haves); 1 gap blocking closing-loop — dev-mode `app.restart()` respawn 不可达。next: `/gsd-plan-phase 95 --gaps`
-last_updated: "2026-05-05T00:40:00.000Z"
-last_activity: 2026-05-05 -- Phase 95 verifier 16/17 PASS（自动化 54/54、所有 fence 0 命中、5/6 UAT PASS）。唯一 gap：Tauri 2 + bun + macOS 组合下 `tauri:dev` 不 respawn binary 导致 NETSET-05 closing-loop 半生效。VERIFICATION.md 已 commit。
+last_updated: "2026-05-05T16:45:00.000Z"
+last_activity: 2026-05-05 -- Completed quick task 260505-17q: telemetry_enabled 设置控制 Sentry 上报（前后端）+ 修复前端 OTLP 接线
 progress:
   total_phases: 4
   completed_phases: 1
@@ -66,6 +66,7 @@ Last activity: 2026-05-05 -- Wave 3 落地：95-06 NetworkSection 完全重写�
 | 260505-keychain-prompts | 减少 macOS 首次使用时 Keychain 多次弹窗（kek_observed 进程级缓存） | 2026-05-05 | 39ce6f39 | [260505-keychain-prompts](./quick/260505-keychain-prompts/) |
 | 260505-iroh-identity-file-storage | 启动期 iroh 设备身份脱离 macOS Keychain，改走 0600 文件后端，彻底消除"用户没操作就弹"的根因 | 2026-05-05 | aa1b1d93 | [260505-iroh-identity-file-storage](./quick/260505-iroh-identity-file-storage/) |
 | 260505-keychain-startup-resume-gate | daemon startup_recovery 守 try_resume_session — auto_unlock=false 时不再下沉到 keychain | 2026-05-05 | 5912465c | [260505-keychain-startup-resume-gate](./quick/260505-keychain-startup-resume-gate/) |
+| 260505-17q | telemetry_enabled 设置控制 Sentry 上报（前后端）+ 修复前端 OTLP 接线 bug | 2026-05-05 | a0fe00d0 | [260505-17q-sentry-respect-telemetry-flag](./quick/260505-17q-sentry-respect-telemetry-flag/) |
 
 ## Session Continuity
 

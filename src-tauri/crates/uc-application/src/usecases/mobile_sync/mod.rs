@@ -7,6 +7,7 @@
 
 pub(crate) mod get_settings;
 pub(crate) mod list_devices;
+pub(crate) mod list_lan_interfaces;
 pub(crate) mod register_device;
 pub(crate) mod revoke_device;
 pub(crate) mod shortcut_packer;

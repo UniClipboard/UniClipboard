@@ -19,6 +19,7 @@ pub mod device;
 pub mod encryption;
 pub mod host_event;
 pub mod lifecycle;
+pub mod mobile_sync;
 pub mod resource;
 pub mod roster;
 pub mod search;
@@ -80,6 +81,15 @@ pub use host_event::{
 pub use lifecycle::{
     InMemoryLifecycleStatus, LifecycleFacade, LifecycleFacadeDeps, LifecycleFacadeError,
     LifecycleStateView, LifecycleStatusGateway,
+};
+pub use mobile_sync::{
+    GetMobileSyncSettingsError, LanInterfaceOption as MobileSyncLanInterfaceOption,
+    ListLanInterfacesError as MobileSyncListLanInterfacesError, ListMobileDevicesError,
+    MobileDeviceSummary, MobileSyncFacade, MobileSyncFacadeDeps, MobileSyncSettingsView,
+    RegisterMobileShortcutDeviceError, RegisterMobileShortcutDeviceInput,
+    RegisterMobileShortcutDeviceOutput, RevokeMobileDeviceError, RevokeMobileDeviceInput,
+    ShortcutInstallMethod, ShortcutInstallMethodOption, UpdateMobileSyncSettingsError,
+    UpdateMobileSyncSettingsInput, UpdateMobileSyncSettingsOutput,
 };
 pub use resource::{BinaryResourceView, ResourceFacade, ResourceFacadeDeps, ResourceFacadeError};
 pub use roster::{

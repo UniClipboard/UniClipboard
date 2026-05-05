@@ -11,7 +11,7 @@ use async_trait::async_trait;
 use thiserror::Error;
 
 use crate::mobile_sync::{
-    LanEndpointInfo, MintedToken, MobileDevice, MobileDeviceError, MobileDeviceId,
+    LanEndpointInfo, LanInterface, MintedToken, MobileDevice, MobileDeviceError, MobileDeviceId,
     RegisteredDownloadToken, ShortcutDownloadToken, TokenHash,
 };
 
@@ -130,4 +130,30 @@ pub trait ShortcutDownloadTokenStorePort: Send + Sync {
 pub enum ShortcutDownloadTokenError {
     #[error("download token store internal failure: {0}")]
     Internal(String),
+}
+
+// ─── lan interface probe ────────────────────────────────────────────────
+
+/// 枚举本机当前的 LAN 网卡 IPv4 地址。
+///
+/// 用于"添加 iPhone"流程：UI 让用户从可用 IP 中挑一个，daemon 据此拼出
+/// 二维码里的 LAN URL。返回的列表是"adapter 看到的全部 IPv4 接口"——是否
+/// 排除 loopback / link-local / VPN-overlay / CGNAT 等由 application 层 use
+/// case 按当前产品策略过滤，便于以后随设置（如
+/// `NetworkSettings.allow_overlay_network_addrs`）调整而无需改 adapter。
+///
+/// 同步而非异步：实现里就是一次 syscall，没必要扛 async 成本。但保留
+/// `async fn` 是因为某些平台需要起 tokio 任务读 sysctl —— 让 trait 形状
+/// 适应所有合法实现。
+#[async_trait]
+pub trait LanInterfaceProbePort: Send + Sync {
+    async fn list_interfaces(&self) -> Result<Vec<LanInterface>, LanInterfaceProbeError>;
+}
+
+#[derive(Debug, Error)]
+pub enum LanInterfaceProbeError {
+    /// 探测失败 —— OS 调用错误、权限不足等。adapter 层负责把底层错误的
+    /// 文本带上来给排障。
+    #[error("lan interface probe failed: {0}")]
+    Probe(String),
 }

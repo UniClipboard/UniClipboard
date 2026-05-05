@@ -243,6 +243,15 @@ impl Default for NetworkSettings {
     }
 }
 
+impl Default for MobileSyncSettings {
+    /// 默认关闭。开启移动端同步暴露 LAN 监听端口，必须由用户在设置页
+    /// 显式开启 + 重启 daemon。详见
+    /// `.context/mobile-sync/SPEC.md` §5。
+    fn default() -> Self {
+        Self { enabled: false }
+    }
+}
+
 impl Default for Settings {
     /// Constructs a Settings instance populated with the current schema version and sensible nested defaults.
     ///
@@ -278,6 +287,7 @@ impl Default for Settings {
             keyboard_shortcuts: HashMap::new(),
             file_sync: FileSyncSettings::default(),
             network: NetworkSettings::default(),
+            mobile_sync: MobileSyncSettings::default(),
         }
     }
 }

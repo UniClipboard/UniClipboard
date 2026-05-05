@@ -225,6 +225,34 @@ fn default_allow_overlay_network_addrs() -> bool {
     false
 }
 
+// ======================================================================
+// MobileSyncSettings —— 移动端同步（v1：iOS Shortcut）的总开关。
+//
+// 字段刻意从一个 `enabled` 起步：v1 SPEC 要求 listen_port / bind_address
+// 由 daemon 端常量 + profile offset 自动推导，不暴露给用户配置；
+// install_method 是 register flow 的一次性选择而非持久化偏好。这里只
+// 持久化"用户是否打开移动端同步监听"这一项，其余调用所需信息（当前
+// LAN URL、可用 install_method）由 application 层 use case 在 view 中
+// 实时拼装。
+//
+// 修改 enabled 后需要重启 daemon 才会生效（v1 不做热重载，详见
+// `.context/mobile-sync/SPEC.md` §5）。
+// ======================================================================
+
+/// 移动端同步功能的设置族。
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct MobileSyncSettings {
+    /// 是否启用移动端同步 LAN 监听。
+    /// 默认 `false`：移动端同步对未配对的局域网邻居有暴露面，必须由
+    /// 用户在设置页显式开启。
+    #[serde(default = "default_mobile_sync_enabled")]
+    pub enabled: bool,
+}
+
+fn default_mobile_sync_enabled() -> bool {
+    false
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Settings {
     #[serde(default = "current_schema_version")]
@@ -253,6 +281,9 @@ pub struct Settings {
 
     #[serde(default)]
     pub network: NetworkSettings,
+
+    #[serde(default)]
+    pub mobile_sync: MobileSyncSettings,
 }
 
 /// The current schema version used for settings persistence.

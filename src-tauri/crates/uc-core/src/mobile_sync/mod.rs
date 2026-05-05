@@ -11,8 +11,10 @@
 
 pub mod device;
 pub mod endpoint;
+pub mod lan_interface;
 pub mod token;
 
 pub use device::{MobileClientType, MobileDevice, MobileDeviceError, MobileDeviceId};
 pub use endpoint::{LanEndpointInfo, RegisteredDownloadToken, ShortcutDownloadToken};
+pub use lan_interface::LanInterface;
 pub use token::{MintedToken, TokenHash};

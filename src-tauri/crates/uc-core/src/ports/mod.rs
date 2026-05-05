@@ -60,8 +60,9 @@ pub use file_transfer_repository::{
 };
 pub use local_identity::{LocalIdentityError, LocalIdentityPort};
 pub use mobile_sync::{
-    EndpointInfoError, MobileDeviceRepositoryPort, MobileSyncEndpointInfoPort,
-    MobileTokenMinterPort, ShortcutDownloadTokenError, ShortcutDownloadTokenStorePort,
+    EndpointInfoError, LanInterfaceProbeError, LanInterfaceProbePort, MobileDeviceRepositoryPort,
+    MobileSyncEndpointInfoPort, MobileTokenMinterPort, ShortcutDownloadTokenError,
+    ShortcutDownloadTokenStorePort,
 };
 pub use pairing::{
     DialError, PairingEventPort, PairingSessionEvent, PairingSessionId, PairingSessionPort,

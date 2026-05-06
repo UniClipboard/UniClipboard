@@ -36,6 +36,31 @@
 //!
 //! 运行期 TTL sweep + 体积限制留 v2。v1 假设:cache_root 体积可控(单次
 //! PUT 上限 16 MiB,且 mobile sync 实际频次低),累积不会构成 OS 压力。
+//!
+//! ## `read_by_uri` 白名单(P5a.10 真机回归后扩展)
+//!
+//! P5a.3.5 初版只允许 `<cache_root>/...` 之下的 URI(假设所有 File rep
+//! 都来自 mobile_sync 入站派生)。真机踩坑:Windows 资源管理器 / Finder
+//! 用户主动复制本地文件到剪贴板时,paste rep 里的 URI 是真实文件路径
+//! (`file:///D:/Downloads/...` / `file:///Users/.../Documents/...`),
+//! 不在 cache_root 之下,被严格白名单挡掉,iOS Shortcut 拿到 HTTP 500。
+//!
+//! 扩展后白名单 = `cache_root ∪ home_dir`:
+//!
+//! - **`cache_root`**:覆盖 mobile_sync 入站派生 + 后续 P2P blob 派生
+//!   (`<cache_root>/iroh-files/...`)等系统内部生成的 URI
+//! - **`home_dir`**:覆盖系统剪贴板原生 file URI(用户在 Explorer/Finder
+//!   主动复制的真实文件)。语义安全模型:用户主动复制 = 主动授权 iPhone
+//!   可读,与桌面 OS 的剪贴板权限模型一致(任何运行中的 app 都能读这些
+//!   字节)
+//!
+//! 仍然挡掉的:`/etc/passwd`、`C:\Windows\System32\...`、`/root/...`、其它
+//! 用户的 home(多用户机器)等系统/管理路径 —— canonicalize 后 starts_with
+//! 检查不命中任何 root → `NotFound`。
+//!
+//! `home_dir` 解析失败(env 变量不存在 / canonicalize 失败)时,白名单
+//! 退化到 `cache_root` 单根,行为等同 P5a.3.5 初版,系统剪贴板原生 URI
+//! 仍会被拒 —— 可接受的降级,不会泄露任何字节。
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -53,7 +78,16 @@ const STAGING_SUBDIR: &str = "mobile_inbound";
 const FALLBACK_FILENAME: &str = "staged.bin";
 
 pub struct FilesystemMobileFileStaging {
+    /// `stage_file` 写盘用的 root,字面 PathBuf。`canonical_cache_root`
+    /// 派生自它(canonicalize),启动时一次性算好缓存。
     cache_root: PathBuf,
+    /// `read_by_uri` 白名单根之一:cache_root 的 canonical 形态(macOS 上
+    /// `/var` → `/private/var` 之类符号链接已展开),用于 starts_with 校验。
+    canonical_cache_root: PathBuf,
+    /// `read_by_uri` 白名单根之二:用户家目录的 canonical 形态。可能为
+    /// `None` —— env 变量缺失 / canonicalize 失败时降级到 cache-root-only
+    /// 白名单(系统剪贴板原生 file URI 会被拒,但不泄露字节)。
+    canonical_home_root: Option<PathBuf>,
 }
 
 impl FilesystemMobileFileStaging {
@@ -61,17 +95,95 @@ impl FilesystemMobileFileStaging {
     ///
     /// **不**做启动 wipe(见模块文档"清理策略"):已落库的 clipboard entry
     /// 引用的 file URI 必须跨进程持久,wipe 会让它们失效。
+    ///
+    /// 启动期做两件 best-effort 准备:
+    /// 1. `create_dir_all(cache_root)` —— 让首启 / 全新机器上首笔 read_by_uri
+    ///    不会因目录还没建过而 canonicalize 失败
+    /// 2. canonicalize cache_root 与 home dir,缓存为两根白名单(每次
+    ///    read_by_uri 不再重做 IO + 不会因运行期 cache_root 被删而失败)
     pub fn new(cache_root: PathBuf) -> Arc<Self> {
+        if let Err(err) = std::fs::create_dir_all(&cache_root) {
+            warn!(
+                cache_root = %cache_root.display(),
+                error = %err,
+                "mobile_sync staging: failed to ensure cache_root exists at startup (will fall back to literal path)"
+            );
+        }
+        let canonical_cache_root = std::fs::canonicalize(&cache_root).unwrap_or_else(|err| {
+            warn!(
+                cache_root = %cache_root.display(),
+                error = %err,
+                "mobile_sync staging: failed to canonicalize cache_root, falling back to literal path"
+            );
+            cache_root.clone()
+        });
+        let canonical_home_root = detect_home_dir().and_then(|home| {
+            std::fs::canonicalize(&home)
+                .map_err(|err| {
+                    warn!(
+                        home = %home.display(),
+                        error = %err,
+                        "mobile_sync staging: failed to canonicalize home dir; system clipboard file URIs in home tree will be rejected"
+                    );
+                    err
+                })
+                .ok()
+        });
         debug!(
-            cache_root = %cache_root.display(),
+            cache_root = %canonical_cache_root.display(),
+            home_root = ?canonical_home_root.as_ref().map(|p| p.display().to_string()),
             "mobile_sync staging: adapter ready"
         );
-        Arc::new(Self { cache_root })
+        Arc::new(Self {
+            cache_root,
+            canonical_cache_root,
+            canonical_home_root,
+        })
+    }
+
+    /// 测试专用构造入口:跳过 home dir env 探测,直接注入两根。让 unit test
+    /// 在 TempDir 上模拟"home dir 之下任意路径"白名单行为,无需真实 `$HOME`。
+    #[cfg(test)]
+    pub(crate) fn new_for_tests(cache_root: PathBuf, home_root: Option<PathBuf>) -> Arc<Self> {
+        std::fs::create_dir_all(&cache_root).ok();
+        let canonical_cache_root =
+            std::fs::canonicalize(&cache_root).unwrap_or_else(|_| cache_root.clone());
+        let canonical_home_root = home_root.and_then(|h| std::fs::canonicalize(&h).ok());
+        Arc::new(Self {
+            cache_root,
+            canonical_cache_root,
+            canonical_home_root,
+        })
     }
 
     fn staging_root(&self) -> PathBuf {
         self.cache_root.join(STAGING_SUBDIR)
     }
+
+    /// 检查 canonical_path 是否落在任一白名单根下。两根任一命中即放行。
+    fn is_path_in_whitelist(&self, canonical_path: &Path) -> bool {
+        if canonical_path.starts_with(&self.canonical_cache_root) {
+            return true;
+        }
+        if let Some(home) = self.canonical_home_root.as_ref() {
+            if canonical_path.starts_with(home) {
+                return true;
+            }
+        }
+        false
+    }
+}
+
+/// 跨平台拿用户家目录。Unix-like 用 `$HOME`,Windows 用 `%USERPROFILE%`。
+/// 失败返 `None` —— 调用方降级到 cache-root-only 白名单。
+///
+/// 不引入 `dirs` / `directories` crate:env 变量在 daemon 实际运行环境
+/// (login 用户上下文 / Tauri / CLI fallback)都可用,边界 case(USERPROFILE
+/// 缺失退到 HOMEDRIVE+HOMEPATH 等)对真机不构成实际影响。后续若有 Windows
+/// 服务账号场景再考虑切到 `dirs`。
+fn detect_home_dir() -> Option<PathBuf> {
+    let env_var = if cfg!(windows) { "USERPROFILE" } else { "HOME" };
+    std::env::var(env_var).ok().map(PathBuf::from)
 }
 
 #[async_trait]
@@ -109,24 +221,16 @@ impl MobileFileStagingPort for FilesystemMobileFileStaging {
             }
         };
 
-        // 3. canonical_root 同样 canonicalize(macOS / Linux 的 /var → /private/var
-        //    符号链接前缀差异)。cache_root 必须存在,否则 staging adapter 早
-        //    就废了 —— 这里 canonicalize 失败按 Io 报。
-        let canonical_root = tokio::fs::canonicalize(&self.cache_root)
-            .await
-            .map_err(|err| {
-                MobileFileStagingError::Io(format!(
-                    "canonicalize cache_root {} failed: {err}",
-                    self.cache_root.display()
-                ))
-            })?;
-
-        if !canonical_path.starts_with(&canonical_root) {
+        // 3. 两根白名单检查(cache_root + home_dir,canonical 形态启动时已
+        //    缓存)。任一根命中即放行;都不命中 → NotFound,不暴露具体拒绝
+        //    原因(避免 enumeration)。
+        if !self.is_path_in_whitelist(&canonical_path) {
             warn!(
                 uri = %uri,
                 path = %canonical_path.display(),
-                cache_root = %canonical_root.display(),
-                "mobile_sync staging: read_by_uri rejected path outside cache_root"
+                cache_root = %self.canonical_cache_root.display(),
+                home_root = ?self.canonical_home_root.as_ref().map(|p| p.display().to_string()),
+                "mobile_sync staging: read_by_uri rejected path outside whitelisted roots"
             );
             return Err(MobileFileStagingError::NotFound);
         }
@@ -451,18 +555,86 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn read_by_uri_rejects_path_outside_cache_root() {
-        let tmp = TempDir::new().unwrap();
-        let adapter = make_adapter(tmp.path());
+    async fn read_by_uri_rejects_path_outside_whitelisted_roots() {
+        // 用 new_for_tests 注入受控两根,确保 `/etc/hosts` 既不在 cache_root
+        // 也不在我们指定的"假 home"(临时另一目录)。攻击向量:恶意 entry
+        // 的 file URI 指向 /etc/hosts —— 合法路径,真实存在,但落在两根
+        // 白名单之外。adapter 必须返 NotFound,不暴露字节。
+        let cache_tmp = TempDir::new().unwrap();
+        let fake_home = TempDir::new().unwrap();
+        let adapter = FilesystemMobileFileStaging::new_for_tests(
+            cache_tmp.path().to_path_buf(),
+            Some(fake_home.path().to_path_buf()),
+        );
 
-        // 攻击向量: 恶意 entry 的 file URI 指向 /etc/hosts —— 合法路径,
-        // 真实存在,但**不在 cache_root 之下**。adapter 必须返 NotFound,不
-        // 暴露字节。
         let outside_uri = url::Url::from_file_path("/etc/hosts").unwrap().to_string();
         let err = adapter.read_by_uri(&outside_uri).await.unwrap_err();
         assert!(
             matches!(err, MobileFileStagingError::NotFound),
-            "expected NotFound for path outside cache_root, got {err:?}"
+            "expected NotFound for path outside whitelisted roots, got {err:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn read_by_uri_accepts_path_in_home_root() {
+        // P5a.10: Windows 资源管理器复制本地文件 → paste rep URI 是
+        // `file:///C:/Users/.../Downloads/foo.pdf` 之类用户家目录之下的真实
+        // 路径,不在 cache_root 之下。新白名单必须放行 home_root 之下的文件。
+        let cache_tmp = TempDir::new().unwrap();
+        let home_tmp = TempDir::new().unwrap();
+        let adapter = FilesystemMobileFileStaging::new_for_tests(
+            cache_tmp.path().to_path_buf(),
+            Some(home_tmp.path().to_path_buf()),
+        );
+
+        // 在"假 home"下落一份真文件,模拟用户复制的那个文件
+        let target = home_tmp.path().join("Downloads").join("real-doc.pdf");
+        tokio::fs::create_dir_all(target.parent().unwrap())
+            .await
+            .unwrap();
+        tokio::fs::write(&target, b"%PDF-1.7 real").await.unwrap();
+        let uri = url::Url::from_file_path(&target).unwrap().to_string();
+
+        let bytes = adapter
+            .read_by_uri(&uri)
+            .await
+            .expect("home-root file must read");
+        assert_eq!(bytes, b"%PDF-1.7 real");
+    }
+
+    #[tokio::test]
+    async fn read_by_uri_rejects_home_root_path_when_no_home_configured() {
+        // 降级行为:未注入 home_root → 白名单只剩 cache_root → 即便文件
+        // 真实存在(在系统真 $HOME 之外的某个 tmp 目录),也应拒绝。
+        let cache_tmp = TempDir::new().unwrap();
+        let other_tmp = TempDir::new().unwrap();
+        let adapter =
+            FilesystemMobileFileStaging::new_for_tests(cache_tmp.path().to_path_buf(), None);
+
+        let target = other_tmp.path().join("foo.bin");
+        tokio::fs::write(&target, b"x").await.unwrap();
+        let uri = url::Url::from_file_path(&target).unwrap().to_string();
+
+        let err = adapter.read_by_uri(&uri).await.unwrap_err();
+        assert!(
+            matches!(err, MobileFileStagingError::NotFound),
+            "expected NotFound when path falls outside cache_root and no home root configured, got {err:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn new_creates_cache_root_when_missing() {
+        // 真机踩坑:首启时 cache_root 还没建过,首笔 read_by_uri 走的不是
+        // staging 派生的 URI(系统剪贴板原生路径)→ canonicalize cache_root
+        // 失败 → IO 错。new() 必须 best-effort 把 cache_root 建出来。
+        let parent = TempDir::new().unwrap();
+        let cache_root = parent.path().join("nested").join("file-cache");
+        assert!(!cache_root.exists());
+
+        let _adapter = FilesystemMobileFileStaging::new(cache_root.clone());
+        assert!(
+            cache_root.exists(),
+            "new() must create cache_root best-effort"
         );
     }
 

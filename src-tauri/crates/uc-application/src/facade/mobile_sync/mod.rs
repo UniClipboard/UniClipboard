@@ -16,6 +16,7 @@ pub use facade::{
     MobileDeviceSummary, MobileSyncFacade, MobileSyncFacadeDeps, MobileSyncSettingsView,
     RegisterMobileShortcutDeviceError, RegisterMobileShortcutDeviceInput,
     RegisterMobileShortcutDeviceOutput, RevokeMobileDeviceError, RevokeMobileDeviceInput,
-    ShortcutInstallMethod, ShortcutInstallMethodOption, UpdateMobileSyncSettingsError,
-    UpdateMobileSyncSettingsInput, UpdateMobileSyncSettingsOutput, SYNC_CLIPBOARD_EX_INSTALL_URL,
+    ShortcutInstallMethod, ShortcutInstallMethodOption, SyncClipboardError, SyncClipboardItemType,
+    SyncClipboardMeta, UpdateMobileSyncSettingsError, UpdateMobileSyncSettingsInput,
+    UpdateMobileSyncSettingsOutput, SYNC_CLIPBOARD_EX_INSTALL_URL,
 };

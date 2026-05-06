@@ -33,6 +33,7 @@ tracing = "0.1.44"
 hmac = "0.12"
 sha2 = "0.10"
 blake3 = "1"
+hex = "0.4"
 # Slice 2 Phase 2: carry ciphertext bytes across use case / facade / port
 # boundaries without extra clones. Matches uc-core + uc-infra.
 bytes = "1.7"

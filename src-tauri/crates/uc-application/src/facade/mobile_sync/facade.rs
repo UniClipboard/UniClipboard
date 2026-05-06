@@ -33,8 +33,9 @@ use uc_core::ports::{
 };
 
 use crate::usecases::mobile_sync::{
-    authenticate_basic::AuthenticateBasicAuthUseCase, get_settings::GetMobileSyncSettingsUseCase,
-    list_devices::ListMobileDevicesUseCase, list_lan_interfaces::ListLanInterfacesUseCase,
+    authenticate_basic::AuthenticateBasicAuthUseCase, clipboard_doc::ClipboardDocStub,
+    get_settings::GetMobileSyncSettingsUseCase, list_devices::ListMobileDevicesUseCase,
+    list_lan_interfaces::ListLanInterfacesUseCase,
     register_device::RegisterMobileShortcutDeviceUseCase, revoke_device::RevokeMobileDeviceUseCase,
     update_settings::UpdateMobileSyncSettingsUseCase,
 };
@@ -43,6 +44,9 @@ use crate::usecases::mobile_sync::{
 
 pub use crate::usecases::mobile_sync::authenticate_basic::{
     AuthenticateBasicAuthError, AuthenticateBasicAuthInput, AuthenticatedDevice,
+};
+pub use crate::usecases::mobile_sync::clipboard_doc::{
+    SyncClipboardError, SyncClipboardItemType, SyncClipboardMeta,
 };
 pub use crate::usecases::mobile_sync::get_settings::{
     GetMobileSyncSettingsError, MobileSyncSettingsView, ShortcutInstallMethod,
@@ -87,8 +91,9 @@ pub struct MobileSyncFacadeDeps {
 
 /// 移动端同步入口, 线程安全, 可放入 `Arc`。
 ///
-/// 内部聚合 7 个 use case;所有方法都是 thin pass-through, 不做跨 use
-/// case 编排(按 §11.2 facade 不应再承载流程)。
+/// 内部聚合 7 个 use case + 1 个 Phase 3 stub clipboard 状态;所有方法都
+/// 是 thin pass-through, 不做跨 use case 编排(按 §11.2 facade 不应再承载
+/// 流程)。
 pub struct MobileSyncFacade {
     register_device: RegisterMobileShortcutDeviceUseCase,
     revoke_device: RevokeMobileDeviceUseCase,
@@ -97,6 +102,9 @@ pub struct MobileSyncFacade {
     update_settings: UpdateMobileSyncSettingsUseCase,
     list_lan_interfaces: ListLanInterfacesUseCase,
     authenticate_basic: AuthenticateBasicAuthUseCase,
+    /// Phase 3 stub: 进程内 Mutex 状态承接 SyncClipboard 协议读写;Phase 5
+    /// 替换为对接 `ApplicationFacade::clipboard_*` 的实装。
+    clipboard_doc_stub: ClipboardDocStub,
 }
 
 impl MobileSyncFacade {
@@ -126,6 +134,7 @@ impl MobileSyncFacade {
             update_settings: UpdateMobileSyncSettingsUseCase::new(settings),
             list_lan_interfaces: ListLanInterfacesUseCase::new(lan_interface_probe),
             authenticate_basic: AuthenticateBasicAuthUseCase::new(device_repo, password_hasher),
+            clipboard_doc_stub: ClipboardDocStub::new(),
         }
     }
 
@@ -183,6 +192,43 @@ impl MobileSyncFacade {
         input: AuthenticateBasicAuthInput,
     ) -> Result<AuthenticatedDevice, AuthenticateBasicAuthError> {
         self.authenticate_basic.execute(input).await
+    }
+
+    // ─── Phase 3 stub: SyncClipboard 协议业务方法(Phase 5 接真实现) ───
+
+    /// `GET /SyncClipboard.json` 业务出口:返回最近一次 PUT 的元数据。
+    /// 没任何 PUT 历史返回 `NotFound`(路由翻 404)。
+    pub async fn get_latest_sync_doc(&self) -> Result<SyncClipboardMeta, SyncClipboardError> {
+        self.clipboard_doc_stub.get_latest_doc().await
+    }
+
+    /// `PUT /SyncClipboard.json` 业务出口:接收新元数据, daemon 自动算
+    /// SHA-256 填进 hash, 返回最终入库版本。
+    pub async fn put_sync_doc(
+        &self,
+        meta: SyncClipboardMeta,
+    ) -> Result<SyncClipboardMeta, SyncClipboardError> {
+        self.clipboard_doc_stub.put_doc(meta).await
+    }
+
+    /// `GET /file/{dataName}` 业务出口:返回 (mime, bytes) 或 `NotFound`。
+    pub async fn get_clipboard_file(
+        &self,
+        data_name: &str,
+    ) -> Result<(String, Vec<u8>), SyncClipboardError> {
+        self.clipboard_doc_stub.get_file(data_name).await
+    }
+
+    /// `PUT /file/{dataName}` 业务出口:接收附件二进制 + 它的 mime。
+    pub async fn put_clipboard_file(
+        &self,
+        data_name: String,
+        mime: String,
+        bytes: Vec<u8>,
+    ) -> Result<(), SyncClipboardError> {
+        self.clipboard_doc_stub
+            .put_file(data_name, mime, bytes)
+            .await
     }
 }
 

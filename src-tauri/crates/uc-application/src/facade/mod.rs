@@ -83,13 +83,15 @@ pub use lifecycle::{
     LifecycleStateView, LifecycleStatusGateway,
 };
 pub use mobile_sync::{
+    AuthenticateBasicAuthError, AuthenticateBasicAuthInput, AuthenticatedDevice,
     GetMobileSyncSettingsError, LanInterfaceOption as MobileSyncLanInterfaceOption,
     ListLanInterfacesError as MobileSyncListLanInterfacesError, ListMobileDevicesError,
     MobileDeviceSummary, MobileSyncFacade, MobileSyncFacadeDeps, MobileSyncSettingsView,
     RegisterMobileShortcutDeviceError, RegisterMobileShortcutDeviceInput,
     RegisterMobileShortcutDeviceOutput, RevokeMobileDeviceError, RevokeMobileDeviceInput,
-    ShortcutInstallMethod, ShortcutInstallMethodOption, UpdateMobileSyncSettingsError,
-    UpdateMobileSyncSettingsInput, UpdateMobileSyncSettingsOutput,
+    ShortcutInstallMethod, ShortcutInstallMethodOption, SyncClipboardError, SyncClipboardItemType,
+    SyncClipboardMeta, UpdateMobileSyncSettingsError, UpdateMobileSyncSettingsInput,
+    UpdateMobileSyncSettingsOutput, SYNC_CLIPBOARD_EX_INSTALL_URL,
 };
 pub use resource::{BinaryResourceView, ResourceFacade, ResourceFacadeDeps, ResourceFacadeError};
 pub use roster::{

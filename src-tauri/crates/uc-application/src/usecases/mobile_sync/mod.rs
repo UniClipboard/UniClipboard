@@ -11,6 +11,7 @@
 //! - 新增 `authenticate_basic`(LAN HTTP 鉴权热路径, 路由层用)
 
 pub(crate) mod authenticate_basic;
+pub(crate) mod clipboard_doc;
 pub(crate) mod get_settings;
 pub(crate) mod list_devices;
 pub(crate) mod list_lan_interfaces;

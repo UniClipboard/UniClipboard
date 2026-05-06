@@ -9634,6 +9634,7 @@ dependencies = [
  "bytes",
  "chrono",
  "futures",
+ "hex",
  "hmac",
  "image",
  "libc",

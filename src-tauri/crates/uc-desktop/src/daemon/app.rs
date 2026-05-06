@@ -301,11 +301,19 @@ impl DaemonApp {
 
         let _cleanup_handle = cleanup_rate_limiter_task(security_for_cleanup, cleanup_cancel);
 
-        // Phase 3 子步骤 3:spawn mobile sync LAN listener(stub: 仅 /handshake)。
+        // Phase 3 子步骤 5e: spawn mobile sync LAN listener(SyncClipboard
+        // 协议: 根路径 GET/PUT /SyncClipboard.json + GET/PUT /file/:dataName)。
         // 暂绑 127.0.0.1:42720 —— 子步骤 5.5 接 `MobileSyncSettings.lan_listen_enabled`
         // 后改为绑用户选定 LAN IP + 动态启停。当前以 child cancel token 控制
-        // graceful shutdown。bind / serve 失败只 log,不阻断 daemon 主流程。
-        if let Some(endpoint_info) = self.mobile_lan_endpoint_info.clone() {
+        // graceful shutdown。bind / serve 失败只 log, 不阻断 daemon 主流程。
+        //
+        // listener 需要 mobile sync facade 做 Basic Auth + 业务路由对接;
+        // facade 在 AppFacade 上是 Option(GUI-only 入口可不带), 这里只在
+        // mobile_sync 装配存在 *且* endpoint_info 注入存在时才起 listener。
+        if let (Some(endpoint_info), Some(mobile_sync_facade)) = (
+            self.mobile_lan_endpoint_info.clone(),
+            self.app_facade.mobile_sync.clone(),
+        ) {
             let lan_cancel = self.cancel.child_token();
             tokio::spawn(async move {
                 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
@@ -313,7 +321,7 @@ impl DaemonApp {
                 use uc_webserver::mobile_lan::start_mobile_lan_server;
 
                 let bind = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 42720);
-                match start_mobile_lan_server(bind, lan_cancel).await {
+                match start_mobile_lan_server(bind, lan_cancel, mobile_sync_facade).await {
                     Ok(handle) => {
                         let url = format!("http://{}", handle.bound_addr);
                         endpoint_info
@@ -332,7 +340,7 @@ impl DaemonApp {
                         error!(
                             bind = %bind,
                             error = %e,
-                            "mobile LAN listener failed to bind; daemon continues without /mobile/v1/* endpoint"
+                            "mobile LAN listener failed to bind; daemon continues without SyncClipboard endpoint"
                         );
                     }
                 }

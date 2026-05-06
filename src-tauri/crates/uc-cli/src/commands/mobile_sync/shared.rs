@@ -1,6 +1,7 @@
 //! `mobile_sync` 子命令共享的小工具:错误渲染、重启提示、JSON 包装。
 
 use uc_application::facade::{
+    ApplyIncomingMobileClipError, GetLatestMobileSyncDocError, GetMobileSyncFileError,
     GetMobileSyncSettingsError, ListMobileDevicesError, MobileSyncListLanInterfacesError,
     RegisterMobileShortcutDeviceError, RevokeMobileDeviceError, UpdateMobileSyncSettingsError,
 };
@@ -80,6 +81,42 @@ pub fn render_list_lan_interfaces_error(err: &MobileSyncListLanInterfacesError) 
     match err {
         MobileSyncListLanInterfacesError::ProbeFailed(msg) => {
             format!("Failed to probe LAN interfaces: {msg}")
+        }
+    }
+}
+
+// ── P5a.9 debug subcommand error renderers ──────────────────────────────
+
+pub fn render_apply_incoming_error(err: &ApplyIncomingMobileClipError) -> String {
+    match err {
+        ApplyIncomingMobileClipError::Inbound(inner) => {
+            format!("Inbound clipboard apply failed: {inner}")
+        }
+        ApplyIncomingMobileClipError::EncodeFailed(msg) => {
+            format!("V3 envelope encode failed: {msg}")
+        }
+        ApplyIncomingMobileClipError::Internal(msg) => {
+            format!("Internal apply error: {msg}")
+        }
+    }
+}
+
+pub fn render_get_latest_doc_error(err: &GetLatestMobileSyncDocError) -> String {
+    match err {
+        GetLatestMobileSyncDocError::NotFound => {
+            "No clipboard entry yet (404 — same response iPhone would see).".into()
+        }
+        GetLatestMobileSyncDocError::Port(inner) => {
+            format!("Snapshot port failure: {inner}")
+        }
+    }
+}
+
+pub fn render_get_file_error(err: &GetMobileSyncFileError) -> String {
+    match err {
+        GetMobileSyncFileError::NotFound => "No matching file for this dataName (404).".into(),
+        GetMobileSyncFileError::Port(inner) => {
+            format!("Snapshot port failure: {inner}")
         }
     }
 }

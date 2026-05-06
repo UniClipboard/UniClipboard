@@ -411,4 +411,39 @@ mod tests {
             "expected `shortcut add` to require --label"
         );
     }
+
+    #[test]
+    fn mobile_sync_debug_subcommands_parse() {
+        // P5a.9 引入的 4 个 debug 子命令解析契约。
+        for args in [
+            vec!["uniclip", "mobile-sync", "debug", "put-text", "hello"],
+            vec!["uniclip", "mobile-sync", "debug", "put-file", "/tmp/x.png"],
+            vec!["uniclip", "mobile-sync", "debug", "get-doc"],
+            vec!["uniclip", "mobile-sync", "debug", "get-file", "photo.png"],
+        ] {
+            let result = Cli::try_parse_from(args.clone());
+            assert!(result.is_ok(), "expected `{args:?}` to parse");
+        }
+    }
+
+    #[test]
+    fn mobile_sync_debug_put_text_requires_text() {
+        // put-text 必须带 TEXT 位置参数,否则 facade 拿不到内容。
+        let result = Cli::try_parse_from(["uniclip", "mobile-sync", "debug", "put-text"]);
+        assert!(result.is_err(), "expected `put-text` to require <TEXT>");
+    }
+
+    #[test]
+    fn mobile_sync_debug_put_file_requires_path() {
+        // put-file 必须带 PATH;mime 是可选的。
+        let result = Cli::try_parse_from(["uniclip", "mobile-sync", "debug", "put-file"]);
+        assert!(result.is_err(), "expected `put-file` to require <PATH>");
+    }
+
+    #[test]
+    fn mobile_sync_debug_get_file_requires_data_name() {
+        // get-file 必须带 DATANAME 位置参数。
+        let result = Cli::try_parse_from(["uniclip", "mobile-sync", "debug", "get-file"]);
+        assert!(result.is_err(), "expected `get-file` to require <DATANAME>");
+    }
 }

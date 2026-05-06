@@ -11,8 +11,8 @@
 
 use std::sync::Arc;
 
-use anyhow::anyhow;
 use async_trait::async_trait;
+use uc_application::clipboard_capture::CaptureClipboardUseCase;
 use uc_application::deps::AppDeps;
 use uc_application::facade::space_setup::SpaceSetupFacade;
 use uc_application::facade::{
@@ -117,11 +117,33 @@ pub struct ClipboardRestoreAssembly {
 // ── mobile_sync PUT 路径的 fallback adapters ────────────────────────────
 
 /// 当 [`AppFacadeAssemblyOptions::mobile_sync_apply_inbound`] 为 `None` 时
-/// (CLI / tauri 等不接 LAN listener 的入口),用此构造一份 minimal
-/// `ApplyInboundClipboardUseCase`。capture 与 write 都是 NoOp,任何 PUT
-/// 调用会立即 `Err`,但因为这些入口不挂 LAN 路由, PUT 路径不会被触发。
+/// (CLI / tauri 等不接 LAN listener 的入口),用此构造一份 lite
+/// `ApplyInboundClipboardUseCase`:
+///
+/// - **capture**:真 `CaptureClipboardUseCase`。写 entry_repo + event_repo +
+///   spool_queue,与 daemon 装配的 capture 完全等价。让 P5a.9 引入的
+///   `uniclip mobile-sync debug put-*` 子命令真能把数据落库,后续
+///   `debug get-doc` / `debug get-file` 直接读得到 ——"完整链路" 验证不再
+///   是空壳。
+/// - **write**:`NoopInboundWrite`。CLI 进程主动设置
+///   `UC_DISABLE_SYSTEM_CLIPBOARD=1`,本就不接系统剪贴板适配器;OS write
+///   永远是 daemon 的责任。NoOp 在这里返回 `Ok(())`,让 ApplyInbound 的
+///   写回环防御链不报错。
+/// - 不挂 `with_blob_materializer`/`with_host_event_emitter`:debug 路径
+///   不走 P2P / 不发 host event,跳过两组可选装配减少耦合。
+///
+/// daemon 入口仍走自己的 enhanced 装配(`runtime_assembly.rs`),不受影响。
 fn build_fallback_apply_inbound(deps: &AppDeps) -> Arc<ApplyInboundClipboardUseCase> {
-    let capture: Arc<dyn ApplyInboundCapture> = Arc::new(NoopInboundCapture);
+    let capture_uc = Arc::new(CaptureClipboardUseCase::new(
+        deps.clipboard.clipboard_entry_repo.clone(),
+        deps.clipboard.clipboard_event_repo.clone(),
+        deps.clipboard.representation_policy.clone(),
+        deps.clipboard.representation_normalizer.clone(),
+        deps.device.device_identity.clone(),
+        deps.clipboard.representation_cache.clone(),
+        deps.clipboard.spool_queue.clone(),
+    ));
+    let capture: Arc<dyn ApplyInboundCapture> = capture_uc;
     let write: Arc<dyn ApplyInboundWrite> = Arc::new(NoopInboundWrite);
     Arc::new(ApplyInboundClipboardUseCase::new(
         deps.clipboard.clipboard_entry_repo.clone(),
@@ -130,29 +152,17 @@ fn build_fallback_apply_inbound(deps: &AppDeps) -> Arc<ApplyInboundClipboardUseC
     ))
 }
 
-struct NoopInboundCapture;
-
-#[async_trait]
-impl ApplyInboundCapture for NoopInboundCapture {
-    async fn capture(
-        &self,
-        _preset_entry_id: uc_core::ids::EntryId,
-        _snapshot: SystemClipboardSnapshot,
-    ) -> anyhow::Result<Option<uc_core::ids::EntryId>> {
-        Err(anyhow!(
-            "mobile_sync PUT path not configured for this entry point (no LAN listener)"
-        ))
-    }
-}
-
+/// `InboundWrite` 的 NoOp 实装。
+///
+/// CLI 与 tauri 入口都不持有系统剪贴板适配器(CLI 显式 disable,tauri 不接
+/// 这条 PUT 路径),OS write 不能也不应该在这里发生 —— 直接返回 `Ok(())`,
+/// 让 ApplyInbound 链路在 daemon 之外仍可正常推进 capture + dedup。
 struct NoopInboundWrite;
 
 #[async_trait]
 impl ApplyInboundWrite for NoopInboundWrite {
     async fn write(&self, _snapshot: SystemClipboardSnapshot) -> anyhow::Result<()> {
-        Err(anyhow!(
-            "mobile_sync PUT path not configured for this entry point (no LAN listener)"
-        ))
+        Ok(())
     }
 }
 

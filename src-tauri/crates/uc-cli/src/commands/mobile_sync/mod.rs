@@ -18,6 +18,7 @@
 
 use clap::Subcommand;
 
+pub mod debug;
 pub mod devices;
 pub mod disable;
 pub mod enable;
@@ -52,6 +53,13 @@ pub enum MobileSyncCommands {
         #[command(subcommand)]
         subcommand: shortcut::ShortcutCommands,
     },
+    /// Debug helpers that simulate the SyncClipboard protocol locally
+    /// (no iPhone required). Bypasses HTTP and calls `MobileSyncFacade`
+    /// directly. All subcommands require the daemon to be stopped.
+    Debug {
+        #[command(subcommand)]
+        subcommand: debug::DebugCommands,
+    },
 }
 
 pub async fn run(command: MobileSyncCommands, json: bool, verbose: bool) -> i32 {
@@ -66,5 +74,6 @@ pub async fn run(command: MobileSyncCommands, json: bool, verbose: bool) -> i32 
         MobileSyncCommands::Shortcut { subcommand } => {
             shortcut::run(subcommand, json, verbose).await
         }
+        MobileSyncCommands::Debug { subcommand } => debug::run(subcommand, json, verbose).await,
     }
 }

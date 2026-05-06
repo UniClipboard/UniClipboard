@@ -61,8 +61,8 @@ pub use file_transfer_repository::{
 pub use local_identity::{LocalIdentityError, LocalIdentityPort};
 pub use mobile_sync::{
     EndpointInfoError, LanInterfaceProbeError, LanInterfaceProbePort, MobileCredentialsMinterPort,
-    MobileDeviceRepositoryPort, MobileSyncEndpointInfoPort, PasswordHasherError,
-    PasswordHasherPort,
+    MobileDeviceRepositoryPort, MobileFileStagingError, MobileFileStagingPort,
+    MobileSyncEndpointInfoPort, PasswordHasherError, PasswordHasherPort,
 };
 pub use pairing::{
     DialError, PairingEventPort, PairingSessionEvent, PairingSessionId, PairingSessionPort,

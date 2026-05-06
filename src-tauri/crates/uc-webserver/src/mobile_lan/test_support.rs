@@ -219,6 +219,7 @@ pub(crate) async fn build_facade_with_seeded_device(
         settings: Arc::new(InMemorySettings::default()),
         apply_inbound,
         incoming_buffer: Arc::new(IncomingMobileBuffer::new()),
+        file_staging: Arc::new(NoopFileStaging),
         snapshot_ports: MobileSyncSnapshotPorts {
             entry_repo,
             selection_repo: Arc::new(NoopSelectionRepo),
@@ -344,6 +345,25 @@ impl ApplyInboundWrite for NoopInboundWrite {
     async fn write(&self, _: SystemClipboardSnapshot) -> AnyResult<()> {
         Err(anyhow!(
             "test_support: NoOp InboundWrite should not be reached"
+        ))
+    }
+}
+
+// P5a.3.5:File 类型 staging port 的 NoOp。webserver 路由测试不会走到
+// PUT /SyncClipboard.json type=File 的真实 staging 路径(测试只覆盖
+// 401/404/wire),被调到说明回归 —— 直接报错以便定位。
+struct NoopFileStaging;
+#[async_trait]
+impl uc_core::ports::MobileFileStagingPort for NoopFileStaging {
+    async fn stage_file(
+        &self,
+        _: &str,
+        _: &str,
+        _: &str,
+        _: Vec<u8>,
+    ) -> Result<uc_core::mobile_sync::StagedFile, uc_core::ports::MobileFileStagingError> {
+        Err(uc_core::ports::MobileFileStagingError::Io(
+            "test_support: NoOp file staging should not be reached".into(),
         ))
     }
 }

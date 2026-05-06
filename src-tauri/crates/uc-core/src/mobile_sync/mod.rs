@@ -14,9 +14,11 @@ pub mod device;
 pub mod endpoint;
 pub mod lan_interface;
 pub mod latest_paste;
+pub mod staged_file;
 
 pub use credentials::MintedCredentials;
 pub use device::{MobileClientType, MobileDevice, MobileDeviceError, MobileDeviceId};
 pub use endpoint::LanEndpointInfo;
 pub use lan_interface::LanInterface;
 pub use latest_paste::LatestPasteRepresentation;
+pub use staged_file::{StagedFile, StagedFileUri};

@@ -32,7 +32,8 @@ use uc_application::{
 use uc_core::clipboard::ClipboardIntegrationMode;
 use uc_core::SystemClipboardSnapshot;
 use uc_infra::mobile_sync::{
-    Argon2idPasswordHasher, NetworkInterfaceLanProbe, OsRngCredentialsMinter,
+    Argon2idPasswordHasher, FilesystemMobileFileStaging, NetworkInterfaceLanProbe,
+    OsRngCredentialsMinter,
 };
 
 use crate::assembly::get_storage_paths;
@@ -249,6 +250,11 @@ pub fn build_app_facade_from_deps(
         settings: deps.settings.clone(),
         apply_inbound,
         incoming_buffer: Arc::new(IncomingMobileBuffer::new()),
+        // P5a.3.5:File 类型入站 staging adapter。复用 file_cache_dir 与
+        // P2P 入站 blob materializer 同根,两者写到不同子目录互不干扰
+        // (`mobile_inbound/` vs `iroh-blobs/`)。adapter 启动时异步清空
+        // 上次进程残留,daemon / CLI / tauri 三个入口都共享这套语义。
+        file_staging: FilesystemMobileFileStaging::new(storage_paths.file_cache_dir.clone()),
         snapshot_ports: MobileSyncSnapshotPorts {
             entry_repo: deps.clipboard.clipboard_entry_repo.clone(),
             selection_repo: deps.clipboard.selection_repo.clone(),

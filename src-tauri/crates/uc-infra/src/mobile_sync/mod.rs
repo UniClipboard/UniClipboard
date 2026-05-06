@@ -15,11 +15,13 @@
 pub mod credentials_minter;
 pub mod device_repo;
 pub mod endpoint_info;
+pub mod file_staging;
 pub mod lan_probe;
 pub mod password_hasher;
 
 pub use credentials_minter::OsRngCredentialsMinter;
 pub use device_repo::InMemoryMobileDeviceRepository;
 pub use endpoint_info::{InMemoryMobileSyncEndpointInfoAdapter, SharedEndpointInfo};
+pub use file_staging::FilesystemMobileFileStaging;
 pub use lan_probe::NetworkInterfaceLanProbe;
 pub use password_hasher::{Argon2idPasswordHasher, SharedPasswordHasher};

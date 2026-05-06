@@ -14,14 +14,13 @@
 //! [`IncomingMobileBuffer`] 的角色, 不是 stub, 而是协议必要部件。
 //! 第二步触发时再从 buffer 取出, 拼 `SystemClipboardSnapshot` 走 capture。
 //!
-//! ## v1 范围 (P5a.3)
+//! ## v1 范围 (P5a.3 → P5a.3.5)
 //!
 //! - **Text** ✅ 直接编码成 `text/plain` rep
 //! - **Image** ✅ 从 buffer 取 `(mime, bytes)` 拼 `image/*` rep
-//! - **File** ⏭ 返回 `DecodeFailed { reason: "v1 暂不支持" }`
-//!   原因: file-list rep 需要文件系统路径(URI list 形态), 接收端必须把
-//!   裸字节物化到磁盘后才能构成 `file:///path/foo.pdf` 形态的 rep。这一
-//!   条 staging port + adapter 的引入推到 P5a.3.5 单独子步骤。
+//! - **File** ✅ (P5a.3.5) 从 buffer 取 `(mime, bytes)` 经
+//!   [`MobileFileStagingPort`] 物化到 cache_dir,把得到的 `file:///...` URI
+//!   拼成 `text/uri-list` rep(format_id=`files` / mime=`text/uri-list`)
 //! - **Group** ⏭ 返回 `DecodeFailed`(SyncClipboard 协议本身保留语义,
 //!   shortcut EX 客户端不会发, 不在 v1 实现)
 //!
@@ -47,6 +46,7 @@ use tracing::{debug, info, instrument, warn};
 
 use uc_core::ids::{DeviceId, EntryId, FormatId, RepresentationId};
 use uc_core::mobile_sync::MobileDeviceId;
+use uc_core::ports::mobile_sync::{MobileFileStagingError, MobileFileStagingPort};
 use uc_core::ports::ClockPort;
 use uc_core::{MimeType, ObservedClipboardRepresentation, SystemClipboardSnapshot};
 
@@ -127,6 +127,23 @@ pub enum ApplyIncomingMobileClipError {
     Internal(String),
 }
 
+/// `build_*_snapshot` 内部错误形态:区分"协议输入不合法"(`Decode`,
+/// 上抛 outcome `DecodeFailed`)与"基础设施真出问题"(`Internal`,
+/// 上抛 application error `Internal`)。
+enum BuildSnapshotFailure {
+    Decode(String),
+    Internal(String),
+}
+
+/// 12 hex 字符的 staging scope nonce(取 uuid v4 simple 形态前 12 位)。
+/// 用于让 adapter 把同一次入站事件落到独立子目录,与 entry_id 解耦(后者
+/// 在 ApplyInbound 内部生成,staging 时还不知道)。
+fn staging_scope_nonce() -> String {
+    let id = uuid::Uuid::new_v4();
+    let s = id.simple().to_string();
+    s[..12].to_string()
+}
+
 // ─── IncomingMobileBuffer ────────────────────────────────────────────────
 
 const MAX_BUFFERED_FILES: usize = 16;
@@ -204,6 +221,7 @@ impl Default for IncomingMobileBuffer {
 pub(crate) struct ApplyIncomingMobileClipUseCase {
     inbound: Arc<ApplyInboundClipboardUseCase>,
     buffer: Arc<IncomingMobileBuffer>,
+    file_staging: Arc<dyn MobileFileStagingPort>,
     clock: Arc<dyn ClockPort>,
 }
 
@@ -211,11 +229,13 @@ impl ApplyIncomingMobileClipUseCase {
     pub(crate) fn new(
         inbound: Arc<ApplyInboundClipboardUseCase>,
         buffer: Arc<IncomingMobileBuffer>,
+        file_staging: Arc<dyn MobileFileStagingPort>,
         clock: Arc<dyn ClockPort>,
     ) -> Self {
         Self {
             inbound,
             buffer,
+            file_staging,
             clock,
         }
     }
@@ -250,26 +270,33 @@ impl ApplyIncomingMobileClipUseCase {
                 text,
                 data_name,
             } => {
-                let snapshot_result = match item_type {
-                    SyncClipboardItemType::Text => self.build_text_snapshot(text),
-                    SyncClipboardItemType::Image => self.build_image_snapshot(data_name),
-                    SyncClipboardItemType::File => Err(
-                        "File 类型 v1 暂不支持 (P5a.3.5 待实现 file-list staging port)".to_string(),
-                    ),
-                    SyncClipboardItemType::Group => {
-                        Err("Group 类型不在 v1 范围内 (SyncClipboard 协议保留)".to_string())
-                    }
-                };
+                let snapshot_result: Result<SystemClipboardSnapshot, BuildSnapshotFailure> =
+                    match item_type {
+                        SyncClipboardItemType::Text => self.build_text_snapshot(text),
+                        SyncClipboardItemType::Image => self.build_image_snapshot(data_name),
+                        SyncClipboardItemType::File => self.build_file_snapshot(data_name).await,
+                        SyncClipboardItemType::Group => Err(BuildSnapshotFailure::Decode(
+                            "Group 类型不在 v1 范围内 (SyncClipboard 协议保留)".into(),
+                        )),
+                    };
 
                 let snapshot = match snapshot_result {
                     Ok(s) => s,
-                    Err(reason) => {
+                    Err(BuildSnapshotFailure::Decode(reason)) => {
                         warn!(
                             item_type = ?item_type,
                             reason = %reason,
                             "mobile_sync apply_incoming: decode failed"
                         );
                         return Ok(ApplyIncomingMobileClipOutcome::DecodeFailed { reason });
+                    }
+                    Err(BuildSnapshotFailure::Internal(msg)) => {
+                        warn!(
+                            item_type = ?item_type,
+                            error = %msg,
+                            "mobile_sync apply_incoming: internal failure (file staging)"
+                        );
+                        return Err(ApplyIncomingMobileClipError::Internal(msg));
                     }
                 };
 
@@ -279,9 +306,14 @@ impl ApplyIncomingMobileClipUseCase {
         }
     }
 
-    fn build_text_snapshot(&self, text: String) -> Result<SystemClipboardSnapshot, String> {
+    fn build_text_snapshot(
+        &self,
+        text: String,
+    ) -> Result<SystemClipboardSnapshot, BuildSnapshotFailure> {
         if text.is_empty() {
-            return Err("Text item with empty body".into());
+            return Err(BuildSnapshotFailure::Decode(
+                "Text item with empty body".into(),
+            ));
         }
         let bytes = text.into_bytes();
         let rep = ObservedClipboardRepresentation::new(
@@ -299,19 +331,85 @@ impl ApplyIncomingMobileClipUseCase {
     fn build_image_snapshot(
         &self,
         data_name: Option<String>,
-    ) -> Result<SystemClipboardSnapshot, String> {
-        let name = data_name.ok_or_else(|| "Image item without dataName".to_string())?;
+    ) -> Result<SystemClipboardSnapshot, BuildSnapshotFailure> {
+        let name = data_name
+            .ok_or_else(|| BuildSnapshotFailure::Decode("Image item without dataName".into()))?;
         let buffered = self.buffer.take(&name).ok_or_else(|| {
-            format!(
+            BuildSnapshotFailure::Decode(format!(
                 "file buffer miss for `{}` (PUT /file may have arrived late or never)",
                 name
-            )
+            ))
         })?;
         let rep = ObservedClipboardRepresentation::new(
             RepresentationId::new(),
             FormatId::from("image"),
             Some(MimeType(buffered.mime)),
             buffered.bytes.to_vec(),
+        );
+        Ok(SystemClipboardSnapshot {
+            ts_ms: self.clock.now_ms(),
+            representations: vec![rep],
+        })
+    }
+
+    /// `File` 分支(P5a.3.5):从 buffer 取裸字节,经 [`MobileFileStagingPort`]
+    /// 物化到 cache_dir,把得到的 `file:///...` URI 拼成 `text/uri-list` rep。
+    ///
+    /// 与 image 分支的差异:
+    /// - image rep 直接把字节内联进 representation(系统剪贴板要求 image
+    ///   rep 持字节);
+    /// - file rep 标准形态是 file-list:bytes 是 URI 字符串,而非真实文件
+    ///   字节。staging 让接收端有"本机能寻址的 path",iPhone → Mac 才能在
+    ///   `pbpaste` / Finder 拖拽 / 应用 paste 时拿到真实文件。
+    ///
+    /// staging 失败有两种语义:
+    /// - `MobileFileStagingError::InvalidDataName` → 视为业务输入不合法,翻
+    ///   `BuildSnapshotFailure::Decode` → outcome `DecodeFailed`(HTTP 400);
+    /// - `MobileFileStagingError::Io` → 内部故障(磁盘满 / 权限),翻
+    ///   `BuildSnapshotFailure::Internal` → 应用层 `Internal` → HTTP 500。
+    async fn build_file_snapshot(
+        &self,
+        data_name: Option<String>,
+    ) -> Result<SystemClipboardSnapshot, BuildSnapshotFailure> {
+        let name = data_name
+            .ok_or_else(|| BuildSnapshotFailure::Decode("File item without dataName".into()))?;
+        let buffered = self.buffer.take(&name).ok_or_else(|| {
+            BuildSnapshotFailure::Decode(format!(
+                "file buffer miss for `{}` (PUT /file may have arrived late or never)",
+                name
+            ))
+        })?;
+
+        // staging scope:每次 PUT /SyncClipboard.json 的 File 触发一次,
+        // 用 8 hex 随机 nonce 做子目录,与 entry_id 解耦(entry_id 在
+        // ApplyInbound 内部才生成)。adapter 内部清理 / 命名都用这一段。
+        let scope_id = staging_scope_nonce();
+
+        let staged = self
+            .file_staging
+            .stage_file(&scope_id, &name, &buffered.mime, buffered.bytes.to_vec())
+            .await
+            .map_err(|err| match err {
+                MobileFileStagingError::InvalidDataName(msg) => {
+                    BuildSnapshotFailure::Decode(format!("staged data_name unusable: {msg}"))
+                }
+                MobileFileStagingError::Io(msg) => {
+                    BuildSnapshotFailure::Internal(format!("mobile file staging failed: {msg}"))
+                }
+            })?;
+
+        let uri_list = format!("{}\n", staged.uri.as_str());
+        let rep = ObservedClipboardRepresentation::new(
+            RepresentationId::new(),
+            FormatId::from("files"),
+            Some(MimeType("text/uri-list".to_string())),
+            uri_list.into_bytes(),
+        );
+        info!(
+            data_name = %name,
+            sanitized_name = %staged.sanitized_name,
+            uri = %staged.uri,
+            "mobile_sync apply_incoming: file staged into uri-list rep"
         );
         Ok(SystemClipboardSnapshot {
             ts_ms: self.clock.now_ms(),
@@ -398,7 +496,11 @@ mod tests {
     //! | Image(buffer hit) | Applied | 上面同 happy path |
     //! | Image(buffer miss) | DecodeFailed | 不进 inbound |
     //! | Image(没 dataName) | DecodeFailed | 不进 inbound |
-    //! | File | DecodeFailed("v1 暂不支持") | 不进 inbound |
+    //! | File(buffer hit + staging OK) | Applied + uri-list rep | dedup miss + capture + write |
+    //! | File(没 dataName) | DecodeFailed | 不进 inbound |
+    //! | File(buffer miss) | DecodeFailed | 不进 inbound |
+    //! | File(staging IO err) | Internal err | 不进 inbound |
+    //! | File(跨平台 URI) | Applied + URI bytes 校验 | dedup miss + capture + write |
     //! | Group | DecodeFailed | 不进 inbound |
     //! | Text dedup hit | DuplicateSkipped | dedup hit + 无 capture/write |
 
@@ -411,6 +513,66 @@ mod tests {
     use uc_core::ports::ClipboardEntryRepositoryPort;
 
     use crate::usecases::clipboard_sync::apply_inbound::{InboundCapture, InboundWrite};
+
+    // Fake `MobileFileStagingPort` —— 默认行为是"被调用就 panic",特定测试
+    // 用 [`FakeStaging::with_response`] / [`FakeStaging::with_error`] 注入
+    // 可控响应。File 分支以外的测试不应该触发 staging,默认 panic 形态自带
+    // 防回归(文件路径意外被调到时立刻可见)。
+    use uc_core::mobile_sync::StagedFile;
+    use uc_core::ports::mobile_sync::MobileFileStagingError;
+
+    #[derive(Default)]
+    struct FakeStaging {
+        // `Mutex<Option<...>>` 让单次 `take` 后变成 panic,如果某个测试错
+        // 把 staging 调了两次(典型回归)能立刻看到。
+        response: std::sync::Mutex<Option<Result<StagedFile, MobileFileStagingError>>>,
+        // 记录最后一次调用参数(单测断言用)。
+        last_call: std::sync::Mutex<Option<(String, String, String, Vec<u8>)>>,
+    }
+
+    impl FakeStaging {
+        fn never_called() -> Arc<Self> {
+            Arc::new(Self::default())
+        }
+        fn with_response(staged: StagedFile) -> Arc<Self> {
+            Arc::new(Self {
+                response: std::sync::Mutex::new(Some(Ok(staged))),
+                last_call: Default::default(),
+            })
+        }
+        fn with_error(err: MobileFileStagingError) -> Arc<Self> {
+            Arc::new(Self {
+                response: std::sync::Mutex::new(Some(Err(err))),
+                last_call: Default::default(),
+            })
+        }
+        fn last_call(&self) -> Option<(String, String, String, Vec<u8>)> {
+            self.last_call.lock().unwrap().clone()
+        }
+    }
+
+    #[async_trait]
+    impl MobileFileStagingPort for FakeStaging {
+        async fn stage_file(
+            &self,
+            scope_id: &str,
+            data_name: &str,
+            mime: &str,
+            bytes: Vec<u8>,
+        ) -> Result<StagedFile, MobileFileStagingError> {
+            *self.last_call.lock().unwrap() = Some((
+                scope_id.to_string(),
+                data_name.to_string(),
+                mime.to_string(),
+                bytes.clone(),
+            ));
+            self.response
+                .lock()
+                .unwrap()
+                .take()
+                .unwrap_or_else(|| panic!("FakeStaging.stage_file called without preset response"))
+        }
+    }
 
     // ── mockall: same 3 collaborator surfaces apply_inbound's tests use ──
 
@@ -482,6 +644,7 @@ mod tests {
         ApplyIncomingMobileClipUseCase::new(
             Arc::new(inbound),
             Arc::new(IncomingMobileBuffer::new()),
+            FakeStaging::never_called(),
             Arc::new(FixedClock),
         )
     }
@@ -498,6 +661,7 @@ mod tests {
         ApplyIncomingMobileClipUseCase::new(
             Arc::new(inbound),
             Arc::new(IncomingMobileBuffer::new()),
+            FakeStaging::never_called(),
             Arc::new(FixedClock),
         )
     }
@@ -528,9 +692,62 @@ mod tests {
         let uc = ApplyIncomingMobileClipUseCase::new(
             Arc::new(inbound),
             buffer.clone(),
+            FakeStaging::never_called(),
             Arc::new(FixedClock),
         );
         (uc, buffer)
+    }
+
+    /// Build a use case with a shared buffer + a controllable staging port.
+    /// inbound expects exactly 1 happy path (capture + write) returning
+    /// `entry_id`. Used by File-branch happy-path tests.
+    fn build_uc_with_buffer_and_staging_expect_applied(
+        entry_id: &str,
+        staging: Arc<FakeStaging>,
+    ) -> (ApplyIncomingMobileClipUseCase, Arc<IncomingMobileBuffer>) {
+        let mut repo = MockEntryRepo::new();
+        repo.expect_find_entry_id_by_snapshot_hash()
+            .times(1)
+            .returning(|_| Ok(None));
+        let mut capture = MockCapture::new();
+        let id_for_capture = EntryId::from(entry_id);
+        capture
+            .expect_capture()
+            .times(1)
+            .returning(move |_, _| Ok(Some(id_for_capture.clone())));
+        let mut write = MockWrite::new();
+        write.expect_write().times(1).returning(|_| Ok(()));
+
+        let inbound =
+            ApplyInboundClipboardUseCase::new(Arc::new(repo), Arc::new(capture), Arc::new(write));
+        let buffer = Arc::new(IncomingMobileBuffer::new());
+        let uc = ApplyIncomingMobileClipUseCase::new(
+            Arc::new(inbound),
+            buffer.clone(),
+            staging,
+            Arc::new(FixedClock),
+        );
+        (uc, buffer)
+    }
+
+    /// Build a use case where staging port is preset, but inbound is **never**
+    /// called (decode failure path). Used by File 缺 dataName / staging 错误
+    /// 等测试。
+    fn build_uc_with_staging_expect_no_inbound(
+        staging: Arc<FakeStaging>,
+        buffer: Arc<IncomingMobileBuffer>,
+    ) -> ApplyIncomingMobileClipUseCase {
+        let repo = MockEntryRepo::new();
+        let capture = MockCapture::new();
+        let write = MockWrite::new();
+        let inbound =
+            ApplyInboundClipboardUseCase::new(Arc::new(repo), Arc::new(capture), Arc::new(write));
+        ApplyIncomingMobileClipUseCase::new(
+            Arc::new(inbound),
+            buffer,
+            staging,
+            Arc::new(FixedClock),
+        )
     }
 
     fn input_sync_doc(
@@ -610,6 +827,7 @@ mod tests {
         let uc = ApplyIncomingMobileClipUseCase::new(
             Arc::new(inbound),
             buffer.clone(),
+            FakeStaging::never_called(),
             Arc::new(FixedClock),
         );
         assert_eq!(buffer.len(), 0);
@@ -705,11 +923,83 @@ mod tests {
         ));
     }
 
-    /// File type → `DecodeFailed("v1 暂不支持")`, no inbound calls.
-    /// This documents the P5a.3.5 follow-up boundary.
+    // ── P5a.3.5 File 分支 5 个新测试 ─────────────────────────────────────
+
+    /// File happy path: BufferFile (PUT /file) → SyncDoc File (PUT /json) →
+    /// staging port 拼出 macOS URI → file-list rep 写进 capture pipeline →
+    /// `Applied`。校验 buffer 被 drain + staging 被调一次。
     #[tokio::test]
-    async fn file_decode_failed_in_v1() {
-        let uc = build_uc_expect_no_inbound();
+    async fn file_applied_after_buffer_then_sync_doc() {
+        let staged = StagedFile {
+            uri: uc_core::mobile_sync::StagedFileUri::new(
+                "file:///tmp/mobile_inbound/abcdef012345/doc.pdf",
+            ),
+            sanitized_name: "doc.pdf".into(),
+        };
+        let staging = FakeStaging::with_response(staged);
+        let (uc, buffer) =
+            build_uc_with_buffer_and_staging_expect_applied("entry-file-1", staging.clone());
+
+        // step 1: PUT /file/{name}
+        uc.execute(input_buffer_file(
+            "doc.pdf",
+            "application/pdf",
+            vec![0x25, 0x50, 0x44, 0x46], // %PDF
+        ))
+        .await
+        .unwrap();
+        assert_eq!(buffer.len(), 1);
+
+        // step 2: PUT /SyncClipboard.json type=File
+        let outcome = uc
+            .execute(input_sync_doc(
+                SyncClipboardItemType::File,
+                "doc.pdf",
+                Some("doc.pdf"),
+            ))
+            .await
+            .unwrap();
+
+        assert_eq!(
+            outcome,
+            ApplyIncomingMobileClipOutcome::Applied {
+                entry_id: EntryId::from("entry-file-1")
+            }
+        );
+        assert_eq!(buffer.len(), 0, "file branch should drain buffer");
+
+        // staging 被调用一次, 入参检查
+        let (scope, name, mime, bytes) =
+            staging.last_call().expect("staging should be called once");
+        assert!(!scope.is_empty(), "scope_id should be a non-empty nonce");
+        assert_eq!(name, "doc.pdf");
+        assert_eq!(mime, "application/pdf");
+        assert_eq!(bytes, vec![0x25, 0x50, 0x44, 0x46]);
+    }
+
+    /// File 缺 dataName → `DecodeFailed`, 不进 inbound, staging 不被调用。
+    #[tokio::test]
+    async fn file_decode_failed_on_missing_data_name() {
+        let staging = FakeStaging::never_called();
+        let buffer = Arc::new(IncomingMobileBuffer::new());
+        let uc = build_uc_with_staging_expect_no_inbound(staging, buffer);
+        let outcome = uc
+            .execute(input_sync_doc(SyncClipboardItemType::File, "doc.pdf", None))
+            .await
+            .unwrap();
+        assert!(matches!(
+            outcome,
+            ApplyIncomingMobileClipOutcome::DecodeFailed { reason } if reason.contains("without dataName")
+        ));
+    }
+
+    /// File buffer miss(没有先 PUT /file 就 PUT /json)→ `DecodeFailed`,
+    /// 不进 inbound, staging 不被调用。
+    #[tokio::test]
+    async fn file_decode_failed_on_buffer_miss() {
+        let staging = FakeStaging::never_called();
+        let buffer = Arc::new(IncomingMobileBuffer::new());
+        let uc = build_uc_with_staging_expect_no_inbound(staging, buffer);
         let outcome = uc
             .execute(input_sync_doc(
                 SyncClipboardItemType::File,
@@ -720,7 +1010,110 @@ mod tests {
             .unwrap();
         assert!(matches!(
             outcome,
-            ApplyIncomingMobileClipOutcome::DecodeFailed { reason } if reason.contains("v1 暂不支持")
+            ApplyIncomingMobileClipOutcome::DecodeFailed { reason } if reason.contains("file buffer miss")
+        ));
+    }
+
+    /// staging port IO 失败 → use case 翻成 `Internal`(application 错误,
+    /// 路由 → HTTP 500), 不进 inbound, buffer 已被 take(空)。
+    #[tokio::test]
+    async fn file_internal_error_on_staging_io_failure() {
+        let staging = FakeStaging::with_error(MobileFileStagingError::Io(
+            "disk full / permission denied".into(),
+        ));
+        let buffer = Arc::new(IncomingMobileBuffer::new());
+        // 预 seed 一份 file 字节
+        buffer.store(
+            "doc.pdf".into(),
+            "application/pdf".into(),
+            vec![0x25, 0x50, 0x44, 0x46],
+        );
+
+        let uc = build_uc_with_staging_expect_no_inbound(staging, buffer.clone());
+        let err = uc
+            .execute(input_sync_doc(
+                SyncClipboardItemType::File,
+                "doc.pdf",
+                Some("doc.pdf"),
+            ))
+            .await
+            .expect_err("staging IO failure should propagate as Err");
+        assert!(matches!(err, ApplyIncomingMobileClipError::Internal(_)));
+        // buffer 已经被 take 走(staging 调用前会 buffer.take), 即便 staging 失败
+        // 也不会回滚 —— 字节已经丢失,但这是协议接受范围(iPhone 会重传)。
+        assert_eq!(buffer.len(), 0, "buffer is taken before staging is called");
+    }
+
+    /// 跨平台 URI 编码 plumbing:mock staging 注入"Windows-shape" URI,
+    /// 校验 file-list rep bytes 严格按 `\n` 分隔单条 URI 写出。验证 use
+    /// case 不对 URI 形态做任何假设(平台细节由 adapter 负责)。
+    #[tokio::test]
+    async fn file_uri_list_rep_propagates_adapter_uri_verbatim() {
+        // 装 inbound 的 capture mock,withf 校验 snapshot 里有 file-list rep
+        // 且 bytes == "{uri}\n",scope_id 不参与字节(只参与 path)。
+        let mut repo = MockEntryRepo::new();
+        repo.expect_find_entry_id_by_snapshot_hash()
+            .times(1)
+            .returning(|_| Ok(None));
+
+        let mut capture = MockCapture::new();
+        capture
+            .expect_capture()
+            .withf(|_id, snapshot| {
+                let rep = snapshot
+                    .representations
+                    .iter()
+                    .find(|r| r.format_id.eq_ignore_ascii_case("files"));
+                let Some(rep) = rep else { return false };
+                let mime_ok = rep
+                    .mime
+                    .as_ref()
+                    .map(|m| m.as_str() == "text/uri-list")
+                    .unwrap_or(false);
+                let body = std::str::from_utf8(&rep.bytes).unwrap_or("");
+                mime_ok
+                    && body == "file:///C:/Users/mark/AppData/Local/uc/mobile_inbound/abc/My%20Photo.png\n"
+            })
+            .times(1)
+            .returning(|_, _| Ok(Some(EntryId::from("entry-file-win"))));
+
+        let mut write = MockWrite::new();
+        write.expect_write().times(1).returning(|_| Ok(()));
+
+        let inbound =
+            ApplyInboundClipboardUseCase::new(Arc::new(repo), Arc::new(capture), Arc::new(write));
+        let buffer = Arc::new(IncomingMobileBuffer::new());
+        let staging = FakeStaging::with_response(StagedFile {
+            uri: uc_core::mobile_sync::StagedFileUri::new(
+                "file:///C:/Users/mark/AppData/Local/uc/mobile_inbound/abc/My%20Photo.png",
+            ),
+            sanitized_name: "My Photo.png".into(),
+        });
+        let uc = ApplyIncomingMobileClipUseCase::new(
+            Arc::new(inbound),
+            buffer.clone(),
+            staging,
+            Arc::new(FixedClock),
+        );
+
+        // 预 seed buffer
+        buffer.store(
+            "My Photo.png".into(),
+            "image/png".into(),
+            vec![0x89, 0x50, 0x4E, 0x47],
+        );
+
+        let outcome = uc
+            .execute(input_sync_doc(
+                SyncClipboardItemType::File,
+                "My Photo.png",
+                Some("My Photo.png"),
+            ))
+            .await
+            .unwrap();
+        assert!(matches!(
+            outcome,
+            ApplyIncomingMobileClipOutcome::Applied { .. }
         ));
     }
 
@@ -757,6 +1150,7 @@ mod tests {
         let uc = ApplyIncomingMobileClipUseCase::new(
             Arc::new(inbound),
             Arc::new(IncomingMobileBuffer::new()),
+            FakeStaging::never_called(),
             Arc::new(FixedClock),
         );
 
@@ -803,6 +1197,7 @@ mod tests {
         let uc = ApplyIncomingMobileClipUseCase::new(
             Arc::new(inbound),
             Arc::new(IncomingMobileBuffer::new()),
+            FakeStaging::never_called(),
             Arc::new(FixedClock),
         );
 

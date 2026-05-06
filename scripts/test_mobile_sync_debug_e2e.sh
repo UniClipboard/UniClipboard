@@ -9,7 +9,7 @@
 #   * 文本 PUT/GET round-trip + content_hash dedup
 #   * 图片两步 PUT (file → doc) + GET 字节相同
 #   * mime 推断 + --mime override
-#   * File 类型 v1 limitation (decode_failed)
+#   * File 类型两步 PUT (P5a.3.5 staging port 落地) → file-list rep 写入
 #   * NotFound / daemon-running 拒绝 / JSON 模式
 #
 # 不在范围:
@@ -267,17 +267,49 @@ assert_exit_nonzero "debug put-text while daemon running" "$CODE"
 assert_contains "refusal mentions daemon" "daemon" "$OUT"
 "$CLI" "${COMMON[@]}" stop >/dev/null 2>&1 || true
 
-# ── Step 8: File 类型 v1 limitation ──────────────────────────────────────
+# ── Step 8: File 类型 happy path (P5a.3.5 staging port 落地) ──────────────
 
-DOC_PATH="$TMPDIR_RUN/p5a9.bin"  # ext .bin → application/octet-stream → File
-printf 'fake binary file %s' "$(date +%s%N)" > "$DOC_PATH"
+# 用 .bin ext → 推断 mime application/octet-stream → 走 File 分支
+DOC_PATH="$TMPDIR_RUN/p5a9.bin"
+DOC_BYTES="fake binary file $(date +%s%N)"  # 唯一字节避开 dedup
+printf '%s' "$DOC_BYTES" > "$DOC_PATH"
 
-step "Step 8 — put-file .bin (item_type=File) → step2 decode_failed (v1 limit)"
+step "Step 8 — put-file .bin (item_type=File) → 两步均 applied,file-list rep 落库"
 OUT="$("$CLI" "${COMMON[@]}" --json mobile-sync debug put-file "$DOC_PATH")"
-assert_contains "step1 still buffered" '"outcome": "buffered"' "$OUT"
-assert_contains "step2 decode_failed" '"outcome": "decode_failed"' "$OUT"
-# 进一步看一眼原因短语
-assert_contains "decode_reason mentions v1" "v1" "$OUT"
+assert_contains "step1 buffered"        '"outcome": "buffered"' "$OUT"
+assert_contains "step2 applied"         '"outcome": "applied"'  "$OUT"
+
+# get-doc 应看到 type=File + dataName 指向 staging 文件
+DOC="$("$CLI" "${COMMON[@]}" mobile-sync debug get-doc 2>&1)"
+assert_contains "get-doc reports File" "type: File" "$DOC"
+DATANAME_FILE="$(extract_data_name "$DOC")"
+if [[ -n "$DATANAME_FILE" ]]; then
+    ok "get-doc dataName present: $DATANAME_FILE"
+else
+    fail "get-doc dataName missing for File type"
+    echo "$DOC" | sed 's/^/      out| /' >&2
+fi
+
+# get-file 应回 mime=text/uri-list + bytes = 一条 file:///... URI
+OUT_FILE="$TMPDIR_RUN/p5a9-file-out.urilist"
+"$CLI" "${COMMON[@]}" mobile-sync debug get-file "$DATANAME_FILE" --output "$OUT_FILE" >/dev/null 2>&1 \
+    || fail "get-file for File-type dataName failed"
+URILIST_BODY="$(cat "$OUT_FILE" 2>/dev/null || true)"
+assert_contains "file body is file:// URI"  "file://"        "$URILIST_BODY"
+assert_contains "uri tail matches basename" "/p5a9.bin"      "$URILIST_BODY"
+# staging 把字节物化到磁盘 —— 解出 URI 路径,直接读盘字节,与原始 DOC_BYTES 比对
+STAGED_PATH="$(printf '%s' "$URILIST_BODY" | head -n1 | sed 's|^file://||' \
+    | python3 -c 'import sys, urllib.parse; sys.stdout.write(urllib.parse.unquote(sys.stdin.read().strip()))')"
+if [[ -f "$STAGED_PATH" ]]; then
+    ok "staged file exists at $STAGED_PATH"
+    if [[ "$(cat "$STAGED_PATH")" == "$DOC_BYTES" ]]; then
+        ok "staged bytes match original payload"
+    else
+        fail "staged bytes != original (got $(wc -c < "$STAGED_PATH") bytes, want ${#DOC_BYTES})"
+    fi
+else
+    fail "staged file does not exist at: $STAGED_PATH"
+fi
 
 # ── Step 9: JSON 模式覆盖 4 子命令 ───────────────────────────────────────
 

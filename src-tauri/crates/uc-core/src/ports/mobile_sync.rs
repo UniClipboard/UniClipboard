@@ -12,7 +12,7 @@ use thiserror::Error;
 
 use crate::mobile_sync::{
     LanEndpointInfo, LanInterface, LatestPasteRepresentation, MintedCredentials, MobileDevice,
-    MobileDeviceError, MobileDeviceId,
+    MobileDeviceError, MobileDeviceId, StagedFile,
 };
 
 // ─── credentials minter ──────────────────────────────────────────────────
@@ -192,4 +192,54 @@ pub enum LatestClipboardSnapshotError {
     /// use case 不依赖错误细节,统一翻成应用层错误后路由层 → HTTP 500。
     #[error("latest clipboard snapshot resolution failed: {0}")]
     Resolution(String),
+}
+
+// ─── mobile file staging ────────────────────────────────────────────────
+
+/// 把 mobile 入站(`PUT /file/{name}`)收到的裸字节物化到本机文件系统,
+/// 返回一个可直接拼 `text/uri-list` rep 的 [`StagedFile`]。
+///
+/// 这是 mobile sync `File` 类型(SyncClipboard 协议)能走通入站管线的关
+/// 键 —— 项目 file-list rep 的 wire 形态是 `\n` 分隔的 `file:///...` URI
+/// list,接收端必须把 iPhone 上传的字节先落盘,才能拼出本机可寻址的 URI。
+///
+/// **scope_id**:由 use case 决定的"逻辑分组"标识 —— adapter 把同一次入
+/// 站事件的所有文件都放进同一个 scope 子目录(典型:每次 PUT /SyncClipboard.json
+/// 触发的 staging 用一个 nonce),便于运维 / 清理。
+///
+/// **跨平台 URI**:adapter 必须保证 `StagedFile.uri` 在 macOS / Linux 形如
+/// `file:///path/...`,在 Windows 形如 `file:///C:/path/...`(参考
+/// `url::Url::from_file_path`),含 spaces / non-ASCII 的文件名要 percent-
+/// encode。use case 不关心细节, 单测用 mock 注入预期 URI 字符串即可。
+///
+/// **清理职责**:adapter 负责生命周期 —— 进程启动时清空残留 / 后台 sweep /
+/// 进程退出时清理。use case 不持有路径,也不调用任何"释放"接口。
+#[async_trait]
+pub trait MobileFileStagingPort: Send + Sync {
+    /// 把 `bytes` 写到 staging 区,产出可拼 file-list rep 的 [`StagedFile`]。
+    ///
+    /// `data_name` 来自 iPhone 上传的 wire 字段(可能含路径分隔符 / `..` /
+    /// 控制字符等不安全片段),adapter 必须 sanitize 成安全的 basename;
+    /// `mime` 仅用于排障日志,不参与文件落盘行为。
+    async fn stage_file(
+        &self,
+        scope_id: &str,
+        data_name: &str,
+        mime: &str,
+        bytes: Vec<u8>,
+    ) -> Result<StagedFile, MobileFileStagingError>;
+}
+
+#[derive(Debug, Error)]
+pub enum MobileFileStagingError {
+    /// 写盘 / mkdir / URI 派生失败。adapter 把底层错误文本带过来,use case
+    /// 一律翻成应用层 `Internal` 后路由 → HTTP 500。
+    #[error("mobile file staging IO failure: {0}")]
+    Io(String),
+
+    /// `data_name` sanitize 后落空(全是非法字符),adapter 已 fallback 到
+    /// 兜底名仍失败时返回。实际场景几乎不会触发 —— 保留此变体让 use case
+    /// 能按"业务输入不合法"语义翻译,不与 IO 错误混淆。
+    #[error("staged data_name unusable after sanitize: {0}")]
+    InvalidDataName(String),
 }

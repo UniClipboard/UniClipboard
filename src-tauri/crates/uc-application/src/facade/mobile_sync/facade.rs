@@ -45,7 +45,7 @@ use uc_core::mobile_sync::MobileDeviceId;
 use uc_core::ports::mobile_sync::LatestClipboardSnapshotPort;
 use uc_core::ports::{
     ClockPort, LanInterfaceProbePort, MobileCredentialsMinterPort, MobileDeviceRepositoryPort,
-    MobileSyncEndpointInfoPort, PasswordHasherPort, SettingsPort,
+    MobileFileStagingPort, MobileSyncEndpointInfoPort, PasswordHasherPort, SettingsPort,
 };
 
 use crate::usecases::clipboard_sync::apply_inbound::ApplyInboundClipboardUseCase;
@@ -120,6 +120,11 @@ pub struct MobileSyncFacadeDeps {
     pub settings: Arc<dyn SettingsPort>,
     pub apply_inbound: Arc<ApplyInboundClipboardUseCase>,
     pub incoming_buffer: Arc<IncomingMobileBuffer>,
+    /// `MobileFileStagingPort` 实例(P5a.3.5):File 类型入站时把裸字节物
+    /// 化到 cache_dir,产出可拼 file-list rep 的 `file:///...` URI。
+    /// daemon / CLI fallback 都注入 `FilesystemMobileFileStaging`(uc-infra),
+    /// 测试场景可注入内存 fake。
+    pub file_staging: Arc<dyn MobileFileStagingPort>,
     pub snapshot_ports: MobileSyncSnapshotPorts,
 }
 
@@ -156,6 +161,7 @@ impl MobileSyncFacade {
             settings,
             apply_inbound,
             incoming_buffer,
+            file_staging,
             snapshot_ports,
         } = deps;
 
@@ -178,6 +184,7 @@ impl MobileSyncFacade {
             apply_incoming: ApplyIncomingMobileClipUseCase::new(
                 apply_inbound,
                 incoming_buffer,
+                file_staging,
                 clock,
             ),
             get_latest_doc: GetLatestMobileSyncDocUseCase::new(snapshot_port.clone()),
@@ -606,6 +613,21 @@ mod tests {
         }
     }
 
+    struct UnusedStaging;
+    #[async_trait]
+    impl uc_core::ports::MobileFileStagingPort for UnusedStaging {
+        async fn stage_file(
+            &self,
+            _: &str,
+            _: &str,
+            _: &str,
+            _: Vec<u8>,
+        ) -> Result<uc_core::mobile_sync::StagedFile, uc_core::ports::MobileFileStagingError>
+        {
+            unimplemented!("facade smoke tests do not exercise File PUT path")
+        }
+    }
+
     fn build_facade() -> MobileSyncFacade {
         let entry_repo: Arc<dyn ClipboardEntryRepositoryPort> = Arc::new(UnusedEntryRepo);
         let apply_inbound = Arc::new(ApplyInboundClipboardUseCase::new(
@@ -623,6 +645,7 @@ mod tests {
             settings: Arc::new(InMemorySettings::default()),
             apply_inbound,
             incoming_buffer: Arc::new(IncomingMobileBuffer::new()),
+            file_staging: Arc::new(UnusedStaging),
             snapshot_ports: MobileSyncSnapshotPorts {
                 entry_repo,
                 selection_repo: Arc::new(UnusedSelectionRepo),
@@ -772,6 +795,7 @@ mod tests {
             settings: Arc::new(InMemorySettings::default()),
             apply_inbound,
             incoming_buffer: Arc::new(IncomingMobileBuffer::new()),
+            file_staging: Arc::new(UnusedStaging),
             snapshot_ports: MobileSyncSnapshotPorts {
                 entry_repo,
                 selection_repo: Arc::new(UnusedSelectionRepo),

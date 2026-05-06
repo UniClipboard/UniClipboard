@@ -128,7 +128,7 @@ pub async fn run(args: SetupArgs, json: bool, verbose: bool) -> i32 {
     // 2. Read password from stdin BEFORE wiring the session — keeps any
     // pipe / heredoc input handling out of the facade lifetime.
     let cli_password = if args.password_stdin {
-        match read_password_stdin() {
+        match shared::read_password_stdin() {
             Ok(p) => Some(p),
             Err(e) => {
                 ui::error(&format!("Failed to read password from stdin: {e}"));
@@ -182,7 +182,7 @@ pub async fn run(args: SetupArgs, json: bool, verbose: bool) -> i32 {
         Some(l) => l,
         None => {
             // Interactive — non_interactive case rejected above.
-            match read_line_prompt("Device label (e.g. \"My iPhone 15\"):") {
+            match shared::read_line_prompt("Device label (e.g. \"My iPhone 15\"):") {
                 Ok(s) if !s.trim().is_empty() => s.trim().to_string(),
                 Ok(_) => {
                     ui::error("Label must not be empty.");
@@ -201,7 +201,7 @@ pub async fn run(args: SetupArgs, json: bool, verbose: bool) -> i32 {
     let custom_username = match args.username {
         Some(u) => Some(u),
         None if non_interactive => None,
-        None => match read_line_prompt(
+        None => match shared::read_line_prompt(
             "Username (6-32 chars, [A-Za-z0-9_], letter-leading) [Enter for auto]:",
         ) {
             Ok(s) if s.trim().is_empty() => None,
@@ -331,27 +331,6 @@ fn confirm_yes_no(prompt: &str) -> bool {
     matches!(buf.trim().to_ascii_lowercase().as_str(), "yes" | "y")
 }
 
-fn read_line_prompt(prompt: &str) -> Result<String, String> {
-    let mut stderr = io::stderr();
-    let _ = write!(stderr, " ?  {prompt} ");
-    let _ = stderr.flush();
-    let mut buf = String::new();
-    io::stdin()
-        .lock()
-        .read_line(&mut buf)
-        .map_err(|e| e.to_string())?;
-    Ok(buf.trim_end_matches(['\n', '\r']).to_string())
-}
-
-fn read_password_stdin() -> Result<String, String> {
-    let mut buf = String::new();
-    io::stdin()
-        .lock()
-        .read_line(&mut buf)
-        .map_err(|e| e.to_string())?;
-    Ok(buf.trim_end_matches(['\n', '\r']).to_string())
-}
-
 /// Interactive picker for the LAN advertise IP. Single-IP case auto-picks
 /// silently. Empty list returns an error code — `setup` cannot proceed.
 async fn resolve_advertise_interactively(ctx: &shared::MobileSyncCmdCtx) -> Result<String, i32> {
@@ -386,7 +365,7 @@ fn pick_from_list(opts: &[MobileSyncLanInterfaceOption]) -> Result<String, i32> 
         );
     }
     loop {
-        let s = match read_line_prompt(&format!("Pick interface [1-{}]:", opts.len())) {
+        let s = match shared::read_line_prompt(&format!("Pick interface [1-{}]:", opts.len())) {
             Ok(s) => s,
             Err(_) => return Err(exit_codes::EXIT_ERROR),
         };

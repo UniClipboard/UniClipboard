@@ -386,8 +386,9 @@ mod tests {
     fn mobile_sync_kebab_case_is_accepted() {
         // 子命令名是 kebab-case `mobile-sync` 而非默认的 `mobile_sync` /
         // `mobilesync`。锁住这个外部契约 —— 改名会让所有发布的脚本失效。
-        let result = Cli::try_parse_from(["uniclip", "mobile-sync", "enable"]);
-        assert!(result.is_ok(), "expected mobile-sync enable to parse");
+        // (Step 4 起 `enable` 已删, 用 `status` 这个稳定读命令探针。)
+        let result = Cli::try_parse_from(["uniclip", "mobile-sync", "status"]);
+        assert!(result.is_ok(), "expected `mobile-sync status` to parse");
     }
 
     #[test]
@@ -403,13 +404,50 @@ mod tests {
     }
 
     #[test]
-    fn mobile_sync_shortcut_add_requires_label() {
-        // `shortcut add` 必须强制 `--label`,否则 register flow 拿不到设备名。
-        let result = Cli::try_parse_from(["uniclip", "mobile-sync", "shortcut", "add"]);
+    fn mobile_sync_devices_add_requires_label() {
+        // `devices add` 接管原 `shortcut add` 的契约 —— `--label` 必填,
+        // 否则 register flow 拿不到设备名。
+        let result = Cli::try_parse_from(["uniclip", "mobile-sync", "devices", "add"]);
+        assert!(result.is_err(), "expected `devices add` to require --label");
+    }
+
+    #[test]
+    fn mobile_sync_shortcut_subcommand_is_removed() {
+        // Step 4/5 拓扑重组:`shortcut add` 已搬到 `devices add`,老路径
+        // 直接删除(项目未发布,无 deprecation 周期)。
+        let result =
+            Cli::try_parse_from(["uniclip", "mobile-sync", "shortcut", "add", "--label", "X"]);
         assert!(
             result.is_err(),
-            "expected `shortcut add` to require --label"
+            "expected `shortcut` subcommand to be removed"
         );
+    }
+
+    #[test]
+    fn mobile_sync_enable_subcommand_is_removed() {
+        // Step 4/5 拓扑重组:`enable` 与 `setup` / `lan enable` 重叠, 已删除。
+        let result = Cli::try_parse_from(["uniclip", "mobile-sync", "enable"]);
+        assert!(
+            result.is_err(),
+            "expected `enable` subcommand to be removed"
+        );
+    }
+
+    #[test]
+    fn mobile_sync_revoke_id_optional() {
+        // Step 4/5: `devices revoke` device_id 改为可选(无 id 走交互式
+        // 选)。clap 解析层应允许两种形态。
+        let r1 = Cli::try_parse_from(["uniclip", "mobile-sync", "devices", "revoke"]);
+        assert!(r1.is_ok(), "expected `devices revoke` (no id) to parse");
+        let r2 = Cli::try_parse_from(["uniclip", "mobile-sync", "devices", "revoke", "did_abc"]);
+        assert!(r2.is_ok(), "expected `devices revoke <id>` to parse");
+    }
+
+    #[test]
+    fn mobile_sync_status_parses() {
+        // Step 4/5: 新增 `status` 综合视图(读命令)。
+        let r = Cli::try_parse_from(["uniclip", "mobile-sync", "status"]);
+        assert!(r.is_ok(), "expected `status` to parse");
     }
 
     #[test]

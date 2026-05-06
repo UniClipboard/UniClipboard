@@ -1,4 +1,9 @@
-//! `uniclip mobile-sync disable` —— 关闭移动端同步总开关。
+//! `uniclip mobile-sync disable` —— 一键停用:同时关总开关 + 关 LAN 监听。
+//!
+//! 老版只关总开关,留 LAN listener 仍处于 `lan_listen_enabled=true` 的不一致
+//! 状态(daemon 重启后又会再起)。本步骤(Step 4/5)收窄行为:disable 应当
+//! 让 mobile sync 完整下线 —— 总开关关 + LAN 关。已配对设备保留(撤销有
+//! `devices revoke`),只是 LAN listener 不会再启。
 
 use serde::Serialize;
 
@@ -11,6 +16,7 @@ use crate::ui;
 #[derive(Serialize)]
 struct DisableResult {
     enabled: bool,
+    lan_listen_enabled: bool,
     restart_required: bool,
 }
 
@@ -24,6 +30,7 @@ pub async fn run(json: bool, verbose: bool) -> i32 {
         .facade
         .update_settings(UpdateMobileSyncSettingsInput {
             enabled: Some(false),
+            lan_listen_enabled: Some(false),
             ..Default::default()
         })
         .await;
@@ -33,11 +40,17 @@ pub async fn run(json: bool, verbose: bool) -> i32 {
             if json {
                 let dto = DisableResult {
                     enabled: out.enabled,
+                    lan_listen_enabled: out.lan_listen_enabled,
                     restart_required: out.restart_required,
                 };
                 shared::finish_json(ctx, &dto).await
             } else {
-                ui::success("Mobile-sync feature disabled.");
+                ui::success("Mobile-sync disabled (master switch + LAN listener).");
+                ui::info(
+                    "note",
+                    "Paired devices remain registered. Revoke individually with \
+                     `uniclip mobile-sync devices revoke`.",
+                );
                 if out.restart_required {
                     ui::warn(shared::restart_hint());
                 } else {

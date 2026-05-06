@@ -35,13 +35,13 @@ use uc_core::ports::SettingsPort;
 /// * `Some(value)` —— 把该字段写入 `value`(可能与现状相同 → 不写盘)。
 ///
 /// 这样让 CLI / 前端都能以"只改自己关心的字段"的方式调用,无需先 read-
-/// modify-write。`lan_bind_ip` 用嵌套 `Option<Option<String>>` 表达三态:
+/// modify-write。`lan_advertise_ip` 用嵌套 `Option<Option<String>>` 表达三态:
 /// `None` = 不动、`Some(None)` = 显式清空、`Some(Some(ip))` = 写入。
 #[derive(Debug, Clone, Default)]
 pub struct UpdateMobileSyncSettingsInput {
     pub enabled: Option<bool>,
     pub lan_listen_enabled: Option<bool>,
-    pub lan_bind_ip: Option<Option<String>>,
+    pub lan_advertise_ip: Option<Option<String>>,
     pub lan_port: Option<Option<u16>>,
 }
 
@@ -51,8 +51,8 @@ pub struct UpdateMobileSyncSettingsOutput {
     pub enabled: bool,
     /// 落盘后的 `lan_listen_enabled` 值。
     pub lan_listen_enabled: bool,
-    /// 落盘后的 `lan_bind_ip` 值。
-    pub lan_bind_ip: Option<String>,
+    /// 落盘后的 `lan_advertise_ip` 值。
+    pub lan_advertise_ip: Option<String>,
     /// 落盘后的 `lan_port` 值。
     pub lan_port: Option<u16>,
     /// 本次保存是否带来了"需要重启 daemon 才能生效"的影响。
@@ -68,7 +68,7 @@ pub enum UpdateMobileSyncSettingsError {
     #[error("settings save failed: {0}")]
     SettingsSaveFailed(String),
 
-    /// `lan_bind_ip` 不是合法 IPv4 字面量 / `lan_port=0`。
+    /// `lan_advertise_ip` 不是合法 IPv4 字面量 / `lan_port=0`。
     #[error("invalid LAN listener parameter: {0}")]
     InvalidLanParameter(String),
 }
@@ -91,10 +91,10 @@ impl UpdateMobileSyncSettingsUseCase {
     ) -> Result<UpdateMobileSyncSettingsOutput, UpdateMobileSyncSettingsError> {
         // 0. patch 字段的轻量校验 —— 在 load 前先把明显错误挡掉,避免无意义
         //    的 read-modify-write。
-        if let Some(Some(ref ip_str)) = input.lan_bind_ip {
+        if let Some(Some(ref ip_str)) = input.lan_advertise_ip {
             if ip_str.parse::<std::net::Ipv4Addr>().is_err() {
                 return Err(UpdateMobileSyncSettingsError::InvalidLanParameter(format!(
-                    "lan_bind_ip is not a valid IPv4 address: {ip_str}"
+                    "lan_advertise_ip is not a valid IPv4 address: {ip_str}"
                 )));
             }
         }
@@ -114,21 +114,21 @@ impl UpdateMobileSyncSettingsUseCase {
         let prev = current.mobile_sync.clone();
         let target_enabled = input.enabled.unwrap_or(prev.enabled);
         let target_lan_listen_enabled = input.lan_listen_enabled.unwrap_or(prev.lan_listen_enabled);
-        let target_lan_bind_ip = input
-            .lan_bind_ip
+        let target_lan_advertise_ip = input
+            .lan_advertise_ip
             .clone()
-            .unwrap_or_else(|| prev.lan_bind_ip.clone());
+            .unwrap_or_else(|| prev.lan_advertise_ip.clone());
         let target_lan_port = input.lan_port.unwrap_or(prev.lan_port);
 
         let restart_required = target_enabled != prev.enabled
             || target_lan_listen_enabled != prev.lan_listen_enabled
-            || target_lan_bind_ip != prev.lan_bind_ip
+            || target_lan_advertise_ip != prev.lan_advertise_ip
             || target_lan_port != prev.lan_port;
 
         if restart_required {
             current.mobile_sync.enabled = target_enabled;
             current.mobile_sync.lan_listen_enabled = target_lan_listen_enabled;
-            current.mobile_sync.lan_bind_ip = target_lan_bind_ip.clone();
+            current.mobile_sync.lan_advertise_ip = target_lan_advertise_ip.clone();
             current.mobile_sync.lan_port = target_lan_port;
             self.settings.save(&current).await.map_err(|err| {
                 UpdateMobileSyncSettingsError::SettingsSaveFailed(err.to_string())
@@ -140,7 +140,7 @@ impl UpdateMobileSyncSettingsUseCase {
         Ok(UpdateMobileSyncSettingsOutput {
             enabled: target_enabled,
             lan_listen_enabled: target_lan_listen_enabled,
-            lan_bind_ip: target_lan_bind_ip,
+            lan_advertise_ip: target_lan_advertise_ip,
             lan_port: target_lan_port,
             restart_required,
         })
@@ -322,27 +322,27 @@ mod tests {
         let settings = Arc::new(InMemorySettings::default());
         let uc = build_uc(settings.clone());
 
-        // 先把 lan 子字段全部写一轮:lan_listen_enabled / lan_bind_ip /
+        // 先把 lan 子字段全部写一轮:lan_listen_enabled / lan_advertise_ip /
         // lan_port 全都从 None / false 跳到具体值, restart_required 必为 true。
         let out = uc
             .execute(UpdateMobileSyncSettingsInput {
                 enabled: Some(true),
                 lan_listen_enabled: Some(true),
-                lan_bind_ip: Some(Some("192.168.1.5".into())),
+                lan_advertise_ip: Some(Some("192.168.1.5".into())),
                 lan_port: Some(Some(42721)),
             })
             .await
             .expect("ok");
         assert!(out.enabled);
         assert!(out.lan_listen_enabled);
-        assert_eq!(out.lan_bind_ip.as_deref(), Some("192.168.1.5"));
+        assert_eq!(out.lan_advertise_ip.as_deref(), Some("192.168.1.5"));
         assert_eq!(out.lan_port, Some(42721));
         assert!(out.restart_required);
 
-        // 部分字段 patch: 只清 lan_bind_ip, 其它保持。
+        // 部分字段 patch: 只清 lan_advertise_ip, 其它保持。
         let out2 = uc
             .execute(UpdateMobileSyncSettingsInput {
-                lan_bind_ip: Some(None),
+                lan_advertise_ip: Some(None),
                 ..Default::default()
             })
             .await
@@ -351,7 +351,10 @@ mod tests {
             out2.lan_listen_enabled,
             "lan_listen_enabled must be retained"
         );
-        assert_eq!(out2.lan_bind_ip, None, "lan_bind_ip must be cleared");
+        assert_eq!(
+            out2.lan_advertise_ip, None,
+            "lan_advertise_ip must be cleared"
+        );
         assert_eq!(out2.lan_port, Some(42721), "lan_port must be retained");
         assert!(out2.restart_required);
     }
@@ -362,7 +365,7 @@ mod tests {
         let uc = build_uc(settings);
         let err = uc
             .execute(UpdateMobileSyncSettingsInput {
-                lan_bind_ip: Some(Some("not-an-ip".into())),
+                lan_advertise_ip: Some(Some("not-an-ip".into())),
                 ..Default::default()
             })
             .await

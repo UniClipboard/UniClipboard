@@ -32,7 +32,7 @@ pub async fn run(command: SettingsCommands, json: bool, verbose: bool) -> i32 {
 struct SettingsDto {
     enabled: bool,
     lan_listen_enabled: bool,
-    lan_bind_ip: Option<String>,
+    lan_advertise_ip: Option<String>,
     lan_port: Option<u16>,
     current_lan_url: Option<String>,
     shortcut_install_methods: Vec<InstallMethodDto>,
@@ -50,7 +50,7 @@ impl From<&MobileSyncSettingsView> for SettingsDto {
         Self {
             enabled: v.enabled,
             lan_listen_enabled: v.lan_listen_enabled,
-            lan_bind_ip: v.lan_bind_ip.clone(),
+            lan_advertise_ip: v.lan_advertise_ip.clone(),
             lan_port: v.lan_port,
             current_lan_url: v.current_lan_url.clone(),
             shortcut_install_methods: v
@@ -97,7 +97,7 @@ async fn show(json: bool, verbose: bool) -> i32 {
                 ui::info("lanListenEnabled", &view.lan_listen_enabled.to_string());
                 ui::info(
                     "lanBindIp",
-                    view.lan_bind_ip
+                    view.lan_advertise_ip
                         .as_deref()
                         .unwrap_or("(none, fallback 127.0.0.1)"),
                 );

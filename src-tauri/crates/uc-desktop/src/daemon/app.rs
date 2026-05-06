@@ -209,10 +209,11 @@ impl DaemonApp {
 
     /// 注入 mobile sync LAN endpoint adapter。daemon `run()` 看到 `Some(...)`
     /// 且 `MobileSyncSettings.enabled && lan_listen_enabled` 时会 spawn
-    /// `mobile_lan` listener,bind ip / port 全部由设置驱动(`lan_bind_ip` /
-    /// `lan_port`,缺省值 `127.0.0.1:42720`),起来后写 `endpoint_info.set(...)`,
-    /// 关闭后 `clear()`。`None`(默认)表示当前装配场景不接 listener
-    /// (测试 / 未来 GUI-only 路径)。
+    /// `mobile_lan` listener, 始终绑 `0.0.0.0:lan_port`(默认 42720),
+    /// 起来后写 `endpoint_info.set(...)`, 关闭后 `clear()`。`None`(默认)
+    /// 表示当前装配场景不接 listener (测试 / 未来 GUI-only 路径)。
+    /// `lan_advertise_ip` 由 application 层 register_device 直接读 settings
+    /// 决定二维码 URL, 不在本侧使用。
     pub fn with_mobile_lan_endpoint_info(
         mut self,
         endpoint_info: Arc<uc_infra::mobile_sync::InMemoryMobileSyncEndpointInfoAdapter>,
@@ -307,12 +308,14 @@ impl DaemonApp {
         // (SyncClipboard 协议: 根路径 GET/PUT /SyncClipboard.json +
         // GET/PUT /file/:dataName)。
         //
-        // 子步骤 5.5: bind 完全由 `MobileSyncSettings` 驱动 ——
-        //   - `enabled` 或 `lan_listen_enabled` 任一为 false → daemon 不起 listener
-        //     (endpoint_info 保持 cleared, register_device 因此拒绝并提示用户)
-        //   - `lan_bind_ip` 给具体 IPv4 → 绑定到该 IP(允许局域网访问)
-        //   - `lan_bind_ip` 为 None → 退回 127.0.0.1(本机调试,iPhone 连不上)
-        //   - `lan_port` 为 None → 默认 42720(SPEC §3.2)
+        // bind 行为是常量推导 (不读 lan_advertise_ip):
+        //   - `enabled && lan_listen_enabled` → bind `0.0.0.0:lan_port`
+        //   - 任一为 false → 不起 listener
+        //   - `lan_port` 为 None → 默认 42720 (SPEC §3.2)
+        //
+        // `lan_advertise_ip` 仅由 application 层 register_device 使用来
+        // 合成给 iPhone 的 base_url, 与 daemon socket bind 解耦 (避免多
+        // 网卡场景下用户做选择题)。
         //
         // bind / serve 失败只 log, 不阻断 daemon 主流程。listener 需要 mobile
         // sync facade 做 Basic Auth + 业务路由对接;facade 在 AppFacade 上是
@@ -350,22 +353,7 @@ impl DaemonApp {
                     use uc_webserver::mobile_lan::start_mobile_lan_server;
 
                     let port = view.lan_port.unwrap_or(42720);
-                    let ip: IpAddr = match view.lan_bind_ip.as_deref() {
-                        Some(s) => match s.parse::<Ipv4Addr>() {
-                            Ok(v4) => IpAddr::V4(v4),
-                            Err(parse_err) => {
-                                error!(
-                                    bind_ip = %s,
-                                    error = %parse_err,
-                                    "mobile_sync lan_bind_ip is not a valid IPv4; \
-                                     falling back to 127.0.0.1"
-                                );
-                                IpAddr::V4(Ipv4Addr::LOCALHOST)
-                            }
-                        },
-                        None => IpAddr::V4(Ipv4Addr::LOCALHOST),
-                    };
-                    let bind = SocketAddr::new(ip, port);
+                    let bind = SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), port);
                     match start_mobile_lan_server(bind, lan_cancel, mobile_sync_facade).await {
                         Ok(handle) => {
                             let url = format!("http://{}", handle.bound_addr);

@@ -2,8 +2,10 @@
 //!
 //! 子命令:
 //! * `list-interfaces` —— 读命令,显示 RFC1918 LAN 候选(daemon 跑时也允许)。
-//! * `enable --bind <IP> [--port <P>] [--accept-network-risk]` —— 写命令。
-//!   不带 `--accept-network-risk` 时打印安全告警 + 交互确认(SPEC §3.4)。
+//! * `enable --advertise <IP> [--port <P>] [--accept-network-risk]` —— 写命令。
+//!   `--advertise` 决定写进 SyncClipboard install URL 给 iPhone 的 IP
+//!   (daemon socket 始终绑 0.0.0.0)。不带 `--accept-network-risk` 时打印
+//!   安全告警 + 交互确认(SPEC §3.4)。
 //! * `disable` —— 写命令。
 
 use std::io::{self, BufRead, Write};
@@ -22,12 +24,13 @@ use crate::ui;
 pub enum LanCommands {
     /// List eligible RFC1918 LAN IPv4 interfaces.
     ListInterfaces,
-    /// Enable the LAN listener and bind it to the given IP.
+    /// Enable the LAN listener (binds 0.0.0.0; --advertise decides the
+    /// IP printed in the install URL given to the iPhone).
     Enable {
-        /// LAN IPv4 to bind (e.g. `192.168.1.5`). Pick one from
-        /// `list-interfaces`.
+        /// LAN IPv4 to embed in the SyncClipboard install URL
+        /// (e.g. `192.168.1.5`). Pick one from `list-interfaces`.
         #[arg(long, value_name = "IP")]
-        bind: String,
+        advertise: String,
         /// Custom port; default 42720.
         #[arg(long, value_name = "PORT")]
         port: Option<u16>,
@@ -44,10 +47,10 @@ pub async fn run(command: LanCommands, json: bool, verbose: bool) -> i32 {
     match command {
         LanCommands::ListInterfaces => list_interfaces(json, verbose).await,
         LanCommands::Enable {
-            bind,
+            advertise,
             port,
             accept_network_risk,
-        } => enable(bind, port, accept_network_risk, json, verbose).await,
+        } => enable(advertise, port, accept_network_risk, json, verbose).await,
         LanCommands::Disable => disable(json, verbose).await,
     }
 }
@@ -116,13 +119,13 @@ async fn list_interfaces(json: bool, verbose: bool) -> i32 {
 struct EnableResult {
     enabled: bool,
     lan_listen_enabled: bool,
-    lan_bind_ip: Option<String>,
+    lan_advertise_ip: Option<String>,
     lan_port: Option<u16>,
     restart_required: bool,
 }
 
 async fn enable(
-    bind: String,
+    advertise: String,
     port: Option<u16>,
     accept_network_risk: bool,
     json: bool,
@@ -164,7 +167,7 @@ async fn enable(
             // 否则 daemon 启动时仍因 enabled=false 跳过 listener。
             enabled: Some(true),
             lan_listen_enabled: Some(true),
-            lan_bind_ip: Some(Some(bind)),
+            lan_advertise_ip: Some(Some(advertise)),
             lan_port: Some(port),
         })
         .await;
@@ -175,7 +178,7 @@ async fn enable(
                 let dto = EnableResult {
                     enabled: out.enabled,
                     lan_listen_enabled: out.lan_listen_enabled,
-                    lan_bind_ip: out.lan_bind_ip.clone(),
+                    lan_advertise_ip: out.lan_advertise_ip.clone(),
                     lan_port: out.lan_port,
                     restart_required: out.restart_required,
                 };
@@ -189,7 +192,10 @@ async fn enable(
                 }
             } else {
                 ui::success("LAN listener enabled in settings.");
-                ui::info("bind", out.lan_bind_ip.as_deref().unwrap_or("(unset)"));
+                ui::info(
+                    "advertise",
+                    out.lan_advertise_ip.as_deref().unwrap_or("(unset)"),
+                );
                 ui::info(
                     "port",
                     &out.lan_port

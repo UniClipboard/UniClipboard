@@ -251,7 +251,7 @@ impl Default for MobileSyncSettings {
         Self {
             enabled: false,
             lan_listen_enabled: false,
-            lan_bind_ip: None,
+            lan_advertise_ip: None,
             lan_port: None,
         }
     }

@@ -391,11 +391,15 @@ mod tests {
     }
 
     #[test]
-    fn mobile_sync_lan_enable_requires_bind() {
-        // `lan enable` 必须强制 `--bind <IP>` —— 防止用户漏填导致 daemon
-        // 启动后绑 127.0.0.1 但 iPhone 连不上的隐性失败。
+    fn mobile_sync_lan_enable_requires_advertise() {
+        // `lan enable` 必须强制 `--advertise <IP>` —— iPhone 客户端需要
+        // 一个具体可达的 IP 写进 install URL;daemon 自己始终绑 0.0.0.0,
+        // 与 advertise 无关。
         let result = Cli::try_parse_from(["uniclip", "mobile-sync", "lan", "enable"]);
-        assert!(result.is_err(), "expected `lan enable` to require --bind");
+        assert!(
+            result.is_err(),
+            "expected `lan enable` to require --advertise"
+        );
     }
 
     #[test]

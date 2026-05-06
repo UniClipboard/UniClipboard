@@ -125,7 +125,7 @@ impl MobileSyncFacade {
             register_device: RegisterMobileShortcutDeviceUseCase::new(
                 credentials_minter,
                 device_repo.clone(),
-                endpoint_info.clone(),
+                settings.clone(),
                 clock,
             ),
             revoke_device: RevokeMobileDeviceUseCase::new(device_repo.clone()),
@@ -400,6 +400,17 @@ mod tests {
 
         // 0. 列设备:起始为空。
         assert!(facade.list_devices().await.unwrap().is_empty());
+
+        // 0.5. 先把 LAN advertise 配好, 否则 register_device 会拒绝。
+        facade
+            .update_settings(UpdateMobileSyncSettingsInput {
+                enabled: Some(true),
+                lan_listen_enabled: Some(true),
+                lan_advertise_ip: Some(Some("192.168.1.5".into())),
+                lan_port: Some(Some(42720)),
+            })
+            .await
+            .expect("update_settings ok");
 
         // 1. 登记。
         let out = facade

@@ -34,9 +34,9 @@ pub struct MobileSyncSettingsView {
     pub enabled: bool,
     /// 持久化 `Settings.mobile_sync.lan_listen_enabled`(LAN listener 子开关)。
     pub lan_listen_enabled: bool,
-    /// 持久化 `Settings.mobile_sync.lan_bind_ip`。`None` 时 daemon 取
+    /// 持久化 `Settings.mobile_sync.lan_advertise_ip`。`None` 时 daemon 取
     /// `127.0.0.1` 作为兜底。
-    pub lan_bind_ip: Option<String>,
+    pub lan_advertise_ip: Option<String>,
     /// 持久化 `Settings.mobile_sync.lan_port`。`None` 时 daemon 取默认 42720。
     pub lan_port: Option<u16>,
     /// 当前 daemon 实际监听的 LAN URL(`http://<ip>:<port>`)。
@@ -118,7 +118,7 @@ impl GetMobileSyncSettingsUseCase {
         Ok(MobileSyncSettingsView {
             enabled: mobile.enabled,
             lan_listen_enabled: mobile.lan_listen_enabled,
-            lan_bind_ip: mobile.lan_bind_ip,
+            lan_advertise_ip: mobile.lan_advertise_ip,
             lan_port: mobile.lan_port,
             current_lan_url,
             shortcut_install_methods: shortcut_install_methods_v1(),

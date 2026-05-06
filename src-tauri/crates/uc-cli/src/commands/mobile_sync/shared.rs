@@ -70,8 +70,8 @@ pub fn render_register_error(err: &RegisterMobileShortcutDeviceError) -> String 
         RegisterMobileShortcutDeviceError::QrRenderFailed(msg) => {
             format!("QR rendering failed: {msg}")
         }
-        RegisterMobileShortcutDeviceError::EndpointInfoFailed(msg) => {
-            format!("Endpoint info probe failed: {msg}")
+        RegisterMobileShortcutDeviceError::SettingsLoadFailed(msg) => {
+            format!("Settings load failed: {msg}")
         }
     }
 }

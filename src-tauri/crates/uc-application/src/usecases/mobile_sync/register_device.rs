@@ -20,8 +20,7 @@ use tracing::{instrument, warn};
 
 use uc_core::mobile_sync::{MintedCredentials, MobileClientType, MobileDevice, MobileDeviceError};
 use uc_core::ports::{
-    ClockPort, EndpointInfoError, MobileCredentialsMinterPort, MobileDeviceRepositoryPort,
-    MobileSyncEndpointInfoPort,
+    ClockPort, MobileCredentialsMinterPort, MobileDeviceRepositoryPort, SettingsPort,
 };
 
 // ─── public-shaped (input / output / error) ─────────────────────────────
@@ -84,10 +83,10 @@ pub enum RegisterMobileShortcutDeviceError {
     #[error("qr code rendering failed: {0}")]
     QrRenderFailed(String),
 
-    /// 探测当前 LAN endpoint 时底层失败 —— 不同于"未启用",这是真正的
-    /// 错误,应当告知用户并支持重试。
-    #[error("endpoint info probe failed: {0}")]
-    EndpointInfoFailed(String),
+    /// 读取 settings 失败 —— 用于 base_url 推导。错误是真正的失败,
+    /// 应当告知用户并支持重试。
+    #[error("settings load failed: {0}")]
+    SettingsLoadFailed(String),
 }
 
 // ─── use case ───────────────────────────────────────────────────────────
@@ -107,7 +106,7 @@ pub const SYNC_CLIPBOARD_EX_INSTALL_URL: &str =
 pub(crate) struct RegisterMobileShortcutDeviceUseCase {
     credentials_minter: Arc<dyn MobileCredentialsMinterPort>,
     device_repo: Arc<dyn MobileDeviceRepositoryPort>,
-    endpoint_info: Arc<dyn MobileSyncEndpointInfoPort>,
+    settings: Arc<dyn SettingsPort>,
     clock: Arc<dyn ClockPort>,
 }
 
@@ -115,29 +114,37 @@ impl RegisterMobileShortcutDeviceUseCase {
     pub(crate) fn new(
         credentials_minter: Arc<dyn MobileCredentialsMinterPort>,
         device_repo: Arc<dyn MobileDeviceRepositoryPort>,
-        endpoint_info: Arc<dyn MobileSyncEndpointInfoPort>,
+        settings: Arc<dyn SettingsPort>,
         clock: Arc<dyn ClockPort>,
     ) -> Self {
         Self {
             credentials_minter,
             device_repo,
-            endpoint_info,
+            settings,
             clock,
         }
     }
 
     /// 登记一台新 iPhone Shortcut 设备。
     ///
-    /// happy path 不可中途部分提交:repository 写成功后,后续二维码渲染
-    /// 失败会留下"已登记但用户拿不到 install URL"的孤儿记录。v1 接受该
-    /// 缺陷 —— 用户重新点"添加 iPhone"即可生成新设备;旧的孤儿设备会被
-    /// 显示在列表里,撤销即可清理。
+    /// base_url 完全由 settings 决定:
+    /// `lan_listen_enabled=false` → `LanListenerDisabled`(用户没开 LAN);
+    /// `lan_advertise_ip=None` → 退回 `127.0.0.1`(本机调试);
+    /// 否则 `http://<advertise_ip>:<lan_port || 42720>`。
+    ///
+    /// 不依赖 `MobileSyncEndpointInfoPort`(那是 daemon 进程内运行时状
+    /// 态, CLI 进程不可达)。
+    ///
+    /// happy path 不可中途部分提交:repository 写成功后, 后续二维码渲染
+    /// 失败会留下"已登记但用户拿不到 install URL"的孤儿记录。v1 接受
+    /// 该缺陷 —— 用户重新点"添加 iPhone"即可生成新设备;旧的孤儿设备
+    /// 会被显示在列表里, 撤销即可清理。
     #[instrument(skip(self, input), fields(label_len = input.label.len()))]
     pub(crate) async fn execute(
         &self,
         input: RegisterMobileShortcutDeviceInput,
     ) -> Result<RegisterMobileShortcutDeviceOutput, RegisterMobileShortcutDeviceError> {
-        // 0. 标签前置校验 —— 兜底,不依赖上层。
+        // 0. 标签前置校验 —— 兜底, 不依赖上层。
         let label = input.label.trim().to_string();
         if label.is_empty() {
             return Err(RegisterMobileShortcutDeviceError::LabelEmpty);
@@ -146,16 +153,23 @@ impl RegisterMobileShortcutDeviceUseCase {
             return Err(RegisterMobileShortcutDeviceError::LabelTooLong);
         }
 
-        // 1. 探测当前 LAN endpoint —— 没开 LAN 监听就直接拒绝,避免颁发了
-        //    凭据却没 base_url 给用户的尴尬中间态。
-        let endpoint = self
-            .endpoint_info
-            .current_lan_endpoint()
-            .await
-            .map_err(translate_endpoint_error)?
-            .ok_or(RegisterMobileShortcutDeviceError::LanListenerDisabled)?;
+        // 1. 读 settings 决定 base_url —— 没开 LAN 监听就直接拒绝, 避免
+        //    颁发了凭据却没 base_url 给用户的尴尬中间态。
+        let settings = self.settings.load().await.map_err(|err| {
+            RegisterMobileShortcutDeviceError::SettingsLoadFailed(err.to_string())
+        })?;
+        if !settings.mobile_sync.lan_listen_enabled {
+            return Err(RegisterMobileShortcutDeviceError::LanListenerDisabled);
+        }
+        let advertise_ip = settings
+            .mobile_sync
+            .lan_advertise_ip
+            .as_deref()
+            .unwrap_or("127.0.0.1");
+        let port = settings.mobile_sync.lan_port.unwrap_or(42720);
+        let base_url = format!("http://{advertise_ip}:{port}");
 
-        // 2. 颁发凭据 —— 单次原子调用,4 项产物来自同一次 minting。
+        // 2. 颁发凭据 —— 单次原子调用, 4 项产物来自同一次 minting。
         let MintedCredentials {
             username,
             password,
@@ -183,7 +197,7 @@ impl RegisterMobileShortcutDeviceUseCase {
             .map_err(translate_device_error)?;
 
         // 4. 渲染 install URL 的二维码(PNG + ASCII 双形态)。install_url 是
-        //    常量(SyncClipboard 公开 iCloud 链接),不取决于 device,二维码
+        //    常量(SyncClipboard 公开 iCloud 链接), 不取决于 device, 二维码
         //    内容对所有用户都一样;但每次仍各自渲染一次 —— 不引入全局缓存,
         //    保持 use case 无副作用易测试。
         let install_url = SYNC_CLIPBOARD_EX_INSTALL_URL.to_string();
@@ -191,7 +205,7 @@ impl RegisterMobileShortcutDeviceUseCase {
 
         Ok(RegisterMobileShortcutDeviceOutput {
             device,
-            base_url: endpoint.url,
+            base_url,
             username,
             password,
             install_url,
@@ -260,14 +274,6 @@ fn translate_device_error(err: MobileDeviceError) -> RegisterMobileShortcutDevic
     }
 }
 
-fn translate_endpoint_error(err: EndpointInfoError) -> RegisterMobileShortcutDeviceError {
-    match err {
-        EndpointInfoError::Storage(msg) => {
-            RegisterMobileShortcutDeviceError::EndpointInfoFailed(msg)
-        }
-    }
-}
-
 // ─── tests ──────────────────────────────────────────────────────────────
 
 #[cfg(test)]
@@ -278,7 +284,8 @@ mod tests {
 
     use async_trait::async_trait;
 
-    use uc_core::mobile_sync::{LanEndpointInfo, MobileDeviceId};
+    use uc_core::mobile_sync::MobileDeviceId;
+    use uc_core::settings::model::Settings;
 
     // ── fixtures ────────────────────────────────────────────────────
 
@@ -341,19 +348,31 @@ mod tests {
         }
     }
 
-    struct FixedEndpoint(Option<&'static str>);
+    /// 内存 SettingsPort: `lan_listen_enabled` 由测试控制;`lan_advertise_ip`
+    /// 固定 192.168.1.5 + 端口 42720, 让 base_url 推出 "http://192.168.1.5:42720"。
+    struct FixedSettings {
+        lan_listen_enabled: bool,
+    }
     #[async_trait]
-    impl MobileSyncEndpointInfoPort for FixedEndpoint {
-        async fn current_lan_endpoint(&self) -> Result<Option<LanEndpointInfo>, EndpointInfoError> {
-            Ok(self.0.map(|url| LanEndpointInfo { url: url.into() }))
+    impl SettingsPort for FixedSettings {
+        async fn load(&self) -> anyhow::Result<Settings> {
+            let mut s = Settings::default();
+            s.mobile_sync.enabled = self.lan_listen_enabled;
+            s.mobile_sync.lan_listen_enabled = self.lan_listen_enabled;
+            s.mobile_sync.lan_advertise_ip = Some("192.168.1.5".into());
+            s.mobile_sync.lan_port = Some(42720);
+            Ok(s)
+        }
+        async fn save(&self, _: &Settings) -> anyhow::Result<()> {
+            unreachable!("register_device must not save settings")
         }
     }
 
-    fn build_uc(endpoint: Option<&'static str>) -> RegisterMobileShortcutDeviceUseCase {
+    fn build_uc(lan_listen_enabled: bool) -> RegisterMobileShortcutDeviceUseCase {
         RegisterMobileShortcutDeviceUseCase::new(
             Arc::new(DeterministicMinter),
             Arc::new(InMemoryDeviceRepo::default()),
-            Arc::new(FixedEndpoint(endpoint)),
+            Arc::new(FixedSettings { lan_listen_enabled }),
             Arc::new(FixedClock(1_000)),
         )
     }
@@ -362,7 +381,7 @@ mod tests {
 
     #[tokio::test]
     async fn rejects_empty_label() {
-        let uc = build_uc(Some("http://192.168.1.5:42720"));
+        let uc = build_uc(true);
         let err = uc
             .execute(RegisterMobileShortcutDeviceInput {
                 label: "   ".into(),
@@ -374,7 +393,7 @@ mod tests {
 
     #[tokio::test]
     async fn rejects_overlong_label() {
-        let uc = build_uc(Some("http://192.168.1.5:42720"));
+        let uc = build_uc(true);
         let err = uc
             .execute(RegisterMobileShortcutDeviceInput {
                 label: "x".repeat(MAX_LABEL_LEN + 1),
@@ -389,7 +408,7 @@ mod tests {
 
     #[tokio::test]
     async fn rejects_when_lan_listener_disabled() {
-        let uc = build_uc(None);
+        let uc = build_uc(false);
         let err = uc
             .execute(RegisterMobileShortcutDeviceInput {
                 label: "我的 iPhone".into(),
@@ -404,7 +423,7 @@ mod tests {
 
     #[tokio::test]
     async fn happy_path_returns_credentials_and_install_url() {
-        let uc = build_uc(Some("http://192.168.1.5:42720"));
+        let uc = build_uc(true);
         let out = uc
             .execute(RegisterMobileShortcutDeviceInput {
                 label: "我的 iPhone".into(),

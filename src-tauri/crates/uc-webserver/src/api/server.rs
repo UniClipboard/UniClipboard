@@ -191,7 +191,114 @@ pub fn build_router(state: DaemonApiState) -> Router {
         .merge(crate::security::connect::router())
         .merge(ws::router())
         .layer(middleware::from_fn(cors_middleware))
+        // request_tracing wraps cors so we observe every request — including
+        // CORS-rejected, auth-rejected, rate-limited, and 404s — at one place.
+        // Layer ordering: in axum the LAST `.layer()` is OUTERMOST (runs first
+        // on the request, last on the response). Adding tracing after cors
+        // makes it the outer ring around everything.
+        .layer(middleware::from_fn(request_tracing_middleware))
         .with_state(state)
+}
+
+/// Global HTTP request tracing — logs entry, status, and elapsed for every
+/// route. Auth query param is redacted so session tokens never appear in logs.
+pub(crate) async fn request_tracing_middleware(request: Request<Body>, next: Next) -> Response {
+    let method = request.method().clone();
+    let path = request.uri().path().to_string();
+    let query_redacted = redact_query_secrets(request.uri().query());
+    let request_id = format!("{:016x}", rand::random::<u64>());
+    let start = Instant::now();
+
+    if method == Method::OPTIONS {
+        tracing::debug!(
+            request_id = %request_id,
+            method = %method,
+            path = %path,
+            query = %query_redacted,
+            "daemon http preflight received"
+        );
+    } else {
+        tracing::info!(
+            request_id = %request_id,
+            method = %method,
+            path = %path,
+            query = %query_redacted,
+            "daemon http request received"
+        );
+    }
+
+    let response = next.run(request).await;
+    let status = response.status();
+    let elapsed_ms = start.elapsed().as_millis() as u64;
+
+    let level_action = if status.is_server_error() {
+        "server_error"
+    } else if status.is_client_error() {
+        "client_error"
+    } else {
+        "ok"
+    };
+
+    match level_action {
+        "server_error" => tracing::error!(
+            request_id = %request_id,
+            method = %method,
+            path = %path,
+            status = status.as_u16(),
+            elapsed_ms,
+            "daemon http request failed (server error)"
+        ),
+        "client_error" => tracing::warn!(
+            request_id = %request_id,
+            method = %method,
+            path = %path,
+            status = status.as_u16(),
+            elapsed_ms,
+            "daemon http request rejected (client error)"
+        ),
+        _ => {
+            if method == Method::OPTIONS {
+                tracing::debug!(
+                    request_id = %request_id,
+                    method = %method,
+                    path = %path,
+                    status = status.as_u16(),
+                    elapsed_ms,
+                    "daemon http preflight completed"
+                );
+            } else {
+                tracing::info!(
+                    request_id = %request_id,
+                    method = %method,
+                    path = %path,
+                    status = status.as_u16(),
+                    elapsed_ms,
+                    "daemon http request completed"
+                );
+            }
+        }
+    }
+
+    response
+}
+
+/// Redact secrets from a query string before logging. `auth=...` carries
+/// session tokens via query (used by `<img src>` blob loads); we replace its
+/// value with `<redacted>` so it never reaches log files.
+fn redact_query_secrets(query: Option<&str>) -> String {
+    let Some(q) = query else {
+        return String::new();
+    };
+    url::form_urlencoded::parse(q.as_bytes())
+        .map(|(k, v)| {
+            if k == "auth" || k == "token" || k == "session" {
+                format!("{k}=<redacted>")
+            } else {
+                format!("{k}={v}")
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("&")
 }
 
 pub(crate) async fn cors_middleware(request: Request<Body>, next: Next) -> Response {

@@ -8,6 +8,7 @@
 use axum::extract::State;
 use axum::routing::{get, put};
 use axum::{Json, Router};
+use tracing::{info, instrument};
 use uc_application::facade::settings as app_settings;
 use utoipa;
 
@@ -37,12 +38,15 @@ pub fn router() -> Router<DaemonApiState> {
         (status = 500, description = "Internal server error", body = crate::api::dto::error::ApiErrorResponse)
     )
 )]
+#[instrument(name = "api.settings.get", level = "info", skip(state))]
 async fn get_settings_handler(
     State(state): State<DaemonApiState>,
 ) -> Result<Json<GetSettingsResponse>, ApiError> {
+    info!("get settings request received");
     let app = state.app_facade_or_error()?;
     let settings = app.settings.get().await.map_err(settings_error_to_api)?;
 
+    info!("get settings succeeded");
     Ok(Json(GetSettingsResponse {
         data: settings_view_to_dto(settings),
         ts: chrono::Utc::now().timestamp_millis(),
@@ -66,10 +70,26 @@ async fn get_settings_handler(
         (status = 500, description = "Internal server error", body = crate::api::dto::error::ApiErrorResponse)
     )
 )]
+#[instrument(
+    name = "api.settings.update",
+    level = "info",
+    skip(state, payload),
+    fields(
+        has_general = payload.general.is_some(),
+        has_sync = payload.sync.is_some(),
+        has_security = payload.security.is_some(),
+        has_pairing = payload.pairing.is_some(),
+        has_file_sync = payload.file_sync.is_some(),
+        has_network = payload.network.is_some(),
+        has_retention_policy = payload.retention_policy.is_some(),
+        has_keyboard_shortcuts = payload.keyboard_shortcuts.is_some(),
+    )
+)]
 async fn update_settings_handler(
     State(state): State<DaemonApiState>,
     Json(payload): Json<SettingsPatchDto>,
 ) -> Result<Json<UpdateSettingsResponse>, ApiError> {
+    info!("update settings request received");
     let app = state.app_facade_or_error()?;
 
     // D-D1：`network` 段非空（任何字段变更）触发 restart_required = true。
@@ -97,6 +117,7 @@ async fn update_settings_handler(
         uc_observability::set_telemetry_enabled(enabled);
     }
 
+    info!(restart_required, "update settings succeeded");
     Ok(Json(UpdateSettingsResponse {
         success: true,
         data: settings_view_to_dto(updated),

@@ -6,6 +6,7 @@
 use axum::extract::{Path, State};
 use axum::routing::{get, patch};
 use axum::{Json, Router};
+use tracing::{info, instrument, warn};
 
 use uc_application::facade::{
     ContentTypesPatch, MemberSyncPreferencesPatch, MemberSyncPreferencesView, RosterError,
@@ -45,10 +46,17 @@ pub fn router() -> Router<DaemonApiState> {
         (status = 500, description = "Internal server error", body = crate::api::dto::error::ApiErrorResponse)
     )
 )]
+#[instrument(
+    name = "api.member.get_sync_preferences",
+    level = "info",
+    skip(state),
+    fields(device_id = %device_id)
+)]
 pub async fn get_member_sync_preferences_handler(
     State(state): State<DaemonApiState>,
     Path(device_id): Path<String>,
 ) -> Result<Json<GetMemberSyncPreferencesResponse>, ApiError> {
+    info!("get member sync preferences request received");
     let app = state.app_facade_or_error()?;
     let roster = app
         .member_roster
@@ -59,6 +67,11 @@ pub async fn get_member_sync_preferences_handler(
         .await
         .map_err(|e| map_member_error(&device_id, "get_member_sync_preferences", e))?;
 
+    info!(
+        send_enabled = prefs.send_enabled,
+        receive_enabled = prefs.receive_enabled,
+        "get member sync preferences succeeded"
+    );
     Ok(Json(GetMemberSyncPreferencesResponse {
         data: member_sync_preferences_to_dto(prefs),
         ts: chrono::Utc::now().timestamp_millis(),
@@ -84,11 +97,24 @@ pub async fn get_member_sync_preferences_handler(
         (status = 500, description = "Internal server error", body = crate::api::dto::error::ApiErrorResponse)
     )
 )]
+#[instrument(
+    name = "api.member.update_sync_preferences",
+    level = "info",
+    skip(state, payload),
+    fields(
+        device_id = %device_id,
+        patch_send_enabled = ?payload.send_enabled,
+        patch_receive_enabled = ?payload.receive_enabled,
+        patch_send_content_types = payload.send_content_types.is_some(),
+        patch_receive_content_types = payload.receive_content_types.is_some(),
+    )
+)]
 pub async fn update_member_sync_preferences_handler(
     State(state): State<DaemonApiState>,
     Path(device_id): Path<String>,
     Json(payload): Json<MemberSyncPreferencesPatchDto>,
 ) -> Result<Json<UpdateMemberSyncPreferencesResponse>, ApiError> {
+    info!("update member sync preferences request received");
     let app = state.app_facade_or_error()?;
     let roster = app
         .member_roster
@@ -99,6 +125,11 @@ pub async fn update_member_sync_preferences_handler(
         .await
         .map_err(|e| map_member_error(&device_id, "update_member_sync_preferences", e))?;
 
+    info!(
+        send_enabled = updated.send_enabled,
+        receive_enabled = updated.receive_enabled,
+        "update member sync preferences succeeded"
+    );
     Ok(Json(UpdateMemberSyncPreferencesResponse {
         success: true,
         data: member_sync_preferences_to_dto(updated),
@@ -163,10 +194,23 @@ fn member_sync_preferences_to_dto(
 /// "not found" 文案（见 `GetMemberSyncPreferences::execute`），这里做字符串匹配
 /// 把它提升为 404；其余视为 500。
 fn map_member_error(device_id: &str, context: &str, err: RosterError) -> ApiError {
-    tracing::error!(error = %err, device_id = %device_id, context = context, "member handler failed");
     if matches!(err, RosterError::NotFound(_)) {
+        warn!(
+            error = %err,
+            device_id = %device_id,
+            context = context,
+            error_kind = "member_not_found",
+            "member handler rejected request: member not found"
+        );
         ApiError::not_found(format!("member `{device_id}` not found"))
     } else {
+        tracing::error!(
+            error = %err,
+            device_id = %device_id,
+            context = context,
+            error_kind = "roster_internal",
+            "member handler failed"
+        );
         ApiError::internal(err.to_string())
     }
 }

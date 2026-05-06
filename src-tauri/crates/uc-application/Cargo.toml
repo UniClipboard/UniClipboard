@@ -37,6 +37,12 @@ blake3 = "1"
 # boundaries without extra clones. Matches uc-core + uc-infra.
 bytes = "1.7"
 url = "2"
+# Base64 — Basic Auth credential parsing (mobile sync auth use case).
+base64 = "0.22"
+# QR code rendering for SyncClipboard install URL (mobile sync register use case).
+# Used to produce both PNG bytes (frontend img tag) and ASCII art (CLI stdout).
+qrcode = { version = "0.14", default-features = false, features = ["image"] }
+image = { version = "0.25", default-features = false, features = ["png"] }
 # Semver parsing for upgrade-detection use case (`facade::upgrade`).
 # Compares last_seen_version (port-stored String) against current build
 # version to derive `UpgradeStatus`.

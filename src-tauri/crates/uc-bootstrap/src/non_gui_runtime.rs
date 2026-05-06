@@ -25,7 +25,7 @@ use uc_application::facade::{
 };
 use uc_core::clipboard::ClipboardIntegrationMode;
 use uc_infra::mobile_sync::{
-    InMemoryShortcutDownloadTokenStore, NetworkInterfaceLanProbe, OsRngSha256MobileTokenMinter,
+    Argon2idPasswordHasher, NetworkInterfaceLanProbe, OsRngCredentialsMinter,
 };
 
 use crate::assembly::get_storage_paths;
@@ -153,7 +153,11 @@ pub fn build_app_facade_from_deps(
     // 的 `set` / `clear`，这一处 wiring 即可让 register flow 端到端跑通。
     let mobile_sync_facade = Arc::new(MobileSyncFacade::new(MobileSyncFacadeDeps {
         clock: deps.system.clock.clone(),
-        token_minter: Arc::new(OsRngSha256MobileTokenMinter),
+        // v3 SyncClipboard 兼容: 单一 minter 一次性出 (username, password,
+        // password_hash, device_id), Argon2id 作为口令 hash;无状态 ZST,
+        // 装配处直接 new 即可。
+        credentials_minter: Arc::new(OsRngCredentialsMinter),
+        password_hasher: Arc::new(Argon2idPasswordHasher),
         // Phase 3 子步骤 1:device_repo 走 `DieselMobileDeviceRepository`,
         // 由 wire_dependencies 在 InfraLayer 装配时构造,跨重启 / 跨进程稳定。
         device_repo: deps.mobile_sync.device_repo.clone(),
@@ -161,9 +165,6 @@ pub fn build_app_facade_from_deps(
         // daemon LAN listener 启停时通过 WiredDependencies 旁路写它,这里只
         // 取读端共享 Arc。
         endpoint_info: deps.mobile_sync.endpoint_info.clone(),
-        download_tokens: Arc::new(InMemoryShortcutDownloadTokenStore::new(
-            deps.system.clock.clone(),
-        )),
         lan_interface_probe: Arc::new(NetworkInterfaceLanProbe::new()),
         settings: deps.settings.clone(),
     }));

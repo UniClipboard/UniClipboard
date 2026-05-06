@@ -1,59 +1,49 @@
-//! [`MobileSyncFacade`] —— 移动端同步功能的应用层入口。
+//! [`MobileSyncFacade`] —— 移动端同步功能的应用层入口(v3 SyncClipboard 兼容版)。
 //!
-//! 按 `uc-application/AGENTS.md` §11.4，外部 crate（bootstrap / daemon /
-//! tauri / cli）只能通过本目录下的 [`MobileSyncFacade`] 访问 6 个 mobile
-//! sync 用例；所有底层 `*UseCase` 类型保持 `pub(crate)`，不向外暴露。
+//! 按 `uc-application/AGENTS.md` §11.4, 外部 crate(bootstrap / daemon /
+//! tauri / cli)只能通过本目录下的 [`MobileSyncFacade`] 访问 mobile sync
+//! 用例;所有底层 `*UseCase` 类型保持 `pub(crate)`, 不向外暴露。
 //!
 //! ## 暴露的动作
 //!
-//! 每个公开方法对应一个 use case：
+//! 每个公开方法对应一个 use case:
 //!
 //! | 方法 | 对应 use case | 语义 |
 //! |---|---|---|
-//! | [`MobileSyncFacade::register_device`] | `RegisterMobileShortcutDeviceUseCase` | 颁发 token + 打包 `.shortcut` |
+//! | [`MobileSyncFacade::register_device`] | `RegisterMobileShortcutDeviceUseCase` | 颁发 (username,password) + 渲染 install URL 二维码 |
 //! | [`MobileSyncFacade::revoke_device`] | `RevokeMobileDeviceUseCase` | 注销已登记设备 |
-//! | [`MobileSyncFacade::list_devices`] | `ListMobileDevicesUseCase` | 列出已登记设备（不含 token_hash） |
+//! | [`MobileSyncFacade::list_devices`] | `ListMobileDevicesUseCase` | 列出已登记设备(不含 password_hash / username) |
 //! | [`MobileSyncFacade::get_settings`] | `GetMobileSyncSettingsUseCase` | 读 enabled + LAN URL + install methods |
-//! | [`MobileSyncFacade::update_settings`] | `UpdateMobileSyncSettingsUseCase` | 写 enabled，返回 restart_required |
+//! | [`MobileSyncFacade::update_settings`] | `UpdateMobileSyncSettingsUseCase` | 写 enabled, 返回 restart_required |
 //! | [`MobileSyncFacade::list_lan_interfaces`] | `ListLanInterfacesUseCase` | 列出可作为二维码 URL 的 RFC1918 网卡 |
+//! | [`MobileSyncFacade::authenticate_basic`] | `AuthenticateBasicAuthUseCase` | LAN HTTP 路由用:校验 Basic Auth 头 |
 //!
-//! ## Phase 2 暂用 stub packer service
-//!
-//! [`crate::usecases::mobile_sync::shortcut_packer::ShortcutPackerService`]
-//! 是 application 层内部 trait（不是 `uc-core` port），按 §11.4 保持
-//! `pub(crate)`，因此不出现在 [`MobileSyncFacadeDeps`] 上。Phase 2 facade
-//! 内部直接构造
-//! [`StubShortcutPackerService`](crate::usecases::mobile_sync::shortcut_packer::StubShortcutPackerService)；
-//! Phase 3 实现真实 plist + qrcode 时只需替换这一处构造。
-//!
-//! ## 错误暴露策略（Phase 2 简化）
+//! ## 错误暴露策略
 //!
 //! 每个 use case 自己的 `*Error` 类型直接通过 mod.rs 的 `pub use`
-//! re-export，不做 mirror。这是有意为之的 YAGNI：
-//!
-//! 1. mobile sync 是新功能，没有"老 API 要保护"压力。
-//! 2. Mirror 6 个 use case error 的工作量与读者收益不匹配 —— 所有错误都
-//!    已经按 §13.1 用业务语义命名（`LabelEmpty` / `NotFound` /
-//!    `LanListenerDisabled` 等），不会泄漏底层细节。
-//! 3. 当 use case 内部错误真的开始演化破坏对外 API 时，再插入 mirror
-//!    层即可（参考 `facade/upgrade/facade.rs` 的写法）。
+//! re-export, 不做 mirror。错误都已经按 §13.1 用业务语义命名
+//! (`LabelEmpty` / `NotFound` / `LanListenerDisabled` / `InvalidCredentials`
+//! 等), 不会泄漏底层细节。
 
 use std::sync::Arc;
 
 use uc_core::ports::{
-    ClockPort, LanInterfaceProbePort, MobileDeviceRepositoryPort, MobileSyncEndpointInfoPort,
-    MobileTokenMinterPort, SettingsPort, ShortcutDownloadTokenStorePort,
+    ClockPort, LanInterfaceProbePort, MobileCredentialsMinterPort, MobileDeviceRepositoryPort,
+    MobileSyncEndpointInfoPort, PasswordHasherPort, SettingsPort,
 };
 
 use crate::usecases::mobile_sync::{
-    get_settings::GetMobileSyncSettingsUseCase, list_devices::ListMobileDevicesUseCase,
-    list_lan_interfaces::ListLanInterfacesUseCase,
+    authenticate_basic::AuthenticateBasicAuthUseCase, get_settings::GetMobileSyncSettingsUseCase,
+    list_devices::ListMobileDevicesUseCase, list_lan_interfaces::ListLanInterfacesUseCase,
     register_device::RegisterMobileShortcutDeviceUseCase, revoke_device::RevokeMobileDeviceUseCase,
-    shortcut_packer::StubShortcutPackerService, update_settings::UpdateMobileSyncSettingsUseCase,
+    update_settings::UpdateMobileSyncSettingsUseCase,
 };
 
-// ── 对外类型 re-export（Phase 2 简化策略，详见模块文档）─────────────
+// ── 对外类型 re-export ─────────────────────────────────────────────────
 
+pub use crate::usecases::mobile_sync::authenticate_basic::{
+    AuthenticateBasicAuthError, AuthenticateBasicAuthInput, AuthenticatedDevice,
+};
 pub use crate::usecases::mobile_sync::get_settings::{
     GetMobileSyncSettingsError, MobileSyncSettingsView, ShortcutInstallMethod,
     ShortcutInstallMethodOption,
@@ -66,6 +56,10 @@ pub use crate::usecases::mobile_sync::register_device::{
     RegisterMobileShortcutDeviceError, RegisterMobileShortcutDeviceInput,
     RegisterMobileShortcutDeviceOutput,
 };
+// `SYNC_CLIPBOARD_EX_INSTALL_URL` 是 const 值, rustc 在 `pub use {}` 组里
+// 与类型混合时会误报 unused; 单独一行 re-export 让它独立绑定, 避免 warning
+// (功能上等价)。
+pub use crate::usecases::mobile_sync::register_device::SYNC_CLIPBOARD_EX_INSTALL_URL;
 pub use crate::usecases::mobile_sync::revoke_device::{
     RevokeMobileDeviceError, RevokeMobileDeviceInput,
 };
@@ -77,24 +71,24 @@ pub use crate::usecases::mobile_sync::update_settings::{
 
 /// 构造 [`MobileSyncFacade`] 所需的端口集合。
 ///
-/// 由 `uc-bootstrap` 在装配阶段填好；除字段顺序外没有"哪个 use case 用
-/// 哪几个端口"的耦合 —— 那是 facade 内部决定的，外部只需提供全部端口。
+/// 由 `uc-bootstrap` 在装配阶段填好;除字段顺序外没有"哪个 use case 用
+/// 哪几个端口"的耦合 —— 那是 facade 内部决定的, 外部只需提供全部端口。
 pub struct MobileSyncFacadeDeps {
     pub clock: Arc<dyn ClockPort>,
-    pub token_minter: Arc<dyn MobileTokenMinterPort>,
+    pub credentials_minter: Arc<dyn MobileCredentialsMinterPort>,
+    pub password_hasher: Arc<dyn PasswordHasherPort>,
     pub device_repo: Arc<dyn MobileDeviceRepositoryPort>,
     pub endpoint_info: Arc<dyn MobileSyncEndpointInfoPort>,
-    pub download_tokens: Arc<dyn ShortcutDownloadTokenStorePort>,
     pub lan_interface_probe: Arc<dyn LanInterfaceProbePort>,
     pub settings: Arc<dyn SettingsPort>,
 }
 
 // ─── Facade ─────────────────────────────────────────────────────────────
 
-/// 移动端同步入口，线程安全，可放入 `Arc`。
+/// 移动端同步入口, 线程安全, 可放入 `Arc`。
 ///
-/// 内部聚合 6 个 use case；所有方法都是 thin pass-through，不做跨 use
-/// case 编排（按 §11.2 facade 不应再承载流程）。
+/// 内部聚合 7 个 use case;所有方法都是 thin pass-through, 不做跨 use
+/// case 编排(按 §11.2 facade 不应再承载流程)。
 pub struct MobileSyncFacade {
     register_device: RegisterMobileShortcutDeviceUseCase,
     revoke_device: RevokeMobileDeviceUseCase,
@@ -102,44 +96,41 @@ pub struct MobileSyncFacade {
     get_settings: GetMobileSyncSettingsUseCase,
     update_settings: UpdateMobileSyncSettingsUseCase,
     list_lan_interfaces: ListLanInterfacesUseCase,
+    authenticate_basic: AuthenticateBasicAuthUseCase,
 }
 
 impl MobileSyncFacade {
     /// 按 deps 构造 facade。每个 use case 独立持有它需要的端口子集 ——
-    /// 端口都是 `Arc<dyn …>`，clone 不复制底层资源。
+    /// 端口都是 `Arc<dyn …>`, clone 不复制底层资源。
     pub fn new(deps: MobileSyncFacadeDeps) -> Self {
         let MobileSyncFacadeDeps {
             clock,
-            token_minter,
+            credentials_minter,
+            password_hasher,
             device_repo,
             endpoint_info,
-            download_tokens,
             lan_interface_probe,
             settings,
         } = deps;
 
-        // Phase 2 stub —— Phase 3 替换为 PlistShortcutPackerService。
-        let packer = Arc::new(StubShortcutPackerService);
-
         Self {
             register_device: RegisterMobileShortcutDeviceUseCase::new(
-                token_minter,
+                credentials_minter,
                 device_repo.clone(),
                 endpoint_info.clone(),
-                download_tokens,
-                packer,
                 clock,
             ),
             revoke_device: RevokeMobileDeviceUseCase::new(device_repo.clone()),
-            list_devices: ListMobileDevicesUseCase::new(device_repo),
+            list_devices: ListMobileDevicesUseCase::new(device_repo.clone()),
             get_settings: GetMobileSyncSettingsUseCase::new(settings.clone(), endpoint_info),
             update_settings: UpdateMobileSyncSettingsUseCase::new(settings),
             list_lan_interfaces: ListLanInterfacesUseCase::new(lan_interface_probe),
+            authenticate_basic: AuthenticateBasicAuthUseCase::new(device_repo, password_hasher),
         }
     }
 
-    /// 登记一台 iPhone Shortcut 设备：颁发 token、打包 `.shortcut`、注册
-    /// 一次性下载凭据。详见
+    /// 登记一台 iPhone Shortcut 设备:颁发 (username, password) Basic Auth
+    /// 凭据 + 渲染 SyncClipboard install URL 的二维码。详见
     /// [`RegisterMobileShortcutDeviceUseCase`](crate::usecases::mobile_sync::register_device::RegisterMobileShortcutDeviceUseCase)。
     pub async fn register_device(
         &self,
@@ -148,8 +139,8 @@ impl MobileSyncFacade {
         self.register_device.execute(input).await
     }
 
-    /// 注销一台已登记设备。返回 `Ok(())` 表示成功；
-    /// `Err(NotFound)` 表示该 device_id 已不在仓储里（UI 列表过期）。
+    /// 注销一台已登记设备。返回 `Ok(())` 表示成功;
+    /// `Err(NotFound)` 表示该 device_id 已不在仓储里(UI 列表过期)。
     pub async fn revoke_device(
         &self,
         input: RevokeMobileDeviceInput,
@@ -157,8 +148,8 @@ impl MobileSyncFacade {
         self.revoke_device.execute(input).await
     }
 
-    /// 列出已登记设备摘要。结果按"最近活跃 desc → 创建时间 desc"排序，
-    /// 不包含 `token_hash`。
+    /// 列出已登记设备摘要。结果按"最近活跃 desc → 创建时间 desc"排序,
+    /// 不包含 `password_hash` / `username`。
     pub async fn list_devices(&self) -> Result<Vec<MobileDeviceSummary>, ListMobileDevicesError> {
         self.list_devices.execute().await
     }
@@ -169,7 +160,7 @@ impl MobileSyncFacade {
     }
 
     /// 更新移动端同步设置。返回值的 `restart_required` 标记仅在 enabled
-    /// 实际发生变化时为 `true`；同值重复保存为 `false` 且不写盘。
+    /// 实际发生变化时为 `true`;同值重复保存为 `false` 且不写盘。
     pub async fn update_settings(
         &self,
         input: UpdateMobileSyncSettingsInput,
@@ -178,34 +169,42 @@ impl MobileSyncFacade {
     }
 
     /// 列出可作为二维码 URL 候选的本机 IPv4 LAN 接口。仅返回 RFC1918 私
-    /// 有地址，按 10/8 → 172.16/12 → 192.168/16 排序。
+    /// 有地址, 按 10/8 → 172.16/12 → 192.168/16 排序。
     pub async fn list_lan_interfaces(
         &self,
     ) -> Result<Vec<LanInterfaceOption>, ListLanInterfacesError> {
         self.list_lan_interfaces.execute().await
     }
+
+    /// 校验 LAN HTTP 请求的 `Authorization: basic ...` 头。详见
+    /// [`AuthenticateBasicAuthUseCase`](crate::usecases::mobile_sync::authenticate_basic::AuthenticateBasicAuthUseCase)。
+    pub async fn authenticate_basic(
+        &self,
+        input: AuthenticateBasicAuthInput,
+    ) -> Result<AuthenticatedDevice, AuthenticateBasicAuthError> {
+        self.authenticate_basic.execute(input).await
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    //! Facade 层集成测试 —— 用 in-memory port fakes 验证"deps → 6 个 use
+    //! Facade 层集成测试 —— 用 in-memory port fakes 验证"deps → 7 个 use
     //! case → 对外方法"的接线没有错位。深层用例语义在各 use case 文件
-    //! 已有覆盖，这里只跑一遍 happy path。
+    //! 已有覆盖, 这里只跑一遍 happy path。
 
     use super::*;
 
     use std::sync::Mutex;
 
     use async_trait::async_trait;
+    use base64::Engine;
 
     use uc_core::mobile_sync::{
-        LanEndpointInfo, LanInterface, MintedToken, MobileDevice, MobileDeviceError,
-        MobileDeviceId, RegisteredDownloadToken, ShortcutDownloadToken, TokenHash,
+        LanEndpointInfo, LanInterface, MintedCredentials, MobileDevice, MobileDeviceError,
+        MobileDeviceId,
     };
-    use uc_core::ports::{EndpointInfoError, LanInterfaceProbeError, ShortcutDownloadTokenError};
+    use uc_core::ports::{EndpointInfoError, LanInterfaceProbeError, PasswordHasherError};
     use uc_core::settings::model::Settings;
-
-    // ── 复用所有 use case 已经写过的 fake 思路 ──────────────────────
 
     struct FixedClock(i64);
     impl ClockPort for FixedClock {
@@ -215,11 +214,12 @@ mod tests {
     }
 
     struct StaticMinter;
-    impl MobileTokenMinterPort for StaticMinter {
-        fn mint_token(&self) -> MintedToken {
-            MintedToken {
-                raw_hex: "f".repeat(64),
-                hash: TokenHash::new([7u8; 32]),
+    impl MobileCredentialsMinterPort for StaticMinter {
+        fn mint_credentials(&self) -> MintedCredentials {
+            MintedCredentials {
+                username: "mobile_facade01".into(),
+                password: "facade-test-password-22".into(),
+                password_hash: "$argon2id$test$facade".into(),
                 device_id: MobileDeviceId::new("did_facade_test"),
             }
         }
@@ -235,11 +235,17 @@ mod tests {
             self.devices.lock().unwrap().push(device.clone());
             Ok(())
         }
-        async fn find_by_token_hash(
+        async fn find_by_username(
             &self,
-            _: &TokenHash,
+            username: &str,
         ) -> Result<Option<MobileDevice>, MobileDeviceError> {
-            Ok(None)
+            Ok(self
+                .devices
+                .lock()
+                .unwrap()
+                .iter()
+                .find(|d| d.username == username)
+                .cloned())
         }
         async fn find_by_device_id(
             &self,
@@ -274,6 +280,20 @@ mod tests {
         }
     }
 
+    /// fake hasher: 把 password_hash 视为 `phc:<password>`, verify 比较即可。
+    /// happy path 用真值 `$argon2id$test$facade` 不会 verify 通过,
+    /// 测试里直接用 fake 重写 password_hash 的设备来验证 authenticate。
+    struct FakeHasher;
+    #[async_trait]
+    impl PasswordHasherPort for FakeHasher {
+        async fn hash(&self, password: &str) -> Result<String, PasswordHasherError> {
+            Ok(format!("phc:{password}"))
+        }
+        async fn verify(&self, password: &str, phc: &str) -> Result<bool, PasswordHasherError> {
+            Ok(phc == format!("phc:{password}"))
+        }
+    }
+
     struct FixedEndpoint;
     #[async_trait]
     impl MobileSyncEndpointInfoPort for FixedEndpoint {
@@ -281,33 +301,6 @@ mod tests {
             Ok(Some(LanEndpointInfo {
                 url: "http://192.168.1.5:42720".into(),
             }))
-        }
-    }
-
-    #[derive(Default)]
-    struct StubDownloadTokens {
-        next: Mutex<u64>,
-    }
-    #[async_trait]
-    impl ShortcutDownloadTokenStorePort for StubDownloadTokens {
-        async fn register(
-            &self,
-            _: MobileDeviceId,
-            _: Vec<u8>,
-            ttl_ms: i64,
-        ) -> Result<RegisteredDownloadToken, ShortcutDownloadTokenError> {
-            let mut n = self.next.lock().unwrap();
-            *n += 1;
-            Ok(RegisteredDownloadToken {
-                token: ShortcutDownloadToken::new(format!("dt_{}", *n)),
-                expires_at_ms: 1_000 + ttl_ms,
-            })
-        }
-        async fn consume(
-            &self,
-            _: &ShortcutDownloadToken,
-        ) -> Result<Option<(MobileDeviceId, Vec<u8>)>, ShortcutDownloadTokenError> {
-            Ok(None)
         }
     }
 
@@ -346,10 +339,10 @@ mod tests {
     fn build_facade() -> MobileSyncFacade {
         MobileSyncFacade::new(MobileSyncFacadeDeps {
             clock: Arc::new(FixedClock(1_000)),
-            token_minter: Arc::new(StaticMinter),
+            credentials_minter: Arc::new(StaticMinter),
+            password_hasher: Arc::new(FakeHasher),
             device_repo: Arc::new(InMemoryDeviceRepo::default()),
             endpoint_info: Arc::new(FixedEndpoint),
-            download_tokens: Arc::new(StubDownloadTokens::default()),
             lan_interface_probe: Arc::new(StubLanProbe),
             settings: Arc::new(InMemorySettings::default()),
         })
@@ -359,7 +352,7 @@ mod tests {
     async fn end_to_end_register_then_list_then_revoke() {
         let facade = build_facade();
 
-        // 0. 列设备：起始为空。
+        // 0. 列设备:起始为空。
         assert!(facade.list_devices().await.unwrap().is_empty());
 
         // 1. 登记。
@@ -370,11 +363,12 @@ mod tests {
             .await
             .expect("register ok");
         assert_eq!(out.device.label, "我的 iPhone");
-        assert!(out
-            .download_url
-            .starts_with("http://192.168.1.5:42720/mobile/v1/shortcut/install?dt="));
+        assert_eq!(out.username, "mobile_facade01");
+        assert_eq!(out.base_url, "http://192.168.1.5:42720");
+        assert_eq!(out.install_url, SYNC_CLIPBOARD_EX_INSTALL_URL);
+        assert!(!out.qr_code_png_bytes.is_empty());
 
-        // 2. 列设备：拿到刚登记的那台。
+        // 2. 列设备:拿到刚登记的那台。
         let listed = facade.list_devices().await.unwrap();
         assert_eq!(listed.len(), 1);
         let device_id = listed[0].device_id.clone();
@@ -387,10 +381,10 @@ mod tests {
             .await
             .expect("revoke ok");
 
-        // 4. 注销之后再列：空了。
+        // 4. 注销之后再列:空了。
         assert!(facade.list_devices().await.unwrap().is_empty());
 
-        // 5. 重复 revoke：返回 NotFound。
+        // 5. 重复 revoke:返回 NotFound。
         let err = facade
             .revoke_device(RevokeMobileDeviceInput { device_id })
             .await
@@ -405,7 +399,7 @@ mod tests {
         // 默认 disabled。
         let v0 = facade.get_settings().await.unwrap();
         assert!(!v0.enabled);
-        // FixedEndpoint 始终有 url，所以这里也能拿到 LAN URL。
+        // FixedEndpoint 始终有 url, 所以这里也能拿到 LAN URL。
         assert_eq!(
             v0.current_lan_url.as_deref(),
             Some("http://192.168.1.5:42720")
@@ -419,11 +413,11 @@ mod tests {
         assert!(upd.enabled);
         assert!(upd.restart_required);
 
-        // 再读：enabled 已生效。
+        // 再读:enabled 已生效。
         let v1 = facade.get_settings().await.unwrap();
         assert!(v1.enabled);
 
-        // 同值再保存：restart_required 应 false。
+        // 同值再保存:restart_required 应 false。
         let upd_noop = facade
             .update_settings(UpdateMobileSyncSettingsInput { enabled: true })
             .await
@@ -437,5 +431,80 @@ mod tests {
         let opts = facade.list_lan_interfaces().await.unwrap();
         assert_eq!(opts.len(), 1);
         assert_eq!(opts[0].ipv4, "192.168.1.5");
+    }
+
+    #[tokio::test]
+    async fn authenticate_basic_round_trips_through_facade() {
+        let facade = build_facade();
+
+        // 先把一台用 FakeHasher 能验证通过的设备塞进 repo —— 不能用
+        // register flow, 因为 register 用 StaticMinter 出的 password_hash
+        // 是 "$argon2id$test$facade" 不可能被 FakeHasher 通过。直接构造一
+        // 台带 phc:<pw> 形态的设备, 通过 in-process 仓储插入。
+        //
+        // 这里我们重新构造一个独立 facade, 共享同一个 repo, 让 device_repo
+        // 在两个 use case 之间能"看到同一份数据"。
+        //
+        // 实际部署时 register 用真 minter + 真 hasher, 出来的 phc 能被
+        // verify 通过 —— 这一对配对契约由 OsRngCredentialsMinter +
+        // Argon2idPasswordHasher 在 uc-infra 层联合保证(infra crate 已有
+        // round-trip 测试)。
+
+        // 把 FakeHasher 兼容的设备直接 push。
+        let direct_device = MobileDevice {
+            device_id: MobileDeviceId::new("did_auth"),
+            label: "iPhone".into(),
+            client_type: uc_core::mobile_sync::MobileClientType::IosShortcut,
+            username: "mobile_alice".into(),
+            password_hash: "phc:wonderland".into(), // FakeHasher 兼容
+            created_at_ms: 1,
+            last_seen_at_ms: None,
+            last_seen_ip: None,
+            reported_name: None,
+            reported_os: None,
+        };
+        let repo = Arc::new(InMemoryDeviceRepo::default());
+        repo.save(&direct_device).await.unwrap();
+        let local = MobileSyncFacade::new(MobileSyncFacadeDeps {
+            clock: Arc::new(FixedClock(1_000)),
+            credentials_minter: Arc::new(StaticMinter),
+            password_hasher: Arc::new(FakeHasher),
+            device_repo: repo,
+            endpoint_info: Arc::new(FixedEndpoint),
+            lan_interface_probe: Arc::new(StubLanProbe),
+            settings: Arc::new(InMemorySettings::default()),
+        });
+
+        // happy path
+        let header = format!(
+            "basic {}",
+            base64::engine::general_purpose::STANDARD.encode("mobile_alice:wonderland")
+        );
+        let out = local
+            .authenticate_basic(AuthenticateBasicAuthInput {
+                authorization_header: header,
+            })
+            .await
+            .unwrap();
+        assert_eq!(out.device.username, "mobile_alice");
+
+        // 错密码 → 401
+        let bad = format!(
+            "basic {}",
+            base64::engine::general_purpose::STANDARD.encode("mobile_alice:wrongpw")
+        );
+        let err = local
+            .authenticate_basic(AuthenticateBasicAuthInput {
+                authorization_header: bad,
+            })
+            .await
+            .unwrap_err();
+        assert!(matches!(
+            err,
+            AuthenticateBasicAuthError::InvalidCredentials
+        ));
+
+        // 静默掉 facade 顶层 register 没用过的字段(避免 dead code 警告)。
+        let _ = facade;
     }
 }

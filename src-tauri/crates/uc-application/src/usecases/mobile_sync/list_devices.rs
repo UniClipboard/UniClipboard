@@ -3,11 +3,14 @@
 //!
 //! 这是一个纯读 use case。两点设计取舍值得记住：
 //!
-//! 1. **不泄漏 `token_hash`**：core 层的 [`MobileDevice`] 含
-//!    `token_hash` 字段（`uc-core/src/mobile_sync/device.rs`），那是
-//!    server 端鉴权用的。上层（前端 / CLI）一旦能看到哈希就构成攻击面
-//!    （即便 hash 不可逆）。所以 use case 把它替换为应用层 view
-//!    [`MobileDeviceSummary`]，仅暴露面向用户展示需要的字段。
+//! 1. **不泄漏 `password_hash`**：core 层的 [`MobileDevice`] 含
+//!    `password_hash` 字段（`uc-core/src/mobile_sync/device.rs`），那是
+//!    server 端鉴权用的 Argon2id PHC。上层（前端 / CLI）一旦能看到 PHC 就
+//!    构成攻击面（暴露 KDF 参数 + salt + hash 给离线爆破）。`username` 也
+//!    一并不暴露 —— 用户在 SyncClipboard shortcut 里看到的 username 不需要
+//!    在桌面端列表里再展示一次, 设备列表只用 label / 最近活跃做识别。所以
+//!    use case 把这些都替换为应用层 view [`MobileDeviceSummary`], 仅暴露
+//!    面向用户展示需要的字段。
 //!
 //! 2. **排序由 use case 决定**：repository port 不承诺顺序（不同 adapter
 //!    自由实现），UI 期望"最近活跃在前，新登记在前"——这是应用语义而非
@@ -50,7 +53,12 @@ impl MobileDeviceSummary {
             device_id,
             label,
             client_type,
-            token_hash: _, // 故意丢弃 —— 这是 view 层的安全边界。
+            // 故意丢弃 —— 这两个是 view 层的安全边界。
+            // username: 用户在 shortcut 客户端里管它就够了, 桌面端列表
+            //           不暴露(避免 UI 截图时被旁观者读到)。
+            // password_hash: Argon2id PHC, 永不出 application 层。
+            username: _,
+            password_hash: _,
             created_at_ms,
             last_seen_at_ms,
             last_seen_ip,
@@ -140,8 +148,6 @@ mod tests {
 
     use async_trait::async_trait;
 
-    use uc_core::mobile_sync::TokenHash;
-
     fn make_device(
         id: &str,
         label: &str,
@@ -152,7 +158,8 @@ mod tests {
             device_id: MobileDeviceId::new(id),
             label: label.into(),
             client_type: MobileClientType::IosShortcut,
-            token_hash: TokenHash::new([0u8; 32]),
+            username: format!("mobile_{id}"),
+            password_hash: "$argon2id$test".into(),
             created_at_ms,
             last_seen_at_ms,
             last_seen_ip: None,
@@ -181,11 +188,11 @@ mod tests {
         async fn save(&self, _: &MobileDevice) -> Result<(), MobileDeviceError> {
             unreachable!("list 不调用 save")
         }
-        async fn find_by_token_hash(
+        async fn find_by_username(
             &self,
-            _: &TokenHash,
+            _: &str,
         ) -> Result<Option<MobileDevice>, MobileDeviceError> {
-            unreachable!("list 不调用 find_by_token_hash")
+            unreachable!("list 不调用 find_by_username")
         }
         async fn find_by_device_id(
             &self,

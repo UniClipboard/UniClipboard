@@ -1,10 +1,10 @@
 //! `RevokeMobileDeviceUseCase` —— 把一台已登记的 iPhone Shortcut 设备从
 //! 服务端记录中移除。
 //!
-//! 撤销后该设备的 token 立即失效（middleware 用 `find_by_token_hash` 找
-//! 不到对应记录就 401）。这里只删服务端记录，不主动通知客户端 ——
-//! Shortcut 没有反向通道，iPhone 端在下一次发请求拿到 401 时由用户自行
-//! 在 iOS 上删除该 Shortcut。
+//! 撤销后该设备的 (username, password) 立即失效（middleware 用
+//! `find_by_username` 找不到对应记录就 401）。这里只删服务端记录, 不主动
+//! 通知客户端 —— Shortcut 没有反向通道, iPhone 端在下一次发请求拿到 401
+//! 时由用户自行在 iOS 上删除该 Shortcut。
 //!
 //! 该 use case 没有自己的"动作产物"，成功仅返回 `()`：调用方拿到 `Ok`
 //! 即视为撤销已生效。失败语义集中在
@@ -73,8 +73,8 @@ impl RevokeMobileDeviceUseCase {
 fn translate_device_error(err: MobileDeviceError) -> RevokeMobileDeviceError {
     match err {
         MobileDeviceError::Storage(msg) => RevokeMobileDeviceError::PersistenceFailed(msg),
-        // delete 路径理论上不会触发 AlreadyExists / TokenHashCollision；
-        // 走到这里说明 adapter 违约，转为 PersistenceFailed 兜底。
+        // delete 路径理论上不会触发 AlreadyExists / UsernameCollision;
+        // 走到这里说明 adapter 违约, 转为 PersistenceFailed 兜底。
         other => RevokeMobileDeviceError::PersistenceFailed(other.to_string()),
     }
 }
@@ -89,7 +89,7 @@ mod tests {
 
     use async_trait::async_trait;
 
-    use uc_core::mobile_sync::{MobileDevice, TokenHash};
+    use uc_core::mobile_sync::MobileDevice;
 
     /// 极简内存 repo：只承担 `delete` 路径所需的语义；其它方法 panic
     /// 以便万一被误用立刻暴露。
@@ -115,11 +115,11 @@ mod tests {
         async fn save(&self, _: &MobileDevice) -> Result<(), MobileDeviceError> {
             unreachable!("revoke 不调用 save")
         }
-        async fn find_by_token_hash(
+        async fn find_by_username(
             &self,
-            _: &TokenHash,
+            _: &str,
         ) -> Result<Option<MobileDevice>, MobileDeviceError> {
-            unreachable!("revoke 不调用 find_by_token_hash")
+            unreachable!("revoke 不调用 find_by_username")
         }
         async fn find_by_device_id(
             &self,

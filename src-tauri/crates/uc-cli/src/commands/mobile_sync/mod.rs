@@ -62,6 +62,11 @@ pub enum MobileSyncCommands {
     /// Debug helpers that simulate the SyncClipboard protocol locally
     /// (no iPhone required). Bypasses HTTP and calls `MobileSyncFacade`
     /// directly. All subcommands require the daemon to be stopped.
+    ///
+    /// `#[command(hide=true)]` keeps these out of the public `--help`
+    /// surface — they are dev / E2E only(`scripts/test_mobile_sync_debug_e2e.sh`),
+    /// not user-facing. Still callable explicitly.
+    #[command(hide = true)]
     Debug {
         #[command(subcommand)]
         subcommand: debug::DebugCommands,

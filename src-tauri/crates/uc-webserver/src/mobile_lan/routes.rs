@@ -155,11 +155,45 @@ async fn get_sync_clipboard_json(
 async fn put_sync_clipboard_json(
     State(facade): State<Arc<MobileSyncFacade>>,
     Extension(authed): Extension<AuthenticatedDevice>,
-    Json(doc): Json<SyncClipboardDoc>,
+    request: Request,
 ) -> Result<StatusCode, Response> {
-    let meta = doc
-        .into_meta()
-        .map_err(|reason| (StatusCode::BAD_REQUEST, reason).into_response())?;
+    // P5a.10 真机诊断:不走 axum `Json<T>` extractor —— 它在 Content-Type
+    // 不匹配 / schema 偏差时直接 reject,handler 体没机会执行,日志里只看
+    // 到 dispatch 之后立刻沉默,无法定位 iOS Shortcut 实际发的 body 形态。
+    // 改用 `Request` + 手动 `serde_json::from_slice`,失败时把 Content-Type
+    // 与 body 前缀打到 WARN 日志,下次真机一发就能看到真实 schema。
+    let content_type = request
+        .headers()
+        .get(header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("")
+        .to_string();
+    let body_bytes = to_bytes(request.into_body(), MAX_FILE_BYTES)
+        .await
+        .map_err(|e| {
+            tracing::warn!(error = %e, "PUT /SyncClipboard.json: body buffer failed");
+            (StatusCode::PAYLOAD_TOO_LARGE, "body too large").into_response()
+        })?;
+    let body_len = body_bytes.len();
+    let doc: SyncClipboardDoc = match serde_json::from_slice(&body_bytes) {
+        Ok(d) => d,
+        Err(e) => {
+            let preview_end = body_bytes.len().min(256);
+            let body_preview = String::from_utf8_lossy(&body_bytes[..preview_end]).to_string();
+            tracing::warn!(
+                content_type = %content_type,
+                error = %e,
+                body_len,
+                body_preview = %body_preview,
+                "PUT /SyncClipboard.json: JSON deserialize failed"
+            );
+            return Err((StatusCode::BAD_REQUEST, "invalid SyncClipboard JSON").into_response());
+        }
+    };
+    let meta = doc.into_meta().map_err(|reason| {
+        tracing::warn!(content_type = %content_type, body_len, reason, "PUT /SyncClipboard.json: into_meta failed");
+        (StatusCode::BAD_REQUEST, reason).into_response()
+    })?;
 
     let item_type = meta.item_type;
     let has_data = meta.has_data;

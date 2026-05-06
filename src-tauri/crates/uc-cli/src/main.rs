@@ -446,4 +446,35 @@ mod tests {
         let result = Cli::try_parse_from(["uniclip", "mobile-sync", "debug", "get-file"]);
         assert!(result.is_err(), "expected `get-file` to require <DATANAME>");
     }
+
+    #[test]
+    fn mobile_sync_setup_parses_with_no_args() {
+        // `setup` 不强制任何 flag —— 默认全交互式。runtime 才会按
+        // `--non-interactive` / `--json` 决定是否要求 --label / --advertise /
+        // --accept-network-risk;clap 解析层不下结论。
+        let r = Cli::try_parse_from(["uniclip", "mobile-sync", "setup"]);
+        assert!(r.is_ok(), "expected `setup` to parse with no args");
+    }
+
+    #[test]
+    fn mobile_sync_setup_accepts_full_non_interactive_flags() {
+        // CI 友好的全 flag 形态。
+        let r = Cli::try_parse_from([
+            "uniclip",
+            "mobile-sync",
+            "setup",
+            "--non-interactive",
+            "--label",
+            "iPhone",
+            "--advertise",
+            "192.168.1.5",
+            "--port",
+            "42720",
+            "--username",
+            "alice_001",
+            "--password-stdin",
+            "--accept-network-risk",
+        ]);
+        assert!(r.is_ok(), "expected full-flag setup to parse");
+    }
 }

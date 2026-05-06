@@ -24,11 +24,16 @@ pub mod disable;
 pub mod enable;
 pub mod lan;
 pub mod settings;
+pub mod setup;
 mod shared;
 pub mod shortcut;
 
 #[derive(Subcommand)]
 pub enum MobileSyncCommands {
+    /// One-shot setup wizard: enables the feature, configures the LAN
+    /// listener, registers an iPhone, and prints the install QR + a
+    /// one-time password — all in a single command.
+    Setup(setup::SetupArgs),
     /// Enable the mobile-sync feature toggle (master switch).
     Enable,
     /// Disable the mobile-sync feature toggle (master switch).
@@ -64,6 +69,7 @@ pub enum MobileSyncCommands {
 
 pub async fn run(command: MobileSyncCommands, json: bool, verbose: bool) -> i32 {
     match command {
+        MobileSyncCommands::Setup(args) => setup::run(args, json, verbose).await,
         MobileSyncCommands::Enable => enable::run(json, verbose).await,
         MobileSyncCommands::Disable => disable::run(json, verbose).await,
         MobileSyncCommands::Settings { subcommand } => {

@@ -20,8 +20,8 @@ pub struct GeneralSettings {
     #[serde(default)]
     pub update_channel: Option<UpdateChannel>,
     /// Whether anonymous diagnostic telemetry is enabled.
-    /// When `true` and an OTLP endpoint is configured, the app sends
-    /// info/warn/error level events (never clipboard content).
+    /// When `true` and a Sentry DSN is configured, the app forwards
+    /// errors / warnings / structured logs (never clipboard content).
     #[serde(default = "default_telemetry_enabled")]
     pub telemetry_enabled: bool,
 }

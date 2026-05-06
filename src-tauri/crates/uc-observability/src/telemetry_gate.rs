@@ -1,13 +1,14 @@
 //! Process-wide runtime gate for the user-facing telemetry switch.
 //!
-//! Both Sentry and OTLP read this gate at event time so toggling
-//! `general.telemetry_enabled` in the UI takes effect without a restart.
+//! Sentry reads this gate at event time so toggling `general.telemetry_enabled`
+//! in the UI takes effect without a restart.
 //!
 //! - Frontend has its own gate (`setFrontendSentryEnabled` /
 //!   `setFrontendTelemetryEnabled`) since the gate must live in the JS runtime.
 //! - This module is the equivalent for the Rust side: `uc-bootstrap` consults
-//!   it from Sentry's `before_send` / `before_breadcrumb` hooks; the OTLP
-//!   trace and logs layers consult it via `tracing_subscriber::FilterFn`.
+//!   it from Sentry's `before_send`, `before_breadcrumb`, and `before_send_log`
+//!   hooks. When the gate is off, Issues / breadcrumbs / Logs are all dropped
+//!   at capture time.
 //!
 //! ## Default
 //!

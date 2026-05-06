@@ -6,7 +6,6 @@ edition = "2021"
 description = "Observability infrastructure for UniClipboard: dual-output tracing with profile-based filtering"
 
 [dependencies]
-http = "1"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt", "chrono", "json", "registry"] }
 tracing-appender = "0.2"
@@ -15,25 +14,7 @@ serde = { version = "1", features = ["derive"] }
 chrono = "0.4"
 anyhow = "1.0"
 uuid = { version = "1", features = ["v7"] }
-reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "rustls-tls-webpki-roots", "blocking"] }
-tokio = { version = "1", features = ["sync", "time", "rt", "macros"] }
-# Phase 87 OTLP pipeline — promoted from dev-deps to full deps (Plan 02)
-# NOTE: `reqwest-blocking-client` (not `reqwest-client`) is required because
-# opentelemetry_sdk's BatchSpanProcessor runs its background exporter on a plain
-# std::thread and dispatches via `futures_executor::block_on`, which provides NO
-# tokio runtime. An async reqwest client panics with "no reactor running" in that
-# context, killing the processor thread and leaving the provider looking alive
-# but silently dropping all spans. Blocking reqwest manages its own internal
-# tokio runtime and therefore works from any caller context.
-opentelemetry = "0.31"
-opentelemetry_sdk = { version = "0.31", features = ["rt-tokio", "logs"] }
-opentelemetry-otlp = { version = "0.31", default-features = false, features = ["http-proto", "reqwest-blocking-client", "reqwest-rustls", "trace", "logs"] }
-opentelemetry-semantic-conventions = "0.31"
-opentelemetry-appender-tracing = "0.31"
-tracing-opentelemetry = "0.32"
 
 [dev-dependencies]
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt", "chrono", "json", "registry"] }
 tempfile = "3"
-opentelemetry-stdout = "0.31"
-serial_test = "3"

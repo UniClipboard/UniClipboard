@@ -40,7 +40,6 @@ const NOISE_FILTERS: &[&str] = &[
     "Connection::poll=warn",
     "Pool::poll=warn",
     "Swarm::poll=warn",
-    "opentelemetry_sdk=warn",
     // iroh 0.97 forked quinn into noq; the old quinn=info directives no
     // longer match. noq_proto::connection in particular emits ~40k DEBUG
     // events per peer-hour without this cap.
@@ -101,29 +100,6 @@ impl LogProfile {
             return EnvFilter::new("off");
         }
         self.build_filter()
-    }
-
-    /// Build the `EnvFilter` for the OTLP export layer.
-    ///
-    /// Always INFO-and-above regardless of profile. Debug/trace spans must
-    /// never leave the machine via OTLP telemetry.
-    ///
-    /// `UC_OTLP_EXTRA` (comma-separated directives) appends to the default
-    /// filter at runtime — used for time-bounded remote diagnostics (e.g.
-    /// raising `iroh_quinn=debug` during a blob-fetch incident) without
-    /// rebuilding the daemon. Directives are appended last, so they take
-    /// precedence over both the base level and `NOISE_FILTERS`.
-    pub fn otlp_filter(&self) -> EnvFilter {
-        let mut directives = vec!["info".to_string()];
-        for &filter in NOISE_FILTERS {
-            directives.push(filter.to_string());
-        }
-        if let Ok(extra) = std::env::var("UC_OTLP_EXTRA") {
-            for d in extra.split(',').map(str::trim).filter(|s| !s.is_empty()) {
-                directives.push(d.to_string());
-            }
-        }
-        EnvFilter::new(directives.join(","))
     }
 
     /// Build the `EnvFilter` for the JSON file layer.

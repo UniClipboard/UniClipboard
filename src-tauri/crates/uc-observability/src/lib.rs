@@ -1,12 +1,11 @@
 //! UniClipboard Observability Crate
 //!
-//! Phase 87: legacy Seq (CLEF) pipeline removed. The OTLP pipeline under `otlp::` is the sole
-//! telemetry exporter.
-//!
 //! Provides dual-output tracing initialization with profile-based filtering:
 //! - Pretty console output for developer experience
 //! - Structured JSON file output for tooling and analysis
-//! - OTLP/HTTP-protobuf pipeline for structured telemetry (Seq via OTLP collector)
+//!
+//! Remote telemetry (Issues + Logs + Performance) is shipped through the
+//! Sentry layer composed in `uc-bootstrap`; this crate stays sink-agnostic.
 //!
 //! # Public API
 //!
@@ -14,6 +13,9 @@
 //! - [`init_tracing_subscriber`] - Initialize dual-output tracing subscriber (standalone)
 //! - [`build_console_layer`] - Build console layer for composition with other layers
 //! - [`build_json_layer`] - Build JSON file layer for composition with other layers
+//! - [`redact::is_sensitive_key`] / [`redact::REDACTED_PLACEHOLDER`] - shared
+//!   field-name blocklist used by Sentry's `before_send_log` hook to scrub
+//!   sensitive values before they leave the process.
 //!
 //! # Standalone Usage
 //!
@@ -47,8 +49,8 @@ mod context;
 pub mod flow;
 pub mod format;
 mod init;
-pub mod otlp;
 pub mod profile;
+pub mod redact;
 pub(crate) mod span_fields;
 pub mod stages;
 pub mod telemetry_gate;

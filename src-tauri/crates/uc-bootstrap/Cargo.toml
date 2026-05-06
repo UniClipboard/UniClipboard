@@ -18,8 +18,7 @@ anyhow = "1.0"
 thiserror = "2.0"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt", "registry"] }
-sentry = { version = "0.46.1", features = ["tracing"] }
-sentry-tracing = "0.46.1"
+sentry = { version = "0.48.1", features = ["tracing", "logs"] }
 gethostname = "1.1"
 toml = "0.8"
 chrono = { version = "0.4", features = ["serde"] }

@@ -226,30 +226,42 @@ pub fn init_tracing_subscriber() -> anyhow::Result<()> {
             eprintln!("Sentry guard already initialized");
         }
 
-        Some(sentry::integrations::tracing::layer().event_filter(|md| {
-            if md.target() == "panic" {
-                // panic 由 sentry-panic integration 上报,这里跳过避免重复。
-                EventFilter::Ignore
-            } else if md.target().starts_with("opentelemetry") {
-                // 即便已经从依赖图删掉 opentelemetry-*,任何间接引入的
-                // opentelemetry crate 仍可能 emit 内部错误 —— 这条兜底
-                // 防止它们进 Sentry 噪音。
-                EventFilter::Ignore
-            } else {
-                match *md.level() {
-                    // ERROR 同时上报为 Issue(报警)和 Log(可搜索)。
-                    // EventFilter 在 sentry 0.48+ 是 bitflags,`|` 即组合。
-                    ::tracing::Level::ERROR => EventFilter::Event | EventFilter::Log,
-                    // WARN 只进 Logs,不报警;比 OTLP 时代的 INFO+ 更克制,
-                    // 留出 5GB/月 配额预算。
-                    ::tracing::Level::WARN => EventFilter::Log,
-                    // INFO 沿用旧行为做 breadcrumb(下一条 Issue 的上下文),
-                    // 不直接产生 Log 防止配额爆炸。
-                    ::tracing::Level::INFO => EventFilter::Breadcrumb,
-                    _ => EventFilter::Ignore,
-                }
-            }
-        }))
+        // Apply the profile-level EnvFilter to match the JSON file layer.
+        //
+        // Without this wrapper, NOISE_FILTERS directives like
+        // `swarm_discovery::socket=error` would silence the per-tick mDNS
+        // EHOSTUNREACH warnings in console / jsonl but leak them straight
+        // into Sentry Logs — burning the 5GB/mo quota on infrastructure
+        // noise. Symmetry with the jsonl "source of truth" keeps offline
+        // diagnostics and remote diagnostics aligned.
+        Some(
+            sentry::integrations::tracing::layer()
+                .event_filter(|md| {
+                    if md.target() == "panic" {
+                        // panic 由 sentry-panic integration 上报,这里跳过避免重复。
+                        EventFilter::Ignore
+                    } else if md.target().starts_with("opentelemetry") {
+                        // 即便已经从依赖图删掉 opentelemetry-*,任何间接引入的
+                        // opentelemetry crate 仍可能 emit 内部错误 —— 这条兜底
+                        // 防止它们进 Sentry 噪音。
+                        EventFilter::Ignore
+                    } else {
+                        match *md.level() {
+                            // ERROR 同时上报为 Issue(报警)和 Log(可搜索)。
+                            // EventFilter 在 sentry 0.48+ 是 bitflags,`|` 即组合。
+                            ::tracing::Level::ERROR => EventFilter::Event | EventFilter::Log,
+                            // WARN 只进 Logs,不报警;比 OTLP 时代的 INFO+ 更克制,
+                            // 留出 5GB/月 配额预算。
+                            ::tracing::Level::WARN => EventFilter::Log,
+                            // INFO 沿用旧行为做 breadcrumb(下一条 Issue 的上下文),
+                            // 不直接产生 Log 防止配额爆炸。
+                            ::tracing::Level::INFO => EventFilter::Breadcrumb,
+                            _ => EventFilter::Ignore,
+                        }
+                    }
+                })
+                .with_filter(profile.json_filter()),
+        )
     } else {
         // No eprintln here -- it pollutes CLI output. Absence of a DSN is a
         // normal condition; the closing tracing::info! reports it via the

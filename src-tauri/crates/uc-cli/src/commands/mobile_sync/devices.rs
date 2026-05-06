@@ -308,7 +308,7 @@ async fn resolve_device_interactively(ctx: &shared::MobileSyncCmdCtx) -> Result<
         );
     }
     loop {
-        let s = match shared::read_line_prompt(&format!("Pick device [1-{}]:", devs.len())) {
+        let s = match ui::input(&format!("Pick device [1-{}]", devs.len()), true) {
             Ok(s) => s,
             Err(_) => return Err(exit_codes::EXIT_ERROR),
         };

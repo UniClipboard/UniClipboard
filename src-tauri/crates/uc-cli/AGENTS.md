@@ -23,6 +23,34 @@
 - 人类可读输出和 JSON 输出要同时考虑；支持 `--json` 的命令不要只改一种输出。
 - 退出码使用 `src/exit_codes.rs` 中的常量，不要在命令里散落魔法数字。
 
+## 视觉缩进与字符规范
+
+所有面向终端的人类可读输出（提示行、状态行、交互 prompt、错误、章节头）必须走 `src/ui.rs` 暴露的辅助函数；**不要**在命令实现里直接 `eprintln!` / `println!` / `Term::stderr().write_line(...)` 拼前缀。每一行都要遵循统一的视觉模板：
+
+```text
+ {glyph}  {content}
+```
+
+**1 个 leading space + 1 字符 glyph + 2 个 spaces + 内容**。glyph 与内容之间永远是双空格，单空格会让内容起始列偏 1 列，与同屏其它行不对齐。
+
+| 用途 | glyph | 颜色 | 函数 |
+| --- | --- | --- | --- |
+| 章节标题 | `◆` | cyan + bold | `ui::header` |
+| 成功 / 完成收尾 | `✓` / `└` | green | `ui::success` / `ui::end` |
+| 警告 | `⚠` | yellow | `ui::warn` |
+| 错误 | `✗` | red | `ui::error` |
+| 信息 / 子项 | `│` | dim | `ui::info` / `ui::bar` / `ui::verification_code` |
+| 交互提示（live） | `?` | yellow | `ui::confirm` / `ui::input` / `ui::password` 内部 |
+| 交互完成（resolved） | `✓` | green | `UniclipTheme::format_*_selection` 内部 |
+
+dialoguer 的 `Confirm` / `Input` / `Password` 必须用 `ui::confirm` / `ui::input` / `ui::password`，它们已经绑定了 `UniclipTheme` 与 `Term::stderr()`，不要直接构造 dialoguer 组件或换用 `dialoguer::theme::ColorfulTheme`。新增交互 prompt 时按以下要求写：
+
+- prompt 文本不要以 `:` 结尾——`UniclipTheme` 会自动接 `[y/N]` / `[default]` 等后缀。
+- 想给"按 Enter 走默认值"的语义，prompt 末尾用 `[Enter for auto]` 之类的人类提示，并把 `allow_empty=true` 传给 `ui::input`。
+- 必填字段 `allow_empty=false`，由 dialoguer 自动重读；不要在外层手写"空 → 报错退出"的旧逻辑。
+
+新增 ui 函数时，把渲染集中在 `src/ui.rs`，并在文档注释上画出最终视觉的 `text` 块（可参照现有 `read_masked_password` 的 doc）。这样下一个改动者改格式时只要看一处。
+
 ## 修改入口
 
 | 任务 | 优先查看 |

@@ -87,22 +87,6 @@ pub async fn finish(ctx: MobileSyncCmdCtx, exit: i32) -> i32 {
 
 // ── Interactive input helpers (shared by setup / devices add) ───────────
 
-/// Print `prompt` to stderr and read one line from stdin, trimming
-/// trailing CR/LF. Use for plain-text prompts (label, username); use
-/// `ui::password()` for passwords.
-pub fn read_line_prompt(prompt: &str) -> Result<String, String> {
-    use std::io::{self, BufRead, Write};
-    let mut stderr = io::stderr();
-    let _ = write!(stderr, " ?  {prompt} ");
-    let _ = stderr.flush();
-    let mut buf = String::new();
-    io::stdin()
-        .lock()
-        .read_line(&mut buf)
-        .map_err(|e| e.to_string())?;
-    Ok(buf.trim_end_matches(['\n', '\r']).to_string())
-}
-
 /// Read one line from stdin (no prompt printed). Used when the password
 /// arrives via pipe / heredoc — keeps it out of shell history.
 pub fn read_password_stdin() -> Result<String, String> {

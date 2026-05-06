@@ -8,8 +8,6 @@
 //!   安全告警 + 交互确认(SPEC §3.4)。
 //! * `disable` —— 写命令。
 
-use std::io::{self, BufRead, Write};
-
 use clap::Subcommand;
 use serde::Serialize;
 
@@ -127,7 +125,8 @@ async fn enable(
             return exit_codes::EXIT_ERROR;
         }
         print_network_risk_banner();
-        if !confirm_yes_no("Type `yes` to accept and continue:") {
+        let accepted = ui::confirm("Accept network exposure and continue?", false).unwrap_or(false);
+        if !accepted {
             ui::warn("Aborted by user.");
             return exit_codes::EXIT_ERROR;
         }
@@ -238,16 +237,4 @@ fn print_network_risk_banner() {
     );
     ui::info("•", "Strongly discouraged on public WiFi.");
     ui::info("•", "Anyone on the same LAN can sniff your data.");
-}
-
-fn confirm_yes_no(prompt: &str) -> bool {
-    let mut stderr = io::stderr();
-    let _ = writeln!(stderr, " ?  {prompt}");
-    let _ = stderr.flush();
-    let mut buf = String::new();
-    let stdin = io::stdin();
-    if stdin.lock().read_line(&mut buf).is_err() {
-        return false;
-    }
-    matches!(buf.trim().to_ascii_lowercase().as_str(), "yes" | "y")
 }

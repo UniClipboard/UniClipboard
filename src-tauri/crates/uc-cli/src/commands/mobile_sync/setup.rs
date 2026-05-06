@@ -29,8 +29,6 @@
 //! `--accept-network-risk` 与 `--label`, `--advertise` 必填。
 //! `--username` / `--password-stdin` 可选, 缺省走自动生成。
 
-use std::io::{self, BufRead, Write};
-
 use clap::Args;
 use serde::Serialize;
 
@@ -119,7 +117,8 @@ pub async fn run(args: SetupArgs, json: bool, verbose: bool) -> i32 {
             return exit_codes::EXIT_ERROR;
         }
         print_network_risk_banner();
-        if !confirm_yes_no("Type `yes` to accept and continue:") {
+        let accepted = ui::confirm("Accept network exposure and continue?", false).unwrap_or(false);
+        if !accepted {
             ui::warn("Aborted by user.");
             return exit_codes::EXIT_ERROR;
         }
@@ -182,12 +181,8 @@ pub async fn run(args: SetupArgs, json: bool, verbose: bool) -> i32 {
         Some(l) => l,
         None => {
             // Interactive — non_interactive case rejected above.
-            match shared::read_line_prompt("Device label (e.g. \"My iPhone 15\"):") {
-                Ok(s) if !s.trim().is_empty() => s.trim().to_string(),
-                Ok(_) => {
-                    ui::error("Label must not be empty.");
-                    return shared::finish(ctx, exit_codes::EXIT_ERROR).await;
-                }
+            match ui::input("Device label (e.g. \"My iPhone 15\")", false) {
+                Ok(s) => s.trim().to_string(),
                 Err(e) => {
                     ui::error(&format!("Failed to read label: {e}"));
                     return shared::finish(ctx, exit_codes::EXIT_ERROR).await;
@@ -201,8 +196,9 @@ pub async fn run(args: SetupArgs, json: bool, verbose: bool) -> i32 {
     let custom_username = match args.username {
         Some(u) => Some(u),
         None if non_interactive => None,
-        None => match shared::read_line_prompt(
-            "Username (6-32 chars, [A-Za-z0-9_], letter-leading) [Enter for auto]:",
+        None => match ui::input(
+            "Username (6-32 chars, [A-Za-z0-9_], letter-leading) [Enter for auto]",
+            true,
         ) {
             Ok(s) if s.trim().is_empty() => None,
             Ok(s) => Some(s.trim().to_string()),
@@ -319,18 +315,6 @@ fn print_network_risk_banner() {
     ui::info("•", "Anyone on the same LAN can sniff your data.");
 }
 
-fn confirm_yes_no(prompt: &str) -> bool {
-    let mut stderr = io::stderr();
-    let _ = writeln!(stderr, " ?  {prompt}");
-    let _ = stderr.flush();
-    let mut buf = String::new();
-    let stdin = io::stdin();
-    if stdin.lock().read_line(&mut buf).is_err() {
-        return false;
-    }
-    matches!(buf.trim().to_ascii_lowercase().as_str(), "yes" | "y")
-}
-
 /// Interactive picker for the LAN advertise IP. Single-IP case auto-picks
 /// silently. Empty list returns an error code — `setup` cannot proceed.
 async fn resolve_advertise_interactively(ctx: &shared::MobileSyncCmdCtx) -> Result<String, i32> {
@@ -365,7 +349,7 @@ fn pick_from_list(opts: &[MobileSyncLanInterfaceOption]) -> Result<String, i32> 
         );
     }
     loop {
-        let s = match shared::read_line_prompt(&format!("Pick interface [1-{}]:", opts.len())) {
+        let s = match ui::input(&format!("Pick interface [1-{}]", opts.len()), true) {
             Ok(s) => s,
             Err(_) => return Err(exit_codes::EXIT_ERROR),
         };

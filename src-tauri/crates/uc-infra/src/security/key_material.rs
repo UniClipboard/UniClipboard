@@ -60,7 +60,7 @@ impl KeyMaterialStore {
     pub async fn store_kek(&self, scope: &KeyScope, kek: &Kek) -> Result<(), EncryptionError> {
         let key = kek_key(scope);
         self.secure_storage
-            .set(&key, &kek.0)
+            .set(&key, kek.as_bytes())
             .map_err(map_storage_error)
     }
 

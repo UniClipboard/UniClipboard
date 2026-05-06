@@ -9912,6 +9912,7 @@ dependencies = [
  "url",
  "uuid",
  "wiremock",
+ "zeroize",
  "zstd",
 ]
 

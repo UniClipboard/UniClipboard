@@ -423,7 +423,7 @@ impl SpaceAccessPort for DefaultSpaceAccessAdapter {
             .session
             .get_master_key()
             .map_err(map_encryption_error)?;
-        Ok(Some(ProofDerivedKey::from_bytes(master_key.0)))
+        Ok(Some(ProofDerivedKey::from_bytes(master_key.into_bytes())))
     }
 
     async fn prepare_join_offer(
@@ -556,7 +556,7 @@ impl SpaceAccessPort for DefaultSpaceAccessAdapter {
             // Phase C 起不再写 `.initialized_encryption` marker 文件;
             // "本机已初始化" 的真相由磁盘 keyslot 文件存在性回答。
             self.session.set_master_key(master_key.clone());
-            let derived = ProofDerivedKey::from_bytes(master_key.0);
+            let derived = ProofDerivedKey::from_bytes(master_key.into_bytes());
 
             info!("master key derivation completed");
             Ok(derived)

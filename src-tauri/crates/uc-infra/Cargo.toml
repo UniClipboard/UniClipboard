@@ -62,6 +62,9 @@ argon2 = "0.5.3"
 subtle = "2.5.0"
 chacha20poly1305 = "0.10.1"
 rand = "0.9.2"
+# Memory hygiene: zero out MasterKey / Kek bytes when dropped so residual key
+# material does not linger in heap/stack pages after lock/clear/refresh paths.
+zeroize = { version = "1.8.2", features = ["derive"] }
 blake3 = "1.8.2"
 hex = "0.4.3"
 hkdf = "0.12"

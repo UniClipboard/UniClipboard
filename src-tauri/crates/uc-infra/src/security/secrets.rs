@@ -9,18 +9,23 @@
 //!   包装/解包 `MasterKey`,使用后立即丢弃。
 //!
 //! 注:两种类型均不实现 `Serialize` / `Deserialize`,防止不小心序列化到磁盘。
+//!
+//! 内存卫生:两种类型都派生 `ZeroizeOnDrop`,被 drop 时(包括 `session.clear()`、
+//! `set_master_key` 替换旧值、短生命周期克隆/派生 KEK 用完丢弃等路径)32 字节
+//! 密钥就地清零,降低进程内存快照 / crash dump / swap 残留中残留密钥物料的概率。
 
 use rand::{rngs::OsRng, TryRngCore};
 use std::fmt;
 use uc_core::crypto::model::EncryptionError;
+use zeroize::{Zeroize, ZeroizeOnDrop};
 
 /// The data-encryption key (DEK) used to encrypt clipboard blobs.
 ///
 /// - 32 bytes is suitable for XChaCha20-Poly1305 / AES-256-GCM keys.
 /// - Do NOT implement Serialize/Deserialize.
-/// - Consider adding `zeroize` to wipe on drop in adapters.
-#[derive(Clone, PartialEq, Eq)]
-pub struct MasterKey(pub [u8; 32]);
+/// - Drops zero out the inner bytes via `ZeroizeOnDrop`.
+#[derive(Clone, PartialEq, Eq, Zeroize, ZeroizeOnDrop)]
+pub struct MasterKey([u8; 32]);
 
 impl fmt::Debug for MasterKey {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -55,14 +60,23 @@ impl MasterKey {
         mk_bytes.copy_from_slice(bytes);
         Ok(MasterKey(mk_bytes))
     }
+
+    /// 消费 self 取出原始字节,只在必须移交所有权(如把字节交给 `ProofDerivedKey`
+    /// 这种已经自身负责 zeroize 的目标类型)的极少数路径上使用。
+    pub(crate) fn into_bytes(self) -> [u8; 32] {
+        // 拷贝出去后 self 仍会被 drop,届时 self.0 会被自身 ZeroizeOnDrop 清零;
+        // 调用方持有的副本由调用方负责保护。
+        self.0
+    }
 }
 
 /// The key-encryption key (KEK) derived from passphrase via KDF.
 /// KEK is used ONLY to wrap/unwrap the MasterKey.
 ///
-/// Keep KEK ephemeral (avoid long-lived storage).
-#[derive(Clone, PartialEq, Eq)]
-pub struct Kek(pub [u8; 32]);
+/// Keep KEK ephemeral (avoid long-lived storage). Drops zero out the inner
+/// bytes via `ZeroizeOnDrop`.
+#[derive(Clone, PartialEq, Eq, Zeroize, ZeroizeOnDrop)]
+pub struct Kek([u8; 32]);
 
 impl fmt::Debug for Kek {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

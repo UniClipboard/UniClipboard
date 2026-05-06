@@ -18,7 +18,12 @@ struct State {
     master_key: Option<MasterKey>,
 }
 
-/// In-memory master-key 容器,线程安全 + drop 时由 MasterKey 自身的 Drop 清零。
+/// In-memory master-key 容器,线程安全。
+///
+/// `MasterKey` 派生 `ZeroizeOnDrop`(见 `super::secrets`),所以
+/// `set_master_key` 替换旧值、`clear` 把 `Option` 置空、整个 `InMemorySession`
+/// 被 drop 等路径都会就地把 32 字节密钥清零——会话生命周期结束后,残留密钥
+/// 物料就不会停留在堆/栈/swap 页面里。
 #[derive(Clone)]
 pub struct InMemorySession {
     state: Arc<Mutex<State>>,
@@ -52,7 +57,7 @@ impl InMemorySession {
     pub fn set_master_key(&self, master_key: MasterKey) {
         let span = debug_span!("infra.session.set_master_key");
         span.in_scope(|| {
-            // 替换旧密钥——MasterKey 被 drop 时由其 Drop impl 清零。
+            // 替换旧密钥——旧 MasterKey 被 drop 时由 ZeroizeOnDrop 清零。
             self.state.lock().expect("session lock").master_key = Some(master_key);
             debug!("master key set");
         });

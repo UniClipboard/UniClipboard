@@ -9957,6 +9957,7 @@ name = "uc-tauri"
 version = "0.7.0-alpha.4"
 dependencies = [
  "anyhow",
+ "base64 0.22.1",
  "chrono",
  "core-foundation 0.10.1",
  "core-graphics",
@@ -9967,6 +9968,7 @@ dependencies = [
  "objc2-foundation",
  "sentry",
  "serde",
+ "serde_json",
  "tauri",
  "tauri-plugin-autostart",
  "tauri-plugin-global-shortcut",

@@ -1,0 +1,749 @@
+//! Mobile sync Tauri commands —— GUI 走 in-process facade 直调
+//! `MobileSyncFacade`（与 CLI 同模式，不经 webserver）。
+//!
+//! 6 个对外 command：register / revoke / list devices / get / update settings /
+//! list lan interfaces。所有 facade 错误翻译为前端可 pattern-match 的
+//! `MobileSyncError` discriminated union。`qr_code_png_bytes` 在 Tauri 边界
+//! 转 base64 字符串，前端 `<img src="data:image/png;base64,...">` 直接渲染。
+
+use std::sync::Arc;
+
+use base64::engine::general_purpose::STANDARD as BASE64;
+use base64::Engine;
+use serde::{Deserialize, Serialize};
+use tauri::State;
+use tracing::{info_span, Instrument};
+use uc_application::facade::mobile_sync::{
+    GetMobileSyncSettingsError, LanInterfaceOption, ListLanInterfacesError, ListMobileDevicesError,
+    MobileDeviceSummary, MobileSyncFacade, MobileSyncSettingsView,
+    RegisterMobileShortcutDeviceError, RegisterMobileShortcutDeviceInput,
+    RegisterMobileShortcutDeviceOutput, RevokeMobileDeviceError, RevokeMobileDeviceInput,
+    ShortcutInstallMethod, ShortcutInstallMethodOption, UpdateMobileSyncSettingsError,
+    UpdateMobileSyncSettingsInput, UpdateMobileSyncSettingsOutput,
+};
+use uc_core::mobile_sync::{MobileClientType, MobileDeviceId};
+use uc_platform::ports::observability::TraceMetadata;
+
+use crate::bootstrap::TauriAppRuntime;
+use crate::commands::record_trace_fields;
+
+// ============================================================================
+// Error taxonomy ─ frontend-facing discriminated union
+// ============================================================================
+
+/// 前端直接 `error.code` switch 的 typed 错误。
+///
+/// 序列化形态：`{"code": "USERNAME_TAKEN", "username": "..."}`。
+/// 不复用 `commands::error::CommandError`（那个用了 `tag = "code", content =
+/// "message"` 只能带单一字符串负载），mobile_sync 校验错误需要 `min` /
+/// `max` / `username` / `reason` 等结构化字段。
+#[derive(Debug, Clone, Serialize, thiserror::Error)]
+#[serde(
+    tag = "code",
+    rename_all = "SCREAMING_SNAKE_CASE",
+    rename_all_fields = "camelCase"
+)]
+pub enum MobileSyncError {
+    #[error("mobile sync facade not available in this runtime")]
+    FacadeUnavailable,
+
+    #[error("device label must not be empty")]
+    LabelEmpty,
+
+    #[error("device label too long (max {max})")]
+    LabelTooLong { max: usize },
+
+    #[error("LAN listener disabled; enable it first")]
+    LanListenerDisabled,
+
+    #[error("username already taken: {username}")]
+    UsernameTaken { username: String },
+
+    #[error("invalid username shape: {reason}")]
+    UsernameInvalidShape { reason: String },
+
+    #[error("password too short (min {min})")]
+    PasswordTooShort { min: usize },
+
+    #[error("password too long (max {max})")]
+    PasswordTooLong { max: usize },
+
+    #[error("password hashing failed: {message}")]
+    PasswordHashFailed { message: String },
+
+    #[error("device not found: {device_id}")]
+    DeviceNotFound { device_id: String },
+
+    #[error("invalid LAN parameter: {reason}")]
+    InvalidLanParameter { reason: String },
+
+    #[error("settings load failed: {message}")]
+    SettingsLoadFailed { message: String },
+
+    #[error("settings save failed: {message}")]
+    SettingsSaveFailed { message: String },
+
+    #[error("endpoint info probe failed: {message}")]
+    EndpointInfoFailed { message: String },
+
+    #[error("LAN probe failed: {message}")]
+    LanProbeFailed { message: String },
+
+    #[error("persistence failed: {message}")]
+    PersistenceFailed { message: String },
+
+    #[error("QR rendering failed: {message}")]
+    QrRenderFailed { message: String },
+}
+
+/// label 长度上限——facade 内常量（`MAX_LABEL_LEN = 64`）的镜像。前端校验
+/// 与服务端校验一致即可，不需要单独 query API。
+const LABEL_MAX_LEN: usize = 64;
+
+impl From<RegisterMobileShortcutDeviceError> for MobileSyncError {
+    fn from(err: RegisterMobileShortcutDeviceError) -> Self {
+        match err {
+            RegisterMobileShortcutDeviceError::LabelEmpty => Self::LabelEmpty,
+            RegisterMobileShortcutDeviceError::LabelTooLong => {
+                Self::LabelTooLong { max: LABEL_MAX_LEN }
+            }
+            RegisterMobileShortcutDeviceError::LanListenerDisabled => Self::LanListenerDisabled,
+            RegisterMobileShortcutDeviceError::UsernameTaken(username) => {
+                Self::UsernameTaken { username }
+            }
+            RegisterMobileShortcutDeviceError::UsernameInvalidShape(reason) => {
+                Self::UsernameInvalidShape { reason }
+            }
+            RegisterMobileShortcutDeviceError::PasswordTooShort { min } => {
+                Self::PasswordTooShort { min }
+            }
+            RegisterMobileShortcutDeviceError::PasswordTooLong { max } => {
+                Self::PasswordTooLong { max }
+            }
+            RegisterMobileShortcutDeviceError::PasswordHashFailed(message) => {
+                Self::PasswordHashFailed { message }
+            }
+            RegisterMobileShortcutDeviceError::PersistenceFailed(message) => {
+                Self::PersistenceFailed { message }
+            }
+            RegisterMobileShortcutDeviceError::QrRenderFailed(message) => {
+                Self::QrRenderFailed { message }
+            }
+            RegisterMobileShortcutDeviceError::SettingsLoadFailed(message) => {
+                Self::SettingsLoadFailed { message }
+            }
+        }
+    }
+}
+
+impl From<RevokeMobileDeviceError> for MobileSyncError {
+    fn from(err: RevokeMobileDeviceError) -> Self {
+        match err {
+            RevokeMobileDeviceError::NotFound(device_id) => Self::DeviceNotFound { device_id },
+            RevokeMobileDeviceError::PersistenceFailed(message) => {
+                Self::PersistenceFailed { message }
+            }
+        }
+    }
+}
+
+impl From<ListMobileDevicesError> for MobileSyncError {
+    fn from(err: ListMobileDevicesError) -> Self {
+        match err {
+            ListMobileDevicesError::PersistenceFailed(message) => {
+                Self::PersistenceFailed { message }
+            }
+        }
+    }
+}
+
+impl From<GetMobileSyncSettingsError> for MobileSyncError {
+    fn from(err: GetMobileSyncSettingsError) -> Self {
+        match err {
+            GetMobileSyncSettingsError::SettingsLoadFailed(message) => {
+                Self::SettingsLoadFailed { message }
+            }
+            GetMobileSyncSettingsError::EndpointInfoFailed(message) => {
+                Self::EndpointInfoFailed { message }
+            }
+        }
+    }
+}
+
+impl From<UpdateMobileSyncSettingsError> for MobileSyncError {
+    fn from(err: UpdateMobileSyncSettingsError) -> Self {
+        match err {
+            UpdateMobileSyncSettingsError::SettingsLoadFailed(message) => {
+                Self::SettingsLoadFailed { message }
+            }
+            UpdateMobileSyncSettingsError::SettingsSaveFailed(message) => {
+                Self::SettingsSaveFailed { message }
+            }
+            UpdateMobileSyncSettingsError::InvalidLanParameter(reason) => {
+                Self::InvalidLanParameter { reason }
+            }
+        }
+    }
+}
+
+impl From<ListLanInterfacesError> for MobileSyncError {
+    fn from(err: ListLanInterfacesError) -> Self {
+        match err {
+            ListLanInterfacesError::ProbeFailed(message) => Self::LanProbeFailed { message },
+        }
+    }
+}
+
+// ============================================================================
+// Tauri-friendly DTOs
+// ============================================================================
+
+/// `register_mobile_device` 入参。
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RegisterMobileDeviceArgs {
+    pub label: String,
+    /// 留空（缺字段或显式 null）走 minter 自动颁发；给值则按规则严格校验。
+    #[serde(default)]
+    pub username: Option<String>,
+    #[serde(default)]
+    pub password: Option<String>,
+}
+
+/// `register_mobile_device` 返回值。
+///
+/// `password` 是**唯一一次**面向前端的明文回显——之后只以 PHC 形式存在于
+/// 服务端 sqlite。前端拿到后必须立即在 modal 里展示 + 强制用户勾选"已保存"
+/// 才让关闭。
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RegisterMobileDeviceResult {
+    pub device_id: String,
+    pub label: String,
+    pub client_type: String,
+    pub created_at_ms: i64,
+    pub base_url: String,
+    pub username: String,
+    pub password: String,
+    pub install_url: String,
+    /// Base64-encoded PNG bytes; 前端 `<img src="data:image/png;base64,...">`
+    /// 直接渲染。
+    pub qr_code_png_base64: String,
+}
+
+impl From<RegisterMobileShortcutDeviceOutput> for RegisterMobileDeviceResult {
+    fn from(out: RegisterMobileShortcutDeviceOutput) -> Self {
+        Self {
+            device_id: out.device.device_id.into_string(),
+            label: out.device.label,
+            client_type: client_type_wire(&out.device.client_type).to_string(),
+            created_at_ms: out.device.created_at_ms,
+            base_url: out.base_url,
+            username: out.username,
+            password: out.password,
+            install_url: out.install_url,
+            qr_code_png_base64: BASE64.encode(out.qr_code_png_bytes),
+        }
+    }
+}
+
+fn client_type_wire(t: &MobileClientType) -> &'static str {
+    t.as_wire_str()
+}
+
+/// `list_mobile_devices` 单条结果。来自 `MobileDeviceSummary`，不含
+/// password_hash / username。
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MobileDeviceView {
+    pub device_id: String,
+    pub label: String,
+    pub client_type: String,
+    pub created_at_ms: i64,
+    pub last_seen_at_ms: Option<i64>,
+    pub last_seen_ip: Option<String>,
+    pub reported_name: Option<String>,
+    pub reported_os: Option<String>,
+}
+
+impl From<MobileDeviceSummary> for MobileDeviceView {
+    fn from(s: MobileDeviceSummary) -> Self {
+        Self {
+            device_id: s.device_id.into_string(),
+            label: s.label,
+            client_type: client_type_wire(&s.client_type).to_string(),
+            created_at_ms: s.created_at_ms,
+            last_seen_at_ms: s.last_seen_at_ms,
+            last_seen_ip: s.last_seen_ip,
+            reported_name: s.reported_name,
+            reported_os: s.reported_os,
+        }
+    }
+}
+
+/// `get_mobile_sync_settings` 返回值。
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MobileSyncSettingsViewDto {
+    pub enabled: bool,
+    pub lan_listen_enabled: bool,
+    pub lan_advertise_ip: Option<String>,
+    pub lan_port: Option<u16>,
+    pub current_lan_url: Option<String>,
+    pub shortcut_install_methods: Vec<ShortcutInstallMethodView>,
+}
+
+impl From<MobileSyncSettingsView> for MobileSyncSettingsViewDto {
+    fn from(v: MobileSyncSettingsView) -> Self {
+        Self {
+            enabled: v.enabled,
+            lan_listen_enabled: v.lan_listen_enabled,
+            lan_advertise_ip: v.lan_advertise_ip,
+            lan_port: v.lan_port,
+            current_lan_url: v.current_lan_url,
+            shortcut_install_methods: v
+                .shortcut_install_methods
+                .into_iter()
+                .map(Into::into)
+                .collect(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ShortcutInstallMethodView {
+    /// `tokenInjected` / `icloudGeneric`（v1 仅前者可用）。
+    pub method: String,
+    pub available: bool,
+    pub disabled_reason: Option<String>,
+}
+
+impl From<ShortcutInstallMethodOption> for ShortcutInstallMethodView {
+    fn from(o: ShortcutInstallMethodOption) -> Self {
+        let method = match o.method {
+            ShortcutInstallMethod::TokenInjected => "tokenInjected",
+            ShortcutInstallMethod::IcloudGeneric => "icloudGeneric",
+        };
+        Self {
+            method: method.to_string(),
+            available: o.available,
+            disabled_reason: o.disabled_reason,
+        }
+    }
+}
+
+/// `update_mobile_sync_settings` 入参 patch。
+///
+/// `lanAdvertiseIp` / `lanPort` 是三态：字段缺失=不动；显式 null=清空；给值=写入。
+/// 前端用 `JSON.stringify` 时 `undefined` 字段被 drop（缺失），`null` 显式
+/// 序列化（→ `Some(None)`），有值（→ `Some(Some(value))`）。
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateMobileSyncSettingsArgs {
+    #[serde(default)]
+    pub enabled: Option<bool>,
+    #[serde(default)]
+    pub lan_listen_enabled: Option<bool>,
+    #[serde(default, deserialize_with = "deserialize_optional_optional_string")]
+    pub lan_advertise_ip: Option<Option<String>>,
+    #[serde(default, deserialize_with = "deserialize_optional_optional_u16")]
+    pub lan_port: Option<Option<u16>>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateMobileSyncSettingsResult {
+    pub enabled: bool,
+    pub lan_listen_enabled: bool,
+    pub lan_advertise_ip: Option<String>,
+    pub lan_port: Option<u16>,
+    /// 任一字段实际变化即 true；同值重复保存为 false。
+    pub restart_required: bool,
+}
+
+impl From<UpdateMobileSyncSettingsOutput> for UpdateMobileSyncSettingsResult {
+    fn from(o: UpdateMobileSyncSettingsOutput) -> Self {
+        Self {
+            enabled: o.enabled,
+            lan_listen_enabled: o.lan_listen_enabled,
+            lan_advertise_ip: o.lan_advertise_ip,
+            lan_port: o.lan_port,
+            restart_required: o.restart_required,
+        }
+    }
+}
+
+/// `list_mobile_lan_interfaces` 单条结果。
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LanInterfaceView {
+    pub name: String,
+    pub ipv4: String,
+}
+
+impl From<LanInterfaceOption> for LanInterfaceView {
+    fn from(o: LanInterfaceOption) -> Self {
+        Self {
+            name: o.name,
+            ipv4: o.ipv4,
+        }
+    }
+}
+
+// `Option<Option<T>>` 三态反序列化。
+//
+// serde 默认对 `Option<Option<T>>` 把 `null` 跟字段缺失都收敛成 outer
+// `None`，区分不出"显式清空"。标准技巧：内层先用 `Option::deserialize`
+// 解析（null → None，有值 → Some(value)），再外层无脑 `Some(...)` 包一下。
+// 配合 struct 字段上的 `#[serde(default)]`，三态正好对齐：
+// - 字段缺失 → default 触发 → outer None
+// - 显式 null → Some(None)
+// - 有值 → Some(Some(value))
+fn deserialize_optional_optional_string<'de, D>(
+    deserializer: D,
+) -> Result<Option<Option<String>>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    Ok(Some(Option::<String>::deserialize(deserializer)?))
+}
+
+fn deserialize_optional_optional_u16<'de, D>(
+    deserializer: D,
+) -> Result<Option<Option<u16>>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    Ok(Some(Option::<u16>::deserialize(deserializer)?))
+}
+
+// ============================================================================
+// Helper
+// ============================================================================
+
+fn mobile_sync_facade(
+    runtime: &Arc<TauriAppRuntime>,
+) -> Result<Arc<MobileSyncFacade>, MobileSyncError> {
+    runtime
+        .app_facade()
+        .mobile_sync
+        .clone()
+        .ok_or(MobileSyncError::FacadeUnavailable)
+}
+
+// ============================================================================
+// Commands
+// ============================================================================
+
+/// 登记一台 iPhone Shortcut 设备：颁发 (username, password) Basic Auth 凭据 +
+/// 渲染 SyncClipboard install URL 的二维码。`password` 在返回值里是**唯一一次**
+/// 面向用户的明文回显——前端必须立即展示 + 强制用户勾选"已保存"才允许关闭。
+#[tauri::command]
+pub async fn register_mobile_device(
+    runtime: State<'_, Arc<TauriAppRuntime>>,
+    args: RegisterMobileDeviceArgs,
+    _trace: Option<TraceMetadata>,
+) -> Result<RegisterMobileDeviceResult, MobileSyncError> {
+    let span = info_span!(
+        "command.mobile_sync.register_device",
+        trace_id = tracing::field::Empty,
+        trace_ts = tracing::field::Empty,
+    );
+    record_trace_fields(&span, &_trace);
+
+    async move {
+        let facade = mobile_sync_facade(&runtime)?;
+        let input = RegisterMobileShortcutDeviceInput {
+            label: args.label,
+            username: args.username,
+            password: args.password,
+        };
+        let out = facade.register_device(input).await?;
+        Ok(RegisterMobileDeviceResult::from(out))
+    }
+    .instrument(span)
+    .await
+}
+
+/// 撤销一台已登记设备。`Ok(())` 表示成功；`DeviceNotFound` 表示设备已不在
+/// 仓储里（UI 列表过期），前端据此提示刷新。
+#[tauri::command]
+pub async fn revoke_mobile_device(
+    runtime: State<'_, Arc<TauriAppRuntime>>,
+    device_id: String,
+    _trace: Option<TraceMetadata>,
+) -> Result<(), MobileSyncError> {
+    let span = info_span!(
+        "command.mobile_sync.revoke_device",
+        device_id = %device_id,
+        trace_id = tracing::field::Empty,
+        trace_ts = tracing::field::Empty,
+    );
+    record_trace_fields(&span, &_trace);
+
+    async move {
+        let facade = mobile_sync_facade(&runtime)?;
+        facade
+            .revoke_device(RevokeMobileDeviceInput {
+                device_id: MobileDeviceId::new(device_id),
+            })
+            .await?;
+        Ok(())
+    }
+    .instrument(span)
+    .await
+}
+
+/// 列出已登记设备。结果按"最近活跃 desc → 创建时间 desc"排序。不含
+/// password_hash / username。
+#[tauri::command]
+pub async fn list_mobile_devices(
+    runtime: State<'_, Arc<TauriAppRuntime>>,
+    _trace: Option<TraceMetadata>,
+) -> Result<Vec<MobileDeviceView>, MobileSyncError> {
+    let span = info_span!(
+        "command.mobile_sync.list_devices",
+        trace_id = tracing::field::Empty,
+        trace_ts = tracing::field::Empty,
+    );
+    record_trace_fields(&span, &_trace);
+
+    async move {
+        let facade = mobile_sync_facade(&runtime)?;
+        let devices = facade.list_devices().await?;
+        Ok(devices.into_iter().map(Into::into).collect())
+    }
+    .instrument(span)
+    .await
+}
+
+/// 读移动端同步设置 + 当前 LAN URL + 可用 install methods 的合成视图。
+#[tauri::command]
+pub async fn get_mobile_sync_settings(
+    runtime: State<'_, Arc<TauriAppRuntime>>,
+    _trace: Option<TraceMetadata>,
+) -> Result<MobileSyncSettingsViewDto, MobileSyncError> {
+    let span = info_span!(
+        "command.mobile_sync.get_settings",
+        trace_id = tracing::field::Empty,
+        trace_ts = tracing::field::Empty,
+    );
+    record_trace_fields(&span, &_trace);
+
+    async move {
+        let facade = mobile_sync_facade(&runtime)?;
+        let view = facade.get_settings().await?;
+        Ok(view.into())
+    }
+    .instrument(span)
+    .await
+}
+
+/// 更新移动端同步设置。返回值 `restart_required` 仅在任一字段实际发生变化
+/// 时为 true；同值重复保存为 false 且不写盘。
+#[tauri::command]
+pub async fn update_mobile_sync_settings(
+    runtime: State<'_, Arc<TauriAppRuntime>>,
+    args: UpdateMobileSyncSettingsArgs,
+    _trace: Option<TraceMetadata>,
+) -> Result<UpdateMobileSyncSettingsResult, MobileSyncError> {
+    let span = info_span!(
+        "command.mobile_sync.update_settings",
+        trace_id = tracing::field::Empty,
+        trace_ts = tracing::field::Empty,
+    );
+    record_trace_fields(&span, &_trace);
+
+    async move {
+        let facade = mobile_sync_facade(&runtime)?;
+        let input = UpdateMobileSyncSettingsInput {
+            enabled: args.enabled,
+            lan_listen_enabled: args.lan_listen_enabled,
+            lan_advertise_ip: args.lan_advertise_ip,
+            lan_port: args.lan_port,
+        };
+        let out = facade.update_settings(input).await?;
+        Ok(out.into())
+    }
+    .instrument(span)
+    .await
+}
+
+/// 列出可作为二维码 URL 候选的本机 IPv4 LAN 接口。仅返回 RFC1918 私有地址，
+/// 按 10/8 → 172.16/12 → 192.168/16 排序。
+#[tauri::command]
+pub async fn list_mobile_lan_interfaces(
+    runtime: State<'_, Arc<TauriAppRuntime>>,
+    _trace: Option<TraceMetadata>,
+) -> Result<Vec<LanInterfaceView>, MobileSyncError> {
+    let span = info_span!(
+        "command.mobile_sync.list_lan_interfaces",
+        trace_id = tracing::field::Empty,
+        trace_ts = tracing::field::Empty,
+    );
+    record_trace_fields(&span, &_trace);
+
+    async move {
+        let facade = mobile_sync_facade(&runtime)?;
+        let interfaces = facade.list_lan_interfaces().await?;
+        Ok(interfaces.into_iter().map(Into::into).collect())
+    }
+    .instrument(span)
+    .await
+}
+
+// ============================================================================
+// Tests
+// ============================================================================
+
+#[cfg(test)]
+mod tests {
+    //! 边界层 wiring 测试：error 翻译表 / Tauri-friendly DTO 序列化形态。
+    //! 业务语义在 `uc-application::usecases::mobile_sync` 各 use case 单测覆盖。
+
+    use super::*;
+
+    #[test]
+    fn error_password_too_short_serializes_with_min_field() {
+        let err = MobileSyncError::PasswordTooShort { min: 8 };
+        let json = serde_json::to_value(&err).unwrap();
+        assert_eq!(json["code"], "PASSWORD_TOO_SHORT");
+        assert_eq!(json["min"], 8);
+    }
+
+    #[test]
+    fn error_username_taken_serializes_with_username_field() {
+        let err = MobileSyncError::UsernameTaken {
+            username: "alice".to_string(),
+        };
+        let json = serde_json::to_value(&err).unwrap();
+        assert_eq!(json["code"], "USERNAME_TAKEN");
+        assert_eq!(json["username"], "alice");
+    }
+
+    #[test]
+    fn error_device_not_found_serializes_camel_case_device_id_field() {
+        // 验证 rename_all_fields = "camelCase":Rust 内部 `device_id` 字段
+        // 序列化为前端友好的 `deviceId`,与其余 DTO 一致。
+        let err = MobileSyncError::DeviceNotFound {
+            device_id: "did_abc".to_string(),
+        };
+        let json = serde_json::to_value(&err).unwrap();
+        assert_eq!(json["code"], "DEVICE_NOT_FOUND");
+        assert_eq!(json["deviceId"], "did_abc");
+        assert!(json.get("device_id").is_none());
+    }
+
+    #[test]
+    fn error_facade_unavailable_serializes_unit_variant() {
+        let err = MobileSyncError::FacadeUnavailable;
+        let json = serde_json::to_value(&err).unwrap();
+        assert_eq!(json["code"], "FACADE_UNAVAILABLE");
+        // unit variant 只有 code 字段；其余 absent
+        assert!(json.get("message").is_none());
+    }
+
+    #[test]
+    fn error_label_too_long_translation_uses_constant_max() {
+        let app_err = RegisterMobileShortcutDeviceError::LabelTooLong;
+        let mapped = MobileSyncError::from(app_err);
+        match mapped {
+            MobileSyncError::LabelTooLong { max } => assert_eq!(max, LABEL_MAX_LEN),
+            other => panic!("unexpected mapping: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn update_args_three_state_lan_advertise_ip_absent() {
+        // 字段缺失 → outer None
+        let json = r#"{}"#;
+        let args: UpdateMobileSyncSettingsArgs = serde_json::from_str(json).unwrap();
+        assert!(args.lan_advertise_ip.is_none());
+    }
+
+    #[test]
+    fn update_args_three_state_lan_advertise_ip_explicit_null() {
+        // 显式 null → Some(None)
+        let json = r#"{"lanAdvertiseIp": null}"#;
+        let args: UpdateMobileSyncSettingsArgs = serde_json::from_str(json).unwrap();
+        assert_eq!(args.lan_advertise_ip, Some(None));
+    }
+
+    #[test]
+    fn update_args_three_state_lan_advertise_ip_with_value() {
+        // 有值 → Some(Some(value))
+        let json = r#"{"lanAdvertiseIp": "192.168.1.5"}"#;
+        let args: UpdateMobileSyncSettingsArgs = serde_json::from_str(json).unwrap();
+        assert_eq!(args.lan_advertise_ip, Some(Some("192.168.1.5".to_string())));
+    }
+
+    #[test]
+    fn update_args_three_state_lan_port_explicit_null() {
+        let json = r#"{"lanPort": null}"#;
+        let args: UpdateMobileSyncSettingsArgs = serde_json::from_str(json).unwrap();
+        assert_eq!(args.lan_port, Some(None));
+    }
+
+    #[test]
+    fn register_args_username_password_optional() {
+        // 不给 username / password → 走 minter 自动颁发路径
+        let json = r#"{"label": "iPhone"}"#;
+        let args: RegisterMobileDeviceArgs = serde_json::from_str(json).unwrap();
+        assert_eq!(args.label, "iPhone");
+        assert!(args.username.is_none());
+        assert!(args.password.is_none());
+    }
+
+    #[test]
+    fn register_result_qr_is_base64_encoded() {
+        // 用一个 facade output 走 conversion，断言 PNG bytes 进 base64
+        use uc_core::mobile_sync::{MobileClientType, MobileDevice, MobileDeviceId};
+        let png_bytes = vec![0x89, 0x50, 0x4E, 0x47]; // 不需要真 PNG 头，断言 encode 结果即可
+        let out = RegisterMobileShortcutDeviceOutput {
+            device: MobileDevice {
+                device_id: MobileDeviceId::new("did_test"),
+                label: "Test".to_string(),
+                client_type: MobileClientType::IosShortcut,
+                username: "mobile_abcd1234".to_string(),
+                password_hash: "$argon2id$...".to_string(),
+                created_at_ms: 0,
+                last_seen_at_ms: None,
+                last_seen_ip: None,
+                reported_name: None,
+                reported_os: None,
+            },
+            base_url: "http://192.168.1.5:42720".to_string(),
+            username: "mobile_abcd1234".to_string(),
+            password: "secretpw".to_string(),
+            install_url: "https://www.icloud.com/shortcuts/abc".to_string(),
+            qr_code_png_bytes: png_bytes.clone(),
+            qr_code_ascii: "...".to_string(),
+        };
+        let dto = RegisterMobileDeviceResult::from(out);
+        assert_eq!(dto.qr_code_png_base64, BASE64.encode(&png_bytes));
+        assert_eq!(dto.client_type, "ios_shortcut");
+        assert_eq!(dto.device_id, "did_test");
+        assert_eq!(dto.password, "secretpw");
+    }
+
+    #[test]
+    fn install_method_serializes_camelcase_strings() {
+        let opt = ShortcutInstallMethodOption {
+            method: ShortcutInstallMethod::IcloudGeneric,
+            available: false,
+            disabled_reason: Some("v2 only".to_string()),
+        };
+        let view: ShortcutInstallMethodView = opt.into();
+        assert_eq!(view.method, "icloudGeneric");
+        assert!(!view.available);
+
+        let opt2 = ShortcutInstallMethodOption {
+            method: ShortcutInstallMethod::TokenInjected,
+            available: true,
+            disabled_reason: None,
+        };
+        let view2: ShortcutInstallMethodView = opt2.into();
+        assert_eq!(view2.method, "tokenInjected");
+    }
+}

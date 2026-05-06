@@ -457,6 +457,13 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
             crate::commands::quick_panel::dismiss_quick_panel,
             crate::commands::quick_panel::set_quick_panel_layout,
             crate::commands::quick_panel::finalize_quick_panel_show,
+            // Mobile sync commands (in-process facade — does NOT go through webserver)
+            crate::commands::mobile_sync::register_mobile_device,
+            crate::commands::mobile_sync::revoke_mobile_device,
+            crate::commands::mobile_sync::list_mobile_devices,
+            crate::commands::mobile_sync::get_mobile_sync_settings,
+            crate::commands::mobile_sync::update_mobile_sync_settings,
+            crate::commands::mobile_sync::list_mobile_lan_interfaces,
         ])
         .build(tauri_ctx)
         .map_err(|error| anyhow::anyhow!("error building tauri application: {error}"))?

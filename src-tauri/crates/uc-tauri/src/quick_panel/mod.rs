@@ -98,7 +98,11 @@ fn panel_position_for_cursor_screen(app: &tauri::AppHandle, width: f64, height: 
         Ok(cursor) => match app.monitor_from_point(cursor.x, cursor.y) {
             Ok(Some(monitor)) => Some(monitor),
             Ok(None) => {
-                warn!(
+                // Normal fallback path: cursor is between monitors / on a
+                // virtual display / a monitor was just hot-unplugged. The
+                // primary-monitor fallback below is the intended behavior,
+                // so this is debug-level diagnostic, not a warning.
+                debug!(
                     cursor_x = cursor.x,
                     cursor_y = cursor.y,
                     "No monitor found for cursor position; falling back to primary monitor"

@@ -14,9 +14,9 @@
 //!
 //! ## 与 daemon 的关系
 //!
-//! 全部子命令均 [`refuse_if_daemon_running`] —— CLI 与 daemon 共享同一份
-//! sqlite,不能并发持有。运行流程:`uniclip stop` → 跑 debug 命令 →
-//! 重启 daemon 看效果。
+//! 全部子命令均经 `shared::enter_write` 拒绝同 profile 的 daemon —— CLI 与
+//! daemon 共享同一份 sqlite,不能并发持有。运行流程:`uniclip stop` →
+//! 跑 debug 命令 → 重启 daemon 看效果。
 //!
 //! ## CLI fallback 装配
 //!
@@ -26,7 +26,6 @@
 //! 仍是 daemon 的责任,不在 CLI 责任范围。
 //!
 //! [`MobileSyncFacade`]: uc_application::facade::MobileSyncFacade
-//! [`refuse_if_daemon_running`]: crate::commands::app_session::refuse_if_daemon_running
 //! [`CaptureClipboardUseCase`]: uc_application::clipboard_capture::CaptureClipboardUseCase
 //! [1]: uc_bootstrap::build_app_facade_from_deps
 
@@ -42,8 +41,7 @@ use uc_application::facade::{
 };
 use uc_core::mobile_sync::MobileDeviceId;
 
-use crate::commands::app_session::{build_app_session, refuse_if_daemon_running, CliAppSession};
-use crate::commands::mobile_sync::shared;
+use crate::commands::mobile_sync::shared::{self, MobileSyncCmdCtx};
 use crate::exit_codes;
 use crate::ui;
 
@@ -102,10 +100,10 @@ fn debug_source_device_id() -> MobileDeviceId {
 /// `failed to encrypt inline_data` and snapshot reads fail with
 /// `failed to decrypt inline_data`.
 ///
-/// Returns `Ok(())` on success, or an exit code on failure (caller should
-/// propagate it after `cli.shutdown().await`).
-async fn ensure_session_resumed(cli: &CliAppSession) -> Result<(), i32> {
-    match cli.app_facade().try_resume_session().await {
+/// On error, prints the user-facing message and returns the exit code; the
+/// caller propagates via `shared::finish(ctx, code).await`.
+async fn ensure_session_resumed(ctx: &MobileSyncCmdCtx) -> Result<(), i32> {
+    match ctx.cli.app_facade().try_resume_session().await {
         Ok(true) => Ok(()),
         Ok(false) => {
             ui::error(
@@ -204,24 +202,13 @@ fn print_outcome(label: &str, outcome: &ApplyIncomingMobileClipOutcome) {
 }
 
 async fn put_text(text: String, json: bool, verbose: bool) -> i32 {
-    if !json {
-        ui::header("Debug: PUT /SyncClipboard.json (Text)");
-    }
-    if let Err(code) = refuse_if_daemon_running().await {
-        return code;
-    }
-    let cli = match build_app_session(verbose).await {
-        Ok(cli) => cli,
-        Err(code) => return code,
-    };
-    let Some(facade) = cli.app_facade().mobile_sync.clone() else {
-        ui::error("Mobile-sync facade is not wired in this build.");
-        cli.shutdown().await;
-        return exit_codes::EXIT_ERROR;
-    };
-    if let Err(code) = ensure_session_resumed(&cli).await {
-        cli.shutdown().await;
-        return code;
+    let ctx =
+        match shared::enter_write("Debug: PUT /SyncClipboard.json (Text)", json, verbose).await {
+            Ok(c) => c,
+            Err(code) => return code,
+        };
+    if let Err(code) = ensure_session_resumed(&ctx).await {
+        return shared::finish(ctx, code).await;
     }
 
     let size = text.len() as u64;
@@ -234,25 +221,25 @@ async fn put_text(text: String, json: bool, verbose: bool) -> i32 {
         hash: None,
     };
 
-    let result = facade.put_sync_doc(meta, debug_source_device_id()).await;
-
-    let exit = match result {
+    match ctx
+        .facade
+        .put_sync_doc(meta, debug_source_device_id())
+        .await
+    {
         Ok(outcome) => {
             if json {
                 let dto = PutOutcomeDto::from(&outcome);
-                print_json(&dto, &cli).await
+                shared::finish_json(ctx, &dto).await
             } else {
                 print_outcome("PUT /SyncClipboard.json", &outcome);
-                exit_codes::EXIT_SUCCESS
+                shared::finish(ctx, exit_codes::EXIT_SUCCESS).await
             }
         }
         Err(err) => {
             ui::error(&shared::render_apply_incoming_error(&err));
-            exit_codes::EXIT_ERROR
+            shared::finish(ctx, exit_codes::EXIT_ERROR).await
         }
-    };
-    cli.shutdown().await;
-    exit
+    }
 }
 
 // ── put-file ────────────────────────────────────────────────────────────
@@ -267,10 +254,9 @@ async fn put_file(path: PathBuf, mime_override: Option<String>, json: bool, verb
     if !json {
         ui::header("Debug: two-step PUT (file → doc)");
     }
-    if let Err(code) = refuse_if_daemon_running().await {
-        return code;
-    }
 
+    // Read the file + derive shape BEFORE wiring the CLI session — keeps
+    // session lifetime short on early file errors.
     let bytes = match std::fs::read(&path) {
         Ok(b) => b,
         Err(err) => {
@@ -293,31 +279,26 @@ async fn put_file(path: PathBuf, mime_override: Option<String>, json: bool, verb
     };
     let size = bytes.len() as u64;
 
-    let cli = match build_app_session(verbose).await {
-        Ok(cli) => cli,
+    // Header already printed; pass json=true to suppress duplicate.
+    let ctx = match shared::enter_write("", true, verbose).await {
+        Ok(c) => c,
         Err(code) => return code,
     };
-    let Some(facade) = cli.app_facade().mobile_sync.clone() else {
-        ui::error("Mobile-sync facade is not wired in this build.");
-        cli.shutdown().await;
-        return exit_codes::EXIT_ERROR;
-    };
-    if let Err(code) = ensure_session_resumed(&cli).await {
-        cli.shutdown().await;
-        return code;
+    if let Err(code) = ensure_session_resumed(&ctx).await {
+        return shared::finish(ctx, code).await;
     }
 
     let device = debug_source_device_id();
 
-    let file_outcome = match facade
+    let file_outcome = match ctx
+        .facade
         .put_clipboard_file(data_name.clone(), mime.clone(), bytes, device.clone())
         .await
     {
         Ok(o) => o,
         Err(err) => {
             ui::error(&shared::render_apply_incoming_error(&err));
-            cli.shutdown().await;
-            return exit_codes::EXIT_ERROR;
+            return shared::finish(ctx, exit_codes::EXIT_ERROR).await;
         }
     };
 
@@ -329,31 +310,28 @@ async fn put_file(path: PathBuf, mime_override: Option<String>, json: bool, verb
         size,
         hash: None,
     };
-    let doc_outcome = match facade.put_sync_doc(meta, device).await {
+    let doc_outcome = match ctx.facade.put_sync_doc(meta, device).await {
         Ok(o) => o,
         Err(err) => {
             ui::error(&shared::render_apply_incoming_error(&err));
-            cli.shutdown().await;
-            return exit_codes::EXIT_ERROR;
+            return shared::finish(ctx, exit_codes::EXIT_ERROR).await;
         }
     };
 
-    let exit = if json {
+    if json {
         let dto = PutFileDto {
             file: PutOutcomeDto::from(&file_outcome),
             doc: PutOutcomeDto::from(&doc_outcome),
         };
-        print_json(&dto, &cli).await
+        shared::finish_json(ctx, &dto).await
     } else {
         ui::info("dataName", &data_name);
         ui::info("mime", &mime);
         ui::info("size", &size.to_string());
         print_outcome("step1 PUT /file", &file_outcome);
         print_outcome("step2 PUT /SyncClipboard.json", &doc_outcome);
-        exit_codes::EXIT_SUCCESS
-    };
-    cli.shutdown().await;
-    exit
+        shared::finish(ctx, exit_codes::EXIT_SUCCESS).await
+    }
 }
 
 /// Lightweight extension → MIME inference. Covers the SyncClipboard
@@ -408,31 +386,19 @@ impl From<&SyncClipboardMeta> for DocDto {
 }
 
 async fn get_doc(json: bool, verbose: bool) -> i32 {
-    if !json {
-        ui::header("Debug: GET /SyncClipboard.json");
-    }
-    if let Err(code) = refuse_if_daemon_running().await {
-        return code;
-    }
-    let cli = match build_app_session(verbose).await {
-        Ok(cli) => cli,
+    let ctx = match shared::enter_write("Debug: GET /SyncClipboard.json", json, verbose).await {
+        Ok(c) => c,
         Err(code) => return code,
     };
-    let Some(facade) = cli.app_facade().mobile_sync.clone() else {
-        ui::error("Mobile-sync facade is not wired in this build.");
-        cli.shutdown().await;
-        return exit_codes::EXIT_ERROR;
-    };
-    if let Err(code) = ensure_session_resumed(&cli).await {
-        cli.shutdown().await;
-        return code;
+    if let Err(code) = ensure_session_resumed(&ctx).await {
+        return shared::finish(ctx, code).await;
     }
 
-    let exit = match facade.get_latest_sync_doc().await {
+    match ctx.facade.get_latest_sync_doc().await {
         Ok(meta) => {
             if json {
                 let dto = DocDto::from(&meta);
-                print_json(&dto, &cli).await
+                shared::finish_json(ctx, &dto).await
             } else {
                 ui::info("type", DocDto::from(&meta).item_type);
                 ui::info("text", &meta.text);
@@ -444,16 +410,14 @@ async fn get_doc(json: bool, verbose: bool) -> i32 {
                 if let Some(hash) = &meta.hash {
                     ui::info("hash", hash);
                 }
-                exit_codes::EXIT_SUCCESS
+                shared::finish(ctx, exit_codes::EXIT_SUCCESS).await
             }
         }
         Err(err) => {
             ui::error(&shared::render_get_latest_doc_error(&err));
-            exit_codes::EXIT_ERROR
+            shared::finish(ctx, exit_codes::EXIT_ERROR).await
         }
-    };
-    cli.shutdown().await;
-    exit
+    }
 }
 
 // ── get-file ────────────────────────────────────────────────────────────
@@ -467,27 +431,15 @@ struct FileDto {
 }
 
 async fn get_file(data_name: String, output: Option<PathBuf>, json: bool, verbose: bool) -> i32 {
-    if !json {
-        ui::header("Debug: GET /file/{dataName}");
-    }
-    if let Err(code) = refuse_if_daemon_running().await {
-        return code;
-    }
-    let cli = match build_app_session(verbose).await {
-        Ok(cli) => cli,
+    let ctx = match shared::enter_write("Debug: GET /file/{dataName}", json, verbose).await {
+        Ok(c) => c,
         Err(code) => return code,
     };
-    let Some(facade) = cli.app_facade().mobile_sync.clone() else {
-        ui::error("Mobile-sync facade is not wired in this build.");
-        cli.shutdown().await;
-        return exit_codes::EXIT_ERROR;
-    };
-    if let Err(code) = ensure_session_resumed(&cli).await {
-        cli.shutdown().await;
-        return code;
+    if let Err(code) = ensure_session_resumed(&ctx).await {
+        return shared::finish(ctx, code).await;
     }
 
-    let exit = match facade.get_clipboard_file(&data_name).await {
+    match ctx.facade.get_clipboard_file(&data_name).await {
         Ok(out) => {
             let GetMobileSyncFileOutput { mime, bytes } = out;
             let size = bytes.len() as u64;
@@ -496,8 +448,7 @@ async fn get_file(data_name: String, output: Option<PathBuf>, json: bool, verbos
                     Ok(()) => Some(path.display().to_string()),
                     Err(err) => {
                         ui::error(&format!("Failed to write {}: {err}", path.display()));
-                        cli.shutdown().await;
-                        return exit_codes::EXIT_ERROR;
+                        return shared::finish(ctx, exit_codes::EXIT_ERROR).await;
                     }
                 },
                 None => None,
@@ -509,7 +460,7 @@ async fn get_file(data_name: String, output: Option<PathBuf>, json: bool, verbos
                     size,
                     output_path: written_to,
                 };
-                print_json(&dto, &cli).await
+                shared::finish_json(ctx, &dto).await
             } else {
                 ui::info("dataName", &data_name);
                 ui::info("mime", &mime);
@@ -522,36 +473,12 @@ async fn get_file(data_name: String, output: Option<PathBuf>, json: bool, verbos
                         "Pass --output <PATH> to dump bytes to a file (binary not printed to stdout).",
                     );
                 }
-                exit_codes::EXIT_SUCCESS
+                shared::finish(ctx, exit_codes::EXIT_SUCCESS).await
             }
         }
         Err(err) => {
             ui::error(&shared::render_get_file_error(&err));
-            exit_codes::EXIT_ERROR
-        }
-    };
-    cli.shutdown().await;
-    exit
-}
-
-// ── shared helpers ──────────────────────────────────────────────────────
-
-async fn print_json<T: Serialize>(
-    dto: &T,
-    cli: &crate::commands::app_session::CliAppSession,
-) -> i32
-where
-{
-    match serde_json::to_string_pretty(dto) {
-        Ok(s) => {
-            println!("{s}");
-            exit_codes::EXIT_SUCCESS
-        }
-        Err(err) => {
-            ui::error(&format!("Failed to serialize: {err}"));
-            // Caller still owns `cli.shutdown()`; nothing to do here.
-            let _ = cli;
-            exit_codes::EXIT_ERROR
+            shared::finish(ctx, exit_codes::EXIT_ERROR).await
         }
     }
 }

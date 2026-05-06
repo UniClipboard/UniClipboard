@@ -15,7 +15,6 @@ use serde::Serialize;
 
 use uc_application::facade::{MobileSyncLanInterfaceOption, UpdateMobileSyncSettingsInput};
 
-use crate::commands::app_session::{build_app_session, refuse_if_daemon_running};
 use crate::commands::mobile_sync::shared;
 use crate::exit_codes;
 use crate::ui;
@@ -71,48 +70,33 @@ impl From<&MobileSyncLanInterfaceOption> for InterfaceDto {
 }
 
 async fn list_interfaces(json: bool, verbose: bool) -> i32 {
-    if !json {
-        ui::header("LAN interfaces");
-    }
-    let cli = match build_app_session(verbose).await {
-        Ok(cli) => cli,
+    let ctx = match shared::enter_read("LAN interfaces", json, verbose).await {
+        Ok(c) => c,
         Err(code) => return code,
     };
-    let Some(facade) = cli.app_facade().mobile_sync.clone() else {
-        ui::error("Mobile-sync facade is not wired in this build.");
-        cli.shutdown().await;
-        return exit_codes::EXIT_ERROR;
-    };
-    let exit = match facade.list_lan_interfaces().await {
+    match ctx.facade.list_lan_interfaces().await {
         Ok(opts) => {
             if json {
                 let dtos: Vec<InterfaceDto> = opts.iter().map(InterfaceDto::from).collect();
-                match serde_json::to_string_pretty(&dtos) {
-                    Ok(s) => println!("{s}"),
-                    Err(err) => {
-                        ui::error(&format!("Failed to serialize: {err}"));
-                        cli.shutdown().await;
-                        return exit_codes::EXIT_ERROR;
+                shared::finish_json(ctx, &dtos).await
+            } else {
+                if opts.is_empty() {
+                    ui::warn(
+                        "No RFC1918 LAN interface detected. Connect to a private network and retry.",
+                    );
+                } else {
+                    for o in &opts {
+                        ui::info(&o.name, &o.ipv4);
                     }
                 }
-            } else if opts.is_empty() {
-                ui::warn(
-                    "No RFC1918 LAN interface detected. Connect to a private network and retry.",
-                );
-            } else {
-                for o in &opts {
-                    ui::info(&o.name, &o.ipv4);
-                }
+                shared::finish(ctx, exit_codes::EXIT_SUCCESS).await
             }
-            exit_codes::EXIT_SUCCESS
         }
         Err(err) => {
             ui::error(&shared::render_list_lan_interfaces_error(&err));
-            exit_codes::EXIT_ERROR
+            shared::finish(ctx, exit_codes::EXIT_ERROR).await
         }
-    };
-    cli.shutdown().await;
-    exit
+    }
 }
 
 #[derive(Serialize)]
@@ -131,11 +115,12 @@ async fn enable(
     json: bool,
     verbose: bool,
 ) -> i32 {
+    // Print header + run interactive risk confirmation BEFORE facade wiring,
+    // so we can short-circuit cheaply if the user aborts (or the JSON-mode
+    // missing-flag check fires).
     if !json {
         ui::header("Mobile-sync LAN enable");
     }
-
-    // 安全告警 + 交互确认(SPEC §3.4)。`--accept-network-risk` 跳过。
     if !accept_network_risk {
         if json {
             ui::error("--accept-network-risk is required in JSON mode (no interactive prompt).");
@@ -148,20 +133,15 @@ async fn enable(
         }
     }
 
-    if let Err(code) = refuse_if_daemon_running().await {
-        return code;
-    }
-    let cli = match build_app_session(verbose).await {
-        Ok(cli) => cli,
+    // Header already printed; pass json=true to enter_write to suppress a
+    // second header from the helper.
+    let ctx = match shared::enter_write("", true, verbose).await {
+        Ok(c) => c,
         Err(code) => return code,
     };
-    let Some(facade) = cli.app_facade().mobile_sync.clone() else {
-        ui::error("Mobile-sync facade is not wired in this build.");
-        cli.shutdown().await;
-        return exit_codes::EXIT_ERROR;
-    };
 
-    let result = facade
+    let result = ctx
+        .facade
         .update_settings(UpdateMobileSyncSettingsInput {
             // 同时把总开关也置 true:用户开 LAN 时大概率也想要 enable=true,
             // 否则 daemon 启动时仍因 enabled=false 跳过 listener。
@@ -172,7 +152,7 @@ async fn enable(
         })
         .await;
 
-    let exit = match result {
+    match result {
         Ok(out) => {
             if json {
                 let dto = EnableResult {
@@ -182,14 +162,7 @@ async fn enable(
                     lan_port: out.lan_port,
                     restart_required: out.restart_required,
                 };
-                match serde_json::to_string_pretty(&dto) {
-                    Ok(s) => println!("{s}"),
-                    Err(err) => {
-                        ui::error(&format!("Failed to serialize: {err}"));
-                        cli.shutdown().await;
-                        return exit_codes::EXIT_ERROR;
-                    }
-                }
+                shared::finish_json(ctx, &dto).await
             } else {
                 ui::success("LAN listener enabled in settings.");
                 ui::info(
@@ -205,16 +178,14 @@ async fn enable(
                 if out.restart_required {
                     ui::warn(shared::restart_hint());
                 }
+                shared::finish(ctx, exit_codes::EXIT_SUCCESS).await
             }
-            exit_codes::EXIT_SUCCESS
         }
         Err(err) => {
             ui::error(&shared::render_update_settings_error(&err));
-            exit_codes::EXIT_ERROR
+            shared::finish(ctx, exit_codes::EXIT_ERROR).await
         }
-    };
-    cli.shutdown().await;
-    exit
+    }
 }
 
 #[derive(Serialize)]
@@ -224,57 +195,38 @@ struct DisableResult {
 }
 
 async fn disable(json: bool, verbose: bool) -> i32 {
-    if !json {
-        ui::header("Mobile-sync LAN disable");
-    }
-    if let Err(code) = refuse_if_daemon_running().await {
-        return code;
-    }
-    let cli = match build_app_session(verbose).await {
-        Ok(cli) => cli,
+    let ctx = match shared::enter_write("Mobile-sync LAN disable", json, verbose).await {
+        Ok(c) => c,
         Err(code) => return code,
     };
-    let Some(facade) = cli.app_facade().mobile_sync.clone() else {
-        ui::error("Mobile-sync facade is not wired in this build.");
-        cli.shutdown().await;
-        return exit_codes::EXIT_ERROR;
-    };
-    let result = facade
+    let result = ctx
+        .facade
         .update_settings(UpdateMobileSyncSettingsInput {
             lan_listen_enabled: Some(false),
             ..Default::default()
         })
         .await;
-    let exit = match result {
+    match result {
         Ok(out) => {
             if json {
                 let dto = DisableResult {
                     lan_listen_enabled: out.lan_listen_enabled,
                     restart_required: out.restart_required,
                 };
-                match serde_json::to_string_pretty(&dto) {
-                    Ok(s) => println!("{s}"),
-                    Err(err) => {
-                        ui::error(&format!("Failed to serialize: {err}"));
-                        cli.shutdown().await;
-                        return exit_codes::EXIT_ERROR;
-                    }
-                }
+                shared::finish_json(ctx, &dto).await
             } else {
                 ui::success("LAN listener disabled in settings.");
                 if out.restart_required {
                     ui::warn(shared::restart_hint());
                 }
+                shared::finish(ctx, exit_codes::EXIT_SUCCESS).await
             }
-            exit_codes::EXIT_SUCCESS
         }
         Err(err) => {
             ui::error(&shared::render_update_settings_error(&err));
-            exit_codes::EXIT_ERROR
+            shared::finish(ctx, exit_codes::EXIT_ERROR).await
         }
-    };
-    cli.shutdown().await;
-    exit
+    }
 }
 
 fn print_network_risk_banner() {

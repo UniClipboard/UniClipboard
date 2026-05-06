@@ -1,10 +1,91 @@
-//! `mobile_sync` 子命令共享的小工具:错误渲染、重启提示、JSON 包装。
+//! `mobile_sync` 子命令共享的小工具:命令骨架、错误渲染、重启提示、JSON 包装。
+//!
+//! 命令骨架(boilerplate)由 [`enter_write`] / [`enter_read`] / [`finish_json`] /
+//! [`finish`] 提供 —— 见 module-level 注释顶部小段。所有 mobile-sync 子命令
+//! 都遵守同一个生命周期:`enter_*` 拿 [`MobileSyncCmdCtx`] → 调 facade →
+//! 渲染 → `finish_*`。
+
+use std::sync::Arc;
+
+use serde::Serialize;
 
 use uc_application::facade::{
     ApplyIncomingMobileClipError, GetLatestMobileSyncDocError, GetMobileSyncFileError,
-    GetMobileSyncSettingsError, ListMobileDevicesError, MobileSyncListLanInterfacesError,
-    RegisterMobileShortcutDeviceError, RevokeMobileDeviceError, UpdateMobileSyncSettingsError,
+    GetMobileSyncSettingsError, ListMobileDevicesError, MobileSyncFacade,
+    MobileSyncListLanInterfacesError, RegisterMobileShortcutDeviceError, RevokeMobileDeviceError,
+    UpdateMobileSyncSettingsError,
 };
+
+use crate::commands::app_session::{build_app_session, refuse_if_daemon_running, CliAppSession};
+use crate::exit_codes;
+use crate::ui;
+
+// ── Command lifecycle helpers ────────────────────────────────────────────
+
+/// Wired CLI session + a clone of the mobile-sync facade. Built by
+/// [`enter_write`] / [`enter_read`]; consumed by [`finish_json`] / [`finish`].
+pub struct MobileSyncCmdCtx {
+    pub cli: CliAppSession,
+    pub facade: Arc<MobileSyncFacade>,
+}
+
+/// Boilerplate for **write commands**: print header (unless json), refuse
+/// if daemon is running, build the CLI app session, take the mobile-sync
+/// facade. Returns an exit code if any step fails (the inner shutdown is
+/// handled before returning, so callers just propagate the code).
+pub async fn enter_write(header: &str, json: bool, verbose: bool) -> Result<MobileSyncCmdCtx, i32> {
+    if !json {
+        ui::header(header);
+    }
+    refuse_if_daemon_running().await?;
+    enter_inner(verbose).await
+}
+
+/// Boilerplate for **read commands**: print header (unless json), build
+/// the CLI app session, take the mobile-sync facade. Daemon may be running
+/// — sqlite tolerates concurrent read-only opens.
+pub async fn enter_read(header: &str, json: bool, verbose: bool) -> Result<MobileSyncCmdCtx, i32> {
+    if !json {
+        ui::header(header);
+    }
+    enter_inner(verbose).await
+}
+
+async fn enter_inner(verbose: bool) -> Result<MobileSyncCmdCtx, i32> {
+    let cli = build_app_session(verbose).await?;
+    let Some(facade) = cli.app_facade().mobile_sync.clone() else {
+        ui::error("Mobile-sync facade is not wired in this build.");
+        cli.shutdown().await;
+        return Err(exit_codes::EXIT_ERROR);
+    };
+    Ok(MobileSyncCmdCtx { cli, facade })
+}
+
+/// Pretty-print `dto` as JSON to stdout, then shut the ctx down. Returns
+/// SUCCESS on serialize ok, ERROR otherwise (shutdown still happens).
+pub async fn finish_json<T: Serialize>(ctx: MobileSyncCmdCtx, dto: &T) -> i32 {
+    let exit = match serde_json::to_string_pretty(dto) {
+        Ok(s) => {
+            println!("{s}");
+            exit_codes::EXIT_SUCCESS
+        }
+        Err(err) => {
+            ui::error(&format!("Failed to serialize: {err}"));
+            exit_codes::EXIT_ERROR
+        }
+    };
+    ctx.cli.shutdown().await;
+    exit
+}
+
+/// Shut the ctx down, return the given exit code. Use for the
+/// human-readable branch where rendering happened inline.
+pub async fn finish(ctx: MobileSyncCmdCtx, exit: i32) -> i32 {
+    ctx.cli.shutdown().await;
+    exit
+}
+
+// ── Error renderers + restart hint (kept as-is) ──────────────────────────
 
 /// 把 `restart_required=true` 转化为面向用户的提示字符串(英文,人类可读)。
 pub fn restart_hint() -> &'static str {

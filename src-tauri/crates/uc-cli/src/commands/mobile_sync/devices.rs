@@ -10,7 +10,6 @@ use serde::Serialize;
 use uc_application::facade::{MobileDeviceSummary, RevokeMobileDeviceInput};
 use uc_core::mobile_sync::MobileDeviceId;
 
-use crate::commands::app_session::{build_app_session, refuse_if_daemon_running};
 use crate::commands::mobile_sync::shared;
 use crate::exit_codes;
 use crate::ui;
@@ -61,59 +60,44 @@ impl From<&MobileDeviceSummary> for DeviceDto {
 }
 
 async fn list(json: bool, verbose: bool) -> i32 {
-    if !json {
-        ui::header("Paired iPhone devices");
-    }
-    let cli = match build_app_session(verbose).await {
-        Ok(cli) => cli,
+    let ctx = match shared::enter_read("Paired iPhone devices", json, verbose).await {
+        Ok(c) => c,
         Err(code) => return code,
     };
-    let Some(facade) = cli.app_facade().mobile_sync.clone() else {
-        ui::error("Mobile-sync facade is not wired in this build.");
-        cli.shutdown().await;
-        return exit_codes::EXIT_ERROR;
-    };
-    let exit = match facade.list_devices().await {
+    match ctx.facade.list_devices().await {
         Ok(devs) => {
             if json {
                 let dtos: Vec<DeviceDto> = devs.iter().map(DeviceDto::from).collect();
-                match serde_json::to_string_pretty(&dtos) {
-                    Ok(s) => println!("{s}"),
-                    Err(err) => {
-                        ui::error(&format!("Failed to serialize: {err}"));
-                        cli.shutdown().await;
-                        return exit_codes::EXIT_ERROR;
+                shared::finish_json(ctx, &dtos).await
+            } else {
+                if devs.is_empty() {
+                    ui::info(
+                        "count",
+                        "0 — run `mobile-sync shortcut add` to register one.",
+                    );
+                } else {
+                    for d in &devs {
+                        ui::info(
+                            &d.label,
+                            &format!(
+                                "id={} client={} last_seen_ms={}",
+                                d.device_id.as_str(),
+                                d.client_type.as_wire_str(),
+                                d.last_seen_at_ms
+                                    .map(|x| x.to_string())
+                                    .unwrap_or_else(|| "never".into()),
+                            ),
+                        );
                     }
                 }
-            } else if devs.is_empty() {
-                ui::info(
-                    "count",
-                    "0 — run `mobile-sync shortcut add` to register one.",
-                );
-            } else {
-                for d in &devs {
-                    ui::info(
-                        &d.label,
-                        &format!(
-                            "id={} client={} last_seen_ms={}",
-                            d.device_id.as_str(),
-                            d.client_type.as_wire_str(),
-                            d.last_seen_at_ms
-                                .map(|x| x.to_string())
-                                .unwrap_or_else(|| "never".into()),
-                        ),
-                    );
-                }
+                shared::finish(ctx, exit_codes::EXIT_SUCCESS).await
             }
-            exit_codes::EXIT_SUCCESS
         }
         Err(err) => {
             ui::error(&shared::render_list_devices_error(&err));
-            exit_codes::EXIT_ERROR
+            shared::finish(ctx, exit_codes::EXIT_ERROR).await
         }
-    };
-    cli.shutdown().await;
-    exit
+    }
 }
 
 #[derive(Serialize)]
@@ -123,54 +107,35 @@ struct RevokeResult {
 }
 
 async fn revoke(device_id: String, json: bool, verbose: bool) -> i32 {
-    if !json {
-        ui::header("Revoke iPhone device");
-    }
-    if let Err(code) = refuse_if_daemon_running().await {
-        return code;
-    }
-    let cli = match build_app_session(verbose).await {
-        Ok(cli) => cli,
+    let ctx = match shared::enter_write("Revoke iPhone device", json, verbose).await {
+        Ok(c) => c,
         Err(code) => return code,
     };
-    let Some(facade) = cli.app_facade().mobile_sync.clone() else {
-        ui::error("Mobile-sync facade is not wired in this build.");
-        cli.shutdown().await;
-        return exit_codes::EXIT_ERROR;
-    };
 
-    let result = facade
+    let result = ctx
+        .facade
         .revoke_device(RevokeMobileDeviceInput {
             device_id: MobileDeviceId::new(device_id.clone()),
         })
         .await;
 
-    let exit = match result {
+    match result {
         Ok(()) => {
             if json {
                 let dto = RevokeResult {
                     device_id: device_id.clone(),
                     revoked: true,
                 };
-                match serde_json::to_string_pretty(&dto) {
-                    Ok(s) => println!("{s}"),
-                    Err(err) => {
-                        ui::error(&format!("Failed to serialize: {err}"));
-                        cli.shutdown().await;
-                        return exit_codes::EXIT_ERROR;
-                    }
-                }
+                shared::finish_json(ctx, &dto).await
             } else {
                 ui::success(&format!("Revoked device {device_id}."));
                 ui::info("note", "Next request from that device returns 401.");
+                shared::finish(ctx, exit_codes::EXIT_SUCCESS).await
             }
-            exit_codes::EXIT_SUCCESS
         }
         Err(err) => {
             ui::error(&shared::render_revoke_error(&err));
-            exit_codes::EXIT_ERROR
+            shared::finish(ctx, exit_codes::EXIT_ERROR).await
         }
-    };
-    cli.shutdown().await;
-    exit
+    }
 }

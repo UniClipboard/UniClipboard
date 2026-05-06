@@ -11,10 +11,13 @@
 //! - 新增 `authenticate_basic`(LAN HTTP 鉴权热路径, 路由层用)
 //! - 新增 `apply_incoming`(P5a.3 移动端入站剪贴板, 把 SyncClipboard 协议
 //!   的两步 PUT 翻成 V3 envelope 喂给 ApplyInbound 复用整套管线)
+//! - 新增 `get_latest_doc`(P5a.4 移动端出站元数据, 把最近一条 paste-priority
+//!   rep 翻成 SyncClipboard 协议的 `GET /SyncClipboard.json` 响应形态)
 
 pub(crate) mod apply_incoming;
 pub(crate) mod authenticate_basic;
 pub(crate) mod clipboard_doc;
+pub(crate) mod get_latest_doc;
 pub(crate) mod get_settings;
 pub(crate) mod list_devices;
 pub(crate) mod list_lan_interfaces;

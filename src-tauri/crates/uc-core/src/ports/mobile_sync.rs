@@ -11,8 +11,8 @@ use async_trait::async_trait;
 use thiserror::Error;
 
 use crate::mobile_sync::{
-    LanEndpointInfo, LanInterface, MintedCredentials, MobileDevice, MobileDeviceError,
-    MobileDeviceId,
+    LanEndpointInfo, LanInterface, LatestPasteRepresentation, MintedCredentials, MobileDevice,
+    MobileDeviceError, MobileDeviceId,
 };
 
 // ─── credentials minter ──────────────────────────────────────────────────
@@ -160,4 +160,36 @@ pub enum LanInterfaceProbeError {
     /// 文本带上来给排障。
     #[error("lan interface probe failed: {0}")]
     Probe(String),
+}
+
+// ─── latest paste representation ────────────────────────────────────────
+
+/// 读取最近一条 clipboard entry 的 paste-priority representation,字节材
+/// 化好后交给调用方。
+///
+/// mobile sync 出站(Mac → iPhone)的两条 HTTP 路由(`GET /SyncClipboard.json`
+/// 与 `GET /file/{dataName}`)都靠这个 port 拿数据 —— 路由层和 facade 都不
+/// 直接接触 `clipboard_entry` / `clipboard_event` / `clipboard_representation`
+/// 表,只看一份"已选 + 已材化"的视图。
+///
+/// **方案 X**(P5a Decisions):本 port 永远返回**最新一条**记录,**不区分**
+/// 来源(本地复制 / mobile sync 入站 / P2P 入站)。dedup 由 `ApplyInbound` 的
+/// `content_hash` 在入站时已经处理;mobile sync 这条出站路径无需在 query
+/// 阶段再做"过滤掉自己来源避免回环"的小聪明。
+#[async_trait]
+pub trait LatestClipboardSnapshotPort: Send + Sync {
+    /// 拿到当前剪贴板 paste-priority rep。无任何 entry 时返回 `Ok(None)`,
+    /// use case 据此翻成 `NotFound` → 路由 404。
+    async fn latest_paste_representation(
+        &self,
+    ) -> Result<Option<LatestPasteRepresentation>, LatestClipboardSnapshotError>;
+}
+
+#[derive(Debug, Error)]
+pub enum LatestClipboardSnapshotError {
+    /// 底层 storage 路径失败 —— sqlite 异常 / blob 读不出 / selection 与
+    /// representation 行不一致等。adapter 把具体错文本带过来给排障用,但
+    /// use case 不依赖错误细节,统一翻成应用层错误后路由层 → HTTP 500。
+    #[error("latest clipboard snapshot resolution failed: {0}")]
+    Resolution(String),
 }

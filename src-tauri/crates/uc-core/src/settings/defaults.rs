@@ -244,11 +244,16 @@ impl Default for NetworkSettings {
 }
 
 impl Default for MobileSyncSettings {
-    /// 默认关闭。开启移动端同步暴露 LAN 监听端口，必须由用户在设置页
-    /// 显式开启 + 重启 daemon。详见
-    /// `.context/mobile-sync/SPEC.md` §5。
+    /// 默认全部关闭 / 未选定。开启移动端同步暴露 LAN 监听端口,必须由用户
+    /// 在设置页显式开启 + 重启 daemon。详见
+    /// `.context/mobile-sync/SPEC.md` §5 + §14.10。
     fn default() -> Self {
-        Self { enabled: false }
+        Self {
+            enabled: false,
+            lan_listen_enabled: false,
+            lan_bind_ip: None,
+            lan_port: None,
+        }
     }
 }
 

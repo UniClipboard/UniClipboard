@@ -30,14 +30,21 @@ use uc_core::ports::{EndpointInfoError, MobileSyncEndpointInfoPort, SettingsPort
 /// UI / CLI 拿到的"当前移动端同步状态"快照。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MobileSyncSettingsView {
-    /// 持久化 `Settings.mobile_sync.enabled`。
+    /// 持久化 `Settings.mobile_sync.enabled`(总开关)。
     pub enabled: bool,
-    /// 当前 daemon 实际监听的 LAN URL（`http://<ip>:<port>`）。
-    /// `None` 通常意味着"`enabled` 刚被设为 true 但 daemon 还没重启"
-    /// 或者"网卡列表里没有可用的 RFC1918 地址"。
+    /// 持久化 `Settings.mobile_sync.lan_listen_enabled`(LAN listener 子开关)。
+    pub lan_listen_enabled: bool,
+    /// 持久化 `Settings.mobile_sync.lan_bind_ip`。`None` 时 daemon 取
+    /// `127.0.0.1` 作为兜底。
+    pub lan_bind_ip: Option<String>,
+    /// 持久化 `Settings.mobile_sync.lan_port`。`None` 时 daemon 取默认 42720。
+    pub lan_port: Option<u16>,
+    /// 当前 daemon 实际监听的 LAN URL(`http://<ip>:<port>`)。
+    /// `None` 通常意味着"`enabled` 或 `lan_listen_enabled` 刚被设为 true
+    /// 但 daemon 还没重启"或者"网卡列表里没有可用的 RFC1918 地址"。
     pub current_lan_url: Option<String>,
-    /// `.shortcut` 的可选安装方式列表，按 SPEC §13 的产品策略定义可
-    /// 用与不可用项；UI 据此渲染 disabled 选项与提示文案。
+    /// `.shortcut` 的可选安装方式列表,按 SPEC §13 的产品策略定义可
+    /// 用与不可用项;UI 据此渲染 disabled 选项与提示文案。
     pub shortcut_install_methods: Vec<ShortcutInstallMethodOption>,
 }
 
@@ -99,7 +106,7 @@ impl GetMobileSyncSettingsUseCase {
             .load()
             .await
             .map_err(|err| GetMobileSyncSettingsError::SettingsLoadFailed(err.to_string()))?;
-        let enabled = settings.mobile_sync.enabled;
+        let mobile = settings.mobile_sync.clone();
 
         let endpoint = self
             .endpoint_info
@@ -109,7 +116,10 @@ impl GetMobileSyncSettingsUseCase {
         let current_lan_url = endpoint.map(|e| e.url);
 
         Ok(MobileSyncSettingsView {
-            enabled,
+            enabled: mobile.enabled,
+            lan_listen_enabled: mobile.lan_listen_enabled,
+            lan_bind_ip: mobile.lan_bind_ip,
+            lan_port: mobile.lan_port,
             current_lan_url,
             shortcut_install_methods: shortcut_install_methods_v1(),
         })

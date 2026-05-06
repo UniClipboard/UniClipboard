@@ -453,7 +453,10 @@ mod tests {
 
         // 改 enabled = true → restart_required 应为 true。
         let upd = facade
-            .update_settings(UpdateMobileSyncSettingsInput { enabled: true })
+            .update_settings(UpdateMobileSyncSettingsInput {
+                enabled: Some(true),
+                ..Default::default()
+            })
             .await
             .unwrap();
         assert!(upd.enabled);
@@ -465,7 +468,10 @@ mod tests {
 
         // 同值再保存:restart_required 应 false。
         let upd_noop = facade
-            .update_settings(UpdateMobileSyncSettingsInput { enabled: true })
+            .update_settings(UpdateMobileSyncSettingsInput {
+                enabled: Some(true),
+                ..Default::default()
+            })
             .await
             .unwrap();
         assert!(!upd_noop.restart_required);

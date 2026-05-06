@@ -240,16 +240,50 @@ fn default_allow_overlay_network_addrs() -> bool {
 // ======================================================================
 
 /// 移动端同步功能的设置族。
+///
+/// v3 SyncClipboard 兼容版(SPEC §14.10)按"功能开关 + LAN 监听细节"两层
+/// 拆分:
+///
+/// * `enabled` —— 总开关。关闭时 daemon 完全不起 LAN listener,即使
+///   `lan_listen_enabled=true` 也无效。
+/// * `lan_listen_enabled` —— LAN listener 子开关。仅在 `enabled=true` 时
+///   生效。让用户能在不撤销已登记设备的情况下临时停用 listener
+///   (例如出差换不可信网络时)。
+/// * `lan_bind_ip` —— 用户选定的 LAN IPv4(`192.168.1.5` 这类
+///   字符串)。`None` 时退回 `127.0.0.1`(只允许本机访问,主要用于 CLI 端到
+///   端测试)。
+/// * `lan_port` —— 自定义端口。`None` 时取默认 `42720`(SPEC §3.2)。
+///
+/// 任意字段变更后都需要重启 daemon 才能生效(v1 不做配置热重载,详见
+/// `.context/mobile-sync/SPEC.md` §1.2.5)。
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct MobileSyncSettings {
-    /// 是否启用移动端同步 LAN 监听。
-    /// 默认 `false`：移动端同步对未配对的局域网邻居有暴露面，必须由
+    /// 是否启用移动端同步 LAN 监听总开关。
+    /// 默认 `false`:移动端同步对未配对的局域网邻居有暴露面,必须由
     /// 用户在设置页显式开启。
     #[serde(default = "default_mobile_sync_enabled")]
     pub enabled: bool,
+
+    /// LAN listener 子开关。`enabled=true` 时由本字段决定 daemon 启动
+    /// 后是否真的把 listener spawn 起来。默认 `false`。
+    #[serde(default = "default_mobile_sync_lan_listen_enabled")]
+    pub lan_listen_enabled: bool,
+
+    /// 用户选定的 LAN IPv4 字符串(`192.168.1.5` 这类)。`None` 时 daemon
+    /// 退回 `127.0.0.1`(仅本机可达),便于 CLI 端到端测试。
+    #[serde(default)]
+    pub lan_bind_ip: Option<String>,
+
+    /// 用户自定义的 LAN 监听端口。`None` 时取默认 `42720`(SPEC §3.2)。
+    #[serde(default)]
+    pub lan_port: Option<u16>,
 }
 
 fn default_mobile_sync_enabled() -> bool {
+    false
+}
+
+fn default_mobile_sync_lan_listen_enabled() -> bool {
     false
 }
 

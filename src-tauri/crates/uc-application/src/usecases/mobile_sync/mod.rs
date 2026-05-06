@@ -9,7 +9,10 @@
 //! - 删除 `shortcut_packer`(不再维护自建 .shortcut 模板, 用户安装 Apple
 //!   签名的 SyncClipboard EX iCloud 链接)
 //! - 新增 `authenticate_basic`(LAN HTTP 鉴权热路径, 路由层用)
+//! - 新增 `apply_incoming`(P5a.3 移动端入站剪贴板, 把 SyncClipboard 协议
+//!   的两步 PUT 翻成 V3 envelope 喂给 ApplyInbound 复用整套管线)
 
+pub(crate) mod apply_incoming;
 pub(crate) mod authenticate_basic;
 pub(crate) mod clipboard_doc;
 pub(crate) mod get_settings;

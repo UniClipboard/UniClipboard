@@ -231,16 +231,16 @@ pub trait MobileFileStagingPort: Send + Sync {
 
     /// 按 `file:///...` URI 读回字节(出站 `GET /file/{dataName}` 用)。
     ///
-    /// 安全语义:实现**必须**确保 URI 解析后的 path canonicalize 落在 adapter
-    /// 自己持有的 staging 根目录(典型: `<cache_root>` 之下),不允许读 cache
-    /// 根之外的任何文件 —— 防止恶意 / 损坏 entry 的 file-list rep 引用
-    /// `file:///etc/passwd` 之类路径让 daemon 帮 iPhone 拉系统文件。
+    /// 安全语义:信任来源是 OS 剪贴板 —— 任何能被 paste rep 携带的 file URI,
+    /// 在桌面 OS 层面已对所有运行中 app 开放读权限(用户主动复制 = 主动授权)。
+    /// 已配对的 iPhone 经 basic auth 通过后,语义上等价于一台已信任的设备,
+    /// 可读这台机器剪贴板里的任意 file URI。adapter 不再做路径白名单 ——
+    /// 真实用户场景下盘符 / 外接卷 / 用户自定义目录千奇百怪,白名单几乎不
+    /// 可能穷举且静默拒绝带来的 0 字节体验比安全收益更糟。
     ///
     /// 错误形态:
     /// - URI 不合法 / 无法解析为 path → `Io` 变体(text 描述错误);
-    /// - path canonicalize 后不在 cache 根之下 → `NotFound`(不暴露细节,
-    ///   防 enumeration);
-    /// - 文件不存在(被运维清理 / TTL sweep 删) → `NotFound`;
+    /// - 文件不存在 → `NotFound`;
     /// - 读盘失败(权限 / 中途 IO 错) → `Io`。
     ///
     /// adapter **不**负责 mime 推断;use case 端按 dataName 扩展名 / SyncClipboard
@@ -261,10 +261,8 @@ pub enum MobileFileStagingError {
     #[error("staged data_name unusable after sanitize: {0}")]
     InvalidDataName(String),
 
-    /// `read_by_uri` 专用:URI 指向的 path 不在 staging 白名单根之下,或
-    /// 文件不存在。两种情况合并成一个变体,避免泄露"路径存在但不允许读"
-    /// vs"路径不存在"的差异(防 enumeration)。use case 翻成应用层
+    /// `read_by_uri` 专用:URI 指向的 path 不存在。use case 翻成应用层
     /// `NotFound` 后路由 → HTTP 404。
-    #[error("staged URI not found or out of staging root")]
+    #[error("staged URI not found")]
     NotFound,
 }

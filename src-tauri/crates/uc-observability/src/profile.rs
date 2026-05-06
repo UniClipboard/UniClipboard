@@ -45,6 +45,14 @@ const NOISE_FILTERS: &[&str] = &[
     // events per peer-hour without this cap.
     "noq=info",
     "noq_proto=info",
+    // noq-udp is a separate crate from `noq` so the directive above does
+    // not cover it. On dual-stack hosts where the VPN / Clash TUN / stale
+    // virtual NIC has no route to a remote IPv6 destination, the udp send
+    // path emits a WARN per transmit (`sendmsg error: No route to host`).
+    // Same EHOSTUNREACH pattern as `swarm_discovery::socket` above —
+    // harmless because reachability still works over other interfaces,
+    // but high-frequency, so cap at ERROR to keep Sentry Logs quiet.
+    "noq_udp=error",
     // magicsock multipath state machine. The remote_state submodule is
     // also where iroh#4124 spams `Opening path failed` on every event
     // once the per-connection PathId budget is exhausted; cap that one

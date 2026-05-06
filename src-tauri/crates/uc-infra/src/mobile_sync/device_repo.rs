@@ -1,32 +1,27 @@
 //! `InMemoryMobileDeviceRepository` —— [`MobileDeviceRepositoryPort`] 的进
-//! 程内实现，v1 最小可工作版本。
+//! 程内实现(v3 SyncClipboard 兼容版)。
 //!
-//! ## 为什么 in-memory 而不是 sqlite
-//!
-//! v1 的预期设备数量很小（个位数 iPhone），且重启后让用户重新走"添加
-//! iPhone"是可接受的 UX —— 与 SPEC §13 阶段计划一致。落 sqlite 需要写
-//! schema migration + repository row mapper + integration test，工作量
-//! 远大于功能本身。先用内存版让 daemon / CLI 端到端跑通，
-//! `SqliteMobileDeviceRepository` 留给后续 commit 替换（trait 不变，
-//! adapter swap 即可）。
+//! 现在 daemon 链路上默认走 [`crate::db::repositories::DieselMobileDeviceRepository`]
+//! (跨进程 / 重启稳定),本类型仅作为 use case 单测的轻量替身保留:测试
+//! 侧不愿意为了一两条断言去搭 Diesel + tempdir,直接用 in-memory 就够了。
 //!
 //! ## 并发模型
 //!
 //! `tokio::sync::Mutex<HashMap<MobileDeviceId, MobileDevice>>`。
 //!
-//! - 所有操作都在异步 lock 下进行，避免 std::sync::Mutex 在 async 路径上
+//! - 所有操作都在异步 lock 下进行,避免 std::sync::Mutex 在 async 路径上
 //!   长时间持锁。
-//! - 锁粒度：整张表。这是预期内的折衷 —— 设备数小、写极少（注册 / 撤销
-//!   是用户级动作），全表锁不会成为瓶颈。
-//! - 唯一性约束：device_id 由 HashMap key 天然保证；token_hash 由 save
-//!   显式扫描检查，碰撞返回 `MobileDeviceError::TokenHashCollision`。
+//! - 锁粒度:整张表。设备数小(个位数)、写极少(注册 / 撤销),全表锁不会
+//!   成为瓶颈。
+//! - 唯一性约束:device_id 由 HashMap key 天然保证;username 由 save 显式
+//!   扫描检查,碰撞返回 [`MobileDeviceError::UsernameCollision`]。
 
 use std::collections::HashMap;
 
 use async_trait::async_trait;
 use tokio::sync::Mutex;
 
-use uc_core::mobile_sync::{MobileDevice, MobileDeviceError, MobileDeviceId, TokenHash};
+use uc_core::mobile_sync::{MobileDevice, MobileDeviceError, MobileDeviceId};
 use uc_core::ports::MobileDeviceRepositoryPort;
 
 #[derive(Default)]
@@ -45,29 +40,25 @@ impl MobileDeviceRepositoryPort for InMemoryMobileDeviceRepository {
     async fn save(&self, device: &MobileDevice) -> Result<(), MobileDeviceError> {
         let mut guard = self.devices.lock().await;
 
-        // 重复 device_id ⇒ AlreadyExists（adapter 契约 §5）
         if guard.contains_key(&device.device_id) {
             return Err(MobileDeviceError::AlreadyExists(device.device_id.clone()));
         }
-        // token_hash 业务唯一约束 —— 显式扫描。
-        if guard.values().any(|d| d.token_hash == device.token_hash) {
-            return Err(MobileDeviceError::TokenHashCollision);
+        // username 业务唯一约束 —— 显式扫描。
+        if guard.values().any(|d| d.username == device.username) {
+            return Err(MobileDeviceError::UsernameCollision);
         }
 
         guard.insert(device.device_id.clone(), device.clone());
         Ok(())
     }
 
-    async fn find_by_token_hash(
+    async fn find_by_username(
         &self,
-        token_hash: &TokenHash,
+        username: &str,
     ) -> Result<Option<MobileDevice>, MobileDeviceError> {
         let guard = self.devices.lock().await;
-        // 设备数预期个位数，O(n) 扫描足够；将来若量级上去再加 hash → id 索引。
-        Ok(guard
-            .values()
-            .find(|d| d.token_hash == *token_hash)
-            .cloned())
+        // 设备数预期个位数,O(n) 扫描足够;将来若量级上去再加 username → id 索引。
+        Ok(guard.values().find(|d| d.username == username).cloned())
     }
 
     async fn find_by_device_id(
@@ -97,8 +88,8 @@ impl MobileDeviceRepositoryPort for InMemoryMobileDeviceRepository {
         reported_os: Option<String>,
     ) -> Result<(), MobileDeviceError> {
         let mut guard = self.devices.lock().await;
-        // 找不到 device 不报错 —— 撤销路径下可能并发：use case 已经撤销但
-        // 鉴权链路里的 record_activity 还在路上。adapter 直接静默成功，让
+        // 找不到 device 不报错 —— 撤销路径下可能并发:use case 已经撤销但
+        // 鉴权链路里的 record_activity 还在路上。adapter 直接静默成功,让
         // use case 决定是否在调用前先检查。
         if let Some(device) = guard.get_mut(device_id) {
             device.last_seen_at_ms = Some(last_seen_at_ms);
@@ -122,12 +113,13 @@ mod tests {
 
     use uc_core::mobile_sync::MobileClientType;
 
-    fn device(id: &str, token_hash_byte: u8, label: &str) -> MobileDevice {
+    fn device(id: &str, username_suffix: &str, label: &str) -> MobileDevice {
         MobileDevice {
             device_id: MobileDeviceId::new(id),
             label: label.into(),
             client_type: MobileClientType::IosShortcut,
-            token_hash: TokenHash::new([token_hash_byte; 32]),
+            username: format!("mobile_{username_suffix}"),
+            password_hash: format!("$argon2id$test${username_suffix}"),
             created_at_ms: 1_000,
             last_seen_at_ms: None,
             last_seen_ip: None,
@@ -139,7 +131,7 @@ mod tests {
     #[tokio::test]
     async fn save_and_find_by_id() {
         let repo = InMemoryMobileDeviceRepository::new();
-        let d = device("did_x", 1, "phone");
+        let d = device("did_x", "0001", "phone");
         repo.save(&d).await.unwrap();
         let got = repo.find_by_device_id(&d.device_id).await.unwrap().unwrap();
         assert_eq!(got.label, "phone");
@@ -148,48 +140,41 @@ mod tests {
     #[tokio::test]
     async fn save_rejects_duplicate_device_id() {
         let repo = InMemoryMobileDeviceRepository::new();
-        let d1 = device("did_x", 1, "first");
-        let mut d2 = device("did_x", 2, "second"); // 同 id 不同 token_hash
-        d2.label = "duplicate id".into();
+        let d1 = device("did_x", "0001", "first");
+        let d2 = device("did_x", "0002", "second"); // 同 id 不同 username
         repo.save(&d1).await.unwrap();
         let err = repo.save(&d2).await.unwrap_err();
         assert!(matches!(err, MobileDeviceError::AlreadyExists(_)));
     }
 
     #[tokio::test]
-    async fn save_rejects_token_hash_collision() {
+    async fn save_rejects_username_collision() {
         let repo = InMemoryMobileDeviceRepository::new();
-        let d1 = device("did_a", 7, "first");
-        let d2 = device("did_b", 7, "second"); // 同 hash 不同 id
+        let d1 = device("did_a", "abcd", "first");
+        let d2 = device("did_b", "abcd", "second"); // 同 username 不同 id
         repo.save(&d1).await.unwrap();
         let err = repo.save(&d2).await.unwrap_err();
-        assert!(matches!(err, MobileDeviceError::TokenHashCollision));
+        assert!(matches!(err, MobileDeviceError::UsernameCollision));
     }
 
     #[tokio::test]
-    async fn find_by_token_hash_returns_device_or_none() {
+    async fn find_by_username_returns_device_or_none() {
         let repo = InMemoryMobileDeviceRepository::new();
-        let d = device("did_x", 9, "phone");
+        let d = device("did_x", "9999", "phone");
         repo.save(&d).await.unwrap();
 
-        let hit = repo
-            .find_by_token_hash(&TokenHash::new([9; 32]))
-            .await
-            .unwrap();
+        let hit = repo.find_by_username("mobile_9999").await.unwrap();
         assert!(hit.is_some());
 
-        let miss = repo
-            .find_by_token_hash(&TokenHash::new([42; 32]))
-            .await
-            .unwrap();
+        let miss = repo.find_by_username("mobile_ghost").await.unwrap();
         assert!(miss.is_none());
     }
 
     #[tokio::test]
     async fn list_all_returns_all_devices() {
         let repo = InMemoryMobileDeviceRepository::new();
-        repo.save(&device("did_a", 1, "A")).await.unwrap();
-        repo.save(&device("did_b", 2, "B")).await.unwrap();
+        repo.save(&device("did_a", "aaaa", "A")).await.unwrap();
+        repo.save(&device("did_b", "bbbb", "B")).await.unwrap();
         let all = repo.list_all().await.unwrap();
         assert_eq!(all.len(), 2);
     }
@@ -197,7 +182,7 @@ mod tests {
     #[tokio::test]
     async fn delete_returns_true_when_existed_false_otherwise() {
         let repo = InMemoryMobileDeviceRepository::new();
-        let d = device("did_x", 1, "phone");
+        let d = device("did_x", "0001", "phone");
         repo.save(&d).await.unwrap();
 
         assert!(repo.delete(&d.device_id).await.unwrap());
@@ -212,7 +197,7 @@ mod tests {
     #[tokio::test]
     async fn record_activity_updates_fields_when_device_exists() {
         let repo = InMemoryMobileDeviceRepository::new();
-        let d = device("did_x", 1, "phone");
+        let d = device("did_x", "0001", "phone");
         repo.save(&d).await.unwrap();
 
         repo.record_activity(
@@ -234,7 +219,7 @@ mod tests {
 
     #[tokio::test]
     async fn record_activity_is_silent_no_op_when_device_missing() {
-        // 与撤销并发场景：record_activity 不应报错。
+        // 与撤销并发场景:record_activity 不应报错。
         let repo = InMemoryMobileDeviceRepository::new();
         repo.record_activity(&MobileDeviceId::new("did_ghost"), 5_000, None, None, None)
             .await

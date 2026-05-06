@@ -1,15 +1,18 @@
-//! `MobileDeviceRowMapper` —— `MobileDevice` ↔ sqlite 行的边界转换。
+//! `MobileDeviceRowMapper` —— `MobileDevice` ↔ sqlite 行的边界转换
+//! (v3 SyncClipboard 兼容版)。
 //!
-//! token_hash 在 schema 上是 BLOB(Diesel `Vec<u8>`),domain 上是 `[u8; 32]`
-//! 包装。映射时严格校验长度:不是 32 字节即视为行损坏(理论上 UNIQUE BLOB
-//! 约束 + minter 行为已经保证写入侧合法,这里只是兜底)。
+//! v1/v2 这里曾把 `token_hash`(BLOB Vec<u8> ↔ `[u8; 32]`)做严格长度校验,
+//! v3 切到 username + password_hash(都是 TEXT)后,字段就没什么需要"长度
+//! 兜底"的了 —— mapper 只剩下纯字符串拷贝 + `client_type` 的枚举翻译。
+//! 即便 password_hash 字符串损坏,鉴权时调 `PasswordHasherPort::verify`
+//! 才会在那里报错,mapper 不替它做格式校验。
 //!
 //! `client_type` 走 `MobileClientType::as_wire_str` / `from_wire_str` 这对
-//! 函数,陌生值同样按行损坏处理。
+//! 函数,陌生值按行损坏处理(adapter 层 fail-loud,而不是悄悄落 default)。
 
 use anyhow::{anyhow, Result};
 
-use uc_core::mobile_sync::{MobileClientType, MobileDevice, MobileDeviceId, TokenHash};
+use uc_core::mobile_sync::{MobileClientType, MobileDevice, MobileDeviceId};
 
 use crate::db::models::{MobileDeviceRow, NewMobileDeviceRow};
 use crate::db::ports::{InsertMapper, RowMapper};
@@ -22,7 +25,8 @@ impl InsertMapper<MobileDevice, NewMobileDeviceRow> for MobileDeviceRowMapper {
             device_id: domain.device_id.as_str().to_string(),
             label: domain.label.clone(),
             client_type: domain.client_type.as_wire_str().to_string(),
-            token_hash: domain.token_hash.as_bytes().to_vec(),
+            username: domain.username.clone(),
+            password_hash: domain.password_hash.clone(),
             created_at_ms: domain.created_at_ms,
             last_seen_at_ms: domain.last_seen_at_ms,
             last_seen_ip: domain.last_seen_ip.clone(),
@@ -42,19 +46,12 @@ impl RowMapper<MobileDeviceRow, MobileDevice> for MobileDeviceRowMapper {
             )
         })?;
 
-        let token_hash_arr: [u8; 32] = row.token_hash.as_slice().try_into().map_err(|_| {
-            anyhow!(
-                "mobile_device row {} has token_hash of length {}, expected 32",
-                row.device_id,
-                row.token_hash.len()
-            )
-        })?;
-
         Ok(MobileDevice {
             device_id: MobileDeviceId::new(row.device_id.clone()),
             label: row.label.clone(),
             client_type,
-            token_hash: TokenHash::new(token_hash_arr),
+            username: row.username.clone(),
+            password_hash: row.password_hash.clone(),
             created_at_ms: row.created_at_ms,
             last_seen_at_ms: row.last_seen_at_ms,
             last_seen_ip: row.last_seen_ip.clone(),
@@ -68,12 +65,13 @@ impl RowMapper<MobileDeviceRow, MobileDevice> for MobileDeviceRowMapper {
 mod tests {
     use super::*;
 
-    fn fixture(token_byte: u8) -> MobileDevice {
+    fn fixture(suffix: &str) -> MobileDevice {
         MobileDevice {
             device_id: MobileDeviceId::new("did_abc"),
             label: "iPhone".to_string(),
             client_type: MobileClientType::IosShortcut,
-            token_hash: TokenHash::new([token_byte; 32]),
+            username: format!("mobile_{suffix}"),
+            password_hash: format!("$argon2id$v=19$m=65536,t=3,p=4$salt$hash{suffix}"),
             created_at_ms: 1_700_000_000_000,
             last_seen_at_ms: Some(1_700_000_001_000),
             last_seen_ip: Some("192.168.1.5".into()),
@@ -85,15 +83,15 @@ mod tests {
     #[test]
     fn round_trip_through_row_preserves_all_fields() {
         let mapper = MobileDeviceRowMapper;
-        let original = fixture(7);
+        let original = fixture("0001");
 
         let new_row = mapper.to_row(&original).expect("to_row");
-        // 模拟从 sqlite 读回:NewMobileDeviceRow → MobileDeviceRow 字段同结构。
         let row = MobileDeviceRow {
             device_id: new_row.device_id,
             label: new_row.label,
             client_type: new_row.client_type,
-            token_hash: new_row.token_hash,
+            username: new_row.username,
+            password_hash: new_row.password_hash,
             created_at_ms: new_row.created_at_ms,
             last_seen_at_ms: new_row.last_seen_at_ms,
             last_seen_ip: new_row.last_seen_ip,
@@ -112,7 +110,9 @@ mod tests {
             device_id: MobileDeviceId::new("did_min"),
             label: "min".into(),
             client_type: MobileClientType::IosShortcut,
-            token_hash: TokenHash::new([1; 32]),
+            username: "mobile_min".into(),
+            password_hash: "$argon2id$v=19$m=64,t=1,p=1$AAAAAAAAAAAAAAAA$AAAAAAAAAAAAAAAAAAAAAA"
+                .into(),
             created_at_ms: 1,
             last_seen_at_ms: None,
             last_seen_ip: None,
@@ -124,7 +124,8 @@ mod tests {
             device_id: new_row.device_id,
             label: new_row.label,
             client_type: new_row.client_type,
-            token_hash: new_row.token_hash,
+            username: new_row.username,
+            password_hash: new_row.password_hash,
             created_at_ms: new_row.created_at_ms,
             last_seen_at_ms: new_row.last_seen_at_ms,
             last_seen_ip: new_row.last_seen_ip,
@@ -142,7 +143,8 @@ mod tests {
             device_id: "did_x".into(),
             label: "x".into(),
             client_type: "android_secret".into(),
-            token_hash: vec![0; 32],
+            username: "mobile_xx".into(),
+            password_hash: "$argon2id$...".into(),
             created_at_ms: 1,
             last_seen_at_ms: None,
             last_seen_ip: None,
@@ -151,23 +153,5 @@ mod tests {
         };
         let err = mapper.to_domain(&row).unwrap_err();
         assert!(err.to_string().contains("unknown client_type"));
-    }
-
-    #[test]
-    fn token_hash_wrong_length_is_row_corruption() {
-        let mapper = MobileDeviceRowMapper;
-        let row = MobileDeviceRow {
-            device_id: "did_x".into(),
-            label: "x".into(),
-            client_type: "ios_shortcut".into(),
-            token_hash: vec![0; 16], // wrong length
-            created_at_ms: 1,
-            last_seen_at_ms: None,
-            last_seen_ip: None,
-            reported_name: None,
-            reported_os: None,
-        };
-        let err = mapper.to_domain(&row).unwrap_err();
-        assert!(err.to_string().contains("expected 32"));
     }
 }

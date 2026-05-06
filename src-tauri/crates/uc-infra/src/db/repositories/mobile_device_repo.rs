@@ -1,17 +1,16 @@
 //! `DieselMobileDeviceRepository` —— `MobileDeviceRepositoryPort` 的 sqlite
-//! 实现,Phase 3 子步骤 1 替换 `InMemoryMobileDeviceRepository`,让 daemon
-//! 重启 / CLI 跨进程都能看到同一份设备列表。
+//! 实现(v3 SyncClipboard 兼容版)。
 //!
 //! ## 错误映射
 //!
 //! `save` 路径上,sqlite 的 UNIQUE 约束既保护 `device_id`(PK)又保护
-//! `token_hash`(显式 UNIQUE)。Diesel 在 SQLite 后端只把它统一报告为
+//! `username`(显式 UNIQUE)。Diesel 在 SQLite 后端只把它统一报告为
 //! `DatabaseErrorKind::UniqueViolation`,`column_name()` 在不同 SQLite /
 //! libsqlite3-sys 版本上不稳定。为了把"哪边撞了"翻译成业务错误,我们在
 //! 捕到 UniqueViolation 后顺手再做一次 device_id 主键存在性查询:
 //!
 //! - 主键命中 → `MobileDeviceError::AlreadyExists`
-//! - 主键未中 → 必然是 token_hash 冲突 → `TokenHashCollision`
+//! - 主键未中 → 必然是 username 冲突 → `UsernameCollision`
 //!
 //! 这次额外查询走主键索引,代价可忽略,且不会出现 race —— 我们仍在同一个
 //! `executor.run` 闭包内,r2d2 给的是同一个连接,SQLite WAL 写锁串行化保
@@ -27,7 +26,7 @@ use async_trait::async_trait;
 use diesel::prelude::*;
 use diesel::result::{DatabaseErrorKind, Error as DieselError};
 
-use uc_core::mobile_sync::{MobileDevice, MobileDeviceError, MobileDeviceId, TokenHash};
+use uc_core::mobile_sync::{MobileDevice, MobileDeviceError, MobileDeviceId};
 use uc_core::ports::MobileDeviceRepositoryPort;
 
 use crate::db::models::{MobileDeviceRow, NewMobileDeviceRow};
@@ -39,7 +38,7 @@ use crate::db::schema::mobile_device::dsl::*;
 enum SaveOutcome {
     Inserted,
     DuplicateDeviceId,
-    DuplicateTokenHash,
+    DuplicateUsername,
 }
 
 pub struct DieselMobileDeviceRepository<E, M> {
@@ -87,7 +86,7 @@ where
                         if id_taken > 0 {
                             Ok(SaveOutcome::DuplicateDeviceId)
                         } else {
-                            Ok(SaveOutcome::DuplicateTokenHash)
+                            Ok(SaveOutcome::DuplicateUsername)
                         }
                     }
                     Err(e) => Err(anyhow::anyhow!(e.to_string())),
@@ -100,19 +99,19 @@ where
             SaveOutcome::DuplicateDeviceId => {
                 Err(MobileDeviceError::AlreadyExists(device.device_id.clone()))
             }
-            SaveOutcome::DuplicateTokenHash => Err(MobileDeviceError::TokenHashCollision),
+            SaveOutcome::DuplicateUsername => Err(MobileDeviceError::UsernameCollision),
         }
     }
 
-    async fn find_by_token_hash(
+    async fn find_by_username(
         &self,
-        token_hash_value: &TokenHash,
+        username_value: &str,
     ) -> Result<Option<MobileDevice>, MobileDeviceError> {
-        let needle = token_hash_value.as_bytes().to_vec();
+        let needle = username_value.to_string();
         self.executor
             .run(move |conn| {
                 let row = mobile_device
-                    .filter(token_hash.eq(&needle))
+                    .filter(username.eq(&needle))
                     .first::<MobileDeviceRow>(conn)
                     .optional()
                     .map_err(|e| anyhow::anyhow!(e.to_string()))?;
@@ -251,12 +250,15 @@ mod tests {
         (repo, tmp)
     }
 
-    fn fixture(id: &str, hash_byte: u8, label_text: &str) -> MobileDevice {
+    fn fixture(id: &str, username_suffix: &str, label_text: &str) -> MobileDevice {
         MobileDevice {
             device_id: MobileDeviceId::new(id),
             label: label_text.into(),
             client_type: MobileClientType::IosShortcut,
-            token_hash: TokenHash::new([hash_byte; 32]),
+            username: format!("mobile_{username_suffix}"),
+            password_hash: format!(
+                "$argon2id$v=19$m=64,t=1,p=1$AAAAAAAAAAAAAAAA$AAAAAAAAAAAAAAAAAAAAAAAAA-{username_suffix}",
+            ),
             created_at_ms: 1_700_000_000_000,
             last_seen_at_ms: None,
             last_seen_ip: None,
@@ -268,7 +270,7 @@ mod tests {
     #[tokio::test]
     async fn save_then_find_by_device_id_returns_full_device() {
         let (repo, _t) = make_repo();
-        let d = fixture("did_x", 1, "phone");
+        let d = fixture("did_x", "0001", "phone");
         repo.save(&d).await.unwrap();
         let got = repo
             .find_by_device_id(&d.device_id)
@@ -279,12 +281,12 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn save_then_find_by_token_hash_returns_full_device() {
+    async fn save_then_find_by_username_returns_full_device() {
         let (repo, _t) = make_repo();
-        let d = fixture("did_y", 9, "phone");
+        let d = fixture("did_y", "0009", "phone");
         repo.save(&d).await.unwrap();
         let got = repo
-            .find_by_token_hash(&d.token_hash)
+            .find_by_username(&d.username)
             .await
             .unwrap()
             .expect("must hit");
@@ -294,21 +296,21 @@ mod tests {
     #[tokio::test]
     async fn save_rejects_duplicate_device_id_with_already_exists() {
         let (repo, _t) = make_repo();
-        let d1 = fixture("did_dup", 1, "first");
-        let d2 = fixture("did_dup", 2, "second"); // 同 id, 不同 hash
+        let d1 = fixture("did_dup", "0001", "first");
+        let d2 = fixture("did_dup", "0002", "second"); // 同 id, 不同 username
         repo.save(&d1).await.unwrap();
         let err = repo.save(&d2).await.unwrap_err();
         assert!(matches!(err, MobileDeviceError::AlreadyExists(_)));
     }
 
     #[tokio::test]
-    async fn save_rejects_duplicate_token_hash_with_collision_error() {
+    async fn save_rejects_duplicate_username_with_collision_error() {
         let (repo, _t) = make_repo();
-        let d1 = fixture("did_a", 7, "first");
-        let d2 = fixture("did_b", 7, "second"); // 不同 id, 同 hash
+        let d1 = fixture("did_a", "abcd", "first");
+        let d2 = fixture("did_b", "abcd", "second"); // 不同 id, 同 username
         repo.save(&d1).await.unwrap();
         let err = repo.save(&d2).await.unwrap_err();
-        assert!(matches!(err, MobileDeviceError::TokenHashCollision));
+        assert!(matches!(err, MobileDeviceError::UsernameCollision));
     }
 
     #[tokio::test]
@@ -320,7 +322,7 @@ mod tests {
             .unwrap()
             .is_none());
         assert!(repo
-            .find_by_token_hash(&TokenHash::new([42; 32]))
+            .find_by_username("mobile_ghost")
             .await
             .unwrap()
             .is_none());
@@ -329,9 +331,9 @@ mod tests {
     #[tokio::test]
     async fn list_all_returns_every_saved_device() {
         let (repo, _t) = make_repo();
-        repo.save(&fixture("did_a", 1, "A")).await.unwrap();
-        repo.save(&fixture("did_b", 2, "B")).await.unwrap();
-        repo.save(&fixture("did_c", 3, "C")).await.unwrap();
+        repo.save(&fixture("did_a", "aaaa", "A")).await.unwrap();
+        repo.save(&fixture("did_b", "bbbb", "B")).await.unwrap();
+        repo.save(&fixture("did_c", "cccc", "C")).await.unwrap();
         let mut all = repo.list_all().await.unwrap();
         all.sort_by(|x, y| x.device_id.as_str().cmp(y.device_id.as_str()));
         assert_eq!(all.len(), 3);
@@ -342,7 +344,7 @@ mod tests {
     #[tokio::test]
     async fn delete_returns_true_then_false() {
         let (repo, _t) = make_repo();
-        let d = fixture("did_x", 1, "phone");
+        let d = fixture("did_x", "0001", "phone");
         repo.save(&d).await.unwrap();
         assert!(repo.delete(&d.device_id).await.unwrap());
         assert!(!repo.delete(&d.device_id).await.unwrap());
@@ -356,7 +358,7 @@ mod tests {
     #[tokio::test]
     async fn record_activity_updates_only_provided_fields_when_device_exists() {
         let (repo, _t) = make_repo();
-        let d = fixture("did_x", 1, "phone");
+        let d = fixture("did_x", "0001", "phone");
         repo.save(&d).await.unwrap();
 
         // 第一次:全字段写。

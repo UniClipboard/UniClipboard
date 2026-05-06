@@ -192,6 +192,12 @@ enum Commands {
         #[command(subcommand)]
         subcommand: commands::probe::ProbeCommands,
     },
+    /// Manage mobile-sync (iPhone over LAN, SyncClipboard-compatible).
+    #[command(name = "mobile-sync")]
+    MobileSync {
+        #[command(subcommand)]
+        subcommand: commands::mobile_sync::MobileSyncCommands,
+    },
     /// 内联运行 daemon 进程，供 `start` 内部使用
     #[command(hide = true)]
     Daemon,
@@ -322,6 +328,9 @@ fn main() -> anyhow::Result<()> {
                 commands::upgrade::run(subcommand, cli.json, cli.verbose).await
             }
             Commands::Probe { subcommand } => commands::probe::run(subcommand, cli.verbose).await,
+            Commands::MobileSync { subcommand } => {
+                commands::mobile_sync::run(subcommand, cli.json, cli.verbose).await
+            }
             Commands::Daemon => unreachable!("handled above"),
         }
     });
@@ -370,6 +379,32 @@ mod tests {
         assert!(
             result.is_err(),
             "standalone CLI search rebuild must be synchronous and reject --no-wait"
+        );
+    }
+
+    #[test]
+    fn mobile_sync_kebab_case_is_accepted() {
+        // 子命令名是 kebab-case `mobile-sync` 而非默认的 `mobile_sync` /
+        // `mobilesync`。锁住这个外部契约 —— 改名会让所有发布的脚本失效。
+        let result = Cli::try_parse_from(["uniclip", "mobile-sync", "enable"]);
+        assert!(result.is_ok(), "expected mobile-sync enable to parse");
+    }
+
+    #[test]
+    fn mobile_sync_lan_enable_requires_bind() {
+        // `lan enable` 必须强制 `--bind <IP>` —— 防止用户漏填导致 daemon
+        // 启动后绑 127.0.0.1 但 iPhone 连不上的隐性失败。
+        let result = Cli::try_parse_from(["uniclip", "mobile-sync", "lan", "enable"]);
+        assert!(result.is_err(), "expected `lan enable` to require --bind");
+    }
+
+    #[test]
+    fn mobile_sync_shortcut_add_requires_label() {
+        // `shortcut add` 必须强制 `--label`,否则 register flow 拿不到设备名。
+        let result = Cli::try_parse_from(["uniclip", "mobile-sync", "shortcut", "add"]);
+        assert!(
+            result.is_err(),
+            "expected `shortcut add` to require --label"
         );
     }
 }

@@ -53,6 +53,14 @@ const NOISE_FILTERS: &[&str] = &[
     // harmless because reachability still works over other interfaces,
     // but high-frequency, so cap at ERROR to keep Sentry Logs quiet.
     "noq_udp=error",
+    // QUIC connection state machine internals. These show up at WARN /
+    // ERROR but are documented protocol noise:
+    //   - "PTO expired while unset" — probe timer on an unactivated path
+    //   - "failed closing path" — multipath graceful-close race
+    // iroh's higher layers re-emit real connection failures as their own
+    // structured events, so silencing this module loses no actionable
+    // signal — we just stop burning quota on QUIC steady-state churn.
+    "noq_proto::connection=off",
     // magicsock multipath state machine. The remote_state submodule is
     // also where iroh#4124 spams `Opening path failed` on every event
     // once the per-connection PathId budget is exhausted; cap that one

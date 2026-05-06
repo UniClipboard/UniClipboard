@@ -184,11 +184,11 @@ impl MobileSyncFacade {
             apply_incoming: ApplyIncomingMobileClipUseCase::new(
                 apply_inbound,
                 incoming_buffer,
-                file_staging,
+                file_staging.clone(),
                 clock,
             ),
             get_latest_doc: GetLatestMobileSyncDocUseCase::new(snapshot_port.clone()),
-            get_file: GetMobileSyncFileUseCase::new(snapshot_port),
+            get_file: GetMobileSyncFileUseCase::new(snapshot_port, file_staging),
         }
     }
 
@@ -625,6 +625,12 @@ mod tests {
         ) -> Result<uc_core::mobile_sync::StagedFile, uc_core::ports::MobileFileStagingError>
         {
             unimplemented!("facade smoke tests do not exercise File PUT path")
+        }
+        async fn read_by_uri(
+            &self,
+            _: &str,
+        ) -> Result<Vec<u8>, uc_core::ports::MobileFileStagingError> {
+            unimplemented!("facade smoke tests do not exercise File GET path")
         }
     }
 

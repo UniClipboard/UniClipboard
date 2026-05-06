@@ -290,25 +290,20 @@ else
     echo "$DOC" | sed 's/^/      out| /' >&2
 fi
 
-# get-file 应回 mime=text/uri-list + bytes = 一条 file:///... URI
-OUT_FILE="$TMPDIR_RUN/p5a9-file-out.urilist"
+# P5a.3.5 后:get-file 经 staging.read_by_uri 直接返真文件字节(不是 URI list)
+OUT_FILE="$TMPDIR_RUN/p5a9-file-out.bin"
 "$CLI" "${COMMON[@]}" mobile-sync debug get-file "$DATANAME_FILE" --output "$OUT_FILE" >/dev/null 2>&1 \
     || fail "get-file for File-type dataName failed"
-URILIST_BODY="$(cat "$OUT_FILE" 2>/dev/null || true)"
-assert_contains "file body is file:// URI"  "file://"        "$URILIST_BODY"
-assert_contains "uri tail matches basename" "/p5a9.bin"      "$URILIST_BODY"
-# staging 把字节物化到磁盘 —— 解出 URI 路径,直接读盘字节,与原始 DOC_BYTES 比对
-STAGED_PATH="$(printf '%s' "$URILIST_BODY" | head -n1 | sed 's|^file://||' \
-    | python3 -c 'import sys, urllib.parse; sys.stdout.write(urllib.parse.unquote(sys.stdin.read().strip()))')"
-if [[ -f "$STAGED_PATH" ]]; then
-    ok "staged file exists at $STAGED_PATH"
-    if [[ "$(cat "$STAGED_PATH")" == "$DOC_BYTES" ]]; then
-        ok "staged bytes match original payload"
+if [[ -f "$OUT_FILE" ]]; then
+    ok "get-file --output wrote real bytes"
+    # 字节级比对原 payload —— 这是 P5a.3.5 出站真字节回读的关键断言
+    if [[ "$(cat "$OUT_FILE")" == "$DOC_BYTES" ]]; then
+        ok "get-file bytes match original payload (真字节 round-trip)"
     else
-        fail "staged bytes != original (got $(wc -c < "$STAGED_PATH") bytes, want ${#DOC_BYTES})"
+        fail "get-file bytes != original (got $(wc -c < "$OUT_FILE") bytes, want ${#DOC_BYTES})"
     fi
 else
-    fail "staged file does not exist at: $STAGED_PATH"
+    fail "get-file --output did not write a file"
 fi
 
 # ── Step 9: JSON 模式覆盖 4 子命令 ───────────────────────────────────────

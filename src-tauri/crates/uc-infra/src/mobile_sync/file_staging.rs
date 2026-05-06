@@ -41,7 +41,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use tracing::debug;
+use tracing::{debug, warn};
 
 use uc_core::mobile_sync::{StagedFile, StagedFileUri};
 use uc_core::ports::{MobileFileStagingError, MobileFileStagingPort};
@@ -76,6 +76,87 @@ impl FilesystemMobileFileStaging {
 
 #[async_trait]
 impl MobileFileStagingPort for FilesystemMobileFileStaging {
+    async fn read_by_uri(&self, uri: &str) -> Result<Vec<u8>, MobileFileStagingError> {
+        // 1. 解析 URI → path。url 0.5 的 `to_file_path` 自动 percent decode +
+        //    跨平台(Windows 盘符 / Linux/macOS 普通路径都吃)。
+        let parsed = url::Url::parse(uri).map_err(|e| {
+            MobileFileStagingError::Io(format!("URI parse failed for {uri:?}: {e}"))
+        })?;
+        let path = parsed.to_file_path().map_err(|_| {
+            MobileFileStagingError::Io(format!(
+                "URI is not a file:// URL or has no usable path: {uri:?}"
+            ))
+        })?;
+
+        // 2. 文件不存在 → NotFound(不区分"不在白名单根"vs"路径不存在",
+        //    避免暴露 enumeration 信息)。canonicalize 同时帮我们解析符号
+        //    链接,防 `file:///<staging>/sym → /etc/passwd` 这种攻击。
+        let canonical_path = match tokio::fs::canonicalize(&path).await {
+            Ok(p) => p,
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+                debug!(
+                    uri = %uri,
+                    path = %path.display(),
+                    "mobile_sync staging: read_by_uri path not found"
+                );
+                return Err(MobileFileStagingError::NotFound);
+            }
+            Err(err) => {
+                return Err(MobileFileStagingError::Io(format!(
+                    "canonicalize {} failed: {err}",
+                    path.display()
+                )));
+            }
+        };
+
+        // 3. canonical_root 同样 canonicalize(macOS / Linux 的 /var → /private/var
+        //    符号链接前缀差异)。cache_root 必须存在,否则 staging adapter 早
+        //    就废了 —— 这里 canonicalize 失败按 Io 报。
+        let canonical_root = tokio::fs::canonicalize(&self.cache_root)
+            .await
+            .map_err(|err| {
+                MobileFileStagingError::Io(format!(
+                    "canonicalize cache_root {} failed: {err}",
+                    self.cache_root.display()
+                ))
+            })?;
+
+        if !canonical_path.starts_with(&canonical_root) {
+            warn!(
+                uri = %uri,
+                path = %canonical_path.display(),
+                cache_root = %canonical_root.display(),
+                "mobile_sync staging: read_by_uri rejected path outside cache_root"
+            );
+            return Err(MobileFileStagingError::NotFound);
+        }
+
+        // 4. 读盘。
+        let bytes = tokio::fs::read(&canonical_path).await.map_err(|err| {
+            if err.kind() == std::io::ErrorKind::NotFound {
+                // 路径在 canonicalize 后又被并发删除 —— 罕见,翻 NotFound。
+                MobileFileStagingError::NotFound
+            } else {
+                MobileFileStagingError::Io(format!(
+                    "read {} failed: {err}",
+                    canonical_path.display()
+                ))
+            }
+        })?;
+        let bytes_len = bytes.len();
+        if matches!(bytes_len, 0) {
+            debug!(uri = %uri, "mobile_sync staging: read_by_uri served empty file");
+        } else {
+            debug!(
+                uri = %uri,
+                path = %canonical_path.display(),
+                bytes = bytes_len,
+                "mobile_sync staging: read_by_uri served file bytes"
+            );
+        }
+        Ok(bytes)
+    }
+
     async fn stage_file(
         &self,
         scope_id: &str,
@@ -312,5 +393,103 @@ mod tests {
         .unwrap();
         assert_eq!(a, vec![0xAA]);
         assert_eq!(b, vec![0xBB]);
+    }
+
+    // ── read_by_uri tests ──────────────────────────────────────────────────
+
+    #[tokio::test]
+    async fn read_by_uri_round_trips_freshly_staged_file() {
+        let tmp = TempDir::new().unwrap();
+        let adapter = make_adapter(tmp.path());
+
+        let staged = adapter
+            .stage_file("scope-r", "doc.pdf", "application/pdf", vec![0x42; 16])
+            .await
+            .expect("stage_file ok");
+
+        let bytes = adapter
+            .read_by_uri(staged.uri.as_str())
+            .await
+            .expect("read_by_uri ok");
+        assert_eq!(bytes, vec![0x42; 16]);
+    }
+
+    #[tokio::test]
+    async fn read_by_uri_handles_percent_encoded_uri() {
+        let tmp = TempDir::new().unwrap();
+        let adapter = make_adapter(tmp.path());
+
+        let staged = adapter
+            .stage_file(
+                "scope01",
+                "我的 文档.pdf",
+                "application/pdf",
+                vec![0xCC, 0xDD],
+            )
+            .await
+            .unwrap();
+        // staged URI 自带 percent encoding; adapter 必须能解回真路径
+        let bytes = adapter.read_by_uri(staged.uri.as_str()).await.unwrap();
+        assert_eq!(bytes, vec![0xCC, 0xDD]);
+    }
+
+    #[tokio::test]
+    async fn read_by_uri_returns_not_found_for_missing_file() {
+        let tmp = TempDir::new().unwrap();
+        let adapter = make_adapter(tmp.path());
+
+        // 路径形式合法但文件不存在(scope 目录都没创建)
+        let fake_path = tmp
+            .path()
+            .join("mobile_inbound")
+            .join("phantom")
+            .join("missing.bin");
+        let fake_uri = url::Url::from_file_path(&fake_path).unwrap().to_string();
+
+        let err = adapter.read_by_uri(&fake_uri).await.unwrap_err();
+        assert!(matches!(err, MobileFileStagingError::NotFound));
+    }
+
+    #[tokio::test]
+    async fn read_by_uri_rejects_path_outside_cache_root() {
+        let tmp = TempDir::new().unwrap();
+        let adapter = make_adapter(tmp.path());
+
+        // 攻击向量: 恶意 entry 的 file URI 指向 /etc/hosts —— 合法路径,
+        // 真实存在,但**不在 cache_root 之下**。adapter 必须返 NotFound,不
+        // 暴露字节。
+        let outside_uri = url::Url::from_file_path("/etc/hosts").unwrap().to_string();
+        let err = adapter.read_by_uri(&outside_uri).await.unwrap_err();
+        assert!(
+            matches!(err, MobileFileStagingError::NotFound),
+            "expected NotFound for path outside cache_root, got {err:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn read_by_uri_rejects_non_file_url() {
+        let tmp = TempDir::new().unwrap();
+        let adapter = make_adapter(tmp.path());
+
+        let err = adapter
+            .read_by_uri("https://example.com/foo")
+            .await
+            .unwrap_err();
+        assert!(
+            matches!(err, MobileFileStagingError::Io(_)),
+            "expected Io for non-file:// URI, got {err:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn read_by_uri_rejects_unparseable_uri() {
+        let tmp = TempDir::new().unwrap();
+        let adapter = make_adapter(tmp.path());
+
+        let err = adapter.read_by_uri("not a valid uri").await.unwrap_err();
+        assert!(
+            matches!(err, MobileFileStagingError::Io(_)),
+            "expected Io for malformed URI, got {err:?}"
+        );
     }
 }

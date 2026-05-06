@@ -10,14 +10,23 @@
 //! - 命中(且 type 是 Image / File) → 返回 `(mime, bytes)`
 //! - 不命中 / Text 类型(无附件) / port 返回 None → `NotFound` → 路由 404
 //!
-//! ## File 类型的 v1 边界
+//! ## File 类型出站(P5a.3.5 后)
 //!
-//! 当前 paste rep 对 macOS Finder file copy 的形态是 `text/uri-list`:rep.
-//! bytes 里是 `file:///path/foo.pdf` 字串, 不是文件本身。本 use case v1 直接
-//! 把 URI-list 当字节回送给 iPhone(MIME 仍为 text/uri-list);iPhone 客户端
-//! 拿到的会是 URI 列表文本而不是真实文件 —— 这是已知的 v1 limitation, P5a.3.5
-//! 引入 `MobileFileStagingPort` 时会解决:出站 File 路径会按 URI 读磁盘材化
-//! 真文件字节(对称地处理入站 File staging)。
+//! 当前 paste rep 对 File 类型的 wire 形态是 `text/uri-list`(`format_id=files`,
+//! `mime=text/uri-list`,bytes 是 `\n` 分隔的 `file:///...` URI 列表)。本 use
+//! case 在 File 命中分支:
+//!
+//! 1. 解析 rep.bytes 拿首条非注释 URI;
+//! 2. 调 [`MobileFileStagingPort::read_by_uri`] 拿真文件字节(adapter 内部
+//!    做白名单 + canonicalize 防 directory traversal);
+//! 3. mime 不沿用 rep 的 `text/uri-list`(那是给本机系统剪贴板用的容器
+//!    mime),直接 fallback 到 `application/octet-stream` —— SyncClipboard
+//!    协议的 wire mime 字段对 iPhone Shortcut 端无强语义,Shortcut 按字节
+//!    存为附件,扩展名信息由 dataName 字段承载,iPhone 端识别足够。
+//!
+//! 设计:adapter 不做 mime 推断(职责单一,只读字节);use case 端用一档兜底
+//! mime,简单可靠。如果 v2 想更精细(按扩展名映射 application/pdf 之类),改
+//! use case 端就行,不动 port 形态。
 //!
 //! ## 一致性(meta GET ↔ file GET)
 //!
@@ -30,15 +39,24 @@ use std::sync::Arc;
 use thiserror::Error;
 use tracing::{debug, instrument, warn};
 
-use uc_core::ports::mobile_sync::{LatestClipboardSnapshotError, LatestClipboardSnapshotPort};
+use uc_core::ports::mobile_sync::{
+    LatestClipboardSnapshotError, LatestClipboardSnapshotPort, MobileFileStagingError,
+    MobileFileStagingPort,
+};
 
 use crate::usecases::mobile_sync::clipboard_doc::SyncClipboardItemType;
 
 use super::sync_clipboard_mapping::{classify_for_sync, derive_data_name};
 
+/// File 类型出站时,wire mime 的 fallback。SyncClipboard 协议对 file 字节
+/// 的 wire mime 无强语义(iPhone Shortcut 只用 dataName 扩展名识别);用
+/// 二进制档兜底,留给客户端 / 系统按 dataName 扩展名解释。
+const FILE_OUTBOUND_MIME_FALLBACK: &str = "application/octet-stream";
+
 /// 出站 `GET /file/{dataName}` 的应用层动作。
 pub(crate) struct GetMobileSyncFileUseCase {
     snapshot_port: Arc<dyn LatestClipboardSnapshotPort>,
+    file_staging: Arc<dyn MobileFileStagingPort>,
 }
 
 #[derive(Debug, Clone)]
@@ -51,20 +69,31 @@ pub struct GetMobileSyncFileOutput {
 
 #[derive(Debug, Error)]
 pub enum GetMobileSyncFileError {
-    /// dataName 不匹配 / 当前 entry 是 Text 类型(无附件)/ 没有任何 entry。
-    /// 路由层翻成 HTTP 404。SyncClipboard 客户端把 404 解释为"远端没东西",
-    /// 不报错。
+    /// dataName 不匹配 / 当前 entry 是 Text 类型(无附件)/ 没有任何 entry /
+    /// File rep 引用的 staging 文件已被清理或不在白名单根之下。路由层翻成
+    /// HTTP 404。SyncClipboard 客户端把 404 解释为"远端没东西",不报错。
     #[error("data_name not found in latest clipboard")]
     NotFound,
 
     /// 底层 snapshot port 失败 —— 路由层翻成 HTTP 500。
     #[error("latest snapshot port failure: {0}")]
     Port(#[from] LatestClipboardSnapshotError),
+
+    /// File 出站读取 staging 文件时基础设施故障(URI 解析失败 / 读盘失败 /
+    /// 权限错)。路由层翻成 HTTP 500。
+    #[error("file staging IO failure: {0}")]
+    Staging(String),
 }
 
 impl GetMobileSyncFileUseCase {
-    pub(crate) fn new(snapshot_port: Arc<dyn LatestClipboardSnapshotPort>) -> Self {
-        Self { snapshot_port }
+    pub(crate) fn new(
+        snapshot_port: Arc<dyn LatestClipboardSnapshotPort>,
+        file_staging: Arc<dyn MobileFileStagingPort>,
+    ) -> Self {
+        Self {
+            snapshot_port,
+            file_staging,
+        }
     }
 
     #[instrument(name = "mobile_sync.get_file", skip(self), fields(data_name = %requested))]
@@ -114,11 +143,71 @@ impl GetMobileSyncFileUseCase {
             return Err(GetMobileSyncFileError::NotFound);
         }
 
+        // File 类型走 staging port 把 URI list 解回真字节;Image 类型 rep
+        // 自带字节,直接返。
+        if matches!(item_type, SyncClipboardItemType::File) {
+            let uri = parse_first_uri_from_uri_list(&rep.bytes).ok_or_else(|| {
+                debug!(
+                    entry_id = %rep.entry_id,
+                    "mobile_sync get_file: file rep has no parseable URI in body, returning NotFound"
+                );
+                GetMobileSyncFileError::NotFound
+            })?;
+
+            let bytes = self
+                .file_staging
+                .read_by_uri(&uri)
+                .await
+                .map_err(|err| match err {
+                    MobileFileStagingError::NotFound => {
+                        debug!(
+                            entry_id = %rep.entry_id,
+                            uri = %uri,
+                            "mobile_sync get_file: staging read_by_uri NotFound"
+                        );
+                        GetMobileSyncFileError::NotFound
+                    }
+                    MobileFileStagingError::Io(msg) => {
+                        warn!(
+                            entry_id = %rep.entry_id,
+                            uri = %uri,
+                            error = %msg,
+                            "mobile_sync get_file: staging read_by_uri IO failure"
+                        );
+                        GetMobileSyncFileError::Staging(msg)
+                    }
+                    // adapter 不应在 read_by_uri 路径返这个变体, 防御式翻成
+                    // Staging IO 错误便于排障。
+                    MobileFileStagingError::InvalidDataName(msg) => {
+                        warn!(
+                            entry_id = %rep.entry_id,
+                            uri = %uri,
+                            "mobile_sync get_file: unexpected InvalidDataName from read_by_uri"
+                        );
+                        GetMobileSyncFileError::Staging(format!(
+                            "unexpected InvalidDataName: {msg}"
+                        ))
+                    }
+                })?;
+
+            debug!(
+                entry_id = %rep.entry_id,
+                uri = %uri,
+                bytes_len = bytes.len(),
+                "mobile_sync get_file: served staged file bytes"
+            );
+            return Ok(GetMobileSyncFileOutput {
+                mime: FILE_OUTBOUND_MIME_FALLBACK.to_string(),
+                bytes,
+            });
+        }
+
+        // Image 分支:rep 自带字节, 直接返。
         let mime = rep
             .mime
             .as_ref()
             .map(|m| m.as_str().to_string())
-            .unwrap_or_else(|| "application/octet-stream".to_string());
+            .unwrap_or_else(|| FILE_OUTBOUND_MIME_FALLBACK.to_string());
 
         debug!(
             entry_id = %rep.entry_id,
@@ -133,6 +222,17 @@ impl GetMobileSyncFileUseCase {
             bytes: rep.bytes,
         })
     }
+}
+
+/// 从 `text/uri-list` rep bytes 解出首条非空非注释 URI。RFC 2483 风格:
+/// 一行一个 URI,空行 / `#` 注释行忽略。解析失败 / 全空 → `None`,调用方
+/// 翻 `NotFound`。
+fn parse_first_uri_from_uri_list(bytes: &[u8]) -> Option<String> {
+    let s = std::str::from_utf8(bytes).ok()?;
+    s.lines()
+        .map(str::trim)
+        .find(|line| !line.is_empty() && !line.starts_with('#'))
+        .map(str::to_string)
 }
 
 // ─── tests ──────────────────────────────────────────────────────────────
@@ -162,7 +262,7 @@ mod tests {
     use mockall::predicate::*;
     use uc_core::clipboard::MimeType;
     use uc_core::ids::{EntryId, FormatId};
-    use uc_core::mobile_sync::LatestPasteRepresentation;
+    use uc_core::mobile_sync::{LatestPasteRepresentation, StagedFile};
 
     mockall::mock! {
         SnapPort {}
@@ -174,14 +274,59 @@ mod tests {
         }
     }
 
+    /// Fake staging: 默认 `read_by_uri` panic; 可注入预设响应。
+    /// Image / Text / port-error 路径不调 staging,默认 panic 形态自带防回归。
+    #[derive(Default)]
+    struct FakeStaging {
+        read_response: std::sync::Mutex<Option<Result<Vec<u8>, MobileFileStagingError>>>,
+    }
+
+    impl FakeStaging {
+        fn never_called() -> Arc<Self> {
+            Arc::new(Self::default())
+        }
+        fn with_read_response(r: Result<Vec<u8>, MobileFileStagingError>) -> Arc<Self> {
+            Arc::new(Self {
+                read_response: std::sync::Mutex::new(Some(r)),
+            })
+        }
+    }
+
+    #[async_trait]
+    impl MobileFileStagingPort for FakeStaging {
+        async fn stage_file(
+            &self,
+            _: &str,
+            _: &str,
+            _: &str,
+            _: Vec<u8>,
+        ) -> Result<StagedFile, MobileFileStagingError> {
+            unreachable!("get_file tests must not call stage_file")
+        }
+        async fn read_by_uri(&self, _uri: &str) -> Result<Vec<u8>, MobileFileStagingError> {
+            self.read_response
+                .lock()
+                .unwrap()
+                .take()
+                .unwrap_or_else(|| panic!("FakeStaging.read_by_uri called without preset response"))
+        }
+    }
+
     fn build_uc_returning(
         rep: Result<Option<LatestPasteRepresentation>, LatestClipboardSnapshotError>,
+    ) -> GetMobileSyncFileUseCase {
+        build_uc_returning_with_staging(rep, FakeStaging::never_called())
+    }
+
+    fn build_uc_returning_with_staging(
+        rep: Result<Option<LatestPasteRepresentation>, LatestClipboardSnapshotError>,
+        staging: Arc<FakeStaging>,
     ) -> GetMobileSyncFileUseCase {
         let mut port = MockSnapPort::new();
         port.expect_latest_paste_representation()
             .times(1)
             .return_once(move || rep);
-        GetMobileSyncFileUseCase::new(Arc::new(port))
+        GetMobileSyncFileUseCase::new(Arc::new(port), staging)
     }
 
     fn rep(
@@ -266,22 +411,88 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn file_rep_returns_uri_list_bytes_when_data_name_matches() {
-        // v1 limitation: the bytes returned are the URI list itself, not the
-        // referenced file's bytes (P5a.3.5 fixes this). Pin the contract so
-        // the test guards against a regression that silently changes File
-        // outbound payload shape.
+    async fn file_rep_reads_real_bytes_via_staging_when_data_name_matches() {
+        // P5a.3.5 + 后续: File 出站不再返 URI list, 而是经 staging port
+        // 读盘把真文件字节交给 iPhone。assert mime 兜底为
+        // application/octet-stream(SyncClipboard 协议字段对 Shortcut 端无强
+        // 语义,扩展名信息走 dataName)。
+        let real_bytes = vec![0x25, 0x50, 0x44, 0x46, 0x2D, 0x31, 0x2E, 0x37]; // %PDF-1.7
+        let staging = FakeStaging::with_read_response(Ok(real_bytes.clone()));
         let payload = b"file:///Users/Alice/Documents/note.pdf".to_vec();
-        let uc = build_uc_returning(Ok(Some(rep(
-            "entry-file-1",
-            "files",
-            Some("text/uri-list"),
-            payload.clone(),
-        ))));
-        // derive_data_name for File: parses URI list → "note.pdf"
+        let uc = build_uc_returning_with_staging(
+            Ok(Some(rep(
+                "entry-file-1",
+                "files",
+                Some("text/uri-list"),
+                payload,
+            ))),
+            staging,
+        );
         let out = uc.execute("note.pdf").await.unwrap();
-        assert_eq!(out.mime, "text/uri-list");
-        assert_eq!(out.bytes, payload);
+        assert_eq!(out.mime, "application/octet-stream");
+        assert_eq!(out.bytes, real_bytes);
+    }
+
+    #[tokio::test]
+    async fn file_rep_staging_not_found_returns_not_found() {
+        // staging 返 NotFound(URI 不在白名单根 / 文件被运维删) → use case
+        // 翻 NotFound,iPhone 收 HTTP 404 不报错。
+        let staging = FakeStaging::with_read_response(Err(MobileFileStagingError::NotFound));
+        let payload = b"file:///orphan/path/doc.pdf".to_vec();
+        let uc = build_uc_returning_with_staging(
+            Ok(Some(rep(
+                "entry-file-orphan",
+                "files",
+                Some("text/uri-list"),
+                payload,
+            ))),
+            staging,
+        );
+        let err = uc.execute("doc.pdf").await.unwrap_err();
+        assert!(matches!(err, GetMobileSyncFileError::NotFound));
+    }
+
+    #[tokio::test]
+    async fn file_rep_staging_io_error_returns_staging_variant() {
+        // staging 返 Io(权限 / 中途读盘失败) → use case 翻 Staging(_),
+        // 路由层 → HTTP 500。
+        let staging = FakeStaging::with_read_response(Err(MobileFileStagingError::Io(
+            "simulated permission denied".into(),
+        )));
+        let payload = b"file:///somewhere/doc.pdf".to_vec();
+        let uc = build_uc_returning_with_staging(
+            Ok(Some(rep(
+                "entry-file-perm",
+                "files",
+                Some("text/uri-list"),
+                payload,
+            ))),
+            staging,
+        );
+        let err = uc.execute("doc.pdf").await.unwrap_err();
+        assert!(matches!(err, GetMobileSyncFileError::Staging(_)));
+    }
+
+    #[tokio::test]
+    async fn file_rep_with_unparseable_uri_list_returns_not_found() {
+        // rep.bytes 全空 / 全是注释 → parse_first_uri 返 None → NotFound。
+        // staging 不应被调用(默认 FakeStaging 没设响应,被调到会 panic)。
+        let staging = FakeStaging::never_called();
+        let payload = b"# only a comment\n\n# another\n".to_vec();
+        let uc = build_uc_returning_with_staging(
+            Ok(Some(rep(
+                "entry-file-empty",
+                "files",
+                Some("text/uri-list"),
+                payload,
+            ))),
+            staging,
+        );
+        let err = uc.execute("doc.pdf").await.unwrap_err();
+        // derive_data_name 对空 URI-list 也返 fallback (`clipboard_entry-fi.bin`),
+        // 所以 dataName 比对不命中前先到 NotFound,这也行;但若 dataName 命中
+        // fallback 仍走 staging,parse_first_uri 拿 None → NotFound。
+        assert!(matches!(err, GetMobileSyncFileError::NotFound));
     }
 
     #[tokio::test]
@@ -309,15 +520,20 @@ mod tests {
     async fn file_rep_percent_decoded_data_name_matches() {
         // SyncClipboard request URLs can come back URL-decoded by axum;
         // derive_data_name does percent decode → matches "My Photo.jpg".
+        // P5a.3.5: 命中后走 staging 读真字节,而不是返 URI list。
+        let staging = FakeStaging::with_read_response(Ok(b"jpeg-real-bytes".to_vec()));
         let payload = b"file:///tmp/My%20Photo.jpg".to_vec();
-        let uc = build_uc_returning(Ok(Some(rep(
-            "entry-file-3",
-            "files",
-            Some("text/uri-list"),
-            payload.clone(),
-        ))));
+        let uc = build_uc_returning_with_staging(
+            Ok(Some(rep(
+                "entry-file-3",
+                "files",
+                Some("text/uri-list"),
+                payload,
+            ))),
+            staging,
+        );
         let out = uc.execute("My Photo.jpg").await.unwrap();
-        assert_eq!(out.mime, "text/uri-list");
-        assert_eq!(out.bytes, payload);
+        assert_eq!(out.mime, "application/octet-stream");
+        assert_eq!(out.bytes, b"jpeg-real-bytes".to_vec());
     }
 }

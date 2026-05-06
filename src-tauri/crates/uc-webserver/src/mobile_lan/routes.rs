@@ -216,6 +216,11 @@ async fn get_clipboard_file(
             tracing::warn!(error = %err, "GET /file: snapshot port failure");
             Err(StatusCode::INTERNAL_SERVER_ERROR.into_response())
         }
+        Err(GetMobileSyncFileError::Staging(msg)) => {
+            // P5a.3.5: File 出站读 staging 文件出 IO 错误(权限 / 中途盘错)。
+            tracing::warn!(error = %msg, "GET /file: staging IO failure");
+            Err(StatusCode::INTERNAL_SERVER_ERROR.into_response())
+        }
     }
 }
 

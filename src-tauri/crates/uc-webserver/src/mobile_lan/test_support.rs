@@ -366,6 +366,14 @@ impl uc_core::ports::MobileFileStagingPort for NoopFileStaging {
             "test_support: NoOp file staging should not be reached".into(),
         ))
     }
+    async fn read_by_uri(
+        &self,
+        _: &str,
+    ) -> Result<Vec<u8>, uc_core::ports::MobileFileStagingError> {
+        Err(uc_core::ports::MobileFileStagingError::Io(
+            "test_support: NoOp file staging read_by_uri should not be reached".into(),
+        ))
+    }
 }
 
 /// 拼一份 `Authorization: basic <base64(user:pass)>` header 值。

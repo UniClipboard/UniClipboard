@@ -396,6 +396,11 @@ impl ApplyIncomingMobileClipUseCase {
                 MobileFileStagingError::Io(msg) => {
                     BuildSnapshotFailure::Internal(format!("mobile file staging failed: {msg}"))
                 }
+                // NotFound 是 read_by_uri 才会产的变体, stage_file 不应触发。
+                // 万一 adapter 实现走偏返回它, 翻成 Internal 让排障可见。
+                MobileFileStagingError::NotFound => BuildSnapshotFailure::Internal(
+                    "mobile file staging unexpectedly returned NotFound from stage_file".into(),
+                ),
             })?;
 
         let uri_list = format!("{}\n", staged.uri.as_str());
@@ -553,6 +558,12 @@ mod tests {
 
     #[async_trait]
     impl MobileFileStagingPort for FakeStaging {
+        async fn read_by_uri(&self, _: &str) -> Result<Vec<u8>, MobileFileStagingError> {
+            // apply_incoming.rs 测试不走 read_by_uri 路径(那是 get_file
+            // 的事), 被调到说明回归。
+            unreachable!("FakeStaging.read_by_uri must not be called from apply_incoming tests")
+        }
+
         async fn stage_file(
             &self,
             scope_id: &str,

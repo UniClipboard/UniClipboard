@@ -118,5 +118,9 @@ pub fn render_get_file_error(err: &GetMobileSyncFileError) -> String {
         GetMobileSyncFileError::Port(inner) => {
             format!("Snapshot port failure: {inner}")
         }
+        GetMobileSyncFileError::Staging(msg) => {
+            // P5a.3.5: File 出站读 staging 文件 IO 失败(权限 / 中途盘错)。
+            format!("File staging IO failure: {msg}")
+        }
     }
 }

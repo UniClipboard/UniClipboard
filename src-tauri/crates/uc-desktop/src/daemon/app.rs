@@ -208,9 +208,11 @@ impl DaemonApp {
     }
 
     /// 注入 mobile sync LAN endpoint adapter。daemon `run()` 看到 `Some(...)`
-    /// 后会 spawn `mobile_lan` listener,绑定到 `127.0.0.1:42720`,起来后写
-    /// `endpoint_info.set(...)`,关闭后 `clear()`。`None`(默认)表示当前装配
-    /// 场景不接 listener(测试 / 未来 GUI-only 路径)。
+    /// 且 `MobileSyncSettings.enabled && lan_listen_enabled` 时会 spawn
+    /// `mobile_lan` listener,bind ip / port 全部由设置驱动(`lan_bind_ip` /
+    /// `lan_port`,缺省值 `127.0.0.1:42720`),起来后写 `endpoint_info.set(...)`,
+    /// 关闭后 `clear()`。`None`(默认)表示当前装配场景不接 listener
+    /// (测试 / 未来 GUI-only 路径)。
     pub fn with_mobile_lan_endpoint_info(
         mut self,
         endpoint_info: Arc<uc_infra::mobile_sync::InMemoryMobileSyncEndpointInfoAdapter>,
@@ -301,50 +303,94 @@ impl DaemonApp {
 
         let _cleanup_handle = cleanup_rate_limiter_task(security_for_cleanup, cleanup_cancel);
 
-        // Phase 3 子步骤 5e: spawn mobile sync LAN listener(SyncClipboard
-        // 协议: 根路径 GET/PUT /SyncClipboard.json + GET/PUT /file/:dataName)。
-        // 暂绑 127.0.0.1:42720 —— 子步骤 5.5 接 `MobileSyncSettings.lan_listen_enabled`
-        // 后改为绑用户选定 LAN IP + 动态启停。当前以 child cancel token 控制
-        // graceful shutdown。bind / serve 失败只 log, 不阻断 daemon 主流程。
+        // Phase 3 子步骤 5e + Phase 4 子步骤 5.5: spawn mobile sync LAN listener
+        // (SyncClipboard 协议: 根路径 GET/PUT /SyncClipboard.json +
+        // GET/PUT /file/:dataName)。
         //
-        // listener 需要 mobile sync facade 做 Basic Auth + 业务路由对接;
-        // facade 在 AppFacade 上是 Option(GUI-only 入口可不带), 这里只在
-        // mobile_sync 装配存在 *且* endpoint_info 注入存在时才起 listener。
+        // 子步骤 5.5: bind 完全由 `MobileSyncSettings` 驱动 ——
+        //   - `enabled` 或 `lan_listen_enabled` 任一为 false → daemon 不起 listener
+        //     (endpoint_info 保持 cleared, register_device 因此拒绝并提示用户)
+        //   - `lan_bind_ip` 给具体 IPv4 → 绑定到该 IP(允许局域网访问)
+        //   - `lan_bind_ip` 为 None → 退回 127.0.0.1(本机调试,iPhone 连不上)
+        //   - `lan_port` 为 None → 默认 42720(SPEC §3.2)
+        //
+        // bind / serve 失败只 log, 不阻断 daemon 主流程。listener 需要 mobile
+        // sync facade 做 Basic Auth + 业务路由对接;facade 在 AppFacade 上是
+        // Option(GUI-only 入口可不带), 这里只在 mobile_sync 装配存在 *且*
+        // endpoint_info 注入存在时才起 listener。
         if let (Some(endpoint_info), Some(mobile_sync_facade)) = (
             self.mobile_lan_endpoint_info.clone(),
             self.app_facade.mobile_sync.clone(),
         ) {
-            let lan_cancel = self.cancel.child_token();
-            tokio::spawn(async move {
-                use std::net::{IpAddr, Ipv4Addr, SocketAddr};
-                use uc_core::mobile_sync::LanEndpointInfo;
-                use uc_webserver::mobile_lan::start_mobile_lan_server;
+            // 同步读一次设置 —— daemon 启动时一次性决定 listener 行为, 配
+            // 置变更不热重载(SPEC §1.2.5: 用户必须 stop+start daemon)。读取
+            // 失败时按"未配置"处理: 不起 listener, daemon 继续跑(下一次
+            // start 时会重试)。
+            let settings_view = mobile_sync_facade.get_settings().await.ok();
+            let should_start = settings_view
+                .as_ref()
+                .map(|v| v.enabled && v.lan_listen_enabled)
+                .unwrap_or(false);
 
-                let bind = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 42720);
-                match start_mobile_lan_server(bind, lan_cancel, mobile_sync_facade).await {
-                    Ok(handle) => {
-                        let url = format!("http://{}", handle.bound_addr);
-                        endpoint_info
-                            .set(LanEndpointInfo { url: url.clone() })
-                            .await;
-                        info!(url, "mobile LAN listener up; endpoint_info populated");
+            if !should_start {
+                info!(
+                    enabled = settings_view.as_ref().map(|v| v.enabled).unwrap_or(false),
+                    lan_listen_enabled = settings_view
+                        .as_ref()
+                        .map(|v| v.lan_listen_enabled)
+                        .unwrap_or(false),
+                    "mobile_sync LAN listener disabled by settings or unreadable; not starting"
+                );
+            } else {
+                let view = settings_view.expect("should_start implies Some");
+                let lan_cancel = self.cancel.child_token();
+                tokio::spawn(async move {
+                    use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+                    use uc_core::mobile_sync::LanEndpointInfo;
+                    use uc_webserver::mobile_lan::start_mobile_lan_server;
 
-                        if let Err(e) = handle.join_handle.await {
-                            error!(error = %e, "mobile LAN listener task panicked");
+                    let port = view.lan_port.unwrap_or(42720);
+                    let ip: IpAddr = match view.lan_bind_ip.as_deref() {
+                        Some(s) => match s.parse::<Ipv4Addr>() {
+                            Ok(v4) => IpAddr::V4(v4),
+                            Err(parse_err) => {
+                                error!(
+                                    bind_ip = %s,
+                                    error = %parse_err,
+                                    "mobile_sync lan_bind_ip is not a valid IPv4; \
+                                     falling back to 127.0.0.1"
+                                );
+                                IpAddr::V4(Ipv4Addr::LOCALHOST)
+                            }
+                        },
+                        None => IpAddr::V4(Ipv4Addr::LOCALHOST),
+                    };
+                    let bind = SocketAddr::new(ip, port);
+                    match start_mobile_lan_server(bind, lan_cancel, mobile_sync_facade).await {
+                        Ok(handle) => {
+                            let url = format!("http://{}", handle.bound_addr);
+                            endpoint_info
+                                .set(LanEndpointInfo { url: url.clone() })
+                                .await;
+                            info!(url, "mobile LAN listener up; endpoint_info populated");
+
+                            if let Err(e) = handle.join_handle.await {
+                                error!(error = %e, "mobile LAN listener task panicked");
+                            }
+
+                            endpoint_info.clear().await;
+                            info!("mobile LAN listener stopped; endpoint_info cleared");
                         }
-
-                        endpoint_info.clear().await;
-                        info!("mobile LAN listener stopped; endpoint_info cleared");
+                        Err(e) => {
+                            error!(
+                                bind = %bind,
+                                error = %e,
+                                "mobile LAN listener failed to bind; daemon continues without SyncClipboard endpoint"
+                            );
+                        }
                     }
-                    Err(e) => {
-                        error!(
-                            bind = %bind,
-                            error = %e,
-                            "mobile LAN listener failed to bind; daemon continues without SyncClipboard endpoint"
-                        );
-                    }
-                }
-            });
+                });
+            }
         }
 
         // Prepare deferred services start

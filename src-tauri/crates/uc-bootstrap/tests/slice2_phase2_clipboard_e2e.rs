@@ -454,6 +454,7 @@ async fn build_side(name: &'static str, rendezvous_base_url: String) -> Side {
     let clipboard_sync = Arc::new(ClipboardSyncFacade::new(ClipboardSyncDeps {
         peer_addr_repo: Arc::clone(&peer_addr_repo)
             as Arc<dyn uc_core::ports::PeerAddressRepositoryPort>,
+        member_repo: Arc::clone(&member_repo) as Arc<dyn MemberRepositoryPort>,
         presence: presence_for_clipboard,
         transfer_cipher,
         clipboard_dispatch,

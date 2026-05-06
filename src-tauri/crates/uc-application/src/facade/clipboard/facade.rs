@@ -23,6 +23,7 @@ use uc_core::ports::{
     ClipboardDispatchPort, ClipboardReceiverPort, ClockPort, DeviceIdentityPort, DispatchAck,
     LocalIdentityPort, PeerAddressRepositoryPort, PresencePort, SettingsPort,
 };
+use uc_core::MemberRepositoryPort;
 use uc_core::{ClipboardChangeOrigin, SystemClipboardSnapshot};
 
 use crate::usecases::clipboard_sync::payload_codec::{
@@ -38,6 +39,7 @@ use crate::usecases::clipboard_sync::{
 /// wiring stays consistent across facades.
 pub struct ClipboardSyncDeps {
     pub peer_addr_repo: Arc<dyn PeerAddressRepositoryPort>,
+    pub member_repo: Arc<dyn MemberRepositoryPort>,
     pub presence: Arc<dyn PresencePort>,
     pub transfer_cipher: Arc<dyn TransferCipherPort>,
     pub clipboard_dispatch: Arc<dyn ClipboardDispatchPort>,
@@ -139,6 +141,7 @@ impl ClipboardSyncFacade {
     pub fn new(deps: ClipboardSyncDeps) -> Self {
         let dispatch_uc = Arc::new(DispatchClipboardEntryUseCase::new(
             Arc::clone(&deps.peer_addr_repo),
+            Arc::clone(&deps.member_repo),
             Arc::clone(&deps.transfer_cipher),
             Arc::clone(&deps.clipboard_dispatch),
             Arc::clone(&deps.device_identity),
@@ -148,6 +151,7 @@ impl ClipboardSyncFacade {
         ));
         let ingest_uc = Arc::new(IngestInboundClipboardUseCase::new(
             Arc::clone(&deps.clipboard_receiver),
+            Arc::clone(&deps.member_repo),
             Arc::clone(&deps.transfer_cipher),
             Arc::clone(&deps.clock),
         ));
@@ -339,6 +343,7 @@ mod tests {
     };
     use uc_core::security::IdentityFingerprint;
     use uc_core::settings::model::Settings;
+    use uc_core::{MemberSyncPreferences, MembershipError, SpaceMember};
 
     // ── mockall ──────────────────────────────────────────────────────────
 
@@ -419,6 +424,37 @@ mod tests {
         }
     }
 
+    mockall::mock! {
+        pub MemberRepo {}
+        #[async_trait]
+        impl MemberRepositoryPort for MemberRepo {
+            async fn get(
+                &self,
+                device_id: &DeviceId,
+            ) -> Result<Option<SpaceMember>, MembershipError>;
+            async fn list(&self) -> Result<Vec<SpaceMember>, MembershipError>;
+            async fn save(&self, member: &SpaceMember) -> Result<(), MembershipError>;
+            async fn remove(&self, device_id: &DeviceId) -> Result<bool, MembershipError>;
+        }
+    }
+
+    /// `MemberRepo` mock that returns a default-allowed `SpaceMember` for
+    /// every device. The two pre-existing facade verdicts (dispatch +
+    /// ingest) predate per-device gating; this keeps them green.
+    fn make_member_repo_all_enabled() -> MockMemberRepo {
+        let mut m = MockMemberRepo::new();
+        m.expect_get().returning(|did| {
+            Ok(Some(SpaceMember {
+                device_id: did.clone(),
+                device_name: format!("Test {}", did.as_str()),
+                identity_fingerprint: fp(),
+                joined_at: chrono::Utc::now(),
+                sync_preferences: MemberSyncPreferences::default(),
+            }))
+        });
+        m
+    }
+
     // ── hand-written: ClipboardReceiverPort + ClockPort ─────────────────
 
     /// `subscribe()` returns a non-Clone `broadcast::Receiver` and the
@@ -489,7 +525,8 @@ mod tests {
 
     /// Wire the facade with the given mock ports + a `FakeReceiver`. The
     /// FakeReceiver is returned alongside so the caller can `publish(...)`
-    /// during the test.
+    /// during the test. `member_repo` defaults to "all peers allowed"
+    /// because the two facade verdicts here predate per-device gating.
     fn build_facade(
         peer_addr_repo: MockPeerAddrRepo,
         presence: MockPresence,
@@ -502,6 +539,7 @@ mod tests {
         let receiver = Arc::new(FakeReceiver::new());
         let facade = ClipboardSyncFacade::new(ClipboardSyncDeps {
             peer_addr_repo: Arc::new(peer_addr_repo),
+            member_repo: Arc::new(make_member_repo_all_enabled()),
             presence: Arc::new(presence),
             transfer_cipher: Arc::new(cipher),
             clipboard_dispatch: Arc::new(dispatch),

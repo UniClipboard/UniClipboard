@@ -384,6 +384,7 @@ pub async fn build_space_setup_assembly(
     // `SpaceSetupAssembly::shutdown` 显式 `abort()` 加速过程)。
     let clipboard_sync = Arc::new(ClipboardSyncFacade::new(ClipboardSyncDeps {
         peer_addr_repo: Arc::clone(&wired.peer_addr_repo),
+        member_repo: Arc::clone(&deps.device.member_repo),
         presence: Arc::clone(&presence),
         transfer_cipher: Arc::clone(&deps.security.transfer_cipher),
         clipboard_dispatch,

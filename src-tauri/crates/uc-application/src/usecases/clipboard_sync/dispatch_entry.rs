@@ -53,6 +53,7 @@ use uc_core::ports::{
     ClipboardDispatchError, ClipboardDispatchPort, ClipboardHeader, ClockPort, DeviceIdentityPort,
     DispatchAck, LocalIdentityPort, PeerAddressRepositoryPort, SettingsPort, SyncPayload,
 };
+use uc_core::MemberRepositoryPort;
 
 /// Input to one dispatch pass. The caller owns the plaintext →
 /// `ClipboardBinaryPayload` → bytes pipeline.
@@ -108,6 +109,7 @@ pub(crate) enum DispatchSyncError {
 
 pub(crate) struct DispatchClipboardEntryUseCase {
     peer_addr_repo: Arc<dyn PeerAddressRepositoryPort>,
+    member_repo: Arc<dyn MemberRepositoryPort>,
     transfer_cipher: Arc<dyn TransferCipherPort>,
     clipboard_dispatch: Arc<dyn ClipboardDispatchPort>,
     device_identity: Arc<dyn DeviceIdentityPort>,
@@ -119,6 +121,7 @@ pub(crate) struct DispatchClipboardEntryUseCase {
 impl DispatchClipboardEntryUseCase {
     pub(crate) fn new(
         peer_addr_repo: Arc<dyn PeerAddressRepositoryPort>,
+        member_repo: Arc<dyn MemberRepositoryPort>,
         transfer_cipher: Arc<dyn TransferCipherPort>,
         clipboard_dispatch: Arc<dyn ClipboardDispatchPort>,
         device_identity: Arc<dyn DeviceIdentityPort>,
@@ -128,6 +131,7 @@ impl DispatchClipboardEntryUseCase {
     ) -> Self {
         Self {
             peer_addr_repo,
+            member_repo,
             transfer_cipher,
             clipboard_dispatch,
             device_identity,
@@ -167,16 +171,16 @@ impl DispatchClipboardEntryUseCase {
             })?;
 
         let local_device = self.device_identity.current_device_id();
-        let candidates: Vec<DeviceId> = records
-            .into_iter()
-            .filter_map(|record| {
-                if record.device_id == local_device {
-                    None
-                } else {
-                    Some(record.device_id)
-                }
-            })
-            .collect();
+        let mut candidates: Vec<DeviceId> = Vec::with_capacity(records.len());
+        for record in records {
+            if record.device_id == local_device {
+                continue;
+            }
+            if !self.is_send_allowed(&record.device_id).await {
+                continue;
+            }
+            candidates.push(record.device_id);
+        }
 
         // 3. Build the header once and clone per target.
         let origin_device_name = self.load_origin_device_name().await;
@@ -276,6 +280,43 @@ impl DispatchClipboardEntryUseCase {
         })
     }
 
+    /// Per-device sync gate: returns `true` when the local device should
+    /// fan a clipboard frame out to `device_id`. Reads
+    /// `SpaceMember.sync_preferences.send_enabled`; fails open (returns
+    /// `true`) on lookup error or missing record so a transient repo
+    /// glitch can't silently break sync — the operator-visible signal is
+    /// the WARN log, not a stalled clipboard.
+    async fn is_send_allowed(&self, device_id: &DeviceId) -> bool {
+        match self.member_repo.get(device_id).await {
+            Ok(Some(member)) => {
+                if !member.sync_preferences.send_enabled {
+                    info!(
+                        device_id = %device_id.as_str(),
+                        reason = "send_disabled_by_user",
+                        "dispatch: skipping peer per per-device sync preferences"
+                    );
+                    return false;
+                }
+                true
+            }
+            Ok(None) => {
+                warn!(
+                    device_id = %device_id.as_str(),
+                    "dispatch: peer in addr repo but missing from member repo; failing open"
+                );
+                true
+            }
+            Err(err) => {
+                warn!(
+                    device_id = %device_id.as_str(),
+                    error = %err,
+                    "dispatch: member repo lookup failed; failing open"
+                );
+                true
+            }
+        }
+    }
+
     /// Load the device's own display name to embed in the outbound header
     /// so the peer can show "from <Alice's Laptop>". Falls back to the
     /// fingerprint if settings are unreadable or empty.
@@ -338,6 +379,7 @@ mod tests {
     };
     use uc_core::security::IdentityFingerprint;
     use uc_core::settings::model::Settings;
+    use uc_core::{MemberRepositoryPort, MemberSyncPreferences, MembershipError, SpaceMember};
 
     // ── mockall: PeerAddressRepositoryPort ──────────────────────────────
 
@@ -425,6 +467,23 @@ mod tests {
         }
     }
 
+    // ── mockall: MemberRepositoryPort ───────────────────────────────────
+
+    mockall::mock! {
+        pub MemberRepo {}
+
+        #[async_trait]
+        impl MemberRepositoryPort for MemberRepo {
+            async fn get(
+                &self,
+                device_id: &DeviceId,
+            ) -> Result<Option<SpaceMember>, MembershipError>;
+            async fn list(&self) -> Result<Vec<SpaceMember>, MembershipError>;
+            async fn save(&self, member: &SpaceMember) -> Result<(), MembershipError>;
+            async fn remove(&self, device_id: &DeviceId) -> Result<bool, MembershipError>;
+        }
+    }
+
     // ── hand-written: ClockPort ─────────────────────────────────────────
     //
     // `ClockPort::now_ms` is sync + 4 lines; mockall's adapter would be
@@ -470,6 +529,7 @@ mod tests {
     /// deterministic.
     fn build_uc(
         peer_addr_repo: MockPeerAddrRepo,
+        member_repo: MockMemberRepo,
         cipher: MockCipher,
         dispatch: MockDispatch,
         device_identity: MockDeviceId_,
@@ -478,6 +538,7 @@ mod tests {
     ) -> DispatchClipboardEntryUseCase {
         DispatchClipboardEntryUseCase::new(
             Arc::new(peer_addr_repo),
+            Arc::new(member_repo),
             Arc::new(cipher),
             Arc::new(dispatch),
             Arc::new(device_identity),
@@ -485,6 +546,24 @@ mod tests {
             Arc::new(settings),
             Arc::new(FixedClock(1_700_000_000_000)),
         )
+    }
+
+    /// Build a `MemberRepo` mock that returns a stub `SpaceMember` with
+    /// default (all-enabled) `sync_preferences` for every device. Used by
+    /// the existing verdicts whose contract predates per-device gating —
+    /// they should still observe the same fan-out behaviour.
+    fn make_member_repo_all_enabled() -> MockMemberRepo {
+        let mut m = MockMemberRepo::new();
+        m.expect_get().returning(|did| {
+            Ok(Some(SpaceMember {
+                device_id: did.clone(),
+                device_name: format!("Test {}", did.as_str()),
+                identity_fingerprint: fp(0),
+                joined_at: Utc::now(),
+                sync_preferences: MemberSyncPreferences::default(),
+            }))
+        });
+        m
     }
 
     /// Build a `DeviceIdentity` mock that returns the same `device_id`
@@ -552,6 +631,7 @@ mod tests {
 
         let uc = build_uc(
             repo,
+            make_member_repo_all_enabled(),
             cipher,
             dispatch,
             make_device_identity("self-device"),
@@ -603,6 +683,7 @@ mod tests {
 
         let uc = build_uc(
             repo,
+            make_member_repo_all_enabled(),
             cipher,
             dispatch,
             make_device_identity("self-device"),
@@ -641,6 +722,7 @@ mod tests {
 
         let uc = build_uc(
             repo,
+            make_member_repo_all_enabled(),
             cipher,
             dispatch,
             make_device_identity("self-device"),
@@ -672,6 +754,7 @@ mod tests {
 
         let uc = build_uc(
             repo,
+            make_member_repo_all_enabled(),
             cipher,
             dispatch,
             make_device_identity("self-device"),
@@ -726,6 +809,7 @@ mod tests {
 
         let uc = build_uc(
             repo,
+            make_member_repo_all_enabled(),
             cipher,
             dispatch,
             make_device_identity("self-device"),
@@ -756,5 +840,122 @@ mod tests {
         assert!(seen.contains(&("peer-ok".to_string(), "accepted".to_string())));
         assert!(seen.contains(&("peer-off".to_string(), "offline".to_string())));
         assert!(seen.contains(&("peer-rej".to_string(), "rejected".to_string())));
+    }
+
+    /// 6. Per-device send gate — `peer-mute` has `send_enabled=false` in
+    /// its `MemberSyncPreferences`. The dispatch port must NEVER be
+    /// invoked for it; the other peer still receives the frame. mockall
+    /// enforces "no dispatch ever for peer-mute" by registering zero
+    /// expectations on that arm — any sneaky call would panic.
+    #[tokio::test]
+    async fn send_disabled_peer_is_skipped_before_dispatch() {
+        let mut repo = MockPeerAddrRepo::new();
+        repo.expect_list()
+            .times(1)
+            .returning(|| Ok(vec![record("peer-on"), record("peer-mute")]));
+
+        let mut member_repo = MockMemberRepo::new();
+        member_repo
+            .expect_get()
+            .returning(|did| match did.as_str() {
+                "peer-mute" => {
+                    let mut prefs = MemberSyncPreferences::default();
+                    prefs.send_enabled = false;
+                    Ok(Some(SpaceMember {
+                        device_id: did.clone(),
+                        device_name: "Peer Mute".to_string(),
+                        identity_fingerprint: fp(0),
+                        joined_at: Utc::now(),
+                        sync_preferences: prefs,
+                    }))
+                }
+                _ => Ok(Some(SpaceMember {
+                    device_id: did.clone(),
+                    device_name: format!("Test {}", did.as_str()),
+                    identity_fingerprint: fp(0),
+                    joined_at: Utc::now(),
+                    sync_preferences: MemberSyncPreferences::default(),
+                })),
+            });
+
+        let mut cipher = MockCipher::new();
+        cipher
+            .expect_encrypt()
+            .times(1)
+            .returning(|p| Ok(p.to_vec()));
+
+        let mut dispatch = MockDispatch::new();
+        // Only peer-on is allowed; peer-mute must never be dispatched to.
+        dispatch
+            .expect_dispatch()
+            .with(eq(DeviceId::new("peer-on")), always(), always())
+            .times(1)
+            .returning(|_, _, _| Ok(DispatchAck::Accepted));
+        // No expect_dispatch for peer-mute → mockall would panic on call.
+
+        let uc = build_uc(
+            repo,
+            member_repo,
+            cipher,
+            dispatch,
+            make_device_identity("self-device"),
+            make_local_identity_stub(),
+            make_settings_stub(),
+        );
+
+        let outcome = uc.execute(input()).await.expect("dispatch ok");
+        assert_eq!(outcome.total_accepted, 1);
+        assert_eq!(
+            outcome.per_target.len(),
+            1,
+            "muted peer must not appear in per_target report"
+        );
+        assert_eq!(outcome.per_target[0].device_id.as_str(), "peer-on");
+    }
+
+    /// 7. Fail-open on member lookup miss — peer is in `peer_addr_repo`
+    /// but `member_repo.get` returns `Ok(None)` (the two stores drifted).
+    /// The dispatch port must still fire so a transient repo gap doesn't
+    /// silently kill sync; the operator-visible signal is the WARN log.
+    #[tokio::test]
+    async fn missing_member_record_fails_open_and_still_dispatches() {
+        let mut repo = MockPeerAddrRepo::new();
+        repo.expect_list()
+            .times(1)
+            .returning(|| Ok(vec![record("peer-orphan")]));
+
+        let mut member_repo = MockMemberRepo::new();
+        member_repo
+            .expect_get()
+            .with(eq(DeviceId::new("peer-orphan")))
+            .times(1)
+            .returning(|_| Ok(None));
+
+        let mut cipher = MockCipher::new();
+        cipher
+            .expect_encrypt()
+            .times(1)
+            .returning(|p| Ok(p.to_vec()));
+
+        let mut dispatch = MockDispatch::new();
+        dispatch
+            .expect_dispatch()
+            .with(eq(DeviceId::new("peer-orphan")), always(), always())
+            .times(1)
+            .returning(|_, _, _| Ok(DispatchAck::Accepted));
+
+        let uc = build_uc(
+            repo,
+            member_repo,
+            cipher,
+            dispatch,
+            make_device_identity("self-device"),
+            make_local_identity_stub(),
+            make_settings_stub(),
+        );
+
+        let outcome = uc.execute(input()).await.expect("dispatch ok");
+        assert_eq!(outcome.total_accepted, 1);
+        assert_eq!(outcome.per_target.len(), 1);
     }
 }

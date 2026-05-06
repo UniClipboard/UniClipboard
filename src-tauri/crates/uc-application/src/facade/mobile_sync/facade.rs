@@ -171,6 +171,7 @@ impl MobileSyncFacade {
         Self {
             register_device: RegisterMobileShortcutDeviceUseCase::new(
                 credentials_minter,
+                password_hasher.clone(),
                 device_repo.clone(),
                 settings.clone(),
                 clock.clone(),
@@ -680,10 +681,12 @@ mod tests {
             .await
             .expect("update_settings ok");
 
-        // 1. 登记。
+        // 1. 登记。auto path: username/password 都走 minter。
         let out = facade
             .register_device(RegisterMobileShortcutDeviceInput {
                 label: "我的 iPhone".into(),
+                username: None,
+                password: None,
             })
             .await
             .expect("register ok");

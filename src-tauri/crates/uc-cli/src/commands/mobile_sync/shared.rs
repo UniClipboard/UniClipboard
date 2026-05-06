@@ -146,6 +146,21 @@ pub fn render_register_error(err: &RegisterMobileShortcutDeviceError) -> String 
             "LAN listener is not enabled — run `uniclip mobile-sync lan enable --bind <IP>` first."
                 .into()
         }
+        RegisterMobileShortcutDeviceError::UsernameTaken(name) => {
+            format!("Username `{name}` is already taken — pick another.")
+        }
+        RegisterMobileShortcutDeviceError::UsernameInvalidShape(reason) => {
+            format!("Invalid username: {reason}")
+        }
+        RegisterMobileShortcutDeviceError::PasswordTooShort { min } => {
+            format!("Password is too short (minimum {min} characters).")
+        }
+        RegisterMobileShortcutDeviceError::PasswordTooLong { max } => {
+            format!("Password is too long (maximum {max} characters).")
+        }
+        RegisterMobileShortcutDeviceError::PasswordHashFailed(msg) => {
+            format!("Password hashing failed: {msg}")
+        }
         RegisterMobileShortcutDeviceError::PersistenceFailed(msg) => {
             format!("Persistence failed: {msg}")
         }

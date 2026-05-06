@@ -1,15 +1,21 @@
 //! `RegisterMobileShortcutDeviceUseCase` —— 在 daemon 上登记一台 iPhone
 //! Shortcut 客户端,颁发其独立 (username, password) Basic Auth 凭据。
 //!
-//! v3 SyncClipboard 兼容路径(`.context/mobile-sync/SPEC.md` §14):
+//! v3 SyncClipboard 兼容路径(`.context/mobile-sync/SPEC.md` §14)。
 //!
-//!   1. credentials minter 颁发 (username, password, password_hash, device_id)
-//!   2. 探测当前 LAN endpoint —— 监听未启用直接拒绝(业务前置条件)
-//!   3. 构造 [`MobileDevice`] 实体并通过 repository 持久化
-//!   4. 把 install URL(SyncClipboard EX iCloud 共享链接,常量)渲染成 PNG +
-//!      ASCII 二维码,让用户扫码安装该 shortcut
-//!   5. 回传 base_url + username + password(明文,**仅这一次**) + install_url
-//!      + 二维码 —— 用户在 SyncClipboard shortcut 里手动填这三项凭据
+//! ## 凭据来源
+//!
+//! 调用方可以选择:
+//! 1. 全自动 —— input.username / input.password 均 `None`,minter 一次性
+//!    颁发 (username, password, password_hash, device_id) 四元组,minter
+//!    内部用 OsRng 保证不可猜。
+//! 2. 完全自定义 —— input 同时给 username 和 password,本 use case 校验
+//!    格式 / 长度 / 唯一性,使用 minter 仅取一个 device_id。
+//! 3. 部分自定义 —— 只给 username 或只给 password。**未给的那一项**仍走
+//!    minter 自动生成路径,已给的那一项用自定义路径校验后落库。
+//!
+//! 三种模式共享同一个 happy path 出口 —— 三类校验失败都翻译成
+//! [`RegisterMobileShortcutDeviceError`] 的对应变体。
 //!
 //! 失败一律走 [`RegisterMobileShortcutDeviceError`] —— 把底层 port 错误
 //! 翻译为用户/调用方能理解的语义(`uc-application/AGENTS.md` §13)。
@@ -20,15 +26,26 @@ use tracing::{instrument, warn};
 
 use uc_core::mobile_sync::{MintedCredentials, MobileClientType, MobileDevice, MobileDeviceError};
 use uc_core::ports::{
-    ClockPort, MobileCredentialsMinterPort, MobileDeviceRepositoryPort, SettingsPort,
+    ClockPort, MobileCredentialsMinterPort, MobileDeviceRepositoryPort, PasswordHasherError,
+    PasswordHasherPort, SettingsPort,
 };
 
 // ─── public-shaped (input / output / error) ─────────────────────────────
 
-/// 调用方提交的请求:仅一个用户可读的设备标签。
-#[derive(Debug, Clone)]
+/// 调用方提交的请求。`username` / `password` 留空(`None`)走自动颁发;给
+/// 值则按本 use case 的校验规则强制 —— 详见模块顶部三模式说明。
+#[derive(Debug, Clone, Default)]
 pub struct RegisterMobileShortcutDeviceInput {
+    /// 必填:用户可读设备标签,非空且 ≤ [`MAX_LABEL_LEN`] 字符。
     pub label: String,
+    /// 可选:用户自定义 username。给值时按 [`MIN_USERNAME_LEN`] /
+    /// [`MAX_USERNAME_LEN`] / `[A-Za-z0-9_]` / 字母开头 / 与现有设备不冲突
+    /// 的规则严格校验。
+    pub username: Option<String>,
+    /// 可选:用户自定义明文密码。给值时按 [`MIN_PASSWORD_LEN`] /
+    /// [`MAX_PASSWORD_LEN`] 校验,**不**强制复杂度(iPhone 端输入不便, 用户
+    /// 自取风险自担, NIST 现代指南底线)。
+    pub password: Option<String>,
 }
 
 /// 颁发成功后的产物。
@@ -46,8 +63,10 @@ pub struct RegisterMobileShortcutDeviceOutput {
     /// 填进 `url` 框,形如 `http://192.168.1.5:42720`。
     pub base_url: String,
     /// 一次性回显:用户在 SyncClipboard shortcut 里填进 `username` 框。
+    /// 自定义模式下与 `input.username` 相同;自动模式下来自 minter。
     pub username: String,
     /// 一次性回显:明文密码,用户在 SyncClipboard shortcut 里填进 `password` 框。
+    /// 自定义模式下与 `input.password` 相同;自动模式下来自 minter。
     pub password: String,
     /// SyncClipboard "Clipboard EX" iCloud 共享链接(常量) —— 用户扫描
     /// `qr_code_*` 后跳转此链接安装该 shortcut。
@@ -74,6 +93,26 @@ pub enum RegisterMobileShortcutDeviceError {
     #[error("LAN listener is not enabled; enable it first")]
     LanListenerDisabled,
 
+    /// 自定义 username 已被其它已登记设备占用。
+    #[error("username already taken: {0}")]
+    UsernameTaken(String),
+
+    /// 自定义 username 不符合形态规则(长度 / 字符集 / 必须字母开头)。
+    #[error("invalid username shape: {0}")]
+    UsernameInvalidShape(String),
+
+    /// 自定义 password 长度低于 [`MIN_PASSWORD_LEN`]。
+    #[error("password too short (min {min} chars)")]
+    PasswordTooShort { min: usize },
+
+    /// 自定义 password 长度超过 [`MAX_PASSWORD_LEN`]。Argon2id DOS 防护。
+    #[error("password too long (max {max} chars)")]
+    PasswordTooLong { max: usize },
+
+    /// 自定义 password 哈希失败(算法库内部错误)。
+    #[error("password hashing failed: {0}")]
+    PasswordHashFailed(String),
+
     /// 持久化失败(重复 device id / username 碰撞 / 底层存储错误)。
     #[error("device persistence failed: {0}")]
     PersistenceFailed(String),
@@ -94,6 +133,16 @@ pub enum RegisterMobileShortcutDeviceError {
 /// 设备标签最大长度。
 const MAX_LABEL_LEN: usize = 64;
 
+/// 自定义 username 最小长度。
+pub const MIN_USERNAME_LEN: usize = 6;
+/// 自定义 username 最大长度。
+pub const MAX_USERNAME_LEN: usize = 32;
+/// 自定义 password 最小长度。**用户选"宽松"** —— 不强制复杂度(iPhone
+/// 输入不便),只设 NIST 现代指南底线。
+pub const MIN_PASSWORD_LEN: usize = 8;
+/// 自定义 password 最大长度。Argon2id 哈希前的输入上限,防 DOS。
+pub const MAX_PASSWORD_LEN: usize = 256;
+
 /// SyncClipboard "Clipboard EX" iCloud 共享链接(v3 v1 唯一支持的客户端
 /// 入口)。Apple 已签名,可被任何 iPhone 在开启「允许不受信任的快捷指令」
 /// 之前直接安装(走 iCloud 信任路径)。
@@ -105,6 +154,7 @@ pub const SYNC_CLIPBOARD_EX_INSTALL_URL: &str =
 
 pub(crate) struct RegisterMobileShortcutDeviceUseCase {
     credentials_minter: Arc<dyn MobileCredentialsMinterPort>,
+    password_hasher: Arc<dyn PasswordHasherPort>,
     device_repo: Arc<dyn MobileDeviceRepositoryPort>,
     settings: Arc<dyn SettingsPort>,
     clock: Arc<dyn ClockPort>,
@@ -113,12 +163,14 @@ pub(crate) struct RegisterMobileShortcutDeviceUseCase {
 impl RegisterMobileShortcutDeviceUseCase {
     pub(crate) fn new(
         credentials_minter: Arc<dyn MobileCredentialsMinterPort>,
+        password_hasher: Arc<dyn PasswordHasherPort>,
         device_repo: Arc<dyn MobileDeviceRepositoryPort>,
         settings: Arc<dyn SettingsPort>,
         clock: Arc<dyn ClockPort>,
     ) -> Self {
         Self {
             credentials_minter,
+            password_hasher,
             device_repo,
             settings,
             clock,
@@ -139,7 +191,14 @@ impl RegisterMobileShortcutDeviceUseCase {
     /// 失败会留下"已登记但用户拿不到 install URL"的孤儿记录。v1 接受
     /// 该缺陷 —— 用户重新点"添加 iPhone"即可生成新设备;旧的孤儿设备
     /// 会被显示在列表里, 撤销即可清理。
-    #[instrument(skip(self, input), fields(label_len = input.label.len()))]
+    #[instrument(
+        skip(self, input),
+        fields(
+            label_len = input.label.len(),
+            custom_username = input.username.is_some(),
+            custom_password = input.password.is_some(),
+        )
+    )]
     pub(crate) async fn execute(
         &self,
         input: RegisterMobileShortcutDeviceInput,
@@ -151,6 +210,17 @@ impl RegisterMobileShortcutDeviceUseCase {
         }
         if label.chars().count() > MAX_LABEL_LEN {
             return Err(RegisterMobileShortcutDeviceError::LabelTooLong);
+        }
+
+        // 0.1 自定义凭据形态前置校验 —— 在 settings / minter 之前做, 让
+        //     "格式不合法"快速失败,避免无谓的 IO。username 先 trim 再校验
+        //     (空格不算合法字符);password 不 trim(用户密码可能含前后空格)。
+        let custom_username = input.username.as_ref().map(|u| u.trim().to_string());
+        if let Some(ref u) = custom_username {
+            validate_username_shape(u)?;
+        }
+        if let Some(ref p) = input.password {
+            validate_password_length(p)?;
         }
 
         // 1. 读 settings 决定 base_url —— 没开 LAN 监听就直接拒绝, 避免
@@ -169,13 +239,40 @@ impl RegisterMobileShortcutDeviceUseCase {
         let port = settings.mobile_sync.lan_port.unwrap_or(42720);
         let base_url = format!("http://{advertise_ip}:{port}");
 
-        // 2. 颁发凭据 —— 单次原子调用, 4 项产物来自同一次 minting。
+        // 2. 颁发凭据 —— minter 一次性给 4 项 baseline;然后按 input
+        //    选择性覆盖 username / (password + password_hash)。device_id
+        //    永远来自 minter(用户不能自定义 device_id, 它是稳定内部 id)。
         let MintedCredentials {
-            username,
-            password,
-            password_hash,
+            username: minted_username,
+            password: minted_password,
+            password_hash: minted_hash,
             device_id,
         } = self.credentials_minter.mint_credentials();
+
+        // 自定义 username:0.1 已校验形态(对 trim 后值);此处只做唯一性
+        // 检查。
+        let username = match custom_username {
+            Some(u) => {
+                self.ensure_username_available(&u).await?;
+                u
+            }
+            None => minted_username,
+        };
+
+        // 自定义 password:hash 自定义明文;否则沿用 minter 的 (password,
+        // password_hash) 同源对。
+        let (password, password_hash) = match input.password {
+            Some(p) => {
+                // 长度在 0.1 已校验。
+                let hash = self
+                    .password_hasher
+                    .hash(&p)
+                    .await
+                    .map_err(translate_hasher_error)?;
+                (p, hash)
+            }
+            None => (minted_password, minted_hash),
+        };
 
         // 3. 构造并持久化 MobileDevice。
         let now_ms = self.clock.now_ms();
@@ -213,9 +310,74 @@ impl RegisterMobileShortcutDeviceUseCase {
             qr_code_ascii,
         })
     }
+
+    /// 自定义 username 的唯一性检查 —— 撞上现有设备直接拒绝, UI / CLI
+    /// 提示用户换一个。
+    async fn ensure_username_available(
+        &self,
+        username: &str,
+    ) -> Result<(), RegisterMobileShortcutDeviceError> {
+        match self.device_repo.find_by_username(username).await {
+            Ok(Some(_)) => Err(RegisterMobileShortcutDeviceError::UsernameTaken(
+                username.to_string(),
+            )),
+            Ok(None) => Ok(()),
+            Err(err) => Err(translate_device_error(err)),
+        }
+    }
 }
 
 // ─── helpers ────────────────────────────────────────────────────────────
+
+/// 校验自定义 username 形态:
+/// - 长度 [`MIN_USERNAME_LEN`]–[`MAX_USERNAME_LEN`]
+/// - 必须以 ASCII 字母开头(避免 Basic Auth header 解析歧义)
+/// - 只允许 `[A-Za-z0-9_]`
+fn validate_username_shape(username: &str) -> Result<(), RegisterMobileShortcutDeviceError> {
+    let len = username.chars().count();
+    if len < MIN_USERNAME_LEN {
+        return Err(RegisterMobileShortcutDeviceError::UsernameInvalidShape(
+            format!("must be at least {MIN_USERNAME_LEN} characters (got {len})"),
+        ));
+    }
+    if len > MAX_USERNAME_LEN {
+        return Err(RegisterMobileShortcutDeviceError::UsernameInvalidShape(
+            format!("must be at most {MAX_USERNAME_LEN} characters (got {len})"),
+        ));
+    }
+    let mut chars = username.chars();
+    let first = chars.next().expect("len ≥ MIN_USERNAME_LEN > 0");
+    if !first.is_ascii_alphabetic() {
+        return Err(RegisterMobileShortcutDeviceError::UsernameInvalidShape(
+            "must start with an ASCII letter".to_string(),
+        ));
+    }
+    if !username
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '_')
+    {
+        return Err(RegisterMobileShortcutDeviceError::UsernameInvalidShape(
+            "only letters, digits, and underscore are allowed".to_string(),
+        ));
+    }
+    Ok(())
+}
+
+/// 校验自定义 password 长度。**不**校验复杂度(用户选"宽松")。
+fn validate_password_length(password: &str) -> Result<(), RegisterMobileShortcutDeviceError> {
+    let len = password.chars().count();
+    if len < MIN_PASSWORD_LEN {
+        return Err(RegisterMobileShortcutDeviceError::PasswordTooShort {
+            min: MIN_PASSWORD_LEN,
+        });
+    }
+    if len > MAX_PASSWORD_LEN {
+        return Err(RegisterMobileShortcutDeviceError::PasswordTooLong {
+            max: MAX_PASSWORD_LEN,
+        });
+    }
+    Ok(())
+}
 
 /// 把 install URL 渲染为 PNG + ASCII 二维码。
 ///
@@ -261,15 +423,29 @@ fn translate_device_error(err: MobileDeviceError) -> RegisterMobileShortcutDevic
             )
         }
         MobileDeviceError::UsernameCollision => {
-            // 8 hex(4 字节)碰撞概率极低,但仍可能;翻译为 persistence,
-            // UI 提示重试一次即可。
-            warn!("minter produced colliding username; retry register to mint a new pair");
-            RegisterMobileShortcutDeviceError::PersistenceFailed(
-                "username collision; retry registration".to_string(),
+            // 自动模式下 minter 8 hex 碰撞概率极低;custom 模式下我们已
+            // 在 save 之前 check 过 find_by_username,这里只可能是 race
+            // (并发 register)—— 翻译为 UsernameTaken 让 UI 提示用户换名。
+            warn!("username collision at save time (likely concurrent register race)");
+            RegisterMobileShortcutDeviceError::UsernameTaken(
+                "username taken at save time (concurrent registration)".to_string(),
             )
         }
         MobileDeviceError::Storage(msg) => {
             RegisterMobileShortcutDeviceError::PersistenceFailed(msg)
+        }
+    }
+}
+
+fn translate_hasher_error(err: PasswordHasherError) -> RegisterMobileShortcutDeviceError {
+    match err {
+        PasswordHasherError::InvalidPhc(msg) => {
+            // hash() 不应产生 InvalidPhc(那是 verify 路径才会有), 但 trait
+            // 把两个变体合并; 走到这里说明 adapter 实现异常, 翻译为内部错误。
+            RegisterMobileShortcutDeviceError::PasswordHashFailed(format!("invalid phc: {msg}"))
+        }
+        PasswordHasherError::Internal(msg) => {
+            RegisterMobileShortcutDeviceError::PasswordHashFailed(msg)
         }
     }
 }
@@ -308,9 +484,50 @@ mod tests {
         }
     }
 
+    /// 把每次 hash 调用记录下来,便于断言 use case 是否真去 hash 了自定义
+    /// password(而不是回退用 minter 的 phc 字符串)。
+    #[derive(Default)]
+    struct RecordingHasher {
+        hashed: Mutex<Vec<String>>,
+    }
+    #[async_trait]
+    impl PasswordHasherPort for RecordingHasher {
+        async fn hash(&self, password: &str) -> Result<String, PasswordHasherError> {
+            self.hashed.lock().unwrap().push(password.to_string());
+            Ok(format!("phc-of:{password}"))
+        }
+        async fn verify(&self, _password: &str, _phc: &str) -> Result<bool, PasswordHasherError> {
+            unreachable!("register flow does not call verify")
+        }
+    }
+
+    /// hash() 永远报内部错误的 fixture,断言 use case 把它翻成
+    /// `PasswordHashFailed`。
+    struct FailingHasher;
+    #[async_trait]
+    impl PasswordHasherPort for FailingHasher {
+        async fn hash(&self, _password: &str) -> Result<String, PasswordHasherError> {
+            Err(PasswordHasherError::Internal(
+                "simulated hash failure".into(),
+            ))
+        }
+        async fn verify(&self, _password: &str, _phc: &str) -> Result<bool, PasswordHasherError> {
+            unreachable!()
+        }
+    }
+
     #[derive(Default)]
     struct InMemoryDeviceRepo {
         saved: Mutex<Vec<MobileDevice>>,
+        /// 预置:这些 username 视为"已被占用",`find_by_username` 命中。
+        preexisting: Mutex<Vec<String>>,
+    }
+    impl InMemoryDeviceRepo {
+        fn with_existing_username(name: &str) -> Self {
+            let s = Self::default();
+            s.preexisting.lock().unwrap().push(name.to_string());
+            s
+        }
     }
     #[async_trait]
     impl MobileDeviceRepositoryPort for InMemoryDeviceRepo {
@@ -320,9 +537,36 @@ mod tests {
         }
         async fn find_by_username(
             &self,
-            _: &str,
+            username: &str,
         ) -> Result<Option<MobileDevice>, MobileDeviceError> {
-            Ok(None)
+            // 真正存在的(saved 里)优先;之外再看 preexisting fixture 名单。
+            let saved = self.saved.lock().unwrap();
+            if let Some(d) = saved.iter().find(|d| d.username == username) {
+                return Ok(Some(d.clone()));
+            }
+            drop(saved);
+            if self
+                .preexisting
+                .lock()
+                .unwrap()
+                .iter()
+                .any(|u| u == username)
+            {
+                Ok(Some(MobileDevice {
+                    device_id: MobileDeviceId::new("did_existing"),
+                    label: "existing".into(),
+                    client_type: MobileClientType::IosShortcut,
+                    username: username.to_string(),
+                    password_hash: "phc:existing".into(),
+                    created_at_ms: 0,
+                    last_seen_at_ms: None,
+                    last_seen_ip: None,
+                    reported_name: None,
+                    reported_os: None,
+                }))
+            } else {
+                Ok(None)
+            }
         }
         async fn find_by_device_id(
             &self,
@@ -371,23 +615,26 @@ mod tests {
     fn build_uc(lan_listen_enabled: bool) -> RegisterMobileShortcutDeviceUseCase {
         RegisterMobileShortcutDeviceUseCase::new(
             Arc::new(DeterministicMinter),
+            Arc::new(RecordingHasher::default()),
             Arc::new(InMemoryDeviceRepo::default()),
             Arc::new(FixedSettings { lan_listen_enabled }),
             Arc::new(FixedClock(1_000)),
         )
     }
 
-    // ── tests ───────────────────────────────────────────────────────
+    fn label_only(label: &str) -> RegisterMobileShortcutDeviceInput {
+        RegisterMobileShortcutDeviceInput {
+            label: label.into(),
+            ..Default::default()
+        }
+    }
+
+    // ── tests: label / lan listener (existing happy path) ──────────────
 
     #[tokio::test]
     async fn rejects_empty_label() {
         let uc = build_uc(true);
-        let err = uc
-            .execute(RegisterMobileShortcutDeviceInput {
-                label: "   ".into(),
-            })
-            .await
-            .unwrap_err();
+        let err = uc.execute(label_only("   ")).await.unwrap_err();
         assert!(matches!(err, RegisterMobileShortcutDeviceError::LabelEmpty));
     }
 
@@ -395,9 +642,7 @@ mod tests {
     async fn rejects_overlong_label() {
         let uc = build_uc(true);
         let err = uc
-            .execute(RegisterMobileShortcutDeviceInput {
-                label: "x".repeat(MAX_LABEL_LEN + 1),
-            })
+            .execute(label_only(&"x".repeat(MAX_LABEL_LEN + 1)))
             .await
             .unwrap_err();
         assert!(matches!(
@@ -409,12 +654,7 @@ mod tests {
     #[tokio::test]
     async fn rejects_when_lan_listener_disabled() {
         let uc = build_uc(false);
-        let err = uc
-            .execute(RegisterMobileShortcutDeviceInput {
-                label: "我的 iPhone".into(),
-            })
-            .await
-            .unwrap_err();
+        let err = uc.execute(label_only("我的 iPhone")).await.unwrap_err();
         assert!(matches!(
             err,
             RegisterMobileShortcutDeviceError::LanListenerDisabled
@@ -422,12 +662,10 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn happy_path_returns_credentials_and_install_url() {
+    async fn auto_path_returns_minter_credentials_and_install_url() {
         let uc = build_uc(true);
         let out = uc
-            .execute(RegisterMobileShortcutDeviceInput {
-                label: "我的 iPhone".into(),
-            })
+            .execute(label_only("我的 iPhone"))
             .await
             .expect("happy path must succeed");
 
@@ -437,7 +675,7 @@ mod tests {
         assert_eq!(out.device.created_at_ms, 1_000);
         assert_eq!(out.device.username, "mobile_aabbccdd");
 
-        // 一次性回显的凭据
+        // 一次性回显的凭据(全自动 → 来自 minter)
         assert_eq!(out.username, "mobile_aabbccdd");
         assert_eq!(out.password, "deterministic-password-22");
         assert_eq!(out.base_url, "http://192.168.1.5:42720");
@@ -446,5 +684,250 @@ mod tests {
         // 二维码必须非空,且 PNG 字节有 magic header `\x89PNG`。
         assert!(out.qr_code_png_bytes.starts_with(&[0x89, 0x50, 0x4E, 0x47]));
         assert!(!out.qr_code_ascii.is_empty());
+    }
+
+    // ── tests: custom username ─────────────────────────────────────────
+
+    #[tokio::test]
+    async fn accepts_custom_username() {
+        let uc = build_uc(true);
+        let out = uc
+            .execute(RegisterMobileShortcutDeviceInput {
+                label: "iPhone".into(),
+                username: Some("alice_001".into()),
+                password: None,
+            })
+            .await
+            .expect("custom username should pass");
+        assert_eq!(out.username, "alice_001");
+        assert_eq!(out.device.username, "alice_001");
+        // password 走 minter,所以仍是 deterministic 那串。
+        assert_eq!(out.password, "deterministic-password-22");
+    }
+
+    #[tokio::test]
+    async fn trims_custom_username_before_validation() {
+        let uc = build_uc(true);
+        let out = uc
+            .execute(RegisterMobileShortcutDeviceInput {
+                label: "iPhone".into(),
+                username: Some("  alice_42  ".into()),
+                password: None,
+            })
+            .await
+            .expect("trim ok");
+        assert_eq!(out.username, "alice_42");
+    }
+
+    #[tokio::test]
+    async fn rejects_username_too_short() {
+        let uc = build_uc(true);
+        let err = uc
+            .execute(RegisterMobileShortcutDeviceInput {
+                label: "iPhone".into(),
+                username: Some("ali".into()), // 3 chars < MIN(6)
+                password: None,
+            })
+            .await
+            .unwrap_err();
+        assert!(matches!(
+            err,
+            RegisterMobileShortcutDeviceError::UsernameInvalidShape(_)
+        ));
+    }
+
+    #[tokio::test]
+    async fn rejects_username_too_long() {
+        let uc = build_uc(true);
+        let err = uc
+            .execute(RegisterMobileShortcutDeviceInput {
+                label: "iPhone".into(),
+                username: Some("a".repeat(MAX_USERNAME_LEN + 1)),
+                password: None,
+            })
+            .await
+            .unwrap_err();
+        assert!(matches!(
+            err,
+            RegisterMobileShortcutDeviceError::UsernameInvalidShape(_)
+        ));
+    }
+
+    #[tokio::test]
+    async fn rejects_username_starting_with_digit() {
+        let uc = build_uc(true);
+        let err = uc
+            .execute(RegisterMobileShortcutDeviceInput {
+                label: "iPhone".into(),
+                username: Some("1alice0".into()),
+                password: None,
+            })
+            .await
+            .unwrap_err();
+        assert!(matches!(
+            err,
+            RegisterMobileShortcutDeviceError::UsernameInvalidShape(_)
+        ));
+    }
+
+    #[tokio::test]
+    async fn rejects_username_with_invalid_chars() {
+        let uc = build_uc(true);
+        let err = uc
+            .execute(RegisterMobileShortcutDeviceInput {
+                label: "iPhone".into(),
+                username: Some("alice-bob".into()), // hyphen not in [A-Za-z0-9_]
+                password: None,
+            })
+            .await
+            .unwrap_err();
+        assert!(matches!(
+            err,
+            RegisterMobileShortcutDeviceError::UsernameInvalidShape(_)
+        ));
+    }
+
+    #[tokio::test]
+    async fn rejects_username_already_taken() {
+        let uc = RegisterMobileShortcutDeviceUseCase::new(
+            Arc::new(DeterministicMinter),
+            Arc::new(RecordingHasher::default()),
+            Arc::new(InMemoryDeviceRepo::with_existing_username("alice_001")),
+            Arc::new(FixedSettings {
+                lan_listen_enabled: true,
+            }),
+            Arc::new(FixedClock(1_000)),
+        );
+        let err = uc
+            .execute(RegisterMobileShortcutDeviceInput {
+                label: "iPhone".into(),
+                username: Some("alice_001".into()),
+                password: None,
+            })
+            .await
+            .unwrap_err();
+        match err {
+            RegisterMobileShortcutDeviceError::UsernameTaken(u) => assert_eq!(u, "alice_001"),
+            other => panic!("expected UsernameTaken, got {other:?}"),
+        }
+    }
+
+    // ── tests: custom password ─────────────────────────────────────────
+
+    #[tokio::test]
+    async fn accepts_custom_password() {
+        let hasher = Arc::new(RecordingHasher::default());
+        let uc = RegisterMobileShortcutDeviceUseCase::new(
+            Arc::new(DeterministicMinter),
+            hasher.clone(),
+            Arc::new(InMemoryDeviceRepo::default()),
+            Arc::new(FixedSettings {
+                lan_listen_enabled: true,
+            }),
+            Arc::new(FixedClock(1_000)),
+        );
+        let out = uc
+            .execute(RegisterMobileShortcutDeviceInput {
+                label: "iPhone".into(),
+                username: None,
+                password: Some("correct horse battery staple".into()),
+            })
+            .await
+            .expect("custom password should pass");
+        // password 字段仍是用户原值(一次性回显);phc 走 hasher。
+        assert_eq!(out.password, "correct horse battery staple");
+        assert_eq!(
+            out.device.password_hash,
+            "phc-of:correct horse battery staple"
+        );
+        // username 走 minter
+        assert_eq!(out.username, "mobile_aabbccdd");
+
+        // 断言 hasher 真被调用了 1 次。
+        assert_eq!(hasher.hashed.lock().unwrap().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn rejects_password_too_short() {
+        let uc = build_uc(true);
+        let err = uc
+            .execute(RegisterMobileShortcutDeviceInput {
+                label: "iPhone".into(),
+                username: None,
+                password: Some("a".repeat(MIN_PASSWORD_LEN - 1)),
+            })
+            .await
+            .unwrap_err();
+        match err {
+            RegisterMobileShortcutDeviceError::PasswordTooShort { min } => {
+                assert_eq!(min, MIN_PASSWORD_LEN)
+            }
+            other => panic!("expected PasswordTooShort, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn rejects_password_too_long() {
+        let uc = build_uc(true);
+        let err = uc
+            .execute(RegisterMobileShortcutDeviceInput {
+                label: "iPhone".into(),
+                username: None,
+                password: Some("a".repeat(MAX_PASSWORD_LEN + 1)),
+            })
+            .await
+            .unwrap_err();
+        match err {
+            RegisterMobileShortcutDeviceError::PasswordTooLong { max } => {
+                assert_eq!(max, MAX_PASSWORD_LEN)
+            }
+            other => panic!("expected PasswordTooLong, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn translates_hasher_internal_error() {
+        let uc = RegisterMobileShortcutDeviceUseCase::new(
+            Arc::new(DeterministicMinter),
+            Arc::new(FailingHasher),
+            Arc::new(InMemoryDeviceRepo::default()),
+            Arc::new(FixedSettings {
+                lan_listen_enabled: true,
+            }),
+            Arc::new(FixedClock(1_000)),
+        );
+        let err = uc
+            .execute(RegisterMobileShortcutDeviceInput {
+                label: "iPhone".into(),
+                username: None,
+                password: Some("a-strong-password".into()),
+            })
+            .await
+            .unwrap_err();
+        assert!(matches!(
+            err,
+            RegisterMobileShortcutDeviceError::PasswordHashFailed(_)
+        ));
+    }
+
+    // ── tests: both custom (mixed) ────────────────────────────────────
+
+    #[tokio::test]
+    async fn accepts_both_custom_username_and_password() {
+        let uc = build_uc(true);
+        let out = uc
+            .execute(RegisterMobileShortcutDeviceInput {
+                label: "iPhone".into(),
+                username: Some("alice_pro".into()),
+                password: Some("a-strong-password".into()),
+            })
+            .await
+            .expect("both custom should pass");
+        assert_eq!(out.username, "alice_pro");
+        assert_eq!(out.password, "a-strong-password");
+        assert_eq!(out.device.username, "alice_pro");
+        assert_eq!(out.device.password_hash, "phc-of:a-strong-password");
+        // device_id 永远来自 minter。
+        assert_eq!(out.device.device_id.as_str(), "did_aaaa");
     }
 }

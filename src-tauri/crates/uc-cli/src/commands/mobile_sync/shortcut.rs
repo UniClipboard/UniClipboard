@@ -53,6 +53,8 @@ async fn add(label: String, json: bool, verbose: bool) -> i32 {
         .facade
         .register_device(RegisterMobileShortcutDeviceInput {
             label: label.clone(),
+            username: None,
+            password: None,
         })
         .await;
 

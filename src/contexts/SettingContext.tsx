@@ -9,7 +9,6 @@ import { emitSettingsChanged } from '@/lib/settings-events'
 import { invokeWithTrace } from '@/lib/tauri-command'
 import { applyThemePreset } from '@/lib/theme-engine'
 import { startThemeTransition } from '@/lib/theme-transition'
-import { setFrontendTelemetryEnabled } from '@/observability/otlp'
 import { setFrontendSentryEnabled } from '@/observability/sentry'
 import type { SettingContextType, Settings } from '@/types/setting'
 
@@ -262,11 +261,12 @@ export const SettingProvider: React.FC<SettingProviderProps> = ({ children }) =>
   }, [setting?.general?.language])
 
   // 将用户侧遥测开关同步到前端观测出口；初次加载设置和后续变更都会立即生效。
-  // 后端 Sentry/OTLP 通过 uc-observability 的运行时 gate 同步，不需要重启。
+  // 前端通过 Sentry 的 beforeSend / beforeBreadcrumb / beforeSendLog 钩子
+  // 在 sentryRuntimeEnabled=false 时直接丢弃事件；后端 Sentry 由
+  // uc-observability 的 telemetry_gate 同步，不需要重启。
   useEffect(() => {
     const enabled = setting?.general?.telemetryEnabled
     if (typeof enabled !== 'boolean') return
-    setFrontendTelemetryEnabled(enabled)
     setFrontendSentryEnabled(enabled)
   }, [setting?.general?.telemetryEnabled])
 

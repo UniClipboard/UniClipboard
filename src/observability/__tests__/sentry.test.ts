@@ -17,7 +17,12 @@ vi.mock('@sentry/react', async importOriginal => {
 describe('initSentry', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    // 重置到启动默认值，避免设置加载前误发。
+    // 清掉 localStorage 镜像，确保下面 dynamic-import 测试能从"首次启动"状态出发。
+    if (typeof window !== 'undefined' && window.localStorage) {
+      window.localStorage.removeItem('uc.telemetry_enabled')
+    }
+    // 重置当前模块的运行时 gate 到 false，避免上条测试的状态泄漏到下一条；
+    // 注意这一步会把 localStorage 镜像也写成 'false'，所以放在 removeItem 之后。
     setFrontendSentryEnabled(false)
   })
 
@@ -122,6 +127,30 @@ describe('initSentry', () => {
 
     const event = { extra: { early: 'startup' } } as unknown as ErrorEvent
     expect(await Promise.resolve(beforeSend(event, {}))).toBeNull()
+  })
+
+  it('honors a localStorage mirror of "true" so early startup events are captured', async () => {
+    // Simulate a previous session that left the user's preference as enabled.
+    window.localStorage.setItem('uc.telemetry_enabled', 'true')
+    vi.resetModules()
+    const fresh = await import('@/observability/sentry')
+    fresh.initSentry()
+    const calls = vi.mocked(Sentry.init).mock.calls
+    const initCall = calls[calls.length - 1][0]
+    const beforeSend = initCall.beforeSend!
+
+    const event = { extra: { early: 'startup' } } as unknown as ErrorEvent
+    const result = await Promise.resolve(beforeSend(event, {}))
+    expect(result).not.toBeNull()
+    expect(result?.extra).toEqual({ early: 'startup' })
+  })
+
+  it('persists the runtime gate to localStorage so the next session can read it synchronously', () => {
+    setFrontendSentryEnabled(true)
+    expect(window.localStorage.getItem('uc.telemetry_enabled')).toBe('true')
+
+    setFrontendSentryEnabled(false)
+    expect(window.localStorage.getItem('uc.telemetry_enabled')).toBe('false')
   })
 
   it('passes events through when telemetry runtime gate is re-enabled', async () => {

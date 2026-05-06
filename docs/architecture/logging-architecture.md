@@ -12,7 +12,7 @@ A **dual-track** coexistence is maintained during the transition from legacy `lo
 - `log::*` macros -> `tauri-plugin-log` -> Webview (dev) / stdout (prod)
 - `tracing::*` macros -> `uc-observability` subscriber -> console + JSON file
 
-**Current Status**: Phases 0-3 complete, actively using `tracing` across all architectural layers. Dual-output logging with profile system active. Phase 87: OTLP pipeline active — spans and logs exported via OTLP/HTTP-protobuf to Seq (dev/debug_clipboard profiles only).
+**Current Status**: Phases 0-3 complete, actively using `tracing` across all architectural layers. Dual-output logging with profile system active. Spans, structured logs, and panics flow through **Sentry** (Issues + Logs + Performance) — the OTLP→Seq pipeline used previously was retired in commit `faa8eb8d` (backend) and issue #543 (frontend); see [Sentry Logs (Centralized Observability)](#sentry-logs-centralized-observability).
 
 ## Architecture
 
@@ -54,7 +54,7 @@ tracing::info_span!("command.clipboard.capture", device_id = %id);
 **Note**: `tracing-log` bridge is NOT configured. The two systems operate independently:
 
 - `log::` macros -> `tauri-plugin-log` -> Webview (dev) / stdout (prod)
-- `tracing::` macros -> `uc-observability` subscriber -> console (pretty) + JSON file + OTLP (when enabled)
+- `tracing::` macros -> `uc-observability` subscriber -> console (pretty) + JSON file + Sentry (Logs + Performance, when DSN is configured)
 
 ### Module Organization
 
@@ -65,14 +65,12 @@ tracing::info_span!("command.clipboard.capture", device_id = %id);
 ```
 uc-observability/
 ├── src/
-│   ├── lib.rs         # Public API re-exports
-│   ├── profile.rs     # LogProfile enum (Dev/Prod/DebugClipboard)
-│   ├── format.rs      # FlatJsonFormat custom FormatEvent
-│   ├── init.rs        # Layer builders + standalone init
-│   └── otlp/
-│       ├── mod.rs     # init_otlp_provider() + public exports
-│       ├── layer.rs   # OtlpConcreteLayer<S> type alias + build_otlp_layer()
-│       └── propagator.rs  # inject_current_context() + extract_remote_context()
+│   ├── lib.rs           # Public API re-exports
+│   ├── profile.rs       # LogProfile enum (Dev/Prod/DebugClipboard)
+│   ├── format.rs        # FlatJsonFormat custom FormatEvent
+│   ├── init.rs          # Layer builders + standalone init
+│   ├── redact.rs        # Sink-agnostic field-name redaction blocklist
+│   └── telemetry_gate.rs # Runtime gate mirrored from settings.general.telemetry_enabled
 └── Cargo.toml
 ```
 
@@ -81,8 +79,8 @@ Provides:
 - `LogProfile` - Profile-based filter selection via `UC_LOG_PROFILE`
 - `build_console_layer()` - Pretty console layer with per-layer EnvFilter
 - `build_json_layer()` - JSON file layer with FlatJsonFormat and daily rolling
-- `init_otlp_provider()` - Async OTLP provider init (returns SdkTracerProvider + OtlpGuard)
-- `build_otlp_layer()` - Create OTLP tracing-subscriber layer from provider
+- `redact_attributes()` - Shared blocklist applied by Sentry's `before_send_log`
+- `telemetry_gate` - Runtime on/off switch synchronized with the user setting
 - `init_tracing_subscriber()` - Standalone convenience init (no Sentry)
 
 **Zero app-layer dependencies** - Sentry integration is kept in the caller.
@@ -94,7 +92,7 @@ Provides:
 ```
 bootstrap/
 ├── logging.rs       # tauri-plugin-log configuration (legacy, Webview + stdout)
-└── tracing.rs       # Thin wrapper: uc-observability layers + Sentry + OTLP
+└── tracing.rs       # Thin wrapper: uc-observability layers + Sentry
 ```
 
 **Initialization Flow**:
@@ -104,10 +102,12 @@ main.rs
   ├─> init_tracing_subscriber()         // uc-tauri/bootstrap/tracing.rs
   │    ├─> LogProfile::from_env()       // Select profile
   │    ├─> sentry::init()               // Optional Sentry (if SENTRY_DSN set)
+  │    │     - logs feature enabled (sentry 0.48+)
+  │    │     - before_send_log applies redact + telemetry_gate
+  │    │     - sentry-trace + baggage headers auto-installed
   │    ├─> build_console_layer()        // From uc-observability
   │    ├─> build_json_layer()           // From uc-observability
-  │    ├─> init_otlp_provider().await   // Optional OTLP (if OTEL_EXPORTER_OTLP_ENDPOINT set + dev/debug_clipboard profile)
-  │    ├─> build_otlp_layer()           // Create OTLP tracing layer
+  │    ├─> sentry_tracing::layer()      // Routes ERROR→Issue+Log, WARN→Log, INFO→Breadcrumb
   │    └─> registry().with(...).try_init()  // Compose and register
   │
   └─> Builder::default()
@@ -161,11 +161,11 @@ The `UC_LOG_PROFILE` environment variable selects a logging profile that control
 
 ### Available Profiles
 
-| Profile           | Base Level | Console Behavior           | JSON Behavior             | OTLP Behavior         | Special Overrides                                                                                         |
-| ----------------- | ---------- | -------------------------- | ------------------------- | --------------------- | --------------------------------------------------------------------------------------------------------- |
-| `dev`             | `debug`    | Pretty format, ANSI colors | Flat JSON, daily rotating | Enabled (if env set)  | `uc_platform=debug`, `uc_infra=debug`                                                                     |
-| `prod`            | `info`     | Pretty format, ANSI colors | Flat JSON, daily rotating | **Disabled** (always) | (none)                                                                                                    |
-| `debug_clipboard` | `info`     | Pretty format, ANSI colors | Flat JSON, daily rotating | Enabled (if env set)  | `uc_platform::adapters::clipboard=trace`, `uc_app::usecases::clipboard=debug`, `uc_core::clipboard=debug` |
+| Profile           | Base Level | Console Behavior           | JSON Behavior             | Sentry Behavior                                       | Special Overrides                                                                                         |
+| ----------------- | ---------- | -------------------------- | ------------------------- | ----------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| `dev`             | `debug`    | Pretty format, ANSI colors | Flat JSON, daily rotating | Enabled (if `SENTRY_DSN` set) — gated at runtime      | `uc_platform=debug`, `uc_infra=debug`                                                                     |
+| `prod`            | `info`     | Pretty format, ANSI colors | Flat JSON, daily rotating | Enabled (if `SENTRY_DSN` set) — gated at runtime      | (none)                                                                                                    |
+| `debug_clipboard` | `info`     | Pretty format, ANSI colors | Flat JSON, daily rotating | Enabled (if `SENTRY_DSN` set) — gated at runtime      | `uc_platform::adapters::clipboard=trace`, `uc_app::usecases::clipboard=debug`, `uc_core::clipboard=debug` |
 
 All profiles include common noise filters:
 
@@ -270,7 +270,8 @@ When `debug_assertions` is true (debug builds):
 - **Targets**: `uc_platform=debug`, `uc_infra=debug`
 - **Console**: Pretty format to stdout
 - **JSON**: Flat JSON to daily-rotating file
-- **OTLP**: Enabled if `OTEL_EXPORTER_OTLP_ENDPOINT` is set
+- **Sentry**: Enabled if `SENTRY_DSN` is set; further gated by the user's
+  in-app `general.telemetry_enabled` setting at runtime
 
 **tauri-plugin-log (legacy)**:
 
@@ -288,7 +289,10 @@ When `debug_assertions` is false (release builds):
 - **Level**: `Info`
 - **Console**: Pretty format to stdout
 - **JSON**: Flat JSON to daily-rotating file
-- **OTLP**: **Always disabled** — production builds skip the OTLP layer entirely regardless of env vars
+- **Sentry**: Enabled if `SENTRY_DSN` is set; gated at runtime by the user's
+  `general.telemetry_enabled` setting (default-off until the daemon hands the
+  persisted preference back to the GUI). `INFO` events are sent as breadcrumbs
+  only; `WARN` and `ERROR` become searchable Logs / Issues.
 
 **tauri-plugin-log (legacy)**:
 
@@ -298,17 +302,19 @@ When `debug_assertions` is false (release builds):
 
 ### Environment Variables
 
-| Variable                      | Purpose                                                                         | Default                |
-| ----------------------------- | ------------------------------------------------------------------------------- | ---------------------- |
-| `UC_LOG_PROFILE`              | Select logging profile (`dev`, `prod`, `debug_clipboard`)                       | Build-type default     |
-| `RUST_LOG`                    | Override profile filters (standard tracing env)                                 | Not set                |
-| `SENTRY_DSN`                  | Enable Sentry error reporting                                                   | Not set (disabled)     |
-| `OTEL_EXPORTER_OTLP_ENDPOINT` | OTLP base URL for traces+logs export (e.g. `http://localhost:5341/ingest/otlp`) | Not set (disabled)     |
-| `OTEL_EXPORTER_OTLP_HEADERS`  | Optional headers (e.g. `X-Seq-ApiKey=your-key`)                                 | Not set                |
-| `OTEL_SERVICE_NAME`           | Override service name in resource attributes                                    | `uniclipboard-desktop` |
-| `OTEL_RESOURCE_ATTRIBUTES`    | Additional OTel resource attributes (key=value,key2=value2)                     | Not set                |
+| Variable           | Purpose                                                                                              | Default            |
+| ------------------ | ---------------------------------------------------------------------------------------------------- | ------------------ |
+| `UC_LOG_PROFILE`   | Select logging profile (`dev`, `prod`, `debug_clipboard`)                                            | Build-type default |
+| `RUST_LOG`         | Override profile filters (standard tracing env)                                                      | Not set            |
+| `SENTRY_DSN`       | Enable backend Sentry (Issues + Logs + Performance). Independent project from the frontend DSN.      | Not set (disabled) |
+| `VITE_SENTRY_DSN`  | Enable frontend Sentry (browser SDK). Baked in at build time. Independent project from `SENTRY_DSN`. | Not set (disabled) |
 
-**Note:** `UC_SEQ_URL` (removed in Phase 87) is no longer consulted. If `UC_SEQ_URL` is still set in your environment, the application logs a `WARN` on startup pointing you to `OTEL_EXPORTER_OTLP_ENDPOINT`. Set `OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:5341/ingest/otlp` instead.
+**Note:** All `OTEL_*` and `UC_SEQ_URL` environment variables were removed
+together with the OTLP→Seq pipeline (backend: commit `faa8eb8d`, frontend:
+issue #543). They are no longer consulted; remove them from your environment
+to avoid confusion. The legacy `VITE_OTEL_EXPORTER_OTLP_ENDPOINT` and
+`OTEL_EXPORTER_OTLP_ENDPOINT` GitHub secrets can be deleted once the
+production Seq instance is decommissioned.
 
 ### Color Coding
 
@@ -757,218 +763,73 @@ pub async fn get_entries(&self) -> Result<Vec<Entry>> {
 - Set appropriate levels for each layer
 - Use environment-specific filtering in production
 
-## OpenTelemetry OTLP Integration (Local Visualization)
+## Sentry Logs (Centralized Observability)
 
 ### Overview
 
-[Seq](https://datalust.co/seq) is a structured log and trace server that provides a rich web UI for searching, filtering, and visualizing OTel traces and log events. Starting with Phase 87, UniClipboard exports spans and log events via the **OTLP/HTTP-protobuf** protocol to a local Seq instance using the standard OpenTelemetry environment variables.
+[Sentry](https://sentry.io) is the single sink for production observability across the daemon, the GUI, and panics. Issues, structured Logs, and Performance Spans share one transport, so a single `trace_id` correlates a clipboard operation from the Rust pipeline through the Tauri command into the React UI.
 
-Key capabilities when using Seq with OTLP:
+Three tracks share the same DSN-keyed project:
 
-- **Distributed trace view** — all pipeline stages for one clipboard operation shown as a parent-child span tree under a single TraceId
-- **Cross-device trace continuity** — sender and receiver spans share the same TraceId via W3C traceparent
-- **Full-text search** across all span attributes and log fields
-- **Filter by TraceId or SpanName** to see all spans of a single clipboard operation
-- **Dashboard creation** for monitoring clipboard operations
+- **Issues** — `tracing::error!` (backend) and `Sentry.captureException` (frontend) for actionable failures.
+- **Logs** — `tracing::warn!`/`error!` (backend) and the pino → `Sentry.logger` bridge in `src/lib/logger.ts` (frontend) for searchable structured logs.
+- **Performance** — every `#[tracing::instrument]` span (backend) and every `traceManager.startTrace()` span (frontend) becomes a Sentry span; cross-process correlation is preserved by Sentry's `sentry-trace` + `baggage` headers.
 
-### Quick Start
+The previous OTLP→Seq pipeline was retired in commit `faa8eb8d` (backend) and issue #543 (frontend) because the upstream Seq instance hit disk-full and started returning 503s, which surfaced inside Sentry as a flood of `BatchLogProcessor.ExportError` issues. Routing logs directly to Sentry removed the second sink and the noise it generated.
 
-**1. Start a local Seq instance:**
+### Privacy and Telemetry Gate
 
-```bash
-docker compose -f docker-compose.seq.yml up -d
-```
+Both backend and frontend honor the in-app **Settings → General → Telemetry** toggle (`general.telemetry_enabled`):
 
-**2. Set the OTLP endpoint environment variable:**
+- **Backend** — `uc_observability::telemetry_gate` is consulted by Sentry's `before_send`, `before_breadcrumb`, and `before_send_log` hooks. When the gate is off, all three return `None` and nothing leaves the process.
+- **Frontend** — `setFrontendSentryEnabled` flips the same flag for the browser SDK. The `beforeSend` / `beforeBreadcrumb` / `beforeSendLog` hooks in `src/observability/sentry.ts` short-circuit to `null` while disabled. The default is **off** at startup; SettingContext flips it on once the daemon returns the persisted user preference, so any events captured before that point are dropped silently.
 
-```bash
-export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:5341/ingest/otlp
-```
-
-**3. (Optional) Set a Seq API key if your instance requires authentication:**
-
-```bash
-export OTEL_EXPORTER_OTLP_HEADERS="X-Seq-ApiKey=your-api-key"
-```
-
-**4. Start the application:**
-
-```bash
-bun run tauri:dev
-```
-
-Spans will begin exporting to Seq immediately. Open [http://localhost:5341](http://localhost:5341) to view them. Use the "Traces" section to see the clipboard pipeline trace tree.
+A shared field-name redaction blocklist (backend: `uc_observability::redact`, frontend: `src/observability/redaction.ts`) is applied to attributes regardless of the gate state, so secrets like `password`, `token`, `auth`, `api_key`, etc. never leave the process even if telemetry is enabled.
 
 ### Configuration
 
-| Variable                      | Purpose                                    | Required | Default                |
-| ----------------------------- | ------------------------------------------ | -------- | ---------------------- |
-| `OTEL_EXPORTER_OTLP_ENDPOINT` | OTLP base URL (see critical note below)    | Yes      | Not set (OTLP off)     |
-| `OTEL_EXPORTER_OTLP_HEADERS`  | Optional headers, e.g. `X-Seq-ApiKey=...`  | No       | Not needed             |
-| `OTEL_SERVICE_NAME`           | Override `service.name` resource attribute | No       | `uniclipboard-desktop` |
-| `OTEL_RESOURCE_ATTRIBUTES`    | Additional resource attributes (k=v,k2=v2) | No       | Not set                |
+| Variable           | Purpose                                                                                              | Default            |
+| ------------------ | ---------------------------------------------------------------------------------------------------- | ------------------ |
+| `SENTRY_DSN`       | Backend DSN baked into the Rust binary at compile time via `option_env!` in `uc-bootstrap/tracing.rs`. | Not set (disabled) |
+| `VITE_SENTRY_DSN`  | Frontend DSN baked into the Vite bundle at build time. Independent project from `SENTRY_DSN`.        | Not set (disabled) |
+| `SENTRY_AUTH_TOKEN` | Used by CI to upload `.dSYM` / `.pdb` / DWARF debug symbols and source maps.                         | Not set            |
+| `SENTRY_ORG`        | Sentry organization slug used by the symbol-upload CLI.                                              | Not set            |
 
-**CRITICAL — Base URL vs. full path (Pitfall #7):**
+The two DSNs **must point to different Sentry projects** so frontend rate
+limits, sample rates, and quotas can be tuned independently from the backend.
 
-Seq's own documentation sometimes shows the full endpoint path such as `/ingest/otlp/v1/traces`. Do **not** include `/v1/traces` or `/v1/logs` in `OTEL_EXPORTER_OTLP_ENDPOINT`. The OpenTelemetry SDK automatically appends `/v1/traces` and `/v1/logs` to the base URL you provide. The correct value is:
+### Backend → Sentry Mapping
 
-```
-OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:5341/ingest/otlp
-```
+The backend uses `sentry-tracing` 0.48+ with the `EventFilter` bitflags:
 
-Setting it to `http://localhost:5341/ingest/otlp/v1/traces` will cause the SDK to POST to `/ingest/otlp/v1/traces/v1/traces`, which returns 404.
+| `tracing` event | Sentry destination                                  |
+| --------------- | --------------------------------------------------- |
+| `error!`        | **Issue** (Event) **+** searchable **Log** entry    |
+| `warn!`         | searchable **Log** entry                            |
+| `info!`         | **Breadcrumb** (attached to next Issue, not stored) |
+| `debug!`/`trace!` | dropped (console + JSON file only)                |
 
-- When `OTEL_EXPORTER_OTLP_ENDPOINT` is **not set**, the OTLP layer is completely disabled with zero overhead.
-- In **production builds** (`prod` profile), the OTLP layer is always skipped even if the env var is set.
+`INFO` is intentionally a breadcrumb-only level to keep the Sentry monthly logs quota safe. Spans created with `#[tracing::instrument]` become Performance spans and contribute to transaction sampling.
 
-### Resource Attributes
+### Frontend → Sentry Mapping
 
-Every span and log exported via OTLP includes the following resource attributes:
+The frontend uses `@sentry/react` 10.36+ with `enableLogs: true`. The pino logger in `src/lib/logger.ts` forwards `info`+ records to `Sentry.logger.{info,warn,error,fatal}`; `debug` and `trace` stay client-side. React render errors are captured by `<Sentry.ErrorBoundary>` in `main.tsx`. Browser routing is instrumented by `reactRouterV7BrowserTracingIntegration` for parameterized navigation timing.
 
-| Attribute                     | Value                                           |
-| ----------------------------- | ----------------------------------------------- |
-| `service.name`                | `uniclipboard-desktop` (or `OTEL_SERVICE_NAME`) |
-| `service.version`             | Crate version from `CARGO_PKG_VERSION`          |
-| `service.instance.id`         | Device ID (`device_id` from global context)     |
-| `deployment.environment.name` | `development` (dev build) or `production`       |
-| `os.type`                     | `linux`, `macos`, `windows`                     |
+### Querying Logs in Sentry
 
-### Querying Traces in Seq
+Sentry's **Explore → Logs** view supports querying by attribute. Common queries:
 
-Once spans are flowing, use Seq's filter bar or the Traces UI to query:
+- All logs for a single trace: `trace_id:<id>`
+- Filter by frontend module: `module:daemon-ws`
+- Backend errors over the last hour: `level:error environment:production` with the time range set to `1h`
+- Cross-process flow: open any frontend log and click the linked `trace_id` to see the corresponding backend spans in **Performance**.
 
-**View all clipboard pipeline spans:**
+### Distributed Tracing with sentry-trace + baggage
 
-```
-SpanName like 'clipboard.%'
-```
-
-**View all spans for a specific trace:**
+Cross-device clipboard synchronization shares a single `trace_id` between sender and receiver. Sentry's umbrella crate auto-installs the `sentry-trace` and `baggage` propagators, replacing the W3C `traceparent` header used in the OTLP era. The `ClipboardMessage` protocol field that carried `traceparent` is retained as `Option<String>` for backward-compatible deserialization from old peers.
 
 ```
-TraceId = 'your-trace-id-here'
-```
-
-**Find root flow spans only:**
-
-```
-SpanName = 'clipboard.flow'
-```
-
-**Filter by span name and time range:**
-
-```
-SpanName = 'clipboard.normalize' and @t > Now() - 1h
-```
-
-**Tip:** Click on any span in the Traces view to see its full attribute set. Click the TraceId to see the complete trace tree.
-
-Ready-to-import Seq signal files are available in `docs/seq/signals/`. See the [Seq Signals section](#seq-signals) below.
-
-### OTLP Data Model
-
-Spans exported via OTLP carry the following key attributes:
-
-| OTel Field            | Description                                            |
-| --------------------- | ------------------------------------------------------ |
-| `TraceId`             | W3C trace identifier — same across all spans in a flow |
-| `SpanId`              | Unique span identifier                                 |
-| `ParentSpanId`        | Links child spans to their parent (e.g. stage → flow)  |
-| `SpanName`            | Dotted span name (e.g. `clipboard.normalize`)          |
-| `service.name`        | Resource attribute: `uniclipboard-desktop`             |
-| `service.instance.id` | Resource attribute: device identifier                  |
-
-### Architecture
-
-The OTLP integration uses a non-blocking pipeline to avoid impacting application performance:
-
-```
-tracing event / span
-  -> tracing-opentelemetry bridge
-  -> OpenTelemetry SDK (BatchSpanProcessor)
-  -> opentelemetry-otlp exporter
-  -> HTTP POST to /ingest/otlp/v1/traces (OTLP/HTTP-protobuf)
-```
-
-- **`tracing-opentelemetry` bridge** translates tracing spans into OTel spans
-- **BatchSpanProcessor** batches spans for efficient export (SDK default: 512 spans or 5s, whichever comes first)
-- **OtlpGuard** ensures remaining spans are flushed on application shutdown (same guard pattern as Phase 19 WorkerGuard)
-- Log events from `tracing::info!` etc. are exported to `/ingest/otlp/v1/logs` simultaneously
-
-### Troubleshooting
-
-**Spans not appearing in Seq:**
-
-1. Verify `OTEL_EXPORTER_OTLP_ENDPOINT` is set: `echo $OTEL_EXPORTER_OTLP_ENDPOINT`
-2. Verify Seq is running: `docker compose -f docker-compose.seq.yml ps`
-3. Verify Seq is reachable: `curl -s http://localhost:5341/api` (should return JSON)
-4. Check the application terminal for "Tracing initialized with OTLP" log line
-5. Ensure the base URL does **not** include `/v1/traces` — the SDK appends that automatically
-6. Check that `UC_LOG_PROFILE` is `dev` or `debug_clipboard` — OTLP is disabled for `prod` profile
-
-**Seq container not starting:**
-
-1. Ensure Docker is running
-2. Check port 5341 is not already in use: `lsof -i :5341`
-3. Check container logs: `docker compose -f docker-compose.seq.yml logs seq`
-
-**Old `UC_SEQ_URL` env var:**
-
-If you see a startup `WARN: UC_SEQ_URL is set but is no longer used`, remove `UC_SEQ_URL` from your shell and set `OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:5341/ingest/otlp` instead.
-
-**Stopping Seq:**
-
-```bash
-docker compose -f docker-compose.seq.yml down        # Stop and remove container (data persists)
-docker compose -f docker-compose.seq.yml down -v      # Stop and remove container + data volume
-```
-
-## Distributed Tracing with W3C Trace Context
-
-UniClipboard provides end-to-end observability for cross-device clipboard synchronization using W3C traceparent propagation. A clipboard operation that originates on one device and is received by another shares a **single TraceId** across both peers — Seq's built-in trace view shows the complete multi-device journey as one trace tree.
-
-### How It Works
-
-1. **Sender side**: When the clipboard pipeline creates a `clipboard.flow` root span and prepares to sync, `inject_current_context()` extracts the W3C `traceparent` header from the current span context.
-2. **Protocol field**: The `traceparent` string is written into `ClipboardMessage.traceparent: Option<String>` (backward-compatible via `serde(default, skip_serializing_if)`).
-3. **Receiver side**: When the inbound sync handler receives the message, `extract_remote_context(message.traceparent.as_deref())` reconstructs the remote span context. The inbound `clipboard.flow` span calls `set_parent()` with this context, linking it to the sender's trace.
-4. **Result**: Seq shows both the sender's capture pipeline and the receiver's apply pipeline under the same TraceId.
-
-### Backward Compatibility — Legacy Peer Fallback
-
-When receiving messages from older peer devices that do not send `traceparent`, the receiver creates a new local root span without a parent. A rate-limited `warn!` is emitted once per peer:
-
-```
-WARN clipboard.flow: Inbound message has no traceparent (sender may be running a pre-Phase-87 version); creating local root span
-```
-
-Subsequent messages from the same legacy peer are handled silently at `debug!` level to avoid log spam.
-
-### Protocol Field Details
-
-```rust
-// ClipboardMessage (uc-core/src/network/protocol/clipboard.rs)
-pub struct ClipboardMessage {
-    // ... other fields ...
-
-    /// W3C traceparent for distributed trace propagation (Phase 87+).
-    /// serde(default) + skip_serializing_if ensures backward compatibility with older peers.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub traceparent: Option<String>,
-
-    /// Deprecated: replaced by W3C traceparent in Phase 87. Scheduled for removal.
-    #[deprecated(note = "Phase 87: replaced by W3C traceparent. Do not read or write. Field kept for backward compat deserialization only.")]
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub origin_flow_id: Option<String>,
-}
-```
-
-### Cross-Device Trace in Seq
-
-With W3C traceparent active, a cross-device clipboard sync produces:
-
-```
-TraceId: a1b2c3d4...                           (same on both devices)
+trace_id: a1b2c3d4…                            (same on both devices)
 │
 ├── clipboard.flow{origin="local_capture"}     (Sender peer, device A)
 │   ├── clipboard.normalize
@@ -981,52 +842,42 @@ TraceId: a1b2c3d4...                           (same on both devices)
     └── clipboard.inbound_apply
 ```
 
-In Seq's Traces view, both sides appear in a single trace tree linked by TraceId. To find cross-device traces:
+When a message arrives without correlation headers (older peer running a pre-migration build), the receiver creates a new local root span and emits a rate-limited `warn!` once per peer. Subsequent messages from the same legacy peer fall back to `debug!` to avoid log spam.
 
-```
-SpanName = 'clipboard.flow'
-```
+### Troubleshooting
 
-Then click any root span to open the full trace view.
+**No events arriving in Sentry:**
 
-## Seq Signals
+1. Confirm the DSN is set at build time: `bun run build` should not log a `Sentry DSN missing` warning.
+2. Confirm the user has telemetry enabled in **Settings → General**. The default is off.
+3. Confirm the build environment matches the project: backend events go to the project keyed by `SENTRY_DSN`, frontend events to `VITE_SENTRY_DSN`. They must be different projects.
+4. Backend only: `RUST_LOG=sentry=debug bun run tauri:dev` exposes the SDK's transport diagnostics.
 
-Pre-configured Seq signal files are provided for common observability patterns. Files are located in `docs/seq/signals/` and can be imported into Seq as saved searches.
+**Symbols are missing in stack traces:**
 
-| Signal File              | Purpose                                   | Key Filter                    |
-| ------------------------ | ----------------------------------------- | ----------------------------- |
-| `flow-timeline.json`     | View all stages of one clipboard trace    | `SpanName like 'clipboard.%'` |
-| `cross-device-flow.json` | View root flows, click to drill into tree | `SpanName = 'clipboard.flow'` |
+The `Upload Sentry debug symbols` step in `.github/workflows/build.yml` requires `SENTRY_AUTH_TOKEN` and `SENTRY_ORG`. The step is skipped if either secret is absent, but the build still succeeds.
 
-**Usage:**
+### Legacy Seq Saved Searches
 
-1. Start Seq: `docker compose -f docker-compose.seq.yml up -d`
-2. Set `OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:5341/ingest/otlp`
-3. Run the application and trigger clipboard sync between devices
-4. In Seq UI, navigate to Signals (or Saved Searches) and import the JSON files
-5. Use the trace view (TraceId link) to see the complete multi-span tree
-
-### LAN Access Configuration
-
-For testing cross-device tracing on a local network, the `docker-compose.seq.yml` already binds Seq to all network interfaces. Set `OTEL_EXPORTER_OTLP_ENDPOINT=http://<your-local-ip>:5341/ingest/otlp` on each device to send traces to the centralized Seq instance.
+The pre-migration Seq signal files have been moved to `docs/_archive/seq/signals/` for historical reference. They are not consulted by any tooling and may reference fields that no longer exist; do not import them into a fresh deployment.
 
 ## References
 
 - [Tracing Crate Documentation](https://docs.rs/tracing/)
 - [Tracing Subscriber Documentation](https://docs.rs/tracing-subscriber/)
-- [OpenTelemetry Rust SDK](https://docs.rs/opentelemetry/)
-- [opentelemetry-otlp crate](https://docs.rs/opentelemetry-otlp/)
-- [tracing-opentelemetry bridge](https://docs.rs/tracing-opentelemetry/)
 - [Tauri Plugin Log Documentation](https://v2.tauri.app/plugin/logging/)
-- [Seq Documentation](https://docs.datalust.co/docs)
-- [W3C Trace Context Specification](https://www.w3.org/TR/trace-context/)
-- [OTel Semantic Conventions — Resource](https://opentelemetry.io/docs/specs/semconv/resource/)
+- [Sentry Rust SDK](https://docs.rs/sentry/)
+- [`@sentry/react` SDK](https://docs.sentry.io/platforms/javascript/guides/react/)
+- [Sentry Logs feature](https://docs.sentry.io/product/explore/logs/)
+- [Sentry distributed tracing — sentry-trace + baggage](https://docs.sentry.io/concepts/key-terms/tracing/distributed-tracing/)
 - Source:
-  - `src-tauri/crates/uc-observability/` (profile, format, init, otlp/)
-  - `src-tauri/crates/uc-tauri/src/bootstrap/tracing.rs` (Sentry + OTLP + uc-observability composition)
+  - `src-tauri/crates/uc-observability/` (profile, format, init, redact, telemetry_gate)
+  - `src-tauri/crates/uc-tauri/src/bootstrap/tracing.rs` (Sentry + uc-observability composition)
   - `src-tauri/crates/uc-tauri/src/bootstrap/logging.rs` (legacy log plugin, Webview + stdout)
-  - `docker-compose.seq.yml` (local Seq instance with OTLP ingestion)
-  - `docs/seq/signals/` (ready-to-import Seq saved searches)
+  - `src/observability/sentry.ts` (frontend Sentry init + redaction hooks)
+  - `src/lib/logger.ts` (pino → Sentry.logger bridge)
+- Archive:
+  - `docs/_archive/seq/signals/` (legacy Seq saved searches — not used)
 - Guides:
   - [Tracing Usage Guide](../guides/tracing.md)
   - [Coding Standards](../guides/coding-standards.md)

@@ -3,8 +3,8 @@
 //! Sentry reads this gate at event time so toggling `general.telemetry_enabled`
 //! in the UI takes effect without a restart.
 //!
-//! - Frontend has its own gate (`setFrontendSentryEnabled` /
-//!   `setFrontendTelemetryEnabled`) since the gate must live in the JS runtime.
+//! - Frontend has its own gate (`setFrontendSentryEnabled` in
+//!   `src/observability/sentry.ts`) since the gate must live in the JS runtime.
 //! - This module is the equivalent for the Rust side: `uc-bootstrap` consults
 //!   it from Sentry's `before_send`, `before_breadcrumb`, and `before_send_log`
 //!   hooks. When the gate is off, Issues / breadcrumbs / Logs are all dropped

@@ -6,15 +6,15 @@ import App from './App'
 import './i18n'
 import { store } from './store'
 import { connectDaemonWs, registerDaemonShutdownListener } from '@/lib/daemon-ws-bootstrap'
-import { initFrontendOtlp } from '@/observability/otlp'
 import { initSentry, Sentry } from '@/observability/sentry'
 
+// Sentry init runs before React mounts so that the global ErrorBoundary,
+// the pino → Sentry.logger transmit hook, and breadcrumb capture are all
+// wired up by the time any module calls `createLogger()`. Whether logs
+// actually leave the process is gated at runtime by
+// `setFrontendSentryEnabled`, which SettingContext flips once the daemon
+// returns the persisted user preference.
 initSentry()
-// OTLP buffer/endpoint setup. Whether records actually flush is gated by
-// `setFrontendTelemetryEnabled`, wired from SettingContext once the daemon
-// returns settings — so events queued before that point are dropped silently
-// (consistent with telemetry-off as the conservative startup default).
-initFrontendOtlp()
 
 const startupTimingOrigin = Date.now()
 const logStartupTiming = (label: string) => {

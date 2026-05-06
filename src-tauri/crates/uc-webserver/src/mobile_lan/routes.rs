@@ -281,195 +281,20 @@ mod tests {
     //! 路由 + middleware 集成测试。覆盖 SPEC §14 的 happy path / 401 / 404
     //! 三类断言, 避免每次改动后要拉真 daemon 跑 curl。
     //!
-    //! 测试不直接构造 `MobileSyncFacade`(需要 6 个 ports), 而是搭建一份
-    //! 最小 in-memory 装配:
-    //! - InMemoryDeviceRepo + InMemorySettings: 满足 facade::new 要求
-    //! - 真 Argon2idPasswordHasher 与 OsRngCredentialsMinter: 鉴权链路要 round-trip
-    //! - 不需要 endpoint_info / lan_interface_probe (没用到)
+    //! Facade 装配复用同模块的 [`crate::mobile_lan::test_support`], 见那
+    //! 里的"为什么不依赖 uc-infra"说明。
 
     use super::*;
     use axum::body::Body;
     use axum::http::{Request, StatusCode};
-    use base64::engine::general_purpose::STANDARD as BASE64_STD;
-    use base64::Engine;
-    use std::sync::Mutex;
     use tower::ServiceExt;
-    use uc_core::mobile_sync::{LanEndpointInfo, LanInterface, MobileDevice, MobileDeviceError};
-    use uc_core::settings::model::Settings;
 
-    use uc_application::facade::{MobileSyncFacade, MobileSyncFacadeDeps};
+    use uc_application::facade::MobileSyncFacade;
+
+    use crate::mobile_lan::test_support::{auth_header, build_facade_with_seeded_device};
 
     fn build_app(facade: Arc<MobileSyncFacade>) -> Router {
         build_router(facade)
-    }
-
-    /// 把 5 个最小 fake port 拼好的 facade 拿出来。手动塞一台已知凭据的
-    /// 设备让后续测试做"happy path"。
-    ///
-    /// 这里**不**依赖 uc_infra(webserver crate 边界禁止依赖 uc_infra), 用
-    /// 本地 FakeHasher: phc 形态固定为 `phc:<password>`, verify 比较。
-    async fn build_facade_with_seeded_device(
-        username: &str,
-        password: &str,
-    ) -> Arc<MobileSyncFacade> {
-        use std::net::Ipv4Addr;
-
-        use async_trait::async_trait;
-        use uc_core::mobile_sync::{MintedCredentials, MobileDeviceId};
-        use uc_core::ports::{
-            ClockPort, EndpointInfoError, LanInterfaceProbeError, LanInterfaceProbePort,
-            MobileCredentialsMinterPort, MobileDeviceRepositoryPort, MobileSyncEndpointInfoPort,
-            PasswordHasherError, PasswordHasherPort, SettingsPort,
-        };
-
-        struct FixedClock;
-        impl ClockPort for FixedClock {
-            fn now_ms(&self) -> i64 {
-                1_000
-            }
-        }
-
-        struct StaticMinter;
-        impl MobileCredentialsMinterPort for StaticMinter {
-            fn mint_credentials(&self) -> MintedCredentials {
-                MintedCredentials {
-                    username: "mobile_unused".into(),
-                    password: "unused".into(),
-                    password_hash: "phc:unused".into(),
-                    device_id: MobileDeviceId::new("did_unused"),
-                }
-            }
-        }
-
-        #[derive(Default)]
-        struct InMemoryDeviceRepo {
-            devices: Mutex<Vec<MobileDevice>>,
-        }
-        #[async_trait]
-        impl MobileDeviceRepositoryPort for InMemoryDeviceRepo {
-            async fn save(&self, device: &MobileDevice) -> Result<(), MobileDeviceError> {
-                self.devices.lock().unwrap().push(device.clone());
-                Ok(())
-            }
-            async fn find_by_username(
-                &self,
-                username: &str,
-            ) -> Result<Option<MobileDevice>, MobileDeviceError> {
-                Ok(self
-                    .devices
-                    .lock()
-                    .unwrap()
-                    .iter()
-                    .find(|d| d.username == username)
-                    .cloned())
-            }
-            async fn find_by_device_id(
-                &self,
-                _: &MobileDeviceId,
-            ) -> Result<Option<MobileDevice>, MobileDeviceError> {
-                Ok(None)
-            }
-            async fn list_all(&self) -> Result<Vec<MobileDevice>, MobileDeviceError> {
-                Ok(self.devices.lock().unwrap().clone())
-            }
-            async fn delete(&self, _: &MobileDeviceId) -> Result<bool, MobileDeviceError> {
-                Ok(false)
-            }
-            async fn record_activity(
-                &self,
-                _: &MobileDeviceId,
-                _: i64,
-                _: Option<String>,
-                _: Option<String>,
-                _: Option<String>,
-            ) -> Result<(), MobileDeviceError> {
-                Ok(())
-            }
-        }
-
-        struct FakeHasher;
-        #[async_trait]
-        impl PasswordHasherPort for FakeHasher {
-            async fn hash(&self, password: &str) -> Result<String, PasswordHasherError> {
-                Ok(format!("phc:{password}"))
-            }
-            async fn verify(&self, password: &str, phc: &str) -> Result<bool, PasswordHasherError> {
-                Ok(phc == format!("phc:{password}"))
-            }
-        }
-
-        struct FixedEndpoint;
-        #[async_trait]
-        impl MobileSyncEndpointInfoPort for FixedEndpoint {
-            async fn current_lan_endpoint(
-                &self,
-            ) -> Result<Option<LanEndpointInfo>, EndpointInfoError> {
-                Ok(None)
-            }
-        }
-
-        struct StubLanProbe;
-        #[async_trait]
-        impl LanInterfaceProbePort for StubLanProbe {
-            async fn list_interfaces(&self) -> Result<Vec<LanInterface>, LanInterfaceProbeError> {
-                Ok(vec![LanInterface {
-                    name: "en0".into(),
-                    ipv4: Ipv4Addr::new(192, 168, 1, 5),
-                    is_loopback: false,
-                }])
-            }
-        }
-
-        #[derive(Default)]
-        struct InMemorySettings {
-            current: Mutex<Option<Settings>>,
-        }
-        #[async_trait]
-        impl SettingsPort for InMemorySettings {
-            async fn load(&self) -> anyhow::Result<Settings> {
-                Ok(self
-                    .current
-                    .lock()
-                    .unwrap()
-                    .clone()
-                    .unwrap_or_else(Settings::default))
-            }
-            async fn save(&self, settings: &Settings) -> anyhow::Result<()> {
-                *self.current.lock().unwrap() = Some(settings.clone());
-                Ok(())
-            }
-        }
-
-        let repo = Arc::new(InMemoryDeviceRepo::default());
-        repo.save(&MobileDevice {
-            device_id: uc_core::mobile_sync::MobileDeviceId::new("did_seed"),
-            label: "iPhone".into(),
-            client_type: uc_core::mobile_sync::MobileClientType::IosShortcut,
-            username: username.into(),
-            password_hash: format!("phc:{password}"),
-            created_at_ms: 1,
-            last_seen_at_ms: None,
-            last_seen_ip: None,
-            reported_name: None,
-            reported_os: None,
-        })
-        .await
-        .unwrap();
-
-        Arc::new(MobileSyncFacade::new(MobileSyncFacadeDeps {
-            clock: Arc::new(FixedClock),
-            credentials_minter: Arc::new(StaticMinter),
-            password_hasher: Arc::new(FakeHasher),
-            device_repo: repo,
-            endpoint_info: Arc::new(FixedEndpoint),
-            lan_interface_probe: Arc::new(StubLanProbe),
-            settings: Arc::new(InMemorySettings::default()),
-        }))
-    }
-
-    fn auth_header(username: &str, password: &str) -> String {
-        let payload = BASE64_STD.encode(format!("{username}:{password}"));
-        format!("basic {payload}")
     }
 
     #[tokio::test]

@@ -119,7 +119,74 @@ fn internal_error() -> Response {
     resp
 }
 
-// AuthenticatedDevice 已通过 middleware 注入到 request extensions。当前路由
-// 不需要直接读它(只关心鉴权过没过), 后续(Phase 5)如需在 handler 里精确知
-// 道是哪台 device 在请求, 在这里加一个 `axum::extract::Extension` 提取的薄
-// 包装即可 —— 留作 future work, 不预先引入未使用的代码。
+// AuthenticatedDevice 已通过 middleware 注入到 request extensions。当前 4
+// 条 SyncClipboard 协议路由还不需要直接读它(只关心鉴权过没过); P5a.3 的
+// `ApplyIncomingMobileClipUseCase` 会通过 `axum::extract::Extension` 拿来
+// 源 device_id, 见下方 `tests::happy_path_inserts_authenticated_device`
+// 的 smoke 用法。
+
+#[cfg(test)]
+mod tests {
+    //! Middleware 单测。focus 是"happy path 把 [`AuthenticatedDevice`]
+    //! 注入 request extensions, 并能被下游 handler 读到", 这是 P5a.3+
+    //! 业务 use case 拿 source device_id 的前置契约。
+    //!
+    //! 401 / WWW-Authenticate / 错凭据这些断言放在 `routes.rs` 的集成
+    //! 测试里(同一个 router + middleware 一并跑), 这里不重复。
+
+    use super::*;
+    use axum::body::{to_bytes, Body};
+    use axum::extract::Extension;
+    use axum::http::{Request as HttpRequest, StatusCode};
+    use axum::routing::get;
+    use axum::Router;
+    use tower::ServiceExt;
+
+    use uc_application::facade::AuthenticatedDevice;
+
+    use crate::mobile_lan::test_support::{auth_header, build_facade_with_seeded_device};
+
+    /// 探针 handler: 把 middleware 注入的 [`AuthenticatedDevice`] 取出
+    /// 来, 把 device username 写回 body —— 同时验证两件事:
+    /// 1. middleware 在 happy path 把 extension 真的塞进去了;
+    /// 2. 下游 handler 能用 `Extension<AuthenticatedDevice>` 提取出来。
+    async fn echo_username(Extension(authed): Extension<AuthenticatedDevice>) -> String {
+        authed.device.username.clone()
+    }
+
+    fn build_probe_app(facade: Arc<MobileSyncFacade>) -> Router {
+        Router::new()
+            .route("/__probe", get(echo_username))
+            .layer(axum::middleware::from_fn_with_state(
+                facade.clone(),
+                basic_auth,
+            ))
+            .with_state(facade)
+    }
+
+    #[tokio::test]
+    async fn happy_path_inserts_authenticated_device() {
+        let facade = build_facade_with_seeded_device("mobile_alice", "wonderland").await;
+        let app = build_probe_app(facade);
+
+        let resp = app
+            .oneshot(
+                HttpRequest::builder()
+                    .method("GET")
+                    .uri("/__probe")
+                    .header("Authorization", auth_header("mobile_alice", "wonderland"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body_bytes = to_bytes(resp.into_body(), 64).await.unwrap();
+        assert_eq!(
+            body_bytes.as_ref(),
+            b"mobile_alice",
+            "下游 handler 应当能 Extension<AuthenticatedDevice> 取到种子设备 username"
+        );
+    }
+}

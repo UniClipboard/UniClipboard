@@ -18,4 +18,7 @@ mod middleware;
 mod routes;
 mod server;
 
+#[cfg(test)]
+mod test_support;
+
 pub use server::{start_mobile_lan_server, MobileLanServerHandle};

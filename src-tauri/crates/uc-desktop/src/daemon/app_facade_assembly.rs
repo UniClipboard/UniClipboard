@@ -8,6 +8,7 @@ use uc_application::facade::{
     AppFacade, AppPaths, BlobTransferFacade, ClipboardSyncFacade, LifecycleStatusGateway,
     SearchCoordinator,
 };
+use uc_application::ApplyInboundClipboardUseCase;
 use uc_bootstrap::{
     build_app_facade_from_deps, AppFacadeAssemblyOptions, ClipboardRestoreAssembly,
     SpaceSetupAssembly,
@@ -32,6 +33,11 @@ pub struct DaemonAppFacadeAssemblyInput<'a> {
     pub clipboard_write_coordinator: Arc<ClipboardWriteCoordinator>,
     pub clipboard_integration_mode: ClipboardIntegrationMode,
     pub search_coordinator: Arc<SearchCoordinator>,
+    /// daemon worker 装配过程中已构造好的 `ApplyInboundClipboardUseCase`
+    /// (带 blob materializer + host event emitter)。同一份实例在 mobile
+    /// sync facade 装配时也喂进去 —— 让 LAN 入站 PUT 路径与 P2P 入站走
+    /// 同一条 ApplyInbound 链(host event 单一源 / blob 状态共享)。
+    pub mobile_sync_apply_inbound: Arc<ApplyInboundClipboardUseCase>,
 }
 
 /// 构造 daemon 对外统一业务入口。
@@ -53,6 +59,7 @@ pub fn build_daemon_app_facade(input: DaemonAppFacadeAssemblyInput<'_>) -> Daemo
                 integration_mode: input.clipboard_integration_mode,
             }),
             search_coordinator: Some(input.search_coordinator),
+            mobile_sync_apply_inbound: Some(input.mobile_sync_apply_inbound),
         },
     );
 

@@ -11,19 +11,26 @@
 
 use std::sync::Arc;
 
+use anyhow::anyhow;
+use async_trait::async_trait;
 use uc_application::deps::AppDeps;
 use uc_application::facade::space_setup::SpaceSetupFacade;
 use uc_application::facade::{
     AppFacade, AppFacadeParts, AppPaths, BlobTransferFacade, ClipboardHistoryFacade,
     ClipboardHistoryFacadeDeps, ClipboardRestoreFacade, ClipboardRestoreFacadeDeps,
     ClipboardSyncFacade, DeviceFacade, EmitError, EncryptionFacade, EncryptionFacadeDeps,
-    HostEvent, HostEventEmitterPort, InMemoryLifecycleStatus, LifecycleFacade, LifecycleFacadeDeps,
-    LifecycleStatusGateway, MemberRosterFacade, MobileSyncFacade, MobileSyncFacadeDeps,
-    ResourceFacade, ResourceFacadeDeps, SearchCoordinator, SearchCoordinatorDeps, SearchFacade,
-    SearchFacadeDeps, SettingsFacade, StorageFacade, StorageFacadeDeps, UpgradeFacade,
-    UpgradeFacadeDeps,
+    HostEvent, HostEventEmitterPort, InMemoryLifecycleStatus, IncomingMobileBuffer,
+    LifecycleFacade, LifecycleFacadeDeps, LifecycleStatusGateway, MemberRosterFacade,
+    MobileSyncFacade, MobileSyncFacadeDeps, MobileSyncSnapshotPorts, ResourceFacade,
+    ResourceFacadeDeps, SearchCoordinator, SearchCoordinatorDeps, SearchFacade, SearchFacadeDeps,
+    SettingsFacade, StorageFacade, StorageFacadeDeps, UpgradeFacade, UpgradeFacadeDeps,
+};
+use uc_application::{
+    ApplyInboundClipboardUseCase, InboundCapture as ApplyInboundCapture,
+    InboundWrite as ApplyInboundWrite,
 };
 use uc_core::clipboard::ClipboardIntegrationMode;
+use uc_core::SystemClipboardSnapshot;
 use uc_infra::mobile_sync::{
     Argon2idPasswordHasher, NetworkInterfaceLanProbe, OsRngCredentialsMinter,
 };
@@ -107,6 +114,48 @@ pub struct ClipboardRestoreAssembly {
     pub integration_mode: ClipboardIntegrationMode,
 }
 
+// ── mobile_sync PUT 路径的 fallback adapters ────────────────────────────
+
+/// 当 [`AppFacadeAssemblyOptions::mobile_sync_apply_inbound`] 为 `None` 时
+/// (CLI / tauri 等不接 LAN listener 的入口),用此构造一份 minimal
+/// `ApplyInboundClipboardUseCase`。capture 与 write 都是 NoOp,任何 PUT
+/// 调用会立即 `Err`,但因为这些入口不挂 LAN 路由, PUT 路径不会被触发。
+fn build_fallback_apply_inbound(deps: &AppDeps) -> Arc<ApplyInboundClipboardUseCase> {
+    let capture: Arc<dyn ApplyInboundCapture> = Arc::new(NoopInboundCapture);
+    let write: Arc<dyn ApplyInboundWrite> = Arc::new(NoopInboundWrite);
+    Arc::new(ApplyInboundClipboardUseCase::new(
+        deps.clipboard.clipboard_entry_repo.clone(),
+        capture,
+        write,
+    ))
+}
+
+struct NoopInboundCapture;
+
+#[async_trait]
+impl ApplyInboundCapture for NoopInboundCapture {
+    async fn capture(
+        &self,
+        _preset_entry_id: uc_core::ids::EntryId,
+        _snapshot: SystemClipboardSnapshot,
+    ) -> anyhow::Result<Option<uc_core::ids::EntryId>> {
+        Err(anyhow!(
+            "mobile_sync PUT path not configured for this entry point (no LAN listener)"
+        ))
+    }
+}
+
+struct NoopInboundWrite;
+
+#[async_trait]
+impl ApplyInboundWrite for NoopInboundWrite {
+    async fn write(&self, _snapshot: SystemClipboardSnapshot) -> anyhow::Result<()> {
+        Err(anyhow!(
+            "mobile_sync PUT path not configured for this entry point (no LAN listener)"
+        ))
+    }
+}
+
 /// 通用 `AppFacade` 装配选项。
 ///
 /// 不同桌面入口只在这些可选能力上有差异。共同 facade 由
@@ -129,6 +178,18 @@ pub struct AppFacadeAssemblyOptions {
     pub blob_transfer_port: Option<Arc<dyn uc_core::ports::blob::BlobTransferPort>>,
     pub clipboard_restore: Option<ClipboardRestoreAssembly>,
     pub search_coordinator: Option<Arc<SearchCoordinator>>,
+    /// 移动端同步 PUT 路径用的 `ApplyInboundClipboardUseCase` 实例。
+    ///
+    /// daemon 入口在自身装配过程中已经构造一份 enhanced 版本(带
+    /// `with_blob_materializer` + `with_host_event_emitter`),并把同一份
+    /// 实例同时喂给 `MobileSyncFacade`(本字段)与 `InboundClipboardFacade`
+    /// (worker 装配)。GUI 进程内 daemon 也走同一路径。
+    ///
+    /// CLI / tauri 等不接 LAN listener 的入口可以留 `None`,bootstrap 会
+    /// 内置一份 fallback —— 只让 `MobileSyncFacade` 编得过, PUT 路径若
+    /// 真的被调用会以 `Internal("mobile_sync PUT path not configured")`
+    /// 失败,符合"CLI 不开 LAN 监听因此 PUT 永远不会触发"的实际语义。
+    pub mobile_sync_apply_inbound: Option<Arc<ApplyInboundClipboardUseCase>>,
 }
 
 /// 从已注入的 application deps 构造统一业务入口。
@@ -151,6 +212,15 @@ pub fn build_app_facade_from_deps(
     // 会以 `LanListenerDisabled` 失败。Phase 3 接入 daemon LAN listener
     // 时把 listener 启停信号反向喂回 `InMemoryMobileSyncEndpointInfoAdapter`
     // 的 `set` / `clear`，这一处 wiring 即可让 register flow 端到端跑通。
+    // P5a.6:`apply_inbound` 由 daemon 入口装配 enhanced 版本注入(同一份
+    // 实例也共享给 `InboundClipboardFacade`);CLI / tauri 不接 LAN listener
+    // 的入口走下面的 fallback —— 一份 capture+write 都是 NoOp 的 minimal
+    // 实例,PUT 路径若真被调到会立刻 Err。
+    let apply_inbound = options
+        .mobile_sync_apply_inbound
+        .clone()
+        .unwrap_or_else(|| build_fallback_apply_inbound(deps));
+
     let mobile_sync_facade = Arc::new(MobileSyncFacade::new(MobileSyncFacadeDeps {
         clock: deps.system.clock.clone(),
         // v3 SyncClipboard 兼容: 单一 minter 一次性出 (username, password,
@@ -167,6 +237,15 @@ pub fn build_app_facade_from_deps(
         endpoint_info: deps.mobile_sync.endpoint_info.clone(),
         lan_interface_probe: Arc::new(NetworkInterfaceLanProbe::new()),
         settings: deps.settings.clone(),
+        apply_inbound,
+        incoming_buffer: Arc::new(IncomingMobileBuffer::new()),
+        snapshot_ports: MobileSyncSnapshotPorts {
+            entry_repo: deps.clipboard.clipboard_entry_repo.clone(),
+            selection_repo: deps.clipboard.selection_repo.clone(),
+            representation_repo: deps.clipboard.representation_repo.clone(),
+            payload_resolver: deps.clipboard.payload_resolver.clone(),
+            blob_reader: deps.storage.blob_store.clone(),
+        },
     }));
 
     let clipboard_restore = options.clipboard_restore.map(|restore| {

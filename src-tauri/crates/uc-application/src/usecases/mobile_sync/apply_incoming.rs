@@ -60,7 +60,7 @@ use crate::usecases::mobile_sync::clipboard_doc::SyncClipboardItemType;
 
 /// Input to [`ApplyIncomingMobileClipUseCase::execute`].
 #[derive(Debug, Clone)]
-pub(crate) struct ApplyIncomingMobileClipInput {
+pub struct ApplyIncomingMobileClipInput {
     /// Authenticated mobile device id (registered iPhone). Becomes the
     /// suffix of the pseudo `DeviceId` written into the clipboard event.
     pub source_device_id: MobileDeviceId,
@@ -70,7 +70,7 @@ pub(crate) struct ApplyIncomingMobileClipInput {
 
 /// Two-shape input — one variant per HTTP route that calls into us.
 #[derive(Debug, Clone)]
-pub(crate) enum IncomingMobileClipEvent {
+pub enum IncomingMobileClipEvent {
     /// Triggered by `PUT /SyncClipboard.json`. Commits to apply the clip
     /// into the local clipboard (capture + OS write).
     SyncDoc {
@@ -94,7 +94,7 @@ pub(crate) enum IncomingMobileClipEvent {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum ApplyIncomingMobileClipOutcome {
+pub enum ApplyIncomingMobileClipOutcome {
     /// New content — persisted via capture + OS clipboard written.
     Applied { entry_id: EntryId },
     /// `content_hash` already exists locally — no persist, no OS write.
@@ -113,7 +113,7 @@ pub(crate) enum ApplyIncomingMobileClipOutcome {
 }
 
 #[derive(Debug, Error)]
-pub(crate) enum ApplyIncomingMobileClipError {
+pub enum ApplyIncomingMobileClipError {
     /// Underlying [`ApplyInboundClipboardUseCase`] failed in a way that
     /// is **not** expressible as a domain outcome (DB error, capture
     /// pipeline crash, OS write coord failure).
@@ -148,12 +148,12 @@ struct BufferedFile {
 /// `PUT /json`) leak until the size cap kicks in or daemon restarts.
 /// P5a.10 真机回归会确认是否需要加 TTL sweep —— 在那之前, 16 条上限
 /// 给"快速连续上传几张图片"留够余量, 又不至于让 OOM 风险窜起来。
-pub(crate) struct IncomingMobileBuffer {
+pub struct IncomingMobileBuffer {
     inner: Mutex<HashMap<String, BufferedFile>>,
 }
 
 impl IncomingMobileBuffer {
-    pub(crate) fn new() -> Self {
+    pub fn new() -> Self {
         Self {
             inner: Mutex::new(HashMap::new()),
         }

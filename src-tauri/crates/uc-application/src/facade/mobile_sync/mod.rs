@@ -11,12 +11,15 @@
 mod facade;
 
 pub use facade::{
+    ApplyIncomingMobileClipError, ApplyIncomingMobileClipInput, ApplyIncomingMobileClipOutcome,
     AuthenticateBasicAuthError, AuthenticateBasicAuthInput, AuthenticatedDevice,
-    GetMobileSyncSettingsError, LanInterfaceOption, ListLanInterfacesError, ListMobileDevicesError,
-    MobileDeviceSummary, MobileSyncFacade, MobileSyncFacadeDeps, MobileSyncSettingsView,
+    GetLatestMobileSyncDocError, GetMobileSyncFileError, GetMobileSyncFileOutput,
+    GetMobileSyncSettingsError, IncomingMobileBuffer, IncomingMobileClipEvent, LanInterfaceOption,
+    ListLanInterfacesError, ListMobileDevicesError, MobileDeviceSummary, MobileSyncFacade,
+    MobileSyncFacadeDeps, MobileSyncSettingsView, MobileSyncSnapshotPorts,
     RegisterMobileShortcutDeviceError, RegisterMobileShortcutDeviceInput,
     RegisterMobileShortcutDeviceOutput, RevokeMobileDeviceError, RevokeMobileDeviceInput,
-    ShortcutInstallMethod, ShortcutInstallMethodOption, SyncClipboardError, SyncClipboardItemType,
-    SyncClipboardMeta, UpdateMobileSyncSettingsError, UpdateMobileSyncSettingsInput,
-    UpdateMobileSyncSettingsOutput, SYNC_CLIPBOARD_EX_INSTALL_URL,
+    ShortcutInstallMethod, ShortcutInstallMethodOption, SyncClipboardItemType, SyncClipboardMeta,
+    UpdateMobileSyncSettingsError, UpdateMobileSyncSettingsInput, UpdateMobileSyncSettingsOutput,
+    SYNC_CLIPBOARD_EX_INSTALL_URL,
 };

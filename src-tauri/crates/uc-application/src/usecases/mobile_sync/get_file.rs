@@ -42,7 +42,7 @@ pub(crate) struct GetMobileSyncFileUseCase {
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct GetMobileSyncFileOutput {
+pub struct GetMobileSyncFileOutput {
     /// MIME 类型,直接给路由层填进 `Content-Type` 响应头。无 mime 字段的
     /// rep 兜底 `application/octet-stream`(让 iPhone 客户端按二进制处理)。
     pub mime: String,
@@ -50,7 +50,7 @@ pub(crate) struct GetMobileSyncFileOutput {
 }
 
 #[derive(Debug, Error)]
-pub(crate) enum GetMobileSyncFileError {
+pub enum GetMobileSyncFileError {
     /// dataName 不匹配 / 当前 entry 是 Text 类型(无附件)/ 没有任何 entry。
     /// 路由层翻成 HTTP 404。SyncClipboard 客户端把 404 解释为"远端没东西",
     /// 不报错。

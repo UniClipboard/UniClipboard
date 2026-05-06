@@ -119,6 +119,7 @@ pub async fn start_in_process(run_mode: DaemonRunMode) -> anyhow::Result<DaemonH
         clipboard_write_coordinator: clipboard_write_coordinator.clone(),
         clipboard_integration_mode,
         search_coordinator: Arc::clone(&search_assembly.coordinator),
+        mobile_sync_apply_inbound: runtime_workers.apply_inbound.clone(),
     });
     let daemon = build_daemon_app_instance(DaemonAppAssemblyInput {
         service_plan,

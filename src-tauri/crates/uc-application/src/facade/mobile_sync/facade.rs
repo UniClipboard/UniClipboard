@@ -1,4 +1,4 @@
-//! [`MobileSyncFacade`] —— 移动端同步功能的应用层入口(v3 SyncClipboard 兼容版)。
+//! [`MobileSyncFacade`] —— 移动端同步功能的应用层入口(P5a.6 起接真实现)。
 //!
 //! 按 `uc-application/AGENTS.md` §11.4, 外部 crate(bootstrap / daemon /
 //! tauri / cli)只能通过本目录下的 [`MobileSyncFacade`] 访问 mobile sync
@@ -17,41 +17,65 @@
 //! | [`MobileSyncFacade::update_settings`] | `UpdateMobileSyncSettingsUseCase` | 写 enabled, 返回 restart_required |
 //! | [`MobileSyncFacade::list_lan_interfaces`] | `ListLanInterfacesUseCase` | 列出可作为二维码 URL 的 RFC1918 网卡 |
 //! | [`MobileSyncFacade::authenticate_basic`] | `AuthenticateBasicAuthUseCase` | LAN HTTP 路由用:校验 Basic Auth 头 |
+//! | [`MobileSyncFacade::get_latest_sync_doc`] | `GetLatestMobileSyncDocUseCase` | `GET /SyncClipboard.json` |
+//! | [`MobileSyncFacade::put_sync_doc`] | `ApplyIncomingMobileClipUseCase` (`SyncDoc`) | `PUT /SyncClipboard.json` |
+//! | [`MobileSyncFacade::get_clipboard_file`] | `GetMobileSyncFileUseCase` | `GET /file/{name}` |
+//! | [`MobileSyncFacade::put_clipboard_file`] | `ApplyIncomingMobileClipUseCase` (`BufferFile`) | `PUT /file/{name}` |
 //!
 //! ## 错误暴露策略
 //!
 //! 每个 use case 自己的 `*Error` 类型直接通过 mod.rs 的 `pub use`
 //! re-export, 不做 mirror。错误都已经按 §13.1 用业务语义命名
 //! (`LabelEmpty` / `NotFound` / `LanListenerDisabled` / `InvalidCredentials`
-//! 等), 不会泄漏底层细节。
+//! / `Inbound` / `EncodeFailed` / `DecodeFailed` 等), 不会泄漏底层细节。
+//!
+//! ## P5a.6 改动要点
+//!
+//! - 删除 Phase 3 子步骤 5f 的 `ClipboardDocStub`(进程内 Mutex 状态);
+//! - 4 个 SyncClipboard 协议方法分别接到 `apply_incoming` /
+//!   `get_latest_doc` / `get_file` 三个真实 use case;
+//! - PUT 方法签名增加 `source_device_id: MobileDeviceId` 参数, 由
+//!   webserver middleware 注入的 [`AuthenticatedDevice`] 提供;
+//! - GET 路径通过 `LatestClipboardSnapshotAdapter` 组合 5 个剪贴板 port
+//!   读最新 paste-priority rep,真业务,不再走桩。
 
 use std::sync::Arc;
 
+use uc_core::mobile_sync::MobileDeviceId;
+use uc_core::ports::mobile_sync::LatestClipboardSnapshotPort;
 use uc_core::ports::{
     ClockPort, LanInterfaceProbePort, MobileCredentialsMinterPort, MobileDeviceRepositoryPort,
     MobileSyncEndpointInfoPort, PasswordHasherPort, SettingsPort,
 };
 
+use crate::usecases::clipboard_sync::apply_inbound::ApplyInboundClipboardUseCase;
 use crate::usecases::mobile_sync::{
-    authenticate_basic::AuthenticateBasicAuthUseCase, clipboard_doc::ClipboardDocStub,
-    get_settings::GetMobileSyncSettingsUseCase, list_devices::ListMobileDevicesUseCase,
-    list_lan_interfaces::ListLanInterfacesUseCase,
+    apply_incoming::ApplyIncomingMobileClipUseCase,
+    authenticate_basic::AuthenticateBasicAuthUseCase, get_file::GetMobileSyncFileUseCase,
+    get_latest_doc::GetLatestMobileSyncDocUseCase, get_settings::GetMobileSyncSettingsUseCase,
+    latest_snapshot_adapter::LatestClipboardSnapshotAdapter,
+    list_devices::ListMobileDevicesUseCase, list_lan_interfaces::ListLanInterfacesUseCase,
     register_device::RegisterMobileShortcutDeviceUseCase, revoke_device::RevokeMobileDeviceUseCase,
     update_settings::UpdateMobileSyncSettingsUseCase,
 };
 
 // ── 对外类型 re-export ─────────────────────────────────────────────────
 
+pub use crate::usecases::mobile_sync::apply_incoming::{
+    ApplyIncomingMobileClipError, ApplyIncomingMobileClipInput, ApplyIncomingMobileClipOutcome,
+    IncomingMobileBuffer, IncomingMobileClipEvent,
+};
 pub use crate::usecases::mobile_sync::authenticate_basic::{
     AuthenticateBasicAuthError, AuthenticateBasicAuthInput, AuthenticatedDevice,
 };
-pub use crate::usecases::mobile_sync::clipboard_doc::{
-    SyncClipboardError, SyncClipboardItemType, SyncClipboardMeta,
-};
+pub use crate::usecases::mobile_sync::clipboard_doc::{SyncClipboardItemType, SyncClipboardMeta};
+pub use crate::usecases::mobile_sync::get_file::{GetMobileSyncFileError, GetMobileSyncFileOutput};
+pub use crate::usecases::mobile_sync::get_latest_doc::GetLatestMobileSyncDocError;
 pub use crate::usecases::mobile_sync::get_settings::{
     GetMobileSyncSettingsError, MobileSyncSettingsView, ShortcutInstallMethod,
     ShortcutInstallMethodOption,
 };
+pub use crate::usecases::mobile_sync::latest_snapshot_adapter::MobileSyncSnapshotPorts;
 pub use crate::usecases::mobile_sync::list_devices::{ListMobileDevicesError, MobileDeviceSummary};
 pub use crate::usecases::mobile_sync::list_lan_interfaces::{
     LanInterfaceOption, ListLanInterfacesError,
@@ -75,8 +99,17 @@ pub use crate::usecases::mobile_sync::update_settings::{
 
 /// 构造 [`MobileSyncFacade`] 所需的端口集合。
 ///
-/// 由 `uc-bootstrap` 在装配阶段填好;除字段顺序外没有"哪个 use case 用
+/// 由 `uc-bootstrap` 在装配阶段填好。除字段顺序外没有"哪个 use case 用
 /// 哪几个端口"的耦合 —— 那是 facade 内部决定的, 外部只需提供全部端口。
+///
+/// `apply_inbound` 与 `incoming_buffer` / `snapshot_ports` 是 P5a.6 引入
+/// 的新字段:
+/// - `apply_inbound`:PUT 路径的真实剪贴板入站 use case 实例。bootstrap
+///   把它装配一份后,同时喂给本 facade 与 `InboundClipboardFacade` 共享。
+/// - `incoming_buffer`:两步 PUT 协议(file → json)之间的字节暂存 ——
+///   bootstrap 端 `Arc::new(IncomingMobileBuffer::new())` 即可,无外部资源。
+/// - `snapshot_ports`:GET 路径用 `LatestClipboardSnapshotAdapter` 组合的
+///   5 个剪贴板 port,facade 内部装配成 `LatestClipboardSnapshotPort`。
 pub struct MobileSyncFacadeDeps {
     pub clock: Arc<dyn ClockPort>,
     pub credentials_minter: Arc<dyn MobileCredentialsMinterPort>,
@@ -85,15 +118,17 @@ pub struct MobileSyncFacadeDeps {
     pub endpoint_info: Arc<dyn MobileSyncEndpointInfoPort>,
     pub lan_interface_probe: Arc<dyn LanInterfaceProbePort>,
     pub settings: Arc<dyn SettingsPort>,
+    pub apply_inbound: Arc<ApplyInboundClipboardUseCase>,
+    pub incoming_buffer: Arc<IncomingMobileBuffer>,
+    pub snapshot_ports: MobileSyncSnapshotPorts,
 }
 
 // ─── Facade ─────────────────────────────────────────────────────────────
 
 /// 移动端同步入口, 线程安全, 可放入 `Arc`。
 ///
-/// 内部聚合 7 个 use case + 1 个 Phase 3 stub clipboard 状态;所有方法都
-/// 是 thin pass-through, 不做跨 use case 编排(按 §11.2 facade 不应再承载
-/// 流程)。
+/// 内部聚合 10 个 use case;所有方法都是 thin pass-through, 不做跨
+/// use case 编排(按 §11.2 facade 不应再承载流程)。
 pub struct MobileSyncFacade {
     register_device: RegisterMobileShortcutDeviceUseCase,
     revoke_device: RevokeMobileDeviceUseCase,
@@ -102,9 +137,9 @@ pub struct MobileSyncFacade {
     update_settings: UpdateMobileSyncSettingsUseCase,
     list_lan_interfaces: ListLanInterfacesUseCase,
     authenticate_basic: AuthenticateBasicAuthUseCase,
-    /// Phase 3 stub: 进程内 Mutex 状态承接 SyncClipboard 协议读写;Phase 5
-    /// 替换为对接 `ApplicationFacade::clipboard_*` 的实装。
-    clipboard_doc_stub: ClipboardDocStub,
+    apply_incoming: ApplyIncomingMobileClipUseCase,
+    get_latest_doc: GetLatestMobileSyncDocUseCase,
+    get_file: GetMobileSyncFileUseCase,
 }
 
 impl MobileSyncFacade {
@@ -119,14 +154,20 @@ impl MobileSyncFacade {
             endpoint_info,
             lan_interface_probe,
             settings,
+            apply_inbound,
+            incoming_buffer,
+            snapshot_ports,
         } = deps;
+
+        let snapshot_port: Arc<dyn LatestClipboardSnapshotPort> =
+            Arc::new(LatestClipboardSnapshotAdapter::new(snapshot_ports));
 
         Self {
             register_device: RegisterMobileShortcutDeviceUseCase::new(
                 credentials_minter,
                 device_repo.clone(),
                 settings.clone(),
-                clock,
+                clock.clone(),
             ),
             revoke_device: RevokeMobileDeviceUseCase::new(device_repo.clone()),
             list_devices: ListMobileDevicesUseCase::new(device_repo.clone()),
@@ -134,7 +175,13 @@ impl MobileSyncFacade {
             update_settings: UpdateMobileSyncSettingsUseCase::new(settings),
             list_lan_interfaces: ListLanInterfacesUseCase::new(lan_interface_probe),
             authenticate_basic: AuthenticateBasicAuthUseCase::new(device_repo, password_hasher),
-            clipboard_doc_stub: ClipboardDocStub::new(),
+            apply_incoming: ApplyIncomingMobileClipUseCase::new(
+                apply_inbound,
+                incoming_buffer,
+                clock,
+            ),
+            get_latest_doc: GetLatestMobileSyncDocUseCase::new(snapshot_port.clone()),
+            get_file: GetMobileSyncFileUseCase::new(snapshot_port),
         }
     }
 
@@ -194,63 +241,116 @@ impl MobileSyncFacade {
         self.authenticate_basic.execute(input).await
     }
 
-    // ─── Phase 3 stub: SyncClipboard 协议业务方法(Phase 5 接真实现) ───
+    // ─── SyncClipboard 协议 4 路由(P5a.6 真实接入) ─────────────────────
 
-    /// `GET /SyncClipboard.json` 业务出口:返回最近一次 PUT 的元数据。
-    /// 没任何 PUT 历史返回 `NotFound`(路由翻 404)。
-    pub async fn get_latest_sync_doc(&self) -> Result<SyncClipboardMeta, SyncClipboardError> {
-        self.clipboard_doc_stub.get_latest_doc().await
+    /// `GET /SyncClipboard.json` 业务出口:通过 `LatestClipboardSnapshotPort`
+    /// 取最新一条 paste-priority rep,翻成 SyncClipboard 协议元数据。
+    pub async fn get_latest_sync_doc(
+        &self,
+    ) -> Result<SyncClipboardMeta, GetLatestMobileSyncDocError> {
+        self.get_latest_doc.execute().await
     }
 
-    /// `PUT /SyncClipboard.json` 业务出口:接收新元数据, daemon 自动算
-    /// SHA-256 填进 hash, 返回最终入库版本。
+    /// `PUT /SyncClipboard.json` 业务出口:接收元数据(Text/Image/File 类型),
+    /// 通过 `ApplyIncomingMobileClipUseCase` 喂给真实入站管线
+    /// (capture → OS 写回 → 60s 写回环防御自动适用)。
+    ///
+    /// `source_device_id` 由 webserver 中间件注入的 [`AuthenticatedDevice`]
+    /// 提供, 决定本次入站的伪 `DeviceId("mobile_sync:<id>")`。
     pub async fn put_sync_doc(
         &self,
         meta: SyncClipboardMeta,
-    ) -> Result<SyncClipboardMeta, SyncClipboardError> {
-        self.clipboard_doc_stub.put_doc(meta).await
+        source_device_id: MobileDeviceId,
+    ) -> Result<ApplyIncomingMobileClipOutcome, ApplyIncomingMobileClipError> {
+        self.apply_incoming
+            .execute(ApplyIncomingMobileClipInput {
+                source_device_id,
+                event: IncomingMobileClipEvent::SyncDoc {
+                    item_type: meta.item_type,
+                    text: meta.text,
+                    data_name: meta.data_name,
+                },
+            })
+            .await
     }
 
-    /// `GET /file/{dataName}` 业务出口:返回 (mime, bytes) 或 `NotFound`。
+    /// `GET /file/{dataName}` 业务出口:按 dataName 命中最新 entry 的 paste
+    /// rep,返回 `(mime, bytes)`。
     pub async fn get_clipboard_file(
         &self,
         data_name: &str,
-    ) -> Result<(String, Vec<u8>), SyncClipboardError> {
-        self.clipboard_doc_stub.get_file(data_name).await
+    ) -> Result<GetMobileSyncFileOutput, GetMobileSyncFileError> {
+        self.get_file.execute(data_name).await
     }
 
-    /// `PUT /file/{dataName}` 业务出口:接收附件二进制 + 它的 mime。
+    /// `PUT /file/{dataName}` 业务出口:把 (mime, bytes) 暂存进
+    /// `IncomingMobileBuffer`,等待 `PUT /SyncClipboard.json` 触发组装。
+    /// 返回 `Buffered` outcome —— 路由层应回 HTTP 200。
+    ///
+    /// `source_device_id` 不被本步消费(BufferFile 阶段还没确定要应用),
+    /// 但仍按 use case 契约一并传入,避免 PUT /SyncClipboard.json 时再
+    /// 重新 lookup。
     pub async fn put_clipboard_file(
         &self,
         data_name: String,
         mime: String,
         bytes: Vec<u8>,
-    ) -> Result<(), SyncClipboardError> {
-        self.clipboard_doc_stub
-            .put_file(data_name, mime, bytes)
+        source_device_id: MobileDeviceId,
+    ) -> Result<ApplyIncomingMobileClipOutcome, ApplyIncomingMobileClipError> {
+        self.apply_incoming
+            .execute(ApplyIncomingMobileClipInput {
+                source_device_id,
+                event: IncomingMobileClipEvent::BufferFile {
+                    data_name,
+                    mime,
+                    bytes,
+                },
+            })
             .await
     }
 }
 
 #[cfg(test)]
 mod tests {
-    //! Facade 层集成测试 —— 用 in-memory port fakes 验证"deps → 7 个 use
+    //! Facade 层集成测试 —— 用 in-memory port fakes 验证"deps → 各 use
     //! case → 对外方法"的接线没有错位。深层用例语义在各 use case 文件
-    //! 已有覆盖, 这里只跑一遍 happy path。
+    //! 已有覆盖, 这里只跑 happy path。
+    //!
+    //! P5a.6 增量:facade 多了 3 个 deps(`apply_inbound` / `incoming_buffer`
+    //! / `snapshot_ports`),但本模块的 4 个端到端 happy-path 测试都不调
+    //! SyncClipboard 协议方法,所以这 3 个新 deps 用最简 fake 装配 ——
+    //! `apply_inbound` 用永远不会被调用的 dummy `ApplyInboundClipboardUseCase`,
+    //! `snapshot_ports` 用 5 个 unimplemented stub。
 
     use super::*;
 
     use std::sync::Mutex;
 
+    use anyhow::Result as AnyResult;
     use async_trait::async_trait;
     use base64::Engine;
 
+    use uc_core::clipboard::{
+        ClipboardEntry, ClipboardSelectionDecision, PayloadAvailability,
+        PersistedClipboardRepresentation,
+    };
+    use uc_core::ids::{EntryId, EventId, RepresentationId};
     use uc_core::mobile_sync::{
         LanEndpointInfo, LanInterface, MintedCredentials, MobileDevice, MobileDeviceError,
         MobileDeviceId,
     };
+    use uc_core::ports::clipboard::{
+        ClipboardEntryRepositoryPort, ClipboardPayloadResolverPort,
+        ClipboardRepresentationRepositoryPort, ClipboardSelectionRepositoryPort,
+        ProcessingUpdateOutcome, ResolvedClipboardPayload,
+    };
     use uc_core::ports::{EndpointInfoError, LanInterfaceProbeError, PasswordHasherError};
     use uc_core::settings::model::Settings;
+    use uc_core::BlobId;
+
+    use crate::usecases::clipboard_sync::apply_inbound::{InboundCapture, InboundWrite};
+    use uc_core::blob::ports::BlobReaderPort;
+    use uc_core::SystemClipboardSnapshot;
 
     struct FixedClock(i64);
     impl ClockPort for FixedClock {
@@ -326,9 +426,6 @@ mod tests {
         }
     }
 
-    /// fake hasher: 把 password_hash 视为 `phc:<password>`, verify 比较即可。
-    /// happy path 用真值 `$argon2id$test$facade` 不会 verify 通过,
-    /// 测试里直接用 fake 重写 password_hash 的设备来验证 authenticate。
     struct FakeHasher;
     #[async_trait]
     impl PasswordHasherPort for FakeHasher {
@@ -382,7 +479,140 @@ mod tests {
         }
     }
 
+    // ── 永远 unimplemented! 的 port stubs(本测试模块所有 happy-path 都
+    // ── 不触发 SyncClipboard 4 路由,因此 capture/write/entry_repo/snapshot
+    // ── 链路上的方法都不会被调用) ─────────────────────────────────────
+    struct UnusedEntryRepo;
+    #[async_trait]
+    impl ClipboardEntryRepositoryPort for UnusedEntryRepo {
+        async fn save_entry_and_selection(
+            &self,
+            _: &ClipboardEntry,
+            _: &ClipboardSelectionDecision,
+        ) -> AnyResult<()> {
+            unimplemented!("not used by facade-level happy-path tests")
+        }
+        async fn get_entry(&self, _: &EntryId) -> AnyResult<Option<ClipboardEntry>> {
+            unimplemented!()
+        }
+        async fn list_entries(&self, _: usize, _: usize) -> AnyResult<Vec<ClipboardEntry>> {
+            unimplemented!()
+        }
+        async fn touch_entry(&self, _: &EntryId, _: i64) -> AnyResult<bool> {
+            unimplemented!()
+        }
+        async fn delete_entry(&self, _: &EntryId) -> AnyResult<()> {
+            unimplemented!()
+        }
+        async fn find_entry_id_by_snapshot_hash(&self, _: &str) -> AnyResult<Option<EntryId>> {
+            unimplemented!()
+        }
+    }
+
+    struct UnusedSelectionRepo;
+    #[async_trait]
+    impl ClipboardSelectionRepositoryPort for UnusedSelectionRepo {
+        async fn get_selection(
+            &self,
+            _: &EntryId,
+        ) -> AnyResult<Option<ClipboardSelectionDecision>> {
+            unimplemented!()
+        }
+        async fn delete_selection(&self, _: &EntryId) -> AnyResult<()> {
+            unimplemented!()
+        }
+    }
+
+    struct UnusedRepRepo;
+    #[async_trait]
+    impl ClipboardRepresentationRepositoryPort for UnusedRepRepo {
+        async fn get_representation(
+            &self,
+            _: &EventId,
+            _: &RepresentationId,
+        ) -> AnyResult<Option<PersistedClipboardRepresentation>> {
+            unimplemented!()
+        }
+        async fn get_representation_by_id(
+            &self,
+            _: &RepresentationId,
+        ) -> AnyResult<Option<PersistedClipboardRepresentation>> {
+            unimplemented!()
+        }
+        async fn get_representation_by_blob_id(
+            &self,
+            _: &BlobId,
+        ) -> AnyResult<Option<PersistedClipboardRepresentation>> {
+            unimplemented!()
+        }
+        async fn update_blob_id(&self, _: &RepresentationId, _: &BlobId) -> AnyResult<()> {
+            unimplemented!()
+        }
+        async fn update_blob_id_if_none(
+            &self,
+            _: &RepresentationId,
+            _: &BlobId,
+        ) -> AnyResult<bool> {
+            unimplemented!()
+        }
+        async fn update_processing_result(
+            &self,
+            _: &RepresentationId,
+            _: &[PayloadAvailability],
+            _: Option<&BlobId>,
+            _: PayloadAvailability,
+            _: Option<&str>,
+        ) -> AnyResult<ProcessingUpdateOutcome> {
+            unimplemented!()
+        }
+    }
+
+    struct UnusedResolver;
+    #[async_trait]
+    impl ClipboardPayloadResolverPort for UnusedResolver {
+        async fn resolve(
+            &self,
+            _: &PersistedClipboardRepresentation,
+        ) -> AnyResult<ResolvedClipboardPayload> {
+            unimplemented!()
+        }
+    }
+
+    struct UnusedBlobReader;
+    #[async_trait]
+    impl BlobReaderPort for UnusedBlobReader {
+        async fn get(&self, _: &BlobId) -> AnyResult<Vec<u8>> {
+            unimplemented!()
+        }
+    }
+
+    struct UnusedCapture;
+    #[async_trait]
+    impl InboundCapture for UnusedCapture {
+        async fn capture(
+            &self,
+            _: EntryId,
+            _: SystemClipboardSnapshot,
+        ) -> AnyResult<Option<EntryId>> {
+            unimplemented!()
+        }
+    }
+
+    struct UnusedWrite;
+    #[async_trait]
+    impl InboundWrite for UnusedWrite {
+        async fn write(&self, _: SystemClipboardSnapshot) -> AnyResult<()> {
+            unimplemented!()
+        }
+    }
+
     fn build_facade() -> MobileSyncFacade {
+        let entry_repo: Arc<dyn ClipboardEntryRepositoryPort> = Arc::new(UnusedEntryRepo);
+        let apply_inbound = Arc::new(ApplyInboundClipboardUseCase::new(
+            entry_repo.clone(),
+            Arc::new(UnusedCapture),
+            Arc::new(UnusedWrite),
+        ));
         MobileSyncFacade::new(MobileSyncFacadeDeps {
             clock: Arc::new(FixedClock(1_000)),
             credentials_minter: Arc::new(StaticMinter),
@@ -391,6 +621,15 @@ mod tests {
             endpoint_info: Arc::new(FixedEndpoint),
             lan_interface_probe: Arc::new(StubLanProbe),
             settings: Arc::new(InMemorySettings::default()),
+            apply_inbound,
+            incoming_buffer: Arc::new(IncomingMobileBuffer::new()),
+            snapshot_ports: MobileSyncSnapshotPorts {
+                entry_repo,
+                selection_repo: Arc::new(UnusedSelectionRepo),
+                representation_repo: Arc::new(UnusedRepRepo),
+                payload_resolver: Arc::new(UnusedResolver),
+                blob_reader: Arc::new(UnusedBlobReader),
+            },
         })
     }
 
@@ -498,28 +737,15 @@ mod tests {
 
     #[tokio::test]
     async fn authenticate_basic_round_trips_through_facade() {
-        let facade = build_facade();
-
-        // 先把一台用 FakeHasher 能验证通过的设备塞进 repo —— 不能用
-        // register flow, 因为 register 用 StaticMinter 出的 password_hash
-        // 是 "$argon2id$test$facade" 不可能被 FakeHasher 通过。直接构造一
-        // 台带 phc:<pw> 形态的设备, 通过 in-process 仓储插入。
-        //
-        // 这里我们重新构造一个独立 facade, 共享同一个 repo, 让 device_repo
-        // 在两个 use case 之间能"看到同一份数据"。
-        //
-        // 实际部署时 register 用真 minter + 真 hasher, 出来的 phc 能被
-        // verify 通过 —— 这一对配对契约由 OsRngCredentialsMinter +
-        // Argon2idPasswordHasher 在 uc-infra 层联合保证(infra crate 已有
-        // round-trip 测试)。
-
-        // 把 FakeHasher 兼容的设备直接 push。
+        // 与 build_facade() 不同 —— 此测试需要在 repo 里塞一台 FakeHasher 兼容
+        // (PHC 形态 `phc:<password>`)的设备。直接用 FixedEndpoint + 共享 repo
+        // 重新拼装一份 facade, 不走 register flow。
         let direct_device = MobileDevice {
             device_id: MobileDeviceId::new("did_auth"),
             label: "iPhone".into(),
             client_type: uc_core::mobile_sync::MobileClientType::IosShortcut,
             username: "mobile_alice".into(),
-            password_hash: "phc:wonderland".into(), // FakeHasher 兼容
+            password_hash: "phc:wonderland".into(),
             created_at_ms: 1,
             last_seen_at_ms: None,
             last_seen_ip: None,
@@ -528,6 +754,14 @@ mod tests {
         };
         let repo = Arc::new(InMemoryDeviceRepo::default());
         repo.save(&direct_device).await.unwrap();
+
+        let entry_repo: Arc<dyn ClipboardEntryRepositoryPort> = Arc::new(UnusedEntryRepo);
+        let apply_inbound = Arc::new(ApplyInboundClipboardUseCase::new(
+            entry_repo.clone(),
+            Arc::new(UnusedCapture),
+            Arc::new(UnusedWrite),
+        ));
+
         let local = MobileSyncFacade::new(MobileSyncFacadeDeps {
             clock: Arc::new(FixedClock(1_000)),
             credentials_minter: Arc::new(StaticMinter),
@@ -536,6 +770,15 @@ mod tests {
             endpoint_info: Arc::new(FixedEndpoint),
             lan_interface_probe: Arc::new(StubLanProbe),
             settings: Arc::new(InMemorySettings::default()),
+            apply_inbound,
+            incoming_buffer: Arc::new(IncomingMobileBuffer::new()),
+            snapshot_ports: MobileSyncSnapshotPorts {
+                entry_repo,
+                selection_repo: Arc::new(UnusedSelectionRepo),
+                representation_repo: Arc::new(UnusedRepRepo),
+                payload_resolver: Arc::new(UnusedResolver),
+                blob_reader: Arc::new(UnusedBlobReader),
+            },
         });
 
         // happy path
@@ -566,8 +809,5 @@ mod tests {
             err,
             AuthenticateBasicAuthError::InvalidCredentials
         ));
-
-        // 静默掉 facade 顶层 register 没用过的字段(避免 dead code 警告)。
-        let _ = facade;
     }
 }

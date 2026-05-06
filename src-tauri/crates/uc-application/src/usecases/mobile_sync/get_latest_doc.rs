@@ -57,7 +57,7 @@ pub(crate) struct GetLatestMobileSyncDocUseCase {
 }
 
 #[derive(Debug, Error)]
-pub(crate) enum GetLatestMobileSyncDocError {
+pub enum GetLatestMobileSyncDocError {
     /// 当前没有任何 clipboard entry —— 路由层翻成 HTTP 404。SyncClipboard
     /// 客户端会把 404 解释为"远端还没东西",不报错。
     #[error("no clipboard entry available")]

@@ -19,14 +19,32 @@
 
 use std::sync::{Arc, Mutex};
 
+use anyhow::{anyhow, Result as AnyResult};
 use async_trait::async_trait;
 use base64::engine::general_purpose::STANDARD as BASE64_STD;
 use base64::Engine;
 
-use uc_application::facade::{MobileSyncFacade, MobileSyncFacadeDeps};
+use uc_application::facade::{
+    IncomingMobileBuffer, MobileSyncFacade, MobileSyncFacadeDeps, MobileSyncSnapshotPorts,
+};
+use uc_application::{
+    ApplyInboundClipboardUseCase, InboundCapture as ApplyInboundCapture,
+    InboundWrite as ApplyInboundWrite,
+};
+use uc_core::blob::ports::BlobReaderPort;
+use uc_core::clipboard::{
+    ClipboardEntry, ClipboardSelectionDecision, PayloadAvailability,
+    PersistedClipboardRepresentation,
+};
+use uc_core::ids::{EntryId, EventId, RepresentationId};
 use uc_core::mobile_sync::{
     LanEndpointInfo, LanInterface, MintedCredentials, MobileClientType, MobileDevice,
     MobileDeviceError, MobileDeviceId,
+};
+use uc_core::ports::clipboard::{
+    ClipboardEntryRepositoryPort, ClipboardPayloadResolverPort,
+    ClipboardRepresentationRepositoryPort, ClipboardSelectionRepositoryPort,
+    ProcessingUpdateOutcome, ResolvedClipboardPayload,
 };
 use uc_core::ports::{
     ClockPort, EndpointInfoError, LanInterfaceProbeError, LanInterfaceProbePort,
@@ -34,6 +52,7 @@ use uc_core::ports::{
     PasswordHasherError, PasswordHasherPort, SettingsPort,
 };
 use uc_core::settings::model::Settings;
+use uc_core::{BlobId, SystemClipboardSnapshot};
 
 /// 构造一份只装 1 台已登记设备的 [`MobileSyncFacade`], 凭据是
 /// `(username, password)`, PHC 形态固定为 `phc:{password}`。
@@ -178,6 +197,18 @@ pub(crate) async fn build_facade_with_seeded_device(
     .await
     .unwrap();
 
+    // P5a.6:facade 多了 3 个 deps —— `apply_inbound` / `incoming_buffer`
+    // / `snapshot_ports`。webserver 的路由测试只跑 401 / 404 / wire DTO
+    // 校验,从不需要"真捕获 + 真 OS 写"或"真读最近一条 entry",因此这里
+    // 用 NoOp 实现塞过编译。GET 路径下 NoOp entry repo 永远返回空列表,
+    // routes.rs 测试断言 404 即建立在这条事实上。
+    let entry_repo: Arc<dyn ClipboardEntryRepositoryPort> = Arc::new(NoopEntryRepo);
+    let apply_inbound = Arc::new(ApplyInboundClipboardUseCase::new(
+        entry_repo.clone(),
+        Arc::new(NoopInboundCapture),
+        Arc::new(NoopInboundWrite),
+    ));
+
     Arc::new(MobileSyncFacade::new(MobileSyncFacadeDeps {
         clock: Arc::new(FixedClock),
         credentials_minter: Arc::new(StaticMinter),
@@ -186,7 +217,135 @@ pub(crate) async fn build_facade_with_seeded_device(
         endpoint_info: Arc::new(FixedEndpoint),
         lan_interface_probe: Arc::new(StubLanProbe),
         settings: Arc::new(InMemorySettings::default()),
+        apply_inbound,
+        incoming_buffer: Arc::new(IncomingMobileBuffer::new()),
+        snapshot_ports: MobileSyncSnapshotPorts {
+            entry_repo,
+            selection_repo: Arc::new(NoopSelectionRepo),
+            representation_repo: Arc::new(NoopRepRepo),
+            payload_resolver: Arc::new(NoopResolver),
+            blob_reader: Arc::new(NoopBlobReader),
+        },
     }))
+}
+
+// ── P5a.6 NoOp adapters(本模块测试装配 facade 用) ──────────────────────
+
+struct NoopEntryRepo;
+#[async_trait]
+impl ClipboardEntryRepositoryPort for NoopEntryRepo {
+    async fn save_entry_and_selection(
+        &self,
+        _: &ClipboardEntry,
+        _: &ClipboardSelectionDecision,
+    ) -> AnyResult<()> {
+        Err(anyhow!("noop"))
+    }
+    async fn get_entry(&self, _: &EntryId) -> AnyResult<Option<ClipboardEntry>> {
+        Ok(None)
+    }
+    async fn list_entries(&self, _: usize, _: usize) -> AnyResult<Vec<ClipboardEntry>> {
+        Ok(vec![])
+    }
+    async fn touch_entry(&self, _: &EntryId, _: i64) -> AnyResult<bool> {
+        Ok(false)
+    }
+    async fn delete_entry(&self, _: &EntryId) -> AnyResult<()> {
+        Ok(())
+    }
+    async fn find_entry_id_by_snapshot_hash(&self, _: &str) -> AnyResult<Option<EntryId>> {
+        Ok(None)
+    }
+}
+
+struct NoopSelectionRepo;
+#[async_trait]
+impl ClipboardSelectionRepositoryPort for NoopSelectionRepo {
+    async fn get_selection(&self, _: &EntryId) -> AnyResult<Option<ClipboardSelectionDecision>> {
+        Ok(None)
+    }
+    async fn delete_selection(&self, _: &EntryId) -> AnyResult<()> {
+        Ok(())
+    }
+}
+
+struct NoopRepRepo;
+#[async_trait]
+impl ClipboardRepresentationRepositoryPort for NoopRepRepo {
+    async fn get_representation(
+        &self,
+        _: &EventId,
+        _: &RepresentationId,
+    ) -> AnyResult<Option<PersistedClipboardRepresentation>> {
+        Ok(None)
+    }
+    async fn get_representation_by_id(
+        &self,
+        _: &RepresentationId,
+    ) -> AnyResult<Option<PersistedClipboardRepresentation>> {
+        Ok(None)
+    }
+    async fn get_representation_by_blob_id(
+        &self,
+        _: &BlobId,
+    ) -> AnyResult<Option<PersistedClipboardRepresentation>> {
+        Ok(None)
+    }
+    async fn update_blob_id(&self, _: &RepresentationId, _: &BlobId) -> AnyResult<()> {
+        Ok(())
+    }
+    async fn update_blob_id_if_none(&self, _: &RepresentationId, _: &BlobId) -> AnyResult<bool> {
+        Ok(false)
+    }
+    async fn update_processing_result(
+        &self,
+        _: &RepresentationId,
+        _: &[PayloadAvailability],
+        _: Option<&BlobId>,
+        _: PayloadAvailability,
+        _: Option<&str>,
+    ) -> AnyResult<ProcessingUpdateOutcome> {
+        Ok(ProcessingUpdateOutcome::NotFound)
+    }
+}
+
+struct NoopResolver;
+#[async_trait]
+impl ClipboardPayloadResolverPort for NoopResolver {
+    async fn resolve(
+        &self,
+        _: &PersistedClipboardRepresentation,
+    ) -> AnyResult<ResolvedClipboardPayload> {
+        Err(anyhow!("noop"))
+    }
+}
+
+struct NoopBlobReader;
+#[async_trait]
+impl BlobReaderPort for NoopBlobReader {
+    async fn get(&self, _: &BlobId) -> AnyResult<Vec<u8>> {
+        Err(anyhow!("noop"))
+    }
+}
+
+struct NoopInboundCapture;
+#[async_trait]
+impl ApplyInboundCapture for NoopInboundCapture {
+    async fn capture(&self, _: EntryId, _: SystemClipboardSnapshot) -> AnyResult<Option<EntryId>> {
+        Err(anyhow!(
+            "test_support: NoOp InboundCapture should not be reached"
+        ))
+    }
+}
+
+struct NoopInboundWrite;
+#[async_trait]
+impl ApplyInboundWrite for NoopInboundWrite {
+    async fn write(&self, _: SystemClipboardSnapshot) -> AnyResult<()> {
+        Err(anyhow!(
+            "test_support: NoOp InboundWrite should not be reached"
+        ))
+    }
 }
 
 /// 拼一份 `Authorization: basic <base64(user:pass)>` header 值。

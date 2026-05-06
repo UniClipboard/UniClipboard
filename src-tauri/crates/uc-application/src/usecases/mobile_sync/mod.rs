@@ -24,6 +24,7 @@ pub(crate) mod clipboard_doc;
 pub(crate) mod get_file;
 pub(crate) mod get_latest_doc;
 pub(crate) mod get_settings;
+pub(crate) mod latest_snapshot_adapter;
 pub(crate) mod list_devices;
 pub(crate) mod list_lan_interfaces;
 pub(crate) mod register_device;

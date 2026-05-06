@@ -44,11 +44,17 @@ pub struct DaemonRuntimeAssemblyInput<'a> {
     pub host_event_emitter: Arc<RwLock<Arc<dyn HostEventEmitterPort>>>,
 }
 
-/// daemon 启动前已构造好的后台 worker。
+/// daemon 启动前已构造好的后台 worker + 共享 use case。
+///
+/// `apply_inbound` 不是 worker, 而是 worker 装配过程的 enhanced
+/// `ApplyInboundClipboardUseCase` 实例 (带 blob materializer + host event
+/// emitter)。同一份实例还要通过 `build_daemon_app_facade` 喂给 mobile
+/// sync facade,所以放进本结构以便 host.rs 共享。P5a.6 引入。
 pub struct DaemonRuntimeWorkers {
     pub clipboard_watcher: Arc<ClipboardWatcherWorker>,
     pub inbound_clipboard_sync: Arc<InboundClipboardSyncWorker>,
     pub file_sync_orchestrator: Arc<FileSyncOrchestratorWorker>,
+    pub apply_inbound: Arc<ApplyInboundClipboardUseCase>,
 }
 
 /// 构造 daemon runtime worker。
@@ -87,7 +93,7 @@ pub fn build_daemon_runtime_workers(
         .with_blob_materializer(blob_materializer)
         .with_host_event_emitter(input.host_event_emitter),
     );
-    let inbound_clipboard_facade = Arc::new(InboundClipboardFacade::new(apply_inbound_uc));
+    let inbound_clipboard_facade = Arc::new(InboundClipboardFacade::new(apply_inbound_uc.clone()));
     let clipboard_capture_facade = Arc::new(ClipboardCaptureFacade::new(apply_inbound_capture_uc));
     let clipboard_live_index_facade = Arc::new(ClipboardLiveIndexFacade::new(Arc::new(
         ClipboardLiveIndexer::new(ClipboardLiveIndexDeps {
@@ -133,5 +139,6 @@ pub fn build_daemon_runtime_workers(
         clipboard_watcher,
         inbound_clipboard_sync,
         file_sync_orchestrator,
+        apply_inbound: apply_inbound_uc,
     })
 }

@@ -1,4 +1,4 @@
-//! SyncClipboard 协议根路径路由(Phase 3 子步骤 5e/5f)。
+//! SyncClipboard 协议根路径路由(P5a.6 起接真实管线)。
 //!
 //! 替代 Phase 3 子步骤 3 的 `GET /mobile/v1/handshake` stub —— v3 切到
 //! SyncClipboard 兼容路径后, iOS shortcut 客户端在用户填的 base URL 后面
@@ -9,14 +9,14 @@
 //!
 //! | Method | Path | 业务 |
 //! |---|---|---|
-//! | GET | `/SyncClipboard.json` | 取最近一次 PUT 的元数据 |
-//! | PUT | `/SyncClipboard.json` | 上传新元数据(daemon 自动算 SHA-256 填响应) |
-//! | GET | `/file/:dataName` | 取附件原始字节 |
-//! | PUT | `/file/:dataName` | 上传附件 |
+//! | GET | `/SyncClipboard.json` | 取最新一条 paste-priority rep,翻成 SyncClipboard 元数据 |
+//! | PUT | `/SyncClipboard.json` | 接收元数据, 通过 ApplyInbound 写入剪贴板 |
+//! | GET | `/file/:dataName` | 取 dataName 命中的最新 entry 的字节(Image/File) |
+//! | PUT | `/file/:dataName` | 把字节暂存进 IncomingMobileBuffer |
 //!
 //! 所有 4 条路由都通过 [`crate::mobile_lan::middleware::basic_auth`] 校验,
 //! 不经 middleware 不会到达 handler;500 / 401 由 middleware 自己回, handler
-//! 只处理 happy / 404。
+//! 只处理 happy / 404 / 400。
 //!
 //! ## DTO 与应用模型映射
 //!
@@ -27,12 +27,24 @@
 //! `from_meta` / `into_meta` 在本文件内单独定义, 让 webserver 拥有完整的
 //! "wire schema 控制权"(`uc-application/AGENTS.md` §6.3 拒绝把 wire DTO
 //! 上浮到应用层)。
+//!
+//! ## P5a.6 改动
+//!
+//! - 4 条路由全部从 `ClipboardDocStub` 切到真实 use case
+//! - PUT 路径从 `Extension<AuthenticatedDevice>` 取 `MobileDeviceId` 喂给
+//!   `apply_incoming` 的伪 `DeviceId("mobile_sync:<id>")`
+//! - PUT 响应改为 `200 OK` 空 body —— SyncClipboard shortcut 客户端只看
+//!   status code,无需读 echo meta
+//! - GET 路径(meta + file)经 `LatestClipboardSnapshotPort` 真接入剪贴板
+//!   存储 —— PUT 后 GET 是真往返
+//! - PUT 响应里的 hash 字段从 input.text 自算 SHA-256 后回填到 wire(保留
+//!   日志里的 hash_prefix 便于排障)
 
 use std::sync::Arc;
 
 use axum::{
     body::{to_bytes, Body},
-    extract::{Path, Request, State},
+    extract::{Extension, Path, Request, State},
     http::{header, HeaderValue, StatusCode},
     response::{IntoResponse, Response},
     routing::get,
@@ -41,14 +53,15 @@ use axum::{
 use serde::{Deserialize, Serialize};
 
 use uc_application::facade::{
-    MobileSyncFacade, SyncClipboardError, SyncClipboardItemType, SyncClipboardMeta,
+    ApplyIncomingMobileClipError, ApplyIncomingMobileClipOutcome, AuthenticatedDevice,
+    GetLatestMobileSyncDocError, GetMobileSyncFileError, MobileSyncFacade, SyncClipboardItemType,
+    SyncClipboardMeta,
 };
 
 use crate::mobile_lan::middleware::basic_auth;
 
-/// `PUT /file/{dataName}` 的请求体上限 —— Phase 3 stub 用 16 MiB 兜底
-/// (与 SyncClipboard 项目桌面端同档)。Phase 5 接入真实剪贴板存储 + blob
-/// store 后这里换成 streaming, 不再一次性 buffer。
+/// `PUT /file/{dataName}` 的请求体上限 —— SyncClipboard 桌面端同档 16 MiB。
+/// 真生产仍可能有图像 / RTF 大块上传, 后续 P5a.10 可观测后再调。
 const MAX_FILE_BYTES: usize = 16 * 1024 * 1024;
 
 // ─── wire DTO ───────────────────────────────────────────────────────────
@@ -128,12 +141,12 @@ async fn get_sync_clipboard_json(
             );
             Ok(Json(SyncClipboardDoc::from_meta(meta)))
         }
-        Err(SyncClipboardError::NotFound) => {
-            tracing::info!("GET /SyncClipboard.json: 404 (no doc yet)");
+        Err(GetLatestMobileSyncDocError::NotFound) => {
+            tracing::info!("GET /SyncClipboard.json: 404 (no clipboard entry yet)");
             Err(StatusCode::NOT_FOUND.into_response())
         }
-        Err(SyncClipboardError::Internal(msg)) => {
-            tracing::warn!(error = %msg, "get_sync_clipboard_json: internal failure");
+        Err(GetLatestMobileSyncDocError::Port(err)) => {
+            tracing::warn!(error = %err, "GET /SyncClipboard.json: snapshot port failure");
             Err(StatusCode::INTERNAL_SERVER_ERROR.into_response())
         }
     }
@@ -141,8 +154,9 @@ async fn get_sync_clipboard_json(
 
 async fn put_sync_clipboard_json(
     State(facade): State<Arc<MobileSyncFacade>>,
+    Extension(authed): Extension<AuthenticatedDevice>,
     Json(doc): Json<SyncClipboardDoc>,
-) -> Result<Json<SyncClipboardDoc>, Response> {
+) -> Result<StatusCode, Response> {
     let meta = doc
         .into_meta()
         .map_err(|reason| (StatusCode::BAD_REQUEST, reason).into_response())?;
@@ -152,26 +166,24 @@ async fn put_sync_clipboard_json(
     let size = meta.size;
     let text_preview_len = meta.text.len();
 
-    match facade.put_sync_doc(meta).await {
-        Ok(stored) => {
+    // hash 不在路由层日志里再算 —— ApplyInbound 的 V3 envelope 流程内部
+    // 已经把 content_hash 算好(`encode_snapshot_to_v3_bytes` 的副产物),
+    // tracing 字段在 use case 层已经打了。重复算 SHA-256 只浪费 CPU。
+
+    let device_id = authed.device.device_id.clone();
+    match facade.put_sync_doc(meta, device_id).await {
+        Ok(outcome) => {
             tracing::info!(
                 item_type = ?item_type,
                 has_data,
                 size,
                 text_len = text_preview_len,
-                hash_prefix = stored.hash.as_deref().map(|h| &h[..h.len().min(12)]),
+                outcome = ?outcome_kind(&outcome),
                 "PUT /SyncClipboard.json: 200"
             );
-            Ok(Json(SyncClipboardDoc::from_meta(stored)))
+            Ok(StatusCode::OK)
         }
-        Err(SyncClipboardError::NotFound) => {
-            // PUT 不应该返回 NotFound;视为 stub 实现错误, 兜底 500。
-            Err(StatusCode::INTERNAL_SERVER_ERROR.into_response())
-        }
-        Err(SyncClipboardError::Internal(msg)) => {
-            tracing::warn!(error = %msg, "put_sync_clipboard_json: internal failure");
-            Err(StatusCode::INTERNAL_SERVER_ERROR.into_response())
-        }
+        Err(err) => Err(map_apply_error(err, "PUT /SyncClipboard.json")),
     }
 }
 
@@ -180,28 +192,28 @@ async fn get_clipboard_file(
     Path(data_name): Path<String>,
 ) -> Result<Response, Response> {
     match facade.get_clipboard_file(&data_name).await {
-        Ok((mime, bytes)) => {
+        Ok(out) => {
             tracing::info!(
                 data_name = %data_name,
-                mime = %mime,
-                bytes = bytes.len(),
+                mime = %out.mime,
+                bytes = out.bytes.len(),
                 "GET /file: 200"
             );
-            let mut resp = Response::new(Body::from(bytes));
+            let mut resp = Response::new(Body::from(out.bytes));
             *resp.status_mut() = StatusCode::OK;
             resp.headers_mut().insert(
                 header::CONTENT_TYPE,
-                HeaderValue::from_str(&mime)
+                HeaderValue::from_str(&out.mime)
                     .unwrap_or(HeaderValue::from_static("application/octet-stream")),
             );
             Ok(resp)
         }
-        Err(SyncClipboardError::NotFound) => {
+        Err(GetMobileSyncFileError::NotFound) => {
             tracing::info!(data_name = %data_name, "GET /file: 404");
             Err(StatusCode::NOT_FOUND.into_response())
         }
-        Err(SyncClipboardError::Internal(msg)) => {
-            tracing::warn!(error = %msg, "get_clipboard_file: internal failure");
+        Err(GetMobileSyncFileError::Port(err)) => {
+            tracing::warn!(error = %err, "GET /file: snapshot port failure");
             Err(StatusCode::INTERNAL_SERVER_ERROR.into_response())
         }
     }
@@ -209,6 +221,7 @@ async fn get_clipboard_file(
 
 async fn put_clipboard_file(
     State(facade): State<Arc<MobileSyncFacade>>,
+    Extension(authed): Extension<AuthenticatedDevice>,
     Path(data_name): Path<String>,
     request: Request,
 ) -> Result<StatusCode, Response> {
@@ -232,23 +245,54 @@ async fn put_clipboard_file(
     let bytes_len = body_bytes.len();
     let log_data_name = data_name.clone();
     let log_mime = mime.clone();
-    match facade.put_clipboard_file(data_name, mime, body_bytes).await {
-        Ok(()) => {
+    let device_id = authed.device.device_id.clone();
+    match facade
+        .put_clipboard_file(data_name, mime, body_bytes, device_id)
+        .await
+    {
+        Ok(outcome) => {
             tracing::info!(
                 data_name = %log_data_name,
                 mime = %log_mime,
                 bytes = bytes_len,
+                outcome = ?outcome_kind(&outcome),
                 "PUT /file: 200"
             );
             Ok(StatusCode::OK)
         }
-        Err(SyncClipboardError::NotFound) => {
-            // PUT 不应该返回 NotFound, 兜底 500。
-            Err(StatusCode::INTERNAL_SERVER_ERROR.into_response())
+        Err(err) => Err(map_apply_error(err, "PUT /file")),
+    }
+}
+
+// ─── helpers ────────────────────────────────────────────────────────────
+
+/// 把 outcome 翻成日志用的简短串(避免日志里出现 entry id 等敏感字段)。
+fn outcome_kind(outcome: &ApplyIncomingMobileClipOutcome) -> &'static str {
+    match outcome {
+        ApplyIncomingMobileClipOutcome::Applied { .. } => "applied",
+        ApplyIncomingMobileClipOutcome::DuplicateSkipped { .. } => "duplicate_skipped",
+        ApplyIncomingMobileClipOutcome::DecodeFailed { .. } => "decode_failed",
+        ApplyIncomingMobileClipOutcome::Buffered => "buffered",
+    }
+}
+
+/// `apply_incoming` 的错误映射。decode 失败按 wire-protocol 契约违反翻成
+/// 400,内部错误翻成 500;outcome 维度的 `DecodeFailed` 路由层不直接收
+/// (use case 已经把 decode 错包成 `Ok(DecodeFailed)`),但保留映射以防协议
+/// 演进引入新错误变体。
+fn map_apply_error(err: ApplyIncomingMobileClipError, route: &'static str) -> Response {
+    match err {
+        ApplyIncomingMobileClipError::EncodeFailed(msg) => {
+            tracing::warn!(error = %msg, route, "apply_incoming: encode failed");
+            (StatusCode::BAD_REQUEST, msg).into_response()
         }
-        Err(SyncClipboardError::Internal(msg)) => {
-            tracing::warn!(error = %msg, "put_clipboard_file: internal failure");
-            Err(StatusCode::INTERNAL_SERVER_ERROR.into_response())
+        ApplyIncomingMobileClipError::Inbound(err) => {
+            tracing::warn!(error = %err, route, "apply_incoming: inbound pipeline failure");
+            StatusCode::INTERNAL_SERVER_ERROR.into_response()
+        }
+        ApplyIncomingMobileClipError::Internal(msg) => {
+            tracing::warn!(error = %msg, route, "apply_incoming: internal");
+            StatusCode::INTERNAL_SERVER_ERROR.into_response()
         }
     }
 }
@@ -279,10 +323,12 @@ pub(crate) fn build_router(facade: Arc<MobileSyncFacade>) -> Router {
 #[cfg(test)]
 mod tests {
     //! 路由 + middleware 集成测试。覆盖 SPEC §14 的 happy path / 401 / 404
-    //! 三类断言, 避免每次改动后要拉真 daemon 跑 curl。
+    //! 三类断言。
     //!
-    //! Facade 装配复用同模块的 [`crate::mobile_lan::test_support`], 见那
-    //! 里的"为什么不依赖 uc-infra"说明。
+    //! P5a.6 起,facade 走真实 use case + Noop ports(test_support 装配),
+    //! PUT 路径调用会因 NoOp `InboundCapture/Write` 被 ApplyInbound 包成
+    //! 内部错 500;GET 路径因 noop snapshot 永远空 → 404。完整往返交给
+    //! P5a.10 真机回归。
 
     use super::*;
     use axum::body::Body;
@@ -343,7 +389,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn get_before_any_put_returns_404() {
+    async fn get_with_no_clipboard_entry_returns_404() {
         let facade = build_facade_with_seeded_device("mobile_alice", "wonderland").await;
         let app = build_app(facade);
 
@@ -359,62 +405,6 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(resp.status(), StatusCode::NOT_FOUND);
-    }
-
-    #[tokio::test]
-    async fn put_then_get_round_trips_with_sha256_hash() {
-        let facade = build_facade_with_seeded_device("mobile_alice", "wonderland").await;
-        let app = build_app(facade);
-
-        // PUT with text "hello world"
-        let put_body = serde_json::json!({
-            "type": "Text",
-            "text": "hello world",
-            "hasData": false,
-            "size": 0,
-        });
-        let resp = app
-            .clone()
-            .oneshot(
-                Request::builder()
-                    .method("PUT")
-                    .uri("/SyncClipboard.json")
-                    .header("Authorization", auth_header("mobile_alice", "wonderland"))
-                    .header("Content-Type", "application/json")
-                    .body(Body::from(put_body.to_string()))
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
-        assert_eq!(resp.status(), StatusCode::OK);
-        let body_bytes = to_bytes(resp.into_body(), 1024).await.unwrap();
-        let json: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
-        assert_eq!(
-            json["hash"],
-            "b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9"
-        );
-
-        // GET 应当拿到刚刚那条
-        let resp = app
-            .oneshot(
-                Request::builder()
-                    .method("GET")
-                    .uri("/SyncClipboard.json")
-                    .header("Authorization", auth_header("mobile_alice", "wonderland"))
-                    .body(Body::empty())
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
-        assert_eq!(resp.status(), StatusCode::OK);
-        let body_bytes = to_bytes(resp.into_body(), 1024).await.unwrap();
-        let json: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
-        assert_eq!(json["text"], "hello world");
-        assert_eq!(json["type"], "Text");
-        assert_eq!(
-            json["hash"],
-            "b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9"
-        );
     }
 
     #[tokio::test]
@@ -436,12 +426,13 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn put_then_get_file_round_trips() {
+    async fn put_file_then_buffered_returns_200() {
+        // PUT /file/foo —— 走 BufferFile 分支,只塞进 IncomingMobileBuffer,
+        // 不触达 ApplyInbound 真链路 → 200 OK。
         let facade = build_facade_with_seeded_device("mobile_alice", "wonderland").await;
         let app = build_app(facade);
 
         let resp = app
-            .clone()
             .oneshot(
                 Request::builder()
                     .method("PUT")
@@ -454,26 +445,34 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(resp.status(), StatusCode::OK);
+    }
 
+    #[tokio::test]
+    async fn put_sync_doc_with_unknown_type_returns_400() {
+        // wire DTO 的 `type` 字段是 SyncClipboard 协议契约,未知值映射不到
+        // SyncClipboardItemType → routes 翻 400。这条路径不进入 ApplyInbound,
+        // 与 NoOp capture/write 无关。
+        let facade = build_facade_with_seeded_device("mobile_alice", "wonderland").await;
+        let app = build_app(facade);
+
+        let put_body = serde_json::json!({
+            "type": "Strange",
+            "text": "ignored",
+            "hasData": false,
+            "size": 0,
+        });
         let resp = app
             .oneshot(
                 Request::builder()
-                    .method("GET")
-                    .uri("/file/photo.png")
+                    .method("PUT")
+                    .uri("/SyncClipboard.json")
                     .header("Authorization", auth_header("mobile_alice", "wonderland"))
-                    .body(Body::empty())
+                    .header("Content-Type", "application/json")
+                    .body(Body::from(put_body.to_string()))
                     .unwrap(),
             )
             .await
             .unwrap();
-        assert_eq!(resp.status(), StatusCode::OK);
-        assert_eq!(
-            resp.headers()
-                .get("content-type")
-                .map(|v| v.to_str().unwrap()),
-            Some("image/png")
-        );
-        let body_bytes = to_bytes(resp.into_body(), 1024).await.unwrap().to_vec();
-        assert_eq!(body_bytes, vec![0xDE, 0xAD, 0xBE, 0xEF]);
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
     }
 }

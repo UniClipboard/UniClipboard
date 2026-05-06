@@ -73,19 +73,29 @@ const MAX_FILE_BYTES: usize = 16 * 1024 * 1024;
 /// 写, serde rename 到 `type`。
 #[derive(Debug, Clone, Deserialize, Serialize)]
 struct SyncClipboardDoc {
-    #[serde(rename = "type")]
-    r#type: String, // PascalCase: "Text" / "Image" / "File" / "Group"
-    #[serde(default)]
+    // iOS Shortcut 实际发的 body 字段名混合大小写,例如:
+    //   `{"hasData": true, "Type": "File", "dataName": "...", "text": "..."}`
+    // —— `Type` 是 PascalCase,其它是 camelCase。给每个字段都加 PascalCase
+    // alias 兼容 Shortcut 客户端的不一致 schema。响应侧 (`Serialize`) 仍按
+    // SyncClipboard 桌面端原契约的小写 / camelCase 输出,不动。
+    #[serde(rename = "type", alias = "Type")]
+    r#type: String, // PascalCase value: "Text" / "Image" / "File" / "Group"
+    #[serde(default, alias = "Text")]
     text: String,
-    #[serde(rename = "dataName", default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        rename = "dataName",
+        alias = "DataName",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
     data_name: Option<String>,
-    #[serde(rename = "hasData", default)]
+    #[serde(rename = "hasData", alias = "HasData", default)]
     has_data: bool,
-    #[serde(default)]
+    #[serde(default, alias = "Size")]
     size: u64,
     /// SHA-256 hex —— 接收侧可缺省(SyncClipboard shortcut 不上传), 响应侧
     /// daemon 一定填(给 SyncClipboard 桌面端兼容用)。
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(default, alias = "Hash", skip_serializing_if = "Option::is_none")]
     hash: Option<String>,
 }
 
@@ -513,5 +523,36 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    }
+
+    /// iOS Shortcut 真机回归实测:body 用 PascalCase `Type` 字段,其它字段
+    /// camelCase。serde alias 必须兼容这种混合大小写,DTO 反序列化要成功
+    /// 走到 facade(NoOp facade 因 inbound 不可写最终返 500,但**不**是 400
+    /// —— 这是 schema 兼容回归的关键 pin)。
+    #[tokio::test]
+    async fn put_sync_doc_accepts_pascal_case_type_field() {
+        let facade = build_facade_with_seeded_device("mobile_alice", "wonderland").await;
+        let app = build_app(facade);
+
+        let put_body = r#"{"hasData":true,"Type":"File","dataName":"foo.pdf","text":"foo.pdf"}"#;
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("PUT")
+                    .uri("/SyncClipboard.json")
+                    .header("Authorization", auth_header("mobile_alice", "wonderland"))
+                    .header("Content-Type", "application/json")
+                    .body(Body::from(put_body))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        // schema 兼容 ok → 不是 400; NoOp facade 路径下 ApplyInbound 写不了 →
+        // 500。我们要 pin 的是"DTO 不再因 PascalCase Type 拒绝 body"。
+        assert_ne!(
+            resp.status(),
+            StatusCode::BAD_REQUEST,
+            "PascalCase Type field must be accepted by serde alias"
+        );
     }
 }

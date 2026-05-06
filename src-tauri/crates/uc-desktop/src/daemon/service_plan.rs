@@ -34,7 +34,6 @@ impl DaemonServicePlan {
             input.run_mode.waits_for_gui_ready() || !input.encryption_unlocked;
         let state = Arc::new(RwLock::new(RuntimeState::new(initial_statuses(
             should_defer_clipboard,
-            input.encryption_unlocked,
         ))));
 
         let mut services: Vec<Arc<dyn DaemonService>> = vec![input.file_sync_orchestrator];
@@ -57,16 +56,11 @@ impl DaemonServicePlan {
         }
     }
 
-    pub fn add_peer_keepalive(
-        &mut self,
-        encryption_unlocked: bool,
-        worker: Arc<dyn DaemonService>,
-    ) {
-        if encryption_unlocked {
-            self.services.push(worker);
-        } else {
-            self.deferred_services.push(worker);
-        }
+    pub fn add_peer_keepalive(&mut self, worker: Arc<dyn DaemonService>) {
+        // Keepalive 不依赖加密解锁:它读的 peer_address 表是明文的,iroh dial
+        // 用的 device identity 也独立于 master key。锁定期就开始保活,把 iroh
+        // magicsock 路径预热好,避免解锁后 ~22s 真空期内复制被判 Offline 丢失。
+        self.services.push(worker);
     }
 
     pub fn deferred_ready_notify(
@@ -81,10 +75,7 @@ impl DaemonServicePlan {
     }
 }
 
-fn initial_statuses(
-    should_defer_clipboard: bool,
-    encryption_unlocked: bool,
-) -> Vec<DaemonServiceSnapshot> {
+fn initial_statuses(should_defer_clipboard: bool) -> Vec<DaemonServiceSnapshot> {
     vec![
         DaemonServiceSnapshot {
             name: "clipboard-watcher".to_string(),
@@ -100,7 +91,7 @@ fn initial_statuses(
         },
         DaemonServiceSnapshot {
             name: "peer-keepalive".to_string(),
-            health: deferred_health(!encryption_unlocked),
+            health: ServiceHealth::Healthy,
         },
         DaemonServiceSnapshot {
             name: "peer-monitor".to_string(),
@@ -177,8 +168,12 @@ mod tests {
         assert_eq!(plan.services.len(), 1);
         assert_eq!(plan.deferred_services.len(), 3);
 
-        plan.add_peer_keepalive(false, service("peer-keepalive"));
-        assert_eq!(plan.deferred_services.len(), 4);
+        // peer-keepalive 不再随解锁状态被延后:它读 peer_address (明文) +
+        // iroh dial (用 device identity, 与 master key 解耦),锁定期就该开始
+        // 把 magicsock 路径预热好,消除解锁后真空期。
+        plan.add_peer_keepalive(service("peer-keepalive"));
+        assert_eq!(plan.services.len(), 2);
+        assert_eq!(plan.deferred_services.len(), 3);
         assert!(plan
             .deferred_ready_notify(Arc::new(tokio::sync::Notify::new()))
             .is_some());
@@ -194,7 +189,7 @@ mod tests {
         );
         assert_eq!(
             health_of(&state, "peer-keepalive"),
-            Some(ServiceHealth::Stopped)
+            Some(ServiceHealth::Healthy)
         );
     }
 

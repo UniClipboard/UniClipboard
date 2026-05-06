@@ -53,7 +53,7 @@ pub fn build_daemon_app_instance(input: DaemonAppAssemblyInput) -> DaemonApp {
 
     let peer_keepalive_worker: Arc<dyn DaemonService> =
         Arc::new(PeerKeepAliveWorker::new(Arc::clone(&app_facade)));
-    service_plan.add_peer_keepalive(encryption_unlocked, peer_keepalive_worker);
+    service_plan.add_peer_keepalive(peer_keepalive_worker);
     let deferred_notify = service_plan.deferred_ready_notify(deferred_ready_notify);
 
     DaemonApp::new_with_deferred(

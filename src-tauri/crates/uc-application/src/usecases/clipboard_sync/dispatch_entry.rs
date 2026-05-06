@@ -47,6 +47,7 @@ use bytes::Bytes;
 use tokio::task::JoinSet;
 use tracing::{debug, info, instrument, warn};
 
+use uc_core::clipboard::ClipboardContentCategorySet;
 use uc_core::ids::DeviceId;
 use uc_core::ports::security::TransferCipherPort;
 use uc_core::ports::{
@@ -67,6 +68,12 @@ pub(crate) struct DispatchClipboardEntryInput {
     pub content_hash: String,
     /// Payload codec tag, e.g. `3` for the V3 `ClipboardBinaryPayload`.
     pub payload_version: u8,
+    /// Set of content categories present in the snapshot, used to gate
+    /// against each peer's `send_content_types` toggle. Caller (facade
+    /// `dispatch_snapshot*`) computes via
+    /// `ClipboardContentCategorySet::from_snapshot`. CLI raw-bytes paths pass
+    /// an empty set (fail open) since they can't enumerate reps.
+    pub categories: ClipboardContentCategorySet,
 }
 
 /// One target's dispatch result. `Ok` + `DispatchAck` when the peer
@@ -176,7 +183,10 @@ impl DispatchClipboardEntryUseCase {
             if record.device_id == local_device {
                 continue;
             }
-            if !self.is_send_allowed(&record.device_id).await {
+            if !self
+                .is_send_allowed(&record.device_id, &input.categories)
+                .await
+            {
                 continue;
             }
             candidates.push(record.device_id);
@@ -281,12 +291,22 @@ impl DispatchClipboardEntryUseCase {
     }
 
     /// Per-device sync gate: returns `true` when the local device should
-    /// fan a clipboard frame out to `device_id`. Reads
-    /// `SpaceMember.sync_preferences.send_enabled`; fails open (returns
-    /// `true`) on lookup error or missing record so a transient repo
-    /// glitch can't silently break sync — the operator-visible signal is
-    /// the WARN log, not a stalled clipboard.
-    async fn is_send_allowed(&self, device_id: &DeviceId) -> bool {
+    /// fan a clipboard frame out to `device_id`. Two stages:
+    ///
+    /// 1. Device-level kill switch (`send_enabled`).
+    /// 2. Content-type filter (`send_content_types`, AND-of-allowed across
+    ///    the snapshot's category set — see `uc-core` `category.rs` module doc).
+    ///    Empty set (raw-bytes / unrecognised payload) passes (fail open)
+    ///    so we don't stall sync silently.
+    ///
+    /// Member-record miss / repo error → fail open with a WARN, mirroring
+    /// the device-level gate's posture: a transient glitch should not
+    /// silently kill sync.
+    async fn is_send_allowed(
+        &self,
+        device_id: &DeviceId,
+        categories: &ClipboardContentCategorySet,
+    ) -> bool {
         match self.member_repo.get(device_id).await {
             Ok(Some(member)) => {
                 if !member.sync_preferences.send_enabled {
@@ -294,6 +314,17 @@ impl DispatchClipboardEntryUseCase {
                         device_id = %device_id.as_str(),
                         reason = "send_disabled_by_user",
                         "dispatch: skipping peer per per-device sync preferences"
+                    );
+                    return false;
+                }
+                if !categories.allowed_by(&member.sync_preferences.send_content_types) {
+                    info!(
+                        device_id = %device_id.as_str(),
+                        categories = %categories.labels(),
+                        denied = %categories
+                            .denied_labels(&member.sync_preferences.send_content_types),
+                        reason = "content_type_disabled_by_user",
+                        "dispatch: skipping peer per per-device content_types filter"
                     );
                     return false;
                 }
@@ -596,6 +627,9 @@ mod tests {
             plaintext: Bytes::from_static(b"hello world"),
             content_hash: "9".repeat(64),
             payload_version: 3,
+            // Existing verdicts predate the content-type filter; default
+            // to an empty set so they always pass the gate (fail open).
+            categories: ClipboardContentCategorySet::empty(),
         }
     }
 
@@ -957,5 +991,156 @@ mod tests {
         let outcome = uc.execute(input()).await.expect("dispatch ok");
         assert_eq!(outcome.total_accepted, 1);
         assert_eq!(outcome.per_target.len(), 1);
+    }
+
+    /// 8. Per-device content-type gate — `peer-no-text` has
+    /// `send_content_types.text=false`. Dispatching a `Text` snapshot
+    /// must skip that peer; the other peer (default-allowed) still gets
+    /// the frame. mockall enforces "no dispatch ever for peer-no-text".
+    #[tokio::test]
+    async fn send_content_types_text_disabled_peer_is_skipped() {
+        use uc_core::settings::model::ContentTypes;
+
+        let mut repo = MockPeerAddrRepo::new();
+        repo.expect_list()
+            .times(1)
+            .returning(|| Ok(vec![record("peer-on"), record("peer-no-text")]));
+
+        let mut member_repo = MockMemberRepo::new();
+        member_repo
+            .expect_get()
+            .returning(|did| match did.as_str() {
+                "peer-no-text" => {
+                    let mut prefs = MemberSyncPreferences::default();
+                    let mut ct = ContentTypes::default();
+                    ct.text = false;
+                    prefs.send_content_types = ct;
+                    Ok(Some(SpaceMember {
+                        device_id: did.clone(),
+                        device_name: "Peer NoText".to_string(),
+                        identity_fingerprint: fp(0),
+                        joined_at: Utc::now(),
+                        sync_preferences: prefs,
+                    }))
+                }
+                _ => Ok(Some(SpaceMember {
+                    device_id: did.clone(),
+                    device_name: format!("Test {}", did.as_str()),
+                    identity_fingerprint: fp(0),
+                    joined_at: Utc::now(),
+                    sync_preferences: MemberSyncPreferences::default(),
+                })),
+            });
+
+        let mut cipher = MockCipher::new();
+        cipher
+            .expect_encrypt()
+            .times(1)
+            .returning(|p| Ok(p.to_vec()));
+
+        let mut dispatch = MockDispatch::new();
+        dispatch
+            .expect_dispatch()
+            .with(eq(DeviceId::new("peer-on")), always(), always())
+            .times(1)
+            .returning(|_, _, _| Ok(DispatchAck::Accepted));
+        // No expect_dispatch for peer-no-text → mockall would panic on call.
+
+        let uc = build_uc(
+            repo,
+            member_repo,
+            cipher,
+            dispatch,
+            make_device_identity("self-device"),
+            make_local_identity_stub(),
+            make_settings_stub(),
+        );
+
+        // Hand-craft an input whose category set is `{Text}` — the
+        // simplest scenario where the text-muted peer must be skipped.
+        use uc_core::clipboard::ClipboardContentCategory;
+        let mut categories = ClipboardContentCategorySet::empty();
+        categories.insert(ClipboardContentCategory::Text);
+        let text_input = DispatchClipboardEntryInput {
+            plaintext: Bytes::from_static(b"hello world"),
+            content_hash: "9".repeat(64),
+            payload_version: 3,
+            categories,
+        };
+
+        let outcome = uc.execute(text_input).await.expect("dispatch ok");
+        assert_eq!(outcome.total_accepted, 1);
+        assert_eq!(
+            outcome.per_target.len(),
+            1,
+            "text-muted peer must not appear in per_target"
+        );
+        assert_eq!(outcome.per_target[0].device_id.as_str(), "peer-on");
+    }
+
+    /// 9. Empty category set bypasses content-type gate even when the
+    /// peer has all content types disabled. Mirrors the CLI raw-bytes
+    /// path where the snapshot can't be classified — must fail open.
+    #[tokio::test]
+    async fn empty_category_set_bypasses_content_types_filter() {
+        use uc_core::settings::model::ContentTypes;
+
+        let mut repo = MockPeerAddrRepo::new();
+        repo.expect_list()
+            .times(1)
+            .returning(|| Ok(vec![record("peer-strict")]));
+
+        let mut member_repo = MockMemberRepo::new();
+        member_repo
+            .expect_get()
+            .with(eq(DeviceId::new("peer-strict")))
+            .times(1)
+            .returning(|did| {
+                let mut prefs = MemberSyncPreferences::default();
+                // Every content type off — only an empty category set should pass.
+                let mut ct = ContentTypes::default();
+                ct.text = false;
+                ct.image = false;
+                ct.link = false;
+                ct.file = false;
+                ct.code_snippet = false;
+                ct.rich_text = false;
+                prefs.send_content_types = ct;
+                Ok(Some(SpaceMember {
+                    device_id: did.clone(),
+                    device_name: "Peer Strict".to_string(),
+                    identity_fingerprint: fp(0),
+                    joined_at: Utc::now(),
+                    sync_preferences: prefs,
+                }))
+            });
+
+        let mut cipher = MockCipher::new();
+        cipher
+            .expect_encrypt()
+            .times(1)
+            .returning(|p| Ok(p.to_vec()));
+
+        let mut dispatch = MockDispatch::new();
+        dispatch
+            .expect_dispatch()
+            .with(eq(DeviceId::new("peer-strict")), always(), always())
+            .times(1)
+            .returning(|_, _, _| Ok(DispatchAck::Accepted));
+
+        let uc = build_uc(
+            repo,
+            member_repo,
+            cipher,
+            dispatch,
+            make_device_identity("self-device"),
+            make_local_identity_stub(),
+            make_settings_stub(),
+        );
+
+        // input() defaults to an empty `ClipboardContentCategorySet` — an
+        // unrecognised payload should fail open even against an all-off filter.
+        let outcome = uc.execute(input()).await.expect("dispatch ok");
+        assert_eq!(outcome.total_accepted, 1);
     }
 }

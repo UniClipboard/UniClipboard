@@ -87,7 +87,7 @@ impl ObservedClipboardRepresentation {
     }
 }
 
-fn is_plain_text_representation(rep: &ObservedClipboardRepresentation) -> bool {
+pub(crate) fn is_plain_text_representation(rep: &ObservedClipboardRepresentation) -> bool {
     if let Some(mime) = rep.mime.as_ref() {
         let mime_str = mime.as_str();
         if mime_str.eq_ignore_ascii_case("text/plain")
@@ -113,7 +113,7 @@ fn is_text_representation(rep: &ObservedClipboardRepresentation) -> bool {
         || rep.format_id.eq_ignore_ascii_case("rtf")
 }
 
-fn is_image_representation(rep: &ObservedClipboardRepresentation) -> bool {
+pub(crate) fn is_image_representation(rep: &ObservedClipboardRepresentation) -> bool {
     rep.mime
         .as_ref()
         .is_some_and(|mime| mime.as_str().starts_with("image/"))
@@ -137,8 +137,86 @@ pub fn is_file_mime_or_format(mime: Option<&MimeType>, format_id: &FormatId) -> 
         || format_id.to_ascii_lowercase().contains("uri-list")
 }
 
-fn is_file_representation(rep: &ObservedClipboardRepresentation) -> bool {
+pub(crate) fn is_file_representation(rep: &ObservedClipboardRepresentation) -> bool {
     is_file_mime_or_format(rep.mime.as_ref(), &rep.format_id)
+}
+
+/// `text/html` / `text/rtf` (rich-text carriers). Caller must check
+/// `is_file_representation` *before* this so `text/uri-list` doesn't
+/// fall through here.
+pub(crate) fn is_rich_text_representation(rep: &ObservedClipboardRepresentation) -> bool {
+    if let Some(m) = rep.mime.as_ref() {
+        let s = m.as_str();
+        if s.eq_ignore_ascii_case("text/html") || s.eq_ignore_ascii_case("text/rtf") {
+            return true;
+        }
+    }
+    rep.format_id.eq_ignore_ascii_case("html") || rep.format_id.eq_ignore_ascii_case("rtf")
+}
+
+/// MIME / format-id based link detection (e.g. `text/x-url`, `public.url`).
+/// Note: macOS does **not** expose copied URLs through these MIMEs — its
+/// system pasteboard surfaces them as plain text only. For that case use
+/// `is_link_content_representation` (content-based heuristic).
+///
+/// Callers must check `is_file_representation` first so `text/uri-list`
+/// (file's territory) doesn't get reclassified here.
+pub(crate) fn is_link_representation(rep: &ObservedClipboardRepresentation) -> bool {
+    if let Some(m) = rep.mime.as_ref() {
+        let s = m.as_str().to_ascii_lowercase();
+        if s == "text/x-uri" || s == "text/x-url" || s == "text/uri" || s.contains("url") {
+            return true;
+        }
+    }
+    let f = rep.format_id.to_ascii_lowercase();
+    f == "url" || f == "uri" || f == "public.url"
+}
+
+/// Catch-all for `text/*` reps that didn't match a more specific bucket
+/// (markdown, csv, future subtypes). Caller must check the specific
+/// buckets *first* so `text/html` / `text/uri-list` aren't reclassified
+/// as plain text via this catch-all.
+pub(crate) fn is_any_text_representation(rep: &ObservedClipboardRepresentation) -> bool {
+    rep.mime
+        .as_ref()
+        .is_some_and(|m| m.as_str().to_ascii_lowercase().starts_with("text/"))
+}
+
+/// Heuristic: a text-bearing rep whose entire payload (after `trim`) is
+/// a single URL/URI literal (e.g. `https://x.com`, `mailto:a@b.c`).
+/// Used by `ClipboardContentCategorySet::from_snapshot` to recover the
+/// `Link` signal on platforms (notably macOS) where the system
+/// pasteboard exposes copied URLs *only* as plain text.
+///
+/// Bounded by `LINK_HEURISTIC_BYTES_LIMIT` to keep the check cheap.
+/// Delegates the URL-shape check to [`crate::clipboard::link_utils::is_single_url`]
+/// so URL recognition is consistent across the codebase.
+pub(crate) fn is_link_content_representation(rep: &ObservedClipboardRepresentation) -> bool {
+    const LINK_HEURISTIC_BYTES_LIMIT: usize = 4096;
+    if !(is_plain_text_representation(rep) || is_any_text_representation(rep)) {
+        return false;
+    }
+    if rep.bytes.is_empty() || rep.bytes.len() > LINK_HEURISTIC_BYTES_LIMIT {
+        return false;
+    }
+    let Ok(text) = std::str::from_utf8(&rep.bytes) else {
+        return false;
+    };
+    let trimmed = text.trim();
+    // First gate: must look like a "real" link — `://` or a known
+    // schemeless URI prefix. Without this, `Url::parse` accepts opaque
+    // URIs like `python:dict` or `note:hello` as valid URLs, which the
+    // user almost certainly intends as plain text.
+    let is_url_shape = trimmed.contains("://")
+        || trimmed.starts_with("mailto:")
+        || trimmed.starts_with("tel:")
+        || trimmed.starts_with("sms:");
+    if !is_url_shape {
+        return false;
+    }
+    // Second gate: delegate full URL validation to `link_utils` so URL
+    // recognition stays consistent across the codebase.
+    crate::clipboard::link_utils::is_single_url(text)
 }
 
 impl Clone for ObservedClipboardRepresentation {

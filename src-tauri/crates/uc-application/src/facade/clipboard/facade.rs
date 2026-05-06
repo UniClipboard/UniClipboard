@@ -34,6 +34,7 @@ use crate::usecases::clipboard_sync::{
     DispatchOutcome, DispatchPerTarget, DispatchSyncError, InboundAction as UcInboundAction,
     InboundClipboardNotice as UcInboundNotice, IngestInboundClipboardUseCase, IngestSpawnHandle,
 };
+use uc_core::clipboard::ClipboardContentCategorySet;
 
 /// Construction bundle, mirrors `MemberRosterDeps` pattern so bootstrap
 /// wiring stays consistent across facades.
@@ -164,9 +165,12 @@ impl ClipboardSyncFacade {
     /// Fan out one plaintext payload to every online paired peer.
     ///
     /// Phase 2 / CLI / test entry point — caller has already encoded the
-    /// payload and computed `content_hash`. Daemon (Phase 3) prefers
-    /// [`Self::dispatch_snapshot`] which encodes the V3 envelope + the
-    /// canonical snapshot_hash internally.
+    /// payload and computed `content_hash`. The per-device
+    /// `send_content_types` filter is bypassed here (empty
+    /// `ClipboardContentCategorySet`, fail open) because raw-bytes callers
+    /// don't carry the snapshot structure needed to classify; daemon goes through
+    /// [`Self::dispatch_snapshot`] / [`Self::dispatch_snapshot_with_blob_refs`]
+    /// which preserve the snapshot and apply the filter.
     #[instrument(skip_all, fields(content_hash = %input.content_hash))]
     pub async fn dispatch_entry(
         &self,
@@ -178,6 +182,30 @@ impl ClipboardSyncFacade {
                 plaintext: input.plaintext,
                 content_hash: input.content_hash.clone(),
                 payload_version: input.payload_version,
+                categories: ClipboardContentCategorySet::empty(),
+            })
+            .await?;
+        Ok(lift_outcome(internal))
+    }
+
+    /// Internal helper used by snapshot-aware dispatch entry points to
+    /// thread the snapshot's content category set into the gate.
+    /// Public callers go through `dispatch_entry` (empty set, fail open)
+    /// or `dispatch_snapshot*` (set computed from the snapshot reps).
+    async fn dispatch_internal(
+        &self,
+        plaintext: Bytes,
+        content_hash: String,
+        payload_version: u8,
+        categories: ClipboardContentCategorySet,
+    ) -> Result<DispatchEntryOutcome, ClipboardSyncError> {
+        let internal = self
+            .dispatch_uc
+            .execute(DispatchClipboardEntryInput {
+                plaintext,
+                content_hash,
+                payload_version,
+                categories,
             })
             .await?;
         Ok(lift_outcome(internal))
@@ -201,14 +229,11 @@ impl ClipboardSyncFacade {
         origin: ClipboardChangeOrigin,
     ) -> Result<DispatchEntryOutcome, ClipboardSyncError> {
         let _ = origin; // span metadata only (see doc above)
+        let categories = ClipboardContentCategorySet::from_snapshot(&snapshot);
         let (plaintext, content_hash) = encode_snapshot_to_v3_bytes(&snapshot)
             .map_err(|e| ClipboardSyncError::CipherFailure(format!("payload encode: {e}")))?;
-        self.dispatch_entry(DispatchEntryInput {
-            plaintext,
-            content_hash,
-            payload_version: 3,
-        })
-        .await
+        self.dispatch_internal(plaintext, content_hash, 3, categories)
+            .await
     }
 
     /// 编码并发送带 Slice 3 blob 引用的剪贴板快照。
@@ -223,15 +248,12 @@ impl ClipboardSyncFacade {
         origin: ClipboardChangeOrigin,
     ) -> Result<DispatchEntryOutcome, ClipboardSyncError> {
         let _ = origin;
+        let categories = ClipboardContentCategorySet::from_snapshot(&snapshot);
         let (plaintext, content_hash) =
             encode_snapshot_with_blob_refs_to_v3_bytes(&snapshot, &blob_refs)
                 .map_err(|e| ClipboardSyncError::CipherFailure(format!("payload encode: {e}")))?;
-        self.dispatch_entry(DispatchEntryInput {
-            plaintext,
-            content_hash,
-            payload_version: 3,
-        })
-        .await
+        self.dispatch_internal(plaintext, content_hash, 3, categories)
+            .await
     }
 
     /// Subscribe to the inbound-notice broadcast. CLI `watch` / future

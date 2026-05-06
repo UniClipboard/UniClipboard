@@ -238,7 +238,10 @@ fn apply_cors_headers(headers: &mut HeaderMap, origin: Option<&str>) {
 
     headers.insert(
         ACCESS_CONTROL_ALLOW_METHODS,
-        HeaderValue::from_static("GET, POST, PUT, DELETE, OPTIONS"),
+        // PATCH 必须列在这里：`/member/:device_id/sync-preferences` 走 PATCH，
+        // 浏览器/webview 在 preflight 响应里看不到 PATCH 就会拦截真请求 ——
+        // 现象是 DeviceSettingsSheet 上的发送开关切了又弹回、永远改不动。
+        HeaderValue::from_static("GET, POST, PUT, PATCH, DELETE, OPTIONS"),
     );
     headers.insert(
         ACCESS_CONTROL_ALLOW_HEADERS,

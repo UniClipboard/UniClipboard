@@ -1,72 +1,113 @@
-//! 移动端同步所需的端口抽象。
+//! 移动端同步所需的端口抽象(v3 SyncClipboard 兼容版)。
 //!
-//! 这些 trait 仅描述"应用层在颁发 token / 持久化设备 / 探测当前 LAN
-//! 端点 / 管理一次性下载凭据时需要外部具备的能力"，不涉及任何具体技术
-//! 实现（OS RNG、SQLite、网卡探测等）。具体实现由 `uc-infra` /
-//! `uc-platform` / `uc-application` 中的 adapter 承担。
+//! 这些 trait 仅描述"应用层在颁发凭据 / 持久化设备 / 探测当前 LAN 端点 /
+//! 验证密码时需要外部具备的能力",不涉及任何具体技术实现(OS RNG、SQLite、
+//! 网卡探测、Argon2 等)。具体实现由 `uc-infra` / `uc-platform` /
+//! `uc-application` 中的 adapter 承担。
 //!
-//! 设计参考 `.context/mobile-sync/SPEC.md` §4 / §7。
+//! 设计参考 `.context/mobile-sync/SPEC.md` §14 / §15(v3 权威章节)。
 
 use async_trait::async_trait;
 use thiserror::Error;
 
 use crate::mobile_sync::{
-    LanEndpointInfo, LanInterface, MintedToken, MobileDevice, MobileDeviceError, MobileDeviceId,
-    RegisteredDownloadToken, ShortcutDownloadToken, TokenHash,
+    LanEndpointInfo, LanInterface, MintedCredentials, MobileDevice, MobileDeviceError,
+    MobileDeviceId,
 };
 
-// ─── token minter ────────────────────────────────────────────────────────
+// ─── credentials minter ──────────────────────────────────────────────────
 
-/// 颁发 mobile 设备的 token 与稳定 device id。
+/// 颁发 mobile 设备的 Basic Auth 凭据 + 稳定 device id。
 ///
-/// 同步而非异步：底层只是 `OsRng + SHA-256 + hex` 的纯计算，没必要扛上
+/// 同步而非异步:底层只是 `OsRng + Argon2 + base64` 的纯计算,没必要扛上
 /// `async` 的成本。
 ///
-/// 把 token 与 device id 合并为同一个 minter 是有意为之 —— 二者都是"登
-/// 记一台 mobile 设备时颁发的不可猜凭据"，单一职责且来自同一熵源更易
-/// 推理。
-pub trait MobileTokenMinterPort: Send + Sync {
-    /// 生成一对全新的 token 信息。
+/// 把 username / password / password_hash / device_id 合并为同一个 minter 是
+/// 有意为之 —— 四者都是"登记一台 mobile 设备时颁发的不可猜凭据",单一
+/// 职责且来自同一熵源更易推理。
+pub trait MobileCredentialsMinterPort: Send + Sync {
+    /// 生成一对全新的凭据。
     ///
-    /// 实现必须保证：
-    /// 1. `raw_hex` 是 64 字符的小写 hex（即 32 字节随机的 hex 编码）
-    /// 2. `hash` 是 `raw_hex` 对应原始 32 字节的 SHA-256
-    /// 3. `device_id` 形如 `did_<32hex>`，与 `raw_hex` 相互独立（不共享熵）
-    fn mint_token(&self) -> MintedToken;
+    /// 实现必须保证:
+    /// 1. `username` 在所有已登记设备中唯一(典型实现:`mobile_<8hex>`)
+    /// 2. `password` 是用户一次性可见的明文(典型:base64-url-safe 16 字节
+    ///    OsRng,约 22 字符)
+    /// 3. `password_hash` 是 `password` 的 Argon2id PHC 字符串
+    /// 4. `device_id` 形如 `did_<32hex>`,与 `username` / `password` 相互独立
+    ///    (不共享熵)
+    fn mint_credentials(&self) -> MintedCredentials;
+}
+
+// ─── password hasher ─────────────────────────────────────────────────────
+
+/// 密码哈希与验证能力。
+///
+/// 业务上只关心"这个明文密码能不能验证通过这个 hash",**不**关心具体算法。
+/// adapter 内部固定用 Argon2id(uc-infra::mobile_sync::password_hasher),
+/// 但 trait 不暴露算法名 —— 未来切换 algo 不需要改 use case。
+///
+/// `verify` 必须用 constant-time 比较(adapter 自己用 `subtle` 或 PHC 库内置
+/// 实现,不让 use case 关心这个细节)。
+#[async_trait]
+pub trait PasswordHasherPort: Send + Sync {
+    /// 把明文密码哈希成 PHC 字符串(`$argon2id$v=19$m=...,t=...,p=...$<salt>$<hash>`)。
+    async fn hash(&self, password: &str) -> Result<String, PasswordHasherError>;
+
+    /// 校验明文密码与已知的 PHC 字符串是否匹配。
+    ///
+    /// 返回 `Ok(true)` / `Ok(false)`;`Err` 仅在 PHC 字符串本身格式损坏 / 算法
+    /// 库异常时返回。
+    async fn verify(&self, password: &str, phc: &str) -> Result<bool, PasswordHasherError>;
+}
+
+#[derive(Debug, Error)]
+pub enum PasswordHasherError {
+    /// PHC 字符串格式不合法 / 解析失败。adapter 必须在写入 db 前自检,但
+    /// 读出的 row 可能因升级 / 损坏而非法,这条让 use case 据此把记录视为
+    /// "需要重新登记"。
+    #[error("invalid phc string: {0}")]
+    InvalidPhc(String),
+
+    /// 哈希 / 校验调用本身失败(库内部错误 / 内存不足等)。
+    #[error("password hasher internal failure: {0}")]
+    Internal(String),
 }
 
 // ─── device repository ───────────────────────────────────────────────────
 
-/// 已登记 mobile 设备的持久化能力。
+/// 已登记 mobile 设备的持久化能力(v3 改用 username 索引)。
 ///
-/// 鉴权热路径调用 `find_by_token_hash` —— adapter 必须确保有 hash 索引；
-/// 删除路径在撤销 / 解绑时调用，需要立即生效（不能走异步队列）。
+/// 鉴权热路径调用 `find_by_username` —— adapter 必须确保有 username 索引;
+/// 删除路径在撤销 / 解绑时调用,需要立即生效(不能走异步队列)。
 #[async_trait]
 pub trait MobileDeviceRepositoryPort: Send + Sync {
-    /// 持久化一台新设备。重复 device_id / token_hash 应返回对应的领域错误。
+    /// 持久化一台新设备。重复 device_id / username 应返回对应的领域错误。
     async fn save(&self, device: &MobileDevice) -> Result<(), MobileDeviceError>;
 
-    /// 鉴权热路径：根据 token 哈希定位设备。
-    async fn find_by_token_hash(
+    /// 鉴权热路径:根据 username 定位设备。
+    async fn find_by_username(
         &self,
-        token_hash: &TokenHash,
+        username: &str,
     ) -> Result<Option<MobileDevice>, MobileDeviceError>;
 
-    /// 列表 / 撤销 UI 用：按 device id 精确查询。
+    /// 列表 / 撤销 UI 用:按 device id 精确查询。
     async fn find_by_device_id(
         &self,
         device_id: &MobileDeviceId,
     ) -> Result<Option<MobileDevice>, MobileDeviceError>;
 
-    /// 列出全部设备 —— v1 不分页，预期数量很小（个位数）。
+    /// 列出全部设备 —— v1 不分页,预期数量很小(个位数)。
     async fn list_all(&self) -> Result<Vec<MobileDevice>, MobileDeviceError>;
 
-    /// 删除一条记录。返回 `true` 表示真实删掉了一行；`false` 表示原本就
-    /// 不存在（撤销操作幂等）。
+    /// 删除一条记录。返回 `true` 表示真实删掉了一行;`false` 表示原本就
+    /// 不存在(撤销操作幂等)。
     async fn delete(&self, device_id: &MobileDeviceId) -> Result<bool, MobileDeviceError>;
 
     /// 鉴权链路成功后回写最近活跃信息 —— 仅运维 / UI 用。失败不应阻塞业
-    /// 务请求，调用方决定是否吞错。
+    /// 务请求,调用方决定是否吞错。
+    ///
+    /// `reported_name` / `reported_os` 在 SyncClipboard 协议下永远是 `None`
+    /// (shortcut 不上报);保留参数以备 v2 ClipboardAuto 客户端扩展。
     async fn record_activity(
         &self,
         device_id: &MobileDeviceId,
@@ -81,9 +122,9 @@ pub trait MobileDeviceRepositoryPort: Send + Sync {
 
 /// 探测 daemon 当前对外暴露的 LAN 端点。
 ///
-/// 抽象出来是因为 daemon 启停 / 配置变更后端点会动；登记设备的 use case
-/// 需要拿到"现在能用"的 URL，而不是配置里写的目标 URL。当 LAN 监听未
-/// 启用时返回 `Ok(None)`，由 use case 翻译成业务错误。
+/// 抽象出来是因为 daemon 启停 / 配置变更后端点会动;登记设备的 use case
+/// 需要拿到"现在能用"的 URL,而不是配置里写的目标 URL。当 LAN 监听未
+/// 启用时返回 `Ok(None)`,由 use case 翻译成业务错误。
 #[async_trait]
 pub trait MobileSyncEndpointInfoPort: Send + Sync {
     async fn current_lan_endpoint(&self) -> Result<Option<LanEndpointInfo>, EndpointInfoError>;
@@ -95,54 +136,17 @@ pub enum EndpointInfoError {
     Storage(String),
 }
 
-// ─── shortcut download token store ───────────────────────────────────────
-
-/// 一次性 `.shortcut` 下载凭据的短 TTL 缓存。
-///
-/// 用作"创建设备 → iPhone Safari 下载 .shortcut"中间的安全旁路：登记 use
-/// case 把打包好的字节加注一份临时 token，iPhone Safari 去 `/install?dt=…`
-/// 一次性领走。由 in-process adapter 维护即可（典型实现：`tokio::Mutex<
-/// HashMap>` + 后台过期清理任务）。
-///
-/// 进程重启即丢失被认为是可接受的：未消费的 token 自然作废，用户重新点
-/// 一次"添加 iPhone"即可。
-#[async_trait]
-pub trait ShortcutDownloadTokenStorePort: Send + Sync {
-    /// 注册一份待领取的 .shortcut 字节流，返回带过期时间的 token。
-    /// `payload` 由 use case 提前打包好，store 不解释其内容。
-    async fn register(
-        &self,
-        device_id: MobileDeviceId,
-        payload: Vec<u8>,
-        ttl_ms: i64,
-    ) -> Result<RegisteredDownloadToken, ShortcutDownloadTokenError>;
-
-    /// 一次性消费：返回该 token 关联的 (device_id, payload) 并立即作废。
-    /// `Ok(None)` 表示 token 不存在 / 已被消费 / 已过期 —— store 不区分，
-    /// 上层只关心"能不能领"。
-    async fn consume(
-        &self,
-        token: &ShortcutDownloadToken,
-    ) -> Result<Option<(MobileDeviceId, Vec<u8>)>, ShortcutDownloadTokenError>;
-}
-
-#[derive(Debug, Error)]
-pub enum ShortcutDownloadTokenError {
-    #[error("download token store internal failure: {0}")]
-    Internal(String),
-}
-
 // ─── lan interface probe ────────────────────────────────────────────────
 
 /// 枚举本机当前的 LAN 网卡 IPv4 地址。
 ///
-/// 用于"添加 iPhone"流程：UI 让用户从可用 IP 中挑一个，daemon 据此拼出
+/// 用于"添加 iPhone"流程:UI 让用户从可用 IP 中挑一个,daemon 据此拼出
 /// 二维码里的 LAN URL。返回的列表是"adapter 看到的全部 IPv4 接口"——是否
 /// 排除 loopback / link-local / VPN-overlay / CGNAT 等由 application 层 use
-/// case 按当前产品策略过滤，便于以后随设置（如
-/// `NetworkSettings.allow_overlay_network_addrs`）调整而无需改 adapter。
+/// case 按当前产品策略过滤,便于以后随设置(如
+/// `NetworkSettings.allow_overlay_network_addrs`)调整而无需改 adapter。
 ///
-/// 同步而非异步：实现里就是一次 syscall，没必要扛 async 成本。但保留
+/// 同步而非异步:实现里就是一次 syscall,没必要扛 async 成本。但保留
 /// `async fn` 是因为某些平台需要起 tokio 任务读 sysctl —— 让 trait 形状
 /// 适应所有合法实现。
 #[async_trait]

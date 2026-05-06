@@ -8,8 +8,6 @@
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-use super::token::TokenHash;
-
 /// 服务端分配给一台移动端设备的稳定标识。
 ///
 /// 形如 `did_<32hex>`。Adapter 决定具体生成方式（典型：32 字节 OsRng + hex
@@ -67,26 +65,34 @@ impl MobileClientType {
     }
 }
 
-/// 已登记的移动端设备。
+/// 已登记的移动端设备(v3 SyncClipboard 兼容版)。
 ///
-/// 字段语义：
-/// * `device_id` —— 服务端分配的稳定标识，撤销 / 列表 UI 中作为主键。
-/// * `label` —— 用户在登记时填的可读标签（"我的 iPhone 15"）。
-/// * `client_type` —— 客户端形态（v1 仅 `IosShortcut`）。
-/// * `token_hash` —— 该设备的 bearer token 的 SHA-256 哈希；token 原文
-///   只在登记成功的瞬间一次性回显给用户 + 写入打包的 `.shortcut`，之后
-///   仅以此哈希存在于服务端。验证请求时比较哈希即可。
-/// * `created_at_ms` —— 登记时刻，Unix 毫秒。
+/// 字段语义:
+/// * `device_id` —— 服务端分配的稳定标识,撤销 / 列表 UI 中作为主键。
+/// * `label` —— 用户在登记时填的可读标签("我的 iPhone 15")。
+/// * `client_type` —— 客户端形态(v1 仅 `IosShortcut`)。
+/// * `username` —— 该设备的 Basic Auth 用户名,在所有已登记设备中**唯一**。
+///   形如 `mobile_<8hex>`,daemon 内部不解读语义,但客户端在 SyncClipboard
+///   shortcut 里看到的字段不那么吓人。
+/// * `password_hash` —— Argon2id PHC 字符串(`$argon2id$v=19$m=...,t=...,
+///   p=...$<salt>$<hash>`)。原 password 只在登记成功的瞬间一次性回显给
+///   用户(写进 SyncClipboard shortcut),之后仅以此哈希存在于服务端。
+///   鉴权时调 `PasswordHasherPort::verify` 比对。
+/// * `created_at_ms` —— 登记时刻,Unix 毫秒。
 /// * `last_seen_at_ms` / `last_seen_ip` —— 客户端最后一次合法请求的时间
-///   戳与来源地址，仅作运维 / UI 展示用，未参与鉴权决策。
-/// * `reported_name` / `reported_os` —— 客户端在首次握手时通过 handshake
-///   接口上报的"自报家门"，可能与 `label` 不同；若客户端不上报则保持 `None`。
+///   戳与来源地址,仅作运维 / UI 展示用,未参与鉴权决策。
+/// * `reported_name` / `reported_os` —— SyncClipboard shortcut **不上报**
+///   设备信息(无 handshake 概念),v3 这两个字段保留但永远 `None`,留给
+///   未来的 ClipboardAuto 或 v2 客户端扩展。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MobileDevice {
     pub device_id: MobileDeviceId,
     pub label: String,
     pub client_type: MobileClientType,
-    pub token_hash: TokenHash,
+    /// Basic Auth 用户名(在所有已登记设备中唯一)。
+    pub username: String,
+    /// Argon2id PHC 字符串。
+    pub password_hash: String,
     pub created_at_ms: i64,
     pub last_seen_at_ms: Option<i64>,
     pub last_seen_ip: Option<String>,
@@ -101,16 +107,16 @@ pub struct MobileDevice {
 /// 翻译为 use-case-level 的 *Error。
 #[derive(Debug, Error)]
 pub enum MobileDeviceError {
-    /// 业务唯一性冲突：同 `device_id` 已存在。
+    /// 业务唯一性冲突:同 `device_id` 已存在。
     #[error("mobile device already exists: {0}")]
     AlreadyExists(MobileDeviceId),
 
-    /// 业务唯一性冲突：同 `token_hash` 已被另一台设备占用。
+    /// 业务唯一性冲突:同 `username` 已被另一台设备占用。
     ///
-    /// 理论上 OsRng 32 字节随机的碰撞概率可忽略，但 adapter 仍应把唯一约束
-    /// 在 schema 层面约束住，碰撞时这条错误能让上层把请求重试。
-    #[error("mobile device token hash already in use")]
-    TokenHashCollision,
+    /// 理论上 8 字符 hex(`mobile_<8hex>`)的碰撞概率可忽略,但 adapter 仍
+    /// 应把唯一约束在 schema 层面约束住,碰撞时这条错误能让上层把请求重试。
+    #[error("mobile device username already in use")]
+    UsernameCollision,
 
     /// 持久化技术失败 —— 文案仅用于日志 / tracing。
     #[error("mobile device storage failure: {0}")]

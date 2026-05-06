@@ -47,7 +47,7 @@ use tracing::instrument;
 ///
 /// PascalCase 是 wire 形态;Rust 端用枚举, webserver 在 (de)serialize 时与
 /// wire 的 PascalCase 字符串一一映射(见 webserver `SyncClipboardDoc`)。
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SyncClipboardItemType {
     Text,
     Image,

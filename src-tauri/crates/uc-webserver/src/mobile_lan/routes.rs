@@ -119,8 +119,19 @@ async fn get_sync_clipboard_json(
     State(facade): State<Arc<MobileSyncFacade>>,
 ) -> Result<Json<SyncClipboardDoc>, Response> {
     match facade.get_latest_sync_doc().await {
-        Ok(meta) => Ok(Json(SyncClipboardDoc::from_meta(meta))),
-        Err(SyncClipboardError::NotFound) => Err(StatusCode::NOT_FOUND.into_response()),
+        Ok(meta) => {
+            tracing::info!(
+                item_type = ?meta.item_type,
+                has_data = meta.has_data,
+                size = meta.size,
+                "GET /SyncClipboard.json: 200"
+            );
+            Ok(Json(SyncClipboardDoc::from_meta(meta)))
+        }
+        Err(SyncClipboardError::NotFound) => {
+            tracing::info!("GET /SyncClipboard.json: 404 (no doc yet)");
+            Err(StatusCode::NOT_FOUND.into_response())
+        }
         Err(SyncClipboardError::Internal(msg)) => {
             tracing::warn!(error = %msg, "get_sync_clipboard_json: internal failure");
             Err(StatusCode::INTERNAL_SERVER_ERROR.into_response())
@@ -136,8 +147,23 @@ async fn put_sync_clipboard_json(
         .into_meta()
         .map_err(|reason| (StatusCode::BAD_REQUEST, reason).into_response())?;
 
+    let item_type = meta.item_type;
+    let has_data = meta.has_data;
+    let size = meta.size;
+    let text_preview_len = meta.text.len();
+
     match facade.put_sync_doc(meta).await {
-        Ok(stored) => Ok(Json(SyncClipboardDoc::from_meta(stored))),
+        Ok(stored) => {
+            tracing::info!(
+                item_type = ?item_type,
+                has_data,
+                size,
+                text_len = text_preview_len,
+                hash_prefix = stored.hash.as_deref().map(|h| &h[..h.len().min(12)]),
+                "PUT /SyncClipboard.json: 200"
+            );
+            Ok(Json(SyncClipboardDoc::from_meta(stored)))
+        }
         Err(SyncClipboardError::NotFound) => {
             // PUT 不应该返回 NotFound;视为 stub 实现错误, 兜底 500。
             Err(StatusCode::INTERNAL_SERVER_ERROR.into_response())
@@ -155,6 +181,12 @@ async fn get_clipboard_file(
 ) -> Result<Response, Response> {
     match facade.get_clipboard_file(&data_name).await {
         Ok((mime, bytes)) => {
+            tracing::info!(
+                data_name = %data_name,
+                mime = %mime,
+                bytes = bytes.len(),
+                "GET /file: 200"
+            );
             let mut resp = Response::new(Body::from(bytes));
             *resp.status_mut() = StatusCode::OK;
             resp.headers_mut().insert(
@@ -164,7 +196,10 @@ async fn get_clipboard_file(
             );
             Ok(resp)
         }
-        Err(SyncClipboardError::NotFound) => Err(StatusCode::NOT_FOUND.into_response()),
+        Err(SyncClipboardError::NotFound) => {
+            tracing::info!(data_name = %data_name, "GET /file: 404");
+            Err(StatusCode::NOT_FOUND.into_response())
+        }
         Err(SyncClipboardError::Internal(msg)) => {
             tracing::warn!(error = %msg, "get_clipboard_file: internal failure");
             Err(StatusCode::INTERNAL_SERVER_ERROR.into_response())
@@ -194,8 +229,19 @@ async fn put_clipboard_file(
         })?
         .to_vec();
 
+    let bytes_len = body_bytes.len();
+    let log_data_name = data_name.clone();
+    let log_mime = mime.clone();
     match facade.put_clipboard_file(data_name, mime, body_bytes).await {
-        Ok(()) => Ok(StatusCode::OK),
+        Ok(()) => {
+            tracing::info!(
+                data_name = %log_data_name,
+                mime = %log_mime,
+                bytes = bytes_len,
+                "PUT /file: 200"
+            );
+            Ok(StatusCode::OK)
+        }
         Err(SyncClipboardError::NotFound) => {
             // PUT 不应该返回 NotFound, 兜底 500。
             Err(StatusCode::INTERNAL_SERVER_ERROR.into_response())

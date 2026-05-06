@@ -48,6 +48,18 @@ pub(crate) async fn basic_auth(
     mut req: Request,
     next: Next,
 ) -> Result<Response, Response> {
+    // 入口 INFO 日志 —— 记录每一次到达的请求, 方便诊断"iPhone 究竟有
+    // 没有打到 daemon"。auth 通过/失败之后还有第二条日志补充结果。
+    let method = req.method().clone();
+    let path = req.uri().path().to_string();
+    let has_auth = req.headers().contains_key(header::AUTHORIZATION);
+    tracing::info!(
+        method = %method,
+        path = %path,
+        has_auth_header = has_auth,
+        "mobile_lan: incoming request"
+    );
+
     let header_str = req
         .headers()
         .get(header::AUTHORIZATION)
@@ -62,10 +74,24 @@ pub(crate) async fn basic_auth(
         .await
     {
         Ok(authed) => {
+            tracing::info!(
+                method = %method,
+                path = %path,
+                username = %authed.device.username,
+                "mobile_lan: auth ok, dispatching to handler"
+            );
             req.extensions_mut().insert(authed);
             Ok(next.run(req).await)
         }
-        Err(AuthenticateBasicAuthError::InvalidCredentials) => Err(unauthorized()),
+        Err(AuthenticateBasicAuthError::InvalidCredentials) => {
+            tracing::warn!(
+                method = %method,
+                path = %path,
+                has_auth_header = has_auth,
+                "mobile_lan: 401 invalid credentials"
+            );
+            Err(unauthorized())
+        }
         Err(AuthenticateBasicAuthError::PersistenceFailed(msg)) => {
             tracing::warn!(error = %msg, "mobile basic auth: device repo failure");
             Err(internal_error())

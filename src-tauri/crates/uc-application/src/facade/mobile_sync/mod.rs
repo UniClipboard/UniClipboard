@@ -10,8 +10,7 @@
 mod facade;
 
 pub use facade::{
-    AuthenticateMobileRequestError, AuthenticateMobileRequestInput, GetMobileSyncSettingsError,
-    LanInterfaceOption, ListLanInterfacesError, ListMobileDevicesError, MobileAuthHeaders,
+    GetMobileSyncSettingsError, LanInterfaceOption, ListLanInterfacesError, ListMobileDevicesError,
     MobileDeviceSummary, MobileSyncFacade, MobileSyncFacadeDeps, MobileSyncSettingsView,
     RegisterMobileShortcutDeviceError, RegisterMobileShortcutDeviceInput,
     RegisterMobileShortcutDeviceOutput, RevokeMobileDeviceError, RevokeMobileDeviceInput,

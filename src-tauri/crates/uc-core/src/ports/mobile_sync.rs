@@ -132,45 +132,6 @@ pub enum ShortcutDownloadTokenError {
     Internal(String),
 }
 
-// ─── nonce store（鉴权防重放滑动窗口）──────────────────────────────────
-
-/// 鉴权链路的 nonce 滑动窗口缓存。
-///
-/// LAN HTTP 中间件每接到一个请求都会校验 `X-UC-Nonce` 头：先看是否在窗
-/// 口内见过（重放），再插入并以"观测时间"作 TTL 起点（典型 60s）。窗口
-/// 满时返回 `CacheFull`，由 middleware 翻成 503，避免被构造大量随机
-/// nonce 拖死内存。
-///
-/// 这里只描述"见过没"——不关心 token / 设备身份；身份归
-/// `MobileDeviceRepositoryPort`。能力切得小是因为 nonce 缓存的实现策略
-/// （进程内 vs 跨进程 vs Redis）独立于设备仓储演进。
-///
-/// 采用 `record_if_new` 单原子操作而不是 `contains` + `insert` 两步：
-/// 后者在并发中会出现"两个 worker 同时看到 false 然后双双 insert"的
-/// 时间窗口，原子操作把"判断 + 写入"收口到 adapter 内部。
-#[async_trait]
-pub trait NoncePort: Send + Sync {
-    /// 原子地"如果未见过则登记并返回 true；否则返回 false"。
-    ///
-    /// `observed_at_ms` 由调用方传入的"now"——adapter 用它驱动 lazy GC，
-    /// 也用它作每条记录的过期参考。
-    ///
-    /// 返回 `Err(NonceError::CacheFull)` 表示窗口已满，调用方应放弃
-    /// 当前请求（503 nonce_cache_full）；返回 `Err(NonceError::Storage)`
-    /// 表示底层存储异常（同样 503 nonce_cache_full，详情走日志）。
-    async fn record_if_new(&self, nonce: &str, observed_at_ms: i64) -> Result<bool, NonceError>;
-}
-
-#[derive(Debug, Error)]
-pub enum NonceError {
-    /// 滑动窗口已满。adapter 不再接受新条目，应让上层翻成 503。
-    #[error("nonce cache full")]
-    CacheFull,
-    /// 底层存储异常（adapter-specific）。带文本以便排障。
-    #[error("nonce storage failure: {0}")]
-    Storage(String),
-}
-
 // ─── lan interface probe ────────────────────────────────────────────────
 
 /// 枚举本机当前的 LAN 网卡 IPv4 地址。

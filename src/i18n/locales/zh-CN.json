@@ -696,6 +696,138 @@
       "message": "剪贴板同步已暂停，所有设备当前均不会同步内容。",
       "goToSettings": "前往设置"
     },
+    "mobileShortcut": {
+      "title": "iPhone（快捷指令）",
+      "description": "使用 SyncClipboard 快捷指令在局域网内与 iPhone 同步剪贴板",
+      "enabled": {
+        "label": "启用移动端同步",
+        "description": "关闭后将立即拒绝来自所有 iPhone 的同步请求"
+      },
+      "lanListener": {
+        "label": "LAN 监听",
+        "description": "在所选网络接口上监听明文 HTTP，开启后才能接收 iPhone 的请求",
+        "currentUrl": {
+          "label": "当前监听地址",
+          "unavailable": "—"
+        },
+        "bindIp": {
+          "label": "监听 IP",
+          "placeholder": "选择网络接口",
+          "empty": "未检测到可用的局域网 IPv4 地址",
+          "auto": "自动（127.0.0.1）"
+        },
+        "port": {
+          "label": "端口",
+          "placeholder": "42720"
+        },
+        "warning": {
+          "title": "网络风险提示",
+          "body": "局域网内任何人只要拿到此机的 LAN URL 与配对凭据即可读写剪贴板。请确保 Wi-Fi 受信任。",
+          "confirm": "我已知晓",
+          "cancel": "取消"
+        },
+        "restartRequired": {
+          "message": "更改将在下次重启 daemon 后生效",
+          "restartButton": "立即重启",
+          "dismissAriaLabel": "收起重启提示"
+        },
+        "disabledHint": "请先启用 LAN 监听后再添加 iPhone"
+      },
+      "list": {
+        "title": "已配对 iPhone",
+        "empty": {
+          "title": "暂无已配对的 iPhone",
+          "description": "点击「添加 iPhone」扫码安装快捷指令即可开始同步"
+        },
+        "lastSeen": {
+          "never": "尚未连接",
+          "format": "最后活跃 {{relative}}",
+          "fromIp": "来自 {{ip}}"
+        },
+        "addButton": "添加 iPhone"
+      },
+      "add": {
+        "title": "添加 iPhone",
+        "subtitle": "为该设备生成一对长期有效的凭据，用于 SyncClipboard 快捷指令",
+        "labelField": {
+          "label": "设备名称",
+          "placeholder": "我的 iPhone"
+        },
+        "advanced": {
+          "title": "高级选项",
+          "description": "留空则自动生成一对随机凭据"
+        },
+        "username": {
+          "label": "自定义用户名",
+          "placeholder": "留空自动生成",
+          "help": "6–32 字符，字母开头，仅 A-Z a-z 0-9 _"
+        },
+        "password": {
+          "label": "自定义密码",
+          "placeholder": "留空自动生成",
+          "help": "至少 8 字符；不强制复杂度"
+        },
+        "submit": "添加",
+        "submitting": "添加中…",
+        "cancel": "取消"
+      },
+      "credential": {
+        "title": "iPhone 已添加",
+        "subtitle": "请扫码安装 SyncClipboard 快捷指令，并在快捷指令中填入下方信息",
+        "warning": {
+          "title": "重要：此密码仅显示一次",
+          "body": "关闭此窗口后将无法再次查看密码。如不慎遗失，需要撤销此设备并重新添加。"
+        },
+        "qr": {
+          "label": "扫码安装快捷指令",
+          "alt": "SyncClipboard 快捷指令安装二维码"
+        },
+        "installUrl": {
+          "label": "或复制安装链接"
+        },
+        "baseUrl": {
+          "label": "服务地址"
+        },
+        "username": {
+          "label": "用户名"
+        },
+        "password": {
+          "label": "密码"
+        },
+        "copy": "复制",
+        "copied": "已复制",
+        "confirmSaved": "我已保存上述凭据",
+        "close": "关闭",
+        "closeBlocked": "请先勾选「我已保存上述凭据」"
+      },
+      "revoke": {
+        "confirmTitle": "撤销 {{label}}",
+        "confirmDescription": "撤销后该 iPhone 将立即无法同步。要再次连接需重新添加（密码无法找回）。",
+        "confirm": "撤销",
+        "cancel": "取消"
+      },
+      "errors": {
+        "facadeUnavailable": "移动端同步功能未启用",
+        "labelEmpty": "设备名称不能为空",
+        "labelTooLong": "设备名称过长（最多 {{max}} 字符）",
+        "lanListenerDisabled": "请先启用 LAN 监听",
+        "usernameTaken": "用户名 \"{{username}}\" 已被占用",
+        "usernameInvalidShape": "用户名格式不合法：{{reason}}",
+        "passwordTooShort": "密码长度不足（至少 {{min}} 字符）",
+        "passwordTooLong": "密码过长（最多 {{max}} 字符）",
+        "passwordHashFailed": "密码处理失败：{{message}}",
+        "deviceNotFound": "设备已不存在，请刷新列表",
+        "invalidLanParameter": "LAN 参数不合法：{{reason}}",
+        "settingsLoadFailed": "加载设置失败：{{message}}",
+        "settingsSaveFailed": "保存设置失败：{{message}}",
+        "endpointInfoProbeFailed": "无法探测当前 LAN 地址：{{message}}",
+        "lanProbeFailed": "无法列出网络接口：{{message}}",
+        "persistenceFailed": "保存失败：{{message}}",
+        "qrRenderFailed": "二维码渲染失败：{{message}}",
+        "unknown": "发生错误：{{message}}",
+        "loadFailed": "加载失败：{{message}}"
+      }
+    },
     "settings": {
       "readOnly": "不可更改",
       "badges": {

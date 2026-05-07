@@ -705,6 +705,138 @@
       "message": "Clipboard sync is paused. All devices are currently not syncing.",
       "goToSettings": "Go to Settings"
     },
+    "mobileShortcut": {
+      "title": "iPhone (Shortcut)",
+      "description": "Sync your clipboard with iPhones over LAN via the SyncClipboard shortcut",
+      "enabled": {
+        "label": "Enable mobile sync",
+        "description": "When off, all sync requests from iPhones are immediately rejected"
+      },
+      "lanListener": {
+        "label": "LAN listener",
+        "description": "Listens for cleartext HTTP on the chosen network interface; required to receive iPhone requests",
+        "currentUrl": {
+          "label": "Current listening address",
+          "unavailable": "—"
+        },
+        "bindIp": {
+          "label": "Bind IP",
+          "placeholder": "Choose a network interface",
+          "empty": "No usable LAN IPv4 addresses detected",
+          "auto": "Auto (127.0.0.1)"
+        },
+        "port": {
+          "label": "Port",
+          "placeholder": "42720"
+        },
+        "warning": {
+          "title": "Network exposure warning",
+          "body": "Anyone on this LAN can read or write your clipboard once they obtain this machine's URL and a paired credential. Only enable on trusted Wi-Fi.",
+          "confirm": "I understand",
+          "cancel": "Cancel"
+        },
+        "restartRequired": {
+          "message": "Changes take effect after the daemon is restarted",
+          "restartButton": "Restart now",
+          "dismissAriaLabel": "Dismiss restart notice"
+        },
+        "disabledHint": "Enable the LAN listener before adding an iPhone"
+      },
+      "list": {
+        "title": "Paired iPhones",
+        "empty": {
+          "title": "No iPhones paired yet",
+          "description": "Click \"Add iPhone\" and scan the QR to install the shortcut and start syncing"
+        },
+        "lastSeen": {
+          "never": "Never connected",
+          "format": "Last seen {{relative}}",
+          "fromIp": "from {{ip}}"
+        },
+        "addButton": "Add iPhone"
+      },
+      "add": {
+        "title": "Add iPhone",
+        "subtitle": "Generate a long-lived credential pair for the SyncClipboard shortcut",
+        "labelField": {
+          "label": "Device label",
+          "placeholder": "My iPhone"
+        },
+        "advanced": {
+          "title": "Advanced options",
+          "description": "Leave empty to auto-generate a random credential pair"
+        },
+        "username": {
+          "label": "Custom username",
+          "placeholder": "Leave empty to auto-generate",
+          "help": "6–32 chars, must start with a letter, only A-Z a-z 0-9 _"
+        },
+        "password": {
+          "label": "Custom password",
+          "placeholder": "Leave empty to auto-generate",
+          "help": "At least 8 chars; no complexity requirement"
+        },
+        "submit": "Add",
+        "submitting": "Adding…",
+        "cancel": "Cancel"
+      },
+      "credential": {
+        "title": "iPhone added",
+        "subtitle": "Scan the QR to install the SyncClipboard shortcut, then enter the values below into the shortcut",
+        "warning": {
+          "title": "Important: this password is shown only once",
+          "body": "After this dialog closes, the password cannot be recovered. If you lose it, you must revoke this device and add it again."
+        },
+        "qr": {
+          "label": "Scan to install the shortcut",
+          "alt": "SyncClipboard shortcut install QR code"
+        },
+        "installUrl": {
+          "label": "Or copy the install link"
+        },
+        "baseUrl": {
+          "label": "Server URL"
+        },
+        "username": {
+          "label": "Username"
+        },
+        "password": {
+          "label": "Password"
+        },
+        "copy": "Copy",
+        "copied": "Copied",
+        "confirmSaved": "I have saved these credentials",
+        "close": "Close",
+        "closeBlocked": "Confirm \"I have saved these credentials\" first"
+      },
+      "revoke": {
+        "confirmTitle": "Revoke {{label}}",
+        "confirmDescription": "Once revoked, this iPhone can no longer sync. To reconnect you must add it again (the password cannot be recovered).",
+        "confirm": "Revoke",
+        "cancel": "Cancel"
+      },
+      "errors": {
+        "facadeUnavailable": "Mobile sync is not enabled in this build",
+        "labelEmpty": "Device label cannot be empty",
+        "labelTooLong": "Device label is too long (max {{max}} chars)",
+        "lanListenerDisabled": "Enable the LAN listener first",
+        "usernameTaken": "Username \"{{username}}\" is already taken",
+        "usernameInvalidShape": "Invalid username: {{reason}}",
+        "passwordTooShort": "Password is too short (min {{min}} chars)",
+        "passwordTooLong": "Password is too long (max {{max}} chars)",
+        "passwordHashFailed": "Password hashing failed: {{message}}",
+        "deviceNotFound": "Device no longer exists; please refresh the list",
+        "invalidLanParameter": "Invalid LAN parameter: {{reason}}",
+        "settingsLoadFailed": "Failed to load settings: {{message}}",
+        "settingsSaveFailed": "Failed to save settings: {{message}}",
+        "endpointInfoProbeFailed": "Failed to probe current LAN address: {{message}}",
+        "lanProbeFailed": "Failed to list network interfaces: {{message}}",
+        "persistenceFailed": "Save failed: {{message}}",
+        "qrRenderFailed": "QR rendering failed: {{message}}",
+        "unknown": "Error: {{message}}",
+        "loadFailed": "Load failed: {{message}}"
+      }
+    },
     "settings": {
       "readOnly": "Locked",
       "badges": {

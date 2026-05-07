@@ -1,0 +1,91 @@
+name: 'Snap'
+run-name: "snap-${{ inputs.channel || 'edge' }}-${{ github.run_number }}"
+
+# Snap 走 strict + gnome extension,base=core22 让产物在 Ubuntu 20.04 / RHEL 9
+# / openSUSE Leap 这类 webkit2gtk-4.1 缺位的老 distro 上也能跑(snap 内部
+# bundle 了 webkit/glibc/GTK 完整 stack,跟 host 解耦)。这是 .deb 覆盖不了
+# 的用户群,详见 snap/snapcraft.yaml 顶部说明。
+#
+# 推送到 snap store 需要 SNAPCRAFT_STORE_CREDENTIALS secret(`snapcraft
+# export-login --snaps=uniclipboard --acls package_upload --expires <date>`
+# 生成,详见 README/CONTRIBUTING)。secret 缺失时 publish 步骤跳过,只产
+# workflow artifact。
+on:
+  workflow_dispatch:
+    inputs:
+      channel:
+        description: 'Snap store channel'
+        required: true
+        type: choice
+        options:
+          - edge
+          - beta
+          - candidate
+          - stable
+        default: edge
+      release:
+        description: 'Push to snap store after build (off = artifact only)'
+        required: false
+        type: boolean
+        default: true
+      branch:
+        description: 'Branch to build'
+        required: false
+        type: string
+        default: ''
+
+jobs:
+  build:
+    name: Build snap (amd64)
+    # snap build 必须在 Ubuntu host 上跑,snapcraft action 自带 LXD;
+    # 我们用 22.04 跟 base=core22 对齐,snapcraft action-build 装的工具链
+    # 跟 base 一致避免 ABI 错位。
+    runs-on: ubuntu-22.04
+    timeout-minutes: 90
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.branch || github.ref }}
+
+      - name: Build snap
+        id: build
+        uses: snapcore/action-build@v1
+        # action-build 默认在 LXD 容器里跑 snapcraft,产物路径输出到
+        # steps.build.outputs.snap。strict + gnome extension 自动 attach
+        # gnome-42-2204 + gtk-common-themes content snaps,无需手动挂。
+
+      - name: Upload .snap as workflow artifact
+        # 即便 publish 走 store,也保留 artifact 用于离线分发 / 调试
+        # (`snap install --dangerous file.snap`)。retention 7 天够用。
+        uses: actions/upload-artifact@v4
+        with:
+          name: uniclipboard-amd64-snap
+          path: ${{ steps.build.outputs.snap }}
+          retention-days: 7
+          if-no-files-found: error
+
+      - name: Check snap store credentials
+        id: check-creds
+        if: ${{ inputs.release }}
+        env:
+          SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAPCRAFT_STORE_CREDENTIALS }}
+        run: |
+          if [ -z "${SNAPCRAFT_STORE_CREDENTIALS:-}" ]; then
+            echo "::warning::SNAPCRAFT_STORE_CREDENTIALS secret missing — skipping publish."
+            echo "::warning::Run \`snapcraft export-login --snaps=uniclipboard --acls package_upload\` and add it to repo secrets to enable publishing."
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Publish to snap store
+        if: ${{ inputs.release && steps.check-creds.outputs.publish == 'true' }}
+        uses: snapcore/action-publish@v1
+        env:
+          SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAPCRAFT_STORE_CREDENTIALS }}
+        with:
+          snap: ${{ steps.build.outputs.snap }}
+          release: ${{ inputs.channel }}

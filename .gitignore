@@ -79,3 +79,11 @@ tmp/
 .gsd/journal
 .gsd/gsd.db-shm
 .gsd/gsd.db-wal
+
+# Snap build artifacts —— snapcraft 在仓库根产生 parts/ stage/ prime/
+# *.snap,以及 snap/.snapcraft/ 子目录用于缓存 build state。
+parts/
+stage/
+prime/
+*.snap
+snap/.snapcraft/

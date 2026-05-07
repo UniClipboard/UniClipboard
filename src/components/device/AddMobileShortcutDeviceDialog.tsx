@@ -221,6 +221,10 @@ function translateRegisterError(t: ReturnType<typeof useTranslation>['t'], err: 
         return t('devices.mobileShortcut.errors.settingsLoadFailed', { message: e.message })
       case 'FACADE_UNAVAILABLE':
         return t('devices.mobileShortcut.errors.facadeUnavailable')
+      case 'NO_LAN_INTERFACE_AVAILABLE':
+        return t('devices.mobileShortcut.errors.noLanInterfaceAvailable')
+      case 'LAN_PROBE_FAILED':
+        return t('devices.mobileShortcut.errors.lanProbeFailed', { message: e.message })
       default: {
         // 其余 variant 不应出现在 register 路径,落 generic 兜底
         const message = (e as { message?: string }).message ?? e.code

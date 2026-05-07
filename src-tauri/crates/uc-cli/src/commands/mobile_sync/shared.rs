@@ -184,6 +184,13 @@ pub fn render_register_error(err: &RegisterMobileShortcutDeviceError) -> String 
         RegisterMobileShortcutDeviceError::SettingsLoadFailed(msg) => {
             format!("Settings load failed: {msg}")
         }
+        RegisterMobileShortcutDeviceError::NoLanInterfaceAvailable => {
+            "No usable LAN interface found for auto-pick — connect to a LAN or set `lan_advertise_ip` explicitly via `mobile-sync lan enable --bind <IP>`."
+                .into()
+        }
+        RegisterMobileShortcutDeviceError::LanInterfaceProbeFailed(msg) => {
+            format!("LAN interface probe failed: {msg}")
+        }
     }
 }
 

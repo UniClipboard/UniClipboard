@@ -3,28 +3,28 @@
  *
  * # 设计语言
  *
- * 取消 ALL CAPS 标题 / 虚线加号卡片 / 2 列网格 / 大尺寸 iOS 风格 icon。
- * 改为 macOS 系统设置 / Tailscale 风格的 grouped-list:
+ * macOS 系统设置 / Tailscale 风格的 grouped-list:
  *
  *   ┌─ Section header ──────────────────────────────────────────┐
  *   │ iPhone (Shortcut)                       [Configure] [+ Add] │
- *   │ Listening on 192.168.1.5:42720                              │
  *   ├─ List container ────────────────────────────────────────────┤
  *   │ 📱 My iPhone              5m ago · .42                  ⌫  │
  *   │ 📱 Test iPhone            never                          ⌫  │
  *   └─────────────────────────────────────────────────────────────┘
  *
- * 状态文案在 header 副标题里(不再单独占一个 card),Configure 和 Add 都
- * 收在 header 右侧。设备列表是单个圆角容器 + divide-y rows,每行 ~52px。
+ * Header 只放标题 + Configure + Add(状态文案/监听 URL/bind 错误均收
+ * 进 SettingsSheet,主页面保持极简)。设备列表是单个圆角容器 + divide-y
+ * rows,每行 ~52px。
  *
  * # 不变量
  * - settings 真相源仍在 SettingsSheet
- * - LAN 安全告警 / 重启提示 / 5 行设置都在 Sheet 内,不在 panel 主区域
+ * - LAN 安全告警 / 重启提示 / 5 行设置 / bind 错误都在 Sheet 内,
+ *   不在 panel 主区域
  * - revoke 流程不变
  */
 
 import { Plus, RefreshCw, Settings2, Smartphone, Trash2 } from 'lucide-react'
-import React, { useCallback, useEffect, useMemo, useState } from 'react'
+import React, { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import AddMobileShortcutDeviceDialog from './AddMobileShortcutDeviceDialog'
 import MobileShortcutCredentialModal from './MobileShortcutCredentialModal'
@@ -126,31 +126,6 @@ const MobileShortcutDevicesPanel: React.FC = () => {
   const lanListenerError = settings?.lanListenerError ?? null
   const addDisabled = !enabled || !lanListenEnabled || lanListenerError != null
 
-  // 状态推导:四态色 + 五态文案。lanListenerError 优先级最高 —— bind 失败
-  // 是用户最需要立刻看见的可操作信号(端口占用 / IP 不存在等),如果只
-  // fallback 到 "lanOff" / "pending" 用户会以为是 daemon 没起来,实际是
-  // 起来了但没绑成功。
-  const subtitleKind: 'ok' | 'warn' | 'muted' | 'error' =
-    lanListenerError != null
-      ? 'error'
-      : !enabled
-        ? 'muted'
-        : !lanListenEnabled
-          ? 'warn'
-          : settings?.currentLanUrl
-            ? 'ok'
-            : 'warn'
-
-  const subtitleText = (() => {
-    if (lanListenerError != null)
-      return t('devices.mobileShortcut.statusBar.bindFailed', { reason: lanListenerError })
-    if (!enabled) return t('devices.mobileShortcut.statusBar.disabled')
-    if (!lanListenEnabled) return t('devices.mobileShortcut.statusBar.lanOff')
-    if (settings?.currentLanUrl)
-      return t('devices.mobileShortcut.statusBar.listening', { url: settings.currentLanUrl })
-    return t('devices.mobileShortcut.statusBar.pending')
-  })()
-
   return (
     <>
       <section>
@@ -160,28 +135,6 @@ const MobileShortcutDevicesPanel: React.FC = () => {
             <h3 className="text-base font-semibold text-foreground">
               {t('devices.mobileShortcut.title')}
             </h3>
-            <p
-              className={`mt-0.5 text-xs leading-tight ${
-                subtitleKind === 'error'
-                  ? 'text-destructive'
-                  : subtitleKind === 'warn'
-                    ? 'text-amber-600 dark:text-amber-400'
-                    : 'text-muted-foreground'
-              }`}
-            >
-              {subtitleKind === 'ok' ? (
-                <>
-                  <span className="text-emerald-600 dark:text-emerald-400">●</span>{' '}
-                  <span className="font-mono">{subtitleText}</span>
-                </>
-              ) : subtitleKind === 'error' ? (
-                <>
-                  <span>●</span> {subtitleText}
-                </>
-              ) : (
-                subtitleText
-              )}
-            </p>
           </div>
 
           <div className="flex shrink-0 items-center gap-1.5">

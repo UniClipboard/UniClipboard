@@ -22,6 +22,7 @@
 import React, { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
+  deriveListenUrl,
   getMobileSyncSettings,
   isMobileSyncError,
   listMobileLanInterfaces,
@@ -154,7 +155,8 @@ const MobileShortcutSettingsSheet: React.FC<Props> = ({ open, onOpenChange, onSe
           setRestartRequired(true)
           setRestartDismissed(false)
         }
-        // currentLanUrl 由 daemon 探测,需 reload 拿最新
+        // lanListenerError 等运行时字段由 daemon 写入,update 返回值只含
+        // 持久化字段;需 reload 拿最新视图。
         await loadSettings()
       } catch (err) {
         log.error({ err, patch }, 'failed to update mobile sync settings')
@@ -374,8 +376,9 @@ const MobileShortcutSettingsSheet: React.FC<Props> = ({ open, onOpenChange, onSe
                   title={t('devices.mobileShortcut.lanListener.currentUrl.label')}
                   control={
                     <code className="rounded bg-muted px-2 py-1 font-mono text-xs">
-                      {settings?.currentLanUrl ??
-                        t('devices.mobileShortcut.lanListener.currentUrl.unavailable')}
+                      {settings
+                        ? deriveListenUrl(settings)
+                        : t('devices.mobileShortcut.lanListener.currentUrl.unavailable')}
                     </code>
                   }
                 />

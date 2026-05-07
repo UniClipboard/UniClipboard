@@ -11,9 +11,11 @@
 //!    daemon 端常量推导，要么强制 ON）。如果我们把这些做成"读"接口的字
 //!    段，将来想去掉时会成 breaking change，所以一开始就不放进 view。
 //!
-//! 2. **`current_lan_url` 由 endpoint port 实时探测**：daemon 没启动 LAN
-//!    监听就拿不到 URL —— 让 view 显式区分 `enabled = true` 且 url
-//!    `Some` 才算"真正在监听"，这样前端能据此提示"请重启 daemon"。
+//! 2. **不暴露 `current_lan_url`**：daemon 永远 bind 在
+//!    `0.0.0.0:<lan_port>`，对外展示给用户的 URL 完全可由持久化设置
+//!    （`lan_advertise_ip ?? "0.0.0.0"` + `lan_port ?? 42720`）拼接得到，无
+//!    需运行时探测。`endpoint_info` 端口仍保留用于把 bind 失败原因
+//!    （端口占用/IP 不存在/权限）通过 `lan_listener_error` 上抛。
 //!
 //! 3. **`shortcut_install_methods` 在 application 层枚举**：哪个安装路径可
 //!    用是产品策略而非领域真相，`uc-core` 不该承担这种"v1 / v2 切换"逻
@@ -35,21 +37,15 @@ pub struct MobileSyncSettingsView {
     pub enabled: bool,
     /// 持久化 `Settings.mobile_sync.lan_listen_enabled`(LAN listener 子开关)。
     pub lan_listen_enabled: bool,
-    /// 持久化 `Settings.mobile_sync.lan_advertise_ip`。`None` 时 daemon 取
-    /// `127.0.0.1` 作为兜底。
+    /// 持久化 `Settings.mobile_sync.lan_advertise_ip`。`None` 对应 UI 的
+    /// "自动"选项,展示 / register_device base_url 都退回 `0.0.0.0`。
     pub lan_advertise_ip: Option<String>,
     /// 持久化 `Settings.mobile_sync.lan_port`。`None` 时 daemon 取默认 42720。
     pub lan_port: Option<u16>,
-    /// 当前 daemon 实际监听的 LAN URL(`http://<ip>:<port>`)。
-    /// `None` 时调用方应同时检查 `lan_listener_error`:
-    /// - `lan_listener_error = None` ⇒ listener 没起来(`enabled` 或
-    ///   `lan_listen_enabled` 刚被改但 daemon 还没重启 / daemon 不在跑);
-    /// - `lan_listener_error = Some(reason)` ⇒ daemon 试着 bind 但失败了
-    ///   (端口占用 / IP 不存在 / 权限),`reason` 是面向用户的错误描述。
-    pub current_lan_url: Option<String>,
-    /// daemon 端 LAN listener 的 bind 失败原因。`Some` 时与
-    /// `current_lan_url = None` 同时出现;`None` 表示"未开启"或"已就位"。
-    /// UI 据此把第 5 态(无法启动监听)与"等待 daemon 重启"区分开。
+    /// daemon 端 LAN listener 的 bind 失败原因(端口占用 / IP 不存在 /
+    /// 权限)。`Some` 表示 daemon 真的尝试过 bind 但失败;`None` 表示
+    /// "未开启"或"bind 成功"。UI 不再依赖运行时 URL 探测,展示用 URL 由
+    /// 持久化的 `lan_advertise_ip` + `lan_port` 拼接得到。
     pub lan_listener_error: Option<String>,
     /// `.shortcut` 的可选安装方式列表,按 SPEC §13 的产品策略定义可
     /// 用与不可用项;UI 据此渲染 disabled 选项与提示文案。
@@ -121,10 +117,9 @@ impl GetMobileSyncSettingsUseCase {
             .current_status()
             .await
             .map_err(translate_endpoint_error)?;
-        let (current_lan_url, lan_listener_error) = match status {
-            LanListenerStatus::Stopped => (None, None),
-            LanListenerStatus::Listening(ep) => (Some(ep.url), None),
-            LanListenerStatus::BindFailed { reason } => (None, Some(reason)),
+        let lan_listener_error = match status {
+            LanListenerStatus::Stopped | LanListenerStatus::Listening(_) => None,
+            LanListenerStatus::BindFailed { reason } => Some(reason),
         };
 
         Ok(MobileSyncSettingsView {
@@ -132,7 +127,6 @@ impl GetMobileSyncSettingsUseCase {
             lan_listen_enabled: mobile.lan_listen_enabled,
             lan_advertise_ip: mobile.lan_advertise_ip,
             lan_port: mobile.lan_port,
-            current_lan_url,
             lan_listener_error,
             shortcut_install_methods: shortcut_install_methods_v1(),
         })
@@ -226,7 +220,7 @@ mod tests {
         let uc = build_uc(settings, None);
         let v = uc.execute().await.expect("ok");
         assert!(!v.enabled);
-        assert!(v.current_lan_url.is_none());
+        assert!(v.lan_listener_error.is_none());
         // v1 install_methods：A 可用、B 不可用（顺序固定）。
         assert_eq!(v.shortcut_install_methods.len(), 2);
         assert!(matches!(
@@ -262,16 +256,14 @@ mod tests {
         let uc = build_uc(settings_port, Some("http://192.168.1.5:42720"));
         let v = uc.execute().await.expect("ok");
         assert!(v.enabled);
-        assert_eq!(
-            v.current_lan_url.as_deref(),
-            Some("http://192.168.1.5:42720")
-        );
+        // bind 成功的 URL 不再透出到 view —— 上层从 lan_advertise_ip + lan_port 自行拼接。
+        assert!(v.lan_listener_error.is_none());
     }
 
     #[tokio::test]
-    async fn enabled_true_but_no_endpoint_yet() {
-        // 用户刚改 enabled，daemon 还没重启 —— view 应清楚地把"开关 ON
-        // 但还没有 URL"两个状态分开返回。
+    async fn enabled_true_does_not_surface_listener_error_when_stopped() {
+        // 用户刚改 enabled,daemon 监听还没起来 —— view 不再有 current_lan_url
+        // 字段;Stopped 也不算 bind 失败,所以 lan_listener_error 仍是 None。
         let settings_port = Arc::new(InMemorySettings::default());
         let mut s = Settings::default();
         s.mobile_sync.enabled = true;
@@ -280,7 +272,7 @@ mod tests {
         let uc = build_uc(settings_port, None);
         let v = uc.execute().await.expect("ok");
         assert!(v.enabled);
-        assert!(v.current_lan_url.is_none());
+        assert!(v.lan_listener_error.is_none());
     }
 
     #[tokio::test]
@@ -325,7 +317,6 @@ mod tests {
         let v = uc.execute().await.expect("ok");
         assert!(v.enabled);
         assert!(v.lan_listen_enabled);
-        assert!(v.current_lan_url.is_none());
         assert_eq!(
             v.lan_listener_error.as_deref(),
             Some("Address already in use (os error 48)")

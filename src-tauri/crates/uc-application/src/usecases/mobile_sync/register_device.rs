@@ -24,10 +24,12 @@ use std::sync::Arc;
 
 use tracing::{instrument, warn};
 
-use uc_core::mobile_sync::{MintedCredentials, MobileClientType, MobileDevice, MobileDeviceError};
+use uc_core::mobile_sync::{
+    LanInterface, MintedCredentials, MobileClientType, MobileDevice, MobileDeviceError,
+};
 use uc_core::ports::{
-    ClockPort, MobileCredentialsMinterPort, MobileDeviceRepositoryPort, PasswordHasherError,
-    PasswordHasherPort, SettingsPort,
+    ClockPort, LanInterfaceProbeError, LanInterfaceProbePort, MobileCredentialsMinterPort,
+    MobileDeviceRepositoryPort, PasswordHasherError, PasswordHasherPort, SettingsPort,
 };
 
 // ─── public-shaped (input / output / error) ─────────────────────────────
@@ -126,6 +128,16 @@ pub enum RegisterMobileShortcutDeviceError {
     /// 应当告知用户并支持重试。
     #[error("settings load failed: {0}")]
     SettingsLoadFailed(String),
+
+    /// `lan_advertise_ip` 为 None(用户选了"自动"),但本机检测不到任何
+    /// 可用的 RFC1918 私有 LAN IPv4 地址 —— iPhone 没有可达的 base_url。
+    /// 用户需先连入 LAN 或在配置里手动指定 IP。
+    #[error("no usable LAN interface for auto-pick base_url")]
+    NoLanInterfaceAvailable,
+
+    /// 探测 LAN 接口失败(底层 syscall 错误)。
+    #[error("lan interface probe failed: {0}")]
+    LanInterfaceProbeFailed(String),
 }
 
 // ─── use case ───────────────────────────────────────────────────────────
@@ -158,6 +170,7 @@ pub(crate) struct RegisterMobileShortcutDeviceUseCase {
     device_repo: Arc<dyn MobileDeviceRepositoryPort>,
     settings: Arc<dyn SettingsPort>,
     clock: Arc<dyn ClockPort>,
+    lan_interface_probe: Arc<dyn LanInterfaceProbePort>,
 }
 
 impl RegisterMobileShortcutDeviceUseCase {
@@ -167,6 +180,7 @@ impl RegisterMobileShortcutDeviceUseCase {
         device_repo: Arc<dyn MobileDeviceRepositoryPort>,
         settings: Arc<dyn SettingsPort>,
         clock: Arc<dyn ClockPort>,
+        lan_interface_probe: Arc<dyn LanInterfaceProbePort>,
     ) -> Self {
         Self {
             credentials_minter,
@@ -174,18 +188,52 @@ impl RegisterMobileShortcutDeviceUseCase {
             device_repo,
             settings,
             clock,
+            lan_interface_probe,
         }
+    }
+
+    /// 在 `lan_advertise_ip = None`("自动")时,挑一个 RFC1918 LAN IPv4 地址
+    /// 用作 iPhone base_url。daemon 永远绑 `0.0.0.0`,所以不影响 bind;但
+    /// iPhone 必须看到一个真实可达的地址,否则 SyncClipboard 永远连不通。
+    ///
+    /// 排序口径与 [`ListLanInterfacesUseCase`] 保持一致:10/8 → 172.16/12
+    /// → 192.168/16,段内字典序;取第一个即可。
+    ///
+    /// [`ListLanInterfacesUseCase`]: super::list_lan_interfaces::ListLanInterfacesUseCase
+    async fn auto_pick_advertise_ip(&self) -> Result<String, RegisterMobileShortcutDeviceError> {
+        let raw = self
+            .lan_interface_probe
+            .list_interfaces()
+            .await
+            .map_err(translate_probe_error)?;
+
+        let mut candidates: Vec<LanInterface> =
+            raw.into_iter().filter(is_rfc1918_lan_candidate).collect();
+        candidates.sort_by(|a, b| {
+            rfc1918_bucket(&a.ipv4.octets())
+                .cmp(&rfc1918_bucket(&b.ipv4.octets()))
+                .then_with(|| a.ipv4.cmp(&b.ipv4))
+        });
+
+        candidates
+            .into_iter()
+            .next()
+            .map(|iface| iface.ipv4.to_string())
+            .ok_or(RegisterMobileShortcutDeviceError::NoLanInterfaceAvailable)
     }
 
     /// 登记一台新 iPhone Shortcut 设备。
     ///
-    /// base_url 完全由 settings 决定:
+    /// base_url 由 settings 决定:
     /// `lan_listen_enabled=false` → `LanListenerDisabled`(用户没开 LAN);
-    /// `lan_advertise_ip=None` → 退回 `127.0.0.1`(本机调试);
-    /// 否则 `http://<advertise_ip>:<lan_port || 42720>`。
+    /// `lan_advertise_ip=Some(ip)` → 用该 IP;
+    /// `lan_advertise_ip=None` → 自动挑一个 RFC1918 LAN IPv4
+    ///   ([`auto_pick_advertise_ip`]),没候选时 → `NoLanInterfaceAvailable`。
     ///
     /// 不依赖 `MobileSyncEndpointInfoPort`(那是 daemon 进程内运行时状
     /// 态, CLI 进程不可达)。
+    ///
+    /// [`auto_pick_advertise_ip`]: Self::auto_pick_advertise_ip
     ///
     /// happy path 不可中途部分提交:repository 写成功后, 后续二维码渲染
     /// 失败会留下"已登记但用户拿不到 install URL"的孤儿记录。v1 接受
@@ -231,11 +279,13 @@ impl RegisterMobileShortcutDeviceUseCase {
         if !settings.mobile_sync.lan_listen_enabled {
             return Err(RegisterMobileShortcutDeviceError::LanListenerDisabled);
         }
-        let advertise_ip = settings
-            .mobile_sync
-            .lan_advertise_ip
-            .as_deref()
-            .unwrap_or("127.0.0.1");
+        // 用户选了"自动" → 让 daemon 替他挑一个 RFC1918 LAN IP。daemon 永远
+        // bind `0.0.0.0:lan_port`,但 iPhone 得到的 base_url 必须是真实可达
+        // 的 LAN 地址(0.0.0.0 / 127.0.0.1 在 iPhone 上都连不通)。
+        let advertise_ip: String = match settings.mobile_sync.lan_advertise_ip.clone() {
+            Some(ip) => ip,
+            None => self.auto_pick_advertise_ip().await?,
+        };
         let port = settings.mobile_sync.lan_port.unwrap_or(42720);
         let base_url = format!("http://{advertise_ip}:{port}");
 
@@ -377,6 +427,36 @@ fn validate_password_length(password: &str) -> Result<(), RegisterMobileShortcut
         });
     }
     Ok(())
+}
+
+/// 自动挑选用的 RFC1918 过滤口径(与 `list_lan_interfaces` use case 一致)。
+fn is_rfc1918_lan_candidate(iface: &LanInterface) -> bool {
+    if iface.is_loopback {
+        return false;
+    }
+    let octets = iface.ipv4.octets();
+    matches!(
+        octets,
+        [10, _, _, _] | [172, 16..=31, _, _] | [192, 168, _, _]
+    )
+}
+
+/// 排序桶:10.x = 0,172.16.x = 1,192.168.x = 2,其它 = 3。
+fn rfc1918_bucket(octets: &[u8; 4]) -> u8 {
+    match octets {
+        [10, _, _, _] => 0,
+        [172, 16..=31, _, _] => 1,
+        [192, 168, _, _] => 2,
+        _ => 3,
+    }
+}
+
+fn translate_probe_error(err: LanInterfaceProbeError) -> RegisterMobileShortcutDeviceError {
+    match err {
+        LanInterfaceProbeError::Probe(msg) => {
+            RegisterMobileShortcutDeviceError::LanInterfaceProbeFailed(msg)
+        }
+    }
 }
 
 /// 把 install URL 渲染为 PNG + ASCII 二维码。
@@ -612,6 +692,52 @@ mod tests {
         }
     }
 
+    /// 默认测试 probe:返回空列表。原 happy path 测试都用 lan_advertise_ip
+    /// = Some(...),不会走 auto-pick,所以空列表 probe 已够用;auto-pick 路径
+    /// 由 `auto_picks_first_rfc1918_when_advertise_ip_unset` 等单独构造。
+    struct EmptyLanProbe;
+    #[async_trait]
+    impl LanInterfaceProbePort for EmptyLanProbe {
+        async fn list_interfaces(&self) -> Result<Vec<LanInterface>, LanInterfaceProbeError> {
+            Ok(Vec::new())
+        }
+    }
+
+    /// 测试 probe:返回固定的 LAN 接口列表(用于断言 auto-pick 排序口径)。
+    struct FixedLanProbe(Vec<LanInterface>);
+    #[async_trait]
+    impl LanInterfaceProbePort for FixedLanProbe {
+        async fn list_interfaces(&self) -> Result<Vec<LanInterface>, LanInterfaceProbeError> {
+            Ok(self.0.clone())
+        }
+    }
+
+    /// `lan_advertise_ip = None` 的 SettingsPort 变体:其它字段同
+    /// `FixedSettings`,只有 advertise_ip 留空,触发 auto-pick 分支。
+    struct AutoSettings;
+    #[async_trait]
+    impl SettingsPort for AutoSettings {
+        async fn load(&self) -> anyhow::Result<Settings> {
+            let mut s = Settings::default();
+            s.mobile_sync.enabled = true;
+            s.mobile_sync.lan_listen_enabled = true;
+            s.mobile_sync.lan_advertise_ip = None;
+            s.mobile_sync.lan_port = Some(42720);
+            Ok(s)
+        }
+        async fn save(&self, _: &Settings) -> anyhow::Result<()> {
+            unreachable!("register_device must not save settings")
+        }
+    }
+
+    fn iface(name: &str, ip: [u8; 4]) -> LanInterface {
+        LanInterface {
+            name: name.into(),
+            ipv4: std::net::Ipv4Addr::new(ip[0], ip[1], ip[2], ip[3]),
+            is_loopback: false,
+        }
+    }
+
     fn build_uc(lan_listen_enabled: bool) -> RegisterMobileShortcutDeviceUseCase {
         RegisterMobileShortcutDeviceUseCase::new(
             Arc::new(DeterministicMinter),
@@ -619,6 +745,7 @@ mod tests {
             Arc::new(InMemoryDeviceRepo::default()),
             Arc::new(FixedSettings { lan_listen_enabled }),
             Arc::new(FixedClock(1_000)),
+            Arc::new(EmptyLanProbe),
         )
     }
 
@@ -797,6 +924,7 @@ mod tests {
                 lan_listen_enabled: true,
             }),
             Arc::new(FixedClock(1_000)),
+            Arc::new(EmptyLanProbe),
         );
         let err = uc
             .execute(RegisterMobileShortcutDeviceInput {
@@ -825,6 +953,7 @@ mod tests {
                 lan_listen_enabled: true,
             }),
             Arc::new(FixedClock(1_000)),
+            Arc::new(EmptyLanProbe),
         );
         let out = uc
             .execute(RegisterMobileShortcutDeviceInput {
@@ -895,6 +1024,7 @@ mod tests {
                 lan_listen_enabled: true,
             }),
             Arc::new(FixedClock(1_000)),
+            Arc::new(EmptyLanProbe),
         );
         let err = uc
             .execute(RegisterMobileShortcutDeviceInput {
@@ -929,5 +1059,71 @@ mod tests {
         assert_eq!(out.device.password_hash, "phc-of:a-strong-password");
         // device_id 永远来自 minter。
         assert_eq!(out.device.device_id.as_str(), "did_aaaa");
+    }
+
+    // ── tests: auto-pick advertise_ip ─────────────────────────────────
+
+    fn build_uc_auto(probe: Arc<dyn LanInterfaceProbePort>) -> RegisterMobileShortcutDeviceUseCase {
+        RegisterMobileShortcutDeviceUseCase::new(
+            Arc::new(DeterministicMinter),
+            Arc::new(RecordingHasher::default()),
+            Arc::new(InMemoryDeviceRepo::default()),
+            Arc::new(AutoSettings),
+            Arc::new(FixedClock(1_000)),
+            probe,
+        )
+    }
+
+    #[tokio::test]
+    async fn auto_picks_first_rfc1918_when_advertise_ip_unset() {
+        // 故意打乱顺序,断言走"10/8 → 172.16/12 → 192.168/16,段内字典序"。
+        // 期望挑 10.0.0.5(10.x 段最小)。
+        let probe = Arc::new(FixedLanProbe(vec![
+            iface("en1", [192, 168, 1, 5]),
+            iface("en2", [10, 0, 0, 5]),
+            iface("en3", [172, 16, 0, 5]),
+            iface("en4", [10, 1, 1, 1]),
+        ]));
+        let uc = build_uc_auto(probe);
+        let out = uc.execute(label_only("iPhone")).await.expect("ok");
+        assert_eq!(out.base_url, "http://10.0.0.5:42720");
+    }
+
+    #[tokio::test]
+    async fn auto_skips_loopback_and_non_rfc1918() {
+        // 全是被剔除的接口 → 退化成"没有可用 LAN" → NoLanInterfaceAvailable。
+        let probe = Arc::new(FixedLanProbe(vec![
+            LanInterface {
+                name: "lo0".into(),
+                ipv4: std::net::Ipv4Addr::new(127, 0, 0, 1),
+                is_loopback: true,
+            },
+            iface("en_pub", [8, 8, 8, 8]),
+            iface("en_cgnat", [100, 64, 1, 5]),
+            iface("en_link", [169, 254, 1, 5]),
+        ]));
+        let uc = build_uc_auto(probe);
+        let err = uc.execute(label_only("iPhone")).await.unwrap_err();
+        assert!(matches!(
+            err,
+            RegisterMobileShortcutDeviceError::NoLanInterfaceAvailable
+        ));
+    }
+
+    #[tokio::test]
+    async fn auto_translates_probe_failure() {
+        struct FailingProbe;
+        #[async_trait]
+        impl LanInterfaceProbePort for FailingProbe {
+            async fn list_interfaces(&self) -> Result<Vec<LanInterface>, LanInterfaceProbeError> {
+                Err(LanInterfaceProbeError::Probe("ifaddr crashed".into()))
+            }
+        }
+        let uc = build_uc_auto(Arc::new(FailingProbe));
+        let err = uc.execute(label_only("iPhone")).await.unwrap_err();
+        assert!(matches!(
+            err,
+            RegisterMobileShortcutDeviceError::LanInterfaceProbeFailed(ref s) if s.contains("ifaddr crashed")
+        ));
     }
 }

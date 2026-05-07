@@ -89,6 +89,9 @@ pub enum MobileSyncError {
     #[error("LAN probe failed: {message}")]
     LanProbeFailed { message: String },
 
+    #[error("no usable LAN interface for auto-pick base_url")]
+    NoLanInterfaceAvailable,
+
     #[error("persistence failed: {message}")]
     PersistenceFailed { message: String },
 
@@ -131,6 +134,12 @@ impl From<RegisterMobileShortcutDeviceError> for MobileSyncError {
             }
             RegisterMobileShortcutDeviceError::SettingsLoadFailed(message) => {
                 Self::SettingsLoadFailed { message }
+            }
+            RegisterMobileShortcutDeviceError::NoLanInterfaceAvailable => {
+                Self::NoLanInterfaceAvailable
+            }
+            RegisterMobileShortcutDeviceError::LanInterfaceProbeFailed(message) => {
+                Self::LanProbeFailed { message }
             }
         }
     }
@@ -289,11 +298,9 @@ pub struct MobileSyncSettingsViewDto {
     pub lan_listen_enabled: bool,
     pub lan_advertise_ip: Option<String>,
     pub lan_port: Option<u16>,
-    pub current_lan_url: Option<String>,
     /// daemon 端 LAN listener 的 bind 失败原因(端口占用 / IP 不存在 / 权限)。
-    /// `Some` 时与 `current_lan_url = None` 同时出现;前端据此把"无法启动监听"
-    /// 与"未开启 / 等待 daemon 重启"区分开,直接显示具体错误,而不必去 grep
-    /// daemon 日志。
+    /// `Some` 表示 daemon 真的尝试过 bind 但失败,前端据此显示具体错误。
+    /// 监听 URL 不再透出 —— 前端从 `lanAdvertiseIp` + `lanPort` 自行拼接。
     pub lan_listener_error: Option<String>,
     pub shortcut_install_methods: Vec<ShortcutInstallMethodView>,
 }
@@ -305,7 +312,6 @@ impl From<MobileSyncSettingsView> for MobileSyncSettingsViewDto {
             lan_listen_enabled: v.lan_listen_enabled,
             lan_advertise_ip: v.lan_advertise_ip,
             lan_port: v.lan_port,
-            current_lan_url: v.current_lan_url,
             lan_listener_error: v.lan_listener_error,
             shortcut_install_methods: v
                 .shortcut_install_methods

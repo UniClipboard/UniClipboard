@@ -702,10 +702,6 @@
       "description": "使用 SyncClipboard 快捷指令在局域网内与 iPhone 同步剪贴板",
       "configure": "配置",
       "statusBar": {
-        "listening": "正在监听 {{url}}",
-        "lanOff": "LAN 监听未开启",
-        "disabled": "iPhone 同步已关闭",
-        "pending": "等待 daemon 重启以应用更改",
         "bindFailed": "无法启动监听:{{reason}}"
       },
       "settingsSheet": {
@@ -728,7 +724,7 @@
           "label": "监听 IP",
           "placeholder": "选择网络接口",
           "empty": "未检测到可用的局域网 IPv4 地址",
-          "auto": "自动（127.0.0.1）"
+          "auto": "自动（0.0.0.0）"
         },
         "port": {
           "label": "端口",
@@ -751,11 +747,6 @@
         "title": "已配对 iPhone",
         "empty": {
           "title": "暂无已配对的 iPhone"
-        },
-        "lastSeen": {
-          "never": "尚未连接",
-          "format": "最后活跃 {{relative}}",
-          "fromIp": "来自 {{ip}}"
         },
         "addButton": "添加 iPhone"
       },
@@ -835,6 +826,7 @@
         "settingsSaveFailed": "保存设置失败：{{message}}",
         "endpointInfoProbeFailed": "无法探测当前 LAN 地址：{{message}}",
         "lanProbeFailed": "无法列出网络接口：{{message}}",
+        "noLanInterfaceAvailable": "未检测到可用的局域网 IPv4 地址。请连入局域网，或在「配置 → 监听 IP」中手动指定一个具体地址后再试。",
         "persistenceFailed": "保存失败：{{message}}",
         "qrRenderFailed": "二维码渲染失败：{{message}}",
         "unknown": "发生错误：{{message}}",

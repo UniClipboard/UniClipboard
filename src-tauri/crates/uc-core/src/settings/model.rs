@@ -242,8 +242,8 @@ fn default_allow_overlay_network_addrs() -> bool {
 /// 移动端同步功能的设置族。
 ///
 /// v3 SyncClipboard 兼容版(SPEC §14.10)按"功能开关 + 广告 URL 细节"两层
-/// 拆分。daemon socket bind 行为是常量推导(`enabled && lan_listen_enabled`
-/// → `0.0.0.0:lan_port`,否则 `127.0.0.1:lan_port`),不暴露给用户配置。
+/// 拆分。daemon socket bind 行为是常量推导:`enabled && lan_listen_enabled`
+/// 时 bind `0.0.0.0:lan_port`,否则不起 listener。
 ///
 /// * `enabled` —— 总开关。关闭时 daemon 完全不起 LAN listener,即使
 ///   `lan_listen_enabled=true` 也无效。
@@ -252,9 +252,10 @@ fn default_allow_overlay_network_addrs() -> bool {
 ///   (例如出差换不可信网络时)。
 /// * `lan_advertise_ip` —— 用户选定的、要写进 SyncClipboard install URL /
 ///   二维码的 IPv4 字符串(`192.168.1.5` 这类)。仅决定 iPhone 客户端看到
-///   的 base_url,**不**决定 daemon socket 绑哪里。从 list-interfaces 候
-///   选里挑一个 RFC1918 私有地址。`None` 时退回 `127.0.0.1`(本机调试,
-///   iPhone 连不上)。
+///   的 base_url,**不**决定 daemon socket 绑哪里(daemon 永远绑 `0.0.0.0`)。
+///   从 list-interfaces 候选里挑一个 RFC1918 私有地址。`None` 对应 UI 的
+///   "自动"选项,展示 / register_device base_url 都退回 `0.0.0.0`(iPhone
+///   连不上,需用户挑一个具体 IP 后再添加设备)。
 /// * `lan_port` —— 自定义端口。`None` 时取默认 `42720`(SPEC §3.2)。
 ///
 /// 任意字段变更后都需要重启 daemon 才能生效(v1 不做配置热重载,详见
@@ -268,14 +269,15 @@ pub struct MobileSyncSettings {
     pub enabled: bool,
 
     /// LAN listener 子开关。`enabled=true` 时由本字段决定 daemon 启动
-    /// 后是否真的把 listener spawn 起来(绑 0.0.0.0:lan_port);否则只绑
-    /// 127.0.0.1。默认 `false`。
+    /// 后是否真的把 listener spawn 起来(绑 0.0.0.0:lan_port);否则不起
+    /// listener。默认 `false`。
     #[serde(default = "default_mobile_sync_lan_listen_enabled")]
     pub lan_listen_enabled: bool,
 
     /// 写进 install URL / 二维码的 LAN IPv4 字符串(用户从 list-interfaces
-    /// 挑一个)。仅决定 iPhone 端 base_url, 不决定 daemon socket bind。
-    /// `None` 时退回 `127.0.0.1`(本机调试)。
+    /// 挑一个)。仅决定 iPhone 端 base_url, 不决定 daemon socket bind
+    /// (daemon 永远绑 `0.0.0.0`)。`None` 对应 UI 的"自动"选项,退回
+    /// `0.0.0.0`(iPhone 连不上,需挑具体 IP)。
     #[serde(default)]
     pub lan_advertise_ip: Option<String>,
 

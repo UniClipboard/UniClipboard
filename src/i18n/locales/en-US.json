@@ -711,10 +711,6 @@
       "description": "Sync your clipboard with iPhones over LAN via the SyncClipboard shortcut",
       "configure": "Configure",
       "statusBar": {
-        "listening": "Listening on {{url}}",
-        "lanOff": "LAN listener off",
-        "disabled": "iPhone sync disabled",
-        "pending": "Waiting for daemon restart to apply changes",
         "bindFailed": "Failed to start listener: {{reason}}"
       },
       "settingsSheet": {
@@ -737,7 +733,7 @@
           "label": "Bind IP",
           "placeholder": "Choose a network interface",
           "empty": "No usable LAN IPv4 addresses detected",
-          "auto": "Auto (127.0.0.1)"
+          "auto": "Auto (0.0.0.0)"
         },
         "port": {
           "label": "Port",
@@ -844,6 +840,7 @@
         "settingsSaveFailed": "Failed to save settings: {{message}}",
         "endpointInfoProbeFailed": "Failed to probe current LAN address: {{message}}",
         "lanProbeFailed": "Failed to list network interfaces: {{message}}",
+        "noLanInterfaceAvailable": "No usable LAN IPv4 address detected. Connect to a LAN, or pick a specific address under Configure → Bind IP, then try again.",
         "persistenceFailed": "Save failed: {{message}}",
         "qrRenderFailed": "QR rendering failed: {{message}}",
         "unknown": "Error: {{message}}",

@@ -37,6 +37,7 @@ export type MobileSyncError =
   | { code: 'SETTINGS_SAVE_FAILED'; message: string }
   | { code: 'ENDPOINT_INFO_PROBE_FAILED'; message: string }
   | { code: 'LAN_PROBE_FAILED'; message: string }
+  | { code: 'NO_LAN_INTERFACE_AVAILABLE' }
   | { code: 'PERSISTENCE_FAILED'; message: string }
   | { code: 'QR_RENDER_FAILED'; message: string }
 
@@ -115,25 +116,17 @@ export interface MobileSyncSettingsView {
   enabled: boolean
   /** Sub-switch for the LAN HTTP listener. */
   lanListenEnabled: boolean
-  /** Persisted advertised IP; `null` falls back to 127.0.0.1 at runtime. */
+  /** Persisted advertised IP; `null` means "0.0.0.0 / wildcard". */
   lanAdvertiseIp: string | null
   /** Persisted port; `null` falls back to 42720 at runtime. */
   lanPort: number | null
   /**
-   * Resolved live URL (`http://<ip>:<port>`); `null` when listener not up.
+   * Daemon-side LAN listener bind failure reason (port in use / IP not
+   * assignable / permission denied). `Some` means daemon actually attempted
+   * bind and failed; `null` means "not started" or "bind succeeded".
    *
-   * When `null`, check `lanListenerError`:
-   * - `lanListenerError === null` → listener not started (e.g. user toggled
-   *   on but daemon not yet restarted, or daemon not running);
-   * - `lanListenerError !== null` → daemon attempted bind and failed
-   *   (port in use / IP not assignable / permission denied), the string is
-   *   user-facing reason text.
-   */
-  currentLanUrl: string | null
-  /**
-   * Daemon-side LAN listener bind failure reason; appears with
-   * `currentLanUrl === null`. UI uses this to distinguish "couldn't start
-   * listener" from "waiting for daemon restart".
+   * The display URL is derived purely from `lanAdvertiseIp` + `lanPort`
+   * (daemon always binds `0.0.0.0:<lan_port>`). No runtime URL probe.
    */
   lanListenerError: string | null
   shortcutInstallMethods: ShortcutInstallMethodView[]
@@ -230,4 +223,15 @@ export async function updateMobileSyncSettings(
  */
 export async function listMobileLanInterfaces(): Promise<LanInterfaceView[]> {
   return await invokeWithTrace<LanInterfaceView[]>('list_mobile_lan_interfaces')
+}
+
+/**
+ * Derive the user-facing listen URL from persisted settings. Daemon always
+ * binds `0.0.0.0:<lan_port>`; the advertised host is whatever the user picked
+ * (or `0.0.0.0` when unset). No runtime probe — pure projection from settings.
+ */
+export function deriveListenUrl(view: MobileSyncSettingsView): string {
+  const host = view.lanAdvertiseIp ?? '0.0.0.0'
+  const port = view.lanPort ?? 42720
+  return `http://${host}:${port}`
 }

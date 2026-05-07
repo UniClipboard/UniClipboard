@@ -175,6 +175,7 @@ impl MobileSyncFacade {
                 device_repo.clone(),
                 settings.clone(),
                 clock.clone(),
+                lan_interface_probe.clone(),
             ),
             revoke_device: RevokeMobileDeviceUseCase::new(device_repo.clone()),
             list_devices: ListMobileDevicesUseCase::new(device_repo.clone()),
@@ -727,11 +728,8 @@ mod tests {
         // 默认 disabled。
         let v0 = facade.get_settings().await.unwrap();
         assert!(!v0.enabled);
-        // FixedEndpoint 始终有 url, 所以这里也能拿到 LAN URL。
-        assert_eq!(
-            v0.current_lan_url.as_deref(),
-            Some("http://192.168.1.5:42720")
-        );
+        // current_lan_url 已从 view 移除 —— UI 自行从 lan_advertise_ip + lan_port 拼接。
+        assert!(v0.lan_listener_error.is_none());
 
         // 改 enabled = true → restart_required 应为 true。
         let upd = facade

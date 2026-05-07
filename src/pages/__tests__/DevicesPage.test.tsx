@@ -16,14 +16,18 @@ vi.mock('@/store/slices/devicesSlice', () => ({
 vi.mock('@/components', () => ({
   SpaceMembersPanel: () => <div data-testid="space-members-panel">SpaceMembersPanel</div>,
   ThisDeviceCard: () => <div data-testid="this-device-card">ThisDeviceCard</div>,
+  MobileShortcutDevicesPanel: () => (
+    <div data-testid="mobile-shortcut-panel">MobileShortcutDevicesPanel</div>
+  ),
 }))
 
 describe('DevicesPage', () => {
-  it('renders ThisDeviceCard and SpaceMembersPanel', () => {
+  it('renders ThisDeviceCard, SpaceMembersPanel and MobileShortcutDevicesPanel', () => {
     render(<DevicesPage />)
 
     expect(screen.getByTestId('this-device-card')).toBeInTheDocument()
     expect(screen.getByTestId('space-members-panel')).toBeInTheDocument()
+    expect(screen.getByTestId('mobile-shortcut-panel')).toBeInTheDocument()
   })
 
   it('dispatches fetchLocalDeviceInfo and fetchSpaceMembers on mount', () => {

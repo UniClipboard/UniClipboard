@@ -5,8 +5,8 @@ use uc_core::blob::ports::BlobReaderPort;
 use uc_core::clipboard::ClipboardIntegrationMode;
 use uc_core::ids::EntryId;
 use uc_core::ports::{
-    ClipboardEntryRepositoryPort, ClipboardRepresentationRepositoryPort,
-    ClipboardSelectionRepositoryPort, ClockPort,
+    clipboard::ClipboardPayloadResolverPort, ClipboardEntryRepositoryPort,
+    ClipboardRepresentationRepositoryPort, ClipboardSelectionRepositoryPort, ClockPort,
 };
 
 use crate::clipboard_write::ClipboardWriteCoordinator;
@@ -29,6 +29,7 @@ pub struct ClipboardRestoreFacadeDeps {
     pub entry_repo: Arc<dyn ClipboardEntryRepositoryPort>,
     pub selection_repo: Arc<dyn ClipboardSelectionRepositoryPort>,
     pub representation_repo: Arc<dyn ClipboardRepresentationRepositoryPort>,
+    pub payload_resolver: Arc<dyn ClipboardPayloadResolverPort>,
     pub blob_store: Arc<dyn BlobReaderPort>,
     pub clock: Arc<dyn ClockPort>,
     pub write_coordinator: Arc<ClipboardWriteCoordinator>,
@@ -46,6 +47,7 @@ impl ClipboardRestoreFacade {
             entry_repo,
             selection_repo,
             representation_repo,
+            payload_resolver,
             blob_store,
             clock,
             write_coordinator,
@@ -57,6 +59,7 @@ impl ClipboardRestoreFacade {
             write_coordinator,
             selection_repo,
             representation_repo,
+            payload_resolver,
             blob_store,
             integration_mode,
         );

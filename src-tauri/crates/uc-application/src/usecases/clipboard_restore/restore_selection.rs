@@ -1,10 +1,25 @@
-//! Reconstruct a system clipboard state from a historical entry, restoring
-//! the primary selected representation only.
+//! Reconstruct a system clipboard state from a historical entry. Files走单 rep
+//! 文件分支（CF_HDROP / NSPasteboardTypeFileURL），其它内容把所有非文件候选 rep
+//! （plain / html / rtf / image 等）一并打包到 `SystemClipboardSnapshot`，由平台
+//! 多 rep 写入路径决定哪些能落到系统剪贴板。
+//!
+//! 历史背景：
+//! - 早期实现只挑单一 rep（优先 plain text）写回，导致从 Word 这类富文本源恢复时
+//!   RTF / HTML 全部丢失（粘贴只剩纯文本）。
+//! - 之后改为多 rep 打包，但仍直接读 `rep.inline_data` 当作完整字节——这在 Staged
+//!   状态下取到的是 normalizer 留下的 500-char **预览截断版**，不是完整 RTF / HTML。
+//!   Word 等富文本目的地拿到的是被截断的 RTF 头，解析失败 → 粘出空文档。
+//!
+//! 当前实现：
+//! - 用 `ClipboardPayloadResolverPort` 解析每个 rep，由 resolver 根据 `payload_state`
+//!   正确路由（Inline 直读 / BlobReady 经 blob_store / Staged|Processing 走 cache+spool）。
+//! - paste_rep 解析失败 → 整体报错；secondary rep 解析失败 → 跳过 + warn，不影响其他 rep。
 
 use anyhow::{bail, Result};
+use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::Arc;
-use tracing::{debug, info};
+use tracing::{debug, info, warn};
 
 use uc_core::{
     blob::ports::BlobReaderPort,
@@ -12,8 +27,9 @@ use uc_core::{
         ClipboardIntegrationMode, ObservedClipboardRepresentation,
         PersistedClipboardRepresentation, SystemClipboardSnapshot,
     },
-    ids::{EntryId, EventId, RepresentationId},
+    ids::{EntryId, RepresentationId},
     ports::{
+        clipboard::{ClipboardPayloadResolverPort, ResolvedClipboardPayload},
         ClipboardEntryRepositoryPort, ClipboardRepresentationRepositoryPort,
         ClipboardSelectionRepositoryPort,
     },
@@ -28,6 +44,7 @@ pub(crate) struct RestoreClipboardSelectionUseCase {
     coordinator: Arc<ClipboardWriteCoordinator>,
     selection_repo: Arc<dyn ClipboardSelectionRepositoryPort>,
     representation_repo: Arc<dyn ClipboardRepresentationRepositoryPort>,
+    payload_resolver: Arc<dyn ClipboardPayloadResolverPort>,
     blob_store: Arc<dyn BlobReaderPort>,
     mode: ClipboardIntegrationMode,
 }
@@ -38,6 +55,7 @@ impl RestoreClipboardSelectionUseCase {
         coordinator: Arc<ClipboardWriteCoordinator>,
         selection_repo: Arc<dyn ClipboardSelectionRepositoryPort>,
         representation_repo: Arc<dyn ClipboardRepresentationRepositoryPort>,
+        payload_resolver: Arc<dyn ClipboardPayloadResolverPort>,
         blob_store: Arc<dyn BlobReaderPort>,
         mode: ClipboardIntegrationMode,
     ) -> Self {
@@ -46,6 +64,7 @@ impl RestoreClipboardSelectionUseCase {
             coordinator,
             selection_repo,
             representation_repo,
+            payload_resolver,
             blob_store,
             mode,
         }
@@ -65,13 +84,15 @@ impl RestoreClipboardSelectionUseCase {
             .await?
             .ok_or(anyhow::anyhow!("Selection not found"))?;
 
+        // 候选 rep 收集顺序：paste_rep 居首（保留"目标应用最优先粘贴"的语义），
+        // 然后是 primary / preview / secondary。整体去重后传给后续打包逻辑。
         let mut candidate_ids = Vec::new();
         candidate_ids.push(selection.selection.paste_rep_id.clone());
         candidate_ids.push(selection.selection.primary_rep_id.clone());
         candidate_ids.push(selection.selection.preview_rep_id.clone());
         candidate_ids.extend(selection.selection.secondary_rep_ids.clone());
 
-        let mut seen = std::collections::HashSet::new();
+        let mut seen = HashSet::new();
         candidate_ids.retain(|rep_id| seen.insert(rep_id.clone()));
 
         let mut candidates = Vec::new();
@@ -91,96 +112,145 @@ impl RestoreClipboardSelectionUseCase {
             }
         }
 
-        let restore_rep = Self::select_restore_representation(
-            &candidates,
-            &selection.selection.paste_rep_id,
-            &entry.event_id,
-        )?;
+        // 文件分支：paste_rep 是文件类型（CF_HDROP / NSPasteboardTypeFileURL）时，
+        // 走专用的 file snapshot 路径。文件 rep 的语义与文本/图像表示不可混写在
+        // 同一个 NSPasteboardItem / clipboard item 中，平台层目前也仅支持文件单独
+        // 写入；同时 build_file_snapshot 会校验本地文件存在性。
+        let paste_rep = candidates
+            .iter()
+            .find(|rep| rep.id == selection.selection.paste_rep_id)
+            .ok_or_else(|| {
+                anyhow::anyhow!(
+                    "Paste representation {} not found for event {}",
+                    selection.selection.paste_rep_id,
+                    entry.event_id
+                )
+            })?;
 
-        if Self::is_file_representation(restore_rep) {
+        if Self::is_file_representation(paste_rep) {
             debug!(
                 entry_id = %entry_id,
-                restore_rep_id = %restore_rep.id,
+                paste_rep_id = %paste_rep.id,
                 "restore.build_snapshot: detected file entry, using file restore strategy"
             );
-            return self.build_file_snapshot(entry_id, restore_rep).await;
+            return self.build_file_snapshot(entry_id, paste_rep).await;
         }
 
-        let bytes = if let Some(inline_data) = &restore_rep.inline_data {
-            inline_data.clone()
-        } else if let Some(blob_id) = &restore_rep.blob_id {
-            self.blob_store.get(blob_id).await?
-        } else {
-            return Err(anyhow::anyhow!(
-                "Representation has no data: {}",
-                restore_rep.id
-            ));
-        };
+        // 非文件分支：把所有非文件候选 rep 都打包成多 rep snapshot，paste_rep 居首。
+        // 每条 rep 通过 `ClipboardPayloadResolverPort` 取字节，由 resolver 负责按
+        // payload_state 路由（Inline 直读已解密 inline_data / BlobReady 走 blob_store /
+        // Staged|Processing 走 cache+spool）。
+        //
+        // 注意不能直接读 `rep.inline_data`：当 rep 的明文体积超过 inline_threshold
+        // （默认 16KB）时，normalizer 会把它标成 Staged 并只在 inline_data 里留
+        // 500 字符的 UI preview，真实字节走 spool/blob 异步物化。直接读 inline_data
+        // 会拿到截断版，写到 NSPasteboard 上的 RTF / HTML 解析失败 → 粘出空。
+        //
+        // 平台多 rep 写入路径会原子地把所有支持的 rep 一并写入系统剪贴板：
+        // - macOS: NSPasteboard.writeObjects 提交一组 NSPasteboardItem
+        // - Windows: 单 OpenClipboard 会话内累加多个 CF_*
+        // - Linux: 当前降级为选最优单 rep（platform 层兜底）
+        // 平台层不认的 rep（私有格式等）会被静默跳过。
+        let mut representations = Vec::with_capacity(candidates.len());
+        let mut paste_first = true;
+        let mut packed_rep_ids: Vec<RepresentationId> = Vec::new();
+        for rep in &candidates {
+            if Self::is_file_representation(rep) {
+                debug!(
+                    entry_id = %entry_id,
+                    rep_id = %rep.id,
+                    format_id = %rep.format_id,
+                    "restore.build_snapshot: skipping file rep when paste_rep is non-file"
+                );
+                continue;
+            }
 
-        let representations = vec![ObservedClipboardRepresentation::new(
-            restore_rep.id.clone(),
-            restore_rep.format_id.clone(),
-            restore_rep.mime_type.clone(),
-            bytes,
-        )];
+            let is_paste_rep = rep.id == paste_rep.id;
+            let bytes = match self.payload_resolver.resolve(rep).await {
+                Ok(ResolvedClipboardPayload::Inline { bytes, .. }) => bytes,
+                Ok(ResolvedClipboardPayload::BlobRef { blob_id, .. }) => {
+                    match self.blob_store.get(&blob_id).await {
+                        Ok(plaintext) => plaintext,
+                        Err(err) if is_paste_rep => {
+                            return Err(anyhow::anyhow!(
+                                "Failed to fetch paste representation blob {}: {}",
+                                blob_id,
+                                err
+                            ));
+                        }
+                        Err(err) => {
+                            warn!(
+                                entry_id = %entry_id,
+                                rep_id = %rep.id,
+                                blob_id = %blob_id,
+                                error = %err,
+                                "restore.build_snapshot: skipping rep, blob fetch failed"
+                            );
+                            continue;
+                        }
+                    }
+                }
+                Err(err) if is_paste_rep => {
+                    return Err(anyhow::anyhow!(
+                        "Failed to resolve paste representation {} (state={:?}): {}",
+                        rep.id,
+                        rep.payload_state,
+                        err
+                    ));
+                }
+                Err(err) => {
+                    warn!(
+                        entry_id = %entry_id,
+                        rep_id = %rep.id,
+                        format_id = %rep.format_id,
+                        payload_state = ?rep.payload_state,
+                        error = %err,
+                        "restore.build_snapshot: skipping rep, resolver failed (likely Staged without cache/spool bytes)"
+                    );
+                    continue;
+                }
+            };
+
+            let observed = ObservedClipboardRepresentation::new(
+                rep.id.clone(),
+                rep.format_id.clone(),
+                rep.mime_type.clone(),
+                bytes,
+            );
+
+            packed_rep_ids.push(rep.id.clone());
+            if paste_first {
+                representations.insert(0, observed);
+                paste_first = false;
+            } else {
+                representations.push(observed);
+            }
+        }
+
+        if representations.is_empty() {
+            // 极端兜底：候选列表里所有 rep 都被跳过（没有 inline_data 也没有 blob_id）。
+            // 上面的循环已经把 paste_rep 缺数据的情况单独 bail 掉，所以走到这里基本
+            // 不会发生；但为了不交一个空 snapshot 给平台层，显式报错。
+            return Err(anyhow::anyhow!(
+                "No restorable representations after packing for entry {}",
+                entry_id
+            ));
+        }
 
         debug!(
             entry_id = %entry_id,
             event_id = %entry.event_id,
-            restore_rep_id = %restore_rep.id,
-            restore_format = %restore_rep.format_id,
-            restore_mime = ?restore_rep.mime_type.as_ref().map(|mime| mime.as_str()),
-            candidate_count = candidates.len(),
-            restore_size_bytes = representations[0].bytes.len(),
-            "restore.build_snapshot selected representation"
+            paste_rep_id = %paste_rep.id,
+            packed_rep_count = representations.len(),
+            packed_rep_ids = ?packed_rep_ids,
+            total_size_bytes = representations.iter().map(|r| r.bytes.len()).sum::<usize>(),
+            "restore.build_snapshot packed representations"
         );
 
         Ok(SystemClipboardSnapshot {
             ts_ms: chrono::Utc::now().timestamp_millis(),
             representations,
         })
-    }
-
-    fn select_restore_representation<'a>(
-        candidates: &'a [PersistedClipboardRepresentation],
-        paste_rep_id: &RepresentationId,
-        event_id: &EventId,
-    ) -> Result<&'a PersistedClipboardRepresentation> {
-        let paste_rep = candidates.iter().find(|rep| rep.id == *paste_rep_id);
-        if let Some(rep) = paste_rep {
-            if Self::is_file_representation(rep) {
-                return Ok(rep);
-            }
-        }
-
-        if let Some(rep) = candidates
-            .iter()
-            .find(|rep| Self::is_plain_text_representation(*rep))
-        {
-            return Ok(rep);
-        }
-
-        paste_rep.ok_or(anyhow::anyhow!(
-            "Representation {} not found for event {}",
-            paste_rep_id,
-            event_id
-        ))
-    }
-
-    fn is_plain_text_representation(rep: &PersistedClipboardRepresentation) -> bool {
-        if let Some(mime) = &rep.mime_type {
-            let mime_str = mime.as_str();
-            let mime_lower = mime_str.to_ascii_lowercase();
-            if mime_lower == "text/plain" || mime_lower.starts_with("text/plain;") {
-                return true;
-            }
-        }
-
-        let format_id = rep.format_id.as_ref();
-        format_id.eq_ignore_ascii_case("text")
-            || format_id.eq_ignore_ascii_case("public.utf8-plain-text")
-            || format_id.eq_ignore_ascii_case("public.text")
-            || format_id.eq_ignore_ascii_case("NSStringPboardType")
     }
 
     fn is_file_representation(rep: &PersistedClipboardRepresentation) -> bool {

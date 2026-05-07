@@ -143,6 +143,7 @@ pub fn build_app_facade_from_deps(
             entry_repo: deps.clipboard.clipboard_entry_repo.clone(),
             selection_repo: deps.clipboard.selection_repo.clone(),
             representation_repo: deps.clipboard.representation_repo.clone(),
+            payload_resolver: deps.clipboard.payload_resolver.clone(),
             blob_store: deps.storage.blob_store.clone(),
             clock: deps.system.clock.clone(),
             write_coordinator: restore.write_coordinator,

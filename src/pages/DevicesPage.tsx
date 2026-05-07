@@ -1,6 +1,6 @@
 import React, { useEffect } from 'react'
 import { refreshPresence } from '@/api/daemon'
-import { SpaceMembersPanel, ThisDeviceCard } from '@/components'
+import { MobileShortcutDevicesPanel, SpaceMembersPanel, ThisDeviceCard } from '@/components'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { createLogger } from '@/lib/logger'
 import { useAppDispatch } from '@/store/hooks'
@@ -41,6 +41,7 @@ const DevicesPage: React.FC = () => {
           <div className="px-4 pt-6 pb-8 space-y-6">
             <ThisDeviceCard />
             <SpaceMembersPanel />
+            <MobileShortcutDevicesPanel />
           </div>
         </ScrollArea>
       </div>

@@ -119,8 +119,23 @@ export interface MobileSyncSettingsView {
   lanAdvertiseIp: string | null
   /** Persisted port; `null` falls back to 42720 at runtime. */
   lanPort: number | null
-  /** Resolved live URL (`http://<ip>:<port>`); `null` when listener not up. */
+  /**
+   * Resolved live URL (`http://<ip>:<port>`); `null` when listener not up.
+   *
+   * When `null`, check `lanListenerError`:
+   * - `lanListenerError === null` → listener not started (e.g. user toggled
+   *   on but daemon not yet restarted, or daemon not running);
+   * - `lanListenerError !== null` → daemon attempted bind and failed
+   *   (port in use / IP not assignable / permission denied), the string is
+   *   user-facing reason text.
+   */
   currentLanUrl: string | null
+  /**
+   * Daemon-side LAN listener bind failure reason; appears with
+   * `currentLanUrl === null`. UI uses this to distinguish "couldn't start
+   * listener" from "waiting for daemon restart".
+   */
+  lanListenerError: string | null
   shortcutInstallMethods: ShortcutInstallMethodView[]
 }
 

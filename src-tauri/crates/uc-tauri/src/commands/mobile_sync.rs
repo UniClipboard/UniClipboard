@@ -290,6 +290,11 @@ pub struct MobileSyncSettingsViewDto {
     pub lan_advertise_ip: Option<String>,
     pub lan_port: Option<u16>,
     pub current_lan_url: Option<String>,
+    /// daemon 端 LAN listener 的 bind 失败原因(端口占用 / IP 不存在 / 权限)。
+    /// `Some` 时与 `current_lan_url = None` 同时出现;前端据此把"无法启动监听"
+    /// 与"未开启 / 等待 daemon 重启"区分开,直接显示具体错误,而不必去 grep
+    /// daemon 日志。
+    pub lan_listener_error: Option<String>,
     pub shortcut_install_methods: Vec<ShortcutInstallMethodView>,
 }
 
@@ -301,6 +306,7 @@ impl From<MobileSyncSettingsView> for MobileSyncSettingsViewDto {
             lan_advertise_ip: v.lan_advertise_ip,
             lan_port: v.lan_port,
             current_lan_url: v.current_lan_url,
+            lan_listener_error: v.lan_listener_error,
             shortcut_install_methods: v
                 .shortcut_install_methods
                 .into_iter()

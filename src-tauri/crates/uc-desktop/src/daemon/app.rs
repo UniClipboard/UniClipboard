@@ -370,6 +370,10 @@ impl DaemonApp {
                             info!("mobile LAN listener stopped; endpoint_info cleared");
                         }
                         Err(e) => {
+                            // 把 bind 失败原因写进 endpoint_info,UI 状态条与
+                            // settings sheet 据此显示具体错误(端口占用 / IP
+                            // 不存在 / 权限),不再让 facade 永远报 None。
+                            endpoint_info.set_bind_failure(format!("{}", e)).await;
                             error!(
                                 bind = %bind,
                                 error = %e,

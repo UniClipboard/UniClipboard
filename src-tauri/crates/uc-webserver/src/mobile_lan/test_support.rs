@@ -38,7 +38,7 @@ use uc_core::clipboard::{
 };
 use uc_core::ids::{EntryId, EventId, RepresentationId};
 use uc_core::mobile_sync::{
-    LanEndpointInfo, LanInterface, MintedCredentials, MobileClientType, MobileDevice,
+    LanInterface, LanListenerStatus, MintedCredentials, MobileClientType, MobileDevice,
     MobileDeviceError, MobileDeviceId,
 };
 use uc_core::ports::clipboard::{
@@ -144,8 +144,8 @@ pub(crate) async fn build_facade_with_seeded_device(
     struct FixedEndpoint;
     #[async_trait]
     impl MobileSyncEndpointInfoPort for FixedEndpoint {
-        async fn current_lan_endpoint(&self) -> Result<Option<LanEndpointInfo>, EndpointInfoError> {
-            Ok(None)
+        async fn current_status(&self) -> Result<LanListenerStatus, EndpointInfoError> {
+            Ok(LanListenerStatus::Stopped)
         }
     }
 

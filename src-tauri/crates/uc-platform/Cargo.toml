@@ -83,6 +83,24 @@ tempfile = "3"
 mockall = "0.13"
 tracing-subscriber = { version = "0.3", features = ["registry"] }
 
+# Linux 上 keyring → dbus-secret-service → dbus → libdbus-sys。默认 libdbus-sys
+# 走 pkg-config 找系统 libdbus-1-dev,musl 静态交叉编译没有 sysroot 走不通
+# (见 ace8685f 启用 musl 后 CI 报的 "pkg-config has not been configured to
+# support cross-compilation")。这里只在 musl target 上对 libdbus-sys 启用
+# vendored,build.rs 改走 cc-rs 编 dbus 1.14.4 的源码 (crate 内置 vendor/dbus/),
+# 配合容器里已有的 CC_x86_64_unknown_linux_musl=musl-gcc 直接静态链 libdbus.a
+# 进二进制。Cargo feature unification 保证 dbus-secret-service 用的也是同一个
+# 开了 vendored 的 libdbus-sys 实例。
+#
+# 用 target_env="musl" 收口的原因:linux-gnu (本地 dev / 桌面端 CI) 仍走系统
+# libdbus,避免每个本地 Linux 构建都重新编一份 dbus 1.14.4 source。
+#
+# 注意:静态链只解决构建期的依赖,运行期仍需要目标机器有 dbus 会话总线 +
+# secret-service backend (gnome-keyring/kwallet),否则 keyring 调用会在
+# 运行期失败 (Alpine / 极简 distro 是这个状态)。
+[target.'cfg(all(target_os = "linux", target_env = "musl"))'.dependencies]
+libdbus-sys = { version = "0.2", features = ["vendored"] }
+
 [target.'cfg(windows)'.dependencies]
 clipboard-win = { version = "5.4" }
 

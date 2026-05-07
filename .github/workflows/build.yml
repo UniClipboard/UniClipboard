@@ -95,7 +95,8 @@ jobs:
             libssl-dev \
             libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf \
             libgtk-3-dev libsoup-3.0-dev libjavascriptcoregtk-4.1-dev \
-            file desktop-file-utils
+            file desktop-file-utils \
+            xdg-utils
 
       - uses: actions/checkout@v6
         with:

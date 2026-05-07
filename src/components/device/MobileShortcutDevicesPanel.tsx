@@ -17,6 +17,8 @@
 import { Plus, RefreshCw, Smartphone, Trash2 } from 'lucide-react'
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import AddMobileShortcutDeviceDialog from './AddMobileShortcutDeviceDialog'
+import MobileShortcutCredentialModal from './MobileShortcutCredentialModal'
 import {
   getMobileSyncSettings,
   isMobileSyncError,
@@ -28,6 +30,7 @@ import {
   type MobileDeviceView,
   type MobileSyncError,
   type MobileSyncSettingsView,
+  type RegisterMobileDeviceResult,
 } from '@/api/tauri-command/mobile_sync'
 import { Input, Switch } from '@/components/ui'
 import { Alert, AlertDescription } from '@/components/ui/alert'
@@ -55,9 +58,6 @@ import { createLogger } from '@/lib/logger'
 
 const log = createLogger('mobile-shortcut-panel')
 
-// 默认 LAN 端口（与 facade 的 SPEC §3.2 / `daemon::app` fallback 一致）。
-const DEFAULT_LAN_PORT = 42720
-
 const MobileShortcutDevicesPanel: React.FC = () => {
   const { t } = useTranslation()
 
@@ -82,6 +82,15 @@ const MobileShortcutDevicesPanel: React.FC = () => {
 
   // 端口输入框的本地草稿 —— blur 时才提交,避免每次 keystroke 都打 facade
   const [portDraft, setPortDraft] = useState<string>('')
+
+  // Add iPhone dialog 开关
+  const [addDialogOpen, setAddDialogOpen] = useState(false)
+  // 注册成功后的一次性凭据 payload —— null 表示 modal 关闭。本组件持有
+  // 时间窗口仅"用户尚未勾选已保存"那一刻;关闭时显式清空,避免在内存
+  // 长期保留明文密码。
+  const [credentialPayload, setCredentialPayload] = useState<RegisterMobileDeviceResult | null>(
+    null
+  )
 
   // ── Helpers ──────────────────────────────────────────────────────────
   const translate = useCallback((err: unknown): string => translateMobileSyncError(t, err), [t])
@@ -229,6 +238,27 @@ const MobileShortcutDevicesPanel: React.FC = () => {
       toast.error(translate(err))
     }
   }, [translate])
+
+  const handleOpenAddDialog = useCallback(() => {
+    if (!settings?.lanListenEnabled) {
+      // 兜底:按钮 disabled 已挡,这里只是防御(避免直接 setState 时 race)
+      toast.error(t('devices.mobileShortcut.errors.lanListenerDisabled'))
+      return
+    }
+    setAddDialogOpen(true)
+  }, [settings?.lanListenEnabled, t])
+
+  const handleAddSuccess = useCallback(
+    (result: RegisterMobileDeviceResult) => {
+      setCredentialPayload(result)
+      void loadDevices()
+    },
+    [loadDevices]
+  )
+
+  const handleCredentialClose = useCallback(() => {
+    setCredentialPayload(null)
+  }, [])
 
   const handleRevokeConfirm = useCallback(async () => {
     if (!revokeTarget) return
@@ -434,7 +464,7 @@ const MobileShortcutDevicesPanel: React.FC = () => {
               <AlertDescription>{devicesError}</AlertDescription>
             </Alert>
           ) : devices.length === 0 ? (
-            <EmptyState t={t} onAdd={openAddDialogStub} disabled={!lanListenEnabled} />
+            <EmptyState t={t} onAdd={handleOpenAddDialog} disabled={!lanListenEnabled} />
           ) : (
             <div className="grid grid-cols-2 gap-3">
               {devices.map(device => (
@@ -444,7 +474,7 @@ const MobileShortcutDevicesPanel: React.FC = () => {
                   onRevoke={() => setRevokeTarget(device)}
                 />
               ))}
-              <AddDeviceCard t={t} onAdd={openAddDialogStub} disabled={!lanListenEnabled} />
+              <AddDeviceCard t={t} onAdd={handleOpenAddDialog} disabled={!lanListenEnabled} />
             </div>
           )}
 
@@ -511,6 +541,16 @@ const MobileShortcutDevicesPanel: React.FC = () => {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* ── Add iPhone 表单 dialog ──────────────────────────── */}
+      <AddMobileShortcutDeviceDialog
+        open={addDialogOpen}
+        onOpenChange={setAddDialogOpen}
+        onSuccess={handleAddSuccess}
+      />
+
+      {/* ── 一次性凭据展示 modal ────────────────────────────── */}
+      <MobileShortcutCredentialModal payload={credentialPayload} onClose={handleCredentialClose} />
     </>
   )
 }
@@ -642,14 +682,6 @@ const AddDeviceCard: React.FC<AddDeviceCardProps> = ({ t, onAdd, disabled }) => 
 
 // ─── Helpers ───────────────────────────────────────────────────────────
 
-/**
- * Step 5 占位:Add iPhone 对话框尚未接入。先用 toast 让用户知道功能在路上,
- * 避免按钮看起来"按了没反应"。Step 5 会替换为真对话框 + 接入凭据 modal。
- */
-function openAddDialogStub() {
-  toast.info('Add iPhone dialog: pending Step 5 (P5b)')
-}
-
 /** 把 last-seen 毫秒时间戳格成 "5m" / "2h" / "3d" 形态(与 clipboard-utils 风格一致)。 */
 function formatRelativeMs(timestampMs: number): string {
   const diffMs = Date.now() - timestampMs
@@ -713,7 +745,3 @@ function translateMobileSyncError(t: ReturnType<typeof useTranslation>['t'], err
 export const __test__ = { translateMobileSyncError, formatRelativeMs }
 
 export default MobileShortcutDevicesPanel
-
-// 占位常量挂在文件级,Step 5 接入 add dialog 时把 default port 用上 —— 现
-// 在留着避免下个 Step 出现"为什么这里没用"的疑问。
-void DEFAULT_LAN_PORT

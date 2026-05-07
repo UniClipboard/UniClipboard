@@ -7,11 +7,11 @@
  */
 
 import '@testing-library/jest-dom/vitest'
-import { beforeAll, describe, expect, it, vi } from 'vitest'
+import { beforeAll, describe, expect, it } from 'vitest'
 import { __test__ } from '@/components/device/MobileShortcutDevicesPanel'
 import i18n from '@/i18n'
 
-const { translateMobileSyncError, formatRelativeMs } = __test__
+const { translateMobileSyncError } = __test__
 
 beforeAll(async () => {
   await i18n.changeLanguage('zh-CN')
@@ -81,31 +81,5 @@ describe('Panel.translateMobileSyncError — 其它 variant 走兜底 unknown', 
   it('字符串错误 → 兜底 unknown 用 String(err)', () => {
     const result = translateMobileSyncError(t, 'something bad')
     expect(result).toContain('something bad')
-  })
-})
-
-describe('formatRelativeMs', () => {
-  it('< 1 分钟 → just now (20s 远低于 round 边界)', () => {
-    expect(formatRelativeMs(Date.now() - 20_000)).toBe('just now')
-  })
-
-  it('5 分钟前 → 5m', () => {
-    expect(formatRelativeMs(Date.now() - 5 * 60_000)).toBe('5m')
-  })
-
-  it('2 小时前 → 2h', () => {
-    expect(formatRelativeMs(Date.now() - 2 * 60 * 60_000)).toBe('2h')
-  })
-
-  it('3 天前 → 3d', () => {
-    expect(formatRelativeMs(Date.now() - 3 * 24 * 60 * 60_000)).toBe('3d')
-  })
-
-  it('刚好 60 分钟 → 1h (分钟段下边界)', () => {
-    vi.useFakeTimers()
-    const fixedNow = 1_000_000_000_000
-    vi.setSystemTime(fixedNow)
-    expect(formatRelativeMs(fixedNow - 60 * 60_000)).toBe('1h')
-    vi.useRealTimers()
   })
 })

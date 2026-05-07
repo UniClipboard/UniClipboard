@@ -757,11 +757,6 @@
         "empty": {
           "title": "No iPhones paired yet"
         },
-        "lastSeen": {
-          "never": "Never connected",
-          "format": "Last seen {{relative}}",
-          "fromIp": "from {{ip}}"
-        },
         "addButton": "Add iPhone"
       },
       "add": {

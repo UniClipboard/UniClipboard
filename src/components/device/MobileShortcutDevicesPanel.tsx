@@ -245,12 +245,6 @@ interface DeviceRowProps {
 
 const DeviceRow: React.FC<DeviceRowProps> = ({ device, onRevoke }) => {
   const { t } = useTranslation()
-  const lastSeen = useMemo(() => {
-    if (device.lastSeenAtMs == null) {
-      return t('devices.mobileShortcut.list.lastSeen.never')
-    }
-    return formatRelativeMs(device.lastSeenAtMs)
-  }, [device.lastSeenAtMs, t])
 
   return (
     <li className="group flex items-center gap-3 px-4 py-3 transition-colors hover:bg-muted/30">
@@ -260,15 +254,6 @@ const DeviceRow: React.FC<DeviceRowProps> = ({ device, onRevoke }) => {
 
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm font-medium text-foreground">{device.label}</p>
-        <p className="mt-0.5 truncate text-xs text-muted-foreground">
-          {lastSeen}
-          {device.lastSeenIp && (
-            <>
-              <span className="mx-1.5 text-muted-foreground/50">·</span>
-              <span className="font-mono">{device.lastSeenIp}</span>
-            </>
-          )}
-        </p>
       </div>
 
       <Button
@@ -297,15 +282,6 @@ const EmptyRow: React.FC<EmptyRowProps> = ({ t }) => (
 
 // ─── Helpers ───────────────────────────────────────────────────────────
 
-function formatRelativeMs(timestampMs: number): string {
-  const diffMs = Date.now() - timestampMs
-  const diffMins = Math.round(diffMs / 60_000)
-  if (diffMins < 1) return 'just now'
-  if (diffMins < 60) return `${diffMins}m`
-  if (diffMins < 1440) return `${Math.floor(diffMins / 60)}h`
-  return `${Math.floor(diffMins / 1440)}d`
-}
-
 function translateMobileSyncError(t: ReturnType<typeof useTranslation>['t'], err: unknown): string {
   if (isMobileSyncError(err)) {
     const e = err as MobileSyncError
@@ -330,6 +306,6 @@ function translateMobileSyncError(t: ReturnType<typeof useTranslation>['t'], err
   return t('devices.mobileShortcut.errors.unknown', { message })
 }
 
-export const __test__ = { translateMobileSyncError, formatRelativeMs }
+export const __test__ = { translateMobileSyncError }
 
 export default MobileShortcutDevicesPanel

@@ -948,3 +948,38 @@ fn set_bytes(to: &mut [u8], from: &[u8], range: Range<usize>) {
         to[i] = from[from_idx];
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use uc_core::ids::{FormatId, RepresentationId};
+    use uc_core::MimeType;
+
+    fn rep(format: &str, mime: Option<&str>) -> ObservedClipboardRepresentation {
+        ObservedClipboardRepresentation::new(
+            RepresentationId::new(),
+            FormatId::from_str(format),
+            mime.map(|m| MimeType(m.to_string())),
+            Vec::new(),
+        )
+    }
+
+    #[test]
+    fn resolves_text_rtf_from_format_id() {
+        // 与 common.rs::read_snapshot 写库时使用的 format_id="rtf" 对齐；
+        // 与 macos.rs 同名测试镜像，保证两个平台的 multi-rep 派发结果一致。
+        assert_eq!(resolve_multi_rep_mime(&rep("rtf", None)), Some("text/rtf"));
+        assert_eq!(
+            resolve_multi_rep_mime(&rep("public.rtf", None)),
+            Some("text/rtf")
+        );
+    }
+
+    #[test]
+    fn explicit_text_rtf_mime_takes_priority_over_format_id() {
+        // 显式 mime 必须优先于 format_id 推断（与 macos.rs 对称），
+        // 避免被未来的 format_id 重命名意外打回 None。
+        let r = rep("unknown-format-id", Some("text/rtf"));
+        assert_eq!(resolve_multi_rep_mime(&r), Some("text/rtf"));
+    }
+}

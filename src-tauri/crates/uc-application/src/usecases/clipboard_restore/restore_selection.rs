@@ -262,12 +262,33 @@ impl RestoreClipboardSelectionUseCase {
         entry_id: &EntryId,
         rep: &PersistedClipboardRepresentation,
     ) -> Result<SystemClipboardSnapshot> {
-        let bytes = if let Some(inline_data) = &rep.inline_data {
-            inline_data.clone()
-        } else if let Some(blob_id) = &rep.blob_id {
-            self.blob_store.get(blob_id).await?
-        } else {
-            bail!("File URI representation has no data for entry {}", entry_id);
+        // 与非文件分支同样走 payload_resolver：file URI list 在文件较多时同样会
+        // 触发 inline_threshold，rep.inline_data 只剩 500-char 预览截断版，直接
+        // clone 会拿到不完整的 URI 列表 → 文件路径解析丢失。resolver 会按
+        // payload_state 正确路由（Inline / BlobReady / Staged|Processing）。
+        let bytes = match self.payload_resolver.resolve(rep).await {
+            Ok(ResolvedClipboardPayload::Inline { bytes, .. }) => bytes,
+            Ok(ResolvedClipboardPayload::BlobRef { blob_id, .. }) => {
+                self.blob_store.get(&blob_id).await?
+            }
+            Err(resolver_err) => {
+                if let Some(blob_id) = &rep.blob_id {
+                    self.blob_store.get(blob_id).await.map_err(|blob_err| {
+                        anyhow::anyhow!(
+                            "File URI representation resolver failed ({}) and blob fallback failed for entry {}: {}",
+                            resolver_err,
+                            entry_id,
+                            blob_err
+                        )
+                    })?
+                } else {
+                    bail!(
+                        "File URI representation has no resolvable data for entry {}: {}",
+                        entry_id,
+                        resolver_err
+                    );
+                }
+            }
         };
 
         let uri_string = String::from_utf8(bytes)?;

@@ -36,17 +36,20 @@ jobs:
       - name: Generate matrix
         id: set-matrix
         run: |
-          # CLI 体积小、不需要 webkit2gtk,但仍走 debian:bookworm 容器 (glibc 2.36)
-          # 与 tauri 主构建保持一致基线,避免 cli 二进制 glibc 要求高于 desktop 包。
+          # CLI Linux target 选 x86_64-unknown-linux-musl 静态编译:
+          # uc-cli 走 ring + rustls (无 aws-lc-sys / 无 openssl-sys),依赖图
+          # 里没有 C 库,musl 静态链可以一气呵成,glibc 完全无关。产物可直接
+          # 在任意 Linux (包括 Ubuntu 20.04 / Alpine / 老 RHEL) 上跑。
+          # 容器仍用 debian:bookworm 拿 musl-tools / cmake / clang 工具链。
           PLATFORM="${{ inputs.platform || 'all' }}"
           if [ "$PLATFORM" == "all" ]; then
-            echo 'matrix=[{"platform":"macos-latest","target":"aarch64-apple-darwin","args":"--target aarch64-apple-darwin"},{"platform":"macos-latest","target":"x86_64-apple-darwin","args":"--target x86_64-apple-darwin"},{"platform":"ubuntu-22.04","target":"x86_64-unknown-linux-gnu","args":"","container":"debian:bookworm"},{"platform":"windows-latest","target":"x86_64-pc-windows-msvc","args":""}]' >> "$GITHUB_OUTPUT"
+            echo 'matrix=[{"platform":"macos-latest","target":"aarch64-apple-darwin","args":"--target aarch64-apple-darwin"},{"platform":"macos-latest","target":"x86_64-apple-darwin","args":"--target x86_64-apple-darwin"},{"platform":"ubuntu-22.04","target":"x86_64-unknown-linux-musl","args":"--target x86_64-unknown-linux-musl","container":"debian:bookworm"},{"platform":"windows-latest","target":"x86_64-pc-windows-msvc","args":""}]' >> "$GITHUB_OUTPUT"
           elif [ "$PLATFORM" == "macos-aarch64" ]; then
             echo 'matrix=[{"platform":"macos-latest","target":"aarch64-apple-darwin","args":"--target aarch64-apple-darwin"}]' >> "$GITHUB_OUTPUT"
           elif [ "$PLATFORM" == "macos-x86_64" ]; then
             echo 'matrix=[{"platform":"macos-latest","target":"x86_64-apple-darwin","args":"--target x86_64-apple-darwin"}]' >> "$GITHUB_OUTPUT"
           elif [ "$PLATFORM" == "ubuntu-22.04" ]; then
-            echo 'matrix=[{"platform":"ubuntu-22.04","target":"x86_64-unknown-linux-gnu","args":"","container":"debian:bookworm"}]' >> "$GITHUB_OUTPUT"
+            echo 'matrix=[{"platform":"ubuntu-22.04","target":"x86_64-unknown-linux-musl","args":"--target x86_64-unknown-linux-musl","container":"debian:bookworm"}]' >> "$GITHUB_OUTPUT"
           elif [ "$PLATFORM" == "windows-latest" ]; then
             echo 'matrix=[{"platform":"windows-latest","target":"x86_64-pc-windows-msvc","args":""}]' >> "$GITHUB_OUTPUT"
           else
@@ -65,15 +68,16 @@ jobs:
         include: ${{ fromJSON(needs.setup-matrix.outputs.matrix) }}
 
     steps:
-      # CLI 不依赖 webkit/appindicator,但同样需要 git/curl/cmake/clang 用于
-      # actions/checkout 与 aws-lc-sys (rustls) 的 C 工具链。
+      # CLI 不依赖 webkit/appindicator;musl-tools 提供 musl-gcc 作为 musl
+      # target 的 linker;ring (rustls 默认 crypto) 在 musl 上需要 cc/clang。
       - name: Install container deps (Linux)
         if: matrix.container != ''
         run: |
           apt-get update
           apt-get install -y --no-install-recommends \
             git curl wget ca-certificates xz-utils unzip sudo \
-            build-essential pkg-config cmake clang libssl-dev
+            build-essential pkg-config cmake clang \
+            musl-tools
 
       - uses: actions/checkout@v4
         with:
@@ -87,7 +91,9 @@ jobs:
       - name: install Rust stable
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+          # Linux 走 musl,需要 rustup 装 x86_64-unknown-linux-musl target;
+          # macOS 装两个 darwin target;Windows host=msvc 装 noop。
+          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || matrix.target }}
 
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
@@ -97,6 +103,11 @@ jobs:
 
       - name: build CLI binary
         working-directory: src-tauri
+        # musl 链接器 + ring/cc-rs 的 C 编译器都指到 musl-gcc,产物完全静态,
+        # 不再链 host glibc。其他 platform 这两个 env 是 noop。
+        env:
+          CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER: musl-gcc
+          CC_x86_64_unknown_linux_musl: musl-gcc
         run: cargo build --release -p uc-cli ${{ matrix.args }}
 
       - name: import Apple certificate (macOS only)

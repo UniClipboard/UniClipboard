@@ -617,7 +617,9 @@
       "onlineCount": "{{count}} online"
     },
     "pairedDevices": {
-      "title": "Paired Devices"
+      "title": "Paired devices",
+      "subtitle": "{{total}} paired · {{online}} online",
+      "subtitleEmpty": "No devices paired yet"
     },
     "addDevice": {
       "title": "Invite a new device",
@@ -669,8 +671,7 @@
     },
     "list": {
       "empty": {
-        "title": "No paired devices",
-        "description": "Connect your other devices to start syncing clipboard content instantly."
+        "title": "No paired devices yet"
       },
       "status": {
         "online": "Online",
@@ -708,6 +709,19 @@
     "mobileShortcut": {
       "title": "iPhone (Shortcut)",
       "description": "Sync your clipboard with iPhones over LAN via the SyncClipboard shortcut",
+      "configure": "Configure",
+      "statusBar": {
+        "listening": "Listening on {{url}}",
+        "lanOff": "LAN listener off",
+        "disabled": "iPhone sync disabled",
+        "pending": "Waiting for daemon restart to apply changes",
+        "bindFailed": "Failed to start listener: {{reason}}"
+      },
+      "settingsSheet": {
+        "title": "iPhone sync configuration",
+        "description": "Adjust the switches and network parameters that let iPhones reach this machine via the shortcut",
+        "close": "Done"
+      },
       "enabled": {
         "label": "Enable mobile sync",
         "description": "When off, all sync requests from iPhones are immediately rejected"
@@ -745,8 +759,7 @@
       "list": {
         "title": "Paired iPhones",
         "empty": {
-          "title": "No iPhones paired yet",
-          "description": "Click \"Add iPhone\" and scan the QR to install the shortcut and start syncing"
+          "title": "No iPhones paired yet"
         },
         "lastSeen": {
           "never": "Never connected",

@@ -344,8 +344,8 @@ mod tests {
     };
     use uc_core::ids::{EntryId, EventId, RepresentationId};
     use uc_core::mobile_sync::{
-        LanEndpointInfo, LanInterface, MintedCredentials, MobileDevice, MobileDeviceError,
-        MobileDeviceId,
+        LanEndpointInfo, LanInterface, LanListenerStatus, MintedCredentials, MobileDevice,
+        MobileDeviceError, MobileDeviceId,
     };
     use uc_core::ports::clipboard::{
         ClipboardEntryRepositoryPort, ClipboardPayloadResolverPort,
@@ -448,8 +448,8 @@ mod tests {
     struct FixedEndpoint;
     #[async_trait]
     impl MobileSyncEndpointInfoPort for FixedEndpoint {
-        async fn current_lan_endpoint(&self) -> Result<Option<LanEndpointInfo>, EndpointInfoError> {
-            Ok(Some(LanEndpointInfo {
+        async fn current_status(&self) -> Result<LanListenerStatus, EndpointInfoError> {
+            Ok(LanListenerStatus::Listening(LanEndpointInfo {
                 url: "http://192.168.1.5:42720".into(),
             }))
         }

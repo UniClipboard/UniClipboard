@@ -23,6 +23,7 @@ use std::sync::Arc;
 
 use tracing::instrument;
 
+use uc_core::mobile_sync::LanListenerStatus;
 use uc_core::ports::{EndpointInfoError, MobileSyncEndpointInfoPort, SettingsPort};
 
 // ─── public-shaped (output / error) ─────────────────────────────────────
@@ -40,9 +41,16 @@ pub struct MobileSyncSettingsView {
     /// 持久化 `Settings.mobile_sync.lan_port`。`None` 时 daemon 取默认 42720。
     pub lan_port: Option<u16>,
     /// 当前 daemon 实际监听的 LAN URL(`http://<ip>:<port>`)。
-    /// `None` 通常意味着"`enabled` 或 `lan_listen_enabled` 刚被设为 true
-    /// 但 daemon 还没重启"或者"网卡列表里没有可用的 RFC1918 地址"。
+    /// `None` 时调用方应同时检查 `lan_listener_error`:
+    /// - `lan_listener_error = None` ⇒ listener 没起来(`enabled` 或
+    ///   `lan_listen_enabled` 刚被改但 daemon 还没重启 / daemon 不在跑);
+    /// - `lan_listener_error = Some(reason)` ⇒ daemon 试着 bind 但失败了
+    ///   (端口占用 / IP 不存在 / 权限),`reason` 是面向用户的错误描述。
     pub current_lan_url: Option<String>,
+    /// daemon 端 LAN listener 的 bind 失败原因。`Some` 时与
+    /// `current_lan_url = None` 同时出现;`None` 表示"未开启"或"已就位"。
+    /// UI 据此把第 5 态(无法启动监听)与"等待 daemon 重启"区分开。
+    pub lan_listener_error: Option<String>,
     /// `.shortcut` 的可选安装方式列表,按 SPEC §13 的产品策略定义可
     /// 用与不可用项;UI 据此渲染 disabled 选项与提示文案。
     pub shortcut_install_methods: Vec<ShortcutInstallMethodOption>,
@@ -108,12 +116,16 @@ impl GetMobileSyncSettingsUseCase {
             .map_err(|err| GetMobileSyncSettingsError::SettingsLoadFailed(err.to_string()))?;
         let mobile = settings.mobile_sync.clone();
 
-        let endpoint = self
+        let status = self
             .endpoint_info
-            .current_lan_endpoint()
+            .current_status()
             .await
             .map_err(translate_endpoint_error)?;
-        let current_lan_url = endpoint.map(|e| e.url);
+        let (current_lan_url, lan_listener_error) = match status {
+            LanListenerStatus::Stopped => (None, None),
+            LanListenerStatus::Listening(ep) => (Some(ep.url), None),
+            LanListenerStatus::BindFailed { reason } => (None, Some(reason)),
+        };
 
         Ok(MobileSyncSettingsView {
             enabled: mobile.enabled,
@@ -121,6 +133,7 @@ impl GetMobileSyncSettingsUseCase {
             lan_advertise_ip: mobile.lan_advertise_ip,
             lan_port: mobile.lan_port,
             current_lan_url,
+            lan_listener_error,
             shortcut_install_methods: shortcut_install_methods_v1(),
         })
     }
@@ -163,7 +176,7 @@ mod tests {
 
     use async_trait::async_trait;
 
-    use uc_core::mobile_sync::LanEndpointInfo;
+    use uc_core::mobile_sync::{LanEndpointInfo, LanListenerStatus};
     use uc_core::settings::model::Settings;
 
     /// 内存化的 SettingsPort：每次 `load` 返回最近一次 `save` 的副本，
@@ -192,8 +205,11 @@ mod tests {
     struct FixedEndpoint(Option<&'static str>);
     #[async_trait]
     impl MobileSyncEndpointInfoPort for FixedEndpoint {
-        async fn current_lan_endpoint(&self) -> Result<Option<LanEndpointInfo>, EndpointInfoError> {
-            Ok(self.0.map(|url| LanEndpointInfo { url: url.into() }))
+        async fn current_status(&self) -> Result<LanListenerStatus, EndpointInfoError> {
+            Ok(match self.0 {
+                Some(url) => LanListenerStatus::Listening(LanEndpointInfo { url: url.into() }),
+                None => LanListenerStatus::Stopped,
+            })
         }
     }
 
@@ -272,9 +288,7 @@ mod tests {
         struct ExplodingEndpoint;
         #[async_trait]
         impl MobileSyncEndpointInfoPort for ExplodingEndpoint {
-            async fn current_lan_endpoint(
-                &self,
-            ) -> Result<Option<LanEndpointInfo>, EndpointInfoError> {
+            async fn current_status(&self) -> Result<LanListenerStatus, EndpointInfoError> {
                 Err(EndpointInfoError::Storage("ifaddr lookup failed".into()))
             }
         }
@@ -287,6 +301,34 @@ mod tests {
             matches!(err, GetMobileSyncSettingsError::EndpointInfoFailed(ref s)
                 if s.contains("ifaddr lookup failed")),
             "expected EndpointInfoFailed(ifaddr lookup failed), got {err:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn bind_failure_surfaces_as_lan_listener_error() {
+        struct BindFailedEndpoint;
+        #[async_trait]
+        impl MobileSyncEndpointInfoPort for BindFailedEndpoint {
+            async fn current_status(&self) -> Result<LanListenerStatus, EndpointInfoError> {
+                Ok(LanListenerStatus::BindFailed {
+                    reason: "Address already in use (os error 48)".into(),
+                })
+            }
+        }
+        let settings_port = Arc::new(InMemorySettings::default());
+        let mut s = Settings::default();
+        s.mobile_sync.enabled = true;
+        s.mobile_sync.lan_listen_enabled = true;
+        settings_port.save(&s).await.unwrap();
+
+        let uc = GetMobileSyncSettingsUseCase::new(settings_port, Arc::new(BindFailedEndpoint));
+        let v = uc.execute().await.expect("ok");
+        assert!(v.enabled);
+        assert!(v.lan_listen_enabled);
+        assert!(v.current_lan_url.is_none());
+        assert_eq!(
+            v.lan_listener_error.as_deref(),
+            Some("Address already in use (os error 48)")
         );
     }
 }

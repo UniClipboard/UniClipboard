@@ -105,9 +105,19 @@ jobs:
         working-directory: src-tauri
         # musl 链接器 + ring/cc-rs 的 C 编译器都指到 musl-gcc,产物完全静态,
         # 不再链 host glibc。其他 platform 这两个 env 是 noop。
+        #
+        # `-C relocation-model=static` 禁用 PIE。Rust 1.71+ 的
+        # x86_64-unknown-linux-musl target 默认 position-independent-executables=true,
+        # 即使全静态链 (ldd 报 "statically linked",无 DT_NEEDED) 仍会写入
+        # PT_INTERP=/lib/ld-musl-x86_64.so.1。glibc 主机上没有该 loader,
+        # execve 直接 ENOENT,shell 报 "no such file or directory" (但报的是
+        # 二进制本身,因为内核没法把 errno 区分成 "interpreter 找不到")。
+        # 关掉 PIE 后产物变成无 PT_INTERP 的经典 static ELF,任意 Linux x86_64
+        # (glibc / musl) 都能直接 exec。这才符合 ace8685f 切 musl 的初衷。
         env:
           CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER: musl-gcc
           CC_x86_64_unknown_linux_musl: musl-gcc
+          CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_RUSTFLAGS: "-C relocation-model=static"
         run: cargo build --release -p uc-cli ${{ matrix.args }}
 
       - name: import Apple certificate (macOS only)

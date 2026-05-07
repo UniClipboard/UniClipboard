@@ -67,7 +67,7 @@ function SettingsPage() {
       className="min-h-0 h-full"
     >
       <SettingsSidebar activeCategory={activeCategory} onCategoryChange={handleCategoryChange} />
-      <InsetSurface className="m-2">
+      <InsetSurface className="mr-2 mb-2">
         <SidebarInset className="min-h-0 bg-transparent">
           <ScrollArea className="flex-1 min-h-0">
             <div className="p-6">

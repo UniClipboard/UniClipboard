@@ -23,7 +23,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
       <Sidebar />
 
       {/* Main Content Area */}
-      <main className="relative flex min-h-0 flex-1 flex-col overflow-hidden p-2">
+      <main className="relative flex min-h-0 flex-1 flex-col overflow-hidden pb-2 pr-2">
         <InsetSurface className="flex-1 w-full h-full">{children}</InsetSurface>
       </main>
     </>

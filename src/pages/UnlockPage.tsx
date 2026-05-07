@@ -85,10 +85,9 @@ export default function UnlockPage({ onUnlockSucceeded }: UnlockPageProps) {
   }
 
   return (
-    <div className="relative flex min-h-screen w-full flex-col items-center justify-center overflow-hidden bg-background p-4">
-      <div className="absolute inset-0 bg-gradient-to-b from-background via-background to-muted/20" />
+    <div className="relative flex min-h-screen w-full flex-col items-center justify-center overflow-hidden p-4">
+      <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-muted/20" />
 
-      <div className="absolute -top-24 -left-16 h-96 w-96 rounded-full bg-primary/5 blur-3xl" />
       <div className="absolute -bottom-24 -right-16 h-96 w-96 rounded-full bg-primary/5 blur-3xl" />
 
       <div className="relative z-10 flex w-full max-w-sm flex-col items-center space-y-8 text-center">

@@ -18,7 +18,23 @@ anyhow = "1.0"
 thiserror = "2.0"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt", "registry"] }
-sentry = { version = "0.48.1", features = ["tracing", "logs"] }
+sentry = { version = "0.48.1", default-features = false, features = [
+    "backtrace",
+    "contexts",
+    "debug-images",
+    "panic",
+    "release-health",
+    # transport=ureq 而非 reqwest:reqwest 0.13 的 rustls feature 硬绑定
+    # aws-lc-rs (C 库,CMake 编译,musl cross 不友好);ureq 3.x 的 rustls
+    # feature 只走 ring,与 workspace 其他 rustls 用户对齐。这样 uc-cli 走
+    # musl 静态编译时依赖图里没有任何 C 工具链强依赖。sentry 的 HTTP 上报
+    # 本就 fire-and-forget,同步 ureq 在独立 worker 线程跑,不阻塞主程序
+    # async 调度。
+    "ureq",
+    "rustls",
+    "tracing",
+    "logs",
+] }
 gethostname = "1.1"
 toml = "0.8"
 chrono = { version = "0.4", features = ["serde"] }

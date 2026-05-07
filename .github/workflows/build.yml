@@ -51,15 +51,17 @@ jobs:
       - name: Generate matrix
         id: set-matrix
         run: |
+          # Linux 构建在 host=ubuntu-22.04 上启容器跑 (debian:bookworm, glibc 2.36),
+          # 其他 platform (macOS/Windows) 不带 container 字段 → 直接在 host runner 跑。
           PLATFORM="${{ inputs.platform || 'all' }}"
           if [ "$PLATFORM" == "all" ]; then
-            echo 'matrix=[{"platform":"macos-latest","target":"aarch64-apple-darwin","args":"--target aarch64-apple-darwin"},{"platform":"macos-latest","target":"x86_64-apple-darwin","args":"--target x86_64-apple-darwin"},{"platform":"ubuntu-22.04","target":"x86_64-unknown-linux-gnu","args":""},{"platform":"windows-latest","target":"x86_64-pc-windows-msvc","args":""}]' >> "$GITHUB_OUTPUT"
+            echo 'matrix=[{"platform":"macos-latest","target":"aarch64-apple-darwin","args":"--target aarch64-apple-darwin"},{"platform":"macos-latest","target":"x86_64-apple-darwin","args":"--target x86_64-apple-darwin"},{"platform":"ubuntu-22.04","target":"x86_64-unknown-linux-gnu","args":"","container":"debian:bookworm"},{"platform":"windows-latest","target":"x86_64-pc-windows-msvc","args":""}]' >> "$GITHUB_OUTPUT"
           elif [ "$PLATFORM" == "macos-aarch64" ]; then
             echo 'matrix=[{"platform":"macos-latest","target":"aarch64-apple-darwin","args":"--target aarch64-apple-darwin"}]' >> "$GITHUB_OUTPUT"
           elif [ "$PLATFORM" == "macos-x86_64" ]; then
             echo 'matrix=[{"platform":"macos-latest","target":"x86_64-apple-darwin","args":"--target x86_64-apple-darwin"}]' >> "$GITHUB_OUTPUT"
           elif [ "$PLATFORM" == "ubuntu-22.04" ]; then
-            echo 'matrix=[{"platform":"ubuntu-22.04","target":"x86_64-unknown-linux-gnu","args":""}]' >> "$GITHUB_OUTPUT"
+            echo 'matrix=[{"platform":"ubuntu-22.04","target":"x86_64-unknown-linux-gnu","args":"","container":"debian:bookworm"}]' >> "$GITHUB_OUTPUT"
           elif [ "$PLATFORM" == "windows-latest" ]; then
             echo 'matrix=[{"platform":"windows-latest","target":"x86_64-pc-windows-msvc","args":""}]' >> "$GITHUB_OUTPUT"
           else
@@ -71,12 +73,30 @@ jobs:
     name: Build ${{ matrix.target }}
     needs: setup-matrix
     runs-on: ${{ matrix.platform }}
+    # matrix.container 仅 Linux 条目设置,其他 platform 该字段缺失 → null →
+    # GitHub Actions 跳过容器,直接在 host runner 上执行。
+    container: ${{ matrix.container || null }}
     strategy:
       fail-fast: false
       matrix:
         include: ${{ fromJSON(needs.setup-matrix.outputs.matrix) }}
 
     steps:
+      # bookworm 容器是 minimal,actions/checkout 需要 git;后续 step 还要
+      # curl/ca-certificates 用于装 rustup/bun/node。一次装齐 Tauri Linux
+      # 所需的全部 dev 包,glibc 基线 = bookworm 的 2.36。
+      - name: Install container deps (Linux)
+        if: matrix.container != ''
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            git curl wget ca-certificates xz-utils unzip sudo \
+            build-essential pkg-config cmake clang \
+            libssl-dev \
+            libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf \
+            libgtk-3-dev libsoup-3.0-dev libjavascriptcoregtk-4.1-dev \
+            file desktop-file-utils
+
       - uses: actions/checkout@v6
         with:
           ref: ${{ inputs.branch || github.ref }}
@@ -109,12 +129,6 @@ jobs:
           key: ${{ runner.os }}-bun-${{ hashFiles('**/bun.lock') }}
           restore-keys: |
             ${{ runner.os }}-bun-
-
-      - name: install dependencies (ubuntu only)
-        if: matrix.platform == 'ubuntu-22.04'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
 
       - name: install frontend dependencies
         run: bun install

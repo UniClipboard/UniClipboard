@@ -36,15 +36,17 @@ jobs:
       - name: Generate matrix
         id: set-matrix
         run: |
+          # CLI 体积小、不需要 webkit2gtk,但仍走 debian:bookworm 容器 (glibc 2.36)
+          # 与 tauri 主构建保持一致基线,避免 cli 二进制 glibc 要求高于 desktop 包。
           PLATFORM="${{ inputs.platform || 'all' }}"
           if [ "$PLATFORM" == "all" ]; then
-            echo 'matrix=[{"platform":"macos-latest","target":"aarch64-apple-darwin","args":"--target aarch64-apple-darwin"},{"platform":"macos-latest","target":"x86_64-apple-darwin","args":"--target x86_64-apple-darwin"},{"platform":"ubuntu-22.04","target":"x86_64-unknown-linux-gnu","args":""},{"platform":"windows-latest","target":"x86_64-pc-windows-msvc","args":""}]' >> "$GITHUB_OUTPUT"
+            echo 'matrix=[{"platform":"macos-latest","target":"aarch64-apple-darwin","args":"--target aarch64-apple-darwin"},{"platform":"macos-latest","target":"x86_64-apple-darwin","args":"--target x86_64-apple-darwin"},{"platform":"ubuntu-22.04","target":"x86_64-unknown-linux-gnu","args":"","container":"debian:bookworm"},{"platform":"windows-latest","target":"x86_64-pc-windows-msvc","args":""}]' >> "$GITHUB_OUTPUT"
           elif [ "$PLATFORM" == "macos-aarch64" ]; then
             echo 'matrix=[{"platform":"macos-latest","target":"aarch64-apple-darwin","args":"--target aarch64-apple-darwin"}]' >> "$GITHUB_OUTPUT"
           elif [ "$PLATFORM" == "macos-x86_64" ]; then
             echo 'matrix=[{"platform":"macos-latest","target":"x86_64-apple-darwin","args":"--target x86_64-apple-darwin"}]' >> "$GITHUB_OUTPUT"
           elif [ "$PLATFORM" == "ubuntu-22.04" ]; then
-            echo 'matrix=[{"platform":"ubuntu-22.04","target":"x86_64-unknown-linux-gnu","args":""}]' >> "$GITHUB_OUTPUT"
+            echo 'matrix=[{"platform":"ubuntu-22.04","target":"x86_64-unknown-linux-gnu","args":"","container":"debian:bookworm"}]' >> "$GITHUB_OUTPUT"
           elif [ "$PLATFORM" == "windows-latest" ]; then
             echo 'matrix=[{"platform":"windows-latest","target":"x86_64-pc-windows-msvc","args":""}]' >> "$GITHUB_OUTPUT"
           else
@@ -56,12 +58,23 @@ jobs:
     name: Build CLI ${{ matrix.target }}
     needs: setup-matrix
     runs-on: ${{ matrix.platform }}
+    container: ${{ matrix.container || null }}
     strategy:
       fail-fast: false
       matrix:
         include: ${{ fromJSON(needs.setup-matrix.outputs.matrix) }}
 
     steps:
+      # CLI 不依赖 webkit/appindicator,但同样需要 git/curl/cmake/clang 用于
+      # actions/checkout 与 aws-lc-sys (rustls) 的 C 工具链。
+      - name: Install container deps (Linux)
+        if: matrix.container != ''
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            git curl wget ca-certificates xz-utils unzip sudo \
+            build-essential pkg-config cmake clang libssl-dev
+
       - uses: actions/checkout@v4
         with:
           ref: ${{ inputs.branch || github.ref }}
@@ -81,12 +94,6 @@ jobs:
         with:
           workspaces: "src-tauri -> target"
           shared-key: cli-${{ matrix.target }}
-
-      - name: install dependencies (ubuntu only)
-        if: matrix.platform == 'ubuntu-22.04'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
 
       - name: build CLI binary
         working-directory: src-tauri

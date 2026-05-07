@@ -70,7 +70,10 @@ const MobileShortcutCredentialModal: React.FC<Props> = ({ payload, onClose }) =>
       }}
     >
       <DialogContent
-        className="max-w-lg"
+        // sm:max-w-lg 必须显式覆盖 DialogContent 默认的 sm:max-w-sm,
+        // 否则 64rem 长 install URL 在 24rem 容器里会撑爆。max-h + 内层滚动
+        // 防止列表 + QR + 4 行凭据在小窗口下溢出底部。
+        className="flex max-h-[85vh] flex-col gap-0 overflow-hidden p-0 sm:max-w-lg"
         // 拦截 ESC / 点击遮罩关闭 —— 必须走勾选门
         onEscapeKeyDown={e => {
           if (!acknowledged) e.preventDefault()
@@ -82,12 +85,12 @@ const MobileShortcutCredentialModal: React.FC<Props> = ({ payload, onClose }) =>
           if (!acknowledged) e.preventDefault()
         }}
       >
-        <DialogHeader>
+        <DialogHeader className="px-4 pt-4 pb-2">
           <DialogTitle>{t('devices.mobileShortcut.credential.title')}</DialogTitle>
           <DialogDescription>{t('devices.mobileShortcut.credential.subtitle')}</DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4">
+        <div className="flex-1 space-y-4 overflow-y-auto px-4 py-2">
           {/* 警告横幅 */}
           <div className="rounded-md border border-amber-500/30 bg-amber-500/10 p-3">
             <p className="text-sm font-semibold text-amber-700 dark:text-amber-400">
@@ -166,7 +169,7 @@ const MobileShortcutCredentialModal: React.FC<Props> = ({ payload, onClose }) =>
           </label>
         </div>
 
-        <DialogFooter>
+        <DialogFooter className="m-0">
           <Button onClick={tryClose} disabled={!acknowledged}>
             {t('devices.mobileShortcut.credential.close')}
           </Button>
@@ -214,8 +217,11 @@ const CredentialField: React.FC<CredentialFieldProps> = ({
     <div className="space-y-1">
       <Label className="text-xs uppercase tracking-wider text-muted-foreground">{label}</Label>
       <div className="flex items-center gap-1 rounded-md border border-border/60 bg-card px-3 py-2">
+        {/* min-w-0 is required: flex items default to min-width:auto which prevents
+            truncate from shrinking below the intrinsic content width. Without it
+            long URLs / passwords push the row past the modal edge. */}
         <span
-          className={`flex-1 truncate text-sm ${mono ? 'font-mono' : ''} ${
+          className={`min-w-0 flex-1 truncate text-sm ${mono ? 'font-mono' : ''} ${
             secret ? 'tracking-widest' : ''
           }`}
         >

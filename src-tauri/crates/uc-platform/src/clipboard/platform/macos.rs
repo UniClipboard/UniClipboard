@@ -6,7 +6,8 @@ use objc2::rc::Retained;
 use objc2::runtime::ProtocolObject;
 use objc2_app_kit::{
     NSPasteboard, NSPasteboardItem, NSPasteboardTypeFileURL, NSPasteboardTypeHTML,
-    NSPasteboardTypePNG, NSPasteboardTypeString, NSPasteboardTypeTIFF, NSPasteboardWriting,
+    NSPasteboardTypePNG, NSPasteboardTypeRTF, NSPasteboardTypeString, NSPasteboardTypeTIFF,
+    NSPasteboardWriting,
 };
 use objc2_foundation::{NSArray, NSData};
 use std::sync::{Arc, Mutex};
@@ -75,6 +76,9 @@ fn resolve_multi_rep_mime(rep: &ObservedClipboardRepresentation) -> Option<&str>
                 Some("text/plain")
             }
             "public.html" | "Apple HTML pasteboard type" | "html" => Some("text/html"),
+            // RTF：从 Word / Pages 等富文本源复制时常与 plain text + html 同时出现；
+            // common.rs::read_snapshot 把它存为 format_id="rtf"，mime="text/rtf"。
+            "public.rtf" | "rtf" => Some("text/rtf"),
             // PixPin 截图 / Windows 端复制图片等场景 format_id 为 "image"，mime 通常为
             // "image/png"。`common.rs::read_snapshot` 已把图像统一标准化为 PNG，因此 jpeg /
             // webp / gif 不会出现在 envelope 中（与 windows.rs 保持同样取舍）。
@@ -162,9 +166,11 @@ fn make_nsdata(bytes: &[u8]) -> Retained<NSData> {
 /// - `text/uri-list` → 每个 URI 一个独立 `NSPasteboardItem`，承载 `NSPasteboardTypeFileURL`
 ///   （Apple 官方推荐的多文件写入形式）
 ///
-/// `image/jpeg` / `image/webp` / `image/gif` / RTF 等仍不支持：上游
-/// `common.rs::read_snapshot` 已把图像统一标准化为 PNG（与 windows.rs 同步取舍），
-/// envelope 不会出现这些 mime；RTF 等留待后续 phase 补齐 `NSPasteboardTypeRTF` 等。
+/// `text/rtf` → `NSPasteboardTypeRTF`（合并到 `text_item`，与 plain/html 共享同一
+///   NSPasteboardItem，让目的应用从同一个 item 看到一致的多格式表示）
+///
+/// `image/jpeg` / `image/webp` / `image/gif` 仍不支持：上游 `common.rs::read_snapshot`
+/// 已把图像统一标准化为 PNG（与 windows.rs 同步取舍），envelope 不会出现这些 mime。
 ///
 /// ## clearContents() 副作用防御
 ///
@@ -180,6 +186,7 @@ pub(crate) fn write_snapshot_multi_macos(snapshot: SystemClipboardSnapshot) -> R
             resolve_multi_rep_mime(rep),
             Some("text/plain")
                 | Some("text/html")
+                | Some("text/rtf")
                 | Some("text/uri-list")
                 | Some("image/png")
                 | Some("image/tiff")
@@ -198,8 +205,9 @@ pub(crate) fn write_snapshot_multi_macos(snapshot: SystemClipboardSnapshot) -> R
             "macOS 多 rep 写入：无可写 rep；未清空系统 pasteboard（防副作用兜底）"
         );
         anyhow::bail!(
-            "macOS 多 rep 写入：无可写 rep（支持 text/plain, text/html, text/uri-list, \
-             image/png, image/tiff）；未清空系统 pasteboard；跳过的 rep = {:?}",
+            "macOS 多 rep 写入：无可写 rep（支持 text/plain, text/html, text/rtf, \
+             text/uri-list, image/png, image/tiff）；未清空系统 pasteboard；\
+             跳过的 rep = {:?}",
             skipped
         );
     }
@@ -260,6 +268,25 @@ pub(crate) fn write_snapshot_multi_macos(snapshot: SystemClipboardSnapshot) -> R
                     warn!(
                         bytes = rep.bytes.len(),
                         "setData_forType(NSPasteboardTypeHTML) 返回 false"
+                    );
+                    skipped.push(rep.format_id.as_str().to_string());
+                }
+            }
+            Some("text/rtf") => {
+                // RTF 与 plain/html 同属"同一份内容的多种文本表示"，合并到 text_item。
+                // Word / Pages / 写字板等富文本目的地优先读 RTF；纯文本目的地（终端 /
+                // TextEdit 纯文本模式）继续用 NSPasteboardTypeString。原始 RTF 字节是
+                // ASCII 安全的（RTF 1.x 规范，非 ASCII 都做 \uN 转义），直接喂给 NSData。
+                // NSPasteboardTypeRTF 是 extern "C" 静态变量，访问需要 unsafe 块。
+                let data = make_nsdata(&rep.bytes);
+                let ok = unsafe { text_item.setData_forType(&data, NSPasteboardTypeRTF) };
+                if ok {
+                    debug!(bytes = rep.bytes.len(), "写入 NSPasteboardTypeRTF 成功");
+                    wrote_any = true;
+                } else {
+                    warn!(
+                        bytes = rep.bytes.len(),
+                        "setData_forType(NSPasteboardTypeRTF) 返回 false"
                     );
                     skipped.push(rep.format_id.as_str().to_string());
                 }
@@ -350,7 +377,7 @@ pub(crate) fn write_snapshot_multi_macos(snapshot: SystemClipboardSnapshot) -> R
                     format_id = %rep.format_id,
                     mime = ?other,
                     bytes = rep.bytes.len(),
-                    "macOS 多 rep 写入：跳过不支持的 rep（当前支持 text/plain, text/html, text/uri-list, image/png, image/tiff）"
+                    "macOS 多 rep 写入：跳过不支持的 rep（当前支持 text/plain, text/html, text/rtf, text/uri-list, image/png, image/tiff）"
                 );
                 skipped.push(rep.format_id.as_str().to_string());
             }
@@ -466,6 +493,24 @@ mod tests {
         // 显式 mime 优先于 format_id 推断（与 windows.rs 对称）。
         let r = rep("unknown-format-id", Some("image/png"));
         assert_eq!(resolve_multi_rep_mime(&r), Some("image/png"));
+    }
+
+    #[test]
+    fn resolves_text_rtf_from_format_id() {
+        // 与 common.rs::read_snapshot 写库时使用的 format_id="rtf" 对齐。
+        assert_eq!(resolve_multi_rep_mime(&rep("rtf", None)), Some("text/rtf"));
+        assert_eq!(
+            resolve_multi_rep_mime(&rep("public.rtf", None)),
+            Some("text/rtf")
+        );
+    }
+
+    #[test]
+    fn explicit_text_rtf_mime_takes_priority_over_format_id() {
+        // 上游（common.rs）总会给 RTF rep 显式打 mime="text/rtf"；显式 mime 必须优先
+        // 于 format_id 推断，避免被未来的 format_id 重命名意外打回 None。
+        let r = rep("unknown-format-id", Some("text/rtf"));
+        assert_eq!(resolve_multi_rep_mime(&r), Some("text/rtf"));
     }
 
     #[test]

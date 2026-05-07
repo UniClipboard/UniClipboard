@@ -11,8 +11,8 @@ use async_trait::async_trait;
 use thiserror::Error;
 
 use crate::mobile_sync::{
-    LanEndpointInfo, LanInterface, LatestPasteRepresentation, MintedCredentials, MobileDevice,
-    MobileDeviceError, MobileDeviceId, StagedFile,
+    LanEndpointInfo, LanInterface, LanListenerStatus, LatestPasteRepresentation, MintedCredentials,
+    MobileDevice, MobileDeviceError, MobileDeviceId, StagedFile,
 };
 
 // ─── credentials minter ──────────────────────────────────────────────────
@@ -120,14 +120,25 @@ pub trait MobileDeviceRepositoryPort: Send + Sync {
 
 // ─── endpoint info ───────────────────────────────────────────────────────
 
-/// 探测 daemon 当前对外暴露的 LAN 端点。
+/// 探测 daemon 当前对外暴露的 LAN 端点 / 启动状态。
 ///
 /// 抽象出来是因为 daemon 启停 / 配置变更后端点会动;登记设备的 use case
-/// 需要拿到"现在能用"的 URL,而不是配置里写的目标 URL。当 LAN 监听未
-/// 启用时返回 `Ok(None)`,由 use case 翻译成业务错误。
+/// 需要拿到"现在能用"的 URL,而不是配置里写的目标 URL。
+///
+/// `current_status` 是真相方法,返回三态 `LanListenerStatus`:
+/// `Stopped` / `Listening{url}` / `BindFailed{reason}`。
+///
+/// `current_lan_endpoint` 是历史兼容入口,语义等价于"`Listening` 时返回
+/// `Some(endpoint)`,其余返回 `None`",有 default 实现转发到 `current_status`。
+/// 新接入点应直接使用 `current_status`,以便区分"没开启"和"开了但 bind
+/// 失败"两种语义。
 #[async_trait]
 pub trait MobileSyncEndpointInfoPort: Send + Sync {
-    async fn current_lan_endpoint(&self) -> Result<Option<LanEndpointInfo>, EndpointInfoError>;
+    async fn current_status(&self) -> Result<LanListenerStatus, EndpointInfoError>;
+
+    async fn current_lan_endpoint(&self) -> Result<Option<LanEndpointInfo>, EndpointInfoError> {
+        Ok(self.current_status().await?.endpoint().cloned())
+    }
 }
 
 #[derive(Debug, Error)]

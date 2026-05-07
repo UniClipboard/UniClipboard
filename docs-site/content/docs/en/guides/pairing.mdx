@@ -1,0 +1,22 @@
+---
+title: Pairing & sync
+description: How devices discover each other on a LAN.
+---
+
+Pairing exchanges a long-lived encryption key. Sync reuses that key for every
+subsequent transfer — no third-party broker is involved.
+
+## Discovery
+
+UniClipboard advertises a service over mDNS. Peers in the same broadcast domain
+see each other automatically and appear in the **Peers** list.
+
+## Trust
+
+Pairing requires a one-time, time-bound code. Once accepted, the peer is added
+to the local trust store; future sessions reconnect without prompting.
+
+## Transport
+
+Sync runs over TLS. Payloads are end-to-end encrypted with the per-peer key
+derived during pairing.

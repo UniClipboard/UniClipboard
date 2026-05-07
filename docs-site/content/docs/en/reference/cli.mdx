@@ -1,0 +1,20 @@
+---
+title: CLI (uc-cli)
+description: Headless control of the UniClipboard daemon.
+---
+
+`uc-cli` talks to the local daemon over its IPC socket. It's useful for
+scripting, headless servers, and CI flows that need clip transport without a
+GUI session.
+
+## Common commands
+
+```bash
+uc-cli status              # daemon health and peer list
+uc-cli copy "hello"        # push a clip onto the local clipboard
+uc-cli paste --latest      # print the latest clip on stdout
+uc-cli peers ls            # list paired peers
+uc-cli send <peer> --file PATH
+```
+
+Run `uc-cli --help` for the full surface.

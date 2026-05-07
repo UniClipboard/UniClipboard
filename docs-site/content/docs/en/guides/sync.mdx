@@ -1,0 +1,17 @@
+---
+title: What syncs
+description: Payload types supported by the clipboard pipeline.
+---
+
+UniClipboard normalises clipboard data into a small set of representations and
+syncs each one as a separate payload, so paste targets get the richest format
+they understand.
+
+| Type      | Notes                                                |
+| --------- | ---------------------------------------------------- |
+| Plain text| UTF-8, always provided as a fallback.                |
+| RTF / HTML| Synced together so rich pastes survive the wire.     |
+| Files     | Multi-file selections; reconstructed at the receiver.|
+| Images    | PNG / JPEG / WebP, transferred by content hash.      |
+
+Large payloads are chunked and resumed across reconnects.

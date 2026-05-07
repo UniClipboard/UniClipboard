@@ -18,7 +18,9 @@ beforeAll(async () => {
   await i18n.changeLanguage('zh-CN')
 })
 
-const t = (key: string, options?: Record<string, unknown>) => i18n.t(key, options)
+// 直接绑定 i18n.t,保留 react-i18next TFunction 的完整 brand 类型(自定
+// 义包装会丢 $TFunctionBrand,通不过 strict tsc)
+const t = i18n.t.bind(i18n)
 
 describe('translateMobileSyncError — 17 个 variant 全覆盖', () => {
   it('FACADE_UNAVAILABLE → 功能未启用', () => {

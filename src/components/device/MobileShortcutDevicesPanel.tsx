@@ -58,6 +58,13 @@ import { createLogger } from '@/lib/logger'
 
 const log = createLogger('mobile-shortcut-panel')
 
+/**
+ * Radix Select 禁止 SelectItem 的 value 为空串(它把空串保留为"无选中"
+ * 哨兵)。我们用这个非空字符串表示"自动 / 走 daemon 默认 127.0.0.1",在
+ * boundary 处 (handleBindIpChange / Select value) 与 facade 的 null 互转。
+ */
+const BIND_IP_AUTO_SENTINEL = '__auto__'
+
 const MobileShortcutDevicesPanel: React.FC = () => {
   const { t } = useTranslation()
 
@@ -197,8 +204,11 @@ const MobileShortcutDevicesPanel: React.FC = () => {
 
   const handleBindIpChange = useCallback(
     (value: string) => {
-      // Select 不能传 null,本组件用空串约定为"清空(用 daemon 默认)"
-      void applySettingsUpdate({ lanAdvertiseIp: value === '' ? null : value })
+      // Radix Select 禁止空串作为 SelectItem.value(保留给"无选中"哨兵),
+      // 这里用 BIND_IP_AUTO_SENTINEL 表示"清空 → 用 daemon 默认 127.0.0.1"
+      void applySettingsUpdate({
+        lanAdvertiseIp: value === BIND_IP_AUTO_SENTINEL ? null : value,
+      })
     },
     [applySettingsUpdate]
   )
@@ -356,7 +366,7 @@ const MobileShortcutDevicesPanel: React.FC = () => {
             disabled={lanFieldsDisabled}
             control={
               <Select
-                value={settings.lanAdvertiseIp ?? ''}
+                value={settings.lanAdvertiseIp ?? BIND_IP_AUTO_SENTINEL}
                 disabled={lanFieldsDisabled}
                 onValueChange={handleBindIpChange}
               >
@@ -366,7 +376,7 @@ const MobileShortcutDevicesPanel: React.FC = () => {
                   />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">
+                  <SelectItem value={BIND_IP_AUTO_SENTINEL}>
                     {t('devices.mobileShortcut.lanListener.bindIp.auto')}
                   </SelectItem>
                   {lanInterfaces.length === 0 ? (

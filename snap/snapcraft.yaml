@@ -89,7 +89,7 @@ parts:
       # NOTE: 不在这里 set PATH —— snapcraft 的 build-environment 是字面
       # 字符串注入,$HOME 不会展开。PATH 在 override-build 内用 export 设。
       - CARGO_TERM_COLOR: never
-      - SNAP_BUILD: "1"
+      - SNAP_BUILD: '1'
     override-pull: |
       craftctl default
       # snap 版本号 = package.json.version + "-snap" 后缀,snap store

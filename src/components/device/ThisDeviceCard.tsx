@@ -73,48 +73,46 @@ const ThisDeviceCard: React.FC = () => {
   const pairedCount = peers.length
 
   return (
-    <div className="rounded-xl border border-border/60 bg-card p-5">
-      <div className="flex items-center gap-4">
-        <div className="h-14 w-14 shrink-0 rounded-xl flex items-center justify-center ring-1 shadow-sm text-emerald-500 bg-emerald-500/10 ring-emerald-500/20">
+    <div className="rounded-xl border border-border/60 bg-card px-4 py-3">
+      <div className="flex items-center gap-3">
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
           {React.createElement(getDeviceIcon(localDevice.deviceName), {
-            className: 'h-7 w-7',
+            className: 'h-5 w-5',
           })}
         </div>
-        <div className="flex flex-col gap-0.5 min-w-0">
-          <span className="text-base font-semibold text-foreground truncate">
+
+        <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+          <span className="truncate text-sm font-medium text-foreground">
             {localDevice.deviceName}
           </span>
-          <span className="text-xs text-muted-foreground font-mono">
+          <span className="truncate text-xs text-muted-foreground">
+            <span
+              className={
+                syncActive
+                  ? 'text-emerald-600 dark:text-emerald-400'
+                  : 'text-amber-600 dark:text-amber-400'
+              }
+            >
+              {syncActive ? t('devices.thisDevice.syncActive') : t('devices.thisDevice.syncPaused')}
+            </span>
+            <span className="mx-1.5 text-muted-foreground/50">·</span>
+            <span>{t('devices.thisDevice.pairedCount', { count: pairedCount })}</span>
+            {pairedCount > 0 && (
+              <>
+                <span className="mx-1.5 text-muted-foreground/50">·</span>
+                <span>{t('devices.thisDevice.onlineCount', { count: onlineCount })}</span>
+              </>
+            )}
+          </span>
+          <span className="truncate font-mono text-[11px] text-muted-foreground/70">
             {formatPeerIdForDisplay(localDevice.peerId)}
           </span>
         </div>
-      </div>
 
-      {/* Stats row */}
-      <div className="mt-4 flex items-center gap-3 text-xs text-muted-foreground">
-        <span className="inline-flex items-center gap-1.5">
-          <span
-            className={`h-1.5 w-1.5 rounded-full ${syncActive ? 'bg-emerald-500' : 'bg-amber-500'}`}
-          />
-          {syncActive ? t('devices.thisDevice.syncActive') : t('devices.thisDevice.syncPaused')}
-        </span>
-        <span className="text-border">|</span>
-        <span>{t('devices.thisDevice.pairedCount', { count: pairedCount })}</span>
-        {pairedCount > 0 && (
-          <>
-            <span className="text-border">|</span>
-            <span>{t('devices.thisDevice.onlineCount', { count: onlineCount })}</span>
-          </>
-        )}
-      </div>
-
-      {/* "加入其他空间" 入口——次要操作，按钮放在卡片底部右侧，对齐
-          已 setup 设备的"切换归属"语义。 */}
-      <div className="mt-4 flex justify-end border-t border-border/40 pt-3">
         <Button
           variant="ghost"
           size="sm"
-          className="text-xs text-muted-foreground hover:text-foreground"
+          className="shrink-0 text-xs text-muted-foreground hover:text-foreground"
           onClick={() => setSwitchSpaceOpen(true)}
         >
           <ArrowRightLeft className="mr-1.5 h-3.5 w-3.5" />

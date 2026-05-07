@@ -38,7 +38,7 @@ const DevicesPage: React.FC = () => {
     <div className="flex flex-col h-full relative">
       <div className="flex-1 overflow-hidden relative">
         <ScrollArea className="h-full">
-          <div className="px-4 pt-6 pb-8 space-y-6">
+          <div className="space-y-6 px-6 pb-10 pt-8">
             <ThisDeviceCard />
             <SpaceMembersPanel />
             <MobileShortcutDevicesPanel />

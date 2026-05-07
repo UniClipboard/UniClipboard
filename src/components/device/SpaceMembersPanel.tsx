@@ -1,13 +1,38 @@
-import { AlertTriangle, Monitor, Plus, RefreshCw } from 'lucide-react'
+/**
+ * SpaceMembersPanel —— P2P 加密空间成员 panel(方案 F · macOS-native list)。
+ *
+ * 设计语言与 MobileShortcutDevicesPanel 完全一致:
+ *
+ *   ┌─ Section header ──────────────────────────────────────────┐
+ *   │ Paired devices                              [+ Add device] │
+ *   │ 2 paired · 1 online                                        │
+ *   ├─ List container ────────────────────────────────────────────┤
+ *   │ 💻 Mark's Windows               Online · Direct          ⌄ │
+ *   │ 💻 Office MacBook               Offline · Out of LAN     ⌄ │
+ *   └─────────────────────────────────────────────────────────────┘
+ *
+ * 取消旧实现的 ALL CAPS 标题、5 色循环 icon、2 列网格、虚线加号大卡片。
+ * 单色 icon(在线 = primary,离线 = muted)配合 inline status 文字传达层级,
+ * 而不是用 5 种饱和色制造视觉噪音。
+ *
+ * 注意:所有 dialog (AddDeviceDialog / DeviceSettingsSheet / UnpairAlertDialog)
+ * 在文件末尾统一根级渲染,不要放进任何条件分支里 —— 配对成功时
+ * spaceMembers 从 0 变 1 会让分支切换,分支内的 dialog 会被 React 视作不同
+ * 位置卸载并重建,AddDeviceDialog 的 step='success' 状态会丢失,
+ * 重建后的实例又会再次拉取新邀请码。
+ */
+
+import { AlertTriangle, ChevronRight, Plus, RefreshCw } from 'lucide-react'
 import React, { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate } from 'react-router-dom'
 import AddDeviceDialog from './AddDeviceDialog'
-import ConnectionChannelBadge from './ConnectionChannelBadge'
-import { getDeviceIcon, getIconColor } from './device-utils'
+import { deriveBadgeKind } from './ConnectionChannelBadge'
+import { getDeviceIcon } from './device-utils'
 import DeviceSettingsSheet from './DeviceSettingsSheet'
 import UnpairAlertDialog from './UnpairAlertDialog'
 import { unpairDevice } from '@/api/daemon/members'
+import type { ConnectionChannel } from '@/api/daemon/members'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { useSetting } from '@/hooks/useSetting'
@@ -33,9 +58,6 @@ const SpaceMembersPanel: React.FC = () => {
     : rawSpaceMembers
   const globalAutoSyncOff = setting?.sync.autoSync === false
   const globalFileSyncOff = setting?.fileSync?.fileSyncEnabled === false
-  // Phase 96 INDIC-03:LAN-only Mode = ON ⇔ allowRelayFallback === false
-  // (反向命名唯一翻译点之一,与 NetworkSection 同源,详见 NetworkSection.tsx
-  // 文件头 Pitfall 1 注释)。
   const lanOnlyActive = setting?.network?.allowRelayFallback === false
 
   const [selectedDeviceId, setSelectedDeviceId] = useState<string | null>(null)
@@ -47,11 +69,6 @@ const SpaceMembersPanel: React.FC = () => {
   useEffect(() => {
     dispatch(fetchSpaceMembers())
 
-    // 后端 PresenceMonitor 仅广播 `peers.changed` 全量快照（见
-    // uc-desktop/src/daemon/peers/presence_monitor.rs 模块注释）。每次
-    // PresenceEvent（拨号成功 / connection.closed()）都会触发一次快照，
-    // 所以这里重新 HTTP 拉一遍即可同步在线状态与名单变化，
-    // 不需要单独处理 connectionChanged / nameUpdated 增量事件。
     const handler = (event: { topic: string; eventType: string; payload: unknown }) => {
       if (event.topic !== 'peers') return
       if (event.eventType === 'peers.changed') {
@@ -92,63 +109,49 @@ const SpaceMembersPanel: React.FC = () => {
 
   const selectedDevice = spaceMembers.find(d => d.peerId === selectedDeviceId)
   const unpairTargetDevice = spaceMembers.find(d => d.peerId === unpairTargetId)
+  const onlineCount = spaceMembers.filter(d => d.connected).length
 
-  // 注意：所有 dialog（AddDeviceDialog / DeviceSettingsSheet / UnpairAlertDialog）
-  // 在文件末尾统一根级渲染，不要放进下面任何一个条件分支里 —— 配对成功时
-  // spaceMembers 从 0 变 1 会让分支切换，分支内的 dialog 会被 React 视作不同
-  // 位置卸载并重建，AddDeviceDialog 的 step='success' 状态会丢失，
-  // 重建后的实例又会再次拉取新邀请码。
+  // ── Body ─────────────────────────────────────────────────────────────
   let body: React.ReactNode
   if (spaceMembersError) {
     body = (
-      <div className="space-y-2">
-        <h3 className="text-xs font-medium text-muted-foreground px-1 uppercase tracking-wider">
-          {t('devices.pairedDevices.title')}
-        </h3>
-        <div className="rounded-xl border border-border/60 bg-card p-4">
-          <Alert variant="destructive">
-            <AlertDescription className="flex items-center gap-3">
-              <span className="flex-1">{spaceMembersError}</span>
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                onClick={handleRetry}
-                title={t('devices.list.actions.retry')}
-              >
-                <RefreshCw className="h-4 w-4" />
-              </Button>
-            </AlertDescription>
-          </Alert>
-        </div>
-      </div>
-    )
-  } else if (spaceMembers.length === 0) {
-    body = (
-      <div className="space-y-2">
-        <h3 className="text-xs font-medium text-muted-foreground px-1 uppercase tracking-wider">
-          {t('devices.pairedDevices.title')}
-        </h3>
-        <div className="flex flex-col items-center rounded-xl border border-dashed border-border/80 py-10 px-6 text-center">
-          <div className="mb-4 rounded-full bg-muted/50 p-4 ring-1 ring-border/50">
-            <Monitor className="h-8 w-8 text-muted-foreground/70" />
-          </div>
-          <h3 className="mb-1.5 text-sm font-medium text-foreground">
-            {t('devices.list.empty.title')}
-          </h3>
-          <p className="mb-4 max-w-xs text-xs text-muted-foreground">
-            {t('devices.list.empty.description')}
-          </p>
-          <Button variant="outline" size="sm" onClick={() => setAddDialogOpen(true)}>
-            <Plus className="h-3.5 w-3.5" />
-            {t('devices.list.actions.addDevice')}
+      <Alert variant="destructive">
+        <AlertDescription className="flex items-center gap-3">
+          <span className="flex-1">{spaceMembersError}</span>
+          <Button variant="ghost" size="icon-sm" onClick={handleRetry}>
+            <RefreshCw className="h-4 w-4" />
           </Button>
-        </div>
-      </div>
+        </AlertDescription>
+      </Alert>
     )
   } else {
     body = (
-      <>
-        {globalAutoSyncOff && (
+      <div className="overflow-hidden rounded-xl border border-border/60 bg-card">
+        {spaceMembers.length === 0 ? (
+          <EmptyRow t={t} />
+        ) : (
+          <ul className="divide-y divide-border/50">
+            {spaceMembers.map(device => (
+              <DeviceRow
+                key={device.peerId}
+                deviceName={device.deviceName}
+                connected={device.connected}
+                channel={device.channel ?? 'unknown'}
+                lanOnlyActive={lanOnlyActive}
+                onClick={() => openSheet(device.peerId)}
+              />
+            ))}
+          </ul>
+        )}
+      </div>
+    )
+  }
+
+  return (
+    <>
+      <section className="space-y-3">
+        {/* ── 同步暂停告警 ───────────────────────────────────────── */}
+        {globalAutoSyncOff && spaceMembers.length > 0 && (
           <Alert className="border-amber-500/20 bg-amber-500/10">
             <AlertTriangle className="h-4 w-4 text-amber-500" />
             <AlertDescription className="text-amber-700 dark:text-amber-400">
@@ -164,92 +167,35 @@ const SpaceMembersPanel: React.FC = () => {
           </Alert>
         )}
 
-        <div className="space-y-2">
-          <h3 className="text-xs font-medium text-muted-foreground px-1 uppercase tracking-wider">
-            {t('devices.pairedDevices.title')}
-          </h3>
-          <div className="grid grid-cols-2 gap-3">
-            {spaceMembers.map((device, index) => {
-              const Icon = getDeviceIcon(device.deviceName)
-              const iconColor = getIconColor(index)
-
-              return (
-                <button
-                  key={device.peerId}
-                  type="button"
-                  onClick={() => openSheet(device.peerId)}
-                  className="group relative flex flex-col items-center rounded-2xl bg-card p-5 pt-6 pb-4 text-center shadow-sm ring-1 ring-border/40 transition-all hover:shadow-md hover:ring-border/60 cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                >
-                  {/* Icon with status indicator */}
-                  <div className="relative mb-3">
-                    <div
-                      className={`h-14 w-14 rounded-2xl flex items-center justify-center shadow-sm ${iconColor}`}
-                    >
-                      <Icon className="h-7 w-7" />
-                    </div>
-                    {/* Online/offline dot */}
-                    <span
-                      className={`absolute -bottom-0.5 -right-0.5 h-3.5 w-3.5 rounded-full ring-2 ring-card ${
-                        device.connected ? 'bg-emerald-500' : 'bg-muted-foreground/30'
-                      }`}
-                    />
-                  </div>
-
-                  {/* Device name */}
-                  <span className="truncate w-full font-medium text-foreground text-sm leading-tight">
-                    {device.deviceName || t('devices.list.labels.unknownDevice')}
-                  </span>
-
-                  {/* Status + channel —— 在线/离线与 Phase 96 通道徽章并排,
-                      用 `·` 分隔。`channel` 由后端 `ConnectionChannelPort`
-                      单点产出,LAN-only Mode 开启时与 relay/offline 合成为
-                      "不在本地网络" 灰态。 */}
-                  <span className="mt-1 inline-flex items-center gap-1 text-xs">
-                    <span
-                      className={
-                        device.connected
-                          ? 'text-emerald-600 dark:text-emerald-400'
-                          : 'text-muted-foreground'
-                      }
-                    >
-                      {device.connected
-                        ? t('devices.list.status.online')
-                        : t('devices.list.status.offline')}
-                    </span>
-                    <span aria-hidden className="text-muted-foreground/60">
-                      ·
-                    </span>
-                    <ConnectionChannelBadge
-                      channel={device.channel ?? 'unknown'}
-                      lanOnlyActive={lanOnlyActive}
-                    />
-                  </span>
-                </button>
-              )
-            })}
-
-            {/* Add device card */}
-            <button
-              type="button"
-              onClick={() => setAddDialogOpen(true)}
-              className="group flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-border/60 p-5 pt-6 pb-4 text-center transition-all hover:border-border hover:bg-muted/30 cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            >
-              <div className="mb-3 h-14 w-14 rounded-2xl flex items-center justify-center bg-muted/50 transition-colors group-hover:bg-muted">
-                <Plus className="h-7 w-7 text-muted-foreground/70 group-hover:text-foreground" />
-              </div>
-              <span className="text-sm font-medium text-muted-foreground group-hover:text-foreground">
-                {t('devices.list.actions.addDevice')}
-              </span>
-            </button>
+        {/* ── Section header ─────────────────────────────────────── */}
+        <div className="mb-2 flex items-end justify-between gap-3 px-1">
+          <div className="min-w-0">
+            <h3 className="text-base font-semibold text-foreground">
+              {t('devices.pairedDevices.title')}
+            </h3>
+            <p className="mt-0.5 text-xs leading-tight text-muted-foreground">
+              {spaceMembers.length === 0
+                ? t('devices.pairedDevices.subtitleEmpty')
+                : t('devices.pairedDevices.subtitle', {
+                    total: spaceMembers.length,
+                    online: onlineCount,
+                  })}
+            </p>
           </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setAddDialogOpen(true)}
+            className="shrink-0"
+          >
+            <Plus className="h-3.5 w-3.5" />
+            {t('devices.list.actions.addDevice')}
+          </Button>
         </div>
-      </>
-    )
-  }
 
-  return (
-    <>
-      {body}
+        {body}
+      </section>
+
       <AddDeviceDialog open={addDialogOpen} onOpenChange={setAddDialogOpen} />
       <DeviceSettingsSheet
         open={sheetOpen}
@@ -269,5 +215,81 @@ const SpaceMembersPanel: React.FC = () => {
     </>
   )
 }
+
+// ─── Subcomponents ─────────────────────────────────────────────────────
+
+interface DeviceRowProps {
+  deviceName: string
+  connected: boolean
+  channel: ConnectionChannel
+  lanOnlyActive: boolean
+  onClick: () => void
+}
+
+const DeviceRow: React.FC<DeviceRowProps> = ({
+  deviceName,
+  connected,
+  channel,
+  lanOnlyActive,
+  onClick,
+}) => {
+  const { t } = useTranslation()
+  const Icon = getDeviceIcon(deviceName)
+  const channelKind = deriveBadgeKind(channel, lanOnlyActive)
+
+  const statusText = connected ? t('devices.list.status.online') : t('devices.list.status.offline')
+  const channelLabel = t(`devices.list.channel.${channelKind}`)
+
+  const iconBg = connected ? 'bg-primary/10 text-primary' : 'bg-muted/60 text-muted-foreground'
+
+  return (
+    <li>
+      <button
+        type="button"
+        onClick={onClick}
+        className="group flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-muted/30 focus-visible:bg-muted/30 focus-visible:outline-none"
+      >
+        <div
+          className={`relative flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${iconBg}`}
+        >
+          {/* eslint-disable-next-line react-hooks/static-components -- `getDeviceIcon` returns a stable lucide icon component reference keyed on deviceName, not a freshly-created component */}
+          <Icon className="h-5 w-5" />
+          {connected && (
+            <span className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full bg-emerald-500 ring-2 ring-card" />
+          )}
+        </div>
+
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-medium text-foreground">
+            {deviceName || t('devices.list.labels.unknownDevice')}
+          </p>
+          <p className="mt-0.5 truncate text-xs text-muted-foreground">
+            <span
+              className={
+                connected ? 'text-emerald-600 dark:text-emerald-400' : 'text-muted-foreground'
+              }
+            >
+              {statusText}
+            </span>
+            <span className="mx-1.5 text-muted-foreground/50">·</span>
+            <span>{channelLabel}</span>
+          </p>
+        </div>
+
+        <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground/50 transition-colors group-hover:text-muted-foreground" />
+      </button>
+    </li>
+  )
+}
+
+interface EmptyRowProps {
+  t: ReturnType<typeof useTranslation>['t']
+}
+
+const EmptyRow: React.FC<EmptyRowProps> = ({ t }) => (
+  <div className="px-4 py-4 text-center text-xs text-muted-foreground">
+    {t('devices.list.empty.title')}
+  </div>
+)
 
 export default SpaceMembersPanel

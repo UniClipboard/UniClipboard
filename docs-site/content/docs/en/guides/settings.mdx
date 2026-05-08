@@ -1,0 +1,133 @@
+---
+title: Settings & preferences
+description: Every section of the Settings panel — what each control does and when to touch it.
+---
+
+The Settings panel groups options into seven sections (plus an
+"About"). They appear below in the same order as the sidebar — for
+each, what the control **does** and when you actually want to change
+it.
+
+## General
+
+| Setting             | What it does                                                          |
+| ------------------- | --------------------------------------------------------------------- |
+| Launch at login     | Start UniClipboard automatically when you sign in.                    |
+| Silent start        | After launch, skip the window and go straight to the background/tray. |
+| Device name         | Shown to other devices in the members list — pick something readable. |
+| Language            | English / Simplified Chinese.                                         |
+| Telemetry           | Anonymous crash and usage reporting; off by default.                  |
+
+The device name is purely a display alias; it doesn't enter the
+encryption identity. Renaming doesn't affect the node ID or pairing
+state.
+
+## Appearance
+
+| Setting     | What it does                                                                    |
+| ----------- | ------------------------------------------------------------------------------- |
+| Theme mode  | Light / Dark / Follow system. Live update.                                      |
+| Theme color | Accent color from a palette (slate, rose, orange, amber, ..., blue, violet).    |
+| UI zoom     | Presets at 80 / 90 / 100 / 110 / 120 %, plus a free slider; `Reset` returns to 100 %. |
+
+Zoom changes rendering density only (think DPI). It doesn't touch your
+data and doesn't sync to other devices.
+
+## Shortcuts
+
+Bindable commands are organized by **scope**. Each entry can be
+overridden, reset, or cleared individually.
+
+- **Global** — fires across processes, including the
+  [Quick Panel](./quick-panel) hotkey.
+- **Clipboard** — navigation in the main dashboard's history view.
+- **Settings** — navigation inside this panel.
+- **Devices** — navigation in the Devices page.
+- **Modal** — generic dialog/sheet actions.
+
+The recorder accepts a key combo directly; conflicts are flagged as
+you type. `Reset` returns to the default; `Clear` leaves the binding
+empty.
+
+## Sync
+
+How this device participates in sync, plus file-related thresholds:
+
+| Setting                          | What it does                                                              |
+| -------------------------------- | ------------------------------------------------------------------------- |
+| Enable auto-sync                 | Off → this device only receives; outbound is manual (`uniclip send`).     |
+| Enable file sync                 | Master switch; off → file payloads neither sent nor received.             |
+| Small-file threshold (MB)        | Files below it ride the inline fast path; above it use the blob stream.   |
+| Max single-file size (MB)        | Files larger than this are rejected and surfaced in history with a reason.|
+| Per-peer file cache (MB)         | Per-peer cache cap; LRU eviction once exceeded.                           |
+| File retention (hours)           | How long blob chunks may sit in cache before being eligible for cleanup.  |
+| Auto-cleanup                     | Whether the above limits are enforced periodically.                       |
+
+Per-content-type and per-peer **gates** live elsewhere — they're on
+each peer's
+[Device settings sheet](./devices#content-type-allowlist).
+
+## Security
+
+| Setting                          | What it does                                                                            |
+| -------------------------------- | --------------------------------------------------------------------------------------- |
+| Auto-unlock encryption session   | Re-derive the MasterKey from the OS keyring KEK after lock/wake. Off → manual unlock.   |
+
+For the underlying key model, see
+[Pairing & sync — Trust](./pairing#trust-the-space--invite-model).
+
+## Network
+
+| Setting                       | What it does                                                                |
+| ----------------------------- | --------------------------------------------------------------------------- |
+| LAN-only mode                 | Force-disables encrypted relay; off-LAN peers become unreachable.           |
+| Allow overlay network addrs   | Use addresses learned via rendezvous; off → only mDNS + cached direct addrs.|
+
+Either change shows a banner saying the daemon needs to restart. Click
+`Apply & restart` to commit.
+
+## Storage
+
+The biggest section, and the one with the most footguns.
+
+| Block            | Content                                                                                             |
+| ---------------- | --------------------------------------------------------------------------------------------------- |
+| Storage usage    | Four bars — database, encrypted vault, cache, logs — plus a `Refresh` button.                       |
+| Search index     | Status pill (Ready / Rebuilding / Unavailable), last rebuild timestamp, `Rebuild` button. See [Full-text search — Index lifecycle](./search#index-lifecycle). |
+| Auto-clear history | Master switch. Off → cleanup is manual only.                                                      |
+| Retention days   | 7 / 30 / 90 / 180 / 365.                                                                            |
+| Max items        | 100 / 500 / 1 000 / 2 000 / 5 000. Either limit triggers a cleanup pass.                            |
+| Skip pinned      | Skip pinned entries during cleanup.                                                                 |
+| Danger zone      | `Clear cache` (drops blob chunks, history intact), `Clear all history` (irreversible), `Open data folder` (jumps to the on-disk location). |
+
+The data directory paths are listed under
+[Install — Where data lives](../getting-started/install#where-data-lives).
+
+## About
+
+Version number, build hash, license, and project links. Includes a
+direct link to
+[GitHub Releases](https://github.com/UniClipboard/UniClipboard/releases)
+for changelogs.
+
+## Toggles that **don't** exist (yet)
+
+These come up often but aren't exposed today — worth knowing so you
+don't hunt for them:
+
+- **Close-to-tray vs. close-to-quit** — no separate toggle. Closing
+  the main window leaves the app running in the background; use the
+  tray menu's `Quit` to fully exit.
+- **Notification preferences** — no UI for "notify me when a clip
+  arrives" yet.
+- **Renaming a remote device** — only that device's owner can rename
+  it from their own machine; the new name then syncs into the
+  members list everywhere else.
+- **Space-wide content-type blocklist** — only per-peer gates are
+  available today (in [Devices](./devices)).
+- **Never use relay** — "LAN-only mode" is the closest knob, but it
+  also cuts off off-LAN peers entirely.
+
+If any of these are blockers for your workflow, file an issue with
+context at
+[github.com/UniClipboard/UniClipboard/issues](https://github.com/UniClipboard/UniClipboard/issues).

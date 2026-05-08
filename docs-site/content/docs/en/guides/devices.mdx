@@ -1,0 +1,154 @@
+---
+title: Device management
+description: How the Devices page is laid out, how pairing/unpairing works, and per-peer content rules.
+---
+
+The Devices page is the live view of the current space's members:
+which machines are online, whether the link is direct or relayed, and
+which content types are allowed to leave this device for each peer.
+Every action applies to the **active space**; switching spaces redraws
+the page.
+
+## Page layout
+
+| Block                | Content                                                                                |
+| -------------------- | -------------------------------------------------------------------------------------- |
+| "This device" card   | Local name, current sync status (active / paused), paired count, online subset count.  |
+| "Space members" panel | List of all paired remote devices; each row expands into a detailed sheet.            |
+
+"This device" is read-only. To rename this machine or toggle local
+sync, go to [Settings → General](./settings#general) and
+[Settings → Sync](./settings#sync).
+
+## What a member row tells you
+
+Left to right:
+
+- **Device icon** — heuristically colored from the device name (accent
+  for online, muted for offline).
+- **Device name** — what that device named itself; truncated if long.
+- **Status badge** — `Online` (with the transport channel, see below)
+  or `Offline`.
+- **Chevron** — opens the device settings sheet on the right.
+
+### Transport channel badge
+
+The little tag next to `Online` reports how the connection is reaching
+the peer:
+
+| Tag      | Meaning                                                       |
+| -------- | ------------------------------------------------------------- |
+| `LAN`    | Discovered and connected directly over the local network.     |
+| `Direct` | NAT punched through; cross-network P2P direct.                |
+| `Relay`  | Hole-punching failed; running through the encrypted relay.    |
+
+The relay only ever sees ciphertext — see
+[Pairing & sync — What the relay sees](./pairing#what-the-relay-sees-vs-what-your-peers-see).
+**This badge reflects reachability and performance**, not
+confidentiality.
+
+## Adding a device
+
+Click `Add device` in the "Space members" header. The dialog will:
+
+1. Ask the sponsor daemon to mint a one-time invitation code.
+2. Show the code with a countdown (default TTL is 5 minutes).
+3. Offer a one-click copy button.
+
+Hand the code to the new device (read it aloud, paste in a private
+chat — the code carries no passphrase). On the new device, click
+**Join an existing space**, enter the invite code and the space
+passphrase. Full walkthrough at
+[Quick start — Add a second device](../getting-started/quick-start#add-a-second-device).
+
+<Callout type="warn">
+  Once an invitation expires or is consumed, it **can't be reused**.
+  That's the protocol's single-use design, not a bug — just mint a
+  fresh one.
+</Callout>
+
+## The per-device settings sheet
+
+Clicking the chevron slides out a sheet with the controls below.
+
+### Basic info
+
+- **Peer ID** — the device's iroh node ID (public key). `Copy` is
+  handy for issue reports and diagnostics.
+- **Device name** — read-only here; controlled by the device itself.
+
+### Send master switch
+
+`Allow sending to this device`: when off, clips produced on this
+machine never leave for this peer. **Receive is independent** — the
+peer can still send to you. The switch is per-peer-direction, not
+space-wide.
+
+### Content-type allowlist
+
+When the send switch is on, per-type toggles appear:
+
+- Text
+- Image
+- Link
+- File
+- Code
+- HTML
+
+Any type that's off, the bytes for that type **never leave this
+machine** — the gate is enforced at the scheduler. So:
+
+- Off for "File" → stops eating that peer's file-cache budget.
+- Off for "Image" → screenshots stop competing for bandwidth.
+- `Restore defaults` at the bottom of the sheet sets every type back
+  to allowed.
+
+<Callout type="info">
+  Rules apply per-peer. With multiple peers, you can configure them
+  separately — e.g. send only text to a work laptop, no files to a
+  phone.
+</Callout>
+
+## Unpairing
+
+`Unpair` lives at the bottom of the sheet (destructive — confirms
+twice). After unpairing:
+
+- The peer disappears from "Space members".
+- Future traffic from that node ID is rejected by this device.
+- **Local history is untouched** — clips that already synced over stay.
+
+To remove a **lost or stolen** device from the space cleanly:
+
+1. Run `Unpair` against it from another online, trusted device.
+2. To be safe, repeat from every remaining device (revocation is
+   maintained per-device today; a distributed-revocation primitive is
+   on the roadmap).
+3. If you're worried that the lost device still holds decryptable
+   history, consider rebuilding the space (see
+   [FAQ — Can I recover a forgotten passphrase?](../faq#can-i-recover-a-forgotten-passphrase)).
+   That forces every device to re-pair.
+
+## How fast does online status update
+
+Two sources feed the page:
+
+- **Polling**: members are refetched every 15 s.
+- **Event-driven**: the daemon's `peers.changed` WebSocket event
+  triggers an immediate refresh.
+
+In practice you see changes the moment the event fires; polling is the
+fallback. If a status looks clearly wrong (e.g. you see `Offline` for
+a peer that's clearly running), give it 15 s. If it's still off, head
+to [Troubleshooting — Peer not appearing](./troubleshooting#peer-not-appearing).
+
+## CLI equivalents
+
+| GUI action                          | CLI equivalent                                                            |
+| ----------------------------------- | ------------------------------------------------------------------------- |
+| "Space members" list                | `uniclip devices` (persistent records) / `uniclip members` (with online state) |
+| Add device → invite code            | `uniclip invite`                                                          |
+| Join an existing space              | `uniclip join <code>`                                                     |
+| Copy Peer ID                        | `uniclip status --json` → `network.endpoint`                              |
+| Unpair                              | **GUI only today**; a CLI subcommand is on the roadmap                    |
+| Per-peer content-type allowlist     | **GUI only today**; CLI configuration subcommand is on the roadmap        |

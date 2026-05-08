@@ -1,0 +1,159 @@
+---
+title: Full-text search
+description: Where to query encrypted history, what syntax it accepts, and how the index is managed.
+---
+
+UniClipboard keeps an **encrypted full-text index** of local clipboard
+history, so "stored locally" and "stored safely" hold at the same
+time. The index is encrypted at rest and shares its key material with
+the history database — see
+[What syncs — Local storage](./sync#local-storage).
+
+## Where to search
+
+| Surface              | Status / when to use it                                                                                          |
+| -------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| Quick Panel          | **Primary entry.** Live filtering, advanced syntax, keyboard-first. See [Quick Panel](./quick-panel#advanced-search--mode) |
+| `uniclip search` CLI | Scripts, SSH, remote sessions. See [CLI — Search](../reference/cli#search)                                       |
+| Dashboard search box | Placeholder — **not wired up in the current build**. The input doesn't reach the query pipeline yet              |
+
+<Callout type="info">
+  The dashboard search box will be hooked into the same query service
+  in a later release. Until then, drive search from the Quick Panel —
+  it uses exactly the same parameters as the CLI.
+</Callout>
+
+## Query syntax
+
+The Quick Panel's advanced search and the CLI go through the same
+parser, so the rules below apply to both.
+
+### Substring matching
+
+Any token without a prefix is a case-insensitive substring filter.
+Multiple tokens are AND-ed:
+
+```text
+report v2
+project meeting notes
+```
+
+Results are ranked by BM25 relevance, not by time. For chronological
+output, combine substring search with the time filter below.
+
+### Type filter `type:`
+
+```text
+type:text invite
+type:image screenshot
+type:code useEffect
+type:link mdn
+type:file invoice
+```
+
+Equivalent to the type chips in the Quick Panel and the CLI's
+`--type`. Allowed values: `text` / `image` / `link` / `file` / `code`.
+Code and HTML are merged into one class at the index level.
+
+### Extension filter `ext:`
+
+```text
+ext:pdf contract
+ext:ts useReducer
+```
+
+Only meaningful for **file** payloads (matches the filename suffix).
+CLI equivalent: `--ext`.
+
+### Time range
+
+In the Quick Panel, pick a preset from the dropdown (Today / Last 7
+days / This month / …). In the CLI, pass millisecond timestamps to
+`--from-ms` / `--to-ms`:
+
+```bash
+uniclip search query "report" \
+    --from-ms 1710000000000 \
+    --to-ms 1710100000000
+```
+
+### What's **not** supported
+
+Several conventions you might expect from other search boxes don't
+work here:
+
+- Quoted phrases (`"exact phrase"`) — quotes are treated as ordinary
+  characters.
+- Boolean operators (`AND` / `OR` / `NOT`) — `OR` becomes a substring
+  to match.
+- Wildcards / regex — same.
+- Boolean combinations across content types (e.g. "text or link").
+
+For more elaborate queries, export `--detailed --json` from the CLI
+and post-process in a script.
+
+## Index lifecycle
+
+The index opens with the daemon. Newly copied items are tokenized and
+indexed at the same moment they're encrypted into history, so they
+become searchable **near-instantly**. There are still a few moments
+where you'll deal with it explicitly:
+
+### Fresh install / after a major upgrade
+
+The index may be in a "rebuilding" state.
+
+- **GUI**: **Settings → Storage → Search index** shows the current
+  status (Ready / Rebuilding / Unavailable), the last rebuild
+  timestamp, and a `Rebuild` button.
+- **CLI**: `uniclip search status` reports the same fields.
+
+### Manual rebuild
+
+Occasionally the index drifts out of sync with history (most often
+when the process was `SIGKILL`-ed mid-write).
+
+- **GUI**: that `Rebuild` button. After clicking, the state shifts to
+  "Rebuilding" and the UI polls every 2 s until completion.
+- **CLI**: `uniclip search rebuild` is synchronous — it doesn't return
+  until the rebuild finishes, which is convenient for snapshot
+  scripts.
+
+Queries continue to work during a rebuild; the result set just isn't
+complete until it finishes.
+
+### Corruption recovery
+
+If the index file itself is structurally damaged (very rare — usually
+a disk error), a plain rebuild may not start. Delete the index
+subdirectory under the data folder, then run `rebuild` to recreate it
+from history. The clipboard history lives in a separate file and
+**isn't affected**.
+
+See [Troubleshooting — Search & index](./troubleshooting#search--index).
+
+## Privacy
+
+- The index file is encrypted at rest, with keys held by the OS
+  keyring (shared KEK / MasterKey with the history database).
+- The index **never leaves this machine** and is not part of cross-
+  device sync. Each device searches only what it has seen locally.
+- That means a newly joined device cannot search history from before
+  it joined — a direct consequence of the no-backfill design noted in
+  [Quick start — Add a second device](../getting-started/quick-start#add-a-second-device).
+
+## When you can't find what you expected
+
+Most likely first:
+
+1. Spelling or casing — try a shorter token. Substring matching is
+   noisy by nature.
+2. Time filter is too tight. Reset the time dropdown to "All".
+3. The entry was GC'd by the retention policy. Check the limits under
+   [Settings — Storage](./settings#storage) and confirm the entry is
+   still inside the window.
+4. The entry never synced over — check
+   [Devices — Content-type allowlist](./devices#content-type-allowlist)
+   on the **sender** side.
+5. The index isn't ready. Look at the GUI status pill or run
+   `uniclip search status`.

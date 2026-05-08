@@ -1,0 +1,224 @@
+---
+title: FAQ
+description: Privacy, deployment model, multi-device & multi-space, data, and upgrades — answered straight.
+---
+
+Answers below are grouped by topic. Each one leads with a one-line
+verdict, then the reasoning. If you're chasing a specific bug, jump to
+[Troubleshooting](./guides/troubleshooting) instead.
+
+## Privacy & security
+
+### Where do my clips go? Who can see them?
+
+Only between **paired devices** in your space, end-to-end encrypted
+the whole way.
+
+The application layer encrypts with XChaCha20-Poly1305 using keys
+derived from the space MasterKey, **independent of the transport**.
+Traffic may go direct or through an encrypted relay — the relay only
+ever sees source / destination node IDs and ciphertext, never content.
+
+### Does UniClipboard run servers?
+
+Only discovery (rendezvous) and an encrypted relay. Neither decrypts
+or persists your content:
+
+- **Rendezvous** maps node IDs to addresses, storing signed address
+  records — think "DNS for peers".
+- **Relay** briefly forwards encrypted packets when P2P hole-punching
+  fails.
+
+Your clipboard history never lands on any of our servers. There is no
+"account cloud" and no cloud backup.
+
+### Can I recover a forgotten passphrase?
+
+**No.** The passphrase derives the KEK via Argon2id, and the KEK wraps
+the space MasterKey. Nothing in the chain can be opened with a second
+key — that's the design goal and the price of having no backdoor.
+
+If another device still has access to this space, revoke the lost one
+from there (or rebuild the space). If every device lost the
+passphrase, the only path is to abandon local history and `init` a new
+space.
+
+### What if a relay gets compromised?
+
+A compromised relay can affect **performance and reachability**, not
+confidentiality. The attacker sees ciphertext over QUIC plus end-to-end
+sealed envelopes — without the MasterKey, none of it is meaningful.
+See
+[Pairing & sync — What the relay sees vs. what your peers see](./guides/pairing#what-the-relay-sees-vs-what-your-peers-see).
+
+### Is anything stored in plaintext on disk?
+
+No. The local clipboard database and the full-text search index are
+both encrypted at rest, with keys held by the OS keyring (macOS
+Keychain / Windows Credential Manager / Linux Secret Service). See
+[What syncs — Local storage](./guides/sync#local-storage).
+
+### Can I disable relay entirely?
+
+There's no hard disable today. Relay only kicks in when direct fails —
+to force direct, place both devices on a network where they can reach
+each other (same Wi-Fi, end-to-end IPv6, or shared VPN). A
+"never-relay" toggle is on the roadmap but not landed.
+
+## Deployment & accounts
+
+### Does it require an internet connection?
+
+Only for pairing, cross-network discovery, and cross-network sync.
+Same-Wi-Fi sync runs P2P direct and works with the WAN cut entirely.
+
+### Is an email or account required?
+
+**There is no account system.** The trust boundary is a space + a
+passphrase — no third-party identity provider involved. See
+[Pairing & sync — Trust](./guides/pairing#trust-the-space--invite-model).
+
+### Can I self-host rendezvous / relay?
+
+The underlying [iroh](https://www.iroh.computer) stack supports custom
+rendezvous and relay clusters, but UniClipboard doesn't expose those
+toggles today. If you have a real need (compliance, isolated network),
+open a use-case issue first so we can scope the configuration surface.
+
+## Multi-device & multi-space
+
+### How do "spaces" and "devices" relate?
+
+- **Space** = encryption boundary + shared history + a set of paired
+  devices.
+- **Device** = an iroh node ID joined to one or more spaces.
+
+After joining, the device holds the space's content keys and is
+treated as a trusted peer by every other device in the space.
+
+### Can one device join multiple spaces?
+
+Yes, but **only one is active at a time**. `uniclip switch-space` (or
+the GUI's Devices page) re-encrypts local history under the new
+space's MasterKey before completing the switch — there is no plaintext
+window during the handoff.
+
+Typical use: split "personal" and "work" devices into two spaces with
+different sensitivity levels.
+
+### How do I remove a device from a space?
+
+Revoke it from another online device (GUI Devices page; CLI subcommand
+landing later). After revocation, peers refuse traffic from that node
+ID.
+
+Wiping data on the device being removed **doesn't revoke trust** —
+only updates to the space's trusted set do.
+
+### Is adding the Nth device different from adding the second?
+
+No. Each addition issues a one-time invite and uses it on the new
+device. There's no concept of a "primary" device. See
+[Quick start — Add a second device](./getting-started/quick-start#add-a-second-device).
+
+## Data & history
+
+### How long is history kept?
+
+By default, a local retention policy (entry count + size thresholds)
+applies and old items are GC'd. Each device keeps its own history;
+deletes don't propagate across devices.
+
+For finer-grained control by content type or per device, see
+[What syncs — Per-device sync toggles](./guides/sync#per-device-sync-gates).
+
+### Will a newly joined device receive my old history?
+
+No. Pairing **does not backfill** history. Clips produced after the
+join propagate to the new device; everything before stays only on the
+device that originally captured it. This is intentional — joining is a
+clear time anchor, both for auditing and to prevent a freshly added
+device from siphoning the entire space history.
+
+### Does uninstalling clean everything?
+
+No — uninstalling the package does **not** automatically clear the
+data directory or keyring entries. That's deliberate, to avoid
+accidental data loss. To wipe completely, follow
+[Troubleshooting — Emergency reset](./guides/troubleshooting#emergency-reset-last-resort).
+
+### Will an upgrade lose history?
+
+Patch and minor upgrades preserve history. The **0.6 network stack
+rewrite** was a breaking upgrade — old pairing state was invalidated
+but local history was kept; you just had to re-pair. Future breaking
+upgrades, if any, will be flagged in the release notes.
+
+### Can I export or back up history?
+
+There's no user-facing export command yet. The hidden
+`uniclip dump-clipboard --limit N` exists for development purposes and
+may change. **For mirror backups, copy the data directory** — but
+remember the database is encrypted and needs the matching keyring KEK
+entry to be readable; a cross-machine restore still requires re-running
+`init` / `join` to bind the keyslot.
+
+## Platforms & versions
+
+### Is there a mobile app?
+
+iOS / Android aren't shipped yet. First-class platforms today are
+macOS, Windows, Linux desktops plus the `uniclip` CLI.
+
+### Is alpha worth using?
+
+Usable, yes — but don't depend on it as production infrastructure. We
+use it daily ourselves, but:
+
+- Breaking upgrades **may** require re-pairing (as 0.6 did).
+- Wire format, CLI subcommands, and on-disk layout can still shift
+  before stable.
+- Bugs welcome — earlier reports are easier to fix.
+
+### How do I try alpha or build from source?
+
+Source build steps live in
+[Install — Build from source](./getting-started/install#build-from-source).
+Alpha and stable channels share the same
+[GitHub Releases](https://github.com/UniClipboard/UniClipboard/releases)
+page; alpha builds carry an `-alpha.N` suffix.
+
+## Workflow
+
+### Can the CLI and the GUI run side by side?
+
+Yes, but pin them to **different profiles**. The default profile
+shares its data directory and keyslot, and two processes holding both
+will fight. Pass `--profile dev` to the CLI (or set `UC_PROFILE=dev`)
+to keep them separate.
+
+### Can I limit sync to "text only"?
+
+Yes. Each paired device has per-direction (send / receive) and
+per-content-type toggles. Configured in the GUI Devices page today;
+CLI equivalents are on the roadmap. See
+[Per-device sync toggles](./guides/sync#per-device-sync-gates).
+
+### Can I script against UniClipboard?
+
+Yes. `uniclip` supports `--json` on every subcommand, exit codes are
+stable, and stdin works (`echo ... | uniclip send`). See
+[CLI reference](./reference/cli).
+
+## Feedback & disclosure
+
+### How do I report a bug?
+
+[github.com/UniClipboard/UniClipboard/issues](https://github.com/UniClipboard/UniClipboard/issues), with
+`uniclip --version`, `uniclip status --json`, repro steps, and the log
+slice for the relevant time window.
+
+### How do I report a security issue?
+
+**Don't** file a public issue. Use the private disclosure channel in
+[SECURITY.md](https://github.com/UniClipboard/UniClipboard/blob/main/SECURITY.md).

@@ -1,0 +1,48 @@
+name: 'Docs Check'
+run-name: 'Docs check for ${{ github.head_ref }}'
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'docs-site/**'
+      - '.github/workflows/docs-check.yml'
+
+jobs:
+  check:
+    name: docs-site
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: docs-site
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Bun
+        uses: oven-sh/setup-bun@v1
+        with:
+          bun-version: latest
+
+      - name: Cache Bun dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            docs-site/node_modules
+            ~/.bun/install/cache
+          key: ${{ runner.os }}-docs-bun-${{ hashFiles('docs-site/bun.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-docs-bun-
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Consistency check (mirror + anchors + autolink)
+        run: bun run check:docs
+
+      - name: Type check
+        run: bun run types:check
+
+      - name: Build
+        run: bun run build

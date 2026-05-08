@@ -17,8 +17,6 @@ const localeRewrites = i18n.languages.map(lang => {
 
 export default function proxy(request: NextRequest, event: NextFetchEvent) {
   const pathname = request.nextUrl.pathname
-  // Temporary trace — remove once routing is verified.
-  console.log('[proxy]', pathname)
 
   // Root `/` — rewrite to default-locale home, no trailing slash.
   // (fumadocs' default-locale middleware would rewrite `/` -> `/en/`,

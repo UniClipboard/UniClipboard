@@ -1,0 +1,255 @@
+---
+title: 故障排查
+description: 同步、配对、剪贴板权限、日志收集与紧急重置的处理路径。
+---
+
+import { Step, Steps } from 'fumadocs-ui/components/steps'
+import { Tab, Tabs } from 'fumadocs-ui/components/tabs'
+
+UniClipboard 的故障可以按层定位：**守护进程是否在跑 → 配对是否成立 → 对端是否被发现 → 传输是否打通 → 表示是否落地**。下面按这个顺序展开，每节都写明"看哪些信号"和"动哪些命令"。
+
+<Callout type="info">
+  在排查任何问题之前，先在两端各跑一遍 `uniclip status` 与 `uniclip members` 拿到客观状态。
+  人脑记忆里的"应该在线"经常和实际不符。
+</Callout>
+
+## 先看这里：30 秒分流
+
+| 现象                            | 多半的层次                                  | 跳到这一节                |
+| ------------------------------- | ------------------------------------------- | ------------------------- |
+| 命令报"daemon not running"      | 守护进程                                    | [守护进程](#守护进程)     |
+| `join <code>` 报错 / 一直等待   | 配对                                        | [配对失败](#配对失败)     |
+| 双方都在线但 `members` 看不到对方 | 发现                                        | [对端不上线](#对端不上线) |
+| 能看到对方但同步慢、文件传不动  | 传输                                        | [卡在中继 / 同步缓慢](#卡在中继--同步缓慢) |
+| 复制了但对端啥也没收到          | 剪贴板权限                                  | [剪贴板权限](#剪贴板权限) |
+| 搜索结果空 / 报"index not ready" | 全文索引                                    | [搜索与索引](#搜索与索引) |
+
+## 守护进程
+
+CLI 的所有同步功能都依赖守护进程。`uniclip start` 拉起、`uniclip stop` 停掉、`uniclip status` 看健康度。
+
+```bash
+uniclip status            # 摘要
+uniclip status --json     # 字段稳定，方便比对
+```
+
+关键字段：
+
+- `daemon.running` —— 进程是否存活。
+- `space.bound` —— 当前 profile 是否已绑定到某个空间。`false` 说明还没 `init` 或 `join`。
+- `network.endpoint` —— 本机 iroh node ID。换 Wi-Fi 不会变，**变了说明换了 profile 或 keyslot**。
+- `network.relay` —— 当前选用的中继域名；`null` 说明走的是直连。
+- `peers[].reachability` —— 对每个已配对设备的可达性快照。
+
+如果 `daemon.running = false` 但 `uniclip start` 又秒退，先用前台模式抓栈：
+
+```bash
+uniclip start --foreground -v
+```
+
+常见原因是 keyslot 文件被另一份进程占着（典型场景：GUI 与 `uniclip` 用了同一个默认 profile 同时跑）。在 CLI 端加 `--profile dev` 让二者分家即可。
+
+## 配对失败
+
+### 邀请码报"invalid or expired"
+
+邀请码**短期、一次性**。一旦过期或已被消费，就需要在 sponsor 上重新生成：
+
+```bash
+uniclip invite        # 在 sponsor 上重出一张
+```
+
+不要把邀请码当长效凭据保存或粘到聊天群里 —— 它的设计就是只活到下一次握手。
+
+### 输入正确的邀请码，握手却卡住
+
+握手会跑 PAKE 校验口令。如果对方在 `members` 里始终不出现：
+
+1. 确认两端的系统时间偏差小于几分钟。Argon2id 与签名校验对时间漂移敏感。
+2. 在 sponsor 端 `uniclip status --json | grep handshake` 查看是否在等 joiner，如果根本没收到说明发现层就没打通，跳到[对端不上线](#对端不上线)。
+3. 默认握手超时几十秒。超时后 sponsor 会丢弃这次邀请，joiner 拿到的就是"invitation expired"。重新 `invite` 即可。
+
+### "passphrase mismatch" / 加入后立刻被踢
+
+口令错误会让密钥重新封装失败。这是设计行为，不是 bug —— sponsor 永远看不到错误的口令明文。校对口令再来一次就好。
+
+<Callout type="warn">
+  口令一旦丢失就**无法找回**。这是 Argon2id + PAKE 的代价：服务器侧没有任何能解密的副本。
+  这种情况下唯一的恢复路径是在还能登录的设备上吊销丢失设备、或彻底重建空间。
+</Callout>
+
+## 对端不上线
+
+发现层并行跑三种查找：mDNS、rendezvous、直连地址缓存。任何一种命中都算。如果 `members` 里看不到对端：
+
+<Steps>
+
+<Step>
+
+### 同 Wi-Fi？先排除 AP 隔离
+
+许多家用路由器和咖啡馆 Wi-Fi 默认开启 **client isolation / AP isolation**，会丢弃同一 SSID 内设备之间的 mDNS 与单播流量。
+
+- 路由器后台找一下 "AP Isolation"、"Client Isolation"、"无线隔离"、"访客网络" 等词，关掉。
+- 来宾网络通常永久开着隔离，把两台机器都接到主网络再试。
+
+</Step>
+
+<Step>
+
+### 跨网络？确认 rendezvous 可达
+
+跨家庭网络、手机热点、4G/5G 的发现依赖 rendezvous（HTTPS）。如果你在严格的企业网络下，可能整个 HTTPS 出站都被中间盒拦了。
+
+- 临时换到手机热点验证一下；只要热点下能发现，问题就锁定在原网络的出站策略上。
+- 防火墙白名单需要放开 iroh 默认的 rendezvous + 中继域名。具体域名见 `uniclip status --json` 的 `network` 字段。
+
+</Step>
+
+<Step>
+
+### 双方时钟偏差？
+
+签名地址记录会带时间戳。如果一端时钟漂移超过几分钟，地址记录会被另一端当过期丢掉，结果就是"看似在线，谁都找不到谁"。
+
+</Step>
+
+</Steps>
+
+## 卡在中继 / 同步缓慢
+
+`uniclip status` 里 `network.relay` 非空就说明走的是中继 —— 能跑，但延迟和带宽都不如直连。如果你确定双方在同一个网络下却仍然走中继：
+
+- **对称 NAT。** 部分运营商 / 移动网络下 NAT 端口分配不可预测，打洞会失败。换网络（或开 IPv6）通常立刻好。
+- **IPv6 被禁。** 路径上某一跳关掉了 IPv6 时直连会回退到 IPv4 NAT 打洞。
+- **企业网络。** 出站 UDP 全封的环境只能走中继，且某些网络会进一步把中继也封掉，那种情况下 UniClipboard 在该网络就是不可用。
+
+> 中继看到的永远是密文。中继可用性影响的是**性能**与**可达性**，不影响机密性。详见 [配对与同步 — 传输](./pairing#传输字节实际怎么走)。
+
+文件类负载走的是分块 blob 协议（见 [同步内容 — 大负载](./sync#大负载文件与大图)），中途断网 / 唤醒后会续传。如果一个大文件**几小时**还在零星传，多半是某一块卡住没重试 —— 在发送端 `uniclip stop && uniclip start` 通常能踢一脚。
+
+## 剪贴板权限
+
+复制后对端没动静、`uniclip watch` 也没事件，往往是本机根本没读到剪贴板。
+
+<Tabs items={['macOS', 'Windows', 'Linux']}>
+
+<Tab value="macOS">
+
+需要两项权限：
+
+- **辅助功能（Accessibility）** —— 读系统剪贴板。
+- **输入监控（Input Monitoring）** —— 全局快捷面板快捷键。
+
+授权后**完全退出再重启**应用。macOS 不会对运行中的进程动态生效。
+
+如果选项里没有 UniClipboard，先在 **系统设置 → 隐私与安全 → 辅助功能** 里点 `+` 手动加入 `/Applications/UniClipboard.app`。
+
+</Tab>
+
+<Tab value="Windows">
+
+Windows 通常不需要额外授权。如果 `uniclip watch` 没事件：
+
+- 杀软或 EDR 可能把 `UniClipboard.exe` / `uniclip.exe` 拦住了剪贴板钩子。检查事件日志或杀软隔离区。
+- 远程桌面会话内的剪贴板独立于宿主，关掉 RDP 剪贴板重定向再试。
+
+</Tab>
+
+<Tab value="Linux">
+
+桌面会话差异最大：
+
+- **Wayland**：要求合成器实现 `wlr-data-control` 协议。GNOME 在很长时间内都不实现该协议，需要装 `wl-clipboard` 之类的桥接工具或切到 Plasma / Sway 等支持的合成器。
+- **X11**：开箱即用，但要求会话里至少有一个剪贴板管理器（`xclip` / `xsel` 任一）。
+- **无头服务器**：没有 X / Wayland 时只剩 CLI 的 `send` / `watch` 工作；GUI 的剪贴板捕获不可用。
+
+</Tab>
+
+</Tabs>
+
+## 搜索与索引
+
+`uniclip search status` 报告全文索引状态。
+
+```bash
+uniclip search status      # ready / building / missing
+uniclip search rebuild     # 同步重建（会阻塞直至完成）
+```
+
+常见情况：
+
+- **"index not ready"** —— 守护进程刚启动 / 大版本升级后正在重建。`status` 会给出进度。
+- **重建后仍然查不到旧条目** —— 旧条目可能在升级时已经被保留策略 GC。`uniclip dump-clipboard --limit N`（隐藏命令）可以核对历史是否真的还在。
+- **索引文件损坏（罕见）** —— 进程在写索引时被 SIGKILL 等极端场景。删除数据目录下的索引子目录，再 `uniclip search rebuild` 即可；剪贴历史本身是分开存的，不会丢。
+
+## 收集日志
+
+日志写在和加密历史同级的 `logs/` 子目录下：
+
+| 平台    | 路径                                                            |
+| ------- | --------------------------------------------------------------- |
+| macOS   | `~/Library/Application Support/app.uniclipboard.desktop/logs/`  |
+| Linux   | `~/.local/share/app.uniclipboard.desktop/logs/`                 |
+| Windows | `%LOCALAPPDATA%\app.uniclipboard.desktop\logs\`                 |
+
+带 `UC_PROFILE` 时目录后会有后缀（如 `app.uniclipboard.desktop-dev`）。详见 [安装 — 数据存储位置](../getting-started/install#数据存储位置)。
+
+复现一次问题再抓日志，效果远好于事后翻：
+
+```bash
+# 前台跑守护进程，把 debug 级别日志直接输出到终端
+uniclip stop
+uniclip start --foreground -v
+```
+
+提交 issue 时请尽量附上：
+
+- `uniclip --version`、操作系统与版本。
+- `uniclip status --json`（两端各一份）。
+- 复现步骤与时间戳，对应时间窗口的日志切片即可，不必整份上传。
+- **不要**把数据库文件、邀请码、空间口令贴到 issue 里。
+
+## 紧急重置（最后手段）
+
+下面这些操作**会丢失本地剪贴历史**，且无法回滚。仅在前面所有步骤都没解决问题时使用。
+
+<Tabs items={['只重置当前 profile', '完全卸载并清干净']}>
+
+<Tab value="只重置当前 profile">
+
+```bash
+uniclip stop
+# 然后删除该 profile 的数据目录（路径见上文）
+# Linux 示例：
+rm -rf ~/.local/share/app.uniclipboard.desktop
+```
+
+清理后 `uniclip init` 或 `uniclip join` 即可重来。系统密钥环里的 KEK 条目也会在下次 `init` 时被覆盖。
+
+</Tab>
+
+<Tab value="完全卸载并清干净">
+
+1. 退出 GUI，`uniclip stop`。
+2. 卸载安装包（Homebrew / MSI / Snap / AppImage 按对应方式卸）。
+3. 删除数据目录（同上）。
+4. **手动**清理系统密钥环条目：
+   - macOS Keychain：搜 `uniclipboard`，删条目。
+   - Windows Credential Manager：**控制面板 → 用户账户 → 凭据管理器 → Windows 凭据**，删 `uniclipboard:*`。
+   - Linux Secret Service：用 `seahorse` 或 `secret-tool` 清掉 `uniclipboard` namespace。
+
+</Tab>
+
+</Tabs>
+
+<Callout type="warn">
+  其它设备上的历史不受本机重置影响。如果是想让一台设备从空间里**消失**，请在另一台还在线的设备上吊销它，
+  而不是只在本机删数据 —— 仅删本机不会撤销 node ID 的可信状态。
+</Callout>
+
+## 还是没解决？
+
+- 翻一遍 [常见问题（FAQ）](../faq) —— 很多"故障"其实是行为差异，不是 bug。
+- 仍然不对劲就提 issue：[github.com/UniClipboard/UniClipboard/issues](https://github.com/UniClipboard/UniClipboard/issues)。请遵循上面的"收集日志"清单。
+- 安全相关问题请走 [SECURITY.md](https://github.com/UniClipboard/UniClipboard/blob/main/SECURITY.md) 里给出的私有披露渠道，**不要**直接开 public issue。

@@ -1,0 +1,342 @@
+---
+title: Troubleshooting
+description: Triage path for sync, pairing, clipboard permissions, log collection, and emergency reset.
+---
+
+import { Step, Steps } from 'fumadocs-ui/components/steps'
+import { Tab, Tabs } from 'fumadocs-ui/components/tabs'
+
+UniClipboard issues fall into a small set of layers: **is the daemon
+running → is pairing established → can the peer be discovered → does
+transport work → did the representation land**. Walk them in that
+order. Each section below tells you which signals to look at and which
+commands to run.
+
+<Callout type="info">
+  Before guessing, run `uniclip status` and `uniclip members` on
+  **both** ends. The "should be online" feeling rarely matches what's
+  actually on the wire.
+</Callout>
+
+## Start here: 30-second triage
+
+| Symptom                                          | Most likely layer    | Jump to                                                  |
+| ------------------------------------------------ | -------------------- | -------------------------------------------------------- |
+| Command says "daemon not running"                | Daemon               | [Daemon](#daemon)                                        |
+| `join <code>` errors out or hangs                | Pairing              | [Pairing failures](#pairing-failures)                    |
+| Both online but `members` doesn't list each other | Discovery            | [Peer not appearing](#peer-not-appearing)                |
+| Peer is visible but sync is slow / files stall  | Transport            | [Stuck on relay / slow sync](#stuck-on-relay--slow-sync) |
+| You copy something and the peer gets nothing    | Clipboard permission | [Clipboard permissions](#clipboard-permissions)          |
+| Search returns nothing or "index not ready"     | Full-text index      | [Search & index](#search--index)                         |
+
+## Daemon
+
+Every CLI sync command depends on the daemon. Use `uniclip start` to
+launch, `uniclip stop` to shut it down, and `uniclip status` to inspect
+health.
+
+```bash
+uniclip status            # summary
+uniclip status --json     # stable fields, easy to diff
+```
+
+Key fields:
+
+- `daemon.running` — whether the process is alive.
+- `space.bound` — whether the current profile is bound to a space.
+  `false` means you haven't `init`-ed or `join`-ed yet.
+- `network.endpoint` — this device's iroh node ID. Switching Wi-Fi
+  doesn't change it; **if it changes, you switched profile or
+  keyslot**.
+- `network.relay` — relay domain in use; `null` means direct.
+- `peers[].reachability` — per-peer reachability snapshot.
+
+If `daemon.running = false` but `uniclip start` exits immediately, run
+it in the foreground to capture the trace:
+
+```bash
+uniclip start --foreground -v
+```
+
+A common cause is the keyslot file being held by another process —
+typically the GUI and `uniclip` racing on the default profile. Adding
+`--profile dev` on the CLI side keeps them out of each other's way.
+
+## Pairing failures
+
+### Invite says "invalid or expired"
+
+Invitation codes are **short-lived and single-use**. Once consumed or
+expired, regenerate one on the sponsor:
+
+```bash
+uniclip invite        # issue a fresh one on the sponsor
+```
+
+Don't treat invites like long-lived credentials or paste them into a
+chat history — they're designed to live only until the next handshake.
+
+### Correct invite, but the handshake hangs
+
+The handshake runs PAKE to verify the passphrase. If the peer never
+appears in `members`:
+
+1. Confirm clocks on both ends agree to within a few minutes. Argon2id
+   and signature checks are sensitive to clock drift.
+2. On the sponsor, `uniclip status --json | grep handshake` shows
+   whether it's waiting for a joiner. If nothing arrived, discovery
+   itself is broken — jump to [Peer not appearing](#peer-not-appearing).
+3. Default handshake timeout is in the tens of seconds. After that the
+   sponsor drops the invite and the joiner sees "invitation expired".
+   Just `invite` again.
+
+### "passphrase mismatch" or kicked right after joining
+
+Wrong passphrase makes the key rewrap fail. This is by design — the
+sponsor never sees the bad passphrase in plaintext. Double-check and
+retry.
+
+<Callout type="warn">
+  A lost passphrase is **unrecoverable**. That's the price of Argon2id +
+  PAKE: there's no copy on any server that could decrypt anything. If
+  you still have access on another device, revoke the lost one (or
+  rebuild the space) from there.
+</Callout>
+
+## Peer not appearing
+
+Discovery runs three lookups in parallel: mDNS, rendezvous, cached
+direct addresses. Any hit wins. If the peer never shows up in
+`members`:
+
+<Steps>
+
+<Step>
+
+### Same Wi-Fi? Rule out AP isolation
+
+Many home routers and café Wi-Fis enable **client / AP isolation** by
+default, which drops mDNS and unicast traffic between devices on the
+same SSID.
+
+- Look for "AP Isolation", "Client Isolation", or "Wireless Isolation"
+  in the router admin and turn it off.
+- Guest networks usually leave isolation on permanently — move both
+  devices to the main network.
+
+</Step>
+
+<Step>
+
+### Different networks? Confirm rendezvous reachability
+
+Cross-network discovery depends on rendezvous over HTTPS. On strict
+corporate networks an inspecting middlebox may break HTTPS egress
+entirely.
+
+- Switch one device to a phone hotspot and retry. If it works there,
+  the original network's egress policy is the culprit.
+- Firewall allowlists need to permit iroh's default rendezvous and
+  relay domains. Inspect `uniclip status --json` (`network` field) for
+  the exact hosts in use.
+
+</Step>
+
+<Step>
+
+### Clock drift?
+
+Signed address records carry timestamps. If one end's clock drifts more
+than a few minutes, the other side rejects its records as expired —
+producing the "looks online, can't find each other" pattern.
+
+</Step>
+
+</Steps>
+
+## Stuck on relay / slow sync
+
+A non-empty `network.relay` in `uniclip status` means the path is
+relayed — it works, but with worse latency and bandwidth than direct.
+If both devices are on the same network and you still see relay use:
+
+- **Symmetric NAT.** Some carriers and mobile networks allocate ports
+  unpredictably, breaking hole-punching. Switching networks (or
+  enabling IPv6) usually fixes it.
+- **IPv6 disabled along the path.** Direct fails over to IPv4 NAT
+  punching, which is more fragile.
+- **Corporate networks.** Locked-down outbound UDP forces relay use,
+  and some of these networks block the relay too — in which case
+  UniClipboard simply isn't usable on that network.
+
+> The relay only ever sees ciphertext. Its availability affects
+> **performance and reachability**, not confidentiality. See
+> [Pairing & sync — Transport](./pairing#transport-how-bytes-actually-move).
+
+File-class payloads use a chunked blob protocol (see
+[What syncs — Large payloads](./sync#large-payloads-files--big-images)),
+which resumes after disconnects and wake-from-sleep. If a single big
+file has been creeping along for **hours** at near-zero rate, a chunk
+is probably stuck without retrying. On the sender,
+`uniclip stop && uniclip start` usually unsticks it.
+
+## Clipboard permissions
+
+If a copy produces nothing on the peer, and `uniclip watch` shows no
+event either, the local side likely never read the clipboard.
+
+<Tabs items={['macOS', 'Windows', 'Linux']}>
+
+<Tab value="macOS">
+
+Two permissions are required:
+
+- **Accessibility** — to read the system clipboard.
+- **Input Monitoring** — for the global Quick Panel hotkey.
+
+After granting, **fully quit and relaunch** the app. macOS does not
+apply changes to a running process.
+
+If UniClipboard isn't listed, click `+` in **System Settings → Privacy
+& Security → Accessibility** and add `/Applications/UniClipboard.app`
+explicitly.
+
+</Tab>
+
+<Tab value="Windows">
+
+Windows usually needs no extra grants. If `uniclip watch` is silent:
+
+- Antivirus or EDR may be blocking the clipboard hook in
+  `UniClipboard.exe` / `uniclip.exe`. Check the event log or the AV
+  quarantine.
+- Inside an RDP session, the clipboard is separate from the host. Turn
+  off RDP clipboard redirection and retry.
+
+</Tab>
+
+<Tab value="Linux">
+
+The desktop session matters more than the distro:
+
+- **Wayland**: requires the `wlr-data-control` protocol. GNOME has long
+  refused to ship it — use a `wl-clipboard`-style bridge or switch to
+  Plasma / Sway / another supported compositor.
+- **X11**: works out of the box but needs at least one clipboard
+  manager in session (`xclip` / `xsel`).
+- **Headless servers**: with no X / Wayland, only the CLI's `send` /
+  `watch` features work; GUI clipboard capture isn't available.
+
+</Tab>
+
+</Tabs>
+
+## Search & index
+
+`uniclip search status` reports the full-text index state.
+
+```bash
+uniclip search status      # ready / building / missing
+uniclip search rebuild     # synchronous rebuild (blocks until done)
+```
+
+Common cases:
+
+- **"index not ready"** — daemon just started or post-upgrade rebuild
+  in progress. `status` reports progress.
+- **Old entries missing after rebuild** — they may have been GC'd by
+  the retention policy during upgrade. The hidden command
+  `uniclip dump-clipboard --limit N` lets you confirm whether they're
+  still in history at all.
+- **Corrupt index file (rare)** — usually after a SIGKILL during
+  writes. Delete the index subdirectory under the data folder, then
+  `uniclip search rebuild`. The clipboard history itself lives in a
+  separate file and isn't affected.
+
+## Collecting logs
+
+Logs live in a `logs/` subdirectory next to the encrypted history:
+
+| Platform | Path                                                            |
+| -------- | --------------------------------------------------------------- |
+| macOS    | `~/Library/Application Support/app.uniclipboard.desktop/logs/`  |
+| Linux    | `~/.local/share/app.uniclipboard.desktop/logs/`                 |
+| Windows  | `%LOCALAPPDATA%\app.uniclipboard.desktop\logs\`                 |
+
+With `UC_PROFILE` set, the directory carries a suffix
+(`app.uniclipboard.desktop-dev`). See
+[Install — Where data lives](../getting-started/install#where-data-lives).
+
+Reproduce while capturing — much better than digging through old logs:
+
+```bash
+# Run the daemon in foreground with debug-level output piped to the terminal
+uniclip stop
+uniclip start --foreground -v
+```
+
+When filing an issue, please attach:
+
+- `uniclip --version`, OS and version.
+- `uniclip status --json` from each end.
+- Repro steps with timestamps; the log slice covering that window is
+  enough — no need to upload the full file.
+- **Don't** paste database files, invitation codes, or space
+  passphrases into the issue.
+
+## Emergency reset (last resort)
+
+The operations below **destroy local clipboard history** and can't be
+rolled back. Use them only after the steps above failed.
+
+<Tabs items={['Reset current profile only', 'Uninstall and wipe everything']}>
+
+<Tab value="Reset current profile only">
+
+```bash
+uniclip stop
+# Then delete the profile's data directory (path above).
+# Linux example:
+rm -rf ~/.local/share/app.uniclipboard.desktop
+```
+
+After cleanup, `uniclip init` or `uniclip join` starts fresh. The
+keyring's KEK entry will be overwritten by the next `init`.
+
+</Tab>
+
+<Tab value="Uninstall and wipe everything">
+
+1. Quit the GUI; `uniclip stop`.
+2. Uninstall the package (Homebrew / MSI / Snap / AppImage as
+   appropriate).
+3. Delete the data directory (paths above).
+4. **Manually** clean keyring entries:
+   - macOS Keychain: search `uniclipboard`, delete entries.
+   - Windows Credential Manager: **Control Panel → User Accounts →
+     Credential Manager → Windows Credentials**, remove
+     `uniclipboard:*`.
+   - Linux Secret Service: use `seahorse` or `secret-tool` to wipe the
+     `uniclipboard` namespace.
+
+</Tab>
+
+</Tabs>
+
+<Callout type="warn">
+  Resetting one device does not revoke it on the other devices in the
+  space. To make a device disappear from the space, **revoke** it from
+  another online device — clearing local data alone does not invalidate
+  its node ID's trusted status.
+</Callout>
+
+## Still stuck?
+
+- Skim the [FAQ](../faq) — many "issues" turn out to be intentional
+  behavior, not bugs.
+- If something is genuinely off, file an issue at
+  [github.com/UniClipboard/UniClipboard/issues](https://github.com/UniClipboard/UniClipboard/issues). Follow the log
+  collection checklist above.
+- For security issues, use the private disclosure channel listed in
+  [SECURITY.md](https://github.com/UniClipboard/UniClipboard/blob/main/SECURITY.md)
+  — **don't** open a public issue.

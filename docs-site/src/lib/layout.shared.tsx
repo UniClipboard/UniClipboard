@@ -11,6 +11,15 @@ export const i18nUI = defineI18nUI(i18n, {
     zh: {
       displayName: '简体中文',
       search: '搜索文档',
+      searchNoResult: '未找到相关结果',
+      toc: '本页目录',
+      tocNoHeadings: '本页无小节',
+      lastUpdate: '最后更新于',
+      chooseLanguage: '选择语言',
+      nextPage: '下一页',
+      previousPage: '上一页',
+      chooseTheme: '主题',
+      editOnGithub: '在 GitHub 上编辑',
     },
   },
 })

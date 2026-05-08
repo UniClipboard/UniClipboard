@@ -22,25 +22,24 @@ panel auto-hides when it loses focus — by design it doesn't try to
 hold focus indefinitely.
 
 <Callout type="info">
-  Hotkey doesn't seem to fire? It's almost always a conflict with
-  another app's shortcut, not a bug. Rebind it under
-  [Settings — Shortcuts](./settings#shortcuts) to a free combo.
+  Hotkey doesn't seem to fire? It's almost always a conflict with another app's shortcut, not a bug.
+  Rebind it under [Settings — Shortcuts](./settings#shortcuts) to a free combo.
 </Callout>
 
 ## Keyboard controls
 
 The panel is meant to be driven entirely by keyboard. The full set:
 
-| Key                          | Action                                         |
-| ---------------------------- | ---------------------------------------------- |
-| `↑` / `↓`                    | Move selection                                 |
-| `Enter`                      | Paste the selected item into the previous app  |
-| `Esc`                        | Close without pasting                          |
-| `Alt + Backspace`            | Remove the selected item from history          |
-| `Cmd` / `Ctrl` + `1`–`9`     | Jump to items 1–9                              |
-| `Cmd` / `Ctrl` + `0`         | Jump to item 10                                |
-| Just type                    | Live substring filter (case-insensitive)       |
-| `:` at start of search       | Switch to advanced search (see below)          |
+| Key                      | Action                                        |
+| ------------------------ | --------------------------------------------- |
+| `↑` / `↓`                | Move selection                                |
+| `Enter`                  | Paste the selected item into the previous app |
+| `Esc`                    | Close without pasting                         |
+| `Alt + Backspace`        | Remove the selected item from history         |
+| `Cmd` / `Ctrl` + `1`–`9` | Jump to items 1–9                             |
+| `Cmd` / `Ctrl` + `0`     | Jump to item 10                               |
+| Just type                | Live substring filter (case-insensitive)      |
+| `:` at start of search   | Switch to advanced search (see below)         |
 
 `Enter` simulates a system paste, so the receiving app sees what looks
 like a regular Cmd/Ctrl+V — rich text and files land at the highest
@@ -51,13 +50,13 @@ fidelity that the destination app understands.
 When an item is selected, the right pane renders it in the format
 matching its content type:
 
-| Representation | Preview                                                        |
-| -------------- | -------------------------------------------------------------- |
-| Plain text     | Monospace; virtualized scrolling for large text (> 50 KB)      |
-| Link           | Extracted domain plus the full URL                             |
-| Image          | Embedded thumbnail, fit-to-area, with dimensions               |
-| Code / HTML    | Same renderer as plain text (no syntax highlighting yet)       |
-| File           | List of filenames with icons; multi-file shown row-by-row      |
+| Representation | Preview                                                   |
+| -------------- | --------------------------------------------------------- |
+| Plain text     | Monospace; virtualized scrolling for large text (> 50 KB) |
+| Link           | Extracted domain plus the full URL                        |
+| Image          | Embedded thumbnail, fit-to-area, with dimensions          |
+| Code / HTML    | Same renderer as plain text (no syntax highlighting yet)  |
+| File           | List of filenames with icons; multi-file shown row-by-row |
 
 The preview is **read-only**. To put the item back on the system
 clipboard or paste it, return to the list and hit `Enter`.
@@ -98,9 +97,8 @@ Quoted phrases, boolean operators, and regex are **not** supported —
 see [Full-text search — Query syntax](./search#query-syntax).
 
 <Callout type="info">
-  The CLI equivalent is `uniclip search query` with `--type`, `--ext`,
-  `--from-ms`, and `--to-ms`. See
-  [CLI reference — Search](../reference/cli#search).
+  The CLI equivalent is `uniclip search query` with `--type`, `--ext`, `--from-ms`, and `--to-ms`.
+  See [CLI reference — Search](../reference/cli#search).
 </Callout>
 
 ## Customizing the hotkey
@@ -134,12 +132,12 @@ Combinations that are unlikely to clash with system or IDE shortcuts:
 
 ## When to use the panel vs. the main window
 
-| What you want                                          | Best surface                                                      |
-| ------------------------------------------------------ | ----------------------------------------------------------------- |
-| Paste a recent item right now                          | Quick Panel                                                       |
-| Find something from days ago across devices            | Quick Panel `:` advanced search, or CLI `uniclip search`          |
-| Long sessions of triage, bulk delete, export           | Main window (Dashboard)                                           |
-| Configure filters or per-device content-type rules     | [Devices](./devices) / [Settings](./settings)                     |
+| What you want                                      | Best surface                                             |
+| -------------------------------------------------- | -------------------------------------------------------- |
+| Paste a recent item right now                      | Quick Panel                                              |
+| Find something from days ago across devices        | Quick Panel `:` advanced search, or CLI `uniclip search` |
+| Long sessions of triage, bulk delete, export       | Main window (Dashboard)                                  |
+| Configure filters or per-device content-type rules | [Devices](./devices) / [Settings](./settings)            |
 
 ## Troubleshooting
 

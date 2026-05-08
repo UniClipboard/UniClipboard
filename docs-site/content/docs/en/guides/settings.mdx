@@ -10,13 +10,13 @@ it.
 
 ## General
 
-| Setting             | What it does                                                          |
-| ------------------- | --------------------------------------------------------------------- |
-| Launch at login     | Start UniClipboard automatically when you sign in.                    |
-| Silent start        | After launch, skip the window and go straight to the background/tray. |
-| Device name         | Shown to other devices in the members list — pick something readable. |
-| Language            | English / Simplified Chinese.                                         |
-| Telemetry           | Anonymous crash and usage reporting; off by default.                  |
+| Setting         | What it does                                                          |
+| --------------- | --------------------------------------------------------------------- |
+| Launch at login | Start UniClipboard automatically when you sign in.                    |
+| Silent start    | After launch, skip the window and go straight to the background/tray. |
+| Device name     | Shown to other devices in the members list — pick something readable. |
+| Language        | English / Simplified Chinese.                                         |
+| Telemetry       | Anonymous crash and usage reporting; off by default.                  |
 
 The device name is purely a display alias; it doesn't enter the
 encryption identity. Renaming doesn't affect the node ID or pairing
@@ -24,10 +24,10 @@ state.
 
 ## Appearance
 
-| Setting     | What it does                                                                    |
-| ----------- | ------------------------------------------------------------------------------- |
-| Theme mode  | Light / Dark / Follow system. Live update.                                      |
-| Theme color | Accent color from a palette (slate, rose, orange, amber, ..., blue, violet).    |
+| Setting     | What it does                                                                          |
+| ----------- | ------------------------------------------------------------------------------------- |
+| Theme mode  | Light / Dark / Follow system. Live update.                                            |
+| Theme color | Accent color from a palette (slate, rose, orange, amber, ..., blue, violet).          |
 | UI zoom     | Presets at 80 / 90 / 100 / 110 / 120 %, plus a free slider; `Reset` returns to 100 %. |
 
 Zoom changes rendering density only (think DPI). It doesn't touch your
@@ -53,15 +53,15 @@ empty.
 
 How this device participates in sync, plus file-related thresholds:
 
-| Setting                          | What it does                                                              |
-| -------------------------------- | ------------------------------------------------------------------------- |
-| Enable auto-sync                 | Off → this device only receives; outbound is manual (`uniclip send`).     |
-| Enable file sync                 | Master switch; off → file payloads neither sent nor received.             |
-| Small-file threshold (MB)        | Files below it ride the inline fast path; above it use the blob stream.   |
-| Max single-file size (MB)        | Files larger than this are rejected and surfaced in history with a reason.|
-| Per-peer file cache (MB)         | Per-peer cache cap; LRU eviction once exceeded.                           |
-| File retention (hours)           | How long blob chunks may sit in cache before being eligible for cleanup.  |
-| Auto-cleanup                     | Whether the above limits are enforced periodically.                       |
+| Setting                   | What it does                                                               |
+| ------------------------- | -------------------------------------------------------------------------- |
+| Enable auto-sync          | Off → this device only receives; outbound is manual (`uniclip send`).      |
+| Enable file sync          | Master switch; off → file payloads neither sent nor received.              |
+| Small-file threshold (MB) | Files below it ride the inline fast path; above it use the blob stream.    |
+| Max single-file size (MB) | Files larger than this are rejected and surfaced in history with a reason. |
+| Per-peer file cache (MB)  | Per-peer cache cap; LRU eviction once exceeded.                            |
+| File retention (hours)    | How long blob chunks may sit in cache before being eligible for cleanup.   |
+| Auto-cleanup              | Whether the above limits are enforced periodically.                        |
 
 Per-content-type and per-peer **gates** live elsewhere — they're on
 each peer's
@@ -69,19 +69,19 @@ each peer's
 
 ## Security
 
-| Setting                          | What it does                                                                            |
-| -------------------------------- | --------------------------------------------------------------------------------------- |
-| Auto-unlock encryption session   | Re-derive the MasterKey from the OS keyring KEK after lock/wake. Off → manual unlock.   |
+| Setting                        | What it does                                                                          |
+| ------------------------------ | ------------------------------------------------------------------------------------- |
+| Auto-unlock encryption session | Re-derive the MasterKey from the OS keyring KEK after lock/wake. Off → manual unlock. |
 
 For the underlying key model, see
 [Pairing & sync — Trust](./pairing#trust-the-space--invite-model).
 
 ## Network
 
-| Setting                       | What it does                                                                |
-| ----------------------------- | --------------------------------------------------------------------------- |
-| LAN-only mode                 | Force-disables encrypted relay; off-LAN peers become unreachable.           |
-| Allow overlay network addrs   | Use addresses learned via rendezvous; off → only mDNS + cached direct addrs.|
+| Setting                     | What it does                                                                 |
+| --------------------------- | ---------------------------------------------------------------------------- |
+| LAN-only mode               | Force-disables encrypted relay; off-LAN peers become unreachable.            |
+| Allow overlay network addrs | Use addresses learned via rendezvous; off → only mDNS + cached direct addrs. |
 
 Either change shows a banner saying the daemon needs to restart. Click
 `Apply & restart` to commit.
@@ -90,15 +90,15 @@ Either change shows a banner saying the daemon needs to restart. Click
 
 The biggest section, and the one with the most footguns.
 
-| Block            | Content                                                                                             |
-| ---------------- | --------------------------------------------------------------------------------------------------- |
-| Storage usage    | Four bars — database, encrypted vault, cache, logs — plus a `Refresh` button.                       |
-| Search index     | Status pill (Ready / Rebuilding / Unavailable), last rebuild timestamp, `Rebuild` button. See [Full-text search — Index lifecycle](./search#index-lifecycle). |
-| Auto-clear history | Master switch. Off → cleanup is manual only.                                                      |
-| Retention days   | 7 / 30 / 90 / 180 / 365.                                                                            |
-| Max items        | 100 / 500 / 1 000 / 2 000 / 5 000. Either limit triggers a cleanup pass.                            |
-| Skip pinned      | Skip pinned entries during cleanup.                                                                 |
-| Danger zone      | `Clear cache` (drops blob chunks, history intact), `Clear all history` (irreversible), `Open data folder` (jumps to the on-disk location). |
+| Block              | Content                                                                                                                                                       |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Storage usage      | Four bars — database, encrypted vault, cache, logs — plus a `Refresh` button.                                                                                 |
+| Search index       | Status pill (Ready / Rebuilding / Unavailable), last rebuild timestamp, `Rebuild` button. See [Full-text search — Index lifecycle](./search#index-lifecycle). |
+| Auto-clear history | Master switch. Off → cleanup is manual only.                                                                                                                  |
+| Retention days     | 7 / 30 / 90 / 180 / 365.                                                                                                                                      |
+| Max items          | 100 / 500 / 1 000 / 2 000 / 5 000. Either limit triggers a cleanup pass.                                                                                      |
+| Skip pinned        | Skip pinned entries during cleanup.                                                                                                                           |
+| Danger zone        | `Clear cache` (drops blob chunks, history intact), `Clear all history` (irreversible), `Open data folder` (jumps to the on-disk location).                    |
 
 The data directory paths are listed under
 [Install — Where data lives](../getting-started/install#where-data-lives).

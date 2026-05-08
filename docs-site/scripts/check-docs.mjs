@@ -35,10 +35,7 @@ function walk(dir) {
 
 // ---------- 1) zh / en 镜像 ----------
 const langPages = Object.fromEntries(
-  LANGS.map(l => [
-    l,
-    walk(join(DOCS_ROOT, l)).map(p => relative(join(DOCS_ROOT, l), p)),
-  ]),
+  LANGS.map(l => [l, walk(join(DOCS_ROOT, l)).map(p => relative(join(DOCS_ROOT, l), p))])
 )
 
 for (const lang of LANGS) {
@@ -58,9 +55,7 @@ function extractHeadings(filePath) {
   const body = m ? src.slice(m[0].length) : src
 
   // 跳过 fenced code blocks（避免把代码里的 ## 当 heading）
-  const stripped = body
-    .replace(/^```[\s\S]*?^```/gm, '')
-    .replace(/^~~~[\s\S]*?^~~~/gm, '')
+  const stripped = body.replace(/^```[\s\S]*?^```/gm, '').replace(/^~~~[\s\S]*?^~~~/gm, '')
 
   const slugger = new GithubSlugger()
   const slugs = new Set()
@@ -95,7 +90,9 @@ for (const lang of LANGS) {
 
     // 3) bare autolink 检查（MDX 3 兼容性）
     if (/<https?:\/\//.test(src)) {
-      errors.push(`${lang}/${rel}: 含裸 autolink <https://...>，MDX 3 会按 JSX 解析。改成 [text](url)`)
+      errors.push(
+        `${lang}/${rel}: 含裸 autolink <https://...>，MDX 3 会按 JSX 解析。改成 [text](url)`
+      )
     }
 
     let match
@@ -128,7 +125,7 @@ for (const lang of LANGS) {
         const slugs = headingsFor(resolved)
         if (!slugs.has(anchor)) {
           errors.push(
-            `${lang}/${rel}: 锚点 #${anchor} 在 ${relative(DOCS_ROOT, resolved)} 中不存在`,
+            `${lang}/${rel}: 锚点 #${anchor} 在 ${relative(DOCS_ROOT, resolved)} 中不存在`
           )
         }
       }
@@ -149,4 +146,6 @@ if (errors.length) {
   process.exit(1)
 }
 
-console.log(`OK — ${langPages.en.length} en pages, ${langPages.zh.length} zh pages, anchors check passed.`)
+console.log(
+  `OK — ${langPages.en.length} en pages, ${langPages.zh.length} zh pages, anchors check passed.`
+)

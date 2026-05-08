@@ -13,21 +13,20 @@ order. Each section below tells you which signals to look at and which
 commands to run.
 
 <Callout type="info">
-  Before guessing, run `uniclip status` and `uniclip members` on
-  **both** ends. The "should be online" feeling rarely matches what's
-  actually on the wire.
+  Before guessing, run `uniclip status` and `uniclip members` on **both** ends. The "should be
+  online" feeling rarely matches what's actually on the wire.
 </Callout>
 
 ## Start here: 30-second triage
 
-| Symptom                                          | Most likely layer    | Jump to                                                  |
-| ------------------------------------------------ | -------------------- | -------------------------------------------------------- |
-| Command says "daemon not running"                | Daemon               | [Daemon](#daemon)                                        |
-| `join <code>` errors out or hangs                | Pairing              | [Pairing failures](#pairing-failures)                    |
+| Symptom                                           | Most likely layer    | Jump to                                                  |
+| ------------------------------------------------- | -------------------- | -------------------------------------------------------- |
+| Command says "daemon not running"                 | Daemon               | [Daemon](#daemon)                                        |
+| `join <code>` errors out or hangs                 | Pairing              | [Pairing failures](#pairing-failures)                    |
 | Both online but `members` doesn't list each other | Discovery            | [Peer not appearing](#peer-not-appearing)                |
-| Peer is visible but sync is slow / files stall  | Transport            | [Stuck on relay / slow sync](#stuck-on-relay--slow-sync) |
-| You copy something and the peer gets nothing    | Clipboard permission | [Clipboard permissions](#clipboard-permissions)          |
-| Search returns nothing or "index not ready"     | Full-text index      | [Search & index](#search--index)                         |
+| Peer is visible but sync is slow / files stall    | Transport            | [Stuck on relay / slow sync](#stuck-on-relay--slow-sync) |
+| You copy something and the peer gets nothing      | Clipboard permission | [Clipboard permissions](#clipboard-permissions)          |
+| Search returns nothing or "index not ready"       | Full-text index      | [Search & index](#search--index)                         |
 
 ## Daemon
 
@@ -97,10 +96,9 @@ sponsor never sees the bad passphrase in plaintext. Double-check and
 retry.
 
 <Callout type="warn">
-  A lost passphrase is **unrecoverable**. That's the price of Argon2id +
-  PAKE: there's no copy on any server that could decrypt anything. If
-  you still have access on another device, revoke the lost one (or
-  rebuild the space) from there.
+  A lost passphrase is **unrecoverable**. That's the price of Argon2id + PAKE: there's no copy on
+  any server that could decrypt anything. If you still have access on another device, revoke the
+  lost one (or rebuild the space) from there.
 </Callout>
 
 ## Peer not appearing
@@ -257,11 +255,11 @@ Common cases:
 
 Logs live in a `logs/` subdirectory next to the encrypted history:
 
-| Platform | Path                                                            |
-| -------- | --------------------------------------------------------------- |
-| macOS    | `~/Library/Application Support/app.uniclipboard.desktop/logs/`  |
-| Linux    | `~/.local/share/app.uniclipboard.desktop/logs/`                 |
-| Windows  | `%LOCALAPPDATA%\app.uniclipboard.desktop\logs\`                 |
+| Platform | Path                                                           |
+| -------- | -------------------------------------------------------------- |
+| macOS    | `~/Library/Application Support/app.uniclipboard.desktop/logs/` |
+| Linux    | `~/.local/share/app.uniclipboard.desktop/logs/`                |
+| Windows  | `%LOCALAPPDATA%\app.uniclipboard.desktop\logs\`                |
 
 With `UC_PROFILE` set, the directory carries a suffix
 (`app.uniclipboard.desktop-dev`). See
@@ -324,10 +322,9 @@ keyring's KEK entry will be overwritten by the next `init`.
 </Tabs>
 
 <Callout type="warn">
-  Resetting one device does not revoke it on the other devices in the
-  space. To make a device disappear from the space, **revoke** it from
-  another online device — clearing local data alone does not invalidate
-  its node ID's trusted status.
+  Resetting one device does not revoke it on the other devices in the space. To make a device
+  disappear from the space, **revoke** it from another online device — clearing local data alone
+  does not invalidate its node ID's trusted status.
 </Callout>
 
 ## Still stuck?

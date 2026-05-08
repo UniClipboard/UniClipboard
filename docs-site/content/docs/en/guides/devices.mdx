@@ -11,9 +11,9 @@ the page.
 
 ## Page layout
 
-| Block                | Content                                                                                |
-| -------------------- | -------------------------------------------------------------------------------------- |
-| "This device" card   | Local name, current sync status (active / paused), paired count, online subset count.  |
+| Block                 | Content                                                                               |
+| --------------------- | ------------------------------------------------------------------------------------- |
+| "This device" card    | Local name, current sync status (active / paused), paired count, online subset count. |
 | "Space members" panel | List of all paired remote devices; each row expands into a detailed sheet.            |
 
 "This device" is read-only. To rename this machine or toggle local
@@ -36,11 +36,11 @@ Left to right:
 The little tag next to `Online` reports how the connection is reaching
 the peer:
 
-| Tag      | Meaning                                                       |
-| -------- | ------------------------------------------------------------- |
-| `LAN`    | Discovered and connected directly over the local network.     |
-| `Direct` | NAT punched through; cross-network P2P direct.                |
-| `Relay`  | Hole-punching failed; running through the encrypted relay.    |
+| Tag      | Meaning                                                    |
+| -------- | ---------------------------------------------------------- |
+| `LAN`    | Discovered and connected directly over the local network.  |
+| `Direct` | NAT punched through; cross-network P2P direct.             |
+| `Relay`  | Hole-punching failed; running through the encrypted relay. |
 
 The relay only ever sees ciphertext — see
 [Pairing & sync — What the relay sees](./pairing#what-the-relay-sees-vs-what-your-peers-see).
@@ -62,9 +62,8 @@ passphrase. Full walkthrough at
 [Quick start — Add a second device](../getting-started/quick-start#add-a-second-device).
 
 <Callout type="warn">
-  Once an invitation expires or is consumed, it **can't be reused**.
-  That's the protocol's single-use design, not a bug — just mint a
-  fresh one.
+  Once an invitation expires or is consumed, it **can't be reused**. That's the protocol's
+  single-use design, not a bug — just mint a fresh one.
 </Callout>
 
 ## The per-device settings sheet
@@ -104,9 +103,8 @@ machine** — the gate is enforced at the scheduler. So:
   to allowed.
 
 <Callout type="info">
-  Rules apply per-peer. With multiple peers, you can configure them
-  separately — e.g. send only text to a work laptop, no files to a
-  phone.
+  Rules apply per-peer. With multiple peers, you can configure them separately — e.g. send only text
+  to a work laptop, no files to a phone.
 </Callout>
 
 ## Unpairing
@@ -144,11 +142,11 @@ to [Troubleshooting — Peer not appearing](./troubleshooting#peer-not-appearing
 
 ## CLI equivalents
 
-| GUI action                          | CLI equivalent                                                            |
-| ----------------------------------- | ------------------------------------------------------------------------- |
-| "Space members" list                | `uniclip devices` (persistent records) / `uniclip members` (with online state) |
-| Add device → invite code            | `uniclip invite`                                                          |
-| Join an existing space              | `uniclip join <code>`                                                     |
-| Copy Peer ID                        | `uniclip status --json` → `network.endpoint`                              |
-| Unpair                              | **GUI only today**; a CLI subcommand is on the roadmap                    |
-| Per-peer content-type allowlist     | **GUI only today**; CLI configuration subcommand is on the roadmap        |
+| GUI action                      | CLI equivalent                                                                 |
+| ------------------------------- | ------------------------------------------------------------------------------ |
+| "Space members" list            | `uniclip devices` (persistent records) / `uniclip members` (with online state) |
+| Add device → invite code        | `uniclip invite`                                                               |
+| Join an existing space          | `uniclip join <code>`                                                          |
+| Copy Peer ID                    | `uniclip status --json` → `network.endpoint`                                   |
+| Unpair                          | **GUI only today**; a CLI subcommand is on the roadmap                         |
+| Per-peer content-type allowlist | **GUI only today**; CLI configuration subcommand is on the roadmap             |

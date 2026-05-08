@@ -2,21 +2,16 @@ import { createI18nMiddleware } from 'fumadocs-core/i18n/middleware'
 import { isMarkdownPreferred, rewritePath } from 'fumadocs-core/negotiation'
 import { NextFetchEvent, NextRequest, NextResponse } from 'next/server'
 import { i18n } from '@/lib/i18n'
-import { docsContentRoute, docsRoute } from '@/lib/shared'
+import { docsContentRoute } from '@/lib/shared'
 
 const i18nMiddleware = createI18nMiddleware(i18n)
 
 const localeRewrites = i18n.languages.map(lang => {
   const prefix = lang === i18n.defaultLanguage ? '' : `/${lang}`
   return {
-    suffix: rewritePath(
-      `${prefix}${docsRoute}{/*path}.mdx`,
-      `${docsContentRoute}/${lang}{/*path}/content.md`
-    ).rewrite,
-    md: rewritePath(
-      `${prefix}${docsRoute}{/*path}`,
-      `${docsContentRoute}/${lang}{/*path}/content.md`
-    ).rewrite,
+    suffix: rewritePath(`${prefix}{/*path}.mdx`, `${docsContentRoute}/${lang}{/*path}/content.md`)
+      .rewrite,
+    md: rewritePath(`${prefix}{/*path}`, `${docsContentRoute}/${lang}{/*path}/content.md`).rewrite,
   }
 })
 

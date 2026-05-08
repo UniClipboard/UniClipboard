@@ -6,7 +6,7 @@ import { getPageImage, source } from '@/lib/source'
 
 export const revalidate = false
 
-export async function GET(_req: Request, { params }: RouteContext<'/og/docs/[lang]/[...slug]'>) {
+export async function GET(_req: Request, { params }: RouteContext<'/og/[lang]/[...slug]'>) {
   const { slug, lang } = await params
   const page = source.getPage(slug.slice(0, -1), lang)
   if (!page) notFound()

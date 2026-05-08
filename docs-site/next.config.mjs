@@ -9,6 +9,8 @@ const withMDX = createMDX()
 /** @type {import('next').NextConfig} */
 const config = {
   reactStrictMode: true,
+  basePath: '/docs',
+  assetPrefix: '/docs',
   // Pin Turbopack and the file-tracing root to docs-site so the monorepo
   // root's lockfile / package.json doesn't hijack module resolution.
   turbopack: {

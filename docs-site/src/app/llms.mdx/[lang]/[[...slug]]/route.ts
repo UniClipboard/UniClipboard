@@ -3,10 +3,7 @@ import { getLLMText, getPageMarkdownUrl, source } from '@/lib/source'
 
 export const revalidate = false
 
-export async function GET(
-  _req: Request,
-  { params }: RouteContext<'/llms.mdx/docs/[lang]/[[...slug]]'>
-) {
+export async function GET(_req: Request, { params }: RouteContext<'/llms.mdx/[lang]/[[...slug]]'>) {
   const { slug, lang } = await params
   const page = source.getPage(slug?.slice(0, -1), lang)
   if (!page) notFound()

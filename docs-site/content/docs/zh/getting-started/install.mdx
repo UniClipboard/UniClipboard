@@ -3,8 +3,8 @@ title: 安装
 description: 在 macOS、Windows 或 Linux 上安装 UniClipboard。
 ---
 
-import { Step, Steps } from 'fumadocs-ui/components/steps';
-import { Tab, Tabs } from 'fumadocs-ui/components/tabs';
+import { Step, Steps } from 'fumadocs-ui/components/steps'
+import { Tab, Tabs } from 'fumadocs-ui/components/tabs'
 
 UniClipboard 为 Windows、macOS、Linux 提供桌面应用与 `uniclip` 命令行工具。按你的平台选择安装方式 ——
 所有安装包最终指向同一组
@@ -12,7 +12,8 @@ UniClipboard 为 Windows、macOS、Linux 提供桌面应用与 `uniclip` 命令�
 构建产物。
 
 <Callout type="warn">
-  UniClipboard 处于积极开发的 alpha 阶段。功能会持续演进，跨版本升级时同步状态可能会失效。请把它当成"好用但还不到当作基础设施依赖"的状态。
+  UniClipboard 处于积极开发的 alpha
+  阶段。功能会持续演进，跨版本升级时同步状态可能会失效。请把它当成"好用但还不到当作基础设施依赖"的状态。
 </Callout>
 
 ## 选择平台
@@ -71,8 +72,8 @@ Windows 提供两种形态：
 页面下载。
 
 <Callout type="info">
-  首次运行新版本时 SmartScreen 可能弹出警告。如果发布者信息与签名身份一致，点击
-  **更多信息 → 仍要运行**。如果不放心，可以在 **属性 → 数字签名** 中校验签名。
+  首次运行新版本时 SmartScreen 可能弹出警告。如果发布者信息与签名身份一致，点击 **更多信息 →
+  仍要运行**。如果不放心，可以在 **属性 → 数字签名** 中校验签名。
 </Callout>
 
 </Tab>
@@ -169,11 +170,11 @@ uniclip --version
 UniClipboard 把加密数据库、搜索索引与日志放在各平台标准的应用数据目录下，目录名为
 `app.uniclipboard.desktop`：
 
-| 平台    | 路径                                                                |
-| ------- | ------------------------------------------------------------------- |
-| macOS   | `~/Library/Application Support/app.uniclipboard.desktop/`           |
-| Linux   | `~/.local/share/app.uniclipboard.desktop/`                          |
-| Windows | `%LOCALAPPDATA%\app.uniclipboard.desktop\`                          |
+| 平台    | 路径                                                      |
+| ------- | --------------------------------------------------------- |
+| macOS   | `~/Library/Application Support/app.uniclipboard.desktop/` |
+| Linux   | `~/.local/share/app.uniclipboard.desktop/`                |
+| Windows | `%LOCALAPPDATA%\app.uniclipboard.desktop\`                |
 
 日志位于其下的 `logs/` 子目录。设置 `UC_PROFILE` 环境变量（如
 `UC_PROFILE=dev`）可在目录名后追加后缀（变成

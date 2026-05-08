@@ -3,8 +3,8 @@ title: Install
 description: Install UniClipboard on macOS, Windows, or Linux.
 ---
 
-import { Step, Steps } from 'fumadocs-ui/components/steps';
-import { Tab, Tabs } from 'fumadocs-ui/components/tabs';
+import { Step, Steps } from 'fumadocs-ui/components/steps'
+import { Tab, Tabs } from 'fumadocs-ui/components/tabs'
 
 UniClipboard ships a desktop app and a `uniclip` CLI for Windows,
 macOS, and Linux. Pick the path for your platform — every installer
@@ -12,8 +12,8 @@ below points at the same release artefacts on
 [GitHub Releases](https://github.com/UniClipboard/UniClipboard/releases).
 
 <Callout type="warn">
-  UniClipboard is in active alpha. Things will move; sync state may not
-  survive every upgrade. Treat it as "useful, not infrastructure."
+  UniClipboard is in active alpha. Things will move; sync state may not survive every upgrade. Treat
+  it as "useful, not infrastructure."
 </Callout>
 
 ## Pick your platform
@@ -76,9 +76,8 @@ Download the one you want from the
 [Releases](https://github.com/UniClipboard/UniClipboard/releases) page.
 
 <Callout type="info">
-  SmartScreen may warn the first time you run a new release. Click
-  **More info → Run anyway** if the publisher matches the signed
-  identity. Verify the signature in **Properties → Digital Signatures**
+  SmartScreen may warn the first time you run a new release. Click **More info → Run anyway** if the
+  publisher matches the signed identity. Verify the signature in **Properties → Digital Signatures**
   if you're unsure.
 </Callout>
 
@@ -186,11 +185,11 @@ UniClipboard stores its encrypted database, search index, and logs in
 the platform's standard application-data directory under
 `app.uniclipboard.desktop`:
 
-| Platform | Path                                                                |
-| -------- | ------------------------------------------------------------------- |
-| macOS    | `~/Library/Application Support/app.uniclipboard.desktop/`           |
-| Linux    | `~/.local/share/app.uniclipboard.desktop/`                          |
-| Windows  | `%LOCALAPPDATA%\app.uniclipboard.desktop\`                          |
+| Platform | Path                                                      |
+| -------- | --------------------------------------------------------- |
+| macOS    | `~/Library/Application Support/app.uniclipboard.desktop/` |
+| Linux    | `~/.local/share/app.uniclipboard.desktop/`                |
+| Windows  | `%LOCALAPPDATA%\app.uniclipboard.desktop\`                |
 
 Logs sit under a `logs/` subdirectory. If you set the `UC_PROFILE` env
 var (e.g. `UC_PROFILE=dev`), the directory name is suffixed (e.g.

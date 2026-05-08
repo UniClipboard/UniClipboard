@@ -3,8 +3,8 @@ title: Quick start
 description: Create your first encrypted space and sync your first clip.
 ---
 
-import { Step, Steps } from 'fumadocs-ui/components/steps';
-import { Tab, Tabs } from 'fumadocs-ui/components/tabs';
+import { Step, Steps } from 'fumadocs-ui/components/steps'
+import { Tab, Tabs } from 'fumadocs-ui/components/tabs'
 
 UniClipboard syncs through a **space** — a private, end-to-end encrypted
 group your devices belong to. The first device creates the space; every
@@ -26,9 +26,8 @@ synced paste.
   they cannot.
 
 <Callout type="info">
-  The trust boundary is the **space**, not the individual device. Adding
-  a third or fourth device later is the same flow as adding the second
-  one — generate an invite, enter it on the new device.
+  The trust boundary is the **space**, not the individual device. Adding a third or fourth device
+  later is the same flow as adding the second one — generate an invite, enter it on the new device.
 </Callout>
 
 ## Set up the first device
@@ -159,7 +158,6 @@ hole-punching, encrypted relay fallback) and how to debug a stuck peer.
   key during the switch.
 
 <Callout type="warn">
-  Upgrading from a pre-0.6 release? The underlying network stack was
-  reworked, so old pairing state is no longer valid. Generate a fresh
-  invite once and the devices will resume syncing.
+  Upgrading from a pre-0.6 release? The underlying network stack was reworked, so old pairing state
+  is no longer valid. Generate a fresh invite once and the devices will resume syncing.
 </Callout>

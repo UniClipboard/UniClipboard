@@ -53,7 +53,7 @@ export async function generateMetadata(props: PageProps<'/[lang]/[[...slug]]'>):
   if (!page) notFound()
 
   return {
-    title: page.data.title,
+    title: page.data.metaTitle ?? page.data.title,
     description: page.data.description,
     openGraph: {
       images: getPageImage(page).url,

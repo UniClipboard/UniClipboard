@@ -78,8 +78,36 @@ const NOISE_FILTERS: &[&str] = &[
     "swarm_discovery::socket=error",
     // hickory-dns resolver used by pkarr + relay URL resolution.
     "hickory=warn",
-    // Catch-all for libraries that emit through the `log` crate (forwarded
-    // into tracing). Without this they default to TRACE.
+    // === log-bridge noise ===
+    //
+    // Crates that emit through the `log` crate (forwarded via tracing-log).
+    // The catch-all `log=warn` is *not reliable* on its own: tracing-log 0.2
+    // dispatches each record in two steps —
+    //   1. `dispatch.enabled(filter_meta)` where `filter_meta.target()` is the
+    //      record's real target (e.g. `rustls::client::hs`)
+    //   2. `dispatch.event(Event::new(static_meta, ...))` where
+    //      `static_meta.target()` is the literal `"log"`
+    // EnvFilter caches Interest by static callsite. When the filter set has
+    // both a base level (`debug`) and a target rule (`log=warn`), the cached
+    // Interest collapses to `sometimes`, and the runtime check falls back on
+    // the dynamic `filter_meta` whose target is the real module path. At that
+    // point `log=warn` no longer matches and the base `debug` lets it through
+    // — which is why we measured ~23k DEBUG events leaking under target="log"
+    // (rustls handshake spam dominated).
+    //
+    // Fix: cap the actual log-bridged crates by their real prefix. These
+    // catch the high-volume offenders observed in production:
+    //   rustls::client::hs / tls13 / common_state  — TLS handshake DEBUG x10
+    //                                                 per iroh connect attempt
+    //   reqwest::connect                           — DEBUG per HTTP connect
+    //   igd_next::aio::tokio                       — UPnP/IGD discovery loop
+    "rustls=warn",
+    "reqwest=warn",
+    "igd_next=warn",
+    // Keep the literal-"log" catch-all as a backstop for any other log-only
+    // crate that slips in. It works for the subset of cases where EnvFilter's
+    // callsite Interest resolves statically (no `sometimes` fallback), and is
+    // harmless when it doesn't.
     "log=warn",
 ];
 

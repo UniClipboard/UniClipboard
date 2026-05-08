@@ -127,12 +127,13 @@ impl ClipboardChangeHandler for DaemonClipboardChangeHandler {
         );
 
         // RemotePush 是 apply_inbound 写入 OS 剪切板后 watcher 收到的回声。
-        // entry / event / search 索引 / WS clipboard.new_content 已由
-        // apply_inbound 完整发出过；这里若再跑一次 capture pipeline 会产生
-        // 第二条 entry，用户层表现为同一份内容出现两份。直接短路返回，
-        // 与 LocalRestore 在功能效果上对称（LocalRestore 在 usecase 内部
-        // 短路，RemotePush 因 apply_inbound 也走同一 usecase 入口，必须
-        // 在 watcher 层短路才不会破坏入站落库路径）。
+        // entry 落库 / search 索引 / `clipboard.new_content` WS 事件均由
+        // `ApplyInboundClipboardUseCase` 自己发出（流程入口的 `IncomingPending`
+        // 和成功收尾时的 `NewContent`，详见 `apply_inbound/usecase.rs`）；
+        // 这里若再跑一次 capture pipeline 会产生第二条 entry，用户层表现为
+        // 同一份内容出现两份。直接短路返回，与 LocalRestore 在功能效果上对称
+        // （LocalRestore 在 usecase 内部短路，RemotePush 因 apply_inbound 也
+        // 走同一 usecase 入口，必须在 watcher 层短路才不会破坏入站落库路径）。
         if origin == ClipboardChangeOrigin::RemotePush {
             debug!(
                 origin_guard_key = %origin_guard_key,

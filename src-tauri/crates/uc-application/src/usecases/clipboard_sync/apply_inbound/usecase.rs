@@ -9,7 +9,9 @@ use uc_core::ports::ClipboardEntryRepositoryPort;
 use uc_core::SystemClipboardSnapshot;
 
 use crate::facade::blob_transfer::SharedHostEventEmitter;
-use crate::facade::host_event::{ClipboardHostEvent, HostEvent, TransferHostEvent};
+use crate::facade::host_event::{
+    ClipboardHostEvent, ClipboardOriginKind, HostEvent, TransferHostEvent,
+};
 use crate::usecases::clipboard_sync::payload_codec::decode_v3_bytes_to_snapshot_and_blob_refs;
 
 use super::materializer::InboundBlobMaterializer;
@@ -224,6 +226,38 @@ impl ApplyInboundClipboardUseCase {
         })?;
 
         info!(entry_id = %entry_id, "inbound clipboard applied");
+
+        // 关键:发出 `clipboard.new_content`,让前端 placeholder 卡片下线。
+        //
+        // 单点修复链路如下:
+        //   1. 流程入口(line 136)我们 emit 了 `IncomingPending`,前端
+        //      `useClipboardEventStream.ts:82` 据此 `addPendingEntry()` 显示
+        //      "正在接收"占位卡片。
+        //   2. apply_inbound 写完 OS clipboard 后,clipboard_watcher 会收到
+        //      回声,但因 origin == RemotePush 在 watcher 入口短路返回(避免
+        //      重复 capture),那条短路把 watcher 原本会 emit 的 new_content
+        //      也吃掉了。
+        //   3. 历史上从来没有任何点 emit 过 `ClipboardHostEvent::NewContent`
+        //      给入站路径,导致前端 `removePendingEntry()` 永远收不到信号。
+        //      用户看到"正在接收"卡死,只能 reload 才能看到真实 entry。
+        //      2026-05-08 移动端图片回归把这条慢流量(数 MB JPEG)放大成可见
+        //      bug —— 文本同步因为太快、列表常常被别的原因刷新而蒙混过关。
+        //
+        // 在此处 emit `NewContent { origin: Remote }`,前端
+        // `useClipboardEventStream.ts:114-122` 收到后:
+        //   * `removePendingEntry(entry_id)` 清掉占位卡片
+        //   * 走 remote 分支 `onRemoteInvalidate()` 节流刷新列表 —— 真实 entry
+        //     接替占位卡片,UI 状态收敛。
+        //
+        // preview 字段:与 watcher 路径(`clipboard_watcher.rs:163`)保持一致用
+        // 占位串。前端只把它打日志,不渲染;真实 preview 由列表刷新时从 daemon
+        // 列表 API 拿到的 `ClipboardItemResponse` 提供。
+        self.emit_host_event(HostEvent::Clipboard(ClipboardHostEvent::NewContent {
+            entry_id: entry_id.as_ref().to_string(),
+            preview: "New clipboard content".to_string(),
+            origin: ClipboardOriginKind::Remote,
+        }));
+
         Ok(ApplyOutcome::Applied { entry_id })
     }
 }

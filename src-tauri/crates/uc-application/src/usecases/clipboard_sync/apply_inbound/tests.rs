@@ -1,9 +1,13 @@
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, RwLock};
 
 use anyhow::Result;
 use async_trait::async_trait;
 use bytes::Bytes;
 use mockall::predicate::*;
+
+use crate::facade::host_event::{
+    ClipboardHostEvent, ClipboardOriginKind, EmitError, HostEvent, HostEventEmitterPort,
+};
 
 use uc_core::ids::{DeviceId, EntryId, FormatId, RepresentationId};
 use uc_core::ports::blob::{BlobDigest, BlobTicket, PlaintextHash};
@@ -130,6 +134,43 @@ fn build_with_blob_materializer(
 }
 
 // ── verdicts ────────────────────────────────────────────────────────
+
+// ── host-event recording fake ───────────────────────────────────────
+
+/// 录制 emitter:把 emit() 收到的所有 HostEvent 按时间顺序追加到 Vec,
+/// 让测试断言事件序列(尤其是 IncomingPending → NewContent 的顺序与
+/// 内容)而不是依赖外部 broadcast / WS 链路。
+#[derive(Default)]
+struct RecordingEmitter {
+    events: Mutex<Vec<HostEvent>>,
+}
+
+impl RecordingEmitter {
+    fn snapshot(&self) -> Vec<HostEvent> {
+        self.events.lock().unwrap().clone()
+    }
+}
+
+impl HostEventEmitterPort for RecordingEmitter {
+    fn emit(&self, event: HostEvent) -> Result<(), EmitError> {
+        self.events.lock().unwrap().push(event);
+        Ok(())
+    }
+}
+
+fn build_with_recording_emitter(
+    repo: MockEntryRepo,
+    capture: MockCapture,
+    write: MockWrite,
+) -> (ApplyInboundClipboardUseCase, Arc<RecordingEmitter>) {
+    let recorder = Arc::new(RecordingEmitter::default());
+    let cell: crate::facade::blob_transfer::SharedHostEventEmitter = Arc::new(RwLock::new(
+        Arc::clone(&recorder) as Arc<dyn HostEventEmitterPort>,
+    ));
+    let uc = ApplyInboundClipboardUseCase::new(Arc::new(repo), Arc::new(capture), Arc::new(write))
+        .with_host_event_emitter(cell);
+    (uc, recorder)
+}
 
 /// Verdict 1 — happy path: dedup miss → decode → capture → write →
 /// `Applied { entry_id }`. mockall asserts: dedup query once with
@@ -590,4 +631,80 @@ async fn file_cache_blob_materializer_rejects_out_of_bounds_representation_index
         err.to_string().contains("out of bounds"),
         "error must mention out-of-bounds context: {err}"
     );
+}
+
+/// 回归 pin —— 2026-05-08 移动端图片回归暴露:apply_inbound 流程入口 emit
+/// `IncomingPending` 后,**末尾必须 emit `NewContent`**,否则前端
+/// `useClipboardEventStream.ts:122` 的 `removePendingEntry()` 永远收不到
+/// 信号,"正在接收"占位卡片永驻直到用户 reload。
+///
+/// 检查两件事:
+///   1. emitter 收到的事件序列是 [IncomingPending, NewContent](顺序固定)。
+///   2. 两条事件 entry_id 相同 —— 前端靠 entry_id 把占位卡片下线、用真实
+///      entry 替换;两边 id 不一致就等于占位卡片没被清。
+#[tokio::test]
+async fn happy_path_emits_incoming_pending_then_new_content() {
+    let (input, hash) = fixture_input("regress: placeholder must be cleared");
+
+    let mut repo = MockEntryRepo::new();
+    repo.expect_find_entry_id_by_snapshot_hash()
+        .with(eq(hash))
+        .times(1)
+        .returning(|_| Ok(None));
+
+    // capture 把流程入口预生成的 receiver_entry_id 原样回填 —— 这是真实
+    // capture 路径的契约(materializer / capture 都共享同一 entry_id)。
+    let mut capture = MockCapture::new();
+    capture
+        .expect_capture()
+        .times(1)
+        .returning(|preset, _| Ok(Some(preset)));
+
+    let mut write = MockWrite::new();
+    write.expect_write().times(1).returning(|_| Ok(()));
+
+    let (uc, recorder) = build_with_recording_emitter(repo, capture, write);
+    let outcome = uc.execute(input).await.expect("happy path");
+
+    let applied_entry_id = match outcome {
+        ApplyOutcome::Applied { entry_id } => entry_id,
+        other => panic!("expected Applied, got {other:?}"),
+    };
+
+    let events = recorder.snapshot();
+    assert_eq!(
+        events.len(),
+        2,
+        "happy path must emit exactly 2 host events (IncomingPending + NewContent), got {} events: {:?}",
+        events.len(),
+        events
+    );
+
+    match &events[0] {
+        HostEvent::Clipboard(ClipboardHostEvent::IncomingPending { entry_id, .. }) => {
+            assert_eq!(
+                entry_id,
+                applied_entry_id.as_ref(),
+                "IncomingPending entry_id must match the eventual Applied entry_id"
+            );
+        }
+        other => panic!("event[0] must be IncomingPending, got {other:?}"),
+    }
+
+    match &events[1] {
+        HostEvent::Clipboard(ClipboardHostEvent::NewContent {
+            entry_id, origin, ..
+        }) => {
+            assert_eq!(
+                entry_id,
+                applied_entry_id.as_ref(),
+                "NewContent entry_id must match — front end keys placeholder eviction by entry_id"
+            );
+            assert!(
+                matches!(origin, ClipboardOriginKind::Remote),
+                "inbound NewContent must carry origin=Remote, got {origin:?}"
+            );
+        }
+        other => panic!("event[1] must be NewContent, got {other:?}"),
+    }
 }

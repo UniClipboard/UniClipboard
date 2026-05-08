@@ -42,6 +42,16 @@ cargo-clippy = []
 # 启用后默认使用 "dev" profile（数据目录后缀 `-dev`、keychain service 后缀 `-dev`）。
 # 仅供 `bun tauri:build:dev` 使用，避免本地 dev 构建产物覆盖 prod 安装的数据。
 dev-profile = ["uc-tauri/dev-profile"]
+# 启用 Tauri custom-protocol，让 webview 走 `tauri://localhost/` 内嵌资源
+# 而不是 fallback 到 `devUrl`（http://localhost:1420，vite dev server）。
+#
+# `tauri build` CLI 会**隐式**加 `--features custom-protocol`，所以普通
+# `bun tauri:build` 流程感知不到这个 feature。但绕过 CLI 直接走
+# `cargo build --release`（snap / 任何自定义打包流程）必须**显式**启用，
+# 否则 Tauri 运行时默认 dev 模式：webview load `localhost:1420` →
+# vite 不在 → "Could not connect to localhost: Connection refused"，
+# 前端永远加载不出来。
+custom-protocol = ["tauri/custom-protocol"]
 
 [profile.release]
 panic = "abort"                # Strip expensive panic clean-up logic

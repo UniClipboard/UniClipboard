@@ -143,8 +143,15 @@ parts:
       # 2) 后端构建 —— 直接 cargo build,绕过 tauri-cli (不需要 .deb /
       # AppImage / updater signing 这些 snap 用不到的逻辑)。binary 名字
       # 由 src-tauri/Cargo.toml 的 [package].name 决定 = "uniclipboard"。
+      #
+      # `--features custom-protocol`:`tauri build` CLI 会**隐式**启用此
+      # feature 让 webview 走内嵌资源 `tauri://localhost/`;我们绕开 CLI
+      # 直接走 cargo build,必须**显式**加,否则 Tauri 运行时默认 dev
+      # 模式 → webview 加载 `http://localhost:1420/`(vite dev) →
+      # connection refused → 前端永远加载不出来。详见 Cargo.toml
+      # `[features].custom-protocol` 的注释。
       cd src-tauri
-      cargo build --release --locked --bin uniclipboard
+      cargo build --release --locked --features custom-protocol --bin uniclipboard
       cd ..
 
       # 3) 安装到 snap install 目录。strict snap 启动时 mount 这个目录

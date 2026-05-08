@@ -29,5 +29,6 @@ pub(crate) mod list_devices;
 pub(crate) mod list_lan_interfaces;
 pub(crate) mod register_device;
 pub(crate) mod revoke_device;
+pub(crate) mod rotate_password;
 pub(crate) mod sync_clipboard_mapping;
 pub(crate) mod update_settings;

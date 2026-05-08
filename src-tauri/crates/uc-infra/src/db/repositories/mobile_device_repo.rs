@@ -183,6 +183,24 @@ where
         Ok(affected > 0)
     }
 
+    async fn update_password_hash(
+        &self,
+        device_id_value: &MobileDeviceId,
+        new_password_hash: String,
+    ) -> Result<bool, MobileDeviceError> {
+        let needle = device_id_value.as_str().to_string();
+        let affected = self
+            .executor
+            .run(move |conn| {
+                diesel::update(mobile_device.filter(device_id.eq(&needle)))
+                    .set(password_hash.eq(new_password_hash))
+                    .execute(conn)
+                    .map_err(|e| anyhow::anyhow!(e.to_string()))
+            })
+            .map_err(|e| MobileDeviceError::Storage(e.to_string()))?;
+        Ok(affected > 0)
+    }
+
     async fn record_activity(
         &self,
         device_id_value: &MobileDeviceId,
@@ -395,5 +413,35 @@ mod tests {
         repo.record_activity(&MobileDeviceId::new("did_ghost"), 1, None, None, None)
             .await
             .unwrap();
+    }
+
+    #[tokio::test]
+    async fn update_password_hash_replaces_only_phc_and_keeps_other_fields() {
+        let (repo, _t) = make_repo();
+        let d = fixture("did_x", "0001", "phone");
+        repo.save(&d).await.unwrap();
+
+        let updated = repo
+            .update_password_hash(&d.device_id, "$argon2id$test$rotated".into())
+            .await
+            .unwrap();
+        assert!(updated);
+
+        let got = repo.find_by_device_id(&d.device_id).await.unwrap().unwrap();
+        assert_eq!(got.password_hash, "$argon2id$test$rotated");
+        // 其它字段必须保持不变
+        assert_eq!(got.label, d.label);
+        assert_eq!(got.username, d.username);
+        assert_eq!(got.created_at_ms, d.created_at_ms);
+    }
+
+    #[tokio::test]
+    async fn update_password_hash_returns_false_when_device_missing() {
+        let (repo, _t) = make_repo();
+        let updated = repo
+            .update_password_hash(&MobileDeviceId::new("did_ghost"), "phc".into())
+            .await
+            .unwrap();
+        assert!(!updated);
     }
 }

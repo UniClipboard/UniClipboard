@@ -6,11 +6,12 @@
 //! 1. **不泄漏 `password_hash`**：core 层的 [`MobileDevice`] 含
 //!    `password_hash` 字段（`uc-core/src/mobile_sync/device.rs`），那是
 //!    server 端鉴权用的 Argon2id PHC。上层（前端 / CLI）一旦能看到 PHC 就
-//!    构成攻击面（暴露 KDF 参数 + salt + hash 给离线爆破）。`username` 也
-//!    一并不暴露 —— 用户在 SyncClipboard shortcut 里看到的 username 不需要
-//!    在桌面端列表里再展示一次, 设备列表只用 label / 最近活跃做识别。所以
-//!    use case 把这些都替换为应用层 view [`MobileDeviceSummary`], 仅暴露
-//!    面向用户展示需要的字段。
+//!    构成攻击面（暴露 KDF 参数 + salt + hash 给离线爆破）。`username` 则
+//!    透传给 view —— 用户希望在桌面设备列表上能直接看到该设备的登录账号
+//!    用作识别（与 label 互补：label 可改名重复, username 是 server 主键
+//!    级稳定的)，与 password_hash 那种"绝对不能出 application 层"的强约
+//!    束不同。所以 use case 把 password_hash 剥掉，其余字段（含 username）
+//!    一并落进应用层 view [`MobileDeviceSummary`]。
 //!
 //! 2. **排序由 use case 决定**：repository port 不承诺顺序（不同 adapter
 //!    自由实现），UI 期望"最近活跃在前，新登记在前"——这是应用语义而非
@@ -30,7 +31,7 @@ use uc_core::ports::MobileDeviceRepositoryPort;
 
 // ─── public-shaped (output / error) ─────────────────────────────────────
 
-/// UI / CLI 可消费的设备视图：去掉 `token_hash`，其余字段透传。
+/// UI / CLI 可消费的设备视图：去掉 `password_hash`，其余字段透传。
 ///
 /// 与 core 层 [`MobileDevice`] 是有意分离的两套类型 —— core 是真相、
 /// summary 是展示。它们形态相似但语义不同，未来 core 字段调整不应自动
@@ -40,6 +41,9 @@ pub struct MobileDeviceSummary {
     pub device_id: MobileDeviceId,
     pub label: String,
     pub client_type: MobileClientType,
+    /// 设备登录账号（Basic Auth 用户名）。展示给用户作为辅助识别 ——
+    /// label 可重命名重复，username 在 server 端是稳定主键。
+    pub username: String,
     pub created_at_ms: i64,
     pub last_seen_at_ms: Option<i64>,
     pub last_seen_ip: Option<String>,
@@ -53,11 +57,8 @@ impl MobileDeviceSummary {
             device_id,
             label,
             client_type,
-            // 故意丢弃 —— 这两个是 view 层的安全边界。
-            // username: 用户在 shortcut 客户端里管它就够了, 桌面端列表
-            //           不暴露(避免 UI 截图时被旁观者读到)。
-            // password_hash: Argon2id PHC, 永不出 application 层。
-            username: _,
+            username,
+            // 故意丢弃 —— Argon2id PHC，永不出 application 层。
             password_hash: _,
             created_at_ms,
             last_seen_at_ms,
@@ -69,6 +70,7 @@ impl MobileDeviceSummary {
             device_id,
             label,
             client_type,
+            username,
             created_at_ms,
             last_seen_at_ms,
             last_seen_ip,
@@ -144,9 +146,38 @@ fn translate_device_error(err: MobileDeviceError) -> ListMobileDevicesError {
 mod tests {
     use super::*;
 
-    use std::sync::Mutex;
-
     use async_trait::async_trait;
+
+    mockall::mock! {
+        DeviceRepo {}
+        #[async_trait]
+        impl MobileDeviceRepositoryPort for DeviceRepo {
+            async fn save(&self, device: &MobileDevice) -> Result<(), MobileDeviceError>;
+            async fn find_by_username(
+                &self,
+                username: &str,
+            ) -> Result<Option<MobileDevice>, MobileDeviceError>;
+            async fn find_by_device_id(
+                &self,
+                device_id: &MobileDeviceId,
+            ) -> Result<Option<MobileDevice>, MobileDeviceError>;
+            async fn list_all(&self) -> Result<Vec<MobileDevice>, MobileDeviceError>;
+            async fn delete(&self, device_id: &MobileDeviceId) -> Result<bool, MobileDeviceError>;
+            async fn record_activity(
+                &self,
+                device_id: &MobileDeviceId,
+                last_seen_at_ms: i64,
+                last_seen_ip: Option<String>,
+                reported_name: Option<String>,
+                reported_os: Option<String>,
+            ) -> Result<(), MobileDeviceError>;
+            async fn update_password_hash(
+                &self,
+                device_id: &MobileDeviceId,
+                new_password_hash: String,
+            ) -> Result<bool, MobileDeviceError>;
+        }
+    }
 
     fn make_device(
         id: &str,
@@ -168,81 +199,38 @@ mod tests {
         }
     }
 
-    /// 极简 list-only repo。除 `list_all` 之外的方法 panic 以暴露误用。
-    struct FakeRepo {
-        devices: Mutex<Vec<MobileDevice>>,
-        force_storage_err: bool,
-    }
-
-    impl FakeRepo {
-        fn new(devices: Vec<MobileDevice>) -> Self {
-            Self {
-                devices: Mutex::new(devices),
-                force_storage_err: false,
-            }
-        }
-    }
-
-    #[async_trait]
-    impl MobileDeviceRepositoryPort for FakeRepo {
-        async fn save(&self, _: &MobileDevice) -> Result<(), MobileDeviceError> {
-            unreachable!("list 不调用 save")
-        }
-        async fn find_by_username(
-            &self,
-            _: &str,
-        ) -> Result<Option<MobileDevice>, MobileDeviceError> {
-            unreachable!("list 不调用 find_by_username")
-        }
-        async fn find_by_device_id(
-            &self,
-            _: &MobileDeviceId,
-        ) -> Result<Option<MobileDevice>, MobileDeviceError> {
-            unreachable!("list 不调用 find_by_device_id")
-        }
-        async fn list_all(&self) -> Result<Vec<MobileDevice>, MobileDeviceError> {
-            if self.force_storage_err {
-                return Err(MobileDeviceError::Storage("disk gone".into()));
-            }
-            Ok(self.devices.lock().unwrap().clone())
-        }
-        async fn delete(&self, _: &MobileDeviceId) -> Result<bool, MobileDeviceError> {
-            unreachable!("list 不调用 delete")
-        }
-        async fn record_activity(
-            &self,
-            _: &MobileDeviceId,
-            _: i64,
-            _: Option<String>,
-            _: Option<String>,
-            _: Option<String>,
-        ) -> Result<(), MobileDeviceError> {
-            unreachable!("list 不调用 record_activity")
-        }
+    /// 用 mockall 装出一个"返回固定 list_all 结果"的 repo。其它方法不设
+    /// expectation, 一旦被误用 mockall 自动 panic。
+    fn repo_returning(devices: Vec<MobileDevice>) -> MockDeviceRepo {
+        let mut repo = MockDeviceRepo::new();
+        repo.expect_list_all()
+            .returning(move || Ok(devices.clone()));
+        repo
     }
 
     #[tokio::test]
     async fn empty_when_no_devices() {
-        let uc = ListMobileDevicesUseCase::new(Arc::new(FakeRepo::new(vec![])));
+        let uc = ListMobileDevicesUseCase::new(Arc::new(repo_returning(vec![])));
         let out = uc.execute().await.expect("ok");
         assert!(out.is_empty());
     }
 
     #[tokio::test]
-    async fn drops_token_hash_in_summary() {
+    async fn drops_password_hash_but_keeps_username_in_summary() {
         // 通过编译期的字段集就能保证 —— 这个测试只是 belt-and-suspenders,
-        // 防止后续往 summary 加 token_hash 字段时无人察觉。
+        // 防止后续不小心把 password_hash 加进 summary。
+        // username 现在是显式暴露字段，用作 UI 辅助识别（与 label 互补）。
         let device = make_device("did_x", "phone", 1_000, Some(2_000));
-        let uc = ListMobileDevicesUseCase::new(Arc::new(FakeRepo::new(vec![device])));
+        let uc = ListMobileDevicesUseCase::new(Arc::new(repo_returning(vec![device])));
         let out = uc.execute().await.expect("ok");
         assert_eq!(out.len(), 1);
 
-        // 显式列出 summary 的字段并断言：summary 里不再有 token_hash 字段
-        // —— 任何人想加都会在这里失败。
         let s = &out[0];
         assert_eq!(s.device_id.as_str(), "did_x");
         assert_eq!(s.label, "phone");
         assert_eq!(s.client_type, MobileClientType::IosShortcut);
+        // username 现在显式透传 —— make_device 把它构成 `mobile_<id>`。
+        assert_eq!(s.username, "mobile_did_x");
         assert_eq!(s.created_at_ms, 1_000);
         assert_eq!(s.last_seen_at_ms, Some(2_000));
     }
@@ -256,7 +244,7 @@ mod tests {
             make_device("did_c", "C 新 + 没活跃", 1_000, None),
             make_device("did_d", "D 中间活跃", 70, Some(5_000)),
         ];
-        let uc = ListMobileDevicesUseCase::new(Arc::new(FakeRepo::new(devices)));
+        let uc = ListMobileDevicesUseCase::new(Arc::new(repo_returning(devices)));
         let out = uc.execute().await.expect("ok");
 
         let order: Vec<&str> = out.iter().map(|s| s.device_id.as_str()).collect();
@@ -267,11 +255,11 @@ mod tests {
 
     #[tokio::test]
     async fn translates_storage_error() {
-        let repo = Arc::new(FakeRepo {
-            devices: Mutex::new(vec![]),
-            force_storage_err: true,
-        });
-        let uc = ListMobileDevicesUseCase::new(repo);
+        let mut repo = MockDeviceRepo::new();
+        repo.expect_list_all()
+            .returning(|| Err(MobileDeviceError::Storage("disk gone".into())));
+
+        let uc = ListMobileDevicesUseCase::new(Arc::new(repo));
         let err = uc.execute().await.unwrap_err();
         assert!(
             matches!(err, ListMobileDevicesError::PersistenceFailed(ref s) if s.contains("disk gone")),

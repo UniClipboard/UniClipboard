@@ -817,6 +817,32 @@
         "confirm": "撤销",
         "cancel": "取消"
       },
+      "rotate": {
+        "button": "修改密码",
+        "dialog": {
+          "title": "为 {{label}} 修改密码",
+          "subtitle": "服务端只保存密码哈希，无法显示当前密码。生成新密码后请同步更新移动端客户端中的 password 字段。",
+          "passwordLabel": "新密码（可选）",
+          "passwordPlaceholder": "留空将自动生成",
+          "passwordHelp": "留空 → 自动生成强密码；自定义需 8–256 字符。",
+          "warning": "提交后旧密码立即失效。移动端客户端在更新 password 字段前将无法同步。",
+          "submit": "生成新密码",
+          "submitting": "处理中...",
+          "cancel": "取消"
+        },
+        "result": {
+          "title": "新密码已生成",
+          "subtitle": "下面是新密码，仅显示这一次。请立即复制并更新到移动端客户端的 password 字段。",
+          "usernameLabel": "用户名",
+          "passwordLabel": "新密码",
+          "copy": "复制密码",
+          "copied": "已复制",
+          "warning": "旧密码已失效。移动端客户端必须用此新密码才能继续同步。",
+          "confirmSaved": "我已保存新密码",
+          "close": "关闭",
+          "closeBlocked": "请先勾选「我已保存新密码」"
+        }
+      },
       "errors": {
         "facadeUnavailable": "移动端同步功能未启用",
         "labelEmpty": "设备名称不能为空",

@@ -97,6 +97,9 @@ export interface MobileDeviceView {
   deviceId: string
   label: string
   clientType: MobileClientType
+  /** Basic Auth 用户名 —— 展示给用户作为辅助识别（label 可重命名重复，
+   *  username 是 server 端稳定主键）。 */
+  username: string
   createdAtMs: number
   lastSeenAtMs: number | null
   lastSeenIp: string | null
@@ -188,9 +191,54 @@ export async function revokeMobileDevice(deviceId: string): Promise<void> {
   await invokeWithTrace<void>('revoke_mobile_device', { deviceId })
 }
 
+export interface RotateMobilePasswordArgs {
+  deviceId: string
+  /**
+   * Optional custom password. Leave undefined (or omit) to auto-mint a fresh
+   * minter-generated value. When provided, validated against the same
+   * 8–256-char rule the register flow uses.
+   */
+  password?: string
+}
+
+export interface RotateMobilePasswordResult {
+  deviceId: string
+  /** Stable login username — unchanged by rotation, returned for UI convenience. */
+  username: string
+  /**
+   * Plaintext password — returned **only this once**.
+   *
+   * After the modal that surfaces this value closes, the password is
+   * unrecoverable (server only stores the Argon2id PHC hash). The previously
+   * registered password is invalidated immediately on the daemon side, so the
+   * user must update their iPhone shortcut's password field before the next
+   * sync (otherwise the iPhone receives 401).
+   *
+   * UI must:
+   * 1. Show prominently in a copy-friendly modal
+   * 2. Block close until the user explicitly confirms they have saved it
+   * 3. Make the "rotate iPhone shortcut password field" call-to-action
+   *    unmissable
+   * 4. Never log, persist, or send to any analytics
+   */
+  password: string
+}
+
+/**
+ * Rotate the password of a previously registered device. Old password is
+ * invalidated atomically on the daemon side; the response carries the
+ * one-time plaintext of the new password — see `RotateMobilePasswordResult`.
+ */
+export async function rotateMobilePassword(
+  args: RotateMobilePasswordArgs
+): Promise<RotateMobilePasswordResult> {
+  return await invokeWithTrace<RotateMobilePasswordResult>('rotate_mobile_password', { args })
+}
+
 /**
  * List currently registered devices, sorted by recent activity then
- * registration time. Does NOT include `password_hash` or `username`.
+ * registration time. Does NOT include `password_hash`. `username` is
+ * exposed as an auxiliary identifier for the UI (paired with `label`).
  */
 export async function listMobileDevices(): Promise<MobileDeviceView[]> {
   return await invokeWithTrace<MobileDeviceView[]>('list_mobile_devices')

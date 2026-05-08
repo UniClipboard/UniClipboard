@@ -536,107 +536,144 @@ fn translate_hasher_error(err: PasswordHasherError) -> RegisterMobileShortcutDev
 mod tests {
     use super::*;
 
-    use std::sync::Mutex;
-
     use async_trait::async_trait;
 
     use uc_core::mobile_sync::MobileDeviceId;
     use uc_core::settings::model::Settings;
 
-    // ── fixtures ────────────────────────────────────────────────────
+    // ── port mocks ─────────────────────────────────────────────────────
 
-    struct FixedClock(i64);
-    impl ClockPort for FixedClock {
-        fn now_ms(&self) -> i64 {
-            self.0
+    mockall::mock! {
+        DeviceRepo {}
+        #[async_trait]
+        impl MobileDeviceRepositoryPort for DeviceRepo {
+            async fn save(&self, device: &MobileDevice) -> Result<(), MobileDeviceError>;
+            async fn find_by_username(
+                &self,
+                username: &str,
+            ) -> Result<Option<MobileDevice>, MobileDeviceError>;
+            async fn find_by_device_id(
+                &self,
+                device_id: &MobileDeviceId,
+            ) -> Result<Option<MobileDevice>, MobileDeviceError>;
+            async fn list_all(&self) -> Result<Vec<MobileDevice>, MobileDeviceError>;
+            async fn delete(&self, device_id: &MobileDeviceId) -> Result<bool, MobileDeviceError>;
+            async fn record_activity(
+                &self,
+                device_id: &MobileDeviceId,
+                last_seen_at_ms: i64,
+                last_seen_ip: Option<String>,
+                reported_name: Option<String>,
+                reported_os: Option<String>,
+            ) -> Result<(), MobileDeviceError>;
+            async fn update_password_hash(
+                &self,
+                device_id: &MobileDeviceId,
+                new_password_hash: String,
+            ) -> Result<bool, MobileDeviceError>;
         }
     }
 
-    struct DeterministicMinter;
-    impl MobileCredentialsMinterPort for DeterministicMinter {
-        fn mint_credentials(&self) -> MintedCredentials {
-            MintedCredentials {
-                username: "mobile_aabbccdd".into(),
-                password: "deterministic-password-22".into(),
-                password_hash: "$argon2id$v=19$m=64,t=1,p=1$AAAAAAAAAAAAAAAA$test".into(),
-                device_id: MobileDeviceId::new("did_aaaa"),
-            }
+    mockall::mock! {
+        Hasher {}
+        #[async_trait]
+        impl PasswordHasherPort for Hasher {
+            async fn hash(&self, password: &str) -> Result<String, PasswordHasherError>;
+            async fn verify(&self, password: &str, phc: &str)
+                -> Result<bool, PasswordHasherError>;
         }
     }
 
-    /// 把每次 hash 调用记录下来,便于断言 use case 是否真去 hash 了自定义
-    /// password(而不是回退用 minter 的 phc 字符串)。
-    #[derive(Default)]
-    struct RecordingHasher {
-        hashed: Mutex<Vec<String>>,
-    }
-    #[async_trait]
-    impl PasswordHasherPort for RecordingHasher {
-        async fn hash(&self, password: &str) -> Result<String, PasswordHasherError> {
-            self.hashed.lock().unwrap().push(password.to_string());
-            Ok(format!("phc-of:{password}"))
-        }
-        async fn verify(&self, _password: &str, _phc: &str) -> Result<bool, PasswordHasherError> {
-            unreachable!("register flow does not call verify")
+    mockall::mock! {
+        Minter {}
+        impl MobileCredentialsMinterPort for Minter {
+            fn mint_credentials(&self) -> MintedCredentials;
         }
     }
 
-    /// hash() 永远报内部错误的 fixture,断言 use case 把它翻成
-    /// `PasswordHashFailed`。
-    struct FailingHasher;
-    #[async_trait]
-    impl PasswordHasherPort for FailingHasher {
-        async fn hash(&self, _password: &str) -> Result<String, PasswordHasherError> {
+    mockall::mock! {
+        SettingsPortImpl {}
+        #[async_trait]
+        impl SettingsPort for SettingsPortImpl {
+            async fn load(&self) -> anyhow::Result<Settings>;
+            async fn save(&self, settings: &Settings) -> anyhow::Result<()>;
+        }
+    }
+
+    mockall::mock! {
+        ClockImpl {}
+        impl ClockPort for ClockImpl {
+            fn now_ms(&self) -> i64;
+        }
+    }
+
+    mockall::mock! {
+        Probe {}
+        #[async_trait]
+        impl LanInterfaceProbePort for Probe {
+            async fn list_interfaces(&self) -> Result<Vec<LanInterface>, LanInterfaceProbeError>;
+        }
+    }
+
+    // ── helpers ────────────────────────────────────────────────────────
+
+    /// minter 永远返回的 fixed MintedCredentials —— 测试断言里写的字面值。
+    const MINTER_USERNAME: &str = "mobile_aabbccdd";
+    const MINTER_PASSWORD: &str = "deterministic-password-22";
+    const MINTER_PHC: &str = "$argon2id$v=19$m=64,t=1,p=1$AAAAAAAAAAAAAAAA$test";
+    const MINTER_DEVICE_ID: &str = "did_aaaa";
+
+    fn deterministic_minter() -> MockMinter {
+        let mut m = MockMinter::new();
+        m.expect_mint_credentials().returning(|| MintedCredentials {
+            username: MINTER_USERNAME.into(),
+            password: MINTER_PASSWORD.into(),
+            password_hash: MINTER_PHC.into(),
+            device_id: MobileDeviceId::new(MINTER_DEVICE_ID),
+        });
+        m
+    }
+
+    /// 把每次 hash 调用产出一个 `phc-of:<plain>` 形态的 PHC,便于断言 use
+    /// case 真去 hash 了自定义 password(而不是回退用 minter 的 phc)。
+    /// mockall 的 expect_hash() 没有 .times() 约束默认任意次数;调用方在
+    /// 需要时显式加 .times(N) 即可。
+    fn recording_hasher() -> MockHasher {
+        let mut h = MockHasher::new();
+        h.expect_hash().returning(|p| Ok(format!("phc-of:{p}")));
+        h
+    }
+
+    fn failing_hasher() -> MockHasher {
+        let mut h = MockHasher::new();
+        h.expect_hash().returning(|_| {
             Err(PasswordHasherError::Internal(
                 "simulated hash failure".into(),
             ))
-        }
-        async fn verify(&self, _password: &str, _phc: &str) -> Result<bool, PasswordHasherError> {
-            unreachable!()
-        }
+        });
+        h
     }
 
-    #[derive(Default)]
-    struct InMemoryDeviceRepo {
-        saved: Mutex<Vec<MobileDevice>>,
-        /// 预置:这些 username 视为"已被占用",`find_by_username` 命中。
-        preexisting: Mutex<Vec<String>>,
+    /// 默认 device_repo:save 永远 OK,find_by_username 永远找不到。供大多数
+    /// happy-path / 校验失败测试使用,测试想"定制 username 已占用"时单独构造。
+    fn empty_device_repo() -> MockDeviceRepo {
+        let mut r = MockDeviceRepo::new();
+        r.expect_save().returning(|_| Ok(()));
+        r.expect_find_by_username().returning(|_| Ok(None));
+        r
     }
-    impl InMemoryDeviceRepo {
-        fn with_existing_username(name: &str) -> Self {
-            let s = Self::default();
-            s.preexisting.lock().unwrap().push(name.to_string());
-            s
-        }
-    }
-    #[async_trait]
-    impl MobileDeviceRepositoryPort for InMemoryDeviceRepo {
-        async fn save(&self, device: &MobileDevice) -> Result<(), MobileDeviceError> {
-            self.saved.lock().unwrap().push(device.clone());
-            Ok(())
-        }
-        async fn find_by_username(
-            &self,
-            username: &str,
-        ) -> Result<Option<MobileDevice>, MobileDeviceError> {
-            // 真正存在的(saved 里)优先;之外再看 preexisting fixture 名单。
-            let saved = self.saved.lock().unwrap();
-            if let Some(d) = saved.iter().find(|d| d.username == username) {
-                return Ok(Some(d.clone()));
-            }
-            drop(saved);
-            if self
-                .preexisting
-                .lock()
-                .unwrap()
-                .iter()
-                .any(|u| u == username)
-            {
+
+    /// 把指定 username 设为"已被占用",触发 `UsernameTaken` 校验路径。
+    fn device_repo_with_existing_username(name: &'static str) -> MockDeviceRepo {
+        let mut r = MockDeviceRepo::new();
+        r.expect_save().returning(|_| Ok(()));
+        r.expect_find_by_username().returning(move |u| {
+            if u == name {
                 Ok(Some(MobileDevice {
                     device_id: MobileDeviceId::new("did_existing"),
                     label: "existing".into(),
                     client_type: MobileClientType::IosShortcut,
-                    username: username.to_string(),
+                    username: u.to_string(),
                     password_hash: "phc:existing".into(),
                     created_at_ms: 0,
                     last_seen_at_ms: None,
@@ -647,87 +684,57 @@ mod tests {
             } else {
                 Ok(None)
             }
-        }
-        async fn find_by_device_id(
-            &self,
-            _: &MobileDeviceId,
-        ) -> Result<Option<MobileDevice>, MobileDeviceError> {
-            Ok(None)
-        }
-        async fn list_all(&self) -> Result<Vec<MobileDevice>, MobileDeviceError> {
-            Ok(self.saved.lock().unwrap().clone())
-        }
-        async fn delete(&self, _: &MobileDeviceId) -> Result<bool, MobileDeviceError> {
-            Ok(true)
-        }
-        async fn record_activity(
-            &self,
-            _: &MobileDeviceId,
-            _: i64,
-            _: Option<String>,
-            _: Option<String>,
-            _: Option<String>,
-        ) -> Result<(), MobileDeviceError> {
-            Ok(())
-        }
+        });
+        r
     }
 
-    /// 内存 SettingsPort: `lan_listen_enabled` 由测试控制;`lan_advertise_ip`
-    /// 固定 192.168.1.5 + 端口 42720, 让 base_url 推出 "http://192.168.1.5:42720"。
-    struct FixedSettings {
-        lan_listen_enabled: bool,
-    }
-    #[async_trait]
-    impl SettingsPort for FixedSettings {
-        async fn load(&self) -> anyhow::Result<Settings> {
-            let mut s = Settings::default();
-            s.mobile_sync.enabled = self.lan_listen_enabled;
-            s.mobile_sync.lan_listen_enabled = self.lan_listen_enabled;
-            s.mobile_sync.lan_advertise_ip = Some("192.168.1.5".into());
-            s.mobile_sync.lan_port = Some(42720);
-            Ok(s)
-        }
-        async fn save(&self, _: &Settings) -> anyhow::Result<()> {
-            unreachable!("register_device must not save settings")
-        }
+    /// `lan_advertise_ip = Some("192.168.1.5") + lan_port = 42720`,加可控的
+    /// `lan_listen_enabled` flag。base_url 推为 `http://192.168.1.5:42720`。
+    fn settings_port_lan_advertise(lan_listen_enabled: bool) -> MockSettingsPortImpl {
+        let mut s = MockSettingsPortImpl::new();
+        s.expect_load().returning(move || {
+            let mut settings = Settings::default();
+            settings.mobile_sync.enabled = lan_listen_enabled;
+            settings.mobile_sync.lan_listen_enabled = lan_listen_enabled;
+            settings.mobile_sync.lan_advertise_ip = Some("192.168.1.5".into());
+            settings.mobile_sync.lan_port = Some(42720);
+            Ok(settings)
+        });
+        s
     }
 
-    /// 默认测试 probe:返回空列表。原 happy path 测试都用 lan_advertise_ip
-    /// = Some(...),不会走 auto-pick,所以空列表 probe 已够用;auto-pick 路径
-    /// 由 `auto_picks_first_rfc1918_when_advertise_ip_unset` 等单独构造。
-    struct EmptyLanProbe;
-    #[async_trait]
-    impl LanInterfaceProbePort for EmptyLanProbe {
-        async fn list_interfaces(&self) -> Result<Vec<LanInterface>, LanInterfaceProbeError> {
-            Ok(Vec::new())
-        }
+    /// `lan_advertise_ip = None` —— 触发 use case 自己 auto-pick 的路径。
+    fn settings_port_auto() -> MockSettingsPortImpl {
+        let mut s = MockSettingsPortImpl::new();
+        s.expect_load().returning(|| {
+            let mut settings = Settings::default();
+            settings.mobile_sync.enabled = true;
+            settings.mobile_sync.lan_listen_enabled = true;
+            settings.mobile_sync.lan_advertise_ip = None;
+            settings.mobile_sync.lan_port = Some(42720);
+            Ok(settings)
+        });
+        s
     }
 
-    /// 测试 probe:返回固定的 LAN 接口列表(用于断言 auto-pick 排序口径)。
-    struct FixedLanProbe(Vec<LanInterface>);
-    #[async_trait]
-    impl LanInterfaceProbePort for FixedLanProbe {
-        async fn list_interfaces(&self) -> Result<Vec<LanInterface>, LanInterfaceProbeError> {
-            Ok(self.0.clone())
-        }
+    fn clock_at(ms: i64) -> MockClockImpl {
+        let mut c = MockClockImpl::new();
+        c.expect_now_ms().returning(move || ms);
+        c
     }
 
-    /// `lan_advertise_ip = None` 的 SettingsPort 变体:其它字段同
-    /// `FixedSettings`,只有 advertise_ip 留空,触发 auto-pick 分支。
-    struct AutoSettings;
-    #[async_trait]
-    impl SettingsPort for AutoSettings {
-        async fn load(&self) -> anyhow::Result<Settings> {
-            let mut s = Settings::default();
-            s.mobile_sync.enabled = true;
-            s.mobile_sync.lan_listen_enabled = true;
-            s.mobile_sync.lan_advertise_ip = None;
-            s.mobile_sync.lan_port = Some(42720);
-            Ok(s)
-        }
-        async fn save(&self, _: &Settings) -> anyhow::Result<()> {
-            unreachable!("register_device must not save settings")
-        }
+    fn probe_returning(ifaces: Vec<LanInterface>) -> MockProbe {
+        let mut p = MockProbe::new();
+        p.expect_list_interfaces()
+            .returning(move || Ok(ifaces.clone()));
+        p
+    }
+
+    fn probe_failing() -> MockProbe {
+        let mut p = MockProbe::new();
+        p.expect_list_interfaces()
+            .returning(|| Err(LanInterfaceProbeError::Probe("ifaddr crashed".into())));
+        p
     }
 
     fn iface(name: &str, ip: [u8; 4]) -> LanInterface {
@@ -738,14 +745,17 @@ mod tests {
         }
     }
 
+    /// 标准 happy-path 装配:固定 minter / recording hasher / empty repo /
+    /// 默认 LAN advertise settings / 1_000ms clock / 空 probe(LAN 已配置时
+    /// 走不到 auto-pick,empty probe 即可)。`lan_listen_enabled` 控开关。
     fn build_uc(lan_listen_enabled: bool) -> RegisterMobileShortcutDeviceUseCase {
         RegisterMobileShortcutDeviceUseCase::new(
-            Arc::new(DeterministicMinter),
-            Arc::new(RecordingHasher::default()),
-            Arc::new(InMemoryDeviceRepo::default()),
-            Arc::new(FixedSettings { lan_listen_enabled }),
-            Arc::new(FixedClock(1_000)),
-            Arc::new(EmptyLanProbe),
+            Arc::new(deterministic_minter()),
+            Arc::new(recording_hasher()),
+            Arc::new(empty_device_repo()),
+            Arc::new(settings_port_lan_advertise(lan_listen_enabled)),
+            Arc::new(clock_at(1_000)),
+            Arc::new(probe_returning(vec![])),
         )
     }
 
@@ -917,14 +927,12 @@ mod tests {
     #[tokio::test]
     async fn rejects_username_already_taken() {
         let uc = RegisterMobileShortcutDeviceUseCase::new(
-            Arc::new(DeterministicMinter),
-            Arc::new(RecordingHasher::default()),
-            Arc::new(InMemoryDeviceRepo::with_existing_username("alice_001")),
-            Arc::new(FixedSettings {
-                lan_listen_enabled: true,
-            }),
-            Arc::new(FixedClock(1_000)),
-            Arc::new(EmptyLanProbe),
+            Arc::new(deterministic_minter()),
+            Arc::new(recording_hasher()),
+            Arc::new(device_repo_with_existing_username("alice_001")),
+            Arc::new(settings_port_lan_advertise(true)),
+            Arc::new(clock_at(1_000)),
+            Arc::new(probe_returning(vec![])),
         );
         let err = uc
             .execute(RegisterMobileShortcutDeviceInput {
@@ -944,16 +952,22 @@ mod tests {
 
     #[tokio::test]
     async fn accepts_custom_password() {
-        let hasher = Arc::new(RecordingHasher::default());
+        // 通过 mockall expectation 直接断言 hasher 收到自定义明文 + 被调用
+        // 恰好一次 —— 比手写 RecordingHasher 自己累积的 Vec 更精确。
+        let mut hasher = MockHasher::new();
+        hasher
+            .expect_hash()
+            .with(mockall::predicate::eq("correct horse battery staple"))
+            .times(1)
+            .returning(|p| Ok(format!("phc-of:{p}")));
+
         let uc = RegisterMobileShortcutDeviceUseCase::new(
-            Arc::new(DeterministicMinter),
-            hasher.clone(),
-            Arc::new(InMemoryDeviceRepo::default()),
-            Arc::new(FixedSettings {
-                lan_listen_enabled: true,
-            }),
-            Arc::new(FixedClock(1_000)),
-            Arc::new(EmptyLanProbe),
+            Arc::new(deterministic_minter()),
+            Arc::new(hasher),
+            Arc::new(empty_device_repo()),
+            Arc::new(settings_port_lan_advertise(true)),
+            Arc::new(clock_at(1_000)),
+            Arc::new(probe_returning(vec![])),
         );
         let out = uc
             .execute(RegisterMobileShortcutDeviceInput {
@@ -970,10 +984,8 @@ mod tests {
             "phc-of:correct horse battery staple"
         );
         // username 走 minter
-        assert_eq!(out.username, "mobile_aabbccdd");
-
-        // 断言 hasher 真被调用了 1 次。
-        assert_eq!(hasher.hashed.lock().unwrap().len(), 1);
+        assert_eq!(out.username, MINTER_USERNAME);
+        // hasher 调用次数由 mockall 在 drop 时自动 verify (.times(1) 上面已断言)
     }
 
     #[tokio::test]
@@ -1017,14 +1029,12 @@ mod tests {
     #[tokio::test]
     async fn translates_hasher_internal_error() {
         let uc = RegisterMobileShortcutDeviceUseCase::new(
-            Arc::new(DeterministicMinter),
-            Arc::new(FailingHasher),
-            Arc::new(InMemoryDeviceRepo::default()),
-            Arc::new(FixedSettings {
-                lan_listen_enabled: true,
-            }),
-            Arc::new(FixedClock(1_000)),
-            Arc::new(EmptyLanProbe),
+            Arc::new(deterministic_minter()),
+            Arc::new(failing_hasher()),
+            Arc::new(empty_device_repo()),
+            Arc::new(settings_port_lan_advertise(true)),
+            Arc::new(clock_at(1_000)),
+            Arc::new(probe_returning(vec![])),
         );
         let err = uc
             .execute(RegisterMobileShortcutDeviceInput {
@@ -1058,19 +1068,19 @@ mod tests {
         assert_eq!(out.device.username, "alice_pro");
         assert_eq!(out.device.password_hash, "phc-of:a-strong-password");
         // device_id 永远来自 minter。
-        assert_eq!(out.device.device_id.as_str(), "did_aaaa");
+        assert_eq!(out.device.device_id.as_str(), MINTER_DEVICE_ID);
     }
 
     // ── tests: auto-pick advertise_ip ─────────────────────────────────
 
-    fn build_uc_auto(probe: Arc<dyn LanInterfaceProbePort>) -> RegisterMobileShortcutDeviceUseCase {
+    fn build_uc_auto(probe: MockProbe) -> RegisterMobileShortcutDeviceUseCase {
         RegisterMobileShortcutDeviceUseCase::new(
-            Arc::new(DeterministicMinter),
-            Arc::new(RecordingHasher::default()),
-            Arc::new(InMemoryDeviceRepo::default()),
-            Arc::new(AutoSettings),
-            Arc::new(FixedClock(1_000)),
-            probe,
+            Arc::new(deterministic_minter()),
+            Arc::new(recording_hasher()),
+            Arc::new(empty_device_repo()),
+            Arc::new(settings_port_auto()),
+            Arc::new(clock_at(1_000)),
+            Arc::new(probe),
         )
     }
 
@@ -1078,12 +1088,12 @@ mod tests {
     async fn auto_picks_first_rfc1918_when_advertise_ip_unset() {
         // 故意打乱顺序,断言走"10/8 → 172.16/12 → 192.168/16,段内字典序"。
         // 期望挑 10.0.0.5(10.x 段最小)。
-        let probe = Arc::new(FixedLanProbe(vec![
+        let probe = probe_returning(vec![
             iface("en1", [192, 168, 1, 5]),
             iface("en2", [10, 0, 0, 5]),
             iface("en3", [172, 16, 0, 5]),
             iface("en4", [10, 1, 1, 1]),
-        ]));
+        ]);
         let uc = build_uc_auto(probe);
         let out = uc.execute(label_only("iPhone")).await.expect("ok");
         assert_eq!(out.base_url, "http://10.0.0.5:42720");
@@ -1092,7 +1102,7 @@ mod tests {
     #[tokio::test]
     async fn auto_skips_loopback_and_non_rfc1918() {
         // 全是被剔除的接口 → 退化成"没有可用 LAN" → NoLanInterfaceAvailable。
-        let probe = Arc::new(FixedLanProbe(vec![
+        let probe = probe_returning(vec![
             LanInterface {
                 name: "lo0".into(),
                 ipv4: std::net::Ipv4Addr::new(127, 0, 0, 1),
@@ -1101,7 +1111,7 @@ mod tests {
             iface("en_pub", [8, 8, 8, 8]),
             iface("en_cgnat", [100, 64, 1, 5]),
             iface("en_link", [169, 254, 1, 5]),
-        ]));
+        ]);
         let uc = build_uc_auto(probe);
         let err = uc.execute(label_only("iPhone")).await.unwrap_err();
         assert!(matches!(
@@ -1112,14 +1122,7 @@ mod tests {
 
     #[tokio::test]
     async fn auto_translates_probe_failure() {
-        struct FailingProbe;
-        #[async_trait]
-        impl LanInterfaceProbePort for FailingProbe {
-            async fn list_interfaces(&self) -> Result<Vec<LanInterface>, LanInterfaceProbeError> {
-                Err(LanInterfaceProbeError::Probe("ifaddr crashed".into()))
-            }
-        }
-        let uc = build_uc_auto(Arc::new(FailingProbe));
+        let uc = build_uc_auto(probe_failing());
         let err = uc.execute(label_only("iPhone")).await.unwrap_err();
         assert!(matches!(
             err,

@@ -826,6 +826,32 @@
         "confirm": "Revoke",
         "cancel": "Cancel"
       },
+      "rotate": {
+        "button": "Change password",
+        "dialog": {
+          "title": "Change password for {{label}}",
+          "subtitle": "The server only stores a password hash, so the current one cannot be shown. After rotating, update the password field in your mobile client.",
+          "passwordLabel": "New password (optional)",
+          "passwordPlaceholder": "Leave empty to auto-generate",
+          "passwordHelp": "Empty → auto-generated strong password. Custom must be 8–256 chars.",
+          "warning": "The old password is invalidated immediately. The mobile client won't sync until its password field is updated.",
+          "submit": "Generate new password",
+          "submitting": "Working...",
+          "cancel": "Cancel"
+        },
+        "result": {
+          "title": "New password generated",
+          "subtitle": "Here is the new password — shown only this once. Copy it now and paste it into the password field of your mobile client.",
+          "usernameLabel": "Username",
+          "passwordLabel": "New password",
+          "copy": "Copy password",
+          "copied": "Copied",
+          "warning": "The old password no longer works. The mobile client must use this new password to keep syncing.",
+          "confirmSaved": "I have saved the new password",
+          "close": "Close",
+          "closeBlocked": "Confirm \"I have saved the new password\" first"
+        }
+      },
       "errors": {
         "facadeUnavailable": "Mobile sync is not enabled in this build",
         "labelEmpty": "Device label cannot be empty",

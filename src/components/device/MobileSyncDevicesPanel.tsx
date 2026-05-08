@@ -15,8 +15,15 @@
  *   │ Mobile Sync                            [Configure] [+ Add]  │
  *   ├─ List container ────────────────────────────────────────────┤
  *   │ 📱 My iPhone              5m ago · .42                  ⌫  │
+ *   │    mobile_a1b2c3d4                                          │
  *   │ 📱 Pixel                  never                          ⌫  │
+ *   │    mobile_e5f6g7h8                                          │
  *   └─────────────────────────────────────────────────────────────┘
+ *
+ * 每行双行布局: 主行 label, 副行 username (Basic Auth 账号), 与 macOS
+ * 系统设置 / Tailscale 的 "primary text + secondary text" 风格一致。
+ * username 暴露在 UI 上是有意决策 —— label 可重命名重复, username 是
+ * server 端稳定的识别主键, 帮用户区分多台同名设备。
  *
  * Header 只放标题 + Configure + Add(状态文案/监听 URL/bind 错误均收
  * 进 SettingsSheet,主页面保持极简)。设备列表是单个圆角容器 + divide-y
@@ -29,12 +36,14 @@
  * - revoke 流程不变
  */
 
-import { Plus, RefreshCw, Settings2, Smartphone, Trash2 } from 'lucide-react'
+import { KeyRound, Plus, RefreshCw, Settings2, Smartphone, Trash2 } from 'lucide-react'
 import React, { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import AddMobileSyncDeviceDialog from './AddMobileSyncDeviceDialog'
 import MobileSyncCredentialModal from './MobileSyncCredentialModal'
 import MobileSyncSettingsSheet from './MobileSyncSettingsSheet'
+import RotatedPasswordModal from './RotatedPasswordModal'
+import RotateMobilePasswordDialog from './RotateMobilePasswordDialog'
 import {
   isMobileSyncError,
   listMobileDevices,
@@ -43,6 +52,7 @@ import {
   type MobileSyncError,
   type MobileSyncSettingsView,
   type RegisterMobileDeviceResult,
+  type RotateMobilePasswordResult,
 } from '@/api/tauri-command/mobile_sync'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import {
@@ -77,6 +87,9 @@ const MobileSyncDevicesPanel: React.FC = () => {
   const [revokeTarget, setRevokeTarget] = useState<MobileDeviceView | null>(null)
   const [revokeBusy, setRevokeBusy] = useState(false)
 
+  const [rotateTarget, setRotateTarget] = useState<MobileDeviceView | null>(null)
+  const [rotatedPayload, setRotatedPayload] = useState<RotateMobilePasswordResult | null>(null)
+
   const translate = useCallback((err: unknown): string => translateMobileSyncError(t, err), [t])
 
   const loadDevices = useCallback(async () => {
@@ -105,6 +118,14 @@ const MobileSyncDevicesPanel: React.FC = () => {
   const handleAddSuccess = useCallback(
     (result: RegisterMobileDeviceResult) => {
       setCredentialPayload(result)
+      void loadDevices()
+    },
+    [loadDevices]
+  )
+
+  const handleRotateSuccess = useCallback(
+    (result: RotateMobilePasswordResult) => {
+      setRotatedPayload(result)
       void loadDevices()
     },
     [loadDevices]
@@ -182,6 +203,7 @@ const MobileSyncDevicesPanel: React.FC = () => {
                     key={device.deviceId}
                     device={device}
                     onRevoke={() => setRevokeTarget(device)}
+                    onRotate={() => setRotateTarget(device)}
                   />
                 ))}
               </ul>
@@ -236,6 +258,19 @@ const MobileSyncDevicesPanel: React.FC = () => {
         payload={credentialPayload}
         onClose={() => setCredentialPayload(null)}
       />
+
+      <RotateMobilePasswordDialog
+        open={rotateTarget !== null}
+        onOpenChange={open => {
+          if (!open) setRotateTarget(null)
+        }}
+        device={
+          rotateTarget ? { deviceId: rotateTarget.deviceId, label: rotateTarget.label } : null
+        }
+        onSuccess={handleRotateSuccess}
+      />
+
+      <RotatedPasswordModal payload={rotatedPayload} onClose={() => setRotatedPayload(null)} />
     </>
   )
 }
@@ -245,9 +280,10 @@ const MobileSyncDevicesPanel: React.FC = () => {
 interface DeviceRowProps {
   device: MobileDeviceView
   onRevoke: () => void
+  onRotate: () => void
 }
 
-const DeviceRow: React.FC<DeviceRowProps> = ({ device, onRevoke }) => {
+const DeviceRow: React.FC<DeviceRowProps> = ({ device, onRevoke, onRotate }) => {
   const { t } = useTranslation()
 
   return (
@@ -258,18 +294,29 @@ const DeviceRow: React.FC<DeviceRowProps> = ({ device, onRevoke }) => {
 
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm font-medium text-foreground">{device.label}</p>
+        <p className="truncate font-mono text-xs text-muted-foreground">{device.username}</p>
       </div>
 
-      <Button
-        variant="ghost"
-        size="icon-sm"
-        className="shrink-0 opacity-0 transition-opacity group-hover:opacity-100"
-        onClick={onRevoke}
-        aria-label={t('devices.mobileSync.revoke.confirm')}
-        title={t('devices.mobileSync.revoke.confirm')}
-      >
-        <Trash2 className="h-4 w-4" />
-      </Button>
+      <div className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          onClick={onRotate}
+          aria-label={t('devices.mobileSync.rotate.button')}
+          title={t('devices.mobileSync.rotate.button')}
+        >
+          <KeyRound className="h-4 w-4" />
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          onClick={onRevoke}
+          aria-label={t('devices.mobileSync.revoke.confirm')}
+          title={t('devices.mobileSync.revoke.confirm')}
+        >
+          <Trash2 className="h-4 w-4" />
+        </Button>
+      </div>
     </li>
   )
 }

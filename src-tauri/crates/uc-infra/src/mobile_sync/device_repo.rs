@@ -105,6 +105,21 @@ impl MobileDeviceRepositoryPort for InMemoryMobileDeviceRepository {
         }
         Ok(())
     }
+
+    async fn update_password_hash(
+        &self,
+        device_id: &MobileDeviceId,
+        new_password_hash: String,
+    ) -> Result<bool, MobileDeviceError> {
+        let mut guard = self.devices.lock().await;
+        match guard.get_mut(device_id) {
+            Some(device) => {
+                device.password_hash = new_password_hash;
+                Ok(true)
+            }
+            None => Ok(false),
+        }
+    }
 }
 
 #[cfg(test)]
@@ -224,5 +239,35 @@ mod tests {
         repo.record_activity(&MobileDeviceId::new("did_ghost"), 5_000, None, None, None)
             .await
             .unwrap();
+    }
+
+    #[tokio::test]
+    async fn update_password_hash_replaces_only_phc_field() {
+        let repo = InMemoryMobileDeviceRepository::new();
+        let d = device("did_x", "0001", "phone");
+        repo.save(&d).await.unwrap();
+
+        let updated = repo
+            .update_password_hash(&d.device_id, "$argon2id$test$rotated".into())
+            .await
+            .unwrap();
+        assert!(updated);
+
+        let got = repo.find_by_device_id(&d.device_id).await.unwrap().unwrap();
+        assert_eq!(got.password_hash, "$argon2id$test$rotated");
+        // 其它字段保持不变
+        assert_eq!(got.label, d.label);
+        assert_eq!(got.username, d.username);
+        assert_eq!(got.created_at_ms, d.created_at_ms);
+    }
+
+    #[tokio::test]
+    async fn update_password_hash_returns_false_when_device_missing() {
+        let repo = InMemoryMobileDeviceRepository::new();
+        let updated = repo
+            .update_password_hash(&MobileDeviceId::new("did_ghost"), "phc".into())
+            .await
+            .unwrap();
+        assert!(!updated);
     }
 }

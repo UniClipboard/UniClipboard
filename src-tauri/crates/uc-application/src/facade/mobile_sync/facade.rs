@@ -12,7 +12,8 @@
 //! |---|---|---|
 //! | [`MobileSyncFacade::register_device`] | `RegisterMobileShortcutDeviceUseCase` | 颁发 (username,password) + 渲染 install URL 二维码 |
 //! | [`MobileSyncFacade::revoke_device`] | `RevokeMobileDeviceUseCase` | 注销已登记设备 |
-//! | [`MobileSyncFacade::list_devices`] | `ListMobileDevicesUseCase` | 列出已登记设备(不含 password_hash / username) |
+//! | [`MobileSyncFacade::list_devices`] | `ListMobileDevicesUseCase` | 列出已登记设备(不含 password_hash) |
+//! | [`MobileSyncFacade::rotate_password`] | `RotateMobilePasswordUseCase` | 给已登记设备换一份新密码(返回一次性明文) |
 //! | [`MobileSyncFacade::get_settings`] | `GetMobileSyncSettingsUseCase` | 读 enabled + LAN URL + install methods |
 //! | [`MobileSyncFacade::update_settings`] | `UpdateMobileSyncSettingsUseCase` | 写 enabled, 返回 restart_required |
 //! | [`MobileSyncFacade::list_lan_interfaces`] | `ListLanInterfacesUseCase` | 列出可作为二维码 URL 的 RFC1918 网卡 |
@@ -56,7 +57,7 @@ use crate::usecases::mobile_sync::{
     latest_snapshot_adapter::LatestClipboardSnapshotAdapter,
     list_devices::ListMobileDevicesUseCase, list_lan_interfaces::ListLanInterfacesUseCase,
     register_device::RegisterMobileShortcutDeviceUseCase, revoke_device::RevokeMobileDeviceUseCase,
-    update_settings::UpdateMobileSyncSettingsUseCase,
+    rotate_password::RotateMobilePasswordUseCase, update_settings::UpdateMobileSyncSettingsUseCase,
 };
 
 // ── 对外类型 re-export ─────────────────────────────────────────────────
@@ -90,6 +91,9 @@ pub use crate::usecases::mobile_sync::register_device::{
 pub use crate::usecases::mobile_sync::register_device::SYNC_CLIPBOARD_EX_INSTALL_URL;
 pub use crate::usecases::mobile_sync::revoke_device::{
     RevokeMobileDeviceError, RevokeMobileDeviceInput,
+};
+pub use crate::usecases::mobile_sync::rotate_password::{
+    RotateMobilePasswordError, RotateMobilePasswordInput, RotateMobilePasswordOutput,
 };
 pub use crate::usecases::mobile_sync::update_settings::{
     UpdateMobileSyncSettingsError, UpdateMobileSyncSettingsInput, UpdateMobileSyncSettingsOutput,
@@ -138,6 +142,7 @@ pub struct MobileSyncFacade {
     register_device: RegisterMobileShortcutDeviceUseCase,
     revoke_device: RevokeMobileDeviceUseCase,
     list_devices: ListMobileDevicesUseCase,
+    rotate_password: RotateMobilePasswordUseCase,
     get_settings: GetMobileSyncSettingsUseCase,
     update_settings: UpdateMobileSyncSettingsUseCase,
     list_lan_interfaces: ListLanInterfacesUseCase,
@@ -170,7 +175,7 @@ impl MobileSyncFacade {
 
         Self {
             register_device: RegisterMobileShortcutDeviceUseCase::new(
-                credentials_minter,
+                credentials_minter.clone(),
                 password_hasher.clone(),
                 device_repo.clone(),
                 settings.clone(),
@@ -179,6 +184,11 @@ impl MobileSyncFacade {
             ),
             revoke_device: RevokeMobileDeviceUseCase::new(device_repo.clone()),
             list_devices: ListMobileDevicesUseCase::new(device_repo.clone()),
+            rotate_password: RotateMobilePasswordUseCase::new(
+                device_repo.clone(),
+                password_hasher.clone(),
+                credentials_minter,
+            ),
             get_settings: GetMobileSyncSettingsUseCase::new(settings.clone(), endpoint_info),
             update_settings: UpdateMobileSyncSettingsUseCase::new(settings),
             list_lan_interfaces: ListLanInterfacesUseCase::new(lan_interface_probe),
@@ -214,9 +224,21 @@ impl MobileSyncFacade {
     }
 
     /// 列出已登记设备摘要。结果按"最近活跃 desc → 创建时间 desc"排序,
-    /// 不包含 `password_hash` / `username`。
+    /// 不包含 `password_hash`(`username` 透传给 UI 作为辅助识别字段)。
     pub async fn list_devices(&self) -> Result<Vec<MobileDeviceSummary>, ListMobileDevicesError> {
         self.list_devices.execute().await
+    }
+
+    /// 给一台已登记设备换一份新密码。`input.password = None` 走 minter 自动
+    /// 颁发;`Some(p)` 走自定义路径(校验长度)。返回值的 `password` 字段是
+    /// **唯一一次**面向用户的明文回显, 之后只以 PHC 形式存在于服务端 sqlite。
+    /// 旧密码立即失效,UI 必须提示用户同步更新 iPhone shortcut 里的 password
+    /// 字段, 否则下次同步将收到 401。
+    pub async fn rotate_password(
+        &self,
+        input: RotateMobilePasswordInput,
+    ) -> Result<RotateMobilePasswordOutput, RotateMobilePasswordError> {
+        self.rotate_password.execute(input).await
     }
 
     /// 读移动端同步设置 + 当前 LAN URL + 可用 install methods 的合成视图。
@@ -432,6 +454,20 @@ mod tests {
             _: Option<String>,
         ) -> Result<(), MobileDeviceError> {
             Ok(())
+        }
+        async fn update_password_hash(
+            &self,
+            id: &MobileDeviceId,
+            new_hash: String,
+        ) -> Result<bool, MobileDeviceError> {
+            let mut devs = self.devices.lock().unwrap();
+            match devs.iter_mut().find(|d| d.device_id == *id) {
+                Some(d) => {
+                    d.password_hash = new_hash;
+                    Ok(true)
+                }
+                None => Ok(false),
+            }
         }
     }
 
@@ -840,5 +876,111 @@ mod tests {
             err,
             AuthenticateBasicAuthError::InvalidCredentials
         ));
+    }
+
+    #[tokio::test]
+    async fn rotate_password_invalidates_old_password_and_keeps_username() {
+        // 端到端验证:rotate 之后旧密码 401, 新密码 200, username/device_id
+        // 不变。把整条 register → rotate → authenticate 链路串起来跑。
+        let direct_device = MobileDevice {
+            device_id: MobileDeviceId::new("did_rot"),
+            label: "iPhone".into(),
+            client_type: uc_core::mobile_sync::MobileClientType::IosShortcut,
+            username: "mobile_rotme".into(),
+            password_hash: "phc:original-pass".into(),
+            created_at_ms: 1,
+            last_seen_at_ms: None,
+            last_seen_ip: None,
+            reported_name: None,
+            reported_os: None,
+        };
+        let repo = Arc::new(InMemoryDeviceRepo::default());
+        repo.save(&direct_device).await.unwrap();
+
+        let entry_repo: Arc<dyn ClipboardEntryRepositoryPort> = Arc::new(UnusedEntryRepo);
+        let apply_inbound = Arc::new(ApplyInboundClipboardUseCase::new(
+            entry_repo.clone(),
+            Arc::new(UnusedCapture),
+            Arc::new(UnusedWrite),
+        ));
+
+        let facade = MobileSyncFacade::new(MobileSyncFacadeDeps {
+            clock: Arc::new(FixedClock(1_000)),
+            credentials_minter: Arc::new(StaticMinter),
+            password_hasher: Arc::new(FakeHasher),
+            device_repo: repo.clone(),
+            endpoint_info: Arc::new(FixedEndpoint),
+            lan_interface_probe: Arc::new(StubLanProbe),
+            settings: Arc::new(InMemorySettings::default()),
+            apply_inbound,
+            incoming_buffer: Arc::new(IncomingMobileBuffer::new()),
+            file_staging: Arc::new(UnusedStaging),
+            snapshot_ports: MobileSyncSnapshotPorts {
+                entry_repo,
+                selection_repo: Arc::new(UnusedSelectionRepo),
+                representation_repo: Arc::new(UnusedRepRepo),
+                payload_resolver: Arc::new(UnusedResolver),
+                blob_reader: Arc::new(UnusedBlobReader),
+            },
+        });
+
+        // 1. 旧密码可用
+        let old_header = format!(
+            "basic {}",
+            base64::engine::general_purpose::STANDARD.encode("mobile_rotme:original-pass")
+        );
+        facade
+            .authenticate_basic(AuthenticateBasicAuthInput {
+                authorization_header: old_header.clone(),
+            })
+            .await
+            .expect("old password ok before rotate");
+
+        // 2. rotate 到自定义新密码
+        let out = facade
+            .rotate_password(RotateMobilePasswordInput {
+                device_id: MobileDeviceId::new("did_rot"),
+                password: Some("brand-new-pass".into()),
+            })
+            .await
+            .expect("rotate ok");
+        assert_eq!(out.username, "mobile_rotme");
+        assert_eq!(out.password, "brand-new-pass");
+        assert_eq!(out.device_id.as_str(), "did_rot");
+
+        // 3. 旧密码立即失效
+        let err = facade
+            .authenticate_basic(AuthenticateBasicAuthInput {
+                authorization_header: old_header,
+            })
+            .await
+            .unwrap_err();
+        assert!(matches!(
+            err,
+            AuthenticateBasicAuthError::InvalidCredentials
+        ));
+
+        // 4. 新密码可用
+        let new_header = format!(
+            "basic {}",
+            base64::engine::general_purpose::STANDARD.encode("mobile_rotme:brand-new-pass")
+        );
+        let auth = facade
+            .authenticate_basic(AuthenticateBasicAuthInput {
+                authorization_header: new_header,
+            })
+            .await
+            .expect("new password ok after rotate");
+        assert_eq!(auth.device.username, "mobile_rotme");
+
+        // 5. rotate 不存在的 device → NotFound
+        let err = facade
+            .rotate_password(RotateMobilePasswordInput {
+                device_id: MobileDeviceId::new("did_ghost"),
+                password: None,
+            })
+            .await
+            .unwrap_err();
+        assert!(matches!(err, RotateMobilePasswordError::NotFound(_)));
     }
 }

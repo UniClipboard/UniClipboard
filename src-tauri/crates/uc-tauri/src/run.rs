@@ -461,6 +461,7 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
             crate::commands::mobile_sync::register_mobile_device,
             crate::commands::mobile_sync::revoke_mobile_device,
             crate::commands::mobile_sync::list_mobile_devices,
+            crate::commands::mobile_sync::rotate_mobile_password,
             crate::commands::mobile_sync::get_mobile_sync_settings,
             crate::commands::mobile_sync::update_mobile_sync_settings,
             crate::commands::mobile_sync::list_mobile_lan_interfaces,

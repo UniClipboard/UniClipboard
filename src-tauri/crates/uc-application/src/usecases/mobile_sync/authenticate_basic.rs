@@ -207,11 +207,50 @@ fn translate_device_error(err: MobileDeviceError) -> AuthenticateBasicAuthError 
 mod tests {
     use super::*;
 
-    use std::sync::Mutex;
-
     use async_trait::async_trait;
 
     use uc_core::mobile_sync::{MobileClientType, MobileDeviceId};
+
+    mockall::mock! {
+        DeviceRepo {}
+        #[async_trait]
+        impl MobileDeviceRepositoryPort for DeviceRepo {
+            async fn save(&self, device: &MobileDevice) -> Result<(), MobileDeviceError>;
+            async fn find_by_username(
+                &self,
+                username: &str,
+            ) -> Result<Option<MobileDevice>, MobileDeviceError>;
+            async fn find_by_device_id(
+                &self,
+                device_id: &MobileDeviceId,
+            ) -> Result<Option<MobileDevice>, MobileDeviceError>;
+            async fn list_all(&self) -> Result<Vec<MobileDevice>, MobileDeviceError>;
+            async fn delete(&self, device_id: &MobileDeviceId) -> Result<bool, MobileDeviceError>;
+            async fn record_activity(
+                &self,
+                device_id: &MobileDeviceId,
+                last_seen_at_ms: i64,
+                last_seen_ip: Option<String>,
+                reported_name: Option<String>,
+                reported_os: Option<String>,
+            ) -> Result<(), MobileDeviceError>;
+            async fn update_password_hash(
+                &self,
+                device_id: &MobileDeviceId,
+                new_password_hash: String,
+            ) -> Result<bool, MobileDeviceError>;
+        }
+    }
+
+    mockall::mock! {
+        Hasher {}
+        #[async_trait]
+        impl PasswordHasherPort for Hasher {
+            async fn hash(&self, password: &str) -> Result<String, PasswordHasherError>;
+            async fn verify(&self, password: &str, phc: &str)
+                -> Result<bool, PasswordHasherError>;
+        }
+    }
 
     fn make_device(username: &str, phc: &str) -> MobileDevice {
         MobileDevice {
@@ -228,89 +267,33 @@ mod tests {
         }
     }
 
-    #[derive(Default)]
-    struct InMemoryRepo {
-        devices: Mutex<Vec<MobileDevice>>,
-        force_storage_err: bool,
-    }
-    #[async_trait]
-    impl MobileDeviceRepositoryPort for InMemoryRepo {
-        async fn save(&self, _: &MobileDevice) -> Result<(), MobileDeviceError> {
-            unreachable!("auth 不调用 save")
-        }
-        async fn find_by_username(
-            &self,
-            username: &str,
-        ) -> Result<Option<MobileDevice>, MobileDeviceError> {
-            if self.force_storage_err {
-                return Err(MobileDeviceError::Storage("disk gone".into()));
-            }
-            Ok(self
-                .devices
-                .lock()
-                .unwrap()
-                .iter()
-                .find(|d| d.username == username)
-                .cloned())
-        }
-        async fn find_by_device_id(
-            &self,
-            _: &MobileDeviceId,
-        ) -> Result<Option<MobileDevice>, MobileDeviceError> {
-            unreachable!("auth 不调用 find_by_device_id")
-        }
-        async fn list_all(&self) -> Result<Vec<MobileDevice>, MobileDeviceError> {
-            unreachable!("auth 不调用 list_all")
-        }
-        async fn delete(&self, _: &MobileDeviceId) -> Result<bool, MobileDeviceError> {
-            unreachable!("auth 不调用 delete")
-        }
-        async fn record_activity(
-            &self,
-            _: &MobileDeviceId,
-            _: i64,
-            _: Option<String>,
-            _: Option<String>,
-            _: Option<String>,
-        ) -> Result<(), MobileDeviceError> {
-            unreachable!("auth 不调用 record_activity")
-        }
+    /// 把 device 列表包装成 mock repo —— find_by_username 按 username 命中
+    /// 返回对应 device, 找不到返回 None。其它方法不设 expectation, 一旦被
+    /// 调用 mockall 会自动 panic。
+    fn repo_with(devices: Vec<MobileDevice>) -> MockDeviceRepo {
+        let mut repo = MockDeviceRepo::new();
+        repo.expect_find_by_username().returning(move |username| {
+            Ok(devices.iter().find(|d| d.username == username).cloned())
+        });
+        repo
     }
 
-    /// 极简 hasher: 用纯字符串相等模拟 verify, 让单测不真跑 Argon2。
-    /// 此 fake 把 "phc:plain" 视为该 plain 对应的 hash; verify 比较即可。
-    #[derive(Default)]
-    struct FakeHasher {
-        force_internal: bool,
-    }
-    #[async_trait]
-    impl PasswordHasherPort for FakeHasher {
-        async fn hash(&self, password: &str) -> Result<String, PasswordHasherError> {
-            if self.force_internal {
-                return Err(PasswordHasherError::Internal("forced".into()));
-            }
-            Ok(format!("phc:{password}"))
-        }
-        async fn verify(&self, password: &str, phc: &str) -> Result<bool, PasswordHasherError> {
-            if self.force_internal {
-                return Err(PasswordHasherError::Internal("forced".into()));
-            }
-            // 特殊值用来模拟 PHC 损坏。
+    /// "phc:<plain>" 形态的伪 hasher —— 不真跑 Argon2,但表达"密码与 PHC
+    /// 是否对应"的语义。verify 时 PHC == `format!("phc:{password}")` 即视
+    /// 为命中。
+    fn fake_hasher() -> MockHasher {
+        let mut h = MockHasher::new();
+        h.expect_verify().returning(|password, phc| {
             if phc == "PHC_BROKEN" {
                 return Err(PasswordHasherError::InvalidPhc("malformed".into()));
             }
             Ok(phc == format!("phc:{password}"))
-        }
+        });
+        h
     }
 
     fn build_uc(devices: Vec<MobileDevice>) -> AuthenticateBasicAuthUseCase {
-        AuthenticateBasicAuthUseCase::new(
-            Arc::new(InMemoryRepo {
-                devices: Mutex::new(devices),
-                force_storage_err: false,
-            }),
-            Arc::new(FakeHasher::default()),
-        )
+        AuthenticateBasicAuthUseCase::new(Arc::new(repo_with(devices)), Arc::new(fake_hasher()))
     }
 
     fn header_for(username: &str, password: &str) -> String {
@@ -379,7 +362,13 @@ mod tests {
 
     #[tokio::test]
     async fn rejects_malformed_header() {
-        let uc = build_uc(vec![]);
+        // 头解析失败时 use case 仍跑一次 dummy verify(防侧信道),所以
+        // hasher.verify 必须能被调用 —— 用 fake_hasher() 即可(任意输入
+        // 都返 Ok(false))。仓储**永远不该**在头坏时被查,断言 never。
+        let mut repo = MockDeviceRepo::new();
+        repo.expect_find_by_username().never();
+        let uc = AuthenticateBasicAuthUseCase::new(Arc::new(repo), Arc::new(fake_hasher()));
+
         for bad in [
             "",
             "basic",
@@ -419,13 +408,11 @@ mod tests {
 
     #[tokio::test]
     async fn translates_storage_error() {
-        let uc = AuthenticateBasicAuthUseCase::new(
-            Arc::new(InMemoryRepo {
-                devices: Mutex::new(vec![]),
-                force_storage_err: true,
-            }),
-            Arc::new(FakeHasher::default()),
-        );
+        let mut repo = MockDeviceRepo::new();
+        repo.expect_find_by_username()
+            .returning(|_| Err(MobileDeviceError::Storage("disk gone".into())));
+        let uc = AuthenticateBasicAuthUseCase::new(Arc::new(repo), Arc::new(fake_hasher()));
+
         let err = uc
             .execute(AuthenticateBasicAuthInput {
                 authorization_header: header_for("mobile_aaaa", "x"),
@@ -441,15 +428,13 @@ mod tests {
     #[tokio::test]
     async fn translates_hasher_internal_error() {
         let device = make_device("mobile_aaaa", "phc:hunter2");
-        let uc = AuthenticateBasicAuthUseCase::new(
-            Arc::new(InMemoryRepo {
-                devices: Mutex::new(vec![device]),
-                force_storage_err: false,
-            }),
-            Arc::new(FakeHasher {
-                force_internal: true,
-            }),
-        );
+        let mut hasher = MockHasher::new();
+        hasher
+            .expect_verify()
+            .returning(|_, _| Err(PasswordHasherError::Internal("forced".into())));
+
+        let uc =
+            AuthenticateBasicAuthUseCase::new(Arc::new(repo_with(vec![device])), Arc::new(hasher));
         let err = uc
             .execute(AuthenticateBasicAuthInput {
                 authorization_header: header_for("mobile_aaaa", "hunter2"),

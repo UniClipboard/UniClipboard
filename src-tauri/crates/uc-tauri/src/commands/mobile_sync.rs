@@ -18,6 +18,7 @@ use uc_application::facade::mobile_sync::{
     MobileDeviceSummary, MobileSyncFacade, MobileSyncSettingsView,
     RegisterMobileShortcutDeviceError, RegisterMobileShortcutDeviceInput,
     RegisterMobileShortcutDeviceOutput, RevokeMobileDeviceError, RevokeMobileDeviceInput,
+    RotateMobilePasswordError, RotateMobilePasswordInput, RotateMobilePasswordOutput,
     ShortcutInstallMethod, ShortcutInstallMethodOption, UpdateMobileSyncSettingsError,
     UpdateMobileSyncSettingsInput, UpdateMobileSyncSettingsOutput,
 };
@@ -166,6 +167,24 @@ impl From<ListMobileDevicesError> for MobileSyncError {
     }
 }
 
+impl From<RotateMobilePasswordError> for MobileSyncError {
+    fn from(err: RotateMobilePasswordError) -> Self {
+        match err {
+            RotateMobilePasswordError::NotFound(id) => Self::DeviceNotFound {
+                device_id: id.into_string(),
+            },
+            RotateMobilePasswordError::PasswordTooShort { min } => Self::PasswordTooShort { min },
+            RotateMobilePasswordError::PasswordTooLong { max } => Self::PasswordTooLong { max },
+            RotateMobilePasswordError::PasswordHashFailed(message) => {
+                Self::PasswordHashFailed { message }
+            }
+            RotateMobilePasswordError::PersistenceFailed(message) => {
+                Self::PersistenceFailed { message }
+            }
+        }
+    }
+}
+
 impl From<GetMobileSyncSettingsError> for MobileSyncError {
     fn from(err: GetMobileSyncSettingsError) -> Self {
         match err {
@@ -260,14 +279,47 @@ fn client_type_wire(t: &MobileClientType) -> &'static str {
     t.as_wire_str()
 }
 
+/// `rotate_mobile_password` 入参。`password = None` (字段缺失或 null) 走
+/// minter 自动颁发新明文;给值则按规则严格校验。
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RotateMobilePasswordArgs {
+    pub device_id: String,
+    #[serde(default)]
+    pub password: Option<String>,
+}
+
+/// `rotate_mobile_password` 返回值。`password` 是**唯一一次**面向用户的
+/// 明文回显 —— 之后只以 PHC 形式存在。前端必须立即在 modal 里展示, 并
+/// 提示用户同步更新 iPhone shortcut 里的 password 字段(旧密码已立即
+/// 失效)。
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RotateMobilePasswordResult {
+    pub device_id: String,
+    pub username: String,
+    pub password: String,
+}
+
+impl From<RotateMobilePasswordOutput> for RotateMobilePasswordResult {
+    fn from(out: RotateMobilePasswordOutput) -> Self {
+        Self {
+            device_id: out.device_id.into_string(),
+            username: out.username,
+            password: out.password,
+        }
+    }
+}
+
 /// `list_mobile_devices` 单条结果。来自 `MobileDeviceSummary`，不含
-/// password_hash / username。
+/// password_hash；username 透传给前端作为辅助识别字段。
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MobileDeviceView {
     pub device_id: String,
     pub label: String,
     pub client_type: String,
+    pub username: String,
     pub created_at_ms: i64,
     pub last_seen_at_ms: Option<i64>,
     pub last_seen_ip: Option<String>,
@@ -281,6 +333,7 @@ impl From<MobileDeviceSummary> for MobileDeviceView {
             device_id: s.device_id.into_string(),
             label: s.label,
             client_type: client_type_wire(&s.client_type).to_string(),
+            username: s.username,
             created_at_ms: s.created_at_ms,
             last_seen_at_ms: s.last_seen_at_ms,
             last_seen_ip: s.last_seen_ip,
@@ -508,7 +561,7 @@ pub async fn revoke_mobile_device(
 }
 
 /// 列出已登记设备。结果按"最近活跃 desc → 创建时间 desc"排序。不含
-/// password_hash / username。
+/// password_hash；username 作为辅助识别字段透传给前端。
 #[tauri::command]
 pub async fn list_mobile_devices(
     runtime: State<'_, Arc<TauriAppRuntime>>,
@@ -525,6 +578,38 @@ pub async fn list_mobile_devices(
         let facade = mobile_sync_facade(&runtime)?;
         let devices = facade.list_devices().await?;
         Ok(devices.into_iter().map(Into::into).collect())
+    }
+    .instrument(span)
+    .await
+}
+
+/// 给一台已登记设备换一份新密码。`password = None`(字段缺失 / null)走
+/// minter 自动颁发;给值则按 8–256 字符校验。返回值 `password` 是**唯一一次**
+/// 明文回显 —— 之后只以 PHC 存在,UI 必须立即展示并告知用户同步更新 iPhone
+/// shortcut 里的 password 字段(旧密码已立即失效)。
+#[tauri::command]
+pub async fn rotate_mobile_password(
+    runtime: State<'_, Arc<TauriAppRuntime>>,
+    args: RotateMobilePasswordArgs,
+    _trace: Option<TraceMetadata>,
+) -> Result<RotateMobilePasswordResult, MobileSyncError> {
+    let span = info_span!(
+        "command.mobile_sync.rotate_password",
+        device_id = %args.device_id,
+        custom_password = args.password.is_some(),
+        trace_id = tracing::field::Empty,
+        trace_ts = tracing::field::Empty,
+    );
+    record_trace_fields(&span, &_trace);
+
+    async move {
+        let facade = mobile_sync_facade(&runtime)?;
+        let input = RotateMobilePasswordInput {
+            device_id: MobileDeviceId::new(args.device_id),
+            password: args.password,
+        };
+        let out = facade.rotate_password(input).await?;
+        Ok(RotateMobilePasswordResult::from(out))
     }
     .instrument(span)
     .await
@@ -737,6 +822,59 @@ mod tests {
         assert_eq!(dto.client_type, "ios_shortcut");
         assert_eq!(dto.device_id, "did_test");
         assert_eq!(dto.password, "secretpw");
+    }
+
+    #[test]
+    fn rotate_args_password_optional() {
+        // 不给 password → 走 minter 自动颁发
+        let json = r#"{"deviceId": "did_x"}"#;
+        let args: RotateMobilePasswordArgs = serde_json::from_str(json).unwrap();
+        assert_eq!(args.device_id, "did_x");
+        assert!(args.password.is_none());
+    }
+
+    #[test]
+    fn rotate_args_with_custom_password_camel_case() {
+        let json = r#"{"deviceId": "did_x", "password": "brand-new"}"#;
+        let args: RotateMobilePasswordArgs = serde_json::from_str(json).unwrap();
+        assert_eq!(args.device_id, "did_x");
+        assert_eq!(args.password.as_deref(), Some("brand-new"));
+    }
+
+    #[test]
+    fn rotate_result_serializes_camel_case() {
+        // 走 facade output → DTO 转换路径,断言 device_id / username / password
+        // 都按 camelCase 序列化(前端 wire 形态)。
+        use uc_core::mobile_sync::MobileDeviceId;
+        let dto = RotateMobilePasswordResult::from(RotateMobilePasswordOutput {
+            device_id: MobileDeviceId::new("did_rot"),
+            username: "mobile_alice".into(),
+            password: "fresh-pw".into(),
+        });
+        let json = serde_json::to_value(&dto).unwrap();
+        assert_eq!(json["deviceId"], "did_rot");
+        assert_eq!(json["username"], "mobile_alice");
+        assert_eq!(json["password"], "fresh-pw");
+    }
+
+    #[test]
+    fn rotate_error_not_found_translates_to_device_not_found_with_camel_case() {
+        let app_err = RotateMobilePasswordError::NotFound(
+            uc_core::mobile_sync::MobileDeviceId::new("did_ghost"),
+        );
+        let mapped = MobileSyncError::from(app_err);
+        let json = serde_json::to_value(&mapped).unwrap();
+        assert_eq!(json["code"], "DEVICE_NOT_FOUND");
+        assert_eq!(json["deviceId"], "did_ghost");
+    }
+
+    #[test]
+    fn rotate_error_password_too_short_translates_with_min_field() {
+        let app_err = RotateMobilePasswordError::PasswordTooShort { min: 8 };
+        let mapped = MobileSyncError::from(app_err);
+        let json = serde_json::to_value(&mapped).unwrap();
+        assert_eq!(json["code"], "PASSWORD_TOO_SHORT");
+        assert_eq!(json["min"], 8);
     }
 
     #[test]

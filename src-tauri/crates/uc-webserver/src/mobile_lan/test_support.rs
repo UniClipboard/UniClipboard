@@ -128,6 +128,20 @@ pub(crate) async fn build_facade_with_seeded_device(
         ) -> Result<(), MobileDeviceError> {
             Ok(())
         }
+        async fn update_password_hash(
+            &self,
+            id: &MobileDeviceId,
+            new_hash: String,
+        ) -> Result<bool, MobileDeviceError> {
+            let mut devs = self.devices.lock().unwrap();
+            match devs.iter_mut().find(|d| d.device_id == *id) {
+                Some(d) => {
+                    d.password_hash = new_hash;
+                    Ok(true)
+                }
+                None => Ok(false),
+            }
+        }
     }
 
     struct FakeHasher;

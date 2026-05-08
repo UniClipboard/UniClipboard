@@ -132,14 +132,14 @@ desktop daemon advertises a SyncClipboard-compatible HTTP service on
 your local network, and a paired mobile client talks to it with HTTP
 Basic Auth credentials minted at registration.
 
-| Aspect          | Desktop ↔ desktop                                  | Desktop ↔ mobile                                      |
-| --------------- | -------------------------------------------------- | ----------------------------------------------------- |
-| Trust unit      | Space + passphrase (PAKE)                          | Per-device username + password (Basic Auth)          |
-| Identity        | iroh node ID (Ed25519 keypair)                     | Registered device record on the desktop              |
-| Discovery       | mDNS + rendezvous + cached direct addrs            | Manual base URL (LAN IP + port) shown at pairing     |
-| Transport       | iroh QUIC, P2P first, encrypted relay fallback     | Plain HTTP on the LAN — **no QUIC, no relay**        |
-| Cross-network   | Yes (hole-punching, relay)                         | **No** — same LAN only                                |
-| End-to-end key  | XChaCha20-Poly1305 under the space MasterKey       | TLS-less HTTP; payload hashed and authenticated only |
+| Aspect         | Desktop ↔ desktop                              | Desktop ↔ mobile                                     |
+| -------------- | ---------------------------------------------- | ---------------------------------------------------- |
+| Trust unit     | Space + passphrase (PAKE)                      | Per-device username + password (Basic Auth)          |
+| Identity       | iroh node ID (Ed25519 keypair)                 | Registered device record on the desktop              |
+| Discovery      | mDNS + rendezvous + cached direct addrs        | Manual base URL (LAN IP + port) shown at pairing     |
+| Transport      | iroh QUIC, P2P first, encrypted relay fallback | Plain HTTP on the LAN — **no QUIC, no relay**        |
+| Cross-network  | Yes (hole-punching, relay)                     | **No** — same LAN only                               |
+| End-to-end key | XChaCha20-Poly1305 under the space MasterKey   | TLS-less HTTP; payload hashed and authenticated only |
 
 ### Pairing a mobile device
 
@@ -161,7 +161,7 @@ that hosts the per-device list). The pairing flow:
 Settings — LAN listener on/off, advertised IP and port — live behind
 the **Mobile sync settings** sheet on the same page.
 
-### What mobile sync does *not* do
+### What mobile sync does _not_ do
 
 - **No iroh / no relay.** The mobile listener is a separate HTTP
   service. There's no NAT hole-punching, no encrypted-relay fallback,

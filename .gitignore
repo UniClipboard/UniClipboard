@@ -87,3 +87,5 @@ stage/
 prime/
 *.snap
 snap/.snapcraft/
+.vercel
+.env*.local

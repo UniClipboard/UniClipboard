@@ -162,7 +162,7 @@ pub const MAX_PASSWORD_LEN: usize = 256;
 /// 该常量与 `.context/mobile-sync/SPEC.md` §14.2 + findings.md v3 段落对齐;
 /// 升级 v2 引入 ClipboardAuto 时新增一个 install URL 的常量,不替换本值。
 pub const SYNC_CLIPBOARD_EX_INSTALL_URL: &str =
-    "https://www.icloud.com/shortcuts/34404963b512432cb5672c8a95001b19";
+    "https://www.icloud.com/shortcuts/9c2319d7d6404521b941271e89194f30";
 
 pub(crate) struct RegisterMobileShortcutDeviceUseCase {
     credentials_minter: Arc<dyn MobileCredentialsMinterPort>,

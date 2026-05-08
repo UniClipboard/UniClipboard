@@ -1,20 +1,191 @@
 ---
-title: CLI (uc-cli)
-description: Headless control of the UniClipboard daemon.
+title: CLI (uniclip)
+description: Headless control of UniClipboard from the terminal.
 ---
 
-`uc-cli` talks to the local daemon over its IPC socket. It's useful for
-scripting, headless servers, and CI flows that need clip transport without a
-GUI session.
+import { Tab, Tabs } from 'fumadocs-ui/components/tabs';
 
-## Common commands
+The `uniclip` binary is the terminal-side equivalent of the desktop
+app. It runs the daemon in-process, so anything the GUI can do — pair,
+sync, send, search — works headlessly over SSH, in tmux, on a server,
+or from a script.
+
+Install via the [Install](../getting-started/install) page (Homebrew
+on macOS, the headless `uniclip` artefact on Linux servers, etc.).
+
+## Global flags
+
+These work on every subcommand:
+
+| Flag                | Effect                                                                                        |
+| ------------------- | --------------------------------------------------------------------------------------------- |
+| `--json`            | Emit machine-readable JSON. Field names are stable; suitable for scripting.                   |
+| `-v`, `--verbose`   | Show debug-level diagnostics on the console.                                                  |
+| `--profile <NAME>`  | Run as a separate profile — isolates data dir, keychain entry, and iroh identity.             |
+| `--dev`             | Use file-based secure storage instead of the system keychain. Development only.               |
+
+`--profile` is the supported way to simulate two devices on one
+machine for end-to-end testing — run two terminals, each with a
+different `--profile` value.
+
+## Daemon lifecycle
+
+| Command                       | Effect                                                  |
+| ----------------------------- | ------------------------------------------------------- |
+| `uniclip start`               | Start the daemon in the background.                     |
+| `uniclip start --foreground`  | Run the daemon in the foreground; logs go to the TTY.   |
+| `uniclip stop`                | Stop the running daemon.                                |
+| `uniclip status`              | Show daemon health, pairing state, and presence.        |
+
+The daemon starts automatically when you run a command that needs it,
+so explicit `start` is mostly for log-streaming setups and headless
+servers that want a long-lived background process.
+
+## Space lifecycle
+
+The CLI mirrors the GUI flow described in
+[Pairing & sync](../guides/pairing).
+
+<Tabs items={['Sponsor (first device)', 'Joiner (new device)']}>
+
+<Tab value="Sponsor (first device)">
 
 ```bash
-uc-cli status              # daemon health and peer list
-uc-cli copy "hello"        # push a clip onto the local clipboard
-uc-cli paste --latest      # print the latest clip on stdout
-uc-cli peers ls            # list paired peers
-uc-cli send <peer> --file PATH
+# Create a fresh encrypted space on this profile
+uniclip init
+
+# Issue a one-time invitation and wait for the joiner
+uniclip invite
 ```
 
-Run `uc-cli --help` for the full surface.
+`init` prompts for the passphrase interactively. Pass `--passphrase`
+or `--device-name` only in non-interactive contexts (e.g. an E2E test
+script).
+
+</Tab>
+
+<Tab value="Joiner (new device)">
+
+```bash
+# Redeem an invitation and join the sponsor's space
+uniclip join <invitation-code>
+
+# Verify the pairing landed
+uniclip members
+```
+
+`join` prompts for the passphrase if `--passphrase` is omitted. The
+passphrase is verified locally via PAKE — a wrong value fails fast
+without leaking the guess to the sponsor.
+
+</Tab>
+
+</Tabs>
+
+To switch this device to a different sponsor's space (re-encrypting
+local history under the new MasterKey):
+
+```bash
+uniclip switch-space
+```
+
+## Members & devices
+
+| Command            | What it shows                                                  |
+| ------------------ | -------------------------------------------------------------- |
+| `uniclip devices`  | Paired devices on record (persistent list).                    |
+| `uniclip members`  | Live presence: `{name} ({online \| offline \| unknown})`.      |
+
+Both honour `--json` for scripting.
+
+## Sending and watching
+
+```bash
+# Send text to every online paired device
+uniclip send "hello from the CLI"
+
+# Or pipe stdin
+echo "from a heredoc" | uniclip send
+
+# Watch inbound clipboard payloads as they arrive (Ctrl-C to stop)
+uniclip watch
+```
+
+`uniclip watch` is a **diagnostic observer**: it prints the first text
+representation (or a per-rep summary for image-only payloads) but
+does **not** write the system clipboard — that's the daemon's job.
+
+## Search
+
+`uniclip search` exposes the encrypted full-text index that backs the
+GUI dashboard search.
+
+```bash
+uniclip search status                    # is the index ready / building?
+uniclip search rebuild                   # rebuild from history (synchronous)
+uniclip search query "report"            # default query
+uniclip search query "report" \
+    --type text --ext md \
+    --limit 20 --detailed
+uniclip search query "report" \
+    --from-ms 1710000000000 --to-ms 1710100000000
+```
+
+`rebuild` blocks until the rebuild finishes; useful when scripting a
+diagnostic snapshot.
+
+## Blob (large-payload) diagnostics
+
+`uniclip blob` is the headless interface to the chunked-blob pipeline
+described in [Sync content](../guides/sync#large-payloads-files--big-images).
+
+```bash
+# Publish a local file as an encrypted blob and print its ticket
+uniclip blob publish ./sample.bin
+
+# Fetch a blob by ticket + entry ID into a local file
+uniclip blob fetch <TICKET> --entry-id <ENTRY_ID> --out ./restored.bin
+```
+
+Useful when debugging file-sync failures or verifying a peer can
+reach blob storage.
+
+## Upgrade-detection cursor
+
+```bash
+uniclip upgrade status
+uniclip upgrade advance
+```
+
+Inspects or advances the upgrade-detection cursor — exposed for manual
+verification of the upgrade module. Most users never need this.
+
+## Hidden commands
+
+The following commands exist but are deliberately hidden from
+`uniclip --help`:
+
+- `uniclip probe ...` — clipboard-diagnostic group (replaces the old
+  `clipboard-probe` binary). The only CLI path that writes the system
+  clipboard, and only via `probe restore`. Development and E2E only.
+- `uniclip seed-clipboard --text <TEXT>` — debug seeding for
+  switch-space data-integrity tests.
+- `uniclip dump-clipboard --limit <N>` — debug printing of decrypted
+  history.
+- `uniclip daemon` — internal entrypoint that `uniclip start` uses to
+  spawn the background daemon. Not intended for direct use.
+
+These won't show up in shell completion or `--help`, and may change
+without notice. They're documented here so you don't think you're
+seeing things in `ps` or in commit history.
+
+## Exit codes
+
+`uniclip` uses stable exit codes (defined in the source under
+`src/exit_codes.rs`). `0` is success; non-zero values map to
+distinct failure classes (configuration, network, pairing, etc.) and
+are stable across releases. Scripts should branch on exit code rather
+than parse human-readable output.
+
+For the most up-to-date list of subcommands, run `uniclip --help` —
+the binary's help is the source of truth.

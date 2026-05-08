@@ -1,16 +1,165 @@
 ---
 title: Quick start
-description: Pair two devices and sync your first clip.
+description: Create your first encrypted space and sync your first clip.
 ---
 
-After installing on two machines on the same LAN:
+import { Step, Steps } from 'fumadocs-ui/components/steps';
+import { Tab, Tabs } from 'fumadocs-ui/components/tabs';
 
-1. Open UniClipboard on **device A** → **Settings → Pairing → New code**.
-2. On **device B**, enter the code. The peers exchange a key and store each
-   other in their trusted-peer list.
-3. Copy something on A. Paste on B. Done.
+UniClipboard syncs through a **space** — a private, end-to-end encrypted
+group your devices belong to. The first device creates the space; every
+other device joins it with a short-lived invite code. There is no cloud
+account and no email — the space _is_ the account.
 
-The pairing handshake is one-time; subsequent sessions reconnect automatically
-when both peers are online.
+This page takes you from a fresh install on two machines to your first
+synced paste.
 
-See [Pairing & sync](../guides/pairing) for protocol details.
+## What you'll need
+
+- UniClipboard installed on **at least two devices**. See
+  [Install](./install) for downloads.
+- A passphrase you'll remember. It protects every clip in the space and
+  cannot be recovered if you lose it — that is the design, not a bug.
+- Both devices online at the same time. Any network works: the same
+  Wi-Fi, different home networks, or a phone hotspot. Devices reach each
+  other directly when they can, and fall back to an encrypted relay when
+  they cannot.
+
+<Callout type="info">
+  The trust boundary is the **space**, not the individual device. Adding
+  a third or fourth device later is the same flow as adding the second
+  one — generate an invite, enter it on the new device.
+</Callout>
+
+## Set up the first device
+
+<Steps>
+
+<Step>
+
+### Launch the app and pick **Create a new space**
+
+On first launch you'll see two options: **Create a new space** and
+**Join an existing space**. Pick the first.
+
+</Step>
+
+<Step>
+
+### Set a space passphrase
+
+The passphrase is fed through Argon2id to derive your encryption key,
+which then encrypts every clip with XChaCha20-Poly1305. Pick something
+long and memorable — there is no reset flow, by design. Nothing about
+your space ever leaves the device unencrypted.
+
+</Step>
+
+<Step>
+
+### Start copying
+
+The dashboard opens. Anything you copy from now on is captured into the
+space and ready to sync the moment a second device joins.
+
+</Step>
+
+</Steps>
+
+## Add a second device
+
+Have both devices in front of you — one to generate the invite, one to
+enter it.
+
+<Tabs items={['Desktop app', 'CLI (uniclip)']}>
+
+<Tab value="Desktop app">
+
+<Steps>
+
+<Step>
+
+### On the **first** device → **Devices** → **Generate invite code**
+
+The code is short-lived (valid for a few minutes) and one-time. It does
+**not** carry your passphrase.
+
+</Step>
+
+<Step>
+
+### On the **new** device → **Join an existing space**
+
+Enter the invite code together with the same passphrase you set on the
+first device. The passphrase is verified locally — a wrong passphrase
+fails fast and is never sent to the other device.
+
+</Step>
+
+<Step>
+
+### Wait for the first sync
+
+Once the join completes, the new device's history catches up
+automatically. Both devices now show each other under **Devices** with
+an online indicator.
+
+</Step>
+
+</Steps>
+
+</Tab>
+
+<Tab value="CLI (uniclip)">
+
+The CLI mirrors the GUI flow and is useful for headless servers, SSH
+sessions, and tmux-driven workflows.
+
+```bash
+# On the first device — skip if you already created the space in the GUI
+uniclip init
+
+# Generate a short-lived invite code
+uniclip invite
+
+# On the new device, paste the code from the previous step
+uniclip join <code>
+
+# Confirm both peers see each other
+uniclip members
+```
+
+The daemon starts automatically. Use `uniclip status` to inspect it, or
+`uniclip start` / `uniclip stop` to control it explicitly.
+
+</Tab>
+
+</Tabs>
+
+## Verify it works
+
+1. On device A, copy any text — or an image, or a file.
+2. Switch to device B and paste with `Cmd+V` / `Ctrl+V`, or open the
+   **quick panel** with its keyboard shortcut and pick the entry.
+
+If the paste shows up immediately, you're done. If it doesn't,
+[Pairing & sync](../guides/pairing) covers the transport (P2P
+hole-punching, encrypted relay fallback) and how to debug a stuck peer.
+
+## What's next
+
+- **Add more devices.** Repeat the second-device flow on every machine
+  you want in the space. Each invite is one-time.
+- **Try the quick panel.** Invoke it with the configured shortcut for
+  fast keyboard-driven access to recent clips — text, links, images,
+  code, and files.
+- **Switch spaces.** From the **Devices** page or via
+  `uniclip switch-space`, e.g. to keep personal and work machines in
+  separate spaces. Local history is re-encrypted under the new space's
+  key during the switch.
+
+<Callout type="warn">
+  Upgrading from a pre-0.6 release? The underlying network stack was
+  reworked, so old pairing state is no longer valid. Generate a fresh
+  invite once and the devices will resume syncing.
+</Callout>

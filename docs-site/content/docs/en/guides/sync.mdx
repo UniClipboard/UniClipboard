@@ -1,17 +1,95 @@
 ---
-title: What syncs
-description: Payload types supported by the clipboard pipeline.
+title: Sync content
+description: Payload types that flow through the clipboard pipeline.
 ---
 
-UniClipboard normalises clipboard data into a small set of representations and
-syncs each one as a separate payload, so paste targets get the richest format
-they understand.
+A "clip" in UniClipboard isn't a single blob — it's a small bundle of
+**representations** describing the same logical copy. Some apps copy
+both rich and plain text; some only ever produce text; an image copy
+yields the encoded bytes plus a fallback path. The receiver picks the
+richest representation it understands when you paste.
 
-| Type      | Notes                                                |
-| --------- | ---------------------------------------------------- |
-| Plain text| UTF-8, always provided as a fallback.                |
-| RTF / HTML| Synced together so rich pastes survive the wire.     |
-| Files     | Multi-file selections; reconstructed at the receiver.|
-| Images    | PNG / JPEG / WebP, transferred by content hash.      |
+## Supported representations
 
-Large payloads are chunked and resumed across reconnects.
+| Type       | Notes                                                          |
+| ---------- | -------------------------------------------------------------- |
+| Plain text | UTF-8. Always present as a fallback when richer types exist.   |
+| RTF / HTML | Carried alongside text so rich pastes survive the wire.        |
+| Images     | PNG / JPEG / WebP, transferred by content hash.                |
+| Files      | Single or multi-file selections, reconstructed at the receiver.|
+
+Each representation is a distinct payload on the wire. The dispatcher
+waits until every representation is delivered before flagging the
+clip as fully synced — partial deliveries are surfaced in the history.
+
+## Small payloads
+
+Text, RTF, HTML, and small images travel inline inside an encrypted
+envelope (V3 wire format). Each envelope carries its own random
+24-byte XChaCha20-Poly1305 nonce; nonce reuse is structurally
+impossible. The envelope is signed by the sender's node identity and
+verified before decryption.
+
+## Large payloads (files & big images)
+
+Anything past the inline-size threshold is published as a **blob**:
+
+1. The sender chunks the payload, encrypts each chunk under the space
+   MasterKey, and seeds the chunks into the local blob store.
+2. A short blob ticket — content hash + access metadata — is sent to
+   the receiver via the same encrypted channel as small payloads.
+3. The receiver streams the blob back. Already-cached chunks short
+   circuit; only missing chunks are pulled.
+
+This means:
+
+- **Files don't have to fit in memory.** Both ends stream chunks to and
+  from disk.
+- **Resumable across reconnects.** A laptop closing mid-file resumes
+  on the next session, picking up at the last completed chunk.
+- **Deduplication is automatic.** Re-copying the same file pays only
+  metadata overhead — the chunks are already on disk on both ends.
+
+## Local storage
+
+Every received payload (and every payload _you_ generate) lands in
+the local clipboard history:
+
+- Encrypted SQLite database under the platform-specific app data
+  directory ([see Install](../getting-started/install#where-data-lives)).
+- A separate **encrypted full-text search index** for the dashboard
+  search box and `uniclip search query`. The index is encrypted on
+  disk too — "stored locally" is not the same as "stored safely."
+- Blob chunks live under a sibling directory and are garbage-collected
+  according to your retention settings.
+
+If you switch spaces (`uniclip switch-space`), the existing history
+is re-encrypted under the new space's MasterKey before the daemon
+reports the switch as complete. There is no plaintext window during
+the transition.
+
+## Per-device sync gates
+
+Every paired device exposes a small set of toggles that bound what it
+will send and receive:
+
+- **Send / Receive** — independent on / off switches.
+- **Content types** — restrict to a subset (text only, no files, etc.)
+  per direction.
+
+Toggles are enforced at the dispatcher, not at the receiver, so
+disabling a content type also stops the bytes from leaving the
+sending device. See the **Devices** page in the GUI, or the
+forthcoming `uniclip devices` config commands in the CLI.
+
+## What sync does _not_ do
+
+- **No "history merge" across devices.** Each device keeps its own
+  encrypted history. Copying on A delivers to B's history live; B
+  doesn't retroactively receive A's pre-pairing history.
+- **No cross-space leakage.** Two spaces on the same machine use
+  independent MasterKeys; switching spaces re-encrypts but doesn't
+  share.
+- **No clipboard polling.** UniClipboard listens for native clipboard
+  events from the OS — there's no busy-wait loop reading the
+  pasteboard.

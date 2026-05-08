@@ -1,23 +1,45 @@
 ---
 title: 欢迎
-description: 为键盘流而生的跨设备剪贴板。
+description: 隐私优先、端到端加密、跨设备跨网络的剪贴板。
 ---
 
-UniClipboard 让文本、文件和富格式剪贴内容在你的多台设备之间保持同步——
-完全不依赖第三方服务器。
+UniClipboard 让文本、文件、图片以及富格式剪贴在你的多台设备之间保持同步 —— 不需要云账号、不需要邮箱登录，也不需要你自己运维任何基础设施。能直连就直连，连不通时自动回落到加密中继。中继永远只看到密文。
 
 ## 快速入口
 
 <Cards>
-  <Card title="安装" href="/zh/docs/getting-started/install" description="在 macOS、Windows 或 Linux 上安装。" />
-  <Card title="快速开始" href="/zh/docs/getting-started/quick-start" description="配对两台设备，完成首次同步。" />
-  <Card title="配对与同步" href="/zh/docs/guides/pairing" description="局域网内的设备发现机制。" />
-  <Card title="CLI 参考" href="/zh/docs/reference/cli" description="通过 uc-cli 进行无界面控制。" />
+  <Card
+    title="安装"
+    href="/zh/docs/getting-started/install"
+    description="支持 macOS、Windows、Linux。"
+  />
+  <Card
+    title="快速开始"
+    href="/zh/docs/getting-started/quick-start"
+    description="创建空间并完成首次同步。"
+  />
+  <Card
+    title="配对与同步"
+    href="/zh/docs/guides/pairing"
+    description="空间、邀请码与传输层的关系。"
+  />
+  <Card
+    title="CLI 参考"
+    href="/zh/docs/reference/cli"
+    description="通过 uniclip CLI 进行无界面控制。"
+  />
 </Cards>
 
 ## 为什么选择 UniClipboard
 
-- **本地优先。** 所有同步走局域网，剪贴内容不出网。
-- **跨平台。** macOS、Windows、Linux 共享同一条剪贴流。
-- **富内容。** 文件、图片、RTF、HTML——不止于纯文本。
-- **键盘优先。** 为键盘流打造的快速面板。
+- **从设计上保护隐私。** 内容离开剪贴板那一刻起就以 XChaCha20-Poly1305
+  加密。本地历史与全文搜索索引在磁盘上同样加密。
+- **不需要账号、不需要邮箱。** 设备属于一个**空间**。加入空间只需要一次性邀请码和空间口令
+  —— 整条链路上没有任何第三方身份提供方。
+- **跨网络可用。** 同 Wi-Fi、不同家庭网络、手机热点都能跑。优先 P2P 直连，NAT
+  打不通时自动回落到加密中继。睡眠唤醒、切换 Wi-Fi、短暂断网后会自动恢复连接。
+- **支持富内容。** 文本、文件、图片、RTF、HTML —— 不止于纯文本。大文件采用流式传输，无需先装进内存。
+- **键盘优先。** 快捷面板为键盘流而设，文本、链接、图片、代码与文件均可内嵌预览。
+- **CLI 对等。** `uniclip` 命令行工具与 GUI 流程一致，可在服务器、SSH
+  会话、tmux 工作流中使用。
+- **真正跨平台。** Windows、macOS、Linux 三端均为一等公民。

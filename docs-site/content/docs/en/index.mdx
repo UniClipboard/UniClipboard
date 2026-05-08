@@ -1,23 +1,55 @@
 ---
 title: Welcome
-description: A cross-device clipboard, built for keyboard-driven flow.
+description: A privacy-first, end-to-end encrypted clipboard that follows you across devices and networks.
 ---
 
-UniClipboard keeps text, files, and rich payloads in sync across your machines —
-without a third-party server.
+UniClipboard keeps text, files, images, and rich payloads in sync
+across your devices — without a cloud account, an email login, or any
+infrastructure you have to run. Devices reach each other directly when
+they can, and fall back to an encrypted relay when they can't. The
+relay only ever sees ciphertext.
 
 ## Quick links
 
 <Cards>
-  <Card title="Install" href="/docs/getting-started/install" description="Install on macOS, Windows, or Linux." />
-  <Card title="Quick start" href="/docs/getting-started/quick-start" description="Pair two devices and sync your first clip." />
-  <Card title="Pairing & sync" href="/docs/guides/pairing" description="How devices discover each other on a LAN." />
-  <Card title="CLI reference" href="/docs/reference/cli" description="Headless control via uc-cli." />
+  <Card
+    title="Install"
+    href="/docs/getting-started/install"
+    description="macOS, Windows, or Linux."
+  />
+  <Card
+    title="Quick start"
+    href="/docs/getting-started/quick-start"
+    description="Create your space and sync your first clip."
+  />
+  <Card
+    title="Pairing & sync"
+    href="/docs/guides/pairing"
+    description="How spaces, invites, and transport fit together."
+  />
+  <Card
+    title="CLI reference"
+    href="/docs/reference/cli"
+    description="Headless control via the uniclip CLI."
+  />
 </Cards>
 
 ## Why UniClipboard
 
-- **Local-first.** Sync runs over your LAN; clips never leave your network.
-- **Cross-platform.** macOS, Windows, and Linux share the same clip stream.
-- **Rich payloads.** Files, images, RTF, and HTML — not just plain text.
-- **Keyboard-first.** A quick panel built for hands-on-keys flow.
+- **Private by construction.** Payloads are encrypted with
+  XChaCha20-Poly1305 from the moment they leave your clipboard. Local
+  history is encrypted on disk too, including the search index.
+- **No account, no email.** Devices belong to a **space**. Joining a
+  space takes a one-time invite code and the space passphrase — there
+  is no third-party identity provider in the loop.
+- **Works across networks.** Same Wi-Fi, different home networks, or a
+  mobile hotspot. Direct P2P first; encrypted relay fallback when NAT
+  traversal fails. Connections recover automatically after sleep,
+  Wi-Fi switches, or short outages.
+- **Rich payloads.** Text, files, images, RTF, and HTML — not just
+  plain text. Large files stream without loading into memory first.
+- **Keyboard-first.** A quick panel built for hands-on-keys flow, with
+  inline previews for text, links, images, code, and files.
+- **CLI parity.** The `uniclip` CLI mirrors the GUI and works on
+  headless servers, SSH sessions, and tmux workflows.
+- **Cross-platform.** Windows, macOS, and Linux are all first-class.

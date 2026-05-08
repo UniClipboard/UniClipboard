@@ -3,23 +3,182 @@ title: 安装
 description: 在 macOS、Windows 或 Linux 上安装 UniClipboard。
 ---
 
-按你的平台选择构建版本。
+import { Step, Steps } from 'fumadocs-ui/components/steps';
+import { Tab, Tabs } from 'fumadocs-ui/components/tabs';
 
-## macOS
+UniClipboard 为 Windows、macOS、Linux 提供桌面应用与 `uniclip` 命令行工具。按你的平台选择安装方式 ——
+所有安装包最终指向同一组
+[GitHub Releases](https://github.com/UniClipboard/UniClipboard/releases)
+构建产物。
 
-从 Releases 页面下载最新 `.dmg`，把应用拖入 `/Applications`，并在首次启动时
-授予「辅助功能」与「输入监控」权限。
+<Callout type="warn">
+  UniClipboard 处于积极开发的 alpha 阶段。功能会持续演进，跨版本升级时同步状态可能会失效。请把它当成"好用但还不到当作基础设施依赖"的状态。
+</Callout>
 
-## Windows
+## 选择平台
 
-下载 `.msi` 安装包或便携版 `.zip`，两者均已签名。
+<Tabs items={['macOS', 'Windows', 'Linux']}>
 
-## Linux
+<Tab value="macOS">
 
-推荐使用 Snap，也可使用 AppImage：
+macOS 推荐使用官方 Homebrew tap。
 
 ```bash
-snap install uniclipboard
+brew tap UniClipboard/tap
+
+# 桌面应用（.app）
+brew install --cask uniclipboard
+
+# 仅安装 CLI，命令名为 `uniclip`
+brew install uniclipboard
 ```
 
-安装完成后，前往[快速开始](./quick-start)。
+也可以省去 `brew tap`，一行直装：
+
+```bash
+brew install --cask UniClipboard/tap/uniclipboard   # GUI
+brew install UniClipboard/tap/uniclipboard          # CLI
+```
+
+cask 与 formula 互不冲突，需要的话两个都装即可（GUI + 终端 `uniclip`）。
+
+更习惯手动安装？前往
+[Releases](https://github.com/UniClipboard/UniClipboard/releases)
+页面下载最新 `.dmg`，把应用拖入 `/Applications`。
+
+### 首次启动权限
+
+首次启动时 macOS 会请求两项权限，两者都是剪贴板同步必需的：
+
+- **辅助功能（Accessibility）** —— 用于读取系统剪贴板。
+- **输入监控（Input Monitoring）** —— 用于全局快捷面板快捷键。
+
+如果稍后才在 **系统设置 → 隐私与安全** 中授予，记得退出应用再重新启动以使权限生效。
+
+</Tab>
+
+<Tab value="Windows">
+
+Windows 提供两种形态：
+
+- **MSI 安装包** —— `UniClipboard_<version>_x64_en-US.msi`。标准安装流程，会写入开始菜单与卸载项。
+- **便携版 ZIP** —— 解压到任意位置，运行 `UniClipboard.exe`。不写注册表，适合 U 盘或受限环境。
+
+两种产物都已数字签名。
+
+按需从
+[Releases](https://github.com/UniClipboard/UniClipboard/releases)
+页面下载。
+
+<Callout type="info">
+  首次运行新版本时 SmartScreen 可能弹出警告。如果发布者信息与签名身份一致，点击
+  **更多信息 → 仍要运行**。如果不放心，可以在 **属性 → 数字签名** 中校验签名。
+</Callout>
+
+</Tab>
+
+<Tab value="Linux">
+
+Linux 推荐使用 Snap。Snap 包基于 `core22` 严格沙箱构建，自带 GTK + WebKit 运行时，因此在 Ubuntu
+20.04+、Debian 11+、RHEL 9、openSUSE Leap 等老发行版上都能正常运行。
+
+```bash
+sudo snap install uniclipboard
+```
+
+没有 `snapd`？请参考
+[Snapcraft 安装指南](https://snapcraft.io/docs/installing-snapd)
+查看你所用发行版的安装方式。
+
+不想用 Snap？每个 release 也会发布 AppImage。从
+[Releases](https://github.com/UniClipboard/UniClipboard/releases)
+页面下载，赋予可执行权限即可运行：
+
+```bash
+chmod +x UniClipboard-*.AppImage
+./UniClipboard-*.AppImage
+```
+
+### 无桌面环境（仅安装 CLI）
+
+服务器、SSH 会话或任何没有桌面的环境，可以从 Releases 单独下载 `uniclip` CLI ——
+查找 `uniclip-<version>-<arch>` 产物（与 musl 静态链接）。CLI 内置守护进程，无需 GUI 即可运行。
+
+</Tab>
+
+</Tabs>
+
+## 从源码构建
+
+需要 [Bun](https://bun.sh) 与 Rust 工具链（`rustup default stable`）。
+
+<Steps>
+
+<Step>
+
+### 克隆仓库
+
+```bash
+git clone https://github.com/UniClipboard/UniClipboard.git
+cd UniClipboard
+```
+
+</Step>
+
+<Step>
+
+### 安装依赖
+
+```bash
+bun install
+```
+
+</Step>
+
+<Step>
+
+### 开发模式启动，或构建发行包
+
+```bash
+# 本地开发，桌面应用支持热重载
+bun tauri dev
+
+# 为当前平台构建发行包
+bun tauri build
+```
+
+</Step>
+
+</Steps>
+
+发行包位于 `src-tauri/target/release/bundle/`。分支策略、commit 规范与 PR 流程见
+[CONTRIBUTING_ZH.md](https://github.com/UniClipboard/UniClipboard/blob/main/CONTRIBUTING_ZH.md)。
+
+## 验证安装
+
+安装完成后，确认 CLI 已在 `PATH` 中：
+
+```bash
+uniclip --version
+```
+
+对于 GUI，首次启动应显示**新建空间** / **加入已有空间**两个选项；如果已有空间，则直接进入仪表盘。
+
+## 数据存储位置
+
+UniClipboard 把加密数据库、搜索索引与日志放在各平台标准的应用数据目录下，目录名为
+`app.uniclipboard.desktop`：
+
+| 平台    | 路径                                                                |
+| ------- | ------------------------------------------------------------------- |
+| macOS   | `~/Library/Application Support/app.uniclipboard.desktop/`           |
+| Linux   | `~/.local/share/app.uniclipboard.desktop/`                          |
+| Windows | `%LOCALAPPDATA%\app.uniclipboard.desktop\`                          |
+
+日志位于其下的 `logs/` 子目录。设置 `UC_PROFILE` 环境变量（如
+`UC_PROFILE=dev`）可在目录名后追加后缀（变成
+`app.uniclipboard.desktop-dev`），这样开发版与正式版可以并存。
+
+## 下一步
+
+继续阅读[快速开始](./quick-start)，创建你的第一个空间并完成首次同步。

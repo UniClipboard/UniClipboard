@@ -3,24 +3,200 @@ title: Install
 description: Install UniClipboard on macOS, Windows, or Linux.
 ---
 
-Pick the build for your platform.
+import { Step, Steps } from 'fumadocs-ui/components/steps';
+import { Tab, Tabs } from 'fumadocs-ui/components/tabs';
 
-## macOS
+UniClipboard ships a desktop app and a `uniclip` CLI for Windows,
+macOS, and Linux. Pick the path for your platform — every installer
+below points at the same release artefacts on
+[GitHub Releases](https://github.com/UniClipboard/UniClipboard/releases).
 
-Download the latest `.dmg` from the Releases page, drag the app into
-`/Applications`, and grant Accessibility + Input Monitoring permissions on
-first launch.
+<Callout type="warn">
+  UniClipboard is in active alpha. Things will move; sync state may not
+  survive every upgrade. Treat it as "useful, not infrastructure."
+</Callout>
 
-## Windows
+## Pick your platform
 
-Download the `.msi` installer or the portable `.zip`. Both are signed.
+<Tabs items={['macOS', 'Windows', 'Linux']}>
 
-## Linux
+<Tab value="macOS">
 
-Snap (recommended) or AppImage:
+The easiest path on macOS is the official Homebrew tap.
 
 ```bash
-snap install uniclipboard
+brew tap UniClipboard/tap
+
+# Desktop app (the .app bundle)
+brew install --cask uniclipboard
+
+# Or, just the CLI — installs the `uniclip` command
+brew install uniclipboard
 ```
 
-Once installed, continue to [Quick start](./quick-start).
+Or install in a single command without tapping first:
+
+```bash
+brew install --cask UniClipboard/tap/uniclipboard   # GUI
+brew install UniClipboard/tap/uniclipboard          # CLI
+```
+
+The cask and the formula can coexist — install both if you want the GUI
+plus the `uniclip` command for terminal flows.
+
+Prefer to download the installer manually? Grab the latest `.dmg` from
+the [Releases](https://github.com/UniClipboard/UniClipboard/releases)
+page and drag the app into `/Applications`.
+
+### First-launch permissions
+
+On first launch macOS will prompt for two permissions. Both are
+required for clipboard sync to function:
+
+- **Accessibility** — needed to read the system clipboard.
+- **Input Monitoring** — needed for the global quick-panel shortcut.
+
+If you grant them later in **System Settings → Privacy & Security**,
+quit and reopen the app for the change to take effect.
+
+</Tab>
+
+<Tab value="Windows">
+
+Two options on Windows:
+
+- **MSI installer** — `UniClipboard_<version>_x64_en-US.msi`. Standard
+  installer flow; sets up Start Menu and uninstall entries.
+- **Portable ZIP** — extract anywhere and run `UniClipboard.exe`. No
+  registry writes; useful for USB sticks or locked-down machines.
+
+Both artefacts are code-signed.
+
+Download the one you want from the
+[Releases](https://github.com/UniClipboard/UniClipboard/releases) page.
+
+<Callout type="info">
+  SmartScreen may warn the first time you run a new release. Click
+  **More info → Run anyway** if the publisher matches the signed
+  identity. Verify the signature in **Properties → Digital Signatures**
+  if you're unsure.
+</Callout>
+
+</Tab>
+
+<Tab value="Linux">
+
+The recommended path is Snap. The Snap is built with strict
+confinement on `core22` and bundles its own GTK + WebKit stack, so it
+runs the same on Ubuntu 20.04+, Debian 11+, RHEL 9, openSUSE Leap, and
+similar.
+
+```bash
+sudo snap install uniclipboard
+```
+
+Don't have `snapd`? See the
+[Snapcraft install guide](https://snapcraft.io/docs/installing-snapd)
+for your distribution.
+
+Prefer not to use Snap? An AppImage is also published with each
+release. Download it from the
+[Releases](https://github.com/UniClipboard/UniClipboard/releases) page,
+mark it executable, and run it:
+
+```bash
+chmod +x UniClipboard-*.AppImage
+./UniClipboard-*.AppImage
+```
+
+### Headless / server install (CLI only)
+
+For servers, SSH sessions, or anything without a desktop, install just
+the `uniclip` CLI from Releases — look for the `uniclip-<version>-<arch>`
+artefact (statically linked against musl). The CLI runs the daemon
+in-process, so no GUI is required.
+
+</Tab>
+
+</Tabs>
+
+## Build from source
+
+You'll need [Bun](https://bun.sh) and a Rust toolchain
+(`rustup default stable`).
+
+<Steps>
+
+<Step>
+
+### Clone the repository
+
+```bash
+git clone https://github.com/UniClipboard/UniClipboard.git
+cd UniClipboard
+```
+
+</Step>
+
+<Step>
+
+### Install dependencies
+
+```bash
+bun install
+```
+
+</Step>
+
+<Step>
+
+### Run in dev mode, or produce a release build
+
+```bash
+# Live-reloading desktop app for local development
+bun tauri dev
+
+# Bundle a release artefact for the host platform
+bun tauri build
+```
+
+</Step>
+
+</Steps>
+
+The release build lands under `src-tauri/target/release/bundle/`. See
+[CONTRIBUTING.md](https://github.com/UniClipboard/UniClipboard/blob/main/CONTRIBUTING.md)
+for branch / commit / PR conventions.
+
+## Verify the install
+
+After installing, confirm the CLI is on your `PATH`:
+
+```bash
+uniclip --version
+```
+
+For the GUI, launching it should open the **Create a new space** /
+**Join an existing space** screen on first run. If a previous
+installation already created a space, the dashboard opens directly.
+
+## Where data lives
+
+UniClipboard stores its encrypted database, search index, and logs in
+the platform's standard application-data directory under
+`app.uniclipboard.desktop`:
+
+| Platform | Path                                                                |
+| -------- | ------------------------------------------------------------------- |
+| macOS    | `~/Library/Application Support/app.uniclipboard.desktop/`           |
+| Linux    | `~/.local/share/app.uniclipboard.desktop/`                          |
+| Windows  | `%LOCALAPPDATA%\app.uniclipboard.desktop\`                          |
+
+Logs sit under a `logs/` subdirectory. If you set the `UC_PROFILE` env
+var (e.g. `UC_PROFILE=dev`), the directory name is suffixed (e.g.
+`app.uniclipboard.desktop-dev`) so dev and prod can run side by side.
+
+## Next
+
+Continue to [Quick start](./quick-start) to create your first space
+and sync your first clip.

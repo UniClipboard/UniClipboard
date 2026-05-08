@@ -1,19 +1,165 @@
 ---
-title: 命令行（uc-cli）
-description: 通过命令行控制 UniClipboard 守护进程。
+title: 命令行（uniclip）
+description: 在终端中无界面控制 UniClipboard。
 ---
 
-`uc-cli` 通过本地 IPC socket 与守护进程通信，适合脚本、无界面服务器
-以及不带 GUI 的 CI 流程。
+import { Tab, Tabs } from 'fumadocs-ui/components/tabs';
 
-## 常用命令
+`uniclip` 是 UniClipboard 的终端版本。它把守护进程跑在进程内，
+所以 GUI 能做的（配对、同步、发送、搜索）都能在 SSH、tmux、服务器或脚本里完成。
+
+安装方式见[安装](../getting-started/install)（macOS Homebrew、Linux 服务器单装 `uniclip` 等）。
+
+## 全局参数
+
+以下参数对所有子命令生效：
+
+| 参数                | 作用                                                                                |
+| ------------------- | ----------------------------------------------------------------------------------- |
+| `--json`            | 输出机器可读的 JSON。字段名稳定，适合脚本调用。                                     |
+| `-v`, `--verbose`   | 在控制台打印 debug 级别日志。                                                       |
+| `--profile <NAME>`  | 使用独立 profile 运行 —— 隔离数据目录、密钥环条目、iroh 身份。                      |
+| `--dev`             | 用文件式安全存储替代系统密钥环。仅供开发使用。                                      |
+
+`--profile` 是单机模拟两台设备做端到端测试的官方方式 ——
+两个终端各用不同的 `--profile` 即可。
+
+## 守护进程生命周期
+
+| 命令                         | 作用                                                  |
+| ---------------------------- | ----------------------------------------------------- |
+| `uniclip start`              | 后台启动守护进程。                                    |
+| `uniclip start --foreground` | 前台启动并把日志输出到当前终端。                      |
+| `uniclip stop`               | 停止运行中的守护进程。                                |
+| `uniclip status`             | 查看守护进程健康度、配对状态、在线状态。              |
+
+需要守护进程的命令会自动拉起它，所以显式 `start` 主要用于"日志流式查看"或"长驻后台"的服务器场景。
+
+## 空间生命周期
+
+CLI 与 GUI 流程一致，详见[配对与同步](../guides/pairing)。
+
+<Tabs items={['Sponsor（首台设备）', 'Joiner（新设备）']}>
+
+<Tab value="Sponsor（首台设备）">
 
 ```bash
-uc-cli status              # 守护进程健康状态与对端列表
-uc-cli copy "hello"        # 把内容写入本机剪贴板
-uc-cli paste --latest      # 把最新一条剪贴内容打到 stdout
-uc-cli peers ls            # 查看已配对设备
-uc-cli send <peer> --file PATH
+# 在当前 profile 下新建加密空间
+uniclip init
+
+# 发起一次性邀请并等待 joiner
+uniclip invite
 ```
 
-执行 `uc-cli --help` 查看完整命令面。
+`init` 默认交互式输入口令。`--passphrase` 与 `--device-name` 仅在非交互场景（如 E2E 测试脚本）中使用。
+
+</Tab>
+
+<Tab value="Joiner（新设备）">
+
+```bash
+# 用邀请码加入 sponsor 的空间
+uniclip join <invitation-code>
+
+# 验证配对结果
+uniclip members
+```
+
+`join` 在不带 `--passphrase` 时会提示输入。口令通过 PAKE 在本地验证 —— 输错会立即失败，
+不会把口令值发给 sponsor。
+
+</Tab>
+
+</Tabs>
+
+把当前设备切换到另一个 sponsor 的空间（用新 MasterKey 重新加密本地历史）：
+
+```bash
+uniclip switch-space
+```
+
+## 成员与设备
+
+| 命令               | 返回内容                                                       |
+| ------------------ | -------------------------------------------------------------- |
+| `uniclip devices`  | 配对设备列表（持久化记录）。                                   |
+| `uniclip members`  | 实时在线状态：`{name} ({online \| offline \| unknown})`。      |
+
+两个命令都支持 `--json`，方便脚本调用。
+
+## 发送与监听
+
+```bash
+# 把一段文本发给所有在线已配对设备
+uniclip send "hello from the CLI"
+
+# 或者从 stdin 读取
+echo "from a heredoc" | uniclip send
+
+# 实时打印收到的剪贴 payload（Ctrl-C 停止）
+uniclip watch
+```
+
+`uniclip watch` 是**诊断观察器**：它会打印首个文本表示（图片型 payload 则按 representation 摘要展示），
+但**不会**写入系统剪贴板 —— 写系统剪贴板是守护进程的职责。
+
+## 搜索
+
+`uniclip search` 是 GUI 仪表盘搜索框背后那个加密全文索引的命令行入口。
+
+```bash
+uniclip search status                    # 索引是否就绪 / 是否在建
+uniclip search rebuild                   # 从历史重建索引（同步执行）
+uniclip search query "报告"              # 基本查询
+uniclip search query "报告" \
+    --type text --ext md \
+    --limit 20 --detailed
+uniclip search query "报告" \
+    --from-ms 1710000000000 --to-ms 1710100000000
+```
+
+`rebuild` 是同步命令，重建完成才返回；脚本里抓诊断快照很有用。
+
+## Blob（大负载）诊断
+
+`uniclip blob` 是分块 blob 管线的命令行入口，参见
+[同步内容 — 大负载（文件与大图）](../guides/sync#大负载文件与大图)。
+
+```bash
+# 把本地文件作为加密 blob 发布，输出对应 ticket
+uniclip blob publish ./sample.bin
+
+# 用 ticket + entry id 把 blob 拉到本地
+uniclip blob fetch <TICKET> --entry-id <ENTRY_ID> --out ./restored.bin
+```
+
+适合排查文件同步失败、或验证对端能否访问 blob 存储。
+
+## 升级检测游标
+
+```bash
+uniclip upgrade status
+uniclip upgrade advance
+```
+
+查看或推进升级检测游标 —— 用于手动验证升级模块。普通用户基本用不到。
+
+## 隐藏命令
+
+下列命令存在，但刻意从 `uniclip --help` 中隐藏：
+
+- `uniclip probe ...` —— 剪贴诊断子命令组（替代旧的 `clipboard-probe` 独立二进制）。
+  CLI 中**唯一**写系统剪贴板的入口（仅限 `probe restore`），仅供开发与 E2E 调试。
+- `uniclip seed-clipboard --text <TEXT>` —— switch-space 数据完整性测试用的种子写入。
+- `uniclip dump-clipboard --limit <N>` —— 调试用，打印解密后的历史。
+- `uniclip daemon` —— `uniclip start` 拉起后台进程的内部入口，不作为用户命令使用。
+
+这些不会出现在 shell 补全或 `--help` 中，并且可能在不发版本说明的情况下变化。
+这里列出来只是为了让你在 `ps` 或提交历史中看到时不会以为见鬼了。
+
+## 退出码
+
+`uniclip` 使用稳定的退出码（在 `src/exit_codes.rs` 中定义）。`0` 表示成功，非零值对应不同的失败类别
+（配置、网络、配对等）且跨版本保持稳定。脚本应基于退出码判断成败，而不是解析人类可读输出。
+
+最新的子命令列表请直接运行 `uniclip --help` —— 二进制自带的 help 是权威来源。

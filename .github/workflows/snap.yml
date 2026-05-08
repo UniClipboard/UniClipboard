@@ -33,6 +33,27 @@ on:
         required: false
         type: string
         default: ''
+  workflow_call:
+    inputs:
+      channel:
+        description: 'Snap store channel'
+        required: false
+        type: string
+        default: edge
+      release:
+        description: 'Push to snap store after build (false = artifact only)'
+        required: false
+        type: boolean
+        default: true
+      branch:
+        description: 'Branch / ref to build'
+        required: false
+        type: string
+        default: ''
+    secrets:
+      SNAPCRAFT_STORE_CREDENTIALS:
+        description: 'snapcraft export-login token; missing = artifact-only'
+        required: false
 
 jobs:
   build:

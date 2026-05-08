@@ -1,7 +1,7 @@
 /**
  * SpaceMembersPanel —— P2P 加密空间成员 panel(方案 F · macOS-native list)。
  *
- * 设计语言与 MobileShortcutDevicesPanel 完全一致:
+ * 设计语言与 MobileSyncDevicesPanel 完全一致:
  *
  *   ┌─ Section header ──────────────────────────────────────────┐
  *   │ Paired devices                              [+ Add device] │

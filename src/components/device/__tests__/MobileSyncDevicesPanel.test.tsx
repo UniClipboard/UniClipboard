@@ -1,14 +1,14 @@
 /**
- * MobileShortcutDevicesPanel —— helper 单测(方案 B 重构后)。
+ * MobileSyncDevicesPanel —— helper 单测(方案 B 重构后)。
  *
- * 方案 B 把 settings 类错误翻译搬到了 MobileShortcutSettingsSheet,所以
+ * 方案 B 把 settings 类错误翻译搬到了 MobileSyncSettingsSheet,所以
  * panel 自身的 translateMobileSyncError 只覆盖 list/revoke 路径会触发的
  * variant + 兜底。其余变体走 default → unknown bucket。
  */
 
 import '@testing-library/jest-dom/vitest'
 import { beforeAll, describe, expect, it } from 'vitest'
-import { __test__ } from '@/components/device/MobileShortcutDevicesPanel'
+import { __test__ } from '@/components/device/MobileSyncDevicesPanel'
 import i18n from '@/i18n'
 
 const { translateMobileSyncError } = __test__

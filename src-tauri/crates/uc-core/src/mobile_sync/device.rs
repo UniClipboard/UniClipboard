@@ -38,8 +38,12 @@ impl std::fmt::Display for MobileDeviceId {
 
 /// 该移动端是用什么客户端形态接入的。
 ///
-/// v1 仅 iOS Shortcut。未来扩展 Android 客户端时新增 variant，无需改动同步
-/// 协议本身（`/mobile/v1/*` 接口对客户端类型透明）。
+/// 注意：LAN 监听跑的是平台无关的 SyncClipboard 协议（HTTP Basic Auth + GET/PUT
+/// `/SyncClipboard.json` + `/file/{name}`），凡是兼容该协议的客户端均可接入，
+/// 凭据本身与平台无关。本枚举仅记录"管理员注册时是按哪种客户端形态分发指引的"
+/// —— v1 仅 iOS 快捷指令一种官方分发方式，因此只有 `IosShortcut` 一个 variant。
+/// 用户实际可以拿同一组凭据在任意 Android / 鸿蒙等第三方客户端上使用。未来若
+/// 新增官方分发渠道（如 Android app）再追加 variant，协议层无需改动。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum MobileClientType {
     IosShortcut,

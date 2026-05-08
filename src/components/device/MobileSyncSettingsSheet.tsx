@@ -1,7 +1,7 @@
 /**
- * MobileShortcutSettingsSheet —— iPhone 同步配置抽屉。
+ * MobileSyncSettingsSheet —— 移动设备同步配置抽屉。
  *
- * 方案 B 拆分:把原 MobileShortcutDevicesPanel 主区域的"5 行 SettingsRow +
+ * 方案 B 拆分:把原 MobileSyncDevicesPanel 主区域的"5 行 SettingsRow +
  * 重启提示 + LAN 安全告警 modal"全部搬到这里,通过右侧 Sheet 滑入。Panel
  * 主区域只保留紧凑状态条 + 设备列表,UX 上回归"DevicesPage 主体管设备,
  * 配置走二级抽屉"。
@@ -16,7 +16,7 @@
  *
  * 数据所有权: 本组件持有 settings/lanInterfaces 等 mobile sync 相关 state。
  * 通过 onSettingsChange 把最新 settings 视图回调给父 panel,用于驱动状态条
- * 文案与 "Add iPhone" 按钮 disabled。
+ * 文案与 "Add" 按钮 disabled。
  */
 
 import React, { useCallback, useEffect, useState } from 'react'
@@ -64,12 +64,12 @@ import {
 import { toast } from '@/components/ui/toast'
 import { createLogger } from '@/lib/logger'
 
-const log = createLogger('mobile-shortcut-settings-sheet')
+const log = createLogger('mobile-sync-settings-sheet')
 
 /**
  * Radix Select 禁止 SelectItem.value 为空串(空串保留为"无选中"哨兵)。
  * 用非空 sentinel 表示"自动 / 走 daemon 默认 127.0.0.1",在 boundary
- * 处与 facade 的 null 互转。同原 MobileShortcutDevicesPanel 设计。
+ * 处与 facade 的 null 互转。同原 MobileSyncDevicesPanel 设计。
  */
 const BIND_IP_AUTO_SENTINEL = '__auto__'
 
@@ -78,12 +78,12 @@ interface Props {
   onOpenChange: (open: boolean) => void
   /**
    * 把最新 settings 视图回调给父 panel。null 表示加载失败/首次未就绪。
-   * 父 panel 用它驱动状态条文案 + Add iPhone 按钮 disabled。
+   * 父 panel 用它驱动状态条文案 + Add 按钮 disabled。
    */
   onSettingsChange?: (settings: MobileSyncSettingsView | null) => void
 }
 
-const MobileShortcutSettingsSheet: React.FC<Props> = ({ open, onOpenChange, onSettingsChange }) => {
+const MobileSyncSettingsSheet: React.FC<Props> = ({ open, onOpenChange, onSettingsChange }) => {
   const { t } = useTranslation()
 
   // ── State ────────────────────────────────────────────────────────────
@@ -211,8 +211,8 @@ const MobileShortcutSettingsSheet: React.FC<Props> = ({ open, onOpenChange, onSe
     if (!Number.isInteger(parsed) || parsed < 1 || parsed > 65535) {
       setPortDraft(settings.lanPort != null ? String(settings.lanPort) : '')
       toast.error(
-        t('devices.mobileShortcut.errors.invalidLanParameter', {
-          reason: t('devices.mobileShortcut.lanListener.port.label'),
+        t('devices.mobileSync.errors.invalidLanParameter', {
+          reason: t('devices.mobileSync.lanListener.port.label'),
         })
       )
       return
@@ -244,10 +244,8 @@ const MobileShortcutSettingsSheet: React.FC<Props> = ({ open, onOpenChange, onSe
       <Sheet open={open} onOpenChange={onOpenChange}>
         <SheetContent side="right" className="w-full sm:max-w-md">
           <SheetHeader>
-            <SheetTitle>{t('devices.mobileShortcut.settingsSheet.title')}</SheetTitle>
-            <SheetDescription>
-              {t('devices.mobileShortcut.settingsSheet.description')}
-            </SheetDescription>
+            <SheetTitle>{t('devices.mobileSync.settingsSheet.title')}</SheetTitle>
+            <SheetDescription>{t('devices.mobileSync.settingsSheet.description')}</SheetDescription>
           </SheetHeader>
 
           <ScrollArea className="flex-1 px-4">
@@ -257,16 +255,16 @@ const MobileShortcutSettingsSheet: React.FC<Props> = ({ open, onOpenChange, onSe
                 <Alert className="border-amber-500/30 bg-amber-500/10">
                   <AlertDescription className="flex items-center gap-3 text-amber-700 dark:text-amber-400">
                     <span className="flex-1 text-xs">
-                      {t('devices.mobileShortcut.lanListener.restartRequired.message')}
+                      {t('devices.mobileSync.lanListener.restartRequired.message')}
                     </span>
                     <Button size="sm" variant="outline" onClick={handleRestart}>
-                      {t('devices.mobileShortcut.lanListener.restartRequired.restartButton')}
+                      {t('devices.mobileSync.lanListener.restartRequired.restartButton')}
                     </Button>
                     <Button
                       size="icon-sm"
                       variant="ghost"
                       aria-label={t(
-                        'devices.mobileShortcut.lanListener.restartRequired.dismissAriaLabel'
+                        'devices.mobileSync.lanListener.restartRequired.dismissAriaLabel'
                       )}
                       onClick={() => setRestartDismissed(true)}
                     >
@@ -279,7 +277,7 @@ const MobileShortcutSettingsSheet: React.FC<Props> = ({ open, onOpenChange, onSe
               {settings?.lanListenerError && (
                 <Alert variant="destructive">
                   <AlertDescription>
-                    {t('devices.mobileShortcut.statusBar.bindFailed', {
+                    {t('devices.mobileSync.statusBar.bindFailed', {
                       reason: settings.lanListenerError,
                     })}
                   </AlertDescription>
@@ -295,8 +293,8 @@ const MobileShortcutSettingsSheet: React.FC<Props> = ({ open, onOpenChange, onSe
               {/* ── 5 行 SettingsRow ───────────────────────────────── */}
               <div className="rounded-xl border border-border/60 bg-card divide-y divide-border/40">
                 <SettingsRow
-                  title={t('devices.mobileShortcut.enabled.label')}
-                  description={t('devices.mobileShortcut.enabled.description')}
+                  title={t('devices.mobileSync.enabled.label')}
+                  description={t('devices.mobileSync.enabled.description')}
                   control={
                     <Switch
                       checked={enabled}
@@ -307,8 +305,8 @@ const MobileShortcutSettingsSheet: React.FC<Props> = ({ open, onOpenChange, onSe
                 />
 
                 <SettingsRow
-                  title={t('devices.mobileShortcut.lanListener.label')}
-                  description={t('devices.mobileShortcut.lanListener.description')}
+                  title={t('devices.mobileSync.lanListener.label')}
+                  description={t('devices.mobileSync.lanListener.description')}
                   disabled={controlsDisabled}
                   control={
                     <Switch
@@ -320,7 +318,7 @@ const MobileShortcutSettingsSheet: React.FC<Props> = ({ open, onOpenChange, onSe
                 />
 
                 <SettingsRow
-                  title={t('devices.mobileShortcut.lanListener.bindIp.label')}
+                  title={t('devices.mobileSync.lanListener.bindIp.label')}
                   disabled={lanFieldsDisabled}
                   control={
                     <Select
@@ -330,16 +328,16 @@ const MobileShortcutSettingsSheet: React.FC<Props> = ({ open, onOpenChange, onSe
                     >
                       <SelectTrigger className="w-[220px]">
                         <SelectValue
-                          placeholder={t('devices.mobileShortcut.lanListener.bindIp.placeholder')}
+                          placeholder={t('devices.mobileSync.lanListener.bindIp.placeholder')}
                         />
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value={BIND_IP_AUTO_SENTINEL}>
-                          {t('devices.mobileShortcut.lanListener.bindIp.auto')}
+                          {t('devices.mobileSync.lanListener.bindIp.auto')}
                         </SelectItem>
                         {lanInterfaces.length === 0 ? (
                           <div className="px-2 py-1.5 text-xs text-muted-foreground">
-                            {t('devices.mobileShortcut.lanListener.bindIp.empty')}
+                            {t('devices.mobileSync.lanListener.bindIp.empty')}
                           </div>
                         ) : (
                           lanInterfaces.map(iface => (
@@ -354,7 +352,7 @@ const MobileShortcutSettingsSheet: React.FC<Props> = ({ open, onOpenChange, onSe
                 />
 
                 <SettingsRow
-                  title={t('devices.mobileShortcut.lanListener.port.label')}
+                  title={t('devices.mobileSync.lanListener.port.label')}
                   disabled={lanFieldsDisabled}
                   control={
                     <Input
@@ -364,7 +362,7 @@ const MobileShortcutSettingsSheet: React.FC<Props> = ({ open, onOpenChange, onSe
                       inputMode="numeric"
                       className="w-[120px]"
                       disabled={lanFieldsDisabled}
-                      placeholder={t('devices.mobileShortcut.lanListener.port.placeholder')}
+                      placeholder={t('devices.mobileSync.lanListener.port.placeholder')}
                       value={portDraft}
                       onChange={e => setPortDraft(e.target.value)}
                       onBlur={handlePortBlur}
@@ -373,12 +371,12 @@ const MobileShortcutSettingsSheet: React.FC<Props> = ({ open, onOpenChange, onSe
                 />
 
                 <SettingsRow
-                  title={t('devices.mobileShortcut.lanListener.currentUrl.label')}
+                  title={t('devices.mobileSync.lanListener.currentUrl.label')}
                   control={
                     <code className="rounded bg-muted px-2 py-1 font-mono text-xs">
                       {settings
                         ? deriveListenUrl(settings)
-                        : t('devices.mobileShortcut.lanListener.currentUrl.unavailable')}
+                        : t('devices.mobileSync.lanListener.currentUrl.unavailable')}
                     </code>
                   }
                 />
@@ -388,7 +386,7 @@ const MobileShortcutSettingsSheet: React.FC<Props> = ({ open, onOpenChange, onSe
 
           <SheetFooter>
             <Button variant="outline" onClick={() => onOpenChange(false)}>
-              {t('devices.mobileShortcut.settingsSheet.close')}
+              {t('devices.mobileSync.settingsSheet.close')}
             </Button>
           </SheetFooter>
         </SheetContent>
@@ -401,19 +399,17 @@ const MobileShortcutSettingsSheet: React.FC<Props> = ({ open, onOpenChange, onSe
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>
-              {t('devices.mobileShortcut.lanListener.warning.title')}
-            </AlertDialogTitle>
+            <AlertDialogTitle>{t('devices.mobileSync.lanListener.warning.title')}</AlertDialogTitle>
             <AlertDialogDescription>
-              {t('devices.mobileShortcut.lanListener.warning.body')}
+              {t('devices.mobileSync.lanListener.warning.body')}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>
-              {t('devices.mobileShortcut.lanListener.warning.cancel')}
+              {t('devices.mobileSync.lanListener.warning.cancel')}
             </AlertDialogCancel>
             <AlertDialogAction onClick={handleLanWarningConfirm}>
-              {t('devices.mobileShortcut.lanListener.warning.confirm')}
+              {t('devices.mobileSync.lanListener.warning.confirm')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -456,29 +452,29 @@ function translateMobileSyncError(t: ReturnType<typeof useTranslation>['t'], err
     const e = err as MobileSyncError
     switch (e.code) {
       case 'FACADE_UNAVAILABLE':
-        return t('devices.mobileShortcut.errors.facadeUnavailable')
+        return t('devices.mobileSync.errors.facadeUnavailable')
       case 'INVALID_LAN_PARAMETER':
-        return t('devices.mobileShortcut.errors.invalidLanParameter', { reason: e.reason })
+        return t('devices.mobileSync.errors.invalidLanParameter', { reason: e.reason })
       case 'SETTINGS_LOAD_FAILED':
-        return t('devices.mobileShortcut.errors.settingsLoadFailed', { message: e.message })
+        return t('devices.mobileSync.errors.settingsLoadFailed', { message: e.message })
       case 'SETTINGS_SAVE_FAILED':
-        return t('devices.mobileShortcut.errors.settingsSaveFailed', { message: e.message })
+        return t('devices.mobileSync.errors.settingsSaveFailed', { message: e.message })
       case 'ENDPOINT_INFO_PROBE_FAILED':
-        return t('devices.mobileShortcut.errors.endpointInfoProbeFailed', { message: e.message })
+        return t('devices.mobileSync.errors.endpointInfoProbeFailed', { message: e.message })
       case 'LAN_PROBE_FAILED':
-        return t('devices.mobileShortcut.errors.lanProbeFailed', { message: e.message })
+        return t('devices.mobileSync.errors.lanProbeFailed', { message: e.message })
       case 'PERSISTENCE_FAILED':
-        return t('devices.mobileShortcut.errors.persistenceFailed', { message: e.message })
+        return t('devices.mobileSync.errors.persistenceFailed', { message: e.message })
       default: {
         const message = (e as { message?: string }).message ?? e.code
-        return t('devices.mobileShortcut.errors.unknown', { message })
+        return t('devices.mobileSync.errors.unknown', { message })
       }
     }
   }
   const message = err instanceof Error ? err.message : String(err)
-  return t('devices.mobileShortcut.errors.unknown', { message })
+  return t('devices.mobileSync.errors.unknown', { message })
 }
 
 export const __test__ = { translateMobileSyncError }
 
-export default MobileShortcutSettingsSheet
+export default MobileSyncSettingsSheet

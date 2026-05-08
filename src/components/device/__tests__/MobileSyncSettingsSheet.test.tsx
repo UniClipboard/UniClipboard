@@ -1,5 +1,5 @@
 /**
- * MobileShortcutSettingsSheet —— helper 单测(方案 B 新增)。
+ * MobileSyncSettingsSheet —— helper 单测(方案 B 新增)。
  *
  * 只覆盖 translateMobileSyncError —— Sheet 自身渲染需要 mock Tauri command +
  * AlertDialog + Sheet portal 等基础设施,ROI 太低。helper 是 settings 路径
@@ -8,7 +8,7 @@
 
 import '@testing-library/jest-dom/vitest'
 import { beforeAll, describe, expect, it } from 'vitest'
-import { __test__ } from '@/components/device/MobileShortcutSettingsSheet'
+import { __test__ } from '@/components/device/MobileSyncSettingsSheet'
 import i18n from '@/i18n'
 
 const { translateMobileSyncError } = __test__

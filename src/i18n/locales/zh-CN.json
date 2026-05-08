@@ -697,25 +697,25 @@
       "message": "剪贴板同步已暂停，所有设备当前均不会同步内容。",
       "goToSettings": "前往设置"
     },
-    "mobileShortcut": {
-      "title": "iPhone（快捷指令）",
-      "description": "使用 SyncClipboard 快捷指令在局域网内与 iPhone 同步剪贴板",
+    "mobileSync": {
+      "title": "移动设备同步",
+      "description": "通过 SyncClipboard 协议在局域网内与移动设备（iOS / Android）同步剪贴板",
       "configure": "配置",
       "statusBar": {
         "bindFailed": "无法启动监听:{{reason}}"
       },
       "settingsSheet": {
-        "title": "iPhone 同步配置",
-        "description": "调整 iPhone 通过快捷指令访问本机所需的开关与网络参数",
+        "title": "移动设备同步配置",
+        "description": "调整移动设备通过局域网访问本机所需的开关与网络参数",
         "close": "完成"
       },
       "enabled": {
         "label": "启用移动端同步",
-        "description": "关闭后将立即拒绝来自所有 iPhone 的同步请求"
+        "description": "关闭后将立即拒绝来自所有移动设备的同步请求"
       },
       "lanListener": {
         "label": "LAN 监听",
-        "description": "在所选网络接口上监听明文 HTTP，开启后才能接收 iPhone 的请求",
+        "description": "在所选网络接口上监听明文 HTTP，开启后才能接收移动设备的请求",
         "currentUrl": {
           "label": "当前监听地址",
           "unavailable": "—"
@@ -741,18 +741,18 @@
           "restartButton": "立即重启",
           "dismissAriaLabel": "收起重启提示"
         },
-        "disabledHint": "请先启用 LAN 监听后再添加 iPhone"
+        "disabledHint": "请先启用 LAN 监听后再添加设备"
       },
       "list": {
-        "title": "已配对 iPhone",
+        "title": "已配对设备",
         "empty": {
-          "title": "暂无已配对的 iPhone"
+          "title": "暂无已配对设备"
         },
-        "addButton": "添加 iPhone"
+        "addButton": "添加设备"
       },
       "add": {
-        "title": "添加 iPhone",
-        "subtitle": "为该设备生成一对长期有效的凭据，用于 SyncClipboard 快捷指令",
+        "title": "添加设备",
+        "subtitle": "为该设备生成一对长期有效的凭据。同一组凭据可用于 iOS 快捷指令以及任何兼容 SyncClipboard 协议的 Android 客户端。",
         "labelField": {
           "label": "设备名称",
           "placeholder": "我的 iPhone"
@@ -776,18 +776,25 @@
         "cancel": "取消"
       },
       "credential": {
-        "title": "iPhone 已添加",
-        "subtitle": "请扫码安装 SyncClipboard 快捷指令，并在快捷指令中填入下方信息",
+        "title": "设备已添加",
+        "subtitle": "在下方选择平台，并按指引在客户端中填入凭据。",
+        "platforms": {
+          "ios": "iOS",
+          "android": "安卓"
+        },
         "warning": {
           "title": "重要：此密码仅显示一次",
           "body": "关闭此窗口后将无法再次查看密码。如不慎遗失，需要撤销此设备并重新添加。"
         },
         "qr": {
-          "label": "扫码安装快捷指令",
+          "label": "扫码安装 SyncClipboard 快捷指令",
           "alt": "SyncClipboard 快捷指令安装二维码"
         },
         "installUrl": {
           "label": "或复制安装链接"
+        },
+        "android": {
+          "instructions": "暂未提供官方 Android 客户端。请使用任何兼容 SyncClipboard 协议的第三方应用（HTTP Basic Auth + GET/PUT /SyncClipboard.json），并按下方信息配置服务地址与账号密码。"
         },
         "baseUrl": {
           "label": "服务地址"
@@ -806,7 +813,7 @@
       },
       "revoke": {
         "confirmTitle": "撤销 {{label}}",
-        "confirmDescription": "撤销后该 iPhone 将立即无法同步。要再次连接需重新添加（密码无法找回）。",
+        "confirmDescription": "撤销后该设备将立即无法同步。要再次连接需重新添加（密码无法找回）。",
         "confirm": "撤销",
         "cancel": "取消"
       },

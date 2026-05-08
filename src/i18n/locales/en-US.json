@@ -706,25 +706,25 @@
       "message": "Clipboard sync is paused. All devices are currently not syncing.",
       "goToSettings": "Go to Settings"
     },
-    "mobileShortcut": {
-      "title": "iPhone (Shortcut)",
-      "description": "Sync your clipboard with iPhones over LAN via the SyncClipboard shortcut",
+    "mobileSync": {
+      "title": "Mobile Sync",
+      "description": "Sync your clipboard with mobile devices (iOS / Android) over LAN using the SyncClipboard protocol",
       "configure": "Configure",
       "statusBar": {
         "bindFailed": "Failed to start listener: {{reason}}"
       },
       "settingsSheet": {
-        "title": "iPhone sync configuration",
-        "description": "Adjust the switches and network parameters that let iPhones reach this machine via the shortcut",
+        "title": "Mobile sync configuration",
+        "description": "Adjust the switches and network parameters that let mobile devices reach this machine over LAN",
         "close": "Done"
       },
       "enabled": {
         "label": "Enable mobile sync",
-        "description": "When off, all sync requests from iPhones are immediately rejected"
+        "description": "When off, all sync requests from mobile devices are immediately rejected"
       },
       "lanListener": {
         "label": "LAN listener",
-        "description": "Listens for cleartext HTTP on the chosen network interface; required to receive iPhone requests",
+        "description": "Listens for cleartext HTTP on the chosen network interface; required to receive mobile requests",
         "currentUrl": {
           "label": "Current listening address",
           "unavailable": "—"
@@ -750,18 +750,18 @@
           "restartButton": "Restart now",
           "dismissAriaLabel": "Dismiss restart notice"
         },
-        "disabledHint": "Enable the LAN listener before adding an iPhone"
+        "disabledHint": "Enable the LAN listener before adding a device"
       },
       "list": {
-        "title": "Paired iPhones",
+        "title": "Paired devices",
         "empty": {
-          "title": "No iPhones paired yet"
+          "title": "No devices paired yet"
         },
-        "addButton": "Add iPhone"
+        "addButton": "Add device"
       },
       "add": {
-        "title": "Add iPhone",
-        "subtitle": "Generate a long-lived credential pair for the SyncClipboard shortcut",
+        "title": "Add device",
+        "subtitle": "Generate a long-lived credential pair. The same pair works on iOS Shortcut and any Android client that speaks the SyncClipboard protocol.",
         "labelField": {
           "label": "Device label",
           "placeholder": "My iPhone"
@@ -785,18 +785,25 @@
         "cancel": "Cancel"
       },
       "credential": {
-        "title": "iPhone added",
-        "subtitle": "Scan the QR to install the SyncClipboard shortcut, then enter the values below into the shortcut",
+        "title": "Device added",
+        "subtitle": "Pick your platform below, then enter the credentials into the client.",
+        "platforms": {
+          "ios": "iOS",
+          "android": "Android"
+        },
         "warning": {
           "title": "Important: this password is shown only once",
           "body": "After this dialog closes, the password cannot be recovered. If you lose it, you must revoke this device and add it again."
         },
         "qr": {
-          "label": "Scan to install the shortcut",
+          "label": "Scan to install the SyncClipboard shortcut",
           "alt": "SyncClipboard shortcut install QR code"
         },
         "installUrl": {
           "label": "Or copy the install link"
+        },
+        "android": {
+          "instructions": "There is no official Android client yet. Use any third-party app that speaks the SyncClipboard protocol (HTTP Basic Auth + GET/PUT /SyncClipboard.json) and configure it with the URL and credentials below."
         },
         "baseUrl": {
           "label": "Server URL"
@@ -815,7 +822,7 @@
       },
       "revoke": {
         "confirmTitle": "Revoke {{label}}",
-        "confirmDescription": "Once revoked, this iPhone can no longer sync. To reconnect you must add it again (the password cannot be recovered).",
+        "confirmDescription": "Once revoked, this device can no longer sync. To reconnect you must add it again (the password cannot be recovered).",
         "confirm": "Revoke",
         "cancel": "Cancel"
       },

@@ -1,15 +1,21 @@
 /**
- * MobileShortcutDevicesPanel —— iPhone 设备 panel(方案 F · macOS-native list)。
+ * MobileSyncDevicesPanel —— 移动设备同步 panel(方案 F · macOS-native list)。
+ *
+ * 概念:本特性的 LAN 监听跑的是 SyncClipboard 协议(HTTP + Basic Auth + 4
+ * 个固定路由),凡是兼容该协议的客户端均可接入(iOS 快捷指令是默认入口,
+ * Android / 鸿蒙等只要实现该协议就能复用同一组凭据)。命名上 panel/dialog
+ * /sheet 全部使用平台无关的 "MobileSync" 前缀;仅 credential modal 内部
+ * 按平台 tab 展示具体接入步骤。
  *
  * # 设计语言
  *
  * macOS 系统设置 / Tailscale 风格的 grouped-list:
  *
- *   ┌─ Section header ──────────────────────────────────────────┐
- *   │ iPhone (Shortcut)                       [Configure] [+ Add] │
+ *   ┌─ Section header ────────────────────────────────────────────┐
+ *   │ Mobile Sync                            [Configure] [+ Add]  │
  *   ├─ List container ────────────────────────────────────────────┤
  *   │ 📱 My iPhone              5m ago · .42                  ⌫  │
- *   │ 📱 Test iPhone            never                          ⌫  │
+ *   │ 📱 Pixel                  never                          ⌫  │
  *   └─────────────────────────────────────────────────────────────┘
  *
  * Header 只放标题 + Configure + Add(状态文案/监听 URL/bind 错误均收
@@ -26,9 +32,9 @@
 import { Plus, RefreshCw, Settings2, Smartphone, Trash2 } from 'lucide-react'
 import React, { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import AddMobileShortcutDeviceDialog from './AddMobileShortcutDeviceDialog'
-import MobileShortcutCredentialModal from './MobileShortcutCredentialModal'
-import MobileShortcutSettingsSheet from './MobileShortcutSettingsSheet'
+import AddMobileSyncDeviceDialog from './AddMobileSyncDeviceDialog'
+import MobileSyncCredentialModal from './MobileSyncCredentialModal'
+import MobileSyncSettingsSheet from './MobileSyncSettingsSheet'
 import {
   isMobileSyncError,
   listMobileDevices,
@@ -53,9 +59,9 @@ import { Button } from '@/components/ui/button'
 import { toast } from '@/components/ui/toast'
 import { createLogger } from '@/lib/logger'
 
-const log = createLogger('mobile-shortcut-panel')
+const log = createLogger('mobile-sync-panel')
 
-const MobileShortcutDevicesPanel: React.FC = () => {
+const MobileSyncDevicesPanel: React.FC = () => {
   const { t } = useTranslation()
 
   const [settings, setSettings] = useState<MobileSyncSettingsView | null>(null)
@@ -90,7 +96,7 @@ const MobileShortcutDevicesPanel: React.FC = () => {
 
   const handleOpenAddDialog = useCallback(() => {
     if (!settings?.lanListenEnabled) {
-      toast.error(t('devices.mobileShortcut.errors.lanListenerDisabled'))
+      toast.error(t('devices.mobileSync.errors.lanListenerDisabled'))
       return
     }
     setAddDialogOpen(true)
@@ -109,7 +115,7 @@ const MobileShortcutDevicesPanel: React.FC = () => {
     setRevokeBusy(true)
     try {
       await revokeMobileDevice(revokeTarget.deviceId)
-      toast.success(t('devices.mobileShortcut.revoke.confirmTitle', { label: revokeTarget.label }))
+      toast.success(t('devices.mobileSync.revoke.confirmTitle', { label: revokeTarget.label }))
       setRevokeTarget(null)
       await loadDevices()
     } catch (err) {
@@ -133,26 +139,24 @@ const MobileShortcutDevicesPanel: React.FC = () => {
         <div className="mb-2 flex items-end justify-between gap-3 px-1">
           <div className="min-w-0">
             <h3 className="text-base font-semibold text-foreground">
-              {t('devices.mobileShortcut.title')}
+              {t('devices.mobileSync.title')}
             </h3>
           </div>
 
           <div className="flex shrink-0 items-center gap-1.5">
             <Button variant="ghost" size="sm" onClick={() => setSettingsSheetOpen(true)}>
               <Settings2 className="h-3.5 w-3.5" />
-              {t('devices.mobileShortcut.configure')}
+              {t('devices.mobileSync.configure')}
             </Button>
             <Button
               variant="outline"
               size="sm"
               onClick={handleOpenAddDialog}
               disabled={addDisabled}
-              title={
-                addDisabled ? t('devices.mobileShortcut.errors.lanListenerDisabled') : undefined
-              }
+              title={addDisabled ? t('devices.mobileSync.errors.lanListenerDisabled') : undefined}
             >
               <Plus className="h-3.5 w-3.5" />
-              {t('devices.mobileShortcut.list.addButton')}
+              {t('devices.mobileSync.list.addButton')}
             </Button>
           </div>
         </div>
@@ -186,7 +190,7 @@ const MobileShortcutDevicesPanel: React.FC = () => {
         )}
       </section>
 
-      <MobileShortcutSettingsSheet
+      <MobileSyncSettingsSheet
         open={settingsSheetOpen}
         onOpenChange={setSettingsSheetOpen}
         onSettingsChange={setSettings}
@@ -199,36 +203,36 @@ const MobileShortcutDevicesPanel: React.FC = () => {
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
-              {t('devices.mobileShortcut.revoke.confirmTitle', {
+              {t('devices.mobileSync.revoke.confirmTitle', {
                 label: revokeTarget?.label ?? '',
               })}
             </AlertDialogTitle>
             <AlertDialogDescription>
-              {t('devices.mobileShortcut.revoke.confirmDescription')}
+              {t('devices.mobileSync.revoke.confirmDescription')}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={revokeBusy}>
-              {t('devices.mobileShortcut.revoke.cancel')}
+              {t('devices.mobileSync.revoke.cancel')}
             </AlertDialogCancel>
             <AlertDialogAction
               onClick={handleRevokeConfirm}
               disabled={revokeBusy}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-              {t('devices.mobileShortcut.revoke.confirm')}
+              {t('devices.mobileSync.revoke.confirm')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
 
-      <AddMobileShortcutDeviceDialog
+      <AddMobileSyncDeviceDialog
         open={addDialogOpen}
         onOpenChange={setAddDialogOpen}
         onSuccess={handleAddSuccess}
       />
 
-      <MobileShortcutCredentialModal
+      <MobileSyncCredentialModal
         payload={credentialPayload}
         onClose={() => setCredentialPayload(null)}
       />
@@ -261,8 +265,8 @@ const DeviceRow: React.FC<DeviceRowProps> = ({ device, onRevoke }) => {
         size="icon-sm"
         className="shrink-0 opacity-0 transition-opacity group-hover:opacity-100"
         onClick={onRevoke}
-        aria-label={t('devices.mobileShortcut.revoke.confirm')}
-        title={t('devices.mobileShortcut.revoke.confirm')}
+        aria-label={t('devices.mobileSync.revoke.confirm')}
+        title={t('devices.mobileSync.revoke.confirm')}
       >
         <Trash2 className="h-4 w-4" />
       </Button>
@@ -276,7 +280,7 @@ interface EmptyRowProps {
 
 const EmptyRow: React.FC<EmptyRowProps> = ({ t }) => (
   <div className="px-4 py-4 text-center text-xs text-muted-foreground">
-    {t('devices.mobileShortcut.list.empty.title')}
+    {t('devices.mobileSync.list.empty.title')}
   </div>
 )
 
@@ -287,25 +291,25 @@ function translateMobileSyncError(t: ReturnType<typeof useTranslation>['t'], err
     const e = err as MobileSyncError
     switch (e.code) {
       case 'FACADE_UNAVAILABLE':
-        return t('devices.mobileShortcut.errors.facadeUnavailable')
+        return t('devices.mobileSync.errors.facadeUnavailable')
       case 'LAN_LISTENER_DISABLED':
-        return t('devices.mobileShortcut.errors.lanListenerDisabled')
+        return t('devices.mobileSync.errors.lanListenerDisabled')
       case 'DEVICE_NOT_FOUND':
-        return t('devices.mobileShortcut.errors.deviceNotFound')
+        return t('devices.mobileSync.errors.deviceNotFound')
       case 'PERSISTENCE_FAILED':
-        return t('devices.mobileShortcut.errors.persistenceFailed', { message: e.message })
+        return t('devices.mobileSync.errors.persistenceFailed', { message: e.message })
       case 'SETTINGS_LOAD_FAILED':
-        return t('devices.mobileShortcut.errors.settingsLoadFailed', { message: e.message })
+        return t('devices.mobileSync.errors.settingsLoadFailed', { message: e.message })
       default: {
         const message = (e as { message?: string }).message ?? e.code
-        return t('devices.mobileShortcut.errors.unknown', { message })
+        return t('devices.mobileSync.errors.unknown', { message })
       }
     }
   }
   const message = err instanceof Error ? err.message : String(err)
-  return t('devices.mobileShortcut.errors.unknown', { message })
+  return t('devices.mobileSync.errors.unknown', { message })
 }
 
 export const __test__ = { translateMobileSyncError }
 
-export default MobileShortcutDevicesPanel
+export default MobileSyncDevicesPanel

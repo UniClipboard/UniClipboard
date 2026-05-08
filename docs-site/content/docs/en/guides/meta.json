@@ -1,5 +1,6 @@
 {
   "title": "Guides",
   "icon": "BookOpen",
+  "defaultOpen": true,
   "pages": ["pairing", "sync", "quick-panel", "search", "devices", "settings", "troubleshooting"]
 }

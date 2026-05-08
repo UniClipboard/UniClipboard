@@ -1,5 +1,6 @@
 {
   "title": "Reference",
   "icon": "Wrench",
+  "defaultOpen": true,
   "pages": ["cli"]
 }

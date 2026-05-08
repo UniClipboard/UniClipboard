@@ -1,5 +1,6 @@
 {
   "title": "上手",
   "icon": "Rocket",
+  "defaultOpen": true,
   "pages": ["install", "quick-start"]
 }

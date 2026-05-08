@@ -1,5 +1,6 @@
 {
   "title": "Getting Started",
   "icon": "Rocket",
+  "defaultOpen": true,
   "pages": ["install", "quick-start"]
 }

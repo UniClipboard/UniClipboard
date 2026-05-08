@@ -50,7 +50,7 @@ use super::clipboard_dispatch_adapter::{IrohClipboardDispatchAdapter, CLIPBOARD_
 use super::clipboard_receiver_adapter::IrohClipboardReceiverAdapter;
 use super::connection_channel_adapter::IrohConnectionChannelAdapter;
 use super::identity_store::IrohIdentityStore;
-use super::presence_adapter::{IrohPresenceAdapter, IrohPresenceHandler, PRESENCE_ALPN};
+use super::presence_adapter::{IrohPresenceAdapter, PRESENCE_ALPN};
 use super::transfer_progress_adapter::{
     InboundProgressEvent, IrohTransferProgressAdapter, TRANSFER_PROGRESS_ALPN,
 };
@@ -599,20 +599,31 @@ impl IrohNodeBuilder {
     pub fn install_presence(
         &mut self,
         peer_addr_repo: Arc<dyn PeerAddressRepositoryPort>,
+        member_repo: Arc<dyn MemberRepositoryPort>,
+        fingerprint_factory: Arc<dyn IdentityFingerprintFactoryPort>,
         clock: Arc<dyn ClockPort>,
     ) -> Arc<dyn PresencePort> {
+        // Build the adapter first so the handler shares its `last_state`
+        // and broadcast `Sender` — that's what makes inbound dials flip a
+        // recovered peer to Online without needing our own keepalive to
+        // dial them again.
+        let adapter = IrohPresenceAdapter::new(
+            Arc::clone(&self.endpoint),
+            peer_addr_repo,
+            member_repo,
+            fingerprint_factory,
+            clock,
+        );
+        let handler = adapter.handler();
+
         let builder = self
             .router_builder
             .take()
             .expect("router_builder missing — install_* called after spawn");
-        let builder = builder.accept(PRESENCE_ALPN, IrohPresenceHandler::new());
+        let builder = builder.accept(PRESENCE_ALPN, handler);
         self.router_builder = Some(builder);
 
-        Arc::new(IrohPresenceAdapter::new(
-            Arc::clone(&self.endpoint),
-            peer_addr_repo,
-            clock,
-        ))
+        Arc::new(adapter)
     }
 
     /// Build a [`ConnectionChannelPort`] (Phase 96 INDIC-01).
@@ -999,6 +1010,8 @@ mod tests {
 
         let presence: Arc<dyn PresencePort> = builder.install_presence(
             Arc::new(EmptyPeerAddressRepo),
+            Arc::new(EmptyMemberRepo),
+            Arc::new(crate::security::Sha256IdentityFingerprintFactory),
             Arc::new(FixedClock(1_700_000_000_000)),
         );
 
@@ -1061,6 +1074,8 @@ mod tests {
         let peer_addr_repo: Arc<dyn PeerAddressRepositoryPort> = Arc::new(EmptyPeerAddressRepo);
         let _presence = builder.install_presence(
             Arc::clone(&peer_addr_repo),
+            Arc::new(EmptyMemberRepo),
+            Arc::new(crate::security::Sha256IdentityFingerprintFactory),
             Arc::new(FixedClock(1_700_000_000_000)),
         );
 
@@ -1117,6 +1132,8 @@ mod tests {
         let peer_addr_repo: Arc<dyn PeerAddressRepositoryPort> = Arc::new(EmptyPeerAddressRepo);
         let _presence = builder.install_presence(
             Arc::clone(&peer_addr_repo),
+            Arc::new(EmptyMemberRepo),
+            Arc::new(crate::security::Sha256IdentityFingerprintFactory),
             Arc::new(FixedClock(1_700_000_000_000)),
         );
 

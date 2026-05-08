@@ -279,6 +279,8 @@ pub async fn build_space_setup_assembly(
     // `EnsureReachableAllUseCase` 给 F1 hook 用。
     let presence: Arc<dyn PresencePort> = builder.install_presence(
         Arc::clone(&wired.peer_addr_repo),
+        Arc::clone(&deps.device.member_repo),
+        Arc::clone(&deps.security.fingerprint),
         Arc::clone(&deps.system.clock),
     );
     // Phase 96 INDIC-01:连接通道单一真相源。复用同一 endpoint +

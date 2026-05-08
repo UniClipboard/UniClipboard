@@ -31,6 +31,23 @@
 //! [`IrohPresenceHandler`], which holds each incoming connection open until
 //! the peer closes it — mirroring `spawn_hold_open_acceptor` in the probe.
 //! The dial side is invoked from [`IrohPresenceAdapter::ensure_reachable`].
+//!
+//! ## Inbound-driven Online flip
+//!
+//! Holding the connection open is necessary but not sufficient: a peer that
+//! recovers needs us to mark *it* Online without waiting for our next own
+//! dial. The handler therefore reverse-resolves `Connection::remote_id()`
+//! into a `DeviceId` (same `IdentityFingerprintFactoryPort` + `MemberRepo`
+//! lookup the clipboard receiver uses) and, on a Offline → Online
+//! transition, writes `last_state[device]=Online` and broadcasts a single
+//! `Online` event. Repeat inbound dials from the same peer (every keepalive
+//! tick) are idempotent — they don't re-broadcast.
+//!
+//! Offline detection is **not** mirrored here: the watchdog on our own
+//! outbound `Connection` remains the authoritative offline signal, so
+//! inbound `connection.closed()` only logs and returns. This keeps a single
+//! source of truth for Offline transitions and avoids state-write races
+//! between the watchdog and the inbound handler.
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -45,10 +62,13 @@ use tokio::task::JoinHandle;
 use tracing::{debug, info, instrument, warn};
 
 use uc_core::ids::DeviceId;
+use uc_core::membership::MemberRepositoryPort;
+use uc_core::ports::security::IdentityFingerprintFactoryPort;
 use uc_core::ports::{
     ClockPort, PeerAddressRepositoryPort, PresenceError, PresenceEvent, PresencePort,
     ReachabilityState,
 };
+use uc_core::security::IdentityFingerprint;
 
 use super::connect::connect_with_staggered_retry;
 
@@ -68,14 +88,86 @@ const EVENT_CHANNEL_CAPACITY: usize = 64;
 // ProtocolHandler (accept side)
 // ============================================================================
 
+/// Shared state between the dial-side adapter and the accept-side handler.
+///
+/// Both sides write `last_state` and emit `event_tx` events; sharing a
+/// single `Arc<Mutex<HashMap>>` for `last_state` is what makes the inbound
+/// Online flip race-safe with the outbound watchdog's Offline write — every
+/// state mutation goes through the same lock.
+struct HandlerState {
+    member_repo: Arc<dyn MemberRepositoryPort>,
+    fingerprint_factory: Arc<dyn IdentityFingerprintFactoryPort>,
+    last_state: Arc<Mutex<HashMap<String, ReachabilityState>>>,
+    event_tx: broadcast::Sender<PresenceEvent>,
+    clock: Arc<dyn ClockPort>,
+}
+
+impl HandlerState {
+    /// Resolve `remote_pubkey_bytes` (iroh `EndpointId` 32-byte public key)
+    /// back to a `SpaceMember.device_id` via the same fingerprint factory
+    /// the receiver adapter uses. `None` means "unknown peer" — handler
+    /// holds the connection open but does not mutate presence state.
+    ///
+    /// `member_repo.list()` is acceptable per the Slice 2 N ≤ 10 roster
+    /// assumption (see `clipboard_receiver_adapter.rs` for the same
+    /// rationale). A dedicated lookup-by-fingerprint index is a Phase 3
+    /// concern.
+    async fn resolve_device(&self, remote_pubkey_bytes: &[u8; 32]) -> Option<DeviceId> {
+        let derived = match self
+            .fingerprint_factory
+            .from_public_key(remote_pubkey_bytes)
+        {
+            Ok(fp) => fp,
+            Err(err) => {
+                warn!(
+                    error = %err,
+                    "presence accept: fingerprint derivation failed — cannot resolve peer",
+                );
+                return None;
+            }
+        };
+
+        let members = match self.member_repo.list().await {
+            Ok(ms) => ms,
+            Err(err) => {
+                warn!(
+                    error = %err,
+                    "presence accept: member_repo.list failed; treating peer as unknown",
+                );
+                return None;
+            }
+        };
+
+        members
+            .into_iter()
+            .find(|m| fingerprints_equal(&m.identity_fingerprint, &derived))
+            .map(|m| m.device_id)
+    }
+
+    fn now(&self) -> DateTime<Utc> {
+        let ms = self.clock.now_ms();
+        Utc.timestamp_millis_opt(ms).single().unwrap_or_else(|| {
+            warn!(
+                ms,
+                "ClockPort returned out-of-range epoch millis; falling back to Utc::now",
+            );
+            Utc::now()
+        })
+    }
+}
+
 /// Accept-side handler for [`PRESENCE_ALPN`].
 ///
-/// Holds each inbound connection open until the peer closes it. No frames
-/// are read — the whole point of the presence protocol is that the liveness
-/// signal is the QUIC connection itself, observed by the dial-side via
-/// [`Connection::closed`].
-#[derive(Clone, Default)]
-pub struct IrohPresenceHandler;
+/// Holds each inbound connection open until the peer closes it. Beyond
+/// holding (the original liveness contract), it also reverse-resolves the
+/// remote endpoint id to a `DeviceId` and flips
+/// `last_state[device] = Online` on the first inbound dial that wasn't
+/// already Online — the recovery path that makes peer-keepalive backoff
+/// safe to extend.
+#[derive(Clone)]
+pub struct IrohPresenceHandler {
+    state: Arc<HandlerState>,
+}
 
 impl std::fmt::Debug for IrohPresenceHandler {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -84,16 +176,50 @@ impl std::fmt::Debug for IrohPresenceHandler {
     }
 }
 
-impl IrohPresenceHandler {
-    pub fn new() -> Self {
-        Self
-    }
-}
-
 impl ProtocolHandler for IrohPresenceHandler {
     async fn accept(&self, connection: Connection) -> Result<(), AcceptError> {
         let remote = connection.remote_id();
         debug!(remote = %remote, "presence connection accepted; holding open until peer closes");
+
+        let remote_bytes: [u8; 32] = *remote.as_bytes();
+        if let Some(device_id) = self.state.resolve_device(&remote_bytes).await {
+            let key = device_id.as_str().to_string();
+            let now_at = self.state.now();
+
+            // Acquire `last_state` only long enough to insert and observe
+            // the previous value; broadcast and logging happen after the
+            // lock drops to avoid holding it across `.send`.
+            let prev = {
+                let mut last = self.state.last_state.lock().await;
+                last.insert(key, ReachabilityState::Online)
+            };
+
+            if prev != Some(ReachabilityState::Online) {
+                let _ = self.state.event_tx.send(PresenceEvent {
+                    device_id: device_id.clone(),
+                    state: ReachabilityState::Online,
+                    at: now_at,
+                });
+                info!(
+                    device = %device_id.as_str(),
+                    "inbound presence connection: peer marked Online",
+                );
+            } else {
+                debug!(
+                    device = %device_id.as_str(),
+                    "inbound presence connection: peer already Online (no event)",
+                );
+            }
+        } else {
+            // Unknown peer: hold the connection (matches the receiver
+            // adapter's tolerance for unresolved senders) but do not mutate
+            // any presence state and do not broadcast.
+            debug!(
+                remote = %remote,
+                "inbound presence connection from unresolved peer; holding without state change",
+            );
+        }
+
         let reason = connection.closed().await;
         debug!(
             remote = %remote,
@@ -102,6 +228,12 @@ impl ProtocolHandler for IrohPresenceHandler {
         );
         Ok(())
     }
+}
+
+/// `IdentityFingerprint` comparison surface — kept as a free function so
+/// future swaps to a normalised form land in one place.
+fn fingerprints_equal(a: &IdentityFingerprint, b: &IdentityFingerprint) -> bool {
+    a == b
 }
 
 // ============================================================================
@@ -122,9 +254,15 @@ pub struct IrohPresenceAdapter {
     /// Remember the last observed outcome for every device the adapter has
     /// ever probed. Distinct from `peers` because a failed dial should
     /// surface as `Offline` on `current_state` without leaving a live
-    /// connection entry behind.
+    /// connection entry behind. Shared with [`HandlerState`] so inbound
+    /// connections can flip a peer to Online under the same lock the
+    /// outbound watchdog uses to flip to Offline.
     last_state: Arc<Mutex<HashMap<String, ReachabilityState>>>,
     event_tx: broadcast::Sender<PresenceEvent>,
+    /// Cheap-clone state for [`IrohPresenceHandler`]. Constructed once in
+    /// [`IrohPresenceAdapter::new`] and handed out via
+    /// [`IrohPresenceAdapter::handler`].
+    handler_state: Arc<HandlerState>,
 }
 
 /// Per-device bookkeeping: the live connection we hold open, plus the
@@ -144,22 +282,48 @@ impl Drop for TrackedPeer {
 
 impl IrohPresenceAdapter {
     /// Construct an adapter wired to the given iroh endpoint, peer address
-    /// repository, and clock. Returns an owned value; the caller wraps it
-    /// in `Arc` before publishing it as `Arc<dyn PresencePort>` so shutdown
-    /// semantics match the rest of the iroh adapter family.
+    /// repository, member repository, fingerprint factory, and clock.
+    /// Returns an owned value; the caller wraps it in `Arc` before
+    /// publishing it as `Arc<dyn PresencePort>` so shutdown semantics match
+    /// the rest of the iroh adapter family.
+    ///
+    /// `member_repo` and `fingerprint_factory` are needed by the inbound
+    /// handler to reverse-resolve a remote `EndpointId` into a known
+    /// `DeviceId`; the same pair is consumed by `IrohClipboardReceiverAdapter`.
     pub fn new(
         endpoint: Arc<Endpoint>,
         peer_addr_repo: Arc<dyn PeerAddressRepositoryPort>,
+        member_repo: Arc<dyn MemberRepositoryPort>,
+        fingerprint_factory: Arc<dyn IdentityFingerprintFactoryPort>,
         clock: Arc<dyn ClockPort>,
     ) -> Self {
         let (event_tx, _) = broadcast::channel(EVENT_CHANNEL_CAPACITY);
+        let last_state = Arc::new(Mutex::new(HashMap::new()));
+        let handler_state = Arc::new(HandlerState {
+            member_repo,
+            fingerprint_factory,
+            last_state: Arc::clone(&last_state),
+            event_tx: event_tx.clone(),
+            clock: Arc::clone(&clock),
+        });
         Self {
             endpoint,
             peer_addr_repo,
             clock,
             peers: Arc::new(Mutex::new(HashMap::new())),
-            last_state: Arc::new(Mutex::new(HashMap::new())),
+            last_state,
             event_tx,
+            handler_state,
+        }
+    }
+
+    /// Cheap clone-able handle registered with iroh's `RouterBuilder`. Each
+    /// inbound connection runs [`IrohPresenceHandler::accept`], which
+    /// shares this adapter's `last_state` map and broadcast `Sender` via
+    /// `Arc<HandlerState>`.
+    pub fn handler(&self) -> IrohPresenceHandler {
+        IrohPresenceHandler {
+            state: Arc::clone(&self.handler_state),
         }
     }
 
@@ -494,7 +658,11 @@ mod tests {
     use tokio::time::timeout;
 
     use uc_core::ids::DeviceId;
+    use uc_core::membership::{MemberRepositoryPort, MembershipError, SpaceMember};
     use uc_core::ports::{PeerAddressError, PeerAddressRecord};
+    use uc_core::MemberSyncPreferences;
+
+    use crate::security::Sha256IdentityFingerprintFactory;
 
     const DIAL_BUDGET: Duration = Duration::from_secs(5);
     const OFFLINE_BUDGET: Duration = Duration::from_secs(10);
@@ -542,6 +710,49 @@ mod tests {
         }
     }
 
+    /// In-memory `MemberRepositoryPort` for handler-side identity
+    /// resolution. Tests that exercise dial-only paths leave it empty;
+    /// tests that exercise inbound `Online` flips seed it with a member
+    /// whose `identity_fingerphint` matches the dialing endpoint's pubkey.
+    #[derive(Default)]
+    struct MemMemberRepo {
+        inner: StdMutex<StdHashMap<String, SpaceMember>>,
+    }
+
+    impl MemMemberRepo {
+        fn seed(&self, member: SpaceMember) {
+            self.inner
+                .lock()
+                .unwrap()
+                .insert(member.device_id.as_str().to_string(), member);
+        }
+    }
+
+    #[async_trait]
+    impl MemberRepositoryPort for MemMemberRepo {
+        async fn get(&self, device: &DeviceId) -> Result<Option<SpaceMember>, MembershipError> {
+            Ok(self.inner.lock().unwrap().get(device.as_str()).cloned())
+        }
+        async fn list(&self) -> Result<Vec<SpaceMember>, MembershipError> {
+            Ok(self.inner.lock().unwrap().values().cloned().collect())
+        }
+        async fn save(&self, member: &SpaceMember) -> Result<(), MembershipError> {
+            self.inner
+                .lock()
+                .unwrap()
+                .insert(member.device_id.as_str().to_string(), member.clone());
+            Ok(())
+        }
+        async fn remove(&self, device_id: &DeviceId) -> Result<bool, MembershipError> {
+            Ok(self
+                .inner
+                .lock()
+                .unwrap()
+                .remove(device_id.as_str())
+                .is_some())
+        }
+    }
+
     struct FixedClock;
     impl ClockPort for FixedClock {
         fn now_ms(&self) -> i64 {
@@ -586,6 +797,12 @@ mod tests {
     /// `Router` registering [`IrohPresenceHandler`] on [`PRESENCE_ALPN`].
     /// Returns both endpoints, B's encoded blob for the repo, B's
     /// `DeviceId`, and B's `Router` so the test can shut it down later.
+    ///
+    /// The B-side adapter is a decoy used solely to produce a working
+    /// inbound handler — its `last_state` map is not observed by the
+    /// dial-side tests below. Tests that exercise the inbound Online flip
+    /// build their own adapter explicitly via
+    /// [`build_adapter_with_member_repo`].
     async fn setup_two_endpoints() -> (Arc<Endpoint>, Arc<Endpoint>, Vec<u8>, DeviceId, Router) {
         let endpoint_b = bound_endpoint().await;
         wait_for_direct_addrs(&endpoint_b).await;
@@ -593,8 +810,15 @@ mod tests {
         let b_blob = postcard::to_stdvec(&b_addr).expect("postcard encode EndpointAddr");
         let b_device_id = DeviceId::new(format!("endpoint-b-{}", endpoint_b.id().fmt_short()));
 
+        let decoy_adapter = IrohPresenceAdapter::new(
+            Arc::clone(&endpoint_b),
+            Arc::new(FakePeerAddressRepo::default()),
+            Arc::new(MemMemberRepo::default()),
+            Arc::new(Sha256IdentityFingerprintFactory),
+            Arc::new(FixedClock),
+        );
         let router_b = Router::builder((*endpoint_b).clone())
-            .accept(PRESENCE_ALPN, IrohPresenceHandler::new())
+            .accept(PRESENCE_ALPN, decoy_adapter.handler())
             .spawn();
 
         let endpoint_a = bound_endpoint().await;
@@ -611,11 +835,36 @@ mod tests {
         }
     }
 
+    /// Build an adapter for the dial-side tests. Inbound resolution is
+    /// not exercised here — the empty `MemMemberRepo` is enough to keep
+    /// the handler constructible.
     fn build_adapter(
         endpoint: Arc<Endpoint>,
         repo: Arc<dyn PeerAddressRepositoryPort>,
     ) -> IrohPresenceAdapter {
-        IrohPresenceAdapter::new(endpoint, repo, Arc::new(FixedClock))
+        IrohPresenceAdapter::new(
+            endpoint,
+            repo,
+            Arc::new(MemMemberRepo::default()),
+            Arc::new(Sha256IdentityFingerprintFactory),
+            Arc::new(FixedClock),
+        )
+    }
+
+    /// Build an adapter wired to a caller-supplied `MemberRepositoryPort`
+    /// so inbound-flip tests can seed the dialing endpoint's identity.
+    fn build_adapter_with_member_repo(
+        endpoint: Arc<Endpoint>,
+        repo: Arc<dyn PeerAddressRepositoryPort>,
+        member_repo: Arc<dyn MemberRepositoryPort>,
+    ) -> IrohPresenceAdapter {
+        IrohPresenceAdapter::new(
+            endpoint,
+            repo,
+            member_repo,
+            Arc::new(Sha256IdentityFingerprintFactory),
+            Arc::new(FixedClock),
+        )
     }
 
     // -- Tests ---------------------------------------------------------------
@@ -774,6 +1023,201 @@ mod tests {
         );
 
         router_b.shutdown().await.expect("router_b shutdown clean");
+        endpoint_a.close().await;
+    }
+
+    // -- Inbound-driven Online flip ------------------------------------------
+
+    /// Build a `SpaceMember` whose `identity_fingerprint` matches the
+    /// pubkey of `endpoint`, so the presence handler can reverse-resolve an
+    /// inbound `Connection::remote_id()` from that endpoint back to
+    /// `device_id`.
+    fn member_for_endpoint(endpoint: &Endpoint, device_id: &str) -> SpaceMember {
+        let factory = Sha256IdentityFingerprintFactory;
+        let fp = factory
+            .from_public_key(endpoint.id().as_bytes())
+            .expect("derive fingerprint from endpoint pubkey");
+        SpaceMember {
+            device_id: DeviceId::new(device_id),
+            device_name: device_id.to_string(),
+            identity_fingerprint: fp,
+            joined_at: Utc::now(),
+            sync_preferences: MemberSyncPreferences::default(),
+        }
+    }
+
+    /// Verdict — when an Offline (or Unknown) peer dials us at
+    /// `PRESENCE_ALPN`, the handler reverse-resolves the remote pubkey to
+    /// the seeded `DeviceId`, writes `last_state[device]=Online`, and
+    /// emits exactly one `Online` event.
+    #[tokio::test]
+    async fn accept_from_known_peer_flips_offline_to_online() {
+        let endpoint_a = bound_endpoint().await;
+        wait_for_direct_addrs(&endpoint_a).await;
+        let endpoint_b = bound_endpoint().await;
+        wait_for_direct_addrs(&endpoint_b).await;
+
+        let a_member = member_for_endpoint(&endpoint_a, "device-a");
+        let a_device_id = a_member.device_id.clone();
+        let b_member_repo = Arc::new(MemMemberRepo::default());
+        b_member_repo.seed(a_member);
+
+        let b_peer_addr_repo: Arc<dyn PeerAddressRepositoryPort> =
+            Arc::new(FakePeerAddressRepo::default());
+        let b_member_repo_dyn: Arc<dyn MemberRepositoryPort> = b_member_repo;
+        let b_adapter = build_adapter_with_member_repo(
+            Arc::clone(&endpoint_b),
+            b_peer_addr_repo,
+            b_member_repo_dyn,
+        );
+        let mut subscriber = b_adapter.subscribe();
+
+        // Before any inbound dial, B has no opinion on A's reachability.
+        assert_eq!(
+            b_adapter.current_state(&a_device_id).await,
+            ReachabilityState::Unknown,
+        );
+
+        let router_b = Router::builder((*endpoint_b).clone())
+            .accept(PRESENCE_ALPN, b_adapter.handler())
+            .spawn();
+
+        // A dials B directly — this exercises B's accept handler without
+        // pulling in A's own adapter. The connection is held open by the
+        // handler until the test drops it.
+        let b_addr = endpoint_b.addr();
+        let conn = timeout(DIAL_BUDGET, endpoint_a.connect(b_addr, PRESENCE_ALPN))
+            .await
+            .expect("connect within budget")
+            .expect("A dial B succeeds");
+
+        let event = timeout(Duration::from_secs(3), subscriber.recv())
+            .await
+            .expect("inbound Online event arrives within 3s")
+            .expect("event channel open");
+        assert_eq!(event.device_id, a_device_id);
+        assert_eq!(event.state, ReachabilityState::Online);
+
+        assert_eq!(
+            b_adapter.current_state(&a_device_id).await,
+            ReachabilityState::Online,
+        );
+
+        drop(conn);
+        router_b.shutdown().await.ok();
+        endpoint_a.close().await;
+    }
+
+    /// Verdict — repeated inbound dials from the same already-Online peer
+    /// must NOT re-broadcast. Each keepalive tick from a stable peer would
+    /// otherwise spam subscribers with duplicate events.
+    #[tokio::test]
+    async fn accept_already_online_does_not_rebroadcast() {
+        let endpoint_a = bound_endpoint().await;
+        wait_for_direct_addrs(&endpoint_a).await;
+        let endpoint_b = bound_endpoint().await;
+        wait_for_direct_addrs(&endpoint_b).await;
+
+        let a_member = member_for_endpoint(&endpoint_a, "device-a");
+        let b_member_repo = Arc::new(MemMemberRepo::default());
+        b_member_repo.seed(a_member);
+
+        let b_adapter = build_adapter_with_member_repo(
+            Arc::clone(&endpoint_b),
+            Arc::new(FakePeerAddressRepo::default()) as Arc<dyn PeerAddressRepositoryPort>,
+            b_member_repo as Arc<dyn MemberRepositoryPort>,
+        );
+        let mut subscriber = b_adapter.subscribe();
+
+        let router_b = Router::builder((*endpoint_b).clone())
+            .accept(PRESENCE_ALPN, b_adapter.handler())
+            .spawn();
+
+        let b_addr = endpoint_b.addr();
+        let conn1 = timeout(
+            DIAL_BUDGET,
+            endpoint_a.connect(b_addr.clone(), PRESENCE_ALPN),
+        )
+        .await
+        .expect("first connect within budget")
+        .expect("first dial succeeds");
+        let first = timeout(Duration::from_secs(3), subscriber.recv())
+            .await
+            .expect("first event arrives")
+            .expect("channel open");
+        assert_eq!(first.state, ReachabilityState::Online);
+
+        // Second dial — B's `last_state[A]` is already `Online`, so the
+        // handler must skip the broadcast.
+        let conn2 = timeout(DIAL_BUDGET, endpoint_a.connect(b_addr, PRESENCE_ALPN))
+            .await
+            .expect("second connect within budget")
+            .expect("second dial succeeds");
+
+        // Drain attempt with a tight deadline: any re-broadcast would
+        // arrive within milliseconds of the second connection landing.
+        let no_event = timeout(Duration::from_millis(500), subscriber.recv()).await;
+        assert!(
+            no_event.is_err(),
+            "expected no second event, got {:?}",
+            no_event.ok().map(|r| r.map(|e| (e.device_id, e.state))),
+        );
+
+        drop(conn1);
+        drop(conn2);
+        router_b.shutdown().await.ok();
+        endpoint_a.close().await;
+    }
+
+    /// Verdict — an inbound dial from a peer whose pubkey is NOT in
+    /// `member_repo` must hold the connection but leave presence state
+    /// untouched and emit no event. Mirrors the receiver adapter's
+    /// "unknown peer" tolerance.
+    #[tokio::test]
+    async fn accept_unknown_peer_does_not_touch_state() {
+        let endpoint_a = bound_endpoint().await;
+        wait_for_direct_addrs(&endpoint_a).await;
+        let endpoint_b = bound_endpoint().await;
+        wait_for_direct_addrs(&endpoint_b).await;
+
+        // member_repo deliberately empty — A's fingerprint will not
+        // resolve to any DeviceId.
+        let b_adapter = build_adapter_with_member_repo(
+            Arc::clone(&endpoint_b),
+            Arc::new(FakePeerAddressRepo::default()) as Arc<dyn PeerAddressRepositoryPort>,
+            Arc::new(MemMemberRepo::default()) as Arc<dyn MemberRepositoryPort>,
+        );
+        let mut subscriber = b_adapter.subscribe();
+
+        let router_b = Router::builder((*endpoint_b).clone())
+            .accept(PRESENCE_ALPN, b_adapter.handler())
+            .spawn();
+
+        let b_addr = endpoint_b.addr();
+        let conn = timeout(DIAL_BUDGET, endpoint_a.connect(b_addr, PRESENCE_ALPN))
+            .await
+            .expect("connect within budget")
+            .expect("dial succeeds");
+
+        // Give the handler time to run resolve_device, then assert no
+        // event landed.
+        let no_event = timeout(Duration::from_millis(500), subscriber.recv()).await;
+        assert!(
+            no_event.is_err(),
+            "unknown peer must not produce a presence event",
+        );
+
+        // No DeviceId was ever associated with A, so any current_state
+        // probe returns Unknown — the canonical "no opinion yet" verdict.
+        assert_eq!(
+            b_adapter
+                .current_state(&DeviceId::new("not-a-real-id"))
+                .await,
+            ReachabilityState::Unknown,
+        );
+
+        drop(conn);
+        router_b.shutdown().await.ok();
         endpoint_a.close().await;
     }
 }

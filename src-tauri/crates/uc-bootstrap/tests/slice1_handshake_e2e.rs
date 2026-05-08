@@ -364,6 +364,8 @@ async fn build_side(name: &'static str, rendezvous_base_url: String) -> Side {
     // 一致。
     let presence: Arc<dyn uc_core::ports::PresencePort> = builder.install_presence(
         Arc::clone(&peer_addr_repo) as Arc<dyn uc_core::ports::PeerAddressRepositoryPort>,
+        Arc::clone(&member_repo) as Arc<dyn MemberRepositoryPort>,
+        Arc::new(Sha256IdentityFingerprintFactory),
         Arc::new(SystemClock) as Arc<dyn uc_core::ports::ClockPort>,
     );
     let iroh_node = builder.spawn();

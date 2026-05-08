@@ -23,9 +23,12 @@ use tokio::sync::broadcast;
 use tokio::task::JoinHandle;
 use tracing::{info, instrument, warn};
 
-use uc_core::ids::SpaceId;
+use uc_core::ids::{DeviceId, SpaceId};
 use uc_core::ports::space::{SpaceAccessError, SpaceAccessPort};
-use uc_core::ports::{SettingsPort, SetupStatusPort};
+use uc_core::ports::{
+    PeerAddressRepositoryPort, PresenceError, PresencePort, ReachabilityState, SettingsPort,
+    SetupStatusPort,
+};
 use uc_core::setup::SetupStatus;
 
 use crate::facade::space_setup::commands::{
@@ -108,6 +111,17 @@ pub struct SpaceSetupFacade {
     /// 必须自己拿 port。
     migration_state: Arc<dyn MigrationStatePort>,
     blob_migration_repo: Arc<dyn BlobMigrationRepoPort>,
+    /// Held for the desktop keepalive scheduler — `list_paired_peer_device_ids`
+    /// reads `peer_addr_repo.list()` and `ensure_reachable_one` forwards to
+    /// `presence.ensure_reachable`. Both are thin wrappers driven by the
+    /// worker's per-peer backoff state machine; the underlying ports stay
+    /// owned by use cases as before.
+    peer_addr_repo: Arc<dyn PeerAddressRepositoryPort>,
+    presence: Arc<dyn PresencePort>,
+    /// `current_device_id()` snapshotted at facade-construction time so
+    /// `list_paired_peer_device_ids` can self-filter without grabbing the
+    /// `DeviceIdentityPort` lock on every call.
+    local_device_id: DeviceId,
 }
 
 impl SpaceSetupFacade {
@@ -175,6 +189,12 @@ impl SpaceSetupFacade {
         // T8 · F1 hook: construct ensure_reachable_all early so peer_addr_repo /
         // device_identity can still be Arc::clone'd here — both are moved into
         // downstream use cases below.
+        //
+        // Backoff scheduler (P-keepalive-backoff): the desktop keepalive
+        // worker reads `peer_addr_repo` and dials individual peers via the
+        // facade thin wrappers — clone before the use case ownership move.
+        let peer_addr_repo_for_facade = Arc::clone(&peer_addr_repo);
+        let presence_for_facade = Arc::clone(&presence);
         let ensure_reachable_all = Arc::new(EnsureReachableAllUseCase::new(
             Arc::clone(&peer_addr_repo),
             presence,
@@ -186,6 +206,9 @@ impl SpaceSetupFacade {
         // persistence is done by the already-existing use cases rather
         // than being duplicated here.
         let local_device_id = device_identity.current_device_id();
+        // Same id stashed for the keepalive scheduler's self-filter — the
+        // original is moved into the inbound orchestrator below.
+        let local_device_id_for_facade = local_device_id.clone();
         // Handshake TTL：sponsor 侧从 begin 到 confirm/reject 的 watchdog
         // （P7g），joiner 侧每次 recv 的 timeout（P7h）。60s 对齐 legacy
         // setup orchestrator 的默认值；足够覆盖一次人工口令输入 + 网络
@@ -279,6 +302,9 @@ impl SpaceSetupFacade {
             switch_space,
             migration_state: migration_state_for_facade,
             blob_migration_repo: blob_migration_repo_for_facade,
+            peer_addr_repo: peer_addr_repo_for_facade,
+            presence: presence_for_facade,
+            local_device_id: local_device_id_for_facade,
         }
     }
 
@@ -569,6 +595,48 @@ impl SpaceSetupFacade {
         &self,
     ) -> Result<EnsureReachableAllReport, EnsureReachableAllError> {
         self.ensure_reachable_all.execute().await
+    }
+
+    /// List `DeviceId`s of every paired peer (local device filtered out).
+    ///
+    /// Thin wrapper over `peer_addr_repo.list()` consumed by the desktop
+    /// keepalive scheduler so its per-peer backoff state can discover new
+    /// peers and prune removed ones each tick. Mirrors the iteration source
+    /// `EnsureReachableAllUseCase` uses internally — peers without an addr
+    /// blob are silently absent rather than surfaced as "no address"
+    /// errors. The local DeviceId is filtered defensively (the repo
+    /// shouldn't contain it; see the same guard in `EnsureReachableAllUseCase`).
+    pub async fn list_paired_peer_device_ids(
+        &self,
+    ) -> Result<Vec<DeviceId>, EnsureReachableAllError> {
+        let records = self.peer_addr_repo.list().await.map_err(|err| {
+            EnsureReachableAllError::Repository(format!("peer_addr_repo.list: {err}"))
+        })?;
+        Ok(records
+            .into_iter()
+            .filter_map(|r| {
+                if r.device_id == self.local_device_id {
+                    None
+                } else {
+                    Some(r.device_id)
+                }
+            })
+            .collect())
+    }
+
+    /// Ensure a single peer is reachable; thin wrapper over
+    /// `PresencePort::ensure_reachable`.
+    ///
+    /// The keepalive scheduler calls this only for peers whose backoff has
+    /// elapsed. `ensure_reachable` (not `verify_reachable`) is intentional:
+    /// when our outbound `peers` map already holds an alive connection the
+    /// fast-path returns Online without dialing — exactly what the
+    /// scheduler wants to avoid burning UDP probes on healthy peers.
+    pub async fn ensure_reachable_one(
+        &self,
+        device: &DeviceId,
+    ) -> Result<ReachabilityState, PresenceError> {
+        self.presence.ensure_reachable(device).await
     }
 
     /// F2 · Tear down facade-owned background work cleanly on app exit.

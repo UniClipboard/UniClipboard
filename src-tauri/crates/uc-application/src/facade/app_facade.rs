@@ -47,7 +47,8 @@ use crate::facade::{
     SearchFacadeError, SearchPageView, SearchQueryInput, SearchRebuildAcceptedView,
     SearchStatusView, SettingsFacade, SettingsFacadeError, SpaceSetupFacade, StorageFacade,
 };
-use uc_core::ports::{PresenceEvent, ReachabilityState};
+use uc_core::ids::DeviceId;
+use uc_core::ports::{PresenceError, PresenceEvent, ReachabilityState};
 use uc_core::ClipboardChangeOrigin;
 use uc_core::SystemClipboardSnapshot;
 
@@ -141,6 +142,35 @@ impl AppFacade {
                 "space setup facade unavailable".to_string(),
             ))?
             .refresh_presence()
+            .await
+    }
+
+    /// 列出已配对 peer 的 `DeviceId`(本机已过滤)。供 desktop keepalive
+    /// 调度器用来发现新 peer / 收回已删除 peer。Thin wrapper over
+    /// [`SpaceSetupFacade::list_paired_peer_device_ids`].
+    pub async fn list_paired_peer_device_ids(
+        &self,
+    ) -> Result<Vec<DeviceId>, EnsureReachableAllError> {
+        self.space_setup
+            .as_ref()
+            .ok_or(EnsureReachableAllError::Repository(
+                "space setup facade unavailable".to_string(),
+            ))?
+            .list_paired_peer_device_ids()
+            .await
+    }
+
+    /// 对单个 peer 触发一次 `ensure_reachable`。供 desktop keepalive 调度
+    /// 器在退避到期时按需拨号。Thin wrapper over
+    /// [`SpaceSetupFacade::ensure_reachable_one`].
+    pub async fn ensure_reachable_one(
+        &self,
+        device: &DeviceId,
+    ) -> Result<ReachabilityState, PresenceError> {
+        self.space_setup
+            .as_ref()
+            .ok_or_else(|| PresenceError::Internal("space setup facade unavailable".to_string()))?
+            .ensure_reachable_one(device)
             .await
     }
 

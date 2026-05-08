@@ -144,7 +144,9 @@ function buildCliInstallerTable({ artifactsDir, baseUrl }) {
   const linux = findFirstFile(
     artifactsDir,
     file =>
-      file.startsWith('uniclipboard-cli-') && file.includes('linux-gnu') && file.endsWith('.tar.gz')
+      file.startsWith('uniclipboard-cli-') &&
+      file.includes('linux-musl') &&
+      file.endsWith('.tar.gz')
   )
   const windows = findFirstFile(
     artifactsDir,

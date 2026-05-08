@@ -39,6 +39,26 @@ apps:
     extensions: [gnome]
     desktop: usr/share/applications/uniclipboard.desktop
     common-id: app.uniclipboard.desktop
+    environment:
+      # WebKit2GTK 4.1 子进程模型:WebKitWebProcess / WebKitNetworkProcess /
+      # WebKitGPUProcess。WebKit 内部硬编码用 /usr/lib/$ARCH/webkit2gtk-4.1/
+      # 找它们 —— strict snap 里 /usr 是 base snap (core22) tree,没 webkit;
+      # 实际 binary 在 gnome-42-2204 content snap 暴露的
+      # $SNAP/gnome-platform/usr/lib/$ARCH/webkit2gtk-4.1/ 下。
+      # WEBKIT_EXEC_PATH 让 WebKit spawn 直接读这条显式路径,绕开默认
+      # /usr/lib 寻路 —— 否则启动时会 ENOENT 然后 SIGTRAP。
+      WEBKIT_EXEC_PATH: $SNAP/gnome-platform/usr/lib/$CRAFT_ARCH_TRIPLET/webkit2gtk-4.1
+      # snap 嵌套 mount namespace 内,WebKit 默认还会再起一层
+      # bubblewrap-style sandbox(需要 user_namespaces 等内核能力),strict
+      # snap 不给。FORCE_SANDBOX=0 关掉 WebKit 自家 sandbox —— snap 已经是
+      # AppArmor + seccomp + mount/user namespace 的更强 sandbox,不损失
+      # 安全性。
+      WEBKIT_FORCE_SANDBOX: '0'
+      # 关 WebKit DMA-BUF renderer:trace 里看到 "GTK failed to initialize
+      # GL: No available configurations for the given pixel format" ——
+      # snap 的 GPU 隔离常无法初始化 EGL,WebKit 默认会试 DMA-BUF zero-copy
+      # 失败再 fallback,中间状态不稳定。直接走 software/legacy renderer。
+      WEBKIT_DISABLE_DMABUF_RENDERER: '1'
     # plug 列表覆盖 GUI + 全局剪贴板 + LAN P2P 同步 + 本地配置/数据 +
     # 文件传输场景。剪贴板事件从 GTK clipboard API 取,strict snap 通过
     # wayland / x11 plug 拿到 host compositor selection;daemon 监听

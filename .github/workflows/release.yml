@@ -285,7 +285,7 @@ jobs:
           tag_name: v${{ needs.validate.outputs.version }}
           name: v${{ needs.validate.outputs.version }}
           body_path: release-notes.md
-          draft: true
+          draft: ${{ needs.validate.outputs.channel != 'alpha' }}
           prerelease: ${{ needs.validate.outputs.is_prerelease == 'true' }}
           files: release-assets/*
         env:
@@ -374,11 +374,31 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### Next Steps" >> $GITHUB_STEP_SUMMARY
           echo "1. Go to [Releases](https://github.com/${{ github.repository }}/releases)" >> $GITHUB_STEP_SUMMARY
-          echo "2. Review the generated draft release notes" >> $GITHUB_STEP_SUMMARY
-          echo "3. Publish the release when ready" >> $GITHUB_STEP_SUMMARY
+          if [ "${{ needs.validate.outputs.channel }}" = "alpha" ]; then
+            echo "2. Alpha release已自动发布，无需手动 publish" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "2. Review the generated draft release notes" >> $GITHUB_STEP_SUMMARY
+            echo "3. Publish the release when ready" >> $GITHUB_STEP_SUMMARY
+          fi
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### Update Manifest" >> $GITHUB_STEP_SUMMARY
           echo "Channel manifest deployed to GitHub Pages:" >> $GITHUB_STEP_SUMMARY
           REPO_OWNER=$(echo "${{ github.repository }}" | cut -d'/' -f1)
           REPO_NAME=$(echo "${{ github.repository }}" | cut -d'/' -f2)
           echo "https://${REPO_OWNER}.github.io/${REPO_NAME}/${{ needs.validate.outputs.channel }}.json" >> $GITHUB_STEP_SUMMARY
+
+  snap:
+    # 主 release 完成后自动触发 snap 构建并推到对应 channel。
+    # 渠道映射：alpha→edge, beta→beta, rc→candidate, stable→stable。
+    # continue-on-error 让 snap 失败不会把整条 release 标红——GH release
+    # 此时已创建，snap 仅作 Linux 老 distro 覆盖的补充分发。
+    name: Build & publish snap
+    needs: [validate, create-release]
+    if: ${{ success() }}
+    continue-on-error: true
+    uses: ./.github/workflows/snap.yml
+    with:
+      channel: ${{ needs.validate.outputs.channel == 'alpha' && 'edge' || needs.validate.outputs.channel == 'rc' && 'candidate' || needs.validate.outputs.channel }}
+      release: true
+      branch: ${{ inputs.branch || '' }}
+    secrets: inherit

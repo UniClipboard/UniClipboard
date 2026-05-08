@@ -104,7 +104,7 @@ jobs:
           tagName: v${{ inputs.version }}
           releaseName: UniClipboard Alpha v${{ inputs.version }}
           releaseBody: Alpha build for testing.
-          releaseDraft: true
+          releaseDraft: false
           prerelease: true
           uploadUpdaterJson: true
           args: ${{ matrix.args }}

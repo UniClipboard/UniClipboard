@@ -40,14 +40,6 @@ apps:
     desktop: usr/share/applications/uniclipboard.desktop
     common-id: app.uniclipboard.desktop
     environment:
-      # WebKit2GTK 4.1 子进程模型:WebKitWebProcess / WebKitNetworkProcess /
-      # WebKitGPUProcess。WebKit 内部硬编码用 /usr/lib/$ARCH/webkit2gtk-4.1/
-      # 找它们 —— strict snap 里 /usr 是 base snap (core22) tree,没 webkit;
-      # 实际 binary 在 gnome-42-2204 content snap 暴露的
-      # $SNAP/gnome-platform/usr/lib/$ARCH/webkit2gtk-4.1/ 下。
-      # WEBKIT_EXEC_PATH 让 WebKit spawn 直接读这条显式路径,绕开默认
-      # /usr/lib 寻路 —— 否则启动时会 ENOENT 然后 SIGTRAP。
-      WEBKIT_EXEC_PATH: $SNAP/gnome-platform/usr/lib/$CRAFT_ARCH_TRIPLET/webkit2gtk-4.1
       # snap 嵌套 mount namespace 内,WebKit 默认还会再起一层
       # bubblewrap-style sandbox(需要 user_namespaces 等内核能力),strict
       # snap 不给。FORCE_SANDBOX=0 关掉 WebKit 自家 sandbox —— snap 已经是
@@ -59,6 +51,12 @@ apps:
       # snap 的 GPU 隔离常无法初始化 EGL,WebKit 默认会试 DMA-BUF zero-copy
       # 失败再 fallback,中间状态不稳定。直接走 software/legacy renderer。
       WEBKIT_DISABLE_DMABUF_RENDERER: '1'
+      # NOTE: WEBKIT_EXEC_PATH **没用**。现代 WebKitGTK
+      # (Source/WebKit/UIProcess/Launcher/glib/ProcessLauncherGLib.cpp) 用
+      # 编译期宏 WEBKIT_EXEC_PATH (`g_build_filename(WEBKIT_EXEC_PATH,
+      # processName, nullptr)`),不再 `g_getenv` 同名 env。所以子进程路径
+      # 改不动 —— 必须用 snap layout 把硬编码的 /usr/lib/$ARCH/webkit2gtk-4.1/
+      # bind-mount 到 gnome-platform 实际位置(见本文件底部 layout 块)。
     # plug 列表覆盖 GUI + 全局剪贴板 + LAN P2P 同步 + 本地配置/数据 +
     # 文件传输场景。剪贴板事件从 GTK clipboard API 取,strict snap 通过
     # wayland / x11 plug 拿到 host compositor selection;daemon 监听
@@ -159,3 +157,23 @@ parts:
         "${CRAFT_PART_INSTALL}/usr/share/icons/hicolor/256x256/apps/uniclipboard.png"
       install -Dm644 src-tauri/icons/128x128.png \
         "${CRAFT_PART_INSTALL}/usr/share/icons/hicolor/128x128/apps/uniclipboard.png"
+
+# WebKitGTK 4.1 子进程路径 hardcode-fix。
+#
+# WebKit 的 ProcessLauncherGLib 用编译期宏 WEBKIT_EXEC_PATH 拼子进程
+# (WebKitWebProcess / WebKitNetworkProcess / WebKitGPUProcess) 的绝对路径,
+# Ubuntu 22.04 编译时 = /usr/lib/x86_64-linux-gnu/webkit2gtk-4.1/。strict
+# snap 的 mount namespace 里 /usr 是 base snap (core22) tree,这条路径下
+# 没文件,Tauri 一开 webview 就 ENOENT + SIGTRAP。
+#
+# gnome-42-2204 content snap 通过 snap content interface 把 webkit binary
+# 暴露在 $SNAP/gnome-platform/usr/lib/x86_64-linux-gnu/webkit2gtk-4.1/。
+# snap layout 在我们 snap 的 mount namespace 里把硬编码的 /usr/lib 路径
+# bind-mount 到这个实际位置 —— WebKit 编译期路径"自动"指向真实文件,
+# 不需要改 WebKit 源码或重编 webkit2gtk。
+#
+# 同名 runtime env (`WEBKIT_EXEC_PATH`) 在现代 WebKitGTK 已被废弃 (改成
+# 编译期宏),只有 layout / bind-mount 这条路能改 spawn 路径。
+layout:
+  /usr/lib/x86_64-linux-gnu/webkit2gtk-4.1:
+    bind: $SNAP/gnome-platform/usr/lib/x86_64-linux-gnu/webkit2gtk-4.1

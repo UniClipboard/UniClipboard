@@ -54,6 +54,15 @@ apps:
       - home
       - removable-media
       - mount-observe
+      # KEK 解锁与 iroh 设备身份回退会走系统 keyring (libsecret →
+      # org.freedesktop.secrets);desktop plug 只给一般 D-Bus session,
+      # secrets 路径必须显式 plug。没有它在 snap 里 keyring 调用会被
+      # AppArmor / 命名空间隔离挡住,Linux 上的 fresh install
+      # build_space_setup_assembly:bind → keyring::get_secret 会在 ~1s 后
+      # 失败,daemon 启动直接挂——参见 MigratingSecureStorage::get
+      # 的"legacy.get 失败 → 当作 miss"兜底。本 plug 让有 keyring
+      # 的环境真的能用上,兜底逻辑只覆盖没 keyring 的环境。
+      - password-manager-service
 
 parts:
   uniclipboard:

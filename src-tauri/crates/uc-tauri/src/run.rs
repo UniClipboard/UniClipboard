@@ -246,7 +246,13 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
                         // 也由 CLI 负责重新拉起。
                     }
                     Err(error) => {
-                        error!(error = %error, "Daemon startup/probe failed during Tauri bootstrap");
+                        // {error:#} prints anyhow's full cause chain inline
+                        // (`outer: inner: deeper`); %error would only show the
+                        // outermost layer and bury the real root cause.
+                        error!(
+                            error = %format_args!("{error:#}"),
+                            "Daemon startup/probe failed during Tauri bootstrap"
+                        );
                     }
                 }
             });

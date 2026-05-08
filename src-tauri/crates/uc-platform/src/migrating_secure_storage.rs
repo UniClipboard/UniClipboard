@@ -17,6 +17,14 @@
 //!
 //! ## 失败语义
 //!
+//! * `primary.get` 失败：直接上抛——primary 是真相，读不出来意味着系统层有问题，
+//!   调用方应该看到。
+//! * `legacy.get` 失败：仅 `warn!` log，**降级当作 legacy miss**（返回 `Ok(None)`）。
+//!   迁移本就是 best-effort——legacy 不可达不应阻断 fresh-install 上的
+//!   primary 生成。典型场景：Linux 上 dbus-secret-service 在 snap 里命中
+//!   未 plug 的 `password-manager-service`、headless 容器无 keyring、
+//!   gnome-keyring 解锁 prompt 1s 超时等，旧版本会让整个 iroh bind /
+//!   daemon 启动死在这一条路径上。
 //! * `primary.set` 失败：迁移整体失败，向上抛 `SecureStorageError`，**不动**
 //!   legacy。这样下次启动还能再试，避免数据丢失。
 //! * `legacy.delete` 失败：仅 `warn!` log，不影响业务结果。重复迁移幂等
@@ -78,7 +86,27 @@ impl SecureStoragePort for MigratingSecureStorage {
         if !self.is_migratable(key) {
             return Ok(None);
         }
-        match self.legacy_fallback.get(key)? {
+        // Legacy backend failure must NOT block startup: migration is by
+        // design best-effort. Fresh installs on Linux without a working
+        // secret-service backend (e.g. snap strict + missing
+        // `password-manager-service` plug, headless containers, or a
+        // gnome-keyring lock prompt that hangs ~1s before timing out)
+        // legitimately have no legacy data — treating an unreachable legacy
+        // as "no-entry" lets the caller (re)generate primary instead of
+        // hard-failing the whole iroh bind / daemon startup path.
+        let legacy_value = match self.legacy_fallback.get(key) {
+            Ok(v) => v,
+            Err(err) => {
+                warn!(
+                    key = %key,
+                    error = %err,
+                    "legacy secure storage unreachable; treating as no-entry — \
+                     primary will be (re)generated; migration is best-effort"
+                );
+                return Ok(None);
+            }
+        };
+        match legacy_value {
             Some(value) => {
                 // 先把 legacy 值落地到 primary，再删 legacy。任一步顺序错都会
                 // 导致升级路径不幂等：先删后写而中间崩溃 → 数据永久丢失。
@@ -135,6 +163,7 @@ mod tests {
     struct InMemoryStore {
         map: Mutex<HashMap<String, Vec<u8>>>,
         counters: Mutex<Counters>,
+        fail_get: Mutex<bool>,
         fail_set: Mutex<bool>,
         fail_delete: Mutex<bool>,
     }
@@ -173,6 +202,10 @@ mod tests {
             self.map.lock().unwrap().get(key).cloned()
         }
 
+        fn arm_get_failure(&self) {
+            *self.fail_get.lock().unwrap() = true;
+        }
+
         fn arm_set_failure(&self) {
             *self.fail_set.lock().unwrap() = true;
         }
@@ -185,6 +218,11 @@ mod tests {
     impl SecureStoragePort for InMemoryStore {
         fn get(&self, key: &str) -> Result<Option<Vec<u8>>, SecureStorageError> {
             self.counters.lock().unwrap().gets += 1;
+            if *self.fail_get.lock().unwrap() {
+                return Err(SecureStorageError::PermissionDenied(
+                    "test: legacy backend unreachable".into(),
+                ));
+            }
             Ok(self.map.lock().unwrap().get(key).cloned())
         }
 
@@ -321,6 +359,44 @@ mod tests {
             "legacy entry must remain so next boot can retry"
         );
         assert_eq!(legacy.counters().deletes, 0);
+    }
+
+    #[test]
+    fn legacy_get_failure_treated_as_miss_keeps_primary_empty() {
+        // Migration is best-effort: an unreachable legacy backend (e.g. snap
+        // strict missing `password-manager-service` plug, headless
+        // container, or a gnome-keyring lock prompt timing out) must not
+        // block startup. The whole `IrohNodeBuilder::bind` daemon-startup
+        // path on Linux died here for a full second before this guarantee
+        // existed; absence of legacy data is a normal fresh-install state
+        // and the caller (re)generates primary downstream.
+        let primary = InMemoryStore::new();
+        let legacy = InMemoryStore::new();
+        legacy.arm_get_failure();
+        let store = build(Arc::clone(&primary), Arc::clone(&legacy), &[KEY]);
+
+        let got = store
+            .get(KEY)
+            .expect("legacy get failure must be swallowed");
+
+        assert!(
+            got.is_none(),
+            "legacy unreachable must look like 'no legacy data' to the caller"
+        );
+        assert_eq!(
+            primary.counters().sets,
+            0,
+            "no value to migrate, so primary must not be written"
+        );
+        assert!(
+            !primary.has(KEY),
+            "primary stays empty so caller can generate fresh material"
+        );
+        assert_eq!(
+            legacy.counters().deletes,
+            0,
+            "legacy must not be touched (delete) when its get failed"
+        );
     }
 
     #[test]

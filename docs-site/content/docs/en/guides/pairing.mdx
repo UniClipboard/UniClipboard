@@ -123,6 +123,61 @@ random nonce) is derived from the space MasterKey, not from the QUIC
 session keys. Relay compromise does not weaken payload
 confidentiality.
 
+## Mobile companion (LAN-only)
+
+Mobile devices use a **separate, simpler path** than desktop peers.
+They don't join the iroh trust mesh, they don't get a node ID, and
+they don't pair via the invite + passphrase + PAKE flow. Instead, the
+desktop daemon advertises a SyncClipboard-compatible HTTP service on
+your local network, and a paired mobile client talks to it with HTTP
+Basic Auth credentials minted at registration.
+
+| Aspect          | Desktop ↔ desktop                                  | Desktop ↔ mobile                                      |
+| --------------- | -------------------------------------------------- | ----------------------------------------------------- |
+| Trust unit      | Space + passphrase (PAKE)                          | Per-device username + password (Basic Auth)          |
+| Identity        | iroh node ID (Ed25519 keypair)                     | Registered device record on the desktop              |
+| Discovery       | mDNS + rendezvous + cached direct addrs            | Manual base URL (LAN IP + port) shown at pairing     |
+| Transport       | iroh QUIC, P2P first, encrypted relay fallback     | Plain HTTP on the LAN — **no QUIC, no relay**        |
+| Cross-network   | Yes (hole-punching, relay)                         | **No** — same LAN only                                |
+| End-to-end key  | XChaCha20-Poly1305 under the space MasterKey       | TLS-less HTTP; payload hashed and authenticated only |
+
+### Pairing a mobile device
+
+On the desktop, open **Devices → Add → Mobile sync** (the same panel
+that hosts the per-device list). The pairing flow:
+
+1. Pick a label for the device.
+2. The daemon mints a one-time username and password and shows them
+   inside a **credentials modal** with iOS / Android tabs:
+   - **iOS** — scan the QR code to install the bundled UniClipboard
+     iOS Shortcut, which is pre-filled with the base URL and
+     credentials.
+   - **Android / other clients** — copy the base URL, username, and
+     password into any SyncClipboard-compatible client.
+3. The plaintext password is shown **once**; close the modal and the
+   desktop only retains an Argon2id hash. If the user loses it, use
+   **Rotate password** on the device row to mint a new one.
+
+Settings — LAN listener on/off, advertised IP and port — live behind
+the **Mobile sync settings** sheet on the same page.
+
+### What mobile sync does *not* do
+
+- **No iroh / no relay.** The mobile listener is a separate HTTP
+  service. There's no NAT hole-punching, no encrypted-relay fallback,
+  no QUIC. Off-LAN clients simply can't reach the desktop.
+- **No mobile ↔ mobile sync.** Two phones don't talk to each other —
+  they each talk to the desktop, and the desktop relays.
+- **No per-direction / per-content-type gates yet.** The
+  [per-peer toggles](./devices#content-type-allowlist) on the
+  desktop-peer settings sheet apply only to desktop ↔ desktop
+  pairings.
+- **No participation in space history.** Mobile devices don't get a
+  copy of the encrypted space database — they read and write through
+  the SyncClipboard endpoints in real time.
+
+See [Mobile LAN API](../reference/mobile-api) for the wire protocol.
+
 ## Recovery & reconnection
 
 - **Wi-Fi switch / laptop wake / brief outage:** the daemon keeps

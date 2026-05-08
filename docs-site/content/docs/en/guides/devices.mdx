@@ -127,6 +127,38 @@ To remove a **lost or stolen** device from the space cleanly:
    [FAQ — Can I recover a forgotten passphrase?](../faq#can-i-recover-a-forgotten-passphrase)).
    That forces every device to re-pair.
 
+## Mobile sync devices
+
+Paired mobile clients appear in a **separate "Mobile sync" panel**
+on the same page, distinct from the space-members list — they aren't
+desktop peers and don't share the iroh trust mesh. Each row shows:
+
+- The label you gave the device at registration.
+- The Basic Auth **username** (the stable identifier; copy it for
+  diagnostics).
+- Last-seen timestamp and last-seen IP, plus the user-agent string
+  the client reported (e.g. `iOS Shortcut`).
+- A **Rotate password** button — mints a fresh one-time password and
+  invalidates the previous Argon2id hash atomically. The old
+  credentials stop working immediately; the new password is shown
+  exactly once.
+- A **Revoke** button — removes the device record. Subsequent
+  requests with those credentials get `401 Unauthorized`.
+
+There's also a **Mobile sync settings** sheet for the LAN listener:
+on/off toggle, advertised IP (auto / manual interface picker), and
+port. Adding the first mobile device requires the listener to be
+running.
+
+For the pairing flow and the credentials modal, see
+[Pairing & sync — Mobile companion](./pairing#mobile-companion-lan-only).
+
+<Callout type="info">
+  Mobile rows don't show the `LAN / Direct / Relay` transport badge above —
+  mobile sync is **always** plain HTTP on the LAN, so there's nothing
+  to compare against.
+</Callout>
+
 ## How fast does online status update
 
 Two sources feed the page:

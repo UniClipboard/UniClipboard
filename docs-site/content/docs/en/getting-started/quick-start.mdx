@@ -145,6 +145,30 @@ If the paste shows up immediately, you're done. If it doesn't,
 [Pairing & sync](../guides/pairing) covers the transport (P2P
 hole-punching, encrypted relay fallback) and how to debug a stuck peer.
 
+## Add a phone (optional)
+
+UniClipboard also supports a **LAN companion** for phones, which is
+useful for pasting between desktop and mobile on the same Wi-Fi.
+Mobile uses a different pairing path than desktops — it doesn't join
+the space's iroh trust mesh, doesn't get a node ID, and won't reach
+the desktop off-LAN. The trade-off is that it works without any
+mobile app store presence.
+
+1. On the desktop, open **Devices → Add → Mobile sync** and pick a
+   label.
+2. The credentials modal shows iOS / Android tabs:
+   - **iOS** — scan the QR code; the bundled UniClipboard Shortcut
+     installs with the base URL and credentials pre-filled.
+   - **Android / other clients** — copy the base URL, username, and
+     password into any SyncClipboard-compatible client.
+3. The plaintext password is shown **once**. If lost, use **Rotate
+   password** on the device row to mint a new one without
+   re-pairing.
+
+Walkthrough and protocol details:
+[Pairing & sync — Mobile companion](../guides/pairing#mobile-companion-lan-only)
+and [Mobile LAN API](../reference/mobile-api).
+
 ## What's next
 
 - **Add more devices.** Repeat the second-device flow on every machine

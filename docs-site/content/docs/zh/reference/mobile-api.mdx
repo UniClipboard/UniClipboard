@@ -11,7 +11,15 @@ description: 桌面守护进程对外暴露的、SyncClipboard 兼容的 HTTP �
 **HTTP Basic 认证**校验。用户名 / 密码由桌面端在配对流程中签发，且与一台
 已登记的移动设备一一绑定。
 
-配对流程见 [配对](../guides/pairing)，以及移动端客户端章节中的 SyncClipboard 标签。
+<Callout type="info">
+  本接口属于**移动端伴侣**路径，独立于桌面 ↔ 桌面同步所走的 iroh P2P
+  传输，运行在局域网上的明文 HTTP 之上，**没有 NAT 打洞、没有加密中继、
+  也不支持跨网络可达**。离开 LAN 的客户端无法触达此服务。相关取舍见
+  [配对与同步 — 移动端伴侣](../guides/pairing#移动端伴侣仅限-lan)。
+</Callout>
+
+配对流程见 [配对与同步 — 移动端伴侣](../guides/pairing#移动端伴侣仅限-lan)，
+以及桌面端的 **设备 → 移动端同步** 面板。
 
 <APIPage
   document="./openapi/mobile-lan.yaml"

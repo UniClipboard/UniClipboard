@@ -12,8 +12,17 @@ All endpoints are mounted at the **root path** (`/SyncClipboard.json`,
 minted on the desktop side during pairing and are bound to a single registered
 device.
 
-For setup, see [Pairing](../guides/pairing) and the SyncClipboard tab in the
-mobile clients section.
+<Callout type="info">
+  This API is the **mobile companion** path. It is independent of the iroh P2P
+  transport that desktop ↔ desktop sync uses, runs on plain HTTP over the LAN,
+  and intentionally has **no NAT hole-punching, no encrypted relay, and no
+  cross-network reachability**. Off-LAN clients cannot reach this service.
+  See [Pairing & sync — Mobile companion](../guides/pairing#mobile-companion-lan-only)
+  for the trade-offs.
+</Callout>
+
+For setup, see [Pairing & sync — Mobile companion](../guides/pairing#mobile-companion-lan-only)
+and the **Devices → Mobile sync** panel in the desktop app.
 
 <APIPage
   document="./openapi/mobile-lan.yaml"

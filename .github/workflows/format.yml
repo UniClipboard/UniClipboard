@@ -66,54 +66,36 @@ jobs:
             fi
           fi
 
-      # ---------- Same-repo PR: create auto-fix branch + PR ----------
-      - name: Create fix branch and open PR (same-repo only)
+      # ---------- Same-repo PR: push fix directly to PR head branch ----------
+      - name: Auto-format and push to PR branch
+        id: push-fix
         if: |
           steps.diff.outputs.has_changes == 'true' &&
           steps.diff.outputs.has_workflow_changes != 'true' &&
           github.event.pull_request.head.repo.full_name == github.repository
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_HEAD_REF: ${{ github.head_ref }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
           git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-          FIX_BRANCH="format-fix/pr-$PR_NUMBER"
-
-          git checkout -b "$FIX_BRANCH"
           git add -A
           git commit -m "style: auto-format code for PR #$PR_NUMBER"
-          git push origin "$FIX_BRANCH" --force
 
-          DIFF_STAT=$(git diff HEAD~1 --stat)
-
-          PR_BODY="Auto-generated format fix for #$PR_NUMBER.
-
-          Merge this PR first, then re-push the original branch to pass the format check.
-
-          **Changes:**
-          \`\`\`
-          $DIFF_STAT
-          \`\`\`"
-
-          # Check if a PR already exists for this fix branch.
-          EXISTING_PR_URL=$(gh pr list --head "$FIX_BRANCH" --json url --jq '.[0].url' 2>/dev/null)
-
-          if [ -n "$EXISTING_PR_URL" ]; then
-            echo "::notice::Format fix PR already exists: $EXISTING_PR_URL"
+          # GITHUB_TOKEN 推送的 commit 默认不会再触发任何 workflow(防递归),
+          # 所以本次 format check 仍以失败收尾,但 PR head 上已经带上了
+          # 格式化 commit。作者 git pull 之后再 push 一次(或在 GH UI 点
+          # re-run failed)checks 就会变绿。
+          if git push origin "HEAD:refs/heads/$PR_HEAD_REF"; then
+            echo "pushed=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::已自动提交格式化 commit 到 $PR_HEAD_REF。请 git pull 同步本地分支,然后重新 push 一次 / 或在 PR 页点 Re-run failed checks 让 CI 变绿。"
           else
-            NEW_PR_URL=$(gh pr create \
-              --title "style: auto-format for PR #$PR_NUMBER" \
-              --body "$PR_BODY" \
-              --base "$PR_HEAD_REF" \
-              --head "$FIX_BRANCH" 2>&1) && \
-            echo "::notice::Format fix PR created: $NEW_PR_URL" || \
-            echo "::warning::Could not auto-create PR (branch '$FIX_BRANCH' has been pushed). Please create a PR manually from '$FIX_BRANCH' → '$PR_HEAD_REF'. Error: $NEW_PR_URL"
+            echo "pushed=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::Auto-push 失败(可能远端在此期间有新 commit)。请本地运行 \`cd src-tauri && cargo fmt --all && cd .. && bun run format\` 并提交。"
           fi
 
-      # ---------- Fork PR: print diff for author to fix manually ----------
+      # ---------- Fork PR / workflow file changes: print diff for author ----------
       - name: Show diff when auto-push is unavailable
         if: |
           steps.diff.outputs.has_changes == 'true' &&
@@ -123,9 +105,9 @@ jobs:
           )
         run: |
           if [ "${{ steps.diff.outputs.has_workflow_changes }}" = "true" ]; then
-            echo "::warning::Format issues include .github/workflows files. GitHub Actions cannot auto-push workflow file changes with the default token."
+            echo "::warning::Format issues include .github/workflows files. GitHub Actions 默认 token 无权直推 workflow 文件,需要作者本地修复。"
           else
-            echo "::warning::Format issues found. Cannot auto-create fix PR for fork contributions."
+            echo "::warning::Format issues found. Fork PR 无法自动直推,请作者本地修复。"
           fi
           echo "Please run the following commands locally and push the changes:"
           echo ""
@@ -137,5 +119,9 @@ jobs:
       - name: Fail if format changes needed
         if: steps.diff.outputs.has_changes == 'true'
         run: |
-          echo "::error::Format issues found. See above for details."
+          if [ "${{ steps.push-fix.outputs.pushed }}" = "true" ]; then
+            echo "::error::Format 修复已自动推送到 PR 分支。请 pull 后 re-run checks 让本检查变绿。"
+          else
+            echo "::error::Format issues found. See above for details."
+          fi
           exit 1

@@ -5,6 +5,7 @@
     "": {
       "name": "docs-site",
       "dependencies": {
+        "@orama/tokenizers": "^3.1.18",
         "fumadocs-core": "16.8.7",
         "fumadocs-mdx": "14.3.2",
         "fumadocs-ui": "16.8.7",
@@ -248,6 +249,8 @@
     "@nolyfill/is-core-module": ["@nolyfill/is-core-module@1.0.39", "", {}, "sha512-nn5ozdjYQpUCZlWGuxcJY/KpxkWQs4DcbMCmKojjyrYDEAGy4Ce19NN4v5MduafTwJlbKc99UA8YhSVqq9yPZA=="],
 
     "@orama/orama": ["@orama/orama@3.1.18", "", {}, "sha512-a61ljmRVVyG5MC/698C8/FfFDw5a8LOIvyOLW5fztgUXqUpc1jOfQzOitSCbge657OgXXThmY3Tk8fpiDb4UcA=="],
+
+    "@orama/tokenizers": ["@orama/tokenizers@3.1.18", "", { "dependencies": { "@orama/orama": "3.1.18" } }, "sha512-Ra4dFddWZ7hCGPAehnd/6QZjlzQvczYSt1y1Fq4HteJqRu2yvfR6fXvxiUnKi+HIgJYPxKhebJEjvJdF8LYQWg=="],
 
     "@radix-ui/number": ["@radix-ui/number@1.1.1", "", {}, "sha512-MkKCwxlXTgz6CFoJx3pCwn07GKp36+aZyu/u2Ln2VrA5DcdyCZkASEDBTd8x5whTQQL5CiYf4prXKLcgQdv29g=="],
 

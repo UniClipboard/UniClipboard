@@ -1,0 +1,26 @@
+---
+title: 移动端 LAN API
+description: 桌面守护进程对外暴露的、SyncClipboard 兼容的 HTTP 接口，供移动端客户端使用。
+---
+
+桌面守护进程在 LAN 上提供一个体量很小、与 SyncClipboard 协议兼容的 HTTP 服务，
+让已配对的移动设备 —— iOS 快捷指令、Android 或任意第三方 SyncClipboard
+客户端 —— 都可以读取与推送剪贴板内容。
+
+所有接口都挂在**根路径**（`/SyncClipboard.json`、`/file/{dataName}`），并通过
+**HTTP Basic 认证**校验。用户名 / 密码由桌面端在配对流程中签发，且与一台
+已登记的移动设备一一绑定。
+
+配对流程见 [配对](../guides/pairing)，以及移动端客户端章节中的 SyncClipboard 标签。
+
+<APIPage
+  document="./openapi/mobile-lan.yaml"
+  operations={[
+    { path: '/SyncClipboard.json', method: 'get' },
+    { path: '/SyncClipboard.json', method: 'put' },
+    { path: '/file/{dataName}', method: 'get' },
+    { path: '/file/{dataName}', method: 'put' }
+  ]}
+  showTitle
+  showDescription
+/>

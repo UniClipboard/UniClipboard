@@ -1,0 +1,269 @@
+openapi: 3.1.0
+info:
+  title: UniClipboard Mobile LAN API
+  version: '1.0.0'
+  summary: SyncClipboard-compatible LAN endpoints exposed by the desktop daemon.
+  description: |
+    The desktop daemon exposes a small SyncClipboard-compatible HTTP service on the
+    LAN so a paired mobile client (iOS Shortcuts, Android, or any SyncClipboard
+    client) can read and push clipboard items.
+
+    All requests require **HTTP Basic Authentication**. Credentials are minted on the
+    desktop side when the user pairs a mobile device — username and password are
+    bound to a single registered device. Unauthenticated or wrong-credential
+    requests get `401 Unauthorized` with `WWW-Authenticate: Basic`.
+
+    The wire format follows the SyncClipboard project's JSON schema. Field casing
+    is fixed by that protocol; the desktop also accepts PascalCase aliases on
+    the request side because iOS Shortcuts emits `Type` (PascalCase) for the
+    `type` field while the rest of the body is camelCase.
+
+    Maximum request body size for both `PUT` endpoints is **16 MiB**.
+  contact:
+    name: UniClipboard
+    url: https://github.com/mkdir700/uniclipboard
+servers:
+  - url: http://{host}:{port}
+    description: Desktop daemon on the LAN
+    variables:
+      host:
+        default: 192.168.1.10
+        description: LAN IP of the desktop running UniClipboard
+      port:
+        default: '12700'
+        description: Port the daemon advertised during pairing
+tags:
+  - name: Clipboard
+    description: Clipboard metadata read/write (SyncClipboard JSON document).
+  - name: File
+    description: Binary payload transfer for image and file clipboard items.
+security:
+  - basicAuth: []
+paths:
+  /SyncClipboard.json:
+    get:
+      tags: [Clipboard]
+      operationId: getSyncClipboard
+      summary: Fetch the latest clipboard item
+      description: |
+        Returns the most recent clipboard entry on the desktop, translated into
+        the SyncClipboard wire DTO. For Image / File items, the binary payload
+        is fetched separately via `GET /file/{dataName}`.
+      responses:
+        '200':
+          description: Latest clipboard entry exists.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SyncClipboardDoc'
+              examples:
+                text:
+                  summary: Text clipboard
+                  value:
+                    type: Text
+                    text: hello from desktop
+                    hasData: false
+                    size: 18
+                    hash: 2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824
+                image:
+                  summary: Image clipboard
+                  value:
+                    type: Image
+                    text: ''
+                    dataName: clipboard.png
+                    hasData: true
+                    size: 142536
+                    hash: 9b2cf964fa8c0b5a...
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: No clipboard entry on the desktop yet.
+        '500':
+          description: Clipboard snapshot port failure on the desktop.
+    put:
+      tags: [Clipboard]
+      operationId: putSyncClipboard
+      summary: Push a clipboard item from the mobile device
+      description: |
+        Accepts a SyncClipboard wire DTO. The body is decoded, mapped into the
+        application model, and applied through the inbound apply pipeline as if
+        it came from a peer device.
+
+        Both camelCase and PascalCase keys are accepted (`Type`, `HasData`,
+        `DataName`, …) because the iOS Shortcuts client emits a mixed-case body.
+
+        Decode failure produces `400 Bad Request`; payloads larger than 16 MiB
+        produce `413 Payload Too Large`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SyncClipboardDoc'
+            examples:
+              text:
+                summary: Push plain text
+                value:
+                  type: Text
+                  text: hello from phone
+                  hasData: false
+                  size: 16
+              file:
+                summary: Push file metadata (PascalCase as emitted by iOS Shortcuts)
+                value:
+                  hasData: true
+                  Type: File
+                  dataName: foo.pdf
+                  text: foo.pdf
+      responses:
+        '200':
+          description: Applied. Body is intentionally empty — SyncClipboard clients only check status.
+        '400':
+          description: Body could not be parsed as a SyncClipboard document or `type` value is unknown.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '413':
+          description: Body exceeds 16 MiB.
+        '500':
+          description: Inbound apply pipeline failure on the desktop.
+  /file/{dataName}:
+    parameters:
+      - name: dataName
+        in: path
+        required: true
+        description: |
+          Filename advertised by the matching `SyncClipboard.json` document.
+          Used to look up the staged payload for Image / File clipboard items.
+        schema:
+          type: string
+        example: clipboard.png
+    get:
+      tags: [File]
+      operationId: getClipboardFile
+      summary: Download the binary payload for a clipboard item
+      description: |
+        Returns the raw bytes of the most recent Image / File clipboard entry
+        whose `dataName` matches. The `Content-Type` header reflects the
+        sniffed MIME type.
+      responses:
+        '200':
+          description: |
+            Binary payload for the requested file. The actual `Content-Type`
+            response header reflects the sniffed MIME (e.g. `image/png`,
+            `image/jpeg`, …) and not necessarily `application/octet-stream`.
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: No clipboard entry matched `dataName`, or its staged payload is gone.
+        '500':
+          description: Snapshot port failure or staging I/O failure on the desktop.
+    put:
+      tags: [File]
+      operationId: putClipboardFile
+      summary: Upload a binary payload to stage as a clipboard item
+      description: |
+        Accepts the raw bytes of an image or file. The desktop stages the bytes
+        into the inbound mobile buffer, where they will be paired with a
+        subsequent `PUT /SyncClipboard.json` describing the same `dataName`.
+
+        ### MIME handling
+
+        Some clients (notably iOS Shortcuts uploading `.jpg` / `.png`) send
+        `application/octet-stream` or omit `Content-Type`. The desktop sniffs
+        the file's magic bytes (and falls back to the extension) to recover an
+        accurate `image/*` MIME so macOS NSPasteboard can render the image
+        correctly. If the sniff fails, the original `Content-Type` is kept.
+
+        Recognised image magics: JPEG, PNG, GIF, WEBP, BMP, TIFF.
+
+        Maximum body size is 16 MiB.
+      requestBody:
+        required: true
+        description: |
+          Raw bytes. Set `Content-Type` to the actual MIME of the upload
+          (`image/png`, `image/jpeg`, `application/pdf`, …) when known. If
+          `application/octet-stream` is sent for image uploads, the desktop
+          will sniff the magic bytes and recover the correct `image/*` MIME.
+        content:
+          application/octet-stream:
+            schema:
+              type: string
+              format: binary
+      responses:
+        '200':
+          description: Bytes accepted and staged.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '413':
+          description: Body exceeds 16 MiB.
+        '500':
+          description: Inbound apply pipeline failure on the desktop.
+components:
+  securitySchemes:
+    basicAuth:
+      type: http
+      scheme: basic
+      description: |
+        Username and password are minted on the desktop during device pairing
+        and are bound to a single mobile device record.
+  responses:
+    Unauthorized:
+      description: |
+        Missing, malformed, or wrong Basic credentials. The response carries
+        `WWW-Authenticate: Basic`.
+      headers:
+        WWW-Authenticate:
+          schema:
+            type: string
+            example: 'Basic realm="UniClipboard"'
+  schemas:
+    SyncClipboardDoc:
+      type: object
+      description: |
+        SyncClipboard wire DTO. Field casing is fixed by the SyncClipboard
+        project's protocol: the value of `type` is PascalCase, all keys are
+        camelCase. On the request side the desktop also accepts PascalCase
+        aliases (`Type`, `Text`, `DataName`, `HasData`, `Size`, `Hash`).
+      required: [type, hasData, size]
+      properties:
+        type:
+          description: Item kind. PascalCase by SyncClipboard convention.
+          type: string
+          enum: [Text, Image, File, Group]
+        text:
+          description: |
+            For Text items, the clipboard text. For Image / File items, this
+            field is typically the displayed filename or empty.
+          type: string
+          default: ''
+        dataName:
+          description: |
+            Filename associated with the binary payload. Required for Image /
+            File items, omitted for plain Text.
+          type: string
+          nullable: true
+        hasData:
+          description: |
+            True iff a binary payload accompanies this entry (i.e. an Image or
+            File item with bytes available via `/file/{dataName}`).
+          type: boolean
+          default: false
+        size:
+          description: Size in bytes of the binary payload (0 for plain Text).
+          type: integer
+          format: int64
+          minimum: 0
+          default: 0
+        hash:
+          description: |
+            SHA-256 hex digest of the wire content. Mobile clients may omit it
+            on `PUT`; the desktop fills it in on `GET` for SyncClipboard
+            desktop-client compatibility.
+          type: string
+          nullable: true
+          example: 2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824

@@ -1,0 +1,28 @@
+---
+title: Mobile LAN API
+description: SyncClipboard-compatible HTTP endpoints exposed by the desktop daemon for mobile clients.
+---
+
+The desktop daemon exposes a small SyncClipboard-compatible HTTP service on the
+LAN so a paired mobile device — iOS Shortcuts, Android, or any third-party
+SyncClipboard client — can read and push clipboard items.
+
+All endpoints are mounted at the **root path** (`/SyncClipboard.json`,
+`/file/{dataName}`) and require **HTTP Basic Authentication**. Credentials are
+minted on the desktop side during pairing and are bound to a single registered
+device.
+
+For setup, see [Pairing](../guides/pairing) and the SyncClipboard tab in the
+mobile clients section.
+
+<APIPage
+  document="./openapi/mobile-lan.yaml"
+  operations={[
+    { path: '/SyncClipboard.json', method: 'get' },
+    { path: '/SyncClipboard.json', method: 'put' },
+    { path: '/file/{dataName}', method: 'get' },
+    { path: '/file/{dataName}', method: 'put' }
+  ]}
+  showTitle
+  showDescription
+/>

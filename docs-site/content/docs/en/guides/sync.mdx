@@ -11,12 +11,12 @@ richest representation it understands when you paste.
 
 ## Supported representations
 
-| Type       | Notes                                                          |
-| ---------- | -------------------------------------------------------------- |
-| Plain text | UTF-8. Always present as a fallback when richer types exist.   |
-| RTF / HTML | Carried alongside text so rich pastes survive the wire.        |
-| Images     | PNG / JPEG / WebP, transferred by content hash.                |
-| Files      | Single or multi-file selections, reconstructed at the receiver.|
+| Type       | Notes                                                           |
+| ---------- | --------------------------------------------------------------- |
+| Plain text | UTF-8. Always present as a fallback when richer types exist.    |
+| RTF / HTML | Carried alongside text so rich pastes survive the wire.         |
+| Images     | PNG / JPEG / WebP, transferred by content hash.                 |
+| Files      | Single or multi-file selections, reconstructed at the receiver. |
 
 Each representation is a distinct payload on the wire. The dispatcher
 waits until every representation is delivered before flagging the

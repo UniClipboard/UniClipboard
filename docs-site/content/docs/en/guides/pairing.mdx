@@ -7,11 +7,11 @@ UniClipboard splits "how do two devices end up talking to each other?"
 into three independent layers. Knowing where each one ends helps you
 reason about failure modes and what's actually on the wire.
 
-| Layer        | What it answers                              | Mechanism                                                     |
-| ------------ | -------------------------------------------- | ------------------------------------------------------------- |
-| **Trust**    | Should I accept payloads from this peer?     | One-time invite code + space passphrase                       |
-| **Discovery**| Where is this peer right now?                | iroh node IDs + LAN mDNS + rendezvous lookup                  |
-| **Transport**| How do bytes actually move?                  | iroh QUIC: direct P2P first, encrypted relay as fallback      |
+| Layer         | What it answers                          | Mechanism                                                |
+| ------------- | ---------------------------------------- | -------------------------------------------------------- |
+| **Trust**     | Should I accept payloads from this peer? | One-time invite code + space passphrase                  |
+| **Discovery** | Where is this peer right now?            | iroh node IDs + LAN mDNS + rendezvous lookup             |
+| **Transport** | How do bytes actually move?              | iroh QUIC: direct P2P first, encrypted relay as fallback |
 
 The application-layer payload is encrypted **independently of the
 transport** with XChaCha20-Poly1305. The transport could be malicious
@@ -60,9 +60,8 @@ After this point, the invite code is consumed. Adding a third device
 means generating a new invite — pairing is per-join, not per-pair.
 
 <Callout type="info">
-  Lost a device? Revoke it from any other device in the space (GUI:
-  **Devices** page; CLI: pending). Subsequent traffic refuses
-  transport from the revoked node ID.
+  Lost a device? Revoke it from any other device in the space (GUI: **Devices** page; CLI: pending).
+  Subsequent traffic refuses transport from the revoked node ID.
 </Callout>
 
 ## Discovery: finding the other end
@@ -113,11 +112,11 @@ flowchart LR
 
 ### What the relay sees vs. what your peers see
 
-| Observer            | Sees                                              |
-| ------------------- | ------------------------------------------------- |
-| The relay           | Source / destination node IDs, encrypted packets  |
-| A network onlooker  | QUIC traffic to your peer or to the relay         |
-| The receiving peer  | Decrypted clipboard payload — only paired peers   |
+| Observer           | Sees                                             |
+| ------------------ | ------------------------------------------------ |
+| The relay          | Source / destination node IDs, encrypted packets |
+| A network onlooker | QUIC traffic to your peer or to the relay        |
+| The receiving peer | Decrypted clipboard payload — only paired peers  |
 
 The application-layer encryption (XChaCha20-Poly1305 with a 24-byte
 random nonce) is derived from the space MasterKey, not from the QUIC

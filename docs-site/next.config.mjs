@@ -1,10 +1,10 @@
-import { createMDX } from 'fumadocs-mdx/next';
-import { fileURLToPath } from 'node:url';
-import { dirname } from 'node:path';
+import { createMDX } from 'fumadocs-mdx/next'
+import { fileURLToPath } from 'node:url'
+import { dirname } from 'node:path'
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
+const __dirname = dirname(fileURLToPath(import.meta.url))
 
-const withMDX = createMDX();
+const withMDX = createMDX()
 
 /** @type {import('next').NextConfig} */
 const config = {
@@ -21,6 +21,6 @@ const config = {
   // Directory setting (`docs-site`) already isolates the build, so the
   // pin is unnecessary there.
   ...(process.env.VERCEL ? {} : { outputFileTracingRoot: __dirname }),
-};
+}
 
-export default withMDX(config);
+export default withMDX(config)

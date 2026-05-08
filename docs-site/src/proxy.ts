@@ -48,8 +48,10 @@ export default function proxy(request: NextRequest, event: NextFetchEvent) {
 }
 
 export const config = {
-  // Match every request except Next.js internals and files with extensions.
+  // Match every request except Next.js internals, API routes, and files
+  // with extensions. API routes (e.g. `/api/search`) must not run through
+  // the i18n middleware — it would try to redirect them under a locale.
   // Listing root `/` separately because the negative-lookahead pattern below
   // doesn't reliably match an empty path with path-to-regexp.
-  matcher: ['/', '/((?!_next|favicon.ico|.*\\..*).*)'],
+  matcher: ['/', '/((?!_next|api/|favicon.ico|.*\\..*).*)'],
 }

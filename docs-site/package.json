@@ -12,6 +12,7 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@orama/tokenizers": "^3.1.18",
     "fumadocs-core": "16.8.7",
     "fumadocs-mdx": "14.3.2",
     "fumadocs-ui": "16.8.7",

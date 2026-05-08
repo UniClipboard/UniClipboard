@@ -4,6 +4,30 @@ use tracing::{debug, info, warn};
 use uc_core::clipboard::{MimeType, ObservedClipboardRepresentation, SystemClipboardSnapshot};
 use uc_core::ids::RepresentationId;
 
+/// 文件头魔数嗅探,返回桌面剪贴板能消费的 `image/*` mime 字符串。
+/// 无法识别返回 None。只读前 12 字节,无内存分配。
+pub(crate) fn sniff_image_magic(body: &[u8]) -> Option<&'static str> {
+    if body.starts_with(&[0xFF, 0xD8, 0xFF]) {
+        return Some("image/jpeg");
+    }
+    if body.starts_with(&[0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]) {
+        return Some("image/png");
+    }
+    if body.starts_with(b"GIF87a") || body.starts_with(b"GIF89a") {
+        return Some("image/gif");
+    }
+    if body.len() >= 12 && body.starts_with(b"RIFF") && &body[8..12] == b"WEBP" {
+        return Some("image/webp");
+    }
+    if body.starts_with(&[0x42, 0x4D]) {
+        return Some("image/bmp");
+    }
+    if body.starts_with(&[0x49, 0x49, 0x2A, 0x00]) || body.starts_with(&[0x4D, 0x4D, 0x00, 0x2A]) {
+        return Some("image/tiff");
+    }
+    None
+}
+
 /// Known TIFF UTI aliases on macOS pasteboard.
 /// When the image has already been captured via the fast raw-TIFF path,
 /// these formats must be skipped in the raw fallback loop to avoid
@@ -649,23 +673,46 @@ impl CommonClipboardImpl {
         // 单 rep 快路径：走既有 clipboard-rs 高层 API（行为与改动前完全一致）。
         let rep = &snapshot.representations[0];
 
-        // Use explicit MIME if present, otherwise infer from macOS/cross-platform format_id.
-        let effective_mime =
-            rep.mime
-                .as_ref()
-                .map(|m| m.as_str())
-                .or_else(|| match rep.format_id.as_str() {
-                    "public.utf8-plain-text" | "public.text" | "NSStringPboardType" | "text" => {
-                        Some("text/plain")
-                    }
-                    "public.html" | "Apple HTML pasteboard type" | "html" => Some("text/html"),
-                    "public.rtf" | "rtf" => Some("text/rtf"),
-                    "public.png" | "image" => Some("image/png"),
-                    "public.tiff" => Some("image/tiff"),
-                    "public.jpeg" => Some("image/jpeg"),
-                    "public.file-url" | "NSFilenamesPboardType" => Some("text/uri-list"),
-                    _ => None,
-                });
+        // 先按 format_id 推断默认 mime。
+        let format_default = match rep.format_id.as_str() {
+            "public.utf8-plain-text" | "public.text" | "NSStringPboardType" | "text" => {
+                Some("text/plain")
+            }
+            "public.html" | "Apple HTML pasteboard type" | "html" => Some("text/html"),
+            "public.rtf" | "rtf" => Some("text/rtf"),
+            "public.png" | "image" => Some("image/png"),
+            "public.tiff" => Some("image/tiff"),
+            "public.jpeg" => Some("image/jpeg"),
+            "public.file-url" | "NSFilenamesPboardType" => Some("text/uri-list"),
+            _ => None,
+        };
+
+        // 决定 effective_mime:
+        //   情况 A —— image-like format_id 但显式 mime 不是 image/*:几乎一定是客户端
+        //     误标(典型:iOS / SyncClipboard 兼容客户端 PUT /file 时不设 Content-Type
+        //     → 服务端默认 application/octet-stream → 这里 mime=Some("application/octet-stream"))。
+        //     先字节嗅探拿真实图片 mime,失败再回退到 format_id 默认。**绝不**让 image rep
+        //     携带 application/octet-stream 流到下游 set_image / set_buffer:
+        //     2026-05-08 真机回归(IMG_20260508_200644.jpg)就是这条路径把 JPEG 字节
+        //     用非法 NSPasteboard type 写进了系统剪贴板。
+        //   情况 B —— 显式 mime 存在 → 沿用。
+        //   情况 C —— 没有显式 mime → 回退 format_id 默认。
+        let effective_mime: Option<&str> = match (rep.mime.as_deref(), format_default) {
+            (Some(m), Some(default))
+                if default.starts_with("image/") && !m.starts_with("image/") =>
+            {
+                let recovered = sniff_image_magic(&rep.bytes).unwrap_or(default);
+                warn!(
+                    format_id = %rep.format_id,
+                    wire_mime = m,
+                    recovered_mime = recovered,
+                    "write_snapshot: image rep declared non-image mime; recovered via byte sniff/format_id default"
+                );
+                Some(recovered)
+            }
+            (Some(m), _) => Some(m),
+            (None, default) => default,
+        };
 
         match effective_mime {
             Some("text/plain") => {
@@ -752,6 +799,38 @@ impl CommonClipboardImpl {
                 );
             }
             _ => {
+                // 兜底分支:effective_mime 没命中任何已支持类型。这条路径之前会
+                // 静默 set_buffer(format_id, bytes) —— 历史教训(2026-05-08
+                // IMG_20260508_200644.jpg 真机回归):image rep + mime
+                // application/octet-stream 落到这里,把 JPEG 字节用非法
+                // pasteboard type "image" 写进了系统剪贴板,既无法以图像形式
+                // 粘贴,又把原始 EXIF 字节当文本暴露给用户。违反
+                // `uc-platform/AGENTS.md` §11.2「不允许静默降级」。
+                //
+                // 现在:
+                //   * image-like format_id 在 effective_mime 决策阶段已被字节
+                //     嗅探纠正,不会再到达这里;若到达说明前置守卫失效 —— bail。
+                //   * 其它未识别 mime 的 rep 仍走 set_buffer,但必须先 WARN,让
+                //     "OS 剪贴板里写了非标准 type"这件事可观测。
+                let format_default_image_like = matches!(
+                    rep.format_id.as_str(),
+                    "image" | "public.png" | "public.tiff" | "public.jpeg" | "public.gif"
+                );
+                if format_default_image_like {
+                    anyhow::bail!(
+                        "write_snapshot: image-like format_id {:?} reached fallback branch \
+                         with mime {:?} — image-mime recovery should have run upstream; \
+                         refusing to set_buffer with a non-UTI pasteboard type",
+                        rep.format_id,
+                        rep.mime
+                    );
+                }
+                warn!(
+                    format_id = %rep.format_id,
+                    mime = ?rep.mime,
+                    bytes = rep.bytes.len(),
+                    "write_snapshot: writing rep via raw set_buffer fallback (no recognized mime mapping)"
+                );
                 map_clipboard_err(ctx.set_buffer(&rep.format_id, rep.bytes.clone()))?;
             }
         }
@@ -953,5 +1032,77 @@ mod tests {
             false,
             false
         ));
+    }
+
+    // ─── sniff_image_magic ──────────────────────────────────────────────
+    //
+    // 守住 2026-05-08 IMG_20260508_200644.jpg 真机回归:image rep 携带
+    // application/octet-stream 时,write_snapshot 必须能从字节嗅出真实
+    // image/* mime,而不是把原始 JPEG 字节用非法 UTI 写进 NSPasteboard。
+
+    #[test]
+    fn sniff_image_magic_recognizes_jpeg() {
+        // JPEG SOI + APP0 marker (real JFIF header)
+        let bytes = [0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10, b'J', b'F', b'I', b'F'];
+        assert_eq!(sniff_image_magic(&bytes), Some("image/jpeg"));
+    }
+
+    #[test]
+    fn sniff_image_magic_recognizes_jpeg_with_exif_marker() {
+        // 真机回归 case:Xiaomi 14 拍的 JPEG,SOI 后第二段是 APP1 (Exif)
+        let bytes = [0xFF, 0xD8, 0xFF, 0xE1, 0x00, 0x18, b'E', b'x', b'i', b'f'];
+        assert_eq!(sniff_image_magic(&bytes), Some("image/jpeg"));
+    }
+
+    #[test]
+    fn sniff_image_magic_recognizes_png() {
+        let bytes = [
+            0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D,
+        ];
+        assert_eq!(sniff_image_magic(&bytes), Some("image/png"));
+    }
+
+    #[test]
+    fn sniff_image_magic_recognizes_gif() {
+        assert_eq!(sniff_image_magic(b"GIF87a..."), Some("image/gif"));
+        assert_eq!(sniff_image_magic(b"GIF89a..."), Some("image/gif"));
+    }
+
+    #[test]
+    fn sniff_image_magic_recognizes_webp() {
+        let mut bytes = Vec::new();
+        bytes.extend_from_slice(b"RIFF");
+        bytes.extend_from_slice(&[0x00, 0x00, 0x00, 0x00]);
+        bytes.extend_from_slice(b"WEBP");
+        assert_eq!(sniff_image_magic(&bytes), Some("image/webp"));
+    }
+
+    #[test]
+    fn sniff_image_magic_recognizes_bmp() {
+        assert_eq!(sniff_image_magic(&[0x42, 0x4D, 0x00]), Some("image/bmp"));
+    }
+
+    #[test]
+    fn sniff_image_magic_recognizes_tiff_both_endians() {
+        assert_eq!(
+            sniff_image_magic(&[0x49, 0x49, 0x2A, 0x00, 0x00]),
+            Some("image/tiff")
+        );
+        assert_eq!(
+            sniff_image_magic(&[0x4D, 0x4D, 0x00, 0x2A, 0x00]),
+            Some("image/tiff")
+        );
+    }
+
+    #[test]
+    fn sniff_image_magic_returns_none_for_text_or_short_input() {
+        assert_eq!(sniff_image_magic(b"hello world"), None);
+        assert_eq!(sniff_image_magic(&[]), None);
+        // RIFF without WEBP suffix (e.g. WAV) must not be misclassified.
+        let mut riff_wav = Vec::new();
+        riff_wav.extend_from_slice(b"RIFF");
+        riff_wav.extend_from_slice(&[0x00, 0x00, 0x00, 0x00]);
+        riff_wav.extend_from_slice(b"WAVE");
+        assert_eq!(sniff_image_magic(&riff_wav), None);
     }
 }

@@ -67,29 +67,45 @@ impl SystemClipboardPort for MacOSClipboard {
 ///
 /// 与 `common.rs` 单 rep 快路径、`windows.rs::resolve_multi_rep_mime` 保持一致的
 /// 推断表：显式 mime → 使用；否则 format_id 映射。
+///
+/// 例外:image-like format_id 但显式 mime 不是 `image/*` 时,先做字节魔数嗅探,
+/// 失败回退到 format_id 默认。原因见 `common.rs::write_snapshot` 同位置注释。
 fn resolve_multi_rep_mime(rep: &ObservedClipboardRepresentation) -> Option<&str> {
-    rep.mime
-        .as_ref()
-        .map(|m| m.as_str())
-        .or_else(|| match rep.format_id.as_str() {
-            "public.utf8-plain-text" | "public.text" | "NSStringPboardType" | "text" => {
-                Some("text/plain")
-            }
-            "public.html" | "Apple HTML pasteboard type" | "html" => Some("text/html"),
-            // RTF：从 Word / Pages 等富文本源复制时常与 plain text + html 同时出现；
-            // common.rs::read_snapshot 把它存为 format_id="rtf"，mime="text/rtf"。
-            "public.rtf" | "rtf" => Some("text/rtf"),
-            // PixPin 截图 / Windows 端复制图片等场景 format_id 为 "image"，mime 通常为
-            // "image/png"。`common.rs::read_snapshot` 已把图像统一标准化为 PNG，因此 jpeg /
-            // webp / gif 不会出现在 envelope 中（与 windows.rs 保持同样取舍）。
-            "public.png" | "image" => Some("image/png"),
-            "public.tiff" => Some("image/tiff"),
-            // file-list 表示：接收端 materializer 会把 rep.bytes 改写为本机 file:// URI
-            // 列表（每行一条），写入时为每个 URI 生成一个独立 NSPasteboardItem 承载
-            // NSPasteboardTypeFileURL —— Finder / NSDocumentController 识别的规范形式。
-            "public.file-url" | "NSFilenamesPboardType" | "files" => Some("text/uri-list"),
-            _ => None,
-        })
+    let format_default = match rep.format_id.as_str() {
+        "public.utf8-plain-text" | "public.text" | "NSStringPboardType" | "text" => {
+            Some("text/plain")
+        }
+        "public.html" | "Apple HTML pasteboard type" | "html" => Some("text/html"),
+        // RTF：从 Word / Pages 等富文本源复制时常与 plain text + html 同时出现；
+        // common.rs::read_snapshot 把它存为 format_id="rtf"，mime="text/rtf"。
+        "public.rtf" | "rtf" => Some("text/rtf"),
+        // PixPin 截图 / Windows 端复制图片等场景 format_id 为 "image"，mime 通常为
+        // "image/png"。`common.rs::read_snapshot` 已把图像统一标准化为 PNG，因此 jpeg /
+        // webp / gif 不会出现在 envelope 中（与 windows.rs 保持同样取舍）。
+        "public.png" | "image" => Some("image/png"),
+        "public.tiff" => Some("image/tiff"),
+        // file-list 表示：接收端 materializer 会把 rep.bytes 改写为本机 file:// URI
+        // 列表（每行一条），写入时为每个 URI 生成一个独立 NSPasteboardItem 承载
+        // NSPasteboardTypeFileURL —— Finder / NSDocumentController 识别的规范形式。
+        "public.file-url" | "NSFilenamesPboardType" | "files" => Some("text/uri-list"),
+        _ => None,
+    };
+
+    match (rep.mime.as_deref(), format_default) {
+        (Some(m), Some(default)) if default.starts_with("image/") && !m.starts_with("image/") => {
+            let recovered =
+                crate::clipboard::common::sniff_image_magic(&rep.bytes).unwrap_or(default);
+            tracing::warn!(
+                format_id = %rep.format_id,
+                wire_mime = m,
+                recovered_mime = recovered,
+                "macOS multi-rep: image rep declared non-image mime; recovered via byte sniff/format_id default"
+            );
+            Some(recovered)
+        }
+        (Some(m), _) => Some(m),
+        (None, default) => default,
+    }
 }
 
 /// 把 text/uri-list rep 的字节解析为每行一条 URI 字符串。

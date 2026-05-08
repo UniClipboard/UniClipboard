@@ -276,7 +276,7 @@ async fn put_clipboard_file(
 ) -> Result<StatusCode, Response> {
     // mime 走 Content-Type 头;客户端不带就回退 application/octet-stream
     // (与 SyncClipboard shortcut 上传 PNG / RTF 等场景一致)。
-    let mime = request
+    let raw_mime = request
         .headers()
         .get(header::CONTENT_TYPE)
         .and_then(|v| v.to_str().ok())
@@ -291,12 +291,36 @@ async fn put_clipboard_file(
         })?
         .to_vec();
 
+    // mime 兜底:某些移动端(iOS Shortcut / 第三方 SyncClipboard 兼容客户端)
+    // 上传 .jpg/.png 时不带 Content-Type 或带 application/octet-stream。如果
+    // 让 octet-stream 一路下沉到剪贴板写入层,会让 image rep 携带非 image/*
+    // mime 落到 macOS NSPasteboard 上,系统识别不出 image type、用户读到的
+    // 是原始 JPEG 字节(2026-05-08 真机回归 IMG_20260508_200644.jpg 复现)。
+    // 这里在最外层基于 data_name 扩展名 + 文件头魔数嗅探,把 image 类的
+    // mime 修正回正确的 image/* 形态;无法识别时保持原 mime 不动。
+    let effective_mime = if mime_is_unspecific(&raw_mime) {
+        match infer_image_mime(&data_name, &body_bytes) {
+            Some(sniffed) => {
+                tracing::info!(
+                    data_name = %data_name,
+                    raw_mime = %raw_mime,
+                    sniffed_mime = sniffed,
+                    "PUT /file: overrode unspecific Content-Type with sniffed image mime"
+                );
+                sniffed.to_string()
+            }
+            None => raw_mime.clone(),
+        }
+    } else {
+        raw_mime.clone()
+    };
+
     let bytes_len = body_bytes.len();
     let log_data_name = data_name.clone();
-    let log_mime = mime.clone();
+    let log_mime = effective_mime.clone();
     let device_id = authed.device.device_id.clone();
     match facade
-        .put_clipboard_file(data_name, mime, body_bytes, device_id)
+        .put_clipboard_file(data_name, effective_mime, body_bytes, device_id)
         .await
     {
         Ok(outcome) => {
@@ -311,6 +335,75 @@ async fn put_clipboard_file(
         }
         Err(err) => Err(map_apply_error(err, "PUT /file")),
     }
+}
+
+/// 判断客户端给的 Content-Type 是否"没说人话",也就是值得进一步嗅探。
+///
+/// 命中条件:空、application/octet-stream、binary/octet-stream、application/binary,
+/// 或纯 `application/*` 而无更具体的子类型(部分客户端会发 `application/`)。
+fn mime_is_unspecific(mime: &str) -> bool {
+    let trimmed = mime.split(';').next().unwrap_or("").trim();
+    matches!(
+        trimmed,
+        "" | "application/octet-stream"
+            | "binary/octet-stream"
+            | "application/binary"
+            | "application/"
+    )
+}
+
+/// 嗅探图片 mime:**优先文件头魔数**(防止 .jpg 改名为 .png 等),魔数无法
+/// 识别时回退扩展名。返回值是 `image/*` 中桌面端剪贴板能消费的形式。
+///
+/// 字节嗅探只看前 12 字节,无所有权拷贝。
+fn infer_image_mime(data_name: &str, body: &[u8]) -> Option<&'static str> {
+    if let Some(by_magic) = sniff_image_magic(body) {
+        return Some(by_magic);
+    }
+    let lower = data_name.to_ascii_lowercase();
+    let ext = std::path::Path::new(&lower)
+        .extension()
+        .and_then(|e| e.to_str())?;
+    match ext {
+        "jpg" | "jpeg" | "jpe" => Some("image/jpeg"),
+        "png" => Some("image/png"),
+        "gif" => Some("image/gif"),
+        "webp" => Some("image/webp"),
+        "bmp" => Some("image/bmp"),
+        "tif" | "tiff" => Some("image/tiff"),
+        "heic" | "heif" => Some("image/heic"),
+        _ => None,
+    }
+}
+
+/// 文件头魔数嗅探。覆盖桌面剪贴板真实会遇到的 6 种格式;其余返回 None 让
+/// 调用方决定是否回退扩展名。
+fn sniff_image_magic(body: &[u8]) -> Option<&'static str> {
+    // JPEG: FF D8 FF (SOI + 第一段 marker 高字节)
+    if body.starts_with(&[0xFF, 0xD8, 0xFF]) {
+        return Some("image/jpeg");
+    }
+    // PNG: 89 50 4E 47 0D 0A 1A 0A
+    if body.starts_with(&[0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]) {
+        return Some("image/png");
+    }
+    // GIF87a / GIF89a
+    if body.starts_with(b"GIF87a") || body.starts_with(b"GIF89a") {
+        return Some("image/gif");
+    }
+    // WEBP: RIFF....WEBP
+    if body.len() >= 12 && body.starts_with(b"RIFF") && &body[8..12] == b"WEBP" {
+        return Some("image/webp");
+    }
+    // BMP: 42 4D
+    if body.starts_with(&[0x42, 0x4D]) {
+        return Some("image/bmp");
+    }
+    // TIFF little-endian (II*\0) / big-endian (MM\0*)
+    if body.starts_with(&[0x49, 0x49, 0x2A, 0x00]) || body.starts_with(&[0x4D, 0x4D, 0x00, 0x2A]) {
+        return Some("image/tiff");
+    }
+    None
 }
 
 // ─── helpers ────────────────────────────────────────────────────────────
@@ -494,6 +587,91 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(resp.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn put_file_with_octet_stream_jpeg_returns_200() {
+        // 2026-05-08 IMG_20260508_200644.jpg 真机回归 pin:某些移动客户端
+        // 上传 .jpg 时 Content-Type 发成 application/octet-stream(或不发)。
+        // 路由层应吃下,不能 400/500。mime 兜底逻辑 (sniff/扩展名) 会在
+        // 内部把 mime 修正为 image/jpeg —— 这条 test 只跨过路由层,确保
+        // 接口契约稳定;深层 mime 修正语义靠 `infer_image_mime_*` 单测覆盖。
+        let facade = build_facade_with_seeded_device("mobile_alice", "wonderland").await;
+        let app = build_app(facade);
+
+        // 真实 JPEG 头(SOI + APP1/Exif marker), 模拟 Xiaomi 14 拍的照片头几字节
+        let jpeg_head = vec![0xFF, 0xD8, 0xFF, 0xE1, 0x00, 0x18, b'E', b'x', b'i', b'f'];
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("PUT")
+                    .uri("/file/IMG_20260508_200644.jpg")
+                    .header("Authorization", auth_header("mobile_alice", "wonderland"))
+                    .header("Content-Type", "application/octet-stream")
+                    .body(Body::from(jpeg_head))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+    }
+
+    // ─── mime 兜底纯函数单测 ────────────────────────────────────────────
+
+    #[test]
+    fn mime_is_unspecific_recognizes_known_unspecific_values() {
+        assert!(mime_is_unspecific(""));
+        assert!(mime_is_unspecific("application/octet-stream"));
+        assert!(mime_is_unspecific(
+            "application/octet-stream; charset=binary"
+        ));
+        assert!(mime_is_unspecific("binary/octet-stream"));
+        assert!(mime_is_unspecific("application/binary"));
+        assert!(mime_is_unspecific("application/"));
+    }
+
+    #[test]
+    fn mime_is_unspecific_rejects_specific_values() {
+        assert!(!mime_is_unspecific("image/jpeg"));
+        assert!(!mime_is_unspecific("image/png"));
+        assert!(!mime_is_unspecific("text/plain"));
+        assert!(!mime_is_unspecific("application/pdf"));
+    }
+
+    #[test]
+    fn infer_image_mime_prefers_byte_magic_over_extension() {
+        // 文件名说 .png 但实际是 JPEG 字节 → 嗅探优先,以字节为准。
+        let jpeg = [0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10];
+        assert_eq!(infer_image_mime("liar.png", &jpeg), Some("image/jpeg"));
+    }
+
+    #[test]
+    fn infer_image_mime_falls_back_to_extension_when_magic_misses() {
+        // 字节嗅不出来(空 / 非图片头),按扩展名兜底。
+        assert_eq!(infer_image_mime("photo.jpg", &[]), Some("image/jpeg"));
+        assert_eq!(infer_image_mime("photo.JPEG", &[]), Some("image/jpeg"));
+        assert_eq!(infer_image_mime("snap.png", b"junk"), Some("image/png"));
+        assert_eq!(infer_image_mime("anim.gif", &[]), Some("image/gif"));
+        assert_eq!(infer_image_mime("photo.heic", &[]), Some("image/heic"));
+    }
+
+    #[test]
+    fn infer_image_mime_returns_none_for_non_image_extension() {
+        // 文件不是图片,且字节也嗅不出来 → 不要瞎猜。
+        assert_eq!(infer_image_mime("doc.pdf", b"%PDF-1.7"), None);
+        assert_eq!(infer_image_mime("noext", &[]), None);
+        assert_eq!(infer_image_mime("script.sh", b"#!/bin/sh"), None);
+    }
+
+    #[test]
+    fn infer_image_mime_xiaomi_jpeg_real_world_case() {
+        // 2026-05-08 真机回归:文件名 IMG_20260508_200644.jpg + JPEG 头,
+        // 客户端发 application/octet-stream → 路由层应嗅到 image/jpeg。
+        let bytes = [0xFF, 0xD8, 0xFF, 0xE1, 0x00, 0x18, b'E', b'x', b'i', b'f'];
+        assert_eq!(
+            infer_image_mime("IMG_20260508_200644.jpg", &bytes),
+            Some("image/jpeg")
+        );
     }
 
     #[tokio::test]

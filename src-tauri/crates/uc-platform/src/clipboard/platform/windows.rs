@@ -15,28 +15,42 @@ use uc_core::ports::SystemClipboardPort;
 /// 既用于前置 "有无可写 rep" 扫描，也用于主循环分派，避免两处逻辑漂移。
 /// 与 `common.rs` 单 rep 快路径的 format_id → mime 推断表对齐。
 fn resolve_multi_rep_mime(rep: &ObservedClipboardRepresentation) -> Option<&str> {
-    rep.mime
-        .as_ref()
-        .map(|m| m.as_str())
-        .or_else(|| match rep.format_id.as_str() {
-            "public.utf8-plain-text" | "public.text" | "NSStringPboardType" | "text" => {
-                Some("text/plain")
-            }
-            "public.html" | "Apple HTML pasteboard type" | "html" => Some("text/html"),
-            // RTF：从 Word / Pages / 写字板等富文本源复制时常与 plain + html 一起出现；
-            // common.rs::read_snapshot 写库时使用 format_id="rtf", mime="text/rtf"。
-            // Windows 上对应 RegisterClipboardFormat("Rich Text Format") 注册的自定义
-            // format（CF_RTF 不是 Win32 预定义常量）。
-            "public.rtf" | "rtf" => Some("text/rtf"),
-            // PixPin 截图等场景 format_id 为 "image"，mime 通常为 "image/png"。
-            // `common.rs::read_snapshot` 把 macOS `public.png` / `public.tiff` 都转成 PNG。
-            "public.png" | "image" => Some("image/png"),
-            // file-list 表示：接收端 materializer 会把 rep.bytes 改写为本机 file:// URI
-            // 列表（每行一条），写入时解析为原生路径后通过 CF_HDROP 提交，Explorer /
-            // 资源管理器识别的规范形式。
-            "public.file-url" | "NSFilenamesPboardType" | "files" => Some("text/uri-list"),
-            _ => None,
-        })
+    let format_default = match rep.format_id.as_str() {
+        "public.utf8-plain-text" | "public.text" | "NSStringPboardType" | "text" => {
+            Some("text/plain")
+        }
+        "public.html" | "Apple HTML pasteboard type" | "html" => Some("text/html"),
+        // RTF：从 Word / Pages / 写字板等富文本源复制时常与 plain + html 一起出现；
+        // common.rs::read_snapshot 写库时使用 format_id="rtf", mime="text/rtf"。
+        // Windows 上对应 RegisterClipboardFormat("Rich Text Format") 注册的自定义
+        // format（CF_RTF 不是 Win32 预定义常量）。
+        "public.rtf" | "rtf" => Some("text/rtf"),
+        // PixPin 截图等场景 format_id 为 "image"，mime 通常为 "image/png"。
+        // `common.rs::read_snapshot` 把 macOS `public.png` / `public.tiff` 都转成 PNG。
+        "public.png" | "image" => Some("image/png"),
+        // file-list 表示：接收端 materializer 会把 rep.bytes 改写为本机 file:// URI
+        // 列表（每行一条），写入时解析为原生路径后通过 CF_HDROP 提交，Explorer /
+        // 资源管理器识别的规范形式。
+        "public.file-url" | "NSFilenamesPboardType" | "files" => Some("text/uri-list"),
+        _ => None,
+    };
+
+    // image-like format_id 但显式 mime 非 image/*:见 `common.rs::write_snapshot` 同位置注释。
+    match (rep.mime.as_deref(), format_default) {
+        (Some(m), Some(default)) if default.starts_with("image/") && !m.starts_with("image/") => {
+            let recovered =
+                crate::clipboard::common::sniff_image_magic(&rep.bytes).unwrap_or(default);
+            tracing::warn!(
+                format_id = %rep.format_id,
+                wire_mime = m,
+                recovered_mime = recovered,
+                "Windows multi-rep: image rep declared non-image mime; recovered via byte sniff/format_id default"
+            );
+            Some(recovered)
+        }
+        (Some(m), _) => Some(m),
+        (None, default) => default,
+    }
 }
 
 /// 把 text/uri-list rep 的字节解析为本机路径列表（`Vec<PathBuf>`）。

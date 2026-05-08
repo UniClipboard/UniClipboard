@@ -3,7 +3,13 @@ name: Coverage
 on:
   push:
     branches: [main, develop]
+    paths:
+      - 'src-tauri/**'
+      - '.github/workflows/coverage.yml'
   pull_request:
+    paths:
+      - 'src-tauri/**'
+      - '.github/workflows/coverage.yml'
 
 jobs:
   coverage:

@@ -6,24 +6,58 @@ on:
     branches:
       - main
     types: [opened, synchronize, reopened]
+    paths:
+      - 'src/**'
+      - 'src-tauri/**'
+      - 'package.json'
+      - 'bun.lock'
+      - 'tsconfig*.json'
+      - 'vite.config.ts'
+      - 'tailwind.config.js'
+      - 'eslint.config.js'
+      - 'index.html'
+      - 'quick-panel.html'
+      - 'public/**'
+      - '.github/workflows/pr-check.yml'
 
+# 拆 frontend / rust 两个 job 并行：
+# - frontend: bun install + tsc + vite build (类型检查 + 产物构建)
+# - rust: cargo check --workspace --locked (不再带 --all-targets --all-features，
+#   PR 阶段不为 test/bench/全 feature 编译。test 在 coverage.yml 跑)
+# 完整的 tauri build / 签名 / 公证 仍只在 release 工作流跑。
 jobs:
-  check:
-    name: Code Check
+  frontend:
+    name: Frontend Type Check
     runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: lts/*
-
       - name: Install Bun
-        uses: oven-sh/setup-bun@v1
+        uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
+
+      - name: Cache Bun dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.bun/install/cache
+          key: ${{ runner.os }}-bun-${{ hashFiles('**/bun.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-bun-
+
+      - name: Install frontend dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Type check & build frontend
+        run: bun run build
+
+  rust:
+    name: Rust Check
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
 
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
@@ -31,35 +65,15 @@ jobs:
       - name: Install system dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
-
-      - name: Cache Bun dependencies
-        uses: actions/cache@v4
-        with:
-          path: |
-            node_modules
-            ~/.bun/install/cache
-          key: ${{ runner.os }}-bun-${{ hashFiles('**/bun.lockb') }}
-          restore-keys: |
-            ${{ runner.os }}-bun-
+          sudo apt-get install -y --no-install-recommends \
+            libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
 
       - name: Cache Rust dependencies
-        uses: actions/cache@v4
+        uses: Swatinem/rust-cache@v2
         with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            src-tauri/target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-
+          workspaces: "src-tauri -> target"
+          shared-key: pr-check
 
-      - name: Install frontend dependencies
-        run: bun install
-
-      - name: Type check frontend
-        run: bun run build
-
-      - name: Check Rust code
+      - name: Check Rust workspace
         working-directory: src-tauri
-        run: cargo check --all-targets --all-features
+        run: cargo check --workspace --locked

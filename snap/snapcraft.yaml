@@ -184,6 +184,23 @@ parts:
       install -Dm644 src-tauri/icons/128x128.png \
         "${CRAFT_PART_INSTALL}/usr/share/icons/hicolor/128x128/apps/uniclipboard.png"
 
+      # 4) 把 stage-packages.libwebkit2gtk-4.1-0 已经放到
+      #    $CRAFT_PART_INSTALL/usr/lib/.../webkit2gtk-4.1/ 的子进程 binary
+      #    **再镜像一份**到 $CRAFT_PART_INSTALL/gnome-platform/usr/lib/.../webkit2gtk-4.1/
+      #    —— 这条 squashfs 路径正好是 gnome extension 自动注入的 layout
+      #    source。这样在 snapd 早期 layout setup 阶段(content interface
+      #    mount 还没挂上 gnome-platform/),source path 在 squashfs 里就是
+      #    可达的,bind /usr/lib/$ARCH/webkit2gtk-4.1 → squashfs 里的
+      #    pre-baked dir 成功;之后 content interface mount 把
+      #    $SNAP/gnome-platform/ 用 gnome-42-2204 内容**覆盖**(shadow),但
+      #    /usr/lib/$ARCH/webkit2gtk-4.1 那条 bind 早已记录 inode,后续不受
+      #    影响 —— WebKit spawn 解析到我们 staged 的 binary,可靠且不依赖
+      #    snapd 版本对 timing 的处理(Ubuntu 20.04 + snapd 2.58.2 上原方案
+      #    每次 refresh 都重蹈 stale namespace 覆辙)。
+      mkdir -p "${CRAFT_PART_INSTALL}/gnome-platform/usr/lib/x86_64-linux-gnu/webkit2gtk-4.1"
+      cp -a "${CRAFT_PART_INSTALL}/usr/lib/x86_64-linux-gnu/webkit2gtk-4.1/." \
+            "${CRAFT_PART_INSTALL}/gnome-platform/usr/lib/x86_64-linux-gnu/webkit2gtk-4.1/"
+
 # WebKitGTK 4.1 子进程路径 hardcode-fix。
 #
 # WebKit 的 ProcessLauncherGLib 用编译期宏 WEBKIT_EXEC_PATH 拼子进程

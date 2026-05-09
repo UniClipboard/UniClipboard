@@ -7,8 +7,8 @@ import { Step, Steps } from 'fumadocs-ui/components/steps'
 import { Tab, Tabs } from 'fumadocs-ui/components/tabs'
 
 <Feature since="0.7.0" status="experimental">
-  仅限局域网的 HTTP 伴侣模式：iPhone 通过内置的 Shortcut，
-  或任意兼容 SyncClipboard 协议的客户端接入。
+  仅限局域网的 HTTP 伴侣模式：iPhone 通过内置的 Shortcut， 或任意兼容 SyncClipboard
+  协议的客户端接入。
 </Feature>
 
 移动端同步是 **0.7 引入的局域网伴侣模式**：桌面守护进程在本地网络上
@@ -24,8 +24,8 @@ Basic Auth 与之读写剪贴。
 两台手机不会互相同步，它们都跟桌面通信。
 
 <Callout type="warn">
-  v1 的线上格式是 LAN 上的明文 HTTP。**不要** 在咖啡馆 Wi-Fi、会议
-  Wi-Fi、或任何同一 SSID 上有不可信用户的网络下开启监听器。
+  v1 的线上格式是 LAN 上的明文 HTTP。**不要** 在咖啡馆 Wi-Fi、会议 Wi-Fi、或任何同一 SSID
+  上有不可信用户的网络下开启监听器。
 </Callout>
 
 ## 一键启用
@@ -152,14 +152,14 @@ SyncClipboard 上游的 Android 应用）都可以接入，自己填：
 
 ## 管理已配对设备
 
-| 操作               | GUI                                       | CLI                                                     |
-| ------------------ | ----------------------------------------- | ------------------------------------------------------- |
-| 列出已配对         | 设备页 → 移动端同步面板                   | `uniclip mobile-sync devices list`                      |
-| 再加一台           | 移动端同步面板 → **Add device**           | `uniclip mobile-sync devices add --label "…"`           |
-| 轮换密码           | 设备行 → **Rotate password**              | _目前只 GUI_；签新的并更新手机端                        |
-| 吊销一台设备       | 设备行 → **Revoke**                       | `uniclip mobile-sync devices revoke <device-id>`        |
-| 关闭整个功能       | Configure 抽屉 → 关闭总开关               | `uniclip mobile-sync disable`                           |
-| 查当前监听 URL     | 移动端同步面板状态条                      | `uniclip mobile-sync status`                            |
+| 操作           | GUI                             | CLI                                              |
+| -------------- | ------------------------------- | ------------------------------------------------ |
+| 列出已配对     | 设备页 → 移动端同步面板         | `uniclip mobile-sync devices list`               |
+| 再加一台       | 移动端同步面板 → **Add device** | `uniclip mobile-sync devices add --label "…"`    |
+| 轮换密码       | 设备行 → **Rotate password**    | _目前只 GUI_；签新的并更新手机端                 |
+| 吊销一台设备   | 设备行 → **Revoke**             | `uniclip mobile-sync devices revoke <device-id>` |
+| 关闭整个功能   | Configure 抽屉 → 关闭总开关     | `uniclip mobile-sync disable`                    |
+| 查当前监听 URL | 移动端同步面板状态条            | `uniclip mobile-sync status`                     |
 
 **轮换密码** 会签发一个新的一次性密码，并原子失效旧的 Argon2id 哈希。
 旧凭据立即停用。需要把新密码同步更新到手机端的快捷指令（或其他客户端）。
@@ -172,13 +172,13 @@ SyncClipboard 上游的 Android 应用）都可以接入，自己填：
 
 ## 安全模型 —— 覆盖了什么、没覆盖什么
 
-| 范围                       | 是否覆盖                                                                         |
-| -------------------------- | -------------------------------------------------------------------------------- |
-| 桌面侧密码存储             | **是** —— 只持久化 Argon2id 哈希。                                              |
-| 凭据轮换                   | **是** —— `Rotate password` 签发新值并失效旧哈希。                              |
-| LAN 上的传输机密性         | **否（v1）** —— 明文 HTTP。TLS 在 v2 才会有。                                   |
-| 跨网络可达性               | **否** —— 仅限 LAN。手机离开局域网就连不上桌面。                                |
-| 把手机当作 peer 加入信任网 | **否** —— 手机不会进入 iroh / 空间的信任网络。                                  |
+| 范围                       | 是否覆盖                                           |
+| -------------------------- | -------------------------------------------------- |
+| 桌面侧密码存储             | **是** —— 只持久化 Argon2id 哈希。                 |
+| 凭据轮换                   | **是** —— `Rotate password` 签发新值并失效旧哈希。 |
+| LAN 上的传输机密性         | **否（v1）** —— 明文 HTTP。TLS 在 v2 才会有。      |
+| 跨网络可达性               | **否** —— 仅限 LAN。手机离开局域网就连不上桌面。   |
+| 把手机当作 peer 加入信任网 | **否** —— 手机不会进入 iroh / 空间的信任网络。     |
 
 实操含义：
 

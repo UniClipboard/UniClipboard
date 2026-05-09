@@ -11,10 +11,10 @@ the page.
 
 ## Page layout
 
-| Block                 | Content                                                                                                                            |
-| --------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
-| "This device" card    | Local name, current sync status (active / paused), paired count, online subset count.                                              |
-| "Space members" panel | List of all paired desktop peers in the current space; each row expands into a detailed sheet.                                     |
+| Block                 | Content                                                                                                                                |
+| --------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| "This device" card    | Local name, current sync status (active / paused), paired count, online subset count.                                                  |
+| "Space members" panel | List of all paired desktop peers in the current space; each row expands into a detailed sheet.                                         |
 | "Mobile sync" panel   | Listener status, **Configure** sheet, **Add device** action, and the list of paired mobile clients. See [below](#mobile-sync-devices). |
 
 "This device" is read-only. To rename this machine or toggle local
@@ -38,9 +38,9 @@ Left to right:
 ### Transport channel badge
 
 <Feature since="0.7.0">
-  Per-peer `LAN` / `Direct` / `Relay` reachability badges. Backed by a
-  single `ConnectionChannelPort` source of truth wired through the DTO
-  so the GUI, the tray icon, and `uniclip status --json` all agree.
+  Per-peer `LAN` / `Direct` / `Relay` reachability badges. Backed by a single
+  `ConnectionChannelPort` source of truth wired through the DTO so the GUI, the tray icon, and
+  `uniclip status --json` all agree.
 </Feature>
 
 The little tag next to `Online` reports how the connection is reaching
@@ -89,9 +89,8 @@ Clicking the chevron slides out a sheet with the controls below.
 ### Send master switch
 
 <Feature since="0.7.0">
-  Per-peer **outbound gate** + **content-type allowlist** are now
-  enforced at the dispatcher (previously persisted but unused). Bytes
-  for any disabled type never leave this machine.
+  Per-peer **outbound gate** + **content-type allowlist** are now enforced at the dispatcher
+  (previously persisted but unused). Bytes for any disabled type never leave this machine.
 </Feature>
 
 `Send to this device`: when off, clips produced on this machine never
@@ -154,12 +153,12 @@ desktop peers and don't share the iroh trust mesh.
 
 The panel header shows the current listener state at a glance:
 
-| State              | What it means                                                                                                  |
-| ------------------ | -------------------------------------------------------------------------------------------------------------- |
-| `Disabled`         | Master switch is off. Click `Configure` to turn it on.                                                         |
-| `Listening @ …`    | LAN listener is running and reachable. The displayed URL is what mobile clients should target.                 |
+| State              | What it means                                                                                                   |
+| ------------------ | --------------------------------------------------------------------------------------------------------------- |
+| `Disabled`         | Master switch is off. Click `Configure` to turn it on.                                                          |
+| `Listening @ …`    | LAN listener is running and reachable. The displayed URL is what mobile clients should target.                  |
 | `Bind failed: …`   | The daemon tried to bind but failed — surfaced from `lan_listener_error` (e.g. port in use, permission denied). |
-| `Restart required` | A configuration change (advertise IP, port, master switch) needs a daemon restart to take effect.              |
+| `Restart required` | A configuration change (advertise IP, port, master switch) needs a daemon restart to take effect.               |
 
 `Configure` opens the **Mobile sync settings** sheet (see
 [Settings → Mobile sync](./settings#mobile-sync)). `Add device` opens
@@ -218,5 +217,5 @@ to [Troubleshooting — Peer not appearing](./troubleshooting#peer-not-appearing
 | Per-peer content-type allowlist | **GUI only today**; CLI configuration subcommand is on the roadmap             |
 | Mobile sync — status            | `uniclip mobile-sync status`                                                   |
 | Mobile sync — list paired       | `uniclip mobile-sync devices list`                                             |
-| Mobile sync — register a device | `uniclip mobile-sync setup` (wizard) or `mobile-sync devices add --label …`   |
+| Mobile sync — register a device | `uniclip mobile-sync setup` (wizard) or `mobile-sync devices add --label …`    |
 | Mobile sync — revoke a device   | `uniclip mobile-sync devices revoke <device-id>`                               |

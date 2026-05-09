@@ -7,8 +7,8 @@ import { Step, Steps } from 'fumadocs-ui/components/steps'
 import { Tab, Tabs } from 'fumadocs-ui/components/tabs'
 
 <Feature since="0.7.0" status="experimental">
-  LAN-only HTTP companion mode. iPhone via the bundled Shortcut, or any
-  SyncClipboard-compatible client.
+  LAN-only HTTP companion mode. iPhone via the bundled Shortcut, or any SyncClipboard-compatible
+  client.
 </Feature>
 
 Mobile sync is the **0.7 LAN companion mode**: the desktop daemon
@@ -28,9 +28,8 @@ It is intentionally narrower than desktop ↔ desktop sync:
 Two phones don't sync with each other; they each talk to the desktop.
 
 <Callout type="warn">
-  v1 wire format is unencrypted HTTP on the LAN. **Don't enable** the
-  listener on coffee-shop Wi-Fi, conference Wi-Fi, or any network
-  where you don't trust everyone on the same SSID.
+  v1 wire format is unencrypted HTTP on the LAN. **Don't enable** the listener on coffee-shop Wi-Fi,
+  conference Wi-Fi, or any network where you don't trust everyone on the same SSID.
 </Callout>
 
 ## Enable mobile sync (one-shot)
@@ -170,14 +169,14 @@ filling in:
 
 ## Manage paired devices
 
-| Action                | GUI                                              | CLI                                                     |
-| --------------------- | ------------------------------------------------ | ------------------------------------------------------- |
-| List paired devices   | Devices page → Mobile sync panel                 | `uniclip mobile-sync devices list`                      |
-| Add another device    | Mobile sync panel → **Add device**               | `uniclip mobile-sync devices add --label "…"`           |
-| Rotate password       | Device row → **Rotate password**                 | _GUI only today_; mint a new one and re-edit the phone  |
-| Revoke a device       | Device row → **Revoke**                          | `uniclip mobile-sync devices revoke <device-id>`        |
-| Disable feature       | Configure sheet → switch off                     | `uniclip mobile-sync disable`                           |
-| Inspect listener URL  | Mobile sync panel header                         | `uniclip mobile-sync status`                            |
+| Action               | GUI                                | CLI                                                    |
+| -------------------- | ---------------------------------- | ------------------------------------------------------ |
+| List paired devices  | Devices page → Mobile sync panel   | `uniclip mobile-sync devices list`                     |
+| Add another device   | Mobile sync panel → **Add device** | `uniclip mobile-sync devices add --label "…"`          |
+| Rotate password      | Device row → **Rotate password**   | _GUI only today_; mint a new one and re-edit the phone |
+| Revoke a device      | Device row → **Revoke**            | `uniclip mobile-sync devices revoke <device-id>`       |
+| Disable feature      | Configure sheet → switch off       | `uniclip mobile-sync disable`                          |
+| Inspect listener URL | Mobile sync panel header           | `uniclip mobile-sync status`                           |
 
 **Rotating** mints a fresh one-time password and atomically
 invalidates the previous Argon2id hash. The old credentials stop
@@ -194,13 +193,13 @@ records, use `devices revoke` (or the GUI revoke button) explicitly.
 
 ## Security model — what's covered, what isn't
 
-| Surface                     | Covered                                                                  |
-| --------------------------- | ------------------------------------------------------------------------ |
-| On-disk password storage    | **Yes** — only an Argon2id hash is persisted server-side.                |
-| Credential rotation         | **Yes** — `Rotate password` mints a new one and invalidates the old hash. |
-| LAN-side wire confidentiality | **No (v1)** — plain HTTP. TLS comes in v2.                              |
-| Cross-network reachability  | **No** — LAN only. Phone off the LAN can't reach the desktop.            |
-| Mobile-as-peer trust        | **No** — phone never participates in the iroh / space trust mesh.        |
+| Surface                       | Covered                                                                   |
+| ----------------------------- | ------------------------------------------------------------------------- |
+| On-disk password storage      | **Yes** — only an Argon2id hash is persisted server-side.                 |
+| Credential rotation           | **Yes** — `Rotate password` mints a new one and invalidates the old hash. |
+| LAN-side wire confidentiality | **No (v1)** — plain HTTP. TLS comes in v2.                                |
+| Cross-network reachability    | **No** — LAN only. Phone off the LAN can't reach the desktop.             |
+| Mobile-as-peer trust          | **No** — phone never participates in the iroh / space trust mesh.         |
 
 Practical implications:
 

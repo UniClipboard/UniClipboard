@@ -84,10 +84,9 @@ For the underlying key model, see
 ## Network
 
 <Feature since="0.7.0">
-  Both **LAN-only mode** and **Allow overlay network addrs** are new
-  network-side knobs introduced in 0.7. They both require a daemon
-  restart to take effect — the **Restart required** banner is also new
-  and surfaces inline above whichever fields you changed.
+  Both **LAN-only mode** and **Allow overlay network addrs** are new network-side knobs introduced
+  in 0.7. They both require a daemon restart to take effect — the **Restart required** banner is
+  also new and surfaces inline above whichever fields you changed.
 </Feature>
 
 | Setting                     | What it does                                                                 |
@@ -125,21 +124,20 @@ panel.
 
 Quick reference for what's in that sheet:
 
-| Setting                       | What it does                                                                                                                              |
-| ----------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| Enable mobile sync            | Master switch for the feature. Off → no listener, no Add device, no inbound HTTP traffic on the LAN port.                                 |
-| Enable LAN listener           | Independent toggle for the HTTP listener. The master switch above must also be on for it to do anything.                                   |
-| Bind / advertised IP          | The LAN IPv4 the desktop tells mobile clients to connect to. The actual socket is always bound to `0.0.0.0`; this only changes the URL.   |
-| Port                          | Defaults to **42720** (SPEC §3.2). Custom values let you avoid conflicts.                                                                  |
-| Current listening address     | Read-only; shows the URL derived from the persisted settings. This is what mobile clients should target.                                   |
-| Listener bind error           | Read-only; surfaces the daemon-side `lan_listener_error` (port in use, permission denied, etc.) so you can see why the URL isn't reachable. |
-| Restart-required banner       | Appears when the daemon is running with stale settings. Apply by restarting via the tray menu / `uniclip stop && uniclip start`.          |
+| Setting                   | What it does                                                                                                                                |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| Enable mobile sync        | Master switch for the feature. Off → no listener, no Add device, no inbound HTTP traffic on the LAN port.                                   |
+| Enable LAN listener       | Independent toggle for the HTTP listener. The master switch above must also be on for it to do anything.                                    |
+| Bind / advertised IP      | The LAN IPv4 the desktop tells mobile clients to connect to. The actual socket is always bound to `0.0.0.0`; this only changes the URL.     |
+| Port                      | Defaults to **42720** (SPEC §3.2). Custom values let you avoid conflicts.                                                                   |
+| Current listening address | Read-only; shows the URL derived from the persisted settings. This is what mobile clients should target.                                    |
+| Listener bind error       | Read-only; surfaces the daemon-side `lan_listener_error` (port in use, permission denied, etc.) so you can see why the URL isn't reachable. |
+| Restart-required banner   | Appears when the daemon is running with stale settings. Apply by restarting via the tray menu / `uniclip stop && uniclip start`.            |
 
 <Callout type="warn">
-  Pick a **specific LAN IPv4** in the Bind/Advertised IP picker. `Auto` /
-  `0.0.0.0` is fine as a placeholder, but it's the wrong value to print
-  on a phone screen — phones can't dial it. Use the picker to pick the
-  RFC1918 interface the mobile device will actually be on.
+  Pick a **specific LAN IPv4** in the Bind/Advertised IP picker. `Auto` / `0.0.0.0` is fine as a
+  placeholder, but it's the wrong value to print on a phone screen — phones can't dial it. Use the
+  picker to pick the RFC1918 interface the mobile device will actually be on.
 </Callout>
 
 For the full setup walkthrough, security caveats, and troubleshooting

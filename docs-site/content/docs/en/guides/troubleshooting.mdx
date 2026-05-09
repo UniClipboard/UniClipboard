@@ -19,15 +19,15 @@ commands to run.
 
 ## Start here: 30-second triage
 
-| Symptom                                           | Most likely layer    | Jump to                                                  |
-| ------------------------------------------------- | -------------------- | -------------------------------------------------------- |
-| Command says "daemon not running"                 | Daemon               | [Daemon](#daemon)                                        |
-| `join <code>` errors out or hangs                 | Pairing              | [Pairing failures](#pairing-failures)                    |
-| Both online but `members` doesn't list each other | Discovery            | [Peer not appearing](#peer-not-appearing)                |
-| Peer is visible but sync is slow / files stall    | Transport            | [Stuck on relay / slow sync](#stuck-on-relay--slow-sync) |
-| You copy something and the peer gets nothing      | Clipboard permission | [Clipboard permissions](#clipboard-permissions)          |
-| Search returns nothing or "index not ready"       | Full-text index      | [Search & index](#search--index)                         |
-| Phone can't reach the desktop / 401 / corrupt image | Mobile sync         | [Mobile sync (iOS Shortcut)](#mobile-sync-ios-shortcut)  |
+| Symptom                                             | Most likely layer    | Jump to                                                  |
+| --------------------------------------------------- | -------------------- | -------------------------------------------------------- |
+| Command says "daemon not running"                   | Daemon               | [Daemon](#daemon)                                        |
+| `join <code>` errors out or hangs                   | Pairing              | [Pairing failures](#pairing-failures)                    |
+| Both online but `members` doesn't list each other   | Discovery            | [Peer not appearing](#peer-not-appearing)                |
+| Peer is visible but sync is slow / files stall      | Transport            | [Stuck on relay / slow sync](#stuck-on-relay--slow-sync) |
+| You copy something and the peer gets nothing        | Clipboard permission | [Clipboard permissions](#clipboard-permissions)          |
+| Search returns nothing or "index not ready"         | Full-text index      | [Search & index](#search--index)                         |
+| Phone can't reach the desktop / 401 / corrupt image | Mobile sync          | [Mobile sync (iOS Shortcut)](#mobile-sync-ios-shortcut)  |
 
 ## Daemon
 
@@ -271,7 +271,7 @@ without ever showing a 401 / 4xx response.
    the install URL must be a real LAN IPv4 the phone can dial.
    Reconfigure under **Devices → Mobile sync → Configure** with a
    specific interface, or `uniclip mobile-sync lan enable
-   --advertise <LAN_IPV4>`.
+--advertise <LAN_IPV4>`.
 3. **Check listener state.** `uniclip mobile-sync status` reports
    `lan_listener_error` if the daemon tried to bind and failed (port
    in use, permission denied). Resolve the underlying error or pick

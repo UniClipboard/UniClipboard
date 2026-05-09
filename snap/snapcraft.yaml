@@ -42,15 +42,24 @@ apps:
     environment:
       # snap 嵌套 mount namespace 内,WebKit 默认还会再起一层
       # bubblewrap-style sandbox(需要 user_namespaces 等内核能力),strict
-      # snap 不给。FORCE_SANDBOX=0 关掉 WebKit 自家 sandbox —— snap 已经是
-      # AppArmor + seccomp + mount/user namespace 的更强 sandbox,不损失
-      # 安全性。
-      WEBKIT_FORCE_SANDBOX: '0'
-      # 关 WebKit DMA-BUF renderer:trace 里看到 "GTK failed to initialize
-      # GL: No available configurations for the given pixel format" ——
-      # snap 的 GPU 隔离常无法初始化 EGL,WebKit 默认会试 DMA-BUF zero-copy
-      # 失败再 fallback,中间状态不稳定。直接走 software/legacy renderer。
+      # snap 不给。新版 WebKit (2.40+) 把旧的 WEBKIT_FORCE_SANDBOX=0 废弃,
+      # 改成 WEBKIT_DISABLE_SANDBOX_THIS_IS_DANGEROUS=1 —— 名字故意用
+      # "_THIS_IS_DANGEROUS_" 提醒只有在外层已经有更强 sandbox 时才能这么
+      # 做。我们靠 snap AppArmor + seccomp + namespace,符合"外层已有更
+      # 强 sandbox"的前置条件,不损失安全性。
+      WEBKIT_DISABLE_SANDBOX_THIS_IS_DANGEROUS: '1'
+      # 关 WebKit DMA-BUF renderer。snap 的 GPU 隔离常无法初始化 EGL,WebKit
+      # 默认走 DMA-BUF zero-copy 失败再 fallback,中间状态不稳定。
       WEBKIT_DISABLE_DMABUF_RENDERER: '1'
+      # 强制软件渲染。VM / headless / 没有 GPU 直通的环境(如本仓库 mark
+      # host = QEMU Q35)上 Mesa 跑不通 dri2/dri3,会报
+      # "libEGL fatal: did not find extension DRI_Mesa version 1" 然后
+      # WebKit GPUProcess 起不来。LIBGL_ALWAYS_SOFTWARE=1 让 Mesa 走
+      # llvmpipe 软件 rasterizer,代价是性能差,但能跑通。WebKitGTK 的
+      # `WEBKIT_DISABLE_COMPOSITING_MODE=1` 进一步让 WebKit 不试图走任何
+      # GL composite path,完全软渲染 fallback —— snap 这种隔离环境最稳。
+      LIBGL_ALWAYS_SOFTWARE: '1'
+      WEBKIT_DISABLE_COMPOSITING_MODE: '1'
       # NOTE: WEBKIT_EXEC_PATH **没用**。现代 WebKitGTK
       # (Source/WebKit/UIProcess/Launcher/glib/ProcessLauncherGLib.cpp) 用
       # 编译期宏 WEBKIT_EXEC_PATH (`g_build_filename(WEBKIT_EXEC_PATH,

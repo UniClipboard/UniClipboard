@@ -165,3 +165,71 @@ Analytics 持久化推荐落在 `app_data_root_dir/analytics/`（不进 vault—
 | 改变 property 语义（区间边界） | 必须新建 `*_v2` |
 
 每次 schema 变更必须更新 `docs/architecture/telemetry-events.md` + `docs/changelog/*.md`
+
+## Slice 8b 探索发现（pairing 三事件埋点）
+
+### 模块拓扑
+
+- **没有独立 PairingFacade**——pairing 全归 `SpaceSetupFacade` 管（`uc-application/src/facade/space_setup/facade.rs`）
+- **两端 use case**：
+  - sponsor 端：`IssuePairingInvitationUseCase`（`usecases/pairing/issue_invitation.rs:58-84`）
+  - joiner 端：`RedeemPairingInvitationUseCase`（`usecases/pairing/redeem_invitation.rs:97-172`）
+- **AppDeps 已有 analytics 字段**（`uc-application/src/deps.rs:167`），但 `SpaceSetupDeps`（`facade/space_setup/deps.rs:23-90`）目前未持有
+
+### Joiner 端同步语义（关键）
+
+`RedeemPairingInvitationUseCase::execute()` 返回 `Ok(...)` = 完整握手 + admit_member + trust_peer + setup_status persist 全部完成。
+返回 `Err(...)` = 失败终态。
+
+→ 三事件全部可在同步路径内 fire：
+- `pairing_started`：execute() 入口
+- `pairing_succeeded`：return Ok 之前
+- `pairing_failed`：每个 Err 路径之前（或在 execute 末尾按 Result match）
+
+### Sponsor 端异步语义
+
+`IssuePairingInvitationUseCase::execute()` 仅把 invitation 落到内存 holder + 通过 rendezvous 发布，**不等待 joiner 接入**。
+
+真正的握手完成由 `PairingInboundOrchestrator` 在异步 task 内通过 `broadcast::Sender<PairingOutcome>` 发出：
+
+```rust
+pub enum PairingOutcome {
+    Success { peer_device_id, peer_device_name, peer_fingerprint },
+    Failure { reason: String },  // 注意是 String, 不是 enum
+}
+```
+
+订阅入口：`SpaceSetupFacade::subscribe_pairing_completion()`（`facade.rs:429-437`）
+
+→ sponsor 端如果要发三事件，需要在 `PairingInboundOrchestrator` 自己持有 `Arc<dyn AnalyticsPort>`，在内部各分支处发，因为 broadcast channel 上的 `PairingOutcome::Failure { reason: String }` 已经丢失结构化信息（只是格式化字符串）。
+
+### PairingMethod 字段在代码里不存在
+
+`IssuePairingInvitationUseCase::execute()` **零参数**：
+```rust
+pub(crate) async fn execute(&self) -> Result<IssuePairingInvitationResult, IssuePairingInvitationError>
+```
+
+`RedeemPairingInvitationUseCase::execute(cmd)` 仅 `code: InvitationCode + passphrase: Passphrase`，没有"哪种方式发起"维度。
+
+QR 扫码 vs 6 位 code 输入 vs 自动发现的区分 **当前完全在 GUI/CLI 层**——底层 use case 不感知。
+
+→ 要填 `PairingMethod` schema 字段，必须新增一条参数从 GUI/CLI 一路传到 use case，或 v1 用单一占位值。
+
+### FailureReason 不对齐
+
+| 来源 | 变体数 | 变体清单 |
+|---|---|---|
+| schema 现有 `FailureReason` | 8 | PeerOffline / Timeout / PermissionDenied / NetworkError / FileTooLarge / ClipboardPermission / EncryptionMismatch / Unknown |
+| `RedeemPairingInvitationError` | 12 | InvitationNotFound / InvitationExpired / SponsorUnreachable / ServiceUnavailable / PassphraseMismatch / CorruptedKeyMaterial / DeviceNameRequired / SponsorRejectedInvitation / SponsorDeclined / SponsorTimedOut / Timeout / ConnectionLost / Internal |
+
+完全错位——`PassphraseMismatch` / `SponsorDeclined` / `SponsorRejectedInvitation` / `CorruptedKeyMaterial` 等 pairing 专属错误在 schema 现有 enum 里没有对应。挤进 `Unknown` 会丢失关键 funnel 漏点信号。
+
+→ 决策点：扩展 `FailureReason` vs 新增专用 `PairingFailureReason` enum。schema doc §8 演化策略允许新增 variant（旧 sink 兼容 unknown variant）。
+
+### 测试基础
+
+- `NoopAnalyticsSink` 已可用（`port.rs:42-49`），单测可作 fake 注入起点
+- 现有 pairing 路径 **无单元测试** —— `tests/` 目录下只有 `file_transfer.rs`
+- `SpaceSetupFacade::new()` 构造器需要补 analytics 字段；`*UseCase` 同样需要
+

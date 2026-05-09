@@ -114,13 +114,35 @@ Slice 7b 仍阻塞（PostHog Cloud account + project key）。下一可执行：
 - **Status:** complete
 
 #### Slice 8b: pairing 三事件
-- [ ] `PairingFacade` / `PairingOrchestrator` 在合适生命点调 `analytics.capture`
-  - `pairing_started`：用户点击配对入口
-  - `pairing_succeeded`：双端握手完成
-  - `pairing_failed`：超时 / 拒绝 / 网络错误（映射到 `FailureReason`）
-- [ ] 失败原因翻译：业务错误 → `FailureReason` 枚举
-- [ ] 测试：use case 单元测试用 fake `AnalyticsPort` 验证 capture 调用（fire-and-forget 不阻塞主路径）
-- **Status:** pending
+
+**触达端**：仅 joiner 端（`RedeemPairingInvitationUseCase`），sponsor 端留待后续。joiner 端是漏斗主路径且 use case 同步语义清晰（execute Ok = 完整握手 + persist 完成）。
+
+**用户裁决（2026-05-09）**：
+- 仅 joiner 端发三事件（sponsor 端 broadcast 链路留 Slice 8b' 后续 PR）
+- `PairingMethod` v1 固定占位 `Code`（execute 签名零改动；GUI 区分维度延后）
+- 新增专用 `PairingFailureReason` enum，与 `FailureReason` 解耦（每 domain 一份的演化方向）
+- 测试：fake AnalyticsPort 带 Vec 缓冲，验证 capture 次数 + 事件 variant + failure_reason 映射
+
+**子任务**：
+- [x] schema doc `docs/architecture/telemetry-events.md`：§7.1 `pairing_failed` 字段从 `FailureReason` 改成 `PairingFailureReason`；§7.3 标注 sync 专用；§7.4 新增 `PairingFailureReason` 章节（**14** 个变体，含 `SponsorInternal` 与 `Internal`）
+- [x] `uc-observability/src/analytics/events.rs`：
+  - 新增 `PairingFailureReason` enum（snake_case wire 形态，14 变体）
+  - `Event::PairingFailed.failure_reason` 字段类型改 `PairingFailureReason`
+  - 钉死测试：`pairing_failure_reason_wire_format` + `pairing_method_wire_format`
+- [x] `uc-application/src/facade/space_setup/deps.rs`：`SpaceSetupDeps` 加 `analytics: Arc<dyn AnalyticsPort>` 字段
+- [x] `uc-bootstrap/src/space_setup.rs`：`SpaceSetupDeps` 构造点补 `analytics: Arc::clone(&deps.analytics)`（从 AppDeps 取）
+- [x] `uc-application/src/usecases/pairing/redeem_invitation.rs`：
+  - `RedeemPairingInvitationUseCase` 加 `analytics: Arc<dyn AnalyticsPort>` 字段（构造器 + new()）
+  - `execute()` 入口：`Instant::now()` + `analytics.capture(Event::PairingStarted { method: PairingMethod::Code })`
+  - 包到 async block，外层 match Result 后 fire `PairingSucceeded { method, peer_os: None, duration_ms }` 或 `PairingFailed { method, failure_reason: map(&e) }` 再 return
+  - 私有 fn `map_redeem_error_to_pairing_failure_reason(&RedeemPairingInvitationError) -> PairingFailureReason`（14:14 完全覆盖）
+- [x] `uc-application/src/facade/space_setup/facade.rs`：`SpaceSetupFacade::new()` 把 analytics 解构 + 传给 `RedeemPairingInvitationUseCase::new()`；内测 fake 用 NoopAnalyticsSink
+- [x] 3 个 e2e tests（slice1 / slice2_phase1 / slice2_phase2）的 SpaceSetupDeps 构造点补 NoopAnalyticsSink
+- [x] 测试：
+  - `redeem_invitation::tests` 5 个原有测试每个加 capture 序列断言（happy: Started+Succeeded；4 个 failure: Started+Failed{对应 variant}）
+  - `CapturingAnalyticsSink` test infra 落在 tests module 内（StdMutex<Vec<Event>>，与既有 Recording fakes 同款）
+  - `map_redeem_error_covers_all_variants` 钉死 14:14 映射
+- **Status:** complete
 
 #### Slice 8c: sync 三事件 + `first_clipboard_sync_*` + 新增 first_run state port
 - [ ] `uc-core/src/ports/`：新增 `FirstSyncStatePort`（与 `AppVersionStatePort` 同粒度）

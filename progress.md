@@ -420,3 +420,97 @@ src-tauri/crates/uc-bootstrap/src/
 - 首次：应看到一行 `app_first_open` JSON（含完整 EventContext 字段）
 - 第二次：IDs 已落盘，`is_first_run = false`，不再 fire `app_first_open`
 - 关掉 `usage_analytics_enabled` 后所有事件应被 `GatedAnalyticsSink` 静默吞掉
+
+---
+
+## Session 2026-05-09 续 — Slice 8b（pairing 三事件 / joiner 端） ✅
+
+**决策对话脉络**：
+1. 用户"继续下一个任务"——进入 Slice 8b
+2. 探索发现：实际不存在独立 PairingFacade，pairing 全归 `SpaceSetupFacade`；joiner 端 use case `RedeemPairingInvitationUseCase::execute()` 同步返回 = 完整握手 + persist 完成；sponsor 端走 broadcast `PairingOutcome` 异步路径，且 `Failure { reason: String }` 已丢失结构化信息
+3. AskUserQuestion 一次性问 4 决策，全部用户裁决：
+   - 仅 joiner 端发三事件（sponsor 端留待后续）
+   - PairingMethod v1 固定占位 `Code`（execute 签名零改动）
+   - 新增专用 `PairingFailureReason`，与 sync 的 `FailureReason` 解耦
+   - use case 单测用 fake AnalyticsPort 验证 capture 调用次数 + variant + failure_reason 映射
+
+### 关键架构决策
+
+| 项 | 决策 | 理由 |
+|---|---|---|
+| 触达端 | 仅 joiner 端 | joiner 是 funnel 主路径且 use case 同步语义清晰；sponsor 端 broadcast `Failure { reason: String }` 已丢结构化信息，要发只能在 `PairingInboundOrchestrator` 自带 `Arc<dyn AnalyticsPort>` —— 留 8b' 后续 PR |
+| `PairingMethod` 占位 | v1 固定 `Code` | use case 签名零改动；GUI 区分维度（QR / Code / Discovery）当前在更上层处理后都进同一入口，下推到 use case 是更大的 refactor，不阻塞主路径 |
+| `PairingFailureReason` enum | 新增专用，与 sync `FailureReason` 解耦 | pairing 与 sync 失败语义不重叠（pairing 关心 passphrase / sponsor 决断；sync 关心 transport / payload）；共享 enum 会让 funnel 漏点信号在跨 domain dashboard 误聚合；schema doc §7.4 写明 domain-specific enum 的演化方向 |
+| 14 变体 1:1 映射 | 与 `RedeemPairingInvitationError` 一一对应 | 探索时漏数（最初算 13），wiring 时发现 `SponsorInternal(String)` 单独存在（与本机 `Internal` 不同语义）；funnel 上"sponsor 端 internal"vs"本机端 internal"属不同漏点，值得分开 |
+| analytics 注入位置 | `SpaceSetupDeps` 加横切字段 → facade 解构 → use case `new` 参数 | 与 AppDeps（Slice 8a）顶层 `analytics: Arc<dyn AnalyticsPort>` 同层；use case 直接持有 Arc，不依赖全局 |
+| capture 时机 | execute 入口 fire `PairingStarted`，Result match 后 fire `Succeeded` / `Failed` | "early dial 失败"也保证 funnel 第一步留信号；实现：把原 `handshake.handshake → persist` 包到 async block，外层 match 后 fire 再 return |
+| `peer_os` v1 | 固定 `None`（schema 已是 `Option`） | 当前握手 outcome 没有对端 OS 字段；后续协议加入对端 OS 自报后回填，schema 兼容 |
+
+### 文件改动（10 个文件，~290 行净增）
+
+```
+src-tauri/crates/uc-observability/src/analytics/events.rs    +SponsorInternal variant + 钉死测试 + PairingFailureReason 新 enum
+src-tauri/crates/uc-application/src/facade/space_setup/
+├── deps.rs                                                  +analytics: Arc<dyn AnalyticsPort>
+└── facade.rs                                                +解构 analytics + 透传 RedeemPairingInvitationUseCase::new + 内测 fake noop
+src-tauri/crates/uc-application/src/usecases/pairing/redeem_invitation.rs
+                                                            +analytics 字段、execute 三事件 fire + Result match
+                                                            +map_redeem_error_to_pairing_failure_reason 14 变体映射
+                                                            +CapturingAnalyticsSink test fake + 4 测试断言扩展
+                                                            +map_redeem_error_covers_all_variants 1:1 映射钉死
+src-tauri/crates/uc-bootstrap/src/space_setup.rs            +analytics: Arc::clone(&deps.analytics) 透传
+src-tauri/crates/uc-bootstrap/tests/{slice1, slice2_phase1, slice2_phase2}_e2e.rs
+                                                            +analytics: NoopAnalyticsSink（×3）
+docs/architecture/telemetry-events.md                       +SponsorInternal 行
+```
+
+### 测试结果
+
+| crate | tests passed |
+|---|---|
+| uc-observability (lib) | **53**（无变化——8b commit A 已加 +PairingFailureReason 钉死 + PairingMethod 钉死） |
+| uc-application (lib) | **378**（含 8 个 redeem_invitation 测试：5 happy/失败路径 + 3 个 t5 + map_redeem_error_covers_all_variants） |
+| uc-bootstrap (lib) | 19 |
+| uc-bootstrap (e2e: slice1 / slice2_p1 / slice2_p2) | 1 + 2 + 2 |
+| uc-webserver | 39 |
+| uc-desktop | 48 |
+
+整体 build：`cargo check --workspace` 跨 11 crate 一次通过。
+
+### 跳过的事项
+
+- **sponsor 端三事件**：joiner 是 funnel 主路径，先把数据通起来；sponsor 端要发需要在 `PairingInboundOrchestrator` 持有 `Arc<dyn AnalyticsPort>`（构造点在 `SpaceSetupFacade::new` 内部装配），属于独立子任务，留 Slice 8b' 后续 PR
+- **PassphraseMismatch / SponsorTimedOut 端到端集成测试**：构造能让 `JoinerHandshakeCoordinator` 真实返回这些 variant 的 session fake 复杂度高（要造 `Reject(PassphraseMismatch)` 帧 / TTL 触发），ROI 低；映射函数本身的覆盖已被 `map_redeem_error_covers_all_variants` 14 case 钉死
+- **GUI/CLI 把 PairingMethod 维度下推到 use case**：v1 固定 `Code` 占位；后续 GUI 拆区分维度时再做（涉及 facade 入口签名 + commands.rs 多 fn / 多字段，是独立 refactor）
+
+### 顺带做的事
+
+- schema 修补：`PairingFailureReason` 从最初 13 变体扩到 14（补 `SponsorInternal`）。事故复盘：探索时只看 `enum` 顶层 13 行，没数到中间夹的 `SponsorInternal(String)`；wiring 写映射时编译器穷尽匹配检查暴露遗漏。下次类似映射工作直接 `cargo check` 让编译器先把缺漏点出来再决定 schema 形状
+
+## Slice 8b 后状态
+
+| Slice | 内容 | 状态 |
+|---|---|---|
+| schema doc | §1-§11 全章节定稿（§7.4 PairingFailureReason 新增） | ✅ |
+| Slice 1 | `analytics_gate` 模块 | ✅ |
+| Slice 2 | 事件类型 + AnalyticsPort | ✅ |
+| Slice 3a | ID 持久化纯模块 | ✅ |
+| Slice 4 | factory + 全局 + probe | ✅ |
+| Slice 5 | settings 双开关 + bootstrap gate | ✅ |
+| Slice 6 | bootstrap 拼装 EventContext + build_core async 化 | ✅ |
+| Slice 7a | StdoutSink + 共享 wire 合并 | ✅ |
+| Slice 7b | PosthogSink | 待 PostHog Cloud account + project key |
+| Slice 8a | sink 注入 AppDeps + factory + `app_first_open` + GatedAnalyticsSink | ✅ |
+| Slice 8b | pairing 三事件（joiner 端 / `PairingFailureReason` 新 enum） | ✅ |
+| Slice 8b' | sponsor 端三事件（PairingInboundOrchestrator 内 fire） | 可开始 |
+| Slice 8c | sync 三事件 + 新增 `FirstSyncStatePort` | 可开始 |
+| Slice 8d | setup 两事件 | 可开始 |
+| Slice 9 | 前端 settings UI 拆开关 | 前端工作 |
+| Slice 10 | dashboard + 验收 | 真实数据积累 |
+
+### 验证 dev 跑起来事件链路（增 pairing）
+
+`RUST_LOG=uc_observability::analytics=debug cargo run -p uc-cli -- join <code> --passphrase <pp>`：
+- joiner 入口：应看到 `pairing_started` 一行 JSON（method=`code`）
+- 握手完成：`pairing_succeeded`（含 `duration_ms`，`peer_os: null`）
+- 失败时：`pairing_failed`（含 `failure_reason` 与业务错误一一对应）

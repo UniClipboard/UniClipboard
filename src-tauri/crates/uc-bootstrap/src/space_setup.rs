@@ -363,6 +363,9 @@ pub async fn build_space_setup_assembly(
         key_migration: Arc::clone(&wired.key_migration),
         blob_migration_repo: Arc::clone(&wired.blob_migration_repo),
         blob_cipher: Arc::clone(&deps.security.blob_cipher),
+        // Slice 8b · joiner 端 pairing 三事件埋点 sink。从 AppDeps 横切字段
+        // (Slice 8a 已注入)透传;sink 装一次永不替换,gate 由 wrapper 守卫。
+        analytics: Arc::clone(&deps.analytics),
     }));
 
     // Slice 2 Phase 1 · T9:roster 门面和 space_setup facade 共享同一组

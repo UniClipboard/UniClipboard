@@ -147,6 +147,7 @@ impl SpaceSetupFacade {
             key_migration,
             blob_migration_repo,
             blob_cipher,
+            analytics,
         } = deps;
 
         // Stash handles for `try_resume_session` before the originals
@@ -285,6 +286,7 @@ impl SpaceSetupFacade {
             setup_status,
             peer_addr_repo,
             clock,
+            analytics,
         ));
 
         Self {
@@ -1268,6 +1270,7 @@ mod tests {
             key_migration: Arc::new(FakeKeyMigration),
             blob_migration_repo: Arc::new(FakeBlobMigrationRepo),
             blob_cipher: Arc::new(FakeBlobCipher),
+            analytics: Arc::new(uc_observability::analytics::NoopAnalyticsSink),
         });
         (facade, pairing_invitation, peer_addr_repo)
     }

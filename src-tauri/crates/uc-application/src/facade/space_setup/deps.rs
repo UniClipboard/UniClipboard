@@ -19,6 +19,7 @@ use uc_core::ports::{
     SettingsPort, SetupStatusPort,
 };
 use uc_core::trusted_peer::TrustedPeerRepositoryPort;
+use uc_observability::analytics::AnalyticsPort;
 
 /// Dependencies for [`super::SpaceSetupFacade`].
 ///
@@ -87,4 +88,10 @@ pub struct SpaceSetupDeps {
     /// switch-space phase 1 用它解旧密文 / phase 3 用它写新密文，所以
     /// facade 必须能拿到这一份。
     pub blob_cipher: Arc<dyn BlobCipherPort>,
+    /// 产品 telemetry sink（横切关注点）。Slice 8b 起，joiner 端
+    /// [`crate::usecases::pairing::redeem_invitation::RedeemPairingInvitationUseCase`]
+    /// 在 execute 入口/收尾 fire `pairing_started` / `pairing_succeeded`
+    /// / `pairing_failed`。Sink 装一次永不替换，gate 由 `GatedAnalyticsSink`
+    /// wrapper 在 capture 入口守卫，业务侧无感。
+    pub analytics: Arc<dyn AnalyticsPort>,
 }

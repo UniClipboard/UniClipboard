@@ -338,9 +338,10 @@ pub enum PairingFailureReason {
     SponsorRejectedInvitation,    // sponsor 未识别 code（race / 过期）
     SponsorDeclined,              // sponsor 主动拒绝
     SponsorTimedOut,              // sponsor TTL 先触发
+    SponsorInternal,              // sponsor 端 persist / settings 等内部错误（reject(Internal)）
     Timeout,                      // 本机等待响应超时
     ConnectionLost,               // 握手中途 transport 断线
-    Internal,                     // 兜底（admit / trust / setup_status persist 失败等内部错误）
+    Internal,                     // 兜底（本机 admit / trust / setup_status persist / 序列化等内部错误）
 }
 ```
 

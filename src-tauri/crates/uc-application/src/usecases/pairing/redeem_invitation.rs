@@ -43,6 +43,7 @@
 //!     crate::pairing_inbound::sponsor_handshake::SponsorHandshakeCoordinator
 
 use std::sync::Arc;
+use std::time::Instant;
 
 use chrono::{DateTime, Utc};
 use tracing::{info, instrument};
@@ -50,6 +51,8 @@ use tracing::{info, instrument};
 use uc_core::ports::{ClockPort, PeerAddressRecord, PeerAddressRepositoryPort, SetupStatusPort};
 use uc_core::setup::SetupStatus;
 use uc_core::{MemberRepositoryPort, MemberSyncPreferences, TrustedPeerRepositoryPort};
+use uc_observability::analytics::events::{Event, PairingFailureReason, PairingMethod};
+use uc_observability::analytics::AnalyticsPort;
 
 use crate::facade::space_setup::commands::RedeemPairingInvitationCommand;
 use crate::facade::space_setup::{RedeemPairingInvitationError, RedeemPairingInvitationResult};
@@ -73,6 +76,10 @@ pub(crate) struct RedeemPairingInvitationUseCase {
     /// blob 写入仓库。写失败不 fail join（presence 下轮会再拉）。
     peer_addr_repo: Arc<dyn PeerAddressRepositoryPort>,
     clock: Arc<dyn ClockPort>,
+    /// Slice 8b · joiner 端 pairing 三事件埋点。`execute` 入口 fire
+    /// `pairing_started`,Result match 后 fire `pairing_succeeded`/`pairing_failed`。
+    /// fire-and-forget,gate 由 `GatedAnalyticsSink` wrapper 守卫,不阻塞主路径。
+    analytics: Arc<dyn AnalyticsPort>,
 }
 
 impl RedeemPairingInvitationUseCase {
@@ -83,6 +90,7 @@ impl RedeemPairingInvitationUseCase {
         setup_status: Arc<dyn SetupStatusPort>,
         peer_addr_repo: Arc<dyn PeerAddressRepositoryPort>,
         clock: Arc<dyn ClockPort>,
+        analytics: Arc<dyn AnalyticsPort>,
     ) -> Self {
         Self {
             handshake,
@@ -91,6 +99,7 @@ impl RedeemPairingInvitationUseCase {
             setup_status,
             peer_addr_repo,
             clock,
+            analytics,
         }
     }
 
@@ -99,8 +108,35 @@ impl RedeemPairingInvitationUseCase {
         &self,
         cmd: RedeemPairingInvitationCommand,
     ) -> Result<RedeemPairingInvitationResult, RedeemPairingInvitationError> {
-        let outcome = self.handshake.handshake(&cmd.code, &cmd.passphrase).await?;
-        self.persist(outcome).await
+        // Slice 8b · pairing_started 在 execute 入口立即 fire,即使 handshake
+        // 第一行就拒绝(InvitationNotFound)也保证 funnel 第一步留下信号。
+        // PairingMethod 在 use case 签名里目前不存在区分维度(QR / Code /
+        // Discovery 由 GUI 在更上层处理后都进同一入口),v1 固定 Code 占位;
+        // 后续若 GUI 把 method 维度下推到 use case 输入再细化。
+        self.analytics.capture(Event::PairingStarted {
+            method: PairingMethod::Code,
+        });
+        let started_at = Instant::now();
+        let result = async {
+            let outcome = self.handshake.handshake(&cmd.code, &cmd.passphrase).await?;
+            self.persist(outcome).await
+        }
+        .await;
+        let duration_ms = started_at.elapsed().as_millis().min(u32::MAX as u128) as u32;
+        match &result {
+            Ok(_) => self.analytics.capture(Event::PairingSucceeded {
+                method: PairingMethod::Code,
+                // peer_os v1 留空——握手 outcome 里没有对端 OS 字段。后续
+                // 协议加入对端 OS 自报后回填,schema 已用 Option 兼容。
+                peer_os: None,
+                duration_ms,
+            }),
+            Err(err) => self.analytics.capture(Event::PairingFailed {
+                method: PairingMethod::Code,
+                failure_reason: map_redeem_error_to_pairing_failure_reason(err),
+            }),
+        }
+        result
     }
 
     async fn persist(
@@ -207,6 +243,46 @@ impl RedeemPairingInvitationUseCase {
                 "peer_addr_repo.upsert landed for paired sponsor"
             );
         }
+    }
+}
+
+/// Slice 8b · `RedeemPairingInvitationError` → `PairingFailureReason` 1:1
+/// 映射。每个业务变体单独落到独立的 funnel 漏点信号,避免跨 domain 聚合
+/// 时丢失"这条 join 是 passphrase 错 vs sponsor 主动拒绝 vs 网络超时"
+/// 的关键区分。`Internal` / `SponsorInternal` 占比是架构债务指标
+/// (schema doc §7.4)。
+fn map_redeem_error_to_pairing_failure_reason(
+    err: &RedeemPairingInvitationError,
+) -> PairingFailureReason {
+    match err {
+        RedeemPairingInvitationError::InvitationNotFound => {
+            PairingFailureReason::InvitationNotFound
+        }
+        RedeemPairingInvitationError::InvitationExpired => PairingFailureReason::InvitationExpired,
+        RedeemPairingInvitationError::SponsorUnreachable => {
+            PairingFailureReason::SponsorUnreachable
+        }
+        RedeemPairingInvitationError::ServiceUnavailable => {
+            PairingFailureReason::ServiceUnavailable
+        }
+        RedeemPairingInvitationError::PassphraseMismatch => {
+            PairingFailureReason::PassphraseMismatch
+        }
+        RedeemPairingInvitationError::CorruptedKeyMaterial => {
+            PairingFailureReason::CorruptedKeyMaterial
+        }
+        RedeemPairingInvitationError::DeviceNameRequired => {
+            PairingFailureReason::DeviceNameRequired
+        }
+        RedeemPairingInvitationError::SponsorRejectedInvitation => {
+            PairingFailureReason::SponsorRejectedInvitation
+        }
+        RedeemPairingInvitationError::SponsorDeclined => PairingFailureReason::SponsorDeclined,
+        RedeemPairingInvitationError::SponsorTimedOut => PairingFailureReason::SponsorTimedOut,
+        RedeemPairingInvitationError::SponsorInternal(_) => PairingFailureReason::SponsorInternal,
+        RedeemPairingInvitationError::Timeout => PairingFailureReason::Timeout,
+        RedeemPairingInvitationError::ConnectionLost => PairingFailureReason::ConnectionLost,
+        RedeemPairingInvitationError::Internal(_) => PairingFailureReason::Internal,
     }
 }
 
@@ -609,11 +685,89 @@ mod tests {
         }
     }
 
+    /// Slice 8b · 单元测试用 capturing sink。生产代码不需要、不暴露——
+    /// `AnalyticsPort` 实现里只有 noop / stdout / gated wrapper / posthog;
+    /// "把所有 capture 收进 Vec 给断言用"是测试基础设施职责。
+    /// 用 `StdMutex` 而非 `parking_lot`,与 module 内既有 fake repo
+    /// (`RecordingMemberRepo` / `RecordingTrustRepo`) 同款。
+    #[derive(Default)]
+    struct CapturingAnalyticsSink {
+        events: StdMutex<Vec<Event>>,
+    }
+
+    impl CapturingAnalyticsSink {
+        fn snapshot(&self) -> Vec<Event> {
+            self.events.lock().unwrap().clone()
+        }
+    }
+
+    impl AnalyticsPort for CapturingAnalyticsSink {
+        fn capture(&self, event: Event) {
+            self.events.lock().unwrap().push(event);
+        }
+    }
+
+    fn assert_started_then_succeeded(events: &[Event]) {
+        assert_eq!(
+            events.len(),
+            2,
+            "expected exactly [PairingStarted, PairingSucceeded], got {events:?}"
+        );
+        assert!(
+            matches!(
+                events[0],
+                Event::PairingStarted {
+                    method: PairingMethod::Code
+                }
+            ),
+            "first event should be PairingStarted{{method: Code}}, got {:?}",
+            events[0]
+        );
+        assert!(
+            matches!(
+                events[1],
+                Event::PairingSucceeded {
+                    method: PairingMethod::Code,
+                    peer_os: None,
+                    ..
+                }
+            ),
+            "second event should be PairingSucceeded{{method: Code, peer_os: None}}, got {:?}",
+            events[1]
+        );
+    }
+
+    fn assert_started_then_failed(events: &[Event], expected: PairingFailureReason) {
+        assert_eq!(
+            events.len(),
+            2,
+            "expected exactly [PairingStarted, PairingFailed], got {events:?}"
+        );
+        assert!(
+            matches!(
+                events[0],
+                Event::PairingStarted {
+                    method: PairingMethod::Code
+                }
+            ),
+            "first event should be PairingStarted{{method: Code}}, got {:?}",
+            events[0]
+        );
+        match &events[1] {
+            Event::PairingFailed {
+                method: PairingMethod::Code,
+                failure_reason,
+            } => assert_eq!(*failure_reason, expected, "failure_reason mismatch"),
+            other => panic!("second event should be PairingFailed, got {other:?}"),
+        }
+    }
+
     struct Harness {
         session: Arc<HappySession>,
         member_repo: Arc<RecordingMemberRepo>,
         trust_repo: Arc<RecordingTrustRepo>,
         setup_status: Arc<RecordingSetupStatus>,
+        analytics: Arc<CapturingAnalyticsSink>,
     }
 
     impl Harness {
@@ -640,6 +794,7 @@ mod tests {
             let trust_uc = Arc::new(TrustPeerUseCase::new(
                 trust_repo.clone() as Arc<dyn TrustedPeerRepositoryPort>
             ));
+            let analytics = Arc::new(CapturingAnalyticsSink::default());
             let uc = RedeemPairingInvitationUseCase::new(
                 handshake,
                 admit_uc,
@@ -647,6 +802,7 @@ mod tests {
                 setup_status.clone(),
                 peer_addr_repo.clone() as Arc<dyn PeerAddressRepositoryPort>,
                 Arc::new(FixedClock(fixed_now_ms())),
+                Arc::clone(&analytics) as Arc<dyn AnalyticsPort>,
             );
             (
                 uc,
@@ -655,6 +811,7 @@ mod tests {
                     member_repo,
                     trust_repo,
                     setup_status,
+                    analytics,
                 },
             )
         }
@@ -700,6 +857,10 @@ mod tests {
             "setup_status flipped exactly once to has_completed=true"
         );
         assert_eq!(*h.session.closed.lock().unwrap(), 1);
+        // Slice 8b · pairing 三事件埋点:happy path 应产生
+        // [PairingStarted, PairingSucceeded] 两条 capture,中间 fire-and-forget
+        // 不阻塞主路径。
+        assert_started_then_succeeded(&h.analytics.snapshot());
         // T5：HappySession::primed() 给的 Confirm.transport_address_blob
         // 是空 Vec，所以 upsert 应跳过。Harness::happy 的 mock 用
         // `.expect_upsert().times(0)`——若分支失误（对空 blob 也 upsert），
@@ -817,6 +978,12 @@ mod tests {
         assert!(h.member_repo.saved.lock().unwrap().is_empty());
         assert!(h.trust_repo.saved.lock().unwrap().is_empty());
         assert!(h.setup_status.set_calls.lock().unwrap().is_empty());
+        // Slice 8b · 早期 dial 失败仍应 fire [Started, Failed{InvitationNotFound}]
+        // —— funnel 第一步必须留下信号。
+        assert_started_then_failed(
+            &h.analytics.snapshot(),
+            PairingFailureReason::InvitationNotFound,
+        );
     }
 
     #[tokio::test]
@@ -848,6 +1015,8 @@ mod tests {
         assert!(h.member_repo.saved.lock().unwrap().is_empty());
         assert!(h.trust_repo.saved.lock().unwrap().is_empty());
         assert!(h.setup_status.set_calls.lock().unwrap().is_empty());
+        // Slice 8b · admit 持久化失败 → Internal 桶。
+        assert_started_then_failed(&h.analytics.snapshot(), PairingFailureReason::Internal);
     }
 
     #[tokio::test]
@@ -882,6 +1051,8 @@ mod tests {
         assert_eq!(h.member_repo.saved.lock().unwrap().len(), 1);
         assert!(h.trust_repo.saved.lock().unwrap().is_empty());
         assert!(h.setup_status.set_calls.lock().unwrap().is_empty());
+        // Slice 8b · trust 持久化失败 → Internal 桶。
+        assert_started_then_failed(&h.analytics.snapshot(), PairingFailureReason::Internal);
     }
 
     #[tokio::test]
@@ -915,5 +1086,38 @@ mod tests {
         assert_eq!(h.member_repo.saved.lock().unwrap().len(), 1);
         assert_eq!(h.trust_repo.saved.lock().unwrap().len(), 1);
         assert!(h.setup_status.set_calls.lock().unwrap().is_empty());
+        // Slice 8b · setup_status persist 失败 → Internal 桶。
+        assert_started_then_failed(&h.analytics.snapshot(), PairingFailureReason::Internal);
+    }
+
+    /// Slice 8b · 锁死 `RedeemPairingInvitationError` → `PairingFailureReason`
+    /// 全 14 变体的 1:1 映射。新增 RedeemPairingInvitationError 变体而忘了
+    /// 加 PairingFailureReason 时,这条会编译失败 (match 不穷尽);改了 wire
+    /// 字符串忘了 schema doc 同步时,events.rs 的 `pairing_failure_reason_wire_format`
+    /// 钉死会捕获。
+    #[test]
+    fn map_redeem_error_covers_all_variants() {
+        use super::map_redeem_error_to_pairing_failure_reason as map;
+        use PairingFailureReason as R;
+        use RedeemPairingInvitationError as E;
+        let cases: Vec<(E, R)> = vec![
+            (E::InvitationNotFound, R::InvitationNotFound),
+            (E::InvitationExpired, R::InvitationExpired),
+            (E::SponsorUnreachable, R::SponsorUnreachable),
+            (E::ServiceUnavailable, R::ServiceUnavailable),
+            (E::PassphraseMismatch, R::PassphraseMismatch),
+            (E::CorruptedKeyMaterial, R::CorruptedKeyMaterial),
+            (E::DeviceNameRequired, R::DeviceNameRequired),
+            (E::SponsorRejectedInvitation, R::SponsorRejectedInvitation),
+            (E::SponsorDeclined, R::SponsorDeclined),
+            (E::SponsorTimedOut, R::SponsorTimedOut),
+            (E::SponsorInternal("boom".into()), R::SponsorInternal),
+            (E::Timeout, R::Timeout),
+            (E::ConnectionLost, R::ConnectionLost),
+            (E::Internal("boom".into()), R::Internal),
+        ];
+        for (err, expected) in cases.iter() {
+            assert_eq!(map(err), *expected, "for {err:?}");
+        }
     }
 }

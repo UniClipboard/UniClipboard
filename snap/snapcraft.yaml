@@ -112,6 +112,16 @@ parts:
     stage-packages:
       - libayatana-appindicator3-1
       - librsvg2-2
+      # libwebkit2gtk-4.1-0 stage *仅是为了把 WebKitNetworkProcess /
+      # WebKitWebProcess / WebKitGPUProcess 这三个子进程 binary bundle 到
+      # $SNAP/usr/lib/x86_64-linux-gnu/webkit2gtk-4.1/。snap layout 的
+      # source path 必须**存在于 snap 自己的 squashfs 内**才能 bind-mount
+      # 成功(snapd 在 setup 早期阶段应用 layouts,content interface 挂的
+      # gnome-platform/ 那时还不存在,layout from gnome-platform 静默失败,
+      # 见 v0 → v6 调试历史)。.so 也会一起被 stage,但运行时 LD_LIBRARY_PATH
+      # 由 gnome extension 指向 gnome-platform 优先,实际加载的还是 gnome
+      # content snap 那份(同 Ubuntu 22.04 main 同源,ABI 兼容)。
+      - libwebkit2gtk-4.1-0
     build-environment:
       # NOTE: 不在这里 set PATH —— snapcraft 的 build-environment 是字面
       # 字符串注入,$HOME 不会展开。PATH 在 override-build 内用 export 设。
@@ -173,14 +183,16 @@ parts:
 # snap 的 mount namespace 里 /usr 是 base snap (core22) tree,这条路径下
 # 没文件,Tauri 一开 webview 就 ENOENT + SIGTRAP。
 #
-# gnome-42-2204 content snap 通过 snap content interface 把 webkit binary
-# 暴露在 $SNAP/gnome-platform/usr/lib/x86_64-linux-gnu/webkit2gtk-4.1/。
-# snap layout 在我们 snap 的 mount namespace 里把硬编码的 /usr/lib 路径
-# bind-mount 到这个实际位置 —— WebKit 编译期路径"自动"指向真实文件,
-# 不需要改 WebKit 源码或重编 webkit2gtk。
-#
 # 同名 runtime env (`WEBKIT_EXEC_PATH`) 在现代 WebKitGTK 已被废弃 (改成
 # 编译期宏),只有 layout / bind-mount 这条路能改 spawn 路径。
+#
+# **Source path 必须在 snap squashfs 内** —— 早先版本试过 source 指向
+# $SNAP/gnome-platform/usr/lib/.../webkit2gtk-4.1(content interface bind),
+# snapd 在 setup 早期 apply layouts 时 content mount 还没建立,bind 静默
+# 失败(target dir 建出来但是空的,mountinfo 里没记录)。改用
+# `stage-packages.libwebkit2gtk-4.1-0` 把子进程 binary bundle 到
+# $SNAP/usr/lib/$ARCH/webkit2gtk-4.1/(snap squashfs 内),layout source
+# 指向那 —— bind 成功,WebKit 编译期硬编码路径解析到我们 staged 的 binary。
 layout:
   /usr/lib/x86_64-linux-gnu/webkit2gtk-4.1:
-    bind: $SNAP/gnome-platform/usr/lib/x86_64-linux-gnu/webkit2gtk-4.1
+    bind: $SNAP/usr/lib/x86_64-linux-gnu/webkit2gtk-4.1

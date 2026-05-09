@@ -186,6 +186,7 @@ impl SpaceSetupFacade {
             Arc::clone(&device_identity),
             Arc::clone(&clock),
             Arc::clone(&invitation_holder),
+            Arc::clone(&analytics),
         ));
         // T8 · F1 hook: construct ensure_reachable_all early so peer_addr_repo /
         // device_identity can still be Arc::clone'd here — both are moved into
@@ -248,6 +249,7 @@ impl SpaceSetupFacade {
             Arc::clone(&peer_addr_repo),
             local_device_id,
             pairing_outcome_tx.clone(),
+            Arc::clone(&analytics),
         ));
         let pairing_inbound_handle = inbound_orchestrator.spawn();
 

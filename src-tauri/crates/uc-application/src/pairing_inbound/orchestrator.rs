@@ -25,7 +25,9 @@
 //! the facade constructs the orchestrator during `SpaceSetupFacade::new`
 //! and external callers reach pairing exclusively through that facade.
 
-use std::sync::Arc;
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex as StdMutex};
+use std::time::Instant;
 
 use chrono::{TimeZone, Utc};
 use tokio::sync::broadcast;
@@ -44,6 +46,7 @@ use uc_core::ports::{
 };
 use uc_core::MemberRepositoryPort;
 use uc_core::TrustedPeerRepositoryPort;
+use uc_observability::analytics::{AnalyticsPort, Event, PairingFailureReason, PairingMethod};
 
 use crate::facade::space_setup::PairingOutcome;
 use crate::membership::usecases::{AdmitMember, AdmitMemberUseCase};
@@ -76,6 +79,17 @@ pub(crate) struct PairingInboundOrchestrator {
     /// legitimate state (e.g., GUI tauri runtime without a live listener);
     /// the CLI `invite` command subscribes before enabling B1.
     outcome_tx: broadcast::Sender<PairingOutcome>,
+    /// Telemetry sink for `pairing_succeeded` / `pairing_failed` (Slice 8b').
+    /// `pairing_started` is fired upstream by `IssuePairingInvitationUseCase`;
+    /// the orchestrator only emits the outcome events.
+    analytics: Arc<dyn AnalyticsPort>,
+    /// Per-session handshake start time, populated when the first valid
+    /// `Request` arrives (`on_incoming` after invitation match) and read in
+    /// `finalise_verified` to compute `pairing_succeeded.duration_ms`.
+    /// Failure paths drop their entry without consulting it. Bounded growth
+    /// is guaranteed because every entry is removed at terminal (success
+    /// or any post-match failure).
+    handshake_started_at: Arc<StdMutex<HashMap<PairingSessionId, Instant>>>,
 }
 
 impl PairingInboundOrchestrator {
@@ -91,6 +105,7 @@ impl PairingInboundOrchestrator {
         peer_addr_repo: Arc<dyn PeerAddressRepositoryPort>,
         local_device_id: uc_core::DeviceId,
         outcome_tx: broadcast::Sender<PairingOutcome>,
+        analytics: Arc<dyn AnalyticsPort>,
     ) -> Self {
         Self {
             pairing_events,
@@ -103,13 +118,29 @@ impl PairingInboundOrchestrator {
             peer_addr_repo,
             local_device_id,
             outcome_tx,
+            analytics,
+            handshake_started_at: Arc::new(StdMutex::new(HashMap::new())),
         }
     }
 
-    fn emit_failure(&self, reason: impl Into<String>) {
-        let _ = self.outcome_tx.send(PairingOutcome::Failure {
-            reason: reason.into(),
+    /// Drop the per-session start time (success or failure terminal).
+    fn take_started_at(&self, session: &PairingSessionId) -> Option<Instant> {
+        self.handshake_started_at.lock().unwrap().remove(session)
+    }
+
+    /// Fire `pairing_failed` with structured reason and broadcast the
+    /// `PairingOutcome::Failure` to subscribers in lock-step. Order matters:
+    /// telemetry first so a slow / dead subscriber doesn't drop the analytics
+    /// signal, then the broadcast for UX-facing consumers.
+    fn emit_failure(&self, session: &PairingSessionId, reason: PairingFailureReason) {
+        // Drop any started_at entry parked at on_incoming so the map stays
+        // bounded even on the failure paths.
+        let _ = self.take_started_at(session);
+        self.analytics.capture(Event::PairingFailed {
+            method: PairingMethod::Code,
+            failure_reason: reason,
         });
+        let _ = self.outcome_tx.send(PairingOutcome::Failure { reason });
     }
 
     /// Subscribe to the event port and spawn the drain loop. Returned
@@ -181,6 +212,16 @@ impl PairingInboundOrchestrator {
         };
         self.notify_consume(&invitation_code).await;
 
+        // Slice 8b' · stamp the per-session start time so the verified
+        // path can compute `pairing_succeeded.duration_ms`. Idempotent on
+        // re-entry: the second insert silently overwrites — this only
+        // happens if `Incoming` is replayed for the same session, which
+        // would already be a protocol violation upstream.
+        self.handshake_started_at
+            .lock()
+            .unwrap()
+            .insert(session.clone(), Instant::now());
+
         // `begin` sends the KeyslotOffer + parks per-session state; on
         // failure it has already emitted Reject + close internally.
         let _ = self.handshake.begin(&session, request).await;
@@ -248,7 +289,7 @@ impl PairingInboundOrchestrator {
                     .reject(session, PairingRejectReason::InvitationMismatch)
                     .await;
                 // Expired = our invitation; outer caller is done.
-                self.emit_failure("invitation expired before joiner request arrived");
+                self.emit_failure(session, PairingFailureReason::InvitationExpired);
                 None
             }
             Err(TakeMatchingError::Internal(msg)) => {
@@ -259,9 +300,9 @@ impl PairingInboundOrchestrator {
                     "holder invariant broken on inbound pairing request; rejecting"
                 );
                 self.handshake
-                    .reject(session, PairingRejectReason::Internal(msg.clone()))
+                    .reject(session, PairingRejectReason::Internal(msg))
                     .await;
-                self.emit_failure(format!("invitation holder invariant violated: {msg}"));
+                self.emit_failure(session, PairingFailureReason::Internal);
                 None
             }
         }
@@ -296,7 +337,7 @@ impl PairingInboundOrchestrator {
                 self.handshake
                     .reject(&session, PairingRejectReason::PassphraseMismatch)
                     .await;
-                self.emit_failure("joiner proof rejected (passphrase mismatch)");
+                self.emit_failure(&session, PairingFailureReason::PassphraseMismatch);
             }
         }
     }
@@ -315,7 +356,7 @@ impl PairingInboundOrchestrator {
                         PairingRejectReason::Internal("sponsor clock out of range".into()),
                     )
                     .await;
-                self.emit_failure("sponsor clock out of range");
+                self.emit_failure(session, PairingFailureReason::Internal);
                 return;
             }
         };
@@ -339,7 +380,7 @@ impl PairingInboundOrchestrator {
                     PairingRejectReason::Internal(format!("admit_member: {err}")),
                 )
                 .await;
-            self.emit_failure(format!("admit_member failed: {err}"));
+            self.emit_failure(session, PairingFailureReason::Internal);
             return;
         }
 
@@ -361,7 +402,7 @@ impl PairingInboundOrchestrator {
                     PairingRejectReason::Internal(format!("trust_peer: {err}")),
                 )
                 .await;
-            self.emit_failure(format!("trust_peer failed: {err}"));
+            self.emit_failure(session, PairingFailureReason::Internal);
             return;
         }
 
@@ -378,7 +419,7 @@ impl PairingInboundOrchestrator {
             // on the settings/send failure). We deliberately do not send
             // a Reject here because the joiner's local store may have
             // already advanced; let the natural timeout take care of it.
-            self.emit_failure(format!("Confirm send failed after commit: {err}"));
+            self.emit_failure(session, PairingFailureReason::ConnectionLost);
         } else {
             info!(
                 session = %session,
@@ -390,6 +431,23 @@ impl PairingInboundOrchestrator {
             // 跳过 upsert；写失败只 warn 不 fail 配对——presence 下一轮
             // `ensure_reachable_all` 会再拉兜底。
             self.persist_peer_address(&facts, now).await;
+            // Slice 8b' · fire `pairing_succeeded` before the broadcast so
+            // a slow/dead subscriber can't drop the analytics signal.
+            // duration_ms is "actual handshake time" measured from the
+            // first valid `Request` (on_incoming) to here — does not
+            // include the human-time gap between sponsor issuing the code
+            // and the joiner typing it in (which the funnel itself can
+            // derive from `pairing_started` → `pairing_succeeded` user
+            // timestamps in PostHog).
+            let duration_ms = self
+                .take_started_at(session)
+                .map(|i| i.elapsed().as_millis().min(u32::MAX as u128) as u32)
+                .unwrap_or(0);
+            self.analytics.capture(Event::PairingSucceeded {
+                method: PairingMethod::Code,
+                peer_os: None,
+                duration_ms,
+            });
             let _ = self.outcome_tx.send(PairingOutcome::Success {
                 peer_device_id: facts.device_id.clone(),
                 peer_device_name: facts.device_name.clone(),
@@ -492,8 +550,27 @@ mod tests {
     use uc_core::settings::model::Settings;
     use uc_core::space_access::domain::{JoinOffer, ProofDerivedKey, SpaceAccessProofArtifact};
     use uc_core::trusted_peer::{TrustedPeer, TrustedPeerError};
+    use uc_observability::analytics::NoopAnalyticsSink;
 
     // ── fakes ────────────────────────────────────────────────────────────
+
+    /// Test-only `AnalyticsPort` that records every captured `Event` for
+    /// later inspection. Mirrors the `CapturingAnalyticsSink` used by the
+    /// joiner-side `redeem_invitation` tests (Slice 8b).
+    #[derive(Default)]
+    struct CapturingAnalyticsSink {
+        captured: StdMutex<Vec<Event>>,
+    }
+    impl CapturingAnalyticsSink {
+        fn events(&self) -> Vec<Event> {
+            self.captured.lock().unwrap().clone()
+        }
+    }
+    impl AnalyticsPort for CapturingAnalyticsSink {
+        fn capture(&self, event: Event) {
+            self.captured.lock().unwrap().push(event);
+        }
+    }
 
     struct FakeClock(i64);
     impl ClockPort for FakeClock {
@@ -853,6 +930,10 @@ mod tests {
         peer_addr_repo: Arc<MockPeerAddrRepo>,
         proof_verdicts: Vec<bool>,
         clock_ms: i64,
+        /// Slice 8b' · injectable analytics sink so capture-asserting tests
+        /// can swap a `CapturingAnalyticsSink` in. Default is `NoopAnalyticsSink`
+        /// for the legacy tests that don't care about telemetry.
+        analytics: Arc<dyn AnalyticsPort>,
     }
 
     impl Bundle {
@@ -866,6 +947,7 @@ mod tests {
                 peer_addr_repo: permissive_peer_addr_repo(),
                 proof_verdicts: vec![true],
                 clock_ms: fixed_now_ms(),
+                analytics: Arc::new(NoopAnalyticsSink),
             }
         }
 
@@ -906,6 +988,7 @@ mod tests {
                 self.peer_addr_repo.clone() as Arc<dyn PeerAddressRepositoryPort>,
                 DeviceId::new("sponsor-device"),
                 outcome_tx,
+                self.analytics.clone(),
             ));
             (orch, outcome_rx)
         }
@@ -975,9 +1058,9 @@ mod tests {
         // Failure so the `invite` command can exit with a useful reason.
         match outcomes.try_recv() {
             Ok(PairingOutcome::Failure { reason }) => {
-                assert!(reason.contains("expired"), "reason = {reason}");
+                assert_eq!(reason, PairingFailureReason::InvitationExpired);
             }
-            other => panic!("expected Failure(expired), got {other:?}"),
+            other => panic!("expected Failure(InvitationExpired), got {other:?}"),
         }
     }
 
@@ -1228,9 +1311,9 @@ mod tests {
         assert!(trusted_peer_repo.saved.lock().unwrap().is_empty());
         match outcomes.try_recv() {
             Ok(PairingOutcome::Failure { reason }) => {
-                assert!(reason.contains("passphrase"), "reason = {reason}");
+                assert_eq!(reason, PairingFailureReason::PassphraseMismatch);
             }
-            other => panic!("expected Failure(passphrase), got {other:?}"),
+            other => panic!("expected Failure(PassphraseMismatch), got {other:?}"),
         }
     }
 
@@ -1281,9 +1364,12 @@ mod tests {
         );
         match outcomes.try_recv() {
             Ok(PairingOutcome::Failure { reason }) => {
-                assert!(reason.contains("admit_member"), "reason = {reason}");
+                // admit_member persistence failure surfaces as the
+                // sponsor-local Internal funnel bucket; finer-grained
+                // attribution lives in the tracing log only.
+                assert_eq!(reason, PairingFailureReason::Internal);
             }
-            other => panic!("expected Failure(admit_member), got {other:?}"),
+            other => panic!("expected Failure(Internal), got {other:?}"),
         }
     }
 
@@ -1334,9 +1420,11 @@ mod tests {
         }
         match outcomes.try_recv() {
             Ok(PairingOutcome::Failure { reason }) => {
-                assert!(reason.contains("trust_peer"), "reason = {reason}");
+                // trust_peer persistence failure also rolls up to Internal
+                // — same rationale as the admit failure above.
+                assert_eq!(reason, PairingFailureReason::Internal);
             }
-            other => panic!("expected Failure(trust_peer), got {other:?}"),
+            other => panic!("expected Failure(Internal), got {other:?}"),
         }
     }
 
@@ -1425,6 +1513,108 @@ mod tests {
             invitation_port.consumed.lock().unwrap().clone(),
             vec![InvitationCode::new("SP")]
         );
+    }
+
+    // ── Slice 8b' analytics: pairing_succeeded / pairing_failed wire ─────
+
+    #[tokio::test]
+    async fn verified_path_fires_pairing_succeeded_with_method_and_duration() {
+        let analytics = Arc::new(CapturingAnalyticsSink::default());
+        let mut b = Bundle::happy();
+        b.holder.insert(pending("AS")).await;
+        b.analytics = analytics.clone();
+        let (orch, _outcomes) = b.build(drained_events());
+
+        let session = PairingSessionId::new("s-as");
+        orch.handle_event(PairingSessionEvent::Incoming {
+            session: session.clone(),
+            message: PairingSessionMessage::Request(joiner_request("AS")),
+        })
+        .await;
+        orch.handle_event(PairingSessionEvent::MessageReceived {
+            session,
+            message: PairingSessionMessage::ChallengeResponse(JoinerChallengeResponse {
+                encrypted_challenge: vec![0x11],
+            }),
+        })
+        .await;
+
+        let events = analytics.events();
+        assert_eq!(events.len(), 1, "exactly one event on the success path");
+        match &events[0] {
+            Event::PairingSucceeded {
+                method,
+                peer_os,
+                duration_ms: _,
+            } => {
+                assert_eq!(*method, PairingMethod::Code);
+                assert_eq!(*peer_os, None, "peer_os not yet propagated by handshake");
+            }
+            other => panic!("expected PairingSucceeded, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn unverified_path_fires_pairing_failed_with_passphrase_mismatch() {
+        let analytics = Arc::new(CapturingAnalyticsSink::default());
+        let mut b = Bundle::happy();
+        b.holder.insert(pending("AF")).await;
+        b.proof_verdicts = vec![false];
+        b.analytics = analytics.clone();
+        let (orch, _outcomes) = b.build(drained_events());
+
+        let session = PairingSessionId::new("s-af");
+        orch.handle_event(PairingSessionEvent::Incoming {
+            session: session.clone(),
+            message: PairingSessionMessage::Request(joiner_request("AF")),
+        })
+        .await;
+        orch.handle_event(PairingSessionEvent::MessageReceived {
+            session,
+            message: PairingSessionMessage::ChallengeResponse(JoinerChallengeResponse {
+                encrypted_challenge: vec![],
+            }),
+        })
+        .await;
+
+        let events = analytics.events();
+        assert_eq!(events.len(), 1);
+        match &events[0] {
+            Event::PairingFailed {
+                method,
+                failure_reason,
+            } => {
+                assert_eq!(*method, PairingMethod::Code);
+                assert_eq!(*failure_reason, PairingFailureReason::PassphraseMismatch);
+            }
+            other => panic!("expected PairingFailed, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn expired_invitation_fires_pairing_failed_with_invitation_expired() {
+        let analytics = Arc::new(CapturingAnalyticsSink::default());
+        let mut b = Bundle::happy();
+        b.holder.insert(pending("EX")).await;
+        b.clock_ms = (fixed_now() + Duration::minutes(10)).timestamp_millis();
+        b.analytics = analytics.clone();
+        let (orch, _outcomes) = b.build(drained_events());
+
+        orch.handle_event(PairingSessionEvent::Incoming {
+            session: PairingSessionId::new("s-ex"),
+            message: PairingSessionMessage::Request(joiner_request("EX")),
+        })
+        .await;
+
+        let events = analytics.events();
+        assert_eq!(events.len(), 1);
+        assert!(matches!(
+            &events[0],
+            Event::PairingFailed {
+                method: PairingMethod::Code,
+                failure_reason: PairingFailureReason::InvitationExpired,
+            }
+        ));
     }
 
     #[tokio::test]

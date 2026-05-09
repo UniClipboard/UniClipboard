@@ -29,6 +29,7 @@ use uc_core::ports::pairing_invitation::{
     InvitationError, IssuedInvitation, PairingInvitationPort,
 };
 use uc_core::ports::{ClockPort, DeviceIdentityPort};
+use uc_observability::analytics::{AnalyticsPort, Event, PairingMethod};
 
 use crate::facade::space_setup::{IssuePairingInvitationError, IssuePairingInvitationResult};
 use crate::pairing_invitation::InMemoryPairingInvitationHolder;
@@ -38,6 +39,11 @@ pub(crate) struct IssuePairingInvitationUseCase {
     device_identity: Arc<dyn DeviceIdentityPort>,
     clock: Arc<dyn ClockPort>,
     holder: Arc<InMemoryPairingInvitationHolder>,
+    /// Slice 8b' · sponsor-side `pairing_started` funnel anchor.
+    /// Captured at the entry of `execute()` regardless of outcome — even
+    /// "early dial failure" (NetworkNotStarted / ServiceUnavailable) leaves
+    /// a started signal so PostHog can compute the "tried to invite" cohort.
+    analytics: Arc<dyn AnalyticsPort>,
 }
 
 impl IssuePairingInvitationUseCase {
@@ -46,12 +52,14 @@ impl IssuePairingInvitationUseCase {
         device_identity: Arc<dyn DeviceIdentityPort>,
         clock: Arc<dyn ClockPort>,
         holder: Arc<InMemoryPairingInvitationHolder>,
+        analytics: Arc<dyn AnalyticsPort>,
     ) -> Self {
         Self {
             pairing_invitation,
             device_identity,
             clock,
             holder,
+            analytics,
         }
     }
 
@@ -59,6 +67,13 @@ impl IssuePairingInvitationUseCase {
     pub(crate) async fn execute(
         &self,
     ) -> Result<IssuePairingInvitationResult, IssuePairingInvitationError> {
+        // Slice 8b' · funnel anchor: fired before any port call so even a
+        // dead-on-arrival path (NetworkNotStarted / ServiceUnavailable) is
+        // still attributable to "user clicked invite".
+        self.analytics.capture(Event::PairingStarted {
+            method: PairingMethod::Code,
+        });
+
         // 1. Ask the rendezvous adapter for a code.
         let issued: IssuedInvitation = self
             .pairing_invitation
@@ -111,6 +126,23 @@ mod tests {
 
     use uc_core::ids::DeviceId;
     use uc_core::pairing::invitation::{InvitationCode, InvitationState};
+
+    /// Test fake `AnalyticsPort` that records every captured `Event` for
+    /// later inspection. Mirrors the joiner-side `CapturingAnalyticsSink`.
+    #[derive(Default)]
+    struct CapturingAnalyticsSink {
+        captured: StdMutex<Vec<Event>>,
+    }
+    impl CapturingAnalyticsSink {
+        fn events(&self) -> Vec<Event> {
+            self.captured.lock().unwrap().clone()
+        }
+    }
+    impl AnalyticsPort for CapturingAnalyticsSink {
+        fn capture(&self, event: Event) {
+            self.captured.lock().unwrap().push(event);
+        }
+    }
 
     // ---------- Fakes ----------
 
@@ -188,6 +220,7 @@ mod tests {
         uc: IssuePairingInvitationUseCase,
         invitation_port: Arc<FakeInvitationPort>,
         holder: Arc<InMemoryPairingInvitationHolder>,
+        analytics: Arc<CapturingAnalyticsSink>,
     }
 
     fn expires_at() -> DateTime<Utc> {
@@ -202,21 +235,42 @@ mod tests {
             .timestamp_millis()
     }
 
+    /// Assert that the analytics sink saw exactly one `PairingStarted`
+    /// event with the v1 fixed `PairingMethod::Code`. Slice 8b' funnel
+    /// anchor — fired from `execute()` entry on every code path.
+    fn assert_pairing_started(analytics: &Arc<CapturingAnalyticsSink>) {
+        let events = analytics.events();
+        assert_eq!(
+            events.len(),
+            1,
+            "execute() must fire exactly one PairingStarted regardless of outcome"
+        );
+        match &events[0] {
+            Event::PairingStarted { method } => {
+                assert_eq!(*method, PairingMethod::Code);
+            }
+            other => panic!("expected PairingStarted, got {other:?}"),
+        }
+    }
+
     fn build_harness(port: Arc<FakeInvitationPort>) -> Harness {
         let device_identity: Arc<dyn DeviceIdentityPort> =
             Arc::new(FixedDeviceIdentity(DeviceId::new("sponsor-1")));
         let clock: Arc<dyn ClockPort> = Arc::new(FixedClock(issued_at_ms()));
         let holder = Arc::new(InMemoryPairingInvitationHolder::new());
+        let analytics = Arc::new(CapturingAnalyticsSink::default());
         let uc = IssuePairingInvitationUseCase::new(
             port.clone() as Arc<dyn PairingInvitationPort>,
             device_identity,
             clock,
             holder.clone(),
+            analytics.clone(),
         );
         Harness {
             uc,
             invitation_port: port,
             holder,
+            analytics,
         }
     }
 
@@ -245,6 +299,9 @@ mod tests {
             other => panic!("expected Pending, got {other:?}"),
         }
         assert_eq!(stored.issued_at().timestamp_millis(), issued_at_ms());
+
+        // Slice 8b' · funnel anchor fired exactly once.
+        assert_pairing_started(&h.analytics);
     }
 
     #[tokio::test]
@@ -264,6 +321,8 @@ mod tests {
             0,
             "failure path must not park anything"
         );
+        // Even an early-dial failure leaves the funnel anchor.
+        assert_pairing_started(&h.analytics);
     }
 
     #[tokio::test]
@@ -278,6 +337,7 @@ mod tests {
             err,
             IssuePairingInvitationError::ServiceUnavailable
         ));
+        assert_pairing_started(&h.analytics);
     }
 
     #[tokio::test]
@@ -292,6 +352,7 @@ mod tests {
             IssuePairingInvitationError::Internal(m) => assert_eq!(m, "boom"),
             other => panic!("expected Internal, got {other:?}"),
         }
+        assert_pairing_started(&h.analytics);
     }
 
     #[tokio::test]

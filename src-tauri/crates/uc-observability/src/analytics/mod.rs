@@ -19,6 +19,7 @@ pub mod events;
 pub mod ids;
 pub mod port;
 pub mod probe;
+pub mod sinks;
 
 pub use context::{
     build_event_context, clear_global_event_context, global_event_context,
@@ -31,3 +32,4 @@ pub use events::{
 };
 pub use ids::{load_or_create as load_or_create_ids, reset as reset_ids, AnalyticsIds};
 pub use port::{AnalyticsPort, NoopAnalyticsSink};
+pub use sinks::{build_event_payload, StdoutSink};

@@ -42,12 +42,13 @@
 //! `ingest_inbound.rs::tests` and Phase 1 `roster/facade.rs::FakePresence`).
 
 use std::sync::Arc;
+use std::time::Instant;
 
 use bytes::Bytes;
 use tokio::task::JoinSet;
 use tracing::{debug, info, instrument, warn};
 
-use uc_core::clipboard::ClipboardContentCategorySet;
+use uc_core::clipboard::{ClipboardContentCategory, ClipboardContentCategorySet};
 use uc_core::ids::DeviceId;
 use uc_core::ports::security::TransferCipherPort;
 use uc_core::ports::{
@@ -55,6 +56,46 @@ use uc_core::ports::{
     DispatchAck, LocalIdentityPort, PeerAddressRepositoryPort, SettingsPort, SyncPayload,
 };
 use uc_core::MemberRepositoryPort;
+use uc_observability::analytics::{
+    AnalyticsPort, Direction, Event, FailureReason, PayloadSizeBucket, PayloadType, SyncEventProps,
+    TransportType,
+};
+
+/// Slice 8c-1 · classify the dispatched payload by category priority
+/// (File > Image > Text). Empty / unknown sets fall back to Text rather
+/// than dropping the event — schema doc §6 prefers a coarse bucket over
+/// a missing field.
+fn payload_type_from_categories(set: &ClipboardContentCategorySet) -> PayloadType {
+    if set
+        .iter()
+        .any(|c| matches!(c, ClipboardContentCategory::File))
+    {
+        PayloadType::File
+    } else if set
+        .iter()
+        .any(|c| matches!(c, ClipboardContentCategory::Image))
+    {
+        PayloadType::Image
+    } else {
+        // Text / RichText / Link / empty all roll up to Text — fine-grained
+        // breakdown is not part of v1 schema (PayloadType is 3-way).
+        PayloadType::Text
+    }
+}
+
+/// Slice 8c-1 · 1:1 mapping ClipboardDispatchError → schema FailureReason.
+/// Funnel signal lives in this enum, not in error message text. Keep
+/// LocalPolicyExceeded mapped to FileTooLarge (the only triggering case
+/// today is `MAX_PAYLOAD_SIZE`); refine if other size policies appear.
+fn map_dispatch_error_to_failure_reason(err: &ClipboardDispatchError) -> FailureReason {
+    match err {
+        ClipboardDispatchError::Offline => FailureReason::PeerOffline,
+        ClipboardDispatchError::LocalPolicyExceeded(_) => FailureReason::FileTooLarge,
+        ClipboardDispatchError::PeerRejected(_) => FailureReason::NetworkError,
+        ClipboardDispatchError::Io(_) => FailureReason::NetworkError,
+        ClipboardDispatchError::Internal(_) => FailureReason::Unknown,
+    }
+}
 
 /// Input to one dispatch pass. The caller owns the plaintext →
 /// `ClipboardBinaryPayload` → bytes pipeline.
@@ -123,9 +164,15 @@ pub(crate) struct DispatchClipboardEntryUseCase {
     local_identity: Arc<dyn LocalIdentityPort>,
     settings: Arc<dyn SettingsPort>,
     clock: Arc<dyn ClockPort>,
+    /// Slice 8c-1 · per-peer telemetry. One `sync_attempted` /
+    /// `sync_succeeded` / `sync_failed` event fires per fan-out target so
+    /// PostHog reliability dashboards stay per-peer (peer_os, latency,
+    /// failure_reason are all 1:1 with a single peer outcome).
+    analytics: Arc<dyn AnalyticsPort>,
 }
 
 impl DispatchClipboardEntryUseCase {
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn new(
         peer_addr_repo: Arc<dyn PeerAddressRepositoryPort>,
         member_repo: Arc<dyn MemberRepositoryPort>,
@@ -135,6 +182,7 @@ impl DispatchClipboardEntryUseCase {
         local_identity: Arc<dyn LocalIdentityPort>,
         settings: Arc<dyn SettingsPort>,
         clock: Arc<dyn ClockPort>,
+        analytics: Arc<dyn AnalyticsPort>,
     ) -> Self {
         Self {
             peer_addr_repo,
@@ -145,6 +193,7 @@ impl DispatchClipboardEntryUseCase {
             local_identity,
             settings,
             clock,
+            analytics,
         }
     }
 
@@ -217,17 +266,59 @@ impl DispatchClipboardEntryUseCase {
         }
 
         // 4. Fan-out. One JoinSet task per target; results merged at the end.
+        // Slice 8c-1 · each spawned task fires its own per-peer
+        // `sync_attempted` (before the wire call) and either
+        // `sync_succeeded` (with `sync_latency_ms`) or `sync_failed`
+        // (with `failure_reason`) inside the same async block — keeps
+        // analytics atomically paired with the dispatch outcome and
+        // avoids a second match arm in the merge loop.
+        let payload_type = payload_type_from_categories(&input.categories);
+        let payload_size_bucket = PayloadSizeBucket::from_bytes(input.plaintext.len() as u64);
         let mut set: JoinSet<(DeviceId, Result<DispatchAck, ClipboardDispatchError>)> =
             JoinSet::new();
         for device_id in &candidates {
             let dispatch = Arc::clone(&self.clipboard_dispatch);
+            let analytics = Arc::clone(&self.analytics);
             let header = header.clone();
             let device_id = device_id.clone();
             let payload = SyncPayload {
                 ciphertext: ciphertext.clone(),
             };
             set.spawn(async move {
+                analytics.capture(Event::SyncAttempted(SyncEventProps {
+                    direction: Direction::Outbound,
+                    payload_type,
+                    payload_size_bucket,
+                    transport_type: TransportType::P2pDirect,
+                    peer_os: None,
+                    sync_latency_ms: None,
+                    failure_reason: None,
+                }));
+                let started_at = Instant::now();
                 let result = dispatch.dispatch(&device_id, &header, payload).await;
+                let event = match &result {
+                    Ok(_) => Event::SyncSucceeded(SyncEventProps {
+                        direction: Direction::Outbound,
+                        payload_type,
+                        payload_size_bucket,
+                        transport_type: TransportType::P2pDirect,
+                        peer_os: None,
+                        sync_latency_ms: Some(
+                            started_at.elapsed().as_millis().min(u32::MAX as u128) as u32,
+                        ),
+                        failure_reason: None,
+                    }),
+                    Err(err) => Event::SyncFailed(SyncEventProps {
+                        direction: Direction::Outbound,
+                        payload_type,
+                        payload_size_bucket,
+                        transport_type: TransportType::P2pDirect,
+                        peer_os: None,
+                        sync_latency_ms: None,
+                        failure_reason: Some(map_dispatch_error_to_failure_reason(err)),
+                    }),
+                };
+                analytics.capture(event);
                 (device_id, result)
             });
         }
@@ -567,6 +658,33 @@ mod tests {
         local_identity: MockLocalIdentity,
         settings: MockSettings_,
     ) -> DispatchClipboardEntryUseCase {
+        build_uc_with_analytics(
+            peer_addr_repo,
+            member_repo,
+            cipher,
+            dispatch,
+            device_identity,
+            local_identity,
+            settings,
+            Arc::new(uc_observability::analytics::NoopAnalyticsSink),
+        )
+    }
+
+    /// Variant that accepts an injectable analytics sink — Slice 8c-1
+    /// telemetry tests use `CapturingAnalyticsSink` here; the legacy
+    /// `build_uc` helper falls through to a `NoopAnalyticsSink` so older
+    /// tests stay terse.
+    #[allow(clippy::too_many_arguments)]
+    fn build_uc_with_analytics(
+        peer_addr_repo: MockPeerAddrRepo,
+        member_repo: MockMemberRepo,
+        cipher: MockCipher,
+        dispatch: MockDispatch,
+        device_identity: MockDeviceId_,
+        local_identity: MockLocalIdentity,
+        settings: MockSettings_,
+        analytics: Arc<dyn AnalyticsPort>,
+    ) -> DispatchClipboardEntryUseCase {
         DispatchClipboardEntryUseCase::new(
             Arc::new(peer_addr_repo),
             Arc::new(member_repo),
@@ -576,6 +694,7 @@ mod tests {
             Arc::new(local_identity),
             Arc::new(settings),
             Arc::new(FixedClock(1_700_000_000_000)),
+            analytics,
         )
     }
 
@@ -1142,5 +1261,167 @@ mod tests {
         // unrecognised payload should fail open even against an all-off filter.
         let outcome = uc.execute(input()).await.expect("dispatch ok");
         assert_eq!(outcome.total_accepted, 1);
+    }
+
+    // ── Slice 8c-1 analytics: per-peer sync_attempted/succeeded/failed ───
+
+    /// Test fake `AnalyticsPort` that records every captured `Event` for
+    /// inspection. Mirrors the joiner / sponsor / setup test fakes.
+    #[derive(Default)]
+    struct CapturingAnalyticsSink {
+        captured: std::sync::Mutex<Vec<Event>>,
+    }
+    impl CapturingAnalyticsSink {
+        fn events(&self) -> Vec<Event> {
+            self.captured.lock().unwrap().clone()
+        }
+    }
+    impl AnalyticsPort for CapturingAnalyticsSink {
+        fn capture(&self, event: Event) {
+            self.captured.lock().unwrap().push(event);
+        }
+    }
+
+    #[tokio::test]
+    async fn analytics_fires_attempted_then_succeeded_per_peer_on_happy_path() {
+        let mut repo = MockPeerAddrRepo::new();
+        repo.expect_list()
+            .times(1)
+            .returning(|| Ok(vec![record("peer-a"), record("peer-b")]));
+
+        let mut cipher = MockCipher::new();
+        cipher
+            .expect_encrypt()
+            .times(1)
+            .returning(|p| Ok(p.to_vec()));
+
+        let mut dispatch = MockDispatch::new();
+        dispatch
+            .expect_dispatch()
+            .with(eq(DeviceId::new("peer-a")), always(), always())
+            .times(1)
+            .returning(|_, _, _| Ok(DispatchAck::Accepted));
+        dispatch
+            .expect_dispatch()
+            .with(eq(DeviceId::new("peer-b")), always(), always())
+            .times(1)
+            .returning(|_, _, _| Ok(DispatchAck::DuplicateIgnored));
+
+        let analytics = Arc::new(CapturingAnalyticsSink::default());
+        let uc = build_uc_with_analytics(
+            repo,
+            make_member_repo_all_enabled(),
+            cipher,
+            dispatch,
+            make_device_identity("self-device"),
+            make_local_identity_stub(),
+            make_settings_stub(),
+            analytics.clone(),
+        );
+
+        uc.execute(input()).await.expect("dispatch ok");
+
+        // Expect 4 events total: SyncAttempted×2 + SyncSucceeded×2.
+        // Spawn ordering is non-deterministic, but every peer's pair of
+        // (Attempted, Succeeded) must be back-to-back inside its own task —
+        // we settle for "2 attempted + 2 succeeded total".
+        let events = analytics.events();
+        assert_eq!(events.len(), 4, "got {events:?}");
+        let attempted = events
+            .iter()
+            .filter(|e| matches!(e, Event::SyncAttempted(_)))
+            .count();
+        let succeeded = events
+            .iter()
+            .filter(|e| matches!(e, Event::SyncSucceeded(_)))
+            .count();
+        assert_eq!((attempted, succeeded), (2, 2));
+        // Spot-check schema invariants on one succeeded event:
+        // direction=Outbound, transport=P2pDirect, sync_latency_ms set.
+        let sample = events
+            .iter()
+            .find_map(|e| match e {
+                Event::SyncSucceeded(p) => Some(p),
+                _ => None,
+            })
+            .expect("at least one SyncSucceeded");
+        assert_eq!(sample.direction, Direction::Outbound);
+        assert_eq!(sample.transport_type, TransportType::P2pDirect);
+        assert!(sample.sync_latency_ms.is_some());
+        assert!(sample.failure_reason.is_none());
+    }
+
+    #[tokio::test]
+    async fn analytics_fires_failed_with_peer_offline_when_dispatch_returns_offline() {
+        let mut repo = MockPeerAddrRepo::new();
+        repo.expect_list()
+            .times(1)
+            .returning(|| Ok(vec![record("peer-off")]));
+
+        let mut cipher = MockCipher::new();
+        cipher
+            .expect_encrypt()
+            .times(1)
+            .returning(|p| Ok(p.to_vec()));
+
+        let mut dispatch = MockDispatch::new();
+        dispatch
+            .expect_dispatch()
+            .with(eq(DeviceId::new("peer-off")), always(), always())
+            .times(1)
+            .returning(|_, _, _| Err(ClipboardDispatchError::Offline));
+
+        let analytics = Arc::new(CapturingAnalyticsSink::default());
+        let uc = build_uc_with_analytics(
+            repo,
+            make_member_repo_all_enabled(),
+            cipher,
+            dispatch,
+            make_device_identity("self-device"),
+            make_local_identity_stub(),
+            make_settings_stub(),
+            analytics.clone(),
+        );
+
+        uc.execute(input()).await.expect("dispatch ok");
+
+        let events = analytics.events();
+        assert_eq!(events.len(), 2);
+        assert!(matches!(&events[0], Event::SyncAttempted(_)));
+        match &events[1] {
+            Event::SyncFailed(p) => {
+                assert_eq!(p.failure_reason, Some(FailureReason::PeerOffline));
+                assert!(p.sync_latency_ms.is_none());
+            }
+            other => panic!("expected SyncFailed, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn map_dispatch_error_covers_all_variants() {
+        // Compile-fence: 1:1 mapping table — any new ClipboardDispatchError
+        // variant added to uc-core will require an explicit decision here
+        // (compiler enforces match completeness on the helper itself).
+        for (err, expected) in [
+            (ClipboardDispatchError::Offline, FailureReason::PeerOffline),
+            (
+                ClipboardDispatchError::LocalPolicyExceeded("too big".into()),
+                FailureReason::FileTooLarge,
+            ),
+            (
+                ClipboardDispatchError::PeerRejected("bad header".into()),
+                FailureReason::NetworkError,
+            ),
+            (
+                ClipboardDispatchError::Io("broken pipe".into()),
+                FailureReason::NetworkError,
+            ),
+            (
+                ClipboardDispatchError::Internal("boom".into()),
+                FailureReason::Unknown,
+            ),
+        ] {
+            assert_eq!(map_dispatch_error_to_failure_reason(&err), expected);
+        }
     }
 }

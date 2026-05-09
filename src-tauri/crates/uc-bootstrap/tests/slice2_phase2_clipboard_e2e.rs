@@ -466,6 +466,7 @@ async fn build_side(name: &'static str, rendezvous_base_url: String) -> Side {
         local_identity: local_identity_for_clipboard,
         settings: settings_for_clipboard,
         clock: Arc::new(SystemClock),
+        analytics: Arc::new(uc_observability::analytics::NoopAnalyticsSink),
     }));
     let ingest_handle = clipboard_sync.spawn_ingest_loop();
 

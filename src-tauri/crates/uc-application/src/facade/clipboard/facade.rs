@@ -25,6 +25,7 @@ use uc_core::ports::{
 };
 use uc_core::MemberRepositoryPort;
 use uc_core::{ClipboardChangeOrigin, SystemClipboardSnapshot};
+use uc_observability::analytics::AnalyticsPort;
 
 use crate::usecases::clipboard_sync::payload_codec::{
     encode_snapshot_with_blob_refs_to_v3_bytes, V3BlobRef,
@@ -49,6 +50,10 @@ pub struct ClipboardSyncDeps {
     pub local_identity: Arc<dyn LocalIdentityPort>,
     pub settings: Arc<dyn SettingsPort>,
     pub clock: Arc<dyn ClockPort>,
+    /// Slice 8c-1 · per-peer outbound `sync_attempted` /
+    /// `sync_succeeded` / `sync_failed` events fire from the dispatch
+    /// use case. Inbound events (Slice 8c later) will plug here too.
+    pub analytics: Arc<dyn AnalyticsPort>,
 }
 
 /// Public-facing input to a dispatch pass. Mirrors the use case's own
@@ -149,6 +154,7 @@ impl ClipboardSyncFacade {
             Arc::clone(&deps.local_identity),
             Arc::clone(&deps.settings),
             Arc::clone(&deps.clock),
+            Arc::clone(&deps.analytics),
         ));
         let ingest_uc = Arc::new(IngestInboundClipboardUseCase::new(
             Arc::clone(&deps.clipboard_receiver),
@@ -570,6 +576,7 @@ mod tests {
             local_identity: Arc::new(local_identity),
             settings: Arc::new(settings),
             clock: Arc::new(FixedClock(1_700_000_000_000)),
+            analytics: Arc::new(uc_observability::analytics::NoopAnalyticsSink),
         });
         (facade, receiver)
     }

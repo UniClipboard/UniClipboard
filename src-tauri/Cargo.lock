@@ -9686,6 +9686,7 @@ dependencies = [
  "mockall 0.13.1",
  "sentry",
  "serde_json",
+ "sha2 0.10.9",
  "tempfile",
  "thiserror 2.0.17",
  "tokio",

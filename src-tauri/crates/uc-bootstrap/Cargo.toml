@@ -39,6 +39,11 @@ gethostname = "1.1"
 toml = "0.8"
 chrono = { version = "0.4", features = ["serde"] }
 async-trait = "0.1"
+# analytics::compose_event_context hashes the persisted SpaceId into the
+# 16-hex `space_id_hash` carried by every product analytics event. SHA-256
+# is the cheapest stdlib-friendly choice that keeps `space_id` un-recoverable
+# from the published hash (schema doc §6.3).
+sha2 = "0.10"
 
 [dev-dependencies]
 tempfile = "3"

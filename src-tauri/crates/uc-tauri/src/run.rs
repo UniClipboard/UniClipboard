@@ -121,12 +121,16 @@ fn configure_main_window_for_platform(_app: &tauri::AppHandle) {}
 /// crate::run(ctx).expect("failed to start tauri application");
 /// ```
 pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
+    // Slice 6 / Issue #549：`build_gui_app` 是 async（compose product analytics
+    // EventContext 需要 await `member_repo` / `setup_status`）。Tauri shell 的
+    // 入口仍然是 sync `fn run` —— 用 `tauri::async_runtime::block_on` 桥接，
+    // 与本文件其他地方读 settings 等 async port 是同一模式。
     let GuiBootstrapContext {
         deps,
         background,
         storage_paths,
         config: _config,
-    } = build_gui_app()?;
+    } = tauri::async_runtime::block_on(build_gui_app())?;
 
     let daemon_connection_state = DaemonConnectionState::default();
     let daemon_ownership = DaemonOwnership::default();

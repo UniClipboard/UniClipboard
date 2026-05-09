@@ -117,7 +117,7 @@ pub async fn run(subcommand: UpgradeCommands, json: bool, verbose: bool) -> i32 
         Some(uc_observability::LogProfile::Cli)
     };
 
-    let app_facade = match uc_bootstrap::build_cli_app_facade(log_profile) {
+    let app_facade = match uc_bootstrap::build_cli_app_facade(log_profile).await {
         Ok(facade) => facade,
         Err(err) => {
             ui::error(&format!("failed to build CLI runtime: {err}"));

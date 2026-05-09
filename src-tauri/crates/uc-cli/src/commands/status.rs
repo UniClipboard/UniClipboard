@@ -35,7 +35,7 @@ pub async fn run(json: bool, verbose: bool) -> i32 {
         Some(uc_observability::LogProfile::Cli)
     };
 
-    let app_facade = match uc_bootstrap::build_cli_app_facade(profile) {
+    let app_facade = match uc_bootstrap::build_cli_app_facade(profile).await {
         Ok(facade) => facade,
         Err(err) => {
             eprintln!("Error: failed to build CLI runtime: {err}");

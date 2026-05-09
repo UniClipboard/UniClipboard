@@ -50,7 +50,7 @@ pub enum SearchCommands {
 }
 
 pub async fn run(subcommand: SearchCommands, json: bool, verbose: bool) -> i32 {
-    let app_facade = match build_search_facade(verbose) {
+    let app_facade = match build_search_facade(verbose).await {
         Ok(facade) => facade,
         Err(code) => return code,
     };
@@ -159,7 +159,7 @@ pub async fn run(subcommand: SearchCommands, json: bool, verbose: bool) -> i32 {
     }
 }
 
-fn build_search_facade(
+async fn build_search_facade(
     verbose: bool,
 ) -> Result<std::sync::Arc<uc_application::facade::AppFacade>, i32> {
     let profile = if verbose {
@@ -167,10 +167,12 @@ fn build_search_facade(
     } else {
         Some(uc_observability::LogProfile::Cli)
     };
-    uc_bootstrap::build_cli_app_facade(profile).map_err(|err| {
-        eprintln!("Error: failed to build CLI runtime: {err}");
-        exit_codes::EXIT_ERROR
-    })
+    uc_bootstrap::build_cli_app_facade(profile)
+        .await
+        .map_err(|err| {
+            eprintln!("Error: failed to build CLI runtime: {err}");
+            exit_codes::EXIT_ERROR
+        })
 }
 
 fn join_repeated(values: Vec<String>) -> Option<String> {

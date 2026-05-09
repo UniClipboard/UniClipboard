@@ -348,10 +348,10 @@ pub fn build_app_facade_from_deps(
 /// # Arguments
 ///
 /// * `log_profile` — Log profile override (e.g., `Some(LogProfile::Cli)`).
-pub fn build_cli_app_facade(
+pub async fn build_cli_app_facade(
     log_profile: Option<uc_observability::LogProfile>,
 ) -> anyhow::Result<Arc<AppFacade>> {
-    let ctx = crate::builders::build_cli_context_with_profile(log_profile)?;
+    let ctx = crate::builders::build_cli_context_with_profile(log_profile).await?;
     let storage_paths = crate::assembly::get_storage_paths(&ctx.config)?;
     let deps = ctx.deps;
     let lifecycle_status: Arc<dyn LifecycleStatusGateway> =
@@ -403,7 +403,7 @@ impl CliAppRuntime {
 pub async fn build_cli_app_runtime(
     log_profile: Option<uc_observability::LogProfile>,
 ) -> anyhow::Result<CliAppRuntime> {
-    let (config, wired) = crate::builders::build_slice1_cli_context(log_profile)?;
+    let (config, wired) = crate::builders::build_slice1_cli_context(log_profile).await?;
     let storage_paths = get_storage_paths(&config)?;
 
     // Phase 94 NETSET-03：与 builders.rs 同模式（D-B1 选项 B 现状决策 — 见

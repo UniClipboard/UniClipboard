@@ -64,11 +64,20 @@ pub struct DaemonBootstrapContext {
 }
 
 /// Shared core wiring used by all three builders.
-/// Initializes tracing, resolves config, wires dependencies.
+/// Initializes tracing, resolves config, wires dependencies, and registers the
+/// process-wide product analytics `EventContext`.
 ///
 /// If `log_profile_override` is `Some`, the `UC_LOG_PROFILE` env var is set
 /// before tracing initialization so the subscriber picks up the desired profile.
-fn build_core(
+///
+/// ## Async because of `compose_event_context`
+///
+/// Slice 6 / Issue #549 起 `build_core` 转 async：装配 `EventContext` 必须在
+/// `wire_dependencies` 之后做，因为它要读 `member_repo` / `setup_status`
+/// 这两个 async port 才能算出 `active_device_count` 与 `space_id_hash`。把
+/// 装配点放在 composition root 内（一处调用）比让每个 entry 各自补一段
+/// `.await` 更不容易遗漏（例如未来再加一个 entry，自动也覆盖）。
+async fn build_core(
     log_profile_override: Option<uc_observability::LogProfile>,
 ) -> anyhow::Result<(AppConfig, crate::assembly::WiredDependencies)> {
     // Apply log profile override before tracing init
@@ -89,13 +98,25 @@ fn build_core(
     let wired = wire_dependencies(&config)
         .map_err(|e| anyhow::anyhow!("Dependency wiring failed: {}", e))?;
 
+    // 注册进程级 product analytics `EventContext`。失败不阻断启动 —— analytics
+    // 是辅助通道，错误已在 compose 内 warn-log（见 `analytics.rs` 模块文档"失
+    // 败语义"）。`get_storage_paths` 重新解析了一次目录布局；它内部纯计算无
+    // IO，开销可忽略。
+    let storage_paths = get_storage_paths(&config)?;
+    if let Err(err) = crate::analytics::compose_event_context(&wired.deps, &storage_paths).await {
+        tracing::warn!(
+            error = %err,
+            "analytics: compose_event_context 失败，本次进程内事件 sink 将拿不到 EventContext 快照"
+        );
+    }
+
     Ok((config, wired))
 }
 
 /// Build CLI bootstrap context. Returns AppDeps for the caller to construct
 /// CoreRuntime as needed. No background workers are started.
-pub fn build_cli_context() -> anyhow::Result<CliBootstrapContext> {
-    build_cli_context_with_profile(Some(uc_observability::LogProfile::Cli))
+pub async fn build_cli_context() -> anyhow::Result<CliBootstrapContext> {
+    build_cli_context_with_profile(Some(uc_observability::LogProfile::Cli)).await
 }
 
 /// Build CLI bootstrap context with an explicit log profile override.
@@ -103,10 +124,10 @@ pub fn build_cli_context() -> anyhow::Result<CliBootstrapContext> {
 /// When `verbose` mode is active, callers pass `Some(LogProfile::Dev)` to
 /// get full console tracing. The default `build_cli_context()` uses `Cli`
 /// profile which suppresses console output.
-pub fn build_cli_context_with_profile(
+pub async fn build_cli_context_with_profile(
     log_profile: Option<uc_observability::LogProfile>,
 ) -> anyhow::Result<CliBootstrapContext> {
-    let (config, wired) = build_core(log_profile)?;
+    let (config, wired) = build_core(log_profile).await?;
 
     // [Codex Review R1] Return AppDeps, not CoreRuntime.
     // CLI entry point constructs CoreRuntime itself with appropriate emitter.
@@ -122,10 +143,10 @@ pub fn build_cli_context_with_profile(
 /// [`build_cli_context_with_profile`], this does not flatten to `AppDeps`
 /// and therefore preserves access to `trusted_peer_repo` and other Slice
 /// 1-only ports the `SpaceSetupFacade` needs.
-pub fn build_slice1_cli_context(
+pub async fn build_slice1_cli_context(
     log_profile: Option<uc_observability::LogProfile>,
 ) -> anyhow::Result<(AppConfig, crate::assembly::WiredDependencies)> {
-    build_core(log_profile)
+    build_core(log_profile).await
 }
 
 /// Build daemon bootstrap context. Returns AppDeps + background deps.
@@ -138,7 +159,7 @@ pub fn build_slice1_cli_context(
 /// `build_space_setup_assembly` (the setup-v2 flow) and is not
 /// re-exposed on the returned ctx.
 pub async fn build_daemon_app() -> anyhow::Result<DaemonBootstrapContext> {
-    let (config, wired) = build_core(None)?;
+    let (config, wired) = build_core(None).await?;
     let storage_paths = get_storage_paths(&config)?;
 
     // 启动期 reconcile:把 peer_addr_repo / trusted_peer_repo 中

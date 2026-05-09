@@ -283,7 +283,7 @@ pub enum LatencyBucket {
 | `device_name_set` | 用户提交设备名 | `name_length_bucket`: `Lt8` \| `8To16` \| `Gt16` |
 | `pairing_started` | 用户点击配对 | `method`: `qr` \| `code` \| `discovery` |
 | `pairing_succeeded` | 双端握手完成 | `method`, `peer_os`, `duration_ms` |
-| `pairing_failed` | 配对中断或超时 | `method`, `failure_reason`（见 §7.3） |
+| `pairing_failed` | 配对中断或超时 | `method`, `failure_reason`（见 §7.4，使用 `PairingFailureReason` 而非 `FailureReason`） |
 | `first_clipboard_sync_attempted` | 首次同步发起 | `direction`: `outbound` \| `inbound` |
 | `first_clipboard_sync_succeeded` | 首次同步对端确认 | `direction`, `peer_os`, `transport_type`, `duration_ms` |
 | `first_file_sync_succeeded` | 文件传输已支持时首次成功 | `peer_os`, `transport_type`, `payload_size_bucket` |
@@ -304,7 +304,7 @@ pub struct SyncEventProps {
 }
 ```
 
-### 7.3 FailureReason 枚举
+### 7.3 FailureReason 枚举（sync_failed 专用）
 
 ```rust
 pub enum FailureReason {
@@ -320,6 +320,33 @@ pub enum FailureReason {
 ```
 
 `Unknown` 占比是 **架构债务指标**：高于 5% 时就要专门排查并新增枚举值。
+
+> **Domain-specific failure enums**：v1 起 `pairing_failed` 与 `sync_failed`
+> 各自使用独立的 failure_reason 枚举（见 §7.4）。不同 domain 的失败语义不重叠（pairing 关心 passphrase / sponsor 决断，sync 关心 transport / payload），共享一份 enum 会让 funnel 漏点信号在跨 domain dashboard 中误聚合。后续每个新 domain（setup / search 等）若需要 failure reason，按相同模式新建专用 enum。
+
+### 7.4 PairingFailureReason 枚举（pairing_failed 专用）
+
+```rust
+pub enum PairingFailureReason {
+    InvitationNotFound,           // rendezvous 没有该邀请（typo / 过期 / 已被消费）
+    InvitationExpired,            // 邀请 TTL 超期
+    SponsorUnreachable,           // 无法与 sponsor 建立连接
+    ServiceUnavailable,           // rendezvous 服务不可达
+    PassphraseMismatch,           // 口令错或 keyslot 校验失败
+    CorruptedKeyMaterial,         // keyslot 解析 / 版本故障
+    DeviceNameRequired,           // 缺少设备名
+    SponsorRejectedInvitation,    // sponsor 未识别 code（race / 过期）
+    SponsorDeclined,              // sponsor 主动拒绝
+    SponsorTimedOut,              // sponsor TTL 先触发
+    Timeout,                      // 本机等待响应超时
+    ConnectionLost,               // 握手中途 transport 断线
+    Internal,                     // 兜底（admit / trust / setup_status persist 失败等内部错误）
+}
+```
+
+变体与 `RedeemPairingInvitationError`（业务错误）一一映射，使得 funnel
+分析能直接定位漏点的具体业务原因。`Internal` 占比同样应监控——高于 5%
+说明本机持久化层不稳定。
 
 ## 8. Schema 演化策略
 

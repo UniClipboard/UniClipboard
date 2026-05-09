@@ -51,7 +51,7 @@ pub enum Event {
     /// 配对中断或超时。
     PairingFailed {
         method: PairingMethod,
-        failure_reason: FailureReason,
+        failure_reason: PairingFailureReason,
     },
 
     /// 首次同步发起。
@@ -220,8 +220,12 @@ pub enum TransportType {
     FallbackCloud,
 }
 
-/// 失败原因。`Unknown` 占比是架构债务指标——schema doc §7.3 要求高于 5%
-/// 时专门排查并新增枚举值。
+/// 失败原因（`sync_failed` 专用）。`Unknown` 占比是架构债务指标——
+/// schema doc §7.3 要求高于 5% 时专门排查并新增枚举值。
+///
+/// `pairing_failed` 使用独立的 [`PairingFailureReason`]：pairing 与 sync 失败
+/// 语义不重叠（pairing 关心 passphrase / sponsor 决断，sync 关心 transport /
+/// payload），共享一份 enum 会让 funnel 漏点信号在跨 domain dashboard 中误聚合。
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
 #[serde(rename_all = "snake_case")]
 pub enum FailureReason {
@@ -233,6 +237,29 @@ pub enum FailureReason {
     ClipboardPermission,
     EncryptionMismatch,
     Unknown,
+}
+
+/// 配对失败原因（`pairing_failed` 专用）。
+///
+/// 与 `RedeemPairingInvitationError` 一一映射，使 funnel 分析能直接定位漏点
+/// 的具体业务原因。`Internal` 占比 > 5% 同样视为架构债务（持久化层不稳定）。
+/// schema doc §7.4。
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[serde(rename_all = "snake_case")]
+pub enum PairingFailureReason {
+    InvitationNotFound,
+    InvitationExpired,
+    SponsorUnreachable,
+    ServiceUnavailable,
+    PassphraseMismatch,
+    CorruptedKeyMaterial,
+    DeviceNameRequired,
+    SponsorRejectedInvitation,
+    SponsorDeclined,
+    SponsorTimedOut,
+    Timeout,
+    ConnectionLost,
+    Internal,
 }
 
 /// 配对方式。
@@ -375,7 +402,7 @@ mod tests {
             (
                 Event::PairingFailed {
                     method: PairingMethod::Qr,
-                    failure_reason: FailureReason::Unknown,
+                    failure_reason: PairingFailureReason::Internal,
                 },
                 "pairing_failed",
             ),
@@ -531,6 +558,67 @@ mod tests {
                 "FailureReason::{reason:?}"
             );
         }
+    }
+
+    #[test]
+    fn pairing_failure_reason_wire_format() {
+        // schema doc §7.4 中明确列出的取值。任何变更 = 破坏向后兼容。
+        for (reason, expected) in [
+            (
+                PairingFailureReason::InvitationNotFound,
+                "invitation_not_found",
+            ),
+            (
+                PairingFailureReason::InvitationExpired,
+                "invitation_expired",
+            ),
+            (
+                PairingFailureReason::SponsorUnreachable,
+                "sponsor_unreachable",
+            ),
+            (
+                PairingFailureReason::ServiceUnavailable,
+                "service_unavailable",
+            ),
+            (
+                PairingFailureReason::PassphraseMismatch,
+                "passphrase_mismatch",
+            ),
+            (
+                PairingFailureReason::CorruptedKeyMaterial,
+                "corrupted_key_material",
+            ),
+            (
+                PairingFailureReason::DeviceNameRequired,
+                "device_name_required",
+            ),
+            (
+                PairingFailureReason::SponsorRejectedInvitation,
+                "sponsor_rejected_invitation",
+            ),
+            (PairingFailureReason::SponsorDeclined, "sponsor_declined"),
+            (PairingFailureReason::SponsorTimedOut, "sponsor_timed_out"),
+            (PairingFailureReason::Timeout, "timeout"),
+            (PairingFailureReason::ConnectionLost, "connection_lost"),
+            (PairingFailureReason::Internal, "internal"),
+        ] {
+            assert_eq!(
+                serde_json::to_value(reason).unwrap(),
+                expected,
+                "PairingFailureReason::{reason:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn pairing_method_wire_format() {
+        // schema doc §7.1 列出的取值。
+        assert_eq!(serde_json::to_value(PairingMethod::Qr).unwrap(), "qr");
+        assert_eq!(serde_json::to_value(PairingMethod::Code).unwrap(), "code");
+        assert_eq!(
+            serde_json::to_value(PairingMethod::Discovery).unwrap(),
+            "discovery"
+        );
     }
 
     #[test]

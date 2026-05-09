@@ -25,6 +25,7 @@ use uc_core::ports::search::search_pipeline::SearchPipelinePort;
 use uc_core::ports::*;
 use uc_core::ports::{MobileDeviceRepositoryPort, MobileSyncEndpointInfoPort};
 use uc_core::MemberRepositoryPort;
+use uc_observability::analytics::AnalyticsPort;
 
 /// Clipboard-domain ports bundle.
 /// 剪贴板领域端口组。
@@ -157,4 +158,11 @@ pub struct AppDeps {
     pub search: SearchPorts,
     /// Mobile-sync 领域端口 / Mobile sync domain ports.
     pub mobile_sync: MobileSyncPorts,
+    /// 产品 telemetry 上报 sink（横切关注点）。
+    ///
+    /// bootstrap 装配时用 [`uc_observability::analytics::GatedAnalyticsSink`]
+    /// 包一层真实 sink（dev=`StdoutSink`、release=`NoopAnalyticsSink`，未来
+    /// 接 `PosthogSink`），调用方只需 `analytics.capture(event)`，不必自己
+    /// 查 `usage_analytics_enabled`——wrapper 内部已 atomic 守卫。
+    pub analytics: Arc<dyn AnalyticsPort>,
 }

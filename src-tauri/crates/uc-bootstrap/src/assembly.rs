@@ -930,6 +930,7 @@ pub fn wire_dependencies(config: &AppConfig) -> WiringResult<WiredDependencies> 
             device_repo: infra.mobile_device_repo,
             endpoint_info: infra.mobile_sync_endpoint_info.clone(),
         },
+        analytics: crate::analytics::build_analytics_sink(),
     };
 
     // Create shared emitter cell at wire time using the logging placeholder.

@@ -39,7 +39,8 @@ use uc_application::deps::AppDeps;
 use uc_application::facade::AppPaths;
 use uc_observability::analytics::{
     build_event_context, global_event_context, load_or_create_ids, set_global_event_context,
-    AppChannel, EventContext, EventContextInputs, InstallSource,
+    AnalyticsPort, AppChannel, Event, EventContext, EventContextInputs, GatedAnalyticsSink,
+    InstallSource, NoopAnalyticsSink, StdoutSink,
 };
 
 /// 装配并注册进程级 `EventContext`。
@@ -89,6 +90,21 @@ pub async fn compose_event_context(deps: &AppDeps, paths: &AppPaths) -> anyhow::
     });
 
     set_global_event_context(Arc::new(ctx));
+
+    // Slice 8a / Issue #549 — Activation 漏斗起点：仅当 IDs 都是本次新生成
+    // （`is_first_run = true`）时发一条 `app_first_open`。schema doc §7.1。
+    //
+    // 幂等门控由本函数顶部的 `global_event_context().is_some()` 守住——GUI
+    // 进程内拉起 daemon 时 compose 会触达两次，第二次直接 return，绝不会
+    // 重复 fire。也因此本事件捕获放在 `set_global_event_context` 之后是
+    // 安全的：注册一次就跳，不存在"两次注册各 fire 一次"。
+    //
+    // gate 守卫由 `deps.analytics`（包了 `GatedAnalyticsSink` 一层）统一
+    // 处理，本处不查 `is_analytics_enabled`——见 task_plan.md Decisions Made。
+    if ids.is_first_run {
+        deps.analytics.capture(Event::AppFirstOpen);
+    }
+
     Ok(())
 }
 
@@ -128,6 +144,25 @@ async fn read_space_id_hash(deps: &AppDeps) -> Option<String> {
             None
         }
     }
+}
+
+/// 装配进程级 [`AnalyticsPort`]。
+///
+/// 决策（task_plan.md Decisions Made）：sink 装一次永不替换，
+/// `usage_analytics_enabled` 运行时切换由外层
+/// [`GatedAnalyticsSink`] 统一守卫，不重建 sink。
+///
+/// - dev (`cfg!(debug_assertions)`) → `Gated(StdoutSink)`，事件镜像到
+///   `tracing::debug!(target = "uc_observability::analytics")`
+/// - release → `Gated(NoopAnalyticsSink)`，临时态。Slice 7b 接 PostHog
+///   后改为 `Gated(PosthogSink)`，调用方零感知。
+pub fn build_analytics_sink() -> Arc<dyn AnalyticsPort> {
+    let inner: Arc<dyn AnalyticsPort> = if cfg!(debug_assertions) {
+        Arc::new(StdoutSink::new())
+    } else {
+        Arc::new(NoopAnalyticsSink)
+    };
+    Arc::new(GatedAnalyticsSink::new(inner))
 }
 
 fn hash_space_id(space_id: &str) -> String {

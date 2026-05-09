@@ -403,7 +403,7 @@ impl CliAppRuntime {
 pub async fn build_cli_app_runtime(
     log_profile: Option<uc_observability::LogProfile>,
 ) -> anyhow::Result<CliAppRuntime> {
-    let (config, wired) = crate::builders::build_slice1_cli_context(log_profile).await?;
+    let (config, wired) = crate::builders::build_cli_wiring_context(log_profile).await?;
     let storage_paths = get_storage_paths(&config)?;
 
     // Phase 94 NETSET-03：与 builders.rs 同模式（D-B1 选项 B 现状决策 — 见

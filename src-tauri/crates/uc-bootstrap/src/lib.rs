@@ -22,7 +22,9 @@ pub use task_registry::TaskRegistry;
 
 // Slice 6 / Issue #549 — composition-root analytics 装配入口。
 // 详见模块 doc。`build_core` 在 `wire_dependencies` 之后调用一次。
-pub use analytics::compose_event_context;
+// `build_analytics_sink` 在 `wire_dependencies` 内被 AppDeps 构造点调用，
+// 装配 GatedAnalyticsSink 包装的 dev/release sink。
+pub use analytics::{build_analytics_sink, compose_event_context};
 
 // Re-export primary public items
 pub use assembly::{
@@ -31,7 +33,7 @@ pub use assembly::{
 };
 pub use background_tasks::{spawn_blob_processing_tasks, BlobProcessingPorts};
 pub use builders::{
-    build_cli_context, build_cli_context_with_profile, build_daemon_app, build_slice1_cli_context,
+    build_cli_context, build_cli_context_with_profile, build_cli_wiring_context, build_daemon_app,
     CliBootstrapContext, DaemonBootstrapContext,
 };
 pub use config::load_config;

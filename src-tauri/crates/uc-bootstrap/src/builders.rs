@@ -137,13 +137,14 @@ pub async fn build_cli_context_with_profile(
     })
 }
 
-/// Slice 1 CLI composition-root entry. Returns the full
+/// CLI composition-root entry returning the full
 /// [`crate::assembly::WiredDependencies`] so the caller can hand it to
 /// [`crate::space_setup::build_space_setup_assembly`]; unlike
 /// [`build_cli_context_with_profile`], this does not flatten to `AppDeps`
-/// and therefore preserves access to `trusted_peer_repo` and other Slice
-/// 1-only ports the `SpaceSetupFacade` needs.
-pub async fn build_slice1_cli_context(
+/// and therefore preserves access to `trusted_peer_repo` and other ports
+/// the `SpaceSetupFacade` needs (pairing / roster / send / watch / blob 等
+/// 需要 iroh 网络栈的 CLI 命令走这条路径)。
+pub async fn build_cli_wiring_context(
     log_profile: Option<uc_observability::LogProfile>,
 ) -> anyhow::Result<(AppConfig, crate::assembly::WiredDependencies)> {
     build_core(log_profile).await

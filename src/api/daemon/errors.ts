@@ -13,6 +13,16 @@ export enum DaemonErrorCode {
   UNAUTHORIZED = 'UNAUTHORIZED',
   FORBIDDEN = 'FORBIDDEN',
   NOT_FOUND = 'NOT_FOUND',
+  /**
+   * The requested clipboard payload has been demoted to `Lost` (orphaned bytes
+   * after capture; cache + spool double miss). Daemon returns 410 Gone.
+   * Callers should NOT auto-retry — show the user a clear "content unavailable"
+   * message and offer to delete the entry.
+   *
+   * 剪贴板内容已丢失（capture 后未能落盘到 spool）。Daemon 返回 410 Gone。
+   * 前端不应重试，应提示用户内容不可用并允许删除。
+   */
+  PAYLOAD_UNAVAILABLE = 'PAYLOAD_UNAVAILABLE',
   RATE_LIMITED = 'RATE_LIMITED',
   ENCRYPTION_NOT_READY = 'ENCRYPTION_NOT_READY',
   CONFIRMATION_REQUIRED = 'CONFIRMATION_REQUIRED',
@@ -49,6 +59,8 @@ export function mapStatusToErrorCode(status: number): DaemonErrorCode {
       return DaemonErrorCode.FORBIDDEN
     case 404:
       return DaemonErrorCode.NOT_FOUND
+    case 410:
+      return DaemonErrorCode.PAYLOAD_UNAVAILABLE
     case 429:
       return DaemonErrorCode.RATE_LIMITED
     case 503:

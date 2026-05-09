@@ -158,7 +158,15 @@ export const copyToClipboard = createAsyncThunk(
       // Daemon API: POST /clipboard/restore/:id
       await restoreClipboardEntry(id)
       return { id, success: true }
-    } catch {
+    } catch (error) {
+      // 410 Gone → bytes for this entry are gone (orphaned Staged that has been
+      // demoted to Lost). Don't retry. Surface a distinct rejection so the UI
+      // can render a "content unavailable" message and stop hammering the
+      // daemon endpoint.
+      const { DaemonApiError, DaemonErrorCode } = await import('@/api/daemon/errors')
+      if (error instanceof DaemonApiError && error.code === DaemonErrorCode.PAYLOAD_UNAVAILABLE) {
+        return rejectWithValue('该内容已不可用（数据已丢失），请从历史中删除该条目')
+      }
       return rejectWithValue('复制到剪贴板失败')
     }
   }

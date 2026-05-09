@@ -184,7 +184,7 @@ mod tests {
         PayloadAvailability, PersistedClipboardRepresentation, SelectionPolicyVersion,
     };
     use uc_core::ids::{EntryId, EventId, FormatId, RepresentationId};
-    use uc_core::ports::clipboard::ProcessingUpdateOutcome;
+    use uc_core::ports::clipboard::{PayloadResolveError, ProcessingUpdateOutcome};
     use uc_core::BlobId;
 
     // ── Fake EntryRepo ───────────────────────────────────────────────────
@@ -328,7 +328,7 @@ mod tests {
     // ── Fake Resolver ────────────────────────────────────────────────────
     #[derive(Default)]
     struct FakeResolver {
-        next: Mutex<Option<AnyResult<ResolvedClipboardPayload>>>,
+        next: Mutex<Option<Result<ResolvedClipboardPayload, PayloadResolveError>>>,
     }
     impl FakeResolver {
         fn ok(payload: ResolvedClipboardPayload) -> Self {
@@ -338,7 +338,10 @@ mod tests {
         }
         fn err(msg: &str) -> Self {
             Self {
-                next: Mutex::new(Some(Err(anyhow!("{}", msg.to_string())))),
+                next: Mutex::new(Some(Err(PayloadResolveError::Integrity {
+                    rep_id: RepresentationId::from("test"),
+                    reason: msg.to_string(),
+                }))),
             }
         }
     }
@@ -347,7 +350,7 @@ mod tests {
         async fn resolve(
             &self,
             _representation: &PersistedClipboardRepresentation,
-        ) -> AnyResult<ResolvedClipboardPayload> {
+        ) -> Result<ResolvedClipboardPayload, PayloadResolveError> {
             self.next.lock().unwrap().take().expect("调用多次")
         }
     }

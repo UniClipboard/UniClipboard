@@ -373,7 +373,7 @@ mod tests {
     use uc_core::ports::clipboard::{
         ClipboardEntryRepositoryPort, ClipboardPayloadResolverPort,
         ClipboardRepresentationRepositoryPort, ClipboardSelectionRepositoryPort,
-        ProcessingUpdateOutcome, ResolvedClipboardPayload,
+        PayloadResolveError, ProcessingUpdateOutcome, ResolvedClipboardPayload,
     };
     use uc_core::ports::{EndpointInfoError, LanInterfaceProbeError, PasswordHasherError};
     use uc_core::settings::model::Settings;
@@ -618,7 +618,7 @@ mod tests {
         async fn resolve(
             &self,
             _: &PersistedClipboardRepresentation,
-        ) -> AnyResult<ResolvedClipboardPayload> {
+        ) -> Result<ResolvedClipboardPayload, PayloadResolveError> {
             unimplemented!()
         }
     }

@@ -24,12 +24,15 @@ use tracing::{debug, info, warn};
 use uc_core::{
     blob::ports::BlobReaderPort,
     clipboard::{
-        ClipboardIntegrationMode, ObservedClipboardRepresentation,
+        ClipboardIntegrationMode, ObservedClipboardRepresentation, PayloadAvailability,
         PersistedClipboardRepresentation, SystemClipboardSnapshot,
     },
     ids::{EntryId, RepresentationId},
     ports::{
-        clipboard::{ClipboardPayloadResolverPort, ResolvedClipboardPayload},
+        clipboard::{
+            ClipboardPayloadResolverPort, PayloadResolveError, ProcessingUpdateOutcome,
+            ResolvedClipboardPayload,
+        },
         ClipboardEntryRepositoryPort, ClipboardRepresentationRepositoryPort,
         ClipboardSelectionRepositoryPort,
     },
@@ -190,13 +193,23 @@ impl RestoreClipboardSelectionUseCase {
                         }
                     }
                 }
-                Err(err) if is_paste_rep => {
-                    return Err(anyhow::anyhow!(
-                        "Failed to resolve paste representation {} (state={:?}): {}",
-                        rep.id,
-                        rep.payload_state,
-                        err
-                    ));
+                Err(resolver_err) if is_paste_rep => {
+                    // Active demotion: if the resolver reports an orphaned
+                    // representation (cache+spool double miss), demote it to
+                    // Lost so subsequent restore attempts return a stable
+                    // error instead of repeatedly producing 500s.
+                    if let PayloadResolveError::Orphaned {
+                        rep_id: orphan_id,
+                        state: orphan_state,
+                    } = &resolver_err
+                    {
+                        self.demote_orphaned_to_lost(orphan_id, orphan_state).await;
+                    }
+                    let context = format!(
+                        "Failed to resolve paste representation {} (state={:?})",
+                        rep.id, rep.payload_state
+                    );
+                    return Err(anyhow::Error::new(resolver_err).context(context));
                 }
                 Err(err) => {
                     warn!(
@@ -255,6 +268,70 @@ impl RestoreClipboardSelectionUseCase {
 
     fn is_file_representation(rep: &PersistedClipboardRepresentation) -> bool {
         uc_core::clipboard::is_file_mime_or_format(rep.mime_type.as_ref(), &rep.format_id)
+    }
+
+    /// Demote an orphaned representation (cache+spool double miss) to `Lost`.
+    ///
+    /// Called when the resolver reports `PayloadResolveError::Orphaned` for a
+    /// paste-rep. The representation can no longer be materialized — bytes are
+    /// gone from both cache and spool, and the worker has no source to retry
+    /// from. Marking it `Lost` ensures the next restore attempt routes to the
+    /// `Lost` arm in the resolver and the facade returns a stable
+    /// `PayloadUnavailable` error instead of producing 500s + Sentry events.
+    ///
+    /// This is best-effort: any DB failure is logged but does not propagate,
+    /// because the original resolve error is what the caller actually returns.
+    async fn demote_orphaned_to_lost(
+        &self,
+        rep_id: &RepresentationId,
+        state: &PayloadAvailability,
+    ) {
+        let last_error = "orphaned at restore: bytes lost before blob materialization";
+        match self
+            .representation_repo
+            .update_processing_result(
+                rep_id,
+                &[
+                    PayloadAvailability::Staged,
+                    PayloadAvailability::Processing,
+                    PayloadAvailability::Failed {
+                        last_error: String::new(),
+                    },
+                ],
+                None,
+                PayloadAvailability::Lost,
+                Some(last_error),
+            )
+            .await
+        {
+            Ok(ProcessingUpdateOutcome::Updated(_)) => {
+                info!(
+                    representation_id = %rep_id,
+                    payload_state = ?state,
+                    "Demoted orphaned representation to Lost (cache+spool miss)"
+                );
+            }
+            Ok(ProcessingUpdateOutcome::StateMismatch) => {
+                warn!(
+                    representation_id = %rep_id,
+                    payload_state = ?state,
+                    "Skipped Lost demotion due to state mismatch (likely already updated)"
+                );
+            }
+            Ok(ProcessingUpdateOutcome::NotFound) => {
+                warn!(
+                    representation_id = %rep_id,
+                    "Skipped Lost demotion: representation missing from DB"
+                );
+            }
+            Err(err) => {
+                warn!(
+                    representation_id = %rep_id,
+                    error = %err,
+                    "Failed to demote orphaned representation to Lost"
+                );
+            }
+        }
     }
 
     async fn build_file_snapshot(

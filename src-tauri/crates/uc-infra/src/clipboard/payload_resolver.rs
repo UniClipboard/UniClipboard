@@ -3,7 +3,6 @@
 //! Resolves persisted clipboard representations into usable payloads.
 //! Read-only: returns inline data, blob references, or cache/spool bytes.
 
-use anyhow::Result;
 use async_trait::async_trait;
 use std::sync::Arc;
 use tokio::sync::mpsc;
@@ -11,7 +10,7 @@ use tracing::{debug, error, info_span, warn, Instrument};
 
 use uc_core::clipboard::{PayloadAvailability, PersistedClipboardRepresentation};
 use uc_core::ids::RepresentationId;
-use uc_core::ports::clipboard::ResolvedClipboardPayload;
+use uc_core::ports::clipboard::{PayloadResolveError, ResolvedClipboardPayload};
 use uc_core::ports::ClipboardPayloadResolverPort;
 
 use crate::clipboard::{RepresentationCache, SpoolManager};
@@ -42,7 +41,7 @@ impl ClipboardPayloadResolverPort for ClipboardPayloadResolver {
     async fn resolve(
         &self,
         representation: &PersistedClipboardRepresentation,
-    ) -> Result<ResolvedClipboardPayload> {
+    ) -> Result<ResolvedClipboardPayload, PayloadResolveError> {
         let span = info_span!(
             "infra.payload.resolve",
             representation_id = %representation.id,
@@ -56,10 +55,10 @@ impl ClipboardPayloadResolverPort for ClipboardPayloadResolver {
                     let inline_data = match representation.inline_data.as_ref() {
                         Some(bytes) => bytes,
                         None => {
-                            let err = anyhow::anyhow!(
-                                "payload_state Inline but inline_data is None for {}",
-                                representation.id
-                            );
+                            let err = PayloadResolveError::Integrity {
+                                rep_id: representation.id.clone(),
+                                reason: "payload_state Inline but inline_data is None".to_string(),
+                            };
                             error!(
                                 representation_id = %representation.id,
                                 error = %err,
@@ -78,10 +77,10 @@ impl ClipboardPayloadResolverPort for ClipboardPayloadResolver {
                     let blob_id = match representation.blob_id.as_ref() {
                         Some(id) => id,
                         None => {
-                            let err = anyhow::anyhow!(
-                                "payload_state BlobReady but blob_id is None for {}",
-                                representation.id
-                            );
+                            let err = PayloadResolveError::Integrity {
+                                rep_id: representation.id.clone(),
+                                reason: "payload_state BlobReady but blob_id is None".to_string(),
+                            };
                             error!(
                                 representation_id = %representation.id,
                                 error = %err,
@@ -117,10 +116,10 @@ impl ClipboardPayloadResolverPort for ClipboardPayloadResolver {
                                 payload_state = ?&representation.payload_state,
                                 "Bytes not available in cache or spool"
                             );
-                            Err(anyhow::anyhow!(
-                                "payload bytes not available for {}",
-                                representation.id
-                            ))
+                            Err(PayloadResolveError::Orphaned {
+                                rep_id: representation.id.clone(),
+                                state: representation.payload_state.clone(),
+                            })
                         }
                         Err(err) => {
                             error!(
@@ -128,7 +127,10 @@ impl ClipboardPayloadResolverPort for ClipboardPayloadResolver {
                                 error = %err,
                                 "Failed to read bytes from spool"
                             );
-                            Err(err)
+                            Err(PayloadResolveError::Integrity {
+                                rep_id: representation.id.clone(),
+                                reason: format!("spool read failed: {err}"),
+                            })
                         }
                     }
                 }
@@ -137,11 +139,10 @@ impl ClipboardPayloadResolverPort for ClipboardPayloadResolver {
                         .last_error
                         .as_deref()
                         .unwrap_or("payload marked as lost");
-                    Err(anyhow::anyhow!(
-                        "payload is lost for {}: {}",
-                        representation.id,
-                        details
-                    ))
+                    Err(PayloadResolveError::Lost {
+                        rep_id: representation.id.clone(),
+                        reason: details.to_string(),
+                    })
                 }
             }
         }

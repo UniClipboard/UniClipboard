@@ -43,7 +43,7 @@ use uc_core::mobile_sync::{
 };
 use uc_core::ports::clipboard::{
     ClipboardEntryRepositoryPort, ClipboardPayloadResolverPort,
-    ClipboardRepresentationRepositoryPort, ClipboardSelectionRepositoryPort,
+    ClipboardRepresentationRepositoryPort, ClipboardSelectionRepositoryPort, PayloadResolveError,
     ProcessingUpdateOutcome, ResolvedClipboardPayload,
 };
 use uc_core::ports::{
@@ -329,9 +329,12 @@ struct NoopResolver;
 impl ClipboardPayloadResolverPort for NoopResolver {
     async fn resolve(
         &self,
-        _: &PersistedClipboardRepresentation,
-    ) -> AnyResult<ResolvedClipboardPayload> {
-        Err(anyhow!("noop"))
+        rep: &PersistedClipboardRepresentation,
+    ) -> Result<ResolvedClipboardPayload, PayloadResolveError> {
+        Err(PayloadResolveError::Integrity {
+            rep_id: rep.id.clone(),
+            reason: "noop".to_string(),
+        })
     }
 }
 

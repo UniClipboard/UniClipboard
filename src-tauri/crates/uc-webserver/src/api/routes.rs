@@ -143,17 +143,45 @@ async fn restore_clipboard_entry_handler(
             tracing::info!(entry_id = %entry_id, "daemon restore request succeeded");
             (StatusCode::OK, Json(json!({"success": true}))).into_response()
         }
-        Err(error) => {
-            tracing::warn!(entry_id = %entry_id, error = %error, "daemon restore request failed");
-            match error {
-                ClipboardRestoreError::NotFound => {
-                    (StatusCode::NOT_FOUND, Json(json!({"error": "not_found"}))).into_response()
-                }
-                ClipboardRestoreError::Internal(message) => {
-                    internal_error(anyhow::anyhow!(message)).into_response()
-                }
+        Err(error) => match error {
+            ClipboardRestoreError::NotFound => {
+                tracing::warn!(entry_id = %entry_id, "daemon restore: entry not found");
+                (StatusCode::NOT_FOUND, Json(json!({"error": "not_found"}))).into_response()
             }
-        }
+            ClipboardRestoreError::PayloadUnavailable {
+                entry_id: e_id,
+                rep_id,
+                state,
+            } => {
+                // Known business outcome — content has logically vanished.
+                // Use 410 Gone (resource is no longer available) and log at
+                // warn level so this does NOT escalate to a Sentry error.
+                tracing::warn!(
+                    entry_id = %e_id,
+                    rep_id = %rep_id,
+                    payload_state = %state,
+                    "daemon restore: payload unavailable (orphaned/lost)"
+                );
+                (
+                    StatusCode::GONE,
+                    Json(json!({
+                        "error": "payload_unavailable",
+                        "entry_id": e_id,
+                        "rep_id": rep_id,
+                        "state": state,
+                    })),
+                )
+                    .into_response()
+            }
+            ClipboardRestoreError::Internal(message) => {
+                tracing::error!(
+                    entry_id = %entry_id,
+                    error = %message,
+                    "daemon restore failed (internal)"
+                );
+                internal_error(anyhow::anyhow!(message)).into_response()
+            }
+        },
     }
 }
 

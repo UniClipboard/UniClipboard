@@ -23,7 +23,9 @@ pub use clipboard_entry_repository::ClipboardEntryRepositoryPort;
 pub use clipboard_event_repository::ClipboardEventRepositoryPort;
 pub use clipboard_selection_repository::ClipboardSelectionRepositoryPort;
 pub use local_clipboard::SystemClipboardPort;
-pub use payload_resolver::{ClipboardPayloadResolverPort, ResolvedClipboardPayload};
+pub use payload_resolver::{
+    ClipboardPayloadResolverPort, PayloadResolveError, ResolvedClipboardPayload,
+};
 pub use platform_clipboard::PlatformClipboardPort;
 pub use representation_cache::RepresentationCachePort;
 pub use representation_normalizer::ClipboardRepresentationNormalizerPort;

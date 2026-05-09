@@ -15,9 +15,9 @@ Schema 与隐私契约定稿在：`docs/architecture/telemetry-events.md`。
 
 ## Current Phase
 
-Slice 7a 已完成（commit 5ec23dd1：StdoutSink + 共享 wire payload）。Slice 7b（PosthogSink）等 PostHog Cloud account + project key 到位。
+Slice 8a 已完成（sink 注入 AppDeps + `build_analytics_sink` factory + `GatedAnalyticsSink` wrapper + `compose_event_context` 在 `is_first_run = true` 时 fire `app_first_open`）。
 
-下一步开 Slice 8a（基础设施 + `app_first_open`）。Slice 8 已拆为 8a/b/c/d 四个独立 commit。
+Slice 7b 仍阻塞（PostHog Cloud account + project key）。下一可执行：Slice 8b（pairing 三事件）/ 8c（sync 三事件 + 新增 FirstSyncStatePort）/ 8d（setup 两事件）任选——三者独立、无依赖关系。
 
 ## Phases
 
@@ -102,15 +102,16 @@ Slice 7a 已完成（commit 5ec23dd1：StdoutSink + 共享 wire payload）。Sli
 
 #### Slice 8a: sink 注入 AppDeps + factory + `app_first_open`
 基础设施先行。完成后 dev 跑起来应能在 `RUST_LOG=uc_observability::analytics=debug` 下看到 `app_first_open` 单行 JSON。
-- [ ] `uc-application/src/deps.rs`：AppDeps 加 `analytics: Arc<dyn AnalyticsPort>` 顶层横切字段
-- [ ] `uc-bootstrap/src/analytics.rs`：`build_analytics_sink()` factory
-  - `cfg!(debug_assertions)` + `is_analytics_enabled()` → `StdoutSink`
-  - 否则 → `NoopAnalyticsSink`（release 临时态，直到 Slice 7b 接 PosthogSink）
-- [ ] `compose_event_context` 之后立刻 `analytics.capture(Event::AppFirstOpen)`，仅当 `is_first_run = true` 时
-- [ ] `wire_dependencies` / `build_core` 路径补 sink 装配
-- [ ] gate 运行时切换：`uc-webserver/api/settings.rs` PUT handler 切 gate 时不需要重建 sink（sink 始终在，capture 内部走 NoopAnalyticsSink 时为空操作；StdoutSink 调 gate 由调用方处理）—— 装配点决策：需对齐
-- [ ] 测试：bootstrap test 钉住 sink 类型；`app_first_open` 在 first_run = true / false 两路径行为
-- **Status:** pending
+- [x] `uc-observability/src/analytics/sinks/gated.rs`：新增 `GatedAnalyticsSink`（`capture` 入口统一 gate 守卫）
+- [x] `uc-application/src/deps.rs`：AppDeps 加 `analytics: Arc<dyn AnalyticsPort>` 顶层横切字段
+- [x] `uc-bootstrap/src/analytics.rs`：`build_analytics_sink()` factory
+  - `cfg!(debug_assertions)` → `Gated(StdoutSink)`
+  - 否则 → `Gated(NoopAnalyticsSink)`（release 临时态，直到 Slice 7b 接 PosthogSink）
+- [x] `compose_event_context` 之后立刻 `analytics.capture(Event::AppFirstOpen)`，仅当 `is_first_run = true` 时（幂等门控由 compose 顶部 `global_event_context().is_some()` 守住）
+- [x] `wire_dependencies`（`assembly.rs:879` AppDeps 构造点）补 `analytics: build_analytics_sink()`
+- [x] gate 运行时切换走 `GatedAnalyticsSink` 包装层：sink 装一次永不替换，PUT handler 切 `usage_analytics_enabled` 只动 `analytics_gate` 静态值，wrapper 在 `capture` 入口 atomic load gate 决定是否 forward 给 inner sink。所有真实 sink 实现（StdoutSink、未来 PosthogSink）零 gate 感知
+- [x] 测试：`gated_sink_lifecycle`（gate on/off forward 行为）。`app_first_open` first_run 双路径 integration test 评估为低 ROI 跳过——`load_or_create_ids` 的 first_run 语义已被 10 个 ids tests 守住
+- **Status:** complete
 
 #### Slice 8b: pairing 三事件
 - [ ] `PairingFacade` / `PairingOrchestrator` 在合适生命点调 `analytics.capture`
@@ -179,6 +180,7 @@ Slice 7a 已完成（commit 5ec23dd1：StdoutSink + 共享 wire payload）。Sli
 | context 缺失 → 丢事件 + warn 节流 | 半截事件比缺事件更难调；warn 一次/sink 实例避免启动早期 spam |
 | Slice 7 仅做 StdoutSink，PosthogSink 留 7b | PostHog 账号 + key 是外部 blocker，不阻塞 Slice 8 进度 |
 | Sink 切换走 runtime 而非 cargo feature | 与 telemetry_gate 风格一致；单一二进制可调试 |
+| `usage_analytics_enabled` 运行时门控走 `GatedAnalyticsSink<inner>` wrapper | gate 是横切关注点不该污染 sink 实现；与 telemetry_gate 在 tracing layer 做 filter 的思路对称；sink 装一次永不替换，settings PUT handler 仅改 atomic 静态值 |
 
 ## Errors Encountered
 

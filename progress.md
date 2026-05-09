@@ -328,3 +328,95 @@ src-tauri/crates/uc-observability/src/analytics/
 | Slice 8 | sink 注入 AppDeps + use case 埋点 | 可开始（用 StdoutSink 在 dev 验证 wire） |
 | Slice 9 | 前端 settings UI 拆开关 | 前端工作 |
 | Slice 10 | dashboard + 验收 | 真实数据积累 |
+
+---
+
+## Session 2026-05-09 续 — Slice 8a（sink 注入 AppDeps + `app_first_open`） ✅
+
+**决策对话脉络**：
+1. 用户"继续"——Slice 7a 已完，进入 Slice 8a
+2. 我探查后发现 task_plan.md Slice 8a 子任务里有未决项："gate 运行时切换：装配点决策需对齐"
+3. 我列出 3 个候选并推荐 C，用户选 C：在 `capture` 入口的统一守卫
+4. 顺带：用户让我把 `build_slice1_cli_context` 这个历史命名重命名
+
+### 关键架构决策
+
+| 项 | 决策 | 理由 |
+|---|---|---|
+| gate 运行时切换 | `GatedAnalyticsSink<inner>` wrapper 在 `capture` 入口 atomic 守卫 | gate 是横切关注点，不该污染每个 sink 实现；`StdoutSink` / 未来 `PosthogSink` 都不感知 gate；与 telemetry_gate 在 tracing layer 做 filter 的思路对称 |
+| sink 装配寿命 | 装一次永不替换 | settings PUT handler 翻 `usage_analytics_enabled` 时只动 `analytics_gate` 静态值，sink 本身不重建——0 重建成本 |
+| AppDeps 字段位置 | `analytics: Arc<dyn AnalyticsPort>` 顶层横切字段 | 与 `settings`、`setup_status` 同层；按"横切关注点不归属任何 *Ports bundle"原则放置 |
+| dev/release sink 选择 | `cfg!(debug_assertions)` → `StdoutSink`，否则 → `NoopAnalyticsSink` | dev 跑起来 `RUST_LOG=uc_observability::analytics=debug` 就能看到事件；release 是临时态，等 Slice 7b 接 `PosthogSink` 直接替换 inner，调用方零感知 |
+| `app_first_open` 触发点 | `compose_event_context` 内 `set_global_event_context` 之后 + `if ids.is_first_run` | 幂等门控由 compose 顶部 `global_event_context().is_some()` 守住——GUI 进程内拉起 daemon 时 compose 触达两次，第二次直接 return，不会重复 fire |
+| 重命名 | `build_slice1_cli_context` → `build_cli_wiring_context` | "Slice 1" 是历史迭代编号；新名字与 `wire_dependencies` / `WiredDependencies` 同源，强调返回值是完整 wiring 而非扁平 `AppDeps` |
+
+### 文件改动（6 个文件，~100 行净增）
+
+```
+src-tauri/crates/uc-observability/src/analytics/
+├── mod.rs                                +pub use sinks::GatedAnalyticsSink
+├── sinks/mod.rs                          +pub mod gated; +pub use gated::GatedAnalyticsSink
+└── sinks/gated.rs                        新增 ~100 行（含 1 unit test）
+
+src-tauri/crates/uc-application/src/deps.rs    +use AnalyticsPort; +pub analytics 字段
+
+src-tauri/crates/uc-bootstrap/src/
+├── analytics.rs                          +build_analytics_sink(); +Event imports;
+│                                          compose 内尾部 if ids.is_first_run
+│                                          { deps.analytics.capture(Event::AppFirstOpen) }
+├── assembly.rs                           AppDeps 构造点补 analytics 字段
+├── builders.rs                           build_slice1_cli_context → build_cli_wiring_context
+├── lib.rs                                +pub use analytics::build_analytics_sink;
+│                                          re-export 重命名
+└── non_gui_runtime.rs                    调用点重命名
+```
+
+### 测试结果
+
+| crate | tests passed |
+|---|---|
+| uc-observability (lib) | **53** (新增 1：`gated_sink_lifecycle` 三 case) |
+| uc-bootstrap (lib) | 19（无变化） |
+| uc-bootstrap (e2e: slice1 / slice2_p1 / slice2_p2) | 1 + 2 + 2 |
+| uc-application | 377 |
+| uc-cli | 31 |
+| uc-desktop | 48 |
+| uc-webserver | 39 |
+
+整体 build：`cargo check --workspace` 跨 11 crate 一次通过。
+
+### 跳过的事项
+
+- **bootstrap test 钉住 sink 类型**：`build_analytics_sink` 返回 `Arc<dyn AnalyticsPort>`，trait object 不可下转回具体类型。要测 dev = `StdoutSink` / release = `NoopAnalyticsSink` 必须把 inner 类型暴露出来。`gated_sink_lifecycle` + `stdout_sink_lifecycle` + `payload` 系列已端到端覆盖 wire 形态；factory 本身的 `cfg!` 分支是 trivial 编译期分歧，新增 mock-trait 钉法 ROI 低
+- **`app_first_open` 在 first_run = true / false 两路径行为的 integration test**：评估为低 ROI——`compose_event_context` 的 first-run 分支只是一行 `if ids.is_first_run { deps.analytics.capture(...) }`；要真验证需要构造完整 AppDeps + fake `AnalyticsPort` + 篡改 ids 文件——构造代价 vs 一行代码的覆盖率不划算。`load_or_create_ids` 的 `is_first_run` 语义已被 10 个 ids tests 守住
+
+### 顺带做的事
+
+- **`build_slice1_cli_context` → `build_cli_wiring_context`** 重命名。3 处 .rs 引用全清（builders.rs 定义 / non_gui_runtime.rs 调用 / lib.rs re-export）。`.planning/` 下历史归档不动
+
+## Slice 8a 后状态
+
+| Slice | 内容 | 状态 |
+|---|---|---|
+| schema doc | §1-§11 全章节定稿 | ✅ |
+| Slice 1 | `analytics_gate` 模块 | ✅ |
+| Slice 2 | 事件类型 + AnalyticsPort | ✅ |
+| Slice 3a | ID 持久化纯模块 | ✅ |
+| Slice 4 | factory + 全局 + probe | ✅ |
+| Slice 5 | settings 双开关 + bootstrap gate | ✅ |
+| Slice 6 | bootstrap 拼装 EventContext + build_core async 化 | ✅ |
+| Slice 7a | StdoutSink + 共享 wire 合并 | ✅ |
+| Slice 7b | PosthogSink | 待 PostHog Cloud account + project key |
+| Slice 8a | sink 注入 AppDeps + factory + `app_first_open` + GatedAnalyticsSink | ✅ |
+| Slice 8b | pairing 三事件 | 可开始（PairingFacade 调 `analytics.capture` 即可） |
+| Slice 8c | sync 三事件 + 新增 `FirstSyncStatePort` | 可开始 |
+| Slice 8d | setup 两事件 | 可开始 |
+| Slice 9 | 前端 settings UI 拆开关 | 前端工作 |
+| Slice 10 | dashboard + 验收 | 真实数据积累 |
+
+### 验证 dev 跑起来事件链路
+
+`RUST_LOG=uc_observability::analytics=debug cargo run -p uc-cli -- status`（或 GUI dev build）：
+- 首次：应看到一行 `app_first_open` JSON（含完整 EventContext 字段）
+- 第二次：IDs 已落盘，`is_first_run = false`，不再 fire `app_first_open`
+- 关掉 `usage_analytics_enabled` 后所有事件应被 `GatedAnalyticsSink` 静默吞掉

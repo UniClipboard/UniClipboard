@@ -27,7 +27,7 @@ pub use errors::{
     QueryMigrationProgressError, QuerySetupStateError, RedeemPairingInvitationError,
     ResetSpaceError, SwitchSpaceError, TryResumeSessionError, UnlockSpaceError,
 };
-pub use events::PairingOutcome;
+pub use events::{PairingFailureReason, PairingOutcome};
 pub use facade::SpaceSetupFacade;
 
 // T10:CLI `members` 入口需要 report / error 类型才能展示 probe 摘要;

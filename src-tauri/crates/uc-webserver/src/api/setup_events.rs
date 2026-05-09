@@ -124,11 +124,15 @@ pub fn spawn_pairing_completion_forwarder(
                         );
                     }
                     Ok(PairingOutcome::Failure { reason }) => {
+                        // `Display` of `PairingFailureReason` is the
+                        // stable `snake_case` identifier — same wire
+                        // form as the analytics event so dashboard and
+                        // pairing-completed event payload stay aligned.
                         broadcaster.emit_pairing_completed(
                             sponsor_device_id.clone(),
                             None,
                             false,
-                            Some(reason),
+                            Some(reason.to_string()),
                         );
                     }
                     Err(broadcast::error::RecvError::Lagged(n)) => {
@@ -263,6 +267,7 @@ mod tests {
     mod forwarder {
         use super::*;
         use std::time::Duration;
+        use uc_application::facade::PairingFailureReason;
         use uc_core::ids::DeviceId;
         use uc_core::security::IdentityFingerprint;
 
@@ -325,7 +330,7 @@ mod tests {
 
             outcome_tx
                 .send(PairingOutcome::Failure {
-                    reason: "proof_mismatch".to_string(),
+                    reason: PairingFailureReason::PassphraseMismatch,
                 })
                 .expect("forwarder receiver active");
 
@@ -334,7 +339,9 @@ mod tests {
             assert_eq!(event.payload["sponsorDeviceId"], "sponsor-A");
             assert!(event.payload["joinerDeviceId"].is_null());
             assert_eq!(event.payload["success"], false);
-            assert_eq!(event.payload["reason"], "proof_mismatch");
+            // `Display` produces the snake_case wire form — same identifier
+            // dashboards see in `pairing_failed.failure_reason`.
+            assert_eq!(event.payload["reason"], "passphrase_mismatch");
 
             cancel.cancel();
             let _ = handle.await;
@@ -401,7 +408,7 @@ mod tests {
             // Block the forwarder from draining for a moment; pile up sends.
             for _ in 0..3 {
                 let _ = outcome_tx.send(PairingOutcome::Failure {
-                    reason: "noise".to_string(),
+                    reason: PairingFailureReason::Internal,
                 });
             }
             // The forwarder may have observed Lagged on the first recv.

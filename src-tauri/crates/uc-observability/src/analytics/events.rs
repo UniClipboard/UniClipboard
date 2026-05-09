@@ -244,6 +244,10 @@ pub enum FailureReason {
 /// 与 `RedeemPairingInvitationError` 一一映射，使 funnel 分析能直接定位漏点
 /// 的具体业务原因。`Internal` 占比 > 5% 同样视为架构债务（持久化层不稳定）。
 /// schema doc §7.4。
+///
+/// `Display` 输出与 `Serialize` 的 wire 形态严格一致（`snake_case`）——
+/// `PairingOutcome::Failure` 字段类型用此 enum，下游 subscriber（CLI / GUI）
+/// 直接 `format!` 即可拿到稳定标识符。
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
 #[serde(rename_all = "snake_case")]
 pub enum PairingFailureReason {
@@ -261,6 +265,34 @@ pub enum PairingFailureReason {
     Timeout,
     ConnectionLost,
     Internal,
+}
+
+impl PairingFailureReason {
+    /// 稳定 `snake_case` 标识符——与 `Serialize` wire 形态等价。
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::InvitationNotFound => "invitation_not_found",
+            Self::InvitationExpired => "invitation_expired",
+            Self::SponsorUnreachable => "sponsor_unreachable",
+            Self::ServiceUnavailable => "service_unavailable",
+            Self::PassphraseMismatch => "passphrase_mismatch",
+            Self::CorruptedKeyMaterial => "corrupted_key_material",
+            Self::DeviceNameRequired => "device_name_required",
+            Self::SponsorRejectedInvitation => "sponsor_rejected_invitation",
+            Self::SponsorDeclined => "sponsor_declined",
+            Self::SponsorTimedOut => "sponsor_timed_out",
+            Self::SponsorInternal => "sponsor_internal",
+            Self::Timeout => "timeout",
+            Self::ConnectionLost => "connection_lost",
+            Self::Internal => "internal",
+        }
+    }
+}
+
+impl std::fmt::Display for PairingFailureReason {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
 }
 
 /// 配对方式。

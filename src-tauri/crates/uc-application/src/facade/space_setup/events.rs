@@ -11,6 +11,8 @@
 use uc_core::ids::DeviceId;
 use uc_core::security::IdentityFingerprint;
 
+pub use uc_observability::analytics::PairingFailureReason;
+
 /// Terminal result of a sponsor-side inbound pairing handshake.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PairingOutcome {
@@ -22,7 +24,8 @@ pub enum PairingOutcome {
         peer_fingerprint: IdentityFingerprint,
     },
     /// Handshake started (invitation matched) but failed before reaching
-    /// a committed confirm. `reason` is a human-readable summary suitable
-    /// for display and logging — not a structured error variant.
-    Failure { reason: String },
+    /// a committed confirm. `reason` is a structured `PairingFailureReason`
+    /// — `Display` produces the stable `snake_case` identifier suitable
+    /// for both human-facing display and dashboard funnel matching.
+    Failure { reason: PairingFailureReason },
 }

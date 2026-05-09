@@ -556,7 +556,12 @@ const ClipboardContent: React.FC<ClipboardContentProps> = ({
       } catch (err) {
         log.error({ err }, 'Copy failed')
         toast.error(t('clipboard.errors.copyFailed'), {
-          description: err instanceof Error ? err.message : t('clipboard.errors.unknown'),
+          description:
+            typeof err === 'string'
+              ? err
+              : err instanceof Error
+                ? err.message
+                : t('clipboard.errors.unknown'),
         })
         return false
       }

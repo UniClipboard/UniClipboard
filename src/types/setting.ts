@@ -14,13 +14,28 @@ export type UpdateChannel = 'stable' | 'alpha' | 'beta' | 'rc'
 
 /**
  * 通用设置 - 对应 Rust GeneralSettings
+ *
+ * # themeColor 字段拆分（v0.7+）
+ * `themeColor` 为旧版"统一主题预设"字段,新前端不再写入,但读取时仍作为
+ * `themeColorLight` / `themeColorDark` 都为 null 时的回退,以保留 v0.7
+ * 之前持久化的偏好。
  */
 export interface GeneralSettings {
   autoStart: boolean
   silentStart: boolean
   autoCheckUpdate: boolean
   theme: Theme
+  /** 旧版统一主题预设字段(读取时作为回退,新代码不写入)。 */
   themeColor: string | null
+  /** Light 模式下的主题预设名,如 `"zinc"`、`"catppuccin"`。 */
+  themeColorLight: string | null
+  /** Dark 模式下的主题预设名,如 `"zinc"`、`"catppuccin"`。 */
+  themeColorDark: string | null
+  /** Light 模式下用户对预设 token 的自定义覆盖（key = token 名, value = oklch 字符串）。
+   *  允许的 key:`primary` | `background` | `foreground` | `border`。 */
+  themeOverridesLight: Record<string, string>
+  /** Dark 模式下用户对预设 token 的自定义覆盖（语义同 light）。 */
+  themeOverridesDark: Record<string, string>
   language: string | null
   deviceName: string | null
   updateChannel?: UpdateChannel | null

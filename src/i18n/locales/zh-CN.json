@@ -97,6 +97,37 @@
         "themeColor": {
           "title": "主题色"
         },
+        "themePreview": {
+          "title": "主题",
+          "lightLabel": "浅色",
+          "darkLabel": "深色",
+          "followSystem": "跟随系统",
+          "setAsLight": "切换到浅色",
+          "setAsDark": "切换到深色",
+          "currentLight": "当前浅色",
+          "currentDark": "当前深色"
+        },
+        "lightTheme": {
+          "title": "浅色主题",
+          "preset": "预设",
+          "accent": "强调色",
+          "background": "背景色",
+          "foreground": "前景色",
+          "border": "边框色"
+        },
+        "darkTheme": {
+          "title": "深色主题",
+          "preset": "预设",
+          "accent": "强调色",
+          "background": "背景色",
+          "foreground": "前景色",
+          "border": "边框色"
+        },
+        "tokenPicker": {
+          "openPicker": "选取颜色",
+          "reset": "恢复为预设",
+          "modified": "已自定义"
+        },
         "zoom": {
           "title": "界面缩放",
           "description": "缩放会同时影响主窗口和快捷面板，也会和快捷键保持同步。",

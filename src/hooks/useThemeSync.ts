@@ -3,7 +3,7 @@ import { useEffect, useRef } from 'react'
 import { getSettings } from '@/api/daemon'
 import { createLogger } from '@/lib/logger'
 import { parseSettingsChangedPayload, SETTINGS_CHANGED_EVENT } from '@/lib/settings-events'
-import { applyThemePreset, DEFAULT_THEME_COLOR } from '@/lib/theme-engine'
+import { applyThemeOverrides, applyThemePreset, DEFAULT_THEME_COLOR } from '@/lib/theme-engine'
 import type { ThemeMode } from '@/lib/theme-engine'
 import type { SettingChangedEvent } from '@/types/events'
 import type { Settings } from '@/types/setting'
@@ -18,12 +18,20 @@ function resolveThemeMode(theme: string | undefined | null): ThemeMode {
 function applyFullTheme(settings: Settings | null): void {
   const root = document.documentElement
   const theme = settings?.general?.theme
-  const themeColor = settings?.general?.themeColor || DEFAULT_THEME_COLOR
   const resolvedMode = resolveThemeMode(theme)
+  // light / dark 各自的预设；缺失时回退到旧 themeColor,再回退到引擎默认。
+  const split =
+    resolvedMode === 'dark' ? settings?.general?.themeColorDark : settings?.general?.themeColorLight
+  const themeColor = split || settings?.general?.themeColor || DEFAULT_THEME_COLOR
+  const overrides =
+    resolvedMode === 'dark'
+      ? settings?.general?.themeOverridesDark
+      : settings?.general?.themeOverridesLight
 
   root.classList.remove('light', 'dark')
   root.classList.add(resolvedMode)
   applyThemePreset(themeColor, resolvedMode, root)
+  applyThemeOverrides(overrides ?? null, root)
 }
 
 export function useThemeSync(): void {

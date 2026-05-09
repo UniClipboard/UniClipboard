@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::time::Duration;
 
 use uc_core::settings::model as core;
@@ -82,7 +82,17 @@ pub struct GeneralSettingsView {
     pub silent_start: bool,
     pub auto_check_update: bool,
     pub theme: ThemeView,
+    /// 旧版"统一主题预设"字段。新 UI 仅在 light/dark 字段都为 None 时回退。
+    /// 删除计划见 `uc_core::settings::model::GeneralSettings::theme_color`。
     pub theme_color: Option<String>,
+    /// Light 模式下的主题预设名（如 `"zinc"`）；None 时回退到 `theme_color`。
+    pub theme_color_light: Option<String>,
+    /// Dark 模式下的主题预设名（如 `"zinc"`）；None 时回退到 `theme_color`。
+    pub theme_color_dark: Option<String>,
+    /// Light 模式下用户对预设 token 的自定义覆盖（key = token 名, value = oklch 字符串）。
+    pub theme_overrides_light: BTreeMap<String, String>,
+    /// Dark 模式下用户对预设 token 的自定义覆盖（语义同 light）。
+    pub theme_overrides_dark: BTreeMap<String, String>,
     pub language: Option<String>,
     pub device_name: Option<String>,
     pub update_channel: Option<UpdateChannelView>,
@@ -158,7 +168,17 @@ pub struct GeneralSettingsPatch {
     pub silent_start: Option<bool>,
     pub auto_check_update: Option<bool>,
     pub theme: Option<ThemeView>,
+    /// 旧版"统一主题预设"字段。新 UI 不再写入,但仍保留 patch 入口便于
+    /// 显式清空（`Some(None)`）旧字段或在迁移工具里使用。
     pub theme_color: Option<Option<String>>,
+    /// Light 模式下的主题预设名 patch；`Some(None)` = 显式清空,`None` = 不修改。
+    pub theme_color_light: Option<Option<String>>,
+    /// Dark 模式下的主题预设名 patch；`Some(None)` = 显式清空,`None` = 不修改。
+    pub theme_color_dark: Option<Option<String>>,
+    /// Light 模式 overrides patch。`Some(map)` 整体替换；`None` 表示不修改。
+    pub theme_overrides_light: Option<BTreeMap<String, String>>,
+    /// Dark 模式 overrides patch（语义同 light）。
+    pub theme_overrides_dark: Option<BTreeMap<String, String>>,
     pub language: Option<Option<String>>,
     pub device_name: Option<Option<String>>,
     pub update_channel: Option<Option<UpdateChannelView>>,
@@ -411,6 +431,10 @@ impl From<core::Settings> for SettingsView {
                 auto_check_update: value.general.auto_check_update,
                 theme: value.general.theme.into(),
                 theme_color: value.general.theme_color,
+                theme_color_light: value.general.theme_color_light,
+                theme_color_dark: value.general.theme_color_dark,
+                theme_overrides_light: value.general.theme_overrides_light,
+                theme_overrides_dark: value.general.theme_overrides_dark,
                 language: value.general.language,
                 device_name: value.general.device_name,
                 update_channel: value.general.update_channel.map(Into::into),
@@ -484,6 +508,18 @@ pub(crate) fn apply_settings_patch(
         }
         if let Some(v) = general.theme_color {
             existing.general.theme_color = v;
+        }
+        if let Some(v) = general.theme_color_light {
+            existing.general.theme_color_light = v;
+        }
+        if let Some(v) = general.theme_color_dark {
+            existing.general.theme_color_dark = v;
+        }
+        if let Some(v) = general.theme_overrides_light {
+            existing.general.theme_overrides_light = v;
+        }
+        if let Some(v) = general.theme_overrides_dark {
+            existing.general.theme_overrides_dark = v;
         }
         if let Some(v) = general.language {
             existing.general.language = v;

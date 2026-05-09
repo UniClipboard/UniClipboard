@@ -7,7 +7,7 @@ import { connectDaemonWs } from '@/lib/daemon-ws-bootstrap'
 import { createLogger } from '@/lib/logger'
 import { emitSettingsChanged } from '@/lib/settings-events'
 import { invokeWithTrace } from '@/lib/tauri-command'
-import { applyThemePreset } from '@/lib/theme-engine'
+import { applyThemeOverrides, applyThemePreset } from '@/lib/theme-engine'
 import { startThemeTransition } from '@/lib/theme-transition'
 import { setFrontendSentryEnabled } from '@/observability/sentry'
 import type { SettingContextType, Settings } from '@/types/setting'
@@ -184,9 +184,16 @@ export const SettingProvider: React.FC<SettingProviderProps> = ({ children }) =>
 
   // Note: Cross-window settings sync via daemon WebSocket events (future enhancement)
 
-  // 监听主题变化并应用
-  const prevThemeRef = React.useRef<string | undefined>()
-  const prevThemeColorRef = React.useRef<string | undefined>()
+  // 监听主题变化并应用。
+  //
+  // # 抖动防御
+  // transition reveal 动画只在**实际渲染结果**变化时触发,而不是 raw theme
+  // 字段变化时触发。例如用户切换 Follow system 开关:`theme: dark → system`
+  // 但当前媒体查询恰好也是 dark → resolved mode 不变 → 颜色也不变,这时
+  // 不应该跑 500ms 的圆形 reveal,否则就是无意义的"闪一下"。
+  const prevResolvedModeRef = React.useRef<'light' | 'dark' | undefined>()
+  const prevAppliedColorRef = React.useRef<string | undefined>()
+  const prevAppliedOverridesRef = React.useRef<string | undefined>()
   const hasAppliedOnceRef = React.useRef(false)
 
   useEffect(() => {
@@ -197,37 +204,48 @@ export const SettingProvider: React.FC<SettingProviderProps> = ({ children }) =>
     const root = window.document.documentElement
     const systemThemeMedia = window.matchMedia('(prefers-color-scheme: dark)')
 
-    const applyTheme = () => {
-      const theme = setting.general.theme
-      const themeColor = setting.general.themeColor || DEFAULT_THEME_COLOR
-
-      // 1. Apply Mode (Light/Dark)
-      root.classList.remove('light', 'dark')
-
-      let resolvedMode: 'light' | 'dark' = 'light'
-
-      if (theme === 'system' || !theme) {
-        const systemTheme = systemThemeMedia.matches ? 'dark' : 'light'
-        resolvedMode = systemTheme
-        root.classList.add(systemTheme)
-      } else {
-        resolvedMode = theme
-        root.classList.add(theme)
-      }
-
-      // 2. Apply Theme Color tokens for the resolved mode
-      applyThemePreset(themeColor, resolvedMode, root)
+    // 选取当前 mode 应用的预设：优先 light/dark 拆分字段,缺失时回退到旧
+    // themeColor 字段（v0.7 之前持久化的偏好）,再缺失时使用引擎默认。
+    const resolveThemeColor = (mode: 'light' | 'dark'): string => {
+      const split =
+        mode === 'dark' ? setting.general.themeColorDark : setting.general.themeColorLight
+      return split || setting.general.themeColor || DEFAULT_THEME_COLOR
     }
 
-    // Use view transition animation only for user-initiated theme changes (not initial load)
-    const hasChanged =
-      prevThemeRef.current !== setting.general.theme ||
-      prevThemeColorRef.current !== (setting.general.themeColor || DEFAULT_THEME_COLOR)
+    const resolveOverrides = (mode: 'light' | 'dark'): Record<string, string> => {
+      return mode === 'dark'
+        ? setting.general.themeOverridesDark || {}
+        : setting.general.themeOverridesLight || {}
+    }
 
-    prevThemeRef.current = setting.general.theme
-    prevThemeColorRef.current = setting.general.themeColor || DEFAULT_THEME_COLOR
+    const resolveMode = (): 'light' | 'dark' => {
+      const theme = setting.general.theme
+      if (theme === 'light' || theme === 'dark') return theme
+      return systemThemeMedia.matches ? 'dark' : 'light'
+    }
 
-    if (!hasAppliedOnceRef.current || !hasChanged) {
+    const applyTheme = () => {
+      const resolvedMode = resolveMode()
+      root.classList.remove('light', 'dark')
+      root.classList.add(resolvedMode)
+      applyThemePreset(resolveThemeColor(resolvedMode), resolvedMode, root)
+      applyThemeOverrides(resolveOverrides(resolvedMode), root)
+    }
+
+    // 比较"实际生效的 mode + color + overrides"是否变化,而不是 raw theme 字段。
+    const nextResolvedMode = resolveMode()
+    const nextAppliedColor = resolveThemeColor(nextResolvedMode)
+    const nextOverridesKey = JSON.stringify(resolveOverrides(nextResolvedMode))
+    const hasVisualChange =
+      prevResolvedModeRef.current !== nextResolvedMode ||
+      prevAppliedColorRef.current !== nextAppliedColor ||
+      prevAppliedOverridesRef.current !== nextOverridesKey
+
+    prevResolvedModeRef.current = nextResolvedMode
+    prevAppliedColorRef.current = nextAppliedColor
+    prevAppliedOverridesRef.current = nextOverridesKey
+
+    if (!hasAppliedOnceRef.current || !hasVisualChange) {
       hasAppliedOnceRef.current = true
       applyTheme()
     } else {
@@ -245,7 +263,14 @@ export const SettingProvider: React.FC<SettingProviderProps> = ({ children }) =>
     return () => {
       systemThemeMedia.removeEventListener('change', handleSystemThemeChange)
     }
-  }, [setting?.general.theme, setting?.general.themeColor])
+  }, [
+    setting?.general.theme,
+    setting?.general.themeColor,
+    setting?.general.themeColorLight,
+    setting?.general.themeColorDark,
+    setting?.general.themeOverridesLight,
+    setting?.general.themeOverridesDark,
+  ])
 
   // 监听语言变化并应用
   useEffect(() => {

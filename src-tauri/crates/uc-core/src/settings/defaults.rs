@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::time::Duration;
 
 use super::model::*;
@@ -54,6 +54,10 @@ impl Default for GeneralSettings {
             auto_check_update: true,
             theme: Theme::System,
             theme_color: None,
+            theme_color_light: None,
+            theme_color_dark: None,
+            theme_overrides_light: BTreeMap::new(),
+            theme_overrides_dark: BTreeMap::new(),
             device_name: None,
             language: None,
             update_channel: None,
@@ -551,5 +555,89 @@ mod tests {
         assert_eq!(s.file_sync.file_cache_quota_per_device, 4096);
         assert_eq!(s.file_sync.file_retention_hours, 1);
         assert!(!s.file_sync.file_auto_cleanup);
+    }
+
+    /// theme_color 拆分后的回退语义：旧 JSON 只有 `theme_color: "catppuccin"`,
+    /// 新代码 read 出 light/dark 都应回退到 catppuccin。
+    #[test]
+    fn legacy_theme_color_falls_back_to_both_modes() {
+        let json = r#"{ "general": { "auto_start": false, "silent_start": false, "auto_check_update": true, "theme": "system", "theme_color": "catppuccin" } }"#;
+        let s: Settings = serde_json::from_str(json).expect("parse legacy theme_color");
+        assert_eq!(s.general.theme_color.as_deref(), Some("catppuccin"));
+        assert!(s.general.theme_color_light.is_none());
+        assert!(s.general.theme_color_dark.is_none());
+        assert_eq!(s.general.effective_theme_color_light(), Some("catppuccin"));
+        assert_eq!(s.general.effective_theme_color_dark(), Some("catppuccin"));
+    }
+
+    /// 新 JSON 同时写入 light/dark 时取自身值,不再回退到 legacy。
+    #[test]
+    fn split_theme_color_overrides_legacy_field() {
+        let json = r#"{
+            "general": {
+                "auto_start": false,
+                "silent_start": false,
+                "auto_check_update": true,
+                "theme": "system",
+                "theme_color": "catppuccin",
+                "theme_color_light": "zinc",
+                "theme_color_dark": "claude"
+            }
+        }"#;
+        let s: Settings = serde_json::from_str(json).expect("parse split theme_color");
+        assert_eq!(s.general.effective_theme_color_light(), Some("zinc"));
+        assert_eq!(s.general.effective_theme_color_dark(), Some("claude"));
+    }
+
+    /// 完全没配置任何 theme_color 时,回退为 None,由 UI 端引擎兜底。
+    #[test]
+    fn missing_all_theme_color_fields_resolves_to_none() {
+        let json = r#"{ "general": { "auto_start": false, "silent_start": false, "auto_check_update": true, "theme": "system" } }"#;
+        let s: Settings = serde_json::from_str(json).expect("parse no theme_color");
+        assert!(s.general.effective_theme_color_light().is_none());
+        assert!(s.general.effective_theme_color_dark().is_none());
+    }
+
+    /// 老 settings.json 缺 theme_overrides_* 字段时回填为空 map。
+    #[test]
+    fn legacy_settings_without_theme_overrides_fields_default_empty() {
+        let json = r#"{ "general": { "auto_start": false, "silent_start": false, "auto_check_update": true, "theme": "system" } }"#;
+        let s: Settings = serde_json::from_str(json).expect("parse legacy");
+        assert!(s.general.theme_overrides_light.is_empty());
+        assert!(s.general.theme_overrides_dark.is_empty());
+    }
+
+    /// theme_overrides_* 显式带值时序列化往返不丢字段。
+    #[test]
+    fn theme_overrides_round_trip() {
+        let json = r#"{
+            "general": {
+                "auto_start": false,
+                "silent_start": false,
+                "auto_check_update": true,
+                "theme": "system",
+                "theme_overrides_light": { "primary": "oklch(0.5 0.2 270)" },
+                "theme_overrides_dark": {
+                    "primary": "oklch(0.6 0.15 30)",
+                    "background": "oklch(0.18 0.02 280)"
+                }
+            }
+        }"#;
+        let s: Settings = serde_json::from_str(json).expect("parse overrides");
+        assert_eq!(
+            s.general
+                .theme_overrides_light
+                .get("primary")
+                .map(String::as_str),
+            Some("oklch(0.5 0.2 270)")
+        );
+        assert_eq!(s.general.theme_overrides_dark.len(), 2);
+        assert_eq!(
+            s.general
+                .theme_overrides_dark
+                .get("background")
+                .map(String::as_str),
+            Some("oklch(0.18 0.02 280)")
+        );
     }
 }

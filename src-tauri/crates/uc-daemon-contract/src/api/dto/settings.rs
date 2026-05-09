@@ -33,7 +33,26 @@ pub struct GeneralSettingsDto {
     pub silent_start: bool,
     pub auto_check_update: bool,
     pub theme: ThemeDto,
+    /// 旧版"统一主题预设"字段（v0.7 之前唯一字段）。新前端不再写入,
+    /// 但 wire 仍透传以便老 daemon ↔ 新前端 / 新 daemon ↔ 老前端兼容。
+    /// 删除计划见 `uc_core::settings::model::GeneralSettings::theme_color`。
+    #[serde(default)]
     pub theme_color: Option<String>,
+    /// Light 模式下的主题预设名（如 `"zinc"`）；为 `None` 时 daemon 端
+    /// 将回退到 `theme_color`。wire 字段名 `themeColorLight`（camelCase）。
+    #[serde(default)]
+    pub theme_color_light: Option<String>,
+    /// Dark 模式下的主题预设名（如 `"zinc"`）；为 `None` 时 daemon 端
+    /// 将回退到 `theme_color`。wire 字段名 `themeColorDark`（camelCase）。
+    #[serde(default)]
+    pub theme_color_dark: Option<String>,
+    /// Light 模式下用户对预设 token 的自定义覆盖（`{ tokenName: oklchString }`）。
+    /// 为空 map 表示完全跟随 preset。wire 字段名 `themeOverridesLight`。
+    #[serde(default)]
+    pub theme_overrides_light: std::collections::BTreeMap<String, String>,
+    /// Dark 模式下用户对预设 token 的自定义覆盖（语义同 light）。wire 字段名 `themeOverridesDark`。
+    #[serde(default)]
+    pub theme_overrides_dark: std::collections::BTreeMap<String, String>,
     pub language: Option<String>,
     pub device_name: Option<String>,
     /// Update channel preference. `None` means auto-detect from version string;
@@ -241,7 +260,21 @@ pub struct GeneralSettingsPatchDto {
     pub silent_start: Option<bool>,
     pub auto_check_update: Option<bool>,
     pub theme: Option<ThemeDto>,
+    /// 旧版"统一主题预设"patch 字段。`Some(None)` = 显式清空,`None` = 不修改。
+    #[serde(default)]
     pub theme_color: Option<Option<String>>,
+    /// Light 模式预设 patch。`Some(None)` = 显式清空（回退到 `theme_color` 或引擎默认）。
+    #[serde(default)]
+    pub theme_color_light: Option<Option<String>>,
+    /// Dark 模式预设 patch。`Some(None)` = 显式清空（回退到 `theme_color` 或引擎默认）。
+    #[serde(default)]
+    pub theme_color_dark: Option<Option<String>>,
+    /// Light 模式 overrides patch。`Some(map)` 整体替换；`None` 表示不修改。
+    #[serde(default)]
+    pub theme_overrides_light: Option<std::collections::BTreeMap<String, String>>,
+    /// Dark 模式 overrides patch（语义同 light）。
+    #[serde(default)]
+    pub theme_overrides_dark: Option<std::collections::BTreeMap<String, String>>,
     pub language: Option<Option<String>>,
     pub device_name: Option<Option<String>>,
     pub update_channel: Option<Option<UpdateChannelDto>>,
@@ -408,6 +441,10 @@ impl From<core::GeneralSettings> for GeneralSettingsDto {
             auto_check_update: value.auto_check_update,
             theme: value.theme.into(),
             theme_color: value.theme_color,
+            theme_color_light: value.theme_color_light,
+            theme_color_dark: value.theme_color_dark,
+            theme_overrides_light: value.theme_overrides_light,
+            theme_overrides_dark: value.theme_overrides_dark,
             language: value.language,
             device_name: value.device_name,
             update_channel: value.update_channel.map(Into::into),
@@ -707,5 +744,140 @@ mod network_dto_tests {
         assert!(dto.general.is_none());
         assert!(dto.network.is_none());
         assert!(dto.file_sync.is_none());
+    }
+
+    /// 老 wire 只带 themeColor 字段时,新 DTO 反序列化后两个新字段为 None,
+    /// 不要回写任何"猜测值",回退由 daemon 端 effective_theme_color_* 处理。
+    #[test]
+    fn general_dto_legacy_theme_color_only_keeps_split_fields_none() {
+        let json = r#"{
+            "autoStart": false,
+            "silentStart": false,
+            "autoCheckUpdate": true,
+            "theme": "system",
+            "themeColor": "catppuccin",
+            "language": null,
+            "deviceName": null,
+            "telemetryEnabled": true
+        }"#;
+        let dto: GeneralSettingsDto = serde_json::from_str(json).expect("deserialize legacy wire");
+        assert_eq!(dto.theme_color.as_deref(), Some("catppuccin"));
+        assert!(dto.theme_color_light.is_none());
+        assert!(dto.theme_color_dark.is_none());
+    }
+
+    /// 新 wire 带 themeColorLight / themeColorDark 时,字段透传不变。
+    #[test]
+    fn general_dto_new_wire_round_trips_split_fields() {
+        let json = r#"{
+            "autoStart": false,
+            "silentStart": false,
+            "autoCheckUpdate": true,
+            "theme": "system",
+            "themeColor": null,
+            "themeColorLight": "zinc",
+            "themeColorDark": "claude",
+            "language": null,
+            "deviceName": null,
+            "telemetryEnabled": true
+        }"#;
+        let dto: GeneralSettingsDto = serde_json::from_str(json).expect("deserialize new wire");
+        assert_eq!(dto.theme_color_light.as_deref(), Some("zinc"));
+        assert_eq!(dto.theme_color_dark.as_deref(), Some("claude"));
+        // 序列化回 wire 仍是 camelCase 命名
+        let json_out = serde_json::to_string(&dto).expect("serialize");
+        assert!(json_out.contains(r#""themeColorLight":"zinc""#));
+        assert!(json_out.contains(r#""themeColorDark":"claude""#));
+    }
+
+    /// patch DTO 新字段双向覆盖语义。
+    #[test]
+    fn general_patch_dto_split_fields_round_trip() {
+        let json = r#"{ "themeColorLight": "zinc", "themeColorDark": "claude" }"#;
+        let dto: GeneralSettingsPatchDto = serde_json::from_str(json).expect("deserialize patch");
+        assert_eq!(dto.theme_color_light, Some(Some("zinc".to_string())));
+        assert_eq!(dto.theme_color_dark, Some(Some("claude".to_string())));
+    }
+
+    /// patch DTO 缺字段时所有 split 字段都是 `None`(不修改)。
+    ///
+    /// 备注:wire 上的 JSON `null` 在默认 serde 下也会被解析为外层 `None`,
+    /// 因此前端无法通过 wire 传 `Some(None)`("显式清空")语义;清空只能由
+    /// daemon 内部 patch 调用产出。这是历史 `theme_color` 字段的既有约束,
+    /// 拆分后的两个字段保持一致行为。
+    #[test]
+    fn general_patch_dto_missing_fields_means_no_change() {
+        let json = r#"{}"#;
+        let dto: GeneralSettingsPatchDto =
+            serde_json::from_str(json).expect("deserialize empty patch");
+        assert!(dto.theme_color.is_none());
+        assert!(dto.theme_color_light.is_none());
+        assert!(dto.theme_color_dark.is_none());
+        assert!(dto.theme_overrides_light.is_none());
+        assert!(dto.theme_overrides_dark.is_none());
+    }
+
+    /// 老 wire 不带 themeOverrides* 字段时 DTO 反序列化默认空 map。
+    #[test]
+    fn general_dto_legacy_wire_without_overrides_defaults_empty_map() {
+        let json = r#"{
+            "autoStart": false,
+            "silentStart": false,
+            "autoCheckUpdate": true,
+            "theme": "system",
+            "themeColor": null,
+            "language": null,
+            "deviceName": null,
+            "telemetryEnabled": true
+        }"#;
+        let dto: GeneralSettingsDto = serde_json::from_str(json).expect("deserialize legacy wire");
+        assert!(dto.theme_overrides_light.is_empty());
+        assert!(dto.theme_overrides_dark.is_empty());
+    }
+
+    /// 新 wire 带 overrides 时 round-trip 正确。
+    #[test]
+    fn general_dto_overrides_round_trip_camel_case() {
+        let json = r#"{
+            "autoStart": false,
+            "silentStart": false,
+            "autoCheckUpdate": true,
+            "theme": "system",
+            "themeColor": null,
+            "themeOverridesLight": { "primary": "oklch(0.5 0.2 270)" },
+            "themeOverridesDark": { "background": "oklch(0.18 0.02 280)" },
+            "language": null,
+            "deviceName": null,
+            "telemetryEnabled": true
+        }"#;
+        let dto: GeneralSettingsDto = serde_json::from_str(json).expect("deserialize new wire");
+        assert_eq!(
+            dto.theme_overrides_light.get("primary").map(String::as_str),
+            Some("oklch(0.5 0.2 270)")
+        );
+        assert_eq!(
+            dto.theme_overrides_dark
+                .get("background")
+                .map(String::as_str),
+            Some("oklch(0.18 0.02 280)")
+        );
+
+        let out = serde_json::to_string(&dto).expect("serialize");
+        assert!(out.contains(r#""themeOverridesLight":{"primary":"oklch(0.5 0.2 270)"}"#));
+        assert!(out.contains(r#""themeOverridesDark":{"background":"oklch(0.18 0.02 280)"}"#));
+    }
+
+    /// patch DTO 显式带 overrides map 时 round-trip 正确,清空（空 map）也保留。
+    #[test]
+    fn general_patch_dto_overrides_round_trip() {
+        let json = r#"{ "themeOverridesLight": { "primary": "oklch(0.5 0.2 270)" }, "themeOverridesDark": {} }"#;
+        let dto: GeneralSettingsPatchDto = serde_json::from_str(json).expect("deserialize patch");
+        let light = dto.theme_overrides_light.expect("light Some");
+        assert_eq!(
+            light.get("primary").map(String::as_str),
+            Some("oklch(0.5 0.2 270)")
+        );
+        let dark = dto.theme_overrides_dark.expect("dark Some");
+        assert!(dark.is_empty(), "explicit empty map preserved");
     }
 }

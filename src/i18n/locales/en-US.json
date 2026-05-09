@@ -97,6 +97,37 @@
         "themeColor": {
           "title": "Theme color"
         },
+        "themePreview": {
+          "title": "Theme",
+          "lightLabel": "Light",
+          "darkLabel": "Dark",
+          "followSystem": "Follow system",
+          "setAsLight": "Switch to light",
+          "setAsDark": "Switch to dark",
+          "currentLight": "Light",
+          "currentDark": "Dark"
+        },
+        "lightTheme": {
+          "title": "Light theme",
+          "preset": "Preset",
+          "accent": "Accent",
+          "background": "Background",
+          "foreground": "Foreground",
+          "border": "Border"
+        },
+        "darkTheme": {
+          "title": "Dark theme",
+          "preset": "Preset",
+          "accent": "Accent",
+          "background": "Background",
+          "foreground": "Foreground",
+          "border": "Border"
+        },
+        "tokenPicker": {
+          "openPicker": "Pick color",
+          "reset": "Reset to preset",
+          "modified": "Custom"
+        },
         "zoom": {
           "title": "Interface Scale",
           "description": "Scale applies to both the main window and quick panel, and stays in sync with the shortcuts.",

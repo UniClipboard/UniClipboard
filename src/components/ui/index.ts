@@ -38,3 +38,4 @@ export {
 } from './alert-dialog'
 export { Collapsible, CollapsibleContent, CollapsibleTrigger } from './collapsible'
 export { Skeleton } from './skeleton'
+export { Popover, PopoverContent, PopoverTrigger } from './popover'

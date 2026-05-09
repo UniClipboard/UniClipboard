@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
@@ -16,7 +16,36 @@ pub struct GeneralSettings {
     pub silent_start: bool,
     pub auto_check_update: bool,
     pub theme: Theme,
+    /// 旧版"全局主题预设"字段（v0.7 之前唯一字段）。
+    ///
+    /// 现在仅作为 `theme_color_light` / `theme_color_dark` 都为 `None` 时的
+    /// 回退值,目的是让 v0.7 前持久化的用户偏好（"我选过 catppuccin"）
+    /// 在升级后第一次 light/dark 切换之前仍生效。
+    ///
+    /// # Removal plan
+    /// 一旦新版 UI 写入过 `theme_color_light` / `theme_color_dark`,这个字段
+    /// 不再被读取。计划在 v0.9 把字段彻底删除并 bump `schema_version`。
+    /// 删除前请确认 release notes / changelog 已经向用户提示过迁移窗口。
+    #[serde(default)]
     pub theme_color: Option<String>,
+    /// Light 模式下使用的主题预设名（如 `"zinc"`、`"catppuccin"`）。
+    /// 为 `None` 时回退到 `theme_color`,再为 `None` 时使用引擎默认。
+    #[serde(default)]
+    pub theme_color_light: Option<String>,
+    /// Dark 模式下使用的主题预设名（如 `"zinc"`、`"catppuccin"`）。
+    /// 为 `None` 时回退到 `theme_color`,再为 `None` 时使用引擎默认。
+    #[serde(default)]
+    pub theme_color_dark: Option<String>,
+    /// Light 模式下用户对预设 token 的自定义覆盖。
+    ///
+    /// Key 限制在 4 个核心 token：`primary` / `background` / `foreground` / `border`。
+    /// Value 为 `oklch(L C H)` 字符串。前端在保存前会做格式校验,daemon 层只做透传。
+    /// 空 map 表示不覆盖任何值,完全跟随当前 preset。
+    #[serde(default)]
+    pub theme_overrides_light: BTreeMap<String, String>,
+    /// Dark 模式下用户对预设 token 的自定义覆盖。语义同 `theme_overrides_light`。
+    #[serde(default)]
+    pub theme_overrides_dark: BTreeMap<String, String>,
     pub language: Option<String>,
     pub device_name: Option<String>,
     /// Update channel preference. `None` means auto-detect from version string;
@@ -26,6 +55,22 @@ pub struct GeneralSettings {
     /// When `true` and a Sentry DSN is configured, the app forwards
     /// errors / warnings / structured logs (never clipboard content).
     pub telemetry_enabled: bool,
+}
+
+impl GeneralSettings {
+    /// 解析 light 模式下应使用的主题预设名,带旧字段回退。
+    pub fn effective_theme_color_light(&self) -> Option<&str> {
+        self.theme_color_light
+            .as_deref()
+            .or(self.theme_color.as_deref())
+    }
+
+    /// 解析 dark 模式下应使用的主题预设名,带旧字段回退。
+    pub fn effective_theme_color_dark(&self) -> Option<&str> {
+        self.theme_color_dark
+            .as_deref()
+            .or(self.theme_color.as_deref())
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

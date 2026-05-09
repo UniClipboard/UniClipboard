@@ -514,3 +514,106 @@ docs/architecture/telemetry-events.md                       +SponsorInternal 行
 - joiner 入口：应看到 `pairing_started` 一行 JSON（method=`code`）
 - 握手完成：`pairing_succeeded`（含 `duration_ms`，`peer_os: null`）
 - 失败时：`pairing_failed`（含 `failure_reason` 与业务错误一一对应）
+
+---
+
+## Session 2026-05-09 续 — Slice 8b'（sponsor 端 pairing 三事件 + broadcast 链路重构） ✅
+
+**决策对话脉络**：
+1. 用户"继续 Slice 8b'/8c/8d"——三个 slice 都要做。我建议 **8b' → 8d → 8c** 顺序（8b' 同域紧接，8d 最简单，8c 改动面最大放最后）
+2. 探索三个 slice 关键代码点（并行 3 个 Explore subagent）
+3. 8b' 探索发现：sponsor 端 emit_failure 走 `String` 化 `PairingOutcome::Failure { reason: String }`，funnel 漏点结构化信号丢失
+4. AskUserQuestion 一次性问 3 决策，全部用户裁决：
+   - sponsor 端 broadcast 链路重构：`PairingOutcome::Failure.reason` 字段类型 `String` → `PairingFailureReason` enum
+   - sponsor 端 `pairing_started` 在 `IssuePairingInvitationUseCase::execute()` 入口 fire（与 joiner 端 funnel 起点对齐）
+   - `FirstSyncStatePort`（Slice 8c）落到 `<app_data_root>/first-sync-state.json`（与 `AppVersionStatePort` 单一职责文件保持一致）
+
+### 关键架构决策
+
+| 项 | 决策 | 理由 |
+|---|---|---|
+| `PairingOutcome::Failure` 字段类型 | `String` → `PairingFailureReason` | broadcast 上的 string 化 reason 已丢结构化信号——funnel 漏点全归"unknown bucket"；改 enum 后 sponsor 端 7 个分支与 dashboard 一一对应；下游 subscriber（CLI / webserver）通过 `Display`（`snake_case`）恢复人类可读字符串 |
+| `Display` impl for `PairingFailureReason` | wire 形态完全等价 `Serialize`（`snake_case`） | 同一标识符在 telemetry payload 与 webserver pairing-completed 事件 payload 一致——dashboard / 排障日志一目了然 |
+| sponsor 端 7 个 emit_failure 调用点的 enum 选择 | 见下表 | sponsor 自身 admit / trust / confirm 失败统一 `Internal`（"sponsor 本机持久化错"），细分留 tracing log；不引入 sponsor-only 的 7 个新变体污染 schema |
+| `pairing_started` 触发位置 | `IssuePairingInvitationUseCase::execute()` 入口 | 与 joiner 端 redeem use case 入口对齐——funnel 起点 = "sponsor/joiner 用户开始 pair"；早期 dial 失败（NetworkNotStarted / ServiceUnavailable）也留 funnel 第一步信号 |
+| `pairing_succeeded.duration_ms` 起算点 | `on_incoming` 入口（per-session `Instant`）→ `finalise_verified` Success | "实际握手时长"——不含 sponsor 发码到 joiner 输入码的人类等待时间；funnel 上的 user-level "started ~ succeeded gap" 由 PostHog 自身从 timestamp 算出（两个口径独立可比） |
+| sponsor `peer_os` v1 | 固定 `None` | 现有握手 outcome 没有对端 OS 字段；schema 已是 `Option<Os>`，未来协议补充后零变更回填 |
+| `PairingMethod` v1 | 固定 `Code` 占位 | 与 joiner 端一致；GUI/CLI 区分维度下推留独立 refactor |
+
+### sponsor 端 7 个 emit_failure 调用点 → `PairingFailureReason` 映射
+
+| 触发条件 | 调用位置 | enum 变体 |
+|---|---|---|
+| invitation 已过期 | `match_invitation` Expired | `InvitationExpired` |
+| holder 不变量被破 | `match_invitation` Internal(msg) | `Internal` |
+| joiner proof 失败 | `on_message_received` Verdict::Rejected | `PassphraseMismatch` |
+| sponsor clock 越界 | `finalise_verified` clock OOR | `Internal` |
+| `admit_member` 持久化失败 | `finalise_verified` admit Err | `Internal` |
+| `trust_peer` 持久化失败 | `finalise_verified` trust Err | `Internal` |
+| `Confirm` send 失败（commit 后） | `finalise_verified` confirm Err | `ConnectionLost` |
+
+### 文件改动（8 个文件，~210 行净增）
+
+```
+src-tauri/crates/uc-observability/src/analytics/
+├── events.rs                              +PairingFailureReason::as_str + Display impl
+└── mod.rs                                 +pub use PairingFailureReason
+
+src-tauri/crates/uc-application/src/
+├── facade/mod.rs                          +pub use PairingFailureReason
+├── facade/space_setup/events.rs           PairingOutcome::Failure { reason: String → PairingFailureReason }; +pub use PairingFailureReason
+├── facade/space_setup/mod.rs              +pub use PairingFailureReason
+├── facade/space_setup/facade.rs           IssuePairingInvitation::new + Inbound::new 注入 analytics
+├── pairing_inbound/orchestrator.rs        +analytics 字段 + handshake_started_at HashMap<PairingSessionId, Instant>
+│                                           emit_failure 签名改 (&self, session: &PairingSessionId, reason: PairingFailureReason)
+│                                           内部 fire pairing_failed event + send PairingOutcome
+│                                           on_incoming 写 started_at；finalise_verified Success fire pairing_succeeded { duration_ms }
+│                                           7 个 emit_failure 调用点改 enum；4 reason.contains 测试改 enum match
+│                                           +CapturingAnalyticsSink + 3 新测试（succeeded / failed PassphraseMismatch / failed InvitationExpired）
+│                                           Bundle::analytics 字段 + happy() 默认 NoopAnalyticsSink
+└── usecases/pairing/issue_invitation.rs   +analytics 字段、execute 入口 fire pairing_started
+                                           +CapturingAnalyticsSink test fake + assert_pairing_started helper
+                                           4 个测试加 capture 断言（happy + 3 失败路径）
+
+src-tauri/crates/uc-webserver/src/api/setup_events.rs
+                                           handler reason.to_string() 透出 Display 形态
+                                           2 个测试构造点改 enum variant；reason payload 断言改 "passphrase_mismatch" snake_case
+```
+
+### 测试结果
+
+| crate | tests passed |
+|---|---|
+| uc-observability (lib) | **55** |
+| uc-application (lib) | **381**（含 8 issue_invitation + 12 pairing_inbound::orchestrator） |
+| uc-bootstrap (lib) | 19 |
+| uc-bootstrap (e2e: slice1 / slice2_p1 / slice2_p2) | 1 + 2 + 2 |
+| uc-webserver (lib) | 39 |
+| uc-desktop (lib) | 48 |
+
+整体 build：`cargo check --workspace` 跨 11 crate 一次通过。
+
+### 跳过的事项
+
+- **sponsor 端 admit / trust / confirm 失败的 funnel 细分**：v1 统一归 `Internal`，funnel 上看不到 admit vs trust 的区分；细分信号留 tracing log。理由：在共享 `PairingFailureReason` 里加 sponsor-only 的 `SponsorAdmitFailed` / `SponsorTrustFailed` / `SponsorConfirmSendFailed` 三个变体会破坏 joiner 端 14:14 1:1 映射——schema 边界更重要
+- **跨 use case/orchestrator 共享 `started_at` 拿到端到端 duration**：`pairing_started` 在 `IssuePairing` 入口、`pairing_succeeded` 在 `Inbound finalise_verified`，要算两者跨度需要共享 timing tracker。v1 用 `on_incoming → finalise_verified` 的"实际握手时长"代替——两端语义自然一致（joiner 端 redeem.execute 也是从用户输入完口令开始算）；端到端 funnel duration 由 PostHog `pairing_started → pairing_succeeded` 自动算出
+- **`SponsorInternal` 变体**：当前 sponsor 端各处 internal 失败统一归 `Internal`（本机视角）；`SponsorInternal` 留给 joiner 端 redeem 收到 sponsor 返回 internal-rej 时使用——14:14 映射保留这个区分
+
+### 顺带做的事
+
+- `PairingFailureReason::as_str` + `Display`：让下游 subscriber 直接 `.to_string()` 拿稳定 wire 形态；不再各处自己 match → format
+
+## Slice 8b' 后状态
+
+| Slice | 内容 | 状态 |
+|---|---|---|
+| schema doc | §1-§11 全章节定稿 | ✅ |
+| Slice 1-7a | 见前 | ✅ |
+| Slice 7b | PosthogSink | 待 PostHog Cloud account + project key |
+| Slice 8a | sink 注入 AppDeps + factory + `app_first_open` + GatedAnalyticsSink | ✅ |
+| Slice 8b | pairing 三事件（joiner 端 / `PairingFailureReason` 新 enum） | ✅ |
+| Slice 8b' | sponsor 端 pairing 三事件（PairingInboundOrchestrator + IssuePairing 注入 analytics） | ✅ |
+| Slice 8c | sync 三事件 + 新增 `FirstSyncStatePort` | 可开始（落 `<app_data_root>/first-sync-state.json`） |
+| Slice 8d | setup 两事件 | 可开始 |
+| Slice 9 | 前端 settings UI 拆开关 | 前端工作 |
+| Slice 10 | dashboard + 验收 | 真实数据积累 |

@@ -45,6 +45,8 @@
 //!     .try_init()?;
 //! ```
 
+pub mod analytics;
+pub mod analytics_gate;
 mod context;
 pub mod flow;
 pub mod format;
@@ -55,6 +57,7 @@ pub(crate) mod span_fields;
 pub mod stages;
 pub mod telemetry_gate;
 
+pub use analytics_gate::{is_analytics_enabled, set_analytics_enabled};
 pub use context::{global_device_id, set_global_device_id};
 pub use flow::FlowId;
 pub use init::{build_console_layer, build_json_layer, init_tracing_subscriber};

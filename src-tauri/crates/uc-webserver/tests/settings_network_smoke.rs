@@ -246,6 +246,7 @@ async fn restart_required_truth_table() {
             device_name: None,
             update_channel: None,
             telemetry_enabled: None,
+            usage_analytics_enabled: None,
         }),
         ..Default::default()
     };

@@ -58,6 +58,7 @@ impl Default for GeneralSettings {
             language: None,
             update_channel: None,
             telemetry_enabled: true,
+            usage_analytics_enabled: true,
         }
     }
 }

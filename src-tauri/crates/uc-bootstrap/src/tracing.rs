@@ -61,6 +61,17 @@ fn resolve_telemetry_enabled(settings_path: &Path) -> bool {
         .telemetry_enabled
 }
 
+/// Read the `usage_analytics_enabled` setting from persisted settings.
+///
+/// 与 [`resolve_telemetry_enabled`] 对称——见 schema doc §6.4 双开关方案。
+/// 落空默认 `true`，与 `core::settings::defaults` 保持一致。
+fn resolve_usage_analytics_enabled(settings_path: &Path) -> bool {
+    load_settings_snapshot(settings_path)
+        .unwrap_or_default()
+        .general
+        .usage_analytics_enabled
+}
+
 /// Initialize the tracing subscriber with dual-output and Sentry integration.
 ///
 /// ## Idempotency
@@ -126,6 +137,13 @@ pub fn init_tracing_subscriber() -> anyhow::Result<()> {
     // turned telemetry off in a previous session.
     let telemetry_enabled = resolve_telemetry_enabled(&paths.settings_path);
     uc_observability::set_telemetry_enabled(telemetry_enabled);
+
+    // Step 2c: 同样的"读盘 → 推 gate"流程，但作用对象是产品 telemetry
+    // 开关（schema doc §6.4 双开关方案）。本调用在 sink 接入前也是无害
+    // 的——`uc-observability::analytics_gate` 的初值就是 true，这里只是
+    // 把用户上次的选择落到 gate，让首次事件构造时就尊重持久化偏好。
+    let usage_analytics_enabled = resolve_usage_analytics_enabled(&paths.settings_path);
+    uc_observability::set_analytics_enabled(usage_analytics_enabled);
 
     // Step 3: Initialize Sentry whenever a DSN is available.
     //

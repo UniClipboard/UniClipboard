@@ -87,6 +87,7 @@ pub struct GeneralSettingsView {
     pub device_name: Option<String>,
     pub update_channel: Option<UpdateChannelView>,
     pub telemetry_enabled: bool,
+    pub usage_analytics_enabled: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -163,6 +164,7 @@ pub struct GeneralSettingsPatch {
     pub device_name: Option<Option<String>>,
     pub update_channel: Option<Option<UpdateChannelView>>,
     pub telemetry_enabled: Option<bool>,
+    pub usage_analytics_enabled: Option<bool>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -415,6 +417,7 @@ impl From<core::Settings> for SettingsView {
                 device_name: value.general.device_name,
                 update_channel: value.general.update_channel.map(Into::into),
                 telemetry_enabled: value.general.telemetry_enabled,
+                usage_analytics_enabled: value.general.usage_analytics_enabled,
             },
             sync: SyncSettingsView {
                 auto_sync: value.sync.auto_sync,
@@ -496,6 +499,9 @@ pub(crate) fn apply_settings_patch(
         }
         if let Some(v) = general.telemetry_enabled {
             existing.general.telemetry_enabled = v;
+        }
+        if let Some(v) = general.usage_analytics_enabled {
+            existing.general.usage_analytics_enabled = v;
         }
     }
 

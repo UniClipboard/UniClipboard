@@ -105,7 +105,15 @@ async fn update_settings_handler(
     // 取出可能存在的 telemetry 新值，再传 patch 给 facade 写盘 — 写盘成功后再
     // 把 atomic 推进新值，保证持久化与运行时状态保持单调一致（如果写盘失败，
     // 也不会污染运行时 gate）。
+    //
+    // `usage_analytics_enabled` 走同样的"先取值、写盘、再推 gate"流程，但
+    // 与 `telemetry_enabled` 是两个独立的开关（schema doc §6.4，GDPR
+    // 友好实践）：前者控制 Sentry 错误上报，后者控制产品 telemetry。
     let telemetry_update = payload.general.as_ref().and_then(|g| g.telemetry_enabled);
+    let analytics_update = payload
+        .general
+        .as_ref()
+        .and_then(|g| g.usage_analytics_enabled);
 
     let updated = app
         .settings
@@ -115,6 +123,9 @@ async fn update_settings_handler(
 
     if let Some(enabled) = telemetry_update {
         uc_observability::set_telemetry_enabled(enabled);
+    }
+    if let Some(enabled) = analytics_update {
+        uc_observability::set_analytics_enabled(enabled);
     }
 
     info!(restart_required, "update settings succeeded");
@@ -148,6 +159,7 @@ pub fn settings_patch_from_dto(patch: SettingsPatchDto) -> app_settings::Setting
                     .update_channel
                     .map(|channel| channel.map(update_channel_from_dto)),
                 telemetry_enabled: general.telemetry_enabled,
+                usage_analytics_enabled: general.usage_analytics_enabled,
             }),
         sync: patch.sync.map(|sync| app_settings::SyncSettingsPatch {
             auto_sync: sync.auto_sync,
@@ -222,6 +234,7 @@ pub fn settings_view_to_dto(value: app_settings::SettingsView) -> SettingsDto {
             device_name: value.general.device_name,
             update_channel: value.general.update_channel.map(update_channel_to_dto),
             telemetry_enabled: value.general.telemetry_enabled,
+            usage_analytics_enabled: value.general.usage_analytics_enabled,
         },
         sync: SyncSettingsDto {
             auto_sync: value.sync.auto_sync,

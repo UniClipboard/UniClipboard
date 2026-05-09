@@ -42,6 +42,15 @@ pub struct GeneralSettingsDto {
     pub update_channel: Option<UpdateChannelDto>,
     /// Whether anonymous diagnostic telemetry is enabled.
     pub telemetry_enabled: bool,
+    /// Whether anonymous product usage analytics is enabled.
+    /// 与 `telemetry_enabled` 拆开（schema doc §6.4）：前者控制 Sentry 错误
+    /// 上报，本字段控制产品 telemetry（漏斗 / 留存 / 同步可靠性事件）。
+    #[serde(default = "default_true")]
+    pub usage_analytics_enabled: bool,
+}
+
+fn default_true() -> bool {
+    true
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, ToSchema)]
@@ -246,6 +255,7 @@ pub struct GeneralSettingsPatchDto {
     pub device_name: Option<Option<String>>,
     pub update_channel: Option<Option<UpdateChannelDto>>,
     pub telemetry_enabled: Option<bool>,
+    pub usage_analytics_enabled: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
@@ -412,6 +422,7 @@ impl From<core::GeneralSettings> for GeneralSettingsDto {
             device_name: value.device_name,
             update_channel: value.update_channel.map(Into::into),
             telemetry_enabled: value.telemetry_enabled,
+            usage_analytics_enabled: value.usage_analytics_enabled,
         }
     }
 }

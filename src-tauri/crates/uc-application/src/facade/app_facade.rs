@@ -354,6 +354,7 @@ impl AppFacade {
                     language: None,
                     update_channel: None,
                     telemetry_enabled: None,
+                    usage_analytics_enabled: None,
                 }),
                 sync: None,
                 retention_policy: None,

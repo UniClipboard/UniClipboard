@@ -1,0 +1,606 @@
+//! 事件类型与可枚举 properties。
+//!
+//! 与 schema doc §5 / §6.3 / §7 对应。本模块承担：
+//!
+//! - `Event` 枚举：v1 优先实现 Activation + Reliability，其它分类在后续
+//!   slice 增量扩展。
+//! - 区间化类型（`PayloadSizeBucket` / `LatencyBucket`）：把精确值落到
+//!   预定义区间，避免泄露内容大小尾差。
+//! - properties 提取：[`Event::name`] 与 [`Event::properties`] 把事件转成
+//!   `(name, json properties)` 对，sink 直接交给后端 SDK。
+//!
+//! ## 不可重命名约束
+//!
+//! 事件名与 property 取值一旦上线**永不重命名**——schema doc §5.3 与 §8。
+//! 本文件的测试把当前 wire 形态钉死，CI 守住向后兼容。
+
+use serde::{Deserialize, Serialize};
+use serde_json::{json, Map, Value};
+
+use super::context::Os;
+
+/// 事件枚举。每条事件对应一个 [`Event::name`] 字符串与一组 properties。
+///
+/// 新增事件 = 新增 variant；**禁止**重命名既有 variant 或改变其
+/// [`Event::name`] 输出。要演化语义时新建 `*_v2` 变体并在 schema doc
+/// 标注前者 deprecated。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Event {
+    // —— Activation ————————————————————————————————————————————
+    /// 进程启动且 `is_first_run == true`。
+    AppFirstOpen,
+
+    /// 引导页第一帧渲染。
+    SetupStarted { entry: SetupEntry },
+
+    /// 用户提交设备名。设备名原文不上传，仅上报长度区间。
+    DeviceNameSet {
+        name_length_bucket: NameLengthBucket,
+    },
+
+    /// 用户点击配对。
+    PairingStarted { method: PairingMethod },
+
+    /// 双端握手完成。
+    PairingSucceeded {
+        method: PairingMethod,
+        peer_os: Option<Os>,
+        duration_ms: u32,
+    },
+
+    /// 配对中断或超时。
+    PairingFailed {
+        method: PairingMethod,
+        failure_reason: FailureReason,
+    },
+
+    /// 首次同步发起。
+    FirstClipboardSyncAttempted { direction: Direction },
+
+    /// 首次同步对端确认。
+    FirstClipboardSyncSucceeded {
+        direction: Direction,
+        peer_os: Option<Os>,
+        transport_type: TransportType,
+        duration_ms: u32,
+    },
+
+    /// 首次文件同步成功（文件传输已支持时）。
+    FirstFileSyncSucceeded {
+        peer_os: Option<Os>,
+        transport_type: TransportType,
+        payload_size_bucket: PayloadSizeBucket,
+    },
+
+    // —— Reliability ————————————————————————————————————————————
+    /// 同步发起。
+    SyncAttempted(SyncEventProps),
+    /// 同步成功。`sync_latency_ms` 必填，`failure_reason` 必空。
+    SyncSucceeded(SyncEventProps),
+    /// 同步失败。`failure_reason` 必填，`sync_latency_ms` 必空。
+    SyncFailed(SyncEventProps),
+}
+
+impl Event {
+    /// 事件名——一旦上线**永不重命名**。
+    pub fn name(&self) -> &'static str {
+        match self {
+            Event::AppFirstOpen => "app_first_open",
+            Event::SetupStarted { .. } => "setup_started",
+            Event::DeviceNameSet { .. } => "device_name_set",
+            Event::PairingStarted { .. } => "pairing_started",
+            Event::PairingSucceeded { .. } => "pairing_succeeded",
+            Event::PairingFailed { .. } => "pairing_failed",
+            Event::FirstClipboardSyncAttempted { .. } => "first_clipboard_sync_attempted",
+            Event::FirstClipboardSyncSucceeded { .. } => "first_clipboard_sync_succeeded",
+            Event::FirstFileSyncSucceeded { .. } => "first_file_sync_succeeded",
+            Event::SyncAttempted(_) => "sync_attempted",
+            Event::SyncSucceeded(_) => "sync_succeeded",
+            Event::SyncFailed(_) => "sync_failed",
+        }
+    }
+
+    /// 把事件特有 properties 序列化为 JSON 对象。
+    ///
+    /// **不**包含 `EventContext` 的字段——sink 在上报前会把 context 与
+    /// properties 合并。这样保证：
+    ///
+    /// 1. 事件类型本身可独立于 sink 测试。
+    /// 2. context 字段冲突时由 sink 负责仲裁（properties 永远不会与 context 冲突）。
+    pub fn properties(&self) -> Map<String, Value> {
+        match self {
+            Event::AppFirstOpen => Map::new(),
+            Event::SetupStarted { entry } => to_map(json!({ "entry": entry })),
+            Event::DeviceNameSet { name_length_bucket } => {
+                to_map(json!({ "name_length_bucket": name_length_bucket }))
+            }
+            Event::PairingStarted { method } => to_map(json!({ "method": method })),
+            Event::PairingSucceeded {
+                method,
+                peer_os,
+                duration_ms,
+            } => to_map(json!({
+                "method": method,
+                "peer_os": peer_os,
+                "duration_ms": duration_ms,
+            })),
+            Event::PairingFailed {
+                method,
+                failure_reason,
+            } => to_map(json!({
+                "method": method,
+                "failure_reason": failure_reason,
+            })),
+            Event::FirstClipboardSyncAttempted { direction } => {
+                to_map(json!({ "direction": direction }))
+            }
+            Event::FirstClipboardSyncSucceeded {
+                direction,
+                peer_os,
+                transport_type,
+                duration_ms,
+            } => to_map(json!({
+                "direction": direction,
+                "peer_os": peer_os,
+                "transport_type": transport_type,
+                "duration_ms": duration_ms,
+            })),
+            Event::FirstFileSyncSucceeded {
+                peer_os,
+                transport_type,
+                payload_size_bucket,
+            } => to_map(json!({
+                "peer_os": peer_os,
+                "transport_type": transport_type,
+                "payload_size_bucket": payload_size_bucket,
+            })),
+            Event::SyncAttempted(p) | Event::SyncSucceeded(p) | Event::SyncFailed(p) => {
+                serde_json::to_value(p)
+                    .ok()
+                    .and_then(|v| v.as_object().cloned())
+                    .unwrap_or_default()
+            }
+        }
+    }
+}
+
+fn to_map(value: Value) -> Map<String, Value> {
+    value.as_object().cloned().unwrap_or_default()
+}
+
+/// `sync_*` 三件套共享的 properties 形状。
+///
+/// 对称约束：
+/// - `SyncSucceeded` 必须设置 `sync_latency_ms`，不设 `failure_reason`。
+/// - `SyncFailed` 必须设置 `failure_reason`，不设 `sync_latency_ms`。
+/// - `SyncAttempted` 两者都不设。
+///
+/// 这些约束在 v1 不靠类型系统强制——`Event::properties` 直接序列化整个
+/// 结构体，越界字段会以 `null` 上报，不会让事件丢失。
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SyncEventProps {
+    pub direction: Direction,
+    pub payload_type: PayloadType,
+    pub payload_size_bucket: PayloadSizeBucket,
+    pub transport_type: TransportType,
+    /// 已知则填，未知则 `None`——不要因为缺失就丢事件。
+    pub peer_os: Option<Os>,
+    /// 仅 `SyncSucceeded` 携带，单位毫秒。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sync_latency_ms: Option<u32>,
+    /// 仅 `SyncFailed` 携带。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub failure_reason: Option<FailureReason>,
+}
+
+/// 同步方向。
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[serde(rename_all = "snake_case")]
+pub enum Direction {
+    Outbound,
+    Inbound,
+}
+
+/// payload 大类。
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[serde(rename_all = "snake_case")]
+pub enum PayloadType {
+    Text,
+    Image,
+    File,
+}
+
+/// 传输路径。
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[serde(rename_all = "snake_case")]
+pub enum TransportType {
+    Local,
+    P2pDirect,
+    Relay,
+    FallbackCloud,
+}
+
+/// 失败原因。`Unknown` 占比是架构债务指标——schema doc §7.3 要求高于 5%
+/// 时专门排查并新增枚举值。
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[serde(rename_all = "snake_case")]
+pub enum FailureReason {
+    PeerOffline,
+    Timeout,
+    PermissionDenied,
+    NetworkError,
+    FileTooLarge,
+    ClipboardPermission,
+    EncryptionMismatch,
+    Unknown,
+}
+
+/// 配对方式。
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[serde(rename_all = "snake_case")]
+pub enum PairingMethod {
+    Qr,
+    Code,
+    Discovery,
+}
+
+/// 引导入口。
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[serde(rename_all = "snake_case")]
+pub enum SetupEntry {
+    FirstRun,
+    Manual,
+}
+
+/// 设备名长度区间——设备名原文永不上传。
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
+pub enum NameLengthBucket {
+    /// `< 8` 字符。
+    #[serde(rename = "lt_8")]
+    Lt8,
+    /// `[8, 16]` 字符。
+    #[serde(rename = "8_to_16")]
+    Range8To16,
+    /// `> 16` 字符。
+    #[serde(rename = "gt_16")]
+    Gt16,
+}
+
+impl NameLengthBucket {
+    /// 按字符数（非字节数）落区间。
+    pub fn from_char_count(count: usize) -> Self {
+        match count {
+            0..=7 => Self::Lt8,
+            8..=16 => Self::Range8To16,
+            _ => Self::Gt16,
+        }
+    }
+}
+
+/// payload 大小区间——精确值不上报。
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
+pub enum PayloadSizeBucket {
+    /// `< 1 KiB`。
+    #[serde(rename = "lt_1kb")]
+    Lt1Kb,
+    /// `[1 KiB, 100 KiB)`。
+    #[serde(rename = "1kb_to_100kb")]
+    Kb1To100,
+    /// `[100 KiB, 10 MiB)`。
+    #[serde(rename = "100kb_to_10mb")]
+    Kb100ToMb10,
+    /// `>= 10 MiB`。
+    #[serde(rename = "gt_10mb")]
+    Gt10Mb,
+}
+
+impl PayloadSizeBucket {
+    pub fn from_bytes(bytes: u64) -> Self {
+        const KIB: u64 = 1024;
+        const MIB: u64 = 1024 * KIB;
+        match bytes {
+            n if n < KIB => Self::Lt1Kb,
+            n if n < 100 * KIB => Self::Kb1To100,
+            n if n < 10 * MIB => Self::Kb100ToMb10,
+            _ => Self::Gt10Mb,
+        }
+    }
+}
+
+/// latency 区间——精确 `sync_latency_ms` 仍可单独上报，本枚举用于其它
+/// 不需要 p95 分析的耗时字段。
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
+pub enum LatencyBucket {
+    #[serde(rename = "lt_100ms")]
+    Lt100Ms,
+    #[serde(rename = "100ms_to_500ms")]
+    Ms100To500,
+    #[serde(rename = "500ms_to_2s")]
+    Ms500To2s,
+    #[serde(rename = "2s_to_10s")]
+    S2To10,
+    #[serde(rename = "gt_10s")]
+    Gt10s,
+}
+
+impl LatencyBucket {
+    pub fn from_ms(ms: u64) -> Self {
+        match ms {
+            0..=99 => Self::Lt100Ms,
+            100..=499 => Self::Ms100To500,
+            500..=1_999 => Self::Ms500To2s,
+            2_000..=9_999 => Self::S2To10,
+            _ => Self::Gt10s,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // —— 事件名钉死 ————————————————————————————————————————————
+
+    #[test]
+    fn event_names_match_schema_doc_v1() {
+        // 与 schema doc §7.1 / §7.2 一一对应。任何变更都意味着破坏向后兼容。
+        let cases: &[(Event, &str)] = &[
+            (Event::AppFirstOpen, "app_first_open"),
+            (
+                Event::SetupStarted {
+                    entry: SetupEntry::FirstRun,
+                },
+                "setup_started",
+            ),
+            (
+                Event::DeviceNameSet {
+                    name_length_bucket: NameLengthBucket::Lt8,
+                },
+                "device_name_set",
+            ),
+            (
+                Event::PairingStarted {
+                    method: PairingMethod::Qr,
+                },
+                "pairing_started",
+            ),
+            (
+                Event::PairingSucceeded {
+                    method: PairingMethod::Qr,
+                    peer_os: None,
+                    duration_ms: 0,
+                },
+                "pairing_succeeded",
+            ),
+            (
+                Event::PairingFailed {
+                    method: PairingMethod::Qr,
+                    failure_reason: FailureReason::Unknown,
+                },
+                "pairing_failed",
+            ),
+            (
+                Event::FirstClipboardSyncAttempted {
+                    direction: Direction::Outbound,
+                },
+                "first_clipboard_sync_attempted",
+            ),
+            (
+                Event::FirstClipboardSyncSucceeded {
+                    direction: Direction::Outbound,
+                    peer_os: None,
+                    transport_type: TransportType::Local,
+                    duration_ms: 0,
+                },
+                "first_clipboard_sync_succeeded",
+            ),
+            (
+                Event::FirstFileSyncSucceeded {
+                    peer_os: None,
+                    transport_type: TransportType::Local,
+                    payload_size_bucket: PayloadSizeBucket::Lt1Kb,
+                },
+                "first_file_sync_succeeded",
+            ),
+        ];
+        for (event, expected) in cases {
+            assert_eq!(event.name(), *expected, "{event:?}");
+        }
+
+        let sample_props = SyncEventProps {
+            direction: Direction::Outbound,
+            payload_type: PayloadType::Text,
+            payload_size_bucket: PayloadSizeBucket::Lt1Kb,
+            transport_type: TransportType::Local,
+            peer_os: None,
+            sync_latency_ms: None,
+            failure_reason: None,
+        };
+        assert_eq!(
+            Event::SyncAttempted(sample_props.clone()).name(),
+            "sync_attempted"
+        );
+        assert_eq!(
+            Event::SyncSucceeded(sample_props.clone()).name(),
+            "sync_succeeded"
+        );
+        assert_eq!(Event::SyncFailed(sample_props).name(), "sync_failed");
+    }
+
+    // —— 区间边界 ————————————————————————————————————————————
+
+    #[test]
+    fn payload_size_bucket_boundaries() {
+        assert_eq!(PayloadSizeBucket::from_bytes(0), PayloadSizeBucket::Lt1Kb);
+        assert_eq!(
+            PayloadSizeBucket::from_bytes(1023),
+            PayloadSizeBucket::Lt1Kb
+        );
+        assert_eq!(
+            PayloadSizeBucket::from_bytes(1024),
+            PayloadSizeBucket::Kb1To100
+        );
+        assert_eq!(
+            PayloadSizeBucket::from_bytes(100 * 1024 - 1),
+            PayloadSizeBucket::Kb1To100
+        );
+        assert_eq!(
+            PayloadSizeBucket::from_bytes(100 * 1024),
+            PayloadSizeBucket::Kb100ToMb10
+        );
+        assert_eq!(
+            PayloadSizeBucket::from_bytes(10 * 1024 * 1024 - 1),
+            PayloadSizeBucket::Kb100ToMb10
+        );
+        assert_eq!(
+            PayloadSizeBucket::from_bytes(10 * 1024 * 1024),
+            PayloadSizeBucket::Gt10Mb
+        );
+    }
+
+    #[test]
+    fn latency_bucket_boundaries() {
+        assert_eq!(LatencyBucket::from_ms(0), LatencyBucket::Lt100Ms);
+        assert_eq!(LatencyBucket::from_ms(99), LatencyBucket::Lt100Ms);
+        assert_eq!(LatencyBucket::from_ms(100), LatencyBucket::Ms100To500);
+        assert_eq!(LatencyBucket::from_ms(499), LatencyBucket::Ms100To500);
+        assert_eq!(LatencyBucket::from_ms(500), LatencyBucket::Ms500To2s);
+        assert_eq!(LatencyBucket::from_ms(1_999), LatencyBucket::Ms500To2s);
+        assert_eq!(LatencyBucket::from_ms(2_000), LatencyBucket::S2To10);
+        assert_eq!(LatencyBucket::from_ms(9_999), LatencyBucket::S2To10);
+        assert_eq!(LatencyBucket::from_ms(10_000), LatencyBucket::Gt10s);
+    }
+
+    #[test]
+    fn name_length_bucket_boundaries() {
+        assert_eq!(NameLengthBucket::from_char_count(0), NameLengthBucket::Lt8);
+        assert_eq!(NameLengthBucket::from_char_count(7), NameLengthBucket::Lt8);
+        assert_eq!(
+            NameLengthBucket::from_char_count(8),
+            NameLengthBucket::Range8To16
+        );
+        assert_eq!(
+            NameLengthBucket::from_char_count(16),
+            NameLengthBucket::Range8To16
+        );
+        assert_eq!(
+            NameLengthBucket::from_char_count(17),
+            NameLengthBucket::Gt16
+        );
+    }
+
+    // —— wire 形态钉死 ————————————————————————————————————————————
+
+    #[test]
+    fn enum_variants_serialize_to_documented_strings() {
+        // schema doc §7.2 / §7.3 中明确列出的取值。
+        assert_eq!(
+            serde_json::to_value(Direction::Outbound).unwrap(),
+            "outbound"
+        );
+        assert_eq!(serde_json::to_value(Direction::Inbound).unwrap(), "inbound");
+
+        assert_eq!(serde_json::to_value(PayloadType::Text).unwrap(), "text");
+        assert_eq!(serde_json::to_value(PayloadType::Image).unwrap(), "image");
+        assert_eq!(serde_json::to_value(PayloadType::File).unwrap(), "file");
+
+        assert_eq!(serde_json::to_value(TransportType::Local).unwrap(), "local");
+        assert_eq!(
+            serde_json::to_value(TransportType::P2pDirect).unwrap(),
+            "p2p_direct"
+        );
+        assert_eq!(serde_json::to_value(TransportType::Relay).unwrap(), "relay");
+        assert_eq!(
+            serde_json::to_value(TransportType::FallbackCloud).unwrap(),
+            "fallback_cloud"
+        );
+
+        for (reason, expected) in [
+            (FailureReason::PeerOffline, "peer_offline"),
+            (FailureReason::Timeout, "timeout"),
+            (FailureReason::PermissionDenied, "permission_denied"),
+            (FailureReason::NetworkError, "network_error"),
+            (FailureReason::FileTooLarge, "file_too_large"),
+            (FailureReason::ClipboardPermission, "clipboard_permission"),
+            (FailureReason::EncryptionMismatch, "encryption_mismatch"),
+            (FailureReason::Unknown, "unknown"),
+        ] {
+            assert_eq!(
+                serde_json::to_value(reason).unwrap(),
+                expected,
+                "FailureReason::{reason:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn payload_size_bucket_wire_format() {
+        assert_eq!(
+            serde_json::to_value(PayloadSizeBucket::Lt1Kb).unwrap(),
+            "lt_1kb"
+        );
+        assert_eq!(
+            serde_json::to_value(PayloadSizeBucket::Kb1To100).unwrap(),
+            "1kb_to_100kb"
+        );
+        assert_eq!(
+            serde_json::to_value(PayloadSizeBucket::Kb100ToMb10).unwrap(),
+            "100kb_to_10mb"
+        );
+        assert_eq!(
+            serde_json::to_value(PayloadSizeBucket::Gt10Mb).unwrap(),
+            "gt_10mb"
+        );
+    }
+
+    // —— properties 形状 ————————————————————————————————————————
+
+    #[test]
+    fn sync_succeeded_omits_failure_reason() {
+        let event = Event::SyncSucceeded(SyncEventProps {
+            direction: Direction::Outbound,
+            payload_type: PayloadType::Text,
+            payload_size_bucket: PayloadSizeBucket::Lt1Kb,
+            transport_type: TransportType::Local,
+            peer_os: Some(Os::Macos),
+            sync_latency_ms: Some(42),
+            failure_reason: None,
+        });
+        let props = event.properties();
+        assert_eq!(props.get("sync_latency_ms"), Some(&json!(42)));
+        // None 字段必须从 wire 完全消失，避免 PostHog 误判为"显式 null"。
+        assert!(!props.contains_key("failure_reason"));
+    }
+
+    #[test]
+    fn sync_failed_omits_latency() {
+        let event = Event::SyncFailed(SyncEventProps {
+            direction: Direction::Inbound,
+            payload_type: PayloadType::Image,
+            payload_size_bucket: PayloadSizeBucket::Kb100ToMb10,
+            transport_type: TransportType::Relay,
+            peer_os: None,
+            sync_latency_ms: None,
+            failure_reason: Some(FailureReason::Timeout),
+        });
+        let props = event.properties();
+        assert_eq!(props.get("failure_reason"), Some(&json!("timeout")));
+        assert!(!props.contains_key("sync_latency_ms"));
+    }
+
+    #[test]
+    fn properties_are_pure_event_fields_only() {
+        // EventContext 字段一律不出现在 properties 里——是 sink 的职责。
+        let event = Event::PairingSucceeded {
+            method: PairingMethod::Qr,
+            peer_os: Some(Os::Windows),
+            duration_ms: 1200,
+        };
+        let props = event.properties();
+        assert!(!props.contains_key("anonymous_user_id"));
+        assert!(!props.contains_key("analytics_device_id"));
+        assert!(!props.contains_key("session_id"));
+        assert!(!props.contains_key("app_version"));
+        assert!(!props.contains_key("os"));
+    }
+}

@@ -32,4 +32,4 @@ pub use events::{
 };
 pub use ids::{load_or_create as load_or_create_ids, reset as reset_ids, AnalyticsIds};
 pub use port::{AnalyticsPort, NoopAnalyticsSink};
-pub use sinks::{build_event_payload, StdoutSink};
+pub use sinks::{build_event_payload, GatedAnalyticsSink, StdoutSink};

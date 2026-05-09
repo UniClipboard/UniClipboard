@@ -17,8 +17,10 @@
 //! 实现里 properties 在合并的 *后* 一步插入：万一未来违反 invariant 也是
 //! event-specific 字段覆盖 context，行为不会反过来悄悄丢事件信息。
 
+pub mod gated;
 pub mod stdout;
 
+pub use gated::GatedAnalyticsSink;
 pub use stdout::StdoutSink;
 
 use serde_json::{Map, Value};

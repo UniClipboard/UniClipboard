@@ -24,7 +24,7 @@ use std::time::SystemTime;
 
 use anyhow::Result;
 use futures::future::try_join_all;
-use tracing::{debug, info, info_span, warn, Instrument};
+use tracing::{debug, info, info_span, Instrument};
 use uc_observability::stages;
 
 use uc_core::ids::{EntryId, EventId};
@@ -217,12 +217,60 @@ impl CaptureClipboardUseCase {
                 (entry_id, new_selection)
             };
 
-            // 5. entry_repo.insert_entry
+            // 5. Spool large representations to disk BEFORE creating the entry.
             //
-            // Persist the entry BEFORE spool writes so the entry appears in the
-            // dashboard immediately. Spool writes (below) can take many seconds for
-            // large images (e.g., macOS TIFF representations of 30-100 MB), and must
-            // not block the user-visible entry creation path.
+            // Durability invariant: when `entry_repo.save_entry_and_selection`
+            // succeeds, the spool file for every Staged rep is already on disk
+            // (`DurableSpoolQueue::enqueue` fsyncs before returning). The
+            // in-memory cache is just an accelerator; spool is the source of
+            // truth for representations that haven't been promoted to a blob yet.
+            //
+            // Previous behaviour: spool writes ran in a detached `tokio::spawn`
+            // after `entry.save`, so a process exit / cache eviction between
+            // the entry write and the spool write produced a permanently
+            // orphaned representation (`Staged` in DB, no bytes anywhere). That
+            // generated UNICLIPBOARD-RUST-5/6 — 25 + 30 events on a single
+            // unrecoverable entry. The synchronous order eliminates that race
+            // at the cost of capture latency on large payloads.
+            //
+            // On spool failure (disk full, permission denied, etc.) capture
+            // returns `Err` and the entry is **not** persisted. Better to lose
+            // the clipboard than to show a phantom entry that can never be
+            // restored.
+            let spool_reps: Vec<SpoolRequest> = normalized_reps
+                .iter()
+                .filter(|rep| rep.payload_state() == PayloadAvailability::Staged)
+                .filter_map(|rep| {
+                    snapshot
+                        .representations
+                        .iter()
+                        .find(|o| o.id == rep.id)
+                        .map(|observed| SpoolRequest {
+                            rep_id: rep.id.clone(),
+                            bytes: observed.bytes.clone(),
+                        })
+                })
+                .collect();
+
+            if !spool_reps.is_empty() {
+                async {
+                    for req in spool_reps {
+                        let rep_id = req.rep_id.clone();
+                        self.spool_queue.enqueue(req).await.map_err(|err| {
+                            anyhow::anyhow!(
+                                "Failed to durably spool representation {} during capture: {}",
+                                rep_id,
+                                err
+                            )
+                        })?;
+                    }
+                    Ok::<(), anyhow::Error>(())
+                }
+                .instrument(info_span!(stages::SPOOL_BLOBS))
+                .await?;
+            }
+
+            // 6. entry_repo.insert_entry — bytes are durable by this point.
             async {
                 let created_at_ms = SystemTime::now()
                     .duration_since(SystemTime::UNIX_EPOCH)
@@ -245,44 +293,6 @@ impl CaptureClipboardUseCase {
             .await?;
 
             info!(event_id = %event_id, entry_id = %entry_id, "Clipboard capture completed");
-
-            // Queue large representations for durable spool-to-disk in a background task.
-            // The entry is already persisted and bytes are in the in-memory cache, so the
-            // background blob worker will get a cache hit immediately. Spool writes only
-            // provide durability (survive process exit) — they must not block the callback.
-            let spool_queue = Arc::clone(&self.spool_queue);
-            let spool_reps: Vec<_> = normalized_reps
-                .iter()
-                .filter(|rep| rep.payload_state() == PayloadAvailability::Staged)
-                .filter_map(|rep| {
-                    snapshot
-                        .representations
-                        .iter()
-                        .find(|o| o.id == rep.id)
-                        .map(|observed| SpoolRequest {
-                            rep_id: rep.id.clone(),
-                            bytes: observed.bytes.clone(),
-                        })
-                })
-                .collect();
-
-            if !spool_reps.is_empty() {
-                tokio::spawn(
-                    async move {
-                        for req in spool_reps {
-                            let rep_id = req.rep_id.clone();
-                            if let Err(err) = spool_queue.enqueue(req).await {
-                                warn!(
-                                    representation_id = %rep_id,
-                                    error = %err,
-                                    "Failed to enqueue spool request; blob will be lost if process exits before worker runs"
-                                );
-                            }
-                        }
-                    }
-                    .instrument(info_span!(stages::SPOOL_BLOBS)),
-                );
-            }
 
             Ok(Some(entry_id))
         }

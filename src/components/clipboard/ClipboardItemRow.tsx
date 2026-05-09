@@ -135,6 +135,10 @@ const ClipboardItemRow = React.forwardRef<HTMLDivElement, ClipboardItemRowProps>
     const isTransferring = effectiveStatus === 'transferring'
     const isTransferFailed = effectiveStatus === 'failed'
     const isPending = effectiveStatus === 'pending'
+    // paste_rep 已 Lost — 点击粘贴会回 daemon 410。视觉与 isStale 一致
+    // (灰色 + 删除线), 让用户能在点击之前识别。但语义不同 (stale 是逻辑
+    // 失效, unavailable 是数据丢失), 用独立 flag 保持代码可读。
+    const isUnavailable = item.isUnavailable === true
 
     return (
       <div
@@ -152,14 +156,14 @@ const ClipboardItemRow = React.forwardRef<HTMLDivElement, ClipboardItemRowProps>
             className={cn(
               'h-4 w-4 shrink-0',
               isActive ? 'text-primary' : 'text-muted-foreground',
-              isStale && 'opacity-40',
+              (isStale || isUnavailable) && 'opacity-40',
               isPending && 'opacity-50'
             )}
           />
           <span
             className={cn(
               'w-0 flex-grow truncate text-sm',
-              isStale && 'text-muted-foreground line-through opacity-60',
+              (isStale || isUnavailable) && 'text-muted-foreground line-through opacity-60',
               isPending && 'text-muted-foreground opacity-70'
             )}
           >
@@ -223,6 +227,20 @@ const ClipboardItemRow = React.forwardRef<HTMLDivElement, ClipboardItemRowProps>
                       transfer?.errorMessage ||
                       t('clipboard.transfer.failed')}
                   </p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          ) : isUnavailable ? (
+            <TooltipProvider delayDuration={0}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <AlertCircle
+                    className="h-3.5 w-3.5 text-muted-foreground shrink-0"
+                    aria-label={t('clipboard.errors.unavailableBadge')}
+                  />
+                </TooltipTrigger>
+                <TooltipContent side="left">
+                  <p className="text-xs">{t('clipboard.errors.unavailableTooltip')}</p>
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>

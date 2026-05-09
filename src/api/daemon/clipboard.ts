@@ -64,6 +64,13 @@ export interface ClipboardEntryDto {
   imageWidth?: number | null
   /** Original image height in pixels (only for image entries). */
   imageHeight?: number | null
+  /**
+   * `paste_rep` 的 payload_state, 仅在该 entry 已不可恢复时输出 (`"Lost"`)。
+   * 其他状态字段缺省 (undefined)。前端按此把"内容已丢失"的 entry 灰显, 让
+   * 用户在点击粘贴前就知道这条记录已不可用 —— 否则点击会得到 daemon 410 +
+   * "该内容已不可用"toast (见 `DaemonErrorCode.PAYLOAD_UNAVAILABLE`)。
+   */
+  payloadState?: string | null
 }
 
 /**

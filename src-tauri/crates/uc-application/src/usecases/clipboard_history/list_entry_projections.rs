@@ -33,6 +33,11 @@ pub(crate) struct EntryProjectionDto {
     pub(crate) file_sizes: Option<Vec<i64>>,
     pub(crate) image_width: Option<i32>,
     pub(crate) image_height: Option<i32>,
+    /// `paste_rep` 的 payload_state, 仅在该 representation 已不可恢复时输出
+    /// (`Lost`)。其他状态返回 `None` —— 由前端默认渲染。这是面向 UI 列表
+    /// "灰显损坏 entry" 的最小信号；list 渲染基于 preview_rep, 但实际粘贴
+    /// 用的是 paste_rep, 必须用 paste_rep 的 state 判断"点了能不能用"。
+    pub(crate) payload_state: Option<String>,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -278,6 +283,39 @@ impl ListClipboardEntryProjectionsUseCase {
                     PayloadAvailability::Staged | PayloadAvailability::Processing
                 );
 
+            // paste_rep 是用户点"粘贴"时实际写入系统剪贴板的 representation。
+            // 当它降级为 Lost 时, restore 会回 410 + "内容已不可用"; 列表灰显
+            // 这条 entry 让用户在点之前就能知道。如果 paste_rep == preview_rep,
+            // 复用刚拿到的 representation; 否则单独查一次 (paste_rep 通常和
+            // preview_rep 不同—— 比如复制文本时同时有 plain + RTF)。
+            let paste_rep_state = if selection.selection.paste_rep_id
+                == selection.selection.preview_rep_id
+            {
+                Some(representation.payload_state.clone())
+            } else {
+                match self
+                    .representation_repo
+                    .get_representation(&entry.event_id, &selection.selection.paste_rep_id)
+                    .await
+                {
+                    Ok(Some(rep)) => Some(rep.payload_state),
+                    Ok(None) => None,
+                    Err(e) => {
+                        warn!(
+                            entry_id = %entry_id_str,
+                            paste_rep_id = %selection.selection.paste_rep_id,
+                            error = %e,
+                            "Failed to fetch paste_rep state for projection; treating as healthy"
+                        );
+                        None
+                    }
+                }
+            };
+            let payload_state = match paste_rep_state {
+                Some(PayloadAvailability::Lost) => Some("Lost".to_string()),
+                _ => None,
+            };
+
             let (file_transfer_status, file_transfer_reason, file_transfer_ids) = match self
                 .file_transfer_repo
                 .get_entry_transfer_summary(&entry_id_str)
@@ -319,6 +357,7 @@ impl ListClipboardEntryProjectionsUseCase {
                 file_sizes,
                 image_width,
                 image_height,
+                payload_state,
             });
         }
 

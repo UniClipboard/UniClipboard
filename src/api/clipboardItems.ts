@@ -124,6 +124,12 @@ export interface ClipboardItemResponse {
   /** Failure reason when file_transfer_status is "failed" */
   file_transfer_reason?: string | null
   file_transfer_ids?: string[]
+  /**
+   * `paste_rep` 的 payload_state, 仅在 `"Lost"` 时由后端输出。其他状态为
+   * undefined。前端在列表上把对应 entry 灰显并标记"内容已不可用",
+   * 用户在点击粘贴前就能识别——否则点击会得到 daemon 410 + toast。
+   */
+  payload_state?: string | null
 }
 
 export interface ClipboardStats {
@@ -186,6 +192,7 @@ function transformDtoToResponse(entry: ClipboardEntryDto): ClipboardItemResponse
     item,
     file_transfer_status: entry.fileTransferStatus ?? null,
     file_transfer_reason: entry.fileTransferReason ?? null,
+    payload_state: entry.payloadState ?? null,
   }
 }
 

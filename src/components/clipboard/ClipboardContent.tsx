@@ -61,6 +61,11 @@ export interface DisplayClipboardItem {
   device?: string
   /** Fallback preview text from search results when content is not available. */
   textPreview?: string
+  /**
+   * True 表示 paste_rep 已 `Lost` —— 点击粘贴会回 daemon 410 + toast 提示
+   * "内容已不可用"。Row 据此把 entry 灰显并加角标, 让用户在点之前就识别。
+   */
+  isUnavailable?: boolean
 }
 
 interface DateGroup {
@@ -355,6 +360,7 @@ const ClipboardContent: React.FC<ClipboardContentProps> = ({
         isFavorited: item.is_favorited,
         content: contentByType[type] ?? null,
         fileTransferIds: item.file_transfer_ids ?? [],
+        isUnavailable: item.payload_state === 'Lost',
       }
     },
     [t]

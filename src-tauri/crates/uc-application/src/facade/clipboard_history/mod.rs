@@ -53,6 +53,10 @@ pub struct EntryProjectionView {
     pub file_sizes: Option<Vec<i64>>,
     pub image_width: Option<i32>,
     pub image_height: Option<i32>,
+    /// `paste_rep` 的 payload_state, 仅在 `Lost` 时输出。其他状态为 `None`。
+    /// 前端按此判断"该 entry 点了能不能粘贴" —— 粘贴行为基于 paste_rep,
+    /// 而 list 里的 preview 基于 preview_rep, 两者可能不同。
+    pub payload_state: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -477,6 +481,7 @@ fn projection_to_view(entry: EntryProjectionDto) -> EntryProjectionView {
         file_sizes: entry.file_sizes,
         image_width: entry.image_width,
         image_height: entry.image_height,
+        payload_state: entry.payload_state,
     }
 }
 

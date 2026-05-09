@@ -493,7 +493,9 @@
       "syncFailed": "同步到剪贴板失败",
       "openLocationFailed": "打开文件位置失败",
       "loadDetailFailed": "加载详情失败",
-      "unknown": "发生未知错误"
+      "unknown": "发生未知错误",
+      "unavailableBadge": "内容已不可用",
+      "unavailableTooltip": "该内容已不可用（数据已丢失），无法粘贴。建议从历史中删除。"
     },
     "item": {
       "characters": "字符",

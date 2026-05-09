@@ -41,6 +41,10 @@ pub struct EntryProjectionResponseDto {
     /// Original image height in pixels (only for image entries).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub image_height: Option<i32>,
+    /// `paste_rep` 的 payload_state, 仅在 `Lost` 时输出。前端用此把"内容已
+    /// 丢失"的 entry 灰显, 让用户在点击粘贴前就知道这条记录已不可用。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub payload_state: Option<String>,
 }
 
 // ── List entries response ─────────────────────────────────────────

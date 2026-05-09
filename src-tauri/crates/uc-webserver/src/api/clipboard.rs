@@ -317,6 +317,7 @@ fn entry_projection_to_dto(view: EntryProjectionView) -> EntryProjectionResponse
         file_sizes: view.file_sizes,
         image_width: view.image_width,
         image_height: view.image_height,
+        payload_state: view.payload_state,
     }
 }
 

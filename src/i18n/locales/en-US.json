@@ -502,7 +502,9 @@
       "syncFailed": "Sync to clipboard failed",
       "openLocationFailed": "Failed to open file location",
       "loadDetailFailed": "Failed to load details",
-      "unknown": "An unknown error occurred"
+      "unknown": "An unknown error occurred",
+      "unavailableBadge": "Content unavailable",
+      "unavailableTooltip": "This content is no longer available (bytes lost). Cannot paste. Consider deleting it from history."
     },
     "item": {
       "characters": "characters",

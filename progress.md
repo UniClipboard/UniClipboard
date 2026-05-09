@@ -617,3 +617,130 @@ src-tauri/crates/uc-webserver/src/api/setup_events.rs
 | Slice 8d | setup 两事件 | 可开始 |
 | Slice 9 | 前端 settings UI 拆开关 | 前端工作 |
 | Slice 10 | dashboard + 验收 | 真实数据积累 |
+
+---
+
+## Session 2026-05-09 续 — Slice 8d（setup 两事件） ✅
+
+**决策对话脉络**：用户"继续 8b'/8c/8d"——按 8b' → 8d → 8c 顺序。8d 最简单，触达点：A1 `InitializeSpaceUseCase`。
+
+### 关键决策
+
+| 项 | 决策 | 理由 |
+|---|---|---|
+| `setup_started` 触发位置 | `InitializeSpaceUseCase::execute()` 入口 | funnel 起点 = "用户开始 setup"；与 pairing 端 funnel 起点对齐；AlreadySetup / PassphraseMismatch 等早期失败也留 funnel 第一步信号 |
+| `setup_started.entry` v1 | 固定 `SetupEntry::FirstRun` | A1 use case 本就是 fresh-device 流程；`Manual` retry 入口未开发 |
+| `device_name_set` 触发位置 | `resolve_and_persist_device_name` 成功收尾（在 `Ok(effective)` 之前） | 仅在 device_name 真正确认后 fire；DeviceNameRequired 失败路径自然不 fire——funnel 漏点统计需要这个语义 |
+| `name_length_bucket` | `NameLengthBucket::from_char_count(effective.chars().count())` | 字符数（非字节数）切区间；按 schema doc §6.4 隐私契约，原文永不上传 |
+
+### 文件改动（2 个文件，~100 行净增）
+
+```
+src-tauri/crates/uc-application/src/usecases/setup/initialize_space.rs
+                                            +analytics 字段、execute 入口 fire setup_started
+                                            +resolve_and_persist_device_name 收尾 fire device_name_set
+                                            +CapturingAnalyticsSink test fake + Harness::analytics 字段
+                                            +3 测试加 capture 断言：happy / DeviceNameRequired / PassphraseMismatch
+                                            +`device_name_set_uses_name_length_bucket_boundaries`（Lt8 / Range8To16 / Gt16 三 case）
+src-tauri/crates/uc-application/src/facade/space_setup/facade.rs
+                                            InitializeSpaceUseCase::new 透传 analytics（第 8 参数）
+```
+
+### 测试结果
+
+| crate | tests passed |
+|---|---|
+| uc-application (lib) | **382**（含 10 个 setup::initialize_space 测试，新增 1 个 NameLengthBucket 边界 case） |
+| 跨 crate 全部 | `cargo check --workspace` 一次通过 |
+
+### 跳过的事项
+
+- **`SetupEntry::Manual` 区分**：v1 占位 `FirstRun`；A1 use case 仅服务 fresh-install 路径，`Manual` 留待"settings 内重新初始化空间"入口实现时再加
+- **A2 `UnlockSpaceUseCase` 是否 fire setup_started**：v1 否——A2 是日常 unlock 操作，不属于"setup"流程；schema doc 也仅列 A1 路径
+
+---
+
+## Session 2026-05-09 续 — Slice 8c-1（sync 三事件 / outbound per-peer） ✅
+
+**决策对话脉络**：
+1. 用户裁决拆 8c 为 8c-1（sync 三事件，本次）+ 8c-2（FirstSyncStatePort + first_*，后续 PR）
+2. 用户裁决：per-peer 事件粒度（每个 fan-out 目标一条），与 SyncEventProps schema 自然对齐
+
+### 关键架构决策
+
+| 项 | 决策 | 理由 |
+|---|---|---|
+| 事件粒度 | per-peer | `SyncEventProps.peer_os` / `sync_latency_ms` 单一值——天然 per-peer；dashboard reliability 也按 peer 切；事件量 5×但可接受 |
+| 触发位置 | spawn 内：先 fire `SyncAttempted`，dispatch.dispatch.await，再按 Result fire `SyncSucceeded`/`SyncFailed` | 保证 analytics 与单 peer outcome 原子配对；不需要在 join_next 合并循环里再 match 一次 |
+| `payload_type` 推导 | File > Image > Text 优先级；空集合 fallback Text | 与隐私 §6 约束一致——coarse bucket 优于 missing field |
+| `transport_type` v1 | 固定 `P2pDirect` | iroh ALPN 抽象了底层传输（direct/relay/QUIC），v1 不下钻；后续若 dispatch port 暴露 transport hint 可改 |
+| `peer_os` v1 | `None` | 当前协议握手不携带对端 OS；schema 已是 `Option<Os>`，未来零变更 |
+| `sync_latency_ms`（succeeded only） | per-peer `Instant` 计时（spawn 内 started_at → dispatch 返回） | 真实"单 peer 握手 + 写 stream + ack" 时长；满足 P95 分析 |
+| `failure_reason`（failed only） | `ClipboardDispatchError` 1:1 映射到 `FailureReason` enum | funnel 上 5 个明确失败原因 vs string parse；映射函数被穷尽匹配测试钉死 |
+
+### `ClipboardDispatchError` → `FailureReason` 映射表
+
+| 错误变体 | enum 映射 | 备注 |
+|---|---|---|
+| `Offline` | `PeerOffline` | dial 失败 / 无可达地址 |
+| `LocalPolicyExceeded(_)` | `FileTooLarge` | v1 仅 `MAX_PAYLOAD_SIZE` 触发；后续若加新策略再细分 |
+| `PeerRejected(_)` | `NetworkError` | 协议层 reject（bad header / 不支持版本） |
+| `Io(_)` | `NetworkError` | stream IO 失败 |
+| `Internal(_)` | `Unknown` | 兜底；schema §7.3 监控 Unknown 占比 > 5% 视为架构债务 |
+
+### 文件改动（4 个文件，~290 行净增）
+
+```
+src-tauri/crates/uc-application/src/usecases/clipboard_sync/dispatch_entry.rs
+                                            +analytics 字段、payload_type_from_categories + map_dispatch_error_to_failure_reason 私有 fn
+                                            execute fan-out 改：spawn 内自 fire SyncAttempted → dispatch → SyncSucceeded/SyncFailed
+                                            +CapturingAnalyticsSink test fake + build_uc_with_analytics helper
+                                            +3 新测试：happy 4 events 顺序+字段断言 / Offline → SyncFailed{PeerOffline} / map 5 变体钉死
+src-tauri/crates/uc-application/src/facade/clipboard/facade.rs
+                                            ClipboardSyncDeps 加 analytics 字段
+                                            ClipboardSyncFacade::new 透传给 dispatch_uc
+                                            内测 build_facade 补 NoopAnalyticsSink
+src-tauri/crates/uc-bootstrap/src/space_setup.rs
+                                            ClipboardSyncDeps 构造点补 analytics: Arc::clone(&deps.analytics)
+src-tauri/crates/uc-bootstrap/tests/slice2_phase2_clipboard_e2e.rs
+                                            ClipboardSyncDeps 构造点补 NoopAnalyticsSink
+```
+
+### 测试结果
+
+| crate | tests passed |
+|---|---|
+| uc-application (lib) | **385**（dispatch_entry 9 → 12，新增 analytics_fires_attempted_then_succeeded × 1 + analytics_fires_failed_with_peer_offline × 1 + map_dispatch_error_covers_all_variants × 1） |
+| uc-bootstrap (lib) | 19 |
+| uc-bootstrap (e2e: slice1 / slice2_p1 / slice2_p2) | 1 + 2 + 2 |
+
+整体 build：`cargo check --workspace` 跨 11 crate 一次通过。
+
+### 跳过的事项
+
+- **`FirstSyncStatePort` + `first_clipboard_sync_attempted` / `first_clipboard_sync_succeeded` / `first_file_sync_succeeded`**：拆 Slice 8c-2 后续 PR。要新 port trait（uc-core）+ 单文件 JSON 持久化（uc-infra，仿 `AppVersionStatePort`）+ 4 个构造点补 first_sync_state 字段。本次先把 funnel reliability 数据通起来
+- **inbound（`IngestInboundClipboardUseCase`）的 sync 三事件**：v1 仅做 outbound——funnel 上"我发出的 sync"是更主要的 reliability 指标；inbound 留待后续
+- **`peer_os` 真值**：握手协议未携带；后续 sponsor handshake outcome 加字段后回填，schema `Option<Os>` 已兼容
+- **`transport_type` 真值**：需 dispatch port 暴露 hint；当前 iroh ALPN 不传出来，v1 占位 `P2pDirect`
+
+## Slice 8d / 8c-1 后状态
+
+| Slice | 内容 | 状态 |
+|---|---|---|
+| Slice 1-7a | 见前 | ✅ |
+| Slice 7b | PosthogSink | 待 PostHog Cloud account + project key |
+| Slice 8a | sink 注入 AppDeps + factory + `app_first_open` + GatedAnalyticsSink | ✅ |
+| Slice 8b | joiner 端 pairing 三事件 + `PairingFailureReason` 新 enum | ✅ |
+| Slice 8b' | sponsor 端 pairing 三事件 + broadcast 链路重构 | ✅ |
+| Slice 8c-1 | sync 三事件（outbound per-peer） | ✅ |
+| Slice 8c-2 | `FirstSyncStatePort` + `first_clipboard_sync_*` 事件 | 可开始 |
+| Slice 8d | setup 两事件（A1 路径） | ✅ |
+| Slice 9 | 前端 settings UI 拆开关 | 前端工作 |
+| Slice 10 | dashboard + 验收 | 真实数据积累 |
+
+### 验证 dev 跑起来事件链路（增 sync）
+
+`RUST_LOG=uc_observability::analytics=debug` 启动 daemon，复制一段文本：
+- 每个 paired peer 应看到一对 JSON：`sync_attempted` + `sync_succeeded`（或 `sync_failed`）
+- `direction=outbound`、`payload_type=text`、`payload_size_bucket` 按字节切片、`transport_type=p2p_direct`、`sync_latency_ms` 毫秒级
+- 失败时 `failure_reason` ∈ `peer_offline` / `file_too_large` / `network_error` / `unknown`

@@ -144,23 +144,70 @@ Slice 7b 仍阻塞（PostHog Cloud account + project key）。下一可执行：
   - `map_redeem_error_covers_all_variants` 钉死 14:14 映射
 - **Status:** complete
 
-#### Slice 8c: sync 三事件 + `first_clipboard_sync_*` + 新增 first_run state port
+#### Slice 8b': sponsor 端 pairing 三事件 + broadcast 链路重构
+
+**用户裁决（2026-05-09）**：
+- 重构 broadcast 链路：`PairingOutcome::Failure` 字段类型 `String` → `PairingFailureReason`（最干净）
+- sponsor 端 `pairing_started` 在 `IssuePairingInvitationUseCase::execute()` 入口 fire（与 joiner funnel 起点对齐）
+
+**子任务**：
+- [x] `uc-observability/src/analytics/events.rs`：`PairingFailureReason::as_str` + `Display` impl（snake_case wire 形态）
+- [x] `uc-application/src/facade/space_setup/events.rs`：`PairingOutcome::Failure { reason: PairingFailureReason }` + re-export
+- [x] `uc-application/src/facade/{mod,space_setup/mod}.rs`：`PairingFailureReason` 顶层 re-export
+- [x] `uc-application/src/pairing_inbound/orchestrator.rs`：
+  - 加 `analytics: Arc<dyn AnalyticsPort>` 字段
+  - 加 `handshake_started_at: Arc<StdMutex<HashMap<PairingSessionId, Instant>>>`
+  - `emit_failure(session, reason)` 改签名：先 fire `pairing_failed` event，再 send `PairingOutcome::Failure { reason }`
+  - `on_incoming` 写 started_at；`finalise_verified` Success 时 fire `pairing_succeeded { duration_ms }`
+  - 7 个 emit_failure 调用点改 enum；4 个 reason.contains 测试改 enum 等值
+  - 加 3 个 analytics-focused 测试（succeeded / failed PassphraseMismatch / failed InvitationExpired）
+- [x] `uc-application/src/usecases/pairing/issue_invitation.rs`：加 analytics + execute 入口 fire `pairing_started` + 4 测试加 capture 断言
+- [x] `uc-application/src/facade/space_setup/facade.rs`：注入 analytics 给 IssuePairing + Inbound
+- [x] `uc-webserver/src/api/setup_events.rs`：handler 用 `reason.to_string()`；2 个测试构造点改 enum；reason payload 断言改 `passphrase_mismatch` snake_case
+- **Status:** complete
+
+#### Slice 8c-1: sync 三事件（outbound per-peer，不动 port）
+
+**用户裁决（2026-05-09）**：拆 8c → 8c-1（本切片）+ 8c-2（FirstSyncStatePort + first_*）；事件粒度 per-peer
+
+**子任务**：
+- [x] `uc-application/src/usecases/clipboard_sync/dispatch_entry.rs`：
+  - 加 `analytics: Arc<dyn AnalyticsPort>` 字段
+  - `payload_type_from_categories` 私有 fn（File > Image > Text 优先级）
+  - `map_dispatch_error_to_failure_reason` 私有 fn（5 变体 1:1）
+  - fan-out 改：spawn 内 fire `SyncAttempted` → dispatch → 按 Result fire `SyncSucceeded`/`SyncFailed`
+  - `transport_type=P2pDirect`、`peer_os=None`、`sync_latency_ms` per-peer Instant 计时
+  - 加 `CapturingAnalyticsSink` test fake + `build_uc_with_analytics` helper
+  - 加 3 测试（happy 4 events 顺序 + 字段断言 / Offline → SyncFailed{PeerOffline} / `map_dispatch_error_covers_all_variants`）
+- [x] `uc-application/src/facade/clipboard/facade.rs`：`ClipboardSyncDeps` 加 analytics 字段；facade::new 透传；内测 build_facade 补 NoopAnalyticsSink
+- [x] `uc-bootstrap/src/space_setup.rs`：构造点补 `analytics: Arc::clone(&deps.analytics)`
+- [x] `uc-bootstrap/tests/slice2_phase2_clipboard_e2e.rs`：构造点补 NoopAnalyticsSink
+- **Status:** complete
+
+#### Slice 8c-2: `FirstSyncStatePort` + first_clipboard_sync_* 事件
 - [ ] `uc-core/src/ports/`：新增 `FirstSyncStatePort`（与 `AppVersionStatePort` 同粒度）
   - 持久化标志位"已发过 first_clipboard_sync_succeeded"
   - 实现落在 profile 数据目录（与 setup_status / app_version 一致）
+- [ ] `uc-infra`：实现 `<app_data_root>/first-sync-state.json`
 - [ ] `uc-bootstrap`：实现 + 注册到 AppDeps
-- [ ] `ClipboardSyncFacade` / `clipboard_outbound` 内：
-  - `sync_attempted` / `sync_succeeded` / `sync_failed`
-  - 检查 first-sync flag：未发过 → 同时发 `first_clipboard_sync_*`，发完置位
+- [ ] `ClipboardSyncFacade` / `dispatch_uc` 内：
+  - 检查 first-sync flag：未发过 → 同时发 `first_clipboard_sync_attempted` / `first_clipboard_sync_succeeded`，发完置位
 - [ ] 测试：first-sync flag 持久化往返；多线程下的 race（两条同步同时是"首次"的去重）
 - **Status:** pending
 
 #### Slice 8d: setup 两事件
-- [ ] `space_setup` Facade / Orchestrator 调用：
-  - `setup_started`（引导第一帧）
-  - `device_name_set`（提交设备名时按字符长度落 `NameLengthBucket`，原文不上传）
-- [ ] 测试：bucket 边界 + capture 时机
-- **Status:** pending
+
+**用户裁决（2026-05-09）**：A1 `InitializeSpaceUseCase` 入口 fire `setup_started`；`resolve_and_persist_device_name` 收尾 fire `device_name_set`
+
+**子任务**：
+- [x] `uc-application/src/usecases/setup/initialize_space.rs`：
+  - 加 `analytics: Arc<dyn AnalyticsPort>` 字段
+  - `execute` 入口 fire `Event::SetupStarted { entry: SetupEntry::FirstRun }`（v1 占位）
+  - `resolve_and_persist_device_name` 收尾 fire `Event::DeviceNameSet { name_length_bucket: NameLengthBucket::from_char_count(...) }`
+  - 加 `CapturingAnalyticsSink` + Harness::analytics 字段
+  - 加 4 测试断言（happy / DeviceNameRequired / PassphraseMismatch / NameLengthBucket 三 case 边界）
+- [x] `uc-application/src/facade/space_setup/facade.rs`：InitializeSpaceUseCase::new 透传 analytics（第 8 参数）
+- **Status:** complete
 
 ### Slice 9: settings UI 拆分两个开关
 - [ ] 前端 SettingsView 新增 `usage_analytics_enabled` 控件

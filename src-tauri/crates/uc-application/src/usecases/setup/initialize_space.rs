@@ -35,6 +35,7 @@ use uc_core::ports::{
     SetupStatusPort,
 };
 use uc_core::setup::SetupStatus;
+use uc_observability::analytics::{AnalyticsPort, Event, NameLengthBucket, SetupEntry};
 
 use crate::facade::space_setup::commands::InitializeSpaceCommand;
 use crate::facade::space_setup::{InitializeSpaceError, InitializeSpaceResult};
@@ -47,6 +48,11 @@ pub(crate) struct InitializeSpaceUseCase {
     setup_status: Arc<dyn SetupStatusPort>,
     settings: Arc<dyn SettingsPort>,
     clock: Arc<dyn ClockPort>,
+    /// Slice 8d · setup funnel anchor (`setup_started`) at execute() entry +
+    /// `device_name_set` after the device-name resolution succeeds. The
+    /// device name itself never reaches the sink — only the bucketed
+    /// character-count region per `NameLengthBucket`.
+    analytics: Arc<dyn AnalyticsPort>,
 }
 
 impl InitializeSpaceUseCase {
@@ -58,6 +64,7 @@ impl InitializeSpaceUseCase {
         setup_status: Arc<dyn SetupStatusPort>,
         settings: Arc<dyn SettingsPort>,
         clock: Arc<dyn ClockPort>,
+        analytics: Arc<dyn AnalyticsPort>,
     ) -> Self {
         Self {
             space_access,
@@ -67,6 +74,7 @@ impl InitializeSpaceUseCase {
             setup_status,
             settings,
             clock,
+            analytics,
         }
     }
 
@@ -75,6 +83,14 @@ impl InitializeSpaceUseCase {
         &self,
         cmd: InitializeSpaceCommand,
     ) -> Result<InitializeSpaceResult, InitializeSpaceError> {
+        // Slice 8d · setup funnel anchor. v1 fixes `entry = FirstRun` because
+        // A1 (this use case) is the fresh-device flow by definition; once a
+        // future "Manual setup retry" entry point exists, plumb it through
+        // the command and switch on it here.
+        self.analytics.capture(Event::SetupStarted {
+            entry: SetupEntry::FirstRun,
+        });
+
         // 0. Fresh-install guard. Slice 1 moved identity creation to
         //    bootstrap time (iroh endpoint bind), so identity-existence is
         //    no longer a reliable "was A1 already run?" signal; the setup
@@ -196,6 +212,14 @@ impl InitializeSpaceUseCase {
                     .map_err(|e| InitializeSpaceError::StorageFailed(e.to_string()))?;
             }
         }
+
+        // Slice 8d · `device_name_set` fires only after a valid name lands
+        // (`DeviceNameRequired` short-circuit above leaves the funnel
+        // legitimately incomplete). Original name never leaves the device —
+        // only the `NameLengthBucket` for the resolved value travels.
+        self.analytics.capture(Event::DeviceNameSet {
+            name_length_bucket: NameLengthBucket::from_char_count(effective.chars().count()),
+        });
 
         Ok(effective)
     }
@@ -432,6 +456,24 @@ mod tests {
 
     // ---------- Harness ----------
 
+    /// Test-only `AnalyticsPort` that records every captured event for
+    /// later inspection. Mirrors the joiner-side / sponsor-side fakes
+    /// used by other Slice 8 tests.
+    #[derive(Default)]
+    struct CapturingAnalyticsSink {
+        captured: Mutex<Vec<Event>>,
+    }
+    impl CapturingAnalyticsSink {
+        fn events(&self) -> Vec<Event> {
+            self.captured.lock().unwrap().clone()
+        }
+    }
+    impl AnalyticsPort for CapturingAnalyticsSink {
+        fn capture(&self, event: Event) {
+            self.captured.lock().unwrap().push(event);
+        }
+    }
+
     struct Harness {
         uc: InitializeSpaceUseCase,
         space_access: Arc<FakeSpaceAccess>,
@@ -439,6 +481,7 @@ mod tests {
         member_repo: Arc<InMemoryMemberRepo>,
         setup_status: Arc<InMemorySetupStatus>,
         settings: Arc<InMemorySettings>,
+        analytics: Arc<CapturingAnalyticsSink>,
     }
 
     fn build_harness() -> Harness {
@@ -451,6 +494,7 @@ mod tests {
         let setup_status = Arc::new(InMemorySetupStatus::default());
         let settings = Arc::new(InMemorySettings::default());
         let clock: Arc<dyn ClockPort> = Arc::new(FixedClock(1_700_000_000_000));
+        let analytics = Arc::new(CapturingAnalyticsSink::default());
 
         let uc = InitializeSpaceUseCase::new(
             space_access.clone(),
@@ -460,6 +504,7 @@ mod tests {
             setup_status.clone(),
             settings.clone(),
             clock,
+            analytics.clone(),
         );
         Harness {
             uc,
@@ -468,6 +513,7 @@ mod tests {
             member_repo,
             setup_status,
             settings,
+            analytics,
         }
     }
 
@@ -511,6 +557,23 @@ mod tests {
 
         let settings = h.settings.load().await.unwrap();
         assert_eq!(settings.general.device_name.as_deref(), Some("My Mac"));
+
+        // Slice 8d · setup_started + device_name_set fire in order.
+        // "My Mac" has 6 chars → Lt8 bucket.
+        let events = h.analytics.events();
+        assert_eq!(events.len(), 2, "expected exactly 2 setup events");
+        assert!(matches!(
+            &events[0],
+            Event::SetupStarted {
+                entry: SetupEntry::FirstRun
+            }
+        ));
+        assert!(matches!(
+            &events[1],
+            Event::DeviceNameSet {
+                name_length_bucket: NameLengthBucket::Lt8
+            }
+        ));
     }
 
     #[tokio::test]
@@ -526,6 +589,12 @@ mod tests {
         assert!(matches!(err, InitializeSpaceError::PassphraseMismatch));
         assert!(!*h.space_access.initialized.lock().unwrap());
         assert_eq!(*h.local_identity.create_calls.lock().unwrap(), 0);
+
+        // Slice 8d · setup_started fires regardless (funnel anchor),
+        // device_name_set must NOT — the name was never resolved.
+        let events = h.analytics.events();
+        assert_eq!(events.len(), 1);
+        assert!(matches!(&events[0], Event::SetupStarted { .. }));
     }
 
     #[tokio::test]
@@ -535,6 +604,39 @@ mod tests {
         let err = h.uc.execute(ok_cmd(None)).await.unwrap_err();
         assert!(matches!(err, InitializeSpaceError::DeviceNameRequired));
         assert!(!*h.space_access.initialized.lock().unwrap());
+
+        // Slice 8d · setup_started fires; device_name_set absent because
+        // no valid name materialised.
+        let events = h.analytics.events();
+        assert_eq!(events.len(), 1);
+        assert!(matches!(&events[0], Event::SetupStarted { .. }));
+    }
+
+    #[tokio::test]
+    async fn device_name_set_uses_name_length_bucket_boundaries() {
+        // 0..=7 → Lt8, 8..=16 → Range8To16, >16 → Gt16.
+        // Verify the threshold used by the use case matches the documented
+        // NameLengthBucket boundaries by exercising one name from each range.
+        for (name, expected) in [
+            ("Mac", NameLengthBucket::Lt8),
+            ("My Macbook Pro", NameLengthBucket::Range8To16),
+            ("This Is A Very Long Device Name", NameLengthBucket::Gt16),
+        ] {
+            let h = build_harness();
+            h.uc.execute(ok_cmd(Some(name))).await.unwrap();
+            let events = h.analytics.events();
+            assert_eq!(
+                events.len(),
+                2,
+                "name={name}: setup_started + device_name_set"
+            );
+            match &events[1] {
+                Event::DeviceNameSet { name_length_bucket } => {
+                    assert_eq!(*name_length_bucket, expected, "name={name}");
+                }
+                other => panic!("expected DeviceNameSet, got {other:?}"),
+            }
+        }
     }
 
     #[tokio::test]

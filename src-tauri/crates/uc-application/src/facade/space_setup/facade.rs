@@ -176,6 +176,7 @@ impl SpaceSetupFacade {
             Arc::clone(&setup_status),
             Arc::clone(&settings),
             Arc::clone(&clock),
+            Arc::clone(&analytics),
         ));
         let unlock_space = Arc::new(UnlockSpaceUseCase::new(
             Arc::clone(&space_access),

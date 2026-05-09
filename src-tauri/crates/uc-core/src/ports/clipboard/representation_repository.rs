@@ -112,4 +112,19 @@ pub trait ClipboardRepresentationRepositoryPort: Send + Sync {
     async fn update_mime_type(&self, _rep_id: &RepresentationId, _mime: &MimeType) -> Result<()> {
         Ok(())
     }
+
+    /// List representation IDs whose `payload_state` matches any of `states`.
+    ///
+    /// Used by reconciliation tasks (e.g. `StagedReconciler`) to enumerate
+    /// candidates for state transitions — for instance, finding all `Staged`
+    /// or `Processing` representations at startup to verify their bytes are
+    /// still recoverable from the spool.
+    ///
+    /// Default implementation returns empty for mock/test implementations.
+    async fn list_ids_by_payload_state(
+        &self,
+        _states: &[PayloadAvailability],
+    ) -> Result<Vec<RepresentationId>> {
+        Ok(vec![])
+    }
 }

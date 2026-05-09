@@ -127,6 +127,19 @@ impl SpoolManager {
         }
     }
 
+    /// Whether a spool file exists for `rep_id`. Lighter than `read()` when
+    /// the caller only needs presence (e.g. `StagedReconciler`).
+    /// 检查缓存中是否存在该表示的字节，比 `read()` 轻量。
+    pub async fn exists(&self, rep_id: &RepresentationId) -> Result<bool> {
+        let file_path = self.spool_dir.join(rep_id.to_string());
+        match fs::metadata(&file_path).await {
+            Ok(meta) => Ok(meta.is_file()),
+            Err(err) if err.kind() == io::ErrorKind::NotFound => Ok(false),
+            Err(err) => Err(err)
+                .with_context(|| format!("Failed to stat spool file: {}", file_path.display())),
+        }
+    }
+
     /// Delete spool entry. Missing file is treated as success.
     /// 删除缓存条目，若不存在则视为成功。
     pub async fn delete(&self, rep_id: &RepresentationId) -> Result<()> {

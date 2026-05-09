@@ -224,4 +224,11 @@ impl ClipboardRepresentationRepositoryPort for DecryptingClipboardRepresentation
     ) -> Result<()> {
         self.inner.update_mime_type(rep_id, mime).await
     }
+
+    async fn list_ids_by_payload_state(
+        &self,
+        states: &[PayloadAvailability],
+    ) -> Result<Vec<RepresentationId>> {
+        self.inner.list_ids_by_payload_state(states).await
+    }
 }

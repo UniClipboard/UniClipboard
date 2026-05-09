@@ -11,6 +11,7 @@ mod spool_manager;
 mod spool_queue;
 mod spool_scanner;
 pub mod spooler_task;
+mod staged_reconciler;
 mod thumbnail_generator;
 
 pub use background_blob_worker::BackgroundBlobWorker;
@@ -35,6 +36,7 @@ pub use spool_manager::{SpoolEntry, SpoolManager};
 pub use spool_queue::MpscSpoolQueue;
 pub use spool_scanner::SpoolScanner;
 pub use spooler_task::SpoolerTask;
+pub use staged_reconciler::StagedReconciler;
 pub use thumbnail_generator::InfraThumbnailGenerator;
 pub use uc_core::ports::clipboard::SpoolRequest;
 

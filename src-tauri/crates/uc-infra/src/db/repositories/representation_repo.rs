@@ -297,4 +297,25 @@ where
             Ok(())
         })
     }
+
+    async fn list_ids_by_payload_state(
+        &self,
+        states: &[PayloadAvailability],
+    ) -> Result<Vec<RepresentationId>> {
+        let state_strs: Vec<String> = states.iter().map(|s| s.as_str().to_string()).collect();
+        if state_strs.is_empty() {
+            return Ok(vec![]);
+        }
+
+        let id_strings: Vec<String> = self.executor.run(|conn| {
+            let result: Result<Vec<String>, diesel::result::Error> =
+                clipboard_snapshot_representation::table
+                    .filter(clipboard_snapshot_representation::payload_state.eq_any(&state_strs))
+                    .select(clipboard_snapshot_representation::id)
+                    .load::<String>(conn);
+            result.map_err(|e| anyhow::anyhow!("Database error: {}", e))
+        })?;
+
+        Ok(id_strings.into_iter().map(RepresentationId::from).collect())
+    }
 }

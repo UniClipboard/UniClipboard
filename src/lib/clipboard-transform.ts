@@ -58,5 +58,6 @@ export function transformDaemonDtoToItemResponse(entry: ClipboardEntryDto): Clip
     },
     file_transfer_status: entry.fileTransferStatus ?? null,
     file_transfer_reason: entry.fileTransferReason ?? null,
+    payload_state: entry.payloadState ?? null,
   }
 }

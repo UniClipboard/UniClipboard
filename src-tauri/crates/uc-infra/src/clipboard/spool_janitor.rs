@@ -43,7 +43,15 @@ impl SpoolJanitor {
             .await?;
         let mut removed = 0usize;
         for entry in expired {
-            match self
+            // Only delete the spool file when the DB transition to Lost
+            // actually applied. If the transition fails or hits a state
+            // mismatch (rep already moved past Staged/Processing —
+            // potentially BlobReady mid-cleanup), keeping the file lets
+            // the next sweep retry. Previously the delete ran
+            // unconditionally, which would turn a transient DB error
+            // (StateMismatch / Err) into a permanent orphan: DB still
+            // says Staged, spool gone, restore 500 forever.
+            let updated = match self
                 .repo
                 .update_processing_result(
                     &entry.representation_id,
@@ -54,33 +62,44 @@ impl SpoolJanitor {
                 )
                 .await
             {
-                Ok(ProcessingUpdateOutcome::Updated(_)) => {}
+                Ok(ProcessingUpdateOutcome::Updated(_)) => true,
                 Ok(ProcessingUpdateOutcome::StateMismatch) => {
                     warn!(
                         representation_id = %entry.representation_id,
-                        "Skipping Lost update due to state mismatch"
+                        "Skipping spool file delete: state mismatch (rep moved past Staged/Processing)"
                     );
+                    false
                 }
                 Ok(ProcessingUpdateOutcome::NotFound) => {
-                    warn!(representation_id = %entry.representation_id, "Representation missing");
+                    warn!(
+                        representation_id = %entry.representation_id,
+                        "Skipping spool file delete: representation missing from DB"
+                    );
+                    // The rep is gone from DB; the spool file is genuinely
+                    // orphaned. Safe to delete.
+                    true
                 }
                 Err(err) => {
                     warn!(
                         representation_id = %entry.representation_id,
                         error = %err,
-                        "Failed to mark Lost during spool cleanup"
+                        "Failed to mark Lost during spool cleanup; leaving spool file for retry"
                     );
+                    false
+                }
+            };
+
+            if updated {
+                if let Err(err) = fs::remove_file(&entry.file_path).await {
+                    warn!(
+                        representation_id = %entry.representation_id,
+                        error = %err,
+                        "Failed to delete expired spool file"
+                    );
+                } else {
+                    removed += 1;
                 }
             }
-
-            if let Err(err) = fs::remove_file(&entry.file_path).await {
-                warn!(
-                    representation_id = %entry.representation_id,
-                    error = %err,
-                    "Failed to delete expired spool file"
-                );
-            }
-            removed += 1;
         }
         Ok(removed)
     }

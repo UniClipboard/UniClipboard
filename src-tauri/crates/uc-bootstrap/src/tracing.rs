@@ -245,6 +245,19 @@ pub fn init_tracing_subscriber() -> anyhow::Result<()> {
                         // opentelemetry crate 仍可能 emit 内部错误 —— 这条兜底
                         // 防止它们进 Sentry 噪音。
                         EventFilter::Ignore
+                    } else if md.target().starts_with("noq_proto::connection")
+                        || md.target().starts_with("noq_udp")
+                    {
+                        // QUIC 传输层状态机噪音(`PTO expired while unset`,
+                        // `failed closing path`,`sendmsg error: No route to host`
+                        // 等)。NOISE_FILTERS 里已经按 EnvFilter directive 屏蔽了
+                        // 这些 target,但 sentry-tracing 的 layer 在某些版本上
+                        // 不完全响应 per-layer EnvFilter,事件仍能漏到 Sentry
+                        // (历史报例:UNICLIPBOARD-RUST-3 / `PTO expired while
+                        // unset` 在 alpha.3 上 8 次)。这里直接在 event_filter
+                        // 里拦住作为双保险 —— iroh 上层仍会把真正的连接失败
+                        // 转成自己的结构化事件,没有可观测信号损失。
+                        EventFilter::Ignore
                     } else {
                         match *md.level() {
                             // ERROR 同时上报为 Issue(报警)和 Log(可搜索)。

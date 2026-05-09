@@ -108,6 +108,7 @@ const ClipboardHistoryPanel: React.FC = () => {
         type: resolveItemType(item),
         preview: getItemPreview(item),
         activeTime: item.active_time,
+        isUnavailable: item.payload_state === 'Lost',
       })),
     [items]
   )

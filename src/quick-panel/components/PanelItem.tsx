@@ -18,6 +18,7 @@ interface PanelItemProps {
 const PanelItem: React.FC<PanelItemProps> = React.memo(
   ({ item, index, isSelected, hoverDisabled, onSelect, onHover, itemRef, shortcutKey }) => {
     const Icon = typeIcons[item.type] ?? FileText
+    const isUnavailable = item.isUnavailable
 
     return (
       <div
@@ -37,9 +38,18 @@ const PanelItem: React.FC<PanelItemProps> = React.memo(
           className={[
             'h-3.5 w-3.5 shrink-0',
             isSelected ? 'text-primary-foreground/70' : 'text-muted-foreground/60',
-          ].join(' ')}
+            isUnavailable && 'opacity-40',
+          ]
+            .filter(Boolean)
+            .join(' ')}
         />
-        <span className="flex-1 truncate">{item.preview || '(empty)'}</span>
+        <span
+          className={['flex-1 truncate', isUnavailable && 'line-through opacity-60']
+            .filter(Boolean)
+            .join(' ')}
+        >
+          {item.preview || '(empty)'}
+        </span>
         <span
           className={[
             'shrink-0 tabular-nums text-[11px]',

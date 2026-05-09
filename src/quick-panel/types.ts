@@ -14,6 +14,11 @@ export interface DisplayItem {
   type: ItemType
   preview: string
   activeTime: number
+  /**
+   * paste_rep 已 `Lost` —— 点击粘贴会回 daemon 410。面板渲染时灰显并加
+   * 删除线, 让用户在点击之前就识别。语义与 dashboard 列表一致。
+   */
+  isUnavailable: boolean
 }
 
 export type PreviewMode = 'closed' | 'reserving' | 'expanded'

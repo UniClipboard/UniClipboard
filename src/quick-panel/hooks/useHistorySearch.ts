@@ -31,6 +31,9 @@ function searchResultToDisplayItem(r: SearchResultDto): DisplayItem {
     type: mapContentTypeToDisplayType(r.contentType),
     preview: r.textPreview ?? '',
     activeTime: r.activeTimeMs,
+    // TODO: SearchResultDto 暂不返回 payload_state, 搜索结果里 Lost 的 entry
+    // 不会灰显。等后端搜索 API 透出 payload_state 后再接通。
+    isUnavailable: false,
   }
 }
 

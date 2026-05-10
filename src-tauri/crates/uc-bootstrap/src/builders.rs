@@ -21,7 +21,9 @@ use uc_application::deps::AppDeps;
 use uc_application::facade::{AppPaths, ClipboardSyncFacade, HostEventEmitterPort};
 use uc_core::config::AppConfig;
 
-use crate::assembly::{get_storage_paths, wire_dependencies, BackgroundRuntimeDeps};
+use crate::assembly::{
+    get_storage_paths, wire_dependencies_with_overrides, BackgroundRuntimeDeps, WireOverrides,
+};
 use crate::space_setup::{build_space_setup_assembly, SpaceSetupAssembly};
 
 /// Context for CLI entry point. AppDeps + config, no background workers.
@@ -70,6 +72,7 @@ pub struct DaemonBootstrapContext {
 /// before tracing initialization so the subscriber picks up the desired profile.
 fn build_core(
     log_profile_override: Option<uc_observability::LogProfile>,
+    wire_overrides: WireOverrides,
 ) -> anyhow::Result<(AppConfig, crate::assembly::WiredDependencies)> {
     // Apply log profile override before tracing init
     if let Some(profile) = log_profile_override {
@@ -86,7 +89,7 @@ fn build_core(
 
     let config = AppConfig::empty();
 
-    let wired = wire_dependencies(&config)
+    let wired = wire_dependencies_with_overrides(&config, wire_overrides)
         .map_err(|e| anyhow::anyhow!("Dependency wiring failed: {}", e))?;
 
     Ok((config, wired))
@@ -106,7 +109,9 @@ pub fn build_cli_context() -> anyhow::Result<CliBootstrapContext> {
 pub fn build_cli_context_with_profile(
     log_profile: Option<uc_observability::LogProfile>,
 ) -> anyhow::Result<CliBootstrapContext> {
-    let (config, wired) = build_core(log_profile)?;
+    // CLI 是独立进程,没有"另一份 deps 在同进程内读"的共享需求,
+    // 走 default overrides 让 wire 内部 new 一份 endpoint_info 即可。
+    let (config, wired) = build_core(log_profile, WireOverrides::default())?;
 
     // [Codex Review R1] Return AppDeps, not CoreRuntime.
     // CLI entry point constructs CoreRuntime itself with appropriate emitter.
@@ -125,7 +130,7 @@ pub fn build_cli_context_with_profile(
 pub fn build_slice1_cli_context(
     log_profile: Option<uc_observability::LogProfile>,
 ) -> anyhow::Result<(AppConfig, crate::assembly::WiredDependencies)> {
-    build_core(log_profile)
+    build_core(log_profile, WireOverrides::default())
 }
 
 /// Build daemon bootstrap context. Returns AppDeps + background deps.
@@ -137,8 +142,10 @@ pub fn build_slice1_cli_context(
 /// via the iroh stack. `trusted_peer_repo` is consumed by
 /// `build_space_setup_assembly` (the setup-v2 flow) and is not
 /// re-exposed on the returned ctx.
-pub async fn build_daemon_app() -> anyhow::Result<DaemonBootstrapContext> {
-    let (config, wired) = build_core(None)?;
+pub async fn build_daemon_app(
+    wire_overrides: WireOverrides,
+) -> anyhow::Result<DaemonBootstrapContext> {
+    let (config, wired) = build_core(None, wire_overrides)?;
     let storage_paths = get_storage_paths(&config)?;
 
     // 启动期 reconcile:把 peer_addr_repo / trusted_peer_repo 中

@@ -19,6 +19,7 @@ use tauri::{Emitter, Manager};
 use tauri_plugin_autostart::MacosLauncher;
 use tracing::{error, info, warn};
 
+use uc_bootstrap::WireOverrides;
 use uc_daemon_client::DaemonConnectionState;
 use uc_desktop::bootstrap::{build_gui_app, GuiBootstrapContext};
 use uc_desktop::daemon_probe::{
@@ -26,6 +27,7 @@ use uc_desktop::daemon_probe::{
     INCOMPATIBLE_DAEMON_EXIT_TIMEOUT,
 };
 use uc_desktop::DaemonOwnership;
+use uc_infra::mobile_sync::InMemoryMobileSyncEndpointInfoAdapter;
 
 use crate::bootstrap::{
     ensure_default_device_name, start_background_tasks, start_gui_pairing_lease_task,
@@ -126,6 +128,7 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
         background,
         storage_paths,
         config: _config,
+        mobile_sync_endpoint_info,
     } = build_gui_app()?;
 
     let daemon_connection_state = DaemonConnectionState::default();
@@ -154,6 +157,9 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
         .manage(runtime.clone())
         .manage(DaemonConnectionState::clone(&daemon_connection_state))
         .manage(DaemonOwnership::clone(&daemon_ownership))
+        // 共享 endpoint_info Arc 给 daemon spawn / restart_daemon command。
+        // 与 GUI 端 deps 同一份,daemon LAN listener 写入对 GUI facade 可见。
+        .manage(mobile_sync_endpoint_info)
         .manage(TrayState::default())
         .manage(task_registry.clone())
         .on_window_event(|window, event| {
@@ -224,6 +230,10 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
             let daemon_connection_state_for_setup = daemon_connection_state.clone();
             let daemon_ownership_for_setup = daemon_ownership.clone();
             let runtime_for_daemon = runtime.clone();
+            // 把 GUI 端持有的 endpoint_info Arc 透传给 daemon spawn,让 daemon 端 deps
+            // 共享同一份 —— daemon LAN listener 写入的 status 因此对 GUI in-process facade 可见。
+            let endpoint_info_for_daemon =
+                Arc::clone(&app.state::<Arc<InMemoryMobileSyncEndpointInfoAdapter>>());
             tauri::async_runtime::spawn(async move {
                 match bootstrap_daemon_in_process(
                     &daemon_ownership_for_setup,
@@ -231,6 +241,9 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
                     INCOMPATIBLE_DAEMON_EXIT_TIMEOUT,
                     HEALTH_CHECK_TIMEOUT,
                     HEALTH_POLL_INTERVAL,
+                    WireOverrides {
+                        mobile_sync_endpoint_info: Some(endpoint_info_for_daemon),
+                    },
                 )
                 .await
                 {
@@ -436,6 +449,7 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
             crate::commands::get_daemon_connection_info,
             // Restart commands (Phase 95)
             crate::commands::restart::restart_app,
+            crate::commands::restart::restart_daemon,
             // Autostart commands
             crate::commands::autostart::enable_autostart,
             crate::commands::autostart::disable_autostart,

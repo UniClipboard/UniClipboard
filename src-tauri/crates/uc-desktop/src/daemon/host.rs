@@ -14,6 +14,7 @@
 use std::sync::Arc;
 
 use tokio_util::sync::CancellationToken;
+use uc_bootstrap::WireOverrides;
 
 use crate::daemon::app_assembly::{build_daemon_app_instance, DaemonAppAssemblyInput};
 use crate::daemon::app_facade_assembly::{
@@ -36,7 +37,9 @@ use crate::daemon::tokio_runtime::build_daemon_tokio_runtime;
 pub fn run(run_mode: DaemonRunMode) -> anyhow::Result<()> {
     let rt = build_daemon_tokio_runtime()?;
     rt.block_on(async move {
-        let handle = start_in_process(run_mode).await?;
+        // standalone daemon binary 没有"GUI 在另一份 deps 里读"的共享需求,
+        // 走默认 overrides 让 wire 内部 new 即可。
+        let handle = start_in_process(run_mode, WireOverrides::default()).await?;
         // daemon main loop 自己监听 OS 信号（除 GuiInProcess 外），到信号
         // 触发后会自然退出。这里只 await join。
         handle.wait().await
@@ -54,7 +57,10 @@ pub fn run(run_mode: DaemonRunMode) -> anyhow::Result<()> {
 ///   通过返回的 handle 触发，避免抢占 GUI 自己的信号 handler。
 /// - [`DaemonRunMode::Standalone`]：daemon 内部监听 SIGTERM/SIGINT，靠 OS
 ///   信号自然退出。
-pub async fn start_in_process(run_mode: DaemonRunMode) -> anyhow::Result<DaemonHandle> {
+pub async fn start_in_process(
+    run_mode: DaemonRunMode,
+    wire_overrides: WireOverrides,
+) -> anyhow::Result<DaemonHandle> {
     let cancel = CancellationToken::new();
 
     let DaemonBootstrapAssembly {
@@ -69,7 +75,7 @@ pub async fn start_in_process(run_mode: DaemonRunMode) -> anyhow::Result<DaemonH
         blob_transfer_facade,
         space_setup_assembly,
         mobile_sync_endpoint_info,
-    } = build_daemon_bootstrap_assembly().await?;
+    } = build_daemon_bootstrap_assembly(wire_overrides).await?;
 
     let uc_bootstrap::NonGuiBundle {
         deps,

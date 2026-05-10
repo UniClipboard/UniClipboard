@@ -301,6 +301,7 @@ impl DaemonApp {
         let cleanup_cancel = self.cancel.child_token();
         let http_cancel = self.cancel.child_token();
         let mut http_handle = tokio::spawn(run_http_server(api_state, http_cancel));
+        let mut http_handle_consumed = false;
 
         let _cleanup_handle = cleanup_rate_limiter_task(security_for_cleanup, cleanup_cancel);
 
@@ -416,6 +417,11 @@ impl DaemonApp {
                 }
                 result = &mut http_handle => {
                     warn!("HTTP server exited unexpectedly: {:?}", result);
+                    // JoinHandle 在 select! 这一支已经被 poll 到 Ready 并通过
+                    // take_output 消费掉结果。后续 shutdown 阶段不能再 await
+                    // 同一个 handle，否则触发
+                    // panic!("JoinHandle polled after completion")。
+                    http_handle_consumed = true;
                     break;
                 }
                 Some(result) = service_tasks.join_next() => {
@@ -458,9 +464,11 @@ impl DaemonApp {
         .await
         .ok();
 
-        tokio::time::timeout(Duration::from_secs(5), http_handle)
-            .await
-            .ok();
+        if !http_handle_consumed {
+            tokio::time::timeout(Duration::from_secs(5), http_handle)
+                .await
+                .ok();
+        }
 
         for service in self.services.iter().rev() {
             info!(service = service.name(), "stopping service");

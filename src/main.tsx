@@ -5,7 +5,11 @@ import { Provider } from 'react-redux'
 import App from './App'
 import './i18n'
 import { store } from './store'
-import { connectDaemonWs, registerDaemonShutdownListener } from '@/lib/daemon-ws-bootstrap'
+import {
+  connectDaemonWs,
+  registerDaemonRestartListener,
+  registerDaemonShutdownListener,
+} from '@/lib/daemon-ws-bootstrap'
 import { initSentry, Sentry } from '@/observability/sentry'
 
 // Sentry init runs before React mounts so that the global ErrorBoundary,
@@ -88,6 +92,13 @@ connectDaemonWs().catch(err => {
 // heartbeat timeout (~30s).
 registerDaemonShutdownListener().catch(err => {
   console.error('[main] daemon shutdown listener registration failed:', err)
+})
+
+// Listen for in-process daemon reload events (mobile_sync / LAN-only settings).
+// On restart-begin: disconnect WS + reset bootstrap state. On daemon-ready:
+// re-bootstrap WS so the UI auto-recovers without a process-level restart.
+registerDaemonRestartListener().catch(err => {
+  console.error('[main] daemon restart listener registration failed:', err)
 })
 
 ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(

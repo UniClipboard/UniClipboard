@@ -225,7 +225,8 @@ const MobileSyncSettingsSheet: React.FC<Props> = ({ open, onOpenChange, onSettin
   const handleRestart = useCallback(async () => {
     try {
       const { invokeWithTrace } = await import('@/lib/tauri-command')
-      await invokeWithTrace('restart_app')
+      // daemon-only reload —— 详见 NetworkSection.tsx 的 handleRestart 注释。
+      await invokeWithTrace('restart_daemon')
     } catch (err) {
       log.error({ err }, 'failed to restart')
       toast.error(translate(err))

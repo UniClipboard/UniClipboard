@@ -9,12 +9,15 @@
 //! 它退化成纯装配工具集，daemon / CLI 自己的 entry-point 装配也在各自
 //! 的 crate 里完成。
 
+use std::sync::Arc;
+
 use uc_application::deps::AppDeps;
 use uc_application::facade::AppPaths;
-use uc_bootstrap::assembly::{get_storage_paths, wire_dependencies};
+use uc_bootstrap::assembly::{get_storage_paths, wire_dependencies_with_overrides};
 use uc_bootstrap::tracing::install_panic_logging_hook;
-use uc_bootstrap::{init_tracing_subscriber, BackgroundRuntimeDeps};
+use uc_bootstrap::{init_tracing_subscriber, BackgroundRuntimeDeps, WireOverrides};
 use uc_core::config::AppConfig;
+use uc_infra::mobile_sync::InMemoryMobileSyncEndpointInfoAdapter;
 
 /// 桌面 GUI shell 启动需要的全部上下文。Shell 从中取 `deps` 装配自己的
 /// runtime（如 `TauriAppRuntime`），从 `background` 启动后台任务，从
@@ -24,6 +27,11 @@ pub struct GuiBootstrapContext {
     pub background: BackgroundRuntimeDeps,
     pub storage_paths: AppPaths,
     pub config: AppConfig,
+    /// 进程级共享的 mobile_sync endpoint_info Arc。GUI shell 把它保留下来,
+    /// 在 daemon spawn(`bootstrap_daemon_in_process` / `reload_in_process_daemon`)
+    /// 时通过 `WireOverrides` 注入,让 daemon 端 deps 与 GUI 端 deps 共享同一份 ——
+    /// daemon LAN listener 写入的 status 因此能被 GUI in-process facade 读到。
+    pub mobile_sync_endpoint_info: Arc<InMemoryMobileSyncEndpointInfoAdapter>,
 }
 
 /// 构造 GUI shell 的启动上下文。
@@ -45,7 +53,16 @@ pub fn build_gui_app() -> anyhow::Result<GuiBootstrapContext> {
     install_panic_logging_hook();
 
     let config = AppConfig::empty();
-    let wired = wire_dependencies(&config)
+
+    // 进程级共享的 endpoint_info —— GUI deps 与 in-process daemon deps 共用。
+    // wire_dependencies 内部如果不接收 override,会自己 new 一份,导致 daemon
+    // 写的 status 被 GUI facade 读不到(参见 `WireOverrides` 的文档)。
+    let mobile_sync_endpoint_info = Arc::new(InMemoryMobileSyncEndpointInfoAdapter::new());
+    let wire_overrides = WireOverrides {
+        mobile_sync_endpoint_info: Some(Arc::clone(&mobile_sync_endpoint_info)),
+    };
+
+    let wired = wire_dependencies_with_overrides(&config, wire_overrides)
         .map_err(|e| anyhow::anyhow!("Dependency wiring failed: {}", e))?;
     let storage_paths = get_storage_paths(&config)?;
 
@@ -54,5 +71,6 @@ pub fn build_gui_app() -> anyhow::Result<GuiBootstrapContext> {
         background: wired.background,
         storage_paths,
         config,
+        mobile_sync_endpoint_info,
     })
 }

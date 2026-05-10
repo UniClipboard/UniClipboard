@@ -134,10 +134,17 @@ const NetworkSection: React.FC = () => {
     setRestartLoading(true)
     setRestartError(null)
     try {
-      await invokeWithTrace<void>('restart_app')
-      // app.restart() 不返回；以下不可达
+      // 走 daemon-only reload(restart_daemon),避免 app.restart() 导致新旧
+      // 进程同时持端口窗口期触发的 daemon panic。前端 WS 由
+      // `registerDaemonRestartListener` 自动断开 / 重连,UI 不需要进一步动作。
+      await invokeWithTrace<void>('restart_daemon')
+      // restart_daemon 成功返回 = 新 daemon 已健康。撤销 pending 与 loading,
+      // 隐藏 RestartBanner;旧路径下 app.restart() 不返回所以不需要这两步,
+      // 切到 daemon-only reload 后必须显式撤销。
+      setPending(false)
+      setRestartLoading(false)
     } catch (err) {
-      log.error({ err }, 'app.restart() 失败')
+      log.error({ err }, 'restart_daemon 失败')
       setRestartError(t('settings.sections.network.restartBanner.errorMessage'))
       setRestartLoading(false)
     }

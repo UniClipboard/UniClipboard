@@ -21,6 +21,8 @@ use uc_daemon_local::health_wait::{wait_for_daemon_health, wait_for_endpoint_abs
 use uc_daemon_local::process_metadata::{read_pid_metadata, DaemonPidMetadata, DaemonProcessMode};
 use uc_daemon_local::socket::try_resolve_daemon_http_addr;
 
+use uc_bootstrap::WireOverrides;
+
 use crate::daemon::run_mode::DaemonRunMode;
 use crate::daemon::{start_in_process, DaemonOwnership};
 
@@ -178,6 +180,7 @@ pub async fn bootstrap_daemon_in_process(
     incompatible_exit_timeout: Duration,
     health_check_timeout: Duration,
     health_poll_interval: Duration,
+    wire_overrides: WireOverrides,
 ) -> Result<DaemonConnectionInfo, DaemonBootstrapError> {
     let client = reqwest::Client::builder()
         .timeout(PROBE_TIMEOUT)
@@ -199,6 +202,7 @@ pub async fn bootstrap_daemon_in_process(
                 expected_package_version,
                 health_check_timeout,
                 health_poll_interval,
+                wire_overrides,
             )
             .await?;
         }
@@ -219,6 +223,7 @@ pub async fn bootstrap_daemon_in_process(
                 expected_package_version,
                 health_check_timeout,
                 health_poll_interval,
+                wire_overrides,
             )
             .await?;
         }
@@ -227,14 +232,89 @@ pub async fn bootstrap_daemon_in_process(
     load_daemon_connection_info()
 }
 
+/// In-process daemon 重启失败的分类错误。
+///
+/// 关心三种宏观结果:
+/// - [`ReloadInProcessDaemonError::NotOwned`] —— 没有可重启的 owned daemon
+///   (外部 daemon / 从未启动 / 已被取走)。shell 据此提示用户:外部 daemon
+///   必须由各自的入口(systemctl / launchd / `cli daemon`)自行重启。
+/// - [`ReloadInProcessDaemonError::Shutdown`] —— 旧 daemon graceful shutdown
+///   超时或返回错误;新 daemon **未**被启动,ownership 已经回到 `None` 状态
+///   (token 被消费)。shell 应当让用户重试或彻底重启进程。
+/// - [`ReloadInProcessDaemonError::Bootstrap`] —— 旧 daemon 已成功关闭,但新
+///   daemon 启动 / 健康探测失败。ownership 取决于子步骤进度——start_in_process
+///   失败保持 `None`;start_in_process 成功但 health 失败,ownership 是 `Owned`
+///   指向"起来了但不健康"的 daemon。
+#[derive(Debug, thiserror::Error)]
+pub enum ReloadInProcessDaemonError {
+    #[error("no in-process daemon to reload (external daemon or never owned)")]
+    NotOwned,
+    #[error("shutdown of previous daemon failed: {0}")]
+    Shutdown(#[source] anyhow::Error),
+    #[error(transparent)]
+    Bootstrap(#[from] DaemonBootstrapError),
+}
+
+/// In-process daemon 重启入口 —— 关闭当前 owned daemon,起一个新的,
+/// 等到新 daemon 健康后返回新的 connection info。
+///
+/// 行为合约:
+/// - 调用前必须有 `Owned` daemon;`External` / `None` 直接拒绝
+///   ([`ReloadInProcessDaemonError::NotOwned`]),不会触碰别人家的 daemon
+///   进程。
+/// - 同进程 listener drop 后,新 daemon 在同一 SocketAddr 立即 rebind 不会撞
+///   `WSAEADDRINUSE` —— 这是 P1 reload 路径的核心契约,由
+///   `uc-webserver/tests/graceful_shutdown_port_reuse.rs` 守护。
+/// - 期间 [`DaemonOwnership`] 会经过 `None` 中间态。本函数自身串行,
+///   不防止 caller 并发调用——shell 必须用自己的锁保证一次只 reload 一次。
+pub async fn reload_in_process_daemon(
+    ownership: &DaemonOwnership,
+    expected_package_version: &str,
+    shutdown_timeout: Duration,
+    health_check_timeout: Duration,
+    health_poll_interval: Duration,
+    wire_overrides: WireOverrides,
+) -> Result<DaemonConnectionInfo, ReloadInProcessDaemonError> {
+    let old_handle = ownership
+        .take_owned()
+        .ok_or(ReloadInProcessDaemonError::NotOwned)?;
+
+    old_handle
+        .shutdown(shutdown_timeout)
+        .await
+        .map_err(ReloadInProcessDaemonError::Shutdown)?;
+
+    let client = reqwest::Client::builder()
+        .timeout(PROBE_TIMEOUT)
+        .build()
+        .map_err(|error| {
+            DaemonBootstrapError::Client(
+                anyhow::Error::new(error).context("failed to build daemon probe client"),
+            )
+        })?;
+
+    start_owned_in_process(
+        ownership,
+        &client,
+        expected_package_version,
+        health_check_timeout,
+        health_poll_interval,
+        wire_overrides,
+    )
+    .await?;
+
+    load_daemon_connection_info().map_err(Into::into)
+}
+
 async fn start_owned_in_process(
     ownership: &DaemonOwnership,
     client: &reqwest::Client,
     expected_package_version: &str,
     health_check_timeout: Duration,
     health_poll_interval: Duration,
+    wire_overrides: WireOverrides,
 ) -> Result<(), DaemonBootstrapError> {
-    let handle = start_in_process(DaemonRunMode::GuiInProcess)
+    let handle = start_in_process(DaemonRunMode::GuiInProcess, wire_overrides)
         .await
         .map_err(|error| {
             DaemonBootstrapError::Spawn(error.context("in-process daemon start failed"))

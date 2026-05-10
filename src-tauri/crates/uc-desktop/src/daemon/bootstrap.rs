@@ -9,7 +9,7 @@ use uc_bootstrap::builders::build_daemon_app;
 use uc_bootstrap::file_transfer_lifecycle::FileTransferLifecycle;
 use uc_bootstrap::{
     build_non_gui_bundle, BackgroundRuntimeDeps, BlobProcessingPorts, NonGuiBundle,
-    SpaceSetupAssembly,
+    SpaceSetupAssembly, WireOverrides,
 };
 
 /// daemon bootstrap 装配结果。
@@ -37,8 +37,15 @@ pub struct DaemonBootstrapAssembly {
 /// 入口（[`crate::daemon::run`]）通过 `Runtime::block_on` 进入 async 上下文；
 /// in-process 入口（[`crate::daemon::start_in_process`]）由 GUI 提供的 runtime
 /// 直接 await。
-pub async fn build_daemon_bootstrap_assembly() -> anyhow::Result<DaemonBootstrapAssembly> {
-    let ctx = build_daemon_app().await?;
+///
+/// `wire_overrides` 用于让 caller 注入跨 deps 实例共享的 Arc——典型场景:
+/// GUI shell 把 GUI 端的 `mobile_sync_endpoint_info` 传给 daemon 端,daemon
+/// LAN listener 写入的 status 就能被 GUI in-process facade 读到。standalone
+/// daemon binary 走 `WireOverrides::default()`,内部新建。
+pub async fn build_daemon_bootstrap_assembly(
+    wire_overrides: WireOverrides,
+) -> anyhow::Result<DaemonBootstrapAssembly> {
+    let ctx = build_daemon_app(wire_overrides).await?;
 
     let file_cache_dir = ctx.storage_paths.file_cache_dir.clone();
     let file_transfer_lifecycle = ctx.background.file_transfer_lifecycle.clone();

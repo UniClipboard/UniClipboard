@@ -13,25 +13,28 @@
 //!
 //! # Phase 4 重构(2026-05-10)
 //!
-//! `start_in_process` 现在接受调用方已构造好的 `Arc<AppFacade>`(进程内
-//! 单例),daemon 启停时 swap 5 个 daemon-lifecycle 子 facade 到这份
-//! `AppFacade`,而不再装第二份完整 `AppFacade`。daemon 仍然 wire 第二份
-//! deps —— 数据走 sqlite WAL 双 pool 兼容,daemon reload 后通过 swap 让
-//! GUI command 看到新的 lifecycle facades。`WireOverrides` 仍然保留:
-//! GUI 端与 daemon 端共享 `mobile_sync_endpoint_info` Arc 的机制不变;
-//! 后续 PR 会把 daemon wire 也合并进进程级 deps。
+//! daemon 不再 wire 自己的 deps —— caller 通过 [`ProcessRuntimeHandles`]
+//! 把进程级一次性资源 (sqlite pool / repos / settings / blob workers /
+//! clipboard_write_coordinator / file_transfer_lifecycle 等) 透传进来,
+//! daemon 启停时只重建 daemon-lifecycle 资源 (iroh node / space_setup /
+//! HTTP server / LAN listener)。整个进程只有一份 `AppFacade`,daemon 启动
+//! swap 5 个子 facade 进去,退出时清空。
+//!
+//! blob/spool worker 不在这里 spawn —— caller 在进程启动期一次性
+//! `spawn_blob_processing_tasks`,挂在进程级 task_registry 上。
 
 use std::sync::Arc;
 
 use tokio_util::sync::CancellationToken;
-use uc_application::facade::AppFacade;
-use uc_bootstrap::WireOverrides;
+use uc_application::clipboard_write::ClipboardWriteCoordinator;
+use uc_application::facade::{AppFacade, AppPaths};
+use uc_bootstrap::assembly::WiredDependencies;
+use uc_bootstrap::file_transfer_lifecycle::FileTransferLifecycle;
 
 use crate::daemon::app_assembly::{build_daemon_app_instance, DaemonAppAssemblyInput};
 use crate::daemon::app_facade_assembly::{
     build_daemon_lifecycle_facades, DaemonLifecycleFacadesInput,
 };
-use crate::daemon::background_tasks::spawn_daemon_background_tasks;
 use crate::daemon::bootstrap::{build_daemon_bootstrap_assembly, DaemonBootstrapAssembly};
 use crate::daemon::handle::DaemonHandle;
 use crate::daemon::run_loop::{run_daemon_main, DaemonRunLoopInput};
@@ -42,34 +45,76 @@ use crate::daemon::search_assembly::build_daemon_search_assembly;
 use crate::daemon::service_assembly::build_daemon_service_plan;
 use crate::daemon::tokio_runtime::build_daemon_tokio_runtime;
 
+/// 进程级一次性资源句柄,daemon 每次 spawn 都从 caller 拿一份 clone。
+///
+/// daemon-lifecycle (iroh node / space_setup / HTTP server / LAN listener)
+/// 在每次 daemon start/stop 重建,但这些"持久"资源跨 daemon reload 复用 ——
+/// sqlite pool 等不会因 daemon 重启而被销毁重建。
+///
+/// `Clone` 派生:`wired` 内部全是 `Arc<dyn Port>` / `PathBuf`,其它字段
+/// 也是 Arc,clone 等价于一组 Arc::clone。
+#[derive(Clone)]
+pub struct ProcessRuntimeHandles {
+    pub wired: WiredDependencies,
+    pub storage_paths: AppPaths,
+    pub clipboard_write_coordinator: Arc<ClipboardWriteCoordinator>,
+    pub file_transfer_lifecycle: Arc<FileTransferLifecycle>,
+}
+
 /// 独立 daemon binary 入口：创建专属 tokio runtime,启动 daemon,阻塞到退出。
 ///
 /// 这条路径 GUI shell 不应再用——in-process 拉起请改走 [`start_in_process`]。
 ///
 /// standalone binary 没有 GUI shell 持有的 `Arc<AppFacade>`,所以入口内部
-/// 调 `build_process_runtime` 装一份进程级 deps + facade,然后跑标准
-/// daemon-lifecycle。
+/// 调 `build_process_runtime` 装一份进程级 deps + facade,顺带 spawn 一次
+/// blob/spool worker (跨 daemon reload 不重建),然后跑标准 daemon-lifecycle。
 pub fn run(run_mode: DaemonRunMode) -> anyhow::Result<()> {
     let rt = build_daemon_tokio_runtime()?;
     rt.block_on(async move {
         // standalone 自己 wire 一次进程级 deps + facade。这份 facade 不被
         // 暴露给任何外部 caller (没有 GUI shell),只活在 daemon 进程生命周期
         // 内 —— daemon main loop 退出 binary 整个 exit。
-        let ctx = crate::bootstrap::build_process_runtime()?;
+        let crate::bootstrap::ProcessRuntimeContext {
+            wired,
+            background,
+            storage_paths,
+            config: _config,
+        } = crate::bootstrap::build_process_runtime()?;
 
         let event_emitter: Arc<dyn uc_application::facade::HostEventEmitterPort> =
             Arc::new(uc_bootstrap::LoggingHostEventEmitter);
+        let clipboard_write_coordinator = background.clipboard_write_coordinator.clone();
+        let file_transfer_lifecycle = background.file_transfer_lifecycle.clone();
+
         let runtime = crate::DesktopRuntime::with_setup(
-            ctx.deps,
-            ctx.storage_paths,
+            wired.deps.clone(),
+            storage_paths.clone(),
             event_emitter,
-            ctx.background.clipboard_write_coordinator.clone(),
+            clipboard_write_coordinator.clone(),
         );
         let app_facade = Arc::clone(runtime.app_facade());
-        // standalone 没有 GUI shell 来 .manage 这份 endpoint_info —— 直接让
-        // daemon 端 wire 内部 new 一份 (走 default WireOverrides)。
-        let wire_overrides = WireOverrides::default();
-        let handle = start_in_process(run_mode, app_facade, wire_overrides).await?;
+
+        // 进程级 blob/spool worker —— 一次性 spawn,挂在 runtime task_registry
+        // 上,跨 daemon reload 不重建 (本 standalone binary 进程不 reload,这里
+        // 与 in-process 路径保持同一编排形态)。
+        let blob_ports = uc_bootstrap::BlobProcessingPorts::from_app_deps(&wired.deps);
+        let task_registry_for_blob = Arc::clone(runtime.task_registry());
+        tokio::spawn(async move {
+            uc_bootstrap::spawn_blob_processing_tasks(
+                background,
+                blob_ports,
+                &task_registry_for_blob,
+            )
+            .await;
+        });
+
+        let handles = ProcessRuntimeHandles {
+            wired,
+            storage_paths,
+            clipboard_write_coordinator,
+            file_transfer_lifecycle,
+        };
+        let handle = start_in_process(run_mode, app_facade, handles).await?;
         // runtime 必须活到 daemon 退出 —— move 进 await 内部维持生命周期。
         // daemon main loop 自己监听 OS 信号(除 GuiInProcess 外),信号触发后
         // 自然退出;handle.wait() 返回意味 daemon 已停。
@@ -93,42 +138,39 @@ pub fn run(run_mode: DaemonRunMode) -> anyhow::Result<()> {
 ///   - [`DaemonRunMode::Standalone`]:daemon 内部监听 SIGTERM/SIGINT,靠 OS
 ///     信号自然退出。
 ///
-/// - `app_facade` 进程级单例 `AppFacade`。GUI shell `build_process_runtime` 时已装好,
-///   daemon 启动 swap 5 个 daemon-lifecycle 子 facade(space_setup /
-///   member_roster / clipboard_sync / blob_transfer / mobile_sync) 进去,
-///   daemon 退出时清空。整个进程只有这一份 `AppFacade`。
+/// - `app_facade` 进程级单例 `AppFacade`。GUI shell `build_process_runtime`
+///   后通过 `DesktopRuntime::with_setup` 装好,daemon 启动 swap 5 个
+///   daemon-lifecycle 子 facade(space_setup / member_roster / clipboard_sync /
+///   blob_transfer / mobile_sync) 进去,daemon 退出时清空。整个进程只有
+///   这一份 `AppFacade`。
 ///
-/// - `wire_overrides` 让 caller 在 wire 之前注入预先建好的共享 Arc(典型:
-///   GUI shell 端的 `mobile_sync_endpoint_info` Arc)。
+/// - `handles` 进程级一次性资源 (`WiredDependencies` + storage_paths +
+///   clipboard_write_coordinator + file_transfer_lifecycle)。daemon
+///   start_in_process 不再 wire 自己的 deps —— sqlite pool 等跨 daemon
+///   reload 复用同一份。
 pub async fn start_in_process(
     run_mode: DaemonRunMode,
     app_facade: Arc<AppFacade>,
-    wire_overrides: WireOverrides,
+    handles: ProcessRuntimeHandles,
 ) -> anyhow::Result<DaemonHandle> {
     let cancel = CancellationToken::new();
 
     let DaemonBootstrapAssembly {
-        non_gui_bundle,
-        background,
-        blob_ports,
-        file_cache_dir,
-        file_transfer_lifecycle,
-        clipboard_write_coordinator,
-        emitter_cell,
         clipboard_sync_facade,
         blob_transfer_facade,
         space_setup_assembly,
         mobile_sync_endpoint_info,
-    } = build_daemon_bootstrap_assembly(wire_overrides).await?;
+    } = build_daemon_bootstrap_assembly(&handles.wired).await?;
 
-    let uc_bootstrap::NonGuiBundle {
-        deps,
+    let ProcessRuntimeHandles {
+        wired,
         storage_paths,
-        emitter_cell: _bundle_emitter_cell,
-        lifecycle_status: _lifecycle_status,
-        task_registry,
-        clipboard_integration_mode: _clipboard_integration_mode,
-    } = non_gui_bundle;
+        clipboard_write_coordinator,
+        file_transfer_lifecycle,
+    } = handles;
+
+    let deps = wired.deps;
+    let emitter_cell = wired.emitter_cell;
     let settings_port = deps.settings.clone();
     let runtime_controls = build_daemon_runtime_controls(run_mode);
 
@@ -138,13 +180,15 @@ pub async fn start_in_process(
         clipboard_capture_gate: runtime_controls.clipboard_capture_gate.clone(),
         clipboard_sync_facade: clipboard_sync_facade.clone(),
         blob_transfer_facade: blob_transfer_facade.clone(),
-        file_cache_dir: file_cache_dir.clone(),
+        file_cache_dir: storage_paths.file_cache_dir.clone(),
         file_transfer_lifecycle,
         clipboard_write_coordinator: clipboard_write_coordinator.clone(),
         host_event_emitter: emitter_cell.clone(),
     })?;
 
-    spawn_daemon_background_tasks(background, blob_ports, task_registry.clone());
+    // blob/spool worker **不在这里 spawn** —— 它们是进程级 long-lived task,
+    // 由 caller 在进程启动期一次性 spawn,挂在进程级 task_registry 上,跨
+    // daemon reload 不重建。
 
     let search_assembly = build_daemon_search_assembly(&deps, runtime_controls.event_tx.clone());
 

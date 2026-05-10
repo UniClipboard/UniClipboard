@@ -24,10 +24,9 @@ use uc_daemon_local::socket::try_resolve_daemon_http_addr;
 use std::sync::Arc;
 
 use uc_application::facade::AppFacade;
-use uc_bootstrap::WireOverrides;
 
 use crate::daemon::run_mode::DaemonRunMode;
-use crate::daemon::{start_in_process, DaemonOwnership};
+use crate::daemon::{start_in_process, DaemonOwnership, ProcessRuntimeHandles};
 
 pub const HEALTH_PATH: &str = "/health";
 pub const HEALTH_CHECK_TIMEOUT: Duration = Duration::from_secs(8);
@@ -184,7 +183,7 @@ pub async fn bootstrap_daemon_in_process(
     health_check_timeout: Duration,
     health_poll_interval: Duration,
     app_facade: Arc<AppFacade>,
-    wire_overrides: WireOverrides,
+    process_handles: ProcessRuntimeHandles,
 ) -> Result<DaemonConnectionInfo, DaemonBootstrapError> {
     let client = reqwest::Client::builder()
         .timeout(PROBE_TIMEOUT)
@@ -207,7 +206,7 @@ pub async fn bootstrap_daemon_in_process(
                 health_check_timeout,
                 health_poll_interval,
                 Arc::clone(&app_facade),
-                wire_overrides,
+                process_handles.clone(),
             )
             .await?;
         }
@@ -229,7 +228,7 @@ pub async fn bootstrap_daemon_in_process(
                 health_check_timeout,
                 health_poll_interval,
                 Arc::clone(&app_facade),
-                wire_overrides,
+                process_handles.clone(),
             )
             .await?;
         }
@@ -280,7 +279,7 @@ pub async fn reload_in_process_daemon(
     health_check_timeout: Duration,
     health_poll_interval: Duration,
     app_facade: Arc<AppFacade>,
-    wire_overrides: WireOverrides,
+    process_handles: ProcessRuntimeHandles,
 ) -> Result<DaemonConnectionInfo, ReloadInProcessDaemonError> {
     let old_handle = ownership
         .take_owned()
@@ -307,7 +306,7 @@ pub async fn reload_in_process_daemon(
         health_check_timeout,
         health_poll_interval,
         app_facade,
-        wire_overrides,
+        process_handles,
     )
     .await?;
 
@@ -321,9 +320,9 @@ async fn start_owned_in_process(
     health_check_timeout: Duration,
     health_poll_interval: Duration,
     app_facade: Arc<AppFacade>,
-    wire_overrides: WireOverrides,
+    process_handles: ProcessRuntimeHandles,
 ) -> Result<(), DaemonBootstrapError> {
-    let handle = start_in_process(DaemonRunMode::GuiInProcess, app_facade, wire_overrides)
+    let handle = start_in_process(DaemonRunMode::GuiInProcess, app_facade, process_handles)
         .await
         .map_err(|error| {
             DaemonBootstrapError::Spawn(error.context("in-process daemon start failed"))

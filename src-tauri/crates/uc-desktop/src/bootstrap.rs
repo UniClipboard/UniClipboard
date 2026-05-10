@@ -16,29 +16,29 @@
 //! 成纯装配工具集，daemon / CLI / GUI 各自的 entry-point 装配在各自的
 //! crate 里完成。
 
-use std::sync::Arc;
-
-use uc_application::deps::AppDeps;
 use uc_application::facade::AppPaths;
-use uc_bootstrap::assembly::{get_storage_paths, wire_dependencies_with_overrides};
+use uc_bootstrap::assembly::{get_storage_paths, wire_dependencies, WiredDependencies};
 use uc_bootstrap::tracing::install_panic_logging_hook;
-use uc_bootstrap::{init_tracing_subscriber, BackgroundRuntimeDeps, WireOverrides};
+use uc_bootstrap::{init_tracing_subscriber, BackgroundRuntimeDeps};
 use uc_core::config::AppConfig;
-use uc_infra::mobile_sync::InMemoryMobileSyncEndpointInfoAdapter;
 
-/// 进程级运行时装配的全部输出。Caller 从中取 `deps` 装配自己的 runtime
-/// （`TauriAppRuntime` / `DesktopRuntime`），从 `background` 启动后台任务，
-/// 从 `storage_paths` / `config` 读启动期的配置与目录布局。
+/// 进程级运行时装配的全部输出。Caller 从中:
+///
+/// - clone `wired.deps` 装配自己的 runtime(`TauriAppRuntime` /
+///   `DesktopRuntime`),并把同一份 wired 透传给 in-process daemon spawn,
+///   让 daemon-lifecycle 装配复用同一份 sqlite pool / repos / 各种 adapter。
+/// - 用 `background` + `BlobProcessingPorts::from_app_deps(&wired.deps)`
+///   spawn 一次性 spool/blob worker(挂在 runtime.task_registry 上)。
+/// - 从 `storage_paths` / `config` 读启动期的配置与目录布局。
+///
+/// **不再持有** 单独的 `mobile_sync_endpoint_info` 字段 —— 它已经在
+/// `wired.mobile_sync_endpoint_info`(同时也在 `wired.deps.mobile_sync.endpoint_info`),
+/// 单一来源。
 pub struct ProcessRuntimeContext {
-    pub deps: AppDeps,
+    pub wired: WiredDependencies,
     pub background: BackgroundRuntimeDeps,
     pub storage_paths: AppPaths,
     pub config: AppConfig,
-    /// 进程级共享的 mobile_sync endpoint_info Arc。GUI shell 把它保留下来,
-    /// 在 daemon spawn(`bootstrap_daemon_in_process` / `reload_in_process_daemon`)
-    /// 时通过 `WireOverrides` 注入,让 daemon 端 deps 与 GUI 端 deps 共享同一份 ——
-    /// daemon LAN listener 写入的 status 因此能被 GUI in-process facade 读到。
-    pub mobile_sync_endpoint_info: Arc<InMemoryMobileSyncEndpointInfoAdapter>,
 }
 
 /// 构造进程级运行时上下文。GUI shell 与 standalone daemon binary 都用。
@@ -47,7 +47,8 @@ pub struct ProcessRuntimeContext {
 /// 1. tracing subscriber 初始化（idempotent）
 /// 2. panic logging hook 安装（idempotent）
 /// 3. 读取并解析 `AppConfig`
-/// 4. 通过 [`wire_dependencies`] 组装 `AppDeps` / `BackgroundRuntimeDeps`
+/// 4. 通过 [`wire_dependencies`] 组装 `WiredDependencies` /
+///    `BackgroundRuntimeDeps`
 /// 5. 解析 `AppPaths`
 ///
 /// daemon-lifecycle 资源（iroh node / space_setup / HTTP server / LAN
@@ -66,23 +67,14 @@ pub fn build_process_runtime() -> anyhow::Result<ProcessRuntimeContext> {
 
     let config = AppConfig::empty();
 
-    // 进程级共享的 endpoint_info —— GUI deps 与 in-process daemon deps 共用。
-    // wire_dependencies 内部如果不接收 override,会自己 new 一份,导致 daemon
-    // 写的 status 被 GUI facade 读不到(参见 `WireOverrides` 的文档)。
-    let mobile_sync_endpoint_info = Arc::new(InMemoryMobileSyncEndpointInfoAdapter::new());
-    let wire_overrides = WireOverrides {
-        mobile_sync_endpoint_info: Some(Arc::clone(&mobile_sync_endpoint_info)),
-    };
-
-    let (wired, background) = wire_dependencies_with_overrides(&config, wire_overrides)
+    let (wired, background) = wire_dependencies(&config)
         .map_err(|e| anyhow::anyhow!("Dependency wiring failed: {}", e))?;
     let storage_paths = get_storage_paths(&config)?;
 
     Ok(ProcessRuntimeContext {
-        deps: wired.deps,
+        wired,
         background,
         storage_paths,
         config,
-        mobile_sync_endpoint_info,
     })
 }

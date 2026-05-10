@@ -3,7 +3,6 @@
 pub(crate) mod app;
 pub(crate) mod app_assembly;
 pub(crate) mod app_facade_assembly;
-pub(crate) mod background_tasks;
 pub(crate) mod bootstrap;
 pub(crate) mod handle;
 pub(crate) mod host;
@@ -24,5 +23,5 @@ pub(crate) mod tokio_runtime;
 pub(crate) mod workers;
 
 pub use handle::DaemonHandle;
-pub use host::{run, start_in_process};
+pub use host::{run, start_in_process, ProcessRuntimeHandles};
 pub use ownership::DaemonOwnership;

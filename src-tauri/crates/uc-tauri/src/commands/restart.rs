@@ -18,14 +18,13 @@ use std::time::Duration;
 use serde::Serialize;
 use tauri::{Emitter, Manager};
 use tracing::{error, info, info_span, warn, Instrument};
-use uc_bootstrap::WireOverrides;
 use uc_daemon_client::DaemonConnectionState;
+use uc_desktop::daemon::ProcessRuntimeHandles;
 use uc_desktop::daemon_probe::{
     reload_in_process_daemon, ReloadInProcessDaemonError, HEALTH_CHECK_TIMEOUT,
     HEALTH_POLL_INTERVAL,
 };
 use uc_desktop::DaemonOwnership;
-use uc_infra::mobile_sync::InMemoryMobileSyncEndpointInfoAdapter;
 use uc_platform::ports::observability::TraceMetadata;
 
 use crate::commands::record_trace_fields;
@@ -150,12 +149,11 @@ pub async fn restart_daemon(
                 .inner()
                 .app_facade(),
         );
-        // 进程级共享的 endpoint_info Arc(在 run.rs 通过 .manage() 注册);新 daemon
-        // wire 时透传同一份,确保 daemon 重启后 LAN listener 写入仍然对 GUI facade 可见。
-        let endpoint_info = Arc::clone(
-            app.state::<Arc<InMemoryMobileSyncEndpointInfoAdapter>>()
-                .inner(),
-        );
+        // 进程级一次性资源 (sqlite pool / repos / settings / blob workers /
+        // clipboard_write_coordinator / file_transfer_lifecycle 等);
+        // 由 run.rs 在启动期 .manage() 注册。daemon reload 复用同一份,
+        // sqlite pool 等不会因 daemon 重启而被销毁重建。
+        let process_handles = app.state::<ProcessRuntimeHandles>().inner().clone();
 
         // 1. 通知前端断 WS。emit 失败仅 warn — 不阻断 reload。
         if let Err(error) = app.emit(DAEMON_RESTARTING_EVENT, ()) {
@@ -178,9 +176,7 @@ pub async fn restart_daemon(
             HEALTH_CHECK_TIMEOUT,
             HEALTH_POLL_INTERVAL,
             app_facade,
-            WireOverrides {
-                mobile_sync_endpoint_info: Some(endpoint_info),
-            },
+            process_handles,
         )
         .await;
 

@@ -404,6 +404,97 @@ buckets.rs    // PayloadSizeBucket / LatencyBucket 等区间类型
 
 后续若决策变更（如改投 self-host），更新本节并在 `docs/changelog/` 登记。
 
+### 10.1 PostHog Cloud 接入实务（v1）
+
+本节记录 PostHog 真实接入时的几个落地决策，避免规范层与实务层混淆——
+schema 部分（§3 ~ §9）任何情况下都是单一真相源；本节是"v1 怎么把事件
+送出去"。后续切 self-host / 切 SDK 只更新本节，不动 §3 ~ §9。
+
+#### Key 注入策略
+
+PostHog project key（`phc_*`）通过环境变量 `POSTHOG_PROJECT_KEY` 三级回退
+注入，与 `SENTRY_DSN` 同位（参考 `uc-bootstrap/src/tracing.rs`）：
+
+1. **运行时 env 优先**：`std::env::var("POSTHOG_PROJECT_KEY")`。覆盖
+   编译期烤入值；dev 自部署 / PR review build 用此机制 opt-in。
+2. **编译期 `option_env!` 兜底**：CI release build 时把 secret 通过
+   `${{ secrets.POSTHOG_PROJECT_KEY }}` 注入到 build env，`option_env!`
+   把 secret 烤进 binary。终端用户机器上不会设这个 env。
+3. **都缺**：release path 走 `Gated(NoopAnalyticsSink)` + 一条 `info!`，
+   不阻塞 daemon / GUI 启动。"没配 key"是合法配置。
+
+空字符串等价于"未设置"——`${{ secrets.X }}` 在 secret 未注入时渲染为空，
+绝不能用空 api_key 调 PostHog 触发整批 401。
+
+#### Endpoint 与 region
+
+```
+POST https://us.i.posthog.com/i/v0/e/
+Content-Type: application/json
+{
+  "api_key": "phc_xxx",
+  "event": "<event_name>",
+  "distinct_id": "<anonymous_user_id>",
+  "properties": { ...EventContext + event-specific 字段 },
+  "timestamp": "2026-05-09T12:34:56+00:00"
+}
+```
+
+US ingestion endpoint 是 §10 决策第 4 项的 2026-05-09 实际注册区域。
+切 EU 或 self-host 实例只换 endpoint URL（`PosthogSink::with_endpoint`
+是测试 / 后续迁移入口），事件 wire 形态零改动。
+
+#### HTTP client 选择
+
+v1 不用 `posthog-rs` SDK，自写 reqwest 0.12 + rustls(ring) ~100 行
+minimal client。根因在 cargo 依赖图：
+
+- `posthog-rs 0.7` 的 `Cargo.toml` hardcode `reqwest = "0.13.2"` +
+  `features = ["rustls"]`；reqwest 0.13 的 rustls feature 隐式选
+  `aws-lc-rs`（C 库 + CMake 编译）。
+- uc-cli 走 musl 静态编译（"零 C 工具链"硬约束），sentry 已为此用
+  ureq + ring 而非 reqwest 0.13（见 `uc-bootstrap/Cargo.toml` 注释）。
+- cargo features unification 是 workspace 级 union，无法用
+  `optional` / feature gate 把 uc-cli 排出依赖图。
+
+失去 SDK 的批量 / retry / feature flag 能力，但 v1 只用 capture POST
+单一路径，schema §10 已允许 < 1% 事件丢失，自写 client 综合成本最低。
+若实测丢失率 > 5% 或用户量 > 1k 后 POST 量过高，再重启"SDK vs 自建队列
+vs HTTP/3"评估；那时切换只动 sink 实现，schema 与 wire 形态零改动。
+
+#### Fire-and-forget 与进程退出
+
+`PosthogSink::capture` 内部走 `tokio::spawn` fire-and-forget
+（`AnalyticsPort::capture` 同步签名 + 异步 reqwest 的唯一干净桥）。
+HTTP 失败仅 `tracing::warn!`，不传播给业务。
+
+v1 **不挂** 进程退出 flush 钩子。理由：
+
+- 自写 client 无应用级队列；reqwest 单次 POST 一旦 spawn 就走自己的
+  网络生命周期。
+- `app_first_open` / `setup_started` 等 onboarding 起点丢失影响 funnel
+  起点统计——但 schema §10 已允许 < 1% 丢失。
+- 后续若实测 onboarding 起点丢失率明显高于 1%，再补
+  `tauri::App::on_exit` 钩子做 best-effort drain。
+
+#### `disable_geoip` 等价语义（IP 字段处理）
+
+§6.1 明确"客户端原始 IP 永不上传"。posthog-rs SDK 提供 `disable_geoip`
+配置项；自写 client 通过更直接的方式实现等价契约——**永不主动 inject
+IP-derived 字段**。PostHog 服务端的 geoip 是基于请求 IP 推断的，request
+本身从客户端发出时不会附带 user IP（reqwest 默认行为），服务端推断的
+geoip 字段会以 `$geoip_*` property 形式出现。若后续控制台发现这些字段
+仍按请求 IP 落地理位置，可在 `properties` 显式置 `"$geoip_disable": true`
+兜底。
+
+#### CI secret 注入（待 7b-4 落地）
+
+`POSTHOG_PROJECT_KEY` 与 `SENTRY_DSN` / `VITE_SENTRY_DSN` 同属 release
+build 时间注入的 secret 列表。CI 注入位置（计划）：
+`.github/workflows/build.yml` 与 `.github/workflows/alpha-build.yml`
+的 `tauri-action` + `bun run tauri build` 两段 `env:` 块同位添加，
+镜像 `SENTRY_DSN` 已有写法。空 secret 等价"未设置"，自动走降级路径。
+
 ## 11. 验收检查项
 
 本文件本身的验收：

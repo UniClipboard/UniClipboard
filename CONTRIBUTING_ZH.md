@@ -63,7 +63,7 @@
 
 提 issue 时请说明：
 
-- 你想解决的**用户层面**问题（不是实现细节）。
+- 你想解决的 **用户层面** 问题（不是实现细节）。
 - 现有功能为什么不够。
 - 该功能是否与项目原则一致：隐私优先、端到端加密、不强制依赖云账户。
 
@@ -71,7 +71,7 @@
 
 ## 报告安全问题
 
-**请勿**通过公开 GitHub issue 报告安全漏洞。
+**请勿** 通过公开 GitHub issue 报告安全漏洞。
 
 请按照 [`SECURITY.md`](./SECURITY.md) 中的披露流程联系我们。我们会认真对待与加密、隐私相关的报告，并与你一起协调修复与发布的时间线。
 
@@ -126,6 +126,26 @@ bun tauri build
 
 产物会出现在 `src-tauri/target/release/bundle/`。
 
+### 发布期 Telemetry Secrets
+
+Release 构建可以通过 `option_env!` 在编译期把 telemetry 凭证烤进 binary。
+**没有任何 secret 是必需的**——缺失时对应通道走 noop sink，应用照常启动。
+
+| Secret                | 通道                                       | 编译期读取                                          | CI workflow 注入位置                            |
+| --------------------- | ------------------------------------------ | --------------------------------------------------- | ----------------------------------------------- |
+| `SENTRY_DSN`          | 后端 Sentry（错误 / breadcrumb）           | `uc-bootstrap/src/tracing.rs` — `option_env!`        | `.github/workflows/{build,alpha-build}.yml`     |
+| `VITE_SENTRY_DSN`     | 前端 Sentry（必须是独立 Sentry 项目）      | `import.meta.env.VITE_SENTRY_DSN`（Vite 构建期）     | 同上                                            |
+| `POSTHOG_PROJECT_KEY` | 产品 analytics（PostHog Cloud，US region） | `uc-bootstrap/src/analytics.rs` — `option_env!`      | 同上（issue #549 落地时同位添加）               |
+
+本地 dev 构建：在 shell 里 export 对应变量即可 opt-in；否则 dev profile
+analytics 走 stdout sink，Sentry 通道继续用 `cfg(dev)` 编译期 DSN。
+PostHog 注入契约与缺 key 时的降级语义详见
+[`docs/architecture/telemetry-events.md`](./docs/architecture/telemetry-events.md) §10.1。
+
+空字符串等价于"未设置"——CI secret 未配置时 `${{ secrets.X }}` 渲染为空，
+对应 sink 静默退化到 noop。**任何情况下不要把这几个值提交到仓库或写进
+issue / PR 正文。**
+
 ## 项目结构
 
 ```text
@@ -168,7 +188,7 @@ bun tauri build
 
 ## Commit 规范
 
-每个 commit 必须只表达**一个**工程意图。完整规则见 [`docs/agent/architecture-rules.md`](./docs/agent/architecture-rules.md#atomic-commit-rule)。
+每个 commit 必须只表达 **一个** 工程意图。完整规则见 [`docs/agent/architecture-rules.md`](./docs/agent/architecture-rules.md#atomic-commit-rule)。
 
 ### 允许的 commit 类型
 
@@ -237,10 +257,10 @@ cargo clippy --workspace --all-targets -- -D warnings
 ### 风格约定
 
 - **代码注释和项目文档使用中文**（依据 `AGENTS.md`）。代码标识符、commit message、PR 标题与描述保持英文，便于工具链与外部协作。
-- 仓库内文件**不得包含机器特定的绝对路径**，统一使用相对仓库根的路径。
-- Markdown 代码围栏**必须带语言标识**（`bash`、`rust`、`ts`、`text` 等）。
-- **前端代码**遵循 [`docs/agent/frontend-ui-rules.md`](./docs/agent/frontend-ui-rules.md)。
-- **Rust/Tauri 代码**遵循 [`docs/agent/rust-tauri-rules.md`](./docs/agent/rust-tauri-rules.md)。
+- 仓库内文件 **不得包含机器特定的绝对路径**，统一使用相对仓库根的路径。
+- Markdown 代码围栏 **必须带语言标识**（`bash`、`rust`、`ts`、`text` 等）。
+- **前端代码** 遵循 [`docs/agent/frontend-ui-rules.md`](./docs/agent/frontend-ui-rules.md)。
+- **Rust/Tauri 代码** 遵循 [`docs/agent/rust-tauri-rules.md`](./docs/agent/rust-tauri-rules.md)。
 
 ## 测试
 
@@ -293,15 +313,15 @@ bun run test:coverage   # 在 src-tauri/target/llvm-cov 下生成 HTML 报告
 
 应包含：
 
-- 改动**做了什么**以及**为什么**（如对应了 issue 请关联）。
+- 改动 **做了什么** 以及 **为什么**（如对应了 issue 请关联）。
 - **如何验证**：自动化测试、手动步骤、双 peer 场景等。
-- UI 改动请附**截图或短视频**。
-- 涉及存储、加密、网络、daemon 生命周期的改动，请说明**风险评估**。
+- UI 改动请附 **截图或短视频**。
+- 涉及存储、加密、网络、daemon 生命周期的改动，请说明 **风险评估**。
 
 ### 评审流程
 
 - 维护者会进行 review，可能要求修改。
-- 自动化 review bot 提出的建议视为**输入而非命令**：每条都需要结合代码现状判断后再决定接受或拒绝，并附简短的技术理由。详见 [`docs/agent/workflow-rules.md`](./docs/agent/workflow-rules.md) 中的 "AI Review Intake" 章节。
+- 自动化 review bot 提出的建议视为 **输入而非命令**：每条都需要结合代码现状判断后再决定接受或拒绝，并附简短的技术理由。详见 [`docs/agent/workflow-rules.md`](./docs/agent/workflow-rules.md) 中的 "AI Review Intake" 章节。
 - CI 必须全绿才能合并。默认使用 squash merge，squash 后的 commit 信息也要遵守上述 commit 规范。
 
 ## 发布流程

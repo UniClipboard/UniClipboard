@@ -126,6 +126,31 @@ bun tauri build
 
 Bundles land in `src-tauri/target/release/bundle/`.
 
+### Release-time Secrets (Telemetry)
+
+Release builds optionally bake telemetry credentials into the binary at
+compile time via `option_env!`. None of these are required to build or
+run the app — when missing, the matching channel falls back to a noop
+sink and the app boots normally.
+
+| Secret                  | Channel                                     | Compile-time read                                  | CI workflow source                              |
+| ----------------------- | ------------------------------------------- | -------------------------------------------------- | ----------------------------------------------- |
+| `SENTRY_DSN`            | Backend Sentry (errors / breadcrumbs)       | `uc-bootstrap/src/tracing.rs` — `option_env!`      | `.github/workflows/{build,alpha-build}.yml`     |
+| `VITE_SENTRY_DSN`       | Frontend Sentry (must be a separate project) | `import.meta.env.VITE_SENTRY_DSN` (Vite at build)  | same workflows                                  |
+| `POSTHOG_PROJECT_KEY`   | Product analytics (PostHog Cloud, US)       | `uc-bootstrap/src/analytics.rs` — `option_env!`    | same workflows (added as part of issue #549)    |
+
+Local dev builds: set the variable in your shell to opt in; otherwise
+the dev profile uses a stdout sink for analytics and the `cfg(dev)`
+Sentry DSN baked at compile time stays effective. See
+[`docs/architecture/telemetry-events.md`](./docs/architecture/telemetry-events.md)
+§10.1 for the PostHog injection contract and degraded-startup
+semantics.
+
+Empty values count as "missing" — when a secret is not configured,
+`${{ secrets.X }}` renders to an empty string and the matching sink
+silently drops to noop. Never commit any of these values to the repo
+or to issue / PR text.
+
 ## Project Structure
 
 ```text

@@ -6,6 +6,9 @@
 //! Linux Wayland / X11 / macOS / Windows: text + html + uri-list +
 //! `image/*`. Anything else is ignored to keep the snapshot bounded — if a
 //! future use case needs it we can widen the filter.
+//!
+//! Protocol-agnostic via [`super::backend::OfferLike`]; reused by both
+//! `wlr-data-control` and `ext-data-control`.
 
 use anyhow::Result;
 use std::time::Duration;
@@ -13,8 +16,8 @@ use tracing::{debug, warn};
 use uc_core::clipboard::{MimeType, ObservedClipboardRepresentation, SystemClipboardSnapshot};
 use uc_core::ids::RepresentationId;
 use wayland_client::Connection;
-use wayland_protocols_wlr::data_control::v1::client::zwlr_data_control_offer_v1::ZwlrDataControlOfferV1;
 
+use super::backend::OfferLike;
 use super::transfer;
 
 /// 2 seconds matches the upper bound used by other Wayland clipboard
@@ -56,9 +59,9 @@ fn format_id_for(mime: &str) -> &'static str {
     }
 }
 
-pub(super) fn build_from_offer(
+pub(super) fn build_from_offer<O: OfferLike>(
     conn: &Connection,
-    offer: &ZwlrDataControlOfferV1,
+    offer: &O,
     mimes: &[String],
 ) -> Result<SystemClipboardSnapshot> {
     debug!(

@@ -44,7 +44,7 @@ impl LinuxClipboard {
         if is_wayland_session() {
             match wayland::WaylandClipboard::try_new() {
                 Ok(Some(wl)) => {
-                    info!("Linux clipboard: native Wayland (wlr-data-control)");
+                    info!("Linux clipboard: native Wayland (data-control)");
                     return Ok(Self::Wayland(wl));
                 }
                 Ok(None) => {
@@ -112,7 +112,7 @@ pub(super) fn build_event_loop() -> Result<Box<dyn PlatformClipboardEventLoop>> 
     if is_wayland_session() {
         match wayland::WaylandEventLoop::try_new() {
             Ok(Some(wl)) => {
-                info!("Linux clipboard event loop: native Wayland (wlr-data-control)");
+                info!("Linux clipboard event loop: native Wayland (data-control)");
                 return Ok(Box::new(wl));
             }
             Ok(None) => {

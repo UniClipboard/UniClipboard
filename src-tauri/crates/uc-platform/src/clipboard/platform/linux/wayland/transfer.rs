@@ -11,7 +11,9 @@
 //! 5. Reads from `read_fd` until EOF.
 //!
 //! This module owns step 1, 3, 4, 5, plus a poll-based timeout so a
-//! misbehaving source can't stall the watcher indefinitely.
+//! misbehaving source can't stall the watcher indefinitely. The shape of the
+//! offer proxy is abstracted via [`super::backend::OfferLike`] so the same
+//! code path serves both `wlr-data-control` and `ext-data-control`.
 
 use anyhow::{Context, Result};
 use rustix::event::{poll, PollFd, PollFlags};
@@ -19,7 +21,8 @@ use rustix::pipe::{pipe_with, PipeFlags};
 use std::os::fd::AsFd;
 use std::time::{Duration, Instant};
 use wayland_client::Connection;
-use wayland_protocols_wlr::data_control::v1::client::zwlr_data_control_offer_v1::ZwlrDataControlOfferV1;
+
+use super::backend::OfferLike;
 
 /// Read the entire payload for `mime` from `offer`. Returns the bytes or an
 /// error if the read times out, exceeds `max_bytes`, or the OS pipe fails.
@@ -27,9 +30,9 @@ use wayland_protocols_wlr::data_control::v1::client::zwlr_data_control_offer_v1:
 /// Note: this function is synchronous and will block the calling thread up
 /// to `timeout`. It MUST be called on the same thread that owns the wayland
 /// `Connection` because it issues a `receive` request and then flushes.
-pub(super) fn pipe_receive(
+pub(super) fn pipe_receive<O: OfferLike>(
     conn: &Connection,
-    offer: &ZwlrDataControlOfferV1,
+    offer: &O,
     mime: &str,
     timeout: Duration,
     max_bytes: usize,
@@ -38,7 +41,7 @@ pub(super) fn pipe_receive(
         pipe_with(PipeFlags::CLOEXEC | PipeFlags::NONBLOCK).context("pipe2 failed")?;
 
     // Tell the compositor to write the payload into our write_fd.
-    offer.receive(mime.to_string(), write_fd.as_fd());
+    offer.receive_to(mime, write_fd.as_fd());
 
     // Flush so the request actually reaches the compositor.
     conn.flush().context("wayland flush failed")?;

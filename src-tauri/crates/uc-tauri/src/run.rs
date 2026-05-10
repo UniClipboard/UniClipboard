@@ -1,6 +1,6 @@
 //! Tauri shell 主入口。
 //!
-//! `main.rs` 在外面构造 `GuiBootstrapContext` 与 `tauri::Context`（后者由
+//! `main.rs` 在外面构造 `ProcessRuntimeContext` 与 `tauri::Context`（后者由
 //! `tauri::generate_context!()` 宏生成，必须在 bin crate 里），然后调用
 //! [`run`] 把控制权交给 Tauri shell：装配 `TauriAppRuntime`、注册
 //! plugins、启动 daemon 拉起/守护、初始化托盘、注册 commands、运行 Tauri
@@ -21,7 +21,7 @@ use tracing::{error, info, warn};
 
 use uc_bootstrap::WireOverrides;
 use uc_daemon_client::DaemonConnectionState;
-use uc_desktop::bootstrap::{build_gui_app, GuiBootstrapContext};
+use uc_desktop::bootstrap::{build_process_runtime, ProcessRuntimeContext};
 use uc_desktop::daemon_probe::{
     bootstrap_daemon_in_process, HEALTH_CHECK_TIMEOUT, HEALTH_POLL_INTERVAL,
     INCOMPATIBLE_DAEMON_EXIT_TIMEOUT,
@@ -103,9 +103,9 @@ fn configure_main_window_for_platform(app: &tauri::AppHandle) {
 #[cfg(not(target_os = "windows"))]
 fn configure_main_window_for_platform(_app: &tauri::AppHandle) {}
 
-/// Builds the GUI bootstrap, starts background tasks and the in-process daemon as needed, and runs the Tauri event loop.
+/// Builds the process runtime, starts background tasks and the in-process daemon as needed, and runs the Tauri event loop.
 ///
-/// The provided `tauri_ctx` must be created in the binary crate using `tauri::generate_context!()` (that macro reads the bin crate's tauri.conf.json). This function assembles the GUI startup context via `uc_desktop::bootstrap::build_gui_app()`; if assembly fails it returns an `Err`. On success the function enters the Tauri event loop and does not return until the application exits.
+/// The provided `tauri_ctx` must be created in the binary crate using `tauri::generate_context!()` (that macro reads the bin crate's tauri.conf.json). This function assembles the process-level runtime context via `uc_desktop::bootstrap::build_process_runtime()`; if assembly fails it returns an `Err`. On success the function enters the Tauri event loop and does not return until the application exits.
 ///
 /// # Parameters
 ///
@@ -123,13 +123,13 @@ fn configure_main_window_for_platform(_app: &tauri::AppHandle) {}
 /// crate::run(ctx).expect("failed to start tauri application");
 /// ```
 pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
-    let GuiBootstrapContext {
+    let ProcessRuntimeContext {
         deps,
         background,
         storage_paths,
         config: _config,
         mobile_sync_endpoint_info,
-    } = build_gui_app()?;
+    } = build_process_runtime()?;
 
     let daemon_connection_state = DaemonConnectionState::default();
     let daemon_ownership = DaemonOwnership::default();

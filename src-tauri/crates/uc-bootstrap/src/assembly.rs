@@ -867,7 +867,7 @@ pub fn wire_dependencies_with_overrides(
     let file_transfer_store_arc = Arc::clone(&infra.file_transfer_store);
 
     // Clone the trusted-peer repository handle before moving `infra` into
-    // `AppDeps` below — the builders (build_gui_app / build_daemon_app) need
+    // `AppDeps` below — the builders (build_process_runtime / build_daemon_app) need
     // it to construct the `TrustPeerOrchestrator` singleton (D19). We do not
     // thread it through `AppDeps` because uc-app is retiring (D13) and
     // the repository is consumed solely by uc-application wiring.

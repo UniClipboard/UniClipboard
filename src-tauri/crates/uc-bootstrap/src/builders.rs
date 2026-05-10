@@ -1,10 +1,10 @@
 //! # Scene-Specific Builders
 //!
-//! Entry-point constructors for CLI and daemon runtime modes. The GUI shell
-//! entry-point (`build_gui_app` + `GuiBootstrapContext`) lives in
-//! [`uc_desktop::bootstrap`]—this crate stays GUI-shell agnostic and only
-//! provides the composition-root assembly tools the desktop crate then
-//! uses to wire its own GUI builder.
+//! Entry-point constructors for CLI and daemon runtime modes. The
+//! process-level runtime entry-point (`build_process_runtime` +
+//! `ProcessRuntimeContext`) lives in [`uc_desktop::bootstrap`]—this crate
+//! stays shell-agnostic and only provides the composition-root assembly
+//! tools the desktop crate then uses to wire its own entry-points.
 //!
 //! Both builders here share a private `build_core()` helper that:
 //! 1. Initializes tracing (idempotent)

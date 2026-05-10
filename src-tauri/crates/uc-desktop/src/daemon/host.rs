@@ -47,8 +47,7 @@ use crate::daemon::tokio_runtime::build_daemon_tokio_runtime;
 /// 这条路径 GUI shell 不应再用——in-process 拉起请改走 [`start_in_process`]。
 ///
 /// standalone binary 没有 GUI shell 持有的 `Arc<AppFacade>`,所以入口内部
-/// 调 `build_gui_app` 装一份进程级 deps + facade(虽然函数名写 "gui",
-/// 实际装的是 GUI-framework agnostic 的进程级 runtime),然后跑标准
+/// 调 `build_process_runtime` 装一份进程级 deps + facade,然后跑标准
 /// daemon-lifecycle。
 pub fn run(run_mode: DaemonRunMode) -> anyhow::Result<()> {
     let rt = build_daemon_tokio_runtime()?;
@@ -56,7 +55,7 @@ pub fn run(run_mode: DaemonRunMode) -> anyhow::Result<()> {
         // standalone 自己 wire 一次进程级 deps + facade。这份 facade 不被
         // 暴露给任何外部 caller (没有 GUI shell),只活在 daemon 进程生命周期
         // 内 —— daemon main loop 退出 binary 整个 exit。
-        let ctx = crate::bootstrap::build_gui_app()?;
+        let ctx = crate::bootstrap::build_process_runtime()?;
 
         let event_emitter: Arc<dyn uc_application::facade::HostEventEmitterPort> =
             Arc::new(uc_bootstrap::LoggingHostEventEmitter);
@@ -94,7 +93,7 @@ pub fn run(run_mode: DaemonRunMode) -> anyhow::Result<()> {
 ///   - [`DaemonRunMode::Standalone`]:daemon 内部监听 SIGTERM/SIGINT,靠 OS
 ///     信号自然退出。
 ///
-/// - `app_facade` 进程级单例 `AppFacade`。GUI shell `build_gui_app` 时已装好,
+/// - `app_facade` 进程级单例 `AppFacade`。GUI shell `build_process_runtime` 时已装好,
 ///   daemon 启动 swap 5 个 daemon-lifecycle 子 facade(space_setup /
 ///   member_roster / clipboard_sync / blob_transfer / mobile_sync) 进去,
 ///   daemon 退出时清空。整个进程只有这一份 `AppFacade`。

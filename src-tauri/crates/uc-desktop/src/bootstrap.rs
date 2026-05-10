@@ -74,13 +74,13 @@ pub fn build_process_runtime() -> anyhow::Result<ProcessRuntimeContext> {
         mobile_sync_endpoint_info: Some(Arc::clone(&mobile_sync_endpoint_info)),
     };
 
-    let wired = wire_dependencies_with_overrides(&config, wire_overrides)
+    let (wired, background) = wire_dependencies_with_overrides(&config, wire_overrides)
         .map_err(|e| anyhow::anyhow!("Dependency wiring failed: {}", e))?;
     let storage_paths = get_storage_paths(&config)?;
 
     Ok(ProcessRuntimeContext {
         deps: wired.deps,
-        background: wired.background,
+        background,
         storage_paths,
         config,
         mobile_sync_endpoint_info,

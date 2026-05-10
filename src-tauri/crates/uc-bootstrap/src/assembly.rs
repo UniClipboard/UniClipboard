@@ -135,10 +135,16 @@ pub struct BackgroundRuntimeDeps {
         Arc<uc_application::clipboard_write::ClipboardWriteCoordinator>,
 }
 
-/// Fully wired dependencies plus background runtime components.
+/// 进程级一次性装配产出的"持久"部分:跨 daemon 启停存活的 deps 与旁路
+/// 资源(repos、storage paths、shared adapters)。
+///
+/// 一次性消费的 [`BackgroundRuntimeDeps`] (含 spool / blob worker
+/// receivers) 通过 [`wire_dependencies`] 的 tuple 返回值单独移交,不再
+/// 嵌在 `WiredDependencies` 里 —— 这样 `WiredDependencies` 可以在 daemon
+/// reload 时被多次借用,而 `BackgroundRuntimeDeps` 只在进程启动时 spawn
+/// 一次。
 pub struct WiredDependencies {
     pub deps: AppDeps,
-    pub background: BackgroundRuntimeDeps,
     /// Shared emitter cell created at wire time with the initial `LoggingHostEventEmitter`.
     /// Callers (GUI bootstrap, non-GUI bootstrap) use this same cell so that
     /// all consumers — CoreRuntime, SetupOrchestrator, and FileTransferOrchestrator —
@@ -735,7 +741,9 @@ pub fn apply_profile_suffix(path: PathBuf) -> PathBuf {
 /// 变体随之退场——iroh 栈走 `IrohIdentityStore`(由 `build_space_setup_assembly`
 /// 构造,密钥落地 `SecureStoragePort`),不再需要 platform 层
 /// `IdentityStorePort` 兼容入口。
-pub fn wire_dependencies(config: &AppConfig) -> WiringResult<WiredDependencies> {
+pub fn wire_dependencies(
+    config: &AppConfig,
+) -> WiringResult<(WiredDependencies, BackgroundRuntimeDeps)> {
     wire_dependencies_with_overrides(config, WireOverrides::default())
 }
 
@@ -743,10 +751,14 @@ pub fn wire_dependencies(config: &AppConfig) -> WiringResult<WiredDependencies> 
 /// resources via [`WireOverrides`]. GUI shells use this entry to share
 /// `mobile_sync_endpoint_info` between GUI deps and in-process daemon deps;
 /// CLI / standalone daemon binary stick with [`wire_dependencies`].
+///
+/// Returns the persistent `WiredDependencies` and the one-shot
+/// [`BackgroundRuntimeDeps`] separately. Callers spawn the blob/spool
+/// workers by consuming the latter; the former survives daemon reload.
 pub fn wire_dependencies_with_overrides(
     config: &AppConfig,
     overrides: WireOverrides,
-) -> WiringResult<WiredDependencies> {
+) -> WiringResult<(WiredDependencies, BackgroundRuntimeDeps)> {
     let platform_dirs = get_default_app_dirs()?;
     let paths = resolve_app_paths(&platform_dirs, config)?;
 
@@ -993,7 +1005,7 @@ pub fn wire_dependencies_with_overrides(
         deps.clipboard.clipboard_change_origin.clone(),
     );
 
-    Ok(WiredDependencies {
+    let wired = WiredDependencies {
         deps,
         trusted_peer_repo: trusted_peer_repo_for_wiring,
         peer_addr_repo: peer_addr_repo_for_wiring,
@@ -1004,22 +1016,23 @@ pub fn wire_dependencies_with_overrides(
         key_migration: key_migration_for_wiring,
         blob_migration_repo: blob_migration_repo_for_wiring,
         mobile_sync_endpoint_info: mobile_sync_endpoint_info_for_wiring,
-        background: BackgroundRuntimeDeps {
-            representation_cache,
-            spool_manager,
-            spool_tx,
-            spool_rx,
-            worker_rx,
-            spool_dir,
-            file_cache_dir: paths.file_cache_dir.clone(),
-            spool_ttl_days: storage_config.spool_ttl_days,
-            worker_retry_max_attempts: storage_config.worker_retry_max_attempts,
-            worker_retry_backoff_ms: storage_config.worker_retry_backoff_ms,
-            file_transfer_lifecycle,
-            clipboard_write_coordinator,
-        },
         emitter_cell,
-    })
+    };
+    let background = BackgroundRuntimeDeps {
+        representation_cache,
+        spool_manager,
+        spool_tx,
+        spool_rx,
+        worker_rx,
+        spool_dir,
+        file_cache_dir: paths.file_cache_dir.clone(),
+        spool_ttl_days: storage_config.spool_ttl_days,
+        worker_retry_max_attempts: storage_config.worker_retry_max_attempts,
+        worker_retry_backoff_ms: storage_config.worker_retry_backoff_ms,
+        file_transfer_lifecycle,
+        clipboard_write_coordinator,
+    };
+    Ok((wired, background))
 }
 
 const DEFAULT_PAIRING_DEVICE_NAME: &str = "Uniclipboard Device";

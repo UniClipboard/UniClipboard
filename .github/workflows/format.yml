@@ -3,7 +3,7 @@ run-name: 'Format check for ${{ github.head_ref || github.ref_name }}'
 
 on:
   pull_request:
-    branches: [main, dev, develop]
+    branches: [main]
     types: [opened, synchronize, reopened]
 
 permissions:

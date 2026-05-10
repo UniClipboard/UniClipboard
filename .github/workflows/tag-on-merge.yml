@@ -4,7 +4,7 @@ run-name: tag-${{ github.event.pull_request.head.ref }}
 on:
   pull_request:
     types: [closed]
-    branches: [main, dev]
+    branches: [main]
 
 jobs:
   tag-release:

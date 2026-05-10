@@ -28,11 +28,6 @@ on:
           - beta
           - rc
         default: stable
-      base_branch:
-        description: 'Branch to base the release off'
-        required: false
-        type: string
-        default: main
 
 jobs:
   prepare:
@@ -46,7 +41,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.base_branch }}
+          ref: main
           token: ${{ secrets.REPO_BOT_TOKEN }}
           fetch-depth: 0
 
@@ -246,7 +241,7 @@ jobs:
           > **Do not manually create a tag.** Merging this PR handles everything.
           EOF
           )" \
-            --base "${{ inputs.base_branch }}" \
+            --base main \
             --head "release/v${VERSION}")
 
           echo "pr_url=$PR_URL" >> "$GITHUB_OUTPUT"

@@ -147,6 +147,72 @@
 
 ---
 
+---
+
+## 2026-05-10 二轮会话：Phase 4 上半场
+
+### 决策
+
+- 用户选定 **激进方案**：把 AppFacade 中的 5 个 daemon-lifecycle 字段
+  从 `Option<Arc<X>>` 改为 `Arc<arc_swap::ArcSwapOption<X>>`，daemon 启停 swap。
+- 进程内只装一份 AppFacade（GUI 启动期装 / standalone CLI 入口装），
+  daemon 启动 swap 子 facade，daemon 退出 clear。
+
+### Phase 4 上半场（本次会话内落地）
+
+- commit 9f627afc: AppFacade 字段重构。`space_setup` / `member_roster` /
+  `clipboard_sync` / `blob_transfer` / `mobile_sync` 五字段改 ArcSwapOption,
+  加 `swap_daemon_lifecycle` / `clear_daemon_lifecycle` API。调用面适配
+  (`.as_ref()` / `.clone()` → `.load_full()` / `.load()`):
+  uc-application app_facade.rs ~20 处 wrapper, uc-webserver routes 3 处，
+  uc-cli mobile_sync 1 处，uc-tauri 1 处，uc-desktop daemon/app.rs 3 处。
+
+- commit 940aa83f: daemon 不再装第二份完整 AppFacade。改造：
+  - `daemon/app_facade_assembly.rs`: 重写为 `build_daemon_lifecycle_facades`
+    返回 `DaemonLifecycleFacades`(5 个子 facade) + local_device_id。
+    删除 `build_daemon_app_facade` / `DaemonAppFacadeAssembly` /
+    `DaemonAppFacadeAssemblyInput`。
+  - `daemon/host.rs::start_in_process`: 新增 `app_facade: Arc<AppFacade>`
+    入参，装出 lifecycle facades 后调 `app_facade.swap_daemon_lifecycle(...)`,
+    daemon main loop 退出后 `app_facade.clear_daemon_lifecycle()` 清空。
+  - `daemon/host.rs::run` (standalone binary 入口): 自己 build_gui_app +
+    DesktopRuntime::with_setup 装一份进程级 deps + facade，然后调
+    start_in_process。
+  - `daemon_probe.rs`: bootstrap_daemon_in_process / reload_in_process_daemon /
+    start_owned_in_process 全部加 `app_facade` 参数。
+  - `uc-tauri/src/run.rs` / `commands/restart.rs`: daemon spawn / reload
+    透传 `runtime.app_facade()`。
+  - `uc-application/src/facade/search/mod.rs`: SearchFacade.coordinator
+    也走 ArcSwapOption,`set_coordinator` / `clear_coordinator` API。
+  - `uc-bootstrap/src/non_gui_runtime.rs`: 抽出 `build_mobile_sync_facade`
+    helper 供 daemon-lifecycle 装配复用，build_app_facade_from_deps 也改用。
+
+### 验证
+
+- `cargo check --workspace` 干净
+- `cargo test -p uc-application -p uc-bootstrap -p uc-desktop -p uc-tauri
+  -p uc-webserver --lib`: 539 passed (413+12+48+21+45)
+
+### Phase 4 下半场（**未在本次会话落地**）
+
+剩下两个目标涉及 `uc-bootstrap::build_daemon_app` 拆解 + WiredDependencies
+跨 crate 流动，独立 PR 处理：
+
+1. **删除 WireOverrides 整套机制**（含 5 处签名透传 + uc-tauri .manage 注册 +
+   restart / bootstrap_daemon 路径透传）
+2. **daemon reload 不重建 sqlite pool / repos / settings repo**
+   —— 需要让 daemon-lifecycle 装配脱离 `wire_dependencies`，接受已有 deps 作输入
+
+下次接手该读什么：
+- `uc-bootstrap/src/builders.rs::build_daemon_app`（要拆解）
+- `uc-bootstrap/src/assembly.rs::WiredDependencies`（要让 daemon 复用进程级实例）
+- `uc-desktop/src/bootstrap.rs::build_gui_app`（要扩为持有 daemon-lifecycle
+  装配所需的 wired 字段）
+- `uc-desktop/src/daemon/bootstrap.rs::build_daemon_bootstrap_assembly`
+  （要改为接受已有 deps + emitter_cell）
+
+---
+
 ## 后续 follow-ups（下次接手该看什么）
 
 1. **优先级最高**: 实施 task_plan.md 的 Phase 4 — 拆 daemon-lifecycle 与

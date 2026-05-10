@@ -112,7 +112,8 @@ GUI 端创建一份 Arc → 同时传给 GUI wire 和 daemon wire。
 
 ### Phase 4 — daemon-lifecycle 与进程级资源分层（架构整治）
 
-**Status**: 🔄 in_progress — 2026-05-10 二轮会话内推进，激进方案
+**Status**: 🔶 partial — 2026-05-10 二轮会话上半场落地;下半场 (WireOverrides
+删除 + daemon 不重建 deps) 留作下一个独立 PR / 会话
 
 **问题陈述**: 见 `findings.md` §3「真正的架构错位」与 §4「WireOverrides 是
 症状而非病因」。简单说：

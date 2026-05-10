@@ -744,3 +744,127 @@ src-tauri/crates/uc-bootstrap/tests/slice2_phase2_clipboard_e2e.rs
 - 每个 paired peer 应看到一对 JSON：`sync_attempted` + `sync_succeeded`（或 `sync_failed`）
 - `direction=outbound`、`payload_type=text`、`payload_size_bucket` 按字节切片、`transport_type=p2p_direct`、`sync_latency_ms` 毫秒级
 - 失败时 `failure_reason` ∈ `peer_offline` / `file_too_large` / `network_error` / `unknown`
+
+---
+
+## Session 2026-05-09 续 — Slice 8c-2 启动 + 决策定稿（规划阶段） 🔄
+
+**目标**：新增 `FirstSyncStatePort`（uc-core）+ `FileFirstSyncStateRepository`（uc-infra）落 `<app_data_root>/first-sync-state.json`；wire 4 个构造点；在 outbound dispatch_entry spawn 内 fire `first_clipboard_sync_attempted` / `first_clipboard_sync_succeeded` / `first_file_sync_succeeded` 三个事件。
+
+### 决策对话脉络
+
+1. 用户"继续 Slice 8c-2"——三个 first_* 事件 + 新 port
+2. 并行两个 Explore subagent：(a) AppVersionStatePort 模板 + AppPaths/AppDeps 注入风格；(b) 当前 sync 三事件 fire 点 + 4 个构造点定位
+3. 实测 `events.rs:57-73` 三个 first_* 事件 schema **已存在**——本 slice 仅 wire 不动 schema
+4. AskUserQuestion 一次问 4 决策，用户全裁决
+
+### 关键架构决策
+
+| 项 | 决策 | 理由 |
+|---|---|---|
+| `_attempted` 触发语义 | 双 flag 独立：`_attempted` 在首次 attempt（成功/失败均记）记一次；`_succeeded` 在首次成功记一次 | 事件名字面意思；funnel 漏点信号完整——"用户尝试过但首次失败"会留 attempted 但无 succeeded 的信号；多写 1 行可接受 |
+| Race 防护落点 | port impl 内部 `tokio::sync::Mutex` 串行 read-check-write | 与 `AppVersionStatePort` 文件实现风格对称；fan-out N 个 peer 全过同一锁；race 测试可显式覆盖；fan-out 量级 < 10 不到磁盘 IO 瓶颈 |
+| `first_file_sync_succeeded` 范围 | 一并做：Port 三 flag、JSON schema 三字段；dispatch_entry 内 `payload_type=File` 分支额外 fire | schema doc §7 已预留；Port 三 flag 一次到位避免后续重 wiring；payload_type 推导逻辑 8c-1 已落地，复用 |
+| 测试矩阵 | infra 7 tokio test（仿 AppVersionStatePort）+ 1 race test + use case 1 first-path | infra 完整契约覆盖；race 测试用 `tokio::join!` 多 spawn 同 mark 断言 true 仅一次；use case first-path 验证三事件序列 |
+| Port API 形状 | `mark_first_sync_attempted/succeeded/file_sync_succeeded` 三方法都返回 `Result<bool>` | `bool` = 本次为首次置位（true 调用方 fire 事件）；语义最清晰；调用方无需 if-then-write 两步 |
+| mark/fire 顺序 | mark 在 fire 之前（mark 返回 true 才 fire） | "先置位再 fire" — 事件丢一次比误报多次更可接受；首次同步只该有一次 |
+| 持久化字段 | `{schema_version:1, attempted: bool, succeeded: bool, file_succeeded: bool}` | 仿 AppVersionStateFile schema 版本化；三 bool 各一字段，未来加新事件继续扩 |
+
+### 4 个构造点 wiring 计划
+
+| # | 文件 | 行号 | 改动概要 |
+|---|---|---|---|
+| 1 | `uc-application/src/deps.rs` + `uc-bootstrap/src/assembly.rs` | 139-168 / 404-410 | AppDeps 加 `first_sync_state` 字段；InfraLayer 构造 + 聚合点装配 |
+| 2 | `uc-application/src/facade/clipboard/facade.rs` + `uc-bootstrap/src/space_setup.rs` | 42-57 / 390-402 | ClipboardSyncDeps 加字段 + facade 透传；构造点 `Arc::clone` |
+| 3 | `uc-application/src/usecases/clipboard_sync/dispatch_entry.rs` | 158-198 / 287-323 | use case struct field + new 参数；spawn 内三处 mark + 条件 fire |
+| 4 | `uc-bootstrap/tests/slice2_phase2_clipboard_e2e.rs` | 测试构造点 | 补 fake/in-memory `first_sync_state` |
+
+### 子任务（已 TaskCreate 持久化跟踪）
+
+7 个子任务带 blockedBy 依赖图：
+1. uc-core trait
+2. uc-infra impl + 8 测试（7 行为 + 1 race） ← blockedBy 1
+3. AppDeps + assembly 装配（构造点 1） ← blockedBy 2
+4. ClipboardSyncDeps + space_setup 装配（构造点 2） ← blockedBy 3
+5. dispatch_entry use case fire 三事件 + 1 first-path 测试（构造点 3） ← blockedBy 4
+6. e2e 测试构造点补字段（构造点 4） ← blockedBy 3
+7. cargo check + test 全 workspace ← blockedBy 5,6
+
+### Status
+
+**规划完成、实现待开始。** 决策全部定稿在 `task_plan.md` Slice 8c-2 子任务清单 + Decisions Made 表底新增 4 行；探索发现归档到 `findings.md` 的 "Slice 8c-2 探索发现" 章节。下一步：按子任务依赖序逐个执行（建议从 task #1 uc-core trait 开始）。
+
+---
+
+## Session 2026-05-10 — Slice 8c-2 实现完成 ✅
+
+按规划完成 7 个 task：uc-core trait → uc-infra impl → 3 个 wiring 构造点 → use case fire → e2e 构造点补 → cargo check + test 全绿。
+
+### 文件改动（10 个文件，~530 行净增）
+
+```
+src-tauri/crates/uc-core/src/ports/
+├── first_sync_state.rs                            新增 ~55 行（trait + 3 method + Error enum）
+└── mod.rs                                          +pub mod + re-export
+
+src-tauri/crates/uc-infra/src/
+├── first_sync_state.rs                            新增 ~280 行（FileFirstSyncStateRepository + tokio::sync::Mutex 串行 + tempfile+rename 原子写 + 8 tokio test）
+└── lib.rs                                          +pub mod + re-export
+
+src-tauri/crates/uc-application/src/
+├── deps.rs                                         AppDeps +first_sync_state 字段
+├── facade/clipboard/facade.rs                     ClipboardSyncDeps +first_sync_state 字段；ClipboardSyncFacade::new 透传给 DispatchUseCase；内测 build_facade +NoopFirstSyncState fake
+└── usecases/clipboard_sync/dispatch_entry.rs      use case +first_sync_state 字段；spawn 内 mark + 条件 fire 三 first_* 事件；tests +AllMarkedFirstSyncState/InMemoryFirstSyncState fakes + build_uc_with_first_sync_state helper + first_path test
+
+src-tauri/crates/uc-bootstrap/src/
+├── assembly.rs                                     InfraLayer struct +字段；first_sync_state 实例化（FileFirstSyncStateRepository::with_defaults(app_data_root)）；AppDeps 聚合点
+└── space_setup.rs                                  ClipboardSyncDeps 构造点 +first_sync_state: Arc::clone(&deps.first_sync_state)
+
+src-tauri/crates/uc-bootstrap/tests/
+└── slice2_phase2_clipboard_e2e.rs                 +NoopFirstSyncState struct + ClipboardSyncDeps 构造点补字段
+```
+
+### 关键实现决策（与规划裁决全部吻合）
+
+| 项 | 实现 |
+|---|---|
+| Port API | 三方法 `mark_first_sync_attempted/succeeded/file_sync_succeeded`，全部 `Result<bool>`；`Ok(true)` = 本次首次置位 |
+| Race 防护 | `FileFirstSyncStateRepository` 内部 `tokio::sync::Mutex<()>` 守 read-check-write 整段 critical section；fan-out N 个 spawn 全过此锁，only 1 个返回 true |
+| JSON schema | `{schema_version: 1, attempted: bool, succeeded: bool, file_succeeded: bool}`；schema_version=1，未来扩字段走 migrate 分支 |
+| 持久化 | tempfile (`<file>.tmp`) → fsync → rename 三步原子写，与 AppVersionStatePort 实现等价 |
+| dispatch_entry spawn 内顺序 | `SyncAttempted` capture → `mark_first_sync_attempted` → 条件 fire `FirstClipboardSyncAttempted` → dispatch.dispatch().await → `SyncSucceeded`/`SyncFailed` capture → 成功路径 `mark_first_sync_succeeded` → 条件 fire → `payload_type=File` 分支 `mark_first_file_sync_succeeded` → 条件 fire |
+| mark 失败处理 | `Err(_)` → `warn!` log + 不 fire；funnel 事件丢一次比误报多次更可接受 |
+| 测试 fake 分层 | `AllMarkedFirstSyncState`（永远 false，原 sync 三事件 test 用）+ `InMemoryFirstSyncState`（默认 unmarked，新 first-path test 用）+ `NoopFirstSyncState`（facade 内测 / e2e 用） |
+
+### 测试结果
+
+| crate | tests passed | 增量 |
+|---|---|---|
+| uc-core (lib) | 84 | 0（trait + Error 编译型，无 unit test） |
+| uc-infra (lib) | **241** | +8（first_sync_state: missing/round-trip/overwrite/corrupt/empty/schema-mismatch/parent-dir + race） |
+| uc-application (lib) | **386** | +1（dispatch_entry::first_path_fires_clipboard_and_file_first_events_exactly_once_per_flag） |
+| uc-observability (lib) | 55 | 0（事件 schema 已存在） |
+| uc-bootstrap (lib) | 19 | 0 |
+| uc-bootstrap (e2e: slice2_phase2_clipboard_e2e) | 2 | 无回归 |
+| uc-webserver (lib) | 39 | 0 |
+| uc-desktop (lib) | 48 | 0 |
+| uc-daemon-contract (lib) | 27 | 0 |
+
+整体 build：`cargo check --workspace` 跨 11 crate 一次通过。
+
+### 跳过的事项
+
+- **inbound（`IngestInboundClipboardUseCase`）first_* 事件**：与 8c-1 跳过 inbound 三事件保持一致——funnel 上"我发出的 sync"是更主要 reliability/activation 指标；inbound 留待后续。schema 上 `FirstClipboardSyncAttempted/Succeeded` 已带 `direction` 字段，未来加 inbound 触发只需 fire `Direction::Inbound`，schema 0 改动
+- **dispatch_entry 第二次 dispatch 不再 fire 的幂等显式测试**：infra 端 `three_flags_round_trip_independently` 已覆盖"第二次 mark 返回 false"行为；use case 端的 first_path test + 各 fake 的 mutex 已隐式覆盖，再加显式幂等 test 增量信息低
+- **bootstrap-level integration test**：要构造完整 AppDeps + 真磁盘 first-sync-state.json + 触发 dispatch 路径成本远高于 ROI；`slice2_phase2_clipboard_e2e` 已端到端验证 ClipboardSyncDeps wiring 不挂；`AllMarkedFirstSyncState` 防止 e2e 受 funnel 事件污染
+
+### 顺带做的事
+
+- 测试 fake 模式总结写进 dispatch_entry tests doc-comment：三层 fake 各司其职（`AllMarkedFirstSyncState` 永不触发 / `InMemoryFirstSyncState` 默认 unmarked 一次触发 / production `FileFirstSyncStateRepository` 走磁盘）
+
+### Next Action
+
+可推进的下一节点：
+- Slice 7b（PostHog Cloud account + project key 到位后接 PosthogSink）
+- Slice 9（前端 settings UI 拆 `usage_analytics_enabled` 开关）
+- Slice 10（dashboard + 真实数据验收）

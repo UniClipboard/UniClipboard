@@ -233,3 +233,87 @@ QR 扫码 vs 6 位 code 输入 vs 自动发现的区分 **当前完全在 GUI/CL
 - 现有 pairing 路径 **无单元测试** —— `tests/` 目录下只有 `file_transfer.rs`
 - `SpaceSetupFacade::new()` 构造器需要补 analytics 字段；`*UseCase` 同样需要
 
+## Slice 8c-2 探索发现（FirstSyncStatePort + first_* 事件）
+
+### 事件 schema 现状
+
+`uc-observability/src/analytics/events.rs:57-73` 三个 first_* 事件 **已存在**（schema doc §7 预留）：
+- `FirstClipboardSyncAttempted { direction: Direction }`
+- `FirstClipboardSyncSucceeded { direction, peer_os: Option<Os>, transport_type, duration_ms }`
+- `FirstFileSyncSucceeded { peer_os, transport_type, payload_size_bucket }`
+
+事件名映射（`Event::name`）已钉死 wire 形态 → `first_clipboard_sync_attempted` / `first_clipboard_sync_succeeded` / `first_file_sync_succeeded`（events.rs:94-96）。Slice 8c-2 仅需 wire fire 点 + 去重 port，不动 event 定义。
+
+### `AppVersionStatePort` 模板（FirstSyncStatePort 完整对照范本）
+
+| 维度 | AppVersionStatePort | FirstSyncStatePort（本 slice） |
+|---|---|---|
+| trait 文件 | `uc-core/src/ports/app_version.rs:18-47` | `uc-core/src/ports/first_sync_state.rs`（新增） |
+| 错误 enum | `AppVersionStateError` Read/Write/Corrupt 三变体 | `FirstSyncStateError` 同三变体 |
+| infra 文件 | `uc-infra/src/app_version_state.rs` 整文件可参照 | `uc-infra/src/first_sync_state.rs`（新增） |
+| 文件名 | `upgrade-cursor.json` | `first-sync-state.json` |
+| 路径 | `app_data_root.join(DEFAULT_FILE_NAME)` | 同左（同一 root） |
+| schema 字段 | `{schema_version:1, last_seen_version: String}` | `{schema_version:1, attempted: bool, succeeded: bool, file_succeeded: bool}` |
+| 原子写 | tempfile + sync_all + rename | 同左 |
+| 测试 | 7 个 tokio test（infra 内嵌 mod tests） | 7 个 + race 测试 |
+| 装配点 | `uc-bootstrap/src/assembly.rs:404-410` InfraLayer + `deps.rs:148-150` AppDeps | 同区域插入 |
+
+**唯一架构差别**：FirstSyncStatePort 需要 **`tokio::sync::Mutex` 串行 read-check-write**（race 防护），AppVersionStatePort 无并发 mark 场景所以无锁。
+
+### `app_data_root_dir` 落点确认
+
+`uc-application/src/facade/app_paths.rs:14,34-56` 字段 `pub app_data_root_dir: PathBuf`。已有调用：`upgrade-cursor.json` / `.daemon-token` / `.daemon-pid` 都直接 `app_data_root_dir.join(name)`。**`first-sync-state.json` 同位入驻。** Windows 上 cache_dir 与 data_root 重合时已被 `AppPaths::from_app_dirs` 自动避让到子目录，无需在 port 层处理。
+
+### 4 个构造点精确位置
+
+| # | 文件 | 行号 | 改动 |
+|---|---|---|---|
+| 1 | `uc-application/src/deps.rs` | 139-168 | `AppDeps` 加 `first_sync_state: Arc<dyn FirstSyncStatePort>` 字段（与 `app_version_state`/`analytics` 同层） |
+| 1 | `uc-bootstrap/src/assembly.rs` | 404-410 | InfraLayer 构造 + AppDeps 聚合点 |
+| 2 | `uc-application/src/facade/clipboard/facade.rs` | 42-57 | `ClipboardSyncDeps` 加字段；facade::new 透传 |
+| 2 | `uc-bootstrap/src/space_setup.rs` | 390-402 | 构造点 `Arc::clone(&deps.first_sync_state)` |
+| 3 | `uc-application/src/usecases/clipboard_sync/dispatch_entry.rs` | 158-198, 287-323 | use case struct field + new 参数；spawn 内 mark + 条件 fire |
+| 4 | `uc-bootstrap/tests/slice2_phase2_clipboard_e2e.rs` | 测试构造点 | 补 fake/file impl `first_sync_state` |
+
+### 当前 sync spawn 块结构（dispatch_entry.rs:287-323，Slice 8c-1 落地）
+
+```
+fan_out per peer {
+    spawn {
+        analytics.capture(SyncAttempted)        // line 288-296
+        // ← 在此插：if first_sync_state.mark_first_sync_attempted()? { fire FirstClipboardSyncAttempted }
+        let started_at = Instant::now()         // line 297
+        match dispatch.dispatch(...).await {
+            Ok(_) => {
+                fire SyncSucceeded { duration_ms = elapsed }
+                // ← 在此插：if mark_first_sync_succeeded()? { fire FirstClipboardSyncSucceeded }
+                // ← 在此插：if payload_type==File && mark_first_file_sync_succeeded()? { fire FirstFileSyncSucceeded }
+            }
+            Err(e) => fire SyncFailed { failure_reason }
+        }
+    }
+}
+```
+
+失败路径不触 `_succeeded` 系列 mark；attempted 在 SyncAttempted 之后无论后续成功失败都已被 mark。
+
+### Race 模型与去重策略
+
+**场景**：用户首次复制时若已 paired N 个 peer，dispatch_entry 同时 spawn N task；每个都进入"我是不是首次"判断。若 port impl 是非原子的 read-check-write，N 个 spawn 都可能看到 `attempted=false`、都 fire 事件、都 race 写 `attempted=true`——重复上报。
+
+**裁决**：port impl 内部用 `tokio::sync::Mutex` 把整个 `read JSON → check flag → set flag → write JSON` 包成 critical section。N 个 spawn 串行过此锁，第一个置位返回 `true`（fire 事件），其余返回 `false`（不 fire）。fan-out 量级 < 10，磁盘 IO 不构成瓶颈。
+
+**测试**：`tokio::join!(spawn1.mark(), spawn2.mark(), ..., spawn8.mark())` 收集 N 个 Result，断言 `iter().filter(|r| **r == true).count() == 1`。
+
+### `payload_type_from_categories` 复用
+
+Slice 8c-1 已在 `dispatch_entry.rs` 私有 fn 实现 File > Image > Text 优先级推导。8c-2 直接复用——首次成功时 `if matches!(payload_type, PayloadType::File)` 触 file 分支额外 mark + fire。
+
+### Port 命名 / 错误粒度自我审查（uc-core AGENTS.md §12）
+
+- ✅ 业务能力命名 `FirstSyncStatePort`（不出现 file/json/sqlite 等技术词）
+- ✅ `bool` 返回值是领域语义"是否首次置位"，非 IO 状态
+- ✅ 三个 method 是同一持久化资源的不同 fact，单 port 合理（不拆 `FirstAttemptedPort` / `FirstSucceededPort` / `FirstFileSucceededPort` 三个）
+- ✅ `FirstSyncStateError` 三变体与 `AppVersionStateError` 一致，错误语义稳定
+- ✅ uc-core 不感知 `Mutex` / `tokio::fs` / JSON 等实现——全部留 uc-infra
+

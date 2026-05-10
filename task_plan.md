@@ -15,9 +15,9 @@ Schema 与隐私契约定稿在：`docs/architecture/telemetry-events.md`。
 
 ## Current Phase
 
-Slice 8a 已完成（sink 注入 AppDeps + `build_analytics_sink` factory + `GatedAnalyticsSink` wrapper + `compose_event_context` 在 `is_first_run = true` 时 fire `app_first_open`）。
+Slice 8 全部完成（8a / 8b / 8b' / 8c-1 / 8c-2 / 8d）。outbound funnel + reliability 全链路通。
 
-Slice 7b 仍阻塞（PostHog Cloud account + project key）。下一可执行：Slice 8b（pairing 三事件）/ 8c（sync 三事件 + 新增 FirstSyncStatePort）/ 8d（setup 两事件）任选——三者独立、无依赖关系。
+Slice 7b 仍阻塞（PostHog Cloud account + project key）；Slice 9 / 10 待前端工作 / 真实数据积累。
 
 ## Phases
 
@@ -184,16 +184,48 @@ Slice 7b 仍阻塞（PostHog Cloud account + project key）。下一可执行：
 - [x] `uc-bootstrap/tests/slice2_phase2_clipboard_e2e.rs`：构造点补 NoopAnalyticsSink
 - **Status:** complete
 
-#### Slice 8c-2: `FirstSyncStatePort` + first_clipboard_sync_* 事件
-- [ ] `uc-core/src/ports/`：新增 `FirstSyncStatePort`（与 `AppVersionStatePort` 同粒度）
-  - 持久化标志位"已发过 first_clipboard_sync_succeeded"
-  - 实现落在 profile 数据目录（与 setup_status / app_version 一致）
-- [ ] `uc-infra`：实现 `<app_data_root>/first-sync-state.json`
-- [ ] `uc-bootstrap`：实现 + 注册到 AppDeps
-- [ ] `ClipboardSyncFacade` / `dispatch_uc` 内：
-  - 检查 first-sync flag：未发过 → 同时发 `first_clipboard_sync_attempted` / `first_clipboard_sync_succeeded`，发完置位
-- [ ] 测试：first-sync flag 持久化往返；多线程下的 race（两条同步同时是"首次"的去重）
-- **Status:** pending
+#### Slice 8c-2: `FirstSyncStatePort` + first_clipboard_sync_* / first_file_sync_succeeded 事件
+
+**用户裁决（2026-05-09）**：
+- **触发语义** = 双 flag 独立：`_attempted` 在首次 attempt（成功/失败均记）记一次；`_succeeded` 在首次成功记一次。事件名字面意思 + funnel 漏点信号完整
+- **Race 防护** = port impl 内部 `tokio::sync::Mutex` 串行 read-check-write（与 `AppVersionStatePort` 风格对称；fan-out 全过此锁）
+- **范围** = 一并做 `first_file_sync_succeeded`：Port 三 flag、JSON schema 三字段；dispatch_entry 内根据 `payload_type=File` 分支额外 fire
+- **测试** = infra 7 个 tokio test（仿 AppVersionStatePort：missing/round-trip/overwrite/corrupt/empty/schema-mismatch/parent-dir）+ use case 1 个 first-path 断言 + 显式 race 测试（`tokio::join!` 多 spawn 同 mark，断言 true 仅一次）
+
+**Port API 形状**（uc-core/src/ports/first_sync_state.rs）：
+```rust
+#[async_trait]
+pub trait FirstSyncStatePort: Send + Sync {
+    async fn mark_first_sync_attempted(&self) -> Result<bool, FirstSyncStateError>;
+    async fn mark_first_sync_succeeded(&self) -> Result<bool, FirstSyncStateError>;
+    async fn mark_first_file_sync_succeeded(&self) -> Result<bool, FirstSyncStateError>;
+}
+```
+返回值约定：`Ok(true)` = 本次为首次置位（调用方应 fire 事件）；`Ok(false)` = 已被 mark（不 fire）。
+
+**JSON schema**（uc-infra）：
+```json
+{ "schema_version": 1, "attempted": bool, "succeeded": bool, "file_succeeded": bool }
+```
+
+**4 个构造点 wiring**：
+1. `AppDeps`（`uc-application/src/deps.rs:139-168`）加 `first_sync_state: Arc<dyn FirstSyncStatePort>`；`uc-bootstrap/src/assembly.rs:404-410` InfraLayer 构造点 + AppDeps 聚合点装配
+2. `ClipboardSyncDeps`（`uc-application/src/facade/clipboard/facade.rs:42-57`）加同字段；`uc-bootstrap/src/space_setup.rs:390-402` 透传 `Arc::clone(&deps.first_sync_state)`
+3. `DispatchClipboardEntryUseCase::new`（`uc-application/src/usecases/clipboard_sync/dispatch_entry.rs:176-198`）加参数；spawn 内三处 mark + 条件 fire（attempted 在 SyncAttempted 后；succeeded + file_succeeded 在 SyncSucceeded 后）
+4. e2e 测试构造点（`uc-bootstrap/tests/slice2_phase2_clipboard_e2e.rs` 必补；slice1/slice2_phase1 若引用 AppDeps 也需补）
+
+**子任务**：
+- [x] `uc-core/src/ports/first_sync_state.rs`：新增 trait + `FirstSyncStateError` enum（Read/Write/Corrupt 三变体仿 `AppVersionStateError`）；`mod.rs` re-export
+- [x] `uc-infra/src/first_sync_state.rs`：`FileFirstSyncStateRepository` 仿 `FileAppVersionStateRepository` 模板（`with_defaults(app_data_root)` → `app_data_root/first-sync-state.json`）；内部 `tokio::sync::Mutex` 串 read-check-write；tempfile + rename 原子写；`lib.rs` re-export
+- [x] infra 7 测试：missing → 全 false / round-trip / overwrite / corrupt JSON / empty file / schema-mismatch / parent-dir 自动创建
+- [x] infra 1 race 测试：`tokio::join!` 8 个 spawn 同时 `mark_first_sync_attempted`，断言只有 1 个返回 true
+- [x] 构造点 1：`AppDeps.first_sync_state` 字段 + `assembly.rs` InfraLayer + AppDeps 聚合
+- [x] 构造点 2：`ClipboardSyncDeps.first_sync_state` 字段 + facade 透传 + `space_setup.rs` 装配
+- [x] 构造点 3：`DispatchClipboardEntryUseCase` struct field + new 参数；spawn 内 mark + 条件 fire 三 first_* 事件
+- [x] 构造点 4：`slice2_phase2_clipboard_e2e.rs` 补 NoopFirstSyncState；slice1 / slice2_phase1 不需要（不构造 ClipboardSyncDeps）
+- [x] use case 1 测试：first-path 断言事件序列含 `first_clipboard_sync_attempted` + `first_clipboard_sync_succeeded` + `first_file_sync_succeeded`（payload_type=File 分支三事件 each-once 验证）
+- [x] cargo check --workspace + 跨 crate test 全绿
+- **Status:** complete
 
 #### Slice 8d: setup 两事件
 
@@ -250,6 +282,10 @@ Slice 7b 仍阻塞（PostHog Cloud account + project key）。下一可执行：
 | Slice 7 仅做 StdoutSink，PosthogSink 留 7b | PostHog 账号 + key 是外部 blocker，不阻塞 Slice 8 进度 |
 | Sink 切换走 runtime 而非 cargo feature | 与 telemetry_gate 风格一致；单一二进制可调试 |
 | `usage_analytics_enabled` 运行时门控走 `GatedAnalyticsSink<inner>` wrapper | gate 是横切关注点不该污染 sink 实现；与 telemetry_gate 在 tracing layer 做 filter 的思路对称；sink 装一次永不替换，settings PUT handler 仅改 atomic 静态值 |
+| Slice 8c-2 first_* 事件：`_attempted` 与 `_succeeded` 双 flag 独立 | 事件名字面意思（`_attempted` = 任何首次 attempt，无论后续成功失败）；funnel 漏点信号完整——"用户尝试过但首次失败"会留 attempted 但无 succeeded 的间隙信号；多写 1 行代价可接受 |
+| Slice 8c-2 race 防护放 port impl 内部 `tokio::sync::Mutex` | 与 `AppVersionStatePort` 文件实现风格对称；fan-out N 个 peer 全过同一锁、串行 read-check-write，无须 use case 层 atomic CAS 兜底；race 测试可显式覆盖；fan-out 量级（< 10 peer）远不到磁盘 IO 瓶颈 |
+| Slice 8c-2 范围含 `first_file_sync_succeeded` | schema doc §7 已预留；Port 三 flag 一次到位避免后续重打开 wiring；dispatch_entry 已能从 categories 推断 `payload_type=File` 分支，多 fire 一行成本极低 |
+| Slice 8c-2 mark 在 fire 之前 | port `mark_*` 返回 `Ok(true)` 才 fire，意味着"先置位再 fire"；事件丢一次比误报多次更可接受（首次同步事件只该有一次） |
 
 ## Errors Encountered
 

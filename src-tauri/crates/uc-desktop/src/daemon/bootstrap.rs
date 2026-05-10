@@ -4,7 +4,9 @@ use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
 
 use uc_application::clipboard_write::ClipboardWriteCoordinator;
-use uc_application::facade::{BlobTransferFacade, ClipboardSyncFacade, HostEventEmitterPort};
+use uc_application::facade::{
+    BlobTransferFacade, ClipboardSyncFacade, FileTransferFacade, HostEventEmitterPort,
+};
 use uc_bootstrap::builders::build_daemon_app;
 use uc_bootstrap::file_transfer_lifecycle::FileTransferLifecycle;
 use uc_bootstrap::{
@@ -19,6 +21,10 @@ pub struct DaemonBootstrapAssembly {
     pub blob_ports: BlobProcessingPorts,
     pub file_cache_dir: PathBuf,
     pub file_transfer_lifecycle: Arc<FileTransferLifecycle>,
+    /// 文件传输 lifecycle facade（5 个动作 + seed + link），与
+    /// `file_transfer_lifecycle` 在 `build_file_transfer_assembly` 里
+    /// 共享同一对 store + publisher 一并构造。
+    pub file_transfer_facade: Arc<FileTransferFacade>,
     pub clipboard_write_coordinator: Arc<ClipboardWriteCoordinator>,
     pub emitter_cell: Arc<RwLock<Arc<dyn HostEventEmitterPort>>>,
     pub clipboard_sync_facade: Arc<ClipboardSyncFacade>,
@@ -42,6 +48,7 @@ pub async fn build_daemon_bootstrap_assembly() -> anyhow::Result<DaemonBootstrap
 
     let file_cache_dir = ctx.storage_paths.file_cache_dir.clone();
     let file_transfer_lifecycle = ctx.background.file_transfer_lifecycle.clone();
+    let file_transfer_facade = ctx.background.file_transfer_facade.clone();
     let clipboard_write_coordinator = ctx.background.clipboard_write_coordinator.clone();
     let emitter_cell = ctx.emitter_cell.clone();
     let blob_ports = BlobProcessingPorts::from_app_deps(&ctx.deps);
@@ -62,6 +69,7 @@ pub async fn build_daemon_bootstrap_assembly() -> anyhow::Result<DaemonBootstrap
         blob_ports,
         file_cache_dir,
         file_transfer_lifecycle,
+        file_transfer_facade,
         clipboard_write_coordinator,
         emitter_cell,
         clipboard_sync_facade,

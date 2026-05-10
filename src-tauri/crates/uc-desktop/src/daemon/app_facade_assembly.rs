@@ -5,8 +5,8 @@ use std::sync::Arc;
 use uc_application::clipboard_write::ClipboardWriteCoordinator;
 use uc_application::deps::AppDeps;
 use uc_application::facade::{
-    AppFacade, AppPaths, BlobTransferFacade, ClipboardSyncFacade, LifecycleStatusGateway,
-    SearchCoordinator,
+    AppFacade, AppPaths, BlobTransferFacade, ClipboardSyncFacade, FileTransferFacade,
+    LifecycleStatusGateway, SearchCoordinator,
 };
 use uc_application::ApplyInboundClipboardUseCase;
 use uc_bootstrap::{
@@ -30,6 +30,9 @@ pub struct DaemonAppFacadeAssemblyInput<'a> {
     pub space_setup_assembly: &'a SpaceSetupAssembly,
     pub clipboard_sync: Arc<ClipboardSyncFacade>,
     pub blob_transfer: Arc<BlobTransferFacade>,
+    /// 文件传输 lifecycle facade（与 `FileTransferLifecycle` 在
+    /// `build_file_transfer_assembly` 里成对构造）。
+    pub file_transfer: Arc<FileTransferFacade>,
     pub clipboard_write_coordinator: Arc<ClipboardWriteCoordinator>,
     pub clipboard_integration_mode: ClipboardIntegrationMode,
     pub search_coordinator: Arc<SearchCoordinator>,
@@ -54,6 +57,7 @@ pub fn build_daemon_app_facade(input: DaemonAppFacadeAssemblyInput<'_>) -> Daemo
             clipboard_sync: Some(input.clipboard_sync),
             blob_transfer: Some(input.blob_transfer),
             blob_transfer_port: Some(blob_transfer_port),
+            file_transfer: Some(input.file_transfer),
             clipboard_restore: Some(ClipboardRestoreAssembly {
                 write_coordinator: input.clipboard_write_coordinator,
                 integration_mode: input.clipboard_integration_mode,

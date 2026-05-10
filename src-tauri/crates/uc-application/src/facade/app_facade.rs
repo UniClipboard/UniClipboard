@@ -28,6 +28,7 @@ use std::sync::Arc;
 use thiserror::Error;
 use tokio::sync::broadcast;
 
+use crate::facade::file_transfer::FileTransferFacade;
 use crate::facade::mobile_sync::MobileSyncFacade;
 use crate::facade::roster::{MemberSummary, PeerSnapshotView, RosterError};
 use crate::facade::settings::{GeneralSettingsPatch, SettingsPatch};
@@ -65,6 +66,11 @@ pub struct AppFacade {
     pub clipboard_history: Arc<ClipboardHistoryFacade>,
     pub clipboard_sync: Option<Arc<ClipboardSyncFacade>>,
     pub blob_transfer: Option<Arc<BlobTransferFacade>>,
+    /// 文件传输 lifecycle 入口 —— 5 个动作 + seed_receiver_context +
+    /// link_transfer_to_entry。`None` 表示当前装配场景未接入 lifecycle
+    /// (典型:仅查询的 CLI / 单元测试)。Phase 4 起 mobile_lan 与 iroh
+    /// 两条 inbound 路径都会经它发事件。
+    pub file_transfer: Option<Arc<FileTransferFacade>>,
     /// CLI / 仅查询场景下 daemon/Tauri 不构造 restore facade,这里是 None。
     /// daemon API handler 取出前需做存在性检查。
     pub clipboard_restore: Option<Arc<ClipboardRestoreFacade>>,
@@ -97,6 +103,7 @@ impl AppFacade {
             clipboard_history: parts.clipboard_history,
             clipboard_sync: parts.clipboard_sync,
             blob_transfer: parts.blob_transfer,
+            file_transfer: parts.file_transfer,
             clipboard_restore: parts.clipboard_restore,
             search: parts.search,
             settings: parts.settings,
@@ -450,6 +457,7 @@ pub struct AppFacadeParts {
     pub clipboard_history: Arc<ClipboardHistoryFacade>,
     pub clipboard_sync: Option<Arc<ClipboardSyncFacade>>,
     pub blob_transfer: Option<Arc<BlobTransferFacade>>,
+    pub file_transfer: Option<Arc<FileTransferFacade>>,
     pub clipboard_restore: Option<Arc<ClipboardRestoreFacade>>,
     pub search: Arc<SearchFacade>,
     pub settings: Arc<SettingsFacade>,

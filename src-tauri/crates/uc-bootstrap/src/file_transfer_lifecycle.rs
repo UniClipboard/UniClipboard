@@ -1,9 +1,12 @@
 //! File-transfer lifecycle wiring.
 //!
-//! Groups the durable event store, host-event publisher, the six lifecycle
-//! use cases, and the runtime-health tasks (timeout sweep + startup
-//! reconcile) so the composition root can hand a single bundle to
-//! background workers.
+//! Wires the durable event store + host-event publisher + receiver-side
+//! projection plumbing + runtime-health tasks (timeout sweep + startup
+//! reconcile). The 5 lifecycle use cases (Start / ReportProgress / Complete
+//! / Fail / Cancel) live inside [`FileTransferFacade`] (application layer)
+//! built alongside this lifecycle by [`build_file_transfer_assembly`] —
+//! external callers reach those actions through the facade, not through
+//! the lifecycle struct.
 
 use std::sync::{Arc, RwLock};
 use std::time::Duration;
@@ -12,12 +15,8 @@ use tokio::task::JoinHandle;
 use tracing::{info, info_span, warn, Instrument};
 
 use uc_application::facade::{
-    FileTransferHostEventPublisher, HostEvent, HostEventEmitterPort, OutboundEntryIdCache,
-    TransferHostEvent,
-};
-use uc_application::file_transfer::{
-    CancelTransferUseCase, CompleteTransferUseCase, FailTransferUseCase,
-    ReportTransferProgressUseCase, StartTransferUseCase,
+    FileTransferFacade, FileTransferFacadeDeps, FileTransferHostEventPublisher, HostEvent,
+    HostEventEmitterPort, OutboundEntryIdCache, TransferHostEvent,
 };
 use uc_core::file_transfer::{FileTransferEventPublisherPort, FileTransferEventStorePort};
 use uc_core::ports::file_transfer_repository::TrackedFileTransferStatus;
@@ -27,12 +26,6 @@ use uc_infra::file_transfer::SqliteReceiverFileTransferStore;
 
 pub type FileTransferEventStore = SqliteReceiverFileTransferStore<Arc<DieselSqliteExecutor>>;
 
-pub type FileTransferStartUseCase = StartTransferUseCase;
-pub type FileTransferProgressUseCase = ReportTransferProgressUseCase;
-pub type FileTransferCompleteUseCase = CompleteTransferUseCase;
-pub type FileTransferFailUseCase = FailTransferUseCase;
-pub type FileTransferCancelUseCase = CancelTransferUseCase;
-
 /// Pending rows abandoned for longer than this are considered stalled and
 /// force-failed by the sweep.
 const PENDING_TIMEOUT_MS: i64 = 60_000;
@@ -41,12 +34,8 @@ const TRANSFERRING_TIMEOUT_MS: i64 = 5 * 60_000;
 /// Sweep frequency.
 const SWEEP_INTERVAL: Duration = Duration::from_secs(15);
 
-/// Bundle of the durable store + publisher + 6 lifecycle use cases, plus the
-/// supporting infrastructure needed for periodic health tasks.
-///
-/// `store` is exposed as the concrete type so the receiver-side worker can
-/// call `seed_receiver_context` on it; the use cases only see the
-/// `FileTransferEventStorePort` surface.
+/// Wraps the receiver-side projection / publisher / outbound entry cache and
+/// the periodic health tasks (timeout sweep + startup reconcile).
 ///
 /// `outbound_entry_cache` is exposed so the sender-side worker can seed
 /// `transfer_id → entry_id` hints; the publisher already reads it through
@@ -56,20 +45,13 @@ const SWEEP_INTERVAL: Duration = Duration::from_secs(15);
 ///
 /// `spawn_timeout_sweep` and `reconcile_on_startup` currently operate
 /// directly on `FileTransferRepositoryPort` (projection table), not through
-/// the domain event store. Reason: `FailTransferUseCase` requires a
-/// `peer_id`, which a pending-timeout transfer does not yet have (no
-/// `Started` event occurred). Re-threading this through the event store
-/// would require domain-model changes to support a peer-less failure
-/// scenario, which is deferred to the Phase 5 cleanup. In the meantime this
-/// preserves the legacy behavior one-to-one.
+/// the domain event store. Reason: failing a pending-timeout transfer
+/// through the event timeline requires a `peer_id`, which the pending row
+/// does not yet have (no `Started` event occurred). Re-threading this
+/// through the event store would require domain-model changes to support a
+/// peer-less failure scenario, which is deferred to the Phase 5 cleanup. In
+/// the meantime this preserves the legacy behavior one-to-one.
 pub struct FileTransferLifecycle {
-    pub store: Arc<FileTransferEventStore>,
-    pub publisher: Arc<FileTransferHostEventPublisher>,
-    pub start: Arc<FileTransferStartUseCase>,
-    pub report_progress: Arc<FileTransferProgressUseCase>,
-    pub complete: Arc<FileTransferCompleteUseCase>,
-    pub fail: Arc<FileTransferFailUseCase>,
-    pub cancel: Arc<FileTransferCancelUseCase>,
     pub outbound_entry_cache: Arc<OutboundEntryIdCache>,
     /// Shared host-event emitter cell.
     ///
@@ -82,6 +64,17 @@ pub struct FileTransferLifecycle {
 
     file_transfer_repo: Arc<dyn FileTransferRepositoryPort>,
     clock: Arc<dyn ClockPort>,
+}
+
+/// Assembled file-transfer plumbing returned by
+/// [`build_file_transfer_assembly`].
+///
+/// Hands the composition root both halves at once: the runtime-health
+/// `lifecycle` (sweep / reconcile workers) and the application-layer
+/// `facade` that exposes the 5 lifecycle actions plus seed / link.
+pub struct FileTransferAssembly {
+    pub lifecycle: Arc<FileTransferLifecycle>,
+    pub facade: Arc<FileTransferFacade>,
 }
 
 impl FileTransferLifecycle {
@@ -271,12 +264,12 @@ async fn cleanup_cached_path(cached_path: &str) {
     }
 }
 
-pub fn build_file_transfer_lifecycle(
+pub fn build_file_transfer_assembly(
     store: Arc<FileTransferEventStore>,
     emitter_cell: Arc<RwLock<Arc<dyn HostEventEmitterPort>>>,
     file_transfer_repo: Arc<dyn FileTransferRepositoryPort>,
     clock: Arc<dyn ClockPort>,
-) -> FileTransferLifecycle {
+) -> FileTransferAssembly {
     let outbound_entry_cache = Arc::new(OutboundEntryIdCache::new());
 
     let publisher = Arc::new(FileTransferHostEventPublisher::new(
@@ -285,38 +278,22 @@ pub fn build_file_transfer_lifecycle(
         Arc::clone(&outbound_entry_cache),
     ));
 
-    let store_port: Arc<dyn FileTransferEventStorePort> = Arc::clone(&store) as _;
-    let publisher_port: Arc<dyn FileTransferEventPublisherPort> = Arc::clone(&publisher) as _;
+    let store_port: Arc<dyn FileTransferEventStorePort> = store as _;
+    let publisher_port: Arc<dyn FileTransferEventPublisherPort> = publisher as _;
 
-    let start = Arc::new(StartTransferUseCase::new(
-        Arc::clone(&store_port),
-        Arc::clone(&publisher_port),
-    ));
-    let report_progress = Arc::new(ReportTransferProgressUseCase::new(
-        Arc::clone(&store_port),
-        Arc::clone(&publisher_port),
-    ));
-    let complete = Arc::new(CompleteTransferUseCase::new(
-        Arc::clone(&store_port),
-        Arc::clone(&publisher_port),
-    ));
-    let fail = Arc::new(FailTransferUseCase::new(
-        Arc::clone(&store_port),
-        Arc::clone(&publisher_port),
-    ));
-    let cancel = Arc::new(CancelTransferUseCase::new(store_port, publisher_port));
+    let facade = Arc::new(FileTransferFacade::new(FileTransferFacadeDeps {
+        store: store_port,
+        publisher: publisher_port,
+        repo: Arc::clone(&file_transfer_repo),
+        clock: Arc::clone(&clock),
+    }));
 
-    FileTransferLifecycle {
-        store,
-        publisher,
-        start,
-        report_progress,
-        complete,
-        fail,
-        cancel,
+    let lifecycle = Arc::new(FileTransferLifecycle {
         outbound_entry_cache,
         emitter_cell,
         file_transfer_repo,
         clock,
-    }
+    });
+
+    FileTransferAssembly { lifecycle, facade }
 }

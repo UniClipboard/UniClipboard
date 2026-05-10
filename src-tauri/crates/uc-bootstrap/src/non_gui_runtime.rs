@@ -19,11 +19,12 @@ use uc_application::facade::{
     AppFacade, AppFacadeParts, AppPaths, BlobTransferFacade, ClipboardHistoryFacade,
     ClipboardHistoryFacadeDeps, ClipboardRestoreFacade, ClipboardRestoreFacadeDeps,
     ClipboardSyncFacade, DeviceFacade, EmitError, EncryptionFacade, EncryptionFacadeDeps,
-    HostEvent, HostEventEmitterPort, InMemoryLifecycleStatus, IncomingMobileBuffer,
-    LifecycleFacade, LifecycleFacadeDeps, LifecycleStatusGateway, MemberRosterFacade,
-    MobileSyncFacade, MobileSyncFacadeDeps, MobileSyncSnapshotPorts, ResourceFacade,
-    ResourceFacadeDeps, SearchCoordinator, SearchCoordinatorDeps, SearchFacade, SearchFacadeDeps,
-    SettingsFacade, StorageFacade, StorageFacadeDeps, UpgradeFacade, UpgradeFacadeDeps,
+    FileTransferFacade, HostEvent, HostEventEmitterPort, InMemoryLifecycleStatus,
+    IncomingMobileBuffer, LifecycleFacade, LifecycleFacadeDeps, LifecycleStatusGateway,
+    MemberRosterFacade, MobileSyncFacade, MobileSyncFacadeDeps, MobileSyncSnapshotPorts,
+    ResourceFacade, ResourceFacadeDeps, SearchCoordinator, SearchCoordinatorDeps, SearchFacade,
+    SearchFacadeDeps, SettingsFacade, StorageFacade, StorageFacadeDeps, UpgradeFacade,
+    UpgradeFacadeDeps,
 };
 use uc_application::{
     ApplyInboundClipboardUseCase, InboundCapture as ApplyInboundCapture,
@@ -178,6 +179,10 @@ pub struct AppFacadeAssemblyOptions {
     pub member_roster: Option<Arc<MemberRosterFacade>>,
     pub clipboard_sync: Option<Arc<ClipboardSyncFacade>>,
     pub blob_transfer: Option<Arc<BlobTransferFacade>>,
+    /// 文件传输 lifecycle 入口(5 个动作 + seed + link)。daemon 入口
+    /// 必传;CLI / 单元测试可留 `None`。详见
+    /// [`AppFacade::file_transfer`](uc_application::facade::AppFacade)。
+    pub file_transfer: Option<Arc<FileTransferFacade>>,
     /// 底层 `BlobTransferPort`(`IrohBlobTransferAdapter`)直连引用,供
     /// `ClipboardHistoryFacade` 在 `delete_entry` / `clear_history` 时
     /// 调 `untag` 释放对应 entry 对 iroh-blobs 的引用。与 `blob_transfer`
@@ -310,6 +315,7 @@ pub fn build_app_facade_from_deps(
         })),
         clipboard_sync: options.clipboard_sync,
         blob_transfer: options.blob_transfer,
+        file_transfer: options.file_transfer,
         clipboard_restore,
         search: Arc::new(SearchFacade::new(SearchFacadeDeps {
             search_index: deps.search.search_index.clone(),
@@ -462,6 +468,7 @@ pub async fn build_cli_app_runtime(
             clipboard_sync: Some(assembly.clipboard_sync.clone()),
             blob_transfer: Some(assembly.blob.clone()),
             blob_transfer_port: Some(Arc::clone(&assembly.blob_transfer)),
+            file_transfer: Some(wired.background.file_transfer_facade.clone()),
             search_coordinator: Some(search_coordinator),
             ..Default::default()
         },

@@ -16,12 +16,12 @@ to emit prefix sub-tokens so partial typing matches.
 The decision is made **per token**, based on its own length and character class —
 **not** per field:
 
-| Token shape | Index behavior |
-|---|---|
-| Length 3..32, non-CJK | Full token + every prefix of length 3..(len-1) |
-| Length ≥ 4, CJK | Overlapping bigrams; no prefix expansion |
-| Length < 3 | Full token only |
-| **Length > 32, no separators** | **Full token only — no prefix expansion** |
+| Token shape                    | Index behavior                                 |
+| ------------------------------ | ---------------------------------------------- |
+| Length 3..32, non-CJK          | Full token + every prefix of length 3..(len-1) |
+| Length ≥ 4, CJK                | Overlapping bigrams; no prefix expansion       |
+| Length < 3                     | Full token only                                |
+| **Length > 32, no separators** | **Full token only — no prefix expansion**      |
 
 Concretely:
 

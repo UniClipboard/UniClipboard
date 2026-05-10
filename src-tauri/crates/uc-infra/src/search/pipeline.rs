@@ -94,34 +94,22 @@ impl SearchPipelinePort for SearchPipeline {
         // Map: term_tag_bytes → (field_mask, term_freq)
         let mut aggregated: HashMap<Vec<u8>, (u8, u32)> = HashMap::new();
 
-        // Body / HTML: no prefix expansion — text is already capped at 1 000 chars by the
-        // extractor, and prefix tokens on free-form prose offer little UX value.
-        let body_fields: &[(&[String], u8)] = &[
+        // All searchable fields go through the same tokenize path. Prefix
+        // expansion is decided per token (length + non-CJK), not per field, so
+        // identifiers embedded in plain-text body (`localhost`, `apiUserManager`)
+        // get the same partial-search support as URL/file fields. `field_mask`
+        // is still tracked so BM25 ranking can boost matches on identifier-rich
+        // fields. Body / HTML are already char-capped by the extractor, which
+        // bounds the cost of `count_raw_tokens` (#580).
+        let fields: &[(&[String], u8)] = &[
             (&extracted.body, SEARCH_FIELD_BODY),
             (&extracted.html, SEARCH_FIELD_HTML),
-        ];
-        // Identifier-rich fields: prefix expansion enabled so partial queries like
-        // "uniclip" match entries indexed under "uniclipboard".
-        let rich_fields: &[(&[String], u8)] = &[
             (&extracted.url, SEARCH_FIELD_URL),
             (&extracted.file_path, SEARCH_FIELD_FILE_PATH),
             (&extracted.file_name, SEARCH_FIELD_FILE_NAME),
         ];
 
-        for (segments, field_bit) in body_fields {
-            for segment in *segments {
-                let raw_token_counts =
-                    count_raw_tokens(&self.tokenizer.tokenize_segment_no_prefix(segment), segment);
-                for (token, freq) in raw_token_counts {
-                    let tag = term_tag(search_key, &token)?;
-                    let entry = aggregated.entry(tag).or_insert((0u8, 0u32));
-                    entry.0 |= *field_bit;
-                    entry.1 += freq;
-                }
-            }
-        }
-
-        for (segments, field_bit) in rich_fields {
+        for (segments, field_bit) in fields {
             for segment in *segments {
                 let raw_token_counts =
                     count_raw_tokens(&self.tokenizer.tokenize_segment(segment), segment);

@@ -7,7 +7,13 @@
 /// Current tokenizer/normalization schema version.
 ///
 /// Bump this whenever the tokenization rules change to trigger a full rebuild.
-pub const CURRENT_INDEX_VERSION: &str = "search-v2";
+///
+/// History:
+/// - `search-v2`: per-field prefix expansion (body/html unexpanded).
+/// - `search-v3`: per-token prefix expansion (#580). Tokens whose length is in
+///   `[3, 32]` and that are non-CJK are prefix-expanded regardless of field;
+///   long opaque strings (>32 chars, no separators) are full-token only.
+pub const CURRENT_INDEX_VERSION: &str = "search-v3";
 
 /// Field-mask bit: term was extracted from the plain-text body.
 pub const SEARCH_FIELD_BODY: u8 = 0b0000_0001;

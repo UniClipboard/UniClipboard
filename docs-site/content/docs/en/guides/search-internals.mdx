@@ -1,0 +1,55 @@
+---
+title: Search internals
+description: Tokenizer and prefix-expansion rules, and the known long-token boundary.
+---
+
+This page explains how the local search index used by the quick panel and the
+`uniclip search` CLI behaves at the tokenizer level. For day-to-day usage, see
+[Full-text search](./search).
+
+## Prefix expansion is decided per token
+
+Copied content is split into **word-level tokens** (Unicode word boundaries,
+`_` `-` `.` `/`, camelCase boundaries) and each token decides on its own whether
+to emit prefix sub-tokens so partial typing matches.
+
+The decision is made **per token**, based on its own length and character class —
+**not** per field:
+
+| Token shape | Index behavior |
+|---|---|
+| Length 3..32, non-CJK | Full token + every prefix of length 3..(len-1) |
+| Length ≥ 4, CJK | Overlapping bigrams; no prefix expansion |
+| Length < 3 | Full token only |
+| **Length > 32, no separators** | **Full token only — no prefix expansion** |
+
+Concretely:
+
+- Copy `localhost:3000`, search `loca` — hits (the `localhost` sub-token expands).
+- Copy `apiUserManager`, search `api` — hits (camelCase sub-tokens all expand).
+- Copy `192.168.1.1:8080`, search `192.168` — hits (the dotted whole segment is
+  one of the candidate tokens and gets prefix-expanded).
+
+## Known boundary: long opaque strings are full-token only
+
+> Strings longer than 32 characters with no separators (`_` `-` `.` `/`, …) —
+> typical base64 payloads, JWTs, long hashes, raw URL strings — are **only
+> searchable by their full content; substring search is not supported**.
+
+Reason: supporting arbitrary substrings under an HMAC-tagged index requires
+n-grams, sliding windows, or SSE — each one substantially blows up the index
+or weakens the encryption. Long opaque strings make up a small fraction of
+clipboard traffic and are rarely searched by fragment, so the trade-off is not
+worth it.
+
+If you do need to locate a fragment inside a long token, search by the full
+string first, then use your browser or editor's find-in-page on the original
+content.
+
+## Index version
+
+Any tokenization-rule change (such as the per-token prefix expansion described
+here) bumps `CURRENT_INDEX_VERSION`. The daemon detects the mismatch on next
+startup and rebuilds the index automatically; queries during the rebuild return
+incomplete result sets until it finishes. See
+[Full-text search — Index lifecycle](./search#index-lifecycle).

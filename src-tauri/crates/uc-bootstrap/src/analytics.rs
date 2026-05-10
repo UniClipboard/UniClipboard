@@ -40,7 +40,7 @@ use uc_application::facade::AppPaths;
 use uc_observability::analytics::{
     build_event_context, global_event_context, load_or_create_ids, set_global_event_context,
     AnalyticsPort, AppChannel, Event, EventContext, EventContextInputs, GatedAnalyticsSink,
-    InstallSource, NoopAnalyticsSink, StdoutSink,
+    InstallSource, NoopAnalyticsSink, PosthogSink, StdoutSink,
 };
 
 /// 装配并注册进程级 `EventContext`。
@@ -154,15 +154,48 @@ async fn read_space_id_hash(deps: &AppDeps) -> Option<String> {
 ///
 /// - dev (`cfg!(debug_assertions)`) → `Gated(StdoutSink)`，事件镜像到
 ///   `tracing::debug!(target = "uc_observability::analytics")`
-/// - release → `Gated(NoopAnalyticsSink)`，临时态。Slice 7b 接 PostHog
-///   后改为 `Gated(PosthogSink)`，调用方零感知。
+/// - release：
+///   - 拿到 `POSTHOG_PROJECT_KEY`（运行时 env 优先 → 编译期 `option_env!` 兜底）
+///     → `Gated(PosthogSink::new(key))`，事件 POST 到 PostHog Cloud US。
+///   - 都没拿到 → `Gated(NoopAnalyticsSink)` + 一条 `info!`。schema doc §10：
+///     产品 telemetry 是辅助通道，缺 key 不应让 daemon / GUI 启动失败；
+///     `info!` 而非 `warn!` 是因为"没配 key"是合法配置（dev 自部署用户、
+///     PR review 构建等场景都不应注入生产 key）。
+///
+/// key 注入策略与 SENTRY_DSN 同位（见 `uc-bootstrap/src/tracing.rs:155-170`）：
+/// 运行时 env 让 dev / 自部署用户能覆盖；`option_env!` 让 CI release build
+/// 把 secret 烤进 binary（终端用户机器上没人会设这个 env）。
 pub fn build_analytics_sink() -> Arc<dyn AnalyticsPort> {
     let inner: Arc<dyn AnalyticsPort> = if cfg!(debug_assertions) {
         Arc::new(StdoutSink::new())
     } else {
-        Arc::new(NoopAnalyticsSink)
+        let runtime_key = std::env::var("POSTHOG_PROJECT_KEY")
+            .ok()
+            .filter(|s| !s.is_empty());
+        let compile_time_key = option_env!("POSTHOG_PROJECT_KEY");
+        match resolve_posthog_key(runtime_key, compile_time_key) {
+            Some(key) => Arc::new(PosthogSink::new(key)),
+            None => {
+                tracing::info!(
+                    "analytics: POSTHOG_PROJECT_KEY 未配置，产品 telemetry 走 noop sink"
+                );
+                Arc::new(NoopAnalyticsSink)
+            }
+        }
     };
     Arc::new(GatedAnalyticsSink::new(inner))
+}
+
+/// 三级回退：运行时 env > 编译期 `option_env!` > `None`。
+///
+/// 抽出私有 fn 便于单测——`std::env::var` 与 `option_env!` 是 macro 语境，
+/// 直接在 `build_analytics_sink` 内行内会导致测试无法穿透。空字符串视为
+/// "未设置"（CI secret 没注入时 `${{ secrets.X }}` 会渲染成空，与"未设置"
+/// 等价）。
+fn resolve_posthog_key(runtime: Option<String>, compile: Option<&'static str>) -> Option<String> {
+    runtime
+        .filter(|s| !s.is_empty())
+        .or_else(|| compile.filter(|s| !s.is_empty()).map(String::from))
 }
 
 fn hash_space_id(space_id: &str) -> String {
@@ -251,5 +284,45 @@ mod tests {
         let a = hash_space_id("space-aaa");
         let b = hash_space_id("space-bbb");
         assert_ne!(a, b);
+    }
+
+    // —— Slice 7b-3：resolve_posthog_key 三级回退 ——
+
+    #[test]
+    fn resolve_posthog_key_runtime_only() {
+        let got = resolve_posthog_key(Some("phc_runtime".into()), None);
+        assert_eq!(got.as_deref(), Some("phc_runtime"));
+    }
+
+    #[test]
+    fn resolve_posthog_key_compile_only() {
+        let got = resolve_posthog_key(None, Some("phc_compile"));
+        assert_eq!(got.as_deref(), Some("phc_compile"));
+    }
+
+    #[test]
+    fn resolve_posthog_key_runtime_wins_when_both_present() {
+        // 运行时优先级高于编译期——dev / 自部署用户能覆盖 CI 烤进 binary 的 key。
+        let got = resolve_posthog_key(Some("phc_runtime".into()), Some("phc_compile"));
+        assert_eq!(got.as_deref(), Some("phc_runtime"));
+    }
+
+    #[test]
+    fn resolve_posthog_key_none_when_both_missing() {
+        assert_eq!(resolve_posthog_key(None, None), None);
+    }
+
+    #[test]
+    fn resolve_posthog_key_treats_empty_strings_as_missing() {
+        // CI 未注入 secret 时 `${{ secrets.X }}` 渲染为空字符串；compile-time
+        // `option_env!` 同理。两边的空串都必须等价于"未设置"，否则会用空字符串
+        // 当 api_key 调 PostHog，PostHog 会 401 把整批事件丢掉。
+        assert_eq!(resolve_posthog_key(Some(String::new()), None), None);
+        assert_eq!(resolve_posthog_key(None, Some("")), None);
+        // 运行时空 + 编译期非空 → 退到编译期值。
+        assert_eq!(
+            resolve_posthog_key(Some(String::new()), Some("phc_compile")).as_deref(),
+            Some("phc_compile")
+        );
     }
 }

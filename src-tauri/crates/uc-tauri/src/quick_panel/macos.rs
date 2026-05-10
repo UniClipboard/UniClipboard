@@ -13,9 +13,24 @@ use core_graphics::event_source::{CGEventSource, CGEventSourceStateID};
 use objc2::ffi::object_setClass;
 use objc2::runtime::AnyObject;
 use objc2::{define_class, msg_send, ClassType};
-use objc2_app_kit::{NSColor, NSPanel, NSWindowStyleMask};
+use objc2_app_kit::{
+    NSApplicationActivationOptions, NSColor, NSPanel, NSRunningApplication, NSWindowStyleMask,
+    NSWorkspace,
+};
+use std::sync::Mutex;
+use std::time::Duration;
 use tauri::WebviewWindow;
-use tracing::{error, info, warn};
+use tracing::{debug, error, info, warn};
+
+/// pid of the application that was frontmost just before the quick panel was shown.
+///
+/// Captured by [`remember_previous_app`] before the panel grabs key window status,
+/// and used by [`restore_previous_app`] to send focus back to the right place
+/// before posting the synthetic Cmd+V.
+///
+/// 显示快捷面板前的最前台应用 pid。面板抢走 key window 之前记录，
+/// 粘贴时再用它显式把焦点送回正确的应用。
+static PREVIOUS_FRONTMOST_PID: Mutex<Option<i32>> = Mutex::new(None);
 
 // Custom NSPanel subclass that overrides `canBecomeKeyWindow` to return YES.
 // NSPanel without a title bar (`decorations: false`) returns NO by default,
@@ -119,6 +134,79 @@ pub fn show_panel(window: &WebviewWindow) {
         panel.orderFrontRegardless();
         panel.makeKeyWindow();
     }
+}
+
+/// Record the pid of the currently frontmost application.
+///
+/// Must be called **before** the panel becomes key window — otherwise the
+/// frontmost app is already us. Skipped if frontmost is our own process.
+///
+/// 记录当前最前台应用的 pid。必须在面板成为 key window 之前调用。
+pub fn remember_previous_app() {
+    let our_pid = std::process::id() as i32;
+    let pid = NSWorkspace::sharedWorkspace()
+        .frontmostApplication()
+        .map(|app| app.processIdentifier());
+    let recorded = pid.filter(|p| *p != our_pid);
+    if let Ok(mut guard) = PREVIOUS_FRONTMOST_PID.lock() {
+        *guard = recorded;
+    }
+    if let Some(p) = recorded {
+        debug!(pid = p, "Quick panel: remembered previous frontmost app");
+    } else {
+        debug!("Quick panel: no previous frontmost app to remember (or it was us)");
+    }
+}
+
+/// Activate the previously frontmost application and poll until it actually
+/// becomes frontmost (or `timeout` elapses).
+///
+/// Returns `true` if the target app was observed as frontmost before timing
+/// out. The caller should still post the synthetic keystroke even on `false`,
+/// since on macOS 14+ activation can succeed without us being able to confirm.
+///
+/// 激活之前记录的最前台应用，并轮询直到它真正成为前台（或超时）。
+fn activate_and_wait(pid: i32, timeout: Duration) -> bool {
+    let Some(app) = NSRunningApplication::runningApplicationWithProcessIdentifier(pid) else {
+        warn!(pid, "Previous app not found by pid; cannot restore focus");
+        return false;
+    };
+
+    // Empty options: ActivateIgnoringOtherApps is deprecated on macOS 14+
+    // and `activateAllWindows` would yank background windows we don't want.
+    let activated = app.activateWithOptions(NSApplicationActivationOptions::empty());
+    if !activated {
+        debug!(pid, "activateWithOptions returned false");
+    }
+
+    let workspace = NSWorkspace::sharedWorkspace();
+    let deadline = std::time::Instant::now() + timeout;
+    let step = Duration::from_millis(10);
+    loop {
+        if let Some(front) = workspace.frontmostApplication() {
+            if front.processIdentifier() == pid {
+                return true;
+            }
+        }
+        if std::time::Instant::now() >= deadline {
+            return false;
+        }
+        std::thread::sleep(step);
+    }
+}
+
+/// Restore focus to the application that was frontmost before the panel opened.
+///
+/// Returns `true` if the previous app is confirmed frontmost (safe to paste);
+/// `false` if no pid was recorded, the app is gone, or the wait timed out.
+///
+/// 把焦点送回打开面板前的最前台应用。
+pub fn restore_previous_app() -> bool {
+    let pid = match PREVIOUS_FRONTMOST_PID.lock().ok().and_then(|g| *g) {
+        Some(p) => p,
+        None => return false,
+    };
+    activate_and_wait(pid, Duration::from_millis(200))
 }
 
 /// Simulate Cmd+V paste keystroke via CoreGraphics CGEvent.

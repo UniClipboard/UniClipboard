@@ -338,6 +338,11 @@ pub fn show(app: &tauri::AppHandle) {
     if let Some(window) = app.get_webview_window(PANEL_LABEL) {
         #[cfg(target_os = "windows")]
         windows::remember_previous_foreground(&window);
+        // macOS: capture frontmost app *before* the panel becomes key window,
+        // so paste() can explicitly send focus back instead of relying on
+        // NSPanel's NonactivatingPanel hint (which races on busy systems).
+        #[cfg(target_os = "macos")]
+        macos::remember_previous_app();
 
         if let Err(e) = window.set_size(tauri::LogicalSize::new(width, height)) {
             warn!(error = %e, "Failed to reset quick panel size");
@@ -450,9 +455,24 @@ pub fn set_layout(app: &tauri::AppHandle, scale: f64, preview_expanded: bool) {
 pub fn paste(app: &tauri::AppHandle) -> Result<(), String> {
     #[cfg(target_os = "macos")]
     {
-        dismiss(app);
-        // Small delay for the panel to fully hide before simulating keystrokes
-        std::thread::sleep(std::time::Duration::from_millis(50));
+        // Hide the panel first so it stops being the key window.
+        if let Some(window) = app.get_webview_window(PANEL_LABEL) {
+            let _ = window.hide();
+        }
+        // Explicitly send focus back to the previously frontmost app and wait
+        // until it is observed as frontmost. Relying on NonactivatingPanel
+        // alone races: when show_panel() called makeKeyWindow(), key status
+        // doesn't always return to the target app within the previous fixed
+        // 50ms sleep, and Cmd+V is then sent to the wrong responder (or
+        // dropped entirely).
+        let restored = macos::restore_previous_app();
+        if !restored {
+            // Either no previous app was recorded, the app is gone, or the
+            // 200ms poll timed out. Fall back to a small sleep — the system
+            // may still finish the focus handoff a moment later.
+            warn!("Quick panel paste: previous app focus not confirmed; posting Cmd+V anyway");
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
         macos::simulate_paste()?;
         Ok(())
     }

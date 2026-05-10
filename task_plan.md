@@ -17,7 +17,7 @@ Schema 与隐私契约定稿在：`docs/architecture/telemetry-events.md`。
 
 Slice 8 全部完成（8a / 8b / 8b' / 8c-1 / 8c-2 / 8d）。outbound funnel + reliability 全链路通。
 
-**进行中：Slice 7b（PostHog Cloud 接入）** —— 7b-1 / 7b-2 / 7b-3 已落地（依赖 + sink 骨架 + capture 实 wire + key 注入降级，uc-observability 63 + uc-bootstrap 24 lib tests 全绿）。仅剩 7b-4：CI secret 注入 + docs + 真实 dev 验证，等 PostHog account + project key 外部就绪。
+**进行中：Slice 7b（PostHog Cloud 接入）** —— 7b-1 / 7b-2 / 7b-3 已落地代码（uc-observability 63 + uc-bootstrap 24 lib tests 全绿）。7b-4 docs 部分完成（schema doc §10.1 + CONTRIBUTING/CONTRIBUTING_ZH 加 release-time secrets 表）。仅剩 7b-4 的 CI workflow 改动 + 真实 dev 验证，等用户裁决 + PostHog account 外部就绪。
 
 Slice 9 / 10 待前端工作 / 真实数据积累。
 
@@ -160,8 +160,8 @@ Slice 9 / 10 待前端工作 / 真实数据积累。
 #### Slice 7b-4: CI secret 注入 + 文档 + 真实 dev 验证
 - [ ] `.github/workflows/build.yml`：在 `tauri-action` 与 `bun run tauri build` 两段 env 块加 `POSTHOG_PROJECT_KEY: ${{ secrets.POSTHOG_PROJECT_KEY }}`（与 `SENTRY_DSN` 同位）
 - [ ] `.github/workflows/alpha-build.yml`：同上
-- [ ] `docs/architecture/telemetry-events.md`：§9 / §10 补一段"PostHog Cloud 接入实务"——key 注入路径、release 缺 key 时的降级语义、`disable_geoip` 决策
-- [ ] `docs/CONTRIBUTING.md` 或 `SECURITY.md`：补"产品 telemetry secrets 列表"——`POSTHOG_PROJECT_KEY` / `SENTRY_DSN` / `VITE_SENTRY_DSN` 三 secret 由谁负责注入、谁有 PostHog 项目 owner 权限
+- [x] `docs/architecture/telemetry-events.md`：新增 §10.1 "PostHog Cloud 接入实务（v1）"——key 注入路径（三级回退）、endpoint / region、自写 reqwest client 根因（aws-lc-rs 与 musl 硬约束冲突）、fire-and-forget + 进程退出语义、`disable_geoip` 等价语义（自写 client 不主动 inject IP 字段）、CI secret 注入位置（计划）
+- [x] `CONTRIBUTING.md` + `CONTRIBUTING_ZH.md`：在"Build a Release Bundle / 构建发行包"节后新增"Release-time Secrets (Telemetry) / 发布期 Telemetry Secrets"——3 个 secret 表（`SENTRY_DSN` / `VITE_SENTRY_DSN` / `POSTHOG_PROJECT_KEY`）含通道用途、编译期读取位置、CI 注入位置；强调缺 key 不阻塞构建 + 空串等价"未设置" + 永不提交到仓库
 - [ ] 真实 dev 验证步骤（不进自动化测试）：
   1. 本地 export `POSTHOG_PROJECT_KEY=phc_xxx`
   2. `cargo build --release -p uc-tauri`（绕过 dev 路径，强制走 PosthogSink）

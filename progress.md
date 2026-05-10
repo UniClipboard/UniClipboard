@@ -1051,3 +1051,52 @@ src-tauri/crates/uc-bootstrap/src/analytics.rs                            build_
 
 7b-4：`.github/workflows/{build,alpha-build}.yml` 加 `POSTHOG_PROJECT_KEY: ${{ secrets.POSTHOG_PROJECT_KEY }}` env block；schema doc §10 / CONTRIBUTING.md 补 PostHog key 注入文档；通知用户开 PostHog 账号 + 把 key 放 GitHub secrets；按 task_plan.md 7b-4 步骤跑真实 dev 验证（onboarding → 控制台看 app_first_open / setup_started / pairing_* 序列；toggle settings → noop fallback 验证；unset env + 重启 → 静默验证）。
 
+
+## Session 2026-05-09（深夜续 3）— Slice 7b-4 文档部分落地
+
+**触发**：用户选 A——纯文档部分先做（schema doc + CONTRIBUTING），CI workflow 改动暂不动等用户裁决；真实 dev 验证等 PostHog account 就绪。
+
+### 文件改动（3 个文件）
+
+```
+docs/architecture/telemetry-events.md     +§10.1 "PostHog Cloud 接入实务（v1）" ~85 行
+CONTRIBUTING.md                           "Build a Release Bundle" 后新增 "Release-time Secrets (Telemetry)" 节
+CONTRIBUTING_ZH.md                        镜像中文版 "发布期 Telemetry Secrets"
+task_plan.md                              7b-4 docs 子任务勾选；Current Phase 翻"7b-1/2/3 代码落地 + 7b-4 docs 完成；剩 CI workflow + 真实验证等外部条件"
+progress.md                               本 session 条目
+```
+
+### 关键内容取舍
+
+**schema doc §10.1**——把"v1 怎么把事件送出去"集中到一个章节，与 §3 ~ §9 规范层物理隔离：
+
+- **Key 注入策略**：3 级回退（runtime env > `option_env!` > `Gated(NoopAnalyticsSink)` + info），与 SENTRY_DSN 同位
+- **Endpoint 与 region**：`https://us.i.posthog.com/i/v0/e/`，capture body 形态实例化
+- **HTTP client 选择**：自写 reqwest 0.12 + ring 的根因（posthog-rs hardcode 0.13 + aws-lc 与 uc-cli musl 冲突），未来切 SDK 的触发信号（丢失率 > 5% / 用户 > 1k）
+- **Fire-and-forget**：tokio::spawn 不挂进程退出钩子的边界条件 + 后续补救路径
+- **`disable_geoip` 等价语义**：客户端不主动 inject IP 字段；后续可在 properties 显式置 `"$geoip_disable": true` 兜底
+- **CI secret 注入**：标记"待 7b-4 落地"，路径与 SENTRY_DSN 同位
+
+**CONTRIBUTING（中英双版）**——Release-time secrets 表清单：
+
+| Secret | 通道 | 编译期读取 | CI 注入 |
+|---|---|---|---|
+| `SENTRY_DSN` | 后端 Sentry | `uc-bootstrap/src/tracing.rs` | build/alpha-build workflow |
+| `VITE_SENTRY_DSN` | 前端 Sentry（独立 project） | Vite `import.meta.env` | 同上 |
+| `POSTHOG_PROJECT_KEY` | 产品 analytics | `uc-bootstrap/src/analytics.rs` | 同上（issue #549 落地） |
+
+强调三件事：1) 任一 secret 缺失都不阻塞构建；2) 空字符串等价"未设置"；3) 任何情况下不要提交这些值到仓库 / issue / PR。
+
+### 跳过的事项
+
+- **CI workflow 改动延后**：影响每次 push / PR 构建，按合作约定先取得用户授权再动；§10.1 已在文档侧标注"待 7b-4 落地"，避免文档与代码语义错位
+- **不在 SECURITY.md 加 secrets 列表**：SECURITY.md 还是 GitHub 默认模板未填写状态，把 telemetry secrets 塞进去会让"现存模板 + 新增内容"语义混乱；CONTRIBUTING.md 是更自然的位置（已有 Release Process / Build a Release Bundle 节）
+- **不补"PostHog 项目 owner 权限"段**：还没决定 PostHog 项目所有者是哪个团队 / 个人；待 PostHog 账号建好再补一段（属于 7b-4 真实 dev 验证启动后的工作）
+
+### Next Action
+
+外部条件就绪后由用户驱动：
+
+1. **CI workflow 改动**（2 个 yml + 4 段 env 块）——需要用户授权动 shared infrastructure
+2. **PostHog 账号 / project key / repo secret 注入**——外部资源
+3. **真实 dev 验证**：按 task_plan.md 7b-4 步骤跑 `POSTHOG_PROJECT_KEY=phc_xxx cargo build --release` + onboarding + 控制台观察事件序列；翻 settings 验证 noop fallback；unset env 重启验证静默路径

@@ -9904,13 +9904,16 @@ version = "0.7.0"
 dependencies = [
  "anyhow",
  "chrono",
+ "reqwest 0.12.28",
  "serde",
  "serde_json",
  "tempfile",
+ "tokio",
  "tracing",
  "tracing-appender",
  "tracing-subscriber",
  "uuid",
+ "wiremock",
 ]
 
 [[package]]

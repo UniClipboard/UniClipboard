@@ -18,9 +18,11 @@
 //! event-specific 字段覆盖 context，行为不会反过来悄悄丢事件信息。
 
 pub mod gated;
+pub mod posthog;
 pub mod stdout;
 
 pub use gated::GatedAnalyticsSink;
+pub use posthog::PosthogSink;
 pub use stdout::StdoutSink;
 
 use serde_json::{Map, Value};

@@ -90,8 +90,8 @@ mod tests {
     use uuid::Uuid;
 
     use super::super::super::context::{
-        build_event_context, clear_global_event_context, set_global_event_context, AppChannel,
-        EventContextInputs, InstallSource,
+        build_event_context, clear_global_event_context, lock_global_event_context_for_tests,
+        set_global_event_context, AppChannel, EventContextInputs, InstallSource,
     };
     use super::super::super::events::{
         Direction, Event, PayloadSizeBucket, PayloadType, SyncEventProps, TransportType,
@@ -159,6 +159,7 @@ mod tests {
     /// 用单一 fn 串行化。
     #[test]
     fn stdout_sink_lifecycle() {
+        let _guard = lock_global_event_context_for_tests();
         // —— case 1：context 已装好，capture 输出单行 JSON ——
         clear_global_event_context();
         install_ctx();

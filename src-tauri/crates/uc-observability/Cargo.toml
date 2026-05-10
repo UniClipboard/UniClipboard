@@ -14,7 +14,18 @@ serde = { version = "1", features = ["derive"] }
 chrono = { version = "0.4", features = ["serde"] }
 anyhow = "1.0"
 uuid = { version = "1", features = ["v7", "serde"] }
+# Slice 7b: PosthogSink 自写 minimal HTTP client
+# - reqwest 0.12 + rustls(ring) features 与 uc-infra/uc-daemon-client/uc-cli/uc-desktop 已有用法一致；
+#   不引 reqwest 0.13 是因为后者 rustls feature 隐式选 aws-lc-rs（C 库 + CMake），破坏 uc-cli musl
+#   静态编译"零 C 工具链"硬约束（参见 uc-bootstrap/Cargo.toml 中 sentry 的同款决策）。
+# - tokio 仅启 `rt` feature 用于 PosthogSink::capture 内 `tokio::spawn` fire-and-forget；
+#   生产路径下整个 daemon 已经在 tokio runtime 上跑，spawn 直接附挂当前运行时。
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "rustls-tls-webpki-roots"] }
+tokio = { version = "1", default-features = false, features = ["rt"] }
 
 [dev-dependencies]
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt", "chrono", "json", "registry"] }
 tempfile = "3"
+# Slice 7b-2: wiremock 烟测 PosthogSink HTTP 形态；tokio macros + rt-multi-thread 给 #[tokio::test] 用
+wiremock = "0.6"
+tokio = { version = "1", default-features = false, features = ["rt", "rt-multi-thread", "macros", "time"] }

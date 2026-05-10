@@ -150,6 +150,26 @@ pub fn clear_global_event_context() {
     }
 }
 
+/// 测试专用：跨测试 fn 串行化对 [`GLOBAL_EVENT_CONTEXT`] 的访问。
+///
+/// 全局 RwLock 是单例资源——单 fn 内顺序断言就够。但本 crate 现在有
+/// 三个 lifecycle 测试都触达全局（`context::tests::global_event_context_lifecycle`、
+/// `sinks::stdout::tests::stdout_sink_lifecycle`、
+/// `sinks::posthog::tests::posthog_sink_lifecycle`），cargo test 默认线程并发会
+/// 让其中一个的 `clear` 把另一个的 `set` 顶掉。所有这类测试在 fn 入口拿一次
+/// 此锁的 `MutexGuard`，整个 fn 体作为 critical section。
+///
+/// 锁中毒（前一个测试 panic）兜底走 `into_inner`，让后续测试照常拿到锁——单纯
+/// "前一个 case 失败"不应级联失败下一个 case。
+#[cfg(test)]
+pub(crate) fn lock_global_event_context_for_tests() -> std::sync::MutexGuard<'static, ()> {
+    use std::sync::{Mutex, OnceLock};
+    static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+    LOCK.get_or_init(|| Mutex::new(()))
+        .lock()
+        .unwrap_or_else(|poison| poison.into_inner())
+}
+
 // —— 字段类型 ————————————————————————————————————————
 
 /// 应用发布渠道。
@@ -356,6 +376,7 @@ mod tests {
 
     #[test]
     fn global_event_context_lifecycle() {
+        let _guard = lock_global_event_context_for_tests();
         // 1) 起始态：set 之前应该是 None。
         clear_global_event_context();
         assert!(global_event_context().is_none(), "clear 后初始态应为 None");

@@ -162,6 +162,5 @@ For the merged view (script already injects `.side`):
 
 ## When this skill does *not* apply
 
-* User wants to query the **Seq** server (the project also ships logs there) — use the `seq` skill instead.
 * User is debugging build / cargo / typecheck failures — those don't go through these JSONL logs.
 * User asks about the daemon HTTP API or sqlite state — those are separate; logs are observability, not state.

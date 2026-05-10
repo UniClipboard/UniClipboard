@@ -82,12 +82,23 @@ UniClipboard 是一款以 **隐私优先** 为核心理念的跨设备剪贴板�
 
 每次发布都会同时构建 `.deb`、`.rpm` 与 `.AppImage` 三种格式，覆盖 `x86_64` 与 `aarch64`（如平台支持）。
 
+**Fedora / RHEL / openSUSE — 推荐 COPR 仓库（自动跟随版本更新）**
+
+```bash
+sudo dnf copr enable mkdir700/uniclipboard-alpha   # alpha 渠道；正式版请用 mkdir700/uniclipboard
+sudo dnf install uniclipboard
+```
+
+启用后 `sudo dnf upgrade` 会自动拉取新版本。
+
+**或者从 Releases 页面单独下载 .rpm / .deb / AppImage：**
+
 ```bash
 # Debian / Ubuntu
 sudo dpkg -i uniclipboard_<version>_amd64.deb
 sudo apt-get install -f                                 # 如有缺失依赖，由 apt 补齐
 
-# Fedora / RHEL / openSUSE（dnf）
+# Fedora / RHEL / openSUSE（一次性手动安装）
 sudo dnf install ./UniClipboard-<version>-1.x86_64.rpm
 
 # AppImage（任意发行版）
@@ -95,7 +106,7 @@ chmod +x UniClipboard_<version>_amd64.AppImage
 ./UniClipboard_<version>_amd64.AppImage
 ```
 
-> RPM/DEB 包不会通过 App 内的更新器自动升级，请用 `dnf upgrade` / `apt upgrade` 走系统包管理器。Linux 上 App 内更新器只对 AppImage 生效。
+> 经包管理器（COPR / dnf / apt）安装的版本不会通过 App 内的更新器自动升级，请用 `dnf upgrade` / `apt upgrade` 走系统包管理器。Linux 上 App 内更新器只对 AppImage 生效。
 
 ### Homebrew（macOS）
 

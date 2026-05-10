@@ -82,12 +82,23 @@ Visit the [GitHub Releases](https://github.com/UniClipboard/UniClipboard/release
 
 Each release ships `.deb`, `.rpm`, and `.AppImage` artifacts for both `x86_64` and `aarch64` (where supported).
 
+**Fedora / RHEL / openSUSE — via COPR (recommended, auto-updating)**
+
+```bash
+sudo dnf copr enable mkdir700/uniclipboard-alpha   # alpha channel; or mkdir700/uniclipboard for stable
+sudo dnf install uniclipboard
+```
+
+After enabling, `sudo dnf upgrade` will pick up new releases automatically.
+
+**Or download a single .rpm / .deb / AppImage from the Releases page:**
+
 ```bash
 # Debian / Ubuntu
 sudo dpkg -i uniclipboard_<version>_amd64.deb
 sudo apt-get install -f                                 # resolve missing deps if any
 
-# Fedora / RHEL / openSUSE (dnf)
+# Fedora / RHEL / openSUSE (one-shot, no COPR)
 sudo dnf install ./UniClipboard-<version>-1.x86_64.rpm
 
 # AppImage (any distro)
@@ -95,7 +106,7 @@ chmod +x UniClipboard_<version>_amd64.AppImage
 ./UniClipboard_<version>_amd64.AppImage
 ```
 
-> RPM/DEB packages do not auto-update from inside the app — use `dnf upgrade` / `apt upgrade` against your package source. The AppImage is what the in-app updater uses on Linux.
+> Packaged installs (COPR / one-shot rpm / deb) do not auto-update from inside the app — use `dnf upgrade` / `apt upgrade` against your package source. The AppImage is what the in-app updater uses on Linux.
 
 ### Homebrew (macOS)
 

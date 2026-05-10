@@ -1,0 +1,200 @@
+name: 'Publish to COPR'
+run-name: "copr-${{ inputs.version || 'auto' }}-${{ github.run_number }}"
+
+# 触发时机:
+#   1. release.yml 完成 (workflow_run) — 自动跟进 dnf 渠道,跟 snap.yml 对位。
+#   2. workflow_dispatch — 手动重跑某个版本(常见场景:COPR build 临时挂了,
+#      release.yml 已经跑完不想全量重发)。
+on:
+  workflow_run:
+    workflows: ['Release']
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: '要发布的版本(不带 v 前缀,例如 0.7.0-alpha.7)。留空 = 读 package.json'
+        required: false
+        type: string
+        default: ''
+      project:
+        description: 'COPR 项目名 — 主仓 = uniclipboard,预发渠道 = uniclipboard-alpha 等'
+        required: true
+        type: choice
+        options:
+          - 'uniclipboard'
+          - 'uniclipboard-alpha'
+        default: 'uniclipboard-alpha'
+
+jobs:
+  build-srpm-and-publish:
+    # workflow_run 触发时,只在 Release workflow 成功后才跑;失败则跳过。
+    # workflow_dispatch 没有 conclusion 字段,这条件对它返回 true。
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    # Fedora 镜像里有 rpmbuild / rpmdevtools / spectool / dnf,免去在 Ubuntu
+    # 上手动装 rpm 工具链。fedora:latest = 滚动 stable,可读性高且常 cached。
+    container: fedora:latest
+    permissions:
+      contents: read
+    steps:
+      - name: Install build tooling
+        run: |
+          dnf -y install --setopt=install_weak_deps=False \
+            git curl rpm-build rpmdevtools python3-pip
+          # copr-cli 通过 pip 装 — Fedora 仓库里也有 dnf install copr-cli,
+          # 但 pip 版本更新更稳定,接 API token 也更直接。
+          pip3 install --no-cache-dir copr-cli
+
+      - uses: actions/checkout@v4
+
+      - name: Resolve version
+        id: ver
+        shell: bash
+        run: |
+          # 决策树:
+          #   workflow_dispatch 给了 input.version → 直接用
+          #   否则                                  → 读 package.json
+          if [ -n "${{ inputs.version }}" ]; then
+            UPSTREAM_TAG="${{ inputs.version }}"
+          else
+            UPSTREAM_TAG=$(python3 -c "import json; print(json.load(open('package.json'))['version'])")
+          fi
+
+          # RPM 不允许版本字段含 "-",将 prerelease 分隔符 "-" 替换为 "~"。
+          # "~" 在 RPM 比较里小于任何字符 → 0.7.0~alpha.7 < 0.7.0,符合预期。
+          RPM_VERSION="${UPSTREAM_TAG/-/~}"
+
+          echo "upstream_tag=$UPSTREAM_TAG" >> "$GITHUB_OUTPUT"
+          echo "rpm_version=$RPM_VERSION" >> "$GITHUB_OUTPUT"
+          echo "Resolved upstream_tag=$UPSTREAM_TAG rpm_version=$RPM_VERSION"
+
+      - name: Determine COPR project
+        id: project
+        shell: bash
+        run: |
+          # 渠道映射规则(对应 release.yml 的 channel 推断):
+          #   workflow_dispatch  → 用 inputs.project(用户选)
+          #   workflow_run       → 看 upstream_tag 是否含 alpha/beta/rc
+          #     含       → uniclipboard-alpha
+          #     不含     → uniclipboard
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            PROJECT="${{ inputs.project }}"
+          else
+            UPSTREAM_TAG="${{ steps.ver.outputs.upstream_tag }}"
+            if [[ "$UPSTREAM_TAG" =~ -(alpha|beta|rc) ]]; then
+              PROJECT="uniclipboard-alpha"
+            else
+              PROJECT="uniclipboard"
+            fi
+          fi
+          echo "name=$PROJECT" >> "$GITHUB_OUTPUT"
+          echo "Selected COPR project: $PROJECT"
+
+      - name: Setup rpmbuild tree
+        shell: bash
+        run: |
+          rpmdev-setuptree
+          cp packaging/uniclipboard.spec ~/rpmbuild/SPECS/
+
+      - name: Download upstream binary RPMs into SOURCES
+        shell: bash
+        env:
+          UPSTREAM_TAG: ${{ steps.ver.outputs.upstream_tag }}
+        run: |
+          # spec 的 Source0 用 %{_arch} 在 mock 阶段会展开成 srpm chroot 架构。
+          # SRPM 必须包含两个架构的 binary RPM 都能找到的源文件 — 但实际上
+          # SRPM 只需要包含一个 Source0(spec 渲染时锁定)。我们的策略是:
+          #   * 在 GitHub Actions 上为每个架构分别 rpmbuild -bs 出独立 SRPM
+          #   * 然后把两个 SRPM 都 submit 给 COPR(同一 build 任务可以传多个 SRPM)
+          # 但更简单做法:让 COPR 在每个 chroot 里重新 download Source0 —
+          # 但 COPR mock chroot 默认无网络。所以坚持把 Source0 嵌进 SRPM。
+          mkdir -p ~/rpmbuild/SOURCES
+
+          BASE_URL="https://github.com/UniClipboard/UniClipboard/releases/download/v${UPSTREAM_TAG}"
+          for ARCH in x86_64 aarch64; do
+            FILE="UniClipboard-${UPSTREAM_TAG}-1.${ARCH}.rpm"
+            echo "Fetching ${FILE}..."
+            curl -fL --retry 3 --retry-delay 5 \
+              -o "$HOME/rpmbuild/SOURCES/${FILE}" \
+              "${BASE_URL}/${FILE}"
+          done
+          ls -lh ~/rpmbuild/SOURCES/
+
+      - name: Build per-arch SRPMs
+        shell: bash
+        env:
+          RPM_VERSION: ${{ steps.ver.outputs.rpm_version }}
+          UPSTREAM_TAG: ${{ steps.ver.outputs.upstream_tag }}
+        run: |
+          # 为每个架构产一份 SRPM。spec 里 Source0 用 %{_arch} 在 srpm 阶段
+          # 会按 host 架构展开,所以 GH runner(x86_64)上默认产出 x86_64 SRPM。
+          # 用 --target 把 srpm 强制指向另一个 _arch,再 build 一份。
+          mkdir -p out-srpm
+          for ARCH in x86_64 aarch64; do
+            echo "::group::Build SRPM for ${ARCH}"
+            rpmbuild -bs ~/rpmbuild/SPECS/uniclipboard.spec \
+              --target "${ARCH}-linux" \
+              --define "_version ${RPM_VERSION}" \
+              --define "_upstream_tag ${UPSTREAM_TAG}" \
+              --define "_topdir $HOME/rpmbuild"
+            echo "::endgroup::"
+          done
+          # 收集所有 SRPM
+          find ~/rpmbuild/SRPMS -name '*.src.rpm' -exec cp {} out-srpm/ \;
+          ls -lh out-srpm/
+
+      - name: Configure copr-cli
+        shell: bash
+        env:
+          COPR_LOGIN: ${{ secrets.COPR_LOGIN }}
+          COPR_TOKEN: ${{ secrets.COPR_TOKEN }}
+          COPR_USERNAME: ${{ secrets.COPR_USERNAME }}
+        run: |
+          if [ -z "$COPR_LOGIN" ] || [ -z "$COPR_TOKEN" ] || [ -z "$COPR_USERNAME" ]; then
+            echo "::error::Missing COPR_LOGIN / COPR_TOKEN / COPR_USERNAME secrets"
+            echo "::error::Get them from https://copr.fedorainfracloud.org/api/"
+            exit 1
+          fi
+          mkdir -p ~/.config
+          cat > ~/.config/copr <<EOF
+          [copr-cli]
+          login = ${COPR_LOGIN}
+          username = ${COPR_USERNAME}
+          token = ${COPR_TOKEN}
+          copr_url = https://copr.fedorainfracloud.org
+          EOF
+          chmod 600 ~/.config/copr
+
+      - name: Submit build to COPR
+        shell: bash
+        env:
+          COPR_USERNAME: ${{ secrets.COPR_USERNAME }}
+        run: |
+          PROJECT="${{ steps.project.outputs.name }}"
+          # 一次提交多个 SRPM 给同一 COPR build:--nowait 让命令立即返回,
+          # 否则 GH job 会被 COPR build 队列阻塞 30+ min。
+          # 如果想等结果,把 --nowait 去掉(默认会 watch 直至 succeeded/failed)。
+          for SRPM in out-srpm/*.src.rpm; do
+            echo "::group::copr build ${COPR_USERNAME}/${PROJECT} ${SRPM}"
+            copr-cli build "${COPR_USERNAME}/${PROJECT}" "${SRPM}"
+            echo "::endgroup::"
+          done
+
+      - name: Summary
+        shell: bash
+        run: |
+          PROJECT="${{ steps.project.outputs.name }}"
+          USERNAME="${{ secrets.COPR_USERNAME }}"
+          echo "## COPR build submitted :package:" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Project**: \`${USERNAME}/${PROJECT}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Version**: ${{ steps.ver.outputs.rpm_version }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Upstream tag**: v${{ steps.ver.outputs.upstream_tag }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "Track build status: https://copr.fedorainfracloud.org/coprs/${USERNAME}/${PROJECT}/builds/" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "End-user install:" >> "$GITHUB_STEP_SUMMARY"
+          echo '```bash' >> "$GITHUB_STEP_SUMMARY"
+          echo "sudo dnf copr enable ${USERNAME}/${PROJECT}" >> "$GITHUB_STEP_SUMMARY"
+          echo "sudo dnf install uniclipboard" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"

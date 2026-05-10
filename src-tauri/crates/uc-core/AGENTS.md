@@ -47,7 +47,7 @@
 
 ### 2.2 非职责（禁止进入 uc-core）
 
-以下内容**严禁**出现在 `uc-core` 中：
+以下内容 **严禁** 出现在 `uc-core` 中：
 
 | 类别      | 示例                                   |
 | ------- | ------------------------------------ |
@@ -181,6 +181,66 @@ pub trait DeviceRepositoryPort: Send + Sync {
 }
 ```
 
+### 5.4 Port 文档纪律（重要）
+
+Port trait、方法签名、领域类型上的 doc-comment 只能描述 **领域语义和行为契约**，不得引用调用方、上层模块或具体使用场景。
+
+**禁止出现的内容**（任何形式：英文、中文、代码示例、注释片段都不行）：
+
+- 上层模块名：`uc_application::...` / `uc_webserver::...` / `uc_desktop::...` / `uc-tauri` / `uc-cli`
+- Use case / facade / orchestrator 名：`ApplyInboundClipUseCase` / `MobileSyncFacade` / `SetupOrchestrator`
+- HTTP 路由 / API 端点：`PUT /file` / `/SyncClipboard.json` / `POST /v2/setup/redeem`
+- 协议名：`SyncClipboard` / `iroh` / `libp2p`
+- 具体调用场景的描述：「用于 X 流程」/「PUT /file 阶段先用占位 entry_id」/「mobile_lan 路径」
+- 调用顺序耦合：「先调 A 再调 B」/「等 X 完成后再调用本方法」（如果是 port 自身的契约约束才允许）
+- 实现侧的细节：「用 SQLite 表 …」/「通过 broadcast channel 推送」
+
+**允许的内容**：
+
+- 领域语义：这个方法在领域里做什么、改变了什么状态、对外承诺什么
+- 输入输出契约：参数含义、返回值语义、None / 空集合的边界
+- 幂等性、原子性、副作用范围
+- 错误语义：什么情况下返回什么 Error 变体（不是底层实现错误）
+- 不变量：调用前后必须满足的领域不变量
+
+#### ❌ 错误示例（被污染的 port 注释）
+
+```rust
+/// Re-link a transfer row to a different `entry_id`.
+///
+/// 用于 mobile_lan 路径：PUT /file 阶段先用占位 entry_id
+/// (如 `mobile-pending:<transfer_id>`) seed 投影行,
+/// 等 PUT /SyncClipboard.json 真正生成 entry 后再回填真实 entry_id。
+async fn link_transfer_to_entry(...);
+```
+
+问题：把 mobile_lan / HTTP 路由 / SyncClipboard 协议名 / 占位字符串约定全部塞进 core，core 从此 **知道了一条具体的 HTTP 调用链**——这是教科书级的实现污染。
+
+#### ✅ 正确示例
+
+```rust
+/// Re-associate a transfer with a different `entry_id`.
+///
+/// The new association replaces any prior `entry_id` recorded for the
+/// transfer. Idempotent when the new value equals the existing one.
+///
+/// Returns `true` if a row was updated, `false` if no matching
+/// transfer_id exists.
+async fn link_transfer_to_entry(...);
+```
+
+只描述「领域里做什么、幂等性、返回值含义」，不解释「谁在调、为什么调」。**「为什么调」是调用方自己的职责**，应该写在调用方代码处（use case 文件里），而不是借 port 文档反向耦合到 core。
+
+#### 自查问题
+
+写完一段 port doc-comment 后，问自己：
+
+1. 删掉这条注释里所有提到上层模块/路由/协议/具体场景的句子，剩下的部分还能让一个 **不知道这个项目是干嘛的** 的开发者理解这个方法的契约吗？
+2. 这条注释会不会因为换了一个调用方（比如未来加 CLI / 加 Web 同步 / 重写 mobile 协议）就需要修改？如果会，说明它在描述调用方而不是领域。
+3. 如果半年后 mobile_lan 这个路径整体被替换，这条注释会变成"幽灵知识"指向不存在的东西吗？
+
+任何一题答"是"，重写。
+
 ---
 
 ## 6. Network 相关建模原则
@@ -219,9 +279,9 @@ pub trait DeviceRepositoryPort: Send + Sync {
 * `ProofDerivedKey`（pairing proof 不透明凭据）
 * 业务策略（`EncryptionPolicy` 之类的规则对象，如有）
 
-### 7.2 不允许存在于 core 的内容（含**已下沉/删除**的历史类型）
+### 7.2 不允许存在于 core 的内容（含 **已下沉/删除** 的历史类型）
 
-Phase B milestone (Slice 1-7) + Phase C (Slice 8) 起统一落实——以下所有类型**都不属于 uc-core**:
+Phase B milestone (Slice 1-7) + Phase C (Slice 8) 起统一落实——以下所有类型 **都不属于 uc-core**:
 
 | 类别                    | 类型/符号                                                                  | 落点                                                      |
 | --------------------- | ---------------------------------------------------------------------- | ------------------------------------------------------- |
@@ -230,7 +290,7 @@ Phase B milestone (Slice 1-7) + Phase C (Slice 8) 起统一落实——以下所
 | KDF 参数                 | `KdfParams` / `KdfParamsV1`                                            | 同上                                                      |
 | 作用域 wrapper            | `KeyScope` / `KeySlotConvertError`                                     | 同上                                                      |
 | 版本/算法 enum（已删除）        | `KdfAlgorithm` / `EncryptionAlgo` / `KeySlotVersion` / `EncryptionFormatVersion` | 单变体 enum 清零，字段类型改 `String`，字面值 adapter 硬编码 (`"V1"` 等) |
-| 应用流程状态 enum（已删除）       | `EncryptionState` / `EncryptionStateError` / `EncryptionStatePort`     | Phase C 彻底删除:"setup 是否完成"统一由 `SetupStatusPort.has_completed` 表达,adapter 分支判断改用 `KeyMaterialStore::keyslot_exists()`(直接查磁盘真实存在性,比原 marker 文件更精确) |
+| 应用流程状态 enum（已删除）       | `EncryptionState` / `EncryptionStateError` / `EncryptionStatePort`     | Phase C 彻底删除："setup 是否完成"统一由 `SetupStatusPort.has_completed` 表达，adapter 分支判断改用 `KeyMaterialStore::keyslot_exists()`(直接查磁盘真实存在性，比原 marker 文件更精确) |
 | 加密算法调用                | `argon2::hash`、`XChaCha20-Poly1305` 初始化等                              | `uc-infra/src/security/`                                |
 | 随机数实现                 | `rand::rngs::OsRng`                                                   | 同上                                                      |
 | Keychain 访问           | OS API                                                                | 同上                                                      |
@@ -238,8 +298,8 @@ Phase B milestone (Slice 1-7) + Phase C (Slice 8) 起统一落实——以下所
 
 ### 7.3 历史条款回顾（已废止）
 
-- 早期文档曾列 "`MasterKey` / `KeySlot` / `WrappedKey` 允许进 core"——Phase B 重构前立场。milestone/1.0.0 Phase B 已全部下沉到 `uc-infra/src/security/`,任何反向再次往 uc-core 加这些类型的 PR **应被拒绝**。如需新增持久化/密钥物料数据结构,默认放 `uc-infra/src/security/crypto_model.rs` 或 `secrets.rs`,uc-core 只看端口契约与领域中性类型。
-- 早期设计曾把"设备是否初始化过加密"用独立的 `EncryptionStatePort` / `EncryptionState` enum 单独记录——Phase C (Slice 8) 确认这与 `SetupStatusPort.has_completed` 是同一业务事实的冗余副本,已彻底删除。任何反向再引入"独立 encryption state 持久化"的 PR **应被拒绝**:真相源唯一为 `SetupStatusPort`,adapter 需要查"keyslot 是否真实存在"时直接调 `KeyMaterialStore::keyslot_exists()`。
+- 早期文档曾列 "`MasterKey` / `KeySlot` / `WrappedKey` 允许进 core"——Phase B 重构前立场。milestone/1.0.0 Phase B 已全部下沉到 `uc-infra/src/security/`,任何反向再次往 uc-core 加这些类型的 PR **应被拒绝**。如需新增持久化/密钥物料数据结构，默认放 `uc-infra/src/security/crypto_model.rs` 或 `secrets.rs`,uc-core 只看端口契约与领域中性类型。
+- 早期设计曾把"设备是否初始化过加密"用独立的 `EncryptionStatePort` / `EncryptionState` enum 单独记录——Phase C (Slice 8) 确认这与 `SetupStatusPort.has_completed` 是同一业务事实的冗余副本，已彻底删除。任何反向再引入"独立 encryption state 持久化"的 PR **应被拒绝**:真相源唯一为 `SetupStatusPort`,adapter 需要查"keyslot 是否真实存在"时直接调 `KeyMaterialStore::keyslot_exists()`。
 
 ---
 
@@ -271,7 +331,7 @@ Phase B milestone (Slice 1-7) + Phase C (Slice 8) 起统一落实——以下所
 * `TrustRelationship`
 * `Device`
 
-> 注: 早期条款曾列 `KeyMaterial` 允许进 core,Phase B milestone 已全部下沉到 `uc-infra/src/security/` (见 §7.2 对照表)。
+> 注：早期条款曾列 `KeyMaterial` 允许进 core,Phase B milestone 已全部下沉到 `uc-infra/src/security/` (见 §7.2 对照表)。
 
 ---
 

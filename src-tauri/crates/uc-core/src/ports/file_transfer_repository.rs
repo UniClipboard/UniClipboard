@@ -179,6 +179,20 @@ pub trait FileTransferRepositoryPort: Send + Sync {
     /// Returns the entry_id for the transfer, if found.
     async fn get_entry_id_for_transfer(&self, transfer_id: &str) -> anyhow::Result<Option<String>>;
 
+    /// Re-associate a transfer with a different `entry_id`.
+    ///
+    /// The new association replaces any prior `entry_id` recorded for the
+    /// transfer. Idempotent when the new value equals the existing one.
+    ///
+    /// Returns `true` if a row was updated, `false` if no matching
+    /// transfer_id exists.
+    async fn link_transfer_to_entry(
+        &self,
+        transfer_id: &str,
+        entry_id: &str,
+        now_ms: i64,
+    ) -> anyhow::Result<bool>;
+
     /// Look up the full projection row for a transfer_id.
     ///
     /// Used by receiver-side workers that need the locally-recorded
@@ -240,6 +254,9 @@ impl FileTransferRepositoryPort for NoopFileTransferRepositoryPort {
     }
     async fn get_transfer(&self, _: &str) -> anyhow::Result<Option<TrackedFileTransfer>> {
         Ok(None)
+    }
+    async fn link_transfer_to_entry(&self, _: &str, _: &str, _: i64) -> anyhow::Result<bool> {
+        Ok(false)
     }
 }
 

@@ -343,4 +343,31 @@ impl<E: DbExecutor> FileTransferRepositoryPort for DieselFileTransferRepository<
             Ok(row.as_ref().map(row_to_domain))
         })
     }
+
+    async fn link_transfer_to_entry(
+        &self,
+        transfer_id: &str,
+        entry_id: &str,
+        now_ms: i64,
+    ) -> anyhow::Result<bool> {
+        let span = debug_span!(
+            "infra.sqlite.link_transfer_to_entry",
+            transfer_id = transfer_id
+        );
+        let tid = transfer_id.to_string();
+        let eid = entry_id.to_string();
+        span.in_scope(|| {
+            self.executor.run(move |conn| {
+                let affected = diesel::update(
+                    file_transfer::table.filter(file_transfer::transfer_id.eq(&tid)),
+                )
+                .set((
+                    file_transfer::entry_id.eq(&eid),
+                    file_transfer::updated_at_ms.eq(now_ms),
+                ))
+                .execute(conn)?;
+                Ok(affected > 0)
+            })
+        })
+    }
 }

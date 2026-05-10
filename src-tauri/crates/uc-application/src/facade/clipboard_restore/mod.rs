@@ -90,40 +90,10 @@ impl ClipboardRestoreFacade {
     pub async fn restore_entry(&self, entry_id: &str) -> Result<(), ClipboardRestoreError> {
         let parsed_id = EntryId::from(entry_id);
 
-        self.restore_uc.execute(&parsed_id).await.map_err(|err| {
-            // Translate the typed `PayloadResolveError` carried inside the
-            // anyhow chain into a stable application error. Orphaned / Lost
-            // are user-visible "content gone" outcomes (→ 410 at the API
-            // layer); Integrity is a data-corruption bug and stays Internal.
-            if let Some(payload_err) = err.downcast_ref::<PayloadResolveError>() {
-                match payload_err {
-                    PayloadResolveError::Orphaned { rep_id, state } => {
-                        return ClipboardRestoreError::PayloadUnavailable {
-                            entry_id: entry_id.to_string(),
-                            rep_id: rep_id.to_string(),
-                            state: state.as_str().to_string(),
-                        };
-                    }
-                    PayloadResolveError::Lost { rep_id, .. } => {
-                        return ClipboardRestoreError::PayloadUnavailable {
-                            entry_id: entry_id.to_string(),
-                            rep_id: rep_id.to_string(),
-                            state: "Lost".to_string(),
-                        };
-                    }
-                    PayloadResolveError::Integrity { .. } => {
-                        // fall through — internal bug, return as Internal(500)
-                    }
-                }
-            }
-
-            let message = err.to_string();
-            if message.to_lowercase().contains("not found") {
-                ClipboardRestoreError::NotFound
-            } else {
-                ClipboardRestoreError::Internal(message)
-            }
-        })?;
+        self.restore_uc
+            .execute(&parsed_id)
+            .await
+            .map_err(|err| map_restore_error(err, entry_id))?;
 
         if let Err(err) = self.touch_uc.execute(&parsed_id).await {
             tracing::warn!(
@@ -134,5 +104,132 @@ impl ClipboardRestoreFacade {
         }
 
         Ok(())
+    }
+}
+
+/// Translate the typed `PayloadResolveError` carried inside the anyhow chain
+/// into a stable application error. Orphaned / Lost are user-visible "content
+/// gone" outcomes (→ 410 at the API layer); Integrity is a data-corruption
+/// bug and stays Internal. Anything containing "not found" becomes NotFound.
+fn map_restore_error(err: anyhow::Error, entry_id: &str) -> ClipboardRestoreError {
+    if let Some(payload_err) = err.downcast_ref::<PayloadResolveError>() {
+        match payload_err {
+            PayloadResolveError::Orphaned { rep_id, state } => {
+                return ClipboardRestoreError::PayloadUnavailable {
+                    entry_id: entry_id.to_string(),
+                    rep_id: rep_id.to_string(),
+                    state: state.as_str().to_string(),
+                };
+            }
+            PayloadResolveError::Lost { rep_id, .. } => {
+                return ClipboardRestoreError::PayloadUnavailable {
+                    entry_id: entry_id.to_string(),
+                    rep_id: rep_id.to_string(),
+                    state: "Lost".to_string(),
+                };
+            }
+            PayloadResolveError::Integrity { .. } => {
+                // fall through — internal bug, return as Internal(500)
+            }
+        }
+    }
+
+    let message = err.to_string();
+    if message.to_lowercase().contains("not found") {
+        ClipboardRestoreError::NotFound
+    } else {
+        ClipboardRestoreError::Internal(message)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use uc_core::clipboard::PayloadAvailability;
+    use uc_core::ids::RepresentationId;
+
+    #[test]
+    fn maps_orphaned_payload_to_payload_unavailable() {
+        let err = anyhow::Error::new(PayloadResolveError::Orphaned {
+            rep_id: RepresentationId::from("rep-orphan"),
+            state: PayloadAvailability::Staged,
+        });
+
+        let mapped = map_restore_error(err, "entry-1");
+        assert!(matches!(
+            mapped,
+            ClipboardRestoreError::PayloadUnavailable { ref entry_id, ref rep_id, ref state }
+                if entry_id == "entry-1" && rep_id == "rep-orphan" && state == "Staged"
+        ));
+    }
+
+    #[test]
+    fn maps_lost_payload_to_payload_unavailable_with_lost_state() {
+        let err = anyhow::Error::new(PayloadResolveError::Lost {
+            rep_id: RepresentationId::from("rep-lost"),
+            reason: "manual fixture".to_string(),
+        });
+
+        let mapped = map_restore_error(err, "entry-2");
+        assert!(matches!(
+            mapped,
+            ClipboardRestoreError::PayloadUnavailable { ref state, .. } if state == "Lost"
+        ));
+    }
+
+    #[test]
+    fn maps_integrity_to_internal() {
+        let err = anyhow::Error::new(PayloadResolveError::Integrity {
+            rep_id: RepresentationId::from("rep-bad"),
+            reason: "corrupt header".to_string(),
+        });
+
+        let mapped = map_restore_error(err, "entry-3");
+        match mapped {
+            ClipboardRestoreError::Internal(msg) => {
+                assert!(msg.to_lowercase().contains("integrity") || msg.contains("corrupt"));
+            }
+            other => panic!("expected Internal, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn maps_anyhow_with_not_found_substring_to_not_found() {
+        let err = anyhow::anyhow!("Entry not found");
+        let mapped = map_restore_error(err, "entry-4");
+        assert!(matches!(mapped, ClipboardRestoreError::NotFound));
+    }
+
+    #[test]
+    fn case_insensitive_not_found_match() {
+        let err = anyhow::anyhow!("Selection NOT FOUND for entry");
+        let mapped = map_restore_error(err, "entry-5");
+        assert!(matches!(mapped, ClipboardRestoreError::NotFound));
+    }
+
+    #[test]
+    fn unknown_anyhow_error_falls_back_to_internal() {
+        let err = anyhow::anyhow!("write coordinator deadlocked");
+        let mapped = map_restore_error(err, "entry-6");
+        match mapped {
+            ClipboardRestoreError::Internal(msg) => {
+                assert_eq!(msg, "write coordinator deadlocked");
+            }
+            other => panic!("expected Internal, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn payload_resolve_error_takes_precedence_over_not_found_substring() {
+        // 即使 anyhow message 含 "not found", PayloadResolveError 仍优先映射
+        let err = anyhow::Error::new(PayloadResolveError::Lost {
+            rep_id: RepresentationId::from("rep-x"),
+            reason: "Selection not found".to_string(),
+        });
+        let mapped = map_restore_error(err, "entry-7");
+        assert!(matches!(
+            mapped,
+            ClipboardRestoreError::PayloadUnavailable { .. }
+        ));
     }
 }

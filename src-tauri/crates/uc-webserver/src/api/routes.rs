@@ -141,47 +141,62 @@ async fn restore_clipboard_entry_handler(
     match restore_facade.restore_entry(&entry_id).await {
         Ok(()) => {
             tracing::info!(entry_id = %entry_id, "daemon restore request succeeded");
-            (StatusCode::OK, Json(json!({"success": true}))).into_response()
+            restore_success_response().into_response()
         }
-        Err(error) => match error {
-            ClipboardRestoreError::NotFound => {
-                tracing::warn!(entry_id = %entry_id, "daemon restore: entry not found");
-                (StatusCode::NOT_FOUND, Json(json!({"error": "not_found"}))).into_response()
-            }
-            ClipboardRestoreError::PayloadUnavailable {
-                entry_id: e_id,
-                rep_id,
-                state,
-            } => {
-                // Known business outcome — content has logically vanished.
-                // Use 410 Gone (resource is no longer available) and log at
-                // warn level so this does NOT escalate to a Sentry error.
-                tracing::warn!(
-                    entry_id = %e_id,
-                    rep_id = %rep_id,
-                    payload_state = %state,
-                    "daemon restore: payload unavailable (orphaned/lost)"
-                );
-                (
-                    StatusCode::GONE,
-                    Json(json!({
-                        "error": "payload_unavailable",
-                        "entry_id": e_id,
-                        "rep_id": rep_id,
-                        "state": state,
-                    })),
-                )
-                    .into_response()
-            }
-            ClipboardRestoreError::Internal(message) => {
-                tracing::error!(
-                    entry_id = %entry_id,
-                    error = %message,
-                    "daemon restore failed (internal)"
-                );
-                internal_error(anyhow::anyhow!(message)).into_response()
-            }
-        },
+        Err(error) => restore_error_to_response(error, &entry_id).into_response(),
+    }
+}
+
+fn restore_success_response() -> (StatusCode, Json<serde_json::Value>) {
+    (StatusCode::OK, Json(json!({"success": true})))
+}
+
+/// Map `ClipboardRestoreError` to (status, JSON body).
+///
+/// Free function so the status-code contract is unit-testable without
+/// spinning up an axum app or `DaemonApiState`. The handler above is a
+/// thin wrapper around this.
+fn restore_error_to_response(
+    error: ClipboardRestoreError,
+    entry_id: &str,
+) -> (StatusCode, Json<serde_json::Value>) {
+    match error {
+        ClipboardRestoreError::NotFound => {
+            tracing::warn!(entry_id = %entry_id, "daemon restore: entry not found");
+            (StatusCode::NOT_FOUND, Json(json!({"error": "not_found"})))
+        }
+        ClipboardRestoreError::PayloadUnavailable {
+            entry_id: e_id,
+            rep_id,
+            state,
+        } => {
+            // Known business outcome — content has logically vanished.
+            // Use 410 Gone (resource is no longer available) and log at
+            // warn level so this does NOT escalate to a Sentry error.
+            tracing::warn!(
+                entry_id = %e_id,
+                rep_id = %rep_id,
+                payload_state = %state,
+                "daemon restore: payload unavailable (orphaned/lost)"
+            );
+            (
+                StatusCode::GONE,
+                Json(json!({
+                    "error": "payload_unavailable",
+                    "entry_id": e_id,
+                    "rep_id": rep_id,
+                    "state": state,
+                })),
+            )
+        }
+        ClipboardRestoreError::Internal(message) => {
+            tracing::error!(
+                entry_id = %entry_id,
+                error = %message,
+                "daemon restore failed (internal)"
+            );
+            internal_error(anyhow::anyhow!(message))
+        }
     }
 }
 
@@ -218,4 +233,83 @@ pub(crate) fn internal_error(error: anyhow::Error) -> (StatusCode, Json<serde_js
         StatusCode::INTERNAL_SERVER_ERROR,
         Json(json!({"error": "internal_error"})),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn body_value(json: Json<serde_json::Value>) -> serde_json::Value {
+        json.0
+    }
+
+    #[test]
+    fn restore_success_returns_200_with_success_true() {
+        let (status, body) = restore_success_response();
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(body_value(body), json!({"success": true}));
+    }
+
+    #[test]
+    fn restore_not_found_returns_404() {
+        let (status, body) = restore_error_to_response(ClipboardRestoreError::NotFound, "entry-1");
+        assert_eq!(status, StatusCode::NOT_FOUND);
+        assert_eq!(body_value(body), json!({"error": "not_found"}));
+    }
+
+    #[test]
+    fn restore_payload_unavailable_returns_410_with_full_context() {
+        let (status, body) = restore_error_to_response(
+            ClipboardRestoreError::PayloadUnavailable {
+                entry_id: "entry-1".to_string(),
+                rep_id: "rep-2".to_string(),
+                state: "Lost".to_string(),
+            },
+            "entry-1",
+        );
+        // 410 Gone — known business outcome, never 500
+        assert_eq!(status, StatusCode::GONE);
+        assert_eq!(
+            body_value(body),
+            json!({
+                "error": "payload_unavailable",
+                "entry_id": "entry-1",
+                "rep_id": "rep-2",
+                "state": "Lost",
+            })
+        );
+    }
+
+    #[test]
+    fn restore_payload_unavailable_with_orphaned_state_uses_state_string_verbatim() {
+        let (status, body) = restore_error_to_response(
+            ClipboardRestoreError::PayloadUnavailable {
+                entry_id: "e".to_string(),
+                rep_id: "r".to_string(),
+                state: "Staged".to_string(),
+            },
+            "e",
+        );
+        assert_eq!(status, StatusCode::GONE);
+        let value = body_value(body);
+        assert_eq!(value["state"], "Staged");
+    }
+
+    #[test]
+    fn restore_internal_returns_500_with_generic_body() {
+        let (status, body) = restore_error_to_response(
+            ClipboardRestoreError::Internal("write coordinator deadlocked".to_string()),
+            "entry-3",
+        );
+        assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
+        // 内部错误细节不能泄漏到响应 body
+        assert_eq!(body_value(body), json!({"error": "internal_error"}));
+    }
+
+    #[test]
+    fn internal_error_returns_500_with_generic_body() {
+        let (status, body) = internal_error(anyhow::anyhow!("boom"));
+        assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
+        assert_eq!(body_value(body), json!({"error": "internal_error"}));
+    }
 }

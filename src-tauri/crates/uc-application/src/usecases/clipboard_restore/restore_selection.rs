@@ -203,7 +203,12 @@ impl RestoreClipboardSelectionUseCase {
                         state: orphan_state,
                     } = &resolver_err
                     {
-                        self.demote_orphaned_to_lost(orphan_id, orphan_state).await;
+                        demote_orphaned_to_lost(
+                            self.representation_repo.as_ref(),
+                            orphan_id,
+                            orphan_state,
+                        )
+                        .await;
                     }
                     let context = format!(
                         "Failed to resolve paste representation {} (state={:?})",
@@ -268,70 +273,6 @@ impl RestoreClipboardSelectionUseCase {
 
     fn is_file_representation(rep: &PersistedClipboardRepresentation) -> bool {
         uc_core::clipboard::is_file_mime_or_format(rep.mime_type.as_ref(), &rep.format_id)
-    }
-
-    /// Demote an orphaned representation (cache+spool double miss) to `Lost`.
-    ///
-    /// Called when the resolver reports `PayloadResolveError::Orphaned` for a
-    /// paste-rep. The representation can no longer be materialized — bytes are
-    /// gone from both cache and spool, and the worker has no source to retry
-    /// from. Marking it `Lost` ensures the next restore attempt routes to the
-    /// `Lost` arm in the resolver and the facade returns a stable
-    /// `PayloadUnavailable` error instead of producing 500s + Sentry events.
-    ///
-    /// This is best-effort: any DB failure is logged but does not propagate,
-    /// because the original resolve error is what the caller actually returns.
-    async fn demote_orphaned_to_lost(
-        &self,
-        rep_id: &RepresentationId,
-        state: &PayloadAvailability,
-    ) {
-        let last_error = "orphaned at restore: bytes lost before blob materialization";
-        match self
-            .representation_repo
-            .update_processing_result(
-                rep_id,
-                &[
-                    PayloadAvailability::Staged,
-                    PayloadAvailability::Processing,
-                    PayloadAvailability::Failed {
-                        last_error: String::new(),
-                    },
-                ],
-                None,
-                PayloadAvailability::Lost,
-                Some(last_error),
-            )
-            .await
-        {
-            Ok(ProcessingUpdateOutcome::Updated(_)) => {
-                info!(
-                    representation_id = %rep_id,
-                    payload_state = ?state,
-                    "Demoted orphaned representation to Lost (cache+spool miss)"
-                );
-            }
-            Ok(ProcessingUpdateOutcome::StateMismatch) => {
-                warn!(
-                    representation_id = %rep_id,
-                    payload_state = ?state,
-                    "Skipped Lost demotion due to state mismatch (likely already updated)"
-                );
-            }
-            Ok(ProcessingUpdateOutcome::NotFound) => {
-                warn!(
-                    representation_id = %rep_id,
-                    "Skipped Lost demotion: representation missing from DB"
-                );
-            }
-            Err(err) => {
-                warn!(
-                    representation_id = %rep_id,
-                    error = %err,
-                    "Failed to demote orphaned representation to Lost"
-                );
-            }
-        }
     }
 
     async fn build_file_snapshot(
@@ -434,5 +375,212 @@ impl RestoreClipboardSelectionUseCase {
         self.coordinator
             .write(snapshot, ClipboardWriteIntent::LocalRestore)
             .await
+    }
+}
+
+/// Demote an orphaned representation (cache+spool double miss) to `Lost`.
+///
+/// Called when the resolver reports `PayloadResolveError::Orphaned` for a
+/// paste-rep. The representation can no longer be materialized — bytes are
+/// gone from both cache and spool, and the worker has no source to retry
+/// from. Marking it `Lost` ensures the next restore attempt routes to the
+/// `Lost` arm in the resolver and the facade returns a stable
+/// `PayloadUnavailable` error instead of producing 500s + Sentry events.
+///
+/// This is best-effort: any DB failure is logged but does not propagate,
+/// because the original resolve error is what the caller actually returns.
+///
+/// Free function (not a method) so unit tests can exercise the four
+/// `ProcessingUpdateOutcome` arms without constructing the full
+/// `RestoreClipboardSelectionUseCase` (which needs 7 ports + a coordinator).
+pub(crate) async fn demote_orphaned_to_lost(
+    representation_repo: &dyn ClipboardRepresentationRepositoryPort,
+    rep_id: &RepresentationId,
+    state: &PayloadAvailability,
+) {
+    let last_error = "orphaned at restore: bytes lost before blob materialization";
+    match representation_repo
+        .update_processing_result(
+            rep_id,
+            &[
+                PayloadAvailability::Staged,
+                PayloadAvailability::Processing,
+                PayloadAvailability::Failed {
+                    last_error: String::new(),
+                },
+            ],
+            None,
+            PayloadAvailability::Lost,
+            Some(last_error),
+        )
+        .await
+    {
+        Ok(ProcessingUpdateOutcome::Updated(_)) => {
+            info!(
+                representation_id = %rep_id,
+                payload_state = ?state,
+                "Demoted orphaned representation to Lost (cache+spool miss)"
+            );
+        }
+        Ok(ProcessingUpdateOutcome::StateMismatch) => {
+            warn!(
+                representation_id = %rep_id,
+                payload_state = ?state,
+                "Skipped Lost demotion due to state mismatch (likely already updated)"
+            );
+        }
+        Ok(ProcessingUpdateOutcome::NotFound) => {
+            warn!(
+                representation_id = %rep_id,
+                "Skipped Lost demotion: representation missing from DB"
+            );
+        }
+        Err(err) => {
+            warn!(
+                representation_id = %rep_id,
+                error = %err,
+                "Failed to demote orphaned representation to Lost"
+            );
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use async_trait::async_trait;
+    use std::sync::Mutex;
+    use uc_core::clipboard::{MimeType, PersistedClipboardRepresentation};
+    use uc_core::ids::FormatId;
+    use uc_core::BlobId;
+
+    /// Minimal hand-rolled fake — `mockall` can't model `Option<&BlobId>` /
+    /// `Option<&str>` parameters in this trait without trait-side lifetime
+    /// generics, which we don't own.
+    struct FakeRepo {
+        next: Mutex<Option<Result<ProcessingUpdateOutcome>>>,
+        calls: Mutex<Vec<(RepresentationId, PayloadAvailability, Option<String>)>>,
+    }
+
+    impl FakeRepo {
+        fn new(outcome: Result<ProcessingUpdateOutcome>) -> Self {
+            Self {
+                next: Mutex::new(Some(outcome)),
+                calls: Mutex::new(Vec::new()),
+            }
+        }
+    }
+
+    #[async_trait]
+    impl ClipboardRepresentationRepositoryPort for FakeRepo {
+        async fn get_representation(
+            &self,
+            _event_id: &uc_core::ids::EventId,
+            _representation_id: &RepresentationId,
+        ) -> Result<Option<PersistedClipboardRepresentation>> {
+            unimplemented!()
+        }
+        async fn get_representation_by_id(
+            &self,
+            _representation_id: &RepresentationId,
+        ) -> Result<Option<PersistedClipboardRepresentation>> {
+            unimplemented!()
+        }
+        async fn get_representation_by_blob_id(
+            &self,
+            _blob_id: &BlobId,
+        ) -> Result<Option<PersistedClipboardRepresentation>> {
+            unimplemented!()
+        }
+        async fn update_blob_id(
+            &self,
+            _representation_id: &RepresentationId,
+            _blob_id: &BlobId,
+        ) -> Result<()> {
+            unimplemented!()
+        }
+        async fn update_blob_id_if_none(
+            &self,
+            _representation_id: &RepresentationId,
+            _blob_id: &BlobId,
+        ) -> Result<bool> {
+            unimplemented!()
+        }
+        async fn update_processing_result(
+            &self,
+            rep_id: &RepresentationId,
+            _expected_states: &[PayloadAvailability],
+            _blob_id: Option<&BlobId>,
+            new_state: PayloadAvailability,
+            last_error: Option<&str>,
+        ) -> Result<ProcessingUpdateOutcome> {
+            self.calls.lock().unwrap().push((
+                rep_id.clone(),
+                new_state.clone(),
+                last_error.map(|s| s.to_string()),
+            ));
+            self.next
+                .lock()
+                .unwrap()
+                .take()
+                .expect("FakeRepo: update_processing_result called more than once")
+        }
+    }
+
+    fn dummy_rep(id: &str) -> PersistedClipboardRepresentation {
+        PersistedClipboardRepresentation::new(
+            RepresentationId::from(id),
+            FormatId::from("public.utf8-plain-text"),
+            Some(MimeType("text/plain".to_string())),
+            3,
+            None,
+            Some(BlobId::from("blob-x")),
+        )
+    }
+
+    #[tokio::test]
+    async fn demote_orphaned_calls_repo_with_lost_target_and_marker_text() {
+        let repo = FakeRepo::new(Ok(ProcessingUpdateOutcome::Updated(dummy_rep("rep-1"))));
+        let rep_id = RepresentationId::from("rep-1");
+
+        demote_orphaned_to_lost(&repo, &rep_id, &PayloadAvailability::Staged).await;
+
+        let calls = repo.calls.lock().unwrap();
+        assert_eq!(calls.len(), 1);
+        assert_eq!(calls[0].0, rep_id);
+        assert_eq!(calls[0].1, PayloadAvailability::Lost);
+        assert_eq!(
+            calls[0].2.as_deref(),
+            Some("orphaned at restore: bytes lost before blob materialization")
+        );
+    }
+
+    #[tokio::test]
+    async fn demote_orphaned_swallows_state_mismatch() {
+        let repo = FakeRepo::new(Ok(ProcessingUpdateOutcome::StateMismatch));
+        let rep_id = RepresentationId::from("rep-2");
+
+        // 不 panic, 不 return 任何东西; 调用一次后正常返回
+        demote_orphaned_to_lost(&repo, &rep_id, &PayloadAvailability::Processing).await;
+        assert_eq!(repo.calls.lock().unwrap().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn demote_orphaned_swallows_not_found() {
+        let repo = FakeRepo::new(Ok(ProcessingUpdateOutcome::NotFound));
+        let rep_id = RepresentationId::from("rep-3");
+
+        demote_orphaned_to_lost(&repo, &rep_id, &PayloadAvailability::Staged).await;
+        assert_eq!(repo.calls.lock().unwrap().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn demote_orphaned_swallows_repo_error() {
+        let repo = FakeRepo::new(Err(anyhow::anyhow!("transient db error")));
+        let rep_id = RepresentationId::from("rep-4");
+
+        // 错误必须被吞掉, 不传播 — caller 拿到的应该是原始 resolve error
+        demote_orphaned_to_lost(&repo, &rep_id, &PayloadAvailability::Staged).await;
+        assert_eq!(repo.calls.lock().unwrap().len(), 1);
     }
 }

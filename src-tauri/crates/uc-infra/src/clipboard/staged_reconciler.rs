@@ -139,3 +139,149 @@ impl StagedReconciler {
         Ok(demoted)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::clipboard::testing::{ScriptedRepRepo, ScriptedReturn};
+    use tempfile::TempDir;
+    use uc_core::clipboard::{MimeType, PersistedClipboardRepresentation};
+    use uc_core::ids::{FormatId, RepresentationId};
+    use uc_core::BlobId;
+
+    fn dummy_rep(id: &str) -> PersistedClipboardRepresentation {
+        PersistedClipboardRepresentation::new(
+            RepresentationId::from(id),
+            FormatId::from("public.utf8-plain-text"),
+            Some(MimeType("text/plain".to_string())),
+            3,
+            None,
+            Some(BlobId::from("blob-x")),
+        )
+    }
+
+    async fn make_spool() -> (Arc<SpoolManager>, TempDir) {
+        let dir = TempDir::new().expect("tempdir");
+        let spool = Arc::new(SpoolManager::new(dir.path(), 1024).expect("spool"));
+        (spool, dir)
+    }
+
+    #[tokio::test]
+    async fn run_once_returns_zero_when_no_candidates() {
+        let (spool, _dir) = make_spool().await;
+        let repo = Arc::new(ScriptedRepRepo::new());
+        // staged_ids 默认空 ⇒ list_ids_by_payload_state 返回空 ⇒ 提前 return 0
+        let reconciler = StagedReconciler::new(repo.clone(), spool);
+
+        assert_eq!(reconciler.run_once().await.unwrap(), 0);
+        assert!(repo.update_processing_calls().is_empty());
+    }
+
+    #[tokio::test]
+    async fn run_once_does_not_demote_when_spool_file_exists() {
+        let (spool, _dir) = make_spool().await;
+        let healthy_id = RepresentationId::from("rep-healthy");
+        spool.write(&healthy_id, b"bytes").await.unwrap();
+
+        let repo = Arc::new(ScriptedRepRepo::new());
+        repo.set_staged_ids(vec![healthy_id.clone()]);
+        // 不脚本化 update_outcomes ⇒ 若调用会 panic
+        let reconciler = StagedReconciler::new(repo.clone(), spool);
+
+        assert_eq!(reconciler.run_once().await.unwrap(), 0);
+        assert!(repo.update_processing_calls().is_empty());
+    }
+
+    #[tokio::test]
+    async fn run_once_demotes_orphan_when_spool_missing() {
+        let (spool, _dir) = make_spool().await;
+        let orphan_id = RepresentationId::from("rep-orphan");
+
+        let repo = Arc::new(ScriptedRepRepo::new());
+        repo.set_staged_ids(vec![orphan_id.clone()]);
+        repo.push_update_outcome(ScriptedReturn::Ok(ProcessingUpdateOutcome::Updated(
+            dummy_rep("rep-orphan"),
+        )));
+        let reconciler = StagedReconciler::new(repo.clone(), spool);
+
+        assert_eq!(reconciler.run_once().await.unwrap(), 1);
+        let calls = repo.update_processing_calls();
+        assert_eq!(calls.len(), 1);
+        assert_eq!(calls[0].rep_id, orphan_id);
+        assert_eq!(calls[0].new_state, PayloadAvailability::Lost);
+        assert_eq!(
+            calls[0].last_error.as_deref(),
+            Some("orphaned at startup: spool file missing")
+        );
+        // CAS 期望状态: Staged + Processing 两态
+        assert_eq!(
+            calls[0].expected_states,
+            vec![PayloadAvailability::Staged, PayloadAvailability::Processing]
+        );
+    }
+
+    #[tokio::test]
+    async fn run_once_skips_when_state_mismatches_during_demote() {
+        let (spool, _dir) = make_spool().await;
+        let id = RepresentationId::from("rep-raced");
+
+        let repo = Arc::new(ScriptedRepRepo::new());
+        repo.set_staged_ids(vec![id.clone()]);
+        repo.push_update_outcome(ScriptedReturn::Ok(ProcessingUpdateOutcome::StateMismatch));
+        let reconciler = StagedReconciler::new(repo.clone(), spool);
+
+        // StateMismatch 不计入 demoted, 但仍消耗一次 update 调用
+        assert_eq!(reconciler.run_once().await.unwrap(), 0);
+        assert_eq!(repo.update_processing_calls().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn run_once_skips_when_row_vanished_mid_sweep() {
+        let (spool, _dir) = make_spool().await;
+        let id = RepresentationId::from("rep-vanished");
+
+        let repo = Arc::new(ScriptedRepRepo::new());
+        repo.set_staged_ids(vec![id]);
+        repo.push_update_outcome(ScriptedReturn::Ok(ProcessingUpdateOutcome::NotFound));
+        let reconciler = StagedReconciler::new(repo.clone(), spool);
+
+        assert_eq!(reconciler.run_once().await.unwrap(), 0);
+        assert_eq!(repo.update_processing_calls().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn run_once_skips_when_repo_returns_error() {
+        let (spool, _dir) = make_spool().await;
+        let id = RepresentationId::from("rep-err");
+
+        let repo = Arc::new(ScriptedRepRepo::new());
+        repo.set_staged_ids(vec![id]);
+        repo.push_update_outcome(ScriptedReturn::Err("transient db".into()));
+        let reconciler = StagedReconciler::new(repo.clone(), spool);
+
+        // repo 错误只 warn, 不让整个 sweep 失败
+        assert_eq!(reconciler.run_once().await.unwrap(), 0);
+    }
+
+    #[tokio::test]
+    async fn run_once_mixes_healthy_and_orphan_in_one_sweep() {
+        let (spool, _dir) = make_spool().await;
+        let healthy = RepresentationId::from("h");
+        let orphan = RepresentationId::from("o");
+        spool.write(&healthy, b"alive").await.unwrap();
+
+        let repo = Arc::new(ScriptedRepRepo::new());
+        // 注意顺序: list_ids_by_payload_state 不保证顺序, 我们只要保证
+        // 健康那条不会触发 update_processing_result, orphan 那条触发一次。
+        repo.set_staged_ids(vec![healthy.clone(), orphan.clone()]);
+        repo.push_update_outcome(ScriptedReturn::Ok(ProcessingUpdateOutcome::Updated(
+            dummy_rep("o"),
+        )));
+        let reconciler = StagedReconciler::new(repo.clone(), spool);
+
+        assert_eq!(reconciler.run_once().await.unwrap(), 1);
+        let calls = repo.update_processing_calls();
+        assert_eq!(calls.len(), 1);
+        assert_eq!(calls[0].rep_id, orphan);
+    }
+}

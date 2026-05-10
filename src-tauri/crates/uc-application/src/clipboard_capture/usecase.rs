@@ -388,3 +388,168 @@ impl CaptureClipboardUseCase {
             || rep.format_id.eq_ignore_ascii_case("NSStringPboardType")
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use uc_core::clipboard::MimeType;
+    use uc_core::ids::{FormatId, RepresentationId};
+    use uc_core::ObservedClipboardRepresentation;
+
+    fn rep(format: &str, mime: Option<&str>, bytes: &[u8]) -> ObservedClipboardRepresentation {
+        ObservedClipboardRepresentation::new(
+            RepresentationId::new(),
+            FormatId::from(format),
+            mime.map(|m| MimeType(m.to_string())),
+            bytes.to_vec(),
+        )
+    }
+
+    fn snapshot_with(reps: Vec<ObservedClipboardRepresentation>) -> SystemClipboardSnapshot {
+        SystemClipboardSnapshot {
+            ts_ms: 1_700_000_000_000,
+            representations: reps,
+        }
+    }
+
+    #[test]
+    fn has_supported_representation_true_for_text_plain() {
+        let snap = snapshot_with(vec![rep(
+            "public.utf8-plain-text",
+            Some("text/plain"),
+            b"hi",
+        )]);
+        assert!(CaptureClipboardUseCase::has_supported_representation(&snap));
+    }
+
+    #[test]
+    fn has_supported_representation_true_for_image_mime() {
+        let snap = snapshot_with(vec![rep("image", Some("image/png"), b"\x89PNG")]);
+        assert!(CaptureClipboardUseCase::has_supported_representation(&snap));
+    }
+
+    #[test]
+    fn has_supported_representation_true_for_files_format_without_mime() {
+        let snap = snapshot_with(vec![rep("files", None, b"file:///tmp/x")]);
+        assert!(CaptureClipboardUseCase::has_supported_representation(&snap));
+    }
+
+    #[test]
+    fn has_supported_representation_true_for_uri_list_mime() {
+        let snap = snapshot_with(vec![rep(
+            "public.file-url",
+            Some("text/uri-list"),
+            b"file:///tmp/a",
+        )]);
+        assert!(CaptureClipboardUseCase::has_supported_representation(&snap));
+    }
+
+    #[test]
+    fn has_supported_representation_false_for_unknown_format_and_mime() {
+        let snap = snapshot_with(vec![rep(
+            "vendor.private",
+            Some("application/x-vendor"),
+            b"x",
+        )]);
+        assert!(!CaptureClipboardUseCase::has_supported_representation(
+            &snap
+        ));
+    }
+
+    #[test]
+    fn has_supported_representation_false_for_empty_snapshot() {
+        let snap = snapshot_with(vec![]);
+        assert!(!CaptureClipboardUseCase::has_supported_representation(
+            &snap
+        ));
+    }
+
+    #[test]
+    fn is_supported_representation_matches_legacy_format_aliases() {
+        // Windows / older macOS format ids
+        let cases: &[(&str, Option<&str>)] = &[
+            ("text", None),
+            ("rtf", None),
+            ("html", None),
+            ("image", None),
+            ("public.text", None),
+            ("NSStringPboardType", None),
+        ];
+        for (format, mime) in cases {
+            let r = rep(format, *mime, b"x");
+            assert!(
+                CaptureClipboardUseCase::is_supported_representation(&r),
+                "expected `{}` to be supported",
+                format
+            );
+        }
+    }
+
+    #[test]
+    fn generate_title_extracts_first_text_line() {
+        let snap = snapshot_with(vec![rep(
+            "public.utf8-plain-text",
+            Some("text/plain"),
+            b"hello world",
+        )]);
+        assert_eq!(
+            CaptureClipboardUseCase::generate_title(&snap),
+            Some("hello world".to_string())
+        );
+    }
+
+    #[test]
+    fn generate_title_truncates_at_max_length_with_ellipsis() {
+        let long = "a".repeat(250);
+        let snap = snapshot_with(vec![rep(
+            "public.utf8-plain-text",
+            Some("text/plain"),
+            long.as_bytes(),
+        )]);
+        let title = CaptureClipboardUseCase::generate_title(&snap).expect("title");
+        assert!(title.ends_with("..."));
+        // 200 chars + "..."
+        assert_eq!(title.chars().count(), 203);
+    }
+
+    #[test]
+    fn generate_title_handles_multibyte_truncation_safely() {
+        // 250 个 CJK 字符 (每个 3 bytes UTF-8); 截断必须落在字符边界
+        let long: String = std::iter::repeat('中').take(250).collect();
+        let snap = snapshot_with(vec![rep(
+            "public.utf8-plain-text",
+            Some("text/plain"),
+            long.as_bytes(),
+        )]);
+        let title = CaptureClipboardUseCase::generate_title(&snap).expect("title");
+        assert!(title.ends_with("..."));
+        // 不 panic 即说明 char_indices 边界查找正确
+        assert_eq!(title.chars().count(), 203);
+    }
+
+    #[test]
+    fn generate_title_returns_none_when_no_text_representation() {
+        let snap = snapshot_with(vec![rep("image", Some("image/png"), b"\x89PNG")]);
+        assert_eq!(CaptureClipboardUseCase::generate_title(&snap), None);
+    }
+
+    #[test]
+    fn generate_title_skips_whitespace_only_text() {
+        let snap = snapshot_with(vec![rep(
+            "public.utf8-plain-text",
+            Some("text/plain"),
+            b"   \t\n  ",
+        )]);
+        assert_eq!(CaptureClipboardUseCase::generate_title(&snap), None);
+    }
+
+    #[test]
+    fn generate_title_handles_invalid_utf8_by_skipping() {
+        let snap = snapshot_with(vec![rep(
+            "public.utf8-plain-text",
+            Some("text/plain"),
+            &[0xff, 0xfe, 0xfd],
+        )]);
+        assert_eq!(CaptureClipboardUseCase::generate_title(&snap), None);
+    }
+}

@@ -12,6 +12,8 @@ mod spool_queue;
 mod spool_scanner;
 pub mod spooler_task;
 mod staged_reconciler;
+#[cfg(test)]
+mod testing;
 mod thumbnail_generator;
 
 pub use background_blob_worker::BackgroundBlobWorker;

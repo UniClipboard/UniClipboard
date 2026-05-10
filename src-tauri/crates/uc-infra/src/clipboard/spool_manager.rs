@@ -241,3 +241,109 @@ impl SpoolManager {
         Ok(expired)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::TempDir;
+
+    fn rep_id(s: &str) -> RepresentationId {
+        RepresentationId::from(s)
+    }
+
+    fn make_spool() -> (SpoolManager, TempDir) {
+        let dir = TempDir::new().expect("tempdir");
+        let spool = SpoolManager::new(dir.path(), 1024).expect("spool");
+        (spool, dir)
+    }
+
+    #[tokio::test]
+    async fn exists_returns_true_after_write() {
+        let (spool, _dir) = make_spool();
+        let id = rep_id("rep-exists-1");
+        spool.write(&id, b"hello").await.expect("write");
+
+        assert!(spool.exists(&id).await.expect("exists"));
+    }
+
+    #[tokio::test]
+    async fn exists_returns_false_when_missing() {
+        let (spool, _dir) = make_spool();
+        let id = rep_id("rep-missing");
+
+        assert!(!spool.exists(&id).await.expect("exists"));
+    }
+
+    #[tokio::test]
+    async fn exists_returns_false_after_delete() {
+        let (spool, _dir) = make_spool();
+        let id = rep_id("rep-delete");
+        spool.write(&id, b"data").await.expect("write");
+        spool.delete(&id).await.expect("delete");
+
+        assert!(!spool.exists(&id).await.expect("exists"));
+    }
+
+    #[tokio::test]
+    async fn delete_missing_is_ok() {
+        let (spool, _dir) = make_spool();
+        let id = rep_id("rep-never-existed");
+
+        spool
+            .delete(&id)
+            .await
+            .expect("delete missing should be ok");
+    }
+
+    #[tokio::test]
+    async fn write_rejects_when_size_exceeds_max_bytes() {
+        let dir = TempDir::new().expect("tempdir");
+        let spool = SpoolManager::new(dir.path(), 4).expect("spool");
+        let id = rep_id("rep-too-big");
+
+        let err = match spool.write(&id, b"oversized").await {
+            Err(e) => e,
+            Ok(_) => panic!("expected reject"),
+        };
+        assert!(err.to_string().contains("exceeds max_bytes"));
+        assert!(!spool.exists(&id).await.expect("exists"));
+    }
+
+    #[tokio::test]
+    async fn list_expired_with_zero_ttl_returns_all_written_entries() {
+        // ttl_days=0 ⇒ ttl_ms=0 ⇒ 任何已经写完的文件 (mtime < now) 都"过期"。
+        // 这样不依赖 mtime mocking 库，仍能覆盖 list_expired 主路径与
+        // SpoolJanitor 即将复用的迭代器。
+        let (spool, _dir) = make_spool();
+        spool.write(&rep_id("a"), b"1").await.expect("write a");
+        spool.write(&rep_id("b"), b"2").await.expect("write b");
+
+        // 让 mtime 与 now 拉开至少 1ms（fs mtime 解析不一定到亚毫秒）
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        let now_ms = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_millis() as i64;
+
+        let expired = spool.list_expired(now_ms, 0).await.expect("list expired");
+        assert_eq!(expired.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn list_expired_with_large_ttl_returns_nothing() {
+        let (spool, _dir) = make_spool();
+        spool.write(&rep_id("a"), b"1").await.expect("write a");
+
+        let now_ms = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_millis() as i64;
+
+        // 1000 天 TTL — 现写的文件不会过期
+        let expired = spool
+            .list_expired(now_ms, 1000)
+            .await
+            .expect("list expired");
+        assert!(expired.is_empty());
+    }
+}

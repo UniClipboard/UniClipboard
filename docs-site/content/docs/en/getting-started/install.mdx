@@ -82,35 +82,61 @@ Download the one you want from the
 
 <Tab value="Linux">
 
-The recommended path is Snap. The Snap is built with strict
-confinement on `core22` and bundles its own GTK + WebKit stack, so it
-runs the same on Ubuntu 20.04+, Debian 11+, RHEL 9, openSUSE Leap, and
-similar.
+Each release ships `.deb`, `.rpm`, and `.AppImage` artifacts for both `x86_64` and `aarch64`. Pick the channel that fits your distribution:
+
+### Fedora / RHEL / openSUSE — recommended: COPR
+
+Install via [Fedora COPR](https://copr.fedorainfracloud.org/coprs/mkdir700/) and `dnf upgrade` will track new releases automatically:
+
+```bash
+# Alpha channel (includes pre-releases, updated more often)
+sudo dnf copr enable mkdir700/uniclipboard-alpha
+sudo dnf install uniclipboard
+
+# Stable channel (final releases only)
+sudo dnf copr enable mkdir700/uniclipboard
+sudo dnf install uniclipboard
+```
+
+See the [COPR deployment notes](https://github.com/UniClipboard/UniClipboard/blob/main/docs/packaging/COPR.md) for project setup details.
+
+### Ubuntu / Debian / older distros — recommended: Snap
+
+The Snap is built with strict confinement on `core22` and bundles its own GTK + WebKit stack, so it runs the same on Ubuntu 20.04+, Debian 11+, RHEL 9, openSUSE Leap, and similar.
 
 ```bash
 sudo snap install uniclipboard
 ```
 
-Don't have `snapd`? See the
-[Snapcraft install guide](https://snapcraft.io/docs/installing-snapd)
-for your distribution.
+Don't have `snapd`? See the [Snapcraft install guide](https://snapcraft.io/docs/installing-snapd) for your distribution.
 
-Prefer not to use Snap? An AppImage is also published with each
-release. Download it from the
-[Releases](https://github.com/UniClipboard/UniClipboard/releases) page,
-mark it executable, and run it:
+### Any distro — AppImage
+
+An AppImage is also published with each release. Download it from the [Releases](https://github.com/UniClipboard/UniClipboard/releases) page, mark it executable, and run it:
 
 ```bash
-chmod +x UniClipboard-*.AppImage
-./UniClipboard-*.AppImage
+chmod +x UniClipboard_<version>_amd64.AppImage
+./UniClipboard_<version>_amd64.AppImage
+```
+
+AppImage is the only Linux format the in-app updater supports — packages installed via COPR / Snap / dpkg do not auto-update from inside the app; use your package manager instead.
+
+### One-shot install of a single .deb / .rpm
+
+Prefer not to add a repo? Download a single package from Releases:
+
+```bash
+# Debian / Ubuntu
+sudo dpkg -i uniclipboard_<version>_amd64.deb
+sudo apt-get install -f                                 # resolve missing deps if any
+
+# Fedora / RHEL / openSUSE (one-shot, no COPR)
+sudo dnf install ./UniClipboard-<version>-1.x86_64.rpm
 ```
 
 ### Headless / server install (CLI only)
 
-For servers, SSH sessions, or anything without a desktop, install just
-the `uniclip` CLI from Releases — look for the `uniclip-<version>-<arch>`
-artefact (statically linked against musl). The CLI runs the daemon
-in-process, so no GUI is required.
+For servers, SSH sessions, or anything without a desktop, install just the `uniclip` CLI from Releases — look for the `uniclip-<version>-<arch>` artefact (statically linked against musl). The CLI runs the daemon in-process, so no GUI is required.
 
 </Tab>
 

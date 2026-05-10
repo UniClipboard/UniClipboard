@@ -377,8 +377,14 @@ keyring's KEK entry will be overwritten by the next `init`.
 <Tab value="Uninstall and wipe everything">
 
 1. Quit the GUI; `uniclip stop`.
-2. Uninstall the package (Homebrew / MSI / Snap / AppImage as
-   appropriate).
+2. Uninstall the package:
+   - macOS Homebrew: `brew uninstall --cask uniclipboard && brew uninstall uniclipboard`
+   - Windows MSI: Control Panel → Programs & Features → Uninstall
+   - Linux Snap: `sudo snap remove uniclipboard`
+   - Linux COPR (dnf): `sudo dnf remove uniclipboard && sudo dnf copr disable mkdir700/uniclipboard-alpha`
+   - Linux .deb: `sudo apt remove uniclipboard`
+   - Linux .rpm (one-shot install): `sudo dnf remove uniclipboard`
+   - AppImage: delete the `.AppImage` file.
 3. Delete the data directory (paths above).
 4. **Manually** clean keyring entries:
    - macOS Keychain: search `uniclipboard`, delete entries.

@@ -76,30 +76,61 @@ Windows 提供两种形态：
 
 <Tab value="Linux">
 
-Linux 推荐使用 Snap。Snap 包基于 `core22` 严格沙箱构建，自带 GTK + WebKit 运行时，因此在 Ubuntu
-20.04+、Debian 11+、RHEL 9、openSUSE Leap 等老发行版上都能正常运行。
+每次发布都会构建 `.deb`、`.rpm` 与 `.AppImage` 三种格式，覆盖 `x86_64` 与 `aarch64`。按你的发行版挑最合适的渠道：
+
+### Fedora / RHEL / openSUSE — 推荐 COPR
+
+通过 [Fedora COPR](https://copr.fedorainfracloud.org/coprs/mkdir700/) 一键安装并自动跟随版本升级：
+
+```bash
+# Alpha 渠道（含预发布版本，更新更频繁）
+sudo dnf copr enable mkdir700/uniclipboard-alpha
+sudo dnf install uniclipboard
+
+# 正式渠道（仅稳定版）
+sudo dnf copr enable mkdir700/uniclipboard
+sudo dnf install uniclipboard
+```
+
+启用后 `sudo dnf upgrade` 会自动拉取新版本。详见 [COPR 部署手册](https://github.com/UniClipboard/UniClipboard/blob/main/docs/packaging/COPR.md)。
+
+### Ubuntu / Debian / 老发行版 — 推荐 Snap
+
+Snap 包基于 `core22` 严格沙箱构建，自带 GTK + WebKit 运行时，因此在 Ubuntu 20.04+、Debian 11+、RHEL 9、openSUSE Leap 等老发行版上都能正常运行。
 
 ```bash
 sudo snap install uniclipboard
 ```
 
-没有 `snapd`？请参考
-[Snapcraft 安装指南](https://snapcraft.io/docs/installing-snapd)
-查看你所用发行版的安装方式。
+没有 `snapd`？请参考 [Snapcraft 安装指南](https://snapcraft.io/docs/installing-snapd) 查看你所用发行版的安装方式。
 
-不想用 Snap？每个 release 也会发布 AppImage。从
-[Releases](https://github.com/UniClipboard/UniClipboard/releases)
-页面下载，赋予可执行权限即可运行：
+### 任意发行版 — AppImage
+
+每个 release 也会发布 AppImage。从 [Releases](https://github.com/UniClipboard/UniClipboard/releases) 页面下载，赋予可执行权限即可运行：
 
 ```bash
-chmod +x UniClipboard-*.AppImage
-./UniClipboard-*.AppImage
+chmod +x UniClipboard_<version>_amd64.AppImage
+./UniClipboard_<version>_amd64.AppImage
+```
+
+AppImage 是 Linux 上 App 内更新器唯一支持的自更新格式 —— 走 COPR / Snap / dpkg 安装的版本不会通过应用内更新器升级，请用对应包管理器。
+
+### 一次性手动安装单个 .deb / .rpm
+
+不想加仓库？也可以从 Releases 直接下单文件安装：
+
+```bash
+# Debian / Ubuntu
+sudo dpkg -i uniclipboard_<version>_amd64.deb
+sudo apt-get install -f                                 # 如有缺失依赖，由 apt 补齐
+
+# Fedora / RHEL / openSUSE（一次性，不加 COPR 仓库）
+sudo dnf install ./UniClipboard-<version>-1.x86_64.rpm
 ```
 
 ### 无桌面环境（仅安装 CLI）
 
-服务器、SSH 会话或任何没有桌面的环境，可以从 Releases 单独下载 `uniclip` CLI ——
-查找 `uniclip-<version>-<arch>` 产物（与 musl 静态链接）。CLI 内置守护进程，无需 GUI 即可运行。
+服务器、SSH 会话或任何没有桌面的环境，可以从 Releases 单独下载 `uniclip` CLI —— 查找 `uniclip-<version>-<arch>` 产物（与 musl 静态链接）。CLI 内置守护进程，无需 GUI 即可运行。
 
 </Tab>
 

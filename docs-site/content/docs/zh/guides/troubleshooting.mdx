@@ -289,7 +289,14 @@ rm -rf ~/.local/share/app.uniclipboard.desktop
 <Tab value="完全卸载并清干净">
 
 1. 退出 GUI，`uniclip stop`。
-2. 卸载安装包（Homebrew / MSI / Snap / AppImage 按对应方式卸）。
+2. 卸载安装包：
+   - macOS Homebrew：`brew uninstall --cask uniclipboard && brew uninstall uniclipboard`
+   - Windows MSI：控制面板 → 程序与功能 → 卸载
+   - Linux Snap：`sudo snap remove uniclipboard`
+   - Linux COPR (dnf)：`sudo dnf remove uniclipboard && sudo dnf copr disable mkdir700/uniclipboard-alpha`
+   - Linux .deb：`sudo apt remove uniclipboard`
+   - Linux .rpm（手动装的）：`sudo dnf remove uniclipboard`
+   - AppImage：直接删 `.AppImage` 文件即可。
 3. 删除数据目录（同上）。
 4. **手动** 清理系统密钥环条目：
    - macOS Keychain：搜 `uniclipboard`，删条目。

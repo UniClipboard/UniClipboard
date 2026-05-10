@@ -90,7 +90,10 @@ pub struct SearchFacadeDeps {
 
 pub struct SearchFacade {
     query_uc: SearchClipboardEntriesUseCase,
-    coordinator: Option<Arc<SearchCoordinator>>,
+    /// Phase 4 daemon-lifecycle: GUI shell 启动时为 None,daemon 启动 swap
+    /// 进 enhanced coordinator(绑 daemon search assembly),daemon 停止 swap
+    /// 回 None。GUI command (search_status / search_rebuild) 通过 facade 访问。
+    coordinator: arc_swap::ArcSwapOption<SearchCoordinator>,
 }
 
 impl SearchFacade {
@@ -101,8 +104,21 @@ impl SearchFacade {
         } = deps;
         Self {
             query_uc: SearchClipboardEntriesUseCase::from_port(search_index),
-            coordinator,
+            coordinator: arc_swap::ArcSwapOption::from(coordinator),
         }
+    }
+
+    /// 由 daemon-lifecycle 装配在 daemon 启动时调,装入绑 daemon search
+    /// assembly 的 coordinator。daemon 退出时 caller 调
+    /// [`Self::clear_coordinator`] 把字段清空。
+    pub fn set_coordinator(&self, coordinator: Arc<SearchCoordinator>) {
+        self.coordinator.store(Some(coordinator));
+    }
+
+    /// daemon 退出时清空 coordinator,后续 GUI command 拿到
+    /// `ServiceUnavailable("search coordinator unavailable")`。
+    pub fn clear_coordinator(&self) {
+        self.coordinator.store(None);
     }
 
     pub async fn query(
@@ -119,7 +135,7 @@ impl SearchFacade {
     }
 
     pub async fn status(&self) -> Result<SearchStatusView, SearchFacadeError> {
-        if let Some(coordinator) = self.coordinator.as_ref() {
+        if let Some(coordinator) = self.coordinator.load_full() {
             return coordinator.status_view().await.map_err(map_search_error);
         }
 
@@ -138,7 +154,7 @@ impl SearchFacade {
     }
 
     pub async fn request_rebuild(&self) -> Result<SearchRebuildAcceptedView, SearchFacadeError> {
-        let coordinator = self.coordinator.as_ref().ok_or_else(|| {
+        let coordinator = self.coordinator.load_full().ok_or_else(|| {
             SearchFacadeError::ServiceUnavailable("search coordinator unavailable".to_string())
         })?;
 
@@ -149,7 +165,7 @@ impl SearchFacade {
     }
 
     pub async fn rebuild_now(&self) -> Result<SearchRebuildAcceptedView, SearchFacadeError> {
-        let coordinator = self.coordinator.as_ref().ok_or_else(|| {
+        let coordinator = self.coordinator.load_full().ok_or_else(|| {
             SearchFacadeError::ServiceUnavailable("search coordinator unavailable".to_string())
         })?;
 

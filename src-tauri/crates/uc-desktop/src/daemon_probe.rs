@@ -21,6 +21,9 @@ use uc_daemon_local::health_wait::{wait_for_daemon_health, wait_for_endpoint_abs
 use uc_daemon_local::process_metadata::{read_pid_metadata, DaemonPidMetadata, DaemonProcessMode};
 use uc_daemon_local::socket::try_resolve_daemon_http_addr;
 
+use std::sync::Arc;
+
+use uc_application::facade::AppFacade;
 use uc_bootstrap::WireOverrides;
 
 use crate::daemon::run_mode::DaemonRunMode;
@@ -180,6 +183,7 @@ pub async fn bootstrap_daemon_in_process(
     incompatible_exit_timeout: Duration,
     health_check_timeout: Duration,
     health_poll_interval: Duration,
+    app_facade: Arc<AppFacade>,
     wire_overrides: WireOverrides,
 ) -> Result<DaemonConnectionInfo, DaemonBootstrapError> {
     let client = reqwest::Client::builder()
@@ -202,6 +206,7 @@ pub async fn bootstrap_daemon_in_process(
                 expected_package_version,
                 health_check_timeout,
                 health_poll_interval,
+                Arc::clone(&app_facade),
                 wire_overrides,
             )
             .await?;
@@ -223,6 +228,7 @@ pub async fn bootstrap_daemon_in_process(
                 expected_package_version,
                 health_check_timeout,
                 health_poll_interval,
+                Arc::clone(&app_facade),
                 wire_overrides,
             )
             .await?;
@@ -273,6 +279,7 @@ pub async fn reload_in_process_daemon(
     shutdown_timeout: Duration,
     health_check_timeout: Duration,
     health_poll_interval: Duration,
+    app_facade: Arc<AppFacade>,
     wire_overrides: WireOverrides,
 ) -> Result<DaemonConnectionInfo, ReloadInProcessDaemonError> {
     let old_handle = ownership
@@ -299,6 +306,7 @@ pub async fn reload_in_process_daemon(
         expected_package_version,
         health_check_timeout,
         health_poll_interval,
+        app_facade,
         wire_overrides,
     )
     .await?;
@@ -312,9 +320,10 @@ async fn start_owned_in_process(
     expected_package_version: &str,
     health_check_timeout: Duration,
     health_poll_interval: Duration,
+    app_facade: Arc<AppFacade>,
     wire_overrides: WireOverrides,
 ) -> Result<(), DaemonBootstrapError> {
-    let handle = start_in_process(DaemonRunMode::GuiInProcess, wire_overrides)
+    let handle = start_in_process(DaemonRunMode::GuiInProcess, app_facade, wire_overrides)
         .await
         .map_err(|error| {
             DaemonBootstrapError::Spawn(error.context("in-process daemon start failed"))

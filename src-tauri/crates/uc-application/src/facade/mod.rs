@@ -31,7 +31,7 @@ pub mod upgrade;
 
 pub use app_facade::{
     AppFacade, AppFacadeParts, AppPresenceEvent, AppPresenceSubscription,
-    AppPresenceSubscriptionError,
+    AppPresenceSubscriptionError, DaemonLifecycleFacades,
 };
 pub use app_paths::AppPaths;
 pub use blob_transfer::{

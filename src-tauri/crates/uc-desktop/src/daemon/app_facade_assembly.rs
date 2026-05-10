@@ -1,75 +1,65 @@
-//! daemon AppFacade 装配。
+//! daemon-lifecycle 子 facade 装配。
+//!
+//! Phase 4 重构后,进程内只有 GUI shell 启动时装的一份 [`AppFacade`]。
+//! daemon 启动时把 5 个 daemon-lifecycle 子 facade
+//! ([`DaemonLifecycleFacades`]) 一次性 swap 进 [`AppFacade`] 的对应字段;
+//! daemon 停止时清空。
+//!
+//! 不再装第二份完整 `AppFacade` —— `lifecycle` / `encryption` / `settings` /
+//! `device` / `storage` / `clipboard_history` / `search` / `clipboard_restore`
+//! 都是进程级,GUI 端启动时一次性装入,daemon 启停时不动。
 
 use std::sync::Arc;
 
-use uc_application::clipboard_write::ClipboardWriteCoordinator;
 use uc_application::deps::AppDeps;
 use uc_application::facade::{
-    AppFacade, AppPaths, BlobTransferFacade, ClipboardSyncFacade, LifecycleStatusGateway,
-    SearchCoordinator,
+    AppPaths, BlobTransferFacade, ClipboardSyncFacade, DaemonLifecycleFacades,
 };
 use uc_application::ApplyInboundClipboardUseCase;
-use uc_bootstrap::{
-    build_app_facade_from_deps, AppFacadeAssemblyOptions, ClipboardRestoreAssembly,
-    SpaceSetupAssembly,
-};
-use uc_core::clipboard::ClipboardIntegrationMode;
-use uc_core::ports::blob::BlobTransferPort;
+use uc_bootstrap::{build_mobile_sync_facade, SpaceSetupAssembly};
 
-/// daemon AppFacade 装配结果。
-pub struct DaemonAppFacadeAssembly {
-    pub app_facade: Arc<AppFacade>,
-    pub local_device_id: String,
-}
-
-/// daemon AppFacade 装配输入。
-pub struct DaemonAppFacadeAssemblyInput<'a> {
+/// 构造 daemon-lifecycle 装配输入。
+pub struct DaemonLifecycleFacadesInput<'a> {
     pub deps: &'a AppDeps,
     pub storage_paths: &'a AppPaths,
-    pub lifecycle_status: Arc<dyn LifecycleStatusGateway>,
     pub space_setup_assembly: &'a SpaceSetupAssembly,
     pub clipboard_sync: Arc<ClipboardSyncFacade>,
     pub blob_transfer: Arc<BlobTransferFacade>,
-    pub clipboard_write_coordinator: Arc<ClipboardWriteCoordinator>,
-    pub clipboard_integration_mode: ClipboardIntegrationMode,
-    pub search_coordinator: Arc<SearchCoordinator>,
-    /// daemon worker 装配过程中已构造好的 `ApplyInboundClipboardUseCase`
-    /// (带 blob materializer + host event emitter)。同一份实例在 mobile
-    /// sync facade 装配时也喂进去 —— 让 LAN 入站 PUT 路径与 P2P 入站走
-    /// 同一条 ApplyInbound 链(host event 单一源 / blob 状态共享)。
+    /// daemon worker 装配过程中已构造好的 enhanced
+    /// `ApplyInboundClipboardUseCase` (with_blob_materializer +
+    /// with_host_event_emitter)。同一份实例同时喂给 mobile_sync facade
+    /// (本字段) 与 InboundClipboardFacade (worker 装配),让 LAN PUT 路径
+    /// 与 P2P 入站走同一条 ApplyInbound 链 (host event 单一源 / blob 状态共享)。
     pub mobile_sync_apply_inbound: Arc<ApplyInboundClipboardUseCase>,
 }
 
-/// 构造 daemon 对外统一业务入口。
-pub fn build_daemon_app_facade(input: DaemonAppFacadeAssemblyInput<'_>) -> DaemonAppFacadeAssembly {
-    let blob_transfer_port: Arc<dyn BlobTransferPort> =
-        Arc::clone(&input.space_setup_assembly.blob_transfer);
-    let app_facade = build_app_facade_from_deps(
-        input.deps,
-        input.storage_paths,
-        input.lifecycle_status,
-        AppFacadeAssemblyOptions {
-            space_setup: Some(input.space_setup_assembly.facade.clone()),
-            member_roster: Some(input.space_setup_assembly.roster.clone()),
-            clipboard_sync: Some(input.clipboard_sync),
-            blob_transfer: Some(input.blob_transfer),
-            blob_transfer_port: Some(blob_transfer_port),
-            clipboard_restore: Some(ClipboardRestoreAssembly {
-                write_coordinator: input.clipboard_write_coordinator,
-                integration_mode: input.clipboard_integration_mode,
-            }),
-            search_coordinator: Some(input.search_coordinator),
-            mobile_sync_apply_inbound: Some(input.mobile_sync_apply_inbound),
-        },
-    );
+/// 构造 5 个 daemon-lifecycle 子 facade。返回的 [`DaemonLifecycleFacades`]
+/// 由 caller 通过 [`uc_application::facade::AppFacade::swap_daemon_lifecycle`]
+/// 一次性塞入进程级 [`uc_application::facade::AppFacade`]。
+pub fn build_daemon_lifecycle_facades(
+    input: DaemonLifecycleFacadesInput<'_>,
+) -> (DaemonLifecycleFacades, String) {
+    let DaemonLifecycleFacadesInput {
+        deps,
+        storage_paths,
+        space_setup_assembly,
+        clipboard_sync,
+        blob_transfer,
+        mobile_sync_apply_inbound,
+    } = input;
 
-    DaemonAppFacadeAssembly {
-        app_facade,
-        local_device_id: input
-            .deps
-            .device
-            .device_identity
-            .current_device_id()
-            .to_string(),
-    }
+    let mobile_sync =
+        build_mobile_sync_facade(deps, storage_paths, mobile_sync_apply_inbound.clone());
+
+    let local_device_id = deps.device.device_identity.current_device_id().to_string();
+
+    let facades = DaemonLifecycleFacades {
+        space_setup: Arc::clone(&space_setup_assembly.facade),
+        member_roster: Arc::clone(&space_setup_assembly.roster),
+        clipboard_sync,
+        blob_transfer,
+        mobile_sync,
+    };
+
+    (facades, local_device_id)
 }

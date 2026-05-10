@@ -234,6 +234,8 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
             // 共享同一份 —— daemon LAN listener 写入的 status 因此对 GUI in-process facade 可见。
             let endpoint_info_for_daemon =
                 Arc::clone(&app.state::<Arc<InMemoryMobileSyncEndpointInfoAdapter>>());
+            // GUI 进程级 AppFacade,daemon 启动 swap 5 个 daemon-lifecycle 子 facade。
+            let app_facade_for_daemon = Arc::clone(runtime_for_daemon.app_facade());
             tauri::async_runtime::spawn(async move {
                 match bootstrap_daemon_in_process(
                     &daemon_ownership_for_setup,
@@ -241,6 +243,7 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
                     INCOMPATIBLE_DAEMON_EXIT_TIMEOUT,
                     HEALTH_CHECK_TIMEOUT,
                     HEALTH_POLL_INTERVAL,
+                    app_facade_for_daemon,
                     WireOverrides {
                         mobile_sync_endpoint_info: Some(endpoint_info_for_daemon),
                     },

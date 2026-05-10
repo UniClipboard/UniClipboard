@@ -143,6 +143,13 @@ pub async fn restart_daemon(
         // (run.rs 通过 .manage() 注册了 DaemonOwnership / DaemonConnectionState)。
         let ownership = app.state::<DaemonOwnership>().inner().clone();
         let daemon_conn = app.state::<DaemonConnectionState>().inner().clone();
+        // 进程级 AppFacade(GUI shell 启动时装的唯一一份);daemon reload 在它上面
+        // swap 5 个 daemon-lifecycle 子 facade。
+        let app_facade = Arc::clone(
+            app.state::<Arc<crate::bootstrap::TauriAppRuntime>>()
+                .inner()
+                .app_facade(),
+        );
         // 进程级共享的 endpoint_info Arc(在 run.rs 通过 .manage() 注册);新 daemon
         // wire 时透传同一份,确保 daemon 重启后 LAN listener 写入仍然对 GUI facade 可见。
         let endpoint_info = Arc::clone(
@@ -170,6 +177,7 @@ pub async fn restart_daemon(
             DAEMON_SHUTDOWN_TIMEOUT,
             HEALTH_CHECK_TIMEOUT,
             HEALTH_POLL_INTERVAL,
+            app_facade,
             WireOverrides {
                 mobile_sync_endpoint_info: Some(endpoint_info),
             },

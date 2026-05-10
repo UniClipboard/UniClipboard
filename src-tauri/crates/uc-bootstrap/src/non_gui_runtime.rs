@@ -167,6 +167,41 @@ impl ApplyInboundWrite for NoopInboundWrite {
     }
 }
 
+/// 构造 [`MobileSyncFacade`] —— 抽出来供 daemon-lifecycle 装配复用。
+///
+/// `apply_inbound` 由调用方决定:GUI/CLI 走 fallback (NoopWrite),daemon
+/// 走 enhanced (with_blob_materializer + with_host_event_emitter)。`endpoint_info`
+/// 由 [`AppDeps`] 携带 (单例,daemon LAN listener 与 facade 共享同一份
+/// Arc),无需 caller 透传。
+pub fn build_mobile_sync_facade(
+    deps: &AppDeps,
+    storage_paths: &AppPaths,
+    apply_inbound: Arc<ApplyInboundClipboardUseCase>,
+) -> Arc<MobileSyncFacade> {
+    Arc::new(MobileSyncFacade::new(MobileSyncFacadeDeps {
+        clock: deps.system.clock.clone(),
+        // v3 SyncClipboard 兼容: 单一 minter 一次性出 (username, password,
+        // password_hash, device_id), Argon2id 作为口令 hash;无状态 ZST,
+        // 装配处直接 new 即可。
+        credentials_minter: Arc::new(OsRngCredentialsMinter),
+        password_hasher: Arc::new(Argon2idPasswordHasher),
+        device_repo: deps.mobile_sync.device_repo.clone(),
+        endpoint_info: deps.mobile_sync.endpoint_info.clone(),
+        lan_interface_probe: Arc::new(NetworkInterfaceLanProbe::new()),
+        settings: deps.settings.clone(),
+        apply_inbound,
+        incoming_buffer: Arc::new(IncomingMobileBuffer::new()),
+        file_staging: FilesystemMobileFileStaging::new(storage_paths.file_cache_dir.clone()),
+        snapshot_ports: MobileSyncSnapshotPorts {
+            entry_repo: deps.clipboard.clipboard_entry_repo.clone(),
+            selection_repo: deps.clipboard.selection_repo.clone(),
+            representation_repo: deps.clipboard.representation_repo.clone(),
+            payload_resolver: deps.clipboard.payload_resolver.clone(),
+            blob_reader: deps.storage.blob_store.clone(),
+        },
+    }))
+}
+
 /// 通用 `AppFacade` 装配选项。
 ///
 /// 不同桌面入口只在这些可选能力上有差异。共同 facade 由
@@ -232,37 +267,7 @@ pub fn build_app_facade_from_deps(
         .clone()
         .unwrap_or_else(|| build_fallback_apply_inbound(deps));
 
-    let mobile_sync_facade = Arc::new(MobileSyncFacade::new(MobileSyncFacadeDeps {
-        clock: deps.system.clock.clone(),
-        // v3 SyncClipboard 兼容: 单一 minter 一次性出 (username, password,
-        // password_hash, device_id), Argon2id 作为口令 hash;无状态 ZST,
-        // 装配处直接 new 即可。
-        credentials_minter: Arc::new(OsRngCredentialsMinter),
-        password_hasher: Arc::new(Argon2idPasswordHasher),
-        // Phase 3 子步骤 1:device_repo 走 `DieselMobileDeviceRepository`,
-        // 由 wire_dependencies 在 InfraLayer 装配时构造,跨重启 / 跨进程稳定。
-        device_repo: deps.mobile_sync.device_repo.clone(),
-        // Phase 3 子步骤 3:endpoint_info 也由 wire_dependencies 装配为单例,
-        // daemon LAN listener 启停时通过 WiredDependencies 旁路写它,这里只
-        // 取读端共享 Arc。
-        endpoint_info: deps.mobile_sync.endpoint_info.clone(),
-        lan_interface_probe: Arc::new(NetworkInterfaceLanProbe::new()),
-        settings: deps.settings.clone(),
-        apply_inbound,
-        incoming_buffer: Arc::new(IncomingMobileBuffer::new()),
-        // P5a.3.5:File 类型入站 staging adapter。复用 file_cache_dir 与
-        // P2P 入站 blob materializer 同根,两者写到不同子目录互不干扰
-        // (`mobile_inbound/` vs `iroh-blobs/`)。adapter 启动时异步清空
-        // 上次进程残留,daemon / CLI / tauri 三个入口都共享这套语义。
-        file_staging: FilesystemMobileFileStaging::new(storage_paths.file_cache_dir.clone()),
-        snapshot_ports: MobileSyncSnapshotPorts {
-            entry_repo: deps.clipboard.clipboard_entry_repo.clone(),
-            selection_repo: deps.clipboard.selection_repo.clone(),
-            representation_repo: deps.clipboard.representation_repo.clone(),
-            payload_resolver: deps.clipboard.payload_resolver.clone(),
-            blob_reader: deps.storage.blob_store.clone(),
-        },
-    }));
+    let mobile_sync_facade = build_mobile_sync_facade(deps, storage_paths, apply_inbound);
 
     let clipboard_restore = options.clipboard_restore.map(|restore| {
         Arc::new(ClipboardRestoreFacade::new(ClipboardRestoreFacadeDeps {

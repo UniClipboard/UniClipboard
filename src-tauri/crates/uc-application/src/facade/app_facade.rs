@@ -25,6 +25,7 @@
 
 use std::sync::Arc;
 
+use arc_swap::ArcSwapOption;
 use thiserror::Error;
 use tokio::sync::broadcast;
 
@@ -56,17 +57,35 @@ use uc_core::SystemClipboardSnapshot;
 ///
 /// 新增外部业务调用应优先通过本文件中的顶层方法进入。公开子字段是历史兼容
 /// 状态,后续收口 daemon / Tauri 路径时应继续减少直接访问。
+///
+/// # daemon-lifecycle 字段(可 swap)
+///
+/// 下面 5 个字段绑定 daemon-lifecycle 资源(iroh node、clipboard_sync 链、
+/// LAN PUT 入站等),进程内只有这一份 `AppFacade`,GUI shell 启动时初始为
+/// `None`,daemon 启动后由 [`Self::swap_daemon_lifecycle`] 一次性塞入,
+/// daemon 停止/重启时由 [`Self::clear_daemon_lifecycle`] 卸下。
+///
+/// - `space_setup`、`member_roster` —— iroh 网络栈相关
+/// - `clipboard_sync`、`blob_transfer` —— iroh 上的同步业务
+/// - `mobile_sync` —— 因绑 enhanced apply_inbound (带 blob_materializer +
+///   host_event_emitter) 也是 daemon-lifecycle
+///
+/// 用 [`ArcSwapOption`] 而非 `RwLock<Option<Arc<X>>>`:读路径 GUI command +
+/// daemon worker 高频访问,无锁加载远优于 RwLock。
 pub struct AppFacade {
-    pub space_setup: Option<Arc<SpaceSetupFacade>>,
-    pub member_roster: Option<Arc<MemberRosterFacade>>,
+    pub space_setup: Arc<ArcSwapOption<SpaceSetupFacade>>,
+    pub member_roster: Arc<ArcSwapOption<MemberRosterFacade>>,
     pub lifecycle: Arc<LifecycleFacade>,
     pub encryption: Arc<EncryptionFacade>,
     pub resource: Arc<ResourceFacade>,
     pub clipboard_history: Arc<ClipboardHistoryFacade>,
-    pub clipboard_sync: Option<Arc<ClipboardSyncFacade>>,
-    pub blob_transfer: Option<Arc<BlobTransferFacade>>,
+    pub clipboard_sync: Arc<ArcSwapOption<ClipboardSyncFacade>>,
+    pub blob_transfer: Arc<ArcSwapOption<BlobTransferFacade>>,
     /// CLI / 仅查询场景下 daemon/Tauri 不构造 restore facade,这里是 None。
     /// daemon API handler 取出前需做存在性检查。
+    ///
+    /// 不在 daemon-lifecycle swap 范围 —— 它绑 ClipboardWriteCoordinator
+    /// (进程级) 与 integration_mode (静态),GUI shell 启动期一次性装入。
     pub clipboard_restore: Option<Arc<ClipboardRestoreFacade>>,
     pub search: Arc<SearchFacade>,
     pub settings: Arc<SettingsFacade>,
@@ -76,10 +95,26 @@ pub struct AppFacade {
     /// 一份；启动期 host 调一次 `upgrade.detect_on_startup()` 决定是否触发
     /// 重新配对引导等动作。
     pub upgrade: Arc<UpgradeFacade>,
-    /// 移动端同步 facade（v1：iOS Shortcut）。`None` 表示该装配场景没有
-    /// 接入移动端 adapter（典型：纯单元测试 / 暂未接入桌面 daemon）；
-    /// 调用方拿到 `None` 应直接给用户报"功能未启用"。
-    pub mobile_sync: Option<Arc<MobileSyncFacade>>,
+    /// 移动端同步 facade（v1：iOS Shortcut）。
+    ///
+    /// daemon-lifecycle 字段:GUI shell 启动期为 `None`,daemon 启动时由
+    /// [`Self::swap_daemon_lifecycle`] 装入 enhanced 版本(绑 daemon worker
+    /// apply_inbound),daemon 停止时清空。调用方拿到 `None` 应直接给用户
+    /// 报"功能未启用 / daemon 未就绪"。
+    pub mobile_sync: Arc<ArcSwapOption<MobileSyncFacade>>,
+}
+
+/// 一次性把 daemon-lifecycle 资源塞进 / 卸出 [`AppFacade`] 的 5 个 swap 字段。
+///
+/// 由 daemon-lifecycle 装配 (`uc-desktop::daemon::start_daemon_lifecycle`)
+/// 在每次 daemon start/stop 触发,GUI 端 / standalone CLI 都共用这一条
+/// path —— `AppFacade` 进程内只有一份,5 个字段统一被替换。
+pub struct DaemonLifecycleFacades {
+    pub space_setup: Arc<SpaceSetupFacade>,
+    pub member_roster: Arc<MemberRosterFacade>,
+    pub clipboard_sync: Arc<ClipboardSyncFacade>,
+    pub blob_transfer: Arc<BlobTransferFacade>,
+    pub mobile_sync: Arc<MobileSyncFacade>,
 }
 
 impl AppFacade {
@@ -89,22 +124,47 @@ impl AppFacade {
     /// hands them here — the aggregator never sees raw ports.
     pub fn new(parts: AppFacadeParts) -> Self {
         Self {
-            space_setup: parts.space_setup,
-            member_roster: parts.member_roster,
+            space_setup: Arc::new(ArcSwapOption::from(parts.space_setup)),
+            member_roster: Arc::new(ArcSwapOption::from(parts.member_roster)),
             lifecycle: parts.lifecycle,
             encryption: parts.encryption,
             resource: parts.resource,
             clipboard_history: parts.clipboard_history,
-            clipboard_sync: parts.clipboard_sync,
-            blob_transfer: parts.blob_transfer,
+            clipboard_sync: Arc::new(ArcSwapOption::from(parts.clipboard_sync)),
+            blob_transfer: Arc::new(ArcSwapOption::from(parts.blob_transfer)),
             clipboard_restore: parts.clipboard_restore,
             search: parts.search,
             settings: parts.settings,
             device: parts.device,
             storage: parts.storage,
             upgrade: parts.upgrade,
-            mobile_sync: parts.mobile_sync,
+            mobile_sync: Arc::new(ArcSwapOption::from(parts.mobile_sync)),
         }
+    }
+
+    /// 把 daemon 启动时构造好的 5 份 lifecycle facade 一次性 swap 进 AppFacade。
+    ///
+    /// 同一份 AppFacade 整个进程生命周期共享;GUI command 与 daemon worker
+    /// 都从这一份读 —— LAN listener 写入的 endpoint_info、daemon 端 dispatch
+    /// 的事件,GUI 都能立刻读到,不再依赖跨多份 deps 共享 Arc。
+    pub fn swap_daemon_lifecycle(&self, facades: DaemonLifecycleFacades) {
+        self.space_setup.store(Some(facades.space_setup));
+        self.member_roster.store(Some(facades.member_roster));
+        self.clipboard_sync.store(Some(facades.clipboard_sync));
+        self.blob_transfer.store(Some(facades.blob_transfer));
+        self.mobile_sync.store(Some(facades.mobile_sync));
+    }
+
+    /// daemon 停止时卸下 5 个 lifecycle facade 字段。
+    ///
+    /// 卸下后 GUI command / 残留 task 拿到 `None`,应当返回"daemon 未就绪"
+    /// 之类的错误,不应继续走旧的 lifecycle 资源。
+    pub fn clear_daemon_lifecycle(&self) {
+        self.space_setup.store(None);
+        self.member_roster.store(None);
+        self.clipboard_sync.store(None);
+        self.blob_transfer.store(None);
+        self.mobile_sync.store(None);
     }
 
     /// A1:初始化空间。外部业务入口从 `AppFacade` 进入,不直接拿 `SpaceSetupFacade`。
@@ -113,7 +173,7 @@ impl AppFacade {
         input: InitializeSpaceInput,
     ) -> Result<InitializeSpaceResult, InitializeSpaceError> {
         self.space_setup
-            .as_ref()
+            .load_full()
             .ok_or_else(|| {
                 InitializeSpaceError::Internal("space setup facade unavailable".to_string())
             })?
@@ -124,7 +184,7 @@ impl AppFacade {
     /// 尝试静默恢复空间会话。
     pub async fn try_resume_session(&self) -> Result<bool, TryResumeSessionError> {
         self.space_setup
-            .as_ref()
+            .load_full()
             .ok_or_else(|| {
                 TryResumeSessionError::Internal("space setup facade unavailable".to_string())
             })?
@@ -137,7 +197,7 @@ impl AppFacade {
         &self,
     ) -> Result<EnsureReachableAllReport, EnsureReachableAllError> {
         self.space_setup
-            .as_ref()
+            .load_full()
             .ok_or(EnsureReachableAllError::Repository(
                 "space setup facade unavailable".to_string(),
             ))?
@@ -152,7 +212,7 @@ impl AppFacade {
         &self,
     ) -> Result<Vec<DeviceId>, EnsureReachableAllError> {
         self.space_setup
-            .as_ref()
+            .load_full()
             .ok_or(EnsureReachableAllError::Repository(
                 "space setup facade unavailable".to_string(),
             ))?
@@ -168,7 +228,7 @@ impl AppFacade {
         device: &DeviceId,
     ) -> Result<ReachabilityState, PresenceError> {
         self.space_setup
-            .as_ref()
+            .load_full()
             .ok_or_else(|| PresenceError::Internal("space setup facade unavailable".to_string()))?
             .ensure_reachable_one(device)
             .await
@@ -179,7 +239,7 @@ impl AppFacade {
         &self,
     ) -> Result<IssuePairingInvitationResult, IssuePairingInvitationError> {
         self.space_setup
-            .as_ref()
+            .load_full()
             .ok_or_else(|| {
                 IssuePairingInvitationError::Internal("space setup facade unavailable".to_string())
             })?
@@ -193,7 +253,7 @@ impl AppFacade {
         input: RedeemPairingInvitationInput,
     ) -> Result<RedeemPairingInvitationResult, RedeemPairingInvitationError> {
         self.space_setup
-            .as_ref()
+            .load_full()
             .ok_or_else(|| {
                 RedeemPairingInvitationError::Internal("space setup facade unavailable".to_string())
             })?
@@ -208,7 +268,7 @@ impl AppFacade {
         input: SwitchSpaceInput,
     ) -> Result<SwitchSpaceResult, SwitchSpaceError> {
         self.space_setup
-            .as_ref()
+            .load_full()
             .ok_or_else(|| {
                 SwitchSpaceError::Internal("space setup facade unavailable".to_string())
             })?
@@ -221,7 +281,7 @@ impl AppFacade {
         &self,
     ) -> Result<MigrationProgress, QueryMigrationProgressError> {
         self.space_setup
-            .as_ref()
+            .load_full()
             .ok_or_else(|| {
                 QueryMigrationProgressError::Internal("space setup facade unavailable".to_string())
             })?
@@ -234,7 +294,7 @@ impl AppFacade {
         &self,
     ) -> Result<broadcast::Receiver<PairingOutcome>, IssuePairingInvitationError> {
         self.space_setup
-            .as_ref()
+            .load_full()
             .map(|facade| facade.subscribe_pairing_completion())
             .ok_or_else(|| {
                 IssuePairingInvitationError::Internal("space setup facade unavailable".to_string())
@@ -244,7 +304,7 @@ impl AppFacade {
     /// 列出对外成员摘要。外部调用只经过 `AppFacade`,不直接依赖 roster 子 facade。
     pub async fn list_members(&self) -> Result<Vec<MemberSummary>, RosterError> {
         self.member_roster
-            .as_ref()
+            .load_full()
             .ok_or(RosterError::Unavailable)?
             .list_members()
             .await
@@ -255,7 +315,7 @@ impl AppFacade {
         &self,
     ) -> Result<Vec<crate::facade::roster::RosterEntry>, RosterError> {
         self.member_roster
-            .as_ref()
+            .load_full()
             .ok_or(RosterError::Unavailable)?
             .list_with_presence()
             .await
@@ -268,7 +328,7 @@ impl AppFacade {
         origin: ClipboardChangeOrigin,
     ) -> Result<crate::facade::DispatchEntryOutcome, ClipboardSyncError> {
         self.clipboard_sync
-            .as_ref()
+            .load_full()
             .ok_or_else(|| {
                 ClipboardSyncError::Repository("clipboard sync facade unavailable".to_string())
             })?
@@ -281,7 +341,7 @@ impl AppFacade {
         &self,
     ) -> Result<broadcast::Receiver<InboundNotice>, ClipboardSyncError> {
         self.clipboard_sync
-            .as_ref()
+            .load_full()
             .map(|facade| facade.subscribe_inbound_notices())
             .ok_or_else(|| {
                 ClipboardSyncError::Repository("clipboard sync facade unavailable".to_string())
@@ -294,7 +354,7 @@ impl AppFacade {
         command: PublishBlobCommand,
     ) -> Result<PublishBlobResult, BlobTransferError> {
         self.blob_transfer
-            .as_ref()
+            .load_full()
             .ok_or_else(|| BlobTransferError::Publish("blob facade unavailable".to_string()))?
             .publish_blob(command)
             .await
@@ -306,7 +366,7 @@ impl AppFacade {
         command: FetchBlobCommand,
     ) -> Result<FetchBlobResult, BlobTransferError> {
         self.blob_transfer
-            .as_ref()
+            .load_full()
             .ok_or_else(|| BlobTransferError::Fetch("blob facade unavailable".to_string()))?
             .fetch_blob(command)
             .await
@@ -370,7 +430,7 @@ impl AppFacade {
     /// 列出对外 peer 快照。外部调用只经过 `AppFacade`,不直接依赖 roster 子 facade。
     pub async fn list_peer_snapshots(&self) -> Result<Vec<PeerSnapshotView>, RosterError> {
         self.member_roster
-            .as_ref()
+            .load_full()
             .ok_or(RosterError::Unavailable)?
             .list_peer_snapshots()
             .await
@@ -380,7 +440,7 @@ impl AppFacade {
     pub fn subscribe_peer_presence_events(&self) -> Result<AppPresenceSubscription, RosterError> {
         let inner = self
             .member_roster
-            .as_ref()
+            .load_full()
             .ok_or(RosterError::Unavailable)?
             .subscribe_presence_events();
         Ok(AppPresenceSubscription { inner })

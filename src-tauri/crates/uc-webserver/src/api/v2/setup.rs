@@ -54,7 +54,7 @@ fn require_facade(state: &DaemonApiState) -> Result<std::sync::Arc<SpaceSetupFac
     state
         .app_facade_or_error()?
         .space_setup
-        .clone()
+        .load_full()
         .ok_or_else(|| ApiError::service_unavailable("space setup facade not assembled"))
 }
 

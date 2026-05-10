@@ -493,7 +493,7 @@ fn mobile_sync_facade(
     runtime
         .app_facade()
         .mobile_sync
-        .clone()
+        .load_full()
         .ok_or(MobileSyncError::FacadeUnavailable)
 }
 

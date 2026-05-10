@@ -112,7 +112,7 @@ GUI 端创建一份 Arc → 同时传给 GUI wire 和 daemon wire。
 
 ### Phase 4 — daemon-lifecycle 与进程级资源分层（架构整治）
 
-**Status**: ⏸ pending — **本次会话只识别问题，不动手**
+**Status**: 🔄 in_progress — 2026-05-10 二轮会话内推进，激进方案
 
 **问题陈述**: 见 `findings.md` §3「真正的架构错位」与 §4「WireOverrides 是
 症状而非病因」。简单说：
@@ -121,6 +121,20 @@ GUI 端创建一份 Arc → 同时传给 GUI wire 和 daemon wire。
 - daemon "重启" 当前重做了整套 wire（sqlite pool、所有 repos、secure
   storage），这是不必要的浪费 + 错位
 - `WireOverrides` 透传链是这个错位的副产物，不是病根
+
+**实施方案选定（用户决策）**: 激进方案 —— 把 AppFacade 中的 6 个
+daemon-lifecycle 字段从 `Option<Arc<X>>` 改为 `Arc<arc_swap::ArcSwapOption<X>>`，
+daemon 启停时 swap。进程内 **唯一一份** AppFacade，GUI 与 daemon 共用。
+
+涉及字段：
+- `space_setup` / `member_roster` —— iroh 网络栈相关
+- `clipboard_sync` / `blob_transfer` —— iroh 上的同步业务
+- `mobile_sync` —— 因绑 enhanced apply_inbound（带 blob_materializer +
+  host_event_emitter）也是 daemon-lifecycle
+- `clipboard_restore` 暂保持 `Option<Arc<>>`（进程级，启动设一次不变）
+
+`search` 字段是 `Arc<SearchFacade>` 必填，内部 coordinator 已经是 Option，
+SearchFacade 内部 swap，不动 AppFacade 层。
 
 **目标分层**:
 

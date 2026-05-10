@@ -1011,3 +1011,43 @@ src-tauri/crates/uc-observability/src/analytics/sinks/stdout.rs           lifecy
 ### Next Action
 
 7b-3：`build_analytics_sink` release 路径 = `resolve_posthog_key(runtime_env, option_env!) → Some(key) → Gated(PosthogSink::new(key)) | None → info("PostHog 未配置，产品 telemetry 关闭") + Gated(NoopAnalyticsSink)`；4 个 `resolve_posthog_key_*` 单测。
+
+## Session 2026-05-09（深夜续 2）— Slice 7b-3 落地
+
+**触发**：用户 `commit and continue`，承接 7b-2。先 commit `feat(observability): add PosthogSink for product analytics capture` + `docs(planning): commit Slice 7b planning + 7b-1/7b-2 progress` 两个 commit，然后推 7b-3。
+
+### 文件改动（3 个文件）
+
+```
+src-tauri/crates/uc-observability/src/analytics/mod.rs                    +PosthogSink re-export
+src-tauri/crates/uc-bootstrap/src/analytics.rs                            build_analytics_sink release 路径接 PosthogSink + resolve_posthog_key 私有 fn + 5 单测
+```
+
+### 关键实现取舍
+
+| 项 | 实现 |
+|---|---|
+| `build_analytics_sink` 签名 | 保持 sync（与规划裁决一致；自写 reqwest client 同步构造，传染面 0，assembly.rs 调用点零改动） |
+| 三级回退顺序 | runtime env > `option_env!` 编译期 > `None`；空字符串等价"未设置"（CI secret 未注入时 `${{ secrets.X }}` 渲染为空，不能让空 api_key 调 PostHog 触发 401） |
+| 缺 key 处置 | release path → `tracing::info!`（非 warn）+ `Gated(NoopAnalyticsSink)`；缺 key 是合法配置（dev 自部署 / PR review build 都不应注入生产 key），不应让 daemon / GUI 启动失败也不应吓 ops |
+| dev 路径 | `cfg!(debug_assertions)` 守住，仍 `Gated(StdoutSink)`，与 7a 落地保持一致 |
+| `resolve_posthog_key` 抽私有 fn | `std::env::var` + `option_env!` 是 macro 语境，行内会让单测无法穿透；抽 fn 后 5 个 case 全可纯函数测试 |
+
+### 测试结果
+
+| crate | passed | 增量 |
+|---|---|---|
+| uc-bootstrap (lib) | **24** | +5（resolve_posthog_key 4 个 happy path + 1 个空字符串等价） |
+| uc-observability (lib) | 63 | 0（仅加 re-export，无新行为） |
+| `cargo check --workspace` | ✅ | 11 crate 全过 |
+
+### 跳过的事项
+
+- **不写 `build_analytics_sink` 集成测试**：要构造完整 release 路径需要把 `cfg!(debug_assertions)` 翻成 `false`，testharness 不友好；release 路径分支已被 5 个 `resolve_posthog_key_*` + 1 个 dev `Gated(StdoutSink)` 既有 7a 测试覆盖完整
+- **不修改 `option_env!` 调用为 wrapper**：直接 inline 在 `build_analytics_sink`，把行为隔离在 `resolve_posthog_key` fn——单测穿不透 macro 但能穿透 fn 边界
+- **不在 7b-3 加 sentry 同款 init 时 redact 处理**：PostHog client 不像 sentry SDK 接前后端 hook；自写 reqwest 不发 properties 中没有的字段，IP 字段从源头不上传。schema doc §6 已守住
+
+### Next Action
+
+7b-4：`.github/workflows/{build,alpha-build}.yml` 加 `POSTHOG_PROJECT_KEY: ${{ secrets.POSTHOG_PROJECT_KEY }}` env block；schema doc §10 / CONTRIBUTING.md 补 PostHog key 注入文档；通知用户开 PostHog 账号 + 把 key 放 GitHub secrets；按 task_plan.md 7b-4 步骤跑真实 dev 验证（onboarding → 控制台看 app_first_open / setup_started / pairing_* 序列；toggle settings → noop fallback 验证；unset env + 重启 → 静默验证）。
+

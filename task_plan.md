@@ -17,7 +17,7 @@ Schema 与隐私契约定稿在：`docs/architecture/telemetry-events.md`。
 
 Slice 8 全部完成（8a / 8b / 8b' / 8c-1 / 8c-2 / 8d）。outbound funnel + reliability 全链路通。
 
-**进行中：Slice 7b（PostHog Cloud 接入）** —— 7b-1 / 7b-2 已落地（依赖 + sink 骨架 + capture 实 wire + wiremock 烟测，63 lib tests 全绿）。下一步推进 7b-3（key 注入 + bootstrap factory + 缺 key 降级）。7b-4 仍等 CI secret + 项目 key 外部就绪。
+**进行中：Slice 7b（PostHog Cloud 接入）** —— 7b-1 / 7b-2 / 7b-3 已落地（依赖 + sink 骨架 + capture 实 wire + key 注入降级，uc-observability 63 + uc-bootstrap 24 lib tests 全绿）。仅剩 7b-4：CI secret 注入 + docs + 真实 dev 验证，等 PostHog account + project key 外部就绪。
 
 Slice 9 / 10 待前端工作 / 真实数据积累。
 
@@ -149,17 +149,13 @@ Slice 9 / 10 待前端工作 / 真实数据积累。
 - **Status:** complete
 
 #### Slice 7b-3: key 注入 + bootstrap factory + 降级路径
-- [ ] `uc-bootstrap/src/analytics.rs::build_analytics_sink` 保持 sync（自写 client 不需要 async 构造）：
-  - dev (`cfg!(debug_assertions)`) 路径不变，仍返回 `Gated(StdoutSink)`
-  - release 路径：
-    1. `let runtime_key = std::env::var("POSTHOG_PROJECT_KEY").ok().filter(|s| !s.is_empty());`
-    2. `let compile_time_key = option_env!("POSTHOG_PROJECT_KEY").filter(|s| !s.is_empty());`
-    3. `let key = runtime_key.or_else(|| compile_time_key.map(String::from));`
-    4. `match key { None => info 一次"PostHog 未配置，产品 telemetry 关闭" + Gated(NoopAnalyticsSink); Some(k) => Gated(PosthogSink::new(k)) }`
-- [ ] **传染面 = 0**：与 SDK 方案不同，自写 client 构造同步，不需要 `build_analytics_sink` 转 async；assembly.rs:947 调用点零改动
-- [ ] 抽取 `resolve_posthog_key(runtime: Option<String>, compile: Option<&'static str>) -> Option<String>` 私有 fn 便于单测
-- [ ] 单元测试 `resolve_posthog_key_*`：4 case（runtime_only / compile_only / both → runtime 胜出 / none → None）
-- **Status:** pending（待 7b-1 / 7b-2）
+- [x] `uc-bootstrap/src/analytics.rs::build_analytics_sink` 保持 sync（自写 client 不需要 async 构造）—— assembly.rs 调用点零改动
+- [x] release 路径：runtime env > `option_env!` > `info!("POSTHOG_PROJECT_KEY 未配置...") + Gated(NoopAnalyticsSink)`；拿到 key → `Gated(PosthogSink::new(key))`
+- [x] dev (`cfg!(debug_assertions)`) 路径不变，仍 `Gated(StdoutSink)`
+- [x] 抽出 `resolve_posthog_key(runtime: Option<String>, compile: Option<&'static str>) -> Option<String>` 私有 fn
+- [x] 5 个 `resolve_posthog_key_*` 单测：runtime_only / compile_only / both（runtime 胜出）/ none / 空字符串等价于"未设置"
+- [x] `uc-observability/src/analytics/mod.rs` re-export `PosthogSink`，给 uc-bootstrap 使用
+- **Status:** complete
 
 #### Slice 7b-4: CI secret 注入 + 文档 + 真实 dev 验证
 - [ ] `.github/workflows/build.yml`：在 `tauri-action` 与 `bun run tauri build` 两段 env 块加 `POSTHOG_PROJECT_KEY: ${{ secrets.POSTHOG_PROJECT_KEY }}`（与 `SENTRY_DSN` 同位）

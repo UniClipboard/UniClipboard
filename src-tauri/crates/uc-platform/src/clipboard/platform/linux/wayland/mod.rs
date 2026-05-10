@@ -24,9 +24,11 @@
 //! [`super::super::build_event_loop`] falls back to the legacy `clipboard_rs`
 //! adapter.
 
+mod clipboard;
 mod event_loop;
 mod snapshot;
 mod state;
 mod transfer;
 
+pub(super) use clipboard::WaylandClipboard;
 pub(super) use event_loop::WaylandEventLoop;

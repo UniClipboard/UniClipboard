@@ -32,13 +32,36 @@ use crate::clipboard::event_loop::PlatformClipboardEventLoop;
 
 pub enum LinuxClipboard {
     Legacy(LegacyLinuxClipboard),
-    // Wayland(wayland::WaylandClipboard) — added in Phase 2b.
+    Wayland(wayland::WaylandClipboard),
 }
 
 impl LinuxClipboard {
     pub fn new() -> Result<Self> {
-        // Phase 2a: read/write always go through the legacy `clipboard_rs`
-        // backend. Native Wayland reads/writes land in Phase 2b.
+        // Wayland session AND compositor advertises wlr-data-control →
+        // native Wayland clipboard. Otherwise fall back to the legacy
+        // clipboard_rs/X11 path. Phase 3 swaps the X11 path to native
+        // x11rb.
+        if is_wayland_session() {
+            match wayland::WaylandClipboard::try_new() {
+                Ok(Some(wl)) => {
+                    info!("Linux clipboard: native Wayland (wlr-data-control)");
+                    return Ok(Self::Wayland(wl));
+                }
+                Ok(None) => {
+                    debug!(
+                        "Linux clipboard: Wayland session but no data-control protocol; \
+                         falling back to clipboard_rs adapter"
+                    );
+                }
+                Err(e) => {
+                    warn!(
+                        error = %e,
+                        "Linux clipboard: Wayland clipboard probe failed; falling back"
+                    );
+                }
+            }
+        }
+        info!("Linux clipboard: clipboard_rs (X11) adapter");
         Ok(Self::Legacy(LegacyLinuxClipboard::new()?))
     }
 }
@@ -48,12 +71,14 @@ impl SystemClipboardPort for LinuxClipboard {
     fn read_snapshot(&self) -> Result<SystemClipboardSnapshot> {
         match self {
             Self::Legacy(c) => c.read_snapshot(),
+            Self::Wayland(c) => c.read_snapshot(),
         }
     }
 
     fn write_snapshot(&self, snapshot: SystemClipboardSnapshot) -> Result<()> {
         match self {
             Self::Legacy(c) => c.write_snapshot(snapshot),
+            Self::Wayland(c) => c.write_snapshot(snapshot),
         }
     }
 }

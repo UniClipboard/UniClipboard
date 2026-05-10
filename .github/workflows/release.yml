@@ -23,6 +23,7 @@ on:
           - 'macos-aarch64'
           - 'macos-x86_64'
           - 'ubuntu-22.04'
+          - 'ubuntu-22.04-arm'
           - 'windows-latest'
         default: 'all'
       bump:
@@ -235,6 +236,7 @@ jobs:
             -name "*.dmg" -o \
             -name "*.app.tar.gz" -o \
             -name "*.deb" -o \
+            -name "*.rpm" -o \
             -name "*.AppImage" -o \
             -name "*.msi" -o \
             -name "*.exe" -o \

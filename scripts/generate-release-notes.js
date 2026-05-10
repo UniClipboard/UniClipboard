@@ -97,16 +97,28 @@ function findFirstFile(artifactsDir, predicate) {
 }
 
 function buildInstallerTable({ artifactsDir, baseUrl }) {
-  const macosArm64 = findFirstFile(
+  // Tauri v2 Linux 产物命名约定:
+  //   .deb       — `<lower-product>_<version>_<amd64|arm64>.deb`        (Debian arch)
+  //   .rpm       — `<ProductName>-<version>-1.<x86_64|aarch64>.rpm`     (RPM arch)
+  //   .AppImage  — `<lower-product>_<version>_<amd64|aarch64>.AppImage` (混用)
+  // 用 isArm 判别同时覆盖 arm64/aarch64 两种写法。
+  const isArm = file => /aarch64|arm64/.test(file)
+  const isX64 = file => /x86_64|x64|amd64/.test(file)
+
+  const macosArm64 = findFirstFile(artifactsDir, file => file.endsWith('.dmg') && isArm(file))
+  const macosX64 = findFirstFile(artifactsDir, file => file.endsWith('.dmg') && isX64(file))
+  const linuxDebX64 = findFirstFile(artifactsDir, file => file.endsWith('.deb') && isX64(file))
+  const linuxDebArm = findFirstFile(artifactsDir, file => file.endsWith('.deb') && isArm(file))
+  const linuxRpmX64 = findFirstFile(artifactsDir, file => file.endsWith('.rpm') && isX64(file))
+  const linuxRpmArm = findFirstFile(artifactsDir, file => file.endsWith('.rpm') && isArm(file))
+  const linuxAppImageX64 = findFirstFile(
     artifactsDir,
-    file => file.endsWith('.dmg') && (file.includes('aarch64') || file.includes('arm64'))
+    file => file.endsWith('.AppImage') && isX64(file)
   )
-  const macosX64 = findFirstFile(
+  const linuxAppImageArm = findFirstFile(
     artifactsDir,
-    file => file.endsWith('.dmg') && (file.includes('x64') || file.includes('x86_64'))
+    file => file.endsWith('.AppImage') && isArm(file)
   )
-  const linuxDeb = findFirstFile(artifactsDir, file => file.endsWith('.deb'))
-  const linuxAppImage = findFirstFile(artifactsDir, file => file.endsWith('.AppImage'))
   const windowsExe = findFirstFile(artifactsDir, file => file.endsWith('.exe'))
 
   const makeRow = (platform, arch, fileName) =>
@@ -115,8 +127,12 @@ function buildInstallerTable({ artifactsDir, baseUrl }) {
   const rows = []
   if (macosArm64) rows.push(makeRow('macOS', 'Apple Silicon (M1/M2/M3)', macosArm64))
   if (macosX64) rows.push(makeRow('macOS', 'Intel', macosX64))
-  if (linuxDeb) rows.push(makeRow('Linux', 'Debian/Ubuntu (.deb)', linuxDeb))
-  if (linuxAppImage) rows.push(makeRow('Linux', 'AppImage', linuxAppImage))
+  if (linuxDebX64) rows.push(makeRow('Linux', 'Debian/Ubuntu x86_64 (.deb)', linuxDebX64))
+  if (linuxDebArm) rows.push(makeRow('Linux', 'Debian/Ubuntu aarch64 (.deb)', linuxDebArm))
+  if (linuxRpmX64) rows.push(makeRow('Linux', 'Fedora/RHEL x86_64 (.rpm)', linuxRpmX64))
+  if (linuxRpmArm) rows.push(makeRow('Linux', 'Fedora/RHEL aarch64 (.rpm)', linuxRpmArm))
+  if (linuxAppImageX64) rows.push(makeRow('Linux', 'AppImage x86_64', linuxAppImageX64))
+  if (linuxAppImageArm) rows.push(makeRow('Linux', 'AppImage aarch64', linuxAppImageArm))
   if (windowsExe) rows.push(makeRow('Windows', 'x86_64', windowsExe))
 
   if (rows.length === 0) {

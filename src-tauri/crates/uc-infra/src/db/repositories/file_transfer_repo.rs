@@ -1,5 +1,6 @@
 use async_trait::async_trait;
 use diesel::prelude::*;
+use diesel::upsert::excluded;
 use tracing::debug_span;
 
 use crate::db::models::{FileTransferRow, NewFileTransferRow};
@@ -85,6 +86,46 @@ impl<E: DbExecutor> FileTransferRepositoryPort for DieselFileTransferRepository<
                         .values(row)
                         .execute(conn)?;
                 }
+                Ok(())
+            })
+        })
+    }
+
+    async fn upsert_pending_transfer(
+        &self,
+        transfer: &PendingInboundTransfer,
+    ) -> anyhow::Result<()> {
+        let span = debug_span!(
+            "infra.sqlite.upsert_pending_transfer",
+            transfer_id = %transfer.transfer_id
+        );
+        let row = NewFileTransferRow {
+            transfer_id: transfer.transfer_id.clone(),
+            entry_id: transfer.entry_id.clone(),
+            filename: transfer.filename.clone(),
+            file_size: None,
+            content_hash: None,
+            status: TrackedFileTransferStatus::Pending.as_str().to_string(),
+            source_device: transfer.origin_device_id.clone(),
+            cached_path: Some(transfer.cached_path.clone()),
+            failure_reason: None,
+            created_at_ms: transfer.created_at_ms,
+            updated_at_ms: transfer.created_at_ms,
+        };
+
+        span.in_scope(|| {
+            self.executor.run(move |conn| {
+                diesel::insert_into(file_transfer::table)
+                    .values(&row)
+                    .on_conflict(file_transfer::transfer_id)
+                    .do_update()
+                    .set((
+                        file_transfer::entry_id.eq(excluded(file_transfer::entry_id)),
+                        file_transfer::filename.eq(excluded(file_transfer::filename)),
+                        file_transfer::source_device.eq(excluded(file_transfer::source_device)),
+                        file_transfer::cached_path.eq(excluded(file_transfer::cached_path)),
+                    ))
+                    .execute(conn)?;
                 Ok(())
             })
         })

@@ -13,20 +13,21 @@
 //! | [`FileTransferFacade::fail`] | `FailTransferUseCase` | 标记传输失败，落 `Failed` 事件 |
 //! | [`FileTransferFacade::cancel`] | `CancelTransferUseCase` | 取消传输，落 `Cancelled` 事件 |
 //! | [`FileTransferFacade::link_transfer_to_entry`] | `FileTransferRepositoryPort::link_transfer_to_entry` | 把 projection 行重新关联到另一个 `entry_id`（`now_ms` 由内部 clock 提供） |
+//! | [`FileTransferFacade::seed_receiver_context`] | `FileTransferRepositoryPort::upsert_pending_transfer` | 在 receiver-side projection 表里 upsert 一条 `pending` 行（接收方本地上下文，不进 domain event 总线） |
 //!
 //! ## 设计取舍
 //!
 //! - 5 个 lifecycle 动作各自有完整事件历史校验（见 `timeline::TransferTimeline`）；
 //!   facade 不再做额外校验，直接转发 use case。
-//! - `link_transfer_to_entry` 走的是 receiver-side projection 端口而不是
-//!   domain 事件总线 —— 它修改的是「哪条 entry 拥有这个 transfer」的本地
-//!   投影关系，不属于 transfer 本身的状态转移，没有对应的 domain event。
-//! - `seed_receiver_context` 的转发暂未引入（见 task plan Phase 2.1b），
-//!   需要先在 `FileTransferRepositoryPort` 上加一个对应的 upsert 方法。
+//! - `link_transfer_to_entry` / `seed_receiver_context` 走的是 receiver-side
+//!   projection 端口而不是 domain 事件总线 —— 它们修改的是 receiver 本地
+//!   投影状态（哪条 entry 拥有这个 transfer / 一条 pending 行先存在），
+//!   不属于 transfer 本身的状态转移，没有对应的 domain event。
 
 use std::sync::Arc;
 
 use uc_core::file_transfer::{FileTransferEventPublisherPort, FileTransferEventStorePort};
+use uc_core::ports::file_transfer_repository::PendingInboundTransfer;
 use uc_core::ports::{ClockPort, FileTransferRepositoryPort};
 use uc_core::FileTransferEvent;
 
@@ -152,6 +153,25 @@ impl FileTransferFacade {
         let now_ms = self.clock.now_ms();
         self.repo
             .link_transfer_to_entry(&input.transfer_id, &input.entry_id, now_ms)
+            .await
+            .map_err(|err| FileTransferApplicationError::Repository(err.to_string()))
+    }
+
+    /// 在 receiver-side projection 表里 upsert 一条 `pending` 行。
+    ///
+    /// 用于：接收方在拿到要传输的元数据但 transfer 真正开始（`Started`
+    /// 事件）之前，把 transfer_id → entry_id / filename / cached_path 的
+    /// 关系先落到本地 projection；之后 `apply_event` 触发的状态转移就能
+    /// 找到对应的 row，前端 hydrate / dashboard 列表也能立即看到这条
+    /// transfer 的占位。
+    ///
+    /// 幂等：用同一个 `transfer.transfer_id` 多次调用等价于一次。
+    pub async fn seed_receiver_context(
+        &self,
+        transfer: PendingInboundTransfer,
+    ) -> Result<(), FileTransferApplicationError> {
+        self.repo
+            .upsert_pending_transfer(&transfer)
             .await
             .map_err(|err| FileTransferApplicationError::Repository(err.to_string()))
     }

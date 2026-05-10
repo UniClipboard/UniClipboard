@@ -115,6 +115,21 @@ pub trait FileTransferRepositoryPort: Send + Sync {
         transfers: &[PendingInboundTransfer],
     ) -> anyhow::Result<()>;
 
+    /// Upsert a single pending transfer record.
+    ///
+    /// If no row exists for `transfer.transfer_id`, a fresh `pending` row
+    /// is inserted with `created_at_ms == updated_at_ms == transfer.created_at_ms`.
+    /// If a row already exists, `entry_id`, `filename`, `origin_device_id`,
+    /// and `cached_path` are overwritten with the supplied values; status,
+    /// timestamps, file_size and content_hash are left untouched.
+    ///
+    /// Idempotent — calling it twice with the same input is equivalent to
+    /// calling it once.
+    async fn upsert_pending_transfer(
+        &self,
+        transfer: &PendingInboundTransfer,
+    ) -> anyhow::Result<()>;
+
     /// Backfill announce metadata (file_size, content_hash) when available later.
     async fn backfill_announce_metadata(
         &self,
@@ -209,6 +224,9 @@ pub struct NoopFileTransferRepositoryPort;
 #[async_trait::async_trait]
 impl FileTransferRepositoryPort for NoopFileTransferRepositoryPort {
     async fn insert_pending_transfers(&self, _: &[PendingInboundTransfer]) -> anyhow::Result<()> {
+        Ok(())
+    }
+    async fn upsert_pending_transfer(&self, _: &PendingInboundTransfer) -> anyhow::Result<()> {
         Ok(())
     }
     async fn backfill_announce_metadata(&self, _: &str, _: i64, _: &str) -> anyhow::Result<()> {

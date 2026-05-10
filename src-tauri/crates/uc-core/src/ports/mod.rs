@@ -27,6 +27,7 @@ pub mod connection_channel;
 pub mod device_identity;
 pub mod errors;
 pub mod file_transfer_repository;
+pub mod first_sync_state;
 mod hash;
 pub mod local_identity;
 pub mod mobile_sync;
@@ -45,6 +46,7 @@ pub use app_version::{AppVersionStateError, AppVersionStatePort};
 pub use cache_fs::{CacheFsPort, DirEntry as CacheFsDirEntry};
 pub use clipboard_event::*;
 pub use clock::*;
+pub use first_sync_state::{FirstSyncStateError, FirstSyncStatePort};
 pub use hash::*;
 pub use timer::TimerPort;
 

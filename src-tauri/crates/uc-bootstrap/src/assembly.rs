@@ -68,8 +68,8 @@ use uc_infra::security::{
 };
 use uc_infra::settings::repository::FileSettingsRepository;
 use uc_infra::{
-    FileAppVersionStateRepository, FileMigrationStateRepository, FileSetupStatusRepository,
-    SystemClock,
+    FileAppVersionStateRepository, FileFirstSyncStateRepository, FileMigrationStateRepository,
+    FileSetupStatusRepository, SystemClock,
 };
 use uc_platform::app_dirs::DirsAppDirsAdapter;
 use uc_platform::clipboard::{LocalClipboard, NoopSystemClipboard};
@@ -235,6 +235,11 @@ struct InfraLayer {
     // 升级游标（"上次运行版本"）。落点 = app_data_root/upgrade-cursor.json，
     // 与 vault/keyring/settings.json 同级，profile 隔离由调用方上层保证。
     app_version_state: Arc<dyn AppVersionStatePort>,
+
+    // 首次同步事件去重 flag。落点 = app_data_root/first-sync-state.json，
+    // 与 upgrade-cursor.json 同级；schema 三 flag 一文件，port impl 内部
+    // tokio::sync::Mutex 串行 read-check-write 保证 fan-out race 安全。
+    first_sync_state: Arc<dyn FirstSyncStatePort>,
 
     // System services
     clock: Arc<dyn ClockPort>,
@@ -410,6 +415,13 @@ fn create_infra_layer(
         FileAppVersionStateRepository::with_defaults(app_data_root.clone()),
     );
 
+    // 首次同步事件去重 flag——独立小文件 first-sync-state.json，与升级游标同级。
+    // 三 flag（attempted / succeeded / file_succeeded）合一，schema_version=1，
+    // tempfile + rename 原子化；fan-out race 防护由 port impl 的 Mutex 守护。
+    let first_sync_state: Arc<dyn FirstSyncStatePort> = Arc::new(
+        FileFirstSyncStateRepository::with_defaults(app_data_root.clone()),
+    );
+
     // Switch-space 4 阶段迁移的状态持久化点；与 setup_status 同目录。
     let migration_state: Arc<dyn uc_core::ports::setup::MigrationStatePort> = Arc::new(
         FileMigrationStateRepository::with_defaults(vault_path.clone()),
@@ -461,6 +473,7 @@ fn create_infra_layer(
         settings_repo,
         setup_status,
         app_version_state,
+        first_sync_state,
         clock,
         hash,
         file_transfer_repo,
@@ -908,6 +921,7 @@ pub fn wire_dependencies(config: &AppConfig) -> WiringResult<WiredDependencies> 
         },
         setup_status: infra.setup_status,
         app_version_state: infra.app_version_state,
+        first_sync_state: infra.first_sync_state,
         storage: StoragePorts {
             blob_store: platform.blob_store,
             blob_writer: platform.blob_writer,

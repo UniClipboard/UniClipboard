@@ -52,8 +52,9 @@ use uc_core::ports::pairing::PairingSessionPort;
 use uc_core::ports::security::TransferCipherPort;
 use uc_core::ports::space::{ProofPort, SpaceAccessPort};
 use uc_core::ports::{
-    ClipboardDispatchPort, ClipboardReceiverPort, ClockPort, DeviceIdentityPort, LocalIdentityPort,
-    PresencePort, SecureStorageError, SecureStoragePort, SettingsPort, SetupStatusPort,
+    ClipboardDispatchPort, ClipboardReceiverPort, ClockPort, DeviceIdentityPort,
+    FirstSyncStateError, FirstSyncStatePort, LocalIdentityPort, PresencePort, SecureStorageError,
+    SecureStoragePort, SettingsPort, SetupStatusPort,
 };
 use uc_core::settings::model::Settings;
 use uc_core::setup::SetupStatus;
@@ -71,6 +72,22 @@ use uc_infra::security::{
     DefaultCurrentProfile, DefaultSpaceAccessAdapter, InMemorySession, KeyMaterialStore,
     Sha256IdentityFingerprintFactory,
 };
+
+/// Slice 8c-2 · e2e 不依赖磁盘 first-sync 状态——所有 `mark_*` 直接返回
+/// `Ok(false)`，dispatch use case 不会 fire 任何 `first_*` 事件。
+struct NoopFirstSyncState;
+#[async_trait::async_trait]
+impl FirstSyncStatePort for NoopFirstSyncState {
+    async fn mark_first_sync_attempted(&self) -> Result<bool, FirstSyncStateError> {
+        Ok(false)
+    }
+    async fn mark_first_sync_succeeded(&self) -> Result<bool, FirstSyncStateError> {
+        Ok(false)
+    }
+    async fn mark_first_file_sync_succeeded(&self) -> Result<bool, FirstSyncStateError> {
+        Ok(false)
+    }
+}
 
 // ─── in-memory fakes (duplicated from slice2_phase1_presence_e2e.rs) ────────
 
@@ -467,6 +484,9 @@ async fn build_side(name: &'static str, rendezvous_base_url: String) -> Side {
         settings: settings_for_clipboard,
         clock: Arc::new(SystemClock),
         analytics: Arc::new(uc_observability::analytics::NoopAnalyticsSink),
+        // Slice 8c-2 · e2e 不验证 first-sync 漏斗事件——给 noop fake 让
+        // mark_* 永远返回 Ok(false)，避免依赖 file-system 路径状态。
+        first_sync_state: Arc::new(NoopFirstSyncState),
     }));
     let ingest_handle = clipboard_sync.spawn_ingest_loop();
 

@@ -399,6 +399,7 @@ pub async fn build_space_setup_assembly(
         settings: Arc::clone(&deps.settings),
         clock: Arc::clone(&deps.system.clock),
         analytics: Arc::clone(&deps.analytics),
+        first_sync_state: Arc::clone(&deps.first_sync_state),
     }));
     let ingest_handle = clipboard_sync.spawn_ingest_loop();
     let blob = Arc::new(BlobTransferFacade::new(BlobTransferDeps {

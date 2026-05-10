@@ -1,0 +1,158 @@
+//! [`FileTransferFacade`] —— 文件传输 lifecycle 应用层入口。
+//!
+//! ## 暴露的动作
+//!
+//! 每个公开方法对应一个 lifecycle use case 或 receiver-side projection
+//! 维护操作：
+//!
+//! | 方法 | 对应 use case / 端口 | 语义 |
+//! |---|---|---|
+//! | [`FileTransferFacade::start`] | `StartTransferUseCase` | 启动一个新传输，落 `Started` 事件 |
+//! | [`FileTransferFacade::report_progress`] | `ReportTransferProgressUseCase` | 上报进度，落 `Progress` 事件 |
+//! | [`FileTransferFacade::complete`] | `CompleteTransferUseCase` | 标记传输完成，落 `Completed` 事件 |
+//! | [`FileTransferFacade::fail`] | `FailTransferUseCase` | 标记传输失败，落 `Failed` 事件 |
+//! | [`FileTransferFacade::cancel`] | `CancelTransferUseCase` | 取消传输，落 `Cancelled` 事件 |
+//! | [`FileTransferFacade::link_transfer_to_entry`] | `FileTransferRepositoryPort::link_transfer_to_entry` | 把 projection 行重新关联到另一个 `entry_id`（`now_ms` 由内部 clock 提供） |
+//!
+//! ## 设计取舍
+//!
+//! - 5 个 lifecycle 动作各自有完整事件历史校验（见 `timeline::TransferTimeline`）；
+//!   facade 不再做额外校验，直接转发 use case。
+//! - `link_transfer_to_entry` 走的是 receiver-side projection 端口而不是
+//!   domain 事件总线 —— 它修改的是「哪条 entry 拥有这个 transfer」的本地
+//!   投影关系，不属于 transfer 本身的状态转移，没有对应的 domain event。
+//! - `seed_receiver_context` 的转发暂未引入（见 task plan Phase 2.1b），
+//!   需要先在 `FileTransferRepositoryPort` 上加一个对应的 upsert 方法。
+
+use std::sync::Arc;
+
+use uc_core::file_transfer::{FileTransferEventPublisherPort, FileTransferEventStorePort};
+use uc_core::ports::{ClockPort, FileTransferRepositoryPort};
+use uc_core::FileTransferEvent;
+
+use crate::file_transfer::{
+    CancelTransfer, CancelTransferUseCase, CompleteTransfer, CompleteTransferUseCase, FailTransfer,
+    FailTransferUseCase, FileTransferApplicationError, ReportTransferProgress,
+    ReportTransferProgressUseCase, StartTransfer, StartTransferUseCase,
+};
+
+/// Re-associate a transfer projection row with a different `entry_id`.
+///
+/// 应用层输入：把 receiver-side `file_transfer` 表里的 transfer 行从
+/// 旧的 `entry_id` 改挂到新的 `entry_id`。`now_ms` 由 facade 内部
+/// `ClockPort` 提供，不暴露给调用方。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LinkTransferToEntry {
+    pub transfer_id: String,
+    pub entry_id: String,
+}
+
+/// 构造 [`FileTransferFacade`] 所需的依赖集合。
+///
+/// 由 bootstrap 在装配期填充：5 个 lifecycle use case 共享同一对
+/// `store` + `publisher`；`repo` 用于 receiver-side projection 维护
+/// 操作；`clock` 给 projection 写入打时间戳。
+pub struct FileTransferFacadeDeps {
+    pub store: Arc<dyn FileTransferEventStorePort>,
+    pub publisher: Arc<dyn FileTransferEventPublisherPort>,
+    pub repo: Arc<dyn FileTransferRepositoryPort>,
+    pub clock: Arc<dyn ClockPort>,
+}
+
+/// 文件传输 lifecycle 应用层入口。
+///
+/// 包装 5 个 lifecycle use case + receiver-side projection 维护操作，
+/// 让多条 inbound 路径能用同一组动作产出一致的事件流（domain timeline +
+/// host event）。
+pub struct FileTransferFacade {
+    start_uc: Arc<StartTransferUseCase>,
+    report_progress_uc: Arc<ReportTransferProgressUseCase>,
+    complete_uc: Arc<CompleteTransferUseCase>,
+    fail_uc: Arc<FailTransferUseCase>,
+    cancel_uc: Arc<CancelTransferUseCase>,
+    repo: Arc<dyn FileTransferRepositoryPort>,
+    clock: Arc<dyn ClockPort>,
+}
+
+impl FileTransferFacade {
+    pub fn new(deps: FileTransferFacadeDeps) -> Self {
+        let start_uc = Arc::new(StartTransferUseCase::new(
+            Arc::clone(&deps.store),
+            Arc::clone(&deps.publisher),
+        ));
+        let report_progress_uc = Arc::new(ReportTransferProgressUseCase::new(
+            Arc::clone(&deps.store),
+            Arc::clone(&deps.publisher),
+        ));
+        let complete_uc = Arc::new(CompleteTransferUseCase::new(
+            Arc::clone(&deps.store),
+            Arc::clone(&deps.publisher),
+        ));
+        let fail_uc = Arc::new(FailTransferUseCase::new(
+            Arc::clone(&deps.store),
+            Arc::clone(&deps.publisher),
+        ));
+        let cancel_uc = Arc::new(CancelTransferUseCase::new(deps.store, deps.publisher));
+
+        Self {
+            start_uc,
+            report_progress_uc,
+            complete_uc,
+            fail_uc,
+            cancel_uc,
+            repo: deps.repo,
+            clock: deps.clock,
+        }
+    }
+
+    pub async fn start(
+        &self,
+        input: StartTransfer,
+    ) -> Result<FileTransferEvent, FileTransferApplicationError> {
+        self.start_uc.execute(input).await
+    }
+
+    pub async fn report_progress(
+        &self,
+        input: ReportTransferProgress,
+    ) -> Result<FileTransferEvent, FileTransferApplicationError> {
+        self.report_progress_uc.execute(input).await
+    }
+
+    pub async fn complete(
+        &self,
+        input: CompleteTransfer,
+    ) -> Result<FileTransferEvent, FileTransferApplicationError> {
+        self.complete_uc.execute(input).await
+    }
+
+    pub async fn fail(
+        &self,
+        input: FailTransfer,
+    ) -> Result<FileTransferEvent, FileTransferApplicationError> {
+        self.fail_uc.execute(input).await
+    }
+
+    pub async fn cancel(
+        &self,
+        input: CancelTransfer,
+    ) -> Result<FileTransferEvent, FileTransferApplicationError> {
+        self.cancel_uc.execute(input).await
+    }
+
+    /// 把一条 transfer 重新关联到指定 `entry_id`。
+    ///
+    /// 返回 `true` 表示 receiver-side projection 表里有匹配行被更新；
+    /// 返回 `false` 表示 `transfer_id` 还没被 seed —— 调用方自己决定
+    /// 是当作错误，还是先 seed 再 link。
+    pub async fn link_transfer_to_entry(
+        &self,
+        input: LinkTransferToEntry,
+    ) -> Result<bool, FileTransferApplicationError> {
+        let now_ms = self.clock.now_ms();
+        self.repo
+            .link_transfer_to_entry(&input.transfer_id, &input.entry_id, now_ms)
+            .await
+            .map_err(|err| FileTransferApplicationError::Repository(err.to_string()))
+    }
+}

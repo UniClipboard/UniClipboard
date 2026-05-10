@@ -17,6 +17,7 @@ pub mod clipboard_outbound;
 pub mod clipboard_restore;
 pub mod device;
 pub mod encryption;
+pub mod file_transfer;
 pub mod host_event;
 pub mod lifecycle;
 pub mod mobile_sync;
@@ -73,6 +74,11 @@ pub use clipboard_restore::{
 pub use device::{DeviceFacade, DeviceFacadeError, LocalDeviceInfoView};
 pub use encryption::{
     EncryptionFacade, EncryptionFacadeDeps, EncryptionFacadeError, EncryptionStateView,
+};
+pub use file_transfer::{
+    CancelTransfer, CompleteTransfer, FailTransfer, FileTransferApplicationError,
+    FileTransferFacade, FileTransferFacadeDeps, LinkTransferToEntry, ReportTransferProgress,
+    StartTransfer,
 };
 pub use host_event::{
     ClipboardHostEvent, ClipboardOriginKind, EmitError, FileTransferHostEventPublisher, HostEvent,

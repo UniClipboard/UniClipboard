@@ -62,10 +62,26 @@ Keychain / Windows Credential Manager / Linux Secret Service). See
 
 Yes. **Settings → Network → LAN-only mode** disables the encrypted
 relay fallback (`allow_relay_fallback = false` under the hood). With
-it on, only direct (LAN / IPv6 / hole-punched) paths are tried —
-peers that can only be reached through the relay become unreachable.
+it on, steady-state sync only goes through mDNS LAN discovery and
+direct (LAN / IPv6) paths:
+
+- never connects to any iroh relay (`RelayMode::Disabled`);
+- never publishes or resolves NodeId via the n0 public DNS
+  (`dns.iroh.link` — pkarr publisher and DNS lookup are cleared);
+- even if a peer's stored address still carries a relay URL, the
+  outbound dial strips it, so traffic **won't** be relayed via the
+  peer's relay either.
+
+Effect: peers are only reachable when they are on the same subnet
+**and** mDNS is reachable; already-paired devices on different
+networks become unreachable — that is the intended LAN-only contract.
+
 The change requires a daemon restart to apply, and the tray icon
 reflects the LAN-only state.
+
+**Note**: first-time pairing still goes through the public
+rendezvous (`rendezvous.uniclipboard.app`) to exchange NodeIds, so
+finish pairing in the default mode first, then enable LAN-only.
 
 If you only want to make the **current** session direct, put both
 devices on a network where they can reach each other (same Wi-Fi,

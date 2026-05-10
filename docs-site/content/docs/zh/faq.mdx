@@ -39,9 +39,22 @@ description: 隐私、部署模型、多设备多空间、数据与升级 ——
 ### 我能完全禁用中继吗？
 
 可以。**设置 → 网络 → 仅局域网模式（LAN-only mode）** 会关掉加密中继
-fallback（底层即 `allow_relay_fallback = false`）。打开后只走直连
-（LAN / IPv6 / NAT 打洞）路径，那些只能经中继触达的对端会变得不可达。
+fallback（底层即 `allow_relay_fallback = false`）。打开后稳态同步只走
+mDNS 局域网发现 + 直连（LAN / IPv6）路径：
+
+- 不再连任何 iroh relay 节点（`RelayMode::Disabled`）；
+- 不再向 n0 公共 DNS（`dns.iroh.link`）发布或解析 NodeId（清掉 pkarr
+  publisher + DNS lookup）；
+- 即使对端在配对时存过 relay url，本端 dial 时也会剥掉，**不会**经
+  对方的 relay 中转。
+
+效果：只能在同子网且 mDNS 可达时找到对端；跨网段已配对设备会变得
+不可达 —— 这是 LAN-only 的设计意图。
+
 此开关变更需要重启 daemon 生效，托盘图标也会反映 LAN-only 状态。
+
+**注意**：首次配对仍走公网 rendezvous（`rendezvous.uniclipboard.app`）
+交换 NodeId，请先在默认模式完成配对，再开 LAN-only。
 
 如果只想让 **当下这次** 走直连，把两台设备放到能互通的同一网络
 （同 Wi-Fi、IPv6 全程可达、或共享 VPN），不用动全局开关。

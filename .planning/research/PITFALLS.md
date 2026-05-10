@@ -8,7 +8,7 @@
 
 ## 里程碑特有 pitfalls 摘要
 
-本里程碑的所有失败模式可以归纳为**两条主因**，建议在 review 时把这两条贴在脑门上：
+本里程碑的所有失败模式可以归纳为 **两条主因**，建议在 review 时把这两条贴在脑门上：
 
 ### 主因 A：反向命名导致的「语义颠倒」
 
@@ -26,7 +26,7 @@ UI 显示 **"LAN-only Mode"**（开 = 限制为局域网），后端字段 `netw
 
 落地建议：
 
-- 后端 `network` 模块**禁止**对外暴露任何"立即生效"的 API；任何调用方传"是否需要重启"应统一返回 `RestartRequired`
+- 后端 `network` 模块 **禁止** 对外暴露任何"立即生效"的 API；任何调用方传"是否需要重启"应统一返回 `RestartRequired`
 - 设置写入路径在 commit 后必须立刻发出 `NetworkRestartRequired` 事件，UI 据此显示"待重启生效"视觉锁定（见 Pitfall 10）
 - 任何尝试调 `endpoint.set_relay_mode(...)` / 重建 endpoint 的 PR 应该被拒绝（除非以独立 phase 立项做"运行时热切换"，而本里程碑明确不做）
 
@@ -44,9 +44,9 @@ UI 显示 **"LAN-only Mode"**（开 = 限制为局域网），后端字段 `netw
 
 **How to avoid:**
 
-- **强制集中转换点**：`uc-bootstrap` 中只在**唯一一处**做 `allow_relay_fallback → disable_relays` 的取反，这个函数必须命名为 `relay_policy_to_iroh_config()`（带语义）而不是 `to_config()`。任何其他地方碰这两个字段都视为越界。
+- **强制集中转换点**：`uc-bootstrap` 中只在 **唯一一处** 做 `allow_relay_fallback → disable_relays` 的取反，这个函数必须命名为 `relay_policy_to_iroh_config()`（带语义）而不是 `to_config()`。任何其他地方碰这两个字段都视为越界。
 - **双向断言测试**：`uc-bootstrap` 必须有形如 `assert_eq!(false, to_config(true).disable_relays)` 的 truth-table 测试，覆盖 `(true, false), (false, true)` 两组组合。
-- **DTO 层不允许重命名**：`uc-daemon-contract` 中 settings DTO 的字段名必须**完全等于** core 字段 `allow_relay_fallback`，前端用 `allowRelayFallback`（自动驼峰），UI 文案的"LAN-only" 只在 i18n key 中出现。
+- **DTO 层不允许重命名**：`uc-daemon-contract` 中 settings DTO 的字段名必须 **完全等于** core 字段 `allow_relay_fallback`，前端用 `allowRelayFallback`（自动驼峰），UI 文案的"LAN-only" 只在 i18n key 中出现。
 - **IPC 不暴露反向变体**：禁止前端 store 内部维护一个 `lan_only` 镜像状态再来回反转。状态应统一是 `allowRelayFallback`，UI 组件读这个值决定 toggle 视觉态。
 
 **Warning signs:**
@@ -75,9 +75,9 @@ UI 显示 **"LAN-only Mode"**（开 = 限制为局域网），后端字段 `netw
 
 **How to avoid:**
 
-- `NetworkSettings` **不允许** `#[derive(Default)]`，必须**手写** `impl Default for NetworkSettings { fn default() -> Self { Self { allow_relay_fallback: true } } }`，并且字面量 `true` 旁边附三行注释说明：`// 默认 true = 允许 fallback。改成 false 会让所有跨网段老用户突然离线，属于 breaking change，禁止改动。`
+- `NetworkSettings` **不允许** `#[derive(Default)]`，必须 **手写** `impl Default for NetworkSettings { fn default() -> Self { Self { allow_relay_fallback: true } } }`，并且字面量 `true` 旁边附三行注释说明：`// 默认 true = 允许 fallback。改成 false 会让所有跨网段老用户突然离线，属于 breaking change，禁止改动。`
 - **migration 测试**：`uc-core/tests/settings_migration_v0_6_to_v0_7.rs`（或对应位置）必须有一个老 settings JSON（缺 `network` 字段）反序列化后断言 `settings.network.allow_relay_fallback == true`。
-- **schema_version 不动**：本里程碑加字段但**不**升 `CURRENT_SCHEMA_VERSION` —— `serde(default)` 已经覆盖向后兼容，bumping schema version 反而会触发不必要的 migration codepath。如果有人提议升 version，让他先解释为什么 default 不够。
+- **schema_version 不动**：本里程碑加字段但 **不** 升 `CURRENT_SCHEMA_VERSION` —— `serde(default)` 已经覆盖向后兼容，bumping schema version 反而会触发不必要的 migration codepath。如果有人提议升 version，让他先解释为什么 default 不够。
 - **changelog 双语条目**：里程碑发布说明里中英文都要明确"默认值不变，老用户行为完全一致"，给 support 同学留一个挡箭牌。
 
 **Warning signs:**
@@ -97,9 +97,9 @@ UI 显示 **"LAN-only Mode"**（开 = 限制为局域网），后端字段 `netw
 **What goes wrong:**
 开发者读到"切换 LAN-only Mode 后弹重启提示"会觉得这是低端的妥协方案，就尝试"小成本支持立即生效"。最常见的几种半成品：
 
-1. settings 写入后**只**调 `endpoint.close()` + 重新 bind，但忘了 `Router` 上 `install_pairing` / `install_clipboard` 等所有 ALPN handler 都已与旧 endpoint 绑定，新 endpoint 上没有任何接收方
+1. settings 写入后 **只** 调 `endpoint.close()` + 重新 bind，但忘了 `Router` 上 `install_pairing` / `install_clipboard` 等所有 ALPN handler 都已与旧 endpoint 绑定，新 endpoint 上没有任何接收方
 2. 把 `IrohNodeConfig` clone 一份改字段，再去 set 进 `IrohNode`，但 `IrohNode` 内部的 `Arc<Endpoint>` 已经被 dispatch / receiver / blob adapter 拷了多份，改不动了
-3. 写入 settings、刷新设备列表 UI 上的 "channel" 指示器，但**没**重建 endpoint —— 看上去 LAN-only "立刻生效"了，实际流量仍走 relay，UI 完全说谎
+3. 写入 settings、刷新设备列表 UI 上的 "channel" 指示器，但 **没** 重建 endpoint —— 看上去 LAN-only "立刻生效"了，实际流量仍走 relay，UI 完全说谎
 
 **Why it happens:**
 
@@ -111,7 +111,7 @@ UI 显示 **"LAN-only Mode"**（开 = 限制为局域网），后端字段 `netw
 **How to avoid:**
 
 - **写入路径返回 `RestartRequired` 信号**：`UpdateNetworkSettings` use case 的返回值必须包含一个 `restart_required: bool` 字段（即便目前永远是 true），让调用方显式承担"还没真正生效"的事实
-- **禁止 endpoint 重建代码**：本里程碑严禁出现 `endpoint.close().await` + `IrohNodeBuilder::bind` 在同一个进程里跑第二次。`IrohNode` 的 lifecycle 仍由 `uc-bootstrap` 单点拥有，进程内重启路径**不存在**
+- **禁止 endpoint 重建代码**：本里程碑严禁出现 `endpoint.close().await` + `IrohNodeBuilder::bind` 在同一个进程里跑第二次。`IrohNode` 的 lifecycle 仍由 `uc-bootstrap` 单点拥有，进程内重启路径 **不存在**
 - **运行时 invariant 测试**：在 `uc-bootstrap` 增加 `assert!()`：进程启动后只能 `bind` 一次（用 `OnceCell` 强制）
 - **UI 视觉锁定**：toggle 切换后立即把开关变成"已切换、待重启生效"的灰态（见 Pitfall 10），物理上消除"用户怀疑没生效再切回去"的循环
 - **PR 模板里加复选框**：`[ ] 我没有尝试在运行时重建 iroh endpoint`
@@ -142,14 +142,14 @@ UI 显示 **"LAN-only Mode"**（开 = 限制为局域网），后端字段 `netw
 **Why it happens:**
 
 - `PresenceEvent` 当前只有 online/offline/unknown 三态（presence.rs:24-28），明确说没有 `Connecting` / `Degraded`，新增 channel 维度需要扩展事件 schema 或新增 port
-- iroh 的 magicsock 路径选择是底层动作，从 `Endpoint` API 上**没有现成的"当前用的哪条 path"查询**（`node.rs:172-199` 的 `log_publish_addrs` 是输出端候选地址，不是入站对端实际使用路径）
+- iroh 的 magicsock 路径选择是底层动作，从 `Endpoint` API 上 **没有现成的"当前用的哪条 path"查询**（`node.rs:172-199` 的 `log_publish_addrs` 是输出端候选地址，不是入站对端实际使用路径）
 - `tokio::broadcast` 的 lag-drop 行为在 happy path 测试里看不到，只有在 UI 长时间后台切回时才暴露
 - 开发者在 UI 上加一个"channel" 字段最简单的实现是"只在第一次连接时记一次"，这就是缓存陈旧 trap 的成因
 
 **How to avoid:**
 
 - **通道判定单一真相源**：通道值由 **infra 层的 `ConnectionChannelPort`**（新增 port）单点产出，不允许 application 层根据 `peer_addr` 自己推断"是不是 LAN IP"（IP 段判断会被 Tailscale / Clash TUN 误导，参考 `node.rs:300-313` 已有的 `is_virtual_nic_ip` filter）。
-- **事件兜底为 polling**：UI 同时订阅事件流和**间隔轮询**（例如 5s 一次 `current_channel(device_id)`），事件用于即时更新，轮询用于消除 lagging drop。这个兼容策略已经在 explore 阶段被认可（参考 deferred 列表里"事件驱动"是 NEXT，意味着当前还在 polling baseline）。
+- **事件兜底为 polling**：UI 同时订阅事件流和 **间隔轮询**（例如 5s 一次 `current_channel(device_id)`），事件用于即时更新，轮询用于消除 lagging drop。这个兼容策略已经在 explore 阶段被认可（参考 deferred 列表里"事件驱动"是 NEXT，意味着当前还在 polling baseline）。
 - **"未知" 是合法状态**：`ChannelKind::Unknown` 必须存在并且 UI 必须展示（例如灰色"-"或 spinner）。任何代码不允许把 `Unknown` 默认显示为 "LAN" 或 "Relay" 的某一种。
 - **整数事件序号**：`ChannelEvent { device_id, kind, seq }` 加单调递增 seq，UI 收到旧 seq 直接丢弃，避免事件乱序导致通道跳变。
 - **明确语义边界文档**：在 i18n string 里清楚定义：
@@ -178,16 +178,16 @@ UI 显示 **"LAN-only Mode"**（开 = 限制为局域网），后端字段 `netw
 用户在 UI 上看到"LAN-only Mode"，开启后产生的合理预期是"我所有的网络流量都不出局域网"。但实际上：
 
 1. **首次配对必须经 `rendezvous.uniclipboard.app`**（公网 HTTP），这是 explore 阶段已经确认接受的限制（PROJECT.md:30）
-2. **OTLP 遥测**默认开启 + 默认指向外网 endpoint（`uc-core/src/settings/model.rs:22-26 default_telemetry_enabled = true`）
+2. **OTLP 遥测** 默认开启 + 默认指向外网 endpoint（`uc-core/src/settings/model.rs:22-26 default_telemetry_enabled = true`）
 3. **iroh `presets::N0`** 内部仍会去 pkarr DHT 做 NodeId 解析，即便 relay 关闭，pkarr lookup 包仍走 UDP 到 n0 的服务器
 4. **更新检查**（`auto_check_update`）默认开启，定期请求 GitHub releases API
 
-如果 UI 把"LAN-only"暗示成"完全离线"或"流量不出局域网"，那就是虚假宣传——一旦被技术博客抓包做对比，口碑炸。这种炸法是**不可挽回**的：用户对开源加密产品的信任锚点就是"代码不撒谎"，一次违背就永久失去这部分用户。
+如果 UI 把"LAN-only"暗示成"完全离线"或"流量不出局域网"，那就是虚假宣传——一旦被技术博客抓包做对比，口碑炸。这种炸法是 **不可挽回** 的：用户对开源加密产品的信任锚点就是"代码不撒谎"，一次违背就永久失去这部分用户。
 
 **Why it happens:**
 
 - "LAN-only Mode" 是营销最优解（直接回应 B 站用户原话），但它的字面含义比真实行为强
-- 开发者实现"流量不走 relay" 的功能时，往往不会主动审计**其他**外网请求（pkarr / rendezvous / OTLP / update check），因为这些不在 iroh 配置范围内
+- 开发者实现"流量不走 relay" 的功能时，往往不会主动审计 **其他** 外网请求（pkarr / rendezvous / OTLP / update check），因为这些不在 iroh 配置范围内
 - explore 决策接受"首次配对仍需联网"，但这个决策的传达只在 `.context/attachments/Summary` 里，前端 UI 文案设计阶段未必看到
 
 **How to avoid:**
@@ -197,9 +197,9 @@ UI 显示 **"LAN-only Mode"**（开 = 限制为局域网），后端字段 `netw
   2. 已配对设备的同步流量不走中继
   3. 局域网发现使用本地 mDNS（不出网）
   4. （如果遥测仍开）应用诊断遥测仍可能上报，要单独关
-- **文档独立 section**：用户文档加 "What 'LAN-only Mode' means and doesn't mean"，逐条列出**仍然会走外网的请求**和**它们的目的**。这是产品诚信的绝对底线。
+- **文档独立 section**：用户文档加 "What 'LAN-only Mode' means and doesn't mean"，逐条列出 **仍然会走外网的请求** 和 **它们的目的**。这是产品诚信的绝对底线。
 - **审计清单作为 phase deliverable**：Phase 5（文档）必须以"已确认本里程碑边界文档列出了所有外网请求"作为 done criteria。审计内容包括 `pkarr`、`rendezvous`、OTLP、auto-update、telemetry。
-- **i18n key 命名约束**：英文文案统一用 "LAN-only Mode (Limit Sync to Local Network)"，避免裸用 "LAN-only"——副标题承担降噪责任。中文："限制同步流量在局域网内"。**禁止**使用"完全离线"、"绝对私有"、"不联网"这种绝对化措辞。
+- **i18n key 命名约束**：英文文案统一用 "LAN-only Mode (Limit Sync to Local Network)"，避免裸用 "LAN-only"——副标题承担降噪责任。中文："限制同步流量在局域网内"。**禁止** 使用"完全离线"、"绝对私有"、"不联网"这种绝对化措辞。
 - **changelog 同样诚实**：发布说明的功能点必须包含一句"本功能不影响首次配对、应用更新检查、遥测的网络行为"。
 
 **Warning signs:**
@@ -213,14 +213,20 @@ UI 显示 **"LAN-only Mode"**（开 = 限制为局域网），后端字段 `netw
 **Phase to address:**
 **Phase 4（重启提示 UX）+ Phase 5（onboarding tip / 文档）** —— UX phase 负责 toggle 旁的 info；文档 phase 负责长版边界说明。两者必须同步发版，缺一即口碑炸。
 
+**2026-05-10 update — LAN-only 收紧到稳态全程仅 mDNS：**
+原文第 3 条"`presets::N0` 内部仍会去 pkarr DHT" 已不再准确。`uc-infra/src/network/iroh/node.rs::IrohNodeBuilder::bind` 在 `disable_relays = true` 路径下追加：
+1. `clear_address_lookup()` 清掉 N0 默认注入的 `PkarrPublisher` + `DnsAddressLookup`（不再向 `dns.iroh.link` 发布/查询）；
+2. `runtime_consts::install_lan_only(true)` 把 LAN-only 固化为进程常量，`connect.rs::strip_relay_if_lan_only` 在每次 dial 前从对端 `EndpointAddr` 中剥掉 `TransportAddr::Relay` —— 否则即便本端 `RelayMode::Disabled`，iroh 仍会用对端发布的 relay url 走中转（已在 dev 日志中观测到）。
+取舍：跨网段已配对设备不再可达（mDNS 同子网兜底失败 → 直接失败），这是 LAN-only 的设计意图。**首次配对仍走 rendezvous 公网 HTTP（本次未动）**，对应原文第 1 条仍然成立。
+
 ---
 
 ### Pitfall 6: OTLP 遥测在 LAN-only 下默认行为模糊
 
 **What goes wrong:**
-现有 settings：`general.telemetry_enabled` 默认 true（`model.rs:25, defaults.rs`），OTLP exporter 通过环境变量 / 编译期 baked endpoint 决定上报地址（`uc-observability/src/otlp/config.rs`）。LAN-only Mode 用户的核心心智就是"网络洁癖"——他们开了 LAN-only 然后**仍然**看到应用对外发 OTLP 请求，会立刻情绪炸裂；但如果实现里"自动跟着 LAN-only 关掉遥测"，又会让产品质量监控数据出现选择性偏差（恰好是那些喜欢 LAN-only 的用户从此不上报问题）。
+现有 settings：`general.telemetry_enabled` 默认 true（`model.rs:25, defaults.rs`），OTLP exporter 通过环境变量 / 编译期 baked endpoint 决定上报地址（`uc-observability/src/otlp/config.rs`）。LAN-only Mode 用户的核心心智就是"网络洁癖"——他们开了 LAN-only 然后 **仍然** 看到应用对外发 OTLP 请求，会立刻情绪炸裂；但如果实现里"自动跟着 LAN-only 关掉遥测"，又会让产品质量监控数据出现选择性偏差（恰好是那些喜欢 LAN-only 的用户从此不上报问题）。
 
-更糟的是：本里程碑**没有明确说明**遥测是否归属本次范围。如果 phase 实施时不主动决定，就会出现"开发者偷偷把 telemetry_enabled 跟 allow_relay_fallback 联动"的隐式行为，没人 review，文档也没说，等用户发现时已经是事故。
+更糟的是：本里程碑 **没有明确说明** 遥测是否归属本次范围。如果 phase 实施时不主动决定，就会出现"开发者偷偷把 telemetry_enabled 跟 allow_relay_fallback 联动"的隐式行为，没人 review，文档也没说，等用户发现时已经是事故。
 
 **Why it happens:**
 
@@ -230,7 +236,7 @@ UI 显示 **"LAN-only Mode"**（开 = 限制为局域网），后端字段 `netw
 
 **How to avoid:**
 
-- **明确决策并写入 PROJECT.md**：本里程碑**不**联动遥测开关。LAN-only Mode 只控制 relay fallback，遥测仍然由独立的 `telemetry_enabled` 控制。在 UI 上，**遥测设置**应该和 LAN-only 开关**邻近放置**（同 Network section 或临近 section），让用户主动二次决策。
+- **明确决策并写入 PROJECT.md**：本里程碑 **不** 联动遥测开关。LAN-only Mode 只控制 relay fallback，遥测仍然由独立的 `telemetry_enabled` 控制。在 UI 上，**遥测设置** 应该和 LAN-only 开关 **邻近放置**（同 Network section 或临近 section），让用户主动二次决策。
 - **info tooltip 说明**：LAN-only toggle 的解释 tooltip 必须包含一行："This setting does not affect anonymous diagnostic telemetry. To disable telemetry, see the Telemetry option in [General / Privacy] settings."
 - **代码层面 invariant**：`uc-bootstrap` 装配 OTLP 时禁止读 `network.allow_relay_fallback`。整段代码搜索一次，确认两个字段语义独立。
 - **测试用例**：写一个 `bootstrap_lan_only_does_not_affect_telemetry` 测试，断言 settings (`allow_relay_fallback = false, telemetry_enabled = true`) 启动后 OTLP exporter 仍 active。
@@ -296,7 +302,7 @@ UI 显示 **"LAN-only Mode"**（开 = 限制为局域网），后端字段 `netw
 **What goes wrong:**
 本里程碑想验证"开 LAN-only 后流量真的不走 relay"，但单元测试和集成测试都覆盖不到这个断言：
 
-1. **现有 e2e 测试模式**：`uc-bootstrap/tests/slice*_e2e.rs` 全部用 `disable_relays: true`（loopback only），意味着所有现存集成测试都已经在跑 LAN-only 等价配置。这些测试**永远不会**触发 relay 路径
+1. **现有 e2e 测试模式**：`uc-bootstrap/tests/slice*_e2e.rs` 全部用 `disable_relays: true`（loopback only），意味着所有现存集成测试都已经在跑 LAN-only 等价配置。这些测试 **永远不会** 触发 relay 路径
 2. **iroh API 没有 "is this connection over relay"  query**：要从 endpoint API 直接拿"当前活跃 path 是 LAN 还是 relay"，需要订阅内部事件或 inspect connection metadata，没有简单的同步 query
 3. **mock relay 难度高**：要写"开 LAN-only 后 relay 不发流量"的负向测试，需要一个 mock relay server 计数器，验证计数为 0。但 mock relay 部署成本极高
 4. **行为正确 vs. 配置正确**：测试只能断言 `IrohNodeConfig.disable_relays == expected_value`（配置层），无法断言 endpoint 真的没有 relay path（行为层）
@@ -304,7 +310,7 @@ UI 显示 **"LAN-only Mode"**（开 = 限制为局域网），后端字段 `netw
 
 **Why it happens:**
 
-- iroh 的 relay 行为是"NAT 阻断时才用"，所以即使开了 relay fallback，本地 happy-path 测试也直接走 LAN，relay 路径在 CI 中**几乎从不被走到**
+- iroh 的 relay 行为是"NAT 阻断时才用"，所以即使开了 relay fallback，本地 happy-path 测试也直接走 LAN，relay 路径在 CI 中 **几乎从不被走到**
 - "我跑了集成测试都过了" 给出的安全感是假的
 - 单元测试天然只能测"配置传递正确"，验证不了"runtime endpoint 行为"
 
@@ -314,7 +320,7 @@ UI 显示 **"LAN-only Mode"**（开 = 限制为局域网），后端字段 `netw
   - **Tier A（自动化）：配置传递断言** —— `bootstrap_propagates_allow_relay_fallback`：写 `(true, false)` 两组 settings，断言 `IrohNodeConfig.disable_relays` 取值正确。这是 cheap 的，必须有。
   - **Tier B（自动化）：endpoint 状态断言** —— bind 后用 `endpoint.addr()` 检查 `addrs` 中是否有 `TransportAddr::Relay(_)` 项。`disable_relays = true` 时不应该有 relay URL 出现（可参考 `node.rs:172-199` 的 `log_publish_addrs` 已有逻辑）。
   - **Tier C（手动）：抓包 + 网络观测** —— 验收清单要求 reviewer 在三平台用 Wireshark / Console 抓包，确认开 LAN-only 后无指向 `*.iroh.network` 或 `*.n0.computer` 的流量。
-- **集成测试不能默认 `disable_relays: true`**：本里程碑新增的测试用例**必须显式说明** relay 配置选择，禁止照抄 slice2 测试的 `IrohNodeConfig { disable_relays: true, .. }` 模式（否则测的是空气）
+- **集成测试不能默认 `disable_relays: true`**：本里程碑新增的测试用例 **必须显式说明** relay 配置选择，禁止照抄 slice2 测试的 `IrohNodeConfig { disable_relays: true, .. }` 模式（否则测的是空气）
 - **手动验证清单作为 PR mandatory**：PR 模板加 checkbox "[ ] 已在三平台手动抓包验证 relay 流量为零"
 - **回归 fence**：在 `uc-bootstrap/src/main_wiring.rs` 等装配点放一行 `debug_assert!()` 之类，验证 `IrohNodeConfig::disable_relays == !settings.network.allow_relay_fallback`，这是 unit-test 边界以外的运行时断言
 
@@ -333,7 +339,7 @@ UI 显示 **"LAN-only Mode"**（开 = 限制为局域网），后端字段 `netw
 ### Pitfall 9: 文档措辞陷阱——把"LAN-only"过度承诺
 
 **What goes wrong:**
-（与 Pitfall 5 互补，专注**文档**而非 UI 文案）
+（与 Pitfall 5 互补，专注 **文档** 而非 UI 文案）
 
 文档里如果出现下列任一句子，就埋了口碑雷：
 
@@ -398,7 +404,7 @@ UI 显示 **"LAN-only Mode"**（开 = 限制为局域网），后端字段 `netw
   - **applied OFF**（白色滑块在左，绝对不打扰）
   - **applied ON**（蓝色滑块在右，已生效）
   - **pending change**（黄色 / 带感叹号 / 带"重启生效" inline 标签）—— 用户切换后立刻进入这一态，settings 内部已写入但 UI 表达"尚未生效"
-- **持久化通知**：切换后**不要**用 toast，要在 toggle 下方插入一行**持久**的"应用需重启以应用 LAN-only 设置"提示，附"立即重启"按钮（调 daemon 的优雅 shutdown + relaunch）
+- **持久化通知**：切换后 **不要** 用 toast，要在 toggle 下方插入一行 **持久** 的"应用需重启以应用 LAN-only 设置"提示，附"立即重启"按钮（调 daemon 的优雅 shutdown + relaunch）
 - **再次切换的反应**：在 pending change 状态下用户再切回原值，toggle 应该回到 applied 态（取消修改），而不是叠加新的 pending。这要求 UI store 区分 "current persisted value" 和 "pending edit value"
 - **重启流程的诚实**：如果用户点"立即重启"，UI 必须在重启前后都明确——重启进行中的 loading 态、重启完成后的"已生效" toast 持续 3 秒。让"切了 → 重启 → 看到效果" 这个循环肉眼可见
 - **避免连续写入**：settings repo 在 pending change 期间不能反复落盘，应该 debounce（500ms）或者只在用户明确点"应用"时落盘——避免 4 次切换写 4 次 disk
@@ -468,16 +474,16 @@ explore 阶段定了 "配对成功后弹一次性提示" 引导用户发现 LAN-
 
 **How to avoid:**
 
-- **明确触发条件**：tip 仅在**首次配对成功**那一次显示，非首次跳过。"首次"判定基于 `members.count() == 2 && !settings.dismissed_tips.contains("lan_only_v0_7_intro")`
+- **明确触发条件**：tip 仅在 **首次配对成功** 那一次显示，非首次跳过。"首次"判定基于 `members.count() == 2 && !settings.dismissed_tips.contains("lan_only_v0_7_intro")`
 - **持久化 dismissed flag**：在 settings 里加 `dismissed_tips: HashSet<String>`，tip 显示后无论用户怎么操作（关闭 / 跳转 / 不理）都标记为 dismissed
 - **延迟时机**：tip 在 setup wizard "Done" / "Next" 按钮被点之后展示，让用户清楚"配对已完成"，进入下一阶段才看到 tip
 - **inline 显示，非 modal**：用 Dashboard 顶部 inline banner（带 dismiss X），不要打断式 modal。modal 跨平台行为差异大且打扰强
 - **文案带边界**：tip 不能只说"试试 LAN-only Mode"，要包含一句"它会让跨网段（比如家里和公司）的设备同步失效，开启前请评估"
-- **跳转链接而非自动开启**：tip 中"了解更多"按钮跳转到 Settings 的 Network 区，**绝不**直接帮用户开启开关
+- **跳转链接而非自动开启**：tip 中"了解更多"按钮跳转到 Settings 的 Network 区，**绝不** 直接帮用户开启开关
 
 **Warning signs:**
 
-- onboarding tip 在配对**进行中**而非完成后展示
+- onboarding tip 在配对 **进行中** 而非完成后展示
 - 没有 dismissed_tips persistence
 - tip 用 modal 而非 banner
 - 文案只描述好处，不描述代价
@@ -510,7 +516,7 @@ explore 阶段定了 "配对成功后弹一次性提示" 引导用户发现 LAN-
 | Integration | Common Mistake | Correct Approach |
 |-------------|----------------|------------------|
 | iroh `Endpoint` | 想运行时切换 `RelayMode` | 关闭 + 重启进程，本里程碑明确不做 in-process 重建 |
-| iroh `Endpoint::addr()` | 用它判定"当前是否在用 relay" | 这个 API 返回的是**对外发布的候选地址**，不是当前活跃 path。需要新 port 抽象 |
+| iroh `Endpoint::addr()` | 用它判定"当前是否在用 relay" | 这个 API 返回的是 **对外发布的候选地址**，不是当前活跃 path。需要新 port 抽象 |
 | `tokio::sync::broadcast` | 假设 receiver 不会丢消息 | lagging receiver 必丢；UI 必须 polling 兜底 |
 | settings serde | 给新字段 `#[derive(Default)]` | 必须显式 `impl Default`，bool 默认 false 极度危险 |
 | OTLP exporter | 跟 LAN-only 联动 | 两个 settings 字段语义独立，禁止联动 |

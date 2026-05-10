@@ -2,7 +2,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use iroh::endpoint::Connection;
-use iroh::{Endpoint, EndpointAddr};
+use iroh::{Endpoint, EndpointAddr, TransportAddr};
 use tokio::task::JoinSet;
 use tracing::{debug, info, warn};
 
@@ -13,12 +13,35 @@ const STAGGERED_DELAYS: [Duration; 3] = [
     Duration::from_secs(5),
 ];
 
+/// LAN-only Mode 反向防御：本端 `RelayMode::Disabled` **不阻止** iroh 用对端
+/// `EndpointAddr` 中的 `relay_url` 发起出站连接。已配对 peer 的 addr blob 在
+/// `to_persistable_addr` 阶段被收敛为"NodeId + Relay 提示"，所以 LAN-only
+/// 用户复制内容触发 dispatch 时仍会看到日志：
+///   `iroh::endpoint: connecting relay_url=Some(...) ip_addresses=[]`
+///
+/// 当 [`super::runtime_consts::lan_only`] 为 `true` 时剥掉 `TransportAddr::Relay`
+/// 项，强制 iroh 只能走 mDNS 重新解析的直连地址。如果对端不在同一子网
+/// （mDNS 不可达），connect 自然失败 —— 这正是 LAN-only 的设计意图。
+///
+/// 非 LAN-only 路径下零开销直接返回原 addr（一次 `Vec::iter().any` 短路）。
+pub(super) fn strip_relay_if_lan_only(addr: EndpointAddr) -> EndpointAddr {
+    if !super::runtime_consts::lan_only() {
+        return addr;
+    }
+    let EndpointAddr { id, addrs } = addr;
+    let kept = addrs
+        .into_iter()
+        .filter(|a| !matches!(a, TransportAddr::Relay(_)));
+    EndpointAddr::from_parts(id, kept)
+}
+
 pub(super) async fn connect_with_staggered_retry(
     endpoint: Arc<Endpoint>,
     addr: EndpointAddr,
     alpn: &'static [u8],
     purpose: &'static str,
 ) -> Result<Connection, String> {
+    let addr = strip_relay_if_lan_only(addr);
     let mut attempts = JoinSet::new();
 
     for (idx, delay) in STAGGERED_DELAYS.iter().copied().enumerate() {

@@ -157,10 +157,24 @@ pub struct IrohNodeConfig {
     /// Override rendezvous base URL. `None` → use
     /// [`crate::rendezvous::RENDEZVOUS_BASE_URL`].
     pub rendezvous_base_url: Option<String>,
-    /// If true, bind the endpoint with iroh's relays disabled. Needed for
-    /// loopback-only integration tests; production leaves this `false` so
-    /// iroh can fall back to the public relay mesh when NAT blocks direct
-    /// UDP.
+    /// If true, bind the endpoint in **strict LAN-only mode**:
+    ///
+    /// 1. `RelayMode::Disabled` —— 不连任何 iroh relay；
+    /// 2. **同时清掉 `presets::N0` 默认注入的 `PkarrPublisher` /
+    ///    `DnsAddressLookup`**，避免向 `dns.iroh.link` 发布 endpoint info 或
+    ///    通过 n0 公共 DNS 解析对端 NodeId。LAN-only 用户的合理预期是"只靠
+    ///    mDNS 在局域网内发现对方"，而不是"relay 关掉但仍向公共 DNS 广播
+    ///    自己的 NodeId"（见 `.planning/research/PITFALLS.md` Pitfall 5）。
+    ///
+    /// 副作用（**这是 LAN-only 的设计意图，不是 bug**）：
+    /// - 跨网段已配对设备无法被发现（关 relay 已经如此，这里把发现路径也
+    ///   收紧到 mDNS 同子网）；
+    /// - 没有 mDNS 的环境（部分 Docker / NAS / 未装 avahi 的 Linux）会完全
+    ///   不可达，这是用户启用 LAN-only 时承担的取舍。
+    ///
+    /// 集成测试也走 `disable_relays = true` 路径（loopback 走 mDNS 或显式
+    /// `EndpointAddr` 注入）。production `false` 保持完整 N0 行为
+    /// （pkarr publish + DNS lookup + relay fallback）。
     pub disable_relays: bool,
     /// If true, allow VPN / overlay-network virtual NIC addresses (CGNAT
     /// `100.64.0.0/10`, Tailscale ULA `fd7a:115c:a1e0::/48`) to flow through
@@ -488,7 +502,7 @@ impl IrohNodeBuilder {
             "addr filter configured: overlay-network addresses {} (Tailscale 100.64/10 + fd7a:115c:a1e0::/48)",
             if allow_overlay { "ALLOWED" } else { "BLOCKED" },
         );
-        let endpoint = Endpoint::builder(presets::N0)
+        let mut endpoint_builder = Endpoint::builder(presets::N0)
             .secret_key(secret)
             // Only PAIRING is declared at bind time; additional ALPNs are
             // added to the endpoint via `RouterBuilder::spawn`, which
@@ -500,11 +514,35 @@ impl IrohNodeBuilder {
             // UniClipboard#486: drop Clash TUN / link-local IPs from every
             // address-lookup service in one shot, and drop CGNAT/Tailscale
             // overlay IPs unless the user opts in. See `build_addr_filter`.
-            .addr_filter(build_addr_filter(allow_overlay))
-            // UniClipboard#486 §三 B: enable mDNS LAN discovery in addition
-            // to the n0 preset's pkarr DHT lookup. Two peers on the same
-            // Wi-Fi advertise their LAN IPs to each other through swarm-
-            // discovery TXT records, bypassing pkarr round-trip latency.
+            .addr_filter(build_addr_filter(allow_overlay));
+
+        // LAN-only Mode 收紧（Pitfall 5 防御 + 与 `disable_relays` 字段 doc 一致）：
+        // `presets::N0` 默认注入 `PkarrPublisher` (publish 到 dns.iroh.link) +
+        // `DnsAddressLookup`，即便 `RelayMode::Disabled` 也会持续向 n0 公共 DNS
+        // 广播自己的 NodeId 并解析对端。这与"LAN-only 仅靠 mDNS 在局域网内发现
+        // 对方"的用户预期相悖。所以 `disable_relays = true` 路径下显式 clear
+        // 掉 N0 注入的 lookup services，再单挂 mDNS。
+        //
+        // 同步把 LAN-only 状态固化到 `runtime_consts::LAN_ONLY` 进程常量 ——
+        // `connect.rs` 出站 dial 时会读这个常量，从对端 `EndpointAddr` 中剥掉
+        // `TransportAddr::Relay`。否则即便本端 `RelayMode::Disabled`，iroh 仍
+        // 会用对端发布的 relay url 走中转（已在 dev 日志中观测到）。
+        //
+        // 取舍：跨网段已配对设备无法通过 NodeId 反查到，这是 LAN-only 的设计
+        // 意图（不是 bug）。
+        super::runtime_consts::install_lan_only(config.disable_relays);
+        if config.disable_relays {
+            endpoint_builder = endpoint_builder.clear_address_lookup();
+            info!(
+                target: "iroh.address_lookup",
+                "LAN-only mode: cleared n0 pkarr/DNS lookup services; only mDNS will publish/resolve",
+            );
+        }
+
+        let endpoint = endpoint_builder
+            // UniClipboard#486 §三 B: enable mDNS LAN discovery. 在非 LAN-only
+            // 路径下与 N0 preset 的 pkarr DHT lookup 并存（mDNS 同子网更快，
+            // pkarr 兜底跨网段）；在 LAN-only 路径下是**唯一**的发现来源。
             // The `addr_filter` above also runs over what mDNS publishes,
             // so a Clash `198.18.0.1` won't leak into the LAN announcement
             // even if magicsock surfaces it locally.

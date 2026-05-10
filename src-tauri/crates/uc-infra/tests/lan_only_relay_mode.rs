@@ -25,6 +25,7 @@
 
 use std::time::Duration;
 
+use iroh::address_lookup::mdns::MdnsAddressLookup;
 use iroh::{Endpoint, RelayMode, TransportAddr};
 
 const TEST_ALPN: &[u8] = b"uniclipboard/lan-only-test/0";
@@ -34,6 +35,22 @@ async fn bind_with_relay_mode(mode: RelayMode) -> Endpoint {
     Endpoint::builder(iroh::endpoint::presets::N0)
         .alpns(vec![TEST_ALPN.to_vec()])
         .relay_mode(mode)
+        .bind()
+        .await
+        .expect("bind endpoint")
+}
+
+/// LAN-only 生产链路 fixture —— 镜像 `uc-infra/src/network/iroh/node.rs`
+/// `IrohNodeBuilder::bind` 在 `disable_relays = true` 时的 builder 形状：
+/// 从 `presets::N0` 出发，先 `clear_address_lookup()` 清掉 pkarr/DNS，再
+/// 单挂 mDNS。用来验证"LAN-only 路径下 address_lookup 只剩 mDNS"这条
+/// 防回归不变量（Pitfall 5 防御）。
+async fn bind_lan_only_production_shape() -> Endpoint {
+    Endpoint::builder(iroh::endpoint::presets::N0)
+        .alpns(vec![TEST_ALPN.to_vec()])
+        .relay_mode(RelayMode::Disabled)
+        .clear_address_lookup()
+        .address_lookup(MdnsAddressLookup::builder())
         .bind()
         .await
         .expect("bind endpoint")
@@ -86,6 +103,58 @@ async fn relay_default_binds_without_panic() {
     // 等式的设计：bind 成功 + endpoint 状态可读 = 通过；具体 Relay/Direct
     // 候选行为留给 Tier C 抓包（D-C1）。
     let _addrs = endpoint.addr().addrs;
+
+    endpoint.close().await;
+}
+
+/// Pitfall 5 防回归 — 强不等式：LAN-only 生产链路下 `address_lookup`
+/// 只剩 1 个 service（mDNS）。
+///
+/// `presets::N0` 默认会注入 `PkarrPublisher` + `DnsAddressLookup`；
+/// `IrohNodeBuilder::bind` 在 `disable_relays = true` 时通过
+/// `clear_address_lookup()` 清掉它们再单挂 `MdnsAddressLookup`。任何
+/// 后续修改如果不小心保留了 N0 默认的 lookup（比如把 `clear_address_lookup`
+/// 删了），本断言立即翻车 —— 哪怕日志看起来"正常"。
+///
+/// 与 [`relay_default_publishes_three_address_lookup_services`] 形成对比测试，
+/// 锁定"3 个（默认）↔ 1 个（LAN-only）"这条结构差。
+#[tokio::test]
+async fn lan_only_publishes_only_mdns_address_lookup() {
+    let endpoint = bind_lan_only_production_shape().await;
+
+    let services = endpoint.address_lookup().expect("endpoint not closed");
+    assert_eq!(
+        services.len(),
+        1,
+        "LAN-only path MUST register exactly 1 address lookup (mDNS); \
+         saw {} — did clear_address_lookup() get removed from IrohNodeBuilder::bind?",
+        services.len(),
+    );
+
+    endpoint.close().await;
+}
+
+/// 对照测试：`presets::N0` + 后挂 mDNS 的"默认"链路应注册 3 个 service
+/// （`PkarrPublisher` + `DnsAddressLookup` + `MdnsAddressLookup`）。
+/// 与 [`lan_only_publishes_only_mdns_address_lookup`] 共同锁定结构差。
+#[tokio::test]
+async fn relay_default_publishes_three_address_lookup_services() {
+    let endpoint = Endpoint::builder(iroh::endpoint::presets::N0)
+        .alpns(vec![TEST_ALPN.to_vec()])
+        .relay_mode(RelayMode::Default)
+        .address_lookup(MdnsAddressLookup::builder())
+        .bind()
+        .await
+        .expect("bind endpoint");
+
+    let services = endpoint.address_lookup().expect("endpoint not closed");
+    assert_eq!(
+        services.len(),
+        3,
+        "Default path MUST register 3 address lookups (pkarr publisher + dns + mdns); \
+         saw {} — `presets::N0` injection contract changed?",
+        services.len(),
+    );
 
     endpoint.close().await;
 }

@@ -14,6 +14,7 @@ pub mod identity_store;
 pub mod node;
 pub mod persistable_addr;
 pub mod presence_adapter;
+mod runtime_consts;
 pub mod transfer_progress_adapter;
 pub mod transfer_progress_wire;
 

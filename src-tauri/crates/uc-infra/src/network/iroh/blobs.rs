@@ -463,14 +463,15 @@ impl IrohBlobTransferAdapter {
         // cold paths). Holding the connection until the download completes
         // gives the pool a warm reference to grab.
         let connect_start = Instant::now();
+        // LAN-only Mode 防御：剥掉 ticket 解出的 EndpointAddr 中的 Relay 项，
+        // 否则 iroh-blobs 的 ConnectionPool 会用对端发布的 relay url 走中转。
+        // `strip_relay_if_lan_only` 内部读 runtime_consts 的进程级 LAN-only
+        // 常量；非 LAN-only 路径下零开销直接返回原 addr。
+        let dial_addr = super::connect::strip_relay_if_lan_only(native.addr().clone());
         // Inlined what was a `.map_err(|e| { warn!; ... })?` closure: the
         // closure is sync but `conn_label` is async on iroh 0.98, so the
         // connect-failed branch needs an `.await` that closures can't host.
-        let _connection = match self
-            .endpoint
-            .connect(native.addr().clone(), BLOBS_ALPN)
-            .await
-        {
+        let _connection = match self.endpoint.connect(dial_addr, BLOBS_ALPN).await {
             Ok(c) => c,
             Err(e) => {
                 let conn = self.conn_label(provider_id).await;

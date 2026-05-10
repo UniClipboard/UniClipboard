@@ -151,6 +151,108 @@ pub fn build_slice1_cli_context(
 /// via the iroh stack. `trusted_peer_repo` is consumed by
 /// `build_space_setup_assembly` (the setup-v2 flow) and is not
 /// re-exposed on the returned ctx.
+/// daemon-lifecycle 装配产出 (每次 daemon start/stop 重建)。
+///
+/// 不再持有 `deps` / `background` —— 那两块属于进程级,跨 daemon reload
+/// 存活,由 caller 一次性 wire 后移交 [`build_daemon_lifecycle`]。
+pub struct DaemonLifecycle {
+    /// iroh-stack clipboard sync facade.
+    /// daemon 的 `DaemonClipboardChangeHandler` 调
+    /// `clipboard_sync_facade.dispatch_snapshot(...)`;
+    /// `InboundClipboardSyncWorker` 通过 `subscribe_inbound_notices()` 订阅。
+    pub clipboard_sync_facade: Arc<ClipboardSyncFacade>,
+    /// 完整 iroh assembly。持有 iroh node、pairing/presence/clipboard
+    /// handler、auto-spawned ingest loop。daemon shutdown 调
+    /// `space_setup_assembly.shutdown()` 干净拆 router + abort ingest。
+    pub space_setup_assembly: SpaceSetupAssembly,
+}
+
+/// 装 daemon-lifecycle 资源 —— iroh node bind、SpaceSetupAssembly、startup
+/// reconcile。接受已 wire 好的进程级 [`WiredDependencies`] 作输入,**不**
+/// 再次跑 `wire_dependencies` —— sqlite pool / repos / settings / secure
+/// storage 等进程级资源跨 daemon reload 复用。
+///
+/// `init::reconcile_*` 在每次 daemon 启动时跑(治理性、失败只 log),
+/// 与 `build_space_setup_assembly` 之前执行,确保 dispatch / presence /
+/// 重新配对路径一上线就是干净状态。
+///
+/// caller 必须在 tokio runtime 上下文中调用 —— `build_space_setup_assembly`
+/// 内部 `Endpoint::bind` 会 spawn magicsock / relay / STUN actor。
+pub async fn build_daemon_lifecycle(
+    wired: &crate::assembly::WiredDependencies,
+) -> anyhow::Result<DaemonLifecycle> {
+    // 启动期 reconcile:把 peer_addr_repo / trusted_peer_repo 中
+    // member_repo 已不再持有的孤儿条目清掉,恢复设计意图的不变量
+    // `peer_addr ⊆ member`、`trusted_peer ⊆ member`。失败只 log 不阻断
+    // 启动 —— reconcile 是治理性的。
+    if let Err(err) = crate::init::reconcile_peer_addresses(
+        Arc::clone(&wired.deps.device.member_repo),
+        Arc::clone(&wired.peer_addr_repo),
+    )
+    .await
+    {
+        tracing::warn!(
+            error = %err,
+            "peer_addr reconcile failed at boot; daemon continues with whatever orphans remain"
+        );
+    }
+    if let Err(err) = crate::init::reconcile_trusted_peers(
+        Arc::clone(&wired.deps.device.member_repo),
+        Arc::clone(&wired.trusted_peer_repo),
+    )
+    .await
+    {
+        tracing::warn!(
+            error = %err,
+            "trusted_peer reconcile failed at boot; daemon continues with whatever orphans remain"
+        );
+    }
+
+    // Phase 94 NETSET-03:从 settings 读取 LAN-only Mode 偏好后翻译为
+    // `IrohNodeConfig`。详见 `build_daemon_app` 历史注释 (该函数已删除)。
+    let settings = wired
+        .deps
+        .settings
+        .load()
+        .await
+        .map_err(|err| anyhow::anyhow!("settings load failed at startup: {err}"))?;
+    let allow_relay_fallback = settings.network.allow_relay_fallback;
+    let allow_overlay_network_addrs = settings.network.allow_overlay_network_addrs;
+
+    // 【checker BLOCKER 4 — 单一取反点铁律】
+    // `disable_relays` 的值**只能**通过 `relay_policy_to_iroh_config` 取得,
+    // **不**在此处内联写 `let disable_relays = !allow_relay_fallback;`。
+    let iroh_config = crate::network_policy::relay_policy_to_iroh_config(
+        allow_relay_fallback,
+        allow_overlay_network_addrs,
+        None, // production 不 override rendezvous,使用默认 RENDEZVOUS_BASE_URL
+    );
+
+    tracing::info!(
+        target: "settings.network",
+        allow_relay_fallback,
+        disable_relays = iroh_config.disable_relays,
+        allow_overlay_network_addrs = iroh_config.allow_overlay_network_addrs,
+        "applying network settings: allow_relay_fallback={} → disable_relays={}, allow_overlay_network_addrs={}",
+        allow_relay_fallback,
+        iroh_config.disable_relays,
+        iroh_config.allow_overlay_network_addrs,
+    );
+
+    let space_setup_assembly = build_space_setup_assembly(wired, iroh_config)
+        .await
+        .map_err(|e| anyhow::anyhow!("Slice 1+ assembly build failed: {e}"))?;
+
+    // Same Arc the assembly holds — handed up so daemon entrypoint can
+    // wire it into the two clipboard workers without unpacking the assembly.
+    let clipboard_sync_facade = Arc::clone(&space_setup_assembly.clipboard_sync);
+
+    Ok(DaemonLifecycle {
+        clipboard_sync_facade,
+        space_setup_assembly,
+    })
+}
+
 pub async fn build_daemon_app(
     wire_overrides: WireOverrides,
 ) -> anyhow::Result<DaemonBootstrapContext> {

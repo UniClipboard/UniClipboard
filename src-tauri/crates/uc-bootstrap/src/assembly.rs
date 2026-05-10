@@ -143,6 +143,12 @@ pub struct BackgroundRuntimeDeps {
 /// 嵌在 `WiredDependencies` 里 —— 这样 `WiredDependencies` 可以在 daemon
 /// reload 时被多次借用,而 `BackgroundRuntimeDeps` 只在进程启动时 spawn
 /// 一次。
+///
+/// `Clone` 派生:所有字段都是 `Arc<dyn Port>` / `PathBuf` / Clone-able
+/// 嵌套 struct,clone 等价于一组 Arc::clone + PathBuf::clone,廉价。
+/// in-process daemon 路径在每次 daemon spawn 时 clone 一份给 daemon-lifecycle
+/// 装配用。
+#[derive(Clone)]
 pub struct WiredDependencies {
     pub deps: AppDeps,
     /// Shared emitter cell created at wire time with the initial `LoggingHostEventEmitter`.

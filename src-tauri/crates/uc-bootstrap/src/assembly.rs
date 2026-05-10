@@ -335,24 +335,6 @@ fn is_v2_blob(path: &std::path::Path) -> bool {
         .unwrap_or(false)
 }
 
-/// 调用 [`wire_dependencies`] 时由 caller 注入的覆盖项,用于跨多次 wire 共享
-/// 同一份资源 —— 单纯绑定到 deps 内部生命周期不够的场景。
-///
-/// 当前唯一用途:GUI shell 让 GUI 端 deps 与 in-process daemon 端 deps 共享
-/// 同一份 `mobile_sync_endpoint_info` Arc。daemon LAN listener 启停时调
-/// `set` / `clear` 写入这份 Arc;GUI in-process facade 通过 `AppDeps.mobile_sync.endpoint_info`
-/// 只读。共享 Arc 后,facade 的 `lan_listener_error` 等字段就能反映 daemon
-/// 的真实 bind 状态(否则两份 deps 各自持有独立的 `InMemoryMobileSyncEndpointInfoAdapter::new()`,
-/// daemon 写的 GUI 永远读不到)。
-///
-/// 独立 daemon binary / CLI 走 `Default::default()` —— 它们没有"GUI 在另一份
-/// deps 里读" 的需求,wire 时内部 `Arc::new(...)` 自给自足即可。
-#[derive(Default, Clone)]
-pub struct WireOverrides {
-    pub mobile_sync_endpoint_info:
-        Option<Arc<uc_infra::mobile_sync::InMemoryMobileSyncEndpointInfoAdapter>>,
-}
-
 /// Create infrastructure layer implementations
 fn create_infra_layer(
     db_pool: DbPool,
@@ -360,9 +342,6 @@ fn create_infra_layer(
     settings_path: &PathBuf,
     app_data_root: &PathBuf,
     secure_storage: Arc<dyn SecureStoragePort>,
-    mobile_sync_endpoint_info_override: Option<
-        Arc<uc_infra::mobile_sync::InMemoryMobileSyncEndpointInfoAdapter>,
-    >,
 ) -> WiringResult<InfraLayer> {
     let db_executor = Arc::new(DieselSqliteExecutor::new(db_pool));
 
@@ -470,17 +449,12 @@ fn create_infra_layer(
         DieselMobileDeviceRepository::new(Arc::clone(&db_executor), MobileDeviceRowMapper),
     );
 
-    // Phase 3 子步骤 3:endpoint_info adapter 提升为 bootstrap 装配的单例,
-    // daemon LAN listener 与 facade 各持一份 Arc,避免 facade 看到的"当前
-    // LAN URL"和 daemon 实际绑定的 URL 走两条不同的内存路径。
-    //
-    // GUI in-process daemon 模型下,caller 可以通过 `WireOverrides` 注入一份
-    // 已有的 Arc,让 GUI deps 和 daemon deps 共享同一个 endpoint_info ——
-    // 这样 daemon LAN listener 写的 status / bind error 才能被 GUI in-process
-    // facade 读到。
-    let mobile_sync_endpoint_info = mobile_sync_endpoint_info_override.unwrap_or_else(|| {
-        Arc::new(uc_infra::mobile_sync::InMemoryMobileSyncEndpointInfoAdapter::new())
-    });
+    // endpoint_info adapter:进程级单例,daemon LAN listener 与 facade 各持
+    // 一份 Arc 共享同一份内存。整个进程只跑一次 `wire_dependencies`,这里
+    // new 一份就足够 —— daemon reload 复用同一份(不再走"两份 deps 各自 new"
+    // 的旧路径,因此也就不再需要 caller 注入 override)。
+    let mobile_sync_endpoint_info =
+        Arc::new(uc_infra::mobile_sync::InMemoryMobileSyncEndpointInfoAdapter::new());
 
     let infra = InfraLayer {
         clipboard_entry_repo,
@@ -741,7 +715,17 @@ pub fn apply_profile_suffix(path: PathBuf) -> PathBuf {
     updated
 }
 
-/// Wires and constructs the application's dependency graph, returning ready-to-use dependencies.
+/// 进程级一次性装配:把 sqlite pool / repos / settings / secure storage /
+/// blob store / 所有 adapter 等装配成 [`WiredDependencies`] +
+/// [`BackgroundRuntimeDeps`]。
+///
+/// 整个进程只调用一次 —— GUI shell 在 `build_process_runtime` 里调,
+/// standalone daemon binary 同样走这条路径。daemon reload 不再 wire
+/// (复用同一份)。
+///
+/// 返回 tuple 把"持久" 与"一次性消费"两类资源分开:`WiredDependencies`
+/// 跨 daemon reload 存活;`BackgroundRuntimeDeps` 含两个 mpsc::Receiver,
+/// 在进程启动期被 `spawn_blob_processing_tasks` 消费一次后不复存在。
 ///
 /// Slice 4 P5b 起 libp2p adapter 已删除,旧的 `wire_dependencies_with_identity_store`
 /// 变体随之退场——iroh 栈走 `IrohIdentityStore`(由 `build_space_setup_assembly`
@@ -749,21 +733,6 @@ pub fn apply_profile_suffix(path: PathBuf) -> PathBuf {
 /// `IdentityStorePort` 兼容入口。
 pub fn wire_dependencies(
     config: &AppConfig,
-) -> WiringResult<(WiredDependencies, BackgroundRuntimeDeps)> {
-    wire_dependencies_with_overrides(config, WireOverrides::default())
-}
-
-/// Same as [`wire_dependencies`] but lets caller inject pre-built shared
-/// resources via [`WireOverrides`]. GUI shells use this entry to share
-/// `mobile_sync_endpoint_info` between GUI deps and in-process daemon deps;
-/// CLI / standalone daemon binary stick with [`wire_dependencies`].
-///
-/// Returns the persistent `WiredDependencies` and the one-shot
-/// [`BackgroundRuntimeDeps`] separately. Callers spawn the blob/spool
-/// workers by consuming the latter; the former survives daemon reload.
-pub fn wire_dependencies_with_overrides(
-    config: &AppConfig,
-    overrides: WireOverrides,
 ) -> WiringResult<(WiredDependencies, BackgroundRuntimeDeps)> {
     let platform_dirs = get_default_app_dirs()?;
     let paths = resolve_app_paths(&platform_dirs, config)?;
@@ -789,7 +758,6 @@ pub fn wire_dependencies_with_overrides(
         &settings_path,
         &app_data_root,
         secure_storage.clone(),
-        overrides.mobile_sync_endpoint_info,
     )?;
 
     let storage_config = Arc::new(ClipboardStorageConfig::defaults());
@@ -885,7 +853,7 @@ pub fn wire_dependencies_with_overrides(
     let file_transfer_store_arc = Arc::clone(&infra.file_transfer_store);
 
     // Clone the trusted-peer repository handle before moving `infra` into
-    // `AppDeps` below — the builders (build_process_runtime / build_daemon_app) need
+    // `AppDeps` below — the daemon-lifecycle builder (build_daemon_lifecycle) needs
     // it to construct the `TrustPeerOrchestrator` singleton (D19). We do not
     // thread it through `AppDeps` because uc-app is retiring (D13) and
     // the repository is consumed solely by uc-application wiring.

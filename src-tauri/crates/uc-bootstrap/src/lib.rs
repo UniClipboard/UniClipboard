@@ -22,13 +22,12 @@ pub use task_registry::TaskRegistry;
 // Re-export primary public items
 pub use assembly::{
     build_clipboard_write_coordinator, get_storage_paths, resolve_pairing_device_name,
-    wire_dependencies, wire_dependencies_with_overrides, BackgroundRuntimeDeps, WireOverrides,
-    WiredDependencies, WiringError, WiringResult,
+    wire_dependencies, BackgroundRuntimeDeps, WiredDependencies, WiringError, WiringResult,
 };
 pub use background_tasks::{spawn_blob_processing_tasks, BlobProcessingPorts};
 pub use builders::{
-    build_cli_context, build_cli_context_with_profile, build_daemon_app, build_slice1_cli_context,
-    CliBootstrapContext, DaemonBootstrapContext,
+    build_cli_context, build_cli_context_with_profile, build_daemon_lifecycle,
+    build_slice1_cli_context, CliBootstrapContext, DaemonLifecycle,
 };
 pub use config::load_config;
 pub use init::{

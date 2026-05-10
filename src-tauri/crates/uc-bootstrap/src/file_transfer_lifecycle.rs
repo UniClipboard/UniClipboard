@@ -19,6 +19,7 @@ use uc_application::file_transfer::{
     CancelTransferUseCase, CompleteTransferUseCase, FailTransferUseCase,
     ReportTransferProgressUseCase, StartTransferUseCase,
 };
+use uc_core::file_transfer::{FileTransferEventPublisherPort, FileTransferEventStorePort};
 use uc_core::ports::file_transfer_repository::TrackedFileTransferStatus;
 use uc_core::ports::{ClockPort, FileTransferRepositoryPort};
 use uc_infra::db::executor::DieselSqliteExecutor;
@@ -26,16 +27,11 @@ use uc_infra::file_transfer::SqliteReceiverFileTransferStore;
 
 pub type FileTransferEventStore = SqliteReceiverFileTransferStore<Arc<DieselSqliteExecutor>>;
 
-pub type FileTransferStartUseCase =
-    StartTransferUseCase<FileTransferEventStore, FileTransferHostEventPublisher>;
-pub type FileTransferProgressUseCase =
-    ReportTransferProgressUseCase<FileTransferEventStore, FileTransferHostEventPublisher>;
-pub type FileTransferCompleteUseCase =
-    CompleteTransferUseCase<FileTransferEventStore, FileTransferHostEventPublisher>;
-pub type FileTransferFailUseCase =
-    FailTransferUseCase<FileTransferEventStore, FileTransferHostEventPublisher>;
-pub type FileTransferCancelUseCase =
-    CancelTransferUseCase<FileTransferEventStore, FileTransferHostEventPublisher>;
+pub type FileTransferStartUseCase = StartTransferUseCase;
+pub type FileTransferProgressUseCase = ReportTransferProgressUseCase;
+pub type FileTransferCompleteUseCase = CompleteTransferUseCase;
+pub type FileTransferFailUseCase = FailTransferUseCase;
+pub type FileTransferCancelUseCase = CancelTransferUseCase;
 
 /// Pending rows abandoned for longer than this are considered stalled and
 /// force-failed by the sweep.
@@ -289,26 +285,26 @@ pub fn build_file_transfer_lifecycle(
         Arc::clone(&outbound_entry_cache),
     ));
 
+    let store_port: Arc<dyn FileTransferEventStorePort> = Arc::clone(&store) as _;
+    let publisher_port: Arc<dyn FileTransferEventPublisherPort> = Arc::clone(&publisher) as _;
+
     let start = Arc::new(StartTransferUseCase::new(
-        Arc::clone(&store),
-        Arc::clone(&publisher),
+        Arc::clone(&store_port),
+        Arc::clone(&publisher_port),
     ));
     let report_progress = Arc::new(ReportTransferProgressUseCase::new(
-        Arc::clone(&store),
-        Arc::clone(&publisher),
+        Arc::clone(&store_port),
+        Arc::clone(&publisher_port),
     ));
     let complete = Arc::new(CompleteTransferUseCase::new(
-        Arc::clone(&store),
-        Arc::clone(&publisher),
+        Arc::clone(&store_port),
+        Arc::clone(&publisher_port),
     ));
     let fail = Arc::new(FailTransferUseCase::new(
-        Arc::clone(&store),
-        Arc::clone(&publisher),
+        Arc::clone(&store_port),
+        Arc::clone(&publisher_port),
     ));
-    let cancel = Arc::new(CancelTransferUseCase::new(
-        Arc::clone(&store),
-        Arc::clone(&publisher),
-    ));
+    let cancel = Arc::new(CancelTransferUseCase::new(store_port, publisher_port));
 
     FileTransferLifecycle {
         store,

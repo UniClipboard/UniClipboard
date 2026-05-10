@@ -19,17 +19,16 @@ pub struct ReportTransferProgress {
 /// Record transfer progress and emit a `Progress` event.
 ///
 /// 记录传输进度，并产出 `Progress` 事件。
-pub struct ReportTransferProgressUseCase<S, P> {
-    store: Arc<S>,
-    publisher: Arc<P>,
+pub struct ReportTransferProgressUseCase {
+    store: Arc<dyn FileTransferEventStorePort>,
+    publisher: Arc<dyn FileTransferEventPublisherPort>,
 }
 
-impl<S, P> ReportTransferProgressUseCase<S, P>
-where
-    S: FileTransferEventStorePort,
-    P: FileTransferEventPublisherPort,
-{
-    pub fn new(store: Arc<S>, publisher: Arc<P>) -> Self {
+impl ReportTransferProgressUseCase {
+    pub fn new(
+        store: Arc<dyn FileTransferEventStorePort>,
+        publisher: Arc<dyn FileTransferEventPublisherPort>,
+    ) -> Self {
         Self { store, publisher }
     }
 

@@ -24,6 +24,11 @@ on:
           - 'uniclipboard'
           - 'uniclipboard-alpha'
         default: 'uniclipboard-alpha'
+      run_ids:
+        description: 'RPM 来源 build run ID(逗号分隔多个) — 留空走 GitHub Release;给 ID 时从这些 build run 的 artifact 直接取 RPM(免去先发 release 的循环依赖)'
+        required: false
+        type: string
+        default: ''
 
 jobs:
   build-srpm-and-publish:
@@ -36,11 +41,13 @@ jobs:
     container: fedora:latest
     permissions:
       contents: read
+      # 跨 workflow run 拉 artifact 需要 actions:read。
+      actions: read
     steps:
       - name: Install build tooling
         run: |
           dnf -y install --setopt=install_weak_deps=False \
-            git curl rpm-build rpmdevtools python3-pip
+            git curl rpm-build rpmdevtools python3-pip jq unzip
           # copr-cli 通过 pip 装 — Fedora 仓库里也有 dnf install copr-cli,
           # 但 pip 版本更新更稳定,接 API token 也更直接。
           pip3 install --no-cache-dir copr-cli
@@ -96,20 +103,73 @@ jobs:
           rpmdev-setuptree
           cp packaging/uniclipboard.spec ~/rpmbuild/SPECS/
 
-      - name: Download upstream binary RPMs into SOURCES
+      # 两条互斥路径,按 inputs.run_id 选其一:
+      #   - 给了 run_id  → 从 build run 的 artifact 拉 RPM(免去先发 release 的循环)
+      #   - 没给 run_id  → 从 GitHub Release 的 asset 拉 RPM(自动 workflow_run 模式默认走这条)
+      - name: Download RPMs from build run artifact (run_ids mode)
+        if: github.event_name == 'workflow_dispatch' && inputs.run_ids != ''
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RUN_IDS: ${{ inputs.run_ids }}
+        run: |
+          # RUN_IDS 形如 "25618035983,25618036765" — 多 run 场景常见于
+          # build.yml 按架构分别 dispatch 时(每个 run 只产一个架构 artifact)。
+          # 遍历每个 run,用 GitHub REST API 列其下 artifact,过滤 name 后缀
+          # linux-gnu (匹配 build.yml 上传名 `uniclipboard-<arch>-unknown-linux-gnu`),
+          # 拉 zip 到 /tmp,unzip -j 把内层 *.rpm 平铺到 SOURCES。
+          mkdir -p ~/rpmbuild/SOURCES /tmp/copr-art
+          IFS=',' read -ra RUNS <<< "${RUN_IDS}"
+          for RUN_ID in "${RUNS[@]}"; do
+            RUN_ID="${RUN_ID// /}"  # 去掉用户 input 里可能的空格
+            [ -z "$RUN_ID" ] && continue
+            echo "::group::Run ${RUN_ID} — list artifacts"
+            API="https://api.github.com/repos/UniClipboard/UniClipboard/actions/runs/${RUN_ID}/artifacts"
+            curl -fsSL \
+              -H "Authorization: Bearer ${GH_TOKEN}" \
+              -H "Accept: application/vnd.github+json" \
+              "${API}" > "/tmp/copr-art/list-${RUN_ID}.json"
+            echo "::endgroup::"
+
+            jq -r '.artifacts[] | select(.name | test("linux-gnu$")) | "\(.id)\t\(.name)"' \
+              "/tmp/copr-art/list-${RUN_ID}.json" | while IFS=$'\t' read -r id name; do
+              [ -z "$id" ] && continue
+              echo "::group::Fetch artifact ${name} (id=${id}, run=${RUN_ID})"
+              curl -fsSL \
+                -H "Authorization: Bearer ${GH_TOKEN}" \
+                -H "Accept: application/vnd.github+json" \
+                "https://api.github.com/repos/UniClipboard/UniClipboard/actions/artifacts/${id}/zip" \
+                -o "/tmp/copr-art/${name}.zip"
+              # zip 内层路径形如 release/bundle/rpm/UniClipboard-...rpm,
+              # -j 平铺剥目录,只匹配 *.rpm(不要 *.rpm.sig — 那是 Tauri updater 用的,
+              # COPR 重打的 RPM 会自己签 COPR GPG key)。
+              unzip -j -o -d ~/rpmbuild/SOURCES/ "/tmp/copr-art/${name}.zip" '*/rpm/*.rpm'
+              rm "/tmp/copr-art/${name}.zip"
+              echo "::endgroup::"
+            done
+          done
+
+          echo "--- SOURCES contents ---"
+          ls -lh ~/rpmbuild/SOURCES/
+
+          # 健全性检查:必须同时有 x86_64 和 aarch64 两个 RPM,缺一个就 fail-fast
+          # 避免后续 SRPM build 阶段报模糊错误。
+          for arch in x86_64 aarch64; do
+            if ! ls ~/rpmbuild/SOURCES/UniClipboard-*"${arch}".rpm >/dev/null 2>&1; then
+              echo "::error::Missing ${arch} RPM in artifacts. Did you pass both run_ids?"
+              exit 1
+            fi
+          done
+
+      - name: Download upstream binary RPMs from GitHub Release
+        if: github.event_name == 'workflow_run' || (github.event_name == 'workflow_dispatch' && inputs.run_ids == '')
         shell: bash
         env:
           UPSTREAM_TAG: ${{ steps.ver.outputs.upstream_tag }}
         run: |
-          # spec 的 Source0 用 %{_arch} 在 mock 阶段会展开成 srpm chroot 架构。
-          # SRPM 必须包含两个架构的 binary RPM 都能找到的源文件 — 但实际上
-          # SRPM 只需要包含一个 Source0(spec 渲染时锁定)。我们的策略是:
-          #   * 在 GitHub Actions 上为每个架构分别 rpmbuild -bs 出独立 SRPM
-          #   * 然后把两个 SRPM 都 submit 给 COPR(同一 build 任务可以传多个 SRPM)
-          # 但更简单做法:让 COPR 在每个 chroot 里重新 download Source0 —
-          # 但 COPR mock chroot 默认无网络。所以坚持把 Source0 嵌进 SRPM。
+          # spec 的 Source0 在 SRPM 构建阶段会被嵌入 .src.rpm,COPR mock chroot
+          # 拿到 SRPM 后不需要联网。这里 GH runner 上 curl 拉到 SOURCES/ 即可。
           mkdir -p ~/rpmbuild/SOURCES
-
           BASE_URL="https://github.com/UniClipboard/UniClipboard/releases/download/v${UPSTREAM_TAG}"
           for ARCH in x86_64 aarch64; do
             FILE="UniClipboard-${UPSTREAM_TAG}-1.${ARCH}.rpm"

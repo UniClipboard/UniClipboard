@@ -78,6 +78,25 @@ It enables seamless and secure syncing of text, images, and files across multipl
 
 Visit the [GitHub Releases](https://github.com/UniClipboard/UniClipboard/releases) page to download the installation package for your operating system.
 
+### Linux
+
+Each release ships `.deb`, `.rpm`, and `.AppImage` artifacts for both `x86_64` and `aarch64` (where supported).
+
+```bash
+# Debian / Ubuntu
+sudo dpkg -i uniclipboard_<version>_amd64.deb
+sudo apt-get install -f                                 # resolve missing deps if any
+
+# Fedora / RHEL / openSUSE (dnf)
+sudo dnf install ./UniClipboard-<version>-1.x86_64.rpm
+
+# AppImage (any distro)
+chmod +x UniClipboard_<version>_amd64.AppImage
+./UniClipboard_<version>_amd64.AppImage
+```
+
+> RPM/DEB packages do not auto-update from inside the app — use `dnf upgrade` / `apt upgrade` against your package source. The AppImage is what the in-app updater uses on Linux.
+
 ### Homebrew (macOS)
 
 On macOS, install via the official tap [`UniClipboard/homebrew-tap`](https://github.com/UniClipboard/homebrew-tap):

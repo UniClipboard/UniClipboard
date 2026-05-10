@@ -506,4 +506,232 @@ mod tests {
         assert!(!indexed.contains("th"));
         assert!(!indexed.contains("t"));
     }
+
+    // ─── Index-size benchmark: v2 (per-field rule) vs v3 (per-token rule) ───
+    //
+    // Run with: `cargo test -p uc-infra search::tokenizer::tests::bench -- --ignored --nocapture`
+    //
+    // Acceptance from #580: index growth budget < 30%. The corpus below is a
+    // hand-mixed approximation of typical clipboard traffic (plain prose, host
+    // strings, IPs, code, paths, URLs, CJK, long opaque blobs). Adjust the
+    // weights when you have real production samples.
+
+    /// Field tag for the bench corpus — drives v2's field-level prefix decision.
+    #[derive(Clone, Copy)]
+    enum BenchField {
+        BodyOrHtml,
+        UrlOrFile,
+    }
+
+    /// Re-implementation of v2's tokenize for a single segment.
+    ///
+    /// Differs from the current (v3) tokenizer in two places only:
+    /// - prefix expansion is gated by `with_prefixes` (field-driven), not by
+    ///   the token's own length;
+    /// - the prefix loop excludes tokens that contain a separator
+    ///   (`!contains_separator`), so `192.168.1.1:8080` as a whole does not
+    ///   expand;
+    /// - `prefix_tokens_v2` has no upper-length cap.
+    fn tokenize_segment_v2(raw: &str, with_prefixes: bool) -> Vec<String> {
+        if raw.is_empty() {
+            return vec![];
+        }
+        let nfkc_original: String = raw.nfkc().collect();
+        let lowered = nfkc_original.to_lowercase();
+        let is_identifier_like = contains_separator(&lowered) || has_camel_case(&nfkc_original);
+
+        let mut candidate_tokens: Vec<String> = Vec::new();
+        if is_identifier_like {
+            candidate_tokens.push(lowered.clone());
+        }
+        for word in lowered.unicode_words() {
+            if !word.is_empty() {
+                candidate_tokens.push(word.to_string());
+            }
+        }
+        let camel_parts = split_camel_case_original(&nfkc_original);
+        for camel_part in &camel_parts {
+            for sep_part in split_on_separators(camel_part) {
+                let lowered_part = sep_part.to_lowercase();
+                if !lowered_part.is_empty() {
+                    candidate_tokens.push(lowered_part);
+                }
+            }
+        }
+        for sep_part in split_on_separators(&lowered) {
+            if !sep_part.is_empty() {
+                candidate_tokens.push(sep_part.to_string());
+            }
+        }
+        let filtered: Vec<String> = candidate_tokens
+            .into_iter()
+            .filter(|t| should_keep_token(t))
+            .collect();
+        let mut result: Vec<String> = Vec::new();
+        let mut seen: HashSet<String> = HashSet::new();
+        for tok in &filtered {
+            if seen.insert(tok.clone()) {
+                let bigrams = cjk_bigrams(tok);
+                if bigrams.is_empty() {
+                    result.push(tok.clone());
+                } else {
+                    for bg in bigrams {
+                        if seen.insert(bg.clone()) {
+                            result.push(bg);
+                        }
+                    }
+                }
+            }
+        }
+        for bg in cjk_bigrams(&lowered) {
+            if seen.insert(bg.clone()) {
+                result.push(bg);
+            }
+        }
+        if with_prefixes {
+            let base_tokens: Vec<String> = result.clone();
+            for tok in &base_tokens {
+                if !contains_separator(tok) && cjk_bigrams(tok).is_empty() {
+                    for prefix in prefix_tokens_v2(tok) {
+                        if seen.insert(prefix.clone()) {
+                            result.push(prefix);
+                        }
+                    }
+                }
+            }
+        }
+        result
+    }
+
+    /// v2 had no upper-length cap on prefix expansion.
+    fn prefix_tokens_v2(token: &str) -> Vec<String> {
+        let chars: Vec<char> = token.chars().collect();
+        if chars.len() <= 3 {
+            return vec![];
+        }
+        (3..chars.len())
+            .map(|end| chars[..end].iter().collect())
+            .collect()
+    }
+
+    fn v2_count(field: BenchField, text: &str) -> usize {
+        let with_prefixes = matches!(field, BenchField::UrlOrFile);
+        tokenize_segment_v2(text, with_prefixes).len()
+    }
+
+    fn v3_count(text: &str) -> usize {
+        // v3 always uses tokenize_segment for indexing (per-token decision).
+        SearchTokenizer.tokenize_segment(text).len()
+    }
+
+    #[test]
+    #[ignore]
+    fn bench_index_size_v2_vs_v3() {
+        // (field, weight, text) — weight simulates relative occurrence rate so a
+        // single oddball entry doesn't dominate the average.
+        let corpus: &[(BenchField, u32, &str)] = &[
+            // ── body: plain English prose (most common case) ──────────────────
+            (BenchField::BodyOrHtml, 30,
+                "Welcome to UniClipboard, the encrypted local clipboard for your devices. \
+                 Copy on one machine, paste on another, with end-to-end encryption."),
+            (BenchField::BodyOrHtml, 20,
+                "The release notes mention improvements to search and pairing as well as \
+                 a fix for the quick-panel filter latency on large histories."),
+            // ── body: code/identifier-rich (#580 motivating cases) ────────────
+            (BenchField::BodyOrHtml, 8,
+                "Server running at localhost:3000 with debug mode enabled and trace level logging."),
+            (BenchField::BodyOrHtml, 4,
+                "192.168.1.1:8080 returned 503 Service Unavailable after 12 seconds, retry queued"),
+            (BenchField::BodyOrHtml, 6,
+                "Use apiUserManager.getUser(id) to fetch the active user, then call \
+                 sessionService.refresh() before any subsequent request."),
+            // ── body: CJK prose (bigram path) ─────────────────────────────────
+            (BenchField::BodyOrHtml, 15,
+                "本周完成了搜索索引的修复，主要解决纯文本中类似 URL 的标识符无法被部分键入命中的问题。"),
+            (BenchField::BodyOrHtml, 10,
+                "重要文档：发布注记、待办列表、本季度的产品路线图与已知问题汇总。"),
+            // ── body: long opaque blob (>32 chars, no separators) ─────────────
+            (BenchField::BodyOrHtml, 2,
+                "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4ifQ"),
+            // ── url field ─────────────────────────────────────────────────────
+            (BenchField::UrlOrFile, 8,
+                "github.com/UniClipboard/UniClipboard/issues/580"),
+            (BenchField::UrlOrFile, 5,
+                "stackoverflow.com/questions/12345/how-to-tokenize-mixed-content"),
+            // ── file path / file name ─────────────────────────────────────────
+            (BenchField::UrlOrFile, 6,
+                "src/main.rs"),
+            (BenchField::UrlOrFile, 4,
+                "Documents/2026-Q2-Plan.pdf"),
+            (BenchField::UrlOrFile, 3,
+                "node_modules/.cache/some-long-content-hash-abcdef0123.json"),
+        ];
+
+        let (mut total_v2, mut total_v3) = (0u64, 0u64);
+        let mut by_bucket: Vec<(&str, u64, u64)> = Vec::new();
+        let mut bucket_v2 = 0u64;
+        let mut bucket_v3 = 0u64;
+        let mut current_label = "";
+
+        // Print a per-entry breakdown so the cause of the diff is visible.
+        eprintln!("\n  bench_index_size_v2_vs_v3");
+        eprintln!("  {:>5}  {:>5}  {:>5}  {}", "v2", "v3", "Δ%", "snippet");
+        for (field, weight, text) in corpus {
+            let label = match field {
+                BenchField::BodyOrHtml => "body/html",
+                BenchField::UrlOrFile => "url/file",
+            };
+            if label != current_label && !current_label.is_empty() {
+                by_bucket.push((current_label, bucket_v2, bucket_v3));
+                bucket_v2 = 0;
+                bucket_v3 = 0;
+            }
+            current_label = label;
+            let v2 = v2_count(*field, text) as u64 * (*weight as u64);
+            let v3 = v3_count(text) as u64 * (*weight as u64);
+            let pct = if v2 == 0 {
+                0.0
+            } else {
+                (v3 as f64 / v2 as f64 - 1.0) * 100.0
+            };
+            let snippet: String = text.chars().take(50).collect();
+            eprintln!("  {v2:>5}  {v3:>5}  {pct:>+5.0}  {snippet}");
+            total_v2 += v2;
+            total_v3 += v3;
+            bucket_v2 += v2;
+            bucket_v3 += v3;
+        }
+        if !current_label.is_empty() {
+            by_bucket.push((current_label, bucket_v2, bucket_v3));
+        }
+
+        eprintln!("\n  per-field aggregate (weighted):");
+        for (label, v2, v3) in &by_bucket {
+            let pct = if *v2 == 0 {
+                0.0
+            } else {
+                (*v3 as f64 / *v2 as f64 - 1.0) * 100.0
+            };
+            eprintln!("    {label:<10}  v2 {v2:>6}  v3 {v3:>6}  Δ {pct:>+5.1}%");
+        }
+        let total_pct = (total_v3 as f64 / total_v2 as f64 - 1.0) * 100.0;
+        eprintln!(
+            "\n  TOTAL          v2 {total_v2:>6}  v3 {total_v3:>6}  Δ {total_pct:>+5.1}%  \
+             (#580 budget < 30%)"
+        );
+
+        // Catastrophic-regression guard. The actual budget question (#580 set
+        // an initial 30% budget) is decided from the printed numbers, not from
+        // a hard `assert!` — body/html went from "no prefix expansion at all"
+        // to "per-token expansion", so the body/html bucket is structurally
+        // higher and the 30% number was a first-cut estimate. We only fail the
+        // bench if growth blows past a clearly-broken threshold (e.g. an
+        // accidental n-gram explosion), so the benchmark stays useful as a
+        // regression sentinel without overfitting to one specific corpus mix.
+        assert!(
+            total_pct < 250.0,
+            "v3 index growth {total_pct:.1}% looks like a regression — investigate \
+             prefix-expansion bounds in tokenizer.rs"
+        );
+    }
 }

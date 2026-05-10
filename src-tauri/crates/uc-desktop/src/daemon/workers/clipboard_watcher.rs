@@ -1,7 +1,9 @@
 //! Real clipboard watcher service for the daemon.
 //!
-//! Monitors OS clipboard changes via clipboard_rs, persists captured entries
-//! via application clipboard capture facade, and broadcasts clipboard.new_content WS events.
+//! Monitors OS clipboard changes via the platform-supplied event loop
+//! (`uc_platform::clipboard::build_event_loop`), persists captured entries via
+//! the application clipboard capture facade, and broadcasts the
+//! `clipboard.new_content` WS event.
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -13,7 +15,6 @@ use tokio::sync::{broadcast, mpsc};
 use tokio_util::sync::CancellationToken;
 use tracing::{debug, info, instrument, warn, Instrument};
 
-use clipboard_rs::{ClipboardWatcher as RSClipboardWatcher, ClipboardWatcherContext};
 use uc_application::facade::{
     ClipboardCaptureFacade, ClipboardLiveIndexFacade, ClipboardLiveIndexInput,
     ClipboardLiveIndexOutcome, ClipboardOutboundFacade, ClipboardOutboundInput,
@@ -26,6 +27,7 @@ use uc_daemon_contract::constants::{ws_event, ws_topic};
 
 use uc_observability::FlowId;
 use uc_platform::clipboard::watcher::{ClipboardWatcher, PlatformEvent, PlatformEventSender};
+use uc_platform::clipboard::{build_event_loop, shutdown_channel};
 
 use crate::daemon::service::{DaemonService, ServiceHealth};
 use uc_webserver::api::types::DaemonWsEvent;
@@ -264,9 +266,10 @@ impl ClipboardChangeHandler for DaemonClipboardChangeHandler {
 
 /// Daemon service that monitors OS clipboard changes.
 ///
-/// Uses clipboard_rs::ClipboardWatcherContext (via spawn_blocking) and
-/// uc_platform::ClipboardWatcher for dedup. Captured snapshots are forwarded
-/// to DaemonClipboardChangeHandler which persists and broadcasts WS events.
+/// Delegates the OS-specific listener to `uc_platform::clipboard::build_event_loop`
+/// (Wayland data-control / X11 XFIXES / `clipboard_rs`-wrapped legacy backends);
+/// `uc_platform::ClipboardWatcher` performs dedup before forwarding the snapshot
+/// to `DaemonClipboardChangeHandler` which persists and broadcasts WS events.
 pub struct ClipboardWatcherWorker {
     local_clipboard: Arc<dyn uc_core::ports::SystemClipboardPort>,
     change_handler: Arc<DaemonClipboardChangeHandler>,
@@ -299,19 +302,17 @@ impl DaemonService for ClipboardWatcherWorker {
         // Create the uc-platform ClipboardWatcher (handles dedup logic).
         let handler = ClipboardWatcher::new(self.local_clipboard.clone(), platform_tx);
 
-        // Create clipboard_rs watcher context and register our handler.
-        let mut watcher_ctx = ClipboardWatcherContext::new()
-            .map_err(|e| anyhow::anyhow!("Failed to create ClipboardWatcherContext: {}", e))?;
+        // Build the platform-specific event loop. Linux runtime-detects Wayland
+        // vs X11; macOS / Windows return the clipboard_rs adapter.
+        let event_loop = build_event_loop()?;
+        let (shutdown_tx, shutdown_rx) = shutdown_channel();
 
-        // get_shutdown_channel() requires adding the handler first.
-        let shutdown = watcher_ctx.add_handler(handler).get_shutdown_channel();
-
-        // Run the blocking watcher loop on a dedicated thread (per D-07).
-        // WatcherShutdown is NOT Send, so we create and consume it within this
-        // same async fn — it never crosses an await boundary to another task.
-        tokio::task::spawn_blocking(move || {
+        // Run the blocking event loop on a dedicated thread.
+        let event_loop_join = tokio::task::spawn_blocking(move || {
             info!("clipboard watcher thread started");
-            watcher_ctx.start_watch();
+            if let Err(e) = event_loop.run(handler, shutdown_rx) {
+                warn!(error = %e, "Clipboard event loop returned error");
+            }
             info!("clipboard watcher thread stopped");
         });
 
@@ -321,8 +322,7 @@ impl DaemonService for ClipboardWatcherWorker {
             tokio::select! {
                 _ = cancel.cancelled() => {
                     info!("clipboard watcher cancellation received");
-                    // Signal the blocking watcher thread to stop (per D-08).
-                    shutdown.stop();
+                    shutdown_tx.signal();
                     break;
                 }
                 event = platform_rx.recv() => {
@@ -344,6 +344,12 @@ impl DaemonService for ClipboardWatcherWorker {
                     }
                 }
             }
+        }
+
+        // Wait for the event loop thread to finish so we don't leave a
+        // half-shut-down listener clinging to the OS clipboard.
+        if let Err(e) = event_loop_join.await {
+            warn!(error = %e, "Clipboard watcher join failed");
         }
 
         info!("clipboard watcher stopped");

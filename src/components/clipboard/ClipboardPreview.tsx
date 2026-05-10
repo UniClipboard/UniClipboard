@@ -102,7 +102,7 @@ const ClipboardPreview: React.FC<ClipboardPreviewProps> = ({ item, actions }) =>
         {isLargeText ? (
           <div className="absolute inset-0">{renderContent()}</div>
         ) : (
-          <ScrollArea className="h-full">
+          <ScrollArea className="h-full [&_[data-slot=scroll-area-viewport]>div]:!block">
             <div className="min-h-full">{renderContent()}</div>
           </ScrollArea>
         )}

@@ -1,19 +1,19 @@
 //! # Scene-Specific Builders
 //!
-//! Entry-point constructors for CLI and daemon runtime modes. The
-//! process-level runtime entry-point (`build_process_runtime` +
-//! `ProcessRuntimeContext`) lives in [`uc_desktop::bootstrap`]—this crate
-//! stays shell-agnostic and only provides the composition-root assembly
-//! tools the desktop crate then uses to wire its own entry-points.
+//! Entry-point constructors for CLI runtime modes + daemon-lifecycle
+//!装配。进程级 runtime 入口 (`build_process_runtime` +
+//! `ProcessRuntimeContext`) 住在 [`uc_desktop::bootstrap`]——本 crate
+//! 保持 shell-agnostic,只提供 composition-root 装配工具。
 //!
-//! Both builders here share a private `build_core()` helper that:
-//! 1. Initializes tracing (idempotent)
-//! 2. Resolves application config
-//! 3. Wires all dependencies via `wire_dependencies`
+//! CLI 入口 (`build_cli_context_with_profile` / `build_slice1_cli_context`)
+//! 通过私有 `build_core()` 跑 tracing init + `wire_dependencies`,返回
+//! 各自的 context struct;CLI 不 spawn background workers,装出来的
+//! `BackgroundRuntimeDeps` 直接 drop。
 //!
-//! Each builder returns a context struct containing `AppDeps` (NOT `CoreRuntime`).
-//! Callers construct `CoreRuntime` themselves with the appropriate emitter cell,
-//! lifecycle status, and task registry.
+//! [`build_daemon_lifecycle`] 接受已有 [`crate::assembly::WiredDependencies`]
+//! 作输入,**不** 再次 wire —— sqlite pool / repos / settings 等跨 daemon
+//! reload 复用,daemon-lifecycle 只装 iroh node + space_setup + 启动期
+//! reconcile。
 
 use std::sync::Arc;
 
@@ -105,15 +105,6 @@ pub fn build_slice1_cli_context(
     Ok((config, wired))
 }
 
-/// Build daemon bootstrap context. Returns AppDeps + background deps.
-/// Caller constructs CoreRuntime and starts background workers.
-///
-/// Also binds the iroh node + builds the full `SpaceSetupAssembly`
-/// (pairing + presence + clipboard handlers) and exposes
-/// `clipboard_sync_facade` so daemon workers can dispatch / subscribe
-/// via the iroh stack. `trusted_peer_repo` is consumed by
-/// `build_space_setup_assembly` (the setup-v2 flow) and is not
-/// re-exposed on the returned ctx.
 /// daemon-lifecycle 装配产出 (每次 daemon start/stop 重建)。
 ///
 /// 不再持有 `deps` / `background` —— 那两块属于进程级,跨 daemon reload

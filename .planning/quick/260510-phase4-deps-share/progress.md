@@ -87,4 +87,41 @@ task_plan 的"删 WireOverrides + 不重建 sqlite pool"目标范围。两条路
 
 ## 测试结果
 
-(尚未执行)
+### Phase A + B + C 完成后 (2026-05-10)
+
+| 测试套 | 结果 |
+|---|---|
+| `cargo check --workspace` | 干净 |
+| `cargo test -p uc-application --lib` | 413 passed |
+| `cargo test -p uc-bootstrap --lib` | 12 passed |
+| `cargo test -p uc-bootstrap --tests` | 5 passed (整合测试 4 binaries) |
+| `cargo test -p uc-desktop --lib` | 48 passed |
+| `cargo test -p uc-tauri --lib` | 21 passed |
+| `cargo test -p uc-webserver --lib` | 45 passed |
+| **合计** | **544 passed** |
+
+### Commit 序列
+
+| commit | 内容 |
+|---|---|
+| 181a504e | rename build_gui_app → build_process_runtime |
+| 9fa945b7 | split BackgroundRuntimeDeps out of WiredDependencies |
+| 655d187a | add build_daemon_lifecycle, derive Clone on AppDeps |
+| 283cbc5a | daemon 复用进程级 deps,blob workers 上提到进程启动 |
+| b53c7492 | 删除 WireOverrides 整套机制 |
+
+## 剩余工作 (Phase D / E)
+
+### Phase D — 验证 daemon reload 不重建 deps
+
+钉死 "daemon reload 复用进程级 deps" 这条契约。倾向写集成测试
+(uc-desktop tests),断言 daemon spawn 前后 sqlite pool 内部 Arc 地址
+保持。次选：加探针 log。
+
+### Phase E — 测试与回归
+
+- 全栈 cargo test (含 long-running integration)
+- pnpm exec vitest run (前端，本次重构理论上无前端改动，只验证)
+- 手动复现 mobile_sync 重启路径
+- 手动验证 standalone daemon binary 独立启动
+- 手动验证 lan_listener_error 端到端可见

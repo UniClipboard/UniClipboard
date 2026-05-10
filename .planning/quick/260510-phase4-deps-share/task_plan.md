@@ -52,13 +52,61 @@ build_daemon_bootstrap_assembly(WiredDependencies, BackgroundRuntimeDeps, ...)
 
 ## 已完成的阶段
 
-(本会话从零起步，无已完成阶段)
+### Phase A — 拆 build_daemon_app + 上提 background workers
+
+**Status**: ✅ complete (commits 181a504e / 9fa945b7 / 655d187a / 283cbc5a)
+
+**落地内容**:
+
+- `build_gui_app` → `build_process_runtime`,`GuiBootstrapContext` →
+  `ProcessRuntimeContext` 重命名 (commit 181a504e)
+- `BackgroundRuntimeDeps` 从 `WiredDependencies` 拆出来:wire 函数返回
+  tuple `(WiredDependencies, BackgroundRuntimeDeps)`,持久 vs 一次性
+  消费两类资源分离 (commit 9fa945b7)
+- `AppDeps` 与 7 个 sub-port struct + `WiredDependencies` 全部
+  `#[derive(Clone)]`,所有字段都是 Arc<dyn>/PathBuf,clone 廉价。新增
+  `build_daemon_lifecycle(wired)` 函数 (commit 655d187a)
+- daemon 路径主体改造 (commit 283cbc5a):
+  - 新增 `ProcessRuntimeHandles { wired, storage_paths,
+    clipboard_write_coordinator, file_transfer_lifecycle }`
+  - `start_in_process` 入参 WireOverrides → ProcessRuntimeHandles
+  - `build_daemon_bootstrap_assembly` 改用 build_daemon_lifecycle 而非
+    build_daemon_app(daemon 不再 wire 自己的 deps)
+  - `daemon::start_in_process` 不再 spawn_blob_processing_tasks ——
+    blob/spool worker 由 caller 在进程启动期一次性 spawn
+  - GUI shell `uc-tauri/src/run.rs::run` 编排:build_process_runtime →
+    spawn blob workers (挂在 runtime task_registry) → bootstrap
+    daemon (透传 ProcessRuntimeHandles)
+  - standalone daemon binary `uc-desktop/src/daemon/host.rs::run` 同样
+    编排
+  - 删除 `daemon/background_tasks.rs` (无 caller)
+
+### Phase B — daemon_probe / daemon::host 接受已有 deps
+
+**Status**: ✅ complete (随 Phase A 一并落地，commit 283cbc5a)
+
+`daemon_probe::bootstrap_daemon_in_process` /
+`start_owned_in_process` / `reload_in_process_daemon` 三个入口的
+`wire_overrides` 参数全部换成 `process_handles: ProcessRuntimeHandles`,
+`uc-tauri/src/commands/restart.rs::restart_daemon` 也跟着改。
+
+### Phase C — 删除 WireOverrides 机制
+
+**Status**: ✅ complete (commit b53c7492 + 后续 doc cleanup)
+
+- 删除 `WireOverrides` struct
+- 删除 `wire_dependencies_with_overrides` 函数 (合并回 `wire_dependencies`)
+- 删除 `create_infra_layer` 的 `mobile_sync_endpoint_info_override` 参数
+- 删除 `build_daemon_app` 函数 + `DaemonBootstrapContext` struct
+- 更新 lib.rs re-export
+- 验证：`grep -r "WireOverrides\|wire_dependencies_with_overrides\|
+  DaemonBootstrapContext"` 零命中
 
 ## 待办阶段
 
-### Phase A — 拆 build_daemon_app + 上提 background workers
+### Phase A — 拆 build_daemon_app + 上提 background workers (已迁移到"已完成"段)
 
-**Status**: 🔲 todo
+**Status**: ✅ complete (见上)
 
 **问题**: `uc-bootstrap/src/builders.rs::build_daemon_app` 当前耦合三件事：
 1. 进程级 deps 装配 (`build_core` → `wire_dependencies_with_overrides`) ——
@@ -97,9 +145,9 @@ build_daemon_bootstrap_assembly(WiredDependencies, BackgroundRuntimeDeps, ...)
   `build_process_runtime` → spawn blob workers → 后 `build_daemon_lifecycle`"
   三步;in-process 路径 GUI shell `run()` 同样三步。
 
-### Phase B — daemon_probe / daemon::host 接受已有 deps
+### Phase B — daemon_probe / daemon::host 接受已有 deps (已迁移)
 
-**Status**: 🔲 todo
+**Status**: ✅ complete (见上)
 
 **改动**:
 
@@ -121,9 +169,9 @@ build_daemon_bootstrap_assembly(WiredDependencies, BackgroundRuntimeDeps, ...)
 让 `AppFacade` / `DesktopRuntime` 持有一个 deps handle 反查？倾向方案 A (显
 式传 deps),让数据流清晰、不引入隐式依赖。
 
-### Phase C — 删除 WireOverrides 机制
+### Phase C — 删除 WireOverrides 机制 (已迁移)
 
-**Status**: 🔲 todo
+**Status**: ✅ complete (见上)
 
 **前提**: Phase A + B 完成，daemon 不再调 `wire_dependencies` —— 此时
 mobile_sync_endpoint_info Arc 自然只有一份 (从 `WiredDependencies` 出来),

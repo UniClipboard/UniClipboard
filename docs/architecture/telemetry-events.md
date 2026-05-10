@@ -5,7 +5,7 @@
 > 状态：**v1 schema 已定稿**，§10 开放问题已全部裁决。
 > 本文件只定义事件 schema、身份标识与隐私契约；
 > 上报通道（PostHog Cloud SDK 接入、本地队列、批量发送）属于子任务 2，不在此处展开。
-> 后端选型：**PostHog Cloud（EU ingestion endpoint）**，理由见 §10。
+> 后端选型：**PostHog Cloud（US ingestion endpoint，2026-05-09 起）**，理由见 §10。
 
 ## 1. 范围与目标
 
@@ -390,11 +390,14 @@ buckets.rs    // PayloadSizeBucket / LatencyBucket 等区间类型
    `pairing_succeeded` 等事件本身覆盖。
 3. **留存口径设备级**，Space 级聚合延后到 v2（§3.4）。`space_id_hash` 维度
    保留在 EventContext 中，v2 切片即可，不需要重发历史事件。
-4. **后端选 PostHog Cloud（EU ingestion endpoint）**。理由：
+4. **后端选 PostHog Cloud（US ingestion endpoint，2026-05-09 实际注册区域）**。理由：
    - 早期 < 10 用户，self-host 维护成本不划算。
-   - EU endpoint 对跨境用户更友好，符合 §6 隐私契约。
+   - US 与 EU region 走相同的隐私模型（SOC 2 + GDPR DPA + SCC），
+     物理驻留不同但合规等价；§6 的隐私契约（IP 不上传、`disable_geoip=true`、
+     字段脱敏）与 region 选择正交。
    - 免费额度（每月 100 万事件）按当前规模一年都用不完。
-   - schema 已与 SDK 解耦（§9），将来迁移 self-host 只换 sink 不动事件。
+   - schema 已与 SDK 解耦（§9），将来迁移 self-host 或切 EU region
+     只换 sink host 不动事件。
    - 鉴于 Cloud 是已知第三方且 `anonymous_user_id` 本身已是无 PII 的
      UUIDv7，**不需要在客户端对 ID 再做二次哈希**——再哈希反而会让
      PostHog 的"按 user 聚合"功能失效（它需要稳定 distinct_id）。

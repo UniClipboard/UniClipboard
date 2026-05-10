@@ -8,7 +8,7 @@ Schema 与隐私契约定稿在：`docs/architecture/telemetry-events.md`。
 
 ## Strategy
 
-- **后端**：PostHog Cloud（EU ingestion endpoint），不自研 ingestion / dashboard
+- **后端**：PostHog Cloud（US ingestion endpoint，实际注册区域），不自研 ingestion / dashboard
 - **架构**：schema 与 SDK 完全解耦——所有事件类型驻在 `uc-observability::analytics`，sink 通过 `AnalyticsPort` trait 注入；将来换 self-host 或换后端只换 sink
 - **隐私双开关**：`general.telemetry_enabled`（Sentry 错误）+ `general.usage_analytics_enabled`（产品 telemetry）独立勾选，GDPR 友好
 - **ID 分层**：`anonymous_user_id` / `analytics_device_id` / `session_id`，全部 UUIDv7。`analytics_device_id` 与 `uc-core::DeviceId` **完全 disjoint**，零 cross-system correlation 风险
@@ -17,7 +17,9 @@ Schema 与隐私契约定稿在：`docs/architecture/telemetry-events.md`。
 
 Slice 8 全部完成（8a / 8b / 8b' / 8c-1 / 8c-2 / 8d）。outbound funnel + reliability 全链路通。
 
-Slice 7b 仍阻塞（PostHog Cloud account + project key）；Slice 9 / 10 待前端工作 / 真实数据积累。
+**进行中：Slice 7b（PostHog Cloud 接入）** —— 7b-1 / 7b-2 已落地（依赖 + sink 骨架 + capture 实 wire + wiremock 烟测，63 lib tests 全绿）。下一步推进 7b-3（key 注入 + bootstrap factory + 缺 key 降级）。7b-4 仍等 CI secret + 项目 key 外部就绪。
+
+Slice 9 / 10 待前端工作 / 真实数据积累。
 
 ## Phases
 
@@ -89,12 +91,103 @@ Slice 7b 仍阻塞（PostHog Cloud account + project key）；Slice 9 / 10 待�
 - [x] 5 个新测试：payload 4 case + stdout_sink_lifecycle 串行 fn
 - **Status:** complete
 
-### Slice 7b: PosthogSink
-- [ ] `posthog-rs` 0.7+ wrapper：`capture` async + 内部批量队列
-- [ ] EU ingestion endpoint 配置
-- [ ] project key 注入策略（参考现有 `SENTRY_DSN` 处理方式）
-- [ ] runtime sink factory：缺 key 时降级到 NoopAnalyticsSink + warn
-- **Status:** pending（待 PostHog Cloud account + project key）
+### Slice 7b: PosthogSink（PostHog Cloud 接入）
+
+**目标**：把 release 构建的 `build_analytics_sink()` 从临时态 `Gated(NoopAnalyticsSink)` 切到 `Gated(PosthogSink)`，事件真正落到 PostHog Cloud（US endpoint，2026-05-09 实际注册区域）。dev 路径继续走 `Gated(StdoutSink)` 不变。
+
+**外部阻塞**（在 7b-3 落地前必须就绪）：
+1. PostHog Cloud 账号开好 + 项目建好 + 拿到 `phc_*` project key
+2. CI secret `POSTHOG_PROJECT_KEY` 加到 GitHub repository（与 `SENTRY_DSN` 同位）
+
+**用户裁决项（Slice 7b 启动时一次定稿）**：
+- **key 注入策略** = 完全镜像 SENTRY_DSN 三级回退：运行时 env `POSTHOG_PROJECT_KEY` 优先 → 编译期 `option_env!("POSTHOG_PROJECT_KEY")` → 都缺时 release 降级到 `Gated(NoopAnalyticsSink)` + 一次 info 日志。理由：CI 注入路径已经验证过（`uc-bootstrap/src/tracing.rs:155-170`），不引入新机制
+- **endpoint** = 固定 `https://us.i.posthog.com/i/v0/e/`（PostHog capture API），不暴露 self-host 配置（schema doc 已选 US；后期迁移 self-host 或切 EU 是 Slice 11+ 范围）
+- **HTTP 客户端 = 自写 reqwest 0.12，不用 posthog-rs SDK** ⚠️ **2026-05-09 决策转向**：原计划用 `posthog-rs = "0.7"` SDK，cargo tree 验证时发现 SDK hardcode `reqwest = "0.13.2"` 带 `features = ["rustls"]`——reqwest 0.13 的 `rustls` feature 隐式选 `aws-lc-rs`（C 库 + CMake 编译，musl cross 不友好）。这与项目早已建立的硬约束冲突（见 `uc-bootstrap/Cargo.toml:27-34` sentry 注释：刻意用 `ureq + rustls(ring)` 避开 reqwest 0.13）。cargo features unification 是 workspace 级，无法用 `optional`/feature gate 把 uc-cli 排除。改为自写 ~100 行 minimal HTTP client：
+  - 用项目已有的 `reqwest = "0.12", default-features = false, features = ["json", "rustls-tls", "rustls-tls-webpki-roots"]`（uc-infra/uc-daemon-client/uc-cli/uc-desktop 全部已用，走 ring，无 aws-lc）
+  - PostHog capture endpoint 极简：`POST /i/v0/e/` + `{api_key, event, distinct_id, properties, timestamp?}` JSON body
+  - 失去 SDK 的 batching + retry，但 schema doc §10 已允许 < 1% 丢失，fire-and-forget 单条 POST 够用
+- **构造异步化** = `reqwest::Client::new()` 是 sync；`build_analytics_sink()` 暂可保持 sync 签名。client 内部 `client.post(url).json(body).send().await` 走 spawn 隔离
+- **fire-and-forget 模型** = `PosthogSink::capture` 内部 `tokio::spawn` 一条独立 task 调 `reqwest::Client::post(...).await`；调用方 zero-await。HTTP 失败仅 `tracing::warn!` 不传播
+- **进程退出 flush** = 不挂显式 shutdown hook。reqwest::Client 内有连接池但无应用级队列（自写 client 没有 batching 队列），单条 POST 一旦 spawn 就走自己的网络生命周期。schema doc §10 已允许 < 1% 丢失。后续若发现丢失率高再补 `tauri::App::on_exit` 钩子做 best-effort drain
+- **隐私 header / `disable_geoip` 等价** = 自写 client 无 `disable_geoip` 参数 ——  PostHog 服务端的 geoip 是基于请求 IP，自写 client 默认就不会发任何 IP 增强字段（属性平铺由我们控制）。schema doc §6 隐私契约（客户端 IP 不上传）由 client 不主动 inject IP-derived 属性自然实现。后续若发现 PostHog 服务端仍按请求 IP 落地理字段，可在 properties 显式置 `"$geoip_disable": true`
+- **测试策略** = 不联真实 PostHog；用 `wiremock` 或 `mockito` 起本地 HTTP server 验证 POST 形状（method + endpoint + body 字段）。或更简：把"构造 reqwest body"提到纯 fn `build_capture_body(event, ctx, api_key) -> serde_json::Value` 单测，HTTP 行为只测一次烟测
+
+**架构图**（与 7a 对比）
+
+```
+                   AppDeps.analytics: Arc<dyn AnalyticsPort>
+                              │
+                  Gated(inner)  ← analytics_gate 守卫
+                              │
+            ┌─────────────────┼─────────────────┐
+            ↓                                   ↓
+       dev / debug                         release
+       StdoutSink                          PosthogSink   ← 7b 新增
+       tracing::debug                      tokio::spawn(reqwest POST)
+                                                ↓
+                                          reqwest 0.12 + rustls (ring)
+                                                ↓
+                                          POST https://us.i.posthog.com/i/v0/e/
+                                          Body: {api_key, event, distinct_id, properties}
+```
+
+#### Slice 7b-1: 依赖与 sink 骨架（自写 reqwest client）
+- [x] `uc-observability/Cargo.toml`：加 `reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "rustls-tls-webpki-roots"] }` + `tokio = { version = "1", default-features = false, features = ["rt"] }`（仅 rt feature，spawn 用）
+- [x] 验证：`cargo tree -p uc-observability -e features | rg -i 'aws-lc|openssl|native-tls'` 应为空（出现即 features 选错）—— ✅ 实测干净
+- [x] `uc-observability/src/analytics/sinks/posthog.rs`：新增 `PosthogSink { client: reqwest::Client, api_key: String, endpoint: String, warned_missing_context: AtomicBool }` struct + `pub fn new(api_key: String) -> Self`（默认 endpoint = `POSTHOG_US_CAPTURE_ENDPOINT` 常量 = `https://us.i.posthog.com/i/v0/e/`）+ `pub fn with_endpoint(api_key: String, endpoint: String) -> Self`（测试 / self-host 用）
+- [x] `sinks/mod.rs`：`pub mod posthog;` + `pub use posthog::PosthogSink;`
+- [x] 暂时空 `impl AnalyticsPort`（capture 仅 `let _ = event;` 占位），先通过编译，capture 行为留 7b-2
+- [x] 3 个骨架单测：默认 endpoint / 自定义 endpoint / `Box<dyn AnalyticsPort>` object safety
+- **Status:** complete
+
+#### Slice 7b-2: capture 实现 + payload wire
+- [x] 私有纯 fn `build_capture_body(event_name, payload, api_key) -> Value`：移出 `event`/`distinct_id`、剩余字段进 `properties`、顶层加 `api_key`/`event`/`distinct_id`/`properties`/`timestamp(RFC3339)`
+- [x] `PosthogSink::capture`：context 缺失 warn 节流 + `build_event_payload` + `build_capture_body` + `tokio::spawn` fire-and-forget reqwest POST + 非 2xx / Err 仅 warn
+- [x] 4 个 `build_capture_body_*` 单测：顶层字段齐 / 字段冲突 invariant（properties 不含 event+distinct_id）/ distinct_id 缺失 fallback 空串 / property value 类型保留（number/bool 不退化为 string）
+- [x] `posthog_sink_lifecycle` wiremock 烟测：起 MockServer，capture(AppFirstOpen) → 200ms 后断言收到 1 个 POST + body 顶层 + properties 不重复 / context 缺失分支 0 POST
+- [x] **顺带修**：跨 fn 全局 `EventContext` 竞态——`context.rs` 加 `#[cfg(test)] lock_global_event_context_for_tests()` `OnceLock<Mutex<()>>` helper，`context::global_event_context_lifecycle` / `stdout_sink_lifecycle` / `posthog_sink_lifecycle` 三处 fn 入口都拿同一把锁（之前依赖"单 fn 内串行"约束在仅 1 个 lifecycle fn 时成立，现 3 个 fn 必须显式串行）
+- **Status:** complete
+
+#### Slice 7b-3: key 注入 + bootstrap factory + 降级路径
+- [ ] `uc-bootstrap/src/analytics.rs::build_analytics_sink` 保持 sync（自写 client 不需要 async 构造）：
+  - dev (`cfg!(debug_assertions)`) 路径不变，仍返回 `Gated(StdoutSink)`
+  - release 路径：
+    1. `let runtime_key = std::env::var("POSTHOG_PROJECT_KEY").ok().filter(|s| !s.is_empty());`
+    2. `let compile_time_key = option_env!("POSTHOG_PROJECT_KEY").filter(|s| !s.is_empty());`
+    3. `let key = runtime_key.or_else(|| compile_time_key.map(String::from));`
+    4. `match key { None => info 一次"PostHog 未配置，产品 telemetry 关闭" + Gated(NoopAnalyticsSink); Some(k) => Gated(PosthogSink::new(k)) }`
+- [ ] **传染面 = 0**：与 SDK 方案不同，自写 client 构造同步，不需要 `build_analytics_sink` 转 async；assembly.rs:947 调用点零改动
+- [ ] 抽取 `resolve_posthog_key(runtime: Option<String>, compile: Option<&'static str>) -> Option<String>` 私有 fn 便于单测
+- [ ] 单元测试 `resolve_posthog_key_*`：4 case（runtime_only / compile_only / both → runtime 胜出 / none → None）
+- **Status:** pending（待 7b-1 / 7b-2）
+
+#### Slice 7b-4: CI secret 注入 + 文档 + 真实 dev 验证
+- [ ] `.github/workflows/build.yml`：在 `tauri-action` 与 `bun run tauri build` 两段 env 块加 `POSTHOG_PROJECT_KEY: ${{ secrets.POSTHOG_PROJECT_KEY }}`（与 `SENTRY_DSN` 同位）
+- [ ] `.github/workflows/alpha-build.yml`：同上
+- [ ] `docs/architecture/telemetry-events.md`：§9 / §10 补一段"PostHog Cloud 接入实务"——key 注入路径、release 缺 key 时的降级语义、`disable_geoip` 决策
+- [ ] `docs/CONTRIBUTING.md` 或 `SECURITY.md`：补"产品 telemetry secrets 列表"——`POSTHOG_PROJECT_KEY` / `SENTRY_DSN` / `VITE_SENTRY_DSN` 三 secret 由谁负责注入、谁有 PostHog 项目 owner 权限
+- [ ] 真实 dev 验证步骤（不进自动化测试）：
+  1. 本地 export `POSTHOG_PROJECT_KEY=phc_xxx`
+  2. `cargo build --release -p uc-tauri`（绕过 dev 路径，强制走 PosthogSink）
+  3. 跑一遍首次 onboarding，PostHog 控制台应能在 ~10s 内看到 `app_first_open` / `setup_started` / `pairing_*` 序列
+  4. 翻 settings → "使用情况统计"关 → 再触发任意事件，PostHog 端应不再有新事件（gate wrapper 验证）
+  5. unset env → 重启 → 再触发事件，sink 应静默（noop fallback 验证）
+- [ ] 验证完毕后把 Slice 7b 整体 status 翻 complete，并通知用户开始观察首批数据
+- **Status:** pending（待 PostHog Cloud account + project key + CI secret）
+
+**子任务依赖图**：
+
+```
+7b-1 (依赖 + 骨架)
+   ↓
+7b-2 (capture 实现 + payload wire)
+   ↓
+7b-3 (key 注入 + factory async 化 + 降级)
+   ↓
+7b-4 (CI secret + docs + 手工验收)
+```
+
+7b-1 / 7b-2 不阻塞外部 PostHog account（用 disabled client 测）；7b-3 的"降级到 Noop"路径也不阻塞；只有 7b-4 真实事件验收必须等 PostHog 项目 + CI secret 就绪。
 
 ### Slice 8: 业务 use case 埋点（按 schema doc §7.1 / §7.2 接入）
 
@@ -248,7 +341,7 @@ pub trait FirstSyncStatePort: Send + Sync {
 - **Status:** pending
 
 ### Slice 10: 验收 + dashboard
-- [ ] PostHog Cloud 项目创建、API key 配置、EU endpoint
+- [ ] PostHog Cloud 项目创建、API key 配置、US endpoint（2026-05-09 注册区域；schema doc §10）
 - [ ] 5 张 dashboard：渠道漏斗 / 首次同步成功率趋势 / 同步成功率 + p95 + 失败原因 / D1+D7 留存 / OS 组合矩阵
 - [ ] 跑一周真实数据后 close issue
 - **Status:** pending
@@ -258,14 +351,14 @@ pub trait FirstSyncStatePort: Send + Sync {
 1. ~~**`active_device_count` 取数源**~~：✅ Slice 6 裁决 `member_repo.list().await.len()`，不用 0 占位。
 2. ~~**bootstrap 调用点**~~：✅ Slice 6 裁决放在 `wire_dependencies` 之后，`build_core` 转 async。
 3. ~~**Slice 7 dev/prod sink 切换**~~：✅ Slice 7a 裁决走 runtime，与 telemetry_gate 一致。
-4. **PostHog Cloud 账号**（Slice 7b 阻塞项）：谁来开、project key 怎么注入（环境变量 vs build-time embed）？参考现有 `SENTRY_DSN` 处理方式。
+4. ~~**PostHog Cloud 账号**（Slice 7b 阻塞项）~~：✅ 规划阶段裁决：注入策略完全镜像 SENTRY_DSN 三级回退（运行时 env > `option_env!` > 关闭）。账号创建与 CI secret 注入仍为外部阻塞，但代码侧落地已不依赖该决策。
 5. **Slice 8 sink 注入位置**：`AppDeps` 加 `analytics: Arc<dyn AnalyticsPort>` vs 全局单例（类似 `global_event_context`）？前者 testability 更好，后者更轻。
 
 ## Decisions Made
 
 | Decision | Rationale |
 |---|---|
-| 后端选 PostHog Cloud（EU endpoint），不自研 | 早期 < 10 用户、self-host 维护成本不划算；schema 与 SDK 解耦保证迁移自由 |
+| 后端选 PostHog Cloud（US endpoint，实际注册区域），不自研 | 早期 < 10 用户、self-host 维护成本不划算；schema 与 SDK 解耦保证迁移自由；US 与 EU region 隐私模型等价（SOC 2 + GDPR DPA + SCC），§6 隐私契约与 region 正交 |
 | 双开关而非合并 | GDPR 友好——"报错"和"用量统计"两件事；保留 `telemetry_enabled` 字段名零迁移 |
 | `analytics_device_id` 独立于 `uc-core::DeviceId` | 防 cross-system correlation；schema doc §3.1 明确 disjoint 约束 |
 | EventContext 用 `RwLock<Option<Arc<...>>>` 而非 `OnceLock` | 用户重置 telemetry IDs 后需要原地替换 context |
@@ -286,6 +379,14 @@ pub trait FirstSyncStatePort: Send + Sync {
 | Slice 8c-2 race 防护放 port impl 内部 `tokio::sync::Mutex` | 与 `AppVersionStatePort` 文件实现风格对称；fan-out N 个 peer 全过同一锁、串行 read-check-write，无须 use case 层 atomic CAS 兜底；race 测试可显式覆盖；fan-out 量级（< 10 peer）远不到磁盘 IO 瓶颈 |
 | Slice 8c-2 范围含 `first_file_sync_succeeded` | schema doc §7 已预留；Port 三 flag 一次到位避免后续重打开 wiring；dispatch_entry 已能从 categories 推断 `payload_type=File` 分支，多 fire 一行成本极低 |
 | Slice 8c-2 mark 在 fire 之前 | port `mark_*` 返回 `Ok(true)` 才 fire，意味着"先置位再 fire"；事件丢一次比误报多次更可接受（首次同步事件只该有一次） |
+| Slice 7b PosthogSink fire-and-forget = `tokio::spawn` 而非 `block_on` / 内部队列 | `AnalyticsPort::capture` 是同步签名（schema doc §10）；`reqwest::Client::post(...).send()` 是 async。spawn 一条独立 task 保 capture 不阻塞业务（< 几 µs）。HTTP 失败仅 warn，不传播 |
+| Slice 7b key 注入完全镜像 SENTRY_DSN 三级 | 运行时 env > `option_env!` 编译期 > 关闭。已在 SENTRY_DSN 路径验证（`tracing.rs:155-170`）；不引入新 secret 注入机制。CI 在 build.yml / alpha-build.yml 同位加 `POSTHOG_PROJECT_KEY` |
+| Slice 7b release 缺 key → `Gated(NoopAnalyticsSink)` 而非启动失败 | 产品 telemetry 是辅助通道，不应反向影响 daemon / GUI 启动可用性。降级时打一次 info（非 warn，缺 key 是合法配置）记录"PostHog 未配置" |
+| Slice 7b 自写 reqwest client，不用 posthog-rs SDK ⚠️ 转向决策 | posthog-rs 0.7 hardcode `reqwest = "0.13.2"` + features `["rustls"]`，reqwest 0.13 的 rustls feature 隐式选 aws-lc-rs（C 库 + CMake），破坏 uc-cli musl 静态编译"零 C 工具链"硬约束（sentry 已为此用 ureq + ring 而非 reqwest 0.13）。cargo features unification workspace 级，无法 gate 排除。自写 ~100 行 reqwest 0.12 + rustls(ring) HTTP client：失去 SDK batching + retry，但 schema doc §10 允许 < 1% 丢失，fire-and-forget 单条 POST 够用 |
+| Slice 7b 隐私契约 = 不主动 inject IP 字段（替代 SDK `disable_geoip`） | 自写 client 不发 IP-derived 属性，PostHog 端的 geoip 默认基于请求 IP；schema doc §6 由 client 不主动 inject 自然实现。如服务端仍按 IP 落地理字段，可在 properties 显式置 `"$geoip_disable": true` 兜底 |
+| Slice 7b 不挂显式进程退出 flush 钩子 | 自写 client 无应用级队列，单条 POST 一旦 spawn 走自己网络生命周期；reqwest 连接池 Drop 时关闭。产品事件丢失 < 1% 在 schema doc §10 已可接受。后续若发现首条事件丢失率高再补 `tauri::App::on_exit` 做 best-effort drain |
+| Slice 7b `build_analytics_sink` 保持 sync | 自写 client 构造（reqwest::Client::new + String 字段）全部同步；与 SDK 方案需要 `async fn client(opts)` 不同，传染面 = 0，`assembly.rs:947` 调用点零改动 |
+| Slice 7b 测试不联真实 PostHog | CI 不应往生产 telemetry 服务发数据。纯 fn `build_capture_body` 单测覆盖 body 形态；HTTP 路径用 `wiremock` 起本地 mock server 烟测 1 case |
 
 ## Errors Encountered
 

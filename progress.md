@@ -868,3 +868,146 @@ src-tauri/crates/uc-bootstrap/tests/
 - Slice 7b（PostHog Cloud account + project key 到位后接 PosthogSink）
 - Slice 9（前端 settings UI 拆 `usage_analytics_enabled` 开关）
 - Slice 10（dashboard + 真实数据验收）
+
+## Session 2026-05-09（晚）— Slice 7b 规划展开
+
+**触发**：用户 `/planning-with-files Slice 7b（PostHog Cloud 接入）`，要求把先前在 task_plan.md 里只占 4 行的 Slice 7b 拆细。
+
+### 探索路径（不写代码，纯调研 + 决策）
+
+1. 读 `task_plan.md` / `findings.md` 确认上下文：Slice 8 全完，7b 仍 pending、外部 blocker = PostHog 账号 + project key
+2. 读 `uc-bootstrap/src/tracing.rs:155-170`：SENTRY_DSN 三级注入（运行时 env > `option_env!` > 关闭）—— 作为 PosthogSink key 注入完全镜像范本
+3. 读 `uc-bootstrap/src/analytics.rs::build_analytics_sink`：当前 release 临时态 `Gated(NoopAnalyticsSink)`，留好了 PosthogSink 接入位
+4. 读 `uc-observability/src/analytics/sinks/{mod,stdout,gated,port}.rs`：sink 抽象、wire 合并、gate wrapper 的契约边界都已就位
+5. 读 `.github/workflows/{build,alpha-build}.yml`：SENTRY_DSN 在 `tauri-action` 与 `bun run tauri build` 两段 env 块同位注入；`POSTHOG_PROJECT_KEY` 直接同位加
+6. context7 查 `/posthog/posthog-rs` 0.7 API：`ClientOptionsBuilder` + `EU_INGESTION_ENDPOINT` + `disable_geoip` + `disabled` + async client 是 async fn
+7. 确认 `cargo tree -e features` 路径可用于守 features 选错（防 transitive openssl）
+
+### 关键裁决（已落到 task_plan.md Decisions Made + findings.md Slice 7b 节）
+
+| 维度 | 裁决 | 理由 |
+|---|---|---|
+| key 注入 | 三级回退（runtime env > `option_env!` > 关闭） | SENTRY_DSN 路径已验证，不引第二种机制 |
+| endpoint | 固定 `EU_INGESTION_ENDPOINT` | schema doc 选定；self-host 留 11+ |
+| `build_analytics_sink` 形态 | 转 async（传染面 1 处） | `compose_event_context` 已 async；OnceCell 懒初始化更复杂 |
+| capture 模型 | `tokio::spawn` fire-and-forget | sync 签名 + async client 唯一干净桥；SDK 内部 batch 不重造 |
+| 缺 key 处置 | release → `Gated(NoopAnalyticsSink)` + info 一次 | telemetry 不能反向影响 daemon / GUI 启动 |
+| `disable_geoip` | true | schema doc §6 隐私契约：客户端 IP 不上传 |
+| 进程退出 flush | v1 不挂钩子 | < 1% 丢失符合 schema doc §10；后续观察实测再补 |
+| 测试 | `disabled(true)` client + fake；不联真实 PostHog | CI 不污染生产 telemetry；HTTP 行为不归本仓库 |
+| Cargo features | `default-features = false, features = ["async-client"]` | 防 transitive openssl（与项目 reqwest+rustls 一致） |
+
+### 子切片拆分（4 个独立 commit / PR）
+
+| 子切片 | 内容 | 阻塞外部条件 |
+|---|---|---|
+| 7b-1 | 依赖引入 + `PosthogSink` 骨架（空 impl，仅过编译） | 无 |
+| 7b-2 | `capture` 实现 + `build_event_payload` wire 集成 + `disabled(true)` lifecycle 单测 | 无 |
+| 7b-3 | key 注入 + `build_analytics_sink` 转 async + 缺 key 降级路径 | 无（降级路径不需要真 key） |
+| 7b-4 | CI secret 注入 + docs + 真实 dev 验收 | 需 PostHog account + `POSTHOG_PROJECT_KEY` secret |
+
+7b-1/7b-2/7b-3 可并行 PostHog account 准备启动；唯有 7b-4 真实事件验收必须等账号 + key。
+
+### 文件改动清单（规划阶段，仅写入计划文件）
+
+- `task_plan.md`：Slice 7b 节从 4 行展开为 ~80 行（4 子切片 + 用户裁决项 + 架构图 + 子任务依赖图）；Current Phase 翻"进行中：Slice 7b 规划展开"；Decisions Made 表 +7 条；Key Questions #4 标解决
+- `findings.md`：新增"Slice 7b 探索发现"章节（SENTRY_DSN 注入范本、posthog-rs 0.7 API surface、wire 字段映射、测试取舍、进程退出风险评估、关键决策汇总）
+- `progress.md`：本 session 条目
+
+### 下一步行动
+
+外部条件就绪前可立即推进的事：
+- 启动 7b-1（依赖引入 + sink 骨架）—— 不需要 PostHog 账号
+- 通知用户开 PostHog Cloud 账号、建项目、把 `phc_*` key 加到 GitHub `POSTHOG_PROJECT_KEY` secret
+
+阻塞中：
+- 7b-4 的真实事件 dev 验收等账号 + secret 就绪
+
+## Session 2026-05-09（深夜）— Slice 7b-1 落地
+
+**触发**：用户 `/planning-with-files 继续任务`。task_plan.md / findings.md 已为 Slice 7b 写好详尽规划与决策；外部 blocker（PostHog account + project key）只阻塞 7b-4 真实事件验收，7b-1/7b-2/7b-3 可立即推进。本 session 推 7b-1（依赖与 sink 骨架）。
+
+### 文件改动（3 个文件）
+
+```
+src-tauri/crates/uc-observability/Cargo.toml                 +reqwest 0.12 + tokio rt（含决策注释引用 sentry 同款约束）
+src-tauri/crates/uc-observability/src/analytics/sinks/
+├── posthog.rs                                                新增 ~95 行（PosthogSink 骨架 + 3 单测）
+└── mod.rs                                                    +pub mod posthog + pub use PosthogSink
+```
+
+### 关键确认
+
+| 项 | 实测结果 |
+|---|---|
+| `cargo tree -p uc-observability -e features` | 无 aws-lc / openssl / native-tls 命中（reqwest 0.12 rustls 走 ring） |
+| `cargo check -p uc-observability` | 通过，依赖图含 reqwest 0.12.28 / hyper-rustls 0.27.7 / rustls-webpki 0.103.8 |
+| `cargo check --workspace` | 跨 11 crate 一次过 |
+| `cargo test -p uc-observability --lib` | 58 passed（基线 55 + 7b-1 新增 3） |
+
+### 关键实现取舍（与规划一致）
+
+- `PosthogSink::new(api_key)` 用 `POSTHOG_US_CAPTURE_ENDPOINT` 常量；`with_endpoint(...)` 是测试 / self-host 入口；endpoint 字段独立持有让 7b-2 wiremock 烟测无需 mock 全局常量
+- `client: reqwest::Client::new()` 同步构造；`build_analytics_sink` 保持 sync 签名的承诺成立
+- `warned_missing_context: AtomicBool` 字段先占位；warn 节流逻辑随 7b-2 capture 实现一起落（与 StdoutSink 同款 `swap` 模式）
+- `impl AnalyticsPort::capture` 占位用 `let _ = event;` + `let _ = (&self.client, &self.api_key, &self.endpoint, &self.warned_missing_context);` 让 unused warnings 安静；object safety 单测 `Box<dyn AnalyticsPort>` 已守住 trait shape
+- 模块文档块完整解释"为什么不用 posthog-rs SDK"（aws-lc-rs C 库依赖与 uc-cli musl 静态编译硬约束的冲突）——后续 reviewer 看到这个文件就有完整 context
+
+### 跳过的事项
+
+- **7b-1 阶段不做 wiremock 测试**：HTTP 行为还没接，纯 noop 上 wiremock 没有信号；留 7b-2 一并做
+- **不在 7b-1 引 chrono::Utc::now() 工具**：timestamp 拼装是 7b-2 的 `build_capture_body` 职责，避免单 commit 噪音
+
+### Next Action
+
+7b-2：`capture` 实现 + `build_capture_body` 纯 fn + wiremock 烟测 + 字段冲突 invariant 单测。
+
+## Session 2026-05-09（深夜续）— Slice 7b-2 落地
+
+**触发**：用户 `/planning-with-files 继续`，承接 7b-1。
+
+### 文件改动（4 个文件）
+
+```
+src-tauri/crates/uc-observability/Cargo.toml                              +wiremock 0.6 + tokio (rt-multi-thread/macros/time) dev-dep
+src-tauri/crates/uc-observability/src/analytics/context.rs                +lock_global_event_context_for_tests() helper（跨 fn 串行化全局 RwLock 的测试锁）
+src-tauri/crates/uc-observability/src/analytics/sinks/posthog.rs          ~+170 行：build_capture_body 纯 fn + capture 实 wire + warn 节流 + 4 纯 fn 单测 + wiremock 烟测
+src-tauri/crates/uc-observability/src/analytics/sinks/stdout.rs           lifecycle 测试加 `_guard = lock_global_event_context_for_tests()`
+```
+
+### 关键实现取舍
+
+| 项 | 实现 |
+|---|---|
+| `build_capture_body` 输入 | 直接吃 `build_event_payload` 输出的 `Map<String, Value>`，不在 sinks 间发明第二种 wire 形态 |
+| 字段冲突 invariant | properties 移除 `event` / `distinct_id` 两键；顶层独立放置；invariant 单测显式断言 properties 不含此二键 |
+| `timestamp` | `chrono::Utc::now().to_rfc3339()`，PostHog 服务端用此字段而非 envelope `$timestamp` 推断事件时间（与 schema doc §4 时间戳"事件级"约定吻合） |
+| `tokio::spawn` 跨线程数据 | client 是 `reqwest::Client`（内部 `Arc`，clone 廉价）；endpoint/api_key 取 `String` 副本；event_name 是 `&'static str`（Event::name 返回值） |
+| 错误处理 | 非 2xx → warn(status)；reqwest::Error → warn(error)；从不向 capture 调用方传播 |
+| context 缺失节流 | 与 StdoutSink 同款 `AtomicBool::swap(true, Relaxed)`，单测验证"两次 capture 仅 0 个 POST" |
+
+### 跨 fn 全局 EventContext 竞态修复（顺带）
+
+**问题**：`stdout_sink_lifecycle` + `posthog_sink_lifecycle` + `context::global_event_context_lifecycle` 三 fn 都改全局 `RwLock<Option<Arc<EventContext>>>`。cargo test 默认线程并发，posthog 用 `tokio::time::sleep(200ms)` 给了竞态窗口让其它 fn `clear_global_event_context()` 把 ctx 顶掉，触发 `context not yet set` warn 路径，POST 0 次断言挂。
+
+**修复**：`context.rs` 加 `#[cfg(test)] pub(crate) fn lock_global_event_context_for_tests() -> MutexGuard<'static, ()>`（`OnceLock<Mutex<()>>`）。三处 lifecycle fn 入口拿一次 guard，整个 fn 体作为 critical section。锁中毒走 `into_inner` 兜底，前一测试 panic 不级联失败。
+
+之前 task_plan.md decisions 表第 10 条说"全局测试用单一 fn 而非 serial_test 依赖"——前提是只有 1 个 fn 触达全局。现在 3 个 fn 都需要 fire-and-forget 测试，单 fn 化已不现实，引入 stdlib `OnceLock<Mutex<()>>` 是最小代价，仍未引第三方 `serial_test`。
+
+### 测试结果
+
+| crate | passed | 增量 |
+|---|---|---|
+| uc-observability (lib) | **63** | +5（4 个 build_capture_body 纯 fn + 1 个 posthog_sink_lifecycle 烟测）|
+| `cargo check --workspace` | ✅ | reqwest 0.12 + wiremock 0.6 引入，11 crate 全过 |
+
+### 跳过的事项
+
+- **不测真实 PostHog endpoint**：CI 不应往生产 telemetry 服务发数据。wiremock 烟测覆盖 POST 形态后已足够
+- **不测 reqwest 重试 / connection 复用**：reqwest 0.12 内部行为非本仓库责任
+- **不测 spawn task 在进程退出时被中断**：决策 #92 已说清 < 1% 丢失可接受；schema doc §10 兜底
+- **不在 7b-2 加 docs 与 CI secret**：留 7b-3（key 注入降级）+ 7b-4（CI secret + 真实 dev 验证）
+
+### Next Action
+
+7b-3：`build_analytics_sink` release 路径 = `resolve_posthog_key(runtime_env, option_env!) → Some(key) → Gated(PosthogSink::new(key)) | None → info("PostHog 未配置，产品 telemetry 关闭") + Gated(NoopAnalyticsSink)`；4 个 `resolve_posthog_key_*` 单测。

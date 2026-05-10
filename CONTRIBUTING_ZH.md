@@ -156,14 +156,15 @@ bun tauri build
 
 ## 分支策略
 
-项目使用以 `main` 为锚的 **release-branch 工作流**：
+项目使用以 `main` 为锚的 **trunk-based 工作流**：
 
-- **`main`**：始终对应最近一次发布的版本。**不允许**直接从 `dev` 合并。
-- **`dev`**：日常开发的集成分支。
-- **`release/vX.Y.Z[-channel.N]`**：准备发布时从 `main` 切出的分支。发布完成后再反向合并回 `main` 与 `dev`。
-- **功能分支**：从 `dev` 切出，命名要有描述性（如 `feat/quick-panel-search`、`fix/devices-online-state`）。
+- **`main`**：主干（trunk）。所有改动通过 PR 进入这里。`main` 必须始终保持可构建、可发布。
+- **`release/vX.Y.Z[-channel.N]`**：发版（alpha / beta / rc / stable）时由 `prepare-release` workflow 从 `main` 切出。release PR 合回 `main` 后会自动打 tag 并构建产物，release 分支随后自动删除。
+- **功能分支**：从 `main` 切出，命名要有描述性（如 `feat/quick-panel-search`、`fix/devices-online-state`）。
 
-提 PR 时默认目标分支是 `dev`，除非维护者明确要求你目标到某个 release 分支。
+提 PR 时默认目标分支是 `main`，除非维护者明确要求你目标到某个 release 分支。
+
+未完成的工作不要合入。功能没准备好就留在 feature 分支上（或加运行时 gate），不要把半成品合进 `main`。
 
 ## Commit 规范
 
@@ -284,7 +285,7 @@ bun run test:coverage   # 在 src-tauri/target/llvm-cov 下生成 HTML 报告
 
 ### 提 PR 之前
 
-- 先 rebase 到最新的 `dev`。
+- 先 rebase 到最新的 `main`。
 - 本地确认 `bun run lint`、`bun run format`、`bun test`、`cargo test`（涉及时）都能通过。
 - 保持 diff 聚焦。互不相关的改动请拆成独立 PR。
 

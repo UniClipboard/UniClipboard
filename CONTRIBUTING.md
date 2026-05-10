@@ -156,14 +156,15 @@ If you are unsure whether a change is a localized bug fix or a structural one, d
 
 ## Branching Strategy
 
-The project uses a **release-branch workflow** anchored on `main`:
+The project uses a **trunk-based workflow** anchored on `main`:
 
-- **`main`** — always reflects the most recently shipped release. Direct merges from `dev` are not allowed.
-- **`dev`** — the integration branch where day-to-day work lands.
-- **`release/vX.Y.Z[-channel.N]`** — cut from `main` when preparing a release. Once published, the release branch is merged back into both `main` and `dev`.
-- **Feature branches** — branch from `dev`, name them descriptively (e.g. `feat/quick-panel-search`, `fix/devices-online-state`).
+- **`main`** — the trunk. Every change lands here through a pull request. `main` must stay buildable and shippable at all times.
+- **`release/vX.Y.Z[-channel.N]`** — cut from `main` by the `prepare-release` workflow when preparing a release (alpha / beta / rc / stable). Merging the release PR back into `main` triggers tagging and artifact builds; the release branch is auto-deleted afterwards.
+- **Feature branches** — branch from `main`, name them descriptively (e.g. `feat/quick-panel-search`, `fix/devices-online-state`).
 
-When opening a PR, target the `dev` branch unless the maintainers explicitly ask you to target a release branch.
+When opening a PR, target `main` unless the maintainers explicitly ask you to target a release branch.
+
+Unfinished work should not be merged. If a feature is not ready to ship, keep it on its feature branch (or behind a runtime gate) rather than merging a half-finished change into `main`.
 
 ## Commit Conventions
 
@@ -282,7 +283,7 @@ If you add a new top-level doc, add a pointer to it from `AGENTS.md` so future c
 
 ### Before You Open a PR
 
-- Rebase onto the latest `dev`.
+- Rebase onto the latest `main`.
 - Make sure `bun run lint`, `bun run format`, `bun test`, and `cargo test` (where relevant) all pass locally.
 - Keep the diff focused. Open separate PRs for unrelated changes.
 

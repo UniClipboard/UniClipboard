@@ -217,6 +217,12 @@ pub struct MobileSyncFacade {
     apply_incoming: ApplyIncomingMobileClipUseCase,
     get_latest_doc: GetLatestMobileSyncDocUseCase,
     get_file: GetMobileSyncFileUseCase,
+    /// `PUT /file` 流式上传入口持有的 staging port 引用。webserver 端
+    /// `put_clipboard_file` handler 在收 body 期间通过 facade 的
+    /// `begin_file_upload` / `append_file_chunk` / `finalize_file_upload` /
+    /// `abort_file_upload` 转发到本 port,字节流不再绕道 use case 层的内存
+    /// buffer。与 `apply_incoming` / `get_file` 共用同一份 Arc。
+    file_staging: Arc<dyn MobileFileStagingPort>,
     /// 见 [`MobileSyncFacadeDeps::lan_lifecycle`]。`None` 表示当前装配不要求
     /// 即时生效(CLI fallback / 单测),`update_settings` 写盘后不调 apply。
     lan_lifecycle: Option<Arc<dyn MobileLanLifecyclePort>>,
@@ -292,7 +298,8 @@ impl MobileSyncFacade {
                 }),
             ),
             get_latest_doc: GetLatestMobileSyncDocUseCase::new(snapshot_port.clone()),
-            get_file: GetMobileSyncFileUseCase::new(snapshot_port, file_staging),
+            get_file: GetMobileSyncFileUseCase::new(snapshot_port, file_staging.clone()),
+            file_staging,
             lan_lifecycle,
             endpoint_info,
         }
@@ -441,13 +448,15 @@ impl MobileSyncFacade {
         self.get_file.execute(data_name).await
     }
 
-    /// `PUT /file/{dataName}` 业务出口:把 (mime, bytes) 暂存进
-    /// `IncomingMobileBuffer`,等待 `PUT /SyncClipboard.json` 触发组装。
-    /// 返回 `Buffered` outcome —— 路由层应回 HTTP 200。
+    /// `PUT /file/{dataName}` 全量字节出口(CLI debug / 测试用)。
     ///
-    /// `source_device_id` 不被本步消费(BufferFile 阶段还没确定要应用),
-    /// 但仍按 use case 契约一并传入,避免 PUT /SyncClipboard.json 时再
-    /// 重新 lookup。
+    /// 生产路径(uc-webserver)走 [`Self::begin_file_upload`] →
+    /// [`Self::append_file_chunk`] → [`Self::finalize_file_upload`] 三段式
+    /// 流式上传,不进本入口。本入口内部仍走相同的 streaming staging API,
+    /// 把整个 bytes 一次 append 进去, 再 finalize → 喂 BufferFile event,
+    /// 这样应用层只剩"已 staged 文件"这一种路径(无两套并行)。
+    ///
+    /// 失败时调 [`Self::abort_file_upload`] 释放半写入的 staging 资源。
     pub async fn put_clipboard_file(
         &self,
         data_name: String,
@@ -456,18 +465,115 @@ impl MobileSyncFacade {
         source_device_id: MobileDeviceId,
         transfer_id: String,
     ) -> Result<ApplyIncomingMobileClipOutcome, ApplyIncomingMobileClipError> {
+        let scope_id = streaming_scope_nonce();
+        let handle = self
+            .file_staging
+            .begin_stage(&scope_id, &data_name, &mime)
+            .await
+            .map_err(|err| {
+                ApplyIncomingMobileClipError::Internal(format!(
+                    "put_clipboard_file: begin_stage failed: {err}"
+                ))
+            })?;
+        if let Err(err) = self.file_staging.append_stage_chunk(&handle, &bytes).await {
+            self.file_staging.abort_stage(handle).await;
+            return Err(ApplyIncomingMobileClipError::Internal(format!(
+                "put_clipboard_file: append_stage_chunk failed: {err}"
+            )));
+        }
+        let staged = match self.file_staging.finalize_stage(handle).await {
+            Ok(staged) => staged,
+            Err(err) => {
+                return Err(ApplyIncomingMobileClipError::Internal(format!(
+                    "put_clipboard_file: finalize_stage failed: {err}"
+                )));
+            }
+        };
         self.apply_incoming
             .execute(ApplyIncomingMobileClipInput {
                 source_device_id,
                 event: IncomingMobileClipEvent::BufferFile {
                     data_name,
                     mime,
-                    bytes,
+                    staged,
                     transfer_id,
                 },
             })
             .await
     }
+
+    /// 开启一次 `PUT /file/{dataName}` 流式上传。返回的 [`StagingHandle`]
+    /// 用于后续 chunk append / finalize / abort。`scope_id` 由调用方按
+    /// "每次入站事件取一段独立 nonce"语义生成,典型用 [`streaming_scope_nonce`]。
+    pub async fn begin_file_upload(
+        &self,
+        scope_id: &str,
+        data_name: &str,
+        mime: &str,
+    ) -> Result<uc_core::mobile_sync::StagingHandle, uc_core::ports::MobileFileStagingError> {
+        self.file_staging
+            .begin_stage(scope_id, data_name, mime)
+            .await
+    }
+
+    /// 把一个 body chunk 喂进流式 staging 会话。0 字节 chunk 合法且为 no-op。
+    /// 单笔会话只允许**串行** append,并发同 handle 行为未定义。
+    pub async fn append_file_chunk(
+        &self,
+        handle: &uc_core::mobile_sync::StagingHandle,
+        chunk: &[u8],
+    ) -> Result<(), uc_core::ports::MobileFileStagingError> {
+        self.file_staging.append_stage_chunk(handle, chunk).await
+    }
+
+    /// 收齐字节后调用,消费 `handle` 完成 staging 并把"已 staged 文件"
+    /// 挂进 IncomingMobileBuffer 等 SyncDoc 配对。返回 `Buffered` 或
+    /// `DecodeFailed` 等 use case outcome,路由层据此映射 HTTP 响应。
+    pub async fn finalize_file_upload(
+        &self,
+        handle: uc_core::mobile_sync::StagingHandle,
+        data_name: String,
+        mime: String,
+        source_device_id: MobileDeviceId,
+        transfer_id: String,
+    ) -> Result<ApplyIncomingMobileClipOutcome, ApplyIncomingMobileClipError> {
+        let staged = self
+            .file_staging
+            .finalize_stage(handle)
+            .await
+            .map_err(|err| {
+                ApplyIncomingMobileClipError::Internal(format!(
+                    "finalize_file_upload: staging finalize failed: {err}"
+                ))
+            })?;
+        self.apply_incoming
+            .execute(ApplyIncomingMobileClipInput {
+                source_device_id,
+                event: IncomingMobileClipEvent::BufferFile {
+                    data_name,
+                    mime,
+                    staged,
+                    transfer_id,
+                },
+            })
+            .await
+    }
+
+    /// 放弃一次 `PUT /file/{dataName}` 流式上传 —— body 中断 / 客户端断流 /
+    /// 任一 append 失败时调用,释放半写入的 staging 资源。fire-and-forget,
+    /// 二次失败由 adapter 内部 log,不向上抛。
+    pub async fn abort_file_upload(&self, handle: uc_core::mobile_sync::StagingHandle) {
+        self.file_staging.abort_stage(handle).await;
+    }
+}
+
+/// 生成 12 hex 字符的 staging scope nonce(uuid v4 simple 形态前 12 位)。
+/// 调用方按"每次入站 PUT /file 取一段独立 nonce"语义使用,与 entry_id
+/// 解耦(entry_id 在 ApplyInbound 内部生成,本阶段还不知道)。
+pub fn streaming_scope_nonce() -> String {
+    let id = uuid::Uuid::new_v4();
+    let s = id.simple().to_string();
+    s[..12].to_string()
 }
 
 #[cfg(test)]
@@ -780,25 +886,53 @@ mod tests {
         }
     }
 
-    struct UnusedStaging;
-    #[async_trait]
-    impl uc_core::ports::MobileFileStagingPort for UnusedStaging {
-        async fn stage_file(
-            &self,
-            _: &str,
-            _: &str,
-            _: &str,
-            _: Vec<u8>,
-        ) -> Result<uc_core::mobile_sync::StagedFile, uc_core::ports::MobileFileStagingError>
-        {
-            unimplemented!("facade smoke tests do not exercise File PUT path")
+    // Facade smoke 测试不触达任何 staging 入口 —— 用 mockall strict mode 的
+    // 未配置 panic 行为承担"防回归",任何方法被意外调到立刻可见。
+    mockall::mock! {
+        Staging {}
+        #[async_trait]
+        impl uc_core::ports::MobileFileStagingPort for Staging {
+            async fn stage_file(
+                &self,
+                scope_id: &str,
+                data_name: &str,
+                mime: &str,
+                bytes: Vec<u8>,
+            ) -> Result<
+                uc_core::mobile_sync::StagedFile,
+                uc_core::ports::MobileFileStagingError,
+            >;
+            async fn read_by_uri(
+                &self,
+                uri: &str,
+            ) -> Result<Vec<u8>, uc_core::ports::MobileFileStagingError>;
+            async fn begin_stage(
+                &self,
+                scope_id: &str,
+                data_name: &str,
+                mime: &str,
+            ) -> Result<
+                uc_core::mobile_sync::StagingHandle,
+                uc_core::ports::MobileFileStagingError,
+            >;
+            async fn append_stage_chunk(
+                &self,
+                handle: &uc_core::mobile_sync::StagingHandle,
+                chunk: &[u8],
+            ) -> Result<(), uc_core::ports::MobileFileStagingError>;
+            async fn finalize_stage(
+                &self,
+                handle: uc_core::mobile_sync::StagingHandle,
+            ) -> Result<
+                uc_core::mobile_sync::StagedFile,
+                uc_core::ports::MobileFileStagingError,
+            >;
+            async fn abort_stage(&self, handle: uc_core::mobile_sync::StagingHandle);
         }
-        async fn read_by_uri(
-            &self,
-            _: &str,
-        ) -> Result<Vec<u8>, uc_core::ports::MobileFileStagingError> {
-            unimplemented!("facade smoke tests do not exercise File GET path")
-        }
+    }
+
+    fn staging_unused() -> Arc<MockStaging> {
+        Arc::new(MockStaging::new())
     }
 
     fn build_facade() -> MobileSyncFacade {
@@ -818,7 +952,7 @@ mod tests {
             settings: Arc::new(InMemorySettings::default()),
             apply_inbound,
             incoming_buffer: Arc::new(IncomingMobileBuffer::new()),
-            file_staging: Arc::new(UnusedStaging),
+            file_staging: staging_unused(),
             snapshot_ports: MobileSyncSnapshotPorts {
                 entry_repo,
                 selection_repo: Arc::new(UnusedSelectionRepo),
@@ -972,7 +1106,7 @@ mod tests {
             settings: Arc::new(InMemorySettings::default()),
             apply_inbound,
             incoming_buffer: Arc::new(IncomingMobileBuffer::new()),
-            file_staging: Arc::new(UnusedStaging),
+            file_staging: staging_unused(),
             snapshot_ports: MobileSyncSnapshotPorts {
                 entry_repo,
                 selection_repo: Arc::new(UnusedSelectionRepo),
@@ -1051,7 +1185,7 @@ mod tests {
             settings: Arc::new(InMemorySettings::default()),
             apply_inbound,
             incoming_buffer: Arc::new(IncomingMobileBuffer::new()),
-            file_staging: Arc::new(UnusedStaging),
+            file_staging: staging_unused(),
             snapshot_ports: MobileSyncSnapshotPorts {
                 entry_repo,
                 selection_repo: Arc::new(UnusedSelectionRepo),
@@ -1159,7 +1293,7 @@ mod tests {
             settings: Arc::new(InMemorySettings::default()),
             apply_inbound,
             incoming_buffer: Arc::new(IncomingMobileBuffer::new()),
-            file_staging: Arc::new(UnusedStaging),
+            file_staging: staging_unused(),
             snapshot_ports: MobileSyncSnapshotPorts {
                 entry_repo,
                 selection_repo: Arc::new(UnusedSelectionRepo),
@@ -1303,7 +1437,7 @@ mod tests {
             settings: Arc::new(InMemorySettings::default()),
             apply_inbound,
             incoming_buffer: Arc::new(IncomingMobileBuffer::new()),
-            file_staging: Arc::new(UnusedStaging),
+            file_staging: staging_unused(),
             snapshot_ports: MobileSyncSnapshotPorts {
                 entry_repo,
                 selection_repo: Arc::new(UnusedSelectionRepo),

@@ -40,13 +40,12 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
-use bytes::Bytes;
 use thiserror::Error;
 use tracing::{debug, info, instrument, warn};
 
 use uc_core::file_transfer::FileTransferFailureReason;
 use uc_core::ids::{DeviceId, EntryId, FormatId, RepresentationId};
-use uc_core::mobile_sync::MobileDeviceId;
+use uc_core::mobile_sync::{MobileDeviceId, StagedFile};
 use uc_core::ports::mobile_sync::{MobileFileStagingError, MobileFileStagingPort};
 use uc_core::ports::ClockPort;
 use uc_core::{MimeType, ObservedClipboardRepresentation, SystemClipboardSnapshot};
@@ -126,9 +125,15 @@ pub enum IncomingMobileClipEvent {
         /// for Image / File types — points to the file-buffer entry.
         data_name: Option<String>,
     },
-    /// Triggered by `PUT /file/{data_name}`. Stages bytes in the buffer,
-    /// returns immediately with `Buffered` outcome — the caller must
-    /// still respond HTTP 200.
+    /// Triggered by `PUT /file/{data_name}` 已经落盘 staging 之后。
+    /// 把"已 staged 文件 + transfer_id"挂进 buffer 等 SyncDoc 配对,返回
+    /// `Buffered` outcome —— 路由层应回 HTTP 200。
+    ///
+    /// 注意:本事件**不再携带字节**。handler 在收 body 期间已经通过
+    /// streaming staging API 把字节边收边写到 cache_dir, `staged` 字段携
+    /// 带最终的 `file:///...` URI。SyncDoc apply 阶段:
+    /// - File 类型直接用 URI 拼 `text/uri-list` rep;
+    /// - Image 类型按 URI `read_by_uri` 读回字节内联到 image rep。
     ///
     /// `transfer_id` 由 handler 生成(`mobile-lan:<uuid>` 或 `?upload_id=`
     /// 客户端提供),贯穿到 SyncDoc apply 阶段做 link_transfer_to_entry +
@@ -137,7 +142,7 @@ pub enum IncomingMobileClipEvent {
     BufferFile {
         data_name: String,
         mime: String,
-        bytes: Vec<u8>,
+        staged: StagedFile,
         transfer_id: String,
     },
 }
@@ -194,15 +199,6 @@ struct BuiltSnapshot {
     transfer_id: Option<String>,
 }
 
-/// 12 hex 字符的 staging scope nonce(取 uuid v4 simple 形态前 12 位)。
-/// 用于让 adapter 把同一次入站事件落到独立子目录,与 entry_id 解耦(后者
-/// 在 ApplyInbound 内部生成,staging 时还不知道)。
-fn staging_scope_nonce() -> String {
-    let id = uuid::Uuid::new_v4();
-    let s = id.simple().to_string();
-    s[..12].to_string()
-}
-
 // ─── IncomingMobileBuffer ────────────────────────────────────────────────
 
 const MAX_BUFFERED_FILES: usize = 16;
@@ -210,7 +206,10 @@ const MAX_BUFFERED_FILES: usize = 16;
 #[derive(Debug, Clone)]
 struct BufferedFile {
     mime: String,
-    bytes: Bytes,
+    /// 已经流式落盘的 staging 文件引用。File 类型 SyncDoc apply 时直接
+    /// 用 URI 拼 uri-list rep;Image 类型按 URI `read_by_uri` 把字节读回
+    /// 内联到 image rep。
+    staged: StagedFile,
     /// 协议层 transfer_id —— 由 `PUT /file` handler 在入口处生成
     /// (`mobile-lan:<uuid-v4>` 或客户端通过 `?upload_id=` 提供)。
     /// 让 SyncDoc 阶段拿到真实 entry_id 后能 `link_transfer_to_entry`
@@ -240,7 +239,7 @@ impl IncomingMobileBuffer {
         }
     }
 
-    fn store(&self, data_name: String, mime: String, bytes: Vec<u8>, transfer_id: String) {
+    fn store(&self, data_name: String, mime: String, staged: StagedFile, transfer_id: String) {
         let mut guard = self.inner.lock().unwrap();
         if guard.len() >= MAX_BUFFERED_FILES && !guard.contains_key(&data_name) {
             // Cap reached + new key. Drop one arbitrary existing entry
@@ -259,7 +258,7 @@ impl IncomingMobileBuffer {
             data_name,
             BufferedFile {
                 mime,
-                bytes: Bytes::from(bytes),
+                staged,
                 transfer_id,
             },
         );
@@ -369,18 +368,20 @@ impl ApplyIncomingMobileClipUseCase {
             IncomingMobileClipEvent::BufferFile {
                 data_name,
                 mime,
-                bytes,
+                staged,
                 transfer_id,
             } => {
-                let bytes_len = bytes.len();
+                let uri = staged.uri.as_str().to_string();
+                let sanitized = staged.sanitized_name.clone();
                 self.buffer
-                    .store(data_name.clone(), mime.clone(), bytes, transfer_id.clone());
+                    .store(data_name.clone(), mime.clone(), staged, transfer_id.clone());
                 info!(
                     data_name = %data_name,
                     mime = %mime,
-                    bytes = bytes_len,
+                    sanitized_name = %sanitized,
+                    staged_uri = %uri,
                     transfer_id = %transfer_id,
-                    "mobile_sync apply_incoming: buffered file"
+                    "mobile_sync apply_incoming: buffered staged file"
                 );
                 Ok(ApplyIncomingMobileClipOutcome::Buffered)
             }
@@ -392,8 +393,8 @@ impl ApplyIncomingMobileClipUseCase {
                 let source_device_id = input.source_device_id.clone();
                 let build_result: Result<BuiltSnapshot, BuildSnapshotFailure> = match item_type {
                     SyncClipboardItemType::Text => self.build_text_snapshot(text),
-                    SyncClipboardItemType::Image => self.build_image_snapshot(data_name),
-                    SyncClipboardItemType::File => self.build_file_snapshot(data_name).await,
+                    SyncClipboardItemType::Image => self.build_image_snapshot(data_name).await,
+                    SyncClipboardItemType::File => self.build_file_snapshot(data_name),
                     SyncClipboardItemType::Group => Err(BuildSnapshotFailure::Decode(
                         "Group 类型不在 v1 范围内 (SyncClipboard 协议保留)".into(),
                     )),
@@ -615,7 +616,7 @@ impl ApplyIncomingMobileClipUseCase {
         })
     }
 
-    fn build_image_snapshot(
+    async fn build_image_snapshot(
         &self,
         data_name: Option<String>,
     ) -> Result<BuiltSnapshot, BuildSnapshotFailure> {
@@ -628,11 +629,29 @@ impl ApplyIncomingMobileClipUseCase {
             ))
         })?;
         let transfer_id = buffered.transfer_id.clone();
+        // PUT /file 阶段已经把字节流式落盘到 staging,这里按 URI 把字节读
+        // 回来 —— image rep 标准形态是字节内联(系统剪贴板 image type 要求
+        // rep 持字节),不能像 file 分支那样只挂 URI。来回一次盘换 PUT /file
+        // 阶段不再吃满内存 buffer。
+        let bytes = self
+            .file_staging
+            .read_by_uri(buffered.staged.uri.as_str())
+            .await
+            .map_err(|err| match err {
+                MobileFileStagingError::NotFound => BuildSnapshotFailure::Internal(format!(
+                    "staged image file missing for `{}`: {err}",
+                    name
+                )),
+                _ => BuildSnapshotFailure::Internal(format!(
+                    "read staged image bytes for `{}` failed: {err}",
+                    name
+                )),
+            })?;
         let rep = ObservedClipboardRepresentation::new(
             RepresentationId::new(),
             FormatId::from("image"),
             Some(MimeType(buffered.mime)),
-            buffered.bytes.to_vec(),
+            bytes,
         );
         Ok(BuiltSnapshot {
             snapshot: SystemClipboardSnapshot {
@@ -643,22 +662,14 @@ impl ApplyIncomingMobileClipUseCase {
         })
     }
 
-    /// `File` 分支(P5a.3.5):从 buffer 取裸字节,经 [`MobileFileStagingPort`]
-    /// 物化到 cache_dir,把得到的 `file:///...` URI 拼成 `text/uri-list` rep。
+    /// `File` 分支:从 buffer 取已 staged 文件引用,直接拼成 `text/uri-list`
+    /// rep。
     ///
     /// 与 image 分支的差异:
-    /// - image rep 直接把字节内联进 representation(系统剪贴板要求 image
-    ///   rep 持字节);
-    /// - file rep 标准形态是 file-list:bytes 是 URI 字符串,而非真实文件
-    ///   字节。staging 让接收端有"本机能寻址的 path",iPhone → Mac 才能在
-    ///   `pbpaste` / Finder 拖拽 / 应用 paste 时拿到真实文件。
-    ///
-    /// staging 失败有两种语义:
-    /// - `MobileFileStagingError::InvalidDataName` → 视为业务输入不合法,翻
-    ///   `BuildSnapshotFailure::Decode` → outcome `DecodeFailed`(HTTP 400);
-    /// - `MobileFileStagingError::Io` → 内部故障(磁盘满 / 权限),翻
-    ///   `BuildSnapshotFailure::Internal` → 应用层 `Internal` → HTTP 500。
-    async fn build_file_snapshot(
+    /// - image rep 必须持字节(系统剪贴板 image type 要求);本分支只挂 URI,
+    ///   不读盘 —— file-list 的 wire 形态本来就是 URI 字符串。
+    /// - PUT /file 阶段已经把字节流式落盘,这里不再触发额外的 stage_file 调用。
+    fn build_file_snapshot(
         &self,
         data_name: Option<String>,
     ) -> Result<BuiltSnapshot, BuildSnapshotFailure> {
@@ -672,30 +683,7 @@ impl ApplyIncomingMobileClipUseCase {
         })?;
         let transfer_id = buffered.transfer_id.clone();
 
-        // staging scope:每次 PUT /SyncClipboard.json 的 File 触发一次,
-        // 用 8 hex 随机 nonce 做子目录,与 entry_id 解耦(entry_id 在
-        // ApplyInbound 内部才生成)。adapter 内部清理 / 命名都用这一段。
-        let scope_id = staging_scope_nonce();
-
-        let staged = self
-            .file_staging
-            .stage_file(&scope_id, &name, &buffered.mime, buffered.bytes.to_vec())
-            .await
-            .map_err(|err| match err {
-                MobileFileStagingError::InvalidDataName(msg) => {
-                    BuildSnapshotFailure::Decode(format!("staged data_name unusable: {msg}"))
-                }
-                MobileFileStagingError::Io(msg) => {
-                    BuildSnapshotFailure::Internal(format!("mobile file staging failed: {msg}"))
-                }
-                // NotFound 是 read_by_uri 才会产的变体, stage_file 不应触发。
-                // 万一 adapter 实现走偏返回它, 翻成 Internal 让排障可见。
-                MobileFileStagingError::NotFound => BuildSnapshotFailure::Internal(
-                    "mobile file staging unexpectedly returned NotFound from stage_file".into(),
-                ),
-            })?;
-
-        let uri_list = format!("{}\n", staged.uri.as_str());
+        let uri_list = format!("{}\n", buffered.staged.uri.as_str());
         let rep = ObservedClipboardRepresentation::new(
             RepresentationId::new(),
             FormatId::from("files"),
@@ -704,8 +692,8 @@ impl ApplyIncomingMobileClipUseCase {
         );
         info!(
             data_name = %name,
-            sanitized_name = %staged.sanitized_name,
-            uri = %staged.uri,
+            sanitized_name = %buffered.staged.sanitized_name,
+            uri = %buffered.staged.uri,
             "mobile_sync apply_incoming: file staged into uri-list rep"
         );
         Ok(BuiltSnapshot {
@@ -814,70 +802,61 @@ mod tests {
 
     use crate::usecases::clipboard_sync::apply_inbound::{InboundCapture, InboundWrite};
 
-    // Fake `MobileFileStagingPort` —— 默认行为是"被调用就 panic",特定测试
-    // 用 [`FakeStaging::with_response`] / [`FakeStaging::with_error`] 注入
-    // 可控响应。File 分支以外的测试不应该触发 staging,默认 panic 形态自带
-    // 防回归(文件路径意外被调到时立刻可见)。
-    use uc_core::mobile_sync::StagedFile;
+    use uc_core::mobile_sync::{StagedFile, StagedFileUri, StagingHandle};
     use uc_core::ports::mobile_sync::MobileFileStagingError;
 
-    #[derive(Default)]
-    struct FakeStaging {
-        // `Mutex<Option<...>>` 让单次 `take` 后变成 panic,如果某个测试错
-        // 把 staging 调了两次(典型回归)能立刻看到。
-        response: std::sync::Mutex<Option<Result<StagedFile, MobileFileStagingError>>>,
-        // 记录最后一次调用参数(单测断言用)。
-        last_call: std::sync::Mutex<Option<(String, String, String, Vec<u8>)>>,
+    // 流式落盘改造后,apply_incoming 本身不再触达 staging 写入方法 ——
+    // stage_file / begin_stage / append_stage_chunk / finalize_stage /
+    // abort_stage 都由 facade 入口在 PUT /file 阶段消费。image 分支会调
+    // `read_by_uri` 把 staged 字节读回内联到 image rep,其余方法均不应被
+    // 触达;mockall 默认 strict mode 让未配置的方法被调到就 panic,这正是
+    // 我们要的回归防御。
+    mockall::mock! {
+        Staging {}
+        #[async_trait]
+        impl MobileFileStagingPort for Staging {
+            async fn stage_file(
+                &self,
+                scope_id: &str,
+                data_name: &str,
+                mime: &str,
+                bytes: Vec<u8>,
+            ) -> Result<StagedFile, MobileFileStagingError>;
+            async fn read_by_uri(&self, uri: &str) -> Result<Vec<u8>, MobileFileStagingError>;
+            async fn begin_stage(
+                &self,
+                scope_id: &str,
+                data_name: &str,
+                mime: &str,
+            ) -> Result<StagingHandle, MobileFileStagingError>;
+            async fn append_stage_chunk(
+                &self,
+                handle: &StagingHandle,
+                chunk: &[u8],
+            ) -> Result<(), MobileFileStagingError>;
+            async fn finalize_stage(
+                &self,
+                handle: StagingHandle,
+            ) -> Result<StagedFile, MobileFileStagingError>;
+            async fn abort_stage(&self, handle: StagingHandle);
+        }
     }
 
-    impl FakeStaging {
-        fn never_called() -> Arc<Self> {
-            Arc::new(Self::default())
-        }
-        fn with_response(staged: StagedFile) -> Arc<Self> {
-            Arc::new(Self {
-                response: std::sync::Mutex::new(Some(Ok(staged))),
-                last_call: Default::default(),
-            })
-        }
-        fn with_error(err: MobileFileStagingError) -> Arc<Self> {
-            Arc::new(Self {
-                response: std::sync::Mutex::new(Some(Err(err))),
-                last_call: Default::default(),
-            })
-        }
-        fn last_call(&self) -> Option<(String, String, String, Vec<u8>)> {
-            self.last_call.lock().unwrap().clone()
-        }
+    /// "未配置任何期望"的 staging mock —— mockall strict mode 下任何方法
+    /// 被调到都会 panic, 用于断言"本测试根本不应该触达 staging"。
+    fn staging_never_called() -> Arc<MockStaging> {
+        Arc::new(MockStaging::new())
     }
 
-    #[async_trait]
-    impl MobileFileStagingPort for FakeStaging {
-        async fn read_by_uri(&self, _: &str) -> Result<Vec<u8>, MobileFileStagingError> {
-            // apply_incoming.rs 测试不走 read_by_uri 路径(那是 get_file
-            // 的事), 被调到说明回归。
-            unreachable!("FakeStaging.read_by_uri must not be called from apply_incoming tests")
-        }
-
-        async fn stage_file(
-            &self,
-            scope_id: &str,
-            data_name: &str,
-            mime: &str,
-            bytes: Vec<u8>,
-        ) -> Result<StagedFile, MobileFileStagingError> {
-            *self.last_call.lock().unwrap() = Some((
-                scope_id.to_string(),
-                data_name.to_string(),
-                mime.to_string(),
-                bytes.clone(),
-            ));
-            self.response
-                .lock()
-                .unwrap()
-                .take()
-                .unwrap_or_else(|| panic!("FakeStaging.stage_file called without preset response"))
-        }
+    /// 配置 `read_by_uri` 返回指定字节,其它方法仍为"被调即 panic"。
+    /// 用于 image 分支测试 —— `build_image_snapshot` 会按 staged URI 读字节
+    /// 内联到 image rep。
+    fn staging_with_image_bytes(bytes: Vec<u8>) -> Arc<MockStaging> {
+        let mut mock = MockStaging::new();
+        mock.expect_read_by_uri()
+            .times(1)
+            .return_once(move |_| Ok(bytes));
+        Arc::new(mock)
     }
 
     // ── mockall: same 3 collaborator surfaces apply_inbound's tests use ──
@@ -950,7 +929,7 @@ mod tests {
         ApplyIncomingMobileClipUseCase::new(
             Arc::new(inbound),
             Arc::new(IncomingMobileBuffer::new()),
-            FakeStaging::never_called(),
+            staging_never_called(),
             Arc::new(FixedClock),
             None,
             None,
@@ -969,17 +948,19 @@ mod tests {
         ApplyIncomingMobileClipUseCase::new(
             Arc::new(inbound),
             Arc::new(IncomingMobileBuffer::new()),
-            FakeStaging::never_called(),
+            staging_never_called(),
             Arc::new(FixedClock),
             None,
             None,
         )
     }
 
-    /// Build a use case with a shared buffer + an inbound expecting
-    /// 1 happy path. Returns (use_case, buffer) so the test can pre-seed.
-    fn build_uc_with_buffer_expect_applied(
+    /// 装 inbound = 一条 happy path,buffer + staging mock 由调用方提供。
+    /// image 分支测试需要注入 `read_by_uri` 响应让 build_image_snapshot 拿到
+    /// 字节;其它分支用 `staging_never_called()` 即可。
+    fn build_uc_with_buffer_and_image_bytes_expect_applied(
         entry_id: &str,
+        staging: Arc<MockStaging>,
     ) -> (ApplyIncomingMobileClipUseCase, Arc<IncomingMobileBuffer>) {
         let mut repo = MockEntryRepo::new();
         repo.expect_find_entry_id_by_snapshot_hash()
@@ -1002,7 +983,7 @@ mod tests {
         let uc = ApplyIncomingMobileClipUseCase::new(
             Arc::new(inbound),
             buffer.clone(),
-            FakeStaging::never_called(),
+            staging,
             Arc::new(FixedClock),
             None,
             None,
@@ -1015,7 +996,7 @@ mod tests {
     /// `entry_id`. Used by File-branch happy-path tests.
     fn build_uc_with_buffer_and_staging_expect_applied(
         entry_id: &str,
-        staging: Arc<FakeStaging>,
+        staging: Arc<MockStaging>,
     ) -> (ApplyIncomingMobileClipUseCase, Arc<IncomingMobileBuffer>) {
         let mut repo = MockEntryRepo::new();
         repo.expect_find_entry_id_by_snapshot_hash()
@@ -1048,7 +1029,7 @@ mod tests {
     /// called (decode failure path). Used by File 缺 dataName / staging 错误
     /// 等测试。
     fn build_uc_with_staging_expect_no_inbound(
-        staging: Arc<FakeStaging>,
+        staging: Arc<MockStaging>,
         buffer: Arc<IncomingMobileBuffer>,
     ) -> ApplyIncomingMobileClipUseCase {
         let repo = MockEntryRepo::new();
@@ -1084,14 +1065,18 @@ mod tests {
     fn input_buffer_file(
         data_name: &str,
         mime: &str,
-        bytes: Vec<u8>,
+        staged_uri: &str,
+        sanitized_name: &str,
     ) -> ApplyIncomingMobileClipInput {
         ApplyIncomingMobileClipInput {
             source_device_id: MobileDeviceId::new("did_seed"),
             event: IncomingMobileClipEvent::BufferFile {
                 data_name: data_name.to_string(),
                 mime: mime.to_string(),
-                bytes,
+                staged: StagedFile {
+                    uri: StagedFileUri::new(staged_uri),
+                    sanitized_name: sanitized_name.to_string(),
+                },
                 transfer_id: format!("mobile-lan:test-{data_name}"),
             },
         }
@@ -1144,7 +1129,7 @@ mod tests {
         let uc = ApplyIncomingMobileClipUseCase::new(
             Arc::new(inbound),
             buffer.clone(),
-            FakeStaging::never_called(),
+            staging_never_called(),
             Arc::new(FixedClock),
             None,
             None,
@@ -1155,7 +1140,8 @@ mod tests {
             .execute(input_buffer_file(
                 "photo.png",
                 "image/png",
-                vec![0xDE, 0xAD, 0xBE, 0xEF],
+                "file:///tmp/mobile_inbound/buf01/photo.png",
+                "photo.png",
             ))
             .await
             .expect("buffer-file path returns Ok");
@@ -1168,14 +1154,20 @@ mod tests {
     /// `Applied`. Verifies the two-step PUT protocol's contract.
     #[tokio::test]
     async fn image_applied_after_buffer_then_sync_doc() {
-        let (uc, buffer) = build_uc_with_buffer_expect_applied("entry-image-1");
+        // build_image_snapshot 走 read_by_uri 拿 staged image 字节, 测试注入
+        // 一段 PNG 魔数让链路跑通。
+        let staging = staging_with_image_bytes(vec![0x89, 0x50, 0x4E, 0x47]);
+        let (uc, buffer) =
+            build_uc_with_buffer_and_image_bytes_expect_applied("entry-image-1", staging);
 
-        // step 1: PUT /file/{name}
+        // step 1: PUT /file/{name} —— 在新架构里 handler 已经把字节流式落盘,
+        // 这里直接构造一个"已 staged"的 BufferFile event 模拟 facade 入口的结果。
         let buf_outcome = uc
             .execute(input_buffer_file(
                 "photo.png",
                 "image/png",
-                vec![0x89, 0x50, 0x4E, 0x47],
+                "file:///tmp/mobile_inbound/img01/photo.png",
+                "photo.png",
             ))
             .await
             .unwrap();
@@ -1242,28 +1234,30 @@ mod tests {
         ));
     }
 
-    // ── P5a.3.5 File 分支 5 个新测试 ─────────────────────────────────────
+    // ── File 分支测试 ────────────────────────────────────────────────────
+    //
+    // 流式落盘改造后:
+    // - PUT /file 阶段把字节流式 stage 到 cache_dir(由 webserver 触发,本
+    //   use case 不参与)。BufferFile event 不再携带字节, 只挂"已 staged
+    //   文件"引用。
+    // - SyncDoc File 分支不再调 staging,直接拿 buffer 里的 `StagedFile`
+    //   拼 uri-list rep。原来的"staging IO 失败"测试因此不再属于本 use case
+    //   的语义边界(staging 失败由 facade 流式入口翻译,已在 facade 单测覆盖)。
 
-    /// File happy path: BufferFile (PUT /file) → SyncDoc File (PUT /json) →
-    /// staging port 拼出 macOS URI → file-list rep 写进 capture pipeline →
-    /// `Applied`。校验 buffer 被 drain + staging 被调一次。
+    /// File happy path: BufferFile (PUT /file 已 stage) → SyncDoc File →
+    /// 拼 file-list rep → capture → `Applied`。校验 buffer 被 drain。
     #[tokio::test]
     async fn file_applied_after_buffer_then_sync_doc() {
-        let staged = StagedFile {
-            uri: uc_core::mobile_sync::StagedFileUri::new(
-                "file:///tmp/mobile_inbound/abcdef012345/doc.pdf",
-            ),
-            sanitized_name: "doc.pdf".into(),
-        };
-        let staging = FakeStaging::with_response(staged);
         let (uc, buffer) =
-            build_uc_with_buffer_and_staging_expect_applied("entry-file-1", staging.clone());
+            build_uc_with_buffer_and_staging_expect_applied("entry-file-1", staging_never_called());
 
-        // step 1: PUT /file/{name}
+        // step 1: PUT /file/{name} 的最终结果 —— 字节已被 staging 流式落盘,
+        // event 只挂 URI 入 buffer。
         uc.execute(input_buffer_file(
             "doc.pdf",
             "application/pdf",
-            vec![0x25, 0x50, 0x44, 0x46], // %PDF
+            "file:///tmp/mobile_inbound/abcdef012345/doc.pdf",
+            "doc.pdf",
         ))
         .await
         .unwrap();
@@ -1286,20 +1280,12 @@ mod tests {
             }
         );
         assert_eq!(buffer.len(), 0, "file branch should drain buffer");
-
-        // staging 被调用一次, 入参检查
-        let (scope, name, mime, bytes) =
-            staging.last_call().expect("staging should be called once");
-        assert!(!scope.is_empty(), "scope_id should be a non-empty nonce");
-        assert_eq!(name, "doc.pdf");
-        assert_eq!(mime, "application/pdf");
-        assert_eq!(bytes, vec![0x25, 0x50, 0x44, 0x46]);
     }
 
-    /// File 缺 dataName → `DecodeFailed`, 不进 inbound, staging 不被调用。
+    /// File 缺 dataName → `DecodeFailed`, 不进 inbound。
     #[tokio::test]
     async fn file_decode_failed_on_missing_data_name() {
-        let staging = FakeStaging::never_called();
+        let staging = staging_never_called();
         let buffer = Arc::new(IncomingMobileBuffer::new());
         let uc = build_uc_with_staging_expect_no_inbound(staging, buffer);
         let outcome = uc
@@ -1313,10 +1299,10 @@ mod tests {
     }
 
     /// File buffer miss(没有先 PUT /file 就 PUT /json)→ `DecodeFailed`,
-    /// 不进 inbound, staging 不被调用。
+    /// 不进 inbound。
     #[tokio::test]
     async fn file_decode_failed_on_buffer_miss() {
-        let staging = FakeStaging::never_called();
+        let staging = staging_never_called();
         let buffer = Arc::new(IncomingMobileBuffer::new());
         let uc = build_uc_with_staging_expect_no_inbound(staging, buffer);
         let outcome = uc
@@ -1333,44 +1319,11 @@ mod tests {
         ));
     }
 
-    /// staging port IO 失败 → use case 翻成 `Internal`(application 错误,
-    /// 路由 → HTTP 500), 不进 inbound, buffer 已被 take(空)。
-    #[tokio::test]
-    async fn file_internal_error_on_staging_io_failure() {
-        let staging = FakeStaging::with_error(MobileFileStagingError::Io(
-            "disk full / permission denied".into(),
-        ));
-        let buffer = Arc::new(IncomingMobileBuffer::new());
-        // 预 seed 一份 file 字节
-        buffer.store(
-            "doc.pdf".into(),
-            "application/pdf".into(),
-            vec![0x25, 0x50, 0x44, 0x46],
-            "mobile-lan:test-io".into(),
-        );
-
-        let uc = build_uc_with_staging_expect_no_inbound(staging, buffer.clone());
-        let err = uc
-            .execute(input_sync_doc(
-                SyncClipboardItemType::File,
-                "doc.pdf",
-                Some("doc.pdf"),
-            ))
-            .await
-            .expect_err("staging IO failure should propagate as Err");
-        assert!(matches!(err, ApplyIncomingMobileClipError::Internal(_)));
-        // buffer 已经被 take 走(staging 调用前会 buffer.take), 即便 staging 失败
-        // 也不会回滚 —— 字节已经丢失,但这是协议接受范围(iPhone 会重传)。
-        assert_eq!(buffer.len(), 0, "buffer is taken before staging is called");
-    }
-
-    /// 跨平台 URI 编码 plumbing:mock staging 注入"Windows-shape" URI,
+    /// 跨平台 URI 编码 plumbing:BufferFile 注入"Windows-shape" URI,
     /// 校验 file-list rep bytes 严格按 `\n` 分隔单条 URI 写出。验证 use
-    /// case 不对 URI 形态做任何假设(平台细节由 adapter 负责)。
+    /// case 不对 URI 形态做任何假设(平台细节由 staging adapter 决定)。
     #[tokio::test]
     async fn file_uri_list_rep_propagates_adapter_uri_verbatim() {
-        // 装 inbound 的 capture mock,withf 校验 snapshot 里有 file-list rep
-        // 且 bytes == "{uri}\n",scope_id 不参与字节(只参与 path)。
         let mut repo = MockEntryRepo::new();
         repo.expect_find_entry_id_by_snapshot_hash()
             .times(1)
@@ -1403,28 +1356,24 @@ mod tests {
         let inbound =
             ApplyInboundClipboardUseCase::new(Arc::new(repo), Arc::new(capture), Arc::new(write));
         let buffer = Arc::new(IncomingMobileBuffer::new());
-        let staging = FakeStaging::with_response(StagedFile {
-            uri: uc_core::mobile_sync::StagedFileUri::new(
-                "file:///C:/Users/mark/AppData/Local/uc/mobile_inbound/abc/My%20Photo.png",
-            ),
-            sanitized_name: "My Photo.png".into(),
-        });
         let uc = ApplyIncomingMobileClipUseCase::new(
             Arc::new(inbound),
             buffer.clone(),
-            staging,
+            staging_never_called(),
             Arc::new(FixedClock),
             None,
             None,
         );
 
-        // 预 seed buffer
-        buffer.store(
-            "My Photo.png".into(),
-            "image/png".into(),
-            vec![0x89, 0x50, 0x4E, 0x47],
-            "mobile-lan:test-win".into(),
-        );
+        // BufferFile event 注入 Windows-shape URI
+        uc.execute(input_buffer_file(
+            "My Photo.png",
+            "application/octet-stream",
+            "file:///C:/Users/mark/AppData/Local/uc/mobile_inbound/abc/My%20Photo.png",
+            "My Photo.png",
+        ))
+        .await
+        .unwrap();
 
         let outcome = uc
             .execute(input_sync_doc(
@@ -1473,7 +1422,7 @@ mod tests {
         let uc = ApplyIncomingMobileClipUseCase::new(
             Arc::new(inbound),
             Arc::new(IncomingMobileBuffer::new()),
-            FakeStaging::never_called(),
+            staging_never_called(),
             Arc::new(FixedClock),
             None,
             None,
@@ -1553,7 +1502,7 @@ mod tests {
         let uc = ApplyIncomingMobileClipUseCase::new(
             Arc::new(inbound),
             Arc::new(IncomingMobileBuffer::new()),
-            FakeStaging::never_called(),
+            staging_never_called(),
             Arc::new(FixedClock),
             None,
             Some(Arc::clone(&recorder) as Arc<dyn MobileInboundFanOutPort>),
@@ -1601,7 +1550,7 @@ mod tests {
         let uc = ApplyIncomingMobileClipUseCase::new(
             Arc::new(inbound),
             Arc::new(IncomingMobileBuffer::new()),
-            FakeStaging::never_called(),
+            staging_never_called(),
             Arc::new(FixedClock),
             None,
             Some(Arc::clone(&recorder) as Arc<dyn MobileInboundFanOutPort>),
@@ -1640,7 +1589,7 @@ mod tests {
         let uc = ApplyIncomingMobileClipUseCase::new(
             Arc::new(inbound),
             Arc::new(IncomingMobileBuffer::new()),
-            FakeStaging::never_called(),
+            staging_never_called(),
             Arc::new(FixedClock),
             None,
             Some(Arc::clone(&recorder) as Arc<dyn MobileInboundFanOutPort>),
@@ -1687,7 +1636,7 @@ mod tests {
         let uc = ApplyIncomingMobileClipUseCase::new(
             Arc::new(inbound),
             Arc::new(IncomingMobileBuffer::new()),
-            FakeStaging::never_called(),
+            staging_never_called(),
             Arc::new(FixedClock),
             None,
             None,

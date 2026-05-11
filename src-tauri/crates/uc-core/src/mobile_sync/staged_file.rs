@@ -44,3 +44,42 @@ pub struct StagedFile {
     /// use case 不直接消费它,但保留在返回值里方便日志 / 排障。
     pub sanitized_name: String,
 }
+
+/// 一次"分块写入中"staging 会话的不透明引用。
+///
+/// 由 staging adapter 在 begin 阶段生成,在后续 append / finalize / abort
+/// 调用中作为这一会话的唯一句柄。token 本身只是个 UUID —— 真正的文件句柄
+/// 与目标 path 由 adapter 在内部按 token 索引维护,uc-core 不感知任何 IO
+/// 资源细节。
+///
+/// 生命周期约束:
+/// - 同一 handle 只能进入 `finalize_stage` **或** `abort_stage` 一次;之后
+///   adapter 已释放对应资源,handle 视为消费完毕,继续传入是协议违规。
+/// - 单笔 staging 会话只允许串行 append;并发 append 同一 handle 的语义
+///   未定义(adapter 可选检测并报错,也可直接交叠写入产生损坏数据)。
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct StagingHandle(uuid::Uuid);
+
+impl StagingHandle {
+    /// 由 adapter 生成新句柄(随机 UUID v4)。
+    pub fn new() -> Self {
+        Self(uuid::Uuid::new_v4())
+    }
+
+    /// 暴露内部 UUID,仅供 adapter 内部按 token 索引资源使用。
+    pub fn token(&self) -> uuid::Uuid {
+        self.0
+    }
+}
+
+impl Default for StagingHandle {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl std::fmt::Display for StagingHandle {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0.to_string())
+    }
+}

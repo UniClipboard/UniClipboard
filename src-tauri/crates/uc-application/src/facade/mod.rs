@@ -88,6 +88,7 @@ pub use lifecycle::{
     InMemoryLifecycleStatus, LifecycleFacade, LifecycleFacadeDeps, LifecycleFacadeError,
     LifecycleStateView, LifecycleStatusGateway,
 };
+pub use mobile_sync::mobile_sync_streaming_scope_nonce;
 pub use mobile_sync::{
     ApplyIncomingMobileClipError, ApplyIncomingMobileClipInput, ApplyIncomingMobileClipOutcome,
     AuthenticateBasicAuthError, AuthenticateBasicAuthInput, AuthenticatedDevice,

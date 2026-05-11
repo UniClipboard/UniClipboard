@@ -21,4 +21,4 @@ pub use device::{MobileClientType, MobileDevice, MobileDeviceError, MobileDevice
 pub use endpoint::{LanEndpointInfo, LanListenerStatus};
 pub use lan_interface::LanInterface;
 pub use latest_paste::LatestPasteRepresentation;
-pub use staged_file::{StagedFile, StagedFileUri};
+pub use staged_file::{StagedFile, StagedFileUri, StagingHandle};

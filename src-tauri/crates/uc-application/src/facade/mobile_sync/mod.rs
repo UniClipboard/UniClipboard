@@ -11,6 +11,7 @@
 mod facade;
 mod outbound_adapter;
 
+pub use facade::streaming_scope_nonce as mobile_sync_streaming_scope_nonce;
 pub use facade::{
     ApplyIncomingMobileClipError, ApplyIncomingMobileClipInput, ApplyIncomingMobileClipOutcome,
     AuthenticateBasicAuthError, AuthenticateBasicAuthInput, AuthenticatedDevice,

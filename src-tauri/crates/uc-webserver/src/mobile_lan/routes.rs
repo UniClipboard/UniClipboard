@@ -72,9 +72,17 @@ use crate::mobile_lan::middleware::basic_auth;
 /// 实测,4 FPS 已经平滑)。
 const PROGRESS_THROTTLE: Duration = Duration::from_millis(250);
 
-/// `PUT /file/{dataName}` 的请求体上限 —— SyncClipboard 桌面端同档 16 MiB。
-/// 真生产仍可能有图像 / RTF 大块上传, 后续 P5a.10 可观测后再调。
-const MAX_FILE_BYTES_STREAM: usize = 16 * 1024 * 1024;
+/// `PUT /file/{dataName}` 请求体的兜底磁盘安全阀。
+///
+/// 用户在手机端主动 PUT 文件,客户端已经知道文件大小;真正的"产品上限"
+/// 由客户端自觉与本机磁盘空间决定,服务端只设一道防止恶意客户端写满盘的
+/// 远端硬上限。
+///
+/// 现写死 10 GiB。
+/// TODO(P6 配置化): 拆到 settings (`mobile_sync.put_file_max_bytes`),按
+/// 用户机型 / 磁盘剩余可配 —— 当前 10 GiB 是个粗略的"任何家用 Mac 都
+/// 不可能因为一次上传爆盘"的安全阀,留出抽象空间但不开复杂度。
+const PUT_FILE_DISK_SANITY_LIMIT: u64 = 10 * 1024 * 1024 * 1024;
 
 /// mobile_lan 路由共享 state。`mobile_sync` 是 PUT/GET 业务入口;
 /// `file_transfer` 是 PUT /file 流式接收过程中 handler 用来发
@@ -353,41 +361,88 @@ async fn put_clipboard_file(
     )
     .await;
 
-    // 流式读 body:每个 chunk 累加到 buffer,每 PROGRESS_THROTTLE 一帧
-    // 调 facade.report_progress。本工程的 lifecycle ReportProgress 走
-    // store + publisher(load_timeline O(N) 全量历史),所以频率必须节
-    // 流否则 O(N²) 会拖死大文件 PUT。
+    // 用 raw_mime 先 begin_stage,后面 mime sniff 不影响落盘行为。
+    let scope_id = uc_application::facade::mobile_sync_streaming_scope_nonce();
+    let handle = match facade
+        .begin_file_upload(&scope_id, &data_name, &raw_mime)
+        .await
+    {
+        Ok(handle) => handle,
+        Err(err) => {
+            fail_lifecycle(
+                file_transfer.as_ref(),
+                &transfer_id,
+                &peer_id,
+                format!("staging begin failed: {err}"),
+            )
+            .await;
+            tracing::warn!(
+                data_name = %data_name,
+                error = %err,
+                "PUT /file: begin_stage failed"
+            );
+            return Err((StatusCode::INTERNAL_SERVER_ERROR, "staging begin failed").into_response());
+        }
+    };
+
+    // 流式读 body:每个 chunk 边收边喂给 staging,handler 端不再持字节。
+    // 进度节流仍按 PROGRESS_THROTTLE 控制 ReportProgress 频率,避免
+    // load_timeline O(N²)。前 64 字节做 mime sniff(image 头魔数最长 14 字节,
+    // 64 字节窗口够用)。
     let mut body_stream = request.into_body().into_data_stream();
-    let mut buffer: Vec<u8> = Vec::new();
+    let mut bytes_received: u64 = 0;
+    let mut sniff_window: Vec<u8> = Vec::with_capacity(64);
     let mut last_progress = Instant::now();
     while let Some(chunk_result) = body_stream.next().await {
         match chunk_result {
             Ok(chunk) => {
-                buffer.extend_from_slice(&chunk);
-                if buffer.len() > MAX_FILE_BYTES_STREAM {
-                    // 超限:fail lifecycle,handler 端 buffer 直接 drop。
-                    // Note: 此时还未走到 facade.put_clipboard_file,所以
-                    // IncomingMobileBuffer 上还没 slot,无需 remove。
+                bytes_received = bytes_received.saturating_add(chunk.len() as u64);
+                if bytes_received > PUT_FILE_DISK_SANITY_LIMIT {
+                    facade.abort_file_upload(handle).await;
                     fail_lifecycle(
                         file_transfer.as_ref(),
                         &transfer_id,
                         &peer_id,
-                        "body exceeds 16 MiB limit".to_string(),
+                        format!(
+                            "body exceeds disk sanity limit ({PUT_FILE_DISK_SANITY_LIMIT} bytes)"
+                        ),
                     )
                     .await;
                     tracing::warn!(
                         data_name = %data_name,
-                        bytes_received = buffer.len(),
-                        "PUT /file: body exceeded MAX_FILE_BYTES_STREAM"
+                        bytes_received,
+                        limit = PUT_FILE_DISK_SANITY_LIMIT,
+                        "PUT /file: body exceeded disk sanity limit"
                     );
                     return Err((StatusCode::PAYLOAD_TOO_LARGE, "body too large").into_response());
+                }
+                if sniff_window.len() < 64 {
+                    let take = (64 - sniff_window.len()).min(chunk.len());
+                    sniff_window.extend_from_slice(&chunk[..take]);
+                }
+                if let Err(err) = facade.append_file_chunk(&handle, &chunk).await {
+                    facade.abort_file_upload(handle).await;
+                    fail_lifecycle(
+                        file_transfer.as_ref(),
+                        &transfer_id,
+                        &peer_id,
+                        format!("staging append failed: {err}"),
+                    )
+                    .await;
+                    tracing::warn!(
+                        data_name = %data_name,
+                        error = %err,
+                        "PUT /file: append_stage_chunk failed"
+                    );
+                    return Err((StatusCode::INTERNAL_SERVER_ERROR, "staging append failed")
+                        .into_response());
                 }
                 if last_progress.elapsed() >= PROGRESS_THROTTLE {
                     report_progress_lifecycle(
                         file_transfer.as_ref(),
                         &transfer_id,
                         &peer_id,
-                        buffer.len() as u64,
+                        bytes_received,
                         total_bytes,
                     )
                     .await;
@@ -395,7 +450,7 @@ async fn put_clipboard_file(
                 }
             }
             Err(e) => {
-                // body 中断 / 连接错误:fail lifecycle + 不 buffer。
+                facade.abort_file_upload(handle).await;
                 fail_lifecycle(
                     file_transfer.as_ref(),
                     &transfer_id,
@@ -412,16 +467,15 @@ async fn put_clipboard_file(
     }
 
     // 收齐 → 补一帧 final progress 让前端进度条停在 100%。complete
-    // 不在这里发 —— body 接收完只表示"字节进了 receiver buffer",
-    // 真正的 transfer 完成要等 SyncDoc apply 写到 entry,
+    // 不在这里发 —— body 接收完只表示"字节进了 staging",真正的 transfer
+    // 完成要等 SyncDoc apply 写到 entry,
     // ApplyIncomingMobileClipUseCase::finalize_transfer_lifecycle 收尾。
-    let final_size = buffer.len() as u64;
-    let final_total = total_bytes.or(Some(final_size));
+    let final_total = total_bytes.or(Some(bytes_received));
     report_progress_lifecycle(
         file_transfer.as_ref(),
         &transfer_id,
         &peer_id,
-        final_size,
+        bytes_received,
         final_total,
     )
     .await;
@@ -431,10 +485,9 @@ async fn put_clipboard_file(
     // 让 octet-stream 一路下沉到剪贴板写入层,会让 image rep 携带非 image/*
     // mime 落到 macOS NSPasteboard 上,系统识别不出 image type、用户读到的
     // 是原始 JPEG 字节(2026-05-08 真机回归 IMG_20260508_200644.jpg 复现)。
-    // 这里在最外层基于 data_name 扩展名 + 文件头魔数嗅探,把 image 类的
-    // mime 修正回正确的 image/* 形态;无法识别时保持原 mime 不动。
+    // sniff_window 在收 body 时已截前 64 字节,够覆盖所有 image 头魔数。
     let effective_mime = if mime_is_unspecific(&raw_mime) {
-        match infer_image_mime(&data_name, &buffer) {
+        match infer_image_mime(&data_name, &sniff_window) {
             Some(sniffed) => {
                 tracing::info!(
                     data_name = %data_name,
@@ -450,18 +503,17 @@ async fn put_clipboard_file(
         raw_mime.clone()
     };
 
-    let bytes_len = buffer.len();
     let log_data_name = data_name.clone();
     let log_mime = effective_mime.clone();
     match facade
-        .put_clipboard_file(data_name, effective_mime, buffer, device_id, transfer_id)
+        .finalize_file_upload(handle, data_name, effective_mime, device_id, transfer_id)
         .await
     {
         Ok(outcome) => {
             tracing::info!(
                 data_name = %log_data_name,
                 mime = %log_mime,
-                bytes = bytes_len,
+                bytes = bytes_received,
                 outcome = ?outcome_kind(&outcome),
                 "PUT /file: 200"
             );

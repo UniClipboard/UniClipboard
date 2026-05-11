@@ -124,10 +124,10 @@ pub struct SystemPorts {
 /// `AppDeps`。
 ///
 /// `endpoint_info` 是只读视图:daemon LAN listener 启停时通过自己持有的具体
-/// adapter 类型(`SharedEndpointInfo` 旁路)调 `set` / `clear` 来更新这份
-/// 状态;facade 通过本字段读它,看到 daemon 当前真实绑定的 LAN URL。两端
-/// 共享同一 `Arc<InMemoryMobileSyncEndpointInfoAdapter>`,通过 unsizing
-/// coercion 转成 trait object。
+/// adapter 类型 (`Arc<InMemoryMobileSyncEndpointInfoAdapter>` 旁路) 调 `set` /
+/// `clear` 来更新这份状态;facade 通过本字段读它,看到 daemon 当前真实绑定
+/// 的 LAN URL。两端共享同一 `Arc<InMemoryMobileSyncEndpointInfoAdapter>`,通过
+/// unsizing coercion 转成 trait object。
 #[derive(Clone)]
 pub struct MobileSyncPorts {
     pub device_repo: Arc<dyn MobileDeviceRepositoryPort>,

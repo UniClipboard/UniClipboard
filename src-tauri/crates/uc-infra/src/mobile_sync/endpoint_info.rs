@@ -21,8 +21,6 @@
 //! 故意不放 OS-level 网卡探测在这里 —— 那是
 //! [`crate::mobile_sync::lan_probe::NetworkInterfaceLanProbe`] 的事。
 
-use std::sync::Arc;
-
 use async_trait::async_trait;
 use tokio::sync::RwLock;
 
@@ -80,10 +78,6 @@ impl MobileSyncEndpointInfoPort for InMemoryMobileSyncEndpointInfoAdapter {
         Ok(guard.clone())
     }
 }
-
-/// 给 bootstrap 用的便捷别名 —— 把"此 adapter 同时承担 port 实现 + 写入面"
-/// 这件事在类型签名上明示出来,省得调用方按原始类型来回 `as ...` 转换。
-pub type SharedEndpointInfo = Arc<InMemoryMobileSyncEndpointInfoAdapter>;
 
 #[cfg(test)]
 mod tests {

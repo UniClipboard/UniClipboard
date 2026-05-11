@@ -38,6 +38,18 @@ It enables seamless and secure syncing of text, images, and files across multipl
       src="https://img.shields.io/badge/-Linux-purple?style=flat-square&logo=linux&logoColor=white"
     />
   </a>
+  <a href="#mobile-companion-lan">
+    <img
+      alt="iOS"
+      src="https://img.shields.io/badge/-iOS%20(LAN)-lightgrey?style=flat-square&logo=apple&logoColor=white"
+    />
+  </a>
+  <a href="#mobile-companion-lan">
+    <img
+      alt="Android"
+      src="https://img.shields.io/badge/-Android%20(LAN)-3DDC84?style=flat-square&logo=android&logoColor=white"
+    />
+  </a>
 
   <div>
     <a href="./LICENSE">
@@ -62,8 +74,9 @@ It enables seamless and secure syncing of text, images, and files across multipl
 
 ## Features
 
-- **Cross-platform**: First-class support on Windows, macOS, and Linux — your clipboard works wherever you do.
-- **Cross-network sync**: Real-time sync on the same Wi-Fi, across different home/office networks, or across the internet, with automatic NAT traversal and encrypted relay fallback — not just LAN, and not bound to a single network.
+- **Cross-platform**: First-class support on Windows, macOS, and Linux — your clipboard works wherever you do. iPhone and Android can join as a **LAN companion** (see below).
+- **Cross-network sync**: Real-time sync on the same Wi-Fi, across different home/office networks, or across the internet, with automatic NAT traversal and encrypted relay fallback — not just LAN, and not bound to a single network. (Desktop ↔ desktop; mobile is same-Wi-Fi only.)
+- **Mobile companion (LAN)**: Pair an iPhone via the bundled **iOS Shortcut**, or any [**SyncClipboard**](https://github.com/Jeric-X/SyncClipboard)-compatible client on Android, for bidirectional clipboard exchange on the local network. QR-code pairing, per-device credentials, rotate passwords without re-pairing. No native iOS / Android app required.
 - **Encrypted spaces**: Devices join a shared "space" with one invitation code + passphrase — no cloud account, no email, just two devices agreeing to trust each other.
 - **Local full-text search**: Search your full history in milliseconds, even with tens of thousands of entries — and the index itself stays encrypted on disk.
 - **Text, images, and files**: Copy on one device, paste on another. Large files use streaming transfer so they don't have to fit in memory.
@@ -164,11 +177,28 @@ bun tauri build
 
 > Already set up and want to move to another space? Use **Switch space** from the Devices page (or `uniclip switch-space` from the CLI) — your local clipboard history is re-encrypted and migrated.
 
+### Pair a Mobile Device (LAN companion) <a id="mobile-companion-lan"></a>
+
+UniClipboard does **not** ship a native iOS / Android app. Instead, your phone joins as a **LAN companion** — the desktop daemon exposes a small SyncClipboard-compatible HTTP service on your local network, and your phone reads/writes the clipboard against it.
+
+1. On the desktop, open **Devices → Mobile sync**, enable it, and pick the LAN IPv4 the phone will reach (don't print `0.0.0.0` / `Auto` onto a phone screen).
+2. Click **Add device** to generate a QR code with the listener URL, username, and one-time password.
+3. **iPhone** — scan the QR; the bundled iOS Shortcut installs and is ready to use. **Android** — point any SyncClipboard-compatible client at the same URL and credentials.
+4. Copy on either side; the other side picks it up over Wi-Fi.
+
+Limitations (today):
+
+- **Same Wi-Fi only** — mobile doesn't NAT-hole-punch or go through the relay. Off-LAN, mobile clients can't reach the desktop.
+- **Plain HTTP + Basic Auth on the LAN** — TLS is planned for v2. Only enable the listener on networks you trust.
+- **Mobile is not a space peer** — it doesn't get a node ID and can't read the encrypted history database; it only exchanges the current clipboard.
+
+See the [Mobile sync guide](https://www.uniclipboard.app/docs/guides/mobile-sync) for the full setup flow.
+
 ### Main Pages
 
 - **Dashboard** — Clipboard history with full-text search and detailed preview
 - **Quick Panel** — Keyboard-shortcut overlay for fast clipboard access
-- **Devices** — Manage paired devices and presence, generate invitation codes, switch spaces
+- **Devices** — Manage paired desktops and mobile clients, presence, invitation codes, QR pairing, switch spaces
 - **Settings** — General, sync, security, network, storage, and search-index options
 
 ## Advanced Features
@@ -255,8 +285,8 @@ Yes. Devices on the same Wi-Fi connect directly without going through the relay.
 **Where does my clipboard history actually live?**
 Only on your devices. Local storage is encrypted at rest with a key that never leaves the device's system keyring. No UniClipboard server ever receives or stores your clipboard content.
 
-**I upgraded from an older version — why are my devices not paired anymore?**
-The 0.6 release replaced the underlying networking stack. Existing pairings from earlier versions are no longer valid; re-pairing once via the **Devices** page (or `uniclip invite` / `uniclip join`) restores sync.
+**Is there a mobile app?**
+No native iOS or Android app — and that's intentional. Mobile is supported as a **LAN companion** instead: the desktop daemon exposes a SyncClipboard-compatible HTTP endpoint, your **iPhone** uses the bundled **iOS Shortcut** (installed via QR), and **Android** uses any SyncClipboard-compatible client. It's bidirectional and same-Wi-Fi only — no NAT traversal, no relay, no native app to ship or update. See the [Pair a Mobile Device](#mobile-companion-lan) section above.
 
 ## Contributing
 
@@ -268,7 +298,7 @@ Quick start:
 2. Create your feature branch (`git checkout -b feature/amazing-feature`)
 3. Commit your changes following the project's [commit conventions](./CONTRIBUTING.md#commit-conventions)
 4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request against the `dev` branch
+5. Open a Pull Request against the `main` branch
 
 ## License
 

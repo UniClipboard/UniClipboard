@@ -43,6 +43,24 @@ cargo-clippy = []
 # 仅供 `bun tauri:build:dev` 使用，避免本地 dev 构建产物覆盖 prod 安装的数据。
 dev-profile = ["uc-tauri/dev-profile"]
 
+# dev profile package overrides:让 Argon2 / Blake3 / chacha20 等密码学 crate
+# 在 debug 构建下也走 opt-level=3。背景:mobile_lan basic auth 每次 PUT 都要
+# 跑一次 Argon2id verify(m=64MB t=3 p=4),release 下 ~74ms,debug 下 ~1.26s。
+# 不开优化时单次请求被推迟 1.2 秒,前端 entry 出现也跟着推迟 1.2 秒。
+# 业务代码本身保持 debug(便于调试),只对密码学库做局部 release 编译。
+[profile.dev.package.argon2]
+opt-level = 3
+[profile.dev.package.blake2]
+opt-level = 3
+[profile.dev.package.blake3]
+opt-level = 3
+[profile.dev.package.chacha20]
+opt-level = 3
+[profile.dev.package.chacha20poly1305]
+opt-level = 3
+[profile.dev.package.sha2]
+opt-level = 3
+
 [profile.release]
 panic = "abort"                # Strip expensive panic clean-up logic
 codegen-units = 1              # Compile crates one after another so the compiler can optimize better

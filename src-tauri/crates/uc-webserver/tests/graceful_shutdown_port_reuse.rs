@@ -1,14 +1,19 @@
-//! P1 reload 契约测试：daemon in-process reload 依赖 "axum::serve 在
-//! `with_graceful_shutdown(cancel)` 触发后能干净 drop listener，让同进程
-//! 立刻在同一个 SocketAddr 上 rebind 成功"。
+//! `app.restart()` 端口让渡契约测试：axum::serve 在
+//! `with_graceful_shutdown(cancel)` 触发后必须干净 drop listener，让
+//! SocketAddr 立刻可在新进程上 rebind 成功。
 //!
-//! 该路径在 P0（`uc-desktop/src/daemon/app.rs` 的 http_handle double-poll
-//! panic）修复之后被 P1 在 mobile_sync 配置变更触发的 daemon reload 路径
-//! 显式依赖：旧 daemon shutdown → listener drop → 端口立即释放 → 新
-//! daemon spawn 在同地址 bind 不撞 `WSAEADDRINUSE`(Windows os error 10048)。
+//! 方案 C (2026-05-11) 后所有"需要重启"设置走进程级 `app.restart()`
+//! (Tauri spawn 新进程 + exit 当前进程)。`uc-tauri/src/commands/restart.rs`
+//! 在 `app.restart()` 之前主动跑 graceful daemon shutdown,目的是让旧
+//! daemon listener drop → 端口释放 → 新进程在同地址 bind 不撞
+//! `WSAEADDRINUSE` (Windows os error 10048)。本测试钉死这条契约: 同进程
+//! 内 cancel → rebind 同端口能立即成功。
 //!
-//! 测试只覆盖最小契约（axum + cancel + rebind），不拉起完整 daemon
-//! 装配——daemon 全栈 reload 在 P1 落地后另写集成测试。
+//! 历史: 该测试在 in-process daemon reload 时代 (Phase 4 上半场) 引入,
+//! 当时 reload 也依赖同一条契约。方案 C 取消 in-process reload 后,
+//! 契约本身对 `app.restart()` 的新旧进程交接窗口仍然成立。
+//!
+//! 测试只覆盖最小契约 (axum + cancel + rebind),不拉起完整 daemon 装配。
 
 use std::net::SocketAddr;
 use std::time::Duration;

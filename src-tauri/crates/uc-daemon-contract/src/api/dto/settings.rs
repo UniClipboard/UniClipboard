@@ -870,3 +870,283 @@ mod retention_rule_dto_tests {
         );
     }
 }
+
+/// 子集 A —— enum 变体 wire 形态锁定。
+///
+/// 这些 enum 看起来人畜无害(unit-only 变体没 issue #606 那种"内嵌字段
+/// 被忽略"的坑),但 wire 字面量是与前端 TS 字面量类型硬绑定的契约:
+///   - `ThemeDto` ↔ `type Theme = 'light' | 'dark' | 'system'`
+///   - `UpdateChannelDto` ↔ `type UpdateChannel = 'stable' | 'alpha' | 'beta' | 'rc'`
+///   - `SyncFrequencyDto` ↔ `type SyncFrequency = 'realtime' | 'interval'`
+///   - `RuleEvaluationDto` ↔ `type RuleEvaluation = 'anyMatch' | 'allMatch'`
+///   - `ShortcutKeyDto` (untagged) ↔ `type ShortcutKey = string | string[]`
+///
+/// 任何 PR 误把 `rename_all` 改成另一种风格、或者把 `untagged` 摘掉,
+/// 前端会瞬间不识别但后端编译过 —— 这些测试是兜底的契约 fence。
+///
+/// 特别留意 `RuleEvaluationDto` 是 `camelCase`(`anyMatch`),
+/// 而 `uc-core::RuleEvaluation` 是 `snake_case`(`any_match`)。
+/// wire 与持久化格式不同,转换在 webserver `rule_evaluation_from_dto` 完成。
+#[cfg(test)]
+mod enum_wire_tests {
+    use super::*;
+
+    #[test]
+    fn theme_dto_wire_is_snake_case_lowercase() {
+        assert_eq!(
+            serde_json::to_string(&ThemeDto::Light).unwrap(),
+            r#""light""#
+        );
+        assert_eq!(serde_json::to_string(&ThemeDto::Dark).unwrap(), r#""dark""#);
+        assert_eq!(
+            serde_json::to_string(&ThemeDto::System).unwrap(),
+            r#""system""#
+        );
+
+        let parsed: ThemeDto = serde_json::from_str(r#""dark""#).expect("accept 'dark'");
+        assert_eq!(parsed, ThemeDto::Dark);
+
+        // 防御:误改成 PascalCase / camelCase 必须解析失败。
+        assert!(serde_json::from_str::<ThemeDto>(r#""Light""#).is_err());
+        assert!(serde_json::from_str::<ThemeDto>(r#""systemTheme""#).is_err());
+    }
+
+    #[test]
+    fn update_channel_dto_wire_is_snake_case_lowercase() {
+        for (variant, literal) in [
+            (UpdateChannelDto::Stable, r#""stable""#),
+            (UpdateChannelDto::Alpha, r#""alpha""#),
+            (UpdateChannelDto::Beta, r#""beta""#),
+            (UpdateChannelDto::Rc, r#""rc""#),
+        ] {
+            assert_eq!(serde_json::to_string(&variant).unwrap(), literal);
+            assert_eq!(
+                serde_json::from_str::<UpdateChannelDto>(literal).unwrap(),
+                variant
+            );
+        }
+
+        assert!(serde_json::from_str::<UpdateChannelDto>(r#""RC""#).is_err());
+    }
+
+    #[test]
+    fn sync_frequency_dto_wire_is_snake_case_lowercase() {
+        assert_eq!(
+            serde_json::to_string(&SyncFrequencyDto::Realtime).unwrap(),
+            r#""realtime""#
+        );
+        assert_eq!(
+            serde_json::to_string(&SyncFrequencyDto::Interval).unwrap(),
+            r#""interval""#
+        );
+
+        let parsed: SyncFrequencyDto =
+            serde_json::from_str(r#""realtime""#).expect("accept 'realtime'");
+        assert_eq!(parsed, SyncFrequencyDto::Realtime);
+
+        // 防御:历史上"Realtime"或者"real_time"都不是合法 wire。
+        assert!(serde_json::from_str::<SyncFrequencyDto>(r#""Realtime""#).is_err());
+        assert!(serde_json::from_str::<SyncFrequencyDto>(r#""real_time""#).is_err());
+    }
+
+    /// 关键 fence:`RuleEvaluationDto` 用 camelCase,与 `uc-core` 的 snake_case
+    /// 形态不同。前端 TS 字面量是 `'anyMatch' | 'allMatch'`。
+    #[test]
+    fn rule_evaluation_dto_wire_is_camel_case() {
+        assert_eq!(
+            serde_json::to_string(&RuleEvaluationDto::AnyMatch).unwrap(),
+            r#""anyMatch""#
+        );
+        assert_eq!(
+            serde_json::to_string(&RuleEvaluationDto::AllMatch).unwrap(),
+            r#""allMatch""#
+        );
+
+        let parsed: RuleEvaluationDto =
+            serde_json::from_str(r#""anyMatch""#).expect("accept 'anyMatch'");
+        assert_eq!(parsed, RuleEvaluationDto::AnyMatch);
+
+        // 防御:把 wire 形态改回与 uc-core 同样的 snake_case 会让前端瞬间挂掉。
+        assert!(
+            serde_json::from_str::<RuleEvaluationDto>(r#""any_match""#).is_err(),
+            "RuleEvaluationDto wire MUST be camelCase, not snake_case (前端契约)"
+        );
+    }
+
+    /// `ShortcutKeyDto` 是 `untagged`,wire 直接是 string 或 string[]。
+    /// 如果误改成 `tag = "kind"` 类的 internally-tagged,前端的
+    /// `Record<string, string | string[]>` 会立刻失配。
+    #[test]
+    fn shortcut_key_dto_is_untagged_string_or_array() {
+        let single = ShortcutKeyDto::Single("Ctrl+C".into());
+        assert_eq!(serde_json::to_string(&single).unwrap(), r#""Ctrl+C""#);
+
+        let multi = ShortcutKeyDto::Multiple(vec!["Ctrl+C".into(), "Meta+C".into()]);
+        assert_eq!(
+            serde_json::to_string(&multi).unwrap(),
+            r#"["Ctrl+C","Meta+C"]"#
+        );
+
+        // 反向:两种 wire 都能解析回正确变体。
+        let parsed_single: ShortcutKeyDto =
+            serde_json::from_str(r#""Ctrl+V""#).expect("accept bare string");
+        assert!(matches!(parsed_single, ShortcutKeyDto::Single(s) if s == "Ctrl+V"));
+
+        let parsed_multi: ShortcutKeyDto =
+            serde_json::from_str(r#"["a","b"]"#).expect("accept array");
+        assert!(matches!(parsed_multi, ShortcutKeyDto::Multiple(v) if v.len() == 2));
+    }
+}
+
+/// 子集 B —— `GeneralSettingsPatchDto` 的 `Option<Option<T>>` 字段当前 wire 语义锁定。
+///
+/// `theme_color / language / device_name / update_channel` 的字段类型是
+/// `Option<Option<T>>`,facade 层(`models.rs` line 485+)按三态语义消费:
+/// ```ignore
+/// if let Some(v) = general.theme_color {
+///     existing.general.theme_color = v;  // Some(None) ⇒ 清空, Some(Some(x)) ⇒ 设置
+/// }
+/// ```
+///
+/// 但 **wire 层目前是 2-state**:缺字段和 `null` 都被裸 serde 反序列化成
+/// `None`(外层 Option),只有非 null 值才走到 `Some(...)` 分支。
+/// 这意味着前端无法用 `null` 显式清空一个 `Option<String>` 字段 ——
+/// 这是一个**已知 wire/facade 契约不齐**(类似 issue #606 那种)。
+///
+/// 修法是给这些字段加 `#[serde(with = "serde_with::rust::double_option")]`
+/// 让 `null` ⇒ `Some(None)`、缺字段 ⇒ `None`。但那是行为变更,需要单独 PR
+/// 评估前端是否依赖现行 collapsed 行为,故本 PR 只锁定**当前现实**:
+///   - 缺字段 ⇒ `None`         (不改)
+///   - `null` ⇒ `None`         (⚠️ 与"清空"不可区分 —— 见 TODO)
+///   - 值     ⇒ `Some(Some(v))` (设置新值)
+///
+/// 任一测试 fail = wire 行为漂移,需要回头判断是有意修复还是回归。
+// TODO(#606-followup): 决定是否启用 `serde_with::rust::double_option` 让
+// `null` ⇒ `Some(None)` 真正支持"显式清空",并把下面 explicit_null 用例
+// 的预期从 `None` 改成 `Some(None)`。
+#[cfg(test)]
+mod general_patch_optional_field_wire_tests {
+    use super::*;
+
+    #[test]
+    fn missing_field_means_none() {
+        let body = r#"{}"#;
+        let dto: GeneralSettingsPatchDto = serde_json::from_str(body).expect("deserialize");
+        assert!(dto.theme_color.is_none(), "missing field ⇒ None (不改)");
+        assert!(dto.language.is_none());
+        assert!(dto.device_name.is_none());
+        assert!(dto.update_channel.is_none());
+    }
+
+    /// ⚠️ 当前行为:wire `null` 反序列化成外层 `None`,与缺字段不可区分。
+    /// 修复 TODO 在模块 docstring。
+    #[test]
+    fn explicit_null_collapses_to_none_today() {
+        let body = r#"{
+            "themeColor": null,
+            "language": null,
+            "deviceName": null,
+            "updateChannel": null
+        }"#;
+        let dto: GeneralSettingsPatchDto = serde_json::from_str(body).expect("deserialize");
+        assert_eq!(
+            dto.theme_color, None,
+            "today wire `null` collapses to outer None — see module TODO for 3-state fix"
+        );
+        assert_eq!(dto.language, None);
+        assert_eq!(dto.device_name, None);
+        assert_eq!(dto.update_channel, None);
+    }
+
+    #[test]
+    fn explicit_value_becomes_some_some() {
+        let body = r#"{
+            "themeColor": "blue",
+            "language": "zh-CN",
+            "deviceName": "ws-1",
+            "updateChannel": "beta"
+        }"#;
+        let dto: GeneralSettingsPatchDto = serde_json::from_str(body).expect("deserialize");
+        assert_eq!(dto.theme_color, Some(Some("blue".to_string())));
+        assert_eq!(dto.language, Some(Some("zh-CN".to_string())));
+        assert_eq!(dto.device_name, Some(Some("ws-1".to_string())));
+        assert_eq!(dto.update_channel, Some(Some(UpdateChannelDto::Beta)));
+    }
+}
+
+/// 子集 C —— `Duration` wire 形态(`serde_with::DurationSeconds<u64>`)。
+///
+/// 所有 `PairingSettingsDto` 的 timeout 字段、`RetentionRuleDto::ByAge.max_age`
+/// 都靠 `DurationSeconds<u64>` 把 `Duration` 序列化成秒数 `u64`。误改成
+/// `DurationMilliSeconds` 或 `DurationSecondsWithFrac` 会让前端拿 `number`
+/// 解析出错位的数量级 / 浮点格式。这里把 wire 形态固定下来。
+#[cfg(test)]
+mod duration_wire_tests {
+    use super::*;
+
+    #[test]
+    fn pairing_durations_serialize_as_u64_seconds() {
+        let dto = PairingSettingsDto {
+            step_timeout: Duration::from_secs(30),
+            user_verification_timeout: Duration::from_secs(120),
+            session_timeout: Duration::from_secs(3600),
+            max_retries: 3,
+            protocol_version: "1.0".into(),
+        };
+        let value = serde_json::to_value(&dto).expect("serialize");
+        assert_eq!(
+            value["stepTimeout"],
+            serde_json::json!(30),
+            "Duration MUST serialize as integer seconds, not millis / float / object"
+        );
+        assert_eq!(value["userVerificationTimeout"], serde_json::json!(120));
+        assert_eq!(value["sessionTimeout"], serde_json::json!(3600));
+
+        // 反向:整数秒能正确解析。
+        let body = r#"{
+            "stepTimeout": 30,
+            "userVerificationTimeout": 120,
+            "sessionTimeout": 3600,
+            "maxRetries": 3,
+            "protocolVersion": "1.0"
+        }"#;
+        let parsed: PairingSettingsDto = serde_json::from_str(body).expect("deserialize");
+        assert_eq!(parsed.step_timeout, Duration::from_secs(30));
+        assert_eq!(parsed.user_verification_timeout, Duration::from_secs(120));
+        assert_eq!(parsed.session_timeout, Duration::from_secs(3600));
+    }
+
+    #[test]
+    fn pairing_patch_durations_round_trip_optional_seconds() {
+        // 缺字段 → None (不改)。
+        let empty: PairingSettingsPatchDto =
+            serde_json::from_str(r#"{}"#).expect("deserialize empty");
+        assert!(empty.step_timeout.is_none());
+
+        // 整数秒 → Some(Duration)。
+        let body = r#"{"stepTimeout": 60}"#;
+        let parsed: PairingSettingsPatchDto = serde_json::from_str(body).expect("deserialize");
+        assert_eq!(parsed.step_timeout, Some(Duration::from_secs(60)));
+
+        // 防御:DurationSeconds<u64> 不接受浮点(serde_with 行为)。
+        // 这里只断言"如果未来改成 WithFrac 则该测试需要更新",
+        // 避免静默语义漂移。
+        let frac = r#"{"stepTimeout": 1.5}"#;
+        assert!(
+            serde_json::from_str::<PairingSettingsPatchDto>(frac).is_err(),
+            "DurationSeconds<u64> MUST reject fractional input — change guard for accidental switch to WithFrac"
+        );
+    }
+
+    /// `RetentionRuleDto::ByAge.max_age` 同样用 `DurationSeconds<u64>`,
+    /// 锁定一下整数秒 ↔ Duration 来回都对(防止 issue #606 修复时
+    /// 误把单位改了)。
+    #[test]
+    fn retention_by_age_max_age_is_u64_seconds() {
+        let rule = RetentionRuleDto::ByAge {
+            max_age: Duration::from_secs(2_592_000),
+        };
+        let wire = serde_json::to_value(&rule).expect("serialize");
+        assert_eq!(wire["byAge"]["maxAge"], serde_json::json!(2_592_000u64));
+    }
+}

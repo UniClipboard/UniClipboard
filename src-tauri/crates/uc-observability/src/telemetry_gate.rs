@@ -45,9 +45,17 @@ pub fn set_telemetry_enabled(enabled: bool) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Mutex;
+
+    // Both tests mutate the same process-wide TELEMETRY_ENABLED static.
+    // cargo test runs tests in this binary in parallel by default, so
+    // serialize them here to prevent set(false) in one from racing
+    // assert(true) in the other.
+    static TEST_LOCK: Mutex<()> = Mutex::new(());
 
     #[test]
     fn default_is_true_to_avoid_dropping_pre_init_events() {
+        let _guard = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         // Reset to default in case prior test mutated; then assert.
         set_telemetry_enabled(true);
         assert!(is_telemetry_enabled());
@@ -55,6 +63,7 @@ mod tests {
 
     #[test]
     fn setter_round_trip() {
+        let _guard = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         set_telemetry_enabled(false);
         assert!(!is_telemetry_enabled());
         set_telemetry_enabled(true);

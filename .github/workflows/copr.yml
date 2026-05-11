@@ -69,7 +69,7 @@ jobs:
 
           # RPM 不允许版本字段含 "-",将 prerelease 分隔符 "-" 替换为 "~"。
           # "~" 在 RPM 比较里小于任何字符 → 0.7.0~alpha.7 < 0.7.0,符合预期。
-          RPM_VERSION="${UPSTREAM_TAG/-/~}"
+          RPM_VERSION="$(printf '%s' "$UPSTREAM_TAG" | sed 's/-/~/')"
 
           echo "upstream_tag=$UPSTREAM_TAG" >> "$GITHUB_OUTPUT"
           echo "rpm_version=$RPM_VERSION" >> "$GITHUB_OUTPUT"

@@ -156,15 +156,13 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
     // Store TaskRegistry reference for exit hook registration
     let task_registry = runtime.task_registry().clone();
 
-    // 进程级 blob/spool worker —— 一次性 spawn 在进程级 task_registry 上,
-    // 跨 daemon reload 不重建。在进 Tauri Builder 之前装好,用 tokio::spawn
-    // 在当前 (Tauri 隐含的) tokio runtime 上跑。
+    // 进程级 blob/spool worker spawn 的两块预备料:`background`(含
+    // spool_rx / worker_rx 两个一次性 mpsc::Receiver,不可 Clone)与
+    // 从进程级 deps 算出的 blob_ports。它们要等到 Tauri runtime 起来后
+    // 才能 spawn(`tokio::spawn` 在 Tauri Builder 之前调会撞 "there is no
+    // reactor running"——Tauri 在 `Builder::run()` 内才装 tokio runtime),
+    // 所以挪到下方 `.setup()` 回调里跑,用 `tauri::async_runtime::spawn`。
     let blob_ports = uc_bootstrap::BlobProcessingPorts::from_app_deps(&wired.deps);
-    let task_registry_for_blob = task_registry.clone();
-    tokio::spawn(async move {
-        uc_bootstrap::spawn_blob_processing_tasks(background, blob_ports, &task_registry_for_blob)
-            .await;
-    });
 
     // 进程级一次性资源,daemon 启动 / restart command 透传同一份 ——
     // sqlite pool / repos / settings repo / blob worker 等跨 daemon reload 复用。
@@ -247,6 +245,21 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
             runtime.set_app_handle(app.handle().clone());
             info!("AppHandle set on TauriAppRuntime for event emission");
             configure_main_window_for_platform(app.handle());
+
+            // 进程级 blob/spool worker —— Tauri runtime 已在 Builder::run()
+            // 内就绪,这里 tauri::async_runtime::spawn 才能拿到 reactor。
+            // 一次性 spawn,挂在进程级 task_registry 上,跨 daemon reload
+            // 不重建。`background` 含两个一次性 mpsc::Receiver,被
+            // spawn_blob_processing_tasks 解构消费,之后不复存在。
+            let task_registry_for_blob = runtime.task_registry().clone();
+            tauri::async_runtime::spawn(async move {
+                uc_bootstrap::spawn_blob_processing_tasks(
+                    background,
+                    blob_ports,
+                    &task_registry_for_blob,
+                )
+                .await;
+            });
 
             let daemon_connection_state_for_setup = daemon_connection_state.clone();
             let daemon_ownership_for_setup = daemon_ownership.clone();

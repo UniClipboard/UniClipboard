@@ -17,6 +17,7 @@ use uc_application::facade::{
 };
 use uc_application::ApplyInboundClipboardUseCase;
 use uc_bootstrap::{build_mobile_sync_facade, SpaceSetupAssembly};
+use uc_core::ports::MobileLanLifecyclePort;
 
 /// 构造 daemon-lifecycle 装配输入。
 pub struct DaemonLifecycleFacadesInput<'a> {
@@ -35,6 +36,11 @@ pub struct DaemonLifecycleFacadesInput<'a> {
     /// (本字段) 与 InboundClipboardFacade (worker 装配),让 LAN PUT 路径
     /// 与 P2P 入站走同一条 ApplyInbound 链 (host event 单一源 / blob 状态共享)。
     pub mobile_sync_apply_inbound: Arc<ApplyInboundClipboardUseCase>,
+    /// LAN 监听器生命周期 port —— 让 `update_settings` 写盘后立即把
+    /// listener 状态对齐到新设置, 无需重启进程。同一份 controller 实例同时
+    /// 喂给 `MobileSyncFacade`(本字段) 与 daemon `run()`(`DaemonApp`),
+    /// 两条链路共用单点状态机。
+    pub lan_lifecycle: Arc<dyn MobileLanLifecyclePort>,
 }
 
 /// 构造 5 个 daemon-lifecycle 子 facade。返回的 [`DaemonLifecycleFacades`]
@@ -51,6 +57,7 @@ pub fn build_daemon_lifecycle_facades(
         blob_transfer,
         file_transfer,
         mobile_sync_apply_inbound,
+        lan_lifecycle,
     } = input;
 
     let mobile_sync = build_mobile_sync_facade(
@@ -58,6 +65,7 @@ pub fn build_daemon_lifecycle_facades(
         storage_paths,
         mobile_sync_apply_inbound.clone(),
         Some(file_transfer),
+        Some(lan_lifecycle),
     );
 
     let local_device_id = deps.device.device_identity.current_device_id().to_string();

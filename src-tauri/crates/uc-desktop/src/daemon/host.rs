@@ -37,6 +37,7 @@ use crate::daemon::app_facade_assembly::{
 };
 use crate::daemon::bootstrap::{build_daemon_bootstrap_assembly, DaemonBootstrapAssembly};
 use crate::daemon::handle::DaemonHandle;
+use crate::daemon::mobile_lan_lifecycle::{AppFacadeListenerSpawner, MobileLanLifecycleController};
 use crate::daemon::run_loop::{run_daemon_main, DaemonRunLoopInput};
 use crate::daemon::run_mode::DaemonRunMode;
 use crate::daemon::runtime_assembly::{build_daemon_runtime_workers, DaemonRuntimeAssemblyInput};
@@ -209,6 +210,26 @@ pub(crate) async fn start_in_process(
 
     let storage_paths_for_daemon = storage_paths.clone();
 
+    // # mobile_sync LAN listener 生命周期 controller
+    //
+    // 装配在 lifecycle facade 构造前完成,因为 mobile_sync facade 要把它存
+    // 进 `MobileSyncFacadeDeps::lan_lifecycle` —— update_settings 写盘后
+    // 通过它即时 start/stop/rebind listener。
+    //
+    // controller 不直接持 `Arc<MobileSyncFacade>`(否则 facade ↔ controller
+    // 循环引用,构造顺序无解);改持 `Arc<AppFacade>`,运行期通过
+    // `AppFacade.mobile_sync` OnceLock 取当前 facade。装配此刻 OnceLock 还
+    // 未装入,但 controller 不会在此前被调用 —— apply() 只在 daemon
+    // run() 启动后 或 update_settings 收到 PATCH 时触发。
+    let mobile_lan_lifecycle: Arc<MobileLanLifecycleController> =
+        Arc::new(MobileLanLifecycleController::new(
+            mobile_sync_endpoint_info.clone(),
+            Arc::new(AppFacadeListenerSpawner::new(
+                Arc::clone(&app_facade),
+                Some(file_transfer_facade.clone()),
+            )),
+        ));
+
     // Phase 4 重构:不再装第二份 `AppFacade`,改为构造 5 个 daemon-lifecycle
     // 子 facade 然后 swap 进 GUI shell 已装好的进程级 AppFacade。
     let (lifecycle_facades, local_device_id) =
@@ -220,6 +241,8 @@ pub(crate) async fn start_in_process(
             blob_transfer: blob_transfer_facade.clone(),
             file_transfer: file_transfer_facade.clone(),
             mobile_sync_apply_inbound: runtime_workers.apply_inbound.clone(),
+            lan_lifecycle: Arc::clone(&mobile_lan_lifecycle)
+                as Arc<dyn uc_core::ports::MobileLanLifecyclePort>,
         });
 
     app_facade.install_daemon_lifecycle(lifecycle_facades);
@@ -247,6 +270,7 @@ pub(crate) async fn start_in_process(
         listens_to_os_signals: run_mode.listens_to_os_signals(),
         process_mode: run_mode.process_mode(),
         mobile_sync_endpoint_info,
+        mobile_lan_lifecycle: Arc::clone(&mobile_lan_lifecycle),
     });
 
     let input = DaemonRunLoopInput {

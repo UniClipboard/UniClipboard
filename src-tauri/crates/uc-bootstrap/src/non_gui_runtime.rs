@@ -181,6 +181,10 @@ pub fn build_mobile_sync_facade(
     storage_paths: &AppPaths,
     apply_inbound: Arc<ApplyInboundClipboardUseCase>,
     file_transfer: Option<Arc<FileTransferFacade>>,
+    // GUI daemon 装配传 `Some(controller)` —— update_settings 写盘后即时
+    // start/stop/rebind listener。CLI fallback 传 `None`,settings 只写盘,
+    // 等下次 daemon 进程启动一次性读取(与本字段引入前完全一致的行为)。
+    lan_lifecycle: Option<Arc<dyn uc_core::ports::MobileLanLifecyclePort>>,
 ) -> Arc<MobileSyncFacade> {
     Arc::new(MobileSyncFacade::new(MobileSyncFacadeDeps {
         clock: deps.system.clock.clone(),
@@ -204,11 +208,7 @@ pub fn build_mobile_sync_facade(
             blob_reader: deps.storage.blob_store.clone(),
         },
         file_transfer,
-        // CLI fallback 装配:进程启动即跑命令然后退出, 没有常驻 daemon
-        // 来承载"settings PATCH → listener 热重启"的语义。装入 None,
-        // update_settings 仅写盘 —— 下次 daemon 进程启动时一次性读 settings
-        // 起 listener,与本字段引入前完全一致。
-        lan_lifecycle: None,
+        lan_lifecycle,
     }))
 }
 
@@ -294,6 +294,9 @@ pub fn build_app_facade_from_deps(
                 storage_paths,
                 apply_inbound,
                 options.file_transfer.clone(),
+                // CLI fallback 装配:无常驻 daemon, 不需要 in-process hot-swap。
+                // settings 改动等下次 daemon 进程启动一次性生效。
+                None,
             )
         });
 

@@ -11,14 +11,23 @@
 #                     RPM 比较语义中 ~ 比任意字符小,因此 0.7.0~alpha.7 < 0.7.0
 #   - %{upstream_tag} 上游 git tag/文件名里的原始版本,保留 -,例如 0.7.0-alpha.7
 #
-# CI 通过 `rpmbuild -bs --define ...` 注入这两个变量,本地手动构建可
-# `rpmbuild -bs --define "_version 0.7.0~alpha.7" --define "_upstream_tag 0.7.0-alpha.7" ...`
+# 版本注入路径:
+#   1. CI(.github/workflows/copr.yml)在 `cp spec` 之后用 sed 把
+#      @VERSION@ / @UPSTREAM_TAG@ 占位符替换为实际值,SRPM 里 spec 因此
+#      已固化版本号 — COPR mock chroot 二次 build 不再依赖任何 macro。
+#   2. 本地手动构建仍可用 `rpmbuild -bs --define "_version 0.7.0~alpha.7"
+#      --define "_upstream_tag 0.7.0-alpha.7" ...`,macro 优先于占位符。
+#
+# 历史教训:之前 fallback 写死成具体版本号(0.7.0-alpha.7),CI 用
+# `--define` 注入只在 GH runner 那次 rpmbuild 生效,SRPM 进入 COPR
+# chroot 二次 build 后 _upstream_tag 不存在 → 走 fallback → 期望旧版本
+# 文件名 → "Bad file: UniClipboard-0.7.0-alpha.7-...rpm" 失败。
 
-%global upstream_tag %{?_upstream_tag}%{!?_upstream_tag:0.7.0-alpha.7}
+%global upstream_tag %{?_upstream_tag}%{!?_upstream_tag:@UPSTREAM_TAG@}
 %global debug_package %{nil}
 
 Name:           uniclipboard
-Version:        %{?_version}%{!?_version:0.7.0~alpha.7}
+Version:        %{?_version}%{!?_version:@VERSION@}
 Release:        1%{?dist}
 Summary:        Privacy-first end-to-end encrypted cross-device clipboard sync
 

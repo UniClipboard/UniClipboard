@@ -101,9 +101,20 @@ jobs:
 
       - name: Setup rpmbuild tree
         shell: bash
+        env:
+          RPM_VERSION: ${{ steps.ver.outputs.rpm_version }}
+          UPSTREAM_TAG: ${{ steps.ver.outputs.upstream_tag }}
         run: |
           rpmdev-setuptree
           cp packaging/uniclipboard.spec ~/rpmbuild/SPECS/
+          # 把 spec 里的占位符替换成实际版本号。为什么不能只靠 rpmbuild --define:
+          # --define 只在当前 GH runner 上 `rpmbuild -bs` 那次生效;SRPM 进入
+          # COPR mock chroot 二次 build 时,chroot 里没有 --define,会走 spec
+          # 的 fallback。物理替换后 SRPM 里 spec 已固化版本,chroot 走对。
+          sed -i \
+            -e "s/@VERSION@/${RPM_VERSION}/g" \
+            -e "s/@UPSTREAM_TAG@/${UPSTREAM_TAG}/g" \
+            ~/rpmbuild/SPECS/uniclipboard.spec
 
       # 两条互斥路径,按 inputs.run_id 选其一:
       #   - 给了 run_id  → 从 build run 的 artifact 拉 RPM(免去先发 release 的循环)

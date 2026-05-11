@@ -134,17 +134,12 @@ const NetworkSection: React.FC = () => {
     setRestartLoading(true)
     setRestartError(null)
     try {
-      // 走 daemon-only reload(restart_daemon),避免 app.restart() 导致新旧
-      // 进程同时持端口窗口期触发的 daemon panic。前端 WS 由
-      // `registerDaemonRestartListener` 自动断开 / 重连,UI 不需要进一步动作。
-      await invokeWithTrace<void>('restart_daemon')
-      // restart_daemon 成功返回 = 新 daemon 已健康。撤销 pending 与 loading,
-      // 隐藏 RestartBanner;旧路径下 app.restart() 不返回所以不需要这两步,
-      // 切到 daemon-only reload 后必须显式撤销。
-      setPending(false)
-      setRestartLoading(false)
+      // 走进程级重启 —— iroh `IrohNodeBuilder::bind` 是进程级单次约束
+      // (Pitfall 3),LAN-only Mode 切换改 iroh_config 必须新进程重新 bind。
+      // app.restart() 不返回(进程会 exit),所以后续代码理论上不可达。
+      await invokeWithTrace<void>('restart_app')
     } catch (err) {
-      log.error({ err }, 'restart_daemon 失败')
+      log.error({ err }, 'restart_app 失败')
       setRestartError(t('settings.sections.network.restartBanner.errorMessage'))
       setRestartLoading(false)
     }

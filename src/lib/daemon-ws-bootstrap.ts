@@ -22,26 +22,12 @@ const log = createLogger('daemon-ws-bootstrap')
  *  daemon — see `src-tauri/crates/uc-tauri/src/run.rs::FRONTEND_SHUTDOWN_EVENT`. */
 const APP_SHUTDOWN_EVENT = 'app://shutting-down'
 
-/** Tauri event the Rust shell emits right before reloading the in-process
- *  daemon (mobile_sync / LAN-only settings change) — see
- *  `src-tauri/crates/uc-tauri/src/commands/restart.rs::DAEMON_RESTARTING_EVENT`. */
-const DAEMON_RESTARTING_EVENT = 'app://daemon-restarting'
-
-/** Tauri event the Rust shell emits after the new daemon is healthy. Frontend
- *  re-runs the full bootstrap (fetch connection_info → refresh JWT → reopen WS)
- *  rather than reconnecting the cached session — daemon's bearer token rotates
- *  on each daemon start. */
-const DAEMON_READY_EVENT = 'app://daemon-ready'
-
 let connectionEstablished = false
 let connectionPromise: Promise<void> | null = null
 let shutdownListenerUnlisten: UnlistenFn | null = null
-let restartingListenerUnlisten: UnlistenFn | null = null
-let readyListenerUnlisten: UnlistenFn | null = null
 
 /** Reset the bootstrap state so the next `connectDaemonWs()` call re-fetches
- *  connection_info + refreshes the JWT session. Used by both the daemon-restart
- *  listener and the test helper. */
+ *  connection_info + refreshes the JWT session. Used by the test helper. */
 function resetConnectionState(): void {
   connectionEstablished = false
   connectionPromise = null
@@ -142,54 +128,6 @@ export async function registerDaemonShutdownListener(): Promise<void> {
       { err },
       'failed to register app://shutting-down listener; daemon shutdown ' +
         'will fall back to heartbeat-driven WS disconnect'
-    )
-  }
-}
-
-/**
- * Subscribe to `app://daemon-restarting` / `app://daemon-ready` so the WS
- * disconnects before in-process daemon shutdown and re-bootstraps after the
- * new daemon is healthy. Mirrors `registerDaemonShutdownListener` but for the
- * `restart_daemon` Tauri command (mobile_sync / LAN-only settings changes).
- *
- * Idempotent — calling more than once is a no-op (the existing listeners
- * stay installed).
- *
- * On `app://daemon-restarting`:
- *   - `daemonWs.disconnect()` so daemon-side `with_graceful_shutdown` returns
- *     immediately rather than waiting on the 30s heartbeat.
- *   - Reset the bootstrap module state so the *next* `connectDaemonWs()` call
- *     re-fetches connection_info + refreshes the JWT session. Daemon's bearer
- *     token rotates per start; the cached daemonClient session is invalid.
- *
- * On `app://daemon-ready`:
- *   - Kick off `connectDaemonWs()` so the WS comes back up automatically.
- *     Errors are logged but not thrown — the listener is fire-and-forget.
- */
-export async function registerDaemonRestartListener(): Promise<void> {
-  if (restartingListenerUnlisten || readyListenerUnlisten) {
-    return
-  }
-  try {
-    restartingListenerUnlisten = await listen(DAEMON_RESTARTING_EVENT, () => {
-      log.info('received app://daemon-restarting — disconnecting WS and clearing bootstrap state')
-      daemonWs.disconnect()
-      resetConnectionState()
-    })
-
-    readyListenerUnlisten = await listen(DAEMON_READY_EVENT, () => {
-      log.info('received app://daemon-ready — re-bootstrapping WS')
-      void connectDaemonWs().catch(err => {
-        log.error(
-          { err },
-          'failed to re-bootstrap daemon WS after restart — UI features depending on WS will stay degraded'
-        )
-      })
-    })
-  } catch (err) {
-    log.warn(
-      { err },
-      'failed to register daemon-restart listeners; UI will not auto-recover from daemon restarts'
     )
   }
 }

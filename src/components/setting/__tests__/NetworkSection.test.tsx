@@ -234,7 +234,7 @@ describe('NetworkSection — Phase 95 集成', () => {
     })
   })
 
-  it('Test 6: 点击「立即重启」调 invokeWithTrace("restart_daemon")', async () => {
+  it('Test 6: 点击「立即重启」调 invokeWithTrace("restart_app")', async () => {
     const user = userEvent.setup()
     renderWithOverrides({ allowRelayFallback: true })
     const sw = await screen.findByRole('switch', { name: /LAN-only/ })
@@ -246,14 +246,14 @@ describe('NetworkSection — Phase 95 集成', () => {
     const restartBtn = screen.getByRole('button', { name: /立即重启|Restart now/ })
     await user.click(restartBtn)
 
-    expect(mockInvokeWithTrace).toHaveBeenCalledWith('restart_daemon')
+    expect(mockInvokeWithTrace).toHaveBeenCalledWith('restart_app')
   })
 
-  it('Test 7: restart_daemon 失败 → RestartBanner.error 渲染（重试 + dismiss）', async () => {
+  it('Test 7: restart_app 失败 → RestartBanner.error 渲染（重试 + dismiss）', async () => {
     const user = userEvent.setup()
     mockInvokeWithTrace.mockImplementation(async (command: string) => {
-      if (command === 'restart_daemon') {
-        throw new Error('reload daemon failed')
+      if (command === 'restart_app') {
+        throw new Error('restart app failed')
       }
       return undefined
     })

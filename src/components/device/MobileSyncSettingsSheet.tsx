@@ -225,8 +225,9 @@ const MobileSyncSettingsSheet: React.FC<Props> = ({ open, onOpenChange, onSettin
   const handleRestart = useCallback(async () => {
     try {
       const { invokeWithTrace } = await import('@/lib/tauri-command')
-      // daemon-only reload —— 详见 NetworkSection.tsx 的 handleRestart 注释。
-      await invokeWithTrace('restart_daemon')
+      // 进程级重启 —— in-process daemon 模型下 iroh 不能重 bind (Pitfall 3),
+      // 任何需要重启的设置都走 app.restart()。详见 NetworkSection.tsx。
+      await invokeWithTrace('restart_app')
     } catch (err) {
       log.error({ err }, 'failed to restart')
       toast.error(translate(err))

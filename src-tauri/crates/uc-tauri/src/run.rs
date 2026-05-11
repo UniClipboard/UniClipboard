@@ -483,7 +483,6 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
             crate::commands::get_daemon_connection_info,
             // Restart commands (Phase 95)
             crate::commands::restart::restart_app,
-            crate::commands::restart::restart_daemon,
             // Autostart commands
             crate::commands::autostart::enable_autostart,
             crate::commands::autostart::disable_autostart,

@@ -101,6 +101,44 @@ A1 原 R3 建议把 `emitter_cell: Arc<RwLock<Arc<dyn HostEventEmitterPort>>>` �
 
 教训记录在 findings.md 末尾，提醒未来 review:"grep 方法名 caller" 不能代替"grep 字段的 mutation 操作 (`.write()` / `.swap()` / `=`)"。
 
+## 2026-05-10 Cleanup PR #5 落地 (Y6, 走方案 b)
+
+| ID | Commit | 说明 |
+|---|---|---|
+| Y6 | `8589cd91` | 删 RestartBanner 复用承诺注释，承认 NetworkSection 专属 (1 文件，+10/-8) |
+
+### 方案对比
+
+A4 给的二选一：(a) banner 接 messageKey props + MobileSync 改调，(b) 删复用承诺。
+
+走 (b) 的理由 (实施前对照): 两个 banner **职责/视觉/错误处理都不同**:
+
+| 维度 | RestartBanner | MobileSync 重写 |
+|---|---|---|
+| 状态 | loading + error + retry + dismiss-on-error | visible + dismiss |
+| 视觉 | 中性灰 + RefreshCw 图标 | 琥珀色警告 |
+| 错误 | banner inline error | toast.error, banner 不管 |
+| dismiss 语义 | 只 dismiss error | dismiss 整个 banner |
+
+强行抽象 generic banner 会拼出 union 类型，维护成本比保留两份更高。注释
+更新明确"NetworkSection 专属", 后续"重启提示"需求各自走 inline UI.
+
+验证：`pnpm exec vitest run RestartBanner.test.tsx` 8/8 passed.
+
+## ✅ Review 任务完成
+
+| PR | Commits | 范围 |
+|---|---|---|
+| #1 | 7 个 (R4/R6/R7/Y4/Y5/Y7 + planning) | 注释 / 死代码 / cfg gate |
+| #2 | 2 个 (R5 + planning) | OTLP → telemetry 用户文案 |
+| #3 | 3 个 (R1/R2/G2/Y1/Y2 + planning) | ArcSwap → OnceLock 整套回退 |
+| #4 | 2 个 (R3 修订 + planning) | 删 set_event_emitter dead API |
+| #5 | 1 个 (Y6) | 删 banner 复用承诺 |
+
+总 15 个 atomic commits, 心智模型完整对齐方案 C "daemon 进程级单例" 现实。
+
+剩余 待定项 (G3-G6): 性价比一般，不阻塞，视未来需求触发。
+
 ## 错误记录
 
 | 错误 | 第几次尝试 | 解决 |

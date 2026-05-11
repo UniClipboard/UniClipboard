@@ -50,11 +50,19 @@ pub struct DaemonRuntimeAssemblyInput<'a> {
 /// `ApplyInboundClipboardUseCase` 实例 (带 blob materializer + host event
 /// emitter)。同一份实例还要通过 `build_daemon_app_facade` 喂给 mobile
 /// sync facade,所以放进本结构以便 host.rs 共享。P5a.6 引入。
+///
+/// `clipboard_outbound` 同样不是 worker, 而是 worker 装配过程构造的
+/// `ClipboardOutboundFacade` 实例 ——
+/// `ClipboardWatcherWorker` 用它把本机捕获 fan-out 给 paired peers;
+/// `MobileSyncFacade` 也共享这一份, 让"手机上传 → 本机入站 → 同一条
+/// 出站管线 fan-out 给其他桌面"成立, 文件类型的 blob 发布逻辑只此一处,
+/// 不重复实现。
 pub struct DaemonRuntimeWorkers {
     pub clipboard_watcher: Arc<ClipboardWatcherWorker>,
     pub inbound_clipboard_sync: Arc<InboundClipboardSyncWorker>,
     pub file_sync_orchestrator: Arc<FileSyncOrchestratorWorker>,
     pub apply_inbound: Arc<ApplyInboundClipboardUseCase>,
+    pub clipboard_outbound: Arc<ClipboardOutboundFacade>,
 }
 
 /// 构造 daemon runtime worker。
@@ -118,7 +126,7 @@ pub fn build_daemon_runtime_workers(
         input.clipboard_capture_gate,
         clipboard_capture_facade,
         clipboard_live_index_facade,
-        clipboard_outbound_facade,
+        clipboard_outbound_facade.clone(),
     ));
     let clipboard_watcher = Arc::new(ClipboardWatcherWorker::new(
         local_clipboard,
@@ -140,5 +148,6 @@ pub fn build_daemon_runtime_workers(
         inbound_clipboard_sync,
         file_sync_orchestrator,
         apply_inbound: apply_inbound_uc,
+        clipboard_outbound: clipboard_outbound_facade,
     })
 }

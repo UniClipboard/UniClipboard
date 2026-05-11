@@ -51,8 +51,11 @@ use uc_core::ports::{
     PasswordHasherPort, SettingsPort,
 };
 
+use crate::facade::clipboard_outbound::ClipboardOutboundFacade;
 use crate::facade::file_transfer::FileTransferFacade;
+use crate::facade::mobile_sync::outbound_adapter::ClipboardOutboundFanOutAdapter;
 use crate::usecases::clipboard_sync::apply_inbound::ApplyInboundClipboardUseCase;
+use crate::usecases::mobile_sync::apply_incoming::MobileInboundFanOutPort;
 use crate::usecases::mobile_sync::{
     apply_incoming::ApplyIncomingMobileClipUseCase,
     authenticate_basic::AuthenticateBasicAuthUseCase, get_file::GetMobileSyncFileUseCase,
@@ -165,6 +168,25 @@ pub struct MobileSyncFacadeDeps {
     /// (`webserver`)在收 body 期间自己调 `start` / `Progress` —— 本字段
     /// 仅用于 apply 阶段收尾。
     pub file_transfer: Option<Arc<FileTransferFacade>>,
+    /// 可选剪贴板出站 facade。装配处提供时,移动端 `PUT /SyncClipboard.json`
+    /// 成功落地本机后,本 facade 内部会异步把同一份 snapshot 走"本机捕获
+    /// → 出站"完整管线 fan-out 给 Space 内其他已配对设备 ——
+    ///
+    /// - 文本 / 小图 inline 进 V3 envelope;
+    /// - 大图自动剥成 iroh-blobs ref(避免撞 2 MiB wire 上限);
+    /// - 文件用 `BlobTransferFacade::publish_blob_path` 流式发布到
+    ///   iroh-blobs, 构造 free-file V3BlobRef,接收端拉回并改写 file-list
+    ///   rep 成本机 URI ——
+    ///   "手机文件 → 任一桌面 → 所有桌面"的真正传输靠这条路径成立。
+    ///
+    /// 同样受 `OutboundSyncPlanner` 控制 —— 用户在 settings 关了某个类型
+    /// 的同步,mobile fan-out 与本机复制 fan-out 一同被 suppress, 没有
+    /// "mobile 上传可以绕过同步开关"的旁路。
+    ///
+    /// `None` 时静默降级(facade 自测装配 / CLI fallback 等不接 P2P 出站
+    /// 的场景):mobile 上传仅落地本机,不传播 —— 与本字段引入前的行为
+    /// 完全一致, 不退化。
+    pub clipboard_outbound: Option<Arc<ClipboardOutboundFacade>>,
     /// 可选 LAN 监听器生命周期 port,让 `update_settings` 在写盘后立即把
     /// listener 状态对齐到新设置(开/关/换端口),无需重启进程。
     ///
@@ -222,6 +244,7 @@ impl MobileSyncFacade {
             file_staging,
             snapshot_ports,
             file_transfer,
+            clipboard_outbound,
             lan_lifecycle,
         } = deps;
 
@@ -251,12 +274,22 @@ impl MobileSyncFacade {
             update_settings: UpdateMobileSyncSettingsUseCase::new(settings),
             list_lan_interfaces: ListLanInterfacesUseCase::new(lan_interface_probe),
             authenticate_basic: AuthenticateBasicAuthUseCase::new(device_repo, password_hasher),
+            // facade 装配处只能拿到 `ClipboardOutboundFacade`(由 daemon
+            // runtime_assembly 装好),但 use case 依赖的是 use-case-local 的
+            // `MobileInboundFanOutPort` trait。这里就是 facade 层的薄装配点:
+            // 把 facade 包成 adapter, 让 use case 的依赖 surface 不必随出站
+            // 管线演化而膨胀。详见 [`ClipboardOutboundFanOutAdapter`] 与
+            // [`MobileInboundFanOutPort`] 的设计文档。
             apply_incoming: ApplyIncomingMobileClipUseCase::new(
                 apply_inbound,
                 incoming_buffer,
                 file_staging.clone(),
                 clock,
                 file_transfer,
+                clipboard_outbound.map(|outbound| {
+                    Arc::new(ClipboardOutboundFanOutAdapter::new(outbound))
+                        as Arc<dyn MobileInboundFanOutPort>
+                }),
             ),
             get_latest_doc: GetLatestMobileSyncDocUseCase::new(snapshot_port.clone()),
             get_file: GetMobileSyncFileUseCase::new(snapshot_port, file_staging),
@@ -794,6 +827,7 @@ mod tests {
                 blob_reader: Arc::new(UnusedBlobReader),
             },
             file_transfer: None,
+            clipboard_outbound: None,
             lan_lifecycle: None,
         })
     }
@@ -947,6 +981,7 @@ mod tests {
                 blob_reader: Arc::new(UnusedBlobReader),
             },
             file_transfer: None,
+            clipboard_outbound: None,
             lan_lifecycle: None,
         });
 
@@ -1025,6 +1060,7 @@ mod tests {
                 blob_reader: Arc::new(UnusedBlobReader),
             },
             file_transfer: None,
+            clipboard_outbound: None,
             lan_lifecycle: None,
         });
 
@@ -1132,6 +1168,7 @@ mod tests {
                 blob_reader: Arc::new(UnusedBlobReader),
             },
             file_transfer: None,
+            clipboard_outbound: None,
             lan_lifecycle: Some(lifecycle),
         })
     }
@@ -1275,6 +1312,7 @@ mod tests {
                 blob_reader: Arc::new(UnusedBlobReader),
             },
             file_transfer: None,
+            clipboard_outbound: None,
             lan_lifecycle: Some(lifecycle),
         });
 

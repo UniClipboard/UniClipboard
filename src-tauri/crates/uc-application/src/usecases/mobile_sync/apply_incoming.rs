@@ -60,6 +60,45 @@ use crate::usecases::clipboard_sync::apply_inbound::{
 use crate::usecases::clipboard_sync::payload_codec::encode_snapshot_to_v3_bytes;
 use crate::usecases::mobile_sync::clipboard_doc::SyncClipboardItemType;
 
+// ─── Fan-out port (use-case-local) ───────────────────────────────────────
+
+/// 移动端入站完成后, 把刚应用到本机的 snapshot 传播给 Space 内其他已配
+/// 对设备的能力抽象。
+///
+/// ## 为什么是 use-case-local trait, 而不是直接持 `Arc<ClipboardOutboundFacade>`
+///
+/// 设计上 use case 不应该跨层去拿一个 facade(facade 是给外部 crate 看
+/// 的对外门面, 不是 use case 的依赖类型)。让本 use case 通过 trait 持
+/// 一个最小的领域端口, 而把"调出站 dispatcher / 异步 spawn / 错误降级
+/// 成 warn / 编辑日志字段"等所有传输细节封到生产 adapter 里, 换来:
+///
+/// - **测试可注入**:fake 实现直接 record 调用, use case 单测可断言
+///   `Applied` 触发一次、`DuplicateSkipped` / 错误分支不触发, 完全脱
+///   离 iroh / blob / outbound dispatcher 整条装配链;
+/// - **依赖收口**:use case 的对外依赖仍只盯"自己关心的领域 collaborator"
+///   (inbound / staging / file_transfer / clock / fan_out), 不随出站
+///   管线演化而膨胀;
+/// - **adapter 可独立演化**:未来要加 telemetry / 按 source_device 走
+///   不同策略 / 复用到非移动端入口, 都改 adapter, 不动 use case。
+///
+/// ## 调用契约
+///
+/// - `fan_out` 是 fire-and-forget:调用立即返回, 真实分发在实现内异步
+///   执行。失败由实现层自己消化(典型 `warn!`), 不抛回 use case ——
+///   mobile 上传 HTTP 响应只取决于本机入站是否生效, fan-out 是事后传
+///   播, 网络出口故障不应倒灌成 4xx/5xx。
+/// - 调用方仅在本机入站产生新 entry(`Applied` 分支)时调用一次, 不在
+///   `DuplicateSkipped` / `DecodeFailed` / `Err(_)` 分支调用。
+/// - `source_device_id` 只用于日志 / telemetry, 实现不应据此做路由决策。
+pub(crate) trait MobileInboundFanOutPort: Send + Sync {
+    fn fan_out(
+        &self,
+        entry_id: EntryId,
+        snapshot: SystemClipboardSnapshot,
+        source_device_id: MobileDeviceId,
+    );
+}
+
 // ─── Public types (pub(crate) per AGENTS.md §11.4) ──────────────────────
 
 /// Input to [`ApplyIncomingMobileClipUseCase::execute`].
@@ -268,6 +307,34 @@ pub(crate) struct ApplyIncomingMobileClipUseCase {
     /// fallback)。BufferFile 分支由 handler 在收 body 期间已经发过
     /// `Started` / `Progress`,本 use case 不重复发。
     file_transfer: Option<Arc<FileTransferFacade>>,
+    /// 可选 fan-out port。装配处提供实现时, SyncDoc apply 成功后(仅
+    /// `Applied` 分支)把刚应用到本机的 snapshot 异步传播给 Space 内
+    /// 其他已配对设备。
+    ///
+    /// 本 use case **只关心"调一下 fan_out"** —— 具体走 iroh 直发 / 走
+    /// 出站 dispatcher / 走文件 blob 发布 / 大图自动剥成 blob ref / 用户
+    /// settings 过滤等所有传输细节, 都封在生产 adapter 里, use case 不感
+    /// 知。这样:
+    ///
+    /// - use case 单测只需 fake 实现 [`MobileInboundFanOutPort`], 不必
+    ///   拉真实 dispatcher / blob facade / iroh adapter, 可断言 fan-out
+    ///   触发时机与参数;
+    /// - 未来扩展(例如同时打点 telemetry、按 source_device 做策略)
+    ///   都改 adapter, 不改 use case;
+    /// - use case 的对外依赖始终只盯"自己关心的领域 collaborator", 不
+    ///   随出站管线演化膨胀。
+    ///
+    /// ## 仅 `Applied` 分支调用
+    ///
+    /// `DuplicateSkipped` 命中本机 dedup —— 这条 content_hash 此前已被
+    /// 本设备处理过, 上次处理时若已 fan-out 过, 重复广播只会浪费带宽
+    /// 并扰乱对端 dedup 时序;`DecodeFailed` / `Err(...)` 表示本机入站
+    /// 根本没成功, 没有"已应用的内容"可广播。
+    ///
+    /// `None` 时静默降级(facade 自测装配 / CLI fallback 等不接出站
+    /// 的入口):mobile 上传仅落地本机, 不传播 —— 与本字段引入前的行
+    /// 为完全一致, 不退化。
+    fan_out: Option<Arc<dyn MobileInboundFanOutPort>>,
 }
 
 impl ApplyIncomingMobileClipUseCase {
@@ -277,6 +344,7 @@ impl ApplyIncomingMobileClipUseCase {
         file_staging: Arc<dyn MobileFileStagingPort>,
         clock: Arc<dyn ClockPort>,
         file_transfer: Option<Arc<FileTransferFacade>>,
+        fan_out: Option<Arc<dyn MobileInboundFanOutPort>>,
     ) -> Self {
         Self {
             inbound,
@@ -284,6 +352,7 @@ impl ApplyIncomingMobileClipUseCase {
             file_staging,
             clock,
             file_transfer,
+            fan_out,
         }
     }
 
@@ -361,14 +430,58 @@ impl ApplyIncomingMobileClipUseCase {
                     snapshot,
                     transfer_id,
                 } = built;
+                // 仅当本装配真的接了 fan-out port 时才克隆 snapshot ——
+                // Image / File 分支的 snapshot 内含完整字节, 无 fan-out
+                // 装配的场景(CLI fallback / 单测)不应该白付一份克隆开销。
+                let snapshot_for_fanout = self.fan_out.as_ref().map(|_| snapshot.clone());
                 let dispatch_outcome = self
                     .dispatch_inbound(source_device_id.clone(), snapshot)
                     .await;
+                self.maybe_fan_out_to_paired_peers(
+                    &source_device_id,
+                    &dispatch_outcome,
+                    snapshot_for_fanout,
+                );
                 self.finalize_transfer_lifecycle(transfer_id, source_device_id, &dispatch_outcome)
                     .await;
                 dispatch_outcome
             }
         }
+    }
+
+    /// 把刚刚应用到本机的移动端 snapshot 交给 [`MobileInboundFanOutPort`]
+    /// 传播到 Space 内其他已配对设备。
+    ///
+    /// 仅在 `Applied` 分支调用一次:`DuplicateSkipped` 命中本机 dedup
+    /// (内容已存在, 不该重复广播);`DecodeFailed` / `Err(...)` 本机
+    /// 入站没成功, 没"已应用的内容"可播。`Buffered` 由 `BufferFile`
+    /// 分支产生, 不走到这里。
+    ///
+    /// 传输细节(走 iroh / 大图剥成 blob ref / 文件流式 publish_blob_path
+    /// / `OutboundSyncPlanner` settings 过滤 / `tokio::spawn` fire-and-forget
+    /// / 失败仅 `warn!`)全部封在生产 adapter 里, 本 use case 不感知 ——
+    /// 见 [`MobileInboundFanOutPort`] 设计意图。
+    fn maybe_fan_out_to_paired_peers(
+        &self,
+        source_device_id: &MobileDeviceId,
+        dispatch_outcome: &Result<ApplyIncomingMobileClipOutcome, ApplyIncomingMobileClipError>,
+        snapshot_for_fanout: Option<SystemClipboardSnapshot>,
+    ) {
+        let Some(fan_out) = self.fan_out.as_ref() else {
+            return;
+        };
+        let Ok(ApplyIncomingMobileClipOutcome::Applied { entry_id }) = dispatch_outcome else {
+            return;
+        };
+        let Some(snapshot) = snapshot_for_fanout else {
+            // fan_out = Some 时上游一定克隆过 snapshot; 走到这里说明上
+            // 游 `snapshot_for_fanout` 被错误构造成 None, 属于编程错误。
+            // 沉默而不是 panic —— 这条 fan-out 只是"事后传播", 不应让
+            // mobile 上传整体失败。
+            warn!("mobile_sync fan-out: fan_out wired but snapshot_for_fanout=None, skipping");
+            return;
+        };
+        fan_out.fan_out(entry_id.clone(), snapshot, source_device_id.clone());
     }
 
     /// SyncDoc apply 完成后把 mobile_lan 路径预先打开的 transfer 关闭。
@@ -840,6 +953,7 @@ mod tests {
             FakeStaging::never_called(),
             Arc::new(FixedClock),
             None,
+            None,
         )
     }
 
@@ -857,6 +971,7 @@ mod tests {
             Arc::new(IncomingMobileBuffer::new()),
             FakeStaging::never_called(),
             Arc::new(FixedClock),
+            None,
             None,
         )
     }
@@ -889,6 +1004,7 @@ mod tests {
             buffer.clone(),
             FakeStaging::never_called(),
             Arc::new(FixedClock),
+            None,
             None,
         );
         (uc, buffer)
@@ -923,6 +1039,7 @@ mod tests {
             staging,
             Arc::new(FixedClock),
             None,
+            None,
         );
         (uc, buffer)
     }
@@ -944,6 +1061,7 @@ mod tests {
             buffer,
             staging,
             Arc::new(FixedClock),
+            None,
             None,
         )
     }
@@ -1028,6 +1146,7 @@ mod tests {
             buffer.clone(),
             FakeStaging::never_called(),
             Arc::new(FixedClock),
+            None,
             None,
         );
         assert_eq!(buffer.len(), 0);
@@ -1296,6 +1415,7 @@ mod tests {
             staging,
             Arc::new(FixedClock),
             None,
+            None,
         );
 
         // 预 seed buffer
@@ -1356,6 +1476,7 @@ mod tests {
             FakeStaging::never_called(),
             Arc::new(FixedClock),
             None,
+            None,
         );
 
         let outcome = uc
@@ -1373,6 +1494,171 @@ mod tests {
                 ..
             } if existing_entry_id == EntryId::from("entry-existing")
         ));
+    }
+
+    // ── fan-out trait wire-up ──────────────────────────────────────────
+    //
+    // 验证 `ApplyIncomingMobileClipUseCase` 与 `MobileInboundFanOutPort`
+    // 之间的接线契约。这一层不验证"传播到 paired peers 的真实行为"——
+    // 那是 `ClipboardOutboundFanOutAdapter` 的责任,改 adapter 不动这里
+    // 的断言;use case 只该保证"在对的分支以对的参数调一次 trait"。
+
+    /// `MobileInboundFanOutPort` 的 in-memory fake, 单测断言用。
+    #[derive(Default)]
+    struct RecordingFanOut {
+        calls: std::sync::Mutex<Vec<(EntryId, SystemClipboardSnapshot, MobileDeviceId)>>,
+    }
+
+    impl RecordingFanOut {
+        fn calls(&self) -> Vec<(EntryId, SystemClipboardSnapshot, MobileDeviceId)> {
+            self.calls.lock().unwrap().clone()
+        }
+    }
+
+    impl MobileInboundFanOutPort for RecordingFanOut {
+        fn fan_out(
+            &self,
+            entry_id: EntryId,
+            snapshot: SystemClipboardSnapshot,
+            source_device_id: MobileDeviceId,
+        ) {
+            self.calls
+                .lock()
+                .unwrap()
+                .push((entry_id, snapshot, source_device_id));
+        }
+    }
+
+    /// `Applied` 分支必须把 `(entry_id, snapshot, source_device_id)` 完整
+    /// 透传给 fan-out port —— 后续 adapter 才有足够信息复用本机捕获出站
+    /// 管线(snapshot 用来抽文件路径 / 发布 blob;entry_id 用作 blob 的
+    /// 发送端归属;source_device_id 给日志做来源识别)。
+    #[tokio::test]
+    async fn applied_branch_invokes_fan_out_with_full_context() {
+        let mut repo = MockEntryRepo::new();
+        repo.expect_find_entry_id_by_snapshot_hash()
+            .times(1)
+            .returning(|_| Ok(None));
+        let mut capture = MockCapture::new();
+        capture
+            .expect_capture()
+            .times(1)
+            .returning(|_, _| Ok(Some(EntryId::from("entry-fanout-1"))));
+        let mut write = MockWrite::new();
+        write.expect_write().times(1).returning(|_| Ok(()));
+        let inbound =
+            ApplyInboundClipboardUseCase::new(Arc::new(repo), Arc::new(capture), Arc::new(write));
+
+        let recorder = Arc::new(RecordingFanOut::default());
+        let uc = ApplyIncomingMobileClipUseCase::new(
+            Arc::new(inbound),
+            Arc::new(IncomingMobileBuffer::new()),
+            FakeStaging::never_called(),
+            Arc::new(FixedClock),
+            None,
+            Some(Arc::clone(&recorder) as Arc<dyn MobileInboundFanOutPort>),
+        );
+
+        let outcome = uc
+            .execute(input_sync_doc(
+                SyncClipboardItemType::Text,
+                "hello from mobile",
+                None,
+            ))
+            .await
+            .expect("text applied ok");
+        assert!(matches!(
+            outcome,
+            ApplyIncomingMobileClipOutcome::Applied { .. }
+        ));
+
+        let calls = recorder.calls();
+        assert_eq!(calls.len(), 1, "Applied 必须触发 fan_out 一次");
+        let (entry_id, snapshot, source) = &calls[0];
+        assert_eq!(*entry_id, EntryId::from("entry-fanout-1"));
+        assert_eq!(*source, MobileDeviceId::new("did_seed"));
+        // snapshot 至少要携带原 rep, 让 adapter 能基于内容抽文件路径 /
+        // 计算 blob ref。这里仅断言 rep 数量, 内容细节由其他 use case
+        // 测试覆盖, 不重复绑定。
+        assert_eq!(snapshot.representations.len(), 1);
+    }
+
+    /// `DuplicateSkipped` 命中本机 dedup —— 这条 content_hash 之前已被
+    /// 本设备处理过, **绝对不能**再 fan-out: 重复广播浪费带宽且可能扰
+    /// 乱对端 dedup 时序。
+    #[tokio::test]
+    async fn duplicate_skipped_does_not_invoke_fan_out() {
+        let mut repo = MockEntryRepo::new();
+        repo.expect_find_entry_id_by_snapshot_hash()
+            .times(1)
+            .returning(|_| Ok(Some(EntryId::from("entry-existing"))));
+        let capture = MockCapture::new();
+        let write = MockWrite::new();
+        let inbound =
+            ApplyInboundClipboardUseCase::new(Arc::new(repo), Arc::new(capture), Arc::new(write));
+
+        let recorder = Arc::new(RecordingFanOut::default());
+        let uc = ApplyIncomingMobileClipUseCase::new(
+            Arc::new(inbound),
+            Arc::new(IncomingMobileBuffer::new()),
+            FakeStaging::never_called(),
+            Arc::new(FixedClock),
+            None,
+            Some(Arc::clone(&recorder) as Arc<dyn MobileInboundFanOutPort>),
+        );
+
+        let outcome = uc
+            .execute(input_sync_doc(
+                SyncClipboardItemType::Text,
+                "already-here",
+                None,
+            ))
+            .await
+            .expect("dedup hit ok");
+        assert!(matches!(
+            outcome,
+            ApplyIncomingMobileClipOutcome::DuplicateSkipped { .. }
+        ));
+        assert_eq!(
+            recorder.calls().len(),
+            0,
+            "DuplicateSkipped 分支不得触发 fan_out"
+        );
+    }
+
+    /// `DecodeFailed` 分支(此例:Text 空 body 在 `build_text_snapshot`
+    /// 阶段被拒绝)本机入站根本没成功 → 没"已应用的内容"可广播 →
+    /// 不调 fan-out。inbound 链全程零调用是顺带钉死的不变量。
+    #[tokio::test]
+    async fn decode_failed_does_not_invoke_fan_out() {
+        let recorder = Arc::new(RecordingFanOut::default());
+        let repo = MockEntryRepo::new();
+        let capture = MockCapture::new();
+        let write = MockWrite::new();
+        let inbound =
+            ApplyInboundClipboardUseCase::new(Arc::new(repo), Arc::new(capture), Arc::new(write));
+        let uc = ApplyIncomingMobileClipUseCase::new(
+            Arc::new(inbound),
+            Arc::new(IncomingMobileBuffer::new()),
+            FakeStaging::never_called(),
+            Arc::new(FixedClock),
+            None,
+            Some(Arc::clone(&recorder) as Arc<dyn MobileInboundFanOutPort>),
+        );
+
+        let outcome = uc
+            .execute(input_sync_doc(SyncClipboardItemType::Text, "", None))
+            .await
+            .expect("decode failure surfaces as outcome, not Err");
+        assert!(matches!(
+            outcome,
+            ApplyIncomingMobileClipOutcome::DecodeFailed { .. }
+        ));
+        assert_eq!(
+            recorder.calls().len(),
+            0,
+            "DecodeFailed 分支不得触发 fan_out"
+        );
     }
 
     /// `mobile_sync:<id>` 伪 DeviceId 的 plumbing: 通过 capture mock 的
@@ -1403,6 +1689,7 @@ mod tests {
             Arc::new(IncomingMobileBuffer::new()),
             FakeStaging::never_called(),
             Arc::new(FixedClock),
+            None,
             None,
         );
 

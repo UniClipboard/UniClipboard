@@ -241,6 +241,7 @@ pub(crate) async fn start_in_process(
             blob_transfer: blob_transfer_facade.clone(),
             file_transfer: file_transfer_facade.clone(),
             mobile_sync_apply_inbound: runtime_workers.apply_inbound.clone(),
+            clipboard_outbound: runtime_workers.clipboard_outbound.clone(),
             lan_lifecycle: Arc::clone(&mobile_lan_lifecycle)
                 as Arc<dyn uc_core::ports::MobileLanLifecyclePort>,
         });

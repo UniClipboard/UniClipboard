@@ -9,6 +9,7 @@
 //! 详细的方法清单与设计取舍见 [`facade`] 子模块文档。
 
 mod facade;
+mod outbound_adapter;
 
 pub use facade::{
     ApplyIncomingMobileClipError, ApplyIncomingMobileClipInput, ApplyIncomingMobileClipOutcome,

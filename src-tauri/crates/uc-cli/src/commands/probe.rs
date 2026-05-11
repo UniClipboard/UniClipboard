@@ -5,18 +5,26 @@
 //! 系统剪贴板。`probe restore` 是 `uniclip` 唯一允许写系统剪贴板的
 //! 入口，作为 `uc-cli/AGENTS.md` 中"CLI 不写系统剪贴板"规则的诊断
 //! 例外存在 —— 不要把它当作公开命令使用，也不要在生产流程上依赖。
+//!
+//! Phase 4 switched `watch` from a direct `clipboard_rs::ClipboardWatcherContext`
+//! to `uc_platform::clipboard::build_event_loop` so the diagnostic surface
+//! exercises the same backend (Wayland data-control / x11rb / clipboard_rs)
+//! the daemon picks on each OS.
 
 use std::fs;
-use std::sync::mpsc::{self, Sender};
+use std::sync::Arc;
 use std::time::Instant;
 
 use anyhow::{anyhow, Result};
 use clap::Subcommand;
-use clipboard_rs::{ClipboardHandler, ClipboardWatcher, ClipboardWatcherContext};
+use tokio::sync::mpsc;
 
 use uc_core::ports::SystemClipboardPort;
 use uc_core::{ObservedClipboardRepresentation, SystemClipboardSnapshot};
-use uc_platform::clipboard::LocalClipboard;
+use uc_platform::clipboard::{
+    build_event_loop, shutdown_channel, watcher::ClipboardWatcher, watcher::PlatformEvent,
+    LocalClipboard,
+};
 
 use crate::exit_codes;
 
@@ -80,41 +88,6 @@ fn dispatch(command: ProbeCommands) -> Result<()> {
     }
 }
 
-struct ProbeEvent {
-    observed_ms: i64,
-    observed_instant: Instant,
-    snapshot: Option<SystemClipboardSnapshot>,
-    error: Option<String>,
-}
-
-struct ProbeHandler {
-    clipboard: LocalClipboard,
-    tx: Sender<ProbeEvent>,
-}
-
-impl ClipboardHandler for ProbeHandler {
-    fn on_clipboard_change(&mut self) {
-        let observed_ms = chrono::Utc::now().timestamp_millis();
-        let observed_instant = Instant::now();
-        let event = match self.clipboard.read_snapshot() {
-            Ok(snapshot) => ProbeEvent {
-                observed_ms,
-                observed_instant,
-                snapshot: Some(snapshot),
-                error: None,
-            },
-            Err(err) => ProbeEvent {
-                observed_ms,
-                observed_instant,
-                snapshot: None,
-                error: Some(err.to_string()),
-            },
-        };
-
-        let _ = self.tx.send(event);
-    }
-}
-
 fn run_watch(max_events: Option<usize>) -> Result<()> {
     println!("probe: watch mode");
     println!(
@@ -123,9 +96,7 @@ fn run_watch(max_events: Option<usize>) -> Result<()> {
     );
     println!("- stop: Ctrl+C");
 
-    let (tx, rx) = mpsc::channel();
-
-    let clipboard = LocalClipboard::new()?;
+    let clipboard: Arc<dyn SystemClipboardPort> = Arc::new(LocalClipboard::new()?);
     match clipboard.read_snapshot() {
         Ok(snapshot) => {
             println!("\ninitial snapshot");
@@ -136,49 +107,60 @@ fn run_watch(max_events: Option<usize>) -> Result<()> {
         }
     }
 
-    let handler = ProbeHandler { clipboard, tx };
-    let mut watcher = ClipboardWatcherContext::new().map_err(|e| anyhow!(e))?;
-    watcher.add_handler(handler);
+    let (tx, mut rx) = mpsc::channel::<PlatformEvent>(64);
+    let handler = ClipboardWatcher::new(clipboard, tx);
+    let event_loop = build_event_loop()?;
+    let (shutdown_tx, shutdown_rx) = shutdown_channel();
 
-    std::thread::spawn(move || {
-        println!("\nclipboard watcher: started");
-        watcher.start_watch();
-        println!("clipboard watcher: stopped");
-    });
+    // Run the (blocking) event loop on a dedicated OS thread. The diagnostic
+    // surface intentionally goes through the same `build_event_loop` factory
+    // the daemon uses, so what `probe watch` shows on each OS matches the
+    // backend the daemon picks (Wayland data-control / x11rb / clipboard_rs).
+    let event_loop_thread = std::thread::Builder::new()
+        .name("probe-clipboard-watcher".into())
+        .spawn(move || {
+            println!("\nclipboard watcher: started");
+            if let Err(err) = event_loop.run(handler, shutdown_rx) {
+                eprintln!("clipboard watcher exited with error: {err:?}");
+            }
+            println!("clipboard watcher: stopped");
+        })
+        .map_err(|e| anyhow!("failed to spawn watcher thread: {e}"))?;
 
     let mut last_event_instant: Option<Instant> = None;
     let mut last_fingerprint: Option<u64> = None;
     let mut same_streak: usize = 0;
     let mut event_count: usize = 0;
 
-    while let Ok(event) = rx.recv() {
+    // `dispatch` is invoked from `tokio::task::spawn_blocking`, so we can
+    // bridge between the blocking world and the tokio mpsc with
+    // `blocking_recv`.
+    while let Some(PlatformEvent::ClipboardChanged { snapshot }) = rx.blocking_recv() {
         event_count += 1;
+        let observed_ms = chrono::Utc::now().timestamp_millis();
+        let observed_instant = Instant::now();
 
-        let delta_ms = last_event_instant
-            .map(|instant| event.observed_instant.duration_since(instant).as_millis());
-        last_event_instant = Some(event.observed_instant);
+        let delta_ms =
+            last_event_instant.map(|instant| observed_instant.duration_since(instant).as_millis());
+        last_event_instant = Some(observed_instant);
 
         println!("\nevent #{event_count}");
-        println!("- observed: {}", format_ms(event.observed_ms));
+        println!("- observed: {}", format_ms(observed_ms));
         println!(
             "- delta_ms: {}",
             delta_ms.map_or("n/a".into(), |v| v.to_string())
         );
 
-        if let Some(err) = event.error {
-            println!("- read_snapshot error: {err}");
-        } else if let Some(snapshot) = event.snapshot {
-            let fingerprint = snapshot_fingerprint(&snapshot);
-            if last_fingerprint == Some(fingerprint) {
-                same_streak += 1;
-            } else {
-                same_streak = 0;
-            }
-            last_fingerprint = Some(fingerprint);
-
-            println!("- same_content_streak: {same_streak}");
-            print_snapshot(&snapshot);
+        let fingerprint = snapshot_fingerprint(&snapshot);
+        if last_fingerprint == Some(fingerprint) {
+            same_streak += 1;
+        } else {
+            same_streak = 0;
         }
+        last_fingerprint = Some(fingerprint);
+
+        println!("- same_content_streak: {same_streak}");
+        print_snapshot(&snapshot);
 
         if let Some(limit) = max_events {
             if event_count >= limit {
@@ -188,6 +170,8 @@ fn run_watch(max_events: Option<usize>) -> Result<()> {
         }
     }
 
+    shutdown_tx.signal();
+    let _ = event_loop_thread.join();
     Ok(())
 }
 

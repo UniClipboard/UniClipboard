@@ -9746,7 +9746,6 @@ dependencies = [
  "bytes",
  "chrono",
  "clap",
- "clipboard-rs",
  "console",
  "dialoguer",
  "hostname",
@@ -9990,6 +9989,7 @@ dependencies = [
  "wayland-client",
  "wayland-protocols",
  "wayland-protocols-wlr",
+ "x11rb",
 ]
 
 [[package]]

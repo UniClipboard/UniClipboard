@@ -2,23 +2,23 @@
 //!
 //! `LinuxClipboard` is the public type plugged in as `LocalClipboard` for
 //! `target_os = "linux"`. At construction time it probes the session and
-//! selects between two backends:
+//! selects between two native backends:
 //!
-//! - [`legacy::LegacyLinuxClipboard`] — `clipboard_rs`-based X11 path. Used
-//!   for X11 sessions today and (Phase 2 transitional behavior) also as the
-//!   read/write path on Wayland sessions until [`wayland::WaylandClipboard`]
-//!   is fully wired up in Phase 2b.
 //! - `wayland::WaylandClipboard` — native `wlr-data-control` /
 //!   `ext-data-control` client that talks directly to the compositor.
+//! - [`x11::X11Clipboard`] — native `x11rb` ICCCM selection client used
+//!   on X11 sessions and as the XWayland fallback when Wayland
+//!   data-control is unavailable.
 //!
-//! The Wayland *event loop* (clipboard change watcher) is selected
-//! independently in [`super::build_event_loop`] — Phase 2a lights up
-//! `WaylandEventLoop` ahead of `WaylandClipboard` so users on Wayland get
-//! correct change notifications immediately while reads/writes still go
-//! through the legacy path. The two halves get unified in Phase 2b.
+//! [`build_event_loop`] follows the same precedence (Wayland → X11) for
+//! the change watcher. Each layer's `try_new` returns `Ok(None)` when its
+//! probe says "not available here", so the cascade is transparent.
+//!
+//! Phase 4 removed the legacy `clipboard_rs` fallback — every Linux
+//! environment we support is covered by one of the two native backends.
 
-mod legacy;
 pub(super) mod wayland;
+pub(super) mod x11;
 
 use anyhow::Result;
 use async_trait::async_trait;
@@ -26,21 +26,20 @@ use tracing::{debug, info, warn};
 use uc_core::clipboard::SystemClipboardSnapshot;
 use uc_core::ports::SystemClipboardPort;
 
-pub use legacy::LegacyLinuxClipboard;
-
 use crate::clipboard::event_loop::PlatformClipboardEventLoop;
 
 pub enum LinuxClipboard {
-    Legacy(LegacyLinuxClipboard),
     Wayland(wayland::WaylandClipboard),
+    X11(x11::X11Clipboard),
 }
 
 impl LinuxClipboard {
     pub fn new() -> Result<Self> {
-        // Wayland session AND compositor advertises wlr-data-control →
-        // native Wayland clipboard. Otherwise fall back to the legacy
-        // clipboard_rs/X11 path. Phase 3 swaps the X11 path to native
-        // x11rb.
+        // Preference order:
+        //   1. Wayland (when WAYLAND_DISPLAY is set AND a data-control
+        //      protocol — ext or wlr — is advertised).
+        //   2. Native x11rb (whenever an X display is reachable, including
+        //      XWayland under a Wayland session without data-control).
         if is_wayland_session() {
             match wayland::WaylandClipboard::try_new() {
                 Ok(Some(wl)) => {
@@ -50,19 +49,31 @@ impl LinuxClipboard {
                 Ok(None) => {
                     debug!(
                         "Linux clipboard: Wayland session but no data-control protocol; \
-                         falling back to clipboard_rs adapter"
+                         falling through to native x11rb"
                     );
                 }
                 Err(e) => {
                     warn!(
                         error = %e,
-                        "Linux clipboard: Wayland clipboard probe failed; falling back"
+                        "Linux clipboard: Wayland probe failed; falling through to native x11rb"
                     );
                 }
             }
         }
-        info!("Linux clipboard: clipboard_rs (X11) adapter");
-        Ok(Self::Legacy(LegacyLinuxClipboard::new()?))
+
+        match x11::try_new_clipboard() {
+            Ok(Some(x)) => {
+                info!("Linux clipboard: native X11 (x11rb)");
+                Ok(Self::X11(x))
+            }
+            Ok(None) => Err(anyhow::anyhow!(
+                "Linux clipboard: no usable backend — Wayland data-control unavailable and \
+                 no X display reachable (DISPLAY={:?}, WAYLAND_DISPLAY={:?})",
+                std::env::var_os("DISPLAY"),
+                std::env::var_os("WAYLAND_DISPLAY")
+            )),
+            Err(e) => Err(e.context("Linux clipboard: native X11 init failed")),
+        }
     }
 }
 
@@ -70,15 +81,15 @@ impl LinuxClipboard {
 impl SystemClipboardPort for LinuxClipboard {
     fn read_snapshot(&self) -> Result<SystemClipboardSnapshot> {
         match self {
-            Self::Legacy(c) => c.read_snapshot(),
             Self::Wayland(c) => c.read_snapshot(),
+            Self::X11(c) => c.read_snapshot(),
         }
     }
 
     fn write_snapshot(&self, snapshot: SystemClipboardSnapshot) -> Result<()> {
         match self {
-            Self::Legacy(c) => c.write_snapshot(snapshot),
             Self::Wayland(c) => c.write_snapshot(snapshot),
+            Self::X11(c) => c.write_snapshot(snapshot),
         }
     }
 }
@@ -97,17 +108,18 @@ pub(super) fn is_wayland_session() -> bool {
 
 /// Build the platform clipboard event loop for Linux.
 ///
-/// Runtime selection:
+/// Runtime selection mirrors [`LinuxClipboard::new`]:
 ///
-/// 1. If `WAYLAND_DISPLAY` is set, attempt to bring up
-///    [`wayland::WaylandEventLoop`]. The constructor itself probes the
-///    compositor for `zwlr_data_control_manager_v1`; if the protocol isn't
-///    advertised it returns `Ok(None)` and we fall back transparently.
-/// 2. Otherwise (or on Wayland without data-control), wrap
-///    [`crate::clipboard::platform::clipboard_rs_adapter::ClipboardRsEventLoop`]
-///    which goes through `clipboard_rs::ClipboardWatcherContext` (X11
-///    XFIXES). Phase 3 replaces this branch with a native `x11rb`
-///    implementation.
+/// 1. Wayland data-control via [`wayland::WaylandEventLoop`] if the
+///    compositor advertises ext- or wlr-data-control.
+/// 2. Native x11rb via [`x11::X11EventLoop`] whenever an X display is
+///    reachable (covers XWayland sessions whose compositor doesn't expose
+///    data-control).
+///
+/// Returns `Err` if neither backend can be brought up — that means the
+/// process is on a Linux box with neither a Wayland nor an X display, which
+/// is unusual for desktop deployments (headless containers should not be
+/// running the daemon).
 pub(super) fn build_event_loop() -> Result<Box<dyn PlatformClipboardEventLoop>> {
     if is_wayland_session() {
         match wayland::WaylandEventLoop::try_new() {
@@ -118,16 +130,26 @@ pub(super) fn build_event_loop() -> Result<Box<dyn PlatformClipboardEventLoop>> 
             Ok(None) => {
                 debug!(
                     "Linux clipboard event loop: Wayland session but no data-control \
-                     protocol; falling back to clipboard_rs adapter"
+                     protocol; falling through to native x11rb"
                 );
             }
             Err(e) => {
-                warn!(error = %e, "Linux clipboard event loop: Wayland probe failed; falling back");
+                warn!(error = %e, "Linux clipboard event loop: Wayland probe failed; falling through");
             }
         }
     }
-    info!("Linux clipboard event loop: clipboard_rs (X11) adapter");
-    Ok(Box::new(
-        super::clipboard_rs_adapter::ClipboardRsEventLoop::new(),
-    ))
+
+    match x11::try_new_event_loop() {
+        Ok(Some(loop_)) => {
+            info!("Linux clipboard event loop: native X11 (x11rb + XFIXES)");
+            Ok(Box::new(loop_))
+        }
+        Ok(None) => Err(anyhow::anyhow!(
+            "Linux clipboard event loop: no usable backend — Wayland data-control \
+             unavailable and no X display reachable (DISPLAY={:?}, WAYLAND_DISPLAY={:?})",
+            std::env::var_os("DISPLAY"),
+            std::env::var_os("WAYLAND_DISPLAY")
+        )),
+        Err(e) => Err(e.context("Linux clipboard event loop: native X11 probe failed")),
+    }
 }

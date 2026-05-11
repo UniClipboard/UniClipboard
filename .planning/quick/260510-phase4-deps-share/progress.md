@@ -110,18 +110,51 @@ task_plan 的"删 WireOverrides + 不重建 sqlite pool"目标范围。两条路
 | 283cbc5a | daemon 复用进程级 deps,blob workers 上提到进程启动 |
 | b53c7492 | 删除 WireOverrides 整套机制 |
 
-## 剩余工作 (Phase D / E)
+## 2026-05-11 实测 / 重大转向
 
-### Phase D — 验证 daemon reload 不重建 deps
+### 手动复现 mobile_sync 重启 → BIND_LOCK panic
 
-钉死 "daemon reload 复用进程级 deps" 这条契约。倾向写集成测试
-(uc-desktop tests),断言 daemon spawn 前后 sqlite pool 内部 Arc 地址
-保持。次选：加探针 log。
+启动 dev → 改 mobile_sync 设置 → 点 "Restart" → 后端 panic:
 
-### Phase E — 测试与回归
+```
+IrohNodeBuilder::bind called more than once in the same process —
+runtime hot-swap of LAN-only Mode is explicitly out of scope (Phase 94 / Pitfall 3)
+```
 
-- 全栈 cargo test (含 long-running integration)
-- pnpm exec vitest run (前端，本次重构理论上无前端改动，只验证)
-- 手动复现 mobile_sync 重启路径
-- 手动验证 standalone daemon binary 独立启动
-- 手动验证 lan_listener_error 端到端可见
+调用栈：restart_daemon → reload_in_process_daemon → start_owned_in_process →
+start_in_process → build_daemon_bootstrap_assembly → build_daemon_lifecycle →
+build_space_setup_assembly → IrohNodeBuilder::bind → panic
+
+附带小修 (已 commit): blob workers spawn 移到 Tauri setup() 内
+(commit 16c92109),修了 "there is no reactor running" 启动 panic。
+
+### 根因 (超出原 Phase 4 下半场范围)
+
+详见 findings.md §0。简言之：iroh 进程级单次 bind (Pitfall 3 结构性
+防御) 与 Phase 4 上半场把 iroh 划入 daemon-lifecycle 根本性冲突。
+
+### 与用户对齐 → 方案 C
+
+| 选项 | 选择 |
+|---|---|
+| A. OnceCell 缓存 iroh，接受 daemon/iroh 概念割裂 | ✗ |
+| B. 回独立 daemon binary | ✗ (工作量大) |
+| **C. 取消 in-process reload，所有 restart 走 app.restart() 进程级** | ✓ |
+
+理由：用户直觉 "重启 daemon 不应该包含 iroh 的重启吗" 戳中 in-process
+模型的本质妥协。方案 C 让 daemon 概念恢复完整，代价只是 GUI 重启那
+一瞬间的视觉跳跃，长远代码可读性 / 概念一致性 win。
+
+## 剩余工作 (Phase F)
+
+详见 task_plan.md Phase F。简言：
+
+1. 前端切回 restart_app (NetworkSection / MobileSyncSettingsSheet)
+2. 删除 restart_daemon 命令 + reload_in_process_daemon 路径
+3. 修 app.restart() 的端口冲突：GUI exit 时主动 daemon graceful shutdown
+   + 新进程 bind retry 兜底
+4. 全栈 + 手动复现验证
+
+Phase A/B/C 的 deps 共享重构 **保留** —— 即便没有 in-process reload,
+这套架构让 daemon 装配链路清晰、sqlite pool 装配 single-source-of-truth,
+仍有独立价值。

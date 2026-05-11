@@ -1,5 +1,81 @@
 # findings — Phase 4 下半场调查
 
+## 0. 2026-05-11 重大发现:BIND_LOCK 撞墙 → Phase 4 上半场架构根本性妥协
+
+### 0.1 现场
+
+Phase A/B/C 落地后，手动复现 mobile_sync 重启路径：
+- 启动 dev → 点击 "Restart" → panic
+- 位置：`crates/uc-infra/src/network/iroh/node.rs:489`
+- 信息:`IrohNodeBuilder::bind called more than once in the same process —
+  runtime hot-swap of LAN-only Mode is explicitly out of scope (Phase 94 / Pitfall 3)`
+- 调用栈：`restart_daemon` → `reload_in_process_daemon` → `start_owned_in_process`
+  → `start_in_process` → `build_daemon_bootstrap_assembly` → `build_daemon_lifecycle`
+  → `build_space_setup_assembly` → `IrohNodeBuilder::bind` → BANG
+
+### 0.2 根因 (超出 Phase 4 下半场原定范围)
+
+iroh 在 `node.rs:452-489` 用 `static BIND_LOCK: OnceLock<()>` 强制**同进程
+只能 bind 一次**。这是 Pitfall 3 的结构性防御 —— `.planning/research/PITFALLS.md`
+明确写：
+
+> "`IrohNode` 的 lifecycle 仍由 `uc-bootstrap` 单点拥有，进程内重启路径 **不存在**"
+> "`UpdateNetworkSettings` 入口必须返回 `restart_required: bool`"
+> "在 `uc-bootstrap` 增加 `assert!()`:进程启动后只能 `bind` 一次 (用 `OnceCell` 强制)"
+
+### 0.3 Phase 4 上半场的隐藏冲突
+
+上半场 task_plan (`260510-daemon-reload-arch/task_plan.md`) "目标分层" 一段：
+
+```
+daemon-lifecycle(每次 daemon start/stop 重建):
+├─ iroh node + space_setup_assembly(绑 iroh_config)  ← 这里
+```
+
+把 iroh 划入 daemon-lifecycle。但 BIND_LOCK 实际禁止"daemon start/stop 时重建
+iroh"。这两者从根上不兼容。
+
+上半场没暴露这个冲突，原因：
+- 上半场实际测试主要走 P0 panic 修复 + restart_app(进程级)→ restart_daemon
+  (in-process) 切换路径，**没有真的复现一次完整 daemon reload 流程**
+- restart_daemon 命令引入 (commit 3fa73b8e) 后，只要触发，必撞 BIND_LOCK
+- dev 测试可能因为 `test-util` feature 跳过 BIND_LOCK 而看不到 panic,prod
+  build 才暴露
+
+### 0.4 三个心智模型的两两冲突
+
+| 心智模型 | 物理约束 |
+|---|---|
+| daemon = 网络服务，包含 iroh | iroh 进程级单次 bind (Pitfall 3) |
+| 重启 daemon = 重启网络栈 | 同进程不允许重 bind |
+| in-process daemon = daemon 跑在 GUI 进程里 | GUI 进程不退出，iroh 就不能换 |
+
+三者两两不冲突，凑齐就冲突。Phase 4 上半场选了"in-process daemon",于是与
+另外两条冲突，**只能割裂处理**。
+
+### 0.5 用户判断 (本次)
+
+> "但是 daemon 不就包含了 iroh 本身吗，那这样不就非常割裂吗，
+>  重启 daemon 不应该包含 iroh 的重启吗"
+
+直觉对。命名"daemon"暗示了网络服务，iroh 不在里面反直觉。
+
+### 0.6 三条方案对比
+
+| 选项 | 概念一致性 | 工作量 | 代价 |
+|---|---|---|---|
+| **A. 接受割裂** (OnceCell 缓存 iroh，前端区分 restart_app / restart_daemon) | 差 — "daemon 不含 iroh" 反直觉 | 小 | 长期文档/前端要解释这个分裂 |
+| **B. 放弃 in-process，回到独立 daemon binary** | 好 — "重启 daemon = 重启 binary",iroh 自然跟着重启 | 大 — 要解决新旧 daemon 端口冲突 (graceful wait)+ IPC 通信 + daemon 进程协调 | 重做 Phase 4 上半场的核心架构 |
+| **C. 取消 `restart_daemon`,所有重启走 `restart_app`(进程级)** | 好 — "重启 = 进程重启，语义干净" | 中 — 需要修好 `app.restart()` 路径下的端口冲突 + graceful wait | 用户体验有 GUI 重启那一瞬间的视觉跳跃 |
+
+**用户决策**: 选 C。理由：
+- restart_daemon 是 in-process 模型下的妥协代偿，本次 BIND_LOCK panic 就是
+  这个妥协的代价
+- daemon 概念应该完整 (含 iroh),重启 daemon = 重启整个网络栈
+- 进程重启的视觉跳跃是可以接受的代价，换来概念清晰
+
+
+
 ## 1. 当前 WireOverrides 散落点 (源代码 grep, 截至 2026-05-10)
 
 | 文件 | 行号 | 用途 |

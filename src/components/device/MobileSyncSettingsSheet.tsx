@@ -90,8 +90,6 @@ const MobileSyncSettingsSheet: React.FC<Props> = ({ open, onOpenChange, onSettin
   const [settings, setSettings] = useState<MobileSyncSettingsView | null>(null)
   const [settingsError, setSettingsError] = useState<string | null>(null)
   const [settingsBusy, setSettingsBusy] = useState(false)
-  const [restartRequired, setRestartRequired] = useState(false)
-  const [restartDismissed, setRestartDismissed] = useState(false)
   const [lanInterfaces, setLanInterfaces] = useState<LanInterfaceView[]>([])
   const [pendingLanEnable, setPendingLanEnable] = useState(false)
   const [portDraft, setPortDraft] = useState<string>('')
@@ -151,10 +149,11 @@ const MobileSyncSettingsSheet: React.FC<Props> = ({ open, onOpenChange, onSettin
           return next
         })
         setPortDraft(result.lanPort != null ? String(result.lanPort) : '')
-        if (result.restartRequired) {
-          setRestartRequired(true)
-          setRestartDismissed(false)
-        }
+        // phase 6 起,daemon 装了 LAN lifecycle controller, listener 是即时
+        // 切换的, restart_required 永远 false。toast 即时反馈即可,不再
+        // 弹"请重启"横幅(NetworkSection 的 iroh 字段仍走 restart, 与本
+        // 路径独立)。
+        toast.success(t('devices.mobileSync.feedback.applied'))
         // lanListenerError 等运行时字段由 daemon 写入,update 返回值只含
         // 持久化字段;需 reload 拿最新视图。
         await loadSettings()
@@ -165,7 +164,7 @@ const MobileSyncSettingsSheet: React.FC<Props> = ({ open, onOpenChange, onSettin
         setSettingsBusy(false)
       }
     },
-    [loadSettings, onSettingsChange, translate]
+    [loadSettings, onSettingsChange, t, translate]
   )
 
   const handleEnabledToggle = useCallback(
@@ -222,18 +221,6 @@ const MobileSyncSettingsSheet: React.FC<Props> = ({ open, onOpenChange, onSettin
     }
   }, [applySettingsUpdate, portDraft, settings, t])
 
-  const handleRestart = useCallback(async () => {
-    try {
-      const { invokeWithTrace } = await import('@/lib/tauri-command')
-      // 进程级重启 —— in-process daemon 模型下 iroh 不能重 bind (Pitfall 3),
-      // 任何需要重启的设置都走 app.restart()。详见 NetworkSection.tsx。
-      await invokeWithTrace('restart_app')
-    } catch (err) {
-      log.error({ err }, 'failed to restart')
-      toast.error(translate(err))
-    }
-  }, [translate])
-
   // ── Derived ──────────────────────────────────────────────────────────
   const enabled = settings?.enabled ?? false
   const lanListenEnabled = settings?.lanListenEnabled ?? false
@@ -252,30 +239,6 @@ const MobileSyncSettingsSheet: React.FC<Props> = ({ open, onOpenChange, onSettin
 
           <ScrollArea className="flex-1 px-4">
             <div className="space-y-3 py-2">
-              {/* 重启提示横幅(仅在 Sheet 内显示) */}
-              {restartRequired && !restartDismissed && (
-                <Alert className="border-amber-500/30 bg-amber-500/10">
-                  <AlertDescription className="flex items-center gap-3 text-amber-700 dark:text-amber-400">
-                    <span className="flex-1 text-xs">
-                      {t('devices.mobileSync.lanListener.restartRequired.message')}
-                    </span>
-                    <Button size="sm" variant="outline" onClick={handleRestart}>
-                      {t('devices.mobileSync.lanListener.restartRequired.restartButton')}
-                    </Button>
-                    <Button
-                      size="icon-sm"
-                      variant="ghost"
-                      aria-label={t(
-                        'devices.mobileSync.lanListener.restartRequired.dismissAriaLabel'
-                      )}
-                      onClick={() => setRestartDismissed(true)}
-                    >
-                      ×
-                    </Button>
-                  </AlertDescription>
-                </Alert>
-              )}
-
               {settings?.lanListenerError && (
                 <Alert variant="destructive">
                   <AlertDescription>

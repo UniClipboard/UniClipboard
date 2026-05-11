@@ -715,6 +715,17 @@
       "statusBar": {
         "bindFailed": "Failed to start listener: {{reason}}"
       },
+      "enableConfirm": {
+        "title": "Enable mobile sync",
+        "body": "Mobile sync will turn on and start listening on port {{port}} over LAN HTTP. Use only on trusted networks — anyone on the same LAN with the credentials can read/write this clipboard.",
+        "confirm": "Enable and continue",
+        "enabling": "Enabling…",
+        "cancel": "Cancel"
+      },
+      "feedback": {
+        "applied": "Applied immediately",
+        "applyFailed": "Failed to apply settings: {{message}}"
+      },
       "settingsSheet": {
         "title": "Mobile sync configuration",
         "description": "Adjust the switches and network parameters that let mobile devices reach this machine over LAN",

@@ -706,6 +706,17 @@
       "statusBar": {
         "bindFailed": "无法启动监听:{{reason}}"
       },
+      "enableConfirm": {
+        "title": "开启移动端同步",
+        "body": "继续将自动开启移动同步并在端口 {{port}} 开始监听局域网 HTTP。仅在受信网络下使用——任何在同一网段的人拿到凭据都能读写本机剪贴板。",
+        "confirm": "开启并继续",
+        "enabling": "正在开启…",
+        "cancel": "取消"
+      },
+      "feedback": {
+        "applied": "已即时生效",
+        "applyFailed": "应用设置失败：{{message}}"
+      },
       "settingsSheet": {
         "title": "移动设备同步配置",
         "description": "调整移动设备通过局域网访问本机所需的开关与网络参数",

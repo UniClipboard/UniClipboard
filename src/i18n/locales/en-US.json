@@ -212,8 +212,8 @@
               "title": "First-pairing rendezvous",
               "description": "Pairing a new device still requires reaching rendezvous.uniclipboard.app to exchange NodeIds. Once paired, day-to-day sync no longer uses rendezvous."
             },
-            "otlp": {
-              "title": "OTLP telemetry",
+            "telemetry": {
+              "title": "Telemetry",
               "description": "Telemetry is controlled independently by General → Telemetry, not by LAN-only Mode. To disable it, go to the General section."
             },
             "pkarr": {

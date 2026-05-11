@@ -203,8 +203,8 @@
               "title": "首次配对 rendezvous",
               "description": "配对新设备时仍需联网经 rendezvous.uniclipboard.app 完成 NodeId 交换；已配对设备的日常同步不再使用 rendezvous。"
             },
-            "otlp": {
-              "title": "OTLP 遥测",
+            "telemetry": {
+              "title": "遥测",
               "description": "遥测由「通用 → 遥测」开关独立控制，与 LAN-only 无关；如需关闭，请到「通用」分类。"
             },
             "pkarr": {

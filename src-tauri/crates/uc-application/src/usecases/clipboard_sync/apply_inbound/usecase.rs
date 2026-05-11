@@ -205,25 +205,36 @@ impl ApplyInboundClipboardUseCase {
                 )
             })?;
 
-        // 4. Write OS clipboard with RemotePush guard. Order matters —
-        // capture must complete first so the watcher's origin lookup
-        // sees the persisted row even if it fires immediately.
+        // 4. Schedule OS clipboard write in the background.
         //
-        // 送入 full snapshot（不 narrow）：platform 层内部按能力差异消化多 rep。
-        // - Windows：`write_snapshot_multi_windows` 原子写入 CF_UNICODETEXT + CF_HTML 等
-        // - macOS / Linux：`write_snapshot_multi` 的降级分支用 `SelectRepresentationPolicyV1`
-        //   选 paste-priority rep 后走单 rep 快路径（行为与上游 `narrow_to_primary` 等价）
+        // 异步化:OS clipboard write 在大 payload 场景下能阻塞 1-3 秒(macOS
+        // NSPasteboard 跨进程 IPC、Windows CF_HTML 编码),如果让 apply_inbound
+        // 主流程 await,上游 mobile_sync `finalize_transfer_lifecycle` 也会被
+        // 顺带推迟那么久 —— 前端会出现"entry 已经显示图片 → 2 秒后才看到
+        // status_changed transferring → 紧接 completed"的反向状态过渡。
         //
-        // 背景：quick `260423-9do` 交付了平台层的多 rep 写入能力，但此前应用层仍在
-        // narrow，导致主流量走单 rep 快路径、新能力 0 触发。本改动把 full snapshot 直送
-        // platform 层，由 platform 根据自身 OS 能力内部分流。详见
-        // `.planning/quick/260423-a3b-windows-rep-apply-inbound-narrow/`。
-        debug!(entry_id = %entry_id, "inbound: entry persisted, writing OS clipboard");
+        // entry 已经在第 3 步持久化(capture 已写库),OS clipboard write 是
+        // best-effort —— 失败只影响"用户能否立即从系统剪贴板粘贴",不影响
+        // entry 真相、不影响 transfer 状态。失败时 background task warn,
+        // 不向上抛错。
+        //
+        // 送入 full snapshot(不 narrow):platform 层内部按能力差异消化多 rep。
+        // - Windows:`write_snapshot_multi_windows` 原子写入 CF_UNICODETEXT + CF_HTML 等
+        // - macOS / Linux:`write_snapshot_multi` 的降级分支用 `SelectRepresentationPolicyV1`
+        //   选 paste-priority rep 后走单 rep 快路径(行为与上游 `narrow_to_primary` 等价)
+        debug!(entry_id = %entry_id, "inbound: entry persisted, scheduling background OS clipboard write");
 
-        self.write.write(snapshot_for_write).await.map_err(|e| {
-            error!(error = %e, entry_id = %entry_id, "inbound: OS clipboard write failed after capture");
-            ApplyInboundError::WriteCoordinator(e.to_string())
-        })?;
+        let write_port = Arc::clone(&self.write);
+        let entry_id_for_write = entry_id.clone();
+        tokio::spawn(async move {
+            if let Err(e) = write_port.write(snapshot_for_write).await {
+                error!(
+                    error = %e,
+                    entry_id = %entry_id_for_write,
+                    "inbound: OS clipboard background write failed after capture"
+                );
+            }
+        });
 
         info!(entry_id = %entry_id, "inbound clipboard applied");
 
@@ -248,6 +259,10 @@ impl ApplyInboundClipboardUseCase {
         //   * `removePendingEntry(entry_id)` 清掉占位卡片
         //   * 走 remote 分支 `onRemoteInvalidate()` 节流刷新列表 —— 真实 entry
         //     接替占位卡片,UI 状态收敛。
+        //
+        // 注:OS clipboard write 异步化之后,这条事件不再与 OS 写入完成绑定,
+        // 而是和 entry 持久化对齐 —— 前端拿 entry 内容靠
+        // `/clipboard/entries/<id>/resource`,不依赖 OS clipboard 状态。
         //
         // preview 字段:与 watcher 路径(`clipboard_watcher.rs:163`)保持一致用
         // 占位串。前端只把它打日志,不渲染;真实 preview 由列表刷新时从 daemon

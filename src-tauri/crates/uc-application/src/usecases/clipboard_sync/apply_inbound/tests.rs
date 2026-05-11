@@ -298,13 +298,17 @@ async fn capture_returning_none_maps_to_internal_error() {
     }
 }
 
-/// Verdict 5 — write coordinator failure surfaces as
-/// `WriteCoordinator` error. Capture has already committed (the
-/// entry stays in DB; manual cleanup is the daemon operator's job).
-/// Pin this trade-off so a future refactor doesn't silently start
-/// rolling back persistence on write failure.
+/// Verdict 5 — OS clipboard write is best-effort and runs in the
+/// background. Capture has already committed by the time the spawn
+/// happens; a write failure in the spawned task must NOT surface as
+/// an error on the apply_inbound main path —— that would let the
+/// upstream mobile_sync `finalize_transfer_lifecycle` think the
+/// transfer failed, when really it succeeded (bytes are in the entry,
+/// only the system clipboard write didn't take). Pin this trade-off
+/// so a future refactor doesn't re-couple OS write into the critical
+/// path.
 #[tokio::test]
-async fn write_failure_surfaces_after_capture_commits() {
+async fn write_failure_does_not_surface_after_capture_commits() {
     let (input, _) = fixture_input("write-will-fail");
 
     let mut repo = MockEntryRepo::new();
@@ -325,19 +329,21 @@ async fn write_failure_surfaces_after_capture_commits() {
         .returning(|_| Err(anyhow::anyhow!("OS clipboard locked")));
 
     let uc = build(repo, capture, write);
-    let err = uc
+    let outcome = uc
         .execute(input)
         .await
-        .expect_err("write failure must surface");
-    match err {
-        ApplyInboundError::WriteCoordinator(msg) => {
-            assert!(
-                msg.contains("OS clipboard locked"),
-                "underlying error should propagate, got: {msg}"
-            );
+        .expect("write failure must NOT surface — capture already committed");
+    match outcome {
+        ApplyOutcome::Applied { entry_id } => {
+            assert_eq!(entry_id.as_ref(), "entry-committed");
         }
-        other => panic!("expected WriteCoordinator, got {other:?}"),
+        other => panic!("expected Applied, got {other:?}"),
     }
+    // background write task may still be running when this test returns;
+    // tokio test runtime cleanup drops it. The mock's `.times(1)` expectation
+    // is checked on Drop, so we briefly yield to let the spawn complete.
+    tokio::task::yield_now().await;
+    tokio::time::sleep(std::time::Duration::from_millis(10)).await;
 }
 
 /// Verdict 6 — dedup query failure surfaces as `DedupQuery`. No

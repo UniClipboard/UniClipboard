@@ -11,6 +11,7 @@ on:
           - 'macos-aarch64'
           - 'macos-x86_64'
           - 'ubuntu-22.04'
+          - 'ubuntu-22.04-arm'
           - 'windows-latest'
           - 'all'
         default: 'all'
@@ -36,24 +37,26 @@ jobs:
       - name: Generate matrix
         id: set-matrix
         run: |
-          # CLI Linux target 选 x86_64-unknown-linux-musl 静态编译:
+          # CLI Linux target 选 musl 静态编译:
           # uc-cli 走 ring + rustls (无 aws-lc-sys / 无 openssl-sys),依赖图
           # 里没有 C 库,musl 静态链可以一气呵成,glibc 完全无关。产物可直接
           # 在任意 Linux (包括 Ubuntu 20.04 / Alpine / 老 RHEL) 上跑。
           # 容器仍用 debian:bookworm 拿 musl-tools / cmake / clang 工具链。
           PLATFORM="${{ inputs.platform || 'all' }}"
           if [ "$PLATFORM" == "all" ]; then
-            echo 'matrix=[{"platform":"macos-latest","target":"aarch64-apple-darwin","args":"--target aarch64-apple-darwin"},{"platform":"macos-latest","target":"x86_64-apple-darwin","args":"--target x86_64-apple-darwin"},{"platform":"ubuntu-22.04","target":"x86_64-unknown-linux-musl","args":"--target x86_64-unknown-linux-musl","container":"debian:bookworm"},{"platform":"windows-latest","target":"x86_64-pc-windows-msvc","args":""}]' >> "$GITHUB_OUTPUT"
+            echo 'matrix=[{"platform":"macos-latest","target":"aarch64-apple-darwin","args":"--target aarch64-apple-darwin"},{"platform":"macos-latest","target":"x86_64-apple-darwin","args":"--target x86_64-apple-darwin"},{"platform":"ubuntu-22.04","target":"x86_64-unknown-linux-musl","args":"--target x86_64-unknown-linux-musl","container":"debian:bookworm"},{"platform":"ubuntu-22.04-arm","target":"aarch64-unknown-linux-musl","args":"--target aarch64-unknown-linux-musl","container":"debian:bookworm"},{"platform":"windows-latest","target":"x86_64-pc-windows-msvc","args":""}]' >> "$GITHUB_OUTPUT"
           elif [ "$PLATFORM" == "macos-aarch64" ]; then
             echo 'matrix=[{"platform":"macos-latest","target":"aarch64-apple-darwin","args":"--target aarch64-apple-darwin"}]' >> "$GITHUB_OUTPUT"
           elif [ "$PLATFORM" == "macos-x86_64" ]; then
             echo 'matrix=[{"platform":"macos-latest","target":"x86_64-apple-darwin","args":"--target x86_64-apple-darwin"}]' >> "$GITHUB_OUTPUT"
           elif [ "$PLATFORM" == "ubuntu-22.04" ]; then
             echo 'matrix=[{"platform":"ubuntu-22.04","target":"x86_64-unknown-linux-musl","args":"--target x86_64-unknown-linux-musl","container":"debian:bookworm"}]' >> "$GITHUB_OUTPUT"
+          elif [ "$PLATFORM" == "ubuntu-22.04-arm" ]; then
+            echo 'matrix=[{"platform":"ubuntu-22.04-arm","target":"aarch64-unknown-linux-musl","args":"--target aarch64-unknown-linux-musl","container":"debian:bookworm"}]' >> "$GITHUB_OUTPUT"
           elif [ "$PLATFORM" == "windows-latest" ]; then
             echo 'matrix=[{"platform":"windows-latest","target":"x86_64-pc-windows-msvc","args":""}]' >> "$GITHUB_OUTPUT"
           else
-            echo "Error: Unknown platform '$PLATFORM'. Valid options: all, macos-aarch64, macos-x86_64, ubuntu-22.04, windows-latest"
+            echo "Error: Unknown platform '$PLATFORM'. Valid options: all, macos-aarch64, macos-x86_64, ubuntu-22.04, ubuntu-22.04-arm, windows-latest"
             exit 1
           fi
 
@@ -91,7 +94,7 @@ jobs:
       - name: install Rust stable
         uses: dtolnay/rust-toolchain@stable
         with:
-          # Linux 走 musl,需要 rustup 装 x86_64-unknown-linux-musl target;
+          # Linux 走 musl,需要 rustup 装对应 musl target;
           # macOS 装两个 darwin target;Windows host=msvc 装 noop。
           targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || matrix.target }}
 
@@ -116,8 +119,11 @@ jobs:
         # (glibc / musl) 都能直接 exec。这才符合 ace8685f 切 musl 的初衷。
         env:
           CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER: musl-gcc
+          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER: musl-gcc
           CC_x86_64_unknown_linux_musl: musl-gcc
+          CC_aarch64_unknown_linux_musl: musl-gcc
           CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_RUSTFLAGS: "-C relocation-model=static"
+          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_RUSTFLAGS: "-C relocation-model=static"
         run: cargo build --release -p uc-cli ${{ matrix.args }}
 
       - name: import Apple certificate (macOS only)

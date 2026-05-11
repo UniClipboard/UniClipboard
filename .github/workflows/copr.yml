@@ -50,7 +50,9 @@ jobs:
             git curl rpm-build rpmdevtools python3-pip jq unzip
           # copr-cli 通过 pip 装 — Fedora 仓库里也有 dnf install copr-cli,
           # 但 pip 版本更新更稳定,接 API token 也更直接。
-          pip3 install --no-cache-dir copr-cli
+          # 显式带上 rich:copr-cli 新版 main.py 里 `from rich.text import Text`,
+          # 但 setup.py 没声明这个依赖,pip 不会自动拉 → ModuleNotFoundError。
+          pip3 install --no-cache-dir copr-cli rich
 
       - uses: actions/checkout@v4
 

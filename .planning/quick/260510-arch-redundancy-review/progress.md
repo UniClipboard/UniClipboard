@@ -60,6 +60,25 @@
 
 验证：`pnpm exec vitest run` 410/410 passed.
 
+## 2026-05-10 Cleanup PR #3 落地
+
+本次 review 的核心收获 —— ArcSwap 热切换原语整体回退到 OnceLock startup-once 语义：
+
+| ID | Commit | 说明 |
+|---|---|---|
+| R1 | `64f00a10` | SearchFacade.coordinator ArcSwap → OnceLock, 删 clear_coordinator |
+| R2+G2+Y1+Y2 | `67535ff2` | AppFacade 5 字段 ArcSwap → OnceLock, swap → install, 删 clear_daemon_lifecycle, 6 外部 caller + 18 内部 .load_full() 改 .get().cloned(), 删 arc-swap 依赖，大段 doc 重写 |
+
+验证：
+
+- `cargo check --workspace` 干净
+- `cargo test -p uc-application -p uc-infra -p uc-tauri -p uc-webserver -p uc-daemon-local -p uc-desktop -p uc-bootstrap --lib` 824/824 passed
+- `cargo test -p uc-webserver --test graceful_shutdown_port_reuse` 1/1 passed
+- `cargo test -p uc-application --tests` 全过
+
+收益：删除 1 个 Rust 依赖 (arc-swap), 心智模型从 "运行时多次 swap" 收敛到
+"启动期一次装入", 配合方案 C 后 daemon 进程级单例的现实。
+
 ## 错误记录
 
 | 错误 | 第几次尝试 | 解决 |

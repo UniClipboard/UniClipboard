@@ -1,16 +1,9 @@
 //! Restart-related Tauri commands.
 //! 重启相关的 Tauri 命令。
 //!
-//! 历史: Phase 4 上半场曾引入 `restart_daemon` (in-process daemon reload),
-//! 目的是 mobile_sync 配置变更后避免 `app.restart()` 引发的新旧进程同时持
-//! 端口窗口期。但 in-process reload 路径与 iroh `IrohNodeBuilder::bind`
-//! 进程级单次约束 (Pitfall 3) 根本性冲突 —— `daemon-lifecycle` 重建会
-//! 第二次调用 bind 触发 panic。
-//!
-//! 2026-05-11 决策方案 C: 取消 `restart_daemon`,所有"需要重启"设置走
-//! 进程级 `app.restart()`。daemon 概念恢复完整 (含 iroh),"重启 daemon
-//! = 重启网络栈 = 重启进程"语义自洽。详见
-//! `.planning/quick/260510-phase4-deps-share/findings.md` §0。
+//! 所有"需要重启"设置 (LAN-only Mode / mobile_sync 端口等) 走进程级
+//! `app.restart()`。决策背景见
+//! `.planning/quick/260510-phase4-deps-share/findings.md` §0 (方案 C)。
 //!
 //! Phase 95 边界 fence:
 //!

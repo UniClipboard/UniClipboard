@@ -402,11 +402,17 @@ pub async fn build_space_setup_assembly(
         blob_transfer: Arc::clone(&blob_transfer),
         blob_reference: Arc::clone(&wired.blob_reference_repo),
         // 共享同一个 emitter_cell —— daemon bootstrap 注入真实 emitter 后,
-        // fetch_blob 就会自动开始向前端发送 progress / status_changed 事件;
-        // CLI 模式下 cell 里挂的是 noop emitter,事件被静默吞掉,不影响行为。
+        // fetch_blob 就会自动开始向前端发送 progress 事件;CLI 模式下 cell
+        // 里挂的是 noop emitter,事件被静默吞掉,不影响行为。状态切换
+        // (transferring / completed / failed)走 file_transfer lifecycle,
+        // 由 `FileTransferHostEventPublisher` 统一发出。
         host_event_emitter: Some(Arc::clone(&wired.emitter_cell)),
         // 反向进度上报端口:接收端 fetch 进度通过新 ALPN 推回 sender。
         outbound_progress_reporter: Some(outbound_progress_reporter),
+        // file_transfer lifecycle facade —— iroh 路径每次 fetch 通过它落
+        // `Started` / `Completed` / `Failed` 事件,让 file_transfer 表的
+        // 状态投影与 sweep / reconcile workers 真正发挥作用。
+        file_transfer: Some(Arc::clone(&wired.background.file_transfer_facade)),
     }));
 
     info!("Slice 2/3 SpaceSetupFacade + MemberRosterFacade + ClipboardSyncFacade + BlobTransferFacade assembled");

@@ -78,7 +78,7 @@ pub use encryption::{
 pub use file_transfer::{
     CancelTransfer, CompleteTransfer, FailTransfer, FileTransferApplicationError,
     FileTransferFacade, FileTransferFacadeDeps, LinkTransferToEntry, ReportTransferProgress,
-    StartTransfer,
+    SeedReceiverContext, StartTransfer,
 };
 pub use host_event::{
     ClipboardHostEvent, ClipboardOriginKind, EmitError, FileTransferHostEventPublisher, HostEvent,

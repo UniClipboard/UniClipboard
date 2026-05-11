@@ -48,6 +48,22 @@ pub struct LinkTransferToEntry {
     pub entry_id: String,
 }
 
+/// Seed an initial pending row for an inbound transfer.
+///
+/// 应用层输入：在 receiver-side `file_transfer` 表里 upsert 一条 `pending`
+/// 行，把 transfer_id → entry_id / filename / cached_path 的关系先落到
+/// projection。`created_at_ms` 由 facade 内部 `ClockPort` 提供，不暴露
+/// 给调用方。`cached_path` 仅在落盘场景有意义（free-standing file），
+/// 内嵌进 representation 的 blob 路径填空字符串占位即可。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SeedReceiverContext {
+    pub transfer_id: String,
+    pub entry_id: String,
+    pub origin_device_id: String,
+    pub filename: String,
+    pub cached_path: String,
+}
+
 /// 构造 [`FileTransferFacade`] 所需的依赖集合。
 ///
 /// 由 bootstrap 在装配期填充：5 个 lifecycle use case 共享同一对
@@ -166,12 +182,21 @@ impl FileTransferFacade {
     /// transfer 的占位。
     ///
     /// 幂等：用同一个 `transfer.transfer_id` 多次调用等价于一次。
+    /// `created_at_ms` 由 facade 内部 `ClockPort` 提供。
     pub async fn seed_receiver_context(
         &self,
-        transfer: PendingInboundTransfer,
+        input: SeedReceiverContext,
     ) -> Result<(), FileTransferApplicationError> {
+        let now_ms = self.clock.now_ms();
         self.repo
-            .upsert_pending_transfer(&transfer)
+            .upsert_pending_transfer(&PendingInboundTransfer {
+                transfer_id: input.transfer_id,
+                entry_id: input.entry_id,
+                origin_device_id: input.origin_device_id,
+                filename: input.filename,
+                cached_path: input.cached_path,
+                created_at_ms: now_ms,
+            })
             .await
             .map_err(|err| FileTransferApplicationError::Repository(err.to_string()))
     }

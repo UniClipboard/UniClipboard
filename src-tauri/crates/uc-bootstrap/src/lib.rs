@@ -9,6 +9,7 @@ pub mod assembly;
 pub mod background_tasks;
 pub mod builders;
 pub mod config;
+mod correlation;
 pub mod file_transfer_lifecycle;
 pub mod init;
 mod network_policy;

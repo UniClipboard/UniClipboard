@@ -34,8 +34,8 @@ pub struct DaemonLifecycleFacadesInput<'a> {
 }
 
 /// 构造 5 个 daemon-lifecycle 子 facade。返回的 [`DaemonLifecycleFacades`]
-/// 由 caller 通过 [`uc_application::facade::AppFacade::swap_daemon_lifecycle`]
-/// 一次性塞入进程级 [`uc_application::facade::AppFacade`]。
+/// 由 caller 通过 [`uc_application::facade::AppFacade::install_daemon_lifecycle`]
+/// 一次性装入进程级 [`uc_application::facade::AppFacade`]。
 pub fn build_daemon_lifecycle_facades(
     input: DaemonLifecycleFacadesInput<'_>,
 ) -> (DaemonLifecycleFacades, String) {

@@ -17,8 +17,8 @@ use uc_bootstrap::SpaceSetupAssembly;
 
 /// daemon-lifecycle 装配结果。
 ///
-/// 字段在 daemon stop / clear_daemon_lifecycle 时清掉,daemon 再次 start
-/// 时重建一份新的。caller 持有的进程级资源 (deps / storage_paths /
+/// 方案 C 后 daemon 进程内只起一次, 这些字段也只装一次, 跟随 AppFacade
+/// Arc drop 自然回收。caller 持有的进程级资源 (deps / storage_paths /
 /// clipboard_write_coordinator / file_transfer_lifecycle / emitter_cell)
 /// 不在这里 —— 它们走 [`crate::daemon::host::ProcessRuntimeHandles`]
 /// 传入 daemon spawn。

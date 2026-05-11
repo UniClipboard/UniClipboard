@@ -105,10 +105,13 @@ pub fn build_slice1_cli_context(
     Ok((config, wired))
 }
 
-/// daemon-lifecycle 装配产出 (每次 daemon start/stop 重建)。
+/// daemon-lifecycle 装配产出。
 ///
-/// 不再持有 `deps` / `background` —— 那两块属于进程级,跨 daemon reload
-/// 存活,由 caller 一次性 wire 后移交 [`build_daemon_lifecycle`]。
+/// 不再持有 `deps` / `background` —— 那两块属于进程级 (sqlite pool /
+/// repos / blob worker), 由 caller 一次性 wire 后移交
+/// [`build_daemon_lifecycle`]。方案 C 后 daemon 在进程内只起一次, 装配
+/// 也只跑一次。本结构体的物理意义是 "async (tokio) 装配链路上需要 iroh
+/// bind 与 SpaceSetupAssembly 的那一段"。
 pub struct DaemonLifecycle {
     /// iroh-stack clipboard sync facade.
     /// daemon 的 `DaemonClipboardChangeHandler` 调
@@ -124,7 +127,9 @@ pub struct DaemonLifecycle {
 /// 装 daemon-lifecycle 资源 —— iroh node bind、SpaceSetupAssembly、startup
 /// reconcile。接受已 wire 好的进程级 [`WiredDependencies`] 作输入,**不**
 /// 再次跑 `wire_dependencies` —— sqlite pool / repos / settings / secure
-/// storage 等进程级资源跨 daemon reload 复用。
+/// storage 在进程启动期 wire 一次后由 GUI shell 与 daemon-lifecycle 共用。
+/// 本函数是 async/sync 装配链的边界点 (iroh `Endpoint::bind` 必须在 tokio
+/// runtime 内执行)。
 ///
 /// `init::reconcile_*` 在每次 daemon 启动时跑(治理性、失败只 log),
 /// 与 `build_space_setup_assembly` 之前执行,确保 dispatch / presence /

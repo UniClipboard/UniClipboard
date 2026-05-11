@@ -135,19 +135,19 @@ pub struct BackgroundRuntimeDeps {
         Arc<uc_application::clipboard_write::ClipboardWriteCoordinator>,
 }
 
-/// 进程级一次性装配产出的"持久"部分:跨 daemon 启停存活的 deps 与旁路
-/// 资源(repos、storage paths、shared adapters)。
+/// 进程级一次性装配产出的"持久"部分:进程内常驻的 deps 与旁路资源
+/// (repos、storage paths、shared adapters)。
 ///
 /// 一次性消费的 [`BackgroundRuntimeDeps`] (含 spool / blob worker
 /// receivers) 通过 [`wire_dependencies`] 的 tuple 返回值单独移交,不再
-/// 嵌在 `WiredDependencies` 里 —— 这样 `WiredDependencies` 可以在 daemon
-/// reload 时被多次借用,而 `BackgroundRuntimeDeps` 只在进程启动时 spawn
-/// 一次。
+/// 嵌在 `WiredDependencies` 里 —— 因为 mpsc `Receiver` 不可 Clone, 而
+/// `WiredDependencies` 需要被 standalone daemon binary 与 GUI shell
+/// 两种入口共用 (`build_process_runtime` clone fan-out 给两条 path)。
 ///
 /// `Clone` 派生:所有字段都是 `Arc<dyn Port>` / `PathBuf` / Clone-able
-/// 嵌套 struct,clone 等价于一组 Arc::clone + PathBuf::clone,廉价。
-/// in-process daemon 路径在每次 daemon spawn 时 clone 一份给 daemon-lifecycle
-/// 装配用。
+/// 嵌套 struct,clone 等价于一组 Arc::clone + PathBuf::clone,廉价。启动
+/// 期 GUI shell 把同一份 deps fan-out 给 TauriAppRuntime / daemon spawn /
+/// process handles —— 不是 reload 多次 clone, 但 fan-out 路径仍存在。
 #[derive(Clone)]
 pub struct WiredDependencies {
     pub deps: AppDeps,
@@ -451,8 +451,7 @@ fn create_infra_layer(
 
     // endpoint_info adapter:进程级单例,daemon LAN listener 与 facade 各持
     // 一份 Arc 共享同一份内存。整个进程只跑一次 `wire_dependencies`,这里
-    // new 一份就足够 —— daemon reload 复用同一份(不再走"两份 deps 各自 new"
-    // 的旧路径,因此也就不再需要 caller 注入 override)。
+    // new 一份就足够。
     let mobile_sync_endpoint_info =
         Arc::new(uc_infra::mobile_sync::InMemoryMobileSyncEndpointInfoAdapter::new());
 
@@ -720,12 +719,11 @@ pub fn apply_profile_suffix(path: PathBuf) -> PathBuf {
 /// [`BackgroundRuntimeDeps`]。
 ///
 /// 整个进程只调用一次 —— GUI shell 在 `build_process_runtime` 里调,
-/// standalone daemon binary 同样走这条路径。daemon reload 不再 wire
-/// (复用同一份)。
+/// standalone daemon binary 同样走这条路径 (两条入口共用)。
 ///
 /// 返回 tuple 把"持久" 与"一次性消费"两类资源分开:`WiredDependencies`
-/// 跨 daemon reload 存活;`BackgroundRuntimeDeps` 含两个 mpsc::Receiver,
-/// 在进程启动期被 `spawn_blob_processing_tasks` 消费一次后不复存在。
+/// 进程内常驻;`BackgroundRuntimeDeps` 含两个 mpsc::Receiver, 在进程
+/// 启动期被 `spawn_blob_processing_tasks` 消费一次后不复存在。
 ///
 /// Slice 4 P5b 起 libp2p adapter 已删除,旧的 `wire_dependencies_with_identity_store`
 /// 变体随之退场——iroh 栈走 `IrohIdentityStore`(由 `build_space_setup_assembly`

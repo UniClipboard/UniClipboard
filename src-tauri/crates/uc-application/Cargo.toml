@@ -30,11 +30,6 @@ chrono = { version = "0.4", features = ["serde"] }
 thiserror = "2.0.17"
 futures = "0.3.31"
 tracing = "0.1.44"
-# Lock-free Option<Arc<T>> swap for AppFacade daemon-lifecycle fields.
-# daemon 启停时 swap clipboard_sync / blob_transfer / space_setup / member_roster /
-# mobile_sync；读路径在 GUI command + daemon worker 高频访问，arc-swap 的无锁
-# 加载远优于 RwLock。
-arc-swap = "1"
 hmac = "0.12"
 sha2 = "0.10"
 blake3 = "1"

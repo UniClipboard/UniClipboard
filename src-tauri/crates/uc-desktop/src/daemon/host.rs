@@ -213,12 +213,12 @@ pub async fn start_in_process(
             mobile_sync_apply_inbound: runtime_workers.apply_inbound.clone(),
         });
 
-    app_facade.swap_daemon_lifecycle(lifecycle_facades);
+    app_facade.install_daemon_lifecycle(lifecycle_facades);
 
     // search_coordinator 是 daemon-lifecycle 的(绑 daemon search assembly),
-    // 进程级 SearchFacade 内部 coordinator 字段在 GUI 启动期为 None。daemon
-    // 启动时通过 SearchFacade::set_coordinator 装入,daemon 退出时 SearchFacade
-    // 持有的 Arc 仍然存在但 daemon 资源已清,后续 swap 也可。
+    // 进程级 SearchFacade 内部 coordinator 字段在 GUI 启动期为空, daemon
+    // 启动时通过 SearchFacade::set_coordinator 装入一次。方案 C 后 daemon
+    // 进程内不再 reload, Arc 跟随进程退出自然回收。
     app_facade
         .search
         .set_coordinator(Arc::clone(&search_assembly.coordinator));
@@ -240,7 +240,6 @@ pub async fn start_in_process(
         mobile_sync_endpoint_info,
     });
 
-    let app_facade_for_cleanup = Arc::clone(&app_facade);
     let input = DaemonRunLoopInput {
         run_mode,
         daemon,
@@ -250,13 +249,9 @@ pub async fn start_in_process(
         deferred_ready_notify: runtime_controls.deferred_ready_notify,
         clipboard_capture_gate: runtime_controls.clipboard_capture_gate,
     };
-    // daemon main loop 退出后清空 AppFacade 上 5 个 lifecycle 字段,
-    // 让残留 GUI command / task 看到 None → 报"daemon 未就绪"。
-    let join = tokio::spawn(async move {
-        let result = run_daemon_main(input).await;
-        app_facade_for_cleanup.clear_daemon_lifecycle();
-        result
-    });
+    // 方案 C 后 daemon 退出 = 进程退出, daemon-lifecycle 字段无需显式卸下,
+    // 跟随 AppFacade Arc drop 自然回收。
+    let join = tokio::spawn(run_daemon_main(input));
 
     Ok(DaemonHandle::new(cancel, join))
 }

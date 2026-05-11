@@ -185,7 +185,7 @@ impl DaemonApp {
         // sponsor device id must be too — the pairing-completion
         // forwarder needs both to emit `setup.pairingCompleted`.
         debug_assert!(
-            app_facade.space_setup.load().is_some() == local_device_id.is_some(),
+            app_facade.space_setup.get().is_some() == local_device_id.is_some(),
             "space_setup facade and local_device_id must be wired together"
         );
         Self {
@@ -285,7 +285,7 @@ impl DaemonApp {
         // and translates each `PairingOutcome` into a `setup.pairingCompleted`
         // ws frame on the shared event bus.
         if let (Some(facade), Some(sponsor_id)) = (
-            self.app_facade.space_setup.load_full(),
+            self.app_facade.space_setup.get().cloned(),
             self.local_device_id.as_ref(),
         ) {
             spawn_pairing_completion_forwarder(
@@ -324,7 +324,7 @@ impl DaemonApp {
         // endpoint_info 注入存在时才起 listener。
         if let (Some(endpoint_info), Some(mobile_sync_facade)) = (
             self.mobile_lan_endpoint_info.clone(),
-            self.app_facade.mobile_sync.load_full(),
+            self.app_facade.mobile_sync.get().cloned(),
         ) {
             // 同步读一次设置 —— daemon 启动时一次性决定 listener 行为, 配
             // 置变更不热重载(SPEC §1.2.5: 用户必须 stop+start daemon)。读取

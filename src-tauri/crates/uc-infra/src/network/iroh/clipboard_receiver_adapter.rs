@@ -390,6 +390,7 @@ mod tests {
             origin_device_id: "sender-001".to_string(),
             origin_device_name: "Alice".to_string(),
             payload_version: 3,
+            flow_id: None,
         }
     }
 

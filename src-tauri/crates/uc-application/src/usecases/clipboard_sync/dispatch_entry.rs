@@ -213,6 +213,10 @@ impl DispatchClipboardEntryUseCase {
         }
 
         // 3. Build the header once and clone per target.
+        //
+        // PR3:`flow_id` 写进 header,跨设备传到 inbound 端。inbound 收到后
+        // 会用同一个 id 落到自己的 root span,Sentry 上"A 端 dispatch →
+        // B 端 ingest"两条 trace 在 `flow.id` 维度自动 join。
         let origin_device_name = self.load_origin_device_name().await;
         let header = ClipboardHeader {
             version: ClipboardHeader::CURRENT_VERSION,
@@ -221,6 +225,7 @@ impl DispatchClipboardEntryUseCase {
             origin_device_id: local_device.as_str().to_string(),
             origin_device_name,
             payload_version: input.payload_version,
+            flow_id: Some(flow_id.to_string()),
         };
 
         if candidates.is_empty() {

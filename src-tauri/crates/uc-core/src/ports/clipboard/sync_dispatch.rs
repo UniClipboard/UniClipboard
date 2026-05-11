@@ -21,6 +21,14 @@ use crate::ids::DeviceId;
 /// `WIRE_VERSION` (Slice 1→2 bumped pairing to v=2 for
 /// `transport_address_blob`; clipboard starts at v=1 because it has no
 /// predecessor on this ALPN).
+///
+/// **Wire v2** (current) adds `flow_id` —— a cross-device trace correlation
+/// identifier (UUIDv7 string). The sender embeds the id its outbound span
+/// uses; the receiver lifts it onto its inbound span so a single business
+/// action ("A 同步剪贴板给 B") shows up as one joined `flow.id` group in
+/// Sentry. v1 frames decode with `flow_id = None`; the receiver tags those
+/// as `flow.synthetic = true` and falls back to generating a local id so
+/// downstream spans still carry *some* flow identifier.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ClipboardHeader {
     pub version: u8,
@@ -37,11 +45,19 @@ pub struct ClipboardHeader {
     /// `ClipboardBinaryPayload` V3 format. Reserved so a Phase N payload
     /// revision can live alongside V3 without a full ALPN bump.
     pub payload_version: u8,
+    /// Cross-device trace correlation id (wire v2+). UUIDv7 string. `None`
+    /// when received from a v1 peer; the receiver treats `None` as
+    /// "generate a local synthetic id and tag the span accordingly".
+    pub flow_id: Option<String>,
 }
 
 impl ClipboardHeader {
     /// Current clipboard wire version. Bumped only on incompatible changes.
-    pub const CURRENT_VERSION: u8 = 1;
+    ///
+    /// History:
+    /// - v1: initial Slice 2 Phase 2 format (no `flow_id`)
+    /// - v2: adds `flow_id` for cross-device trace correlation
+    pub const CURRENT_VERSION: u8 = 2;
 }
 
 /// Opaque ciphertext already sealed by the application layer. Phase 2 keeps

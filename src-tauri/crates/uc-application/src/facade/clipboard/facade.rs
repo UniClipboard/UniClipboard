@@ -667,6 +667,7 @@ mod tests {
                 origin_device_id: "peer-x".to_string(),
                 origin_device_name: "Peer X".to_string(),
                 payload_version: 3,
+                flow_id: None,
             },
             ciphertext: Bytes::from_static(b"hello"),
         });

@@ -322,11 +322,20 @@ async fn write_failure_does_not_surface_after_capture_commits() {
         .times(1)
         .returning(|_, _| Ok(Some(EntryId::from("entry-committed"))));
 
+    // Deterministic synchronization:让 mock 在被调用时 signal,test 主体
+    // await 这个 signal,确保 `.times(1)` 期望在 mock Drop 之前一定满足,
+    // 而不是赌"10ms 内 spawn 跑完了"。
+    let (tx, rx) = tokio::sync::oneshot::channel::<()>();
+    let tx = std::sync::Arc::new(std::sync::Mutex::new(Some(tx)));
+    let tx_for_mock = std::sync::Arc::clone(&tx);
+
     let mut write = MockWrite::new();
-    write
-        .expect_write()
-        .times(1)
-        .returning(|_| Err(anyhow::anyhow!("OS clipboard locked")));
+    write.expect_write().times(1).returning(move |_| {
+        if let Some(tx) = tx_for_mock.lock().unwrap_or_else(|p| p.into_inner()).take() {
+            let _ = tx.send(());
+        }
+        Err(anyhow::anyhow!("OS clipboard locked"))
+    });
 
     let uc = build(repo, capture, write);
     let outcome = uc
@@ -339,11 +348,8 @@ async fn write_failure_does_not_surface_after_capture_commits() {
         }
         other => panic!("expected Applied, got {other:?}"),
     }
-    // background write task may still be running when this test returns;
-    // tokio test runtime cleanup drops it. The mock's `.times(1)` expectation
-    // is checked on Drop, so we briefly yield to let the spawn complete.
-    tokio::task::yield_now().await;
-    tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    // 确定性等待 spawn 后台 write 完成(mock 内部 send 信号)。
+    rx.await.expect("background write task must run");
 }
 
 /// Verdict 6 — dedup query failure surfaces as `DedupQuery`. No

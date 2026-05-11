@@ -1,9 +1,24 @@
 use std::collections::{HashMap, HashSet};
-use std::sync::{Arc, Mutex, RwLock};
+use std::sync::{Arc, Mutex, PoisonError, RwLock};
 
 use anyhow::Result;
 use async_trait::async_trait;
 use tracing::warn;
+
+/// 显式恢复 poisoned mutex/rwlock 守卫,并 log 警告。
+///
+/// `unwrap_or_else(|p| p.into_inner())` 直接吞 poison 会让 invariant 违
+/// 反静默,排障时完全找不到信号。这里集中加 warn 让"前一次 panic 留下
+/// 了不一致状态"在日志里有据可查。`context` 标明发生位置(锁名),便于
+/// grep。
+#[inline]
+fn recover_poisoned<T>(poisoned: PoisonError<T>, context: &'static str) -> T {
+    warn!(
+        context,
+        "host event publisher: lock poisoned, recovering inner state (a prior panic likely left invariants broken)"
+    );
+    poisoned.into_inner()
+}
 use uc_core::file_transfer::{
     FileTransferCancellationReason, FileTransferEvent, FileTransferEventPublisherPort,
     FileTransferFailureReason,
@@ -88,7 +103,7 @@ impl FileTransferHostEventPublisher {
         let emitter = self
             .emitter_cell
             .read()
-            .unwrap_or_else(|p| p.into_inner())
+            .unwrap_or_else(|p| recover_poisoned(p, "emitter_cell"))
             .clone();
         if let Err(err) = emitter.emit(event) {
             warn!(error = %err, "failed to emit file transfer host event");
@@ -104,7 +119,7 @@ impl FileTransferHostEventPublisher {
         let pending = self
             .pending_status
             .lock()
-            .unwrap_or_else(|p| p.into_inner())
+            .unwrap_or_else(|p| recover_poisoned(p, "pending_status"))
             .remove(transfer_id);
         let Some(pending) = pending else {
             return;
@@ -143,7 +158,7 @@ impl FileTransferEventPublisherPort for FileTransferHostEventPublisher {
                     let mut warned = self
                         .progress_no_entry_warned
                         .lock()
-                        .unwrap_or_else(|p| p.into_inner());
+                        .unwrap_or_else(|p| recover_poisoned(p, "progress_no_entry_warned"));
                     if warned.insert(transfer_id.clone()) {
                         warn!(
                             transfer_id = %transfer_id,
@@ -216,7 +231,7 @@ impl FileTransferHostEventPublisher {
                 if event_kind == "Started" {
                     self.pending_status
                         .lock()
-                        .unwrap_or_else(|p| p.into_inner())
+                        .unwrap_or_else(|p| recover_poisoned(p, "pending_status"))
                         .insert(
                             transfer_id.to_string(),
                             PendingStatusChange {

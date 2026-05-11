@@ -245,7 +245,7 @@ async fn link_transfer_to_entry(...);
 
 ## 6. Network 相关建模原则
 
-### 6.6 核心思想
+### 6.1 核心思想
 
 > **uc-core 关注的是设备之间的“关系”，而不是“通信方式”。**
 

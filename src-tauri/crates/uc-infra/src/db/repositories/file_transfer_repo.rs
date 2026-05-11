@@ -115,17 +115,39 @@ impl<E: DbExecutor> FileTransferRepositoryPort for DieselFileTransferRepository<
 
         span.in_scope(|| {
             self.executor.run(move |conn| {
-                diesel::insert_into(file_transfer::table)
-                    .values(&row)
-                    .on_conflict(file_transfer::transfer_id)
-                    .do_update()
-                    .set((
-                        file_transfer::entry_id.eq(excluded(file_transfer::entry_id)),
-                        file_transfer::filename.eq(excluded(file_transfer::filename)),
-                        file_transfer::source_device.eq(excluded(file_transfer::source_device)),
-                        file_transfer::cached_path.eq(excluded(file_transfer::cached_path)),
-                    ))
-                    .execute(conn)?;
+                // 仅当行不存在 或 现有行 status='pending' 时才执行 upsert,
+                // 防止重试 seed 把已 transferring / completed / failed /
+                // cancelled 的终止态行覆盖回 pending。包在 transaction 里
+                // 保证 SELECT-then-INSERT 原子。
+                conn.transaction::<_, diesel::result::Error, _>(|conn| {
+                    let existing_status: Option<String> = file_transfer::table
+                        .filter(file_transfer::transfer_id.eq(&row.transfer_id))
+                        .select(file_transfer::status)
+                        .first::<String>(conn)
+                        .optional()?;
+                    if let Some(status) = existing_status.as_deref() {
+                        if status != TrackedFileTransferStatus::Pending.as_str() {
+                            tracing::warn!(
+                                transfer_id = %row.transfer_id,
+                                existing_status = status,
+                                "upsert_pending_transfer: skipping — existing row is not pending"
+                            );
+                            return Ok(());
+                        }
+                    }
+                    diesel::insert_into(file_transfer::table)
+                        .values(&row)
+                        .on_conflict(file_transfer::transfer_id)
+                        .do_update()
+                        .set((
+                            file_transfer::entry_id.eq(excluded(file_transfer::entry_id)),
+                            file_transfer::filename.eq(excluded(file_transfer::filename)),
+                            file_transfer::source_device.eq(excluded(file_transfer::source_device)),
+                            file_transfer::cached_path.eq(excluded(file_transfer::cached_path)),
+                        ))
+                        .execute(conn)?;
+                    Ok(())
+                })?;
                 Ok(())
             })
         })

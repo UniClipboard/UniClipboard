@@ -57,6 +57,13 @@ pub async fn start_mobile_lan_server(
         "mobile sync LAN listener listening (SyncClipboard-compat: /SyncClipboard.json + /file/:dataName)"
     );
 
+    if file_transfer.is_none() {
+        tracing::warn!(
+            "mobile sync LAN listener: file_transfer facade not wired — \
+             transfer lifecycle events (status_changed / progress) will be absent \
+             for PUT /file uploads. Check daemon assembly if this is unexpected."
+        );
+    }
     let router = build_router(facade, file_transfer);
     let join_handle = tokio::spawn(async move {
         axum::serve(listener, router)

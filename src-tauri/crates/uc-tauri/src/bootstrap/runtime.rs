@@ -146,10 +146,6 @@ impl TauriAppRuntime {
         self.desktop.event_emitter()
     }
 
-    pub fn set_event_emitter(&self, emitter: Arc<dyn HostEventEmitterPort>) {
-        self.desktop.set_event_emitter(emitter);
-    }
-
     pub fn device_id(&self) -> String {
         self.desktop.device_id()
     }

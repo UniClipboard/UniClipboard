@@ -30,8 +30,10 @@ pub struct DesktopRuntime {
     task_registry: Arc<TaskRegistry>,
     settings_port: Arc<dyn SettingsPort>,
     storage_paths: AppPaths,
-    /// Shared emitter cell —— bootstrap 期可 swap（例如从
-    /// `LoggingHostEventEmitter` 切到 daemon API emitter）。
+    /// Shared emitter cell —— GUI shell 装入 `LoggingHostEventEmitter`
+    /// 占位; daemon 启动时直接通过 `cell.write()` swap 成
+    /// `DaemonApiEventEmitter` (绑 broadcast::Sender), 让上游 publisher
+    /// 看到真 emitter。swap 路径只走 daemon 内部, 不暴露公开 set API。
     event_emitter_cell: Arc<RwLock<Arc<dyn HostEventEmitterPort>>>,
     device_id: String,
 }
@@ -122,23 +124,6 @@ impl DesktopRuntime {
                     "RwLock poisoned in DesktopRuntime::event_emitter, recovering from poisoned state"
                 );
                 Arc::clone(&*poisoned.into_inner())
-            }
-        }
-    }
-
-    /// Swap the event emitter. Called from daemon setup to replace the
-    /// initial `LoggingHostEventEmitter` with a daemon API emitter.
-    pub fn set_event_emitter(&self, emitter: Arc<dyn HostEventEmitterPort>) {
-        match self.event_emitter_cell.write() {
-            Ok(mut guard) => {
-                *guard = emitter;
-            }
-            Err(poisoned) => {
-                tracing::error!(
-                    "RwLock poisoned in DesktopRuntime::set_event_emitter, recovering from poisoned state"
-                );
-                let mut guard = poisoned.into_inner();
-                *guard = emitter;
             }
         }
     }

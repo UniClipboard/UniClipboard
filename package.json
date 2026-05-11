@@ -102,6 +102,7 @@
     "@eslint/compat": "^2.0.0",
     "@eslint/js": "^9.39.2",
     "@react-grab/mcp": "^0.1.25",
+    "@sentry/vite-plugin": "^5.2.1",
     "@tailwindcss/postcss": "^4.1.18",
     "@tailwindcss/typography": "^0.5.19",
     "@tailwindcss/vite": "^4.1.18",

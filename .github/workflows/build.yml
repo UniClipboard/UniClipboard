@@ -178,6 +178,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          VITE_APP_VERSION: ${{ steps.app-version.outputs.version }}
           VITE_SENTRY_DSN: ${{ secrets.VITE_SENTRY_DSN }}
           VITE_APP_ENV: ${{ steps.resolve-env.outputs.app_env }}
           # Backend Sentry DSN — independent Rust project DSN, baked into the
@@ -187,6 +188,13 @@ jobs:
           # Empty secret = backend Sentry disabled.
           SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
           APP_ENV: ${{ steps.resolve-env.outputs.app_env }}
+          # Frontend sourcemap upload via @sentry/vite-plugin during vite build.
+          # VITE_SENTRY_PROJECT is the front-end Sentry project slug — MUST be
+          # different from SENTRY_PROJECT (back-end). Plugin no-ops when token
+          # or project is missing.
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
+          VITE_SENTRY_PROJECT: ${{ secrets.VITE_SENTRY_PROJECT }}
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
@@ -208,6 +216,10 @@ jobs:
           # Backend Sentry DSN — independent Rust project DSN.
           SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
           APP_ENV: ${{ steps.resolve-env.outputs.app_env }}
+          # Frontend sourcemap upload via @sentry/vite-plugin during vite build.
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
+          VITE_SENTRY_PROJECT: ${{ secrets.VITE_SENTRY_PROJECT }}
         run: |
           if [ "${{ matrix.platform }}" = "windows-latest" ]; then
             bun run tauri build ${{ matrix.args }} --bundles nsis

@@ -31,6 +31,7 @@ use uc_core::ports::file_transfer_repository::PendingInboundTransfer;
 use uc_core::ports::{ClockPort, FileTransferRepositoryPort};
 use uc_core::FileTransferEvent;
 
+use crate::facade::host_event::FileTransferHostEventPublisher;
 use crate::file_transfer::{
     CancelTransfer, CancelTransferUseCase, CompleteTransfer, CompleteTransferUseCase, FailTransfer,
     FailTransferUseCase, FileTransferApplicationError, ReportTransferProgress,
@@ -74,6 +75,12 @@ pub struct FileTransferFacadeDeps {
     pub publisher: Arc<dyn FileTransferEventPublisherPort>,
     pub repo: Arc<dyn FileTransferRepositoryPort>,
     pub clock: Arc<dyn ClockPort>,
+    /// 可选:concrete publisher 引用,用于在 `link_transfer_to_entry` 成功后
+    /// flush buffered 阶段暂存的 `StatusChanged transferring`。生产装配会
+    /// 传入与 `publisher` 同一个 `Arc<FileTransferHostEventPublisher>`;
+    /// 测试场景可填 `None`,缺失只影响 mobile_lan buffered 阶段的状态过渡
+    /// 显示,不影响 store / projection 的真相。
+    pub host_publisher: Option<Arc<FileTransferHostEventPublisher>>,
 }
 
 /// 文件传输 lifecycle 应用层入口。
@@ -89,6 +96,7 @@ pub struct FileTransferFacade {
     cancel_uc: Arc<CancelTransferUseCase>,
     repo: Arc<dyn FileTransferRepositoryPort>,
     clock: Arc<dyn ClockPort>,
+    host_publisher: Option<Arc<FileTransferHostEventPublisher>>,
 }
 
 impl FileTransferFacade {
@@ -119,6 +127,7 @@ impl FileTransferFacade {
             cancel_uc,
             repo: deps.repo,
             clock: deps.clock,
+            host_publisher: deps.host_publisher,
         }
     }
 
@@ -167,10 +176,23 @@ impl FileTransferFacade {
         input: LinkTransferToEntry,
     ) -> Result<bool, FileTransferApplicationError> {
         let now_ms = self.clock.now_ms();
-        self.repo
+        let updated = self
+            .repo
             .link_transfer_to_entry(&input.transfer_id, &input.entry_id, now_ms)
             .await
-            .map_err(|err| FileTransferApplicationError::Repository(err.to_string()))
+            .map_err(|err| FileTransferApplicationError::Repository(err.to_string()))?;
+        // projection 行的 entry_id 真实化之后,补发 buffered 阶段被暂存的
+        // `StatusChanged transferring`(若有);见 publisher.rs 的占位前缀逻
+        // 辑。`updated == false` 表示 projection 没匹配行(transfer_id 没被
+        // seed 过),既然没 link 也就没什么可 flush 的,跳过。
+        if updated {
+            if let Some(publisher) = self.host_publisher.as_ref() {
+                publisher
+                    .flush_pending_status_after_link(&input.transfer_id)
+                    .await;
+            }
+        }
+        Ok(updated)
     }
 
     /// 在 receiver-side projection 表里 upsert 一条 `pending` 行。

@@ -279,13 +279,14 @@ pub fn build_file_transfer_assembly(
     ));
 
     let store_port: Arc<dyn FileTransferEventStorePort> = store as _;
-    let publisher_port: Arc<dyn FileTransferEventPublisherPort> = publisher as _;
+    let publisher_port: Arc<dyn FileTransferEventPublisherPort> = Arc::clone(&publisher) as _;
 
     let facade = Arc::new(FileTransferFacade::new(FileTransferFacadeDeps {
         store: store_port,
         publisher: publisher_port,
         repo: Arc::clone(&file_transfer_repo),
         clock: Arc::clone(&clock),
+        host_publisher: Some(Arc::clone(&publisher)),
     }));
 
     let lifecycle = Arc::new(FileTransferLifecycle {

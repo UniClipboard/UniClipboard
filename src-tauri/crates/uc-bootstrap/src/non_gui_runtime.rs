@@ -267,21 +267,30 @@ pub fn build_app_facade_from_deps(
     // 会以 `LanListenerDisabled` 失败。Phase 3 接入 daemon LAN listener
     // 时把 listener 启停信号反向喂回 `InMemoryMobileSyncEndpointInfoAdapter`
     // 的 `set` / `clear`，这一处 wiring 即可让 register flow 端到端跑通。
-    // P5a.6:`apply_inbound` 由 daemon 入口装配 enhanced 版本注入(同一份
-    // 实例也共享给 `InboundClipboardFacade`);CLI / tauri 不接 LAN listener
-    // 的入口走下面的 fallback —— 一份 capture+write 都是 NoOp 的 minimal
-    // 实例,PUT 路径若真被调到会立刻 Err。
-    let apply_inbound = options
+    // mobile_sync facade 装配规则 (Phase 4 + PR #610 合并后):
+    //   - daemon 路径不走本函数装 mobile_sync —— 通过 `build_daemon_lifecycle_facades`
+    //     单独构造 enhanced 版本, 然后 `install_daemon_lifecycle` swap 进
+    //     `AppFacade.mobile_sync` OnceLock。所以 daemon 路径调本函数时
+    //     `mobile_sync_apply_inbound` 必须为 `None`, OnceLock 留空待 swap。
+    //   - GUI 路径同样不装 (LAN listener 由 daemon 起, GUI 进程内没有自己的
+    //     LAN PUT 入口),`mobile_sync_apply_inbound: None` → OnceLock 留空,
+    //     daemon 启动时 swap 进 enhanced 版本。
+    //   - CLI 路径需要 mobile_sync facade 跑查询命令 (`list_devices` 等),
+    //     显式传一份 fallback `Some(build_fallback_apply_inbound(deps))` 即可。
+    //
+    // `Some` 才装,`None` 留空 —— OnceLock 语义下,留空才能让 daemon-lifecycle
+    // swap 不撞已装入的 OnceLock。
+    let mobile_sync_facade = options
         .mobile_sync_apply_inbound
         .clone()
-        .unwrap_or_else(|| build_fallback_apply_inbound(deps));
-
-    let mobile_sync_facade = build_mobile_sync_facade(
-        deps,
-        storage_paths,
-        apply_inbound,
-        options.file_transfer.clone(),
-    );
+        .map(|apply_inbound| {
+            build_mobile_sync_facade(
+                deps,
+                storage_paths,
+                apply_inbound,
+                options.file_transfer.clone(),
+            )
+        });
 
     let clipboard_restore = options.clipboard_restore.map(|restore| {
         Arc::new(ClipboardRestoreFacade::new(ClipboardRestoreFacadeDeps {
@@ -352,7 +361,7 @@ pub fn build_app_facade_from_deps(
             app_version_state: deps.app_version_state.clone(),
             setup_status: deps.setup_status.clone(),
         })),
-        mobile_sync: Some(mobile_sync_facade),
+        mobile_sync: mobile_sync_facade,
     }))
 }
 
@@ -472,6 +481,11 @@ pub async fn build_cli_app_runtime(
         deps.clipboard.selection_repo.clone(),
     )));
 
+    // CLI 不接 LAN listener,但仍需 `mobile_sync` facade 跑查询命令
+    // (`list_devices` / `get_settings` 等)。显式传 fallback apply_inbound,
+    // PUT 路径真被调到才报 "not configured" Err —— CLI 场景下不会发生。
+    let mobile_sync_apply_inbound = build_fallback_apply_inbound(deps);
+
     let app_facade = build_app_facade_from_deps(
         deps,
         &storage_paths,
@@ -484,6 +498,7 @@ pub async fn build_cli_app_runtime(
             blob_transfer_port: Some(Arc::clone(&assembly.blob_transfer)),
             file_transfer: Some(wired.file_transfer_facade.clone()),
             search_coordinator: Some(search_coordinator),
+            mobile_sync_apply_inbound: Some(mobile_sync_apply_inbound),
             ..Default::default()
         },
     );

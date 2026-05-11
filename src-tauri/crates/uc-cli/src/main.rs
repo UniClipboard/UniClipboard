@@ -238,6 +238,12 @@ fn main() -> anyhow::Result<()> {
     };
 
     if let Commands::Daemon = command {
+        // `uniclip` 二进制既能当 CLI 又能当 standalone daemon,光看
+        // current_exe 区分不出来。在调 bootstrap 之前先打这个标记,让
+        // `uc_observability::ScopeContext::resolve` 把本进程的 device.role
+        // 标成 `daemon`,Sentry 上能清楚区分 daemon 事件与 CLI 事件。
+        std::env::set_var("UC_HOST_ROLE", "daemon");
+
         // CLI `start` detached-spawns this same binary with the `daemon`
         // subcommand. Standalone is the only mode this binary ever runs in
         // since the GUI has been switched to in-process daemon startup.

@@ -141,6 +141,45 @@ export function initSentry(): void {
 }
 
 /**
+ * Device + app meta accepted by {@link applyDeviceMetaToSentry}. Shape matches
+ * `src/api/runtime.ts::DeviceMeta` one-to-one but is duplicated here so this
+ * module stays free of any `@tauri-apps/*` import — keeping it Vitest-friendly
+ * for the existing `sentry.test.ts` browser-only test suite.
+ */
+export interface SentryDeviceMeta {
+  device_id: string
+  device_role: string
+  platform: string
+  app_version: string
+  app_channel: string
+}
+
+/**
+ * Push the device + app meta returned by `get_device_meta` into Sentry's
+ * global scope. Mirrors the Rust `sentry::configure_scope` call wired up in
+ * `uc-bootstrap::tracing` so events from the webview and the Rust host share
+ * the exact same `device.id` / `app.version` / `app.channel` taxonomy and can
+ * be joined in the Sentry UI.
+ *
+ * 注意:webview 自身的角色固定为 `webview`,而 Rust 主进程上报的
+ * `device_role`(`gui-host` / `daemon` / `cli`)挂在二级 tag
+ * `device.host_role` 上 —— 这样一台机器的两个进程在 Sentry 上既能用 `device.id`
+ * 聚合,又能用 role 区分。
+ */
+export function applyDeviceMetaToSentry(meta: SentryDeviceMeta): void {
+  if (!sentryEnabled) {
+    return
+  }
+  Sentry.setUser({ id: meta.device_id })
+  Sentry.setTag('device.id', meta.device_id)
+  Sentry.setTag('device.role', 'webview')
+  Sentry.setTag('device.host_role', meta.device_role)
+  Sentry.setTag('device.platform', meta.platform)
+  Sentry.setTag('app.version', meta.app_version)
+  Sentry.setTag('app.channel', meta.app_channel)
+}
+
+/**
  * Sentry-instrumented Routes component for React Router v7.
  * Use this instead of `Routes` to get parameterized navigation tracing.
  */

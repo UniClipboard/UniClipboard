@@ -10029,6 +10029,7 @@ dependencies = [
  "uc-daemon-local",
  "uc-desktop",
  "uc-infra",
+ "uc-observability",
  "uc-platform",
  "url",
  "windows 0.61.3",

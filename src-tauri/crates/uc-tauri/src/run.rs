@@ -484,6 +484,7 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
             // Lifecycle commands
             crate::commands::get_tauri_pid,
             crate::commands::get_device_id,
+            crate::commands::get_device_meta,
             crate::commands::get_daemon_connection_info,
             // Restart commands (Phase 95)
             crate::commands::restart::restart_app,

@@ -107,6 +107,20 @@ pub fn init_tracing_subscriber() -> anyhow::Result<()> {
         let _ = uc_observability::set_global_device_id(device_id.clone());
     }
 
+    // Step 1c: 装配进程级 ScopeContext —— 跨设备日志关联的核心 meta 容器。
+    //
+    // 早在 sentry::init 之前就 resolve 一次：
+    //   1. `Step 3` 里 sentry::configure_scope 直接读这份上下文写 user/tag,
+    //      让所有出站事件自动带 device.id / device.role / app.version / app.channel。
+    //   2. 即使没有 SENTRY_DSN(本地开发),后续业务代码也能通过
+    //      `uc_observability::global_scope()` 拿到一致的设备元数据。
+    //
+    // 这里把*调用方自己的* CARGO_PKG_VERSION 透传进去 —— uc-bootstrap 与
+    // 工作区版本一致(workspace = true),所以等价于 app 版本号。
+    let scope_ctx =
+        uc_observability::ScopeContext::resolve(device_id.clone(), env!("CARGO_PKG_VERSION"));
+    let _ = uc_observability::set_global_scope(scope_ctx.clone());
+
     // Step 2: Select log profile
     let profile = LogProfile::from_env();
 
@@ -225,6 +239,27 @@ pub fn init_tracing_subscriber() -> anyhow::Result<()> {
         if SENTRY_GUARD.set(guard).is_err() {
             eprintln!("Sentry guard already initialized");
         }
+
+        // 把 ScopeContext 推进 Sentry 的全局 scope —— 在 sentry::init 之后立刻
+        // 调用,后续任何 Event / Log / Span 出站时都会自动带这些 user + tag。
+        //
+        // 为什么用 user.id 而不仅仅是 tag:Sentry 的 Issue 列表默认按 `user.id`
+        // 分组与筛选,这条让单台设备的所有 issue 在 UI 上聚合,运维侧可以一眼
+        // 看出"哪台机器在炸"。`device.id` tag 是同样的 UUID 的搜索冗余,方便
+        // 跨 UI 视图(Logs / Performance)用 tag 表达式 filter。
+        sentry::configure_scope(|scope| {
+            if let Some(did) = scope_ctx.device_id.as_deref() {
+                scope.set_user(Some(sentry::User {
+                    id: Some(did.to_string()),
+                    ..Default::default()
+                }));
+                scope.set_tag("device.id", did);
+            }
+            scope.set_tag("device.role", scope_ctx.device_role);
+            scope.set_tag("device.platform", scope_ctx.platform);
+            scope.set_tag("app.version", scope_ctx.app_version);
+            scope.set_tag("app.channel", scope_ctx.app_channel);
+        });
 
         // Apply the profile-level EnvFilter to match the JSON file layer.
         //

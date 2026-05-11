@@ -113,7 +113,7 @@ mod tests {
     }
 
     #[test]
-    fn multi_rep_narrows_to_policys_paste_rep() {
+    fn multi_rep_narrows_to_policies_paste_rep() {
         // text/plain + text/html + image/png. V1's DefaultPaste ranks
         // RichText (html) above PlainText above Image (see
         // `uc-core::clipboard::policy::v1::SelectRepresentationPolicyV1::score`),

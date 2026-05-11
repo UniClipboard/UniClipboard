@@ -6,6 +6,7 @@ pub(crate) mod app_facade_assembly;
 pub(crate) mod bootstrap;
 pub(crate) mod handle;
 pub(crate) mod host;
+pub(crate) mod mobile_lan_lifecycle;
 pub(crate) mod ownership;
 pub(crate) mod peers;
 pub(crate) mod run_loop;

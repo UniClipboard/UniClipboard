@@ -70,12 +70,14 @@ function normalizeRelease(release) {
 
 export function selectPreviousPublishedRelease(releases, currentVersion) {
   const normalizedCurrentVersion = stripVersionTagPrefix(currentVersion)
+  const currentIsStable = parseSemver(normalizedCurrentVersion).prerelease === null
 
   const candidates = releases
     .filter(release => !release.isDraft)
     .filter(release => Boolean(release.publishedAt))
     .map(normalizeRelease)
     .filter(release => compareVersions(release.version, normalizedCurrentVersion) < 0)
+    .filter(release => !currentIsStable || parseSemver(release.version).prerelease === null)
     .sort((left, right) => compareVersions(right.version, left.version))
 
   return candidates[0] ?? null

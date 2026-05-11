@@ -178,10 +178,6 @@ impl MobileLanLifecycleController {
     }
 }
 
-// Workaround: 上面 `**guard = Some(...)` 用法 - MutexGuard 的 DerefMut 让我们写
-// `*guard = Some(...)` 即可,双星只是为了显式表达"穿透 MutexGuard 到 Option";
-// 但 Rust 类型推断对单星更友好,我用单星重写。
-
 #[async_trait]
 impl MobileLanLifecyclePort for MobileLanLifecycleController {
     async fn apply(&self, target: MobileLanTarget) {

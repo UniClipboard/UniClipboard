@@ -42,18 +42,18 @@ use crate::tray::TrayState;
 /// service_tasks join + 5s http_handle graceful join + services.stop()
 /// 串行），最长 wallclock ~10s。前端会在 [`SHUTDOWN_FRONTEND_GRACE_MS`]
 /// 内主动关掉 WebSocket，正常 case 整体 <1s；这里给 15s 兜底覆盖最坏路径。
-const DAEMON_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(15);
+pub(crate) const DAEMON_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(15);
 
 /// 前端事件名——告诉 webview "马上关 daemon 了，请主动 close 你那条
 /// WebSocket"。前端 `daemon-ws-bootstrap.ts` 的 listener 收到后调用
 /// `daemonWs.disconnect()` 发送 close frame，让 daemon 端的 axum
 /// `with_graceful_shutdown` 立即返回，不等 30s heartbeat 超时。
-const FRONTEND_SHUTDOWN_EVENT: &str = "app://shutting-down";
+pub(crate) const FRONTEND_SHUTDOWN_EVENT: &str = "app://shutting-down";
 
 /// 给前端响应 `app://shutting-down` 事件、发出 WebSocket close frame
 /// 的时间。100ms 对单进程内 IPC + 浏览器 WebSocket close frame 飞过
 /// loopback 来说极宽裕——用户感知不到这点延迟。
-const SHUTDOWN_FRONTEND_GRACE_MS: u64 = 100;
+pub(crate) const SHUTDOWN_FRONTEND_GRACE_MS: u64 = 100;
 
 /// 这个 GUI shell 期望 daemon 上报的 `packageVersion`——`probe_daemon_health`
 /// 用它做版本兼容性判断。`env!` 拿的是 `uc-tauri` 自己的 cargo 版本，

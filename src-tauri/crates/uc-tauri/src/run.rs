@@ -178,7 +178,6 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
         .manage(runtime.clone())
         .manage(DaemonConnectionState::clone(&daemon_connection_state))
         .manage(DaemonOwnership::clone(&daemon_ownership))
-        .manage(process_handles.clone())
         .manage(TrayState::default())
         .manage(task_registry.clone())
         .on_window_event(|window, event| {
@@ -264,9 +263,9 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
             let daemon_connection_state_for_setup = daemon_connection_state.clone();
             let daemon_ownership_for_setup = daemon_ownership.clone();
             let runtime_for_daemon = runtime.clone();
-            // 进程级一次性资源,daemon 启动复用同一份 —— sqlite pool 等跨 daemon
-            // reload 不重建。
-            let process_handles_for_daemon = process_handles.clone();
+            // 进程级一次性资源,daemon 启动复用同一份 —— sqlite pool 等跨
+            // daemon 启停不重建 (方案 C 后 daemon 进程内只装一次)。
+            let process_handles_for_daemon = process_handles;
             // GUI 进程级 AppFacade,daemon 启动 swap 5 个 daemon-lifecycle 子 facade。
             let app_facade_for_daemon = Arc::clone(runtime_for_daemon.app_facade());
             tauri::async_runtime::spawn(async move {

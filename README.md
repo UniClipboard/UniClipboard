@@ -14,7 +14,7 @@ It enables seamless and secure syncing of text, images, and files across multipl
 ![Image](https://github.com/user-attachments/assets/8d339467-5bbe-4afa-9235-1d26cbff82c9)
 
 <p align="center">
-  <video src="https://github.com/user-attachments/assets/2775e733-c92b-41e5-b842-8173c206ad61" controls muted playsinline width="800"></video>
+  <video src="https://github.com/user-attachments/assets/29f4bf5d-8996-4602-8784-067fb919c671" controls muted playsinline width="800"></video>
 </p>
 
 <div align="center">

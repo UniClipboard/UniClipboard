@@ -155,7 +155,7 @@ pub fn run(run_mode: DaemonRunMode) -> anyhow::Result<()> {
 ///   clipboard_write_coordinator + file_transfer_lifecycle)。daemon
 ///   start_in_process 不再 wire 自己的 deps —— sqlite pool 等跨 daemon
 ///   reload 复用同一份。
-pub async fn start_in_process(
+pub(crate) async fn start_in_process(
     run_mode: DaemonRunMode,
     app_facade: Arc<AppFacade>,
     handles: ProcessRuntimeHandles,

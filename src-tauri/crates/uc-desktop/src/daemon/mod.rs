@@ -23,5 +23,6 @@ pub(crate) mod tokio_runtime;
 pub(crate) mod workers;
 
 pub use handle::DaemonHandle;
-pub use host::{run, start_in_process, ProcessRuntimeHandles};
+pub(crate) use host::start_in_process;
+pub use host::{run, ProcessRuntimeHandles};
 pub use ownership::DaemonOwnership;

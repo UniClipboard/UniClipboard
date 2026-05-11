@@ -98,9 +98,13 @@ pub enum SyncFrequencyDto {
     Interval,
 }
 
+// `rename_all = "camelCase"` 只 rename 变体名（`ByAge` → `byAge`），不会改写
+// struct 变体内部的字段名。必须同时加 `rename_all_fields = "camelCase"`，
+// 否则 wire 是 `{"byAge":{"max_age":N}}`，与前端 `{ byAge: { maxAge: N } }`
+// 错位，导致 PUT /settings 反序列化失败返回 422（见 issue #606）。
 #[serde_as]
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", rename_all_fields = "camelCase")]
 pub enum RetentionRuleDto {
     /// 按时间清理
     ByAge {
@@ -707,5 +711,162 @@ mod network_dto_tests {
         assert!(dto.general.is_none());
         assert!(dto.network.is_none());
         assert!(dto.file_sync.is_none());
+    }
+}
+
+/// issue #606 回归守卫 —— `RetentionRuleDto` wire 形态锁定。
+///
+/// 历史背景：旧实现只在枚举上声明 `rename_all = "camelCase"`，serde 只 rename
+/// 变体名（`ByAge` → `byAge`），不会改写 struct 变体内部字段名。结果 wire 是
+/// `{"byAge":{"max_age":N}}`、前端发 `{"byAge":{"maxAge":N}}`，PUT /settings
+/// 反序列化失败返回 422。修复加了 `rename_all_fields = "camelCase"`。
+///
+/// 下面五条用例锁住每个变体的 wire 形态，并显式 reject 旧 bug-shape；
+/// 任何方向回退（删 `rename_all_fields`、把字段改 snake_case 等）都会被抓住。
+#[cfg(test)]
+mod retention_rule_dto_tests {
+    use super::*;
+
+    #[test]
+    fn by_age_wire_uses_camel_case_field() {
+        let rule = RetentionRuleDto::ByAge {
+            max_age: Duration::from_secs(2_592_000),
+        };
+        let wire = serde_json::to_string(&rule).expect("serialize ByAge");
+        assert_eq!(
+            wire, r#"{"byAge":{"maxAge":2592000}}"#,
+            "wire MUST be camelCase inside variant (issue #606)"
+        );
+
+        let parsed: RetentionRuleDto =
+            serde_json::from_str(r#"{"byAge":{"maxAge":86400}}"#).expect("accept camelCase wire");
+        match parsed {
+            RetentionRuleDto::ByAge { max_age } => assert_eq!(max_age.as_secs(), 86400),
+            _ => panic!("unexpected variant"),
+        }
+
+        // 关键负面用例：旧 bug-shape 必须被拒绝，避免回退悄无声息地通过。
+        assert!(
+            serde_json::from_str::<RetentionRuleDto>(r#"{"byAge":{"max_age":86400}}"#).is_err(),
+            "snake_case field on wire MUST be rejected — that's the issue #606 bug shape"
+        );
+    }
+
+    #[test]
+    fn by_count_wire_uses_camel_case_field() {
+        let rule = RetentionRuleDto::ByCount { max_items: 500 };
+        assert_eq!(
+            serde_json::to_string(&rule).unwrap(),
+            r#"{"byCount":{"maxItems":500}}"#
+        );
+
+        let parsed: RetentionRuleDto =
+            serde_json::from_str(r#"{"byCount":{"maxItems":1000}}"#).expect("accept camelCase");
+        match parsed {
+            RetentionRuleDto::ByCount { max_items } => assert_eq!(max_items, 1000),
+            _ => panic!("unexpected variant"),
+        }
+
+        assert!(
+            serde_json::from_str::<RetentionRuleDto>(r#"{"byCount":{"max_items":1}}"#).is_err(),
+            "snake_case field must be rejected"
+        );
+    }
+
+    #[test]
+    fn by_content_type_wire_uses_camel_case_field() {
+        let rule = RetentionRuleDto::ByContentType {
+            content_type: ContentTypesDto {
+                text: true,
+                image: false,
+                link: false,
+                file: false,
+                code_snippet: false,
+                rich_text: false,
+            },
+            max_age: Duration::from_secs(86_400),
+        };
+        let wire = serde_json::to_value(&rule).expect("serialize ByContentType");
+        let expected = serde_json::json!({
+            "byContentType": {
+                "contentType": {
+                    "text": true,
+                    "image": false,
+                    "link": false,
+                    "file": false,
+                    "codeSnippet": false,
+                    "richText": false,
+                },
+                "maxAge": 86_400,
+            }
+        });
+        assert_eq!(wire, expected);
+    }
+
+    #[test]
+    fn by_total_size_and_sensitive_wire_camel_case() {
+        let by_size = RetentionRuleDto::ByTotalSize {
+            max_bytes: 1_073_741_824,
+        };
+        assert_eq!(
+            serde_json::to_string(&by_size).unwrap(),
+            r#"{"byTotalSize":{"maxBytes":1073741824}}"#
+        );
+
+        let sensitive = RetentionRuleDto::Sensitive {
+            max_age: Duration::from_secs(3600),
+        };
+        assert_eq!(
+            serde_json::to_string(&sensitive).unwrap(),
+            r#"{"sensitive":{"maxAge":3600}}"#
+        );
+    }
+
+    /// 端到端：把前端 `StorageSection.setByAgeRule / setByCountRule` 拼出的
+    /// patch body 用 `SettingsPatchDto` 反序列化。修复前这一步在 axum
+    /// `Json<SettingsPatchDto>` 提取器内部抛 `missing field "max_age"`，
+    /// 返回 422（issue #606 用户实际碰到的现象）。
+    #[test]
+    fn settings_patch_dto_accepts_frontend_retention_rules_payload() {
+        let body = r#"{
+            "retentionPolicy": {
+                "enabled": true,
+                "rules": [
+                    {"byAge": {"maxAge": 5184000}},
+                    {"byCount": {"maxItems": 1000}}
+                ],
+                "skipPinned": true,
+                "evaluation": "anyMatch"
+            }
+        }"#;
+
+        let patch: SettingsPatchDto =
+            serde_json::from_str(body).expect("PUT body must deserialize (issue #606)");
+        let retention = patch.retention_policy.expect("retentionPolicy present");
+        let rules = retention.rules.expect("rules present");
+        assert_eq!(rules.len(), 2);
+        match &rules[0] {
+            RetentionRuleDto::ByAge { max_age } => assert_eq!(max_age.as_secs(), 5_184_000),
+            other => panic!("unexpected first rule: {other:?}"),
+        }
+        match &rules[1] {
+            RetentionRuleDto::ByCount { max_items } => assert_eq!(*max_items, 1000),
+            other => panic!("unexpected second rule: {other:?}"),
+        }
+    }
+
+    /// 防御回归：旧 bug-shape（变体内部字段是 snake_case）在 PUT body 层级
+    /// 也必须被拒绝。
+    #[test]
+    fn settings_patch_dto_rejects_legacy_snake_case_inside_variant() {
+        let buggy = r#"{
+            "retentionPolicy": {
+                "rules": [{"byAge": {"max_age": 86400}}]
+            }
+        }"#;
+        assert!(
+            serde_json::from_str::<SettingsPatchDto>(buggy).is_err(),
+            "snake_case field inside variant MUST NOT deserialize — that's the issue #606 bug shape"
+        );
     }
 }

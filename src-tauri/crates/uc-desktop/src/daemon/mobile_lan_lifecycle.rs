@@ -160,9 +160,6 @@ impl MobileLanLifecycleController {
                     cancel,
                     join: handle.join_handle,
                 });
-                // 注：`**guard` 解两层 —— MutexGuard 解一次得到 `&mut Option<...>`,
-                // 再 `*` 一次才能赋值进 Option 本身。`*guard = Some(...)` 在某些
-                // tokio 版本下会因 DerefMut 推断歧义编译失败,显式两层最稳。
             }
             Err(e) => {
                 let reason = format!("{}", e);
@@ -251,13 +248,11 @@ mod tests {
                 anyhow::bail!("simulated bind failure on {}", bind);
             }
 
-            // 不起真实 axum 服务 —— 我们只是要一个"在 cancel 之前一直活着"的
-            // JoinHandle, 用最小语义模拟 listener 的生命周期。绑端口拿到真实
-            // bound_addr(覆盖 ephemeral 0 → OS 分配的具体端口), 然后立刻 drop
-            // 听 socket; 任务体只等 cancel。避免给 uc-desktop dev-deps 加 axum。
-            let listener = tokio::net::TcpListener::bind(bind).await?;
-            let bound_addr = listener.local_addr()?;
-            drop(listener);
+            // 纯假 spawner:不真实 bind,bound_addr 直接回 bind 入参,join
+            // handle 等 cancel。这样测试可以用任何固定端口(包括 12345 这种
+            // 常用占用风险端口)而不撞本机环境真实端口冲突,也避免连续
+            // bind/drop 同端口在某些平台触发的瞬时 TIME_WAIT。
+            let bound_addr = bind;
             let join_handle = tokio::spawn(async move {
                 cancel.cancelled().await;
                 Ok::<(), anyhow::Error>(())
@@ -283,9 +278,12 @@ mod tests {
         (controller, endpoint_info)
     }
 
-    /// 用 ephemeral 端口避免本地真实端口冲突 —— port=0 让 OS 分配。
-    /// FakeSpawner 内部把 bound_addr 写回 endpoint_info,断言时用通配匹配。
-    const EPHEMERAL: u16 = 0;
+    /// 测试用固定端口。FakeSpawner 已经不真实 bind, 这里随便选两个不冲突
+    /// 的就行 —— 不会撞本机环境。选 42720 是因为它就是生产默认值,确保
+    /// "同端口 no-op" 这条测试断言的语义就是生产意义上的"用户两次保存同
+    /// 一个端口"。
+    const FIXED_PORT_A: u16 = 42720;
+    const FIXED_PORT_B: u16 = 51234;
 
     #[tokio::test]
     async fn apply_disabled_from_none_is_noop() {
@@ -306,7 +304,8 @@ mod tests {
         let spawner = Arc::new(FakeSpawner::new());
         let (c, ei) = build(spawner.clone());
 
-        c.apply(MobileLanTarget::Enabled { port: EPHEMERAL }).await;
+        c.apply(MobileLanTarget::Enabled { port: FIXED_PORT_A })
+            .await;
 
         assert_eq!(spawner.starts.load(Ordering::SeqCst), 1);
         match ei.current_status().await.unwrap() {
@@ -325,7 +324,8 @@ mod tests {
         let spawner = Arc::new(FakeSpawner::new());
         let (c, ei) = build(spawner.clone());
 
-        c.apply(MobileLanTarget::Enabled { port: EPHEMERAL }).await;
+        c.apply(MobileLanTarget::Enabled { port: FIXED_PORT_A })
+            .await;
         c.apply(MobileLanTarget::Disabled).await;
 
         assert_eq!(spawner.starts.load(Ordering::SeqCst), 1);
@@ -340,23 +340,25 @@ mod tests {
         let spawner = Arc::new(FakeSpawner::new());
         let (c, _ei) = build(spawner.clone());
 
-        // 起一次 listener 拿到实际端口
-        c.apply(MobileLanTarget::Enabled { port: EPHEMERAL }).await;
-        let bound_port = {
-            let guard = c.state.lock().await;
-            guard.as_ref().expect("running").port
-        };
-        // 注意:bound_port == 0(因为 controller 内部记的是请求的 port,不是实际 bound_addr)。
-        // 这是 controller 当前设计的边界 —— 单测中我们必须用 bound_port 比对。
-
-        // 再 apply 同 port → no-op
-        c.apply(MobileLanTarget::Enabled { port: bound_port }).await;
+        // 起一次固定端口 → 再 apply 同一个固定端口。controller 的 state
+        // 字段存的是"请求的 port",所以 (Some(FIXED_PORT_A), Enabled{FIXED_PORT_A})
+        // 必须命中 no-op 分支,FakeSpawner 不会被第二次调用。
+        c.apply(MobileLanTarget::Enabled { port: FIXED_PORT_A })
+            .await;
+        c.apply(MobileLanTarget::Enabled { port: FIXED_PORT_A })
+            .await;
 
         assert_eq!(
             spawner.starts.load(Ordering::SeqCst),
             1,
             "same-port apply must not re-spawn"
         );
+        // 记下来的端口正是 FIXED_PORT_A,而不是 OS 分配的 ephemeral —— 这条
+        // 断言钉死了 controller 内部 state 用"请求 port"做比对的契约。
+        {
+            let guard = c.state.lock().await;
+            assert_eq!(guard.as_ref().expect("running").port, FIXED_PORT_A);
+        }
 
         c.apply(MobileLanTarget::Disabled).await;
     }
@@ -366,12 +368,14 @@ mod tests {
         let spawner = Arc::new(FakeSpawner::new());
         let (c, ei) = build(spawner.clone());
 
-        // 起一次 port=0(ephemeral)
-        c.apply(MobileLanTarget::Enabled { port: EPHEMERAL }).await;
+        // 起一次 FIXED_PORT_A
+        c.apply(MobileLanTarget::Enabled { port: FIXED_PORT_A })
+            .await;
         assert_eq!(spawner.starts.load(Ordering::SeqCst), 1);
 
-        // 切换到 port=12345(controller 视角是不同 port),会触发 stop + start
-        c.apply(MobileLanTarget::Enabled { port: 12345 }).await;
+        // 切换到 FIXED_PORT_B → controller 视角是不同 port,触发 stop + start
+        c.apply(MobileLanTarget::Enabled { port: FIXED_PORT_B })
+            .await;
         assert_eq!(
             spawner.starts.load(Ordering::SeqCst),
             2,
@@ -392,7 +396,8 @@ mod tests {
         spawner.arm_bind_failure(1); // 第一次 spawn 失败
         let (c, ei) = build(spawner.clone());
 
-        c.apply(MobileLanTarget::Enabled { port: EPHEMERAL }).await;
+        c.apply(MobileLanTarget::Enabled { port: FIXED_PORT_A })
+            .await;
 
         assert_eq!(spawner.starts.load(Ordering::SeqCst), 1);
         // state 保持 None(没 listener 跑着)
@@ -410,7 +415,8 @@ mod tests {
 
         // 下一次 apply(Enabled) 不应被失败状态阻塞 —— controller 视角仍然
         // 是 (None, Enabled) 应当 spawn,本次 spawner 不再失败 → 成功
-        c.apply(MobileLanTarget::Enabled { port: EPHEMERAL }).await;
+        c.apply(MobileLanTarget::Enabled { port: FIXED_PORT_A })
+            .await;
         assert_eq!(spawner.starts.load(Ordering::SeqCst), 2);
         assert!(matches!(
             ei.current_status().await.unwrap(),

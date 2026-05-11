@@ -1,17 +1,43 @@
 import { resolve } from 'path'
+import { sentryVitePlugin } from '@sentry/vite-plugin'
 import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
 import { defineConfig } from 'vite'
 
 // @ts-expect-error process is a nodejs global
 const host = process.env.TAURI_DEV_HOST
+// @ts-expect-error process is a nodejs global
+const sentryAuthToken = process.env.SENTRY_AUTH_TOKEN
+// @ts-expect-error process is a nodejs global
+const sentryOrg = process.env.SENTRY_ORG
+// @ts-expect-error process is a nodejs global
+const sentryProject = process.env.VITE_SENTRY_PROJECT
+// @ts-expect-error process is a nodejs global
+const appVersion = process.env.VITE_APP_VERSION
 
 // https://vitejs.dev/config/
 export default defineConfig(async () => ({
-  plugins: [react(), tailwindcss()],
+  plugins: [
+    react(),
+    tailwindcss(),
+    // Upload sourcemaps to Sentry during release builds so production stack
+    // traces resolve back to original .tsx file/line. Disabled when
+    // SENTRY_AUTH_TOKEN is missing (local dev, PR builds without secrets).
+    sentryVitePlugin({
+      org: sentryOrg,
+      project: sentryProject,
+      authToken: sentryAuthToken,
+      release: appVersion ? { name: appVersion } : undefined,
+      disable: !sentryAuthToken || !sentryProject,
+    }),
+  ],
 
   // Multi-page build: main app + clipboard panel
   build: {
+    // 'hidden' generates sourcemaps for upload but strips the
+    // //# sourceMappingURL= comment from emitted JS, so the public bundle
+    // does not advertise the map location.
+    sourcemap: 'hidden',
     rollupOptions: {
       input: {
         main: resolve('./index.html'),

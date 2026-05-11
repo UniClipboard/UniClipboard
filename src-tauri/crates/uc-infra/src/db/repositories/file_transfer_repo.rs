@@ -1,5 +1,6 @@
 use async_trait::async_trait;
 use diesel::prelude::*;
+use diesel::upsert::excluded;
 use tracing::debug_span;
 
 use crate::db::models::{FileTransferRow, NewFileTransferRow};
@@ -85,6 +86,68 @@ impl<E: DbExecutor> FileTransferRepositoryPort for DieselFileTransferRepository<
                         .values(row)
                         .execute(conn)?;
                 }
+                Ok(())
+            })
+        })
+    }
+
+    async fn upsert_pending_transfer(
+        &self,
+        transfer: &PendingInboundTransfer,
+    ) -> anyhow::Result<()> {
+        let span = debug_span!(
+            "infra.sqlite.upsert_pending_transfer",
+            transfer_id = %transfer.transfer_id
+        );
+        let row = NewFileTransferRow {
+            transfer_id: transfer.transfer_id.clone(),
+            entry_id: transfer.entry_id.clone(),
+            filename: transfer.filename.clone(),
+            file_size: None,
+            content_hash: None,
+            status: TrackedFileTransferStatus::Pending.as_str().to_string(),
+            source_device: transfer.origin_device_id.clone(),
+            cached_path: Some(transfer.cached_path.clone()),
+            failure_reason: None,
+            created_at_ms: transfer.created_at_ms,
+            updated_at_ms: transfer.created_at_ms,
+        };
+
+        span.in_scope(|| {
+            self.executor.run(move |conn| {
+                // 仅当行不存在 或 现有行 status='pending' 时才执行 upsert,
+                // 防止重试 seed 把已 transferring / completed / failed /
+                // cancelled 的终止态行覆盖回 pending。包在 transaction 里
+                // 保证 SELECT-then-INSERT 原子。
+                conn.transaction::<_, diesel::result::Error, _>(|conn| {
+                    let existing_status: Option<String> = file_transfer::table
+                        .filter(file_transfer::transfer_id.eq(&row.transfer_id))
+                        .select(file_transfer::status)
+                        .first::<String>(conn)
+                        .optional()?;
+                    if let Some(status) = existing_status.as_deref() {
+                        if status != TrackedFileTransferStatus::Pending.as_str() {
+                            tracing::warn!(
+                                transfer_id = %row.transfer_id,
+                                existing_status = status,
+                                "upsert_pending_transfer: skipping — existing row is not pending"
+                            );
+                            return Ok(());
+                        }
+                    }
+                    diesel::insert_into(file_transfer::table)
+                        .values(&row)
+                        .on_conflict(file_transfer::transfer_id)
+                        .do_update()
+                        .set((
+                            file_transfer::entry_id.eq(excluded(file_transfer::entry_id)),
+                            file_transfer::filename.eq(excluded(file_transfer::filename)),
+                            file_transfer::source_device.eq(excluded(file_transfer::source_device)),
+                            file_transfer::cached_path.eq(excluded(file_transfer::cached_path)),
+                        ))
+                        .execute(conn)?;
+                    Ok(())
+                })?;
                 Ok(())
             })
         })
@@ -341,6 +404,33 @@ impl<E: DbExecutor> FileTransferRepositoryPort for DieselFileTransferRepository<
                 .first::<FileTransferRow>(conn)
                 .optional()?;
             Ok(row.as_ref().map(row_to_domain))
+        })
+    }
+
+    async fn link_transfer_to_entry(
+        &self,
+        transfer_id: &str,
+        entry_id: &str,
+        now_ms: i64,
+    ) -> anyhow::Result<bool> {
+        let span = debug_span!(
+            "infra.sqlite.link_transfer_to_entry",
+            transfer_id = transfer_id
+        );
+        let tid = transfer_id.to_string();
+        let eid = entry_id.to_string();
+        span.in_scope(|| {
+            self.executor.run(move |conn| {
+                let affected = diesel::update(
+                    file_transfer::table.filter(file_transfer::transfer_id.eq(&tid)),
+                )
+                .set((
+                    file_transfer::entry_id.eq(&eid),
+                    file_transfer::updated_at_ms.eq(now_ms),
+                ))
+                .execute(conn)?;
+                Ok(affected > 0)
+            })
         })
     }
 }

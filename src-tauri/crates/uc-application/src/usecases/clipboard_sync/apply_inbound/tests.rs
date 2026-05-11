@@ -298,13 +298,17 @@ async fn capture_returning_none_maps_to_internal_error() {
     }
 }
 
-/// Verdict 5 — write coordinator failure surfaces as
-/// `WriteCoordinator` error. Capture has already committed (the
-/// entry stays in DB; manual cleanup is the daemon operator's job).
-/// Pin this trade-off so a future refactor doesn't silently start
-/// rolling back persistence on write failure.
+/// Verdict 5 — OS clipboard write is best-effort and runs in the
+/// background. Capture has already committed by the time the spawn
+/// happens; a write failure in the spawned task must NOT surface as
+/// an error on the apply_inbound main path —— that would let the
+/// upstream mobile_sync `finalize_transfer_lifecycle` think the
+/// transfer failed, when really it succeeded (bytes are in the entry,
+/// only the system clipboard write didn't take). Pin this trade-off
+/// so a future refactor doesn't re-couple OS write into the critical
+/// path.
 #[tokio::test]
-async fn write_failure_surfaces_after_capture_commits() {
+async fn write_failure_does_not_surface_after_capture_commits() {
     let (input, _) = fixture_input("write-will-fail");
 
     let mut repo = MockEntryRepo::new();
@@ -318,26 +322,34 @@ async fn write_failure_surfaces_after_capture_commits() {
         .times(1)
         .returning(|_, _| Ok(Some(EntryId::from("entry-committed"))));
 
+    // Deterministic synchronization:让 mock 在被调用时 signal,test 主体
+    // await 这个 signal,确保 `.times(1)` 期望在 mock Drop 之前一定满足,
+    // 而不是赌"10ms 内 spawn 跑完了"。
+    let (tx, rx) = tokio::sync::oneshot::channel::<()>();
+    let tx = std::sync::Arc::new(std::sync::Mutex::new(Some(tx)));
+    let tx_for_mock = std::sync::Arc::clone(&tx);
+
     let mut write = MockWrite::new();
-    write
-        .expect_write()
-        .times(1)
-        .returning(|_| Err(anyhow::anyhow!("OS clipboard locked")));
+    write.expect_write().times(1).returning(move |_| {
+        if let Some(tx) = tx_for_mock.lock().unwrap_or_else(|p| p.into_inner()).take() {
+            let _ = tx.send(());
+        }
+        Err(anyhow::anyhow!("OS clipboard locked"))
+    });
 
     let uc = build(repo, capture, write);
-    let err = uc
+    let outcome = uc
         .execute(input)
         .await
-        .expect_err("write failure must surface");
-    match err {
-        ApplyInboundError::WriteCoordinator(msg) => {
-            assert!(
-                msg.contains("OS clipboard locked"),
-                "underlying error should propagate, got: {msg}"
-            );
+        .expect("write failure must NOT surface — capture already committed");
+    match outcome {
+        ApplyOutcome::Applied { entry_id } => {
+            assert_eq!(entry_id.as_ref(), "entry-committed");
         }
-        other => panic!("expected WriteCoordinator, got {other:?}"),
+        other => panic!("expected Applied, got {other:?}"),
     }
+    // 确定性等待 spawn 后台 write 完成(mock 内部 send 信号)。
+    rx.await.expect("background write task must run");
 }
 
 /// Verdict 6 — dedup query failure surfaces as `DedupQuery`. No

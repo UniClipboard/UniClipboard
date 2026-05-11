@@ -27,7 +27,7 @@ use std::sync::Arc;
 
 use tokio_util::sync::CancellationToken;
 use uc_application::clipboard_write::ClipboardWriteCoordinator;
-use uc_application::facade::{AppFacade, AppPaths};
+use uc_application::facade::{AppFacade, AppPaths, FileTransferFacade};
 use uc_bootstrap::assembly::WiredDependencies;
 use uc_bootstrap::file_transfer_lifecycle::FileTransferLifecycle;
 
@@ -59,6 +59,10 @@ pub struct ProcessRuntimeHandles {
     pub storage_paths: AppPaths,
     pub clipboard_write_coordinator: Arc<ClipboardWriteCoordinator>,
     pub file_transfer_lifecycle: Arc<FileTransferLifecycle>,
+    /// 进程级 file-transfer facade(从 `BackgroundRuntimeDeps` clone 出来)。
+    /// daemon-lifecycle 装配时喂给 `MobileSyncFacade`,GUI shell 也用同一份
+    /// 装进进程级 `AppFacade.file_transfer`。整个进程只有一份。
+    pub file_transfer_facade: Arc<FileTransferFacade>,
 }
 
 /// 独立 daemon binary 入口：创建专属 tokio runtime,启动 daemon,阻塞到退出。
@@ -85,12 +89,14 @@ pub fn run(run_mode: DaemonRunMode) -> anyhow::Result<()> {
             Arc::new(uc_bootstrap::LoggingHostEventEmitter);
         let clipboard_write_coordinator = background.clipboard_write_coordinator.clone();
         let file_transfer_lifecycle = background.file_transfer_lifecycle.clone();
+        let file_transfer_facade = wired.file_transfer_facade.clone();
 
         let runtime = crate::DesktopRuntime::with_setup(
             wired.deps.clone(),
             storage_paths.clone(),
             event_emitter,
             clipboard_write_coordinator.clone(),
+            file_transfer_facade.clone(),
         );
         let app_facade = Arc::clone(runtime.app_facade());
 
@@ -113,6 +119,7 @@ pub fn run(run_mode: DaemonRunMode) -> anyhow::Result<()> {
             storage_paths,
             clipboard_write_coordinator,
             file_transfer_lifecycle,
+            file_transfer_facade,
         };
         let handle = start_in_process(run_mode, app_facade, handles).await?;
         // runtime 必须活到 daemon 退出 —— move 进 await 内部维持生命周期。
@@ -167,6 +174,7 @@ pub async fn start_in_process(
         storage_paths,
         clipboard_write_coordinator,
         file_transfer_lifecycle,
+        file_transfer_facade,
     } = handles;
 
     let deps = wired.deps;
@@ -210,6 +218,7 @@ pub async fn start_in_process(
             space_setup_assembly: &space_setup_assembly,
             clipboard_sync: clipboard_sync_facade.clone(),
             blob_transfer: blob_transfer_facade.clone(),
+            file_transfer: file_transfer_facade.clone(),
             mobile_sync_apply_inbound: runtime_workers.apply_inbound.clone(),
         });
 

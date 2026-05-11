@@ -6,14 +6,14 @@
 //! daemon 停止时清空。
 //!
 //! 不再装第二份完整 `AppFacade` —— `lifecycle` / `encryption` / `settings` /
-//! `device` / `storage` / `clipboard_history` / `search` / `clipboard_restore`
-//! 都是进程级,GUI 端启动时一次性装入,daemon 启停时不动。
+//! `device` / `storage` / `clipboard_history` / `search` / `clipboard_restore` /
+//! `file_transfer` 都是进程级,GUI 端启动时一次性装入,daemon 启停时不动。
 
 use std::sync::Arc;
 
 use uc_application::deps::AppDeps;
 use uc_application::facade::{
-    AppPaths, BlobTransferFacade, ClipboardSyncFacade, DaemonLifecycleFacades,
+    AppPaths, BlobTransferFacade, ClipboardSyncFacade, DaemonLifecycleFacades, FileTransferFacade,
 };
 use uc_application::ApplyInboundClipboardUseCase;
 use uc_bootstrap::{build_mobile_sync_facade, SpaceSetupAssembly};
@@ -25,6 +25,10 @@ pub struct DaemonLifecycleFacadesInput<'a> {
     pub space_setup_assembly: &'a SpaceSetupAssembly,
     pub clipboard_sync: Arc<ClipboardSyncFacade>,
     pub blob_transfer: Arc<BlobTransferFacade>,
+    /// 进程级 file-transfer facade (来自 `BackgroundRuntimeDeps`)。
+    /// daemon 装配 `MobileSyncFacade` 时必传 —— SyncDoc apply 后 link +
+    /// complete 让 mobile_lan transfer 在 file_transfer 表里闭环。
+    pub file_transfer: Arc<FileTransferFacade>,
     /// daemon worker 装配过程中已构造好的 enhanced
     /// `ApplyInboundClipboardUseCase` (with_blob_materializer +
     /// with_host_event_emitter)。同一份实例同时喂给 mobile_sync facade
@@ -45,11 +49,16 @@ pub fn build_daemon_lifecycle_facades(
         space_setup_assembly,
         clipboard_sync,
         blob_transfer,
+        file_transfer,
         mobile_sync_apply_inbound,
     } = input;
 
-    let mobile_sync =
-        build_mobile_sync_facade(deps, storage_paths, mobile_sync_apply_inbound.clone());
+    let mobile_sync = build_mobile_sync_facade(
+        deps,
+        storage_paths,
+        mobile_sync_apply_inbound.clone(),
+        Some(file_transfer),
+    );
 
     let local_device_id = deps.device.device_identity.current_device_id().to_string();
 

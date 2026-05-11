@@ -20,17 +20,16 @@ pub struct StartTransfer {
 /// Start a new transfer and emit a `Started` event.
 ///
 /// 启动一个新的传输，并产出 `Started` 事件。
-pub struct StartTransferUseCase<S, P> {
-    store: Arc<S>,
-    publisher: Arc<P>,
+pub struct StartTransferUseCase {
+    store: Arc<dyn FileTransferEventStorePort>,
+    publisher: Arc<dyn FileTransferEventPublisherPort>,
 }
 
-impl<S, P> StartTransferUseCase<S, P>
-where
-    S: FileTransferEventStorePort,
-    P: FileTransferEventPublisherPort,
-{
-    pub fn new(store: Arc<S>, publisher: Arc<P>) -> Self {
+impl StartTransferUseCase {
+    pub fn new(
+        store: Arc<dyn FileTransferEventStorePort>,
+        publisher: Arc<dyn FileTransferEventPublisherPort>,
+    ) -> Self {
         Self { store, publisher }
     }
 

@@ -44,12 +44,16 @@ use bytes::Bytes;
 use thiserror::Error;
 use tracing::{debug, info, instrument, warn};
 
+use uc_core::file_transfer::FileTransferFailureReason;
 use uc_core::ids::{DeviceId, EntryId, FormatId, RepresentationId};
 use uc_core::mobile_sync::MobileDeviceId;
 use uc_core::ports::mobile_sync::{MobileFileStagingError, MobileFileStagingPort};
 use uc_core::ports::ClockPort;
 use uc_core::{MimeType, ObservedClipboardRepresentation, SystemClipboardSnapshot};
 
+use crate::facade::file_transfer::{
+    CompleteTransfer, FailTransfer, FileTransferFacade, LinkTransferToEntry,
+};
 use crate::usecases::clipboard_sync::apply_inbound::{
     ApplyInboundClipboardUseCase, ApplyInboundError, ApplyInboundInput, ApplyOutcome,
 };
@@ -86,10 +90,16 @@ pub enum IncomingMobileClipEvent {
     /// Triggered by `PUT /file/{data_name}`. Stages bytes in the buffer,
     /// returns immediately with `Buffered` outcome — the caller must
     /// still respond HTTP 200.
+    ///
+    /// `transfer_id` 由 handler 生成(`mobile-lan:<uuid>` 或 `?upload_id=`
+    /// 客户端提供),贯穿到 SyncDoc apply 阶段做 link_transfer_to_entry +
+    /// complete;handler 已经在流式收 body 期间发过 `Started` / `Progress`
+    /// lifecycle 事件,本 use case 不重复发。
     BufferFile {
         data_name: String,
         mime: String,
         bytes: Vec<u8>,
+        transfer_id: String,
     },
 }
 
@@ -135,6 +145,16 @@ enum BuildSnapshotFailure {
     Internal(String),
 }
 
+/// `build_*_snapshot` 成功后的"快照 + transfer_id"组合。
+///
+/// Text 分支没有 PUT /file 阶段, `transfer_id` 永远是 `None`;
+/// Image / File 分支命中 buffer 时取出 buffered.transfer_id, 让 SyncDoc
+/// apply 后能 `link_transfer_to_entry` + `complete` 收尾。
+struct BuiltSnapshot {
+    snapshot: SystemClipboardSnapshot,
+    transfer_id: Option<String>,
+}
+
 /// 12 hex 字符的 staging scope nonce(取 uuid v4 simple 形态前 12 位)。
 /// 用于让 adapter 把同一次入站事件落到独立子目录,与 entry_id 解耦(后者
 /// 在 ApplyInbound 内部生成,staging 时还不知道)。
@@ -152,6 +172,11 @@ const MAX_BUFFERED_FILES: usize = 16;
 struct BufferedFile {
     mime: String,
     bytes: Bytes,
+    /// 协议层 transfer_id —— 由 `PUT /file` handler 在入口处生成
+    /// (`mobile-lan:<uuid-v4>` 或客户端通过 `?upload_id=` 提供)。
+    /// 让 SyncDoc 阶段拿到真实 entry_id 后能 `link_transfer_to_entry`
+    /// + `complete` 这条 lifecycle。
+    transfer_id: String,
 }
 
 /// In-process staging buffer for `PUT /file/{name}` bytes between the
@@ -176,7 +201,7 @@ impl IncomingMobileBuffer {
         }
     }
 
-    fn store(&self, data_name: String, mime: String, bytes: Vec<u8>) {
+    fn store(&self, data_name: String, mime: String, bytes: Vec<u8>, transfer_id: String) {
         let mut guard = self.inner.lock().unwrap();
         if guard.len() >= MAX_BUFFERED_FILES && !guard.contains_key(&data_name) {
             // Cap reached + new key. Drop one arbitrary existing entry
@@ -196,12 +221,26 @@ impl IncomingMobileBuffer {
             BufferedFile {
                 mime,
                 bytes: Bytes::from(bytes),
+                transfer_id,
             },
         );
     }
 
     fn take(&self, data_name: &str) -> Option<BufferedFile> {
         self.inner.lock().unwrap().remove(data_name)
+    }
+
+    /// 主动删除一个 buffer slot 并把 transfer_id 返回出去。
+    ///
+    /// 调用方场景:PUT /file 流式接收过程中 body 中断 / 请求被取消,
+    /// handler 需要清掉之前 reserved 的 slot 并对外发 `fail` lifecycle。
+    /// 不存在时返回 None。
+    pub fn remove(&self, data_name: &str) -> Option<String> {
+        self.inner
+            .lock()
+            .unwrap()
+            .remove(data_name)
+            .map(|file| file.transfer_id)
     }
 
     #[cfg(test)]
@@ -223,6 +262,12 @@ pub(crate) struct ApplyIncomingMobileClipUseCase {
     buffer: Arc<IncomingMobileBuffer>,
     file_staging: Arc<dyn MobileFileStagingPort>,
     clock: Arc<dyn ClockPort>,
+    /// 可选 file-transfer lifecycle facade。装配处提供时,SyncDoc apply
+    /// 后调 `link_transfer_to_entry` + `complete` 把 mobile_lan 路径生成
+    /// 的 transfer 关联到真实 entry_id;`None` 时静默降级(测试装配 / CLI
+    /// fallback)。BufferFile 分支由 handler 在收 body 期间已经发过
+    /// `Started` / `Progress`,本 use case 不重复发。
+    file_transfer: Option<Arc<FileTransferFacade>>,
 }
 
 impl ApplyIncomingMobileClipUseCase {
@@ -231,12 +276,14 @@ impl ApplyIncomingMobileClipUseCase {
         buffer: Arc<IncomingMobileBuffer>,
         file_staging: Arc<dyn MobileFileStagingPort>,
         clock: Arc<dyn ClockPort>,
+        file_transfer: Option<Arc<FileTransferFacade>>,
     ) -> Self {
         Self {
             inbound,
             buffer,
             file_staging,
             clock,
+            file_transfer,
         }
     }
 
@@ -254,13 +301,16 @@ impl ApplyIncomingMobileClipUseCase {
                 data_name,
                 mime,
                 bytes,
+                transfer_id,
             } => {
                 let bytes_len = bytes.len();
-                self.buffer.store(data_name.clone(), mime.clone(), bytes);
+                self.buffer
+                    .store(data_name.clone(), mime.clone(), bytes, transfer_id.clone());
                 info!(
                     data_name = %data_name,
                     mime = %mime,
                     bytes = bytes_len,
+                    transfer_id = %transfer_id,
                     "mobile_sync apply_incoming: buffered file"
                 );
                 Ok(ApplyIncomingMobileClipOutcome::Buffered)
@@ -270,17 +320,17 @@ impl ApplyIncomingMobileClipUseCase {
                 text,
                 data_name,
             } => {
-                let snapshot_result: Result<SystemClipboardSnapshot, BuildSnapshotFailure> =
-                    match item_type {
-                        SyncClipboardItemType::Text => self.build_text_snapshot(text),
-                        SyncClipboardItemType::Image => self.build_image_snapshot(data_name),
-                        SyncClipboardItemType::File => self.build_file_snapshot(data_name).await,
-                        SyncClipboardItemType::Group => Err(BuildSnapshotFailure::Decode(
-                            "Group 类型不在 v1 范围内 (SyncClipboard 协议保留)".into(),
-                        )),
-                    };
+                let source_device_id = input.source_device_id.clone();
+                let build_result: Result<BuiltSnapshot, BuildSnapshotFailure> = match item_type {
+                    SyncClipboardItemType::Text => self.build_text_snapshot(text),
+                    SyncClipboardItemType::Image => self.build_image_snapshot(data_name),
+                    SyncClipboardItemType::File => self.build_file_snapshot(data_name).await,
+                    SyncClipboardItemType::Group => Err(BuildSnapshotFailure::Decode(
+                        "Group 类型不在 v1 范围内 (SyncClipboard 协议保留)".into(),
+                    )),
+                };
 
-                let snapshot = match snapshot_result {
+                let built = match build_result {
                     Ok(s) => s,
                     Err(BuildSnapshotFailure::Decode(reason)) => {
                         warn!(
@@ -288,6 +338,13 @@ impl ApplyIncomingMobileClipUseCase {
                             reason = %reason,
                             "mobile_sync apply_incoming: decode failed"
                         );
+                        // decode 失败时 transfer 已经被 handler 起过 lifecycle,
+                        // 这里要补一发 fail 把它收尾,免得 sweep 5 min 后才动。
+                        // build_*_snapshot 在 decode 失败前不会 `buffer.take`,
+                        // 所以原 transfer_id 还在 buffer 里 —— 通过 data_name
+                        // 反查不可行(它已经被 move 进入 event 解构)。本 use case
+                        // 无法在 decode 路径上拿到 transfer_id,handler 端的
+                        // ?upload_id 反向查询是未来增强;现在先靠 sweep 兜底。
                         return Ok(ApplyIncomingMobileClipOutcome::DecodeFailed { reason });
                     }
                     Err(BuildSnapshotFailure::Internal(msg)) => {
@@ -300,16 +357,130 @@ impl ApplyIncomingMobileClipUseCase {
                     }
                 };
 
-                self.dispatch_inbound(input.source_device_id, snapshot)
-                    .await
+                let BuiltSnapshot {
+                    snapshot,
+                    transfer_id,
+                } = built;
+                let dispatch_outcome = self
+                    .dispatch_inbound(source_device_id.clone(), snapshot)
+                    .await;
+                self.finalize_transfer_lifecycle(transfer_id, source_device_id, &dispatch_outcome)
+                    .await;
+                dispatch_outcome
             }
         }
     }
 
-    fn build_text_snapshot(
+    /// SyncDoc apply 完成后把 mobile_lan 路径预先打开的 transfer 关闭。
+    ///
+    /// - `Applied { entry_id }`:把 transfer 行从占位 entry_id 改挂到真实
+    ///   entry_id,然后发 `Completed` 事件。这是 mobile_lan 路径独有的
+    ///   "buffered 期间没有 entry_id → SyncDoc apply 后 backfill" 模式。
+    /// - `DuplicateSkipped { existing_entry_id }`:重定向到已存在的 entry,
+    ///   仍然 complete —— transfer 字节已经收齐, dedup 命中只是没产生新
+    ///   entry, 不应让 transfer 永久卡在 transferring。
+    /// - `DecodeFailed`:几乎不可能 (我们刚 encode 出来的 envelope),但若
+    ///   发生应 fail —— 否则 transfer 也会卡在 transferring。
+    /// - 应用层错误 (`Err(...)`):capture / write 链路真出问题, fail。
+    async fn finalize_transfer_lifecycle(
         &self,
-        text: String,
-    ) -> Result<SystemClipboardSnapshot, BuildSnapshotFailure> {
+        transfer_id: Option<String>,
+        source_device_id: MobileDeviceId,
+        dispatch: &Result<ApplyIncomingMobileClipOutcome, ApplyIncomingMobileClipError>,
+    ) {
+        let Some(facade) = self.file_transfer.as_ref() else {
+            return;
+        };
+        let Some(transfer_id) = transfer_id else {
+            return;
+        };
+        let peer_id = format!("mobile:{}", source_device_id);
+        match dispatch {
+            Ok(ApplyIncomingMobileClipOutcome::Applied { entry_id }) => {
+                self.link_then_complete(facade, &transfer_id, entry_id.as_ref(), &peer_id)
+                    .await;
+            }
+            Ok(ApplyIncomingMobileClipOutcome::DuplicateSkipped {
+                existing_entry_id, ..
+            }) => {
+                self.link_then_complete(facade, &transfer_id, existing_entry_id.as_ref(), &peer_id)
+                    .await;
+            }
+            Ok(ApplyIncomingMobileClipOutcome::DecodeFailed { reason }) => {
+                self.fail_transfer(facade, &transfer_id, &peer_id, reason.clone())
+                    .await;
+            }
+            Ok(ApplyIncomingMobileClipOutcome::Buffered) => {
+                // SyncDoc 路径不会产 Buffered;若 dispatch 真返 Buffered 是
+                // bug 但不影响 lifecycle 状态。沉默即可。
+            }
+            Err(err) => {
+                self.fail_transfer(facade, &transfer_id, &peer_id, err.to_string())
+                    .await;
+            }
+        }
+    }
+
+    async fn link_then_complete(
+        &self,
+        facade: &FileTransferFacade,
+        transfer_id: &str,
+        entry_id: &str,
+        peer_id: &str,
+    ) {
+        if let Err(err) = facade
+            .link_transfer_to_entry(LinkTransferToEntry {
+                transfer_id: transfer_id.to_string(),
+                entry_id: entry_id.to_string(),
+            })
+            .await
+        {
+            warn!(
+                transfer_id,
+                error = %err,
+                "mobile_sync apply_incoming: link_transfer_to_entry failed"
+            );
+        }
+        if let Err(err) = facade
+            .complete(CompleteTransfer {
+                transfer_id: transfer_id.to_string(),
+                peer_id: peer_id.to_string(),
+            })
+            .await
+        {
+            warn!(
+                transfer_id,
+                error = %err,
+                "mobile_sync apply_incoming: complete lifecycle failed"
+            );
+        }
+    }
+
+    async fn fail_transfer(
+        &self,
+        facade: &FileTransferFacade,
+        transfer_id: &str,
+        peer_id: &str,
+        detail: String,
+    ) {
+        if let Err(err) = facade
+            .fail(FailTransfer {
+                transfer_id: transfer_id.to_string(),
+                peer_id: peer_id.to_string(),
+                reason: FileTransferFailureReason::Unknown,
+                detail: Some(detail),
+            })
+            .await
+        {
+            warn!(
+                transfer_id,
+                error = %err,
+                "mobile_sync apply_incoming: fail lifecycle failed"
+            );
+        }
+    }
+
+    fn build_text_snapshot(&self, text: String) -> Result<BuiltSnapshot, BuildSnapshotFailure> {
         if text.is_empty() {
             return Err(BuildSnapshotFailure::Decode(
                 "Text item with empty body".into(),
@@ -322,16 +493,19 @@ impl ApplyIncomingMobileClipUseCase {
             Some(MimeType("text/plain".to_string())),
             bytes,
         );
-        Ok(SystemClipboardSnapshot {
-            ts_ms: self.clock.now_ms(),
-            representations: vec![rep],
+        Ok(BuiltSnapshot {
+            snapshot: SystemClipboardSnapshot {
+                ts_ms: self.clock.now_ms(),
+                representations: vec![rep],
+            },
+            transfer_id: None,
         })
     }
 
     fn build_image_snapshot(
         &self,
         data_name: Option<String>,
-    ) -> Result<SystemClipboardSnapshot, BuildSnapshotFailure> {
+    ) -> Result<BuiltSnapshot, BuildSnapshotFailure> {
         let name = data_name
             .ok_or_else(|| BuildSnapshotFailure::Decode("Image item without dataName".into()))?;
         let buffered = self.buffer.take(&name).ok_or_else(|| {
@@ -340,15 +514,19 @@ impl ApplyIncomingMobileClipUseCase {
                 name
             ))
         })?;
+        let transfer_id = buffered.transfer_id.clone();
         let rep = ObservedClipboardRepresentation::new(
             RepresentationId::new(),
             FormatId::from("image"),
             Some(MimeType(buffered.mime)),
             buffered.bytes.to_vec(),
         );
-        Ok(SystemClipboardSnapshot {
-            ts_ms: self.clock.now_ms(),
-            representations: vec![rep],
+        Ok(BuiltSnapshot {
+            snapshot: SystemClipboardSnapshot {
+                ts_ms: self.clock.now_ms(),
+                representations: vec![rep],
+            },
+            transfer_id: Some(transfer_id),
         })
     }
 
@@ -370,7 +548,7 @@ impl ApplyIncomingMobileClipUseCase {
     async fn build_file_snapshot(
         &self,
         data_name: Option<String>,
-    ) -> Result<SystemClipboardSnapshot, BuildSnapshotFailure> {
+    ) -> Result<BuiltSnapshot, BuildSnapshotFailure> {
         let name = data_name
             .ok_or_else(|| BuildSnapshotFailure::Decode("File item without dataName".into()))?;
         let buffered = self.buffer.take(&name).ok_or_else(|| {
@@ -379,6 +557,7 @@ impl ApplyIncomingMobileClipUseCase {
                 name
             ))
         })?;
+        let transfer_id = buffered.transfer_id.clone();
 
         // staging scope:每次 PUT /SyncClipboard.json 的 File 触发一次,
         // 用 8 hex 随机 nonce 做子目录,与 entry_id 解耦(entry_id 在
@@ -416,9 +595,12 @@ impl ApplyIncomingMobileClipUseCase {
             uri = %staged.uri,
             "mobile_sync apply_incoming: file staged into uri-list rep"
         );
-        Ok(SystemClipboardSnapshot {
-            ts_ms: self.clock.now_ms(),
-            representations: vec![rep],
+        Ok(BuiltSnapshot {
+            snapshot: SystemClipboardSnapshot {
+                ts_ms: self.clock.now_ms(),
+                representations: vec![rep],
+            },
+            transfer_id: Some(transfer_id),
         })
     }
 
@@ -657,6 +839,7 @@ mod tests {
             Arc::new(IncomingMobileBuffer::new()),
             FakeStaging::never_called(),
             Arc::new(FixedClock),
+            None,
         )
     }
 
@@ -674,6 +857,7 @@ mod tests {
             Arc::new(IncomingMobileBuffer::new()),
             FakeStaging::never_called(),
             Arc::new(FixedClock),
+            None,
         )
     }
 
@@ -705,6 +889,7 @@ mod tests {
             buffer.clone(),
             FakeStaging::never_called(),
             Arc::new(FixedClock),
+            None,
         );
         (uc, buffer)
     }
@@ -737,6 +922,7 @@ mod tests {
             buffer.clone(),
             staging,
             Arc::new(FixedClock),
+            None,
         );
         (uc, buffer)
     }
@@ -758,6 +944,7 @@ mod tests {
             buffer,
             staging,
             Arc::new(FixedClock),
+            None,
         )
     }
 
@@ -787,6 +974,7 @@ mod tests {
                 data_name: data_name.to_string(),
                 mime: mime.to_string(),
                 bytes,
+                transfer_id: format!("mobile-lan:test-{data_name}"),
             },
         }
     }
@@ -840,6 +1028,7 @@ mod tests {
             buffer.clone(),
             FakeStaging::never_called(),
             Arc::new(FixedClock),
+            None,
         );
         assert_eq!(buffer.len(), 0);
 
@@ -1038,6 +1227,7 @@ mod tests {
             "doc.pdf".into(),
             "application/pdf".into(),
             vec![0x25, 0x50, 0x44, 0x46],
+            "mobile-lan:test-io".into(),
         );
 
         let uc = build_uc_with_staging_expect_no_inbound(staging, buffer.clone());
@@ -1105,6 +1295,7 @@ mod tests {
             buffer.clone(),
             staging,
             Arc::new(FixedClock),
+            None,
         );
 
         // 预 seed buffer
@@ -1112,6 +1303,7 @@ mod tests {
             "My Photo.png".into(),
             "image/png".into(),
             vec![0x89, 0x50, 0x4E, 0x47],
+            "mobile-lan:test-win".into(),
         );
 
         let outcome = uc
@@ -1163,6 +1355,7 @@ mod tests {
             Arc::new(IncomingMobileBuffer::new()),
             FakeStaging::never_called(),
             Arc::new(FixedClock),
+            None,
         );
 
         let outcome = uc
@@ -1210,6 +1403,7 @@ mod tests {
             Arc::new(IncomingMobileBuffer::new()),
             FakeStaging::never_called(),
             Arc::new(FixedClock),
+            None,
         );
 
         let outcome = uc

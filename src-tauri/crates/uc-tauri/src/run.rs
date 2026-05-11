@@ -136,15 +136,19 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
         std::sync::Arc::new(uc_bootstrap::LoggingHostEventEmitter);
 
     // 在 background 被 spawn 消费前,clone 出 daemon-lifecycle 装配需要的
-    // 两个 Arc 字段(进程级,跨 daemon reload 复用)。
+    // 两个 Arc 字段(进程级,跨 daemon reload 复用)。`file_transfer_facade`
+    // 已挪到 `WiredDependencies`(它是 Arc,不是 mpsc::Receiver),所以直接
+    // 从 `wired` 取。
     let clipboard_write_coordinator = background.clipboard_write_coordinator.clone();
     let file_transfer_lifecycle = background.file_transfer_lifecycle.clone();
+    let file_transfer_facade = wired.file_transfer_facade.clone();
 
     let runtime = TauriAppRuntime::with_setup(
         wired.deps.clone(),
         storage_paths.clone(),
         event_emitter,
         clipboard_write_coordinator.clone(),
+        file_transfer_facade.clone(),
     );
     let runtime = Arc::new(runtime);
 
@@ -171,6 +175,7 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
         storage_paths,
         clipboard_write_coordinator,
         file_transfer_lifecycle,
+        file_transfer_facade,
     };
 
     let builder = tauri::Builder::default()

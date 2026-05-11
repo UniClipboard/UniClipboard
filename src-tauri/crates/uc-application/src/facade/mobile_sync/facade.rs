@@ -49,6 +49,7 @@ use uc_core::ports::{
     MobileFileStagingPort, MobileSyncEndpointInfoPort, PasswordHasherPort, SettingsPort,
 };
 
+use crate::facade::file_transfer::FileTransferFacade;
 use crate::usecases::clipboard_sync::apply_inbound::ApplyInboundClipboardUseCase;
 use crate::usecases::mobile_sync::{
     apply_incoming::ApplyIncomingMobileClipUseCase,
@@ -130,6 +131,13 @@ pub struct MobileSyncFacadeDeps {
     /// 测试场景可注入内存 fake。
     pub file_staging: Arc<dyn MobileFileStagingPort>,
     pub snapshot_ports: MobileSyncSnapshotPorts,
+    /// 可选 file-transfer lifecycle facade。装配处提供时,SyncDoc apply
+    /// 后自动 `link_transfer_to_entry` + `complete`,失败路径 `fail`,让
+    /// mobile_lan 路径产生的 transfer 在 file_transfer 表里有完整 lifecycle;
+    /// `None` 时静默降级(unit / 测试装配)。`PUT /file` handler 端
+    /// (`webserver`)在收 body 期间自己调 `start` / `Progress` —— 本字段
+    /// 仅用于 apply 阶段收尾。
+    pub file_transfer: Option<Arc<FileTransferFacade>>,
 }
 
 // ─── Facade ─────────────────────────────────────────────────────────────
@@ -168,6 +176,7 @@ impl MobileSyncFacade {
             incoming_buffer,
             file_staging,
             snapshot_ports,
+            file_transfer,
         } = deps;
 
         let snapshot_port: Arc<dyn LatestClipboardSnapshotPort> =
@@ -198,6 +207,7 @@ impl MobileSyncFacade {
                 incoming_buffer,
                 file_staging.clone(),
                 clock,
+                file_transfer,
             ),
             get_latest_doc: GetLatestMobileSyncDocUseCase::new(snapshot_port.clone()),
             get_file: GetMobileSyncFileUseCase::new(snapshot_port, file_staging),
@@ -327,6 +337,7 @@ impl MobileSyncFacade {
         mime: String,
         bytes: Vec<u8>,
         source_device_id: MobileDeviceId,
+        transfer_id: String,
     ) -> Result<ApplyIncomingMobileClipOutcome, ApplyIncomingMobileClipError> {
         self.apply_incoming
             .execute(ApplyIncomingMobileClipInput {
@@ -335,6 +346,7 @@ impl MobileSyncFacade {
                     data_name,
                     mime,
                     bytes,
+                    transfer_id,
                 },
             })
             .await
@@ -697,6 +709,7 @@ mod tests {
                 payload_resolver: Arc::new(UnusedResolver),
                 blob_reader: Arc::new(UnusedBlobReader),
             },
+            file_transfer: None,
         })
     }
 
@@ -846,6 +859,7 @@ mod tests {
                 payload_resolver: Arc::new(UnusedResolver),
                 blob_reader: Arc::new(UnusedBlobReader),
             },
+            file_transfer: None,
         });
 
         // happy path
@@ -922,6 +936,7 @@ mod tests {
                 payload_resolver: Arc::new(UnusedResolver),
                 blob_reader: Arc::new(UnusedBlobReader),
             },
+            file_transfer: None,
         });
 
         // 1. 旧密码可用

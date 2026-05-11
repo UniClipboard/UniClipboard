@@ -24,17 +24,16 @@ pub struct FailTransfer {
 /// Mark a transfer as failed and emit a `Failed` event.
 ///
 /// 将传输标记为失败，并产出 `Failed` 事件。
-pub struct FailTransferUseCase<S, P> {
-    store: Arc<S>,
-    publisher: Arc<P>,
+pub struct FailTransferUseCase {
+    store: Arc<dyn FileTransferEventStorePort>,
+    publisher: Arc<dyn FileTransferEventPublisherPort>,
 }
 
-impl<S, P> FailTransferUseCase<S, P>
-where
-    S: FileTransferEventStorePort,
-    P: FileTransferEventPublisherPort,
-{
-    pub fn new(store: Arc<S>, publisher: Arc<P>) -> Self {
+impl FailTransferUseCase {
+    pub fn new(
+        store: Arc<dyn FileTransferEventStorePort>,
+        publisher: Arc<dyn FileTransferEventPublisherPort>,
+    ) -> Self {
         Self { store, publisher }
     }
 

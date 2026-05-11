@@ -76,6 +76,25 @@ pub async fn sync_peer(peer_id: &str, attempt: u32) -> Result<(), SyncError> {
 - Verify frontend listener field names match camelCase output.
 - Add a test that proves camelCase keys exist and snake_case keys do not.
 
+## Enum Wire Serialization (`rename_all_fields`)
+
+`#[serde(rename_all = "...")]` on an **enum** only renames the **variant names** — it does **NOT** touch named fields inside struct-style variants. This is a hidden serde footgun that caused issue #606 (PUT `/settings` returning 422 because `RetentionRuleDto::ByAge { max_age }` serialized to `{"byAge": {"max_age": N}}` while the frontend sent `{"byAge": {"maxAge": N}}`).
+
+**Rule:** an enum **MUST** also declare `rename_all_fields = "..."` (matching the variant case style) when **all three** conditions hold:
+
+1. It is an `enum` (not a `struct` — `rename_all` on a struct already covers its fields).
+2. At least one variant is **struct-style** (`Foo { name1, name2 }`, with named fields). Tuple variants `Foo(T)` and unit variants `Foo` are exempt.
+3. Any field name is **multi-word snake_case** (`max_age` → `maxAge` cares; single-word `current` doesn't).
+
+Even when condition 3 is currently false, prefer to **declare `rename_all_fields` defensively** for any enum with struct variants — the next PR that adds a multi-word field will silently emit the wrong wire shape if the attribute is missing.
+
+**Tests:** every such enum must have wire-shape tests that
+
+- assert the camelCase / snake_case wire literal verbatim, and
+- explicitly **reject** the legacy snake_case-in-camelCase-wire (or vice versa) bug shape, so a future revert is caught immediately.
+
+See `uc-daemon-contract::api::dto::settings::retention_rule_dto_tests` for the canonical pattern.
+
 ## Cargo Command Location
 
 - **All Rust-related commands** (`cargo build`, `cargo test`, `cargo check`, etc.) **must be executed from `src-tauri/`.**

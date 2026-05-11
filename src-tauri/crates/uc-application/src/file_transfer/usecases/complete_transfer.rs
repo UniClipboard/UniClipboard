@@ -18,17 +18,16 @@ pub struct CompleteTransfer {
 /// Mark a transfer as completed and emit a `Completed` event.
 ///
 /// 将传输标记为完成，并产出 `Completed` 事件。
-pub struct CompleteTransferUseCase<S, P> {
-    store: Arc<S>,
-    publisher: Arc<P>,
+pub struct CompleteTransferUseCase {
+    store: Arc<dyn FileTransferEventStorePort>,
+    publisher: Arc<dyn FileTransferEventPublisherPort>,
 }
 
-impl<S, P> CompleteTransferUseCase<S, P>
-where
-    S: FileTransferEventStorePort,
-    P: FileTransferEventPublisherPort,
-{
-    pub fn new(store: Arc<S>, publisher: Arc<P>) -> Self {
+impl CompleteTransferUseCase {
+    pub fn new(
+        store: Arc<dyn FileTransferEventStorePort>,
+        publisher: Arc<dyn FileTransferEventPublisherPort>,
+    ) -> Self {
         Self { store, publisher }
     }
 

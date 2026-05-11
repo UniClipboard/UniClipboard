@@ -290,9 +290,19 @@ async fn put_file(path: PathBuf, mime_override: Option<String>, json: bool, verb
 
     let device = debug_source_device_id();
 
+    // CLI debug 路径用自生成 transfer_id —— 不接 mobile_lan listener,
+    // 走 `apply_incoming` 的 BufferFile 分支自我闭环;handler 端 lifecycle
+    // 钩子在生产路径(uc-webserver)里发,本调试入口不参与。
+    let transfer_id = format!("mobile-lan:cli-{}", uuid::Uuid::new_v4());
     let file_outcome = match ctx
         .facade
-        .put_clipboard_file(data_name.clone(), mime.clone(), bytes, device.clone())
+        .put_clipboard_file(
+            data_name.clone(),
+            mime.clone(),
+            bytes,
+            device.clone(),
+            transfer_id,
+        )
         .await
     {
         Ok(o) => o,

@@ -53,6 +53,7 @@ uc-application = { path = "../uc-application" }
 # leaves later consumers (reqwest → rendezvous) with a provider that
 # surfaces certs as `CertificateError::BadEncoding`.
 rustls = { version = "0.23", default-features = false, features = ["ring", "std"] }
+uuid = { version = "1.10.0", features = ["v4"] }
 
 [dev-dependencies]
 axum = { version = "0.7", features = ["ws", "tokio", "http1", "http2"] }

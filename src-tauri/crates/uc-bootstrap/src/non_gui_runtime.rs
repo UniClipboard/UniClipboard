@@ -19,11 +19,12 @@ use uc_application::facade::{
     AppFacade, AppFacadeParts, AppPaths, BlobTransferFacade, ClipboardHistoryFacade,
     ClipboardHistoryFacadeDeps, ClipboardRestoreFacade, ClipboardRestoreFacadeDeps,
     ClipboardSyncFacade, DeviceFacade, EmitError, EncryptionFacade, EncryptionFacadeDeps,
-    HostEvent, HostEventEmitterPort, InMemoryLifecycleStatus, IncomingMobileBuffer,
-    LifecycleFacade, LifecycleFacadeDeps, LifecycleStatusGateway, MemberRosterFacade,
-    MobileSyncFacade, MobileSyncFacadeDeps, MobileSyncSnapshotPorts, ResourceFacade,
-    ResourceFacadeDeps, SearchCoordinator, SearchCoordinatorDeps, SearchFacade, SearchFacadeDeps,
-    SettingsFacade, StorageFacade, StorageFacadeDeps, UpgradeFacade, UpgradeFacadeDeps,
+    FileTransferFacade, HostEvent, HostEventEmitterPort, InMemoryLifecycleStatus,
+    IncomingMobileBuffer, LifecycleFacade, LifecycleFacadeDeps, LifecycleStatusGateway,
+    MemberRosterFacade, MobileSyncFacade, MobileSyncFacadeDeps, MobileSyncSnapshotPorts,
+    ResourceFacade, ResourceFacadeDeps, SearchCoordinator, SearchCoordinatorDeps, SearchFacade,
+    SearchFacadeDeps, SettingsFacade, StorageFacade, StorageFacadeDeps, UpgradeFacade,
+    UpgradeFacadeDeps,
 };
 use uc_application::{
     ApplyInboundClipboardUseCase, InboundCapture as ApplyInboundCapture,
@@ -172,11 +173,14 @@ impl ApplyInboundWrite for NoopInboundWrite {
 /// `apply_inbound` 由调用方决定:GUI/CLI 走 fallback (NoopWrite),daemon
 /// 走 enhanced (with_blob_materializer + with_host_event_emitter)。`endpoint_info`
 /// 由 [`AppDeps`] 携带 (单例,daemon LAN listener 与 facade 共享同一份
-/// Arc),无需 caller 透传。
+/// Arc),无需 caller 透传。`file_transfer` 进程级 facade:daemon 装配
+/// 必传,SyncDoc apply 后 link + complete 让 mobile_lan transfer 在
+/// file_transfer 表里闭环;CLI / 不接 LAN listener 的入口可留 `None`。
 pub fn build_mobile_sync_facade(
     deps: &AppDeps,
     storage_paths: &AppPaths,
     apply_inbound: Arc<ApplyInboundClipboardUseCase>,
+    file_transfer: Option<Arc<FileTransferFacade>>,
 ) -> Arc<MobileSyncFacade> {
     Arc::new(MobileSyncFacade::new(MobileSyncFacadeDeps {
         clock: deps.system.clock.clone(),
@@ -199,6 +203,7 @@ pub fn build_mobile_sync_facade(
             payload_resolver: deps.clipboard.payload_resolver.clone(),
             blob_reader: deps.storage.blob_store.clone(),
         },
+        file_transfer,
     }))
 }
 
@@ -213,6 +218,10 @@ pub struct AppFacadeAssemblyOptions {
     pub member_roster: Option<Arc<MemberRosterFacade>>,
     pub clipboard_sync: Option<Arc<ClipboardSyncFacade>>,
     pub blob_transfer: Option<Arc<BlobTransferFacade>>,
+    /// 文件传输 lifecycle 入口(5 个动作 + seed + link)。daemon 入口
+    /// 必传;CLI / 单元测试可留 `None`。详见
+    /// [`AppFacade::file_transfer`](uc_application::facade::AppFacade)。
+    pub file_transfer: Option<Arc<FileTransferFacade>>,
     /// 底层 `BlobTransferPort`(`IrohBlobTransferAdapter`)直连引用,供
     /// `ClipboardHistoryFacade` 在 `delete_entry` / `clear_history` 时
     /// 调 `untag` 释放对应 entry 对 iroh-blobs 的引用。与 `blob_transfer`
@@ -267,7 +276,12 @@ pub fn build_app_facade_from_deps(
         .clone()
         .unwrap_or_else(|| build_fallback_apply_inbound(deps));
 
-    let mobile_sync_facade = build_mobile_sync_facade(deps, storage_paths, apply_inbound);
+    let mobile_sync_facade = build_mobile_sync_facade(
+        deps,
+        storage_paths,
+        apply_inbound,
+        options.file_transfer.clone(),
+    );
 
     let clipboard_restore = options.clipboard_restore.map(|restore| {
         Arc::new(ClipboardRestoreFacade::new(ClipboardRestoreFacadeDeps {
@@ -315,6 +329,7 @@ pub fn build_app_facade_from_deps(
         })),
         clipboard_sync: options.clipboard_sync,
         blob_transfer: options.blob_transfer,
+        file_transfer: options.file_transfer,
         clipboard_restore,
         search: Arc::new(SearchFacade::new(SearchFacadeDeps {
             search_index: deps.search.search_index.clone(),
@@ -467,6 +482,7 @@ pub async fn build_cli_app_runtime(
             clipboard_sync: Some(assembly.clipboard_sync.clone()),
             blob_transfer: Some(assembly.blob.clone()),
             blob_transfer_port: Some(Arc::clone(&assembly.blob_transfer)),
+            file_transfer: Some(wired.file_transfer_facade.clone()),
             search_coordinator: Some(search_coordinator),
             ..Default::default()
         },

@@ -155,8 +155,8 @@ impl TransferTimeline {
     }
 }
 
-pub(crate) async fn load_timeline<S: FileTransferEventStorePort>(
-    store: &S,
+pub(crate) async fn load_timeline(
+    store: &dyn FileTransferEventStorePort,
     transfer_id: &str,
 ) -> Result<TransferTimeline, FileTransferApplicationError> {
     let history = store
@@ -166,15 +166,11 @@ pub(crate) async fn load_timeline<S: FileTransferEventStorePort>(
     TransferTimeline::from_history(transfer_id, &history)
 }
 
-pub(crate) async fn persist_and_publish<S, P>(
-    store: &S,
-    publisher: &P,
+pub(crate) async fn persist_and_publish(
+    store: &dyn FileTransferEventStorePort,
+    publisher: &dyn FileTransferEventPublisherPort,
     event: FileTransferEvent,
-) -> Result<FileTransferEvent, FileTransferApplicationError>
-where
-    S: FileTransferEventStorePort,
-    P: FileTransferEventPublisherPort,
-{
+) -> Result<FileTransferEvent, FileTransferApplicationError> {
     store
         .append(event.clone())
         .await

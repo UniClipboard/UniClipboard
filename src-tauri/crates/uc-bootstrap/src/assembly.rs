@@ -124,10 +124,12 @@ pub struct BackgroundRuntimeDeps {
     pub spool_ttl_days: u64,
     pub worker_retry_max_attempts: u32,
     pub worker_retry_backoff_ms: u64,
-    /// Event-sourced file transfer lifecycle: durable store + host-event
-    /// publisher + 6 use cases, plus the sweep/reconcile runtime tasks.
-    /// Holds a clone of the shared emitter_cell so it automatically sees
-    /// emitter swaps (LoggingEventEmitter → DaemonApiEventEmitter).
+    /// Event-sourced file transfer lifecycle: receiver-side projection
+    /// plumbing + sweep/reconcile runtime tasks. Holds a clone of the shared
+    /// `emitter_cell` so it automatically sees emitter swaps
+    /// (LoggingEventEmitter → DaemonApiEventEmitter). The 5 lifecycle actions
+    /// (start/report_progress/complete/fail/cancel) live inside the
+    /// `file_transfer_facade` carried on [`WiredDependencies`].
     pub file_transfer_lifecycle: Arc<crate::file_transfer_lifecycle::FileTransferLifecycle>,
     /// Single write boundary for all programmatic clipboard writes.
     /// Centralises guard-registration + write + cleanup-on-error.
@@ -198,6 +200,14 @@ pub struct WiredDependencies {
     /// 内存,不会出现"两条路径看不到同一个 URL"的撕裂。
     pub mobile_sync_endpoint_info:
         Arc<uc_infra::mobile_sync::InMemoryMobileSyncEndpointInfoAdapter>,
+    /// Application-layer entry point for the 5 file-transfer lifecycle
+    /// actions + seed + link. Built alongside `file_transfer_lifecycle` from
+    /// the same store + publisher so events stay on a single timeline. Lives
+    /// on `WiredDependencies` (process-level, cloneable Arc) rather than on
+    /// `BackgroundRuntimeDeps` because the latter is for one-shot mpsc
+    /// receivers — the facade itself is shared by GUI shell, daemon-lifecycle
+    /// `MobileSyncFacade` 装配, and `build_space_setup_assembly` (iroh path).
+    pub file_transfer_facade: Arc<uc_application::facade::FileTransferFacade>,
 }
 
 /// Infrastructure layer implementations
@@ -255,11 +265,10 @@ struct InfraLayer {
     // File transfer tracking (projection/read-model port).
     file_transfer_repo: Arc<dyn uc_core::ports::FileTransferRepositoryPort>,
 
-    // File transfer durable event store + receiver-side projection updater.
-    //
-    // Exposed as the concrete type because receiver-side code calls
-    // `seed_receiver_context`, which is not part of the `FileTransferEventStorePort`
-    // surface on purpose (entry_id / cached_path are receiver-local concerns).
+    // File transfer durable event store. Held as the concrete type so the
+    // assembly can pass it directly to `build_file_transfer_assembly`
+    // (which casts it to `Arc<dyn FileTransferEventStorePort>` before
+    // handing it to the publisher and use cases).
     file_transfer_store: Arc<crate::file_transfer_lifecycle::FileTransferEventStore>,
 
     // Mobile sync 设备仓库 — `DieselMobileDeviceRepository`,跨重启 / 跨进
@@ -963,13 +972,14 @@ pub fn wire_dependencies(
     let emitter_cell: Arc<std::sync::RwLock<Arc<dyn HostEventEmitterPort>>> =
         Arc::new(std::sync::RwLock::new(initial_emitter));
 
-    let file_transfer_lifecycle = Arc::new(
-        crate::file_transfer_lifecycle::build_file_transfer_lifecycle(
-            Arc::clone(&file_transfer_store_arc),
-            emitter_cell.clone(),
-            deps.storage.file_transfer_repo.clone(),
-            deps.system.clock.clone(),
-        ),
+    let crate::file_transfer_lifecycle::FileTransferAssembly {
+        lifecycle: file_transfer_lifecycle,
+        facade: file_transfer_facade,
+    } = crate::file_transfer_lifecycle::build_file_transfer_assembly(
+        Arc::clone(&file_transfer_store_arc),
+        emitter_cell.clone(),
+        deps.storage.file_transfer_repo.clone(),
+        deps.system.clock.clone(),
     );
 
     let clipboard_write_coordinator = build_clipboard_write_coordinator(
@@ -989,6 +999,7 @@ pub fn wire_dependencies(
         blob_migration_repo: blob_migration_repo_for_wiring,
         mobile_sync_endpoint_info: mobile_sync_endpoint_info_for_wiring,
         emitter_cell,
+        file_transfer_facade,
     };
     let background = BackgroundRuntimeDeps {
         representation_cache,

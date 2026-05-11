@@ -39,11 +39,16 @@ Base: `main` (`07adc0bc`) · HEAD: `ea09cdd3` (spot-capricorn)
 - `swap_daemon_lifecycle` 全进程 1 次调用，`clear_daemon_lifecycle` 调用时进程已在退出
 - **处理**: 改为 `OnceCell<Arc<XxxFacade>>` 启动期 `set` 一次，删 `clear_daemon_lifecycle`, daemon 退出 = 进程退出 = Arc drop 自动清
 
-### R3. `DesktopRuntime::set_event_emitter` + `emitter_cell` RwLock 链 — swap 路径无 caller
+### R3. `DesktopRuntime::set_event_emitter` + `TauriAppRuntime::set_event_emitter` 两个公开方法死代码 (修订)
 
-- `uc-desktop/src/runtime.rs:129-144` + 透传链 (uc-bootstrap/uc-application/uc-tauri 共 ~8 文件)
-- `Arc<RwLock<Arc<dyn HostEventEmitterPort>>>` 永远不 swap, 实际是单值
-- **处理**: 简化为 `Arc<dyn HostEventEmitterPort>`, 删 `set_event_emitter` + RwLock 包裹。属跨 crate, 独立 phase 推进
+> **重要修订** (2026-05-10): A1 原报告建议把 `emitter_cell: Arc<RwLock<Arc<dyn>>>` 整体简化为 `Arc<dyn>`。实施时发现这是 **误判** —— `uc-desktop/src/daemon/app.rs:265-269` 在 daemon.run() 启动时直接 `cell.write()` swap 把 `DaemonApiEventEmitter` 装入。这条 swap **不** 走 `set_event_emitter` 方法，简化 cell 类型会让 daemon 启动后无法装入真 emitter, 上游 publisher 丢事件。
+>
+> 修订后 R3 只删两个确实 dead 的公开方法; cell 类型 + daemon 内部 swap 全保留。Cleanup PR #4 落地 `12b1ce3c`。
+
+- `uc-desktop/src/runtime.rs::DesktopRuntime::set_event_emitter` 零外部 caller
+- `uc-tauri/src/bootstrap/runtime.rs::TauriAppRuntime::set_event_emitter` 零外部 caller (转发给 DesktopRuntime)
+- daemon 内部 swap 走 `daemon/app.rs:265 *cell.write() = ...`, 不调上述方法
+- **处理**: 删两个公开方法; emitter_cell 字段类型与 daemon 内部 swap 路径保留
 
 ### R4. `tauri::Builder::manage(process_handles.clone())` 死注册
 

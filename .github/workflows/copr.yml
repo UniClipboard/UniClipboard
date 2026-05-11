@@ -193,26 +193,24 @@ jobs:
           done
           ls -lh ~/rpmbuild/SOURCES/
 
-      - name: Build per-arch SRPMs
+      - name: Build SRPM
         shell: bash
         env:
           RPM_VERSION: ${{ steps.ver.outputs.rpm_version }}
           UPSTREAM_TAG: ${{ steps.ver.outputs.upstream_tag }}
         run: |
-          # 为每个架构产一份 SRPM。spec 里 Source0 用 %{_arch} 在 srpm 阶段
-          # 会按 host 架构展开,所以 GH runner(x86_64)上默认产出 x86_64 SRPM。
-          # 用 --target 把 srpm 强制指向另一个 _arch,再 build 一份。
+          # 单次 rpmbuild -bs 出 1 个 SRPM。spec 里 Source0/Source1 同时
+          # 声明了 x86_64 + aarch64 两个 binary RPM,COPR mock chroot 在不同
+          # arch 二次 build 时用 %ifarch 选对应那一个。版本号已经在 "Setup
+          # rpmbuild tree" 步骤里用 sed 固化到 spec,这里 --define 仅作冗余。
+          #
+          # 不能 per-arch build SRPM 再合:SRPM 文件名只由 N-V-R 决定、不带
+          # arch,循环 -bs 会同名覆盖,最终只剩最后那次 --target 对应的 SRPM。
           mkdir -p out-srpm
-          for ARCH in x86_64 aarch64; do
-            echo "::group::Build SRPM for ${ARCH}"
-            rpmbuild -bs ~/rpmbuild/SPECS/uniclipboard.spec \
-              --target "${ARCH}-linux" \
-              --define "_version ${RPM_VERSION}" \
-              --define "_upstream_tag ${UPSTREAM_TAG}" \
-              --define "_topdir $HOME/rpmbuild"
-            echo "::endgroup::"
-          done
-          # 收集所有 SRPM
+          rpmbuild -bs ~/rpmbuild/SPECS/uniclipboard.spec \
+            --define "_version ${RPM_VERSION}" \
+            --define "_upstream_tag ${UPSTREAM_TAG}" \
+            --define "_topdir $HOME/rpmbuild"
           find ~/rpmbuild/SRPMS -name '*.src.rpm' -exec cp {} out-srpm/ \;
           ls -lh out-srpm/
 

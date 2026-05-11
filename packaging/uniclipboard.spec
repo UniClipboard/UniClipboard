@@ -35,7 +35,12 @@ License:        Apache-2.0 OR MIT
 URL:            https://github.com/UniClipboard/UniClipboard
 
 # Tauri 在 release.yml 中输出的 binary RPM 命名 = UniClipboard-<tag>-1.<arch>.rpm
-Source0:        https://github.com/UniClipboard/UniClipboard/releases/download/v%{upstream_tag}/UniClipboard-%{upstream_tag}-1.%{_arch}.rpm
+# 同时声明两个 arch 的 Source — SRPM 里把两个 binary RPM 都打包进来,
+# COPR mock chroot 在不同 arch 二次 build 时用 %ifarch 选对应 Source。
+# 不能用 %{_arch} 嵌入文件名搭配 `rpmbuild -bs --target` 多次出 SRPM:
+# SRPM 文件名只由 N-V-R 决定、不带 arch 后缀,多次 -bs 会同名覆盖。
+Source0:        https://github.com/UniClipboard/UniClipboard/releases/download/v%{upstream_tag}/UniClipboard-%{upstream_tag}-1.x86_64.rpm
+Source1:        https://github.com/UniClipboard/UniClipboard/releases/download/v%{upstream_tag}/UniClipboard-%{upstream_tag}-1.aarch64.rpm
 
 ExclusiveArch:  x86_64 aarch64
 
@@ -56,10 +61,16 @@ The binary is byte-identical to what users would download from the Releases
 page; this package only re-signs and re-indexes it for the dnf/COPR channel.
 
 %prep
-# Source0 是一个完整的 binary RPM,用 rpm2cpio 解到当前工作目录(BUILD/<name>-<ver>/)。
+# Source0/Source1 是完整 binary RPM,按 host arch 选对应那一个,用 rpm2cpio
+# 解到当前工作目录 (BUILD/<name>-<ver>/)。
 mkdir -p uniclipboard-%{version}
 cd uniclipboard-%{version}
+%ifarch x86_64
 rpm2cpio %{SOURCE0} | cpio -idm
+%endif
+%ifarch aarch64
+rpm2cpio %{SOURCE1} | cpio -idm
+%endif
 
 %build
 # 无 — 二进制已 upstream 编译完毕

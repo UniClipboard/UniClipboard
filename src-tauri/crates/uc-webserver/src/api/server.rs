@@ -240,14 +240,49 @@ pub(crate) async fn request_tracing_middleware(request: Request<Body>, next: Nex
     };
 
     match level_action {
-        "server_error" => tracing::error!(
-            request_id = %request_id,
-            method = %method,
-            path = %path,
-            status = status.as_u16(),
-            elapsed_ms,
-            "daemon http request failed (server error)"
-        ),
+        // 5xx splitted by status — Sentry groups events by message template, so
+        // emitting a per-status static message+error_kind lets timeout, upstream-
+        // unavailable, and internal-error 5xx fingerprint into separate issues
+        // instead of drowning in one mega-group (see UNICLIPBOARD-RUST-5: 61
+        // events that turned out to mix 500 client bugs and 503 backend outage).
+        "server_error" => match status.as_u16() {
+            503 => tracing::error!(
+                request_id = %request_id,
+                method = %method,
+                path = %path,
+                status = 503u16,
+                elapsed_ms,
+                error_kind = "upstream_unavailable",
+                "daemon http upstream unavailable"
+            ),
+            504 => tracing::error!(
+                request_id = %request_id,
+                method = %method,
+                path = %path,
+                status = 504u16,
+                elapsed_ms,
+                error_kind = "gateway_timeout",
+                "daemon http gateway timeout"
+            ),
+            500 => tracing::error!(
+                request_id = %request_id,
+                method = %method,
+                path = %path,
+                status = 500u16,
+                elapsed_ms,
+                error_kind = "internal_error",
+                "daemon http handler internal error"
+            ),
+            code => tracing::error!(
+                request_id = %request_id,
+                method = %method,
+                path = %path,
+                status = code,
+                elapsed_ms,
+                error_kind = "server_error_other",
+                "daemon http server error (other 5xx)"
+            ),
+        },
         "client_error" => tracing::warn!(
             request_id = %request_id,
             method = %method,

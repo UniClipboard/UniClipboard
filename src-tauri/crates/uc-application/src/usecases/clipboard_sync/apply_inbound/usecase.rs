@@ -4,7 +4,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use moka::sync::Cache;
-use tracing::{debug, error, info, instrument, warn};
+use tracing::{debug, error, info, instrument, warn, Instrument};
 
 use uc_core::ids::EntryId;
 use uc_core::ports::ClipboardEntryRepositoryPort;
@@ -285,15 +285,32 @@ impl ApplyInboundClipboardUseCase {
 
         let write_port = Arc::clone(&self.write);
         let entry_id_for_write = entry_id.clone();
-        tokio::spawn(async move {
-            if let Err(e) = write_port.write(snapshot_for_write).await {
-                error!(
-                    error = %e,
-                    entry_id = %entry_id_for_write,
-                    "inbound: OS clipboard background write failed after capture"
-                );
+        let from_device_for_write = input.from_device.clone();
+        let content_hash_for_write = input.content_hash.clone();
+        let origin_guard_key_for_write = snapshot_for_write.origin_guard_key();
+        // `.in_current_span()` keeps the spawned task under `apply_inbound.execute`
+        // so trace_id / from_device / content_hash propagate into the failure event.
+        // Without this the background failure was a context-less orphan in Sentry —
+        // the missing peer_id field is exactly what made the recent UNICLIPBOARD-RUST-F
+        // triage take an extra hour (couldn't tell whether 50 failures were one peer
+        // hammering or many peers each pushing once).
+        tokio::spawn(
+            async move {
+                if let Err(e) = write_port.write(snapshot_for_write).await {
+                    error!(
+                        event = "inbound_os_write_failed",
+                        error_kind = "inbound_os_write_failed",
+                        error = %e,
+                        entry_id = %entry_id_for_write,
+                        from_device = %from_device_for_write,
+                        content_hash = %content_hash_for_write,
+                        origin_guard_key = %origin_guard_key_for_write,
+                        "inbound: OS clipboard background write failed after capture"
+                    );
+                }
             }
-        });
+            .in_current_span(),
+        );
 
         info!(entry_id = %entry_id, "inbound clipboard applied");
 

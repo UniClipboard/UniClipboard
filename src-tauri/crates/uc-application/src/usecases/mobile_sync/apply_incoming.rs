@@ -1610,6 +1610,47 @@ mod tests {
         );
     }
 
+    /// `BufferFile` 分支只把字节挂进 buffer, 不产生"已应用到本机的 entry"——
+    /// SyncDoc 还没到, 当前没有内容可广播。这条 outcome (`Buffered`) 的不变量
+    /// 在 `maybe_fan_out_to_paired_peers` 文档里被显式承诺(只有 `Applied`
+    /// 才触发), 这里用一个 fake fan-out port 把它钉死, 防止未来重构在 PUT
+    /// /file 阶段提前 fan-out 一份"空 envelope"出去。
+    #[tokio::test]
+    async fn buffer_file_does_not_invoke_fan_out() {
+        let recorder = Arc::new(RecordingFanOut::default());
+        // BufferFile 分支不进 inbound 链, mocks 留空 —— 任何意外调用都会
+        // 让 mockall 在 Drop 时 panic, 这本身就是个额外的不变量校验。
+        let repo = MockEntryRepo::new();
+        let capture = MockCapture::new();
+        let write = MockWrite::new();
+        let inbound =
+            ApplyInboundClipboardUseCase::new(Arc::new(repo), Arc::new(capture), Arc::new(write));
+        let uc = ApplyIncomingMobileClipUseCase::new(
+            Arc::new(inbound),
+            Arc::new(IncomingMobileBuffer::new()),
+            staging_never_called(),
+            Arc::new(FixedClock),
+            None,
+            Some(Arc::clone(&recorder) as Arc<dyn MobileInboundFanOutPort>),
+        );
+
+        let outcome = uc
+            .execute(input_buffer_file(
+                "photo.png",
+                "image/png",
+                "file:///tmp/mobile_inbound/buf-fanout/photo.png",
+                "photo.png",
+            ))
+            .await
+            .expect("buffer-file path returns Ok");
+        assert_eq!(outcome, ApplyIncomingMobileClipOutcome::Buffered);
+        assert_eq!(
+            recorder.calls().len(),
+            0,
+            "Buffered 分支不得触发 fan_out (PUT /file 阶段没有 entry 可广播)"
+        );
+    }
+
     /// `mobile_sync:<id>` 伪 DeviceId 的 plumbing: 通过 capture mock 的
     /// `withf` 校验 snapshot 的 ts_ms 来自 FixedClock。`from_device` 的
     /// 字符串校验留给 inbound 的 ports —— 我们已经在 dispatch_inbound 里

@@ -50,6 +50,16 @@
 - `cargo test -p uc-infra -p uc-application -p uc-tauri -p uc-webserver -p uc-daemon-local --lib` 全过 (uc-application 413 / uc-infra 272 / uc-tauri 17 / uc-daemon-local 17 / uc-webserver 45)
 - `cargo test -p uc-webserver --test graceful_shutdown_port_reuse` 1/1 passed
 
+## 2026-05-10 Cleanup PR #2 落地
+
+按推荐顺序的 #2 (R5 单项，用户面前的硬伤):
+
+| ID | Commit | 说明 |
+|---|---|---|
+| R5 | `eb25b3c5` | LanOnly disclosure 类目 OTLP → telemetry (TSX + 双语 i18n + 两处测试断言) |
+
+验证：`pnpm exec vitest run` 410/410 passed.
+
 ## 错误记录
 
 | 错误 | 第几次尝试 | 解决 |

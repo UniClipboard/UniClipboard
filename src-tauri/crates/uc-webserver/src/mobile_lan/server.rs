@@ -23,7 +23,7 @@ use std::sync::Arc;
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 
-use uc_application::facade::MobileSyncFacade;
+use uc_application::facade::{FileTransferFacade, MobileSyncFacade};
 
 use crate::mobile_lan::routes::build_router;
 
@@ -48,6 +48,7 @@ pub async fn start_mobile_lan_server(
     bind: SocketAddr,
     cancel: CancellationToken,
     facade: Arc<MobileSyncFacade>,
+    file_transfer: Option<Arc<FileTransferFacade>>,
 ) -> anyhow::Result<MobileLanServerHandle> {
     let listener = tokio::net::TcpListener::bind(bind).await?;
     let bound_addr = listener.local_addr()?;
@@ -56,7 +57,7 @@ pub async fn start_mobile_lan_server(
         "mobile sync LAN listener listening (SyncClipboard-compat: /SyncClipboard.json + /file/:dataName)"
     );
 
-    let router = build_router(facade);
+    let router = build_router(facade, file_transfer);
     let join_handle = tokio::spawn(async move {
         axum::serve(listener, router)
             .with_graceful_shutdown(cancel.cancelled_owned())

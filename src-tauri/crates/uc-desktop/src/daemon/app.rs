@@ -321,6 +321,7 @@ impl DaemonApp {
         // sync facade 做 Basic Auth + 业务路由对接;facade 在 AppFacade 上是
         // Option(GUI-only 入口可不带), 这里只在 mobile_sync 装配存在 *且*
         // endpoint_info 注入存在时才起 listener。
+        let file_transfer_facade = self.app_facade.file_transfer.clone();
         if let (Some(endpoint_info), Some(mobile_sync_facade)) = (
             self.mobile_lan_endpoint_info.clone(),
             self.app_facade.mobile_sync.clone(),
@@ -347,6 +348,7 @@ impl DaemonApp {
             } else {
                 let view = settings_view.expect("should_start implies Some");
                 let lan_cancel = self.cancel.child_token();
+                let lan_file_transfer = file_transfer_facade.clone();
                 tokio::spawn(async move {
                     use std::net::{IpAddr, Ipv4Addr, SocketAddr};
                     use uc_core::mobile_sync::LanEndpointInfo;
@@ -354,7 +356,14 @@ impl DaemonApp {
 
                     let port = view.lan_port.unwrap_or(42720);
                     let bind = SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), port);
-                    match start_mobile_lan_server(bind, lan_cancel, mobile_sync_facade).await {
+                    match start_mobile_lan_server(
+                        bind,
+                        lan_cancel,
+                        mobile_sync_facade,
+                        lan_file_transfer,
+                    )
+                    .await
+                    {
                         Ok(handle) => {
                             let url = format!("http://{}", handle.bound_addr);
                             endpoint_info

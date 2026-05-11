@@ -56,7 +56,7 @@ pub enum MobileLanTarget {
 
 ### Phase 2 — `uc-desktop` 实现 `MobileLanLifecycleController` adapter (P0, ATOMIC)
 
-**状态**：`pending`
+**状态**：`complete`
 
 **目标**：在 `uc-desktop/src/daemon/` 加 controller，实现 port 接口。独立于 facade，可单测。
 
@@ -100,7 +100,7 @@ state: tokio::sync::Mutex<Option<RunningListener>>
 
 ### Phase 3 — `uc-application` `MobileSyncFacade::update_settings` 接入 lifecycle (P0, ATOMIC)
 
-**状态**：`pending`
+**状态**：`complete`
 
 **目标**：写盘后立即调 `port.apply(target)`，`restart_required` 永远 false。
 
@@ -138,7 +138,7 @@ Ok(UpdateMobileSyncSettingsOutput { restart_required: false, ..out })
 
 ### Phase 4 — daemon `app.rs` 改用 controller (P0, ATOMIC)
 
-**状态**：`pending`
+**状态**：`complete`
 
 **目标**：删 `app.rs:307-396` 的一次性 spawn，daemon `run()` 启动时调 `controller.apply(initial_target)`，shutdown 时调 `controller.apply(Disabled)`。装配链补 controller。
 
@@ -181,7 +181,7 @@ if let Some(controller) = self.mobile_lan_controller.clone() {
 
 ### Phase 5 — 清理 SPEC §1.2.5 注释 + restart_required 字段语义文档 (P1, ATOMIC)
 
-**状态**：`pending`
+**状态**：`complete`
 
 **目标**：删除 5 个 Rust 文件中"SPEC §1.2.5: 用户必须 stop+start daemon"的过时注释，替换为「即时生效」说明。
 
@@ -206,7 +206,7 @@ if let Some(controller) = self.mobile_lan_controller.clone() {
 
 ### Phase 6 — 前端 UX 重做 (P0, ATOMIC)
 
-**状态**：`pending`
+**状态**：`complete`
 
 **目标**：「+ Add」始终启用 → 未配置则一键开启 → 直接进 register 表单。删 restart banner。
 

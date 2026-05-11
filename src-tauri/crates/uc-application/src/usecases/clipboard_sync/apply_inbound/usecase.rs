@@ -1,7 +1,9 @@
 //! `ApplyInboundClipboardUseCase` —— 入站剪贴板流程的编排主体。
 
 use std::sync::Arc;
+use std::time::Duration;
 
+use moka::sync::Cache;
 use tracing::{debug, error, info, instrument, warn};
 
 use uc_core::ids::EntryId;
@@ -18,11 +20,21 @@ use super::materializer::InboundBlobMaterializer;
 use super::ports::{InboundCapture, InboundWrite};
 use super::{ApplyInboundError, ApplyInboundInput, ApplyOutcome};
 
+const RAPID_DUPLICATE_WINDOW: Duration = Duration::from_millis(200);
+const VISIBLE_DUPLICATE_WINDOW: Duration = Duration::from_secs(2);
+const RECENT_INBOUND_MAX_RECORDS: u64 = 128;
+
 pub struct ApplyInboundClipboardUseCase {
     entry_repo: Arc<dyn ClipboardEntryRepositoryPort>,
     capture: Arc<dyn InboundCapture>,
     write: Arc<dyn InboundWrite>,
     blob_materializer: Option<Arc<dyn InboundBlobMaterializer>>,
+    /// 短窗口去重：content_hash → entry_id。过滤同一 peer 反复推送完全
+    /// 相同字节的回声帧。
+    recent_content_hashes: Cache<String, EntryId>,
+    /// 略长窗口去重：visible_key → entry_id。捕获"同一可见内容、不同
+    /// content_hash"的场景（peer 重发时扩展了 representations）。
+    recent_visible_content: Cache<String, EntryId>,
     /// Optional host-event emitter for surfacing the inbound entry to UI
     /// before the fetch+capture pipeline finishes. Wired only in daemon
     /// mode; tests / CLI leave it `None`.
@@ -41,6 +53,14 @@ impl ApplyInboundClipboardUseCase {
             write,
             blob_materializer: None,
             host_event_emitter: None,
+            recent_content_hashes: Cache::builder()
+                .max_capacity(RECENT_INBOUND_MAX_RECORDS)
+                .time_to_live(RAPID_DUPLICATE_WINDOW)
+                .build(),
+            recent_visible_content: Cache::builder()
+                .max_capacity(RECENT_INBOUND_MAX_RECORDS)
+                .time_to_live(VISIBLE_DUPLICATE_WINDOW)
+                .build(),
         }
     }
 
@@ -68,6 +88,30 @@ impl ApplyInboundClipboardUseCase {
         let emitter = cell.read().unwrap_or_else(|p| p.into_inner()).clone();
         if let Err(err) = emitter.emit(event) {
             warn!(error = %err, "apply_inbound: failed to emit host event");
+        }
+    }
+
+    fn find_recent_duplicate(
+        &self,
+        content_hash: &str,
+        visible_key: Option<&str>,
+    ) -> Option<EntryId> {
+        if let Some(id) = self.recent_content_hashes.get(content_hash) {
+            return Some(id);
+        }
+        self.recent_visible_content.get(visible_key?)
+    }
+
+    fn remember_recent_inbound(
+        &self,
+        content_hash: String,
+        visible_key: Option<String>,
+        entry_id: EntryId,
+    ) {
+        self.recent_content_hashes
+            .insert(content_hash, entry_id.clone());
+        if let Some(visible_key) = visible_key {
+            self.recent_visible_content.insert(visible_key, entry_id);
         }
     }
 
@@ -190,6 +234,20 @@ impl ApplyInboundClipboardUseCase {
             }
         };
 
+        let visible_key = snapshot.meaningful_origin_key();
+        if let Some(existing_entry_id) =
+            self.find_recent_duplicate(&input.content_hash, visible_key.as_deref())
+        {
+            debug!(
+                existing_entry_id = %existing_entry_id,
+                "inbound dropped: rapid duplicate of recently applied entry"
+            );
+            return Ok(ApplyOutcome::DuplicateSkipped {
+                content_hash: input.content_hash,
+                existing_entry_id,
+            });
+        }
+
         // 3. Persist via the same capture pipeline local copies use
         // (D5: same schema). Cloning the snapshot lets us keep one for
         // the OS write below; capture takes ownership of the original.
@@ -223,6 +281,7 @@ impl ApplyInboundClipboardUseCase {
         // - macOS / Linux:`write_snapshot_multi` 的降级分支用 `SelectRepresentationPolicyV1`
         //   选 paste-priority rep 后走单 rep 快路径(行为与上游 `narrow_to_primary` 等价)
         debug!(entry_id = %entry_id, "inbound: entry persisted, scheduling background OS clipboard write");
+        self.remember_recent_inbound(input.content_hash.clone(), visible_key, entry_id.clone());
 
         let write_port = Arc::clone(&self.write);
         let entry_id_for_write = entry_id.clone();

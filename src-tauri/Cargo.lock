@@ -9690,6 +9690,7 @@ dependencies = [
  "image",
  "libc",
  "mockall 0.13.1",
+ "moka",
  "qrcode",
  "semver",
  "serde",

@@ -115,6 +115,18 @@ fn fixture_input(text: &str) -> (ApplyInboundInput, String) {
     )
 }
 
+fn fixture_input_from_snapshot(snapshot: SystemClipboardSnapshot) -> (ApplyInboundInput, String) {
+    let (plaintext, content_hash) = encode_snapshot_to_v3_bytes(&snapshot).unwrap();
+    (
+        ApplyInboundInput {
+            from_device: DeviceId::new("peer-x"),
+            content_hash: content_hash.clone(),
+            plaintext,
+        },
+        content_hash,
+    )
+}
+
 fn build(
     repo: MockEntryRepo,
     capture: MockCapture,
@@ -231,6 +243,187 @@ async fn duplicate_skipped_when_hash_already_local() {
             content_hash: hash,
             existing_entry_id: EntryId::from("entry-existing"),
         }
+    );
+}
+
+#[tokio::test]
+async fn rapid_duplicate_skipped_even_when_repo_has_not_caught_up() {
+    let (input, hash) = fixture_input("rapid-same");
+
+    let mut repo = MockEntryRepo::new();
+    repo.expect_find_entry_id_by_snapshot_hash()
+        .with(eq(hash.clone()))
+        .times(2)
+        .returning(|_| Ok(None));
+
+    let mut capture = MockCapture::new();
+    capture
+        .expect_capture()
+        .times(1)
+        .returning(|_, _| Ok(Some(EntryId::from("entry-first"))));
+
+    let mut write = MockWrite::new();
+    write.expect_write().times(1).returning(|_| Ok(()));
+
+    let uc = build(repo, capture, write);
+    let first = uc
+        .execute(input.clone())
+        .await
+        .expect("first rapid inbound applies");
+    assert_eq!(
+        first,
+        ApplyOutcome::Applied {
+            entry_id: EntryId::from("entry-first")
+        }
+    );
+
+    let second = uc
+        .execute(input)
+        .await
+        .expect("second rapid inbound is filtered");
+    assert_eq!(
+        second,
+        ApplyOutcome::DuplicateSkipped {
+            content_hash: hash,
+            existing_entry_id: EntryId::from("entry-first"),
+        }
+    );
+}
+
+#[tokio::test]
+async fn visible_duplicate_skipped_across_channel_representation_expansion() {
+    let visible_text = b"same-ui".to_vec();
+    let first_snapshot = SystemClipboardSnapshot {
+        ts_ms: 1_700_000_000_000,
+        representations: vec![ObservedClipboardRepresentation::new(
+            RepresentationId::new(),
+            FormatId::from("text"),
+            Some(MimeType("text/plain".to_string())),
+            visible_text.clone(),
+        )],
+    };
+    let second_snapshot = SystemClipboardSnapshot {
+        ts_ms: 1_700_000_000_250,
+        representations: vec![
+            ObservedClipboardRepresentation::new(
+                RepresentationId::new(),
+                FormatId::from("text"),
+                Some(MimeType("text/plain".to_string())),
+                visible_text.clone(),
+            ),
+            ObservedClipboardRepresentation::new(
+                RepresentationId::new(),
+                FormatId::from("public.utf8-plain-text"),
+                None,
+                visible_text.clone(),
+            ),
+            ObservedClipboardRepresentation::new(
+                RepresentationId::new(),
+                FormatId::from("NSStringPboardType"),
+                None,
+                visible_text,
+            ),
+        ],
+    };
+    let (first_input, first_hash) = fixture_input_from_snapshot(first_snapshot);
+    let (second_input, second_hash) = fixture_input_from_snapshot(second_snapshot);
+    assert_ne!(first_hash, second_hash);
+
+    let mut repo = MockEntryRepo::new();
+    repo.expect_find_entry_id_by_snapshot_hash()
+        .times(2)
+        .returning(|_| Ok(None));
+
+    let mut capture = MockCapture::new();
+    capture
+        .expect_capture()
+        .times(1)
+        .returning(|_, _| Ok(Some(EntryId::from("entry-visible"))));
+
+    let mut write = MockWrite::new();
+    write.expect_write().times(1).returning(|_| Ok(()));
+
+    let uc = build(repo, capture, write);
+    let first = uc
+        .execute(first_input)
+        .await
+        .expect("first visible content applies");
+    assert_eq!(
+        first,
+        ApplyOutcome::Applied {
+            entry_id: EntryId::from("entry-visible")
+        }
+    );
+
+    tokio::time::sleep(std::time::Duration::from_millis(250)).await;
+
+    let second = uc
+        .execute(second_input)
+        .await
+        .expect("expanded visible duplicate is filtered");
+    assert_eq!(
+        second,
+        ApplyOutcome::DuplicateSkipped {
+            content_hash: second_hash,
+            existing_entry_id: EntryId::from("entry-visible"),
+        }
+    );
+}
+
+#[tokio::test]
+async fn visible_duplicate_window_expires() {
+    let first_snapshot = SystemClipboardSnapshot {
+        ts_ms: 1_700_000_000_000,
+        representations: vec![ObservedClipboardRepresentation::new(
+            RepresentationId::new(),
+            FormatId::from("text"),
+            Some(MimeType("text/plain".to_string())),
+            b"expires".to_vec(),
+        )],
+    };
+    let second_snapshot = SystemClipboardSnapshot {
+        ts_ms: 1_700_000_003_000,
+        representations: vec![ObservedClipboardRepresentation::new(
+            RepresentationId::new(),
+            FormatId::from("public.utf8-plain-text"),
+            None,
+            b"expires".to_vec(),
+        )],
+    };
+    let (first_input, _) = fixture_input_from_snapshot(first_snapshot);
+    let (second_input, _) = fixture_input_from_snapshot(second_snapshot);
+
+    let mut repo = MockEntryRepo::new();
+    repo.expect_find_entry_id_by_snapshot_hash()
+        .times(2)
+        .returning(|_| Ok(None));
+
+    let mut capture = MockCapture::new();
+    capture
+        .expect_capture()
+        .times(2)
+        .returning(|_, _| Ok(Some(EntryId::new())));
+
+    let mut write = MockWrite::new();
+    write.expect_write().times(2).returning(|_| Ok(()));
+
+    let uc = build(repo, capture, write);
+    assert!(
+        matches!(
+            uc.execute(first_input).await,
+            Ok(ApplyOutcome::Applied { .. })
+        ),
+        "first visible content applies"
+    );
+
+    tokio::time::sleep(std::time::Duration::from_millis(2100)).await;
+
+    assert!(
+        matches!(
+            uc.execute(second_input).await,
+            Ok(ApplyOutcome::Applied { .. })
+        ),
+        "same visible content applies again after the merge window expires"
     );
 }
 

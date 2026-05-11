@@ -12,20 +12,23 @@
 //!
 //! ## ShutdownRx semantics
 //!
-//! - On Unix the channel additionally exposes an `eventfd` so a Wayland / X11
+//! - On Linux the channel additionally exposes an `eventfd` so a Wayland / X11
 //!   loop can include it directly in `poll(2)` and wake instantly without a
 //!   helper thread. Adapters that block on a foreign C event loop (e.g.
 //!   `clipboard_rs::ClipboardWatcherContext::start_watch`) instead spawn a tiny
 //!   helper thread that calls [`ShutdownRx::wait`] and forwards the signal.
+//!   macOS / Windows / other Unix have no eventfd and rely on the Condvar path
+//!   exclusively.
 //! - The channel is single-shot: signalling more than once is idempotent and
 //!   waiting after a signal returns immediately.
 
 use anyhow::Result;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Condvar, Mutex};
+#[cfg(target_os = "linux")]
 use tracing::warn;
 
-#[cfg(unix)]
+#[cfg(target_os = "linux")]
 use std::os::fd::{AsRawFd, OwnedFd, RawFd};
 
 use super::watcher::ClipboardWatcher;
@@ -34,7 +37,7 @@ struct ShutdownInner {
     signaled: AtomicBool,
     cv_lock: Mutex<()>,
     cv: Condvar,
-    #[cfg(unix)]
+    #[cfg(target_os = "linux")]
     eventfd: Option<OwnedFd>,
 }
 
@@ -51,12 +54,13 @@ pub struct ShutdownRx {
 
 /// Create a new shutdown channel.
 ///
-/// On Unix the inner [`ShutdownInner`] also owns a non-blocking `eventfd` so
+/// On Linux the inner [`ShutdownInner`] also owns a non-blocking `eventfd` so
 /// pollable adapters can integrate it without spawning a helper thread. If
 /// eventfd creation fails (extremely unusual) the channel still works via the
-/// Condvar path; only [`ShutdownRx::raw_fd`] returns `None`.
+/// Condvar path; only [`ShutdownRx::raw_fd`] returns `None`. macOS / Windows /
+/// other Unix have no eventfd and use the Condvar path exclusively.
 pub fn shutdown_channel() -> (ShutdownTx, ShutdownRx) {
-    #[cfg(unix)]
+    #[cfg(target_os = "linux")]
     let eventfd = match rustix::event::eventfd(
         0,
         rustix::event::EventfdFlags::CLOEXEC | rustix::event::EventfdFlags::NONBLOCK,
@@ -75,7 +79,7 @@ pub fn shutdown_channel() -> (ShutdownTx, ShutdownRx) {
         signaled: AtomicBool::new(false),
         cv_lock: Mutex::new(()),
         cv: Condvar::new(),
-        #[cfg(unix)]
+        #[cfg(target_os = "linux")]
         eventfd,
     });
 
@@ -101,7 +105,7 @@ impl ShutdownTx {
             self.inner.cv.notify_all();
         }
         // Wake fd pollers.
-        #[cfg(unix)]
+        #[cfg(target_os = "linux")]
         {
             if let Some(fd) = self.inner.eventfd.as_ref() {
                 let buf = 1u64.to_ne_bytes();
@@ -130,12 +134,14 @@ impl ShutdownRx {
         }
     }
 
-    /// Unix-only raw fd of the underlying eventfd.
+    /// Linux-only raw fd of the underlying eventfd.
     ///
     /// Returns `None` if eventfd creation failed. Adapters using this for
     /// `poll(2)` must still fall back to checking [`Self::is_signaled`] in
-    /// their poll loop in case the fd is unavailable.
-    #[cfg(unix)]
+    /// their poll loop in case the fd is unavailable. Only exposed on Linux:
+    /// macOS / Windows / other Unix have no eventfd, so pollable adapters must
+    /// be Linux-gated as well.
+    #[cfg(target_os = "linux")]
     pub fn raw_fd(&self) -> Option<RawFd> {
         self.inner.eventfd.as_ref().map(|fd| fd.as_raw_fd())
     }

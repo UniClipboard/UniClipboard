@@ -101,27 +101,31 @@ tracing-subscriber = { version = "0.3", features = ["registry", "fmt", "env-filt
 [target.'cfg(all(target_os = "linux", target_env = "musl"))'.dependencies]
 libdbus-sys = { version = "0.2", features = ["vendored"] }
 
-# Unix-only:eventfd-backed shutdown channel for the platform clipboard
-# event loop (`crates/uc-platform/src/clipboard/event_loop.rs`). The Linux
-# Wayland / X11 watcher implementations integrate this fd into their poll
-# set so they can wake instantly on shutdown without spinning. Other Unix
-# (macOS) only needs the Condvar branch but the eventfd is cheap.
-[target.'cfg(unix)'.dependencies]
-rustix = { version = "0.38", features = ["event", "fs", "pipe"] }
-
-# Linux-only:native Wayland data-control client + native X11 selection client
-# for the platform clipboard backend. `clipboard-rs` is the legacy/transitional
-# implementation that Phase 1 wraps via `clipboard_rs_adapter`; Phase 2 adds
-# the Wayland code path here, Phase 3 swaps the X11 path to `x11rb` directly,
-# Phase 4 then narrows `clipboard-rs` to `cfg(any(target_os="macos",
-# target_os="windows"))`. Pinning notes:
-#   * wayland-client 0.31.x is the current stable line; wayland-rs follows
-#     semver so 0.31 → 0.32 will require a porting pass.
-#   * wayland-protocols-wlr 0.3.x exposes `zwlr_data_control_v1` (used by
-#     niri / sway / hyprland / KDE Plasma).
-#   * wayland-protocols 0.32 with `staging` feature exposes
-#     `ext_data_control_v1` (used by GNOME mutter 47+).
+# Linux-only dependencies for the platform clipboard backend:
+#
+# * rustix — eventfd-backed shutdown channel for the platform clipboard event
+#   loop (`crates/uc-platform/src/clipboard/event_loop.rs`) + poll/pipe
+#   primitives consumed by the Wayland data-control implementations under
+#   `clipboard/platform/linux/wayland/`. rustix's `event::eventfd` is gated
+#   to linux_kernel / freebsd / illumos / espidf upstream, so we cannot use
+#   `cfg(unix)` here — macOS would fail to find `EventfdFlags`. macOS /
+#   Windows / other Unix use the Condvar-only path in `event_loop.rs`.
+#
+# * wayland-client / wayland-protocols(-wlr) — native Wayland data-control
+#   client + native X11 selection client for the platform clipboard backend.
+#   `clipboard-rs` is the legacy/transitional implementation that Phase 1
+#   wraps via `clipboard_rs_adapter`; Phase 2 adds the Wayland code path
+#   here, Phase 3 swaps the X11 path to `x11rb` directly, Phase 4 then
+#   narrows `clipboard-rs` to `cfg(any(target_os="macos", target_os="windows"))`.
+#   Pinning notes:
+#     * wayland-client 0.31.x is the current stable line; wayland-rs follows
+#       semver so 0.31 → 0.32 will require a porting pass.
+#     * wayland-protocols-wlr 0.3.x exposes `zwlr_data_control_v1` (used by
+#       niri / sway / hyprland / KDE Plasma).
+#     * wayland-protocols 0.32 with `staging` feature exposes
+#       `ext_data_control_v1` (used by GNOME mutter 47+).
 [target.'cfg(target_os = "linux")'.dependencies]
+rustix = { version = "0.38", features = ["event", "fs", "pipe"] }
 wayland-client = "0.31"
 wayland-protocols = { version = "0.32", features = ["client", "staging"] }
 wayland-protocols-wlr = { version = "0.3", features = ["client"] }

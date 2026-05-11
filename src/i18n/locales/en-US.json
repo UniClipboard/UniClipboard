@@ -758,11 +758,6 @@
           "confirm": "I understand",
           "cancel": "Cancel"
         },
-        "restartRequired": {
-          "message": "Changes take effect after the daemon is restarted",
-          "restartButton": "Restart now",
-          "dismissAriaLabel": "Dismiss restart notice"
-        },
         "disabledHint": "Enable the LAN listener before adding a device"
       },
       "list": {

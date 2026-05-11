@@ -749,11 +749,6 @@
           "confirm": "我已知晓",
           "cancel": "取消"
         },
-        "restartRequired": {
-          "message": "更改将在下次重启 daemon 后生效",
-          "restartButton": "立即重启",
-          "dismissAriaLabel": "收起重启提示"
-        },
         "disabledHint": "请先启用 LAN 监听后再添加设备"
       },
       "list": {

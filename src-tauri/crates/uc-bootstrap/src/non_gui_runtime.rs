@@ -204,6 +204,11 @@ pub fn build_mobile_sync_facade(
             blob_reader: deps.storage.blob_store.clone(),
         },
         file_transfer,
+        // CLI fallback 装配:进程启动即跑命令然后退出, 没有常驻 daemon
+        // 来承载"settings PATCH → listener 热重启"的语义。装入 None,
+        // update_settings 仅写盘 —— 下次 daemon 进程启动时一次性读 settings
+        // 起 listener,与本字段引入前完全一致。
+        lan_lifecycle: None,
     }))
 }
 

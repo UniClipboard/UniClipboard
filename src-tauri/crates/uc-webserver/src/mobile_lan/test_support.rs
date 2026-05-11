@@ -242,6 +242,7 @@ pub(crate) async fn build_facade_with_seeded_device(
             blob_reader: Arc::new(NoopBlobReader),
         },
         file_transfer: None,
+        lan_lifecycle: None,
     }))
 }
 

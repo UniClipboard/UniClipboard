@@ -32,6 +32,7 @@ use tokio::sync::broadcast;
 use tokio::sync::mpsc::Receiver;
 use tokio::task::JoinHandle;
 use tracing::{debug, info, instrument, warn};
+use uc_observability::FlowId;
 
 use uc_core::pairing::invitation::InvitationCode;
 use uc_core::pairing::session_message::{
@@ -138,8 +139,27 @@ impl PairingInboundOrchestrator {
         info!("pairing inbound orchestrator stopped (event channel closed)");
     }
 
-    #[instrument(skip_all, fields(event = event_kind(&event)))]
+    // 跨设备可观测性(PR2):
+    //   - root span 一开 session 就能拿到 `session.id`,直接做静态字段;
+    //   - `flow.id` / `peer.device_id` 在配对入口阶段还不知道(joiner 提交
+    //     Request 后才能确定),声明为 `tracing::field::Empty` 占位,在
+    //     `match_invitation` / `finalise_verified` 等下游方法里用
+    //     `Span::current().record(...)` 回填 —— 因为这些方法都在
+    //     `handle_event` 的 instrument 范围内,Span::current() 等价于本 root。
+    //   - `flow.kind = "pairing"` 静态枚举值。
+    #[instrument(
+        skip_all,
+        fields(
+            event = event_kind(&event),
+            session.id = %event_session_id(&event),
+            flow.id = tracing::field::Empty,
+            flow.kind = "pairing",
+            peer.device_id = tracing::field::Empty,
+        ),
+    )]
     pub(crate) async fn handle_event(&self, event: PairingSessionEvent) {
+        let flow_id = FlowId::generate();
+        tracing::Span::current().record("flow.id", tracing::field::display(&flow_id));
         match event {
             PairingSessionEvent::Incoming { session, message } => {
                 self.on_incoming(session, message).await
@@ -219,6 +239,13 @@ impl PairingInboundOrchestrator {
             .await
         {
             Ok(invitation) => {
+                // 把 joiner_device_id 提到 root span 的 `peer.device_id`,
+                // 后续所有 child span / event 都自动继承,Sentry 上同一
+                // pairing flow 的事件可以一键 filter 出来。
+                tracing::Span::current().record(
+                    "peer.device_id",
+                    tracing::field::display(&request.device_id.as_str()),
+                );
                 info!(
                     session = %session,
                     code = %invitation.code().as_str(),
@@ -448,6 +475,19 @@ fn event_kind(event: &PairingSessionEvent) -> &'static str {
         PairingSessionEvent::Incoming { .. } => "Incoming",
         PairingSessionEvent::MessageReceived { .. } => "MessageReceived",
         PairingSessionEvent::Closed { .. } => "Closed",
+    }
+}
+
+/// 抽出当前 pairing 事件所属的 `session_id`。
+///
+/// 所有变体都自带 session,所以可以无条件返回 `&PairingSessionId`,
+/// 让 `handle_event` 的 root span 把 `session.id` 直接做静态字段而不必
+/// 用 `Empty` 占位再回填。
+fn event_session_id(event: &PairingSessionEvent) -> &PairingSessionId {
+    match event {
+        PairingSessionEvent::Incoming { session, .. } => session,
+        PairingSessionEvent::MessageReceived { session, .. } => session,
+        PairingSessionEvent::Closed { session, .. } => session,
     }
 }
 

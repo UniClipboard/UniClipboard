@@ -45,7 +45,8 @@ use std::sync::Arc;
 
 use bytes::Bytes;
 use tokio::task::JoinSet;
-use tracing::{debug, info, instrument, warn};
+use tracing::{debug, info, info_span, instrument, warn, Instrument};
+use uc_observability::FlowId;
 
 use uc_core::clipboard::ClipboardContentCategorySet;
 use uc_core::ids::DeviceId;
@@ -148,11 +149,30 @@ impl DispatchClipboardEntryUseCase {
         }
     }
 
-    #[instrument(skip_all, fields(content_hash = %input.content_hash))]
+    // 跨设备可观测性(PR2):
+    //   - `flow.id` 在函数体内生成后回填,统一作为本次扇出的相关 ID;PR3 起会
+    //      通过 `ClipboardHeader` 走 wire 传到对端,让 inbound 端可以用同一个
+    //      `flow.id` 接龙 trace,Sentry 上就能 join "A 端发送 → B 端接收"。
+    //   - `flow.kind = "clipboard_sync"`:静态枚举值,方便按业务流过滤。
+    //   - `fanout.candidates` 在候选筛完后回填,是单次扇出真实的目标数。
+    //   - 每个目标 peer 进 child span(见下 `peer.dispatch`)而不是把
+    //     `peer.device_id` 钉在 root —— 扇出 N 个 peer 时 root 只有一个,
+    //     钉上会丢失末次写入以外的信息。
+    #[instrument(
+        skip_all,
+        fields(
+            content_hash = %input.content_hash,
+            flow.id = tracing::field::Empty,
+            flow.kind = "clipboard_sync",
+            fanout.candidates = tracing::field::Empty,
+        ),
+    )]
     pub(crate) async fn execute(
         &self,
         input: DispatchClipboardEntryInput,
     ) -> Result<DispatchOutcome, DispatchSyncError> {
+        let flow_id = FlowId::generate();
+        tracing::Span::current().record("flow.id", tracing::field::display(&flow_id));
         // 1. Encrypt. A locked session surfaces here — let it short-circuit
         //    so we don't spam the dispatch wire with encrypt-retries.
         let ciphertext = match self.transfer_cipher.encrypt(&input.plaintext).await {
@@ -216,7 +236,15 @@ impl DispatchClipboardEntryUseCase {
             });
         }
 
+        tracing::Span::current().record("fanout.candidates", candidates.len());
+
         // 4. Fan-out. One JoinSet task per target; results merged at the end.
+        //
+        // 每个 peer 走自己的 `peer.dispatch` child span,带上 `peer.device_id`
+        // + `flow.id`。这样 Sentry 上扇出 N 个目标时能看到 N 条平行 child span,
+        // 单点失败一目了然,而不是被 root 的"末次写入"覆盖。`flow.id` 在
+        // child 上也写一份是冗余 —— 但 root span 不一定总在同一个 trace,
+        // 在 worker 任务里显式 carry 更稳。
         let mut set: JoinSet<(DeviceId, Result<DispatchAck, ClipboardDispatchError>)> =
             JoinSet::new();
         for device_id in &candidates {
@@ -226,10 +254,19 @@ impl DispatchClipboardEntryUseCase {
             let payload = SyncPayload {
                 ciphertext: ciphertext.clone(),
             };
-            set.spawn(async move {
-                let result = dispatch.dispatch(&device_id, &header, payload).await;
-                (device_id, result)
-            });
+            let child_span = info_span!(
+                "peer.dispatch",
+                peer.device_id = %device_id.as_str(),
+                flow.id = %flow_id,
+                flow.kind = "clipboard_sync",
+            );
+            set.spawn(
+                async move {
+                    let result = dispatch.dispatch(&device_id, &header, payload).await;
+                    (device_id, result)
+                }
+                .instrument(child_span),
+            );
         }
 
         let mut per_target = Vec::with_capacity(candidates.len());

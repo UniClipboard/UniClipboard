@@ -30,6 +30,7 @@ use bytes::Bytes;
 use tokio::sync::broadcast;
 use tokio::task::JoinHandle;
 use tracing::{debug, info, instrument, warn};
+use uc_observability::FlowId;
 
 use uc_core::ids::DeviceId;
 use uc_core::ports::security::TransferCipherPort;
@@ -139,7 +140,24 @@ impl IngestInboundClipboardUseCase {
         }
     }
 
+    // 跨设备可观测性(PR2):`handle_one` 是入站剪贴板帧的真实处理入口
+    // (`run` loop 只做 recv/dispatch),所以 root span 字段挂在这里:
+    //   - `peer.device_id` 是发送方,直接从 wire 上的 InboundClipboard 拿;
+    //   - `flow.id` 本侧生成 —— PR3 起会用 wire header 上带过来的对端
+    //     flow_id 替换,让 A 端 dispatch span 和 B 端 ingest span 共享同一个
+    //     flow.id,Sentry trace UI 上可以一键 join。
+    #[instrument(
+        skip_all,
+        fields(
+            peer.device_id = %inbound.peer_device_id.as_str(),
+            content_hash = %inbound.header.content_hash,
+            flow.id = tracing::field::Empty,
+            flow.kind = "clipboard_sync",
+        ),
+    )]
     async fn handle_one(&self, inbound: uc_core::ports::InboundClipboard) {
+        let flow_id = FlowId::generate();
+        tracing::Span::current().record("flow.id", tracing::field::display(&flow_id));
         // Stage 1: device-level kill switch (`receive_enabled`). Cheaper
         // than decrypt + decode, so do this first.
         if !self.is_receive_allowed(&inbound.peer_device_id).await {

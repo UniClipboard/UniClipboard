@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use tracing::instrument;
 use uc_core::file_transfer::{FileTransferEventPublisherPort, FileTransferEventStorePort};
 use uc_core::FileTransferEvent;
 
@@ -33,6 +34,26 @@ impl StartTransferUseCase {
         Self { store, publisher }
     }
 
+    // 跨设备可观测性(PR2):文件传输是用户感知最强的"跨设备动作"之一,
+    // 但启动入口此前完全没有 tracing instrumentation —— Sentry 上看不到
+    // "谁向谁传了什么文件,什么时候开始的",失败时只能靠下游错误日志倒推。
+    // 这条 #[instrument] 把 `transfer.id` / `peer.device_id` /
+    // `transfer.bytes_total` / `flow.kind` 钉到 root span,后续的
+    // ReportProgress / Fail / Cancel use case 共享同一个 `transfer.id`
+    // 上下文,Sentry 上一个传输的完整时间线一目了然。
+    //
+    // `transfer.id` 直接复用业务 ID(`input.transfer_id`),它已经是全
+    // wire 唯一的相关 ID —— 跨设备 join 时不需要再独立生成 `flow.id`。
+    #[instrument(
+        name = "file_transfer.start",
+        skip_all,
+        fields(
+            transfer.id = %input.transfer_id,
+            peer.device_id = %input.peer_id,
+            transfer.bytes_total = input.file_size.unwrap_or(0),
+            flow.kind = "file_transfer",
+        ),
+    )]
     pub async fn execute(
         &self,
         input: StartTransfer,

@@ -1,22 +1,36 @@
 /**
- * MobileSyncSettingsSheet —— 移动设备同步配置抽屉。
+ * # 为什么需要这个组件
  *
- * 方案 B 拆分:把原 MobileSyncDevicesPanel 主区域的"5 行 SettingsRow +
- * 重启提示 + LAN 安全告警 modal"全部搬到这里,通过右侧 Sheet 滑入。Panel
- * 主区域只保留紧凑状态条 + 设备列表,UX 上回归"DevicesPage 主体管设备,
- * 配置走二级抽屉"。
+ * 把 mobile sync 配置(5 行 SettingsRow + LAN 安全告警 modal)从设备主面板
+ * 拆出来塞进右侧 Sheet,让 DevicesPage 主体回到"管设备"职责,配置走二级
+ * 抽屉。设备列表区域不再被配置项目挤占。
  *
- * 关键不变量:
+ * # 关键不变量
+ *
  * - LAN 安全告警:开启 LAN 监听仍弹 AlertDialog(嵌套在 Sheet 内,Radix
- *   会在 portal 层正确堆叠)
- * - 重启提示:Sheet 内顶部 amber 横幅,关闭 Sheet 不会撤销"待重启"标记
- *   (settings.restartRequired 仍写回父组件,但 UI 仅在 Sheet 打开时呈现)
- * - port: 本地 portDraft + onBlur 提交,同原实现
- * - bindIp: BIND_IP_AUTO_SENTINEL ↔ null 互转,同原实现
+ *   在 portal 层正确堆叠)
+ * - port: 本地 portDraft + onBlur 提交,避免每键击都触发 update_settings
+ * - bindIp: `BIND_IP_AUTO_SENTINEL` ↔ null 互转(Auto 选项)
  *
- * 数据所有权: 本组件持有 settings/lanInterfaces 等 mobile sync 相关 state。
- * 通过 onSettingsChange 把最新 settings 视图回调给父 panel,用于驱动状态条
- * 文案与 "Add" 按钮 disabled。
+ * # 改造要点 (phase 6, 2026-05-11)
+ *
+ * 旧版在 enabled/lanListen/port 任一变化后弹 amber "请重启" 横幅,
+ * 用户必须点"立即重启" → 等 App 重启完才能继续。phase 1-5 把 daemon
+ * 改成 LAN listener 即时切换 (controller.apply),本组件随之删:
+ *  - `restartRequired` / `restartDismissed` state
+ *  - `handleRestart` (invokeWithTrace('restart_app'))
+ *  - amber 横幅 JSX
+ *
+ * 改为 `applySettingsUpdate` 成功后立即 `toast.success(applied)` 即时反馈。
+ * 仅当 daemon 端 lifecycle adapter 报 bind 失败时,toast 改为 error +
+ * 透传 reason (走 result.lanListenerBindError)。NetworkSection 的 iroh
+ * 字段仍走 restart_app (Pitfall 3 / 10 真约束),与本组件独立。
+ *
+ * # 数据所有权
+ *
+ * 本组件持有 settings / lanInterfaces 等 mobile sync 相关 state。通过
+ * `onSettingsChange` 回调把最新 settings 视图给父 panel,驱动状态条文案
+ * 与"Add"按钮 disable 条件。
  */
 
 import React, { useCallback, useEffect, useState } from 'react'
@@ -153,7 +167,24 @@ const MobileSyncSettingsSheet: React.FC<Props> = ({ open, onOpenChange, onSettin
         // 切换的, restart_required 永远 false。toast 即时反馈即可,不再
         // 弹"请重启"横幅(NetworkSection 的 iroh 字段仍走 restart, 与本
         // 路径独立)。
-        toast.success(t('devices.mobileSync.feedback.applied'))
+        //
+        // 但 "落盘成功" ≠ "listener 起来了" —— bind 失败时 facade 会把
+        // reason 透传到 lanListenerBindError, 这里改 toast.error 让用户立刻
+        // 知道:设置改了, 但 listener 没起,iPhone 还是连不上。完整 status
+        // bar 走下面的 loadSettings → lanListenerError 路径展示。
+        if (result.lanListenerBindError) {
+          log.warn(
+            { reason: result.lanListenerBindError, patch },
+            'settings saved but LAN listener bind failed'
+          )
+          toast.error(
+            t('devices.mobileSync.feedback.applyFailed', {
+              message: result.lanListenerBindError,
+            })
+          )
+        } else {
+          toast.success(t('devices.mobileSync.feedback.applied'))
+        }
         // lanListenerError 等运行时字段由 daemon 写入,update 返回值只含
         // 持久化字段;需 reload 拿最新视图。
         await loadSettings()

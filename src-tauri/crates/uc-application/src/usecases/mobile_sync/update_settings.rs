@@ -69,6 +69,19 @@ pub struct UpdateMobileSyncSettingsOutput {
     /// 生效并把此字段拍回 `false`。无 lifecycle 装配(CLI fallback / 单测)
     /// 保留旧语义:任一字段实际变化 → `true`,同值不写盘 → `false`。
     pub restart_required: bool,
+    /// 即时生效路径下 bind 失败的原因。
+    ///
+    /// 装入 lifecycle port 的 facade 路径会在写盘成功后调
+    /// `lifecycle.apply(target)`;若 adapter 把新端口绑失败(端口占用 /
+    /// 权限 / IP 不可分配等),facade 从 `MobileSyncEndpointInfoPort` 读出
+    /// `BindFailed{reason}` 并把 reason 透传到此字段。
+    ///
+    /// 字段语义:
+    /// - `Some(reason)` —— 落盘成功但 listener 没起来,UI 应当告知用户
+    ///   原因并阻断后续依赖 listener 的动作(典型:首次添加移动设备)。
+    /// - `None` —— 要么 lifecycle 没装(use case 自身永远填 None,由
+    ///   facade 路径覆写),要么 bind 成功 / 目标本就是 Disabled。
+    pub lan_listener_bind_error: Option<String>,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -154,6 +167,10 @@ impl UpdateMobileSyncSettingsUseCase {
             lan_advertise_ip: target_lan_advertise_ip,
             lan_port: target_lan_port,
             restart_required,
+            // use case 不知道 lifecycle 是否被装配,更不知道 apply 后的
+            // 端口状态。这个字段由 facade 路径在调完 lifecycle.apply 后
+            // 从 MobileSyncEndpointInfoPort 读出来覆写。
+            lan_listener_bind_error: None,
         })
     }
 }

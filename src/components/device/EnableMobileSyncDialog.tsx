@@ -66,10 +66,27 @@ const EnableMobileSyncDialog: React.FC<Props> = ({ open, onOpenChange, onSuccess
   const handleConfirm = useCallback(async () => {
     setSubmitting(true)
     try {
-      await updateMobileSyncSettings({
+      const result = await updateMobileSyncSettings({
         enabled: true,
         lanListenEnabled: true,
       })
+      // 写盘成功不代表 listener 起来了 —— daemon 端 lifecycle adapter 可能
+      // 报 bind 失败(端口占用 / 权限 / IP 不可用),那种情况下 onSuccess 会
+      // 把用户带进 AddMobileSyncDeviceDialog → 填完 label → 拿凭据 →
+      // iPhone 连不上,体验更差。在这里硬阻断,toast 告诉用户原因,让他们
+      // 去 Configure 抽屉里换端口。
+      if (result.lanListenerBindError) {
+        log.warn(
+          { reason: result.lanListenerBindError },
+          'settings saved but LAN listener bind failed; abort onSuccess'
+        )
+        toast.error(
+          t('devices.mobileSync.feedback.applyFailed', {
+            message: result.lanListenerBindError,
+          })
+        )
+        return
+      }
       onSuccess()
       onOpenChange(false)
     } catch (err) {

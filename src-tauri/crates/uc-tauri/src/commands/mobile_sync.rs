@@ -429,6 +429,14 @@ pub struct UpdateMobileSyncSettingsResult {
     /// "下一次 daemon 重启才生效"的旧语义。前端按本字段决定是否弹
     /// restart 横幅, true → 弹, false → 即时反馈即可。
     pub restart_required: bool,
+    /// 即时生效路径下 LAN listener bind 失败的原因。
+    ///
+    /// 写盘成功但 adapter `apply(target)` 后端口没起来时(端口占用、权限
+    /// 不足、IP 不可分配等),facade 从 `MobileSyncEndpointInfoPort` 读出
+    /// `BindFailed{reason}` 并透传到此字段。前端引导对话框据此在 happy
+    /// path 流程中提前 toast.error 并阻断下一步, 避免用户填完 label 才
+    /// 发现 iPhone 连不上。CLI fallback / 无 lifecycle 装配下永远为 None。
+    pub lan_listener_bind_error: Option<String>,
 }
 
 impl From<UpdateMobileSyncSettingsOutput> for UpdateMobileSyncSettingsResult {
@@ -439,6 +447,7 @@ impl From<UpdateMobileSyncSettingsOutput> for UpdateMobileSyncSettingsResult {
             lan_advertise_ip: o.lan_advertise_ip,
             lan_port: o.lan_port,
             restart_required: o.restart_required,
+            lan_listener_bind_error: o.lan_listener_bind_error,
         }
     }
 }

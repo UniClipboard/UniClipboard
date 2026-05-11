@@ -220,6 +220,62 @@ pub enum LatestClipboardSnapshotError {
     Resolution(String),
 }
 
+// ─── lan listener lifecycle ─────────────────────────────────────────────
+
+/// 期望的 LAN 监听器运行时状态。
+///
+/// 这是 port 入参的领域类型,描述"对外应该暴露什么端点",而不描述具体如何 bind /
+/// 绑哪个网卡 —— 那是 adapter 的实现细节。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MobileLanTarget {
+    /// 不对外暴露任何 LAN 监听器。若 adapter 当前有正在运行的监听器,必须把
+    /// 它停掉并释放底层资源(端口、句柄等)。
+    Disabled,
+
+    /// 在指定端口上对外暴露监听器。`port` ∈ `1..=65535`。
+    ///
+    /// 若 adapter 当前无监听器, start;若已有同端口监听器, no-op;若端口不同,
+    /// 先 stop 旧的再 start 新的。
+    Enabled {
+        /// 监听端口。adapter 自行决定 bind 哪些 IP(典型实现绑 `0.0.0.0`,
+        /// 由 OS 路由分发)。
+        port: u16,
+    },
+}
+
+/// 把对外暴露的 LAN 监听器状态对齐到期望值。
+///
+/// # 语义
+///
+/// `apply` 是 **幂等** 的状态对齐:多次以同一 target 调用与单次调用等价。
+/// 调用方不需要先查"现在是什么状态",直接传期望值即可。
+///
+/// # 状态机
+///
+/// 当前状态 × 目标状态的合法行为:
+///
+/// | 当前 \ 目标         | `Disabled` | `Enabled { port }` |
+/// | ------------------- | ---------- | ------------------ |
+/// | 未运行              | no-op      | start              |
+/// | 运行中, 同端口      | stop       | no-op              |
+/// | 运行中, 不同端口    | stop       | stop + start       |
+///
+/// # 错误语义
+///
+/// 本方法 **不返回错误**。adapter 内部 bind 失败(端口占用、IP 不可分配、
+/// 权限不足等)必须经其它通道反馈给观察者(典型:`MobileSyncEndpointInfoPort`
+/// 的 `BindFailed{reason}` 三态),而不是把错误回传给调用方 —— 因为调用方
+/// 通常已经在持久化层提交了新设置, port 失败不应让设置回滚,只应让观察者
+/// 看到"配置已生效但 bind 失败"。
+///
+/// # 并发
+///
+/// 同时刻只能有一个 `apply` 在生效;adapter 自行做串行化(典型:内部 mutex)。
+#[async_trait]
+pub trait MobileLanLifecyclePort: Send + Sync {
+    async fn apply(&self, target: MobileLanTarget);
+}
+
 // ─── mobile file staging ────────────────────────────────────────────────
 
 /// 把 mobile 入站(`PUT /file/{name}`)收到的裸字节物化到本机文件系统,

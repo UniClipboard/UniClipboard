@@ -62,7 +62,8 @@ pub use local_identity::{LocalIdentityError, LocalIdentityPort};
 pub use mobile_sync::{
     EndpointInfoError, LanInterfaceProbeError, LanInterfaceProbePort, MobileCredentialsMinterPort,
     MobileDeviceRepositoryPort, MobileFileStagingError, MobileFileStagingPort,
-    MobileSyncEndpointInfoPort, PasswordHasherError, PasswordHasherPort,
+    MobileLanLifecyclePort, MobileLanTarget, MobileSyncEndpointInfoPort, PasswordHasherError,
+    PasswordHasherPort,
 };
 pub use pairing::{
     DialError, PairingEventPort, PairingSessionEvent, PairingSessionId, PairingSessionPort,

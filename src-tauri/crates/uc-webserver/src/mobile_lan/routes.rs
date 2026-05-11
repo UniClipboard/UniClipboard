@@ -315,12 +315,24 @@ async fn put_clipboard_file(
         raw_mime.clone()
     };
 
+    // transfer_id:协议层这次 PUT 的唯一 key,贯穿到 SyncDoc apply 阶段
+    // 让 `file_transfer` 表 link + complete 闭环。生成策略:`mobile-lan:<uuid-v4>`,
+    // mobile 客户端协议升级后可选通过 `?upload_id=...` 自带,server 端校验
+    // 后照用(P5b 增强,本会话只走 server-gen)。
+    let transfer_id = format!("mobile-lan:{}", uuid::Uuid::new_v4());
+
     let bytes_len = body_bytes.len();
     let log_data_name = data_name.clone();
     let log_mime = effective_mime.clone();
     let device_id = authed.device.device_id.clone();
     match facade
-        .put_clipboard_file(data_name, effective_mime, body_bytes, device_id)
+        .put_clipboard_file(
+            data_name,
+            effective_mime,
+            body_bytes,
+            device_id,
+            transfer_id,
+        )
         .await
     {
         Ok(outcome) => {

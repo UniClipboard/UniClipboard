@@ -241,6 +241,7 @@ pub(crate) async fn build_facade_with_seeded_device(
             payload_resolver: Arc::new(NoopResolver),
             blob_reader: Arc::new(NoopBlobReader),
         },
+        file_transfer: None,
     }))
 }
 

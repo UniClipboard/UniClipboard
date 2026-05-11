@@ -267,6 +267,10 @@ pub fn build_app_facade_from_deps(
             payload_resolver: deps.clipboard.payload_resolver.clone(),
             blob_reader: deps.storage.blob_store.clone(),
         },
+        // file-transfer lifecycle facade —— SyncDoc apply 后 link + complete
+        // 让 mobile_lan 路径产生的 transfer 在 file_transfer 表里闭环。
+        // CLI / 不接 LAN listener 的入口可保持 None,本字段为 Option。
+        file_transfer: options.file_transfer.clone(),
     }));
 
     let clipboard_restore = options.clipboard_restore.map(|restore| {

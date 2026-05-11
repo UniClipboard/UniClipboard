@@ -9767,6 +9767,7 @@ dependencies = [
  "uc-desktop",
  "uc-observability",
  "uc-platform",
+ "uuid",
 ]
 
 [[package]]
@@ -10057,6 +10058,7 @@ dependencies = [
  "url",
  "utoipa",
  "utoipa-swagger-ui",
+ "uuid",
 ]
 
 [[package]]

@@ -423,7 +423,11 @@ pub struct UpdateMobileSyncSettingsResult {
     pub lan_listen_enabled: bool,
     pub lan_advertise_ip: Option<String>,
     pub lan_port: Option<u16>,
-    /// 任一字段实际变化即 true；同值重复保存为 false。
+    /// Wire-兼容历史字段。daemon 装入 LAN lifecycle controller 时
+    /// (GUI 路径) settings 改动即时生效, 本字段永远为 false; CLI fallback
+    /// 装配仍按"任一字段实际变化 → true / 同值 → false"返回, 表达
+    /// "下一次 daemon 重启才生效"的旧语义。前端按本字段决定是否弹
+    /// restart 横幅, true → 弹, false → 即时反馈即可。
     pub restart_required: bool,
 }
 
@@ -638,8 +642,9 @@ pub async fn get_mobile_sync_settings(
     .await
 }
 
-/// 更新移动端同步设置。返回值 `restart_required` 仅在任一字段实际发生变化
-/// 时为 true；同值重复保存为 false 且不写盘。
+/// 更新移动端同步设置。GUI daemon 装配下 LAN listener 由
+/// `MobileLanLifecyclePort` 即时切换,无需重启;`restart_required` 字段
+/// 的具体语义见 [`UpdateMobileSyncSettingsResult::restart_required`] 文档。
 #[tauri::command]
 pub async fn update_mobile_sync_settings(
     runtime: State<'_, Arc<TauriAppRuntime>>,

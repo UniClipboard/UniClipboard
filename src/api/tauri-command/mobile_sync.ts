@@ -156,7 +156,18 @@ export interface UpdateMobileSyncSettingsResult {
   lanListenEnabled: boolean
   lanAdvertiseIp: string | null
   lanPort: number | null
-  /** True iff any field actually changed; same-value saves are no-ops. */
+  /**
+   * Wire-compatible legacy flag.
+   *
+   * GUI daemon assembly wires an in-process `MobileLanLifecyclePort` adapter
+   * that applies the new settings immediately (start / stop / rebind the
+   * LAN listener). On that path this field is **always `false`** — the
+   * frontend should never display a restart banner for mobile-sync settings.
+   *
+   * CLI fallback (no resident daemon) preserves the older semantics: `true`
+   * iff any field actually changed, `false` for same-value saves. Useful
+   * only if a non-GUI client surfaces a "restart pending" hint.
+   */
   restartRequired: boolean
 }
 

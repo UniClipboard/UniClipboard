@@ -43,7 +43,7 @@ use std::sync::{Arc, Weak};
 use tokio::sync::Mutex;
 use tokio::task::AbortHandle;
 use tokio::time::{sleep, Duration};
-use tracing::{debug, warn};
+use tracing::{debug, info, warn};
 
 use uc_core::crypto::domain::Passphrase;
 use uc_core::ids::{DeviceId, SessionId, SpaceId};
@@ -151,6 +151,12 @@ impl SponsorHandshakeCoordinator {
         session: &PairingSessionId,
         request: JoinerRequest,
     ) -> Result<(), ()> {
+        info!(
+            session = %session,
+            joiner_device_id = %request.device_id.as_str(),
+            transport_address_blob_len = request.transport_address_blob.len(),
+            "sponsor pairing begin; preparing KeyslotOffer"
+        );
         // Load the canonical `SpaceId` persisted at A1 time so the
         // joiner adopts the sponsor's actual space — not a fresh UUID
         // minted here. Legacy installs that pre-date the
@@ -241,7 +247,7 @@ impl SponsorHandshakeCoordinator {
 
         self.arm_timeout(session).await;
 
-        debug!(
+        info!(
             session = %session,
             ttl_ms = %self.handshake_ttl.as_millis(),
             "KeyslotOffer sent; awaiting ChallengeResponse"
@@ -341,8 +347,18 @@ impl SponsorHandshakeCoordinator {
         };
 
         Some(if verified {
+            info!(
+                session = %session,
+                joiner_device_id = %facts.device_id.as_str(),
+                "joiner proof verified"
+            );
             Verdict::Verified(facts)
         } else {
+            warn!(
+                session = %session,
+                joiner_device_id = %facts.device_id.as_str(),
+                "joiner proof rejected"
+            );
             Verdict::Rejected
         })
     }
@@ -383,6 +399,7 @@ impl SponsorHandshakeCoordinator {
             .local_transport_address_blob()
             .await
             .unwrap_or_default();
+        let transport_address_blob_len = transport_address_blob.len();
         let confirm = PairingSessionMessage::Confirm(SponsorConfirm {
             space_id: ctx.space_id,
             sender_device_id: self.device_identity.current_device_id(),
@@ -394,6 +411,11 @@ impl SponsorHandshakeCoordinator {
             .send(session, confirm)
             .await
             .map_err(|e| format!("send Confirm: {e}"))?;
+        info!(
+            session = %session,
+            transport_address_blob_len,
+            "Confirm sent to joiner"
+        );
         self.pairing_session
             .close(session, Some("handshake confirmed".into()))
             .await;

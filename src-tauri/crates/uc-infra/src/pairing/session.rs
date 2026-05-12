@@ -41,7 +41,7 @@ use iroh::endpoint::{Connection, RecvStream, SendStream};
 use iroh::protocol::{AcceptError, ProtocolHandler, RouterBuilder};
 use iroh::{Endpoint, EndpointAddr};
 use tokio::sync::{mpsc, Mutex};
-use tracing::{debug, instrument, warn};
+use tracing::{debug, info, instrument, warn};
 
 use uc_core::pairing::{InvitationCode, PairingSessionMessage};
 use uc_core::ports::pairing::{
@@ -118,8 +118,15 @@ impl IrohPairingSessionAdapter {
             .resolve_pairing(code.as_str())
             .await
             .map_err(map_resolve_err)?;
-        serde_json::from_str::<EndpointAddr>(&resp.sponsor_ticket)
-            .map_err(|err| DialError::Internal(format!("sponsor ticket decode: {err}")))
+        let addr = serde_json::from_str::<EndpointAddr>(&resp.sponsor_ticket)
+            .map_err(|err| DialError::Internal(format!("sponsor ticket decode: {err}")))?;
+        info!(
+            code = %code.as_str(),
+            sponsor = %addr.id.fmt_short(),
+            transport_addr_count = addr.addrs.len(),
+            "pairing invitation resolved; sponsor address ready"
+        );
+        Ok(addr)
     }
 
     /// Install a ready-built session into the map and return the minted id.
@@ -173,6 +180,10 @@ impl IrohPairingSessionAdapter {
     /// iroh router for each accepted connection.
     async fn handle_incoming(&self, connection: Connection) {
         let remote = connection.remote_id();
+        info!(
+            remote = %remote,
+            "pairing incoming connection received; waiting for bi stream"
+        );
         let (send, mut recv) = match connection.accept_bi().await {
             Ok(pair) => pair,
             Err(err) => {
@@ -184,6 +195,10 @@ impl IrohPairingSessionAdapter {
                 return;
             }
         };
+        info!(
+            remote = %remote,
+            "pairing bi stream accepted; waiting for first frame length"
+        );
 
         let mut len_buf = [0u8; FRAME_LEN_BYTES];
         if let Err(err) = recv.read_exact(&mut len_buf).await {
@@ -195,6 +210,11 @@ impl IrohPairingSessionAdapter {
             return;
         }
         let len = u32::from_be_bytes(len_buf) as usize;
+        info!(
+            remote = %remote,
+            frame_len = len,
+            "pairing first-frame length read"
+        );
 
         let mut payload = vec![0u8; len];
         if let Err(err) = recv.read_exact(&mut payload).await {
@@ -218,9 +238,21 @@ impl IrohPairingSessionAdapter {
                 return;
             }
         };
+        let message_kind = message_kind(&message);
+        info!(
+            remote = %remote,
+            frame_len = len,
+            message_kind,
+            "pairing first-frame decoded"
+        );
 
         let session = self.register_session(connection, send, recv).await;
-        debug!(session = %session, remote = %remote, "pairing session accepted");
+        info!(
+            session = %session,
+            remote = %remote,
+            message_kind,
+            "pairing session accepted"
+        );
 
         let tx_snapshot = self.incoming_tx.lock().await.clone();
         let Some(tx) = tx_snapshot else {
@@ -247,6 +279,11 @@ impl IrohPairingSessionAdapter {
             );
             return;
         }
+        info!(
+            session = %session,
+            message_kind,
+            "pairing incoming event delivered to orchestrator"
+        );
 
         // Sponsor-side recv pump: after the first frame fires `Incoming`,
         // every subsequent frame from the joiner (e.g. ChallengeResponse)
@@ -410,22 +447,51 @@ impl PairingSessionPort for IrohPairingSessionAdapter {
         code: &InvitationCode,
     ) -> Result<PairingSessionId, DialError> {
         let sponsor_addr = self.resolve_invitation(code).await?;
+        let sponsor_id = sponsor_addr.id.fmt_short().to_string();
+        let transport_addr_count = sponsor_addr.addrs.len();
+        info!(
+            sponsor = %sponsor_id,
+            transport_addr_count,
+            "pairing sponsor address resolved; dialing"
+        );
 
         let connection = self
             .endpoint
             .connect(sponsor_addr, PAIRING_ALPN)
             .await
             .map_err(|err| {
-                debug!(error = %err, "iroh connect failed");
+                warn!(
+                    error = %err,
+                    sponsor = %sponsor_id,
+                    "pairing sponsor connect failed"
+                );
                 DialError::SponsorUnreachable
             })?;
+        info!(
+            sponsor = %sponsor_id,
+            "pairing sponsor connection established; opening bi stream"
+        );
 
-        let (send, recv) = connection
-            .open_bi()
-            .await
-            .map_err(|err| DialError::Internal(format!("open_bi failed: {err}")))?;
+        let (send, recv) = connection.open_bi().await.map_err(|err| {
+            warn!(
+                error = %err,
+                sponsor = %sponsor_id,
+                "pairing open_bi failed"
+            );
+            DialError::Internal(format!("open_bi failed: {err}"))
+        })?;
+        info!(
+            sponsor = %sponsor_id,
+            "pairing bi stream opened"
+        );
 
-        Ok(self.register_session(connection, send, recv).await)
+        let session = self.register_session(connection, send, recv).await;
+        info!(
+            session = %session,
+            sponsor = %sponsor_id,
+            "pairing outbound session registered"
+        );
+        Ok(session)
     }
 
     #[instrument(skip_all, fields(session = %session))]
@@ -435,6 +501,7 @@ impl PairingSessionPort for IrohPairingSessionAdapter {
         message: PairingSessionMessage,
     ) -> Result<(), SessionError> {
         let slot = self.session(session).await?;
+        let message_kind = message_kind(&message);
         let payload = wire::encode(&message)
             .map_err(|err| SessionError::Internal(format!("wire encode: {err}")))?;
         let len: u32 = payload
@@ -447,6 +514,12 @@ impl PairingSessionPort for IrohPairingSessionAdapter {
             .await
             .map_err(map_write_err)?;
         send.write_all(&payload).await.map_err(map_write_err)?;
+        info!(
+            session = %session,
+            message_kind,
+            frame_len = payload.len(),
+            "pairing frame sent"
+        );
         Ok(())
     }
 
@@ -457,7 +530,19 @@ impl PairingSessionPort for IrohPairingSessionAdapter {
     ) -> Result<Option<PairingSessionMessage>, SessionError> {
         let slot = self.session(session).await?;
         let mut recv = slot.recv.lock().await;
-        read_next_frame(&mut recv).await
+        let frame = read_next_frame(&mut recv).await?;
+        match &frame {
+            Some(message) => info!(
+                session = %session,
+                message_kind = message_kind(message),
+                "pairing frame received"
+            ),
+            None => info!(
+                session = %session,
+                "pairing recv observed peer half-close"
+            ),
+        }
+        Ok(frame)
     }
 
     #[instrument(skip_all, fields(session = %session))]
@@ -499,6 +584,16 @@ impl PairingSessionPort for IrohPairingSessionAdapter {
                 None
             }
         }
+    }
+}
+
+fn message_kind(message: &PairingSessionMessage) -> &'static str {
+    match message {
+        PairingSessionMessage::Request(_) => "Request",
+        PairingSessionMessage::KeyslotOffer(_) => "KeyslotOffer",
+        PairingSessionMessage::ChallengeResponse(_) => "ChallengeResponse",
+        PairingSessionMessage::Confirm(_) => "Confirm",
+        PairingSessionMessage::Reject(_) => "Reject",
     }
 }
 

@@ -176,6 +176,12 @@ impl PairingInboundOrchestrator {
     }
 
     async fn on_incoming(&self, session: PairingSessionId, message: PairingSessionMessage) {
+        let incoming_variant = variant_name(&message);
+        info!(
+            session = %session,
+            message_kind = incoming_variant,
+            "inbound pairing event received"
+        );
         let request = match message {
             PairingSessionMessage::Request(req) => req,
             other => {
@@ -195,6 +201,13 @@ impl PairingInboundOrchestrator {
                 return;
             }
         };
+        info!(
+            session = %session,
+            code = %request.invitation_code.as_str(),
+            joiner_device_id = %request.device_id.as_str(),
+            transport_address_blob_len = request.transport_address_blob.len(),
+            "inbound pairing Request received; matching invitation"
+        );
 
         let Some(invitation_code) = self.match_invitation(&session, &request).await else {
             return;
@@ -203,7 +216,16 @@ impl PairingInboundOrchestrator {
 
         // `begin` sends the KeyslotOffer + parks per-session state; on
         // failure it has already emitted Reject + close internally.
-        let _ = self.handshake.begin(&session, request).await;
+        match self.handshake.begin(&session, request).await {
+            Ok(()) => info!(
+                session = %session,
+                "inbound pairing KeyslotOffer sent; waiting for ChallengeResponse"
+            ),
+            Err(()) => warn!(
+                session = %session,
+                "inbound pairing failed while sending KeyslotOffer"
+            ),
+        }
     }
 
     /// Returns the matched invitation code on success. On miss / expiry /
@@ -295,6 +317,12 @@ impl PairingInboundOrchestrator {
     }
 
     async fn on_message_received(&self, session: PairingSessionId, message: PairingSessionMessage) {
+        let message_variant = variant_name(&message);
+        info!(
+            session = %session,
+            message_kind = message_variant,
+            "inbound pairing follow-up message received"
+        );
         let PairingSessionMessage::ChallengeResponse(response) = message else {
             // Anything else on a mid-handshake session is a joiner-side
             // protocol violation. Log without closing — the session

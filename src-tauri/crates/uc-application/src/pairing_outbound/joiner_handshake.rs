@@ -168,6 +168,11 @@ impl JoinerHandshakeCoordinator {
             .device_name
             .filter(|n| !n.trim().is_empty())
             .ok_or(RedeemPairingInvitationError::DeviceNameRequired)?;
+        info!(
+            session = %session,
+            local_device_id = %local_device_id.as_str(),
+            "joiner pairing local facts loaded"
+        );
 
         // ── 2. Send JoinerRequest ────────────────────────────────────────
         // Slice 2 Phase 1 · T5：adapter 暴露本机传输地址 blob；`None`
@@ -178,6 +183,7 @@ impl JoinerHandshakeCoordinator {
             .local_transport_address_blob()
             .await
             .unwrap_or_default();
+        let transport_address_blob_len = transport_address_blob.len();
         let request = JoinerRequest {
             invitation_code: code.clone(),
             device_id: local_device_id.clone(),
@@ -193,12 +199,24 @@ impl JoinerHandshakeCoordinator {
             .send(session, PairingSessionMessage::Request(request))
             .await
             .map_err(map_session_err)?;
-        debug!(session = %session, "JoinerRequest sent; awaiting KeyslotOffer");
+        info!(
+            session = %session,
+            code = %code.as_str(),
+            transport_address_blob_len,
+            "JoinerRequest sent; awaiting KeyslotOffer"
+        );
 
         // ── 3. Await KeyslotOffer | Reject ───────────────────────────────
         let offer = match self.recv_with_ttl(session).await? {
             PairingSessionMessage::KeyslotOffer(o) => o,
-            PairingSessionMessage::Reject(r) => return Err(map_sponsor_reject(r.reason)),
+            PairingSessionMessage::Reject(r) => {
+                warn!(
+                    session = %session,
+                    reason = ?r.reason,
+                    "sponsor rejected before KeyslotOffer"
+                );
+                return Err(map_sponsor_reject(r.reason));
+            }
             other => {
                 return Err(RedeemPairingInvitationError::Internal(format!(
                     "expected KeyslotOffer, got {}",
@@ -249,12 +267,19 @@ impl JoinerHandshakeCoordinator {
             )
             .await
             .map_err(map_session_err)?;
-        debug!(session = %session, "ChallengeResponse sent; awaiting Confirm/Reject");
+        info!(session = %session, "ChallengeResponse sent; awaiting Confirm/Reject");
 
         // ── 7. Await Confirm | Reject ────────────────────────────────────
         let confirm = match self.recv_with_ttl(session).await? {
             PairingSessionMessage::Confirm(c) => c,
-            PairingSessionMessage::Reject(r) => return Err(map_sponsor_reject(r.reason)),
+            PairingSessionMessage::Reject(r) => {
+                warn!(
+                    session = %session,
+                    reason = ?r.reason,
+                    "sponsor rejected before Confirm"
+                );
+                return Err(map_sponsor_reject(r.reason));
+            }
             other => {
                 return Err(RedeemPairingInvitationError::Internal(format!(
                     "expected Confirm, got {}",
@@ -293,9 +318,26 @@ impl JoinerHandshakeCoordinator {
                 );
                 Err(RedeemPairingInvitationError::Timeout)
             }
-            Ok(Ok(Some(msg))) => Ok(msg),
-            Ok(Ok(None)) => Err(RedeemPairingInvitationError::ConnectionLost),
-            Ok(Err(err)) => Err(map_session_err(err)),
+            Ok(Ok(Some(msg))) => {
+                info!(
+                    session = %session,
+                    message_kind = variant_name(&msg),
+                    "joiner pairing message received"
+                );
+                Ok(msg)
+            }
+            Ok(Ok(None)) => {
+                warn!(session = %session, "joiner pairing session closed by sponsor");
+                Err(RedeemPairingInvitationError::ConnectionLost)
+            }
+            Ok(Err(err)) => {
+                warn!(
+                    session = %session,
+                    error = %err,
+                    "joiner pairing recv failed"
+                );
+                Err(map_session_err(err))
+            }
         }
     }
 }

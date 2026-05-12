@@ -35,6 +35,7 @@ use crate::usecases::clipboard_sync::{
     InboundClipboardNotice as UcInboundNotice, IngestInboundClipboardUseCase, IngestSpawnHandle,
 };
 use uc_core::clipboard::ClipboardContentCategorySet;
+use uc_observability::FlowId;
 
 /// Construction bundle, mirrors `MemberRosterDeps` pattern so bootstrap
 /// wiring stays consistent across facades.
@@ -108,6 +109,7 @@ pub struct InboundNotice {
     pub from_device: DeviceId,
     pub content_hash: String,
     pub plaintext: Bytes,
+    pub flow_id: Option<FlowId>,
     pub action: InboundAction,
     pub at_ms: i64,
 }
@@ -325,6 +327,7 @@ fn lift_notice(internal: UcInboundNotice) -> InboundNotice {
         from_device: internal.from_device,
         content_hash: internal.content_hash,
         plaintext: internal.plaintext,
+        flow_id: internal.flow_id,
         action: match internal.action {
             UcInboundAction::NewEntry => InboundAction::NewEntry,
             UcInboundAction::DuplicateIgnored => InboundAction::DuplicateIgnored,

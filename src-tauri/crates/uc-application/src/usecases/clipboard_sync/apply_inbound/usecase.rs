@@ -120,9 +120,8 @@ impl ApplyInboundClipboardUseCase {
     //   - `peer.device_id` 是 PR2 起的标准字段名,把发送方 device 摆到一级
     //     span field;`from_device` 暂时保留兼容现有日志查询,Sentry tag
     //     索引完全切换后会下线。
-    //   - `flow.id` 本侧自己生成 —— PR3 起会优先用 wire header 上带过来
-    //     的对端 flow_id,实现 A 端 root flow.id == B 端 root flow.id,
-    //     彻底闭环跨设备 trace。
+    //   - `flow.id` 优先沿用 wire header 上带过来的对端 flow_id,实现
+    //     A 端 root flow.id == B 端 root flow.id;旧版 peer 没带时才本地生成。
     //   - `flow.kind` 静态 `clipboard_sync`,方便按业务流过滤。
     #[instrument(
         name = "apply_inbound.execute",
@@ -140,7 +139,7 @@ impl ApplyInboundClipboardUseCase {
         &self,
         input: ApplyInboundInput,
     ) -> Result<ApplyOutcome, ApplyInboundError> {
-        let flow_id = FlowId::generate();
+        let flow_id = input.flow_id.clone().unwrap_or_else(FlowId::generate);
         tracing::Span::current().record("flow.id", tracing::field::display(&flow_id));
         // 1. Dedup short-circuit. The repo's default `Ok(None)` impl
         // (used by in-memory test fakes) degrades dedup to off — safe,

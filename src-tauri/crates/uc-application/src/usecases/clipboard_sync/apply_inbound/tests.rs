@@ -4,6 +4,11 @@ use anyhow::Result;
 use async_trait::async_trait;
 use bytes::Bytes;
 use mockall::predicate::*;
+use tracing::field::{Field, Visit};
+use tracing::Subscriber;
+use tracing_subscriber::layer::{Context, Layer};
+use tracing_subscriber::prelude::*;
+use tracing_subscriber::registry::LookupSpan;
 
 use crate::facade::host_event::{
     ClipboardHostEvent, ClipboardOriginKind, EmitError, HostEvent, HostEventEmitterPort,
@@ -13,6 +18,7 @@ use uc_core::ids::{DeviceId, EntryId, FormatId, RepresentationId};
 use uc_core::ports::blob::{BlobDigest, BlobTicket, PlaintextHash};
 use uc_core::ports::{ClipboardEntryRepositoryPort, PeerAddressError};
 use uc_core::{MimeType, ObservedClipboardRepresentation, SystemClipboardSnapshot};
+use uc_observability::FlowId;
 
 use crate::usecases::clipboard_sync::payload_codec::{
     encode_snapshot_to_v3_bytes, encode_snapshot_with_blob_refs_to_v3_bytes, V3BlobRef,
@@ -24,6 +30,43 @@ use super::usecase::ApplyInboundClipboardUseCase;
 use super::{ApplyInboundError, ApplyInboundInput, ApplyOutcome};
 
 // ── mockall: the 3 collaborator surfaces ────────────────────────────
+
+#[derive(Clone)]
+struct FlowIdRecordLayer {
+    records: Arc<Mutex<Vec<String>>>,
+}
+
+impl<S> Layer<S> for FlowIdRecordLayer
+where
+    S: Subscriber,
+    S: for<'lookup> LookupSpan<'lookup>,
+{
+    fn on_record(
+        &self,
+        _span: &tracing::Id,
+        values: &tracing::span::Record<'_>,
+        _ctx: Context<'_, S>,
+    ) {
+        let mut visitor = FlowIdVisitor::default();
+        values.record(&mut visitor);
+        if let Some(flow_id) = visitor.flow_id {
+            self.records.lock().unwrap().push(flow_id);
+        }
+    }
+}
+
+#[derive(Default)]
+struct FlowIdVisitor {
+    flow_id: Option<String>,
+}
+
+impl Visit for FlowIdVisitor {
+    fn record_debug(&mut self, field: &Field, value: &dyn std::fmt::Debug) {
+        if field.name() == "flow.id" {
+            self.flow_id = Some(format!("{value:?}"));
+        }
+    }
+}
 
 mockall::mock! {
     pub EntryRepo {}
@@ -110,6 +153,7 @@ fn fixture_input(text: &str) -> (ApplyInboundInput, String) {
             from_device: DeviceId::new("peer-x"),
             content_hash: content_hash.clone(),
             plaintext,
+            flow_id: None,
         },
         content_hash,
     )
@@ -122,6 +166,7 @@ fn fixture_input_from_snapshot(snapshot: SystemClipboardSnapshot) -> (ApplyInbou
             from_device: DeviceId::new("peer-x"),
             content_hash: content_hash.clone(),
             plaintext,
+            flow_id: None,
         },
         content_hash,
     )
@@ -435,6 +480,7 @@ async fn decode_failed_on_truncated_envelope() {
         from_device: DeviceId::new("peer-broken"),
         content_hash: "blake3v1:00".to_string(),
         plaintext: Bytes::from_static(b"not a valid V3 envelope"),
+        flow_id: None,
     };
 
     let mut repo = MockEntryRepo::new();
@@ -455,6 +501,40 @@ async fn decode_failed_on_truncated_envelope() {
         }
         other => panic!("expected DecodeFailed, got {other:?}"),
     }
+}
+
+#[tokio::test]
+async fn execute_records_incoming_flow_id_on_span() {
+    let incoming_flow_id = FlowId::generate();
+    let input = ApplyInboundInput {
+        from_device: DeviceId::new("peer-flow"),
+        content_hash: "blake3v1:11".to_string(),
+        plaintext: Bytes::from_static(b"not a valid V3 envelope"),
+        flow_id: Some(incoming_flow_id.clone()),
+    };
+
+    let mut repo = MockEntryRepo::new();
+    repo.expect_find_entry_id_by_snapshot_hash()
+        .times(1)
+        .returning(|_| Ok(None));
+    let capture = MockCapture::new();
+    let write = MockWrite::new();
+    let uc = build(repo, capture, write);
+
+    let records = Arc::new(Mutex::new(Vec::new()));
+    let subscriber = tracing_subscriber::registry().with(FlowIdRecordLayer {
+        records: Arc::clone(&records),
+    });
+    let _guard = tracing::subscriber::set_default(subscriber);
+    let _ = uc.execute(input).await;
+
+    let recorded = records.lock().unwrap();
+    assert!(
+        recorded
+            .iter()
+            .any(|value| value == &incoming_flow_id.to_string()),
+        "apply_inbound 应该记录入站 header 传来的 flow_id"
+    );
 }
 
 /// Verdict 4 — capture returns Ok(None) (shouldn't happen for
@@ -599,6 +679,7 @@ async fn materializes_blob_refs_before_capture_and_write() {
         from_device: DeviceId::new("peer-x"),
         content_hash: content_hash.clone(),
         plaintext,
+        flow_id: None,
     };
 
     let mut repo = MockEntryRepo::new();

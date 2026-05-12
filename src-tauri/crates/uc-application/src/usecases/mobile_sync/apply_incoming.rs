@@ -730,6 +730,7 @@ impl ApplyIncomingMobileClipUseCase {
                 from_device: pseudo_from,
                 content_hash: content_hash.clone(),
                 plaintext,
+                flow_id: None,
             })
             .await?;
 

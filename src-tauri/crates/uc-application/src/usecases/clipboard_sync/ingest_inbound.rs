@@ -46,6 +46,7 @@ pub(crate) struct InboundClipboardNotice {
     pub from_device: DeviceId,
     pub content_hash: String,
     pub plaintext: Bytes,
+    pub flow_id: Option<FlowId>,
     pub action: InboundAction,
     pub at_ms: i64,
 }
@@ -158,16 +159,31 @@ impl IngestInboundClipboardUseCase {
         ),
     )]
     async fn handle_one(&self, inbound: uc_core::ports::InboundClipboard) {
-        match inbound.header.flow_id.as_deref() {
-            Some(wire_id) => {
-                tracing::Span::current().record("flow.id", tracing::field::display(wire_id));
-            }
+        let flow_id = match inbound.header.flow_id.as_deref() {
+            Some(wire_id) => match FlowId::parse_str(wire_id) {
+                Ok(flow_id) => {
+                    tracing::Span::current().record("flow.id", tracing::field::display(&flow_id));
+                    Some(flow_id)
+                }
+                Err(err) => {
+                    let synthetic = FlowId::generate();
+                    tracing::Span::current().record("flow.id", tracing::field::display(&synthetic));
+                    tracing::Span::current().record("flow.synthetic", true);
+                    warn!(
+                        error = %err,
+                        wire_flow_id = %wire_id,
+                        "ingest: invalid flow_id in clipboard header; using synthetic span id"
+                    );
+                    None
+                }
+            },
             None => {
                 let synthetic = FlowId::generate();
                 tracing::Span::current().record("flow.id", tracing::field::display(&synthetic));
                 tracing::Span::current().record("flow.synthetic", true);
+                None
             }
-        }
+        };
         // Stage 1: device-level kill switch (`receive_enabled`). Cheaper
         // than decrypt + decode, so do this first.
         if !self.is_receive_allowed(&inbound.peer_device_id).await {
@@ -213,6 +229,7 @@ impl IngestInboundClipboardUseCase {
             from_device: inbound.peer_device_id.clone(),
             content_hash: inbound.header.content_hash.clone(),
             plaintext,
+            flow_id,
             action: InboundAction::NewEntry,
             at_ms: self.clock.now_ms(),
         };
@@ -457,11 +474,14 @@ mod tests {
         // Give the spawned task a tick to subscribe before publishing.
         tokio::time::sleep(Duration::from_millis(20)).await;
 
-        receiver.publish(inbound_fixture(
+        let incoming_flow_id = FlowId::generate();
+        let mut inbound = inbound_fixture(
             "peer-1",
             "0".repeat(64).as_str(),
             Bytes::from(b"CIPHhello".to_vec()),
-        ));
+        );
+        inbound.header.flow_id = Some(incoming_flow_id.to_string());
+        receiver.publish(inbound);
 
         let notice = tokio::time::timeout(Duration::from_secs(2), notice_rx.recv())
             .await
@@ -472,6 +492,7 @@ mod tests {
         assert_eq!(notice.plaintext, Bytes::from_static(b"hello"));
         assert_eq!(notice.action, InboundAction::NewEntry);
         assert_eq!(notice.at_ms, 42);
+        assert_eq!(notice.flow_id.as_ref(), Some(&incoming_flow_id));
     }
 
     /// 2. Decrypt failure — no notice is emitted; the ingest loop keeps

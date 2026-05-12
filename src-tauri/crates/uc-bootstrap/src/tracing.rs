@@ -124,7 +124,9 @@ pub fn init_tracing_subscriber() -> anyhow::Result<()> {
     // 工作区版本一致(workspace = true),所以等价于 app 版本号。
     let scope_ctx =
         uc_observability::ScopeContext::resolve(device_id.clone(), env!("CARGO_PKG_VERSION"));
-    let _ = uc_observability::set_global_scope(scope_ctx.clone());
+    if !uc_observability::set_global_scope(scope_ctx.clone()) {
+        ::tracing::warn!("ScopeContext already initialized; keeping existing global scope");
+    }
 
     // Step 2: Select log profile
     let profile = LogProfile::from_env();

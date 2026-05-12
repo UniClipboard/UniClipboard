@@ -13,7 +13,7 @@
 
 use std::sync::Arc;
 
-use axum::extract::{Path, State};
+use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::middleware;
 use axum::response::IntoResponse;
@@ -117,16 +117,34 @@ async fn health(State(state): State<DaemonApiState>) -> impl IntoResponse {
     Json(state.health_response())
 }
 
+/// Restore endpoint 的可选 query 参数。
+///
+/// `plain=true` 时走「以纯文本形式恢复」路径——只把 `text/plain` 表示写入
+/// 系统剪贴板，让目标应用别无选择地粘出纯文本（Markdown 源码 / HTML 标签 /
+/// RTF 等富文本被剔除）。条目若没有 plain 表示，facade 静默降级为多格式恢复。
+///
+/// `plain=false` 或缺省时与历史行为完全一致：多格式恢复。
+#[derive(Debug, Default, serde::Deserialize)]
+struct RestoreQuery {
+    #[serde(default)]
+    plain: bool,
+}
+
 async fn restore_clipboard_entry_handler(
     State(state): State<DaemonApiState>,
     Path(entry_id): Path<String>,
+    Query(query): Query<RestoreQuery>,
 ) -> impl IntoResponse {
     let app = match state.app_facade_or_error() {
         Ok(app) => app,
         Err(error) => return error.into_response(),
     };
 
-    tracing::info!(entry_id = %entry_id, "daemon restore request received");
+    tracing::info!(
+        entry_id = %entry_id,
+        plain = query.plain,
+        "daemon restore request received"
+    );
 
     let restore_facade = match app.clipboard_restore.as_ref() {
         Some(facade) => facade,
@@ -138,9 +156,19 @@ async fn restore_clipboard_entry_handler(
         }
     };
 
-    match restore_facade.restore_entry(&entry_id).await {
+    let result = if query.plain {
+        restore_facade.restore_entry_as_plain_text(&entry_id).await
+    } else {
+        restore_facade.restore_entry(&entry_id).await
+    };
+
+    match result {
         Ok(()) => {
-            tracing::info!(entry_id = %entry_id, "daemon restore request succeeded");
+            tracing::info!(
+                entry_id = %entry_id,
+                plain = query.plain,
+                "daemon restore request succeeded"
+            );
             restore_success_response().into_response()
         }
         Err(error) => restore_error_to_response(error, &entry_id).into_response(),

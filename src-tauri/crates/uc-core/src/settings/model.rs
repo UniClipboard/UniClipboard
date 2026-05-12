@@ -30,7 +30,6 @@ pub struct GeneralSettings {
     /// 与 `telemetry_enabled` 拆开（schema doc §6.4）：前者控制 Sentry
     /// 错误上报，本字段控制产品 telemetry（漏斗 / 留存 / 同步可靠性事件）。
     /// 二者由用户独立勾选——GDPR 友好实践。
-    #[serde(default = "default_usage_analytics_enabled")]
     pub usage_analytics_enabled: bool,
 }
 

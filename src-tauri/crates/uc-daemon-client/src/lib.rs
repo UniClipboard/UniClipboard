@@ -54,7 +54,7 @@ fn resolve_base_url() -> Result<String> {
 ///
 /// # Examples
 ///
-/// ```no_run
+/// ```ignore
 /// let path = uc_daemon_client::resolve_token_path().unwrap();
 /// eprintln!("daemon token path: {}", path.display());
 /// ```

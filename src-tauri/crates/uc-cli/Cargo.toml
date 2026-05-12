@@ -18,8 +18,10 @@ uc-daemon-contract = { path = "../uc-daemon-contract" }
 uc-daemon-local = { path = "../uc-daemon-local" }
 # Hidden `probe` subcommand group reads/writes the OS clipboard directly
 # (replaces the standalone `clipboard-probe` binary). Diagnostic only.
+# Goes through `uc_platform::clipboard::build_event_loop`, so it inherits
+# whichever native backend the daemon picks (Wayland data-control / x11rb /
+# clipboard_rs on macOS/Windows) without a direct `clipboard-rs` dep.
 uc-platform = { path = "../uc-platform" }
-clipboard-rs = { version = "0.3", features = ["default"] }
 tokio = { version = "1", features = ["full"] }
 clap = { version = "4.5", features = ["derive"] }
 serde = { version = "1", features = ["derive"] }

@@ -207,11 +207,42 @@ fn png_to_dibv5(png_bytes: &[u8]) -> Result<Vec<u8>> {
 /// 单次写入尝试的最大次数。
 ///
 /// `ERROR_CLIPBOARD_NOT_OPEN (1418)` 在大多数情况下是瞬态的（消息泵、GDI 竞争
-/// 或其他进程短暂打开剪贴板）。经验上第二次尝试几乎都能成功；3 次兜底保守。
-const MAX_WRITE_ATTEMPTS: u32 = 3;
+/// 或其他进程短暂打开剪贴板）。经验上第二次尝试几乎都能成功。
+///
+/// 4 次而非 3 次：Sentry RUST-F 显示某些 Windows 机器上剪贴板会被反病毒/输入法/
+/// RDP 会话独占数十秒（`OSError(5) ERROR_ACCESS_DENIED`），毫秒级退避完全碰不
+/// 到让出窗口。配合下面秒级退避表，整体重试覆盖 ~2.6s 长尾。
+const MAX_WRITE_ATTEMPTS: u32 = 4;
 
 /// 每次重试前的退避（毫秒）。索引 = attempt 次数，0 次不退避。
-const RETRY_BACKOFF_MS: [u64; MAX_WRITE_ATTEMPTS as usize] = [0, 20, 40];
+///
+/// 之前是 `[0, 20, 40]`（共 60ms），对短暂的 GDI/消息泵竞争够用，但拦不住
+/// `ERROR_ACCESS_DENIED` 这类长尾独占。改为秒级退避覆盖反病毒扫描、输入法
+/// hook、RDP 剪贴板代理等长时间持有剪贴板的场景。仍然有界——超过 ~2.6s 的
+/// 持续独占会被上层 circuit breaker（`ClipboardWriteCoordinator`）兜底。
+const RETRY_BACKOFF_MS: [u64; MAX_WRITE_ATTEMPTS as usize] = [0, 100, 500, 2000];
+
+/// Classify a Windows clipboard write error into a stable `error_kind` tag.
+///
+/// Used in `warn!` / `error!` events to give Sentry a column it can
+/// `group_by` independent of the (often-localized) error message string.
+/// Keep these strings stable — they are referenced in dashboards and queries.
+fn classify_windows_write_error(err: &anyhow::Error) -> &'static str {
+    let s = err.to_string();
+    // OSError(5) = ERROR_ACCESS_DENIED — clipboard held exclusively by
+    // another process (AV scan, IME hook, RDP clip proxy, clipboard manager).
+    // The literal "拒绝访问" is the localized message from a zh-CN host;
+    // matching both keeps the kind language-independent.
+    if s.contains("OSError(5)") || s.contains("ERROR_ACCESS_DENIED") || s.contains("拒绝访问") {
+        "os_clipboard_access_denied"
+    // OSError(1418) = ERROR_CLIPBOARD_NOT_OPEN — transient GDI / message-pump
+    // race. Usually clears on the next retry.
+    } else if s.contains("OSError(1418)") || s.contains("ERROR_CLIPBOARD_NOT_OPEN") {
+        "os_clipboard_not_open"
+    } else {
+        "os_clipboard_write_other"
+    }
+}
 
 /// Windows 原子多 representation 写入。
 ///
@@ -274,6 +305,12 @@ const RETRY_BACKOFF_MS: [u64; MAX_WRITE_ATTEMPTS as usize] = [0, 20, 40];
 /// 2. **整体重试**：整个会话（open → empty → 逐 rep 写入）作为一个原子单元，
 ///    失败后退避重试，最多 `MAX_WRITE_ATTEMPTS` 次。兜底其他瞬态因素
 ///    （第三方剪贴板工具抢句柄、消息泵偶发竞争等）。
+#[tracing::instrument(
+    name = "windows.write_snapshot_multi",
+    level = "debug",
+    skip(snapshot),
+    fields(rep_count = snapshot.representations.len())
+)]
 pub(crate) fn write_snapshot_multi_windows(snapshot: SystemClipboardSnapshot) -> Result<()> {
     // 前置扫描：如果没有任何 rep 是我们能写的（text/plain、text/html 或 image/png），
     // 直接 bail；**不**打开 Windows 剪贴板、**不**调 empty()。
@@ -365,9 +402,13 @@ pub(crate) fn write_snapshot_multi_windows(snapshot: SystemClipboardSnapshot) ->
                 return Ok(());
             }
             Err(e) => {
+                let error_kind = classify_windows_write_error(&e);
                 warn!(
+                    event = "windows_multi_write_attempt_failed",
+                    error_kind,
                     attempt = attempt + 1,
                     max_attempts = MAX_WRITE_ATTEMPTS,
+                    backoff_ms = RETRY_BACKOFF_MS[attempt as usize],
                     error = %e,
                     "Windows 原子多 rep 写入本次尝试失败"
                 );
@@ -375,6 +416,24 @@ pub(crate) fn write_snapshot_multi_windows(snapshot: SystemClipboardSnapshot) ->
             }
         }
     }
+
+    // Cumulative backoff so operators can correlate "how long did we
+    // actually wait" vs "Sentry timestamp delta" without having to
+    // re-derive it from the RETRY_BACKOFF_MS constant table.
+    let cumulative_backoff_ms: u64 = RETRY_BACKOFF_MS.iter().sum();
+    let final_error_kind = last_err
+        .as_ref()
+        .map(classify_windows_write_error)
+        .unwrap_or("unknown");
+    error!(
+        event = "windows_multi_write_exhausted",
+        error_kind = "windows_multi_write_exhausted",
+        final_attempt_error_kind = final_error_kind,
+        max_attempts = MAX_WRITE_ATTEMPTS,
+        cumulative_backoff_ms,
+        error = ?last_err.as_ref().map(|e| e.to_string()),
+        "Windows 多 rep 写入：所有重试已耗尽"
+    );
 
     anyhow::bail!(
         "Windows 多 rep 写入：{} 次尝试均失败；最后一次错误：{}",

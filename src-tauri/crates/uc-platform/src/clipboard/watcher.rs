@@ -2,12 +2,11 @@ use std::sync::Arc;
 use std::time::Instant;
 use tracing::{debug, warn};
 
-// `clipboard_rs::ClipboardHandler` is only required by the macOS / Windows /
-// (current) Linux X11 adapter that wraps `ClipboardWatcherContext`. The
-// Wayland and (future) native X11 adapters drive `notify_change` directly,
-// so the trait impl is gated to the platforms that still need it. Phase 4
-// will narrow this further when Linux drops `clipboard-rs` entirely.
-#[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
+// `clipboard_rs::ClipboardHandler` is only required by the macOS / Windows
+// adapter that wraps `ClipboardWatcherContext`. The native Wayland and X11
+// (x11rb) adapters drive `notify_change` directly, so as of Phase 4 the
+// trait impl is gated to the platforms that still need `clipboard_rs`.
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 use clipboard_rs::ClipboardHandler;
 
 use uc_core::clipboard::SystemClipboardSnapshot;
@@ -148,11 +147,11 @@ impl ClipboardWatcher {
 }
 
 // `ClipboardHandler` adapter for platforms whose event loop is built on top of
-// `clipboard_rs::ClipboardWatcherContext` (current macOS/Windows + Linux X11
-// path). Native Wayland and (future) native X11 implementations call
+// `clipboard_rs::ClipboardWatcherContext` (macOS/Windows). Linux's native
+// Wayland and X11 (x11rb) implementations call
 // [`ClipboardWatcher::notify_change`] directly and do not go through this
 // trait.
-#[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 impl ClipboardHandler for ClipboardWatcher {
     fn on_clipboard_change(&mut self) {
         self.notify_change();

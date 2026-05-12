@@ -13,7 +13,7 @@ UniClipboard 是一款以 **隐私优先** 为核心理念的跨设备剪贴板�
 ![Image](https://github.com/user-attachments/assets/8d339467-5bbe-4afa-9235-1d26cbff82c9)
 
 <p align="center">
-  <video src="https://github.com/user-attachments/assets/2775e733-c92b-41e5-b842-8173c206ad61" controls muted playsinline width="800"></video>
+  <video src="https://github.com/user-attachments/assets/29f4bf5d-8996-4602-8784-067fb919c671" controls muted playsinline width="800"></video>
 </p>
 
 <div align="center">
@@ -36,6 +36,18 @@ UniClipboard 是一款以 **隐私优先** 为核心理念的跨设备剪贴板�
     <img
       alt="Linux"
       src="https://img.shields.io/badge/-Linux-purple?style=flat-square&logo=linux&logoColor=white"
+    />
+  </a>
+  <a href="#mobile-companion-lan">
+    <img
+      alt="iOS"
+      src="https://img.shields.io/badge/-iOS%20(LAN)-lightgrey?style=flat-square&logo=apple&logoColor=white"
+    />
+  </a>
+  <a href="#mobile-companion-lan">
+    <img
+      alt="Android"
+      src="https://img.shields.io/badge/-Android%20(LAN)-3DDC84?style=flat-square&logo=android&logoColor=white"
     />
   </a>
 
@@ -62,8 +74,9 @@ UniClipboard 是一款以 **隐私优先** 为核心理念的跨设备剪贴板�
 
 ## 功能特点
 
-- **跨平台支持**: Windows、macOS 和 Linux 三端均为一等公民 —— 你的剪贴板跟着你在哪都能用。
-- **跨网络同步**: 同一 Wi-Fi、不同家庭/办公室网络、甚至跨广域网均可实时同步，自动 NAT 穿透与加密中继回落 —— 不再局限于局域网，也不绑定单一网络。
+- **跨平台支持**: Windows、macOS 和 Linux 三端均为一等公民 —— 你的剪贴板跟着你在哪都能用。iPhone 与 Android 可以作为 **局域网伴侣** 接入（见下文）。
+- **跨网络同步**: 同一 Wi-Fi、不同家庭/办公室网络、甚至跨广域网均可实时同步，自动 NAT 穿透与加密中继回落 —— 不再局限于局域网，也不绑定单一网络。（桌面 ↔ 桌面适用；手机当前仅限同一 Wi-Fi。）
+- **移动端伴侣（LAN）**: iPhone 通过内置的 **iOS Shortcut** 接入，Android 走任意兼容 [**SyncClipboard**](https://github.com/Jeric-X/SyncClipboard) 协议的客户端，在本地网络上与桌面双向交换剪贴。支持二维码配对、每台手机独立凭证，密码可在不解绑设备的情况下轮换。**无需** 安装原生 iOS / Android App。
 - **加密空间**: 设备通过邀请码 + 口令加入同一个"空间" —— 不需要云账号、不需要邮箱，只需要两台设备相互信任。
 - **本地加密全文搜索**: 在数万条历史中也能毫秒级检索，索引本身在磁盘上同样加密 —— "本地存储"不等于"安全存储"，"本地加密存储"才是。
 - **文本、图片、文件**: 在一台设备复制，在另一台设备粘贴。大文件采用流式传输，不需要先装进内存。
@@ -164,11 +177,28 @@ bun tauri build
 
 > 已经完成设置、想切换到另一个空间？在 **设备** 页使用 **切换空间**（或 CLI 中的 `uniclip switch-space`）—— 本地的剪贴板历史会被重新加密并迁移到新空间。
 
+### 配对手机（LAN 伴侣） <a id="mobile-companion-lan"></a>
+
+UniClipboard **没有** 原生 iOS / Android App。手机以 **局域网伴侣** 的形式接入：桌面 daemon 在本地网络上暴露一个兼容 SyncClipboard 的小型 HTTP 服务，手机直接读写它。
+
+1. 桌面打开 **设备 → 移动端同步**，启用开关，并挑一块手机能拨通的 LAN IPv4 网卡（**别** 把 `0.0.0.0` / `Auto` 印到手机屏幕上）。
+2. 点 **Add device**，生成包含监听 URL、用户名与一次性密码的二维码。
+3. **iPhone** —— 用相机扫码，自动安装内置的 iOS Shortcut，扫完即用。**Android** —— 用任意兼容 SyncClipboard 协议的客户端，填同样的 URL 和凭证。
+4. 任意一端复制，另一端通过 Wi-Fi 收到。
+
+当前限制：
+
+- **仅限同一 Wi-Fi** —— 移动端不做 NAT 穿透、不走 relay。离开 LAN，手机就拨不通桌面。
+- **LAN 上明文 HTTP + Basic Auth** —— TLS 计划在 v2 引入。只在你信任的网络上开启监听器。
+- **手机不是空间对端** —— 不分配 node ID，看不到加密历史数据库，只交换当下的剪贴。
+
+完整流程见 [移动端同步指南](https://www.uniclipboard.app/docs/zh/guides/mobile-sync)。
+
 ### 主要页面
 
 - **仪表盘** —— 剪贴板历史，支持全文搜索与详细预览
 - **快捷面板** —— 通过键盘快捷键唤出的浮层，便于快速访问历史
-- **设备** —— 管理已配对设备与在线状态、生成邀请码、切换空间
+- **设备** —— 管理已配对桌面与移动客户端、在线状态、邀请码、二维码配对、切换空间
 - **设置** —— 配置通用、同步、安全、网络、存储与搜索索引等选项
 
 ## 高级功能
@@ -255,8 +285,8 @@ uniclip status / start / stop   # 守护进程生命周期
 **我的剪贴板历史到底存在哪里？**
 只在你自己的设备上。本地存储采用加密存盘，密钥从未离开过设备的系统密钥环。任何 UniClipboard 服务器都不会接收或保存你的剪贴板内容。
 
-**从旧版本升级后，设备不再是已配对状态了？**
-0.6 版本重做了底层网络栈，旧版本的配对状态已不再有效。在 **设备** 页通过邀请码（或 `uniclip invite` / `uniclip join`）重新配对一次即可恢复同步。
+**有移动端 App 吗？**
+没有原生 iOS / Android App，而且这是有意为之。手机以 **局域网伴侣** 的方式支持：桌面 daemon 暴露一个兼容 SyncClipboard 的 HTTP 端点，**iPhone** 用内置的 **iOS Shortcut**（扫码自动安装），**Android** 用任意兼容 SyncClipboard 协议的客户端。双向同步，仅限同一 Wi-Fi —— 不打洞、不走 relay，也没有需要发布和更新的原生 App。具体步骤见上文 [配对手机](#mobile-companion-lan) 一节。
 
 ## 参与贡献
 
@@ -268,7 +298,7 @@ uniclip status / start / stop   # 守护进程生命周期
 2. 创建您的特性分支 (`git checkout -b feature/amazing-feature`)
 3. 按照项目的 [commit 规范](./CONTRIBUTING_ZH.md#commit-规范) 提交更改
 4. 推送到分支 (`git push origin feature/amazing-feature`)
-5. 向 `dev` 分支提交 Pull Request
+5. 向 `main` 分支提交 Pull Request
 
 ## 许可证
 

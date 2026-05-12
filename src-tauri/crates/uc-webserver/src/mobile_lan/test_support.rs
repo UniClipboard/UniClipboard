@@ -233,7 +233,7 @@ pub(crate) async fn build_facade_with_seeded_device(
         settings: Arc::new(InMemorySettings::default()),
         apply_inbound,
         incoming_buffer: Arc::new(IncomingMobileBuffer::new()),
-        file_staging: Arc::new(NoopFileStaging),
+        file_staging: NoopFileStaging::new(),
         snapshot_ports: MobileSyncSnapshotPorts {
             entry_repo,
             selection_repo: Arc::new(NoopSelectionRepo),
@@ -242,6 +242,7 @@ pub(crate) async fn build_facade_with_seeded_device(
             blob_reader: Arc::new(NoopBlobReader),
         },
         file_transfer: None,
+        clipboard_outbound: None,
         lan_lifecycle: None,
     }))
 }
@@ -368,10 +369,23 @@ impl ApplyInboundWrite for NoopInboundWrite {
     }
 }
 
-// P5a.3.5:File 类型 staging port 的 NoOp。webserver 路由测试不会走到
-// PUT /SyncClipboard.json type=File 的真实 staging 路径(测试只覆盖
-// 401/404/wire),被调到说明回归 —— 直接报错以便定位。
-struct NoopFileStaging;
+// 内存版 NoOp staging,让 webserver 路由测试能跑通 PUT /file 的流式
+// staging 流程而不真正落盘。`stage_file` / `read_by_uri` 仍返 Io 错(路由
+// 测试不该走那两条),streaming 接口在内存里维护 sessions 表,finalize 时
+// 返回固定形态的 fake `file:///` URI(URI 字符串本身不会被路由测试解引用,
+// 后续 SyncDoc 路径才会消费它,但 webserver 单测只 PUT /file 不 PUT JSON)。
+struct NoopFileStaging {
+    sessions: tokio::sync::Mutex<std::collections::HashSet<uuid::Uuid>>,
+}
+
+impl NoopFileStaging {
+    fn new() -> Arc<Self> {
+        Arc::new(Self {
+            sessions: tokio::sync::Mutex::new(std::collections::HashSet::new()),
+        })
+    }
+}
+
 #[async_trait]
 impl uc_core::ports::MobileFileStagingPort for NoopFileStaging {
     async fn stage_file(
@@ -382,7 +396,7 @@ impl uc_core::ports::MobileFileStagingPort for NoopFileStaging {
         _: Vec<u8>,
     ) -> Result<uc_core::mobile_sync::StagedFile, uc_core::ports::MobileFileStagingError> {
         Err(uc_core::ports::MobileFileStagingError::Io(
-            "test_support: NoOp file staging should not be reached".into(),
+            "test_support: NoOp file staging stage_file should not be reached".into(),
         ))
     }
     async fn read_by_uri(
@@ -392,6 +406,49 @@ impl uc_core::ports::MobileFileStagingPort for NoopFileStaging {
         Err(uc_core::ports::MobileFileStagingError::Io(
             "test_support: NoOp file staging read_by_uri should not be reached".into(),
         ))
+    }
+    async fn begin_stage(
+        &self,
+        _scope_id: &str,
+        _data_name: &str,
+        _mime: &str,
+    ) -> Result<uc_core::mobile_sync::StagingHandle, uc_core::ports::MobileFileStagingError> {
+        let handle = uc_core::mobile_sync::StagingHandle::new();
+        self.sessions.lock().await.insert(handle.token());
+        Ok(handle)
+    }
+    async fn append_stage_chunk(
+        &self,
+        handle: &uc_core::mobile_sync::StagingHandle,
+        _chunk: &[u8],
+    ) -> Result<(), uc_core::ports::MobileFileStagingError> {
+        if !self.sessions.lock().await.contains(&handle.token()) {
+            return Err(uc_core::ports::MobileFileStagingError::Io(format!(
+                "test_support NoopFileStaging: unknown handle {}",
+                handle.token()
+            )));
+        }
+        Ok(())
+    }
+    async fn finalize_stage(
+        &self,
+        handle: uc_core::mobile_sync::StagingHandle,
+    ) -> Result<uc_core::mobile_sync::StagedFile, uc_core::ports::MobileFileStagingError> {
+        let token = handle.token();
+        if !self.sessions.lock().await.remove(&token) {
+            return Err(uc_core::ports::MobileFileStagingError::Io(format!(
+                "test_support NoopFileStaging: unknown handle {token} in finalize"
+            )));
+        }
+        Ok(uc_core::mobile_sync::StagedFile {
+            uri: uc_core::mobile_sync::StagedFileUri::new(format!(
+                "file:///tmp/uc-webserver-test/{token}"
+            )),
+            sanitized_name: "test-staged".into(),
+        })
+    }
+    async fn abort_stage(&self, handle: uc_core::mobile_sync::StagingHandle) {
+        self.sessions.lock().await.remove(&handle.token());
     }
 }
 

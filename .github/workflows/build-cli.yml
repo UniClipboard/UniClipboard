@@ -122,6 +122,16 @@ jobs:
           CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER: musl-gcc
           CC_x86_64_unknown_linux_musl: musl-gcc
           CC_aarch64_unknown_linux_musl: musl-gcc
+          # aarch64 Debian bookworm 上 gcc-12 默认开启 -moutline-atomics,
+          # vendored libdbus-sys 的 C 代码 (`dbus-sysdeps-unix.c` 里
+          # `_dbus_atomic_inc/dec` 走 __sync_fetch_and_add) 会被编译成对
+          # `__aarch64_ldadd4_sync` 等 helper 的外调。这些 helper 由 libgcc
+          # 提供,但 Rust 给 musl target 的链接行带 `-nodefaultlibs`,只显式
+          # 链 `-lunwind -lc`,libgcc 不在链接行里,导致 `undefined reference
+          # to __aarch64_ldadd4_sync` (CI run 25669103371)。关掉 outline
+          # atomics 让 gcc 直接 inline LSE/LL-SC 指令,绕开 libgcc helper。
+          # x86_64 没有这套机制,留空即可。
+          CFLAGS_aarch64_unknown_linux_musl: "-mno-outline-atomics"
           CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_RUSTFLAGS: "-C relocation-model=static"
           CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_RUSTFLAGS: "-C relocation-model=static"
         run: cargo build --release -p uc-cli ${{ matrix.args }}

@@ -1,23 +1,20 @@
-//! Manual smoke test for the Linux platform clipboard event loop.
+//! Manual smoke test for the native X11 clipboard event loop (Phase 3).
+//!
+//! Forces the X11 backend by **unsetting** `WAYLAND_DISPLAY` before
+//! constructing the clipboard, so this example exercises the new x11rb
+//! path even on a Wayland session (where the box's XWayland server is what
+//! we'll be talking to).
 //!
 //! Run with:
 //!
 //! ```sh
-//! RUST_LOG=uc_platform=debug cargo run --example wayland_watch -p uc-platform
+//! RUST_LOG=info,uc_platform=debug cargo run --example x11_watch -p uc-platform
 //! ```
 //!
 //! Then in a second terminal try:
-//! - `wl-copy "hello wayland"` (native Wayland) — expect a snapshot to print.
-//! - `echo png | xclip -selection clipboard -t image/png -i some.png` (X11)
-//!   — when running under XWayland in a niri/sway/KDE Wayland session, the
-//!   compositor mirrors X11 selections into the Wayland clipboard, so the
-//!   wayland watcher should still see it.
-//! - Ctrl+C in this terminal to stop. The watcher releases its wayland
-//!   connection cleanly.
-//!
-//! On a session without `WAYLAND_DISPLAY`, the factory falls through to
-//! the native `x11rb` event loop (Phase 3) and you should still see
-//! snapshots when the X11 `CLIPBOARD` selection changes.
+//! - `xclip -selection clipboard -i <<< "x11 hello"` (or just copy from any
+//!   X11 / XWayland app) — expect a snapshot to print.
+//! - Ctrl+C in this terminal to stop. The watcher releases its connection.
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -38,11 +35,14 @@ async fn main() -> anyhow::Result<()> {
         .with_target(true)
         .init();
 
-    eprintln!("watching the clipboard — copy something and watch this terminal");
-    eprintln!(
-        "(WAYLAND_DISPLAY={:?})",
-        std::env::var_os("WAYLAND_DISPLAY")
-    );
+    // Force the native X11 backend even on a Wayland session.
+    // SAFETY: single-threaded tokio runtime, no concurrent env access.
+    unsafe {
+        std::env::remove_var("WAYLAND_DISPLAY");
+    }
+
+    eprintln!("watching X11 CLIPBOARD via x11rb — copy from an X11/XWayland app");
+    eprintln!("(DISPLAY={:?})", std::env::var_os("DISPLAY"));
 
     let clipboard: Arc<dyn uc_core::ports::SystemClipboardPort> = Arc::new(LocalClipboard::new()?);
     let (tx, mut rx) = mpsc::channel::<PlatformEvent>(64);
@@ -95,8 +95,6 @@ async fn main() -> anyhow::Result<()> {
         }
     }
 
-    // Give the event loop a moment to clean up before we exit, but don't
-    // hang the example if it doesn't.
     let _ = tokio::time::timeout(Duration::from_secs(2), join).await;
     Ok(())
 }

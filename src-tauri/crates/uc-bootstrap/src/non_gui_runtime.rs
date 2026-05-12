@@ -17,14 +17,14 @@ use uc_application::deps::AppDeps;
 use uc_application::facade::space_setup::SpaceSetupFacade;
 use uc_application::facade::{
     AppFacade, AppFacadeParts, AppPaths, BlobTransferFacade, ClipboardHistoryFacade,
-    ClipboardHistoryFacadeDeps, ClipboardRestoreFacade, ClipboardRestoreFacadeDeps,
-    ClipboardSyncFacade, DeviceFacade, EmitError, EncryptionFacade, EncryptionFacadeDeps,
-    FileTransferFacade, HostEvent, HostEventEmitterPort, InMemoryLifecycleStatus,
-    IncomingMobileBuffer, LifecycleFacade, LifecycleFacadeDeps, LifecycleStatusGateway,
-    MemberRosterFacade, MobileSyncFacade, MobileSyncFacadeDeps, MobileSyncSnapshotPorts,
-    ResourceFacade, ResourceFacadeDeps, SearchCoordinator, SearchCoordinatorDeps, SearchFacade,
-    SearchFacadeDeps, SettingsFacade, StorageFacade, StorageFacadeDeps, UpgradeFacade,
-    UpgradeFacadeDeps,
+    ClipboardHistoryFacadeDeps, ClipboardOutboundFacade, ClipboardRestoreFacade,
+    ClipboardRestoreFacadeDeps, ClipboardSyncFacade, DeviceFacade, EmitError, EncryptionFacade,
+    EncryptionFacadeDeps, FileTransferFacade, HostEvent, HostEventEmitterPort,
+    InMemoryLifecycleStatus, IncomingMobileBuffer, LifecycleFacade, LifecycleFacadeDeps,
+    LifecycleStatusGateway, MemberRosterFacade, MobileSyncFacade, MobileSyncFacadeDeps,
+    MobileSyncSnapshotPorts, ResourceFacade, ResourceFacadeDeps, SearchCoordinator,
+    SearchCoordinatorDeps, SearchFacade, SearchFacadeDeps, SettingsFacade, StorageFacade,
+    StorageFacadeDeps, UpgradeFacade, UpgradeFacadeDeps,
 };
 use uc_application::{
     ApplyInboundClipboardUseCase, InboundCapture as ApplyInboundCapture,
@@ -185,6 +185,19 @@ pub fn build_mobile_sync_facade(
     // start/stop/rebind listener。CLI fallback 传 `None`,settings 只写盘,
     // 等下次 daemon 进程启动一次性读取(与本字段引入前完全一致的行为)。
     lan_lifecycle: Option<Arc<dyn uc_core::ports::MobileLanLifecyclePort>>,
+    // 同进程内已构造好的 `ClipboardOutboundFacade`(daemon 启动时装配)。
+    // 装入时,移动端 PUT 落地本机后会异步把同一份 snapshot 走"本机捕获
+    // → 出站"完整管线 fan-out 给 Space 内其他已配对设备 ——
+    //
+    // - 文本 / 小图 inline 进 V3 envelope;
+    // - 大图自动剥成 iroh-blobs ref;
+    // - **文件**:`publish_blob_path` 流式发布到 iroh-blobs, 构造 free-file
+    //   V3BlobRef, 接收端拉回并改写 file-list rep 成本机 URI ——
+    //   "手机文件 → 其他桌面"的真正传输靠这条路径成立。
+    //
+    // CLI fallback / 不接 P2P 出站的入口传 `None`, mobile 上传仅落地本机,
+    // 不传播。
+    clipboard_outbound: Option<Arc<ClipboardOutboundFacade>>,
 ) -> Arc<MobileSyncFacade> {
     Arc::new(MobileSyncFacade::new(MobileSyncFacadeDeps {
         clock: deps.system.clock.clone(),
@@ -208,6 +221,7 @@ pub fn build_mobile_sync_facade(
             blob_reader: deps.storage.blob_store.clone(),
         },
         file_transfer,
+        clipboard_outbound,
         lan_lifecycle,
     }))
 }
@@ -296,6 +310,14 @@ pub fn build_app_facade_from_deps(
                 options.file_transfer.clone(),
                 // CLI fallback 装配:无常驻 daemon, 不需要 in-process hot-swap。
                 // settings 改动等下次 daemon 进程启动一次性生效。
+                None,
+                // CLI fallback 不接 outbound dispatcher(`ClipboardOutboundFacade`
+                // 装配链需要 worker 装配过程提供, 见
+                // `uc-desktop::daemon::runtime_assembly`),mobile 上传仅落地
+                // 本机, 不向其他 paired peers fan-out。daemon 入口走
+                // `build_daemon_lifecycle_facades` 那条路径, 在那里以
+                // `Some(clipboard_outbound)` 装入完整 fan-out 能力(含文件 blob
+                // 发布)。
                 None,
             )
         });

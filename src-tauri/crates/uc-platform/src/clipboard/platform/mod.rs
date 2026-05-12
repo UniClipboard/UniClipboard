@@ -1,4 +1,7 @@
-#[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
+// `clipboard_rs_adapter` wraps `clipboard_rs::ClipboardWatcherContext`,
+// so Phase 4 narrowed it to macOS/Windows. Linux uses native
+// Wayland + x11rb event loops under `linux::build_event_loop`.
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 pub mod clipboard_rs_adapter;
 
 #[cfg(target_os = "linux")]
@@ -22,10 +25,11 @@ pub use linux::LinuxClipboard as LocalClipboard;
 
 /// Default platform clipboard event loop factory.
 ///
-/// - Linux: delegates to [`linux::build_event_loop`] which runtime-selects
+/// - Linux: delegates to [`linux::build_event_loop`], which runtime-selects
 ///   the native Wayland implementation (when `WAYLAND_DISPLAY` is set and
-///   the compositor advertises `zwlr_data_control_manager_v1`) or the
-///   `clipboard_rs` X11 adapter as a fallback.
+///   the compositor advertises `ext`- or `wlr-data-control`) or the
+///   native x11rb implementation. The legacy `clipboard_rs` adapter was
+///   removed in Phase 4.
 /// - macOS / Windows: wraps `clipboard_rs::ClipboardWatcherContext` via
 ///   [`clipboard_rs_adapter::ClipboardRsEventLoop`].
 pub fn build_event_loop(

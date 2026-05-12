@@ -267,9 +267,10 @@ impl ClipboardChangeHandler for DaemonClipboardChangeHandler {
 /// Daemon service that monitors OS clipboard changes.
 ///
 /// Delegates the OS-specific listener to `uc_platform::clipboard::build_event_loop`
-/// (Wayland data-control / X11 XFIXES / `clipboard_rs`-wrapped legacy backends);
-/// `uc_platform::ClipboardWatcher` performs dedup before forwarding the snapshot
-/// to `DaemonClipboardChangeHandler` which persists and broadcasts WS events.
+/// (Linux: native `ext`/`wlr-data-control` or native `x11rb` + XFIXES;
+/// macOS / Windows: `clipboard_rs`-wrapped adapter). `uc_platform::ClipboardWatcher`
+/// performs dedup before forwarding the snapshot to `DaemonClipboardChangeHandler`
+/// which persists and broadcasts WS events.
 pub struct ClipboardWatcherWorker {
     local_clipboard: Arc<dyn uc_core::ports::SystemClipboardPort>,
     change_handler: Arc<DaemonClipboardChangeHandler>,
@@ -302,8 +303,9 @@ impl DaemonService for ClipboardWatcherWorker {
         // Create the uc-platform ClipboardWatcher (handles dedup logic).
         let handler = ClipboardWatcher::new(self.local_clipboard.clone(), platform_tx);
 
-        // Build the platform-specific event loop. Linux runtime-detects Wayland
-        // vs X11; macOS / Windows return the clipboard_rs adapter.
+        // Build the platform-specific event loop. Linux runtime-detects
+        // native Wayland (ext/wlr-data-control) vs native x11rb; macOS /
+        // Windows return the clipboard_rs adapter.
         let event_loop = build_event_loop()?;
         let (shutdown_tx, shutdown_rx) = shutdown_channel();
 

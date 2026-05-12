@@ -5,6 +5,21 @@ on:
   pull_request:
     branches: [main]
     types: [opened, synchronize, reopened]
+    paths:
+      - 'src/**'
+      - 'src-tauri/**'
+      - 'package.json'
+      - 'bun.lock'
+      - 'tsconfig*.json'
+      - 'vite.config.ts'
+      - 'tailwind.config.js'
+      - 'eslint.config.js'
+      - 'index.html'
+      - 'quick-panel.html'
+      - 'public/**'
+      - '.prettierrc*'
+      - 'prettier.config.*'
+      - '.github/workflows/format.yml'
 
 permissions:
   contents: write

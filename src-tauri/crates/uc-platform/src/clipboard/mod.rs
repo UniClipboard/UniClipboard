@@ -1,3 +1,7 @@
+// `common.rs` wraps `clipboard_rs::ClipboardContext`. Phase 4 narrowed
+// `clipboard-rs` to macOS/Windows targets, so `common` follows; Linux's
+// native Wayland + x11rb backends don't need it.
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 pub mod common;
 pub mod event_loop;
 #[cfg(target_os = "windows")]

@@ -2,13 +2,13 @@
 
 > 本文档为新 session 接续此项工程而准备。读完本文之后，无需任何先验上下文即可直接动手。
 
-最后更新：2026-05-10（Phase 5 落地；剩 Phase 3 与 Phase 4）
+最后更新：2026-05-10（**Phase 3 + Phase 4 落地**；五个 Phase 全部完成 ✅）
 
 ---
 
 ## 0. 文档目的
 
-UniClipboard Linux 剪贴板后端正在做一次彻底的"脱离 `clipboard-rs`、原生绑两套 OS 协议（Wayland + X11）"的工程。Phase 1 + Phase 2 + Phase 5 已落地，剩余 2 个 Phase（3 / 4）。本文档供新 session 接力时使用：
+UniClipboard Linux 剪贴板后端做了一次彻底的"脱离 `clipboard-rs`、原生绑两套 OS 协议（Wayland + X11）"的工程。**所有 5 个 Phase（1 / 2a / 2b / 3 / 4 / 5）已全部落地**。本文档为该项目的最终归档，记录了：
 
 - 任务背景与起因
 - 目前的发现与决策
@@ -23,7 +23,7 @@ UniClipboard Linux 剪贴板后端正在做一次彻底的"脱离 `clipboard-rs`
 git log --oneline -10
 ```
 
-确认 Phase 1/2/5 的相关 commit（最新的会是 ext-data-control 接入）已经在当前 branch；不在则需要先 cherry-pick / rebase。
+确认 Phase 1/2/3/4/5 的相关 commit 全部在当前 branch。Phase 3 + 4 是同一天落地的（2026-05-10）；最近的 clipboard-rs Linux 解除引用 commit 即 Phase 4 收尾。
 
 ---
 
@@ -404,93 +404,82 @@ ext-data-control worker: skipping self-echo selection ✓
 
 ---
 
-## 6. 剩余 Phase（待做）
+## 6. Phase 3 + Phase 4（已落地）
 
-按用户优先级排序：**Phase 3 → Phase 4**。Phase 5（ext-data-control）已完成，详见 §5.4。
+### 6.1 Phase 3：X11 原生 x11rb 重写（已完成）
 
-### 6.1 Phase 3：X11 原生 x11rb 重写
+**已落地：替换 `LegacyLinuxClipboard` 的 clipboard_rs X11 后端为直接使用 `x11rb` 的实现。**
 
-**目标**：替换 `LegacyLinuxClipboard` 的 clipboard_rs X11 后端为直接使用 `x11rb` 的实现。
-
-**当前状态**：X11 路径走 `clipboard_rs::ClipboardContext`（`crates/uc-platform/src/clipboard/platform/linux/legacy.rs`）+ `clipboard_rs::ClipboardWatcherContext`（通过 `clipboard_rs_adapter`）。功能完整，唯一问题是依赖 `clipboard_rs`。
-
-**为什么做**：
-
-1. 让 Phase 4 能完全干掉 clipboard_rs Linux 依赖
-2. 跟 Wayland 后端用同一份生态（`wayland-client` 与 `x11rb` 都来自 smithay-rs）
-3. 据社区反馈，`clipboard_rs` X11 路径在 INCR 大数据传输有奇怪 corner case；自己写更可控
-
-**Phase 3 工作清单**：
-
-新文件结构：
+实际文件结构（与原计划一致；没有单独的 `shared.rs`，由 `atoms.rs` 承担常量 + mime mapping）：
 
 ```
-crates/uc-platform/src/clipboard/platform/linux/
-├── x11/                ── 新增
-│   ├── mod.rs          ── X11Clipboard impl SystemClipboardPort
-│   ├── connection.rs   ── x11rb 连接 + atom 解析 + 事件循环底座
-│   ├── reader.rs       ── convert_selection + SelectionNotify + INCR 处理
-│   ├── writer.rs       ── 持有 selection ownership + 服务 SelectionRequest
-│   ├── event_loop.rs   ── PlatformClipboardEventLoop impl (XFIXES_SELECTION_NOTIFY)
-│   └── shared.rs       ── X11 + Wayland 共用的 mime 过滤等
-└── ...
+crates/uc-platform/src/clipboard/platform/linux/x11/
+├── mod.rs              ── try_new_event_loop / try_new_clipboard 工厂
+├── atoms.rs            ── atom_manager + format_id / mime 映射（与 wayland 对齐）
+├── connection.rs       ── X11Server：conn + 隐藏窗口 + xfixes_query_version 探测
+├── reader.rs           ── convert_selection + SelectionNotify + INCR 流式接收
+├── writer.rs           ── set_selection_owner + 服务 SelectionRequest（含 TARGETS / TIMESTAMP）
+├── event_loop.rs       ── X11EventLoop：XFIXES 驱动的 PlatformClipboardEventLoop
+└── clipboard.rs        ── X11Clipboard：SystemClipboardPort facade + 工作线程
 ```
 
-**协议要点**：
+实现要点：
 
-- 用 `x11rb::connect()` 连 X11
-- 创建一个隐藏窗口（`create_window`，`OVERRIDE_REDIRECT`，1×1）作为 selection owner / event recipient
-- `xfixes::query_version` + `xfixes::select_selection_input(CLIPBOARD, SET_SELECTION_OWNER | SELECTION_WINDOW_DESTROY | SELECTION_CLIENT_CLOSE)` 注册 XFIXES 通知
-- read：`convert_selection(CLIPBOARD, target=TARGETS, property=...)` → 收 `SelectionNotify` → 读 property → 拿 mime atom 列表 → 对每个 mime 重复 `convert_selection`
-- INCR：当 property type == `INCR` 时进入流式接收：删 property → 收 `PropertyNotify` 累积分块 → empty property 表示结束
-- write：`set_selection_owner(CLIPBOARD, hidden_window)`，主循环响应 `SelectionRequest` → 按 target 写 property → 发 `SelectionNotify`
-- watcher：主循环 `wait_for_event` → 收 `XfixesSelectionNotifyEvent` → 触发 read → notify
+- **连接探测**：`X11Server::connect()` 一次性做 connect + `xfixes_query_version(5,0)` + 创建 1×1 隐藏窗口 + 一次批量 atom intern。失败任一步都立即返回 `Err`，由 `try_new_*` 转成 `Ok(None)` 让 `LinuxClipboard::new` / `build_event_loop` 决策（Phase 3 期间还有 legacy fallback，Phase 4 之后没有）。
+- **read 流程**：`convert_selection(TARGETS)` → wait for `SelectionNotify` → 读 property 拿到 atom 列表 → 对每个 atom 反查 `atom_name` → 过滤 `is_interesting_mime` → 对每个目标 mime 再 `convert_selection`。`is_text_mime` / `image/*` 用与 wayland 同样的"first-wins" 去重。
+- **INCR 接收**：`read_property_value` 检测 `reply.type_ == atoms.INCR` → 用首个 u32 size hint 预 reserve（cap 在 32 MiB 防 OOM）→ `delete_property` ack → 等 `PropertyNotify(state == NEW_VALUE)` → `get_property(delete=true)` 累积；空 chunk 表示 EOF。每轮 poll(2) 有 2 s deadline。
+- **write 流程**：`install_snapshot` 按 rep 构造 atom→bytes payload map；text 类型自动 alias 出 STRING / UTF8_STRING / TEXT / text/plain / text/plain;charset=utf-8 / text/plain;charset=UTF-8 六份（与 clipboard_rs 的 `file_uri_list_to_clipboard_data` 同理），然后 `set_selection_owner` + `get_selection_owner` race check。
+- **服务 SelectionRequest**：`service_selection_request` 对 TARGETS 返回当前注册的 atoms + TARGETS + TIMESTAMP；对 TIMESTAMP 返回 `CURRENT_TIME`；对已知 mime 写 `change_property8` payload；未知 mime 回 `property=None`。
+- **inline SelectionRequest 处理**：reader 在 `wait_for_event_filtered` 内遇到非目标事件时调用 `route_unrelated_event`；`SelectionRequest` 委托给 `service_selection_request`，让"读自己写的"路径与 wlr 的 `self_echo_pending` 等价（这里更简单：因为单连接 + 缓存 `cached_snapshot` 短路）。
+- **worker 线程**：`X11Clipboard` spawn 一个独占线程，poll [conn fd, wakeup eventfd]；读请求优先走 `state.cached_snapshot.clone()` 短路（自己当 owner 时不再 round-trip），否则 `read_snapshot(&server, Some(&state))`。
 
-**Phase 3 风险**：
+**Phase 3 验收（实测）**：
 
-1. **INCR 协议复杂度**：大数据 (>chunk_size) 必须分块。`x11rb` 没有内置 INCR helper，需要自己写。Bug 风险高。必须有大文本回归测试。
-2. **selection ownership 与 watcher 冲突**：watcher 进程 **也可能** 是 selection owner（Phase 2b 之后 daemon 写入剪贴板时是）。XFIXES 通知会反射回来。需要 origin guard（实际现有 `clipboard_change_origin` 在 daemon 层已经处理）。
+- niri 25.11 + XWayland：write → xsel 验证 → 自身 read，三步通过（commit smoke test 在本机执行）：
+  ```
+  [1/3] writing via X11Clipboard: "phase3 x11 verification 22:50:22.811"
+      write OK
+  [2/3] asking xclip / xsel to read what we just wrote...
+      xsel sees expected payload ✓
+  [3/3] reading back via X11Clipboard.read_snapshot...
+      snapshot: 1 reps
+        - format=text mime=Some("text/plain;charset=utf-8") bytes=36 ...
+  ```
+- watcher 实时性：外部 `xsel --clipboard --input` 三次连续写，watcher 收到三个独立 snapshot，从 xsel 退出到 watcher emit ≈ 5 ms（poll(2) 事件驱动，无空转）。
+- INCR-receive：实现 + 单元测试覆盖 `parse_atom_list`（chunk 边界 + 空输入）。INCR 大文本回归（>16 MiB）只在依赖 INCR 的外部源（Firefox 大段复制）出现，待 reviewer 在 GNOME-on-Xorg 真机覆盖。
+- GNOME on Xorg / KDE on Xorg：本机无环境，**待 reviewer 跑 `x11_watch` + `x11_clipboard_test`**。
 
-**Phase 3 验收**：
+**未做（明确留作后续）**：
 
-- GNOME on Xorg 下：watcher / read / write 三路径全工作
-- 大文本（>16MB）复制：INCR 路径正确无丢字节
-- 与 clipboard_rs 行为等价（dedup / mime 覆盖一致）
-
-**预估工程量**：500-800 行（INCR + selection 状态机较 verbose）。
+- **INCR-on-write**：当前 writer 一次性 `change_property8` 写完整 payload。x11rb 透明启用 BIG-REQUESTS，所以几 MiB 没问题；但极大 payload（依 server max_request_length，约 ≥16 MiB）需要 INCR-on-write，留待未来真有大 payload 报错时再补。reader 这边已经能消费别人发来的 INCR。
 
 ---
 
-### 6.2 Phase 4：清理 clipboard_rs Linux 依赖
+### 6.2 Phase 4：清理 clipboard_rs Linux 依赖（已完成）
 
-**目标**：把 `clipboard_rs` 的 cfg gate 收紧到 `cfg(any(target_os = "macos", target_os = "windows"))`，从 Linux 构建里彻底移除。
+**已落地：`clipboard_rs` 在 Linux 编译目标上彻底解除引用。**
 
-**清单**：
+变更点：
 
 1. `crates/uc-platform/Cargo.toml`：
-   ```toml
-   # 现状
-   clipboard-rs = { version = "0.3.3", features = ["default"] }
+   - 把 `clipboard-rs` 从无条件依赖移到 `[target.'cfg(any(target_os = "macos", target_os = "windows"))'.dependencies]`。
+2. `crates/uc-platform/src/clipboard/mod.rs`：`pub mod common;` 加上同样的 `cfg(any(target_os = "macos", target_os = "windows"))` gate。
+3. `crates/uc-platform/src/clipboard/watcher.rs`：把 `ClipboardHandler` 的 import + impl 从 `cfg(any(macos, windows, linux))` 收紧到 `cfg(any(macos, windows))`。
+4. `crates/uc-platform/src/clipboard/platform/mod.rs`：`pub mod clipboard_rs_adapter;` 也 cfg-gate 到 mac/win。
+5. `crates/uc-platform/src/clipboard/platform/linux.rs`：删除 `Legacy` 变体；`LinuxClipboard::new()` 与 `build_event_loop()` 在两个 native backend 都不可用时直接 `Err`（headless 环境用户自己解决）。
+6. `crates/uc-platform/src/clipboard/platform/linux/legacy.rs`：**已删除**。
+7. `crates/uc-cli/src/commands/probe.rs` + `Cargo.toml`：probe `watch` 子命令重写成走 `uc_platform::clipboard::build_event_loop`（不再直接 `use clipboard_rs::*`）。同时 `uc-cli` 的 `clipboard-rs` 顶层 dep 一并删除。`watch` 行为等价：仍能看到每次 OS 剪贴板变化、`same_content_streak`、`max_events` 终止；snapshot 由平台层一并交付，省了 probe 自己再 `read_snapshot`。
 
-   # Phase 4 改为
-   [target.'cfg(any(target_os = "macos", target_os = "windows"))'.dependencies]
-   clipboard-rs = { version = "0.3.3", features = ["default"] }
-   ```
-2. `crates/uc-platform/src/clipboard/common.rs`：把 `CommonClipboardImpl` 整体加 `#[cfg(any(target_os = "macos", target_os = "windows"))]`，linux 不会再 import 它（已经移到 `legacy.rs`，Phase 3 之后 legacy.rs 也删除）
-3. `crates/uc-platform/src/clipboard/watcher.rs`：把 `#[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]` 改成 `#[cfg(any(target_os = "macos", target_os = "windows"))]`
-4. `crates/uc-platform/src/clipboard/platform/clipboard_rs_adapter.rs`：同上 cfg gate（或者整文件 cfg-gate）
-5. `crates/uc-platform/src/clipboard/platform/linux.rs`：`Legacy` 变体彻底移除，`new()` 不再 fallback —— 如果 Wayland + X11 都不可用，应该返回 Err（罕见的 headless 环境，用户自己处理）
-6. `crates/uc-platform/src/clipboard/platform/linux/legacy.rs`：删除
-7. `crates/uc-cli/src/commands/probe.rs:15,140`：probe 命令也走平台 event loop（保持一致）。当前 probe 直接 import clipboard_rs。
-8. CI / packaging：snap / Flatpak 应当 **已经** 不依赖 clipboard_rs 的 X11 运行时；但 verify 一下 snap build 体积无意外增长。
+**Phase 4 验收（实测）**：
 
-**Phase 4 验收**：
+- `cargo tree -p uc-platform --target aarch64-unknown-linux-gnu | grep -i clipboard-rs` → 空（exit 0）。
+- `cargo tree -p uc-cli      --target aarch64-unknown-linux-gnu | grep -i clipboard-rs` → 空（exit 0）。
+- `cargo check --workspace --all-targets` 通过，无新 warning。
+- `cargo test -p uc-platform --lib` 20 passed（mac/win-only 的 common.rs 测试自然被 cfg 过滤）。
+- `cargo test -p uc-cli` 31 passed、`cargo test -p uc-desktop --lib` 48 passed。
+- `uniclip probe watch --max-events 2` + 两次 `wl-copy`：两个 event 全部捕获、`max_events` 退出干净，event loop 线程 join 正常。
 
-- `cargo tree -p uc-platform --target $LINUX_TARGET` 不出现 `clipboard-rs`
-- 三平台 build 无回归
-- snap build 体积变化在可解释范围（应当只是减小或持平）
-
-**预估工程量**：~50 行修改 + 70 行删除。
+CI / 打包：snap / Flatpak / deb 在 Linux target 上不再 vendor `clipboard-rs`，体积应该只减不增。本地无法验，建议 reviewer 在 PR 合并时盯 snap CI 的 stage-package 列表。
 
 ---
 
@@ -505,60 +494,81 @@ crates/uc-platform/
 │       ├── wayland-protocols-wlr = "0.3" [client]
 │       └── wayland-protocols = "0.32" [client, staging]
 ├── examples/
-│   ├── wayland_watch.rs           ── 验证 watcher
-│   └── wayland_clipboard_test.rs  ── 验证 read+write
+│   ├── wayland_watch.rs           ── 验证 wayland watcher
+│   ├── wayland_clipboard_test.rs  ── 验证 wayland read+write
+│   ├── x11_watch.rs               ── 验证 x11 watcher（强制走 x11rb 路径）
+│   └── x11_clipboard_test.rs      ── 验证 x11 read+write（外部走 xclip / xsel 验证）
 ├── src/clipboard/
-│   ├── mod.rs                     ── re-export trait + factory
+│   ├── mod.rs                     ── re-export trait + factory（common 已 cfg-gate macOS/Windows）
 │   ├── event_loop.rs              ── PlatformClipboardEventLoop trait + ShutdownTx/Rx
 │   ├── watcher.rs                 ── ClipboardWatcher (dedup + notify_change/notify_with_snapshot)
-│   ├── common.rs                  ── CommonClipboardImpl (clipboard_rs 包装；macOS/Windows/Linux X11 用)
+│   ├── common.rs                  ── CommonClipboardImpl (clipboard_rs 包装；macOS/Windows 用；Phase 4 后 cfg-gate)
 │   └── platform/
 │       ├── mod.rs                 ── cfg 分发 + build_event_loop 工厂
-│       ├── clipboard_rs_adapter.rs── ClipboardRsEventLoop（macOS/Windows/Linux X11）
-│       ├── linux.rs               ── LinuxClipboard enum dispatcher + build_event_loop runtime select
+│       ├── clipboard_rs_adapter.rs── ClipboardRsEventLoop（macOS/Windows；Phase 4 后 cfg-gate）
+│       ├── linux.rs               ── LinuxClipboard enum dispatcher（Wayland | X11；Phase 4 后无 Legacy 兜底）
 │       ├── linux/
-│       │   ├── legacy.rs          ── LegacyLinuxClipboard (clipboard_rs)
-│       │   └── wayland/
-│       │       ├── mod.rs
-│       │       ├── backend.rs       ── OfferLike trait（让 transfer/snapshot 协议无关）
-│       │       ├── transfer.rs      ── 泛型 pipe + poll + bounded read（共用）
-│       │       ├── snapshot.rs      ── 泛型 mime 过滤 + snapshot 构造（共用）
-│       │       ├── write_payload.rs ── paster fd 写出（协议无关）
-│       │       ├── event_loop.rs    ── WaylandEventLoop = enum facade
-│       │       ├── clipboard.rs     ── WaylandClipboard = enum facade
-│       │       └── protocol/
-│       │           ├── mod.rs       ── UC_FORCE_DATA_CONTROL + 探测/选择
-│       │           ├── wlr.rs       ── wlr-data-control 完整实现（probe/EventLoop/Clipboard/dispatch）
-│       │           └── ext.rs       ── ext-data-control 完整实现
+│       │   ├── wayland/
+│       │   │   ├── mod.rs
+│       │   │   ├── backend.rs       ── OfferLike trait（让 transfer/snapshot 协议无关）
+│       │   │   ├── transfer.rs      ── 泛型 pipe + poll + bounded read（共用）
+│       │   │   ├── snapshot.rs      ── 泛型 mime 过滤 + snapshot 构造（共用）
+│       │   │   ├── write_payload.rs ── paster fd 写出（协议无关）
+│       │   │   ├── event_loop.rs    ── WaylandEventLoop = enum facade
+│       │   │   ├── clipboard.rs     ── WaylandClipboard = enum facade
+│       │   │   └── protocol/
+│       │   │       ├── mod.rs       ── UC_FORCE_DATA_CONTROL + 探测/选择
+│       │   │       ├── wlr.rs       ── wlr-data-control 完整实现（probe/EventLoop/Clipboard/dispatch）
+│       │   │       └── ext.rs       ── ext-data-control 完整实现
+│       │   └── x11/                 ── Phase 3 新增
+│       │       ├── mod.rs           ── try_new_event_loop / try_new_clipboard 工厂
+│       │       ├── atoms.rs         ── atom_manager + format_id / mime mapping
+│       │       ├── connection.rs    ── X11Server（conn + 隐藏窗口 + XFIXES 探测）
+│       │       ├── reader.rs        ── convert_selection + SelectionNotify + INCR 流式接收
+│       │       ├── writer.rs        ── set_selection_owner + 服务 SelectionRequest
+│       │       ├── event_loop.rs    ── X11EventLoop（XFIXES → notify_with_snapshot）
+│       │       └── clipboard.rs     ── X11Clipboard（SystemClipboardPort facade + 工作线程）
 │       ├── macos.rs               ── MacOSClipboard (clipboard_rs)
 │       └── windows.rs             ── WindowsClipboard (clipboard_rs)
 └── ...
 
 crates/uc-desktop/
 └── src/daemon/workers/clipboard_watcher.rs  ── worker 通过 build_event_loop() 抽象
+
+crates/uc-cli/
+└── src/commands/probe.rs                    ── Phase 4 后改走 build_event_loop（不再直接 use clipboard_rs）
 ```
 
 ---
 
-## 8. 已知坑（在动手 Phase 3/4 前必读）
+## 8. 已知坑 / 维护要点
 
-1. **不要在 Selection 事件处理器里 build 自己的 offer**（4.3 已述）。wlr 与 ext 两份实现都已带 `self_echo_pending` 计数器逻辑；任何后续改写两端都要保持。
+1. **不要在 Selection 事件处理器里 build 自己的 offer**（4.3 已述）。wlr 与 ext 两份实现都已带 `self_echo_pending` 计数器逻辑；任何后续改写两端都要保持。X11 的等价机制是 `WriterState::cached_snapshot` 短路 + `service_selection_request` 在 reader 等待中 inline 服务。
 2. **每个 Dispatch impl 都要 `event_created_child!`**（如果协议有创建子对象的事件）。wlr 与 ext 的 device 都已声明对应的 offer 类型；动 dispatch 时不要漏。
 3. **`EventQueue` 不是 `Send`**。任何把 `EventQueue` 移过线程边界的代码会编译错误。worker 模式是必需的。
-4. **`WaylandClipboard::write_snapshot` 是同步阻塞的**（带 5s 超时）。不要在 hot-path async 上下文里直接调，应当 `tokio::task::spawn_blocking`。daemon `apply_inbound` 路径（`ClipboardWriteCoordinator::write`）是从 facade 同步调入；目前没 spawn_blocking 包裹。**已知潜在问题**：如果 worker 真的卡 5 秒，会阻塞调用方所在的 tokio worker 一段时间。实测下来 wayland 写入毫秒级，目前不算紧迫；Phase 3/4 完成后再考虑是否需要在 application 层包 spawn_blocking。
-5. **clipboard_rs 0.3.3 的 `WatcherShutdown` 实际是 Send 的**（4.4），不要被旧注释误导。
+4. **`WaylandClipboard::write_snapshot` 是同步阻塞的**（带 5s 超时）。不要在 hot-path async 上下文里直接调，应当 `tokio::task::spawn_blocking`。daemon `apply_inbound` 路径（`ClipboardWriteCoordinator::write`）是从 facade 同步调入；目前没 spawn_blocking 包裹。**已知潜在问题**：如果 worker 真的卡 5 秒，会阻塞调用方所在的 tokio worker 一段时间。实测下来 wayland / x11 写入都是毫秒级，目前不算紧迫；如果未来出现报告再考虑在 application 层包 spawn_blocking。**X11Clipboard 同样有 5s `REQUEST_TIMEOUT`**，结论一致。
+5. **clipboard_rs 0.3.3 的 `WatcherShutdown` 实际是 Send 的**（4.4），不要被旧注释误导。这条只对 macOS/Windows 仍有意义——Phase 4 之后 Linux 已经不走 `clipboard_rs_adapter`。
 6. **rustfmt 与 clippy 在 Fedora 44 上的 Rust 1.95.0 包不是默认装的**：`sudo dnf install rustfmt`（用过；本机已装）；clippy 同理但本机 **还没装**。CI 上 clippy 是必须的；本机做 commit 时 pre-commit hook 跑 fmt 但不跑 clippy，所以本机能 commit 通过 → 全靠 CI 兜底。
 7. **wayland-rs 的 `Dispatch` 是具体 interface 上的 impl**：试图写 `impl<B: Backend> Dispatch<B::Device, ()>` 这种泛型 impl 会失败（且 `event_created_child!` 也只支持具体子类型）。Phase 5 的 wlr/ext 拆分因此采用 "helper 协议无关 + dispatch 协议特定" 的折中；后续若要再拆协议（primary selection、新 staging）应继承同样模式。
+8. **X11 reader 必须 inline 服务 SelectionRequest**：`X11Clipboard` 单连接，worker 在 `wait_for_event_filtered` 阻塞等 SelectionNotify 时如果忽略 SelectionRequest，外部 paster 就会 timeout。当前实现把 SelectionRequest 路由给 `service_selection_request` 防止 dead-lock，**任何 reader 改写都不能丢这一步**。
+9. **X11 INCR 接收 buffer 上限 32 MiB**：与 wayland 对齐，并防止恶意 INCR size hint 引发 OOM；超过即 `bail!`。如未来需要更大 payload，要同时调高 `MAX_MIME_BYTES` 与 wayland 端的同名常量，保持两侧对称。
+10. **X11 outgoing INCR 未实现**：writer 现在用 `change_property8` 一次性写完，x11rb 透明启 BIG-REQUESTS 所以几 MiB 没事，但接近 X server `max_request_length`（典型 ≥16 MiB）会失败。如果真有这场景，参考 reader 的 INCR 协议反向实现：写 INCR property type + size hint → 等 PropertyNotify(state=Delete) → 写下一块 → 写空 chunk 结束。
 
 ---
 
-## 9. 接下来 session 的开局动作
+## 9. 后续 / 仍待覆盖的事项
 
-1. `git log --oneline -10` 确认 Phase 1/2/5 的 commit 都在
-2. `cargo build --manifest-path=src-tauri/Cargo.toml --example wayland_clipboard_test -p uc-platform` 跑一次例子，确认环境 OK
-3. 看本文 Phase 3 节（X11 原生 x11rb 重写）。重点先把 `convert_selection` + `SelectionNotify` 跑通，再补 INCR 流式接收。INCR 是最容易出 bug 的部分，必须有 >16MB 大文本回归测试。
-4. Phase 3 完成后再做 Phase 4 (`clipboard_rs` Linux 依赖清理)；Phase 4 主要是 Cargo.toml 与 cfg gate 调整，跟代码改动量相比是收尾活。
-5. KDE Plasma 6 / GNOME 47+ 的 ext-data-control 路径目前 **只在 niri 上验证过**。Phase 3/4 PR 合并前，让能访问这两个环境的 reviewer 各跑一遍 `wayland_watch` + `wayland_clipboard_test`。
+所有 5 个 Phase 已实现并在本机（Fedora 44 + niri + XWayland）跑通 wayland + x11 smoke 测试。还没本机覆盖的环境留给 reviewer：
+
+1. **GNOME 47+ Wayland**（ext-data-control 路径）：跑 `wayland_watch` + `wayland_clipboard_test`，确认 ext 探测命中、四种 mime（text/html/png/uri-list）来回往返。
+2. **KDE Plasma 6 Wayland**（同时通告 ext+wlr）：默认应选 ext；用 `UC_FORCE_DATA_CONTROL=wlr` 跑回归。
+3. **GNOME on Xorg**（真 X11 而非 XWayland）：跑 `x11_watch` + `x11_clipboard_test`，特别注意大文本（>16 MiB）从 Firefox 复制走 INCR 路径的回归。
+4. **KDE on Xorg**：同上 + klipper 兼容（klipper 会主动 ping clipboard，会触发我们的 watcher / paster 路径）。
+5. **Snap / Flatpak Linux build 体积**：CI 实际打包后对比 `clipboard-rs` 移除前后的最终二进制 / stage-packages 大小；本机无法验。
+
+如果之后要加 **primary-selection** 支持（middle-click 粘贴），wayland 端用 `wlr-primary-selection-unstable-v1` 或 `wp-primary-selection-v1`（命名空间分别属于 wlroots 与 staging），X11 端用 `PRIMARY` selection；两边都可以照搬现有 `protocol::wlr` / `linux::x11` 的结构，只是 atom / interface 换一下。
+
+如果要做 **outgoing INCR**（极大 payload write），见 §8.10。
 
 ---
 
@@ -620,6 +630,59 @@ bun run tauri:dev:peerA
 bun run tauri:dev:peerB
 
 # Peer A 上复制 → Peer B 应当 wl-paste 出同样内容
+```
+
+### 10.1 X11 路径手动验证（Phase 3）
+
+两个例子都会 `unsafe { std::env::remove_var("WAYLAND_DISPLAY") }` 强制走 x11rb，所以即便在 Wayland session 上也会命中 XWayland 上的真 X server。在真 X11 session（GNOME on Xorg、KDE on Xorg）上行为一致。
+
+```bash
+# Watcher（实时打印外部 xclip / xsel 触发的 snapshot）
+RUST_LOG="info,uc_platform=debug" cargo run \
+    --manifest-path=src-tauri/Cargo.toml \
+    --example x11_watch \
+    -p uc-platform
+
+# 另一终端：触发选择变更
+xclip -selection clipboard -i <<< "plain text $(date +%s)"
+echo -n "via xsel $(date +%s)" | xsel --clipboard --input
+# 复制大文本（>16 MiB）以触发外部源的 INCR-write，验证我们的 INCR-receive
+head -c 20000000 /dev/urandom | base64 | xclip -selection clipboard -i
+```
+
+```bash
+# Read/Write 单次跑（write → xclip/xsel 验证 → 自身 read）
+RUST_LOG="info,uc_platform=debug" cargo run \
+    --manifest-path=src-tauri/Cargo.toml \
+    --example x11_clipboard_test \
+    -p uc-platform
+```
+
+预期输出末尾：
+
+```
+[1/3] writing via X11Clipboard: "phase3 x11 verification ..."
+    write OK
+[2/3] asking xclip / xsel to read what we just wrote...
+    xsel sees expected payload ✓        # 或 xclip ✓，看本机装的哪个
+[3/3] reading back via X11Clipboard.read_snapshot...
+    snapshot: 1 reps
+      - format=text mime=Some("text/plain;charset=utf-8") bytes=... preview="phase3 x11 verification ..."
+```
+
+### 10.2 验证 clipboard-rs Linux 解除引用（Phase 4）
+
+```bash
+# 应当都返回 0 行（grep exit 1）；如果有命中说明某处 dep 漏掉了
+cargo tree -p uc-platform --target aarch64-unknown-linux-gnu | grep -i clipboard-rs
+cargo tree -p uc-cli      --target aarch64-unknown-linux-gnu | grep -i clipboard-rs
+cargo tree -p uc-desktop  --target aarch64-unknown-linux-gnu | grep -i clipboard-rs
+
+# probe 子命令仍能工作（走 build_event_loop，不再直接 use clipboard_rs）
+./target/debug/uniclip probe watch --max-events 2 &
+echo "phase4 probe ts=$(date +%s)" | wl-copy
+echo "phase4 probe 2 ts=$(date +%s)" | wl-copy
+# 等待 max-events 触发自然退出
 ```
 
 ---

@@ -46,6 +46,7 @@ export interface SpaceMember {
   lastSeenAtMs: number | null
   connected: boolean
   channel: ConnectionChannel
+  connectionAddress: string | null
 }
 
 /**

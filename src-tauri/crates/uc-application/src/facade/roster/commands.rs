@@ -51,6 +51,7 @@ pub struct PeerSnapshotView {
     pub connected: bool,
     pub pairing_state: String,
     pub channel: ConnectionChannel,
+    pub connection_address: Option<String>,
 }
 
 /// 应用层成员摘要。对外只暴露稳定字符串和值对象,不暴露 core 类型。

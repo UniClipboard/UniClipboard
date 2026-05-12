@@ -234,6 +234,7 @@ fn peer_snapshot_to_dto(peer: PeerSnapshotView) -> PeerSnapshotDto {
         is_paired: peer.is_paired,
         connected: peer.connected,
         pairing_state: peer.pairing_state,
+        connection_address: peer.connection_address,
     }
 }
 
@@ -366,6 +367,7 @@ mod tests {
             connected: true,
             pairing_state: "Trusted".to_string(),
             channel: "unknown".to_string(),
+            connection_address: None,
         }
     }
 

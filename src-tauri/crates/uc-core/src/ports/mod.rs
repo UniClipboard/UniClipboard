@@ -50,7 +50,7 @@ pub use timer::TimerPort;
 
 pub use clipboard::*;
 pub use clipboard_change_handler::ClipboardChangeHandler;
-pub use connection_channel::{ConnectionChannel, ConnectionChannelPort};
+pub use connection_channel::{ConnectionChannel, ConnectionChannelPort, ConnectionPath};
 pub use device_identity::DeviceIdentityPort;
 pub use errors::AppDirsError;
 pub use file_transfer_repository::{

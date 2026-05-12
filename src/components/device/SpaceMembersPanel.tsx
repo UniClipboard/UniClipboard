@@ -137,6 +137,7 @@ const SpaceMembersPanel: React.FC = () => {
                 deviceName={device.deviceName}
                 connected={device.connected}
                 channel={device.channel ?? 'unknown'}
+                connectionAddress={device.connectionAddress ?? null}
                 lanOnlyActive={lanOnlyActive}
                 onClick={() => openSheet(device.peerId)}
               />
@@ -222,6 +223,7 @@ interface DeviceRowProps {
   deviceName: string
   connected: boolean
   channel: ConnectionChannel
+  connectionAddress: string | null
   lanOnlyActive: boolean
   onClick: () => void
 }
@@ -230,6 +232,7 @@ const DeviceRow: React.FC<DeviceRowProps> = ({
   deviceName,
   connected,
   channel,
+  connectionAddress,
   lanOnlyActive,
   onClick,
 }) => {
@@ -274,6 +277,14 @@ const DeviceRow: React.FC<DeviceRowProps> = ({
             <span className="mx-1.5 text-muted-foreground/50">·</span>
             <span>{channelLabel}</span>
           </p>
+          {connectionAddress && (
+            <p
+              className="mt-0.5 truncate font-mono text-[0.6875rem] leading-4 text-muted-foreground"
+              title={connectionAddress}
+            >
+              {connectionAddress}
+            </p>
+          )}
         </div>
 
         <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground/50 transition-colors group-hover:text-muted-foreground" />
@@ -293,3 +304,7 @@ const EmptyRow: React.FC<EmptyRowProps> = ({ t }) => (
 )
 
 export default SpaceMembersPanel
+
+export const __test__ = {
+  DeviceRow,
+}

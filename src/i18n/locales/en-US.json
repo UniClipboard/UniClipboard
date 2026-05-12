@@ -717,7 +717,7 @@
         "unknown": "—",
         "outOfLan": "Off local network",
         "tooltip": {
-          "lan": "Sent directly over your local network — traffic stays local.",
+          "lan": "Sent over a direct IP path, which may be local network or a VPN such as Tailscale.",
           "relay": "Sent through an encrypted relay server. Content is encrypted, but connection info is visible to the relay.",
           "offline": "No active connection right now.",
           "unknown": "Detecting how this device is reachable.",

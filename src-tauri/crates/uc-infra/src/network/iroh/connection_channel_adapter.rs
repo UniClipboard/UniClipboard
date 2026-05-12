@@ -12,21 +12,18 @@
 //!    snapshot（`Option<RemoteInfo>`）。
 //! 3. 过滤 `Active` 路径：第一个 `TransportAddr::Ip(...)` 命中 ⇒ `Direct`；
 //!    第一个 `TransportAddr::Relay(...)` 命中 ⇒ `Relay`。
-//! 4. 优先级：`Direct > Relay`。LAN 直连一旦建立就是当前流量路径，relay
-//!    只是可选 fallback；同时活跃时按 LAN 直连汇报，符合用户对"LAN-only
-//!    Mode 是否真生效"的肉眼期望。
+//! 4. 优先级：`Direct > Relay`。IP 直连一旦建立就是当前流量路径，relay
+//!    只是可选 fallback；同时活跃时按直连汇报。
 //! 5. `remote_info == None` 或 `addrs()` 全空 ⇒ `Offline`。
 //! 6. 仅有 `Inactive` / discovery / probe 候选 ⇒ `Unknown`。
 //!
-//! ## IPv6 ULA / 链路本地过滤
+//! ## 不可用地址过滤
 //!
-//! `node.rs::is_virtual_nic_ip` 只过 IPv4 fake 段（Clash / Tailscale /
-//! 169.254 link-local），不覆盖 IPv6。Phase 96 顺手补全：`fc00::/7` ULA
-//! 与 `fe80::/10` link-local 在 channel 推导处也排除掉（iroh 偶尔会把
-//! 它们当 Active path 上报，但实际只在原始主机有意义；视作"非 LAN 直连"
-//! 退到 Unknown / Relay）。**节点级 `AddrFilter` 不动** —— 那个 filter
-//! 影响的是 outbound dial 候选，调它会改变连接行为；这里只在通道判定
-//! 处过滤，影响显示层。
+//! Clash fake-ip 与链路本地地址在 channel 推导处排除；Tailscale 100.x /
+//! fd7a:: 等 overlay 地址是真实可用路径，保留为 `Direct` 并向 UI 暴露
+//! 实际地址。**节点级 `AddrFilter` 不动** —— 那个 filter 影响的是
+//! outbound dial 候选，调它会改变连接行为；这里只在通道判定处过滤，
+//! 影响显示层。
 //!
 //! ## 缓存策略
 //!
@@ -54,7 +51,9 @@ use iroh::{Endpoint, EndpointAddr, TransportAddr};
 use tracing::debug;
 
 use uc_core::ids::DeviceId;
-use uc_core::ports::connection_channel::{ConnectionChannel, ConnectionChannelPort};
+use uc_core::ports::connection_channel::{
+    ConnectionChannel, ConnectionChannelPort, ConnectionPath,
+};
 use uc_core::ports::peer_address::PeerAddressRepositoryPort;
 
 /// Iroh-backed [`ConnectionChannelPort`] implementation.
@@ -77,7 +76,7 @@ impl IrohConnectionChannelAdapter {
 
 #[async_trait]
 impl ConnectionChannelPort for IrohConnectionChannelAdapter {
-    async fn channel_for(&self, device: &DeviceId) -> ConnectionChannel {
+    async fn path_for(&self, device: &DeviceId) -> ConnectionPath {
         // Step 1: device → addr_blob → EndpointId
         let record = match self.peer_addr_repo.get(device).await {
             Ok(Some(r)) => r,
@@ -86,7 +85,7 @@ impl ConnectionChannelPort for IrohConnectionChannelAdapter {
                     device = %device.as_str(),
                     "channel_for: no peer address record; reporting Unknown"
                 );
-                return ConnectionChannel::Unknown;
+                return ConnectionPath::default();
             }
             Err(err) => {
                 debug!(
@@ -94,7 +93,7 @@ impl ConnectionChannelPort for IrohConnectionChannelAdapter {
                     error = %err,
                     "channel_for: peer_addr_repo failure; reporting Unknown"
                 );
-                return ConnectionChannel::Unknown;
+                return ConnectionPath::default();
             }
         };
 
@@ -106,7 +105,7 @@ impl ConnectionChannelPort for IrohConnectionChannelAdapter {
                     error = %err,
                     "channel_for: postcard decode failed; reporting Unknown"
                 );
-                return ConnectionChannel::Unknown;
+                return ConnectionPath::default();
             }
         };
 
@@ -115,36 +114,41 @@ impl ConnectionChannelPort for IrohConnectionChannelAdapter {
             Some(info) => info,
             None => {
                 // No remote_info ⇒ peer never observed by magicsock ⇒ Offline.
-                return ConnectionChannel::Offline;
+                return ConnectionPath {
+                    channel: ConnectionChannel::Offline,
+                    address: None,
+                };
             }
         };
 
         // Step 3-6: priority Direct > Relay; empty Active set + non-empty
         // candidates ⇒ Unknown; empty everything ⇒ Offline.
-        derive_channel_from_addrs(info.addrs())
+        derive_path_from_addrs(info.addrs())
     }
 }
 
 /// Pure derivation step factored out for unit testing — feeding it a synthetic
 /// iterator covers the full truth-table without standing up an iroh endpoint.
-fn derive_channel_from_addrs<'a, I>(addrs: I) -> ConnectionChannel
+fn derive_path_from_addrs<'a, I>(addrs: I) -> ConnectionPath
 where
     I: IntoIterator<Item = &'a iroh::endpoint::TransportAddrInfo>,
 {
     let mut saw_any = false;
-    let mut active_direct = false;
-    let mut active_relay = false;
+    let mut active_direct: Option<String> = None;
+    let mut active_relay: Option<String> = None;
 
     for a in addrs {
         saw_any = true;
         match (a.usage(), a.addr()) {
             (iroh::endpoint::TransportAddrUsage::Active, TransportAddr::Ip(s)) => {
-                if !is_filtered_ip(s.ip()) {
-                    active_direct = true;
+                if !is_filtered_ip(s.ip()) && active_direct.is_none() {
+                    active_direct = Some(s.to_string());
                 }
             }
-            (iroh::endpoint::TransportAddrUsage::Active, TransportAddr::Relay(_)) => {
-                active_relay = true;
+            (iroh::endpoint::TransportAddrUsage::Active, TransportAddr::Relay(u)) => {
+                if active_relay.is_none() {
+                    active_relay = Some(u.to_string());
+                }
             }
             // Inactive / discovery candidates: do not promote, but keep
             // `saw_any = true` so the empty-set tail returns Offline only
@@ -153,43 +157,51 @@ where
         }
     }
 
-    if active_direct {
-        // 多条同时活跃时优先汇报 Direct —— LAN 直连一旦建立就是当前流量
+    if let Some(address) = active_direct {
+        // 多条同时活跃时优先汇报 Direct —— IP 直连一旦建立就是当前流量
         // 路径,relay 退化为可选 fallback。
-        ConnectionChannel::Direct
-    } else if active_relay {
-        ConnectionChannel::Relay
+        ConnectionPath {
+            channel: ConnectionChannel::Direct,
+            address: Some(address),
+        }
+    } else if let Some(address) = active_relay {
+        ConnectionPath {
+            channel: ConnectionChannel::Relay,
+            address: Some(address),
+        }
     } else if saw_any {
         // 有 RemoteInfo 但没有 Active 路径 ⇒ 还在握手 / probe
-        ConnectionChannel::Unknown
+        ConnectionPath {
+            channel: ConnectionChannel::Unknown,
+            address: None,
+        }
     } else {
-        ConnectionChannel::Offline
+        ConnectionPath {
+            channel: ConnectionChannel::Offline,
+            address: None,
+        }
     }
 }
 
-/// `node.rs::is_virtual_nic_ip` 只过 IPv4 假段;Phase 96 顺手把 IPv6 ULA
-/// (`fc00::/7`) 与链路本地 (`fe80::/10`) 也过掉,channel 推导更稳。**仅在
-/// channel 判定处过滤**,不影响 outbound dial 候选(那个是 `node.rs`
-/// `AddrFilter` 的职责)。
+/// 仅过滤不适合对用户展示为可用直连的地址。Tailscale / overlay 地址保留,
+/// 这样设备列表能显示实际走的 100.x / fd7a:: 路径。**仅在 channel 判定处
+/// 过滤**,不影响 outbound dial 候选(那个是 `node.rs` `AddrFilter` 的职责)。
 fn is_filtered_ip(ip: IpAddr) -> bool {
     match ip {
         IpAddr::V4(v4) => {
             let o = v4.octets();
-            // 与 node.rs::is_virtual_nic_ip 同步的 IPv4 假段(Tailscale /
-            // Clash / link-local) —— UI 不应当把这些 path 当成"LAN 直连":
-            // Tailscale 100.64.0.0/10 实际是 mesh VPN, Clash 198.18.0.0/15
-            // 是劫持 fake-ip, 169.254/16 link-local 仅本机有意义。
-            (o[0] == 198 && (o[1] & 0xfe) == 18)
-                || (o[0] == 100 && (o[1] & 0xc0) == 64)
-                || (o[0] == 169 && o[1] == 254)
+            // 与 node.rs::is_virtual_nic_ip 同步的 IPv4 假段(Clash /
+            // link-local) —— UI 不应当把这些 path 当成可用直连:
+            // Clash 198.18.0.0/15 是劫持 fake-ip, 169.254/16 link-local
+            // 仅本机有意义。Tailscale 100.64.0.0/10 是真实 overlay 路径,
+            // 应当作为 Direct 展示。
+            (o[0] == 198 && (o[1] & 0xfe) == 18) || (o[0] == 169 && o[1] == 254)
         }
         IpAddr::V6(v6) => {
             let segs = v6.octets();
             // fe80::/10 link-local
             let is_link_local = segs[0] == 0xfe && (segs[1] & 0xc0) == 0x80;
-            // fc00::/7 ULA
-            let is_ula = (segs[0] & 0xfe) == 0xfc;
-            is_link_local || is_ula
+            is_link_local
         }
     }
 }
@@ -204,7 +216,7 @@ mod tests {
     //! * 优先级 Direct > Relay
     //! * 空集 ⇒ Offline
     //! * 有 RemoteInfo 但无 Active ⇒ Unknown
-    //! * IPv4 假段 / IPv6 ULA filter 把 "假 LAN" 退化为 Relay/Unknown
+    //! * IPv4 fake-ip / link-local filter 把不可用直连退化为 Relay/Unknown
     //!
     //! `TransportAddrInfo` 是借用 iroh 内部类型的 borrowed view,直接构造
     //! 困难;改为测试 `is_filtered_ip` 的 truth-table + `derive` 的真实
@@ -224,9 +236,9 @@ mod tests {
         // Clash fake-ip 198.18.0.0/15
         assert!(is_filtered_ip(IpAddr::V4(Ipv4Addr::new(198, 18, 0, 1))));
         assert!(is_filtered_ip(IpAddr::V4(Ipv4Addr::new(198, 19, 255, 254))));
-        // CGNAT / Tailscale 100.64.0.0/10
-        assert!(is_filtered_ip(IpAddr::V4(Ipv4Addr::new(100, 64, 0, 1))));
-        assert!(is_filtered_ip(IpAddr::V4(Ipv4Addr::new(
+        // CGNAT / Tailscale 100.64.0.0/10 是真实 IP 直连路径,不应过滤。
+        assert!(!is_filtered_ip(IpAddr::V4(Ipv4Addr::new(100, 64, 0, 1))));
+        assert!(!is_filtered_ip(IpAddr::V4(Ipv4Addr::new(
             100, 127, 255, 254
         ))));
         // 100.63 / 100.128 不在 /10 内
@@ -249,11 +261,11 @@ mod tests {
         assert!(!is_filtered_ip(IpAddr::V6(Ipv6Addr::new(
             0xfec0, 0, 0, 0, 0, 0, 0, 1
         ))));
-        // fc00::/7 ULA(fc00..fdff)
-        assert!(is_filtered_ip(IpAddr::V6(Ipv6Addr::new(
+        // fc00::/7 ULA(fc00..fdff) 可能是 Tailscale 等真实 overlay 直连路径。
+        assert!(!is_filtered_ip(IpAddr::V6(Ipv6Addr::new(
             0xfc00, 0, 0, 0, 0, 0, 0, 1
         ))));
-        assert!(is_filtered_ip(IpAddr::V6(Ipv6Addr::new(
+        assert!(!is_filtered_ip(IpAddr::V6(Ipv6Addr::new(
             0xfd99, 0, 0, 0, 0, 0, 0, 1
         ))));
         // fe00 不属于 fc00::/7

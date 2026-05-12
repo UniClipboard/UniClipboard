@@ -44,6 +44,8 @@ pub struct PeerSnapshotDto {
     /// "Out of LAN" 灰态由前端基于 `channel + LAN-only setting`
     /// 合成,不在 wire 协议里。
     pub channel: String,
+    /// 当前活跃连接地址。直连时为对端 IP:port,中转时为 relay 地址。
+    pub connection_address: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -58,6 +60,8 @@ pub struct SpaceMemberDto {
     /// 取值严格限定 `"direct" | "relay" | "offline" | "unknown"`。前端
     /// `SpaceMember` 直接消费,`ConnectionChannelBadge` 渲染。
     pub channel: String,
+    /// 当前活跃连接地址。直连时为对端 IP:port,中转时为 relay 地址。
+    pub connection_address: Option<String>,
 }
 
 /// Result of a `POST /presence/refresh` round.

@@ -21,9 +21,7 @@ use tracing::instrument;
 
 use uc_core::membership::MemberRepositoryPort;
 use uc_core::ports::peer_address::PeerAddressRepositoryPort;
-use uc_core::ports::{
-    ConnectionChannel, ConnectionChannelPort, LocalIdentityPort, PresenceEvent, PresencePort,
-};
+use uc_core::ports::{ConnectionChannelPort, LocalIdentityPort, PresenceEvent, PresencePort};
 use uc_core::trusted_peer::TrustedPeerRepositoryPort;
 use uc_core::DeviceId;
 
@@ -141,9 +139,9 @@ impl MemberRosterFacade {
             if entry.is_local {
                 continue;
             }
-            let channel = match &self.connection_channel {
-                Some(port) => port.channel_for(&entry.device_id).await,
-                None => ConnectionChannel::Unknown,
+            let path = match &self.connection_channel {
+                Some(port) => port.path_for(&entry.device_id).await,
+                None => uc_core::ports::ConnectionPath::default(),
             };
             snapshots.push(PeerSnapshotView {
                 peer_id: entry.device_id.as_str().to_string(),
@@ -156,7 +154,8 @@ impl MemberRosterFacade {
                 is_paired: true,
                 connected: matches!(entry.state, uc_core::ports::ReachabilityState::Online),
                 pairing_state: "Trusted".to_string(),
-                channel,
+                channel: path.channel,
+                connection_address: path.address,
             });
         }
         Ok(snapshots)
@@ -293,7 +292,10 @@ mod tests {
     use uc_core::ids::DeviceId;
     use uc_core::membership::{MemberSyncPreferences, MembershipError, SpaceMember};
     use uc_core::ports::peer_address::{PeerAddressError, PeerAddressRecord};
-    use uc_core::ports::{LocalIdentityError, PresenceError, PresenceEvent, ReachabilityState};
+    use uc_core::ports::{
+        ConnectionChannel, ConnectionChannelPort, ConnectionPath, LocalIdentityError,
+        PresenceError, PresenceEvent, ReachabilityState,
+    };
     use uc_core::security::IdentityFingerprint;
     use uc_core::trusted_peer::{TrustedPeer, TrustedPeerError};
 
@@ -403,6 +405,31 @@ mod tests {
         }
         fn subscribe(&self) -> broadcast::Receiver<PresenceEvent> {
             self.tx.subscribe()
+        }
+    }
+
+    struct FakeConnectionChannel {
+        paths: StdMutex<Vec<(DeviceId, ConnectionPath)>>,
+    }
+
+    impl FakeConnectionChannel {
+        fn new(paths: Vec<(DeviceId, ConnectionPath)>) -> Self {
+            Self {
+                paths: StdMutex::new(paths),
+            }
+        }
+    }
+
+    #[async_trait]
+    impl ConnectionChannelPort for FakeConnectionChannel {
+        async fn path_for(&self, device: &DeviceId) -> ConnectionPath {
+            self.paths
+                .lock()
+                .unwrap()
+                .iter()
+                .find(|(d, _)| d == device)
+                .map(|(_, path)| path.clone())
+                .unwrap_or_default()
         }
     }
 
@@ -571,6 +598,53 @@ mod tests {
         let facade = build_facade(repo, id, presence);
         let entries = facade.list_with_presence().await.expect("ok");
         assert_eq!(entries[0].state, ReachabilityState::Unknown);
+    }
+
+    #[tokio::test]
+    async fn list_peer_snapshots_includes_current_connection_address() {
+        let local_fp = fp("LOCAL");
+        let remote_fp = fp("REMOTE");
+        let m_local = member("dev-local", "laptop", local_fp.clone());
+        let m_remote = member("dev-remote", "fedora", remote_fp);
+
+        let mut repo = MockMemberRepo::new();
+        let members = vec![m_local, m_remote];
+        repo.expect_list()
+            .times(1)
+            .returning(move || Ok(members.clone()));
+        let mut id = MockLocalIdentity::new();
+        id.expect_get_current_fingerprint()
+            .times(1)
+            .returning(move || Ok(Some(local_fp.clone())));
+        let presence = Arc::new(FakePresence::new(vec![(
+            DeviceId::new("dev-remote"),
+            ReachabilityState::Online,
+        )]));
+
+        let facade = MemberRosterFacade::new(MemberRosterDeps {
+            member_repo: Arc::new(repo),
+            peer_addr_repo: Arc::new(MockPeerAddrRepo::new()),
+            trusted_peer_repo: Arc::new(MockTrustedPeerRepo::new()),
+            local_identity: Arc::new(id),
+            presence,
+            connection_channel: Some(Arc::new(FakeConnectionChannel::new(vec![(
+                DeviceId::new("dev-remote"),
+                ConnectionPath {
+                    channel: ConnectionChannel::Direct,
+                    address: Some("100.117.177.15:44868".to_string()),
+                },
+            )]))),
+        });
+
+        let snapshots = facade.list_peer_snapshots().await.expect("ok");
+
+        assert_eq!(snapshots.len(), 1);
+        assert_eq!(snapshots[0].peer_id, "dev-remote");
+        assert_eq!(snapshots[0].channel, ConnectionChannel::Direct);
+        assert_eq!(
+            snapshots[0].connection_address.as_deref(),
+            Some("100.117.177.15:44868")
+        );
     }
 
     #[tokio::test]

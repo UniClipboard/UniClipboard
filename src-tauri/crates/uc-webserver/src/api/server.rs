@@ -109,6 +109,7 @@ impl DaemonApiState {
                 is_paired: peer.is_paired,
                 connected: peer.connected,
                 pairing_state: peer.pairing_state,
+                connection_address: peer.connection_address,
             })
             .collect())
     }
@@ -147,6 +148,7 @@ impl DaemonApiState {
                 pairing_state: snapshot.pairing_state,
                 last_seen_at_ms: None,
                 connected: snapshot.connected,
+                connection_address: snapshot.connection_address,
             })
             .collect())
     }

@@ -1,14 +1,14 @@
 //! Connection channel port (v0.7.0 LAN-only milestone · Phase 96).
 //!
 //! 给应用层一个**单一真相源**："此时此刻这台已配对设备的活跃连接走的是
-//! LAN 直连、公网中继、还是没在线？" 实现侧（infra）通过 iroh
+//! IP 直连、公网中继、还是没在线？" 实现侧（infra）通过 iroh
 //! `Endpoint::remote_info` snapshot 推导，禁止应用层基于 IP 段自己猜
 //! （Tailscale / Clash TUN / Docker bridge 都会让 IP 段判断翻车，参见
 //! `uc-infra/src/network/iroh/node.rs` 已有的 `is_virtual_nic_ip` filter）。
 //!
 //! ## 4 态语义
 //!
-//! * `Direct` —— 当前活跃 QUIC path 是 LAN 直连（`TransportAddr::Ip`
+//! * `Direct` —— 当前活跃 QUIC path 是 IP 直连（`TransportAddr::Ip`
 //!   且 `usage == Active`）
 //! * `Relay`  —— 当前活跃 QUIC path 经过公网中继（`TransportAddr::Relay`
 //!   且 `usage == Active`）
@@ -43,7 +43,7 @@ use crate::ids::DeviceId;
 /// LAN" 的口碑炸点。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ConnectionChannel {
-    /// LAN 直连(当前活跃 QUIC path 走 IP socket)。
+    /// IP 直连(当前活跃 QUIC path 走 IP socket,可包含 Tailscale 等 overlay)。
     Direct,
     /// 公网中继(当前活跃 QUIC path 走 iroh relay)。
     Relay,
@@ -62,6 +62,28 @@ impl Default for ConnectionChannel {
     }
 }
 
+/// 当前连接路径快照。
+///
+/// `channel` 负责告诉上层当前走直连 / 中转 / 离线 / 未知；`address`
+/// 在有活跃路径时记录用户可见的实际地址:
+/// - `Direct`：对端 IP:port
+/// - `Relay`：中转 URL
+/// - `Offline` / `Unknown`：通常为 `None`
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ConnectionPath {
+    pub channel: ConnectionChannel,
+    pub address: Option<String>,
+}
+
+impl Default for ConnectionPath {
+    fn default() -> Self {
+        Self {
+            channel: ConnectionChannel::Unknown,
+            address: None,
+        }
+    }
+}
+
 /// 单一真相源:从 infra 层读出"对端当前走的是哪条路"。
 ///
 /// 实现契约（infra 层 `IrohConnectionChannelAdapter` 落地）:
@@ -69,15 +91,21 @@ impl Default for ConnectionChannel {
 /// * 必须基于 `Endpoint::remote_info` snapshot 推导,不允许查 cache /
 ///   IP 段。
 /// * `Active` 路径的 `Ip(...)` ⇒ `Direct`,`Relay(...)` ⇒ `Relay`。
-/// * 同时存在多条 `Active` 时优先级:`Direct > Relay`(LAN 直连一旦
+/// * 同时存在多条 `Active` 时优先级:`Direct > Relay`(IP 直连一旦
 ///   建立就是当前真实流量路径,relay 仅作 fallback 候选)。
 /// * `remote_info == None` 或 `addrs()` 全空 ⇒ `Offline`。
 /// * 仅有 `Inactive` / discovery / probe 候选 ⇒ `Unknown`。
 #[async_trait]
 pub trait ConnectionChannelPort: Send + Sync {
+    /// 读取某台已配对设备当前的连接路径。**不发起拨号**——纯 endpoint
+    /// 状态读出,UI 高频轮询安全。
+    async fn path_for(&self, device: &DeviceId) -> ConnectionPath;
+
     /// 读取某台已配对设备当前的连接通道。**不发起拨号**——纯 endpoint
     /// 状态读出,UI 高频轮询安全。
-    async fn channel_for(&self, device: &DeviceId) -> ConnectionChannel;
+    async fn channel_for(&self, device: &DeviceId) -> ConnectionChannel {
+        self.path_for(device).await.channel
+    }
 }
 
 #[cfg(test)]
@@ -89,5 +117,12 @@ mod tests {
         // 防御性测试:`ConnectionChannel::default()` 必须永远是 Unknown。
         // 任何把 Default 改成具体态的 PR 应该被本测试拦下。
         assert_eq!(ConnectionChannel::default(), ConnectionChannel::Unknown);
+    }
+
+    #[test]
+    fn path_default_is_unknown_without_address() {
+        let path = ConnectionPath::default();
+        assert_eq!(path.channel, ConnectionChannel::Unknown);
+        assert!(path.address.is_none());
     }
 }

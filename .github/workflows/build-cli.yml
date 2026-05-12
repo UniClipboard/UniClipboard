@@ -82,12 +82,12 @@ jobs:
             build-essential pkg-config cmake clang \
             musl-tools
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           ref: ${{ inputs.branch || github.ref }}
 
       - name: setup node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: lts/*
 
@@ -235,7 +235,7 @@ jobs:
           echo "archive=$ARCHIVE" >> "$GITHUB_OUTPUT"
 
       - name: upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: cli-${{ matrix.target }}
           path: uniclipboard-cli-*

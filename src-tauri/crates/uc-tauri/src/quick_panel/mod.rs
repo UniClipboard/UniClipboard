@@ -8,6 +8,8 @@
 
 #[cfg(target_os = "macos")]
 mod macos;
+#[cfg(any(target_os = "windows", test))]
+mod paste_sequence;
 #[cfg(target_os = "windows")]
 mod windows;
 

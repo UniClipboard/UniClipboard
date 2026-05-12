@@ -9,23 +9,25 @@
 //! calling `SetForegroundWindow`. This bypasses the restrictions.
 
 use std::sync::Mutex;
+use std::time::{Duration, Instant};
 
+use super::paste_sequence::{ctrl_v_sequence, SimulatedKeyEvent};
 use tracing::{debug, warn};
 use windows::Win32::Foundation::HWND;
 use windows::Win32::System::Threading::{AttachThreadInput, GetCurrentThreadId};
 use windows::Win32::UI::Input::KeyboardAndMouse::{
-    SendInput, SetFocus, INPUT, INPUT_KEYBOARD, KEYEVENTF_KEYUP, VIRTUAL_KEY, VK_CONTROL,
+    GetAsyncKeyState, SendInput, SetFocus, INPUT, INPUT_KEYBOARD, KEYEVENTF_KEYUP, VIRTUAL_KEY,
+    VK_MENU,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
     GetForegroundWindow, GetWindowThreadProcessId, IsIconic, IsWindow, SetForegroundWindow,
     ShowWindow, SW_RESTORE,
 };
 
-/// Virtual key code for the `V` key used by Ctrl+V paste simulation.
-const VK_V: VIRTUAL_KEY = VIRTUAL_KEY(0x56);
-
 /// How long to wait after re-activating the previous app before sending Ctrl+V.
-const RESTORE_SETTLE_MS: std::time::Duration = std::time::Duration::from_millis(40);
+const RESTORE_SETTLE_MS: Duration = Duration::from_millis(40);
+const ALT_RELEASE_WAIT_MS: Duration = Duration::from_millis(120);
+const ALT_RELEASE_POLL_MS: Duration = Duration::from_millis(10);
 
 /// The last foreground window before the quick panel claimed focus.
 ///
@@ -87,23 +89,11 @@ pub fn restore_previous_foreground() -> Result<(), String> {
 /// Simulate a global Ctrl+V keystroke.
 pub fn simulate_paste() -> Result<(), String> {
     std::thread::sleep(RESTORE_SETTLE_MS);
+    let alt_still_down = !wait_for_alt_release();
+    let events = ctrl_v_sequence(alt_still_down);
+    let inputs = keyboard_inputs_for_events(&events);
 
     unsafe {
-        let mut inputs: [INPUT; 4] = std::mem::zeroed();
-        inputs[0].r#type = INPUT_KEYBOARD;
-        inputs[0].Anonymous.ki.wVk = VK_CONTROL;
-
-        inputs[1].r#type = INPUT_KEYBOARD;
-        inputs[1].Anonymous.ki.wVk = VK_V;
-
-        inputs[2].r#type = INPUT_KEYBOARD;
-        inputs[2].Anonymous.ki.wVk = VK_V;
-        inputs[2].Anonymous.ki.dwFlags = KEYEVENTF_KEYUP;
-
-        inputs[3].r#type = INPUT_KEYBOARD;
-        inputs[3].Anonymous.ki.wVk = VK_CONTROL;
-        inputs[3].Anonymous.ki.dwFlags = KEYEVENTF_KEYUP;
-
         let sent = SendInput(&inputs, std::mem::size_of::<INPUT>() as _);
         if sent != inputs.len() as u32 {
             return Err(format!(
@@ -114,6 +104,46 @@ pub fn simulate_paste() -> Result<(), String> {
     }
 
     Ok(())
+}
+
+fn wait_for_alt_release() -> bool {
+    if !is_key_down(VK_MENU) {
+        return true;
+    }
+
+    let deadline = Instant::now() + ALT_RELEASE_WAIT_MS;
+    while Instant::now() < deadline {
+        std::thread::sleep(ALT_RELEASE_POLL_MS);
+        if !is_key_down(VK_MENU) {
+            return true;
+        }
+    }
+
+    false
+}
+
+fn is_key_down(key: VIRTUAL_KEY) -> bool {
+    unsafe { (GetAsyncKeyState(key.0 as i32) as u16 & 0x8000) != 0 }
+}
+
+fn keyboard_inputs_for_events(events: &[SimulatedKeyEvent]) -> Vec<INPUT> {
+    events
+        .iter()
+        .map(|event| {
+            let (key, is_key_up) = match *event {
+                SimulatedKeyEvent::KeyDown(code) => (VIRTUAL_KEY(code), false),
+                SimulatedKeyEvent::KeyUp(code) => (VIRTUAL_KEY(code), true),
+            };
+
+            let mut input: INPUT = unsafe { std::mem::zeroed() };
+            input.r#type = INPUT_KEYBOARD;
+            input.Anonymous.ki.wVk = key;
+            if is_key_up {
+                input.Anonymous.ki.dwFlags = KEYEVENTF_KEYUP;
+            }
+            input
+        })
+        .collect()
 }
 
 fn activate_window(hwnd: HWND, label: &str) -> Result<(), String> {

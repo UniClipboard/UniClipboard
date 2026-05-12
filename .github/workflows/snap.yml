@@ -1,5 +1,5 @@
 name: 'Snap'
-run-name: "snap-${{ inputs.channel || 'edge' }}-${{ github.run_number }}"
+run-name: "snap-${{ inputs.channel || github.event.release.tag_name || 'edge' }}-${{ github.run_number }}"
 
 # Snap 走 strict + gnome extension,base=core22 让产物在 Ubuntu 20.04 / RHEL 9
 # / openSUSE Leap 这类 webkit2gtk-4.1 缺位的老 distro 上也能跑(snap 内部
@@ -11,6 +11,8 @@ run-name: "snap-${{ inputs.channel || 'edge' }}-${{ github.run_number }}"
 # 生成,详见 README/CONTRIBUTING)。secret 缺失时 publish 步骤跳过,只产
 # workflow artifact。
 on:
+  release:
+    types: [published]
   workflow_dispatch:
     inputs:
       channel:
@@ -57,6 +59,9 @@ on:
 
 jobs:
   build:
+    # alpha 由 release.yml 在自动发布完成后显式 dispatch,这里的
+    # release.published 入口只承接人工发布的 beta / rc / stable。
+    if: ${{ github.event_name != 'release' || !contains(github.event.release.tag_name, '-alpha') }}
     name: Build snap (amd64)
     # snap build 必须在 Ubuntu host 上跑,snapcraft action 自带 LXD;
     # 我们用 22.04 跟 base=core22 对齐,snapcraft action-build 装的工具链
@@ -67,9 +72,39 @@ jobs:
       contents: read
 
     steps:
+      - name: Resolve snap metadata
+        id: snap-meta
+        env:
+          INPUT_BRANCH: ${{ inputs.branch }}
+          INPUT_CHANNEL: ${{ inputs.channel }}
+          INPUT_RELEASE: ${{ inputs.release }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          REF="${INPUT_BRANCH:-}"
+          if [ -z "$REF" ]; then
+            REF="${RELEASE_TAG:-${GITHUB_REF}}"
+          fi
+
+          CHANNEL="${INPUT_CHANNEL:-}"
+          if [ -z "$CHANNEL" ]; then
+            VERSION="${RELEASE_TAG#v}"
+            case "$VERSION" in
+              *-alpha*) CHANNEL="edge" ;;
+              *-beta*) CHANNEL="beta" ;;
+              *-rc*) CHANNEL="candidate" ;;
+              *) CHANNEL="stable" ;;
+            esac
+          fi
+
+          RELEASE="${INPUT_RELEASE:-true}"
+
+          echo "ref=$REF" >> "$GITHUB_OUTPUT"
+          echo "channel=$CHANNEL" >> "$GITHUB_OUTPUT"
+          echo "release=$RELEASE" >> "$GITHUB_OUTPUT"
+
       - uses: actions/checkout@v6
         with:
-          ref: ${{ inputs.branch || github.ref }}
+          ref: ${{ steps.snap-meta.outputs.ref }}
 
       - name: Build snap
         id: build
@@ -90,7 +125,7 @@ jobs:
 
       - name: Check snap store credentials
         id: check-creds
-        if: ${{ inputs.release }}
+        if: ${{ steps.snap-meta.outputs.release == 'true' }}
         env:
           SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAPCRAFT_STORE_CREDENTIALS }}
         run: |
@@ -103,10 +138,10 @@ jobs:
           fi
 
       - name: Publish to snap store
-        if: ${{ inputs.release && steps.check-creds.outputs.publish == 'true' }}
+        if: ${{ steps.snap-meta.outputs.release == 'true' && steps.check-creds.outputs.publish == 'true' }}
         uses: snapcore/action-publish@v1
         env:
           SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAPCRAFT_STORE_CREDENTIALS }}
         with:
           snap: ${{ steps.build.outputs.snap }}
-          release: ${{ inputs.channel }}
+          release: ${{ steps.snap-meta.outputs.channel }}

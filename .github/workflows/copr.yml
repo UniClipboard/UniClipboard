@@ -7,8 +7,9 @@ run-name: "copr-${{ inputs.version || github.event.release.tag_name || 'auto' }}
 #      draft(release.yml:290 `draft: channel != 'alpha'`),draft asset 在公开
 #      `releases/download/` URL 上一律 404。等到人工把 draft 发布,公开 URL 才可
 #      下载,此时 `release.published` 事件触发,COPR 拿到的 RPM 是真的可达的。
-#   2. workflow_dispatch — 手动重跑某个版本(常见场景:COPR build 临时挂了,
-#      release.yml 已经跑完不想全量重发)。
+#   2. workflow_dispatch — 手动重跑某个版本,也供 release.yml 在 alpha 自动
+#      发布完成后异步触发。alpha release 是由 workflow 自动创建并发布的,
+#      不要只依赖 release.published,否则可能不会带起本 workflow。
 on:
   release:
     types: [published]

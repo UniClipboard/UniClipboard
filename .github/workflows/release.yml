@@ -389,22 +389,62 @@ jobs:
           REPO_NAME=$(echo "${{ github.repository }}" | cut -d'/' -f2)
           echo "https://${REPO_OWNER}.github.io/${REPO_NAME}/${{ needs.validate.outputs.channel }}.json" >> $GITHUB_STEP_SUMMARY
 
-  snap:
-    # 与 create-release 并行 (都依赖 build + build-cli 完成),不再串行
-    # 等待 create-release。snap 从 source 自己构建,不消费 release 产物;
-    # 但 needs build/build-cli 保证 snap 只在 Tauri/CLI 构建通过后才跑,
-    # 避免 source 本身有问题时还浪费 snapcraft runner。
+  dispatch-snap:
+    # snap 构建耗时较长,不能作为 reusable job 挂在 release 里等待。
+    # 这里仅异步触发独立的 snap.yml,让主发布流程在常规产物完成后尽快结束。
     #
-    # 渠道映射: alpha→edge, beta→beta, rc→candidate, stable→stable。
-    # 注意:reusable workflow call job 不支持 continue-on-error
-    # (GH Actions 限制),snap 失败会把整条 release 标红。snap 仅作
-    # Linux 老 distro 覆盖的补充分发,失败可在 snap.yml 直接 dispatch 重跑。
-    name: Build & publish snap
-    needs: [validate, build, build-cli]
-    if: ${{ success() }}
-    uses: ./.github/workflows/snap.yml
-    with:
-      channel: ${{ needs.validate.outputs.channel == 'alpha' && 'edge' || needs.validate.outputs.channel == 'rc' && 'candidate' || needs.validate.outputs.channel }}
-      release: true
-      branch: ${{ inputs.branch || '' }}
-    secrets: inherit
+    # 渠道映射:alpha→edge,beta→beta,rc→candidate,stable→stable。
+    # beta / rc / stable 仍由人工发布 GitHub Release 后触发 snap.yml。
+    # snap.yml 保留手动入口,触发失败或 Snap Store 临时问题时可单独补跑。
+    name: Dispatch snap workflow
+    needs: [validate, create-release]
+    if: ${{ success() && needs.validate.outputs.channel == 'alpha' }}
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+      contents: read
+    steps:
+      - name: Dispatch snap build
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ needs.validate.outputs.version }}
+          SNAP_CHANNEL: ${{ needs.validate.outputs.channel == 'alpha' && 'edge' || needs.validate.outputs.channel == 'rc' && 'candidate' || needs.validate.outputs.channel }}
+        run: |
+          gh api \
+            --method POST \
+            "repos/${{ github.repository }}/actions/workflows/snap.yml/dispatches" \
+            -f ref="v${VERSION}" \
+            -f inputs[channel]="${SNAP_CHANNEL}" \
+            -f inputs[release]="true" \
+            -f inputs[branch]=""
+
+          echo "Dispatched snap.yml for v${VERSION} (${SNAP_CHANNEL})." >> "$GITHUB_STEP_SUMMARY"
+
+  dispatch-copr-alpha:
+    # alpha release 由本 workflow 自动发布,不会稳定触发 copr.yml 的
+    # release.published 入口。这里异步触发 COPR,避免漏发,同时不等待 COPR 完成。
+    #
+    # stable / beta / rc 仍由人工发布 GitHub Release 后触发 copr.yml,
+    # 避免 draft 还没确认就进入外部分发渠道。
+    name: Dispatch COPR workflow for alpha
+    needs: [validate, create-release]
+    if: ${{ success() && needs.validate.outputs.channel == 'alpha' }}
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+      contents: read
+    steps:
+      - name: Dispatch COPR build
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ needs.validate.outputs.version }}
+        run: |
+          gh api \
+            --method POST \
+            "repos/${{ github.repository }}/actions/workflows/copr.yml/dispatches" \
+            -f ref="v${VERSION}" \
+            -f inputs[version]="${VERSION}" \
+            -f inputs[project]="uniclipboard-alpha" \
+            -f inputs[run_ids]=""
+
+          echo "Dispatched copr.yml for v${VERSION} (uniclipboard-alpha)." >> "$GITHUB_STEP_SUMMARY"

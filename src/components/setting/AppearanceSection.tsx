@@ -13,7 +13,6 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-  Switch,
 } from '@/components/ui'
 import { DEFAULT_THEME_COLOR, THEME_COLORS } from '@/constants/theme'
 import { useSetting, type Theme } from '@/hooks/useSetting'
@@ -149,59 +148,26 @@ interface ThemeWindowPreviewProps {
   label: string
   tokens: ThemeTokens
   selected: boolean
-  active: boolean
-  followSystem: boolean
   hint: string
   onSelect: (e: MouseEvent) => void
 }
 
-function ThemeWindowPreview({
-  label,
-  tokens,
-  selected,
-  active,
-  followSystem,
-  hint,
-  onSelect,
-}: ThemeWindowPreviewProps) {
-  // followSystem 开启时窗口不可点击,但 active 那一边仍带高亮表示当前生效。
-  // 关闭时点窗口即设置 theme。
-  const interactive = !followSystem
+function ThemeWindowPreview({ label, tokens, selected, hint, onSelect }: ThemeWindowPreviewProps) {
   return (
     <button
       type="button"
-      onClick={interactive ? onSelect : undefined}
-      disabled={!interactive}
+      onClick={onSelect}
       aria-pressed={selected}
-      aria-label={interactive && !selected ? hint : label}
+      aria-label={!selected ? hint : label}
       className={cn(
-        'group relative rounded-xl border overflow-hidden text-left transition-all',
-        // 选中环 / 激活环（system 模式下也展示当前生效那一边）
-        selected || active
-          ? 'border-primary/60 ring-2 ring-primary/30 shadow-sm'
-          : 'border-border/60',
-        interactive ? 'cursor-pointer hover:border-primary/40 hover:shadow-md' : 'cursor-default'
+        'group relative h-full min-h-[6.625rem] rounded-xl border overflow-hidden p-0 text-left shadow-sm transition-all',
+        selected ? 'border-primary/60 ring-2 ring-primary/30 shadow-md' : 'border-border/60',
+        'cursor-pointer hover:border-primary/40 hover:shadow-md'
       )}
+      style={{ backgroundColor: tokens.background }}
     >
       <div
-        className="flex items-center gap-1.5 px-3 py-2 border-b"
-        style={{
-          backgroundColor: tokens.sidebar,
-          borderColor: tokens.sidebarBorder,
-        }}
-      >
-        <span className="size-2 rounded-full bg-red-400/80" />
-        <span className="size-2 rounded-full bg-amber-400/80" />
-        <span className="size-2 rounded-full bg-emerald-400/80" />
-        <span
-          className="ml-auto text-[10px] uppercase tracking-wider"
-          style={{ color: tokens.sidebarForeground }}
-        >
-          {label}
-        </span>
-      </div>
-      <div
-        className="flex"
+        className="flex h-full min-h-[6.625rem]"
         style={{ backgroundColor: tokens.background, color: tokens.foreground }}
       >
         <div
@@ -245,8 +211,92 @@ function ThemeWindowPreview({
           </span>
         </div>
       </div>
-      {/* hover 时浮一个 hint 标签;system 模式下不显示。 */}
-      {interactive && !selected && (
+      {/* hover 时浮一个 hint 标签。 */}
+      {!selected && (
+        <span className="pointer-events-none absolute inset-x-0 bottom-0 translate-y-full bg-primary/90 px-3 py-1 text-center text-[11px] font-medium text-primary-foreground transition-transform group-hover:translate-y-0">
+          {hint}
+        </span>
+      )}
+    </button>
+  )
+}
+
+interface ThemeSystemPreviewProps {
+  label: string
+  lightTokens: ThemeTokens
+  darkTokens: ThemeTokens
+  selected: boolean
+  hint: string
+  onSelect: (e: MouseEvent) => void
+}
+
+function ThemeSystemPreview({
+  label,
+  lightTokens,
+  darkTokens,
+  selected,
+  hint,
+  onSelect,
+}: ThemeSystemPreviewProps) {
+  const renderSystemHalf = (tokens: ThemeTokens) => (
+    <div
+      className="flex min-h-[6.625rem] min-w-0 flex-col gap-2.5 px-3 py-3"
+      style={{ color: tokens.foreground }}
+    >
+      <span
+        className="h-1.5 rounded-full"
+        style={{ backgroundColor: tokens.foreground, opacity: 0.85, width: '58%' }}
+      />
+      <div
+        className="rounded-md p-2"
+        style={{
+          backgroundColor: tokens.sidebar,
+        }}
+      >
+        <span
+          className="block h-1.5 rounded-full"
+          style={{ backgroundColor: tokens.sidebarPrimary, width: '62%' }}
+        />
+      </div>
+      <div className="flex flex-col gap-1.5">
+        <span
+          className="h-1.5 rounded-full"
+          style={{ backgroundColor: tokens.mutedForeground, width: '88%' }}
+        />
+        <span
+          className="h-1.5 rounded-full"
+          style={{ backgroundColor: tokens.mutedForeground, opacity: 0.6, width: '70%' }}
+        />
+      </div>
+    </div>
+  )
+
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      aria-pressed={selected}
+      aria-label={!selected ? hint : label}
+      className={cn(
+        'group relative rounded-xl overflow-hidden p-0 text-left shadow-sm transition-all',
+        selected ? 'shadow-md' : '',
+        'cursor-pointer hover:shadow-md'
+      )}
+      style={{
+        backgroundImage: `linear-gradient(90deg, ${lightTokens.background} 0%, ${lightTokens.background} 50%, ${darkTokens.background} 50%, ${darkTokens.background} 100%)`,
+      }}
+    >
+      <div className="grid min-h-full grid-cols-2">
+        {renderSystemHalf(lightTokens)}
+        {renderSystemHalf(darkTokens)}
+      </div>
+      <span
+        className="pointer-events-none absolute right-3 top-2 text-[10px] uppercase tracking-wider"
+        style={{ color: darkTokens.sidebarForeground }}
+      >
+        {label}
+      </span>
+      {!selected && (
         <span className="pointer-events-none absolute inset-x-0 bottom-0 translate-y-full bg-primary/90 px-3 py-1 text-center text-[11px] font-medium text-primary-foreground transition-transform group-hover:translate-y-0">
           {hint}
         </span>
@@ -357,23 +407,6 @@ function ThemePresetSection({
   )
 }
 
-/** 监听系统暗色偏好,用于 system 模式下决定哪个预览窗高亮。 */
-function useSystemPrefersDark(): boolean {
-  const [prefersDark, setPrefersDark] = useState(() => {
-    if (typeof window === 'undefined') return false
-    return window.matchMedia('(prefers-color-scheme: dark)').matches
-  })
-
-  useEffect(() => {
-    const mq = window.matchMedia('(prefers-color-scheme: dark)')
-    const handler = (e: MediaQueryListEvent) => setPrefersDark(e.matches)
-    mq.addEventListener('change', handler)
-    return () => mq.removeEventListener('change', handler)
-  }, [])
-
-  return prefersDark
-}
-
 export default function AppearanceSection() {
   const { t } = useTranslation()
   const { setting, updateGeneralSetting } = useSetting()
@@ -388,17 +421,12 @@ export default function AppearanceSection() {
     canZoomIn,
     canZoomOut,
   } = useUiScale()
-  const systemPrefersDark = useSystemPrefersDark()
 
   const theme: Theme = setting?.general?.theme || 'system'
   const followSystem = theme === 'system'
   const legacyThemeColor = setting?.general?.themeColor || null
   const lightPreset = setting?.general?.themeColorLight || legacyThemeColor || DEFAULT_THEME_COLOR
   const darkPreset = setting?.general?.themeColorDark || legacyThemeColor || DEFAULT_THEME_COLOR
-
-  // 当前实际生效的那一边——system 跟随媒体查询,否则跟随显式设置。
-  const resolvedMode: ThemeMode = followSystem ? (systemPrefersDark ? 'dark' : 'light') : theme
-
   const setTheme = async (next: Theme, e: MouseEvent) => {
     try {
       setTransitionOrigin(e.clientX, e.clientY)
@@ -406,16 +434,6 @@ export default function AppearanceSection() {
     } catch (error) {
       log.error({ err: error }, 'Failed to change theme')
     }
-  }
-
-  const handleFollowSystemChange = async (checked: boolean) => {
-    // 关 follow → 切到当前生效的那一边,避免视觉跳动。
-    const next: Theme = checked ? 'system' : resolvedMode
-    const fakeEvent = {
-      clientX: window.innerWidth / 2,
-      clientY: window.innerHeight / 2,
-    } as MouseEvent
-    await setTheme(next, fakeEvent)
   }
 
   const handleLightPresetChange = async (next: string, e: MouseEvent) => {
@@ -491,26 +509,12 @@ export default function AppearanceSection() {
           <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
             {t('settings.sections.appearance.themePreview.title')}
           </h3>
-          <label className="flex items-center gap-2 cursor-pointer">
-            <span className="text-xs text-muted-foreground">
-              {t('settings.sections.appearance.themePreview.followSystem')}
-            </span>
-            <Switch
-              size="sm"
-              checked={followSystem}
-              onCheckedChange={checked => {
-                void handleFollowSystemChange(checked)
-              }}
-            />
-          </label>
         </div>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           <ThemeWindowPreview
             label={t('settings.sections.appearance.themePreview.lightLabel')}
             tokens={lightTokens}
             selected={!followSystem && theme === 'light'}
-            active={followSystem && resolvedMode === 'light'}
-            followSystem={followSystem}
             hint={t('settings.sections.appearance.themePreview.setAsLight')}
             onSelect={e => void setTheme('light', e)}
           />
@@ -518,10 +522,16 @@ export default function AppearanceSection() {
             label={t('settings.sections.appearance.themePreview.darkLabel')}
             tokens={darkTokens}
             selected={!followSystem && theme === 'dark'}
-            active={followSystem && resolvedMode === 'dark'}
-            followSystem={followSystem}
             hint={t('settings.sections.appearance.themePreview.setAsDark')}
             onSelect={e => void setTheme('dark', e)}
+          />
+          <ThemeSystemPreview
+            label={t('settings.sections.appearance.themePreview.followSystem')}
+            lightTokens={lightTokens}
+            darkTokens={darkTokens}
+            selected={followSystem}
+            hint={t('settings.sections.appearance.themePreview.followSystem')}
+            onSelect={e => void setTheme('system', e)}
           />
         </div>
       </div>

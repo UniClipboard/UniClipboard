@@ -390,14 +390,17 @@ jobs:
           echo "https://${REPO_OWNER}.github.io/${REPO_NAME}/${{ needs.validate.outputs.channel }}.json" >> $GITHUB_STEP_SUMMARY
 
   snap:
-    # 主 release 完成后自动触发 snap 构建并推到对应 channel。
-    # 渠道映射：alpha→edge, beta→beta, rc→candidate, stable→stable。
-    # 注意：reusable workflow call job 不支持 continue-on-error
-    # (GH Actions 限制),snap 失败会把整条 release 标红。GH release
-    # 此时已创建,snap 仅作 Linux 老 distro 覆盖的补充分发,失败可
-    # 在 snap.yml 直接 dispatch 重跑。
+    # 与 create-release 并行 (都依赖 build + build-cli 完成),不再串行
+    # 等待 create-release。snap 从 source 自己构建,不消费 release 产物;
+    # 但 needs build/build-cli 保证 snap 只在 Tauri/CLI 构建通过后才跑,
+    # 避免 source 本身有问题时还浪费 snapcraft runner。
+    #
+    # 渠道映射: alpha→edge, beta→beta, rc→candidate, stable→stable。
+    # 注意:reusable workflow call job 不支持 continue-on-error
+    # (GH Actions 限制),snap 失败会把整条 release 标红。snap 仅作
+    # Linux 老 distro 覆盖的补充分发,失败可在 snap.yml 直接 dispatch 重跑。
     name: Build & publish snap
-    needs: [validate, create-release]
+    needs: [validate, build, build-cli]
     if: ${{ success() }}
     uses: ./.github/workflows/snap.yml
     with:

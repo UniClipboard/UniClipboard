@@ -44,15 +44,15 @@ jobs:
           # 容器仍用 debian:bookworm 拿 musl-tools / cmake / clang 工具链。
           PLATFORM="${{ inputs.platform || 'all' }}"
           if [ "$PLATFORM" == "all" ]; then
-            echo 'matrix=[{"platform":"macos-latest","target":"aarch64-apple-darwin","args":"--target aarch64-apple-darwin"},{"platform":"macos-latest","target":"x86_64-apple-darwin","args":"--target x86_64-apple-darwin"},{"platform":"ubuntu-22.04","target":"x86_64-unknown-linux-musl","args":"--target x86_64-unknown-linux-musl","container":"debian:bookworm"},{"platform":"ubuntu-22.04-arm","target":"aarch64-unknown-linux-musl","args":"--target aarch64-unknown-linux-musl","container":"debian:bookworm"},{"platform":"windows-latest","target":"x86_64-pc-windows-msvc","args":""}]' >> "$GITHUB_OUTPUT"
+            echo 'matrix=[{"platform":"macos-latest","target":"aarch64-apple-darwin","args":"--target aarch64-apple-darwin"},{"platform":"macos-latest","target":"x86_64-apple-darwin","args":"--target x86_64-apple-darwin"},{"platform":"ubuntu-22.04","target":"x86_64-unknown-linux-musl","args":"--target x86_64-unknown-linux-musl","container":"ghcr.io/uniclipboard/build-bookworm:latest"},{"platform":"ubuntu-22.04-arm","target":"aarch64-unknown-linux-musl","args":"--target aarch64-unknown-linux-musl","container":"ghcr.io/uniclipboard/build-bookworm:latest"},{"platform":"windows-latest","target":"x86_64-pc-windows-msvc","args":""}]' >> "$GITHUB_OUTPUT"
           elif [ "$PLATFORM" == "macos-aarch64" ]; then
             echo 'matrix=[{"platform":"macos-latest","target":"aarch64-apple-darwin","args":"--target aarch64-apple-darwin"}]' >> "$GITHUB_OUTPUT"
           elif [ "$PLATFORM" == "macos-x86_64" ]; then
             echo 'matrix=[{"platform":"macos-latest","target":"x86_64-apple-darwin","args":"--target x86_64-apple-darwin"}]' >> "$GITHUB_OUTPUT"
           elif [ "$PLATFORM" == "ubuntu-22.04" ]; then
-            echo 'matrix=[{"platform":"ubuntu-22.04","target":"x86_64-unknown-linux-musl","args":"--target x86_64-unknown-linux-musl","container":"debian:bookworm"}]' >> "$GITHUB_OUTPUT"
+            echo 'matrix=[{"platform":"ubuntu-22.04","target":"x86_64-unknown-linux-musl","args":"--target x86_64-unknown-linux-musl","container":"ghcr.io/uniclipboard/build-bookworm:latest"}]' >> "$GITHUB_OUTPUT"
           elif [ "$PLATFORM" == "ubuntu-22.04-arm" ]; then
-            echo 'matrix=[{"platform":"ubuntu-22.04-arm","target":"aarch64-unknown-linux-musl","args":"--target aarch64-unknown-linux-musl","container":"debian:bookworm"}]' >> "$GITHUB_OUTPUT"
+            echo 'matrix=[{"platform":"ubuntu-22.04-arm","target":"aarch64-unknown-linux-musl","args":"--target aarch64-unknown-linux-musl","container":"ghcr.io/uniclipboard/build-bookworm:latest"}]' >> "$GITHUB_OUTPUT"
           elif [ "$PLATFORM" == "windows-latest" ]; then
             echo 'matrix=[{"platform":"windows-latest","target":"x86_64-pc-windows-msvc","args":""}]' >> "$GITHUB_OUTPUT"
           else
@@ -71,16 +71,9 @@ jobs:
         include: ${{ fromJSON(needs.setup-matrix.outputs.matrix) }}
 
     steps:
-      # CLI 不依赖 webkit/appindicator;musl-tools 提供 musl-gcc 作为 musl
-      # target 的 linker;ring (rustls 默认 crypto) 在 musl 上需要 cc/clang。
-      - name: Install container deps (Linux)
-        if: matrix.container != ''
-        run: |
-          apt-get update
-          apt-get install -y --no-install-recommends \
-            git curl wget ca-certificates xz-utils unzip sudo \
-            build-essential pkg-config cmake clang \
-            musl-tools
+      # Linux 容器走预构建镜像 (.github/docker/build-bookworm.Dockerfile),
+      # 含 musl-tools / build-essential / clang / cmake 等 CLI 编译所需 + Tauri 桌面端依赖。
+      # 镜像由 build-base-image.yml 维护。
 
       - uses: actions/checkout@v4
         with:
@@ -103,6 +96,8 @@ jobs:
         with:
           workspaces: "src-tauri -> target"
           shared-key: cli-${{ matrix.target }}
+          # 只在 main 写缓存,tag/PR 只读。详见 build.yml 同名 step 的注释。
+          save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - name: build CLI binary
         working-directory: src-tauri

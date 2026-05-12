@@ -59,15 +59,15 @@ jobs:
           # cross-compile webkit/gtk 栈;x86_64 仍在 ubuntu-22.04。
           PLATFORM="${{ inputs.platform || 'all' }}"
           if [ "$PLATFORM" == "all" ]; then
-            echo 'matrix=[{"platform":"macos-latest","target":"aarch64-apple-darwin","args":"--target aarch64-apple-darwin"},{"platform":"macos-latest","target":"x86_64-apple-darwin","args":"--target x86_64-apple-darwin"},{"platform":"ubuntu-22.04","target":"x86_64-unknown-linux-gnu","args":"","container":"debian:bookworm"},{"platform":"ubuntu-22.04-arm","target":"aarch64-unknown-linux-gnu","args":"","container":"debian:bookworm"},{"platform":"windows-latest","target":"x86_64-pc-windows-msvc","args":""}]' >> "$GITHUB_OUTPUT"
+            echo 'matrix=[{"platform":"macos-latest","target":"aarch64-apple-darwin","args":"--target aarch64-apple-darwin"},{"platform":"macos-latest","target":"x86_64-apple-darwin","args":"--target x86_64-apple-darwin"},{"platform":"ubuntu-22.04","target":"x86_64-unknown-linux-gnu","args":"","container":"ghcr.io/uniclipboard/build-bookworm:latest"},{"platform":"ubuntu-22.04-arm","target":"aarch64-unknown-linux-gnu","args":"","container":"ghcr.io/uniclipboard/build-bookworm:latest"},{"platform":"windows-latest","target":"x86_64-pc-windows-msvc","args":""}]' >> "$GITHUB_OUTPUT"
           elif [ "$PLATFORM" == "macos-aarch64" ]; then
             echo 'matrix=[{"platform":"macos-latest","target":"aarch64-apple-darwin","args":"--target aarch64-apple-darwin"}]' >> "$GITHUB_OUTPUT"
           elif [ "$PLATFORM" == "macos-x86_64" ]; then
             echo 'matrix=[{"platform":"macos-latest","target":"x86_64-apple-darwin","args":"--target x86_64-apple-darwin"}]' >> "$GITHUB_OUTPUT"
           elif [ "$PLATFORM" == "ubuntu-22.04" ]; then
-            echo 'matrix=[{"platform":"ubuntu-22.04","target":"x86_64-unknown-linux-gnu","args":"","container":"debian:bookworm"}]' >> "$GITHUB_OUTPUT"
+            echo 'matrix=[{"platform":"ubuntu-22.04","target":"x86_64-unknown-linux-gnu","args":"","container":"ghcr.io/uniclipboard/build-bookworm:latest"}]' >> "$GITHUB_OUTPUT"
           elif [ "$PLATFORM" == "ubuntu-22.04-arm" ]; then
-            echo 'matrix=[{"platform":"ubuntu-22.04-arm","target":"aarch64-unknown-linux-gnu","args":"","container":"debian:bookworm"}]' >> "$GITHUB_OUTPUT"
+            echo 'matrix=[{"platform":"ubuntu-22.04-arm","target":"aarch64-unknown-linux-gnu","args":"","container":"ghcr.io/uniclipboard/build-bookworm:latest"}]' >> "$GITHUB_OUTPUT"
           elif [ "$PLATFORM" == "windows-latest" ]; then
             echo 'matrix=[{"platform":"windows-latest","target":"x86_64-pc-windows-msvc","args":""}]' >> "$GITHUB_OUTPUT"
           else
@@ -88,24 +88,9 @@ jobs:
         include: ${{ fromJSON(needs.setup-matrix.outputs.matrix) }}
 
     steps:
-      # bookworm 容器是 minimal,actions/checkout 需要 git;后续 step 还要
-      # curl/ca-certificates 用于装 rustup/bun/node。一次装齐 Tauri Linux
-      # 所需的全部 dev 包,glibc 基线 = bookworm 的 2.36。
-      # `rpm` 提供 rpmbuild,Tauri v2 在 bundle.targets="all" 下据此产出 .rpm;
-      # 缺失则 Tauri 静默跳过 RPM bundle,只剩 deb/AppImage。
-      - name: Install container deps (Linux)
-        if: matrix.container != ''
-        run: |
-          apt-get update
-          apt-get install -y --no-install-recommends \
-            git curl wget ca-certificates xz-utils unzip sudo \
-            build-essential pkg-config cmake clang \
-            libssl-dev \
-            libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf \
-            libgtk-3-dev libsoup-3.0-dev libjavascriptcoregtk-4.1-dev \
-            file desktop-file-utils \
-            xdg-utils \
-            rpm
+      # Linux 容器走预构建镜像 (.github/docker/build-bookworm.Dockerfile),
+      # apt-get 已经在镜像里跑过,这里直接 checkout。镜像由 build-base-image.yml
+      # 维护:Dockerfile 变更即重推 :latest,multi-arch (amd64/arm64) manifest。
 
       - uses: actions/checkout@v6
         with:
@@ -131,8 +116,17 @@ jobs:
         with:
           workspaces: "src-tauri -> target"
           shared-key: ${{ matrix.target }}
+          # 只在 main 写缓存,其他分支(含 tag 触发的 release)只读。
+          # Windows Post Cache Rust 上传单次 ~2m43s (25682907543),tag run
+          # 通常基于刚合入 main 的代码,命中已存的 main cache 即可,不必再
+          # 写一份等价的进 GHA cache (10GB 上限)。
+          save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - name: Cache Bun dependencies
+        # Windows NTFS 上压缩 ~/.bun/install/cache 的小文件极慢:
+        # 25682907543 run 实测 Post Cache 步骤 7m37s,而 bun install 本身只
+        # 1m12s — 缓存反成负优化。Linux/macOS post-cache ~20-30s,保留。
+        if: runner.os != 'Windows'
         uses: actions/cache@v5
         with:
           path: ~/.bun/install/cache

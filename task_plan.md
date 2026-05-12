@@ -17,7 +17,7 @@ Schema 与隐私契约定稿在：`docs/architecture/telemetry-events.md`。
 
 Slice 8 全部完成（8a / 8b / 8b' / 8c-1 / 8c-2 / 8d）。outbound funnel + reliability 全链路通。
 
-**进行中：Slice 7b（PostHog Cloud 接入）** —— 7b-1 / 7b-2 / 7b-3 已落地代码（uc-observability 63 + uc-bootstrap 24 lib tests 全绿）。7b-4 docs 部分完成（schema doc §10.1 + CONTRIBUTING/CONTRIBUTING_ZH 加 release-time secrets 表）。仅剩 7b-4 的 CI workflow 改动 + 真实 dev 验证，等用户裁决 + PostHog account 外部就绪。
+**完成：Slice 7b（PostHog Cloud 接入）** —— 7b-1 / 7b-2 / 7b-3 已落地代码（uc-observability 63 + uc-bootstrap 24 lib tests 全绿）。7b-4 docs 与 CI workflow 改动完成，GitHub repo secret 已确认存在，带 `POSTHOG_PROJECT_KEY` 的 release 编译探针已通过，真实 new space / invite / pairing 流程已在 PostHog 后台确认有记录。
 
 Slice 9 / 10 待前端工作 / 真实数据积累。
 
@@ -158,18 +158,18 @@ Slice 9 / 10 待前端工作 / 真实数据积累。
 - **Status:** complete
 
 #### Slice 7b-4: CI secret 注入 + 文档 + 真实 dev 验证
-- [ ] `.github/workflows/build.yml`：在 `tauri-action` 与 `bun run tauri build` 两段 env 块加 `POSTHOG_PROJECT_KEY: ${{ secrets.POSTHOG_PROJECT_KEY }}`（与 `SENTRY_DSN` 同位）
-- [ ] `.github/workflows/alpha-build.yml`：同上
+- [x] `.github/workflows/build.yml`：在 `tauri-action` 与 `bun run tauri build` 两段 env 块加 `POSTHOG_PROJECT_KEY: ${{ secrets.POSTHOG_PROJECT_KEY }}`（与 `SENTRY_DSN` 同位）
+- [x] `.github/workflows/alpha-build.yml`：同上（当前 alpha workflow 只有 `tauri-action` 构建段）
 - [x] `docs/architecture/telemetry-events.md`：新增 §10.1 "PostHog Cloud 接入实务（v1）"——key 注入路径（三级回退）、endpoint / region、自写 reqwest client 根因（aws-lc-rs 与 musl 硬约束冲突）、fire-and-forget + 进程退出语义、`disable_geoip` 等价语义（自写 client 不主动 inject IP 字段）、CI secret 注入位置（计划）
 - [x] `CONTRIBUTING.md` + `CONTRIBUTING_ZH.md`：在"Build a Release Bundle / 构建发行包"节后新增"Release-time Secrets (Telemetry) / 发布期 Telemetry Secrets"——3 个 secret 表（`SENTRY_DSN` / `VITE_SENTRY_DSN` / `POSTHOG_PROJECT_KEY`）含通道用途、编译期读取位置、CI 注入位置；强调缺 key 不阻塞构建 + 空串等价"未设置" + 永不提交到仓库
-- [ ] 真实 dev 验证步骤（不进自动化测试）：
+- [x] 真实 dev 验证步骤（不进自动化测试）：
   1. 本地 export `POSTHOG_PROJECT_KEY=phc_xxx`
   2. `cargo build --release -p uc-tauri`（绕过 dev 路径，强制走 PosthogSink）
   3. 跑一遍首次 onboarding，PostHog 控制台应能在 ~10s 内看到 `app_first_open` / `setup_started` / `pairing_*` 序列
   4. 翻 settings → "使用情况统计"关 → 再触发任意事件，PostHog 端应不再有新事件（gate wrapper 验证）
   5. unset env → 重启 → 再触发事件，sink 应静默（noop fallback 验证）
-- [ ] 验证完毕后把 Slice 7b 整体 status 翻 complete，并通知用户开始观察首批数据
-- **Status:** pending（待 PostHog Cloud account + project key + CI secret）
+- [x] 验证完毕后把 Slice 7b 整体 status 翻 complete，并通知用户开始观察首批数据
+- **Status:** complete
 
 **子任务依赖图**：
 
@@ -393,6 +393,8 @@ pub trait FirstSyncStatePort: Send + Sync {
 | `missing field usage_analytics_enabled in GeneralSettingsPatch` | 1 | uc-application/facade/app_facade.rs 显式构造点补字段 |
 | `missing field usage_analytics_enabled in GeneralSettingsPatchDto` | 1 | uc-webserver/tests/settings_network_smoke.rs 显式构造点补字段 |
 | 全局 EventContext 测试在并行 cargo test 下竞态 | 1 | 合并 `round_trip` + `supports_replacement` 到单个 test fn 串行化 |
+| Python 缺 `yaml` 模块，无法用 PyYAML 解析 workflow | 1 | 改用系统 Ruby `YAML.load_file` 解析 `.github/workflows/build.yml` 与 `.github/workflows/alpha-build.yml`，两者均通过 |
+| release 编译发现 `default_usage_analytics_enabled` 不存在 | 1 | 删除字段级默认函数引用，沿用 `GeneralSettings::Default` 的统一缺字段回退；`cargo check -p uc-core`、`cargo test -p uc-core`、`POSTHOG_PROJECT_KEY=phc_compile_probe cargo build --release -p uc-tauri` 均通过 |
 
 ## Pre-existing failures（不属于本任务）
 

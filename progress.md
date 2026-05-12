@@ -1100,3 +1100,71 @@ progress.md                               本 session 条目
 1. **CI workflow 改动**（2 个 yml + 4 段 env 块）——需要用户授权动 shared infrastructure
 2. **PostHog 账号 / project key / repo secret 注入**——外部资源
 3. **真实 dev 验证**：按 task_plan.md 7b-4 步骤跑 `POSTHOG_PROJECT_KEY=phc_xxx cargo build --release` + onboarding + 控制台观察事件序列；翻 settings 验证 noop fallback；unset env 重启验证静默路径
+
+## Session 2026-05-12 — Slice 7b-4 CI workflow 注入
+
+**完成标准**：只在现有发布构建 env 中补 `POSTHOG_PROJECT_KEY`，位置与后端 `SENTRY_DSN` 同位；不改无关 workflow；更新计划记录；跑格式/差异检查确认改动集中。
+
+### 已完成
+
+- `.github/workflows/build.yml`
+  - macOS `tauri-action` 构建 env 已加入 `POSTHOG_PROJECT_KEY: ${{ secrets.POSTHOG_PROJECT_KEY }}`。
+  - 非 macOS `bun run tauri build` 构建 env 已加入同一项。
+- `.github/workflows/alpha-build.yml`
+  - alpha `tauri-action` 构建 env 已加入同一项。
+- `task_plan.md`
+  - 7b-4 的 workflow 两项已勾选；Current Phase 更新为仅剩真实 dev 验证。
+
+### 验证结果
+
+- `ruby -e "require 'yaml'; ..."` 解析 `.github/workflows/build.yml` 与 `.github/workflows/alpha-build.yml`：通过。
+- `git diff --check -- .github/workflows/build.yml .github/workflows/alpha-build.yml task_plan.md findings.md progress.md`：通过。
+- `actionlint`：本机未安装，未跑专用 workflow lint。
+- PyYAML 检查未跑通：本机 Python 缺 `yaml` 模块，已记录到 `task_plan.md` 错误表并改用 Ruby 验证。
+- 外部 PostHog key 就绪后，继续真实 dev 验证。
+
+## Session 2026-05-12 — repo secret 确认与 release 编译探针
+
+**完成标准**：确认 GitHub repo secret 已存在；带 `POSTHOG_PROJECT_KEY` 的 release 构建路径能通过；若无法读取真实 key，则明确停在真实 PostHog 入库验证前。
+
+### 已完成
+
+- `gh secret list` 已确认 `POSTHOG_PROJECT_KEY` 存在。
+- 首次 `POSTHOG_PROJECT_KEY=phc_compile_probe cargo build --release -p uc-tauri` 发现 `uc-core` 的 settings 默认值引用错误。
+- 按用户反馈删除字段级默认函数引用，改回依赖已有 `Default` 统一回退。
+
+### 验证结果
+
+- `cargo check -p uc-core`：通过。
+- `cargo test -p uc-core`：通过（94 个单元测试 + 17 个文档测试）。
+- `POSTHOG_PROJECT_KEY=phc_compile_probe cargo build --release -p uc-tauri`：通过。
+
+### 剩余
+
+- GitHub secret 只能写入和列出名称，不能读回值；当前本地 shell 没有真实 `POSTHOG_PROJECT_KEY`。
+- 真实 PostHog 控制台入库验证还没跑。
+
+## Session 2026-05-12 — 本地配对验证检查
+
+用户按 release app 路径完成 new space、invite、配对后检查本地结果。
+
+### 检查结果
+
+- `app.uniclipboard.desktop-posthog-test` 日志存在，最近一次运行使用 `profile=prod`。
+- `settings.json` 中 `usage_analytics_enabled=true`，使用情况统计开关未关闭。
+- 日志显示 sponsor 端邀请生成成功，joiner 接入成功，pairing handshake completed，对端随后变为 Online。
+- 日志没有出现 `POSTHOG_PROJECT_KEY 未配置`、`posthog capture failed`、`posthog capture non-2xx`。
+- 当前 `PosthogSink` 成功上报分支本来不写本地日志，因此本地只能确认“未降级、未报错、业务流程完成”，不能单独证明 PostHog 服务端已收到。
+
+### 剩余
+
+- 需要在 PostHog 控制台按 2026-05-12 15:07 UTC 左右的时间窗确认事件入库。
+
+## Session 2026-05-12 — Slice 7b-4 真实入库确认
+
+用户确认 PostHog 后台已有本次 new space / invite / pairing 记录。
+
+### 结果
+
+- 真实 PostHog 入库验证通过。
+- `task_plan.md` 已将 Slice 7b-4 真实验证项与 Slice 7b 状态标为 complete。

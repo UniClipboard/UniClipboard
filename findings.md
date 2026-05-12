@@ -614,3 +614,21 @@ fn resolve_posthog_key(runtime: Option<String>, compile: Option<&'static str>) -
 }
 ```
 
+## Session 2026-05-12 — Slice 7b-4 CI workflow 注入
+
+用户确认继续后，补完 7b-4 中不依赖 PostHog 账号的第一项：CI workflow secret 注入。
+
+### 发现
+
+- `.github/workflows/build.yml` 有两个构建入口：macOS 走 `tauri-action`，非 macOS 走 `bun run tauri build`，两处都已有 `SENTRY_DSN` env。
+- `.github/workflows/alpha-build.yml` 当前只有 `tauri-action` 构建入口，没有单独的 `bun run tauri build` 构建段；因此只补实际存在的构建 env 块。
+
+### 改动
+
+- 在 `.github/workflows/build.yml` 的 macOS 与非 macOS 构建 env 中加入 `POSTHOG_PROJECT_KEY: ${{ secrets.POSTHOG_PROJECT_KEY }}`。
+- 在 `.github/workflows/alpha-build.yml` 的 alpha 构建 env 中加入同一项。
+
+### 剩余
+
+- GitHub repository secret `POSTHOG_PROJECT_KEY` 仍需外部注入。
+- 真实 dev 验证仍需 PostHog Cloud project key。

@@ -186,6 +186,7 @@ jobs:
           # see "阶段 2" decision in the dependency-prune branch discussion.
           # Empty secret = backend Sentry disabled.
           SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+          POSTHOG_PROJECT_KEY: ${{ secrets.POSTHOG_PROJECT_KEY }}
           APP_ENV: ${{ steps.resolve-env.outputs.app_env }}
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
@@ -207,6 +208,7 @@ jobs:
           VITE_APP_ENV: ${{ steps.resolve-env.outputs.app_env }}
           # Backend Sentry DSN — independent Rust project DSN.
           SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+          POSTHOG_PROJECT_KEY: ${{ secrets.POSTHOG_PROJECT_KEY }}
           APP_ENV: ${{ steps.resolve-env.outputs.app_env }}
         run: |
           if [ "${{ matrix.platform }}" = "windows-latest" ]; then

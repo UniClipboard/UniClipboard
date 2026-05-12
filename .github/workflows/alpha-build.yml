@@ -113,6 +113,7 @@ jobs:
           VITE_APP_ENV: alpha
           # Backend Sentry DSN — independent Rust project DSN.
           SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+          POSTHOG_PROJECT_KEY: ${{ secrets.POSTHOG_PROJECT_KEY }}
           APP_ENV: alpha
         with:
           tagName: v${{ inputs.version }}

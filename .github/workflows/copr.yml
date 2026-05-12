@@ -1,14 +1,17 @@
 name: 'Publish to COPR'
-run-name: "copr-${{ inputs.version || 'auto' }}-${{ github.run_number }}"
+run-name: "copr-${{ inputs.version || github.event.release.tag_name || 'auto' }}-${{ github.run_number }}"
 
 # 触发时机:
-#   1. release.yml 完成 (workflow_run) — 自动跟进 dnf 渠道,跟 snap.yml 对位。
+#   1. release.published — GitHub Release 被正式发布(草稿→发布,或非草稿创建)。
+#      不能用 `workflow_run: Release` — stable 渠道的 release 由 release.yml 创建为
+#      draft(release.yml:290 `draft: channel != 'alpha'`),draft asset 在公开
+#      `releases/download/` URL 上一律 404。等到人工把 draft 发布,公开 URL 才可
+#      下载,此时 `release.published` 事件触发,COPR 拿到的 RPM 是真的可达的。
 #   2. workflow_dispatch — 手动重跑某个版本(常见场景:COPR build 临时挂了,
 #      release.yml 已经跑完不想全量重发)。
 on:
-  workflow_run:
-    workflows: ['Release']
-    types: [completed]
+  release:
+    types: [published]
   workflow_dispatch:
     inputs:
       version:
@@ -32,9 +35,9 @@ on:
 
 jobs:
   build-srpm-and-publish:
-    # workflow_run 触发时,只在 Release workflow 成功后才跑;失败则跳过。
-    # workflow_dispatch 没有 conclusion 字段,这条件对它返回 true。
-    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    # release 事件本身只在 published 时触发(见 on.release.types),不需要再过滤。
+    # workflow_dispatch 任何时候都允许。
+    if: github.event_name == 'workflow_dispatch' || github.event_name == 'release'
     runs-on: ubuntu-latest
     # Fedora 镜像里有 rpmbuild / rpmdevtools / spectool / dnf,免去在 Ubuntu
     # 上手动装 rpm 工具链。fedora:latest = 滚动 stable,可读性高且常 cached。
@@ -62,9 +65,15 @@ jobs:
         run: |
           # 决策树:
           #   workflow_dispatch 给了 input.version → 直接用
-          #   否则                                  → 读 package.json
+          #   release 事件                          → 用 release.tag_name(剥掉 v 前缀)
+          #   workflow_dispatch 没给 version       → 兜底读 package.json
+          # 注意:release 事件下不能读 package.json,因为 checkout 默认 ref 是 tag
+          # 对应 commit,但还是优先信任 release tag 本身,避免 tag 与 package.json 漂移。
           if [ -n "${{ inputs.version }}" ]; then
             UPSTREAM_TAG="${{ inputs.version }}"
+          elif [ "${{ github.event_name }}" = "release" ]; then
+            TAG="${{ github.event.release.tag_name }}"
+            UPSTREAM_TAG="${TAG#v}"
           else
             UPSTREAM_TAG=$(python3 -c "import json; print(json.load(open('package.json'))['version'])")
           fi
@@ -175,7 +184,7 @@ jobs:
           done
 
       - name: Download upstream binary RPMs from GitHub Release
-        if: github.event_name == 'workflow_run' || (github.event_name == 'workflow_dispatch' && inputs.run_ids == '')
+        if: github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && inputs.run_ids == '')
         shell: bash
         env:
           UPSTREAM_TAG: ${{ steps.ver.outputs.upstream_tag }}

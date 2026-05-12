@@ -5,7 +5,7 @@ use uc_application::file_transfer::{
     FailTransferUseCase, ReportTransferProgress, ReportTransferProgressUseCase, StartTransfer,
     StartTransferUseCase,
 };
-use uc_core::file_transfer::FileTransferEventStorePort;
+use uc_core::file_transfer::{FileTransferEventPublisherPort, FileTransferEventStorePort};
 use uc_core::{
     FileTransferCancellationReason, FileTransferDirection, FileTransferEvent,
     FileTransferFailureReason, FileTransferProgress,
@@ -22,23 +22,28 @@ mod start_transfer;
 struct TestContext {
     store: Arc<InMemoryEventStore>,
     publisher: Arc<InMemoryEventPublisher>,
-    start_transfer: StartTransferUseCase<InMemoryEventStore, InMemoryEventPublisher>,
-    report_progress: ReportTransferProgressUseCase<InMemoryEventStore, InMemoryEventPublisher>,
-    complete_transfer: CompleteTransferUseCase<InMemoryEventStore, InMemoryEventPublisher>,
-    fail_transfer: FailTransferUseCase<InMemoryEventStore, InMemoryEventPublisher>,
-    cancel_transfer: CancelTransferUseCase<InMemoryEventStore, InMemoryEventPublisher>,
+    start_transfer: StartTransferUseCase,
+    report_progress: ReportTransferProgressUseCase,
+    complete_transfer: CompleteTransferUseCase,
+    fail_transfer: FailTransferUseCase,
+    cancel_transfer: CancelTransferUseCase,
 }
 
 fn build_context() -> TestContext {
     let store = Arc::new(InMemoryEventStore::new());
     let publisher = Arc::new(InMemoryEventPublisher::new());
+    let store_dyn: Arc<dyn FileTransferEventStorePort> = store.clone();
+    let publisher_dyn: Arc<dyn FileTransferEventPublisherPort> = publisher.clone();
 
     TestContext {
-        start_transfer: StartTransferUseCase::new(store.clone(), publisher.clone()),
-        report_progress: ReportTransferProgressUseCase::new(store.clone(), publisher.clone()),
-        complete_transfer: CompleteTransferUseCase::new(store.clone(), publisher.clone()),
-        fail_transfer: FailTransferUseCase::new(store.clone(), publisher.clone()),
-        cancel_transfer: CancelTransferUseCase::new(store.clone(), publisher.clone()),
+        start_transfer: StartTransferUseCase::new(store_dyn.clone(), publisher_dyn.clone()),
+        report_progress: ReportTransferProgressUseCase::new(
+            store_dyn.clone(),
+            publisher_dyn.clone(),
+        ),
+        complete_transfer: CompleteTransferUseCase::new(store_dyn.clone(), publisher_dyn.clone()),
+        fail_transfer: FailTransferUseCase::new(store_dyn.clone(), publisher_dyn.clone()),
+        cancel_transfer: CancelTransferUseCase::new(store_dyn, publisher_dyn),
         store,
         publisher,
     }

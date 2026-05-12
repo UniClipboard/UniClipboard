@@ -143,6 +143,9 @@ function buildInstallerTable({ artifactsDir, baseUrl }) {
 }
 
 function buildCliInstallerTable({ artifactsDir, baseUrl }) {
+  const isArm = file => /aarch64|arm64/.test(file)
+  const isX64 = file => /x86_64|x64|amd64/.test(file)
+
   const macosArm64 = findFirstFile(
     artifactsDir,
     file =>
@@ -157,11 +160,20 @@ function buildCliInstallerTable({ artifactsDir, baseUrl }) {
       file.includes('x86_64-apple-darwin') &&
       file.endsWith('.tar.gz')
   )
-  const linux = findFirstFile(
+  const linuxX64 = findFirstFile(
     artifactsDir,
     file =>
       file.startsWith('uniclipboard-cli-') &&
       file.includes('linux-musl') &&
+      isX64(file) &&
+      file.endsWith('.tar.gz')
+  )
+  const linuxArm64 = findFirstFile(
+    artifactsDir,
+    file =>
+      file.startsWith('uniclipboard-cli-') &&
+      file.includes('linux-musl') &&
+      isArm(file) &&
       file.endsWith('.tar.gz')
   )
   const windows = findFirstFile(
@@ -176,7 +188,8 @@ function buildCliInstallerTable({ artifactsDir, baseUrl }) {
   const rows = []
   if (macosArm64) rows.push(makeRow('macOS', 'Apple Silicon (M1/M2/M3)', macosArm64))
   if (macosX64) rows.push(makeRow('macOS', 'Intel', macosX64))
-  if (linux) rows.push(makeRow('Linux', 'x86_64', linux))
+  if (linuxX64) rows.push(makeRow('Linux', 'x86_64', linuxX64))
+  if (linuxArm64) rows.push(makeRow('Linux', 'aarch64', linuxArm64))
   if (windows) rows.push(makeRow('Windows', 'x86_64', windows))
 
   if (rows.length === 0) {

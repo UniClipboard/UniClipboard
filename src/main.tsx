@@ -5,8 +5,9 @@ import { Provider } from 'react-redux'
 import App from './App'
 import './i18n'
 import { store } from './store'
+import { getDeviceMeta } from '@/api/runtime'
 import { connectDaemonWs, registerDaemonShutdownListener } from '@/lib/daemon-ws-bootstrap'
-import { initSentry, Sentry } from '@/observability/sentry'
+import { applyDeviceMetaToSentry, initSentry, Sentry } from '@/observability/sentry'
 
 // Sentry init runs before React mounts so that the global ErrorBoundary,
 // the pino → Sentry.logger transmit hook, and breadcrumb capture are all
@@ -15,6 +16,14 @@ import { initSentry, Sentry } from '@/observability/sentry'
 // `setFrontendSentryEnabled`, which SettingContext flips once the daemon
 // returns the persisted user preference.
 initSentry()
+
+// 启动后异步拉取 Rust 侧解析的 device/app 元数据，用于推进 Sentry 全局 scope。
+// 如果 Tauri runtime 未就绪或 meta 未生成，只记录警告，不阻塞渲染。
+getDeviceMeta()
+  .then(applyDeviceMetaToSentry)
+  .catch(err => {
+    console.warn('[sentry] failed to attach device meta:', err)
+  })
 
 const startupTimingOrigin = Date.now()
 const logStartupTiming = (label: string) => {

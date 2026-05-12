@@ -46,7 +46,8 @@ use std::time::Instant;
 
 use bytes::Bytes;
 use tokio::task::JoinSet;
-use tracing::{debug, info, instrument, warn};
+use tracing::{debug, info, info_span, instrument, warn, Instrument};
+use uc_observability::FlowId;
 
 use uc_core::clipboard::{ClipboardContentCategory, ClipboardContentCategorySet};
 use uc_core::ids::DeviceId;
@@ -205,11 +206,30 @@ impl DispatchClipboardEntryUseCase {
         }
     }
 
-    #[instrument(skip_all, fields(content_hash = %input.content_hash))]
+    // 跨设备可观测性(PR2):
+    //   - `flow.id` 在函数体内生成后回填,统一作为本次扇出的相关 ID;PR3 起会
+    //      通过 `ClipboardHeader` 走 wire 传到对端,让 inbound 端可以用同一个
+    //      `flow.id` 接龙 trace,Sentry 上就能 join "A 端发送 → B 端接收"。
+    //   - `flow.kind = "clipboard_sync"`:静态枚举值,方便按业务流过滤。
+    //   - `fanout.candidates` 在候选筛完后回填,是单次扇出真实的目标数。
+    //   - 每个目标 peer 进 child span(见下 `peer.dispatch`)而不是把
+    //     `peer.device_id` 钉在 root —— 扇出 N 个 peer 时 root 只有一个,
+    //     钉上会丢失末次写入以外的信息。
+    #[instrument(
+        skip_all,
+        fields(
+            content_hash = %input.content_hash,
+            flow.id = tracing::field::Empty,
+            flow.kind = "clipboard_sync",
+            fanout.candidates = tracing::field::Empty,
+        ),
+    )]
     pub(crate) async fn execute(
         &self,
         input: DispatchClipboardEntryInput,
     ) -> Result<DispatchOutcome, DispatchSyncError> {
+        let flow_id = FlowId::generate();
+        tracing::Span::current().record("flow.id", tracing::field::display(&flow_id));
         // 1. Encrypt. A locked session surfaces here — let it short-circuit
         //    so we don't spam the dispatch wire with encrypt-retries.
         let ciphertext = match self.transfer_cipher.encrypt(&input.plaintext).await {
@@ -250,6 +270,10 @@ impl DispatchClipboardEntryUseCase {
         }
 
         // 3. Build the header once and clone per target.
+        //
+        // PR3:`flow_id` 写进 header,跨设备传到 inbound 端。inbound 收到后
+        // 会用同一个 id 落到自己的 root span,Sentry 上"A 端 dispatch →
+        // B 端 ingest"两条 trace 在 `flow.id` 维度自动 join。
         let origin_device_name = self.load_origin_device_name().await;
         let header = ClipboardHeader {
             version: ClipboardHeader::CURRENT_VERSION,
@@ -258,6 +282,7 @@ impl DispatchClipboardEntryUseCase {
             origin_device_id: local_device.as_str().to_string(),
             origin_device_name,
             payload_version: input.payload_version,
+            flow_id: Some(flow_id.to_string()),
         };
 
         if candidates.is_empty() {
@@ -273,7 +298,16 @@ impl DispatchClipboardEntryUseCase {
             });
         }
 
+        tracing::Span::current().record("fanout.candidates", candidates.len());
+
         // 4. Fan-out. One JoinSet task per target; results merged at the end.
+        //
+        // 每个 peer 走自己的 `peer.dispatch` child span，带上 `peer.device_id`
+        // + `flow.id`。这样 Sentry 上扇出 N 个目标时能看到 N 条平行 child span，
+        // 单点失败一目了然，而不是被 root 的"末次写入"覆盖。`flow.id` 在
+        // child 上也写一份是冗余 —— 但 root span 不一定总在同一个 trace，
+        // 在 worker 任务里显式 carry 更稳。
+        //
         // Slice 8c-1 · each spawned task fires its own per-peer
         // `sync_attempted` (before the wire call) and either
         // `sync_succeeded` (with `sync_latency_ms`) or `sync_failed`
@@ -293,93 +327,102 @@ impl DispatchClipboardEntryUseCase {
             let payload = SyncPayload {
                 ciphertext: ciphertext.clone(),
             };
-            set.spawn(async move {
-                analytics.capture(Event::SyncAttempted(SyncEventProps {
-                    direction: Direction::Outbound,
-                    payload_type,
-                    payload_size_bucket,
-                    transport_type: TransportType::P2pDirect,
-                    peer_os: None,
-                    sync_latency_ms: None,
-                    failure_reason: None,
-                }));
-                // Slice 8c-2 · funnel: first attempt fires regardless of
-                // outcome — keeps the "started but failed"漏点信号. Race
-                // 防护由 port impl 的 Mutex 守住，N 个 spawn 中只有一个
-                // 返回 Ok(true)。
-                match first_sync_state.mark_first_sync_attempted().await {
-                    Ok(true) => analytics.capture(Event::FirstClipboardSyncAttempted {
-                        direction: Direction::Outbound,
-                    }),
-                    Ok(false) => {}
-                    Err(err) => warn!(
-                        error = %err,
-                        "first_sync_state.mark_first_sync_attempted failed; skipping fire",
-                    ),
-                }
-
-                let started_at = Instant::now();
-                let result = dispatch.dispatch(&device_id, &header, payload).await;
-                let duration_ms =
-                    started_at.elapsed().as_millis().min(u32::MAX as u128) as u32;
-                let event = match &result {
-                    Ok(_) => Event::SyncSucceeded(SyncEventProps {
-                        direction: Direction::Outbound,
-                        payload_type,
-                        payload_size_bucket,
-                        transport_type: TransportType::P2pDirect,
-                        peer_os: None,
-                        sync_latency_ms: Some(duration_ms),
-                        failure_reason: None,
-                    }),
-                    Err(err) => Event::SyncFailed(SyncEventProps {
+            let child_span = info_span!(
+                "peer.dispatch",
+                peer.device_id = %device_id.as_str(),
+                flow.id = %flow_id,
+                flow.kind = "clipboard_sync",
+            );
+            set.spawn(
+                async move {
+                    analytics.capture(Event::SyncAttempted(SyncEventProps {
                         direction: Direction::Outbound,
                         payload_type,
                         payload_size_bucket,
                         transport_type: TransportType::P2pDirect,
                         peer_os: None,
                         sync_latency_ms: None,
-                        failure_reason: Some(map_dispatch_error_to_failure_reason(err)),
-                    }),
-                };
-                let is_ok = result.is_ok();
-                analytics.capture(event);
-
-                // Slice 8c-2 · funnel: first success path fires both the
-                // generic clipboard event and (if payload_type=File) the
-                // file-specific event. Both flags独立 dedup。
-                if is_ok {
-                    match first_sync_state.mark_first_sync_succeeded().await {
-                        Ok(true) => analytics.capture(Event::FirstClipboardSyncSucceeded {
+                        failure_reason: None,
+                    }));
+                    // Slice 8c-2 · funnel: first attempt fires regardless of
+                    // outcome — keeps the "started but failed"漏点信号. Race
+                    // 防护由 port impl 的 Mutex 守住，N 个 spawn 中只有一个
+                    // 返回 Ok(true)。
+                    match first_sync_state.mark_first_sync_attempted().await {
+                        Ok(true) => analytics.capture(Event::FirstClipboardSyncAttempted {
                             direction: Direction::Outbound,
-                            peer_os: None,
-                            transport_type: TransportType::P2pDirect,
-                            duration_ms,
                         }),
                         Ok(false) => {}
                         Err(err) => warn!(
                             error = %err,
-                            "first_sync_state.mark_first_sync_succeeded failed; skipping fire",
+                            "first_sync_state.mark_first_sync_attempted failed; skipping fire",
                         ),
                     }
-                    if matches!(payload_type, PayloadType::File) {
-                        match first_sync_state.mark_first_file_sync_succeeded().await {
-                            Ok(true) => analytics.capture(Event::FirstFileSyncSucceeded {
+
+                    let started_at = Instant::now();
+                    let result = dispatch.dispatch(&device_id, &header, payload).await;
+                    let duration_ms =
+                        started_at.elapsed().as_millis().min(u32::MAX as u128) as u32;
+                    let event = match &result {
+                        Ok(_) => Event::SyncSucceeded(SyncEventProps {
+                            direction: Direction::Outbound,
+                            payload_type,
+                            payload_size_bucket,
+                            transport_type: TransportType::P2pDirect,
+                            peer_os: None,
+                            sync_latency_ms: Some(duration_ms),
+                            failure_reason: None,
+                        }),
+                        Err(err) => Event::SyncFailed(SyncEventProps {
+                            direction: Direction::Outbound,
+                            payload_type,
+                            payload_size_bucket,
+                            transport_type: TransportType::P2pDirect,
+                            peer_os: None,
+                            sync_latency_ms: None,
+                            failure_reason: Some(map_dispatch_error_to_failure_reason(err)),
+                        }),
+                    };
+                    let is_ok = result.is_ok();
+                    analytics.capture(event);
+
+                    // Slice 8c-2 · funnel: first success path fires both the
+                    // generic clipboard event and (if payload_type=File) the
+                    // file-specific event. Both flags独立 dedup。
+                    if is_ok {
+                        match first_sync_state.mark_first_sync_succeeded().await {
+                            Ok(true) => analytics.capture(Event::FirstClipboardSyncSucceeded {
+                                direction: Direction::Outbound,
                                 peer_os: None,
                                 transport_type: TransportType::P2pDirect,
-                                payload_size_bucket,
+                                duration_ms,
                             }),
                             Ok(false) => {}
                             Err(err) => warn!(
                                 error = %err,
-                                "first_sync_state.mark_first_file_sync_succeeded failed; skipping fire",
+                                "first_sync_state.mark_first_sync_succeeded failed; skipping fire",
                             ),
                         }
+                        if matches!(payload_type, PayloadType::File) {
+                            match first_sync_state.mark_first_file_sync_succeeded().await {
+                                Ok(true) => analytics.capture(Event::FirstFileSyncSucceeded {
+                                    peer_os: None,
+                                    transport_type: TransportType::P2pDirect,
+                                    payload_size_bucket,
+                                }),
+                                Ok(false) => {}
+                                Err(err) => warn!(
+                                    error = %err,
+                                    "first_sync_state.mark_first_file_sync_succeeded failed; skipping fire",
+                                ),
+                            }
+                        }
                     }
-                }
 
-                (device_id, result)
-            });
+                    (device_id, result)
+                }
+                .instrument(child_span),
+            );
         }
 
         let mut per_target = Vec::with_capacity(candidates.len());

@@ -124,10 +124,12 @@ pub struct BackgroundRuntimeDeps {
     pub spool_ttl_days: u64,
     pub worker_retry_max_attempts: u32,
     pub worker_retry_backoff_ms: u64,
-    /// Event-sourced file transfer lifecycle: durable store + host-event
-    /// publisher + 6 use cases, plus the sweep/reconcile runtime tasks.
-    /// Holds a clone of the shared emitter_cell so it automatically sees
-    /// emitter swaps (LoggingEventEmitter → DaemonApiEventEmitter).
+    /// Event-sourced file transfer lifecycle: receiver-side projection
+    /// plumbing + sweep/reconcile runtime tasks. Holds a clone of the shared
+    /// `emitter_cell` so it automatically sees emitter swaps
+    /// (LoggingEventEmitter → DaemonApiEventEmitter). The 5 lifecycle actions
+    /// (start/report_progress/complete/fail/cancel) live inside the
+    /// `file_transfer_facade` carried on [`WiredDependencies`].
     pub file_transfer_lifecycle: Arc<crate::file_transfer_lifecycle::FileTransferLifecycle>,
     /// Single write boundary for all programmatic clipboard writes.
     /// Centralises guard-registration + write + cleanup-on-error.
@@ -135,10 +137,22 @@ pub struct BackgroundRuntimeDeps {
         Arc<uc_application::clipboard_write::ClipboardWriteCoordinator>,
 }
 
-/// Fully wired dependencies plus background runtime components.
+/// 进程级一次性装配产出的"持久"部分:进程内常驻的 deps 与旁路资源
+/// (repos、storage paths、shared adapters)。
+///
+/// 一次性消费的 [`BackgroundRuntimeDeps`] (含 spool / blob worker
+/// receivers) 通过 [`wire_dependencies`] 的 tuple 返回值单独移交,不再
+/// 嵌在 `WiredDependencies` 里 —— 因为 mpsc `Receiver` 不可 Clone, 而
+/// `WiredDependencies` 需要被 standalone daemon binary 与 GUI shell
+/// 两种入口共用 (`build_process_runtime` clone fan-out 给两条 path)。
+///
+/// `Clone` 派生:所有字段都是 `Arc<dyn Port>` / `PathBuf` / Clone-able
+/// 嵌套 struct,clone 等价于一组 Arc::clone + PathBuf::clone,廉价。启动
+/// 期 GUI shell 把同一份 deps fan-out 给 TauriAppRuntime / daemon spawn /
+/// process handles —— 不是 reload 多次 clone, 但 fan-out 路径仍存在。
+#[derive(Clone)]
 pub struct WiredDependencies {
     pub deps: AppDeps,
-    pub background: BackgroundRuntimeDeps,
     /// Shared emitter cell created at wire time with the initial `LoggingHostEventEmitter`.
     /// Callers (GUI bootstrap, non-GUI bootstrap) use this same cell so that
     /// all consumers — CoreRuntime, SetupOrchestrator, and FileTransferOrchestrator —
@@ -186,6 +200,14 @@ pub struct WiredDependencies {
     /// 内存,不会出现"两条路径看不到同一个 URL"的撕裂。
     pub mobile_sync_endpoint_info:
         Arc<uc_infra::mobile_sync::InMemoryMobileSyncEndpointInfoAdapter>,
+    /// Application-layer entry point for the 5 file-transfer lifecycle
+    /// actions + seed + link. Built alongside `file_transfer_lifecycle` from
+    /// the same store + publisher so events stay on a single timeline. Lives
+    /// on `WiredDependencies` (process-level, cloneable Arc) rather than on
+    /// `BackgroundRuntimeDeps` because the latter is for one-shot mpsc
+    /// receivers — the facade itself is shared by GUI shell, daemon-lifecycle
+    /// `MobileSyncFacade` 装配, and `build_space_setup_assembly` (iroh path).
+    pub file_transfer_facade: Arc<uc_application::facade::FileTransferFacade>,
 }
 
 /// Infrastructure layer implementations
@@ -248,11 +270,10 @@ struct InfraLayer {
     // File transfer tracking (projection/read-model port).
     file_transfer_repo: Arc<dyn uc_core::ports::FileTransferRepositoryPort>,
 
-    // File transfer durable event store + receiver-side projection updater.
-    //
-    // Exposed as the concrete type because receiver-side code calls
-    // `seed_receiver_context`, which is not part of the `FileTransferEventStorePort`
-    // surface on purpose (entry_id / cached_path are receiver-local concerns).
+    // File transfer durable event store. Held as the concrete type so the
+    // assembly can pass it directly to `build_file_transfer_assembly`
+    // (which casts it to `Arc<dyn FileTransferEventStorePort>` before
+    // handing it to the publisher and use cases).
     file_transfer_store: Arc<crate::file_transfer_lifecycle::FileTransferEventStore>,
 
     // Mobile sync 设备仓库 — `DieselMobileDeviceRepository`,跨重启 / 跨进
@@ -449,9 +470,9 @@ fn create_infra_layer(
         DieselMobileDeviceRepository::new(Arc::clone(&db_executor), MobileDeviceRowMapper),
     );
 
-    // Phase 3 子步骤 3:endpoint_info adapter 提升为 bootstrap 装配的单例,
-    // daemon LAN listener 与 facade 各持一份 Arc,避免 facade 看到的"当前
-    // LAN URL"和 daemon 实际绑定的 URL 走两条不同的内存路径。
+    // endpoint_info adapter:进程级单例,daemon LAN listener 与 facade 各持
+    // 一份 Arc 共享同一份内存。整个进程只跑一次 `wire_dependencies`,这里
+    // new 一份就足够。
     let mobile_sync_endpoint_info =
         Arc::new(uc_infra::mobile_sync::InMemoryMobileSyncEndpointInfoAdapter::new());
 
@@ -715,13 +736,24 @@ pub fn apply_profile_suffix(path: PathBuf) -> PathBuf {
     updated
 }
 
-/// Wires and constructs the application's dependency graph, returning ready-to-use dependencies.
+/// 进程级一次性装配:把 sqlite pool / repos / settings / secure storage /
+/// blob store / 所有 adapter 等装配成 [`WiredDependencies`] +
+/// [`BackgroundRuntimeDeps`]。
+///
+/// 整个进程只调用一次 —— GUI shell 在 `build_process_runtime` 里调,
+/// standalone daemon binary 同样走这条路径 (两条入口共用)。
+///
+/// 返回 tuple 把"持久" 与"一次性消费"两类资源分开:`WiredDependencies`
+/// 进程内常驻;`BackgroundRuntimeDeps` 含两个 mpsc::Receiver, 在进程
+/// 启动期被 `spawn_blob_processing_tasks` 消费一次后不复存在。
 ///
 /// Slice 4 P5b 起 libp2p adapter 已删除,旧的 `wire_dependencies_with_identity_store`
 /// 变体随之退场——iroh 栈走 `IrohIdentityStore`(由 `build_space_setup_assembly`
 /// 构造,密钥落地 `SecureStoragePort`),不再需要 platform 层
 /// `IdentityStorePort` 兼容入口。
-pub fn wire_dependencies(config: &AppConfig) -> WiringResult<WiredDependencies> {
+pub fn wire_dependencies(
+    config: &AppConfig,
+) -> WiringResult<(WiredDependencies, BackgroundRuntimeDeps)> {
     let platform_dirs = get_default_app_dirs()?;
     let paths = resolve_app_paths(&platform_dirs, config)?;
 
@@ -841,7 +873,7 @@ pub fn wire_dependencies(config: &AppConfig) -> WiringResult<WiredDependencies> 
     let file_transfer_store_arc = Arc::clone(&infra.file_transfer_store);
 
     // Clone the trusted-peer repository handle before moving `infra` into
-    // `AppDeps` below — the builders (build_gui_app / build_daemon_app) need
+    // `AppDeps` below — the daemon-lifecycle builder (build_daemon_lifecycle) needs
     // it to construct the `TrustPeerOrchestrator` singleton (D19). We do not
     // thread it through `AppDeps` because uc-app is retiring (D13) and
     // the repository is consumed solely by uc-application wiring.
@@ -955,13 +987,14 @@ pub fn wire_dependencies(config: &AppConfig) -> WiringResult<WiredDependencies> 
     let emitter_cell: Arc<std::sync::RwLock<Arc<dyn HostEventEmitterPort>>> =
         Arc::new(std::sync::RwLock::new(initial_emitter));
 
-    let file_transfer_lifecycle = Arc::new(
-        crate::file_transfer_lifecycle::build_file_transfer_lifecycle(
-            Arc::clone(&file_transfer_store_arc),
-            emitter_cell.clone(),
-            deps.storage.file_transfer_repo.clone(),
-            deps.system.clock.clone(),
-        ),
+    let crate::file_transfer_lifecycle::FileTransferAssembly {
+        lifecycle: file_transfer_lifecycle,
+        facade: file_transfer_facade,
+    } = crate::file_transfer_lifecycle::build_file_transfer_assembly(
+        Arc::clone(&file_transfer_store_arc),
+        emitter_cell.clone(),
+        deps.storage.file_transfer_repo.clone(),
+        deps.system.clock.clone(),
     );
 
     let clipboard_write_coordinator = build_clipboard_write_coordinator(
@@ -969,7 +1002,7 @@ pub fn wire_dependencies(config: &AppConfig) -> WiringResult<WiredDependencies> 
         deps.clipboard.clipboard_change_origin.clone(),
     );
 
-    Ok(WiredDependencies {
+    let wired = WiredDependencies {
         deps,
         trusted_peer_repo: trusted_peer_repo_for_wiring,
         peer_addr_repo: peer_addr_repo_for_wiring,
@@ -980,22 +1013,24 @@ pub fn wire_dependencies(config: &AppConfig) -> WiringResult<WiredDependencies> 
         key_migration: key_migration_for_wiring,
         blob_migration_repo: blob_migration_repo_for_wiring,
         mobile_sync_endpoint_info: mobile_sync_endpoint_info_for_wiring,
-        background: BackgroundRuntimeDeps {
-            representation_cache,
-            spool_manager,
-            spool_tx,
-            spool_rx,
-            worker_rx,
-            spool_dir,
-            file_cache_dir: paths.file_cache_dir.clone(),
-            spool_ttl_days: storage_config.spool_ttl_days,
-            worker_retry_max_attempts: storage_config.worker_retry_max_attempts,
-            worker_retry_backoff_ms: storage_config.worker_retry_backoff_ms,
-            file_transfer_lifecycle,
-            clipboard_write_coordinator,
-        },
         emitter_cell,
-    })
+        file_transfer_facade,
+    };
+    let background = BackgroundRuntimeDeps {
+        representation_cache,
+        spool_manager,
+        spool_tx,
+        spool_rx,
+        worker_rx,
+        spool_dir,
+        file_cache_dir: paths.file_cache_dir.clone(),
+        spool_ttl_days: storage_config.spool_ttl_days,
+        worker_retry_max_attempts: storage_config.worker_retry_max_attempts,
+        worker_retry_backoff_ms: storage_config.worker_retry_backoff_ms,
+        file_transfer_lifecycle,
+        clipboard_write_coordinator,
+    };
+    Ok((wired, background))
 }
 
 const DEFAULT_PAIRING_DEVICE_NAME: &str = "Uniclipboard Device";

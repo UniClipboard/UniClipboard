@@ -67,7 +67,7 @@ jobs:
       contents: read
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           ref: ${{ inputs.branch || github.ref }}
 
@@ -81,7 +81,7 @@ jobs:
       - name: Upload .snap as workflow artifact
         # 即便 publish 走 store,也保留 artifact 用于离线分发 / 调试
         # (`snap install --dangerous file.snap`)。retention 7 天够用。
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: uniclipboard-amd64-snap
           path: ${{ steps.build.outputs.snap }}

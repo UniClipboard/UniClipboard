@@ -45,13 +45,18 @@
 //! 路径白名单:URI 字面 → `tokio::fs::read`,文件不存在 → `NotFound`,
 //! 读盘失败 → `Io`。
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use tokio::fs::File;
+use tokio::io::AsyncWriteExt;
+use tokio::sync::Mutex;
 use tracing::{debug, warn};
+use uuid::Uuid;
 
-use uc_core::mobile_sync::{StagedFile, StagedFileUri};
+use uc_core::mobile_sync::{StagedFile, StagedFileUri, StagingHandle};
 use uc_core::ports::{MobileFileStagingError, MobileFileStagingPort};
 
 /// 子目录名 —— `<cache_root>/mobile_inbound/<scope_id>/<file>`。
@@ -60,9 +65,25 @@ const STAGING_SUBDIR: &str = "mobile_inbound";
 /// sanitize 失败时的兜底文件名。
 const FALLBACK_FILENAME: &str = "staged.bin";
 
+/// 单次 streaming staging 会话的内部状态(adapter 私有,不出 crate)。
+///
+/// `path` / `sanitized_name` / `scope_segment` 都在 begin 阶段一次性算定,
+/// finalize 拼 URI / abort 尝试清空 scope 目录都直接用,避免 finalize/abort
+/// 阶段再重算 sanitize。
+struct OpenStagingSession {
+    file: File,
+    path: PathBuf,
+    sanitized_name: String,
+    scope_segment: String,
+}
+
 pub struct FilesystemMobileFileStaging {
     /// `stage_file` 写盘用的 root(典型: `AppPaths.file_cache_dir`)。
     cache_root: PathBuf,
+    /// 进行中的 streaming staging 会话:token → 打开的 File + 元数据。
+    /// 用 tokio Mutex(append_stage_chunk 在异步上下文写盘,持锁跨 await
+    /// 必须用 async-aware mutex 否则会阻塞 runtime worker)。
+    open_sessions: Mutex<HashMap<Uuid, OpenStagingSession>>,
 }
 
 impl FilesystemMobileFileStaging {
@@ -86,7 +107,10 @@ impl FilesystemMobileFileStaging {
             cache_root = %cache_root.display(),
             "mobile_sync staging: adapter ready"
         );
-        Arc::new(Self { cache_root })
+        Arc::new(Self {
+            cache_root,
+            open_sessions: Mutex::new(HashMap::new()),
+        })
     }
 
     fn staging_root(&self) -> PathBuf {
@@ -179,6 +203,169 @@ impl MobileFileStagingPort for FilesystemMobileFileStaging {
             uri: StagedFileUri::new(uri),
             sanitized_name: sanitized,
         })
+    }
+
+    async fn begin_stage(
+        &self,
+        scope_id: &str,
+        data_name: &str,
+        mime: &str,
+    ) -> Result<StagingHandle, MobileFileStagingError> {
+        let sanitized = sanitize_basename(data_name);
+        let scope_segment = sanitize_scope(scope_id);
+        let entry_dir = self.staging_root().join(&scope_segment);
+        tokio::fs::create_dir_all(&entry_dir).await.map_err(|e| {
+            MobileFileStagingError::Io(format!(
+                "create staging dir {} failed: {e}",
+                entry_dir.display()
+            ))
+        })?;
+
+        let file_path = entry_dir.join(&sanitized);
+        // create(true) + truncate(true):同一 scope 内重名 → 后者覆盖。scope_id
+        // 由调用方按"每次入站事件取 uuid nonce"语义生成,正常路径下不会撞;
+        // 撞了也是上游 bug,本层不藏。
+        let file = tokio::fs::File::create(&file_path).await.map_err(|e| {
+            MobileFileStagingError::Io(format!(
+                "create staging file {} failed: {e}",
+                file_path.display()
+            ))
+        })?;
+
+        let handle = StagingHandle::new();
+        let token = handle.token();
+        let mut sessions = self.open_sessions.lock().await;
+        sessions.insert(
+            token,
+            OpenStagingSession {
+                file,
+                path: file_path.clone(),
+                sanitized_name: sanitized.clone(),
+                scope_segment: scope_segment.clone(),
+            },
+        );
+        debug!(
+            handle = %token,
+            scope_id = %scope_segment,
+            data_name = %data_name,
+            sanitized = %sanitized,
+            mime = %mime,
+            path = %file_path.display(),
+            "mobile_sync staging: streaming session opened"
+        );
+        Ok(handle)
+    }
+
+    async fn append_stage_chunk(
+        &self,
+        handle: &StagingHandle,
+        chunk: &[u8],
+    ) -> Result<(), MobileFileStagingError> {
+        if chunk.is_empty() {
+            return Ok(());
+        }
+        let token = handle.token();
+        let mut sessions = self.open_sessions.lock().await;
+        let session = sessions.get_mut(&token).ok_or_else(|| {
+            MobileFileStagingError::Io(format!(
+                "append_stage_chunk: unknown or already-consumed handle {token}"
+            ))
+        })?;
+        session.file.write_all(chunk).await.map_err(|e| {
+            MobileFileStagingError::Io(format!(
+                "append_stage_chunk write {} bytes to {} failed: {e}",
+                chunk.len(),
+                session.path.display()
+            ))
+        })?;
+        Ok(())
+    }
+
+    async fn finalize_stage(
+        &self,
+        handle: StagingHandle,
+    ) -> Result<StagedFile, MobileFileStagingError> {
+        let token = handle.token();
+        let mut session = {
+            let mut sessions = self.open_sessions.lock().await;
+            sessions.remove(&token).ok_or_else(|| {
+                MobileFileStagingError::Io(format!(
+                    "finalize_stage: unknown or already-consumed handle {token}"
+                ))
+            })?
+        };
+        // flush + fsync:后续 SyncDoc 阶段会立即 add_path 给 iroh 发布,
+        // 未 sync 的 page cache 在 crash 时可能丢,显式 sync_all 把这条 race
+        // 关掉。代价是大文件多几十 ms,可接受。
+        session.file.flush().await.map_err(|e| {
+            MobileFileStagingError::Io(format!(
+                "finalize_stage flush {} failed: {e}",
+                session.path.display()
+            ))
+        })?;
+        session.file.sync_all().await.map_err(|e| {
+            MobileFileStagingError::Io(format!(
+                "finalize_stage sync_all {} failed: {e}",
+                session.path.display()
+            ))
+        })?;
+        // 显式 drop 让 fd 释放(否则要等 session 出作用域)。
+        drop(session.file);
+
+        let uri = path_to_file_uri(&session.path)?;
+        debug!(
+            handle = %token,
+            scope_id = %session.scope_segment,
+            sanitized = %session.sanitized_name,
+            path = %session.path.display(),
+            uri = %uri,
+            "mobile_sync staging: streaming session finalized"
+        );
+        Ok(StagedFile {
+            uri: StagedFileUri::new(uri),
+            sanitized_name: session.sanitized_name,
+        })
+    }
+
+    async fn abort_stage(&self, handle: StagingHandle) {
+        let token = handle.token();
+        let removed = {
+            let mut sessions = self.open_sessions.lock().await;
+            sessions.remove(&token)
+        };
+        let Some(session) = removed else {
+            // 幂等:已被消费过(可能是先 finalize 后又收到失败回滚 / 双 abort)
+            // → 静默 no-op。
+            return;
+        };
+        // best-effort:先关 fd,再删文件,再尝试删空 scope 目录。任何一步失败
+        // 都只 warn,不向上抛(本方法处在已经失败的路径上,二次失败不值得
+        // 扰动上层错误处理)。
+        drop(session.file);
+
+        if let Err(err) = tokio::fs::remove_file(&session.path).await {
+            // NotFound 不算异常 —— 半写入文件可能根本没创建过(create 后立即
+            // 触发的 abort)。
+            if err.kind() != std::io::ErrorKind::NotFound {
+                warn!(
+                    handle = %token,
+                    path = %session.path.display(),
+                    error = %err,
+                    "mobile_sync staging: abort_stage failed to remove partial file"
+                );
+            }
+        }
+        // 尝试删 scope 目录(只有空时才会成功;非空表明同 scope 还有别的文件,
+        // 留着不动)。failure 是预期的,不报警。
+        let scope_dir = self.staging_root().join(&session.scope_segment);
+        let _ = tokio::fs::remove_dir(&scope_dir).await;
+
+        debug!(
+            handle = %token,
+            scope_id = %session.scope_segment,
+            sanitized = %session.sanitized_name,
+            "mobile_sync staging: streaming session aborted"
+        );
     }
 }
 
@@ -490,5 +677,154 @@ mod tests {
             matches!(err, MobileFileStagingError::Io(_)),
             "expected Io for malformed URI, got {err:?}"
         );
+    }
+
+    // ── streaming stage tests ──────────────────────────────────────────────
+
+    #[tokio::test]
+    async fn streaming_stage_round_trips_chunks_to_final_uri() {
+        let tmp = TempDir::new().unwrap();
+        let adapter = make_adapter(tmp.path());
+
+        let handle = adapter
+            .begin_stage("scope-stream", "video.mp4", "video/mp4")
+            .await
+            .expect("begin_stage ok");
+
+        adapter
+            .append_stage_chunk(&handle, &[0xAA; 1024])
+            .await
+            .expect("append_stage_chunk 1 ok");
+        adapter
+            .append_stage_chunk(&handle, &[0xBB; 512])
+            .await
+            .expect("append_stage_chunk 2 ok");
+        // 0-byte chunk 必须是 no-op
+        adapter
+            .append_stage_chunk(&handle, &[])
+            .await
+            .expect("empty chunk ok");
+
+        let staged = adapter
+            .finalize_stage(handle)
+            .await
+            .expect("finalize_stage ok");
+
+        assert_eq!(staged.sanitized_name, "video.mp4");
+        assert!(staged.uri.as_str().ends_with("/video.mp4"));
+
+        // 落盘内容 = chunk1 || chunk2
+        let path = tmp
+            .path()
+            .join("mobile_inbound")
+            .join("scope-stream")
+            .join("video.mp4");
+        let bytes = tokio::fs::read(&path).await.unwrap();
+        assert_eq!(bytes.len(), 1024 + 512);
+        assert!(bytes[..1024].iter().all(|&b| b == 0xAA));
+        assert!(bytes[1024..].iter().all(|&b| b == 0xBB));
+    }
+
+    #[tokio::test]
+    async fn streaming_stage_abort_removes_partial_file() {
+        let tmp = TempDir::new().unwrap();
+        let adapter = make_adapter(tmp.path());
+
+        let handle = adapter
+            .begin_stage("scope-abort", "partial.bin", "application/octet-stream")
+            .await
+            .expect("begin_stage ok");
+
+        adapter
+            .append_stage_chunk(&handle, &[0xCC; 4096])
+            .await
+            .expect("append ok");
+
+        let path = tmp
+            .path()
+            .join("mobile_inbound")
+            .join("scope-abort")
+            .join("partial.bin");
+        assert!(path.exists(), "file must exist mid-stream");
+
+        adapter.abort_stage(handle).await;
+
+        assert!(
+            !path.exists(),
+            "abort must remove partially-written file at {}",
+            path.display()
+        );
+        // 空 scope 目录也应被回收
+        let scope_dir = tmp.path().join("mobile_inbound").join("scope-abort");
+        assert!(
+            !scope_dir.exists(),
+            "empty scope dir must be removed after abort"
+        );
+    }
+
+    #[tokio::test]
+    async fn streaming_stage_two_concurrent_handles_do_not_collide() {
+        let tmp = TempDir::new().unwrap();
+        let adapter = make_adapter(tmp.path());
+
+        let h_a = adapter
+            .begin_stage("scope-A", "file.bin", "application/octet-stream")
+            .await
+            .expect("begin A");
+        let h_b = adapter
+            .begin_stage("scope-B", "file.bin", "application/octet-stream")
+            .await
+            .expect("begin B");
+
+        // 交叠写入两个 handle —— append 要按各自 token 路由到独立 File
+        adapter.append_stage_chunk(&h_a, b"AAAA").await.unwrap();
+        adapter.append_stage_chunk(&h_b, b"BBBBBB").await.unwrap();
+        adapter.append_stage_chunk(&h_a, b"AA").await.unwrap();
+        adapter.append_stage_chunk(&h_b, b"BB").await.unwrap();
+
+        let staged_a = adapter.finalize_stage(h_a).await.expect("finalize A");
+        let staged_b = adapter.finalize_stage(h_b).await.expect("finalize B");
+
+        let bytes_a = adapter.read_by_uri(staged_a.uri.as_str()).await.unwrap();
+        let bytes_b = adapter.read_by_uri(staged_b.uri.as_str()).await.unwrap();
+
+        assert_eq!(bytes_a, b"AAAAAA");
+        assert_eq!(bytes_b, b"BBBBBBBB");
+    }
+
+    #[tokio::test]
+    async fn streaming_stage_append_after_finalize_returns_error() {
+        let tmp = TempDir::new().unwrap();
+        let adapter = make_adapter(tmp.path());
+
+        let handle = adapter
+            .begin_stage("scope-x", "f.bin", "application/octet-stream")
+            .await
+            .unwrap();
+        // clone handle so we can still call append after finalize consumes one
+        let stale = handle.clone();
+        adapter.append_stage_chunk(&handle, b"hi").await.unwrap();
+        adapter.finalize_stage(handle).await.unwrap();
+
+        let err = adapter
+            .append_stage_chunk(&stale, b"late")
+            .await
+            .expect_err("append on consumed handle must fail");
+        assert!(matches!(err, MobileFileStagingError::Io(_)));
+    }
+
+    #[tokio::test]
+    async fn streaming_stage_double_abort_is_silent() {
+        let tmp = TempDir::new().unwrap();
+        let adapter = make_adapter(tmp.path());
+
+        let handle = adapter
+            .begin_stage("scope-dbl", "f.bin", "application/octet-stream")
+            .await
+            .unwrap();
+        let copy = handle.clone();
+        adapter.abort_stage(handle).await;
+        // 二次 abort 同一 token：不 panic、不报错
+        adapter.abort_stage(copy).await;
     }
 }

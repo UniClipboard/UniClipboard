@@ -36,6 +36,12 @@ pub struct DaemonAppAssemblyInput {
     /// `set` / `clear` 写入,facade 端只读。
     pub mobile_sync_endpoint_info:
         Arc<uc_infra::mobile_sync::InMemoryMobileSyncEndpointInfoAdapter>,
+    /// 移动同步 LAN listener 生命周期控制器。daemon `run()` 启动期把 listener
+    /// 状态对齐到 settings(`apply(initial_target)`),退出期 `apply(Disabled)`
+    /// 兜底回收端口。`update_settings` 路径也用同一个 controller 即时切换 ——
+    /// 两条链路单点状态机。
+    pub mobile_lan_lifecycle:
+        Arc<crate::daemon::mobile_lan_lifecycle::MobileLanLifecycleController>,
 }
 
 /// 构造 daemon 应用实例。
@@ -54,6 +60,7 @@ pub fn build_daemon_app_instance(input: DaemonAppAssemblyInput) -> DaemonApp {
         listens_to_os_signals,
         process_mode,
         mobile_sync_endpoint_info,
+        mobile_lan_lifecycle,
     } = input;
 
     let peer_keepalive_worker: Arc<dyn DaemonService> =
@@ -78,4 +85,5 @@ pub fn build_daemon_app_instance(input: DaemonAppAssemblyInput) -> DaemonApp {
         process_mode,
     )
     .with_mobile_lan_endpoint_info(mobile_sync_endpoint_info)
+    .with_mobile_lan_lifecycle(mobile_lan_lifecycle)
 }

@@ -22,4 +22,3 @@ pub use uc_bootstrap::BackgroundRuntimeDeps;
 // `uc_tauri::bootstrap::start_*` import paths. New code should target
 // `uc_desktop::background::*` directly.
 pub use uc_desktop::background::start_file_cache_cleanup as start_background_tasks;
-pub use uc_desktop::background::start_gui_pairing_lease as start_gui_pairing_lease_task;

@@ -1,8 +1,8 @@
 //! GUI-framework agnostic 健康轮询 helpers。
 //!
-//! 这两个函数只接收一个 `Probe` 闭包返回 `ProbeOutcome`——不绑定
-//! `CommandChild`，所以可以放在默认编译路径里给 `uc-desktop` / 其它
-//! shell（不启用 `sidecar-lifecycle` feature）直接复用。
+//! 这两个函数只接收一个 `Probe` 闭包返回 `ProbeOutcome`——不绑定具体的
+//! 子进程 handle，所以可以放在默认编译路径里给 `uc-desktop` / `uc-cli` /
+//! 其它 shell 直接复用。
 
 use std::future::Future;
 use std::time::Duration;

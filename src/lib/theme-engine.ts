@@ -834,6 +834,61 @@ export function applyThemePreset(
   root.setAttribute('data-theme', preset.name)
 }
 
+/**
+ * 用户可覆盖的核心 token 列表 + 对应的 CSS 变量名。
+ * UI 层的 picker 严格只允许这 4 个 key,daemon 层只做透传不校验。
+ */
+export const OVERRIDABLE_TOKENS = ['primary', 'background', 'foreground', 'border'] as const
+export type OverridableToken = (typeof OVERRIDABLE_TOKENS)[number]
+
+const OVERRIDE_TO_CSS_VAR: Record<OverridableToken, string> = {
+  primary: '--primary',
+  background: '--background',
+  foreground: '--foreground',
+  border: '--border',
+}
+
+/**
+ * 在已应用的 preset token 之上叠加用户自定义 override。
+ *
+ * 调用时机:`applyThemePreset(...)` 之后立即调用,这样 override 写到 CSS 变量
+ * 上时会覆盖 preset 的对应值。如果 overrides 为空 / 不传,函数不会产生任何
+ * style 写入,等价于纯走 preset。
+ *
+ * 非 OVERRIDABLE_TOKENS 列表里的 key 会被忽略（防御性,daemon 端理论上也不会
+ * 写出非法 key,但这里再做一次校验避免引入未授权的 token 修改）。
+ */
+export function applyThemeOverrides(
+  overrides: Record<string, string> | null | undefined,
+  root: HTMLElement
+): void {
+  if (!overrides) return
+  for (const token of OVERRIDABLE_TOKENS) {
+    const value = overrides[token]
+    if (typeof value === 'string' && value.length > 0) {
+      root.style.setProperty(OVERRIDE_TO_CSS_VAR[token], value)
+    }
+  }
+}
+
+/**
+ * 获取某个 token 在(preset + override)叠加后的最终值。
+ * 用于 UI 中的色块预览(picker 弹出前需要展示当前生效色)。
+ */
+export function getEffectiveTokenValue(
+  themeName: string | null | undefined,
+  mode: ThemeMode,
+  token: OverridableToken,
+  overrides: Record<string, string> | null | undefined
+): string {
+  const override = overrides?.[token]
+  if (override) return override
+  const preset = getPresetOrDefault(themeName)
+  const tokens = mode === 'dark' ? preset.dark : preset.light
+  // OVERRIDABLE_TOKENS 的 key 都恰好是 ThemeTokens 上的字段名(camelCase 同 token name)。
+  return tokens[token as keyof ThemeTokens] as string
+}
+
 export function getThemePreviewDots(
   themeName: string | null | undefined,
   mode: ThemeMode

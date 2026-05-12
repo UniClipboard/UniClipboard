@@ -11,6 +11,7 @@ import {
 import { redactSensitiveArgs } from '@/observability/redaction'
 
 const sentryEnabled = Boolean(import.meta.env.VITE_SENTRY_DSN)
+export const DEVICE_ROLE_WEBVIEW = 'webview'
 
 /**
  * localStorage 中镜像 `general.telemetryEnabled` 的键名。
@@ -138,6 +139,42 @@ export function initSentry(): void {
       },
     },
   })
+}
+
+/**
+ * `applyDeviceMetaToSentry` 接收的设备和应用元数据。
+ * 形状与 `src/api/runtime.ts::DeviceMeta` 保持一致；这里单独声明，避免本模块
+ * 引入 Tauri 相关依赖，方便浏览器环境下的 Vitest 测试。
+ */
+export interface SentryDeviceMeta {
+  deviceId: string
+  deviceRole: string
+  platform: string
+  appVersion: string
+  appChannel: string
+}
+
+/**
+ * 把 `get_device_meta` 返回的设备和应用元数据写入 Sentry 全局 scope。
+ * 这与 Rust 侧 `uc-bootstrap::tracing` 里的 scope 写入保持同一套标签，
+ * 让 webview 和 Rust 主进程事件能按 `device.id` 关联。
+ *
+ * 注意:webview 自身的角色固定为 `webview`,而 Rust 主进程上报的
+ * `deviceRole`(`gui-host` / `daemon` / `cli`)挂在二级 tag
+ * `device.host_role` 上 —— 这样一台机器的两个进程在 Sentry 上既能用 `device.id`
+ * 聚合,又能用 role 区分。
+ */
+export function applyDeviceMetaToSentry(meta: SentryDeviceMeta): void {
+  if (!sentryEnabled) {
+    return
+  }
+  Sentry.setUser({ id: meta.deviceId })
+  Sentry.setTag('device.id', meta.deviceId)
+  Sentry.setTag('device.role', DEVICE_ROLE_WEBVIEW)
+  Sentry.setTag('device.host_role', meta.deviceRole)
+  Sentry.setTag('device.platform', meta.platform)
+  Sentry.setTag('app.version', meta.appVersion)
+  Sentry.setTag('app.channel', meta.appChannel)
 }
 
 /**

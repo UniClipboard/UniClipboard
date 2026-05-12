@@ -1136,6 +1136,7 @@ mod tests {
                     origin_device_id: "self".to_string(),
                     origin_device_name: "Self".to_string(),
                     payload_version: 3,
+                    flow_id: None,
                 },
                 uc_core::ports::SyncPayload {
                     ciphertext: bytes::Bytes::from_static(b"x"),

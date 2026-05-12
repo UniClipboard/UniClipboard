@@ -12,7 +12,8 @@ use uc_core::ports::{
 
 use crate::clipboard_write::ClipboardWriteCoordinator;
 use crate::usecases::clipboard_restore::{
-    RestoreClipboardSelectionUseCase, TouchClipboardEntryUseCase,
+    PlainRestoreOutcome, RestoreClipboardEntryAsPlainTextUseCase, RestoreClipboardSelectionUseCase,
+    TouchClipboardEntryUseCase,
 };
 
 #[derive(Debug, thiserror::Error)]
@@ -53,6 +54,7 @@ pub struct ClipboardRestoreFacadeDeps {
 
 pub struct ClipboardRestoreFacade {
     restore_uc: RestoreClipboardSelectionUseCase,
+    plain_uc: RestoreClipboardEntryAsPlainTextUseCase,
     touch_uc: TouchClipboardEntryUseCase,
 }
 
@@ -71,6 +73,15 @@ impl ClipboardRestoreFacade {
 
         let restore_uc = RestoreClipboardSelectionUseCase::new(
             entry_repo.clone(),
+            write_coordinator.clone(),
+            selection_repo.clone(),
+            representation_repo.clone(),
+            payload_resolver.clone(),
+            blob_store.clone(),
+            integration_mode,
+        );
+        let plain_uc = RestoreClipboardEntryAsPlainTextUseCase::new(
+            entry_repo.clone(),
             write_coordinator,
             selection_repo,
             representation_repo,
@@ -82,6 +93,7 @@ impl ClipboardRestoreFacade {
 
         Self {
             restore_uc,
+            plain_uc,
             touch_uc,
         }
     }
@@ -95,15 +107,59 @@ impl ClipboardRestoreFacade {
             .await
             .map_err(|err| map_restore_error(err, entry_id))?;
 
-        if let Err(err) = self.touch_uc.execute(&parsed_id).await {
+        self.touch_after_restore(&parsed_id, entry_id).await;
+        Ok(())
+    }
+
+    /// 「以纯文本形式」恢复条目到系统剪贴板。
+    ///
+    /// 流程：先尝试 plain 路径（只写 `text/plain` 表示）；条目没有任何可用的
+    /// plain 表示时，静默降级到 `restore_entry` 同等的多格式恢复路径——用户
+    /// 视角就是"按 Option 没生效"，不弹错误。
+    ///
+    /// LRU 触摸：无论走 plain 路径还是降级路径，恢复成功后都调用
+    /// `TouchClipboardEntryUseCase`，行为与 `restore_entry` 一致。
+    #[instrument(skip_all, fields(entry_id = %entry_id))]
+    pub async fn restore_entry_as_plain_text(
+        &self,
+        entry_id: &str,
+    ) -> Result<(), ClipboardRestoreError> {
+        let parsed_id = EntryId::from(entry_id);
+
+        let outcome = self
+            .plain_uc
+            .execute(&parsed_id)
+            .await
+            .map_err(|err| map_restore_error(err, entry_id))?;
+
+        match outcome {
+            PlainRestoreOutcome::Done => {
+                self.touch_after_restore(&parsed_id, entry_id).await;
+                Ok(())
+            }
+            PlainRestoreOutcome::NoPlainTextAvailable => {
+                tracing::info!(
+                    entry_id = %entry_id,
+                    "restore_entry_as_plain_text: no plain rep available, falling back to multi-format restore"
+                );
+                self.restore_uc
+                    .execute(&parsed_id)
+                    .await
+                    .map_err(|err| map_restore_error(err, entry_id))?;
+                self.touch_after_restore(&parsed_id, entry_id).await;
+                Ok(())
+            }
+        }
+    }
+
+    async fn touch_after_restore(&self, parsed_id: &EntryId, entry_id: &str) {
+        if let Err(err) = self.touch_uc.execute(parsed_id).await {
             tracing::warn!(
                 error = %err,
                 entry_id = %entry_id,
                 "touch_clipboard_entry failed after restore"
             );
         }
-
-        Ok(())
     }
 }
 

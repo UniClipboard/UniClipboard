@@ -97,6 +97,37 @@
         "themeColor": {
           "title": "主题色"
         },
+        "themePreview": {
+          "title": "主题",
+          "lightLabel": "浅色",
+          "darkLabel": "深色",
+          "followSystem": "跟随系统",
+          "setAsLight": "切换到浅色",
+          "setAsDark": "切换到深色",
+          "currentLight": "当前浅色",
+          "currentDark": "当前深色"
+        },
+        "lightTheme": {
+          "title": "浅色主题",
+          "preset": "预设",
+          "accent": "强调色",
+          "background": "背景色",
+          "foreground": "前景色",
+          "border": "边框色"
+        },
+        "darkTheme": {
+          "title": "深色主题",
+          "preset": "预设",
+          "accent": "强调色",
+          "background": "背景色",
+          "foreground": "前景色",
+          "border": "边框色"
+        },
+        "tokenPicker": {
+          "openPicker": "选取颜色",
+          "reset": "恢复为预设",
+          "modified": "已自定义"
+        },
         "zoom": {
           "title": "界面缩放",
           "description": "缩放会同时影响主窗口和快捷面板，也会和快捷键保持同步。",
@@ -203,8 +234,8 @@
               "title": "首次配对 rendezvous",
               "description": "配对新设备时仍需联网经 rendezvous.uniclipboard.app 完成 NodeId 交换；已配对设备的日常同步不再使用 rendezvous。"
             },
-            "otlp": {
-              "title": "OTLP 遥测",
+            "telemetry": {
+              "title": "遥测",
               "description": "遥测由「通用 → 遥测」开关独立控制，与 LAN-only 无关；如需关闭，请到「通用」分类。"
             },
             "pkarr": {
@@ -706,6 +737,17 @@
       "statusBar": {
         "bindFailed": "无法启动监听:{{reason}}"
       },
+      "enableConfirm": {
+        "title": "开启移动端同步",
+        "body": "继续将自动开启移动同步并在端口 {{port}} 开始监听局域网 HTTP。仅在受信网络下使用——任何在同一网段的人拿到凭据都能读写本机剪贴板。",
+        "confirm": "开启并继续",
+        "enabling": "正在开启…",
+        "cancel": "取消"
+      },
+      "feedback": {
+        "applied": "已即时生效",
+        "applyFailed": "应用设置失败：{{message}}"
+      },
       "settingsSheet": {
         "title": "移动设备同步配置",
         "description": "调整移动设备通过局域网访问本机所需的开关与网络参数",
@@ -737,11 +779,6 @@
           "body": "局域网内任何人只要拿到此机的 LAN URL 与配对凭据即可读写剪贴板。请确保 Wi-Fi 受信任。",
           "confirm": "我已知晓",
           "cancel": "取消"
-        },
-        "restartRequired": {
-          "message": "更改将在下次重启 daemon 后生效",
-          "restartButton": "立即重启",
-          "dismissAriaLabel": "收起重启提示"
         },
         "disabledHint": "请先启用 LAN 监听后再添加设备"
       },

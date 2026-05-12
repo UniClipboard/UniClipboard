@@ -29,8 +29,13 @@
 use std::path::Path;
 use std::sync::{Arc, OnceLock};
 
-use sentry::integrations::tracing::EventFilter;
+use sentry::integrations::tracing::{
+    breadcrumb_from_event, event_from_event, log_from_event, CombinedEventMapping, EventFilter,
+    EventMapping,
+};
 use tracing_subscriber::prelude::*;
+
+use crate::correlation::{self, CorrelationLayer};
 use uc_application::facade::AppPaths;
 use uc_infra::settings::repository::load_settings_snapshot;
 use uc_observability::redact::{is_sensitive_key, REDACTED_PLACEHOLDER};
@@ -116,6 +121,22 @@ pub fn init_tracing_subscriber() -> anyhow::Result<()> {
 
     if let Some(device_id) = device_id.as_ref() {
         let _ = uc_observability::set_global_device_id(device_id.clone());
+    }
+
+    // Step 1c: 装配进程级 ScopeContext —— 跨设备日志关联的核心 meta 容器。
+    //
+    // 早在 sentry::init 之前就 resolve 一次：
+    //   1. `Step 3` 里 sentry::configure_scope 直接读这份上下文写 user/tag,
+    //      让所有出站事件自动带 device.id / device.role / app.version / app.channel。
+    //   2. 即使没有 SENTRY_DSN(本地开发),后续业务代码也能通过
+    //      `uc_observability::global_scope()` 拿到一致的设备元数据。
+    //
+    // 这里把*调用方自己的* CARGO_PKG_VERSION 透传进去 —— uc-bootstrap 与
+    // 工作区版本一致(workspace = true),所以等价于 app 版本号。
+    let scope_ctx =
+        uc_observability::ScopeContext::resolve(device_id.clone(), env!("CARGO_PKG_VERSION"));
+    if !uc_observability::set_global_scope(scope_ctx.clone()) {
+        ::tracing::warn!("ScopeContext already initialized; keeping existing global scope");
     }
 
     // Step 2: Select log profile
@@ -244,6 +265,27 @@ pub fn init_tracing_subscriber() -> anyhow::Result<()> {
             eprintln!("Sentry guard already initialized");
         }
 
+        // 把 ScopeContext 推进 Sentry 的全局 scope —— 在 sentry::init 之后立刻
+        // 调用,后续任何 Event / Log / Span 出站时都会自动带这些 user + tag。
+        //
+        // 为什么用 user.id 而不仅仅是 tag:Sentry 的 Issue 列表默认按 `user.id`
+        // 分组与筛选,这条让单台设备的所有 issue 在 UI 上聚合,运维侧可以一眼
+        // 看出"哪台机器在炸"。`device.id` tag 是同样的 UUID 的搜索冗余,方便
+        // 跨 UI 视图(Logs / Performance)用 tag 表达式 filter。
+        sentry::configure_scope(|scope| {
+            if let Some(did) = scope_ctx.device_id.as_deref() {
+                scope.set_user(Some(sentry::User {
+                    id: Some(did.to_string()),
+                    ..Default::default()
+                }));
+                scope.set_tag("device.id", did);
+            }
+            scope.set_tag("device.role", scope_ctx.device_role);
+            scope.set_tag("device.platform", scope_ctx.platform);
+            scope.set_tag("app.version", scope_ctx.app_version);
+            scope.set_tag("app.channel", scope_ctx.app_channel);
+        });
+
         // Apply the profile-level EnvFilter to match the JSON file layer.
         //
         // Without this wrapper, NOISE_FILTERS directives like
@@ -252,43 +294,83 @@ pub fn init_tracing_subscriber() -> anyhow::Result<()> {
         // into Sentry Logs — burning the 5GB/mo quota on infrastructure
         // noise. Symmetry with the jsonl "source of truth" keeps offline
         // diagnostics and remote diagnostics aligned.
+        //
+        // ## Why `event_mapper` instead of the simpler `event_filter`
+        //
+        // PR4 跨设备可观测性的最后一公里:仅用 `event_filter` 时,Sentry
+        // 默认转换路径只把 span field 当 transaction attribute 上报,**Issue
+        // 列表与 Log search 不能按 `flow.id` / `peer.device_id` 等维度筛**。
+        //
+        // `event_mapper` 给我们一个 hook:对每条要出站的 event,自己决定
+        // 转换成 Event / Log / Breadcrumb,中途读 [`CorrelationLayer`] 在
+        // span extensions 里存好的字段、塞到对应载体上(Event.tags /
+        // Log.attributes / Breadcrumb.data)。原来的 noise-filter 与 level
+        // 路由规则一并搬进来,行为等价。
         Some(
             sentry::integrations::tracing::layer()
-                .event_filter(|md| {
+                .event_mapper(|event, ctx| {
+                    let md = event.metadata();
+
+                    // 1) 噪音 target 完全 drop —— 与旧 event_filter 等价。
                     if md.target() == "panic" {
-                        // panic 由 sentry-panic integration 上报,这里跳过避免重复。
-                        EventFilter::Ignore
-                    } else if md.target().starts_with("opentelemetry") {
-                        // 即便已经从依赖图删掉 opentelemetry-*,任何间接引入的
-                        // opentelemetry crate 仍可能 emit 内部错误 —— 这条兜底
-                        // 防止它们进 Sentry 噪音。
-                        EventFilter::Ignore
-                    } else if md.target().starts_with("noq_proto::connection")
+                        return EventMapping::Ignore;
+                    }
+                    if md.target().starts_with("opentelemetry") {
+                        return EventMapping::Ignore;
+                    }
+                    if md.target().starts_with("noq_proto::connection")
                         || md.target().starts_with("noq_udp")
                     {
-                        // QUIC 传输层状态机噪音(`PTO expired while unset`,
-                        // `failed closing path`,`sendmsg error: No route to host`
-                        // 等)。NOISE_FILTERS 里已经按 EnvFilter directive 屏蔽了
-                        // 这些 target,但 sentry-tracing 的 layer 在某些版本上
-                        // 不完全响应 per-layer EnvFilter,事件仍能漏到 Sentry
-                        // (历史报例:UNICLIPBOARD-RUST-3 / `PTO expired while
-                        // unset` 在 alpha.3 上 8 次)。这里直接在 event_filter
-                        // 里拦住作为双保险 —— iroh 上层仍会把真正的连接失败
-                        // 转成自己的结构化事件,没有可观测信号损失。
-                        EventFilter::Ignore
-                    } else {
-                        match *md.level() {
-                            // ERROR 同时上报为 Issue(报警)和 Log(可搜索)。
-                            // EventFilter 在 sentry 0.48+ 是 bitflags,`|` 即组合。
-                            ::tracing::Level::ERROR => EventFilter::Event | EventFilter::Log,
-                            // WARN 只进 Logs,不报警;比 OTLP 时代的 INFO+ 更克制,
-                            // 留出 5GB/月 配额预算。
-                            ::tracing::Level::WARN => EventFilter::Log,
-                            // INFO 沿用旧行为做 breadcrumb(下一条 Issue 的上下文),
-                            // 不直接产生 Log 防止配额爆炸。
-                            ::tracing::Level::INFO => EventFilter::Breadcrumb,
-                            _ => EventFilter::Ignore,
-                        }
+                        return EventMapping::Ignore;
+                    }
+
+                    // 2) 按 level 决定要产出哪些载体(可叠加)。
+                    //    EventFilter 仍是 bitflags,沿用旧规则把 ERROR 同时
+                    //    打成 Issue+Log,WARN 只进 Log,INFO 走 breadcrumb。
+                    let level_filter = match *md.level() {
+                        ::tracing::Level::ERROR => EventFilter::Event | EventFilter::Log,
+                        ::tracing::Level::WARN => EventFilter::Log,
+                        ::tracing::Level::INFO => EventFilter::Breadcrumb,
+                        _ => return EventMapping::Ignore,
+                    };
+
+                    // 3) 沿 span 链合并 correlation 字段,准备一次性塞到
+                    //    所有出站载体上。Leaf wins 见 correlation.rs。
+                    let fields = correlation::collect_from_event(event, &ctx);
+
+                    // 4) 每种载体走 sentry 官方 helper 做基础转换,再注入
+                    //    correlation。把 closure 包成 helper 是为了三种载体
+                    //    都能复用;flag 命中两条时(ERROR)调两次。
+                    let make_event = || {
+                        let mut ev = event_from_event(event, Some(&ctx));
+                        correlation::enrich_event(&mut ev, &fields);
+                        EventMapping::Event(ev)
+                    };
+                    let make_log = || {
+                        let mut log = log_from_event(event, Some(&ctx));
+                        correlation::enrich_log(&mut log, &fields);
+                        EventMapping::Log(log)
+                    };
+                    let make_breadcrumb = || {
+                        let mut bc = breadcrumb_from_event(event, Some(&ctx));
+                        correlation::enrich_breadcrumb(&mut bc, &fields);
+                        EventMapping::Breadcrumb(bc)
+                    };
+
+                    let mut out: Vec<EventMapping> = Vec::with_capacity(2);
+                    if level_filter.contains(EventFilter::Event) {
+                        out.push(make_event());
+                    }
+                    if level_filter.contains(EventFilter::Log) {
+                        out.push(make_log());
+                    }
+                    if level_filter.contains(EventFilter::Breadcrumb) {
+                        out.push(make_breadcrumb());
+                    }
+                    match out.len() {
+                        0 => EventMapping::Ignore,
+                        1 => out.into_iter().next().unwrap(),
+                        _ => EventMapping::Combined(CombinedEventMapping::from(out)),
                     }
                 })
                 .with_filter(profile.json_filter()),
@@ -315,7 +397,12 @@ pub fn init_tracing_subscriber() -> anyhow::Result<()> {
     // telemetry concerns at once (Issues / Logs / Performance Spans), routed
     // by the `event_filter` and the bundled span tracking. No separate OTLP
     // trace or logs layer is needed.
+    // `CorrelationLayer` 必须先注册:它只在 span 生命周期里把 correlation
+    // 字段抓到 span extensions,sentry_layer 的 event_mapper 再从那里读。
+    // 顺序不严格要求(layer 间不竞争状态),但放最前面让阅读者一眼看到
+    // "这一层只是为了喂 Sentry"。
     match tracing_subscriber::registry()
+        .with(CorrelationLayer)
         .with(sentry_layer)
         .with(console_layer)
         .with(json_layer)

@@ -60,7 +60,8 @@ pub async fn get_member_sync_preferences_handler(
     let app = state.app_facade_or_error()?;
     let roster = app
         .member_roster
-        .clone()
+        .get()
+        .cloned()
         .ok_or_else(|| ApiError::service_unavailable("member roster facade unavailable"))?;
     let prefs = roster
         .get_sync_preferences(&device_id)
@@ -118,7 +119,8 @@ pub async fn update_member_sync_preferences_handler(
     let app = state.app_facade_or_error()?;
     let roster = app
         .member_roster
-        .clone()
+        .get()
+        .cloned()
         .ok_or_else(|| ApiError::service_unavailable("member roster facade unavailable"))?;
     let updated = roster
         .update_sync_preferences(&device_id, member_sync_preferences_patch_from_dto(payload))

@@ -7,9 +7,8 @@ use crate::http::authorized_daemon_request_with_type;
 use crate::DaemonConnectionState;
 use uc_daemon_contract::api::dto::pairing::{
     AckedPairingCommandResponse, InitiatePairingRequest, InitiatePairingResponse,
-    PairingApiErrorResponse, PairingGuiLeaseRequest, PairingSessionCommandRequest,
-    SetPairingDiscoverabilityRequest, SetPairingParticipantRequest, UnpairDeviceRequest,
-    VerifyPairingRequest,
+    PairingApiErrorResponse, PairingSessionCommandRequest, SetPairingDiscoverabilityRequest,
+    SetPairingParticipantRequest, UnpairDeviceRequest, VerifyPairingRequest,
 };
 
 #[derive(Clone)]
@@ -119,22 +118,6 @@ impl DaemonPairingClient {
             Method::POST,
             &format!("/pairing/sessions/{session_id}/verify"),
             Some(&VerifyPairingRequest { pin_matches }),
-        )
-        .await
-    }
-
-    pub async fn register_gui_participant(
-        &self,
-        enabled: bool,
-        lease_ttl_ms: Option<u64>,
-    ) -> Result<()> {
-        self.send_json_no_content(
-            Method::POST,
-            "/pairing/gui/lease",
-            &PairingGuiLeaseRequest {
-                enabled,
-                lease_ttl_ms,
-            },
         )
         .await
     }

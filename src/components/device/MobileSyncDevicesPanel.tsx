@@ -40,6 +40,7 @@ import { KeyRound, Plus, RefreshCw, Settings2, Smartphone, Trash2 } from 'lucide
 import React, { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import AddMobileSyncDeviceDialog from './AddMobileSyncDeviceDialog'
+import EnableMobileSyncDialog from './EnableMobileSyncDialog'
 import MobileSyncCredentialModal from './MobileSyncCredentialModal'
 import MobileSyncSettingsSheet from './MobileSyncSettingsSheet'
 import RotatedPasswordModal from './RotatedPasswordModal'
@@ -80,6 +81,7 @@ const MobileSyncDevicesPanel: React.FC = () => {
 
   const [settingsSheetOpen, setSettingsSheetOpen] = useState(false)
   const [addDialogOpen, setAddDialogOpen] = useState(false)
+  const [enableConfirmOpen, setEnableConfirmOpen] = useState(false)
   const [credentialPayload, setCredentialPayload] = useState<RegisterMobileDeviceResult | null>(
     null
   )
@@ -108,12 +110,29 @@ const MobileSyncDevicesPanel: React.FC = () => {
   }, [loadDevices])
 
   const handleOpenAddDialog = useCallback(() => {
-    if (!settings?.lanListenEnabled) {
-      toast.error(t('devices.mobileSync.errors.lanListenerDisabled'))
+    // bind 失败仍是硬阻断 —— 没起监听就没法接 iPhone, 任何 add 都没意义。
+    if (settings?.lanListenerError) {
+      toast.error(
+        t('devices.mobileSync.statusBar.bindFailed', {
+          reason: settings.lanListenerError,
+        })
+      )
+      return
+    }
+    // 首次入口路径:未开启 enabled 或未开 lan_listen → 弹引导对话框,
+    // 用户确认后一键写两个开关 + 自动进入 Add 表单。listener 通过
+    // MobileLanLifecyclePort 即时生效, 不再要求重启。
+    if (!settings?.enabled || !settings?.lanListenEnabled) {
+      setEnableConfirmOpen(true)
       return
     }
     setAddDialogOpen(true)
-  }, [settings?.lanListenEnabled, t])
+  }, [settings?.enabled, settings?.lanListenEnabled, settings?.lanListenerError, t])
+
+  // 引导对话框成功开启后 → 立即打开 Add 表单,不让用户再点一次。
+  const handleEnableSuccess = useCallback(() => {
+    setAddDialogOpen(true)
+  }, [])
 
   const handleAddSuccess = useCallback(
     (result: RegisterMobileDeviceResult) => {
@@ -148,10 +167,11 @@ const MobileSyncDevicesPanel: React.FC = () => {
   }, [loadDevices, revokeTarget, t, translate])
 
   // ── Derived ──────────────────────────────────────────────────────────
-  const enabled = settings?.enabled ?? false
-  const lanListenEnabled = settings?.lanListenEnabled ?? false
+  // phase 6 起,"+ Add" 永远 enabled —— 未配置时点击走引导对话框,
+  // 已配置直接弹 Add。唯一仍然 disable 的硬场景是 bind 失败,这种情况
+  // 下即便 add 了也没法跟 iPhone 联通。
   const lanListenerError = settings?.lanListenerError ?? null
-  const addDisabled = !enabled || !lanListenEnabled || lanListenerError != null
+  const addDisabled = lanListenerError != null
 
   return (
     <>
@@ -174,7 +194,11 @@ const MobileSyncDevicesPanel: React.FC = () => {
               size="sm"
               onClick={handleOpenAddDialog}
               disabled={addDisabled}
-              title={addDisabled ? t('devices.mobileSync.errors.lanListenerDisabled') : undefined}
+              title={
+                addDisabled && lanListenerError
+                  ? t('devices.mobileSync.statusBar.bindFailed', { reason: lanListenerError })
+                  : undefined
+              }
             >
               <Plus className="h-3.5 w-3.5" />
               {t('devices.mobileSync.list.addButton')}
@@ -247,6 +271,12 @@ const MobileSyncDevicesPanel: React.FC = () => {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <EnableMobileSyncDialog
+        open={enableConfirmOpen}
+        onOpenChange={setEnableConfirmOpen}
+        onSuccess={handleEnableSuccess}
+      />
 
       <AddMobileSyncDeviceDialog
         open={addDialogOpen}

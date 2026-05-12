@@ -20,8 +20,18 @@ pub struct GetUpgradeStatusResponse {
 /// Wire encoding uses `kind` discriminator with snake_case variants to
 /// keep parity with the CLI JSON output produced by `uniclip upgrade
 /// status --json`.
+///
+/// 防御性补丁(issue #606 followup):同时声明 `rename_all_fields`,
+/// 避免未来新增多词字段(如 `target_version`)时 wire 字段名漂回
+/// snake_case 与上层契约不一致。当前字段都是单词,加这个对 wire 无影响,
+/// 但锁定未来添加字段的默认风格。详见 `docs/agent/rust-tauri-rules.md`
+/// 的 "Enum Wire Serialization" 一节。
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
-#[serde(tag = "kind", rename_all = "snake_case")]
+#[serde(
+    tag = "kind",
+    rename_all = "snake_case",
+    rename_all_fields = "snake_case"
+)]
 pub enum UpgradeStatusDto {
     /// First time the app is launched on this profile.
     FreshInstall { current: String },

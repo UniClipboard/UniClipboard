@@ -262,7 +262,7 @@ mod tests {
     use mockall::predicate::*;
     use uc_core::clipboard::MimeType;
     use uc_core::ids::{EntryId, FormatId};
-    use uc_core::mobile_sync::{LatestPasteRepresentation, StagedFile};
+    use uc_core::mobile_sync::{LatestPasteRepresentation, StagedFile, StagingHandle};
 
     mockall::mock! {
         SnapPort {}
@@ -274,53 +274,58 @@ mod tests {
         }
     }
 
-    /// Fake staging: 默认 `read_by_uri` panic; 可注入预设响应。
-    /// Image / Text / port-error 路径不调 staging,默认 panic 形态自带防回归。
-    #[derive(Default)]
-    struct FakeStaging {
-        read_response: std::sync::Mutex<Option<Result<Vec<u8>, MobileFileStagingError>>>,
+    // get_file 只触达 staging 的 `read_by_uri` —— 其它方法被调到都是回归;
+    // mockall strict mode 下未配置即 panic, 默认形态就承担"防回归"职责。
+    mockall::mock! {
+        Staging {}
+        #[async_trait]
+        impl MobileFileStagingPort for Staging {
+            async fn stage_file(
+                &self,
+                scope_id: &str,
+                data_name: &str,
+                mime: &str,
+                bytes: Vec<u8>,
+            ) -> Result<StagedFile, MobileFileStagingError>;
+            async fn read_by_uri(&self, uri: &str) -> Result<Vec<u8>, MobileFileStagingError>;
+            async fn begin_stage(
+                &self,
+                scope_id: &str,
+                data_name: &str,
+                mime: &str,
+            ) -> Result<StagingHandle, MobileFileStagingError>;
+            async fn append_stage_chunk(
+                &self,
+                handle: &StagingHandle,
+                chunk: &[u8],
+            ) -> Result<(), MobileFileStagingError>;
+            async fn finalize_stage(
+                &self,
+                handle: StagingHandle,
+            ) -> Result<StagedFile, MobileFileStagingError>;
+            async fn abort_stage(&self, handle: StagingHandle);
+        }
     }
 
-    impl FakeStaging {
-        fn never_called() -> Arc<Self> {
-            Arc::new(Self::default())
-        }
-        fn with_read_response(r: Result<Vec<u8>, MobileFileStagingError>) -> Arc<Self> {
-            Arc::new(Self {
-                read_response: std::sync::Mutex::new(Some(r)),
-            })
-        }
+    fn staging_never_called() -> Arc<MockStaging> {
+        Arc::new(MockStaging::new())
     }
 
-    #[async_trait]
-    impl MobileFileStagingPort for FakeStaging {
-        async fn stage_file(
-            &self,
-            _: &str,
-            _: &str,
-            _: &str,
-            _: Vec<u8>,
-        ) -> Result<StagedFile, MobileFileStagingError> {
-            unreachable!("get_file tests must not call stage_file")
-        }
-        async fn read_by_uri(&self, _uri: &str) -> Result<Vec<u8>, MobileFileStagingError> {
-            self.read_response
-                .lock()
-                .unwrap()
-                .take()
-                .unwrap_or_else(|| panic!("FakeStaging.read_by_uri called without preset response"))
-        }
+    fn staging_with_read_response(r: Result<Vec<u8>, MobileFileStagingError>) -> Arc<MockStaging> {
+        let mut mock = MockStaging::new();
+        mock.expect_read_by_uri().times(1).return_once(move |_| r);
+        Arc::new(mock)
     }
 
     fn build_uc_returning(
         rep: Result<Option<LatestPasteRepresentation>, LatestClipboardSnapshotError>,
     ) -> GetMobileSyncFileUseCase {
-        build_uc_returning_with_staging(rep, FakeStaging::never_called())
+        build_uc_returning_with_staging(rep, staging_never_called())
     }
 
     fn build_uc_returning_with_staging(
         rep: Result<Option<LatestPasteRepresentation>, LatestClipboardSnapshotError>,
-        staging: Arc<FakeStaging>,
+        staging: Arc<MockStaging>,
     ) -> GetMobileSyncFileUseCase {
         let mut port = MockSnapPort::new();
         port.expect_latest_paste_representation()
@@ -417,7 +422,7 @@ mod tests {
         // application/octet-stream(SyncClipboard 协议字段对 Shortcut 端无强
         // 语义,扩展名信息走 dataName)。
         let real_bytes = vec![0x25, 0x50, 0x44, 0x46, 0x2D, 0x31, 0x2E, 0x37]; // %PDF-1.7
-        let staging = FakeStaging::with_read_response(Ok(real_bytes.clone()));
+        let staging = staging_with_read_response(Ok(real_bytes.clone()));
         let payload = b"file:///Users/Alice/Documents/note.pdf".to_vec();
         let uc = build_uc_returning_with_staging(
             Ok(Some(rep(
@@ -437,7 +442,7 @@ mod tests {
     async fn file_rep_staging_not_found_returns_not_found() {
         // staging 返 NotFound(URI 不在白名单根 / 文件被运维删) → use case
         // 翻 NotFound,iPhone 收 HTTP 404 不报错。
-        let staging = FakeStaging::with_read_response(Err(MobileFileStagingError::NotFound));
+        let staging = staging_with_read_response(Err(MobileFileStagingError::NotFound));
         let payload = b"file:///orphan/path/doc.pdf".to_vec();
         let uc = build_uc_returning_with_staging(
             Ok(Some(rep(
@@ -456,7 +461,7 @@ mod tests {
     async fn file_rep_staging_io_error_returns_staging_variant() {
         // staging 返 Io(权限 / 中途读盘失败) → use case 翻 Staging(_),
         // 路由层 → HTTP 500。
-        let staging = FakeStaging::with_read_response(Err(MobileFileStagingError::Io(
+        let staging = staging_with_read_response(Err(MobileFileStagingError::Io(
             "simulated permission denied".into(),
         )));
         let payload = b"file:///somewhere/doc.pdf".to_vec();
@@ -477,7 +482,7 @@ mod tests {
     async fn file_rep_with_unparseable_uri_list_returns_not_found() {
         // rep.bytes 全空 / 全是注释 → parse_first_uri 返 None → NotFound。
         // staging 不应被调用(默认 FakeStaging 没设响应,被调到会 panic)。
-        let staging = FakeStaging::never_called();
+        let staging = staging_never_called();
         let payload = b"# only a comment\n\n# another\n".to_vec();
         let uc = build_uc_returning_with_staging(
             Ok(Some(rep(
@@ -521,7 +526,7 @@ mod tests {
         // SyncClipboard request URLs can come back URL-decoded by axum;
         // derive_data_name does percent decode → matches "My Photo.jpg".
         // P5a.3.5: 命中后走 staging 读真字节,而不是返 URI list。
-        let staging = FakeStaging::with_read_response(Ok(b"jpeg-real-bytes".to_vec()));
+        let staging = staging_with_read_response(Ok(b"jpeg-real-bytes".to_vec()));
         let payload = b"file:///tmp/My%20Photo.jpg".to_vec();
         let uc = build_uc_returning_with_staging(
             Ok(Some(rep(

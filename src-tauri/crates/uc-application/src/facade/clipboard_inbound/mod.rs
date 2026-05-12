@@ -4,6 +4,7 @@ use async_trait::async_trait;
 use bytes::Bytes;
 use thiserror::Error;
 use uc_core::ids::DeviceId;
+use uc_observability::FlowId;
 
 use crate::{ApplyInboundClipboardUseCase, ApplyInboundInput, ApplyOutcome};
 
@@ -12,6 +13,7 @@ pub struct InboundClipboardNoticeInput {
     pub from_device: String,
     pub content_hash: String,
     pub plaintext: Bytes,
+    pub flow_id: Option<FlowId>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -47,6 +49,7 @@ pub struct InboundClipboardApplyInput {
     pub from_device: String,
     pub content_hash: String,
     pub plaintext: Bytes,
+    pub flow_id: Option<FlowId>,
 }
 
 #[async_trait]
@@ -60,6 +63,7 @@ impl InboundClipboardApplyPort for ApplyInboundClipboardUseCase {
                 from_device: DeviceId::new(input.from_device),
                 content_hash: input.content_hash,
                 plaintext: input.plaintext,
+                flow_id: input.flow_id,
             })
             .await
             .map_err(|err| InboundClipboardApplyError::Internal(err.to_string()))?;
@@ -85,6 +89,7 @@ impl InboundClipboardFacade {
                 from_device: input.from_device,
                 content_hash: input.content_hash,
                 plaintext: input.plaintext,
+                flow_id: input.flow_id,
             })
             .await
     }
@@ -136,6 +141,7 @@ mod tests {
                 from_device: "device-a".to_string(),
                 content_hash: "hash-a".to_string(),
                 plaintext: Bytes::from_static(b"payload"),
+                flow_id: None,
             })
             .await
             .unwrap();

@@ -31,13 +31,29 @@ export type RuleEvaluation = 'anyMatch' | 'allMatch'
 
 // ── Sub-setting interfaces ─────────────────────────────────────
 
-/** General application settings. / 常规应用设置。 */
+/** General application settings. / 常规应用设置。
+ *
+ * # themeColor 字段拆分（v0.7+）
+ * - `themeColor`: 旧版统一预设字段,daemon 仍透传以兼容老前端,新前端不写入。
+ * - `themeColorLight` / `themeColorDark`: 分别是 light / dark 模式下的预设名。
+ *   读取时若为 null,daemon 端 `effective_theme_color_*` 会回退到 `themeColor`,
+ *   再回退到引擎默认值。
+ */
 export interface GeneralSettings {
   autoStart: boolean
   silentStart: boolean
   autoCheckUpdate: boolean
   theme: Theme
+  /** 旧版统一主题预设(回退用)。 */
   themeColor: string | null
+  /** Light 模式下的主题预设名,如 `"zinc"`、`"catppuccin"`。 */
+  themeColorLight: string | null
+  /** Dark 模式下的主题预设名,如 `"zinc"`、`"catppuccin"`。 */
+  themeColorDark: string | null
+  /** Light 模式下用户对预设 token 的自定义覆盖（`{ token: oklchString }`）。 */
+  themeOverridesLight: Record<string, string>
+  /** Dark 模式下用户对预设 token 的自定义覆盖（语义同 light）。 */
+  themeOverridesDark: Record<string, string>
   language: string | null
   deviceName: string | null
   updateChannel?: UpdateChannel | null
@@ -249,6 +265,10 @@ function toSettingsPatchRequest(settings: Partial<Settings>): SettingsPatchReque
       autoCheckUpdate,
       theme,
       themeColor,
+      themeColorLight,
+      themeColorDark,
+      themeOverridesLight,
+      themeOverridesDark,
       language,
       deviceName,
       updateChannel,
@@ -261,6 +281,10 @@ function toSettingsPatchRequest(settings: Partial<Settings>): SettingsPatchReque
       autoCheckUpdate,
       theme,
       themeColor,
+      themeColorLight,
+      themeColorDark,
+      themeOverridesLight,
+      themeOverridesDark,
       language,
       deviceName,
       updateChannel,

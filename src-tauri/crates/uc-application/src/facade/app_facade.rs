@@ -23,11 +23,12 @@
 //!   its state machine had no dispatcher, while the real admit path runs
 //!   through `PairingInboundOrchestrator`.
 
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 
 use thiserror::Error;
 use tokio::sync::broadcast;
 
+use crate::facade::file_transfer::FileTransferFacade;
 use crate::facade::mobile_sync::MobileSyncFacade;
 use crate::facade::roster::{MemberSummary, PeerSnapshotView, RosterError};
 use crate::facade::settings::{GeneralSettingsPatch, SettingsPatch};
@@ -56,17 +57,44 @@ use uc_core::SystemClipboardSnapshot;
 ///
 /// 新增外部业务调用应优先通过本文件中的顶层方法进入。公开子字段是历史兼容
 /// 状态,后续收口 daemon / Tauri 路径时应继续减少直接访问。
+///
+/// # daemon-lifecycle 字段(启动期一次性装入)
+///
+/// 下面 5 个字段绑定 daemon-lifecycle 资源(iroh node、clipboard_sync 链、
+/// LAN PUT 入站等)。方案 C (2026-05-11) 取消 in-process daemon reload 后,
+/// daemon 在进程内只起一次, 这 5 个字段也只装入一次 —— GUI shell 启动期
+/// 为空, daemon 启动时由 [`Self::install_daemon_lifecycle`] set 进
+/// [`OnceLock`], daemon (= 进程) 退出时由 Arc drop 自然回收。
+///
+/// - `space_setup`、`member_roster` —— iroh 网络栈相关
+/// - `clipboard_sync`、`blob_transfer` —— iroh 上的同步业务
+/// - `mobile_sync` —— 因绑 enhanced apply_inbound (带 blob_materializer +
+///   host_event_emitter) 也是 daemon-lifecycle
+///
+/// 用 [`OnceLock`] 而非 `RwLock<Option<Arc<X>>>`:读路径 GUI command +
+/// daemon worker 高频访问, set-once 语义恰好匹配 "启动期装入, 进程内不再
+/// 切换" 的真实生命周期, 比 `RwLock` 省一次锁且语义更紧。
 pub struct AppFacade {
-    pub space_setup: Option<Arc<SpaceSetupFacade>>,
-    pub member_roster: Option<Arc<MemberRosterFacade>>,
+    pub space_setup: OnceLock<Arc<SpaceSetupFacade>>,
+    pub member_roster: OnceLock<Arc<MemberRosterFacade>>,
     pub lifecycle: Arc<LifecycleFacade>,
     pub encryption: Arc<EncryptionFacade>,
     pub resource: Arc<ResourceFacade>,
     pub clipboard_history: Arc<ClipboardHistoryFacade>,
-    pub clipboard_sync: Option<Arc<ClipboardSyncFacade>>,
-    pub blob_transfer: Option<Arc<BlobTransferFacade>>,
+    pub clipboard_sync: OnceLock<Arc<ClipboardSyncFacade>>,
+    pub blob_transfer: OnceLock<Arc<BlobTransferFacade>>,
+    /// 文件传输 lifecycle 入口 —— 5 个动作 + seed_receiver_context +
+    /// link_transfer_to_entry。`None` 表示当前装配场景未接入 lifecycle
+    /// (典型:仅查询的 CLI / 单元测试)。进程级单例(在
+    /// `BackgroundRuntimeDeps` 里构造,GUI shell 启动期通过
+    /// `AppFacadeAssemblyOptions::file_transfer` 一次性装入),不在
+    /// daemon-lifecycle OnceLock swap 范围内。
+    pub file_transfer: Option<Arc<FileTransferFacade>>,
     /// CLI / 仅查询场景下 daemon/Tauri 不构造 restore facade,这里是 None。
     /// daemon API handler 取出前需做存在性检查。
+    ///
+    /// 不在 daemon-lifecycle 范围 —— 它绑 ClipboardWriteCoordinator
+    /// (进程级) 与 integration_mode (静态),GUI shell 启动期一次性装入。
     pub clipboard_restore: Option<Arc<ClipboardRestoreFacade>>,
     pub search: Arc<SearchFacade>,
     pub settings: Arc<SettingsFacade>,
@@ -76,10 +104,28 @@ pub struct AppFacade {
     /// 一份；启动期 host 调一次 `upgrade.detect_on_startup()` 决定是否触发
     /// 重新配对引导等动作。
     pub upgrade: Arc<UpgradeFacade>,
-    /// 移动端同步 facade（v1：iOS Shortcut）。`None` 表示该装配场景没有
-    /// 接入移动端 adapter（典型：纯单元测试 / 暂未接入桌面 daemon）；
-    /// 调用方拿到 `None` 应直接给用户报"功能未启用"。
-    pub mobile_sync: Option<Arc<MobileSyncFacade>>,
+    /// 移动端同步 facade（v1：iOS Shortcut）。
+    ///
+    /// daemon-lifecycle 字段:GUI shell 启动期为空, daemon 启动时由
+    /// [`Self::install_daemon_lifecycle`] 装入 enhanced 版本 (绑 daemon
+    /// worker apply_inbound)。daemon 未启动场景下调用方拿到 `None` 应
+    /// 直接给用户报"功能未启用 / daemon 未就绪"。
+    pub mobile_sync: OnceLock<Arc<MobileSyncFacade>>,
+}
+
+/// 一次性把 daemon-lifecycle 资源装进 [`AppFacade`] 的 5 个 OnceLock 字段。
+///
+/// 由 daemon-lifecycle 装配 (`uc-desktop::daemon::start_in_process`)
+/// 在 daemon 启动时调用 [`AppFacade::install_daemon_lifecycle`] 触发。
+/// 方案 C 后 daemon 是进程级单例 (没有 in-process reload), 整个进程生命
+/// 周期里 install 只会被调一次; GUI 与 standalone CLI 共用这条 path —
+/// 进程内只有一份 `AppFacade`。
+pub struct DaemonLifecycleFacades {
+    pub space_setup: Arc<SpaceSetupFacade>,
+    pub member_roster: Arc<MemberRosterFacade>,
+    pub clipboard_sync: Arc<ClipboardSyncFacade>,
+    pub blob_transfer: Arc<BlobTransferFacade>,
+    pub mobile_sync: Arc<MobileSyncFacade>,
 }
 
 impl AppFacade {
@@ -89,22 +135,57 @@ impl AppFacade {
     /// hands them here — the aggregator never sees raw ports.
     pub fn new(parts: AppFacadeParts) -> Self {
         Self {
-            space_setup: parts.space_setup,
-            member_roster: parts.member_roster,
+            space_setup: once_lock_from(parts.space_setup),
+            member_roster: once_lock_from(parts.member_roster),
             lifecycle: parts.lifecycle,
             encryption: parts.encryption,
             resource: parts.resource,
             clipboard_history: parts.clipboard_history,
-            clipboard_sync: parts.clipboard_sync,
-            blob_transfer: parts.blob_transfer,
+            clipboard_sync: once_lock_from(parts.clipboard_sync),
+            blob_transfer: once_lock_from(parts.blob_transfer),
+            file_transfer: parts.file_transfer,
             clipboard_restore: parts.clipboard_restore,
             search: parts.search,
             settings: parts.settings,
             device: parts.device,
             storage: parts.storage,
             upgrade: parts.upgrade,
-            mobile_sync: parts.mobile_sync,
+            mobile_sync: once_lock_from(parts.mobile_sync),
         }
+    }
+
+    /// 把 daemon 启动时构造好的 5 份 lifecycle facade 一次性装入 AppFacade。
+    ///
+    /// 方案 C 后 daemon 进程内只起一次, 这条 path 每进程调一次。同一份
+    /// `AppFacade` 整个进程生命周期共享; GUI command 与 daemon worker 都
+    /// 从这一份读 —— LAN listener 写入的 endpoint_info、daemon 端 dispatch
+    /// 的事件, GUI 都能立刻读到, 不再依赖跨多份 deps 共享 Arc。
+    ///
+    /// # Panics
+    ///
+    /// 重复调用 (5 个 OnceLock 中任一已被装入) panic, 视为编程错误 ——
+    /// daemon 没有 reload 路径, 不该有第二次装入。
+    pub fn install_daemon_lifecycle(&self, facades: DaemonLifecycleFacades) {
+        self.space_setup
+            .set(facades.space_setup)
+            .map_err(|_| ())
+            .expect("space_setup facade already installed; daemon is process-singleton");
+        self.member_roster
+            .set(facades.member_roster)
+            .map_err(|_| ())
+            .expect("member_roster facade already installed; daemon is process-singleton");
+        self.clipboard_sync
+            .set(facades.clipboard_sync)
+            .map_err(|_| ())
+            .expect("clipboard_sync facade already installed; daemon is process-singleton");
+        self.blob_transfer
+            .set(facades.blob_transfer)
+            .map_err(|_| ())
+            .expect("blob_transfer facade already installed; daemon is process-singleton");
+        self.mobile_sync
+            .set(facades.mobile_sync)
+            .map_err(|_| ())
+            .expect("mobile_sync facade already installed; daemon is process-singleton");
     }
 
     /// A1:初始化空间。外部业务入口从 `AppFacade` 进入,不直接拿 `SpaceSetupFacade`。
@@ -113,7 +194,8 @@ impl AppFacade {
         input: InitializeSpaceInput,
     ) -> Result<InitializeSpaceResult, InitializeSpaceError> {
         self.space_setup
-            .as_ref()
+            .get()
+            .cloned()
             .ok_or_else(|| {
                 InitializeSpaceError::Internal("space setup facade unavailable".to_string())
             })?
@@ -124,7 +206,8 @@ impl AppFacade {
     /// 尝试静默恢复空间会话。
     pub async fn try_resume_session(&self) -> Result<bool, TryResumeSessionError> {
         self.space_setup
-            .as_ref()
+            .get()
+            .cloned()
             .ok_or_else(|| {
                 TryResumeSessionError::Internal("space setup facade unavailable".to_string())
             })?
@@ -137,7 +220,8 @@ impl AppFacade {
         &self,
     ) -> Result<EnsureReachableAllReport, EnsureReachableAllError> {
         self.space_setup
-            .as_ref()
+            .get()
+            .cloned()
             .ok_or(EnsureReachableAllError::Repository(
                 "space setup facade unavailable".to_string(),
             ))?
@@ -152,7 +236,8 @@ impl AppFacade {
         &self,
     ) -> Result<Vec<DeviceId>, EnsureReachableAllError> {
         self.space_setup
-            .as_ref()
+            .get()
+            .cloned()
             .ok_or(EnsureReachableAllError::Repository(
                 "space setup facade unavailable".to_string(),
             ))?
@@ -168,7 +253,8 @@ impl AppFacade {
         device: &DeviceId,
     ) -> Result<ReachabilityState, PresenceError> {
         self.space_setup
-            .as_ref()
+            .get()
+            .cloned()
             .ok_or_else(|| PresenceError::Internal("space setup facade unavailable".to_string()))?
             .ensure_reachable_one(device)
             .await
@@ -179,7 +265,8 @@ impl AppFacade {
         &self,
     ) -> Result<IssuePairingInvitationResult, IssuePairingInvitationError> {
         self.space_setup
-            .as_ref()
+            .get()
+            .cloned()
             .ok_or_else(|| {
                 IssuePairingInvitationError::Internal("space setup facade unavailable".to_string())
             })?
@@ -193,7 +280,8 @@ impl AppFacade {
         input: RedeemPairingInvitationInput,
     ) -> Result<RedeemPairingInvitationResult, RedeemPairingInvitationError> {
         self.space_setup
-            .as_ref()
+            .get()
+            .cloned()
             .ok_or_else(|| {
                 RedeemPairingInvitationError::Internal("space setup facade unavailable".to_string())
             })?
@@ -208,7 +296,8 @@ impl AppFacade {
         input: SwitchSpaceInput,
     ) -> Result<SwitchSpaceResult, SwitchSpaceError> {
         self.space_setup
-            .as_ref()
+            .get()
+            .cloned()
             .ok_or_else(|| {
                 SwitchSpaceError::Internal("space setup facade unavailable".to_string())
             })?
@@ -221,7 +310,8 @@ impl AppFacade {
         &self,
     ) -> Result<MigrationProgress, QueryMigrationProgressError> {
         self.space_setup
-            .as_ref()
+            .get()
+            .cloned()
             .ok_or_else(|| {
                 QueryMigrationProgressError::Internal("space setup facade unavailable".to_string())
             })?
@@ -234,7 +324,8 @@ impl AppFacade {
         &self,
     ) -> Result<broadcast::Receiver<PairingOutcome>, IssuePairingInvitationError> {
         self.space_setup
-            .as_ref()
+            .get()
+            .cloned()
             .map(|facade| facade.subscribe_pairing_completion())
             .ok_or_else(|| {
                 IssuePairingInvitationError::Internal("space setup facade unavailable".to_string())
@@ -244,7 +335,8 @@ impl AppFacade {
     /// 列出对外成员摘要。外部调用只经过 `AppFacade`,不直接依赖 roster 子 facade。
     pub async fn list_members(&self) -> Result<Vec<MemberSummary>, RosterError> {
         self.member_roster
-            .as_ref()
+            .get()
+            .cloned()
             .ok_or(RosterError::Unavailable)?
             .list_members()
             .await
@@ -255,7 +347,8 @@ impl AppFacade {
         &self,
     ) -> Result<Vec<crate::facade::roster::RosterEntry>, RosterError> {
         self.member_roster
-            .as_ref()
+            .get()
+            .cloned()
             .ok_or(RosterError::Unavailable)?
             .list_with_presence()
             .await
@@ -268,7 +361,8 @@ impl AppFacade {
         origin: ClipboardChangeOrigin,
     ) -> Result<crate::facade::DispatchEntryOutcome, ClipboardSyncError> {
         self.clipboard_sync
-            .as_ref()
+            .get()
+            .cloned()
             .ok_or_else(|| {
                 ClipboardSyncError::Repository("clipboard sync facade unavailable".to_string())
             })?
@@ -281,7 +375,8 @@ impl AppFacade {
         &self,
     ) -> Result<broadcast::Receiver<InboundNotice>, ClipboardSyncError> {
         self.clipboard_sync
-            .as_ref()
+            .get()
+            .cloned()
             .map(|facade| facade.subscribe_inbound_notices())
             .ok_or_else(|| {
                 ClipboardSyncError::Repository("clipboard sync facade unavailable".to_string())
@@ -294,7 +389,8 @@ impl AppFacade {
         command: PublishBlobCommand,
     ) -> Result<PublishBlobResult, BlobTransferError> {
         self.blob_transfer
-            .as_ref()
+            .get()
+            .cloned()
             .ok_or_else(|| BlobTransferError::Publish("blob facade unavailable".to_string()))?
             .publish_blob(command)
             .await
@@ -306,7 +402,8 @@ impl AppFacade {
         command: FetchBlobCommand,
     ) -> Result<FetchBlobResult, BlobTransferError> {
         self.blob_transfer
-            .as_ref()
+            .get()
+            .cloned()
             .ok_or_else(|| BlobTransferError::Fetch("blob facade unavailable".to_string()))?
             .fetch_blob(command)
             .await
@@ -351,6 +448,10 @@ impl AppFacade {
                     auto_check_update: None,
                     theme: None,
                     theme_color: None,
+                    theme_color_light: None,
+                    theme_color_dark: None,
+                    theme_overrides_light: None,
+                    theme_overrides_dark: None,
                     language: None,
                     update_channel: None,
                     telemetry_enabled: None,
@@ -371,7 +472,8 @@ impl AppFacade {
     /// 列出对外 peer 快照。外部调用只经过 `AppFacade`,不直接依赖 roster 子 facade。
     pub async fn list_peer_snapshots(&self) -> Result<Vec<PeerSnapshotView>, RosterError> {
         self.member_roster
-            .as_ref()
+            .get()
+            .cloned()
             .ok_or(RosterError::Unavailable)?
             .list_peer_snapshots()
             .await
@@ -381,7 +483,8 @@ impl AppFacade {
     pub fn subscribe_peer_presence_events(&self) -> Result<AppPresenceSubscription, RosterError> {
         let inner = self
             .member_roster
-            .as_ref()
+            .get()
+            .cloned()
             .ok_or(RosterError::Unavailable)?
             .subscribe_presence_events();
         Ok(AppPresenceSubscription { inner })
@@ -425,6 +528,14 @@ impl AppPresenceSubscription {
     }
 }
 
+fn once_lock_from<T>(value: Option<T>) -> OnceLock<T> {
+    let cell = OnceLock::new();
+    if let Some(v) = value {
+        let _ = cell.set(v);
+    }
+    cell
+}
+
 fn presence_event_to_app(event: PresenceEvent) -> AppPresenceEvent {
     AppPresenceEvent {
         device_id: event.device_id.as_str().to_string(),
@@ -451,6 +562,7 @@ pub struct AppFacadeParts {
     pub clipboard_history: Arc<ClipboardHistoryFacade>,
     pub clipboard_sync: Option<Arc<ClipboardSyncFacade>>,
     pub blob_transfer: Option<Arc<BlobTransferFacade>>,
+    pub file_transfer: Option<Arc<FileTransferFacade>>,
     pub clipboard_restore: Option<Arc<ClipboardRestoreFacade>>,
     pub search: Arc<SearchFacade>,
     pub settings: Arc<SettingsFacade>,

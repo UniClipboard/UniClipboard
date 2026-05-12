@@ -17,6 +17,7 @@ pub mod clipboard_outbound;
 pub mod clipboard_restore;
 pub mod device;
 pub mod encryption;
+pub mod file_transfer;
 pub mod host_event;
 pub mod lifecycle;
 pub mod mobile_sync;
@@ -31,7 +32,7 @@ pub mod upgrade;
 
 pub use app_facade::{
     AppFacade, AppFacadeParts, AppPresenceEvent, AppPresenceSubscription,
-    AppPresenceSubscriptionError,
+    AppPresenceSubscriptionError, DaemonLifecycleFacades,
 };
 pub use app_paths::AppPaths;
 pub use blob_transfer::{
@@ -74,6 +75,11 @@ pub use device::{DeviceFacade, DeviceFacadeError, LocalDeviceInfoView};
 pub use encryption::{
     EncryptionFacade, EncryptionFacadeDeps, EncryptionFacadeError, EncryptionStateView,
 };
+pub use file_transfer::{
+    CancelTransfer, CompleteTransfer, FailTransfer, FileTransferApplicationError,
+    FileTransferFacade, FileTransferFacadeDeps, LinkTransferToEntry, ReportTransferProgress,
+    SeedReceiverContext, StartTransfer,
+};
 pub use host_event::{
     ClipboardHostEvent, ClipboardOriginKind, EmitError, FileTransferHostEventPublisher, HostEvent,
     HostEventEmitterPort, OutboundEntryIdCache, TransferHostEvent,
@@ -82,6 +88,7 @@ pub use lifecycle::{
     InMemoryLifecycleStatus, LifecycleFacade, LifecycleFacadeDeps, LifecycleFacadeError,
     LifecycleStateView, LifecycleStatusGateway,
 };
+pub use mobile_sync::mobile_sync_streaming_scope_nonce;
 pub use mobile_sync::{
     ApplyIncomingMobileClipError, ApplyIncomingMobileClipInput, ApplyIncomingMobileClipOutcome,
     AuthenticateBasicAuthError, AuthenticateBasicAuthInput, AuthenticatedDevice,

@@ -11,13 +11,13 @@ import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover
  * 文案完全来自 i18n（Plan 03 已 ship 双语，Phase 97 docs 反向复制）。
  * 组件名带 LanOnly 前缀语义清晰，但内部未维护任何 lanOnly 字段（反向命名铁律）。
  */
-const DISCLOSURE_KEYS = ['rendezvous', 'otlp', 'pkarr', 'autoUpdate'] as const
+const DISCLOSURE_KEYS = ['rendezvous', 'telemetry', 'pkarr', 'autoUpdate'] as const
 
 /**
  * Renders a popover-triggered info button that explains LAN-only request categories.
  *
  * The popover content is driven by i18n keys and includes a title, an introductory paragraph,
- * and a list of disclosure items for `rendezvous`, `otlp`, `pkarr`, and `autoUpdate`.
+ * and a list of disclosure items for `rendezvous`, `telemetry`, `pkarr`, and `autoUpdate`.
  *
  * @returns A JSX element containing an info icon button that opens the translated disclosure popover.
  */

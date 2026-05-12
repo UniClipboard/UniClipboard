@@ -40,7 +40,7 @@ interface HistoryPaneProps {
   onHover: (index: number) => void
   onHistoryMouseMove: () => void
   onSearchChange: (value: string) => void
-  onSelect: (index: number) => void
+  onSelect: (index: number, plainOnly?: boolean) => void
   onUnlock: () => void
   searchInputRef: React.Ref<HTMLInputElement>
   searchQuery: string

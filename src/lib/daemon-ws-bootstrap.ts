@@ -26,6 +26,13 @@ let connectionEstablished = false
 let connectionPromise: Promise<void> | null = null
 let shutdownListenerUnlisten: UnlistenFn | null = null
 
+/** Reset the bootstrap state so the next `connectDaemonWs()` call re-fetches
+ *  connection_info + refreshes the JWT session. Used by the test helper. */
+function resetConnectionState(): void {
+  connectionEstablished = false
+  connectionPromise = null
+}
+
 /**
  * Connect the frontend WebSocket client to the daemon.
  *
@@ -92,8 +99,7 @@ export function connectDaemonWs(): Promise<void> {
  * Exported for test use only — do not call in production.
  */
 export function resetConnectDaemonWsForTests(): void {
-  connectionEstablished = false
-  connectionPromise = null
+  resetConnectionState()
 }
 
 /**

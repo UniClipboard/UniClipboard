@@ -15,7 +15,7 @@
 //! | [`MobileSyncFacade::list_devices`] | `ListMobileDevicesUseCase` | 列出已登记设备(不含 password_hash) |
 //! | [`MobileSyncFacade::rotate_password`] | `RotateMobilePasswordUseCase` | 给已登记设备换一份新密码(返回一次性明文) |
 //! | [`MobileSyncFacade::get_settings`] | `GetMobileSyncSettingsUseCase` | 读 enabled + LAN URL + install methods |
-//! | [`MobileSyncFacade::update_settings`] | `UpdateMobileSyncSettingsUseCase` | 写 enabled, 返回 restart_required |
+//! | [`MobileSyncFacade::update_settings`] | `UpdateMobileSyncSettingsUseCase` | 写 enabled / lan 字段, 装入 lifecycle 时 listener 即时生效 |
 //! | [`MobileSyncFacade::list_lan_interfaces`] | `ListLanInterfacesUseCase` | 列出可作为二维码 URL 的 RFC1918 网卡 |
 //! | [`MobileSyncFacade::authenticate_basic`] | `AuthenticateBasicAuthUseCase` | LAN HTTP 路由用:校验 Basic Auth 头 |
 //! | [`MobileSyncFacade::get_latest_sync_doc`] | `GetLatestMobileSyncDocUseCase` | `GET /SyncClipboard.json` |
@@ -42,14 +42,20 @@
 
 use std::sync::Arc;
 
+use uc_core::mobile_sync::LanListenerStatus;
 use uc_core::mobile_sync::MobileDeviceId;
 use uc_core::ports::mobile_sync::LatestClipboardSnapshotPort;
 use uc_core::ports::{
     ClockPort, LanInterfaceProbePort, MobileCredentialsMinterPort, MobileDeviceRepositoryPort,
-    MobileFileStagingPort, MobileSyncEndpointInfoPort, PasswordHasherPort, SettingsPort,
+    MobileFileStagingPort, MobileLanLifecyclePort, MobileLanTarget, MobileSyncEndpointInfoPort,
+    PasswordHasherPort, SettingsPort,
 };
 
+use crate::facade::clipboard_outbound::ClipboardOutboundFacade;
+use crate::facade::file_transfer::FileTransferFacade;
+use crate::facade::mobile_sync::outbound_adapter::ClipboardOutboundFanOutAdapter;
 use crate::usecases::clipboard_sync::apply_inbound::ApplyInboundClipboardUseCase;
+use crate::usecases::mobile_sync::apply_incoming::MobileInboundFanOutPort;
 use crate::usecases::mobile_sync::{
     apply_incoming::ApplyIncomingMobileClipUseCase,
     authenticate_basic::AuthenticateBasicAuthUseCase, get_file::GetMobileSyncFileUseCase,
@@ -99,6 +105,31 @@ pub use crate::usecases::mobile_sync::update_settings::{
     UpdateMobileSyncSettingsError, UpdateMobileSyncSettingsInput, UpdateMobileSyncSettingsOutput,
 };
 
+// ─── Helpers ────────────────────────────────────────────────────────────
+
+/// 默认 LAN 监听端口。与 daemon 装配期一次性读 settings 时的兜底完全一致,
+/// 也与前端 `EnableMobileSyncDialog` 展示给用户的文案保持一致。
+const DEFAULT_LAN_PORT: u16 = 42720;
+
+/// 从写盘后的 settings 派生出 [`MobileLanTarget`]。
+///
+/// 单点真相:"两个开关都 on" → 起监听器,其它组合 → 不监听。port 取
+/// 配置值或默认 [`DEFAULT_LAN_PORT`]。
+///
+/// 深度防御:`Some(0)` 在 use case 入口已被 `InvalidLanParameter` 拒绝,
+/// 理论上跑到这里只剩 `None` 或合法值;但若磁盘 settings 文件被外部工具
+/// 直接写入 `Some(0)`(绕过 use case 校验),也按 `None` fallback,避免把
+/// 0 当 ephemeral 端口传给 adapter 导致"用户配置端口"与"实际监听端口"
+/// 永久不一致。
+fn lan_target_from_settings(out: &UpdateMobileSyncSettingsOutput) -> MobileLanTarget {
+    if out.enabled && out.lan_listen_enabled {
+        let port = out.lan_port.filter(|&p| p != 0).unwrap_or(DEFAULT_LAN_PORT);
+        MobileLanTarget::Enabled { port }
+    } else {
+        MobileLanTarget::Disabled
+    }
+}
+
 // ─── Deps ───────────────────────────────────────────────────────────────
 
 /// 构造 [`MobileSyncFacade`] 所需的端口集合。
@@ -130,6 +161,42 @@ pub struct MobileSyncFacadeDeps {
     /// 测试场景可注入内存 fake。
     pub file_staging: Arc<dyn MobileFileStagingPort>,
     pub snapshot_ports: MobileSyncSnapshotPorts,
+    /// 可选 file-transfer lifecycle facade。装配处提供时,SyncDoc apply
+    /// 后自动 `link_transfer_to_entry` + `complete`,失败路径 `fail`,让
+    /// mobile_lan 路径产生的 transfer 在 file_transfer 表里有完整 lifecycle;
+    /// `None` 时静默降级(unit / 测试装配)。`PUT /file` handler 端
+    /// (`webserver`)在收 body 期间自己调 `start` / `Progress` —— 本字段
+    /// 仅用于 apply 阶段收尾。
+    pub file_transfer: Option<Arc<FileTransferFacade>>,
+    /// 可选剪贴板出站 facade。装配处提供时,移动端 `PUT /SyncClipboard.json`
+    /// 成功落地本机后,本 facade 内部会异步把同一份 snapshot 走"本机捕获
+    /// → 出站"完整管线 fan-out 给 Space 内其他已配对设备 ——
+    ///
+    /// - 文本 / 小图 inline 进 V3 envelope;
+    /// - 大图自动剥成 iroh-blobs ref(避免撞 2 MiB wire 上限);
+    /// - 文件用 `BlobTransferFacade::publish_blob_path` 流式发布到
+    ///   iroh-blobs, 构造 free-file V3BlobRef,接收端拉回并改写 file-list
+    ///   rep 成本机 URI ——
+    ///   "手机文件 → 任一桌面 → 所有桌面"的真正传输靠这条路径成立。
+    ///
+    /// 同样受 `OutboundSyncPlanner` 控制 —— 用户在 settings 关了某个类型
+    /// 的同步,mobile fan-out 与本机复制 fan-out 一同被 suppress, 没有
+    /// "mobile 上传可以绕过同步开关"的旁路。
+    ///
+    /// `None` 时静默降级(facade 自测装配 / CLI fallback 等不接 P2P 出站
+    /// 的场景):mobile 上传仅落地本机,不传播 —— 与本字段引入前的行为
+    /// 完全一致, 不退化。
+    pub clipboard_outbound: Option<Arc<ClipboardOutboundFacade>>,
+    /// 可选 LAN 监听器生命周期 port,让 `update_settings` 在写盘后立即把
+    /// listener 状态对齐到新设置(开/关/换端口),无需重启进程。
+    ///
+    /// 装配语义:
+    /// - GUI daemon 模式(`uc-desktop`)装入 [`MobileLanLifecyclePort`] 的
+    ///   in-process adapter, update_settings 即时生效;
+    /// - CLI fallback / 单元测试装入 `None`, update_settings 仅写盘 ——
+    ///   等下一次 daemon 进程启动时一次性读 settings 起 listener,
+    ///   与本字段引入前的现有行为完全一致, 不退化。
+    pub lan_lifecycle: Option<Arc<dyn MobileLanLifecyclePort>>,
 }
 
 // ─── Facade ─────────────────────────────────────────────────────────────
@@ -150,6 +217,20 @@ pub struct MobileSyncFacade {
     apply_incoming: ApplyIncomingMobileClipUseCase,
     get_latest_doc: GetLatestMobileSyncDocUseCase,
     get_file: GetMobileSyncFileUseCase,
+    /// `PUT /file` 流式上传入口持有的 staging port 引用。webserver 端
+    /// `put_clipboard_file` handler 在收 body 期间通过 facade 的
+    /// `begin_file_upload` / `append_file_chunk` / `finalize_file_upload` /
+    /// `abort_file_upload` 转发到本 port,字节流不再绕道 use case 层的内存
+    /// buffer。与 `apply_incoming` / `get_file` 共用同一份 Arc。
+    file_staging: Arc<dyn MobileFileStagingPort>,
+    /// 见 [`MobileSyncFacadeDeps::lan_lifecycle`]。`None` 表示当前装配不要求
+    /// 即时生效(CLI fallback / 单测),`update_settings` 写盘后不调 apply。
+    lan_lifecycle: Option<Arc<dyn MobileLanLifecyclePort>>,
+    /// `update_settings` 在调完 `lifecycle.apply(target)` 后读这个 port 判断
+    /// adapter 是否报了 `BindFailed`,据此把 reason 透传进 output 的
+    /// `lan_listener_bind_error`。与 `get_settings` use case 共用同一份 Arc,
+    /// 无额外资源开销。
+    endpoint_info: Arc<dyn MobileSyncEndpointInfoPort>,
 }
 
 impl MobileSyncFacade {
@@ -168,6 +249,9 @@ impl MobileSyncFacade {
             incoming_buffer,
             file_staging,
             snapshot_ports,
+            file_transfer,
+            clipboard_outbound,
+            lan_lifecycle,
         } = deps;
 
         let snapshot_port: Arc<dyn LatestClipboardSnapshotPort> =
@@ -189,18 +273,35 @@ impl MobileSyncFacade {
                 password_hasher.clone(),
                 credentials_minter,
             ),
-            get_settings: GetMobileSyncSettingsUseCase::new(settings.clone(), endpoint_info),
+            get_settings: GetMobileSyncSettingsUseCase::new(
+                settings.clone(),
+                endpoint_info.clone(),
+            ),
             update_settings: UpdateMobileSyncSettingsUseCase::new(settings),
             list_lan_interfaces: ListLanInterfacesUseCase::new(lan_interface_probe),
             authenticate_basic: AuthenticateBasicAuthUseCase::new(device_repo, password_hasher),
+            // facade 装配处只能拿到 `ClipboardOutboundFacade`(由 daemon
+            // runtime_assembly 装好),但 use case 依赖的是 use-case-local 的
+            // `MobileInboundFanOutPort` trait。这里就是 facade 层的薄装配点:
+            // 把 facade 包成 adapter, 让 use case 的依赖 surface 不必随出站
+            // 管线演化而膨胀。详见 [`ClipboardOutboundFanOutAdapter`] 与
+            // [`MobileInboundFanOutPort`] 的设计文档。
             apply_incoming: ApplyIncomingMobileClipUseCase::new(
                 apply_inbound,
                 incoming_buffer,
                 file_staging.clone(),
                 clock,
+                file_transfer,
+                clipboard_outbound.map(|outbound| {
+                    Arc::new(ClipboardOutboundFanOutAdapter::new(outbound))
+                        as Arc<dyn MobileInboundFanOutPort>
+                }),
             ),
             get_latest_doc: GetLatestMobileSyncDocUseCase::new(snapshot_port.clone()),
-            get_file: GetMobileSyncFileUseCase::new(snapshot_port, file_staging),
+            get_file: GetMobileSyncFileUseCase::new(snapshot_port, file_staging.clone()),
+            file_staging,
+            lan_lifecycle,
+            endpoint_info,
         }
     }
 
@@ -246,13 +347,46 @@ impl MobileSyncFacade {
         self.get_settings.execute().await
     }
 
-    /// 更新移动端同步设置。返回值的 `restart_required` 标记仅在 enabled
-    /// 实际发生变化时为 `true`;同值重复保存为 `false` 且不写盘。
+    /// 更新移动端同步设置。
+    ///
+    /// 装入了 [`MobileLanLifecyclePort`] 的装配下(GUI daemon),写盘成功后立即
+    /// 把 LAN listener 状态对齐到新设置 —— 用户不再需要重启进程才能让"开关
+    /// 移动同步 / 改监听端口"生效。返回值的 `restart_required` 在这条路径下
+    /// 永远是 `false`(字段保留,见
+    /// [`UpdateMobileSyncSettingsOutput::restart_required`] 的字段 doc)。
+    ///
+    /// `apply` 完成后读一次 `MobileSyncEndpointInfoPort.current_status()`:
+    /// 若 adapter 报 `BindFailed{reason}`(端口占用 / 权限 / IP 不可分配),
+    /// 把 reason 透传进 output 的 `lan_listener_bind_error`,让调用方
+    /// (典型:首次添加移动设备的 GUI 引导对话框)在导航到下一步前就能
+    /// 看到 listener 没起来,而不是用户填完 label 才发现 iPhone 连不上。
+    ///
+    /// 没装入 lifecycle port 的装配(CLI fallback / 单测)只写盘不通知,
+    /// `restart_required` 仍按"任一字段实际变化"返回,
+    /// `lan_listener_bind_error` 保持 `None`(use case 默认值)。
     pub async fn update_settings(
         &self,
         input: UpdateMobileSyncSettingsInput,
     ) -> Result<UpdateMobileSyncSettingsOutput, UpdateMobileSyncSettingsError> {
-        self.update_settings.execute(input).await
+        let mut out = self.update_settings.execute(input).await?;
+        if let Some(lifecycle) = self.lan_lifecycle.as_ref() {
+            let target = lan_target_from_settings(&out);
+            lifecycle.apply(target).await;
+            // 即时生效路径下"重启"语义不再适用,字段拍 false 让 UI 跳过
+            // restart banner。详见 update_settings use case 文档。
+            out.restart_required = false;
+            // apply 后读 endpoint_info 一次。bind 失败时 adapter 已经把
+            // reason 写进 BindFailed,这里把它透传到 output 字段,让前端
+            // 在 happy-path 流程里就能感知到"设置落盘但 listener 没起来"。
+            // endpoint_info 自身读失败(底层 storage 异常)按"无报错"处理 ——
+            // 不让"探测错误"覆盖"实际是否成功",避免给前端虚假信号。
+            if let Ok(LanListenerStatus::BindFailed { reason }) =
+                self.endpoint_info.current_status().await
+            {
+                out.lan_listener_bind_error = Some(reason);
+            }
+        }
+        Ok(out)
     }
 
     /// 列出可作为二维码 URL 候选的本机 IPv4 LAN 接口。仅返回 RFC1918 私
@@ -314,31 +448,132 @@ impl MobileSyncFacade {
         self.get_file.execute(data_name).await
     }
 
-    /// `PUT /file/{dataName}` 业务出口:把 (mime, bytes) 暂存进
-    /// `IncomingMobileBuffer`,等待 `PUT /SyncClipboard.json` 触发组装。
-    /// 返回 `Buffered` outcome —— 路由层应回 HTTP 200。
+    /// `PUT /file/{dataName}` 全量字节出口(CLI debug / 测试用)。
     ///
-    /// `source_device_id` 不被本步消费(BufferFile 阶段还没确定要应用),
-    /// 但仍按 use case 契约一并传入,避免 PUT /SyncClipboard.json 时再
-    /// 重新 lookup。
+    /// 生产路径(uc-webserver)走 [`Self::begin_file_upload`] →
+    /// [`Self::append_file_chunk`] → [`Self::finalize_file_upload`] 三段式
+    /// 流式上传,不进本入口。本入口内部仍走相同的 streaming staging API,
+    /// 把整个 bytes 一次 append 进去, 再 finalize → 喂 BufferFile event,
+    /// 这样应用层只剩"已 staged 文件"这一种路径(无两套并行)。
+    ///
+    /// 失败时调 [`Self::abort_file_upload`] 释放半写入的 staging 资源。
     pub async fn put_clipboard_file(
         &self,
         data_name: String,
         mime: String,
         bytes: Vec<u8>,
         source_device_id: MobileDeviceId,
+        transfer_id: String,
     ) -> Result<ApplyIncomingMobileClipOutcome, ApplyIncomingMobileClipError> {
+        let scope_id = streaming_scope_nonce();
+        let handle = self
+            .file_staging
+            .begin_stage(&scope_id, &data_name, &mime)
+            .await
+            .map_err(|err| {
+                ApplyIncomingMobileClipError::Internal(format!(
+                    "put_clipboard_file: begin_stage failed: {err}"
+                ))
+            })?;
+        if let Err(err) = self.file_staging.append_stage_chunk(&handle, &bytes).await {
+            self.file_staging.abort_stage(handle).await;
+            return Err(ApplyIncomingMobileClipError::Internal(format!(
+                "put_clipboard_file: append_stage_chunk failed: {err}"
+            )));
+        }
+        let staged = match self.file_staging.finalize_stage(handle).await {
+            Ok(staged) => staged,
+            Err(err) => {
+                return Err(ApplyIncomingMobileClipError::Internal(format!(
+                    "put_clipboard_file: finalize_stage failed: {err}"
+                )));
+            }
+        };
         self.apply_incoming
             .execute(ApplyIncomingMobileClipInput {
                 source_device_id,
                 event: IncomingMobileClipEvent::BufferFile {
                     data_name,
                     mime,
-                    bytes,
+                    staged,
+                    transfer_id,
                 },
             })
             .await
     }
+
+    /// 开启一次 `PUT /file/{dataName}` 流式上传。返回的 [`StagingHandle`]
+    /// 用于后续 chunk append / finalize / abort。`scope_id` 由调用方按
+    /// "每次入站事件取一段独立 nonce"语义生成,典型用 [`streaming_scope_nonce`]。
+    pub async fn begin_file_upload(
+        &self,
+        scope_id: &str,
+        data_name: &str,
+        mime: &str,
+    ) -> Result<uc_core::mobile_sync::StagingHandle, uc_core::ports::MobileFileStagingError> {
+        self.file_staging
+            .begin_stage(scope_id, data_name, mime)
+            .await
+    }
+
+    /// 把一个 body chunk 喂进流式 staging 会话。0 字节 chunk 合法且为 no-op。
+    /// 单笔会话只允许**串行** append,并发同 handle 行为未定义。
+    pub async fn append_file_chunk(
+        &self,
+        handle: &uc_core::mobile_sync::StagingHandle,
+        chunk: &[u8],
+    ) -> Result<(), uc_core::ports::MobileFileStagingError> {
+        self.file_staging.append_stage_chunk(handle, chunk).await
+    }
+
+    /// 收齐字节后调用,消费 `handle` 完成 staging 并把"已 staged 文件"
+    /// 挂进 IncomingMobileBuffer 等 SyncDoc 配对。返回 `Buffered` 或
+    /// `DecodeFailed` 等 use case outcome,路由层据此映射 HTTP 响应。
+    pub async fn finalize_file_upload(
+        &self,
+        handle: uc_core::mobile_sync::StagingHandle,
+        data_name: String,
+        mime: String,
+        source_device_id: MobileDeviceId,
+        transfer_id: String,
+    ) -> Result<ApplyIncomingMobileClipOutcome, ApplyIncomingMobileClipError> {
+        let staged = self
+            .file_staging
+            .finalize_stage(handle)
+            .await
+            .map_err(|err| {
+                ApplyIncomingMobileClipError::Internal(format!(
+                    "finalize_file_upload: staging finalize failed: {err}"
+                ))
+            })?;
+        self.apply_incoming
+            .execute(ApplyIncomingMobileClipInput {
+                source_device_id,
+                event: IncomingMobileClipEvent::BufferFile {
+                    data_name,
+                    mime,
+                    staged,
+                    transfer_id,
+                },
+            })
+            .await
+    }
+
+    /// 放弃一次 `PUT /file/{dataName}` 流式上传 —— body 中断 / 客户端断流 /
+    /// 任一 append 失败时调用,释放半写入的 staging 资源。fire-and-forget,
+    /// 二次失败由 adapter 内部 log,不向上抛。
+    pub async fn abort_file_upload(&self, handle: uc_core::mobile_sync::StagingHandle) {
+        self.file_staging.abort_stage(handle).await;
+    }
+}
+
+/// 生成 12 hex 字符的 staging scope nonce(uuid v4 simple 形态前 12 位)。
+/// 调用方按"每次入站 PUT /file 取一段独立 nonce"语义使用,与 entry_id
+/// 解耦(entry_id 在 ApplyInbound 内部生成,本阶段还不知道)。
+pub fn streaming_scope_nonce() -> String {
+    let id = uuid::Uuid::new_v4();
+    let s = id.simple().to_string();
+    s[..12].to_string()
 }
 
 #[cfg(test)]
@@ -651,25 +886,53 @@ mod tests {
         }
     }
 
-    struct UnusedStaging;
-    #[async_trait]
-    impl uc_core::ports::MobileFileStagingPort for UnusedStaging {
-        async fn stage_file(
-            &self,
-            _: &str,
-            _: &str,
-            _: &str,
-            _: Vec<u8>,
-        ) -> Result<uc_core::mobile_sync::StagedFile, uc_core::ports::MobileFileStagingError>
-        {
-            unimplemented!("facade smoke tests do not exercise File PUT path")
+    // Facade smoke 测试不触达任何 staging 入口 —— 用 mockall strict mode 的
+    // 未配置 panic 行为承担"防回归",任何方法被意外调到立刻可见。
+    mockall::mock! {
+        Staging {}
+        #[async_trait]
+        impl uc_core::ports::MobileFileStagingPort for Staging {
+            async fn stage_file(
+                &self,
+                scope_id: &str,
+                data_name: &str,
+                mime: &str,
+                bytes: Vec<u8>,
+            ) -> Result<
+                uc_core::mobile_sync::StagedFile,
+                uc_core::ports::MobileFileStagingError,
+            >;
+            async fn read_by_uri(
+                &self,
+                uri: &str,
+            ) -> Result<Vec<u8>, uc_core::ports::MobileFileStagingError>;
+            async fn begin_stage(
+                &self,
+                scope_id: &str,
+                data_name: &str,
+                mime: &str,
+            ) -> Result<
+                uc_core::mobile_sync::StagingHandle,
+                uc_core::ports::MobileFileStagingError,
+            >;
+            async fn append_stage_chunk(
+                &self,
+                handle: &uc_core::mobile_sync::StagingHandle,
+                chunk: &[u8],
+            ) -> Result<(), uc_core::ports::MobileFileStagingError>;
+            async fn finalize_stage(
+                &self,
+                handle: uc_core::mobile_sync::StagingHandle,
+            ) -> Result<
+                uc_core::mobile_sync::StagedFile,
+                uc_core::ports::MobileFileStagingError,
+            >;
+            async fn abort_stage(&self, handle: uc_core::mobile_sync::StagingHandle);
         }
-        async fn read_by_uri(
-            &self,
-            _: &str,
-        ) -> Result<Vec<u8>, uc_core::ports::MobileFileStagingError> {
-            unimplemented!("facade smoke tests do not exercise File GET path")
-        }
+    }
+
+    fn staging_unused() -> Arc<MockStaging> {
+        Arc::new(MockStaging::new())
     }
 
     fn build_facade() -> MobileSyncFacade {
@@ -689,7 +952,7 @@ mod tests {
             settings: Arc::new(InMemorySettings::default()),
             apply_inbound,
             incoming_buffer: Arc::new(IncomingMobileBuffer::new()),
-            file_staging: Arc::new(UnusedStaging),
+            file_staging: staging_unused(),
             snapshot_ports: MobileSyncSnapshotPorts {
                 entry_repo,
                 selection_repo: Arc::new(UnusedSelectionRepo),
@@ -697,6 +960,9 @@ mod tests {
                 payload_resolver: Arc::new(UnusedResolver),
                 blob_reader: Arc::new(UnusedBlobReader),
             },
+            file_transfer: None,
+            clipboard_outbound: None,
+            lan_lifecycle: None,
         })
     }
 
@@ -776,6 +1042,8 @@ mod tests {
             .await
             .unwrap();
         assert!(upd.enabled);
+        // build_facade() 不装 lan_lifecycle → 仍走 use case 旧语义,
+        // 任一字段变化即 restart_required = true。
         assert!(upd.restart_required);
 
         // 再读:enabled 已生效。
@@ -838,7 +1106,7 @@ mod tests {
             settings: Arc::new(InMemorySettings::default()),
             apply_inbound,
             incoming_buffer: Arc::new(IncomingMobileBuffer::new()),
-            file_staging: Arc::new(UnusedStaging),
+            file_staging: staging_unused(),
             snapshot_ports: MobileSyncSnapshotPorts {
                 entry_repo,
                 selection_repo: Arc::new(UnusedSelectionRepo),
@@ -846,6 +1114,9 @@ mod tests {
                 payload_resolver: Arc::new(UnusedResolver),
                 blob_reader: Arc::new(UnusedBlobReader),
             },
+            file_transfer: None,
+            clipboard_outbound: None,
+            lan_lifecycle: None,
         });
 
         // happy path
@@ -914,7 +1185,7 @@ mod tests {
             settings: Arc::new(InMemorySettings::default()),
             apply_inbound,
             incoming_buffer: Arc::new(IncomingMobileBuffer::new()),
-            file_staging: Arc::new(UnusedStaging),
+            file_staging: staging_unused(),
             snapshot_ports: MobileSyncSnapshotPorts {
                 entry_repo,
                 selection_repo: Arc::new(UnusedSelectionRepo),
@@ -922,6 +1193,9 @@ mod tests {
                 payload_resolver: Arc::new(UnusedResolver),
                 blob_reader: Arc::new(UnusedBlobReader),
             },
+            file_transfer: None,
+            clipboard_outbound: None,
+            lan_lifecycle: None,
         });
 
         // 1. 旧密码可用
@@ -982,5 +1256,282 @@ mod tests {
             .await
             .unwrap_err();
         assert!(matches!(err, RotateMobilePasswordError::NotFound(_)));
+    }
+
+    // ── lan_lifecycle wire-up 测试 ─────────────────────────────────────────
+    //
+    // 验证装入了 [`MobileLanLifecyclePort`] 的装配下,update_settings 写盘后
+    // 立刻调 apply(),且 restart_required 永远 false。
+
+    /// 记录每次 apply 被调时的 target,供单测断言。
+    #[derive(Default)]
+    struct RecordingLanLifecycle {
+        calls: Mutex<Vec<MobileLanTarget>>,
+    }
+
+    #[async_trait]
+    impl MobileLanLifecyclePort for RecordingLanLifecycle {
+        async fn apply(&self, target: MobileLanTarget) {
+            self.calls.lock().unwrap().push(target);
+        }
+    }
+
+    fn build_facade_with_lifecycle(lifecycle: Arc<RecordingLanLifecycle>) -> MobileSyncFacade {
+        let entry_repo: Arc<dyn ClipboardEntryRepositoryPort> = Arc::new(UnusedEntryRepo);
+        let apply_inbound = Arc::new(ApplyInboundClipboardUseCase::new(
+            entry_repo.clone(),
+            Arc::new(UnusedCapture),
+            Arc::new(UnusedWrite),
+        ));
+        MobileSyncFacade::new(MobileSyncFacadeDeps {
+            clock: Arc::new(FixedClock(1_000)),
+            credentials_minter: Arc::new(StaticMinter),
+            password_hasher: Arc::new(FakeHasher),
+            device_repo: Arc::new(InMemoryDeviceRepo::default()),
+            endpoint_info: Arc::new(FixedEndpoint),
+            lan_interface_probe: Arc::new(StubLanProbe),
+            settings: Arc::new(InMemorySettings::default()),
+            apply_inbound,
+            incoming_buffer: Arc::new(IncomingMobileBuffer::new()),
+            file_staging: staging_unused(),
+            snapshot_ports: MobileSyncSnapshotPorts {
+                entry_repo,
+                selection_repo: Arc::new(UnusedSelectionRepo),
+                representation_repo: Arc::new(UnusedRepRepo),
+                payload_resolver: Arc::new(UnusedResolver),
+                blob_reader: Arc::new(UnusedBlobReader),
+            },
+            file_transfer: None,
+            clipboard_outbound: None,
+            lan_lifecycle: Some(lifecycle),
+        })
+    }
+
+    #[tokio::test]
+    async fn update_settings_with_lifecycle_applies_target_and_clears_restart_required() {
+        let lifecycle = Arc::new(RecordingLanLifecycle::default());
+        let facade = build_facade_with_lifecycle(lifecycle.clone());
+
+        // 1. enable + lan_listen + 自定义 port → Enabled{port}
+        let upd = facade
+            .update_settings(UpdateMobileSyncSettingsInput {
+                enabled: Some(true),
+                lan_listen_enabled: Some(true),
+                lan_advertise_ip: Some(Some("192.168.1.5".into())),
+                lan_port: Some(Some(43210)),
+            })
+            .await
+            .unwrap();
+        assert!(upd.enabled);
+        assert!(
+            !upd.restart_required,
+            "lifecycle 注入路径下 restart_required 永远 false"
+        );
+
+        // 2. lifecycle.apply 调一次,target = Enabled{43210}
+        {
+            let calls = lifecycle.calls.lock().unwrap();
+            assert_eq!(calls.len(), 1);
+            assert_eq!(calls[0], MobileLanTarget::Enabled { port: 43210 });
+        }
+
+        // 3. 关 lan_listen → Disabled
+        let upd2 = facade
+            .update_settings(UpdateMobileSyncSettingsInput {
+                lan_listen_enabled: Some(false),
+                ..Default::default()
+            })
+            .await
+            .unwrap();
+        assert!(!upd2.restart_required);
+
+        {
+            let calls = lifecycle.calls.lock().unwrap();
+            assert_eq!(calls.len(), 2);
+            assert_eq!(calls[1], MobileLanTarget::Disabled);
+        }
+    }
+
+    #[tokio::test]
+    async fn update_settings_with_lifecycle_defaults_port_to_42720_when_unset() {
+        let lifecycle = Arc::new(RecordingLanLifecycle::default());
+        let facade = build_facade_with_lifecycle(lifecycle.clone());
+
+        // 只开两个开关, 不设 lan_port → adapter 应收到 Enabled{port: 42720}
+        let _ = facade
+            .update_settings(UpdateMobileSyncSettingsInput {
+                enabled: Some(true),
+                lan_listen_enabled: Some(true),
+                ..Default::default()
+            })
+            .await
+            .unwrap();
+
+        let calls = lifecycle.calls.lock().unwrap();
+        assert_eq!(calls.len(), 1);
+        assert_eq!(calls[0], MobileLanTarget::Enabled { port: 42720 });
+    }
+
+    /// endpoint_info mock,可被测试替换为"apply 后我已经写了 BindFailed"。
+    /// 用 Mutex<LanListenerStatus> 持当前状态;facade 调 current_status 直接读。
+    struct BindFailureEndpoint {
+        status: Mutex<LanListenerStatus>,
+    }
+
+    #[async_trait]
+    impl MobileSyncEndpointInfoPort for BindFailureEndpoint {
+        async fn current_status(&self) -> Result<LanListenerStatus, EndpointInfoError> {
+            Ok(self.status.lock().unwrap().clone())
+        }
+    }
+
+    /// 类似 RecordingLanLifecycle,但 apply 时把预设 BindFailed reason 写进
+    /// endpoint_info,模拟生产 controller 在 bind 失败时的行为。
+    struct FailingLanLifecycle {
+        endpoint: Arc<BindFailureEndpoint>,
+        reason: String,
+    }
+
+    #[async_trait]
+    impl MobileLanLifecyclePort for FailingLanLifecycle {
+        async fn apply(&self, target: MobileLanTarget) {
+            // 只有 Enabled 时模拟 bind 失败;Disabled 写 Stopped。
+            let next = match target {
+                MobileLanTarget::Enabled { .. } => LanListenerStatus::BindFailed {
+                    reason: self.reason.clone(),
+                },
+                MobileLanTarget::Disabled => LanListenerStatus::Stopped,
+            };
+            *self.endpoint.status.lock().unwrap() = next;
+        }
+    }
+
+    #[tokio::test]
+    async fn update_settings_with_lifecycle_propagates_bind_failure_to_output() {
+        // 构造一份 facade,endpoint_info 与 lifecycle 共享同一份"模拟 daemon
+        // 状态"的 Arc<BindFailureEndpoint>:lifecycle.apply 写 BindFailed,
+        // facade 紧接着读出来填 lan_listener_bind_error。
+        let endpoint = Arc::new(BindFailureEndpoint {
+            status: Mutex::new(LanListenerStatus::Stopped),
+        });
+        let lifecycle = Arc::new(FailingLanLifecycle {
+            endpoint: endpoint.clone(),
+            reason: "Address already in use (os error 48)".into(),
+        });
+
+        let entry_repo: Arc<dyn ClipboardEntryRepositoryPort> = Arc::new(UnusedEntryRepo);
+        let apply_inbound = Arc::new(ApplyInboundClipboardUseCase::new(
+            entry_repo.clone(),
+            Arc::new(UnusedCapture),
+            Arc::new(UnusedWrite),
+        ));
+        let facade = MobileSyncFacade::new(MobileSyncFacadeDeps {
+            clock: Arc::new(FixedClock(1_000)),
+            credentials_minter: Arc::new(StaticMinter),
+            password_hasher: Arc::new(FakeHasher),
+            device_repo: Arc::new(InMemoryDeviceRepo::default()),
+            // 关键:endpoint_info 装的是 BindFailureEndpoint, lifecycle 也持
+            // 同一份 Arc, apply 写完 facade 立刻能读到。
+            endpoint_info: endpoint.clone(),
+            lan_interface_probe: Arc::new(StubLanProbe),
+            settings: Arc::new(InMemorySettings::default()),
+            apply_inbound,
+            incoming_buffer: Arc::new(IncomingMobileBuffer::new()),
+            file_staging: staging_unused(),
+            snapshot_ports: MobileSyncSnapshotPorts {
+                entry_repo,
+                selection_repo: Arc::new(UnusedSelectionRepo),
+                representation_repo: Arc::new(UnusedRepRepo),
+                payload_resolver: Arc::new(UnusedResolver),
+                blob_reader: Arc::new(UnusedBlobReader),
+            },
+            file_transfer: None,
+            clipboard_outbound: None,
+            lan_lifecycle: Some(lifecycle),
+        });
+
+        // enable 两开关 → lifecycle.apply(Enabled) → endpoint = BindFailed
+        let out = facade
+            .update_settings(UpdateMobileSyncSettingsInput {
+                enabled: Some(true),
+                lan_listen_enabled: Some(true),
+                ..Default::default()
+            })
+            .await
+            .unwrap();
+
+        assert_eq!(
+            out.lan_listener_bind_error.as_deref(),
+            Some("Address already in use (os error 48)"),
+            "facade 必须把 endpoint_info 的 BindFailed reason 透传到 output"
+        );
+        // restart_required 仍然在 lifecycle 路径下被拍 false ——
+        // 不让前端在 bind 失败时还弹 restart banner(那是误导)。
+        assert!(!out.restart_required);
+
+        // 关掉 lan_listen → Disabled → endpoint = Stopped → 字段回 None
+        let out2 = facade
+            .update_settings(UpdateMobileSyncSettingsInput {
+                lan_listen_enabled: Some(false),
+                ..Default::default()
+            })
+            .await
+            .unwrap();
+        assert!(
+            out2.lan_listener_bind_error.is_none(),
+            "Disabled 目标下 endpoint=Stopped, bind_error 必须清零"
+        );
+    }
+
+    #[tokio::test]
+    async fn update_settings_with_lifecycle_zero_port_falls_back_to_default() {
+        // 深度防御:若 settings 文件被外部写入 lan_port=Some(0)(绕过 use case
+        // 校验),facade 把它当 None 处理, target 走默认 42720。
+        let lifecycle = Arc::new(RecordingLanLifecycle::default());
+        let facade = build_facade_with_lifecycle(lifecycle.clone());
+
+        // 注意 lan_port=Some(Some(0)) 会被 use case 拒绝, 这里通过
+        // lan_target_from_settings 单元函数直接验证 fallback 即可。
+        // (use case 边界已被 update_settings.rs::rejects_zero_port 钉死)
+        let synthetic_out = UpdateMobileSyncSettingsOutput {
+            enabled: true,
+            lan_listen_enabled: true,
+            lan_advertise_ip: None,
+            lan_port: Some(0),
+            restart_required: false,
+            lan_listener_bind_error: None,
+        };
+        let target = lan_target_from_settings(&synthetic_out);
+        assert_eq!(
+            target,
+            MobileLanTarget::Enabled { port: 42720 },
+            "Some(0) 必须 fallback 到默认端口,不能透传给 adapter"
+        );
+
+        // 静默 unused —— facade 在本测试不被实际调用, 只是为了证明 helper
+        // 是 facade 模块内可见且可单元测试的。
+        let _ = facade;
+    }
+
+    #[tokio::test]
+    async fn update_settings_without_lifecycle_preserves_legacy_restart_required() {
+        // 没装 lifecycle port → 走 build_facade() 路径, 不调 apply,
+        // restart_required 保持 use case 原始判定(改了字段 → true)。
+        // 与 settings_round_trip_through_facade 互补:那个测试覆盖
+        // 同值不写盘 → restart_required = false 的现有行为,本测试
+        // 钉死"实际变化 → 仍为 true"的现有行为不退化。
+        let facade = build_facade();
+        let upd = facade
+            .update_settings(UpdateMobileSyncSettingsInput {
+                enabled: Some(true),
+                ..Default::default()
+            })
+            .await
+            .unwrap();
+        assert!(upd.enabled);
+        assert!(
+            upd.restart_required,
+            "no-lifecycle 装配下保留旧的 restart_required 语义"
+        );
     }
 }

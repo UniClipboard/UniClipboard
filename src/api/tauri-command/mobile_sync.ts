@@ -156,8 +156,33 @@ export interface UpdateMobileSyncSettingsResult {
   lanListenEnabled: boolean
   lanAdvertiseIp: string | null
   lanPort: number | null
-  /** True iff any field actually changed; same-value saves are no-ops. */
+  /**
+   * Wire-compatible legacy flag.
+   *
+   * GUI daemon assembly wires an in-process `MobileLanLifecyclePort` adapter
+   * that applies the new settings immediately (start / stop / rebind the
+   * LAN listener). On that path this field is **always `false`** — the
+   * frontend should never display a restart banner for mobile-sync settings.
+   *
+   * CLI fallback (no resident daemon) preserves the older semantics: `true`
+   * iff any field actually changed, `false` for same-value saves. Useful
+   * only if a non-GUI client surfaces a "restart pending" hint.
+   */
   restartRequired: boolean
+  /**
+   * Reason the LAN listener failed to bind after the settings landed on disk.
+   *
+   * Populated by the GUI daemon path: the `MobileLanLifecyclePort` adapter
+   * applied the new target and reported `BindFailed{reason}` (port in use,
+   * permission denied, IP not assignable, etc.). Frontend should treat a
+   * non-null value as a blocking error before letting the user proceed to
+   * flows that depend on a live listener — typically the one-tap
+   * "enable mobile sync → register device" onboarding.
+   *
+   * `null` means bind succeeded, the target was `Disabled`, or the assembly
+   * has no lifecycle port wired (CLI fallback / unit tests).
+   */
+  lanListenerBindError: string | null
 }
 
 export interface LanInterfaceView {

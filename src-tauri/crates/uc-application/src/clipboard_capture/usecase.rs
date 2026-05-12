@@ -25,7 +25,7 @@ use std::time::SystemTime;
 use anyhow::Result;
 use futures::future::try_join_all;
 use tracing::{debug, info, info_span, Instrument};
-use uc_observability::stages;
+use uc_observability::{stages, FlowId};
 
 use uc_core::ids::{EntryId, EventId};
 use uc_core::ports::clipboard::{RepresentationCachePort, SpoolQueuePort, SpoolRequest};
@@ -97,9 +97,22 @@ impl CaptureClipboardUseCase {
     ) -> Result<Option<EntryId>> {
         // Root span: all pipeline stages are children of clipboard.flow.
         // The origin field distinguishes local capture from remote push.
+        //
+        // 跨设备可观测性(PR2):root span 必须携带 `flow.id` + `flow.kind`,这是
+        // Sentry 上把"A 端发送 → B 端接收"两条 trace join 在一起的钩子。PR2
+        // 阶段 flow_id 仅在本机生成,跨设备传播由 PR3 在协议层落地(届时
+        // inbound 路径会用 wire 上带过来的 flow_id 替换本地生成的)。`peer.device_id`
+        // 和 `clipboard.entry_id` 在 capture 入口尚未确定,声明为
+        // `tracing::field::Empty` 占位,后续 stage 用 `Span::current().record(...)`
+        // 回填。
+        let flow_id = FlowId::generate();
         let root = info_span!(
             "clipboard.flow",
+            flow.id = %flow_id,
+            flow.kind = "clipboard_capture",
             origin = ?origin,
+            peer.device_id = tracing::field::Empty,
+            clipboard.entry_id = tracing::field::Empty,
         );
 
         async move {
@@ -216,6 +229,13 @@ impl CaptureClipboardUseCase {
                 let new_selection = ClipboardSelectionDecision::new(entry_id.clone(), selection);
                 (entry_id, new_selection)
             };
+
+            // 回填 root span 的 `clipboard.entry_id` 占位 —— 让后续所有
+            // child span / event 都能在 Sentry trace 视图上 join 到同一个
+            // 业务实体。`Span::current()` 在 `.instrument(root)` 的 async
+            // 上下文里 == root span,record 直接生效。
+            tracing::Span::current()
+                .record("clipboard.entry_id", tracing::field::display(&entry_id));
 
             // 5. Spool large representations to disk BEFORE creating the entry.
             //

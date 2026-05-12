@@ -112,14 +112,39 @@ pub struct InvalidAckByte(pub u8);
 /// [`ClipboardHeader`](uc_core::ports::ClipboardHeader). Kept separate from
 /// the core type so `uc-core` stays free of `serde` derives on port
 /// structs (see `uc-infra/AGENTS.md` §4.2).
+///
+/// **Versioning.** Postcard is positional/non-tagged, so a new field cannot
+/// be added in-place without breaking the wire. We keep two concrete wire
+/// structs (`WireHeaderV1` + `WireHeaderV2`) and dispatch decode on the
+/// `version` byte (postcard encodes `u8 < 128` as a single byte, so peeking
+/// `bytes[0]` is sufficient). Encode always emits v2; this is the
+/// one-way break we accept in the alpha-stage rollout:
+///
+///   - **new sender → old receiver**: rejected with `UnsupportedVersion`.
+///   - **old sender → new receiver**: decoded via `WireHeaderV1`, receiver
+///     fills `flow_id = None`; downstream span is tagged `flow.synthetic`.
 #[derive(Serialize, Deserialize, Debug)]
-struct WireHeader {
+struct WireHeaderV1 {
     version: u8,
     content_hash: String,
     captured_at_ms: i64,
     origin_device_id: String,
     origin_device_name: String,
     payload_version: u8,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+struct WireHeaderV2 {
+    version: u8,
+    content_hash: String,
+    captured_at_ms: i64,
+    origin_device_id: String,
+    origin_device_name: String,
+    payload_version: u8,
+    /// Cross-device trace correlation id (UUIDv7 as string). `None` only
+    /// during construction from older in-memory paths; encoded as the
+    /// postcard `Option` discriminant (single byte `0x00` when None).
+    flow_id: Option<String>,
 }
 
 // ============================================================================
@@ -161,14 +186,18 @@ pub enum WireDecodeError {
 /// Serialize a [`ClipboardHeader`] for the wire. Does not include the
 /// magic byte or length prefix — callers typically run this once and hand
 /// the bytes (plus the payload) to [`write_frame`].
+///
+/// 永远以 v2 schema 编码;v1 仅作为兼容老对端的*解码*入口存在(见
+/// [`decode_header`])。
 pub fn encode_header(header: &ClipboardHeader) -> Result<Vec<u8>, WireEncodeError> {
-    let wire = WireHeader {
-        version: header.version,
+    let wire = WireHeaderV2 {
+        version: ClipboardHeader::CURRENT_VERSION,
         content_hash: header.content_hash.clone(),
         captured_at_ms: header.captured_at_ms,
         origin_device_id: header.origin_device_id.clone(),
         origin_device_name: header.origin_device_name.clone(),
         payload_version: header.payload_version,
+        flow_id: header.flow_id.clone(),
     };
     let bytes = postcard::to_allocvec(&wire)?;
     if bytes.len() > MAX_HEADER_SIZE as usize {
@@ -180,24 +209,47 @@ pub fn encode_header(header: &ClipboardHeader) -> Result<Vec<u8>, WireEncodeErro
     Ok(bytes)
 }
 
-/// Deserialize a header from its postcard byte form, then enforce this
-/// codec's version contract.
+/// Deserialize a header from its postcard byte form. Dispatches on the
+/// leading version byte so old v1 senders are decoded with `flow_id =
+/// None`; anything outside the supported set (`{1, 2}`) is rejected with
+/// `UnsupportedVersion`.
 pub fn decode_header(bytes: &[u8]) -> Result<ClipboardHeader, WireDecodeError> {
-    let wire: WireHeader = postcard::from_bytes(bytes)?;
-    if wire.version != ClipboardHeader::CURRENT_VERSION {
-        return Err(WireDecodeError::UnsupportedVersion {
-            got: wire.version,
+    // postcard 把 u8(<128) 编码成 1 字节,直接 peek 首字节就拿到 version。
+    // 走 `Option<u8>::ok_or` 把"空 bytes"映射到 postcard 的 short-read 错误,
+    // 沿用现有错误分支,不引入新变体。
+    let version = bytes.first().copied().ok_or(WireDecodeError::Postcard(
+        postcard::Error::DeserializeUnexpectedEnd,
+    ))?;
+    match version {
+        1 => {
+            let wire: WireHeaderV1 = postcard::from_bytes(bytes)?;
+            Ok(ClipboardHeader {
+                version: wire.version,
+                content_hash: wire.content_hash,
+                captured_at_ms: wire.captured_at_ms,
+                origin_device_id: wire.origin_device_id,
+                origin_device_name: wire.origin_device_name,
+                payload_version: wire.payload_version,
+                flow_id: None,
+            })
+        }
+        2 => {
+            let wire: WireHeaderV2 = postcard::from_bytes(bytes)?;
+            Ok(ClipboardHeader {
+                version: wire.version,
+                content_hash: wire.content_hash,
+                captured_at_ms: wire.captured_at_ms,
+                origin_device_id: wire.origin_device_id,
+                origin_device_name: wire.origin_device_name,
+                payload_version: wire.payload_version,
+                flow_id: wire.flow_id,
+            })
+        }
+        other => Err(WireDecodeError::UnsupportedVersion {
+            got: other,
             expected: ClipboardHeader::CURRENT_VERSION,
-        });
+        }),
     }
-    Ok(ClipboardHeader {
-        version: wire.version,
-        content_hash: wire.content_hash,
-        captured_at_ms: wire.captured_at_ms,
-        origin_device_id: wire.origin_device_id,
-        origin_device_name: wire.origin_device_name,
-        payload_version: wire.payload_version,
-    })
 }
 
 // ============================================================================
@@ -314,6 +366,7 @@ mod tests {
             origin_device_id: "dev-alpha".to_string(),
             origin_device_name: "Alpha Laptop".to_string(),
             payload_version: 3,
+            flow_id: Some("01941b00-0000-7000-8000-000000000001".to_string()),
         }
     }
 
@@ -455,13 +508,14 @@ mod tests {
     /// as the current schema.
     #[tokio::test]
     async fn decode_rejects_future_header_version() {
-        let future = WireHeader {
+        let future = WireHeaderV2 {
             version: ClipboardHeader::CURRENT_VERSION + 1,
             content_hash: "stub".to_string(),
             captured_at_ms: 0,
             origin_device_id: "d".to_string(),
             origin_device_name: "n".to_string(),
             payload_version: 3,
+            flow_id: None,
         };
         let bytes = postcard::to_allocvec(&future).unwrap();
 
@@ -472,6 +526,46 @@ mod tests {
             }
             other => panic!("expected UnsupportedVersion, got {other:?}"),
         }
+    }
+
+    /// 7. Backward compatibility — a v1-shaped wire header (without
+    /// `flow_id`) decodes successfully into a `ClipboardHeader` whose
+    /// `flow_id` is `None`. This is the path that lets older peers keep
+    /// talking to a v2 receiver during the rollout window; the receiver
+    /// tags the resulting span with `flow.synthetic = true` and generates
+    /// its own local flow id.
+    #[tokio::test]
+    async fn decode_v1_yields_none_flow_id() {
+        let v1 = WireHeaderV1 {
+            version: 1,
+            content_hash: "old".to_string(),
+            captured_at_ms: 17,
+            origin_device_id: "legacy-peer".to_string(),
+            origin_device_name: "Legacy".to_string(),
+            payload_version: 3,
+        };
+        let bytes = postcard::to_allocvec(&v1).unwrap();
+
+        let decoded = decode_header(&bytes).expect("v1 frame must decode on v2 receiver");
+        assert_eq!(decoded.version, 1);
+        assert_eq!(decoded.content_hash, "old");
+        assert_eq!(decoded.origin_device_id, "legacy-peer");
+        assert!(
+            decoded.flow_id.is_none(),
+            "v1 frames have no flow_id; receiver must fall back to synthetic"
+        );
+    }
+
+    /// 8. v2 round-trip — encode a header with a flow_id and confirm it
+    /// survives the decode boundary intact (i.e. cross-device correlation
+    /// can rely on the field).
+    #[tokio::test]
+    async fn v2_round_trip_preserves_flow_id() {
+        let header = sample_header();
+        let bytes = encode_header(&header).unwrap();
+        let decoded = decode_header(&bytes).unwrap();
+        assert_eq!(decoded.flow_id, header.flow_id);
+        assert_eq!(decoded.version, ClipboardHeader::CURRENT_VERSION);
     }
 
     /// Ack codec sanity — the three defined variants round-trip through

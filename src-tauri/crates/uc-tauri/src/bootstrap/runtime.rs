@@ -40,7 +40,7 @@
 use std::sync::{Arc, RwLock};
 
 use uc_application::deps::AppDeps;
-use uc_application::facade::{AppFacade, AppPaths, HostEventEmitterPort};
+use uc_application::facade::{AppFacade, AppPaths, FileTransferFacade, HostEventEmitterPort};
 use uc_bootstrap::TaskRegistry;
 use uc_core::ports::SettingsPort;
 use uc_desktop::DesktopRuntime;
@@ -64,11 +64,13 @@ impl TauriAppRuntime {
         clipboard_write_coordinator: Arc<
             uc_application::clipboard_write::ClipboardWriteCoordinator,
         >,
+        file_transfer_facade: Arc<FileTransferFacade>,
     ) -> Self {
         Self::from_desktop(Arc::new(DesktopRuntime::new(
             deps,
             storage_paths,
             clipboard_write_coordinator,
+            file_transfer_facade,
         )))
     }
 
@@ -81,12 +83,14 @@ impl TauriAppRuntime {
         clipboard_write_coordinator: Arc<
             uc_application::clipboard_write::ClipboardWriteCoordinator,
         >,
+        file_transfer_facade: Arc<FileTransferFacade>,
     ) -> Self {
         Self::from_desktop(Arc::new(DesktopRuntime::with_setup(
             deps,
             storage_paths,
             event_emitter,
             clipboard_write_coordinator,
+            file_transfer_facade,
         )))
     }
 
@@ -144,10 +148,6 @@ impl TauriAppRuntime {
 
     pub fn event_emitter(&self) -> Arc<dyn HostEventEmitterPort> {
         self.desktop.event_emitter()
-    }
-
-    pub fn set_event_emitter(&self, emitter: Arc<dyn HostEventEmitterPort>) {
-        self.desktop.set_event_emitter(emitter);
     }
 
     pub fn device_id(&self) -> String {

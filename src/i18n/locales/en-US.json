@@ -97,6 +97,37 @@
         "themeColor": {
           "title": "Theme color"
         },
+        "themePreview": {
+          "title": "Theme",
+          "lightLabel": "Light",
+          "darkLabel": "Dark",
+          "followSystem": "Follow system",
+          "setAsLight": "Switch to light",
+          "setAsDark": "Switch to dark",
+          "currentLight": "Light",
+          "currentDark": "Dark"
+        },
+        "lightTheme": {
+          "title": "Light theme",
+          "preset": "Preset",
+          "accent": "Accent",
+          "background": "Background",
+          "foreground": "Foreground",
+          "border": "Border"
+        },
+        "darkTheme": {
+          "title": "Dark theme",
+          "preset": "Preset",
+          "accent": "Accent",
+          "background": "Background",
+          "foreground": "Foreground",
+          "border": "Border"
+        },
+        "tokenPicker": {
+          "openPicker": "Pick color",
+          "reset": "Reset to preset",
+          "modified": "Custom"
+        },
         "zoom": {
           "title": "Interface Scale",
           "description": "Scale applies to both the main window and quick panel, and stays in sync with the shortcuts.",
@@ -212,8 +243,8 @@
               "title": "First-pairing rendezvous",
               "description": "Pairing a new device still requires reaching rendezvous.uniclipboard.app to exchange NodeIds. Once paired, day-to-day sync no longer uses rendezvous."
             },
-            "otlp": {
-              "title": "OTLP telemetry",
+            "telemetry": {
+              "title": "Telemetry",
               "description": "Telemetry is controlled independently by General → Telemetry, not by LAN-only Mode. To disable it, go to the General section."
             },
             "pkarr": {
@@ -715,6 +746,17 @@
       "statusBar": {
         "bindFailed": "Failed to start listener: {{reason}}"
       },
+      "enableConfirm": {
+        "title": "Enable mobile sync",
+        "body": "Mobile sync will turn on and start listening on port {{port}} over LAN HTTP. Use only on trusted networks — anyone on the same LAN with the credentials can read/write this clipboard.",
+        "confirm": "Enable and continue",
+        "enabling": "Enabling…",
+        "cancel": "Cancel"
+      },
+      "feedback": {
+        "applied": "Applied immediately",
+        "applyFailed": "Failed to apply settings: {{message}}"
+      },
       "settingsSheet": {
         "title": "Mobile sync configuration",
         "description": "Adjust the switches and network parameters that let mobile devices reach this machine over LAN",
@@ -746,11 +788,6 @@
           "body": "Anyone on this LAN can read or write your clipboard once they obtain this machine's URL and a paired credential. Only enable on trusted Wi-Fi.",
           "confirm": "I understand",
           "cancel": "Cancel"
-        },
-        "restartRequired": {
-          "message": "Changes take effect after the daemon is restarted",
-          "restartButton": "Restart now",
-          "dismissAriaLabel": "Dismiss restart notice"
         },
         "disabledHint": "Enable the LAN listener before adding a device"
       },

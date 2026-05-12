@@ -1,24 +1,32 @@
-//! `UpdateMobileSyncSettingsUseCase` —— 持久化用户对移动端同步设置的修改。
+//! # 为什么需要这个 use case
 //!
-//! v1 仅支持修改 `enabled` 字段（其它字段都是常量推导，详见 SPEC §13 与
-//! `get_settings.rs` 的模块文档）。修改后由调用方决定何时重启 daemon —— use
-//! case 自身不触发 daemon 重启，只在 [`UpdateMobileSyncSettingsOutput`] 上
-//! 用 `restart_required` 标志告知"这次改动需要重启才能生效"。
+//! 持久化用户对"移动端同步"四个字段(enabled / lan_listen_enabled /
+//! lan_advertise_ip / lan_port)的修改 —— 单点把 patch 翻译成"落盘 Settings
+//! 的具体 mutation",让 facade 层不直接接触 [`SettingsPort`] 的 load/save
+//! 节奏与原子性细节。
 //!
-//! 三个细节值得记下来：
+//! # 输出语义
+//!
+//! 返回值 `restart_required` 是个 **wire-兼容历史字段** —— 在 lifecycle
+//! port 引入前(2026-05-11 之前),它告诉调用方"这次改动要等下一次 daemon
+//! 重启才生效"。现在装入 [`MobileLanLifecyclePort`] 的 facade 路径会在
+//! 写盘后立即即时生效 + 把这个字段拍回 false,前端 UI 不再弹"请重启"。
+//! 没装 lifecycle port 的装配(CLI fallback / 单测)仍按"有变化 → true /
+//! 同值 → false"的旧语义返回,保留向后兼容。
+//!
+//! # 实现细节
 //!
 //! 1. **load → mutate → save 的原子性是 SettingsPort 适配器的职责**。本
-//!    use case 不持锁也不重读校验：现有 `SettingsPort` 实现是单写者
-//!    (daemon 进程独占)，并发竞态非问题。如果将来引入 multi-writer，需要
-//!    在 SettingsPort 层提供 CAS 或事务能力，而不是在 use case 里"再 load
+//!    use case 不持锁也不重读校验:现有 `SettingsPort` 实现是单写者
+//!    (daemon 进程独占), 并发竞态非问题。如果将来引入 multi-writer, 需要
+//!    在 SettingsPort 层提供 CAS 或事务能力,而不是在 use case 里"再 load
 //!    一遍"做乐观比较 —— 那只会被认为安全实则有 ABA。
 //!
-//! 2. **`restart_required` 的判定一律基于"有效变更"**。即只有 `enabled`
-//!    实际从 X→¬X 才置 `true`；否则即便用户重复点了同一个值也不要求重启
-//!    —— 否则前端会在所有等幂操作后弹"请重启"。
+//! 2. **`restart_required` 的判定一律基于"有效变更"**。即任一字段实际
+//!    发生变化才置 `true`; 同值不写盘且返回 `false`,避免幂等操作触发
+//!    无意义的 restart 提示。
 //!
-//! 3. **没有 `dry_run` 选项**：v1 设置项只有一个开关，UI 直接保存即可，
-//!    无需先预演。
+//! 3. **没有 `dry_run` 选项**:设置项简单, UI 直接保存即可,无需先预演。
 
 use std::sync::Arc;
 
@@ -55,9 +63,25 @@ pub struct UpdateMobileSyncSettingsOutput {
     pub lan_advertise_ip: Option<String>,
     /// 落盘后的 `lan_port` 值。
     pub lan_port: Option<u16>,
-    /// 本次保存是否带来了"需要重启 daemon 才能生效"的影响。
-    /// 只要任一字段实际发生变化即为 `true`;同值重复保存为 `false`。
+    /// Wire-兼容历史字段。在 lifecycle port 引入前,这个标志告诉调用方
+    /// "这次改动要等下一次 daemon 重启才生效"; 引入后,装入
+    /// [`uc_core::ports::MobileLanLifecyclePort`] 的 facade 路径会即时
+    /// 生效并把此字段拍回 `false`。无 lifecycle 装配(CLI fallback / 单测)
+    /// 保留旧语义:任一字段实际变化 → `true`,同值不写盘 → `false`。
     pub restart_required: bool,
+    /// 即时生效路径下 bind 失败的原因。
+    ///
+    /// 装入 lifecycle port 的 facade 路径会在写盘成功后调
+    /// `lifecycle.apply(target)`;若 adapter 把新端口绑失败(端口占用 /
+    /// 权限 / IP 不可分配等),facade 从 `MobileSyncEndpointInfoPort` 读出
+    /// `BindFailed{reason}` 并把 reason 透传到此字段。
+    ///
+    /// 字段语义:
+    /// - `Some(reason)` —— 落盘成功但 listener 没起来,UI 应当告知用户
+    ///   原因并阻断后续依赖 listener 的动作(典型:首次添加移动设备)。
+    /// - `None` —— 要么 lifecycle 没装(use case 自身永远填 None,由
+    ///   facade 路径覆写),要么 bind 成功 / 目标本就是 Disabled。
+    pub lan_listener_bind_error: Option<String>,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -143,6 +167,10 @@ impl UpdateMobileSyncSettingsUseCase {
             lan_advertise_ip: target_lan_advertise_ip,
             lan_port: target_lan_port,
             restart_required,
+            // use case 不知道 lifecycle 是否被装配,更不知道 apply 后的
+            // 端口状态。这个字段由 facade 路径在调完 lifecycle.apply 后
+            // 从 MobileSyncEndpointInfoPort 读出来覆写。
+            lan_listener_bind_error: None,
         })
     }
 }

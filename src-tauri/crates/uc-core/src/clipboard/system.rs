@@ -87,8 +87,16 @@ impl ObservedClipboardRepresentation {
     }
 }
 
-pub(crate) fn is_plain_text_representation(rep: &ObservedClipboardRepresentation) -> bool {
-    if let Some(mime) = rep.mime.as_ref() {
+/// 判断一组 (mime, format_id) 是否表示「纯文本」（`text/plain` 家族）。
+///
+/// 该判断是领域规则，跨表示类型（`Observed*` / `Persisted*`）共享语义：
+/// - `text/plain` 与其参数化变体（`text/plain; charset=utf-8` 等）
+/// - macOS UTI `public.utf8-plain-text`
+/// - format_id 为 `text` 的兜底分支（无 mime 元信息时）
+///
+/// 不包含 `text/html` / `text/rtf` / `text/markdown` 等富文本子类型。
+pub fn is_plain_text_mime_or_format(mime: Option<&MimeType>, format_id: &FormatId) -> bool {
+    if let Some(mime) = mime {
         let mime_str = mime.as_str();
         if mime_str.eq_ignore_ascii_case("text/plain")
             || mime_str.to_ascii_lowercase().starts_with("text/plain;")
@@ -97,7 +105,11 @@ pub(crate) fn is_plain_text_representation(rep: &ObservedClipboardRepresentation
             return true;
         }
     }
-    rep.format_id.eq_ignore_ascii_case("text")
+    format_id.eq_ignore_ascii_case("text")
+}
+
+pub(crate) fn is_plain_text_representation(rep: &ObservedClipboardRepresentation) -> bool {
+    is_plain_text_mime_or_format(rep.mime.as_ref(), &rep.format_id)
 }
 
 fn is_text_representation(rep: &ObservedClipboardRepresentation) -> bool {

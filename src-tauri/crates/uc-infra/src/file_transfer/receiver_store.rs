@@ -4,8 +4,7 @@ use diesel::Connection;
 
 use crate::db::ports::DbExecutor;
 use crate::file_transfer::event_store::sqlite::{append_event, load_events};
-use crate::file_transfer::projection::sqlite::{apply_event, seed_receiver_context};
-use crate::file_transfer::ReceiverTransferContext;
+use crate::file_transfer::projection::sqlite::apply_event;
 use uc_core::file_transfer::{FileTransferEvent, FileTransferEventStorePort};
 
 /// Receiver-side durable store that keeps event log and projection updates in one SQLite transaction.
@@ -16,14 +15,6 @@ pub struct SqliteReceiverFileTransferStore<E> {
 impl<E> SqliteReceiverFileTransferStore<E> {
     pub fn new(executor: E) -> Self {
         Self { executor }
-    }
-}
-
-impl<E: DbExecutor> SqliteReceiverFileTransferStore<E> {
-    pub async fn seed_receiver_context(&self, ctx: ReceiverTransferContext) -> Result<()> {
-        self.executor.run(move |conn| {
-            conn.transaction::<_, anyhow::Error, _>(|conn| seed_receiver_context(conn, &ctx))
-        })
     }
 }
 
@@ -53,6 +44,7 @@ mod tests {
     use crate::db::pool::init_db_pool;
     use crate::db::repositories::DieselFileTransferRepository;
     use tempfile::{tempdir, TempDir};
+    use uc_core::ports::file_transfer_repository::PendingInboundTransfer;
     use uc_core::ports::FileTransferRepositoryPort;
     use uc_core::{FileTransferDirection, FileTransferProgress};
 
@@ -70,8 +62,8 @@ mod tests {
         (store, repo, tempdir)
     }
 
-    fn receiver_context() -> ReceiverTransferContext {
-        ReceiverTransferContext {
+    fn pending_transfer() -> PendingInboundTransfer {
+        PendingInboundTransfer {
             transfer_id: "transfer-1".into(),
             entry_id: "entry-1".into(),
             origin_device_id: "device-1".into(),
@@ -84,8 +76,7 @@ mod tests {
     #[tokio::test]
     async fn append_event_and_project_updates_both_event_log_and_projection() {
         let (store, repo, _tempdir) = make_store();
-        store
-            .seed_receiver_context(receiver_context())
+        repo.upsert_pending_transfer(&pending_transfer())
             .await
             .unwrap();
 

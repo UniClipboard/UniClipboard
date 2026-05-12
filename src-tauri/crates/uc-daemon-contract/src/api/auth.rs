@@ -22,6 +22,8 @@ impl fmt::Debug for DaemonConnectionInfo {
     /// # Examples
     ///
     /// ```
+    /// use uc_daemon_contract::api::auth::DaemonConnectionInfo;
+    ///
     /// let info = DaemonConnectionInfo {
     ///     base_url: "http://localhost".into(),
     ///     ws_url: "ws://localhost".into(),

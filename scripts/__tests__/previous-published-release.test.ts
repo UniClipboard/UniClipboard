@@ -86,6 +86,35 @@ describe('selectPreviousPublishedRelease', () => {
     expect(release?.tagName).toBe('v0.3.3')
   })
 
+  it('uses the latest stable release before the target when preparing a stable release', () => {
+    const release = selectPreviousPublishedRelease(
+      [
+        {
+          tagName: 'v0.8.0-alpha.3',
+          isDraft: false,
+          isPrerelease: true,
+          publishedAt: '2026-05-10T10:15:00Z',
+        },
+        {
+          tagName: 'v0.7.2',
+          isDraft: false,
+          isPrerelease: false,
+          publishedAt: '2026-04-30T08:20:00Z',
+        },
+        {
+          tagName: 'v0.7.1',
+          isDraft: false,
+          isPrerelease: false,
+          publishedAt: '2026-04-20T08:20:00Z',
+        },
+      ],
+      '0.8.0'
+    )
+
+    expect(release?.tagName).toBe('v0.7.2')
+    expect(release?.version).toBe('0.7.2')
+  })
+
   it('returns null when no published release exists below the target version', () => {
     const release = selectPreviousPublishedRelease(
       [

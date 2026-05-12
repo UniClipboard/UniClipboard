@@ -59,6 +59,18 @@ export function InvitationCodeInput({
     onChange(cleaned)
   }
 
+  // Strip the `XXXX-XXXX` hyphen on paste so the underlying `<input>`'s
+  // maxLength=8 does not lop off the final character of a 9-char clipboard
+  // payload before our onChange filter runs. Passing this transformer also
+  // forces input-otp to route paste through JS (preventDefault + manual
+  // setValue) on non-iOS browsers, sidestepping the maxLength truncation.
+  const handlePaste = (text: string) =>
+    text
+      .toUpperCase()
+      .split('')
+      .filter(c => ALLOWED_CHARS.test(c))
+      .join('')
+
   const finalSlotClass = cn(slotClass, invalid && invalidSlotClass)
 
   return (
@@ -66,6 +78,7 @@ export function InvitationCodeInput({
       maxLength={INVITATION_CODE_LENGTH}
       value={value}
       onChange={handleChange}
+      pasteTransformer={handlePaste}
       disabled={disabled}
       aria-invalid={invalid || undefined}
       containerClassName={cn('justify-center gap-3', className)}

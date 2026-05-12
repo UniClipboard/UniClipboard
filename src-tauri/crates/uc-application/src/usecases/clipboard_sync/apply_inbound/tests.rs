@@ -4,6 +4,11 @@ use anyhow::Result;
 use async_trait::async_trait;
 use bytes::Bytes;
 use mockall::predicate::*;
+use tracing::field::{Field, Visit};
+use tracing::Subscriber;
+use tracing_subscriber::layer::{Context, Layer};
+use tracing_subscriber::prelude::*;
+use tracing_subscriber::registry::LookupSpan;
 
 use crate::facade::host_event::{
     ClipboardHostEvent, ClipboardOriginKind, EmitError, HostEvent, HostEventEmitterPort,
@@ -13,6 +18,7 @@ use uc_core::ids::{DeviceId, EntryId, FormatId, RepresentationId};
 use uc_core::ports::blob::{BlobDigest, BlobTicket, PlaintextHash};
 use uc_core::ports::{ClipboardEntryRepositoryPort, PeerAddressError};
 use uc_core::{MimeType, ObservedClipboardRepresentation, SystemClipboardSnapshot};
+use uc_observability::FlowId;
 
 use crate::usecases::clipboard_sync::payload_codec::{
     encode_snapshot_to_v3_bytes, encode_snapshot_with_blob_refs_to_v3_bytes, V3BlobRef,
@@ -24,6 +30,43 @@ use super::usecase::ApplyInboundClipboardUseCase;
 use super::{ApplyInboundError, ApplyInboundInput, ApplyOutcome};
 
 // ── mockall: the 3 collaborator surfaces ────────────────────────────
+
+#[derive(Clone)]
+struct FlowIdRecordLayer {
+    records: Arc<Mutex<Vec<String>>>,
+}
+
+impl<S> Layer<S> for FlowIdRecordLayer
+where
+    S: Subscriber,
+    S: for<'lookup> LookupSpan<'lookup>,
+{
+    fn on_record(
+        &self,
+        _span: &tracing::Id,
+        values: &tracing::span::Record<'_>,
+        _ctx: Context<'_, S>,
+    ) {
+        let mut visitor = FlowIdVisitor::default();
+        values.record(&mut visitor);
+        if let Some(flow_id) = visitor.flow_id {
+            self.records.lock().unwrap().push(flow_id);
+        }
+    }
+}
+
+#[derive(Default)]
+struct FlowIdVisitor {
+    flow_id: Option<String>,
+}
+
+impl Visit for FlowIdVisitor {
+    fn record_debug(&mut self, field: &Field, value: &dyn std::fmt::Debug) {
+        if field.name() == "flow.id" {
+            self.flow_id = Some(format!("{value:?}"));
+        }
+    }
+}
 
 mockall::mock! {
     pub EntryRepo {}
@@ -110,6 +153,20 @@ fn fixture_input(text: &str) -> (ApplyInboundInput, String) {
             from_device: DeviceId::new("peer-x"),
             content_hash: content_hash.clone(),
             plaintext,
+            flow_id: None,
+        },
+        content_hash,
+    )
+}
+
+fn fixture_input_from_snapshot(snapshot: SystemClipboardSnapshot) -> (ApplyInboundInput, String) {
+    let (plaintext, content_hash) = encode_snapshot_to_v3_bytes(&snapshot).unwrap();
+    (
+        ApplyInboundInput {
+            from_device: DeviceId::new("peer-x"),
+            content_hash: content_hash.clone(),
+            plaintext,
+            flow_id: None,
         },
         content_hash,
     )
@@ -234,6 +291,187 @@ async fn duplicate_skipped_when_hash_already_local() {
     );
 }
 
+#[tokio::test]
+async fn rapid_duplicate_skipped_even_when_repo_has_not_caught_up() {
+    let (input, hash) = fixture_input("rapid-same");
+
+    let mut repo = MockEntryRepo::new();
+    repo.expect_find_entry_id_by_snapshot_hash()
+        .with(eq(hash.clone()))
+        .times(2)
+        .returning(|_| Ok(None));
+
+    let mut capture = MockCapture::new();
+    capture
+        .expect_capture()
+        .times(1)
+        .returning(|_, _| Ok(Some(EntryId::from("entry-first"))));
+
+    let mut write = MockWrite::new();
+    write.expect_write().times(1).returning(|_| Ok(()));
+
+    let uc = build(repo, capture, write);
+    let first = uc
+        .execute(input.clone())
+        .await
+        .expect("first rapid inbound applies");
+    assert_eq!(
+        first,
+        ApplyOutcome::Applied {
+            entry_id: EntryId::from("entry-first")
+        }
+    );
+
+    let second = uc
+        .execute(input)
+        .await
+        .expect("second rapid inbound is filtered");
+    assert_eq!(
+        second,
+        ApplyOutcome::DuplicateSkipped {
+            content_hash: hash,
+            existing_entry_id: EntryId::from("entry-first"),
+        }
+    );
+}
+
+#[tokio::test]
+async fn visible_duplicate_skipped_across_channel_representation_expansion() {
+    let visible_text = b"same-ui".to_vec();
+    let first_snapshot = SystemClipboardSnapshot {
+        ts_ms: 1_700_000_000_000,
+        representations: vec![ObservedClipboardRepresentation::new(
+            RepresentationId::new(),
+            FormatId::from("text"),
+            Some(MimeType("text/plain".to_string())),
+            visible_text.clone(),
+        )],
+    };
+    let second_snapshot = SystemClipboardSnapshot {
+        ts_ms: 1_700_000_000_250,
+        representations: vec![
+            ObservedClipboardRepresentation::new(
+                RepresentationId::new(),
+                FormatId::from("text"),
+                Some(MimeType("text/plain".to_string())),
+                visible_text.clone(),
+            ),
+            ObservedClipboardRepresentation::new(
+                RepresentationId::new(),
+                FormatId::from("public.utf8-plain-text"),
+                None,
+                visible_text.clone(),
+            ),
+            ObservedClipboardRepresentation::new(
+                RepresentationId::new(),
+                FormatId::from("NSStringPboardType"),
+                None,
+                visible_text,
+            ),
+        ],
+    };
+    let (first_input, first_hash) = fixture_input_from_snapshot(first_snapshot);
+    let (second_input, second_hash) = fixture_input_from_snapshot(second_snapshot);
+    assert_ne!(first_hash, second_hash);
+
+    let mut repo = MockEntryRepo::new();
+    repo.expect_find_entry_id_by_snapshot_hash()
+        .times(2)
+        .returning(|_| Ok(None));
+
+    let mut capture = MockCapture::new();
+    capture
+        .expect_capture()
+        .times(1)
+        .returning(|_, _| Ok(Some(EntryId::from("entry-visible"))));
+
+    let mut write = MockWrite::new();
+    write.expect_write().times(1).returning(|_| Ok(()));
+
+    let uc = build(repo, capture, write);
+    let first = uc
+        .execute(first_input)
+        .await
+        .expect("first visible content applies");
+    assert_eq!(
+        first,
+        ApplyOutcome::Applied {
+            entry_id: EntryId::from("entry-visible")
+        }
+    );
+
+    tokio::time::sleep(std::time::Duration::from_millis(250)).await;
+
+    let second = uc
+        .execute(second_input)
+        .await
+        .expect("expanded visible duplicate is filtered");
+    assert_eq!(
+        second,
+        ApplyOutcome::DuplicateSkipped {
+            content_hash: second_hash,
+            existing_entry_id: EntryId::from("entry-visible"),
+        }
+    );
+}
+
+#[tokio::test]
+async fn visible_duplicate_window_expires() {
+    let first_snapshot = SystemClipboardSnapshot {
+        ts_ms: 1_700_000_000_000,
+        representations: vec![ObservedClipboardRepresentation::new(
+            RepresentationId::new(),
+            FormatId::from("text"),
+            Some(MimeType("text/plain".to_string())),
+            b"expires".to_vec(),
+        )],
+    };
+    let second_snapshot = SystemClipboardSnapshot {
+        ts_ms: 1_700_000_003_000,
+        representations: vec![ObservedClipboardRepresentation::new(
+            RepresentationId::new(),
+            FormatId::from("public.utf8-plain-text"),
+            None,
+            b"expires".to_vec(),
+        )],
+    };
+    let (first_input, _) = fixture_input_from_snapshot(first_snapshot);
+    let (second_input, _) = fixture_input_from_snapshot(second_snapshot);
+
+    let mut repo = MockEntryRepo::new();
+    repo.expect_find_entry_id_by_snapshot_hash()
+        .times(2)
+        .returning(|_| Ok(None));
+
+    let mut capture = MockCapture::new();
+    capture
+        .expect_capture()
+        .times(2)
+        .returning(|_, _| Ok(Some(EntryId::new())));
+
+    let mut write = MockWrite::new();
+    write.expect_write().times(2).returning(|_| Ok(()));
+
+    let uc = build(repo, capture, write);
+    assert!(
+        matches!(
+            uc.execute(first_input).await,
+            Ok(ApplyOutcome::Applied { .. })
+        ),
+        "first visible content applies"
+    );
+
+    tokio::time::sleep(std::time::Duration::from_millis(2100)).await;
+
+    assert!(
+        matches!(
+            uc.execute(second_input).await,
+            Ok(ApplyOutcome::Applied { .. })
+        ),
+        "same visible content applies again after the merge window expires"
+    );
+}
+
 /// Verdict 3 — corrupt envelope returns `DecodeFailed`, no panic, no
 /// capture, no write. Daemon's ingest loop keeps running.
 #[tokio::test]
@@ -242,6 +480,7 @@ async fn decode_failed_on_truncated_envelope() {
         from_device: DeviceId::new("peer-broken"),
         content_hash: "blake3v1:00".to_string(),
         plaintext: Bytes::from_static(b"not a valid V3 envelope"),
+        flow_id: None,
     };
 
     let mut repo = MockEntryRepo::new();
@@ -262,6 +501,40 @@ async fn decode_failed_on_truncated_envelope() {
         }
         other => panic!("expected DecodeFailed, got {other:?}"),
     }
+}
+
+#[tokio::test]
+async fn execute_records_incoming_flow_id_on_span() {
+    let incoming_flow_id = FlowId::generate();
+    let input = ApplyInboundInput {
+        from_device: DeviceId::new("peer-flow"),
+        content_hash: "blake3v1:11".to_string(),
+        plaintext: Bytes::from_static(b"not a valid V3 envelope"),
+        flow_id: Some(incoming_flow_id.clone()),
+    };
+
+    let mut repo = MockEntryRepo::new();
+    repo.expect_find_entry_id_by_snapshot_hash()
+        .times(1)
+        .returning(|_| Ok(None));
+    let capture = MockCapture::new();
+    let write = MockWrite::new();
+    let uc = build(repo, capture, write);
+
+    let records = Arc::new(Mutex::new(Vec::new()));
+    let subscriber = tracing_subscriber::registry().with(FlowIdRecordLayer {
+        records: Arc::clone(&records),
+    });
+    let _guard = tracing::subscriber::set_default(subscriber);
+    let _ = uc.execute(input).await;
+
+    let recorded = records.lock().unwrap();
+    assert!(
+        recorded
+            .iter()
+            .any(|value| value == &incoming_flow_id.to_string()),
+        "apply_inbound 应该记录入站 header 传来的 flow_id"
+    );
 }
 
 /// Verdict 4 — capture returns Ok(None) (shouldn't happen for
@@ -298,13 +571,17 @@ async fn capture_returning_none_maps_to_internal_error() {
     }
 }
 
-/// Verdict 5 — write coordinator failure surfaces as
-/// `WriteCoordinator` error. Capture has already committed (the
-/// entry stays in DB; manual cleanup is the daemon operator's job).
-/// Pin this trade-off so a future refactor doesn't silently start
-/// rolling back persistence on write failure.
+/// Verdict 5 — OS clipboard write is best-effort and runs in the
+/// background. Capture has already committed by the time the spawn
+/// happens; a write failure in the spawned task must NOT surface as
+/// an error on the apply_inbound main path —— that would let the
+/// upstream mobile_sync `finalize_transfer_lifecycle` think the
+/// transfer failed, when really it succeeded (bytes are in the entry,
+/// only the system clipboard write didn't take). Pin this trade-off
+/// so a future refactor doesn't re-couple OS write into the critical
+/// path.
 #[tokio::test]
-async fn write_failure_surfaces_after_capture_commits() {
+async fn write_failure_does_not_surface_after_capture_commits() {
     let (input, _) = fixture_input("write-will-fail");
 
     let mut repo = MockEntryRepo::new();
@@ -318,26 +595,34 @@ async fn write_failure_surfaces_after_capture_commits() {
         .times(1)
         .returning(|_, _| Ok(Some(EntryId::from("entry-committed"))));
 
+    // Deterministic synchronization:让 mock 在被调用时 signal,test 主体
+    // await 这个 signal,确保 `.times(1)` 期望在 mock Drop 之前一定满足,
+    // 而不是赌"10ms 内 spawn 跑完了"。
+    let (tx, rx) = tokio::sync::oneshot::channel::<()>();
+    let tx = std::sync::Arc::new(std::sync::Mutex::new(Some(tx)));
+    let tx_for_mock = std::sync::Arc::clone(&tx);
+
     let mut write = MockWrite::new();
-    write
-        .expect_write()
-        .times(1)
-        .returning(|_| Err(anyhow::anyhow!("OS clipboard locked")));
+    write.expect_write().times(1).returning(move |_| {
+        if let Some(tx) = tx_for_mock.lock().unwrap_or_else(|p| p.into_inner()).take() {
+            let _ = tx.send(());
+        }
+        Err(anyhow::anyhow!("OS clipboard locked"))
+    });
 
     let uc = build(repo, capture, write);
-    let err = uc
+    let outcome = uc
         .execute(input)
         .await
-        .expect_err("write failure must surface");
-    match err {
-        ApplyInboundError::WriteCoordinator(msg) => {
-            assert!(
-                msg.contains("OS clipboard locked"),
-                "underlying error should propagate, got: {msg}"
-            );
+        .expect("write failure must NOT surface — capture already committed");
+    match outcome {
+        ApplyOutcome::Applied { entry_id } => {
+            assert_eq!(entry_id.as_ref(), "entry-committed");
         }
-        other => panic!("expected WriteCoordinator, got {other:?}"),
+        other => panic!("expected Applied, got {other:?}"),
     }
+    // 确定性等待 spawn 后台 write 完成(mock 内部 send 信号)。
+    rx.await.expect("background write task must run");
 }
 
 /// Verdict 6 — dedup query failure surfaces as `DedupQuery`. No
@@ -394,6 +679,7 @@ async fn materializes_blob_refs_before_capture_and_write() {
         from_device: DeviceId::new("peer-x"),
         content_hash: content_hash.clone(),
         plaintext,
+        flow_id: None,
     };
 
     let mut repo = MockEntryRepo::new();

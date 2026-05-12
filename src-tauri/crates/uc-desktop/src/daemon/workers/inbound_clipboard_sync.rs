@@ -84,6 +84,7 @@ impl InboundClipboardSyncWorker {
             from_device: notice.from_device.as_str().to_string(),
             content_hash: notice.content_hash,
             plaintext: notice.plaintext,
+            flow_id: notice.flow_id,
         };
         match self.inbound_clipboard.apply_notice(input).await {
             Ok(InboundClipboardApplyOutcome::Applied { entry_id }) => {

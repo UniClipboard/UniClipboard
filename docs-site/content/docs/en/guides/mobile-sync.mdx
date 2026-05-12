@@ -158,14 +158,36 @@ The credentials modal has two paths.
 
 ### Android / other clients
 
-There is **no first-party Android app**. Any SyncClipboard-compatible
-client (e.g. the upstream SyncClipboard Android app) can connect by
-filling in:
+There is **no first-party UniClipboard Android app**. Any
+SyncClipboard-compatible client can connect; today we recommend one
+of:
 
-- **Base URL** — `http://<advertised-IP>:<port>` (e.g.
-  `http://192.168.1.5:42720`).
+- **[sync-clipboard-flutter](https://github.com/bling-yshs/sync-clipboard-flutter)**
+  — a community-maintained Flutter Android client, distributed as a
+  side-loadable APK (no Google Play dependency). It speaks the
+  SyncClipboard protocol out of the box, so the experience is the
+  closest analogue to the iOS Shortcut: enter the base URL, username,
+  and password in the app, and clipboard sync goes both ways.
+  **Currently the recommended option for Android users.**
+- **[Upstream SyncClipboard](https://github.com/Jeric-X/SyncClipboard)**
+  — the protocol's reference implementation. Primarily a desktop
+  client, but Android builds are published in releases. A reasonable
+  pick if you already live in the SyncClipboard ecosystem.
+
+Either way, the connection settings are the same:
+
+- **Base URL / server address** — `http://<advertised-IP>:<port>`
+  (e.g. `http://192.168.1.5:42720`). Note `http://`, not `https://`
+  — there's no TLS in v1.
 - **Username** — printed by the credentials modal / `setup`.
 - **Password** — printed by the credentials modal / `setup` (one-time).
+
+<Callout type="info">
+  `sync-clipboard-flutter` is a community project and is **not** maintained by UniClipboard. Vet the
+  install source, signature, and version compatibility yourself, and file app-side bugs upstream
+  rather than against UniClipboard. UniClipboard only owns the SyncClipboard-protocol surface on the
+  listener side.
+</Callout>
 
 ## Manage paired devices
 

@@ -29,6 +29,7 @@ use uc_observability::analytics::AnalyticsPort;
 
 /// Clipboard-domain ports bundle.
 /// 剪贴板领域端口组。
+#[derive(Clone)]
 pub struct ClipboardPorts {
     pub clipboard: Arc<dyn PlatformClipboardPort>,
     pub system_clipboard: Arc<dyn SystemClipboardPort>,
@@ -47,6 +48,7 @@ pub struct ClipboardPorts {
 
 /// Security-domain ports bundle.
 /// 安全领域端口组。
+#[derive(Clone)]
 pub struct SecurityPorts {
     pub current_profile: Arc<dyn uc_core::ports::security::current_profile::CurrentProfilePort>,
     pub secure_storage: Arc<dyn SecureStoragePort>,
@@ -71,6 +73,7 @@ pub struct SecurityPorts {
 
 /// Device-domain ports bundle (includes pairing).
 /// 设备领域端口组（含配对）。
+#[derive(Clone)]
 pub struct DevicePorts {
     pub device_identity: Arc<dyn DeviceIdentityPort>,
     /// Authoritative repository of admitted space members (phase 4b PR-4：
@@ -80,6 +83,7 @@ pub struct DevicePorts {
 
 /// Storage-domain ports bundle (blobs, thumbnails, file transfer tracking).
 /// 存储领域端口组（Blob、缩略图、文件传输追踪）。
+#[derive(Clone)]
 pub struct StoragePorts {
     pub blob_store: Arc<dyn BlobReaderPort>,
     pub blob_writer: Arc<dyn BlobWriterPort>,
@@ -94,6 +98,7 @@ pub struct StoragePorts {
 /// the index port (query + CRUD), the key derivation port (HMAC term tags),
 /// and the pipeline port (tokenization + text extraction). Keeping them in
 /// one bundle prevents uc-daemon code from constructing these pieces ad hoc.
+#[derive(Clone)]
 pub struct SearchPorts {
     /// Encrypted search index: query, index_entry, remove_entry, rebuild.
     pub search_index: Arc<dyn SearchIndexPort>,
@@ -105,6 +110,7 @@ pub struct SearchPorts {
 
 /// System-domain ports bundle (clock, hash, cache filesystem).
 /// 系统领域端口组（时钟、哈希、缓存文件系统）。
+#[derive(Clone)]
 pub struct SystemPorts {
     pub clock: Arc<dyn ClockPort>,
     pub hash: Arc<dyn ContentHashPort>,
@@ -119,10 +125,11 @@ pub struct SystemPorts {
 /// `AppDeps`。
 ///
 /// `endpoint_info` 是只读视图:daemon LAN listener 启停时通过自己持有的具体
-/// adapter 类型(`SharedEndpointInfo` 旁路)调 `set` / `clear` 来更新这份
-/// 状态;facade 通过本字段读它,看到 daemon 当前真实绑定的 LAN URL。两端
-/// 共享同一 `Arc<InMemoryMobileSyncEndpointInfoAdapter>`,通过 unsizing
-/// coercion 转成 trait object。
+/// adapter 类型 (`Arc<InMemoryMobileSyncEndpointInfoAdapter>` 旁路) 调 `set` /
+/// `clear` 来更新这份状态;facade 通过本字段读它,看到 daemon 当前真实绑定
+/// 的 LAN URL。两端共享同一 `Arc<InMemoryMobileSyncEndpointInfoAdapter>`,通过
+/// unsizing coercion 转成 trait object。
+#[derive(Clone)]
 pub struct MobileSyncPorts {
     pub device_repo: Arc<dyn MobileDeviceRepositoryPort>,
     pub endpoint_info: Arc<dyn MobileSyncEndpointInfoPort>,
@@ -136,6 +143,12 @@ pub struct MobileSyncPorts {
 ///
 /// All dependencies are required - no defaults, no optional fields.
 /// 所有依赖都是必需的 - 无默认值，无可选字段。
+///
+/// `Clone` is derived because every field bottoms out at `Arc<dyn Port>`
+/// or `mpsc::Sender` —— cloning is cheap, and lets process-level callers
+/// hand the same wired set to both `DesktopRuntime` and the in-process
+/// daemon-lifecycle装配 without re-running `wire_dependencies`.
+#[derive(Clone)]
 pub struct AppDeps {
     /// Clipboard-domain ports / 剪贴板领域端口
     pub clipboard: ClipboardPorts,

@@ -38,7 +38,12 @@ describe('useThemeSync', () => {
     prefersDark = false
 
     mockGetSettings.mockResolvedValue({
-      general: { theme: 'dark', themeColor: 'blue' },
+      general: {
+        theme: 'dark',
+        themeColor: null,
+        themeColorLight: 'zinc',
+        themeColorDark: 'blue',
+      },
     } as never)
 
     mockListen.mockImplementation(async (eventName: string, callback: unknown) => {
@@ -82,7 +87,14 @@ describe('useThemeSync', () => {
 
     settingsChangedCallback?.({
       payload: {
-        settingJson: JSON.stringify({ general: { theme: 'light', themeColor: 'rose' } }),
+        settingJson: JSON.stringify({
+          general: {
+            theme: 'light',
+            themeColor: null,
+            themeColorLight: 'rose',
+            themeColorDark: 'claude',
+          },
+        }),
       },
     })
 
@@ -93,7 +105,12 @@ describe('useThemeSync', () => {
   it('reacts to system theme changes when current setting follows the system', async () => {
     prefersDark = true
     mockGetSettings.mockResolvedValue({
-      general: { theme: 'system', themeColor: 'green' },
+      general: {
+        theme: 'system',
+        themeColor: null,
+        themeColorLight: 'zinc',
+        themeColorDark: 'green',
+      },
     } as never)
 
     renderHook(() => useThemeSync())
@@ -110,10 +127,28 @@ describe('useThemeSync', () => {
     prefersDark = false
     mediaQueryListener?.({ matches: false } as MediaQueryListEvent)
 
-    expect(mockApplyThemePreset).toHaveBeenLastCalledWith(
-      'green',
-      'light',
-      document.documentElement
-    )
+    // 切到 light 时改用 themeColorLight = "zinc"
+    expect(mockApplyThemePreset).toHaveBeenLastCalledWith('zinc', 'light', document.documentElement)
+  })
+
+  it('falls back to legacy themeColor when split fields are null', async () => {
+    mockGetSettings.mockResolvedValue({
+      general: {
+        theme: 'light',
+        themeColor: 'catppuccin',
+        themeColorLight: null,
+        themeColorDark: null,
+      },
+    } as never)
+
+    renderHook(() => useThemeSync())
+
+    await waitFor(() => {
+      expect(mockApplyThemePreset).toHaveBeenLastCalledWith(
+        'catppuccin',
+        'light',
+        document.documentElement
+      )
+    })
   })
 })

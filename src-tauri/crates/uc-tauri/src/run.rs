@@ -1,6 +1,6 @@
 //! Tauri shell 主入口。
 //!
-//! `main.rs` 在外面构造 `GuiBootstrapContext` 与 `tauri::Context`（后者由
+//! `main.rs` 在外面构造 `ProcessRuntimeContext` 与 `tauri::Context`（后者由
 //! `tauri::generate_context!()` 宏生成，必须在 bin crate 里），然后调用
 //! [`run`] 把控制权交给 Tauri shell：装配 `TauriAppRuntime`、注册
 //! plugins、启动 daemon 拉起/守护、初始化托盘、注册 commands、运行 Tauri
@@ -20,17 +20,15 @@ use tauri_plugin_autostart::MacosLauncher;
 use tracing::{error, info, warn};
 
 use uc_daemon_client::DaemonConnectionState;
-use uc_desktop::bootstrap::{build_gui_app, GuiBootstrapContext};
+use uc_desktop::bootstrap::{build_process_runtime, ProcessRuntimeContext};
+use uc_desktop::daemon::ProcessRuntimeHandles;
 use uc_desktop::daemon_probe::{
     bootstrap_daemon_in_process, HEALTH_CHECK_TIMEOUT, HEALTH_POLL_INTERVAL,
     INCOMPATIBLE_DAEMON_EXIT_TIMEOUT,
 };
 use uc_desktop::DaemonOwnership;
 
-use crate::bootstrap::{
-    ensure_default_device_name, start_background_tasks, start_gui_pairing_lease_task,
-    TauriAppRuntime,
-};
+use crate::bootstrap::{ensure_default_device_name, start_background_tasks, TauriAppRuntime};
 use crate::commands::updater::PendingUpdate;
 use crate::quick_panel;
 use crate::tray::TrayState;
@@ -41,18 +39,18 @@ use crate::tray::TrayState;
 /// service_tasks join + 5s http_handle graceful join + services.stop()
 /// 串行），最长 wallclock ~10s。前端会在 [`SHUTDOWN_FRONTEND_GRACE_MS`]
 /// 内主动关掉 WebSocket，正常 case 整体 <1s；这里给 15s 兜底覆盖最坏路径。
-const DAEMON_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(15);
+pub(crate) const DAEMON_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(15);
 
 /// 前端事件名——告诉 webview "马上关 daemon 了，请主动 close 你那条
 /// WebSocket"。前端 `daemon-ws-bootstrap.ts` 的 listener 收到后调用
 /// `daemonWs.disconnect()` 发送 close frame，让 daemon 端的 axum
 /// `with_graceful_shutdown` 立即返回，不等 30s heartbeat 超时。
-const FRONTEND_SHUTDOWN_EVENT: &str = "app://shutting-down";
+pub(crate) const FRONTEND_SHUTDOWN_EVENT: &str = "app://shutting-down";
 
 /// 给前端响应 `app://shutting-down` 事件、发出 WebSocket close frame
 /// 的时间。100ms 对单进程内 IPC + 浏览器 WebSocket close frame 飞过
 /// loopback 来说极宽裕——用户感知不到这点延迟。
-const SHUTDOWN_FRONTEND_GRACE_MS: u64 = 100;
+pub(crate) const SHUTDOWN_FRONTEND_GRACE_MS: u64 = 100;
 
 /// 这个 GUI shell 期望 daemon 上报的 `packageVersion`——`probe_daemon_health`
 /// 用它做版本兼容性判断。`env!` 拿的是 `uc-tauri` 自己的 cargo 版本，
@@ -101,9 +99,9 @@ fn configure_main_window_for_platform(app: &tauri::AppHandle) {
 #[cfg(not(target_os = "windows"))]
 fn configure_main_window_for_platform(_app: &tauri::AppHandle) {}
 
-/// Builds the GUI bootstrap, starts background tasks and the in-process daemon as needed, and runs the Tauri event loop.
+/// Builds the process runtime, starts background tasks and the in-process daemon as needed, and runs the Tauri event loop.
 ///
-/// The provided `tauri_ctx` must be created in the binary crate using `tauri::generate_context!()` (that macro reads the bin crate's tauri.conf.json). This function assembles the GUI startup context via `uc_desktop::bootstrap::build_gui_app()`; if assembly fails it returns an `Err`. On success the function enters the Tauri event loop and does not return until the application exits.
+/// The provided `tauri_ctx` must be created in the binary crate using `tauri::generate_context!()` (that macro reads the bin crate's tauri.conf.json). This function assembles the process-level runtime context via `uc_desktop::bootstrap::build_process_runtime()`; if assembly fails it returns an `Err`. On success the function enters the Tauri event loop and does not return until the application exits.
 ///
 /// # Parameters
 ///
@@ -121,27 +119,37 @@ fn configure_main_window_for_platform(_app: &tauri::AppHandle) {}
 /// crate::run(ctx).expect("failed to start tauri application");
 /// ```
 pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
-    // Slice 6 / Issue #549：`build_gui_app` 是 async（compose product analytics
-    // EventContext 需要 await `member_repo` / `setup_status`）。Tauri shell 的
+    // Slice 6 / Issue #549：`build_process_runtime` 是 async（compose product
+    // analytics EventContext 需要 await `member_repo` / `setup_status`）。Tauri shell 的
     // 入口仍然是 sync `fn run` —— 用 `tauri::async_runtime::block_on` 桥接，
     // 与本文件其他地方读 settings 等 async port 是同一模式。
-    let GuiBootstrapContext {
-        deps,
+    let ProcessRuntimeContext {
+        wired,
         background,
         storage_paths,
         config: _config,
-    } = tauri::async_runtime::block_on(build_gui_app())?;
+    } = tauri::async_runtime::block_on(build_process_runtime())?;
 
     let daemon_connection_state = DaemonConnectionState::default();
     let daemon_ownership = DaemonOwnership::default();
 
     let event_emitter: std::sync::Arc<dyn uc_application::facade::HostEventEmitterPort> =
         std::sync::Arc::new(uc_bootstrap::LoggingHostEventEmitter);
+
+    // 在 background 被 spawn 消费前,clone 出 daemon-lifecycle 装配需要的
+    // 两个 Arc 字段(进程级,跨 daemon reload 复用)。`file_transfer_facade`
+    // 已挪到 `WiredDependencies`(它是 Arc,不是 mpsc::Receiver),所以直接
+    // 从 `wired` 取。
+    let clipboard_write_coordinator = background.clipboard_write_coordinator.clone();
+    let file_transfer_lifecycle = background.file_transfer_lifecycle.clone();
+    let file_transfer_facade = wired.file_transfer_facade.clone();
+
     let runtime = TauriAppRuntime::with_setup(
-        deps,
-        storage_paths,
+        wired.deps.clone(),
+        storage_paths.clone(),
         event_emitter,
-        background.clipboard_write_coordinator.clone(),
+        clipboard_write_coordinator.clone(),
+        file_transfer_facade.clone(),
     );
     let runtime = Arc::new(runtime);
 
@@ -152,6 +160,24 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
 
     // Store TaskRegistry reference for exit hook registration
     let task_registry = runtime.task_registry().clone();
+
+    // 进程级 blob/spool worker spawn 的两块预备料:`background`(含
+    // spool_rx / worker_rx 两个一次性 mpsc::Receiver,不可 Clone)与
+    // 从进程级 deps 算出的 blob_ports。它们要等到 Tauri runtime 起来后
+    // 才能 spawn(`tokio::spawn` 在 Tauri Builder 之前调会撞 "there is no
+    // reactor running"——Tauri 在 `Builder::run()` 内才装 tokio runtime),
+    // 所以挪到下方 `.setup()` 回调里跑,用 `tauri::async_runtime::spawn`。
+    let blob_ports = uc_bootstrap::BlobProcessingPorts::from_app_deps(&wired.deps);
+
+    // 进程级一次性资源,daemon 启动 / restart command 透传同一份 ——
+    // sqlite pool / repos / settings repo / blob worker 等跨 daemon reload 复用。
+    let process_handles = ProcessRuntimeHandles {
+        wired,
+        storage_paths,
+        clipboard_write_coordinator,
+        file_transfer_lifecycle,
+        file_transfer_facade,
+    };
 
     let builder = tauri::Builder::default()
         // Register TauriAppRuntime for Tauri commands
@@ -225,9 +251,29 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
             info!("AppHandle set on TauriAppRuntime for event emission");
             configure_main_window_for_platform(app.handle());
 
+            // 进程级 blob/spool worker —— Tauri runtime 已在 Builder::run()
+            // 内就绪,这里 tauri::async_runtime::spawn 才能拿到 reactor。
+            // 一次性 spawn,挂在进程级 task_registry 上,跨 daemon reload
+            // 不重建。`background` 含两个一次性 mpsc::Receiver,被
+            // spawn_blob_processing_tasks 解构消费,之后不复存在。
+            let task_registry_for_blob = runtime.task_registry().clone();
+            tauri::async_runtime::spawn(async move {
+                uc_bootstrap::spawn_blob_processing_tasks(
+                    background,
+                    blob_ports,
+                    &task_registry_for_blob,
+                )
+                .await;
+            });
+
             let daemon_connection_state_for_setup = daemon_connection_state.clone();
             let daemon_ownership_for_setup = daemon_ownership.clone();
             let runtime_for_daemon = runtime.clone();
+            // 进程级一次性资源,daemon 启动复用同一份 —— sqlite pool 等跨
+            // daemon 启停不重建 (方案 C 后 daemon 进程内只装一次)。
+            let process_handles_for_daemon = process_handles;
+            // GUI 进程级 AppFacade,daemon 启动 swap 5 个 daemon-lifecycle 子 facade。
+            let app_facade_for_daemon = Arc::clone(runtime_for_daemon.app_facade());
             tauri::async_runtime::spawn(async move {
                 match bootstrap_daemon_in_process(
                     &daemon_ownership_for_setup,
@@ -235,16 +281,13 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
                     INCOMPATIBLE_DAEMON_EXIT_TIMEOUT,
                     HEALTH_CHECK_TIMEOUT,
                     HEALTH_POLL_INTERVAL,
+                    app_facade_for_daemon,
+                    process_handles_for_daemon,
                 )
                 .await
                 {
                     Ok(connection_info) => {
                         daemon_connection_state_for_setup.set(connection_info);
-                        start_gui_pairing_lease_task(
-                            daemon_connection_state_for_setup.clone(),
-                            runtime_for_daemon.task_registry(),
-                        )
-                        .await;
                         // 不再需要 daemon supervisor。in-process daemon 与
                         // GUI 进程同生死；外部 daemon 不归我们管，崩了
                         // 也由 CLI 负责重新拉起。
@@ -437,6 +480,7 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
             // Lifecycle commands
             crate::commands::get_tauri_pid,
             crate::commands::get_device_id,
+            crate::commands::get_device_meta,
             crate::commands::get_daemon_connection_info,
             // Restart commands (Phase 95)
             crate::commands::restart::restart_app,

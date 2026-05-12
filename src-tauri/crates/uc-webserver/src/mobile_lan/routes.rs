@@ -41,27 +41,75 @@
 //!   日志里的 hash_prefix 便于排障)
 
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use axum::{
     body::{to_bytes, Body},
-    extract::{Extension, Path, Request, State},
+    extract::{Extension, FromRef, Path, Request, State},
     http::{header, HeaderValue, StatusCode},
     response::{IntoResponse, Response},
     routing::get,
     Json, Router,
 };
+use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
 
 use uc_application::facade::{
     ApplyIncomingMobileClipError, ApplyIncomingMobileClipOutcome, AuthenticatedDevice,
-    GetLatestMobileSyncDocError, GetMobileSyncFileError, MobileSyncFacade, SyncClipboardItemType,
-    SyncClipboardMeta,
+    FailTransfer, FileTransferFacade, GetLatestMobileSyncDocError, GetMobileSyncFileError,
+    MobileSyncFacade, SeedReceiverContext, StartTransfer, SyncClipboardItemType, SyncClipboardMeta,
+};
+use uc_core::file_transfer::{
+    FileTransferDirection, FileTransferFailureReason, FileTransferProgress,
 };
 
 use crate::mobile_lan::middleware::basic_auth;
 
-/// `PUT /file/{dataName}` 的请求体上限 —— SyncClipboard 桌面端同档 16 MiB。
-/// 真生产仍可能有图像 / RTF 大块上传, 后续 P5a.10 可观测后再调。
+/// 流式 PUT /file 进度节流窗口。adapter 每收到一个 chunk 都累加字节,但
+/// 只有距上一帧 ≥ `PROGRESS_THROTTLE` 才会调 `report_progress`(lifecycle
+/// 会同时走 store + publisher,频率高会触发 O(N²) load_timeline)。
+/// 250ms 与"前端进度条流畅度可感的最低帧率"对齐(SyncClipboard 桌面
+/// 实测,4 FPS 已经平滑)。
+const PROGRESS_THROTTLE: Duration = Duration::from_millis(250);
+
+/// `PUT /file/{dataName}` 请求体的兜底磁盘安全阀。
+///
+/// 用户在手机端主动 PUT 文件,客户端已经知道文件大小;真正的"产品上限"
+/// 由客户端自觉与本机磁盘空间决定,服务端只设一道防止恶意客户端写满盘的
+/// 远端硬上限。
+///
+/// 现写死 10 GiB。
+/// TODO(P6 配置化): 拆到 settings (`mobile_sync.put_file_max_bytes`),按
+/// 用户机型 / 磁盘剩余可配 —— 当前 10 GiB 是个粗略的"任何家用 Mac 都
+/// 不可能因为一次上传爆盘"的安全阀,留出抽象空间但不开复杂度。
+const PUT_FILE_DISK_SANITY_LIMIT: u64 = 10 * 1024 * 1024 * 1024;
+
+/// mobile_lan 路由共享 state。`mobile_sync` 是 PUT/GET 业务入口;
+/// `file_transfer` 是 PUT /file 流式接收过程中 handler 用来发
+/// `seed_receiver_context` / `start` / `report_progress` / `fail` 的可选
+/// lifecycle facade —— CLI / fallback 装配可留 `None`,handler 自动降级
+/// 为静默(buffered 阶段不发 lifecycle 事件,SyncDoc 阶段一样不会 link)。
+#[derive(Clone)]
+pub(crate) struct MobileLanState {
+    pub mobile_sync: Arc<MobileSyncFacade>,
+    pub file_transfer: Option<Arc<FileTransferFacade>>,
+}
+
+impl FromRef<MobileLanState> for Arc<MobileSyncFacade> {
+    fn from_ref(state: &MobileLanState) -> Self {
+        state.mobile_sync.clone()
+    }
+}
+
+impl FromRef<MobileLanState> for Option<Arc<FileTransferFacade>> {
+    fn from_ref(state: &MobileLanState) -> Self {
+        state.file_transfer.clone()
+    }
+}
+
+/// `PUT /SyncClipboard.json` 元数据上限。SyncClipboard 协议 meta payload
+/// 远小于此(典型 < 1 KB),16 MiB 是 axum to_bytes 的安全上限,与
+/// [`MAX_FILE_BYTES_STREAM`] 对齐避免不同入口语义不一致。
 const MAX_FILE_BYTES: usize = 16 * 1024 * 1024;
 
 // ─── wire DTO ───────────────────────────────────────────────────────────
@@ -270,6 +318,7 @@ async fn get_clipboard_file(
 
 async fn put_clipboard_file(
     State(facade): State<Arc<MobileSyncFacade>>,
+    State(file_transfer): State<Option<Arc<FileTransferFacade>>>,
     Extension(authed): Extension<AuthenticatedDevice>,
     Path(data_name): Path<String>,
     request: Request,
@@ -282,24 +331,163 @@ async fn put_clipboard_file(
         .and_then(|v| v.to_str().ok())
         .unwrap_or("application/octet-stream")
         .to_string();
+    // Content-Length 头作为 total_bytes 提示。缺失 / 不可解析 → None,
+    // 前端进度条退化为"已传 / 未知总量"。
+    let total_bytes = request
+        .headers()
+        .get(header::CONTENT_LENGTH)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|s| s.parse::<u64>().ok());
 
-    let body_bytes = to_bytes(request.into_body(), MAX_FILE_BYTES)
+    // transfer_id:协议层这次 PUT 的唯一 key,贯穿到 SyncDoc apply 阶段
+    // 让 `file_transfer` 表 link + complete 闭环。生成策略:`mobile-lan:<uuid-v4>`,
+    // mobile 客户端协议升级后可选通过 `?upload_id=...` 自带,server 端校验
+    // 后照用(P5b 增强,本会话只走 server-gen)。
+    let transfer_id = format!("mobile-lan:{}", uuid::Uuid::new_v4());
+    let device_id = authed.device.device_id.clone();
+    let peer_id = format!("mobile:{}", device_id);
+
+    // Lifecycle 启动:seed receiver projection(占位 entry_id 用
+    // `mobile-pending:<transfer_id>`,等 SyncDoc apply 后 backfill 为
+    // 真实 entry_id);然后发 Started 事件。两步合起来让
+    // FileTransferHostEventPublisher 能立刻发 `StatusChanged transferring`,
+    // 前端 list row 看到占位状态。`file_transfer` 没装配时整段降级。
+    seed_and_start_lifecycle(
+        file_transfer.as_ref(),
+        &transfer_id,
+        &peer_id,
+        &data_name,
+        total_bytes,
+    )
+    .await;
+
+    // 用 raw_mime 先 begin_stage,后面 mime sniff 不影响落盘行为。
+    let scope_id = uc_application::facade::mobile_sync_streaming_scope_nonce();
+    let handle = match facade
+        .begin_file_upload(&scope_id, &data_name, &raw_mime)
         .await
-        .map_err(|e| {
-            tracing::warn!(error = %e, "put_clipboard_file: failed to buffer body");
-            (StatusCode::PAYLOAD_TOO_LARGE, "body too large").into_response()
-        })?
-        .to_vec();
+    {
+        Ok(handle) => handle,
+        Err(err) => {
+            fail_lifecycle(
+                file_transfer.as_ref(),
+                &transfer_id,
+                &peer_id,
+                format!("staging begin failed: {err}"),
+            )
+            .await;
+            tracing::warn!(
+                data_name = %data_name,
+                error = %err,
+                "PUT /file: begin_stage failed"
+            );
+            return Err((StatusCode::INTERNAL_SERVER_ERROR, "staging begin failed").into_response());
+        }
+    };
+
+    // 流式读 body:每个 chunk 边收边喂给 staging,handler 端不再持字节。
+    // 进度节流仍按 PROGRESS_THROTTLE 控制 ReportProgress 频率,避免
+    // load_timeline O(N²)。前 64 字节做 mime sniff(image 头魔数最长 14 字节,
+    // 64 字节窗口够用)。
+    let mut body_stream = request.into_body().into_data_stream();
+    let mut bytes_received: u64 = 0;
+    let mut sniff_window: Vec<u8> = Vec::with_capacity(64);
+    let mut last_progress = Instant::now();
+    while let Some(chunk_result) = body_stream.next().await {
+        match chunk_result {
+            Ok(chunk) => {
+                bytes_received = bytes_received.saturating_add(chunk.len() as u64);
+                if bytes_received > PUT_FILE_DISK_SANITY_LIMIT {
+                    facade.abort_file_upload(handle).await;
+                    fail_lifecycle(
+                        file_transfer.as_ref(),
+                        &transfer_id,
+                        &peer_id,
+                        format!(
+                            "body exceeds disk sanity limit ({PUT_FILE_DISK_SANITY_LIMIT} bytes)"
+                        ),
+                    )
+                    .await;
+                    tracing::warn!(
+                        data_name = %data_name,
+                        bytes_received,
+                        limit = PUT_FILE_DISK_SANITY_LIMIT,
+                        "PUT /file: body exceeded disk sanity limit"
+                    );
+                    return Err((StatusCode::PAYLOAD_TOO_LARGE, "body too large").into_response());
+                }
+                if sniff_window.len() < 64 {
+                    let take = (64 - sniff_window.len()).min(chunk.len());
+                    sniff_window.extend_from_slice(&chunk[..take]);
+                }
+                if let Err(err) = facade.append_file_chunk(&handle, &chunk).await {
+                    facade.abort_file_upload(handle).await;
+                    fail_lifecycle(
+                        file_transfer.as_ref(),
+                        &transfer_id,
+                        &peer_id,
+                        format!("staging append failed: {err}"),
+                    )
+                    .await;
+                    tracing::warn!(
+                        data_name = %data_name,
+                        error = %err,
+                        "PUT /file: append_stage_chunk failed"
+                    );
+                    return Err((StatusCode::INTERNAL_SERVER_ERROR, "staging append failed")
+                        .into_response());
+                }
+                if last_progress.elapsed() >= PROGRESS_THROTTLE {
+                    report_progress_lifecycle(
+                        file_transfer.as_ref(),
+                        &transfer_id,
+                        &peer_id,
+                        bytes_received,
+                        total_bytes,
+                    )
+                    .await;
+                    last_progress = Instant::now();
+                }
+            }
+            Err(e) => {
+                facade.abort_file_upload(handle).await;
+                fail_lifecycle(
+                    file_transfer.as_ref(),
+                    &transfer_id,
+                    &peer_id,
+                    format!("body stream failed: {e}"),
+                )
+                .await;
+                tracing::warn!(error = %e, "put_clipboard_file: body stream failed");
+                return Err(
+                    (StatusCode::INTERNAL_SERVER_ERROR, "body stream failed").into_response()
+                );
+            }
+        }
+    }
+
+    // 收齐 → 补一帧 final progress 让前端进度条停在 100%。complete
+    // 不在这里发 —— body 接收完只表示"字节进了 staging",真正的 transfer
+    // 完成要等 SyncDoc apply 写到 entry,
+    // ApplyIncomingMobileClipUseCase::finalize_transfer_lifecycle 收尾。
+    let final_total = total_bytes.or(Some(bytes_received));
+    report_progress_lifecycle(
+        file_transfer.as_ref(),
+        &transfer_id,
+        &peer_id,
+        bytes_received,
+        final_total,
+    )
+    .await;
 
     // mime 兜底:某些移动端(iOS Shortcut / 第三方 SyncClipboard 兼容客户端)
     // 上传 .jpg/.png 时不带 Content-Type 或带 application/octet-stream。如果
     // 让 octet-stream 一路下沉到剪贴板写入层,会让 image rep 携带非 image/*
     // mime 落到 macOS NSPasteboard 上,系统识别不出 image type、用户读到的
     // 是原始 JPEG 字节(2026-05-08 真机回归 IMG_20260508_200644.jpg 复现)。
-    // 这里在最外层基于 data_name 扩展名 + 文件头魔数嗅探,把 image 类的
-    // mime 修正回正确的 image/* 形态;无法识别时保持原 mime 不动。
+    // sniff_window 在收 body 时已截前 64 字节,够覆盖所有 image 头魔数。
     let effective_mime = if mime_is_unspecific(&raw_mime) {
-        match infer_image_mime(&data_name, &body_bytes) {
+        match infer_image_mime(&data_name, &sniff_window) {
             Some(sniffed) => {
                 tracing::info!(
                     data_name = %data_name,
@@ -315,25 +503,127 @@ async fn put_clipboard_file(
         raw_mime.clone()
     };
 
-    let bytes_len = body_bytes.len();
     let log_data_name = data_name.clone();
     let log_mime = effective_mime.clone();
-    let device_id = authed.device.device_id.clone();
     match facade
-        .put_clipboard_file(data_name, effective_mime, body_bytes, device_id)
+        .finalize_file_upload(handle, data_name, effective_mime, device_id, transfer_id)
         .await
     {
         Ok(outcome) => {
             tracing::info!(
                 data_name = %log_data_name,
                 mime = %log_mime,
-                bytes = bytes_len,
+                bytes = bytes_received,
                 outcome = ?outcome_kind(&outcome),
                 "PUT /file: 200"
             );
             Ok(StatusCode::OK)
         }
         Err(err) => Err(map_apply_error(err, "PUT /file")),
+    }
+}
+
+/// PUT /file 入口 lifecycle 起始:seed receiver projection + Started 事件。
+///
+/// `entry_id` 用 `mobile-pending:<transfer_id>` 占位,等
+/// `ApplyIncomingMobileClipUseCase` 在 SyncDoc apply 拿到真实 entry_id
+/// 后 `link_transfer_to_entry` 把这条 projection 行改挂过去。
+async fn seed_and_start_lifecycle(
+    facade: Option<&Arc<FileTransferFacade>>,
+    transfer_id: &str,
+    peer_id: &str,
+    filename: &str,
+    total_bytes: Option<u64>,
+) {
+    let Some(facade) = facade else {
+        return;
+    };
+    if let Err(err) = facade
+        .seed_receiver_context(SeedReceiverContext {
+            transfer_id: transfer_id.to_string(),
+            entry_id: format!("mobile-pending:{transfer_id}"),
+            origin_device_id: peer_id.to_string(),
+            filename: filename.to_string(),
+            cached_path: String::new(),
+        })
+        .await
+    {
+        tracing::warn!(
+            transfer_id,
+            error = %err,
+            "PUT /file: seed receiver context failed"
+        );
+    }
+    if let Err(err) = facade
+        .start(StartTransfer {
+            transfer_id: transfer_id.to_string(),
+            peer_id: peer_id.to_string(),
+            filename: filename.to_string(),
+            file_size: total_bytes,
+        })
+        .await
+    {
+        tracing::warn!(
+            transfer_id,
+            error = %err,
+            "PUT /file: start lifecycle failed"
+        );
+    }
+}
+
+async fn report_progress_lifecycle(
+    facade: Option<&Arc<FileTransferFacade>>,
+    transfer_id: &str,
+    peer_id: &str,
+    bytes_transferred: u64,
+    total_bytes: Option<u64>,
+) {
+    let Some(facade) = facade else {
+        return;
+    };
+    if let Err(err) = facade
+        .report_progress(uc_application::facade::ReportTransferProgress {
+            transfer_id: transfer_id.to_string(),
+            peer_id: peer_id.to_string(),
+            progress: FileTransferProgress {
+                direction: FileTransferDirection::Receiving,
+                bytes_transferred,
+                total_bytes,
+            },
+        })
+        .await
+    {
+        tracing::warn!(
+            transfer_id,
+            error = %err,
+            "PUT /file: report_progress lifecycle failed"
+        );
+    }
+}
+
+async fn fail_lifecycle(
+    facade: Option<&Arc<FileTransferFacade>>,
+    transfer_id: &str,
+    peer_id: &str,
+    detail: String,
+) {
+    let Some(facade) = facade else {
+        return;
+    };
+    if let Err(err) = facade
+        .fail(FailTransfer {
+            transfer_id: transfer_id.to_string(),
+            peer_id: peer_id.to_string(),
+            reason: FileTransferFailureReason::Unknown,
+            detail: Some(detail),
+        })
+        .await
+    {
+        tracing::warn!(
+            transfer_id,
+            error = %err,
+            "PUT /file: fail lifecycle failed"
+        );
     }
 }
 
@@ -445,7 +735,20 @@ fn map_apply_error(err: ApplyIncomingMobileClipError, route: &'static str) -> Re
 ///
 /// 所有路由都接 Basic Auth middleware, 未登记 / 未带头 / 凭据错的请求拿
 /// 401 + `WWW-Authenticate: Basic` 头。
-pub(crate) fn build_router(facade: Arc<MobileSyncFacade>) -> Router {
+///
+/// `file_transfer` 是可选的:daemon 入口装配时透传 `app_facade.file_transfer`,
+/// PUT /file handler 用它在收 body 的过程中发 lifecycle 事件
+/// (seed / start / progress / fail);测试 / CLI fallback 可留 `None`,
+/// handler 自动降级为静默(buffered 仍然写 IncomingMobileBuffer,但
+/// `file_transfer` 表里不会有这条 transfer 的 lifecycle 行)。
+pub(crate) fn build_router(
+    facade: Arc<MobileSyncFacade>,
+    file_transfer: Option<Arc<FileTransferFacade>>,
+) -> Router {
+    let state = MobileLanState {
+        mobile_sync: facade.clone(),
+        file_transfer,
+    };
     Router::new()
         .route(
             "/SyncClipboard.json",
@@ -455,11 +758,8 @@ pub(crate) fn build_router(facade: Arc<MobileSyncFacade>) -> Router {
             "/file/:data_name",
             get(get_clipboard_file).put(put_clipboard_file),
         )
-        .layer(axum::middleware::from_fn_with_state(
-            facade.clone(),
-            basic_auth,
-        ))
-        .with_state(facade)
+        .layer(axum::middleware::from_fn_with_state(facade, basic_auth))
+        .with_state(state)
 }
 
 #[cfg(test)]
@@ -482,7 +782,11 @@ mod tests {
     use crate::mobile_lan::test_support::{auth_header, build_facade_with_seeded_device};
 
     fn build_app(facade: Arc<MobileSyncFacade>) -> Router {
-        build_router(facade)
+        // Tests run with no `file_transfer` facade — mobile_lan routes
+        // degrade to silent lifecycle (buffer 仍然 store,但没有
+        // Started / Progress 事件)。具体 lifecycle 行为单独由 facade /
+        // use case 单测覆盖。
+        build_router(facade, None)
     }
 
     #[tokio::test]

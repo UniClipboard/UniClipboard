@@ -1,8 +1,11 @@
 //! `ApplyInboundClipboardUseCase` —— 入站剪贴板流程的编排主体。
 
 use std::sync::Arc;
+use std::time::Duration;
 
-use tracing::{debug, error, info, instrument, warn};
+use moka::sync::Cache;
+use tracing::{debug, error, info, instrument, warn, Instrument};
+use uc_observability::FlowId;
 
 use uc_core::ids::EntryId;
 use uc_core::ports::ClipboardEntryRepositoryPort;
@@ -18,11 +21,21 @@ use super::materializer::InboundBlobMaterializer;
 use super::ports::{InboundCapture, InboundWrite};
 use super::{ApplyInboundError, ApplyInboundInput, ApplyOutcome};
 
+const RAPID_DUPLICATE_WINDOW: Duration = Duration::from_millis(200);
+const VISIBLE_DUPLICATE_WINDOW: Duration = Duration::from_secs(2);
+const RECENT_INBOUND_MAX_RECORDS: u64 = 128;
+
 pub struct ApplyInboundClipboardUseCase {
     entry_repo: Arc<dyn ClipboardEntryRepositoryPort>,
     capture: Arc<dyn InboundCapture>,
     write: Arc<dyn InboundWrite>,
     blob_materializer: Option<Arc<dyn InboundBlobMaterializer>>,
+    /// 短窗口去重：content_hash → entry_id。过滤同一 peer 反复推送完全
+    /// 相同字节的回声帧。
+    recent_content_hashes: Cache<String, EntryId>,
+    /// 略长窗口去重：visible_key → entry_id。捕获"同一可见内容、不同
+    /// content_hash"的场景（peer 重发时扩展了 representations）。
+    recent_visible_content: Cache<String, EntryId>,
     /// Optional host-event emitter for surfacing the inbound entry to UI
     /// before the fetch+capture pipeline finishes. Wired only in daemon
     /// mode; tests / CLI leave it `None`.
@@ -41,6 +54,14 @@ impl ApplyInboundClipboardUseCase {
             write,
             blob_materializer: None,
             host_event_emitter: None,
+            recent_content_hashes: Cache::builder()
+                .max_capacity(RECENT_INBOUND_MAX_RECORDS)
+                .time_to_live(RAPID_DUPLICATE_WINDOW)
+                .build(),
+            recent_visible_content: Cache::builder()
+                .max_capacity(RECENT_INBOUND_MAX_RECORDS)
+                .time_to_live(VISIBLE_DUPLICATE_WINDOW)
+                .build(),
         }
     }
 
@@ -71,19 +92,55 @@ impl ApplyInboundClipboardUseCase {
         }
     }
 
+    fn find_recent_duplicate(
+        &self,
+        content_hash: &str,
+        visible_key: Option<&str>,
+    ) -> Option<EntryId> {
+        if let Some(id) = self.recent_content_hashes.get(content_hash) {
+            return Some(id);
+        }
+        self.recent_visible_content.get(visible_key?)
+    }
+
+    fn remember_recent_inbound(
+        &self,
+        content_hash: String,
+        visible_key: Option<String>,
+        entry_id: EntryId,
+    ) {
+        self.recent_content_hashes
+            .insert(content_hash, entry_id.clone());
+        if let Some(visible_key) = visible_key {
+            self.recent_visible_content.insert(visible_key, entry_id);
+        }
+    }
+
+    // 跨设备可观测性(PR2):
+    //   - `peer.device_id` 是 PR2 起的标准字段名,把发送方 device 摆到一级
+    //     span field;`from_device` 暂时保留兼容现有日志查询,Sentry tag
+    //     索引完全切换后会下线。
+    //   - `flow.id` 优先沿用 wire header 上带过来的对端 flow_id,实现
+    //     A 端 root flow.id == B 端 root flow.id;旧版 peer 没带时才本地生成。
+    //   - `flow.kind` 静态 `clipboard_sync`,方便按业务流过滤。
     #[instrument(
         name = "apply_inbound.execute",
         skip_all,
         fields(
             from_device = %input.from_device,
+            peer.device_id = %input.from_device,
             content_hash = %input.content_hash,
             plaintext_len = input.plaintext.len(),
+            flow.id = tracing::field::Empty,
+            flow.kind = "clipboard_sync",
         )
     )]
     pub async fn execute(
         &self,
         input: ApplyInboundInput,
     ) -> Result<ApplyOutcome, ApplyInboundError> {
+        let flow_id = input.flow_id.clone().unwrap_or_else(FlowId::generate);
+        tracing::Span::current().record("flow.id", tracing::field::display(&flow_id));
         // 1. Dedup short-circuit. The repo's default `Ok(None)` impl
         // (used by in-memory test fakes) degrades dedup to off — safe,
         // worst case we re-write the OS clipboard with identical bytes.
@@ -190,6 +247,20 @@ impl ApplyInboundClipboardUseCase {
             }
         };
 
+        let visible_key = snapshot.meaningful_origin_key();
+        if let Some(existing_entry_id) =
+            self.find_recent_duplicate(&input.content_hash, visible_key.as_deref())
+        {
+            debug!(
+                existing_entry_id = %existing_entry_id,
+                "inbound dropped: rapid duplicate of recently applied entry"
+            );
+            return Ok(ApplyOutcome::DuplicateSkipped {
+                content_hash: input.content_hash,
+                existing_entry_id,
+            });
+        }
+
         // 3. Persist via the same capture pipeline local copies use
         // (D5: same schema). Cloning the snapshot lets us keep one for
         // the OS write below; capture takes ownership of the original.
@@ -205,25 +276,54 @@ impl ApplyInboundClipboardUseCase {
                 )
             })?;
 
-        // 4. Write OS clipboard with RemotePush guard. Order matters —
-        // capture must complete first so the watcher's origin lookup
-        // sees the persisted row even if it fires immediately.
+        // 4. Schedule OS clipboard write in the background.
         //
-        // 送入 full snapshot（不 narrow）：platform 层内部按能力差异消化多 rep。
-        // - Windows：`write_snapshot_multi_windows` 原子写入 CF_UNICODETEXT + CF_HTML 等
-        // - macOS / Linux：`write_snapshot_multi` 的降级分支用 `SelectRepresentationPolicyV1`
-        //   选 paste-priority rep 后走单 rep 快路径（行为与上游 `narrow_to_primary` 等价）
+        // 异步化:OS clipboard write 在大 payload 场景下能阻塞 1-3 秒(macOS
+        // NSPasteboard 跨进程 IPC、Windows CF_HTML 编码),如果让 apply_inbound
+        // 主流程 await,上游 mobile_sync `finalize_transfer_lifecycle` 也会被
+        // 顺带推迟那么久 —— 前端会出现"entry 已经显示图片 → 2 秒后才看到
+        // status_changed transferring → 紧接 completed"的反向状态过渡。
         //
-        // 背景：quick `260423-9do` 交付了平台层的多 rep 写入能力，但此前应用层仍在
-        // narrow，导致主流量走单 rep 快路径、新能力 0 触发。本改动把 full snapshot 直送
-        // platform 层，由 platform 根据自身 OS 能力内部分流。详见
-        // `.planning/quick/260423-a3b-windows-rep-apply-inbound-narrow/`。
-        debug!(entry_id = %entry_id, "inbound: entry persisted, writing OS clipboard");
+        // entry 已经在第 3 步持久化(capture 已写库),OS clipboard write 是
+        // best-effort —— 失败只影响"用户能否立即从系统剪贴板粘贴",不影响
+        // entry 真相、不影响 transfer 状态。失败时 background task warn,
+        // 不向上抛错。
+        //
+        // 送入 full snapshot(不 narrow):platform 层内部按能力差异消化多 rep。
+        // - Windows:`write_snapshot_multi_windows` 原子写入 CF_UNICODETEXT + CF_HTML 等
+        // - macOS / Linux:`write_snapshot_multi` 的降级分支用 `SelectRepresentationPolicyV1`
+        //   选 paste-priority rep 后走单 rep 快路径(行为与上游 `narrow_to_primary` 等价)
+        debug!(entry_id = %entry_id, "inbound: entry persisted, scheduling background OS clipboard write");
+        self.remember_recent_inbound(input.content_hash.clone(), visible_key, entry_id.clone());
 
-        self.write.write(snapshot_for_write).await.map_err(|e| {
-            error!(error = %e, entry_id = %entry_id, "inbound: OS clipboard write failed after capture");
-            ApplyInboundError::WriteCoordinator(e.to_string())
-        })?;
+        let write_port = Arc::clone(&self.write);
+        let entry_id_for_write = entry_id.clone();
+        let from_device_for_write = input.from_device.clone();
+        let content_hash_for_write = input.content_hash.clone();
+        let origin_guard_key_for_write = snapshot_for_write.origin_guard_key();
+        // `.in_current_span()` keeps the spawned task under `apply_inbound.execute`
+        // so trace_id / from_device / content_hash propagate into the failure event.
+        // Without this the background failure was a context-less orphan in Sentry —
+        // the missing peer_id field is exactly what made the recent UNICLIPBOARD-RUST-F
+        // triage take an extra hour (couldn't tell whether 50 failures were one peer
+        // hammering or many peers each pushing once).
+        tokio::spawn(
+            async move {
+                if let Err(e) = write_port.write(snapshot_for_write).await {
+                    error!(
+                        event = "inbound_os_write_failed",
+                        error_kind = "inbound_os_write_failed",
+                        error = %e,
+                        entry_id = %entry_id_for_write,
+                        from_device = %from_device_for_write,
+                        content_hash = %content_hash_for_write,
+                        origin_guard_key = %origin_guard_key_for_write,
+                        "inbound: OS clipboard background write failed after capture"
+                    );
+                }
+            }
+            .in_current_span(),
+        );
 
         info!(entry_id = %entry_id, "inbound clipboard applied");
 
@@ -248,6 +348,10 @@ impl ApplyInboundClipboardUseCase {
         //   * `removePendingEntry(entry_id)` 清掉占位卡片
         //   * 走 remote 分支 `onRemoteInvalidate()` 节流刷新列表 —— 真实 entry
         //     接替占位卡片,UI 状态收敛。
+        //
+        // 注:OS clipboard write 异步化之后,这条事件不再与 OS 写入完成绑定,
+        // 而是和 entry 持久化对齐 —— 前端拿 entry 内容靠
+        // `/clipboard/entries/<id>/resource`,不依赖 OS clipboard 状态。
         //
         // preview 字段:与 watcher 路径(`clipboard_watcher.rs:163`)保持一致用
         // 占位串。前端只把它打日志,不渲染;真实 preview 由列表刷新时从 daemon

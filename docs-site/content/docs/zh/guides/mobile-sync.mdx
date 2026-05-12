@@ -142,13 +142,31 @@ uniclip start                                # 把 daemon 拉回来
 
 ### Android / 其他客户端
 
-**没有官方 Android 应用**。任意兼容 SyncClipboard 协议的客户端（例如
-SyncClipboard 上游的 Android 应用）都可以接入，自己填：
+**目前没有 UniClipboard 官方安卓应用**。任意兼容 SyncClipboard
+协议的客户端都能接入，目前推荐两条路：
 
-- **Base URL** —— `http://<对外宣告的 IP>:<port>`，例如
-  `http://192.168.1.5:42720`。
+- **[sync-clipboard-flutter](https://github.com/bling-yshs/sync-clipboard-flutter)**
+  —— 社区维护的 Flutter 实现，纯安卓，APK 直装，无须 Google Play。开箱
+  即可对接 UniClipboard 的 LAN 监听器，体验最接近 iOS 快捷指令：在 App
+  里填 base URL + 用户名 + 密码即可双向同步剪贴。**目前对安卓用户优先
+  推荐。**
+- **[SyncClipboard 官方客户端](https://github.com/Jeric-X/SyncClipboard)**
+  —— 协议上游实现，跨平台桌面端为主、安卓端在 release 中也有提供，需要
+  自行匹配版本。适合已经在用 SyncClipboard 生态的人。
+
+不论选哪一个，配置项都是同一组：
+
+- **Base URL / 服务端地址** —— `http://<对外宣告的 IP>:<port>`，例如
+  `http://192.168.1.5:42720`。注意是 `http://` 而非 `https://`，v1
+  没有 TLS。
 - **Username** —— 凭据弹窗 / `setup` 输出。
 - **Password** —— 凭据弹窗 / `setup` 输出（一次性）。
+
+<Callout type="info">
+  `sync-clipboard-flutter` 是社区项目，不由 UniClipboard 维护。安装
+  来源、签名校验、版本兼容性请自行评估；遇到 App 自身的 bug 请去对应 仓库提 issue，不要在
+  UniClipboard 这边报。UniClipboard 只对监听器 侧的 SyncClipboard 协议兼容性负责。
+</Callout>
 
 ## 管理已配对设备
 

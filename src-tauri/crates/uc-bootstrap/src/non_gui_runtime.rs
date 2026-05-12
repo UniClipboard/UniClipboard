@@ -17,13 +17,14 @@ use uc_application::deps::AppDeps;
 use uc_application::facade::space_setup::SpaceSetupFacade;
 use uc_application::facade::{
     AppFacade, AppFacadeParts, AppPaths, BlobTransferFacade, ClipboardHistoryFacade,
-    ClipboardHistoryFacadeDeps, ClipboardRestoreFacade, ClipboardRestoreFacadeDeps,
-    ClipboardSyncFacade, DeviceFacade, EmitError, EncryptionFacade, EncryptionFacadeDeps,
-    HostEvent, HostEventEmitterPort, InMemoryLifecycleStatus, IncomingMobileBuffer,
-    LifecycleFacade, LifecycleFacadeDeps, LifecycleStatusGateway, MemberRosterFacade,
-    MobileSyncFacade, MobileSyncFacadeDeps, MobileSyncSnapshotPorts, ResourceFacade,
-    ResourceFacadeDeps, SearchCoordinator, SearchCoordinatorDeps, SearchFacade, SearchFacadeDeps,
-    SettingsFacade, StorageFacade, StorageFacadeDeps, UpgradeFacade, UpgradeFacadeDeps,
+    ClipboardHistoryFacadeDeps, ClipboardOutboundFacade, ClipboardRestoreFacade,
+    ClipboardRestoreFacadeDeps, ClipboardSyncFacade, DeviceFacade, EmitError, EncryptionFacade,
+    EncryptionFacadeDeps, FileTransferFacade, HostEvent, HostEventEmitterPort,
+    InMemoryLifecycleStatus, IncomingMobileBuffer, LifecycleFacade, LifecycleFacadeDeps,
+    LifecycleStatusGateway, MemberRosterFacade, MobileSyncFacade, MobileSyncFacadeDeps,
+    MobileSyncSnapshotPorts, ResourceFacade, ResourceFacadeDeps, SearchCoordinator,
+    SearchCoordinatorDeps, SearchFacade, SearchFacadeDeps, SettingsFacade, StorageFacade,
+    StorageFacadeDeps, UpgradeFacade, UpgradeFacadeDeps,
 };
 use uc_application::{
     ApplyInboundClipboardUseCase, InboundCapture as ApplyInboundCapture,
@@ -167,6 +168,64 @@ impl ApplyInboundWrite for NoopInboundWrite {
     }
 }
 
+/// 构造 [`MobileSyncFacade`] —— 抽出来供 daemon-lifecycle 装配复用。
+///
+/// `apply_inbound` 由调用方决定:GUI/CLI 走 fallback (NoopWrite),daemon
+/// 走 enhanced (with_blob_materializer + with_host_event_emitter)。`endpoint_info`
+/// 由 [`AppDeps`] 携带 (单例,daemon LAN listener 与 facade 共享同一份
+/// Arc),无需 caller 透传。`file_transfer` 进程级 facade:daemon 装配
+/// 必传,SyncDoc apply 后 link + complete 让 mobile_lan transfer 在
+/// file_transfer 表里闭环;CLI / 不接 LAN listener 的入口可留 `None`。
+pub fn build_mobile_sync_facade(
+    deps: &AppDeps,
+    storage_paths: &AppPaths,
+    apply_inbound: Arc<ApplyInboundClipboardUseCase>,
+    file_transfer: Option<Arc<FileTransferFacade>>,
+    // GUI daemon 装配传 `Some(controller)` —— update_settings 写盘后即时
+    // start/stop/rebind listener。CLI fallback 传 `None`,settings 只写盘,
+    // 等下次 daemon 进程启动一次性读取(与本字段引入前完全一致的行为)。
+    lan_lifecycle: Option<Arc<dyn uc_core::ports::MobileLanLifecyclePort>>,
+    // 同进程内已构造好的 `ClipboardOutboundFacade`(daemon 启动时装配)。
+    // 装入时,移动端 PUT 落地本机后会异步把同一份 snapshot 走"本机捕获
+    // → 出站"完整管线 fan-out 给 Space 内其他已配对设备 ——
+    //
+    // - 文本 / 小图 inline 进 V3 envelope;
+    // - 大图自动剥成 iroh-blobs ref;
+    // - **文件**:`publish_blob_path` 流式发布到 iroh-blobs, 构造 free-file
+    //   V3BlobRef, 接收端拉回并改写 file-list rep 成本机 URI ——
+    //   "手机文件 → 其他桌面"的真正传输靠这条路径成立。
+    //
+    // CLI fallback / 不接 P2P 出站的入口传 `None`, mobile 上传仅落地本机,
+    // 不传播。
+    clipboard_outbound: Option<Arc<ClipboardOutboundFacade>>,
+) -> Arc<MobileSyncFacade> {
+    Arc::new(MobileSyncFacade::new(MobileSyncFacadeDeps {
+        clock: deps.system.clock.clone(),
+        // v3 SyncClipboard 兼容: 单一 minter 一次性出 (username, password,
+        // password_hash, device_id), Argon2id 作为口令 hash;无状态 ZST,
+        // 装配处直接 new 即可。
+        credentials_minter: Arc::new(OsRngCredentialsMinter),
+        password_hasher: Arc::new(Argon2idPasswordHasher),
+        device_repo: deps.mobile_sync.device_repo.clone(),
+        endpoint_info: deps.mobile_sync.endpoint_info.clone(),
+        lan_interface_probe: Arc::new(NetworkInterfaceLanProbe::new()),
+        settings: deps.settings.clone(),
+        apply_inbound,
+        incoming_buffer: Arc::new(IncomingMobileBuffer::new()),
+        file_staging: FilesystemMobileFileStaging::new(storage_paths.file_cache_dir.clone()),
+        snapshot_ports: MobileSyncSnapshotPorts {
+            entry_repo: deps.clipboard.clipboard_entry_repo.clone(),
+            selection_repo: deps.clipboard.selection_repo.clone(),
+            representation_repo: deps.clipboard.representation_repo.clone(),
+            payload_resolver: deps.clipboard.payload_resolver.clone(),
+            blob_reader: deps.storage.blob_store.clone(),
+        },
+        file_transfer,
+        clipboard_outbound,
+        lan_lifecycle,
+    }))
+}
+
 /// 通用 `AppFacade` 装配选项。
 ///
 /// 不同桌面入口只在这些可选能力上有差异。共同 facade 由
@@ -178,6 +237,10 @@ pub struct AppFacadeAssemblyOptions {
     pub member_roster: Option<Arc<MemberRosterFacade>>,
     pub clipboard_sync: Option<Arc<ClipboardSyncFacade>>,
     pub blob_transfer: Option<Arc<BlobTransferFacade>>,
+    /// 文件传输 lifecycle 入口(5 个动作 + seed + link)。daemon 入口
+    /// 必传;CLI / 单元测试可留 `None`。详见
+    /// [`AppFacade::file_transfer`](uc_application::facade::AppFacade)。
+    pub file_transfer: Option<Arc<FileTransferFacade>>,
     /// 底层 `BlobTransferPort`(`IrohBlobTransferAdapter`)直连引用,供
     /// `ClipboardHistoryFacade` 在 `delete_entry` / `clear_history` 时
     /// 调 `untag` 释放对应 entry 对 iroh-blobs 的引用。与 `blob_transfer`
@@ -223,46 +286,41 @@ pub fn build_app_facade_from_deps(
     // 会以 `LanListenerDisabled` 失败。Phase 3 接入 daemon LAN listener
     // 时把 listener 启停信号反向喂回 `InMemoryMobileSyncEndpointInfoAdapter`
     // 的 `set` / `clear`，这一处 wiring 即可让 register flow 端到端跑通。
-    // P5a.6:`apply_inbound` 由 daemon 入口装配 enhanced 版本注入(同一份
-    // 实例也共享给 `InboundClipboardFacade`);CLI / tauri 不接 LAN listener
-    // 的入口走下面的 fallback —— 一份 capture+write 都是 NoOp 的 minimal
-    // 实例,PUT 路径若真被调到会立刻 Err。
-    let apply_inbound = options
+    // mobile_sync facade 装配规则 (Phase 4 + PR #610 合并后):
+    //   - daemon 路径不走本函数装 mobile_sync —— 通过 `build_daemon_lifecycle_facades`
+    //     单独构造 enhanced 版本, 然后 `install_daemon_lifecycle` swap 进
+    //     `AppFacade.mobile_sync` OnceLock。所以 daemon 路径调本函数时
+    //     `mobile_sync_apply_inbound` 必须为 `None`, OnceLock 留空待 swap。
+    //   - GUI 路径同样不装 (LAN listener 由 daemon 起, GUI 进程内没有自己的
+    //     LAN PUT 入口),`mobile_sync_apply_inbound: None` → OnceLock 留空,
+    //     daemon 启动时 swap 进 enhanced 版本。
+    //   - CLI 路径需要 mobile_sync facade 跑查询命令 (`list_devices` 等),
+    //     显式传一份 fallback `Some(build_fallback_apply_inbound(deps))` 即可。
+    //
+    // `Some` 才装,`None` 留空 —— OnceLock 语义下,留空才能让 daemon-lifecycle
+    // swap 不撞已装入的 OnceLock。
+    let mobile_sync_facade = options
         .mobile_sync_apply_inbound
         .clone()
-        .unwrap_or_else(|| build_fallback_apply_inbound(deps));
-
-    let mobile_sync_facade = Arc::new(MobileSyncFacade::new(MobileSyncFacadeDeps {
-        clock: deps.system.clock.clone(),
-        // v3 SyncClipboard 兼容: 单一 minter 一次性出 (username, password,
-        // password_hash, device_id), Argon2id 作为口令 hash;无状态 ZST,
-        // 装配处直接 new 即可。
-        credentials_minter: Arc::new(OsRngCredentialsMinter),
-        password_hasher: Arc::new(Argon2idPasswordHasher),
-        // Phase 3 子步骤 1:device_repo 走 `DieselMobileDeviceRepository`,
-        // 由 wire_dependencies 在 InfraLayer 装配时构造,跨重启 / 跨进程稳定。
-        device_repo: deps.mobile_sync.device_repo.clone(),
-        // Phase 3 子步骤 3:endpoint_info 也由 wire_dependencies 装配为单例,
-        // daemon LAN listener 启停时通过 WiredDependencies 旁路写它,这里只
-        // 取读端共享 Arc。
-        endpoint_info: deps.mobile_sync.endpoint_info.clone(),
-        lan_interface_probe: Arc::new(NetworkInterfaceLanProbe::new()),
-        settings: deps.settings.clone(),
-        apply_inbound,
-        incoming_buffer: Arc::new(IncomingMobileBuffer::new()),
-        // P5a.3.5:File 类型入站 staging adapter。复用 file_cache_dir 与
-        // P2P 入站 blob materializer 同根,两者写到不同子目录互不干扰
-        // (`mobile_inbound/` vs `iroh-blobs/`)。adapter 启动时异步清空
-        // 上次进程残留,daemon / CLI / tauri 三个入口都共享这套语义。
-        file_staging: FilesystemMobileFileStaging::new(storage_paths.file_cache_dir.clone()),
-        snapshot_ports: MobileSyncSnapshotPorts {
-            entry_repo: deps.clipboard.clipboard_entry_repo.clone(),
-            selection_repo: deps.clipboard.selection_repo.clone(),
-            representation_repo: deps.clipboard.representation_repo.clone(),
-            payload_resolver: deps.clipboard.payload_resolver.clone(),
-            blob_reader: deps.storage.blob_store.clone(),
-        },
-    }));
+        .map(|apply_inbound| {
+            build_mobile_sync_facade(
+                deps,
+                storage_paths,
+                apply_inbound,
+                options.file_transfer.clone(),
+                // CLI fallback 装配:无常驻 daemon, 不需要 in-process hot-swap。
+                // settings 改动等下次 daemon 进程启动一次性生效。
+                None,
+                // CLI fallback 不接 outbound dispatcher(`ClipboardOutboundFacade`
+                // 装配链需要 worker 装配过程提供, 见
+                // `uc-desktop::daemon::runtime_assembly`),mobile 上传仅落地
+                // 本机, 不向其他 paired peers fan-out。daemon 入口走
+                // `build_daemon_lifecycle_facades` 那条路径, 在那里以
+                // `Some(clipboard_outbound)` 装入完整 fan-out 能力(含文件 blob
+                // 发布)。
+                None,
+            )
+        });
 
     let clipboard_restore = options.clipboard_restore.map(|restore| {
         Arc::new(ClipboardRestoreFacade::new(ClipboardRestoreFacadeDeps {
@@ -310,6 +368,7 @@ pub fn build_app_facade_from_deps(
         })),
         clipboard_sync: options.clipboard_sync,
         blob_transfer: options.blob_transfer,
+        file_transfer: options.file_transfer,
         clipboard_restore,
         search: Arc::new(SearchFacade::new(SearchFacadeDeps {
             search_index: deps.search.search_index.clone(),
@@ -332,7 +391,7 @@ pub fn build_app_facade_from_deps(
             app_version_state: deps.app_version_state.clone(),
             setup_status: deps.setup_status.clone(),
         })),
-        mobile_sync: Some(mobile_sync_facade),
+        mobile_sync: mobile_sync_facade,
     }))
 }
 
@@ -452,6 +511,11 @@ pub async fn build_cli_app_runtime(
         deps.clipboard.selection_repo.clone(),
     )));
 
+    // CLI 不接 LAN listener,但仍需 `mobile_sync` facade 跑查询命令
+    // (`list_devices` / `get_settings` 等)。显式传 fallback apply_inbound,
+    // PUT 路径真被调到才报 "not configured" Err —— CLI 场景下不会发生。
+    let mobile_sync_apply_inbound = build_fallback_apply_inbound(deps);
+
     let app_facade = build_app_facade_from_deps(
         deps,
         &storage_paths,
@@ -462,7 +526,9 @@ pub async fn build_cli_app_runtime(
             clipboard_sync: Some(assembly.clipboard_sync.clone()),
             blob_transfer: Some(assembly.blob.clone()),
             blob_transfer_port: Some(Arc::clone(&assembly.blob_transfer)),
+            file_transfer: Some(wired.file_transfer_facade.clone()),
             search_coordinator: Some(search_coordinator),
+            mobile_sync_apply_inbound: Some(mobile_sync_apply_inbound),
             ..Default::default()
         },
     );

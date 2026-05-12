@@ -1,14 +1,17 @@
 name: 'Publish to COPR'
-run-name: "copr-${{ inputs.version || 'auto' }}-${{ github.run_number }}"
+run-name: "copr-${{ inputs.version || github.event.release.tag_name || 'auto' }}-${{ github.run_number }}"
 
 # 触发时机:
-#   1. release.yml 完成 (workflow_run) — 自动跟进 dnf 渠道,跟 snap.yml 对位。
+#   1. release.published — GitHub Release 被正式发布(草稿→发布,或非草稿创建)。
+#      不能用 `workflow_run: Release` — stable 渠道的 release 由 release.yml 创建为
+#      draft(release.yml:290 `draft: channel != 'alpha'`),draft asset 在公开
+#      `releases/download/` URL 上一律 404。等到人工把 draft 发布,公开 URL 才可
+#      下载,此时 `release.published` 事件触发,COPR 拿到的 RPM 是真的可达的。
 #   2. workflow_dispatch — 手动重跑某个版本(常见场景:COPR build 临时挂了,
 #      release.yml 已经跑完不想全量重发)。
 on:
-  workflow_run:
-    workflows: ['Release']
-    types: [completed]
+  release:
+    types: [published]
   workflow_dispatch:
     inputs:
       version:
@@ -32,9 +35,9 @@ on:
 
 jobs:
   build-srpm-and-publish:
-    # workflow_run 触发时,只在 Release workflow 成功后才跑;失败则跳过。
-    # workflow_dispatch 没有 conclusion 字段,这条件对它返回 true。
-    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    # release 事件本身只在 published 时触发(见 on.release.types),不需要再过滤。
+    # workflow_dispatch 任何时候都允许。
+    if: github.event_name == 'workflow_dispatch' || github.event_name == 'release'
     runs-on: ubuntu-latest
     # Fedora 镜像里有 rpmbuild / rpmdevtools / spectool / dnf,免去在 Ubuntu
     # 上手动装 rpm 工具链。fedora:latest = 滚动 stable,可读性高且常 cached。
@@ -50,7 +53,9 @@ jobs:
             git curl rpm-build rpmdevtools python3-pip jq unzip
           # copr-cli 通过 pip 装 — Fedora 仓库里也有 dnf install copr-cli,
           # 但 pip 版本更新更稳定,接 API token 也更直接。
-          pip3 install --no-cache-dir copr-cli
+          # 显式带上 rich:copr-cli 新版 main.py 里 `from rich.text import Text`,
+          # 但 setup.py 没声明这个依赖,pip 不会自动拉 → ModuleNotFoundError。
+          pip3 install --no-cache-dir copr-cli rich
 
       - uses: actions/checkout@v4
 
@@ -60,16 +65,22 @@ jobs:
         run: |
           # 决策树:
           #   workflow_dispatch 给了 input.version → 直接用
-          #   否则                                  → 读 package.json
+          #   release 事件                          → 用 release.tag_name(剥掉 v 前缀)
+          #   workflow_dispatch 没给 version       → 兜底读 package.json
+          # 注意:release 事件下不能读 package.json,因为 checkout 默认 ref 是 tag
+          # 对应 commit,但还是优先信任 release tag 本身,避免 tag 与 package.json 漂移。
           if [ -n "${{ inputs.version }}" ]; then
             UPSTREAM_TAG="${{ inputs.version }}"
+          elif [ "${{ github.event_name }}" = "release" ]; then
+            TAG="${{ github.event.release.tag_name }}"
+            UPSTREAM_TAG="${TAG#v}"
           else
             UPSTREAM_TAG=$(python3 -c "import json; print(json.load(open('package.json'))['version'])")
           fi
 
           # RPM 不允许版本字段含 "-",将 prerelease 分隔符 "-" 替换为 "~"。
           # "~" 在 RPM 比较里小于任何字符 → 0.7.0~alpha.7 < 0.7.0,符合预期。
-          RPM_VERSION="${UPSTREAM_TAG/-/~}"
+          RPM_VERSION="$(printf '%s' "$UPSTREAM_TAG" | sed 's/-/~/')"
 
           echo "upstream_tag=$UPSTREAM_TAG" >> "$GITHUB_OUTPUT"
           echo "rpm_version=$RPM_VERSION" >> "$GITHUB_OUTPUT"
@@ -99,9 +110,20 @@ jobs:
 
       - name: Setup rpmbuild tree
         shell: bash
+        env:
+          RPM_VERSION: ${{ steps.ver.outputs.rpm_version }}
+          UPSTREAM_TAG: ${{ steps.ver.outputs.upstream_tag }}
         run: |
           rpmdev-setuptree
           cp packaging/uniclipboard.spec ~/rpmbuild/SPECS/
+          # 把 spec 里的占位符替换成实际版本号。为什么不能只靠 rpmbuild --define:
+          # --define 只在当前 GH runner 上 `rpmbuild -bs` 那次生效;SRPM 进入
+          # COPR mock chroot 二次 build 时,chroot 里没有 --define,会走 spec
+          # 的 fallback。物理替换后 SRPM 里 spec 已固化版本,chroot 走对。
+          sed -i \
+            -e "s/@VERSION@/${RPM_VERSION}/g" \
+            -e "s/@UPSTREAM_TAG@/${UPSTREAM_TAG}/g" \
+            ~/rpmbuild/SPECS/uniclipboard.spec
 
       # 两条互斥路径,按 inputs.run_id 选其一:
       #   - 给了 run_id  → 从 build run 的 artifact 拉 RPM(免去先发 release 的循环)
@@ -162,7 +184,7 @@ jobs:
           done
 
       - name: Download upstream binary RPMs from GitHub Release
-        if: github.event_name == 'workflow_run' || (github.event_name == 'workflow_dispatch' && inputs.run_ids == '')
+        if: github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && inputs.run_ids == '')
         shell: bash
         env:
           UPSTREAM_TAG: ${{ steps.ver.outputs.upstream_tag }}
@@ -180,26 +202,24 @@ jobs:
           done
           ls -lh ~/rpmbuild/SOURCES/
 
-      - name: Build per-arch SRPMs
+      - name: Build SRPM
         shell: bash
         env:
           RPM_VERSION: ${{ steps.ver.outputs.rpm_version }}
           UPSTREAM_TAG: ${{ steps.ver.outputs.upstream_tag }}
         run: |
-          # 为每个架构产一份 SRPM。spec 里 Source0 用 %{_arch} 在 srpm 阶段
-          # 会按 host 架构展开,所以 GH runner(x86_64)上默认产出 x86_64 SRPM。
-          # 用 --target 把 srpm 强制指向另一个 _arch,再 build 一份。
+          # 单次 rpmbuild -bs 出 1 个 SRPM。spec 里 Source0/Source1 同时
+          # 声明了 x86_64 + aarch64 两个 binary RPM,COPR mock chroot 在不同
+          # arch 二次 build 时用 %ifarch 选对应那一个。版本号已经在 "Setup
+          # rpmbuild tree" 步骤里用 sed 固化到 spec,这里 --define 仅作冗余。
+          #
+          # 不能 per-arch build SRPM 再合:SRPM 文件名只由 N-V-R 决定、不带
+          # arch,循环 -bs 会同名覆盖,最终只剩最后那次 --target 对应的 SRPM。
           mkdir -p out-srpm
-          for ARCH in x86_64 aarch64; do
-            echo "::group::Build SRPM for ${ARCH}"
-            rpmbuild -bs ~/rpmbuild/SPECS/uniclipboard.spec \
-              --target "${ARCH}-linux" \
-              --define "_version ${RPM_VERSION}" \
-              --define "_upstream_tag ${UPSTREAM_TAG}" \
-              --define "_topdir $HOME/rpmbuild"
-            echo "::endgroup::"
-          done
-          # 收集所有 SRPM
+          rpmbuild -bs ~/rpmbuild/SPECS/uniclipboard.spec \
+            --define "_version ${RPM_VERSION}" \
+            --define "_upstream_tag ${UPSTREAM_TAG}" \
+            --define "_topdir $HOME/rpmbuild"
           find ~/rpmbuild/SRPMS -name '*.src.rpm' -exec cp {} out-srpm/ \;
           ls -lh out-srpm/
 

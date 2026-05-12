@@ -193,8 +193,11 @@ There's no native iOS or Android app yet, but **mobile sync works
 today as a LAN companion**: the desktop daemon exposes a
 SyncClipboard-compatible HTTP service that any compatible client can
 talk to. The supported flow is iOS Shortcuts (a one-tap install via
-QR code on the **Devices** page); Android and other SyncClipboard
-clients can connect by entering the same base URL + credentials.
+QR code on the **Devices** page); for Android, we currently
+recommend the community-maintained Flutter client
+[sync-clipboard-flutter](https://github.com/bling-yshs/sync-clipboard-flutter)
+(side-loadable APK, no Google Play required). Other SyncClipboard
+clients can also connect by entering the same base URL + credentials.
 
 What "companion" means in practice:
 

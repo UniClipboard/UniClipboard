@@ -55,6 +55,7 @@
 use bytes::Bytes;
 use thiserror::Error;
 use uc_core::ids::{DeviceId, EntryId};
+use uc_observability::FlowId;
 
 mod materializer;
 mod ports;
@@ -77,6 +78,7 @@ pub struct ApplyInboundInput {
     pub from_device: DeviceId,
     pub content_hash: String,
     pub plaintext: Bytes,
+    pub flow_id: Option<FlowId>,
 }
 
 /// Result of one `execute` call. Daemon's worker maps each variant to a

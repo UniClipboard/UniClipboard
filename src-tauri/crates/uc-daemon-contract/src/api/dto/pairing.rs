@@ -29,13 +29,6 @@ pub struct UnpairDeviceRequest {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
-pub struct PairingGuiLeaseRequest {
-    pub enabled: bool,
-    pub lease_ttl_ms: Option<u64>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
-#[serde(rename_all = "camelCase")]
 pub struct SetPairingDiscoverabilityRequest {
     pub client_kind: String,
     pub discoverable: bool,

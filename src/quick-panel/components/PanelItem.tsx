@@ -9,7 +9,7 @@ interface PanelItemProps {
   index: number
   isSelected: boolean
   hoverDisabled: boolean
-  onSelect: (index: number) => void
+  onSelect: (index: number, plainOnly?: boolean) => void
   onHover: (index: number) => void
   itemRef?: React.Ref<HTMLDivElement>
   shortcutKey?: string
@@ -31,7 +31,7 @@ const PanelItem: React.FC<PanelItemProps> = React.memo(
               ? 'text-foreground'
               : 'text-foreground hover:bg-muted/50',
         ].join(' ')}
-        onClick={() => onSelect(index)}
+        onClick={e => onSelect(index, e.altKey)}
         onMouseEnter={() => onHover(index)}
       >
         <Icon

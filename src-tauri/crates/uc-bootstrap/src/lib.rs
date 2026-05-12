@@ -10,6 +10,7 @@ pub mod assembly;
 pub mod background_tasks;
 pub mod builders;
 pub mod config;
+mod correlation;
 pub mod file_transfer_lifecycle;
 pub mod init;
 mod network_policy;
@@ -33,8 +34,8 @@ pub use assembly::{
 };
 pub use background_tasks::{spawn_blob_processing_tasks, BlobProcessingPorts};
 pub use builders::{
-    build_cli_context, build_cli_context_with_profile, build_cli_wiring_context, build_daemon_app,
-    CliBootstrapContext, DaemonBootstrapContext,
+    build_cli_context, build_cli_context_with_profile, build_cli_wiring_context,
+    build_daemon_lifecycle, build_slice1_cli_context, CliBootstrapContext, DaemonLifecycle,
 };
 pub use config::load_config;
 pub use init::{
@@ -42,9 +43,10 @@ pub use init::{
     reconcile_trusted_peers,
 };
 pub use non_gui_runtime::{
-    build_app_facade_from_deps, build_cli_app_facade, build_cli_app_runtime, build_non_gui_bundle,
-    resolve_clipboard_integration_mode, AppFacadeAssemblyOptions, CliAppRuntime,
-    ClipboardRestoreAssembly, LoggingHostEventEmitter, NonGuiBundle,
+    build_app_facade_from_deps, build_cli_app_facade, build_cli_app_runtime,
+    build_mobile_sync_facade, build_non_gui_bundle, resolve_clipboard_integration_mode,
+    AppFacadeAssemblyOptions, CliAppRuntime, ClipboardRestoreAssembly, LoggingHostEventEmitter,
+    NonGuiBundle,
 };
 pub use space_setup::{
     build_space_setup_assembly, IrohNodeConfig, SpaceSetupAssembly, SpaceSetupAssemblyError,

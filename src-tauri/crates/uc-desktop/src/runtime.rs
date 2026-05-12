@@ -14,7 +14,8 @@ use std::sync::{Arc, RwLock};
 
 use uc_application::deps::AppDeps;
 use uc_application::facade::{
-    AppFacade, AppPaths, HostEventEmitterPort, InMemoryLifecycleStatus, LifecycleStatusGateway,
+    AppFacade, AppPaths, FileTransferFacade, HostEventEmitterPort, InMemoryLifecycleStatus,
+    LifecycleStatusGateway,
 };
 use uc_bootstrap::{
     build_app_facade_from_deps, AppFacadeAssemblyOptions, ClipboardRestoreAssembly, TaskRegistry,
@@ -30,8 +31,10 @@ pub struct DesktopRuntime {
     task_registry: Arc<TaskRegistry>,
     settings_port: Arc<dyn SettingsPort>,
     storage_paths: AppPaths,
-    /// Shared emitter cell —— bootstrap 期可 swap（例如从
-    /// `LoggingHostEventEmitter` 切到 daemon API emitter）。
+    /// Shared emitter cell —— GUI shell 装入 `LoggingHostEventEmitter`
+    /// 占位; daemon 启动时直接通过 `cell.write()` swap 成
+    /// `DaemonApiEventEmitter` (绑 broadcast::Sender), 让上游 publisher
+    /// 看到真 emitter。swap 路径只走 daemon 内部, 不暴露公开 set API。
     event_emitter_cell: Arc<RwLock<Arc<dyn HostEventEmitterPort>>>,
     device_id: String,
 }
@@ -44,6 +47,7 @@ impl DesktopRuntime {
         clipboard_write_coordinator: Arc<
             uc_application::clipboard_write::ClipboardWriteCoordinator,
         >,
+        file_transfer_facade: Arc<FileTransferFacade>,
     ) -> Self {
         let event_emitter: Arc<dyn HostEventEmitterPort> =
             Arc::new(uc_bootstrap::LoggingHostEventEmitter);
@@ -52,13 +56,16 @@ impl DesktopRuntime {
             storage_paths,
             event_emitter,
             clipboard_write_coordinator,
+            file_transfer_facade,
         )
     }
 
     /// 装配 `AppFacade` + 收集进程级零碎件，产出 `DesktopRuntime`。
     ///
     /// `clipboard_write_coordinator` 是必填参数 —— `ClipboardRestoreFacade`
-    /// 需要它，所以装 facade 时必须传入。
+    /// 需要它，所以装 facade 时必须传入。`file_transfer_facade` 来自进程级
+    /// 装配 (`WiredDependencies`),装进 `AppFacade.file_transfer`,GUI command
+    /// 与 daemon 都通过同一份访问 file-transfer lifecycle。
     pub fn with_setup(
         deps: AppDeps,
         storage_paths: AppPaths,
@@ -66,6 +73,7 @@ impl DesktopRuntime {
         clipboard_write_coordinator: Arc<
             uc_application::clipboard_write::ClipboardWriteCoordinator,
         >,
+        file_transfer_facade: Arc<FileTransferFacade>,
     ) -> Self {
         let device_id = deps.device.device_identity.current_device_id().to_string();
         let settings_port = deps.settings.clone();
@@ -84,7 +92,8 @@ impl DesktopRuntime {
 
         // Compose AppFacade — 与 desktop daemon 入口共享同一装配函数。
         // GUI 端不直接做 space setup / member roster / search coordinator，
-        // 这三处传 None；其它 facade 全部从 deps 拼齐。
+        // 这三处传 None；其它 facade 全部从 deps 拼齐。`file_transfer`
+        // 进程级 facade 这里装入，daemon 启停不动它。
         let app_facade = build_app_facade_from_deps(
             &deps,
             &storage_paths,
@@ -94,6 +103,7 @@ impl DesktopRuntime {
                     write_coordinator: clipboard_write_coordinator,
                     integration_mode: clipboard_integration_mode,
                 }),
+                file_transfer: Some(file_transfer_facade),
                 ..Default::default()
             },
         );
@@ -122,23 +132,6 @@ impl DesktopRuntime {
                     "RwLock poisoned in DesktopRuntime::event_emitter, recovering from poisoned state"
                 );
                 Arc::clone(&*poisoned.into_inner())
-            }
-        }
-    }
-
-    /// Swap the event emitter. Called from daemon setup to replace the
-    /// initial `LoggingHostEventEmitter` with a daemon API emitter.
-    pub fn set_event_emitter(&self, emitter: Arc<dyn HostEventEmitterPort>) {
-        match self.event_emitter_cell.write() {
-            Ok(mut guard) => {
-                *guard = emitter;
-            }
-            Err(poisoned) => {
-                tracing::error!(
-                    "RwLock poisoned in DesktopRuntime::set_event_emitter, recovering from poisoned state"
-                );
-                let mut guard = poisoned.into_inner();
-                *guard = emitter;
             }
         }
     }

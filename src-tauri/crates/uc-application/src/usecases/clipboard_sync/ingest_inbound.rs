@@ -30,6 +30,7 @@ use bytes::Bytes;
 use tokio::sync::broadcast;
 use tokio::task::JoinHandle;
 use tracing::{debug, info, instrument, warn};
+use uc_observability::FlowId;
 
 use uc_core::ids::DeviceId;
 use uc_core::ports::security::TransferCipherPort;
@@ -45,6 +46,7 @@ pub(crate) struct InboundClipboardNotice {
     pub from_device: DeviceId,
     pub content_hash: String,
     pub plaintext: Bytes,
+    pub flow_id: Option<FlowId>,
     pub action: InboundAction,
     pub at_ms: i64,
 }
@@ -139,7 +141,49 @@ impl IngestInboundClipboardUseCase {
         }
     }
 
+    // 跨设备可观测性(PR3):`handle_one` 优先采用对端在 wire header 上带过来
+    // 的 `flow_id`,让 A 端 dispatch span 和 B 端 ingest span 共享同一个
+    // `flow.id`,Sentry trace UI 上可以一键 join。
+    //
+    // 兼容路径:对端如果是 wire v1 老版本,header.flow_id 为 None,本侧
+    // fallback 自己生成 UUIDv7 并打 `flow.synthetic = true` —— 这样 Sentry
+    // 上可以快速圈出"还在用老版本的对端"。
+    #[instrument(
+        skip_all,
+        fields(
+            peer.device_id = %inbound.peer_device_id.as_str(),
+            content_hash = %inbound.header.content_hash,
+            flow.id = tracing::field::Empty,
+            flow.kind = "clipboard_sync",
+            flow.synthetic = tracing::field::Empty,
+        ),
+    )]
     async fn handle_one(&self, inbound: uc_core::ports::InboundClipboard) {
+        let flow_id = match inbound.header.flow_id.as_deref() {
+            Some(wire_id) => match FlowId::parse_str(wire_id) {
+                Ok(flow_id) => {
+                    tracing::Span::current().record("flow.id", tracing::field::display(&flow_id));
+                    Some(flow_id)
+                }
+                Err(err) => {
+                    let synthetic = FlowId::generate();
+                    tracing::Span::current().record("flow.id", tracing::field::display(&synthetic));
+                    tracing::Span::current().record("flow.synthetic", true);
+                    warn!(
+                        error = %err,
+                        wire_flow_id = %wire_id,
+                        "ingest: invalid flow_id in clipboard header; using synthetic span id"
+                    );
+                    None
+                }
+            },
+            None => {
+                let synthetic = FlowId::generate();
+                tracing::Span::current().record("flow.id", tracing::field::display(&synthetic));
+                tracing::Span::current().record("flow.synthetic", true);
+                None
+            }
+        };
         // Stage 1: device-level kill switch (`receive_enabled`). Cheaper
         // than decrypt + decode, so do this first.
         if !self.is_receive_allowed(&inbound.peer_device_id).await {
@@ -185,6 +229,7 @@ impl IngestInboundClipboardUseCase {
             from_device: inbound.peer_device_id.clone(),
             content_hash: inbound.header.content_hash.clone(),
             plaintext,
+            flow_id,
             action: InboundAction::NewEntry,
             at_ms: self.clock.now_ms(),
         };
@@ -392,6 +437,7 @@ mod tests {
                 origin_device_id: peer.to_string(),
                 origin_device_name: format!("Device {peer}"),
                 payload_version: 3,
+                flow_id: None,
             },
             ciphertext,
         }
@@ -428,11 +474,14 @@ mod tests {
         // Give the spawned task a tick to subscribe before publishing.
         tokio::time::sleep(Duration::from_millis(20)).await;
 
-        receiver.publish(inbound_fixture(
+        let incoming_flow_id = FlowId::generate();
+        let mut inbound = inbound_fixture(
             "peer-1",
             "0".repeat(64).as_str(),
             Bytes::from(b"CIPHhello".to_vec()),
-        ));
+        );
+        inbound.header.flow_id = Some(incoming_flow_id.to_string());
+        receiver.publish(inbound);
 
         let notice = tokio::time::timeout(Duration::from_secs(2), notice_rx.recv())
             .await
@@ -443,6 +492,7 @@ mod tests {
         assert_eq!(notice.plaintext, Bytes::from_static(b"hello"));
         assert_eq!(notice.action, InboundAction::NewEntry);
         assert_eq!(notice.at_ms, 42);
+        assert_eq!(notice.flow_id.as_ref(), Some(&incoming_flow_id));
     }
 
     /// 2. Decrypt failure — no notice is emitted; the ingest loop keeps
@@ -715,6 +765,7 @@ mod tests {
                 origin_device_id: "peer-no-text".to_string(),
                 origin_device_name: "Peer NoText".to_string(),
                 payload_version: 3,
+                flow_id: None,
             },
             ciphertext: Bytes::from(envelope_bytes),
         });

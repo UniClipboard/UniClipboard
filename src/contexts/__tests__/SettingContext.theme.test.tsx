@@ -43,6 +43,10 @@ const baseSetting: Settings = {
     autoCheckUpdate: true,
     theme: 'light',
     themeColor: DEFAULT_THEME_COLOR,
+    themeColorLight: null,
+    themeColorDark: null,
+    themeOverridesLight: {},
+    themeOverridesDark: {},
     language: 'en-US',
     deviceName: 'Test Device',
     telemetryEnabled: true,
@@ -162,6 +166,126 @@ describe('SettingProvider theme integration', () => {
 
     await waitFor(() => {
       expect(document.documentElement.classList.contains('dark')).toBe(true)
+    })
+  })
+
+  it('applies themeColorDark preset when resolved mode is dark', async () => {
+    prefersDark = true
+    mockGetSettings.mockResolvedValue({
+      ...baseSetting,
+      general: {
+        ...baseSetting.general,
+        theme: 'system',
+        themeColor: null,
+        themeColorLight: 'zinc',
+        themeColorDark: 'claude',
+      },
+    })
+
+    renderHook(() => useSetting(), { wrapper })
+
+    await waitFor(() => {
+      expect(document.documentElement.getAttribute('data-theme')).toBe('claude')
+    })
+  })
+
+  it('applies themeColorLight preset when resolved mode is light', async () => {
+    mockGetSettings.mockResolvedValue({
+      ...baseSetting,
+      general: {
+        ...baseSetting.general,
+        theme: 'light',
+        themeColor: null,
+        themeColorLight: 'zinc',
+        themeColorDark: 'claude',
+      },
+    })
+
+    renderHook(() => useSetting(), { wrapper })
+
+    await waitFor(() => {
+      expect(document.documentElement.getAttribute('data-theme')).toBe('zinc')
+    })
+  })
+
+  it('falls back to legacy themeColor when split fields are null', async () => {
+    mockGetSettings.mockResolvedValue({
+      ...baseSetting,
+      general: {
+        ...baseSetting.general,
+        theme: 'light',
+        themeColor: 'catppuccin',
+        themeColorLight: null,
+        themeColorDark: null,
+      },
+    })
+
+    renderHook(() => useSetting(), { wrapper })
+
+    await waitFor(() => {
+      expect(document.documentElement.getAttribute('data-theme')).toBe('catppuccin')
+    })
+  })
+
+  it('applies user override on top of preset for current mode', async () => {
+    mockGetSettings.mockResolvedValue({
+      ...baseSetting,
+      general: {
+        ...baseSetting.general,
+        theme: 'light',
+        themeColor: null,
+        themeColorLight: 'zinc',
+        themeColorDark: 'zinc',
+        themeOverridesLight: {
+          primary: 'oklch(0.5 0.2 270)',
+        },
+        themeOverridesDark: {
+          background: 'oklch(0.18 0.02 280)',
+        },
+      },
+    })
+
+    renderHook(() => useSetting(), { wrapper })
+
+    await waitFor(() => {
+      // light 模式应用了 primary override
+      expect(document.documentElement.style.getPropertyValue('--primary')).toBe(
+        'oklch(0.5 0.2 270)'
+      )
+      // dark 模式的 override 不应在 light 模式生效
+      expect(document.documentElement.style.getPropertyValue('--background')).not.toBe(
+        'oklch(0.18 0.02 280)'
+      )
+    })
+  })
+
+  it('ignores override keys outside the allow list', async () => {
+    mockGetSettings.mockResolvedValue({
+      ...baseSetting,
+      general: {
+        ...baseSetting.general,
+        theme: 'light',
+        themeColor: null,
+        themeColorLight: 'zinc',
+        themeColorDark: 'zinc',
+        themeOverridesLight: {
+          // 非法 key, 防御逻辑应忽略
+          'malicious-token': 'oklch(0.5 0.2 270)',
+          // 合法 key
+          primary: 'oklch(0.6 0.15 30)',
+        },
+        themeOverridesDark: {},
+      },
+    })
+
+    renderHook(() => useSetting(), { wrapper })
+
+    await waitFor(() => {
+      expect(document.documentElement.style.getPropertyValue('--primary')).toBe(
+        'oklch(0.6 0.15 30)'
+      )
+      // 非法 key 不会被写到任意 CSS 变量
+      expect(document.documentElement.style.getPropertyValue('--malicious-token')).toBe('')
     })
   })
 })

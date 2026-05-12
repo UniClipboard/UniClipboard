@@ -42,9 +42,6 @@ sha2 = "0.10"
 base64 = "0.22"
 subtle = "2.5"
 
-# Clipboard
-clipboard-rs = { version = "0.3.3", features = ["default"] }
-
 # Image handling
 image = "0.25"
 
@@ -81,7 +78,7 @@ thiserror = "2.0.17"
 [dev-dependencies]
 tempfile = "3"
 mockall = "0.13"
-tracing-subscriber = { version = "0.3", features = ["registry"] }
+tracing-subscriber = { version = "0.3", features = ["registry", "fmt", "env-filter"] }
 
 # Linux 上 keyring → dbus-secret-service → dbus → libdbus-sys。默认 libdbus-sys
 # 走 pkg-config 找系统 libdbus-1-dev,musl 静态交叉编译没有 sysroot 走不通
@@ -100,6 +97,52 @@ tracing-subscriber = { version = "0.3", features = ["registry"] }
 # 运行期失败 (Alpine / 极简 distro 是这个状态)。
 [target.'cfg(all(target_os = "linux", target_env = "musl"))'.dependencies]
 libdbus-sys = { version = "0.2", features = ["vendored"] }
+
+# Linux-only dependencies for the platform clipboard backend:
+#
+# * rustix — eventfd-backed shutdown channel for the platform clipboard event
+#   loop (`crates/uc-platform/src/clipboard/event_loop.rs`) + poll/pipe
+#   primitives consumed by the Wayland data-control implementations under
+#   `clipboard/platform/linux/wayland/`. rustix's `event::eventfd` is gated
+#   to linux_kernel / freebsd / illumos / espidf upstream, so we cannot use
+#   `cfg(unix)` here — macOS would fail to find `EventfdFlags`. macOS /
+#   Windows / other Unix use the Condvar-only path in `event_loop.rs`.
+#
+# * wayland-client / wayland-protocols(-wlr) — native Wayland data-control
+#   client for the platform clipboard backend. Phase 2 added it; Phase 5
+#   added the `ext-data-control` variant (gated behind the `staging` feature
+#   of `wayland-protocols`).
+#
+# * x11rb — native X11 selection client (Phase 3). Replaces the
+#   `clipboard_rs` X11 path with our own ICCCM/XFIXES implementation; the
+#   `xfixes` feature is required for `xfixes::select_selection_input`
+#   change notifications.
+#
+#   `clipboard-rs` is the legacy/transitional implementation that Phase 1
+#   wraps via `clipboard_rs_adapter`. Phase 4 narrows it to
+#   `cfg(any(target_os="macos", target_os="windows"))`.
+#   Pinning notes:
+#     * wayland-client 0.31.x is the current stable line; wayland-rs follows
+#       semver so 0.31 → 0.32 will require a porting pass.
+#     * wayland-protocols-wlr 0.3.x exposes `zwlr_data_control_v1` (used by
+#       niri / sway / hyprland / KDE Plasma).
+#     * wayland-protocols 0.32 with `staging` feature exposes
+#       `ext_data_control_v1` (used by GNOME mutter 47+).
+#     * x11rb 0.13.x is the current stable line; the `xfixes` feature is
+#       what the watcher needs for selection-change notifications.
+[target.'cfg(target_os = "linux")'.dependencies]
+rustix = { version = "0.38", features = ["event", "fs", "pipe"] }
+wayland-client = "0.31"
+wayland-protocols = { version = "0.32", features = ["client", "staging"] }
+wayland-protocols-wlr = { version = "0.3", features = ["client"] }
+x11rb = { version = "0.13", features = ["xfixes"] }
+
+# `clipboard-rs` is now Linux-free (Phase 4): native Wayland + native x11rb
+# cover every Linux session we support. Keep it on macOS/Windows where the
+# native backends still wrap it. The `LinuxClipboard` / `X11Clipboard` /
+# `WaylandClipboard` impls in `clipboard/platform/linux/` do not pull this in.
+[target.'cfg(any(target_os = "macos", target_os = "windows"))'.dependencies]
+clipboard-rs = { version = "0.3.3", features = ["default"] }
 
 [target.'cfg(windows)'.dependencies]
 clipboard-win = { version = "5.4" }

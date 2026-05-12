@@ -40,7 +40,8 @@ pub(crate) async fn handle_unpair_device(
     let app = state.app_facade_or_error()?;
     let roster = app
         .member_roster
-        .clone()
+        .get()
+        .cloned()
         .ok_or_else(|| ApiError::service_unavailable("member roster facade unavailable"))?;
     let peer_id = payload.peer_id;
 

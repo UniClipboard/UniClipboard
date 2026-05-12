@@ -6,7 +6,8 @@ use bytes::Bytes;
 use tracing::warn;
 
 use uc_core::file_transfer::{
-    FileTransferDirection, OutboundProgressReporterPort, OutboundProgressStatus,
+    FileTransferDirection, FileTransferFailureReason, OutboundProgressReporterPort,
+    OutboundProgressStatus,
 };
 use uc_core::ids::{DeviceId, EntryId};
 use uc_core::ports::blob::{
@@ -15,6 +16,9 @@ use uc_core::ports::blob::{
 };
 use uc_core::ports::ContentHashPort;
 
+use crate::facade::file_transfer::{
+    CompleteTransfer, FailTransfer, FileTransferFacade, SeedReceiverContext, StartTransfer,
+};
 use crate::facade::host_event::{HostEvent, HostEventEmitterPort, TransferHostEvent};
 use crate::usecases::blob_transfer::{
     FetchBlobInput, FetchBlobPathInput, FetchBlobUseCase, PublishBlobInput, PublishBlobUseCase,
@@ -31,12 +35,20 @@ pub struct BlobTransferDeps {
     pub blob_transfer: Arc<dyn BlobTransferPort>,
     pub blob_reference: Arc<dyn BlobReferenceRepositoryPort>,
     /// 可选 host event emitter。提供时,带 `transfer_context` 的 fetch_blob
-    /// 会发出 status_changed + progress 事件;不提供则 fetch_blob 退化为静默拉取。
+    /// 会发出 progress 事件;不提供则 fetch_blob 退化为静默拉取。
+    /// 状态变更(transferring / completed / failed)统一通过
+    /// [`FileTransferFacade`] 走 lifecycle,不再由本 facade 直发。
     pub host_event_emitter: Option<SharedHostEventEmitter>,
     /// 可选反向进度上报端口。提供时,fetch_blob 会在每次本地进度回调上额外
     /// 推一帧给数据来源端(sender),让 sender UI 能实时展示对端接收字节进度。
     /// 不提供则 fetch_blob 退化为只发本地 host event。
     pub outbound_progress_reporter: Option<Arc<dyn OutboundProgressReporterPort>>,
+    /// 可选 file-transfer lifecycle facade。提供时,带 `transfer_context` 的
+    /// fetch_blob / fetch_blob_to_path 会调 `start` / `complete` / `fail`
+    /// 让事件落进 file_transfer 表与 domain timeline,前端 status 切换
+    /// 由 `FileTransferHostEventPublisher` 统一发出。不提供则状态变更被
+    /// 静默忽略(用于不需要 lifecycle 跟踪的内部场景,例如 CLI 工具)。
+    pub file_transfer: Option<Arc<FileTransferFacade>>,
 }
 
 #[derive(Debug, Clone)]
@@ -80,6 +92,11 @@ pub struct PublishBlobResult {
 ///   不同,但接收端值相等,是有意为之的对齐(避免前端做映射)。
 /// - `peer_id` 是来源设备 ID,前端用它做"来自谁"的展示;
 /// - `total_bytes` 来自 V3 envelope 的 advertised size,用于前端进度百分比与 ETA。
+/// - `filename` 是 receiver-side projection 已经 seed 好的真实文件名;
+///   `BlobTransferFacade::fetch_*` 调 `FileTransferFacade::start` 时会把
+///   它一起塞进 `Started` 事件,projection apply 时会把这个值原样
+///   写回 `file_transfer.filename`(避免覆盖 seed 时填入的真实值)。
+///   rep-bound blob / 没有显式文件名的场景填空字符串。
 /// - `outbound_transfer_id` / `outbound_target`:可选的反向上报上下文。
 ///   设置时,sink 在每次进度回调上会通过 `OutboundProgressReporterPort`
 ///   把 (bytes, total, status) 推回数据来源端(sender),让 sender UI
@@ -96,6 +113,7 @@ pub struct FetchTransferContext {
     pub transfer_id: String,
     pub peer_id: String,
     pub total_bytes: Option<u64>,
+    pub filename: String,
     pub outbound_transfer_id: Option<String>,
     pub outbound_target: Option<DeviceId>,
 }
@@ -158,6 +176,7 @@ pub struct BlobTransferFacade {
     fetch_uc: Arc<FetchBlobUseCase>,
     host_event_emitter: Option<SharedHostEventEmitter>,
     outbound_progress_reporter: Option<Arc<dyn OutboundProgressReporterPort>>,
+    file_transfer: Option<Arc<FileTransferFacade>>,
 }
 
 impl BlobTransferFacade {
@@ -177,6 +196,7 @@ impl BlobTransferFacade {
             fetch_uc,
             host_event_emitter: deps.host_event_emitter,
             outbound_progress_reporter: deps.outbound_progress_reporter,
+            file_transfer: deps.file_transfer,
         }
     }
 
@@ -190,22 +210,13 @@ impl BlobTransferFacade {
         }
     }
 
+    /// 发一帧 receiving-direction Progress host event。
+    ///
+    /// fetch 入口的"0 字节起始帧"和 fetch 收尾的"final-size 帧"显式
+    /// 通过这条路径发——`HostEventProgressSink` 已经做了字节阈值/时间窗
+    /// 节流,通常不会刚好落在 0 字节起点和最后一个字节,所以这两帧由
+    /// facade 主路径直接补,确保前端进度条立刻显示和最终停在 100%。
     /// `entry_id` 字段直接复用 `ctx.transfer_id`(协议约定 == receiver_entry_id)。
-    /// 不再接受发送端 `command.entry_id` ——那是 iroh tag,不应外发到 UI。
-    fn emit_status_changed(
-        &self,
-        ctx: &FetchTransferContext,
-        status: &'static str,
-        reason: Option<String>,
-    ) {
-        self.emit_host_event(HostEvent::Transfer(TransferHostEvent::StatusChanged {
-            transfer_id: ctx.transfer_id.clone(),
-            entry_id: ctx.transfer_id.clone(),
-            status: status.to_string(),
-            reason,
-        }));
-    }
-
     fn emit_progress(
         &self,
         ctx: &FetchTransferContext,
@@ -220,6 +231,99 @@ impl BlobTransferFacade {
             bytes_transferred,
             total_bytes,
         }));
+    }
+
+    /// 在 receiver-side projection 表里 upsert 一条 `pending` 行,让
+    /// `FileTransferHostEventPublisher::resolve_entry_id` 能在后续
+    /// `Started` / `Completed` / `Failed` 事件里查到 entry_id 把
+    /// `StatusChanged` host event 发出去。iroh 路径里
+    /// `transfer_id == receiver_entry_id`,所以两个字段填同一个值。
+    /// `cached_path` 仅 fetch_blob_to_path 路径有意义(blob 落盘的目标
+    /// 路径);fetch_blob 写回 representation bytes,留空。
+    async fn seed_lifecycle(&self, ctx: &FetchTransferContext, cached_path: String) {
+        let Some(facade) = self.file_transfer.as_ref() else {
+            return;
+        };
+        if let Err(err) = facade
+            .seed_receiver_context(SeedReceiverContext {
+                transfer_id: ctx.transfer_id.clone(),
+                entry_id: ctx.transfer_id.clone(),
+                origin_device_id: ctx.peer_id.clone(),
+                filename: ctx.filename.clone(),
+                cached_path,
+            })
+            .await
+        {
+            warn!(
+                transfer_id = %ctx.transfer_id,
+                error = %err,
+                "blob fetch: seed receiver context failed"
+            );
+        }
+    }
+
+    /// 调 `FileTransferFacade::start` 让 `Started` 事件落进 store。
+    /// 失败时只 warn,不让 fetch 主路径感知—— lifecycle 错误不应该
+    /// 阻塞 blob 拉取本身,projection 后续 sweep / reconcile 会继续兜底。
+    async fn start_lifecycle(&self, ctx: &FetchTransferContext) {
+        let Some(facade) = self.file_transfer.as_ref() else {
+            return;
+        };
+        if let Err(err) = facade
+            .start(StartTransfer {
+                transfer_id: ctx.transfer_id.clone(),
+                peer_id: ctx.peer_id.clone(),
+                filename: ctx.filename.clone(),
+                file_size: ctx.total_bytes,
+            })
+            .await
+        {
+            warn!(
+                transfer_id = %ctx.transfer_id,
+                error = %err,
+                "blob fetch: start lifecycle failed"
+            );
+        }
+    }
+
+    async fn complete_lifecycle(&self, ctx: &FetchTransferContext) {
+        let Some(facade) = self.file_transfer.as_ref() else {
+            return;
+        };
+        if let Err(err) = facade
+            .complete(CompleteTransfer {
+                transfer_id: ctx.transfer_id.clone(),
+                peer_id: ctx.peer_id.clone(),
+            })
+            .await
+        {
+            warn!(
+                transfer_id = %ctx.transfer_id,
+                error = %err,
+                "blob fetch: complete lifecycle failed"
+            );
+        }
+    }
+
+    async fn fail_lifecycle(&self, ctx: &FetchTransferContext, detail: String) {
+        let Some(facade) = self.file_transfer.as_ref() else {
+            return;
+        };
+        if let Err(err) = facade
+            .fail(FailTransfer {
+                transfer_id: ctx.transfer_id.clone(),
+                peer_id: ctx.peer_id.clone(),
+                reason: FileTransferFailureReason::Unknown,
+                detail: Some(detail),
+            })
+            .await
+        {
+            warn!(
+                transfer_id = %ctx.transfer_id,
+                error = %err,
+                "blob fetch: fail lifecycle failed"
+            );
+        }
     }
 
     pub async fn publish_blob(
@@ -297,11 +401,17 @@ impl BlobTransferFacade {
                 sink
             });
 
-        // 发出 'transferring' 状态 + 0 字节 progress,让前端立刻显示进度条
-        // (即便 adapter 命中本地缓存也会发: completed 事件会马上覆盖,
-        // 不会让 UI 出现"卡在 0%")。
+        // seed 让 receiver projection 先有一行 pending,publisher 后续
+        // 发 `StatusChanged` 时才能 resolve 出 entry_id。fetch_blob 写回
+        // representation bytes,blob 不落本地文件,所以 cached_path 留空。
+        // start 让 lifecycle 落 `Started` 事件 + projection 行翻成
+        // `transferring`,publisher 据此发 `StatusChanged transferring`;
+        // 紧跟一帧 0 字节 Progress 是 sink 节流的兜底——即便 adapter 命中
+        // 本地缓存瞬间完成,前端也能先看到进度条 placeholder,后续 completed
+        // 事件再覆盖。
         if let Some(ctx) = command.transfer_context.as_ref() {
-            self.emit_status_changed(ctx, "transferring", None);
+            self.seed_lifecycle(ctx, String::new()).await;
+            self.start_lifecycle(ctx).await;
             self.emit_progress(ctx, 0, ctx.total_bytes);
         }
 
@@ -319,8 +429,12 @@ impl BlobTransferFacade {
                 if let Some(ctx) = command.transfer_context.as_ref() {
                     let final_size = outcome.plaintext.len() as u64;
                     let total = ctx.total_bytes.or(Some(final_size));
+                    // 进度回调 throttle 通常不会刚好落在最后一个字节,
+                    // 所以 final-size 帧由 facade 显式推一次,确保前端
+                    // 进度条停在 100%;然后 lifecycle complete 让 publisher
+                    // 发 `StatusChanged completed`。
                     self.emit_progress(ctx, final_size, total);
-                    self.emit_status_changed(ctx, "completed", None);
+                    self.complete_lifecycle(ctx).await;
                     // 把"传输完成"也通知 sender —— 进度回调 throttle 通常
                     // 不会刚好落在最后一个字节,所以最终一帧由 facade 显式
                     // 推送,确保 sender UI 看到 100%。
@@ -342,7 +456,7 @@ impl BlobTransferFacade {
             Err(e) => {
                 let msg = e.to_string();
                 if let Some(ctx) = command.transfer_context.as_ref() {
-                    self.emit_status_changed(ctx, "failed", Some(msg.clone()));
+                    self.fail_lifecycle(ctx, msg.clone()).await;
                     self.report_outbound_terminal(
                         ctx,
                         0,
@@ -393,8 +507,12 @@ impl BlobTransferFacade {
                 sink
             });
 
+        // seed 用 target_path 当 cached_path —— blob 落盘的实际位置,
+        // dashboard `cached_path` 字段直接显示为本地副本路径。
         if let Some(ctx) = command.transfer_context.as_ref() {
-            self.emit_status_changed(ctx, "transferring", None);
+            let cached_path = command.target_path.to_string_lossy().into_owned();
+            self.seed_lifecycle(ctx, cached_path).await;
+            self.start_lifecycle(ctx).await;
             self.emit_progress(ctx, 0, ctx.total_bytes);
         }
 
@@ -414,7 +532,7 @@ impl BlobTransferFacade {
                     let final_size = outcome.bytes_written;
                     let total = ctx.total_bytes.or(Some(final_size));
                     self.emit_progress(ctx, final_size, total);
-                    self.emit_status_changed(ctx, "completed", None);
+                    self.complete_lifecycle(ctx).await;
                     self.report_outbound_terminal(
                         ctx,
                         final_size,
@@ -433,7 +551,7 @@ impl BlobTransferFacade {
             Err(e) => {
                 let msg = e.to_string();
                 if let Some(ctx) = command.transfer_context.as_ref() {
-                    self.emit_status_changed(ctx, "failed", Some(msg.clone()));
+                    self.fail_lifecycle(ctx, msg.clone()).await;
                     self.report_outbound_terminal(
                         ctx,
                         0,

@@ -53,7 +53,7 @@ pub async fn enter_read(header: &str, json: bool, verbose: bool) -> Result<Mobil
 
 async fn enter_inner(verbose: bool) -> Result<MobileSyncCmdCtx, i32> {
     let cli = build_app_session(verbose).await?;
-    let Some(facade) = cli.app_facade().mobile_sync.clone() else {
+    let Some(facade) = cli.app_facade().mobile_sync.get().cloned() else {
         ui::error("Mobile-sync facade is not wired in this build.");
         cli.shutdown().await;
         return Err(exit_codes::EXIT_ERROR);

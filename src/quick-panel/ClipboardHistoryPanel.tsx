@@ -285,11 +285,11 @@ const ClipboardHistoryPanel: React.FC = () => {
   ])
 
   const handleSelect = useCallback(
-    async (index: number) => {
+    async (index: number, plainOnly?: boolean) => {
       const item = filteredItems[index]
       if (!item) return
       try {
-        await restoreClipboardEntry(item.id)
+        await restoreClipboardEntry(item.id, plainOnly ? { plainOnly: true } : undefined)
         await pasteToApp()
       } catch (err) {
         log.error({ err }, 'Failed to restore clipboard entry')
@@ -360,7 +360,7 @@ const ClipboardHistoryPanel: React.FC = () => {
       if ((e.metaKey || e.ctrlKey) && e.key >= '0' && e.key <= '9') {
         e.preventDefault()
         const index = e.key === '0' ? 9 : parseInt(e.key) - 1
-        if (index < filteredItems.length) void handleSelect(index)
+        if (index < filteredItems.length) void handleSelect(index, e.altKey)
         return
       }
 
@@ -392,7 +392,7 @@ const ClipboardHistoryPanel: React.FC = () => {
           break
         case 'Enter':
           e.preventDefault()
-          void handleSelect(selectedIndex)
+          void handleSelect(selectedIndex, e.altKey)
           break
       }
     },

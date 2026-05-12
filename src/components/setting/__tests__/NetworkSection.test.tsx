@@ -33,6 +33,10 @@ const baseSetting: Settings = {
     autoCheckUpdate: true,
     theme: 'light',
     themeColor: 'zinc',
+    themeColorLight: null,
+    themeColorDark: null,
+    themeOverridesLight: {},
+    themeOverridesDark: {},
     language: 'zh-CN',
     deviceName: 'Test Device',
     telemetryEnabled: true,
@@ -253,7 +257,7 @@ describe('NetworkSection — Phase 95 集成', () => {
     const user = userEvent.setup()
     mockInvokeWithTrace.mockImplementation(async (command: string) => {
       if (command === 'restart_app') {
-        throw new Error('app.restart() failed')
+        throw new Error('restart app failed')
       }
       return undefined
     })
@@ -453,7 +457,7 @@ describe('Phase 95 ROADMAP fence — 4 验收 + 3 Pitfall 防御', () => {
     renderWithOverrides({ allowRelayFallback: true })
     await user.click(await screen.findByRole('button', { name: /查看 LAN-only|View the list/ }))
     expect(screen.getByText(/首次配对 rendezvous|First-pairing rendezvous/)).toBeInTheDocument()
-    expect(screen.getByText(/OTLP 遥测|OTLP telemetry/)).toBeInTheDocument()
+    expect(screen.getByText(/^遥测$|^Telemetry$/)).toBeInTheDocument()
     expect(
       screen.getByText(/pkarr DHT NodeId 解析|pkarr DHT NodeId resolution/)
     ).toBeInTheDocument()

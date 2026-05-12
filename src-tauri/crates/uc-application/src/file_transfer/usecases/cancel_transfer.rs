@@ -19,17 +19,16 @@ pub struct CancelTransfer {
 /// Cancel an active transfer and emit a `Cancelled` event.
 ///
 /// 取消一个仍在进行中的传输，并产出 `Cancelled` 事件。
-pub struct CancelTransferUseCase<S, P> {
-    store: Arc<S>,
-    publisher: Arc<P>,
+pub struct CancelTransferUseCase {
+    store: Arc<dyn FileTransferEventStorePort>,
+    publisher: Arc<dyn FileTransferEventPublisherPort>,
 }
 
-impl<S, P> CancelTransferUseCase<S, P>
-where
-    S: FileTransferEventStorePort,
-    P: FileTransferEventPublisherPort,
-{
-    pub fn new(store: Arc<S>, publisher: Arc<P>) -> Self {
+impl CancelTransferUseCase {
+    pub fn new(
+        store: Arc<dyn FileTransferEventStorePort>,
+        publisher: Arc<dyn FileTransferEventPublisherPort>,
+    ) -> Self {
         Self { store, publisher }
     }
 

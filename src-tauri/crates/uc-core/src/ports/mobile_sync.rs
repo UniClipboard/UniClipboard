@@ -12,7 +12,7 @@ use thiserror::Error;
 
 use crate::mobile_sync::{
     LanEndpointInfo, LanInterface, LanListenerStatus, LatestPasteRepresentation, MintedCredentials,
-    MobileDevice, MobileDeviceError, MobileDeviceId, StagedFile,
+    MobileDevice, MobileDeviceError, MobileDeviceId, StagedFile, StagingHandle,
 };
 
 // ─── credentials minter ──────────────────────────────────────────────────
@@ -220,6 +220,74 @@ pub enum LatestClipboardSnapshotError {
     Resolution(String),
 }
 
+// ─── lan listener lifecycle ─────────────────────────────────────────────
+//
+// 为什么需要这一组类型:LAN 监听器的"开/关/换端口"过去靠装配期一次性决定,
+// 任何设置变更都要求重启进程才能生效。把"目标状态"抽成一个可被运行时反复
+// 调用的 port,才让设置层在不知道 adapter 细节的情况下推一次按钮就让监听
+// 器状态立刻对齐到期望值。
+
+/// 期望的 LAN 监听器运行时状态。
+///
+/// 这是 [`MobileLanLifecyclePort::apply`] 的入参类型 —— 调用方只说"我要它变成
+/// 什么", 不说"具体怎么 bind / 绑哪个网卡"(那是 adapter 的实现细节)。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MobileLanTarget {
+    /// 不对外暴露任何 LAN 监听器。若 adapter 当前有正在运行的监听器,必须把
+    /// 它停掉并释放底层资源(端口、句柄等)。
+    Disabled,
+
+    /// 在指定端口上对外暴露监听器。`port` ∈ `1..=65535`。
+    ///
+    /// 若 adapter 当前无监听器, start;若已有同端口监听器, no-op;若端口不同,
+    /// 先 stop 旧的再 start 新的。
+    Enabled {
+        /// 监听端口。adapter 自行决定 bind 哪些 IP(典型实现绑 `0.0.0.0`,
+        /// 由 OS 路由分发)。
+        port: u16,
+    },
+}
+
+/// 把对外暴露的 LAN 监听器状态对齐到期望值。
+///
+/// # 这个 port 解决什么问题
+///
+/// 给"设置层 / 装配层"一个**单点、幂等**的切换入口:不管当前监听器是开/关/
+/// 在哪个端口, 调用方只传"我要它变成什么", port 自己负责推进到那个状态。
+/// 没有这个 port, 调用方就得自己跟踪当前监听器句柄、判断是该 start 还是
+/// stop 还是 rebind, 错综复杂且易出现"两边状态不一致"的 bug。
+///
+/// # 语义
+///
+/// `apply` 是 **幂等** 的状态对齐:多次以同一 target 调用与单次调用等价。
+/// 调用方不需要先查"现在是什么状态",直接传期望值即可。
+///
+/// # 状态机
+///
+/// 当前状态 × 目标状态的合法行为:
+///
+/// | 当前 \ 目标         | `Disabled` | `Enabled { port }` |
+/// | ------------------- | ---------- | ------------------ |
+/// | 未运行              | no-op      | start              |
+/// | 运行中, 同端口      | stop       | no-op              |
+/// | 运行中, 不同端口    | stop       | stop + start       |
+///
+/// # 错误语义
+///
+/// 本方法 **不返回错误**。adapter 内部 bind 失败(端口占用、IP 不可分配、
+/// 权限不足等)必须经其它通道反馈给观察者(典型:`MobileSyncEndpointInfoPort`
+/// 的 `BindFailed{reason}` 三态),而不是把错误回传给调用方 —— 因为调用方
+/// 通常已经在持久化层提交了新设置, port 失败不应让设置回滚,只应让观察者
+/// 看到"配置已生效但 bind 失败"。
+///
+/// # 并发
+///
+/// 同时刻只能有一个 `apply` 在生效;adapter 自行做串行化(典型:内部 mutex)。
+#[async_trait]
+pub trait MobileLanLifecyclePort: Send + Sync {
+    async fn apply(&self, target: MobileLanTarget);
+}
+
 // ─── mobile file staging ────────────────────────────────────────────────
 
 /// 把 mobile 入站(`PUT /file/{name}`)收到的裸字节物化到本机文件系统,
@@ -272,6 +340,72 @@ pub trait MobileFileStagingPort: Send + Sync {
     /// adapter **不**负责 mime 推断;use case 端按 dataName 扩展名 / SyncClipboard
     /// 协议默认 (`application/octet-stream`) 决定 wire mime。
     async fn read_by_uri(&self, uri: &str) -> Result<Vec<u8>, MobileFileStagingError>;
+
+    /// 开启一段"分块写入"的 staging 会话,返回一个不透明 [`StagingHandle`]
+    /// 供后续 `append_stage_chunk` / `finalize_stage` / `abort_stage` 使用。
+    ///
+    /// 与 [`Self::stage_file`] 的区别:全量字节模式要求调用方先把整个 payload
+    /// 装入内存,本方法允许在收字节的过程中边收边落盘,内存占用与单个 chunk
+    /// 同阶。`data_name` 的 sanitize 与 `scope_id` 的目录隔离语义与 `stage_file`
+    /// 完全等价。`mime` 仅用于排障日志,不参与文件落盘行为。
+    ///
+    /// 错误形态:
+    /// - `InvalidDataName`:sanitize 后兜底仍失败(实际很难触发);
+    /// - `Io`:mkdir / 创建文件失败。
+    ///
+    /// 会话生命周期由 handle 唯一界定 —— adapter 保证:
+    /// - 同一 handle 的资源(打开的 fd / 临时 path)在 `finalize_stage` 或
+    ///   `abort_stage` 返回后必定释放;
+    /// - 在 begin 与 finalize/abort 之间崩溃的 handle 视为 abandoned,
+    ///   adapter 可在后续清理周期回收。
+    async fn begin_stage(
+        &self,
+        scope_id: &str,
+        data_name: &str,
+        mime: &str,
+    ) -> Result<StagingHandle, MobileFileStagingError>;
+
+    /// 把 `chunk` 追加写入由 `handle` 标识的 staging 会话。
+    ///
+    /// 单笔会话只允许**串行** append;同一 handle 的并发 append 语义未定义。
+    /// chunk 大小由调用方决定,adapter 不做窗口聚合;0 字节 chunk 合法且为 no-op。
+    ///
+    /// 错误形态:
+    /// - `Io`:写盘 / 句柄无效(handle 已 finalize/abort 过 / handle 从未由本
+    ///   adapter 颁发)。无独立"未知 handle"变体 —— 协议违规 ≈ IO 故障,
+    ///   都翻成应用层 `Internal`。
+    ///
+    /// 失败后会话状态由 adapter 决定;调用方在收到 `Err` 后应立即调
+    /// `abort_stage` 释放资源,不应再次调本方法。
+    async fn append_stage_chunk(
+        &self,
+        handle: &StagingHandle,
+        chunk: &[u8],
+    ) -> Result<(), MobileFileStagingError>;
+
+    /// 结束一段 staging 会话,消费 `handle`,产出可拼 file-list rep 的
+    /// [`StagedFile`]。
+    ///
+    /// 语义:adapter 保证返回前已 `flush` + `sync_all`,落盘对后续 reader
+    /// 可见。失败时 adapter 自行回收已落盘的部分数据。
+    ///
+    /// 错误形态:
+    /// - `Io`:flush / fsync / URI 派生失败 / handle 已被消费过。
+    async fn finalize_stage(
+        &self,
+        handle: StagingHandle,
+    ) -> Result<StagedFile, MobileFileStagingError>;
+
+    /// 放弃一段 staging 会话,消费 `handle`,best-effort 释放资源(关句柄、
+    /// 删半写入的文件)。
+    ///
+    /// **不**返回 `Result`:调用本方法必然处在已经失败的路径上(客户端断流 /
+    /// chunk 写盘失败 / 上层取消),二次失败只值得 warn 一行,不应再扰动
+    /// 上层错误处理。
+    ///
+    /// 幂等性:重复 abort 同一 handle 行为 = 静默 no-op(adapter 内部 entry
+    /// 已不存在),不报错。
+    async fn abort_stage(&self, handle: StagingHandle);
 }
 
 #[derive(Debug, Error)]

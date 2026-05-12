@@ -48,6 +48,10 @@ image = { version = "0.25", default-features = false, features = ["png"] }
 # Compares last_seen_version (port-stored String) against current build
 # version to derive `UpgradeStatus`.
 semver = "1"
+# Concurrent TTL cache with bounded capacity. Used by ApplyInbound to dedupe
+# rapid-replay inbound frames (content_hash / visible_key → entry_id) without
+# rolling a custom expiring map.
+moka = { version = "0.12", default-features = false, features = ["sync"] }
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"

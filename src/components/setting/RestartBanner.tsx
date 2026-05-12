@@ -3,16 +3,18 @@ import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
 
 /**
- * RestartBanner — Phase 95 持久 inline 重启通知。
+ * RestartBanner — NetworkSection 专属持久 inline 重启通知 (Phase 95)。
  *
- * - Per CONTEXT D-A1: 不复用 shadcn Alert，不用 sonner toast。
- * - Per CONTEXT D-A2: 由父组件（NetworkSection）嵌入到 SettingGroup 内部、Switch 上方。
- * - Per CONTEXT D-A3: 三态视觉只靠 Banner 出现/消失表达，Switch 自身样式不动。
- * - Per CONTEXT D-B3: app.restart() 失败时通过 error prop 渲染 inline error，不抛 toast。
+ * - Per CONTEXT D-A1: 不复用 shadcn Alert, 不用 sonner toast。
+ * - Per CONTEXT D-A2: 由父组件 (NetworkSection) 嵌入到 SettingGroup 内部、Switch 上方。
+ * - Per CONTEXT D-A3: 三态视觉只靠 Banner 出现/消失表达, Switch 自身样式不动。
+ * - Per CONTEXT D-B3: app.restart() 失败时通过 error prop 渲染 inline error, 不抛 toast。
  *
- * Reusability: 文案完全通过 i18n key 注入，Phase 95 暂硬编码
- * settings.sections.network.restartBanner.* 路径；后续 Phase 96/97 若复用，
- * 重构为 props.messageKey 注入即可。
+ * Scope: 这个 banner 跟 NetworkSection 的 loading/error/retry 状态机紧绑,
+ * i18n key 走 `settings.sections.network.restartBanner.*`。其他 surface
+ * (例如 MobileSyncSettingsSheet) 的"提示重启"需求视觉与错误处理都不同,
+ * 应该各自走自己的 inline UI, 不要尝试把这个 banner 改造成 generic ——
+ * union 类型的 banner 会比复制一份更难维护。
  */
 export interface RestartBannerProps {
   visible: boolean

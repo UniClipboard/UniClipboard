@@ -64,7 +64,7 @@ describe('LanOnlyDisclosure', () => {
     await user.click(screen.getByRole('button', { name: /查看 LAN-only|View the list/ }))
     // 4 类清单标题（zh-CN 锁定 — i18n 已切到 zh-CN）
     expect(screen.getByText(/首次配对 rendezvous|First-pairing rendezvous/)).toBeInTheDocument()
-    expect(screen.getByText(/OTLP 遥测|OTLP telemetry/)).toBeInTheDocument()
+    expect(screen.getByText(/^遥测$|^Telemetry$/)).toBeInTheDocument()
     expect(
       screen.getByText(/pkarr DHT NodeId 解析|pkarr DHT NodeId resolution/)
     ).toBeInTheDocument()

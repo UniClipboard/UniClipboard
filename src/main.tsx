@@ -17,11 +17,8 @@ import { applyDeviceMetaToSentry, initSentry, Sentry } from '@/observability/sen
 // returns the persisted user preference.
 initSentry()
 
-// Fire-and-forget: 启动后第一时间把 Rust 侧解析好的 device + app meta
-// 拉过来,推进 Sentry 全局 scope。两端事件因此共享同一组 device.id /
-// app.version / app.channel tag,在 Sentry UI 上可以按 device.id join 出
-// "A 发送 → B 接收"的完整链路,这是 PR1 的核心目标。
-// 失败只 console.warn:Tauri runtime 还没就绪 / meta 未生成都不应阻塞渲染。
+// 启动后异步拉取 Rust 侧解析的 device/app 元数据，用于推进 Sentry 全局 scope。
+// 如果 Tauri runtime 未就绪或 meta 未生成，只记录警告，不阻塞渲染。
 getDeviceMeta()
   .then(applyDeviceMetaToSentry)
   .catch(err => {

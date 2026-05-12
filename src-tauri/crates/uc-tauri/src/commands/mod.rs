@@ -28,8 +28,7 @@ pub async fn get_device_id(
     Ok(runtime.device_id())
 }
 
-/// Aggregated device + app meta exposed to the webview so that Sentry's
-/// front-end SDK can attach the same scope tags the Rust side already attaches.
+/// 暴露给 webview 的设备和应用元数据，用于补齐前端 Sentry scope。
 ///
 /// 字段命名与后端 `ScopeContext` 一一对应（`device.id` / `device.role` /
 /// `device.platform` / `app.version` / `app.channel`）。webview 侧的
@@ -37,6 +36,7 @@ pub async fn get_device_id(
 /// 的角色（`gui-host`），webview 把它打到 `device.host_role` 二级 tag 上,
 /// 便于 Sentry 上同时看到两端。
 #[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct DeviceMeta {
     pub device_id: String,
     pub device_role: String,
@@ -88,5 +88,32 @@ pub(crate) fn record_trace_fields(span: &Span, trace: &Option<TraceMetadata>) {
     if let Some(metadata) = trace.as_ref() {
         span.record("trace_id", tracing::field::display(&metadata.trace_id));
         span.record("trace_ts", metadata.timestamp);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn device_meta_serializes_with_camel_case_keys() {
+        let meta = DeviceMeta {
+            device_id: "device-a".to_string(),
+            device_role: "gui-host".to_string(),
+            platform: "macos".to_string(),
+            app_version: "1.2.3".to_string(),
+            app_channel: "dev".to_string(),
+        };
+
+        let json = serde_json::to_value(meta).expect("DeviceMeta serializes");
+
+        assert_eq!(json["deviceId"], "device-a");
+        assert_eq!(json["deviceRole"], "gui-host");
+        assert_eq!(json["appVersion"], "1.2.3");
+        assert_eq!(json["appChannel"], "dev");
+        assert!(json.get("device_id").is_none());
+        assert!(json.get("device_role").is_none());
+        assert!(json.get("app_version").is_none());
+        assert!(json.get("app_channel").is_none());
     }
 }

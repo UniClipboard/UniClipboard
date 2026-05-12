@@ -11,6 +11,7 @@ import {
 import { redactSensitiveArgs } from '@/observability/redaction'
 
 const sentryEnabled = Boolean(import.meta.env.VITE_SENTRY_DSN)
+export const DEVICE_ROLE_WEBVIEW = 'webview'
 
 /**
  * localStorage 中镜像 `general.telemetryEnabled` 的键名。
@@ -141,28 +142,25 @@ export function initSentry(): void {
 }
 
 /**
- * Device + app meta accepted by {@link applyDeviceMetaToSentry}. Shape matches
- * `src/api/runtime.ts::DeviceMeta` one-to-one but is duplicated here so this
- * module stays free of any `@tauri-apps/*` import — keeping it Vitest-friendly
- * for the existing `sentry.test.ts` browser-only test suite.
+ * `applyDeviceMetaToSentry` 接收的设备和应用元数据。
+ * 形状与 `src/api/runtime.ts::DeviceMeta` 保持一致；这里单独声明，避免本模块
+ * 引入 Tauri 相关依赖，方便浏览器环境下的 Vitest 测试。
  */
 export interface SentryDeviceMeta {
-  device_id: string
-  device_role: string
+  deviceId: string
+  deviceRole: string
   platform: string
-  app_version: string
-  app_channel: string
+  appVersion: string
+  appChannel: string
 }
 
 /**
- * Push the device + app meta returned by `get_device_meta` into Sentry's
- * global scope. Mirrors the Rust `sentry::configure_scope` call wired up in
- * `uc-bootstrap::tracing` so events from the webview and the Rust host share
- * the exact same `device.id` / `app.version` / `app.channel` taxonomy and can
- * be joined in the Sentry UI.
+ * 把 `get_device_meta` 返回的设备和应用元数据写入 Sentry 全局 scope。
+ * 这与 Rust 侧 `uc-bootstrap::tracing` 里的 scope 写入保持同一套标签，
+ * 让 webview 和 Rust 主进程事件能按 `device.id` 关联。
  *
  * 注意:webview 自身的角色固定为 `webview`,而 Rust 主进程上报的
- * `device_role`(`gui-host` / `daemon` / `cli`)挂在二级 tag
+ * `deviceRole`(`gui-host` / `daemon` / `cli`)挂在二级 tag
  * `device.host_role` 上 —— 这样一台机器的两个进程在 Sentry 上既能用 `device.id`
  * 聚合,又能用 role 区分。
  */
@@ -170,13 +168,13 @@ export function applyDeviceMetaToSentry(meta: SentryDeviceMeta): void {
   if (!sentryEnabled) {
     return
   }
-  Sentry.setUser({ id: meta.device_id })
-  Sentry.setTag('device.id', meta.device_id)
-  Sentry.setTag('device.role', 'webview')
-  Sentry.setTag('device.host_role', meta.device_role)
+  Sentry.setUser({ id: meta.deviceId })
+  Sentry.setTag('device.id', meta.deviceId)
+  Sentry.setTag('device.role', DEVICE_ROLE_WEBVIEW)
+  Sentry.setTag('device.host_role', meta.deviceRole)
   Sentry.setTag('device.platform', meta.platform)
-  Sentry.setTag('app.version', meta.app_version)
-  Sentry.setTag('app.channel', meta.app_channel)
+  Sentry.setTag('app.version', meta.appVersion)
+  Sentry.setTag('app.channel', meta.appChannel)
 }
 
 /**

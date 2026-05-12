@@ -1,7 +1,12 @@
 import type { ErrorEvent } from '@sentry/core'
 import * as Sentry from '@sentry/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { initSentry, setFrontendSentryEnabled } from '@/observability/sentry'
+import {
+  DEVICE_ROLE_WEBVIEW,
+  applyDeviceMetaToSentry,
+  initSentry,
+  setFrontendSentryEnabled,
+} from '@/observability/sentry'
 
 // Mock Sentry
 vi.mock('@sentry/react', async importOriginal => {
@@ -11,6 +16,8 @@ vi.mock('@sentry/react', async importOriginal => {
     init: vi.fn(),
     browserTracingIntegration: vi.fn(),
     replayIntegration: vi.fn(),
+    setTag: vi.fn(),
+    setUser: vi.fn(),
   }
 })
 
@@ -166,5 +173,22 @@ describe('initSentry', () => {
 
     expect(result).not.toBeNull()
     expect(result?.extra).toEqual({ safe: 'data' })
+  })
+
+  it('applies camelCase device meta to Sentry scope', () => {
+    applyDeviceMetaToSentry({
+      deviceId: 'device-a',
+      deviceRole: 'gui-host',
+      platform: 'macos',
+      appVersion: '1.2.3',
+      appChannel: 'dev',
+    })
+
+    expect(Sentry.setUser).toHaveBeenCalledWith({ id: 'device-a' })
+    expect(Sentry.setTag).toHaveBeenCalledWith('device.id', 'device-a')
+    expect(Sentry.setTag).toHaveBeenCalledWith('device.role', DEVICE_ROLE_WEBVIEW)
+    expect(Sentry.setTag).toHaveBeenCalledWith('device.host_role', 'gui-host')
+    expect(Sentry.setTag).toHaveBeenCalledWith('app.version', '1.2.3')
+    expect(Sentry.setTag).toHaveBeenCalledWith('app.channel', 'dev')
   })
 })

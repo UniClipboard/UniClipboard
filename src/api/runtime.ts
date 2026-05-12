@@ -5,16 +5,15 @@ export async function getDeviceId(): Promise<string> {
 }
 
 /**
- * Aggregated device + app meta returned by the Rust host so that the Sentry
- * front-end SDK can attach the same scope tags the Rust side already attaches.
- * Field names mirror the Rust struct one-to-one to keep the two sinks aligned.
+ * Rust 主进程返回的设备和应用元数据。
+ * 字段名与 Rust 序列化后的输出保持一致，供前端 Sentry scope 使用。
  */
 export interface DeviceMeta {
-  device_id: string
-  device_role: string
+  deviceId: string
+  deviceRole: string
   platform: string
-  app_version: string
-  app_channel: string
+  appVersion: string
+  appChannel: string
 }
 
 export async function getDeviceMeta(): Promise<DeviceMeta> {

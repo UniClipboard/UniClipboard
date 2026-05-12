@@ -224,13 +224,26 @@ export async function deleteClipboardEntry(id: string): Promise<void> {
  * daemon 负责来源追踪和出站同步。
  *
  * @param id Entry ID to restore.
+ * @param opts.plainOnly When true, write only the `text/plain` representation
+ *   to the OS clipboard so that target applications paste as plain text.
+ *   Falls back silently to multi-format restore if the entry has no plain rep.
+ *
+ *   传 `plainOnly: true` 时只把 `text/plain` 表示写入系统剪贴板，让目标
+ *   应用粘出纯文本（Markdown 源码 / HTML 标签 / RTF 等富文本被剔除）。
+ *   条目没有 plain 表示时由 daemon 静默降级为多格式恢复。
  * @throws {DaemonApiError} On HTTP errors, session failures, or entry not found.
  */
-export async function restoreClipboardEntry(id: string): Promise<RestoreResult> {
+export async function restoreClipboardEntry(
+  id: string,
+  opts?: { plainOnly?: boolean }
+): Promise<RestoreResult> {
   const options: RequestOptions = {
     method: 'POST',
   }
-  await daemonClient.request<void>(`${CLIPBOARD_RESTORE}/${id}`, options)
+  const path = opts?.plainOnly
+    ? `${CLIPBOARD_RESTORE}/${id}?plain=true`
+    : `${CLIPBOARD_RESTORE}/${id}`
+  await daemonClient.request<void>(path, options)
   return { success: true }
 }
 

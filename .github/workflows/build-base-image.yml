@@ -1,0 +1,90 @@
+name: 'Build base container image'
+run-name: "build-base-image-${{ github.run_number }}"
+
+# 触发条件:
+#   - main 上 Dockerfile / 本 workflow 自身变更 → 自动重建 :latest
+#   - 手动 dispatch → 临时改完想立刻测一遍
+#
+# 镜像被 build.yml / build-cli.yml 在 container.image 字段引用,push 完
+# 必须在 GitHub Packages 页把 visibility 调成 public,否则 reusable build
+# 拉镜像会 401(public 后 anonymous pull 直接命中,无需带 credentials)。
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/docker/build-bookworm.Dockerfile'
+      - '.github/workflows/build-base-image.yml'
+
+env:
+  REGISTRY: ghcr.io
+  # GHCR path 必须小写,这里强制 lowercase 以防 owner 大小写不一致
+  IMAGE_NAME: ${{ github.repository_owner }}/build-bookworm
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Lowercase image name
+        id: img
+        run: |
+          name="${IMAGE_NAME,,}"
+          echo "image=${REGISTRY}/${name}" >> "$GITHUB_OUTPUT"
+
+      # buildx + qemu 用来一次产出 amd64 + arm64 双 arch manifest,
+      # 这样 ubuntu-22.04 (x86_64) 和 ubuntu-22.04-arm (aarch64) host
+      # 拉同一个 tag 自动解析到对应 arch 的层。
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ steps.img.outputs.image }}
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=sha,prefix=sha-,format=short
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .github/docker
+          file: .github/docker/build-bookworm.Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          # GHA cache 让重复构建只重跑变更的 RUN layer,通常 < 30s
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Summary
+        run: |
+          echo "## Base image pushed :package:" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "Tags:" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          echo "${{ steps.meta.outputs.tags }}" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "> 首次推送后请到 Packages 设置里把 visibility 改为 public," >> "$GITHUB_STEP_SUMMARY"
+          echo "> 否则 build.yml / build-cli.yml 拉镜像会 401。" >> "$GITHUB_STEP_SUMMARY"

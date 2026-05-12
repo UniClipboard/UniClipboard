@@ -23,10 +23,12 @@ export const WindowShell: React.FC<WindowShellProps> = ({ titleBar, children }) 
     <div className="relative h-screen flex flex-col overflow-hidden bg-[#F2F2F7] dark:bg-[#09090B] text-foreground transition-colors duration-500">
       {/* Dynamic Background Accents */}
       <div
+        data-uc-decorative-effect="true"
         className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,var(--primary)_0%,transparent_100%)] opacity-[0.04] dark:opacity-[0.05]"
         aria-hidden="true"
       />
       <div
+        data-uc-decorative-effect="true"
         className="pointer-events-none absolute -left-20 -top-20 h-64 w-64 rounded-full bg-primary/5 blur-[100px] dark:bg-primary/10"
         aria-hidden="true"
       />

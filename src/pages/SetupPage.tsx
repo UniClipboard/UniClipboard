@@ -80,7 +80,10 @@ export default function SetupPage({ onCompleteSetup }: SetupPageProps = {}) {
 
   return (
     <div className="relative h-full w-full overflow-hidden bg-background">
-      <div className="pointer-events-none absolute inset-0 overflow-hidden">
+      <div
+        data-uc-decorative-effect="true"
+        className="pointer-events-none absolute inset-0 overflow-hidden"
+      >
         <div className="absolute inset-0 bg-gradient-to-br from-background via-background to-muted/30" />
         <div
           className="absolute -top-32 -left-32 h-[28rem] w-[28rem] rounded-full bg-blue-500/25 blur-[6rem] dark:bg-blue-500/15"

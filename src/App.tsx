@@ -1,3 +1,4 @@
+import { MotionConfig } from 'framer-motion'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { BrowserRouter as Router, Route, Navigate, Outlet, useNavigate } from 'react-router-dom'
 import { signalLifecycleReady } from '@/api/daemon/lifecycle'
@@ -254,16 +255,20 @@ const AppContent = ({
 }
 
 export default function App() {
+  const { reduceVisualEffects } = usePlatform()
+
   return (
-    <Router>
-      <SearchProvider>
-        <SettingProvider>
-          <UpdateProvider>
-            <AppContentWithBar />
-          </UpdateProvider>
-        </SettingProvider>
-      </SearchProvider>
-    </Router>
+    <MotionConfig reducedMotion={reduceVisualEffects ? 'always' : 'user'}>
+      <Router>
+        <SearchProvider>
+          <SettingProvider>
+            <UpdateProvider>
+              <AppContentWithBar />
+            </UpdateProvider>
+          </SettingProvider>
+        </SearchProvider>
+      </Router>
+    </MotionConfig>
   )
 }
 

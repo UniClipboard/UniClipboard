@@ -368,6 +368,52 @@
   z-index: 9999;
 }
 
+/* Linux WebKit 低特效模式：优先保证响应速度与稳定渲染。 */
+html[data-uc-low-effects='true'] {
+  --shadow-2xs: none;
+  --shadow-xs: none;
+  --shadow-sm: none;
+  --shadow: none;
+  --shadow-md: none;
+  --shadow-lg: none;
+  --shadow-xl: none;
+  --shadow-2xl: none;
+  --shadow-opacity: 0;
+  --shadow-blur: 0px;
+}
+
+html[data-uc-low-effects='true'] *,
+html[data-uc-low-effects='true'] *::before,
+html[data-uc-low-effects='true'] *::after {
+  animation: none !important;
+  transition-property: none !important;
+  transition-duration: 0s !important;
+  transition-delay: 0s !important;
+  scroll-behavior: auto !important;
+}
+
+html[data-uc-low-effects='true'] *,
+html[data-uc-low-effects='true'] *::before,
+html[data-uc-low-effects='true'] *::after {
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+}
+
+html[data-uc-low-effects='true'] [data-uc-decorative-effect='true'] {
+  display: none !important;
+}
+
+html[data-uc-low-effects='true'] .glass-weak,
+html[data-uc-low-effects='true'] .glass,
+html[data-uc-low-effects='true'] .glass-strong {
+  background-color: var(--background);
+}
+
+html[data-uc-low-effects='true']::view-transition-old(root),
+html[data-uc-low-effects='true']::view-transition-new(root) {
+  animation: none !important;
+}
+
 @layer base {
   html,
   body,

@@ -1,12 +1,14 @@
+import { applyPlatformEffectPreferences, detectPlatformInfo } from '@/lib/platform'
 import { initializeUiScale } from '@/lib/ui-scale'
 
+export { applyPlatformEffectPreferences } from '@/lib/platform'
+
 export const applyPlatformTypographyScale = () => {
-  if (typeof navigator === 'undefined' || typeof document === 'undefined') {
+  if (typeof document === 'undefined') {
     return
   }
 
-  const ua = navigator.userAgent || ''
-  const isWindows = ua.includes('Windows')
+  const { isWindows } = detectPlatformInfo()
 
   if (!isWindows) {
     return
@@ -24,5 +26,6 @@ export const applyPlatformTypographyScale = () => {
 
 export const initializeWindowUi = (): (() => void) => {
   applyPlatformTypographyScale()
+  applyPlatformEffectPreferences()
   return initializeUiScale()
 }

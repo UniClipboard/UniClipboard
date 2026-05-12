@@ -4,6 +4,7 @@
  */
 
 import { flushSync } from 'react-dom'
+import { isLowEffectsEnabled } from '@/lib/platform'
 
 let lastClickX = 0
 let lastClickY = 0
@@ -21,7 +22,7 @@ export function setTransitionOrigin(x: number, y: number) {
  * Pass null for x or y to skip the reveal animation (e.g. keyboard/ESC activations).
  */
 function startCircularReveal(x: number | null, y: number | null, updateDOM: () => void) {
-  if (x === null || y === null || !document.startViewTransition) {
+  if (x === null || y === null || isLowEffectsEnabled() || !document.startViewTransition) {
     updateDOM()
     return
   }

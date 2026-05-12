@@ -28,10 +28,7 @@ use uc_desktop::daemon_probe::{
 };
 use uc_desktop::DaemonOwnership;
 
-use crate::bootstrap::{
-    ensure_default_device_name, start_background_tasks, start_gui_pairing_lease_task,
-    TauriAppRuntime,
-};
+use crate::bootstrap::{ensure_default_device_name, start_background_tasks, TauriAppRuntime};
 use crate::commands::updater::PendingUpdate;
 use crate::quick_panel;
 use crate::tray::TrayState;
@@ -287,11 +284,6 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
                 {
                     Ok(connection_info) => {
                         daemon_connection_state_for_setup.set(connection_info);
-                        start_gui_pairing_lease_task(
-                            daemon_connection_state_for_setup.clone(),
-                            runtime_for_daemon.task_registry(),
-                        )
-                        .await;
                         // 不再需要 daemon supervisor。in-process daemon 与
                         // GUI 进程同生死；外部 daemon 不归我们管，崩了
                         // 也由 CLI 负责重新拉起。

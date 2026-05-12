@@ -452,6 +452,26 @@
       "cancel": "Cancel",
       "verifying": "Verifying access...",
       "error": "Keychain Always Allow permission not detected. Please try again and make sure to select \"Always Allow\" in the macOS Keychain prompt."
+    },
+    "passphraseModal": {
+      "title": "Enter your space passphrase",
+      "description": "Auto-unlock could not retrieve the key from the keychain. Enter the passphrase you set for this space to unlock manually.",
+      "passphraseLabel": "Passphrase",
+      "passphrasePlaceholder": "Enter your passphrase",
+      "submit": "Unlock",
+      "submitting": "Unlocking...",
+      "cancel": "Cancel",
+      "show": "Show passphrase",
+      "hide": "Hide passphrase",
+      "hint": "After unlocking once, the keychain will be refreshed so future sessions can auto-unlock again."
+    },
+    "errors": {
+      "wrongPassphrase": "Wrong passphrase. Please try again.",
+      "corruptedKeyMaterial": "The local key material is corrupted. You'll need to reset this space and re-join from another device to recover.",
+      "setupNotCompleted": "Setup is not complete on this device yet. Please run setup first.",
+      "spaceNotInitialized": "No space exists on this device. Please initialize a new space or join from another device.",
+      "facadeUnavailable": "The app is still starting up. Please wait a moment and try again.",
+      "internal": "Unlock failed unexpectedly. Please try again or restart the application."
     }
   },
   "language": {

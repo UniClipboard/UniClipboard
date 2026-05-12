@@ -409,7 +409,19 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
                     info!("[Startup] Silent start: skipping startup barrier window show");
                 }
 
-                // 1. Auto-unlock (non-blocking) via daemon API if enabled in settings
+                // 1. Auto-unlock (non-blocking) via in-process facade if enabled in settings.
+                //
+                // 历史上这里走的是 `DaemonQueryClient::unlock_encryption()` HTTP RPC
+                // —— GUI 与 daemon 在 `DaemonRunMode::GuiInProcess` 下同进程,
+                // 共享同一份 `AppFacade`,经 HTTP 等于自己给自己发 TCP 报文。
+                // 改成 in-process 调 `EncryptionFacade::unlock()`(silent keyring
+                // resume,不接受 passphrase)——语义保持原 endpoint 一致, 但
+                // (a) 不再依赖 daemon connection_state ready, 启动延迟更短;
+                // (b) 故障面减少一层(无需经 axum router / auth middleware)。
+                //
+                // `lifecycle_retry` 仍走 HTTP——它真正是"通知 daemon-side 的
+                // service lifecycle 推进", 跨调用方/被调用方角色, 保留 RPC
+                // 边界更稳。这一步仍需等 daemon connection_state 填充。
                 let runtime_for_auto_unlock = runtime.clone();
                 let daemon_conn_for_unlock = daemon_connection_state.clone();
                 tauri::async_runtime::spawn(async move {
@@ -427,10 +439,34 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
                         return;
                     }
 
-                    // daemon bootstrap 与 backend init 是并发 spawn 的——
-                    // 必须等 connection_state 被填充后再下发 unlock，
-                    // 否则首次 RPC 直接 401-no-connection-info 把整个
-                    // auto-unlock + lifecycle_retry 跳过。
+                    match runtime_for_auto_unlock
+                        .app_facade()
+                        .encryption
+                        .unlock()
+                        .await
+                    {
+                        Ok(true) => {
+                            info!("[Startup] Encryption auto-unlocked via in-process facade");
+                        }
+                        Ok(false) => {
+                            info!(
+                                "[Startup] Encryption not initialized or keyring miss; skip auto-unlock"
+                            );
+                            return;
+                        }
+                        Err(e) => {
+                            warn!(
+                                error = %e,
+                                "[Startup] In-process auto-unlock failed; user will need to enter passphrase via Unlock modal"
+                            );
+                            return;
+                        }
+                    }
+
+                    // Daemon lifecycle retry 仍走 HTTP——它驱动 daemon-side 的
+                    // deferred services (clipboard watcher / sync) 启动, 跨
+                    // 调用方/被调用方角色, RPC 边界更稳。需要等 connection_state
+                    // 填充避免 401-no-connection-info。
                     if !wait_for_daemon_connection(
                         &daemon_conn_for_unlock,
                         AUTO_UNLOCK_DAEMON_READY_TIMEOUT,
@@ -440,25 +476,12 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
                     {
                         warn!(
                             timeout_secs = AUTO_UNLOCK_DAEMON_READY_TIMEOUT.as_secs(),
-                            "[Startup] Daemon connection not ready in time; skipping auto-unlock"
+                            "[Startup] Daemon connection not ready in time; skipping lifecycle retry"
                         );
                         return;
                     }
 
                     let client = uc_daemon_client::DaemonQueryClient::new(daemon_conn_for_unlock);
-                    match client.unlock_encryption().await {
-                        Ok(true) => {
-                            info!("[Startup] Daemon encryption auto-unlocked");
-                        }
-                        Ok(false) => {
-                            info!("[Startup] Encryption not initialized, skip");
-                        }
-                        Err(e) => {
-                            warn!("[Startup] Daemon encryption unlock failed: {}", e);
-                            return;
-                        }
-                    }
-
                     if let Err(e) = client.lifecycle_retry().await {
                         warn!("[Startup] Daemon lifecycle retry failed: {}", e);
                     } else {
@@ -509,6 +532,9 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
             crate::commands::mobile_sync::get_mobile_sync_settings,
             crate::commands::mobile_sync::update_mobile_sync_settings,
             crate::commands::mobile_sync::list_mobile_lan_interfaces,
+            // Space setup commands (in-process facade — passphrase never leaves the Tauri process)
+            crate::commands::space_setup::unlock_space_with_passphrase,
+            crate::commands::space_setup::try_silent_unlock,
         ])
         .build(tauri_ctx)
         .map_err(|error| anyhow::anyhow!("error building tauri application: {error}"))?

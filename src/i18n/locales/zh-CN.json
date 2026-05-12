@@ -443,6 +443,26 @@
       "cancel": "取消",
       "verifying": "正在验证访问权限...",
       "error": "未检测到钥匙串始终允许授权。请重试，并确保在 macOS 钥匙串提示中选择「始终允许」。"
+    },
+    "passphraseModal": {
+      "title": "请输入空间口令",
+      "description": "自动解锁无法从钥匙串中读取密钥，请输入您为该空间设置的口令以手动解锁。",
+      "passphraseLabel": "口令",
+      "passphrasePlaceholder": "输入您的口令",
+      "submit": "解锁",
+      "submitting": "正在解锁...",
+      "cancel": "取消",
+      "show": "显示口令",
+      "hide": "隐藏口令",
+      "hint": "手动解锁成功后，钥匙串将被刷新，后续启动可以恢复自动解锁。"
+    },
+    "errors": {
+      "wrongPassphrase": "口令错误，请重新输入。",
+      "corruptedKeyMaterial": "本机密钥材料已损坏，需要重置该空间并从其他设备重新加入才能恢复。",
+      "setupNotCompleted": "本设备尚未完成 setup，请先执行 setup。",
+      "spaceNotInitialized": "本设备没有可解锁的空间，请新建空间或从其他设备加入。",
+      "facadeUnavailable": "应用仍在启动中，请稍后重试。",
+      "internal": "解锁失败，请重试或重启应用。"
     }
   },
   "language": {

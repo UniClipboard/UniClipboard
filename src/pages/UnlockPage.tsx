@@ -1,7 +1,13 @@
-import { Lock, Unlock, Loader2 } from 'lucide-react'
+import { Eye, EyeOff, Loader2, Lock, Unlock } from 'lucide-react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { unlockEncryptionSession, verifyKeychainAccess } from '@/api/security'
+import {
+  isUnlockSpaceError,
+  unlockEncryptionSession,
+  unlockSpaceWithPassphrase,
+  verifyKeychainAccess,
+  type UnlockSpaceError,
+} from '@/api/security'
 import {
   AlertDialog,
   AlertDialogContent,
@@ -11,6 +17,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import { usePlatform } from '@/hooks/usePlatform'
@@ -23,32 +30,143 @@ interface UnlockPageProps {
   onUnlockSucceeded?: () => void
 }
 
+/**
+ * 把 `UnlockSpaceError` 翻成 i18n key——按 error.code 选展示文案,WRONG_PASSPHRASE
+ * 是用户最常见的可恢复错误,其他都是不可恢复需要引导用户做别的操作。
+ */
+function unlockErrorI18nKey(error: UnlockSpaceError): string {
+  switch (error.code) {
+    case 'WRONG_PASSPHRASE':
+      return 'unlock.errors.wrongPassphrase'
+    case 'CORRUPTED_KEY_MATERIAL':
+      return 'unlock.errors.corruptedKeyMaterial'
+    case 'SETUP_NOT_COMPLETED':
+      return 'unlock.errors.setupNotCompleted'
+    case 'SPACE_NOT_INITIALIZED':
+      return 'unlock.errors.spaceNotInitialized'
+    case 'FACADE_UNAVAILABLE':
+      return 'unlock.errors.facadeUnavailable'
+    case 'INTERNAL':
+      return 'unlock.errors.internal'
+  }
+}
+
 export default function UnlockPage({ onUnlockSucceeded }: UnlockPageProps) {
   const { t } = useTranslation()
   const { setting, updateSecuritySetting, loading: settingsLoading } = useSetting()
   const { isMac } = usePlatform()
+
+  // ── Silent unlock (top-level button) state ─────────────────────────────
   const [unlocking, setUnlocking] = useState(false)
+
+  // ── Passphrase modal state — only opened when silent unlock can't recover ──
+  const [showPassphraseModal, setShowPassphraseModal] = useState(false)
+  const [passphrase, setPassphrase] = useState('')
+  const [showPassphrase, setShowPassphrase] = useState(false)
+  const [submitting, setSubmitting] = useState(false)
+  // 错误以已翻译过的 i18n key 形式存储 — 不放原始 error.code,避免外层重渲染时
+  // 失去 t() 上下文。clearOnInputChange 在用户继续输入时被重置。
+  const [errorKey, setErrorKey] = useState<string | null>(null)
   const [showKeychainModal, setShowKeychainModal] = useState(false)
   const [verifying, setVerifying] = useState(false)
   const [verifyError, setVerifyError] = useState<string | null>(null)
 
+  /**
+   * 入口:用户点 Unlock 按钮。
+   *
+   * 1. 先尝试 silent (keyring) unlock(in-process,无 passphrase)
+   * 2. `resumed=true` → 直接成功通知 parent
+   * 3. `resumed=false` 或 reject → 弹 passphrase modal 让用户手动输入
+   *
+   * 区别于原行为(旧版只把 silent 失败 log warn 然后停止):新增 modal 兜底
+   * 是修复"keyring 与磁盘 keyslot 漂移"场景下用户被卡死的产品缺口。
+   */
   const handleUnlock = async () => {
     setUnlocking(true)
     try {
       const unlocked = await unlockEncryptionSession()
       if (unlocked) {
-        // Unlock success means the daemon session is ready now.
-        // Notify the parent immediately instead of waiting solely on async WS delivery.
+        // Silent unlock 成功 — session 立即 ready,通知 parent。
+        // 不依赖 WS 异步推送, 避免首屏闪烁。
         onUnlockSucceeded?.()
-      } else {
-        // unlock_encryption_session returned false — encryption was not initialized
-        // or the session was already ready. Do not animate out; reset state.
-        log.warn('Unlock returned false — encryption may not be initialized')
-        setUnlocking(false)
+        return
       }
+      // Silent unlock 返回 false = "keyring 没东西可恢复"。在 setup 已完成
+      // 的前提下这其实是漂移/损坏 — 弹 modal 让用户用口令兜底。
+      log.warn('Silent unlock returned false — opening passphrase modal as fallback')
+      openPassphraseModal()
     } catch (error) {
-      log.error({ err: error }, 'Unlock failed')
+      // Silent unlock 抛错 = keyring 与 keyslot 漂移 / FacadeUnavailable / 其他
+      // 异常。一律弹 modal:让用户用口令派生 KEK + 刷新 keyring(unlock 内部
+      // 的 store_kek refresh),把漂移修好。
+      log.warn({ err: error }, 'Silent unlock rejected — opening passphrase modal as fallback')
+      openPassphraseModal()
+    } finally {
       setUnlocking(false)
+    }
+  }
+
+  const openPassphraseModal = () => {
+    setPassphrase('')
+    setShowPassphrase(false)
+    setErrorKey(null)
+    setShowPassphraseModal(true)
+  }
+
+  const closePassphraseModal = () => {
+    setShowPassphraseModal(false)
+    setPassphrase('')
+    setShowPassphrase(false)
+    setErrorKey(null)
+  }
+
+  /**
+   * 用户在 modal 提交明文口令:
+   * - 成功 → 关闭 modal + 通知 parent
+   * - WRONG_PASSPHRASE → 保留 modal,清空 errorKey 之外的 state,提示重输
+   * - 其他错误码 → 保留 modal,展示对应引导文案,**不**自动清空 passphrase
+   *   (用户可能想编辑后重提交)
+   */
+  const handleSubmitPassphrase = async () => {
+    const trimmed = passphrase
+    if (trimmed.length === 0) {
+      // 空口令理论上和 WrongPassphrase 等价,但提前拦截可以省一次 Tauri IPC。
+      setErrorKey('unlock.errors.wrongPassphrase')
+      return
+    }
+    setSubmitting(true)
+    setErrorKey(null)
+    try {
+      await unlockSpaceWithPassphrase(trimmed)
+      // session 已 ready;同进程 daemon 会被 parent 触发 lifecycle/ready
+      // (App.tsx 现有路径)启动 deferred services。
+      closePassphraseModal()
+      onUnlockSucceeded?.()
+    } catch (error) {
+      if (isUnlockSpaceError(error)) {
+        setErrorKey(unlockErrorI18nKey(error))
+      } else {
+        // 非 typed 错误 — 例如 IPC bridge 自身的异常。展通用错误。
+        log.error({ err: error }, 'Unexpected non-typed unlock error')
+        setErrorKey('unlock.errors.internal')
+      }
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  const handlePassphraseKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    // Enter 直接提交,跟 setup screen 一致的输入习惯。
+    if (e.key === 'Enter' && !submitting) {
+      handleSubmitPassphrase()
+    }
+  }
+
+  const handlePassphraseChange = (value: string) => {
+    setPassphrase(value)
+    // 用户开始重新输入 → 清掉旧的错误提示,UI 反馈更顺。
+    if (errorKey !== null) {
+      setErrorKey(null)
     }
   }
 
@@ -179,6 +297,80 @@ export default function UnlockPage({ onUnlockSucceeded }: UnlockPageProps) {
                 </>
               ) : (
                 t('unlock.keychainModal.confirm')
+              )}
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={showPassphraseModal}>
+        <AlertDialogContent
+          onEscapeKeyDown={event => {
+            if (submitting) {
+              event.preventDefault()
+              return
+            }
+            closePassphraseModal()
+          }}
+        >
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t('unlock.passphraseModal.title')}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {t('unlock.passphraseModal.description')}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+
+          <div className="space-y-2">
+            <Label htmlFor="unlock-passphrase" className="text-sm">
+              {t('unlock.passphraseModal.passphraseLabel')}
+            </Label>
+            <div className="relative">
+              <Input
+                id="unlock-passphrase"
+                type={showPassphrase ? 'text' : 'password'}
+                value={passphrase}
+                onChange={e => handlePassphraseChange(e.target.value)}
+                onKeyDown={handlePassphraseKeyDown}
+                disabled={submitting}
+                placeholder={t('unlock.passphraseModal.passphrasePlaceholder')}
+                className="pr-10"
+                autoFocus
+                aria-invalid={errorKey !== null}
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassphrase(v => !v)}
+                disabled={submitting}
+                aria-label={t(
+                  showPassphrase ? 'unlock.passphraseModal.hide' : 'unlock.passphraseModal.show'
+                )}
+                className="absolute right-0 top-0 flex h-full items-center px-3 text-muted-foreground transition-colors hover:text-foreground disabled:opacity-50"
+              >
+                {showPassphrase ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              </button>
+            </div>
+          </div>
+
+          {errorKey && (
+            <div className="rounded-lg border border-destructive/20 bg-destructive/5 p-3">
+              <p className="text-sm font-medium text-destructive">{t(errorKey)}</p>
+            </div>
+          )}
+
+          <p className="text-xs text-muted-foreground">{t('unlock.passphraseModal.hint')}</p>
+
+          <AlertDialogFooter>
+            <Button variant="outline" onClick={closePassphraseModal} disabled={submitting}>
+              {t('unlock.passphraseModal.cancel')}
+            </Button>
+            <Button onClick={handleSubmitPassphrase} disabled={submitting}>
+              {submitting ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  {t('unlock.passphraseModal.submitting')}
+                </>
+              ) : (
+                t('unlock.passphraseModal.submit')
               )}
             </Button>
           </AlertDialogFooter>

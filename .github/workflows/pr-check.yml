@@ -20,13 +20,35 @@ on:
       - 'public/**'
       - '.github/workflows/pr-check.yml'
 
-# 拆 frontend / frontend-tests / rust 三个 job 并行：
+permissions:
+  contents: read
+  pull-requests: read
+
+# 拆 frontend / frontend-tests / rust 三个 job：
+# - changes: 检测 PR 是否改到 Rust 相关路径，供 rust job 判断是否需要运行
 # - frontend: bun install + tsc + vite build (类型检查 + 产物构建)
 # - frontend-tests: bun install + vitest run (前端单元测试)
 # - rust: cargo check --workspace --locked (不再带 --all-targets --all-features，
 #   PR 阶段不为 test/bench/全 feature 编译。test 在 coverage.yml 跑)
 # 完整的 tauri build / 签名 / 公证 仍只在 release 工作流跑。
 jobs:
+  changes:
+    name: Detect Changed Paths
+    runs-on: ubuntu-latest
+
+    outputs:
+      rust: ${{ steps.filter.outputs.rust }}
+
+    steps:
+      - name: Detect Rust changes
+        id: filter
+        uses: dorny/paths-filter@v4
+        with:
+          filters: |
+            rust:
+              - 'src-tauri/**'
+              - '.github/workflows/pr-check.yml'
+
   frontend:
     name: Frontend Type Check
     runs-on: ubuntu-latest
@@ -84,6 +106,8 @@ jobs:
 
   rust:
     name: Rust Check
+    needs: changes
+    if: ${{ needs.changes.outputs.rust == 'true' }}
     runs-on: ubuntu-latest
 
     steps:

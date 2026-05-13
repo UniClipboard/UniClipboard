@@ -18,6 +18,7 @@ on:
       - 'index.html'
       - 'quick-panel.html'
       - 'public/**'
+      - '.github/docker/build-bookworm.Dockerfile'
       - '.github/workflows/pr-check.yml'
 
 permissions:
@@ -47,6 +48,7 @@ jobs:
           filters: |
             rust:
               - 'src-tauri/**'
+              - '.github/docker/build-bookworm.Dockerfile'
               - '.github/workflows/pr-check.yml'
 
   frontend:
@@ -109,18 +111,15 @@ jobs:
     needs: changes
     if: ${{ needs.changes.outputs.rust == 'true' }}
     runs-on: ubuntu-latest
+    # 复用 build-base-image.yml 维护的 bookworm 镜像,避免 PR job 每次访问
+    # apt 源安装 webkit/gtk 依赖。镜像已包含 cargo check 所需系统包。
+    container: ghcr.io/uniclipboard/build-bookworm:latest
 
     steps:
       - uses: actions/checkout@v4
 
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
-
-      - name: Install system dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
 
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2

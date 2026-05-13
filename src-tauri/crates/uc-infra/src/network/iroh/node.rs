@@ -34,7 +34,7 @@ use uc_core::membership::MemberRepositoryPort;
 use uc_core::ports::blob::BlobTransferPort;
 use uc_core::ports::pairing::{PairingEventPort, PairingSessionPort};
 use uc_core::ports::pairing_invitation::{
-    PairingInvitationAddressQueryPort, PairingInvitationPort,
+    PairingInvitationAddressQueryPort, PairingInvitationByAddressPort, PairingInvitationPort,
 };
 use uc_core::ports::security::IdentityFingerprintFactoryPort;
 use uc_core::ports::{
@@ -56,19 +56,25 @@ use super::transfer_progress_adapter::{
     InboundProgressEvent, IrohTransferProgressAdapter, TRANSFER_PROGRESS_ALPN,
 };
 
-/// The four pairing ports produced by [`IrohNodeBuilder::install_pairing`].
+/// The pairing ports produced by [`IrohNodeBuilder::install_pairing`].
 ///
 /// `session` and `events` share the same underlying
 /// [`IrohPairingSessionAdapter`] — both trait objects point at one Arc so
 /// sponsor-side inbound events and the outbound dial/send path use the same
-/// session map. `invitation` and `invitation_addresses` share the rendezvous
-/// HTTP adapter, which talks to the same endpoint (its ticket = the endpoint's
-/// own [`iroh::EndpointAddr`]).
+/// session map. `invitation`, `invitation_addresses`, and
+/// `invitation_by_address` are three trait-object views over a single
+/// rendezvous HTTP adapter (they read the same endpoint's
+/// [`iroh::EndpointAddr`] — the split is purely a port-surface CQS
+/// concern, not a runtime cost).
 pub struct PairingHandlers {
     pub session: Arc<dyn PairingSessionPort>,
     pub events: Arc<dyn PairingEventPort>,
     pub invitation: Arc<dyn PairingInvitationPort>,
     pub invitation_addresses: Arc<dyn PairingInvitationAddressQueryPort>,
+    /// Dev-only: issue an invitation pinned to a single local IP. Not
+    /// part of the standard sponsor lifecycle — wired into the CLI's
+    /// hidden `dev pairing` subcommand for multi-NIC diagnosis.
+    pub invitation_by_address: Arc<dyn PairingInvitationByAddressPort>,
 }
 
 /// The two clipboard ports produced by [`IrohNodeBuilder::install_clipboard`].
@@ -522,13 +528,16 @@ impl IrohNodeBuilder {
             rendezvous,
         ));
         let invitation: Arc<dyn PairingInvitationPort> = invitation_adapter.clone();
-        let invitation_addresses: Arc<dyn PairingInvitationAddressQueryPort> = invitation_adapter;
+        let invitation_addresses: Arc<dyn PairingInvitationAddressQueryPort> =
+            invitation_adapter.clone();
+        let invitation_by_address: Arc<dyn PairingInvitationByAddressPort> = invitation_adapter;
 
         PairingHandlers {
             session: adapter.clone(),
             events: adapter,
             invitation,
             invitation_addresses,
+            invitation_by_address,
         }
     }
 

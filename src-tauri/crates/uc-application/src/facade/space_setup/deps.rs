@@ -11,7 +11,7 @@ use uc_core::membership::MemberRepositoryPort;
 use uc_core::ports::clipboard::BlobMigrationRepoPort;
 use uc_core::ports::pairing::{PairingEventPort, PairingSessionPort};
 use uc_core::ports::pairing_invitation::{
-    PairingInvitationAddressQueryPort, PairingInvitationPort,
+    PairingInvitationAddressQueryPort, PairingInvitationByAddressPort, PairingInvitationPort,
 };
 use uc_core::ports::security::{BlobCipherPort, KeyMigrationPort};
 use uc_core::ports::setup::MigrationStatePort;
@@ -46,8 +46,16 @@ pub struct SpaceSetupDeps {
     /// `pub(crate)` so application-internal implementation details
     /// (`uc-application/AGENTS.md` §11.4) stay off the bootstrap surface.
     pub pairing_invitation: Arc<dyn PairingInvitationPort>,
-    /// 配对邀请地址候选查询能力。
+    /// Query capability for the local addresses currently eligible to
+    /// appear in a pairing ticket. Consumed by both the standard sponsor
+    /// path (for diagnostics) and the dev-only `uniclip dev pairing addrs`
+    /// CLI surface.
     pub pairing_invitation_addresses: Arc<dyn PairingInvitationAddressQueryPort>,
+    /// Dev-only: issue an invitation pinned to a single local IP. Kept on
+    /// a separate port so the standard `PairingInvitationPort` lifecycle
+    /// (issue / consume) does not carry the diagnostic surface (see
+    /// `PairingInvitationByAddressPort` doc).
+    pub pairing_invitation_by_address: Arc<dyn PairingInvitationByAddressPort>,
     /// Session-level transport used by the sponsor-side inbound orchestrator
     /// to send `PairingReject` and close sessions that fail code matching.
     /// Joiner-side uses the same port to dial; Slice 1 wires a single

@@ -29,12 +29,12 @@ pub struct IssuedInvitation {
     pub expires_at: DateTime<Utc>,
 }
 
-/// 可用于签发邀请的本机地址候选。
+/// A local address the sponsor could publish in a pairing ticket.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct PairingInvitationAddressCandidate {
-    /// 可由对端拨入的地址。
+    /// Address the remote peer would dial.
     pub ip: IpAddr,
-    /// 与地址配套的端口。
+    /// Port associated with the address.
     pub port: u16,
 }
 
@@ -50,7 +50,9 @@ pub enum InvitationError {
     #[error("pairing invitation service unavailable")]
     ServiceUnavailable,
 
-    /// 调用方指定的地址当前不可用于签发邀请。
+    /// The caller-selected address is not currently available for issuance —
+    /// either it never appeared in the candidate set, or it was dropped by
+    /// the address filter (overlay-network rules, link-local, fake-ip).
     #[error("requested address is not available: {0}")]
     AddressNotAvailable(IpAddr),
 
@@ -96,12 +98,6 @@ pub trait PairingInvitationPort: Send + Sync {
     /// format; callers treat the returned `expires_at` as ground truth.
     async fn issue_invitation(&self) -> Result<IssuedInvitation, InvitationError>;
 
-    /// 按调用方指定的本机地址签发邀请。
-    async fn issue_invitation_for_address(
-        &self,
-        selected_ip: IpAddr,
-    ) -> Result<IssuedInvitation, InvitationError>;
-
     /// Notify the rendezvous service that the sponsor has accepted an
     /// inbound joiner carrying this code. The call is best-effort — failures
     /// do not invalidate the local handshake (the sponsor has already moved
@@ -112,11 +108,36 @@ pub trait PairingInvitationPort: Send + Sync {
         -> Result<(), ConsumeInvitationError>;
 }
 
-/// 配对邀请地址查询能力。
+/// Query capability for listing the local addresses currently eligible to
+/// appear in a pairing ticket.
 #[async_trait]
 pub trait PairingInvitationAddressQueryPort: Send + Sync {
-    /// 列出当前可用于签发邀请的本机地址候选。
+    /// List the candidate local addresses currently eligible for inclusion
+    /// in a pairing ticket. Returns an empty `Ok` vector is **not** the
+    /// expected shape — adapters return `NetworkNotStarted` when no
+    /// candidate is available.
     async fn list_invitation_addresses(
         &self,
     ) -> Result<Vec<PairingInvitationAddressCandidate>, InvitationError>;
+}
+
+/// Issue an invitation restricted to a single caller-selected local
+/// address. Companion to [`PairingInvitationPort::issue_invitation`] —
+/// kept on a separate trait because this is a diagnostic / multi-NIC
+/// override capability, not part of the standard sponsor lifecycle.
+///
+/// Adapters apply the same address filter as `issue_invitation` before
+/// honouring the selection: an IP dropped by the filter (overlay, fake-ip,
+/// link-local) yields `AddressNotAvailable` rather than bypassing the
+/// rule. Callers that want the unfiltered list must change the filter
+/// configuration, not work around it through this port.
+#[async_trait]
+pub trait PairingInvitationByAddressPort: Send + Sync {
+    /// Issue an invitation whose ticket only carries the address matching
+    /// `selected_ip`. Returns `AddressNotAvailable` when the IP is not in
+    /// the current filtered candidate set.
+    async fn issue_invitation_for_address(
+        &self,
+        selected_ip: IpAddr,
+    ) -> Result<IssuedInvitation, InvitationError>;
 }

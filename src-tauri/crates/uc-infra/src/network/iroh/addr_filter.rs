@@ -1,7 +1,17 @@
-//! iroh 地址候选过滤规则。
+//! iroh 地址候选过滤规则的唯一事实来源。
 //!
-//! 这里是唯一事实来源：节点发布地址、配对码 ticket 生成、测试都应复用同一套
-//! 判断，避免不同路径对虚拟网卡地址得出不同结论。
+//! **为什么需要这个模块**：虚拟网卡地址（Clash fake-ip 198.18/15、IPv4
+//! link-local 169.254/16、CGNAT/Tailscale overlay 100.64/10 与
+//! fd7a:115c:a1e0::/48）在三条路径上都得用完全相同的判定 ——
+//!
+//! 1. `node.rs::build_addr_filter` 决定本端 endpoint 发布哪些地址；
+//! 2. `invitation_adapter::serialize_filtered_endpoint_ticket` 决定哪些
+//!    地址进 sponsor ticket；
+//! 3. `dev pairing addrs / issue --addr` 列出候选给开发者诊断。
+//!
+//! 任何一条路径独立维护过滤规则都会产生分叉 —— UniClipboard#486 的 Fedora
+//! 配对超时就是 sponsor ticket 序列化了一个被 endpoint AddrFilter 滤掉的
+//! 地址。把判定集中在这里，让上述三处共享同一份代码，从根上消除分叉的可能。
 
 use std::borrow::Cow;
 use std::net::IpAddr;
@@ -53,6 +63,10 @@ fn log_dropped_addrs(dropped: &[String], allow_overlay: bool) {
 }
 
 /// 过滤 iroh `AddrFilter` 收到的候选地址集合。
+///
+/// 签名形态 `&Vec<TransportAddr> -> Cow<Vec<TransportAddr>>` 由
+/// `iroh::address_lookup::AddrFilter::new` 的回调契约决定 —— **不要**
+/// clippy-fix 成 `&[TransportAddr]`，否则会和 iroh 的 `Fn` 签名失配。
 pub(crate) fn apply_addr_filter<'a>(
     addrs: &'a Vec<TransportAddr>,
     allow_overlay: bool,

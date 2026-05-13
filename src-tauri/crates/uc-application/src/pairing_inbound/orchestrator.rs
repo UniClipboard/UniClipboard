@@ -708,12 +708,6 @@ mod tests {
         async fn issue_invitation(&self) -> Result<IssuedInvitation, InvitationError> {
             unimplemented!()
         }
-        async fn issue_invitation_for_address(
-            &self,
-            _selected_ip: std::net::IpAddr,
-        ) -> Result<IssuedInvitation, InvitationError> {
-            unimplemented!()
-        }
         async fn consume_invitation(
             &self,
             code: &InvitationCode,

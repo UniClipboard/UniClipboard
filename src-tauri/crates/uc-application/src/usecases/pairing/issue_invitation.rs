@@ -28,7 +28,7 @@ use tracing::{debug, info, instrument, warn};
 use uc_core::pairing::invitation::PairingInvitation;
 use uc_core::ports::pairing_invitation::{
     InvitationError, IssuedInvitation, PairingInvitationAddressCandidate,
-    PairingInvitationAddressQueryPort, PairingInvitationPort,
+    PairingInvitationAddressQueryPort, PairingInvitationByAddressPort, PairingInvitationPort,
 };
 use uc_core::ports::{ClockPort, DeviceIdentityPort};
 use uc_observability::analytics::{AnalyticsPort, Event, PairingMethod};
@@ -39,6 +39,10 @@ use crate::pairing_invitation::InMemoryPairingInvitationHolder;
 pub(crate) struct IssuePairingInvitationUseCase {
     pairing_invitation: Arc<dyn PairingInvitationPort>,
     pairing_invitation_addresses: Arc<dyn PairingInvitationAddressQueryPort>,
+    /// Dev-only: the by-address variant lives on its own port so the
+    /// standard sponsor lifecycle (`PairingInvitationPort`) stays free of
+    /// the diagnostic surface.
+    pairing_invitation_by_address: Arc<dyn PairingInvitationByAddressPort>,
     device_identity: Arc<dyn DeviceIdentityPort>,
     clock: Arc<dyn ClockPort>,
     holder: Arc<InMemoryPairingInvitationHolder>,
@@ -53,6 +57,7 @@ impl IssuePairingInvitationUseCase {
     pub(crate) fn new(
         pairing_invitation: Arc<dyn PairingInvitationPort>,
         pairing_invitation_addresses: Arc<dyn PairingInvitationAddressQueryPort>,
+        pairing_invitation_by_address: Arc<dyn PairingInvitationByAddressPort>,
         device_identity: Arc<dyn DeviceIdentityPort>,
         clock: Arc<dyn ClockPort>,
         holder: Arc<InMemoryPairingInvitationHolder>,
@@ -61,6 +66,7 @@ impl IssuePairingInvitationUseCase {
         Self {
             pairing_invitation,
             pairing_invitation_addresses,
+            pairing_invitation_by_address,
             device_identity,
             clock,
             holder,
@@ -91,20 +97,24 @@ impl IssuePairingInvitationUseCase {
         self.capture_pairing_started();
 
         let issued: IssuedInvitation = self
-            .pairing_invitation
+            .pairing_invitation_by_address
             .issue_invitation_for_address(selected_ip)
             .await
             .map_err(map_invitation_err)?;
         self.finish_issued_invitation(issued).await
     }
 
+    #[instrument(skip_all, fields(count = tracing::field::Empty))]
     pub(crate) async fn list_addresses(
         &self,
     ) -> Result<Vec<PairingInvitationAddressCandidate>, IssuePairingInvitationError> {
-        self.pairing_invitation_addresses
+        let candidates = self
+            .pairing_invitation_addresses
             .list_invitation_addresses()
             .await
-            .map_err(map_invitation_err)
+            .map_err(map_invitation_err)?;
+        tracing::Span::current().record("count", candidates.len());
+        Ok(candidates)
     }
 
     fn capture_pairing_started(&self) {
@@ -235,21 +245,6 @@ mod tests {
             }
         }
 
-        async fn issue_invitation_for_address(
-            &self,
-            selected_ip: IpAddr,
-        ) -> Result<IssuedInvitation, InvitationError> {
-            self.selected_calls.lock().unwrap().push(selected_ip);
-            let out = std::mem::replace(
-                &mut *self.next.lock().unwrap(),
-                FakeOutcome::Err(InvitationError::Internal("already consumed".into())),
-            );
-            match out {
-                FakeOutcome::Ok(v) => Ok(v),
-                FakeOutcome::Err(e) => Err(e),
-            }
-        }
-
         async fn consume_invitation(
             &self,
             _code: &InvitationCode,
@@ -265,6 +260,24 @@ mod tests {
             &self,
         ) -> Result<Vec<PairingInvitationAddressCandidate>, InvitationError> {
             Ok(Vec::new())
+        }
+    }
+
+    #[async_trait]
+    impl PairingInvitationByAddressPort for FakeInvitationPort {
+        async fn issue_invitation_for_address(
+            &self,
+            selected_ip: IpAddr,
+        ) -> Result<IssuedInvitation, InvitationError> {
+            self.selected_calls.lock().unwrap().push(selected_ip);
+            let out = std::mem::replace(
+                &mut *self.next.lock().unwrap(),
+                FakeOutcome::Err(InvitationError::Internal("already consumed".into())),
+            );
+            match out {
+                FakeOutcome::Ok(v) => Ok(v),
+                FakeOutcome::Err(e) => Err(e),
+            }
         }
     }
 
@@ -330,6 +343,7 @@ mod tests {
         let uc = IssuePairingInvitationUseCase::new(
             port.clone() as Arc<dyn PairingInvitationPort>,
             port.clone() as Arc<dyn PairingInvitationAddressQueryPort>,
+            port.clone() as Arc<dyn PairingInvitationByAddressPort>,
             device_identity,
             clock,
             holder.clone(),

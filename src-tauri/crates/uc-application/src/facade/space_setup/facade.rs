@@ -139,6 +139,7 @@ impl SpaceSetupFacade {
             clock,
             pairing_invitation,
             pairing_invitation_addresses,
+            pairing_invitation_by_address,
             pairing_session,
             pairing_events,
             proof_port,
@@ -187,6 +188,7 @@ impl SpaceSetupFacade {
         let issue_pairing_invitation = Arc::new(IssuePairingInvitationUseCase::new(
             Arc::clone(&pairing_invitation),
             pairing_invitation_addresses,
+            pairing_invitation_by_address,
             Arc::clone(&device_identity),
             Arc::clone(&clock),
             Arc::clone(&invitation_holder),
@@ -736,7 +738,7 @@ mod tests {
     };
     use uc_core::ports::pairing_invitation::{
         ConsumeInvitationError, InvitationError, IssuedInvitation,
-        PairingInvitationAddressQueryPort, PairingInvitationPort,
+        PairingInvitationAddressQueryPort, PairingInvitationByAddressPort, PairingInvitationPort,
     };
     use uc_core::ports::space::{ProofPort, SpaceAccessError, SpaceAccessPort};
     use uc_core::ports::{
@@ -934,13 +936,6 @@ mod tests {
             })
         }
 
-        async fn issue_invitation_for_address(
-            &self,
-            _selected_ip: IpAddr,
-        ) -> Result<IssuedInvitation, InvitationError> {
-            self.issue_invitation().await
-        }
-
         async fn consume_invitation(
             &self,
             _code: &InvitationCode,
@@ -956,6 +951,16 @@ mod tests {
             &self,
         ) -> Result<Vec<PairingInvitationAddressCandidate>, InvitationError> {
             Ok(Vec::new())
+        }
+    }
+
+    #[async_trait]
+    impl PairingInvitationByAddressPort for FakeInvitationPort {
+        async fn issue_invitation_for_address(
+            &self,
+            _selected_ip: IpAddr,
+        ) -> Result<IssuedInvitation, InvitationError> {
+            self.issue_invitation().await
         }
     }
 
@@ -1302,6 +1307,7 @@ mod tests {
             clock: Arc::new(FixedClock(0)),
             pairing_invitation: pairing_invitation.clone(),
             pairing_invitation_addresses: pairing_invitation.clone(),
+            pairing_invitation_by_address: pairing_invitation.clone(),
             pairing_session: Arc::new(NoopSessionPort),
             pairing_events: Arc::new(IdleEventPort::new()),
             proof_port: Arc::new(NoopProofPort),

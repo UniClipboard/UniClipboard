@@ -28,7 +28,10 @@ pub enum DevPairingCommands {
     Addrs,
     /// Issue an invitation constrained to one local IP address.
     Issue {
-        /// Local IP address to keep in the pairing ticket.
+        /// Local IP to issue against. Must appear in `dev pairing addrs`
+        /// (the same product filter applies — overlay-network rules,
+        /// link-local, and Clash fake-ip are dropped regardless of what
+        /// you pass here).
         #[arg(long)]
         addr: IpAddr,
     },

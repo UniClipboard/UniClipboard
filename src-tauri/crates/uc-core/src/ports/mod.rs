@@ -73,7 +73,8 @@ pub use pairing::{
 };
 pub use pairing_invitation::{
     ConsumeInvitationError, InvitationCode, InvitationError, IssuedInvitation,
-    PairingInvitationAddressCandidate, PairingInvitationAddressQueryPort, PairingInvitationPort,
+    PairingInvitationAddressCandidate, PairingInvitationAddressQueryPort,
+    PairingInvitationByAddressPort, PairingInvitationPort,
 };
 pub use peer_address::{PeerAddressError, PeerAddressRecord, PeerAddressRepositoryPort};
 pub use presence::{PresenceError, PresenceEvent, PresencePort, ReachabilityState};

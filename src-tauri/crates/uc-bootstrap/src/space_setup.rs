@@ -350,6 +350,7 @@ pub async fn build_space_setup_assembly(
         clock: Arc::clone(&deps.system.clock),
         pairing_invitation: handlers.invitation,
         pairing_invitation_addresses: handlers.invitation_addresses,
+        pairing_invitation_by_address: handlers.invitation_by_address,
         pairing_session: handlers.session,
         pairing_events: handlers.events,
         proof_port,

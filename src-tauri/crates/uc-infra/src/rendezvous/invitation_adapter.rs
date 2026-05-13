@@ -20,8 +20,8 @@ use tracing::{debug, instrument};
 use uc_core::pairing::invitation::InvitationCode;
 use uc_core::ports::{
     ConsumeInvitationError, DeviceIdentityPort, InvitationError, IssuedInvitation,
-    PairingInvitationAddressCandidate, PairingInvitationAddressQueryPort, PairingInvitationPort,
-    SettingsPort,
+    PairingInvitationAddressCandidate, PairingInvitationAddressQueryPort,
+    PairingInvitationByAddressPort, PairingInvitationPort, SettingsPort,
 };
 use uc_core::settings::model::Settings;
 
@@ -136,6 +136,16 @@ fn serialize_filtered_endpoint_ticket(
     serialize_endpoint_addr(addr)
 }
 
+/// Build a ticket that only carries the single address matching
+/// `selected_ip`.
+///
+/// **Ordering matters**: the product address filter runs *first*, so an
+/// IP that the filter drops (overlay-network rules with
+/// `allow_overlay=false`, link-local, Clash fake-ip 198.18.0.0/15) will
+/// surface as `AddressNotAvailable` rather than slipping into the ticket.
+/// This is intentional — the dev tool reuses the product filter so
+/// observing "what gets published if we pick this IP" stays aligned with
+/// the runtime that production peers see.
 fn serialize_endpoint_ticket_for_ip(
     addr: EndpointAddr,
     allow_overlay: bool,
@@ -192,18 +202,6 @@ impl PairingInvitationPort for RendezvousPairingInvitationAdapter {
             .await
     }
 
-    #[instrument(skip_all, fields(selected_ip = %selected_ip))]
-    async fn issue_invitation_for_address(
-        &self,
-        selected_ip: IpAddr,
-    ) -> Result<IssuedInvitation, InvitationError> {
-        let settings = self.load_settings().await?;
-        let (endpoint_id, ticket) = self
-            .serialize_ticket_for_ip(settings.network.allow_overlay_network_addrs, selected_ip)?;
-        self.create_pairing_with_ticket(settings, endpoint_id, ticket)
-            .await
-    }
-
     #[instrument(skip(self), fields(code = %code.as_str()))]
     async fn consume_invitation(
         &self,
@@ -230,6 +228,21 @@ impl PairingInvitationAddressQueryPort for RendezvousPairingInvitationAdapter {
             self.endpoint.addr(),
             settings.network.allow_overlay_network_addrs,
         )
+    }
+}
+
+#[async_trait]
+impl PairingInvitationByAddressPort for RendezvousPairingInvitationAdapter {
+    #[instrument(skip_all, fields(selected_ip = %selected_ip))]
+    async fn issue_invitation_for_address(
+        &self,
+        selected_ip: IpAddr,
+    ) -> Result<IssuedInvitation, InvitationError> {
+        let settings = self.load_settings().await?;
+        let (endpoint_id, ticket) = self
+            .serialize_ticket_for_ip(settings.network.allow_overlay_network_addrs, selected_ip)?;
+        self.create_pairing_with_ticket(settings, endpoint_id, ticket)
+            .await
     }
 }
 

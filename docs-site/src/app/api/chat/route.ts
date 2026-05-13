@@ -141,12 +141,12 @@ export async function POST(req: Request) {
 
   const result = streamText({
     model,
+    system: systemPrompt,
     stopWhen: stepCountIs(5),
     tools: {
       search: searchTool,
     },
     messages: [
-      { role: 'system', content: systemPrompt },
       ...(await convertToModelMessages<ChatUIMessage>(messages, {
         convertDataPart(part) {
           if (part.type === 'data-client')

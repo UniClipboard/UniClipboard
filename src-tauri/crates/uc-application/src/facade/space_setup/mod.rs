@@ -17,9 +17,9 @@ mod facade;
 
 pub use commands::{
     CurrentInvitation, InitializeSpaceInput, InitializeSpaceResult, IssuePairingInvitationResult,
-    MigrationPhaseKind, MigrationProgress, RedeemPairingInvitationInput,
-    RedeemPairingInvitationResult, SetupStateView, SwitchSpaceInput, SwitchSpaceResult,
-    UnlockSpaceInput, UnlockSpaceResult,
+    MigrationPhaseKind, MigrationProgress, PairingInvitationAddressCandidate,
+    RedeemPairingInvitationInput, RedeemPairingInvitationResult, SetupStateView, SwitchSpaceInput,
+    SwitchSpaceResult, UnlockSpaceInput, UnlockSpaceResult,
 };
 pub use deps::SpaceSetupDeps;
 pub use errors::{

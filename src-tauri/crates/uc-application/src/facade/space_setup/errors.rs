@@ -1,5 +1,7 @@
 //! Application-layer errors for the Slice 1 facade.
 
+use std::net::IpAddr;
+
 use thiserror::Error;
 
 /// Failure modes of A1 `InitializeSpaceUseCase`.
@@ -66,6 +68,10 @@ pub enum IssuePairingInvitationError {
     /// manual retry.
     #[error("pairing invitation service unavailable")]
     ServiceUnavailable,
+
+    /// 调用方指定的本机地址当前不能用于配对邀请。
+    #[error("requested address is not available: {0}")]
+    AddressNotAvailable(IpAddr),
 
     /// Uncategorised adapter-side failure; message for logs only.
     #[error("internal error: {0}")]

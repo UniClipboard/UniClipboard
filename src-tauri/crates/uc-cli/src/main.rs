@@ -192,6 +192,12 @@ enum Commands {
         #[command(subcommand)]
         subcommand: commands::probe::ProbeCommands,
     },
+    /// Hidden development tools.
+    #[command(hide = true)]
+    Dev {
+        #[command(subcommand)]
+        subcommand: commands::dev::DevCommands,
+    },
     /// Manage mobile-sync (iPhone over LAN, SyncClipboard-compatible).
     #[command(name = "mobile-sync")]
     MobileSync {
@@ -334,6 +340,9 @@ fn main() -> anyhow::Result<()> {
                 commands::upgrade::run(subcommand, cli.json, cli.verbose).await
             }
             Commands::Probe { subcommand } => commands::probe::run(subcommand, cli.verbose).await,
+            Commands::Dev { subcommand } => {
+                commands::dev::run(subcommand, cli.json, cli.verbose).await
+            }
             Commands::MobileSync { subcommand } => {
                 commands::mobile_sync::run(subcommand, cli.json, cli.verbose).await
             }
@@ -520,5 +529,24 @@ mod tests {
             "--accept-network-risk",
         ]);
         assert!(r.is_ok(), "expected full-flag setup to parse");
+    }
+
+    #[test]
+    fn dev_pairing_manual_address_commands_parse() {
+        // 隐藏开发入口用于手动选择配对地址,不进入公开 help 契约。
+        for args in [
+            vec!["uniclip", "dev", "pairing", "addrs"],
+            vec![
+                "uniclip",
+                "dev",
+                "pairing",
+                "issue",
+                "--addr",
+                "100.79.191.42",
+            ],
+        ] {
+            let result = Cli::try_parse_from(args.clone());
+            assert!(result.is_ok(), "expected `{args:?}` to parse");
+        }
     }
 }

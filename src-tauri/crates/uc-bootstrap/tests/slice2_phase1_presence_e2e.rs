@@ -363,6 +363,7 @@ async fn build_side(name: &'static str, rendezvous_base_url: String) -> Side {
         session: pairing_session,
         events: pairing_events,
         invitation: pairing_invitation,
+        invitation_addresses: pairing_invitation_addresses,
     } = builder.install_pairing(
         Arc::clone(&device_identity),
         Arc::clone(&settings) as Arc<dyn SettingsPort>,
@@ -398,6 +399,7 @@ async fn build_side(name: &'static str, rendezvous_base_url: String) -> Side {
         settings: Arc::clone(&settings) as Arc<dyn SettingsPort>,
         clock: Arc::new(SystemClock),
         pairing_invitation,
+        pairing_invitation_addresses,
         pairing_session: Arc::clone(&pairing_session) as Arc<dyn PairingSessionPort>,
         pairing_events,
         proof_port,

@@ -33,7 +33,9 @@ use uc_core::file_transfer::OutboundProgressReporterPort;
 use uc_core::membership::MemberRepositoryPort;
 use uc_core::ports::blob::BlobTransferPort;
 use uc_core::ports::pairing::{PairingEventPort, PairingSessionPort};
-use uc_core::ports::pairing_invitation::PairingInvitationPort;
+use uc_core::ports::pairing_invitation::{
+    PairingInvitationAddressQueryPort, PairingInvitationPort,
+};
 use uc_core::ports::security::IdentityFingerprintFactoryPort;
 use uc_core::ports::{
     ClipboardDispatchPort, ClipboardReceiverPort, ClockPort, ConnectionChannelPort,
@@ -54,17 +56,19 @@ use super::transfer_progress_adapter::{
     InboundProgressEvent, IrohTransferProgressAdapter, TRANSFER_PROGRESS_ALPN,
 };
 
-/// The three pairing ports produced by [`IrohNodeBuilder::install_pairing`].
+/// The four pairing ports produced by [`IrohNodeBuilder::install_pairing`].
 ///
 /// `session` and `events` share the same underlying
 /// [`IrohPairingSessionAdapter`] — both trait objects point at one Arc so
 /// sponsor-side inbound events and the outbound dial/send path use the same
-/// session map. `invitation` is the rendezvous HTTP adapter, which talks to
-/// the same endpoint (its ticket = the endpoint's own [`iroh::EndpointAddr`]).
+/// session map. `invitation` and `invitation_addresses` share the rendezvous
+/// HTTP adapter, which talks to the same endpoint (its ticket = the endpoint's
+/// own [`iroh::EndpointAddr`]).
 pub struct PairingHandlers {
     pub session: Arc<dyn PairingSessionPort>,
     pub events: Arc<dyn PairingEventPort>,
     pub invitation: Arc<dyn PairingInvitationPort>,
+    pub invitation_addresses: Arc<dyn PairingInvitationAddressQueryPort>,
 }
 
 /// The two clipboard ports produced by [`IrohNodeBuilder::install_clipboard`].
@@ -511,18 +515,20 @@ impl IrohNodeBuilder {
         let builder = adapter.install_handler(builder);
         self.router_builder = Some(builder);
 
-        let invitation: Arc<dyn PairingInvitationPort> =
-            Arc::new(RendezvousPairingInvitationAdapter::new(
-                Arc::clone(&self.endpoint),
-                device_identity,
-                settings,
-                rendezvous,
-            ));
+        let invitation_adapter = Arc::new(RendezvousPairingInvitationAdapter::new(
+            Arc::clone(&self.endpoint),
+            device_identity,
+            settings,
+            rendezvous,
+        ));
+        let invitation: Arc<dyn PairingInvitationPort> = invitation_adapter.clone();
+        let invitation_addresses: Arc<dyn PairingInvitationAddressQueryPort> = invitation_adapter;
 
         PairingHandlers {
             session: adapter.clone(),
             events: adapter,
             invitation,
+            invitation_addresses,
         }
     }
 

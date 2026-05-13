@@ -9,17 +9,19 @@
 //! 3. Map [`RendezvousHttpError`] onto the domain error types defined in
 //!    `uc_core::ports::pairing_invitation`.
 
+use std::net::IpAddr;
 use std::sync::Arc;
 
 use async_trait::async_trait;
 use chrono::{TimeZone, Utc};
-use iroh::{Endpoint, EndpointAddr};
+use iroh::{Endpoint, EndpointAddr, TransportAddr};
 use tracing::{debug, instrument};
 
 use uc_core::pairing::invitation::InvitationCode;
 use uc_core::ports::{
     ConsumeInvitationError, DeviceIdentityPort, InvitationError, IssuedInvitation,
-    PairingInvitationPort, SettingsPort,
+    PairingInvitationAddressCandidate, PairingInvitationAddressQueryPort, PairingInvitationPort,
+    SettingsPort,
 };
 use uc_core::settings::model::Settings;
 
@@ -75,29 +77,21 @@ impl RendezvousPairingInvitationAdapter {
     fn serialize_ticket(&self, allow_overlay: bool) -> Result<(String, String), InvitationError> {
         serialize_filtered_endpoint_ticket(self.endpoint.addr(), allow_overlay)
     }
-}
 
-fn serialize_filtered_endpoint_ticket(
-    addr: EndpointAddr,
-    allow_overlay: bool,
-) -> Result<(String, String), InvitationError> {
-    let addr = filter_endpoint_addr(addr, allow_overlay);
-    if addr.addrs.is_empty() {
-        return Err(InvitationError::NetworkNotStarted);
+    fn serialize_ticket_for_ip(
+        &self,
+        allow_overlay: bool,
+        selected_ip: IpAddr,
+    ) -> Result<(String, String), InvitationError> {
+        serialize_endpoint_ticket_for_ip(self.endpoint.addr(), allow_overlay, selected_ip)
     }
-    let endpoint_id = addr.id.to_string();
-    let ticket = serde_json::to_string(&addr)
-        .map_err(|err| InvitationError::Internal(format!("endpoint addr serialize: {err}")))?;
-    Ok((endpoint_id, ticket))
-}
 
-#[async_trait]
-impl PairingInvitationPort for RendezvousPairingInvitationAdapter {
-    #[instrument(skip_all)]
-    async fn issue_invitation(&self) -> Result<IssuedInvitation, InvitationError> {
-        let settings = self.load_settings().await?;
-        let (endpoint_id, ticket) =
-            self.serialize_ticket(settings.network.allow_overlay_network_addrs)?;
+    async fn create_pairing_with_ticket(
+        &self,
+        settings: Settings,
+        endpoint_id: String,
+        ticket: String,
+    ) -> Result<IssuedInvitation, InvitationError> {
         let device_name = Self::resolve_device_name(&settings)?;
         let device_id = self.device_identity.current_device_id();
 
@@ -129,6 +123,86 @@ impl PairingInvitationPort for RendezvousPairingInvitationAdapter {
         debug!(%expires_at, "rendezvous invitation issued");
         Ok(IssuedInvitation { code, expires_at })
     }
+}
+
+fn serialize_filtered_endpoint_ticket(
+    addr: EndpointAddr,
+    allow_overlay: bool,
+) -> Result<(String, String), InvitationError> {
+    let addr = filter_endpoint_addr(addr, allow_overlay);
+    if addr.addrs.is_empty() {
+        return Err(InvitationError::NetworkNotStarted);
+    }
+    serialize_endpoint_addr(addr)
+}
+
+fn serialize_endpoint_ticket_for_ip(
+    addr: EndpointAddr,
+    allow_overlay: bool,
+    selected_ip: IpAddr,
+) -> Result<(String, String), InvitationError> {
+    let addr = filter_endpoint_addr(addr, allow_overlay);
+    let EndpointAddr { id, addrs } = addr;
+    let selected: Vec<TransportAddr> = addrs
+        .into_iter()
+        .filter(|addr| match addr {
+            TransportAddr::Ip(socket) => socket.ip() == selected_ip,
+            _ => false,
+        })
+        .collect();
+    if selected.is_empty() {
+        return Err(InvitationError::AddressNotAvailable(selected_ip));
+    }
+    serialize_endpoint_addr(EndpointAddr::from_parts(id, selected))
+}
+
+fn list_invitation_address_candidates(
+    addr: EndpointAddr,
+    allow_overlay: bool,
+) -> Result<Vec<PairingInvitationAddressCandidate>, InvitationError> {
+    let addr = filter_endpoint_addr(addr, allow_overlay);
+    let candidates: Vec<PairingInvitationAddressCandidate> = addr
+        .ip_addrs()
+        .map(|socket| PairingInvitationAddressCandidate {
+            ip: socket.ip(),
+            port: socket.port(),
+        })
+        .collect();
+    if candidates.is_empty() {
+        return Err(InvitationError::NetworkNotStarted);
+    }
+    Ok(candidates)
+}
+
+fn serialize_endpoint_addr(addr: EndpointAddr) -> Result<(String, String), InvitationError> {
+    let endpoint_id = addr.id.to_string();
+    let ticket = serde_json::to_string(&addr)
+        .map_err(|err| InvitationError::Internal(format!("endpoint addr serialize: {err}")))?;
+    Ok((endpoint_id, ticket))
+}
+
+#[async_trait]
+impl PairingInvitationPort for RendezvousPairingInvitationAdapter {
+    #[instrument(skip_all)]
+    async fn issue_invitation(&self) -> Result<IssuedInvitation, InvitationError> {
+        let settings = self.load_settings().await?;
+        let (endpoint_id, ticket) =
+            self.serialize_ticket(settings.network.allow_overlay_network_addrs)?;
+        self.create_pairing_with_ticket(settings, endpoint_id, ticket)
+            .await
+    }
+
+    #[instrument(skip_all, fields(selected_ip = %selected_ip))]
+    async fn issue_invitation_for_address(
+        &self,
+        selected_ip: IpAddr,
+    ) -> Result<IssuedInvitation, InvitationError> {
+        let settings = self.load_settings().await?;
+        let (endpoint_id, ticket) = self
+            .serialize_ticket_for_ip(settings.network.allow_overlay_network_addrs, selected_ip)?;
+        self.create_pairing_with_ticket(settings, endpoint_id, ticket)
+            .await
+    }
 
     #[instrument(skip(self), fields(code = %code.as_str()))]
     async fn consume_invitation(
@@ -142,6 +216,20 @@ impl PairingInvitationPort for RendezvousPairingInvitationAdapter {
             }
             Err(err) => Err(map_consume_err(err)),
         }
+    }
+}
+
+#[async_trait]
+impl PairingInvitationAddressQueryPort for RendezvousPairingInvitationAdapter {
+    #[instrument(skip_all)]
+    async fn list_invitation_addresses(
+        &self,
+    ) -> Result<Vec<PairingInvitationAddressCandidate>, InvitationError> {
+        let settings = self.load_settings().await?;
+        list_invitation_address_candidates(
+            self.endpoint.addr(),
+            settings.network.allow_overlay_network_addrs,
+        )
     }
 }
 
@@ -294,6 +382,71 @@ mod tests {
         assert!(ips.contains(&"192.168.31.72".to_string()));
         assert!(!ips.contains(&"198.18.0.1".to_string()));
         assert!(!ips.contains(&"169.254.1.2".to_string()));
+    }
+
+    #[test]
+    fn serialize_ticket_for_selected_ip_keeps_only_that_ip() {
+        let selected_ip = "100.79.191.42".parse().unwrap();
+        let addr = EndpointAddr::from_parts(
+            SecretKey::generate().public(),
+            [
+                TransportAddr::Ip("100.79.191.42:61743".parse::<SocketAddr>().unwrap()),
+                TransportAddr::Ip("192.168.31.72:61743".parse::<SocketAddr>().unwrap()),
+            ],
+        );
+
+        let (_, ticket) =
+            serialize_endpoint_ticket_for_ip(addr, true, selected_ip).expect("ticket");
+        let decoded: EndpointAddr = serde_json::from_str(&ticket).expect("decode ticket");
+        let sockets: Vec<SocketAddr> = decoded.ip_addrs().copied().collect();
+
+        assert_eq!(
+            sockets,
+            vec!["100.79.191.42:61743".parse::<SocketAddr>().unwrap()]
+        );
+    }
+
+    #[test]
+    fn serialize_ticket_for_selected_ip_rejects_absent_ip() {
+        let selected_ip = "100.79.191.42".parse().unwrap();
+        let addr = EndpointAddr::from_parts(
+            SecretKey::generate().public(),
+            [TransportAddr::Ip(
+                "192.168.31.72:61743".parse::<SocketAddr>().unwrap(),
+            )],
+        );
+
+        let err = serialize_endpoint_ticket_for_ip(addr, true, selected_ip).unwrap_err();
+        assert!(matches!(
+            err,
+            InvitationError::AddressNotAvailable(ip) if ip == selected_ip
+        ));
+    }
+
+    #[test]
+    fn list_invitation_address_candidates_uses_ticket_filter() {
+        let addr = EndpointAddr::from_parts(
+            SecretKey::generate().public(),
+            [
+                TransportAddr::Ip("100.79.191.42:61743".parse::<SocketAddr>().unwrap()),
+                TransportAddr::Ip("198.18.0.1:61743".parse::<SocketAddr>().unwrap()),
+                TransportAddr::Ip("192.168.31.72:61743".parse::<SocketAddr>().unwrap()),
+            ],
+        );
+
+        let candidates = list_invitation_address_candidates(addr, true).expect("candidates");
+        let rendered: Vec<String> = candidates
+            .iter()
+            .map(|candidate| format!("{}:{}", candidate.ip, candidate.port))
+            .collect();
+
+        assert_eq!(
+            rendered,
+            vec![
+                "100.79.191.42:61743".to_string(),
+                "192.168.31.72:61743".to_string(),
+            ]
+        );
     }
 
     #[tokio::test]

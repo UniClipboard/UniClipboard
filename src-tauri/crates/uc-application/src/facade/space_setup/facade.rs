@@ -16,6 +16,7 @@
 //! `Connection::closed` watchdog. Failures are surfaced through
 //! `tracing::warn!` so ops still sees them.
 
+use std::net::IpAddr;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -33,9 +34,9 @@ use uc_core::setup::SetupStatus;
 
 use crate::facade::space_setup::commands::{
     CurrentInvitation, InitializeSpaceCommand, InitializeSpaceInput, InitializeSpaceResult,
-    IssuePairingInvitationResult, MigrationPhaseKind, MigrationProgress, SetupStateView,
-    SwitchSpaceCommand, SwitchSpaceInput, SwitchSpaceResult, UnlockSpaceCommand, UnlockSpaceInput,
-    UnlockSpaceResult,
+    IssuePairingInvitationResult, MigrationPhaseKind, MigrationProgress,
+    PairingInvitationAddressCandidate, SetupStateView, SwitchSpaceCommand, SwitchSpaceInput,
+    SwitchSpaceResult, UnlockSpaceCommand, UnlockSpaceInput, UnlockSpaceResult,
 };
 use crate::facade::space_setup::commands::{
     RedeemPairingInvitationCommand, RedeemPairingInvitationInput, RedeemPairingInvitationResult,
@@ -137,6 +138,7 @@ impl SpaceSetupFacade {
             settings,
             clock,
             pairing_invitation,
+            pairing_invitation_addresses,
             pairing_session,
             pairing_events,
             proof_port,
@@ -184,6 +186,7 @@ impl SpaceSetupFacade {
         ));
         let issue_pairing_invitation = Arc::new(IssuePairingInvitationUseCase::new(
             Arc::clone(&pairing_invitation),
+            pairing_invitation_addresses,
             Arc::clone(&device_identity),
             Arc::clone(&clock),
             Arc::clone(&invitation_holder),
@@ -480,6 +483,25 @@ impl SpaceSetupFacade {
         self.issue_pairing_invitation.execute().await
     }
 
+    /// 按指定本机地址签发配对邀请。
+    #[instrument(skip_all, fields(selected_ip = %selected_ip))]
+    pub async fn issue_pairing_invitation_for_address(
+        &self,
+        selected_ip: IpAddr,
+    ) -> Result<IssuePairingInvitationResult, IssuePairingInvitationError> {
+        self.issue_pairing_invitation
+            .execute_for_address(selected_ip)
+            .await
+    }
+
+    /// 列出当前可用于签发配对邀请的本机地址。
+    #[instrument(skip_all)]
+    pub async fn list_pairing_invitation_addresses(
+        &self,
+    ) -> Result<Vec<PairingInvitationAddressCandidate>, IssuePairingInvitationError> {
+        self.issue_pairing_invitation.list_addresses().await
+    }
+
     /// B2 · Redeem a sponsor-issued invitation (joiner side).
     ///
     /// Primes presence before dialing because, unlike A1/A2, the joiner's
@@ -713,7 +735,8 @@ mod tests {
         SessionError,
     };
     use uc_core::ports::pairing_invitation::{
-        ConsumeInvitationError, InvitationError, IssuedInvitation, PairingInvitationPort,
+        ConsumeInvitationError, InvitationError, IssuedInvitation,
+        PairingInvitationAddressQueryPort, PairingInvitationPort,
     };
     use uc_core::ports::space::{ProofPort, SpaceAccessError, SpaceAccessPort};
     use uc_core::ports::{
@@ -911,12 +934,28 @@ mod tests {
             })
         }
 
+        async fn issue_invitation_for_address(
+            &self,
+            _selected_ip: IpAddr,
+        ) -> Result<IssuedInvitation, InvitationError> {
+            self.issue_invitation().await
+        }
+
         async fn consume_invitation(
             &self,
             _code: &InvitationCode,
         ) -> Result<(), ConsumeInvitationError> {
             // Smoke tests don't exercise P7e inbound path.
             Ok(())
+        }
+    }
+
+    #[async_trait]
+    impl PairingInvitationAddressQueryPort for FakeInvitationPort {
+        async fn list_invitation_addresses(
+            &self,
+        ) -> Result<Vec<PairingInvitationAddressCandidate>, InvitationError> {
+            Ok(Vec::new())
         }
     }
 
@@ -1262,6 +1301,7 @@ mod tests {
             settings,
             clock: Arc::new(FixedClock(0)),
             pairing_invitation: pairing_invitation.clone(),
+            pairing_invitation_addresses: pairing_invitation.clone(),
             pairing_session: Arc::new(NoopSessionPort),
             pairing_events: Arc::new(IdleEventPort::new()),
             proof_port: Arc::new(NoopProofPort),

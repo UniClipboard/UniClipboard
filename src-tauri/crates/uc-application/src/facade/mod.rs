@@ -128,9 +128,10 @@ pub use setup_status::SetupStatusFacade;
 pub use space_setup::{
     CancelInvitationError, CurrentInvitation, InitializeSpaceError, InitializeSpaceInput,
     InitializeSpaceResult, IssuePairingInvitationError, IssuePairingInvitationResult,
-    PairingFailureReason, PairingOutcome, QuerySetupStateError, RedeemPairingInvitationError,
-    RedeemPairingInvitationInput, RedeemPairingInvitationResult, ResetSpaceError, SetupStateView,
-    SpaceSetupDeps, SpaceSetupFacade, UnlockSpaceError, UnlockSpaceInput, UnlockSpaceResult,
+    PairingFailureReason, PairingInvitationAddressCandidate, PairingOutcome, QuerySetupStateError,
+    RedeemPairingInvitationError, RedeemPairingInvitationInput, RedeemPairingInvitationResult,
+    ResetSpaceError, SetupStateView, SpaceSetupDeps, SpaceSetupFacade, UnlockSpaceError,
+    UnlockSpaceInput, UnlockSpaceResult,
 };
 pub use storage::{
     ClearCacheResultView, StorageFacade, StorageFacadeDeps, StorageFacadeError, StorageStatsView,

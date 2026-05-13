@@ -142,6 +142,9 @@ pub(crate) async fn issue_invitation(
             E::ServiceUnavailable => {
                 ApiError::service_unavailable("pairing invitation service unavailable")
             }
+            E::AddressNotAvailable(ip) => {
+                ApiError::bad_request(format!("requested address is not available: {ip}"))
+            }
             E::Internal(msg) => ApiError::internal(msg),
         }
     })?;

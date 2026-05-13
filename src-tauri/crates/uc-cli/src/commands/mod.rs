@@ -1,5 +1,6 @@
 pub mod app_session;
 pub mod blob;
+pub mod dev;
 pub mod devices;
 pub mod dump_clipboard;
 pub mod init;

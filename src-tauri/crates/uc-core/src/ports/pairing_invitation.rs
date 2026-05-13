@@ -11,8 +11,11 @@
 //! the code has been redeemed so other joiners can't race on it. Joiner-side
 //! dial lives on [`PairingSessionPort`](crate::ports::pairing::PairingSessionPort).
 
+use std::net::IpAddr;
+
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
+use serde::Serialize;
 use thiserror::Error;
 
 pub use crate::pairing::invitation::InvitationCode;
@@ -26,6 +29,15 @@ pub struct IssuedInvitation {
     pub expires_at: DateTime<Utc>,
 }
 
+/// 可用于签发邀请的本机地址候选。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct PairingInvitationAddressCandidate {
+    /// 可由对端拨入的地址。
+    pub ip: IpAddr,
+    /// 与地址配套的端口。
+    pub port: u16,
+}
+
 /// Errors produced while issuing an invitation.
 #[derive(Debug, Error)]
 pub enum InvitationError {
@@ -37,6 +49,10 @@ pub enum InvitationError {
     /// Rendezvous service unreachable / returned a transient failure.
     #[error("pairing invitation service unavailable")]
     ServiceUnavailable,
+
+    /// 调用方指定的地址当前不可用于签发邀请。
+    #[error("requested address is not available: {0}")]
+    AddressNotAvailable(IpAddr),
 
     /// Unexpected adapter-side failure; message is for logs only.
     #[error("internal invitation error: {0}")]
@@ -80,6 +96,12 @@ pub trait PairingInvitationPort: Send + Sync {
     /// format; callers treat the returned `expires_at` as ground truth.
     async fn issue_invitation(&self) -> Result<IssuedInvitation, InvitationError>;
 
+    /// 按调用方指定的本机地址签发邀请。
+    async fn issue_invitation_for_address(
+        &self,
+        selected_ip: IpAddr,
+    ) -> Result<IssuedInvitation, InvitationError>;
+
     /// Notify the rendezvous service that the sponsor has accepted an
     /// inbound joiner carrying this code. The call is best-effort — failures
     /// do not invalidate the local handshake (the sponsor has already moved
@@ -88,4 +110,13 @@ pub trait PairingInvitationPort: Send + Sync {
     /// return `NotFound` once the entry is reaped, not an error).
     async fn consume_invitation(&self, code: &InvitationCode)
         -> Result<(), ConsumeInvitationError>;
+}
+
+/// 配对邀请地址查询能力。
+#[async_trait]
+pub trait PairingInvitationAddressQueryPort: Send + Sync {
+    /// 列出当前可用于签发邀请的本机地址候选。
+    async fn list_invitation_addresses(
+        &self,
+    ) -> Result<Vec<PairingInvitationAddressCandidate>, InvitationError>;
 }

@@ -23,6 +23,7 @@
 //!   its state machine had no dispatcher, while the real admit path runs
 //!   through `PairingInboundOrchestrator`.
 
+use std::net::IpAddr;
 use std::sync::{Arc, OnceLock};
 
 use thiserror::Error;
@@ -35,9 +36,10 @@ use crate::facade::settings::{GeneralSettingsPatch, SettingsPatch};
 use crate::facade::space_setup::{EnsureReachableAllError, EnsureReachableAllReport};
 use crate::facade::space_setup::{
     InitializeSpaceError, InitializeSpaceInput, InitializeSpaceResult, IssuePairingInvitationError,
-    IssuePairingInvitationResult, MigrationProgress, PairingOutcome, QueryMigrationProgressError,
-    RedeemPairingInvitationError, RedeemPairingInvitationInput, RedeemPairingInvitationResult,
-    SwitchSpaceError, SwitchSpaceInput, SwitchSpaceResult, TryResumeSessionError,
+    IssuePairingInvitationResult, MigrationProgress, PairingInvitationAddressCandidate,
+    PairingOutcome, QueryMigrationProgressError, RedeemPairingInvitationError,
+    RedeemPairingInvitationInput, RedeemPairingInvitationResult, SwitchSpaceError,
+    SwitchSpaceInput, SwitchSpaceResult, TryResumeSessionError,
 };
 use crate::facade::upgrade::UpgradeFacade;
 use crate::facade::{
@@ -271,6 +273,35 @@ impl AppFacade {
                 IssuePairingInvitationError::Internal("space setup facade unavailable".to_string())
             })?
             .issue_pairing_invitation()
+            .await
+    }
+
+    /// 按指定本机地址签发配对邀请。
+    pub async fn issue_pairing_invitation_for_address(
+        &self,
+        selected_ip: IpAddr,
+    ) -> Result<IssuePairingInvitationResult, IssuePairingInvitationError> {
+        self.space_setup
+            .get()
+            .cloned()
+            .ok_or_else(|| {
+                IssuePairingInvitationError::Internal("space setup facade unavailable".to_string())
+            })?
+            .issue_pairing_invitation_for_address(selected_ip)
+            .await
+    }
+
+    /// 列出当前可用于配对邀请的本机地址。
+    pub async fn list_pairing_invitation_addresses(
+        &self,
+    ) -> Result<Vec<PairingInvitationAddressCandidate>, IssuePairingInvitationError> {
+        self.space_setup
+            .get()
+            .cloned()
+            .ok_or_else(|| {
+                IssuePairingInvitationError::Internal("space setup facade unavailable".to_string())
+            })?
+            .list_pairing_invitation_addresses()
             .await
     }
 

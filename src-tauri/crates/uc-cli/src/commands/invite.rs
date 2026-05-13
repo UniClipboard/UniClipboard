@@ -15,6 +15,8 @@
 use tokio::select;
 use tokio::signal;
 
+use std::net::IpAddr;
+
 use uc_application::facade::space_setup::{
     IssuePairingInvitationError, PairingOutcome, TryResumeSessionError,
 };
@@ -26,7 +28,18 @@ use crate::ui;
 const EXIT_SIGINT: i32 = 130;
 
 pub async fn run(verbose: bool) -> i32 {
-    ui::header("Invite a device");
+    run_inner(None, verbose).await
+}
+
+pub(crate) async fn run_for_address(selected_ip: IpAddr, verbose: bool) -> i32 {
+    run_inner(Some(selected_ip), verbose).await
+}
+
+async fn run_inner(selected_ip: Option<IpAddr>, verbose: bool) -> i32 {
+    match selected_ip {
+        Some(ip) => ui::header(&format!("Invite a device via {ip}")),
+        None => ui::header("Invite a device"),
+    }
 
     if let Err(code) = refuse_if_daemon_running().await {
         return code;
@@ -91,13 +104,26 @@ pub async fn run(verbose: bool) -> i32 {
     };
 
     let spinner = ui::spinner("Requesting invitation from rendezvous...");
-    let invitation = match cli.app_facade().issue_pairing_invitation().await {
+    let issue_result = match selected_ip {
+        Some(ip) => {
+            cli.app_facade()
+                .issue_pairing_invitation_for_address(ip)
+                .await
+        }
+        None => cli.app_facade().issue_pairing_invitation().await,
+    };
+    let invitation = match issue_result {
         Ok(res) => {
             ui::spinner_finish_success(&spinner, "Invitation issued");
             res
         }
         Err(IssuePairingInvitationError::NetworkNotStarted) => {
             ui::spinner_finish_error(&spinner, "Network not started — run `init` first.");
+            cli.shutdown().await;
+            return exit_codes::EXIT_ERROR;
+        }
+        Err(IssuePairingInvitationError::AddressNotAvailable(addr)) => {
+            ui::spinner_finish_error(&spinner, &format!("Address is not available: {addr}"));
             cli.shutdown().await;
             return exit_codes::EXIT_ERROR;
         }

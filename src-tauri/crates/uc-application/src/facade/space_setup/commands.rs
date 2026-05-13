@@ -8,6 +8,7 @@ use chrono::{DateTime, Utc};
 use uc_core::crypto::domain::Passphrase;
 use uc_core::ids::{DeviceId, SpaceId};
 use uc_core::pairing::InvitationCode;
+pub use uc_core::ports::pairing_invitation::PairingInvitationAddressCandidate;
 use uc_core::security::IdentityFingerprint;
 
 // ---------------------------------------------------------------------------

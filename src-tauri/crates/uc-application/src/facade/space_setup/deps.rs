@@ -10,7 +10,9 @@ use std::sync::Arc;
 use uc_core::membership::MemberRepositoryPort;
 use uc_core::ports::clipboard::BlobMigrationRepoPort;
 use uc_core::ports::pairing::{PairingEventPort, PairingSessionPort};
-use uc_core::ports::pairing_invitation::PairingInvitationPort;
+use uc_core::ports::pairing_invitation::{
+    PairingInvitationAddressQueryPort, PairingInvitationPort,
+};
 use uc_core::ports::security::{BlobCipherPort, KeyMigrationPort};
 use uc_core::ports::setup::MigrationStatePort;
 use uc_core::ports::space::{ProofPort, SpaceAccessPort};
@@ -44,6 +46,8 @@ pub struct SpaceSetupDeps {
     /// `pub(crate)` so application-internal implementation details
     /// (`uc-application/AGENTS.md` §11.4) stay off the bootstrap surface.
     pub pairing_invitation: Arc<dyn PairingInvitationPort>,
+    /// 配对邀请地址候选查询能力。
+    pub pairing_invitation_addresses: Arc<dyn PairingInvitationAddressQueryPort>,
     /// Session-level transport used by the sponsor-side inbound orchestrator
     /// to send `PairingReject` and close sessions that fail code matching.
     /// Joiner-side uses the same port to dial; Slice 1 wires a single

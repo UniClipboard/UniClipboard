@@ -7,10 +7,12 @@ The desktop daemon exposes a small SyncClipboard-compatible HTTP service on the
 LAN so a paired mobile device — iOS Shortcuts, Android, or any third-party
 SyncClipboard client — can read and push clipboard items.
 
-All endpoints are mounted at the **root path** (`/SyncClipboard.json`,
-`/file/{dataName}`) and require **HTTP Basic Authentication**. Credentials are
-minted on the desktop side during pairing and are bound to a single registered
-device.
+All endpoints are mounted at the **root path**. The main SyncClipboard paths are
+`/SyncClipboard.json` and `/file/{dataName}`; Android-compatible clients may also
+call `/api/history/*`, `/api/time`, `/api/version`, `/version`, `/`, and `/file`.
+
+Every endpoint requires **HTTP Basic Authentication**. Credentials are minted on
+the desktop side during pairing and are bound to a single registered device.
 
 <Callout type="info">
   This API is the **mobile companion** path. It is independent of the iroh P2P transport that
@@ -23,12 +25,60 @@ device.
 For setup, see [Pairing & sync — Mobile companion](../guides/pairing#mobile-companion-lan-only)
 and the **Devices → Mobile sync** panel in the desktop app.
 
+## Compatibility boundary
+
+UniClipboard exposes the subset of the SyncClipboard server API needed for
+current clipboard sync and Android client compatibility. It is not a full
+SyncClipboard history server.
+
+| Endpoint group | Status |
+| --- | --- |
+| `GET /SyncClipboard.json`, `PUT /SyncClipboard.json` | Real clipboard metadata read/write for the latest item. |
+| `GET /file/{dataName}`, `PUT /file/{dataName}`, `HEAD /file/{dataName}` | Real binary download/upload for image and file items. |
+| `POST /api/history` | Real Android-compatible inbound path for text, image, and file uploads. |
+| `GET /api/history/{profileId}`, `GET /api/history/{profileId}/data` | Compatibility bridge to the current latest clipboard item. It does not expose an older history list. |
+| `POST /api/history/query`, `GET /api/history/statistics` | Compatibility responses based on the current latest item, or an empty result when there is no item. |
+| `PATCH /api/history/{type}/{hash}`, `DELETE /api/history/clear`, `DELETE /file` | Compatibility-only. These requests are accepted so clients can continue their flow, but UniClipboard does not persist starred, pinned, deleted, clear, or folder-delete state through them. |
+| `GET /api/time`, `GET /api/version`, `GET /version`, `/` | Probe endpoints used by clients to confirm that the server is reachable. |
+
+## Upload behavior
+
+Binary uploads are streamed into local staging. The daemon does not keep the
+whole uploaded file in memory.
+
+`PUT /file/{dataName}` and multipart `POST /api/history` share a hard safety cap
+of **10 GiB** per uploaded file. A 1 GiB file is within the protocol cap, but it
+still needs enough local disk space and time to finish over the LAN.
+
+Metadata-only requests, such as `PUT /SyncClipboard.json` and URL-encoded
+`POST /api/history`, remain capped at **16 MiB** because they are small protocol
+documents rather than file bodies.
+
+Some Android clients send images as `application/octet-stream`. When that
+happens, UniClipboard sniffs the file name and leading bytes so JPEG, PNG, GIF,
+WEBP, BMP, TIFF, HEIC, and HEIF uploads remain image items instead of being
+misreported as text or generic files.
+
 <APIPage
   document="./openapi/mobile-lan.yaml"
   operations={[
+    { path: '/', method: 'get' },
+    { path: '/api/time', method: 'get' },
+    { path: '/api/version', method: 'get' },
+    { path: '/version', method: 'get' },
     { path: '/SyncClipboard.json', method: 'get' },
     { path: '/SyncClipboard.json', method: 'put' },
+    { path: '/api/history', method: 'post' },
+    { path: '/api/history/query', method: 'post' },
+    { path: '/api/history/statistics', method: 'get' },
+    { path: '/api/history/{profileId}', method: 'get' },
+    { path: '/api/history/{profileId}/data', method: 'get' },
+    { path: '/api/history/{type}/{hash}', method: 'patch' },
+    { path: '/api/history/clear', method: 'delete' },
+    { path: '/file', method: 'get' },
+    { path: '/file', method: 'delete' },
     { path: '/file/{dataName}', method: 'get' },
+    { path: '/file/{dataName}', method: 'head' },
     { path: '/file/{dataName}', method: 'put' },
   ]}
   showTitle

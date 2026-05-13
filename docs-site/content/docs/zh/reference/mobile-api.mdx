@@ -7,9 +7,12 @@ description: 桌面守护进程对外暴露的、SyncClipboard 兼容的 HTTP �
 让已配对的移动设备 —— iOS 快捷指令、Android 或任意第三方 SyncClipboard
 客户端 —— 都可以读取与推送剪贴板内容。
 
-所有接口都挂在 **根路径**（`/SyncClipboard.json`、`/file/{dataName}`），并通过
-**HTTP Basic 认证** 校验。用户名 / 密码由桌面端在配对流程中签发，且与一台
-已登记的移动设备一一绑定。
+所有接口都挂在 **根路径**。主要 SyncClipboard 路径是
+`/SyncClipboard.json` 和 `/file/{dataName}`；兼容 Android 客户端时还会用到
+`/api/history/*`、`/api/time`、`/api/version`、`/version`、`/` 和 `/file`。
+
+每个接口都会通过 **HTTP Basic 认证** 校验。用户名 / 密码由桌面端在配对流程中
+签发，且与一台已登记的移动设备一一绑定。
 
 <Callout type="info">
   本接口属于 **移动端伴侣** 路径，独立于桌面 ↔ 桌面同步所走的 iroh P2P 传输，运行在局域网上的明文
@@ -21,12 +24,56 @@ description: 桌面守护进程对外暴露的、SyncClipboard 兼容的 HTTP �
 配对流程见 [配对与同步 — 移动端伴侣](../guides/pairing#移动端伴侣仅限-lan)，
 以及桌面端的 **设备 → 移动端同步** 面板。
 
+## 兼容边界
+
+UniClipboard 暴露的是当前剪贴板同步和 Android 客户端兼容所需的
+SyncClipboard 服务端子集，不是完整的 SyncClipboard 历史服务端。
+
+| 接口组 | 当前状态 |
+| --- | --- |
+| `GET /SyncClipboard.json`、`PUT /SyncClipboard.json` | 真实读取 / 写入当前最新剪贴板元数据。 |
+| `GET /file/{dataName}`、`PUT /file/{dataName}`、`HEAD /file/{dataName}` | 真实下载 / 上传图片和文件内容。 |
+| `POST /api/history` | 真实接入 Android 兼容的文字、图片、文件上传入口。 |
+| `GET /api/history/{profileId}`、`GET /api/history/{profileId}/data` | 兼容桥接到当前最新剪贴板内容，不提供更早的历史记录列表。 |
+| `POST /api/history/query`、`GET /api/history/statistics` | 基于当前最新一条返回兼容结果；没有当前内容时返回空结果。 |
+| `PATCH /api/history/{type}/{hash}`、`DELETE /api/history/clear`、`DELETE /file` | 仅用于兼容客户端流程。服务端会接收请求，但不会通过这些接口持久化标星、置顶、删除、清空或文件夹删除状态。 |
+| `GET /api/time`、`GET /api/version`、`GET /version`、`/` | 客户端用于确认服务在线的探测接口。 |
+
+## 上传行为
+
+二进制上传会流式写入本地暂存区。桌面守护进程不会把整个上传文件一次性放进内存。
+
+`PUT /file/{dataName}` 和 multipart `POST /api/history` 共享每个上传文件
+**10 GiB** 的硬安全上限。1 GiB 文件在协议上允许，但仍需要本机有足够磁盘空间，
+也需要局域网传输有足够时间完成。
+
+`PUT /SyncClipboard.json` 和 URL-encoded `POST /api/history` 这类只传元数据的
+请求仍限制为 **16 MiB**，因为它们只是很小的协议文档，不是文件正文。
+
+部分 Android 客户端会把图片按 `application/octet-stream` 发送。遇到这种情况时，
+UniClipboard 会根据文件名和文件开头字节识别图片格式，让 JPEG、PNG、GIF、WEBP、
+BMP、TIFF、HEIC 和 HEIF 上传继续保持为图片，而不是被误报成文本或普通文件。
+
 <APIPage
   document="./openapi/mobile-lan.yaml"
   operations={[
+    { path: '/', method: 'get' },
+    { path: '/api/time', method: 'get' },
+    { path: '/api/version', method: 'get' },
+    { path: '/version', method: 'get' },
     { path: '/SyncClipboard.json', method: 'get' },
     { path: '/SyncClipboard.json', method: 'put' },
+    { path: '/api/history', method: 'post' },
+    { path: '/api/history/query', method: 'post' },
+    { path: '/api/history/statistics', method: 'get' },
+    { path: '/api/history/{profileId}', method: 'get' },
+    { path: '/api/history/{profileId}/data', method: 'get' },
+    { path: '/api/history/{type}/{hash}', method: 'patch' },
+    { path: '/api/history/clear', method: 'delete' },
+    { path: '/file', method: 'get' },
+    { path: '/file', method: 'delete' },
     { path: '/file/{dataName}', method: 'get' },
+    { path: '/file/{dataName}', method: 'head' },
     { path: '/file/{dataName}', method: 'put' },
   ]}
   showTitle

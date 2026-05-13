@@ -1,0 +1,94 @@
+---
+title: Privacy & data collection
+description: What UniClipboard collects, why it is collected, what is never included, and how to turn it off.
+---
+
+UniClipboard's main privacy boundary does not change: clipboard content only syncs between your paired devices, and it is end-to-end encrypted for the whole trip. Diagnostics and usage analytics are separate helper channels used to find crashes, debug sync failures, and understand which platforms and flows need attention first.
+
+<Callout type="info">
+  Both channels are controlled under **Settings → General → Privacy**. They are on by default. The first-start notice lets you disable both at once; later you can control them separately. Changes take effect without restarting the daemon.
+</Callout>
+
+## Two Separate Toggles
+
+| Toggle | Scope | Default | Destination |
+| ------ | ----- | ------- | ----------- |
+| Send diagnostics | Crashes, errors, warning logs, performance traces, frontend diagnostics, and sampled Replay. Used to answer "why did it break?" | On | Sentry, with separate frontend and backend projects when a DSN is configured in the build |
+| Send usage analytics | Anonymous product events such as first open, pairing funnel, first sync, and sync success / failure / deferred outcomes. Used to answer "where are flows getting stuck?" | On | PostHog Cloud US ingestion endpoint when a release build has a project key configured |
+
+Turning either toggle off drops the next matching event; no daemon restart is required. When usage analytics is off, product events do not reach the remote sink and release builds do not write a local analytics log.
+
+## Why We Collect It
+
+- **Find crashes and exceptions.** Diagnostics tell us which version, platform, or process role is failing.
+- **Find pairing drop-offs.** Usage analytics shows whether people get stuck at first launch, device naming, invite redemption, passphrase confirmation, or handshake.
+- **Measure sync reliability.** Sync events separate success, failure, known-offline deferral, and the stage where a failure happened.
+- **Prioritize work.** Aggregated dimensions such as platform, version, locale, timezone, and paired-device count help us focus on the paths with the largest impact.
+
+This data is not used for ad targeting, is not sold to third parties, and is not used to recover, read, or analyze your clipboard content.
+
+## What Diagnostics Include
+
+Diagnostics include the minimum context needed to understand failures:
+
+| Category | Included |
+| -------- | -------- |
+| App and platform | App version, release channel, OS platform, frontend webview platform, and process role (GUI host / daemon / CLI / webview). |
+| Diagnostic device identifier | A persistent random device ID used to correlate crashes, logs, and frontend errors from the same device. |
+| Errors and logs | Panics, exceptions, error events, warn / error logs, and frontend logs at `info` or above. Sensitive fields are replaced with `[REDACTED]` before sending. |
+| Performance and breadcrumbs | Sampled performance traces plus navigation / action breadcrumbs used to reconstruct the path around an error. |
+| Frontend Replay | Sampled Sentry Replay for frontend UI errors. It is not sent when "Send diagnostics" is off. |
+| User-submitted feedback | Only when you submit the feedback form: the message you wrote and the optional email address you entered. |
+
+## What Usage Analytics Include
+
+Usage analytics uses separate anonymous IDs. They are not derived from the pairing `DeviceId`, and they do not participate in sync or trust decisions.
+
+Every product event carries these shared fields:
+
+| Field | Meaning |
+| ----- | ------- |
+| `anonymous_user_id` | Random UUIDv7 used for anonymous retention metrics. |
+| `analytics_device_id` | Random UUIDv7 used for device-level slices; independent from the business device ID. |
+| `session_id` | Random UUIDv7 for one process run. |
+| `app_version` / `app_channel` | App version and release channel. |
+| `os` / `os_version` / `arch` | Operating system, OS version, and CPU architecture. |
+| `locale` / `timezone` | System locale and timezone. |
+| `install_source` | Install-source enum; currently `unknown` when not detected. |
+| `is_first_run` | Whether this process run is the first run. |
+| `active_device_count` | Number of paired devices read once at process startup. |
+| `space_id_hash` | First 16 hex chars of an irreversible SHA-256 hash of the space ID; empty before joining a space. |
+
+The current allowed product event scope is:
+
+| Event family | Events | Possible event fields |
+| ------------ | ------ | --------------------- |
+| First activation | `app_first_open`, `setup_started`, `device_name_set` | Setup entry and device-name length bucket. The raw device name is not uploaded. |
+| Pairing | `pairing_started`, `pairing_succeeded`, `pairing_failed` | Pairing method, peer OS, duration, and pairing failure reason enum. |
+| First sync | `first_clipboard_sync_attempted`, `first_clipboard_sync_succeeded`, `first_file_sync_succeeded` | Sync direction, peer OS, transport type, duration, and payload-size bucket. |
+| Sync reliability | `sync_attempted`, `sync_succeeded`, `sync_failed`, `sync_deferred` | Direction, payload type, payload-size bucket, transport type, peer OS, sync latency, failure reason / stage, and deferral reason. |
+
+Any new product event or field must continue to follow this privacy boundary and must be reflected in the public docs.
+
+## What Is Never Included
+
+UniClipboard does not put these values in diagnostics or usage analytics:
+
+- Raw clipboard content: text, RTF, HTML, image pixels, or file bytes.
+- Raw file names, raw file paths, or home-directory paths.
+- Space passphrases, MasterKeys, KEKs, private keys, tokens, or credentials.
+- Search queries.
+- Usernames, hostnames, or email addresses; the only exception is an email you explicitly enter in the feedback form.
+- Raw `space_id` values or the business `DeviceId` used for pairing.
+- Exact payload sizes; product analytics uses size buckets. Successful sync latency in milliseconds may be uploaded for reliability percentile analysis.
+
+Any HTTPS service provider can see the source IP at the network layer. UniClipboard does not write IP addresses into diagnostic or usage analytics event fields, and it does not use them for product analysis.
+
+## How To Turn It Off
+
+Go to **Settings → General → Privacy**:
+
+- Turn off **Send diagnostics** to stop frontend / backend Sentry errors, logs, traces, Replay, and breadcrumbs.
+- Turn off **Send usage analytics** to stop product events.
+
+The first-start notice's **Disable** action turns both off at once. Disabling these channels does not affect clipboard sync, LAN-only mode, local history encryption, or local search. It also does not delete the local anonymous IDs that have already been generated; keeping them avoids counting the same install as brand new if you accidentally turn a toggle off and later re-enable it.

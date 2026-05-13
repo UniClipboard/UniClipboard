@@ -32,6 +32,20 @@ or persists your content:
 Your clipboard history never lands on any of our servers. There is no
 "account cloud" and no cloud backup.
 
+Diagnostics and usage analytics use separate channels for crash
+debugging and product reliability analysis. They do not carry clipboard
+content. See [Privacy & data collection](./guides/privacy) for the full
+field list.
+
+### What diagnostics or usage data does UniClipboard collect?
+
+By default, UniClipboard collects two opt-out data categories:
+diagnostics (crashes, errors, anonymous logs, performance traces, and
+frontend diagnostics) and usage analytics (first-open, pairing funnel,
+and sync reliability events). They do not include clipboard content,
+file content, passphrases, or keys. See
+[Privacy & data collection](./guides/privacy).
+
 ### Can I recover a forgotten passphrase?
 
 **No.** The passphrase derives the KEK via Argon2id, and the KEK wraps

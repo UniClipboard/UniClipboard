@@ -15,17 +15,20 @@ Mobile-sync configuration lives in its own sheet on the
 
 ## General
 
-| Setting         | What it does                                                          |
-| --------------- | --------------------------------------------------------------------- |
-| Launch at login | Start UniClipboard automatically when you sign in.                    |
-| Silent start    | After launch, skip the window and go straight to the background/tray. |
-| Device name     | Shown to other devices in the members list — pick something readable. |
-| Language        | English / Simplified Chinese.                                         |
-| Telemetry       | Anonymous crash and usage reporting; off by default.                  |
+| Setting                   | What it does                                                                 |
+| ------------------------- | ---------------------------------------------------------------------------- |
+| Launch at login           | Start UniClipboard automatically when you sign in.                           |
+| Silent start              | After launch, skip the window and go straight to the background/tray.        |
+| Device name               | Shown to other devices in the members list — pick something readable.        |
+| Language                  | English / Simplified Chinese.                                                |
+| Privacy: diagnostics      | Send crashes, errors, anonymous logs, and frontend diagnostics; on by default. |
+| Privacy: usage analytics  | Send anonymous product events for activation, pairing, and sync reliability; on by default and separately controllable. |
 
 The device name is purely a display alias; it doesn't enter the
 encryption identity. Renaming doesn't affect the node ID or pairing
 state.
+
+Diagnostics and usage analytics are separate toggles. They do not include clipboard content, file content, passphrases, or keys; the full field list is documented in [Privacy & data collection](./privacy).
 
 ## Appearance
 

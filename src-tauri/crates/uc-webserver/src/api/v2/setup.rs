@@ -91,22 +91,35 @@ pub(crate) async fn initialize(
 }
 
 fn map_init_err(err: InitializeSpaceError) -> ApiError {
-    match err {
-        InitializeSpaceError::PassphraseMismatch => {
-            ApiError::bad_request("passphrase and confirmation do not match")
-        }
-        InitializeSpaceError::DeviceNameRequired => {
-            ApiError::bad_request("device name is required")
-        }
-        InitializeSpaceError::AlreadyInitialized => {
-            ApiError::conflict("space is already initialised")
-        }
-        InitializeSpaceError::AlreadySetup => {
-            ApiError::conflict("setup has already been completed on this device")
-        }
-        InitializeSpaceError::StorageFailed(msg) => ApiError::internal(msg),
-        InitializeSpaceError::Internal(msg) => ApiError::internal(msg),
-    }
+    use InitializeSpaceError as E;
+    let (variant, api): (&'static str, ApiError) = match err {
+        E::PassphraseMismatch => (
+            "passphrase_mismatch",
+            ApiError::bad_request("passphrase and confirmation do not match"),
+        ),
+        E::DeviceNameRequired => (
+            "device_name_required",
+            ApiError::bad_request("device name is required"),
+        ),
+        E::AlreadyInitialized => (
+            "already_initialized",
+            ApiError::conflict("space is already initialised"),
+        ),
+        E::AlreadySetup => (
+            "already_setup",
+            ApiError::conflict("setup has already been completed on this device"),
+        ),
+        E::StorageFailed(msg) => ("storage_failed", ApiError::internal(msg)),
+        E::Internal(msg) => ("internal", ApiError::internal(msg)),
+    };
+    log_facade_failure(
+        "space_setup",
+        "initialize_space",
+        variant,
+        api.status,
+        &api.message,
+    );
+    api
 }
 
 fn initialize_to_dto(out: InitializeSpaceResult) -> InitializeSpaceResponse {
@@ -310,11 +323,27 @@ fn redeem_to_dto(out: RedeemPairingInvitationResult) -> RedeemResponse {
 )]
 pub(crate) async fn cancel(State(state): State<DaemonApiState>) -> Result<StatusCode, ApiError> {
     let facade = require_facade(&state)?;
-    facade.cancel_invitation().await.map_err(|err| match err {
-        CancelInvitationError::NotIssued => ApiError::conflict("no in-flight invitation to cancel"),
-        CancelInvitationError::Internal(msg) => ApiError::internal(msg),
-    })?;
+    facade.cancel_invitation().await.map_err(map_cancel_err)?;
     Ok(StatusCode::NO_CONTENT)
+}
+
+fn map_cancel_err(err: CancelInvitationError) -> ApiError {
+    use CancelInvitationError as E;
+    let (variant, api): (&'static str, ApiError) = match err {
+        E::NotIssued => (
+            "not_issued",
+            ApiError::conflict("no in-flight invitation to cancel"),
+        ),
+        E::Internal(msg) => ("internal", ApiError::internal(msg)),
+    };
+    log_facade_failure(
+        "space_setup",
+        "cancel_invitation",
+        variant,
+        api.status,
+        &api.message,
+    );
+    api
 }
 
 // ---------------------------------------------------------------------------
@@ -333,11 +362,18 @@ pub(crate) async fn cancel(State(state): State<DaemonApiState>) -> Result<Status
 )]
 pub(crate) async fn reset(State(state): State<DaemonApiState>) -> Result<StatusCode, ApiError> {
     let facade = require_facade(&state)?;
-    facade.reset().await.map_err(|err| match err {
-        ResetSpaceError::StorageFailed(msg) => ApiError::internal(msg),
-        ResetSpaceError::Internal(msg) => ApiError::internal(msg),
-    })?;
+    facade.reset().await.map_err(map_reset_err)?;
     Ok(StatusCode::NO_CONTENT)
+}
+
+fn map_reset_err(err: ResetSpaceError) -> ApiError {
+    use ResetSpaceError as E;
+    let (variant, api): (&'static str, ApiError) = match err {
+        E::StorageFailed(msg) => ("storage_failed", ApiError::internal(msg)),
+        E::Internal(msg) => ("internal", ApiError::internal(msg)),
+    };
+    log_facade_failure("space_setup", "reset", variant, api.status, &api.message);
+    api
 }
 
 // ---------------------------------------------------------------------------
@@ -358,11 +394,27 @@ pub(crate) async fn get_state(
     State(state): State<DaemonApiState>,
 ) -> Result<Json<SetupStateResponse>, ApiError> {
     let facade = require_facade(&state)?;
-    let view = facade.query_setup_state().await.map_err(|err| match err {
-        QuerySetupStateError::StorageFailed(msg) => ApiError::internal(msg),
-        QuerySetupStateError::Internal(msg) => ApiError::internal(msg),
-    })?;
+    let view = facade
+        .query_setup_state()
+        .await
+        .map_err(map_query_setup_state_err)?;
     Ok(Json(state_to_dto(view)))
+}
+
+fn map_query_setup_state_err(err: QuerySetupStateError) -> ApiError {
+    use QuerySetupStateError as E;
+    let (variant, api): (&'static str, ApiError) = match err {
+        E::StorageFailed(msg) => ("storage_failed", ApiError::internal(msg)),
+        E::Internal(msg) => ("internal", ApiError::internal(msg)),
+    };
+    log_facade_failure(
+        "space_setup",
+        "query_setup_state",
+        variant,
+        api.status,
+        &api.message,
+    );
+    api
 }
 
 fn state_to_dto(view: SetupStateView) -> SetupStateResponse {
@@ -529,11 +581,24 @@ pub(crate) async fn query_migration_progress(
     let progress = facade
         .query_migration_progress()
         .await
-        .map_err(|err| match err {
-            QueryMigrationProgressError::StorageFailed(msg) => ApiError::internal(msg),
-            QueryMigrationProgressError::Internal(msg) => ApiError::internal(msg),
-        })?;
+        .map_err(map_query_migration_progress_err)?;
     Ok(Json(migration_progress_to_dto(progress)))
+}
+
+fn map_query_migration_progress_err(err: QueryMigrationProgressError) -> ApiError {
+    use QueryMigrationProgressError as E;
+    let (variant, api): (&'static str, ApiError) = match err {
+        E::StorageFailed(msg) => ("storage_failed", ApiError::internal(msg)),
+        E::Internal(msg) => ("internal", ApiError::internal(msg)),
+    };
+    log_facade_failure(
+        "space_setup",
+        "query_migration_progress",
+        variant,
+        api.status,
+        &api.message,
+    );
+    api
 }
 
 fn migration_progress_to_dto(progress: MigrationProgress) -> MigrationProgressResponse {

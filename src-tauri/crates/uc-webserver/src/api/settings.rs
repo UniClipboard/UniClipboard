@@ -12,7 +12,7 @@ use tracing::{info, instrument};
 use uc_application::facade::settings as app_settings;
 use utoipa;
 
-use crate::api::dto::error::ApiError;
+use crate::api::dto::error::{log_facade_failure, ApiError};
 use crate::api::dto::settings::{
     ContentTypesDto, ContentTypesPatchDto, FileSyncSettingsDto, GeneralSettingsDto,
     GetSettingsResponse, KeyboardShortcutsPatchDto, NetworkSettingsDto, PairingSettingsDto,
@@ -44,7 +44,11 @@ async fn get_settings_handler(
 ) -> Result<Json<GetSettingsResponse>, ApiError> {
     info!("get settings request received");
     let app = state.app_facade_or_error()?;
-    let settings = app.settings.get().await.map_err(settings_error_to_api)?;
+    let settings = app
+        .settings
+        .get()
+        .await
+        .map_err(|e| settings_error_to_api("get_settings", e))?;
 
     info!("get settings succeeded");
     Ok(Json(GetSettingsResponse {
@@ -119,7 +123,7 @@ async fn update_settings_handler(
         .settings
         .update(settings_patch_from_dto(payload))
         .await
-        .map_err(settings_error_to_api)?;
+        .map_err(|e| settings_error_to_api("update_settings", e))?;
 
     if let Some(enabled) = telemetry_update {
         uc_observability::set_telemetry_enabled(enabled);
@@ -137,9 +141,20 @@ async fn update_settings_handler(
     }))
 }
 
-fn settings_error_to_api(err: app_settings::SettingsFacadeError) -> ApiError {
-    tracing::error!(error = %err, "settings facade failed");
-    ApiError::internal(err.to_string())
+fn settings_error_to_api(op: &'static str, err: app_settings::SettingsFacadeError) -> ApiError {
+    use app_settings::SettingsFacadeError as E;
+    let (variant, api): (&'static str, ApiError) = match err {
+        E::Load(msg) => (
+            "load",
+            ApiError::internal(format!("failed to load settings: {msg}")),
+        ),
+        E::Save(msg) => (
+            "save",
+            ApiError::internal(format!("failed to save settings: {msg}")),
+        ),
+    };
+    log_facade_failure("settings", op, variant, api.status, &api.message);
+    api
 }
 
 #[doc(hidden)]

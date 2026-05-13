@@ -23,6 +23,7 @@ use serde_json::json;
 use uc_application::facade::ClipboardRestoreError;
 use uc_daemon_contract::constants::http_route;
 
+use crate::api::dto::error::log_facade_failure;
 use crate::api::server::DaemonApiState;
 use crate::security::middleware::{auth_extractor_middleware, rate_limit_middleware};
 
@@ -149,13 +150,19 @@ async fn restore_clipboard_entry_handler(
     let restore_facade = match app.clipboard_restore.as_ref() {
         Some(facade) => facade,
         None => {
-            return internal_error(anyhow::anyhow!(
-                "clipboard_restore facade unavailable in this entry point"
-            ))
+            return internal_error(
+                "restore_facade_check",
+                anyhow::anyhow!("clipboard_restore facade unavailable in this entry point"),
+            )
             .into_response();
         }
     };
 
+    let op: &'static str = if query.plain {
+        "restore_entry_as_plain_text"
+    } else {
+        "restore_entry"
+    };
     let result = if query.plain {
         restore_facade.restore_entry_as_plain_text(&entry_id).await
     } else {
@@ -171,7 +178,7 @@ async fn restore_clipboard_entry_handler(
             );
             restore_success_response().into_response()
         }
-        Err(error) => restore_error_to_response(error, &entry_id).into_response(),
+        Err(error) => restore_error_to_response(op, error, &entry_id).into_response(),
     }
 }
 
@@ -185,15 +192,17 @@ fn restore_success_response() -> (StatusCode, Json<serde_json::Value>) {
 /// spinning up an axum app or `DaemonApiState`. The handler above is a
 /// thin wrapper around this.
 fn restore_error_to_response(
+    op: &'static str,
     error: ClipboardRestoreError,
     entry_id: &str,
 ) -> (StatusCode, Json<serde_json::Value>) {
+    use ClipboardRestoreError as E;
     match error {
-        ClipboardRestoreError::NotFound => {
+        E::NotFound => {
             tracing::warn!(entry_id = %entry_id, "daemon restore: entry not found");
             (StatusCode::NOT_FOUND, Json(json!({"error": "not_found"})))
         }
-        ClipboardRestoreError::PayloadUnavailable {
+        E::PayloadUnavailable {
             entry_id: e_id,
             rep_id,
             state,
@@ -217,13 +226,18 @@ fn restore_error_to_response(
                 })),
             )
         }
-        ClipboardRestoreError::Internal(message) => {
-            tracing::error!(
-                entry_id = %entry_id,
-                error = %message,
-                "daemon restore failed (internal)"
+        E::Internal(message) => {
+            log_facade_failure(
+                "clipboard_restore",
+                op,
+                "internal",
+                StatusCode::INTERNAL_SERVER_ERROR,
+                &format!("entry {entry_id} restore failed: {message}"),
             );
-            internal_error(anyhow::anyhow!(message))
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": "internal_error"})),
+            )
         }
     }
 }
@@ -235,28 +249,41 @@ async fn status(State(state): State<DaemonApiState>) -> impl IntoResponse {
 async fn peers(State(state): State<DaemonApiState>) -> impl IntoResponse {
     match state.peer_snapshots().await {
         Ok(response) => Json(response).into_response(),
-        Err(error) => internal_error(error).into_response(),
+        Err(error) => internal_error("peers", error).into_response(),
     }
 }
 
 async fn paired_devices(State(state): State<DaemonApiState>) -> impl IntoResponse {
     match state.paired_devices().await {
         Ok(response) => Json(response).into_response(),
-        Err(error) => internal_error(error).into_response(),
+        Err(error) => internal_error("paired_devices", error).into_response(),
     }
 }
 
 async fn refresh_presence(State(state): State<DaemonApiState>) -> impl IntoResponse {
     match state.refresh_presence().await {
         Ok(response) => Json(response).into_response(),
-        Err(error) => internal_error(error).into_response(),
+        Err(error) => internal_error("refresh_presence", error).into_response(),
     }
 }
 
-/// NOTE: Individual API handlers now use `ApiError::unauthorized()` directly.
-/// This helper is kept for backward compatibility with the security middleware layer.
-pub(crate) fn internal_error(error: anyhow::Error) -> (StatusCode, Json<serde_json::Value>) {
-    tracing::error!(error = %error, "daemon API request failed");
+/// Legacy 500 兜底，供尚未迁到 `ApiError` 的 handler（peers / paired_devices /
+/// refresh_presence / storage / lifecycle / blob fallback 等）使用。
+///
+/// 每个调用点必须传入 `op` 名，以便 Sentry 按 `facade="daemon_api"` + op 分桶；
+/// 不要把这个 helper 当成"全场兜底"——新 handler 应直接用 `ApiError` 与
+/// 域 facade 的 `log_facade_failure` 调用。
+pub(crate) fn internal_error(
+    op: &'static str,
+    error: anyhow::Error,
+) -> (StatusCode, Json<serde_json::Value>) {
+    log_facade_failure(
+        "daemon_api",
+        op,
+        "internal",
+        StatusCode::INTERNAL_SERVER_ERROR,
+        &error.to_string(),
+    );
     (
         StatusCode::INTERNAL_SERVER_ERROR,
         Json(json!({"error": "internal_error"})),
@@ -280,7 +307,8 @@ mod tests {
 
     #[test]
     fn restore_not_found_returns_404() {
-        let (status, body) = restore_error_to_response(ClipboardRestoreError::NotFound, "entry-1");
+        let (status, body) =
+            restore_error_to_response("restore_entry", ClipboardRestoreError::NotFound, "entry-1");
         assert_eq!(status, StatusCode::NOT_FOUND);
         assert_eq!(body_value(body), json!({"error": "not_found"}));
     }
@@ -288,6 +316,7 @@ mod tests {
     #[test]
     fn restore_payload_unavailable_returns_410_with_full_context() {
         let (status, body) = restore_error_to_response(
+            "restore_entry",
             ClipboardRestoreError::PayloadUnavailable {
                 entry_id: "entry-1".to_string(),
                 rep_id: "rep-2".to_string(),
@@ -311,6 +340,7 @@ mod tests {
     #[test]
     fn restore_payload_unavailable_with_orphaned_state_uses_state_string_verbatim() {
         let (status, body) = restore_error_to_response(
+            "restore_entry",
             ClipboardRestoreError::PayloadUnavailable {
                 entry_id: "e".to_string(),
                 rep_id: "r".to_string(),
@@ -326,6 +356,7 @@ mod tests {
     #[test]
     fn restore_internal_returns_500_with_generic_body() {
         let (status, body) = restore_error_to_response(
+            "restore_entry",
             ClipboardRestoreError::Internal("write coordinator deadlocked".to_string()),
             "entry-3",
         );
@@ -336,7 +367,7 @@ mod tests {
 
     #[test]
     fn internal_error_returns_500_with_generic_body() {
-        let (status, body) = internal_error(anyhow::anyhow!("boom"));
+        let (status, body) = internal_error("test_op", anyhow::anyhow!("boom"));
         assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
         assert_eq!(body_value(body), json!({"error": "internal_error"}));
     }

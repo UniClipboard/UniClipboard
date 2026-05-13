@@ -64,8 +64,7 @@ async fn get_storage_stats_handler(State(state): State<DaemonApiState>) -> impl 
     let result = match app.storage.stats().await {
         Ok(r) => r,
         Err(e) => {
-            tracing::error!(error = %e, "Failed to compute storage stats");
-            return internal_error(anyhow::anyhow!("{}", e)).into_response();
+            return internal_error("storage_stats", anyhow::anyhow!("{}", e)).into_response();
         }
     };
 
@@ -138,9 +137,6 @@ async fn clear_cache_handler(
             )
             .into_response()
         }
-        Err(e) => {
-            tracing::error!(error = %e, "Failed to clear cache");
-            internal_error(anyhow::anyhow!("{}", e)).into_response()
-        }
+        Err(e) => internal_error("storage_clear_cache", anyhow::anyhow!("{}", e)).into_response(),
     }
 }

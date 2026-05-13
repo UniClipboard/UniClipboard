@@ -74,7 +74,7 @@ async fn retry_lifecycle_handler(State(state): State<DaemonApiState>) -> impl In
     let span = tracing::info_span!("daemon.lifecycle.retry");
     async move {
         if let Err(error) = app.lifecycle.retry_to_ready().await {
-            return internal_error(anyhow::anyhow!("{}", error)).into_response();
+            return internal_error("lifecycle_retry", anyhow::anyhow!("{}", error)).into_response();
         }
 
         // Signal clipboard capture gate (if present) — same as /lifecycle/ready.

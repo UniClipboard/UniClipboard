@@ -21,7 +21,7 @@ use uc_daemon_contract::api::dto::upgrade::{
     AckUpgradePayload, AckUpgradeResponse, GetUpgradeStatusResponse, UpgradeStatusDto,
 };
 
-use crate::api::dto::error::ApiError;
+use crate::api::dto::error::{log_facade_failure, ApiError};
 use crate::api::server::DaemonApiState;
 
 /// Build version reported to the upgrade facade. Workspace-versioned and
@@ -105,11 +105,43 @@ fn status_to_dto(status: UpgradeStatus) -> UpgradeStatusDto {
 }
 
 fn detect_error_to_api(err: DetectUpgradeError) -> ApiError {
-    tracing::error!(error = %err, "upgrade detect failed");
-    ApiError::internal(err.to_string())
+    use DetectUpgradeError as E;
+    let (variant, api): (&'static str, ApiError) = match err {
+        E::CurrentVersionMalformed(msg) => (
+            "current_version_malformed",
+            ApiError::internal(format!("current build version malformed: {msg}")),
+        ),
+        E::ReadCursor(msg) => (
+            "read_cursor",
+            ApiError::internal(format!("read app version cursor failed: {msg}")),
+        ),
+        E::ReadSetupStatus(msg) => (
+            "read_setup_status",
+            ApiError::internal(format!("read setup status failed: {msg}")),
+        ),
+    };
+    log_facade_failure(
+        "upgrade",
+        "detect_on_startup",
+        variant,
+        api.status,
+        &api.message,
+    );
+    api
 }
 
 fn ack_error_to_api(err: AcknowledgeUpgradeError) -> ApiError {
-    tracing::error!(error = %err, "upgrade acknowledge failed");
-    ApiError::internal(err.to_string())
+    use AcknowledgeUpgradeError as E;
+    let (variant, api): (&'static str, ApiError) = match err {
+        E::CurrentVersionMalformed(msg) => (
+            "current_version_malformed",
+            ApiError::internal(format!("current build version malformed: {msg}")),
+        ),
+        E::WriteCursor(msg) => (
+            "write_cursor",
+            ApiError::internal(format!("write app version cursor failed: {msg}")),
+        ),
+    };
+    log_facade_failure("upgrade", "acknowledge", variant, api.status, &api.message);
+    api
 }

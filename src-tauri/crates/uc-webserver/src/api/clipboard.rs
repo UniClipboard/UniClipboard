@@ -22,7 +22,7 @@ use crate::api::dto::clipboard::{
     GetEntryDetailResponse, GetEntryResourceResponse, ListEntriesResponse, ToggleFavoriteRequest,
     ToggleFavoriteResponse, ToggleFavoriteResultDto,
 };
-use crate::api::dto::error::ApiError;
+use crate::api::dto::error::{log_facade_failure, ApiError};
 use crate::api::server::DaemonApiState;
 
 #[derive(Deserialize)]
@@ -88,7 +88,7 @@ async fn list_entries(
             offset: params.offset,
         })
         .await
-        .map_err(map_clipboard_err)?;
+        .map_err(|e| map_clipboard_err("list_entries", e))?;
 
     let response_entries: Vec<EntryProjectionResponseDto> =
         entries.into_iter().map(entry_projection_to_dto).collect();
@@ -125,7 +125,7 @@ async fn get_entry(
     let detail = facade
         .get_entry(&entry_id)
         .await
-        .map_err(map_clipboard_err)?;
+        .map_err(|e| map_clipboard_err("get_entry", e))?;
 
     Ok(Json(GetEntryDetailResponse {
         data: entry_detail_to_dto(detail),
@@ -157,7 +157,7 @@ async fn delete_entry(
     facade
         .delete_entry(&entry_id)
         .await
-        .map_err(map_clipboard_err)?;
+        .map_err(|e| map_clipboard_err("delete_entry", e))?;
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -192,7 +192,7 @@ async fn toggle_favorite(
     let found = facade
         .toggle_favorite(&entry_id, body.is_favorited)
         .await
-        .map_err(map_clipboard_err)?;
+        .map_err(|e| map_clipboard_err("toggle_favorite", e))?;
 
     if !found {
         return Err(ApiError::not_found("entry not found"));
@@ -220,7 +220,10 @@ async fn get_stats(
     State(state): State<DaemonApiState>,
 ) -> Result<Json<GetClipboardStatsResponse>, ApiError> {
     let facade = require_facade(&state)?;
-    let stats = facade.stats().await.map_err(map_clipboard_err)?;
+    let stats = facade
+        .stats()
+        .await
+        .map_err(|e| map_clipboard_err("get_stats", e))?;
 
     Ok(Json(GetClipboardStatsResponse {
         data: clipboard_stats_to_dto(stats),
@@ -252,7 +255,7 @@ async fn get_entry_resource(
     let resource = facade
         .get_entry_resource(&entry_id)
         .await
-        .map_err(map_clipboard_err)?;
+        .map_err(|e| map_clipboard_err("get_entry_resource", e))?;
 
     Ok(Json(GetEntryResourceResponse {
         data: entry_resource_to_dto(resource),
@@ -277,7 +280,10 @@ async fn clear_history(
     State(state): State<DaemonApiState>,
 ) -> Result<Json<ClearHistoryResponse>, ApiError> {
     let facade = require_facade(&state)?;
-    let result = facade.clear_history().await.map_err(map_clipboard_err)?;
+    let result = facade
+        .clear_history()
+        .await
+        .map_err(|e| map_clipboard_err("clear_history", e))?;
 
     Ok(Json(ClearHistoryResponse {
         data: clear_history_to_dto(result),
@@ -285,16 +291,22 @@ async fn clear_history(
     }))
 }
 
-fn map_clipboard_err(err: ClipboardHistoryError) -> ApiError {
-    match err {
-        ClipboardHistoryError::NotFound => ApiError::not_found("entry not found"),
-        ClipboardHistoryError::UnsupportedContent => ApiError {
-            status: StatusCode::UNPROCESSABLE_ENTITY,
-            code: "unsupported_content".to_string(),
-            message: "entry is not text content".to_string(),
-        },
-        ClipboardHistoryError::Internal(message) => ApiError::internal(message),
-    }
+fn map_clipboard_err(op: &'static str, err: ClipboardHistoryError) -> ApiError {
+    use ClipboardHistoryError as E;
+    let (variant, api): (&'static str, ApiError) = match err {
+        E::NotFound => ("not_found", ApiError::not_found("entry not found")),
+        E::UnsupportedContent => (
+            "unsupported_content",
+            ApiError {
+                status: StatusCode::UNPROCESSABLE_ENTITY,
+                code: "unsupported_content".to_string(),
+                message: "entry is not text content".to_string(),
+            },
+        ),
+        E::Internal(message) => ("internal", ApiError::internal(message)),
+    };
+    log_facade_failure("clipboard_history", op, variant, api.status, &api.message);
+    api
 }
 
 fn entry_projection_to_dto(view: EntryProjectionView) -> EntryProjectionResponseDto {

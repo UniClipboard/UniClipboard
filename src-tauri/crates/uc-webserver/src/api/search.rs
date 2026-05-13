@@ -17,7 +17,7 @@ use uc_application::facade::{
 };
 use uc_daemon_contract::constants::http_route;
 
-use crate::api::dto::error::ApiError;
+use crate::api::dto::error::{log_facade_failure, ApiError};
 use crate::api::dto::search::{
     SearchQueryResponse, SearchRebuildAcceptedData, SearchRebuildAcceptedResponse, SearchResultDto,
     SearchStatusData, SearchStatusResponse,
@@ -89,11 +89,17 @@ fn search_input_from_params(params: SearchQueryParams) -> SearchQueryInput {
 /// Returns `Err(session_locked ApiError)` if the encryption session is not ready.
 async fn require_encryption_ready(state: &DaemonApiState) -> Result<(), ApiError> {
     let app_facade = state.app_facade_or_error()?;
-    let encryption_state = app_facade
-        .encryption
-        .state()
-        .await
-        .map_err(|e| ApiError::internal(format!("encryption state unavailable: {e}")))?;
+    let encryption_state = app_facade.encryption.state().await.map_err(|e| {
+        let api = ApiError::internal(format!("encryption state unavailable: {e}"));
+        log_facade_failure(
+            "encryption",
+            "encryption_state_probe",
+            "call_failed",
+            api.status,
+            &api.message,
+        );
+        api
+    })?;
     if !encryption_state.session_ready {
         return Err(ApiError {
             status: StatusCode::LOCKED,
@@ -140,7 +146,11 @@ async fn search_query_handler(
     let input = search_input_from_params(params);
     debug!(query = %input.query, "dispatching search query through app facade");
 
-    let page = app.search.query(input).await.map_err(map_search_error)?;
+    let page = app
+        .search
+        .query(input)
+        .await
+        .map_err(|e| map_search_error("search_query", e))?;
 
     let result_count = page.items.len();
     let total = page.total;
@@ -173,7 +183,11 @@ async fn search_status_handler(
     require_encryption_ready(&state).await?;
 
     let app = state.app_facade_or_error()?;
-    let view = app.search.status().await.map_err(map_search_error)?;
+    let view = app
+        .search
+        .status()
+        .await
+        .map_err(|e| map_search_error("search_status", e))?;
 
     debug!(
         state = %view.state,
@@ -203,7 +217,7 @@ async fn search_rebuild_handler(
         .search
         .request_rebuild()
         .await
-        .map_err(map_search_error)?;
+        .map_err(|e| map_search_error("search_rebuild", e))?;
 
     info!("manual search index rebuild accepted");
     Ok((
@@ -221,44 +235,68 @@ async fn search_rebuild_handler(
 // Error mapping
 // ---------------------------------------------------------------------------
 
-fn map_search_error(error: SearchFacadeError) -> ApiError {
-    match error {
-        SearchFacadeError::InvalidQuery(message) => ApiError {
-            status: StatusCode::BAD_REQUEST,
-            code: "invalid_query".to_string(),
-            message,
-        },
-        SearchFacadeError::BadRequest(message) => ApiError {
-            status: StatusCode::BAD_REQUEST,
-            code: "bad_request".to_string(),
-            message,
-        },
-        SearchFacadeError::SessionLocked => ApiError {
-            status: StatusCode::LOCKED,
-            code: "session_locked".to_string(),
-            message: "encryption session is locked".to_string(),
-        },
-        SearchFacadeError::IndexNotReady => ApiError {
-            status: StatusCode::SERVICE_UNAVAILABLE,
-            code: "index_not_ready".to_string(),
-            message: "search index not ready".to_string(),
-        },
-        SearchFacadeError::IndexUnavailable => ApiError {
-            status: StatusCode::SERVICE_UNAVAILABLE,
-            code: "index_unavailable".to_string(),
-            message: "search index unavailable".to_string(),
-        },
-        SearchFacadeError::ServiceUnavailable(message) => ApiError::service_unavailable(message),
-        SearchFacadeError::RebuildAlreadyRunning => {
-            debug!("manual rebuild rejected — already in progress");
+fn map_search_error(op: &'static str, error: SearchFacadeError) -> ApiError {
+    use SearchFacadeError as E;
+    let (variant, api): (&'static str, ApiError) = match error {
+        E::InvalidQuery(message) => (
+            "invalid_query",
             ApiError {
-                status: StatusCode::CONFLICT,
-                code: "rebuild_already_running".to_string(),
-                message: "a rebuild is already in progress".to_string(),
-            }
+                status: StatusCode::BAD_REQUEST,
+                code: "invalid_query".to_string(),
+                message,
+            },
+        ),
+        E::BadRequest(message) => (
+            "bad_request",
+            ApiError {
+                status: StatusCode::BAD_REQUEST,
+                code: "bad_request".to_string(),
+                message,
+            },
+        ),
+        E::SessionLocked => (
+            "session_locked",
+            ApiError {
+                status: StatusCode::LOCKED,
+                code: "session_locked".to_string(),
+                message: "encryption session is locked".to_string(),
+            },
+        ),
+        E::IndexNotReady => (
+            "index_not_ready",
+            ApiError {
+                status: StatusCode::SERVICE_UNAVAILABLE,
+                code: "index_not_ready".to_string(),
+                message: "search index not ready".to_string(),
+            },
+        ),
+        E::IndexUnavailable => (
+            "index_unavailable",
+            ApiError {
+                status: StatusCode::SERVICE_UNAVAILABLE,
+                code: "index_unavailable".to_string(),
+                message: "search index unavailable".to_string(),
+            },
+        ),
+        E::ServiceUnavailable(message) => (
+            "service_unavailable",
+            ApiError::service_unavailable(message),
+        ),
+        E::RebuildAlreadyRunning => {
+            debug!("manual rebuild rejected — already in progress");
+            (
+                "rebuild_already_running",
+                ApiError {
+                    status: StatusCode::CONFLICT,
+                    code: "rebuild_already_running".to_string(),
+                    message: "a rebuild is already in progress".to_string(),
+                },
+            )
         }
-        SearchFacadeError::Internal(message) => ApiError::internal(message),
-    }
+        E::Internal(message) => ("internal", ApiError::internal(message)),
+    };
+    log_facade_failure("search", op, variant, api.status, &api.message);
+    api
 }
 
 fn search_status_to_dto(view: SearchStatusView) -> SearchStatusData {

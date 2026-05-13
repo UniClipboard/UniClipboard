@@ -6,13 +6,13 @@
 use axum::extract::{Path, State};
 use axum::routing::{get, patch};
 use axum::{Json, Router};
-use tracing::{info, instrument, warn};
+use tracing::{info, instrument};
 
 use uc_application::facade::{
     ContentTypesPatch, MemberSyncPreferencesPatch, MemberSyncPreferencesView, RosterError,
 };
 
-use crate::api::dto::error::ApiError;
+use crate::api::dto::error::{log_facade_failure, ApiError};
 use crate::api::dto::member::{
     GetMemberSyncPreferencesResponse, MemberSyncPreferencesPatchDto,
     UpdateMemberSyncPreferencesResponse,
@@ -190,31 +190,41 @@ fn member_sync_preferences_to_dto(
     }
 }
 
-/// 把 uc-app UseCase 的 anyhow 错误映射为 HTTP 状态。
+/// 把 `RosterError` 映射为 HTTP `ApiError`，并在 5xx 路径打根因日志。
 ///
-/// `MembershipApplicationError::NotFound` 在 uc-app 层被包成 anyhow 时保留了
-/// "not found" 文案（见 `GetMemberSyncPreferences::execute`），这里做字符串匹配
-/// 把它提升为 404；其余视为 500。
-fn map_member_error(device_id: &str, context: &str, err: RosterError) -> ApiError {
-    if matches!(err, RosterError::NotFound(_)) {
-        warn!(
-            error = %err,
-            device_id = %device_id,
-            context = context,
-            error_kind = "member_not_found",
-            "member handler rejected request: member not found"
-        );
-        ApiError::not_found(format!("member `{device_id}` not found"))
-    } else {
-        tracing::error!(
-            error = %err,
-            device_id = %device_id,
-            context = context,
-            error_kind = "roster_internal",
-            "member handler failed"
-        );
-        ApiError::internal(err.to_string())
-    }
+/// `NotFound` → 404（业务可见层面，由请求日志兜底，本函数不再单独打 warn）；
+/// `Unavailable` → 503；其余 repository / identity 故障 → 500。
+/// 5xx 路径统一由 [`log_facade_failure`] 输出 `facade / op / error_variant` 结构化字段。
+fn map_member_error(device_id: &str, op: &'static str, err: RosterError) -> ApiError {
+    use RosterError as E;
+    let (variant, api): (&'static str, ApiError) = match err {
+        E::NotFound(_) => (
+            "not_found",
+            ApiError::not_found(format!("member `{device_id}` not found")),
+        ),
+        E::MemberRepository(msg) => (
+            "member_repository",
+            ApiError::internal(format!("member repository failure: {msg}")),
+        ),
+        E::LocalIdentity(msg) => (
+            "local_identity",
+            ApiError::internal(format!("local identity failure: {msg}")),
+        ),
+        E::PeerAddressRepository(msg) => (
+            "peer_address_repository",
+            ApiError::internal(format!("peer address repository failure: {msg}")),
+        ),
+        E::TrustedPeerRepository(msg) => (
+            "trusted_peer_repository",
+            ApiError::internal(format!("trusted peer repository failure: {msg}")),
+        ),
+        E::Unavailable => (
+            "unavailable",
+            ApiError::service_unavailable("member roster facade unavailable"),
+        ),
+    };
+    log_facade_failure("roster", op, variant, api.status, &api.message);
+    api
 }
 
 #[cfg(test)]

@@ -10,6 +10,7 @@ use axum::routing::get;
 use axum::Router;
 use uc_application::facade::ResourceFacadeError;
 
+use crate::api::dto::error::log_facade_failure;
 use crate::api::server::DaemonApiState;
 
 pub fn router() -> Router<DaemonApiState> {
@@ -46,16 +47,7 @@ async fn get_blob(
             )
                 .into_response()
         }
-        Err(err) => {
-            if !matches!(err, ResourceFacadeError::NotFound) {
-                tracing::error!(
-                    error = %err,
-                    blob_id = %blob_id,
-                    "Failed to resolve blob resource"
-                );
-            }
-            map_resource_error(err, "blob not found")
-        }
+        Err(err) => map_resource_error("get_blob", err, "blob not found", &blob_id),
     }
 }
 
@@ -87,27 +79,39 @@ async fn get_thumbnail(
             )
                 .into_response()
         }
-        Err(err) => {
-            if !matches!(err, ResourceFacadeError::NotFound) {
-                tracing::error!(
-                    error = %err,
-                    rep_id = %rep_id,
-                    "Failed to resolve thumbnail resource"
-                );
-            }
-            map_resource_error(err, "thumbnail not found")
-        }
+        Err(err) => map_resource_error("get_thumbnail", err, "thumbnail not found", &rep_id),
     }
 }
 
 fn map_resource_error(
+    op: &'static str,
     error: ResourceFacadeError,
     not_found_message: &'static str,
+    resource_id: &str,
 ) -> axum::response::Response {
-    match error {
-        ResourceFacadeError::NotFound => (StatusCode::NOT_FOUND, not_found_message).into_response(),
-        ResourceFacadeError::Mismatch(_) | ResourceFacadeError::Internal(_) => {
-            (StatusCode::INTERNAL_SERVER_ERROR, "internal error").into_response()
-        }
-    }
+    use ResourceFacadeError as E;
+    let (variant, status, message): (&'static str, StatusCode, String) = match error {
+        E::NotFound => (
+            "not_found",
+            StatusCode::NOT_FOUND,
+            not_found_message.to_string(),
+        ),
+        E::Mismatch(detail) => (
+            "mismatch",
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("resource {resource_id} mismatch: {detail}"),
+        ),
+        E::Internal(detail) => (
+            "internal",
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("resource {resource_id} internal: {detail}"),
+        ),
+    };
+    log_facade_failure("resource", op, variant, status, &message);
+    let body = if status == StatusCode::NOT_FOUND {
+        not_found_message
+    } else {
+        "internal error"
+    };
+    (status, body).into_response()
 }

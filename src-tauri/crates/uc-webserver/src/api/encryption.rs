@@ -12,9 +12,20 @@ use utoipa;
 use crate::api::dto::encryption::{
     EncryptionSessionReadyPayload, EncryptionStateResponse, KeychainAccessResponse,
 };
-use crate::api::dto::error::ApiError;
+use crate::api::dto::error::{log_facade_failure, ApiError};
 use crate::api::server::DaemonApiState;
 use crate::api::types::DaemonWsEvent;
+
+/// 把 encryption facade 的 anyhow 错误映射为 500 + 根因日志。
+///
+/// 与 `RosterError` / `SearchFacadeError` 不同，encryption facade 当前向 webserver
+/// 暴露 `anyhow::Error` 而非 enum，所以 `error_variant` 退化为 `"call_failed"`，
+/// 分桶由 `op` 维度承担（state / unlock / lock / verify_keychain_access）。
+fn map_encryption_internal(op: &'static str, message: String) -> ApiError {
+    let api = ApiError::internal(message);
+    log_facade_failure("encryption", op, "call_failed", api.status, &api.message);
+    api
+}
 
 pub fn router() -> Router<DaemonApiState> {
     Router::new()
@@ -47,7 +58,7 @@ async fn get_encryption_state_handler(
         .encryption
         .state()
         .await
-        .map_err(|e| ApiError::internal(e.to_string()))?;
+        .map_err(|e| map_encryption_internal("encryption_state", e.to_string()))?;
 
     let ts = chrono::Utc::now().timestamp_millis();
     Ok(Json(json!({
@@ -101,10 +112,10 @@ async fn unlock_handler(
             let ts = chrono::Utc::now().timestamp_millis();
             Ok(Json(json!({ "data": { "success": false }, "ts": ts })))
         }
-        Err(e) => {
-            warn!(error = %e, "keyring auto-unlock failed");
-            Err(ApiError::internal(format!("auto-unlock failed: {e}")))
-        }
+        Err(e) => Err(map_encryption_internal(
+            "encryption_unlock",
+            format!("auto-unlock failed: {e}"),
+        )),
     }
 }
 
@@ -124,10 +135,9 @@ async fn lock_handler(
     State(state): State<DaemonApiState>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
     let app = state.app_facade_or_error()?;
-    app.encryption
-        .lock()
-        .await
-        .map_err(|e| ApiError::internal(format!("failed to lock encryption: {e}")))?;
+    app.encryption.lock().await.map_err(|e| {
+        map_encryption_internal("encryption_lock", format!("failed to lock encryption: {e}"))
+    })?;
 
     info!("encryption session cleared (locked)");
     let ts = chrono::Utc::now().timestamp_millis();
@@ -151,11 +161,12 @@ async fn verify_keychain_access_handler(
     State(state): State<DaemonApiState>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
     let app = state.app_facade_or_error()?;
-    let granted = app
-        .encryption
-        .verify_keychain_access()
-        .await
-        .map_err(|e| ApiError::internal(format!("keychain access check failed: {e}")))?;
+    let granted = app.encryption.verify_keychain_access().await.map_err(|e| {
+        map_encryption_internal(
+            "verify_keychain_access",
+            format!("keychain access check failed: {e}"),
+        )
+    })?;
 
     let ts = chrono::Utc::now().timestamp_millis();
     Ok(Json(json!({

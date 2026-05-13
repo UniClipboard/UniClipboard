@@ -12,7 +12,7 @@ use utoipa;
 
 use uc_application::facade::RosterError;
 
-use crate::api::dto::error::ApiError;
+use crate::api::dto::error::{log_facade_failure, ApiError};
 use crate::api::dto::pairing::UnpairDeviceRequest;
 use crate::api::server::DaemonApiState;
 
@@ -48,15 +48,42 @@ pub(crate) async fn handle_unpair_device(
     // Slice 4 P5a-1: 取消配对 = 删除本机成员记录。libp2p 时代的
     // `PairingTransportPort::unpair_device` 通知对端的能力随 libp2p 一同下线；
     // 本地自治模型下不再广播给对端（对端发现后会自行清理）。
-    roster.revoke_member(peer_id.as_str()).await.map_err(|e| {
-        tracing::error!(error = %e, peer_id = %peer_id, "daemon unpair: revoke member failed");
-        match e {
-            RosterError::NotFound(_) => {
-                ApiError::not_found(format!("member `{peer_id}` not found"))
-            }
-            other => ApiError::internal(other.to_string()),
-        }
-    })?;
+    roster
+        .revoke_member(peer_id.as_str())
+        .await
+        .map_err(|e| map_unpair_err(e, peer_id.as_str()))?;
 
     Ok(StatusCode::NO_CONTENT)
+}
+
+fn map_unpair_err(err: RosterError, peer_id: &str) -> ApiError {
+    use RosterError as E;
+    let (variant, api): (&'static str, ApiError) = match err {
+        E::NotFound(_) => (
+            "not_found",
+            ApiError::not_found(format!("member `{peer_id}` not found")),
+        ),
+        E::MemberRepository(msg) => (
+            "member_repository",
+            ApiError::internal(format!("member repository failure: {msg}")),
+        ),
+        E::LocalIdentity(msg) => (
+            "local_identity",
+            ApiError::internal(format!("local identity failure: {msg}")),
+        ),
+        E::PeerAddressRepository(msg) => (
+            "peer_address_repository",
+            ApiError::internal(format!("peer address repository failure: {msg}")),
+        ),
+        E::TrustedPeerRepository(msg) => (
+            "trusted_peer_repository",
+            ApiError::internal(format!("trusted peer repository failure: {msg}")),
+        ),
+        E::Unavailable => (
+            "unavailable",
+            ApiError::service_unavailable("member roster facade unavailable"),
+        ),
+    };
+    log_facade_failure("roster", "unpair_device", variant, api.status, &api.message);
+    api
 }

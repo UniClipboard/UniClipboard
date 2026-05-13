@@ -7,7 +7,7 @@ import './i18n'
 import { store } from './store'
 import { getDeviceMeta } from '@/api/runtime'
 import { connectDaemonWs, registerDaemonShutdownListener } from '@/lib/daemon-ws-bootstrap'
-import { applyPlatformEffectPreferences, applyPlatformTypographyScale } from '@/lib/window-ui'
+import { initializeWindowUi } from '@/lib/window-ui'
 import { applyDeviceMetaToSentry, initSentry, Sentry } from '@/observability/sentry'
 
 // Sentry init runs before React mounts so that the global ErrorBoundary,
@@ -43,8 +43,7 @@ if (typeof window !== 'undefined') {
   })
 }
 
-applyPlatformTypographyScale()
-applyPlatformEffectPreferences()
+initializeWindowUi()
 
 // 初始化日志系统：将后端日志输出到浏览器 DevTools
 const initLogging = async () => {

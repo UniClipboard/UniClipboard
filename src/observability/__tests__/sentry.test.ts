@@ -15,6 +15,7 @@ vi.mock('@sentry/react', async importOriginal => {
     ...actual,
     init: vi.fn(),
     browserTracingIntegration: vi.fn(),
+    getReplay: vi.fn(),
     replayIntegration: vi.fn(),
     setTag: vi.fn(),
     setUser: vi.fn(),
@@ -125,6 +126,46 @@ describe('initSentry', () => {
     expect(await Promise.resolve(beforeSend(event, {}))).toBeNull()
     expect(beforeBreadcrumb(breadcrumb, {})).toBeNull()
     expect(beforeSendLog(log)).toBeNull()
+  })
+
+  it('configures Replay as diagnostics-gated error buffering', () => {
+    setFrontendSentryEnabled(true)
+    initSentry()
+
+    const initCall = vi.mocked(Sentry.init).mock.calls[0][0]
+    expect(initCall.replaysSessionSampleRate).toBe(0)
+    expect(initCall.replaysOnErrorSampleRate).toBe(1.0)
+
+    expect(Sentry.replayIntegration).toHaveBeenCalledWith(
+      expect.objectContaining({
+        beforeErrorSampling: expect.any(Function),
+      })
+    )
+
+    const replayOptions = vi.mocked(Sentry.replayIntegration).mock.calls[0][0]
+    const beforeErrorSampling = replayOptions?.beforeErrorSampling
+    expect(beforeErrorSampling?.({} as ErrorEvent)).toBe(true)
+
+    setFrontendSentryEnabled(false)
+    expect(beforeErrorSampling?.({} as ErrorEvent)).toBe(false)
+  })
+
+  it('stops and resumes Replay with the diagnostics gate', () => {
+    vi.clearAllMocks()
+    const replay = {
+      getRecordingMode: vi.fn(() => undefined),
+      startBuffering: vi.fn(),
+      stop: vi.fn(() => Promise.resolve()),
+    }
+    vi.mocked(Sentry.getReplay).mockReturnValue(
+      replay as unknown as ReturnType<typeof Sentry.getReplay>
+    )
+
+    setFrontendSentryEnabled(false)
+    expect(replay.stop).toHaveBeenCalledTimes(1)
+
+    setFrontendSentryEnabled(true)
+    expect(replay.startBuffering).toHaveBeenCalledTimes(1)
   })
 
   it('starts with the runtime gate disabled until settings enable it', async () => {

@@ -58,6 +58,23 @@ export function setFrontendSentryEnabled(enabled: boolean): void {
       // localStorage 满 / 被禁用时静默失败，仅影响下次启动早期窗口的精度。
     }
   }
+  syncFrontendReplayEnabled(enabled)
+}
+
+function syncFrontendReplayEnabled(enabled: boolean): void {
+  if (!sentryEnabled) return
+
+  const replay = Sentry.getReplay()
+  if (!replay) return
+
+  if (enabled) {
+    if (!replay.getRecordingMode()) {
+      replay.startBuffering()
+    }
+    return
+  }
+
+  void replay.stop()
 }
 
 const getTauriPlatform = (): string => {
@@ -104,7 +121,7 @@ export function initSentry(): void {
   Sentry.init({
     dsn: import.meta.env.VITE_SENTRY_DSN,
     tracesSampleRate: import.meta.env.DEV ? 1.0 : 0.1,
-    replaysSessionSampleRate: import.meta.env.DEV ? 1.0 : 0.1,
+    replaysSessionSampleRate: 0,
     replaysOnErrorSampleRate: 1.0,
     environment: import.meta.env.VITE_APP_ENV ?? import.meta.env.MODE,
     release: import.meta.env.VITE_APP_VERSION,
@@ -119,7 +136,9 @@ export function initSentry(): void {
         createRoutesFromChildren,
         matchRoutes,
       }),
-      Sentry.replayIntegration(),
+      Sentry.replayIntegration({
+        beforeErrorSampling: () => sentryRuntimeEnabled,
+      }),
       Sentry.consoleLoggingIntegration({ levels: ['log', 'info', 'warn', 'error'] }),
     ],
     beforeSend,
@@ -139,6 +158,7 @@ export function initSentry(): void {
       },
     },
   })
+  syncFrontendReplayEnabled(sentryRuntimeEnabled)
 }
 
 /**

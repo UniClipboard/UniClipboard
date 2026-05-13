@@ -12,7 +12,12 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@ai-sdk/anthropic": "^3.0.77",
+    "@ai-sdk/openai": "^3.0.63",
+    "@ai-sdk/react": "^3.0.182",
     "@orama/tokenizers": "^3.1.18",
+    "@radix-ui/react-presence": "^1.1.5",
+    "ai": "^6.0.180",
     "fumadocs-core": "16.8.7",
     "fumadocs-mdx": "14.3.2",
     "fumadocs-openapi": "^10.8.1",
@@ -22,7 +27,8 @@
     "react": "^19.2.5",
     "react-dom": "^19.2.5",
     "shiki": "^4.0.2",
-    "tailwind-merge": "^3.5.0"
+    "tailwind-merge": "^3.5.0",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.2.4",

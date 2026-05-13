@@ -55,6 +55,34 @@ bun run check:docs
 
 部署到自定义域名后请把 `NEXT_PUBLIC_SITE_URL=https://your-domain` 写到 Vercel 的项目环境变量里。
 
+### Ask AI
+
+站内 Ask AI 使用 Fumadocs 的 AI 搜索组件与 Vercel AI SDK。通过 `AI_PROVIDER` 选择模型接口。
+
+OpenAI-compatible 接口：
+
+```bash
+AI_PROVIDER=openai
+OPENAI_API_KEY=...
+OPENAI_BASE_URL=https://api.openai.com/v1
+OPENAI_MODEL=...
+OPENAI_PROVIDER_NAME=openai-compatible
+```
+
+`OPENAI_BASE_URL` 必须是兼容 OpenAI Chat Completions 的 `/v1` 前缀；使用官方 OpenAI 时可以省略。`OPENAI_MODEL` 填接口服务商提供的模型 ID。
+
+Anthropic 接口：
+
+```bash
+AI_PROVIDER=anthropic
+ANTHROPIC_API_KEY=...
+ANTHROPIC_BASE_URL=https://api.anthropic.com/v1
+ANTHROPIC_MODEL=...
+ANTHROPIC_PROVIDER_NAME=
+```
+
+`ANTHROPIC_BASE_URL` 可指向兼容 Anthropic Messages API 的代理；使用官方 Anthropic 时可以省略。`ANTHROPIC_MODEL` 填接口服务商提供的模型 ID。
+
 ### Versioning（路线建议，未实施）
 
 当前 `content/docs/{en,zh}/` 是 **单一当前版本**。未来需要并存多版本（如 `0.7` 与 `0.8`）时，推荐路径相对克制：

@@ -1,4 +1,5 @@
 import { render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { checkForUpdate } from '@/api/updater'
 import { SettingContext } from '@/contexts/setting-context'
 import { UpdateProvider } from '@/contexts/UpdateContext'
@@ -71,6 +72,16 @@ const baseSetting: Settings = {
 const UpdateConsumer = () => {
   const { updateInfo } = useUpdate()
   return <div>{updateInfo?.version ?? 'none'}</div>
+}
+
+const ManualAlphaCheckConsumer = () => {
+  const { checkForUpdates } = useUpdate()
+
+  return (
+    <button type="button" onClick={() => void checkForUpdates('alpha')}>
+      check alpha
+    </button>
+  )
 }
 
 describe('UpdateProvider', () => {
@@ -176,6 +187,48 @@ describe('UpdateProvider', () => {
 
     await waitFor(() => {
       expect(checkForUpdateMock).not.toHaveBeenCalled()
+    })
+  })
+
+  it('uses explicit channel override for manual checks', async () => {
+    const user = userEvent.setup()
+    const disabledSetting: Settings = {
+      ...baseSetting,
+      general: {
+        ...baseSetting.general,
+        autoCheckUpdate: false,
+        updateChannel: 'stable',
+      },
+    }
+
+    checkForUpdateMock.mockResolvedValue(null)
+
+    render(
+      <SettingContext.Provider
+        value={{
+          setting: disabledSetting,
+          loading: false,
+          error: null,
+          updateSetting: vi.fn(),
+          updateGeneralSetting: vi.fn(),
+          updateSyncSetting: vi.fn(),
+          updateSecuritySetting: vi.fn(),
+          updateRetentionPolicy: vi.fn(),
+          updateKeyboardShortcuts: vi.fn(),
+          updateFileSyncSetting: vi.fn(),
+          updateNetworkSetting: vi.fn().mockResolvedValue({ restartRequired: false }),
+        }}
+      >
+        <UpdateProvider>
+          <ManualAlphaCheckConsumer />
+        </UpdateProvider>
+      </SettingContext.Provider>
+    )
+
+    await user.click(screen.getByRole('button', { name: 'check alpha' }))
+
+    await waitFor(() => {
+      expect(checkForUpdateMock).toHaveBeenCalledWith('alpha')
     })
   })
 })

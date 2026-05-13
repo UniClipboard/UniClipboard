@@ -3,7 +3,8 @@ import userEvent from '@testing-library/user-event'
 import AboutSection from '@/components/setting/AboutSection'
 import { SettingContext } from '@/contexts/setting-context'
 import { UpdateContext } from '@/contexts/update-context'
-import type { Settings } from '@/types/setting'
+import type { UpdateContextType } from '@/contexts/update-context'
+import type { SettingContextType, Settings } from '@/types/setting'
 
 vi.mock('@tauri-apps/api/app', () => ({
   getVersion: vi.fn().mockResolvedValue('0.4.0-alpha.6'),
@@ -18,6 +19,29 @@ vi.mock('react-i18next', () => ({
 vi.mock('@/hooks/useShortcutLayer', () => ({
   useShortcutLayer: vi.fn(),
 }))
+
+beforeAll(() => {
+  if (!HTMLElement.prototype.hasPointerCapture) {
+    Object.defineProperty(HTMLElement.prototype, 'hasPointerCapture', {
+      value: () => false,
+    })
+  }
+  if (!HTMLElement.prototype.setPointerCapture) {
+    Object.defineProperty(HTMLElement.prototype, 'setPointerCapture', {
+      value: () => undefined,
+    })
+  }
+  if (!HTMLElement.prototype.releasePointerCapture) {
+    Object.defineProperty(HTMLElement.prototype, 'releasePointerCapture', {
+      value: () => undefined,
+    })
+  }
+  if (!HTMLElement.prototype.scrollIntoView) {
+    Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', {
+      value: () => undefined,
+    })
+  }
+})
 
 const baseSetting: Settings = {
   schemaVersion: 1,
@@ -71,6 +95,61 @@ const baseSetting: Settings = {
   },
 }
 
+interface RenderAboutSectionOptions {
+  setting?: Settings
+  updateGeneralSetting?: SettingContextType['updateGeneralSetting']
+  checkForUpdates?: UpdateContextType['checkForUpdates']
+  isCheckingUpdate?: boolean
+}
+
+function renderAboutSection({
+  setting = baseSetting,
+  updateGeneralSetting = vi
+    .fn<SettingContextType['updateGeneralSetting']>()
+    .mockResolvedValue(undefined),
+  checkForUpdates = vi.fn<UpdateContextType['checkForUpdates']>().mockResolvedValue(null),
+  isCheckingUpdate = false,
+}: RenderAboutSectionOptions = {}) {
+  const user = userEvent.setup()
+
+  const view = render(
+    <SettingContext.Provider
+      value={{
+        setting,
+        loading: false,
+        error: null,
+        updateSetting: vi.fn(),
+        updateGeneralSetting,
+        updateSyncSetting: vi.fn(),
+        updateSecuritySetting: vi.fn(),
+        updateRetentionPolicy: vi.fn(),
+        updateKeyboardShortcuts: vi.fn(),
+        updateFileSyncSetting: vi.fn(),
+        updateNetworkSetting: vi.fn().mockResolvedValue({ restartRequired: false }),
+      }}
+    >
+      <UpdateContext.Provider
+        value={{
+          updateInfo: null,
+          isCheckingUpdate,
+          checkForUpdates,
+          installUpdate: vi.fn(),
+          downloadProgress: { downloaded: 0, total: null, phase: 'idle' as const },
+        }}
+      >
+        <AboutSection />
+      </UpdateContext.Provider>
+    </SettingContext.Provider>
+  )
+
+  return {
+    ...view,
+    user,
+    updateGeneralSetting,
+    checkForUpdates,
+  }
+}
+
 describe('AboutSection', () => {
   it('runs update check when clicking the button', async () => {
     const checkForUpdates = vi.fn().mockResolvedValue({
@@ -80,39 +159,9 @@ describe('AboutSection', () => {
       body: 'Bug fixes',
     })
 
-    render(
-      <SettingContext.Provider
-        value={{
-          setting: baseSetting,
-          loading: false,
-          error: null,
-          updateSetting: vi.fn(),
-          updateGeneralSetting: vi.fn(),
-          updateSyncSetting: vi.fn(),
-          updateSecuritySetting: vi.fn(),
-          updateRetentionPolicy: vi.fn(),
-          updateKeyboardShortcuts: vi.fn(),
-          updateFileSyncSetting: vi.fn(),
-          updateNetworkSetting: vi.fn().mockResolvedValue({ restartRequired: false }),
-        }}
-      >
-        <UpdateContext.Provider
-          value={{
-            updateInfo: null,
-            isCheckingUpdate: false,
-            checkForUpdates,
-            installUpdate: vi.fn(),
-            downloadProgress: { downloaded: 0, total: null, phase: 'idle' as const },
-          }}
-        >
-          <AboutSection />
-        </UpdateContext.Provider>
-      </SettingContext.Provider>
-    )
+    const { user } = renderAboutSection({ checkForUpdates })
 
-    await userEvent.click(
-      screen.getByRole('button', { name: 'settings.sections.about.checkUpdate' })
-    )
+    await user.click(screen.getByRole('button', { name: 'settings.sections.about.checkUpdate' }))
 
     await waitFor(() => {
       expect(checkForUpdates).toHaveBeenCalledTimes(1)
@@ -124,39 +173,11 @@ describe('AboutSection', () => {
   it('toggles auto update checks', async () => {
     const updateGeneralSetting = vi.fn().mockResolvedValue(undefined)
 
-    render(
-      <SettingContext.Provider
-        value={{
-          setting: baseSetting,
-          loading: false,
-          error: null,
-          updateSetting: vi.fn(),
-          updateGeneralSetting,
-          updateSyncSetting: vi.fn(),
-          updateSecuritySetting: vi.fn(),
-          updateRetentionPolicy: vi.fn(),
-          updateKeyboardShortcuts: vi.fn(),
-          updateFileSyncSetting: vi.fn(),
-          updateNetworkSetting: vi.fn().mockResolvedValue({ restartRequired: false }),
-        }}
-      >
-        <UpdateContext.Provider
-          value={{
-            updateInfo: null,
-            isCheckingUpdate: false,
-            checkForUpdates: vi.fn(),
-            installUpdate: vi.fn(),
-            downloadProgress: { downloaded: 0, total: null, phase: 'idle' as const },
-          }}
-        >
-          <AboutSection />
-        </UpdateContext.Provider>
-      </SettingContext.Provider>
-    )
+    const { user } = renderAboutSection({ updateGeneralSetting })
 
     expect(screen.getByText('settings.sections.about.autoCheckUpdate.label')).toBeInTheDocument()
 
-    await userEvent.click(screen.getByRole('switch'))
+    await user.click(screen.getByRole('switch'))
 
     await waitFor(() => {
       expect(updateGeneralSetting).toHaveBeenCalledWith({ autoCheckUpdate: false })
@@ -164,35 +185,7 @@ describe('AboutSection', () => {
   })
 
   it('shows loading feedback while checking for updates', () => {
-    const { container } = render(
-      <SettingContext.Provider
-        value={{
-          setting: baseSetting,
-          loading: false,
-          error: null,
-          updateSetting: vi.fn(),
-          updateGeneralSetting: vi.fn(),
-          updateSyncSetting: vi.fn(),
-          updateSecuritySetting: vi.fn(),
-          updateRetentionPolicy: vi.fn(),
-          updateKeyboardShortcuts: vi.fn(),
-          updateFileSyncSetting: vi.fn(),
-          updateNetworkSetting: vi.fn().mockResolvedValue({ restartRequired: false }),
-        }}
-      >
-        <UpdateContext.Provider
-          value={{
-            updateInfo: null,
-            isCheckingUpdate: true,
-            checkForUpdates: vi.fn(),
-            installUpdate: vi.fn(),
-            downloadProgress: { downloaded: 0, total: null, phase: 'idle' as const },
-          }}
-        >
-          <AboutSection />
-        </UpdateContext.Provider>
-      </SettingContext.Provider>
-    )
+    const { container } = renderAboutSection({ isCheckingUpdate: true })
 
     const checkButton = screen.getByRole('button', {
       name: 'settings.sections.about.checkingUpdate',
@@ -201,5 +194,48 @@ describe('AboutSection', () => {
     expect(checkButton).toBeDisabled()
     expect(checkButton).toHaveAttribute('aria-busy', 'true')
     expect(container.querySelector('.animate-spin')).toBeTruthy()
+  })
+
+  it('checks the newly selected channel immediately after saving it', async () => {
+    const updateGeneralSetting = vi.fn().mockResolvedValue(undefined)
+    const checkForUpdates = vi.fn().mockResolvedValue(null)
+    const { user } = renderAboutSection({ updateGeneralSetting, checkForUpdates })
+
+    await user.click(screen.getByRole('combobox'))
+    await user.click(
+      await screen.findByRole('option', { name: 'settings.sections.about.updateChannel.stable' })
+    )
+
+    await waitFor(() => {
+      expect(updateGeneralSetting).toHaveBeenCalledWith({ updateChannel: 'stable' })
+    })
+    expect(checkForUpdates).toHaveBeenCalledWith('stable')
+  })
+
+  it('warns before switching to alpha and checks alpha after confirmation', async () => {
+    const updateGeneralSetting = vi.fn().mockResolvedValue(undefined)
+    const checkForUpdates = vi.fn().mockResolvedValue(null)
+    const { user } = renderAboutSection({ updateGeneralSetting, checkForUpdates })
+
+    await user.click(screen.getByRole('combobox'))
+    await user.click(
+      await screen.findByRole('option', { name: 'settings.sections.about.updateChannel.alpha' })
+    )
+
+    expect(
+      await screen.findByText('settings.sections.about.updateChannel.alphaWarning.title')
+    ).toBeInTheDocument()
+    expect(updateGeneralSetting).not.toHaveBeenCalled()
+
+    await user.click(
+      screen.getByRole('button', {
+        name: 'settings.sections.about.updateChannel.alphaWarning.confirm',
+      })
+    )
+
+    await waitFor(() => {
+      expect(updateGeneralSetting).toHaveBeenCalledWith({ updateChannel: 'alpha' })
+    })
+    expect(checkForUpdates).toHaveBeenCalledWith('alpha')
   })
 })

@@ -10,6 +10,7 @@ import {
 import { toast } from '@/components/ui/toast'
 import { useSetting } from '@/hooks/useSetting'
 import { createLogger } from '@/lib/logger'
+import type { UpdateChannel } from '@/types/setting'
 
 const log = createLogger('update-context')
 
@@ -27,27 +28,49 @@ export const UpdateProvider: React.FC<UpdateProviderProps> = ({ children }) => {
     total: null,
     phase: 'idle',
   })
-  const isCheckingRef = useRef(false)
+  const activeCheckRef = useRef<Promise<UpdateMetadata | null> | null>(null)
+  const activeCheckChannelRef = useRef<UpdateChannel | null>(null)
   const hasCheckedOnStartup = useRef(false)
 
-  const checkForUpdates = useCallback(async () => {
-    if (isCheckingRef.current) {
-      return updateInfo
-    }
-
-    isCheckingRef.current = true
+  const runCheckForChannel = useCallback(async (channel: UpdateChannel | null) => {
     setIsCheckingUpdate(true)
+    const check = checkForUpdate(channel)
+    activeCheckRef.current = check
+    activeCheckChannelRef.current = channel
 
     try {
-      const channel = setting?.general?.updateChannel ?? null
-      const update = await checkForUpdate(channel)
+      const update = await check
       setUpdateInfo(update)
       return update
     } finally {
-      isCheckingRef.current = false
-      setIsCheckingUpdate(false)
+      if (activeCheckRef.current === check) {
+        activeCheckRef.current = null
+        activeCheckChannelRef.current = null
+        setIsCheckingUpdate(false)
+      }
     }
-  }, [updateInfo, setting?.general?.updateChannel])
+  }, [])
+
+  const checkForUpdates = useCallback(
+    async (channelOverride?: UpdateChannel | null) => {
+      const channel =
+        channelOverride === undefined ? (setting?.general?.updateChannel ?? null) : channelOverride
+      const activeCheck = activeCheckRef.current
+
+      if (activeCheck) {
+        if (activeCheckChannelRef.current === channel) {
+          return activeCheck
+        }
+
+        await activeCheck.catch(error => {
+          log.error({ err: error }, '等待上一次更新检查完成失败')
+        })
+      }
+
+      return runCheckForChannel(channel)
+    },
+    [runCheckForChannel, setting?.general?.updateChannel]
+  )
 
   const doInstallUpdate = useCallback(async () => {
     setDownloadProgress({ downloaded: 0, total: null, phase: 'downloading' })

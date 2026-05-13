@@ -411,7 +411,13 @@
           "stable": "稳定版",
           "beta": "测试版",
           "alpha": "内测版",
-          "rc": "候选版"
+          "rc": "候选版",
+          "alphaWarning": {
+            "title": "切换到内测版？",
+            "description": "内测版可能包含未充分验证的功能和回归问题。切换后会立即检查内测版更新。",
+            "cancel": "取消",
+            "confirm": "继续切换"
+          }
         },
         "copyright": "© 2025 UniClipboard Team. All rights reserved.",
         "links": {

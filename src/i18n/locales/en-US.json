@@ -420,7 +420,13 @@
           "stable": "Stable",
           "beta": "Beta",
           "alpha": "Alpha",
-          "rc": "Release Candidate"
+          "rc": "Release Candidate",
+          "alphaWarning": {
+            "title": "Switch to Alpha?",
+            "description": "Alpha builds may include features and regressions that have not been fully validated. UniClipboard will check the alpha channel immediately after switching.",
+            "cancel": "Cancel",
+            "confirm": "Switch"
+          }
         },
         "copyright": "© 2025 UniClipboard Team. All rights reserved.",
         "links": {

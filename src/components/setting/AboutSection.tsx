@@ -1,5 +1,5 @@
 import { getVersion } from '@tauri-apps/api/app'
-import { Loader2 } from 'lucide-react'
+import { Loader2, TriangleAlert } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { SettingGroup } from './SettingGroup'
@@ -12,6 +12,7 @@ import {
   AlertDialogDescription,
   AlertDialogFooter,
   AlertDialogHeader,
+  AlertDialogMedia,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import { Badge } from '@/components/ui/badge'
@@ -54,6 +55,10 @@ function getChannelLabel(channel: string): string {
   return labels[channel] ?? channel
 }
 
+function normalizeUpdateChannel(value: string): UpdateChannel | null {
+  return value === 'auto' ? null : (value as UpdateChannel)
+}
+
 const AboutSection: React.FC = () => {
   const { t } = useTranslation()
   const { setting, loading: settingLoading, updateGeneralSetting } = useSetting()
@@ -62,7 +67,9 @@ const AboutSection: React.FC = () => {
   const [appVersion, setAppVersion] = useState<string>('')
   const [autoCheckUpdate, setAutoCheckUpdate] = useState(setting?.general.autoCheckUpdate ?? true)
   const [updateChannel, setUpdateChannel] = useState<UpdateChannel | null>(null)
+  const [pendingUpdateChannel, setPendingUpdateChannel] = useState<UpdateChannel | null>(null)
   const [updateDialogOpen, setUpdateDialogOpen] = useState(false)
+  const [alphaWarningOpen, setAlphaWarningOpen] = useState(false)
   const [saving, setSaving] = useState(false)
   const isInstallingUpdate = downloadProgress.phase !== 'idle'
   const isBusy = settingLoading || saving
@@ -104,21 +111,50 @@ const AboutSection: React.FC = () => {
     }
   }
 
-  const handleUpdateChannelChange = async (value: string) => {
+  const applyUpdateChannelChange = async (newChannel: UpdateChannel | null) => {
+    if (newChannel === updateChannel) return
+
     const previous = updateChannel
     try {
       setSaving(true)
-      const newChannel = value === 'auto' ? null : (value as UpdateChannel)
       setUpdateChannel(newChannel)
       await updateGeneralSetting({ updateChannel: newChannel })
-      // Immediately check for updates on the new channel
-      checkForUpdates().catch(err => log.error({ err }, 'Failed to check for updates'))
+      checkForUpdates(newChannel).catch(err => log.error({ err }, 'Failed to check for updates'))
     } catch (error) {
       log.error({ err: error }, '更改更新频道失败')
       setUpdateChannel(previous)
     } finally {
       setSaving(false)
     }
+  }
+
+  const handleUpdateChannelChange = (value: string) => {
+    const newChannel = normalizeUpdateChannel(value)
+    if (newChannel === updateChannel) return
+
+    if (newChannel === 'alpha' && updateChannel !== 'alpha') {
+      setPendingUpdateChannel(newChannel)
+      setAlphaWarningOpen(true)
+      return
+    }
+
+    void applyUpdateChannelChange(newChannel)
+  }
+
+  const handleAlphaWarningOpenChange = (open: boolean) => {
+    setAlphaWarningOpen(open)
+    if (!open) {
+      setPendingUpdateChannel(null)
+    }
+  }
+
+  const handleConfirmAlphaChannel = () => {
+    const channel = pendingUpdateChannel
+    setAlphaWarningOpen(false)
+    setPendingUpdateChannel(null)
+
+    if (channel !== 'alpha') return
+    void applyUpdateChannelChange(channel)
   }
 
   const handleCheckUpdate = async () => {
@@ -328,6 +364,36 @@ const AboutSection: React.FC = () => {
               disabled={isInstallingUpdate}
             >
               {t('update.updateNow')}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={alphaWarningOpen} onOpenChange={handleAlphaWarningOpenChange}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogMedia className="bg-amber-500/10 text-amber-600 dark:text-amber-400">
+              <TriangleAlert className="size-5" />
+            </AlertDialogMedia>
+            <AlertDialogTitle>
+              {t('settings.sections.about.updateChannel.alphaWarning.title')}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {t('settings.sections.about.updateChannel.alphaWarning.description')}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={saving}>
+              {t('settings.sections.about.updateChannel.alphaWarning.cancel')}
+            </AlertDialogCancel>
+            <AlertDialogAction
+              disabled={saving}
+              onClick={event => {
+                event.preventDefault()
+                handleConfirmAlphaChannel()
+              }}
+            >
+              {t('settings.sections.about.updateChannel.alphaWarning.confirm')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

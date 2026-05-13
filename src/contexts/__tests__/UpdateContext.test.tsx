@@ -32,6 +32,7 @@ const baseSetting: Settings = {
     language: 'en-US',
     deviceName: 'Test Device',
     telemetryEnabled: true,
+    usageAnalyticsEnabled: true,
   },
   sync: {
     autoSync: true,

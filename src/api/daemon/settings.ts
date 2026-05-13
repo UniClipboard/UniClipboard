@@ -58,6 +58,7 @@ export interface GeneralSettings {
   deviceName: string | null
   updateChannel?: UpdateChannel | null
   telemetryEnabled: boolean
+  usageAnalyticsEnabled: boolean
 }
 
 /** Content type toggles for sync filtering. / 同步过滤的内容类型开关。 */
@@ -273,6 +274,7 @@ function toSettingsPatchRequest(settings: Partial<Settings>): SettingsPatchReque
       deviceName,
       updateChannel,
       telemetryEnabled,
+      usageAnalyticsEnabled,
     } = settings.general
 
     patch.general = {
@@ -289,6 +291,7 @@ function toSettingsPatchRequest(settings: Partial<Settings>): SettingsPatchReque
       deviceName,
       updateChannel,
       telemetryEnabled,
+      usageAnalyticsEnabled,
     }
   }
 

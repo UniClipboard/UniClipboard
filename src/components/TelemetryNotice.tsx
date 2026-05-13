@@ -50,7 +50,7 @@ export default function TelemetryNotice({ enabled = true, onDismiss }: Telemetry
 
   const handleOptOut = async () => {
     try {
-      await updateGeneralSetting({ telemetryEnabled: false })
+      await updateGeneralSetting({ telemetryEnabled: false, usageAnalyticsEnabled: false })
       finish()
     } catch (error) {
       log.error({ err: error }, 'Failed to disable telemetry')

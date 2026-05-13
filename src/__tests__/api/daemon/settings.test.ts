@@ -65,6 +65,7 @@ describe('Settings API', () => {
           deviceName: 'My MacBook',
           updateChannel: 'stable',
           telemetryEnabled: true,
+          usageAnalyticsEnabled: false,
         },
       })
       mockDaemonClient.request.mockResolvedValueOnce({ data: settings, ts: Date.now() })
@@ -77,7 +78,9 @@ describe('Settings API', () => {
       expect(result.general).toHaveProperty('themeColor')
       expect(result.general).toHaveProperty('deviceName')
       expect(result.general).toHaveProperty('updateChannel')
+      expect(result.general).toHaveProperty('usageAnalyticsEnabled')
       expect(result.general.theme).toBe('dark')
+      expect(result.general.usageAnalyticsEnabled).toBe(false)
     })
 
     it('sync settings expose all content type toggles', async () => {
@@ -154,6 +157,7 @@ describe('Settings API', () => {
           deviceName: 'New Name',
           updateChannel: null,
           telemetryEnabled: true,
+          usageAnalyticsEnabled: true,
         },
       })
 
@@ -164,6 +168,7 @@ describe('Settings API', () => {
       expect(body).toHaveProperty('general')
       expect(body.general as Record<string, unknown>).toHaveProperty('autoStart')
       expect(body.general as Record<string, unknown>).toHaveProperty('theme')
+      expect(body.general as Record<string, unknown>).toHaveProperty('usageAnalyticsEnabled', true)
     })
 
     it('accepts a minimal partial update with only changed fields', async () => {
@@ -184,6 +189,7 @@ describe('Settings API', () => {
           deviceName: null,
           updateChannel: null,
           telemetryEnabled: true,
+          usageAnalyticsEnabled: true,
         },
       })
 
@@ -233,6 +239,7 @@ describe('Settings API', () => {
             deviceName: null,
             updateChannel: null,
             telemetryEnabled: true,
+            usageAnalyticsEnabled: true,
           },
         })
       ).rejects.toMatchObject({

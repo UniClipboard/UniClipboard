@@ -76,11 +76,17 @@
         },
         "telemetry": {
           "title": "Privacy",
-          "label": "Help improve UniClipboard",
-          "description": "Send anonymous diagnostics and usage data. Clipboard content is never collected.",
+          "diagnostics": {
+            "label": "Send diagnostics",
+            "description": "Send crashes, errors, and anonymous logs. Clipboard content is never collected."
+          },
+          "usageAnalytics": {
+            "label": "Send usage analytics",
+            "description": "Send anonymous feature usage statistics to improve the product. Clipboard content is never collected."
+          },
           "notice": {
             "title": "Help improve UniClipboard",
-            "body": "UniClipboard collects anonymous diagnostics and usage data to help improve the app. Your clipboard content is never collected or transmitted. You can change this anytime in Settings > General.",
+            "body": "UniClipboard collects anonymous diagnostics and usage data to help improve the app. Your clipboard content is never collected or transmitted. You can change these choices anytime in Settings > General > Privacy.",
             "accept": "OK",
             "optOut": "Disable"
           }

@@ -25,6 +25,9 @@ export default function GeneralSection() {
   const [telemetryEnabled, setTelemetryEnabled] = useState(
     setting?.general.telemetryEnabled ?? true
   )
+  const [usageAnalyticsEnabled, setUsageAnalyticsEnabled] = useState(
+    setting?.general.usageAnalyticsEnabled ?? true
+  )
   const [language, setLanguage] = useState<SupportedLanguage>(() => {
     const backendLang = setting?.general.language
     const isValid = backendLang && SUPPORTED_LANGUAGES.includes(backendLang as SupportedLanguage)
@@ -40,6 +43,7 @@ export default function GeneralSection() {
     setAutoStart(setting.general.autoStart)
     setSilentStart(setting.general.silentStart)
     setTelemetryEnabled(setting.general.telemetryEnabled)
+    setUsageAnalyticsEnabled(setting.general.usageAnalyticsEnabled ?? true)
     // Validate backend language value against supported languages
     const backendLang = setting.general.language
     const isValidLanguage =
@@ -99,7 +103,19 @@ export default function GeneralSection() {
       await updateGeneralSetting({ telemetryEnabled: checked })
       setTelemetryEnabled(checked)
     } catch (error) {
-      log.error({ err: error }, '更改遥测设置失败')
+      log.error({ err: error }, '更改诊断数据设置失败')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleUsageAnalyticsChange = async (checked: boolean) => {
+    try {
+      setSaving(true)
+      await updateGeneralSetting({ usageAnalyticsEnabled: checked })
+      setUsageAnalyticsEnabled(checked)
+    } catch (error) {
+      log.error({ err: error }, '更改使用情况分析设置失败')
     } finally {
       setSaving(false)
     }
@@ -177,12 +193,23 @@ export default function GeneralSection() {
 
       <SettingGroup title={t('settings.sections.general.telemetry.title')}>
         <SettingRow
-          label={t('settings.sections.general.telemetry.label')}
-          description={t('settings.sections.general.telemetry.description')}
+          label={t('settings.sections.general.telemetry.diagnostics.label')}
+          description={t('settings.sections.general.telemetry.diagnostics.description')}
         >
           <Switch
             checked={telemetryEnabled}
             onCheckedChange={handleTelemetryChange}
+            disabled={isBusy}
+          />
+        </SettingRow>
+
+        <SettingRow
+          label={t('settings.sections.general.telemetry.usageAnalytics.label')}
+          description={t('settings.sections.general.telemetry.usageAnalytics.description')}
+        >
+          <Switch
+            checked={usageAnalyticsEnabled}
+            onCheckedChange={handleUsageAnalyticsChange}
             disabled={isBusy}
           />
         </SettingRow>

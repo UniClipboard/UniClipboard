@@ -40,6 +40,7 @@ const baseSetting: Settings = {
     language: 'zh-CN',
     deviceName: 'Test Device',
     telemetryEnabled: true,
+    usageAnalyticsEnabled: true,
   },
   sync: {
     autoSync: true,

@@ -87,12 +87,17 @@ describe('settings api — toSettingsPatchRequest network mirror', () => {
         language: null,
         deviceName: null,
         telemetryEnabled: false,
+        usageAnalyticsEnabled: false,
       },
     } as Partial<Settings>)
 
     expect(requestMock).toHaveBeenCalledTimes(1)
     const [, options] = requestMock.mock.calls[0]
     expect(Object.keys(options.body)).toContain('general')
+    expect(options.body.general).toMatchObject({
+      telemetryEnabled: false,
+      usageAnalyticsEnabled: false,
+    })
     expect(Object.keys(options.body)).not.toContain('network')
   })
 })

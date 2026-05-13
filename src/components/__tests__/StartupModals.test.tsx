@@ -11,10 +11,13 @@
  */
 
 import { render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import StartupModals from '../StartupModals'
 import { getUpgradeStatus, type UpgradeStatus } from '@/api/daemon'
 import { connectDaemonWs } from '@/lib/daemon-ws-bootstrap'
+
+const mockUpdateGeneralSetting = vi.hoisted(() => vi.fn().mockResolvedValue(undefined))
 
 vi.mock('@/api/daemon', async () => {
   const actual = await vi.importActual<typeof import('@/api/daemon')>('@/api/daemon')
@@ -31,7 +34,7 @@ vi.mock('@/lib/daemon-ws-bootstrap', () => ({
 
 vi.mock('@/hooks/useSetting', () => ({
   useSetting: () => ({
-    updateGeneralSetting: vi.fn().mockResolvedValue(undefined),
+    updateGeneralSetting: mockUpdateGeneralSetting,
   }),
 }))
 
@@ -50,6 +53,8 @@ describe('StartupModals priority ordering', () => {
     localStorage.clear()
     mockedGetUpgradeStatus.mockReset()
     mockedConnectDaemonWs.mockReset()
+    mockUpdateGeneralSetting.mockReset()
+    mockUpdateGeneralSetting.mockResolvedValue(undefined)
     mockedConnectDaemonWs.mockResolvedValue(undefined)
   })
 
@@ -139,5 +144,25 @@ describe('StartupModals priority ordering', () => {
       screen.queryByText('settings.sections.general.telemetry.notice.title')
     ).not.toBeInTheDocument()
     expect(screen.queryByText('upgradeNotice.title')).not.toBeInTheDocument()
+  })
+
+  it('disables diagnostics and usage analytics when the user opts out', async () => {
+    mockedGetUpgradeStatus.mockResolvedValue({
+      kind: 'no_change',
+      current: '1.0.0-alpha.1',
+    } satisfies UpgradeStatus)
+
+    const user = userEvent.setup()
+    render(<StartupModals />)
+
+    await user.click(await screen.findByText('settings.sections.general.telemetry.notice.optOut'))
+
+    await waitFor(() => {
+      expect(mockUpdateGeneralSetting).toHaveBeenCalledWith({
+        telemetryEnabled: false,
+        usageAnalyticsEnabled: false,
+      })
+    })
+    expect(localStorage.getItem('uc-telemetry-notice-seen')).toBe('1')
   })
 })

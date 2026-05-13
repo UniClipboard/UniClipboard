@@ -76,11 +76,17 @@
         },
         "telemetry": {
           "title": "隐私",
-          "label": "帮助改进 UniClipboard",
-          "description": "发送匿名诊断与遥测数据，不包含剪贴板内容。",
+          "diagnostics": {
+            "label": "发送诊断数据",
+            "description": "发送崩溃、错误与匿名日志，不包含剪贴板内容。"
+          },
+          "usageAnalytics": {
+            "label": "发送使用情况分析",
+            "description": "发送匿名功能使用统计，用于改进产品，不包含剪贴板内容。"
+          },
           "notice": {
             "title": "帮助改进 UniClipboard",
-            "body": "UniClipboard 会收集匿名诊断与使用数据以帮助改进应用。您的剪贴板内容绝不会被收集或传输。您可以随时在 设置 > 通用 中更改此选项。",
+            "body": "UniClipboard 会收集匿名诊断与使用数据以帮助改进应用。您的剪贴板内容绝不会被收集或传输。您可以随时在 设置 > 通用 > 隐私 中分别更改这些选项。",
             "accept": "好的",
             "optOut": "关闭"
           }

@@ -40,6 +40,7 @@ export interface GeneralSettings {
   deviceName: string | null
   updateChannel?: UpdateChannel | null
   telemetryEnabled: boolean
+  usageAnalyticsEnabled: boolean
 }
 
 /**

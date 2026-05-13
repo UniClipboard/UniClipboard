@@ -54,7 +54,35 @@ pub(super) fn derive_data_name(
     }
 }
 
+/// 按 SyncClipboard profile hash 规则计算 hash。
+///
+/// Text 直接对 UTF-8 字节算 SHA-256；Image/File 先算内容 SHA-256，再用
+/// `dataName|CONTENT_HASH` 拼接后二次 SHA-256。返回大写十六进制。
+pub(super) fn profile_hash_for_sync(
+    item_type: SyncClipboardItemType,
+    data_name: Option<&str>,
+    bytes: &[u8],
+) -> String {
+    let content_hash = sha256_hex_upper(bytes);
+    match item_type {
+        SyncClipboardItemType::Image | SyncClipboardItemType::File => {
+            if let Some(name) = data_name.filter(|s| !s.is_empty()) {
+                sha256_hex_upper(format!("{name}|{content_hash}").as_bytes())
+            } else {
+                content_hash
+            }
+        }
+        SyncClipboardItemType::Text | SyncClipboardItemType::Group => content_hash,
+    }
+}
+
 // ─── internal filename helpers ──────────────────────────────────────────
+
+fn sha256_hex_upper(bytes: &[u8]) -> String {
+    use sha2::{Digest, Sha256};
+
+    hex::encode(Sha256::digest(bytes)).to_ascii_uppercase()
+}
 
 fn mime_starts_with(mime: &Option<MimeType>, prefix: &str) -> bool {
     mime.as_ref()

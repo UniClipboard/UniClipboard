@@ -41,7 +41,6 @@
 
 use std::sync::Arc;
 
-use sha2::{Digest, Sha256};
 use thiserror::Error;
 use tracing::{debug, instrument, warn};
 
@@ -49,7 +48,7 @@ use uc_core::ports::mobile_sync::{LatestClipboardSnapshotError, LatestClipboardS
 
 use crate::usecases::mobile_sync::clipboard_doc::{SyncClipboardItemType, SyncClipboardMeta};
 
-use super::sync_clipboard_mapping::{classify_for_sync, derive_data_name};
+use super::sync_clipboard_mapping::{classify_for_sync, derive_data_name, profile_hash_for_sync};
 
 /// 出站 `GET /SyncClipboard.json` 的应用层动作。
 pub(crate) struct GetLatestMobileSyncDocUseCase {
@@ -58,8 +57,9 @@ pub(crate) struct GetLatestMobileSyncDocUseCase {
 
 #[derive(Debug, Error)]
 pub enum GetLatestMobileSyncDocError {
-    /// 当前没有任何 clipboard entry —— 路由层翻成 HTTP 404。SyncClipboard
-    /// 客户端会把 404 解释为"远端还没东西",不报错。
+    /// 当前没有任何 clipboard entry。路由层会按具体协议入口决定响应形态:
+    /// `/SyncClipboard.json` 为兼容官方服务端返回空 Text profile,历史记录查询
+    /// 入口仍可把它视为"没有历史记录"。
     #[error("no clipboard entry available")]
     NotFound,
 
@@ -118,9 +118,9 @@ impl GetLatestMobileSyncDocUseCase {
             }
         };
 
-        // SHA-256(bytes) —— 与 PUT 路径(clipboard_doc.rs)对齐;Text 时
-        // bytes 就是 text utf-8,Image/File 时 bytes 就是文件字节。
-        let hash = hex::encode(Sha256::digest(&rep.bytes));
+        // SyncClipboard profile hash —— Text 直接 hash 内容,Image/File 需要把
+        // 文件名也纳入 hash,与官方客户端的历史记录去重规则一致。
+        let hash = profile_hash_for_sync(item_type, data_name.as_deref(), &rep.bytes);
 
         debug!(
             entry_id = %rep.entry_id,
@@ -167,6 +167,7 @@ mod tests {
 
     use async_trait::async_trait;
     use mockall::predicate::*;
+    use sha2::{Digest, Sha256};
     use uc_core::clipboard::MimeType;
     use uc_core::ids::{EntryId, FormatId};
     use uc_core::mobile_sync::LatestPasteRepresentation;
@@ -229,7 +230,7 @@ mod tests {
         // SHA-256("hello") = 2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824
         assert_eq!(
             meta.hash.as_deref(),
-            Some("2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824")
+            Some("2CF24DBA5FB0A30E26E83B2AC5B9E29E1B161E5C1FA7425E73043362938B9824")
         );
     }
 
@@ -249,11 +250,13 @@ mod tests {
         // Filename uses first 8 chars of entry_id + .png
         assert_eq!(meta.text, "clipboard_entry-im.png");
         assert_eq!(meta.data_name.as_deref(), Some("clipboard_entry-im.png"));
-        // hash = sha256(bytes)
-        assert_eq!(
-            meta.hash.as_deref(),
-            Some(&*hex::encode(Sha256::digest(&bytes))),
-        );
+        // SyncClipboard 的 Image/File profile hash = sha256("filename|SHA256(bytes)")。
+        let content_hash = hex::encode(Sha256::digest(&bytes)).to_ascii_uppercase();
+        let expected_profile_hash = hex::encode(Sha256::digest(format!(
+            "clipboard_entry-im.png|{content_hash}"
+        )))
+        .to_ascii_uppercase();
+        assert_eq!(meta.hash.as_deref(), Some(expected_profile_hash.as_str()));
     }
 
     #[tokio::test]

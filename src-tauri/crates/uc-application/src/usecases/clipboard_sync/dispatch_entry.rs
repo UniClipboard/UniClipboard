@@ -54,13 +54,13 @@ use uc_core::ids::DeviceId;
 use uc_core::ports::security::TransferCipherPort;
 use uc_core::ports::{
     ClipboardDispatchError, ClipboardDispatchPort, ClipboardHeader, ClockPort, DeviceIdentityPort,
-    DispatchAck, FirstSyncStatePort, LocalIdentityPort, PeerAddressRepositoryPort, SettingsPort,
-    SyncPayload,
+    DispatchAck, FirstSyncStatePort, LocalIdentityPort, PeerAddressRepositoryPort, PresencePort,
+    ReachabilityState, SettingsPort, SyncPayload,
 };
 use uc_core::MemberRepositoryPort;
 use uc_observability::analytics::{
-    AnalyticsPort, Direction, Event, FailureReason, PayloadSizeBucket, PayloadType, SyncEventProps,
-    TransportType,
+    AnalyticsPort, Direction, Event, FailureReason, PayloadSizeBucket, PayloadType,
+    SyncDeferReason, SyncDeferredProps, SyncEventProps, SyncFailureStage, TransportType,
 };
 
 /// Slice 8c-1 · classify the dispatched payload by category priority
@@ -96,6 +96,52 @@ fn map_dispatch_error_to_failure_reason(err: &ClipboardDispatchError) -> Failure
         ClipboardDispatchError::PeerRejected(_) => FailureReason::NetworkError,
         ClipboardDispatchError::Io(_) => FailureReason::NetworkError,
         ClipboardDispatchError::Internal(_) => FailureReason::Unknown,
+    }
+}
+
+/// 将即时 dispatch 错误映射为产品分析口径。
+///
+/// `sync_failed` 在当前路径代表"一次即时发送尝试失败"，不是"最终投递失败"。
+/// 对端不可达和网络类错误应留给 pending/retry 或恢复流程继续处理；本地策略拒绝
+/// 才是当前 payload 的终态失败。
+fn dispatch_failure_stage(err: &ClipboardDispatchError) -> SyncFailureStage {
+    match err {
+        ClipboardDispatchError::LocalPolicyExceeded(_) => SyncFailureStage::LocalPolicy,
+        ClipboardDispatchError::Internal(_) => SyncFailureStage::ImmediateSend,
+        ClipboardDispatchError::Offline
+        | ClipboardDispatchError::PeerRejected(_)
+        | ClipboardDispatchError::Io(_) => SyncFailureStage::ImmediateSend,
+    }
+}
+
+async fn capture_sync_attempted(
+    analytics: &Arc<dyn AnalyticsPort>,
+    first_sync_state: &Arc<dyn FirstSyncStatePort>,
+    payload_type: PayloadType,
+    payload_size_bucket: PayloadSizeBucket,
+) {
+    analytics.capture(Event::SyncAttempted(SyncEventProps {
+        direction: Direction::Outbound,
+        payload_type,
+        payload_size_bucket,
+        transport_type: TransportType::P2pDirect,
+        peer_os: None,
+        sync_latency_ms: None,
+        failure_reason: None,
+        failure_stage: None,
+    }));
+    // Slice 8c-2 · funnel: first attempt fires regardless of outcome — keeps
+    // the "started but failed" 漏点信号。deferred 路径也会调用本函数，确保
+    // attempted 时序一致；dashboard 端用 `attempted - deferred` 推导用户感知尝试。
+    match first_sync_state.mark_first_sync_attempted().await {
+        Ok(true) => analytics.capture(Event::FirstClipboardSyncAttempted {
+            direction: Direction::Outbound,
+        }),
+        Ok(false) => {}
+        Err(err) => warn!(
+            error = %err,
+            "first_sync_state.mark_first_sync_attempted failed; skipping fire",
+        ),
     }
 }
 
@@ -160,6 +206,7 @@ pub(crate) enum DispatchSyncError {
 pub(crate) struct DispatchClipboardEntryUseCase {
     peer_addr_repo: Arc<dyn PeerAddressRepositoryPort>,
     member_repo: Arc<dyn MemberRepositoryPort>,
+    presence: Arc<dyn PresencePort>,
     transfer_cipher: Arc<dyn TransferCipherPort>,
     clipboard_dispatch: Arc<dyn ClipboardDispatchPort>,
     device_identity: Arc<dyn DeviceIdentityPort>,
@@ -183,6 +230,7 @@ impl DispatchClipboardEntryUseCase {
     pub(crate) fn new(
         peer_addr_repo: Arc<dyn PeerAddressRepositoryPort>,
         member_repo: Arc<dyn MemberRepositoryPort>,
+        presence: Arc<dyn PresencePort>,
         transfer_cipher: Arc<dyn TransferCipherPort>,
         clipboard_dispatch: Arc<dyn ClipboardDispatchPort>,
         device_identity: Arc<dyn DeviceIdentityPort>,
@@ -195,6 +243,7 @@ impl DispatchClipboardEntryUseCase {
         Self {
             peer_addr_repo,
             member_repo,
+            presence,
             transfer_cipher,
             clipboard_dispatch,
             device_identity,
@@ -308,18 +357,19 @@ impl DispatchClipboardEntryUseCase {
         // child 上也写一份是冗余 —— 但 root span 不一定总在同一个 trace，
         // 在 worker 任务里显式 carry 更稳。
         //
-        // Slice 8c-1 · each spawned task fires its own per-peer
-        // `sync_attempted` (before the wire call) and either
-        // `sync_succeeded` (with `sync_latency_ms`) or `sync_failed`
-        // (with `failure_reason`) inside the same async block — keeps
-        // analytics atomically paired with the dispatch outcome and
-        // avoids a second match arm in the merge loop.
+        // Slice 8c-1 · each spawned task fires per-peer telemetry. `sync_attempted`
+        // 始终在 dispatch 前发一次，保证时序一致；`sync_succeeded` / `sync_failed`
+        // / `sync_deferred` 与 attempted 形成 1:1 配对。known-offline peer 仍尝试
+        // 发送（presence 可能 stale）；若 dispatch 仍判为 Offline，结果事件用
+        // `sync_deferred` 而不是 `sync_failed`，因为那是预期不可用，不该计入
+        // 用户感知失败口径（dashboard 以 `attempted - deferred` 推导用户感知尝试）。
         let payload_type = payload_type_from_categories(&input.categories);
         let payload_size_bucket = PayloadSizeBucket::from_bytes(input.plaintext.len() as u64);
         let mut set: JoinSet<(DeviceId, Result<DispatchAck, ClipboardDispatchError>)> =
             JoinSet::new();
         for device_id in &candidates {
             let dispatch = Arc::clone(&self.clipboard_dispatch);
+            let presence = Arc::clone(&self.presence);
             let analytics = Arc::clone(&self.analytics);
             let first_sync_state = Arc::clone(&self.first_sync_state);
             let header = header.clone();
@@ -335,29 +385,19 @@ impl DispatchClipboardEntryUseCase {
             );
             set.spawn(
                 async move {
-                    analytics.capture(Event::SyncAttempted(SyncEventProps {
-                        direction: Direction::Outbound,
+                    // attempted 始终在 dispatch 前发，时序与口径保持单一：
+                    //   attempted = succeeded + failed + deferred
+                    //   用户感知尝试 = attempted - deferred
+                    // 详见 docs/architecture/telemetry-events.md §7.3b。
+                    let preflight_state = presence.current_state(&device_id).await;
+                    let known_offline = matches!(preflight_state, ReachabilityState::Offline);
+                    capture_sync_attempted(
+                        &analytics,
+                        &first_sync_state,
                         payload_type,
                         payload_size_bucket,
-                        transport_type: TransportType::P2pDirect,
-                        peer_os: None,
-                        sync_latency_ms: None,
-                        failure_reason: None,
-                    }));
-                    // Slice 8c-2 · funnel: first attempt fires regardless of
-                    // outcome — keeps the "started but failed"漏点信号. Race
-                    // 防护由 port impl 的 Mutex 守住，N 个 spawn 中只有一个
-                    // 返回 Ok(true)。
-                    match first_sync_state.mark_first_sync_attempted().await {
-                        Ok(true) => analytics.capture(Event::FirstClipboardSyncAttempted {
-                            direction: Direction::Outbound,
-                        }),
-                        Ok(false) => {}
-                        Err(err) => warn!(
-                            error = %err,
-                            "first_sync_state.mark_first_sync_attempted failed; skipping fire",
-                        ),
-                    }
+                    )
+                    .await;
 
                     let started_at = Instant::now();
                     let result = dispatch.dispatch(&device_id, &header, payload).await;
@@ -372,7 +412,17 @@ impl DispatchClipboardEntryUseCase {
                             peer_os: None,
                             sync_latency_ms: Some(duration_ms),
                             failure_reason: None,
+                            failure_stage: None,
                         }),
+                        Err(ClipboardDispatchError::Offline) if known_offline => {
+                            Event::SyncDeferred(SyncDeferredProps {
+                                direction: Direction::Outbound,
+                                payload_type,
+                                payload_size_bucket,
+                                peer_os: None,
+                                defer_reason: SyncDeferReason::PeerKnownOffline,
+                            })
+                        }
                         Err(err) => Event::SyncFailed(SyncEventProps {
                             direction: Direction::Outbound,
                             payload_type,
@@ -381,6 +431,7 @@ impl DispatchClipboardEntryUseCase {
                             peer_os: None,
                             sync_latency_ms: None,
                             failure_reason: Some(map_dispatch_error_to_failure_reason(err)),
+                            failure_stage: Some(dispatch_failure_stage(err)),
                         }),
                     };
                     let is_ok = result.is_ok();
@@ -581,12 +632,10 @@ impl DispatchClipboardEntryUseCase {
 //       `Mutex<FnMut>` would serialise concurrent `.returning()` closures
 //       (Phase 1 T6's `SleepyPresence`).
 //
-// For this file: the dispatch use case calls 2 async ports + 4 read-only
-// ports; no broadcast emit, no wall-time concurrency assertion. All six
-// ports are mocked with `mockall::mock!`. `PresencePort` was dropped
-// from this use case's deps once we stopped pre-filtering by online
-// state (see module doc); peers are enumerated from `peer_addr_repo`
-// only, and per-target offline verdicts come from the dispatch port.
+// For this file: the dispatch use case calls 2 async ports + read-only
+// ports; no broadcast emit, no wall-time concurrency assertion. Most ports
+// are mocked with `mockall::mock!`. `PresencePort::current_state` is read
+// only for telemetry classification and never filters dispatch candidates.
 
 #[cfg(test)]
 mod tests {
@@ -595,11 +644,13 @@ mod tests {
     use async_trait::async_trait;
     use chrono::Utc;
     use mockall::predicate::*;
+    use tokio::sync::broadcast;
 
     use uc_core::ports::security::{TransferCipherError, TransferCipherPort};
     use uc_core::ports::{
         ClockPort, DeviceIdentityPort, FirstSyncStateError, LocalIdentityError, LocalIdentityPort,
-        PeerAddressError, PeerAddressRecord, PeerAddressRepositoryPort, SettingsPort,
+        PeerAddressError, PeerAddressRecord, PeerAddressRepositoryPort, PresenceError,
+        PresenceEvent, PresencePort, ReachabilityState, SettingsPort,
     };
     use uc_core::security::IdentityFingerprint;
     use uc_core::settings::model::Settings;
@@ -721,6 +772,26 @@ mod tests {
         }
     }
 
+    struct StaticPresence(ReachabilityState);
+    #[async_trait]
+    impl PresencePort for StaticPresence {
+        async fn ensure_reachable(
+            &self,
+            _device: &DeviceId,
+        ) -> Result<ReachabilityState, PresenceError> {
+            Ok(self.0)
+        }
+
+        async fn current_state(&self, _device: &DeviceId) -> ReachabilityState {
+            self.0
+        }
+
+        fn subscribe(&self) -> broadcast::Receiver<PresenceEvent> {
+            let (_tx, rx) = broadcast::channel(1);
+            rx
+        }
+    }
+
     // ── helpers ─────────────────────────────────────────────────────────
 
     fn fp(seed: u8) -> IdentityFingerprint {
@@ -817,9 +888,37 @@ mod tests {
         analytics: Arc<dyn AnalyticsPort>,
         first_sync_state: Arc<dyn FirstSyncStatePort>,
     ) -> DispatchClipboardEntryUseCase {
+        build_uc_with_presence_and_first_sync_state(
+            peer_addr_repo,
+            member_repo,
+            Arc::new(StaticPresence(ReachabilityState::Unknown)),
+            cipher,
+            dispatch,
+            device_identity,
+            local_identity,
+            settings,
+            analytics,
+            first_sync_state,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn build_uc_with_presence_and_first_sync_state(
+        peer_addr_repo: MockPeerAddrRepo,
+        member_repo: MockMemberRepo,
+        presence: Arc<dyn PresencePort>,
+        cipher: MockCipher,
+        dispatch: MockDispatch,
+        device_identity: MockDeviceId_,
+        local_identity: MockLocalIdentity,
+        settings: MockSettings_,
+        analytics: Arc<dyn AnalyticsPort>,
+        first_sync_state: Arc<dyn FirstSyncStatePort>,
+    ) -> DispatchClipboardEntryUseCase {
         DispatchClipboardEntryUseCase::new(
             Arc::new(peer_addr_repo),
             Arc::new(member_repo),
+            presence,
             Arc::new(cipher),
             Arc::new(dispatch),
             Arc::new(device_identity),
@@ -1540,6 +1639,7 @@ mod tests {
         assert_eq!(sample.transport_type, TransportType::P2pDirect);
         assert!(sample.sync_latency_ms.is_some());
         assert!(sample.failure_reason.is_none());
+        assert!(sample.failure_stage.is_none());
     }
 
     #[tokio::test]
@@ -1582,6 +1682,174 @@ mod tests {
         match &events[1] {
             Event::SyncFailed(p) => {
                 assert_eq!(p.failure_reason, Some(FailureReason::PeerOffline));
+                assert_eq!(p.failure_stage, Some(SyncFailureStage::ImmediateSend));
+                assert!(p.sync_latency_ms.is_none());
+            }
+            other => panic!("expected SyncFailed, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn analytics_defers_instead_of_failing_when_peer_was_already_offline() {
+        let mut repo = MockPeerAddrRepo::new();
+        repo.expect_list()
+            .times(1)
+            .returning(|| Ok(vec![record("peer-off")]));
+
+        let mut cipher = MockCipher::new();
+        cipher
+            .expect_encrypt()
+            .times(1)
+            .returning(|p| Ok(p.to_vec()));
+
+        let mut dispatch = MockDispatch::new();
+        dispatch
+            .expect_dispatch()
+            .with(eq(DeviceId::new("peer-off")), always(), always())
+            .times(1)
+            .returning(|_, _, _| Err(ClipboardDispatchError::Offline));
+
+        let analytics = Arc::new(CapturingAnalyticsSink::default());
+        let uc = build_uc_with_presence_and_first_sync_state(
+            repo,
+            make_member_repo_all_enabled(),
+            Arc::new(StaticPresence(ReachabilityState::Offline)),
+            cipher,
+            dispatch,
+            make_device_identity("self-device"),
+            make_local_identity_stub(),
+            make_settings_stub(),
+            analytics.clone(),
+            Arc::new(AllMarkedFirstSyncState),
+        );
+
+        uc.execute(input()).await.expect("dispatch ok");
+
+        // attempted 始终前置，deferred 与 attempted 形成配对。
+        // dashboard 端用 `attempted - deferred` 推导用户感知尝试，
+        // 用户感知失败率不再把 known-offline 的不可达计入。
+        let events = analytics.events();
+        assert_eq!(events.len(), 2, "got {events:?}");
+        assert!(
+            matches!(&events[0], Event::SyncAttempted(_)),
+            "first event should be SyncAttempted, got {:?}",
+            events[0],
+        );
+        match &events[1] {
+            Event::SyncDeferred(p) => {
+                assert_eq!(p.defer_reason, SyncDeferReason::PeerKnownOffline);
+                assert_eq!(p.direction, Direction::Outbound);
+            }
+            other => panic!("expected SyncDeferred, got {other:?}"),
+        }
+    }
+
+    /// Presence 可能 stale：声明 Offline 但 dispatch 实际成功。此时不走 deferred
+    /// 分支（deferred guard 只覆盖 dispatch 返回 Offline 的情况），仍应得到
+    /// `SyncAttempted` + `SyncSucceeded`，时序与 not-known-offline 路径一致。
+    #[tokio::test]
+    async fn attempted_then_succeeded_even_when_peer_was_known_offline() {
+        let mut repo = MockPeerAddrRepo::new();
+        repo.expect_list()
+            .times(1)
+            .returning(|| Ok(vec![record("peer-stale")]));
+
+        let mut cipher = MockCipher::new();
+        cipher
+            .expect_encrypt()
+            .times(1)
+            .returning(|p| Ok(p.to_vec()));
+
+        let mut dispatch = MockDispatch::new();
+        dispatch
+            .expect_dispatch()
+            .with(eq(DeviceId::new("peer-stale")), always(), always())
+            .times(1)
+            .returning(|_, _, _| Ok(DispatchAck::Accepted));
+
+        let analytics = Arc::new(CapturingAnalyticsSink::default());
+        let uc = build_uc_with_presence_and_first_sync_state(
+            repo,
+            make_member_repo_all_enabled(),
+            Arc::new(StaticPresence(ReachabilityState::Offline)),
+            cipher,
+            dispatch,
+            make_device_identity("self-device"),
+            make_local_identity_stub(),
+            make_settings_stub(),
+            analytics.clone(),
+            Arc::new(AllMarkedFirstSyncState),
+        );
+
+        uc.execute(input()).await.expect("dispatch ok");
+
+        let events = analytics.events();
+        assert_eq!(events.len(), 2, "got {events:?}");
+        assert!(
+            matches!(&events[0], Event::SyncAttempted(_)),
+            "first event should be SyncAttempted, got {:?}",
+            events[0],
+        );
+        match &events[1] {
+            Event::SyncSucceeded(p) => {
+                assert!(p.sync_latency_ms.is_some());
+                assert!(p.failure_reason.is_none());
+                assert!(p.failure_stage.is_none());
+            }
+            other => panic!("expected SyncSucceeded, got {other:?}"),
+        }
+    }
+
+    /// known_offline guard 只保护 `dispatch == Offline` 的不可达。如果对端
+    /// 已知离线但 dispatch 报告其他错误（peer 拒收 / IO / 内部错误），仍属
+    /// 真失败：发 `sync_attempted` + `sync_failed`，`stage = ImmediateSend`。
+    #[tokio::test]
+    async fn attempted_then_failed_when_known_offline_peer_returns_non_offline_error() {
+        let mut repo = MockPeerAddrRepo::new();
+        repo.expect_list()
+            .times(1)
+            .returning(|| Ok(vec![record("peer-broken")]));
+
+        let mut cipher = MockCipher::new();
+        cipher
+            .expect_encrypt()
+            .times(1)
+            .returning(|p| Ok(p.to_vec()));
+
+        let mut dispatch = MockDispatch::new();
+        dispatch
+            .expect_dispatch()
+            .with(eq(DeviceId::new("peer-broken")), always(), always())
+            .times(1)
+            .returning(|_, _, _| Err(ClipboardDispatchError::Io("broken pipe".into())));
+
+        let analytics = Arc::new(CapturingAnalyticsSink::default());
+        let uc = build_uc_with_presence_and_first_sync_state(
+            repo,
+            make_member_repo_all_enabled(),
+            Arc::new(StaticPresence(ReachabilityState::Offline)),
+            cipher,
+            dispatch,
+            make_device_identity("self-device"),
+            make_local_identity_stub(),
+            make_settings_stub(),
+            analytics.clone(),
+            Arc::new(AllMarkedFirstSyncState),
+        );
+
+        uc.execute(input()).await.expect("dispatch ok");
+
+        let events = analytics.events();
+        assert_eq!(events.len(), 2, "got {events:?}");
+        assert!(
+            matches!(&events[0], Event::SyncAttempted(_)),
+            "first event should be SyncAttempted, got {:?}",
+            events[0],
+        );
+        match &events[1] {
+            Event::SyncFailed(p) => {
+                assert_eq!(p.failure_reason, Some(FailureReason::NetworkError));
+                assert_eq!(p.failure_stage, Some(SyncFailureStage::ImmediateSend));
                 assert!(p.sync_latency_ms.is_none());
             }
             other => panic!("expected SyncFailed, got {other:?}"),
@@ -1726,6 +1994,34 @@ mod tests {
             ),
         ] {
             assert_eq!(map_dispatch_error_to_failure_reason(&err), expected);
+        }
+    }
+
+    #[test]
+    fn dispatch_failure_stage_classifies_failure_phase() {
+        for (err, expected) in [
+            (
+                ClipboardDispatchError::Offline,
+                SyncFailureStage::ImmediateSend,
+            ),
+            (
+                ClipboardDispatchError::Io("broken pipe".into()),
+                SyncFailureStage::ImmediateSend,
+            ),
+            (
+                ClipboardDispatchError::PeerRejected("bad header".into()),
+                SyncFailureStage::ImmediateSend,
+            ),
+            (
+                ClipboardDispatchError::LocalPolicyExceeded("too big".into()),
+                SyncFailureStage::LocalPolicy,
+            ),
+            (
+                ClipboardDispatchError::Internal("boom".into()),
+                SyncFailureStage::ImmediateSend,
+            ),
+        ] {
+            assert_eq!(dispatch_failure_stage(&err), expected);
         }
     }
 }

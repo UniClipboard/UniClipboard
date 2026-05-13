@@ -154,6 +154,7 @@ impl ClipboardSyncFacade {
         let dispatch_uc = Arc::new(DispatchClipboardEntryUseCase::new(
             Arc::clone(&deps.peer_addr_repo),
             Arc::clone(&deps.member_repo),
+            Arc::clone(&deps.presence),
             Arc::clone(&deps.transfer_cipher),
             Arc::clone(&deps.clipboard_dispatch),
             Arc::clone(&deps.device_identity),
@@ -575,6 +576,13 @@ mod tests {
         m
     }
 
+    fn make_presence_unknown() -> MockPresence {
+        let mut m = MockPresence::new();
+        m.expect_current_state()
+            .returning(|_| ReachabilityState::Unknown);
+        m
+    }
+
     /// Wire the facade with the given mock ports + a `FakeReceiver`. The
     /// FakeReceiver is returned alongside so the caller can `publish(...)`
     /// during the test. `member_repo` defaults to "all peers allowed"
@@ -611,8 +619,8 @@ mod tests {
     /// Verdict 1 — `dispatch_entry` delegates to the inner use case and
     /// returns the public-shape outcome. mockall asserts: peer_addr_repo
     /// listed once, encrypt called once, dispatch called once for peer-a.
-    /// Presence is intentionally NOT consulted (see dispatch_entry.rs
-    /// module doc on iteration source).
+    /// Presence is read only for telemetry classification; it must not filter
+    /// dispatch candidates (see dispatch_entry.rs module doc on iteration source).
     #[tokio::test]
     async fn dispatch_entry_returns_public_outcome_for_online_peer() {
         let mut repo = MockPeerAddrRepo::new();
@@ -620,7 +628,7 @@ mod tests {
             .times(1)
             .returning(|| Ok(vec![record("peer-a")]));
 
-        let presence = MockPresence::new();
+        let presence = make_presence_unknown();
 
         let mut cipher = MockCipher::new();
         cipher
@@ -666,7 +674,7 @@ mod tests {
         // Dispatch path is unused in this test; register no expectations.
         // peer_addr_repo / presence likewise unused.
         let repo = MockPeerAddrRepo::new();
-        let presence = MockPresence::new();
+        let presence = make_presence_unknown();
         let dispatch = MockDispatch::new();
 
         let mut cipher = MockCipher::new();
@@ -729,7 +737,7 @@ mod tests {
             .times(1)
             .returning(|| Ok(vec![record("peer-a")]));
 
-        let presence = MockPresence::new();
+        let presence = make_presence_unknown();
 
         let mut cipher = MockCipher::new();
         // Encrypt gets the V3 envelope bytes, not the raw text. We just
@@ -793,7 +801,7 @@ mod tests {
     #[tokio::test]
     async fn spawn_ingest_handle_drops_clean() {
         let repo = MockPeerAddrRepo::new();
-        let presence = MockPresence::new();
+        let presence = make_presence_unknown();
         let dispatch = MockDispatch::new();
         // Zero decrypt expectations — no inbound is published, so decrypt
         // must never be called even by a leaked task.

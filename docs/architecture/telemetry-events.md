@@ -15,7 +15,7 @@
 判断有据可依。本草案聚焦 issue #549 的"第一版必须埋点"中 **最关键的两段**：
 
 - **Activation 漏斗**：`app_first_open` → `pairing_succeeded` → `first_clipboard_sync_succeeded`
-- **Reliability**：`sync_attempted` / `sync_succeeded` / `sync_failed`
+- **Reliability**：`sync_attempted` / `sync_succeeded` / `sync_failed` / `sync_deferred`
 
 Acquisition、Retention、Engagement、Friction 沿用同一 schema 与命名规则，但
 事件清单延后到 v1 实施过程中按需补齐，不在本文件穷举。
@@ -290,7 +290,13 @@ pub enum LatencyBucket {
 
 ### 7.2 Reliability
 
-`sync_attempted` / `sync_succeeded` / `sync_failed` 三件套，properties：
+可靠性事件家族：`sync_attempted` / `sync_succeeded` / `sync_failed` / `sync_deferred`。
+
+`sync_attempted` 在 dispatch 之前固定发一次（每个 peer 一条），并与
+`sync_succeeded` / `sync_failed` / `sync_deferred` 形成 1:1 配对。前三者共享
+`SyncEventProps`；`sync_deferred` 使用 `SyncDeferredProps`（见下文）。
+
+`SyncEventProps`：
 
 ```rust
 pub struct SyncEventProps {
@@ -301,8 +307,42 @@ pub struct SyncEventProps {
     pub peer_os: Option<Os>,            // 已知则填，不要因为缺失就丢事件
     pub sync_latency_ms: Option<u32>,   // 仅成功事件携带
     pub failure_reason: Option<FailureReason>,  // 仅失败事件携带
+    pub failure_stage: Option<SyncFailureStage>, // 仅失败事件携带
 }
 ```
+
+`sync_failed` 表示一次同步相关尝试失败，不等同于用户感知的最终失败。
+dashboard 计算"最终同步失败率"时不应直接统计所有 `sync_failed`；应只统计
+`failure_stage = terminal_delivery`，或统计明确的终态策略失败（例如
+`failure_stage = local_policy`）。
+
+另外有一个非失败事件：
+
+```rust
+pub struct SyncDeferredProps {
+    pub direction: Direction,
+    pub payload_type: PayloadType,
+    pub payload_size_bucket: PayloadSizeBucket,
+    pub peer_os: Option<Os>,
+    pub defer_reason: SyncDeferReason,
+}
+```
+
+`sync_deferred` 表示发送前就已知目标不可用，本次不可达不计入用户感知失败口径。
+当前用于"目标设备已知离线，仍尝试发送但连接不上"的情况。
+
+`sync_deferred` 与 `sync_attempted` 始终成对出现（attempted 在 dispatch 之前
+固定发送一次）。dashboard 端聚合关系：
+
+- `attempted = succeeded + failed + deferred`
+- 用户感知尝试 = `attempted - deferred`
+- 用户感知失败率分子使用 `failure_stage = terminal_delivery`，分母使用
+  `attempted - deferred`
+
+不带 `transport_type`：deferred 时本次没有真实发送，记录任何 transport 都是
+误导性数据。如果未来要标注"原计划的"transport，请单独命名字段以避免与
+`sync_attempted` / `sync_succeeded` / `sync_failed` 上"实际使用的"transport
+混淆。
 
 ### 7.3 FailureReason 枚举（sync_failed 专用）
 
@@ -318,6 +358,46 @@ pub enum FailureReason {
     Unknown,            // 兜底，但占比应被监控并定期拆细
 }
 ```
+
+### 7.3a SyncFailureStage 枚举（sync_failed 专用）
+
+```rust
+pub enum SyncFailureStage {
+    ImmediateSend,      // 即时发送尝试失败，通常可进入 pending / retry
+    LocalPolicy,        // 本机策略在发送前拒绝，如 payload 过大
+    TerminalDelivery,   // pending / retry 耗尽后的终态投递失败
+}
+```
+
+### 7.3b SyncDeferReason 枚举（sync_deferred 专用）
+
+```rust
+pub enum SyncDeferReason {
+    PeerKnownOffline,   // 发送前 presence 已知对端离线
+}
+```
+
+**这是一个开放枚举**：`PeerKnownOffline` 是当前唯一变体，但 deferred 概念覆盖
+所有"预期不可用 / 本次不应计入失败口径"的场景。未来可能加入的扩展点，例如：
+
+- 对端不在白名单 / send 已被禁用 → 当前在 dispatch 前就被过滤，不会进入 spawn
+- 本地策略主动跳过（低电量、不计费网络、暂停同步）
+- 网络节流 / 配额耗尽
+
+新增 reason 前先确认：该原因是否真"不应计入用户感知失败率"。如果只是"用户感知
+失败的另一种解释"，应进 `FailureReason` + 合适的 `SyncFailureStage`，而不是
+deferred。
+
+当前 outbound dispatch 路径的采样规则（每行还隐含一个伴随的 `sync_attempted`，
+在 dispatch 之前发出，下表只列出 dispatch 完成后的结果事件）：
+
+| 事件 | 条件 | 关键字段 | 解释 |
+|---|---|---|---|
+| `sync_deferred` | 发送前 `PresencePort::current_state == Offline`，且 dispatch 仍返回 `Offline` | `defer_reason = peer_known_offline` | 对端本来就已知离线，连接不上是预期不可用，不计入尝试失败 |
+| `sync_failed` | 发送前不是已知离线，但 dispatch 返回 `Offline` | `failure_reason = peer_offline`, `failure_stage = immediate_send` | 发送前没有明确离线 verdict，仍不可达；用于网络/恢复诊断，不计入最终失败率 |
+| `sync_failed` | dispatch 返回 `Io` / peer wire 边界拒绝 | `failure_reason = network_error`, `failure_stage = immediate_send` | 已进入发送路径但连接 / I/O / wire 边界失败，等待恢复或重试口径处理 |
+| `sync_failed` | 本机策略拒绝 | `failure_reason = file_too_large`, `failure_stage = local_policy` | 本机策略确定该 payload 不能按当前通道发送 |
+| `sync_failed` | 本机内部错误 | `failure_reason = unknown`, `failure_stage = immediate_send` | 需要排查的内部错误口径 |
 
 `Unknown` 占比是 **架构债务指标**：高于 5% 时就要专门排查并新增枚举值。
 

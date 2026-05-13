@@ -69,6 +69,7 @@ mod tests {
             peer_os: None,
             sync_latency_ms: None,
             failure_reason: None,
+            failure_stage: None,
         }));
     }
 

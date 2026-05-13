@@ -28,7 +28,8 @@ pub use context::{
 };
 pub use events::{
     Direction, Event, FailureReason, LatencyBucket, NameLengthBucket, PairingFailureReason,
-    PairingMethod, PayloadSizeBucket, PayloadType, SetupEntry, SyncEventProps, TransportType,
+    PairingMethod, PayloadSizeBucket, PayloadType, SetupEntry, SyncDeferReason, SyncDeferredProps,
+    SyncEventProps, SyncFailureStage, TransportType,
 };
 pub use ids::{load_or_create as load_or_create_ids, reset as reset_ids, AnalyticsIds};
 pub use port::{AnalyticsPort, NoopAnalyticsSink};

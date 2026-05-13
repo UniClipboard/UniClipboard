@@ -79,6 +79,8 @@ pub enum Event {
     SyncSucceeded(SyncEventProps),
     /// 同步失败。`failure_reason` 必填，`sync_latency_ms` 必空。
     SyncFailed(SyncEventProps),
+    /// 同步暂缓。目标在发送前已知不可用，本次不可达不计入失败。
+    SyncDeferred(SyncDeferredProps),
 }
 
 impl Event {
@@ -97,6 +99,7 @@ impl Event {
             Event::SyncAttempted(_) => "sync_attempted",
             Event::SyncSucceeded(_) => "sync_succeeded",
             Event::SyncFailed(_) => "sync_failed",
+            Event::SyncDeferred(_) => "sync_deferred",
         }
     }
 
@@ -160,6 +163,10 @@ impl Event {
                     .and_then(|v| v.as_object().cloned())
                     .unwrap_or_default()
             }
+            Event::SyncDeferred(p) => serde_json::to_value(p)
+                .ok()
+                .and_then(|v| v.as_object().cloned())
+                .unwrap_or_default(),
         }
     }
 }
@@ -172,7 +179,8 @@ fn to_map(value: Value) -> Map<String, Value> {
 ///
 /// 对称约束：
 /// - `SyncSucceeded` 必须设置 `sync_latency_ms`，不设 `failure_reason`。
-/// - `SyncFailed` 必须设置 `failure_reason`，不设 `sync_latency_ms`。
+/// - `SyncFailed` 必须设置 `failure_reason` / `failure_stage`，不设
+///   `sync_latency_ms`。
 /// - `SyncAttempted` 两者都不设。
 ///
 /// 这些约束在 v1 不靠类型系统强制——`Event::properties` 直接序列化整个
@@ -191,6 +199,35 @@ pub struct SyncEventProps {
     /// 仅 `SyncFailed` 携带。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub failure_reason: Option<FailureReason>,
+    /// 仅 `SyncFailed` 携带。用于把本地策略拒绝、即时发送失败和后续终态失败
+    /// 分桶，避免 dashboard 把所有失败混成一个口径。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub failure_stage: Option<SyncFailureStage>,
+}
+
+/// `sync_deferred` 的 properties。
+///
+/// 该事件表示"这次不应计入同步尝试失败率"。典型场景：发送前 presence 已经
+/// 知道目标设备离线，后续 dispatch 仍然不可达。代码仍可尝试发送以防 presence
+/// 过期，但产品分析上这是预期不可用，不是失败。
+///
+/// 不带 `transport_type`：deferred 时本次根本没有发生真实发送，记录任何
+/// transport 都是误导性数据（dashboard 按 transport 切片会得到虚假结论）。
+/// 如果未来要标注"原计划的"transport，请单独命名字段以避免混淆。
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SyncDeferredProps {
+    pub direction: Direction,
+    pub payload_type: PayloadType,
+    pub payload_size_bucket: PayloadSizeBucket,
+    pub peer_os: Option<Os>,
+    pub defer_reason: SyncDeferReason,
+}
+
+/// 同步暂缓原因（`sync_deferred` 专用）。
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[serde(rename_all = "snake_case")]
+pub enum SyncDeferReason {
+    PeerKnownOffline,
 }
 
 /// 同步方向。
@@ -237,6 +274,20 @@ pub enum FailureReason {
     ClipboardPermission,
     EncryptionMismatch,
     Unknown,
+}
+
+/// 同步失败发生的阶段（`sync_failed` 专用）。
+///
+/// `ImmediateSend` 是当前 outbound dispatch 路径最常见的失败阶段，代表一次
+/// 即时投递尝试没有完成；它不是最终投递失败。`LocalPolicy` 代表本机策略在
+/// 发送前已经确定该 payload 不可投递（例如过大）。`TerminalDelivery` 预留给
+/// 后续 pending/retry 耗尽后的最终失败事件。
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[serde(rename_all = "snake_case")]
+pub enum SyncFailureStage {
+    ImmediateSend,
+    LocalPolicy,
+    TerminalDelivery,
 }
 
 /// 配对失败原因（`pairing_failed` 专用）。
@@ -475,6 +526,7 @@ mod tests {
             peer_os: None,
             sync_latency_ms: None,
             failure_reason: None,
+            failure_stage: None,
         };
         assert_eq!(
             Event::SyncAttempted(sample_props.clone()).name(),
@@ -485,6 +537,17 @@ mod tests {
             "sync_succeeded"
         );
         assert_eq!(Event::SyncFailed(sample_props).name(), "sync_failed");
+        assert_eq!(
+            Event::SyncDeferred(SyncDeferredProps {
+                direction: Direction::Outbound,
+                payload_type: PayloadType::Text,
+                payload_size_bucket: PayloadSizeBucket::Lt1Kb,
+                peer_os: None,
+                defer_reason: SyncDeferReason::PeerKnownOffline,
+            })
+            .name(),
+            "sync_deferred"
+        );
     }
 
     // —— 区间边界 ————————————————————————————————————————————
@@ -591,6 +654,23 @@ mod tests {
                 "FailureReason::{reason:?}"
             );
         }
+
+        for (stage, expected) in [
+            (SyncFailureStage::ImmediateSend, "immediate_send"),
+            (SyncFailureStage::LocalPolicy, "local_policy"),
+            (SyncFailureStage::TerminalDelivery, "terminal_delivery"),
+        ] {
+            assert_eq!(
+                serde_json::to_value(stage).unwrap(),
+                expected,
+                "SyncFailureStage::{stage:?}"
+            );
+        }
+
+        assert_eq!(
+            serde_json::to_value(SyncDeferReason::PeerKnownOffline).unwrap(),
+            "peer_known_offline"
+        );
     }
 
     #[test]
@@ -687,15 +767,17 @@ mod tests {
             peer_os: Some(Os::Macos),
             sync_latency_ms: Some(42),
             failure_reason: None,
+            failure_stage: None,
         });
         let props = event.properties();
         assert_eq!(props.get("sync_latency_ms"), Some(&json!(42)));
         // None 字段必须从 wire 完全消失，避免 PostHog 误判为"显式 null"。
         assert!(!props.contains_key("failure_reason"));
+        assert!(!props.contains_key("failure_stage"));
     }
 
     #[test]
-    fn sync_failed_omits_latency() {
+    fn sync_failed_marks_failure_sampling_scope() {
         let event = Event::SyncFailed(SyncEventProps {
             direction: Direction::Inbound,
             payload_type: PayloadType::Image,
@@ -704,10 +786,33 @@ mod tests {
             peer_os: None,
             sync_latency_ms: None,
             failure_reason: Some(FailureReason::Timeout),
+            failure_stage: Some(SyncFailureStage::ImmediateSend),
         });
         let props = event.properties();
         assert_eq!(props.get("failure_reason"), Some(&json!("timeout")));
+        assert_eq!(props.get("failure_stage"), Some(&json!("immediate_send")));
         assert!(!props.contains_key("sync_latency_ms"));
+    }
+
+    #[test]
+    fn sync_deferred_uses_non_failure_reason_field() {
+        let event = Event::SyncDeferred(SyncDeferredProps {
+            direction: Direction::Outbound,
+            payload_type: PayloadType::Text,
+            payload_size_bucket: PayloadSizeBucket::Lt1Kb,
+            peer_os: None,
+            defer_reason: SyncDeferReason::PeerKnownOffline,
+        });
+        let props = event.properties();
+        assert_eq!(
+            props.get("defer_reason"),
+            Some(&json!("peer_known_offline"))
+        );
+        assert!(!props.contains_key("failure_reason"));
+        assert!(!props.contains_key("failure_stage"));
+        assert!(!props.contains_key("sync_latency_ms"));
+        // deferred 没有实际发送，不应携带 transport_type，避免 dashboard 误读。
+        assert!(!props.contains_key("transport_type"));
     }
 
     #[test]

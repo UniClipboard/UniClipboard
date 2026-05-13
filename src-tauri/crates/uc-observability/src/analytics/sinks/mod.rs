@@ -84,7 +84,7 @@ mod tests {
     };
     use super::super::events::{
         Direction, Event, FailureReason, PayloadSizeBucket, PayloadType, SyncEventProps,
-        TransportType,
+        SyncFailureStage, TransportType,
     };
     use super::*;
     use uuid::Uuid;
@@ -158,6 +158,7 @@ mod tests {
             peer_os: None,
             sync_latency_ms: None,
             failure_reason: Some(FailureReason::Timeout),
+            failure_stage: Some(SyncFailureStage::ImmediateSend),
         });
         let payload = build_event_payload(&event, &ctx);
 
@@ -169,6 +170,10 @@ mod tests {
         assert_eq!(
             payload.get("failure_reason").and_then(Value::as_str),
             Some("timeout")
+        );
+        assert_eq!(
+            payload.get("failure_stage").and_then(Value::as_str),
+            Some("immediate_send")
         );
         assert_eq!(
             payload.get("transport_type").and_then(Value::as_str),

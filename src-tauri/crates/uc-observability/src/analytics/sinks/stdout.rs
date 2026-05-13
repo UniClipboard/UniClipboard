@@ -190,11 +190,16 @@ mod tests {
                 peer_os: None,
                 sync_latency_ms: None,
                 failure_reason: Some(super::super::super::events::FailureReason::Timeout),
+                failure_stage: Some(super::super::super::events::SyncFailureStage::ImmediateSend),
             }));
         });
         assert!(captured.contains("\"event\":\"sync_failed\""), "{captured}");
         assert!(
             captured.contains("\"failure_reason\":\"timeout\""),
+            "{captured}"
+        );
+        assert!(
+            captured.contains("\"failure_stage\":\"immediate_send\""),
             "{captured}"
         );
         assert!(

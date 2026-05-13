@@ -23,6 +23,7 @@ on:
 
 permissions:
   contents: read
+  packages: read
   pull-requests: read
 
 # 拆 frontend / frontend-tests / rust 三个 job：
@@ -113,7 +114,11 @@ jobs:
     runs-on: ubuntu-latest
     # 复用 build-base-image.yml 维护的 bookworm 镜像,避免 PR job 每次访问
     # apt 源安装 webkit/gtk 依赖。镜像已包含 cargo check 所需系统包。
-    container: ghcr.io/uniclipboard/build-bookworm:latest
+    container:
+      image: ghcr.io/uniclipboard/build-bookworm:latest
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
 
     steps:
       - uses: actions/checkout@v4

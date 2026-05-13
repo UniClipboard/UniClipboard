@@ -20,8 +20,9 @@ on:
       - 'public/**'
       - '.github/workflows/pr-check.yml'
 
-# 拆 frontend / rust 两个 job 并行：
+# 拆 frontend / frontend-tests / rust 三个 job 并行：
 # - frontend: bun install + tsc + vite build (类型检查 + 产物构建)
+# - frontend-tests: bun install + vitest run (前端单元测试)
 # - rust: cargo check --workspace --locked (不再带 --all-targets --all-features，
 #   PR 阶段不为 test/bench/全 feature 编译。test 在 coverage.yml 跑)
 # 完整的 tauri build / 签名 / 公证 仍只在 release 工作流跑。
@@ -51,6 +52,32 @@ jobs:
 
       - name: Type check & build frontend
         run: bun run build
+
+  frontend-tests:
+    name: Frontend Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Cache Bun dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.bun/install/cache
+          key: ${{ runner.os }}-bun-${{ hashFiles('**/bun.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-bun-
+
+      - name: Install frontend dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Run frontend tests
+        run: bun run test -- --run
 
   rust:
     name: Rust Check

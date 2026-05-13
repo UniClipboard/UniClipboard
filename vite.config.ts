@@ -2,7 +2,7 @@ import { resolve } from 'path'
 import { sentryVitePlugin } from '@sentry/vite-plugin'
 import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
-import { defineConfig } from 'vite'
+import { defineConfig } from 'vitest/config'
 
 // @ts-expect-error process is a nodejs global
 const host = process.env.TAURI_DEV_HOST
@@ -81,5 +81,17 @@ export default defineConfig(async () => ({
     globals: true,
     setupFiles: './src/test/setup.ts',
     exclude: ['**/node_modules/**', '**/dist/**', '**/.worktrees/**', '**/worktrees/**'],
+    coverage: {
+      provider: 'v8',
+      reporter: ['text', 'lcov'],
+      reportsDirectory: './coverage/frontend',
+      include: ['src/**/*.{ts,tsx}'],
+      exclude: [
+        'src/**/*.d.ts',
+        'src/**/__tests__/**',
+        'src/**/*.{test,spec}.{ts,tsx}',
+        'src/test/**',
+      ],
+    },
   },
 }))

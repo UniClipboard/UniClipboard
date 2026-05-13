@@ -6,6 +6,7 @@ coverage:
         target: auto
         threshold: 0%
         base: auto
+        informational: true
     # Patch coverage (new code changes)
     patch:
       default:

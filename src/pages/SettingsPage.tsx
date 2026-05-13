@@ -9,6 +9,7 @@ import {
 import SettingsSidebar from '@/components/setting/SettingsSidebar'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { SidebarProvider, SidebarInset } from '@/components/ui/sidebar'
+import { usePlatform } from '@/hooks/usePlatform'
 import { useShortcut } from '@/hooks/useShortcut'
 import { useShortcutScope } from '@/hooks/useShortcutScope'
 import { SettingContentLayout } from '@/layouts'
@@ -57,6 +58,23 @@ function SettingsPage() {
   )
   const ActiveSection = activeCategoryConfig?.Component
 
+  const { isLinux, isTauri } = usePlatform()
+  const useFlatLayout = isLinux && isTauri
+
+  const content = (
+    <SidebarInset className="min-h-0 bg-transparent">
+      <ScrollArea className="flex-1 min-h-0">
+        <div className="p-6">
+          {ActiveSection && (
+            <SettingContentLayout>
+              <ActiveSection />
+            </SettingContentLayout>
+          )}
+        </div>
+      </ScrollArea>
+    </SidebarInset>
+  )
+
   return (
     <SidebarProvider
       style={
@@ -66,20 +84,18 @@ function SettingsPage() {
       }
       className="min-h-0 h-full"
     >
-      <SettingsSidebar activeCategory={activeCategory} onCategoryChange={handleCategoryChange} />
-      <InsetSurface className="mr-2 mb-2">
-        <SidebarInset className="min-h-0 bg-transparent">
-          <ScrollArea className="flex-1 min-h-0">
-            <div className="p-6">
-              {ActiveSection && (
-                <SettingContentLayout>
-                  <ActiveSection />
-                </SettingContentLayout>
-              )}
-            </div>
-          </ScrollArea>
-        </SidebarInset>
-      </InsetSurface>
+      <SettingsSidebar
+        activeCategory={activeCategory}
+        onCategoryChange={handleCategoryChange}
+        flat={useFlatLayout}
+      />
+      {useFlatLayout ? (
+        <main className="relative flex min-h-0 flex-1 flex-col overflow-hidden bg-card text-card-foreground">
+          {content}
+        </main>
+      ) : (
+        <InsetSurface className="mr-2 mb-2">{content}</InsetSurface>
+      )}
     </SidebarProvider>
   )
 }

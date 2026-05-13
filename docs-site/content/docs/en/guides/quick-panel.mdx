@@ -34,6 +34,7 @@ The panel is meant to be driven entirely by keyboard. The full set:
 | ------------------------ | --------------------------------------------- |
 | `↑` / `↓`                | Move selection                                |
 | `Enter`                  | Paste the selected item into the previous app |
+| Hold `Option` / `Alt`    | Request plain-text paste                      |
 | `Esc`                    | Close without pasting                         |
 | `Alt + Backspace`        | Remove the selected item from history         |
 | `Cmd` / `Ctrl` + `1`–`9` | Jump to items 1–9                             |
@@ -44,6 +45,13 @@ The panel is meant to be driven entirely by keyboard. The full set:
 `Enter` simulates a system paste, so the receiving app sees what looks
 like a regular Cmd/Ctrl+V — rich text and files land at the highest
 fidelity that the destination app understands.
+
+To paste plain text, hold `Option` / `Alt` while confirming an item:
+press `Enter`, click an item, or use a `Cmd` / `Ctrl` + number
+shortcut while the modifier is held. UniClipboard writes only the
+`text/plain` representation to the system clipboard first; if the item
+has no plain-text representation, it silently falls back to the normal
+multi-format paste.
 
 ## Inline preview
 

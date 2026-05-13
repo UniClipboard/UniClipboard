@@ -91,6 +91,7 @@ const baseSetting: Settings = {
   network: {
     allowRelayFallback: true,
     allowOverlayNetworkAddrs: false,
+    customRelayUrls: [],
   },
   quickPanel: {
     enabled: true,
@@ -215,6 +216,7 @@ describe('NetworkSection — Phase 95 集成', () => {
     expect(mockUpdate).toHaveBeenCalledWith({
       allowRelayFallback: false,
       allowOverlayNetworkAddrs: false,
+      customRelayUrls: [],
     })
   })
 
@@ -247,6 +249,7 @@ describe('NetworkSection — Phase 95 集成', () => {
     expect(mockUpdate).toHaveBeenLastCalledWith({
       allowRelayFallback: false,
       allowOverlayNetworkAddrs: false,
+      customRelayUrls: [],
     })
   })
 
@@ -390,6 +393,7 @@ describe('NetworkSection — Phase 95 集成', () => {
     expect(mockUpdate).toHaveBeenCalledWith({
       allowRelayFallback: true,
       allowOverlayNetworkAddrs: true,
+      customRelayUrls: [],
     })
   })
 
@@ -417,6 +421,7 @@ describe('NetworkSection — Phase 95 集成', () => {
     expect(mockUpdate).toHaveBeenCalledWith({
       allowRelayFallback: false,
       allowOverlayNetworkAddrs: true,
+      customRelayUrls: [],
     })
   })
 
@@ -427,6 +432,67 @@ describe('NetworkSection — Phase 95 集成', () => {
         name: /了解什么是虚拟网络地址|Learn what overlay network addresses/,
       })
     ).toBeInTheDocument()
+  })
+
+  it('Test 19: 自定义中继列表从 settings 渲染为逐项 URL 输入', async () => {
+    renderWithOverrides({
+      customRelayUrls: ['https://relay-a.example.com.', 'https://relay-b.example.com.'],
+    })
+    expect(
+      await screen.findByRole('textbox', { name: /自定义中继节点 1|Custom relay node 1/ })
+    ).toHaveValue('https://relay-a.example.com.')
+    expect(
+      screen.getByRole('textbox', { name: /自定义中继节点 2|Custom relay node 2/ })
+    ).toHaveValue('https://relay-b.example.com.')
+  })
+
+  it('Test 20: 添加自定义中继节点 — debounce 后随网络设置一起保存', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+    const mockUpdate = vi.fn().mockResolvedValue({ restartRequired: true })
+    setupSetting({ updateNetworkSetting: mockUpdate })
+
+    render(<NetworkSection />)
+    const firstInput = await screen.findByRole('textbox', {
+      name: /自定义中继节点 1|Custom relay node 1/,
+    })
+    await user.type(firstInput, 'https://relay-a.example.com.')
+    await user.click(screen.getByRole('button', { name: /添加中继节点|Add relay node/ }))
+    const secondInput = screen.getByRole('textbox', {
+      name: /自定义中继节点 2|Custom relay node 2/,
+    })
+    await user.type(secondInput, 'https://relay-b.example.com.')
+
+    await act(async () => {
+      vi.advanceTimersByTime(600)
+    })
+
+    expect(mockUpdate).toHaveBeenCalledTimes(1)
+    expect(mockUpdate).toHaveBeenCalledWith({
+      allowRelayFallback: true,
+      allowOverlayNetworkAddrs: false,
+      customRelayUrls: ['https://relay-a.example.com.', 'https://relay-b.example.com.'],
+    })
+  })
+
+  it('Test 21: 自定义中继 URL 非 http(s) 时不保存并显示 inline error', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+    const mockUpdate = vi.fn().mockResolvedValue({ restartRequired: true })
+    setupSetting({ updateNetworkSetting: mockUpdate })
+
+    render(<NetworkSection />)
+    const textbox = await screen.findByRole('textbox', {
+      name: /自定义中继节点 1|Custom relay node 1/,
+    })
+    await user.type(textbox, 'ftp://relay.example.com')
+
+    await act(async () => {
+      vi.advanceTimersByTime(600)
+    })
+
+    expect(mockUpdate).not.toHaveBeenCalled()
+    expect(screen.getByRole('alert').textContent).toMatch(/无效的中继 URL|Invalid relay URL/)
   })
 })
 

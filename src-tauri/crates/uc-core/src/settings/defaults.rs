@@ -234,12 +234,13 @@ impl Default for FileSyncSettings {
 }
 
 impl Default for NetworkSettings {
-    /// Returns default `NetworkSettings` allowing iroh to fall back to public
-    /// relays when direct connectivity fails (existing v0.6.x behavior).
+    /// 返回默认 `NetworkSettings`：直连失败时允许 iroh 回退到公共 relay
+    /// （保持既有 v0.6.x 行为）。
     ///
-    /// Defaults:
+    /// 默认值：
     /// - `allow_relay_fallback`: true
     /// - `allow_overlay_network_addrs`: false
+    /// - `custom_relay_urls`: 空列表（沿用 iroh 默认中继）
     ///
     // 默认 true = 允许 fallback。
     // 改成 false 会让所有跨网段老用户突然离线，属于 breaking change。
@@ -248,6 +249,7 @@ impl Default for NetworkSettings {
         Self {
             allow_relay_fallback: true,
             allow_overlay_network_addrs: false,
+            custom_relay_urls: Vec::new(),
         }
     }
 }
@@ -411,6 +413,41 @@ mod tests {
         assert!(!s.network.allow_overlay_network_addrs);
     }
 
+    /// 默认值：空列表继续使用 iroh 默认中继，不改变老用户行为。
+    #[test]
+    fn network_settings_default_uses_default_relays() {
+        let n = NetworkSettings::default();
+        assert!(
+            n.custom_relay_urls.is_empty(),
+            "NetworkSettings::default().custom_relay_urls MUST be empty"
+        );
+    }
+
+    /// 老 settings.json 缺 `custom_relay_urls` 字段时回填空列表。
+    #[test]
+    fn old_settings_json_without_custom_relay_urls_falls_back_to_default() {
+        let json = r#"{ "network": { "allow_relay_fallback": true, "allow_overlay_network_addrs": false } }"#;
+        let s: Settings = serde_json::from_str(json).expect("parse old network section");
+        assert!(s.network.custom_relay_urls.is_empty());
+    }
+
+    /// 显式配置的自定义 relay URL 必须保留原始字符串，具体 iroh 解析在
+    /// bootstrap/infra 边界统一完成。
+    #[test]
+    fn explicit_custom_relay_urls_are_preserved() {
+        let json = r#"{
+            "network": {
+                "allow_relay_fallback": true,
+                "custom_relay_urls": ["https://relay.example.com."]
+            }
+        }"#;
+        let s: Settings = serde_json::from_str(json).expect("parse custom relay urls");
+        assert_eq!(
+            s.network.custom_relay_urls,
+            vec!["https://relay.example.com.".to_string()]
+        );
+    }
+
     // ============================================================
     // Issue #581 回归测试：旧版本 settings.json 在升级后被新版本读取时,
     // 缺失字段必须自动回退到 `Default::default()` 的业务默认值,
@@ -544,6 +581,7 @@ mod tests {
         assert_eq!(s.file_sync, FileSyncSettings::default());
         assert!(s.network.allow_relay_fallback);
         assert!(!s.network.allow_overlay_network_addrs);
+        assert!(s.network.custom_relay_urls.is_empty());
         assert!(!s.mobile_sync.enabled);
     }
 

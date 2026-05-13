@@ -117,10 +117,14 @@ export interface FileSyncSettings {
  * `allowOverlayNetworkAddrs` 控制是否把 VPN/overlay 类虚拟网卡 IP（CGNAT
  * 100.64.0.0/10、Tailscale ULA fd7a:115c:a1e0::/48）作为 iroh 直连候选。
  * 默认 `false`。专业用户在两端都接入同一 VPN 时可开启。
+ *
+ * `customRelayUrls` 为空时沿用 iroh 默认中继；非空时只使用这些自定义
+ * relay URL。LAN-only 模式开启时该列表会保留但不生效。
  */
 export interface NetworkSettings {
   allowRelayFallback: boolean
   allowOverlayNetworkAddrs: boolean
+  customRelayUrls: string[]
 }
 
 /**

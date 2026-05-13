@@ -25,7 +25,7 @@ use iroh::address_lookup::mdns::MdnsAddressLookup;
 use iroh::address_lookup::AddrFilter;
 use iroh::endpoint::{presets, QuicTransportConfig, VarInt};
 use iroh::protocol::{Router, RouterBuilder};
-use iroh::{Endpoint, RelayMode, TransportAddr};
+use iroh::{Endpoint, RelayMode, RelayUrl, TransportAddr};
 use noq_proto::congestion::BbrConfig;
 use tracing::{debug, info, instrument, warn};
 
@@ -185,6 +185,10 @@ pub struct IrohNodeConfig {
     /// `EndpointAddr` 注入）。production `false` 保持完整 N0 行为
     /// （pkarr publish + DNS lookup + relay fallback）。
     pub disable_relays: bool,
+    /// 用户配置的 iroh relay URL 列表。空列表表示沿用 iroh 默认 relay；
+    /// 非空时在 `disable_relays = false` 路径下翻译为 `RelayMode::Custom`。
+    /// `disable_relays = true` 时该列表被保留但不参与 endpoint bind。
+    pub custom_relay_urls: Vec<String>,
     /// If true, allow VPN / overlay-network virtual NIC addresses (CGNAT
     /// `100.64.0.0/10`, Tailscale ULA `fd7a:115c:a1e0::/48`) to flow through
     /// the address filter as direct-connection candidates. Default `false`
@@ -352,6 +356,48 @@ fn build_addr_filter(allow_overlay: bool) -> AddrFilter {
     AddrFilter::new(move |addrs: &Vec<TransportAddr>| apply_addr_filter(addrs, allow_overlay))
 }
 
+fn relay_mode_from_config(config: &IrohNodeConfig) -> Result<RelayMode, IrohNodeError> {
+    if config.disable_relays {
+        return Ok(RelayMode::Disabled);
+    }
+
+    if config.custom_relay_urls.is_empty() {
+        return Ok(RelayMode::Default);
+    }
+
+    let mut relay_urls = Vec::with_capacity(config.custom_relay_urls.len());
+    for raw in &config.custom_relay_urls {
+        let trimmed = raw.trim();
+        if trimmed.is_empty() {
+            return Err(IrohNodeError::InvalidRelayUrl {
+                value: raw.clone(),
+                message: "relay URL must not be empty".to_string(),
+            });
+        }
+        let parsed = trimmed
+            .parse::<RelayUrl>()
+            .map_err(|err| IrohNodeError::InvalidRelayUrl {
+                value: raw.clone(),
+                message: err.to_string(),
+            })?;
+        if parsed.scheme() != "http" && parsed.scheme() != "https" {
+            return Err(IrohNodeError::InvalidRelayUrl {
+                value: raw.clone(),
+                message: "relay URL scheme must be http or https".to_string(),
+            });
+        }
+        if parsed.host_str().is_none() {
+            return Err(IrohNodeError::InvalidRelayUrl {
+                value: raw.clone(),
+                message: "relay URL must include a host".to_string(),
+            });
+        }
+        relay_urls.push(parsed);
+    }
+
+    Ok(RelayMode::custom(relay_urls))
+}
+
 /// Pitfall 3 结构性防御：进程级单次 bind 守护（**production-only**）。
 ///
 /// `iroh::Endpoint::builder().relay_mode(...).bind()` 完成后 `RelayMode` 被冻结
@@ -422,11 +468,7 @@ impl IrohNodeBuilder {
             .expect("IrohNodeBuilder::bind called more than once in the same process — runtime hot-swap of LAN-only Mode is explicitly out of scope (Phase 94 / Pitfall 3); see .planning/research/PITFALLS.md");
 
         let secret = identity_store.ensure_secret_key()?;
-        let relay_mode = if config.disable_relays {
-            RelayMode::Disabled
-        } else {
-            RelayMode::Default
-        };
+        let relay_mode = relay_mode_from_config(&config)?;
         // Snapshot the overlay flag before consuming `config` into `Self`.
         let allow_overlay = config.allow_overlay_network_addrs;
         info!(
@@ -489,6 +531,7 @@ impl IrohNodeBuilder {
             endpoint_id = %endpoint.id().fmt_short(),
             disable_relays = config.disable_relays,
             allow_overlay_network_addrs = config.allow_overlay_network_addrs,
+            custom_relay_count = config.custom_relay_urls.len(),
             rendezvous_override = config.rendezvous_base_url.is_some(),
             "iroh node bound; ready to install transport handlers"
         );
@@ -830,6 +873,9 @@ pub enum IrohNodeError {
 
     #[error("failed to initialize iroh blob store: {0}")]
     BlobStoreInit(String),
+
+    #[error("invalid custom iroh relay URL `{value}`: {message}")]
+    InvalidRelayUrl { value: String, message: String },
 
     #[error(transparent)]
     Identity(#[from] LocalIdentityError),
@@ -1325,5 +1371,75 @@ mod tests {
         assert!(ips.iter().any(|s| s == "fd7a:115c:a1e0::1"));
         assert!(!ips.iter().any(|s| s == "198.18.0.1"));
         assert!(!ips.iter().any(|s| s == "169.254.0.5"));
+    }
+
+    #[test]
+    fn relay_mode_empty_custom_urls_uses_default_when_enabled() {
+        let cfg = IrohNodeConfig {
+            disable_relays: false,
+            custom_relay_urls: Vec::new(),
+            ..Default::default()
+        };
+        let mode = relay_mode_from_config(&cfg).expect("relay mode");
+        assert!(matches!(mode, RelayMode::Default));
+    }
+
+    #[test]
+    fn relay_mode_custom_urls_builds_custom_map() {
+        let cfg = IrohNodeConfig {
+            disable_relays: false,
+            custom_relay_urls: vec![
+                "https://relay-a.example.com.".to_string(),
+                "https://relay-b.example.com.".to_string(),
+            ],
+            ..Default::default()
+        };
+        let mode = relay_mode_from_config(&cfg).expect("relay mode");
+        match mode {
+            RelayMode::Custom(map) => {
+                let urls = map.urls::<Vec<_>>();
+                assert_eq!(urls.len(), 2);
+                assert!(urls
+                    .iter()
+                    .any(|url| url.as_str() == "https://relay-a.example.com./"));
+                assert!(urls
+                    .iter()
+                    .any(|url| url.as_str() == "https://relay-b.example.com./"));
+            }
+            other => panic!("expected custom relay mode, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn relay_mode_lan_only_ignores_custom_urls() {
+        let cfg = IrohNodeConfig {
+            disable_relays: true,
+            custom_relay_urls: vec!["https://relay.example.com.".to_string()],
+            ..Default::default()
+        };
+        let mode = relay_mode_from_config(&cfg).expect("relay mode");
+        assert!(matches!(mode, RelayMode::Disabled));
+    }
+
+    #[test]
+    fn relay_mode_rejects_invalid_custom_url() {
+        let cfg = IrohNodeConfig {
+            disable_relays: false,
+            custom_relay_urls: vec!["not a url".to_string()],
+            ..Default::default()
+        };
+        let err = relay_mode_from_config(&cfg).expect_err("invalid relay url");
+        assert!(matches!(err, IrohNodeError::InvalidRelayUrl { .. }));
+    }
+
+    #[test]
+    fn relay_mode_rejects_custom_url_with_unsupported_scheme() {
+        let cfg = IrohNodeConfig {
+            disable_relays: false,
+            custom_relay_urls: vec!["ftp://relay.example.com".to_string()],
+            ..Default::default()
+        };
+        let err = relay_mode_from_config(&cfg).expect_err("invalid relay scheme");
+        assert!(matches!(err, IrohNodeError::InvalidRelayUrl { .. }));
     }
 }

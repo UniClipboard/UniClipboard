@@ -79,7 +79,13 @@ mDNS 局域网发现 + 直连（LAN / IPv6）路径：
 
 ### 能自托管 rendezvous / 中继吗？
 
-底层 [iroh](https://www.iroh.computer) 支持自定义 rendezvous + relay 集群，但 UniClipboard 当前不暴露这两个开关。如果你确实需要这条路（合规、内网隔离），请先在 issue 区开一个 use case，再讨论怎么暴露配置。
+UniClipboard 现在在 **设置 → 网络 → 自定义中继节点** 暴露自定义
+iroh **relay** URL。留空时继续使用 iroh 默认中继；每行填一个 relay
+URL 后，重启 daemon 即可只使用这些自定义中继节点。
+
+自定义 rendezvous discovery 仍未暴露。首次配对仍会使用 UniClipboard
+的 rendezvous 服务；跨网络 NodeId 发现仍走当前 iroh discovery 路径，除非
+你开启了仅局域网模式。
 
 ## 多设备与多空间
 

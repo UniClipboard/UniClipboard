@@ -98,8 +98,9 @@ async fn update_settings_handler(
     let app = state.app_facade_or_error()?;
 
     // D-D1：`network` 段非空（任何字段变更）触发 restart_required = true。
-    // 当前 NetworkSettings 仅含 allow_relay_fallback；后续若加字段，仍走 is_some()
-    // 兜底。其它字段（general / sync 等）不影响该信号 — 它们不需要重启。
+    // network 段里的 iroh 相关字段都是 endpoint bind-time 常量，仍走
+    // `payload.network.is_some()` 统一触发重启。其它字段（general / sync 等）
+    // 不影响该信号 — 它们不需要重启。
     //
     // `general.telemetry_enabled` 历史曾通过这里触发 restart（260505-17q），后于
     // 260505-1np 改成运行时 gate（见 uc-observability::set_telemetry_enabled），
@@ -153,6 +154,7 @@ fn settings_error_to_api(op: &'static str, err: app_settings::SettingsFacadeErro
             "save",
             ApiError::internal(format!("failed to save settings: {msg}")),
         ),
+        E::Invalid(msg) => ("invalid", ApiError::bad_request(msg)),
     };
     log_facade_failure("settings", op, variant, api.status, &api.message);
     api
@@ -237,6 +239,7 @@ pub fn settings_patch_from_dto(patch: SettingsPatchDto) -> app_settings::Setting
             .map(|network| app_settings::NetworkSettingsPatch {
                 allow_relay_fallback: network.allow_relay_fallback,
                 allow_overlay_network_addrs: network.allow_overlay_network_addrs,
+                custom_relay_urls: network.custom_relay_urls,
             }),
         quick_panel: patch
             .quick_panel
@@ -311,6 +314,7 @@ pub fn settings_view_to_dto(value: app_settings::SettingsView) -> SettingsDto {
         network: NetworkSettingsDto {
             allow_relay_fallback: value.network.allow_relay_fallback,
             allow_overlay_network_addrs: value.network.allow_overlay_network_addrs,
+            custom_relay_urls: value.network.custom_relay_urls,
         },
         quick_panel: QuickPanelSettingsDto {
             enabled: value.quick_panel.enabled,

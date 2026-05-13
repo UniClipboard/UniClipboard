@@ -152,10 +152,14 @@ export interface FileSyncSettings {
  *
  * `allowOverlayNetworkAddrs` 为正向同名字段（UI checked === 字段值），
  * 控制是否把 VPN/overlay 类虚拟网卡 IP 作为 iroh 直连候选。
+ *
+ * `customRelayUrls` 为空时使用 iroh 默认中继；非空时只使用这些自定义
+ * relay URL。LAN-only 模式开启时列表保留但不生效。
  */
 export interface NetworkSettings {
   allowRelayFallback: boolean
   allowOverlayNetworkAddrs: boolean
+  customRelayUrls: string[]
 }
 
 /**

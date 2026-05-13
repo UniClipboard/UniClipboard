@@ -4,7 +4,9 @@ use tracing::instrument;
 
 use uc_core::ports::SettingsPort;
 
-use crate::facade::settings::models::{apply_settings_patch, SettingsPatch, SettingsView};
+use crate::facade::settings::models::{
+    apply_settings_patch, validate_settings, SettingsPatch, SettingsView,
+};
 
 #[derive(Debug, thiserror::Error)]
 pub enum SettingsFacadeError {
@@ -12,6 +14,8 @@ pub enum SettingsFacadeError {
     Load(String),
     #[error("failed to save settings: {0}")]
     Save(String),
+    #[error("invalid settings: {0}")]
+    Invalid(String),
 }
 
 pub struct SettingsFacade {
@@ -40,6 +44,7 @@ impl SettingsFacade {
             .await
             .map_err(|err| SettingsFacadeError::Load(err.to_string()))?;
         let merged = apply_settings_patch(existing, patch);
+        validate_settings(&merged).map_err(SettingsFacadeError::Invalid)?;
         self.settings
             .save(&merged)
             .await
@@ -126,5 +131,22 @@ mod tests {
 
         let err = facade.update(SettingsPatch::default()).await.unwrap_err();
         assert!(matches!(err, SettingsFacadeError::Save(_)));
+    }
+
+    #[tokio::test]
+    async fn update_rejects_invalid_custom_relay_url() {
+        let facade = facade_with(Settings::default());
+        let err = facade
+            .update(SettingsPatch {
+                network: Some(crate::facade::settings::NetworkSettingsPatch {
+                    custom_relay_urls: Some(vec!["ftp://relay.example.com".to_string()]),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            })
+            .await
+            .unwrap_err();
+
+        assert!(matches!(err, SettingsFacadeError::Invalid(_)));
     }
 }

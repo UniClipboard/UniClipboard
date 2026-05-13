@@ -122,10 +122,15 @@ passphrase — no third-party identity provider involved. See
 
 ### Can I self-host rendezvous / relay?
 
-The underlying [iroh](https://www.iroh.computer) stack supports custom
-rendezvous and relay clusters, but UniClipboard doesn't expose those
-toggles today. If you have a real need (compliance, isolated network),
-open a use-case issue first so we can scope the configuration surface.
+UniClipboard exposes custom iroh **relay** URLs in
+**Settings → Network → Custom relay nodes**. Leave the list empty to
+use the default iroh relays, or enter one relay URL per line to use
+only your own relay nodes. Restart the daemon after changing the list.
+
+Custom rendezvous discovery is still not exposed. First-time pairing
+continues to use UniClipboard's rendezvous service, and cross-network
+NodeId discovery still uses the configured iroh discovery path unless
+LAN-only mode is enabled.
 
 ## Multi-device & multi-space
 

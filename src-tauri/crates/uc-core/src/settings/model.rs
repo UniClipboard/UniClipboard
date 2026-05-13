@@ -249,6 +249,7 @@ pub struct FileSyncSettings {
 /// `#[serde(default)]` 让缺字段时回退到 `Default::default()`：
 /// - `allow_relay_fallback = true`（允许 fallback，breaking change 警惕）
 /// - `allow_overlay_network_addrs = false`（默认过滤虚拟网卡候选）
+/// - `custom_relay_urls = []`（空列表继续使用 iroh 默认中继）
 ///
 /// 修改默认值前请先 grep `LAN-only Mode` 文档与 changelog。
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -272,6 +273,18 @@ pub struct NetworkSettings {
     ///
     /// 修改后需重启 daemon 生效（iroh endpoint bind-time 常量）。
     pub allow_overlay_network_addrs: bool,
+
+    /// 自定义 iroh relay 节点 URL 列表。
+    ///
+    /// 空列表表示沿用 iroh 默认 n0 relay；非空时由 bootstrap/infra 翻译为
+    /// `RelayMode::Custom`，只使用这些用户配置的 relay 节点。仅在
+    /// `allow_relay_fallback = true` 时生效；LAN-only 模式下 relay 整体禁用，
+    /// 但列表仍会被保留，方便用户稍后重新开启 relay fallback。
+    ///
+    /// 每个值应为 relay 的 HTTP(S) URL，例如
+    /// `https://relay.example.com.`。修改后需重启 daemon 生效（iroh endpoint
+    /// bind-time 常量）。
+    pub custom_relay_urls: Vec<String>,
 }
 
 // ======================================================================

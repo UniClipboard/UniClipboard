@@ -32,15 +32,20 @@ use crate::space_setup::IrohNodeConfig;
 ///
 /// `allow_overlay_network_addrs` 为正向同名字段，直接传递不取反。
 ///
+/// `custom_relay_urls` 为正向同名列表，空列表表示继续使用 iroh 默认 relay；
+/// 非空列表由 infra 翻译为 `RelayMode::Custom`。
+///
 /// 参数：
 /// - `allow_relay_fallback`：业务正向语义，由 `uc-core::Settings.network` 透传
 /// - `allow_overlay_network_addrs`：业务正向语义，由 `uc-core::Settings.network`
 ///   透传；专业用户开关，控制是否把 VPN/overlay 类虚拟网卡 IP 作为 iroh 直连候选
+/// - `custom_relay_urls`：用户配置的 relay URL 列表；空列表沿用默认 relay
 /// - `rendezvous_base_url`：`None` 走 `RENDEZVOUS_BASE_URL` 默认；production 调
 ///   用方传 `None`；集成测试覆盖 override
 pub(crate) fn relay_policy_to_iroh_config(
     allow_relay_fallback: bool,
     allow_overlay_network_addrs: bool,
+    custom_relay_urls: Vec<String>,
     rendezvous_base_url: Option<String>,
 ) -> IrohNodeConfig {
     IrohNodeConfig {
@@ -48,6 +53,7 @@ pub(crate) fn relay_policy_to_iroh_config(
         disable_relays: !allow_relay_fallback,
         // ↓ 正向同名字段，直接搬运不取反。
         allow_overlay_network_addrs,
+        custom_relay_urls,
         rendezvous_base_url,
     }
 }
@@ -61,7 +67,7 @@ mod tests {
     /// 单方向断言无法捕捉"代码错把恒等当取反"或"反向写漏"两类 bug。
     #[test]
     fn allow_true_means_disable_false() {
-        let cfg = relay_policy_to_iroh_config(true, false, None);
+        let cfg = relay_policy_to_iroh_config(true, false, Vec::new(), None);
         assert!(!cfg.disable_relays, "allow=true MUST produce disable=false");
         assert!(cfg.rendezvous_base_url.is_none());
     }
@@ -69,7 +75,7 @@ mod tests {
     /// Pitfall 1 防御 truth-table（反向）：allow=false 必须导致 disable=true。
     #[test]
     fn allow_false_means_disable_true() {
-        let cfg = relay_policy_to_iroh_config(false, false, None);
+        let cfg = relay_policy_to_iroh_config(false, false, Vec::new(), None);
         assert!(cfg.disable_relays, "allow=false MUST produce disable=true");
         assert!(cfg.rendezvous_base_url.is_none());
     }
@@ -77,21 +83,21 @@ mod tests {
     /// rendezvous override 透明传递（产线 None；集成测试 Some(url)）。
     #[test]
     fn rendezvous_override_passes_through() {
-        let cfg = relay_policy_to_iroh_config(true, false, Some("http://test".into()));
+        let cfg = relay_policy_to_iroh_config(true, false, Vec::new(), Some("http://test".into()));
         assert_eq!(cfg.rendezvous_base_url, Some("http://test".into()));
     }
 
     /// allow_overlay_network_addrs 正向同名搬运（不取反）。
     #[test]
     fn overlay_addrs_true_passes_through() {
-        let cfg = relay_policy_to_iroh_config(true, true, None);
+        let cfg = relay_policy_to_iroh_config(true, true, Vec::new(), None);
         assert!(cfg.allow_overlay_network_addrs);
     }
 
     /// allow_overlay_network_addrs=false 默认搬运。
     #[test]
     fn overlay_addrs_false_passes_through() {
-        let cfg = relay_policy_to_iroh_config(true, false, None);
+        let cfg = relay_policy_to_iroh_config(true, false, Vec::new(), None);
         assert!(!cfg.allow_overlay_network_addrs);
     }
 
@@ -99,8 +105,23 @@ mod tests {
     /// 与 allow_overlay_network_addrs 无关。
     #[test]
     fn switches_are_independent() {
-        let cfg = relay_policy_to_iroh_config(false, true, None);
+        let cfg = relay_policy_to_iroh_config(false, true, Vec::new(), None);
         assert!(cfg.disable_relays, "LAN-only on, overlay on");
         assert!(cfg.allow_overlay_network_addrs);
+    }
+
+    /// custom_relay_urls 正向列表搬运，空列表/非空列表都不参与取反。
+    #[test]
+    fn custom_relay_urls_pass_through() {
+        let cfg = relay_policy_to_iroh_config(
+            true,
+            false,
+            vec!["https://relay.example.com.".to_string()],
+            None,
+        );
+        assert_eq!(
+            cfg.custom_relay_urls,
+            vec!["https://relay.example.com.".to_string()]
+        );
     }
 }

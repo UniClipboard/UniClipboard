@@ -315,8 +315,23 @@
             }
           }
         },
+        "customRelays": {
+          "label": "自定义中继节点",
+          "description": "添加一个或多个 iroh relay URL。留空使用默认中继；开启 LAN-only 时此列表会保留但不生效。重启后生效。",
+          "placeholder": "https://relay.example.com.",
+          "addButton": "添加中继节点",
+          "itemAriaLabel": "自定义中继节点 {{index}}",
+          "removeAriaLabel": "移除中继节点 {{index}}",
+          "saveError": "保存自定义中继失败：{{message}}。已恢复到上一次的设置。",
+          "invalidUrl": "无效的中继 URL：{{url}}。请输入 http 或 https URL。"
+        },
         "restartBanner": {
-          "message": "需要重启应用以使 LAN-only 模式更改生效。"
+          "message": "需要重启应用以使网络设置更改生效。",
+          "restartButton": "立即重启",
+          "restartingButton": "正在重启…",
+          "dismissAriaLabel": "收起重启提示",
+          "errorMessage": "自动重启失败，请手动退出并重新打开应用以使更改生效。",
+          "retryButton": "重试"
         }
       },
       "storage": {

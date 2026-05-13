@@ -245,12 +245,17 @@ pub struct FileSyncSettingsDto {
 /// `allow_overlay_network_addrs` 控制是否把 VPN/overlay 类虚拟网卡 IP（CGNAT
 /// 100.64.0.0/10、Tailscale ULA fd7a:115c:a1e0::/48）作为 iroh 直连候选发布
 /// 给对端。默认 `false`（过滤）。专业用户在两端都接入同一 VPN 时可开启。
+///
+/// `custom_relay_urls` 为空时继续使用 iroh 默认 relay；非空时只使用这些
+/// 用户配置的 relay URL。LAN-only 模式关闭 relay 时该列表保留但不生效。
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct NetworkSettingsDto {
     pub allow_relay_fallback: bool,
     #[serde(default)]
     pub allow_overlay_network_addrs: bool,
+    #[serde(default)]
+    pub custom_relay_urls: Vec<String>,
 }
 
 /// 快捷面板（Spotlight 风格）功能开关 DTO。
@@ -398,6 +403,7 @@ pub struct FileSyncSettingsPatchDto {
 pub struct NetworkSettingsPatchDto {
     pub allow_relay_fallback: Option<bool>,
     pub allow_overlay_network_addrs: Option<bool>,
+    pub custom_relay_urls: Option<Vec<String>>,
 }
 
 /// 快捷面板字段 patch DTO 镜像 — `null` = 不修改。
@@ -592,6 +598,7 @@ impl From<core::NetworkSettings> for NetworkSettingsDto {
         Self {
             allow_relay_fallback: value.allow_relay_fallback,
             allow_overlay_network_addrs: value.allow_overlay_network_addrs,
+            custom_relay_urls: value.custom_relay_urls,
         }
     }
 }
@@ -699,29 +706,35 @@ mod network_dto_tests {
         let dto = NetworkSettingsDto {
             allow_relay_fallback: true,
             allow_overlay_network_addrs: false,
+            custom_relay_urls: Vec::new(),
         };
         let json = serde_json::to_string(&dto).expect("serialize");
         assert_eq!(
             json,
-            r#"{"allowRelayFallback":true,"allowOverlayNetworkAddrs":false}"#
+            r#"{"allowRelayFallback":true,"allowOverlayNetworkAddrs":false,"customRelayUrls":[]}"#
         );
     }
 
     #[test]
     fn dto_deserializes_camel_case_wire() {
-        let json = r#"{"allowRelayFallback":false,"allowOverlayNetworkAddrs":true}"#;
+        let json = r#"{"allowRelayFallback":false,"allowOverlayNetworkAddrs":true,"customRelayUrls":["https://relay.example.com."]}"#;
         let dto: NetworkSettingsDto = serde_json::from_str(json).expect("deserialize");
         assert!(!dto.allow_relay_fallback);
         assert!(dto.allow_overlay_network_addrs);
+        assert_eq!(
+            dto.custom_relay_urls,
+            vec!["https://relay.example.com.".to_string()]
+        );
     }
 
-    /// 旧 wire（无 allowOverlayNetworkAddrs 字段）仍可反序列化，回填 false。
+    /// 旧 wire（无 allowOverlayNetworkAddrs/customRelayUrls 字段）仍可反序列化。
     #[test]
     fn dto_deserializes_legacy_wire_without_overlay_field() {
         let json = r#"{"allowRelayFallback":true}"#;
         let dto: NetworkSettingsDto = serde_json::from_str(json).expect("deserialize legacy");
         assert!(dto.allow_relay_fallback);
         assert!(!dto.allow_overlay_network_addrs);
+        assert!(dto.custom_relay_urls.is_empty());
     }
 
     #[test]
@@ -729,6 +742,7 @@ mod network_dto_tests {
         let core_value = core::NetworkSettings {
             allow_relay_fallback: false,
             allow_overlay_network_addrs: true,
+            custom_relay_urls: vec!["https://relay.example.com.".to_string()],
         };
         let dto: NetworkSettingsDto = core_value.into();
         assert!(
@@ -736,6 +750,10 @@ mod network_dto_tests {
             "DTO MUST NOT invert semantics (Pitfall 1)"
         );
         assert!(dto.allow_overlay_network_addrs);
+        assert_eq!(
+            dto.custom_relay_urls,
+            vec!["https://relay.example.com.".to_string()]
+        );
     }
 
     #[test]
@@ -777,6 +795,16 @@ mod network_dto_tests {
         assert_eq!(dto.allow_relay_fallback, Some(false));
     }
 
+    #[test]
+    fn patch_dto_with_custom_relay_urls() {
+        let json = r#"{"customRelayUrls":["https://relay.example.com."]}"#;
+        let dto: NetworkSettingsPatchDto = serde_json::from_str(json).expect("deserialize");
+        assert_eq!(
+            dto.custom_relay_urls,
+            Some(vec!["https://relay.example.com.".to_string()])
+        );
+    }
+
     /// checker BLOCKER 5：`SettingsPatchDto::default()` 全字段 None，
     /// 让下游 plan 04 测试用 `..Default::default()` 简化 baseline 构造。
     #[test]
@@ -794,6 +822,7 @@ mod network_dto_tests {
 
         let net_patch = NetworkSettingsPatchDto::default();
         assert!(net_patch.allow_relay_fallback.is_none());
+        assert!(net_patch.custom_relay_urls.is_none());
 
         let quick_patch = QuickPanelSettingsPatchDto::default();
         assert!(quick_patch.enabled.is_none());

@@ -110,15 +110,16 @@ For the underlying key model, see
 ## Network
 
 <Feature since="0.7.0">
-  Both **LAN-only mode** and **Allow overlay network addrs** are new network-side knobs introduced
-  in 0.7. They both require a daemon restart to take effect — the **Restart required** banner is
-  also new and surfaces inline above whichever fields you changed.
+  **LAN-only mode**, **Allow overlay network addrs**, and **Custom relay nodes** are network-side
+  knobs introduced in 0.7. They require a daemon restart to take effect — the **Restart required**
+  banner surfaces inline above whichever fields you changed.
 </Feature>
 
 | Setting                     | What it does                                                                                                                                                                                                                                                                                   |
 | --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | LAN-only mode               | Force-disables encrypted relay; off-LAN peers become unreachable.                                                                                                                                                                                                                              |
 | Allow overlay network addrs | When on, Tailscale CGNAT (`100.64.0.0/10`) and IPv6 ULA (`fd7a:115c:a1e0::/48`) addresses are included in invitations and the locally-advertised candidate set; when off, only physical NICs are. Clash TUN fake-ip (`198.18.0.0/15`) and IPv4 link-local are always filtered with no opt-out. |
+| Custom relay nodes          | One iroh relay URL per line. Empty = default relays; non-empty = use only those relay nodes.                                                                                                                                                                                                   |
 
 Either change shows a banner saying the daemon needs to restart. Click
 `Apply & restart` to commit. The system tray icon also reflects the

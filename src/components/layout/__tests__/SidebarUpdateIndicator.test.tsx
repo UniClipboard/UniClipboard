@@ -57,6 +57,7 @@ const baseSetting: Settings = {
   network: {
     allowRelayFallback: true,
     allowOverlayNetworkAddrs: false,
+    customRelayUrls: [],
   },
   quickPanel: {
     enabled: true,

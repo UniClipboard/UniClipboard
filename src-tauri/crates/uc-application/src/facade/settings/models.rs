@@ -149,6 +149,7 @@ pub struct FileSyncSettingsView {
 pub struct NetworkSettingsView {
     pub allow_relay_fallback: bool,
     pub allow_overlay_network_addrs: bool,
+    pub custom_relay_urls: Vec<String>,
 }
 
 /// 快捷面板功能开关业务镜像。承载用户对"是否启用快捷面板"这一偏好；
@@ -261,6 +262,7 @@ pub struct FileSyncSettingsPatch {
 pub struct NetworkSettingsPatch {
     pub allow_relay_fallback: Option<bool>,
     pub allow_overlay_network_addrs: Option<bool>,
+    pub custom_relay_urls: Option<Vec<String>>,
 }
 
 /// 快捷面板字段 patch 镜像 —— `None` = 不修改。
@@ -505,6 +507,7 @@ impl From<core::Settings> for SettingsView {
             network: NetworkSettingsView {
                 allow_relay_fallback: value.network.allow_relay_fallback,
                 allow_overlay_network_addrs: value.network.allow_overlay_network_addrs,
+                custom_relay_urls: value.network.custom_relay_urls,
             },
             quick_panel: QuickPanelSettingsView {
                 enabled: value.quick_panel.enabled,
@@ -657,6 +660,9 @@ pub(crate) fn apply_settings_patch(
         if let Some(v) = network.allow_overlay_network_addrs {
             existing.network.allow_overlay_network_addrs = v;
         }
+        if let Some(v) = network.custom_relay_urls {
+            existing.network.custom_relay_urls = normalize_relay_urls(v);
+        }
     }
 
     if let Some(quick_panel) = patch.quick_panel {
@@ -666,6 +672,36 @@ pub(crate) fn apply_settings_patch(
     }
 
     existing
+}
+
+fn normalize_relay_urls(urls: Vec<String>) -> Vec<String> {
+    urls.into_iter()
+        .map(|url| url.trim().to_string())
+        .filter(|url| !url.is_empty())
+        .collect()
+}
+
+pub(crate) fn validate_settings(settings: &core::Settings) -> Result<(), String> {
+    validate_custom_relay_urls(&settings.network.custom_relay_urls)
+}
+
+fn validate_custom_relay_urls(urls: &[String]) -> Result<(), String> {
+    for raw in urls {
+        let url = url::Url::parse(raw)
+            .map_err(|err| format!("invalid custom relay URL `{raw}`: {err}"))?;
+        let scheme = url.scheme();
+        if scheme != "http" && scheme != "https" {
+            return Err(format!(
+                "invalid custom relay URL `{raw}`: scheme must be http or https"
+            ));
+        }
+        if url.host_str().is_none() {
+            return Err(format!(
+                "invalid custom relay URL `{raw}`: host is required"
+            ));
+        }
+    }
+    Ok(())
 }
 
 fn apply_content_types_patch(target: &mut core::ContentTypes, patch: ContentTypesPatch) {
@@ -699,6 +735,7 @@ mod network_settings_apply_patch_tests {
         s.network = NetworkSettings {
             allow_relay_fallback: allow,
             allow_overlay_network_addrs: false,
+            custom_relay_urls: Vec::new(),
         };
         s
     }
@@ -708,6 +745,7 @@ mod network_settings_apply_patch_tests {
         s.network = NetworkSettings {
             allow_relay_fallback: true,
             allow_overlay_network_addrs: allow_overlay,
+            custom_relay_urls: Vec::new(),
         };
         s
     }
@@ -834,5 +872,76 @@ mod network_settings_apply_patch_tests {
         s.network.allow_overlay_network_addrs = true;
         let view: SettingsView = s.into();
         assert!(view.network.allow_overlay_network_addrs);
+    }
+
+    /// custom_relay_urls：patch 缺字段时不抹掉已存在列表。
+    #[test]
+    fn apply_patch_with_no_custom_relay_urls_keeps_existing() {
+        let mut existing = baseline_with_network(true);
+        existing.network.custom_relay_urls = vec!["https://relay.example.com.".to_string()];
+        let patch = SettingsPatch {
+            network: Some(NetworkSettingsPatch::default()),
+            ..Default::default()
+        };
+        let result = apply_settings_patch(existing, patch);
+        assert_eq!(
+            result.network.custom_relay_urls,
+            vec!["https://relay.example.com.".to_string()]
+        );
+    }
+
+    /// custom_relay_urls：显式 Some(list) 会 trim，并过滤空行。
+    #[test]
+    fn apply_patch_with_custom_relay_urls_normalizes_values() {
+        let existing = baseline_with_network(true);
+        let patch = SettingsPatch {
+            network: Some(NetworkSettingsPatch {
+                custom_relay_urls: Some(vec![
+                    " https://relay-a.example.com. ".to_string(),
+                    "".to_string(),
+                    "https://relay-b.example.com.".to_string(),
+                ]),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let result = apply_settings_patch(existing, patch);
+        assert_eq!(
+            result.network.custom_relay_urls,
+            vec![
+                "https://relay-a.example.com.".to_string(),
+                "https://relay-b.example.com.".to_string()
+            ]
+        );
+    }
+
+    /// custom_relay_urls：View 透明搬运，不在 application 层转换成 iroh 类型。
+    #[test]
+    fn from_core_settings_passes_through_custom_relay_urls() {
+        let mut s = Settings::default();
+        s.network.custom_relay_urls = vec!["https://relay.example.com.".to_string()];
+        let view: SettingsView = s.into();
+        assert_eq!(
+            view.network.custom_relay_urls,
+            vec!["https://relay.example.com.".to_string()]
+        );
+    }
+
+    /// custom_relay_urls：只接受 HTTP(S) relay URL。
+    #[test]
+    fn validate_custom_relay_urls_rejects_invalid_scheme() {
+        let urls = vec!["ftp://relay.example.com".to_string()];
+        let err = validate_custom_relay_urls(&urls).expect_err("invalid scheme");
+        assert!(err.contains("scheme must be http or https"));
+    }
+
+    /// custom_relay_urls：合法 HTTP(S) URL 通过校验。
+    #[test]
+    fn validate_custom_relay_urls_accepts_http_urls() {
+        let urls = vec![
+            "https://relay-a.example.com.".to_string(),
+            "http://127.0.0.1:3340".to_string(),
+        ];
+        validate_custom_relay_urls(&urls).expect("valid relay urls");
     }
 }

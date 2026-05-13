@@ -180,6 +180,29 @@ async fn general_only_patch_no_op() {
     );
 }
 
+/// Test 2b：自定义 relay URL 列表走完整 PUT/GET wire round-trip。
+#[tokio::test]
+async fn roundtrip_custom_relay_urls() {
+    let facade = build_facade();
+
+    let put_body =
+        json!({"network": {"customRelayUrls": ["https://relay.example.com."]}}).to_string();
+    let put_resp = simulate_put(&facade, &put_body).await;
+
+    assert_eq!(put_resp["success"], Value::Bool(true));
+    assert_eq!(put_resp["restartRequired"], Value::Bool(true));
+    assert_eq!(
+        put_resp["data"]["network"]["customRelayUrls"],
+        json!(["https://relay.example.com."])
+    );
+
+    let get_resp = simulate_get(&facade).await;
+    assert_eq!(
+        get_resp["network"]["customRelayUrls"],
+        json!(["https://relay.example.com."])
+    );
+}
+
 /// Test 3（**checker WARNING 7 — 5-case truth-table**）：
 /// 覆盖 `restart_required = payload.network.is_some()` 的所有计算分支。
 /// 反向命名 grep 既包括 `!` 取反，也包括 `is_none()` 语义反转 — 这五条

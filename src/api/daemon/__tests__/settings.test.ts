@@ -71,6 +71,19 @@ describe('settings api — toSettingsPatchRequest network mirror', () => {
     expect(options.body.network).toEqual({ allowRelayFallback: true })
   })
 
+  it('Test 2b: toSettingsPatchRequest 镜像 customRelayUrls 列表', async () => {
+    mockUpdateOk(true)
+    await updateSettings({
+      network: { customRelayUrls: ['https://relay.example.com.'] },
+    } as Partial<Settings>)
+
+    expect(requestMock).toHaveBeenCalledTimes(1)
+    const [, options] = requestMock.mock.calls[0]
+    expect(options.body.network).toEqual({
+      customRelayUrls: ['https://relay.example.com.'],
+    })
+  })
+
   it('Test 3: toSettingsPatchRequest 无 network 段 — patch 不含 network key', async () => {
     mockUpdateOk(false)
     await updateSettings({
@@ -157,6 +170,7 @@ describe('反向命名审计 (Pitfall 1 fence)', () => {
     const sample: Settings['network'] = {
       allowRelayFallback: true,
       allowOverlayNetworkAddrs: false,
+      customRelayUrls: [],
     }
     const keys = Object.keys(sample)
     expect(keys).toContain('allowRelayFallback')

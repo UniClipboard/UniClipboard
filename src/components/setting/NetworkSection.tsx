@@ -6,12 +6,35 @@ import { useSetting } from '@/hooks/useSetting'
 import { commands } from '@/lib/ipc'
 import { createLogger } from '@/lib/logger'
 import { AllowOverlayAddrsDisclosure } from './AllowOverlayAddrsDisclosure'
+import { CustomRelayUrlsField } from './CustomRelayUrlsField'
 import { LanOnlyDisclosure } from './LanOnlyDisclosure'
 import { RestartBanner } from './RestartBanner'
 import { SettingGroup } from './SettingGroup'
 import { SettingRow } from './SettingRow'
 
 const log = createLogger('network-section')
+
+function normalizeRelayUrls(urls: string[]): string[] {
+  return urls.map(url => url.trim()).filter(Boolean)
+}
+
+function relayUrlListsEqual(a: string[], b: string[]): boolean {
+  if (a.length !== b.length) return false
+  return a.every((value, index) => value === b[index])
+}
+
+function validateRelayUrls(urls: string[]): string | null {
+  for (const raw of urls) {
+    try {
+      const url = new URL(raw)
+      if (url.protocol !== 'http:' && url.protocol !== 'https:') return raw
+      if (!url.hostname) return raw
+    } catch {
+      return raw
+    }
+  }
+  return null
+}
 
 /**
  * NetworkSection — Phase 95.
@@ -45,10 +68,12 @@ const NetworkSection: React.FC = () => {
   // 当前持久值（来自 SettingContext，作为 baseline）
   const persistedAllowRelay = setting?.network?.allowRelayFallback ?? true
   const persistedAllowOverlay = setting?.network?.allowOverlayNetworkAddrs ?? false
+  const persistedCustomRelayUrls = setting?.network?.customRelayUrls ?? []
 
   // 本地乐观 state（D-D2：切换后立即更新，不等 PUT 返回）
   const [allowRelayFallback, setAllowRelayFallback] = useState(persistedAllowRelay)
   const [allowOverlayNetworkAddrs, setAllowOverlayNetworkAddrs] = useState(persistedAllowOverlay)
+  const [customRelayUrls, setCustomRelayUrls] = useState(persistedCustomRelayUrls)
 
   // pending 状态（来自两个源：用户切换 / PUT 后 restartRequired；不跨 session）
   const [pending, setPending] = useState(false)
@@ -64,8 +89,9 @@ const NetworkSection: React.FC = () => {
     () => ({
       allowRelayFallback,
       allowOverlayNetworkAddrs,
+      customRelayUrls: normalizeRelayUrls(customRelayUrls),
     }),
-    [allowRelayFallback, allowOverlayNetworkAddrs]
+    [allowRelayFallback, allowOverlayNetworkAddrs, customRelayUrls]
   )
   const debouncedNetwork = useDebounce(networkDraft, 500)
 
@@ -74,6 +100,7 @@ const NetworkSection: React.FC = () => {
     if (setting?.network) {
       setAllowRelayFallback(setting.network.allowRelayFallback)
       setAllowOverlayNetworkAddrs(setting.network.allowOverlayNetworkAddrs)
+      setCustomRelayUrls(setting.network.customRelayUrls ?? [])
     }
   }, [setting])
 
@@ -86,7 +113,18 @@ const NetworkSection: React.FC = () => {
     if (!setting) return
     const relayChanged = debouncedNetwork.allowRelayFallback !== persistedAllowRelay
     const overlayChanged = debouncedNetwork.allowOverlayNetworkAddrs !== persistedAllowOverlay
-    if (!relayChanged && !overlayChanged) return
+    const customRelaysChanged = !relayUrlListsEqual(
+      debouncedNetwork.customRelayUrls,
+      persistedCustomRelayUrls
+    )
+    if (!relayChanged && !overlayChanged && !customRelaysChanged) return
+
+    const invalidRelayUrl = validateRelayUrls(debouncedNetwork.customRelayUrls)
+    if (invalidRelayUrl) {
+      setSaveError(t('settings.sections.network.customRelays.invalidUrl', { url: invalidRelayUrl }))
+      window.setTimeout(() => setSaveError(null), 5000)
+      return
+    }
 
     void (async () => {
       try {
@@ -100,11 +138,14 @@ const NetworkSection: React.FC = () => {
         log.error({ err }, '保存网络设置失败')
         setAllowRelayFallback(persistedAllowRelay)
         setAllowOverlayNetworkAddrs(persistedAllowOverlay)
+        setCustomRelayUrls(persistedCustomRelayUrls)
         setPending(false)
         const message = err instanceof Error ? err.message : String(err)
-        const errorKey = relayChanged
-          ? 'settings.sections.network.lanOnly.saveError'
-          : 'settings.sections.network.allowOverlayAddrs.saveError'
+        const errorKey = customRelaysChanged
+          ? 'settings.sections.network.customRelays.saveError'
+          : relayChanged
+            ? 'settings.sections.network.lanOnly.saveError'
+            : 'settings.sections.network.allowOverlayAddrs.saveError'
         setSaveError(t(errorKey, { message }))
         window.setTimeout(() => setSaveError(null), 5000)
       }
@@ -117,6 +158,12 @@ const NetworkSection: React.FC = () => {
     const newAllowRelay = !checked
     setAllowRelayFallback(newAllowRelay)
     setPending(true)
+    setSaveError(null)
+    setRestartError(null)
+  }
+
+  const handleCustomRelayUrlsChange = (value: string[]) => {
+    setCustomRelayUrls(value)
     setSaveError(null)
     setRestartError(null)
   }
@@ -191,6 +238,7 @@ const NetworkSection: React.FC = () => {
           onCheckedChange={handleAllowOverlaySwitchChange}
         />
       </SettingRow>
+      <CustomRelayUrlsField value={customRelayUrls} onChange={handleCustomRelayUrlsChange} />
       {saveError && (
         <div className="px-4 pb-3 text-xs text-destructive" role="alert">
           {saveError}

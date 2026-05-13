@@ -52,6 +52,34 @@ jobs:
         working-directory: src-tauri
         run: cargo check --workspace --locked
 
+  warmup-docs-bun:
+    # docs-check.yml PR 阶段只 restore Linux-docs-bun-*,这里负责在 main 上写。
+    name: Warm docs Bun cache
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: docs-site
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Cache Bun dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            docs-site/node_modules
+            ~/.bun/install/cache
+          key: ${{ runner.os }}-docs-bun-${{ hashFiles('docs-site/bun.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-docs-bun-
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
   warmup-coverage-rust:
     name: Warm coverage Rust cache
     runs-on: ubuntu-latest

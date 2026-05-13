@@ -50,6 +50,7 @@ use uc_core::ports::pairing::{
 };
 
 use super::wire::{self, WireDecodeError};
+use crate::network::iroh::connect_with_staggered_retry;
 use crate::rendezvous::{RendezvousClient, RendezvousHttpError};
 
 /// Bound for the [`PairingEventPort`] channel. 32 is comfortably above the
@@ -455,18 +456,21 @@ impl PairingSessionPort for IrohPairingSessionAdapter {
             "pairing sponsor address resolved; dialing"
         );
 
-        let connection = self
-            .endpoint
-            .connect(sponsor_addr, PAIRING_ALPN)
-            .await
-            .map_err(|err| {
-                warn!(
-                    error = %err,
-                    sponsor = %sponsor_id,
-                    "pairing sponsor connect failed"
-                );
-                DialError::SponsorUnreachable
-            })?;
+        let connection = connect_with_staggered_retry(
+            Arc::clone(&self.endpoint),
+            sponsor_addr,
+            PAIRING_ALPN,
+            "pairing",
+        )
+        .await
+        .map_err(|err| {
+            warn!(
+                error = %err,
+                sponsor = %sponsor_id,
+                "pairing sponsor connect failed"
+            );
+            DialError::SponsorUnreachable
+        })?;
         info!(
             sponsor = %sponsor_id,
             "pairing sponsor connection established; opening bi stream"

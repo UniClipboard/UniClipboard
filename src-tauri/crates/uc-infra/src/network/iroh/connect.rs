@@ -35,7 +35,7 @@ pub(super) fn strip_relay_if_lan_only(addr: EndpointAddr) -> EndpointAddr {
     EndpointAddr::from_parts(id, kept)
 }
 
-pub(super) async fn connect_with_staggered_retry(
+pub(crate) async fn connect_with_staggered_retry(
     endpoint: Arc<Endpoint>,
     addr: EndpointAddr,
     alpn: &'static [u8],

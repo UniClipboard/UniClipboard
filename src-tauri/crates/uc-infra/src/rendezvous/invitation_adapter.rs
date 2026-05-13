@@ -13,7 +13,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use chrono::{TimeZone, Utc};
-use iroh::Endpoint;
+use iroh::{Endpoint, EndpointAddr};
 use tracing::{debug, instrument};
 
 use uc_core::pairing::invitation::InvitationCode;
@@ -21,6 +21,9 @@ use uc_core::ports::{
     ConsumeInvitationError, DeviceIdentityPort, InvitationError, IssuedInvitation,
     PairingInvitationPort, SettingsPort,
 };
+use uc_core::settings::model::Settings;
+
+use crate::network::iroh::filter_endpoint_addr;
 
 use super::client::{CreatePairingRequest, RendezvousClient, RendezvousHttpError};
 
@@ -47,16 +50,20 @@ impl RendezvousPairingInvitationAdapter {
         }
     }
 
-    async fn resolve_device_name(&self) -> Result<String, InvitationError> {
-        let settings = self
-            .settings
+    async fn load_settings(&self) -> Result<Settings, InvitationError> {
+        self.settings
             .load()
             .await
-            .map_err(|err| InvitationError::Internal(format!("settings load failed: {err}")))?;
+            .map_err(|err| InvitationError::Internal(format!("settings load failed: {err}")))
+    }
+
+    fn resolve_device_name(settings: &Settings) -> Result<String, InvitationError> {
         settings
             .general
             .device_name
+            .as_ref()
             .filter(|n| !n.trim().is_empty())
+            .cloned()
             .ok_or_else(|| {
                 InvitationError::Internal(
                     "device_name missing from settings; user must set it before pairing"
@@ -65,27 +72,33 @@ impl RendezvousPairingInvitationAdapter {
             })
     }
 
-    fn serialize_ticket(&self) -> Result<(String, String), InvitationError> {
-        let addr = self.endpoint.addr();
-        if addr.addrs.is_empty() {
-            // No relay, no direct addrs — endpoint is bound but has no way
-            // to be contacted. Surface as NetworkNotStarted so UI tells the
-            // user to wait / retry.
-            return Err(InvitationError::NetworkNotStarted);
-        }
-        let endpoint_id = addr.id.to_string();
-        let ticket = serde_json::to_string(&addr)
-            .map_err(|err| InvitationError::Internal(format!("endpoint addr serialize: {err}")))?;
-        Ok((endpoint_id, ticket))
+    fn serialize_ticket(&self, allow_overlay: bool) -> Result<(String, String), InvitationError> {
+        serialize_filtered_endpoint_ticket(self.endpoint.addr(), allow_overlay)
     }
+}
+
+fn serialize_filtered_endpoint_ticket(
+    addr: EndpointAddr,
+    allow_overlay: bool,
+) -> Result<(String, String), InvitationError> {
+    let addr = filter_endpoint_addr(addr, allow_overlay);
+    if addr.addrs.is_empty() {
+        return Err(InvitationError::NetworkNotStarted);
+    }
+    let endpoint_id = addr.id.to_string();
+    let ticket = serde_json::to_string(&addr)
+        .map_err(|err| InvitationError::Internal(format!("endpoint addr serialize: {err}")))?;
+    Ok((endpoint_id, ticket))
 }
 
 #[async_trait]
 impl PairingInvitationPort for RendezvousPairingInvitationAdapter {
     #[instrument(skip_all)]
     async fn issue_invitation(&self) -> Result<IssuedInvitation, InvitationError> {
-        let (endpoint_id, ticket) = self.serialize_ticket()?;
-        let device_name = self.resolve_device_name().await?;
+        let settings = self.load_settings().await?;
+        let (endpoint_id, ticket) =
+            self.serialize_ticket(settings.network.allow_overlay_network_addrs)?;
+        let device_name = Self::resolve_device_name(&settings)?;
         let device_id = self.device_identity.current_device_id();
 
         let req = CreatePairingRequest {
@@ -185,10 +198,12 @@ fn map_consume_err(err: RendezvousHttpError) -> ConsumeInvitationError {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::net::SocketAddr;
     use std::sync::Mutex as StdMutex;
 
     use async_trait::async_trait;
     use chrono::DateTime;
+    use iroh::{EndpointAddr, SecretKey, TransportAddr};
     use serde_json::json;
     use uc_core::ids::DeviceId;
     use uc_core::settings::model::Settings;
@@ -255,6 +270,31 @@ mod tests {
     }
 
     // ── issue_invitation ─────────────────────────────────────────────────
+
+    #[test]
+    fn serialize_ticket_filters_bad_virtual_addrs_but_keeps_allowed_overlay() {
+        let addr = EndpointAddr::from_parts(
+            SecretKey::generate().public(),
+            [
+                TransportAddr::Ip("100.79.191.42:61743".parse::<SocketAddr>().unwrap()),
+                TransportAddr::Ip("198.18.0.1:61743".parse::<SocketAddr>().unwrap()),
+                TransportAddr::Ip("169.254.1.2:61743".parse::<SocketAddr>().unwrap()),
+                TransportAddr::Ip("192.168.31.72:61743".parse::<SocketAddr>().unwrap()),
+            ],
+        );
+
+        let (_, ticket) = serialize_filtered_endpoint_ticket(addr, true).expect("ticket");
+        let decoded: EndpointAddr = serde_json::from_str(&ticket).expect("decode ticket");
+        let ips: Vec<String> = decoded
+            .ip_addrs()
+            .map(|addr| addr.ip().to_string())
+            .collect();
+
+        assert!(ips.contains(&"100.79.191.42".to_string()));
+        assert!(ips.contains(&"192.168.31.72".to_string()));
+        assert!(!ips.contains(&"198.18.0.1".to_string()));
+        assert!(!ips.contains(&"169.254.1.2".to_string()));
+    }
 
     #[tokio::test]
     async fn issue_invitation_happy_path() {

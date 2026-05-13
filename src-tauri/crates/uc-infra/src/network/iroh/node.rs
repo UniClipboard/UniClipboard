@@ -17,8 +17,6 @@
 //! [`install_presence`]: IrohNodeBuilder::install_presence
 //! [`install_clipboard`]: IrohNodeBuilder::install_clipboard
 
-use std::borrow::Cow;
-use std::net::IpAddr;
 #[cfg(not(any(test, feature = "test-util")))]
 use std::sync::OnceLock;
 use std::{path::PathBuf, sync::Arc, time::Duration};
@@ -45,6 +43,7 @@ use uc_core::ports::{
 use crate::pairing::{IrohPairingSessionAdapter, PAIRING_ALPN};
 use crate::rendezvous::{RendezvousClient, RendezvousPairingInvitationAdapter};
 
+use super::addr_filter::apply_addr_filter;
 use super::blobs::{IrohBlobTransferAdapter, BLOBS_ALPN};
 use super::clipboard_dispatch_adapter::{IrohClipboardDispatchAdapter, CLIPBOARD_ALPN};
 use super::clipboard_receiver_adapter::IrohClipboardReceiverAdapter;
@@ -308,99 +307,6 @@ fn build_transport_config() -> QuicTransportConfig {
         // workloads.
         .max_concurrent_multipath_paths(64)
         .build()
-}
-
-/// IP-range predicate that flags well-known *virtual* NIC addresses we don't
-/// want propagated as direct-address candidates.
-///
-/// Two filter classes:
-///
-/// **Always filtered (no escape hatch — `allow_overlay = true` does NOT keep these):**
-/// * `198.18.0.0/15` — the default Clash fake-ip pool. Observed concretely
-///   on this user's macOS box where Clash assigns `198.18.0.1` to its TUN
-///   interface; iroh's magicsock then publishes that to the peer, the peer
-///   races it against the real LAN candidate, and the TUN path occasionally
-///   wins because its local stack ACKs faster than the real LAN. No legitimate
-///   cross-host use case.
-/// * `169.254.0.0/16` — IPv4 link-local autoconf. Only meaningful on the
-///   originating host; useless as a candidate for a remote peer.
-///
-/// **Overlay-network class (filtered only when `allow_overlay = false`):**
-/// * `100.64.0.0/10` — CGNAT / Tailscale default IPv4 range. Tailscale
-///   advertises a 100.x address that's only routable inside the same tailnet;
-///   when peers are not in the same tailnet, this is a dead candidate that
-///   wastes path-validation budget. Power users running both peers inside one
-///   tailnet may opt in via `Settings.network.allow_overlay_network_addrs`.
-/// * `fd7a:115c:a1e0::/48` — Tailscale IPv6 ULA. Same shape of bug as the
-///   IPv4 100.x case; same opt-in semantics.
-fn is_virtual_nic_ip(ip: IpAddr, allow_overlay: bool) -> bool {
-    match ip {
-        IpAddr::V4(v4) => {
-            let o = v4.octets();
-            // Always-filtered classes:
-            if (o[0] == 198 && (o[1] & 0xfe) == 18) // 198.18.0.0/15 (Clash fake-ip)
-                || (o[0] == 169 && o[1] == 254)
-            // 169.254.0.0/16 (IPv4 link-local)
-            {
-                return true;
-            }
-            // Overlay class (CGNAT / Tailscale 100.64.0.0/10):
-            if !allow_overlay && o[0] == 100 && (o[1] & 0xc0) == 64 {
-                return true;
-            }
-            false
-        }
-        IpAddr::V6(v6) => {
-            // Tailscale IPv6 ULA `fd7a:115c:a1e0::/48` — overlay class.
-            // Match on the first three 16-bit segments (high 48 bits).
-            let segs = v6.segments();
-            if !allow_overlay && segs[0] == 0xfd7a && segs[1] == 0x115c && segs[2] == 0xa1e0 {
-                return true;
-            }
-            false
-        }
-    }
-}
-
-/// Pure filter logic — given a candidate set, return what to publish.
-///
-/// Extracted from [`build_addr_filter`] so it is unit-testable without
-/// reaching into the iroh `AddrFilter` wrapper (the wrapper is opaque from
-/// outside the crate and offers no introspection).
-fn apply_addr_filter<'a>(
-    addrs: &'a Vec<TransportAddr>,
-    allow_overlay: bool,
-) -> Cow<'a, Vec<TransportAddr>> {
-    let any_virtual = addrs.iter().any(|a| match a {
-        TransportAddr::Ip(s) => is_virtual_nic_ip(s.ip(), allow_overlay),
-        _ => false,
-    });
-    if !any_virtual {
-        return Cow::Borrowed(addrs);
-    }
-    let kept: Vec<TransportAddr> = addrs
-        .iter()
-        .filter(|a| match a {
-            TransportAddr::Ip(s) => !is_virtual_nic_ip(s.ip(), allow_overlay),
-            _ => true,
-        })
-        .cloned()
-        .collect();
-    let dropped: Vec<String> = addrs
-        .iter()
-        .filter_map(|a| match a {
-            TransportAddr::Ip(s) if is_virtual_nic_ip(s.ip(), allow_overlay) => Some(s.to_string()),
-            _ => None,
-        })
-        .collect();
-    debug!(
-        target: "iroh.addr_filter",
-        allow_overlay,
-        dropped_count = dropped.len(),
-        dropped = ?dropped,
-        "filtered virtual-NIC addresses from candidate set",
-    );
-    Cow::Owned(kept)
 }
 
 /// Build the `AddrFilter` we hand to `Endpoint::builder().addr_filter(...)`.
@@ -899,6 +805,7 @@ pub enum IrohNodeError {
 
 #[cfg(test)]
 mod tests {
+    use super::super::addr_filter::is_virtual_nic_ip;
     use super::*;
 
     use std::collections::HashMap;
@@ -1207,7 +1114,7 @@ mod tests {
     // is_virtual_nic_ip / build_addr_filter unit tests
     // ──────────────────────────────────────────────────────────────────
 
-    use std::net::{Ipv4Addr, Ipv6Addr};
+    use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
     use std::net::{SocketAddr, SocketAddrV4, SocketAddrV6};
 
     fn v4(ip: &str) -> IpAddr {

@@ -68,7 +68,8 @@ uniclip invite        # 在 sponsor 上重出一张
 
 1. 确认两端的系统时间偏差小于几分钟。Argon2id 与签名校验对时间漂移敏感。
 2. 在 sponsor 端 `uniclip status --json | grep handshake` 查看是否在等 joiner，如果根本没收到说明发现层就没打通，跳到[对端不上线](#对端不上线)。
-3. 默认握手超时几十秒。超时后 sponsor 会丢弃这次邀请，joiner 拿到的就是"invitation expired"。重新 `invite` 即可。
+3. 默认握手 TTL 约 3 分钟。超时后 sponsor 会丢弃这次邀请，joiner 拿到的就是"invitation expired"。重新 `invite` 即可。
+4. **sponsor 端跑着 Tailscale 之类的 overlay 网络？** 默认情况下 Tailscale CGNAT (`100.64.0.0/10`) 与 IPv6 ULA (`fd7a:115c:a1e0::/48`) 地址不会被写进邀请，joiner 拿到的全是不可达的 LAN 地址就会一直拨不通。在 sponsor 端 **设置 → 网络 → 允许覆盖网络地址** 打开并重启 daemon，Tailscale 地址才会进入邀请。Clash TUN 的 fake-ip (`198.18.0.0/15`) 与 IPv4 link-local (`169.254.0.0/16`) 始终被过滤、无开关 —— 这类网卡本来就不能拿来真实拨号，让 UniClipboard 走真实物理网卡即可。
 
 ### "passphrase mismatch" / 加入后立刻被踢
 

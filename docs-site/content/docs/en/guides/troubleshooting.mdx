@@ -86,9 +86,19 @@ appears in `members`:
 2. On the sponsor, `uniclip status --json | grep handshake` shows
    whether it's waiting for a joiner. If nothing arrived, discovery
    itself is broken — jump to [Peer not appearing](#peer-not-appearing).
-3. Default handshake timeout is in the tens of seconds. After that the
+3. The default handshake TTL is roughly three minutes. After that the
    sponsor drops the invite and the joiner sees "invitation expired".
    Just `invite` again.
+4. **Sponsor running Tailscale or a similar overlay?** By default,
+   Tailscale CGNAT (`100.64.0.0/10`) and IPv6 ULA
+   (`fd7a:115c:a1e0::/48`) addresses are stripped from the invitation,
+   so the joiner only sees unreachable LAN addresses and dial attempts
+   hang. On the sponsor, enable **Settings → Network → Allow overlay
+   network addrs** and restart the daemon so Tailscale addresses get
+   included. Clash TUN fake-ip (`198.18.0.0/15`) and IPv4 link-local
+   (`169.254.0.0/16`) are always filtered with no opt-out — those
+   interfaces aren't real dial targets, so leave UniClipboard on a
+   physical NIC instead.
 
 ### "passphrase mismatch" or kicked right after joining
 

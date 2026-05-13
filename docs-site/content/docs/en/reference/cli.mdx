@@ -227,6 +227,11 @@ The following commands exist but are deliberately hidden from
   switch-space data-integrity tests.
 - `uniclip dump-clipboard --limit <N>` — debug printing of decrypted
   history.
+- `uniclip dev pairing ...` — pairing-invitation diagnostics: `addrs`
+  lists candidate addresses after the product filter has run, and
+  `issue --addr <IP>` issues an invitation constrained to one local
+  IP. Refuses to run while the daemon is up. Intended for triaging
+  [pairing failures on virtual-NIC setups](../guides/troubleshooting#pairing-failures).
 - `uniclip daemon` — internal entrypoint that `uniclip start` uses to
   spawn the background daemon. Not intended for direct use.
 

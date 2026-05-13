@@ -92,10 +92,10 @@ For the underlying key model, see
   also new and surfaces inline above whichever fields you changed.
 </Feature>
 
-| Setting                     | What it does                                                                 |
-| --------------------------- | ---------------------------------------------------------------------------- |
-| LAN-only mode               | Force-disables encrypted relay; off-LAN peers become unreachable.            |
-| Allow overlay network addrs | Use addresses learned via rendezvous; off → only mDNS + cached direct addrs. |
+| Setting                     | What it does                                                                                                                                                                                                                                                       |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| LAN-only mode               | Force-disables encrypted relay; off-LAN peers become unreachable.                                                                                                                                                                                                  |
+| Allow overlay network addrs | When on, Tailscale CGNAT (`100.64.0.0/10`) and IPv6 ULA (`fd7a:115c:a1e0::/48`) addresses are included in invitations and the locally-advertised candidate set; when off, only physical NICs are. Clash TUN fake-ip (`198.18.0.0/15`) and IPv4 link-local are always filtered with no opt-out. |
 
 Either change shows a banner saying the daemon needs to restart. Click
 `Apply & restart` to commit. The system tray icon also reflects the

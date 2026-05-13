@@ -35,12 +35,14 @@
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use std::time::Duration;
 
 use async_trait::async_trait;
 use iroh::endpoint::{Connection, RecvStream, SendStream};
 use iroh::protocol::{AcceptError, ProtocolHandler, RouterBuilder};
 use iroh::{Endpoint, EndpointAddr};
 use tokio::sync::{mpsc, Mutex};
+use tokio::time::timeout;
 use tracing::{debug, info, instrument, warn};
 
 use uc_core::pairing::{InvitationCode, PairingSessionMessage};
@@ -63,6 +65,15 @@ const EVENT_CHANNEL_CAPACITY: usize = 32;
 pub const PAIRING_ALPN: &[u8] = b"/uniclipboard/pairing/1";
 
 const FRAME_LEN_BYTES: usize = 4;
+
+/// Sponsor-side per-step timeout for the inbound accept path.
+///
+/// 30s 是配合 joiner 侧 180s `handshake_ttl` 设的:每个 IO 等待
+/// (accept_bi / read frame length / read frame payload)在 DERP relay
+/// + iroh path migration 抖动下,30s 内若不见数据基本就是连接坏了,继续
+/// 等只会吊死。失败立刻 drop 让 iroh router 释放 socket,joiner 那侧
+/// retry 比慢失败健康。
+const INBOUND_STEP_TIMEOUT: Duration = Duration::from_secs(30);
 
 // ============================================================================
 // Adapter
@@ -185,13 +196,21 @@ impl IrohPairingSessionAdapter {
             remote = %remote,
             "pairing incoming connection received; waiting for bi stream"
         );
-        let (send, mut recv) = match connection.accept_bi().await {
-            Ok(pair) => pair,
-            Err(err) => {
+        let (send, mut recv) = match timeout(INBOUND_STEP_TIMEOUT, connection.accept_bi()).await {
+            Ok(Ok(pair)) => pair,
+            Ok(Err(err)) => {
                 warn!(
                     error = %err,
                     remote = %remote,
                     "pairing accept_bi failed; dropping connection",
+                );
+                return;
+            }
+            Err(_) => {
+                warn!(
+                    remote = %remote,
+                    timeout_ms = INBOUND_STEP_TIMEOUT.as_millis() as u64,
+                    "pairing accept_bi timed out; dropping connection",
                 );
                 return;
             }
@@ -202,13 +221,24 @@ impl IrohPairingSessionAdapter {
         );
 
         let mut len_buf = [0u8; FRAME_LEN_BYTES];
-        if let Err(err) = recv.read_exact(&mut len_buf).await {
-            warn!(
-                error = %err,
-                remote = %remote,
-                "pairing first-frame length read failed; dropping connection",
-            );
-            return;
+        match timeout(INBOUND_STEP_TIMEOUT, recv.read_exact(&mut len_buf)).await {
+            Ok(Ok(_)) => {}
+            Ok(Err(err)) => {
+                warn!(
+                    error = %err,
+                    remote = %remote,
+                    "pairing first-frame length read failed; dropping connection",
+                );
+                return;
+            }
+            Err(_) => {
+                warn!(
+                    remote = %remote,
+                    timeout_ms = INBOUND_STEP_TIMEOUT.as_millis() as u64,
+                    "pairing first-frame length read timed out; dropping connection",
+                );
+                return;
+            }
         }
         let len = u32::from_be_bytes(len_buf) as usize;
         info!(
@@ -218,14 +248,26 @@ impl IrohPairingSessionAdapter {
         );
 
         let mut payload = vec![0u8; len];
-        if let Err(err) = recv.read_exact(&mut payload).await {
-            warn!(
-                error = %err,
-                remote = %remote,
-                frame_len = len,
-                "pairing first-frame payload read failed; dropping connection",
-            );
-            return;
+        match timeout(INBOUND_STEP_TIMEOUT, recv.read_exact(&mut payload)).await {
+            Ok(Ok(_)) => {}
+            Ok(Err(err)) => {
+                warn!(
+                    error = %err,
+                    remote = %remote,
+                    frame_len = len,
+                    "pairing first-frame payload read failed; dropping connection",
+                );
+                return;
+            }
+            Err(_) => {
+                warn!(
+                    remote = %remote,
+                    frame_len = len,
+                    timeout_ms = INBOUND_STEP_TIMEOUT.as_millis() as u64,
+                    "pairing first-frame payload read timed out; dropping connection",
+                );
+                return;
+            }
         }
 
         let message = match wire::decode(&payload) {

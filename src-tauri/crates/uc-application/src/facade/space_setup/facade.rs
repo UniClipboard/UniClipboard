@@ -218,10 +218,12 @@ impl SpaceSetupFacade {
         // original is moved into the inbound orchestrator below.
         let local_device_id_for_facade = local_device_id.clone();
         // Handshake TTL：sponsor 侧从 begin 到 confirm/reject 的 watchdog
-        // （P7g），joiner 侧每次 recv 的 timeout（P7h）。60s 对齐 legacy
-        // setup orchestrator 的默认值；足够覆盖一次人工口令输入 + 网络
-        // 抖动，又不会让掉线的会话无限期占坑。
-        let handshake_ttl = Duration::from_secs(60);
+        // （P7g），joiner 侧每次 recv 的 timeout（P7h）。180s 是为
+        // Tailscale DERP relay 这种跨区中继路径预留的容差 —— 跨洋 DERP
+        // RTT 300–800ms 叠 iroh 多 path 协商抖动，60s 不够喂完 4 条
+        // 握手消息（实测 #486 复测 13:02 那次 sponsor accept_bi 卡 23s
+        // 又 read_exact 卡 34s，joiner 60s TTL 先到 abort）。
+        let handshake_ttl = Duration::from_secs(180);
         // admit/trust 两侧都要用 —— sponsor orchestrator 把 joiner 登记
         // 进本机；joiner use case 把 sponsor 登记进本机。构造一次 Arc
         // 共享即可，不给一边复制一边。

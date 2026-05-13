@@ -29,7 +29,7 @@ use uc_daemon_contract::api::dto::v2::setup::{
 };
 use uc_daemon_contract::constants::http_route_v2;
 
-use crate::api::dto::error::ApiError;
+use crate::api::dto::error::{log_facade_failure, ApiError};
 use crate::api::server::DaemonApiState;
 
 pub fn router() -> Router<DaemonApiState> {
@@ -135,25 +135,45 @@ pub(crate) async fn issue_invitation(
     State(state): State<DaemonApiState>,
 ) -> Result<Json<IssueInvitationResponse>, ApiError> {
     let facade = require_facade(&state)?;
-    let out = facade.issue_pairing_invitation().await.map_err(|err| {
-        use uc_application::facade::IssuePairingInvitationError as E;
-        match err {
-            E::NetworkNotStarted => ApiError::service_unavailable("network is not started"),
-            E::ServiceUnavailable => {
-                ApiError::service_unavailable("pairing invitation service unavailable")
-            }
-            // `AddressNotAvailable` is only emitted by the dev-only
-            // `issue_pairing_invitation_for_address` path. The webserver
-            // never calls that path; collapse to Internal so a future
-            // regression surfaces in logs instead of being silently
-            // mapped to a misleading 400.
-            E::AddressNotAvailable(ip) => ApiError::internal(format!(
+    let out = facade
+        .issue_pairing_invitation()
+        .await
+        .map_err(map_issue_err)?;
+    Ok(Json(issue_to_dto(out)))
+}
+
+fn map_issue_err(err: uc_application::facade::IssuePairingInvitationError) -> ApiError {
+    use uc_application::facade::IssuePairingInvitationError as E;
+    let (variant, api): (&'static str, ApiError) = match err {
+        E::NetworkNotStarted => (
+            "network_not_started",
+            ApiError::service_unavailable("network is not started"),
+        ),
+        E::ServiceUnavailable => (
+            "service_unavailable",
+            ApiError::service_unavailable("pairing invitation service unavailable"),
+        ),
+        // `AddressNotAvailable` is only emitted by the dev-only
+        // `issue_pairing_invitation_for_address` path. The webserver
+        // never calls that path; collapse to Internal so a future
+        // regression surfaces in logs instead of being silently
+        // mapped to a misleading 400.
+        E::AddressNotAvailable(ip) => (
+            "address_not_available",
+            ApiError::internal(format!(
                 "unexpected AddressNotAvailable({ip}) on default path"
             )),
-            E::Internal(msg) => ApiError::internal(msg),
-        }
-    })?;
-    Ok(Json(issue_to_dto(out)))
+        ),
+        E::Internal(msg) => ("internal", ApiError::internal(msg)),
+    };
+    log_facade_failure(
+        "space_setup",
+        "issue_pairing_invitation",
+        variant,
+        api.status,
+        &api.message,
+    );
+    api
 }
 
 fn issue_to_dto(out: IssuePairingInvitationResult) -> IssueInvitationResponse {
@@ -198,26 +218,69 @@ pub(crate) async fn redeem(
 
 fn map_redeem_err(err: RedeemPairingInvitationError) -> ApiError {
     use RedeemPairingInvitationError as E;
-    match err {
-        E::InvitationNotFound => ApiError::not_found("invitation not found"),
-        E::InvitationExpired => ApiError::not_found("invitation has expired"),
-        E::SponsorUnreachable => ApiError::service_unavailable("sponsor is not reachable"),
-        E::ServiceUnavailable => {
-            ApiError::service_unavailable("pairing invitation service unavailable")
-        }
-        E::PassphraseMismatch => ApiError::bad_request("wrong passphrase"),
-        E::CorruptedKeyMaterial => ApiError::internal("space key material corrupted"),
-        E::DeviceNameRequired => ApiError::bad_request("device name is required"),
-        E::SponsorRejectedInvitation => {
-            ApiError::conflict("sponsor did not recognise the invitation code")
-        }
-        E::SponsorDeclined => ApiError::conflict("sponsor declined the pairing request"),
-        E::SponsorTimedOut => ApiError::service_unavailable("sponsor timed out the handshake"),
-        E::SponsorInternal(msg) => ApiError::internal(format!("sponsor internal error: {msg}")),
-        E::Timeout => ApiError::service_unavailable("pairing handshake timed out"),
-        E::ConnectionLost => ApiError::service_unavailable("connection lost mid-handshake"),
-        E::Internal(msg) => ApiError::internal(msg),
-    }
+    let (variant, api): (&'static str, ApiError) = match err {
+        E::InvitationNotFound => (
+            "invitation_not_found",
+            ApiError::not_found("invitation not found"),
+        ),
+        E::InvitationExpired => (
+            "invitation_expired",
+            ApiError::not_found("invitation has expired"),
+        ),
+        E::SponsorUnreachable => (
+            "sponsor_unreachable",
+            ApiError::service_unavailable("sponsor is not reachable"),
+        ),
+        E::ServiceUnavailable => (
+            "service_unavailable",
+            ApiError::service_unavailable("pairing invitation service unavailable"),
+        ),
+        E::PassphraseMismatch => (
+            "passphrase_mismatch",
+            ApiError::bad_request("wrong passphrase"),
+        ),
+        E::CorruptedKeyMaterial => (
+            "corrupted_key_material",
+            ApiError::internal("space key material corrupted"),
+        ),
+        E::DeviceNameRequired => (
+            "device_name_required",
+            ApiError::bad_request("device name is required"),
+        ),
+        E::SponsorRejectedInvitation => (
+            "sponsor_rejected_invitation",
+            ApiError::conflict("sponsor did not recognise the invitation code"),
+        ),
+        E::SponsorDeclined => (
+            "sponsor_declined",
+            ApiError::conflict("sponsor declined the pairing request"),
+        ),
+        E::SponsorTimedOut => (
+            "sponsor_timed_out",
+            ApiError::service_unavailable("sponsor timed out the handshake"),
+        ),
+        E::SponsorInternal(msg) => (
+            "sponsor_internal",
+            ApiError::internal(format!("sponsor internal error: {msg}")),
+        ),
+        E::Timeout => (
+            "timeout",
+            ApiError::service_unavailable("pairing handshake timed out"),
+        ),
+        E::ConnectionLost => (
+            "connection_lost",
+            ApiError::service_unavailable("connection lost mid-handshake"),
+        ),
+        E::Internal(msg) => ("internal", ApiError::internal(msg)),
+    };
+    log_facade_failure(
+        "space_setup",
+        "redeem_pairing_invitation",
+        variant,
+        api.status,
+        &api.message,
+    );
+    api
 }
 
 fn redeem_to_dto(out: RedeemPairingInvitationResult) -> RedeemResponse {
@@ -349,39 +412,89 @@ pub(crate) async fn switch_space(
 
 fn map_switch_space_err(err: SwitchSpaceError) -> ApiError {
     use SwitchSpaceError as E;
-    match err {
-        E::NotSetup => ApiError::conflict(
-            "this device has not completed first-time setup yet; use /v2/setup/initialize \
-             or /v2/setup/redeem first",
+    let (variant, api): (&'static str, ApiError) = match err {
+        E::NotSetup => (
+            "not_setup",
+            ApiError::conflict(
+                "this device has not completed first-time setup yet; use /v2/setup/initialize \
+                 or /v2/setup/redeem first",
+            ),
         ),
-        E::PendingMigration(_) => ApiError::conflict(
-            "a previous switch-space migration is still in flight; restart the daemon to \
-             auto-resume, or call /v2/setup/reset to abandon",
+        E::PendingMigration(_) => (
+            "pending_migration",
+            ApiError::conflict(
+                "a previous switch-space migration is still in flight; restart the daemon to \
+                 auto-resume, or call /v2/setup/reset to abandon",
+            ),
         ),
-        E::NotUnlocked => {
-            ApiError::conflict("space session is locked; unlock the current space before switching")
-        }
-        E::InvitationNotFound => ApiError::not_found("invitation not found"),
-        E::InvitationExpired => ApiError::not_found("invitation has expired"),
-        E::SponsorUnreachable => ApiError::service_unavailable("sponsor is not reachable"),
-        E::ServiceUnavailable => {
-            ApiError::service_unavailable("pairing invitation service unavailable")
-        }
-        E::PassphraseMismatch => ApiError::bad_request("wrong passphrase"),
-        E::CorruptedKeyMaterial => ApiError::internal("space key material corrupted"),
-        E::DeviceNameRequired => ApiError::bad_request("device name is required"),
-        E::SponsorRejectedInvitation => {
-            ApiError::conflict("sponsor did not recognise the invitation code")
-        }
-        E::SponsorDeclined => ApiError::conflict("sponsor declined the pairing request"),
-        E::Timeout => ApiError::service_unavailable("handshake timed out"),
-        E::ConnectionLost => ApiError::service_unavailable("connection lost mid-handshake"),
-        E::InvalidCiphertext => {
-            ApiError::internal("backup record decryption failed (corrupted ciphertext)")
-        }
-        E::Storage(msg) => ApiError::internal(format!("storage failure: {msg}")),
-        E::Internal(msg) => ApiError::internal(msg),
-    }
+        E::NotUnlocked => (
+            "not_unlocked",
+            ApiError::conflict(
+                "space session is locked; unlock the current space before switching",
+            ),
+        ),
+        E::InvitationNotFound => (
+            "invitation_not_found",
+            ApiError::not_found("invitation not found"),
+        ),
+        E::InvitationExpired => (
+            "invitation_expired",
+            ApiError::not_found("invitation has expired"),
+        ),
+        E::SponsorUnreachable => (
+            "sponsor_unreachable",
+            ApiError::service_unavailable("sponsor is not reachable"),
+        ),
+        E::ServiceUnavailable => (
+            "service_unavailable",
+            ApiError::service_unavailable("pairing invitation service unavailable"),
+        ),
+        E::PassphraseMismatch => (
+            "passphrase_mismatch",
+            ApiError::bad_request("wrong passphrase"),
+        ),
+        E::CorruptedKeyMaterial => (
+            "corrupted_key_material",
+            ApiError::internal("space key material corrupted"),
+        ),
+        E::DeviceNameRequired => (
+            "device_name_required",
+            ApiError::bad_request("device name is required"),
+        ),
+        E::SponsorRejectedInvitation => (
+            "sponsor_rejected_invitation",
+            ApiError::conflict("sponsor did not recognise the invitation code"),
+        ),
+        E::SponsorDeclined => (
+            "sponsor_declined",
+            ApiError::conflict("sponsor declined the pairing request"),
+        ),
+        E::Timeout => (
+            "timeout",
+            ApiError::service_unavailable("handshake timed out"),
+        ),
+        E::ConnectionLost => (
+            "connection_lost",
+            ApiError::service_unavailable("connection lost mid-handshake"),
+        ),
+        E::InvalidCiphertext => (
+            "invalid_ciphertext",
+            ApiError::internal("backup record decryption failed (corrupted ciphertext)"),
+        ),
+        E::Storage(msg) => (
+            "storage",
+            ApiError::internal(format!("storage failure: {msg}")),
+        ),
+        E::Internal(msg) => ("internal", ApiError::internal(msg)),
+    };
+    log_facade_failure(
+        "space_setup",
+        "switch_space",
+        variant,
+        api.status,
+        &api.message,
+    );
+    api
 }
 
 fn switch_space_to_dto(out: SwitchSpaceResult) -> SwitchSpaceResponse {

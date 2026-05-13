@@ -242,49 +242,22 @@ pub(crate) async fn request_tracing_middleware(request: Request<Body>, next: Nex
     };
 
     match level_action {
-        // 5xx splitted by status — Sentry groups events by message template, so
-        // emitting a per-status static message+error_kind lets timeout, upstream-
-        // unavailable, and internal-error 5xx fingerprint into separate issues
-        // instead of drowning in one mega-group (see UNICLIPBOARD-RUST-5: 61
-        // events that turned out to mix 500 client bugs and 503 backend outage).
-        "server_error" => match status.as_u16() {
-            503 => tracing::error!(
-                request_id = %request_id,
-                method = %method,
-                path = %path,
-                status = 503u16,
-                elapsed_ms,
-                error_kind = "upstream_unavailable",
-                "daemon http upstream unavailable"
-            ),
-            504 => tracing::error!(
-                request_id = %request_id,
-                method = %method,
-                path = %path,
-                status = 504u16,
-                elapsed_ms,
-                error_kind = "gateway_timeout",
-                "daemon http gateway timeout"
-            ),
-            500 => tracing::error!(
-                request_id = %request_id,
-                method = %method,
-                path = %path,
-                status = 500u16,
-                elapsed_ms,
-                error_kind = "internal_error",
-                "daemon http handler internal error"
-            ),
-            code => tracing::error!(
-                request_id = %request_id,
-                method = %method,
-                path = %path,
-                status = code,
-                elapsed_ms,
-                error_kind = "server_error_other",
-                "daemon http server error (other 5xx)"
-            ),
-        },
+        // Access-log echo only — root cause lives in the handler that mapped
+        // the facade error to ApiError, not here. Earlier UNICLIPBOARD-RUST-5
+        // tried to fingerprint 5xx by status code, but a per-status static
+        // template ("daemon http upstream unavailable" etc.) is just a reskin
+        // of the HTTP status — it carries no signal beyond `status` itself
+        // and crowds out the real ERROR emitted upstream. Keep this at WARN
+        // so the Log channel still has a query handle for 5xx rate, but stop
+        // creating Sentry Issues from a layer that doesn't know the cause.
+        "server_error" => tracing::warn!(
+            request_id = %request_id,
+            method = %method,
+            path = %path,
+            status = status.as_u16(),
+            elapsed_ms,
+            "daemon http response 5xx"
+        ),
         "client_error" => tracing::warn!(
             request_id = %request_id,
             method = %method,

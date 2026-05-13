@@ -38,8 +38,11 @@ jobs:
         with:
           bun-version: latest
 
-      - name: Cache Bun dependencies
-        uses: actions/cache@v4
+      - name: Restore Bun dependencies
+        # PR 只读取 default branch 上由 cache-warmup 写入的 Bun cache。
+        # actions/cache 会在 miss 时自动保存,这里用 restore 子 action 避免
+        # 每个 refs/pull/*/merge 写出重复 cache 并挤掉 release 预热缓存。
+        uses: actions/cache/restore@v4
         with:
           path: ~/.bun/install/cache
           key: ${{ runner.os }}-bun-${{ hashFiles('**/bun.lock') }}
@@ -73,6 +76,8 @@ jobs:
         with:
           workspaces: "src-tauri -> target"
           shared-key: pr-check
+          # PR 只读 default branch cache,写入由 cache-warmup 统一负责。
+          save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - name: Check Rust workspace
         working-directory: src-tauri

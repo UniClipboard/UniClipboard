@@ -25,6 +25,11 @@ on:
           - 'beta'
           - 'rc'
         default: 'stable'
+      save_cache:
+        description: '是否保存构建缓存(用于手动验证 cache warmup)'
+        required: false
+        type: boolean
+        default: false
   workflow_call:
     inputs:
       platform:
@@ -42,6 +47,11 @@ on:
         required: false
         type: string
         default: 'stable'
+      save_cache:
+        description: '是否保存构建缓存'
+        required: false
+        type: boolean
+        default: false
 
 jobs:
   setup-matrix:
@@ -120,14 +130,15 @@ jobs:
           # Windows Post Cache Rust 上传单次 ~2m43s (25682907543),tag run
           # 通常基于刚合入 main 的代码,命中已存的 main cache 即可,不必再
           # 写一份等价的进 GHA cache (10GB 上限)。
-          save-if: ${{ github.ref == 'refs/heads/main' }}
+          save-if: ${{ inputs.save_cache || github.ref == 'refs/heads/main' }}
 
-      - name: Cache Bun dependencies
+      - name: Restore Bun dependencies
+        id: bun-cache
         # Windows NTFS 上压缩 ~/.bun/install/cache 的小文件极慢:
         # 25682907543 run 实测 Post Cache 步骤 7m37s,而 bun install 本身只
         # 1m12s — 缓存反成负优化。Linux/macOS post-cache ~20-30s,保留。
         if: runner.os != 'Windows'
-        uses: actions/cache@v5
+        uses: actions/cache/restore@v5
         with:
           path: ~/.bun/install/cache
           key: ${{ runner.os }}-bun-${{ hashFiles('**/bun.lock') }}
@@ -136,6 +147,15 @@ jobs:
 
       - name: install frontend dependencies
         run: bun install
+
+      - name: Save Bun dependencies
+        # 只有 main 或显式 save_cache 的 warmup 写 Bun cache。tag release
+        # 默认只读取,避免在 10GB GHA cache 配额里挤掉主线预热结果。
+        if: runner.os != 'Windows' && (inputs.save_cache || github.ref == 'refs/heads/main') && steps.bun-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v5
+        with:
+          path: ~/.bun/install/cache
+          key: ${{ runner.os }}-bun-${{ hashFiles('**/bun.lock') }}
 
       - name: resolve app version
         id: app-version

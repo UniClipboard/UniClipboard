@@ -15,6 +15,11 @@ on:
           - 'windows-latest'
           - 'all'
         default: 'all'
+      save_cache:
+        description: '是否保存构建缓存(用于手动验证 cache warmup)'
+        required: false
+        type: boolean
+        default: false
   workflow_call:
     inputs:
       platform:
@@ -27,6 +32,11 @@ on:
         required: false
         type: string
         default: ''
+      save_cache:
+        description: '是否保存构建缓存'
+        required: false
+        type: boolean
+        default: false
 
 jobs:
   setup-matrix:
@@ -97,7 +107,7 @@ jobs:
           workspaces: "src-tauri -> target"
           shared-key: cli-${{ matrix.target }}
           # 只在 main 写缓存,tag/PR 只读。详见 build.yml 同名 step 的注释。
-          save-if: ${{ github.ref == 'refs/heads/main' }}
+          save-if: ${{ inputs.save_cache || github.ref == 'refs/heads/main' }}
 
       - name: build CLI binary
         working-directory: src-tauri

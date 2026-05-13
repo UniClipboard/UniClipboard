@@ -26,6 +26,8 @@ jobs:
         with:
           workspaces: "src-tauri -> target"
           shared-key: coverage
+          # PR 只读 default branch cache,写入由 cache-warmup 统一负责。
+          save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - name: Install system dependencies
         run: |

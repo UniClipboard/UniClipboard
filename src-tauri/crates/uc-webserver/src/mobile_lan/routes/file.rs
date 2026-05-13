@@ -23,7 +23,7 @@ use uc_core::file_transfer::{
     FileTransferDirection, FileTransferFailureReason, FileTransferProgress,
 };
 
-use super::common::{map_apply_error, outcome_kind};
+use super::common::{map_apply_error, outcome_kind, FILE_UPLOAD_DISK_SANITY_LIMIT};
 
 /// 流式 PUT /file 进度节流窗口。adapter 每收到一个 chunk 都累加字节,但
 /// 只有距上一帧 ≥ `PROGRESS_THROTTLE` 才会调 `report_progress`(lifecycle
@@ -31,18 +31,6 @@ use super::common::{map_apply_error, outcome_kind};
 /// 250ms 与"前端进度条流畅度可感的最低帧率"对齐(SyncClipboard 桌面
 /// 实测,4 FPS 已经平滑)。
 const PROGRESS_THROTTLE: Duration = Duration::from_millis(250);
-
-/// `PUT /file/{dataName}` 请求体的兜底磁盘安全阀。
-///
-/// 用户在手机端主动 PUT 文件,客户端已经知道文件大小;真正的"产品上限"
-/// 由客户端自觉与本机磁盘空间决定,服务端只设一道防止恶意客户端写满盘的
-/// 远端硬上限。
-///
-/// 现写死 10 GiB。
-/// TODO(P6 配置化): 拆到 settings (`mobile_sync.put_file_max_bytes`),按
-/// 用户机型 / 磁盘剩余可配 —— 当前 10 GiB 是个粗略的"任何家用 Mac 都
-/// 不可能因为一次上传爆盘"的安全阀,留出抽象空间但不开复杂度。
-const PUT_FILE_DISK_SANITY_LIMIT: u64 = 10 * 1024 * 1024 * 1024;
 
 pub(super) async fn get_clipboard_file(
     State(facade): State<Arc<MobileSyncFacade>>,
@@ -162,21 +150,21 @@ pub(super) async fn put_clipboard_file(
         match chunk_result {
             Ok(chunk) => {
                 bytes_received = bytes_received.saturating_add(chunk.len() as u64);
-                if bytes_received > PUT_FILE_DISK_SANITY_LIMIT {
+                if bytes_received > FILE_UPLOAD_DISK_SANITY_LIMIT as u64 {
                     facade.abort_file_upload(handle).await;
                     fail_lifecycle(
                         file_transfer.as_ref(),
                         &transfer_id,
                         &peer_id,
                         format!(
-                            "body exceeds disk sanity limit ({PUT_FILE_DISK_SANITY_LIMIT} bytes)"
+                            "body exceeds disk sanity limit ({FILE_UPLOAD_DISK_SANITY_LIMIT} bytes)"
                         ),
                     )
                     .await;
                     tracing::warn!(
                         data_name = %data_name,
                         bytes_received,
-                        limit = PUT_FILE_DISK_SANITY_LIMIT,
+                        limit = FILE_UPLOAD_DISK_SANITY_LIMIT,
                         "PUT /file: body exceeded disk sanity limit"
                     );
                     return Err((StatusCode::PAYLOAD_TOO_LARGE, "body too large").into_response());

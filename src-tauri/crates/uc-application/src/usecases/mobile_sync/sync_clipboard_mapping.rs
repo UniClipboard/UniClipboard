@@ -2,14 +2,15 @@
 //!
 //! P5a.4 的 `GET /SyncClipboard.json`(meta) 与 P5a.5 的 `GET /file/{dataName}`
 //! (binary) 都要回答同一个问题:"给定一份 paste rep, 它在 SyncClipboard 协议
-//! 里的 type 是什么、dataName 该用什么文件名"。如果两条路径各自实现一份,
-//! 漂移之后会出现 meta wire 报 dataName=A 而 file GET 路径却以为是 B → iPhone
-//! 客户端拿不到内容。把规则抽到这一处, 单一真相, 两条路径一起进退。
+//! 里的 type 是什么、dataName 该用什么文件名、图片 mime 该怎样兜底"。
+//! 如果两条路径各自实现一份,漂移之后会出现 meta wire 报 dataName=A 而
+//! file GET 路径却以为是 B → iPhone 客户端拿不到内容。把规则抽到这一处,
+//! 单一真相, 两条路径一起进退。
 //!
 //! 调用约束(`pub(super)`):仅供 mobile_sync use cases 内部 share, 不向外暴露
 //! —— facade 层不该接触这些低层文件名规则,看不见就不会被滥用。
 
-use uc_core::clipboard::{is_file_mime_or_format, MimeType};
+use uc_core::clipboard::is_file_mime_or_format;
 use uc_core::ids::EntryId;
 use uc_core::mobile_sync::LatestPasteRepresentation;
 
@@ -19,16 +20,40 @@ use crate::usecases::mobile_sync::clipboard_doc::SyncClipboardItemType;
 ///
 /// 复用 `uc-core::clipboard::is_file_mime_or_format` 的同款判定 —— 与
 /// capture / policy v1 链上的"file rep 识别"完全一致, 避免两套规则漂移。
-/// 其余(text/* / rich-text / 完全没有 mime 的兜底)归 `Text`,
-/// 富文本不影响整条同步链路, 富文本保格式留给 v2。
+/// `format_id == image` 也按图片处理:SyncClipboard Android 的 multipart
+/// 上传常把真实 JPEG/PNG 标成 `application/octet-stream`,但入站构建的
+/// rep 仍会保留 format_id=image。不能只看 mime,否则最新历史记录会被误报
+/// 为 Text。
+///
+/// 其余(text/* / rich-text / 完全没有类型线索的兜底)归 `Text`,富文本不
+/// 影响整条同步链路,富文本保格式留给 v2。
 pub(super) fn classify_for_sync(rep: &LatestPasteRepresentation) -> SyncClipboardItemType {
     if is_file_mime_or_format(rep.mime.as_ref(), &rep.format_id) {
         return SyncClipboardItemType::File;
     }
-    if mime_starts_with(&rep.mime, "image/") {
+    if effective_image_mime_for_sync(rep).is_some() {
         return SyncClipboardItemType::Image;
     }
     SyncClipboardItemType::Text
+}
+
+/// SyncClipboard 出站时使用的图片 mime。
+///
+/// 优先相信显式 `image/*`;如果 format_id 表示图片但显式 mime 是
+/// `application/octet-stream` 或缺失,先按文件头魔数恢复真实类型,再退回
+/// format_id 的默认类型。
+pub(super) fn effective_image_mime_for_sync(
+    rep: &LatestPasteRepresentation,
+) -> Option<&'static str> {
+    if let Some(mime) = rep.mime.as_ref() {
+        let raw = mime.as_str();
+        if raw.starts_with("image/") {
+            return Some(canonical_image_mime(raw));
+        }
+    }
+
+    let default = image_mime_from_format_id(&rep.format_id)?;
+    Some(sniff_image_magic(&rep.bytes).unwrap_or(default))
 }
 
 /// 派生 SyncClipboard wire 的 `dataName` 字段。
@@ -84,19 +109,15 @@ fn sha256_hex_upper(bytes: &[u8]) -> String {
     hex::encode(Sha256::digest(bytes)).to_ascii_uppercase()
 }
 
-fn mime_starts_with(mime: &Option<MimeType>, prefix: &str) -> bool {
-    mime.as_ref()
-        .is_some_and(|m| m.as_str().starts_with(prefix))
-}
-
 fn derive_image_filename(rep: &LatestPasteRepresentation) -> String {
-    let ext = image_mime_to_ext(&rep.mime).unwrap_or("bin");
+    let ext = effective_image_mime_for_sync(rep)
+        .and_then(image_mime_str_to_ext)
+        .unwrap_or("bin");
     format!("clipboard_{}.{}", entry_id_short(&rep.entry_id), ext)
 }
 
-fn image_mime_to_ext(mime: &Option<MimeType>) -> Option<&'static str> {
-    let s = mime.as_ref()?.as_str().to_ascii_lowercase();
-    match s.as_str() {
+fn image_mime_str_to_ext(mime: &str) -> Option<&'static str> {
+    match mime.to_ascii_lowercase().as_str() {
         "image/png" => Some("png"),
         "image/jpeg" | "image/jpg" => Some("jpg"),
         "image/gif" => Some("gif"),
@@ -107,6 +128,51 @@ fn image_mime_to_ext(mime: &Option<MimeType>) -> Option<&'static str> {
         // 不识别的子类型(image/svg+xml / image/x-icon / ...)
         _ => None,
     }
+}
+
+fn canonical_image_mime(mime: &str) -> &'static str {
+    match mime.to_ascii_lowercase().as_str() {
+        "image/jpeg" | "image/jpg" => "image/jpeg",
+        "image/png" => "image/png",
+        "image/gif" => "image/gif",
+        "image/webp" => "image/webp",
+        "image/bmp" => "image/bmp",
+        "image/tiff" | "image/tif" => "image/tiff",
+        "image/heic" => "image/heic",
+        _ => "image/unknown",
+    }
+}
+
+fn image_mime_from_format_id(format_id: &uc_core::ids::FormatId) -> Option<&'static str> {
+    match format_id.as_str().to_ascii_lowercase().as_str() {
+        "image" | "public.png" => Some("image/png"),
+        "public.jpeg" | "public.jpg" => Some("image/jpeg"),
+        "public.gif" => Some("image/gif"),
+        "public.tiff" | "public.tif" => Some("image/tiff"),
+        _ => None,
+    }
+}
+
+fn sniff_image_magic(body: &[u8]) -> Option<&'static str> {
+    if body.starts_with(&[0xFF, 0xD8, 0xFF]) {
+        return Some("image/jpeg");
+    }
+    if body.starts_with(&[0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]) {
+        return Some("image/png");
+    }
+    if body.starts_with(b"GIF87a") || body.starts_with(b"GIF89a") {
+        return Some("image/gif");
+    }
+    if body.len() >= 12 && body.starts_with(b"RIFF") && &body[8..12] == b"WEBP" {
+        return Some("image/webp");
+    }
+    if body.starts_with(&[0x42, 0x4D]) {
+        return Some("image/bmp");
+    }
+    if body.starts_with(&[0x49, 0x49, 0x2A, 0x00]) || body.starts_with(&[0x4D, 0x4D, 0x00, 0x2A]) {
+        return Some("image/tiff");
+    }
+    None
 }
 
 fn derive_fallback_filename(rep: &LatestPasteRepresentation) -> String {

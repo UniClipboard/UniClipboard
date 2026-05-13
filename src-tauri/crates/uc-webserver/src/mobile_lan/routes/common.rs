@@ -14,6 +14,17 @@ use uc_application::facade::{ApplyIncomingMobileClipError, ApplyIncomingMobileCl
 /// axum to_bytes 的安全上限。
 pub(super) const MAX_FILE_BYTES: usize = 16 * 1024 * 1024;
 
+/// 移动端文件上传入口的兜底磁盘安全阀。
+///
+/// `/file/{dataName}` 和 SyncClipboard Android 的 multipart
+/// `POST /api/history` 都会把字节流式写进 staging,不把整文件读入内存。
+/// 这个值只是防止异常 / 恶意客户端写满磁盘的远端硬上限。
+///
+/// 现写死 10 GiB。
+/// TODO(P6 配置化): 拆到 settings (`mobile_sync.put_file_max_bytes`),按
+/// 用户机型 / 磁盘剩余可配。
+pub(super) const FILE_UPLOAD_DISK_SANITY_LIMIT: usize = 10 * 1024 * 1024 * 1024;
+
 /// 把 outcome 翻成日志用的简短串(避免日志里出现 entry id 等敏感字段)。
 pub(super) fn outcome_kind(outcome: &ApplyIncomingMobileClipOutcome) -> &'static str {
     match outcome {

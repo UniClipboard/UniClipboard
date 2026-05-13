@@ -46,7 +46,9 @@ use uc_core::ports::mobile_sync::{
 
 use crate::usecases::mobile_sync::clipboard_doc::SyncClipboardItemType;
 
-use super::sync_clipboard_mapping::{classify_for_sync, derive_data_name};
+use super::sync_clipboard_mapping::{
+    classify_for_sync, derive_data_name, effective_image_mime_for_sync,
+};
 
 /// File 类型出站时,wire mime 的 fallback。SyncClipboard 协议对 file 字节
 /// 的 wire mime 无强语义(iPhone Shortcut 只用 dataName 扩展名识别);用
@@ -203,10 +205,9 @@ impl GetMobileSyncFileUseCase {
         }
 
         // Image 分支:rep 自带字节, 直接返。
-        let mime = rep
-            .mime
-            .as_ref()
-            .map(|m| m.as_str().to_string())
+        let mime = effective_image_mime_for_sync(&rep)
+            .map(str::to_string)
+            .or_else(|| rep.mime.as_ref().map(|m| m.as_str().to_string()))
             .unwrap_or_else(|| FILE_OUTBOUND_MIME_FALLBACK.to_string());
 
         debug!(
@@ -384,21 +385,25 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn image_rep_without_mime_falls_back_to_octet_stream() {
-        // is_file_mime_or_format on (None mime + format_id="image") returns
-        // false → classify lands on Text? Actually no — image classification
-        // requires mime starting with "image/". With no mime + format_id="image"
-        // it falls through to Text. We need to test "image rep with format_id
-        // not 'files' but with no mime" — which classifier puts in Text bucket.
-        //
-        // To exercise the octet-stream fallback we need an Image-classified rep
-        // that has no mime. The only way classify returns Image is mime
-        // starts_with("image/"). So an Image rep without mime cannot exist by
-        // contract. Adjust this test: assert Text classification → NotFound.
+    async fn image_rep_with_octet_stream_jpeg_serves_recovered_image_mime() {
+        let bytes = vec![0xFF, 0xD8, 0xFF, 0xE1, 0x00, 0x18, b'E', b'x', b'i', b'f'];
+        let uc = build_uc_returning(Ok(Some(rep(
+            "entry-octet-jpeg",
+            "image",
+            Some("application/octet-stream"),
+            bytes.clone(),
+        ))));
+        let out = uc.execute("clipboard_entry-oc.jpg").await.unwrap();
+        assert_eq!(out.mime, "image/jpeg");
+        assert_eq!(out.bytes, bytes);
+    }
+
+    #[tokio::test]
+    async fn image_rep_without_mime_uses_format_id_default() {
         let uc = build_uc_returning(Ok(Some(rep("entry-no-mime", "image", None, vec![0xAA; 4]))));
-        // no mime → classify → Text → derive_data_name returns None → NotFound
-        let err = uc.execute("clipboard_entry-no.bin").await.unwrap_err();
-        assert!(matches!(err, GetMobileSyncFileError::NotFound));
+        let out = uc.execute("clipboard_entry-no.png").await.unwrap();
+        assert_eq!(out.mime, "image/png");
+        assert_eq!(out.bytes, vec![0xAA; 4]);
     }
 
     #[tokio::test]

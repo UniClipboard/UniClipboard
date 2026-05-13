@@ -25,7 +25,7 @@
 //! | rep 形态 | 翻成 | text 字段 | dataName | hasData |
 //! |---|---|---|---|---|
 //! | `text/uri-list` 或 `format_id == files` | `File` | filename | `Some(filename)` | `true` |
-//! | `image/*` | `Image` | filename | `Some(filename)` | `true` |
+//! | `image/*` 或 `format_id == image` | `Image` | filename | `Some(filename)` | `true` |
 //! | 其他 | `Text` | utf-8 内容 | `None` | `false` |
 //!
 //! 富文本(`text/html` / `text/rtf`)走 Text 分支:iPhone 客户端拿 HTML 当
@@ -156,6 +156,7 @@ mod tests {
     //! | text/plain | Text | text=utf-8 / hash=sha256(bytes) / data_name=None |
     //! | image/png | Image | data_name=clipboard_<short>.png / has_data / size |
     //! | image 兜底 ext | Image | mime image/svg+xml → .bin |
+    //! | format_id=image + application/octet-stream JPEG | Image | 字节嗅探恢复 .jpg |
     //! | text/uri-list 单文件 | File | filename 来自 URI 末段 + 百分号解码 |
     //! | text/uri-list 空 list | File | fallback 名 .bin |
     //! | text/html (rich-text 兜底) | Text | bytes 当 utf-8 |
@@ -270,6 +271,23 @@ mod tests {
         let meta = uc.execute().await.unwrap();
         assert_eq!(meta.item_type, SyncClipboardItemType::Image);
         assert_eq!(meta.data_name.as_deref(), Some("clipboard_entry-sv.bin"));
+    }
+
+    #[tokio::test]
+    async fn image_format_id_with_octet_stream_jpeg_stays_image() {
+        let bytes = vec![0xFF, 0xD8, 0xFF, 0xE1, 0x00, 0x18, b'E', b'x', b'i', b'f'];
+        let uc = build_uc_returning(Ok(Some(rep(
+            "entry-octet-jpeg",
+            "image",
+            Some("application/octet-stream"),
+            bytes.clone(),
+        ))));
+        let meta = uc.execute().await.unwrap();
+        assert_eq!(meta.item_type, SyncClipboardItemType::Image);
+        assert_eq!(meta.text, "clipboard_entry-oc.jpg");
+        assert_eq!(meta.data_name.as_deref(), Some("clipboard_entry-oc.jpg"));
+        assert!(meta.has_data);
+        assert_eq!(meta.size, bytes.len() as u64);
     }
 
     #[tokio::test]

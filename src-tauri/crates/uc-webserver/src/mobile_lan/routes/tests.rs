@@ -339,6 +339,48 @@ async fn api_history_upload_multipart_reaches_official_parser() {
 }
 
 #[tokio::test]
+async fn api_history_upload_multipart_accepts_mobile_image_larger_than_axum_default() {
+    let facade = build_facade_with_seeded_device("mobile_alice", "wonderland").await;
+    let app = build_app(facade);
+
+    let file_bytes = vec![0xAB; 2 * 1024 * 1024 + 1];
+    let mut body = Vec::new();
+    body.extend_from_slice(
+        b"--x\r\nContent-Disposition: form-data; name=\"hash\"\r\n\r\n3B9B02A0796735651B28FEF2F5219C267A710E072E943FC79054900D06585CEF\r\n",
+    );
+    body.extend_from_slice(
+        b"--x\r\nContent-Disposition: form-data; name=\"type\"\r\n\r\nImage\r\n",
+    );
+    body.extend_from_slice(
+        b"--x\r\nContent-Disposition: form-data; name=\"text\"\r\n\r\nphoto.png\r\n",
+    );
+    body.extend_from_slice(
+        b"--x\r\nContent-Disposition: form-data; name=\"hasData\"\r\n\r\ntrue\r\n",
+    );
+    body.extend_from_slice(
+        b"--x\r\nContent-Disposition: form-data; name=\"data\"; filename=\"photo.png\"\r\nContent-Type: image/png\r\n\r\n",
+    );
+    body.extend_from_slice(&file_bytes);
+    body.extend_from_slice(b"\r\n--x--\r\n");
+
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/history")
+                .header("Authorization", auth_header("mobile_alice", "wonderland"))
+                .header("Content-Type", "multipart/form-data; boundary=x")
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    // 测试装配的入站写入是 NoOp,所以解析成功后会在真正写剪贴板时到 500。
+    // 如果卡在 axum multipart 默认 2 MiB 限制,这里会提前返回 400/413。
+    assert_eq!(resp.status(), StatusCode::INTERNAL_SERVER_ERROR);
+}
+
+#[tokio::test]
 async fn file_folder_delete_accepts_official_route() {
     let facade = build_facade_with_seeded_device("mobile_alice", "wonderland").await;
     let app = build_app(facade);

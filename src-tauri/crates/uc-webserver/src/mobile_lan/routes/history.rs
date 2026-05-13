@@ -16,7 +16,10 @@ use std::sync::Arc;
 
 use axum::{
     body::to_bytes,
-    extract::{Extension, FromRequest, Multipart, Path, Request, State},
+    extract::{
+        multipart::{Field, MultipartError},
+        Extension, FromRequest, Multipart, Path, Request, State,
+    },
     http::{header, StatusCode},
     response::{IntoResponse, Response},
     Json,
@@ -28,9 +31,10 @@ use uc_application::facade::{
     AuthenticatedDevice, GetLatestMobileSyncDocError, MobileSyncFacade, SyncClipboardItemType,
     SyncClipboardMeta,
 };
+use uc_core::mobile_sync::StagingHandle;
 
-use super::common::{map_apply_error, MAX_FILE_BYTES};
-use super::file::get_clipboard_file;
+use super::common::{map_apply_error, FILE_UPLOAD_DISK_SANITY_LIMIT, MAX_FILE_BYTES};
+use super::file::{get_clipboard_file, infer_image_mime, mime_is_unspecific};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -71,7 +75,9 @@ struct ParsedHistoryUpload {
 struct ParsedHistoryFile {
     data_name: String,
     mime: String,
-    bytes: Vec<u8>,
+    size: u64,
+    handle: StagingHandle,
+    transfer_id: String,
 }
 
 impl HistoryRecordDoc {
@@ -175,12 +181,54 @@ fn parse_profile_id(profile_id: &str) -> Option<(SyncClipboardItemType, String)>
     Some((item_type, hash.trim().to_ascii_uppercase()))
 }
 
-fn same_profile(meta: &SyncClipboardMeta, item_type: SyncClipboardItemType, hash: &str) -> bool {
+fn current_profile_type_allows_hash_drift(item_type: SyncClipboardItemType) -> bool {
+    matches!(
+        item_type,
+        SyncClipboardItemType::Image | SyncClipboardItemType::File
+    )
+}
+
+fn current_profile_hash_is_compatible(
+    item_type: SyncClipboardItemType,
+    current_hash: Option<&str>,
+    requested_hash: &str,
+) -> bool {
+    current_hash.is_some_and(|h| h.eq_ignore_ascii_case(requested_hash))
+        || current_profile_type_allows_hash_drift(item_type)
+}
+
+fn current_profile_meta_matches_request(
+    meta: &SyncClipboardMeta,
+    item_type: SyncClipboardItemType,
+    requested_hash: &str,
+) -> bool {
     meta.item_type == item_type
-        && meta
-            .hash
-            .as_deref()
-            .is_some_and(|h| h.eq_ignore_ascii_case(hash))
+        && current_profile_hash_is_compatible(item_type, meta.hash.as_deref(), requested_hash)
+}
+
+fn current_profile_record_for_request(
+    mut record: HistoryRecordDoc,
+    item_type: SyncClipboardItemType,
+    requested_hash: &str,
+) -> Option<HistoryRecordDoc> {
+    if record.r#type != item_type_to_wire(item_type) {
+        return None;
+    }
+    if !current_profile_hash_is_compatible(item_type, Some(record.hash.as_str()), requested_hash) {
+        return None;
+    }
+
+    let requested_hash = requested_hash.trim().to_ascii_uppercase();
+    if !record.hash.eq_ignore_ascii_case(&requested_hash) {
+        tracing::debug!(
+            item_type = ?item_type,
+            current_hash = %record.hash,
+            requested_hash = %requested_hash,
+            "GET /api/history: serving current data-bearing record for client profile hash"
+        );
+        record.hash = requested_hash;
+    }
+    Some(record)
 }
 
 fn empty_history_statistics() -> HistoryStatisticsDoc {
@@ -200,6 +248,75 @@ fn statistics_from_record(record: &HistoryRecordDoc) -> HistoryStatisticsDoc {
         deleted_count: u32::from(record.is_deleted),
         active_count: u32::from(!record.is_deleted),
         total_file_size_mb: record.size as f64 / 1024.0 / 1024.0,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn record(item_type: SyncClipboardItemType, hash: &str) -> HistoryRecordDoc {
+        HistoryRecordDoc {
+            hash: hash.to_string(),
+            r#type: item_type_to_wire(item_type).to_string(),
+            text: "photo.jpg".to_string(),
+            create_time: "2026-05-13T13:43:38Z".to_string(),
+            last_modified: "2026-05-13T13:43:38Z".to_string(),
+            last_accessed: "2026-05-13T13:43:38Z".to_string(),
+            starred: false,
+            pinned: false,
+            size: 1184433,
+            has_data: true,
+            version: 0,
+            is_deleted: false,
+        }
+    }
+
+    #[test]
+    fn current_profile_record_accepts_mobile_upload_hash_drift() {
+        let current = record(SyncClipboardItemType::Image, "SERVER_RECOMPUTED_HASH");
+
+        let resolved = current_profile_record_for_request(
+            current,
+            SyncClipboardItemType::Image,
+            "0B13A2265544DE3C8C1286E4B854D39833A49BDAA3F82114AE19F55B7F08FBB2",
+        )
+        .expect("same-type current image should satisfy the requested profile");
+
+        assert_eq!(
+            resolved.hash,
+            "0B13A2265544DE3C8C1286E4B854D39833A49BDAA3F82114AE19F55B7F08FBB2"
+        );
+    }
+
+    #[test]
+    fn current_profile_record_rejects_wrong_type() {
+        let current = record(SyncClipboardItemType::Text, "TEXT_HASH");
+
+        assert!(current_profile_record_for_request(
+            current,
+            SyncClipboardItemType::Image,
+            "0B13A2265544DE3C8C1286E4B854D39833A49BDAA3F82114AE19F55B7F08FBB2",
+        )
+        .is_none());
+    }
+
+    #[test]
+    fn current_profile_meta_accepts_same_type_even_when_hash_drifted() {
+        let meta = SyncClipboardMeta {
+            item_type: SyncClipboardItemType::Image,
+            text: "clipboard_ce8ee62d.jpg".to_string(),
+            data_name: Some("clipboard_ce8ee62d.jpg".to_string()),
+            has_data: true,
+            size: 1184433,
+            hash: Some("SERVER_RECOMPUTED_HASH".to_string()),
+        };
+
+        assert!(current_profile_meta_matches_request(
+            &meta,
+            SyncClipboardItemType::Image,
+            "0B13A2265544DE3C8C1286E4B854D39833A49BDAA3F82114AE19F55B7F08FBB2",
+        ));
     }
 }
 
@@ -245,10 +362,9 @@ pub(super) async fn get_history_record(
     let Some(record) = latest_history_record(&facade).await? else {
         return Err(StatusCode::NOT_FOUND.into_response());
     };
-    if record.r#type == item_type_to_wire(item_type) && record.hash.eq_ignore_ascii_case(&hash) {
-        Ok(Json(record))
-    } else {
-        Err(StatusCode::NOT_FOUND.into_response())
+    match current_profile_record_for_request(record, item_type, &hash) {
+        Some(record) => Ok(Json(record)),
+        None => Err(StatusCode::NOT_FOUND.into_response()),
     }
 }
 
@@ -269,7 +385,7 @@ pub(super) async fn get_history_data(
             return Err(StatusCode::INTERNAL_SERVER_ERROR.into_response());
         }
     };
-    if !same_profile(&meta, item_type, &hash) {
+    if !current_profile_meta_matches_request(&meta, item_type, &hash) {
         return Err(StatusCode::NOT_FOUND.into_response());
     }
     let Some(data_name) = meta.data_name else {
@@ -319,33 +435,42 @@ pub(super) async fn post_history_record(
         .and_then(|v| v.to_str().ok())
         .unwrap_or("")
         .to_string();
-    let upload = if content_type
+    let mut upload = if content_type
         .to_ascii_lowercase()
         .starts_with("multipart/form-data")
     {
-        parse_history_multipart(request).await?
+        parse_history_multipart(request, &facade).await?
     } else {
         parse_history_urlencoded(request).await?
     };
 
-    let item_type_raw = upload
-        .fields
-        .get("type")
-        .ok_or_else(|| (StatusCode::BAD_REQUEST, "type is required").into_response())?;
-    let item_type = item_type_from_wire(item_type_raw)
-        .ok_or_else(|| (StatusCode::BAD_REQUEST, "invalid type").into_response())?;
+    let item_type_raw = match upload.fields.get("type") {
+        Some(value) => value,
+        None => {
+            abort_parsed_history_file(&facade, upload.file.take()).await;
+            return Err((StatusCode::BAD_REQUEST, "type is required").into_response());
+        }
+    };
+    let item_type = match item_type_from_wire(item_type_raw) {
+        Some(item_type) => item_type,
+        None => {
+            abort_parsed_history_file(&facade, upload.file.take()).await;
+            return Err((StatusCode::BAD_REQUEST, "invalid type").into_response());
+        }
+    };
     let hash = upload
         .fields
         .get("hash")
         .map(|v| v.trim().to_ascii_uppercase())
         .unwrap_or_default();
     if hash.is_empty() {
+        abort_parsed_history_file(&facade, upload.file.take()).await;
         return Err((StatusCode::BAD_REQUEST, "hash is required").into_response());
     }
 
     let mut record = HistoryRecordDoc::from_upload_fields(
         &upload.fields,
-        upload.file.as_ref().map(|file| file.bytes.len() as u64),
+        upload.file.as_ref().map(|file| file.size),
     );
     record.hash = hash.clone();
     record.r#type = item_type_to_wire(item_type).to_string();
@@ -359,43 +484,34 @@ pub(super) async fn post_history_record(
 
     match (item_type, upload.file) {
         (SyncClipboardItemType::Text, Some(file)) => {
-            let full_text = String::from_utf8_lossy(&file.bytes).into_owned();
-            let text = if full_text.is_empty() {
-                record.text.clone()
-            } else {
-                full_text
-            };
-            let meta = SyncClipboardMeta {
-                item_type,
-                text,
-                data_name: None,
-                has_data: false,
-                size: record.size,
-                hash: Some(hash),
-            };
-            facade
-                .put_sync_doc(meta, authed.device.device_id)
-                .await
-                .map_err(|err| map_apply_error(err, "POST /api/history"))?;
+            tracing::warn!(
+                data_name = %file.data_name,
+                "POST /api/history: text upload unexpectedly contained file data"
+            );
+            facade.abort_file_upload(file.handle).await;
+            return Err(
+                (StatusCode::BAD_REQUEST, "Text file part is not supported").into_response()
+            );
         }
         (SyncClipboardItemType::Image | SyncClipboardItemType::File, Some(file)) => {
-            let transfer_id = format!("mobile-lan-history:{}", uuid::Uuid::new_v4());
+            let data_name = file.data_name.clone();
+            let size = file.size;
             facade
-                .put_clipboard_file(
-                    file.data_name.clone(),
+                .finalize_file_upload(
+                    file.handle,
+                    file.data_name,
                     file.mime,
-                    file.bytes,
                     authed.device.device_id.clone(),
-                    transfer_id,
+                    file.transfer_id,
                 )
                 .await
                 .map_err(|err| map_apply_error(err, "POST /api/history file"))?;
             let meta = SyncClipboardMeta {
                 item_type,
                 text: record.text.clone(),
-                data_name: Some(file.data_name),
+                data_name: Some(data_name),
                 has_data: true,
-                size: record.size,
+                size,
                 hash: Some(hash),
             };
             facade
@@ -403,7 +519,8 @@ pub(super) async fn post_history_record(
                 .await
                 .map_err(|err| map_apply_error(err, "POST /api/history"))?;
         }
-        (SyncClipboardItemType::Group, Some(_)) => {
+        (SyncClipboardItemType::Group, Some(file)) => {
+            facade.abort_file_upload(file.handle).await;
             return Err((StatusCode::BAD_REQUEST, "Group is not supported").into_response());
         }
         (_, None) => {
@@ -435,17 +552,26 @@ async fn parse_history_urlencoded(request: Request) -> Result<ParsedHistoryUploa
     Ok(ParsedHistoryUpload { fields, file: None })
 }
 
-async fn parse_history_multipart(request: Request) -> Result<ParsedHistoryUpload, Response> {
+async fn parse_history_multipart(
+    request: Request,
+    facade: &MobileSyncFacade,
+) -> Result<ParsedHistoryUpload, Response> {
     let mut multipart = Multipart::from_request(request, &()).await.map_err(|err| {
         tracing::warn!(error = %err, "POST /api/history: multipart extractor failed");
-        (StatusCode::BAD_REQUEST, "invalid multipart body").into_response()
+        err.into_response()
     })?;
     let mut fields = HashMap::new();
     let mut file = None;
-    while let Some(field) = multipart.next_field().await.map_err(|err| {
-        tracing::warn!(error = %err, "POST /api/history: multipart field read failed");
-        (StatusCode::BAD_REQUEST, "invalid multipart field").into_response()
-    })? {
+    loop {
+        let Some(field) = (match multipart.next_field().await {
+            Ok(field) => field,
+            Err(err) => {
+                abort_parsed_history_file(facade, file.take()).await;
+                return Err(map_multipart_error(err, "multipart field read failed"));
+            }
+        }) else {
+            break;
+        };
         let name = field.name().unwrap_or("").to_string();
         let file_name = field.file_name().map(|s| s.to_string());
         let mime = field
@@ -456,22 +582,133 @@ async fn parse_history_multipart(request: Request) -> Result<ParsedHistoryUpload
             let data_name = file_name
                 .or_else(|| fields.get("dataName").cloned())
                 .unwrap_or_else(|| "clipboard.bin".to_string());
-            let bytes = field.bytes().await.map_err(|err| {
-                tracing::warn!(error = %err, "POST /api/history: multipart file read failed");
-                (StatusCode::BAD_REQUEST, "invalid multipart file").into_response()
-            })?;
-            file = Some(ParsedHistoryFile {
-                data_name,
-                mime,
-                bytes: bytes.to_vec(),
-            });
+            abort_parsed_history_file(facade, file.take()).await;
+            file = Some(
+                stage_history_file_field(facade, data_name, mime, field)
+                    .await
+                    .map_err(|err| map_route_error(err, "multipart file stream failed"))?,
+            );
         } else if !name.is_empty() {
-            let value = field.text().await.map_err(|err| {
-                tracing::warn!(error = %err, "POST /api/history: multipart text read failed");
-                (StatusCode::BAD_REQUEST, "invalid multipart field").into_response()
-            })?;
+            let value = match field.text().await {
+                Ok(value) => value,
+                Err(err) => {
+                    abort_parsed_history_file(facade, file.take()).await;
+                    return Err(map_multipart_error(err, "multipart text read failed"));
+                }
+            };
             fields.insert(name, value);
         }
     }
     Ok(ParsedHistoryUpload { fields, file })
+}
+
+async fn stage_history_file_field(
+    facade: &MobileSyncFacade,
+    data_name: String,
+    mime: String,
+    mut field: Field<'_>,
+) -> Result<ParsedHistoryFile, Response> {
+    let transfer_id = format!("mobile-lan-history:{}", uuid::Uuid::new_v4());
+    let scope_id = uc_application::facade::mobile_sync_streaming_scope_nonce();
+    let handle = facade
+        .begin_file_upload(&scope_id, &data_name, &mime)
+        .await
+        .map_err(|err| {
+            tracing::warn!(
+                data_name = %data_name,
+                error = %err,
+                "POST /api/history: begin file staging failed"
+            );
+            (StatusCode::INTERNAL_SERVER_ERROR, "staging begin failed").into_response()
+        })?;
+
+    let mut bytes_received = 0_u64;
+    let mut sniff_window = Vec::with_capacity(64);
+    loop {
+        let chunk = match field.chunk().await {
+            Ok(Some(chunk)) => chunk,
+            Ok(None) => break,
+            Err(err) => {
+                facade.abort_file_upload(handle).await;
+                return Err(map_multipart_error(err, "multipart file read failed"));
+            }
+        };
+        bytes_received = bytes_received.saturating_add(chunk.len() as u64);
+        if sniff_window.len() < 64 {
+            let take = (64 - sniff_window.len()).min(chunk.len());
+            sniff_window.extend_from_slice(&chunk[..take]);
+        }
+        if bytes_received > FILE_UPLOAD_DISK_SANITY_LIMIT as u64 {
+            facade.abort_file_upload(handle).await;
+            tracing::warn!(
+                data_name = %data_name,
+                bytes_received,
+                limit = FILE_UPLOAD_DISK_SANITY_LIMIT,
+                "POST /api/history: multipart file exceeded disk sanity limit"
+            );
+            return Err((StatusCode::PAYLOAD_TOO_LARGE, "body too large").into_response());
+        }
+        if let Err(err) = facade.append_file_chunk(&handle, &chunk).await {
+            facade.abort_file_upload(handle).await;
+            tracing::warn!(
+                data_name = %data_name,
+                error = %err,
+                "POST /api/history: append file staging chunk failed"
+            );
+            return Err(
+                (StatusCode::INTERNAL_SERVER_ERROR, "staging append failed").into_response()
+            );
+        }
+    }
+
+    let effective_mime = if mime_is_unspecific(&mime) {
+        match infer_image_mime(&data_name, &sniff_window) {
+            Some(sniffed) => {
+                tracing::info!(
+                    data_name = %data_name,
+                    raw_mime = %mime,
+                    sniffed_mime = sniffed,
+                    "POST /api/history: overrode unspecific multipart image mime"
+                );
+                sniffed.to_string()
+            }
+            None => mime,
+        }
+    } else {
+        mime
+    };
+
+    Ok(ParsedHistoryFile {
+        data_name,
+        mime: effective_mime,
+        size: bytes_received,
+        handle,
+        transfer_id,
+    })
+}
+
+async fn abort_parsed_history_file(facade: &MobileSyncFacade, file: Option<ParsedHistoryFile>) {
+    if let Some(file) = file {
+        facade.abort_file_upload(file.handle).await;
+    }
+}
+
+fn map_multipart_error(err: MultipartError, context: &'static str) -> Response {
+    let status = err.status();
+    let detail = err.body_text();
+    tracing::warn!(
+        error = %err,
+        error_detail = %detail,
+        status = status.as_u16(),
+        "POST /api/history: {context}"
+    );
+    (status, detail).into_response()
+}
+
+fn map_route_error(response: Response, context: &'static str) -> Response {
+    tracing::warn!(
+        status = response.status().as_u16(),
+        "POST /api/history: {context}"
+    );
+    response
 }

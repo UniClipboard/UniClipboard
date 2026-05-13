@@ -21,7 +21,7 @@
 use std::sync::Arc;
 
 use axum::{
-    extract::FromRef,
+    extract::{DefaultBodyLimit, FromRef},
     routing::{any, delete, get, post},
     Router,
 };
@@ -85,7 +85,11 @@ pub(crate) fn build_router(
         .route("/api/time", get(compat::get_api_time))
         .route("/api/version", get(compat::get_api_version))
         .route("/version", get(compat::get_api_version))
-        .route("/api/history", post(history::post_history_record))
+        .route(
+            "/api/history",
+            post(history::post_history_record)
+                .layer(DefaultBodyLimit::max(common::FILE_UPLOAD_DISK_SANITY_LIMIT)),
+        )
         .route("/api/history/query", post(history::query_history_records))
         .route(
             "/api/history/statistics",

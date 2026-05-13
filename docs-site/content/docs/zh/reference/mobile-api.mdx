@@ -29,15 +29,15 @@ description: 桌面守护进程对外暴露的、SyncClipboard 兼容的 HTTP �
 UniClipboard 暴露的是当前剪贴板同步和 Android 客户端兼容所需的
 SyncClipboard 服务端子集，不是完整的 SyncClipboard 历史服务端。
 
-| 接口组 | 当前状态 |
-| --- | --- |
-| `GET /SyncClipboard.json`、`PUT /SyncClipboard.json` | 真实读取 / 写入当前最新剪贴板元数据。 |
-| `GET /file/{dataName}`、`PUT /file/{dataName}`、`HEAD /file/{dataName}` | 真实下载 / 上传图片和文件内容。 |
-| `POST /api/history` | 真实接入 Android 兼容的文字、图片、文件上传入口。 |
-| `GET /api/history/{profileId}`、`GET /api/history/{profileId}/data` | 兼容桥接到当前最新剪贴板内容，不提供更早的历史记录列表。 |
-| `POST /api/history/query`、`GET /api/history/statistics` | 基于当前最新一条返回兼容结果；没有当前内容时返回空结果。 |
+| 接口组                                                                          | 当前状态                                                                                                 |
+| ------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| `GET /SyncClipboard.json`、`PUT /SyncClipboard.json`                            | 真实读取 / 写入当前最新剪贴板元数据。                                                                    |
+| `GET /file/{dataName}`、`PUT /file/{dataName}`、`HEAD /file/{dataName}`         | 真实下载 / 上传图片和文件内容。                                                                          |
+| `POST /api/history`                                                             | 真实接入 Android 兼容的文字、图片、文件上传入口。                                                        |
+| `GET /api/history/{profileId}`、`GET /api/history/{profileId}/data`             | 兼容桥接到当前最新剪贴板内容，不提供更早的历史记录列表。                                                 |
+| `POST /api/history/query`、`GET /api/history/statistics`                        | 基于当前最新一条返回兼容结果；没有当前内容时返回空结果。                                                 |
 | `PATCH /api/history/{type}/{hash}`、`DELETE /api/history/clear`、`DELETE /file` | 仅用于兼容客户端流程。服务端会接收请求，但不会通过这些接口持久化标星、置顶、删除、清空或文件夹删除状态。 |
-| `GET /api/time`、`GET /api/version`、`GET /version`、`/` | 客户端用于确认服务在线的探测接口。 |
+| `GET /api/time`、`GET /api/version`、`GET /version`、`/`                        | 客户端用于确认服务在线的探测接口。                                                                       |
 
 ## 上传行为
 

@@ -31,15 +31,15 @@ UniClipboard exposes the subset of the SyncClipboard server API needed for
 current clipboard sync and Android client compatibility. It is not a full
 SyncClipboard history server.
 
-| Endpoint group | Status |
-| --- | --- |
-| `GET /SyncClipboard.json`, `PUT /SyncClipboard.json` | Real clipboard metadata read/write for the latest item. |
-| `GET /file/{dataName}`, `PUT /file/{dataName}`, `HEAD /file/{dataName}` | Real binary download/upload for image and file items. |
-| `POST /api/history` | Real Android-compatible inbound path for text, image, and file uploads. |
-| `GET /api/history/{profileId}`, `GET /api/history/{profileId}/data` | Compatibility bridge to the current latest clipboard item. It does not expose an older history list. |
-| `POST /api/history/query`, `GET /api/history/statistics` | Compatibility responses based on the current latest item, or an empty result when there is no item. |
+| Endpoint group                                                                  | Status                                                                                                                                                                                      |
+| ------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /SyncClipboard.json`, `PUT /SyncClipboard.json`                            | Real clipboard metadata read/write for the latest item.                                                                                                                                     |
+| `GET /file/{dataName}`, `PUT /file/{dataName}`, `HEAD /file/{dataName}`         | Real binary download/upload for image and file items.                                                                                                                                       |
+| `POST /api/history`                                                             | Real Android-compatible inbound path for text, image, and file uploads.                                                                                                                     |
+| `GET /api/history/{profileId}`, `GET /api/history/{profileId}/data`             | Compatibility bridge to the current latest clipboard item. It does not expose an older history list.                                                                                        |
+| `POST /api/history/query`, `GET /api/history/statistics`                        | Compatibility responses based on the current latest item, or an empty result when there is no item.                                                                                         |
 | `PATCH /api/history/{type}/{hash}`, `DELETE /api/history/clear`, `DELETE /file` | Compatibility-only. These requests are accepted so clients can continue their flow, but UniClipboard does not persist starred, pinned, deleted, clear, or folder-delete state through them. |
-| `GET /api/time`, `GET /api/version`, `GET /version`, `/` | Probe endpoints used by clients to confirm that the server is reachable. |
+| `GET /api/time`, `GET /api/version`, `GET /version`, `/`                        | Probe endpoints used by clients to confirm that the server is reachable.                                                                                                                    |
 
 ## Upload behavior
 

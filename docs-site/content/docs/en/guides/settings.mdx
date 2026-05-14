@@ -153,6 +153,20 @@ direct link to
 [GitHub Releases](https://github.com/UniClipboard/UniClipboard/releases)
 for changelogs.
 
+### Update settings
+
+| Setting                        | What it does                                                                                                              |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------- |
+| Auto-check for updates         | Check for a new version on startup. On by default. Disable to only ever update via the `Check for updates` button.        |
+| Download updates in background | After a check finds a new version, silently fetch the installer so click-to-install is instant. Off by default; depends on auto-check being on. |
+| Update channel                 | `Auto` / `Stable` / `Alpha`. Alpha rolls fast; switching prompts a confirmation.                                          |
+
+The sidebar update icon (bottom-right) reflects the current state:
+
+- **Amber with a pulsing dot** — a new version is available, waiting for you.
+- **Amber with a progress ring** — the installer is downloading in the background; the dialog lets you cancel.
+- **Green with a check** — the installer is ready; click to install and restart.
+
 ## Toggles that **don't** exist (yet)
 
 These come up often but aren't exposed today — worth knowing so you

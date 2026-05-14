@@ -304,18 +304,35 @@ fn build_transport_config() -> QuicTransportConfig {
         // because the iroh `QuicTransportConfigBuilder` already pre-sets a
         // sane default — calling this setter just overrides it.
         .keep_alive_interval(Duration::from_secs(15))
-        // iroh#4124 workaround: every QUIC connection has a monotonic
-        // PathId budget; the iroh default is `MAX_MULTIPATH_PATHS + 1 =
-        // 13`. With mDNS + pkarr + dual-relay + call-me-maybe + STUN
-        // hairpin all feeding candidates into the same connection, plus
-        // path abandonment not releasing the ID slot, we burn through 13
-        // in seconds. Once exhausted, every blob transfer that needs to
-        // open a new path fails with `Error::Io` and `remote_state` spams
-        // `MaxPathIdReached` WARN forever (no upstream back-off yet).
-        // Bumping to 64 gives ~5× headroom; each path costs a small
-        // amount of state-machine memory, well bounded by typical 2-peer
-        // workloads.
-        .max_concurrent_multipath_paths(64)
+        // Multipath QUIC extension is *not* enabled — we deliberately leave
+        // `max_concurrent_multipath_paths` at the noq-proto default of
+        // `None` (i.e. don't call the setter). Rationale:
+        //
+        // 1. Our shape is 2-peer P2P. Multipath QUIC is designed for hosts
+        //    with multiple ISPs simultaneously; we have one functional
+        //    path between any two devices.
+        //
+        // 2. Empirically, enabling multipath (any value ≥ 1) triggers
+        //    upstream bug noq#512 ("PTO fires when unset for an abandoned
+        //    path") whenever the cross-peer link has more than one
+        //    candidate (Tailscale + LAN + vmnet etc) and one of those
+        //    candidates gets abandoned during handshake. The race
+        //    manifests as: incoming connection arrives at the iroh
+        //    endpoint, ALPN routes to `/uniclipboard/pairing/1`,
+        //    `noq_proto::connection` silently swallows the PTO timer,
+        //    handshake never makes progress, and `iroh::protocol`
+        //    eventually 60s-timeouts at the router.accept ALPN deadline.
+        //    We observed this at ~50% under release build with multipath
+        //    enabled across 10 mac↔fedora rounds, but 0% on fedora
+        //    self-pair (localhost UDP, no path abandonment).
+        //
+        // 3. iroh#4124 (the old reason this setter existed at all —
+        //    PathId-budget exhaustion at 13) was about ramping the budget
+        //    up. Since we're not enabling multipath, there is no PathId
+        //    budget to exhaust.
+        //
+        // Revisit only after upstream noq#512 is fixed AND we have a
+        // real product need for multipath (e.g. mobile multi-radio).
         .build()
 }
 

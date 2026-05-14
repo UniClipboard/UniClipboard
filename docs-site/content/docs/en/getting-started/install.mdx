@@ -60,14 +60,12 @@ quit and reopen the app for the change to take effect.
 
 <Tab value="Windows">
 
-Two options on Windows:
+The Windows release ships an NSIS installer
+(`UniClipboard_<version>_x64-setup.exe`). It walks through the standard
+install flow, places shortcuts in the Start Menu, and registers an entry
+under **Settings → Apps** for clean uninstall.
 
-- **MSI installer** — `UniClipboard_<version>_x64_en-US.msi`. Standard
-  installer flow; sets up Start Menu and uninstall entries.
-- **Portable ZIP** — extract anywhere and run `UniClipboard.exe`. No
-  registry writes; useful for USB sticks or locked-down machines.
-
-Both artefacts are code-signed.
+The installer is code-signed.
 
 Download the one you want from the
 [Releases](https://github.com/UniClipboard/UniClipboard/releases) page.

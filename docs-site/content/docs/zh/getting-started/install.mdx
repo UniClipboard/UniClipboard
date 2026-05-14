@@ -56,12 +56,10 @@ cask 与 formula 互不冲突，需要的话两个都装即可（GUI + 终端 `u
 
 <Tab value="Windows">
 
-Windows 提供两种形态：
+Windows 发行版本提供 NSIS 安装包（`UniClipboard_<version>_x64-setup.exe`）。
+按标准安装流程一路下一步即可，安装器会写入开始菜单，并在 **设置 → 应用** 下注册卸载项。
 
-- **MSI 安装包** —— `UniClipboard_<version>_x64_en-US.msi`。标准安装流程，会写入开始菜单与卸载项。
-- **便携版 ZIP** —— 解压到任意位置，运行 `UniClipboard.exe`。不写注册表，适合 U 盘或受限环境。
-
-两种产物都已数字签名。
+安装包已数字签名。
 
 按需从
 [Releases](https://github.com/UniClipboard/UniClipboard/releases)

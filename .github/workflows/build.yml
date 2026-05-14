@@ -116,45 +116,54 @@ jobs:
         with:
           bun-version: latest
 
-      - name: install Rust stable
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
-
-      - name: Sanitize Rust on macOS runners
-        # macos-15-arm64 image 20260511+ 预装了 Homebrew rustup formula,
-        # 把 rustup-init multicall 软链成 /opt/homebrew/bin/{cargo,rustc,rustup}。
-        # dtolnay/rust-toolchain 检测到 `rustup` 已在 PATH 就跳过 PATH 写入,
-        # 后续 step 的 `cargo metadata` 命中 brew shim 并以 rustup-init 用法
-        # 退出,tauri-action 启动失败。
+      - name: Purge Homebrew rustup on macOS runners
+        # macos-15-arm64 image 20260511+ 预装了 Homebrew 的 rustup formula。
+        # 它把 rustup-init multicall 装到 brew Cellar,然后在
+        # ~/.cargo/bin/ 留下一组 symlink (rustup, cargo, rustc -> rustup)
+        # 冒充用户级安装。但这个 multicall binary 不识别 "cargo" 这个名字:
+        # 当 tauri-action 调用 `cargo metadata` 时,它走 multicall 入口、
+        # 没有 cargo 分支、直接 dump rustup-init 的 usage 退出。
         #
-        # 同 image 池里旧版 (20260427) 没有这个问题,所以现象表现为「同一次
-        # release 跑里只有部分 macOS job 偶发挂掉」。
+        # dtolnay/rust-toolchain 检测到 `command -v rustup` 成功就跳过它
+        # 自带的 rustup-init 安装流程,所以即使再前置 PATH 也只是切换到同一
+        # 个坏 multicall。
         #
-        # 策略:在 macOS host 上主动卸掉 brew rustup,再把 rustup 真 proxy 的
-        # $CARGO_HOME/bin 前置到 PATH。诊断块输出探测信息便于后续定位。
+        # 这里在 dtolnay 之前彻底清掉 brew rustup 和残留 symlinks,让 dtolnay
+        # 走它的官方安装路径,重建真正的 rustup proxy 到 $CARGO_HOME/bin。
+        #
+        # 现象只在 macos-15-arm64 image 20260511+ 复现 — 同 image 池里旧版
+        # (20260427) 没有 brew rustup,正常工作。GitHub runner pool 同时存在
+        # 两版 image,所以表现为「同一次 release 跑里只有部分 macOS job 偶发
+        # 挂掉」(见 release 25864484102)。
         if: runner.os == 'macOS'
         shell: bash
         run: |
-          echo "::group::Pre-clean probe"
+          echo "::group::Pre-purge probe"
           echo "PATH=$PATH"
           echo "which -a cargo:"; which -a cargo || true
           echo "which -a rustup:"; which -a rustup || true
-          [ -e /opt/homebrew/bin/cargo ] && ls -la /opt/homebrew/bin/cargo || true
           [ -e "$HOME/.cargo/bin/cargo" ] && ls -la "$HOME/.cargo/bin/cargo" || true
+          [ -e "$HOME/.cargo/bin/rustup" ] && ls -la "$HOME/.cargo/bin/rustup" || true
           echo "::endgroup::"
 
           if command -v brew &>/dev/null; then
             brew list --formula rustup &>/dev/null && brew uninstall --ignore-dependencies rustup || true
             brew list --formula rustup-init &>/dev/null && brew uninstall --ignore-dependencies rustup-init || true
           fi
+          # 删掉 brew formula 留下的 stale symlinks;dtolnay 下一步会重建。
+          # 此时 Swatinem/rust-cache 还没跑,~/.cargo/bin 下不会有真实
+          # 依赖文件,可以放心整目录清。
+          rm -rf "$HOME/.cargo/bin"
 
-          echo "${CARGO_HOME:-$HOME/.cargo}/bin" >> "$GITHUB_PATH"
-
-          echo "::group::Post-clean probe"
+          echo "::group::Post-purge probe"
           echo "which -a cargo:"; which -a cargo || true
           echo "which -a rustup:"; which -a rustup || true
           echo "::endgroup::"
+
+      - name: install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
 
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2

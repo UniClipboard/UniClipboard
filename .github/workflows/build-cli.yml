@@ -94,37 +94,36 @@ jobs:
         with:
           node-version: lts/*
 
-      - name: install Rust stable
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          # Linux 走 musl,需要 rustup 装对应 musl target;
-          # macOS 装两个 darwin target;Windows host=msvc 装 noop。
-          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || matrix.target }}
-
-      - name: Sanitize Rust on macOS runners
+      - name: Purge Homebrew rustup on macOS runners
         # 见 build.yml 同名 step。
         if: runner.os == 'macOS'
         shell: bash
         run: |
-          echo "::group::Pre-clean probe"
+          echo "::group::Pre-purge probe"
           echo "PATH=$PATH"
           echo "which -a cargo:"; which -a cargo || true
           echo "which -a rustup:"; which -a rustup || true
-          [ -e /opt/homebrew/bin/cargo ] && ls -la /opt/homebrew/bin/cargo || true
           [ -e "$HOME/.cargo/bin/cargo" ] && ls -la "$HOME/.cargo/bin/cargo" || true
+          [ -e "$HOME/.cargo/bin/rustup" ] && ls -la "$HOME/.cargo/bin/rustup" || true
           echo "::endgroup::"
 
           if command -v brew &>/dev/null; then
             brew list --formula rustup &>/dev/null && brew uninstall --ignore-dependencies rustup || true
             brew list --formula rustup-init &>/dev/null && brew uninstall --ignore-dependencies rustup-init || true
           fi
+          rm -rf "$HOME/.cargo/bin"
 
-          echo "${CARGO_HOME:-$HOME/.cargo}/bin" >> "$GITHUB_PATH"
-
-          echo "::group::Post-clean probe"
+          echo "::group::Post-purge probe"
           echo "which -a cargo:"; which -a cargo || true
           echo "which -a rustup:"; which -a rustup || true
           echo "::endgroup::"
+
+      - name: install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          # Linux 走 musl,需要 rustup 装对应 musl target;
+          # macOS 装两个 darwin target;Windows host=msvc 装 noop。
+          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || matrix.target }}
 
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2

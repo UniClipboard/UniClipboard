@@ -11,7 +11,7 @@
 //! 都已下沉到 [`uc_desktop`]，本文件只关心怎么把它们落到 Tauri 的
 //! `Builder` / `setup` / `RunEvent` 上。
 
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::time::Duration;
 
 use tauri::webview::PageLoadEvent;
@@ -393,7 +393,7 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
             app.handle()
                 .plugin(tauri_plugin_updater::Builder::new().build())?;
 
-            app.manage(PendingUpdate(Mutex::new(None)));
+            app.manage(PendingUpdate::new());
 
             // Start file cache cleanup task (runs once at startup).
             // The starter is `async fn`; drive it on Tauri's managed tokio
@@ -533,6 +533,9 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
             crate::commands::autostart::is_autostart_enabled,
             // Updater commands
             crate::commands::updater::check_for_update,
+            crate::commands::updater::download_update,
+            crate::commands::updater::cancel_download,
+            crate::commands::updater::get_download_progress,
             crate::commands::updater::install_update,
             // Storage commands
             crate::commands::storage::open_data_directory,

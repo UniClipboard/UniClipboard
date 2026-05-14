@@ -81,6 +81,7 @@ pub struct GeneralSettingsView {
     pub auto_start: bool,
     pub silent_start: bool,
     pub auto_check_update: bool,
+    pub auto_download_update: bool,
     pub theme: ThemeView,
     /// 旧版"统一主题预设"字段。新 UI 仅在 light/dark 字段都为 None 时回退。
     /// 删除计划见 `uc_core::settings::model::GeneralSettings::theme_color`。
@@ -168,6 +169,7 @@ pub struct GeneralSettingsPatch {
     pub auto_start: Option<bool>,
     pub silent_start: Option<bool>,
     pub auto_check_update: Option<bool>,
+    pub auto_download_update: Option<bool>,
     pub theme: Option<ThemeView>,
     /// 旧版"统一主题预设"字段。新 UI 不再写入,但仍保留 patch 入口便于
     /// 显式清空（`Some(None)`）旧字段或在迁移工具里使用。
@@ -431,6 +433,7 @@ impl From<core::Settings> for SettingsView {
                 auto_start: value.general.auto_start,
                 silent_start: value.general.silent_start,
                 auto_check_update: value.general.auto_check_update,
+                auto_download_update: value.general.auto_download_update,
                 theme: value.general.theme.into(),
                 theme_color: value.general.theme_color,
                 theme_color_light: value.general.theme_color_light,
@@ -505,6 +508,9 @@ pub(crate) fn apply_settings_patch(
         }
         if let Some(v) = general.auto_check_update {
             existing.general.auto_check_update = v;
+        }
+        if let Some(v) = general.auto_download_update {
+            existing.general.auto_download_update = v;
         }
         if let Some(v) = general.theme {
             existing.general.theme = v.into();

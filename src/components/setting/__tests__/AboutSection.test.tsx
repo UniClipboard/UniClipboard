@@ -49,6 +49,7 @@ const baseSetting: Settings = {
     autoStart: false,
     silentStart: false,
     autoCheckUpdate: true,
+    autoDownloadUpdate: false,
     theme: 'system',
     themeColor: null,
     themeColorLight: null,
@@ -178,11 +179,46 @@ describe('AboutSection', () => {
 
     expect(screen.getByText('settings.sections.about.autoCheckUpdate.label')).toBeInTheDocument()
 
-    await user.click(screen.getByRole('switch'))
+    // Two switches now (auto-check + auto-download); auto-check is rendered first.
+    const [autoCheckSwitch] = screen.getAllByRole('switch')
+    await user.click(autoCheckSwitch)
 
     await waitFor(() => {
       expect(updateGeneralSetting).toHaveBeenCalledWith({ autoCheckUpdate: false })
     })
+  })
+
+  it('toggles background download when auto-check is enabled', async () => {
+    const updateGeneralSetting = vi.fn().mockResolvedValue(undefined)
+
+    const { user } = renderAboutSection({ updateGeneralSetting })
+
+    expect(screen.getByText('settings.sections.about.autoDownloadUpdate.label')).toBeInTheDocument()
+
+    const [, autoDownloadSwitch] = screen.getAllByRole('switch')
+    await user.click(autoDownloadSwitch)
+
+    await waitFor(() => {
+      expect(updateGeneralSetting).toHaveBeenCalledWith({ autoDownloadUpdate: true })
+    })
+  })
+
+  it('disables background download switch when auto-check is off', () => {
+    renderAboutSection({
+      setting: {
+        ...baseSetting,
+        general: { ...baseSetting.general, autoCheckUpdate: false, autoDownloadUpdate: true },
+      },
+    })
+
+    const [autoCheckSwitch, autoDownloadSwitch] = screen.getAllByRole('switch')
+    expect(autoCheckSwitch).not.toBeDisabled()
+    expect(autoDownloadSwitch).toBeDisabled()
+    // Persisted preference is preserved but rendered as off, since check is gating it.
+    expect(autoDownloadSwitch).toHaveAttribute('aria-checked', 'false')
+    expect(
+      screen.getByText('settings.sections.about.autoDownloadUpdate.disabledHint')
+    ).toBeInTheDocument()
   })
 
   it('shows loading feedback while checking for updates', () => {

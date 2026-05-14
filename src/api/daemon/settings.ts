@@ -43,6 +43,7 @@ export interface GeneralSettings {
   autoStart: boolean
   silentStart: boolean
   autoCheckUpdate: boolean
+  autoDownloadUpdate: boolean
   theme: Theme
   /** 旧版统一主题预设(回退用)。 */
   themeColor: string | null
@@ -264,6 +265,7 @@ function toSettingsPatchRequest(settings: Partial<Settings>): SettingsPatchReque
       autoStart,
       silentStart,
       autoCheckUpdate,
+      autoDownloadUpdate,
       theme,
       themeColor,
       themeColorLight,
@@ -281,6 +283,7 @@ function toSettingsPatchRequest(settings: Partial<Settings>): SettingsPatchReque
       autoStart,
       silentStart,
       autoCheckUpdate,
+      autoDownloadUpdate,
       theme,
       themeColor,
       themeColorLight,

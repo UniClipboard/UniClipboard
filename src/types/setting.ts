@@ -24,6 +24,14 @@ export interface GeneralSettings {
   autoStart: boolean
   silentStart: boolean
   autoCheckUpdate: boolean
+  /**
+   * Whether to download the next available update in the background.
+   * Pre-fetching the installer bytes lets the click-to-install flow skip
+   * the download step entirely. Opt-in: defaults to `false`. UI gates
+   * this toggle on `autoCheckUpdate` so users can't get into
+   * "download but never check" combinations.
+   */
+  autoDownloadUpdate: boolean
   theme: Theme
   /** 旧版统一主题预设字段(读取时作为回退,新代码不写入)。 */
   themeColor: string | null

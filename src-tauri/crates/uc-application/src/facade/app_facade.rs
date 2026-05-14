@@ -477,6 +477,7 @@ impl AppFacade {
                     auto_start: None,
                     silent_start: None,
                     auto_check_update: None,
+                    auto_download_update: None,
                     theme: None,
                     theme_color: None,
                     theme_color_light: None,

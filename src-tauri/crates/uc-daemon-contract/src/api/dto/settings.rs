@@ -32,6 +32,12 @@ pub struct GeneralSettingsDto {
     pub auto_start: bool,
     pub silent_start: bool,
     pub auto_check_update: bool,
+    /// Whether to download the next available update in the background.
+    /// Persisted alongside `auto_check_update`; consumed by the frontend's
+    /// `UpdateContext` after a successful `check_for_update` to decide
+    /// whether to start a silent download.
+    #[serde(default)]
+    pub auto_download_update: bool,
     pub theme: ThemeDto,
     /// 旧版"统一主题预设"字段（v0.7 之前唯一字段）。新前端不再写入,
     /// 但 wire 仍透传以便老 daemon ↔ 新前端 / 新 daemon ↔ 老前端兼容。
@@ -272,6 +278,7 @@ pub struct GeneralSettingsPatchDto {
     pub auto_start: Option<bool>,
     pub silent_start: Option<bool>,
     pub auto_check_update: Option<bool>,
+    pub auto_download_update: Option<bool>,
     pub theme: Option<ThemeDto>,
     /// 旧版"统一主题预设"patch 字段。`Some(None)` = 显式清空,`None` = 不修改。
     #[serde(default)]
@@ -453,6 +460,7 @@ impl From<core::GeneralSettings> for GeneralSettingsDto {
             auto_start: value.auto_start,
             silent_start: value.silent_start,
             auto_check_update: value.auto_check_update,
+            auto_download_update: value.auto_download_update,
             theme: value.theme.into(),
             theme_color: value.theme_color,
             theme_color_light: value.theme_color_light,
@@ -894,6 +902,72 @@ mod network_dto_tests {
         );
         let dark = dto.theme_overrides_dark.expect("dark Some");
         assert!(dark.is_empty(), "explicit empty map preserved");
+    }
+
+    /// 老 wire 缺 `autoDownloadUpdate` 字段时 DTO 反序列化默认 false（opt-in）。
+    /// 保证 v0.9 之前持久化的 settings.json 升级到带本字段的版本不会反序列化失败。
+    #[test]
+    fn general_dto_legacy_wire_without_auto_download_defaults_to_false() {
+        let json = r#"{
+            "autoStart": false,
+            "silentStart": false,
+            "autoCheckUpdate": true,
+            "theme": "system",
+            "themeColor": null,
+            "language": null,
+            "deviceName": null,
+            "telemetryEnabled": true
+        }"#;
+        let dto: GeneralSettingsDto = serde_json::from_str(json).expect("deserialize legacy wire");
+        assert!(
+            !dto.auto_download_update,
+            "missing autoDownloadUpdate must default to false (opt-in)"
+        );
+    }
+
+    /// 新 wire 带 `autoDownloadUpdate` 字段时正确透传两个方向。
+    #[test]
+    fn general_dto_auto_download_round_trips_camel_case() {
+        let json = r#"{
+            "autoStart": false,
+            "silentStart": false,
+            "autoCheckUpdate": true,
+            "autoDownloadUpdate": true,
+            "theme": "system",
+            "themeColor": null,
+            "language": null,
+            "deviceName": null,
+            "telemetryEnabled": true
+        }"#;
+        let dto: GeneralSettingsDto =
+            serde_json::from_str(json).expect("deserialize with autoDownloadUpdate");
+        assert!(dto.auto_download_update);
+
+        let out = serde_json::to_string(&dto).expect("serialize");
+        assert!(
+            out.contains(r#""autoDownloadUpdate":true"#),
+            "wire field MUST be camelCase: {}",
+            out
+        );
+    }
+
+    /// patch DTO 缺字段不修改、显式带字段才修改 —— `autoDownloadUpdate` 同其他 bool patch。
+    #[test]
+    fn general_patch_dto_auto_download_optional_semantics() {
+        let absent: GeneralSettingsPatchDto =
+            serde_json::from_str("{}").expect("deserialize empty patch");
+        assert!(
+            absent.auto_download_update.is_none(),
+            "missing => no change"
+        );
+
+        let explicit_false: GeneralSettingsPatchDto =
+            serde_json::from_str(r#"{"autoDownloadUpdate": false}"#).expect("deserialize patch");
+        assert_eq!(explicit_false.auto_download_update, Some(false));
+
+        let explicit_true: GeneralSettingsPatchDto =
+            serde_json::from_str(r#"{"autoDownloadUpdate": true}"#).expect("deserialize patch");
+        assert_eq!(explicit_true.auto_download_update, Some(true));
     }
 }
 

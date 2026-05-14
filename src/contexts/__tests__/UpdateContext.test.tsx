@@ -23,6 +23,7 @@ const baseSetting: Settings = {
     autoStart: false,
     silentStart: false,
     autoCheckUpdate: true,
+    autoDownloadUpdate: false,
     theme: 'system',
     themeColor: null,
     themeColorLight: null,

@@ -26,6 +26,7 @@ impl Default for GeneralSettings {
     /// - `auto_start`: false
     /// - `silent_start`: false
     /// - `auto_check_update`: true
+    /// - `auto_download_update`: false (opt-in — pre-fetch consumes bandwidth)
     /// - `theme`: `Theme::System`
     /// - `theme_color`: `None`
     /// - `device_name`: `None`
@@ -41,6 +42,7 @@ impl Default for GeneralSettings {
     /// assert_eq!(settings.auto_start, false);
     /// assert_eq!(settings.silent_start, false);
     /// assert_eq!(settings.auto_check_update, true);
+    /// assert_eq!(settings.auto_download_update, false);
     /// assert_eq!(settings.theme, Theme::System);
     /// assert!(settings.theme_color.is_none());
     /// assert!(settings.device_name.is_none());
@@ -52,6 +54,7 @@ impl Default for GeneralSettings {
             auto_start: false,
             silent_start: false,
             auto_check_update: true,
+            auto_download_update: false,
             theme: Theme::System,
             theme_color: None,
             theme_color_light: None,

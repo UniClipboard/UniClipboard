@@ -419,6 +419,11 @@
           "label": "Auto-check for updates",
           "description": "Automatically check for new versions when the app starts"
         },
+        "autoDownloadUpdate": {
+          "label": "Download updates in background",
+          "description": "Pre-fetch the installer when a new version is detected, so installing is instant.",
+          "disabledHint": "Enable \"Auto-check for updates\" first"
+        },
         "updateChannel": {
           "label": "Update Channel",
           "description": "Choose which release channel to receive updates from",

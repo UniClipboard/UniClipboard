@@ -410,6 +410,11 @@
           "label": "自动检查更新",
           "description": "应用启动时自动检查是否有新版本"
         },
+        "autoDownloadUpdate": {
+          "label": "后台下载更新",
+          "description": "检测到新版本时静默下载安装包，点击安装时无需等待。",
+          "disabledHint": "请先开启「自动检查更新」"
+        },
         "updateChannel": {
           "label": "更新渠道",
           "description": "选择接收更新的发布渠道",

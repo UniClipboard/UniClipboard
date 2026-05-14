@@ -15,6 +15,15 @@ pub struct GeneralSettings {
     pub auto_start: bool,
     pub silent_start: bool,
     pub auto_check_update: bool,
+    /// Whether to download the next available update in the background.
+    ///
+    /// Pre-fetching the installer bytes lets the click-to-install flow
+    /// skip the download step entirely. Independent of
+    /// `auto_check_update`: the daemon only honours this flag when the
+    /// frontend has actually checked for an update; the UI further
+    /// gates the toggle on `auto_check_update` so users can't get into
+    /// "download but never check" states.
+    pub auto_download_update: bool,
     pub theme: Theme,
     /// 旧版"全局主题预设"字段（v0.7 之前唯一字段）。
     ///

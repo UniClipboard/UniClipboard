@@ -240,6 +240,7 @@ async fn restart_required_truth_table() {
             auto_start: Some(true),
             silent_start: None,
             auto_check_update: None,
+            auto_download_update: None,
             theme: None,
             theme_color: None,
             theme_color_light: None,

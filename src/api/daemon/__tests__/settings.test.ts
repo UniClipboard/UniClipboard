@@ -78,6 +78,7 @@ describe('settings api — toSettingsPatchRequest network mirror', () => {
         autoStart: true,
         silentStart: false,
         autoCheckUpdate: true,
+        autoDownloadUpdate: false,
         theme: 'system',
         themeColor: null,
         themeColorLight: null,

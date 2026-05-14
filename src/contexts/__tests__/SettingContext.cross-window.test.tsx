@@ -47,6 +47,7 @@ const baseSetting: Settings = {
     autoStart: false,
     silentStart: false,
     autoCheckUpdate: true,
+    autoDownloadUpdate: false,
     theme: 'light',
     themeColor: 'zinc',
     themeColorLight: null,

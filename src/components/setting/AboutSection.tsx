@@ -66,6 +66,9 @@ const AboutSection: React.FC = () => {
     useUpdate()
   const [appVersion, setAppVersion] = useState<string>('')
   const [autoCheckUpdate, setAutoCheckUpdate] = useState(setting?.general.autoCheckUpdate ?? true)
+  const [autoDownloadUpdate, setAutoDownloadUpdate] = useState(
+    setting?.general.autoDownloadUpdate ?? false
+  )
   const [updateChannel, setUpdateChannel] = useState<UpdateChannel | null>(null)
   const [pendingUpdateChannel, setPendingUpdateChannel] = useState<UpdateChannel | null>(null)
   const [updateDialogOpen, setUpdateDialogOpen] = useState(false)
@@ -94,6 +97,11 @@ const AboutSection: React.FC = () => {
 
   useEffect(() => {
     if (!setting?.general) return
+    setAutoDownloadUpdate(setting.general.autoDownloadUpdate)
+  }, [setting])
+
+  useEffect(() => {
+    if (!setting?.general) return
     setUpdateChannel(setting.general.updateChannel ?? null)
   }, [setting])
 
@@ -106,6 +114,20 @@ const AboutSection: React.FC = () => {
     } catch (error) {
       log.error({ err: error }, '更改自动检查更新状态失败')
       setAutoCheckUpdate(previous)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleAutoDownloadUpdateChange = async (checked: boolean) => {
+    const previous = autoDownloadUpdate
+    try {
+      setSaving(true)
+      setAutoDownloadUpdate(checked)
+      await updateGeneralSetting({ autoDownloadUpdate: checked })
+    } catch (error) {
+      log.error({ err: error }, '更改自动下载更新状态失败')
+      setAutoDownloadUpdate(previous)
     } finally {
       setSaving(false)
     }
@@ -242,6 +264,21 @@ const AboutSection: React.FC = () => {
             checked={autoCheckUpdate}
             onCheckedChange={handleAutoCheckUpdateChange}
             disabled={isBusy}
+          />
+        </SettingRow>
+
+        <SettingRow
+          label={t('settings.sections.about.autoDownloadUpdate.label')}
+          description={
+            autoCheckUpdate
+              ? t('settings.sections.about.autoDownloadUpdate.description')
+              : t('settings.sections.about.autoDownloadUpdate.disabledHint')
+          }
+        >
+          <Switch
+            checked={autoDownloadUpdate && autoCheckUpdate}
+            onCheckedChange={handleAutoDownloadUpdateChange}
+            disabled={isBusy || !autoCheckUpdate}
           />
         </SettingRow>
 

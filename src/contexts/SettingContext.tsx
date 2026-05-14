@@ -176,23 +176,16 @@ export const SettingProvider: React.FC<SettingProviderProps> = ({ children }) =>
         setting.keyboardShortcuts ?? {},
         overrides
       )
-      // 合并到 await 之后的最新 state，避免覆盖期间发生的并发更新；
-      // 用 ref 把 functional updater 计算出的 merged settings 捕获出来用于广播。
-      let mergedSnapshot: Settings | null = null
-      setSetting(prev => {
-        const merged: Settings = prev
-          ? { ...prev, keyboardShortcuts }
-          : ({ ...setting, keyboardShortcuts } as Settings)
-        mergedSnapshot = merged
-        return merged
-      })
+      // 合并到 await 之后的最新 state，避免覆盖期间发生的并发更新。
+      // 广播仍用 await 前快照——任何并发更新会自己 emit，这里只承诺广播
+      // 本次快捷键变更落地后的视图。
+      const updatedSetting: Settings = { ...setting, keyboardShortcuts }
+      setSetting(prev => (prev ? { ...prev, keyboardShortcuts } : updatedSetting))
       setError(null)
-      if (mergedSnapshot) {
-        try {
-          await emitSettingsChanged(mergedSnapshot)
-        } catch (err) {
-          log.error({ err }, 'Failed to broadcast settings change')
-        }
+      try {
+        await emitSettingsChanged(updatedSetting)
+      } catch (err) {
+        log.error({ err }, 'Failed to broadcast settings change')
       }
     } catch (err) {
       log.error({ err }, 'Failed to update keyboard shortcuts')

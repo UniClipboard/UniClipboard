@@ -54,11 +54,11 @@ jobs:
           # 容器仍用 debian:bookworm 拿 musl-tools / cmake / clang 工具链。
           PLATFORM="${{ inputs.platform || 'all' }}"
           if [ "$PLATFORM" == "all" ]; then
-            echo 'matrix=[{"platform":"macos-latest","target":"aarch64-apple-darwin","args":"--target aarch64-apple-darwin"},{"platform":"macos-latest","target":"x86_64-apple-darwin","args":"--target x86_64-apple-darwin"},{"platform":"ubuntu-22.04","target":"x86_64-unknown-linux-musl","args":"--target x86_64-unknown-linux-musl","container":"ghcr.io/uniclipboard/build-bookworm:latest"},{"platform":"ubuntu-22.04-arm","target":"aarch64-unknown-linux-musl","args":"--target aarch64-unknown-linux-musl","container":"ghcr.io/uniclipboard/build-bookworm:latest"},{"platform":"windows-latest","target":"x86_64-pc-windows-msvc","args":""}]' >> "$GITHUB_OUTPUT"
+            echo 'matrix=[{"platform":"macos-14","target":"aarch64-apple-darwin","args":"--target aarch64-apple-darwin"},{"platform":"macos-14","target":"x86_64-apple-darwin","args":"--target x86_64-apple-darwin"},{"platform":"ubuntu-22.04","target":"x86_64-unknown-linux-musl","args":"--target x86_64-unknown-linux-musl","container":"ghcr.io/uniclipboard/build-bookworm:latest"},{"platform":"ubuntu-22.04-arm","target":"aarch64-unknown-linux-musl","args":"--target aarch64-unknown-linux-musl","container":"ghcr.io/uniclipboard/build-bookworm:latest"},{"platform":"windows-latest","target":"x86_64-pc-windows-msvc","args":""}]' >> "$GITHUB_OUTPUT"
           elif [ "$PLATFORM" == "macos-aarch64" ]; then
-            echo 'matrix=[{"platform":"macos-latest","target":"aarch64-apple-darwin","args":"--target aarch64-apple-darwin"}]' >> "$GITHUB_OUTPUT"
+            echo 'matrix=[{"platform":"macos-14","target":"aarch64-apple-darwin","args":"--target aarch64-apple-darwin"}]' >> "$GITHUB_OUTPUT"
           elif [ "$PLATFORM" == "macos-x86_64" ]; then
-            echo 'matrix=[{"platform":"macos-latest","target":"x86_64-apple-darwin","args":"--target x86_64-apple-darwin"}]' >> "$GITHUB_OUTPUT"
+            echo 'matrix=[{"platform":"macos-14","target":"x86_64-apple-darwin","args":"--target x86_64-apple-darwin"}]' >> "$GITHUB_OUTPUT"
           elif [ "$PLATFORM" == "ubuntu-22.04" ]; then
             echo 'matrix=[{"platform":"ubuntu-22.04","target":"x86_64-unknown-linux-musl","args":"--target x86_64-unknown-linux-musl","container":"ghcr.io/uniclipboard/build-bookworm:latest"}]' >> "$GITHUB_OUTPUT"
           elif [ "$PLATFORM" == "ubuntu-22.04-arm" ]; then
@@ -94,49 +94,12 @@ jobs:
         with:
           node-version: lts/*
 
-      - name: Purge Homebrew rustup on macOS runners
-        # 见 build.yml 同名 step。
-        if: runner.os == 'macOS'
-        shell: bash
-        run: |
-          echo "::group::Pre-purge probe"
-          echo "PATH=$PATH"
-          echo "which -a cargo:"; which -a cargo || true
-          echo "which -a rustup:"; which -a rustup || true
-          [ -e "$HOME/.cargo/bin/cargo" ] && ls -la "$HOME/.cargo/bin/cargo" || true
-          [ -e "$HOME/.cargo/bin/rustup" ] && ls -la "$HOME/.cargo/bin/rustup" || true
-          [ -d "$HOME/.rustup/toolchains" ] && ls -la "$HOME/.rustup/toolchains/" || true
-          echo "::endgroup::"
-
-          if command -v brew &>/dev/null; then
-            brew list --formula rustup &>/dev/null && brew uninstall --ignore-dependencies rustup || true
-            brew list --formula rustup-init &>/dev/null && brew uninstall --ignore-dependencies rustup-init || true
-          fi
-          rm -rf "$HOME/.cargo/bin" "$HOME/.rustup"
-
-          echo "::group::Post-purge probe"
-          echo "which -a cargo:"; which -a cargo || true
-          echo "which -a rustup:"; which -a rustup || true
-          echo "::endgroup::"
-
       - name: install Rust stable
         uses: dtolnay/rust-toolchain@stable
         with:
           # Linux 走 musl,需要 rustup 装对应 musl target;
           # macOS 装两个 darwin target;Windows host=msvc 装 noop。
-          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || matrix.target }}
-
-      - name: Verify cargo after install
-        # 见 build.yml 同名 step。
-        if: runner.os == 'macOS'
-        shell: bash
-        run: |
-          echo "PATH=$PATH"
-          which cargo
-          ls -la "$HOME/.cargo/bin/" || true
-          ls -la "$HOME/.rustup/toolchains/" || true
-          cargo --version
-          rustc --version
+          targets: ${{ matrix.platform == 'macos-14' && 'aarch64-apple-darwin,x86_64-apple-darwin' || matrix.target }}
 
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
@@ -179,7 +142,7 @@ jobs:
         run: cargo build --release -p uc-cli ${{ matrix.args }}
 
       - name: import Apple certificate (macOS only)
-        if: matrix.platform == 'macos-latest'
+        if: matrix.platform == 'macos-14'
         env:
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
@@ -201,7 +164,7 @@ jobs:
           echo "KEYCHAIN_PATH=$KEYCHAIN_PATH" >> "$GITHUB_ENV"
 
       - name: sign CLI binary (macOS only)
-        if: matrix.platform == 'macos-latest'
+        if: matrix.platform == 'macos-14'
         run: |
           # Extract signing identity from imported certificate
           IDENTITY=$(security find-identity -v -p codesigning "$KEYCHAIN_PATH" | grep "Developer ID Application" | head -1 | sed 's/.*"\(.*\)".*/\1/')
@@ -223,7 +186,7 @@ jobs:
           codesign --verify --verbose "$BIN_PATH"
 
       - name: notarize CLI binary (macOS only)
-        if: matrix.platform == 'macos-latest'
+        if: matrix.platform == 'macos-14'
         env:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
@@ -283,5 +246,5 @@ jobs:
           path: uniclipboard-cli-*
 
       - name: cleanup keychain (macOS only)
-        if: matrix.platform == 'macos-latest' && always()
+        if: matrix.platform == 'macos-14' && always()
         run: security delete-keychain $RUNNER_TEMP/app-signing.keychain-db 2>/dev/null || true

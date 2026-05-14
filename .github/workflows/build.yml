@@ -69,11 +69,11 @@ jobs:
           # cross-compile webkit/gtk 栈;x86_64 仍在 ubuntu-22.04。
           PLATFORM="${{ inputs.platform || 'all' }}"
           if [ "$PLATFORM" == "all" ]; then
-            echo 'matrix=[{"platform":"macos-latest","target":"aarch64-apple-darwin","args":"--target aarch64-apple-darwin"},{"platform":"macos-latest","target":"x86_64-apple-darwin","args":"--target x86_64-apple-darwin"},{"platform":"ubuntu-22.04","target":"x86_64-unknown-linux-gnu","args":"","container":"ghcr.io/uniclipboard/build-bookworm:latest"},{"platform":"ubuntu-22.04-arm","target":"aarch64-unknown-linux-gnu","args":"","container":"ghcr.io/uniclipboard/build-bookworm:latest"},{"platform":"windows-latest","target":"x86_64-pc-windows-msvc","args":""}]' >> "$GITHUB_OUTPUT"
+            echo 'matrix=[{"platform":"macos-14","target":"aarch64-apple-darwin","args":"--target aarch64-apple-darwin"},{"platform":"macos-14","target":"x86_64-apple-darwin","args":"--target x86_64-apple-darwin"},{"platform":"ubuntu-22.04","target":"x86_64-unknown-linux-gnu","args":"","container":"ghcr.io/uniclipboard/build-bookworm:latest"},{"platform":"ubuntu-22.04-arm","target":"aarch64-unknown-linux-gnu","args":"","container":"ghcr.io/uniclipboard/build-bookworm:latest"},{"platform":"windows-latest","target":"x86_64-pc-windows-msvc","args":""}]' >> "$GITHUB_OUTPUT"
           elif [ "$PLATFORM" == "macos-aarch64" ]; then
-            echo 'matrix=[{"platform":"macos-latest","target":"aarch64-apple-darwin","args":"--target aarch64-apple-darwin"}]' >> "$GITHUB_OUTPUT"
+            echo 'matrix=[{"platform":"macos-14","target":"aarch64-apple-darwin","args":"--target aarch64-apple-darwin"}]' >> "$GITHUB_OUTPUT"
           elif [ "$PLATFORM" == "macos-x86_64" ]; then
-            echo 'matrix=[{"platform":"macos-latest","target":"x86_64-apple-darwin","args":"--target x86_64-apple-darwin"}]' >> "$GITHUB_OUTPUT"
+            echo 'matrix=[{"platform":"macos-14","target":"x86_64-apple-darwin","args":"--target x86_64-apple-darwin"}]' >> "$GITHUB_OUTPUT"
           elif [ "$PLATFORM" == "ubuntu-22.04" ]; then
             echo 'matrix=[{"platform":"ubuntu-22.04","target":"x86_64-unknown-linux-gnu","args":"","container":"ghcr.io/uniclipboard/build-bookworm:latest"}]' >> "$GITHUB_OUTPUT"
           elif [ "$PLATFORM" == "ubuntu-22.04-arm" ]; then
@@ -116,68 +116,10 @@ jobs:
         with:
           bun-version: latest
 
-      - name: Purge Homebrew rustup on macOS runners
-        # macos-15-arm64 image 20260511+ 预装了 Homebrew 的 rustup formula,
-        # 同时在 ~/.cargo/bin/ 留下指向 brew Cellar 的 proxy binaries,在
-        # ~/.rustup/ 留下 settings.toml 和声明已安装的 toolchains。这套
-        # 状态有两个独立问题:
-        #
-        #   1) brew Cellar 里的 multicall binary 不识别 cargo 名字调用,
-        #      tauri-action 的 `cargo metadata` 命中 rustup-init usage 退出。
-        #
-        #   2) ~/.rustup/settings.toml + toolchains 让 rustup-init 在重装时
-        #      "skipping toolchain installation",dtolnay 后续的 `rustup
-        #      toolchain install stable` 也走 "using existing install" 分支,
-        #      但 brew 卸载后 toolchain 的 cargo binary 实际不存在,触发
-        #      `No such file or directory (os error 2)`。
-        #
-        # 同 image 池里旧版 (20260427) 没有这套预装,正常工作。GitHub runner
-        # pool 同时存在两版 image,所以表现为「同一次 release 跑里只有部分
-        # macOS job 偶发挂掉」(见 release 25864484102)。
-        #
-        # 策略:在 dtolnay 前彻底清掉 brew rustup、~/.cargo/bin、~/.rustup,
-        # 让 dtolnay 完整重装一切。Swatinem/rust-cache 缓存的是
-        # ~/.cargo/registry|git 和 target/,不会被这一步影响。
-        if: runner.os == 'macOS'
-        shell: bash
-        run: |
-          echo "::group::Pre-purge probe"
-          echo "PATH=$PATH"
-          echo "which -a cargo:"; which -a cargo || true
-          echo "which -a rustup:"; which -a rustup || true
-          [ -e "$HOME/.cargo/bin/cargo" ] && ls -la "$HOME/.cargo/bin/cargo" || true
-          [ -e "$HOME/.cargo/bin/rustup" ] && ls -la "$HOME/.cargo/bin/rustup" || true
-          [ -d "$HOME/.rustup/toolchains" ] && ls -la "$HOME/.rustup/toolchains/" || true
-          echo "::endgroup::"
-
-          if command -v brew &>/dev/null; then
-            brew list --formula rustup &>/dev/null && brew uninstall --ignore-dependencies rustup || true
-            brew list --formula rustup-init &>/dev/null && brew uninstall --ignore-dependencies rustup-init || true
-          fi
-          rm -rf "$HOME/.cargo/bin" "$HOME/.rustup"
-
-          echo "::group::Post-purge probe"
-          echo "which -a cargo:"; which -a cargo || true
-          echo "which -a rustup:"; which -a rustup || true
-          echo "::endgroup::"
-
       - name: install Rust stable
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
-
-      - name: Verify cargo after install
-        # 防御:确认 dtolnay 之后 cargo proxy 真实存在并能跑。万一未来 image
-        # 又换花样,这一步会在 tauri-action 启动前就 fail-fast。
-        if: runner.os == 'macOS'
-        shell: bash
-        run: |
-          echo "PATH=$PATH"
-          which cargo
-          ls -la "$HOME/.cargo/bin/" || true
-          ls -la "$HOME/.rustup/toolchains/" || true
-          cargo --version
-          rustc --version
+          targets: ${{ matrix.platform == 'macos-14' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
 
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
@@ -244,7 +186,7 @@ jobs:
           echo "Resolved APP_ENV=$APP_ENV (from channel=$CHANNEL)"
 
       - name: build Tauri app (macOS signed)
-        if: matrix.platform == 'macos-latest'
+        if: matrix.platform == 'macos-14'
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -278,7 +220,7 @@ jobs:
           args: ${{ matrix.args }}
 
       - name: build Tauri app (non-macOS)
-        if: matrix.platform != 'macos-latest'
+        if: matrix.platform != 'macos-14'
         shell: bash
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}

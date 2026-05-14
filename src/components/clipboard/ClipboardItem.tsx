@@ -378,7 +378,7 @@ const ClipboardItem: React.FC<ClipboardItemProps> = ({
       }}
     >
       {/* Main Content Area */}
-      <div className="select-text p-4">{renderContent()}</div>
+      <div className="selectable select-text p-4">{renderContent()}</div>
 
       {/* Footer Area */}
       <div className="flex items-center justify-between px-4 pb-2 pt-1 text-xs text-muted-foreground/60 select-none">
@@ -388,7 +388,7 @@ const ClipboardItem: React.FC<ClipboardItemProps> = ({
         {/* Center: Expand Button (仅在需要时显示) */}
         {shouldShowExpandButton() && (
           <div
-            className="flex items-center gap-1 cursor-pointer hover:text-foreground transition-colors px-2 py-1 rounded-md hover:bg-muted/50"
+            className="flex items-center gap-1 hover:text-foreground transition-colors px-2 py-1 rounded-md hover:bg-muted/50"
             onClick={e => {
               e.stopPropagation()
               void handleExpand() // Call async handler

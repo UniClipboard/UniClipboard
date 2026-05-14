@@ -423,6 +423,22 @@ html[data-uc-low-effects='true']::view-transition-new(root) {
     overflow: hidden;
   }
 
+  /* 原生桌面应用约定:UI 文本默认不可框选,避免 WebKit 拖蓝选区暴露 webview。
+     输入控件、可编辑节点、显式标 .selectable 的剪贴板正文仍保留文本选择。 */
+  body {
+    user-select: none;
+    -webkit-user-select: none;
+  }
+
+  input,
+  textarea,
+  [contenteditable='true'],
+  [contenteditable=''],
+  .selectable {
+    user-select: text;
+    -webkit-user-select: text;
+  }
+
   /* Set default background based on system theme */
   /* This prevents white flash on startup before React/Tailwind loads */
   html {

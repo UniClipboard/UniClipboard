@@ -145,7 +145,7 @@ const ClipboardItemRow = React.forwardRef<HTMLDivElement, ClipboardItemRowProps>
         ref={elementRef ?? ref}
         {...rest}
         className={cn(
-          'flex flex-col gap-1 py-2.5 px-3 rounded-lg cursor-pointer select-none transition-colors shrink-0 overflow-hidden',
+          'flex flex-col gap-1 py-2.5 px-3 rounded-lg select-none transition-colors shrink-0 overflow-hidden',
           isActive ? 'bg-primary/10 text-foreground' : 'hover:bg-muted/50 text-foreground/80',
           extraClassName
         )}

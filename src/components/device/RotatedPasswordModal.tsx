@@ -124,7 +124,7 @@ const RotatedPasswordModal: React.FC<Props> = ({ payload, onClose }) => {
           <label
             ref={acknowledgeRef}
             className={cn(
-              'flex cursor-pointer items-start gap-2 rounded-md border bg-card p-3 transition-all',
+              'flex items-start gap-2 rounded-md border bg-card p-3 transition-all',
               hintActive
                 ? 'border-primary bg-primary/10 ring-4 ring-primary/30 shadow-md shadow-primary/20'
                 : 'border-border/60'

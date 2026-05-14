@@ -162,7 +162,7 @@ function ThemeWindowPreview({ label, tokens, selected, hint, onSelect }: ThemeWi
       className={cn(
         'group relative h-full min-h-[6.625rem] rounded-xl border overflow-hidden p-0 text-left shadow-sm transition-all',
         selected ? 'border-primary/60 ring-2 ring-primary/30 shadow-md' : 'border-border/60',
-        'cursor-pointer hover:border-primary/40 hover:shadow-md'
+        'hover:border-primary/40 hover:shadow-md'
       )}
       style={{ backgroundColor: tokens.background }}
     >
@@ -280,7 +280,7 @@ function ThemeSystemPreview({
       className={cn(
         'group relative rounded-xl overflow-hidden p-0 text-left shadow-sm transition-all',
         selected ? 'shadow-md' : '',
-        'cursor-pointer hover:shadow-md'
+        'hover:shadow-md'
       )}
       style={{
         backgroundImage: `linear-gradient(90deg, ${lightTokens.background} 0%, ${lightTokens.background} 50%, ${darkTokens.background} 50%, ${darkTokens.background} 100%)`,

@@ -22,7 +22,7 @@ const DeviceStatus: React.FC<DeviceStatusProps> = () => {
           <div className="h-2 w-2 rounded-full bg-yellow-500 mr-2"></div>
           <span className="text-xs text-white">工作站</span>
         </div>
-        <div className="px-3 py-1 border border-dashed border-gray-600 rounded-full flex items-center cursor-pointer hover:bg-gray-700/60">
+        <div className="px-3 py-1 border border-dashed border-gray-600 rounded-full flex items-center hover:bg-gray-700/60">
           <svg
             xmlns="http://www.w3.org/2000/svg"
             className="h-3 w-3 text-gray-400 mr-1"

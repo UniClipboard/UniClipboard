@@ -49,7 +49,7 @@ const ClipboardActionBar: React.FC<ClipboardActionBarProps> = ({
           className={cn(
             'flex items-center gap-2 px-2.5 py-1 rounded-md text-xs transition-colors duration-200',
             hasActiveItem && !isActiveItemTransferring
-              ? 'text-primary hover:bg-primary/5 cursor-pointer'
+              ? 'text-primary hover:bg-primary/5'
               : 'text-muted-foreground/30 cursor-default'
           )}
           onClick={hasActiveItem && !isActiveItemTransferring ? onSyncToClipboard : undefined}
@@ -72,7 +72,7 @@ const ClipboardActionBar: React.FC<ClipboardActionBarProps> = ({
           className={cn(
             'flex items-center gap-2 px-2.5 py-1 rounded-md text-xs transition-all duration-200 relative group',
             hasActiveItem && !isCopyBlocked
-              ? 'text-foreground hover:bg-muted cursor-pointer'
+              ? 'text-foreground hover:bg-muted'
               : 'text-muted-foreground/30 cursor-default'
           )}
           onClick={hasActiveItem && !isCopyBlocked ? onCopy : undefined}
@@ -127,7 +127,7 @@ const ClipboardActionBar: React.FC<ClipboardActionBarProps> = ({
         className={cn(
           'flex items-center gap-2 px-2.5 py-1 rounded-md text-xs transition-all duration-200 group',
           hasActiveItem
-            ? 'text-muted-foreground hover:text-destructive hover:bg-destructive/5 cursor-pointer'
+            ? 'text-muted-foreground hover:text-destructive hover:bg-destructive/5'
             : 'text-muted-foreground/30 cursor-default'
         )}
         onClick={hasActiveItem ? onDelete : undefined}

@@ -10,6 +10,25 @@ import { connectDaemonWs, registerDaemonShutdownListener } from '@/lib/daemon-ws
 import { initializeWindowUi } from '@/lib/window-ui'
 import { applyDeviceMetaToSentry, initSentry, Sentry } from '@/observability/sentry'
 
+// 屏蔽 WebKit/WebView2 默认右键菜单(Inspect / Reload / 拼写检查),否则用户右键
+// 任何文本都会暴露 webview 身份。需要原生右键的地方用 @radix-ui/react-context-menu opt-in。
+if (typeof window !== 'undefined') {
+  window.addEventListener('contextmenu', e => e.preventDefault())
+
+  // DevTools 用 ⌘⌥I (macOS) / Ctrl+Shift+I (Win/Linux) 打开,补偿被禁用的右键菜单。
+  window.addEventListener('keydown', e => {
+    const isMac = navigator.platform.toLowerCase().includes('mac')
+    const modifier = isMac ? e.metaKey && e.altKey : e.ctrlKey && e.shiftKey
+    if (modifier && e.key.toLowerCase() === 'i') {
+      e.preventDefault()
+      void import('@tauri-apps/api/webviewWindow').then(({ getCurrentWebviewWindow }) => {
+        const w = getCurrentWebviewWindow() as unknown as { openDevtools?: () => void }
+        w.openDevtools?.()
+      })
+    }
+  })
+}
+
 // Sentry init runs before React mounts so that the global ErrorBoundary,
 // the pino → Sentry.logger transmit hook, and breadcrumb capture are all
 // wired up by the time any module calls `createLogger()`. Whether logs

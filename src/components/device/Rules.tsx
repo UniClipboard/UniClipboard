@@ -44,7 +44,7 @@ const Rules: React.FC = () => {
                 <h5 className="text-sm font-medium text-white">自动同步</h5>
                 <p className="text-xs text-gray-400 mt-0.5">在设备解锁状态下自动同步剪贴板内容</p>
               </div>
-              <label className="flex items-center cursor-pointer">
+              <label className="flex items-center">
                 <div className="relative">
                   <input type="checkbox" className="sr-only" checked />
                   <div className="block bg-gray-600 w-10 h-5 rounded-full"></div>
@@ -59,7 +59,7 @@ const Rules: React.FC = () => {
                 <h5 className="text-sm font-medium text-white">同步文本</h5>
                 <p className="text-xs text-gray-400 mt-0.5">允许同步文本内容</p>
               </div>
-              <label className="flex items-center cursor-pointer">
+              <label className="flex items-center">
                 <div className="relative">
                   <input type="checkbox" className="sr-only" checked />
                   <div className="block bg-gray-600 w-10 h-5 rounded-full"></div>
@@ -76,7 +76,7 @@ const Rules: React.FC = () => {
                   允许同步图片内容 (可能会消耗更多流量)
                 </p>
               </div>
-              <label className="flex items-center cursor-pointer">
+              <label className="flex items-center">
                 <div className="relative">
                   <input type="checkbox" className="sr-only" checked />
                   <div className="block bg-gray-600 w-10 h-5 rounded-full"></div>
@@ -91,7 +91,7 @@ const Rules: React.FC = () => {
                 <h5 className="text-sm font-medium text-white">同步文件</h5>
                 <p className="text-xs text-gray-400 mt-0.5">允许同步文件内容 (最大10MB)</p>
               </div>
-              <label className="flex items-center cursor-pointer">
+              <label className="flex items-center">
                 <div className="relative">
                   <input type="checkbox" className="sr-only" />
                   <div className="block bg-gray-600 w-10 h-5 rounded-full"></div>

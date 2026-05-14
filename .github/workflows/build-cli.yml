@@ -105,13 +105,14 @@ jobs:
           echo "which -a rustup:"; which -a rustup || true
           [ -e "$HOME/.cargo/bin/cargo" ] && ls -la "$HOME/.cargo/bin/cargo" || true
           [ -e "$HOME/.cargo/bin/rustup" ] && ls -la "$HOME/.cargo/bin/rustup" || true
+          [ -d "$HOME/.rustup/toolchains" ] && ls -la "$HOME/.rustup/toolchains/" || true
           echo "::endgroup::"
 
           if command -v brew &>/dev/null; then
             brew list --formula rustup &>/dev/null && brew uninstall --ignore-dependencies rustup || true
             brew list --formula rustup-init &>/dev/null && brew uninstall --ignore-dependencies rustup-init || true
           fi
-          rm -rf "$HOME/.cargo/bin"
+          rm -rf "$HOME/.cargo/bin" "$HOME/.rustup"
 
           echo "::group::Post-purge probe"
           echo "which -a cargo:"; which -a cargo || true
@@ -124,6 +125,18 @@ jobs:
           # Linux 走 musl,需要 rustup 装对应 musl target;
           # macOS 装两个 darwin target;Windows host=msvc 装 noop。
           targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || matrix.target }}
+
+      - name: Verify cargo after install
+        # 见 build.yml 同名 step。
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          echo "PATH=$PATH"
+          which cargo
+          ls -la "$HOME/.cargo/bin/" || true
+          ls -la "$HOME/.rustup/toolchains/" || true
+          cargo --version
+          rustc --version
 
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2

@@ -99,7 +99,12 @@ const NavButton: React.FC<{
  * of advancing (mirrors the dialog Progress bar `animate-pulse` fallback).
  */
 const UpdateProgressRing: React.FC<{ percent: number | null }> = ({ percent }) => {
-  const radius = 17
+  // Radius 11 sits just outside the ArrowUpCircle glyph's visible outline
+  // (~8.3px in the 40x40 viewBox), leaving a thin gap so the ring stays
+  // legible against the icon while keeping the overall footprint close
+  // to the icon's bounding box.
+  const radius = 11
+  const strokeWidth = 1.5
   const circumference = 2 * Math.PI * radius
   const isIndeterminate = percent === null
   const clamped = isIndeterminate ? 0 : Math.max(0, Math.min(100, percent))
@@ -119,7 +124,7 @@ const UpdateProgressRing: React.FC<{ percent: number | null }> = ({ percent }) =
         cy="20"
         r={radius}
         fill="none"
-        strokeWidth="2"
+        strokeWidth={strokeWidth}
         className="stroke-amber-500/25 dark:stroke-amber-400/25"
       />
       <circle
@@ -127,7 +132,7 @@ const UpdateProgressRing: React.FC<{ percent: number | null }> = ({ percent }) =
         cy="20"
         r={radius}
         fill="none"
-        strokeWidth="2"
+        strokeWidth={strokeWidth}
         strokeLinecap="round"
         strokeDasharray={circumference}
         strokeDashoffset={isIndeterminate ? circumference * 0.65 : offset}

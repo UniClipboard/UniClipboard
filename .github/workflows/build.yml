@@ -121,6 +121,15 @@ jobs:
         with:
           targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
 
+      - name: Prepend cargo bin to PATH
+        # macos-15-arm64 runner image 20260511+ 预装了 Homebrew rustup
+        # formula,把 rustup-init multicall 软链到 /opt/homebrew/bin/cargo,
+        # 导致 `cargo metadata` 命中错误 binary 并吐 rustup-init 用法。
+        # dtolnay/rust-toolchain 检测到 rustup 已存在就跳过了 PATH 写入,
+        # 这里强制把 rustup 真 proxy 所在目录前置,覆盖 brew 那条。
+        shell: bash
+        run: echo "${CARGO_HOME:-$HOME/.cargo}/bin" >> "$GITHUB_PATH"
+
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
         with:

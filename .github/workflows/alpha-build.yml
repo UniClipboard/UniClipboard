@@ -86,6 +86,12 @@ jobs:
         with:
           targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
 
+      - name: Prepend cargo bin to PATH
+        # 见 build.yml 同名 step 注释:绕开 macos-15-arm64 image 20260511+
+        # Homebrew rustup 多链导致 `cargo metadata` 落到 rustup-init 的问题。
+        shell: bash
+        run: echo "${CARGO_HOME:-$HOME/.cargo}/bin" >> "$GITHUB_PATH"
+
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
         with:

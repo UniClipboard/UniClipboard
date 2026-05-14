@@ -499,25 +499,30 @@ pub async fn install_update(
     record_trace_fields(&span, &_trace);
 
     async move {
+        // Inspect state while holding the lock; only `mem::take` for the
+        // installable variants. For the refusal variants we never touch the
+        // state, so a concurrent `check_for_update` / `download_update`
+        // cannot have its write clobbered by an unconditional restore.
         let state = {
             let mut guard = lock_state(&pending.0)?;
-            std::mem::take(&mut *guard)
+            match &*guard {
+                PendingUpdateState::None => {
+                    return Err("updater: no pending update".to_string());
+                }
+                PendingUpdateState::Downloading { .. } => {
+                    return Err(
+                        "updater: download in progress; wait or cancel first".to_string(),
+                    );
+                }
+                PendingUpdateState::Ready { .. } | PendingUpdateState::Available(_) => {
+                    std::mem::take(&mut *guard)
+                }
+            }
         };
 
         match state {
-            PendingUpdateState::None => Err("updater: no pending update".to_string()),
-            PendingUpdateState::Downloading {
-                info,
-                progress,
-                cancel,
-            } => {
-                let mut guard = lock_state(&pending.0)?;
-                *guard = PendingUpdateState::Downloading {
-                    info,
-                    progress,
-                    cancel,
-                };
-                Err("updater: download in progress; wait or cancel first".to_string())
+            PendingUpdateState::None | PendingUpdateState::Downloading { .. } => {
+                unreachable!("filtered above while holding the lock")
             }
             PendingUpdateState::Ready { update, bytes, .. } => {
                 info!(version = %update.version, size = bytes.len(), "installing pre-downloaded update");
@@ -539,12 +544,18 @@ pub async fn install_update(
                     Err(e) => {
                         let err_str = e.to_string();
                         error!(error = %err_str, "install from cached bytes failed");
+                        // Only restore if the slot is still empty. A concurrent
+                        // `check_for_update` may have observed `None` and
+                        // written a newer `Available`/`Ready`; clobbering that
+                        // would silently lose the newer version.
                         let mut guard = lock_state(&pending.0)?;
-                        *guard = PendingUpdateState::Ready {
-                            update,
-                            bytes,
-                            downloaded_at: SystemTime::now(),
-                        };
+                        if matches!(&*guard, PendingUpdateState::None) {
+                            *guard = PendingUpdateState::Ready {
+                                update,
+                                bytes,
+                                downloaded_at: SystemTime::now(),
+                            };
+                        }
                         let _ = on_event.send(DownloadEvent::Failed {
                             error: err_str.clone(),
                         });
@@ -580,8 +591,12 @@ pub async fn install_update(
                     Err(e) => {
                         let err_str = e.to_string();
                         error!(error = %err_str, "download_and_install failed");
+                        // See the `Ready` failure branch above for the
+                        // conditional-restore rationale.
                         let mut guard = lock_state(&pending.0)?;
-                        *guard = PendingUpdateState::Available(update);
+                        if matches!(&*guard, PendingUpdateState::None) {
+                            *guard = PendingUpdateState::Available(update);
+                        }
                         let _ = on_event.send(DownloadEvent::Failed {
                             error: err_str.clone(),
                         });

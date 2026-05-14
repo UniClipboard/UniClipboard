@@ -57,6 +57,12 @@ from there (or rebuild the space). If every device lost the
 passphrase, the only path is to abandon local history and `init` a new
 space.
 
+On the unlock screen, **Forgot passphrase? Reset and start over** runs
+this from the GUI: it wipes the on-disk keyslot and KEK on this device,
+then drops you back at the setup screen so you can `init` a fresh
+space or `join` from another device. You'll have to type `RESET` to
+confirm — local history is unrecoverable after this point.
+
 ### What if a relay gets compromised?
 
 A compromised relay can affect **performance and reachability**, not

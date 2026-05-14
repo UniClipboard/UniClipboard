@@ -368,7 +368,26 @@ When filing an issue, please attach:
 The operations below **destroy local clipboard history** and can't be
 rolled back. Use them only after the steps above failed.
 
-<Tabs items={['Reset current profile only', 'Uninstall and wipe everything']}>
+<Tabs items={['From the GUI (unlock screen)', 'Reset current profile only', 'Uninstall and wipe everything']}>
+
+<Tab value="From the GUI (unlock screen)">
+
+If the app gets you all the way to the unlock screen (passphrase prompt)
+but you can't recall the passphrase, you don't need the CLI:
+
+1. On the unlock screen, click **Forgot passphrase? Reset and start over**.
+   The link sits at the bottom of the page and is also exposed inside
+   the passphrase modal.
+2. Type `RESET` in the confirmation dialog and press **Reset**.
+3. The app deletes the on-disk keyslot and KEK on this device, clears
+   `SetupStatus`, and drops you back at the setup screen. From there
+   `init` a fresh space or `join` from another device.
+
+This is the same destructive operation as the CLI tabs below — local
+history on this device is unrecoverable afterwards. Other devices in
+the space are unaffected (see the warning below).
+
+</Tab>
 
 <Tab value="Reset current profile only">
 

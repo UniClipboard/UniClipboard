@@ -475,6 +475,25 @@
       "spaceNotInitialized": "本设备没有可解锁的空间，请新建空间或从其他设备加入。",
       "facadeUnavailable": "应用仍在启动中，请稍后重试。",
       "internal": "解锁失败，请重试或重启应用。"
+    },
+    "factoryReset": {
+      "link": "忘记口令？重置并重新开始",
+      "modal": {
+        "title": "重置并重新开始",
+        "warning": "重置后，本设备上加密保存的剪贴板历史将无法恢复。",
+        "recovery": "如果你有其他已配对设备，可以从那台设备重新邀请本机加入，历史会从对端同步回来。",
+        "confirmPrompt": "请输入 RESET 以确认",
+        "confirmPlaceholder": "RESET",
+        "confirm": "重置",
+        "resetting": "正在重置...",
+        "cancel": "取消"
+      },
+      "errors": {
+        "keyMaterialWipeFailed": "密钥材料删除失败，重置未完成。请稍后重试或重启应用。",
+        "storageFailed": "密钥已清除但状态未保存，请重启应用以完成重置。",
+        "facadeUnavailable": "应用仍在启动中，请稍后重试。",
+        "internal": "重置失败，请重试或重启应用。"
+      }
     }
   },
   "language": {

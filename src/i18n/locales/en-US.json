@@ -484,6 +484,25 @@
       "spaceNotInitialized": "No space exists on this device. Please initialize a new space or join from another device.",
       "facadeUnavailable": "The app is still starting up. Please wait a moment and try again.",
       "internal": "Unlock failed unexpectedly. Please try again or restart the application."
+    },
+    "factoryReset": {
+      "link": "Forgot your passphrase? Reset and start over",
+      "modal": {
+        "title": "Reset and start over",
+        "warning": "Once reset, the encrypted clipboard history stored on this device cannot be recovered.",
+        "recovery": "If you have another paired device, you can re-invite this device from it and the history will sync back from the peer.",
+        "confirmPrompt": "Type RESET to confirm",
+        "confirmPlaceholder": "RESET",
+        "confirm": "Reset",
+        "resetting": "Resetting...",
+        "cancel": "Cancel"
+      },
+      "errors": {
+        "keyMaterialWipeFailed": "Failed to wipe key material; reset did not complete. Please try again or restart the application.",
+        "storageFailed": "Key material was cleared but the status could not be saved. Please restart the application to finish resetting.",
+        "facadeUnavailable": "The app is still starting up. Please wait a moment and try again.",
+        "internal": "Reset failed unexpectedly. Please try again or restart the application."
+      }
     }
   },
   "language": {

@@ -24,6 +24,10 @@ import {
   verifyKeychainAccess as daemonVerifyKeychainAccess,
 } from './daemon/encryption'
 import {
+  factoryResetSpace as tauriFactoryResetSpace,
+  isFactoryResetError,
+} from './tauri-command/factory_reset'
+import {
   isTrySilentUnlockError,
   isUnlockSpaceError,
   trySilentUnlock as tauriTrySilentUnlock,
@@ -51,6 +55,8 @@ export interface EncryptionSessionStatus {
 // blocks without reaching into the tauri-command layer directly.
 export type { UnlockSpaceError } from './tauri-command/space_setup'
 export { isUnlockSpaceError } from './tauri-command/space_setup'
+export type { FactoryResetError } from './tauri-command/factory_reset'
+export { isFactoryResetError } from './tauri-command/factory_reset'
 
 // ── Daemon-based read-only functions ───────────────────────────
 
@@ -149,6 +155,30 @@ export async function unlockSpaceWithPassphrase(passphrase: string): Promise<{ s
       }
     } else {
       log.error({ err: error }, 'unlock_space_with_passphrase failed with non-typed error')
+    }
+    throw error
+  }
+}
+
+/**
+ * 用户主动触发的 "重置并重新开始" —— 删 keyslot + KEK,清 setup_status,
+ * 取消所有 pending invitations。
+ *
+ * 调用前调用方必须通过二次确认 UI 收集用户的明确意图。成功返回后,
+ * `App.tsx` 会随 encryption state 重渲染回 `SetupPage`;为避免短暂闪烁,
+ * 调用方应在 await 完成后主动把本地 encryption status 缓存置为
+ * `{ initialized: false, session_ready: false }`。
+ *
+ * @throws {FactoryResetError} typed union — switch on `error.code`。
+ */
+export async function resetSpace(): Promise<void> {
+  try {
+    await tauriFactoryResetSpace()
+  } catch (error) {
+    if (isFactoryResetError(error)) {
+      log.warn({ code: error.code }, 'factory_reset_space failed')
+    } else {
+      log.error({ err: error }, 'factory_reset_space failed with non-typed error')
     }
     throw error
   }

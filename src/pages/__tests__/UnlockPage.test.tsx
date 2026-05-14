@@ -1,6 +1,7 @@
 import { render, screen, act, fireEvent, waitFor } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import {
+  resetSpace,
   unlockEncryptionSession,
   unlockSpaceWithPassphrase,
   verifyKeychainAccess,
@@ -15,6 +16,7 @@ vi.mock('@/api/security', async () => {
     unlockEncryptionSession: vi.fn(),
     unlockSpaceWithPassphrase: vi.fn(),
     verifyKeychainAccess: vi.fn(),
+    resetSpace: vi.fn(),
   }
 })
 
@@ -190,5 +192,89 @@ describe('UnlockPage', () => {
     fireEvent.change(passphraseInput, { target: { value: 'wrong-extra' } })
 
     expect(screen.queryByText(i18n.t('unlock.errors.wrongPassphrase'))).not.toBeInTheDocument()
+  })
+
+  describe('factory reset fallback', () => {
+    it('requires RESET token before enabling the confirm button', async () => {
+      vi.mocked(resetSpace).mockResolvedValue(undefined)
+      render(<UnlockPage />)
+
+      // 主页面底部有一个,passphrase modal 里有一个;主页面那个永远可见。
+      const resetLink = screen.getAllByRole('button', {
+        name: i18n.t('unlock.factoryReset.link'),
+      })[0]
+      await act(async () => resetLink.click())
+
+      const confirmBtn = screen.getByRole('button', {
+        name: i18n.t('unlock.factoryReset.modal.confirm'),
+      }) as HTMLButtonElement
+      expect(confirmBtn.disabled).toBe(true)
+
+      const input = screen.getByLabelText(
+        i18n.t('unlock.factoryReset.modal.confirmPrompt')
+      ) as HTMLInputElement
+      fireEvent.change(input, { target: { value: 'reset' } })
+      expect(confirmBtn.disabled).toBe(true)
+
+      fireEvent.change(input, { target: { value: 'RESET' } })
+      expect(confirmBtn.disabled).toBe(false)
+    })
+
+    it('calls resetSpace and notifies parent on success', async () => {
+      const onResetSucceeded = vi.fn()
+      vi.mocked(resetSpace).mockResolvedValue(undefined)
+      render(<UnlockPage onResetSucceeded={onResetSucceeded} />)
+
+      const resetLink = screen.getAllByRole('button', {
+        name: i18n.t('unlock.factoryReset.link'),
+      })[0]
+      await act(async () => resetLink.click())
+
+      const input = screen.getByLabelText(
+        i18n.t('unlock.factoryReset.modal.confirmPrompt')
+      ) as HTMLInputElement
+      fireEvent.change(input, { target: { value: 'RESET' } })
+
+      await act(async () => {
+        screen.getByRole('button', { name: i18n.t('unlock.factoryReset.modal.confirm') }).click()
+      })
+
+      expect(resetSpace).toHaveBeenCalledTimes(1)
+      expect(onResetSucceeded).toHaveBeenCalledTimes(1)
+      // Modal closes
+      expect(screen.queryByText(i18n.t('unlock.factoryReset.modal.title'))).not.toBeInTheDocument()
+    })
+
+    it('shows typed error and keeps modal open when key wipe fails', async () => {
+      const onResetSucceeded = vi.fn()
+      vi.mocked(resetSpace).mockRejectedValue({
+        code: 'KEY_MATERIAL_WIPE_FAILED',
+        message: 'disk i/o',
+      })
+      render(<UnlockPage onResetSucceeded={onResetSucceeded} />)
+
+      const resetLink = screen.getAllByRole('button', {
+        name: i18n.t('unlock.factoryReset.link'),
+      })[0]
+      await act(async () => resetLink.click())
+
+      const input = screen.getByLabelText(
+        i18n.t('unlock.factoryReset.modal.confirmPrompt')
+      ) as HTMLInputElement
+      fireEvent.change(input, { target: { value: 'RESET' } })
+
+      await act(async () => {
+        screen.getByRole('button', { name: i18n.t('unlock.factoryReset.modal.confirm') }).click()
+      })
+
+      await waitFor(() => {
+        expect(
+          screen.getByText(i18n.t('unlock.factoryReset.errors.keyMaterialWipeFailed'))
+        ).toBeInTheDocument()
+      })
+      expect(onResetSucceeded).not.toHaveBeenCalled()
+      // Modal stays open so the user can decide what to do next
+      expect(screen.getByText(i18n.t('unlock.factoryReset.modal.title'))).toBeInTheDocument()
+    })
   })
 })

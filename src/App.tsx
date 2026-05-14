@@ -223,6 +223,7 @@ const AppContent = ({
       <>
         <UnlockPage
           onUnlockSucceeded={() => setEncryptionStatus({ initialized: true, session_ready: true })}
+          onResetSucceeded={() => setEncryptionStatus({ initialized: false, session_ready: false })}
         />
       </>
     )

@@ -2,10 +2,13 @@ import { Eye, EyeOff, Loader2, Lock, Unlock } from 'lucide-react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
+  isFactoryResetError,
   isUnlockSpaceError,
+  resetSpace,
   unlockEncryptionSession,
   unlockSpaceWithPassphrase,
   verifyKeychainAccess,
+  type FactoryResetError,
   type UnlockSpaceError,
 } from '@/api/security'
 import {
@@ -23,11 +26,34 @@ import { Switch } from '@/components/ui/switch'
 import { usePlatform } from '@/hooks/usePlatform'
 import { useSetting } from '@/hooks/useSetting'
 import { createLogger } from '@/lib/logger'
+import { refreshSetupState } from '@/store/setupRealtimeStore'
 
 const log = createLogger('unlock-page')
 
+/** 二次确认对话框里要求用户打字输入的 sentinel,大小写敏感。 */
+const FACTORY_RESET_CONFIRMATION_TOKEN = 'RESET'
+
 interface UnlockPageProps {
   onUnlockSucceeded?: () => void
+  /**
+   * Factory reset 完成后由 parent 把本地 encryption status 缓存置为
+   * `{ initialized: false, session_ready: false }`,从而让 `App.tsx` 的
+   * 渲染分支立即切回 `SetupPage`,避免等待 RTK Query 回流的短暂闪烁。
+   */
+  onResetSucceeded?: () => void
+}
+
+function factoryResetErrorI18nKey(error: FactoryResetError): string {
+  switch (error.code) {
+    case 'KEY_MATERIAL_WIPE_FAILED':
+      return 'unlock.factoryReset.errors.keyMaterialWipeFailed'
+    case 'STORAGE_FAILED':
+      return 'unlock.factoryReset.errors.storageFailed'
+    case 'FACADE_UNAVAILABLE':
+      return 'unlock.factoryReset.errors.facadeUnavailable'
+    case 'INTERNAL':
+      return 'unlock.factoryReset.errors.internal'
+  }
 }
 
 /**
@@ -51,7 +77,7 @@ function unlockErrorI18nKey(error: UnlockSpaceError): string {
   }
 }
 
-export default function UnlockPage({ onUnlockSucceeded }: UnlockPageProps) {
+export default function UnlockPage({ onUnlockSucceeded, onResetSucceeded }: UnlockPageProps) {
   const { t } = useTranslation()
   const { setting, updateSecuritySetting, loading: settingsLoading } = useSetting()
   const { isMac } = usePlatform()
@@ -70,6 +96,15 @@ export default function UnlockPage({ onUnlockSucceeded }: UnlockPageProps) {
   const [showKeychainModal, setShowKeychainModal] = useState(false)
   const [verifying, setVerifying] = useState(false)
   const [verifyError, setVerifyError] = useState<string | null>(null)
+
+  // ── Factory reset modal state ─────────────────────────────────────────
+  // 兜底路径:用户忘记口令时,通过二次确认对话框 (输入 `RESET`) 触发删
+  // keyslot + KEK,然后让 App.tsx 把 UI 切回 SetupPage。设计文档:
+  // `unlock_fallback_plan.md`。
+  const [showResetModal, setShowResetModal] = useState(false)
+  const [resetConfirmInput, setResetConfirmInput] = useState('')
+  const [resetting, setResetting] = useState(false)
+  const [resetErrorKey, setResetErrorKey] = useState<string | null>(null)
 
   /**
    * 入口:用户点 Unlock 按钮。
@@ -202,6 +237,71 @@ export default function UnlockPage({ onUnlockSucceeded }: UnlockPageProps) {
     setVerifyError(null)
   }
 
+  // ── Factory reset handlers ────────────────────────────────────────────
+
+  const openResetModal = () => {
+    setResetConfirmInput('')
+    setResetErrorKey(null)
+    setShowResetModal(true)
+  }
+
+  const closeResetModal = () => {
+    if (resetting) return
+    setShowResetModal(false)
+    setResetConfirmInput('')
+    setResetErrorKey(null)
+  }
+
+  const resetConfirmTokenMatches = resetConfirmInput.trim() === FACTORY_RESET_CONFIRMATION_TOKEN
+
+  /**
+   * 用户在二次确认 modal 输入 `RESET` 后点 "重置":
+   * - 成功 → 关闭 modal + 通知 parent 把 encryption status 缓存重置,让
+   *   App.tsx 渲染分支立即切回 SetupPage,避免短暂闪烁。
+   * - typed error → 按 code 显示对应文案,保留 modal 让用户决定下一步
+   *   (重试 / 重启)。
+   */
+  const handleResetSubmit = async () => {
+    if (!resetConfirmTokenMatches || resetting) return
+    setResetting(true)
+    setResetErrorKey(null)
+    try {
+      await resetSpace()
+      // **关键**: 仅清 encryption status 不足以让 UI 切回 SetupPage —— SetupPage
+      // 的渲染由 `setupRealtimeStore.flow` 控制 (App.tsx:189 `isSetupActive`),
+      // 而 reset 只清了 daemon 端的 `setup_status`,前端 store 不会自动感知。
+      // 主动 refresh 让 store 从 daemon 拉到 `has_completed=false` → flow 切回
+      // `entry`,`isSetupActive` 变 true,SetupPage 才会渲染。
+      // refresh 失败不阻塞 reset 成功路径 —— parent 回调仍照常通知,最坏情况
+      // 是 UI 落到 "无 SetupPage 也无 UnlockPage" 的灰色态,用户重启即可恢复。
+      try {
+        await refreshSetupState()
+      } catch (refreshErr) {
+        log.warn(
+          { err: refreshErr },
+          'refreshSetupState failed after reset; UI may need restart to recover'
+        )
+      }
+      setShowResetModal(false)
+      setResetConfirmInput('')
+      // 关闭可能已打开的 passphrase modal —— reset 成功后用户应进入 setup
+      // 流程,不应再看到 unlock 相关的覆盖层。
+      setShowPassphraseModal(false)
+      setPassphrase('')
+      setErrorKey(null)
+      onResetSucceeded?.()
+    } catch (error) {
+      if (isFactoryResetError(error)) {
+        setResetErrorKey(factoryResetErrorI18nKey(error))
+      } else {
+        log.error({ err: error }, 'Unexpected non-typed factory reset error')
+        setResetErrorKey('unlock.factoryReset.errors.internal')
+      }
+    } finally {
+      setResetting(false)
+    }
+  }
+
   return (
     <div className="relative flex min-h-screen w-full flex-col items-center justify-center overflow-hidden p-4">
       <div
@@ -268,6 +368,16 @@ export default function UnlockPage({ onUnlockSucceeded }: UnlockPageProps) {
         {isMac && (
           <p className="max-w-xs text-xs text-muted-foreground/60">{t('unlock.macOSNote')}</p>
         )}
+
+        {/* Fallback 入口:用户忘记口令或遇到不可恢复的 keyslot 错误时的最后兜底。
+            打开二次确认 modal,要求输入 `RESET` 才能真正触发删除。 */}
+        <button
+          type="button"
+          onClick={openResetModal}
+          className="text-xs text-muted-foreground/60 underline-offset-4 transition-colors hover:text-muted-foreground hover:underline"
+        >
+          {t('unlock.factoryReset.link')}
+        </button>
       </div>
 
       <AlertDialog open={showKeychainModal}>
@@ -365,6 +475,20 @@ export default function UnlockPage({ onUnlockSucceeded }: UnlockPageProps) {
 
           <p className="text-xs text-muted-foreground">{t('unlock.passphraseModal.hint')}</p>
 
+          {/* 同 macOSNote 下方的链接,在 modal 里也提供一个入口 —— 用户卡在
+              口令重试时不必关闭 modal 也能进入 reset 流程。 */}
+          <button
+            type="button"
+            onClick={() => {
+              closePassphraseModal()
+              openResetModal()
+            }}
+            disabled={submitting}
+            className="self-start text-xs text-muted-foreground/70 underline-offset-4 transition-colors hover:text-muted-foreground hover:underline disabled:opacity-50"
+          >
+            {t('unlock.factoryReset.link')}
+          </button>
+
           <AlertDialogFooter>
             <Button variant="outline" onClick={closePassphraseModal} disabled={submitting}>
               {t('unlock.passphraseModal.cancel')}
@@ -377,6 +501,70 @@ export default function UnlockPage({ onUnlockSucceeded }: UnlockPageProps) {
                 </>
               ) : (
                 t('unlock.passphraseModal.submit')
+              )}
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={showResetModal}>
+        <AlertDialogContent
+          onEscapeKeyDown={event => {
+            if (resetting) {
+              event.preventDefault()
+              return
+            }
+            closeResetModal()
+          }}
+        >
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t('unlock.factoryReset.modal.title')}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {t('unlock.factoryReset.modal.warning')}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+
+          <p className="text-sm text-muted-foreground">{t('unlock.factoryReset.modal.recovery')}</p>
+
+          <div className="space-y-2">
+            <Label htmlFor="factory-reset-confirm" className="text-sm">
+              {t('unlock.factoryReset.modal.confirmPrompt')}
+            </Label>
+            <Input
+              id="factory-reset-confirm"
+              type="text"
+              value={resetConfirmInput}
+              onChange={e => setResetConfirmInput(e.target.value)}
+              placeholder={t('unlock.factoryReset.modal.confirmPlaceholder')}
+              disabled={resetting}
+              autoFocus
+              autoComplete="off"
+              spellCheck={false}
+            />
+          </div>
+
+          {resetErrorKey && (
+            <div className="rounded-lg border border-destructive/20 bg-destructive/5 p-3">
+              <p className="text-sm font-medium text-destructive">{t(resetErrorKey)}</p>
+            </div>
+          )}
+
+          <AlertDialogFooter>
+            <Button variant="outline" onClick={closeResetModal} disabled={resetting}>
+              {t('unlock.factoryReset.modal.cancel')}
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleResetSubmit}
+              disabled={!resetConfirmTokenMatches || resetting}
+            >
+              {resetting ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  {t('unlock.factoryReset.modal.resetting')}
+                </>
+              ) : (
+                t('unlock.factoryReset.modal.confirm')
               )}
             </Button>
           </AlertDialogFooter>

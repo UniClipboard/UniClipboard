@@ -23,7 +23,7 @@ pub use commands::{
 };
 pub use deps::SpaceSetupDeps;
 pub use errors::{
-    CancelInvitationError, InitializeSpaceError, IssuePairingInvitationError,
+    CancelInvitationError, FactoryResetError, InitializeSpaceError, IssuePairingInvitationError,
     QueryMigrationProgressError, QuerySetupStateError, RedeemPairingInvitationError,
     ResetSpaceError, SwitchSpaceError, TryResumeSessionError, UnlockSpaceError,
 };

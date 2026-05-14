@@ -43,7 +43,7 @@ use crate::facade::space_setup::commands::{
 };
 use crate::facade::space_setup::deps::SpaceSetupDeps;
 use crate::facade::space_setup::errors::{
-    CancelInvitationError, QueryMigrationProgressError, QuerySetupStateError,
+    CancelInvitationError, FactoryResetError, QueryMigrationProgressError, QuerySetupStateError,
     RedeemPairingInvitationError, ResetSpaceError, SwitchSpaceError,
 };
 use crate::facade::space_setup::errors::{
@@ -575,6 +575,52 @@ impl SpaceSetupFacade {
         Ok(())
     }
 
+    /// User-driven "重置并重新开始" — wipe key material **and** clear setup
+    /// status so a user who has forgotten their passphrase can re-run A1
+    /// from a fresh-install state.
+    ///
+    /// Distinct from [`Self::reset`], which intentionally preserves the
+    /// keyslot for operator-driven recovery: that path is no use to a user
+    /// who can't recall the passphrase — `InitializeSpaceUseCase` would
+    /// reject the next setup attempt with `AlreadyInitialized` because the
+    /// keyslot is still on disk.
+    ///
+    /// Step order matters:
+    ///
+    /// 1. `SpaceAccessPort::factory_reset` — wipe keyslot + KEK first. If
+    ///    this fails we leave `setup_status.has_completed = true` so the
+    ///    UI still routes the user to `UnlockPage` (where they can retry)
+    ///    rather than `SetupPage` (which would immediately fail with
+    ///    `AlreadyInitialized` due to the residual keyslot).
+    /// 2. Clear `SetupStatus` so `EncryptionFacade::state()` flips
+    ///    `initialized = false` and the UI routes to `SetupPage`.
+    /// 3. Cancel any in-flight invitations — same hygiene as
+    ///    [`Self::reset`].
+    ///
+    /// The `space_id` passed to the port is an opaque handle: the
+    /// `SpaceAccessAdapter` keys off the current profile, not this value.
+    /// We mint a fresh one rather than reading from `SetupStatus` because
+    /// the use-case may run when `SetupStatus.space_id` is `None` (e.g.
+    /// `setup_status` is partially populated from a prior abort).
+    #[instrument(skip_all)]
+    pub async fn factory_reset(&self) -> Result<(), FactoryResetError> {
+        let space_id = SpaceId::new();
+        self.space_access
+            .factory_reset(&space_id)
+            .await
+            .map_err(|err| FactoryResetError::KeyMaterialWipeFailed(err.to_string()))?;
+        self.setup_status
+            .set_status(&SetupStatus::default())
+            .await
+            .map_err(|err| FactoryResetError::StorageFailed(err.to_string()))?;
+        let dropped = self.invitation_holder.cancel_all().await;
+        info!(
+            cancelled_invitations = dropped,
+            "factory reset wiped key material, cleared setup status, dropped invitations"
+        );
+        Ok(())
+    }
+
     /// Slice4 P3 T3.2 · Read-only snapshot of setup state for the
     /// stateless v2 UI flow.
     ///
@@ -759,6 +805,8 @@ mod tests {
     #[derive(Default)]
     struct FakeSpaceAccess {
         unlock_err: StdMutex<Option<SpaceAccessError>>,
+        factory_reset_calls: StdMutex<u32>,
+        factory_reset_err: StdMutex<Option<SpaceAccessError>>,
     }
 
     #[async_trait]
@@ -787,6 +835,10 @@ mod tests {
             Ok(())
         }
         async fn factory_reset(&self, _space_id: &SpaceId) -> Result<(), SpaceAccessError> {
+            *self.factory_reset_calls.lock().unwrap() += 1;
+            if let Some(err) = self.factory_reset_err.lock().unwrap().take() {
+                return Err(err);
+            }
             Ok(())
         }
         async fn try_resume_session(
@@ -1582,6 +1634,58 @@ mod tests {
         let view = facade.query_setup_state().await.expect("query ok");
         assert!(!view.has_completed);
         assert!(view.current_invitation.is_none());
+    }
+
+    #[tokio::test]
+    async fn factory_reset_wipes_key_material_and_clears_setup_status() {
+        let setup_status = InMemorySetupStatus::default();
+        *setup_status.status.lock().unwrap() = SetupStatus {
+            has_completed: true,
+            space_id: None,
+        };
+        let space_access = Arc::new(FakeSpaceAccess::default());
+        let (facade, _inv, _peer) = make_facade(
+            space_access.clone(),
+            Arc::new(setup_status),
+            Arc::new(InMemorySettings::default()),
+        );
+        facade.issue_pairing_invitation().await.expect("B1 ok");
+        assert_eq!(facade.invitation_holder.len().await, 1);
+
+        facade.factory_reset().await.expect("factory_reset ok");
+
+        assert_eq!(*space_access.factory_reset_calls.lock().unwrap(), 1);
+        assert_eq!(facade.invitation_holder.len().await, 0);
+        let view = facade.query_setup_state().await.expect("query ok");
+        assert!(!view.has_completed);
+    }
+
+    #[tokio::test]
+    async fn factory_reset_preserves_setup_status_when_key_wipe_fails() {
+        // 关键不变式: keyslot 删除失败时 setup_status 必须保留 `has_completed=true`,
+        // 否则 UI 会跳到 SetupPage,用户再走 init 立即撞到 AlreadyInitialized,体验更糟。
+        let setup_status = InMemorySetupStatus::default();
+        *setup_status.status.lock().unwrap() = SetupStatus {
+            has_completed: true,
+            space_id: None,
+        };
+        let space_access = Arc::new(FakeSpaceAccess::default());
+        *space_access.factory_reset_err.lock().unwrap() =
+            Some(SpaceAccessError::Internal("disk i/o".to_string()));
+        let (facade, _inv, _peer) = make_facade(
+            space_access.clone(),
+            Arc::new(setup_status),
+            Arc::new(InMemorySettings::default()),
+        );
+
+        let err = facade.factory_reset().await.unwrap_err();
+
+        assert!(matches!(err, FactoryResetError::KeyMaterialWipeFailed(_)));
+        let view = facade.query_setup_state().await.expect("query ok");
+        assert!(
+            view.has_completed,
+            "setup_status must remain completed when key wipe fails"
+        );
     }
 
     #[tokio::test]

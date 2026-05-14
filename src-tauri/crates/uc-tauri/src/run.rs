@@ -26,6 +26,7 @@ use uc_desktop::daemon_probe::{
     bootstrap_daemon_in_process, HEALTH_CHECK_TIMEOUT, HEALTH_POLL_INTERVAL,
     INCOMPATIBLE_DAEMON_EXIT_TIMEOUT,
 };
+use uc_desktop::shortcuts::GlobalShortcutRegistry;
 use uc_desktop::DaemonOwnership;
 
 use crate::bootstrap::{ensure_default_device_name, start_background_tasks, TauriAppRuntime};
@@ -113,7 +114,7 @@ fn configure_main_window_for_platform(_app: &tauri::AppHandle) {}
 ///
 /// # Examples
 ///
-/// ```no_run
+/// ```rust,ignore
 /// // In src-tauri/src/main.rs
 /// let ctx = tauri::generate_context!();
 /// crate::run(ctx).expect("failed to start tauri application");
@@ -333,29 +334,47 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
             // Register global shortcut plugin (empty — shortcuts registered dynamically).
             // `#[cfg(desktop)]` is normally injected by `tauri-build` in the bin crate;
             // here we spell it out explicitly so it compiles in this lib crate too.
+            let mut registered_quick_panel_shortcuts = Vec::new();
+
             #[cfg(not(any(target_os = "android", target_os = "ios")))]
             {
                 app.handle()
                     .plugin(tauri_plugin_global_shortcut::Builder::new().build())?;
 
-                // Read shortcut override from settings, or use default
+                // 从设置读取快捷键覆盖；未配置或为空则回落到桌面层默认。
                 let shortcuts = {
                     let settings_port = runtime.settings_port();
                     match tauri::async_runtime::block_on(settings_port.load()) {
-                        Ok(settings) => quick_panel::resolve_shortcut_from_settings(&settings),
+                        Ok(settings) => {
+                            uc_desktop::shortcuts::resolve_quick_panel_shortcuts(&settings)
+                        }
                         Err(e) => {
                             warn!("Failed to load settings for shortcut: {}, using default", e);
-                            vec![quick_panel::DEFAULT_SHORTCUT.to_string()]
+                            vec![uc_desktop::shortcuts::DEFAULT_QUICK_PANEL_SHORTCUT.to_string()]
                         }
                     }
                 };
 
+                // 启动期 setup callback 已在 main thread 上下文，可直接构造 Tauri
+                // 适配器并调注册器。回调闭包绑定 `quick_panel::toggle`，避免桌面
+                // 协调层耦合任何 GUI shell 概念。
+                let toggle_handle = app.handle().clone();
+                let registry = quick_panel::TauriGlobalShortcutRegistry::new(
+                    app.handle().clone(),
+                    move || quick_panel::toggle(&toggle_handle),
+                );
                 for shortcut_str in &shortcuts {
-                    if let Err(e) = quick_panel::register_global_shortcut(app.handle(), shortcut_str) {
+                    if let Err(e) = registry.register(shortcut_str) {
                         tracing::error!(error = %e, shortcut = %shortcut_str, "Failed to register global shortcut during startup");
+                    } else {
+                        registered_quick_panel_shortcuts.push(shortcut_str.clone());
                     }
                 }
             }
+
+            app.manage(uc_desktop::shortcuts::CurrentShortcuts::new(
+                registered_quick_panel_shortcuts,
+            ));
 
             // Pre-create quick panel (hidden) so the first
             // shortcut press doesn't activate the app via WebviewWindowBuilder::build()
@@ -528,6 +547,8 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
             crate::commands::quick_panel::dismiss_quick_panel,
             crate::commands::quick_panel::set_quick_panel_layout,
             crate::commands::quick_panel::finalize_quick_panel_show,
+            // Settings commands
+            crate::commands::settings::update_keyboard_shortcuts,
             // Mobile sync commands (in-process facade — does NOT go through webserver)
             crate::commands::mobile_sync::register_mobile_device,
             crate::commands::mobile_sync::revoke_mobile_device,

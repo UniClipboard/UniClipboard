@@ -3,6 +3,7 @@ pub mod error;
 pub mod mobile_sync;
 pub mod quick_panel;
 pub mod restart;
+pub mod settings;
 pub mod space_setup;
 pub mod startup;
 pub mod storage;

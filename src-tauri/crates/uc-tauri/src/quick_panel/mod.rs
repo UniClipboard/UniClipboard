@@ -10,13 +10,15 @@
 mod macos;
 #[cfg(any(target_os = "windows", test))]
 mod paste_sequence;
+mod shortcut_registry;
 #[cfg(target_os = "windows")]
 mod windows;
+
+pub use shortcut_registry::TauriGlobalShortcutRegistry;
 
 use std::sync::Mutex;
 use std::time::Instant;
 use tauri::{Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
-use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 use tracing::{debug, error, info, warn};
 
 /// Timestamp of the last `show()` call. Blur events within
@@ -43,16 +45,6 @@ const BLUR_DEBOUNCE_MS: u128 = 300;
 /// notifications) are transient and focus returns within a few ms.
 /// A real "user clicked elsewhere" loss persists past this delay.
 const BLUR_VERIFY_DELAY_MS: u64 = 100;
-
-/// Default global shortcut for the quick panel (Tauri format).
-/// macOS: Cmd+Ctrl+V, Windows/Linux: Ctrl+Alt+V
-#[cfg(target_os = "macos")]
-pub const DEFAULT_SHORTCUT: &str = "super+ctrl+v";
-#[cfg(not(target_os = "macos"))]
-pub const DEFAULT_SHORTCUT: &str = "ctrl+alt+v";
-
-/// Settings key used to store the quick panel shortcut override.
-pub const SHORTCUT_SETTINGS_KEY: &str = "global.toggleQuickPanel";
 
 /// Panel base dimensions (logical pixels at 100% UI scale).
 const BASE_PANEL_WIDTH: f64 = 360.0;
@@ -495,148 +487,4 @@ pub fn paste(app: &tauri::AppHandle) -> Result<(), String> {
         dismiss(app);
         Err("Paste to previous app is not yet supported on this platform".into())
     }
-}
-
-// ── Global shortcut management ────────────────────────────────────────
-
-/// Resolve the quick panel shortcut string from settings (in Tauri format).
-///
-/// Falls back to [`DEFAULT_SHORTCUT`] if not configured.
-pub fn resolve_shortcut_from_settings(
-    settings: &uc_core::settings::model::Settings,
-) -> Vec<String> {
-    use uc_core::settings::model::ShortcutKey;
-
-    match settings.keyboard_shortcuts.get(SHORTCUT_SETTINGS_KEY) {
-        Some(ShortcutKey::Single(s)) => vec![normalize_shortcut_for_tauri(s)],
-        Some(ShortcutKey::Multiple(v)) => {
-            let shortcuts: Vec<String> = v
-                .iter()
-                .map(|s| normalize_shortcut_for_tauri(s))
-                .filter(|s| !s.is_empty())
-                .collect();
-            if shortcuts.is_empty() {
-                vec![DEFAULT_SHORTCUT.to_string()]
-            } else {
-                shortcuts
-            }
-        }
-        _ => vec![DEFAULT_SHORTCUT.to_string()],
-    }
-}
-
-/// Convert a frontend shortcut string to the Tauri global-shortcut format.
-///
-/// Mapping rules:
-///   - `meta` (the physical Meta/Win/Cmd key) → `super` (Tauri's name for that key)
-///   - `mod`/`cmd`/`command` (abstract platform modifier) → `super` on macOS, `ctrl` on others
-///   - everything else passes through unchanged
-///
-/// 将前端快捷键字符串转换为 Tauri 全局快捷键格式。
-pub fn normalize_shortcut_for_tauri(key: &str) -> String {
-    key.split('+')
-        .map(|part| {
-            match part.trim().to_lowercase().as_str() {
-                // Physical Meta key (Cmd on macOS, Win on Windows) → Tauri `super`
-                "meta" | "super" => "super".to_string(),
-                // Abstract platform modifier → Cmd on macOS, Ctrl on others
-                "mod" | "cmd" | "command" => if cfg!(target_os = "macos") {
-                    "super"
-                } else {
-                    "ctrl"
-                }
-                .to_string(),
-                other => other.to_string(),
-            }
-        })
-        .collect::<Vec<_>>()
-        .join("+")
-}
-
-/// Register a global shortcut that toggles the quick panel.
-///
-/// 注册一个用于切换快捷面板的全局快捷键。
-pub fn register_global_shortcut(app: &tauri::AppHandle, shortcut_str: &str) -> Result<(), String> {
-    // Defensively unregister first — on Windows the OS-level hotkey may survive
-    // a crash or force-kill of the previous app instance, causing
-    // "HotKey already registered" on the next startup.
-    match app.global_shortcut().unregister(shortcut_str) {
-        Ok(()) => {}
-        Err(e) => {
-            warn!(
-                error = %e,
-                shortcut = %shortcut_str,
-                "Defensive unregister before registering global shortcut failed"
-            );
-        }
-    }
-
-    let app_handle = app.clone();
-    app.global_shortcut()
-        .on_shortcut(shortcut_str, move |_app, _shortcut, event| {
-            if event.state == ShortcutState::Pressed {
-                info!("Global shortcut triggered for quick panel");
-                toggle(&app_handle);
-            }
-        })
-        .map_err(|e| {
-            error!(error = %e, shortcut = %shortcut_str, "Failed to register global shortcut for quick panel");
-            format!("Failed to register shortcut '{}': {}", shortcut_str, e)
-        })?;
-    info!(shortcut = %shortcut_str, "Global shortcut registered for quick panel");
-    Ok(())
-}
-
-/// Unregister old shortcuts and register new ones atomically.
-///
-/// If registering any new shortcut fails, attempts to re-register all old
-/// shortcuts so the system is not left without a working shortcut.
-///
-/// 原子地注销旧快捷键并注册新快捷键。如果注册新快捷键失败，
-/// 尝试重新注册旧快捷键以避免系统处于无快捷键状态。
-pub fn update_global_shortcut(
-    app: &tauri::AppHandle,
-    old: &[String],
-    new: &[String],
-) -> Result<(), String> {
-    // Unregister all old shortcuts
-    for shortcut in old {
-        if let Err(e) = app.global_shortcut().unregister(shortcut.as_str()) {
-            warn!(error = %e, shortcut = %shortcut, "Failed to unregister old global shortcut");
-        }
-    }
-
-    // Also unregister new shortcuts defensively, in case they are already
-    // registered (e.g. from startup or a previous partial update).
-    for shortcut in new {
-        if !old.contains(shortcut) {
-            let _ = app.global_shortcut().unregister(shortcut.as_str());
-        }
-    }
-
-    // Register all new shortcuts; on failure, rollback to old shortcuts
-    for shortcut in new {
-        if let Err(e) = register_global_shortcut(app, shortcut) {
-            warn!(error = %e, shortcut = %shortcut, "New shortcut registration failed, rolling back");
-            // Unregister any new shortcuts that were successfully registered
-            for already in new {
-                if already == shortcut {
-                    break;
-                }
-                let _ = app.global_shortcut().unregister(already.as_str());
-            }
-            // Re-register old shortcuts
-            for old_shortcut in old {
-                if let Err(rb_err) = register_global_shortcut(app, old_shortcut) {
-                    error!(
-                        error = %rb_err,
-                        shortcut = %old_shortcut,
-                        "Failed to rollback old global shortcut"
-                    );
-                }
-            }
-            return Err(e);
-        }
-    }
-    Ok(())
 }

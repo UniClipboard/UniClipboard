@@ -63,9 +63,15 @@ impl GlobalShortcutRegistry for TauriGlobalShortcutRegistry {
     }
 
     fn unregister(&self, shortcut: &str) -> Result<(), ShortcutError> {
-        self.app
-            .global_shortcut()
-            .unregister(shortcut)
-            .map_err(|e| ShortcutError::backend(format!("Failed to unregister '{shortcut}': {e}")))
+        // 契约：未注册视为成功。`tauri-plugin-global-shortcut` 不区分
+        // "未注册" 与其它后端错误，所以这里统一降级为 warn 并返回 Ok。
+        if let Err(e) = self.app.global_shortcut().unregister(shortcut) {
+            warn!(
+                error = %e,
+                shortcut = %shortcut,
+                "Unregister global shortcut returned error; treating as no-op per trait contract"
+            );
+        }
+        Ok(())
     }
 }

@@ -6,6 +6,7 @@ use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
 use tauri::State;
+use tokio::sync::Mutex as AsyncMutex;
 use tracing::{error, info_span, Instrument};
 use uc_application::facade::settings::{SettingsPatch, ShortcutKeyView};
 use uc_desktop::shortcuts::{self, CurrentShortcuts, QUICK_PANEL_SHORTCUT_SETTINGS_KEY};
@@ -14,6 +15,13 @@ use uc_platform::ports::observability::TraceMetadata;
 use crate::bootstrap::TauriAppRuntime;
 use crate::commands::{record_trace_fields, CommandError};
 use crate::quick_panel;
+
+/// 串行化 [`update_keyboard_shortcuts`] 整段 read→OS 注册→facade 持久化→
+/// 内存 registry replace 的协调流程。并发调用会让 OS 状态、`CurrentShortcuts`、
+/// 和 facade 持久化值相互错位（详见 [`update_keyboard_shortcuts`]），所以整段
+/// 必须在锁内独占执行。
+#[derive(Default)]
+pub struct KeyboardShortcutsUpdateLock(pub AsyncMutex<()>);
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(untagged)]
@@ -34,6 +42,7 @@ pub async fn update_keyboard_shortcuts(
     app: tauri::AppHandle,
     runtime: State<'_, Arc<TauriAppRuntime>>,
     shortcut_registry: State<'_, CurrentShortcuts>,
+    update_lock: State<'_, KeyboardShortcutsUpdateLock>,
     shortcuts: HashMap<String, Option<ShortcutKeyDto>>,
     _trace: Option<TraceMetadata>,
 ) -> Result<UpdateKeyboardShortcutsResult, CommandError> {
@@ -46,6 +55,8 @@ pub async fn update_keyboard_shortcuts(
     record_trace_fields(&span, &_trace);
 
     async {
+        // 独占整段协调，避免并发调用让 OS / registry / facade 三者错位。
+        let _guard = update_lock.0.lock().await;
         let facade = runtime.app_facade();
         let current = facade.settings.get().await.map_err(CommandError::internal)?;
         let next_keyboard_shortcuts =

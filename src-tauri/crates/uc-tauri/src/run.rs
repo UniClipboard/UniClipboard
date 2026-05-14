@@ -375,6 +375,7 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
             app.manage(uc_desktop::shortcuts::CurrentShortcuts::new(
                 registered_quick_panel_shortcuts,
             ));
+            app.manage(crate::commands::settings::KeyboardShortcutsUpdateLock::default());
 
             // Pre-create quick panel (hidden) so the first
             // shortcut press doesn't activate the app via WebviewWindowBuilder::build()

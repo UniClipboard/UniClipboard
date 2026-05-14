@@ -1,5 +1,6 @@
 pub mod autostart;
 pub mod error;
+pub mod factory_reset;
 pub mod mobile_sync;
 pub mod quick_panel;
 pub mod restart;

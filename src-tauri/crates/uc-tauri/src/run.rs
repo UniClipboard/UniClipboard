@@ -561,6 +561,8 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
             // Space setup commands (in-process facade — passphrase never leaves the Tauri process)
             crate::commands::space_setup::unlock_space_with_passphrase,
             crate::commands::space_setup::try_silent_unlock,
+            // Factory reset — user-driven "重置并重新开始" fallback from UnlockPage
+            crate::commands::factory_reset::factory_reset_space,
         ])
         .build(tauri_ctx)
         .map_err(|error| anyhow::anyhow!("error building tauri application: {error}"))?

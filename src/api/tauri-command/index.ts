@@ -10,3 +10,4 @@
  */
 
 export * from './mobile_sync'
+export * from './settings'

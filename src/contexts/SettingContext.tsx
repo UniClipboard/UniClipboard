@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState, type ReactNode } from 'react'
 import { SettingContext } from './setting-context'
 import { getSettings, updateSettings } from '@/api/daemon'
+import { updateKeyboardShortcuts as persistKeyboardShortcuts } from '@/api/tauri-command'
 import { DEFAULT_THEME_COLOR } from '@/constants/theme'
 import i18n, { normalizeLanguage, persistLanguage } from '@/i18n'
 import { connectDaemonWs } from '@/lib/daemon-ws-bootstrap'
@@ -163,17 +164,32 @@ export const SettingProvider: React.FC<SettingProviderProps> = ({ children }) =>
     return await saveSetting(updatedSetting)
   }
 
-  // Update keyboard shortcuts
+  // 更新快捷键。GUI 路径必须走 Tauri in-process command，因为快捷面板全局
+  // 快捷键需要同步更新 OS 注册状态；daemon HTTP settings API 只负责持久化。
   const updateKeyboardShortcuts = async (overrides: Record<string, string | string[]>) => {
     if (!setting) {
       throw new Error('No settings loaded')
     }
-    const updatedSetting: Settings = { ...setting, keyboardShortcuts: overrides }
     try {
-      await saveSetting(updatedSetting)
+      setLoading(true)
+      const keyboardShortcuts = await persistKeyboardShortcuts(
+        setting.keyboardShortcuts ?? {},
+        overrides
+      )
+      const updatedSetting: Settings = { ...setting, keyboardShortcuts }
+      setSetting(updatedSetting)
+      setError(null)
+      try {
+        await emitSettingsChanged(updatedSetting)
+      } catch (err) {
+        log.error({ err }, 'Failed to broadcast settings change')
+      }
     } catch (err) {
       log.error({ err }, 'Failed to update keyboard shortcuts')
+      setError(`保存设置失败: ${err}`)
       throw err
+    } finally {
+      setLoading(false)
     }
   }
 

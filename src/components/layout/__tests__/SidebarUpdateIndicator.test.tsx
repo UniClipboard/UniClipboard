@@ -3,7 +3,7 @@ import { MemoryRouter } from 'react-router-dom'
 import type { UpdateMetadata } from '@/api/updater'
 import Sidebar from '@/components/layout/Sidebar'
 import { SettingContext } from '@/contexts/setting-context'
-import { UpdateContext } from '@/contexts/update-context'
+import { UpdateContext, type UpdateContextType, type UpdateState } from '@/contexts/update-context'
 import type { Settings } from '@/types/setting'
 
 const baseSetting: Settings = {
@@ -60,85 +60,111 @@ const baseSetting: Settings = {
   },
 }
 
+const updateInfo: UpdateMetadata = {
+  version: '0.1.1',
+  currentVersion: '0.1.0',
+  date: '2026-01-25T00:00:00Z',
+  body: 'Bug fixes',
+}
+
+function buildUpdateValue(state: UpdateState): UpdateContextType {
+  return {
+    state,
+    updateInfo: state.info,
+    downloadProgress: {
+      phase: state.phase,
+      downloaded: state.downloaded,
+      total: state.total,
+    },
+    isCheckingUpdate: false,
+    checkForUpdates: vi.fn().mockResolvedValue(null),
+    downloadUpdate: vi.fn().mockResolvedValue(undefined),
+    cancelDownload: vi.fn().mockResolvedValue(undefined),
+    installUpdate: vi.fn().mockResolvedValue(undefined),
+  }
+}
+
+function renderSidebar(state: UpdateState) {
+  return render(
+    <SettingContext.Provider
+      value={{
+        setting: baseSetting,
+        loading: false,
+        error: null,
+        updateSetting: vi.fn(),
+        updateGeneralSetting: vi.fn(),
+        updateSyncSetting: vi.fn(),
+        updateSecuritySetting: vi.fn(),
+        updateRetentionPolicy: vi.fn(),
+        updateKeyboardShortcuts: vi.fn(),
+        updateFileSyncSetting: vi.fn(),
+        updateNetworkSetting: vi.fn().mockResolvedValue({ restartRequired: false }),
+      }}
+    >
+      <UpdateContext.Provider value={buildUpdateValue(state)}>
+        <MemoryRouter>
+          <Sidebar />
+        </MemoryRouter>
+      </UpdateContext.Provider>
+    </SettingContext.Provider>
+  )
+}
+
 describe('Sidebar update indicator', () => {
-  it('shows update icon when updater returns update info', async () => {
-    const updateInfo: UpdateMetadata = {
-      version: '0.1.1',
-      currentVersion: '0.1.0',
-      date: '2026-01-25T00:00:00Z',
-      body: 'Bug fixes',
-    }
-
-    render(
-      <SettingContext.Provider
-        value={{
-          setting: baseSetting,
-          loading: false,
-          error: null,
-          updateSetting: vi.fn(),
-          updateGeneralSetting: vi.fn(),
-          updateSyncSetting: vi.fn(),
-          updateSecuritySetting: vi.fn(),
-          updateRetentionPolicy: vi.fn(),
-          updateKeyboardShortcuts: vi.fn(),
-          updateFileSyncSetting: vi.fn(),
-          updateNetworkSetting: vi.fn().mockResolvedValue({ restartRequired: false }),
-        }}
-      >
-        <UpdateContext.Provider
-          value={{
-            updateInfo,
-            isCheckingUpdate: false,
-            checkForUpdates: vi.fn(),
-            installUpdate: vi.fn(),
-            downloadProgress: { downloaded: 0, total: null, phase: 'idle' as const },
-          }}
-        >
-          <MemoryRouter>
-            <Sidebar />
-          </MemoryRouter>
-        </UpdateContext.Provider>
-      </SettingContext.Provider>
-    )
-
-    await waitFor(() => {
-      expect(screen.getByLabelText(/update available/i)).toBeInTheDocument()
+  it('shows the amber "available" icon when an update is available', async () => {
+    renderSidebar({
+      phase: 'available',
+      info: updateInfo,
+      downloaded: 0,
+      total: null,
     })
+
+    const button = await waitFor(() => screen.getByLabelText(/update available/i))
+    expect(button).toHaveAttribute('data-update-state', 'available')
   })
 
-  it('hides update icon when there is no update info', () => {
-    render(
-      <SettingContext.Provider
-        value={{
-          setting: baseSetting,
-          loading: false,
-          error: null,
-          updateSetting: vi.fn(),
-          updateGeneralSetting: vi.fn(),
-          updateSyncSetting: vi.fn(),
-          updateSecuritySetting: vi.fn(),
-          updateRetentionPolicy: vi.fn(),
-          updateKeyboardShortcuts: vi.fn(),
-          updateFileSyncSetting: vi.fn(),
-          updateNetworkSetting: vi.fn().mockResolvedValue({ restartRequired: false }),
-        }}
-      >
-        <UpdateContext.Provider
-          value={{
-            updateInfo: null,
-            isCheckingUpdate: false,
-            checkForUpdates: vi.fn(),
-            installUpdate: vi.fn(),
-            downloadProgress: { downloaded: 0, total: null, phase: 'idle' as const },
-          }}
-        >
-          <MemoryRouter>
-            <Sidebar />
-          </MemoryRouter>
-        </UpdateContext.Provider>
-      </SettingContext.Provider>
-    )
+  it('hides the icon when there is no update', () => {
+    renderSidebar({ phase: 'idle', info: null, downloaded: 0, total: null })
 
     expect(screen.queryByLabelText(/update available/i)).not.toBeInTheDocument()
+    expect(screen.queryByLabelText(/downloading update/i)).not.toBeInTheDocument()
+    expect(screen.queryByLabelText(/update ready/i)).not.toBeInTheDocument()
+  })
+
+  it('shows the "downloading" indicator with progress text when downloading', async () => {
+    renderSidebar({
+      phase: 'downloading',
+      info: updateInfo,
+      downloaded: 512,
+      total: 1024,
+    })
+
+    const button = await waitFor(() => screen.getByLabelText(/downloading update.*50/i))
+    expect(button).toHaveAttribute('data-update-state', 'downloading')
+  })
+
+  it('shows the "downloading" indicator without percent when total is unknown', async () => {
+    renderSidebar({
+      phase: 'downloading',
+      info: updateInfo,
+      downloaded: 512,
+      total: null,
+    })
+
+    const button = await waitFor(() => screen.getByLabelText(/downloading update/i))
+    expect(button).toHaveAttribute('data-update-state', 'downloading')
+    expect(button).not.toHaveTextContent(/%/)
+  })
+
+  it('shows the emerald "ready" indicator when the update has been downloaded', async () => {
+    renderSidebar({
+      phase: 'ready',
+      info: updateInfo,
+      downloaded: 1024,
+      total: 1024,
+    })
+
+    const button = await waitFor(() => screen.getByLabelText(/update ready/i))
+    expect(button).toHaveAttribute('data-update-state', 'ready')
   })
 })

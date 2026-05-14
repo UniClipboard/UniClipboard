@@ -132,9 +132,12 @@ function renderAboutSection({
     >
       <UpdateContext.Provider
         value={{
+          state: { phase: 'idle', info: null, downloaded: 0, total: null },
           updateInfo: null,
           isCheckingUpdate,
           checkForUpdates,
+          downloadUpdate: vi.fn().mockResolvedValue(undefined),
+          cancelDownload: vi.fn().mockResolvedValue(undefined),
           installUpdate: vi.fn(),
           downloadProgress: { downloaded: 0, total: null, phase: 'idle' as const },
         }}

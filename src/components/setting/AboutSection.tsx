@@ -74,7 +74,8 @@ const AboutSection: React.FC = () => {
   const [updateDialogOpen, setUpdateDialogOpen] = useState(false)
   const [alphaWarningOpen, setAlphaWarningOpen] = useState(false)
   const [saving, setSaving] = useState(false)
-  const isInstallingUpdate = downloadProgress.phase !== 'idle'
+  const isInstallingUpdate =
+    downloadProgress.phase === 'downloading' || downloadProgress.phase === 'installing'
   const isBusy = settingLoading || saving
   useShortcutLayer({
     layer: 'modal',
@@ -363,7 +364,8 @@ const AboutSection: React.FC = () => {
                     <ReleaseNotes content={updateInfo?.body ?? ''} fallback={t('update.noNotes')} />
                   </div>
                 </div>
-                {downloadProgress.phase !== 'idle' && (
+                {(downloadProgress.phase === 'downloading' ||
+                  downloadProgress.phase === 'installing') && (
                   <div className="space-y-2 pt-2">
                     <div className="flex justify-between text-xs text-muted-foreground">
                       <span>

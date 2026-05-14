@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion'
-import { ArrowUpCircle, Home, MessageSquare, Monitor, Settings } from 'lucide-react'
+import { ArrowUpCircle, Check, Home, MessageSquare, Monitor, Settings } from 'lucide-react'
 import React, { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
@@ -93,6 +93,52 @@ const NavButton: React.FC<{
   )
 }
 
+/**
+ * Circular progress ring rendered around the update icon while the
+ * background download is running. Total-unknown downloads pulse instead
+ * of advancing (mirrors the dialog Progress bar `animate-pulse` fallback).
+ */
+const UpdateProgressRing: React.FC<{ percent: number | null }> = ({ percent }) => {
+  const radius = 17
+  const circumference = 2 * Math.PI * radius
+  const isIndeterminate = percent === null
+  const clamped = isIndeterminate ? 0 : Math.max(0, Math.min(100, percent))
+  const offset = circumference * (1 - clamped / 100)
+
+  return (
+    <svg
+      aria-hidden
+      viewBox="0 0 40 40"
+      className={cn(
+        'absolute inset-0 w-full h-full pointer-events-none',
+        isIndeterminate && 'motion-safe:animate-pulse'
+      )}
+    >
+      <circle
+        cx="20"
+        cy="20"
+        r={radius}
+        fill="none"
+        strokeWidth="2"
+        className="stroke-amber-500/25 dark:stroke-amber-400/25"
+      />
+      <circle
+        cx="20"
+        cy="20"
+        r={radius}
+        fill="none"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeDasharray={circumference}
+        strokeDashoffset={isIndeterminate ? circumference * 0.65 : offset}
+        transform="rotate(-90 20 20)"
+        className="stroke-amber-500 dark:stroke-amber-400"
+        style={{ transition: isIndeterminate ? undefined : 'stroke-dashoffset 200ms linear' }}
+      />
+    </svg>
+  )
+}
+
 interface SidebarProps {
   className?: string
 }
@@ -104,8 +150,20 @@ const Sidebar: React.FC<SidebarProps> = ({ className }) => {
   const { setting } = useSetting()
   const [updateDialogOpen, setUpdateDialogOpen] = useState(false)
   const [feedbackOpen, setFeedbackOpen] = useState(false)
-  const { updateInfo, isCheckingUpdate, installUpdate, downloadProgress } = useUpdate()
-  const isInstallingUpdate = downloadProgress.phase !== 'idle'
+  const [cancelling, setCancelling] = useState(false)
+  const { state, isCheckingUpdate, installUpdate, downloadUpdate, cancelDownload } = useUpdate()
+  const phase = state.phase
+
+  const isDownloading = phase === 'downloading'
+  const isInstalling = phase === 'installing'
+  const isReady = phase === 'ready'
+  const isAvailable = phase === 'available'
+  const indicatorVisible = isAvailable || isDownloading || isReady || isInstalling
+
+  const downloadPercent =
+    state.total !== null && state.total > 0
+      ? Math.round((state.downloaded / state.total) * 100)
+      : null
 
   const navItems = [
     { to: '/', icon: Home, label: t('nav.dashboard') },
@@ -118,14 +176,58 @@ const Sidebar: React.FC<SidebarProps> = ({ className }) => {
     }
   }, [setting?.general.autoCheckUpdate])
 
-  const handleInstallUpdate = async () => {
-    if (!updateInfo || isInstallingUpdate) return
+  const indicatorLabel = (() => {
+    if (isDownloading) {
+      return downloadPercent !== null
+        ? t('nav.updateDownloadingWithProgress', { percent: downloadPercent })
+        : t('nav.updateDownloading')
+    }
+    if (isInstalling) return t('nav.updateInstalling')
+    if (isReady) return t('nav.updateReady')
+    return t('nav.updateAvailable')
+  })()
+
+  const handlePrimaryAction = async () => {
+    if (isInstalling) return
     try {
-      await installUpdate()
-      setUpdateDialogOpen(false)
+      if (isAvailable) {
+        // No cached bytes yet — go straight to install which transparently
+        // falls back to `download_and_install` (legacy combined path),
+        // matching the original click-to-install UX.
+        await installUpdate()
+        setUpdateDialogOpen(false)
+        return
+      }
+      if (isReady) {
+        await installUpdate()
+        setUpdateDialogOpen(false)
+        return
+      }
+      if (phase === 'idle') return
     } catch (error) {
       log.error({ err: error }, '更新失败')
       toast.error(t('update.installFailed'))
+    }
+  }
+
+  const handleStartBackgroundDownload = async () => {
+    try {
+      await downloadUpdate()
+    } catch (error) {
+      log.error({ err: error }, '后台下载失败')
+      toast.error(t('update.downloadFailed'))
+    }
+  }
+
+  const handleCancelDownload = async () => {
+    if (!isDownloading || cancelling) return
+    setCancelling(true)
+    try {
+      await cancelDownload()
+    } catch (error) {
+      log.error({ err: error }, '取消下载失败')
+    } finally {
+      setCancelling(false)
     }
   }
 
@@ -157,13 +259,14 @@ const Sidebar: React.FC<SidebarProps> = ({ className }) => {
 
         {/* Bottom Navigation */}
         <div className="relative z-10 flex flex-col gap-3 w-full items-center">
-          {updateInfo && (
+          {indicatorVisible && (
             <TooltipProvider delayDuration={0}>
               <Tooltip>
                 <TooltipTrigger asChild>
                   <button
                     type="button"
-                    aria-label={t('nav.updateAvailable')}
+                    aria-label={indicatorLabel}
+                    data-update-state={phase}
                     data-tauri-drag-region="false"
                     className="relative group"
                     onClick={() => setUpdateDialogOpen(true)}
@@ -172,19 +275,46 @@ const Sidebar: React.FC<SidebarProps> = ({ className }) => {
                     <div
                       className={cn(
                         'relative flex items-center justify-center w-10 h-10 rounded-lg transition-colors duration-200 z-10',
-                        'text-amber-600 dark:text-amber-400 group-hover:bg-muted'
+                        isReady
+                          ? 'text-emerald-600 dark:text-emerald-400 group-hover:bg-muted'
+                          : 'text-amber-600 dark:text-amber-400 group-hover:bg-muted'
                       )}
                     >
                       <ArrowUpCircle className="w-5 h-5" />
-                      <span className="absolute top-2.5 right-2.5 flex h-2 w-2">
-                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-500/70 opacity-75" />
-                        <span className="relative inline-flex h-2 w-2 rounded-full bg-amber-500" />
-                      </span>
+
+                      {isAvailable && (
+                        <span
+                          aria-hidden
+                          className="absolute top-2.5 right-2.5 flex h-2 w-2 motion-reduce:hidden"
+                        >
+                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-500/70 opacity-75" />
+                          <span className="relative inline-flex h-2 w-2 rounded-full bg-amber-500" />
+                        </span>
+                      )}
+                      {isAvailable && (
+                        <span
+                          aria-hidden
+                          className="hidden motion-reduce:flex absolute top-2.5 right-2.5 h-2 w-2 rounded-full bg-amber-500"
+                        />
+                      )}
+
+                      {(isDownloading || isInstalling) && (
+                        <UpdateProgressRing percent={isInstalling ? null : downloadPercent} />
+                      )}
+
+                      {isReady && (
+                        <span
+                          aria-hidden
+                          className="absolute -top-0.5 -right-0.5 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-emerald-500 text-white shadow"
+                        >
+                          <Check className="h-2.5 w-2.5 stroke-[3]" />
+                        </span>
+                      )}
                     </div>
                   </button>
                 </TooltipTrigger>
                 <TooltipContent side="right" align="center" className="font-medium">
-                  <p>{t('nav.updateAvailable')}</p>
+                  <p>{indicatorLabel}</p>
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>
@@ -241,11 +371,11 @@ const Sidebar: React.FC<SidebarProps> = ({ className }) => {
                 <div className="space-y-1 text-sm">
                   <div className="flex items-center justify-between text-muted-foreground">
                     <span>{t('update.currentVersion')}</span>
-                    <span className="text-foreground">{updateInfo?.currentVersion ?? '-'}</span>
+                    <span className="text-foreground">{state.info?.currentVersion ?? '-'}</span>
                   </div>
                   <div className="flex items-center justify-between text-muted-foreground">
                     <span>{t('update.latestVersion')}</span>
-                    <span className="text-foreground">{updateInfo?.version ?? '-'}</span>
+                    <span className="text-foreground">{state.info?.version ?? '-'}</span>
                   </div>
                 </div>
                 <div className="space-y-2">
@@ -253,31 +383,23 @@ const Sidebar: React.FC<SidebarProps> = ({ className }) => {
                     {t('update.releaseNotes')}
                   </div>
                   <div className="max-h-48 overflow-auto rounded-md border border-border/60 bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
-                    <ReleaseNotes content={updateInfo?.body ?? ''} fallback={t('update.noNotes')} />
+                    <ReleaseNotes content={state.info?.body ?? ''} fallback={t('update.noNotes')} />
                   </div>
                 </div>
-                {downloadProgress.phase !== 'idle' && (
+                {isReady && (
+                  <div className="text-xs text-emerald-600 dark:text-emerald-400 pt-1">
+                    {t('update.readyHint')}
+                  </div>
+                )}
+                {(isDownloading || isInstalling) && (
                   <div className="space-y-2 pt-2">
                     <div className="flex justify-between text-xs text-muted-foreground">
-                      <span>
-                        {downloadProgress.phase === 'installing'
-                          ? t('update.installing')
-                          : t('update.downloading')}
-                      </span>
-                      {downloadProgress.total !== null && (
-                        <span>
-                          {Math.round((downloadProgress.downloaded / downloadProgress.total) * 100)}
-                          %
-                        </span>
-                      )}
+                      <span>{isInstalling ? t('update.installing') : t('update.downloading')}</span>
+                      {downloadPercent !== null && <span>{downloadPercent}%</span>}
                     </div>
                     <Progress
-                      value={
-                        downloadProgress.total !== null
-                          ? (downloadProgress.downloaded / downloadProgress.total) * 100
-                          : undefined
-                      }
-                      className={cn('h-2', downloadProgress.total === null && 'animate-pulse')}
+                      value={downloadPercent ?? undefined}
+                      className={cn('h-2', downloadPercent === null && 'animate-pulse')}
                     />
                   </div>
                 )}
@@ -285,16 +407,44 @@ const Sidebar: React.FC<SidebarProps> = ({ className }) => {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={isInstallingUpdate}>{t('update.later')}</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={event => {
-                event.preventDefault()
-                handleInstallUpdate()
-              }}
-              disabled={isInstallingUpdate}
-            >
-              {t('update.updateNow')}
-            </AlertDialogAction>
+            {isDownloading ? (
+              <>
+                <AlertDialogCancel
+                  onClick={event => {
+                    event.preventDefault()
+                    void handleCancelDownload()
+                  }}
+                  disabled={cancelling}
+                >
+                  {cancelling ? t('update.cancelling') : t('update.cancelDownload')}
+                </AlertDialogCancel>
+                <AlertDialogAction disabled>{t('update.downloading')}</AlertDialogAction>
+              </>
+            ) : (
+              <>
+                <AlertDialogCancel disabled={isInstalling}>{t('update.later')}</AlertDialogCancel>
+                {isAvailable && (
+                  <AlertDialogAction
+                    onClick={event => {
+                      event.preventDefault()
+                      void handleStartBackgroundDownload()
+                    }}
+                    disabled={isInstalling}
+                  >
+                    {t('update.downloadInBackground')}
+                  </AlertDialogAction>
+                )}
+                <AlertDialogAction
+                  onClick={event => {
+                    event.preventDefault()
+                    void handlePrimaryAction()
+                  }}
+                  disabled={isInstalling || phase === 'idle'}
+                >
+                  {isReady ? t('update.installNow') : t('update.updateNow')}
+                </AlertDialogAction>
+              </>
+            )}
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

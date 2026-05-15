@@ -11,11 +11,11 @@ the page.
 
 ## Page layout
 
-| Block           | Content                                                                                                                                                                                                                  |
-| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Top Hero        | This device icon + name + short Peer ID + a **Switch space** chip; two StatPills on the right showing paired/online counts and sync status.                                                                              |
-| Tab bar         | Two tabs on a single row: **Paired devices** (desktop P2P peers) and **Mobile sync** (LAN mobile clients). Each tab carries a count chip; the action buttons on the right of the bar change with the active tab.         |
-| Tab content     | A card grid for the active tab (3-up on wide screens, collapsing to 1–2 columns on narrow). The last cell is a dashed "add" card that opens the corresponding invite / registration flow. See the two sections below.    |
+| Block       | Content                                                                                                                                                                                                               |
+| ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Top Hero    | This device icon + name + short Peer ID + a **Switch space** chip; two StatPills on the right showing paired/online counts and sync status.                                                                           |
+| Tab bar     | Two tabs on a single row: **Paired devices** (desktop P2P peers) and **Mobile sync** (LAN mobile clients). Each tab carries a count chip; the action buttons on the right of the bar change with the active tab.      |
+| Tab content | A card grid for the active tab (3-up on wide screens, collapsing to 1–2 columns on narrow). The last cell is a dashed "add" card that opens the corresponding invite / registration flow. See the two sections below. |
 
 The Hero is read-only. To rename this machine or toggle local sync,
 head to [Settings → General](./settings#general) and
@@ -168,9 +168,9 @@ so they get their own card grid distinct from the Paired devices grid.
 Switching to the Mobile sync tab swaps in two buttons on the right
 of the tab bar:
 
-| Button       | What it does                                                                                                              |
-| ------------ | ------------------------------------------------------------------------------------------------------------------------- |
-| `Configure`  | Opens the **Mobile sync settings** modal — master switch, LAN listen toggle, bind IP, port, and current listen URL.       |
+| Button       | What it does                                                                                                                                                                |
+| ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Configure`  | Opens the **Mobile sync settings** modal — master switch, LAN listen toggle, bind IP, port, and current listen URL.                                                         |
 | `Add device` | Starts the registration flow ([Mobile sync — Pair a device](./mobile-sync#pair-a-device)). If the master switch or LAN listener is off, an onboarding dialog appears first. |
 
 If the LAN listener fails to bind (port in use, permission denied,
@@ -197,8 +197,8 @@ Each card:
   those credentials get `401 Unauthorized`.
 
 <Callout type="info">
-  Mobile cards don't show the `LAN / Direct / Relay` transport badge — mobile sync is
-  **always** plain HTTP on the LAN, so there's nothing to compare against.
+  Mobile cards don't show the `LAN / Direct / Relay` transport badge — mobile sync is **always**
+  plain HTTP on the LAN, so there's nothing to compare against.
 </Callout>
 
 For the full setup walkthrough (LAN listener, advertised IP, iOS

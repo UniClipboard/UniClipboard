@@ -127,13 +127,13 @@ open the centered **Mobile sync settings** dialog.
 
 Quick reference for what's in that dialog:
 
-| Setting                   | What it does                                                                                                                                |
-| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| Enable mobile sync        | Master switch for the feature. Off → no listener, no Add device, no inbound HTTP traffic on the LAN port.                                   |
-| Enable LAN listener       | Independent toggle for the HTTP listener. The master switch above must also be on for it to do anything.                                    |
-| Bind / advertised IP      | The LAN IPv4 the desktop tells mobile clients to connect to. The actual socket is always bound to `0.0.0.0`; this only changes the URL.     |
-| Port                      | Defaults to **42720** (SPEC §3.2). Custom values let you avoid conflicts.                                                                   |
-| Current listening address | Read-only; shows the URL derived from the persisted settings. This is what mobile clients should target.                                    |
+| Setting                   | What it does                                                                                                                                                                                   |
+| ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Enable mobile sync        | Master switch for the feature. Off → no listener, no Add device, no inbound HTTP traffic on the LAN port.                                                                                      |
+| Enable LAN listener       | Independent toggle for the HTTP listener. The master switch above must also be on for it to do anything.                                                                                       |
+| Bind / advertised IP      | The LAN IPv4 the desktop tells mobile clients to connect to. The actual socket is always bound to `0.0.0.0`; this only changes the URL.                                                        |
+| Port                      | Defaults to **42720** (SPEC §3.2). Custom values let you avoid conflicts.                                                                                                                      |
+| Current listening address | Read-only; shows the URL derived from the persisted settings. This is what mobile clients should target.                                                                                       |
 | Listener bind error       | When the daemon raises `lan_listener_error` (port in use, permission denied, etc.), a red Alert appears at the top of the dialog with the reason — so you can see why the URL isn't reachable. |
 
 <Callout type="warn">

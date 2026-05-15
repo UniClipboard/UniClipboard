@@ -69,6 +69,7 @@ UniClipboard 的核心边界不变：剪贴板内容只在你已配对的设备�
 | 配对       | `pairing_started`、`pairing_succeeded`、`pairing_failed`                                        | 配对方式、对端 OS、耗时、配对失败原因枚举。                                                |
 | 首次同步   | `first_clipboard_sync_attempted`、`first_clipboard_sync_succeeded`、`first_file_sync_succeeded` | 同步方向、对端 OS、传输路径、耗时、负载大小区间。                                          |
 | 同步可靠性 | `sync_attempted`、`sync_succeeded`、`sync_failed`、`sync_deferred`                              | 同步方向、负载类型、负载大小区间、传输路径、对端 OS、同步耗时、失败原因 / 阶段、暂缓原因。 |
+| 移动端同步 | `mobile_device_registered`、`mobile_clipboard_synced`、`mobile_auth_failed`                     | 同步方向、负载大小区间、移动端鉴权失败类型枚举。原始 `Authorization` 头、用户名、密码永不上传。 |
 
 新增产品事件或字段时，必须继续遵守本页的隐私边界，并更新公开文档。
 

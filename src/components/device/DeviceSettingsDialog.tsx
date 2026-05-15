@@ -36,11 +36,11 @@
 import { AlignLeft, FileIcon, ImageIcon, Link2, Type, type LucideIcon } from 'lucide-react'
 import React, { useCallback, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
-import { deriveBadgeKind } from './ConnectionChannelBadge'
-import { contentTypeEntries, getDeviceIcon } from './device-utils'
 import type { ContentTypes } from '@/api/daemon/member'
 import { DEFAULT_SEND_CONTENT_TYPES } from '@/api/daemon/member'
 import type { SpaceMember } from '@/api/daemon/members'
+import { deriveBadgeKind } from '@/components/device/ConnectionChannelBadge'
+import { contentTypeEntries, getDeviceIcon } from '@/components/device/device-utils'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {

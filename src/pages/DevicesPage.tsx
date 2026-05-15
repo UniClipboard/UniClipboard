@@ -38,6 +38,7 @@ import { refreshPresence } from '@/api/daemon'
 import type { SpaceMember } from '@/api/daemon/members'
 import { unpairDevice } from '@/api/daemon/members'
 import {
+  getMobileSyncSettings,
   isMobileSyncError,
   listMobileDevices,
   revokeMobileDevice,
@@ -96,7 +97,7 @@ const log = createLogger('devices-page')
 const PRESENCE_REFRESH_INTERVAL_MS = 15_000
 
 // ────────────────────────────────────────────────────────────────
-// Top-level page
+// 顶层页面
 // ────────────────────────────────────────────────────────────────
 
 const DevicesPage: React.FC = () => {
@@ -135,7 +136,7 @@ const DevicesPage: React.FC = () => {
 export default DevicesPage
 
 // ────────────────────────────────────────────────────────────────
-// Hero section
+// Hero 区
 // ────────────────────────────────────────────────────────────────
 
 const HeroSection: React.FC = () => {
@@ -328,7 +329,7 @@ const StatPill: React.FC<StatPillProps> = ({ icon: Icon, label, value, sublabel,
 }
 
 // ────────────────────────────────────────────────────────────────
-// Device tabs (P2P / Mobile)
+// 设备 tabs（P2P / Mobile）
 // ────────────────────────────────────────────────────────────────
 
 type TabKey = 'p2p' | 'mobile'
@@ -337,7 +338,7 @@ const DeviceTabs: React.FC = () => {
   const { t } = useTranslation()
   const [tab, setTab] = useState<TabKey>('p2p')
 
-  // ── P2P state ────────────────────────────────────────────────
+  // ── P2P 状态 ─────────────────────────────────────────────────
   const dispatch = useAppDispatch()
   const {
     spaceMembers: rawSpaceMembers,
@@ -396,7 +397,7 @@ const DeviceTabs: React.FC = () => {
   const selectedPeer = peers.find(d => d.peerId === selectedPeerId)
   const unpairTargetDevice = peers.find(d => d.peerId === unpairTargetId)
 
-  // ── Mobile state ─────────────────────────────────────────────
+  // ── Mobile 状态 ──────────────────────────────────────────────
   const {
     devices: mobileDevices,
     devicesError: mobileDevicesError,
@@ -412,7 +413,7 @@ const DeviceTabs: React.FC = () => {
     actions: mobileActions,
   } = useMobileDevices()
 
-  // ── Render ───────────────────────────────────────────────────
+  // ── 渲染 ──────────────────────────────────────────────────────
   return (
     <>
       <Tabs value={tab} onValueChange={value => setTab(value as TabKey)} className="w-full">
@@ -511,7 +512,7 @@ const DeviceTabs: React.FC = () => {
         </TabsContent>
       </Tabs>
 
-      {/* ── P2P dialogs/sheets ─────────────────────────────────── */}
+      {/* ── P2P dialogs ────────────────────────────────────────── */}
       <AddDeviceDialog open={addP2PDialogOpen} onOpenChange={setAddP2PDialogOpen} />
       <DeviceSettingsDialog
         open={peerDialogOpen}
@@ -530,7 +531,7 @@ const DeviceTabs: React.FC = () => {
         onConfirm={handleUnpairConfirm}
       />
 
-      {/* ── Mobile dialogs/sheets/modals ───────────────────────── */}
+      {/* ── Mobile dialogs / modals ────────────────────────────── */}
       <MobileSyncSettingsDialog
         open={settingsSheetOpen}
         onOpenChange={mobileActions.setSettingsSheetOpen}
@@ -609,7 +610,7 @@ const CountChip: React.FC<{ count: number; active: boolean }> = ({ count, active
 )
 
 // ────────────────────────────────────────────────────────────────
-// Peer grid (P2P)
+// Peer 网格（P2P）
 // ────────────────────────────────────────────────────────────────
 
 interface PeerGridProps {
@@ -750,7 +751,7 @@ const ChannelChip: React.FC<ChannelChipProps> = ({ icon: Icon, label, tone }) =>
 )
 
 // ────────────────────────────────────────────────────────────────
-// Mobile grid
+// Mobile 网格
 // ────────────────────────────────────────────────────────────────
 
 interface MobileGridProps {
@@ -927,8 +928,17 @@ const useMobileDevices = (): UseMobileDevicesReturn => {
     }
   }, [translate])
 
+  // 首屏拉一次 settings：Add 按钮的 disable / 引导对话框分支都依赖
+  // settings.enabled / lanListenerError，settings 只在 Settings 对话框
+  // 打开时才会被回灌，初次进页面前必须主动取一次，否则 Add 永远走
+  // EnableConfirm 流程、bind 失败的硬阻断也失效。
   useEffect(() => {
     void reload()
+    getMobileSyncSettings()
+      .then(setSettings)
+      .catch(err => {
+        log.warn({ err }, 'failed to preload mobile sync settings')
+      })
   }, [reload])
 
   const handleAddClick = useCallback(() => {
@@ -1018,7 +1028,7 @@ const useMobileDevices = (): UseMobileDevicesReturn => {
 }
 
 // ────────────────────────────────────────────────────────────────
-// Helpers
+// 辅助函数
 // ────────────────────────────────────────────────────────────────
 
 function translateMobileSyncError(t: ReturnType<typeof useTranslation>['t'], err: unknown): string {

@@ -64,12 +64,12 @@ Every product event carries these shared fields:
 
 The current allowed product event scope is:
 
-| Event family     | Events                                                                                          | Possible event fields                                                                                                             |
-| ---------------- | ----------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| First activation | `app_first_open`, `setup_started`, `device_name_set`                                            | Setup entry and device-name length bucket. The raw device name is not uploaded.                                                   |
-| Pairing          | `pairing_started`, `pairing_succeeded`, `pairing_failed`                                        | Pairing method, peer OS, duration, and pairing failure reason enum.                                                               |
-| First sync       | `first_clipboard_sync_attempted`, `first_clipboard_sync_succeeded`, `first_file_sync_succeeded` | Sync direction, peer OS, transport type, duration, and payload-size bucket.                                                       |
-| Sync reliability | `sync_attempted`, `sync_succeeded`, `sync_failed`, `sync_deferred`                              | Direction, payload type, payload-size bucket, transport type, peer OS, sync latency, failure reason / stage, and deferral reason. |
+| Event family     | Events                                                                                          | Possible event fields                                                                                                                              |
+| ---------------- | ----------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| First activation | `app_first_open`, `setup_started`, `device_name_set`                                            | Setup entry and device-name length bucket. The raw device name is not uploaded.                                                                    |
+| Pairing          | `pairing_started`, `pairing_succeeded`, `pairing_failed`                                        | Pairing method, peer OS, duration, and pairing failure reason enum.                                                                                |
+| First sync       | `first_clipboard_sync_attempted`, `first_clipboard_sync_succeeded`, `first_file_sync_succeeded` | Sync direction, peer OS, transport type, duration, and payload-size bucket.                                                                        |
+| Sync reliability | `sync_attempted`, `sync_succeeded`, `sync_failed`, `sync_deferred`                              | Direction, payload type, payload-size bucket, transport type, peer OS, sync latency, failure reason / stage, and deferral reason.                  |
 | Mobile sync      | `mobile_device_registered`, `mobile_clipboard_synced`, `mobile_auth_failed`                     | Sync direction, payload-size bucket, and mobile auth failure kind enum. The raw `Authorization` header, username, and password are never uploaded. |
 
 Any new product event or field must continue to follow this privacy boundary and must be reflected in the public docs.

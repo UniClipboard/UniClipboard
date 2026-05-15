@@ -515,7 +515,35 @@ Content-Type: application/json
   "api_key": "phc_xxx",
   "event": "<event_name>",
   "distinct_id": "<anonymous_user_id>",
-  "properties": { ...EventContext + event-specific 字段 },
+  "properties": {
+    // §4 EventContext 字段（vendor-neutral，schema 单一真相源）
+    "anonymous_user_id": "...",
+    "analytics_device_id": "...",
+    "session_id": "...",
+    "app_version": "...",
+    "app_channel": "...",
+    "os": "...",
+    "os_version": "...",
+    "arch": "...",
+    "locale": "...",
+    "timezone": "...",
+    "install_source": "...",
+    "is_first_run": true,
+    "active_device_count": 2,
+    "space_id_hash": "...",
+
+    // event-specific 字段
+    "<event 自身 properties>": "...",
+
+    // PostHog 标准 $-prefix 字段（仅 PosthogSink 注入，详见 §10.1 字段映射）
+    "$device_id": "<analytics_device_id>",
+    "$session_id": "<session_id>",
+    "$lib": "uniclipboard-rust",
+    "$lib_version": "<app_version>",
+    "$geoip_disable": true,
+    "$set": { "app_version": "...", "os": "...", "active_device_count": 2, ... },
+    "$set_once": { "initial_app_version": "...", "initial_install_source": "...", ... }
+  },
   "timestamp": "2026-05-09T12:34:56+00:00"
 }
 ```
@@ -523,6 +551,60 @@ Content-Type: application/json
 US ingestion endpoint 是 §10 决策第 4 项的 2026-05-09 实际注册区域。
 切 EU 或 self-host 实例只换 endpoint URL（`PosthogSink::with_endpoint`
 是测试 / 后续迁移入口），事件 wire 形态零改动。
+
+#### PostHog 标准 `$`-prefix 字段映射
+
+PostHog 服务端识别带 `$` 前缀的 property 解锁三类能力：Person ↔ Device /
+Session funnel & Replay、按客户端来源过滤、按 Person 维度切片。自写
+HTTP client 没有 SDK 自动注入，需要在 `PosthogSink::build_capture_body`
+手动构造。
+
+**重要分层约束**：`$`-prefix 字段 **只在 PosthogSink 内部注入**，
+`build_event_payload`（vendor-neutral 共享层）以及 §4 `EventContext`
+**绝不** 感知它们。后续切 self-host PostHog 仍走原 wire 形态；切别的
+后端（Mixpanel / 自建）只需在新 sink 里写一份等价的字段翻译，§3 ~ §9
+schema 不动。
+
+字段映射表：
+
+| PostHog 字段 | 来源 | 解锁能力 |
+|---|---|---|
+| `$device_id` | `analytics_device_id` | Person ↔ Device 关联，控制台按设备维度切片 |
+| `$session_id` | `session_id` | Session funnel、未来接 Session Replay |
+| `$lib` | 固定 `"uniclipboard-rust"` | 控制台按客户端来源过滤流量 |
+| `$lib_version` | `app_version` | 同上，按版本过滤 |
+| `$geoip_disable` | 固定 `true` | 见下方"`disable_geoip` 等价语义" |
+| `$set` | EventContext 中 9 个"可变当前状态"字段 | Person Properties 当前快照 |
+| `$set_once` | 4 个"安装期不变量" → `initial_*` 前缀 | Person 首次出现时写入，捕获迁移信号 |
+
+**`$set` 与 `$set_once` 的拆分理由**：PostHog 控制台"按 person 切片"
+（如"macOS 用户的留存"）读的是 Person Property，**不是** event property。
+若所有字段都平铺在 event property，按 person 维度查询要在每个事件
+property 上做 distinct/聚合，慢且贵。
+
+- `$set`：每事件覆盖，PostHog 端 person profile 永远反映最近一条事件
+  的快照。放可变字段：`app_version` / `app_channel` / `os` / `os_version`
+  / `arch` / `locale` / `timezone` / `active_device_count` / `space_id_hash`。
+- `$set_once`：仅 person 首次出现时写入，后续被服务端忽略。放安装期
+  不变量：`initial_app_version` / `initial_app_channel` / `initial_os` /
+  `initial_install_source`。
+
+dashboard 上可同时看到 `$set.os` vs `$set_once.initial_os`，捕获跨平台
+迁移信号。
+
+**`$set` 不接受 `null`**：PostHog 把 property `null` 当显式清空指令，
+会把已有 person property 抹掉。`space_id_hash` 等 optional 字段在源头为
+`None` 时，`build_set_snapshot` 直接跳过该 key 而非写入 `null`。
+
+**Flat-name 字段同时保留**：`anonymous_user_id` / `analytics_device_id` /
+`session_id` / `app_version` 等仍在 properties 顶层。理由——
+(1) §4 已是 wire 契约，删字段破坏向后兼容；
+(2) StdoutSink 输出复用同一个 payload，flat 形态人类更易读；
+(3) `$`-prefix 字段是非破坏性扩展，wire 膨胀 ~200 字节，schema doc §10
+免费额度内可忽略。
+
+后续迁移决策（>1k 用户后）：若 ingestion 量成为问题，可在 PosthogSink
+内单独优化，仍不动 §4。
 
 #### HTTP client 选择
 
@@ -560,12 +642,19 @@ v1 **不挂** 进程退出 flush 钩子。理由：
 #### `disable_geoip` 等价语义（IP 字段处理）
 
 §6.1 明确"客户端原始 IP 永不上传"。posthog-rs SDK 提供 `disable_geoip`
-配置项；自写 client 通过更直接的方式实现等价契约——**永不主动 inject
-IP-derived 字段**。PostHog 服务端的 geoip 是基于请求 IP 推断的，request
-本身从客户端发出时不会附带 user IP（reqwest 默认行为），服务端推断的
-geoip 字段会以 `$geoip_*` property 形式出现。若后续控制台发现这些字段
-仍按请求 IP 落地理位置，可在 `properties` 显式置 `"$geoip_disable": true`
-兜底。
+配置项；自写 client 通过两道防线实现等价契约：
+
+1. **不主动 inject IP-derived 字段**——request 从客户端发出时不附带
+   user IP（reqwest 默认行为），客户端代码也从未读取或上报本机 IP。
+2. **每条事件 `properties` 默认置 `"$geoip_disable": true`**——
+   `inject_posthog_standard_fields` 无条件写入。PostHog 服务端的
+   GeoIP 推断基于请求 TCP 源 IP，若不显式关闭会反推
+   `$geoip_country` / `$geoip_city` 并落到 person property，与
+   §6.1 契约直接冲突。
+
+两道防线缺一不可：第 1 道防止"客户端主动泄露 IP 衍生字段"，第 2 道
+防止"服务端按请求 IP 反推地理位置"。`build_capture_body_disables_geoip_by_default`
+单测守住第 2 道防线在所有事件上生效。
 
 #### CI secret 注入（待 7b-4 落地）
 

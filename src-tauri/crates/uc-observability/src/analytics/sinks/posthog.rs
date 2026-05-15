@@ -127,6 +127,9 @@ impl AnalyticsPort for PosthogSink {
     }
 }
 
+/// `$lib` 取值：自写 client 自报身份，便于 PostHog 控制台按来源过滤。
+const POSTHOG_LIB_NAME: &str = "uniclipboard-rust";
+
 /// 把 [`build_event_payload`] 的产物转成 PostHog capture endpoint 的请求 body。
 ///
 /// 输出 wire 形态（顶层）：
@@ -136,7 +139,16 @@ impl AnalyticsPort for PosthogSink {
 ///   "api_key": "phc_xxx",
 ///   "event": "<event name>",
 ///   "distinct_id": "<anonymous_user_id>",
-///   "properties": { <context + event-specific 字段，不含 event / distinct_id> },
+///   "properties": {
+///     <context + event-specific 字段，不含 event / distinct_id>,
+///     "$device_id": "<analytics_device_id>",
+///     "$session_id": "<session_id>",
+///     "$lib": "uniclipboard-rust",
+///     "$lib_version": "<app_version>",
+///     "$geoip_disable": true,
+///     "$set": { <person property 当前快照> },
+///     "$set_once": { <person 首次出现时写入的安装期不变量> }
+///   },
 ///   "timestamp": "2026-05-09T12:34:56.789+00:00"
 /// }
 /// ```
@@ -144,12 +156,26 @@ impl AnalyticsPort for PosthogSink {
 /// `event` / `distinct_id` 必须从 properties 移出——两键由 [`build_event_payload`]
 /// 在顶层平铺，PostHog 服务端会用顶层值做漏斗主键；若 properties 也保留 `distinct_id`
 /// 服务端会触发 property collision 警告（dashboard 上漏斗折线会出现重复 series）。
+///
+/// `$`-prefix 字段是 PostHog 服务端识别的标准 property —— 解锁三类能力：
+/// - `$device_id` / `$session_id`：Person ↔ Device / Session funnel & Replay。
+/// - `$lib` / `$lib_version`：控制台按来源过滤客户端流量。
+/// - `$set` / `$set_once`：把 EventContext 中"用户级"字段路由到 Person Properties，
+///   控制台按 person 切片可用，且 person 维度不会被每事件重写覆盖。
+/// - `$geoip_disable`：兜底执行 schema doc §6.1"客户端原始 IP 永不上传"隐私
+///   契约——拒绝服务端按请求 IP 反推 `$geoip_country` / `$geoip_city`。
+///
+/// 重要：本函数**只在 PostHog 适配器内**注入这些字段。[`build_event_payload`]
+/// 仍保持 vendor-neutral（schema doc §4 / §10.1 单一真相源约定）；将来切
+/// self-host PostHog / 别的后端只动这里。
 fn build_capture_body(event_name: &str, mut payload: Map<String, Value>, api_key: &str) -> Value {
     let distinct_id = payload
         .remove("distinct_id")
         .and_then(|v| v.as_str().map(String::from))
         .unwrap_or_default();
     payload.remove("event");
+
+    inject_posthog_standard_fields(&mut payload);
 
     let mut body = Map::new();
     body.insert("api_key".into(), Value::String(api_key.to_string()));
@@ -161,6 +187,76 @@ fn build_capture_body(event_name: &str, mut payload: Map<String, Value>, api_key
         Value::String(chrono::Utc::now().to_rfc3339()),
     );
     Value::Object(body)
+}
+
+/// 把 vendor-neutral 的 properties map 翻译成 PostHog 标准 wire 形态。
+///
+/// 字段来源全部从 `payload` 里现取（`build_event_payload` 已把 EventContext
+/// 平铺过来），保持函数纯净、易测试。原 flat 字段同时保留——schema doc §4
+/// 仍是 wire 契约，删字段会破坏向后兼容；新增 `$`-prefix 字段是非破坏性扩展。
+fn inject_posthog_standard_fields(payload: &mut Map<String, Value>) {
+    if let Some(v) = payload.get("analytics_device_id").cloned() {
+        payload.insert("$device_id".into(), v);
+    }
+    if let Some(v) = payload.get("session_id").cloned() {
+        payload.insert("$session_id".into(), v);
+    }
+    if let Some(v) = payload.get("app_version").cloned() {
+        payload.insert("$lib_version".into(), v);
+    }
+    payload.insert("$lib".into(), Value::String(POSTHOG_LIB_NAME.into()));
+    payload.insert("$geoip_disable".into(), Value::Bool(true));
+
+    payload.insert("$set".into(), Value::Object(build_set_snapshot(payload)));
+    payload.insert(
+        "$set_once".into(),
+        Value::Object(build_set_once_initial(payload)),
+    );
+}
+
+/// 当前快照写入 Person Property：每条事件覆盖，控制台按 person 切片直接可用。
+///
+/// 选取的字段都是"可变的当前状态"——版本、平台、locale、active_device_count 等。
+/// PostHog 端 person profile 永远反映最近一条事件的快照。
+fn build_set_snapshot(payload: &Map<String, Value>) -> Map<String, Value> {
+    const SET_KEYS: &[&str] = &[
+        "app_version",
+        "app_channel",
+        "os",
+        "os_version",
+        "arch",
+        "locale",
+        "timezone",
+        "active_device_count",
+        "space_id_hash",
+    ];
+    let mut out = Map::new();
+    for k in SET_KEYS {
+        if let Some(v) = payload.get(*k).cloned() {
+            out.insert((*k).into(), v);
+        }
+    }
+    out
+}
+
+/// 安装期不变量写入 `$set_once`：仅 person 首次出现时写入，后续被 PostHog 忽略。
+///
+/// 用 `initial_*` 前缀避免与 `$set` 当前快照同名冲突——dashboard 上可同时看到
+/// "首次安装的 OS" vs "当前 OS"，捕获版本迁移 / 跨平台切换信号。
+fn build_set_once_initial(payload: &Map<String, Value>) -> Map<String, Value> {
+    const INITIAL_KEYS: &[(&str, &str)] = &[
+        ("app_version", "initial_app_version"),
+        ("app_channel", "initial_app_channel"),
+        ("os", "initial_os"),
+        ("install_source", "initial_install_source"),
+    ];
+    let mut out = Map::new();
+    for (src, dst) in INITIAL_KEYS {
+        if let Some(v) = payload.get(*src).cloned() {
+            out.insert((*dst).into(), v);
+        }
+    }
+    out
 }
 
 #[cfg(test)]
@@ -303,6 +399,194 @@ mod tests {
         assert!(props["active_device_count"].is_number());
     }
 
+    // —— PostHog 标准 $-prefix 字段映射 ————————————————————————————————
+
+    /// `$device_id` / `$session_id` 必须从 vendor-neutral 字段派生——PostHog
+    /// 控制台的 Person ↔ Device / Session funnel & Replay 都依赖这两个 key。
+    #[test]
+    fn build_capture_body_emits_posthog_device_and_session_ids() {
+        let payload = payload_with(
+            "app_first_open",
+            "anon-1",
+            &[
+                (
+                    "analytics_device_id",
+                    Value::String("018f0000-0000-7000-8000-000000000002".into()),
+                ),
+                (
+                    "session_id",
+                    Value::String("018f0000-0000-7000-8000-000000000003".into()),
+                ),
+            ],
+        );
+        let body = build_capture_body("app_first_open", payload, "phc_test");
+        let props = body["properties"]
+            .as_object()
+            .expect("properties is object");
+
+        assert_eq!(
+            props.get("$device_id").and_then(Value::as_str),
+            Some("018f0000-0000-7000-8000-000000000002"),
+            "$device_id 必须从 analytics_device_id 派生"
+        );
+        assert_eq!(
+            props.get("$session_id").and_then(Value::as_str),
+            Some("018f0000-0000-7000-8000-000000000003"),
+            "$session_id 必须从 session_id 派生"
+        );
+        // flat 字段同时保留——schema doc §4 仍是 wire 契约。
+        assert!(props.contains_key("analytics_device_id"));
+        assert!(props.contains_key("session_id"));
+    }
+
+    /// `$lib` / `$lib_version` 自报客户端身份——v1 自写 HTTP client，没有
+    /// PostHog SDK 自动注入，必须手填。否则控制台所有事件 `$lib` 为空，与
+    /// 浏览器 SDK / 第三方 SDK 流量混在一起，按来源过滤完全失效。
+    #[test]
+    fn build_capture_body_emits_lib_metadata() {
+        let payload = payload_with(
+            "app_first_open",
+            "anon-1",
+            &[("app_version", Value::String("0.7.0-alpha.7".into()))],
+        );
+        let body = build_capture_body("app_first_open", payload, "phc_test");
+        let props = body["properties"].as_object().unwrap();
+
+        assert_eq!(
+            props.get("$lib").and_then(Value::as_str),
+            Some("uniclipboard-rust"),
+            "$lib 应固定为 client 名"
+        );
+        assert_eq!(
+            props.get("$lib_version").and_then(Value::as_str),
+            Some("0.7.0-alpha.7"),
+            "$lib_version 应等于 ctx.app_version"
+        );
+    }
+
+    /// `$geoip_disable: true` 是 schema doc §6.1 隐私契约的兜底实施——拒绝
+    /// 服务端按请求 IP 反推 `$geoip_country` / `$geoip_city` 落到 person property。
+    /// 与 SDK 的 `disable_geoip=true` 等价。
+    #[test]
+    fn build_capture_body_disables_geoip_by_default() {
+        let payload = payload_with("app_first_open", "anon-1", &[]);
+        let body = build_capture_body("app_first_open", payload, "phc_test");
+        let props = body["properties"].as_object().unwrap();
+
+        assert_eq!(
+            props.get("$geoip_disable"),
+            Some(&Value::Bool(true)),
+            "$geoip_disable 必须默认为 true，兜底执行 §6.1 IP 永不上传契约"
+        );
+    }
+
+    /// `$set` 路由 person property 当前快照——控制台按 person 维度切片（如
+    /// "macOS 用户的留存"）读的是 person property 而非 event property。
+    /// 没有 $set 这类查询每次都要在 event property 上 distinct/聚合，慢且贵。
+    #[test]
+    fn build_capture_body_routes_person_properties_to_set() {
+        let payload = payload_with(
+            "sync_succeeded",
+            "anon-1",
+            &[
+                ("app_version", Value::String("0.7.0-alpha.7".into())),
+                ("app_channel", Value::String("alpha".into())),
+                ("os", Value::String("macos".into())),
+                ("os_version", Value::String("15.1".into())),
+                ("arch", Value::String("aarch64".into())),
+                ("locale", Value::String("zh-CN".into())),
+                ("timezone", Value::String("+08:00".into())),
+                ("active_device_count", Value::Number(2.into())),
+                ("space_id_hash", Value::String("0123456789abcdef".into())),
+            ],
+        );
+        let body = build_capture_body("sync_succeeded", payload, "phc_test");
+        let props = body["properties"].as_object().unwrap();
+        let set = props
+            .get("$set")
+            .and_then(Value::as_object)
+            .expect("$set 应为 object");
+
+        // person 快照字段必须全部进 $set。
+        for k in [
+            "app_version",
+            "app_channel",
+            "os",
+            "os_version",
+            "arch",
+            "locale",
+            "timezone",
+            "active_device_count",
+            "space_id_hash",
+        ] {
+            assert!(set.contains_key(k), "$set 缺字段 `{k}`：{set:?}");
+        }
+        // 数值字段类型不退化为字符串。
+        assert!(set["active_device_count"].is_number());
+    }
+
+    /// `space_id_hash` 在未加入 Space 时是 `None`——不应误把 `null` 写入 $set。
+    /// PostHog 把 `null` 当显式清空指令，会把已有 person property 抹掉。
+    #[test]
+    fn build_capture_body_set_omits_missing_optional_fields() {
+        // payload 不含 space_id_hash 字段（context 中是 None）。
+        let payload = payload_with(
+            "app_first_open",
+            "anon-1",
+            &[("app_version", Value::String("0.7.0-alpha.7".into()))],
+        );
+        let body = build_capture_body("app_first_open", payload, "phc_test");
+        let set = body["properties"]["$set"]
+            .as_object()
+            .expect("$set 应为 object");
+
+        assert!(
+            !set.contains_key("space_id_hash"),
+            "缺失的 optional 字段不应出现在 $set（否则会被解释为 null 清空）"
+        );
+    }
+
+    /// `$set_once` 路由安装期不变量——PostHog 仅在 person 首次出现时写入，
+    /// 后续同名 key 被忽略。dashboard 上可同时看到"首次安装的 OS" vs
+    /// "$set 的当前 OS"，捕获版本迁移 / 跨平台切换信号。
+    #[test]
+    fn build_capture_body_routes_install_initial_to_set_once() {
+        let payload = payload_with(
+            "app_first_open",
+            "anon-1",
+            &[
+                ("app_version", Value::String("0.7.0-alpha.7".into())),
+                ("app_channel", Value::String("alpha".into())),
+                ("os", Value::String("macos".into())),
+                ("install_source", Value::String("github".into())),
+            ],
+        );
+        let body = build_capture_body("app_first_open", payload, "phc_test");
+        let set_once = body["properties"]["$set_once"]
+            .as_object()
+            .expect("$set_once 应为 object");
+
+        assert_eq!(
+            set_once.get("initial_app_version").and_then(Value::as_str),
+            Some("0.7.0-alpha.7")
+        );
+        assert_eq!(
+            set_once.get("initial_app_channel").and_then(Value::as_str),
+            Some("alpha")
+        );
+        assert_eq!(
+            set_once.get("initial_os").and_then(Value::as_str),
+            Some("macos")
+        );
+        assert_eq!(
+            set_once
+                .get("initial_install_source")
+                .and_then(Value::as_str),
+            Some("github"),
+            "install_source 必须落 $set_once 而不是 $set——后续不应被覆盖"
+        );
+    }
+
     // —— 7b-2 HTTP 烟测（wiremock）————————————————————————————————
 
     fn install_ctx() {
@@ -372,6 +656,34 @@ mod tests {
         assert_eq!(
             props.get("app_version").and_then(Value::as_str),
             Some("0.7.0-alpha.7")
+        );
+
+        // —— PostHog 标准 $-prefix 字段端到端复测 ——
+        assert_eq!(
+            props.get("$device_id").and_then(Value::as_str),
+            Some("018f0000-0000-7000-8000-000000000002"),
+            "$device_id 必须穿越 HTTP 边界保留"
+        );
+        assert!(
+            props.get("$session_id").and_then(Value::as_str).is_some(),
+            "$session_id 必须穿越 HTTP 边界保留"
+        );
+        assert_eq!(
+            props.get("$lib").and_then(Value::as_str),
+            Some("uniclipboard-rust")
+        );
+        assert_eq!(
+            props.get("$lib_version").and_then(Value::as_str),
+            Some("0.7.0-alpha.7")
+        );
+        assert_eq!(props.get("$geoip_disable"), Some(&Value::Bool(true)));
+        assert!(
+            props.get("$set").and_then(Value::as_object).is_some(),
+            "$set 必须穿越 HTTP 边界保留"
+        );
+        assert!(
+            props.get("$set_once").and_then(Value::as_object).is_some(),
+            "$set_once 必须穿越 HTTP 边界保留"
         );
     }
 

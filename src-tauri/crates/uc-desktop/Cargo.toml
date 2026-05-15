@@ -36,6 +36,6 @@ reqwest = { version = "0.12", default-features = false, features = ["json", "rus
 uc-daemon-local = { path = "../uc-daemon-local", features = ["test-helpers"] }
 tempfile = "3"
 chrono = { version = "0.4", default-features = true }
-diesel = { version = "2.3.5", features = ["sqlite"] }
+diesel = { version = "2.3.8", features = ["sqlite"] }
 mockall = "0.13"
 wiremock = "0.6"

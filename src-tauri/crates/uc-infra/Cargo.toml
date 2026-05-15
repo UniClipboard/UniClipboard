@@ -37,7 +37,7 @@ async-trait = "0.1"
 futures-util = "0.3"
 
 # ===== 数据库 =====
-diesel = { version = "2.3.5", features = [
+diesel = { version = "2.3.8", features = [
     "sqlite",
     "returning_clauses_for_sqlite_3_35",
     "r2d2",

@@ -31,10 +31,22 @@ function Tooltip({
   const onOpenChange = isControlled ? onOpenChangeProp : setUncontrolledOpen
 
   React.useEffect(() => {
-    if (!open) return
-    const dismiss = () => onOpenChange?.(false)
-    window.addEventListener('blur', dismiss)
-    return () => window.removeEventListener('blur', dismiss)
+    const handleBlur = () => {
+      // 关闭已打开的 tooltip，避免切回窗口后旧的 tooltip 仍残留。
+      if (open) onOpenChange?.(false)
+      // 触发器在被点击后会保留 DOM 焦点。Windows 在窗口重新获焦时会向
+      // 上一次获焦的元素再分发一次 focus 事件，Radix Tooltip 的 onFocus
+      // 处理器随即 onOpen，导致 tooltip 在用户没有 hover 时自动展开。
+      // 这里在窗口失焦的同时主动 blur 当前获焦的 tooltip trigger，
+      // 让窗口切回时焦点不再回到触发器上，从而避免误触发；
+      // 选择器限定了仅作用于 tooltip trigger，不影响 input/textarea 等元素。
+      const active = document.activeElement
+      if (active instanceof HTMLElement && active.closest('[data-slot="tooltip-trigger"]')) {
+        active.blur()
+      }
+    }
+    window.addEventListener('blur', handleBlur)
+    return () => window.removeEventListener('blur', handleBlur)
   }, [open, onOpenChange])
 
   return (

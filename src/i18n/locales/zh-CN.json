@@ -381,15 +381,7 @@
           "modal": "模态框"
         },
         "actions": {
-          "clearSelection": "取消选择",
-          "selectAll": "全选",
-          "delete": "删除选中项",
-          "favorite": "收藏/取消收藏",
-          "goClipboard": "前往剪贴板",
-          "goDevices": "前往设备",
           "goSettings": "前往设置",
-          "focusSearch": "聚焦搜索框",
-          "closeModal": "关闭模态框",
           "toggleQuickPanel": "切换快捷面板",
           "zoomIn": "放大界面",
           "zoomOut": "缩小界面"

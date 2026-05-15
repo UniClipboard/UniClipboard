@@ -390,15 +390,7 @@
           "modal": "Modal"
         },
         "actions": {
-          "clearSelection": "Clear selection",
-          "selectAll": "Select all",
-          "delete": "Delete selected",
-          "favorite": "Toggle favorite",
-          "goClipboard": "Go to clipboard",
-          "goDevices": "Go to devices",
           "goSettings": "Go to settings",
-          "focusSearch": "Focus search",
-          "closeModal": "Close modal",
           "toggleQuickPanel": "Toggle quick panel",
           "zoomIn": "Zoom in",
           "zoomOut": "Zoom out"

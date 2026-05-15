@@ -6,18 +6,10 @@ import { ShortcutLayer } from './layers'
 import { isMac } from '@/lib/shortcut-format'
 
 export type ShortcutAction =
-  | 'clipboard.clearSelection'
-  | 'clipboard.selectAll'
-  | 'clipboard.delete'
-  | 'clipboard.favorite'
-  | 'clipboard.copy'
   | 'global.zoomIn'
   | 'global.zoomOut'
-  | 'navigation.dashboard'
-  | 'navigation.devices'
+  | 'global.toggleQuickPanel'
   | 'navigation.settings'
-  | 'search.focus'
-  | 'modal.close'
   | string
 
 /**
@@ -61,68 +53,20 @@ export interface ShortcutDefinition {
 
 /**
  * Central shortcut definitions
+ *
+ * 仅收录"在前端/后端真正被实装"的快捷键。
+ * 历史上这里还有 clipboard.{esc,selectAll,delete,favorite}、nav.{dashboard,devices}、
+ * search.focus、modal.close —— 它们只在设置页面"看起来可定制",但没有 handler 读取
+ * override,改了也不生效,因此从设置面板里下掉,避免对用户产生误导。
  */
 export const SHORTCUT_DEFINITIONS: ShortcutDefinition[] = [
-  // ===== Clipboard actions =====
-  {
-    id: 'clipboard.esc',
-    key: 'esc',
-    action: 'clipboard.clearSelection',
-    scope: 'clipboard',
-    description: 'settings.sections.shortcuts.actions.clearSelection',
-  },
-  {
-    id: 'clipboard.selectAll',
-    key: 'mod+a',
-    action: 'clipboard.selectAll',
-    scope: 'clipboard',
-    description: 'settings.sections.shortcuts.actions.selectAll',
-  },
-  {
-    id: 'clipboard.delete',
-    key: 'backspace',
-    action: 'clipboard.delete',
-    scope: 'clipboard',
-    description: 'settings.sections.shortcuts.actions.delete',
-  },
-  {
-    id: 'clipboard.favorite',
-    key: 'mod+f',
-    action: 'clipboard.favorite',
-    scope: 'clipboard',
-    description: 'settings.sections.shortcuts.actions.favorite',
-  },
-
   // ===== Navigation =====
-  {
-    id: 'nav.dashboard',
-    key: 'mod+1',
-    action: 'navigation.dashboard',
-    scope: 'global',
-    description: 'settings.sections.shortcuts.actions.goClipboard',
-  },
-  {
-    id: 'nav.devices',
-    key: 'mod+2',
-    action: 'navigation.devices',
-    scope: 'global',
-    description: 'settings.sections.shortcuts.actions.goDevices',
-  },
   {
     id: 'nav.settings',
     key: 'mod+comma',
     action: 'navigation.settings',
     scope: 'global',
     description: 'settings.sections.shortcuts.actions.goSettings',
-  },
-
-  // ===== Search =====
-  {
-    id: 'search.focus',
-    key: 'mod+/',
-    action: 'search.focus',
-    scope: 'global',
-    description: 'settings.sections.shortcuts.actions.focusSearch',
   },
 
   // ===== Global (OS-level) =====
@@ -146,14 +90,5 @@ export const SHORTCUT_DEFINITIONS: ShortcutDefinition[] = [
     action: 'global.zoomOut',
     scope: 'global',
     description: 'settings.sections.shortcuts.actions.zoomOut',
-  },
-
-  // ===== Modal =====
-  {
-    id: 'modal.close',
-    key: 'esc',
-    action: 'modal.close',
-    scope: 'modal',
-    description: 'settings.sections.shortcuts.actions.closeModal',
   },
 ]

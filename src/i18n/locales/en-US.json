@@ -601,7 +601,8 @@
       "loadDetailFailed": "Failed to load details",
       "unknown": "An unknown error occurred",
       "unavailableBadge": "Content unavailable",
-      "unavailableTooltip": "This content is no longer available (bytes lost). Cannot paste. Consider deleting it from history."
+      "unavailableTooltip": "This content is no longer available (bytes lost). Cannot paste. Consider deleting it from history.",
+      "fileSourceMissing": "The source file is no longer at its original location — it may have been deleted or moved. Restore it to retry."
     },
     "item": {
       "characters": "characters",

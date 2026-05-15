@@ -318,22 +318,24 @@ impl RestoreClipboardSelectionUseCase {
                 continue;
             }
             if line.starts_with("file://") {
+                // 错误消息只暴露 entry_id / rep_id —— `line` 是 `file://...` URI，
+                // 含完整文件路径，属于用户私有 payload，禁止写入错误链 / 日志。
                 match url::Url::parse(line) {
                     Ok(url) => {
                         let path = url.to_file_path().map_err(|_| {
                             anyhow::anyhow!(
-                                "Failed to convert URI to file path for entry {}: {}",
+                                "Failed to convert URI to file path for entry {} (rep {})",
                                 entry_id,
-                                line
+                                rep.id
                             )
                         })?;
                         file_paths.push(path);
                     }
                     Err(e) => {
                         bail!(
-                            "Failed to parse file URI for entry {}: {} (error: {})",
+                            "Failed to parse file URI for entry {} (rep {}): {}",
                             entry_id,
-                            line,
+                            rep.id,
                             e
                         );
                     }
@@ -347,10 +349,20 @@ impl RestoreClipboardSelectionUseCase {
             bail!("No valid file paths found in entry {}", entry_id);
         }
 
-        for path in &file_paths {
-            if !path.exists() {
-                bail!("File deleted: {}", path.display());
-            }
+        // 本地源文件不存在 → 通过 PayloadResolveError::Lost 让 facade 映射为
+        // PayloadUnavailable（HTTP 410 Gone）+ warn 级日志，避免被当成服务端
+        // 5xx 上报到 Sentry。reason 严禁携带文件路径或文件名——属于用户私有
+        // payload（uc-application §16.3）。
+        let missing_count = file_paths.iter().filter(|p| !p.exists()).count();
+        if missing_count > 0 {
+            return Err(anyhow::Error::new(PayloadResolveError::Lost {
+                rep_id: rep.id.clone(),
+                reason: format!(
+                    "{} of {} referenced file(s) no longer exist on disk",
+                    missing_count,
+                    file_paths.len()
+                ),
+            }));
         }
 
         let snapshot = build_file_snapshot(&build_path_list(&file_paths));

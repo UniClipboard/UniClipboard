@@ -592,7 +592,8 @@
       "loadDetailFailed": "加载详情失败",
       "unknown": "发生未知错误",
       "unavailableBadge": "内容已不可用",
-      "unavailableTooltip": "该内容已不可用（数据已丢失），无法粘贴。建议从历史中删除。"
+      "unavailableTooltip": "该内容已不可用（数据已丢失），无法粘贴。建议从历史中删除。",
+      "fileSourceMissing": "源文件已不在原位置，可能被删除或移动；放回原位置后可重试。"
     },
     "item": {
       "characters": "字符",

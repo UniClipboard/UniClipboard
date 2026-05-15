@@ -537,11 +537,21 @@ const ClipboardContent: React.FC<ClipboardContentProps> = ({
             setTimeout(() => setCopySuccess(false), 1500)
             return true
           } catch (err) {
-            // If copy fails (e.g. cache file deleted), mark entry as stale
-            const errMsg = err instanceof Error ? err.message : String(err)
+            // 410 Gone (PAYLOAD_UNAVAILABLE) 表示后端识别出"内容不可用"——对文件类
+            // entry,几乎专属于"用户已把本地源文件删除或移动"。把后端原始字面值
+            // `payload_unavailable` 透传给用户毫无信息量,这里改成面向用户的明确
+            // 文案;其他错误保留原始 message 用于排障。
+            const { DaemonApiError, DaemonErrorCode } = await import('@/api/daemon/errors')
+            const isPayloadUnavailable =
+              err instanceof DaemonApiError && err.code === DaemonErrorCode.PAYLOAD_UNAVAILABLE
+            const description = isPayloadUnavailable
+              ? t('clipboard.errors.fileSourceMissing')
+              : err instanceof Error
+                ? err.message
+                : String(err)
             dispatch(markEntryStale(itemId))
             toast.error(t('clipboard.errors.copyFailed'), {
-              description: errMsg,
+              description,
             })
             return false
           }

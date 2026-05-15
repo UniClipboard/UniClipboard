@@ -832,8 +832,6 @@ mod tests {
 
     use super::*;
 
-    use std::sync::Mutex;
-
     use anyhow::Result as AnyResult;
     use async_trait::async_trait;
     use mockall::predicate::*;
@@ -842,9 +840,12 @@ mod tests {
 
     use crate::usecases::clipboard_sync::apply_inbound::{InboundCapture, InboundWrite};
 
-    use uc_core::mobile_sync::{StagedFile, StagedFileUri, StagingHandle};
-    use uc_core::ports::mobile_sync::MobileFileStagingError;
+    use uc_core::mobile_sync::{StagedFile, StagedFileUri};
     use uc_observability::analytics::NoopAnalyticsSink;
+
+    // MobileFileStagingPort mock(get_file 的 read_by_uri 路径共用)与
+    // CapturingAnalyticsSink 都在 test_support 模块集中维护。
+    use super::super::test_support::{CapturingAnalyticsSink, MockStaging};
 
     /// 默认 noop sink——绝大多数已有测试只需要"event 不污染断言"，
     /// 不在乎是否 emit。新增的 mobile_clipboard_synced 红线测试用
@@ -853,60 +854,8 @@ mod tests {
         Arc::new(NoopAnalyticsSink::default())
     }
 
-    #[derive(Default)]
-    struct CapturingAnalyticsSink {
-        captured: Mutex<Vec<Event>>,
-    }
-    impl CapturingAnalyticsSink {
-        fn events(&self) -> Vec<Event> {
-            self.captured.lock().unwrap().clone()
-        }
-    }
-    impl AnalyticsPort for CapturingAnalyticsSink {
-        fn capture(&self, event: Event) {
-            self.captured.lock().unwrap().push(event);
-        }
-    }
-
     fn capturing_analytics() -> Arc<CapturingAnalyticsSink> {
         Arc::new(CapturingAnalyticsSink::default())
-    }
-
-    // 流式落盘改造后,apply_incoming 本身不再触达 staging 写入方法 ——
-    // stage_file / begin_stage / append_stage_chunk / finalize_stage /
-    // abort_stage 都由 facade 入口在 PUT /file 阶段消费。image 分支会调
-    // `read_by_uri` 把 staged 字节读回内联到 image rep,其余方法均不应被
-    // 触达;mockall 默认 strict mode 让未配置的方法被调到就 panic,这正是
-    // 我们要的回归防御。
-    mockall::mock! {
-        Staging {}
-        #[async_trait]
-        impl MobileFileStagingPort for Staging {
-            async fn stage_file(
-                &self,
-                scope_id: &str,
-                data_name: &str,
-                mime: &str,
-                bytes: Vec<u8>,
-            ) -> Result<StagedFile, MobileFileStagingError>;
-            async fn read_by_uri(&self, uri: &str) -> Result<Vec<u8>, MobileFileStagingError>;
-            async fn begin_stage(
-                &self,
-                scope_id: &str,
-                data_name: &str,
-                mime: &str,
-            ) -> Result<StagingHandle, MobileFileStagingError>;
-            async fn append_stage_chunk(
-                &self,
-                handle: &StagingHandle,
-                chunk: &[u8],
-            ) -> Result<(), MobileFileStagingError>;
-            async fn finalize_stage(
-                &self,
-                handle: StagingHandle,
-            ) -> Result<StagedFile, MobileFileStagingError>;
-            async fn abort_stage(&self, handle: StagingHandle);
-        }
     }
 
     /// "未配置任何期望"的 staging mock —— mockall strict mode 下任何方法

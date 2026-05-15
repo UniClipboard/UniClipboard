@@ -550,77 +550,17 @@ fn translate_hasher_error(err: PasswordHasherError) -> RegisterMobileShortcutDev
 mod tests {
     use super::*;
 
-    use std::sync::Mutex;
-
     use async_trait::async_trait;
 
     use uc_core::mobile_sync::MobileDeviceId;
     use uc_core::settings::model::Settings;
 
-    #[derive(Default)]
-    struct CapturingAnalyticsSink {
-        captured: Mutex<Vec<Event>>,
-    }
-    impl CapturingAnalyticsSink {
-        fn events(&self) -> Vec<Event> {
-            self.captured.lock().unwrap().clone()
-        }
-    }
-    impl AnalyticsPort for CapturingAnalyticsSink {
-        fn capture(&self, event: Event) {
-            self.captured.lock().unwrap().push(event);
-        }
-    }
-
-    // ── port mocks ─────────────────────────────────────────────────────
-
-    mockall::mock! {
-        DeviceRepo {}
-        #[async_trait]
-        impl MobileDeviceRepositoryPort for DeviceRepo {
-            async fn save(&self, device: &MobileDevice) -> Result<(), MobileDeviceError>;
-            async fn find_by_username(
-                &self,
-                username: &str,
-            ) -> Result<Option<MobileDevice>, MobileDeviceError>;
-            async fn find_by_device_id(
-                &self,
-                device_id: &MobileDeviceId,
-            ) -> Result<Option<MobileDevice>, MobileDeviceError>;
-            async fn list_all(&self) -> Result<Vec<MobileDevice>, MobileDeviceError>;
-            async fn delete(&self, device_id: &MobileDeviceId) -> Result<bool, MobileDeviceError>;
-            async fn record_activity(
-                &self,
-                device_id: &MobileDeviceId,
-                last_seen_at_ms: i64,
-                last_seen_ip: Option<String>,
-                reported_name: Option<String>,
-                reported_os: Option<String>,
-            ) -> Result<(), MobileDeviceError>;
-            async fn update_password_hash(
-                &self,
-                device_id: &MobileDeviceId,
-                new_password_hash: String,
-            ) -> Result<bool, MobileDeviceError>;
-        }
-    }
-
-    mockall::mock! {
-        Hasher {}
-        #[async_trait]
-        impl PasswordHasherPort for Hasher {
-            async fn hash(&self, password: &str) -> Result<String, PasswordHasherError>;
-            async fn verify(&self, password: &str, phc: &str)
-                -> Result<bool, PasswordHasherError>;
-        }
-    }
-
-    mockall::mock! {
-        Minter {}
-        impl MobileCredentialsMinterPort for Minter {
-            fn mint_credentials(&self) -> MintedCredentials;
-        }
-    }
+    // 多个 use case 测试共用的 mock(DeviceRepo / Hasher / Minter)+
+    // CapturingAnalyticsSink 集中在 test_support;register 独占的
+    // SettingsPort / Clock / Probe 仍就近 mockall::mock! 定义。
+    use super::super::test_support::{
+        CapturingAnalyticsSink, MockDeviceRepo, MockHasher, MockMinter,
+    };
 
     mockall::mock! {
         SettingsPortImpl {}

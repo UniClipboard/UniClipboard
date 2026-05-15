@@ -211,60 +211,13 @@ mod tests {
     //! 收到 hasher 算出的那串 PHC,而不是其它东西。
     use super::*;
 
-    use async_trait::async_trait;
     use mockall::predicate::eq;
 
     use uc_core::mobile_sync::{MobileClientType, MobileDevice};
 
-    // ── port mocks ─────────────────────────────────────────────────────
-
-    mockall::mock! {
-        DeviceRepo {}
-        #[async_trait]
-        impl MobileDeviceRepositoryPort for DeviceRepo {
-            async fn save(&self, device: &MobileDevice) -> Result<(), MobileDeviceError>;
-            async fn find_by_username(
-                &self,
-                username: &str,
-            ) -> Result<Option<MobileDevice>, MobileDeviceError>;
-            async fn find_by_device_id(
-                &self,
-                device_id: &MobileDeviceId,
-            ) -> Result<Option<MobileDevice>, MobileDeviceError>;
-            async fn list_all(&self) -> Result<Vec<MobileDevice>, MobileDeviceError>;
-            async fn delete(&self, device_id: &MobileDeviceId) -> Result<bool, MobileDeviceError>;
-            async fn record_activity(
-                &self,
-                device_id: &MobileDeviceId,
-                last_seen_at_ms: i64,
-                last_seen_ip: Option<String>,
-                reported_name: Option<String>,
-                reported_os: Option<String>,
-            ) -> Result<(), MobileDeviceError>;
-            async fn update_password_hash(
-                &self,
-                device_id: &MobileDeviceId,
-                new_password_hash: String,
-            ) -> Result<bool, MobileDeviceError>;
-        }
-    }
-
-    mockall::mock! {
-        Hasher {}
-        #[async_trait]
-        impl PasswordHasherPort for Hasher {
-            async fn hash(&self, password: &str) -> Result<String, PasswordHasherError>;
-            async fn verify(&self, password: &str, phc: &str)
-                -> Result<bool, PasswordHasherError>;
-        }
-    }
-
-    mockall::mock! {
-        Minter {}
-        impl MobileCredentialsMinterPort for Minter {
-            fn mint_credentials(&self) -> MintedCredentials;
-        }
-    }
+    // DeviceRepo / Hasher / Minter mock 在 mobile_sync 多处复用,集中
+    // 在 test_support 模块。
+    use super::super::test_support::{MockDeviceRepo, MockHasher, MockMinter};
 
     // ── helpers ────────────────────────────────────────────────────────
 

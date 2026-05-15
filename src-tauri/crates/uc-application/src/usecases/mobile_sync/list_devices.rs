@@ -146,38 +146,8 @@ fn translate_device_error(err: MobileDeviceError) -> ListMobileDevicesError {
 mod tests {
     use super::*;
 
-    use async_trait::async_trait;
-
-    mockall::mock! {
-        DeviceRepo {}
-        #[async_trait]
-        impl MobileDeviceRepositoryPort for DeviceRepo {
-            async fn save(&self, device: &MobileDevice) -> Result<(), MobileDeviceError>;
-            async fn find_by_username(
-                &self,
-                username: &str,
-            ) -> Result<Option<MobileDevice>, MobileDeviceError>;
-            async fn find_by_device_id(
-                &self,
-                device_id: &MobileDeviceId,
-            ) -> Result<Option<MobileDevice>, MobileDeviceError>;
-            async fn list_all(&self) -> Result<Vec<MobileDevice>, MobileDeviceError>;
-            async fn delete(&self, device_id: &MobileDeviceId) -> Result<bool, MobileDeviceError>;
-            async fn record_activity(
-                &self,
-                device_id: &MobileDeviceId,
-                last_seen_at_ms: i64,
-                last_seen_ip: Option<String>,
-                reported_name: Option<String>,
-                reported_os: Option<String>,
-            ) -> Result<(), MobileDeviceError>;
-            async fn update_password_hash(
-                &self,
-                device_id: &MobileDeviceId,
-                new_password_hash: String,
-            ) -> Result<bool, MobileDeviceError>;
-        }
-    }
+    // DeviceRepo mock 与 mobile_sync 其它 use case 共用,集中在 test_support。
+    use super::super::test_support::MockDeviceRepo;
 
     fn make_device(
         id: &str,

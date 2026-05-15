@@ -263,7 +263,7 @@ mod tests {
     use mockall::predicate::*;
     use uc_core::clipboard::MimeType;
     use uc_core::ids::{EntryId, FormatId};
-    use uc_core::mobile_sync::{LatestPasteRepresentation, StagedFile, StagingHandle};
+    use uc_core::mobile_sync::LatestPasteRepresentation;
 
     mockall::mock! {
         SnapPort {}
@@ -275,38 +275,10 @@ mod tests {
         }
     }
 
+    // MobileFileStagingPort mock 与 apply_incoming 共用,集中在 test_support。
     // get_file 只触达 staging 的 `read_by_uri` —— 其它方法被调到都是回归;
     // mockall strict mode 下未配置即 panic, 默认形态就承担"防回归"职责。
-    mockall::mock! {
-        Staging {}
-        #[async_trait]
-        impl MobileFileStagingPort for Staging {
-            async fn stage_file(
-                &self,
-                scope_id: &str,
-                data_name: &str,
-                mime: &str,
-                bytes: Vec<u8>,
-            ) -> Result<StagedFile, MobileFileStagingError>;
-            async fn read_by_uri(&self, uri: &str) -> Result<Vec<u8>, MobileFileStagingError>;
-            async fn begin_stage(
-                &self,
-                scope_id: &str,
-                data_name: &str,
-                mime: &str,
-            ) -> Result<StagingHandle, MobileFileStagingError>;
-            async fn append_stage_chunk(
-                &self,
-                handle: &StagingHandle,
-                chunk: &[u8],
-            ) -> Result<(), MobileFileStagingError>;
-            async fn finalize_stage(
-                &self,
-                handle: StagingHandle,
-            ) -> Result<StagedFile, MobileFileStagingError>;
-            async fn abort_stage(&self, handle: StagingHandle);
-        }
-    }
+    use super::super::test_support::MockStaging;
 
     fn staging_never_called() -> Arc<MockStaging> {
         Arc::new(MockStaging::new())

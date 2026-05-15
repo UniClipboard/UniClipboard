@@ -32,3 +32,6 @@ pub(crate) mod revoke_device;
 pub(crate) mod rotate_password;
 pub(crate) mod sync_clipboard_mapping;
 pub(crate) mod update_settings;
+
+#[cfg(test)]
+mod test_support;

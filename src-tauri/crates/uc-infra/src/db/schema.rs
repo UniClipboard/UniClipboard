@@ -58,6 +58,17 @@ diesel::table! {
         total_size -> BigInt,
         pinned -> Bool,
         deleted_at_ms -> Nullable<BigInt>,
+        delivery_tracked -> Bool,
+    }
+}
+
+diesel::table! {
+    clipboard_entry_delivery (entry_id, target_device_id) {
+        entry_id -> Text,
+        target_device_id -> Text,
+        status -> Text,
+        reason_detail -> Nullable<Text>,
+        updated_at_ms -> BigInt,
     }
 }
 
@@ -204,6 +215,7 @@ diesel::table! {
 }
 
 diesel::joinable!(clipboard_entry -> clipboard_event (event_id));
+diesel::joinable!(clipboard_entry_delivery -> clipboard_entry (entry_id));
 diesel::joinable!(clipboard_selection -> clipboard_entry (entry_id));
 diesel::joinable!(clipboard_snapshot_representation -> blob (blob_id));
 diesel::joinable!(clipboard_snapshot_representation -> clipboard_event (event_id));
@@ -212,6 +224,7 @@ diesel::allow_tables_to_appear_in_same_query!(
     blob,
     blob_reference,
     clipboard_entry,
+    clipboard_entry_delivery,
     clipboard_event,
     clipboard_migration_backup,
     clipboard_selection,

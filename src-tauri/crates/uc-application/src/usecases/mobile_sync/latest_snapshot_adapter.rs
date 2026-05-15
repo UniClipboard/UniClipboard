@@ -382,6 +382,7 @@ mod tests {
     // ── helpers ──────────────────────────────────────────────────────────
     fn entry(id: &str, event: &str) -> ClipboardEntry {
         ClipboardEntry::new(EntryId::from(id), EventId::from(event), 1, None, 0)
+            .with_delivery_tracked(false)
     }
 
     fn selection(entry_id: &str, paste_rep: &str) -> ClipboardSelectionDecision {

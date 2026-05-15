@@ -191,6 +191,14 @@ pub struct WiredDependencies {
     pub key_migration: Arc<dyn uc_core::ports::security::KeyMigrationPort>,
     /// Switch-space backup 表 + 主表 inline_data 批量读写 port。
     pub blob_migration_repo: Arc<dyn uc_core::ports::clipboard::BlobMigrationRepoPort>,
+    /// 投递结果仓储:`ClipboardSyncFacade` 在 fan-out 完成时写、视图侧读。
+    /// 跟 `trusted_peer_repo` / `peer_addr_repo` 一样走 WiredDependencies 旁路,
+    /// 因为消费者在 uc-application 里。
+    pub entry_delivery_repo: Arc<dyn uc_core::ports::EntryDeliveryRepositoryPort>,
+    /// `ClipboardEventRepositoryPort` 的读端口实例,与
+    /// `AppDeps.clipboard.clipboard_event_repo` 共享底层 Diesel impl,
+    /// 仅供视图层做"反查来源设备"使用。
+    pub clipboard_event_reader_repo: Arc<dyn uc_core::ports::ClipboardEventRepositoryPort>,
     /// Mobile sync LAN 端点状态(单例)的具体类型旁路。
     ///
     /// daemon LAN listener 启停时需要调 inherent `set` / `clear`,这两个方法
@@ -216,6 +224,13 @@ struct InfraLayer {
     #[allow(dead_code)]
     clipboard_entry_repo: Arc<dyn ClipboardEntryRepositoryPort>,
     clipboard_event_repo: Arc<dyn ClipboardEventWriterPort>,
+    /// 与 `clipboard_event_repo` 共享底层 `DieselClipboardEventRepository`,
+    /// 但暴露的是读端口(`ClipboardEventRepositoryPort`),用于视图层反查
+    /// 来源设备等只读语义。
+    clipboard_event_reader_repo: Arc<dyn uc_core::ports::ClipboardEventRepositoryPort>,
+    /// 投递结果仓储,由 `DispatchClipboardEntryUseCase` 写、由
+    /// `GetEntryDeliveryViewUseCase` 读。
+    entry_delivery_repo: Arc<dyn uc_core::ports::EntryDeliveryRepositoryPort>,
     representation_repo: Arc<dyn ClipboardRepresentationRepositoryPort>,
     selection_repo: Arc<dyn ClipboardSelectionRepositoryPort>,
 
@@ -373,16 +388,23 @@ fn create_infra_layer(
     let clipboard_entry_repo: Arc<dyn ClipboardEntryRepositoryPort> = Arc::new(entry_repo);
 
     let event_row_mapper = ClipboardEventRowMapper;
-    let clipboard_event_repo_impl = DieselClipboardEventRepository::new(
+    let clipboard_event_repo_impl = Arc::new(DieselClipboardEventRepository::new(
         Arc::clone(&db_executor),
         event_row_mapper,
         RepresentationRowMapper,
-    );
+    ));
+    // 同一份 impl 同时满足"写"和"读"两个端口契约,unsize 两次拿到两个 Arc。
     let clipboard_event_repo: Arc<dyn ClipboardEventWriterPort> =
-        Arc::new(clipboard_event_repo_impl);
+        Arc::clone(&clipboard_event_repo_impl) as Arc<_>;
+    let clipboard_event_reader_repo: Arc<dyn uc_core::ports::ClipboardEventRepositoryPort> =
+        clipboard_event_repo_impl as Arc<_>;
 
     let rep_repo = DieselClipboardRepresentationRepository::new(Arc::clone(&db_executor));
     let representation_repo: Arc<dyn ClipboardRepresentationRepositoryPort> = Arc::new(rep_repo);
+
+    let entry_delivery_repo: Arc<dyn uc_core::ports::EntryDeliveryRepositoryPort> = Arc::new(
+        uc_infra::db::repositories::DieselEntryDeliveryRepository::new(Arc::clone(&db_executor)),
+    );
 
     let member_repo_impl =
         DieselSpaceMemberRepository::new(Arc::clone(&db_executor), SpaceMemberRowMapper);
@@ -479,6 +501,8 @@ fn create_infra_layer(
     let infra = InfraLayer {
         clipboard_entry_repo,
         clipboard_event_repo,
+        clipboard_event_reader_repo,
+        entry_delivery_repo,
         representation_repo,
         selection_repo,
         member_repo,
@@ -882,6 +906,8 @@ pub fn wire_dependencies(
     // is `SpaceSetupFacade`, which lives in uc-application, not uc-app.
     let peer_addr_repo_for_wiring = Arc::clone(&infra.peer_addr_repo);
     let blob_reference_repo_for_wiring = Arc::clone(&infra.blob_reference_repo);
+    let entry_delivery_repo_for_wiring = Arc::clone(&infra.entry_delivery_repo);
+    let clipboard_event_reader_repo_for_wiring = Arc::clone(&infra.clipboard_event_reader_repo);
     let iroh_blob_store_dir_for_wiring =
         apply_profile_suffix(paths.app_data_root_dir.join("iroh-blobs"));
     // iroh 设备身份的文件存储目录。先 mkdir,确保 `FileSecureStorage::with_base_dir`
@@ -1013,6 +1039,8 @@ pub fn wire_dependencies(
         key_migration: key_migration_for_wiring,
         blob_migration_repo: blob_migration_repo_for_wiring,
         mobile_sync_endpoint_info: mobile_sync_endpoint_info_for_wiring,
+        entry_delivery_repo: entry_delivery_repo_for_wiring,
+        clipboard_event_reader_repo: clipboard_event_reader_repo_for_wiring,
         emitter_cell,
         file_transfer_facade,
     };

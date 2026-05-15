@@ -397,7 +397,8 @@ impl AppFacade {
             .ok_or_else(|| {
                 ClipboardSyncError::Repository("clipboard sync facade unavailable".to_string())
             })?
-            .dispatch_snapshot(snapshot, origin)
+            // CLI 路径不与某条 entry 绑定,跳过 delivery 落盘。
+            .dispatch_snapshot(snapshot, origin, None)
             .await
     }
 

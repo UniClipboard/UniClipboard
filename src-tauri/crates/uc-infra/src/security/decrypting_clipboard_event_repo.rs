@@ -70,4 +70,11 @@ impl ClipboardEventRepositoryPort for DecryptingClipboardEventRepository {
 
         Ok(observed)
     }
+
+    async fn get_source_device(
+        &self,
+        event_id: &EventId,
+    ) -> Result<Option<uc_core::ids::DeviceId>> {
+        self.inner.get_source_device(event_id).await
+    }
 }

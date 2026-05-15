@@ -17,16 +17,20 @@ use bytes::Bytes;
 use tokio::sync::broadcast;
 use tracing::instrument;
 
-use uc_core::ids::DeviceId;
+use uc_core::ids::{DeviceId, EntryId};
 use uc_core::ports::security::TransferCipherPort;
 use uc_core::ports::{
     ClipboardDispatchPort, ClipboardReceiverPort, ClockPort, DeviceIdentityPort, DispatchAck,
-    FirstSyncStatePort, LocalIdentityPort, PeerAddressRepositoryPort, PresencePort, SettingsPort,
+    EntryDeliveryRepositoryPort, FirstSyncStatePort, LocalIdentityPort, PeerAddressRepositoryPort,
+    PresencePort, SettingsPort,
 };
 use uc_core::MemberRepositoryPort;
 use uc_core::{ClipboardChangeOrigin, SystemClipboardSnapshot};
 use uc_observability::analytics::AnalyticsPort;
 
+use crate::usecases::clipboard_sync::get_entry_delivery_view::{
+    EntryDeliveryView, GetEntryDeliveryViewError, GetEntryDeliveryViewUseCase,
+};
 use crate::usecases::clipboard_sync::payload_codec::{
     encode_snapshot_with_blob_refs_to_v3_bytes, V3BlobRef,
 };
@@ -36,6 +40,8 @@ use crate::usecases::clipboard_sync::{
     InboundClipboardNotice as UcInboundNotice, IngestInboundClipboardUseCase, IngestSpawnHandle,
 };
 use uc_core::clipboard::ClipboardContentCategorySet;
+use uc_core::ports::{ClipboardEntryRepositoryPort, ClipboardEventRepositoryPort};
+use uc_core::trusted_peer::TrustedPeerRepositoryPort;
 use uc_observability::FlowId;
 
 /// Construction bundle, mirrors `MemberRosterDeps` pattern so bootstrap
@@ -59,6 +65,16 @@ pub struct ClipboardSyncDeps {
     /// 在 spawn 内 mark + 条件 fire `first_clipboard_sync_attempted` /
     /// `first_clipboard_sync_succeeded` / `first_file_sync_succeeded`。
     pub first_sync_state: Arc<dyn FirstSyncStatePort>,
+    /// fan-out 完成后,按每个对端的结果落盘 delivery 记录;只有 entry_id
+    /// 关联的发送路径(LocalCapture → outbound)才会触发实际写入,CLI /
+    /// 测试路径走 entry_id=None 时本端口空跑。
+    pub entry_delivery_repo: Arc<dyn EntryDeliveryRepositoryPort>,
+    /// `get_entry_delivery_view` 拼装视图时需要 entry / event / trusted_peer
+    /// 三类仓储:entry 验存在 + 取 delivery_tracked,event 反查来源设备,
+    /// trusted_peer 给出"全集"用于合成 Pending。
+    pub entry_repo: Arc<dyn ClipboardEntryRepositoryPort>,
+    pub event_repo: Arc<dyn ClipboardEventRepositoryPort>,
+    pub trusted_peer_repo: Arc<dyn TrustedPeerRepositoryPort>,
 }
 
 /// Public-facing input to a dispatch pass. Mirrors the use case's own
@@ -147,6 +163,7 @@ impl IngestHandle {
 pub struct ClipboardSyncFacade {
     dispatch_uc: Arc<DispatchClipboardEntryUseCase>,
     ingest_uc: Arc<IngestInboundClipboardUseCase>,
+    view_uc: Arc<GetEntryDeliveryViewUseCase>,
 }
 
 impl ClipboardSyncFacade {
@@ -163,6 +180,7 @@ impl ClipboardSyncFacade {
             Arc::clone(&deps.clock),
             Arc::clone(&deps.analytics),
             Arc::clone(&deps.first_sync_state),
+            Arc::clone(&deps.entry_delivery_repo),
         ));
         let ingest_uc = Arc::new(IngestInboundClipboardUseCase::new(
             Arc::clone(&deps.clipboard_receiver),
@@ -170,10 +188,27 @@ impl ClipboardSyncFacade {
             Arc::clone(&deps.transfer_cipher),
             Arc::clone(&deps.clock),
         ));
+        let view_uc = Arc::new(GetEntryDeliveryViewUseCase::new(
+            Arc::clone(&deps.entry_repo),
+            Arc::clone(&deps.event_repo),
+            Arc::clone(&deps.trusted_peer_repo),
+            Arc::clone(&deps.entry_delivery_repo),
+            Arc::clone(&deps.device_identity),
+        ));
         Self {
             dispatch_uc,
             ingest_uc,
+            view_uc,
         }
+    }
+
+    /// 拿一条 entry 对每个可信对端的同步状态视图。详见
+    /// [`GetEntryDeliveryViewUseCase::execute`] 的契约说明。
+    pub async fn get_entry_delivery_view(
+        &self,
+        entry_id: &EntryId,
+    ) -> Result<EntryDeliveryView, GetEntryDeliveryViewError> {
+        self.view_uc.execute(entry_id).await
     }
 
     /// Fan out one plaintext payload to every online paired peer.
@@ -197,6 +232,8 @@ impl ClipboardSyncFacade {
                 content_hash: input.content_hash.clone(),
                 payload_version: input.payload_version,
                 categories: ClipboardContentCategorySet::empty(),
+                // raw-bytes 路径不与某条 entry 绑定,跳过 delivery 落盘。
+                entry_id: None,
             })
             .await?;
         Ok(lift_outcome(internal))
@@ -212,6 +249,7 @@ impl ClipboardSyncFacade {
         content_hash: String,
         payload_version: u8,
         categories: ClipboardContentCategorySet,
+        entry_id: Option<EntryId>,
     ) -> Result<DispatchEntryOutcome, ClipboardSyncError> {
         let internal = self
             .dispatch_uc
@@ -220,6 +258,7 @@ impl ClipboardSyncFacade {
                 content_hash,
                 payload_version,
                 categories,
+                entry_id,
             })
             .await?;
         Ok(lift_outcome(internal))
@@ -241,12 +280,13 @@ impl ClipboardSyncFacade {
         &self,
         snapshot: SystemClipboardSnapshot,
         origin: ClipboardChangeOrigin,
+        entry_id: Option<EntryId>,
     ) -> Result<DispatchEntryOutcome, ClipboardSyncError> {
         let _ = origin; // span metadata only (see doc above)
         let categories = ClipboardContentCategorySet::from_snapshot(&snapshot);
         let (plaintext, content_hash) = encode_snapshot_to_v3_bytes(&snapshot)
             .map_err(|e| ClipboardSyncError::CipherFailure(format!("payload encode: {e}")))?;
-        self.dispatch_internal(plaintext, content_hash, 3, categories)
+        self.dispatch_internal(plaintext, content_hash, 3, categories, entry_id)
             .await
     }
 
@@ -260,13 +300,14 @@ impl ClipboardSyncFacade {
         snapshot: SystemClipboardSnapshot,
         blob_refs: Vec<V3BlobRef>,
         origin: ClipboardChangeOrigin,
+        entry_id: Option<EntryId>,
     ) -> Result<DispatchEntryOutcome, ClipboardSyncError> {
         let _ = origin;
         let categories = ClipboardContentCategorySet::from_snapshot(&snapshot);
         let (plaintext, content_hash) =
             encode_snapshot_with_blob_refs_to_v3_bytes(&snapshot, &blob_refs)
                 .map_err(|e| ClipboardSyncError::CipherFailure(format!("payload encode: {e}")))?;
-        self.dispatch_internal(plaintext, content_hash, 3, categories)
+        self.dispatch_internal(plaintext, content_hash, 3, categories, entry_id)
             .await
     }
 
@@ -394,6 +435,107 @@ mod tests {
             Ok(false)
         }
         async fn mark_first_file_sync_succeeded(&self) -> Result<bool, FirstSyncStateError> {
+            Ok(false)
+        }
+    }
+
+    /// facade 测试默认走 noop:验证 dispatch 端到端时不关心 delivery 表副作用。
+    struct NoopEntryDeliveryRepoForFacadeTests;
+    #[async_trait]
+    impl EntryDeliveryRepositoryPort for NoopEntryDeliveryRepoForFacadeTests {
+        async fn record_attempt(
+            &self,
+            _record: &uc_core::clipboard::EntryDeliveryRecord,
+        ) -> Result<(), uc_core::clipboard::EntryDeliveryError> {
+            Ok(())
+        }
+        async fn list_by_entry(
+            &self,
+            _entry_id: &EntryId,
+        ) -> Result<
+            Vec<uc_core::clipboard::EntryDeliveryRecord>,
+            uc_core::clipboard::EntryDeliveryError,
+        > {
+            Ok(Vec::new())
+        }
+    }
+
+    /// 视图组装路径(`get_entry_delivery_view`)在本文件的 dispatch 测试里
+    /// 不会被触发。给三个相关仓储一组最小可用的 noop,让 facade 能装配通过。
+    struct NoopEntryRepoForFacadeTests;
+    #[async_trait]
+    impl ClipboardEntryRepositoryPort for NoopEntryRepoForFacadeTests {
+        async fn save_entry_and_selection(
+            &self,
+            _entry: &uc_core::clipboard::ClipboardEntry,
+            _selection: &uc_core::ClipboardSelectionDecision,
+        ) -> anyhow::Result<()> {
+            Ok(())
+        }
+        async fn get_entry(
+            &self,
+            _entry_id: &EntryId,
+        ) -> anyhow::Result<Option<uc_core::clipboard::ClipboardEntry>> {
+            Ok(None)
+        }
+        async fn list_entries(
+            &self,
+            _limit: usize,
+            _offset: usize,
+        ) -> anyhow::Result<Vec<uc_core::clipboard::ClipboardEntry>> {
+            Ok(Vec::new())
+        }
+        async fn delete_entry(&self, _entry_id: &EntryId) -> anyhow::Result<()> {
+            Ok(())
+        }
+    }
+
+    struct NoopEventRepoForFacadeTests;
+    #[async_trait]
+    impl ClipboardEventRepositoryPort for NoopEventRepoForFacadeTests {
+        async fn get_representation(
+            &self,
+            _id: &uc_core::ids::EventId,
+            _representation_id: &str,
+        ) -> anyhow::Result<uc_core::ObservedClipboardRepresentation> {
+            anyhow::bail!("unused in facade dispatch tests")
+        }
+        async fn get_source_device(
+            &self,
+            _event_id: &uc_core::ids::EventId,
+        ) -> anyhow::Result<Option<DeviceId>> {
+            Ok(None)
+        }
+    }
+
+    struct NoopTrustedPeerRepoForFacadeTests;
+    #[async_trait]
+    impl TrustedPeerRepositoryPort for NoopTrustedPeerRepoForFacadeTests {
+        async fn get(
+            &self,
+            _peer_device_id: &DeviceId,
+        ) -> Result<
+            Option<uc_core::trusted_peer::TrustedPeer>,
+            uc_core::trusted_peer::TrustedPeerError,
+        > {
+            Ok(None)
+        }
+        async fn list(
+            &self,
+        ) -> Result<Vec<uc_core::trusted_peer::TrustedPeer>, uc_core::trusted_peer::TrustedPeerError>
+        {
+            Ok(Vec::new())
+        }
+        async fn save(
+            &self,
+            _trusted_peer: &uc_core::trusted_peer::TrustedPeer,
+        ) -> Result<(), uc_core::trusted_peer::TrustedPeerError> {
+            Ok(())
+        }
+        async fn remove(
+            &self,
+            _peer_device_id: &DeviceId,
+        ) -> Result<bool, uc_core::trusted_peer::TrustedPeerError> {
             Ok(false)
         }
     }
@@ -610,6 +752,10 @@ mod tests {
             clock: Arc::new(FixedClock(1_700_000_000_000)),
             analytics: Arc::new(uc_observability::analytics::NoopAnalyticsSink),
             first_sync_state: Arc::new(NoopFirstSyncState),
+            entry_delivery_repo: Arc::new(NoopEntryDeliveryRepoForFacadeTests),
+            entry_repo: Arc::new(NoopEntryRepoForFacadeTests),
+            event_repo: Arc::new(NoopEventRepoForFacadeTests),
+            trusted_peer_repo: Arc::new(NoopTrustedPeerRepoForFacadeTests),
         });
         (facade, receiver)
     }
@@ -783,7 +929,7 @@ mod tests {
             )],
         };
         let outcome = facade
-            .dispatch_snapshot(snapshot, uc_core::ClipboardChangeOrigin::LocalCapture)
+            .dispatch_snapshot(snapshot, uc_core::ClipboardChangeOrigin::LocalCapture, None)
             .await
             .expect("dispatch_snapshot ok");
         assert_eq!(outcome.total_accepted, 1);

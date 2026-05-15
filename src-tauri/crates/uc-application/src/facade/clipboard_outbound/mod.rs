@@ -180,9 +180,15 @@ impl ClipboardOutboundPort for ClipboardOutboundDispatcher {
         let blob_ref_count = blob_refs.len();
 
         let dispatch_phase_start = Instant::now();
+        // LocalCapture 路径:把 entry_id 透传给 dispatch,fan-out 完成后落盘
+        // 每个对端的投递结果(供视图层追踪"这条 entry 同步到了哪些设备")。
         let dispatch_result = if blob_refs.is_empty() {
             self.clipboard_sync
-                .dispatch_snapshot(clipboard_intent.snapshot, input.origin)
+                .dispatch_snapshot(
+                    clipboard_intent.snapshot,
+                    input.origin,
+                    Some(entry_id.clone()),
+                )
                 .await
         } else {
             self.clipboard_sync
@@ -190,6 +196,7 @@ impl ClipboardOutboundPort for ClipboardOutboundDispatcher {
                     clipboard_intent.snapshot,
                     blob_refs,
                     input.origin,
+                    Some(entry_id.clone()),
                 )
                 .await
         }

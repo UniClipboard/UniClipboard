@@ -263,6 +263,74 @@ impl SettingsPort for InMemorySettings {
     }
 }
 
+/// e2e 不验证投递持久化,给一组最小 noop adapter 让 facade 装配通过。
+#[derive(Default)]
+struct NoopEntryDeliveryRepo;
+#[async_trait]
+impl uc_core::ports::EntryDeliveryRepositoryPort for NoopEntryDeliveryRepo {
+    async fn record_attempt(
+        &self,
+        _record: &uc_core::clipboard::EntryDeliveryRecord,
+    ) -> Result<(), uc_core::clipboard::EntryDeliveryError> {
+        Ok(())
+    }
+    async fn list_by_entry(
+        &self,
+        _entry_id: &uc_core::ids::EntryId,
+    ) -> Result<Vec<uc_core::clipboard::EntryDeliveryRecord>, uc_core::clipboard::EntryDeliveryError>
+    {
+        Ok(Vec::new())
+    }
+}
+
+#[derive(Default)]
+struct NoopClipboardEntryRepo;
+#[async_trait]
+impl uc_core::ports::ClipboardEntryRepositoryPort for NoopClipboardEntryRepo {
+    async fn save_entry_and_selection(
+        &self,
+        _entry: &uc_core::clipboard::ClipboardEntry,
+        _selection: &uc_core::ClipboardSelectionDecision,
+    ) -> anyhow::Result<()> {
+        Ok(())
+    }
+    async fn get_entry(
+        &self,
+        _entry_id: &uc_core::ids::EntryId,
+    ) -> anyhow::Result<Option<uc_core::clipboard::ClipboardEntry>> {
+        Ok(None)
+    }
+    async fn list_entries(
+        &self,
+        _limit: usize,
+        _offset: usize,
+    ) -> anyhow::Result<Vec<uc_core::clipboard::ClipboardEntry>> {
+        Ok(Vec::new())
+    }
+    async fn delete_entry(&self, _entry_id: &uc_core::ids::EntryId) -> anyhow::Result<()> {
+        Ok(())
+    }
+}
+
+#[derive(Default)]
+struct NoopClipboardEventRepo;
+#[async_trait]
+impl uc_core::ports::ClipboardEventRepositoryPort for NoopClipboardEventRepo {
+    async fn get_representation(
+        &self,
+        _id: &uc_core::ids::EventId,
+        _representation_id: &str,
+    ) -> anyhow::Result<uc_core::ObservedClipboardRepresentation> {
+        anyhow::bail!("unused in e2e tests")
+    }
+    async fn get_source_device(
+        &self,
+        _event_id: &uc_core::ids::EventId,
+    ) -> anyhow::Result<Option<uc_core::ids::DeviceId>> {
+        Ok(None)
+    }
+}
+
 struct FixedDeviceIdentity(DeviceId);
 impl DeviceIdentityPort for FixedDeviceIdentity {
     fn current_device_id(&self) -> DeviceId {
@@ -491,6 +559,10 @@ async fn build_side(name: &'static str, rendezvous_base_url: String) -> Side {
         // Slice 8c-2 · e2e 不验证 first-sync 漏斗事件——给 noop fake 让
         // mark_* 永远返回 Ok(false)，避免依赖 file-system 路径状态。
         first_sync_state: Arc::new(NoopFirstSyncState),
+        entry_delivery_repo: Arc::new(NoopEntryDeliveryRepo),
+        entry_repo: Arc::new(NoopClipboardEntryRepo),
+        event_repo: Arc::new(NoopClipboardEventRepo),
+        trusted_peer_repo: Arc::clone(&trusted_peer_repo) as Arc<dyn TrustedPeerRepositoryPort>,
     }));
     let ingest_handle = clipboard_sync.spawn_ingest_loop();
 
@@ -600,7 +672,7 @@ async fn sponsor_dispatch_lands_on_joiner_within_2s() {
     let expected_hash = snapshot.snapshot_hash().to_string();
     let outcome = sponsor
         .clipboard_sync
-        .dispatch_snapshot(snapshot, ClipboardChangeOrigin::LocalCapture)
+        .dispatch_snapshot(snapshot, ClipboardChangeOrigin::LocalCapture, None)
         .await
         .expect("sponsor dispatch ok");
     assert_eq!(
@@ -698,7 +770,7 @@ async fn repeat_dispatch_lands_twice_phase2_no_dedup() {
     for attempt in 0..2 {
         let outcome = sponsor
             .clipboard_sync
-            .dispatch_snapshot(build_snapshot(), ClipboardChangeOrigin::LocalCapture)
+            .dispatch_snapshot(build_snapshot(), ClipboardChangeOrigin::LocalCapture, None)
             .await
             .unwrap_or_else(|e| panic!("attempt {attempt} dispatch must succeed: {e:?}"));
         assert_eq!(

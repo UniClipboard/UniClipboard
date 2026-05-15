@@ -269,6 +269,7 @@ mod tests {
 
     fn make_entry(entry_id: &str, event_id: &str) -> ClipboardEntry {
         ClipboardEntry::new(EntryId::from(entry_id), EventId::from(event_id), 0, None, 0)
+            .with_delivery_tracked(false)
     }
 
     fn make_selection(

@@ -4,6 +4,7 @@ pub mod clipboard_entry;
 pub mod clipboard_event;
 pub mod clipboard_representation_thumbnail;
 pub mod clipboard_selection;
+pub mod entry_delivery;
 pub mod file_transfer;
 pub mod mobile_device_row;
 pub mod peer_address_row;
@@ -19,6 +20,7 @@ pub use clipboard_representation_thumbnail::{
     ClipboardRepresentationThumbnailRow, NewClipboardRepresentationThumbnailRow,
 };
 pub use clipboard_selection::{ClipboardSelectionRow, NewClipboardSelectionRow};
+pub use entry_delivery::{EntryDeliveryRow, NewEntryDeliveryRow};
 pub use file_transfer::{FileTransferRow, NewFileTransferRow};
 pub use mobile_device_row::{MobileDeviceRow, NewMobileDeviceRow};
 pub use peer_address_row::{NewPeerAddressRow, PeerAddressRow};

@@ -402,6 +402,10 @@ pub async fn build_space_setup_assembly(
         clock: Arc::clone(&deps.system.clock),
         analytics: Arc::clone(&deps.analytics),
         first_sync_state: Arc::clone(&deps.first_sync_state),
+        entry_delivery_repo: Arc::clone(&wired.entry_delivery_repo),
+        entry_repo: Arc::clone(&deps.clipboard.clipboard_entry_repo),
+        event_repo: Arc::clone(&wired.clipboard_event_reader_repo),
+        trusted_peer_repo: Arc::clone(&wired.trusted_peer_repo),
     }));
     let ingest_handle = clipboard_sync.spawn_ingest_loop();
     let blob = Arc::new(BlobTransferFacade::new(BlobTransferDeps {

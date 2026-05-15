@@ -2,6 +2,7 @@
 mod category;
 mod change;
 mod decision;
+mod delivery;
 mod entry;
 mod event;
 mod hash;
@@ -19,6 +20,9 @@ mod timestamp;
 
 pub use category::{ClipboardContentCategory, ClipboardContentCategorySet};
 pub use change::*;
+pub use delivery::{
+    DeliveryFailureReason, EntryDeliveryError, EntryDeliveryRecord, EntryDeliveryStatus,
+};
 pub use entry::*;
 pub use event::*;
 pub use policy::ClipboardSelection;

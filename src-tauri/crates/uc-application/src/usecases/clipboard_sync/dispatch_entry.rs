@@ -49,13 +49,16 @@ use tokio::task::JoinSet;
 use tracing::{debug, info, info_span, instrument, warn, Instrument};
 use uc_observability::FlowId;
 
-use uc_core::clipboard::{ClipboardContentCategory, ClipboardContentCategorySet};
-use uc_core::ids::DeviceId;
+use uc_core::clipboard::{
+    ClipboardContentCategory, ClipboardContentCategorySet, DeliveryFailureReason,
+    EntryDeliveryRecord, EntryDeliveryStatus,
+};
+use uc_core::ids::{DeviceId, EntryId};
 use uc_core::ports::security::TransferCipherPort;
 use uc_core::ports::{
     ClipboardDispatchError, ClipboardDispatchPort, ClipboardHeader, ClockPort, DeviceIdentityPort,
-    DispatchAck, FirstSyncStatePort, LocalIdentityPort, PeerAddressRepositoryPort, PresencePort,
-    ReachabilityState, SettingsPort, SyncPayload,
+    DispatchAck, EntryDeliveryRepositoryPort, FirstSyncStatePort, LocalIdentityPort,
+    PeerAddressRepositoryPort, PresencePort, ReachabilityState, SettingsPort, SyncPayload,
 };
 use uc_core::MemberRepositoryPort;
 use uc_observability::analytics::{
@@ -163,6 +166,11 @@ pub(crate) struct DispatchClipboardEntryInput {
     /// `ClipboardContentCategorySet::from_snapshot`. CLI raw-bytes paths pass
     /// an empty set (fail open) since they can't enumerate reps.
     pub categories: ClipboardContentCategorySet,
+    /// 触发本次广播的 entry。`Some` 时,fan-out 结束后会按每个对端的结果
+    /// 调用 `EntryDeliveryRepositoryPort::record_attempt` 落盘,供视图层
+    /// 追溯"这条 entry 已同步到哪些设备"。`None` 表示无对应 entry 记录
+    /// (例如 CLI raw-bytes 路径),此时 dispatch 不落盘 delivery。
+    pub entry_id: Option<EntryId>,
 }
 
 /// One target's dispatch result. `Ok` + `DispatchAck` when the peer
@@ -213,6 +221,9 @@ pub(crate) struct DispatchClipboardEntryUseCase {
     local_identity: Arc<dyn LocalIdentityPort>,
     settings: Arc<dyn SettingsPort>,
     clock: Arc<dyn ClockPort>,
+    /// fan-out 完成后,按每个 target 的成功/失败落盘 delivery 记录。
+    /// 仅在 `DispatchClipboardEntryInput.entry_id` 为 `Some` 时调用。
+    entry_delivery_repo: Arc<dyn EntryDeliveryRepositoryPort>,
     /// Slice 8c-1 · per-peer telemetry. One `sync_attempted` /
     /// `sync_succeeded` / `sync_failed` event fires per fan-out target so
     /// PostHog reliability dashboards stay per-peer (peer_os, latency,
@@ -239,6 +250,7 @@ impl DispatchClipboardEntryUseCase {
         clock: Arc<dyn ClockPort>,
         analytics: Arc<dyn AnalyticsPort>,
         first_sync_state: Arc<dyn FirstSyncStatePort>,
+        entry_delivery_repo: Arc<dyn EntryDeliveryRepositoryPort>,
     ) -> Self {
         Self {
             peer_addr_repo,
@@ -252,6 +264,7 @@ impl DispatchClipboardEntryUseCase {
             clock,
             analytics,
             first_sync_state,
+            entry_delivery_repo,
         }
     }
 
@@ -482,11 +495,28 @@ impl DispatchClipboardEntryUseCase {
         let mut total_offline = 0;
         let mut total_errored = 0;
 
+        // fan-out 完成后,如果调用方提供了 entry_id,就把"每个对端的结果"
+        // 落盘到 entry_delivery 表。先在 join loop 内收集本地待写记录,
+        // 循环结束再串行 await,避免在 hot path 上多次 await 让出调度器。
+        // updated_at_ms 在每个 arm 内独立采样,反映该对端的实际完成时刻
+        // (不同 peer 的 fan-out 延迟分布很广,共用单点时间会丢失排障信息)。
+        let entry_id_for_delivery = input.entry_id.clone();
+        let mut delivery_records: Vec<EntryDeliveryRecord> = Vec::new();
+
         while let Some(joined) = set.join_next().await {
             match joined {
                 Ok((device_id, Ok(DispatchAck::Accepted))) => {
                     total_accepted += 1;
                     debug!(device_id = %device_id.as_str(), "dispatch → Accepted");
+                    if let Some(eid) = entry_id_for_delivery.as_ref() {
+                        delivery_records.push(EntryDeliveryRecord {
+                            entry_id: eid.clone(),
+                            target_device_id: device_id.clone(),
+                            status: EntryDeliveryStatus::Delivered,
+                            reason_detail: None,
+                            updated_at_ms: self.clock.now_ms(),
+                        });
+                    }
                     per_target.push(DispatchPerTarget {
                         device_id,
                         outcome: Ok(DispatchAck::Accepted),
@@ -495,6 +525,15 @@ impl DispatchClipboardEntryUseCase {
                 Ok((device_id, Ok(DispatchAck::DuplicateIgnored))) => {
                     total_duplicate += 1;
                     debug!(device_id = %device_id.as_str(), "dispatch → DuplicateIgnored");
+                    if let Some(eid) = entry_id_for_delivery.as_ref() {
+                        delivery_records.push(EntryDeliveryRecord {
+                            entry_id: eid.clone(),
+                            target_device_id: device_id.clone(),
+                            status: EntryDeliveryStatus::Duplicate,
+                            reason_detail: None,
+                            updated_at_ms: self.clock.now_ms(),
+                        });
+                    }
                     per_target.push(DispatchPerTarget {
                         device_id,
                         outcome: Ok(DispatchAck::DuplicateIgnored),
@@ -503,6 +542,17 @@ impl DispatchClipboardEntryUseCase {
                 Ok((device_id, Err(ClipboardDispatchError::Offline))) => {
                     total_offline += 1;
                     warn!(device_id = %device_id.as_str(), "dispatch → Offline");
+                    if let Some(eid) = entry_id_for_delivery.as_ref() {
+                        delivery_records.push(EntryDeliveryRecord {
+                            entry_id: eid.clone(),
+                            target_device_id: device_id.clone(),
+                            status: EntryDeliveryStatus::Failed {
+                                reason: DeliveryFailureReason::Offline,
+                            },
+                            reason_detail: None,
+                            updated_at_ms: self.clock.now_ms(),
+                        });
+                    }
                     per_target.push(DispatchPerTarget {
                         device_id,
                         outcome: Err("offline".to_string()),
@@ -511,6 +561,33 @@ impl DispatchClipboardEntryUseCase {
                 Ok((device_id, Err(err))) => {
                     total_errored += 1;
                     warn!(device_id = %device_id.as_str(), error = %err, "dispatch failed");
+                    let (failure_reason, reason_detail) = match &err {
+                        // Offline 在上一个 arm 已处理,这里不会进。保留以满足穷尽性。
+                        ClipboardDispatchError::Offline => (DeliveryFailureReason::Offline, None),
+                        ClipboardDispatchError::LocalPolicyExceeded(s) => {
+                            (DeliveryFailureReason::LocalPolicy, Some(s.clone()))
+                        }
+                        ClipboardDispatchError::PeerRejected(s) => {
+                            (DeliveryFailureReason::PeerRejected, Some(s.clone()))
+                        }
+                        ClipboardDispatchError::Io(s) => {
+                            (DeliveryFailureReason::Io, Some(s.clone()))
+                        }
+                        ClipboardDispatchError::Internal(s) => {
+                            (DeliveryFailureReason::Internal, Some(s.clone()))
+                        }
+                    };
+                    if let Some(eid) = entry_id_for_delivery.as_ref() {
+                        delivery_records.push(EntryDeliveryRecord {
+                            entry_id: eid.clone(),
+                            target_device_id: device_id.clone(),
+                            status: EntryDeliveryStatus::Failed {
+                                reason: failure_reason,
+                            },
+                            reason_detail,
+                            updated_at_ms: self.clock.now_ms(),
+                        });
+                    }
                     per_target.push(DispatchPerTarget {
                         device_id,
                         outcome: Err(err.to_string()),
@@ -520,6 +597,19 @@ impl DispatchClipboardEntryUseCase {
                     total_errored += 1;
                     warn!(error = %err, "dispatch task panicked or cancelled");
                 }
+            }
+        }
+
+        // 串行落盘 delivery 记录。失败仅 log,不阻塞主流程的返回,这是
+        // 一个可观测性副作用,不该影响 dispatch 自身的成败语义。
+        for record in &delivery_records {
+            if let Err(err) = self.entry_delivery_repo.record_attempt(record).await {
+                warn!(
+                    error = %err,
+                    entry_id = %record.entry_id,
+                    target_device_id = %record.target_device_id,
+                    "failed to record entry delivery"
+                );
             }
         }
 
@@ -772,6 +862,54 @@ mod tests {
         }
     }
 
+    /// 测试侧通用的"接收即丢弃"投递仓储。所有验证 dispatch outcome / telemetry
+    /// 的测试都通过这个 noop 注入,因为它们不关心 delivery 表的副作用。
+    /// 专门验证 delivery 落盘的测试自行注入 [`SpyEntryDeliveryRepo`]。
+    struct NoopEntryDeliveryRepo;
+    #[async_trait]
+    impl EntryDeliveryRepositoryPort for NoopEntryDeliveryRepo {
+        async fn record_attempt(
+            &self,
+            _record: &EntryDeliveryRecord,
+        ) -> Result<(), uc_core::clipboard::EntryDeliveryError> {
+            Ok(())
+        }
+        async fn list_by_entry(
+            &self,
+            _entry_id: &EntryId,
+        ) -> Result<Vec<EntryDeliveryRecord>, uc_core::clipboard::EntryDeliveryError> {
+            Ok(Vec::new())
+        }
+    }
+
+    /// 专门验证 fan-out 落盘的 spy。每次 `record_attempt` 把入参 clone 进
+    /// 内部 vec,测试结束后逐条 assert 状态映射与 reason_detail。
+    #[derive(Default)]
+    struct SpyEntryDeliveryRepo {
+        attempts: tokio::sync::Mutex<Vec<EntryDeliveryRecord>>,
+    }
+    impl SpyEntryDeliveryRepo {
+        async fn snapshot(&self) -> Vec<EntryDeliveryRecord> {
+            self.attempts.lock().await.clone()
+        }
+    }
+    #[async_trait]
+    impl EntryDeliveryRepositoryPort for SpyEntryDeliveryRepo {
+        async fn record_attempt(
+            &self,
+            record: &EntryDeliveryRecord,
+        ) -> Result<(), uc_core::clipboard::EntryDeliveryError> {
+            self.attempts.lock().await.push(record.clone());
+            Ok(())
+        }
+        async fn list_by_entry(
+            &self,
+            _entry_id: &EntryId,
+        ) -> Result<Vec<EntryDeliveryRecord>, uc_core::clipboard::EntryDeliveryError> {
+            Ok(Vec::new())
+        }
+    }
+
     struct StaticPresence(ReachabilityState);
     #[async_trait]
     impl PresencePort for StaticPresence {
@@ -927,6 +1065,7 @@ mod tests {
             Arc::new(FixedClock(1_700_000_000_000)),
             analytics,
             first_sync_state,
+            Arc::new(NoopEntryDeliveryRepo),
         )
     }
 
@@ -1039,6 +1178,9 @@ mod tests {
             // Existing verdicts predate the content-type filter; default
             // to an empty set so they always pass the gate (fail open).
             categories: ClipboardContentCategorySet::empty(),
+            // 默认无 entry_id:大部分历史测试只关心 outcome 与 telemetry,
+            // 不需要触发 delivery 落盘。专门验证落盘行为的测试自行构造 Some。
+            entry_id: None,
         }
     }
 
@@ -1475,6 +1617,7 @@ mod tests {
             content_hash: "9".repeat(64),
             payload_version: 3,
             categories,
+            entry_id: None,
         };
 
         let outcome = uc.execute(text_input).await.expect("dispatch ok");
@@ -1910,6 +2053,7 @@ mod tests {
             content_hash: "9".repeat(64),
             payload_version: 3,
             categories,
+            entry_id: None,
         };
 
         uc.execute(file_input).await.expect("dispatch ok");
@@ -1995,6 +2139,181 @@ mod tests {
         ] {
             assert_eq!(map_dispatch_error_to_failure_reason(&err), expected);
         }
+    }
+
+    // ── delivery 落盘集成测试 ─────────────────────────────────────────
+
+    /// 5 个 peer 分别得到 5 种 ack/err,验证 record_attempt 把它们 1:1
+    /// 映射到 5 种 (status, reason_detail)。
+    #[tokio::test]
+    async fn dispatch_records_delivery_for_each_outcome_variant() {
+        let mut repo = MockPeerAddrRepo::new();
+        repo.expect_list().times(1).returning(|| {
+            Ok(vec![
+                record("peer-ok"),
+                record("peer-dup"),
+                record("peer-off"),
+                record("peer-policy"),
+                record("peer-io"),
+            ])
+        });
+
+        let mut cipher = MockCipher::new();
+        cipher
+            .expect_encrypt()
+            .times(1)
+            .returning(|p| Ok(p.to_vec()));
+
+        let mut dispatch = MockDispatch::new();
+        dispatch
+            .expect_dispatch()
+            .with(eq(DeviceId::new("peer-ok")), always(), always())
+            .times(1)
+            .returning(|_, _, _| Ok(DispatchAck::Accepted));
+        dispatch
+            .expect_dispatch()
+            .with(eq(DeviceId::new("peer-dup")), always(), always())
+            .times(1)
+            .returning(|_, _, _| Ok(DispatchAck::DuplicateIgnored));
+        dispatch
+            .expect_dispatch()
+            .with(eq(DeviceId::new("peer-off")), always(), always())
+            .times(1)
+            .returning(|_, _, _| Err(ClipboardDispatchError::Offline));
+        dispatch
+            .expect_dispatch()
+            .with(eq(DeviceId::new("peer-policy")), always(), always())
+            .times(1)
+            .returning(|_, _, _| {
+                Err(ClipboardDispatchError::LocalPolicyExceeded(
+                    "too big".to_string(),
+                ))
+            });
+        dispatch
+            .expect_dispatch()
+            .with(eq(DeviceId::new("peer-io")), always(), always())
+            .times(1)
+            .returning(|_, _, _| Err(ClipboardDispatchError::Io("broken pipe".to_string())));
+
+        let spy = Arc::new(SpyEntryDeliveryRepo::default());
+        let uc = DispatchClipboardEntryUseCase::new(
+            Arc::new(repo),
+            Arc::new(make_member_repo_all_enabled()),
+            Arc::new(StaticPresence(ReachabilityState::Unknown)),
+            Arc::new(cipher),
+            Arc::new(dispatch),
+            Arc::new(make_device_identity("self-device")),
+            Arc::new(make_local_identity_stub()),
+            Arc::new(make_settings_stub()),
+            Arc::new(FixedClock(1_700_000_000_000)),
+            Arc::new(uc_observability::analytics::NoopAnalyticsSink),
+            Arc::new(AllMarkedFirstSyncState),
+            Arc::clone(&spy) as Arc<dyn EntryDeliveryRepositoryPort>,
+        );
+
+        let mut input = input();
+        input.entry_id = Some(EntryId::from("entry-1".to_string()));
+        let _ = uc.execute(input).await.expect("dispatch ok");
+
+        let attempts = spy.snapshot().await;
+        assert_eq!(attempts.len(), 5, "每个 target 写一行");
+
+        let by_target: std::collections::HashMap<String, &EntryDeliveryRecord> = attempts
+            .iter()
+            .map(|r| (r.target_device_id.to_string(), r))
+            .collect();
+        assert!(matches!(
+            by_target["peer-ok"].status,
+            EntryDeliveryStatus::Delivered
+        ));
+        assert!(by_target["peer-ok"].reason_detail.is_none());
+
+        assert!(matches!(
+            by_target["peer-dup"].status,
+            EntryDeliveryStatus::Duplicate
+        ));
+        assert!(by_target["peer-dup"].reason_detail.is_none());
+
+        assert!(matches!(
+            by_target["peer-off"].status,
+            EntryDeliveryStatus::Failed {
+                reason: DeliveryFailureReason::Offline
+            }
+        ));
+        assert!(
+            by_target["peer-off"].reason_detail.is_none(),
+            "Offline 无人类可读补充"
+        );
+
+        assert!(matches!(
+            by_target["peer-policy"].status,
+            EntryDeliveryStatus::Failed {
+                reason: DeliveryFailureReason::LocalPolicy
+            }
+        ));
+        assert_eq!(
+            by_target["peer-policy"].reason_detail.as_deref(),
+            Some("too big")
+        );
+
+        assert!(matches!(
+            by_target["peer-io"].status,
+            EntryDeliveryStatus::Failed {
+                reason: DeliveryFailureReason::Io
+            }
+        ));
+        assert_eq!(
+            by_target["peer-io"].reason_detail.as_deref(),
+            Some("broken pipe")
+        );
+
+        for rec in &attempts {
+            assert_eq!(rec.entry_id.to_string(), "entry-1");
+        }
+    }
+
+    /// entry_id=None 路径(CLI raw-bytes / 测试)永不触发落盘:dispatch
+    /// 自身不与某条 entry 绑定,落盘对应 entry_id 无处可写。
+    #[tokio::test]
+    async fn dispatch_without_entry_id_does_not_record_delivery() {
+        let mut repo = MockPeerAddrRepo::new();
+        repo.expect_list()
+            .times(1)
+            .returning(|| Ok(vec![record("peer-a")]));
+
+        let mut cipher = MockCipher::new();
+        cipher
+            .expect_encrypt()
+            .times(1)
+            .returning(|p| Ok(p.to_vec()));
+
+        let mut dispatch = MockDispatch::new();
+        dispatch
+            .expect_dispatch()
+            .times(1)
+            .returning(|_, _, _| Ok(DispatchAck::Accepted));
+
+        let spy = Arc::new(SpyEntryDeliveryRepo::default());
+        let uc = DispatchClipboardEntryUseCase::new(
+            Arc::new(repo),
+            Arc::new(make_member_repo_all_enabled()),
+            Arc::new(StaticPresence(ReachabilityState::Unknown)),
+            Arc::new(cipher),
+            Arc::new(dispatch),
+            Arc::new(make_device_identity("self-device")),
+            Arc::new(make_local_identity_stub()),
+            Arc::new(make_settings_stub()),
+            Arc::new(FixedClock(1_700_000_000_000)),
+            Arc::new(uc_observability::analytics::NoopAnalyticsSink),
+            Arc::new(AllMarkedFirstSyncState),
+            Arc::clone(&spy) as Arc<dyn EntryDeliveryRepositoryPort>,
+        );
+
+        let _ = uc.execute(input()).await.expect("dispatch ok");
+        assert!(
+            spy.snapshot().await.is_empty(),
+            "entry_id=None 时不应有 record_attempt 调用"
+        );
     }
 
     #[test]

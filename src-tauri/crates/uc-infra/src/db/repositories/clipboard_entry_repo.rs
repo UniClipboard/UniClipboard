@@ -314,6 +314,7 @@ mod tests {
             title: Some("test".into()),
             total_size: 0,
             pinned: false,
+            delivery_tracked: false,
         };
 
         executor

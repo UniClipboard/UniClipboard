@@ -3,6 +3,7 @@ mod clipboard_change_origin;
 mod clipboard_entry_repository;
 mod clipboard_event_repository;
 mod clipboard_selection_repository;
+mod delivery;
 mod local_clipboard;
 mod payload_resolver;
 mod platform_clipboard;
@@ -22,6 +23,7 @@ pub use clipboard_change_origin::ClipboardChangeOriginPort;
 pub use clipboard_entry_repository::ClipboardEntryRepositoryPort;
 pub use clipboard_event_repository::ClipboardEventRepositoryPort;
 pub use clipboard_selection_repository::ClipboardSelectionRepositoryPort;
+pub use delivery::EntryDeliveryRepositoryPort;
 pub use local_clipboard::SystemClipboardPort;
 pub use payload_resolver::{
     ClipboardPayloadResolverPort, PayloadResolveError, ResolvedClipboardPayload,

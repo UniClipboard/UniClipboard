@@ -192,4 +192,21 @@ where
             persisted.inline_data.unwrap_or_default(),
         ))
     }
+
+    async fn get_source_device(
+        &self,
+        event_id: &EventId,
+    ) -> Result<Option<uc_core::ids::DeviceId>> {
+        use crate::db::schema::clipboard_event;
+
+        let event_id_str = event_id.as_ref().to_string();
+        let source: Option<String> = self.executor.run(move |conn| {
+            Ok(clipboard_event::table
+                .filter(clipboard_event::event_id.eq(&event_id_str))
+                .select(clipboard_event::source_device)
+                .first::<String>(conn)
+                .optional()?)
+        })?;
+        Ok(source.map(uc_core::ids::DeviceId::new))
+    }
 }

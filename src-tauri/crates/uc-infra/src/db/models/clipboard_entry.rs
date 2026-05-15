@@ -12,6 +12,7 @@ pub struct ClipboardEntryRow {
     pub total_size: i64,
     pub pinned: bool,
     pub deleted_at_ms: Option<i64>,
+    pub delivery_tracked: bool,
 }
 
 #[derive(Insertable)]
@@ -24,4 +25,5 @@ pub struct NewClipboardEntryRow {
     pub title: Option<String>,
     pub total_size: i64,
     pub pinned: bool,
+    pub delivery_tracked: bool,
 }

@@ -42,7 +42,9 @@ pub use blob_transfer::{
 };
 pub use clipboard::{
     ClipboardSyncDeps, ClipboardSyncError, ClipboardSyncFacade, DispatchEntryInput,
-    DispatchEntryOutcome, DispatchEntryPerTarget, InboundAction, InboundNotice, IngestHandle,
+    DispatchEntryOutcome, DispatchEntryPerTarget, EntryDeliveryStatusView, EntryDeliveryTargetView,
+    EntryDeliveryView, EntrySource, GetEntryDeliveryViewError, InboundAction, InboundNotice,
+    IngestHandle,
 };
 pub use clipboard_capture::{
     CapturedClipboardEntryView, ClipboardCaptureFacade, ClipboardCaptureFacadeError,

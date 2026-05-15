@@ -2,6 +2,7 @@ import { File, Loader2 } from 'lucide-react'
 import React, { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useClipboardPreview } from './useClipboardPreview'
+import EntryDeliverySection from '@/components/clipboard/EntryDeliverySection'
 import VirtualizedText from '@/components/clipboard/VirtualizedText'
 
 interface ClipboardPreviewPaneProps {
@@ -16,7 +17,7 @@ function formatBytes(bytes: number): string {
 
 const ClipboardPreviewPane: React.FC<ClipboardPreviewPaneProps> = ({ entryId }) => {
   const { t } = useTranslation(undefined, { keyPrefix: 'previewPanel' })
-  const { preview, loading, error } = useClipboardPreview(entryId)
+  const { preview, loading, error, delivery } = useClipboardPreview(entryId)
   const isMac = useMemo(() => navigator.platform.toUpperCase().includes('MAC'), [])
 
   const isLargeText =
@@ -83,6 +84,8 @@ const ClipboardPreviewPane: React.FC<ClipboardPreviewPaneProps> = ({ entryId }) 
           </div>
         )}
       </div>
+
+      <EntryDeliverySection delivery={delivery} compact />
 
       <div className="flex items-center justify-start border-t border-border/50 px-3 py-1.5 text-[11px] text-muted-foreground">
         <span>{t('deleteHint', { modifier: isMac ? '⌥' : 'Alt+' })}</span>

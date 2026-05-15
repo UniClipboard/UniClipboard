@@ -1,4 +1,5 @@
 pub mod autostart;
+pub mod clipboard_delivery;
 pub mod error;
 pub mod factory_reset;
 pub mod mobile_sync;

@@ -415,6 +415,20 @@ impl AppFacade {
             })
     }
 
+    /// 取一条 entry 的"来源 + 每个对端同步状态"完整视图。GUI detail
+    /// 面板用它渲染"来自哪台设备 / 同步到了哪些设备 / 哪台失败"。
+    pub async fn get_entry_delivery_view(
+        &self,
+        entry_id: &uc_core::ids::EntryId,
+    ) -> Result<crate::facade::EntryDeliveryView, crate::facade::GetEntryDeliveryViewError> {
+        let facade = self.clipboard_sync.get().cloned().ok_or_else(|| {
+            crate::facade::GetEntryDeliveryViewError::Storage(
+                "clipboard sync facade unavailable".to_string(),
+            )
+        })?;
+        facade.get_entry_delivery_view(entry_id).await
+    }
+
     /// 发布 blob。
     pub async fn publish_blob(
         &self,

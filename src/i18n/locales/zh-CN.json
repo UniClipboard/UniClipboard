@@ -1193,6 +1193,35 @@
     "imageAlt": "剪贴板图片",
     "deleteHint": "{{modifier}}⌫ 删除"
   },
+  "delivery": {
+    "section": {
+      "aria": "条目同步状态"
+    },
+    "source": {
+      "label": "来自:",
+      "local": "本地",
+      "remote": "{{device}}",
+      "historical": "本机历史条目"
+    },
+    "list": {
+      "title": "同步状态",
+      "historical": "此条目在同步追踪启用前创建,无投递记录",
+      "noPeers": "暂未配对任何设备"
+    },
+    "status": {
+      "delivered": "已接收",
+      "duplicate": "已接收(去重)",
+      "pending": "未尝试",
+      "failedWithReason": "失败 · {{reason}}"
+    },
+    "failureReason": {
+      "offline": "对端离线",
+      "localPolicy": "本地策略阻断",
+      "peerRejected": "对端拒收",
+      "io": "网络错误",
+      "internal": "内部错误"
+    }
+  },
   "quickPanel": {
     "loading": "正在连接剪贴板历史...",
     "unavailable": "当前无法使用剪贴板历史。",

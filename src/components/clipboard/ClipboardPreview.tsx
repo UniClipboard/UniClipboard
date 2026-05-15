@@ -3,6 +3,7 @@ import React from 'react'
 import { useTranslation } from 'react-i18next'
 import type { DisplayClipboardItem } from './ClipboardContent'
 import ClipboardPreviewInfo from './ClipboardPreviewInfo'
+import EntryDeliverySection from './EntryDeliverySection'
 import CodePreview from './preview-renderers/CodePreview'
 import FilePreview from './preview-renderers/FilePreview'
 import ImagePreview from './preview-renderers/ImagePreview'
@@ -18,6 +19,7 @@ import {
 } from '@/api/clipboardItems'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { useClipboardPreviewState } from '@/hooks/useClipboardPreviewState'
+import { useEntryDelivery } from '@/hooks/useEntryDelivery'
 
 interface ClipboardPreviewProps {
   item: DisplayClipboardItem | null
@@ -35,6 +37,7 @@ const ClipboardPreview: React.FC<ClipboardPreviewProps> = ({ item, actions }) =>
     setImageDimensions,
     transfer,
   } = useClipboardPreviewState(item)
+  const { delivery } = useEntryDelivery(item?.id ?? null)
 
   if (!item) {
     return (
@@ -97,6 +100,8 @@ const ClipboardPreview: React.FC<ClipboardPreviewProps> = ({ item, actions }) =>
   return (
     <div className="flex flex-1 min-h-0 flex-col bg-background/20 backdrop-blur-sm">
       <ClipboardPreviewInfo item={item} preview={preview} imageDimensions={imageDimensions} />
+
+      <EntryDeliverySection delivery={delivery} />
 
       <div className="relative flex-1 min-h-0">
         {isLargeText ? (

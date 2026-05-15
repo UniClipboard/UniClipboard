@@ -203,6 +203,16 @@ export const commands = {
 	timestamp: number,
 } | null) => typedError<null, CommandError>(__TAURI_INVOKE("open_data_directory", { trace })),
 	/**
+	 *  拉一条 entry 的同步状态视图。
+	 * 
+	 *  前端 detail 面板在 entry 切换时调用,失败时(facade 未装配 / DB 故障)
+	 *  返回 `InternalError`;entry 不存在返回 `NotFound`,前端据此降级渲染。
+	 */
+	clipboardEntryDeliveryView: (entryId: string, trace: {
+	trace_id: string,
+	timestamp: number,
+} | null) => typedError<EntryDeliveryViewDto, CommandError>(__TAURI_INVOKE("clipboard_entry_delivery_view", { entryId, trace })),
+	/**
 	 *  Hide the quick panel, re-activate the previous app, and paste.
 	 * 
 	 *  隐藏快捷面板，重新激活之前的应用，并粘贴。
@@ -356,6 +366,9 @@ export type DaemonConnectionPayload = {
 	token: string,
 };
 
+/**  失败原因。i18n key 命名约定:`delivery.failureReason.<variant 小驼峰>`。 */
+export type DeliveryFailureReasonDto = "offline" | "localPolicy" | "peerRejected" | "io" | "internal";
+
 /**
  *  暴露给 webview 的设备和应用元数据，用于补齐前端 Sentry scope。
  * 
@@ -404,6 +417,42 @@ export type DownloadProgressSnapshot = {
 	total: number | null,
 	version: string | null,
 };
+
+/**  状态枚举:`tag` + `reason` 形式,便于前端区分四档与失败子分类。 */
+export type EntryDeliveryStatusDto = { tag: "pending" } | { tag: "delivered" } | { tag: "duplicate" } | { tag: "failed"; reason: DeliveryFailureReasonDto };
+
+export type EntryDeliveryTargetDto = {
+	targetDeviceId: string,
+	status: EntryDeliveryStatusDto,
+	/**  失败时的 wire 层错误细节,供 UI tooltip / 详情展开使用。 */
+	reasonDetail: string | null,
+	/**
+	 *  `Pending` 时为 `None`(从未尝试过)。`#[specta(type = ...)]` 告诉 specta
+	 *  这是个 ms 精度的 epoch,实际值不会超过 JS Number 安全整数范围 (~285 万年),
+	 *  用 `Number<i64>` 包装绕过 BigInt 禁用规则,与 mobile_sync.rs 的 `last_seen_at_ms`
+	 *  同源。
+	 */
+	updatedAtMs: number | null,
+};
+
+/**
+ *  `EntryDeliveryView` 的前端可序列化镜像。字段命名与领域模型保持一致,
+ *  只在序列化时改写成 camelCase。
+ */
+export type EntryDeliveryViewDto = {
+	entryId: string,
+	source: EntrySourceDto,
+	deliveries: EntryDeliveryTargetDto[],
+};
+
+/**  entry 来源描述。`tag` 字段供前端 discriminated union 直接 switch。 */
+export type EntrySourceDto = 
+/**  本机捕获。 */
+{ tag: "local" } | 
+/**  远端推送。`deviceId` 是来源设备,Phase 3 起补 `deviceName`。 */
+{ tag: "remote"; deviceId: string } | 
+/**  追踪机制启用前已存在的老 entry,无可靠投递信息。 */
+{ tag: "historical" };
 
 /**
  *  前端可 `error.code` switch 的 typed 错误。序列化形态:

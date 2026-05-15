@@ -1202,6 +1202,35 @@
     "imageAlt": "Clipboard image",
     "deleteHint": "{{modifier}}⌫ delete"
   },
+  "delivery": {
+    "section": {
+      "aria": "Entry sync status"
+    },
+    "source": {
+      "label": "From:",
+      "local": "this device",
+      "remote": "{{device}}",
+      "historical": "local history (legacy)"
+    },
+    "list": {
+      "title": "Sync status",
+      "historical": "Created before sync tracking; no delivery records",
+      "noPeers": "No paired devices yet"
+    },
+    "status": {
+      "delivered": "delivered",
+      "duplicate": "delivered (duplicate)",
+      "pending": "not attempted",
+      "failedWithReason": "failed · {{reason}}"
+    },
+    "failureReason": {
+      "offline": "peer offline",
+      "localPolicy": "blocked by local policy",
+      "peerRejected": "peer rejected",
+      "io": "network error",
+      "internal": "internal error"
+    }
+  },
   "quickPanel": {
     "loading": "Connecting clipboard history...",
     "unavailable": "Clipboard history is unavailable right now.",

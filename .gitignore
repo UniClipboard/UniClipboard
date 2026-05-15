@@ -7,6 +7,14 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
+# Project uses bun; npm/yarn/pnpm lockfiles must not be committed.
+# A stray package-lock.json at the repo root confuses Dependabot (opens
+# npm-ecosystem PRs that leave bun.lock out of sync) and Next.js workspace
+# detection in docs-site/.
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
 node_modules
 dist
 dist-ssr

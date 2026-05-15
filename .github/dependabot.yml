@@ -1,0 +1,55 @@
+# Dependabot configuration.
+#
+# Why this file exists: without an explicit config, Dependabot auto-detects
+# ecosystems from lockfiles. This repo has a stale `package-lock.json` that
+# made Dependabot open npm-ecosystem PRs which never updated the real bun
+# lockfiles, breaking every `bun install --frozen-lockfile` step in CI.
+# We removed `package-lock.json` and pin Dependabot to bun + cargo here.
+#
+# Reference: https://docs.github.com/en/code-security/dependabot/working-with-dependabot/dependabot-options-reference
+
+version: 2
+updates:
+  # Root frontend (Vite + Tauri webview)
+  - package-ecosystem: bun
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      bun-root:
+        patterns:
+          - "*"
+
+  # Docs site (Next.js)
+  - package-ecosystem: bun
+    directory: /docs-site
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      bun-docs-site:
+        patterns:
+          - "*"
+
+  # Cloudflare Worker (update server)
+  - package-ecosystem: bun
+    directory: /workers/update-server
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 3
+    groups:
+      bun-update-server:
+        patterns:
+          - "*"
+
+  # Rust workspace (Tauri backend)
+  - package-ecosystem: cargo
+    directory: /src-tauri
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      cargo-src-tauri:
+        patterns:
+          - "*"

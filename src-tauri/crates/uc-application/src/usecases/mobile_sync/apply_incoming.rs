@@ -49,6 +49,7 @@ use uc_core::mobile_sync::{MobileDeviceId, StagedFile};
 use uc_core::ports::mobile_sync::{MobileFileStagingError, MobileFileStagingPort};
 use uc_core::ports::ClockPort;
 use uc_core::{MimeType, ObservedClipboardRepresentation, SystemClipboardSnapshot};
+use uc_observability::analytics::{AnalyticsPort, Direction, Event, PayloadSizeBucket};
 
 use crate::facade::file_transfer::{
     CompleteTransfer, FailTransfer, FileTransferFacade, LinkTransferToEntry,
@@ -334,6 +335,12 @@ pub(crate) struct ApplyIncomingMobileClipUseCase {
     /// 的入口):mobile 上传仅落地本机, 不传播 —— 与本字段引入前的行
     /// 为完全一致, 不退化。
     fan_out: Option<Arc<dyn MobileInboundFanOutPort>>,
+    /// schema doc §7.6 / §12.2 P1：iPhone → 桌面剪贴板实际落地的 inbound
+    /// 计数。**仅** `SyncDoc` arm 的 `Applied` outcome emit
+    /// `MobileClipboardSynced { direction: Inbound, payload_size_bucket }`；
+    /// `Buffered` / `DuplicateSkipped` / `DecodeFailed` / `Err` 都不上报，
+    /// 沿用 `ClipboardEntryCaptured` 防 RemotePush 双计的红线哲学。
+    analytics: Arc<dyn AnalyticsPort>,
 }
 
 impl ApplyIncomingMobileClipUseCase {
@@ -344,6 +351,7 @@ impl ApplyIncomingMobileClipUseCase {
         clock: Arc<dyn ClockPort>,
         file_transfer: Option<Arc<FileTransferFacade>>,
         fan_out: Option<Arc<dyn MobileInboundFanOutPort>>,
+        analytics: Arc<dyn AnalyticsPort>,
     ) -> Self {
         Self {
             inbound,
@@ -352,6 +360,7 @@ impl ApplyIncomingMobileClipUseCase {
             clock,
             file_transfer,
             fan_out,
+            analytics,
         }
     }
 
@@ -435,9 +444,13 @@ impl ApplyIncomingMobileClipUseCase {
                 // Image / File 分支的 snapshot 内含完整字节, 无 fan-out
                 // 装配的场景(CLI fallback / 单测)不应该白付一份克隆开销。
                 let snapshot_for_fanout = self.fan_out.as_ref().map(|_| snapshot.clone());
+                // analytics 用：在 dispatch 消费 snapshot 之前把字节总数
+                // 取出来，避免在 outcome 分支里再保留一份 snapshot 引用。
+                let payload_bytes = snapshot.total_size_bytes().max(0) as u64;
                 let dispatch_outcome = self
                     .dispatch_inbound(source_device_id.clone(), snapshot)
                     .await;
+                self.maybe_emit_inbound_synced(&dispatch_outcome, payload_bytes);
                 self.maybe_fan_out_to_paired_peers(
                     &source_device_id,
                     &dispatch_outcome,
@@ -447,6 +460,30 @@ impl ApplyIncomingMobileClipUseCase {
                     .await;
                 dispatch_outcome
             }
+        }
+    }
+
+    /// schema doc §7.6 / §12.2 P1：iPhone → 桌面剪贴板实际落地 inbound。
+    ///
+    /// **仅** `Applied` outcome emit；`Buffered` / `DuplicateSkipped` /
+    /// `DecodeFailed` / `Err` 全不上报：
+    ///
+    /// - `DuplicateSkipped` 命中本机 dedup——内容此前已存在，重复埋点会
+    ///   让 dashboard 频率口径双计（沿用 `ClipboardEntryCaptured` RemotePush
+    ///   红线哲学）。
+    /// - `Buffered` 是文件两步 PUT 协议的中间态，不代表用户可感知的同步。
+    /// - `DecodeFailed` / `Err` 本机入站没成功，与产品视角的"sync 成功
+    ///   一次"语义不一致。
+    fn maybe_emit_inbound_synced(
+        &self,
+        outcome: &Result<ApplyIncomingMobileClipOutcome, ApplyIncomingMobileClipError>,
+        payload_bytes: u64,
+    ) {
+        if let Ok(ApplyIncomingMobileClipOutcome::Applied { .. }) = outcome {
+            self.analytics.capture(Event::MobileClipboardSynced {
+                direction: Direction::Inbound,
+                payload_size_bucket: PayloadSizeBucket::from_bytes(payload_bytes),
+            });
         }
     }
 
@@ -795,6 +832,8 @@ mod tests {
 
     use super::*;
 
+    use std::sync::Mutex;
+
     use anyhow::Result as AnyResult;
     use async_trait::async_trait;
     use mockall::predicate::*;
@@ -805,6 +844,33 @@ mod tests {
 
     use uc_core::mobile_sync::{StagedFile, StagedFileUri, StagingHandle};
     use uc_core::ports::mobile_sync::MobileFileStagingError;
+    use uc_observability::analytics::NoopAnalyticsSink;
+
+    /// 默认 noop sink——绝大多数已有测试只需要"event 不污染断言"，
+    /// 不在乎是否 emit。新增的 mobile_clipboard_synced 红线测试用
+    /// `capturing_analytics()` 拿到可断言句柄。
+    fn noop_analytics() -> Arc<dyn AnalyticsPort> {
+        Arc::new(NoopAnalyticsSink::default())
+    }
+
+    #[derive(Default)]
+    struct CapturingAnalyticsSink {
+        captured: Mutex<Vec<Event>>,
+    }
+    impl CapturingAnalyticsSink {
+        fn events(&self) -> Vec<Event> {
+            self.captured.lock().unwrap().clone()
+        }
+    }
+    impl AnalyticsPort for CapturingAnalyticsSink {
+        fn capture(&self, event: Event) {
+            self.captured.lock().unwrap().push(event);
+        }
+    }
+
+    fn capturing_analytics() -> Arc<CapturingAnalyticsSink> {
+        Arc::new(CapturingAnalyticsSink::default())
+    }
 
     // 流式落盘改造后,apply_incoming 本身不再触达 staging 写入方法 ——
     // stage_file / begin_stage / append_stage_chunk / finalize_stage /
@@ -934,6 +1000,7 @@ mod tests {
             Arc::new(FixedClock),
             None,
             None,
+            noop_analytics(),
         )
     }
 
@@ -953,6 +1020,7 @@ mod tests {
             Arc::new(FixedClock),
             None,
             None,
+            noop_analytics(),
         )
     }
 
@@ -988,6 +1056,7 @@ mod tests {
             Arc::new(FixedClock),
             None,
             None,
+            noop_analytics(),
         );
         (uc, buffer)
     }
@@ -1022,6 +1091,7 @@ mod tests {
             Arc::new(FixedClock),
             None,
             None,
+            noop_analytics(),
         );
         (uc, buffer)
     }
@@ -1045,6 +1115,7 @@ mod tests {
             Arc::new(FixedClock),
             None,
             None,
+            noop_analytics(),
         )
     }
 
@@ -1134,6 +1205,7 @@ mod tests {
             Arc::new(FixedClock),
             None,
             None,
+            noop_analytics(),
         );
         assert_eq!(buffer.len(), 0);
 
@@ -1364,6 +1436,7 @@ mod tests {
             Arc::new(FixedClock),
             None,
             None,
+            noop_analytics(),
         );
 
         // BufferFile event 注入 Windows-shape URI
@@ -1427,6 +1500,7 @@ mod tests {
             Arc::new(FixedClock),
             None,
             None,
+            noop_analytics(),
         );
 
         let outcome = uc
@@ -1507,6 +1581,7 @@ mod tests {
             Arc::new(FixedClock),
             None,
             Some(Arc::clone(&recorder) as Arc<dyn MobileInboundFanOutPort>),
+            noop_analytics(),
         );
 
         let outcome = uc
@@ -1555,6 +1630,7 @@ mod tests {
             Arc::new(FixedClock),
             None,
             Some(Arc::clone(&recorder) as Arc<dyn MobileInboundFanOutPort>),
+            noop_analytics(),
         );
 
         let outcome = uc
@@ -1594,6 +1670,7 @@ mod tests {
             Arc::new(FixedClock),
             None,
             Some(Arc::clone(&recorder) as Arc<dyn MobileInboundFanOutPort>),
+            noop_analytics(),
         );
 
         let outcome = uc
@@ -1633,6 +1710,7 @@ mod tests {
             Arc::new(FixedClock),
             None,
             Some(Arc::clone(&recorder) as Arc<dyn MobileInboundFanOutPort>),
+            noop_analytics(),
         );
 
         let outcome = uc
@@ -1682,6 +1760,7 @@ mod tests {
             Arc::new(FixedClock),
             None,
             None,
+            noop_analytics(),
         );
 
         let outcome = uc
@@ -1692,5 +1771,161 @@ mod tests {
             outcome,
             ApplyIncomingMobileClipOutcome::Applied { .. }
         ));
+    }
+
+    // ── tests: mobile_clipboard_synced 红线 (schema doc §7.6 / §12.2 P1) ──
+
+    /// 装配一个 happy-path use case + 可断言 analytics sink。
+    /// inbound 期望恰好 1 次 dedup miss + capture + write，返回指定 entry_id。
+    fn build_uc_with_analytics_expect_applied(
+        entry_id: &str,
+        analytics: Arc<dyn AnalyticsPort>,
+    ) -> ApplyIncomingMobileClipUseCase {
+        let mut repo = MockEntryRepo::new();
+        repo.expect_find_entry_id_by_snapshot_hash()
+            .times(1)
+            .returning(|_| Ok(None));
+        let mut capture = MockCapture::new();
+        let id_for_capture = EntryId::from(entry_id);
+        capture
+            .expect_capture()
+            .times(1)
+            .returning(move |_, _| Ok(Some(id_for_capture.clone())));
+        let mut write = MockWrite::new();
+        write.expect_write().times(1).returning(|_| Ok(()));
+        let inbound =
+            ApplyInboundClipboardUseCase::new(Arc::new(repo), Arc::new(capture), Arc::new(write));
+        ApplyIncomingMobileClipUseCase::new(
+            Arc::new(inbound),
+            Arc::new(IncomingMobileBuffer::new()),
+            staging_never_called(),
+            Arc::new(FixedClock),
+            None,
+            None,
+            analytics,
+        )
+    }
+
+    /// inbound 期望恰好 1 次 dedup-hit（返回 existing_entry_id），不进
+    /// capture / write。
+    fn build_uc_with_analytics_expect_dedup_hit(
+        existing_entry_id: &str,
+        analytics: Arc<dyn AnalyticsPort>,
+    ) -> ApplyIncomingMobileClipUseCase {
+        let mut repo = MockEntryRepo::new();
+        let id_clone = EntryId::from(existing_entry_id);
+        repo.expect_find_entry_id_by_snapshot_hash()
+            .times(1)
+            .returning(move |_| Ok(Some(id_clone.clone())));
+        let capture = MockCapture::new();
+        let write = MockWrite::new();
+        let inbound =
+            ApplyInboundClipboardUseCase::new(Arc::new(repo), Arc::new(capture), Arc::new(write));
+        ApplyIncomingMobileClipUseCase::new(
+            Arc::new(inbound),
+            Arc::new(IncomingMobileBuffer::new()),
+            staging_never_called(),
+            Arc::new(FixedClock),
+            None,
+            None,
+            analytics,
+        )
+    }
+
+    /// inbound + capture + write + staging 全无期望（短路在 use case 层）。
+    fn build_uc_with_analytics_expect_no_inbound(
+        analytics: Arc<dyn AnalyticsPort>,
+    ) -> ApplyIncomingMobileClipUseCase {
+        let repo = MockEntryRepo::new();
+        let capture = MockCapture::new();
+        let write = MockWrite::new();
+        let inbound =
+            ApplyInboundClipboardUseCase::new(Arc::new(repo), Arc::new(capture), Arc::new(write));
+        ApplyIncomingMobileClipUseCase::new(
+            Arc::new(inbound),
+            Arc::new(IncomingMobileBuffer::new()),
+            staging_never_called(),
+            Arc::new(FixedClock),
+            None,
+            None,
+            analytics,
+        )
+    }
+
+    #[tokio::test]
+    async fn applied_emits_mobile_clipboard_synced_inbound() {
+        let analytics = capturing_analytics();
+        let uc = build_uc_with_analytics_expect_applied(
+            "entry-text-1",
+            analytics.clone() as Arc<dyn AnalyticsPort>,
+        );
+        uc.execute(input_sync_doc(SyncClipboardItemType::Text, "hello", None))
+            .await
+            .expect("happy path");
+        // 5 bytes "hello" → Lt1Kb 桶。direction v1 恒为 inbound。
+        assert_eq!(
+            analytics.events(),
+            vec![Event::MobileClipboardSynced {
+                direction: Direction::Inbound,
+                payload_size_bucket: PayloadSizeBucket::Lt1Kb,
+            }]
+        );
+    }
+
+    #[tokio::test]
+    async fn duplicate_skipped_does_not_emit_synced() {
+        // dedup 命中 = 本机已存在该 content_hash；重复埋点会让 dashboard
+        // 频率口径双计，沿用 ClipboardEntryCaptured 防 RemotePush 双计的
+        // 红线哲学。
+        let analytics = capturing_analytics();
+        let uc = build_uc_with_analytics_expect_dedup_hit(
+            "entry-existing",
+            analytics.clone() as Arc<dyn AnalyticsPort>,
+        );
+        let outcome = uc
+            .execute(input_sync_doc(SyncClipboardItemType::Text, "hello", None))
+            .await
+            .expect("dedup hit returns Ok");
+        assert!(matches!(
+            outcome,
+            ApplyIncomingMobileClipOutcome::DuplicateSkipped { .. }
+        ));
+        assert!(analytics.events().is_empty(), "{:?}", analytics.events());
+    }
+
+    #[tokio::test]
+    async fn decode_failed_does_not_emit_synced() {
+        // 空 text → DecodeFailed；本机入站没成功，不应 emit synced。
+        let analytics = capturing_analytics();
+        let uc =
+            build_uc_with_analytics_expect_no_inbound(analytics.clone() as Arc<dyn AnalyticsPort>);
+        let outcome = uc
+            .execute(input_sync_doc(SyncClipboardItemType::Text, "", None))
+            .await
+            .expect("empty text returns Ok with DecodeFailed variant");
+        assert!(matches!(
+            outcome,
+            ApplyIncomingMobileClipOutcome::DecodeFailed { .. }
+        ));
+        assert!(analytics.events().is_empty(), "{:?}", analytics.events());
+    }
+
+    #[tokio::test]
+    async fn buffer_file_does_not_emit_synced() {
+        // BufferFile 是两步 PUT 协议的中间态，不是用户感知的同步。
+        let analytics = capturing_analytics();
+        let uc =
+            build_uc_with_analytics_expect_no_inbound(analytics.clone() as Arc<dyn AnalyticsPort>);
+        let outcome = uc
+            .execute(input_buffer_file(
+                "pic.png",
+                "image/png",
+                "file:///tmp/uc-staging/pic.png",
+                "pic.png",
+            ))
+            .await
+            .expect("buffer file returns Ok");
+        assert!(matches!(outcome, ApplyIncomingMobileClipOutcome::Buffered));
+        assert!(analytics.events().is_empty(), "{:?}", analytics.events());
     }
 }

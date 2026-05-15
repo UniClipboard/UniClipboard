@@ -27,10 +27,10 @@ pub use context::{
     Os,
 };
 pub use events::{
-    CaptureOrigin, Direction, Event, FailureReason, LatencyBucket, NameLengthBucket,
-    PairingFailureReason, PairingMethod, PayloadSizeBucket, PayloadType, SetupEntry,
-    SyncDeferReason, SyncDeferredProps, SyncEventProps, SyncFailureStage, TransportType,
-    UnlockFailureReason,
+    CaptureOrigin, Direction, Event, FailureReason, LatencyBucket, MobileAuthFailureKind,
+    NameLengthBucket, PairingFailureReason, PairingMethod, PayloadSizeBucket, PayloadType,
+    SetupEntry, SyncDeferReason, SyncDeferredProps, SyncEventProps, SyncFailureStage,
+    TransportType, UnlockFailureReason,
 };
 pub use ids::{load_or_create as load_or_create_ids, reset as reset_ids, AnalyticsIds};
 pub use port::{AnalyticsPort, NoopAnalyticsSink};

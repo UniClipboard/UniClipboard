@@ -224,6 +224,10 @@ pub fn build_mobile_sync_facade(
         file_transfer,
         clipboard_outbound,
         lan_lifecycle,
+        // schema doc §7.6 / §12.2 P1：mobile_sync 域共用 process-wide analytics
+        // sink。bootstrap 已把 GatedAnalyticsSink 包好，runtime 切换 noop / 真
+        // 实 sink 是 sink 自身职责，不在此装配。
+        analytics: deps.analytics.clone(),
     }))
 }
 

@@ -50,6 +50,7 @@ use uc_core::ports::{
     MobileFileStagingPort, MobileLanLifecyclePort, MobileLanTarget, MobileSyncEndpointInfoPort,
     PasswordHasherPort, SettingsPort,
 };
+use uc_observability::analytics::AnalyticsPort;
 
 use crate::facade::clipboard_outbound::ClipboardOutboundFacade;
 use crate::facade::file_transfer::FileTransferFacade;
@@ -197,6 +198,15 @@ pub struct MobileSyncFacadeDeps {
     ///   等下一次 daemon 进程启动时一次性读 settings 起 listener,
     ///   与本字段引入前的现有行为完全一致, 不退化。
     pub lan_lifecycle: Option<Arc<dyn MobileLanLifecyclePort>>,
+    /// schema doc §7.6 / §12.2 P1：产品 analytics sink。流向
+    /// `register_device` / `authenticate_basic` / `apply_incoming` 三个
+    /// use case，分别 emit `mobile_device_registered` /
+    /// `mobile_auth_failed` / `mobile_clipboard_synced`。
+    ///
+    /// 装配处直接复用 `AppDeps.analytics`（bootstrap 已包了一层
+    /// `GatedAnalyticsSink`，运行时按用户 `usage_analytics_enabled` 切换
+    /// noop / 真实 sink）。测试装配传 `NoopAnalyticsSink`。
+    pub analytics: Arc<dyn AnalyticsPort>,
 }
 
 // ─── Facade ─────────────────────────────────────────────────────────────
@@ -252,6 +262,7 @@ impl MobileSyncFacade {
             file_transfer,
             clipboard_outbound,
             lan_lifecycle,
+            analytics,
         } = deps;
 
         let snapshot_port: Arc<dyn LatestClipboardSnapshotPort> =
@@ -265,6 +276,7 @@ impl MobileSyncFacade {
                 settings.clone(),
                 clock.clone(),
                 lan_interface_probe.clone(),
+                analytics.clone(),
             ),
             revoke_device: RevokeMobileDeviceUseCase::new(device_repo.clone()),
             list_devices: ListMobileDevicesUseCase::new(device_repo.clone()),
@@ -279,7 +291,11 @@ impl MobileSyncFacade {
             ),
             update_settings: UpdateMobileSyncSettingsUseCase::new(settings),
             list_lan_interfaces: ListLanInterfacesUseCase::new(lan_interface_probe),
-            authenticate_basic: AuthenticateBasicAuthUseCase::new(device_repo, password_hasher),
+            authenticate_basic: AuthenticateBasicAuthUseCase::new(
+                device_repo,
+                password_hasher,
+                analytics.clone(),
+            ),
             // facade 装配处只能拿到 `ClipboardOutboundFacade`(由 daemon
             // runtime_assembly 装好),但 use case 依赖的是 use-case-local 的
             // `MobileInboundFanOutPort` trait。这里就是 facade 层的薄装配点:
@@ -296,6 +312,7 @@ impl MobileSyncFacade {
                     Arc::new(ClipboardOutboundFanOutAdapter::new(outbound))
                         as Arc<dyn MobileInboundFanOutPort>
                 }),
+                analytics,
             ),
             get_latest_doc: GetLatestMobileSyncDocUseCase::new(snapshot_port.clone()),
             get_file: GetMobileSyncFileUseCase::new(snapshot_port, file_staging.clone()),
@@ -963,6 +980,7 @@ mod tests {
             file_transfer: None,
             clipboard_outbound: None,
             lan_lifecycle: None,
+            analytics: Arc::new(uc_observability::analytics::NoopAnalyticsSink::default()),
         })
     }
 
@@ -1117,6 +1135,7 @@ mod tests {
             file_transfer: None,
             clipboard_outbound: None,
             lan_lifecycle: None,
+            analytics: Arc::new(uc_observability::analytics::NoopAnalyticsSink::default()),
         });
 
         // happy path
@@ -1196,6 +1215,7 @@ mod tests {
             file_transfer: None,
             clipboard_outbound: None,
             lan_lifecycle: None,
+            analytics: Arc::new(uc_observability::analytics::NoopAnalyticsSink::default()),
         });
 
         // 1. 旧密码可用
@@ -1304,6 +1324,7 @@ mod tests {
             file_transfer: None,
             clipboard_outbound: None,
             lan_lifecycle: Some(lifecycle),
+            analytics: Arc::new(uc_observability::analytics::NoopAnalyticsSink::default()),
         })
     }
 
@@ -1448,6 +1469,7 @@ mod tests {
             file_transfer: None,
             clipboard_outbound: None,
             lan_lifecycle: Some(lifecycle),
+            analytics: Arc::new(uc_observability::analytics::NoopAnalyticsSink::default()),
         });
 
         // enable 两开关 → lifecycle.apply(Enabled) → endpoint = BindFailed

@@ -110,6 +110,37 @@ pub enum Event {
     SyncFailed(SyncEventProps),
     /// 同步暂缓。目标在发送前已知不可用，本次不可达不计入失败。
     SyncDeferred(SyncDeferredProps),
+
+    // —— Mobile Sync ——————————————————————————————————————————————
+    /// 一台 iPhone Shortcut 设备登记成功（`register_device::execute` happy path）。
+    ///
+    /// schema doc §7.6 / §12.2 P1。iPhone Shortcut 集成的启用计数 anchor——
+    /// 当前完全 0 信号，仅靠日志推断。
+    MobileDeviceRegistered,
+
+    /// iPhone 与桌面之间剪贴板内容实际落地一次（`apply_incoming::execute`
+    /// SyncDoc arm 的 `Applied` outcome）。
+    ///
+    /// **仅 `Applied` 分支 emit**：`Buffered` / `DuplicateSkipped` /
+    /// `DecodeFailed` / `Err` 都不触发——`DuplicateSkipped` 已在本机存在
+    /// （`ClipboardEntryCaptured` 的 RemotePush 红线同理），重复广播会
+    /// 污染 dashboard 频率口径；`Buffered` 是文件两步 PUT 协议的中间态。
+    ///
+    /// v1 `direction` 恒为 [`Direction::Inbound`]——`GetLatestMobileSyncDoc`
+    /// 出站埋点延后到 v2（iPhone 客户端的轮询频率会让 outbound 量级比
+    /// inbound 高一个数量级，需要单独评估采样口径）。字段保留 enum 槽位
+    /// 是为了 v2 直接扩展（schema doc §8：新增 property 非破坏式）。
+    MobileClipboardSynced {
+        direction: Direction,
+        payload_size_bucket: PayloadSizeBucket,
+    },
+
+    /// iPhone Basic Auth 失败（`authenticate_basic::execute` 失败分支）。
+    ///
+    /// 401 响应对外**不**区分原因（侧信道防御）；telemetry 内部按
+    /// [`MobileAuthFailureKind`] 切分，让 dashboard 区分"用户名错"和
+    /// "密码错"——这是产品视角的 iPhone 端密码错误率指标。
+    MobileAuthFailed { failure_kind: MobileAuthFailureKind },
 }
 
 impl Event {
@@ -133,6 +164,9 @@ impl Event {
             Event::SyncSucceeded(_) => "sync_succeeded",
             Event::SyncFailed(_) => "sync_failed",
             Event::SyncDeferred(_) => "sync_deferred",
+            Event::MobileDeviceRegistered => "mobile_device_registered",
+            Event::MobileClipboardSynced { .. } => "mobile_clipboard_synced",
+            Event::MobileAuthFailed { .. } => "mobile_auth_failed",
         }
     }
 
@@ -229,6 +263,17 @@ impl Event {
                 .ok()
                 .and_then(|v| v.as_object().cloned())
                 .unwrap_or_default(),
+            Event::MobileDeviceRegistered => Map::new(),
+            Event::MobileClipboardSynced {
+                direction,
+                payload_size_bucket,
+            } => to_map(json!({
+                "direction": direction,
+                "payload_size_bucket": payload_size_bucket,
+            })),
+            Event::MobileAuthFailed { failure_kind } => {
+                to_map(json!({ "failure_kind": failure_kind }))
+            }
         }
     }
 }
@@ -433,6 +478,30 @@ pub enum UnlockFailureReason {
     Internal,
 }
 
+/// 移动端鉴权失败原因（`mobile_auth_failed` 专用）。
+///
+/// 与 `sync` / `pairing` / `unlock` 失败枚举不共享——schema doc §7.3 末尾
+/// 的 domain-specific failure enum 原则：不同 domain 的失败语义不重叠，
+/// 共享 enum 会让 funnel 跨 domain 误聚合。
+///
+/// **隐私契约对响应保持统一 401**（避免侧信道枚举哪种凭据存在），
+/// telemetry 这一面则按真实成因切分，让 dashboard 能定量回答"用户密码
+/// 错"vs"用户名拼错"vs"服务端故障"三类问题。`Internal` 占比 > 5%
+/// 视为本机持久化层 / hasher adapter 不稳定。
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[serde(rename_all = "snake_case")]
+pub enum MobileAuthFailureKind {
+    /// 头解析失败 / base64 损坏 / 用户名不存在——iPhone 端用错了
+    /// username 字段。
+    UnknownUser,
+    /// 用户名命中但密码校验失败，含 PHC 字符串本身损坏的兜底分支
+    /// （后者数量为零时不与"真实密码错"区分）。
+    PasswordMismatch,
+    /// 仓储 / hasher adapter 内部错误（DB I/O 故障、spawn_blocking
+    /// join 失败、Argon2 库内部异常等）。
+    Internal,
+}
+
 /// 剪贴板捕获来源（`clipboard_entry_captured` 专用）。
 ///
 /// **不**包含 `Inbound`——入站同步路径必须在调用点过滤掉，避免与
@@ -625,6 +694,20 @@ mod tests {
                     payload_size_bucket: PayloadSizeBucket::Lt1Kb,
                 },
                 "clipboard_entry_captured",
+            ),
+            (Event::MobileDeviceRegistered, "mobile_device_registered"),
+            (
+                Event::MobileClipboardSynced {
+                    direction: Direction::Inbound,
+                    payload_size_bucket: PayloadSizeBucket::Lt1Kb,
+                },
+                "mobile_clipboard_synced",
+            ),
+            (
+                Event::MobileAuthFailed {
+                    failure_kind: MobileAuthFailureKind::PasswordMismatch,
+                },
+                "mobile_auth_failed",
             ),
         ];
         for (event, expected) in cases {
@@ -859,6 +942,58 @@ mod tests {
                 "UnlockFailureReason::{reason:?}"
             );
         }
+    }
+
+    #[test]
+    fn mobile_auth_failure_kind_wire_format() {
+        // schema doc §7.6：3 个变体，不含 RateLimited（未实装速率限制）。
+        for (kind, expected) in [
+            (MobileAuthFailureKind::UnknownUser, "unknown_user"),
+            (MobileAuthFailureKind::PasswordMismatch, "password_mismatch"),
+            (MobileAuthFailureKind::Internal, "internal"),
+        ] {
+            assert_eq!(
+                serde_json::to_value(kind).unwrap(),
+                expected,
+                "MobileAuthFailureKind::{kind:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn mobile_clipboard_synced_properties() {
+        // v1 direction 恒为 inbound；保留字段为 v2 扩展非破坏式埋点 outbound。
+        let event = Event::MobileClipboardSynced {
+            direction: Direction::Inbound,
+            payload_size_bucket: PayloadSizeBucket::Kb1To100,
+        };
+        let props = event.properties();
+        assert_eq!(props.get("direction"), Some(&json!("inbound")));
+        assert_eq!(
+            props.get("payload_size_bucket"),
+            Some(&json!("1kb_to_100kb"))
+        );
+        // 没有 payload_type / transport_type / peer_os——这些与 inbound mobile
+        // 路径无关，避免误导 dashboard 分析。
+        assert!(!props.contains_key("payload_type"));
+        assert!(!props.contains_key("transport_type"));
+        assert!(!props.contains_key("peer_os"));
+    }
+
+    #[test]
+    fn mobile_device_registered_has_empty_properties() {
+        // 仅靠 EventContext 携带身份维度；事件 properties 为空。
+        let props = Event::MobileDeviceRegistered.properties();
+        assert!(props.is_empty(), "{props:?}");
+    }
+
+    #[test]
+    fn mobile_auth_failed_carries_failure_kind() {
+        let event = Event::MobileAuthFailed {
+            failure_kind: MobileAuthFailureKind::UnknownUser,
+        };
+        let props = event.properties();
+        assert_eq!(props.get("failure_kind"), Some(&json!("unknown_user")));
     }
 
     #[test]

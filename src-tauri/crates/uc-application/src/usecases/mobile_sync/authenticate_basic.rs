@@ -33,6 +33,7 @@ use tracing::instrument;
 
 use uc_core::mobile_sync::{MobileDevice, MobileDeviceError};
 use uc_core::ports::{MobileDeviceRepositoryPort, PasswordHasherError, PasswordHasherPort};
+use uc_observability::analytics::{AnalyticsPort, Event, MobileAuthFailureKind};
 
 // ─── public-shaped (input / output / error) ─────────────────────────────
 
@@ -76,16 +77,26 @@ pub enum AuthenticateBasicAuthError {
 pub(crate) struct AuthenticateBasicAuthUseCase {
     device_repo: Arc<dyn MobileDeviceRepositoryPort>,
     password_hasher: Arc<dyn PasswordHasherPort>,
+    /// schema doc §7.6 / §12.2 P1：iPhone Basic Auth 失败率 anchor。
+    ///
+    /// 401 响应对外**不**区分原因（侧信道防御），telemetry 内部按
+    /// [`MobileAuthFailureKind`] 切分让 dashboard 区分"用户名错"vs
+    /// "密码错"vs"服务端故障"——产品要回答 iPhone 端密码错误率。
+    /// happy path **不** emit（"成功"事件由 `mobile_clipboard_synced`
+    /// 间接覆盖，重复埋点会让 401 错误率分母失真）。
+    analytics: Arc<dyn AnalyticsPort>,
 }
 
 impl AuthenticateBasicAuthUseCase {
     pub(crate) fn new(
         device_repo: Arc<dyn MobileDeviceRepositoryPort>,
         password_hasher: Arc<dyn PasswordHasherPort>,
+        analytics: Arc<dyn AnalyticsPort>,
     ) -> Self {
         Self {
             device_repo,
             password_hasher,
+            analytics,
         }
     }
 
@@ -104,16 +115,24 @@ impl AuthenticateBasicAuthUseCase {
             Some(pair) => pair,
             None => {
                 self.run_dummy_verify().await;
+                // 头解析失败的语义与"用户名不存在"在 telemetry 上等价：
+                // 都表示客户端送来了无法对应到已知 device 的凭据。
+                self.emit_failure(MobileAuthFailureKind::UnknownUser);
                 return Err(AuthenticateBasicAuthError::InvalidCredentials);
             }
         };
 
         // 2. 查仓储。
-        let found = self
-            .device_repo
-            .find_by_username(&username)
-            .await
-            .map_err(translate_device_error)?;
+        let found = match self.device_repo.find_by_username(&username).await {
+            Ok(found) => found,
+            Err(err) => {
+                // 仓储读失败属于服务端内部错误 —— 与"凭据无效"语义不同，
+                // 单独归类 Internal 让 dashboard 区分"用户密码错"vs
+                // "服务端故障"。
+                self.emit_failure(MobileAuthFailureKind::Internal);
+                return Err(translate_device_error(err));
+            }
+        };
 
         // 3. 跑一次 verify, 命中 / 未命中走相同长度的 CPU 工作。
         let device = match found {
@@ -121,14 +140,21 @@ impl AuthenticateBasicAuthUseCase {
                 let phc = device.password_hash.clone();
                 match self.password_hasher.verify(&password, &phc).await {
                     Ok(true) => device,
-                    Ok(false) => return Err(AuthenticateBasicAuthError::InvalidCredentials),
+                    Ok(false) => {
+                        self.emit_failure(MobileAuthFailureKind::PasswordMismatch);
+                        return Err(AuthenticateBasicAuthError::InvalidCredentials);
+                    }
                     Err(PasswordHasherError::InvalidPhc(_)) => {
                         // PHC 本身损坏 —— 当作 401, 不暴露给攻击者细节。
                         // 不算 Internal: 仓储里这条记录已坏, 用户重新登记
-                        // 即可解决, 不该让 caller 重试当前请求。
+                        // 即可解决, 不该让 caller 重试当前请求。telemetry
+                        // 归 PasswordMismatch —— 与"真实密码错"在产品视角
+                        // 等价（用户在 iPhone 端的实际症状一致：401）。
+                        self.emit_failure(MobileAuthFailureKind::PasswordMismatch);
                         return Err(AuthenticateBasicAuthError::InvalidCredentials);
                     }
                     Err(PasswordHasherError::Internal(msg)) => {
+                        self.emit_failure(MobileAuthFailureKind::Internal);
                         return Err(AuthenticateBasicAuthError::Internal(msg));
                     }
                 }
@@ -136,11 +162,19 @@ impl AuthenticateBasicAuthUseCase {
             None => {
                 // 用户名不存在 —— 仍跑一次 verify 让耗时一致, 然后返回 401。
                 self.run_dummy_verify().await;
+                self.emit_failure(MobileAuthFailureKind::UnknownUser);
                 return Err(AuthenticateBasicAuthError::InvalidCredentials);
             }
         };
 
         Ok(AuthenticatedDevice { device })
+    }
+
+    /// emit `mobile_auth_failed` 的薄包装。inline 写会让 6 个失败分支重复
+    /// 6 次同一行，挑出来更易回归。
+    fn emit_failure(&self, failure_kind: MobileAuthFailureKind) {
+        self.analytics
+            .capture(Event::MobileAuthFailed { failure_kind });
     }
 
     /// 跑一次 dummy verify, 让"用户名不存在"路径与"用户名存在但密码错"
@@ -207,9 +241,26 @@ fn translate_device_error(err: MobileDeviceError) -> AuthenticateBasicAuthError 
 mod tests {
     use super::*;
 
+    use std::sync::Mutex;
+
     use async_trait::async_trait;
 
     use uc_core::mobile_sync::{MobileClientType, MobileDeviceId};
+
+    #[derive(Default)]
+    struct CapturingAnalyticsSink {
+        captured: Mutex<Vec<Event>>,
+    }
+    impl CapturingAnalyticsSink {
+        fn events(&self) -> Vec<Event> {
+            self.captured.lock().unwrap().clone()
+        }
+    }
+    impl AnalyticsPort for CapturingAnalyticsSink {
+        fn capture(&self, event: Event) {
+            self.captured.lock().unwrap().push(event);
+        }
+    }
 
     mockall::mock! {
         DeviceRepo {}
@@ -293,7 +344,25 @@ mod tests {
     }
 
     fn build_uc(devices: Vec<MobileDevice>) -> AuthenticateBasicAuthUseCase {
-        AuthenticateBasicAuthUseCase::new(Arc::new(repo_with(devices)), Arc::new(fake_hasher()))
+        AuthenticateBasicAuthUseCase::new(
+            Arc::new(repo_with(devices)),
+            Arc::new(fake_hasher()),
+            Arc::new(CapturingAnalyticsSink::default()),
+        )
+    }
+
+    /// build_uc 的 capture-asserting 版本：返回 use case + sink，调用方
+    /// 可在失败路径上断言 `MobileAuthFailed.failure_kind` 的具体取值。
+    fn build_uc_with_sink(
+        devices: Vec<MobileDevice>,
+    ) -> (AuthenticateBasicAuthUseCase, Arc<CapturingAnalyticsSink>) {
+        let analytics = Arc::new(CapturingAnalyticsSink::default());
+        let uc = AuthenticateBasicAuthUseCase::new(
+            Arc::new(repo_with(devices)),
+            Arc::new(fake_hasher()),
+            analytics.clone(),
+        );
+        (uc, analytics)
     }
 
     fn header_for(username: &str, password: &str) -> String {
@@ -367,7 +436,11 @@ mod tests {
         // 都返 Ok(false))。仓储**永远不该**在头坏时被查,断言 never。
         let mut repo = MockDeviceRepo::new();
         repo.expect_find_by_username().never();
-        let uc = AuthenticateBasicAuthUseCase::new(Arc::new(repo), Arc::new(fake_hasher()));
+        let uc = AuthenticateBasicAuthUseCase::new(
+            Arc::new(repo),
+            Arc::new(fake_hasher()),
+            Arc::new(CapturingAnalyticsSink::default()),
+        );
 
         for bad in [
             "",
@@ -411,7 +484,11 @@ mod tests {
         let mut repo = MockDeviceRepo::new();
         repo.expect_find_by_username()
             .returning(|_| Err(MobileDeviceError::Storage("disk gone".into())));
-        let uc = AuthenticateBasicAuthUseCase::new(Arc::new(repo), Arc::new(fake_hasher()));
+        let uc = AuthenticateBasicAuthUseCase::new(
+            Arc::new(repo),
+            Arc::new(fake_hasher()),
+            Arc::new(CapturingAnalyticsSink::default()),
+        );
 
         let err = uc
             .execute(AuthenticateBasicAuthInput {
@@ -433,8 +510,11 @@ mod tests {
             .expect_verify()
             .returning(|_, _| Err(PasswordHasherError::Internal("forced".into())));
 
-        let uc =
-            AuthenticateBasicAuthUseCase::new(Arc::new(repo_with(vec![device])), Arc::new(hasher));
+        let uc = AuthenticateBasicAuthUseCase::new(
+            Arc::new(repo_with(vec![device])),
+            Arc::new(hasher),
+            Arc::new(CapturingAnalyticsSink::default()),
+        );
         let err = uc
             .execute(AuthenticateBasicAuthInput {
                 authorization_header: header_for("mobile_aaaa", "hunter2"),
@@ -442,5 +522,149 @@ mod tests {
             .await
             .unwrap_err();
         assert!(matches!(err, AuthenticateBasicAuthError::Internal(_)));
+    }
+
+    // ── tests: analytics emit (schema doc §7.6 / §12.2 P1) ────────────
+
+    #[tokio::test]
+    async fn happy_path_does_not_emit_failure() {
+        // mobile_auth_failed 仅在失败路径 emit；happy path 必须沉默
+        // （“成功”信号由 mobile_clipboard_synced 间接覆盖）。
+        let device = make_device("mobile_aaaa", "phc:hunter2");
+        let (uc, analytics) = build_uc_with_sink(vec![device]);
+        uc.execute(AuthenticateBasicAuthInput {
+            authorization_header: header_for("mobile_aaaa", "hunter2"),
+        })
+        .await
+        .expect("ok");
+        assert!(analytics.events().is_empty(), "{:?}", analytics.events());
+    }
+
+    #[tokio::test]
+    async fn unknown_username_emits_unknown_user_kind() {
+        let (uc, analytics) = build_uc_with_sink(vec![]);
+        uc.execute(AuthenticateBasicAuthInput {
+            authorization_header: header_for("mobile_ghost", "anything"),
+        })
+        .await
+        .unwrap_err();
+        assert_eq!(
+            analytics.events(),
+            vec![Event::MobileAuthFailed {
+                failure_kind: MobileAuthFailureKind::UnknownUser,
+            }]
+        );
+    }
+
+    #[tokio::test]
+    async fn malformed_header_emits_unknown_user_kind() {
+        // 头解析失败与"用户名不存在"在 telemetry 上等价 —— iPhone 客户端
+        // 实际表现都是 401。
+        let mut repo = MockDeviceRepo::new();
+        repo.expect_find_by_username().never();
+        let analytics = Arc::new(CapturingAnalyticsSink::default());
+        let uc = AuthenticateBasicAuthUseCase::new(
+            Arc::new(repo),
+            Arc::new(fake_hasher()),
+            analytics.clone(),
+        );
+        uc.execute(AuthenticateBasicAuthInput {
+            authorization_header: "basic notbase64!!!".into(),
+        })
+        .await
+        .unwrap_err();
+        assert_eq!(
+            analytics.events(),
+            vec![Event::MobileAuthFailed {
+                failure_kind: MobileAuthFailureKind::UnknownUser,
+            }]
+        );
+    }
+
+    #[tokio::test]
+    async fn wrong_password_emits_password_mismatch_kind() {
+        let device = make_device("mobile_aaaa", "phc:rightpw");
+        let (uc, analytics) = build_uc_with_sink(vec![device]);
+        uc.execute(AuthenticateBasicAuthInput {
+            authorization_header: header_for("mobile_aaaa", "wrongpw"),
+        })
+        .await
+        .unwrap_err();
+        assert_eq!(
+            analytics.events(),
+            vec![Event::MobileAuthFailed {
+                failure_kind: MobileAuthFailureKind::PasswordMismatch,
+            }]
+        );
+    }
+
+    #[tokio::test]
+    async fn corrupt_phc_emits_password_mismatch_kind() {
+        // PHC 损坏在产品视角与"真实密码错"等价 —— 用户在 iPhone 端的
+        // 症状一致，归 PasswordMismatch 让 dashboard 不会被一种罕见
+        // adapter 故障污染 Internal 占比。
+        let device = make_device("mobile_aaaa", "PHC_BROKEN");
+        let (uc, analytics) = build_uc_with_sink(vec![device]);
+        uc.execute(AuthenticateBasicAuthInput {
+            authorization_header: header_for("mobile_aaaa", "anything"),
+        })
+        .await
+        .unwrap_err();
+        assert_eq!(
+            analytics.events(),
+            vec![Event::MobileAuthFailed {
+                failure_kind: MobileAuthFailureKind::PasswordMismatch,
+            }]
+        );
+    }
+
+    #[tokio::test]
+    async fn storage_error_emits_internal_kind() {
+        let mut repo = MockDeviceRepo::new();
+        repo.expect_find_by_username()
+            .returning(|_| Err(MobileDeviceError::Storage("disk gone".into())));
+        let analytics = Arc::new(CapturingAnalyticsSink::default());
+        let uc = AuthenticateBasicAuthUseCase::new(
+            Arc::new(repo),
+            Arc::new(fake_hasher()),
+            analytics.clone(),
+        );
+        uc.execute(AuthenticateBasicAuthInput {
+            authorization_header: header_for("mobile_aaaa", "x"),
+        })
+        .await
+        .unwrap_err();
+        assert_eq!(
+            analytics.events(),
+            vec![Event::MobileAuthFailed {
+                failure_kind: MobileAuthFailureKind::Internal,
+            }]
+        );
+    }
+
+    #[tokio::test]
+    async fn hasher_internal_error_emits_internal_kind() {
+        let device = make_device("mobile_aaaa", "phc:hunter2");
+        let mut hasher = MockHasher::new();
+        hasher
+            .expect_verify()
+            .returning(|_, _| Err(PasswordHasherError::Internal("forced".into())));
+        let analytics = Arc::new(CapturingAnalyticsSink::default());
+        let uc = AuthenticateBasicAuthUseCase::new(
+            Arc::new(repo_with(vec![device])),
+            Arc::new(hasher),
+            analytics.clone(),
+        );
+        uc.execute(AuthenticateBasicAuthInput {
+            authorization_header: header_for("mobile_aaaa", "hunter2"),
+        })
+        .await
+        .unwrap_err();
+        assert_eq!(
+            analytics.events(),
+            vec![Event::MobileAuthFailed {
+                failure_kind: MobileAuthFailureKind::Internal,
+            }]
+        );
     }
 }

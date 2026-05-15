@@ -450,6 +450,51 @@ pub enum UnlockFailureReason {
 
 mapping：`SpaceAccessError::WrongPassphrase` → `PassphraseMismatch`；`NotInitialized` → `SpaceNotFound`；`CorruptedKeyMaterial` → `KeyslotCorrupted`；其它（`Internal` / 未分类）→ `Internal`。pre-condition 失败 `SetupNotCompleted` **不** emit（语义不属于"用户能不能继续用产品"）。`Internal` 占比 > 5% 视为本机持久化层不稳定，按 §7.3 末尾原则专门排查。
 
+### 7.6 Mobile Sync 事件清单
+
+P1 落地（2026-05-15）。LAN HTTP 协议（iPhone Shortcut 客户端）三件套：
+
+| 事件名 | 触发位置 | 关键 properties |
+|---|---|---|
+| `mobile_device_registered` | `mobile_sync/register_device.rs::execute` 成功（`device_repo.save` 之后） | （仅 EventContext） |
+| `mobile_clipboard_synced` | `mobile_sync/apply_incoming.rs::execute` SyncDoc arm 的 `Applied` outcome | `direction`: `inbound` \| `outbound`（v1 恒为 `inbound`）, `payload_size_bucket` |
+| `mobile_auth_failed` | `mobile_sync/authenticate_basic.rs::execute` 失败分支 | `failure_kind`: `MobileAuthFailureKind`（见 §7.7） |
+
+**`mobile_clipboard_synced` 红线**：仅 `Applied` outcome emit；`Buffered`（两步 PUT 协议中间态）/ `DuplicateSkipped`（命中本机 dedup）/ `DecodeFailed` / 应用层错误一律不上报。沿用 `clipboard_entry_captured` 防 RemotePush 双计的红线哲学——重复埋点会让 dashboard 频率口径双计。
+
+**v1 `direction = Inbound` 恒值**：`GetLatestMobileSyncDoc` 出站埋点延后到 v2。原因——iPhone 客户端的轮询频率会让 outbound 量级比 inbound 高一个数量级，需要单独评估采样口径。`direction` 字段保留枚举槽位是为了 v2 直接扩展（§8：新增 property 取值非破坏式演化，dashboard 零迁移）。
+
+**`mobile_auth_failed` happy path 沉默**：401 响应对外不区分原因（侧信道防御），但 telemetry 仅在失败路径 emit；"成功"信号由 `mobile_clipboard_synced` 间接覆盖，重复埋点会让 401 错误率分母失真。
+
+落地备注（保留以便回溯）：
+
+- `mobile_device_registered`：emit 在 `device_repo.save` 成功之后、QR 渲染之前——后续 QR 渲染失败仍保留事件（schema 主目录说明"已登记但拿不到 install URL"是孤儿记录路径，但设备 IS registered，telemetry 反映事实）。
+- `mobile_clipboard_synced`：`payload_size_bucket` 用 `PayloadSizeBucket::from_bytes(snapshot.total_size_bytes())`。BufferFile arm 不 emit（中间态），SyncDoc DuplicateSkipped 不 emit（dedup 双计红线）。
+- `mobile_auth_failed`：6 个失败分支统一走 `emit_failure(kind)` 薄包装；happy path **不** emit——产品视角"成功"由 `mobile_clipboard_synced` inbound 间接覆盖。
+
+### 7.7 MobileAuthFailureKind 枚举（mobile_auth_failed 专用）
+
+```rust
+pub enum MobileAuthFailureKind {
+    UnknownUser,        // 头解析失败 / base64 损坏 / find_by_username 为 None
+    PasswordMismatch,   // verify=false + InvalidPhc（PHC 损坏在产品视角与"真实密码错"等价）
+    Internal,           // 仓储 Storage 错误 + hasher Internal
+}
+```
+
+mapping：
+
+- 头解析失败 → `UnknownUser`（与"用户名不存在"在 telemetry 上等价：iPhone 客户端表现都是 401）
+- `find_by_username == None` → `UnknownUser`
+- hasher `verify == Ok(false)` → `PasswordMismatch`
+- hasher `Err(InvalidPhc)` → `PasswordMismatch`（PHC 字符串损坏的兜底；归 PasswordMismatch 让 dashboard 不会被一种罕见 adapter 故障污染 Internal 占比）
+- repository `Err(Storage)` → `Internal`
+- hasher `Err(Internal)` → `Internal`
+
+与 `sync` / `pairing` / `unlock` 失败枚举不共享——§7.3 末尾 domain-specific failure enum 原则。`Internal` 占比 > 5% 视为本机持久化层 / hasher adapter 不稳定。
+
+**槽位未使用**：`RateLimited` 不在本枚举内——v1 LAN listener 尚未实装速率限制；若未来加 rate limit，独立新增变体（非破坏式扩展）。
+
 ## 8. Schema 演化策略
 
 | 变更类型 | 处理方式 |
@@ -738,9 +783,9 @@ build 时间注入的 secret 列表。CI 注入位置（计划）：
 | `blob_fetch_failed` | `fetch_blob::execute` 失败路径 | `{ payload_size_bucket, failure_reason: BlobFetchFailureReason }` | 同上，区分 iroh 拨号 / 磁盘满 / 完整性校验 |
 | `space_switched` | `setup/switch_space/mod.rs` Phase 4 commit 完成 | `{ duration_ms: u32 }` | 高粘性用户行为信号——只有真在用产品的人才会换空间 |
 | `space_switch_failed` | `switch_space` 任一阶段失败 | `{ failure_phase: MigrationPhase, failure_reason: SwitchSpaceFailureReason }` | 4 阶段迁移的失败分布；诊断价值高 |
-| `mobile_device_registered` | `mobile_sync/register_device.rs::execute` 成功 | （仅 EventContext） | iPhone Shortcut 集成的启用计数；当前 0 信号 |
-| `mobile_clipboard_synced` | `mobile_sync/apply_incoming.rs::execute`（入站 PUT）+ `get_latest_doc::execute`（出站 GET）成功路径 | `{ direction: outbound\|inbound, payload_size_bucket }` | mobile sync 实际使用频率 |
-| `mobile_auth_failed` | `mobile_sync/authenticate_basic.rs::execute` 失败 | `{ failure_kind: MobileAuthFailureKind }` | iPhone 端密码错误率 |
+| ~~`mobile_device_registered`~~ ✅ | `mobile_sync/register_device.rs::execute` 成功 | （仅 EventContext） | iPhone Shortcut 集成的启用计数；当前 0 信号 |
+| ~~`mobile_clipboard_synced`~~ ✅ | `mobile_sync/apply_incoming.rs::execute` SyncDoc Applied（出站 GET 埋点延后到 v2） | `{ direction: inbound, payload_size_bucket }` | mobile sync 实际使用频率 |
+| ~~`mobile_auth_failed`~~ ✅ | `mobile_sync/authenticate_basic.rs::execute` 失败 | `{ failure_kind: MobileAuthFailureKind }` | iPhone 端密码错误率 |
 
 新增枚举：
 
@@ -763,10 +808,13 @@ pub enum SwitchSpaceFailureReason {
     Internal,
 }
 
+// mobile_sync 三件套已落地（2026-05-15）—— 当前权威 schema 在 §7.6 / §7.7。
+// 注意：原稿 RateLimited 在落地时删除，因为 v1 未实装速率限制；§7.7 仅保留 3 变体。
+// 历史草稿（保留作设计回溯）：
 pub enum MobileAuthFailureKind {
     UnknownUser,
     PasswordMismatch,
-    RateLimited,
+    RateLimited,   // ← 落地时移除
     Internal,
 }
 ```
@@ -775,7 +823,7 @@ pub enum MobileAuthFailureKind {
 
 - blob_transfer use case 不持有 analytics，需新加构造参数 + bootstrap wiring。
 - `space_switched` 的 `target_space_id_hash` **不传**，避免与 `EventContext.space_id_hash` 重复。
-- mobile_sync 三件套埋点是独立 PR，避免与桌面同步路径混在一起评审。
+- ~~mobile_sync 三件套埋点是独立 PR~~ ✅ 已落地（2026-05-15）。出站 GET 埋点延后到 v2，`direction` 字段保留枚举槽位备 v2 非破坏式扩展。
 
 ### 12.3 P2 — Engagement 与 Retention 信号
 
@@ -822,7 +870,7 @@ pub enum AgeBucket { Lt1H, H1To1D, D1To7D, Gt7D }
 ### 12.6 实施节奏建议
 
 - **一次 PR 完成 P0 全部 4 项**：都在 `uc-application` 内部，影响面集中。
-- **P1 拆 3 个 PR**：blob_transfer / switch_space / mobile_sync，三个 domain 各自独立 review。
+- **P1 拆 3 个 PR**：blob_transfer / switch_space / ~~mobile_sync~~，三个 domain 各自独立 review。mobile_sync 已落地（2026-05-15），剩余 blob_transfer / switch_space 待开。
 - **P2 视产品侧需求驱动**：哪个漏斗先被产品问到就先实施哪个；不要打包。
 - **每个新事件都同步更新本文件 §7 对应分类**：把表格从本节迁出去落到 §7（v1 catalog 的扩展），并把本节对应行 strikethrough 或删除。
 

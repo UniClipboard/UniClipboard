@@ -120,7 +120,7 @@ const WindowedLongText: React.FC<{ text: string; className?: string }> = ({ text
         <>
           <div style={{ height: renderData.topHeight }} />
           <div
-            className="whitespace-pre-wrap font-mono text-sm leading-relaxed text-foreground/90"
+            className="selectable whitespace-pre-wrap font-mono text-sm leading-relaxed text-foreground/90"
             style={{ wordBreak: 'break-all' }}
           >
             {renderData.visibleText}
@@ -158,7 +158,7 @@ const VirtualizedText: React.FC<VirtualizedTextProps> = ({ text, className }) =>
       className={className}
       itemContent={(_index, line) => (
         <div
-          className="whitespace-pre-wrap font-mono text-sm leading-relaxed text-foreground/90"
+          className="selectable whitespace-pre-wrap font-mono text-sm leading-relaxed text-foreground/90"
           style={{ wordBreak: 'break-all' }}
         >
           {line || '\u00A0'}

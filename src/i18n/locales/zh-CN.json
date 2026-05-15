@@ -962,7 +962,7 @@
         "invalidLanParameter": "LAN 参数不合法：{{reason}}",
         "settingsLoadFailed": "加载设置失败：{{message}}",
         "settingsSaveFailed": "保存设置失败：{{message}}",
-        "endpointInfoProbeFailed": "无法探测当前 LAN 地址：{{message}}",
+        "endpointInfoFailed": "无法探测当前 LAN 地址：{{message}}",
         "lanProbeFailed": "无法列出网络接口：{{message}}",
         "noLanInterfaceAvailable": "未检测到可用的局域网 IPv4 地址。请连入局域网，或在「配置 → 监听 IP」中手动指定一个具体地址后再试。",
         "persistenceFailed": "保存失败：{{message}}",

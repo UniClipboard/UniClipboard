@@ -509,8 +509,8 @@ function translateMobileSyncError(t: ReturnType<typeof useTranslation>['t'], err
         return t('devices.mobileSync.errors.settingsLoadFailed', { message: e.message })
       case 'SETTINGS_SAVE_FAILED':
         return t('devices.mobileSync.errors.settingsSaveFailed', { message: e.message })
-      case 'ENDPOINT_INFO_PROBE_FAILED':
-        return t('devices.mobileSync.errors.endpointInfoProbeFailed', { message: e.message })
+      case 'ENDPOINT_INFO_FAILED':
+        return t('devices.mobileSync.errors.endpointInfoFailed', { message: e.message })
       case 'LAN_PROBE_FAILED':
         return t('devices.mobileSync.errors.lanProbeFailed', { message: e.message })
       case 'PERSISTENCE_FAILED':

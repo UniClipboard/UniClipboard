@@ -971,7 +971,7 @@
         "invalidLanParameter": "Invalid LAN parameter: {{reason}}",
         "settingsLoadFailed": "Failed to load settings: {{message}}",
         "settingsSaveFailed": "Failed to save settings: {{message}}",
-        "endpointInfoProbeFailed": "Failed to probe current LAN address: {{message}}",
+        "endpointInfoFailed": "Failed to probe current LAN address: {{message}}",
         "lanProbeFailed": "Failed to list network interfaces: {{message}}",
         "noLanInterfaceAvailable": "No usable LAN IPv4 address detected. Connect to a LAN, or pick a specific address under Configure → Bind IP, then try again.",
         "persistenceFailed": "Save failed: {{message}}",

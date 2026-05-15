@@ -203,15 +203,6 @@ export const commands = {
 	timestamp: number,
 } | null) => typedError<null, CommandError>(__TAURI_INVOKE("open_data_directory", { trace })),
 	/**
-	 *  Enables rounded corners for the window (macOS only)
-	 *  Uses only public APIs - App Store compatible
-	 */
-	enableRoundedCorners: (offsetX: number | null, offsetY: number | null) => typedError<null, string>(__TAURI_INVOKE("enable_rounded_corners", { offsetX, offsetY })),
-	/**  Enables modern window style with rounded corners and shadow */
-	enableModernWindowStyle: (cornerRadius: number | null, offsetX: number | null, offsetY: number | null) => typedError<null, string>(__TAURI_INVOKE("enable_modern_window_style", { cornerRadius, offsetX, offsetY })),
-	/**  Repositions Traffic Lights only (useful after fullscreen toggle) */
-	repositionTrafficLights: (offsetX: number | null, offsetY: number | null) => typedError<null, string>(__TAURI_INVOKE("reposition_traffic_lights", { offsetX, offsetY })),
-	/**
 	 *  Hide the quick panel, re-activate the previous app, and paste.
 	 * 
 	 *  隐藏快捷面板，重新激活之前的应用，并粘贴。

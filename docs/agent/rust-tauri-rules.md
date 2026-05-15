@@ -48,9 +48,9 @@ Use this document when editing Rust, Tauri commands, daemon handlers, async loop
    生成 `src/lib/ipc-bindings.generated.ts`，并把它一起提交。CI
    `pr-check.yml` 会用 `git diff --exit-code` 校验，drift 会拒绝合并。
 
-3. **macOS-only 命令**：现在统一在所有平台都 collect（非 macOS 是 no-op
-   函数体），保证生成的 binding 跨平台一致。新增平台条件命令时延续这个
-   模式：函数本身在所有平台编译，平台特异性逻辑收口在函数体里。
+3. **平台条件命令**：新增带 `#[cfg(target_os = "...")]` 的命令时，函数
+   必须在所有平台编译（其它平台走 `Ok(())` no-op 分支），否则 Linux CI
+   runner 跑 `specta_export` 会找不到 mod，binding 漂移。
 
 ## Rust Logging (`tracing`)
 

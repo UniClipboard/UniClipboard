@@ -16,19 +16,11 @@
 //! 强制对齐——少注册一个命令，前端 TS 就少一个函数；多注册一个，TS 就
 //! 多一个但前端不调它，CI drift check 会立刻报错。
 //!
-//! ## macOS 平台命令
+//! ## 平台一致性
 //!
-//! `mac_rounded_corners` 三个命令是 `<R: Runtime>` 泛型；它们的函数体
-//! 在 macOS 上调 AppKit，在其它平台是 `Ok(())` no-op（见
-//! `plugins/mac_rounded_corners.rs` 的 `#[cfg(not(target_os = "macos"))]`
-//! 兜底分支）。因此可以在 *所有* 平台都加进 `collect_commands!`：
-//!
-//! - 任何 OS 上跑 `cargo test --test specta_export` 都得到同一份 binding；
-//! - CI 就可以用单一 Linux runner 做 schema drift check，不用为每个平台
-//!   维护一份 generated TS；
-//! - 前端调用这些命令在非 macOS 上 silent no-op，与历史 `#[cfg]` 守卫的
-//!   "command not found" 行为相比只是更宽容，UI 表现一致（前端目前没有
-//!   调用站点）。
+//! 所有命令在所有 OS 上都 collect，保证任何 runner 跑 `cargo test
+//! --test specta_export` 得到同一份 binding（CI 可以用单一 Linux runner
+//! 做 schema drift check）。当前 30 条命令都不依赖平台特定 mod 编译。
 
 use tauri_specta::{collect_commands, Builder};
 
@@ -64,12 +56,6 @@ pub fn build() -> Builder<tauri::Wry> {
         crate::commands::updater::install_update,
         // ── storage ─────────────────────────────────────────────────────────
         crate::commands::storage::open_data_directory,
-        // ── macOS-only window plugins (`<R: Runtime>` 泛型必须显式实例化) ────
-        // 这三条命令在非 macOS 上是 `Ok(())` no-op；为了 codegen 输出
-        // 跨平台一致，所有 OS 都加进来。
-        crate::plugins::mac_rounded_corners::enable_rounded_corners::<tauri::Wry>,
-        crate::plugins::mac_rounded_corners::enable_modern_window_style::<tauri::Wry>,
-        crate::plugins::mac_rounded_corners::reposition_traffic_lights::<tauri::Wry>,
         // ── quick panel ─────────────────────────────────────────────────────
         crate::commands::quick_panel::paste_to_previous_app,
         crate::commands::quick_panel::dismiss_quick_panel,

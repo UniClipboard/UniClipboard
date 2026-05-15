@@ -140,3 +140,42 @@ unit / integration tests 全部通过（输出 50 行只剩 doctest 失败 tail�
 - `uc-daemon-local::auth` / `socket` 模块 13 个 pre-existing doctest 失败，
   CI 没门控；建议另开 issue 跟进。
 - `AdvancedSearch.test.tsx:110` keydown 测试 pre-existing flaky。
+
+## 2026-05-15 (CI 修复 + 死代码清理)
+
+### Rebase onto origin/main (10 commits ahead → 1 ahead)
+
+冲突解决：
+
+- `Cargo.lock` 取 main 后 cargo check 重解（加回 specta deps）。
+- `MobileSyncSettingsSheet.tsx` 被 main #726 删（替换为 `MobileSyncSettingsDialog`），
+  接受删除；新 Dialog 的 `MobileSyncError` switch 因 typed enum 暴露
+  pre-existing 笔误 `ENDPOINT_INFO_PROBE_FAILED` →
+  `ENDPOINT_INFO_FAILED`（i18n key 同步改），独立 commit `fix(mobile-sync):`。
+
+### CI 红：mac_rounded_corners 跨平台编译失败
+
+`pr-check.yml` Linux runner 报 `cannot find mac_rounded_corners in plugins`：
+`plugins/mod.rs` 用 `#[cfg(target_os = "macos")]` 关掉了整个 mod，
+但我在 `specta_builder.rs` 里所有平台都引用了它的三个 `<R: Runtime>` 命令。
+
+调研发现：
+
+- 前端 `TitleBar.tsx` 用的是 npm `@cloudworxx/tauri-plugin-mac-rounded-corners`
+  独立 plugin，不调本地 Rust 命令。
+- Rust 端这三个函数除自身定义 + `specta_builder.rs` 注册外零调用。
+- `objc2` deps 仍被 `quick_panel/macos.rs` 用，不能动。
+
+直接删整个 `plugins/` 目录（mod.rs + mac_rounded_corners.rs）+ `lib.rs`
+的 `pub mod plugins;` + `specta_builder.rs` 的三行注册。重新跑
+`cargo test --test specta_export` 后 binding 文件 -9 行
+（`enableRoundedCorners` / `enableModernWindowStyle` /
+`repositionTrafficLights` 三个 typed entry 全清）。
+
+命令计数 33 → 30。
+
+更新文档：
+
+- `specta_builder.rs` 的「macOS 平台命令」段改成「平台一致性」。
+- `docs/agent/rust-tauri-rules.md` 第 3 条改成「平台条件命令必须跨平台编译」
+  指引（避免后人再踩同样的 mod cfg gate 坑）。

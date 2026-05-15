@@ -439,107 +439,6 @@ mod tests {
         }
     }
 
-    /// facade 测试默认走 noop:验证 dispatch 端到端时不关心 delivery 表副作用。
-    struct NoopEntryDeliveryRepoForFacadeTests;
-    #[async_trait]
-    impl EntryDeliveryRepositoryPort for NoopEntryDeliveryRepoForFacadeTests {
-        async fn record_attempt(
-            &self,
-            _record: &uc_core::clipboard::EntryDeliveryRecord,
-        ) -> Result<(), uc_core::clipboard::EntryDeliveryError> {
-            Ok(())
-        }
-        async fn list_by_entry(
-            &self,
-            _entry_id: &EntryId,
-        ) -> Result<
-            Vec<uc_core::clipboard::EntryDeliveryRecord>,
-            uc_core::clipboard::EntryDeliveryError,
-        > {
-            Ok(Vec::new())
-        }
-    }
-
-    /// 视图组装路径(`get_entry_delivery_view`)在本文件的 dispatch 测试里
-    /// 不会被触发。给三个相关仓储一组最小可用的 noop,让 facade 能装配通过。
-    struct NoopEntryRepoForFacadeTests;
-    #[async_trait]
-    impl ClipboardEntryRepositoryPort for NoopEntryRepoForFacadeTests {
-        async fn save_entry_and_selection(
-            &self,
-            _entry: &uc_core::clipboard::ClipboardEntry,
-            _selection: &uc_core::ClipboardSelectionDecision,
-        ) -> anyhow::Result<()> {
-            Ok(())
-        }
-        async fn get_entry(
-            &self,
-            _entry_id: &EntryId,
-        ) -> anyhow::Result<Option<uc_core::clipboard::ClipboardEntry>> {
-            Ok(None)
-        }
-        async fn list_entries(
-            &self,
-            _limit: usize,
-            _offset: usize,
-        ) -> anyhow::Result<Vec<uc_core::clipboard::ClipboardEntry>> {
-            Ok(Vec::new())
-        }
-        async fn delete_entry(&self, _entry_id: &EntryId) -> anyhow::Result<()> {
-            Ok(())
-        }
-    }
-
-    struct NoopEventRepoForFacadeTests;
-    #[async_trait]
-    impl ClipboardEventRepositoryPort for NoopEventRepoForFacadeTests {
-        async fn get_representation(
-            &self,
-            _id: &uc_core::ids::EventId,
-            _representation_id: &str,
-        ) -> anyhow::Result<uc_core::ObservedClipboardRepresentation> {
-            anyhow::bail!("unused in facade dispatch tests")
-        }
-        async fn get_source_device(
-            &self,
-            _event_id: &uc_core::ids::EventId,
-        ) -> anyhow::Result<Option<DeviceId>> {
-            Ok(None)
-        }
-    }
-
-    struct NoopTrustedPeerRepoForFacadeTests;
-    #[async_trait]
-    impl TrustedPeerRepositoryPort for NoopTrustedPeerRepoForFacadeTests {
-        async fn get(
-            &self,
-            _peer_device_id: &DeviceId,
-        ) -> Result<
-            Option<uc_core::trusted_peer::TrustedPeer>,
-            uc_core::trusted_peer::TrustedPeerError,
-        > {
-            Ok(None)
-        }
-        async fn list(
-            &self,
-        ) -> Result<Vec<uc_core::trusted_peer::TrustedPeer>, uc_core::trusted_peer::TrustedPeerError>
-        {
-            Ok(Vec::new())
-        }
-        async fn save(
-            &self,
-            _trusted_peer: &uc_core::trusted_peer::TrustedPeer,
-        ) -> Result<(), uc_core::trusted_peer::TrustedPeerError> {
-            Ok(())
-        }
-        async fn remove(
-            &self,
-            _peer_device_id: &DeviceId,
-        ) -> Result<bool, uc_core::trusted_peer::TrustedPeerError> {
-            Ok(false)
-        }
-    }
-
     // ── mockall ──────────────────────────────────────────────────────────
 
     mockall::mock! {
@@ -630,6 +529,90 @@ mod tests {
             async fn list(&self) -> Result<Vec<SpaceMember>, MembershipError>;
             async fn save(&self, member: &SpaceMember) -> Result<(), MembershipError>;
             async fn remove(&self, device_id: &DeviceId) -> Result<bool, MembershipError>;
+        }
+    }
+
+    mockall::mock! {
+        pub EntryDeliveryRepo {}
+        #[async_trait]
+        impl EntryDeliveryRepositoryPort for EntryDeliveryRepo {
+            async fn record_attempt(
+                &self,
+                record: &uc_core::clipboard::EntryDeliveryRecord,
+            ) -> Result<(), uc_core::clipboard::EntryDeliveryError>;
+            async fn list_by_entry(
+                &self,
+                entry_id: &EntryId,
+            ) -> Result<
+                Vec<uc_core::clipboard::EntryDeliveryRecord>,
+                uc_core::clipboard::EntryDeliveryError,
+            >;
+        }
+    }
+
+    mockall::mock! {
+        pub EntryRepo {}
+        #[async_trait]
+        impl ClipboardEntryRepositoryPort for EntryRepo {
+            async fn save_entry_and_selection(
+                &self,
+                entry: &uc_core::clipboard::ClipboardEntry,
+                selection: &uc_core::ClipboardSelectionDecision,
+            ) -> anyhow::Result<()>;
+            async fn get_entry(
+                &self,
+                entry_id: &EntryId,
+            ) -> anyhow::Result<Option<uc_core::clipboard::ClipboardEntry>>;
+            async fn list_entries(
+                &self,
+                limit: usize,
+                offset: usize,
+            ) -> anyhow::Result<Vec<uc_core::clipboard::ClipboardEntry>>;
+            async fn delete_entry(&self, entry_id: &EntryId) -> anyhow::Result<()>;
+        }
+    }
+
+    mockall::mock! {
+        pub EventRepo {}
+        #[async_trait]
+        impl ClipboardEventRepositoryPort for EventRepo {
+            async fn get_representation(
+                &self,
+                id: &uc_core::ids::EventId,
+                representation_id: &str,
+            ) -> anyhow::Result<uc_core::ObservedClipboardRepresentation>;
+            async fn get_source_device(
+                &self,
+                event_id: &uc_core::ids::EventId,
+            ) -> anyhow::Result<Option<DeviceId>>;
+        }
+    }
+
+    mockall::mock! {
+        pub TrustedPeerRepo {}
+        #[async_trait]
+        impl TrustedPeerRepositoryPort for TrustedPeerRepo {
+            async fn get(
+                &self,
+                peer_device_id: &DeviceId,
+            ) -> Result<
+                Option<uc_core::trusted_peer::TrustedPeer>,
+                uc_core::trusted_peer::TrustedPeerError,
+            >;
+            async fn list(
+                &self,
+            ) -> Result<
+                Vec<uc_core::trusted_peer::TrustedPeer>,
+                uc_core::trusted_peer::TrustedPeerError,
+            >;
+            async fn save(
+                &self,
+                trusted_peer: &uc_core::trusted_peer::TrustedPeer,
+            ) -> Result<(), uc_core::trusted_peer::TrustedPeerError>;
+            async fn remove(
+                &self,
+                peer_device_id: &DeviceId,
+            ) -> Result<bool, uc_core::trusted_peer::TrustedPeerError>;
         }
     }
 
@@ -725,6 +708,42 @@ mod tests {
         m
     }
 
+    /// 本文件的 dispatch 端到端验证不关心 delivery 表副作用,默认 noop。
+    fn make_noop_entry_delivery_repo() -> MockEntryDeliveryRepo {
+        let mut m = MockEntryDeliveryRepo::new();
+        m.expect_record_attempt().returning(|_| Ok(()));
+        m.expect_list_by_entry().returning(|_| Ok(Vec::new()));
+        m
+    }
+
+    /// 视图组装路径(`get_entry_delivery_view`)在本文件的 dispatch 测试里
+    /// 不会被触发。下面三个仓储给一组最小可用的 noop,只为让 facade 装配
+    /// 通过;`get_representation` 故意不配 returning——一旦意外调到,mockall
+    /// 默认 panic,把"视图路径在本文件不应被触发"这层契约硬化成测试失败。
+    fn make_noop_entry_repo() -> MockEntryRepo {
+        let mut m = MockEntryRepo::new();
+        m.expect_save_entry_and_selection().returning(|_, _| Ok(()));
+        m.expect_get_entry().returning(|_| Ok(None));
+        m.expect_list_entries().returning(|_, _| Ok(Vec::new()));
+        m.expect_delete_entry().returning(|_| Ok(()));
+        m
+    }
+
+    fn make_noop_event_repo() -> MockEventRepo {
+        let mut m = MockEventRepo::new();
+        m.expect_get_source_device().returning(|_| Ok(None));
+        m
+    }
+
+    fn make_noop_trusted_peer_repo() -> MockTrustedPeerRepo {
+        let mut m = MockTrustedPeerRepo::new();
+        m.expect_get().returning(|_| Ok(None));
+        m.expect_list().returning(|| Ok(Vec::new()));
+        m.expect_save().returning(|_| Ok(()));
+        m.expect_remove().returning(|_| Ok(false));
+        m
+    }
+
     /// Wire the facade with the given mock ports + a `FakeReceiver`. The
     /// FakeReceiver is returned alongside so the caller can `publish(...)`
     /// during the test. `member_repo` defaults to "all peers allowed"
@@ -752,10 +771,10 @@ mod tests {
             clock: Arc::new(FixedClock(1_700_000_000_000)),
             analytics: Arc::new(uc_observability::analytics::NoopAnalyticsSink),
             first_sync_state: Arc::new(NoopFirstSyncState),
-            entry_delivery_repo: Arc::new(NoopEntryDeliveryRepoForFacadeTests),
-            entry_repo: Arc::new(NoopEntryRepoForFacadeTests),
-            event_repo: Arc::new(NoopEventRepoForFacadeTests),
-            trusted_peer_repo: Arc::new(NoopTrustedPeerRepoForFacadeTests),
+            entry_delivery_repo: Arc::new(make_noop_entry_delivery_repo()),
+            entry_repo: Arc::new(make_noop_entry_repo()),
+            event_repo: Arc::new(make_noop_event_repo()),
+            trusted_peer_repo: Arc::new(make_noop_trusted_peer_repo()),
         });
         (facade, receiver)
     }

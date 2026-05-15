@@ -11,29 +11,33 @@ the page.
 
 ## Page layout
 
-| Block                 | Content                                                                                                                                |
-| --------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
-| "This device" card    | Local name, current sync status (active / paused), paired count, online subset count.                                                  |
-| "Space members" panel | List of all paired desktop peers in the current space; each row expands into a detailed sheet.                                         |
-| "Mobile sync" panel   | Listener status, **Configure** sheet, **Add device** action, and the list of paired mobile clients. See [below](#mobile-sync-devices). |
+| Block           | Content                                                                                                                                                                                                                  |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Top Hero        | This device icon + name + short Peer ID + a **Switch space** chip; two StatPills on the right showing paired/online counts and sync status.                                                                              |
+| Tab bar         | Two tabs on a single row: **Paired devices** (desktop P2P peers) and **Mobile sync** (LAN mobile clients). Each tab carries a count chip; the action buttons on the right of the bar change with the active tab.         |
+| Tab content     | A card grid for the active tab (3-up on wide screens, collapsing to 1–2 columns on narrow). The last cell is a dashed "add" card that opens the corresponding invite / registration flow. See the two sections below.    |
 
-"This device" is read-only. To rename this machine or toggle local
-sync, go to [Settings → General](./settings#general) and
-[Settings → Sync](./settings#sync).
+The Hero is read-only. To rename this machine or toggle local sync,
+head to [Settings → General](./settings#general) and
+[Settings → Sync](./settings#sync). The "Switch space" chip opens its
+own dialog.
 
 For setting up mobile sync end to end (LAN listener, iOS Shortcut,
 credentials), see the dedicated [Mobile sync](./mobile-sync) guide.
 
-## What a member row tells you
+## What a peer card tells you
 
-Left to right:
+Top to bottom on each card:
 
 - **Device icon** — heuristically colored from the device name (accent
-  for online, muted for offline).
+  for online, muted for offline); online cards also get a small green
+  dot on the icon's bottom-right corner.
 - **Device name** — what that device named itself; truncated if long.
-- **Status badge** — `Online` (with the transport channel, see below)
-  or `Offline`.
-- **Chevron** — opens the device settings sheet on the right.
+- **Status line** — `● Online` / `○ Offline`, plus the connection
+  address (mono) when one is known.
+- **Channel chip** — the transport channel badge at the card footer
+  (see below).
+- **Click the card** — opens the centered "Device settings" modal.
 
 ### Transport channel badge
 
@@ -59,7 +63,9 @@ confidentiality.
 
 ## Adding a device
 
-Click `Add device` in the "Space members" header. The dialog will:
+Click `Invite new device` on the right of the **Paired devices** tab
+bar (the dashed placeholder card in the grid is the same entry point).
+The dialog will:
 
 1. Ask the sponsor daemon to mint a one-time invitation code.
 2. Show the code with a countdown (default TTL is 5 minutes).
@@ -76,15 +82,18 @@ passphrase. Full walkthrough at
   single-use design, not a bug — just mint a fresh one.
 </Callout>
 
-## The per-device settings sheet
+## The per-device settings modal
 
-Clicking the chevron slides out a sheet with the controls below.
+Clicking a card opens a centered "Device settings" modal with the
+controls below.
 
 ### Basic info
 
-- **Peer ID** — the device's iroh node ID (public key). `Copy` is
-  handy for issue reports and diagnostics.
-- **Device name** — read-only here; controlled by the device itself.
+- The header shows the device icon + name + a status dot (online /
+  offline) + a short Peer ID. The full Peer ID context lives under
+  **Connection info**.
+- **Connection info** section lists rounded InfoRows for `Channel`
+  (Direct / Relay / Offline / Out of LAN) and, when known, `Address`.
 
 ### Send master switch
 
@@ -101,22 +110,27 @@ per-peer-outbound, not space-wide.
 
 ### Content-type allowlist
 
-When the send switch is on, per-type toggles appear:
+When the send switch is on, a 2-column pill grid lists every content
+type — each cell is an icon + label + a small Switch:
 
 - Text
 - Image
 - Link
 - File
-- Code (snippet)
-- Rich text (HTML / RTF)
+- Code (snippet, tagged "Coming soon")
+- Rich text (HTML / RTF, tagged "Coming soon")
+
+Active toggles get a primary border + tinted background; turning the
+send master switch off dims and disables the whole grid.
 
 Any type that's off, the bytes for that type **never leave this
 machine** — the gate is enforced at the scheduler. So:
 
 - Off for "File" → stops eating that peer's file-cache budget.
 - Off for "Image" → screenshots stop competing for bandwidth.
-- `Restore defaults` at the bottom of the sheet sets every type back
-  to allowed.
+- `Restore defaults` is a ghost button at the top-right of the "Sync
+  settings" section (not in the footer) — one click puts every toggle
+  back to its default.
 
 <Callout type="info">
   Rules apply per-peer. With multiple peers, you can configure them separately — e.g. send only text
@@ -125,8 +139,8 @@ machine** — the gate is enforced at the scheduler. So:
 
 ## Unpairing
 
-`Unpair` lives at the bottom of the sheet (destructive — confirms
-twice). After unpairing:
+`Unpair` lives on the left side of the modal footer (destructive —
+confirms twice). After unpairing:
 
 - The peer disappears from "Space members".
 - Future traffic from that node ID is rejected by this device.
@@ -145,44 +159,45 @@ To remove a **lost or stolen** device from the space cleanly:
 
 ## Mobile sync devices
 
-Paired mobile clients live in a **separate "Mobile sync" panel** on
-the same page, distinct from the space-members list — they aren't
-desktop peers and don't share the iroh trust mesh.
+Paired mobile clients live under the **Mobile sync** tab on the same
+page — they aren't desktop peers and don't share the iroh trust mesh,
+so they get their own card grid distinct from the Paired devices grid.
 
-### Status strip
+### Tab-bar actions
 
-The panel header shows the current listener state at a glance:
+Switching to the Mobile sync tab swaps in two buttons on the right
+of the tab bar:
 
-| State              | What it means                                                                                                   |
-| ------------------ | --------------------------------------------------------------------------------------------------------------- |
-| `Disabled`         | Master switch is off. Click `Configure` to turn it on.                                                          |
-| `Listening @ …`    | LAN listener is running and reachable. The displayed URL is what mobile clients should target.                  |
-| `Bind failed: …`   | The daemon tried to bind but failed — surfaced from `lan_listener_error` (e.g. port in use, permission denied). |
-| `Restart required` | A configuration change (advertise IP, port, master switch) needs a daemon restart to take effect.               |
+| Button       | What it does                                                                                                              |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------- |
+| `Configure`  | Opens the **Mobile sync settings** modal — master switch, LAN listen toggle, bind IP, port, and current listen URL.       |
+| `Add device` | Starts the registration flow ([Mobile sync — Pair a device](./mobile-sync#pair-a-device)). If the master switch or LAN listener is off, an onboarding dialog appears first. |
 
-`Configure` opens the **Mobile sync settings** sheet (see
-[Settings → Mobile sync](./settings#mobile-sync)). `Add device` opens
-the registration flow described in
-[Mobile sync — Pair a device](./mobile-sync#pair-a-device).
+If the LAN listener fails to bind (port in use, permission denied,
+…), the `Add device` button greys out and the reason shows up as a
+tooltip. The full reason — and the LAN safety warning — live as
+Alerts **inside** the Configure modal; there's no separate status
+strip on the page anymore.
 
-### Paired devices list
+### Paired cards
 
-Each row shows:
+Each card:
 
-- The label you gave the device at registration.
-- The Basic Auth **username** (the stable identifier; copy it for
-  diagnostics).
-- Last-seen timestamp and last-seen IP, plus what the client reported
-  about itself (e.g. `iOS` / `iOS Shortcut`).
-- A **Rotate password** button — mints a fresh one-time password and
+- Top: blue `Smartphone` icon; hovering reveals a **Rotate password**
+  and **Delete** icon button in the top-right corner.
+- Middle: the label you gave the device, plus the Basic Auth
+  **username** in mono (copy it for diagnostics).
+- Bottom: last-active timestamp.
+
+- **Rotate password** — mints a fresh one-time password and
   invalidates the previous Argon2id hash atomically. The old
   credentials stop working immediately; the new password is shown
   exactly once.
-- A **Revoke** button — removes the device record. Subsequent
-  requests with those credentials get `401 Unauthorized`.
+- **Delete** — removes the device record. Subsequent requests with
+  those credentials get `401 Unauthorized`.
 
 <Callout type="info">
-  Mobile rows don't show the `LAN / Direct / Relay` transport badge above — mobile sync is
+  Mobile cards don't show the `LAN / Direct / Relay` transport badge — mobile sync is
   **always** plain HTTP on the LAN, so there's nothing to compare against.
 </Callout>
 

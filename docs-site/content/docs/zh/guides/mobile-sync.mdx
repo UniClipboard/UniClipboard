@@ -43,44 +43,37 @@ Basic Auth 与之读写剪贴。
 
 ### 打开 **设备** 页
 
-页面分为「这台设备」、「空间成员」与 **「移动端同步」** 三块。
-移动端同步面板的状态条会显示监听器状态（`Disabled` / `Listening @ <url>`
-/ `Bind failed: …`）以及 **Configure** 与 **Add device** 两个按钮。
+页面顶部是「本设备」Hero，中间一行是两个 tab：**「已配对设备」** 与
+**「手机同步」**。切到「手机同步」tab，tab 行右侧出现 **`配置`** 与
+**`添加设备`** 两个按钮。监听器若 bind 失败，`添加设备` 会变灰、
+鼠标悬停看原因；详细错误显示在「配置」modal 里。
 
 </Step>
 
 <Step>
 
-### 点 **Configure**
+### 点 **配置**
 
-右侧滑出抽屉。打开 **启用移动端同步** 与 **启用 LAN 监听器**，然后选：
+弹出居中的「移动端同步配置」modal。在「**同步开关**」段打开
+**启用移动端同步** 与 **LAN 监听**，再到「**网络参数**」段选：
 
-- **监听 / 对外宣告 IP** —— 从下拉框里挑一个具体的 RFC1918 LAN
+- **监听 IP** —— 从下拉框里挑一个具体的 RFC1918 LAN
   IPv4。**不要把 `Auto` / `0.0.0.0` 印到手机屏幕上**，它作为 daemon
   实际 bind 的占位是 OK 的，但手机拨不通。挑手机会接入的那块网卡。
 - **端口** —— 默认 `42720`，冲突时再改。
 
-抽屉里实时显示 **当前监听地址（Listening URL）** —— 这就是手机要填
-的 URL。
+modal 里实时显示 **当前监听地址（Listening URL）** —— 这就是手机要填
+的 URL。LAN 监听是热切换的，改完即时生效，不需要重启 daemon。
+
+如果守护进程上抛 `lan_listener_error`（端口被占或权限不足等），
+modal 顶部会出现红色 Alert，列出具体原因；监听不起来时 tab 行的
+`添加设备` 按钮也会变灰。
 
 </Step>
 
 <Step>
 
-### 应用，再重启 daemon
-
-保存抽屉。面板顶部会出现 `Restart required` 提示。重启 daemon
-（托盘菜单 → 退出再启动，或 `uniclip stop && uniclip start`）让监听器
-真的 bind。
-
-如果 bind 失败，面板会上抛 **Listener bind error**，常见是端口被占
-或权限不足。
-
-</Step>
-
-<Step>
-
-### 点 **Add device**
+### 点 **添加设备**
 
 填一个标签（例如「My iPhone 15」）。桌面会签发一次性的 **用户名** 与
 **密码**，并在凭据弹窗中按 iOS / Android 两个 tab 展示：
@@ -176,7 +169,7 @@ uniclip start                                # 把 daemon 拉回来
 | 再加一台       | 移动端同步面板 → **Add device** | `uniclip mobile-sync devices add --label "…"`    |
 | 轮换密码       | 设备行 → **Rotate password**    | _目前只 GUI_；签新的并更新手机端                 |
 | 吊销一台设备   | 设备行 → **Revoke**             | `uniclip mobile-sync devices revoke <device-id>` |
-| 关闭整个功能   | Configure 抽屉 → 关闭总开关     | `uniclip mobile-sync disable`                    |
+| 关闭整个功能   | 配置 modal → 关闭总开关         | `uniclip mobile-sync disable`                    |
 | 查当前监听 URL | 移动端同步面板状态条            | `uniclip mobile-sync status`                     |
 
 **轮换密码** 会签发一个新的一次性密码，并原子失效旧的 Argon2id 哈希。

@@ -8,7 +8,7 @@ The Settings panel groups options into seven sections (plus an
 each, what the control **does** and when you actually want to change
 it.
 
-Mobile-sync configuration lives in its own sheet on the
+Mobile-sync configuration lives in its own dialog on the
 **Devices** page rather than under Settings — it's documented
 [further down](#mobile-sync) and in the
 [Mobile sync](./mobile-sync) guide.
@@ -71,9 +71,9 @@ How this device participates in sync, plus file-related thresholds:
 | File retention (hours)    | How long blob chunks may sit in cache before being eligible for cleanup.   |
 | Auto-cleanup              | Whether the above limits are enforced periodically.                        |
 
-Per-content-type and per-peer **gates** live elsewhere — they're on
+Per-content-type and per-peer **gates** live elsewhere — they're in
 each peer's
-[Device settings sheet](./devices#content-type-allowlist).
+[Device settings modal](./devices#content-type-allowlist).
 
 ## Security
 
@@ -121,11 +121,11 @@ The data directory paths are listed under
 ## Mobile sync
 
 Mobile-sync configuration **does not** live under the Settings panel.
-It's exposed on the **Devices** page, in the **Mobile sync settings**
-sheet that opens from the **Configure** button on the Mobile sync
-panel.
+It's exposed on the **Devices** page: switch to the **Mobile sync**
+tab, then click the `Configure` button at the right of the tab bar to
+open the centered **Mobile sync settings** dialog.
 
-Quick reference for what's in that sheet:
+Quick reference for what's in that dialog:
 
 | Setting                   | What it does                                                                                                                                |
 | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -134,8 +134,7 @@ Quick reference for what's in that sheet:
 | Bind / advertised IP      | The LAN IPv4 the desktop tells mobile clients to connect to. The actual socket is always bound to `0.0.0.0`; this only changes the URL.     |
 | Port                      | Defaults to **42720** (SPEC §3.2). Custom values let you avoid conflicts.                                                                   |
 | Current listening address | Read-only; shows the URL derived from the persisted settings. This is what mobile clients should target.                                    |
-| Listener bind error       | Read-only; surfaces the daemon-side `lan_listener_error` (port in use, permission denied, etc.) so you can see why the URL isn't reachable. |
-| Restart-required banner   | Appears when the daemon is running with stale settings. Apply by restarting via the tray menu / `uniclip stop && uniclip start`.            |
+| Listener bind error       | When the daemon raises `lan_listener_error` (port in use, permission denied, etc.), a red Alert appears at the top of the dialog with the reason — so you can see why the URL isn't reachable. |
 
 <Callout type="warn">
   Pick a **specific LAN IPv4** in the Bind/Advertised IP picker. `Auto` / `0.0.0.0` is fine as a

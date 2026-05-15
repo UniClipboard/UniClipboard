@@ -47,10 +47,12 @@ LAN listener, register the phone, and print a QR code in one go.
 
 ### Open the **Devices** page
 
-The page is split into "This device", "Space members", and
-**"Mobile sync"**. The mobile-sync panel header shows the listener
-status (`Disabled`, `Listening @ <url>`, or `Bind failed: …`) and
-two buttons: **Configure** and **Add device**.
+The page has a "This device" Hero on top and a row of two tabs:
+**Paired devices** and **Mobile sync**. Switch to the **Mobile sync**
+tab; two action buttons appear on the right of the tab bar:
+**Configure** and **Add device**. If the listener fails to bind,
+`Add device` greys out and the reason shows on hover — the full
+detail is inside the Configure modal.
 
 </Step>
 
@@ -58,30 +60,24 @@ two buttons: **Configure** and **Add device**.
 
 ### Click **Configure**
 
-A right-side sheet opens. Toggle **Enable mobile sync** and **Enable
-LAN listener**, then choose:
+A centered "Mobile sync settings" dialog opens. Under
+**Sync switches**, turn on **Enable mobile sync** and **LAN
+listener**. Then under **Network parameters**:
 
-- **Bind / advertised IP** — pick a specific RFC1918 LAN IPv4 from
-  the dropdown. **Don't ship `Auto` / `0.0.0.0` to your phone** — it
-  works as a placeholder for the daemon's actual bind, but a phone
-  cannot dial it. Pick the interface the phone will be on.
+- **Bind IP** — pick a specific RFC1918 LAN IPv4 from the dropdown.
+  **Don't ship `Auto` / `0.0.0.0` to your phone** — it works as a
+  placeholder for the daemon's actual bind, but a phone cannot dial
+  it. Pick the interface the phone will be on.
 - **Port** — defaults to `42720`. Change only if there's a conflict.
 
-The sheet shows the **current listening address** as you go — that's
-the URL the phone will use.
+The dialog shows the **current listening address** as you go —
+that's the URL the phone will use. The LAN listener is hot-swapped:
+changes apply immediately, no daemon restart needed.
 
-</Step>
-
-<Step>
-
-### Apply, then restart the daemon
-
-Save the sheet. A `Restart required` banner appears at the top of
-the panel. Restart the daemon (tray menu → quit & relaunch, or
-`uniclip stop && uniclip start`) so the listener actually binds.
-
-If binding fails, the panel surfaces the reason as **Listener bind
-error** — typically port-in-use or permission-denied.
+If the daemon raises `lan_listener_error` (port in use, permission
+denied, etc.), a red Alert at the top of the dialog spells out the
+reason; the tab-bar `Add device` button also greys out while the
+listener can't bind.
 
 </Step>
 
@@ -197,7 +193,7 @@ Either way, the connection settings are the same:
 | Add another device   | Mobile sync panel → **Add device** | `uniclip mobile-sync devices add --label "…"`          |
 | Rotate password      | Device row → **Rotate password**   | _GUI only today_; mint a new one and re-edit the phone |
 | Revoke a device      | Device row → **Revoke**            | `uniclip mobile-sync devices revoke <device-id>`       |
-| Disable feature      | Configure sheet → switch off       | `uniclip mobile-sync disable`                          |
+| Disable feature      | Configure dialog → switch off      | `uniclip mobile-sync disable`                          |
 | Inspect listener URL | Mobile sync panel header           | `uniclip mobile-sync status`                           |
 
 **Rotating** mints a fresh one-time password and atomically

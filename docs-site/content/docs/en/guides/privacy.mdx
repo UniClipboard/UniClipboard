@@ -23,7 +23,8 @@ Turning either toggle off drops the next matching event; no daemon restart is re
 ## Why We Collect It
 
 - **Find crashes and exceptions.** Diagnostics tell us which version, platform, or process role is failing.
-- **Find pairing drop-offs.** Usage analytics shows whether people get stuck at first launch, device naming, invite redemption, passphrase confirmation, or handshake.
+- **Find setup and pairing drop-offs.** Usage analytics shows whether people get stuck at first launch, device naming, invite redemption, passphrase confirmation, or handshake. A setup-completion anchor lets us separate "started setup but didn't finish" from "finished setup but didn't pair".
+- **Measure unlock reliability.** When you launch the app on a device that has already been set up, we record whether the space unlocked, or which category of failure happened (wrong passphrase, corrupted key material, missing space, or internal error). The passphrase itself is never sent.
 - **Measure sync reliability.** Sync events separate success, failure, known-offline deferral, and the stage where a failure happened.
 - **Prioritize work.** Aggregated dimensions such as platform, version, locale, timezone, and paired-device count help us focus on the paths with the largest impact.
 

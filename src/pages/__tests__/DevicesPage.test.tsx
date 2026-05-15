@@ -53,6 +53,20 @@ vi.mock('@/api/tauri-command/mobile_sync', () => ({
   isMobileSyncError: () => false,
   listMobileDevices: vi.fn(() => Promise.resolve([])),
   revokeMobileDevice: vi.fn(),
+  // useMobileDevices 在 mount 时预拉一次 settings, MobileSyncSettingsDialog
+  // 即便初始 open=false 也会随父组件 mount, 其 useEffect 会调 list lan
+  // interfaces. 两个 stub 都得给, 否则 Vitest 抛 "mock has no export".
+  getMobileSyncSettings: vi.fn(() =>
+    Promise.resolve({
+      enabled: false,
+      lanListenEnabled: false,
+      lanAdvertiseIp: null,
+      lanPort: null,
+      lanListenerError: null,
+      shortcutInstallMethods: [],
+    })
+  ),
+  listMobileLanInterfaces: vi.fn(() => Promise.resolve([])),
 }))
 
 vi.mock('@/lib/daemon-ws', () => ({

@@ -682,3 +682,143 @@ build 时间注入的 secret 列表。CI 注入位置（计划）：
 - [x] 配置目录中 `installation_id` / `analytics_device_id` 持久化逻辑落地（纯模块层，bootstrap 拼装在后续 slice）。
 - [ ] settings UI 拆分两个开关并补齐文案。
 - [ ] dev 构建下事件 stdout 打印通路。
+
+## 12. 未来事件 roadmap（post-v1 实施计划）
+
+本节列出 **已识别但尚未实施** 的事件埋点。每项按"业务价值 × 实施成本 × 漏斗 anchor 缺口"分级。每个事件标注：触发位置（use case 文件 path）、properties schema、对应漏斗/可回答的产品问题、实施备注（是否需要新增 analytics 依赖 / 新 failure enum）。
+
+§5.3 命名不可变约束在本节同样生效——一旦列入下方表格并落到代码里，事件名 / properties 取值后续不得重命名。
+
+§7.3 末尾的 domain-specific failure enum 原则：每个 domain 的 failure 枚举独立定义（如 `UnlockFailureReason`、`BlobFetchFailureReason`），**禁止** 复用 `FailureReason`（sync 专用）或 `PairingFailureReason`。
+
+### 12.1 P0 — Activation 漏斗 anchor 缺口 + 高频可靠性
+
+| 事件名 | 触发位置 | properties | 解决的产品问题 |
+|---|---|---|---|
+| `setup_completed` | `setup/initialize_space.rs` 第 7 步 `SetupStatus.has_completed = true` 落地之后 | `{ has_paired_in_same_flow: bool, duration_ms_since_setup_started: u32 }` | Activation 漏斗目前缺这个 anchor，无法区分"启动了引导但没走完"vs"走完引导但没配对"两类流失 |
+| `space_unlocked` | `setup/unlock_space.rs::execute` 成功分支 | （仅 EventContext） | 每次 daemon 重启的可靠性 anchor，对应"用户能不能继续用产品" |
+| `space_unlock_failed` | `setup/unlock_space.rs::execute` 失败分支 | `{ failure_reason: UnlockFailureReason }` | passphrase 错误率 / keyring 解锁失败率定量化；当前完全黑盒 |
+| `clipboard_entry_captured` | `facade/clipboard_capture/mod.rs::capture` 成功路径，过滤掉 `origin=Inbound`（避免与入站双计） | `{ origin: system_watcher\|manual_restore, payload_type: PayloadType, payload_size_bucket: PayloadSizeBucket }` | outbound 同步链路的源头流量；回答"每 DAU 平均产生多少条目"+"捕获了 X 条，dispatch 了多少"漏斗 |
+
+新增枚举：
+
+```rust
+pub enum UnlockFailureReason {
+    PassphraseMismatch,
+    KeyringUnavailable,
+    KeyslotCorrupted,
+    SpaceNotFound,
+    Internal,
+}
+```
+
+实施备注：
+
+- `setup_completed` / `clipboard_entry_captured` 的 use case 已持有 `Arc<dyn AnalyticsPort>`，零依赖改动。
+- `space_unlocked` / `_failed` 需给 `UnlockSpaceUseCase::new` 加 `analytics: Arc<dyn AnalyticsPort>` 入参，并在 bootstrap wiring 处补 4 行注入。
+- `clipboard_entry_captured` 的 `origin=Inbound` 过滤必须严格执行——`apply_inbound` 路径也会写本地剪贴板，若不过滤会与 outbound 双计，污染 DAU 计数。
+
+### 12.2 P1 — 新功能线 + 已埋点二段流程的二段验证
+
+| 事件名 | 触发位置 | properties | 解决的产品问题 |
+|---|---|---|---|
+| `blob_fetch_attempted` | `blob_transfer/fetch_blob.rs::execute` 入口 | `{ payload_size_bucket: PayloadSizeBucket }` | 文件传输实际拉取的 attempted 锚点 |
+| `blob_fetch_succeeded` | `fetch_blob::execute` 成功路径 | `{ payload_size_bucket, fetch_latency_ms: u32 }` | 当前 `sync_succeeded.payload_type=file` 只代表 envelope 投递成功，对端实际把字节拉下来的 P95 / 成功率完全不可见 |
+| `blob_fetch_failed` | `fetch_blob::execute` 失败路径 | `{ payload_size_bucket, failure_reason: BlobFetchFailureReason }` | 同上，区分 iroh 拨号 / 磁盘满 / 完整性校验 |
+| `space_switched` | `setup/switch_space/mod.rs` Phase 4 commit 完成 | `{ duration_ms: u32 }` | 高粘性用户行为信号——只有真在用产品的人才会换空间 |
+| `space_switch_failed` | `switch_space` 任一阶段失败 | `{ failure_phase: MigrationPhase, failure_reason: SwitchSpaceFailureReason }` | 4 阶段迁移的失败分布；诊断价值高 |
+| `mobile_device_registered` | `mobile_sync/register_device.rs::execute` 成功 | （仅 EventContext） | iPhone Shortcut 集成的启用计数；当前 0 信号 |
+| `mobile_clipboard_synced` | `mobile_sync/apply_incoming.rs::execute`（入站 PUT）+ `get_latest_doc::execute`（出站 GET）成功路径 | `{ direction: outbound\|inbound, payload_size_bucket }` | mobile sync 实际使用频率 |
+| `mobile_auth_failed` | `mobile_sync/authenticate_basic.rs::execute` 失败 | `{ failure_kind: MobileAuthFailureKind }` | iPhone 端密码错误率 |
+
+新增枚举：
+
+```rust
+pub enum BlobFetchFailureReason {
+    PeerUnreachable,
+    NetworkError,
+    DigestMismatch,
+    DiskFull,
+    Timeout,
+    Internal,
+    Unknown,
+}
+
+pub enum SwitchSpaceFailureReason {
+    PreparePhase,        // backup 表写入失败
+    HandshakeFailed,     // 与目标 sponsor 握手失败
+    SwapDecryptError,    // 用 migration_key 解密 backup 行失败
+    CommitPersistError,
+    Internal,
+}
+
+pub enum MobileAuthFailureKind {
+    UnknownUser,
+    PasswordMismatch,
+    RateLimited,
+    Internal,
+}
+```
+
+实施备注：
+
+- blob_transfer use case 不持有 analytics，需新加构造参数 + bootstrap wiring。
+- `space_switched` 的 `target_space_id_hash` **不传**，避免与 `EventContext.space_id_hash` 重复。
+- mobile_sync 三件套埋点是独立 PR，避免与桌面同步路径混在一起评审。
+
+### 12.3 P2 — Engagement 与 Retention 信号
+
+| 事件名 | 触发位置 | properties | 解决的产品问题 |
+|---|---|---|---|
+| `clipboard_entry_restored` | `clipboard_restore/restore_selection.rs::execute` 与 `restore_as_plain_text.rs::execute` 成功路径 | `{ mode: full\|plain_text, age_bucket: lt_1h\|1h_to_1d\|1d_to_7d\|gt_7d, payload_type: PayloadType }` | 衡量"历史"功能价值的核心信号——用户会回头翻历史吗、翻多老的 |
+| `search_executed` | `search/search_clipboard_entries.rs::execute` 成功路径 | `{ query_length_bucket, has_filter: bool, result_count_bucket: zero\|1_to_10\|gt_10 }` | 用户找东西的频率 = 是否信任历史的代理指标 |
+| `clipboard_history_cleared` | `clipboard_history/clear_history.rs::execute` 成功 | `{ entry_count_bucket: PayloadSizeBucket 形态的条目数桶 }` | 用户主动清空 = 信任 / 隐私 / 性能担忧的负面信号；接近卸载的相关性高 |
+| `entry_favorited` | `clipboard_history/toggle_favorite.rs::execute` favoriting 分支 | `{ payload_type }` | 互动信号，区分重度用户 vs 浏览者 |
+| `entry_deleted` | `clipboard_history/delete_entry.rs::execute` | `{ payload_type, age_bucket }` | 同上 |
+
+新增 bucket 类型（schema doc §6.3 模式）：
+
+```rust
+pub enum QueryLengthBucket { Lt8, Range8To16, Gt16 }   // 复用 NameLengthBucket 形态
+pub enum ResultCountBucket { Zero, OneTo10, Gt10 }
+pub enum AgeBucket { Lt1H, H1To1D, D1To7D, Gt7D }
+```
+
+**隐私红线（必读）**：
+
+- `search_executed` **绝不** 传 query 字面值——仅长度桶 + 是否有 filter + 结果数量桶
+- `clipboard_entry_restored.age_bucket` 用桶而非精确时间，避免侧信道还原条目时间戳
+- `entry_favorited` / `_deleted` 不传 `entry_id` 也不传 hash——这两个动作单独看就有产品意义，不需要关联到具体条目
+
+### 12.4 P3 — 可观测性 / 运维（视容量决定是否做）
+
+| 事件名 | 触发位置 | properties | 备注 |
+|---|---|---|---|
+| `app_upgrade_detected` | bootstrap 调 `upgrade/detect.rs` 返回 `UpgradeStatus::{Upgraded, Downgraded}` 时 | `{ from_version: Option<String>, to_version: String, kind: upgrade\|downgrade\|fresh }` | `$set/$set_once` 的 `initial_app_version` vs `app_version` 已能近似推断，本事件是锦上添花 |
+| `presence_recovery_completed` | `presence/ensure_reachable_all.rs::execute` 完成 | `{ paired_count, online_count, dial_failure_count, duration_ms }` | 与 `sync_failed.peer_offline` 占比有相关性，不是必须 |
+| `daemon_started` / `daemon_stopped` | bootstrap 起点 / `tauri::App::on_exit` | （仅 EventContext） | 精确 DAU / session 时长；但 fire-and-forget HTTP 在 exit 时丢事件率高（§10.1 已说明），收益不稳 |
+
+### 12.5 明确不做的事件（避免噪音）
+
+下列动作即便有埋点能力也不该做，列在此处避免重复讨论：
+
+- `list_entry_projections` / `get_entry_detail` / `get_entry_resource` —— UI 每次刷新都触发，会淹没信号
+- `clipboard_history/cleanup` —— 后台 GC，无产品意义
+- `mobile_sync/list_devices` / `get_settings` / `update_settings` —— UI 拉取查询，非用户行为
+- `mobile_sync/rotate_password` —— 极低频且产品意义已被 `mobile_device_registered` 覆盖
+- `blob_publish_*` —— 发布端的失败已在 `sync_failed.failure_stage=immediate_send` 覆盖（dispatch 路径上游就拒了），单独埋点会与 sync 漏斗重复计数
+
+### 12.6 实施节奏建议
+
+- **一次 PR 完成 P0 全部 4 项**：都在 `uc-application` 内部，影响面集中。
+- **P1 拆 3 个 PR**：blob_transfer / switch_space / mobile_sync，三个 domain 各自独立 review。
+- **P2 视产品侧需求驱动**：哪个漏斗先被产品问到就先实施哪个；不要打包。
+- **每个新事件都同步更新本文件 §7 对应分类**：把表格从本节迁出去落到 §7（v1 catalog 的扩展），并把本节对应行 strikethrough 或删除。
+
+跨 PR 共用的隐私契约自查（每次新增事件必过）：
+
+1. 任何 `_id` 字段是否需要 hash？ —— 参照 §6.2。
+2. 任何精确数值（size / latency / age / count）是否应桶化？ —— 参照 §6.3。
+3. failure_reason 是否复用了别的 domain 的 enum？ —— 违反 §7.3 末尾原则，必须独立定义。
+4. 命名是否落到 `{domain}_{action}_{state}`？ —— 参照 §5.1。
+5. 是否会与已有事件双计？ —— 参照 §12.1 的 `clipboard_entry_captured` 入站过滤注意事项。

@@ -72,6 +72,35 @@ pub enum Event {
         payload_size_bucket: PayloadSizeBucket,
     },
 
+    /// 引导流程完成——`SetupStatus.has_completed = true` 落地之后触发。
+    ///
+    /// Activation 漏斗 anchor：补齐"启动了引导但没走完" vs "走完引导但没配对"
+    /// 之间的分桶口径（schema doc §12.1）。
+    SetupCompleted {
+        /// 同一引导流程内是否完成了配对——区分"独立 Space 用户"和"加入既有 Space 用户"。
+        has_paired_in_same_flow: bool,
+        /// 从 `SetupStarted` 起的耗时（毫秒）。若未观察到 `SetupStarted`
+        /// （例如进程中途崩溃恢复），为 `None`。
+        duration_ms_since_setup_started: Option<u32>,
+    },
+
+    /// Space 解锁成功——每次 daemon 重启的可靠性 anchor。
+    SpaceUnlocked,
+
+    /// Space 解锁失败——passphrase 错误 / keyring 失败等。
+    SpaceUnlockFailed { failure_reason: UnlockFailureReason },
+
+    /// 本地剪贴板成功捕获了一条新 entry（outbound 同步链路的源头流量）。
+    ///
+    /// **必须过滤 `origin = Inbound`**：`apply_inbound` 写本地剪贴板时也会
+    /// 触发底层 capture，若不过滤会与入站同步双计、污染 DAU 信号
+    /// （schema doc §12.1 红线）。
+    ClipboardEntryCaptured {
+        origin: CaptureOrigin,
+        payload_type: PayloadType,
+        payload_size_bucket: PayloadSizeBucket,
+    },
+
     // —— Reliability ————————————————————————————————————————————
     /// 同步发起。
     SyncAttempted(SyncEventProps),
@@ -96,6 +125,10 @@ impl Event {
             Event::FirstClipboardSyncAttempted { .. } => "first_clipboard_sync_attempted",
             Event::FirstClipboardSyncSucceeded { .. } => "first_clipboard_sync_succeeded",
             Event::FirstFileSyncSucceeded { .. } => "first_file_sync_succeeded",
+            Event::SetupCompleted { .. } => "setup_completed",
+            Event::SpaceUnlocked => "space_unlocked",
+            Event::SpaceUnlockFailed { .. } => "space_unlock_failed",
+            Event::ClipboardEntryCaptured { .. } => "clipboard_entry_captured",
             Event::SyncAttempted(_) => "sync_attempted",
             Event::SyncSucceeded(_) => "sync_succeeded",
             Event::SyncFailed(_) => "sync_failed",
@@ -155,6 +188,35 @@ impl Event {
             } => to_map(json!({
                 "peer_os": peer_os,
                 "transport_type": transport_type,
+                "payload_size_bucket": payload_size_bucket,
+            })),
+            Event::SetupCompleted {
+                has_paired_in_same_flow,
+                duration_ms_since_setup_started,
+            } => {
+                let mut m = Map::new();
+                m.insert(
+                    "has_paired_in_same_flow".into(),
+                    json!(has_paired_in_same_flow),
+                );
+                // None 不出现在 wire（schema doc §10.1：PostHog 把 null 当显式
+                // 清空指令；Option<u32> 缺失就完全省略字段）。
+                if let Some(ms) = duration_ms_since_setup_started {
+                    m.insert("duration_ms_since_setup_started".into(), json!(ms));
+                }
+                m
+            }
+            Event::SpaceUnlocked => Map::new(),
+            Event::SpaceUnlockFailed { failure_reason } => {
+                to_map(json!({ "failure_reason": failure_reason }))
+            }
+            Event::ClipboardEntryCaptured {
+                origin,
+                payload_type,
+                payload_size_bucket,
+            } => to_map(json!({
+                "origin": origin,
+                "payload_type": payload_type,
                 "payload_size_bucket": payload_size_bucket,
             })),
             Event::SyncAttempted(p) | Event::SyncSucceeded(p) | Event::SyncFailed(p) => {
@@ -355,6 +417,35 @@ pub enum PairingMethod {
     Discovery,
 }
 
+/// Space 解锁失败原因（`space_unlock_failed` 专用）。
+///
+/// 与 `sync` / `pairing` 失败枚举不共享——schema doc §7.3 末尾的
+/// domain-specific failure enum 原则：每个 domain 的失败语义不重叠，
+/// 共享 enum 会让 funnel 跨 domain 误聚合。`Internal` 占比 > 5%
+/// 视为本机持久化层不稳定。
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[serde(rename_all = "snake_case")]
+pub enum UnlockFailureReason {
+    PassphraseMismatch,
+    KeyringUnavailable,
+    KeyslotCorrupted,
+    SpaceNotFound,
+    Internal,
+}
+
+/// 剪贴板捕获来源（`clipboard_entry_captured` 专用）。
+///
+/// **不**包含 `Inbound`——入站同步路径必须在调用点过滤掉，避免与
+/// 入站事件双计（schema doc §12.1 红线）。
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[serde(rename_all = "snake_case")]
+pub enum CaptureOrigin {
+    /// 系统剪贴板 watcher 检测到的变化（用户在本机复制 / 截屏 / 拖文件）。
+    SystemWatcher,
+    /// 用户在历史面板里点击恢复某条历史条目，重新进入本地剪贴板。
+    ManualRestore,
+}
+
 /// 引导入口。
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
 #[serde(rename_all = "snake_case")]
@@ -512,6 +603,28 @@ mod tests {
                     payload_size_bucket: PayloadSizeBucket::Lt1Kb,
                 },
                 "first_file_sync_succeeded",
+            ),
+            (
+                Event::SetupCompleted {
+                    has_paired_in_same_flow: false,
+                    duration_ms_since_setup_started: None,
+                },
+                "setup_completed",
+            ),
+            (Event::SpaceUnlocked, "space_unlocked"),
+            (
+                Event::SpaceUnlockFailed {
+                    failure_reason: UnlockFailureReason::Internal,
+                },
+                "space_unlock_failed",
+            ),
+            (
+                Event::ClipboardEntryCaptured {
+                    origin: CaptureOrigin::SystemWatcher,
+                    payload_type: PayloadType::Text,
+                    payload_size_bucket: PayloadSizeBucket::Lt1Kb,
+                },
+                "clipboard_entry_captured",
             ),
         ];
         for (event, expected) in cases {
@@ -722,6 +835,98 @@ mod tests {
                 "PairingFailureReason::{reason:?}"
             );
         }
+    }
+
+    #[test]
+    fn unlock_failure_reason_wire_format() {
+        // schema doc §12.1 钉死的 5 个变体。
+        for (reason, expected) in [
+            (
+                UnlockFailureReason::PassphraseMismatch,
+                "passphrase_mismatch",
+            ),
+            (
+                UnlockFailureReason::KeyringUnavailable,
+                "keyring_unavailable",
+            ),
+            (UnlockFailureReason::KeyslotCorrupted, "keyslot_corrupted"),
+            (UnlockFailureReason::SpaceNotFound, "space_not_found"),
+            (UnlockFailureReason::Internal, "internal"),
+        ] {
+            assert_eq!(
+                serde_json::to_value(reason).unwrap(),
+                expected,
+                "UnlockFailureReason::{reason:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn capture_origin_wire_format() {
+        // schema doc §12.1：CaptureOrigin 不允许出现 Inbound。
+        assert_eq!(
+            serde_json::to_value(CaptureOrigin::SystemWatcher).unwrap(),
+            "system_watcher"
+        );
+        assert_eq!(
+            serde_json::to_value(CaptureOrigin::ManualRestore).unwrap(),
+            "manual_restore"
+        );
+    }
+
+    #[test]
+    fn setup_completed_omits_unknown_duration() {
+        // 没有观察到 SetupStarted 时缺省 duration——None 必须从 wire 完全消失，
+        // 避免 PostHog 把 null 当显式清空。
+        let event = Event::SetupCompleted {
+            has_paired_in_same_flow: true,
+            duration_ms_since_setup_started: None,
+        };
+        let props = event.properties();
+        assert_eq!(props.get("has_paired_in_same_flow"), Some(&json!(true)));
+        assert!(!props.contains_key("duration_ms_since_setup_started"));
+    }
+
+    #[test]
+    fn setup_completed_serializes_duration_when_present() {
+        let event = Event::SetupCompleted {
+            has_paired_in_same_flow: false,
+            duration_ms_since_setup_started: Some(8_421),
+        };
+        let props = event.properties();
+        assert_eq!(props.get("has_paired_in_same_flow"), Some(&json!(false)));
+        assert_eq!(
+            props.get("duration_ms_since_setup_started"),
+            Some(&json!(8_421))
+        );
+    }
+
+    #[test]
+    fn clipboard_entry_captured_properties() {
+        let event = Event::ClipboardEntryCaptured {
+            origin: CaptureOrigin::SystemWatcher,
+            payload_type: PayloadType::Image,
+            payload_size_bucket: PayloadSizeBucket::Kb100ToMb10,
+        };
+        let props = event.properties();
+        assert_eq!(props.get("origin"), Some(&json!("system_watcher")));
+        assert_eq!(props.get("payload_type"), Some(&json!("image")));
+        assert_eq!(
+            props.get("payload_size_bucket"),
+            Some(&json!("100kb_to_10mb"))
+        );
+    }
+
+    #[test]
+    fn space_unlock_failed_carries_reason() {
+        let event = Event::SpaceUnlockFailed {
+            failure_reason: UnlockFailureReason::PassphraseMismatch,
+        };
+        let props = event.properties();
+        assert_eq!(
+            props.get("failure_reason"),
+            Some(&json!("passphrase_mismatch"))
+        );
     }
 
     #[test]

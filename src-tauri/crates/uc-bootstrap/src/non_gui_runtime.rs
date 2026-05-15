@@ -144,6 +144,7 @@ fn build_fallback_apply_inbound(deps: &AppDeps) -> Arc<ApplyInboundClipboardUseC
         deps.device.device_identity.clone(),
         deps.clipboard.representation_cache.clone(),
         deps.clipboard.spool_queue.clone(),
+        deps.analytics.clone(),
     ));
     let capture: Arc<dyn ApplyInboundCapture> = capture_uc;
     let write: Arc<dyn ApplyInboundWrite> = Arc::new(NoopInboundWrite);

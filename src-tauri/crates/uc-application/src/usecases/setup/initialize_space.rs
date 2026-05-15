@@ -23,6 +23,7 @@
 //! from the failed step or surface the conflict to the caller.
 
 use std::sync::Arc;
+use std::time::Instant;
 
 use chrono::{DateTime, Utc};
 use tracing::{debug, info, instrument, warn};
@@ -83,6 +84,11 @@ impl InitializeSpaceUseCase {
         &self,
         cmd: InitializeSpaceCommand,
     ) -> Result<InitializeSpaceResult, InitializeSpaceError> {
+        // schema doc §12.1 · 用 monotonic Instant 而非 ClockPort 测耗时：
+        // `duration_ms_since_setup_started` 是流程内耗时，不需要 wall clock
+        // 单调性保护；ClockPort 给业务时间戳用。
+        let setup_started_at = Instant::now();
+
         // Slice 8d · setup funnel anchor. v1 fixes `entry = FirstRun` because
         // A1 (this use case) is the fresh-device flow by definition; once a
         // future "Manual setup retry" entry point exists, plumb it through
@@ -169,6 +175,18 @@ impl InitializeSpaceUseCase {
             .await
             .map_err(|e| InitializeSpaceError::StorageFailed(e.to_string()))?;
         info!(%space_id, %device_id, "space initialisation completed");
+
+        // schema doc §12.1 · Activation 漏斗 anchor。A1 是 fresh-device
+        // 「新建空间」路径——本流程内不发生配对，`has_paired_in_same_flow`
+        // 固定为 false；后续若 joiner 路径也 emit setup_completed，再按真实
+        // 状态填 true。`duration_ms_since_setup_started` 用 u32 上限 49 天，
+        // 实际不可能溢出；超界时 fallback None（属架构债务而非数据点）。
+        let duration_ms_since_setup_started =
+            u32::try_from(setup_started_at.elapsed().as_millis()).ok();
+        self.analytics.capture(Event::SetupCompleted {
+            has_paired_in_same_flow: false,
+            duration_ms_since_setup_started,
+        });
 
         Ok(InitializeSpaceResult {
             space_id,
@@ -558,10 +576,10 @@ mod tests {
         let settings = h.settings.load().await.unwrap();
         assert_eq!(settings.general.device_name.as_deref(), Some("My Mac"));
 
-        // Slice 8d · setup_started + device_name_set fire in order.
+        // setup_started → device_name_set → setup_completed 三件套按序触发。
         // "My Mac" has 6 chars → Lt8 bucket.
         let events = h.analytics.events();
-        assert_eq!(events.len(), 2, "expected exactly 2 setup events");
+        assert_eq!(events.len(), 3, "expected exactly 3 setup events");
         assert!(matches!(
             &events[0],
             Event::SetupStarted {
@@ -574,6 +592,41 @@ mod tests {
                 name_length_bucket: NameLengthBucket::Lt8
             }
         ));
+        // schema doc §12.1 · A1 路径 has_paired_in_same_flow 恒为 false；
+        // duration 字段由 monotonic Instant 推断，必须存在（u32 不可能溢出
+        // 49 天）。
+        match &events[2] {
+            Event::SetupCompleted {
+                has_paired_in_same_flow,
+                duration_ms_since_setup_started,
+            } => {
+                assert!(!has_paired_in_same_flow);
+                assert!(
+                    duration_ms_since_setup_started.is_some(),
+                    "duration should be populated for in-process A1"
+                );
+            }
+            other => panic!("expected SetupCompleted, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn setup_completed_not_emitted_on_failure_before_status_persist() {
+        // schema doc §12.1 · setup_completed 必须在 SetupStatus.has_completed
+        // 落地之后才发——member_repo.save 失败属于第 6 步失败，第 7 步未执行，
+        // 不应 emit 该事件，否则 Activation 漏斗会把"未完成"误判为"已完成"。
+        let h = build_harness();
+        *h.member_repo.save_err.lock().unwrap() =
+            Some(MembershipError::Repository("boom".to_string()));
+        let _ = h.uc.execute(ok_cmd(Some("My Mac"))).await.unwrap_err();
+        let events = h.analytics.events();
+        assert!(
+            !events
+                .iter()
+                .any(|e| matches!(e, Event::SetupCompleted { .. })),
+            "setup_completed must not be emitted when setup fails before status persist; \
+             got events: {events:?}"
+        );
     }
 
     #[tokio::test]
@@ -627,8 +680,8 @@ mod tests {
             let events = h.analytics.events();
             assert_eq!(
                 events.len(),
-                2,
-                "name={name}: setup_started + device_name_set"
+                3,
+                "name={name}: setup_started + device_name_set + setup_completed"
             );
             match &events[1] {
                 Event::DeviceNameSet { name_length_bucket } => {
@@ -636,6 +689,10 @@ mod tests {
                 }
                 other => panic!("expected DeviceNameSet, got {other:?}"),
             }
+            assert!(
+                matches!(&events[2], Event::SetupCompleted { .. }),
+                "name={name}: third event should be SetupCompleted"
+            );
         }
     }
 

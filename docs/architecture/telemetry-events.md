@@ -287,6 +287,13 @@ pub enum LatencyBucket {
 | `first_clipboard_sync_attempted` | 首次同步发起 | `direction`: `outbound` \| `inbound` |
 | `first_clipboard_sync_succeeded` | 首次同步对端确认 | `direction`, `peer_os`, `transport_type`, `duration_ms` |
 | `first_file_sync_succeeded` | 文件传输已支持时首次成功 | `peer_os`, `transport_type`, `payload_size_bucket` |
+| `setup_completed` | A1 第 7 步 `SetupStatus.has_completed = true` 落地之后 | `has_paired_in_same_flow`: bool, `duration_ms_since_setup_started`: Option&lt;u32&gt;（None 不上 wire） |
+| `space_unlocked` | A2 `unlock_space.execute` 成功分支（每次 daemon 重启的可靠性 anchor） | （仅 EventContext） |
+| `space_unlock_failed` | A2 `unlock_space.execute` 失败分支；pre-condition `SetupNotCompleted` **不** 上报（不属于"用户能不能继续用产品"语义） | `failure_reason`: `UnlockFailureReason`（见 §7.5） |
+| `clipboard_entry_captured` | `clipboard_capture::execute_with_origin` 成功路径，按 `origin` 严格过滤 | `origin`: `system_watcher` \| `manual_restore`, `payload_type`, `payload_size_bucket` |
+
+**`clipboard_entry_captured` 红线**：`ClipboardChangeOrigin::RemotePush`（入站同步写本地剪贴板）**禁止** emit，否则会与入站事件双计、污染 DAU。
+mapping：`LocalCapture` → `system_watcher`；`LocalRestore` → `manual_restore`（当前路径在 use case 入口短路 return None，实际不会触发，留 mapping 以便未来扩展）；`RemotePush` → 不 emit。
 
 ### 7.2 Reliability
 
@@ -428,6 +435,20 @@ pub enum PairingFailureReason {
 变体与 `RedeemPairingInvitationError`（业务错误）一一映射，使得 funnel
 分析能直接定位漏点的具体业务原因。`Internal` 占比同样应监控——高于 5%
 说明本机持久化层不稳定。
+
+### 7.5 UnlockFailureReason 枚举（space_unlock_failed 专用）
+
+```rust
+pub enum UnlockFailureReason {
+    PassphraseMismatch,   // 口令错
+    KeyringUnavailable,   // 系统 keyring 不可访问（保留枚举槽位，当前无独立 SpaceAccessError 变体；走 Internal 兜底）
+    KeyslotCorrupted,     // keyslot 解析 / 版本故障
+    SpaceNotFound,        // 当前 profile 没有可解锁的 space（adapter 报 NotInitialized）
+    Internal,             // 兜底：setup_status 读取失败、未分类的 SpaceAccessError 等
+}
+```
+
+mapping：`SpaceAccessError::WrongPassphrase` → `PassphraseMismatch`；`NotInitialized` → `SpaceNotFound`；`CorruptedKeyMaterial` → `KeyslotCorrupted`；其它（`Internal` / 未分类）→ `Internal`。pre-condition 失败 `SetupNotCompleted` **不** emit（语义不属于"用户能不能继续用产品"）。`Internal` 占比 > 5% 视为本机持久化层不稳定，按 §7.3 末尾原则专门排查。
 
 ## 8. Schema 演化策略
 
@@ -680,8 +701,8 @@ build 时间注入的 secret 列表。CI 注入位置（计划）：
 - [x] `AnalyticsPort` trait 定义，入参用本文件的事件类型。
 - [x] `analytics_gate` 模块实现（与 `telemetry_gate` 对称）。
 - [x] 配置目录中 `installation_id` / `analytics_device_id` 持久化逻辑落地（纯模块层，bootstrap 拼装在后续 slice）。
-- [ ] settings UI 拆分两个开关并补齐文案。
-- [ ] dev 构建下事件 stdout 打印通路。
+- [x] settings UI 拆分两个开关并补齐文案（`src/components/setting/GeneralSection.tsx` 两个独立 toggle）。
+- [x] dev 构建下事件 stdout 打印通路（`uc-bootstrap/src/analytics.rs`：`cfg!(debug_assertions)` 下接 `Gated(StdoutSink)`）。
 
 ## 12. 未来事件 roadmap（post-v1 实施计划）
 
@@ -691,32 +712,22 @@ build 时间注入的 secret 列表。CI 注入位置（计划）：
 
 §7.3 末尾的 domain-specific failure enum 原则：每个 domain 的 failure 枚举独立定义（如 `UnlockFailureReason`、`BlobFetchFailureReason`），**禁止** 复用 `FailureReason`（sync 专用）或 `PairingFailureReason`。
 
-### 12.1 P0 — Activation 漏斗 anchor 缺口 + 高频可靠性
+### 12.1 P0 — Activation 漏斗 anchor 缺口 + 高频可靠性 ✅ 已落地
+
+**status**: 2026-05-15 落地。事件 schema 已迁入 §7.1，`UnlockFailureReason` 已迁入 §7.5。下表保留作历史与设计回溯，事件本体不再在此节维护。
 
 | 事件名 | 触发位置 | properties | 解决的产品问题 |
 |---|---|---|---|
-| `setup_completed` | `setup/initialize_space.rs` 第 7 步 `SetupStatus.has_completed = true` 落地之后 | `{ has_paired_in_same_flow: bool, duration_ms_since_setup_started: u32 }` | Activation 漏斗目前缺这个 anchor，无法区分"启动了引导但没走完"vs"走完引导但没配对"两类流失 |
-| `space_unlocked` | `setup/unlock_space.rs::execute` 成功分支 | （仅 EventContext） | 每次 daemon 重启的可靠性 anchor，对应"用户能不能继续用产品" |
-| `space_unlock_failed` | `setup/unlock_space.rs::execute` 失败分支 | `{ failure_reason: UnlockFailureReason }` | passphrase 错误率 / keyring 解锁失败率定量化；当前完全黑盒 |
-| `clipboard_entry_captured` | `facade/clipboard_capture/mod.rs::capture` 成功路径，过滤掉 `origin=Inbound`（避免与入站双计） | `{ origin: system_watcher\|manual_restore, payload_type: PayloadType, payload_size_bucket: PayloadSizeBucket }` | outbound 同步链路的源头流量；回答"每 DAU 平均产生多少条目"+"捕获了 X 条，dispatch 了多少"漏斗 |
+| ~~`setup_completed`~~ ✅ | `setup/initialize_space.rs` 第 7 步 `SetupStatus.has_completed = true` 落地之后 | `{ has_paired_in_same_flow: bool, duration_ms_since_setup_started: Option<u32> }` | Activation 漏斗目前缺这个 anchor，无法区分"启动了引导但没走完"vs"走完引导但没配对"两类流失 |
+| ~~`space_unlocked`~~ ✅ | `setup/unlock_space.rs::execute` 成功分支 | （仅 EventContext） | 每次 daemon 重启的可靠性 anchor，对应"用户能不能继续用产品" |
+| ~~`space_unlock_failed`~~ ✅ | `setup/unlock_space.rs::execute` 失败分支（pre-condition `SetupNotCompleted` 不上报） | `{ failure_reason: UnlockFailureReason }` | passphrase 错误率 / keyring 解锁失败率定量化；当前完全黑盒 |
+| ~~`clipboard_entry_captured`~~ ✅ | `clipboard_capture::execute_with_origin` 成功路径，按 `ClipboardChangeOrigin` 严格过滤 `RemotePush` | `{ origin: system_watcher\|manual_restore, payload_type, payload_size_bucket }` | outbound 同步链路的源头流量；回答"每 DAU 平均产生多少条目"+"捕获了 X 条，dispatch 了多少"漏斗 |
 
-新增枚举：
+落地备注（保留以便回溯）：
 
-```rust
-pub enum UnlockFailureReason {
-    PassphraseMismatch,
-    KeyringUnavailable,
-    KeyslotCorrupted,
-    SpaceNotFound,
-    Internal,
-}
-```
-
-实施备注：
-
-- `setup_completed` / `clipboard_entry_captured` 的 use case 已持有 `Arc<dyn AnalyticsPort>`，零依赖改动。
-- `space_unlocked` / `_failed` 需给 `UnlockSpaceUseCase::new` 加 `analytics: Arc<dyn AnalyticsPort>` 入参，并在 bootstrap wiring 处补 4 行注入。
-- `clipboard_entry_captured` 的 `origin=Inbound` 过滤必须严格执行——`apply_inbound` 路径也会写本地剪贴板，若不过滤会与 outbound 双计，污染 DAU 计数。
+- `setup_completed`：`duration_ms_since_setup_started` 用 monotonic `Instant` 测，溢出 u32 时 fallback `None`；A1 路径 `has_paired_in_same_flow` 恒 false。`setup_status.set_status(has_completed=true)` 失败前 **不** emit（测试 `setup_completed_not_emitted_on_failure_before_status_persist` 守住）。
+- `space_unlocked` / `_failed`：`UnlockSpaceUseCase::new` 加 `analytics: Arc<dyn AnalyticsPort>` 入参，bootstrap wiring 在 `facade/space_setup/facade.rs` 补一行 `Arc::clone(&analytics)`。pre-condition `SetupNotCompleted` 短路 **不** emit。
+- `clipboard_entry_captured`：`telemetry_capture_origin` 把 `RemotePush` 映射成 `None`、调用方据此跳过 emit（schema doc §12.1 红线）。`payload_type` 按 file > image > text 优先级推断；`payload_size_bucket` 用 `PayloadSizeBucket::from_bytes(snapshot.total_size_bytes())`。
 
 ### 12.2 P1 — 新功能线 + 已埋点二段流程的二段验证
 

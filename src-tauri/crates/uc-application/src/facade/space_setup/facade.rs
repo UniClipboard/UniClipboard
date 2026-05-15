@@ -184,6 +184,7 @@ impl SpaceSetupFacade {
         let unlock_space = Arc::new(UnlockSpaceUseCase::new(
             Arc::clone(&space_access),
             Arc::clone(&setup_status),
+            Arc::clone(&analytics),
         ));
         let issue_pairing_invitation = Arc::new(IssuePairingInvitationUseCase::new(
             Arc::clone(&pairing_invitation),

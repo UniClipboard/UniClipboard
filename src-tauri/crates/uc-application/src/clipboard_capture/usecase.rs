@@ -25,6 +25,9 @@ use std::time::SystemTime;
 use anyhow::Result;
 use futures::future::try_join_all;
 use tracing::{debug, info, info_span, Instrument};
+use uc_observability::analytics::{
+    AnalyticsPort, CaptureOrigin, Event, PayloadSizeBucket, PayloadType,
+};
 use uc_observability::{stages, FlowId};
 
 use uc_core::ids::{EntryId, EventId};
@@ -35,7 +38,7 @@ use uc_core::ports::{
 };
 use uc_core::{
     ClipboardChangeOrigin, ClipboardEntry, ClipboardEvent, ClipboardSelectionDecision,
-    PayloadAvailability, SystemClipboardSnapshot,
+    ObservedClipboardRepresentation, PayloadAvailability, SystemClipboardSnapshot,
 };
 
 /// Capture clipboard content and create persistent entries.
@@ -51,6 +54,10 @@ pub struct CaptureClipboardUseCase {
     device_identity: Arc<dyn DeviceIdentityPort>,
     representation_cache: Arc<dyn RepresentationCachePort>,
     spool_queue: Arc<dyn SpoolQueuePort>,
+    /// schema doc §12.1 · outbound 同步链路源头流量信号。
+    /// 仅在 `ClipboardChangeOrigin::{LocalCapture, LocalRestore}` 路径 emit；
+    /// `RemotePush` 严禁 emit（红线：与入站同步双计会污染 DAU 信号）。
+    analytics: Arc<dyn AnalyticsPort>,
 }
 
 impl CaptureClipboardUseCase {
@@ -62,6 +69,7 @@ impl CaptureClipboardUseCase {
         device_identity: Arc<dyn DeviceIdentityPort>,
         representation_cache: Arc<dyn RepresentationCachePort>,
         spool_queue: Arc<dyn SpoolQueuePort>,
+        analytics: Arc<dyn AnalyticsPort>,
     ) -> Self {
         Self {
             entry_repo,
@@ -71,6 +79,7 @@ impl CaptureClipboardUseCase {
             device_identity,
             representation_cache,
             spool_queue,
+            analytics,
         }
     }
 
@@ -314,6 +323,21 @@ impl CaptureClipboardUseCase {
 
             info!(event_id = %event_id, entry_id = %entry_id, "Clipboard capture completed");
 
+            // schema doc §12.1 · outbound 同步链路源头信号。
+            // 红线：`RemotePush`（入站同步写本地剪贴板）严禁 emit，否则会与
+            // 入站同步双计、污染 DAU。`LocalRestore` 已在入口短路 return None
+            // 走不到这里；只有 `LocalCapture` 会真实落点为 `system_watcher`。
+            // 未来若 manual_restore 路径开始持久化新 entry，再补 mapping。
+            if let Some(capture_origin) = telemetry_capture_origin(origin) {
+                self.analytics.capture(Event::ClipboardEntryCaptured {
+                    origin: capture_origin,
+                    payload_type: infer_payload_type(&snapshot),
+                    payload_size_bucket: PayloadSizeBucket::from_bytes(
+                        u64::try_from(snapshot.total_size_bytes()).unwrap_or(0),
+                    ),
+                });
+            }
+
             Ok(Some(entry_id))
         }
         .instrument(root)
@@ -385,7 +409,7 @@ impl CaptureClipboardUseCase {
         result
     }
 
-    fn is_supported_representation(rep: &uc_core::ObservedClipboardRepresentation) -> bool {
+    fn is_supported_representation(rep: &ObservedClipboardRepresentation) -> bool {
         if let Some(mime) = &rep.mime {
             let mime_str = mime.as_str();
             if mime_str.starts_with("text/")
@@ -407,6 +431,55 @@ impl CaptureClipboardUseCase {
             || rep.format_id.eq_ignore_ascii_case("public.text")
             || rep.format_id.eq_ignore_ascii_case("NSStringPboardType")
     }
+}
+
+/// schema doc §12.1 红线 · 把 `ClipboardChangeOrigin` 映射到 telemetry 的
+/// `CaptureOrigin`，并在入站同步路径返回 `None` 以阻断双计。
+///
+/// 返回 `None` = 不 emit `clipboard_entry_captured`，调用方据此跳过 capture。
+fn telemetry_capture_origin(origin: ClipboardChangeOrigin) -> Option<CaptureOrigin> {
+    match origin {
+        ClipboardChangeOrigin::LocalCapture => Some(CaptureOrigin::SystemWatcher),
+        // 已在 execute_with_origin 入口短路 return None，走不到 emit；
+        // 留 mapping 以便未来 LocalRestore 也会持久化新 entry 时仍然正确。
+        ClipboardChangeOrigin::LocalRestore => Some(CaptureOrigin::ManualRestore),
+        // 入站同步写本地剪贴板路径——必须过滤，否则 outbound capture
+        // 与入站事件双计。
+        ClipboardChangeOrigin::RemotePush => None,
+    }
+}
+
+/// 按 representation mime / format_id 推断 telemetry payload 大类。
+///
+/// 优先级 file > image > text（兜底）。schema doc §6.3 只 emit 桶化值，
+/// 精确大小通过 `PayloadSizeBucket::from_bytes` 落区间。
+fn infer_payload_type(snapshot: &SystemClipboardSnapshot) -> PayloadType {
+    if snapshot.representations.iter().any(is_file_rep) {
+        PayloadType::File
+    } else if snapshot.representations.iter().any(is_image_rep) {
+        PayloadType::Image
+    } else {
+        PayloadType::Text
+    }
+}
+
+fn is_file_rep(rep: &ObservedClipboardRepresentation) -> bool {
+    if let Some(mime) = &rep.mime {
+        let m = mime.as_str();
+        if m.eq_ignore_ascii_case("text/uri-list") || m.eq_ignore_ascii_case("file/uri-list") {
+            return true;
+        }
+    }
+    rep.format_id.eq_ignore_ascii_case("files")
+}
+
+fn is_image_rep(rep: &ObservedClipboardRepresentation) -> bool {
+    if let Some(mime) = &rep.mime {
+        if mime.as_str().starts_with("image/") {
+            return true;
+        }
+    }
+    rep.format_id.eq_ignore_ascii_case("image")
 }
 
 #[cfg(test)]

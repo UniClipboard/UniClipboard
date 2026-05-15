@@ -87,6 +87,7 @@ pub fn build_daemon_runtime_workers(
         input.deps.device.device_identity.clone(),
         input.deps.clipboard.representation_cache.clone(),
         input.deps.clipboard.spool_queue.clone(),
+        input.deps.analytics.clone(),
     ));
     let blob_materializer = Arc::new(FileCacheBlobMaterializer::new(
         input.blob_transfer_facade.clone(),

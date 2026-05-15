@@ -37,6 +37,5 @@ export const contentTypeEntries: {
   { field: 'image', i18nKey: 'syncImage', status: 'editable' },
   { field: 'file', i18nKey: 'syncFile', status: 'editable' },
   { field: 'link', i18nKey: 'syncLink', status: 'editable' },
-  { field: 'codeSnippet', i18nKey: 'syncCodeSnippet', status: 'coming_soon' },
-  { field: 'richText', i18nKey: 'syncRichText', status: 'coming_soon' },
+  { field: 'richText', i18nKey: 'syncRichText', status: 'editable' },
 ]

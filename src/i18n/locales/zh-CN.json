@@ -1005,10 +1005,6 @@
             "title": "同步链接",
             "description": "允许同步 URL/链接内容"
           },
-          "syncCodeSnippet": {
-            "title": "同步代码片段",
-            "description": "允许同步代码片段内容"
-          },
           "syncRichText": {
             "title": "同步富文本",
             "description": "允许同步富文本内容（HTML, RTF）"

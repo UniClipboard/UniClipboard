@@ -17,7 +17,7 @@
  *   │  内容类型                                                  │
  *   │ ┌── 文本 [●] ──┐ ┌── 图片 [●] ──┐                        │
  *   │ ┌── 文件 [●] ──┐ ┌── 链接 [●] ──┐                        │
- *   │ ┌── 代码  ⌛  ──┐ ┌── 富文本 ⌛ ──┐                       │
+ *   │ ┌── 富文本 [●] ──┐                                       │
  *   ├────────────────────────────────────────────────────────────┤
  *   │ [取消配对]                                       [完成]    │
  *   └────────────────────────────────────────────────────────────┘
@@ -33,7 +33,7 @@
  * 加 API 时把第三个 DialogSection 接上 controlled Input + 提交即可。
  */
 
-import { AlignLeft, Code, FileIcon, ImageIcon, Link2, Type, type LucideIcon } from 'lucide-react'
+import { AlignLeft, FileIcon, ImageIcon, Link2, Type, type LucideIcon } from 'lucide-react'
 import React, { useCallback, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { deriveBadgeKind } from './ConnectionChannelBadge'
@@ -71,12 +71,11 @@ interface DeviceSettingsDialogProps {
   onUnpair: (peerId: string) => void
 }
 
-const CONTENT_TYPE_ICONS: Record<keyof ContentTypes, LucideIcon> = {
+const CONTENT_TYPE_ICONS: Partial<Record<keyof ContentTypes, LucideIcon>> = {
   text: Type,
   image: ImageIcon,
   file: FileIcon,
   link: Link2,
-  codeSnippet: Code,
   richText: AlignLeft,
 }
 
@@ -273,7 +272,9 @@ const DeviceSettingsDialog: React.FC<DeviceSettingsDialogProps> = ({
                       return (
                         <ContentTypeToggle
                           key={field}
-                          icon={CONTENT_TYPE_ICONS[field]}
+                          // `contentTypeEntries` 已剔除 codeSnippet, `field` 只会落到
+                          // 有映射的 5 种 key, 故此处用 non-null 断言绕过 Partial 索引签名。
+                          icon={CONTENT_TYPE_ICONS[field]!}
                           label={t(`devices.settings.sync.rules.${i18nKey}.title`)}
                           checked={preferences?.sendContentTypes[field] ?? true}
                           onChange={checked => handleSendContentTypeToggle(field, checked)}

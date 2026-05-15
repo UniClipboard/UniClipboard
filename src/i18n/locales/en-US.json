@@ -1014,10 +1014,6 @@
             "title": "Sync Links",
             "description": "Allow syncing URL/link content"
           },
-          "syncCodeSnippet": {
-            "title": "Sync Code Snippets",
-            "description": "Allow syncing code snippet content"
-          },
           "syncRichText": {
             "title": "Sync Rich Text",
             "description": "Allow syncing rich text content (HTML, RTF)"

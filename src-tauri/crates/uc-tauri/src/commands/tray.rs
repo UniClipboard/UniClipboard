@@ -10,6 +10,7 @@ use uc_platform::ports::observability::TraceMetadata;
 ///
 /// This is a UI sync command only; it does not persist settings.
 #[tauri::command]
+#[specta::specta]
 pub async fn set_tray_language(
     tray: State<'_, TrayState>,
     language: String,

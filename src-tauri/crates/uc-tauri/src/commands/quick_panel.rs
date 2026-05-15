@@ -10,6 +10,7 @@ use uc_platform::ports::observability::TraceMetadata;
 ///
 /// 关闭快捷面板并将焦点返回到之前的应用（不粘贴）。
 #[tauri::command]
+#[specta::specta]
 pub async fn dismiss_quick_panel(
     app: tauri::AppHandle,
     _trace: Option<TraceMetadata>,
@@ -37,6 +38,7 @@ pub async fn dismiss_quick_panel(
 ///
 /// 隐藏快捷面板，重新激活之前的应用，并粘贴。
 #[tauri::command]
+#[specta::specta]
 pub async fn paste_to_previous_app(
     app: tauri::AppHandle,
     _trace: Option<TraceMetadata>,
@@ -67,6 +69,7 @@ pub async fn paste_to_previous_app(
 ///
 /// 前端清理完旧状态后，实际显示快捷面板窗口。
 #[tauri::command]
+#[specta::specta]
 pub async fn finalize_quick_panel_show(
     app: tauri::AppHandle,
     _trace: Option<TraceMetadata>,
@@ -92,6 +95,7 @@ pub async fn finalize_quick_panel_show(
 
 /// Update quick panel size and centered position from the active UI scale.
 #[tauri::command]
+#[specta::specta]
 pub async fn set_quick_panel_layout(
     app: tauri::AppHandle,
     scale: f64,

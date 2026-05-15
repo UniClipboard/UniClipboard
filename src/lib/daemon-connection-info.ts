@@ -1,12 +1,9 @@
-import { invokeWithTrace } from '@/lib/tauri-command'
+import { commands } from '@/lib/ipc'
+import type { DaemonConnectionPayload as GeneratedDaemonConnectionPayload } from '@/lib/ipc'
 
 const POLL_INTERVAL_MS = 500
 
-export interface DaemonConnectionPayload {
-  baseUrl: string
-  wsUrl: string
-  token: string
-}
+export type DaemonConnectionPayload = GeneratedDaemonConnectionPayload
 
 let connectionInfoPromise: Promise<DaemonConnectionPayload> | null = null
 
@@ -29,9 +26,7 @@ export function resetDaemonConnectionInfoPollingForTests(): void {
 
 async function pollForDaemonConnectionInfo(): Promise<DaemonConnectionPayload> {
   while (true) {
-    const payload = await invokeWithTrace<DaemonConnectionPayload | null>(
-      'get_daemon_connection_info'
-    )
+    const payload = await commands.getDaemonConnectionInfo()
     if (payload) {
       validatePayload(payload)
       return payload

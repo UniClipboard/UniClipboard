@@ -41,14 +41,14 @@ use crate::commands::record_trace_fields;
 /// `passphrase` 在 Tauri IPC 边界以明文存在,**绝不**应当再往 HTTP/TCP
 /// 上序列化(那等于送到本机 socket 上,违反 §安全)——这一边界仅止于
 /// 同进程内 invoke handler。
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct UnlockSpaceArgs {
     pub passphrase: String,
 }
 
 /// 解锁成功后返回的最小元数据。
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct UnlockSpaceResultDto {
     pub space_id: String,
@@ -64,7 +64,7 @@ impl From<UnlockSpaceResult> for UnlockSpaceResultDto {
 
 /// 前端可 `error.code` switch 的 typed 错误。序列化形态:
 /// `{"code": "WRONG_PASSPHRASE"}` / `{"code": "INTERNAL", "message": "..."}`。
-#[derive(Debug, Clone, Serialize, thiserror::Error)]
+#[derive(Debug, Clone, Serialize, specta::Type, thiserror::Error)]
 #[serde(
     tag = "code",
     rename_all = "SCREAMING_SNAKE_CASE",
@@ -124,6 +124,7 @@ impl From<UnlockSpaceError> for UnlockSpaceCommandError {
 /// 前端继续调 `POST /lifecycle/ready` 触发 daemon deferred services
 /// (clipboard watcher / sync 等)启动。
 #[tauri::command]
+#[specta::specta]
 pub async fn unlock_space_with_passphrase(
     runtime: State<'_, Arc<TauriAppRuntime>>,
     args: UnlockSpaceArgs,
@@ -157,7 +158,7 @@ pub async fn unlock_space_with_passphrase(
 // try_silent_unlock ─ 启动期 / modal 弹出前的 keyring resume 探测
 // ============================================================================
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct TrySilentUnlockResult {
     /// `true` = keyring 命中 + unwrap 成功,session 已 ready;
@@ -167,7 +168,7 @@ pub struct TrySilentUnlockResult {
     pub resumed: bool,
 }
 
-#[derive(Debug, Clone, Serialize, thiserror::Error)]
+#[derive(Debug, Clone, Serialize, specta::Type, thiserror::Error)]
 #[serde(
     tag = "code",
     rename_all = "SCREAMING_SNAKE_CASE",
@@ -192,6 +193,7 @@ pub enum TrySilentUnlockError {
 /// 语义保持原 endpoint 一致: `Ok(true)` keyring 命中、`Ok(false)`
 /// "nothing to resume"(空 profile / 还没 setup)、`Err` 异常 / 漂移。
 #[tauri::command]
+#[specta::specta]
 pub async fn try_silent_unlock(
     runtime: State<'_, Arc<TauriAppRuntime>>,
     _trace: Option<TraceMetadata>,

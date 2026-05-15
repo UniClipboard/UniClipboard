@@ -260,6 +260,8 @@ describe('UpdateProvider', () => {
     checkForUpdateMock.mockResolvedValue({
       version: '0.2.0',
       currentVersion: '0.1.0',
+      body: null,
+      date: null,
     })
 
     renderWithSetting(baseSetting, <StateConsumer />)
@@ -298,7 +300,12 @@ describe('UpdateProvider', () => {
       listener = cb
       return () => {}
     })
-    checkForUpdateMock.mockResolvedValue({ version: '0.2.0', currentVersion: '0.1.0' })
+    checkForUpdateMock.mockResolvedValue({
+      version: '0.2.0',
+      currentVersion: '0.1.0',
+      body: null,
+      date: null,
+    })
 
     renderWithSetting(baseSetting, <StateConsumer />)
 
@@ -329,7 +336,12 @@ describe('UpdateProvider', () => {
       listener = cb
       return () => {}
     })
-    checkForUpdateMock.mockResolvedValue({ version: '0.2.0', currentVersion: '0.1.0' })
+    checkForUpdateMock.mockResolvedValue({
+      version: '0.2.0',
+      currentVersion: '0.1.0',
+      body: null,
+      date: null,
+    })
 
     renderWithSetting(baseSetting, <StateConsumer />)
 
@@ -350,7 +362,12 @@ describe('UpdateProvider', () => {
   })
 
   it('auto-downloads when autoDownloadUpdate is enabled and check returns available', async () => {
-    checkForUpdateMock.mockResolvedValue({ version: '0.2.0', currentVersion: '0.1.0' })
+    checkForUpdateMock.mockResolvedValue({
+      version: '0.2.0',
+      currentVersion: '0.1.0',
+      body: null,
+      date: null,
+    })
     const autoDownloadOn: Settings = {
       ...baseSetting,
       general: { ...baseSetting.general, autoDownloadUpdate: true },
@@ -364,7 +381,12 @@ describe('UpdateProvider', () => {
   })
 
   it('does not auto-download when autoDownloadUpdate is off', async () => {
-    checkForUpdateMock.mockResolvedValue({ version: '0.2.0', currentVersion: '0.1.0' })
+    checkForUpdateMock.mockResolvedValue({
+      version: '0.2.0',
+      currentVersion: '0.1.0',
+      body: null,
+      date: null,
+    })
 
     renderWithSetting(baseSetting, <StateConsumer />)
 

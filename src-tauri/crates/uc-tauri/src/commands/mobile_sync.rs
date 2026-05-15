@@ -38,7 +38,7 @@ use crate::commands::record_trace_fields;
 /// 不复用 `commands::error::CommandError`（那个用了 `tag = "code", content =
 /// "message"` 只能带单一字符串负载），mobile_sync 校验错误需要 `min` /
 /// `max` / `username` / `reason` 等结构化字段。
-#[derive(Debug, Clone, Serialize, thiserror::Error)]
+#[derive(Debug, Clone, Serialize, specta::Type, thiserror::Error)]
 #[serde(
     tag = "code",
     rename_all = "SCREAMING_SNAKE_CASE",
@@ -52,7 +52,12 @@ pub enum MobileSyncError {
     LabelEmpty,
 
     #[error("device label too long (max {max})")]
-    LabelTooLong { max: usize },
+    LabelTooLong {
+        // 长度上限是个小整数（≤ 256），TS 端拿 `number` 即可。
+        // `Number<usize>` 显式声明精度策略，避免 specta 默认 panic。
+        #[specta(type = specta_typescript::Number<usize>)]
+        max: usize,
+    },
 
     #[error("LAN listener disabled; enable it first")]
     LanListenerDisabled,
@@ -64,10 +69,16 @@ pub enum MobileSyncError {
     UsernameInvalidShape { reason: String },
 
     #[error("password too short (min {min})")]
-    PasswordTooShort { min: usize },
+    PasswordTooShort {
+        #[specta(type = specta_typescript::Number<usize>)]
+        min: usize,
+    },
 
     #[error("password too long (max {max})")]
-    PasswordTooLong { max: usize },
+    PasswordTooLong {
+        #[specta(type = specta_typescript::Number<usize>)]
+        max: usize,
+    },
 
     #[error("password hashing failed: {message}")]
     PasswordHashFailed { message: String },
@@ -227,7 +238,7 @@ impl From<ListLanInterfacesError> for MobileSyncError {
 // ============================================================================
 
 /// `register_mobile_device` 入参。
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct RegisterMobileDeviceArgs {
     pub label: String,
@@ -243,12 +254,14 @@ pub struct RegisterMobileDeviceArgs {
 /// `password` 是**唯一一次**面向前端的明文回显——之后只以 PHC 形式存在于
 /// 服务端 sqlite。前端拿到后必须立即在 modal 里展示 + 强制用户勾选"已保存"
 /// 才让关闭。
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct RegisterMobileDeviceResult {
     pub device_id: String,
     pub label: String,
     pub client_type: String,
+    // Unix epoch ms 时间戳；理由同 `TraceMetadata::timestamp`（远在 2^53 内）。
+    #[specta(type = specta_typescript::Number<i64>)]
     pub created_at_ms: i64,
     pub base_url: String,
     pub username: String,
@@ -281,7 +294,7 @@ fn client_type_wire(t: &MobileClientType) -> &'static str {
 
 /// `rotate_mobile_password` 入参。`password = None` (字段缺失或 null) 走
 /// minter 自动颁发新明文;给值则按规则严格校验。
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct RotateMobilePasswordArgs {
     pub device_id: String,
@@ -293,7 +306,7 @@ pub struct RotateMobilePasswordArgs {
 /// 明文回显 —— 之后只以 PHC 形式存在。前端必须立即在 modal 里展示, 并
 /// 提示用户同步更新 iPhone shortcut 里的 password 字段(旧密码已立即
 /// 失效)。
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct RotateMobilePasswordResult {
     pub device_id: String,
@@ -313,14 +326,17 @@ impl From<RotateMobilePasswordOutput> for RotateMobilePasswordResult {
 
 /// `list_mobile_devices` 单条结果。来自 `MobileDeviceSummary`，不含
 /// password_hash；username 透传给前端作为辅助识别字段。
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct MobileDeviceView {
     pub device_id: String,
     pub label: String,
     pub client_type: String,
     pub username: String,
+    // Unix epoch ms；理由同 `TraceMetadata::timestamp`。
+    #[specta(type = specta_typescript::Number<i64>)]
     pub created_at_ms: i64,
+    #[specta(type = Option<specta_typescript::Number<i64>>)]
     pub last_seen_at_ms: Option<i64>,
     pub last_seen_ip: Option<String>,
     pub reported_name: Option<String>,
@@ -344,7 +360,7 @@ impl From<MobileDeviceSummary> for MobileDeviceView {
 }
 
 /// `get_mobile_sync_settings` 返回值。
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct MobileSyncSettingsViewDto {
     pub enabled: bool,
@@ -375,7 +391,7 @@ impl From<MobileSyncSettingsView> for MobileSyncSettingsViewDto {
     }
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct ShortcutInstallMethodView {
     /// `tokenInjected` / `icloudGeneric`（v1 仅前者可用）。
@@ -403,20 +419,30 @@ impl From<ShortcutInstallMethodOption> for ShortcutInstallMethodView {
 /// `lanAdvertiseIp` / `lanPort` 是三态：字段缺失=不动；显式 null=清空；给值=写入。
 /// 前端用 `JSON.stringify` 时 `undefined` 字段被 drop（缺失），`null` 显式
 /// 序列化（→ `Some(None)`），有值（→ `Some(Some(value))`）。
-#[derive(Debug, Clone, Default, Deserialize)]
+#[derive(Debug, Clone, Default, Deserialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct UpdateMobileSyncSettingsArgs {
     #[serde(default)]
     pub enabled: Option<bool>,
     #[serde(default)]
     pub lan_listen_enabled: Option<bool>,
+    // `Option<Option<T>>` 三态：JSON wire 上其实只有两种可观察形态——
+    // 字段缺失（前端 `JSON.stringify` drop `undefined`）和显式 `null`。
+    // 我们用 `Option<Option<T>>` 在 Rust 内部保留三态语义（缺失 = 不动；
+    // null = 清空；有值 = 设置），但 wire 类型就是 `T | null` 可选字段。
+    //
+    // `#[specta(type = Option<T>)]` 把这一约束告诉 specta：生成的 TS 字段
+    // 是 `lanAdvertiseIp?: string | null`。如果不显式覆盖，specta 会因为
+    // `#[serde(deserialize_with)]` 改变了 wire 类型而拒绝生成 binding。
     #[serde(default, deserialize_with = "deserialize_optional_optional_string")]
+    #[specta(type = Option<String>)]
     pub lan_advertise_ip: Option<Option<String>>,
     #[serde(default, deserialize_with = "deserialize_optional_optional_u16")]
+    #[specta(type = Option<u16>)]
     pub lan_port: Option<Option<u16>>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct UpdateMobileSyncSettingsResult {
     pub enabled: bool,
@@ -453,7 +479,7 @@ impl From<UpdateMobileSyncSettingsOutput> for UpdateMobileSyncSettingsResult {
 }
 
 /// `list_mobile_lan_interfaces` 单条结果。
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct LanInterfaceView {
     pub name: String,
@@ -519,6 +545,7 @@ fn mobile_sync_facade(
 /// 渲染 SyncClipboard install URL 的二维码。`password` 在返回值里是**唯一一次**
 /// 面向用户的明文回显——前端必须立即展示 + 强制用户勾选"已保存"才允许关闭。
 #[tauri::command]
+#[specta::specta]
 pub async fn register_mobile_device(
     runtime: State<'_, Arc<TauriAppRuntime>>,
     args: RegisterMobileDeviceArgs,
@@ -548,6 +575,7 @@ pub async fn register_mobile_device(
 /// 撤销一台已登记设备。`Ok(())` 表示成功；`DeviceNotFound` 表示设备已不在
 /// 仓储里（UI 列表过期），前端据此提示刷新。
 #[tauri::command]
+#[specta::specta]
 pub async fn revoke_mobile_device(
     runtime: State<'_, Arc<TauriAppRuntime>>,
     device_id: String,
@@ -577,6 +605,7 @@ pub async fn revoke_mobile_device(
 /// 列出已登记设备。结果按"最近活跃 desc → 创建时间 desc"排序。不含
 /// password_hash；username 作为辅助识别字段透传给前端。
 #[tauri::command]
+#[specta::specta]
 pub async fn list_mobile_devices(
     runtime: State<'_, Arc<TauriAppRuntime>>,
     _trace: Option<TraceMetadata>,
@@ -602,6 +631,7 @@ pub async fn list_mobile_devices(
 /// 明文回显 —— 之后只以 PHC 存在,UI 必须立即展示并告知用户同步更新 iPhone
 /// shortcut 里的 password 字段(旧密码已立即失效)。
 #[tauri::command]
+#[specta::specta]
 pub async fn rotate_mobile_password(
     runtime: State<'_, Arc<TauriAppRuntime>>,
     args: RotateMobilePasswordArgs,
@@ -631,6 +661,7 @@ pub async fn rotate_mobile_password(
 
 /// 读移动端同步设置 + 当前 LAN URL + 可用 install methods 的合成视图。
 #[tauri::command]
+#[specta::specta]
 pub async fn get_mobile_sync_settings(
     runtime: State<'_, Arc<TauriAppRuntime>>,
     _trace: Option<TraceMetadata>,
@@ -655,6 +686,7 @@ pub async fn get_mobile_sync_settings(
 /// `MobileLanLifecyclePort` 即时切换,无需重启;`restart_required` 字段
 /// 的具体语义见 [`UpdateMobileSyncSettingsResult::restart_required`] 文档。
 #[tauri::command]
+#[specta::specta]
 pub async fn update_mobile_sync_settings(
     runtime: State<'_, Arc<TauriAppRuntime>>,
     args: UpdateMobileSyncSettingsArgs,
@@ -685,6 +717,7 @@ pub async fn update_mobile_sync_settings(
 /// 列出可作为二维码 URL 候选的本机 IPv4 LAN 接口。仅返回 RFC1918 私有地址，
 /// 按 10/8 → 172.16/12 → 192.168/16 排序。
 #[tauri::command]
+#[specta::specta]
 pub async fn list_mobile_lan_interfaces(
     runtime: State<'_, Arc<TauriAppRuntime>>,
     _trace: Option<TraceMetadata>,

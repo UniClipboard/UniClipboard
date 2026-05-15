@@ -13,8 +13,12 @@ vi.mock('@tauri-apps/api/core', () => ({
   invoke: (...args: unknown[]) => mockInvoke(...args),
 }))
 
-vi.mock('@/lib/tauri-command', () => ({
-  invokeWithTrace: (...args: unknown[]) => mockInvokeWithTrace(...args),
+// 实现已切到 typed `commands` proxy（`@/lib/ipc`）；mock target 改成
+// `commands.getDaemonConnectionInfo`。变量名保留以减少 diff 噪声。
+vi.mock('@/lib/ipc', () => ({
+  commands: {
+    getDaemonConnectionInfo: (...args: unknown[]) => mockInvokeWithTrace(...args),
+  },
 }))
 
 const mockInitialize = vi.fn()
@@ -66,8 +70,8 @@ describe('loadDaemonAuth', () => {
     await vi.advanceTimersByTimeAsync(500)
     const result = await resultPromise
 
-    expect(mockInvokeWithTrace).toHaveBeenNthCalledWith(1, 'get_daemon_connection_info')
-    expect(mockInvokeWithTrace).toHaveBeenNthCalledWith(2, 'get_daemon_connection_info')
+    expect(mockInvokeWithTrace).toHaveBeenNthCalledWith(1)
+    expect(mockInvokeWithTrace).toHaveBeenNthCalledWith(2)
     expect(mockInitialize).toHaveBeenCalledWith({
       baseUrl: TEST_CONNECTION_PAYLOAD.baseUrl,
       wsUrl: TEST_CONNECTION_PAYLOAD.wsUrl,

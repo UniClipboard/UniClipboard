@@ -34,6 +34,7 @@ impl Default for TrafficLightsConfig {
 /// Enables rounded corners for the window (macOS only)
 /// Uses only public APIs - App Store compatible
 #[tauri::command]
+#[specta::specta]
 pub fn enable_rounded_corners<R: Runtime>(
     _app: AppHandle<R>,
     window: WebviewWindow<R>,
@@ -84,6 +85,7 @@ pub fn enable_rounded_corners<R: Runtime>(
 
 /// Enables modern window style with rounded corners and shadow
 #[tauri::command]
+#[specta::specta]
 pub fn enable_modern_window_style<R: Runtime>(
     _app: AppHandle<R>,
     window: WebviewWindow<R>,
@@ -147,6 +149,7 @@ pub fn enable_modern_window_style<R: Runtime>(
 
 /// Repositions Traffic Lights only (useful after fullscreen toggle)
 #[tauri::command]
+#[specta::specta]
 pub fn reposition_traffic_lights<R: Runtime>(
     _app: AppHandle<R>,
     window: WebviewWindow<R>,

@@ -1,49 +1,45 @@
 /**
  * Mobile sync Tauri command wrappers.
  *
- * GUI 走 in-process facade 直调 `uc-application::MobileSyncFacade`，
- * 不经过 daemon webserver。这是 GUI in-process facade 模式的第一例；
- * 未来 webserver 会逐步从 GUI 路径中移除（参见
- * `.claude/projects/.../memory/project_gui_uses_inprocess_facade.md`）。
+ * GUI 走 in-process facade 直调 `uc-application::MobileSyncFacade`，不经过
+ * daemon webserver（参见 memory `project_gui_uses_inprocess_facade.md`）。
+ *
+ * 本文件作为 *thin re-export*：契约真正的真相源是 `src/lib/ipc.ts` 的
+ * 类型化 commands proxy（背后是 `cargo test --test specta_export` 生成的
+ * `ipc-bindings.generated.ts`）。这里只做两件事：
+ * 1. 把 `commands.xxx` 重命名成历史调用方习惯的函数名；
+ * 2. 把生成的 DTO 类型重导出，并保留少量更窄的 TS-only 联合类型
+ *    （如 `MobileClientType = 'ios_shortcut'`），让调用方拿到比 Rust
+ *    `String` 更精确的类型信息。
  *
  * Backend: `src-tauri/crates/uc-tauri/src/commands/mobile_sync.rs`
  */
 
-import { invokeWithTrace } from '@/lib/tauri-command'
+import { commands } from '@/lib/ipc'
+import type {
+  LanInterfaceView,
+  MobileDeviceView as GeneratedMobileDeviceView,
+  MobileSyncError,
+  MobileSyncSettingsViewDto,
+  RegisterMobileDeviceArgs,
+  RegisterMobileDeviceResult as GeneratedRegisterMobileDeviceResult,
+  RotateMobilePasswordArgs,
+  RotateMobilePasswordResult,
+  ShortcutInstallMethodView as GeneratedShortcutInstallMethodView,
+  UpdateMobileSyncSettingsArgs,
+  UpdateMobileSyncSettingsResult,
+} from '@/lib/ipc'
 
 // ============================================================================
-// Error taxonomy
+// Re-exported error taxonomy + type guard
 // ============================================================================
 
-/**
- * Discriminated union mirroring `MobileSyncError` on the Rust side.
- *
- * Frontend pattern matches on `code` to render localized messages and
- * branch on rich payload fields (e.g., `min` for password length).
- */
-export type MobileSyncError =
-  | { code: 'FACADE_UNAVAILABLE' }
-  | { code: 'LABEL_EMPTY' }
-  | { code: 'LABEL_TOO_LONG'; max: number }
-  | { code: 'LAN_LISTENER_DISABLED' }
-  | { code: 'USERNAME_TAKEN'; username: string }
-  | { code: 'USERNAME_INVALID_SHAPE'; reason: string }
-  | { code: 'PASSWORD_TOO_SHORT'; min: number }
-  | { code: 'PASSWORD_TOO_LONG'; max: number }
-  | { code: 'PASSWORD_HASH_FAILED'; message: string }
-  | { code: 'DEVICE_NOT_FOUND'; deviceId: string }
-  | { code: 'INVALID_LAN_PARAMETER'; reason: string }
-  | { code: 'SETTINGS_LOAD_FAILED'; message: string }
-  | { code: 'SETTINGS_SAVE_FAILED'; message: string }
-  | { code: 'ENDPOINT_INFO_PROBE_FAILED'; message: string }
-  | { code: 'LAN_PROBE_FAILED'; message: string }
-  | { code: 'NO_LAN_INTERFACE_AVAILABLE' }
-  | { code: 'PERSISTENCE_FAILED'; message: string }
-  | { code: 'QR_RENDER_FAILED'; message: string }
+export type { MobileSyncError }
 
 /**
- * Type guard for catch blocks. Tauri rejects with a plain object that
- * matches the JSON shape; this widens it back to a typed union.
+ * Type guard for catch blocks. Tauri rejects with the typed-error envelope
+ * shape (`{ code: '...' , ...payload }`); this widens unknown errors back
+ * to the typed union so call sites can do `switch (err.code)`.
  */
 export function isMobileSyncError(error: unknown): error is MobileSyncError {
   return (
@@ -55,141 +51,50 @@ export function isMobileSyncError(error: unknown): error is MobileSyncError {
 }
 
 // ============================================================================
-// DTO types — mirror Rust serde shape (camelCase fields)
+// DTO types — narrow re-exports of generated bindings
 // ============================================================================
 
+/**
+ * Mobile client kind. Rust serializes a `String` here; the only value the
+ * server currently mints is `'ios_shortcut'`. The narrower TS type lets
+ * callers `switch (clientType)` exhaustively.
+ */
 export type MobileClientType = 'ios_shortcut'
 
+/** Shortcut install delivery method —— same justification as `MobileClientType`. */
 export type ShortcutInstallMethodKind = 'tokenInjected' | 'icloudGeneric'
 
-export interface RegisterMobileDeviceArgs {
-  label: string
-  /** Optional custom username; leave undefined to auto-mint. */
-  username?: string
-  /** Optional custom password; leave undefined to auto-mint. */
-  password?: string
+export type {
+  RegisterMobileDeviceArgs,
+  RotateMobilePasswordArgs,
+  RotateMobilePasswordResult,
+  UpdateMobileSyncSettingsArgs,
+  UpdateMobileSyncSettingsResult,
+  LanInterfaceView,
 }
 
-export interface RegisterMobileDeviceResult {
-  deviceId: string
-  label: string
+/** `MobileDeviceView` with narrowed `clientType` literal type. */
+export type MobileDeviceView = Omit<GeneratedMobileDeviceView, 'clientType'> & {
   clientType: MobileClientType
-  createdAtMs: number
-  baseUrl: string
-  username: string
-  /**
-   * Plaintext password — returned **only this once**.
-   *
-   * After the modal that surfaces this value closes, the password is
-   * unrecoverable (server only stores the Argon2id PHC hash). UI must:
-   * 1. Show prominently in a copy-friendly modal
-   * 2. Block close until the user explicitly confirms they have saved it
-   * 3. Never log, persist, or send to any analytics
-   */
-  password: string
-  /** SyncClipboard "Clipboard EX" iCloud share URL (constant). */
-  installUrl: string
-  /** Base64-encoded PNG; render via `<img src="data:image/png;base64,..." />`. */
-  qrCodePngBase64: string
 }
 
-export interface MobileDeviceView {
-  deviceId: string
-  label: string
+/** Same narrowing as `MobileDeviceView`. */
+export type RegisterMobileDeviceResult = Omit<GeneratedRegisterMobileDeviceResult, 'clientType'> & {
   clientType: MobileClientType
-  /** Basic Auth 用户名 —— 展示给用户作为辅助识别（label 可重命名重复，
-   *  username 是 server 端稳定主键）。 */
-  username: string
-  createdAtMs: number
-  lastSeenAtMs: number | null
-  lastSeenIp: string | null
-  reportedName: string | null
-  reportedOs: string | null
 }
 
-export interface ShortcutInstallMethodView {
+/** Same narrowing on `method` field. */
+export type ShortcutInstallMethodView = Omit<GeneratedShortcutInstallMethodView, 'method'> & {
   method: ShortcutInstallMethodKind
-  available: boolean
-  /** Human-readable reason when `available === false`; `null` otherwise. */
-  disabledReason: string | null
-}
-
-export interface MobileSyncSettingsView {
-  /** Master switch for the entire mobile sync feature. */
-  enabled: boolean
-  /** Sub-switch for the LAN HTTP listener. */
-  lanListenEnabled: boolean
-  /** Persisted advertised IP; `null` means "0.0.0.0 / wildcard". */
-  lanAdvertiseIp: string | null
-  /** Persisted port; `null` falls back to 42720 at runtime. */
-  lanPort: number | null
-  /**
-   * Daemon-side LAN listener bind failure reason (port in use / IP not
-   * assignable / permission denied). `Some` means daemon actually attempted
-   * bind and failed; `null` means "not started" or "bind succeeded".
-   *
-   * The display URL is derived purely from `lanAdvertiseIp` + `lanPort`
-   * (daemon always binds `0.0.0.0:<lan_port>`). No runtime URL probe.
-   */
-  lanListenerError: string | null
-  shortcutInstallMethods: ShortcutInstallMethodView[]
 }
 
 /**
- * Patch input for `update_mobile_sync_settings`.
- *
- * Three-state convention for `lanAdvertiseIp` / `lanPort`:
- * - field absent (or explicit `undefined` — JSON.stringify drops it):
- *   do not change
- * - explicit `null`: clear the persisted value
- * - concrete value: write it
+ * Settings view aliased back to the historical short name for ergonomic
+ * imports; the wire shape is exactly `MobileSyncSettingsViewDto` from the
+ * generated bindings, with `shortcutInstallMethods` narrowed.
  */
-export interface UpdateMobileSyncSettingsArgs {
-  enabled?: boolean
-  lanListenEnabled?: boolean
-  lanAdvertiseIp?: string | null
-  lanPort?: number | null
-}
-
-export interface UpdateMobileSyncSettingsResult {
-  enabled: boolean
-  lanListenEnabled: boolean
-  lanAdvertiseIp: string | null
-  lanPort: number | null
-  /**
-   * Wire-compatible legacy flag.
-   *
-   * GUI daemon assembly wires an in-process `MobileLanLifecyclePort` adapter
-   * that applies the new settings immediately (start / stop / rebind the
-   * LAN listener). On that path this field is **always `false`** — the
-   * frontend should never display a restart banner for mobile-sync settings.
-   *
-   * CLI fallback (no resident daemon) preserves the older semantics: `true`
-   * iff any field actually changed, `false` for same-value saves. Useful
-   * only if a non-GUI client surfaces a "restart pending" hint.
-   */
-  restartRequired: boolean
-  /**
-   * Reason the LAN listener failed to bind after the settings landed on disk.
-   *
-   * Populated by the GUI daemon path: the `MobileLanLifecyclePort` adapter
-   * applied the new target and reported `BindFailed{reason}` (port in use,
-   * permission denied, IP not assignable, etc.). Frontend should treat a
-   * non-null value as a blocking error before letting the user proceed to
-   * flows that depend on a live listener — typically the one-tap
-   * "enable mobile sync → register device" onboarding.
-   *
-   * `null` means bind succeeded, the target was `Disabled`, or the assembly
-   * has no lifecycle port wired (CLI fallback / unit tests).
-   */
-  lanListenerBindError: string | null
-}
-
-export interface LanInterfaceView {
-  /** Interface name (`en0` / `eth0` / `Wi-Fi`) for disambiguation. */
-  name: string
-  /** Human-readable IPv4 string (`192.168.1.5`). */
-  ipv4: string
+export type MobileSyncSettingsView = Omit<MobileSyncSettingsViewDto, 'shortcutInstallMethods'> & {
+  shortcutInstallMethods: ShortcutInstallMethodView[]
 }
 
 // ============================================================================
@@ -204,7 +109,8 @@ export interface LanInterfaceView {
 export async function registerMobileDevice(
   args: RegisterMobileDeviceArgs
 ): Promise<RegisterMobileDeviceResult> {
-  return await invokeWithTrace<RegisterMobileDeviceResult>('register_mobile_device', { args })
+  const result = await commands.registerMobileDevice(args)
+  return result as RegisterMobileDeviceResult
 }
 
 /**
@@ -213,40 +119,7 @@ export async function registerMobileDevice(
  * request.
  */
 export async function revokeMobileDevice(deviceId: string): Promise<void> {
-  await invokeWithTrace<void>('revoke_mobile_device', { deviceId })
-}
-
-export interface RotateMobilePasswordArgs {
-  deviceId: string
-  /**
-   * Optional custom password. Leave undefined (or omit) to auto-mint a fresh
-   * minter-generated value. When provided, validated against the same
-   * 8–256-char rule the register flow uses.
-   */
-  password?: string
-}
-
-export interface RotateMobilePasswordResult {
-  deviceId: string
-  /** Stable login username — unchanged by rotation, returned for UI convenience. */
-  username: string
-  /**
-   * Plaintext password — returned **only this once**.
-   *
-   * After the modal that surfaces this value closes, the password is
-   * unrecoverable (server only stores the Argon2id PHC hash). The previously
-   * registered password is invalidated immediately on the daemon side, so the
-   * user must update their iPhone shortcut's password field before the next
-   * sync (otherwise the iPhone receives 401).
-   *
-   * UI must:
-   * 1. Show prominently in a copy-friendly modal
-   * 2. Block close until the user explicitly confirms they have saved it
-   * 3. Make the "rotate iPhone shortcut password field" call-to-action
-   *    unmissable
-   * 4. Never log, persist, or send to any analytics
-   */
-  password: string
+  await commands.revokeMobileDevice(deviceId)
 }
 
 /**
@@ -257,7 +130,7 @@ export interface RotateMobilePasswordResult {
 export async function rotateMobilePassword(
   args: RotateMobilePasswordArgs
 ): Promise<RotateMobilePasswordResult> {
-  return await invokeWithTrace<RotateMobilePasswordResult>('rotate_mobile_password', { args })
+  return await commands.rotateMobilePassword(args)
 }
 
 /**
@@ -266,7 +139,8 @@ export async function rotateMobilePassword(
  * exposed as an auxiliary identifier for the UI (paired with `label`).
  */
 export async function listMobileDevices(): Promise<MobileDeviceView[]> {
-  return await invokeWithTrace<MobileDeviceView[]>('list_mobile_devices')
+  const devices = await commands.listMobileDevices()
+  return devices as MobileDeviceView[]
 }
 
 /**
@@ -274,7 +148,8 @@ export async function listMobileDevices(): Promise<MobileDeviceView[]> {
  * available shortcut install methods.
  */
 export async function getMobileSyncSettings(): Promise<MobileSyncSettingsView> {
-  return await invokeWithTrace<MobileSyncSettingsView>('get_mobile_sync_settings')
+  const view = await commands.getMobileSyncSettings()
+  return view as MobileSyncSettingsView
 }
 
 /**
@@ -285,9 +160,7 @@ export async function getMobileSyncSettings(): Promise<MobileSyncSettingsView> {
 export async function updateMobileSyncSettings(
   args: UpdateMobileSyncSettingsArgs
 ): Promise<UpdateMobileSyncSettingsResult> {
-  return await invokeWithTrace<UpdateMobileSyncSettingsResult>('update_mobile_sync_settings', {
-    args,
-  })
+  return await commands.updateMobileSyncSettings(args)
 }
 
 /**
@@ -295,7 +168,7 @@ export async function updateMobileSyncSettings(
  * private addresses, sorted 10/8 → 172.16/12 → 192.168/16.
  */
 export async function listMobileLanInterfaces(): Promise<LanInterfaceView[]> {
-  return await invokeWithTrace<LanInterfaceView[]>('list_mobile_lan_interfaces')
+  return await commands.listMobileLanInterfaces()
 }
 
 /**

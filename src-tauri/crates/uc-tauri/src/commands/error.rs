@@ -3,7 +3,7 @@ use serde::Serialize;
 /// Typed command error taxonomy for Tauri command boundary.
 ///
 /// Serializes to {"code": "...", "message": "..."} for frontend discriminated union handling.
-#[derive(Debug, Clone, Serialize, thiserror::Error)]
+#[derive(Debug, Clone, Serialize, specta::Type, thiserror::Error)]
 #[serde(tag = "code", content = "message")]
 pub enum CommandError {
     #[error("not found: {0}")]

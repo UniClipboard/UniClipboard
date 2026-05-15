@@ -17,13 +17,18 @@ let _sessionToken: string | null = null
 let _fetchQueue: Response[] = []
 let _daemonWsConnectCalls: string[] = []
 
-const mockInvokeWithTrace = vi.fn()
+// Now mocks the typed `commands.getDaemonConnectionInfo` proxy from
+// `@/lib/ipc` (used to be `invokeWithTrace('get_daemon_connection_info')`
+// from `@/lib/tauri-command`). The behaviour each test wants — sequential
+// resolved values to simulate the polling — is unchanged; only the seam
+// the test reaches into shifted to the typed proxy.
+const mockGetDaemonConnectionInfo = vi.fn()
 
 function resetState(): void {
   _sessionToken = null
   _fetchQueue = []
   _daemonWsConnectCalls = []
-  mockInvokeWithTrace.mockReset()
+  mockGetDaemonConnectionInfo.mockReset()
 }
 
 function authResponse(sessionToken = 'jwt-from-refresh'): Response {
@@ -42,8 +47,10 @@ function errResponse(status: number): Response {
 
 let refreshSessionCallCount = 0
 
-vi.mock('@/lib/tauri-command', () => ({
-  invokeWithTrace: (...args: unknown[]) => mockInvokeWithTrace(...args),
+vi.mock('@/lib/ipc', () => ({
+  commands: {
+    getDaemonConnectionInfo: (...args: unknown[]) => mockGetDaemonConnectionInfo(...args),
+  },
 }))
 
 vi.mock('@/api/daemon/client', () => ({
@@ -109,7 +116,7 @@ describe('connectDaemonWs()', () => {
 
   it('polls command until connection info is ready before refreshing session and connecting ws', async () => {
     _fetchQueue.push(authResponse('session-jwt-123'))
-    mockInvokeWithTrace.mockResolvedValueOnce(null).mockResolvedValueOnce(TEST_PAYLOAD)
+    mockGetDaemonConnectionInfo.mockResolvedValueOnce(null).mockResolvedValueOnce(TEST_PAYLOAD)
 
     const promise = connectDaemonWs()
     expect(getDaemonWsConnectCount()).toBe(0)
@@ -117,8 +124,8 @@ describe('connectDaemonWs()', () => {
     await vi.advanceTimersByTimeAsync(500)
     await promise
 
-    expect(mockInvokeWithTrace).toHaveBeenNthCalledWith(1, 'get_daemon_connection_info')
-    expect(mockInvokeWithTrace).toHaveBeenNthCalledWith(2, 'get_daemon_connection_info')
+    expect(mockGetDaemonConnectionInfo).toHaveBeenNthCalledWith(1)
+    expect(mockGetDaemonConnectionInfo).toHaveBeenNthCalledWith(2)
     expect(refreshSessionCallCount).toBe(1)
     expect(getDaemonWsConnectCount()).toBe(1)
     expect(_daemonWsConnectCalls[0]).toBe(TEST_PAYLOAD.wsUrl)
@@ -126,7 +133,7 @@ describe('connectDaemonWs()', () => {
 
   it('shares one polling sequence across concurrent callers', async () => {
     _fetchQueue.push(authResponse())
-    mockInvokeWithTrace.mockResolvedValueOnce(null).mockResolvedValueOnce(TEST_PAYLOAD)
+    mockGetDaemonConnectionInfo.mockResolvedValueOnce(null).mockResolvedValueOnce(TEST_PAYLOAD)
 
     const first = connectDaemonWs()
     const second = connectDaemonWs()
@@ -135,13 +142,13 @@ describe('connectDaemonWs()', () => {
     await vi.advanceTimersByTimeAsync(500)
     await Promise.all([first, second, third])
 
-    expect(mockInvokeWithTrace).toHaveBeenCalledTimes(2)
+    expect(mockGetDaemonConnectionInfo).toHaveBeenCalledTimes(2)
     expect(refreshSessionCallCount).toBe(1)
     expect(getDaemonWsConnectCount()).toBe(1)
   })
 
   it('rejects malformed command payloads before initializing clients', async () => {
-    mockInvokeWithTrace.mockResolvedValue({ baseUrl: 'http://127.0.0.1:9000' })
+    mockGetDaemonConnectionInfo.mockResolvedValue({ baseUrl: 'http://127.0.0.1:9000' })
 
     await expect(connectDaemonWs()).rejects.toThrow('Malformed daemon connection payload')
     expect(getDaemonWsConnectCount()).toBe(0)
@@ -150,7 +157,7 @@ describe('connectDaemonWs()', () => {
   it('surfaces auth refresh failure without leaking bearer token value', async () => {
     const errorSpy = vi.spyOn(console, 'error').mockReturnValue(undefined)
     _fetchQueue.push(errResponse(401))
-    mockInvokeWithTrace.mockResolvedValue(TEST_PAYLOAD)
+    mockGetDaemonConnectionInfo.mockResolvedValue(TEST_PAYLOAD)
 
     await expect(connectDaemonWs()).rejects.toThrow()
 

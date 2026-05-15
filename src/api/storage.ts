@@ -72,8 +72,8 @@ export async function clearCache(confirmed: boolean): Promise<void> {
  * 这是存储模块中唯一保留的 Tauri invoke — 它需要 daemon 无法提供的原生 OS 集成。
  */
 export async function openDataDirectory(): Promise<void> {
-  const { invokeWithTrace } = await import('@/lib/tauri-command')
-  return invokeWithTrace('open_data_directory')
+  const { commands } = await import('@/lib/ipc')
+  await commands.openDataDirectory()
 }
 
 // Re-export clipboard history clearance from daemon clipboard API.

@@ -8,8 +8,8 @@ import { SettingRow } from './SettingRow'
 import { Switch } from '@/components/ui'
 import { useDebounce } from '@/hooks/useDebounce'
 import { useSetting } from '@/hooks/useSetting'
+import { commands } from '@/lib/ipc'
 import { createLogger } from '@/lib/logger'
-import { invokeWithTrace } from '@/lib/tauri-command'
 
 const log = createLogger('network-section')
 
@@ -137,7 +137,7 @@ const NetworkSection: React.FC = () => {
       // 走进程级重启 —— iroh `IrohNodeBuilder::bind` 是进程级单次约束
       // (Pitfall 3),LAN-only Mode 切换改 iroh_config 必须新进程重新 bind。
       // app.restart() 不返回(进程会 exit),所以后续代码理论上不可达。
-      await invokeWithTrace<void>('restart_app')
+      await commands.restartApp()
     } catch (err) {
       log.error({ err }, 'restart_app 失败')
       setRestartError(t('settings.sections.network.restartBanner.errorMessage'))

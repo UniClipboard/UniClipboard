@@ -14,7 +14,10 @@ dev-profile = ["uc-platform/dev-profile"]
 uc-core = { path = "../uc-core" }
 uc-application = { path = "../uc-application" }
 uc-infra = { path = "../uc-infra" }
-uc-platform = { path = "../uc-platform" }
+# uc-platform: 启用 `specta` feature，让 `TraceMetadata`（出现在每个
+# Tauri command 的 `_trace` 入参里）派生 `specta::Type`，从而能进
+# tauri-specta 的 binding 生成。其它 crate 默认不开 specta 功能。
+uc-platform = { path = "../uc-platform", features = ["specta"] }
 uc-bootstrap = { path = "../uc-bootstrap" }
 uc-desktop = { path = "../uc-desktop" }
 uc-observability = { path = "../uc-observability" }
@@ -38,6 +41,21 @@ tokio = { version = "1", features = ["full"] }
 # Serialization
 serde = { version = "1", features = ["derive"] }
 base64 = "0.22"
+
+# tauri-specta 生态 — IPC 类型化客户端 codegen（见 issue #698）。
+# - specta: 提供 `Type` 派生 + `collect_commands!`
+# - specta-typescript: TS 输出器
+# - tauri-specta: 把 `#[tauri::command]` + `#[specta::specta]` 联到一起，
+#   `Builder::invoke_handler()` 直接喂给 `tauri::Builder::invoke_handler`。
+#
+# 版本钉到 2.0.0-rc.25 / 0.0.12（issue #698 调研选定）。toolchain 已在
+# src-tauri/rust-toolchain.toml 钉到 stable 1.95，满足 rc.24+ 内部
+# `debug_closure_helpers` 等 feature 的 Rust 1.94+ 要求。
+# RC 期 minor 版本不保证 API 稳定，升级前必须重跑
+# `cargo test -p uc-tauri --test specta_export` 验证 binding 无 schema drift。
+specta = { version = "=2.0.0-rc.25", features = ["derive", "uuid"] }
+specta-typescript = "=0.0.12"
+tauri-specta = { version = "=2.0.0-rc.25", features = ["derive", "typescript"] }
 
 # Error handling
 anyhow = "1.0"

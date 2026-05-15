@@ -5,9 +5,9 @@ import { updateKeyboardShortcuts as persistKeyboardShortcuts } from '@/api/tauri
 import { DEFAULT_THEME_COLOR } from '@/constants/theme'
 import i18n, { normalizeLanguage, persistLanguage } from '@/i18n'
 import { connectDaemonWs } from '@/lib/daemon-ws-bootstrap'
+import { commands } from '@/lib/ipc'
 import { createLogger } from '@/lib/logger'
 import { emitSettingsChanged } from '@/lib/settings-events'
-import { invokeWithTrace } from '@/lib/tauri-command'
 import { applyThemeOverrides, applyThemePreset } from '@/lib/theme-engine'
 import { startThemeTransition } from '@/lib/theme-transition'
 import { setFrontendSentryEnabled } from '@/observability/sentry'
@@ -299,7 +299,7 @@ export const SettingProvider: React.FC<SettingProviderProps> = ({ children }) =>
     }
     persistLanguage(next)
     // Sync tray menu labels with UI language
-    invokeWithTrace('set_tray_language', { language: next }).catch(err => {
+    commands.setTrayLanguage(next).catch(err => {
       log.error({ err }, 'Failed to sync tray language')
     })
   }, [setting?.general?.language])

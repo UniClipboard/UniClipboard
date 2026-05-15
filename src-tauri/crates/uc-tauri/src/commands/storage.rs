@@ -10,6 +10,7 @@ use uc_platform::ports::observability::TraceMetadata;
 /// Open the application data directory in the system file manager.
 /// 在系统文件管理器中打开应用数据目录。
 #[tauri::command]
+#[specta::specta]
 pub async fn open_data_directory(
     app: tauri::AppHandle,
     runtime: tauri::State<'_, std::sync::Arc<crate::bootstrap::TauriAppRuntime>>,

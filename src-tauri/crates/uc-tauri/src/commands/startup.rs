@@ -13,7 +13,7 @@ use uc_platform::ports::observability::TraceMetadata;
 use crate::commands::record_trace_fields;
 use crate::tray::show_main_window;
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct DaemonConnectionPayload {
     base_url: String,
@@ -41,6 +41,7 @@ pub fn read_daemon_connection_info(
 ///
 /// Pure status read from managed state; no usecase orchestration is required.
 #[tauri::command]
+#[specta::specta]
 pub async fn get_daemon_connection_info(
     state: tauri::State<'_, DaemonConnectionState>,
     _trace: Option<TraceMetadata>,

@@ -240,6 +240,11 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
     let task_registry_for_run = task_registry.clone();
     let daemon_ownership_for_run = daemon_ownership.clone();
 
+    // tauri-specta builder —— 命令清单的单一真相源（见 `specta_builder.rs`）。
+    // 这里只用 `invoke_handler` 接进 Tauri runtime；`builder.export(...)`
+    // 走 `tests/specta_export.rs` 那条路径，CI 跑同一个 test 检查 schema drift。
+    let specta_builder = crate::specta_builder::build();
+
     builder
         .plugin(tauri_plugin_autostart::init(
             MacosLauncher::LaunchAgent,
@@ -517,56 +522,8 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
             info!("App runtime initialized, backend initialization started");
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![
-            // Tray commands
-            crate::commands::tray::set_tray_language,
-            // Lifecycle commands
-            crate::commands::get_tauri_pid,
-            crate::commands::get_device_id,
-            crate::commands::get_device_meta,
-            crate::commands::get_daemon_connection_info,
-            // Restart commands (Phase 95)
-            crate::commands::restart::restart_app,
-            // Autostart commands
-            crate::commands::autostart::enable_autostart,
-            crate::commands::autostart::disable_autostart,
-            crate::commands::autostart::is_autostart_enabled,
-            // Updater commands
-            crate::commands::updater::check_for_update,
-            crate::commands::updater::download_update,
-            crate::commands::updater::cancel_download,
-            crate::commands::updater::get_download_progress,
-            crate::commands::updater::install_update,
-            // Storage commands
-            crate::commands::storage::open_data_directory,
-            // macOS-specific commands (conditionally compiled)
-            #[cfg(target_os = "macos")]
-            crate::plugins::mac_rounded_corners::enable_rounded_corners,
-            #[cfg(target_os = "macos")]
-            crate::plugins::mac_rounded_corners::enable_modern_window_style,
-            #[cfg(target_os = "macos")]
-            crate::plugins::mac_rounded_corners::reposition_traffic_lights,
-            // Quick panel commands
-            crate::commands::quick_panel::paste_to_previous_app,
-            crate::commands::quick_panel::dismiss_quick_panel,
-            crate::commands::quick_panel::set_quick_panel_layout,
-            crate::commands::quick_panel::finalize_quick_panel_show,
-            // Settings commands
-            crate::commands::settings::update_keyboard_shortcuts,
-            // Mobile sync commands (in-process facade — does NOT go through webserver)
-            crate::commands::mobile_sync::register_mobile_device,
-            crate::commands::mobile_sync::revoke_mobile_device,
-            crate::commands::mobile_sync::list_mobile_devices,
-            crate::commands::mobile_sync::rotate_mobile_password,
-            crate::commands::mobile_sync::get_mobile_sync_settings,
-            crate::commands::mobile_sync::update_mobile_sync_settings,
-            crate::commands::mobile_sync::list_mobile_lan_interfaces,
-            // Space setup commands (in-process facade — passphrase never leaves the Tauri process)
-            crate::commands::space_setup::unlock_space_with_passphrase,
-            crate::commands::space_setup::try_silent_unlock,
-            // Factory reset — user-driven "重置并重新开始" fallback from UnlockPage
-            crate::commands::factory_reset::factory_reset_space,
-        ])
+        // 命令清单从 `specta_builder.rs` 收口；这里只把 builder 装进 runtime。
+        .invoke_handler(specta_builder.invoke_handler())
         .build(tauri_ctx)
         .map_err(|error| anyhow::anyhow!("error building tauri application: {error}"))?
         .run(move |app_handle, event| {

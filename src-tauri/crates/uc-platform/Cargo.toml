@@ -12,6 +12,12 @@ test-helpers = []
 # - 系统钥匙串 service name 后缀变为 `-dev`
 # 仅供 `bun tauri:build:dev` / 本地 dev 构建链路使用，不影响 release 默认行为。
 dev-profile = []
+# 启用后给若干跨边界 DTO（目前只有 `ports::observability::TraceMetadata`）
+# 派生 `specta::Type`，让 `uc-tauri` 端的 tauri-specta codegen 能感知它们。
+# 顺带引入 `specta-typescript`，用其 `Number<T>` 包装类型把 u64/i64 时间戳
+# 显式标记为 TS `number`（默认 specta 对 u64/i64 直接 panic，要求开发者
+# 主动声明精度策略）。不开启时不引入任何 specta 依赖，保持默认零成本。
+specta = ["dep:specta", "dep:specta-typescript"]
 
 [dependencies]
 # Workspace crates
@@ -74,6 +80,17 @@ keyring = { version = "3.6.3", features = [
   "linux-native-sync-persistent",
 ] }
 thiserror = "2.0.17"
+
+# Cross-language schema codegen — 仅供 `uc-tauri` 启用 `specta` feature 时使用，
+# 让 `TraceMetadata` 这类跨 IPC 边界的 DTO 能进 tauri-specta 的 binding 生成。
+# 版本与 uc-tauri 钉一致（rc.25；需要 Rust 1.94+，已在 src-tauri/rust-toolchain.toml
+# 钉到 stable 1.95）。
+specta = { version = "=2.0.0-rc.25", features = ["derive", "uuid"], optional = true }
+# `specta-typescript::Number<T>` —— u64/i64 字段（如 `TraceMetadata::timestamp`）
+# 在 wire 层是 JS Number 兼容，但 specta 默认对 i64/u64 直接 panic
+# （bigint_forbidden）。我们通过 `#[specta(type = Number<u64>)]` 显式断言
+# "本字段值落在 Number.MAX_SAFE_INTEGER 内"，生成 TS `number`。
+specta-typescript = { version = "=0.0.12", optional = true }
 
 [dev-dependencies]
 tempfile = "3"

@@ -23,14 +23,14 @@ use crate::quick_panel;
 #[derive(Default)]
 pub struct KeyboardShortcutsUpdateLock(pub AsyncMutex<()>);
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, specta::Type)]
 #[serde(untagged)]
 pub enum ShortcutKeyDto {
     Single(String),
     Multiple(Vec<String>),
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct UpdateKeyboardShortcutsResult {
     pub keyboard_shortcuts: HashMap<String, ShortcutKeyDto>,
@@ -38,6 +38,7 @@ pub struct UpdateKeyboardShortcutsResult {
 
 /// 保存键盘快捷键，并同步快捷面板全局快捷键的 OS 注册状态。
 #[tauri::command]
+#[specta::specta]
 pub async fn update_keyboard_shortcuts(
     app: tauri::AppHandle,
     runtime: State<'_, Arc<TauriAppRuntime>>,

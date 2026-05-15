@@ -18,12 +18,14 @@ use uc_platform::ports::observability::TraceMetadata;
 ///
 /// 获取 Tauri 应用的操作系统进程 ID。
 #[tauri::command]
+#[specta::specta]
 pub fn get_tauri_pid() -> u32 {
     std::process::id()
 }
 
 /// Get the stable local device identifier used for telemetry correlation.
 #[tauri::command]
+#[specta::specta]
 pub async fn get_device_id(
     runtime: tauri::State<'_, std::sync::Arc<crate::bootstrap::TauriAppRuntime>>,
     _trace: Option<TraceMetadata>,
@@ -38,7 +40,7 @@ pub async fn get_device_id(
 /// `device.role` 默认仍是 `webview`，这里返回的 `device_role` 是 *Rust 主进程*
 /// 的角色（`gui-host`），webview 把它打到 `device.host_role` 二级 tag 上,
 /// 便于 Sentry 上同时看到两端。
-#[derive(Debug, serde::Serialize)]
+#[derive(Debug, serde::Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct DeviceMeta {
     pub device_id: String,
@@ -54,6 +56,7 @@ pub struct DeviceMeta {
 /// Sentry initialScope 补齐,让前后端事件在 Sentry 上能用同一组 tag(尤其是
 /// `device.id`)互相关联。底层数据来自启动期一次性 resolve 的 [`uc_observability::ScopeContext`]。
 #[tauri::command]
+#[specta::specta]
 pub async fn get_device_meta(
     runtime: tauri::State<'_, std::sync::Arc<crate::bootstrap::TauriAppRuntime>>,
     _trace: Option<TraceMetadata>,

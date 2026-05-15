@@ -46,6 +46,29 @@ Examples:
 - Avoid parallel state sources for the same domain (local cache + Redux for the same truth).
 - Match TypeScript DTO field names to actual Rust serde output. Do not assume global snake_case or camelCase consistency.
 
+## Calling Tauri commands (issue #698)
+
+All `#[tauri::command]` definitions are exported as a typed `commands` object via
+`tauri-specta`. Frontend code MUST go through the wrapper in `src/lib/ipc.ts`
+rather than calling `invoke()` / `invokeWithTrace()` with a stringly-typed
+command name.
+
+```ts
+// ❌ Wrong — stringly-typed, no compile-time safety
+await invokeWithTrace('update_mobile_sync_settings', patch)
+
+// ✅ Correct — typed, fail-build on Rust signature drift
+import { commands } from '@/lib/ipc'
+await commands.updateMobileSyncSettings(patch)
+```
+
+The wrapper preserves trace_id injection, Sentry breadcrumbs, and arg
+redaction. The generated bindings live in `src/lib/ipc-bindings.generated.ts`
+(git-tracked, do not hand-edit). When you change a Rust command/DTO, regenerate
+with `cargo test -p uc-tauri --test specta_export` and commit the diff — see
+`docs/agent/rust-tauri-rules.md` ("tauri-specta IPC bindings") for the Rust
+side of the contract.
+
 ## Test Execution Note
 
 For frontend unit tests involving Vitest mocks, fake timers, or jsdom, prefer `npx vitest run` over `bun test`.

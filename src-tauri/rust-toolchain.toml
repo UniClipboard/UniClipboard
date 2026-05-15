@@ -1,0 +1,9 @@
+[toolchain]
+# 钉死到 1.95.0 — `tauri-specta@2.0.0-rc.25` 的依赖链里用到了 stable Rust
+# 1.94+ 才稳定的 `debug_closure_helpers` 等 feature；早于这个版本会编译失败。
+# rust-toolchain.toml 放在 src-tauri/ 下，作用域就是 Tauri 这一支 cargo
+# workspace，不影响其它 toolchain 配置。CI macOS / windows runner 走 rustup
+# 装下面这个 channel 即可；本地开发首次 `cargo` 调用 rustup 会自动安装。
+channel = "1.95.0"
+profile = "minimal"
+components = ["rustfmt", "clippy"]

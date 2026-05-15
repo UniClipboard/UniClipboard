@@ -116,5 +116,9 @@ license = "AGPL-3.0-only"
 
 # Dependencies for workspace crates, mainly for tauri plugins
 [workspace.dependencies]
-tauri = { version = "2", features = ["tray-icon", "macos-private-api"] }
+# tauri 2.11 是 specta rc.25 兼容的最低版本 —— 2.10.x 及之前在
+# `tauri/src/ipc/channel.rs` 用了 `#[specta(remote=..., rename="...")]`
+# 容器级 rename，rc.25 已移除该属性会编译失败。tauri-specta rc.25 通过
+# Cargo unification 强制把 specta 升到 rc.25，所以 tauri 也必须 ≥ 2.11。
+tauri = { version = "2.11", features = ["tray-icon", "macos-private-api"] }
 tauri-plugin-autostart = "2"

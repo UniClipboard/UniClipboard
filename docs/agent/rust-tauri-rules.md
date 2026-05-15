@@ -24,6 +24,34 @@ Use this document when editing Rust, Tauri commands, daemon handlers, async loop
   - Call `record_trace_fields(&span, &_trace)`
   - `.instrument(span)` the async body
 
+## tauri-specta IPC bindings (issue #698)
+
+所有 `#[tauri::command]` 通过 `tauri-specta` 自动派生 TypeScript 客户端，
+单一真相源在 `src-tauri/crates/uc-tauri/src/specta_builder.rs` 的
+`build()` 函数。新增 / 修改 / 删除一个命令时必须：
+
+1. **Rust 端**：
+   - 给函数同时加 `#[tauri::command]` 与 `#[specta::specta]` 两个属性。
+   - 所有跨 IPC 边界的 wire DTO（`#[derive(Serialize/Deserialize)]`）都要补
+     `specta::Type` 派生；thiserror typed-error enum 同样需要。
+   - 命令注册到 `specta_builder::build()` 的 `collect_commands![...]`。
+     不再写 `tauri::generate_handler!`（`run.rs` 已经接到
+     `builder.invoke_handler()`）。
+   - `u64 / i64 / usize / isize` 字段必须显式标注精度策略，否则
+     `cargo test --test specta_export` 报 `bigint_forbidden`：JS Number
+     安全范围内的字段用 `#[specta(type = specta_typescript::Number<u64>)]`
+     映射成 TS `number`；超过 2^53 的字段必须改 `String` 而不是回 `bigint`。
+   - `Option<Option<T>>` 三态字段（serde `deserialize_with` 的常见技巧）
+     需要补 `#[specta(type = Option<T>)]`，告诉 specta 实际 wire 类型。
+
+2. **Codegen**：本地跑 `cargo test -p uc-tauri --test specta_export` 重新
+   生成 `src/lib/ipc-bindings.generated.ts`，并把它一起提交。CI
+   `pr-check.yml` 会用 `git diff --exit-code` 校验，drift 会拒绝合并。
+
+3. **macOS-only 命令**：现在统一在所有平台都 collect（非 macOS 是 no-op
+   函数体），保证生成的 binding 跨平台一致。新增平台条件命令时延续这个
+   模式：函数本身在所有平台编译，平台特异性逻辑收口在函数体里。
+
 ## Rust Logging (`tracing`)
 
 - **Use `tracing` for all logging.** Do not use `println!`, `eprintln!`, or `log` macros in production code.

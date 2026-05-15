@@ -1,7 +1,12 @@
 import { Channel } from '@tauri-apps/api/core'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
+import { commands } from '@/lib/ipc'
+import type {
+  DownloadEvent as GeneratedDownloadEvent,
+  DownloadProgressSnapshot as GeneratedDownloadProgressSnapshot,
+  UpdateMetadata as GeneratedUpdateMetadata,
+} from '@/lib/ipc'
 import { createLogger } from '@/lib/logger'
-import { invokeWithTrace } from '@/lib/tauri-command'
 import type { UpdateChannel } from '@/types/setting'
 
 const log = createLogger('updater')
@@ -12,18 +17,12 @@ const log = createLogger('updater')
  */
 export const UPDATE_PROGRESS_EVENT = 'update-download-progress'
 
-export interface UpdateMetadata {
-  version: string
-  currentVersion: string
-  body?: string
-  date?: string
-}
-
-export type DownloadEvent =
-  | { event: 'Started'; data: { contentLength: number | null } }
-  | { event: 'Progress'; data: { chunkLength: number } }
-  | { event: 'Finished' }
-  | { event: 'Failed'; data: { error: string } }
+// Re-export generated DTO shapes under historical names so existing call
+// sites don't have to follow a rename. Generated types are the source of
+// truth (see `src/lib/ipc.ts`).
+export type UpdateMetadata = GeneratedUpdateMetadata
+export type DownloadEvent = GeneratedDownloadEvent
+export type DownloadProgressSnapshot = GeneratedDownloadProgressSnapshot
 
 export type DownloadPhase = 'idle' | 'available' | 'downloading' | 'ready' | 'installing'
 
@@ -31,22 +30,6 @@ export interface DownloadProgress {
   downloaded: number
   total: number | null
   phase: DownloadPhase
-}
-
-/**
- * Backend-provided snapshot used by the frontend to sync state on mount,
- * before attaching the broadcast event listener. Mirrors
- * `DownloadProgressSnapshot` in Rust.
- *
- * `phase` here can only be `idle | available | downloading | ready` —
- * `installing` is a frontend-only transient phase the React layer enters
- * while awaiting `install_update` to restart the app.
- */
-export interface DownloadProgressSnapshot {
-  phase: 'idle' | 'available' | 'downloading' | 'ready'
-  downloaded: number
-  total: number | null
-  version: string | null
 }
 
 /**
@@ -58,7 +41,7 @@ export async function checkForUpdate(
   channel?: UpdateChannel | null
 ): Promise<UpdateMetadata | null> {
   try {
-    return await invokeWithTrace('check_for_update', { channel: channel ?? null })
+    return await commands.checkForUpdate(channel ?? null)
   } catch (error) {
     log.error({ err: error }, '检查更新失败')
     throw error
@@ -73,7 +56,7 @@ export async function checkForUpdate(
  */
 export async function downloadUpdate(): Promise<void> {
   try {
-    await invokeWithTrace('download_update', {})
+    await commands.downloadUpdate()
   } catch (error) {
     log.error({ err: error }, '后台下载更新失败')
     throw error
@@ -85,7 +68,7 @@ export async function downloadUpdate(): Promise<void> {
  */
 export async function cancelDownload(): Promise<void> {
   try {
-    await invokeWithTrace('cancel_download', {})
+    await commands.cancelDownload()
   } catch (error) {
     log.error({ err: error }, '取消下载更新失败')
     throw error
@@ -99,7 +82,7 @@ export async function cancelDownload(): Promise<void> {
  */
 export async function getDownloadProgress(): Promise<DownloadProgressSnapshot> {
   try {
-    return await invokeWithTrace('get_download_progress', {})
+    return await commands.getDownloadProgress()
   } catch (error) {
     log.error({ err: error }, '获取下载进度失败')
     throw error
@@ -150,7 +133,7 @@ export async function installUpdate(
   }
 
   try {
-    await invokeWithTrace('install_update', { onEvent })
+    await commands.installUpdate(onEvent)
   } catch (error) {
     log.error({ err: error }, '安装更新失败')
     throw error

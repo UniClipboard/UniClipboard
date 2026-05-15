@@ -258,6 +258,11 @@ export async function clearClipboardItems(): Promise<number> {
 
 /**
  * 同步剪贴板内容
+ *
+ * TODO(issue #698 follow-up): Rust 端 `sync_clipboard_items` command 不存在
+ * (`src-tauri/` grep 不到)，调用会 runtime 报 "command not found"。
+ * tauri-specta 迁移阶段保留原 `invokeWithTrace` 字符串调用，待后续 daemon 化
+ * 或在 Rust 端补回 command 时再切到 typed `commands.xxx`。
  */
 export async function syncClipboardItems(): Promise<boolean> {
   try {
@@ -352,6 +357,10 @@ export async function copyFileToClipboard(entryId: string): Promise<void> {
 /**
  * Download a file entry from a remote device to local clipboard.
  * Returns a transfer_id to track progress via transfer://progress events.
+ *
+ * TODO(issue #698 follow-up): Rust `download_file_entry` command 不存在 —
+ * 调用会 runtime 报 "command not found"。tauri-specta 迁移阶段保留原
+ * 字符串调用，待 daemon 化或 Rust 端补 command 时再切 typed `commands.xxx`。
  */
 export async function downloadFileEntry(entryId: string): Promise<{ transfer_id: string }> {
   try {
@@ -364,6 +373,9 @@ export async function downloadFileEntry(entryId: string): Promise<{ transfer_id:
 
 /**
  * Open the file location (containing folder) in the system file manager.
+ *
+ * TODO(issue #698 follow-up): Rust `open_file_location` command 不存在 —
+ * 调用会 runtime 报 "command not found"。同上待 daemon 化 / Rust 补 command。
  */
 export async function openFileLocation(entryId: string): Promise<void> {
   try {

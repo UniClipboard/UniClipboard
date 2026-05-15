@@ -1,11 +1,18 @@
+/**
+ * Settings Tauri command wrappers — keyboard shortcuts patch.
+ *
+ * Backend: `src-tauri/crates/uc-tauri/src/commands/settings.rs`.
+ *
+ * 这层只做"前端 diff → 三态 patch → 把结果摊平回 Record"的薄壳，
+ * 真实的命令调用走 `commands.updateKeyboardShortcuts`（来自
+ * `ipc-bindings.generated.ts`，类型链由 `cargo test --test specta_export`
+ * 强制对齐）。
+ */
+
 import type { ShortcutKey } from '@/api/daemon/settings'
-import { invokeWithTrace } from '@/lib/tauri-command'
+import { commands } from '@/lib/ipc'
 
 export type KeyboardShortcutsPatch = Record<string, ShortcutKey | null>
-
-interface UpdateKeyboardShortcutsResult {
-  keyboardShortcuts: Record<string, ShortcutKey>
-}
 
 export function buildKeyboardShortcutsPatch(
   previous: Record<string, ShortcutKey>,
@@ -32,9 +39,8 @@ export async function updateKeyboardShortcuts(
   previous: Record<string, ShortcutKey>,
   next: Record<string, ShortcutKey>
 ): Promise<Record<string, ShortcutKey>> {
-  const result = await invokeWithTrace<UpdateKeyboardShortcutsResult>('update_keyboard_shortcuts', {
-    shortcuts: buildKeyboardShortcutsPatch(previous, next),
-  })
+  const patch = buildKeyboardShortcutsPatch(previous, next)
+  const result = await commands.updateKeyboardShortcuts(patch)
   return result.keyboardShortcuts
 }
 

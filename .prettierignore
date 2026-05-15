@@ -11,6 +11,11 @@ dist-ssr
 # Tauri
 src-tauri/target
 
+# Generated IPC bindings — produced by `cargo test -p uc-tauri --test specta_export`.
+# 保留原样格式以便 git diff 直接对比 cargo 输出；CI 会用 git diff --exit-code
+# 检查 schema drift。
+src/lib/ipc-bindings.generated.ts
+
 # Agent and tooling infrastructure (not project source)
 # Rule: any dot-directory that is NOT project source code goes here.
 # When adding a new tool/planning directory, add it below before merging.

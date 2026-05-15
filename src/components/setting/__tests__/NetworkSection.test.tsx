@@ -5,21 +5,27 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vite
 import NetworkSection from '@/components/setting/NetworkSection'
 import { useSetting } from '@/hooks/useSetting'
 import i18n from '@/i18n'
-import { invokeWithTrace } from '@/lib/tauri-command'
+import { commands } from '@/lib/ipc'
 import type { Settings, NetworkSettings } from '@/types/setting'
 
 // ============================================================================
 // Mock chain — 使 NetworkSection 完全脱离真实 daemon HTTP / Tauri runtime
 // ============================================================================
-vi.mock('@/lib/tauri-command', () => ({
-  invokeWithTrace: vi.fn(),
+// 实现已切到 typed `commands` proxy（`@/lib/ipc`，背后是 tauri-specta
+// 生成的 `ipc-bindings.generated.ts`）。这里只 mock 我们关心的命令
+// `restartApp`，其它命令未 mock 时调用会抛 TypeError，等于 fail-fast
+// 防止误调用未 stub 的命令。
+vi.mock('@/lib/ipc', () => ({
+  commands: {
+    restartApp: vi.fn(),
+  },
 }))
 
 vi.mock('@/hooks/useSetting', () => ({
   useSetting: vi.fn(),
 }))
 
-const mockInvokeWithTrace = vi.mocked(invokeWithTrace)
+const mockRestartApp = vi.mocked(commands.restartApp)
 const mockUseSetting = vi.mocked(useSetting)
 
 // ============================================================================
@@ -240,7 +246,7 @@ describe('NetworkSection — Phase 95 集成', () => {
     })
   })
 
-  it('Test 6: 点击「立即重启」调 invokeWithTrace("restart_app")', async () => {
+  it('Test 6: 点击「立即重启」调 commands.restartApp()', async () => {
     const user = userEvent.setup()
     renderWithOverrides({ allowRelayFallback: true })
     const sw = await screen.findByRole('switch', { name: /LAN-only/ })
@@ -252,17 +258,12 @@ describe('NetworkSection — Phase 95 集成', () => {
     const restartBtn = screen.getByRole('button', { name: /立即重启|Restart now/ })
     await user.click(restartBtn)
 
-    expect(mockInvokeWithTrace).toHaveBeenCalledWith('restart_app')
+    expect(mockRestartApp).toHaveBeenCalled()
   })
 
   it('Test 7: restart_app 失败 → RestartBanner.error 渲染（重试 + dismiss）', async () => {
     const user = userEvent.setup()
-    mockInvokeWithTrace.mockImplementation(async (command: string) => {
-      if (command === 'restart_app') {
-        throw new Error('restart app failed')
-      }
-      return undefined
-    })
+    mockRestartApp.mockRejectedValueOnce(new Error('restart app failed'))
     renderWithOverrides({ allowRelayFallback: true })
     const sw = await screen.findByRole('switch', { name: /LAN-only/ })
     await user.click(sw)
@@ -307,9 +308,8 @@ describe('NetworkSection — Phase 95 集成', () => {
   })
 
   it('Test 9: mount 时 RestartBanner 不可见（in-memory pending 不跨 session — mtime fence）', async () => {
-    // Fence: 即便 mock IPC 返回历史版「会触发 pending」的 RestartState payload，
-    // 组件也不应据此显示 banner（mtime-based 跨 session 推导已被 in-memory 取代）。
-    mockInvokeWithTrace.mockResolvedValueOnce({ processStartedAt: 1000, settingsMtime: 2000 })
+    // Fence: 历史版本曾用 mtime-based 推导跨 session pending state，
+    // 现已收敛到 in-memory；组件 mount 不再调任何 IPC 探测。
     renderWithOverrides({ allowRelayFallback: true })
     await act(async () => {
       await Promise.resolve()
@@ -318,8 +318,7 @@ describe('NetworkSection — Phase 95 集成', () => {
   })
 
   it('Test 10: mount 后即便 setting.allowRelayFallback=false 也不显示 banner（仅切换才触发）', async () => {
-    // Fence: 同上，提供 mtime > processStartedAt 的 payload，banner 仍不应可见。
-    mockInvokeWithTrace.mockResolvedValueOnce({ processStartedAt: 500, settingsMtime: 9000 })
+    // Fence: 同上，mount 不该出 banner，状态由用户主动切换才进入 pending。
     renderWithOverrides({ allowRelayFallback: false })
     await act(async () => {
       await Promise.resolve()

@@ -24,13 +24,13 @@ use crate::commands::record_trace_fields;
 
 /// 重置成功后返回的占位元数据。当前无字段——保留为对象以便未来扩展
 /// (比如下一步推荐操作的提示),而不必改 wire 形状。
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct FactoryResetResult {}
 
 /// 前端可 `error.code` switch 的 typed 错误。序列化形态:
 /// `{"code": "KEY_MATERIAL_WIPE_FAILED", "message": "..."}` 等。
-#[derive(Debug, Clone, Serialize, thiserror::Error)]
+#[derive(Debug, Clone, Serialize, specta::Type, thiserror::Error)]
 #[serde(
     tag = "code",
     rename_all = "SCREAMING_SNAKE_CASE",
@@ -81,6 +81,7 @@ impl From<FactoryResetError> for FactoryResetCommandError {
 /// 范围,facade 内部 mint 一个新的 `SpaceId` 作为 opaque handle。前端
 /// 应在调用本 command **前** 通过二次确认对话框收集用户的明确意图。
 #[tauri::command]
+#[specta::specta]
 pub async fn factory_reset_space(
     runtime: State<'_, Arc<TauriAppRuntime>>,
     _trace: Option<TraceMetadata>,

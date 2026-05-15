@@ -1,4 +1,3 @@
-import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import React, { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
 import ClipboardPreviewPane from './ClipboardPreviewPane'
@@ -13,6 +12,7 @@ import { useClipboardCollection } from '@/hooks/useClipboardCollection'
 import { useDebounce } from '@/hooks/useDebounce'
 import { useThemeSync } from '@/hooks/useThemeSync'
 import { getItemPreview, resolveItemType } from '@/lib/clipboard-utils'
+import { commands } from '@/lib/ipc'
 import { createLogger } from '@/lib/logger'
 import { readStoredUiScale, subscribeUiScaleChanges } from '@/lib/ui-scale'
 import { cn } from '@/lib/utils'
@@ -20,15 +20,15 @@ import { cn } from '@/lib/utils'
 const log = createLogger('clipboard-history-panel')
 
 async function dismissPanel(): Promise<void> {
-  await invoke('dismiss_quick_panel')
+  await commands.dismissQuickPanel()
 }
 
 async function pasteToApp(): Promise<void> {
-  await invoke('paste_to_previous_app')
+  await commands.pasteToPreviousApp()
 }
 
 async function setQuickPanelLayout(scale: number, previewExpanded: boolean): Promise<void> {
-  await invoke('set_quick_panel_layout', { scale, previewExpanded })
+  await commands.setQuickPanelLayout(scale, previewExpanded)
 }
 
 const initialPreviewState: PreviewState = {
@@ -160,7 +160,7 @@ const ClipboardHistoryPanel: React.FC = () => {
       setTimeout(() => {
         setSkipTransition(false)
         void setQuickPanelLayout(readStoredUiScale(), false)
-          .then(() => invoke('finalize_quick_panel_show'))
+          .then(() => commands.finalizeQuickPanelShow())
           .then(() => searchInputRef.current?.focus())
           .catch(() => {})
       }, 0)

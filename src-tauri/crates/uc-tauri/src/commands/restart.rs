@@ -42,6 +42,7 @@ use crate::run::{DAEMON_SHUTDOWN_TIMEOUT, FRONTEND_SHUTDOWN_EVENT, SHUTDOWN_FRON
 /// 任何涉及 iroh_config 变更的 settings 必须新进程重新 bind,所以
 /// `app.restart()` 是合适的、唯一的入口。
 #[tauri::command]
+#[specta::specta]
 pub async fn restart_app(
     app: tauri::AppHandle,
     _trace: Option<TraceMetadata>,

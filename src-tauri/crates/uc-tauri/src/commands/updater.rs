@@ -37,15 +37,19 @@ pub const UPDATE_PROGRESS_EVENT: &str = "update-download-progress";
 /// Carried both via the broadcast `UPDATE_PROGRESS_EVENT` (background
 /// download) and via the per-invocation `Channel<DownloadEvent>` passed to
 /// `install_update` (legacy combined download+install path).
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, specta::Type)]
 #[serde(tag = "event", content = "data")]
 pub enum DownloadEvent {
     #[serde(rename_all = "camelCase")]
     Started {
+        // 字节计数，远小于 2^53；显式 `Number<u64>` 让 TS 拿到 `number` 而非
+        // `bigint`（specta 默认对 u64 直接 panic，强制开发者声明精度策略）。
+        #[specta(type = Option<specta_typescript::Number<u64>>)]
         content_length: Option<u64>,
     },
     #[serde(rename_all = "camelCase")]
     Progress {
+        #[specta(type = specta_typescript::Number<usize>)]
         chunk_length: usize,
     },
     Finished,
@@ -57,7 +61,7 @@ pub enum DownloadEvent {
 
 /// Coarse-grained phase used by `get_download_progress` so a frontend that
 /// mounts mid-download can render the right icon variant.
-#[derive(Debug, Clone, Copy, Serialize, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Serialize, Default, PartialEq, Eq, specta::Type)]
 #[serde(rename_all = "lowercase")]
 pub enum DownloadPhase {
     #[default]
@@ -69,17 +73,20 @@ pub enum DownloadPhase {
 
 /// Snapshot of current download state, queryable from the frontend so a
 /// just-mounted listener can sync up before attaching to the event stream.
-#[derive(Debug, Clone, Serialize, Default)]
+#[derive(Debug, Clone, Serialize, Default, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct DownloadProgressSnapshot {
     pub phase: DownloadPhase,
+    // u64 字节计数 → TS `number`，理由同 `DownloadEvent::Started::content_length`。
+    #[specta(type = specta_typescript::Number<u64>)]
     pub downloaded: u64,
+    #[specta(type = Option<specta_typescript::Number<u64>>)]
     pub total: Option<u64>,
     pub version: Option<String>,
 }
 
 /// Metadata returned to the frontend when an update is available.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct UpdateMetadata {
     pub version: String,
@@ -176,6 +183,7 @@ fn parse_channel(s: &str) -> UpdateChannel {
 /// - State is `Downloading`: refuse to re-check (v1 simplification — wait
 ///   for the in-flight download to finish or be cancelled first).
 #[tauri::command]
+#[specta::specta]
 pub async fn check_for_update(
     app: AppHandle,
     channel: Option<String>,
@@ -278,6 +286,7 @@ pub async fn check_for_update(
 /// "already downloading"; `Ready` returns "already downloaded"; `None`
 /// returns "no pending update".
 #[tauri::command]
+#[specta::specta]
 pub async fn download_update(
     app: AppHandle,
     pending: State<'_, PendingUpdate>,
@@ -419,6 +428,7 @@ enum DownloadOutcome {
 /// not `Downloading`. The download future is dropped by the `tokio::select!`
 /// in `download_update`, which terminates the underlying HTTP stream.
 #[tauri::command]
+#[specta::specta]
 pub async fn cancel_download(
     pending: State<'_, PendingUpdate>,
     _trace: Option<TraceMetadata>,
@@ -450,6 +460,7 @@ pub async fn cancel_download(
 /// Return the current download state so a freshly-mounted frontend listener
 /// can sync up before attaching to `UPDATE_PROGRESS_EVENT`.
 #[tauri::command]
+#[specta::specta]
 pub async fn get_download_progress(
     pending: State<'_, PendingUpdate>,
     _trace: Option<TraceMetadata>,
@@ -485,6 +496,7 @@ pub async fn get_download_progress(
 /// - `Downloading`: refuse (caller should wait or cancel first).
 /// - `None`: refuse.
 #[tauri::command]
+#[specta::specta]
 pub async fn install_update(
     app: AppHandle,
     pending: State<'_, PendingUpdate>,

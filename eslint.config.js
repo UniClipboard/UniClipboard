@@ -16,7 +16,17 @@ const gitignorePath = path.join(__dirname, '.gitignore')
 
 export default tseslint.config(
   includeIgnoreFile(gitignorePath),
-  { ignores: ['.claude', 'dist', 'node_modules', 'src-tauri/target'] },
+  {
+    ignores: [
+      '.claude',
+      'dist',
+      'node_modules',
+      'src-tauri/target',
+      // tauri-specta codegen artifact (issue #698) — schema 由 Rust 端
+      // 用 cargo test --test specta_export 重新生成；不应被 eslint 校验。
+      'src/lib/ipc-bindings.generated.ts',
+    ],
+  },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {

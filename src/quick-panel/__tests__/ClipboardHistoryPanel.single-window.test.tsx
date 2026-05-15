@@ -134,10 +134,12 @@ describe('ClipboardHistoryPanel single-window preview', () => {
     expect(await screen.findByText('Preview for entry-1')).toBeInTheDocument()
 
     await waitFor(() => {
-      expect(invokeMock).toHaveBeenCalledWith('set_quick_panel_layout', {
-        scale: 1,
-        previewExpanded: true,
-      })
+      // 现在走 typed `commands` proxy → generated bindings → 注入 trace 字段，
+      // 所以 invoke 收到的 payload 多一个 `trace`。用 objectContaining 匹配。
+      expect(invokeMock).toHaveBeenCalledWith(
+        'set_quick_panel_layout',
+        expect.objectContaining({ scale: 1, previewExpanded: true })
+      )
     })
     expect(invokeMock).not.toHaveBeenCalledWith('show_preview_panel', expect.anything())
   })
@@ -225,12 +227,12 @@ describe('ClipboardHistoryPanel single-window preview', () => {
     fireEvent.keyDown(window, { key: 'Escape' })
 
     await waitFor(() => {
-      expect(invokeMock).toHaveBeenCalledWith('dismiss_quick_panel')
+      expect(invokeMock).toHaveBeenCalledWith('dismiss_quick_panel', expect.any(Object))
     })
-    expect(invokeMock).not.toHaveBeenCalledWith('set_quick_panel_layout', {
-      scale: 1,
-      previewExpanded: false,
-    })
+    expect(invokeMock).not.toHaveBeenCalledWith(
+      'set_quick_panel_layout',
+      expect.objectContaining({ scale: 1, previewExpanded: false })
+    )
   })
 
   it('keeps the hovered preview when moving from history into the preview pane', async () => {

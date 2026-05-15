@@ -25,6 +25,7 @@ fn format_autostart_error(prefix: &str, error: impl Display) -> String {
 /// 这是一个简单的包装命令，委托给 tauri_plugin_autostart 插件。
 /// 不需要用例，因为这是平台插件包装器，而非业务逻辑。
 #[tauri::command]
+#[specta::specta]
 pub async fn enable_autostart(
     app_handle: AppHandle,
     _trace: Option<TraceMetadata>,
@@ -56,6 +57,7 @@ pub async fn enable_autostart(
 /// 这是一个简单的包装命令，委托给 tauri_plugin_autostart 插件。
 /// 不需要用例，因为这是平台插件包装器，而非业务逻辑。
 #[tauri::command]
+#[specta::specta]
 pub async fn disable_autostart(
     app_handle: AppHandle,
     _trace: Option<TraceMetadata>,
@@ -90,6 +92,7 @@ pub async fn disable_autostart(
 /// 这是一个简单的包装命令，委托给 tauri_plugin_autostart 插件。
 /// 不需要用例，因为这是平台插件包装器，而非业务逻辑。
 #[tauri::command]
+#[specta::specta]
 pub async fn is_autostart_enabled(
     app_handle: AppHandle,
     _trace: Option<TraceMetadata>,

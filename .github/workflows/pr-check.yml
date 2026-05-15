@@ -140,3 +140,19 @@ jobs:
       - name: Check Rust workspace
         working-directory: src-tauri
         run: cargo check --workspace --locked
+
+      # IPC schema drift check (issue #698) —— `cargo test --test specta_export`
+      # 用同一个 `tauri_specta::Builder` 构造命令清单，把 TypeScript binding
+      # 写到 `src/lib/ipc-bindings.generated.ts`。如果 PR 改了任何
+      # `#[tauri::command]` / DTO / error enum 的形状但没把这个文件一起提交，
+      # `git diff --exit-code` 会以非零退出，CI 拒绝合并。开发者本地修复:
+      # `cargo test -p uc-tauri --test specta_export` 重新生成后 `git add`。
+      - name: Generate IPC bindings
+        working-directory: src-tauri
+        run: cargo test -p uc-tauri --test specta_export --locked
+      - name: Verify IPC bindings are up to date
+        run: |
+          if ! git diff --exit-code src/lib/ipc-bindings.generated.ts; then
+            echo "::error::IPC schema drift detected. Run 'cargo test -p uc-tauri --test specta_export' locally and commit the regenerated src/lib/ipc-bindings.generated.ts."
+            exit 1
+          fi

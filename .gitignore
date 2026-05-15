@@ -36,6 +36,7 @@ src-tauri/.app_data_a/
 src-tauri/.app_data_b/
 public/splashscreen.html
 .worktrees/
+.claude/worktrees/
 .env
 .seq-api-key
 target

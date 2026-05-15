@@ -1,3 +1,15 @@
+/**
+ * DevicesPage 顶层渲染测试。
+ *
+ * 重写后页面是 Hero + Tabs + 卡片网格，不再嵌套已弃用的
+ * ThisDeviceCard / SpaceMembersPanel / MobileSyncDevicesPanel。本测试只验证：
+ *   1. 挂载时分发 `fetchLocalDeviceInfo` + `fetchSpaceMembers`
+ *   2. 渲染 Hero 区域里的"本设备"标签 + 两个 Tab 切换控件
+ *
+ * 卡片级别的交互（点击进入 dialog / 邀请新设备 / 撤销移动设备 等）由各自
+ * 组件的单元测试覆盖，这里不重复。
+ */
+
 import { render, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import DevicesPage from '@/pages/DevicesPage'
@@ -6,39 +18,70 @@ const dispatchMock = vi.fn()
 
 vi.mock('@/store/hooks', () => ({
   useAppDispatch: () => dispatchMock,
+  useAppSelector: (selector: (s: unknown) => unknown) =>
+    selector({
+      devices: {
+        localDevice: null,
+        localDeviceLoading: false,
+        localDeviceError: null,
+        spaceMembers: [],
+        spaceMembersError: null,
+        memberSyncPreferences: {},
+        memberSyncPreferencesLoading: {},
+      },
+    }),
 }))
 
 vi.mock('@/store/slices/devicesSlice', () => ({
   fetchLocalDeviceInfo: vi.fn(() => ({ type: 'devices/fetchLocalDeviceInfo' })),
   fetchSpaceMembers: vi.fn(() => ({ type: 'devices/fetchSpaceMembers' })),
+  clearLocalDeviceError: vi.fn(() => ({ type: 'devices/clearLocalDeviceError' })),
+  clearSpaceMembersError: vi.fn(() => ({ type: 'devices/clearSpaceMembersError' })),
+  fetchMemberSyncPreferences: vi.fn(() => ({ type: 'devices/fetchMemberSyncPreferences' })),
+  updateMemberSyncPreferences: vi.fn(() => ({ type: 'devices/updateMemberSyncPreferences' })),
 }))
 
-vi.mock('@/components', () => ({
-  SpaceMembersPanel: () => <div data-testid="space-members-panel">SpaceMembersPanel</div>,
-  ThisDeviceCard: () => <div data-testid="this-device-card">ThisDeviceCard</div>,
-  MobileSyncDevicesPanel: () => <div data-testid="mobile-sync-panel">MobileSyncDevicesPanel</div>,
+vi.mock('@/api/daemon', () => ({
+  refreshPresence: vi.fn(() => Promise.resolve()),
+}))
+
+vi.mock('@/api/daemon/members', () => ({
+  unpairDevice: vi.fn(),
+}))
+
+vi.mock('@/api/tauri-command/mobile_sync', () => ({
+  isMobileSyncError: () => false,
+  listMobileDevices: vi.fn(() => Promise.resolve([])),
+  revokeMobileDevice: vi.fn(),
+}))
+
+vi.mock('@/lib/daemon-ws', () => ({
+  daemonWs: { subscribe: () => () => undefined },
+}))
+
+vi.mock('@/hooks/useSetting', () => ({
+  useSetting: () => ({
+    setting: {
+      sync: { autoSync: true },
+      fileSync: { fileSyncEnabled: true },
+      network: { allowRelayFallback: true },
+    },
+  }),
 }))
 
 describe('DevicesPage', () => {
-  it('renders ThisDeviceCard, SpaceMembersPanel and MobileSyncDevicesPanel', () => {
-    render(<DevicesPage />)
-
-    expect(screen.getByTestId('this-device-card')).toBeInTheDocument()
-    expect(screen.getByTestId('space-members-panel')).toBeInTheDocument()
-    expect(screen.getByTestId('mobile-sync-panel')).toBeInTheDocument()
-  })
-
   it('dispatches fetchLocalDeviceInfo and fetchSpaceMembers on mount', () => {
+    dispatchMock.mockClear()
     render(<DevicesPage />)
 
     expect(dispatchMock).toHaveBeenCalledWith({ type: 'devices/fetchLocalDeviceInfo' })
     expect(dispatchMock).toHaveBeenCalledWith({ type: 'devices/fetchSpaceMembers' })
   })
 
-  it('does not render legacy sections', () => {
+  it('renders the P2P and Mobile sync tab triggers', () => {
     render(<DevicesPage />)
 
-    expect(screen.queryByText('Device Management')).not.toBeInTheDocument()
-    expect(screen.queryByText('Pairing Requests')).not.toBeInTheDocument()
+    // Two tabs: 已配对设备 / Paired devices  +  手机同步 / Mobile Sync
+    expect(screen.getAllByRole('tab')).toHaveLength(2)
   })
 })

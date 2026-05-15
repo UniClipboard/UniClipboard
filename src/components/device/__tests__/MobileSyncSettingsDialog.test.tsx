@@ -1,14 +1,14 @@
 /**
- * MobileSyncSettingsSheet —— helper 单测(方案 B 新增)。
+ * MobileSyncSettingsDialog —— helper 单测。
  *
- * 只覆盖 translateMobileSyncError —— Sheet 自身渲染需要 mock Tauri command +
- * AlertDialog + Sheet portal 等基础设施,ROI 太低。helper 是 settings 路径
- * 错误翻译的真相源(7 个 variant),值得锁住。
+ * 只覆盖 translateMobileSyncError —— Dialog 自身渲染需要 mock Tauri command +
+ * AlertDialog + portal 等基础设施,ROI 太低。helper 是 settings 路径错误翻译
+ * 的真相源(7 个 variant),值得锁住。
  */
 
 import '@testing-library/jest-dom/vitest'
 import { beforeAll, describe, expect, it } from 'vitest'
-import { __test__ } from '@/components/device/MobileSyncSettingsSheet'
+import { __test__ } from '@/components/device/MobileSyncSettingsDialog'
 import i18n from '@/i18n'
 
 const { translateMobileSyncError } = __test__
@@ -19,7 +19,7 @@ beforeAll(async () => {
 
 const t = i18n.t.bind(i18n)
 
-describe('SettingsSheet.translateMobileSyncError — settings/restart 路径变体', () => {
+describe('MobileSyncSettingsDialog.translateMobileSyncError — settings 路径变体', () => {
   it('FACADE_UNAVAILABLE → 功能未启用', () => {
     expect(translateMobileSyncError(t, { code: 'FACADE_UNAVAILABLE' })).toContain('未启用')
   })

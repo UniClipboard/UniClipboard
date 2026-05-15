@@ -12,7 +12,7 @@ import { Button } from '@/components/ui/button'
  *
  * Scope: 这个 banner 跟 NetworkSection 的 loading/error/retry 状态机紧绑,
  * i18n key 走 `settings.sections.network.restartBanner.*`。其他 surface
- * (例如 MobileSyncSettingsSheet) 的"提示重启"需求视觉与错误处理都不同,
+ * (例如 MobileSyncSettingsDialog) 的"提示重启"需求视觉与错误处理都不同,
  * 应该各自走自己的 inline UI, 不要尝试把这个 banner 改造成 generic ——
  * union 类型的 banner 会比复制一份更难维护。
  */

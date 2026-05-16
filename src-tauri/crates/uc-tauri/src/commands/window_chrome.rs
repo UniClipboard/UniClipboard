@@ -25,7 +25,9 @@
 //! 调一次此命令重新生效。
 
 use crate::commands::record_trace_fields;
-use tauri::{Manager, WebviewWindow};
+#[cfg(target_os = "macos")]
+use tauri::Manager;
+use tauri::WebviewWindow;
 use tracing::{info_span, Instrument};
 use uc_platform::ports::observability::TraceMetadata;
 

@@ -14,8 +14,17 @@ It enables seamless and secure syncing of text, images, and files across multipl
 ![Image](https://github.com/user-attachments/assets/8d339467-5bbe-4afa-9235-1d26cbff82c9)
 
 <p align="center">
-  <video src="https://github.com/user-attachments/assets/29f4bf5d-8996-4602-8784-067fb919c671" controls muted playsinline width="800"></video>
+  <video src="https://github.com/user-attachments/assets/367c7f45-579a-49b7-bc96-9ccc25cf5ad0" controls muted playsinline width="800"></video>
+  <br/>
+  <em>Desktop ↔ desktop — real-time, bidirectional clipboard sync between two computers.</em>
 </p>
+
+<details>
+  <summary><strong>Mobile companion (LAN)</strong> — share a screenshot from your phone to your desktop. (click to expand)</summary>
+  <p align="center">
+    <video src="https://github.com/user-attachments/assets/29f4bf5d-8996-4602-8784-067fb919c671" controls muted playsinline width="800"></video>
+  </p>
+</details>
 
 <div align="center">
   <br/>

@@ -125,6 +125,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: recursive
 
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable

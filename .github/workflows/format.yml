@@ -40,6 +40,7 @@ jobs:
           # Use a PAT or the default token; for same-repo PRs GITHUB_TOKEN can push.
           token: ${{ secrets.GITHUB_TOKEN }}
           fetch-depth: 0
+          submodules: recursive
 
       - name: Install Rust stable (with rustfmt)
         uses: dtolnay/rust-toolchain@stable

@@ -115,6 +115,7 @@ jobs:
       - uses: actions/checkout@v6
         with:
           ref: ${{ steps.snap-meta.outputs.ref }}
+          submodules: recursive
 
       - name: Build snap
         id: build

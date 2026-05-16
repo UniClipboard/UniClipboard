@@ -44,6 +44,7 @@ jobs:
           ref: main
           token: ${{ secrets.REPO_BOT_TOKEN }}
           fetch-depth: 0
+          submodules: recursive
 
       - name: Setup Node.js
         uses: actions/setup-node@v4

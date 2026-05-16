@@ -260,7 +260,7 @@ const AboutSection: React.FC = () => {
           </div>
           <button
             type="button"
-            className="inline-flex min-w-36 items-center justify-center gap-2 rounded-lg bg-secondary px-4 py-2 text-sm font-medium transition duration-200 hover:bg-secondary/80"
+            className="inline-flex min-w-36 items-center justify-center gap-2 rounded-lg border border-border bg-secondary px-4 py-2 text-sm font-medium text-secondary-foreground shadow-sm transition duration-200 hover:bg-secondary/80"
             onClick={handleCheckUpdate}
             disabled={isBusy || isCheckingUpdate}
             aria-busy={isCheckingUpdate}

@@ -1,15 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { AllowOverlayAddrsDisclosure } from './AllowOverlayAddrsDisclosure'
-import { LanOnlyDisclosure } from './LanOnlyDisclosure'
-import { RestartBanner } from './RestartBanner'
-import { SettingGroup } from './SettingGroup'
-import { SettingRow } from './SettingRow'
 import { Switch } from '@/components/ui'
 import { useDebounce } from '@/hooks/useDebounce'
 import { useSetting } from '@/hooks/useSetting'
 import { commands } from '@/lib/ipc'
 import { createLogger } from '@/lib/logger'
+import { AllowOverlayAddrsDisclosure } from './AllowOverlayAddrsDisclosure'
+import { LanOnlyDisclosure } from './LanOnlyDisclosure'
+import { RestartBanner } from './RestartBanner'
+import { SettingGroup } from './SettingGroup'
+import { SettingRow } from './SettingRow'
 
 const log = createLogger('network-section')
 

@@ -1,15 +1,6 @@
 import { Clipboard } from 'lucide-react'
 import React from 'react'
 import { useTranslation } from 'react-i18next'
-import type { DisplayClipboardItem } from './ClipboardContent'
-import ClipboardPreviewInfo from './ClipboardPreviewInfo'
-import CodePreview from './preview-renderers/CodePreview'
-import FilePreview from './preview-renderers/FilePreview'
-import ImagePreview from './preview-renderers/ImagePreview'
-import LinkPreview from './preview-renderers/LinkPreview'
-import TextPreview from './preview-renderers/TextPreview'
-import { isLargeTextPreview } from './preview-renderers/textPreviewUtils'
-import TransferProgressBar from './TransferProgressBar'
 import {
   ClipboardCodeItem,
   ClipboardImageItem,
@@ -19,6 +10,15 @@ import {
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { useClipboardPreviewState } from '@/hooks/useClipboardPreviewState'
 import { useEntryDelivery } from '@/hooks/useEntryDelivery'
+import type { DisplayClipboardItem } from './ClipboardContent'
+import ClipboardPreviewInfo from './ClipboardPreviewInfo'
+import CodePreview from './preview-renderers/CodePreview'
+import FilePreview from './preview-renderers/FilePreview'
+import ImagePreview from './preview-renderers/ImagePreview'
+import LinkPreview from './preview-renderers/LinkPreview'
+import TextPreview from './preview-renderers/TextPreview'
+import { isLargeTextPreview } from './preview-renderers/textPreviewUtils'
+import TransferProgressBar from './TransferProgressBar'
 
 interface ClipboardPreviewProps {
   item: DisplayClipboardItem | null

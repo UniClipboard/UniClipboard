@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { SettingGroup } from './SettingGroup'
-import { SettingRow } from './SettingRow'
 import { Switch, Input, Badge } from '@/components/ui'
 import { useSetting } from '@/hooks/useSetting'
+import { SettingGroup } from './SettingGroup'
+import { SettingRow } from './SettingRow'
 
 const MB = 1024 * 1024
 

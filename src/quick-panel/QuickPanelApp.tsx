@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import ClipboardHistoryPanel from './ClipboardHistoryPanel'
 import { daemonClient } from '@/api/daemon/client'
 import { connectDaemonWs } from '@/lib/daemon-ws-bootstrap'
+import ClipboardHistoryPanel from './ClipboardHistoryPanel'
 
 const loadingClassName =
   'flex h-screen w-screen items-center justify-center bg-transparent text-[13px] text-muted-foreground'

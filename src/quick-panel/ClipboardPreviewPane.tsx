@@ -1,9 +1,9 @@
 import { File, Loader2 } from 'lucide-react'
 import React, { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
-import { useClipboardPreview } from './useClipboardPreview'
 import EntryDeliveryBadge from '@/components/clipboard/EntryDeliveryBadge'
 import VirtualizedText from '@/components/clipboard/VirtualizedText'
+import { useClipboardPreview } from './useClipboardPreview'
 
 interface ClipboardPreviewPaneProps {
   entryId: string | null

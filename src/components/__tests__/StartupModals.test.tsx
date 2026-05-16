@@ -13,9 +13,9 @@
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import StartupModals from '../StartupModals'
 import { getUpgradeStatus, type UpgradeStatus } from '@/api/daemon'
 import { connectDaemonWs } from '@/lib/daemon-ws-bootstrap'
+import StartupModals from '../StartupModals'
 
 const mockUpdateGeneralSetting = vi.hoisted(() => vi.fn().mockResolvedValue(undefined))
 

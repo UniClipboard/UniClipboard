@@ -15,9 +15,6 @@ import {
 } from 'lucide-react'
 import React, { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
-import { quickCardClassName } from '../constants'
-import type { DisplayItem, TimeRangePreset } from '../types'
-import PanelItem from './PanelItem'
 import { Filter } from '@/api/clipboardItems'
 import AdvancedSearch from '@/components/search/AdvancedSearch'
 import {
@@ -27,6 +24,9 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { cn } from '@/lib/utils'
+import { quickCardClassName } from '../constants'
+import type { DisplayItem, TimeRangePreset } from '../types'
+import PanelItem from './PanelItem'
 
 interface HistoryPaneProps {
   filteredItems: DisplayItem[]

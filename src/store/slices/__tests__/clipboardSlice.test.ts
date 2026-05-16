@@ -1,8 +1,8 @@
 import { configureStore } from '@reduxjs/toolkit'
 import { describe, it, expect } from 'vitest'
+import type { ClipboardItemResponse, ClipboardItemsResult } from '@/api/clipboardItems'
 import clipboardReducer, { prependItem, removeItem } from '../clipboardSlice'
 import fileTransferReducer from '../fileTransferSlice'
-import type { ClipboardItemResponse, ClipboardItemsResult } from '@/api/clipboardItems'
 
 function makeItem(id: string, overrides?: Partial<ClipboardItemResponse>): ClipboardItemResponse {
   return {

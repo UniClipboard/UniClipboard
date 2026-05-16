@@ -10,6 +10,7 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 import type { ComponentType } from 'react'
+import ShortcutsSection from '@/components/setting/ShortcutsSection'
 import AboutSection from './AboutSection'
 import AppearanceSection from './AppearanceSection'
 import GeneralSection from './GeneralSection'
@@ -17,7 +18,6 @@ import NetworkSection from './NetworkSection'
 import SecuritySection from './SecuritySection'
 import StorageSection from './StorageSection'
 import SyncSection from './SyncSection'
-import ShortcutsSection from '@/components/setting/ShortcutsSection'
 
 export interface SettingsCategory {
   id: string

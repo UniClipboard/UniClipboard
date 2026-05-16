@@ -1,7 +1,7 @@
 import { renderHook, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { useClipboardPreview } from '../useClipboardPreview'
 import { clearClipboardPreviewCache } from '@/lib/clipboard-preview-cache'
+import { useClipboardPreview } from '../useClipboardPreview'
 
 vi.mock('@/api/daemon/clipboard', () => ({
   getClipboardEntryResource: vi.fn(),

@@ -1,7 +1,5 @@
 import { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
-import { SettingGroup } from './SettingGroup'
-import { SettingRow } from './SettingRow'
 import {
   Select,
   SelectContent,
@@ -14,6 +12,8 @@ import {
 import { useSetting } from '@/hooks/useSetting'
 import { SUPPORTED_LANGUAGES, type SupportedLanguage, getInitialLanguage } from '@/i18n'
 import { createLogger } from '@/lib/logger'
+import { SettingGroup } from './SettingGroup'
+import { SettingRow } from './SettingRow'
 
 const log = createLogger('general-section')
 

@@ -9,6 +9,10 @@
  */
 
 import { describe, expect, it, beforeEach, afterEach } from 'vitest'
+// `./_test-helpers` 必须先于 `@/api/daemon/*` 加载: 它在 top-level 注册了
+// `vi.mock('@/api/daemon/client', ...)`,只有先跑过才能保证 storage/settings
+// 拿到的是被 mock 的 client; 一旦顺序反了,真实 client 会先进 ESM 缓存。
+// eslint-disable-next-line import-x/order
 import {
   makeSettingsDto,
   setupMockClient,

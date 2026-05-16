@@ -2,7 +2,6 @@ import { Minus, Plus, RotateCcw, X } from 'lucide-react'
 import { useEffect, useState, type MouseEvent } from 'react'
 import { HexColorPicker } from 'react-colorful'
 import { useTranslation } from 'react-i18next'
-import { SettingGroup } from './SettingGroup'
 import {
   Button,
   Popover,
@@ -27,6 +26,7 @@ import {
 } from '@/lib/theme-engine'
 import { setTransitionOrigin } from '@/lib/theme-transition'
 import { cn } from '@/lib/utils'
+import { SettingGroup } from './SettingGroup'
 
 const log = createLogger('appearance-section')
 

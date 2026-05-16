@@ -9,7 +9,6 @@ import {
 } from 'lucide-react'
 import React, { useMemo, useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
-import VirtualizedText from './VirtualizedText'
 import {
   ClipboardTextItem,
   ClipboardImageItem,
@@ -24,6 +23,7 @@ import { toast } from '@/components/ui/toast'
 import { createLogger } from '@/lib/logger'
 import { cn } from '@/lib/utils'
 import { formatFileSize } from '@/utils'
+import VirtualizedText from './VirtualizedText'
 
 const log = createLogger('clipboard-item')
 

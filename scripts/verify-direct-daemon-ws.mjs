@@ -34,8 +34,8 @@
  * 5  Malformed response (bad JSON, unexpected envelope shape)
  */
 
-import { WebSocketServer } from 'ws'
 import http from 'http'
+import { WebSocketServer } from 'ws'
 
 // ── Helpers ────────────────────────────────────────────────────
 

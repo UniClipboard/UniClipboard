@@ -1,5 +1,4 @@
 import { createSlice, createAsyncThunk, PayloadAction } from '@reduxjs/toolkit'
-import { hydrateEntryTransferStatuses } from './fileTransferSlice'
 import type { ClipboardItemResponse, ClipboardItemsResult } from '@/api/clipboardItems'
 import { OrderBy, Filter } from '@/api/clipboardItems'
 import {
@@ -9,6 +8,7 @@ import {
   toggleFavorite,
 } from '@/api/daemon'
 import { transformDaemonDtoToItemResponse } from '@/lib/clipboard-transform'
+import { hydrateEntryTransferStatuses } from './fileTransferSlice'
 
 // ── State ────────────────────────────────────────────────────────
 

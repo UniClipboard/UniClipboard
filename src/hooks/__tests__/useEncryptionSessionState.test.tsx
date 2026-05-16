@@ -1,8 +1,8 @@
 import { act, renderHook, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { useEncryptionSessionState } from '../useEncryptionSessionState'
 import { getEncryptionState } from '@/api/daemon'
 import { getEncryptionSessionStatus as _getEncryptionSessionStatus } from '@/api/security'
+import { useEncryptionSessionState } from '../useEncryptionSessionState'
 
 // Mock daemonWs (hook now uses daemonWs.subscribe instead of Tauri listen)
 let capturedEncryptionHandler: ((event: { eventType: string }) => void) | null = null

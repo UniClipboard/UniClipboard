@@ -1,11 +1,11 @@
 import { configureStore } from '@reduxjs/toolkit'
+import { redactSensitiveArgs } from '@/observability/redaction'
+import { Sentry, sentryEnabled } from '@/observability/sentry'
 import { appApi } from './api'
 import clipboardReducer from './slices/clipboardSlice'
 import devicesReducer from './slices/devicesSlice'
 import fileTransferReducer from './slices/fileTransferSlice'
 import statsReducer from './slices/statsSlice'
-import { redactSensitiveArgs } from '@/observability/redaction'
-import { Sentry, sentryEnabled } from '@/observability/sentry'
 
 const sentryReduxEnhancer = sentryEnabled
   ? Sentry.createReduxEnhancer({

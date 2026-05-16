@@ -1,8 +1,8 @@
 import { FileText } from 'lucide-react'
 import React from 'react'
+import { formatRelativeTime } from '@/lib/clipboard-utils'
 import { isMac, typeIcons } from '../constants'
 import type { DisplayItem } from '../types'
-import { formatRelativeTime } from '@/lib/clipboard-utils'
 
 interface PanelItemProps {
   item: DisplayItem

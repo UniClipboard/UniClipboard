@@ -1,8 +1,8 @@
 import { render, screen } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
+import i18n from '@/i18n'
 import type { DisplayClipboardItem } from '../ClipboardContent'
 import ClipboardPreviewInfo from '../ClipboardPreviewInfo'
-import i18n from '@/i18n'
 
 function createFileItem(): DisplayClipboardItem {
   return {

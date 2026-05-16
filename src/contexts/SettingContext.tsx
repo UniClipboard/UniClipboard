@@ -1,5 +1,4 @@
 import React, { useCallback, useEffect, useState, type ReactNode } from 'react'
-import { SettingContext } from './setting-context'
 import { getSettings, updateSettings } from '@/api/daemon'
 import { updateKeyboardShortcuts as persistKeyboardShortcuts } from '@/api/tauri-command'
 import { DEFAULT_THEME_COLOR } from '@/constants/theme'
@@ -12,6 +11,7 @@ import { applyThemeOverrides, applyThemePreset } from '@/lib/theme-engine'
 import { startThemeTransition } from '@/lib/theme-transition'
 import { setFrontendSentryEnabled } from '@/observability/sentry'
 import type { SettingContextType, Settings } from '@/types/setting'
+import { SettingContext } from './setting-context'
 
 const log = createLogger('setting-context')
 

@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { UpdateContext, type UpdateState } from './update-context'
 import {
   cancelDownload as apiCancelDownload,
   checkForUpdate,
@@ -16,6 +15,7 @@ import { toast } from '@/components/ui/toast'
 import { useSetting } from '@/hooks/useSetting'
 import { createLogger } from '@/lib/logger'
 import type { UpdateChannel } from '@/types/setting'
+import { UpdateContext, type UpdateState } from './update-context'
 
 const log = createLogger('update-context')
 
@@ -178,6 +178,41 @@ export const UpdateProvider: React.FC<UpdateProviderProps> = ({ children }) => {
     }
   }, [])
 
+  const handleDownloadEvent = useCallback((event: DownloadEvent) => {
+    switch (event.event) {
+      case 'Started':
+        setState(prev => ({
+          ...prev,
+          phase: prev.phase === 'installing' ? 'installing' : 'downloading',
+          downloaded: 0,
+          total: event.data.contentLength,
+        }))
+        break
+      case 'Progress':
+        setState(prev => ({
+          ...prev,
+          phase: prev.phase === 'installing' ? 'installing' : 'downloading',
+          downloaded: prev.downloaded + event.data.chunkLength,
+        }))
+        break
+      case 'Finished':
+        setState(prev => ({
+          ...prev,
+          phase: prev.phase === 'installing' ? 'installing' : 'ready',
+          total: prev.total ?? prev.downloaded,
+        }))
+        break
+      case 'Failed':
+        setState(prev => ({
+          ...prev,
+          phase: prev.info ? 'available' : 'idle',
+          downloaded: 0,
+          total: null,
+        }))
+        break
+    }
+  }, [])
+
   // Mount-time: sync backend snapshot, then attach broadcast listener.
   useEffect(() => {
     let cancelled = false
@@ -228,42 +263,7 @@ export const UpdateProvider: React.FC<UpdateProviderProps> = ({ children }) => {
       cancelled = true
       if (unlisten) unlisten()
     }
-  }, [])
-
-  const handleDownloadEvent = useCallback((event: DownloadEvent) => {
-    switch (event.event) {
-      case 'Started':
-        setState(prev => ({
-          ...prev,
-          phase: prev.phase === 'installing' ? 'installing' : 'downloading',
-          downloaded: 0,
-          total: event.data.contentLength,
-        }))
-        break
-      case 'Progress':
-        setState(prev => ({
-          ...prev,
-          phase: prev.phase === 'installing' ? 'installing' : 'downloading',
-          downloaded: prev.downloaded + event.data.chunkLength,
-        }))
-        break
-      case 'Finished':
-        setState(prev => ({
-          ...prev,
-          phase: prev.phase === 'installing' ? 'installing' : 'ready',
-          total: prev.total ?? prev.downloaded,
-        }))
-        break
-      case 'Failed':
-        setState(prev => ({
-          ...prev,
-          phase: prev.info ? 'available' : 'idle',
-          downloaded: 0,
-          total: null,
-        }))
-        break
-    }
-  }, [])
+  }, [handleDownloadEvent])
 
   // Startup auto-check (gated by `autoCheckUpdate`).
   useEffect(() => {

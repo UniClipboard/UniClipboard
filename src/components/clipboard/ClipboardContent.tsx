@@ -2,11 +2,6 @@ import { Inbox, Loader2, Search } from 'lucide-react'
 import React, { useMemo, useState, useEffect, useCallback, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useDefaultLayout } from 'react-resizable-panels'
-import ClipboardActionBar from './ClipboardActionBar'
-import ClipboardItemRow from './ClipboardItemRow'
-import ClipboardPreview from './ClipboardPreview'
-import DeleteConfirmDialog from './DeleteConfirmDialog'
-import FileContextMenu from './FileContextMenu'
 import {
   getDisplayType,
   ClipboardItemResponse,
@@ -40,6 +35,11 @@ import {
 } from '@/store/slices/clipboardSlice'
 import { linkTransferToEntry } from '@/store/slices/fileTransferSlice'
 import { selectEntryTransferStatus } from '@/store/slices/fileTransferSlice'
+import ClipboardActionBar from './ClipboardActionBar'
+import ClipboardItemRow from './ClipboardItemRow'
+import ClipboardPreview from './ClipboardPreview'
+import DeleteConfirmDialog from './DeleteConfirmDialog'
+import FileContextMenu from './FileContextMenu'
 
 const log = createLogger('clipboard-content')
 

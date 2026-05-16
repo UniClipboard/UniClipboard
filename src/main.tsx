@@ -2,13 +2,13 @@ import { attachConsole } from '@tauri-apps/plugin-log'
 import React from 'react'
 import ReactDOM from 'react-dom/client'
 import { Provider } from 'react-redux'
-import App from './App'
 import './i18n'
-import { store } from './store'
 import { getDeviceMeta } from '@/api/runtime'
 import { connectDaemonWs, registerDaemonShutdownListener } from '@/lib/daemon-ws-bootstrap'
 import { initializeWindowUi } from '@/lib/window-ui'
 import { applyDeviceMetaToSentry, initSentry, Sentry } from '@/observability/sentry'
+import App from './App'
+import { store } from './store'
 
 // 屏蔽 WebKit/WebView2 默认右键菜单(Inspect / Reload / 拼写检查),否则用户右键
 // 任何文本都会暴露 webview 身份。需要原生右键的地方用 @radix-ui/react-context-menu opt-in。

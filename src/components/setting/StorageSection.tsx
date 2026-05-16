@@ -1,9 +1,6 @@
 import { Database, FolderOpen, HardDrive, RefreshCw } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import ClearHistoryDialog from './ClearHistoryDialog'
-import { SettingGroup } from './SettingGroup'
-import { SettingRow } from './SettingRow'
 import { getSearchStatus, triggerSearchRebuild } from '@/api/daemon'
 import type { SearchStatusData } from '@/api/daemon'
 import * as storageApi from '@/api/storage'
@@ -24,6 +21,9 @@ import { createLogger } from '@/lib/logger'
 import { useAppDispatch } from '@/store/hooks'
 import { resetItems } from '@/store/slices/clipboardSlice'
 import type { RetentionRule } from '@/types/setting'
+import ClearHistoryDialog from './ClearHistoryDialog'
+import { SettingGroup } from './SettingGroup'
+import { SettingRow } from './SettingRow'
 
 const log = createLogger('storage-section')
 

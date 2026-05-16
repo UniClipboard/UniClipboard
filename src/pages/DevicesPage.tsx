@@ -955,7 +955,7 @@ const useMobileDevices = (): UseMobileDevicesReturn => {
       return
     }
     setAddDialogOpen(true)
-  }, [settings?.enabled, settings?.lanListenEnabled, settings?.lanListenerError, t])
+  }, [settings, t])
 
   const handleEnableSuccess = useCallback(() => {
     setAddDialogOpen(true)

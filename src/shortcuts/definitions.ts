@@ -2,8 +2,8 @@
  * Shortcut action types
  * Union type of all shortcut actions
  */
-import { ShortcutLayer } from './layers'
 import { isMac } from '@/lib/shortcut-format'
+import { ShortcutLayer } from './layers'
 
 export type ShortcutAction =
   | 'global.zoomIn'

@@ -1,7 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
-import { useClipboardEventStream } from './useClipboardEventStream'
-import { useEncryptionSessionState } from './useEncryptionSessionState'
 import { Filter, OrderBy } from '@/api/clipboardItems'
 import { toast } from '@/components/ui/toast'
 import { createLogger } from '@/lib/logger'
@@ -12,6 +10,8 @@ import {
   prependItem,
   removeItem,
 } from '@/store/slices/clipboardSlice'
+import { useClipboardEventStream } from './useClipboardEventStream'
+import { useEncryptionSessionState } from './useEncryptionSessionState'
 
 const log = createLogger('use-clipboard-events')
 const PAGE_SIZE = 20

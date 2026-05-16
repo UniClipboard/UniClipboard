@@ -15,7 +15,6 @@ import {
 } from 'lucide-react'
 import React from 'react'
 import { useTranslation } from 'react-i18next'
-import type { DisplayClipboardItem } from './ClipboardContent'
 import {
   ClipboardCodeItem,
   ClipboardFileItem,
@@ -32,6 +31,7 @@ import {
   selectTransferByTransferIds,
   selectTransferByEntryId,
 } from '@/store/slices/fileTransferSlice'
+import type { DisplayClipboardItem } from './ClipboardContent'
 
 interface ClipboardItemRowProps extends React.HTMLAttributes<HTMLDivElement> {
   item: DisplayClipboardItem

@@ -2,8 +2,6 @@ import { getVersion } from '@tauri-apps/api/app'
 import { Loader2, TriangleAlert } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { SettingGroup } from './SettingGroup'
-import { SettingRow } from './SettingRow'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -33,6 +31,8 @@ import { useUpdate } from '@/hooks/useUpdate'
 import { createLogger } from '@/lib/logger'
 import { cn } from '@/lib/utils'
 import type { UpdateChannel } from '@/types/setting'
+import { SettingGroup } from './SettingGroup'
+import { SettingRow } from './SettingRow'
 
 const log = createLogger('about-section')
 

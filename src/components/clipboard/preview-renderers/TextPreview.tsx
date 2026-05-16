@@ -1,10 +1,10 @@
 import { Loader2 } from 'lucide-react'
 import React from 'react'
 import { useTranslation } from 'react-i18next'
-import VirtualizedText from '../VirtualizedText'
-import { getTextPreviewContent, LARGE_TEXT_THRESHOLD } from './textPreviewUtils'
 import type { ClipboardTextItem } from '@/api/clipboardItems'
 import type { ClipboardPreviewData } from '@/lib/clipboard-preview-cache'
+import VirtualizedText from '../VirtualizedText'
+import { getTextPreviewContent, LARGE_TEXT_THRESHOLD } from './textPreviewUtils'
 
 interface TextPreviewProps {
   item: ClipboardTextItem

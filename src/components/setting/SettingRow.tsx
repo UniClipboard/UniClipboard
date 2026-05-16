@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
+import { cn } from '@/lib/utils'
 import { isExperimentalFeature } from './experimental-features'
 import { ExperimentalBadge } from './ExperimentalBadge'
-import { cn } from '@/lib/utils'
 
 interface SettingRowProps {
   label?: string

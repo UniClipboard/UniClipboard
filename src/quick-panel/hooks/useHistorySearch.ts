@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { DisplayItem, TimeRangePreset } from '../types'
 import { Filter } from '@/api/clipboardItems'
 import { querySearch } from '@/api/daemon/search'
 import type { SearchResultDto, SearchParams } from '@/api/daemon/search'
 import { createLogger } from '@/lib/logger'
+import type { DisplayItem, TimeRangePreset } from '../types'
 
 const log = createLogger('use-history-search')
 

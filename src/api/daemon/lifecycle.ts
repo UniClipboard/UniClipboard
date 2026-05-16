@@ -7,8 +7,8 @@
  * - `POST /lifecycle/retry` → retry lifecycle initialization
  */
 
-import { daemonClient } from './client'
 import type { LifecycleStatusDto } from '@/api/types'
+import { daemonClient } from './client'
 
 interface LifecycleReadyResponse {
   data?: { success: boolean }

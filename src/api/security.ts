@@ -19,6 +19,7 @@
  * webserver. Existing call sites do not need to change.
  */
 
+import { createLogger } from '@/lib/logger'
 import {
   getEncryptionState as daemonGetEncryptionState,
   verifyKeychainAccess as daemonVerifyKeychainAccess,
@@ -33,7 +34,6 @@ import {
   trySilentUnlock as tauriTrySilentUnlock,
   unlockSpaceWithPassphrase as tauriUnlockSpaceWithPassphrase,
 } from './tauri-command/space_setup'
-import { createLogger } from '@/lib/logger'
 
 const log = createLogger('security')
 

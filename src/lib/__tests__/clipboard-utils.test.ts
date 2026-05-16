@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { formatRelativeTime, getItemPreview, resolveItemType } from '../clipboard-utils'
 import type { ClipboardItemResponse } from '@/api/clipboardItems'
+import { formatRelativeTime, getItemPreview, resolveItemType } from '../clipboard-utils'
 
 function createItemResponse(
   partial: Partial<ClipboardItemResponse['item']>

@@ -14,10 +14,10 @@
  * - `destroy()` clears the keep-alive timer.
  */
 
+import { createLogger } from '@/lib/logger'
 import { DaemonApiError, DaemonErrorCode, mapStatusToErrorCode } from './errors'
 import type { DaemonConfig, SessionToken } from './types'
 import { isSessionExpired } from './types'
-import { createLogger } from '@/lib/logger'
 
 const log = createLogger('daemon-client')
 

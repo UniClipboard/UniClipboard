@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useRef, useState, type ReactNode } from 'react'
-import { ShortcutContext } from './shortcut-context'
 import { ShortcutScope } from '@/shortcuts/definitions'
 import { ShortcutLayer, LAYER_ORDER } from '@/shortcuts/layers'
+import { ShortcutContext } from './shortcut-context'
 
 type LayerEntry = {
   token: string

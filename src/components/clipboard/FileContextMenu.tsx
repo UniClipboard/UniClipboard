@@ -1,7 +1,6 @@
 import { Copy, Download, FolderOpen, Loader2, Trash2 } from 'lucide-react'
 import React from 'react'
 import { useTranslation } from 'react-i18next'
-import type { DisplayClipboardItem } from './ClipboardContent'
 import {
   ContextMenu,
   ContextMenuContent,
@@ -16,6 +15,7 @@ import {
   selectEntryTransferStatus,
   selectTransferByEntryId,
 } from '@/store/slices/fileTransferSlice'
+import type { DisplayClipboardItem } from './ClipboardContent'
 
 interface FileContextMenuProps {
   children: React.ReactNode

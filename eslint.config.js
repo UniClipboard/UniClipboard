@@ -3,6 +3,7 @@ import { fileURLToPath } from 'node:url'
 import { includeIgnoreFile } from '@eslint/compat'
 import js from '@eslint/js'
 import prettier from 'eslint-config-prettier'
+import { createTypeScriptImportResolver } from 'eslint-import-resolver-typescript'
 import importX from 'eslint-plugin-import-x'
 import reactX from 'eslint-plugin-react'
 import reactHooks from 'eslint-plugin-react-hooks'
@@ -54,6 +55,11 @@ export default tseslint.config(
   {
     plugins: {
       'import-x': importX,
+    },
+    settings: {
+      // 让 @/* 别名被解析成 src/* 真实路径,从而归入 import-x/order 的 internal 组。
+      // 没有这个 resolver 时,@/* 会被当成 unknown,与 AGENTS.md 文档约定的顺序不一致。
+      'import-x/resolver-next': [createTypeScriptImportResolver({ project: './tsconfig.json' })],
     },
     rules: {
       'import-x/order': [

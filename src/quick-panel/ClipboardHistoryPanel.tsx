@@ -1,10 +1,5 @@
 import { listen } from '@tauri-apps/api/event'
 import React, { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
-import ClipboardPreviewPane from './ClipboardPreviewPane'
-import HistoryPane from './components/HistoryPane'
-import { PREVIEW_OPEN_DELAY_MS, PREVIEW_SWITCH_DELAY_MS } from './constants'
-import { useHistorySearch } from './hooks/useHistorySearch'
-import type { DisplayItem, PreviewAction, PreviewState, TimeRangePreset } from './types'
 import { Filter } from '@/api/clipboardItems'
 import { deleteClipboardEntry, restoreClipboardEntry } from '@/api/daemon'
 import { unlockEncryptionSession } from '@/api/security'
@@ -16,6 +11,11 @@ import { commands } from '@/lib/ipc'
 import { createLogger } from '@/lib/logger'
 import { readStoredUiScale, subscribeUiScaleChanges } from '@/lib/ui-scale'
 import { cn } from '@/lib/utils'
+import ClipboardPreviewPane from './ClipboardPreviewPane'
+import HistoryPane from './components/HistoryPane'
+import { PREVIEW_OPEN_DELAY_MS, PREVIEW_SWITCH_DELAY_MS } from './constants'
+import { useHistorySearch } from './hooks/useHistorySearch'
+import type { DisplayItem, PreviewAction, PreviewState, TimeRangePreset } from './types'
 
 const log = createLogger('clipboard-history-panel')
 

@@ -14,8 +14,8 @@
 
 import { act, renderHook, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { useEntryDelivery } from '../useEntryDelivery'
 import { getEntryDeliveryView } from '@/api/tauri-command/clipboard_delivery'
+import { useEntryDelivery } from '../useEntryDelivery'
 
 // ── mock 事件总线 ─────────────────────────────────────────────────────
 //

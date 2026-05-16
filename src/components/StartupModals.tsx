@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react'
-import TelemetryNotice from './TelemetryNotice'
-import UpgradeNotice from './UpgradeNotice'
 import { getUpgradeStatus, type UpgradeStatus } from '@/api/daemon'
 import { connectDaemonWs } from '@/lib/daemon-ws-bootstrap'
 import { createLogger } from '@/lib/logger'
+import TelemetryNotice from './TelemetryNotice'
+import UpgradeNotice from './UpgradeNotice'
 
 const log = createLogger('startup-modals')
 

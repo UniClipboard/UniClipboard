@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useState } from 'react'
-import { useClipboardEventStream } from './useClipboardEventStream'
-import { useEncryptionSessionState } from './useEncryptionSessionState'
 import type { ClipboardItemResponse } from '@/api/clipboardItems'
 import { getClipboardEntries } from '@/api/daemon/clipboard'
 import { transformDaemonDtoToItemResponse } from '@/lib/clipboard-transform'
 import { createLogger } from '@/lib/logger'
+import { useClipboardEventStream } from './useClipboardEventStream'
+import { useEncryptionSessionState } from './useEncryptionSessionState'
 
 const log = createLogger('use-clipboard-collection')
 

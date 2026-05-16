@@ -12,10 +12,10 @@ import {
 } from 'lucide-react'
 import React from 'react'
 import { useTranslation } from 'react-i18next'
-import type { DisplayClipboardItem } from '../ClipboardContent'
 import { cn } from '@/lib/utils'
 import type { EntryTransferStatus, TransferProgressInfo } from '@/store/slices/fileTransferSlice'
 import { formatFileSize } from '@/utils'
+import type { DisplayClipboardItem } from '../ClipboardContent'
 
 interface FilePreviewProps {
   effectiveStatus: EntryTransferStatus['status'] | undefined

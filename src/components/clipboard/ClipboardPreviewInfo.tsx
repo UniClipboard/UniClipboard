@@ -1,8 +1,6 @@
 import { Database, Files, Globe, Hash, Layers, Maximize, Type } from 'lucide-react'
 import React from 'react'
 import { useTranslation } from 'react-i18next'
-import type { DisplayClipboardItem } from './ClipboardContent'
-import EntryDeliveryBadge from './EntryDeliveryBadge'
 import type {
   ClipboardCodeItem,
   ClipboardFileItem,
@@ -13,6 +11,8 @@ import type {
 import type { EntryDeliveryView } from '@/api/tauri-command/clipboard_delivery'
 import type { ClipboardPreviewData } from '@/lib/clipboard-preview-cache'
 import { formatFileSize } from '@/utils'
+import type { DisplayClipboardItem } from './ClipboardContent'
+import EntryDeliveryBadge from './EntryDeliveryBadge'
 
 interface ClipboardPreviewInfoProps {
   imageDimensions: { width: number; height: number } | null

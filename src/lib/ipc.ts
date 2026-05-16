@@ -37,10 +37,10 @@
  * The wrapper transparently injects trace + redacts logs + bubbles errors.
  */
 
-import { commands as raw, events as rawEvents } from './ipc-bindings.generated'
 import { redactSensitiveArgs } from '@/observability/redaction'
 import { Sentry } from '@/observability/sentry'
 import { traceManager } from '@/observability/trace'
+import { commands as raw, events as rawEvents } from './ipc-bindings.generated'
 
 /** Wire shape of the trace metadata Tauri commands accept. */
 type TraceArg = { trace_id: string; timestamp: number } | null

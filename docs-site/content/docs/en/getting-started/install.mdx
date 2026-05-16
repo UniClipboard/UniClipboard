@@ -13,6 +13,41 @@ below points at the same release artefacts on
 Tagged pre-releases carry an `-alpha.N` suffix and are flagged
 "Pre-release" on that page; non-suffixed tags are the stable line.
 
+## Quick install (Linux / macOS)
+
+In a hurry? One command picks the right artefact for your OS and CPU:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/UniClipboard/UniClipboard/main/scripts/install.sh | bash
+```
+
+What it does:
+
+- **macOS** — downloads `.app.tar.gz`, extracts it, and moves `UniClipboard.app` into `/Applications` (escalates with `sudo` if needed; pass `--prefix "$HOME/Applications"` for a user-level install).
+- **Linux** — with sudo, installs `.deb` via `apt` or `.rpm` via `dnf` / `yum`; otherwise falls back to AppImage in `~/.local/bin` with a `.desktop` entry (no root required).
+
+Common flags:
+
+```bash
+# Pin a specific version
+curl -fsSL https://raw.githubusercontent.com/UniClipboard/UniClipboard/main/scripts/install.sh | bash -s -- --version v0.9.0
+
+# Force AppImage (rootless even when sudo is available)
+curl -fsSL https://raw.githubusercontent.com/UniClipboard/UniClipboard/main/scripts/install.sh | bash -s -- --format appimage
+```
+
+To uninstall, use the matching script — add `--purge` to also remove data, config, and cache, or `--dry-run` to preview without deleting:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/UniClipboard/UniClipboard/main/scripts/uninstall.sh | bash
+```
+
+<Callout type="info">
+  Update behavior matches the platform tabs below: `.deb` / `.rpm` installs are not picked up by the
+  in-app updater — re-run the script or use your system package manager. AppImage on Linux and `.app`
+  on macOS continue to update from inside the app. For Windows, see the **Windows** tab.
+</Callout>
+
 ## Pick your platform
 
 <Tabs items={['macOS', 'Windows', 'Linux']}>

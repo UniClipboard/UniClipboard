@@ -19,7 +19,7 @@ use uc_application::facade::{
     AppFacade, AppFacadeParts, AppPaths, BlobTransferFacade, ClipboardHistoryFacade,
     ClipboardHistoryFacadeDeps, ClipboardOutboundFacade, ClipboardRestoreFacade,
     ClipboardRestoreFacadeDeps, ClipboardSyncFacade, DeviceFacade, EmitError, EncryptionFacade,
-    EncryptionFacadeDeps, FileTransferFacade, HostEvent, HostEventEmitterPort,
+    EncryptionFacadeDeps, FileTransferFacade, HostEvent, HostEventBus, HostEventEmitterPort,
     InMemoryLifecycleStatus, IncomingMobileBuffer, LifecycleFacade, LifecycleFacadeDeps,
     LifecycleStatusGateway, MemberRosterFacade, MobileSyncFacade, MobileSyncFacadeDeps,
     MobileSyncSnapshotPorts, ResourceFacade, ResourceFacadeDeps, SearchCoordinator,
@@ -84,19 +84,19 @@ impl HostEventEmitterPort for LoggingHostEventEmitter {
 pub struct NonGuiBundle {
     pub deps: AppDeps,
     pub storage_paths: AppPaths,
-    pub emitter_cell: Arc<std::sync::RwLock<Arc<dyn HostEventEmitterPort>>>,
+    pub host_event_bus: Arc<HostEventBus>,
     pub lifecycle_status: Arc<dyn LifecycleStatusGateway>,
     pub task_registry: Arc<TaskRegistry>,
     pub clipboard_integration_mode: ClipboardIntegrationMode,
 }
 
 /// Construct a [`NonGuiBundle`] for non-GUI entry points with an explicit
-/// shared emitter cell. Daemon uses this so its `DaemonApiEventEmitter`
-/// can be swapped in after construction.
+/// shared host-event bus. Daemon uses this so its `DaemonApiEventEmitter`
+/// can be registered on the bus after construction.
 pub fn build_non_gui_bundle(
     deps: AppDeps,
     storage_paths: AppPaths,
-    emitter_cell: Arc<std::sync::RwLock<Arc<dyn HostEventEmitterPort>>>,
+    host_event_bus: Arc<HostEventBus>,
 ) -> anyhow::Result<NonGuiBundle> {
     let lifecycle_status: Arc<dyn LifecycleStatusGateway> =
         Arc::new(InMemoryLifecycleStatus::new());
@@ -106,7 +106,7 @@ pub fn build_non_gui_bundle(
     Ok(NonGuiBundle {
         deps,
         storage_paths,
-        emitter_cell,
+        host_event_bus,
         lifecycle_status,
         task_registry,
         clipboard_integration_mode,

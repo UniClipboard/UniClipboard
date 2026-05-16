@@ -1,4 +1,3 @@
-use uc_core::clipboard::DeliveryFailureReason;
 use uc_core::file_transfer::FileTransferDirection;
 
 /// 剪贴板内容来源。
@@ -55,37 +54,27 @@ pub enum TransferHostEvent {
     },
 }
 
-/// 投递状态在事件总线上的对外表达。
-///
-/// 为什么需要这个 enum 而不复用 `EntryDeliveryStatus`:
-/// `EntryDeliveryStatus::Pending` 是"还没有任何投递记录"的合成态(view
-/// 层凭"trusted peer 全集 − 已有记录" 推出),写路径根本不会落 `Pending`,
-/// 也不会发事件。把对外事件类型限制到三个真实终态,避免下游订阅方需要
-/// 处理一个永远不会到达的分支。`Failed` 子分类沿用 domain `DeliveryFailureReason`,
-/// 保证 wire / log / analytics 三层口径一致。
-#[derive(Debug, Clone)]
-pub enum DeliveryStatusKind {
-    Delivered,
-    Duplicate,
-    Failed { reason: DeliveryFailureReason },
-}
-
 /// entry delivery 子系统发给宿主的语义事件。
 ///
 /// 触发点:`DispatchClipboardEntryUseCase` 在每个 target 的投递结果落盘
-/// 之后逐条发出。事件丢失/乱序不致命 —— 前端用 entry_id 匹配后会重新拉
-/// 一遍 view,refetch 是幂等的。
+/// 之后逐条发出。
+///
+/// **payload 不携带 status**:订阅方(前端 detail badge)的消费模型是
+/// "看到事件 → 按 entry_id 匹配 → refetch view"。view 永远是 status 的
+/// 真相源,事件本身只是"该不该 refetch"的指针 —— 把 status 塞进 payload
+/// 会引入一份和 view 平行的 wire enum,新增 variant 必须双改且 drift
+/// 时编译器无感。需要乐观更新或减少 refetch 时再独立评估是否带 status。
 #[derive(Debug, Clone)]
 pub enum DeliveryHostEvent {
-    /// 某条 entry 对某个对端的投递状态发生变化。
+    /// 某条 entry 对某个对端的投递状态发生变化。事件丢失/乱序由订阅
+    /// 方的幂等 refetch 吸收。
     StatusChanged {
         /// 触发投递的 entry。前端拿到事件后,与当前打开的 entry_id 对比,
         /// 匹配才 refetch,避免无关 entry 的事件触发 view 抖动。
         entry_id: String,
-        /// 投递目标对端。view 渲染时按对端聚合状态,所以事件粒度也是按对端。
+        /// 投递目标对端。view 按对端聚合渲染,所以事件粒度也是按对端;
+        /// 前端目前未消费此字段,留作未来 per-peer 局部刷新的钩子。
         target_device_id: String,
-        /// 投递结果的新状态。
-        new_status: DeliveryStatusKind,
     },
 }
 

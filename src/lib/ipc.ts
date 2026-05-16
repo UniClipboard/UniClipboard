@@ -207,10 +207,8 @@ export const events = rawEvents
 // detail.
 export type {
   ClipboardDeliveryStatusChanged,
-  ClipboardDeliveryStatusPayload,
   CommandError,
   DaemonConnectionPayload,
-  DeliveryFailureReasonPayload,
   DeviceMeta,
   DownloadEvent,
   DownloadPhase,

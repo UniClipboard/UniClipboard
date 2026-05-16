@@ -1,11 +1,11 @@
 //! daemon 应用实例装配。
 
 use std::sync::atomic::AtomicBool;
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 
 use tokio::sync::{broadcast, Notify};
 use tokio_util::sync::CancellationToken;
-use uc_application::facade::{AppFacade, AppPaths, HostEventEmitterPort};
+use uc_application::facade::{AppFacade, AppPaths, HostEventBus};
 use uc_daemon_local::process_metadata::DaemonProcessMode;
 use uc_webserver::api::types::DaemonWsEvent;
 
@@ -19,7 +19,7 @@ pub struct DaemonAppAssemblyInput {
     pub service_plan: DaemonServicePlan,
     pub app_facade: Arc<AppFacade>,
     pub storage_paths: AppPaths,
-    pub emitter_cell: Arc<RwLock<Arc<dyn HostEventEmitterPort>>>,
+    pub host_event_bus: Arc<HostEventBus>,
     pub event_tx: broadcast::Sender<DaemonWsEvent>,
     pub encryption_unlocked: bool,
     pub deferred_ready_notify: Arc<Notify>,
@@ -50,7 +50,7 @@ pub fn build_daemon_app_instance(input: DaemonAppAssemblyInput) -> DaemonApp {
         mut service_plan,
         app_facade,
         storage_paths,
-        emitter_cell,
+        host_event_bus,
         event_tx,
         encryption_unlocked,
         deferred_ready_notify,
@@ -72,7 +72,7 @@ pub fn build_daemon_app_instance(input: DaemonAppAssemblyInput) -> DaemonApp {
         service_plan.services,
         Arc::clone(&app_facade),
         storage_paths,
-        emitter_cell,
+        host_event_bus,
         service_plan.state,
         event_tx,
         encryption_unlocked,

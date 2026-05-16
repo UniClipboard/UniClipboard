@@ -8,7 +8,7 @@
 //! external callers reach those actions through the facade, not through
 //! the lifecycle struct.
 
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 use std::time::Duration;
 
 use tokio::task::JoinHandle;
@@ -16,7 +16,7 @@ use tracing::{info, info_span, warn, Instrument};
 
 use uc_application::facade::{
     FileTransferFacade, FileTransferFacadeDeps, FileTransferHostEventPublisher, HostEvent,
-    HostEventEmitterPort, OutboundEntryIdCache, TransferHostEvent,
+    HostEventBus, OutboundEntryIdCache, TransferHostEvent,
 };
 use uc_core::file_transfer::{FileTransferEventPublisherPort, FileTransferEventStorePort};
 use uc_core::ports::file_transfer_repository::TrackedFileTransferStatus;
@@ -53,14 +53,14 @@ const SWEEP_INTERVAL: Duration = Duration::from_secs(15);
 /// the meantime this preserves the legacy behavior one-to-one.
 pub struct FileTransferLifecycle {
     pub outbound_entry_cache: Arc<OutboundEntryIdCache>,
-    /// Shared host-event emitter cell.
+    /// Shared host-event bus.
     ///
     /// Exposed so receiver-side workers can publish UI-facing `pending` status
     /// events directly after seeding the receiver projection — this bypasses
     /// the domain event bus on purpose, since `pending` is a presentation-layer
     /// preview, not a domain fact (there is no `Announced` event in the
     /// timeline).
-    pub emitter_cell: Arc<RwLock<Arc<dyn HostEventEmitterPort>>>,
+    pub host_event_bus: Arc<HostEventBus>,
 
     file_transfer_repo: Arc<dyn FileTransferRepositoryPort>,
     clock: Arc<dyn ClockPort>,
@@ -89,8 +89,7 @@ impl FileTransferLifecycle {
     ) -> JoinHandle<()> {
         let repo = Arc::clone(&self.file_transfer_repo);
         let clock = Arc::clone(&self.clock);
-        let emitter_cell: Arc<RwLock<Arc<dyn HostEventEmitterPort>>> =
-            Arc::clone(&self.emitter_cell);
+        let bus = Arc::clone(&self.host_event_bus);
 
         tokio::spawn(
             async move {
@@ -132,11 +131,6 @@ impl FileTransferLifecycle {
                         "Timeout sweep found expired in-flight transfers"
                     );
 
-                    let emitter = emitter_cell
-                        .read()
-                        .unwrap_or_else(|p| p.into_inner())
-                        .clone();
-
                     for t in &expired {
                         let reason = timeout_reason_for(t.status);
 
@@ -151,16 +145,12 @@ impl FileTransferLifecycle {
 
                         cleanup_cached_path(&t.cached_path).await;
 
-                        if let Err(err) =
-                            emitter.emit(HostEvent::Transfer(TransferHostEvent::StatusChanged {
-                                transfer_id: t.transfer_id.clone(),
-                                entry_id: t.entry_id.clone(),
-                                status: "failed".to_string(),
-                                reason: Some(reason.to_string()),
-                            }))
-                        {
-                            warn!(error = %err, "Failed to emit timeout failure status");
-                        }
+                        bus.emit_or_warn(HostEvent::Transfer(TransferHostEvent::StatusChanged {
+                            transfer_id: t.transfer_id.clone(),
+                            entry_id: t.entry_id.clone(),
+                            status: "failed".to_string(),
+                            reason: Some(reason.to_string()),
+                        }));
                     }
                 }
             }
@@ -174,12 +164,6 @@ impl FileTransferLifecycle {
     /// Non-blocking and non-fatal: errors are logged as warnings.
     pub async fn reconcile_on_startup(&self) {
         let now_ms = self.clock.now_ms();
-        let emitter = self
-            .emitter_cell
-            .read()
-            .unwrap_or_else(|p| p.into_inner())
-            .clone();
-
         let reason = "orphaned: app restarted while transfer was in-flight";
 
         let cleanup_targets = match self
@@ -208,14 +192,14 @@ impl FileTransferLifecycle {
         for t in &cleanup_targets {
             cleanup_cached_path(&t.cached_path).await;
 
-            if let Err(err) = emitter.emit(HostEvent::Transfer(TransferHostEvent::StatusChanged {
-                transfer_id: t.transfer_id.clone(),
-                entry_id: t.entry_id.clone(),
-                status: "failed".to_string(),
-                reason: Some(reason.to_string()),
-            })) {
-                warn!(error = %err, "Failed to emit reconciliation status");
-            }
+            self.host_event_bus.emit_or_warn(HostEvent::Transfer(
+                TransferHostEvent::StatusChanged {
+                    transfer_id: t.transfer_id.clone(),
+                    entry_id: t.entry_id.clone(),
+                    status: "failed".to_string(),
+                    reason: Some(reason.to_string()),
+                },
+            ));
         }
     }
 }
@@ -266,14 +250,14 @@ async fn cleanup_cached_path(cached_path: &str) {
 
 pub fn build_file_transfer_assembly(
     store: Arc<FileTransferEventStore>,
-    emitter_cell: Arc<RwLock<Arc<dyn HostEventEmitterPort>>>,
+    host_event_bus: Arc<HostEventBus>,
     file_transfer_repo: Arc<dyn FileTransferRepositoryPort>,
     clock: Arc<dyn ClockPort>,
 ) -> FileTransferAssembly {
     let outbound_entry_cache = Arc::new(OutboundEntryIdCache::new());
 
     let publisher = Arc::new(FileTransferHostEventPublisher::new(
-        Arc::clone(&emitter_cell),
+        Arc::clone(&host_event_bus),
         Arc::clone(&file_transfer_repo),
         Arc::clone(&outbound_entry_cache),
     ));
@@ -291,7 +275,7 @@ pub fn build_file_transfer_assembly(
 
     let lifecycle = Arc::new(FileTransferLifecycle {
         outbound_entry_cache,
-        emitter_cell,
+        host_event_bus,
         file_transfer_repo,
         clock,
     });

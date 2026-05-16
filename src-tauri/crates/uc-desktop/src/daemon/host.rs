@@ -86,16 +86,13 @@ pub fn run(run_mode: DaemonRunMode) -> anyhow::Result<()> {
             config: _config,
         } = crate::bootstrap::build_process_runtime().await?;
 
-        let event_emitter: Arc<dyn uc_application::facade::HostEventEmitterPort> =
-            Arc::new(uc_bootstrap::LoggingHostEventEmitter);
         let clipboard_write_coordinator = background.clipboard_write_coordinator.clone();
         let file_transfer_lifecycle = background.file_transfer_lifecycle.clone();
         let file_transfer_facade = wired.file_transfer_facade.clone();
 
-        let runtime = crate::DesktopRuntime::with_setup(
+        let runtime = crate::DesktopRuntime::new(
             wired.deps.clone(),
             storage_paths.clone(),
-            event_emitter,
             clipboard_write_coordinator.clone(),
             file_transfer_facade.clone(),
         );
@@ -179,7 +176,7 @@ pub(crate) async fn start_in_process(
     } = handles;
 
     let deps = wired.deps;
-    let emitter_cell = wired.emitter_cell;
+    let host_event_bus = wired.host_event_bus;
     let settings_port = deps.settings.clone();
     let runtime_controls = build_daemon_runtime_controls(run_mode);
 
@@ -192,7 +189,7 @@ pub(crate) async fn start_in_process(
         file_cache_dir: storage_paths.file_cache_dir.clone(),
         file_transfer_lifecycle,
         clipboard_write_coordinator: clipboard_write_coordinator.clone(),
-        host_event_emitter: emitter_cell.clone(),
+        host_event_bus: host_event_bus.clone(),
     })?;
 
     // blob/spool worker **不在这里 spawn** —— 它们是进程级 long-lived task,
@@ -261,7 +258,7 @@ pub(crate) async fn start_in_process(
         service_plan,
         app_facade: Arc::clone(&app_facade_for_daemon),
         storage_paths: storage_paths_for_daemon,
-        emitter_cell: emitter_cell.clone(),
+        host_event_bus: host_event_bus.clone(),
         event_tx: runtime_controls.event_tx,
         encryption_unlocked: runtime_controls.encryption_unlocked,
         deferred_ready_notify: runtime_controls.deferred_ready_notify.clone(),

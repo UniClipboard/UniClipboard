@@ -2,7 +2,7 @@
 
 use std::path::PathBuf;
 use std::sync::atomic::AtomicBool;
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 
 use tokio::sync::broadcast;
 use uc_application::clipboard_capture::CaptureClipboardUseCase;
@@ -11,7 +11,7 @@ use uc_application::deps::AppDeps;
 use uc_application::facade::{
     BlobTransferFacade, ClipboardCaptureFacade, ClipboardLiveIndexDeps, ClipboardLiveIndexFacade,
     ClipboardLiveIndexer, ClipboardOutboundDeps, ClipboardOutboundDispatcher,
-    ClipboardOutboundFacade, ClipboardSyncFacade, HostEventEmitterPort, InboundClipboardFacade,
+    ClipboardOutboundFacade, ClipboardSyncFacade, HostEventBus, InboundClipboardFacade,
 };
 use uc_application::{
     ApplyInboundClipboardUseCase, FileCacheBlobMaterializer, InboundCapture as ApplyInboundCapture,
@@ -38,10 +38,9 @@ pub struct DaemonRuntimeAssemblyInput<'a> {
     pub file_cache_dir: PathBuf,
     pub file_transfer_lifecycle: Arc<FileTransferLifecycle>,
     pub clipboard_write_coordinator: Arc<ClipboardWriteCoordinator>,
-    /// 共享的 host event emitter cell —— 与 `BlobTransferFacade` 同源。
-    /// ApplyInbound 用它在 fetch 之前发 `IncomingPending`,让前端立即
-    /// 出现占位卡片。
-    pub host_event_emitter: Arc<RwLock<Arc<dyn HostEventEmitterPort>>>,
+    /// 共享的 host event bus —— 与 `BlobTransferFacade` 同源。ApplyInbound
+    /// 用它在 fetch 之前发 `IncomingPending`,让前端立即出现占位卡片。
+    pub host_event_bus: Arc<HostEventBus>,
 }
 
 /// daemon 启动前已构造好的后台 worker + 共享 use case。
@@ -100,7 +99,7 @@ pub fn build_daemon_runtime_workers(
             Arc::clone(&input.clipboard_write_coordinator) as Arc<dyn ApplyInboundWrite>,
         )
         .with_blob_materializer(blob_materializer)
-        .with_host_event_emitter(input.host_event_emitter),
+        .with_host_event_emitter(input.host_event_bus),
     );
     let inbound_clipboard_facade = Arc::new(InboundClipboardFacade::new(apply_inbound_uc.clone()));
     let clipboard_capture_facade = Arc::new(ClipboardCaptureFacade::new(apply_inbound_capture_uc));

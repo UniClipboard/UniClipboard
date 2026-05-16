@@ -83,8 +83,8 @@ pub use file_transfer::{
     SeedReceiverContext, StartTransfer,
 };
 pub use host_event::{
-    ClipboardHostEvent, ClipboardOriginKind, CompositeHostEventEmitter, DeliveryHostEvent,
-    DeliveryStatusKind, EmitError, FileTransferHostEventPublisher, HostEvent, HostEventEmitterPort,
+    ClipboardHostEvent, ClipboardOriginKind, DeliveryHostEvent, EmitError,
+    FileTransferHostEventPublisher, HostEvent, HostEventBus, HostEventEmitterPort,
     OutboundEntryIdCache, TransferHostEvent,
 };
 pub use lifecycle::{

@@ -1,4 +1,4 @@
-use std::sync::{Arc, Mutex, RwLock};
+use std::sync::{Arc, Mutex};
 
 use anyhow::Result;
 use async_trait::async_trait;
@@ -11,7 +11,8 @@ use tracing_subscriber::prelude::*;
 use tracing_subscriber::registry::LookupSpan;
 
 use crate::facade::host_event::{
-    ClipboardHostEvent, ClipboardOriginKind, EmitError, HostEvent, HostEventEmitterPort,
+    ClipboardHostEvent, ClipboardOriginKind, EmitError, HostEvent, HostEventBus,
+    HostEventEmitterPort,
 };
 
 use uc_core::ids::{DeviceId, EntryId, FormatId, RepresentationId};
@@ -222,11 +223,13 @@ fn build_with_recording_emitter(
     write: MockWrite,
 ) -> (ApplyInboundClipboardUseCase, Arc<RecordingEmitter>) {
     let recorder = Arc::new(RecordingEmitter::default());
-    let cell: crate::facade::blob_transfer::SharedHostEventEmitter = Arc::new(RwLock::new(
+    let bus = Arc::new(HostEventBus::new());
+    bus.register(
+        "recorder",
         Arc::clone(&recorder) as Arc<dyn HostEventEmitterPort>,
-    ));
+    );
     let uc = ApplyInboundClipboardUseCase::new(Arc::new(repo), Arc::new(capture), Arc::new(write))
-        .with_host_event_emitter(cell);
+        .with_host_event_emitter(bus);
     (uc, recorder)
 }
 

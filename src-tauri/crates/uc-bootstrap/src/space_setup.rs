@@ -28,7 +28,7 @@ use tracing::warn;
 
 use uc_application::facade::{
     BlobTransferDeps, BlobTransferFacade, ClipboardSyncDeps, ClipboardSyncFacade, HostEvent,
-    HostEventEmitterPort, IngestHandle, MemberRosterDeps, MemberRosterFacade, SpaceSetupDeps,
+    HostEventBus, IngestHandle, MemberRosterDeps, MemberRosterFacade, SpaceSetupDeps,
     SpaceSetupFacade, TransferHostEvent,
 };
 use uc_application::proof::HmacProofAdapter;
@@ -135,28 +135,20 @@ impl SpaceSetupAssembly {
 /// entry_id == transfer_id 是发送侧的协议约定(同接收侧约定对称)。
 fn spawn_outbound_progress_translator(
     mut rx: broadcast::Receiver<InboundProgressEvent>,
-    emitter_cell: Arc<std::sync::RwLock<Arc<dyn HostEventEmitterPort>>>,
+    bus: Arc<HostEventBus>,
 ) -> JoinHandle<()> {
     tokio::spawn(async move {
         loop {
             match rx.recv().await {
                 Ok(event) => {
-                    let emitter = emitter_cell
-                        .read()
-                        .unwrap_or_else(|p| p.into_inner())
-                        .clone();
-
-                    let progress = HostEvent::Transfer(TransferHostEvent::Progress {
+                    bus.emit_or_warn(HostEvent::Transfer(TransferHostEvent::Progress {
                         transfer_id: event.transfer_id.clone(),
                         entry_id: Some(event.transfer_id.clone()),
                         peer_id: event.from_device.as_str().to_string(),
                         direction: FileTransferDirection::Sending,
                         bytes_transferred: event.bytes_transferred,
                         total_bytes: event.total_bytes,
-                    });
-                    if let Err(err) = emitter.emit(progress) {
-                        warn!(error = %err, "outbound progress translator: emit Progress failed");
-                    }
+                    }));
 
                     let terminal = match event.status {
                         OutboundProgressStatus::InProgress => None,
@@ -166,15 +158,12 @@ fn spawn_outbound_progress_translator(
                         }
                     };
                     if let Some((status, reason)) = terminal {
-                        let status_event = HostEvent::Transfer(TransferHostEvent::StatusChanged {
+                        bus.emit_or_warn(HostEvent::Transfer(TransferHostEvent::StatusChanged {
                             transfer_id: event.transfer_id.clone(),
                             entry_id: event.transfer_id,
                             status: status.to_string(),
                             reason,
-                        });
-                        if let Err(err) = emitter.emit(status_event) {
-                            warn!(error = %err, "outbound progress translator: emit StatusChanged failed");
-                        }
+                        }));
                     }
                 }
                 Err(broadcast::error::RecvError::Lagged(n)) => {
@@ -322,12 +311,12 @@ pub async fn build_space_setup_assembly(
     let iroh_node = builder.spawn();
 
     // Translator worker:从 sender 端的反向通道收 InboundProgressEvent,
-    // 翻译为 application 层 HostEvent(Sending 方向)发到 emitter_cell。
+    // 翻译为 application 层 HostEvent(Sending 方向)发到 host_event_bus。
     // 每次 progress → `TransferHostEvent::Progress`;终态 → 额外一帧
     // `StatusChanged`。任务跟 ingest_handle 同生命周期,shutdown 显式 abort。
     let outbound_progress_translator = spawn_outbound_progress_translator(
         outbound_progress_events,
-        Arc::clone(&wired.emitter_cell),
+        Arc::clone(&wired.host_event_bus),
     );
 
     // HMAC proof adapter verifies the joiner's ChallengeResponse against
@@ -409,27 +398,27 @@ pub async fn build_space_setup_assembly(
         entry_repo: Arc::clone(&deps.clipboard.clipboard_entry_repo),
         event_repo: Arc::clone(&wired.clipboard_event_reader_repo),
         trusted_peer_repo: Arc::clone(&wired.trusted_peer_repo),
-        // Issue #747 Phase 5:与 blob_transfer / apply_inbound 共享同一份
-        // emitter_cell。GUI 装配链路在 setup callback 中 swap 进
-        // `CompositeHostEventEmitter(Logging + TauriHostEventEmitter)`,
-        // 此处 dispatch_uc 一旦 fan-out 完成、delivery 落盘成功就追发
-        // 一条 `HostEvent::Delivery::StatusChanged`,前端 detail 视图实
-        // 时 refetch。daemon swap 路径也通过 composite 累加,GUI emitter
-        // 不会被覆盖丢失;CLI 装配走的是同一 cell 但内部仅是 Logging,
-        // emit 无副作用。
-        host_event_emitter: Some(Arc::clone(&wired.emitter_cell)),
+        // Issue #747 Phase 5:与 blob_transfer / apply_inbound 共享同一根
+        // host_event_bus。GUI 装配链路在 Tauri setup callback 中
+        // `bus.register("tauri", TauriHostEventEmitter)`,daemon 启动时
+        // `bus.register("daemon_ws", DaemonApiEventEmitter)`。dispatch_uc
+        // fan-out 完成、delivery 落盘后追发 `HostEvent::Delivery::
+        // StatusChanged`,bus 把事件 fan-out 给所有已注册下游;CLI 装配
+        // 走同一 bus,只挂着默认 logging emitter,emit 无副作用。
+        host_event_bus: Arc::clone(&wired.host_event_bus),
     }));
     let ingest_handle = clipboard_sync.spawn_ingest_loop();
     let blob = Arc::new(BlobTransferFacade::new(BlobTransferDeps {
         hash: Arc::clone(&deps.system.hash),
         blob_transfer: Arc::clone(&blob_transfer),
         blob_reference: Arc::clone(&wired.blob_reference_repo),
-        // 共享同一个 emitter_cell —— daemon bootstrap 注入真实 emitter 后,
-        // fetch_blob 就会自动开始向前端发送 progress 事件;CLI 模式下 cell
-        // 里挂的是 noop emitter,事件被静默吞掉,不影响行为。状态切换
-        // (transferring / completed / failed)走 file_transfer lifecycle,
-        // 由 `FileTransferHostEventPublisher` 统一发出。
-        host_event_emitter: Some(Arc::clone(&wired.emitter_cell)),
+        // 共享同一根 host_event_bus —— daemon bootstrap 注册自己的 WS
+        // emitter 之后, fetch_blob 自动开始向前端 fan-out progress 事件;
+        // CLI 装配走同一 bus 但只挂着 logging emitter, 事件被静默打 log,
+        // 不影响行为。状态切换(transferring / completed / failed)走
+        // file_transfer lifecycle, 由 `FileTransferHostEventPublisher`
+        // 统一发出。
+        host_event_emitter: Some(Arc::clone(&wired.host_event_bus)),
         // 反向进度上报端口:接收端 fetch 进度通过新 ALPN 推回 sender。
         outbound_progress_reporter: Some(outbound_progress_reporter),
         // file_transfer lifecycle facade —— iroh 路径每次 fetch 通过它落

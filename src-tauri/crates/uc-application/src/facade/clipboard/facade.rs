@@ -76,11 +76,11 @@ pub struct ClipboardSyncDeps {
     pub entry_repo: Arc<dyn ClipboardEntryRepositoryPort>,
     pub event_repo: Arc<dyn ClipboardEventRepositoryPort>,
     pub trusted_peer_repo: Arc<dyn TrustedPeerRepositoryPort>,
-    /// Issue #747 Phase 5:可选 host event emitter cell。`Some` 时,
-    /// dispatch fan-out 完成、delivery 状态写入后追发一条
-    /// `HostEvent::Delivery::StatusChanged`,GUI 前端凭此实时刷新 badge。
-    /// CLI / 单元测试装配可留 `None` —— 缺席时 dispatch 行为完全不变。
-    pub host_event_emitter: Option<SharedHostEventEmitter>,
+    /// 共享 host-event bus。dispatch fan-out 完成、delivery 状态写入后追发
+    /// 一条 `HostEvent::Delivery::StatusChanged`,GUI 前端凭此实时刷新 badge。
+    /// 测试 / CLI 装配传一根空 bus(`Arc::new(HostEventBus::new())`)即可
+    /// —— 无下游 = noop,行为等价于原来的 `None`。
+    pub host_event_bus: SharedHostEventEmitter,
 }
 
 /// Public-facing input to a dispatch pass. Mirrors the use case's own
@@ -174,7 +174,7 @@ pub struct ClipboardSyncFacade {
 
 impl ClipboardSyncFacade {
     pub fn new(deps: ClipboardSyncDeps) -> Self {
-        let mut dispatch = DispatchClipboardEntryUseCase::new(
+        let dispatch_uc = Arc::new(DispatchClipboardEntryUseCase::new(
             Arc::clone(&deps.peer_addr_repo),
             Arc::clone(&deps.member_repo),
             Arc::clone(&deps.presence),
@@ -187,11 +187,8 @@ impl ClipboardSyncFacade {
             Arc::clone(&deps.analytics),
             Arc::clone(&deps.first_sync_state),
             Arc::clone(&deps.entry_delivery_repo),
-        );
-        if let Some(emitter) = deps.host_event_emitter.clone() {
-            dispatch = dispatch.with_host_event_emitter(emitter);
-        }
-        let dispatch_uc = Arc::new(dispatch);
+            Arc::clone(&deps.host_event_bus),
+        ));
         let ingest_uc = Arc::new(IngestInboundClipboardUseCase::new(
             Arc::clone(&deps.clipboard_receiver),
             Arc::clone(&deps.member_repo),
@@ -786,7 +783,7 @@ mod tests {
             entry_repo: Arc::new(make_noop_entry_repo()),
             event_repo: Arc::new(make_noop_event_repo()),
             trusted_peer_repo: Arc::new(make_noop_trusted_peer_repo()),
-            host_event_emitter: None,
+            host_event_bus: Arc::new(crate::facade::host_event::HostEventBus::new()),
         });
         (facade, receiver)
     }

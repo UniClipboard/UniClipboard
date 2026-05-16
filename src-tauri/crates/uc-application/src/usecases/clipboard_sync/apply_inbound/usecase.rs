@@ -83,13 +83,10 @@ impl ApplyInboundClipboardUseCase {
     }
 
     fn emit_host_event(&self, event: HostEvent) {
-        let Some(cell) = self.host_event_emitter.as_ref() else {
+        let Some(bus) = self.host_event_emitter.as_ref() else {
             return;
         };
-        let emitter = cell.read().unwrap_or_else(|p| p.into_inner()).clone();
-        if let Err(err) = emitter.emit(event) {
-            warn!(error = %err, "apply_inbound: failed to emit host event");
-        }
+        bus.emit_or_warn(event);
     }
 
     fn find_recent_duplicate(

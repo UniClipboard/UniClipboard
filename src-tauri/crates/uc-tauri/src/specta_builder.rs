@@ -37,9 +37,11 @@ pub fn build() -> Builder<tauri::Wry> {
     Builder::<tauri::Wry>::new()
         .events(collect_events![
             // Issue #747 Phase 5:dispatch fan-out 完成、delivery 写入后
-            // 由 `TauriHostEventEmitter` emit;前端 detail 视图据 entry_id
-            // 匹配后 refetch view。事件丢失被前端的幂等 refetch 吸收,
-            // 所以不在 specta 层加任何"必须收到"的保护。
+            // 由 `TauriHostEventEmitter` emit;事件 payload 只携带
+            // (entry_id, target_device_id),前端按 entry_id 匹配后 refetch
+            // view 拿 status 真相 —— 事件本身不承载状态。事件丢失被前端
+            // 的幂等 refetch 吸收,所以不在 specta 层加任何"必须收到"
+            // 的保护。
             crate::host_event_emitter::ClipboardDeliveryStatusChanged,
         ])
         .commands(collect_commands![

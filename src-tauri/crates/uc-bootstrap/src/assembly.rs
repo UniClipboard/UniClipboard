@@ -129,8 +129,8 @@ pub struct BackgroundRuntimeDeps {
     pub worker_retry_backoff_ms: u64,
     /// Event-sourced file transfer lifecycle: receiver-side projection
     /// plumbing + sweep/reconcile runtime tasks. Holds a clone of the shared
-    /// `emitter_cell` so it automatically sees emitter swaps
-    /// (LoggingEventEmitter → DaemonApiEventEmitter). The 5 lifecycle actions
+    /// `host_event_bus` so it automatically picks up emitters registered
+    /// later (Tauri webview, daemon WS). The 5 lifecycle actions
     /// (start/report_progress/complete/fail/cancel) live inside the
     /// `file_transfer_facade` carried on [`WiredDependencies`].
     pub file_transfer_lifecycle: Arc<crate::file_transfer_lifecycle::FileTransferLifecycle>,
@@ -156,11 +156,12 @@ pub struct BackgroundRuntimeDeps {
 #[derive(Clone)]
 pub struct WiredDependencies {
     pub deps: AppDeps,
-    /// Shared emitter cell created at wire time with the initial `LoggingHostEventEmitter`.
-    /// Callers (GUI bootstrap, non-GUI bootstrap) use this same cell so that
-    /// all consumers — CoreRuntime, SetupOrchestrator, and FileTransferOrchestrator —
-    /// see the same emitter after any swap.
-    pub emitter_cell: Arc<std::sync::RwLock<Arc<dyn HostEventEmitterPort>>>,
+    /// Shared host-event bus created at wire time, initially empty.
+    /// Callers (GUI bootstrap, non-GUI bootstrap, Tauri setup, daemon start)
+    /// `register` their own transport on this bus, so all consumers —
+    /// CoreRuntime, SetupOrchestrator, and FileTransferOrchestrator — fan
+    /// out into whatever transports are currently registered.
+    pub host_event_bus: Arc<uc_application::facade::HostEventBus>,
     /// Trusted-peer repository surfaced at the bootstrap boundary so the
     /// GUI / daemon builders can build the singleton `TrustPeerOrchestrator`
     /// without threading it through `AppDeps` (which is retiring together
@@ -1015,20 +1016,25 @@ pub fn wire_dependencies(
         analytics: crate::analytics::build_analytics_sink(),
     };
 
-    // Create shared emitter cell at wire time using the logging placeholder.
-    // All consumers (CoreRuntime, SetupOrchestrator, FileTransferOrchestrator)
-    // hold a clone of this cell and automatically see the emitter after any swap.
-    let initial_emitter: Arc<dyn HostEventEmitterPort> =
-        Arc::new(crate::non_gui_runtime::LoggingHostEventEmitter);
-    let emitter_cell: Arc<std::sync::RwLock<Arc<dyn HostEventEmitterPort>>> =
-        Arc::new(std::sync::RwLock::new(initial_emitter));
+    // Create shared host-event bus at wire time. The bus starts with the
+    // logging emitter pre-registered so non-GUI / CLI processes have a
+    // sensible default (event type names go to tracing::debug). Tauri setup
+    // and daemon startup `register` their own transports on top — register
+    // is additive, never overwrites the logging emitter, and `unregister`
+    // can pull a transport off cleanly (e.g. daemon reload).
+    let host_event_bus: Arc<uc_application::facade::HostEventBus> =
+        Arc::new(uc_application::facade::HostEventBus::new());
+    host_event_bus.register(
+        "logging",
+        Arc::new(crate::non_gui_runtime::LoggingHostEventEmitter) as Arc<dyn HostEventEmitterPort>,
+    );
 
     let crate::file_transfer_lifecycle::FileTransferAssembly {
         lifecycle: file_transfer_lifecycle,
         facade: file_transfer_facade,
     } = crate::file_transfer_lifecycle::build_file_transfer_assembly(
         Arc::clone(&file_transfer_store_arc),
-        emitter_cell.clone(),
+        Arc::clone(&host_event_bus),
         deps.storage.file_transfer_repo.clone(),
         deps.system.clock.clone(),
     );
@@ -1065,7 +1071,7 @@ pub fn wire_dependencies(
         mobile_sync_endpoint_info: mobile_sync_endpoint_info_for_wiring,
         entry_delivery_repo: entry_delivery_repo_for_wiring,
         clipboard_event_reader_repo: clipboard_event_reader_repo_for_wiring,
-        emitter_cell,
+        host_event_bus,
         file_transfer_facade,
         analytics_facade,
     };

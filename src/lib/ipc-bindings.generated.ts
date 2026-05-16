@@ -372,10 +372,10 @@ export const events = {
 /**
  *  `clipboard_delivery_status_changed` 事件 payload。
  * 
- *  字段命名与 [`crate::commands::clipboard_delivery::EntryDeliveryViewDto`] 的
- *  同名子结构保持一致:`tag` 字段供前端 discriminated union 直接 switch,
- *  与 view DTO 共用同一份 i18n key 与渲染分支,避免出现"事件枚举一套、
- *  view 枚举另一套"的两份口径。
+ *  前端 detail 视图按 `entry_id` 过滤后 refetch
+ *  [`crate::commands::clipboard_delivery::EntryDeliveryViewDto`],
+ *  拿 view 内的 status 渲染。`target_device_id` 当前未被消费,留作未来
+ *  per-peer 局部刷新的钩子。
  */
 export type ClipboardDeliveryStatusChanged = {
 	/**
@@ -383,19 +383,9 @@ export type ClipboardDeliveryStatusChanged = {
 	 *  只对匹配事件 refetch。
 	 */
 	entryId: string,
-	/**  投递目标对端。前端按对端聚合渲染状态,所以 payload 粒度也是按对端。 */
+	/**  投递目标对端。view 渲染时按对端聚合状态,事件粒度也是按对端。 */
 	targetDeviceId: string,
-	/**  投递的新状态,wire 形状与 `EntryDeliveryStatusDto` 同源。 */
-	status: ClipboardDeliveryStatusPayload,
 };
-
-/**
- *  与命令侧 `EntryDeliveryStatusDto` 等价的事件版镜像。两边定义分开是因为
- *  命令 DTO 持有的是 view 层的合成态(含 `Pending`),事件这边只承载写路
- *  径真实产生的三档,把 `Pending` 排除在外让订阅方少处理一个永远不会到达
- *  的分支。
- */
-export type ClipboardDeliveryStatusPayload = { tag: "delivered" } | { tag: "duplicate" } | { tag: "failed"; reason: DeliveryFailureReasonPayload };
 
 /**
  *  Typed command error taxonomy for Tauri command boundary.
@@ -412,9 +402,6 @@ export type DaemonConnectionPayload = {
 
 /**  失败原因。i18n key 命名约定:`delivery.failureReason.<variant 小驼峰>`。 */
 export type DeliveryFailureReasonDto = "offline" | "localPolicy" | "peerRejected" | "io" | "internal";
-
-/**  失败原因。变体集合与 `DeliveryFailureReasonDto` 1:1,i18n key 复用同一组。 */
-export type DeliveryFailureReasonPayload = "offline" | "localPolicy" | "peerRejected" | "io" | "internal";
 
 /**
  *  暴露给 webview 的设备和应用元数据，用于补齐前端 Sentry scope。

@@ -40,7 +40,7 @@
 use std::sync::{Arc, RwLock};
 
 use uc_application::deps::AppDeps;
-use uc_application::facade::{AppFacade, AppPaths, FileTransferFacade, HostEventEmitterPort};
+use uc_application::facade::{AppFacade, AppPaths, FileTransferFacade};
 use uc_bootstrap::TaskRegistry;
 use uc_core::ports::SettingsPort;
 use uc_desktop::DesktopRuntime;
@@ -57,7 +57,9 @@ pub struct TauriAppRuntime {
 }
 
 impl TauriAppRuntime {
-    /// 默认 emitter (`LoggingHostEventEmitter`)。其它情况调用 `with_setup`。
+    /// 装配 `DesktopRuntime` + 在外层加一个空 `AppHandle`,产出
+    /// `TauriAppRuntime`。host event 总线由 application 层(`WiredDependencies::
+    /// host_event_bus`)直接持有,不再经过 runtime 中转。
     pub fn new(
         deps: AppDeps,
         storage_paths: AppPaths,
@@ -69,26 +71,6 @@ impl TauriAppRuntime {
         Self::from_desktop(Arc::new(DesktopRuntime::new(
             deps,
             storage_paths,
-            clipboard_write_coordinator,
-            file_transfer_facade,
-        )))
-    }
-
-    /// 装配 `DesktopRuntime` + 在外层加一个空 `AppHandle`，产出
-    /// `TauriAppRuntime`。
-    pub fn with_setup(
-        deps: AppDeps,
-        storage_paths: AppPaths,
-        event_emitter: Arc<dyn HostEventEmitterPort>,
-        clipboard_write_coordinator: Arc<
-            uc_application::clipboard_write::ClipboardWriteCoordinator,
-        >,
-        file_transfer_facade: Arc<FileTransferFacade>,
-    ) -> Self {
-        Self::from_desktop(Arc::new(DesktopRuntime::with_setup(
-            deps,
-            storage_paths,
-            event_emitter,
             clipboard_write_coordinator,
             file_transfer_facade,
         )))
@@ -144,10 +126,6 @@ impl TauriAppRuntime {
     /// 业务入口 —— commands / 后台任务通过它访问业务。
     pub fn app_facade(&self) -> &Arc<AppFacade> {
         self.desktop.app_facade()
-    }
-
-    pub fn event_emitter(&self) -> Arc<dyn HostEventEmitterPort> {
-        self.desktop.event_emitter()
     }
 
     pub fn device_id(&self) -> String {

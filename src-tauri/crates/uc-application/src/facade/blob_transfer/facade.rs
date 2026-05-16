@@ -1,5 +1,5 @@
 use std::path::PathBuf;
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 
 use async_trait::async_trait;
 use bytes::Bytes;
@@ -19,16 +19,18 @@ use uc_core::ports::ContentHashPort;
 use crate::facade::file_transfer::{
     CompleteTransfer, FailTransfer, FileTransferFacade, SeedReceiverContext, StartTransfer,
 };
-use crate::facade::host_event::{HostEvent, HostEventEmitterPort, TransferHostEvent};
+use crate::facade::host_event::{HostEvent, HostEventBus, TransferHostEvent};
 use crate::usecases::blob_transfer::{
     FetchBlobInput, FetchBlobPathInput, FetchBlobUseCase, PublishBlobInput, PublishBlobUseCase,
 };
 
-/// 共享的 host event emitter cell。
+/// 共享的 host event 总线。
 ///
-/// daemon 启动早期注入真实 emitter,在此之前事件会落到 noop 实现上,
-/// 与 `FileTransferHostEventPublisher` 共用同一个 cell,保证启动顺序无关。
-pub type SharedHostEventEmitter = Arc<RwLock<Arc<dyn HostEventEmitterPort>>>;
+/// 多个装配阶段(bootstrap / Tauri setup / daemon start)通过 `bus.register`
+/// 把自己关心的 transport (logging / Tauri / daemon WS) 挂到同一根 bus
+/// 上;application 层各 use case 持有 `Arc<HostEventBus>` 引用,emit 时
+/// fan-out 到所有已注册下游,装配顺序无关。
+pub type SharedHostEventEmitter = Arc<HostEventBus>;
 
 pub struct BlobTransferDeps {
     pub hash: Arc<dyn ContentHashPort>,
@@ -201,13 +203,10 @@ impl BlobTransferFacade {
     }
 
     fn emit_host_event(&self, event: HostEvent) {
-        let Some(cell) = self.host_event_emitter.as_ref() else {
+        let Some(bus) = self.host_event_emitter.as_ref() else {
             return;
         };
-        let emitter = cell.read().unwrap_or_else(|p| p.into_inner()).clone();
-        if let Err(err) = emitter.emit(event) {
-            warn!(error = %err, "blob fetch: failed to emit host event");
-        }
+        bus.emit_or_warn(event);
     }
 
     /// 发一帧 receiving-direction Progress host event。
@@ -392,7 +391,7 @@ impl BlobTransferFacade {
                     _ => None,
                 };
                 let sink: Arc<dyn BlobProgressSink> = Arc::new(HostEventProgressSink {
-                    emitter_cell: self.host_event_emitter.clone().unwrap(),
+                    bus: self.host_event_emitter.clone().unwrap(),
                     transfer_id: ctx.transfer_id.clone(),
                     peer_id: ctx.peer_id.clone(),
                     fallback_total: ctx.total_bytes,
@@ -498,7 +497,7 @@ impl BlobTransferFacade {
                     _ => None,
                 };
                 let sink: Arc<dyn BlobProgressSink> = Arc::new(HostEventProgressSink {
-                    emitter_cell: self.host_event_emitter.clone().unwrap(),
+                    bus: self.host_event_emitter.clone().unwrap(),
                     transfer_id: ctx.transfer_id.clone(),
                     peer_id: ctx.peer_id.clone(),
                     fallback_total: ctx.total_bytes,
@@ -607,7 +606,7 @@ struct OutboundReportContext {
 /// 让 sender UI 看到对端真实接收字节进度。reporter 自己会处理失败
 /// (内部 log + return),不会让 fetch 主路径感知。
 struct HostEventProgressSink {
-    emitter_cell: SharedHostEventEmitter,
+    bus: SharedHostEventEmitter,
     transfer_id: String,
     peer_id: String,
     fallback_total: Option<u64>,
@@ -626,14 +625,7 @@ impl BlobProgressSink for HostEventProgressSink {
             bytes_transferred,
             total_bytes: total,
         });
-        let emitter = self
-            .emitter_cell
-            .read()
-            .unwrap_or_else(|p| p.into_inner())
-            .clone();
-        if let Err(err) = emitter.emit(event) {
-            warn!(error = %err, "blob fetch: failed to emit progress event");
-        }
+        self.bus.emit_or_warn(event);
 
         if let Some(ob) = self.outbound.as_ref() {
             ob.reporter

@@ -1,11 +1,11 @@
 use std::collections::{HashMap, HashSet};
-use std::sync::{Arc, Mutex, PoisonError, RwLock};
+use std::sync::{Arc, Mutex, PoisonError};
 
 use anyhow::Result;
 use async_trait::async_trait;
 use tracing::warn;
 
-/// 显式恢复 poisoned mutex/rwlock 守卫,并 log 警告。
+/// 显式恢复 poisoned mutex 守卫,并 log 警告。
 ///
 /// `unwrap_or_else(|p| p.into_inner())` 直接吞 poison 会让 invariant 违
 /// 反静默,排障时完全找不到信号。这里集中加 warn 让"前一次 panic 留下
@@ -25,7 +25,7 @@ use uc_core::file_transfer::{
 };
 use uc_core::ports::file_transfer_repository::FileTransferRepositoryPort;
 
-use super::{HostEvent, HostEventEmitterPort, OutboundEntryIdCache, TransferHostEvent};
+use super::{HostEvent, HostEventBus, OutboundEntryIdCache, TransferHostEvent};
 
 /// mobile_lan PUT /file handler 在 SyncDoc apply 之前不知道真实 entry_id,
 /// 用 `mobile-pending:<transfer_id>` 占位写到 receiver-side projection。
@@ -50,7 +50,7 @@ struct PendingStatusChange {
 }
 
 pub struct FileTransferHostEventPublisher {
-    emitter_cell: Arc<RwLock<Arc<dyn HostEventEmitterPort>>>,
+    bus: Arc<HostEventBus>,
     file_transfer_repo: Arc<dyn FileTransferRepositoryPort>,
     outbound_entry_cache: Arc<OutboundEntryIdCache>,
     /// transfer_id → 暂存的 status_changed,等 link 后补发。
@@ -63,12 +63,12 @@ pub struct FileTransferHostEventPublisher {
 
 impl FileTransferHostEventPublisher {
     pub fn new(
-        emitter_cell: Arc<RwLock<Arc<dyn HostEventEmitterPort>>>,
+        bus: Arc<HostEventBus>,
         file_transfer_repo: Arc<dyn FileTransferRepositoryPort>,
         outbound_entry_cache: Arc<OutboundEntryIdCache>,
     ) -> Self {
         Self {
-            emitter_cell,
+            bus,
             file_transfer_repo,
             outbound_entry_cache,
             pending_status: Arc::new(Mutex::new(HashMap::new())),
@@ -100,14 +100,7 @@ impl FileTransferHostEventPublisher {
     }
 
     fn emit(&self, event: HostEvent) {
-        let emitter = self
-            .emitter_cell
-            .read()
-            .unwrap_or_else(|p| recover_poisoned(p, "emitter_cell"))
-            .clone();
-        if let Err(err) = emitter.emit(event) {
-            warn!(error = %err, "failed to emit file transfer host event");
-        }
+        self.bus.emit_or_warn(event);
     }
 
     /// 在 `link_transfer_to_entry` 成功之后调用,把 buffered 阶段暂存的

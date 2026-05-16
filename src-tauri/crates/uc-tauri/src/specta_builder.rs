@@ -20,7 +20,7 @@
 //!
 //! 所有命令在所有 OS 上都 collect，保证任何 runner 跑 `cargo test
 //! --test specta_export` 得到同一份 binding（CI 可以用单一 Linux runner
-//! 做 schema drift check）。当前 31 条命令都不依赖平台特定 mod 编译。
+//! 做 schema drift check）。当前 32 条命令都不依赖平台特定 mod 编译。
 
 use tauri_specta::{collect_commands, Builder};
 
@@ -78,5 +78,7 @@ pub fn build() -> Builder<tauri::Wry> {
         crate::commands::space_setup::try_silent_unlock,
         // ── factory reset ───────────────────────────────────────────────────
         crate::commands::factory_reset::factory_reset_space,
+        // ── window chrome (macOS traffic lights) ────────────────────────────
+        crate::commands::window_chrome::set_traffic_light_position,
     ])
 }

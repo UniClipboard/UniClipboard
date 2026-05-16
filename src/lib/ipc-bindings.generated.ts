@@ -350,6 +350,16 @@ export const commands = {
 	trace_id: string,
 	timestamp: number,
 } | null) => typedError<FactoryResetResult, FactoryResetCommandError>(__TAURI_INVOKE("factory_reset_space", { trace })),
+	/**
+	 *  调整 macOS 主窗口三色交通灯（close/min/zoom）按钮位置。
+	 * 
+	 *  `offset_x` / `offset_y` 相对系统给的标准位置偏移，**屏幕坐标系**：
+	 *  正 X 向右、正 Y 向下。调用幂等。非 macOS 平台 no-op。
+	 */
+	setTrafficLightPosition: (offsetX: number | null, offsetY: number | null, trace: {
+	trace_id: string,
+	timestamp: number,
+} | null) => typedError<null, string>(__TAURI_INVOKE("set_traffic_light_position", { offsetX, offsetY, trace })),
 };
 
 /* Types */

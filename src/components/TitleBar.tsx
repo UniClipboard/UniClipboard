@@ -1,11 +1,11 @@
-import { enableModernWindowStyle } from '@cloudworxx/tauri-plugin-mac-rounded-corners'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import { Minus, Square, X, Search } from 'lucide-react'
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useLocation } from 'react-router-dom'
 import { Input } from '@/components/ui/input'
 import { usePlatform } from '@/hooks/usePlatform'
+import { commands } from '@/lib/ipc'
 import { createLogger } from '@/lib/logger'
 import { cn } from '@/lib/utils'
 
@@ -18,11 +18,14 @@ interface TitleBarProps {
   isSetupActive?: boolean
 }
 
-// macOS window style configuration (must match enableModernWindowStyle call)
-const MAC_WINDOW_STYLE = {
-  cornerRadius: 12,
-  offsetX: -10,
-  offsetY: -3,
+// macOS 三色交通灯相对系统标准位置的偏移，屏幕坐标系：正 X 向右、正 Y 向下。
+// 自绘 titlebar 高度 40pt vs 系统默认 28pt，按钮要向下挪一点才视觉居中；
+// 同时整体往右挪让它远离 macOS 窗口圆角。圆角本身由 tauri.conf.json
+// `windowEffects.radius` 接管。后端实现见
+// `crates/uc-tauri/src/commands/window_chrome.rs`。
+const MAC_TRAFFIC_LIGHT_OFFSET = {
+  x: 0,
+  y: 4,
 } as const
 
 const TitleBarButton = ({
@@ -75,17 +78,23 @@ export const TitleBar = ({
   // Setup 页面隐藏 TitleBar 保持沉浸感
   const shouldHideTitleBar = isSetupActive
 
+  const syncTrafficLightPosition = useCallback(() => {
+    if (!isMac) return
+    commands
+      .setTrafficLightPosition(MAC_TRAFFIC_LIGHT_OFFSET.x, MAC_TRAFFIC_LIGHT_OFFSET.y)
+      .catch(error => {
+        log.error({ err: error }, 'Failed to set traffic light position')
+      })
+  }, [isMac])
+
   useEffect(() => {
     if (!isTauri || !windowRef) return
 
     let mounted = true
 
-    // Enable macOS rounded corners
-    if (isMac) {
-      enableModernWindowStyle(MAC_WINDOW_STYLE).catch(error => {
-        log.error({ err: error }, 'Failed to enable rounded corners')
-      })
-    }
+    // macOS 系统会在 unmaximize / 全屏切换后把按钮重置回标准位置，
+    // mount 一次 + 每次 resize 都重发，保证视觉一致。
+    syncTrafficLightPosition()
 
     windowRef.isMaximized().then(value => {
       if (mounted) setIsMaximized(value)
@@ -94,13 +103,14 @@ export const TitleBar = ({
     const unlistenPromise = windowRef.onResized(async () => {
       if (!mounted) return
       setIsMaximized(await windowRef.isMaximized())
+      syncTrafficLightPosition()
     })
 
     return () => {
       mounted = false
       unlistenPromise.then(unlisten => unlisten())
     }
-  }, [isTauri, isMac, windowRef])
+  }, [isTauri, windowRef, syncTrafficLightPosition])
 
   const handleMinimize = async () => {
     log.debug({ isTauri }, 'Minimize clicked')

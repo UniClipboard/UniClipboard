@@ -11,6 +11,7 @@ pub mod startup;
 pub mod storage;
 pub mod tray;
 pub mod updater;
+pub mod window_chrome;
 
 use tracing::Span;
 use uc_platform::ports::observability::TraceMetadata;

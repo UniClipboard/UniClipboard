@@ -97,7 +97,10 @@ const ClipboardPreview: React.FC<ClipboardPreviewProps> = ({ item, actions }) =>
     item.type === 'text' && isLargeTextPreview(item.content as ClipboardTextItem, preview, loading)
 
   return (
-    <div className="flex flex-1 min-h-0 flex-col bg-background/20 backdrop-blur-sm">
+    <div
+      className="flex flex-1 min-h-0 flex-col bg-background/20 backdrop-blur-sm"
+      data-testid="clipboard-detail"
+    >
       <ClipboardPreviewInfo
         item={item}
         preview={preview}

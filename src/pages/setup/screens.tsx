@@ -116,6 +116,7 @@ export function EntryScreen({
       <div className="flex flex-row gap-4">
         <button
           type="button"
+          data-testid="setup-entry-create"
           onClick={onCreate}
           disabled={loading}
           className="group relative flex flex-1 flex-col items-start gap-5 rounded-xl border border-white/20 bg-white/40 p-7 text-left backdrop-blur-xl transition-all duration-300 hover:-translate-y-1 hover:border-white/40 hover:bg-white/50 hover:shadow-lg active:translate-y-0 active:shadow-sm disabled:opacity-50 dark:border-white/10 dark:bg-white/5 dark:hover:border-white/20 dark:hover:bg-white/10"
@@ -137,6 +138,7 @@ export function EntryScreen({
 
         <button
           type="button"
+          data-testid="setup-entry-join"
           onClick={onJoin}
           disabled={loading}
           className="group relative flex flex-1 flex-col items-start gap-5 rounded-xl border border-white/20 bg-white/40 p-7 text-left backdrop-blur-xl transition-all duration-300 hover:-translate-y-1 hover:border-white/40 hover:bg-white/50 hover:shadow-lg active:translate-y-0 active:shadow-sm disabled:opacity-50 dark:border-white/10 dark:bg-white/5 dark:hover:border-white/20 dark:hover:bg-white/10"
@@ -257,11 +259,21 @@ export function InitializeSpaceScreen({
       hint={t('hint')}
       footer={
         <div className="flex w-full items-center justify-between gap-3">
-          <Button variant="ghost" onClick={onBack} disabled={loading}>
+          <Button
+            variant="ghost"
+            data-testid="setup-initialize-back"
+            onClick={onBack}
+            disabled={loading}
+          >
             <ArrowLeft className="mr-2 h-4 w-4" />
             {t('actions.back')}
           </Button>
-          <Button onClick={handleSubmit} disabled={loading} className="min-w-32">
+          <Button
+            data-testid="setup-initialize-submit"
+            onClick={handleSubmit}
+            disabled={loading}
+            className="min-w-32"
+          >
             {loading ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -483,11 +495,21 @@ export function RedeemInvitationScreen({
       hint={t('hint')}
       footer={
         <div className="flex w-full items-center justify-between gap-3">
-          <Button variant="ghost" onClick={onBack} disabled={loading}>
+          <Button
+            variant="ghost"
+            data-testid="setup-redeem-back"
+            onClick={onBack}
+            disabled={loading}
+          >
             <ArrowLeft className="mr-2 h-4 w-4" />
             {t('actions.back')}
           </Button>
-          <Button onClick={handleSubmit} disabled={!canSubmit} className="min-w-32">
+          <Button
+            data-testid="setup-redeem-submit"
+            onClick={handleSubmit}
+            disabled={!canSubmit}
+            className="min-w-32"
+          >
             {loading ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -505,14 +527,16 @@ export function RedeemInvitationScreen({
         <Label htmlFor="join-code" className="sr-only">
           {t('labels.code')}
         </Label>
-        <InvitationCodeInput
-          id="join-code"
-          value={code}
-          onChange={setCode}
-          disabled={loading}
-          invalid={codeInvalid}
-          autoFocus
-        />
+        <div data-testid="setup-redeem-code">
+          <InvitationCodeInput
+            id="join-code"
+            value={code}
+            onChange={setCode}
+            disabled={loading}
+            invalid={codeInvalid}
+            autoFocus
+          />
+        </div>
 
         <AnimatePresence initial={false}>
           {codeComplete && (

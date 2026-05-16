@@ -101,12 +101,10 @@ describe('useEncryptionSessionState', () => {
         sessionReady: false,
       })
     const intervalCallbacks: Array<() => void> = []
-    const setIntervalSpy = vi
-      .spyOn(window, 'setInterval')
-      .mockImplementation((handler: TimerHandler) => {
-        intervalCallbacks.push(handler as () => void)
-        return 1 as unknown as number
-      })
+    const setIntervalSpy = vi.spyOn(window, 'setInterval').mockImplementation(handler => {
+      intervalCallbacks.push(handler as () => void)
+      return 1 as unknown as ReturnType<typeof window.setInterval>
+    })
     const clearIntervalSpy = vi.spyOn(window, 'clearInterval').mockImplementation(() => {})
 
     try {

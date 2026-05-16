@@ -80,5 +80,14 @@ export default tseslint.config(
       },
     },
   },
+  {
+    files: ['e2e/**/*.js', 'e2e/**/*.mjs'],
+    languageOptions: {
+      globals: {
+        ...globals.mocha,
+        ...globals.node,
+      },
+    },
+  },
   prettier
 )

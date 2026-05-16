@@ -220,6 +220,7 @@ const SyncBadge: React.FC<SyncBadgeProps> = ({ summary, deliveries, t }) => {
           aria-label={t('delivery.popover.ariaTrigger')}
           className="group inline-flex items-center gap-1.5 rounded outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
           data-summary={summary}
+          data-delivery-summary={summary}
         >
           <Icon className={cn('h-3.5 w-3.5 transition-colors', tone, spin && 'animate-spin')} />
           <span
@@ -233,7 +234,13 @@ const SyncBadge: React.FC<SyncBadgeProps> = ({ summary, deliveries, t }) => {
           </span>
         </button>
       </HoverCardTrigger>
-      <HoverCardContent align="end" side="bottom" sideOffset={6} className="w-64 p-2">
+      <HoverCardContent
+        align="end"
+        side="bottom"
+        sideOffset={6}
+        className="w-64 p-2"
+        data-delivery-popover=""
+      >
         <div className="mb-1 px-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground/80">
           {t('delivery.popover.title')}
         </div>

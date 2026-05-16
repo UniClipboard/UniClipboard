@@ -27,7 +27,10 @@ const ClipboardPreviewPane: React.FC<ClipboardPreviewPaneProps> = ({ entryId }) 
 
   return (
     <div className="flex h-full w-full min-w-0 flex-col overflow-hidden rounded-xl border border-border/50 bg-background/95 shadow-xl backdrop-blur-xl">
-      <div className="flex items-center gap-3 border-b border-border/50 px-3 py-2">
+      <div
+        className="flex items-center gap-3 border-b border-border/50 px-3 py-2"
+        data-testid="quick-panel-titlebar"
+      >
         <span className="shrink-0 text-[12px] font-medium text-foreground">{t('title')}</span>
         <div className="flex min-w-0 flex-1 items-center justify-end gap-3">
           <EntryDeliveryBadge delivery={delivery} />
@@ -43,6 +46,7 @@ const ClipboardPreviewPane: React.FC<ClipboardPreviewPaneProps> = ({ entryId }) 
         className={
           isLargeText ? 'flex-1 min-h-0 px-3 py-2' : 'scrollbar-thin flex-1 overflow-auto px-3 py-2'
         }
+        data-testid="quick-panel-preview-area"
       >
         {loading ? (
           <div className="flex h-full items-center justify-center" aria-live="polite">

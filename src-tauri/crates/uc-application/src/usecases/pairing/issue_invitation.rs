@@ -31,7 +31,7 @@ use uc_core::ports::pairing_invitation::{
     PairingInvitationAddressQueryPort, PairingInvitationByAddressPort, PairingInvitationPort,
 };
 use uc_core::ports::{ClockPort, DeviceIdentityPort};
-use uc_observability::analytics::{AnalyticsPort, Event, PairingMethod};
+use uc_observability::analytics::{AnalyticsFacade, Event, PairingMethod};
 
 use crate::facade::space_setup::{IssuePairingInvitationError, IssuePairingInvitationResult};
 use crate::pairing_invitation::InMemoryPairingInvitationHolder;
@@ -50,7 +50,7 @@ pub(crate) struct IssuePairingInvitationUseCase {
     /// Captured at the entry of `execute()` regardless of outcome — even
     /// "early dial failure" (NetworkNotStarted / ServiceUnavailable) leaves
     /// a started signal so PostHog can compute the "tried to invite" cohort.
-    analytics: Arc<dyn AnalyticsPort>,
+    analytics: Arc<dyn AnalyticsFacade>,
 }
 
 impl IssuePairingInvitationUseCase {
@@ -61,7 +61,7 @@ impl IssuePairingInvitationUseCase {
         device_identity: Arc<dyn DeviceIdentityPort>,
         clock: Arc<dyn ClockPort>,
         holder: Arc<InMemoryPairingInvitationHolder>,
-        analytics: Arc<dyn AnalyticsPort>,
+        analytics: Arc<dyn AnalyticsFacade>,
     ) -> Self {
         Self {
             pairing_invitation,
@@ -186,10 +186,17 @@ mod tests {
             self.captured.lock().unwrap().clone()
         }
     }
-    impl AnalyticsPort for CapturingAnalyticsSink {
+    impl uc_observability::analytics::AnalyticsPort for CapturingAnalyticsSink {
         fn capture(&self, event: Event) {
             self.captured.lock().unwrap().push(event);
         }
+    }
+
+    fn wrap_facade(sink: Arc<CapturingAnalyticsSink>) -> Arc<dyn AnalyticsFacade> {
+        Arc::new(uc_observability::analytics::DefaultAnalyticsFacade::new(
+            sink as Arc<dyn uc_observability::analytics::AnalyticsPort>,
+            Arc::new(uc_observability::analytics::NoopAnalyticsIdentity),
+        ))
     }
 
     // ---------- Fakes ----------
@@ -340,6 +347,7 @@ mod tests {
         let clock: Arc<dyn ClockPort> = Arc::new(FixedClock(issued_at_ms()));
         let holder = Arc::new(InMemoryPairingInvitationHolder::new());
         let analytics = Arc::new(CapturingAnalyticsSink::default());
+        let analytics_facade = wrap_facade(analytics.clone());
         let uc = IssuePairingInvitationUseCase::new(
             port.clone() as Arc<dyn PairingInvitationPort>,
             port.clone() as Arc<dyn PairingInvitationAddressQueryPort>,
@@ -347,7 +355,7 @@ mod tests {
             device_identity,
             clock,
             holder.clone(),
-            analytics.clone(),
+            analytics_facade,
         );
         Harness {
             uc,

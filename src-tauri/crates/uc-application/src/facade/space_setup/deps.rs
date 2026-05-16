@@ -21,7 +21,7 @@ use uc_core::ports::{
     SettingsPort, SetupStatusPort,
 };
 use uc_core::trusted_peer::TrustedPeerRepositoryPort;
-use uc_observability::analytics::{AnalyticsIdentityPort, AnalyticsPort};
+use uc_observability::analytics::AnalyticsFacade;
 
 /// Dependencies for [`super::SpaceSetupFacade`].
 ///
@@ -100,16 +100,10 @@ pub struct SpaceSetupDeps {
     /// switch-space phase 1 用它解旧密文 / phase 3 用它写新密文，所以
     /// facade 必须能拿到这一份。
     pub blob_cipher: Arc<dyn BlobCipherPort>,
-    /// 产品 telemetry sink（横切关注点）。Slice 8b 起，joiner 端
-    /// [`crate::usecases::pairing::redeem_invitation::RedeemPairingInvitationUseCase`]
-    /// 在 execute 入口/收尾 fire `pairing_started` / `pairing_succeeded`
-    /// / `pairing_failed`。Sink 装一次永不替换，gate 由 `GatedAnalyticsSink`
-    /// wrapper 在 capture 入口守卫，业务侧无感。
-    pub analytics: Arc<dyn AnalyticsPort>,
-    /// Phase 098 · v2 跨设备 person 聚合身份切换端口。
-    /// A1 sponsor 在 `setup_completed` 时调 `adopt_space_person` 落地新生成的
-    /// `space_person_id` 并重建全局 EventContext；A2 joiner 在 `pairing_succeeded`
-    /// 时同样调 `adopt_space_person` 接受 sponsor 派发的 ID；用户重置 telemetry
-    /// 时调 `release_space_person` 切回 Solo。详见 schema doc §3.4。
-    pub analytics_identity: Arc<dyn AnalyticsIdentityPort>,
+    /// Analytics entry point — capture, identity transitions, and
+    /// `current_space_person_id` reads all funnel through this single
+    /// trait. The capture sink and identity port are composed inside the
+    /// facade implementation; nothing in `uc-application` should need to
+    /// know they exist as separate ports.
+    pub analytics: Arc<dyn AnalyticsFacade>,
 }

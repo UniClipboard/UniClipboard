@@ -37,10 +37,8 @@ use uc_core::ports::{
 };
 use uc_core::setup::SetupStatus;
 use uc_observability::analytics::{
-    hash_space_id_for_telemetry, AnalyticsIdentityPort, AnalyticsPort, Event, GroupIdentifyPayload,
-    IdentifyPayload, NameLengthBucket, SetupEntry,
+    AnalyticsFacade, Event, NameLengthBucket, SelfMintedAdoptRequest, SetupEntry,
 };
-use uuid::Uuid;
 
 use crate::facade::space_setup::commands::InitializeSpaceCommand;
 use crate::facade::space_setup::{InitializeSpaceError, InitializeSpaceResult};
@@ -53,16 +51,12 @@ pub(crate) struct InitializeSpaceUseCase {
     setup_status: Arc<dyn SetupStatusPort>,
     settings: Arc<dyn SettingsPort>,
     clock: Arc<dyn ClockPort>,
-    /// Slice 8d · setup funnel anchor (`setup_started`) at execute() entry +
-    /// `device_name_set` after the device-name resolution succeeds. The
-    /// device name itself never reaches the sink — only the bucketed
-    /// character-count region per `NameLengthBucket`.
-    analytics: Arc<dyn AnalyticsPort>,
-    /// Phase 098 · v2 跨设备 person 聚合 sponsor 端入口。`SetupStatus.has_completed`
-    /// 落地之后、emit `setup_completed` 之前用本端口接受新生成的
-    /// `space_person_id`，并发 `$identify` 把本机 anonymous_user_id 名下的历史
-    /// 事件合并到新 person。详见 schema doc §3.4。
-    analytics_identity: Arc<dyn AnalyticsIdentityPort>,
+    /// Setup-funnel anchor (`setup_started` on entry, `device_name_set`
+    /// after the device-name resolution, `setup_completed` at the end)
+    /// plus the identity transition that runs between persisting setup
+    /// status and emitting `setup_completed`. The device name itself
+    /// never reaches the sink — only the bucketed character-count.
+    analytics: Arc<dyn AnalyticsFacade>,
 }
 
 impl InitializeSpaceUseCase {
@@ -74,8 +68,7 @@ impl InitializeSpaceUseCase {
         setup_status: Arc<dyn SetupStatusPort>,
         settings: Arc<dyn SettingsPort>,
         clock: Arc<dyn ClockPort>,
-        analytics: Arc<dyn AnalyticsPort>,
-        analytics_identity: Arc<dyn AnalyticsIdentityPort>,
+        analytics: Arc<dyn AnalyticsFacade>,
     ) -> Self {
         Self {
             space_access,
@@ -86,7 +79,6 @@ impl InitializeSpaceUseCase {
             settings,
             clock,
             analytics,
-            analytics_identity,
         }
     }
 
@@ -187,62 +179,24 @@ impl InitializeSpaceUseCase {
             .map_err(|e| InitializeSpaceError::StorageFailed(e.to_string()))?;
         info!(%space_id, %device_id, "space initialisation completed");
 
-        // Phase 098 · v2 跨设备 person 聚合 sponsor 端 identify。
-        //
-        // 时序（schema doc §3.4）：必须在 SetupStatus.has_completed 落地之后、
-        // `setup_completed` 事件 emit 之前完成身份切换，让 setup_completed 这
-        // 条事件就已经按新的 space_person_id 上报，简化 PostHog 端漏斗归属。
-        //
-        // 失败语义（task_plan §PR 4 / §开放问题 3 决策 A）：
-        // - adopt 失败（持久化或 ctx 装配出问题）→ tracing::warn，跳过 identify，
-        //   setup_completed 仍按 Solo 状态发出；本机维持 anonymous 身份，下次
-        //   pairing 或重启再尝试。
-        // - identify HTTP 失败由 sink 内部 fire-and-forget 处理（< 1% 丢失允许）。
-        //
-        // 与 setup_completed 的相对顺序绝对不能颠倒——颠倒会导致已经 emit 的
-        // setup_completed 事件停留在老 distinct_id 名下，但 dashboard 期望
-        // "Activation funnel 终点"已经聚合到 person。
-        let space_person_id = Uuid::now_v7();
-        match self.analytics_identity.adopt_space_person(space_person_id) {
-            Ok(outcome) => {
-                self.analytics.identify(IdentifyPayload::switch_only(
-                    outcome.previous_distinct_id,
-                    outcome.new_distinct_id,
-                ));
+        // Identity switches before `setup_completed` fires so that event
+        // already reports under the new person — keeps the activation
+        // funnel terminal aggregated to the right id from the start.
+        // Adopt failures are warn-logged inside the facade and skip the
+        // identify; `setup_completed` still goes out under the Solo id
+        // and aggregation retries on the next pairing.
+        self.analytics.adopt_self_minted(SelfMintedAdoptRequest {
+            space_id: space_id.to_string(),
+            now_ms: self.clock.now_ms(),
+        });
 
-                // Phase 098 / PR 7：A1 是 Space 第一台设备，立即 fire 一次
-                // `$groupidentify` 把 group 维度的 `created_at` 写入。后续
-                // 设备数由 PostHog dashboard 直接 query group 下的 distinct
-                // person 数推算，不需要每次 pairing 重发 group_identify
-                // （task_plan §开放问题 6 的"sponsor 重发"在 PostHog group
-                // analytics 上是冗余）。
-                let group_key = hash_space_id_for_telemetry(space_id.as_str());
-                let mut group_set = serde_json::Map::new();
-                group_set.insert(
-                    "created_at".into(),
-                    serde_json::Value::String(
-                        chrono::DateTime::<Utc>::from_timestamp_millis(self.clock.now_ms())
-                            .map(|dt| dt.to_rfc3339())
-                            .unwrap_or_default(),
-                    ),
-                );
-                group_set.insert("device_count".into(), serde_json::Value::Number(1.into()));
-                self.analytics
-                    .group_identify(GroupIdentifyPayload::for_space(group_key, group_set));
-            }
-            Err(err) => {
-                warn!(
-                    error = %err,
-                    "analytics identity adopt failed at setup_completed; setup proceeds but person aggregation deferred"
-                );
-            }
-        }
-
-        // schema doc §12.1 · Activation 漏斗 anchor。A1 是 fresh-device
-        // 「新建空间」路径——本流程内不发生配对，`has_paired_in_same_flow`
-        // 固定为 false；后续若 joiner 路径也 emit setup_completed，再按真实
-        // 状态填 true。`duration_ms_since_setup_started` 用 u32 上限 49 天，
-        // 实际不可能溢出；超界时 fallback None（属架构债务而非数据点）。
+        // Activation funnel anchor. A1 is the fresh-device "create new
+        // space" path — no pairing happens here, so
+        // `has_paired_in_same_flow` is always false. The joiner path may
+        // later emit its own `setup_completed` with the real value.
+        // `duration_ms_since_setup_started` is `u32` (≤ 49 days);
+        // overflow is structurally impossible, so we fall back to None
+        // on the unreachable error path rather than widening the type.
         let duration_ms_since_setup_started =
             u32::try_from(setup_started_at.elapsed().as_millis()).ok();
         self.analytics.capture(Event::SetupCompleted {
@@ -332,6 +286,7 @@ mod tests {
     use std::sync::{Arc, Mutex};
 
     use async_trait::async_trait;
+    use uuid::Uuid;
 
     use uc_core::crypto::domain::{ActiveSpace, Passphrase};
     use uc_core::ids::{DeviceId, SpaceId};
@@ -590,7 +545,7 @@ mod tests {
                 .collect()
         }
     }
-    impl AnalyticsPort for CapturingAnalyticsSink {
+    impl uc_observability::analytics::AnalyticsPort for CapturingAnalyticsSink {
         fn capture(&self, event: Event) {
             self.captured
                 .lock()
@@ -709,9 +664,16 @@ mod tests {
         let settings = Arc::new(InMemorySettings::default());
         let clock: Arc<dyn ClockPort> = Arc::new(FixedClock(1_700_000_000_000));
         let analytics = Arc::new(CapturingAnalyticsSink::default());
-        // 用一个 fixed UUID 作为 sponsor 设备的 anonymous_user_id —— 测试可以
-        // 据此断言 identify.previous_distinct_id 等于这个值。
+        // Fixed UUID stands in for the sponsor device's anonymous_user_id
+        // so tests can assert identify.previous_distinct_id equals it.
         let analytics_identity = Arc::new(FakeAnalyticsIdentity::new(Uuid::now_v7()));
+        // The production code only sees `AnalyticsFacade`; the recording
+        // sink + identity are stashed on the harness for assertions.
+        let facade: Arc<dyn AnalyticsFacade> =
+            Arc::new(uc_observability::analytics::DefaultAnalyticsFacade::new(
+                analytics.clone(),
+                analytics_identity.clone(),
+            ));
 
         let uc = InitializeSpaceUseCase::new(
             space_access.clone(),
@@ -721,8 +683,7 @@ mod tests {
             setup_status.clone(),
             settings.clone(),
             clock,
-            analytics.clone(),
-            analytics_identity.clone(),
+            facade,
         );
         Harness {
             uc,

@@ -47,7 +47,7 @@ use uc_core::ports::{
 };
 use uc_core::MemberRepositoryPort;
 use uc_core::TrustedPeerRepositoryPort;
-use uc_observability::analytics::{AnalyticsPort, Event, PairingFailureReason, PairingMethod};
+use uc_observability::analytics::{AnalyticsFacade, Event, PairingFailureReason, PairingMethod};
 
 use crate::facade::space_setup::PairingOutcome;
 use crate::membership::usecases::{AdmitMember, AdmitMemberUseCase};
@@ -80,10 +80,11 @@ pub(crate) struct PairingInboundOrchestrator {
     /// legitimate state (e.g., GUI tauri runtime without a live listener);
     /// the CLI `invite` command subscribes before enabling B1.
     outcome_tx: broadcast::Sender<PairingOutcome>,
-    /// Telemetry sink for `pairing_succeeded` / `pairing_failed` (Slice 8b').
-    /// `pairing_started` is fired upstream by `IssuePairingInvitationUseCase`;
-    /// the orchestrator only emits the outcome events.
-    analytics: Arc<dyn AnalyticsPort>,
+    /// Outcome telemetry for `pairing_succeeded` / `pairing_failed`.
+    /// `pairing_started` is fired upstream by
+    /// `IssuePairingInvitationUseCase`; the orchestrator only emits the
+    /// outcome events.
+    analytics: Arc<dyn AnalyticsFacade>,
     /// Per-session handshake start time, populated when the first valid
     /// `Request` arrives (`on_incoming` after invitation match) and read in
     /// `finalise_verified` to compute `pairing_succeeded.duration_ms`.
@@ -106,7 +107,7 @@ impl PairingInboundOrchestrator {
         peer_addr_repo: Arc<dyn PeerAddressRepositoryPort>,
         local_device_id: uc_core::DeviceId,
         outcome_tx: broadcast::Sender<PairingOutcome>,
-        analytics: Arc<dyn AnalyticsPort>,
+        analytics: Arc<dyn AnalyticsFacade>,
     ) -> Self {
         Self {
             pairing_events,
@@ -618,7 +619,9 @@ mod tests {
     use uc_core::settings::model::Settings;
     use uc_core::space_access::domain::{JoinOffer, ProofDerivedKey, SpaceAccessProofArtifact};
     use uc_core::trusted_peer::{TrustedPeer, TrustedPeerError};
-    use uc_observability::analytics::NoopAnalyticsSink;
+    use uc_observability::analytics::{
+        AnalyticsPort, DefaultAnalyticsFacade, NoopAnalyticsIdentity,
+    };
 
     // ── fakes ────────────────────────────────────────────────────────────
 
@@ -998,9 +1001,11 @@ mod tests {
         peer_addr_repo: Arc<MockPeerAddrRepo>,
         proof_verdicts: Vec<bool>,
         clock_ms: i64,
-        /// Slice 8b' · injectable analytics sink so capture-asserting tests
-        /// can swap a `CapturingAnalyticsSink` in. Default is `NoopAnalyticsSink`
-        /// for the legacy tests that don't care about telemetry.
+        /// Injectable analytics sink so capture-asserting tests can swap
+        /// a `CapturingAnalyticsSink` in. Default is the noop sink for
+        /// the legacy tests that don't care about telemetry. Wrapped
+        /// into an `AnalyticsFacade` at build time so the orchestrator
+        /// sees the same surface the production code does.
         analytics: Arc<dyn AnalyticsPort>,
     }
 
@@ -1015,7 +1020,7 @@ mod tests {
                 peer_addr_repo: permissive_peer_addr_repo(),
                 proof_verdicts: vec![true],
                 clock_ms: fixed_now_ms(),
-                analytics: Arc::new(NoopAnalyticsSink),
+                analytics: Arc::new(uc_observability::analytics::NoopAnalyticsSink),
             }
         }
 
@@ -1038,7 +1043,7 @@ mod tests {
                 Arc::new(FixedDevice(DeviceId::new("sponsor-device"))),
                 Arc::new(NamedSettings("sponsor-mac".into())),
                 Arc::new(OrchestratorStubSetupStatus),
-                Arc::new(uc_observability::analytics::NoopAnalyticsIdentity),
+                Arc::new(uc_observability::analytics::NoopAnalyticsFacade),
                 std::time::Duration::from_secs(3600),
             );
             let (outcome_tx, outcome_rx) = broadcast::channel(16);
@@ -1057,7 +1062,10 @@ mod tests {
                 self.peer_addr_repo.clone() as Arc<dyn PeerAddressRepositoryPort>,
                 DeviceId::new("sponsor-device"),
                 outcome_tx,
-                self.analytics.clone(),
+                Arc::new(DefaultAnalyticsFacade::new(
+                    self.analytics.clone(),
+                    Arc::new(NoopAnalyticsIdentity),
+                )) as Arc<dyn AnalyticsFacade>,
             ));
             (orch, outcome_rx)
         }

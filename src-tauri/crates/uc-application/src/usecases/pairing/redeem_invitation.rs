@@ -52,7 +52,7 @@ use uc_core::ports::{ClockPort, PeerAddressRecord, PeerAddressRepositoryPort, Se
 use uc_core::setup::SetupStatus;
 use uc_core::{MemberRepositoryPort, MemberSyncPreferences, TrustedPeerRepositoryPort};
 use uc_observability::analytics::events::{Event, PairingFailureReason, PairingMethod};
-use uc_observability::analytics::{AnalyticsIdentityPort, AnalyticsPort, IdentifyPayload};
+use uc_observability::analytics::AnalyticsFacade;
 
 use crate::facade::space_setup::commands::RedeemPairingInvitationCommand;
 use crate::facade::space_setup::{RedeemPairingInvitationError, RedeemPairingInvitationResult};
@@ -76,19 +76,16 @@ pub(crate) struct RedeemPairingInvitationUseCase {
     /// blob 写入仓库。写失败不 fail join（presence 下轮会再拉）。
     peer_addr_repo: Arc<dyn PeerAddressRepositoryPort>,
     clock: Arc<dyn ClockPort>,
-    /// Slice 8b · joiner 端 pairing 三事件埋点。`execute` 入口 fire
-    /// `pairing_started`,Result match 后 fire `pairing_succeeded`/`pairing_failed`。
-    /// fire-and-forget,gate 由 `GatedAnalyticsSink` wrapper 守卫,不阻塞主路径。
-    analytics: Arc<dyn AnalyticsPort>,
-    /// Phase 098 · v2 跨设备 person 聚合 joiner 端入口。在 setup_status 落地
-    /// 之后、emit `pairing_succeeded` 之前用本端口接受 sponsor 派发的
-    /// `space_person_id`，并发 `$identify` 把本机 anonymous_user_id 名下的
-    /// 历史事件合并到同 Space 的 person。详见 schema doc §3.4。
-    analytics_identity: Arc<dyn AnalyticsIdentityPort>,
+    /// Joiner-side analytics: fires `pairing_started` on entry,
+    /// `pairing_succeeded` / `pairing_failed` on result. The identity
+    /// switch from anonymous to the sponsor-issued `space_person_id`
+    /// also goes through this facade after setup status is persisted.
+    /// All calls are fire-and-forget; the gate inside the facade
+    /// implementation keeps them off the hot path.
+    analytics: Arc<dyn AnalyticsFacade>,
 }
 
 impl RedeemPairingInvitationUseCase {
-    #[allow(clippy::too_many_arguments)]
     pub(crate) fn new(
         handshake: Arc<JoinerHandshakeCoordinator>,
         admit_member: Arc<AdmitMemberUc>,
@@ -96,8 +93,7 @@ impl RedeemPairingInvitationUseCase {
         setup_status: Arc<dyn SetupStatusPort>,
         peer_addr_repo: Arc<dyn PeerAddressRepositoryPort>,
         clock: Arc<dyn ClockPort>,
-        analytics: Arc<dyn AnalyticsPort>,
-        analytics_identity: Arc<dyn AnalyticsIdentityPort>,
+        analytics: Arc<dyn AnalyticsFacade>,
     ) -> Self {
         Self {
             handshake,
@@ -107,7 +103,6 @@ impl RedeemPairingInvitationUseCase {
             peer_addr_repo,
             clock,
             analytics,
-            analytics_identity,
         }
     }
 
@@ -200,36 +195,17 @@ impl RedeemPairingInvitationUseCase {
         // 兜底。
         self.persist_sponsor_address(&outcome, now).await;
 
-        // Phase 098 · v2 跨设备 person 聚合 joiner 端 identify。
-        //
-        // 时序（schema doc §3.4）：必须在 setup_status 落地之后、emit
-        // `pairing_succeeded` 之前——上层 `execute` 的 Result match 在 persist
-        // 返回 Ok 之后才 fire pairing_succeeded，所以本步骤位于 persist 末尾
-        // 即可保证顺序。
-        //
-        // outcome.sponsor_space_person_id 的两种语义（task_plan §开放问题 2A）：
-        // - `Some(uuid)`：sponsor 派发了身份；joiner adopt → identify。
-        // - `None`：sponsor 端尚未持久化（v1→v2 升级未配对场景）；joiner 维持
-        //   Solo，不发 identify，下次有新设备 pairing 时由 sponsor 自己生成
-        //   并下发统一切换。
-        //
-        // 失败语义：与 A1 sponsor 端对称——adopt 失败 tracing::warn 不阻塞
-        // pairing_succeeded（pairing 真正成功的事实是 setup_status=true）。
+        // Identity switch runs after setup_status is persisted but
+        // before the outer `execute` emits `pairing_succeeded`, so
+        // pairing_succeeded already reports under the new person.
+        // `None` means the sponsor has no `space_person_id` yet
+        // (v1→v2 first-pair case); joiner stays Solo and waits for
+        // a future sponsor-initiated re-pair to converge.
+        // Adopt failures are warn-logged by the facade and never
+        // block pairing — the ground truth of "paired" is
+        // setup_status=true, not the analytics side effect.
         if let Some(space_person_id) = outcome.sponsor_space_person_id {
-            match self.analytics_identity.adopt_space_person(space_person_id) {
-                Ok(adopt_outcome) => {
-                    self.analytics.identify(IdentifyPayload::switch_only(
-                        adopt_outcome.previous_distinct_id,
-                        adopt_outcome.new_distinct_id,
-                    ));
-                }
-                Err(err) => {
-                    tracing::warn!(
-                        error = %err,
-                        "joiner analytics identity adopt failed at pairing_succeeded; pairing proceeds but person aggregation deferred"
-                    );
-                }
-            }
+            self.analytics.adopt_from_sponsor(space_person_id);
         }
 
         info!(
@@ -744,7 +720,7 @@ mod tests {
     #[derive(Debug, Clone)]
     enum CapturedAnalytics {
         Capture(Event),
-        Identify(IdentifyPayload),
+        Identify(uc_observability::analytics::IdentifyPayload),
     }
 
     impl CapturingAnalyticsSink {
@@ -754,7 +730,7 @@ mod tests {
         fn ordered(&self) -> Vec<CapturedAnalytics> {
             self.ordered.lock().unwrap().clone()
         }
-        fn identify_calls(&self) -> Vec<IdentifyPayload> {
+        fn identify_calls(&self) -> Vec<uc_observability::analytics::IdentifyPayload> {
             self.ordered
                 .lock()
                 .unwrap()
@@ -767,7 +743,7 @@ mod tests {
         }
     }
 
-    impl AnalyticsPort for CapturingAnalyticsSink {
+    impl uc_observability::analytics::AnalyticsPort for CapturingAnalyticsSink {
         fn capture(&self, event: Event) {
             self.events.lock().unwrap().push(event.clone());
             self.ordered
@@ -775,7 +751,7 @@ mod tests {
                 .unwrap()
                 .push(CapturedAnalytics::Capture(event));
         }
-        fn identify(&self, payload: IdentifyPayload) {
+        fn identify(&self, payload: uc_observability::analytics::IdentifyPayload) {
             self.ordered
                 .lock()
                 .unwrap()
@@ -871,6 +847,14 @@ mod tests {
                 trust_repo.clone() as Arc<dyn TrustedPeerRepositoryPort>
             ));
             let analytics = Arc::new(CapturingAnalyticsSink::default());
+            // Default harness uses a noop identity since most A2 tests
+            // run with `sponsor_space_person_id = None`; the tests that
+            // exercise the adopt path build their own facade locally.
+            let facade: Arc<dyn AnalyticsFacade> =
+                Arc::new(uc_observability::analytics::DefaultAnalyticsFacade::new(
+                    Arc::clone(&analytics) as Arc<dyn uc_observability::analytics::AnalyticsPort>,
+                    Arc::new(uc_observability::analytics::NoopAnalyticsIdentity),
+                ));
             let uc = RedeemPairingInvitationUseCase::new(
                 handshake,
                 admit_uc,
@@ -878,11 +862,7 @@ mod tests {
                 setup_status.clone(),
                 peer_addr_repo.clone() as Arc<dyn PeerAddressRepositoryPort>,
                 Arc::new(FixedClock(fixed_now_ms())),
-                Arc::clone(&analytics) as Arc<dyn AnalyticsPort>,
-                // Phase 098 默认 noop：现有测试用 sponsor_space_person_id=None
-                // 的 confirm fixture，joiner 端不会触发 adopt；新增 PR 6
-                // 测试就近构造一个真 fake。
-                Arc::new(uc_observability::analytics::NoopAnalyticsIdentity),
+                facade,
             );
             (
                 uc,
@@ -1123,6 +1103,11 @@ mod tests {
             m.expect_upsert().times(0);
             Arc::new(m)
         };
+        let facade: Arc<dyn AnalyticsFacade> =
+            Arc::new(uc_observability::analytics::DefaultAnalyticsFacade::new(
+                Arc::clone(&analytics) as Arc<dyn uc_observability::analytics::AnalyticsPort>,
+                identity as Arc<dyn uc_observability::analytics::AnalyticsIdentityPort>,
+            ));
         let uc = RedeemPairingInvitationUseCase::new(
             handshake,
             admit_uc,
@@ -1130,8 +1115,7 @@ mod tests {
             setup_status,
             peer_addr_repo,
             Arc::new(FixedClock(fixed_now_ms())),
-            Arc::clone(&analytics) as Arc<dyn AnalyticsPort>,
-            identity as Arc<dyn uc_observability::analytics::AnalyticsIdentityPort>,
+            facade,
         );
         (uc, analytics)
     }

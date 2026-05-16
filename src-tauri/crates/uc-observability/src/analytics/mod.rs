@@ -16,6 +16,7 @@
 
 pub mod context;
 pub mod events;
+pub mod facade;
 pub mod identity;
 pub mod ids;
 pub mod port;
@@ -32,6 +33,10 @@ pub use events::{
     NameLengthBucket, PairingFailureReason, PairingMethod, PayloadSizeBucket, PayloadType,
     SetupEntry, SyncDeferReason, SyncDeferredProps, SyncEventProps, SyncFailureStage,
     TransportType, UnlockFailureReason,
+};
+pub use facade::{
+    AnalyticsFacade, DefaultAnalyticsFacade, NoopAnalyticsFacade, ResetIdentityError,
+    SelfMintedAdoptRequest,
 };
 pub use identity::{
     hash_space_id_for_telemetry, AdoptOutcome, AnalyticsIdentityError, AnalyticsIdentityPort,

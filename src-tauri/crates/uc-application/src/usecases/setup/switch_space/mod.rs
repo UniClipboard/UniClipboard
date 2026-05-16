@@ -81,7 +81,7 @@ use uc_core::ports::setup::{MigrationStateError, MigrationStatePort};
 use uc_core::ports::{ClockPort, PeerAddressRecord, PeerAddressRepositoryPort, SetupStatusPort};
 use uc_core::setup::{MigrationPhase, MigrationRunId, SetupStatus};
 use uc_core::TrustedPeerRepositoryPort;
-use uc_observability::analytics::{AnalyticsIdentityPort, AnalyticsPort, IdentifyPayload};
+use uc_observability::analytics::AnalyticsFacade;
 
 use crate::facade::space_setup::commands::SwitchSpaceCommand;
 use crate::facade::space_setup::{
@@ -146,11 +146,11 @@ pub(crate) struct SwitchSpaceUseCase {
     trust_peer: Arc<TrustPeerUc>,
     peer_addr_repo: Arc<dyn PeerAddressRepositoryPort>,
     clock: Arc<dyn ClockPort>,
-    /// Phase 098 / PR 8 · 跨 Space 身份切换。commit phase 成功后用本端口
-    /// 接受目标 Space sponsor 派发的 `space_person_id`，并发 `$identify`
-    /// 把本机 distinct_id 从旧 Space 的 person 切到新 Space 的 person。
-    analytics: Arc<dyn AnalyticsPort>,
-    analytics_identity: Arc<dyn AnalyticsIdentityPort>,
+    /// Switches the local analytics identity to the target Space's
+    /// person once commit phase has succeeded. `None` on the target
+    /// sponsor side falls back to Solo so cross-Space switches never
+    /// strand the device on the old person.
+    analytics: Arc<dyn AnalyticsFacade>,
 }
 
 impl SwitchSpaceUseCase {
@@ -166,8 +166,7 @@ impl SwitchSpaceUseCase {
         trust_peer: Arc<TrustPeerUc>,
         peer_addr_repo: Arc<dyn PeerAddressRepositoryPort>,
         clock: Arc<dyn ClockPort>,
-        analytics: Arc<dyn AnalyticsPort>,
-        analytics_identity: Arc<dyn AnalyticsIdentityPort>,
+        analytics: Arc<dyn AnalyticsFacade>,
     ) -> Self {
         Self {
             setup_status,
@@ -181,7 +180,6 @@ impl SwitchSpaceUseCase {
             peer_addr_repo,
             clock,
             analytics,
-            analytics_identity,
         }
     }
 
@@ -273,48 +271,16 @@ impl SwitchSpaceUseCase {
         // ── Phase 4 — finalise + cleanup ─────────────────────────────────
         self.phase_4_commit(&run_id, &target_space_id).await?;
 
-        // Phase 098 / PR 8 · 跨 Space 身份切换：commit 成功后才执行。
-        //
-        // task_plan §开放问题 4 决策：identify 在 commit phase 之后发，
-        // commit 失败则不发——避免本机仍在旧 Space 但 PostHog person 已经
-        // 切走的不一致。
-        //
-        // outcome.sponsor_space_person_id 语义同 A2：
-        // - Some(uuid) → adopt + identify
-        // - None → 目标 Space 的 sponsor 自己未持久化（v1→v2 升级未配对），
-        //   本机退回 Solo（清空旧 Space 的 space_person_id），发 identify 回
-        //   anonymous_user_id。
+        // Identity switch is sequenced strictly after commit phase
+        // succeeds: if commit fails we never want this device to be
+        // stranded on the new PostHog person while still mounted on
+        // the old Space. `None` from the target sponsor (v1→v2 case
+        // where the sponsor never paired) falls back to Solo —
+        // releasing the old Space's `space_person_id` and emitting
+        // `$identify` back to the anonymous id.
         match outcome.sponsor_space_person_id {
-            Some(target_person) => {
-                match self.analytics_identity.adopt_space_person(target_person) {
-                    Ok(adopt_outcome) => {
-                        self.analytics.identify(IdentifyPayload::switch_only(
-                            adopt_outcome.previous_distinct_id,
-                            adopt_outcome.new_distinct_id,
-                        ));
-                    }
-                    Err(err) => {
-                        warn!(
-                            error = %err,
-                            "switch_space: adopt_space_person failed; person aggregation deferred"
-                        );
-                    }
-                }
-            }
-            None => match self.analytics_identity.release_space_person() {
-                Ok(release_outcome) => {
-                    self.analytics.identify(IdentifyPayload::switch_only(
-                        release_outcome.previous_distinct_id,
-                        release_outcome.new_distinct_id,
-                    ));
-                }
-                Err(err) => {
-                    warn!(
-                        error = %err,
-                        "switch_space: release_space_person failed; identity left in old state"
-                    );
-                }
-            },
+            Some(target_person) => self.analytics.adopt_from_sponsor(target_person),
+            None => self.analytics.release_to_solo(),
         }
 
         Ok(SwitchSpaceResult {

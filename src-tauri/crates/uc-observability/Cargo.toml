@@ -14,9 +14,8 @@ serde = { version = "1", features = ["derive"] }
 chrono = { version = "0.4", features = ["serde"] }
 anyhow = "1.0"
 uuid = { version = "1", features = ["v7", "serde"] }
-# Phase 098 · v2 跨设备 person 聚合：space_id → group key 的不可逆哈希。
-# 与 uc-bootstrap analytics::hash_space_id 同算法（SHA-256 取前 16 hex），
-# 移到本 crate 后 uc-application use case 直接调，bootstrap 也改为复用。
+# SHA-256 — used to hash `space_id` into the 16-hex PostHog group key
+# (irreversible; the raw id never leaves the device).
 sha2 = "0.10"
 # Slice 7b: PosthogSink 自写 minimal HTTP client
 # - reqwest 0.12 + rustls(ring) features 与 uc-infra/uc-daemon-client/uc-cli/uc-desktop 已有用法一致；

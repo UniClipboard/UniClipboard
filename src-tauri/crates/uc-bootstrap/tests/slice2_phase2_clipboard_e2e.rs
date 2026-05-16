@@ -530,8 +530,7 @@ async fn build_side(name: &'static str, rendezvous_base_url: String) -> Side {
         key_migration,
         blob_migration_repo,
         blob_cipher,
-        analytics: Arc::new(uc_observability::analytics::NoopAnalyticsSink),
-        analytics_identity: Arc::new(uc_observability::analytics::NoopAnalyticsIdentity),
+        analytics: Arc::new(uc_observability::analytics::NoopAnalyticsFacade),
     }));
 
     let roster = Arc::new(MemberRosterFacade::new(MemberRosterDeps {

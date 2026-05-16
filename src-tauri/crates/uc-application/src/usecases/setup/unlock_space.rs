@@ -13,7 +13,7 @@ use tracing::{debug, info, instrument, warn};
 use uc_core::ids::SpaceId;
 use uc_core::ports::space::{SpaceAccessError, SpaceAccessPort};
 use uc_core::ports::SetupStatusPort;
-use uc_observability::analytics::{AnalyticsPort, Event, UnlockFailureReason};
+use uc_observability::analytics::{AnalyticsFacade, Event, UnlockFailureReason};
 
 use crate::facade::space_setup::commands::UnlockSpaceCommand;
 use crate::facade::space_setup::{UnlockSpaceError, UnlockSpaceResult};
@@ -25,14 +25,14 @@ pub(crate) struct UnlockSpaceUseCase {
     /// `space_unlocked`，失败路径按 `UnlockFailureReason` 映射发
     /// `space_unlock_failed`。pre-condition 失败（`SetupNotCompleted`）
     /// 不属于"用户能不能继续用产品"语义，**不**上报。
-    analytics: Arc<dyn AnalyticsPort>,
+    analytics: Arc<dyn AnalyticsFacade>,
 }
 
 impl UnlockSpaceUseCase {
     pub(crate) fn new(
         space_access: Arc<dyn SpaceAccessPort>,
         setup_status: Arc<dyn SetupStatusPort>,
-        analytics: Arc<dyn AnalyticsPort>,
+        analytics: Arc<dyn AnalyticsFacade>,
     ) -> Self {
         Self {
             space_access,
@@ -218,10 +218,17 @@ mod tests {
             self.captured.lock().unwrap().clone()
         }
     }
-    impl AnalyticsPort for CapturingAnalyticsSink {
+    impl uc_observability::analytics::AnalyticsPort for CapturingAnalyticsSink {
         fn capture(&self, event: Event) {
             self.captured.lock().unwrap().push(event);
         }
+    }
+
+    fn wrap_facade(sink: Arc<CapturingAnalyticsSink>) -> Arc<dyn AnalyticsFacade> {
+        Arc::new(uc_observability::analytics::DefaultAnalyticsFacade::new(
+            sink as Arc<dyn uc_observability::analytics::AnalyticsPort>,
+            Arc::new(uc_observability::analytics::NoopAnalyticsIdentity),
+        ))
     }
 
     fn build(
@@ -246,7 +253,11 @@ mod tests {
         } else {
             None
         };
-        let uc = UnlockSpaceUseCase::new(space_access.clone(), setup_status, analytics.clone());
+        let uc = UnlockSpaceUseCase::new(
+            space_access.clone(),
+            setup_status,
+            wrap_facade(analytics.clone()),
+        );
         (uc, space_access, analytics, seeded_space_id)
     }
 
@@ -276,7 +287,11 @@ mod tests {
         let setup_status = Arc::new(InMemorySetupStatus::default());
         setup_status.status.lock().unwrap().has_completed = true;
         let analytics = Arc::new(CapturingAnalyticsSink::default());
-        let uc = UnlockSpaceUseCase::new(space_access.clone(), setup_status, analytics.clone());
+        let uc = UnlockSpaceUseCase::new(
+            space_access.clone(),
+            setup_status,
+            wrap_facade(analytics.clone()),
+        );
         let r = uc.execute(cmd("pass")).await.unwrap();
         assert!(!r.space_id.inner().is_empty());
         assert_eq!(*space_access.unlock_calls.lock().unwrap(), 1);

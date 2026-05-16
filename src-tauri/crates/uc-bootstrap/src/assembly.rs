@@ -71,6 +71,7 @@ use uc_infra::{
     FileAppVersionStateRepository, FileFirstSyncStateRepository, FileMigrationStateRepository,
     FileSetupStatusRepository, SystemClock,
 };
+use uc_observability::analytics::{AnalyticsIdentityPort, LocalAnalyticsIdentity};
 use uc_platform::app_dirs::DirsAppDirsAdapter;
 use uc_platform::clipboard::{LocalClipboard, NoopSystemClipboard};
 use uc_platform::ports::AppDirsPort;
@@ -216,6 +217,13 @@ pub struct WiredDependencies {
     /// receivers — the facade itself is shared by GUI shell, daemon-lifecycle
     /// `MobileSyncFacade` 装配, and `build_space_setup_assembly` (iroh path).
     pub file_transfer_facade: Arc<uc_application::facade::FileTransferFacade>,
+    /// Phase 098 · v2 跨设备 person 聚合身份切换端口（`AnalyticsIdentityPort`）。
+    ///
+    /// `LocalAnalyticsIdentity` 持有 `<app_data>/analytics/` 目录，与
+    /// `space_person_id` 文件 + `compose_event_context` 装配的全局 `EventContext`
+    /// 共享同一存储语义。消费者 `SpaceSetupFacade`，所以与 `peer_addr_repo`
+    /// 同走 `WiredDependencies` 旁路而不是 `AppDeps`。
+    pub analytics_identity: Arc<dyn AnalyticsIdentityPort>,
 }
 
 /// Infrastructure layer implementations
@@ -1028,6 +1036,14 @@ pub fn wire_dependencies(
         deps.clipboard.clipboard_change_origin.clone(),
     );
 
+    // Phase 098 · v2 跨设备 person 聚合：装配身份切换 port。
+    // 与 `compose_event_context` 用同一 `<app_data>/analytics/` 目录读写
+    // `space_person_id` 文件。SpaceSetupFacade 在 A1 setup_completed / A2
+    // pairing_succeeded 时通过这个 port 切换 distinct_id 来源。
+    let analytics_dir = app_data_root.join("analytics");
+    let analytics_identity: Arc<dyn AnalyticsIdentityPort> =
+        Arc::new(LocalAnalyticsIdentity::new(analytics_dir));
+
     let wired = WiredDependencies {
         deps,
         trusted_peer_repo: trusted_peer_repo_for_wiring,
@@ -1043,6 +1059,7 @@ pub fn wire_dependencies(
         clipboard_event_reader_repo: clipboard_event_reader_repo_for_wiring,
         emitter_cell,
         file_transfer_facade,
+        analytics_identity,
     };
     let background = BackgroundRuntimeDeps {
         representation_cache,

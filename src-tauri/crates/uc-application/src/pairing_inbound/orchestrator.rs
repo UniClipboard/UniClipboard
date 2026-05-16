@@ -1038,6 +1038,7 @@ mod tests {
                 Arc::new(FixedDevice(DeviceId::new("sponsor-device"))),
                 Arc::new(NamedSettings("sponsor-mac".into())),
                 Arc::new(OrchestratorStubSetupStatus),
+                Arc::new(uc_observability::analytics::NoopAnalyticsIdentity),
                 std::time::Duration::from_secs(3600),
             );
             let (outcome_tx, outcome_rx) = broadcast::channel(16);

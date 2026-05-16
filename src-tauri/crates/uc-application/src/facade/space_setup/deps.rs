@@ -21,7 +21,7 @@ use uc_core::ports::{
     SettingsPort, SetupStatusPort,
 };
 use uc_core::trusted_peer::TrustedPeerRepositoryPort;
-use uc_observability::analytics::AnalyticsPort;
+use uc_observability::analytics::{AnalyticsIdentityPort, AnalyticsPort};
 
 /// Dependencies for [`super::SpaceSetupFacade`].
 ///
@@ -106,4 +106,10 @@ pub struct SpaceSetupDeps {
     /// / `pairing_failed`。Sink 装一次永不替换，gate 由 `GatedAnalyticsSink`
     /// wrapper 在 capture 入口守卫，业务侧无感。
     pub analytics: Arc<dyn AnalyticsPort>,
+    /// Phase 098 · v2 跨设备 person 聚合身份切换端口。
+    /// A1 sponsor 在 `setup_completed` 时调 `adopt_space_person` 落地新生成的
+    /// `space_person_id` 并重建全局 EventContext；A2 joiner 在 `pairing_succeeded`
+    /// 时同样调 `adopt_space_person` 接受 sponsor 派发的 ID；用户重置 telemetry
+    /// 时调 `release_space_person` 切回 Solo。详见 schema doc §3.4。
+    pub analytics_identity: Arc<dyn AnalyticsIdentityPort>,
 }

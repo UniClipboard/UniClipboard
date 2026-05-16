@@ -34,13 +34,13 @@
 
 use std::sync::Arc;
 
-use sha2::{Digest, Sha256};
 use uc_application::deps::AppDeps;
 use uc_application::facade::AppPaths;
 use uc_observability::analytics::{
-    build_event_context, global_event_context, load_or_create_ids, set_global_event_context,
-    AnalyticsPort, AppChannel, Event, EventContext, EventContextInputs, GatedAnalyticsSink,
-    InstallSource, NoopAnalyticsSink, PosthogSink, StdoutSink,
+    build_event_context, global_event_context, hash_space_id_for_telemetry, load_or_create_ids,
+    load_space_person_id, set_global_event_context, AnalyticsPersonId, AnalyticsPort, AppChannel,
+    Event, EventContext, EventContextInputs, GatedAnalyticsSink, InstallSource, NoopAnalyticsSink,
+    PosthogSink, StdoutSink,
 };
 
 /// 装配并注册进程级 `EventContext`。
@@ -72,6 +72,26 @@ pub async fn compose_event_context(deps: &AppDeps, paths: &AppPaths) -> anyhow::
     let analytics_dir = paths.app_data_root_dir.join("analytics");
     let ids = load_or_create_ids(&analytics_dir)?;
 
+    // schema doc §3.4 · v2 跨设备 person 聚合：在装配 EventContext 前判断身份。
+    // - 文件存在 → SpaceShared（A1 sponsor 创建过 / A2 joiner 接收过 sponsor 派发）；
+    // - 文件不存在 → Solo（首次安装 / v1→v2 升级未配对 / 用户重置 telemetry）。
+    //
+    // 与 active_device_count / space_id_hash 同样的兜底姿态：读失败不阻塞 daemon
+    // 启动，退化为 Solo（schema doc §3.3 reset 后语义）。开放问题 1（v1→v2
+    // 升级）的决策 A 也走这条路：升级后 space_person_id 不存在 → Solo，直到
+    // 下次 pairing 才下发新 ID。
+    let analytics_person_id = match load_space_person_id(&analytics_dir) {
+        Ok(Some(id)) => AnalyticsPersonId::SpaceShared(id),
+        Ok(None) => AnalyticsPersonId::Solo(ids.anonymous_user_id),
+        Err(err) => {
+            tracing::warn!(
+                error = %err,
+                "analytics: 读取 space_person_id 失败，退化为 Solo"
+            );
+            AnalyticsPersonId::Solo(ids.anonymous_user_id)
+        }
+    };
+
     let active_device_count = read_active_device_count(deps).await;
     let space_id_hash = read_space_id_hash(deps).await;
 
@@ -87,6 +107,7 @@ pub async fn compose_event_context(deps: &AppDeps, paths: &AppPaths) -> anyhow::
         is_first_run: ids.is_first_run,
         active_device_count,
         space_id_hash,
+        analytics_person_id,
     });
 
     set_global_event_context(Arc::new(ctx));
@@ -135,7 +156,7 @@ async fn read_space_id_hash(deps: &AppDeps) -> Option<String> {
         Ok(status) => status
             .space_id
             .as_ref()
-            .map(|sid| hash_space_id(sid.as_str())),
+            .map(|sid| hash_space_id_for_telemetry(sid.as_str())),
         Err(err) => {
             tracing::warn!(
                 error = %err,
@@ -198,16 +219,6 @@ fn resolve_posthog_key(runtime: Option<String>, compile: Option<&'static str>) -
         .or_else(|| compile.filter(|s| !s.is_empty()).map(String::from))
 }
 
-fn hash_space_id(space_id: &str) -> String {
-    let digest = Sha256::digest(space_id.as_bytes());
-    let mut out = String::with_capacity(16);
-    for byte in digest.iter().take(8) {
-        use std::fmt::Write;
-        let _ = write!(out, "{:02x}", byte);
-    }
-    out
-}
-
 /// 从 `CARGO_PKG_VERSION` 后缀解析发布渠道。
 ///
 /// 约定与项目已有 release-please 配置一致：
@@ -260,31 +271,10 @@ mod tests {
         assert_eq!(parse_app_channel("0.5.0-pre.1"), AppChannel::Alpha);
     }
 
-    #[test]
-    fn hash_space_id_yields_16_hex_chars() {
-        let hash = hash_space_id("space-abcdef-0123");
-        assert_eq!(hash.len(), 16, "schema doc §6.3：取前 16 hex");
-        assert!(
-            hash.chars().all(|c| c.is_ascii_hexdigit()),
-            "hash 必须全 hex"
-        );
-    }
-
-    #[test]
-    fn hash_space_id_is_deterministic() {
-        let a = hash_space_id("space-xyz");
-        let b = hash_space_id("space-xyz");
-        assert_eq!(a, b, "同输入必须同输出，否则跨事件聚合失效");
-    }
-
-    #[test]
-    fn hash_space_id_is_collision_resistant_for_distinct_inputs() {
-        // 弱断言：两个不同 ID 应有不同 hash。SHA-256 截 64 bit 实际碰撞概率
-        // 很低，但理论上不可能为 0；这里只验证"非平凡 hash"。
-        let a = hash_space_id("space-aaa");
-        let b = hash_space_id("space-bbb");
-        assert_ne!(a, b);
-    }
+    // hash_space_id 算法相关测试已随函数移到
+    // `uc-observability::analytics::identity::tests`（覆盖：长度 / 全 hex /
+    // 确定性 / 碰撞抗性）。bootstrap 这一层只验证"读 setup_status 后正确
+    // hash"，与算法本身无关。
 
     // —— Slice 7b-3：resolve_posthog_key 三级回退 ——
 

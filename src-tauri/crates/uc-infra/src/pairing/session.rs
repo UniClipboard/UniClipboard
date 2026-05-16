@@ -435,7 +435,8 @@ async fn read_next_frame(
     wire::decode(&payload).map(Some).map_err(|err| match err {
         WireDecodeError::Postcard(_)
         | WireDecodeError::UnsupportedVersion { .. }
-        | WireDecodeError::InvalidFingerprint(_) => {
+        | WireDecodeError::InvalidFingerprint(_)
+        | WireDecodeError::InvalidSpacePersonId(_) => {
             SessionError::Internal(format!("wire decode: {err}"))
         }
     })

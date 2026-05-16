@@ -207,6 +207,9 @@ fn outcome_default() -> JoinerHandshakeOutcome {
         self_device_id: DeviceId::new("local-device"),
         self_identity_fingerprint: fp_local(),
         sponsor_transport_address_blob: vec![],
+        // Phase 098 默认 None：switch_space tests 关注迁移流程而非 person
+        // 切换；PR 8 才接 switch_space 的 identify。
+        sponsor_space_person_id: None,
     }
 }
 fn already_setup() -> SetupStatus {
@@ -268,6 +271,10 @@ impl Env {
             trust,
             Arc::new(self.peer_addr_repo) as Arc<dyn PeerAddressRepositoryPort>,
             Arc::new(FixedClock(0)),
+            // Phase 098 / PR 8 默认 noop：现有 switch_space 测试关注 4 阶段
+            // 迁移流程，不验证 person 切换；新增 PR 8 测试就近构造真 fake。
+            Arc::new(uc_observability::analytics::NoopAnalyticsSink),
+            Arc::new(uc_observability::analytics::NoopAnalyticsIdentity),
         )
     }
 }

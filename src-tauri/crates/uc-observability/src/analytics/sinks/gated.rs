@@ -21,7 +21,7 @@
 use std::sync::Arc;
 
 use super::super::events::Event;
-use super::super::port::AnalyticsPort;
+use super::super::port::{AnalyticsPort, GroupIdentifyPayload, IdentifyPayload};
 use crate::analytics_gate::is_analytics_enabled;
 
 /// 在 `capture` 入口查询 [`is_analytics_enabled`] 的 wrapper sink。
@@ -46,6 +46,25 @@ impl AnalyticsPort for GatedAnalyticsSink {
         }
         self.inner.capture(event);
     }
+
+    /// `$identify` 走与 `capture` 同样的 gate —— gate 关闭时不应在服务端
+    /// 留下任何身份合并副作用。
+    #[inline]
+    fn identify(&self, payload: IdentifyPayload) {
+        if !is_analytics_enabled() {
+            return;
+        }
+        self.inner.identify(payload);
+    }
+
+    /// `$groupidentify` 同样受 gate 守护——gate 关闭时不写入 group property。
+    #[inline]
+    fn group_identify(&self, payload: GroupIdentifyPayload) {
+        if !is_analytics_enabled() {
+            return;
+        }
+        self.inner.group_identify(payload);
+    }
 }
 
 #[cfg(test)]
@@ -60,17 +79,24 @@ mod tests {
     #[derive(Default)]
     struct CountingSink {
         count: AtomicUsize,
+        identify_count: AtomicUsize,
     }
 
     impl CountingSink {
         fn count(&self) -> usize {
             self.count.load(Ordering::Relaxed)
         }
+        fn identify_count(&self) -> usize {
+            self.identify_count.load(Ordering::Relaxed)
+        }
     }
 
     impl AnalyticsPort for CountingSink {
         fn capture(&self, _event: Event) {
             self.count.fetch_add(1, Ordering::Relaxed);
+        }
+        fn identify(&self, _payload: IdentifyPayload) {
+            self.identify_count.fetch_add(1, Ordering::Relaxed);
         }
     }
 
@@ -101,6 +127,31 @@ mod tests {
         set_analytics_enabled(true);
         sink.capture(Event::AppFirstOpen);
         assert_eq!(inner_for_assert.count(), 3, "gate 翻回开应恢复透传");
+
+        // —— case 4：identify 与 capture 受同一 gate 守护 ——
+        // 关闭 gate：identify 不应触达 inner（避免在服务端留下身份合并副作用）。
+        set_analytics_enabled(false);
+        sink.identify(IdentifyPayload::switch_only(
+            uuid::Uuid::nil(),
+            uuid::Uuid::nil(),
+        ));
+        assert_eq!(
+            inner_for_assert.identify_count(),
+            0,
+            "gate 关闭时 identify 也必须被拦下"
+        );
+
+        // 重新开启：identify 透传到 inner。
+        set_analytics_enabled(true);
+        sink.identify(IdentifyPayload::switch_only(
+            uuid::Uuid::nil(),
+            uuid::Uuid::nil(),
+        ));
+        assert_eq!(
+            inner_for_assert.identify_count(),
+            1,
+            "gate 开启时 identify 应透传"
+        );
 
         // —— 收尾：还原默认值（true），避免污染其他测试 ——
         set_analytics_enabled(true);

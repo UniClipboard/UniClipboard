@@ -341,3 +341,14 @@ pub enum TryResumeSessionError {
     #[error("internal error: {0}")]
     Internal(String),
 }
+
+/// Phase 098 / PR 8 · `SpaceSetupFacade::reset_telemetry_identity` 失败原因。
+///
+/// 唯一变体：底层 IO 写盘失败（清 `space_person_id` 文件 / 重新生成 anonymous
+/// 身份等步骤的任一步）。UI 层应提示用户重试；reset 流程对其它子系统无副作用，
+/// 重试是安全的。
+#[derive(Debug, Error)]
+pub enum ResetTelemetryError {
+    #[error("storage failure during reset: {0}")]
+    Storage(String),
+}

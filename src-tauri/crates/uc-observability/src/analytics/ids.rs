@@ -1,18 +1,33 @@
-//! `anonymous_user_id` / `analytics_device_id` 的持久化。
+//! `anonymous_user_id` / `analytics_device_id` / `space_person_id` 的持久化。
 //!
-//! 与 schema doc §3 对应。两个 ID 都是 UUIDv7、随机生成，与 `uc-core` 的
+//! 与 schema doc §3 对应。三个 ID 都是 UUIDv7、随机生成，与 `uc-core` 的
 //! 业务 `DeviceId` 完全 disjoint——本模块**不允许**读取或派生自任何业务标识。
 //!
 //! ## 文件布局
 //!
 //! ```text
 //! <analytics_dir>/
-//! ├── installation_id        # 文本，单行 UUID
-//! └── analytics_device_id    # 同上
+//! ├── installation_id        # 文本，单行 UUID（anonymous_user_id）
+//! ├── analytics_device_id    # 同上
+//! └── space_person_id        # 同上，可缺失（未加入 Space 时不存在）
 //! ```
 //!
 //! 调用方负责选择 `analytics_dir`（推荐放在 `app_data_root_dir/analytics/`）。
 //! 本模块不感知 `AppPaths`，纯函数易测。
+//!
+//! ## 三类 ID 的生命周期差异
+//!
+//! - `anonymous_user_id` / `analytics_device_id`：进程首次启动**必生成**，
+//!   走 [`load_or_create`] 一次性读出或创建。
+//! - `space_person_id`：v2 跨设备 person 聚合的"逻辑用户" ID，**按需生成**：
+//!   - sponsor 在 A1 `setup_completed` 时由 use case 调 [`set_space_person_id`]
+//!     新建并下发；
+//!   - joiner 在 A2 `pairing_succeeded` 时把 sponsor 派发的 ID 调
+//!     [`set_space_person_id`] 持久化；
+//!   - 进程启动时由 bootstrap 调 [`load_space_person_id`]——不存在返回
+//!     `Ok(None)`，bootstrap 据此选 `Solo` 还是 `SpaceShared`；
+//!   - 用户重置 telemetry / 退出 Space 时调 [`clear_space_person_id`] 清空，
+//!     退回 Solo 状态。
 //!
 //! ## 原子性
 //!
@@ -24,6 +39,9 @@
 //! 同一进程内只允许 init 阶段调用一次 [`load_or_create`]。多个调用者并发
 //! 调用会各自生成不同的 ID 后相互覆盖——本模块**不**做文件锁，由调用方
 //! 保证序列化（`uc-bootstrap` 的 init 时序天然满足）。
+//!
+//! `space_person_id` 的 set/load/clear 同样不带文件锁；A1/A2 use case 是
+//! 流程内顺序执行，bootstrap 启动后只读取一次，业务路径不存在并发。
 
 use std::fs;
 use std::io;
@@ -34,6 +52,7 @@ use uuid::Uuid;
 
 const INSTALLATION_ID_FILE: &str = "installation_id";
 const ANALYTICS_DEVICE_ID_FILE: &str = "analytics_device_id";
+const SPACE_PERSON_ID_FILE: &str = "space_person_id";
 
 /// 持久化的 analytics 标识对。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -113,6 +132,52 @@ pub fn reset(analytics_dir: &Path) -> Result<()> {
         }
     }
     Ok(())
+}
+
+/// 读取已持久化的 `space_person_id`，不存在返回 `Ok(None)`。
+///
+/// schema doc §3.4：bootstrap 在装配 EventContext 前调本函数判断身份状态。
+/// 文件存在且可解析 → 进入 `SpaceShared` 状态；不存在 → 退回 `Solo`。
+///
+/// 解析失败的处理：与 [`load_or_create`] 一致，写 `tracing::warn!` 后视为
+/// 缺失（返回 `Ok(None)`）。损坏的 `space_person_id` 不应让 daemon 启动失败，
+/// 也不应让本机错配为别的 person。
+pub fn load_space_person_id(analytics_dir: &Path) -> Result<Option<Uuid>> {
+    let path = analytics_dir.join(SPACE_PERSON_ID_FILE);
+    read_uuid(&path)
+}
+
+/// 写入 / 替换 `space_person_id`。
+///
+/// 调用点：
+/// - sponsor A1 `setup_completed` 时 use case 生成新 ID 后落盘。
+/// - joiner A2 `pairing_succeeded` 时 use case 接收 sponsor 派发的 ID 落盘。
+/// - 用户 `switch_space` 切到目标 Space 时落盘其对应 `space_person_id`。
+///
+/// 调用方负责 `analytics_dir` 已存在；本函数会兜底 `create_dir_all`，与
+/// [`load_or_create`] 行为一致。
+pub fn set_space_person_id(analytics_dir: &Path, id: Uuid) -> Result<()> {
+    fs::create_dir_all(analytics_dir)
+        .with_context(|| format!("create analytics dir {}", analytics_dir.display()))?;
+    let path = analytics_dir.join(SPACE_PERSON_ID_FILE);
+    atomic_write(&path, &id.to_string())
+}
+
+/// 删除 `space_person_id` 文件。下次 [`load_space_person_id`] 返回 `Ok(None)`。
+///
+/// 调用点：
+/// - 用户重置 telemetry（schema doc §3.3 reset 流程）：清 `space_person_id`
+///   后退回 `Solo`。
+/// - 用户退出 Space（v2 后期）。
+///
+/// 幂等：文件不存在不视为错误。
+pub fn clear_space_person_id(analytics_dir: &Path) -> Result<()> {
+    let path = analytics_dir.join(SPACE_PERSON_ID_FILE);
+    match fs::remove_file(&path) {
+        Ok(()) => Ok(()),
+        Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(()),
+        Err(e) => Err(anyhow::Error::from(e).context(format!("remove {}", path.display()))),
+    }
 }
 
 /// 读 UUID。文件不存在或解析失败都返回 `Ok(None)`——调用方按"需要重建"处理。
@@ -322,5 +387,135 @@ mod tests {
                 "成功路径下不应该留下 {s} 这种 tmp 文件"
             );
         }
+    }
+
+    // —— space_person_id（v2）————————————————————————————————————
+    //
+    // 与 anonymous_user_id / analytics_device_id 的 lifecycle 不同：space_person_id
+    // 是按需生成（A1 创建 Space 时，或 A2 加入 Space 时），所以 API 是
+    // load / set / clear 三件套，而不是一个 load_or_create 的组合。
+
+    #[test]
+    fn load_space_person_id_returns_none_when_file_missing() {
+        let dir = fresh_dir();
+        let result = load_space_person_id(dir.path()).unwrap();
+        assert!(
+            result.is_none(),
+            "未持久化的 space_person_id 应返回 None，bootstrap 据此选 Solo"
+        );
+    }
+
+    #[test]
+    fn set_then_load_space_person_id_round_trips() {
+        let dir = fresh_dir();
+        let id = Uuid::now_v7();
+        set_space_person_id(dir.path(), id).unwrap();
+
+        let loaded = load_space_person_id(dir.path()).unwrap();
+        assert_eq!(loaded, Some(id));
+        assert!(dir.path().join(SPACE_PERSON_ID_FILE).exists());
+    }
+
+    #[test]
+    fn set_space_person_id_overwrites_previous_value() {
+        // A2 接收 sponsor 派发 / switch_space 切换时都会用新 ID 替换旧值，
+        // 必须无声替换，不允许"已有就报错"。
+        let dir = fresh_dir();
+        let first = Uuid::now_v7();
+        let second = Uuid::now_v7();
+        assert_ne!(first, second);
+
+        set_space_person_id(dir.path(), first).unwrap();
+        set_space_person_id(dir.path(), second).unwrap();
+
+        assert_eq!(load_space_person_id(dir.path()).unwrap(), Some(second));
+    }
+
+    #[test]
+    fn clear_space_person_id_removes_file_and_next_load_returns_none() {
+        let dir = fresh_dir();
+        set_space_person_id(dir.path(), Uuid::now_v7()).unwrap();
+        assert!(dir.path().join(SPACE_PERSON_ID_FILE).exists());
+
+        clear_space_person_id(dir.path()).unwrap();
+        assert!(!dir.path().join(SPACE_PERSON_ID_FILE).exists());
+        assert!(load_space_person_id(dir.path()).unwrap().is_none());
+    }
+
+    #[test]
+    fn clear_space_person_id_is_idempotent() {
+        // 用户多次点"重置 telemetry"或退出 Space 时都会触达 clear，
+        // 文件已经不存在不应让流程失败。
+        let dir = fresh_dir();
+        clear_space_person_id(dir.path()).unwrap();
+        clear_space_person_id(dir.path()).unwrap();
+
+        set_space_person_id(dir.path(), Uuid::now_v7()).unwrap();
+        clear_space_person_id(dir.path()).unwrap();
+        clear_space_person_id(dir.path()).unwrap();
+    }
+
+    #[test]
+    fn corrupted_space_person_id_file_is_treated_as_missing() {
+        // 损坏的 space_person_id 不应让本机错配为别的 person——退回 None
+        // 让 bootstrap 走 Solo，比错配安全。
+        let dir = fresh_dir();
+        fs::write(dir.path().join(SPACE_PERSON_ID_FILE), "not-a-uuid").unwrap();
+
+        let result = load_space_person_id(dir.path()).unwrap();
+        assert!(
+            result.is_none(),
+            "损坏的 space_person_id 必须返回 None 而不是错配身份"
+        );
+    }
+
+    #[test]
+    fn space_person_id_file_contains_canonical_hyphenated_form() {
+        let dir = fresh_dir();
+        let id = Uuid::now_v7();
+        set_space_person_id(dir.path(), id).unwrap();
+
+        let content = fs::read_to_string(dir.path().join(SPACE_PERSON_ID_FILE)).unwrap();
+        assert_eq!(content.trim().len(), 36);
+        assert_eq!(Uuid::parse_str(content.trim()).unwrap(), id);
+    }
+
+    #[test]
+    fn set_space_person_id_creates_missing_parent_directory() {
+        // 与 load_or_create 行为一致：从未跑过 analytics 的进程也能直接 set。
+        let dir = fresh_dir();
+        let nested = dir.path().join("a").join("b").join("analytics");
+        assert!(!nested.exists());
+
+        let id = Uuid::now_v7();
+        set_space_person_id(&nested, id).unwrap();
+        assert_eq!(load_space_person_id(&nested).unwrap(), Some(id));
+    }
+
+    #[test]
+    fn space_person_id_and_anonymous_user_id_are_independent() {
+        // schema doc §3.4 红线：space_person_id 与 anonymous_user_id 必须独立，
+        // reset(anonymous/device) 不影响 space_person_id 文件，反之亦然。
+        let dir = fresh_dir();
+        load_or_create(dir.path()).unwrap();
+        let space_id = Uuid::now_v7();
+        set_space_person_id(dir.path(), space_id).unwrap();
+
+        // reset 只清 installation_id / analytics_device_id，不动 space_person_id。
+        reset(dir.path()).unwrap();
+        assert_eq!(
+            load_space_person_id(dir.path()).unwrap(),
+            Some(space_id),
+            "reset() 不应清 space_person_id（PR 8 才把这个语义合并到用户级 reset）"
+        );
+
+        // 反向：clear_space_person_id 不影响 anonymous/device。
+        let anon_before = load_or_create(dir.path()).unwrap().anonymous_user_id;
+        clear_space_person_id(dir.path()).unwrap();
+        let anon_after = load_or_create(dir.path()).unwrap().anonymous_user_id;
+        assert_eq!(
+            anon_before, anon_after,
+            "clear space 不应触发 anonymous 重生成"
+        );
     }
 }

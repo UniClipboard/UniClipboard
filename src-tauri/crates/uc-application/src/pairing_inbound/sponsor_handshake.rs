@@ -56,6 +56,7 @@ use uc_core::ports::space::{ProofPort, SpaceAccessPort};
 use uc_core::ports::{DeviceIdentityPort, LocalIdentityPort, SettingsPort, SetupStatusPort};
 use uc_core::security::IdentityFingerprint;
 use uc_core::space_access::domain::SpaceAccessProofArtifact;
+use uc_observability::analytics::AnalyticsIdentityPort;
 
 /// Facts about the verified joiner, handed to the orchestrator so it can
 /// drive admit + trust use cases without re-parsing the `JoinerRequest`.
@@ -107,6 +108,11 @@ pub(crate) struct SponsorHandshakeCoordinator {
     /// to adopt an id unrelated to the sponsor's original space — this
     /// port fixes that by giving `begin` access to the canonical value.
     setup_status: Arc<dyn SetupStatusPort>,
+    /// Phase 098 · v2 跨设备 person 聚合：构造 `SponsorConfirm` 时调
+    /// `current_space_person_id()` 拿本机已持久化的 `space_person_id`
+    /// 派给 joiner。`None` 表示本机未持久化（v1→v2 升级未配对场景），
+    /// joiner 端按 Solo 退化（task_plan §开放问题 2 决策 A）。
+    analytics_identity: Arc<dyn AnalyticsIdentityPort>,
     sessions: Mutex<HashMap<PairingSessionId, SessionCtx>>,
     /// handshake TTL（begin 到 confirm/reject 的最大等待时间）。
     handshake_ttl: Duration,
@@ -124,6 +130,7 @@ impl SponsorHandshakeCoordinator {
         device_identity: Arc<dyn DeviceIdentityPort>,
         settings: Arc<dyn SettingsPort>,
         setup_status: Arc<dyn SetupStatusPort>,
+        analytics_identity: Arc<dyn AnalyticsIdentityPort>,
         handshake_ttl: Duration,
     ) -> Arc<Self> {
         Arc::new_cyclic(|weak| Self {
@@ -134,6 +141,7 @@ impl SponsorHandshakeCoordinator {
             device_identity,
             settings,
             setup_status,
+            analytics_identity,
             sessions: Mutex::new(HashMap::new()),
             handshake_ttl,
             self_weak: weak.clone(),
@@ -400,12 +408,16 @@ impl SponsorHandshakeCoordinator {
             .await
             .unwrap_or_default();
         let transport_address_blob_len = transport_address_blob.len();
+        // Phase 098 · 把本机 telemetry person 标识塞进 Confirm。`None` 是
+        // 合法值（v1→v2 升级未配对场景），joiner 端会按 Solo 退化。
+        let sponsor_space_person_id = self.analytics_identity.current_space_person_id();
         let confirm = PairingSessionMessage::Confirm(SponsorConfirm {
             space_id: ctx.space_id,
             sender_device_id: self.device_identity.current_device_id(),
             sender_device_name,
             sender_identity_fingerprint,
             transport_address_blob,
+            sponsor_space_person_id,
         });
         self.pairing_session
             .send(session, confirm)
@@ -738,6 +750,9 @@ mod tests {
             // exercises the fallback branch, which is fine because
             // assertions compare against what the coordinator emits.
             Arc::new(StubSetupStatus),
+            // Phase 098 默认 noop：sponsor handshake 单元测试不验证 person
+            // 字段；想覆盖该字段的测试就近构造一个返回 Some 的实现。
+            Arc::new(uc_observability::analytics::NoopAnalyticsIdentity),
             ttl,
         )
     }

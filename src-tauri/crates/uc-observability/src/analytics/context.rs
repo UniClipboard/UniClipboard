@@ -6,6 +6,23 @@
 //! `analytics_device_id` 与 `uc-core` 域内的业务 `DeviceId` 完全 disjoint，
 //! 见 schema doc §3.1。
 //!
+//! ## 为什么需要 [`AnalyticsPersonId`]（v2 跨设备 person 聚合）
+//!
+//! v1：每台设备各自的 `anonymous_user_id` 直接做 distinct_id —— PostHog 把
+//! 每台设备视为独立 person，"同一真实用户的多台设备"无法聚合做留存。
+//!
+//! v2：引入 [`AnalyticsPersonId`] 把"distinct_id 的逻辑来源"显式建模：
+//!
+//! - [`AnalyticsPersonId::Solo`]：未加入 Space，沿用本机 `anonymous_user_id`，
+//!   行为与 v1 兼容。
+//! - [`AnalyticsPersonId::SpaceShared`]：已加入 Space，使用 sponsor 派发的
+//!   `space_person_id`（同 Space 多设备共享）。
+//!
+//! `EventContext.analytics_person_id` 字段**不进 wire**（`#[serde(skip)]`），
+//! 它是 sink 派生 distinct_id 的输入。把这层显式化在 PR 2 让
+//! `build_event_payload` 改为基于此字段派生 distinct_id；PR 1 仅引入类型与
+//! 持久化能力，不改任何上报路径。详见 schema doc §3.4。
+//!
 //! ## 时间戳
 //!
 //! `EventContext` **不**包含 `timestamp` 字段。每条事件的时间戳由 sink 在
@@ -59,6 +76,71 @@ pub struct EventContext {
     /// `space_id` 的不可逆哈希（SHA-256 取前 16 hex char），未加入 Space 时为
     /// `None`。原始 `space_id` 永远不上传。
     pub space_id_hash: Option<String>,
+
+    /// 派生 distinct_id 的逻辑身份（v2 跨设备 person 聚合）。
+    ///
+    /// **不进 wire**：`#[serde(skip)]` 让本字段不出现在 sink 上报的 JSON
+    /// payload 里——它只是 sink 派生 `distinct_id` 的输入。
+    ///
+    /// PR 1 阶段所有上报点的 `distinct_id` 仍由 `anonymous_user_id` 派生
+    /// （[`super::sinks::build_event_payload`] 未改），所以本字段在 PR 1
+    /// 暂未被消费；PR 2 会切换 sink 派生逻辑。详见 schema doc §3.4。
+    #[serde(skip)]
+    pub analytics_person_id: AnalyticsPersonId,
+}
+
+/// 派生 distinct_id 的逻辑身份（schema doc §3.4）。
+///
+/// PostHog 用 distinct_id 做 person 聚合主键。v1 直接拷 `anonymous_user_id`
+/// 导致"同一真实用户的多台设备"在 PostHog 上是不同 person；v2 引入这层
+/// enum 显式区分两种来源：
+///
+/// - [`Solo`](Self::Solo)：未加入 Space，distinct_id = `anonymous_user_id`，
+///   行为与 v1 兼容。
+/// - [`SpaceShared`](Self::SpaceShared)：已加入 Space，distinct_id =
+///   `space_person_id`（A1 sponsor 创建 Space 时生成、A2 joiner 经 pairing
+///   加密通道继承）。同 Space 多设备共享同一个 `space_person_id`，PostHog
+///   端自动聚合为同一 person。
+///
+/// **不可派生自业务身份**：`space_person_id` 是独立的 UUIDv7，与
+/// `uc-core::DeviceId` / `space_id` 完全 disjoint，不可互推（schema doc §3.1）。
+///
+/// **wire 形态**：本枚举本身用 internally tagged 形态（`{"kind":"solo","id":"..."}`），
+/// 但当前不直接序列化进 [`EventContext`]（见 `analytics_person_id` 字段
+/// 的 `#[serde(skip)]`）。tagged 形态备给未来若需要持久化或 IPC 传递时使用。
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[serde(tag = "kind", content = "id", rename_all = "snake_case")]
+pub enum AnalyticsPersonId {
+    Solo(Uuid),
+    SpaceShared(Uuid),
+}
+
+impl AnalyticsPersonId {
+    /// 取出内层 UUID，无论是 Solo 还是 SpaceShared。
+    ///
+    /// sink 在派生 distinct_id 时调用此方法——枚举本身只编码"来源语义"，
+    /// 上报需要的就是 UUID 本身。
+    pub fn as_uuid(&self) -> Uuid {
+        match self {
+            Self::Solo(id) | Self::SpaceShared(id) => *id,
+        }
+    }
+
+    /// 是否处于 SpaceShared 状态。便于上层判断"我是不是已经接受过 sponsor 派发"。
+    pub fn is_space_shared(&self) -> bool {
+        matches!(self, Self::SpaceShared(_))
+    }
+}
+
+/// `Default` 仅供 `#[serde(skip)]` 反序列化时占位，**不应**被业务路径依赖。
+///
+/// 设为 `Solo(Uuid::nil())` 而非真实 ID：万一某个测试 fixture 没显式设过
+/// 这个字段，sink 派生出的 distinct_id 会是全零的可识别值，便于 dashboard
+/// 端发现"装配漏了"。生产路径下 `bootstrap` 必填此字段。
+impl Default for AnalyticsPersonId {
+    fn default() -> Self {
+        Self::Solo(Uuid::nil())
+    }
 }
 
 /// [`build_event_context`] 的输入——把"调用方提供的字段"与"本模块内部探测的
@@ -78,6 +160,12 @@ pub struct EventContextInputs {
     pub is_first_run: bool,
     pub active_device_count: u32,
     pub space_id_hash: Option<String>,
+    /// 派生 distinct_id 的逻辑身份（v2）。
+    ///
+    /// bootstrap 在已有 `space_person_id` 持久化时传 `SpaceShared(...)`，
+    /// 否则传 `Solo(anonymous_user_id)`。详见 schema doc §3.4 与
+    /// [`AnalyticsPersonId`]。
+    pub analytics_person_id: AnalyticsPersonId,
 }
 
 /// 构造 `EventContext`。
@@ -102,6 +190,7 @@ pub fn build_event_context(inputs: EventContextInputs) -> EventContext {
         is_first_run: inputs.is_first_run,
         active_device_count: inputs.active_device_count,
         space_id_hash: inputs.space_id_hash,
+        analytics_person_id: inputs.analytics_person_id,
     }
 }
 
@@ -222,8 +311,9 @@ mod tests {
     use super::*;
 
     fn sample_inputs() -> EventContextInputs {
+        let anon = Uuid::now_v7();
         EventContextInputs {
-            anonymous_user_id: Uuid::now_v7(),
+            anonymous_user_id: anon,
             analytics_device_id: Uuid::now_v7(),
             app_version: "0.7.0-alpha.6".into(),
             app_channel: AppChannel::Alpha,
@@ -231,6 +321,7 @@ mod tests {
             is_first_run: true,
             active_device_count: 2,
             space_id_hash: Some("abcdef0123456789".into()),
+            analytics_person_id: AnalyticsPersonId::Solo(anon),
         }
     }
 
@@ -293,10 +384,88 @@ mod tests {
 
     #[test]
     fn event_context_round_trips_through_json() {
+        // `analytics_person_id` 字段标了 `#[serde(skip)]`，在 round-trip 后会
+        // 退回 [`AnalyticsPersonId::default`]——这是 PR 1 的有意设计，sink 派生
+        // distinct_id 时直接读运行时 ctx，不依赖 wire 上的字段。
+        // 把两侧都归零再比较，验证除该字段外的其它字段必须 byte-for-byte 还原。
         let ctx = build_event_context(sample_inputs());
         let json = serde_json::to_value(&ctx).unwrap();
         let back: EventContext = serde_json::from_value(json).unwrap();
-        assert_eq!(ctx, back);
+
+        let mut ctx_norm = ctx.clone();
+        let mut back_norm = back.clone();
+        ctx_norm.analytics_person_id = AnalyticsPersonId::default();
+        back_norm.analytics_person_id = AnalyticsPersonId::default();
+        assert_eq!(ctx_norm, back_norm);
+    }
+
+    /// PR 1 红线：`analytics_person_id` 是 sink 派生 distinct_id 的输入，
+    /// **不应**直接出现在 wire payload 上——否则 PostHog dashboard 会多出
+    /// 一个 nested object 字段，污染所有现有埋点的字段集，违反 schema doc §8
+    /// "wire 演化非破坏"。
+    #[test]
+    fn analytics_person_id_does_not_serialize_into_event_context() {
+        let ctx = build_event_context(sample_inputs());
+        let json = serde_json::to_value(&ctx).unwrap();
+        let map = json.as_object().unwrap();
+        assert!(
+            !map.contains_key("analytics_person_id"),
+            "analytics_person_id 必须 #[serde(skip)]，不进 wire：{map:?}"
+        );
+    }
+
+    // —— AnalyticsPersonId 行为 ————————————————————————————————
+
+    #[test]
+    fn analytics_person_id_solo_serializes_with_kind_tag() {
+        let id = Uuid::parse_str("018f0000-0000-7000-8000-000000000001").unwrap();
+        let json = serde_json::to_value(AnalyticsPersonId::Solo(id)).unwrap();
+        assert_eq!(json["kind"], "solo");
+        assert_eq!(json["id"], id.to_string());
+    }
+
+    #[test]
+    fn analytics_person_id_space_shared_serializes_with_kind_tag() {
+        let id = Uuid::parse_str("018f0000-0000-7000-8000-000000000002").unwrap();
+        let json = serde_json::to_value(AnalyticsPersonId::SpaceShared(id)).unwrap();
+        assert_eq!(json["kind"], "space_shared");
+        assert_eq!(json["id"], id.to_string());
+    }
+
+    #[test]
+    fn analytics_person_id_round_trips_through_json() {
+        for original in [
+            AnalyticsPersonId::Solo(Uuid::now_v7()),
+            AnalyticsPersonId::SpaceShared(Uuid::now_v7()),
+        ] {
+            let json = serde_json::to_value(&original).unwrap();
+            let back: AnalyticsPersonId = serde_json::from_value(json).unwrap();
+            assert_eq!(original, back);
+        }
+    }
+
+    #[test]
+    fn analytics_person_id_as_uuid_returns_inner_value() {
+        let id = Uuid::now_v7();
+        assert_eq!(AnalyticsPersonId::Solo(id).as_uuid(), id);
+        assert_eq!(AnalyticsPersonId::SpaceShared(id).as_uuid(), id);
+    }
+
+    #[test]
+    fn analytics_person_id_is_space_shared_only_for_space_shared_variant() {
+        let id = Uuid::now_v7();
+        assert!(!AnalyticsPersonId::Solo(id).is_space_shared());
+        assert!(AnalyticsPersonId::SpaceShared(id).is_space_shared());
+    }
+
+    #[test]
+    fn analytics_person_id_default_is_solo_nil() {
+        // schema doc §3.4 末尾：default 是占位值，业务路径必须显式赋。
+        // 设为 nil UUID 是为了在 dashboard 上"看到全零"立即识别装配漏洞。
+        assert_eq!(
+            AnalyticsPersonId::default(),
+            AnalyticsPersonId::Solo(Uuid::nil())
+        );
     }
 
     #[test]

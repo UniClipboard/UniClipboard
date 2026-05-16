@@ -35,11 +35,17 @@ use uc_core::security::IdentityFingerprint;
 
 /// Wire 版本号。
 ///
-/// Slice 2 Phase 1 · T5 在 `JoinerRequest` 与 `SponsorConfirm` 上新增了
-/// `transport_address_blob` 字段，postcard 非 schema-兼容，故版本由 1 升
-/// 至 2；旧 peer 发来的 v=1 帧会走 [`WireDecodeError::UnsupportedVersion`]
-/// 分支显式拒连，让排障信号明确。
-const WIRE_VERSION: u8 = 2;
+/// 升版历史：
+/// - v1 → v2（Slice 2 Phase 1 · T5）：在 `JoinerRequest` 与 `SponsorConfirm`
+///   上新增 `transport_address_blob` 字段。
+/// - v2 → v3（Phase 098）：在 `SponsorConfirm` 上新增 `sponsor_space_person_id:
+///   Option<String>` 字段，把 sponsor 的 telemetry person 标识派给 joiner。
+///   字段是 `Option`：sponsor 端 telemetry 身份未确立时编为 `None`，joiner 端
+///   见 `None` 退回 Solo（schema doc §3.4 / task_plan §开放问题 2 决策 A）。
+///
+/// postcard 非 schema-兼容，每次新增字段都升版本号；旧 peer 发来的低版本帧会走
+/// [`WireDecodeError::UnsupportedVersion`] 分支显式拒连，让排障信号明确。
+const WIRE_VERSION: u8 = 3;
 
 // ============================================================================
 // Wire types (infra-local)
@@ -104,6 +110,17 @@ struct WireSponsorConfirm {
     /// Slice 2 Phase 1 · T5：sponsor 传输地址不透明字节。详见
     /// [`WireJoinerRequest::transport_address_blob`] 的说明。
     transport_address_blob: Vec<u8>,
+    /// Phase 098：sponsor 派发给 joiner 的 telemetry person 标识。
+    ///
+    /// 字段含义见 [`SponsorConfirm::sponsor_space_person_id`]。
+    /// 编为 `Option<String>`（postcard `Option` 占 1 byte tag）以支持 sponsor
+    /// 端尚未持久化 `space_person_id` 时（v1→v2 老用户升级未配对）的 `None`
+    /// 形态；joiner 端收到 `None` 退回 Solo。
+    ///
+    /// 用 String 而非 uuid 类型保持与 `space_id` / `sender_device_id` 字段统一
+    /// 的字符串形态，wire 层不引入额外类型依赖；core 端 `SponsorConfirm` 把它
+    /// 解析为 `Uuid`。
+    sponsor_space_person_id: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -140,6 +157,12 @@ pub enum WireDecodeError {
 
     #[error("invalid identity fingerprint on wire: {0}")]
     InvalidFingerprint(String),
+
+    /// Phase 098：sponsor 派发的 `space_person_id` 字符串无法解析为 UUID。
+    /// 不算致命错误（telemetry 字段而已）但仍会让整条 confirm 拒收，
+    /// 触发对端重连——避免在 wire 上接受半破损的字段。
+    #[error("invalid sponsor_space_person_id on wire: {0}")]
+    InvalidSpacePersonId(String),
 }
 
 impl From<postcard::Error> for WireDecodeError {
@@ -205,6 +228,7 @@ fn to_wire(msg: &PairingSessionMessage) -> WireBody {
             sender_device_name: c.sender_device_name.clone(),
             sender_identity_fingerprint: c.sender_identity_fingerprint.as_display().to_string(),
             transport_address_blob: c.transport_address_blob.clone(),
+            sponsor_space_person_id: c.sponsor_space_person_id.map(|id| id.to_string()),
         }),
         PairingSessionMessage::Reject(r) => WireBody::Reject(WirePairingReject {
             reason: match &r.reason {
@@ -245,6 +269,14 @@ fn from_wire(body: WireBody) -> Result<PairingSessionMessage, WireDecodeError> {
             sender_device_name: c.sender_device_name,
             sender_identity_fingerprint: parse_fingerprint(&c.sender_identity_fingerprint)?,
             transport_address_blob: c.transport_address_blob,
+            sponsor_space_person_id: c
+                .sponsor_space_person_id
+                .map(|s| {
+                    uuid::Uuid::parse_str(&s).map_err(|e| {
+                        WireDecodeError::InvalidSpacePersonId(format!("{e} (got `{s}`)"))
+                    })
+                })
+                .transpose()?,
         })),
         WireBody::Reject(r) => Ok(PairingSessionMessage::Reject(PairingReject {
             reason: match r.reason {
@@ -342,12 +374,14 @@ mod tests {
 
     #[test]
     fn confirm_round_trips() {
+        let space_person = uuid::Uuid::parse_str("018f0000-0000-7000-8000-00000000000a").unwrap();
         let original = PairingSessionMessage::Confirm(SponsorConfirm {
             space_id: SpaceId::from_str("space-99"),
             sender_device_id: DeviceId::new("dev-sponsor"),
             sender_device_name: "Bob's desktop".to_string(),
             sender_identity_fingerprint: sample_fingerprint(),
             transport_address_blob: vec![0xaa, 0xbb, 0xcc],
+            sponsor_space_person_id: Some(space_person),
         });
         let decoded = round_trip(original);
         match decoded {
@@ -357,6 +391,32 @@ mod tests {
                 assert_eq!(c.sender_device_name, "Bob's desktop");
                 assert_eq!(c.sender_identity_fingerprint, sample_fingerprint());
                 assert_eq!(c.transport_address_blob, vec![0xaa, 0xbb, 0xcc]);
+                assert_eq!(c.sponsor_space_person_id, Some(space_person));
+            }
+            other => panic!("expected Confirm, got {other:?}"),
+        }
+    }
+
+    /// PR 5：sponsor 端尚未持久化 `space_person_id`（v1→v2 老用户升级未配对）
+    /// 时，Confirm 上的字段应为 `None`，wire round-trip 后保持 `None`，
+    /// joiner 端按 Solo 退化（task_plan §开放问题 2 决策 A）。
+    #[test]
+    fn confirm_round_trips_with_none_sponsor_space_person_id() {
+        let original = PairingSessionMessage::Confirm(SponsorConfirm {
+            space_id: SpaceId::from_str("space-99"),
+            sender_device_id: DeviceId::new("dev-sponsor"),
+            sender_device_name: "Bob's desktop".to_string(),
+            sender_identity_fingerprint: sample_fingerprint(),
+            transport_address_blob: vec![],
+            sponsor_space_person_id: None,
+        });
+        let decoded = round_trip(original);
+        match decoded {
+            PairingSessionMessage::Confirm(c) => {
+                assert_eq!(
+                    c.sponsor_space_person_id, None,
+                    "None 必须 round-trip 为 None，让 joiner 退回 Solo"
+                );
             }
             other => panic!("expected Confirm, got {other:?}"),
         }

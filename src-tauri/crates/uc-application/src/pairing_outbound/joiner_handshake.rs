@@ -74,6 +74,16 @@ pub(crate) struct JoinerHandshakeOutcome {
     /// `PeerAddressRepositoryPort`。空 `Vec` 表示 sponsor 未附带地址，
     /// joiner 侧应跳过 upsert。
     pub sponsor_transport_address_blob: Vec<u8>,
+    /// Phase 098：sponsor 派发的 telemetry person 标识。
+    ///
+    /// `Some(uuid)`：joiner 端 use case 在 `pairing_succeeded` 之前调
+    /// `analytics_identity.adopt_space_person(uuid)` 接受这个 ID 并发
+    /// `$identify`，让本机 telemetry 与 sponsor 聚合为同一 person。
+    ///
+    /// `None`：sponsor 端尚未确立 telemetry 身份（v1→v2 升级未配对场景）。
+    /// joiner 端按 Solo 退化，等待下次 sponsor 自己发新设备 pairing 时再
+    /// 通过 sponsor 派发统一切换（task_plan §开放问题 2 决策 A）。
+    pub sponsor_space_person_id: Option<uuid::Uuid>,
 }
 
 pub(crate) struct JoinerHandshakeCoordinator {
@@ -302,6 +312,7 @@ impl JoinerHandshakeCoordinator {
             self_device_id: local_device_id,
             self_identity_fingerprint: local_fp,
             sponsor_transport_address_blob: confirm.transport_address_blob,
+            sponsor_space_person_id: confirm.sponsor_space_person_id,
         })
     }
 
@@ -699,6 +710,9 @@ mod tests {
             sender_device_name: "sponsor's laptop".into(),
             sender_identity_fingerprint: sponsor_fp(),
             transport_address_blob: Vec::new(),
+            // Phase 098 默认 None：fixture 共享给多场景测试，绝大多数测试不
+            // 关心 person 字段；想验证 Some 路径的测试就近构造一个新 confirm。
+            sponsor_space_person_id: None,
         }
     }
 

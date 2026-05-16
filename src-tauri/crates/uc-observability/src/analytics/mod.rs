@@ -16,6 +16,7 @@
 
 pub mod context;
 pub mod events;
+pub mod identity;
 pub mod ids;
 pub mod port;
 pub mod probe;
@@ -23,8 +24,8 @@ pub mod sinks;
 
 pub use context::{
     build_event_context, clear_global_event_context, global_event_context,
-    set_global_event_context, AppChannel, Arch, EventContext, EventContextInputs, InstallSource,
-    Os,
+    set_global_event_context, AnalyticsPersonId, AppChannel, Arch, EventContext,
+    EventContextInputs, InstallSource, Os,
 };
 pub use events::{
     CaptureOrigin, Direction, Event, FailureReason, LatencyBucket, MobileAuthFailureKind,
@@ -32,6 +33,13 @@ pub use events::{
     SetupEntry, SyncDeferReason, SyncDeferredProps, SyncEventProps, SyncFailureStage,
     TransportType, UnlockFailureReason,
 };
-pub use ids::{load_or_create as load_or_create_ids, reset as reset_ids, AnalyticsIds};
-pub use port::{AnalyticsPort, NoopAnalyticsSink};
+pub use identity::{
+    hash_space_id_for_telemetry, AdoptOutcome, AnalyticsIdentityError, AnalyticsIdentityPort,
+    LocalAnalyticsIdentity, NoopAnalyticsIdentity, ReleaseOutcome,
+};
+pub use ids::{
+    clear_space_person_id, load_or_create as load_or_create_ids, load_space_person_id,
+    reset as reset_ids, set_space_person_id, AnalyticsIds,
+};
+pub use port::{AnalyticsPort, GroupIdentifyPayload, IdentifyPayload, NoopAnalyticsSink};
 pub use sinks::{build_event_payload, GatedAnalyticsSink, PosthogSink, StdoutSink};

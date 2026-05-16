@@ -25,7 +25,8 @@ pub use deps::SpaceSetupDeps;
 pub use errors::{
     CancelInvitationError, FactoryResetError, InitializeSpaceError, IssuePairingInvitationError,
     QueryMigrationProgressError, QuerySetupStateError, RedeemPairingInvitationError,
-    ResetSpaceError, SwitchSpaceError, TryResumeSessionError, UnlockSpaceError,
+    ResetSpaceError, ResetTelemetryError, SwitchSpaceError, TryResumeSessionError,
+    UnlockSpaceError,
 };
 pub use events::{PairingFailureReason, PairingOutcome};
 pub use facade::SpaceSetupFacade;

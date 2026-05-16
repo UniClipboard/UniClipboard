@@ -42,7 +42,7 @@ use tracing::warn;
 
 use super::super::context::global_event_context;
 use super::super::events::Event;
-use super::super::port::AnalyticsPort;
+use super::super::port::{AnalyticsPort, GroupIdentifyPayload, IdentifyPayload};
 use super::build_event_payload;
 use super::stdout::TRACE_TARGET;
 
@@ -121,6 +121,64 @@ impl AnalyticsPort for PosthogSink {
                     event = event_name,
                     error = %err,
                     "posthog capture failed"
+                ),
+            }
+        });
+    }
+
+    fn identify(&self, payload: IdentifyPayload) {
+        // $identify 不依赖 EventContext —— person 合并字段全部由 payload 自带。
+        // 与 capture 一致走 fire-and-forget tokio::spawn。
+        let body = build_identify_body(&payload, &self.api_key);
+
+        let client = self.client.clone();
+        let endpoint = self.endpoint.clone();
+        tokio::spawn(async move {
+            match client.post(&endpoint).json(&body).send().await {
+                Ok(resp) if resp.status().is_success() => {}
+                Ok(resp) => warn!(
+                    target: TRACE_TARGET,
+                    event = "$identify",
+                    status = %resp.status(),
+                    "posthog identify non-2xx"
+                ),
+                Err(err) => warn!(
+                    target: TRACE_TARGET,
+                    event = "$identify",
+                    error = %err,
+                    "posthog identify failed"
+                ),
+            }
+        });
+    }
+
+    fn group_identify(&self, payload: GroupIdentifyPayload) {
+        // $groupidentify 需要 distinct_id（PostHog 用 distinct_id 把 group
+        // event 归属到一个 person）。从 global EventContext 取当前 distinct_id —
+        // 与 capture 同一逻辑，保证 person 合并语义。
+        let Some(ctx) = global_event_context() else {
+            self.warn_missing_context_once("$groupidentify");
+            return;
+        };
+        let distinct_id = ctx.analytics_person_id.as_uuid().to_string();
+        let body = build_group_identify_body(&payload, distinct_id, &self.api_key);
+
+        let client = self.client.clone();
+        let endpoint = self.endpoint.clone();
+        tokio::spawn(async move {
+            match client.post(&endpoint).json(&body).send().await {
+                Ok(resp) if resp.status().is_success() => {}
+                Ok(resp) => warn!(
+                    target: TRACE_TARGET,
+                    event = "$groupidentify",
+                    status = %resp.status(),
+                    "posthog group_identify non-2xx"
+                ),
+                Err(err) => warn!(
+                    target: TRACE_TARGET,
+                    event = "$groupidentify",
+                    error = %err,
+                    "posthog group_identify failed"
                 ),
             }
         });
@@ -212,6 +270,18 @@ fn inject_posthog_standard_fields(payload: &mut Map<String, Value>) {
         "$set_once".into(),
         Value::Object(build_set_once_initial(payload)),
     );
+
+    // Phase 098 · v2 跨设备 person 聚合：把 space_id_hash 转成 PostHog
+    // group analytics 的 `$groups`，让控制台同时按 person 与 group (Space)
+    // 维度切片留存（schema doc §3.4）。Solo 状态下 `space_id_hash` 是
+    // None → 不出现 `$groups` 字段，避免 PostHog 把 null 当显式清空。
+    if let Some(Value::String(hash)) = payload.get("space_id_hash") {
+        if !hash.is_empty() {
+            let mut groups = Map::new();
+            groups.insert("space".into(), Value::String(hash.clone()));
+            payload.insert("$groups".into(), Value::Object(groups));
+        }
+    }
 }
 
 /// 当前快照写入 Person Property：每条事件覆盖，控制台按 person 切片直接可用。
@@ -237,6 +307,119 @@ fn build_set_snapshot(payload: &Map<String, Value>) -> Map<String, Value> {
         }
     }
     out
+}
+
+/// 把 [`IdentifyPayload`] 翻译成 PostHog `$identify` 的请求 body。
+///
+/// 输出 wire 形态（顶层）：
+///
+/// ```json
+/// {
+///   "api_key": "phc_xxx",
+///   "event": "$identify",
+///   "distinct_id": "<new_distinct_id>",
+///   "properties": {
+///     "$anon_distinct_id": "<old_distinct_id>",
+///     "$lib": "uniclipboard-rust",
+///     "$geoip_disable": true,
+///     "$set":      { ... },          // 可选：payload.set 非空时出现
+///     "$set_once": { ... }           // 可选：payload.set_once 非空时出现
+///   },
+///   "timestamp": "..."
+/// }
+/// ```
+///
+/// 关键约束：
+/// - `$anon_distinct_id` 必须放在 `properties` 内、**不在顶层**——这是 PostHog
+///   alias 合并协议的硬要求。顶层 `distinct_id` 是 new；老 anonymous person
+///   通过 `$anon_distinct_id` 与之合并。
+/// - `$lib` / `$geoip_disable` 与 capture 保持一致——身份合并事件也算客户端
+///   流量，dashboard 按 `$lib` 过滤、`$geoip_disable` 兜底执行 §6.1 IP 不上传。
+/// - `$set` / `$set_once` **仅在调用方显式提供**时出现；空 map 时不进 wire，
+///   避免 PostHog 把"空对象"误解为"清空 person property"。
+fn build_identify_body(payload: &IdentifyPayload, api_key: &str) -> Value {
+    let mut props = Map::new();
+    props.insert(
+        "$anon_distinct_id".into(),
+        Value::String(payload.old_distinct_id.to_string()),
+    );
+    props.insert("$lib".into(), Value::String(POSTHOG_LIB_NAME.into()));
+    props.insert("$geoip_disable".into(), Value::Bool(true));
+    if !payload.set.is_empty() {
+        props.insert("$set".into(), Value::Object(payload.set.clone()));
+    }
+    if !payload.set_once.is_empty() {
+        props.insert("$set_once".into(), Value::Object(payload.set_once.clone()));
+    }
+
+    let mut body = Map::new();
+    body.insert("api_key".into(), Value::String(api_key.to_string()));
+    body.insert("event".into(), Value::String("$identify".into()));
+    body.insert(
+        "distinct_id".into(),
+        Value::String(payload.new_distinct_id.to_string()),
+    );
+    body.insert("properties".into(), Value::Object(props));
+    body.insert(
+        "timestamp".into(),
+        Value::String(chrono::Utc::now().to_rfc3339()),
+    );
+    Value::Object(body)
+}
+
+/// 把 [`GroupIdentifyPayload`] 翻译成 PostHog `$groupidentify` 的请求 body。
+///
+/// 输出 wire 形态：
+///
+/// ```json
+/// {
+///   "api_key": "phc_xxx",
+///   "event": "$groupidentify",
+///   "distinct_id": "<distinct_id>",
+///   "properties": {
+///     "$group_type": "<group_type>",
+///     "$group_key":  "<group_key>",
+///     "$group_set":  { ...payload.set... },
+///     "$lib": "uniclipboard-rust",
+///     "$geoip_disable": true
+///   },
+///   "timestamp": "..."
+/// }
+/// ```
+///
+/// `$group_type` / `$group_key` / `$group_set` 是 PostHog group analytics 的
+/// 协议字段——服务端据此把 group property 写到指定 group。
+///
+/// `distinct_id` 由调用方（sink）从全局 EventContext 取，保证与 capture / identify
+/// 的 person 一致——这是 PostHog 关联 group 与 person 的关键。
+fn build_group_identify_body(
+    payload: &GroupIdentifyPayload,
+    distinct_id: String,
+    api_key: &str,
+) -> Value {
+    let mut props = Map::new();
+    props.insert(
+        "$group_type".into(),
+        Value::String(payload.group_type.clone()),
+    );
+    props.insert(
+        "$group_key".into(),
+        Value::String(payload.group_key.clone()),
+    );
+    props.insert("$group_set".into(), Value::Object(payload.set.clone()));
+    props.insert("$lib".into(), Value::String(POSTHOG_LIB_NAME.into()));
+    props.insert("$geoip_disable".into(), Value::Bool(true));
+
+    let mut body = Map::new();
+    body.insert("api_key".into(), Value::String(api_key.to_string()));
+    body.insert("event".into(), Value::String("$groupidentify".into()));
+    body.insert("distinct_id".into(), Value::String(distinct_id));
+    body.insert("properties".into(), Value::Object(props));
+    body.insert(
+        "timestamp".into(),
+        Value::String(chrono::Utc::now().to_rfc3339()),
+    );
+    Value::Object(body)
 }
 
 /// 安装期不变量写入 `$set_once`：仅 person 首次出现时写入，后续被 PostHog 忽略。
@@ -269,7 +452,7 @@ mod tests {
 
     use super::super::super::context::{
         build_event_context, clear_global_event_context, lock_global_event_context_for_tests,
-        set_global_event_context, AppChannel, EventContextInputs, InstallSource,
+        set_global_event_context, AnalyticsPersonId, AppChannel, EventContextInputs, InstallSource,
     };
     use super::*;
 
@@ -601,6 +784,7 @@ mod tests {
             is_first_run: true,
             active_device_count: 1,
             space_id_hash: None,
+            analytics_person_id: AnalyticsPersonId::Solo(anon),
         });
         set_global_event_context(Arc::new(ctx));
     }
@@ -726,5 +910,193 @@ mod tests {
         case_drops_event_when_context_missing(&server).await;
 
         clear_global_event_context();
+    }
+
+    // —— PR 3：$identify wire 形态（PostHog spec）————————————————————
+
+    fn sample_identify(extra_set: bool) -> IdentifyPayload {
+        let old = Uuid::parse_str("018f0000-0000-7000-8000-000000000001").unwrap();
+        let new = Uuid::parse_str("018f0000-0000-7000-8000-00000000000a").unwrap();
+        let mut payload = IdentifyPayload::switch_only(old, new);
+        if extra_set {
+            payload
+                .set
+                .insert("active_device_count".into(), Value::Number(2.into()));
+            payload.set_once.insert(
+                "first_paired_at".into(),
+                Value::String("2026-05-15T00:00:00Z".into()),
+            );
+        }
+        payload
+    }
+
+    #[test]
+    fn build_identify_body_emits_top_level_event_and_distinct_id() {
+        let body = build_identify_body(&sample_identify(false), "phc_test");
+        let obj = body.as_object().unwrap();
+        assert_eq!(obj.get("api_key").and_then(Value::as_str), Some("phc_test"));
+        assert_eq!(
+            obj.get("event").and_then(Value::as_str),
+            Some("$identify"),
+            "顶层 event 必须是 $identify"
+        );
+        assert_eq!(
+            obj.get("distinct_id").and_then(Value::as_str),
+            Some("018f0000-0000-7000-8000-00000000000a"),
+            "顶层 distinct_id 必须是 new_distinct_id（PostHog alias 协议）"
+        );
+        // RFC3339 时间戳结构校验。
+        let ts = obj.get("timestamp").and_then(Value::as_str).unwrap();
+        assert!(ts.contains('T') && (ts.ends_with("+00:00") || ts.ends_with('Z')));
+    }
+
+    #[test]
+    fn build_identify_body_places_anon_distinct_id_inside_properties() {
+        // PostHog 协议硬要求：$anon_distinct_id 必须在 properties，不在顶层。
+        // 顶层有 distinct_id（new），再有 $anon_distinct_id 会被服务端解释为冲突。
+        let body = build_identify_body(&sample_identify(false), "phc_test");
+        let obj = body.as_object().unwrap();
+        assert!(
+            !obj.contains_key("$anon_distinct_id"),
+            "$anon_distinct_id 不应出现在顶层"
+        );
+        let props = obj["properties"].as_object().unwrap();
+        assert_eq!(
+            props.get("$anon_distinct_id").and_then(Value::as_str),
+            Some("018f0000-0000-7000-8000-000000000001"),
+            "$anon_distinct_id 必须在 properties"
+        );
+    }
+
+    #[test]
+    fn build_identify_body_omits_empty_set_and_set_once() {
+        // 空 map 不进 wire——PostHog 把空 $set 当成"清空所有 person property"，
+        // 默认不传比传空对象安全。
+        let body = build_identify_body(&sample_identify(false), "phc_test");
+        let props = body["properties"].as_object().unwrap();
+        assert!(
+            !props.contains_key("$set"),
+            "空 set 不应出现在 wire：{props:?}"
+        );
+        assert!(
+            !props.contains_key("$set_once"),
+            "空 set_once 不应出现在 wire：{props:?}"
+        );
+    }
+
+    #[test]
+    fn build_identify_body_includes_set_and_set_once_when_present() {
+        let body = build_identify_body(&sample_identify(true), "phc_test");
+        let props = body["properties"].as_object().unwrap();
+
+        let set = props["$set"].as_object().expect("$set 应为 object");
+        assert_eq!(set["active_device_count"], Value::Number(2.into()));
+
+        let set_once = props["$set_once"]
+            .as_object()
+            .expect("$set_once 应为 object");
+        assert_eq!(
+            set_once["first_paired_at"].as_str(),
+            Some("2026-05-15T00:00:00Z")
+        );
+    }
+
+    // —— PR 7：$groups 注入 + $groupidentify wire 形态 ————————————
+
+    #[test]
+    fn build_capture_body_injects_groups_when_space_id_hash_present() {
+        let payload = payload_with(
+            "sync_succeeded",
+            "user-1",
+            &[("space_id_hash", Value::String("0123456789abcdef".into()))],
+        );
+        let body = build_capture_body("sync_succeeded", payload, "phc_test");
+        let props = body["properties"].as_object().unwrap();
+
+        let groups = props
+            .get("$groups")
+            .and_then(Value::as_object)
+            .expect("$groups 应为 object");
+        assert_eq!(
+            groups.get("space").and_then(Value::as_str),
+            Some("0123456789abcdef"),
+            "$groups.space 必须等于 space_id_hash"
+        );
+    }
+
+    /// Solo 状态下 space_id_hash = None → $groups 不应出现，避免 PostHog 把
+    /// "空 group" 误解为"清空已有归属"。
+    #[test]
+    fn build_capture_body_omits_groups_when_space_id_hash_missing() {
+        let payload = payload_with("app_first_open", "user-1", &[]);
+        let body = build_capture_body("app_first_open", payload, "phc_test");
+        let props = body["properties"].as_object().unwrap();
+        assert!(
+            !props.contains_key("$groups"),
+            "Solo 状态下不应出现 $groups：{props:?}"
+        );
+    }
+
+    #[test]
+    fn build_group_identify_body_emits_top_level_fields() {
+        let mut set = Map::new();
+        set.insert("device_count".into(), Value::Number(1.into()));
+        set.insert(
+            "created_at".into(),
+            Value::String("2026-05-15T00:00:00Z".into()),
+        );
+        let payload = GroupIdentifyPayload::for_space("0123456789abcdef".into(), set);
+        let body = build_group_identify_body(
+            &payload,
+            "018f0000-0000-7000-8000-00000000000a".into(),
+            "phc_test",
+        );
+        let obj = body.as_object().unwrap();
+
+        assert_eq!(obj.get("api_key").and_then(Value::as_str), Some("phc_test"));
+        assert_eq!(
+            obj.get("event").and_then(Value::as_str),
+            Some("$groupidentify"),
+            "顶层 event 必须是 $groupidentify"
+        );
+        assert_eq!(
+            obj.get("distinct_id").and_then(Value::as_str),
+            Some("018f0000-0000-7000-8000-00000000000a"),
+            "顶层 distinct_id 必须等于 caller 传入的"
+        );
+
+        let props = obj["properties"].as_object().unwrap();
+        assert_eq!(
+            props.get("$group_type").and_then(Value::as_str),
+            Some("space")
+        );
+        assert_eq!(
+            props.get("$group_key").and_then(Value::as_str),
+            Some("0123456789abcdef")
+        );
+        let group_set = props["$group_set"]
+            .as_object()
+            .expect("$group_set 应为 object");
+        assert_eq!(group_set["device_count"], Value::Number(1.into()));
+        assert_eq!(
+            group_set["created_at"].as_str(),
+            Some("2026-05-15T00:00:00Z")
+        );
+    }
+
+    #[test]
+    fn build_identify_body_carries_lib_and_geoip_disable() {
+        // identify 也是客户端流量，必须自报 $lib 并兜底 disable IP geoip。
+        let body = build_identify_body(&sample_identify(false), "phc_test");
+        let props = body["properties"].as_object().unwrap();
+        assert_eq!(
+            props.get("$lib").and_then(Value::as_str),
+            Some("uniclipboard-rust")
+        );
+        assert_eq!(
+            props.get("$geoip_disable"),
+            Some(&Value::Bool(true)),
+            "$geoip_disable 必须默认 true（schema doc §6.1 兜底）"
+        );
     }
 }

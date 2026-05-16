@@ -37,7 +37,7 @@ use super::events::Event;
 /// ```json
 /// {
 ///   "event": "<event name>",
-///   "distinct_id": "<anonymous_user_id>",
+///   "distinct_id": "<analytics_person_id>",  // v2: Solo→anonymous_user_id；SpaceShared→space_person_id
 ///   "anonymous_user_id": "...",
 ///   "analytics_device_id": "...",
 ///   "session_id": "...",
@@ -56,9 +56,21 @@ use super::events::Event;
 /// }
 /// ```
 ///
-/// `distinct_id` 用 [`EventContext::anonymous_user_id`] 充任——PostHog 用
-/// distinct_id 做漏斗主键。schema doc §3.1 明确 `anonymous_user_id` 是
-/// 留存计算唯一锚点，因此跨 sink 一致。
+/// ## distinct_id 的派生（v2 跨设备 person 聚合）
+///
+/// `distinct_id` 来自 [`EventContext::analytics_person_id`]：
+///
+/// | analytics_person_id | distinct_id |
+/// |---|---|
+/// | `Solo(uuid)` | `uuid`（即 `anonymous_user_id`，与 v1 wire 兼容） |
+/// | `SpaceShared(uuid)` | `uuid`（即 sponsor 派发的 `space_person_id`，同 Space 多设备共享） |
+///
+/// schema doc §3.4：v1 → v2 wire 形态零破坏——字段名 `distinct_id` 不变，只换
+/// 取值来源。Solo 状态下与 v1 byte-for-byte 等价；SpaceShared 状态下值变化
+/// 但通过 PR 3 的 `$identify` 事件让 PostHog 服务端把两个 person 合并归档。
+///
+/// `anonymous_user_id` flat 字段**永远保留**在 properties 中，dashboard 可同时
+/// 按设备级 anonymous ID 切片（schema doc §10.1 "Flat-name 字段同时保留"）。
 pub fn build_event_payload(event: &Event, ctx: &EventContext) -> Map<String, Value> {
     let mut payload = Map::new();
 
@@ -70,9 +82,13 @@ pub fn build_event_payload(event: &Event, ctx: &EventContext) -> Map<String, Val
 
     payload.insert("event".into(), Value::String(event.name().to_string()));
 
-    if let Some(uid) = payload.get("anonymous_user_id").cloned() {
-        payload.insert("distinct_id".into(), uid);
-    }
+    // v2 切换：distinct_id 不再直接拷 anonymous_user_id 字段，而是从
+    // ctx.analytics_person_id 派生。Solo 状态下两者数值相同（与 v1 兼容），
+    // SpaceShared 状态下取 sponsor 派发的 space_person_id。
+    payload.insert(
+        "distinct_id".into(),
+        Value::String(ctx.analytics_person_id.as_uuid().to_string()),
+    );
 
     payload
 }
@@ -80,7 +96,7 @@ pub fn build_event_payload(event: &Event, ctx: &EventContext) -> Map<String, Val
 #[cfg(test)]
 mod tests {
     use super::super::context::{
-        build_event_context, AppChannel, EventContextInputs, InstallSource,
+        build_event_context, AnalyticsPersonId, AppChannel, EventContextInputs, InstallSource,
     };
     use super::super::events::{
         Direction, Event, FailureReason, PayloadSizeBucket, PayloadType, SyncEventProps,
@@ -101,6 +117,7 @@ mod tests {
             is_first_run: true,
             active_device_count: 2,
             space_id_hash: Some("0123456789abcdef".into()),
+            analytics_person_id: AnalyticsPersonId::Solo(anon),
         })
     }
 
@@ -197,5 +214,77 @@ mod tests {
         // 关键约束：sink 输出必须是 single-line JSON，便于 `tail -F | jq`。
         assert!(!line.contains('\n'), "wire 必须为单行：{line}");
         assert!(line.starts_with('{') && line.ends_with('}'));
+    }
+
+    // —— PR 2：v2 distinct_id 派生（schema doc §3.4）——————————————————
+
+    /// Solo 状态：distinct_id 必须等于 anonymous_user_id（v1 wire 兼容）。
+    ///
+    /// 这条测试是 v1 → v2 升级时"已配对的老用户行为不变"的护栏：sample_ctx()
+    /// 默认是 Solo，PR 2 切换 distinct_id 派生源后这条仍必须通过。
+    #[test]
+    fn payload_distinct_id_equals_anonymous_user_id_in_solo_state() {
+        let ctx = sample_ctx();
+        let payload = build_event_payload(&Event::AppFirstOpen, &ctx);
+
+        assert_eq!(
+            payload.get("distinct_id"),
+            payload.get("anonymous_user_id"),
+            "Solo 状态下 distinct_id 必须等同 anonymous_user_id（v1 兼容）"
+        );
+    }
+
+    /// SpaceShared 状态：distinct_id 必须等于 space_person_id，**不再**等同
+    /// anonymous_user_id；后者仍以 flat 字段保留在 properties 中。
+    #[test]
+    fn payload_distinct_id_equals_space_person_id_in_space_shared_state() {
+        use super::super::context::AnalyticsPersonId;
+
+        let anon = Uuid::parse_str("018f0000-0000-7000-8000-000000000001").unwrap();
+        let dev = Uuid::parse_str("018f0000-0000-7000-8000-000000000002").unwrap();
+        let space_person = Uuid::parse_str("018f0000-0000-7000-8000-00000000000a").unwrap();
+
+        let ctx = build_event_context(EventContextInputs {
+            anonymous_user_id: anon,
+            analytics_device_id: dev,
+            app_version: "0.7.0-alpha.7".into(),
+            app_channel: AppChannel::Alpha,
+            install_source: InstallSource::Unknown,
+            is_first_run: false,
+            active_device_count: 2,
+            space_id_hash: Some("0123456789abcdef".into()),
+            analytics_person_id: AnalyticsPersonId::SpaceShared(space_person),
+        });
+        let payload = build_event_payload(&Event::AppFirstOpen, &ctx);
+
+        assert_eq!(
+            payload.get("distinct_id").and_then(Value::as_str),
+            Some(space_person.to_string().as_str()),
+            "SpaceShared 状态下 distinct_id 必须等于 space_person_id"
+        );
+        assert_ne!(
+            payload.get("distinct_id"),
+            payload.get("anonymous_user_id"),
+            "SpaceShared 状态下 distinct_id 不再等同 anonymous_user_id"
+        );
+        // schema doc §10.1：flat 字段保留——dashboard 仍可按设备级 anonymous 切片。
+        assert_eq!(
+            payload.get("anonymous_user_id").and_then(Value::as_str),
+            Some(anon.to_string().as_str()),
+            "anonymous_user_id flat 字段必须保留"
+        );
+    }
+
+    /// PR 1 红线：analytics_person_id 字段本身**不**进 wire，
+    /// 即使在 SpaceShared 状态下也不应出现在 payload 顶层。
+    #[test]
+    fn payload_does_not_carry_analytics_person_id_field() {
+        let ctx = sample_ctx();
+        let payload = build_event_payload(&Event::AppFirstOpen, &ctx);
+
+        assert!(
+            !payload.contains_key("analytics_person_id"),
+            "analytics_person_id 是 sink 派生 distinct_id 的输入，不应出现在 wire payload"
+        );
     }
 }

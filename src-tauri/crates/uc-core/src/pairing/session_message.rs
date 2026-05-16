@@ -20,6 +20,8 @@
 //! [`PairingSessionPort`]: crate::ports::pairing::PairingSessionPort
 //! [`PairingEventPort`]: crate::ports::pairing::PairingEventPort
 
+use uuid::Uuid;
+
 use super::invitation::InvitationCode;
 use crate::ids::{DeviceId, SpaceId};
 use crate::ports::pairing::PairingSessionId;
@@ -107,6 +109,18 @@ pub struct SponsorConfirm {
     ///
     /// [`PeerAddressRepositoryPort`]: crate::ports::PeerAddressRepositoryPort
     pub transport_address_blob: Vec<u8>,
+    /// Sponsor 派发给 joiner 的 telemetry person 标识（Phase 098）。
+    ///
+    /// Sponsor 在 setup 完成时已生成本机的 `space_person_id` 并落盘；将其
+    /// 通过 pairing 加密通道传给 joiner，joiner 持久化后用同一 ID 上报
+    /// telemetry，实现"同 Space 多设备聚合为同一 person"。
+    ///
+    /// `None` 表示 sponsor 端尚未持久化 `space_person_id`（v1 老 sponsor
+    /// 与 v2 joiner 互操作场景）。joiner 端在收到 `None` 时退回 Solo 状态，
+    /// 等待下次有新设备 pairing 时再统一切换。
+    ///
+    /// 不携带 PII；仅在 telemetry 隐私边界内使用。
+    pub sponsor_space_person_id: Option<Uuid>,
 }
 
 /// Either side → other. Terminal message with a structured reason so the

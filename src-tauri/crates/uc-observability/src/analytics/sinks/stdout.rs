@@ -25,12 +25,12 @@
 
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use serde_json::Value;
+use serde_json::{Map, Value};
 use tracing::{debug, warn};
 
 use super::super::context::global_event_context;
 use super::super::events::Event;
-use super::super::port::AnalyticsPort;
+use super::super::port::{AnalyticsPort, GroupIdentifyPayload, IdentifyPayload};
 use super::build_event_payload;
 
 /// 与 `RUST_LOG` 过滤器对齐的 tracing target。统一常量便于跨 sink 复用。
@@ -79,6 +79,82 @@ impl AnalyticsPort for StdoutSink {
             ),
         }
     }
+
+    fn identify(&self, payload: IdentifyPayload) {
+        // dev 路径下 $identify 同样镜像到 tracing::debug，方便核对身份切换时序。
+        // 与 capture 不同，identify 不需要 EventContext —— 字段全部由 payload
+        // 自带，缺 context 也不影响 wire 形态。
+        let body = build_stdout_identify_payload(&payload);
+        match serde_json::to_string(&Value::Object(body)) {
+            Ok(line) => debug!(target: TRACE_TARGET, "{line}"),
+            Err(err) => warn!(
+                target: TRACE_TARGET,
+                event = "$identify",
+                error = %err,
+                "serialize $identify event failed"
+            ),
+        }
+    }
+
+    fn group_identify(&self, payload: GroupIdentifyPayload) {
+        let mut props = Map::new();
+        props.insert(
+            "$group_type".into(),
+            Value::String(payload.group_type.clone()),
+        );
+        props.insert(
+            "$group_key".into(),
+            Value::String(payload.group_key.clone()),
+        );
+        props.insert("$group_set".into(), Value::Object(payload.set.clone()));
+
+        let mut out = Map::new();
+        out.insert("event".into(), Value::String("$groupidentify".into()));
+        // distinct_id 取当前 ctx；缺失则用占位空串（dev 镜像，不发 HTTP）。
+        let distinct_id = global_event_context()
+            .map(|c| c.analytics_person_id.as_uuid().to_string())
+            .unwrap_or_default();
+        out.insert("distinct_id".into(), Value::String(distinct_id));
+        out.insert("properties".into(), Value::Object(props));
+
+        match serde_json::to_string(&Value::Object(out)) {
+            Ok(line) => debug!(target: TRACE_TARGET, "{line}"),
+            Err(err) => warn!(
+                target: TRACE_TARGET,
+                event = "$groupidentify",
+                error = %err,
+                "serialize $groupidentify event failed"
+            ),
+        }
+    }
+}
+
+/// 把 [`IdentifyPayload`] 翻译成 stdout sink 用的可读 JSON。
+///
+/// 与 PosthogSink 的 `build_identify_capture_body` 同形态（顶层 `event` /
+/// `distinct_id`，properties 内 `$anon_distinct_id` / `$set` / `$set_once`），
+/// 便于 dev 时 stdout 输出与 release 上报形态对齐。
+fn build_stdout_identify_payload(payload: &IdentifyPayload) -> Map<String, Value> {
+    let mut props = Map::new();
+    props.insert(
+        "$anon_distinct_id".into(),
+        Value::String(payload.old_distinct_id.to_string()),
+    );
+    if !payload.set.is_empty() {
+        props.insert("$set".into(), Value::Object(payload.set.clone()));
+    }
+    if !payload.set_once.is_empty() {
+        props.insert("$set_once".into(), Value::Object(payload.set_once.clone()));
+    }
+
+    let mut out = Map::new();
+    out.insert("event".into(), Value::String("$identify".into()));
+    out.insert(
+        "distinct_id".into(),
+        Value::String(payload.new_distinct_id.to_string()),
+    );
+    out.insert("properties".into(), Value::Object(props));
+    out
 }
 
 #[cfg(test)]
@@ -91,7 +167,7 @@ mod tests {
 
     use super::super::super::context::{
         build_event_context, clear_global_event_context, lock_global_event_context_for_tests,
-        set_global_event_context, AppChannel, EventContextInputs, InstallSource,
+        set_global_event_context, AnalyticsPersonId, AppChannel, EventContextInputs, InstallSource,
     };
     use super::super::super::events::{
         Direction, Event, PayloadSizeBucket, PayloadType, SyncEventProps, TransportType,
@@ -137,6 +213,7 @@ mod tests {
             is_first_run: true,
             active_device_count: 2,
             space_id_hash: Some("0123456789abcdef".into()),
+            analytics_person_id: AnalyticsPersonId::Solo(anon),
         });
         set_global_event_context(Arc::new(ctx));
     }
@@ -229,5 +306,31 @@ mod tests {
 
         // —— 收尾：恢复全局状态，避免污染其它测试 ——
         clear_global_event_context();
+    }
+
+    /// PR 3：StdoutSink 的 identify 输出形态必须与 PostHog wire 对齐
+    /// （顶层 `event=$identify` + `distinct_id`，properties 内 `$anon_distinct_id`），
+    /// 这样 dev 时 `tail -F | jq` 看到的就是 release 真实上报的样子。
+    #[test]
+    fn stdout_sink_identify_emits_alias_event() {
+        // identify 不依赖 EventContext，所以不需要 lock_global_event_context_for_tests。
+        let sink = StdoutSink::new();
+        let old = Uuid::parse_str("018f0000-0000-7000-8000-000000000001").unwrap();
+        let new = Uuid::parse_str("018f0000-0000-7000-8000-00000000000a").unwrap();
+
+        let captured = with_capture(|| sink.identify(IdentifyPayload::switch_only(old, new)));
+
+        assert!(
+            captured.contains("\"event\":\"$identify\""),
+            "应输出 $identify 事件名：\n{captured}"
+        );
+        assert!(
+            captured.contains(&format!("\"distinct_id\":\"{}\"", new)),
+            "顶层 distinct_id 必须是 new_distinct_id：\n{captured}"
+        );
+        assert!(
+            captured.contains(&format!("\"$anon_distinct_id\":\"{}\"", old)),
+            "$anon_distinct_id 必须出现在 properties（PostHog spec）：\n{captured}"
+        );
     }
 }

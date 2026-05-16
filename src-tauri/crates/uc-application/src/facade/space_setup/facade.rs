@@ -31,6 +31,7 @@ use uc_core::ports::{
     SetupStatusPort,
 };
 use uc_core::setup::SetupStatus;
+use uc_observability::analytics::{AnalyticsIdentityPort, AnalyticsPort, IdentifyPayload};
 
 use crate::facade::space_setup::commands::{
     CurrentInvitation, InitializeSpaceCommand, InitializeSpaceInput, InitializeSpaceResult,
@@ -123,6 +124,11 @@ pub struct SpaceSetupFacade {
     /// `list_paired_peer_device_ids` can self-filter without grabbing the
     /// `DeviceIdentityPort` lock on every call.
     local_device_id: DeviceId,
+    /// Phase 098 / PR 8 · `reset_telemetry_identity` thin method 用的两个 port。
+    /// Use case 已经持有它们；这里再各 clone 一份 Arc，让 facade 顶层方法
+    /// 不需要绕过 use case 层（reset 是横切操作，没有专属 use case 适合裹）。
+    analytics: Arc<dyn AnalyticsPort>,
+    analytics_identity: Arc<dyn AnalyticsIdentityPort>,
 }
 
 impl SpaceSetupFacade {
@@ -151,6 +157,7 @@ impl SpaceSetupFacade {
             blob_migration_repo,
             blob_cipher,
             analytics,
+            analytics_identity,
         } = deps;
 
         // Stash handles for `try_resume_session` before the originals
@@ -180,6 +187,7 @@ impl SpaceSetupFacade {
             Arc::clone(&settings),
             Arc::clone(&clock),
             Arc::clone(&analytics),
+            Arc::clone(&analytics_identity),
         ));
         let unlock_space = Arc::new(UnlockSpaceUseCase::new(
             Arc::clone(&space_access),
@@ -239,6 +247,7 @@ impl SpaceSetupFacade {
             Arc::clone(&device_identity),
             Arc::clone(&settings),
             Arc::clone(&setup_status),
+            Arc::clone(&analytics_identity),
             handshake_ttl,
         );
         // Capacity 16 is more than enough: the outcome fires at most
@@ -289,7 +298,12 @@ impl SpaceSetupFacade {
             Arc::clone(&trust_peer_uc),
             Arc::clone(&peer_addr_repo),
             Arc::clone(&clock),
+            Arc::clone(&analytics),
+            Arc::clone(&analytics_identity),
         ));
+        // Phase 098 / PR 8 · facade-local handles for `reset_telemetry_identity`。
+        let analytics_for_facade = Arc::clone(&analytics);
+        let analytics_identity_for_facade = Arc::clone(&analytics_identity);
         let redeem_pairing_invitation = Arc::new(RedeemPairingInvitationUseCase::new(
             joiner_handshake,
             admit_member_uc,
@@ -298,6 +312,7 @@ impl SpaceSetupFacade {
             peer_addr_repo,
             clock,
             analytics,
+            analytics_identity,
         ));
 
         Self {
@@ -318,7 +333,38 @@ impl SpaceSetupFacade {
             peer_addr_repo: peer_addr_repo_for_facade,
             presence: presence_for_facade,
             local_device_id: local_device_id_for_facade,
+            analytics: analytics_for_facade,
+            analytics_identity: analytics_identity_for_facade,
         }
+    }
+
+    /// Phase 098 / PR 8 · 用户重置 telemetry 身份。
+    ///
+    /// 步骤：
+    /// 1. 调 [`AnalyticsIdentityPort::reset_telemetry_identity`]：清
+    ///    `space_person_id`、重新生成 `anonymous_user_id` 与
+    ///    `analytics_device_id`、重建全局 EventContext。
+    /// 2. 发 `$identify` 把旧 distinct_id 名下的近期事件归并到新 anonymous。
+    ///
+    /// 失败语义：reset 失败时不发 identify，把错误返回给调用方让 UI 提示
+    /// 重试；reset 成功后即使 identify 网络失败也算流程完成（fire-and-forget，
+    /// task_plan §开放问题 3 决策 A）。
+    ///
+    /// schema doc §3.3：本机 reset 不影响其他设备——其他设备仍持有原
+    /// `space_person_id`，Space 维度的 person 不消失，只是本机被切回 Solo。
+    #[instrument(skip(self))]
+    pub fn reset_telemetry_identity(
+        &self,
+    ) -> Result<(), crate::facade::space_setup::ResetTelemetryError> {
+        let outcome = self
+            .analytics_identity
+            .reset_telemetry_identity()
+            .map_err(|e| crate::facade::space_setup::ResetTelemetryError::Storage(e.to_string()))?;
+        self.analytics.identify(IdentifyPayload::switch_only(
+            outcome.previous_distinct_id,
+            outcome.new_distinct_id,
+        ));
+        Ok(())
     }
 
     /// Try to restore the in-memory space session silently, using the
@@ -1375,6 +1421,7 @@ mod tests {
             blob_migration_repo: Arc::new(FakeBlobMigrationRepo),
             blob_cipher: Arc::new(FakeBlobCipher),
             analytics: Arc::new(uc_observability::analytics::NoopAnalyticsSink),
+            analytics_identity: Arc::new(uc_observability::analytics::NoopAnalyticsIdentity),
         });
         (facade, pairing_invitation, peer_addr_repo)
     }

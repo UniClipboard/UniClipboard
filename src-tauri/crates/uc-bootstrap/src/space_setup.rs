@@ -368,6 +368,9 @@ pub async fn build_space_setup_assembly(
         // Slice 8b · joiner 端 pairing 三事件埋点 sink。从 AppDeps 横切字段
         // (Slice 8a 已注入)透传;sink 装一次永不替换,gate 由 wrapper 守卫。
         analytics: Arc::clone(&deps.analytics),
+        // Phase 098 · v2 跨设备 person 聚合：A1/A2 use case 通过这个 port 切换
+        // distinct_id 来源（持久化 space_person_id + 重建全局 EventContext）。
+        analytics_identity: Arc::clone(&wired.analytics_identity),
     }));
 
     // Slice 2 Phase 1 · T9:roster 门面和 space_setup facade 共享同一组

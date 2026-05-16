@@ -17,6 +17,7 @@ import {
 import { Progress } from '@/components/ui/progress'
 import { toast } from '@/components/ui/toast'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
+import { PackageManagerUpdateDialog } from '@/components/update/PackageManagerUpdateDialog'
 import { ReleaseNotes } from '@/components/update/ReleaseNotes'
 import { useSetting } from '@/hooks/useSetting'
 import { useUpdate } from '@/hooks/useUpdate'
@@ -154,9 +155,18 @@ const Sidebar: React.FC<SidebarProps> = ({ className }) => {
   const navigate = useNavigate()
   const { setting } = useSetting()
   const [updateDialogOpen, setUpdateDialogOpen] = useState(false)
+  const [packageManagerDialogOpen, setPackageManagerDialogOpen] = useState(false)
   const [feedbackOpen, setFeedbackOpen] = useState(false)
   const [cancelling, setCancelling] = useState(false)
-  const { state, isCheckingUpdate, installUpdate, downloadUpdate, cancelDownload } = useUpdate()
+  const {
+    state,
+    isCheckingUpdate,
+    installUpdate,
+    downloadUpdate,
+    cancelDownload,
+    installKind,
+    isSystemManaged,
+  } = useUpdate()
   const phase = state.phase
 
   const isDownloading = phase === 'downloading'
@@ -273,7 +283,15 @@ const Sidebar: React.FC<SidebarProps> = ({ className }) => {
                     data-update-state={phase}
                     data-tauri-drag-region="false"
                     className="relative group"
-                    onClick={() => setUpdateDialogOpen(true)}
+                    onClick={() => {
+                      // deb/rpm: in-app update is not possible, jump straight
+                      // to the package-manager command dialog.
+                      if (isSystemManaged) {
+                        setPackageManagerDialogOpen(true)
+                      } else {
+                        setUpdateDialogOpen(true)
+                      }
+                    }}
                     disabled={isCheckingUpdate}
                   >
                     <div
@@ -452,6 +470,14 @@ const Sidebar: React.FC<SidebarProps> = ({ className }) => {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      {installKind && (
+        <PackageManagerUpdateDialog
+          open={packageManagerDialogOpen}
+          onOpenChange={setPackageManagerDialogOpen}
+          installKind={installKind}
+          updateInfo={state.info}
+        />
+      )}
     </>
   )
 }

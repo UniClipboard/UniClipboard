@@ -622,6 +622,100 @@ pub async fn install_update(
     .await
 }
 
+/// Installation provenance of the running binary.
+///
+/// Used by the frontend to short-circuit in-app update when the user is on a
+/// system-packaged Linux build: Tauri's Linux updater only supports
+/// AppImage, so deb/rpm users must be routed to their package manager.
+#[derive(Debug, Clone, Copy, Serialize, specta::Type, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum InstallKind {
+    Macos,
+    Windows,
+    AppImage,
+    Deb,
+    Rpm,
+    Unknown,
+}
+
+/// Detect how the current binary was installed.
+///
+/// Cached after the first call. On Linux the detection asks dpkg/rpm whether
+/// `current_exe()` is in their package DB — that way users on a mixed system
+/// (e.g. apt + rpm side-by-side) get the right answer rather than a guess
+/// based on `/etc/*-release`.
+#[tauri::command]
+#[specta::specta]
+pub async fn get_install_kind(_trace: Option<TraceMetadata>) -> Result<InstallKind, String> {
+    let _ = _trace;
+    tokio::task::spawn_blocking(detect_install_kind)
+        .await
+        .map_err(|e| format!("install kind detection task panicked: {}", e))
+}
+
+#[cfg(target_os = "macos")]
+fn detect_install_kind() -> InstallKind {
+    InstallKind::Macos
+}
+
+#[cfg(target_os = "windows")]
+fn detect_install_kind() -> InstallKind {
+    InstallKind::Windows
+}
+
+#[cfg(target_os = "linux")]
+fn detect_install_kind() -> InstallKind {
+    use std::sync::OnceLock;
+    static CACHE: OnceLock<InstallKind> = OnceLock::new();
+    *CACHE.get_or_init(detect_install_kind_linux)
+}
+
+#[cfg(target_os = "linux")]
+fn detect_install_kind_linux() -> InstallKind {
+    // AppImage runtime exports the absolute AppImage path here. Trust it
+    // over any path-based heuristic — the AppImage may be living anywhere.
+    if std::env::var_os("APPIMAGE").is_some() {
+        return InstallKind::AppImage;
+    }
+
+    let Ok(exe) = std::env::current_exe() else {
+        return InstallKind::Unknown;
+    };
+
+    // Skip the shell-out for dev builds running out of `target/` — they
+    // never belong to a package DB.
+    let exe_str = exe.to_string_lossy();
+    let is_system_prefix = exe_str.starts_with("/usr/")
+        || exe_str.starts_with("/opt/")
+        || exe_str.starts_with("/bin/")
+        || exe_str.starts_with("/sbin/");
+    if !is_system_prefix {
+        return InstallKind::Unknown;
+    }
+
+    if std::process::Command::new("dpkg-query")
+        .arg("-S")
+        .arg(&exe)
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false)
+    {
+        return InstallKind::Deb;
+    }
+
+    if std::process::Command::new("rpm")
+        .arg("-qf")
+        .arg(&exe)
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false)
+    {
+        return InstallKind::Rpm;
+    }
+
+    InstallKind::Unknown
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -707,6 +801,23 @@ mod tests {
         assert_eq!(snap.downloaded, 0);
         assert!(snap.total.is_none());
         assert!(snap.version.is_none());
+    }
+
+    #[test]
+    fn install_kind_wire_format_matches_frontend_union() {
+        // The TS side has `type InstallKind = "macos" | "windows" | "appimage"
+        // | "deb" | "rpm" | "unknown"`. Changing serde rename_all here will
+        // silently desync the package-manager dialog routing.
+        for (variant, expected) in [
+            (InstallKind::Macos, r#""macos""#),
+            (InstallKind::Windows, r#""windows""#),
+            (InstallKind::AppImage, r#""appimage""#),
+            (InstallKind::Deb, r#""deb""#),
+            (InstallKind::Rpm, r#""rpm""#),
+            (InstallKind::Unknown, r#""unknown""#),
+        ] {
+            assert_eq!(serde_json::to_string(&variant).unwrap(), expected);
+        }
     }
 
     #[test]

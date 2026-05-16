@@ -64,6 +64,7 @@ pub fn build() -> Builder<tauri::Wry> {
             crate::commands::updater::cancel_download,
             crate::commands::updater::get_download_progress,
             crate::commands::updater::install_update,
+            crate::commands::updater::get_install_kind,
             // ── storage ─────────────────────────────────────────────────────────
             crate::commands::storage::open_data_directory,
             // ── clipboard delivery view (entry detail "源 + 同步状态") ──────────

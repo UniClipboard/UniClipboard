@@ -5,10 +5,12 @@ import {
   checkForUpdate,
   downloadUpdate as apiDownloadUpdate,
   getDownloadProgress,
+  getInstallKind,
   installUpdate as apiInstallUpdate,
   subscribeUpdateProgress,
   type DownloadEvent,
   type DownloadProgress,
+  type InstallKind,
   type UpdateMetadata,
 } from '@/api/updater'
 import { toast } from '@/components/ui/toast'
@@ -35,6 +37,8 @@ export const UpdateProvider: React.FC<UpdateProviderProps> = ({ children }) => {
   const { setting } = useSetting()
   const [state, setState] = useState<UpdateState>(initialState)
   const [isCheckingUpdate, setIsCheckingUpdate] = useState(false)
+  const [installKind, setInstallKind] = useState<InstallKind | null>(null)
+  const isSystemManaged = installKind === 'deb' || installKind === 'rpm'
 
   const activeCheckRef = useRef<Promise<UpdateMetadata | null> | null>(null)
   const activeCheckChannelRef = useRef<UpdateChannel | null>(null)
@@ -213,6 +217,23 @@ export const UpdateProvider: React.FC<UpdateProviderProps> = ({ children }) => {
     }
   }, [])
 
+  // Mount-time: probe install kind so deb/rpm users get routed to the
+  // package manager dialog instead of the in-app updater. One-shot — the
+  // backend caches the answer.
+  useEffect(() => {
+    let cancelled = false
+    getInstallKind()
+      .then(kind => {
+        if (!cancelled) setInstallKind(kind)
+      })
+      .catch(err => {
+        if (!cancelled) log.error({ err }, '获取安装类型失败')
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
   // Mount-time: sync backend snapshot, then attach broadcast listener.
   useEffect(() => {
     let cancelled = false
@@ -286,9 +307,14 @@ export const UpdateProvider: React.FC<UpdateProviderProps> = ({ children }) => {
   // Background auto-download: whenever state is `available` and the
   // setting is on, kick off a silent download. Tracks attempted versions
   // to avoid retry loops if download fails.
+  //
+  // Skipped on deb/rpm — Tauri's updater payload can't be installed by the
+  // in-app flow there, so downloading it would just waste bandwidth before
+  // the package-manager dialog kicks in.
   useEffect(() => {
     if (!setting?.general?.autoDownloadUpdate) return
     if (!setting?.general?.autoCheckUpdate) return
+    if (isSystemManaged) return
     if (state.phase !== 'available') return
     if (!state.info) return
     if (autoDownloadAttempted.current.has(state.info.version)) return
@@ -300,6 +326,7 @@ export const UpdateProvider: React.FC<UpdateProviderProps> = ({ children }) => {
   }, [
     setting?.general?.autoDownloadUpdate,
     setting?.general?.autoCheckUpdate,
+    isSystemManaged,
     state.phase,
     state.info,
     doDownloadUpdate,
@@ -324,6 +351,8 @@ export const UpdateProvider: React.FC<UpdateProviderProps> = ({ children }) => {
       downloadUpdate: doDownloadUpdate,
       cancelDownload: doCancelDownload,
       installUpdate: doInstallUpdate,
+      installKind,
+      isSystemManaged,
     }),
     [
       state,
@@ -333,6 +362,8 @@ export const UpdateProvider: React.FC<UpdateProviderProps> = ({ children }) => {
       doDownloadUpdate,
       doCancelDownload,
       doInstallUpdate,
+      installKind,
+      isSystemManaged,
     ]
   )
 

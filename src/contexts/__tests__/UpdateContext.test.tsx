@@ -24,6 +24,7 @@ vi.mock('@/api/updater', () => ({
     total: null,
     version: null,
   }),
+  getInstallKind: vi.fn().mockResolvedValue('macos'),
   subscribeUpdateProgress: vi.fn(),
 }))
 

@@ -24,6 +24,7 @@ import {
 } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { toast } from '@/components/ui/toast'
+import { PackageManagerUpdateDialog } from '@/components/update/PackageManagerUpdateDialog'
 import { ReleaseNotes } from '@/components/update/ReleaseNotes'
 import { useSetting } from '@/hooks/useSetting'
 import { useShortcutLayer } from '@/hooks/useShortcutLayer'
@@ -62,8 +63,15 @@ function normalizeUpdateChannel(value: string): UpdateChannel | null {
 const AboutSection: React.FC = () => {
   const { t } = useTranslation()
   const { setting, loading: settingLoading, updateGeneralSetting } = useSetting()
-  const { updateInfo, isCheckingUpdate, checkForUpdates, installUpdate, downloadProgress } =
-    useUpdate()
+  const {
+    updateInfo,
+    isCheckingUpdate,
+    checkForUpdates,
+    installUpdate,
+    downloadProgress,
+    installKind,
+    isSystemManaged,
+  } = useUpdate()
   const [appVersion, setAppVersion] = useState<string>('')
   const [autoCheckUpdate, setAutoCheckUpdate] = useState(setting?.general.autoCheckUpdate ?? true)
   const [autoDownloadUpdate, setAutoDownloadUpdate] = useState(
@@ -72,6 +80,7 @@ const AboutSection: React.FC = () => {
   const [updateChannel, setUpdateChannel] = useState<UpdateChannel | null>(null)
   const [pendingUpdateChannel, setPendingUpdateChannel] = useState<UpdateChannel | null>(null)
   const [updateDialogOpen, setUpdateDialogOpen] = useState(false)
+  const [packageManagerDialogOpen, setPackageManagerDialogOpen] = useState(false)
   const [alphaWarningOpen, setAlphaWarningOpen] = useState(false)
   const [saving, setSaving] = useState(false)
   const isInstallingUpdate =
@@ -183,10 +192,16 @@ const AboutSection: React.FC = () => {
   const handleCheckUpdate = async () => {
     try {
       const update = await checkForUpdates()
-      if (update) {
-        setUpdateDialogOpen(true)
-      } else {
+      if (!update) {
         toast.success(t('update.noUpdate'))
+        return
+      }
+      // deb/rpm: Tauri's in-app updater can't install system packages; route
+      // the user to apt/dnf with a copy-able command instead.
+      if (isSystemManaged) {
+        setPackageManagerDialogOpen(true)
+      } else {
+        setUpdateDialogOpen(true)
       }
     } catch (error) {
       log.error({ err: error }, '检查更新失败')
@@ -407,6 +422,15 @@ const AboutSection: React.FC = () => {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {installKind && (
+        <PackageManagerUpdateDialog
+          open={packageManagerDialogOpen}
+          onOpenChange={setPackageManagerDialogOpen}
+          installKind={installKind}
+          updateInfo={updateInfo}
+        />
+      )}
 
       <AlertDialog open={alphaWarningOpen} onOpenChange={handleAlphaWarningOpenChange}>
         <AlertDialogContent>

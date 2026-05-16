@@ -140,6 +140,8 @@ function renderAboutSection({
           cancelDownload: vi.fn().mockResolvedValue(undefined),
           installUpdate: vi.fn(),
           downloadProgress: { downloaded: 0, total: null, phase: 'idle' as const },
+          installKind: 'macos',
+          isSystemManaged: false,
         }}
       >
         <AboutSection />

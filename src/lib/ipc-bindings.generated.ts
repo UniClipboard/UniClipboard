@@ -196,6 +196,18 @@ export const commands = {
 	timestamp: number,
 } | null) => typedError<null, string>(__TAURI_INVOKE("install_update", { onEvent, trace })),
 	/**
+	 *  Detect how the current binary was installed.
+	 * 
+	 *  Cached after the first call. On Linux the detection asks dpkg/rpm whether
+	 *  `current_exe()` is in their package DB — that way users on a mixed system
+	 *  (e.g. apt + rpm side-by-side) get the right answer rather than a guess
+	 *  based on `/etc/*-release`.
+	 */
+	getInstallKind: (trace: {
+	trace_id: string,
+	timestamp: number,
+} | null) => typedError<InstallKind, string>(__TAURI_INVOKE("get_install_kind", { trace })),
+	/**
 	 *  Open the application data directory in the system file manager.
 	 *  在系统文件管理器中打开应用数据目录。
 	 */
@@ -525,6 +537,15 @@ export type FactoryResetCommandError =
  *  (比如下一步推荐操作的提示),而不必改 wire 形状。
  */
 export type FactoryResetResult = Record<string, never>;
+
+/**
+ *  Installation provenance of the running binary.
+ * 
+ *  Used by the frontend to short-circuit in-app update when the user is on a
+ *  system-packaged Linux build: Tauri's Linux updater only supports
+ *  AppImage, so deb/rpm users must be routed to their package manager.
+ */
+export type InstallKind = "macos" | "windows" | "appimage" | "deb" | "rpm" | "unknown";
 
 /**  `list_mobile_lan_interfaces` 单条结果。 */
 export type LanInterfaceView = {

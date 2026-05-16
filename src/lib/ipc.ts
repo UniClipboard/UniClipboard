@@ -215,6 +215,7 @@ export type {
   DownloadProgressSnapshot,
   FactoryResetCommandError,
   FactoryResetResult,
+  InstallKind,
   LanInterfaceView,
   MobileDeviceView,
   MobileSyncError,

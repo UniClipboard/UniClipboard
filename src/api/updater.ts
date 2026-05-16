@@ -4,6 +4,7 @@ import { commands } from '@/lib/ipc'
 import type {
   DownloadEvent as GeneratedDownloadEvent,
   DownloadProgressSnapshot as GeneratedDownloadProgressSnapshot,
+  InstallKind as GeneratedInstallKind,
   UpdateMetadata as GeneratedUpdateMetadata,
 } from '@/lib/ipc'
 import { createLogger } from '@/lib/logger'
@@ -23,6 +24,7 @@ export const UPDATE_PROGRESS_EVENT = 'update-download-progress'
 export type UpdateMetadata = GeneratedUpdateMetadata
 export type DownloadEvent = GeneratedDownloadEvent
 export type DownloadProgressSnapshot = GeneratedDownloadProgressSnapshot
+export type InstallKind = GeneratedInstallKind
 
 export type DownloadPhase = 'idle' | 'available' | 'downloading' | 'ready' | 'installing'
 
@@ -136,6 +138,22 @@ export async function installUpdate(
     await commands.installUpdate(onEvent)
   } catch (error) {
     log.error({ err: error }, '安装更新失败')
+    throw error
+  }
+}
+
+/**
+ * Probe how the current binary was installed. Cached on the backend after the
+ * first call, so it's safe to invoke unconditionally on mount.
+ *
+ * Used to route Linux deb/rpm users to their system package manager instead
+ * of the in-app updater (which Tauri only supports for AppImage on Linux).
+ */
+export async function getInstallKind(): Promise<InstallKind> {
+  try {
+    return await commands.getInstallKind()
+  } catch (error) {
+    log.error({ err: error }, '获取安装类型失败')
     throw error
   }
 }

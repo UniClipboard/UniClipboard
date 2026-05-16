@@ -1,5 +1,5 @@
 import { createContext } from 'react'
-import type { DownloadPhase, DownloadProgress, UpdateMetadata } from '@/api/updater'
+import type { DownloadPhase, DownloadProgress, InstallKind, UpdateMetadata } from '@/api/updater'
 import type { UpdateChannel } from '@/types/setting'
 
 /**
@@ -29,6 +29,18 @@ export interface UpdateContextType {
   updateInfo: UpdateMetadata | null
   /** Convenience flat view of `state.{phase, downloaded, total}`. */
   downloadProgress: DownloadProgress
+  /**
+   * How the running binary was installed. `null` while detection is in
+   * flight (mount race) — treat as "unknown / let the in-app flow run".
+   * For `deb`/`rpm`, callers must route the user to the system package
+   * manager instead of invoking download/install.
+   */
+  installKind: InstallKind | null
+  /**
+   * Convenience: `true` when the binary is owned by a system package
+   * manager (deb/rpm). In-app download & install must be suppressed.
+   */
+  isSystemManaged: boolean
 }
 
 export const UpdateContext = createContext<UpdateContextType | undefined>(undefined)

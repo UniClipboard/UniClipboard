@@ -39,7 +39,18 @@
     "installFailed": "更新失败，请稍后重试",
     "downloadFailed": "后台下载失败，请稍后重试",
     "downloading": "正在下载...",
-    "installing": "正在安装..."
+    "installing": "正在安装...",
+    "packageManager": {
+      "title": "请通过系统包管理器升级",
+      "debHint": "你当前通过 apt（Debian/Ubuntu）安装了 UniClipboard，请在终端执行以下命令升级：",
+      "rpmHint": "你当前通过 dnf/yum（Fedora/RHEL）安装了 UniClipboard，请在终端执行以下命令升级：",
+      "debCommand": "sudo apt update && sudo apt install --only-upgrade uniclipboard",
+      "rpmCommand": "sudo dnf upgrade uniclipboard",
+      "copyCommand": "复制命令",
+      "copied": "已复制",
+      "openReleasePage": "打开发布页",
+      "ok": "知道了"
+    }
   },
   "upgradeNotice": {
     "title": "请重新配对设备",

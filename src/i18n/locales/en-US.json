@@ -39,7 +39,18 @@
     "installFailed": "Update failed. Please try again.",
     "downloadFailed": "Background download failed. Please try again.",
     "downloading": "Downloading...",
-    "installing": "Installing..."
+    "installing": "Installing...",
+    "packageManager": {
+      "title": "Please upgrade via your package manager",
+      "debHint": "UniClipboard was installed via apt (Debian/Ubuntu). Run this in a terminal to upgrade:",
+      "rpmHint": "UniClipboard was installed via dnf/yum (Fedora/RHEL). Run this in a terminal to upgrade:",
+      "debCommand": "sudo apt update && sudo apt install --only-upgrade uniclipboard",
+      "rpmCommand": "sudo dnf upgrade uniclipboard",
+      "copyCommand": "Copy command",
+      "copied": "Copied",
+      "openReleasePage": "Open release page",
+      "ok": "Got it"
+    }
   },
   "upgradeNotice": {
     "title": "Re-pair your devices",

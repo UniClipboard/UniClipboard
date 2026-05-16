@@ -3,7 +3,7 @@ title: Settings & preferences
 description: Every section of the Settings panel — what each control does and when to touch it.
 ---
 
-The Settings panel groups options into seven sections (plus an
+The Settings panel groups options into eight sections (plus an
 "About"). They appear below in the same order as the sidebar — for
 each, what the control **does** and when you actually want to change
 it.
@@ -56,6 +56,29 @@ overridden, reset, or cleared individually.
 The recorder accepts a key combo directly; conflicts are flagged as
 you type. `Reset` returns to the default; `Clear` leaves the binding
 empty.
+
+## Quick Panel
+
+| Setting            | What it does                                                                                                                       |
+| ------------------ | ---------------------------------------------------------------------------------------------------------------------------------- |
+| Enable quick panel | Master switch. On → register the global hotkey and pre-create the panel window in the background. Off → unregister the hotkey now. |
+
+On by default — the [Quick Panel](./quick-panel) is the product's
+keyboard-first entry point. Turn it off if the hotkey clashes with
+another app you can't reconfigure, or if a policy in your environment
+doesn't allow background panel windows.
+
+Re-enabling is fully live: the hotkey is registered and the window is
+pre-created on toggle. **Disabling** is half-live — the hotkey stops
+firing immediately, but the already-created background window (and its
+WebContent process) stays resident until you restart the app. A banner
+above the toggle offers a one-click restart when you want those
+resources back.
+
+The hotkey itself lives under [Shortcuts → Global → Open Quick
+Panel](#shortcuts) and is mirrored inside this section so you can
+configure "enable + bind" in one place; both surfaces edit the same
+binding.
 
 ## Sync
 

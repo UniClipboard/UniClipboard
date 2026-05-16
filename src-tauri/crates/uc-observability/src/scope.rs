@@ -120,6 +120,12 @@ fn detect_role() -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Mutex;
+
+    // Serialises tests that mutate UC_HOST_ROLE. cargo test runs tests in
+    // parallel by default, and env vars are process-global — without this
+    // lock the two tests below race and one observes the other's value.
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
 
     #[test]
     fn resolve_uses_supplied_device_id_and_version() {
@@ -131,8 +137,7 @@ mod tests {
 
     #[test]
     fn role_env_override_is_honored() {
-        // SAFETY: the test serializes via the explicit role to avoid racing
-        // with parallel tests reading current_exe.
+        let _guard = ENV_LOCK.lock().unwrap();
         std::env::set_var("UC_HOST_ROLE", "daemon");
         let ctx = ScopeContext::resolve(None, "0.0.0");
         assert_eq!(ctx.device_role, "daemon");
@@ -141,6 +146,7 @@ mod tests {
 
     #[test]
     fn unknown_env_role_falls_back_to_unknown() {
+        let _guard = ENV_LOCK.lock().unwrap();
         std::env::set_var("UC_HOST_ROLE", "bogus-value");
         let ctx = ScopeContext::resolve(None, "0.0.0");
         assert_eq!(ctx.device_role, "unknown");

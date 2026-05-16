@@ -433,7 +433,7 @@
           "label": "Enable quick panel",
           "description": "Registers a global shortcut and creates the quick panel window in the background. Disabling unregisters the shortcut immediately."
         },
-        "restartHint": "Global shortcut is now off. Restart the app to fully release the background processes."
+        "restartHint": "Quick panel is now off. Restart the app to fully release the background processes."
       },
       "about": {
         "title": "About",

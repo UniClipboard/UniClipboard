@@ -51,7 +51,7 @@ impl OutboundSyncPlanner {
         extracted_paths_count: usize,
     ) -> OutboundSyncPlan {
         // Guard: RemotePush is never re-synced outbound.
-        if origin == ClipboardChangeOrigin::RemotePush {
+        if origin.is_remote_push() {
             return OutboundSyncPlan {
                 clipboard: None,
                 files: vec![],

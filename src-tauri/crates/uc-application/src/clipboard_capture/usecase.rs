@@ -141,7 +141,17 @@ impl CaptureClipboardUseCase {
 
             let event_id = EventId::new();
             let captured_at_ms = snapshot.ts_ms;
-            let source_device = self.device_identity.current_device_id();
+            // `RemotePush { from_device: Some(_) }` 路径走的是 apply_inbound:
+            // 这次 capture 把对端推过来的 snapshot 落库,事件源就是对端,
+            // 否则 delivery view 会把这条远端推送进来的 entry 误识别为
+            // 本机产生,详情页显示"来自本机 + 等待同步"。
+            // 守卫路径(`from_device: None`)与本地路径一样,按本机 id 记录。
+            let source_device = match origin {
+                ClipboardChangeOrigin::RemotePush {
+                    from_device: Some(d),
+                } => d,
+                _ => self.device_identity.current_device_id(),
+            };
             let snapshot_hash = {
                 let _guard = info_span!(
                     "clipboard.snapshot_hash",
@@ -445,7 +455,7 @@ fn telemetry_capture_origin(origin: ClipboardChangeOrigin) -> Option<CaptureOrig
         ClipboardChangeOrigin::LocalRestore => Some(CaptureOrigin::ManualRestore),
         // 入站同步写本地剪贴板路径——必须过滤，否则 outbound capture
         // 与入站事件双计。
-        ClipboardChangeOrigin::RemotePush => None,
+        ClipboardChangeOrigin::RemotePush { .. } => None,
     }
 }
 

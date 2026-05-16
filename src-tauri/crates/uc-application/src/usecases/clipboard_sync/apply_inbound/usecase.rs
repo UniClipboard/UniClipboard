@@ -267,7 +267,7 @@ impl ApplyInboundClipboardUseCase {
         let snapshot_for_write = snapshot.clone();
         let entry_id = self
             .capture
-            .capture(receiver_entry_id.clone(), snapshot)
+            .capture(receiver_entry_id.clone(), input.from_device, snapshot)
             .await
             .map_err(|e| ApplyInboundError::Capture(e.to_string()))?
             .ok_or_else(|| {

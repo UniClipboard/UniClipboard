@@ -92,6 +92,7 @@ mockall::mock! {
         async fn capture(
             &self,
             preset_entry_id: EntryId,
+            from_device: DeviceId,
             snapshot: SystemClipboardSnapshot,
         ) -> Result<Option<EntryId>>;
     }
@@ -246,7 +247,7 @@ async fn applied_on_new_content() {
     capture
         .expect_capture()
         .times(1)
-        .returning(|_, _| Ok(Some(EntryId::from("entry-new"))));
+        .returning(|_, _, _| Ok(Some(EntryId::from("entry-new"))));
 
     let mut write = MockWrite::new();
     write.expect_write().times(1).returning(|_| Ok(()));
@@ -259,6 +260,35 @@ async fn applied_on_new_content() {
             entry_id: EntryId::from("entry-new")
         }
     );
+}
+
+/// 回归:apply_inbound 必须把 `input.from_device`(推送方)透传给
+/// `InboundCapture::capture` 的第二参数,持久化层才能把
+/// `ClipboardEvent.source_device` 写成对端 id —— 不然 delivery view 会
+/// 把远端推送进来的 entry 误识别为本机产生,详情页显示"来自本机 +
+/// 等待同步"(detail 顶部 EntryDeliveryBadge)。
+#[tokio::test]
+async fn from_device_is_forwarded_to_capture() {
+    let (input, _hash) = fixture_input("trace-source");
+    let expected_from_device = input.from_device.clone();
+
+    let mut repo = MockEntryRepo::new();
+    repo.expect_find_entry_id_by_snapshot_hash()
+        .times(1)
+        .returning(|_| Ok(None));
+
+    let mut capture = MockCapture::new();
+    capture
+        .expect_capture()
+        .withf(move |_preset, from_device, _snapshot| from_device == &expected_from_device)
+        .times(1)
+        .returning(|_, _, _| Ok(Some(EntryId::from("entry-remote"))));
+
+    let mut write = MockWrite::new();
+    write.expect_write().times(1).returning(|_| Ok(()));
+
+    let uc = build(repo, capture, write);
+    uc.execute(input).await.expect("forwarding path ok");
 }
 
 /// Verdict 2 — dedup hit: returns `DuplicateSkipped` and **does
@@ -305,7 +335,7 @@ async fn rapid_duplicate_skipped_even_when_repo_has_not_caught_up() {
     capture
         .expect_capture()
         .times(1)
-        .returning(|_, _| Ok(Some(EntryId::from("entry-first"))));
+        .returning(|_, _, _| Ok(Some(EntryId::from("entry-first"))));
 
     let mut write = MockWrite::new();
     write.expect_write().times(1).returning(|_| Ok(()));
@@ -383,7 +413,7 @@ async fn visible_duplicate_skipped_across_channel_representation_expansion() {
     capture
         .expect_capture()
         .times(1)
-        .returning(|_, _| Ok(Some(EntryId::from("entry-visible"))));
+        .returning(|_, _, _| Ok(Some(EntryId::from("entry-visible"))));
 
     let mut write = MockWrite::new();
     write.expect_write().times(1).returning(|_| Ok(()));
@@ -447,7 +477,7 @@ async fn visible_duplicate_window_expires() {
     capture
         .expect_capture()
         .times(2)
-        .returning(|_, _| Ok(Some(EntryId::new())));
+        .returning(|_, _, _| Ok(Some(EntryId::new())));
 
     let mut write = MockWrite::new();
     write.expect_write().times(2).returning(|_| Ok(()));
@@ -550,7 +580,10 @@ async fn capture_returning_none_maps_to_internal_error() {
         .returning(|_| Ok(None));
 
     let mut capture = MockCapture::new();
-    capture.expect_capture().times(1).returning(|_, _| Ok(None));
+    capture
+        .expect_capture()
+        .times(1)
+        .returning(|_, _, _| Ok(None));
 
     // Zero expectations on write.
     let write = MockWrite::new();
@@ -593,7 +626,7 @@ async fn write_failure_does_not_surface_after_capture_commits() {
     capture
         .expect_capture()
         .times(1)
-        .returning(|_, _| Ok(Some(EntryId::from("entry-committed"))));
+        .returning(|_, _, _| Ok(Some(EntryId::from("entry-committed"))));
 
     // Deterministic synchronization:让 mock 在被调用时 signal,test 主体
     // await 这个 signal,确保 `.times(1)` 期望在 mock Drop 之前一定满足,
@@ -707,9 +740,9 @@ async fn materializes_blob_refs_before_capture_and_write() {
     let mut capture = MockCapture::new();
     capture
         .expect_capture()
-        .withf(move |_preset_entry_id, snapshot| assert_local_file(snapshot))
+        .withf(move |_preset_entry_id, _from_device, snapshot| assert_local_file(snapshot))
         .times(1)
-        .returning(|_, _| Ok(Some(EntryId::from("entry-new"))));
+        .returning(|_, _, _| Ok(Some(EntryId::from("entry-new"))));
 
     let mut write = MockWrite::new();
     write
@@ -944,7 +977,7 @@ async fn happy_path_emits_incoming_pending_then_new_content() {
     capture
         .expect_capture()
         .times(1)
-        .returning(|preset, _| Ok(Some(preset)));
+        .returning(|preset, _, _| Ok(Some(preset)));
 
     let mut write = MockWrite::new();
     write.expect_write().times(1).returning(|_| Ok(()));

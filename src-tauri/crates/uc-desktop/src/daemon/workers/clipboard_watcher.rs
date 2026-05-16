@@ -136,7 +136,7 @@ impl ClipboardChangeHandler for DaemonClipboardChangeHandler {
         // 同一份内容出现两份。直接短路返回，与 LocalRestore 在功能效果上对称
         // （LocalRestore 在 usecase 内部短路，RemotePush 因 apply_inbound 也
         // 走同一 usecase 入口，必须在 watcher 层短路才不会破坏入站落库路径）。
-        if origin == ClipboardChangeOrigin::RemotePush {
+        if origin.is_remote_push() {
             debug!(
                 origin_guard_key = %origin_guard_key,
                 flow_id = %flow_id,
@@ -148,7 +148,7 @@ impl ClipboardChangeHandler for DaemonClipboardChangeHandler {
         // 3. Determine the origin string for the WS event payload.
         let origin_str = match origin {
             ClipboardChangeOrigin::LocalCapture | ClipboardChangeOrigin::LocalRestore => "local",
-            ClipboardChangeOrigin::RemotePush => "remote",
+            ClipboardChangeOrigin::RemotePush { .. } => "remote",
         };
 
         // 4. Clone snapshot before capture consumes it.

@@ -901,6 +901,7 @@ mod tests {
             async fn capture(
                 &self,
                 preset_entry_id: EntryId,
+                from_device: DeviceId,
                 snapshot: SystemClipboardSnapshot,
             ) -> AnyResult<Option<EntryId>>;
         }
@@ -935,7 +936,7 @@ mod tests {
         capture
             .expect_capture()
             .times(1)
-            .returning(move |_, _| Ok(Some(id_for_capture.clone())));
+            .returning(move |_, _, _| Ok(Some(id_for_capture.clone())));
 
         let mut write = MockWrite::new();
         write.expect_write().times(1).returning(|_| Ok(()));
@@ -990,7 +991,7 @@ mod tests {
         capture
             .expect_capture()
             .times(1)
-            .returning(move |_, _| Ok(Some(id_for_capture.clone())));
+            .returning(move |_, _, _| Ok(Some(id_for_capture.clone())));
 
         let mut write = MockWrite::new();
         write.expect_write().times(1).returning(|_| Ok(()));
@@ -1026,7 +1027,7 @@ mod tests {
         capture
             .expect_capture()
             .times(1)
-            .returning(move |_, _| Ok(Some(id_for_capture.clone())));
+            .returning(move |_, _, _| Ok(Some(id_for_capture.clone())));
         let mut write = MockWrite::new();
         write.expect_write().times(1).returning(|_| Ok(()));
 
@@ -1354,7 +1355,7 @@ mod tests {
         let mut capture = MockCapture::new();
         capture
             .expect_capture()
-            .withf(|_id, snapshot| {
+            .withf(|_id, _from_device, snapshot| {
                 let rep = snapshot
                     .representations
                     .iter()
@@ -1370,7 +1371,7 @@ mod tests {
                     && body == "file:///C:/Users/mark/AppData/Local/uc/mobile_inbound/abc/My%20Photo.png\n"
             })
             .times(1)
-            .returning(|_, _| Ok(Some(EntryId::from("entry-file-win"))));
+            .returning(|_, _, _| Ok(Some(EntryId::from("entry-file-win"))));
 
         let mut write = MockWrite::new();
         write.expect_write().times(1).returning(|_| Ok(()));
@@ -1516,7 +1517,7 @@ mod tests {
         capture
             .expect_capture()
             .times(1)
-            .returning(|_, _| Ok(Some(EntryId::from("entry-fanout-1"))));
+            .returning(|_, _, _| Ok(Some(EntryId::from("entry-fanout-1"))));
         let mut write = MockWrite::new();
         write.expect_write().times(1).returning(|_| Ok(()));
         let inbound =
@@ -1693,9 +1694,9 @@ mod tests {
         let mut capture = MockCapture::new();
         capture
             .expect_capture()
-            .withf(|_id, snapshot| snapshot.ts_ms == 1_700_000_000_000)
+            .withf(|_id, _from_device, snapshot| snapshot.ts_ms == 1_700_000_000_000)
             .times(1)
-            .returning(|_, _| Ok(Some(EntryId::from("entry-clock"))));
+            .returning(|_, _, _| Ok(Some(EntryId::from("entry-clock"))));
 
         let mut write = MockWrite::new();
         write.expect_write().times(1).returning(|_| Ok(()));
@@ -1739,7 +1740,7 @@ mod tests {
         capture
             .expect_capture()
             .times(1)
-            .returning(move |_, _| Ok(Some(id_for_capture.clone())));
+            .returning(move |_, _, _| Ok(Some(id_for_capture.clone())));
         let mut write = MockWrite::new();
         write.expect_write().times(1).returning(|_| Ok(()));
         let inbound =

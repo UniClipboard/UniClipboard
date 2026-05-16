@@ -81,7 +81,7 @@ impl ClipboardOutboundPort for ClipboardOutboundDispatcher {
         &self,
         input: ClipboardOutboundInput,
     ) -> Result<ClipboardOutboundOutcome, ClipboardOutboundError> {
-        if input.origin == ClipboardChangeOrigin::RemotePush {
+        if input.origin.is_remote_push() {
             return Ok(ClipboardOutboundOutcome::Skipped {
                 reason: "remote_push_echo".to_string(),
             });

@@ -7,7 +7,7 @@
 use anyhow::Result;
 use async_trait::async_trait;
 use uc_core::ids::EntryId;
-use uc_core::{ClipboardChangeOrigin, SystemClipboardSnapshot};
+use uc_core::{ClipboardChangeOrigin, DeviceId, SystemClipboardSnapshot};
 
 use crate::clipboard_capture::CaptureClipboardUseCase;
 use crate::clipboard_write::{ClipboardWriteCoordinator, ClipboardWriteIntent};
@@ -25,6 +25,9 @@ pub trait InboundCapture: Send + Sync {
     /// card on this id and let it be replaced by the real entry without a
     /// transfer_id → entry_id remap step.
     ///
+    /// `from_device` 是推送方 device id,落库时会写入 `ClipboardEvent.source_device`
+    /// 让上层视图(delivery view)正确识别来源为远端而非本机。
+    ///
     /// Returns `Ok(Some(entry_id))` on success, `Ok(None)` only in the
     /// legitimate "no supported representation" / `LocalRestore`
     /// short-circuit cases (which `RemotePush` never hits in practice —
@@ -32,6 +35,7 @@ pub trait InboundCapture: Send + Sync {
     async fn capture(
         &self,
         preset_entry_id: EntryId,
+        from_device: DeviceId,
         snapshot: SystemClipboardSnapshot,
     ) -> Result<Option<EntryId>>;
 }
@@ -41,11 +45,14 @@ impl InboundCapture for CaptureClipboardUseCase {
     async fn capture(
         &self,
         preset_entry_id: EntryId,
+        from_device: DeviceId,
         snapshot: SystemClipboardSnapshot,
     ) -> Result<Option<EntryId>> {
         self.execute_with_origin(
             snapshot,
-            ClipboardChangeOrigin::RemotePush,
+            ClipboardChangeOrigin::RemotePush {
+                from_device: Some(from_device),
+            },
             Some(preset_entry_id),
         )
         .await

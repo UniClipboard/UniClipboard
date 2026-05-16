@@ -52,7 +52,7 @@ use uc_core::ports::{
     PasswordHasherError, PasswordHasherPort, SettingsPort,
 };
 use uc_core::settings::model::Settings;
-use uc_core::{BlobId, SystemClipboardSnapshot};
+use uc_core::{BlobId, DeviceId, SystemClipboardSnapshot};
 
 /// 构造一份只装 1 台已登记设备的 [`MobileSyncFacade`], 凭据是
 /// `(username, password)`, PHC 形态固定为 `phc:{password}`。
@@ -354,7 +354,12 @@ impl BlobReaderPort for NoopBlobReader {
 struct NoopInboundCapture;
 #[async_trait]
 impl ApplyInboundCapture for NoopInboundCapture {
-    async fn capture(&self, _: EntryId, _: SystemClipboardSnapshot) -> AnyResult<Option<EntryId>> {
+    async fn capture(
+        &self,
+        _: EntryId,
+        _: DeviceId,
+        _: SystemClipboardSnapshot,
+    ) -> AnyResult<Option<EntryId>> {
         Err(anyhow!(
             "test_support: NoOp InboundCapture should not be reached"
         ))

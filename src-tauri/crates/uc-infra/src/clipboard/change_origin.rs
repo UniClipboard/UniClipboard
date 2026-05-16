@@ -125,7 +125,11 @@ impl ClipboardChangeOriginPort for InMemoryClipboardChangeOrigin {
         Self::remember_snapshot_origin(
             &mut state,
             snapshot_hash,
-            ClipboardChangeOrigin::RemotePush,
+            // 守卫路径只关心"这次回声属于远端推送"这个 tag,不关心对端 id;
+            // 用 `remote_push_anonymous` 显式表达,避免 `from_device` 字段
+            // 进入 dedup 比较(`s.origin == origin`)语义,导致同一 snapshot
+            // 因 from_device 不同被视为两条。
+            ClipboardChangeOrigin::remote_push_anonymous(),
             expires_at,
         );
     }

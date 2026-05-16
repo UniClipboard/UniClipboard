@@ -332,7 +332,10 @@ impl ClipboardWriteCoordinator {
                     // the re-encoded content, so we set a one-shot origin override: the NEXT clipboard
                     // change will be treated as RemotePush regardless of hash.
                     self.clipboard_change_origin
-                        .set_next_origin(ClipboardChangeOrigin::RemotePush, Duration::from_secs(60))
+                        .set_next_origin(
+                            ClipboardChangeOrigin::remote_push_anonymous(),
+                            Duration::from_secs(60),
+                        )
                         .await;
                 }
                 ClipboardWriteIntent::LocalCapture => {}

@@ -630,6 +630,7 @@ mod tests {
     use uc_core::ports::{EndpointInfoError, LanInterfaceProbeError, PasswordHasherError};
     use uc_core::settings::model::Settings;
     use uc_core::BlobId;
+    use uc_core::DeviceId;
 
     use crate::usecases::clipboard_sync::apply_inbound::{InboundCapture, InboundWrite};
     use uc_core::blob::ports::BlobReaderPort;
@@ -889,6 +890,7 @@ mod tests {
         async fn capture(
             &self,
             _: EntryId,
+            _: DeviceId,
             _: SystemClipboardSnapshot,
         ) -> AnyResult<Option<EntryId>> {
             unimplemented!()

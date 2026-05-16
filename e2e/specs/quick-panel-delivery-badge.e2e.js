@@ -9,13 +9,11 @@
 // 这至少证明真机链路 + DOM 契约 (clipboard-detail / delivery-summary)
 // 已经在代码中兑现.
 
-import { $, expect } from '@wdio/globals'
+import { waitForSetup } from '../helpers/waitForSetup.js'
 
 describe('quick-panel delivery badge card (MVP)', () => {
   it('setup 流程能走通进入主界面', async () => {
-    const createEntry = await $('[data-testid="setup-entry-create"]')
-    await createEntry.waitForDisplayed({ timeout: 30000 })
-    await expect(createEntry).toBeDisplayed()
+    await waitForSetup()
   })
 
   it.skip('TODO 完整卡片断言 (依赖 fixture + quick-panel window 切换)', async () => {

@@ -14,7 +14,7 @@
 set -uo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-cd "$REPO_ROOT"
+cd "$REPO_ROOT" || { echo "无法切到 REPO_ROOT: $REPO_ROOT" >&2; exit 1; }
 
 REMOTE_HOST="${E2E_REMOTE_HOST:-fedora}"
 REMOTE_PATH="${E2E_REMOTE_PATH:-projects/uniclipboard}"

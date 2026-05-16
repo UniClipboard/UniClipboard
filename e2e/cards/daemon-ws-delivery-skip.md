@@ -11,7 +11,9 @@ event_paths:
   - host.delivery.status_changed
   - clipboard.received
   - transfer.progress
-selectors: {}
+selectors:
+  # GUI 对照断言用：A 端 Tauri 主窗口 detail panel 上的 delivery badge
+  main_detail_badge: '[data-testid="clipboard-detail"] [data-delivery-summary]'
 budget_ms: 3000
 preconditions:
   - A 端 in-process 模式启动，已与 B 配对

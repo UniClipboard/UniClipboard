@@ -41,6 +41,6 @@ preconditions:
 
 ## 已知失败模式
 
-- `h_e1 < h_e2` → 嫌疑：badge 未真正进入 titlebar，仍占额外 row（refactor 不彻底）
+- `h_e1 > h_e2` → 嫌疑：badge 未真正进入 titlebar，仍占额外 row（refactor 不彻底）
 - 主窗口 detail panel badge 缺失 → 嫌疑：refactor 误删了 `ClipboardPreviewInfo` 渲染路径
 - popover 显示原始 device-id 而非 device-name → 嫌疑：device-name 回落策略错误，或 device 元数据未传到 popover

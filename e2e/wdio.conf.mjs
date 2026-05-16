@@ -1,5 +1,6 @@
 import { spawn, spawnSync } from 'node:child_process'
 import fs from 'node:fs'
+import net from 'node:net'
 import os from 'node:os'
 import path from 'node:path'
 import process from 'node:process'
@@ -7,8 +8,19 @@ import { fileURLToPath } from 'node:url'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const rootDir = path.resolve(__dirname, '..')
-const webdriverPort = Number(process.env.E2E_WEBDRIVER_PORT ?? 4444)
-const nativeWebdriverPort = Number(process.env.E2E_NATIVE_WEBDRIVER_PORT ?? 4445)
+
+function parsePortEnv(name, fallback) {
+  const raw = process.env[name]
+  if (raw == null || raw === '') return fallback
+  const n = Number(raw)
+  if (!Number.isInteger(n) || n <= 0 || n > 65535) {
+    throw new Error(`${name} 不是合法端口（1-65535 整数）：${raw}`)
+  }
+  return n
+}
+
+const webdriverPort = parsePortEnv('E2E_WEBDRIVER_PORT', 4444)
+const nativeWebdriverPort = parsePortEnv('E2E_NATIVE_WEBDRIVER_PORT', 4445)
 const profile = process.env.E2E_UC_PROFILE ?? 'wdio'
 const applicationPath =
   process.env.E2E_TAURI_APP ??
@@ -122,6 +134,28 @@ function closeTauriDriver() {
   tauriDriverProcess?.kill()
 }
 
+function waitForPortReady(port, { host = '127.0.0.1', timeoutMs = 10000, intervalMs = 100 } = {}) {
+  const deadline = Date.now() + timeoutMs
+  return new Promise((resolve, reject) => {
+    const tryConnect = () => {
+      const socket = net.createConnection({ port, host })
+      socket.once('connect', () => {
+        socket.end()
+        resolve()
+      })
+      socket.once('error', () => {
+        socket.destroy()
+        if (Date.now() >= deadline) {
+          reject(new Error(`tauri-driver 未在 ${timeoutMs}ms 内就绪：${host}:${port}`))
+          return
+        }
+        setTimeout(tryConnect, intervalMs)
+      })
+    }
+    tryConnect()
+  })
+}
+
 for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP']) {
   process.once(signal, () => {
     closeTauriDriver()
@@ -159,8 +193,9 @@ export const config = {
     ensureApplicationBuilt()
     assertApplicationExists()
   },
-  beforeSession() {
+  async beforeSession() {
     startTauriDriver()
+    await waitForPortReady(webdriverPort)
   },
   afterSession() {
     closeTauriDriver()

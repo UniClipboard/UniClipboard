@@ -7,7 +7,7 @@
 
 use super::*;
 
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
 use mockall::predicate;
@@ -19,6 +19,10 @@ use uc_core::ports::PeerAddressError;
 use uc_core::security::IdentityFingerprint;
 use uc_core::setup::SetupStatus;
 use uc_core::trusted_peer::{TrustedPeer, TrustedPeerError};
+use uc_observability::analytics::{
+    AnalyticsFacade, NoopAnalyticsFacade, ResetIdentityError, SelfMintedAdoptRequest,
+};
+use uuid::Uuid;
 
 // ── 端口替身（mockall）──────────────────────────────────────────────────
 
@@ -184,6 +188,40 @@ impl ClockPort for FixedClock {
     }
 }
 
+/// Records analytics-facade invocations so tests can assert *which*
+/// identity transition fired and how often. Other methods are inert.
+#[derive(Default)]
+struct RecordingAnalyticsFacade {
+    adopted: Mutex<Vec<Uuid>>,
+    released: Mutex<u32>,
+}
+
+impl RecordingAnalyticsFacade {
+    fn adopted(&self) -> Vec<Uuid> {
+        self.adopted.lock().unwrap().clone()
+    }
+    fn released_count(&self) -> u32 {
+        *self.released.lock().unwrap()
+    }
+}
+
+impl AnalyticsFacade for RecordingAnalyticsFacade {
+    fn capture(&self, _: uc_observability::analytics::events::Event) {}
+    fn adopt_self_minted(&self, _: SelfMintedAdoptRequest) {}
+    fn adopt_from_sponsor(&self, space_person_id: Uuid) {
+        self.adopted.lock().unwrap().push(space_person_id);
+    }
+    fn release_to_solo(&self) {
+        *self.released.lock().unwrap() += 1;
+    }
+    fn reset_identity(&self) -> Result<(), ResetIdentityError> {
+        Ok(())
+    }
+    fn current_space_person_id(&self) -> Option<Uuid> {
+        None
+    }
+}
+
 // ── 测试 fixtures ──────────────────────────────────────────────────────
 
 fn fp_local() -> IdentityFingerprint {
@@ -254,6 +292,10 @@ impl Env {
     }
 
     fn build(self) -> SwitchSpaceUseCase {
+        self.build_with_facade(Arc::new(NoopAnalyticsFacade))
+    }
+
+    fn build_with_facade(self, analytics: Arc<dyn AnalyticsFacade>) -> SwitchSpaceUseCase {
         let admit = Arc::new(AdmitMemberUseCase::new(
             Arc::new(self.member_repo) as Arc<dyn MemberRepositoryPort>
         ));
@@ -271,10 +313,7 @@ impl Env {
             trust,
             Arc::new(self.peer_addr_repo) as Arc<dyn PeerAddressRepositoryPort>,
             Arc::new(FixedClock(0)),
-            // The current switch_space tests focus on the four-phase
-            // migration flow rather than the identity transition; a
-            // noop facade is sufficient.
-            Arc::new(uc_observability::analytics::NoopAnalyticsFacade),
+            analytics,
         )
     }
 }
@@ -554,6 +593,7 @@ async fn resume_handshake_done_replays_phase3_and_phase4() {
         Ok(Some(MigrationPhase::HandshakeDone {
             run_id: run_id(),
             target_space_id: target_space(),
+            sponsor_space_person_id: None,
         }))
     });
 
@@ -613,6 +653,7 @@ async fn resume_swapped_replays_phase4_only() {
         Ok(Some(MigrationPhase::Swapped {
             run_id: run_id(),
             target_space_id: target_space(),
+            sponsor_space_person_id: None,
         }))
     });
 
@@ -686,4 +727,220 @@ async fn admit_failure_aborts_phase2_and_cleans_up() {
         }
         other => panic!("expected Internal(admit_member: ...), got {other:?}"),
     }
+}
+
+// ── Identity-switch persistence regressions ────────────────────────────
+//
+// These cover the contract that telemetry identity transitions are
+// resilient to crashes between `phase_4_commit` and the `$identify` /
+// `$release` call: the intent is recorded in `MigrationPhase::Swapped`
+// before phase 4 runs, so any resume that completes phase 4 also runs
+// the identity switch.
+
+fn sponsor_person() -> Uuid {
+    Uuid::from_u128(0xDEAD_BEEF)
+}
+
+fn outcome_with_sponsor_person() -> JoinerHandshakeOutcome {
+    JoinerHandshakeOutcome {
+        sponsor_space_person_id: Some(sponsor_person()),
+        ..outcome_default()
+    }
+}
+
+/// `execute()` happy path with a sponsor-issued `space_person_id`:
+/// `adopt_from_sponsor(target_person)` must fire exactly once *and*
+/// the `Swapped` phase written before phase 4 must carry that id, so
+/// a crash between commit and identify can be replayed.
+#[tokio::test]
+async fn happy_path_persists_identity_intent_and_invokes_adopt() {
+    let mut env = Env::new();
+
+    env.setup_status
+        .expect_get_status()
+        .return_once(|| Ok(already_setup()));
+    env.migration_state
+        .expect_get_current()
+        .return_once(|| Ok(None));
+
+    // Phase 1 — no representations, fastest happy path.
+    env.key_migration
+        .expect_prepare_migration_key()
+        .return_once(|| Ok(run_id()));
+    env.blob_migration_repo
+        .expect_list_main_inline_representations()
+        .return_once(|| Ok(vec![]));
+
+    // Phase 2 — sponsor delivers a `space_person_id`.
+    env.handshake
+        .expect_run()
+        .return_once(|_, _| Ok(outcome_with_sponsor_person()));
+    env.member_repo.expect_get().return_once(|_| Ok(None));
+    env.member_repo.expect_save().return_once(|_| Ok(()));
+    env.trust_repo.expect_get().return_once(|_| Ok(None));
+    env.trust_repo.expect_save().return_once(|_| Ok(()));
+    env.peer_addr_repo.expect_upsert().times(0);
+
+    // Phase 3 — no records to swap.
+    env.blob_migration_repo
+        .expect_count_records()
+        .return_once(|| Ok(0));
+    env.blob_migration_repo
+        .expect_list_records()
+        .return_once(|| Ok(vec![]));
+
+    // Phase 4 — setup_status flips, cleanup runs.
+    env.setup_status.expect_set_status().return_once(|_| Ok(()));
+    env.blob_migration_repo
+        .expect_discard_all_records()
+        .return_once(|| Ok(()));
+    env.key_migration
+        .expect_discard_migration_key()
+        .return_once(|_| Ok(()));
+
+    // The critical assertions: every `Some(MigrationPhase)` set_current
+    // call after phase 2 carries the sponsor's person id, so a crash
+    // before identify can still recover the intent.
+    env.migration_state
+        .expect_set_current()
+        .withf(|phase| match phase {
+            Some(MigrationPhase::Prepared { .. }) => true,
+            Some(MigrationPhase::HandshakeDone {
+                sponsor_space_person_id,
+                ..
+            })
+            | Some(MigrationPhase::Swapped {
+                sponsor_space_person_id,
+                ..
+            }) => *sponsor_space_person_id == Some(sponsor_person()),
+            None => true,
+        })
+        .times(4)
+        .returning(|_| Ok(()));
+
+    let recorder = Arc::new(RecordingAnalyticsFacade::default());
+    let uc = env.build_with_facade(recorder.clone());
+    uc.execute(cmd_default()).await.unwrap();
+
+    assert_eq!(recorder.adopted(), vec![sponsor_person()]);
+    assert_eq!(recorder.released_count(), 0);
+}
+
+/// Crash-then-resume from `HandshakeDone` must rebuild the adopt call
+/// from the persisted `sponsor_space_person_id`. No outcome is
+/// available at resume time — the persisted intent is the only source.
+#[tokio::test]
+async fn resume_handshake_done_with_persisted_person_invokes_adopt() {
+    let mut env = Env::new();
+    env.migration_state.expect_get_current().return_once(|| {
+        Ok(Some(MigrationPhase::HandshakeDone {
+            run_id: run_id(),
+            target_space_id: target_space(),
+            sponsor_space_person_id: Some(sponsor_person()),
+        }))
+    });
+
+    // Phase 3 — no records.
+    env.blob_migration_repo
+        .expect_list_records()
+        .return_once(|| Ok(vec![]));
+
+    // The Swapped row written between phase 3 and phase 4 must carry
+    // the same person id forward.
+    env.migration_state
+        .expect_set_current()
+        .withf(|phase| match phase {
+            Some(MigrationPhase::Swapped {
+                sponsor_space_person_id,
+                ..
+            }) => *sponsor_space_person_id == Some(sponsor_person()),
+            None => true,
+            _ => false,
+        })
+        .times(2)
+        .returning(|_| Ok(()));
+
+    env.setup_status.expect_set_status().return_once(|_| Ok(()));
+    env.blob_migration_repo
+        .expect_discard_all_records()
+        .return_once(|| Ok(()));
+    env.key_migration
+        .expect_discard_migration_key()
+        .return_once(|_| Ok(()));
+
+    let recorder = Arc::new(RecordingAnalyticsFacade::default());
+    let uc = env.build_with_facade(recorder.clone());
+    uc.resume_pending().await.unwrap();
+
+    assert_eq!(recorder.adopted(), vec![sponsor_person()]);
+    assert_eq!(recorder.released_count(), 0);
+}
+
+/// Crash-then-resume from `Swapped` (the narrowest window: setup_status
+/// already swapped but identify not yet emitted) must still run the
+/// identity switch using the persisted intent.
+#[tokio::test]
+async fn resume_swapped_with_persisted_person_invokes_adopt() {
+    let mut env = Env::new();
+    env.migration_state.expect_get_current().return_once(|| {
+        Ok(Some(MigrationPhase::Swapped {
+            run_id: run_id(),
+            target_space_id: target_space(),
+            sponsor_space_person_id: Some(sponsor_person()),
+        }))
+    });
+
+    env.setup_status.expect_set_status().return_once(|_| Ok(()));
+    env.blob_migration_repo
+        .expect_discard_all_records()
+        .return_once(|| Ok(()));
+    env.key_migration
+        .expect_discard_migration_key()
+        .return_once(|_| Ok(()));
+    env.migration_state
+        .expect_set_current()
+        .withf(|p| p.is_none())
+        .return_once(|_| Ok(()));
+
+    let recorder = Arc::new(RecordingAnalyticsFacade::default());
+    let uc = env.build_with_facade(recorder.clone());
+    uc.resume_pending().await.unwrap();
+
+    assert_eq!(recorder.adopted(), vec![sponsor_person()]);
+    assert_eq!(recorder.released_count(), 0);
+}
+
+/// Resume from a `Swapped` row whose `sponsor_space_person_id` is
+/// `None` (v1→v2 path or a state file written before the field
+/// existed): the identity switch must fall back to Solo, not be
+/// silently skipped.
+#[tokio::test]
+async fn resume_swapped_with_none_person_falls_back_to_solo() {
+    let mut env = Env::new();
+    env.migration_state.expect_get_current().return_once(|| {
+        Ok(Some(MigrationPhase::Swapped {
+            run_id: run_id(),
+            target_space_id: target_space(),
+            sponsor_space_person_id: None,
+        }))
+    });
+
+    env.setup_status.expect_set_status().return_once(|_| Ok(()));
+    env.blob_migration_repo
+        .expect_discard_all_records()
+        .return_once(|| Ok(()));
+    env.key_migration
+        .expect_discard_migration_key()
+        .return_once(|_| Ok(()));
+    env.migration_state
+        .expect_set_current()
+        .withf(|p| p.is_none())
+        .return_once(|_| Ok(()));
+
+    let recorder = Arc::new(RecordingAnalyticsFacade::default());
+    let uc = env.build_with_facade(recorder.clone());
+    uc.resume_pending().await.unwrap();
+
+    assert!(recorder.adopted().is_empty());
+    assert_eq!(recorder.released_count(), 1);
 }

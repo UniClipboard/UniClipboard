@@ -111,6 +111,7 @@ mod tests {
         let phase = MigrationPhase::HandshakeDone {
             run_id: MigrationRunId::new("mig-2"),
             target_space_id: SpaceId::from_str("space-2"),
+            sponsor_space_person_id: None,
         };
         repo.set_current(Some(phase.clone())).await.unwrap();
         repo.set_current(None).await.unwrap();
@@ -134,6 +135,7 @@ mod tests {
         let phase = MigrationPhase::Swapped {
             run_id: MigrationRunId::new("mig-3"),
             target_space_id: SpaceId::from_str("space-3"),
+            sponsor_space_person_id: None,
         };
         repo.set_current(Some(phase.clone())).await.unwrap();
         assert_eq!(repo.get_current().await.unwrap(), Some(phase));

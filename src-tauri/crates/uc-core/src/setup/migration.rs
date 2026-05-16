@@ -19,6 +19,7 @@
 //! `MigrationStatePort` 的 adapter 决定。
 
 use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 
 use crate::ids::SpaceId;
 
@@ -75,6 +76,17 @@ pub enum MigrationPhase {
     HandshakeDone {
         run_id: MigrationRunId,
         target_space_id: SpaceId,
+        /// 进入阶段 4 时本机要切到的目标 telemetry person。`Some(uuid)`
+        /// 表示 sponsor 在 handshake 中派发了一个 `space_person_id`，
+        /// `None` 表示 sponsor 尚未持有（v1→v2 升级未配对场景），本机
+        /// 回退到 Solo。落盘的目的是让 phase-4 续跑时不再依赖
+        /// in-memory 的 handshake outcome——daemon 在 phase 4 之前崩溃，
+        /// 重启后仍能按这个意图完成 telemetry 身份切换。
+        ///
+        /// 旧版本写入的状态文件没有该字段，反序列化时按 `None` 处理
+        /// （`#[serde(default)]`），等同于"按 Solo 回退"。
+        #[serde(default)]
+        sponsor_space_person_id: Option<Uuid>,
     },
 
     /// 阶段 3 已完成：主表所有 representation 都用新 master_key 重写。
@@ -85,6 +97,10 @@ pub enum MigrationPhase {
     Swapped {
         run_id: MigrationRunId,
         target_space_id: SpaceId,
+        /// 与 `HandshakeDone.sponsor_space_person_id` 同义，跨阶段 3→4
+        /// 边界继续承载切换意图。语义与序列化兼容策略一致。
+        #[serde(default)]
+        sponsor_space_person_id: Option<Uuid>,
     },
 }
 
@@ -108,6 +124,24 @@ impl MigrationPhase {
             | Self::Swapped {
                 target_space_id, ..
             } => Some(target_space_id),
+        }
+    }
+
+    /// 阶段 4 续跑时要切换到的 telemetry person id。`Prepared` 阶段还
+    /// 没和 sponsor 握过手，返回 `None`；`HandshakeDone` / `Swapped`
+    /// 返回各自落盘的 `sponsor_space_person_id`（其内值仍可能是
+    /// `None`，表示"切到 Solo"）。
+    pub fn sponsor_space_person_id(&self) -> Option<Uuid> {
+        match self {
+            Self::Prepared { .. } => None,
+            Self::HandshakeDone {
+                sponsor_space_person_id,
+                ..
+            }
+            | Self::Swapped {
+                sponsor_space_person_id,
+                ..
+            } => *sponsor_space_person_id,
         }
     }
 }
@@ -140,6 +174,7 @@ mod tests {
         let phase = MigrationPhase::HandshakeDone {
             run_id: MigrationRunId::new("run-h"),
             target_space_id: SpaceId::from_str("space-h"),
+            sponsor_space_person_id: Some(Uuid::from_u128(0x42)),
         };
         let json = serde_json::to_string(&phase).unwrap();
         let parsed: MigrationPhase = serde_json::from_str(&json).unwrap();
@@ -158,11 +193,54 @@ mod tests {
     fn migration_phase_accessors_match_handshake_done() {
         let run_id = MigrationRunId::new("run-x");
         let space = SpaceId::from_str("space-x");
+        let person = Uuid::from_u128(0xabcd);
         let phase = MigrationPhase::HandshakeDone {
             run_id: run_id.clone(),
             target_space_id: space.clone(),
+            sponsor_space_person_id: Some(person),
         };
         assert_eq!(phase.run_id(), &run_id);
         assert_eq!(phase.target_space_id(), Some(&space));
+        assert_eq!(phase.sponsor_space_person_id(), Some(person));
+    }
+
+    #[test]
+    fn legacy_handshake_done_json_without_person_field_deserializes_as_none() {
+        // 旧版本写入的状态文件不携带 sponsor_space_person_id 字段。
+        // 反序列化必须按 None 处理（向后兼容契约）。
+        let legacy_json = r#"{
+            "kind": "handshake_done",
+            "run_id": "run-legacy",
+            "target_space_id": "space-legacy"
+        }"#;
+        let parsed: MigrationPhase = serde_json::from_str(legacy_json).unwrap();
+        match parsed {
+            MigrationPhase::HandshakeDone {
+                sponsor_space_person_id,
+                ..
+            } => {
+                assert_eq!(sponsor_space_person_id, None);
+            }
+            other => panic!("expected HandshakeDone, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn legacy_swapped_json_without_person_field_deserializes_as_none() {
+        let legacy_json = r#"{
+            "kind": "swapped",
+            "run_id": "run-legacy",
+            "target_space_id": "space-legacy"
+        }"#;
+        let parsed: MigrationPhase = serde_json::from_str(legacy_json).unwrap();
+        match parsed {
+            MigrationPhase::Swapped {
+                sponsor_space_person_id,
+                ..
+            } => {
+                assert_eq!(sponsor_space_person_id, None);
+            }
+            other => panic!("expected Swapped, got {other:?}"),
+        }
     }
 }

@@ -39,7 +39,11 @@
 //!    失败：报错给用户，状态留 `HandshakeDone`，下次启动重试。
 //!
 //! 4. **Phase 4 (commit)** — `setup_status.space_id` 切到新 space_id，
-//!    清空 backup 表，销毁 migration_key，`migration_state` = `None`。
+//!    按持久化的 `sponsor_space_person_id` 切换 telemetry 身份
+//!    （adopt 新 person / 回退 Solo），清空 backup 表，销毁
+//!    migration_key，`migration_state` = `None`。身份切换的*意图*在
+//!    阶段 2 写 `HandshakeDone` 时就已落盘，因此即便 commit 与
+//!    identify 之间崩溃，下次启动 resume 仍能补做。
 //!
 //! ## 启动期续跑
 //!
@@ -82,6 +86,7 @@ use uc_core::ports::{ClockPort, PeerAddressRecord, PeerAddressRepositoryPort, Se
 use uc_core::setup::{MigrationPhase, MigrationRunId, SetupStatus};
 use uc_core::TrustedPeerRepositoryPort;
 use uc_observability::analytics::AnalyticsFacade;
+use uuid::Uuid;
 
 use crate::facade::space_setup::commands::SwitchSpaceCommand;
 use crate::facade::space_setup::{
@@ -234,10 +239,12 @@ impl SwitchSpaceUseCase {
             }
         };
         let target_space_id = outcome.space_id.clone();
+        let identity_target = outcome.sponsor_space_person_id;
         self.migration_state
             .set_current(Some(MigrationPhase::HandshakeDone {
                 run_id: run_id.clone(),
                 target_space_id: target_space_id.clone(),
+                sponsor_space_person_id: identity_target,
             }))
             .await
             .map_err(map_migration_state_err)?;
@@ -258,6 +265,7 @@ impl SwitchSpaceUseCase {
             .set_current(Some(MigrationPhase::Swapped {
                 run_id: run_id.clone(),
                 target_space_id: target_space_id.clone(),
+                sponsor_space_person_id: identity_target,
             }))
             .await
             .map_err(map_migration_state_err)?;
@@ -269,19 +277,12 @@ impl SwitchSpaceUseCase {
         );
 
         // ── Phase 4 — finalise + cleanup ─────────────────────────────────
-        self.phase_4_commit(&run_id, &target_space_id).await?;
-
-        // Identity switch is sequenced strictly after commit phase
-        // succeeds: if commit fails we never want this device to be
-        // stranded on the new PostHog person while still mounted on
-        // the old Space. `None` from the target sponsor (v1→v2 case
-        // where the sponsor never paired) falls back to Solo —
-        // releasing the old Space's `space_person_id` and emitting
-        // `$identify` back to the anonymous id.
-        match outcome.sponsor_space_person_id {
-            Some(target_person) => self.analytics.adopt_from_sponsor(target_person),
-            None => self.analytics.release_to_solo(),
-        }
+        // identity_target 已经在阶段 2/3 落进 migration_state，phase_4_commit
+        // 内部负责按这个意图切换 telemetry person——这样 daemon 在 commit
+        // 与 identify 之间崩溃后，下次启动 resume_pending 续跑 phase 4 时
+        // 仍能从持久化状态里还原意图并补做切换。
+        self.phase_4_commit(&run_id, &target_space_id, identity_target)
+            .await?;
 
         Ok(SwitchSpaceResult {
             sponsor_device_id: outcome.sponsor_device_id,
@@ -320,6 +321,7 @@ impl SwitchSpaceUseCase {
             MigrationPhase::HandshakeDone {
                 run_id,
                 target_space_id,
+                sponsor_space_person_id,
             } => {
                 info!(
                     run_id = %run_id,
@@ -331,22 +333,26 @@ impl SwitchSpaceUseCase {
                     .set_current(Some(MigrationPhase::Swapped {
                         run_id: run_id.clone(),
                         target_space_id: target_space_id.clone(),
+                        sponsor_space_person_id,
                     }))
                     .await
                     .map_err(map_migration_state_err)?;
-                self.phase_4_commit(&run_id, &target_space_id).await?;
+                self.phase_4_commit(&run_id, &target_space_id, sponsor_space_person_id)
+                    .await?;
                 Ok(())
             }
             MigrationPhase::Swapped {
                 run_id,
                 target_space_id,
+                sponsor_space_person_id,
             } => {
                 info!(
                     run_id = %run_id,
                     target_space_id = %target_space_id,
                     "resuming Swapped migration: replay phase 4"
                 );
-                self.phase_4_commit(&run_id, &target_space_id).await?;
+                self.phase_4_commit(&run_id, &target_space_id, sponsor_space_person_id)
+                    .await?;
                 Ok(())
             }
         }
@@ -493,6 +499,7 @@ impl SwitchSpaceUseCase {
         &self,
         run_id: &MigrationRunId,
         target_space_id: &SpaceId,
+        identity_target: Option<Uuid>,
     ) -> Result<(), SwitchSpaceError> {
         // setup_status 切换到新 space_id（has_completed 已是 true）。
         self.setup_status
@@ -502,6 +509,19 @@ impl SwitchSpaceUseCase {
             })
             .await
             .map_err(|e| SwitchSpaceError::Storage(e.to_string()))?;
+
+        // Telemetry identity 切换：放在 setup_status 落盘之后、清掉
+        // migration_state 之前。`Some` 走 sponsor 派发的 person，`None`
+        // 回退到 Solo（v1→v2 未配对的 sponsor 场景）。adopt/release 内部
+        // 是 fire-and-forget，失败只会 warn——只要这一步被调到，下次
+        // capture 就会按新身份上报；即使本调用前进程崩了，重启后
+        // resume_pending 会从持久化的 migration_state 恢复 identity_target
+        // 并在 phase-4 replay 里再次调用，从而保证身份切换不会因为
+        // commit→identify 之间的崩溃而被永久跳过。
+        match identity_target {
+            Some(target_person) => self.analytics.adopt_from_sponsor(target_person),
+            None => self.analytics.release_to_solo(),
+        }
 
         // Cleanup：失败仅 warn——下一次启动期补偿会再尝试清。
         if let Err(err) = self.blob_migration_repo.discard_all_records().await {

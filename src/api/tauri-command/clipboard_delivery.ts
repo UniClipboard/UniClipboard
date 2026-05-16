@@ -79,6 +79,6 @@ export async function getEntryDeliveryView(entryId: string): Promise<EntryDelive
   // tauri-specta 生成的 `EntryDeliveryViewDto` 与本文件手写的 `EntryDeliveryView`
   // 结构同形（字段名 / discriminated union tag literal 完全一致），TS 结构归并
   // 会让它们互通；保留手写类型作为本模块对上层的稳定 API 名称，避免上层
-  // (useEntryDelivery / EntryDeliverySection / 测试) 跟随生成文件改名。
+  // (useEntryDelivery / EntryDeliveryBadge / 测试) 跟随生成文件改名。
   return (await commands.clipboardEntryDeliveryView(entryId)) as EntryDeliveryView
 }

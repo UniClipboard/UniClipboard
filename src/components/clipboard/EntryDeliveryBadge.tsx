@@ -1,18 +1,17 @@
 /**
- * Entry delivery badge —— ClipboardPreviewInfo 行尾的紧凑展示。
+ * Entry delivery badge —— 主窗口 detail 与 quick-panel 预览共用的紧凑同步状态展示。
  *
  * 为什么需要这个组件:
- * 原 EntryDeliverySection 是一个独占一行的灰条 (来源 + 设备表),在主窗口
- * detail 顶部显得笨重。本组件把这份信息压成两枚 icon (来源 + 同步聚合)
- * + 一句话状态,真正的设备明细放进 hover popover,detail 区域顶部恢复
- * 清爽。quick-panel 仍走 EntryDeliverySection (空间紧、显示明细更有用)。
+ * 同步状态信息(来源 + 每对端投递结果)若按完整列表渲染会独占多行,在
+ * detail 顶部显得笨重,在 quick-panel 更会直接压缩内容预览高度。本组件
+ * 把这份信息压成两枚 icon (来源 + 同步聚合) + 一句话状态,真正的设备
+ * 明细放进 hover popover,两处宿主都能保持单行紧凑。
  *
  * 渲染契约:
  * - 来源 icon: Local / Remote / Historical 三档,tooltip 显示完整文案
  * - 同步聚合 icon + 文字: synced / syncing / partial / failed / pending
  *   - historical 来源 或 无 trusted peer → 不渲染同步部分
- * - popover (hover/click on 同步部分): 列出每个对端 status,复用与
- *   EntryDeliverySection 一致的图标 / 颜色编码
+ * - popover (hover/click on 同步部分): 列出每个对端 status,行内含失败 reason
  */
 
 import {

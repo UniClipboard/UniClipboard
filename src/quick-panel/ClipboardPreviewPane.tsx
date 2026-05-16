@@ -2,7 +2,7 @@ import { File, Loader2 } from 'lucide-react'
 import React, { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useClipboardPreview } from './useClipboardPreview'
-import EntryDeliverySection from '@/components/clipboard/EntryDeliverySection'
+import EntryDeliveryBadge from '@/components/clipboard/EntryDeliveryBadge'
 import VirtualizedText from '@/components/clipboard/VirtualizedText'
 
 interface ClipboardPreviewPaneProps {
@@ -27,13 +27,16 @@ const ClipboardPreviewPane: React.FC<ClipboardPreviewPaneProps> = ({ entryId }) 
 
   return (
     <div className="flex h-full w-full min-w-0 flex-col overflow-hidden rounded-xl border border-border/50 bg-background/95 shadow-xl backdrop-blur-xl">
-      <div className="flex items-center justify-between border-b border-border/50 px-3 py-2">
-        <span className="text-[12px] font-medium text-foreground">{t('title')}</span>
-        {preview && (
-          <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground">
-            {formatBytes(preview.sizeBytes)}
-          </span>
-        )}
+      <div className="flex items-center gap-3 border-b border-border/50 px-3 py-2">
+        <span className="shrink-0 text-[12px] font-medium text-foreground">{t('title')}</span>
+        <div className="flex min-w-0 flex-1 items-center justify-end gap-3">
+          <EntryDeliveryBadge delivery={delivery} />
+          {preview && (
+            <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground">
+              {formatBytes(preview.sizeBytes)}
+            </span>
+          )}
+        </div>
       </div>
 
       <div
@@ -84,8 +87,6 @@ const ClipboardPreviewPane: React.FC<ClipboardPreviewPaneProps> = ({ entryId }) 
           </div>
         )}
       </div>
-
-      <EntryDeliverySection delivery={delivery} compact />
 
       <div className="flex items-center justify-start border-t border-border/50 px-3 py-1.5 text-[11px] text-muted-foreground">
         <span>{t('deleteHint', { modifier: isMac ? '⌥' : 'Alt+' })}</span>

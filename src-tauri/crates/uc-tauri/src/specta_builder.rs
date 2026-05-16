@@ -22,7 +22,7 @@
 //! --test specta_export` 得到同一份 binding（CI 可以用单一 Linux runner
 //! 做 schema drift check）。当前 32 条命令都不依赖平台特定 mod 编译。
 
-use tauri_specta::{collect_commands, Builder};
+use tauri_specta::{collect_commands, collect_events, Builder};
 
 /// 构造 IPC commands 的 tauri-specta `Builder`。
 ///
@@ -34,51 +34,59 @@ use tauri_specta::{collect_commands, Builder};
 /// 否则前端 TS 类型与后端实际可调用的命令会漂移。所以这里把两条路径
 /// 都收口到这一个函数。
 pub fn build() -> Builder<tauri::Wry> {
-    Builder::<tauri::Wry>::new().commands(collect_commands![
-        // ── tray ────────────────────────────────────────────────────────────
-        crate::commands::tray::set_tray_language,
-        // ── lifecycle / device ──────────────────────────────────────────────
-        crate::commands::get_tauri_pid,
-        crate::commands::get_device_id,
-        crate::commands::get_device_meta,
-        crate::commands::startup::get_daemon_connection_info,
-        // ── restart (Phase 95) ──────────────────────────────────────────────
-        crate::commands::restart::restart_app,
-        // ── autostart ───────────────────────────────────────────────────────
-        crate::commands::autostart::enable_autostart,
-        crate::commands::autostart::disable_autostart,
-        crate::commands::autostart::is_autostart_enabled,
-        // ── updater ─────────────────────────────────────────────────────────
-        crate::commands::updater::check_for_update,
-        crate::commands::updater::download_update,
-        crate::commands::updater::cancel_download,
-        crate::commands::updater::get_download_progress,
-        crate::commands::updater::install_update,
-        // ── storage ─────────────────────────────────────────────────────────
-        crate::commands::storage::open_data_directory,
-        // ── clipboard delivery view (entry detail "源 + 同步状态") ──────────
-        crate::commands::clipboard_delivery::clipboard_entry_delivery_view,
-        // ── quick panel ─────────────────────────────────────────────────────
-        crate::commands::quick_panel::paste_to_previous_app,
-        crate::commands::quick_panel::dismiss_quick_panel,
-        crate::commands::quick_panel::set_quick_panel_layout,
-        crate::commands::quick_panel::finalize_quick_panel_show,
-        // ── settings ────────────────────────────────────────────────────────
-        crate::commands::settings::update_keyboard_shortcuts,
-        // ── mobile sync ─────────────────────────────────────────────────────
-        crate::commands::mobile_sync::register_mobile_device,
-        crate::commands::mobile_sync::revoke_mobile_device,
-        crate::commands::mobile_sync::list_mobile_devices,
-        crate::commands::mobile_sync::rotate_mobile_password,
-        crate::commands::mobile_sync::get_mobile_sync_settings,
-        crate::commands::mobile_sync::update_mobile_sync_settings,
-        crate::commands::mobile_sync::list_mobile_lan_interfaces,
-        // ── space setup ─────────────────────────────────────────────────────
-        crate::commands::space_setup::unlock_space_with_passphrase,
-        crate::commands::space_setup::try_silent_unlock,
-        // ── factory reset ───────────────────────────────────────────────────
-        crate::commands::factory_reset::factory_reset_space,
-        // ── window chrome (macOS traffic lights) ────────────────────────────
-        crate::commands::window_chrome::set_traffic_light_position,
-    ])
+    Builder::<tauri::Wry>::new()
+        .events(collect_events![
+            // Issue #747 Phase 5:dispatch fan-out 完成、delivery 写入后
+            // 由 `TauriHostEventEmitter` emit;前端 detail 视图据 entry_id
+            // 匹配后 refetch view。事件丢失被前端的幂等 refetch 吸收,
+            // 所以不在 specta 层加任何"必须收到"的保护。
+            crate::host_event_emitter::ClipboardDeliveryStatusChanged,
+        ])
+        .commands(collect_commands![
+            // ── tray ────────────────────────────────────────────────────────────
+            crate::commands::tray::set_tray_language,
+            // ── lifecycle / device ──────────────────────────────────────────────
+            crate::commands::get_tauri_pid,
+            crate::commands::get_device_id,
+            crate::commands::get_device_meta,
+            crate::commands::startup::get_daemon_connection_info,
+            // ── restart (Phase 95) ──────────────────────────────────────────────
+            crate::commands::restart::restart_app,
+            // ── autostart ───────────────────────────────────────────────────────
+            crate::commands::autostart::enable_autostart,
+            crate::commands::autostart::disable_autostart,
+            crate::commands::autostart::is_autostart_enabled,
+            // ── updater ─────────────────────────────────────────────────────────
+            crate::commands::updater::check_for_update,
+            crate::commands::updater::download_update,
+            crate::commands::updater::cancel_download,
+            crate::commands::updater::get_download_progress,
+            crate::commands::updater::install_update,
+            // ── storage ─────────────────────────────────────────────────────────
+            crate::commands::storage::open_data_directory,
+            // ── clipboard delivery view (entry detail "源 + 同步状态") ──────────
+            crate::commands::clipboard_delivery::clipboard_entry_delivery_view,
+            // ── quick panel ─────────────────────────────────────────────────────
+            crate::commands::quick_panel::paste_to_previous_app,
+            crate::commands::quick_panel::dismiss_quick_panel,
+            crate::commands::quick_panel::set_quick_panel_layout,
+            crate::commands::quick_panel::finalize_quick_panel_show,
+            // ── settings ────────────────────────────────────────────────────────
+            crate::commands::settings::update_keyboard_shortcuts,
+            // ── mobile sync ─────────────────────────────────────────────────────
+            crate::commands::mobile_sync::register_mobile_device,
+            crate::commands::mobile_sync::revoke_mobile_device,
+            crate::commands::mobile_sync::list_mobile_devices,
+            crate::commands::mobile_sync::rotate_mobile_password,
+            crate::commands::mobile_sync::get_mobile_sync_settings,
+            crate::commands::mobile_sync::update_mobile_sync_settings,
+            crate::commands::mobile_sync::list_mobile_lan_interfaces,
+            // ── space setup ─────────────────────────────────────────────────────
+            crate::commands::space_setup::unlock_space_with_passphrase,
+            crate::commands::space_setup::try_silent_unlock,
+            // ── factory reset ───────────────────────────────────────────────────
+            crate::commands::factory_reset::factory_reset_space,
+            // ── window chrome (macOS traffic lights) ────────────────────────────
+            crate::commands::window_chrome::set_traffic_light_position,
+        ])
 }

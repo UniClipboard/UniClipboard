@@ -409,6 +409,15 @@ pub async fn build_space_setup_assembly(
         entry_repo: Arc::clone(&deps.clipboard.clipboard_entry_repo),
         event_repo: Arc::clone(&wired.clipboard_event_reader_repo),
         trusted_peer_repo: Arc::clone(&wired.trusted_peer_repo),
+        // Issue #747 Phase 5:与 blob_transfer / apply_inbound 共享同一份
+        // emitter_cell。GUI 装配链路在 setup callback 中 swap 进
+        // `CompositeHostEventEmitter(Logging + TauriHostEventEmitter)`,
+        // 此处 dispatch_uc 一旦 fan-out 完成、delivery 落盘成功就追发
+        // 一条 `HostEvent::Delivery::StatusChanged`,前端 detail 视图实
+        // 时 refetch。daemon swap 路径也通过 composite 累加,GUI emitter
+        // 不会被覆盖丢失;CLI 装配走的是同一 cell 但内部仅是 Logging,
+        // emit 无副作用。
+        host_event_emitter: Some(Arc::clone(&wired.emitter_cell)),
     }));
     let ingest_handle = clipboard_sync.spawn_ingest_loop();
     let blob = Arc::new(BlobTransferFacade::new(BlobTransferDeps {

@@ -61,6 +61,12 @@ impl HostEventEmitterPort for LoggingHostEventEmitter {
             HostEvent::Transfer(_) => {
                 tracing::debug!(event_type = "transfer", "host event (non-gui)");
             }
+            HostEvent::Delivery(_) => {
+                // delivery 事件不包含明文,可直接打 event_type;后续如要细化
+                // 子状态(Delivered / Failed)再扩展,目前只关心"事件经过了
+                // emitter"这一可观测性事实。
+                tracing::debug!(event_type = "delivery", "host event (non-gui)");
+            }
         }
         Ok(())
     }

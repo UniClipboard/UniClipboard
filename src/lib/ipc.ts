@@ -37,7 +37,7 @@
  * The wrapper transparently injects trace + redacts logs + bubbles errors.
  */
 
-import { commands as raw } from './ipc-bindings.generated'
+import { commands as raw, events as rawEvents } from './ipc-bindings.generated'
 import { redactSensitiveArgs } from '@/observability/redaction'
 import { Sentry } from '@/observability/sentry'
 import { traceManager } from '@/observability/trace'
@@ -181,13 +181,36 @@ function buildProxy(): TypedCommands {
  */
 export const commands: TypedCommands = buildProxy()
 
+/**
+ * Typed Tauri event subscriptions. tauri-specta 在 `collect_events!` 里登
+ * 记的 event 类型,前端用 `events.<eventName>.listen(cb)` 订阅,返回值是
+ * `Promise<UnlistenFn>`,组件卸载时调用以清理监听。
+ *
+ * 与 `commands` 不同,events 是单向后端 → 前端推送,不存在 trace 拼接 /
+ * 错误信封,直接转出 tauri-specta 生成的对象即可。
+ *
+ * @example
+ * ```ts
+ * useEffect(() => {
+ *   const unlistenPromise = events.clipboardDeliveryStatusChanged.listen((event) => {
+ *     if (event.payload.entryId === currentEntryId) refetch()
+ *   })
+ *   return () => { unlistenPromise.then((fn) => fn()) }
+ * }, [currentEntryId])
+ * ```
+ */
+export const events = rawEvents
+
 // Re-export the generated DTO/error types so call sites can `import { type
 // MobileSyncError } from '@/lib/ipc'` without having to know about the
 // generated file path. Keeps the generated artifact a hidden implementation
 // detail.
 export type {
+  ClipboardDeliveryStatusChanged,
+  ClipboardDeliveryStatusPayload,
   CommandError,
   DaemonConnectionPayload,
+  DeliveryFailureReasonPayload,
   DeviceMeta,
   DownloadEvent,
   DownloadPhase,

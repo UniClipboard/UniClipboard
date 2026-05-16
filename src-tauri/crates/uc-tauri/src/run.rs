@@ -137,6 +137,14 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
     let event_emitter: std::sync::Arc<dyn uc_application::facade::HostEventEmitterPort> =
         std::sync::Arc::new(uc_bootstrap::LoggingHostEventEmitter);
 
+    // Issue #747 Phase 5:在 wired 被 move 进 process_handles 前先拿出
+    // emitter_cell 的 Arc(它就是 application 层各 use case 真正读取的
+    // cell)。setup 阶段 AppHandle 准备好后,我们把 TauriHostEventEmitter
+    // 通过 `CompositeHostEventEmitter::append` 叠加到已有 emitter 上,让
+    // `HostEvent::Delivery` 真正能推到前端。daemon 后续的 swap 也走
+    // composite append,不会覆盖掉这里挂上的 Tauri emitter。
+    let host_event_cell_for_tauri = wired.emitter_cell.clone();
+
     // 在 background 被 spawn 消费前,clone 出 daemon-lifecycle 装配需要的
     // 两个 Arc 字段(进程级,跨 daemon reload 复用)。`file_transfer_facade`
     // 已挪到 `WiredDependencies`(它是 Arc,不是 mpsc::Receiver),所以直接
@@ -244,6 +252,11 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
     // 这里只用 `invoke_handler` 接进 Tauri runtime；`builder.export(...)`
     // 走 `tests/specta_export.rs` 那条路径，CI 跑同一个 test 检查 schema drift。
     let specta_builder = crate::specta_builder::build();
+    // setup callback 内需要 `mount_events(app)` 把 collect_events! 里登记的
+    // typed event 注册到 Tauri event registry,否则 `Event::emit` 会 panic
+    // "EventRegistry not found"。builder 自身 `Clone`,所以这里拷贝一份给
+    // setup 闭包,原始 builder 仍用于 `invoke_handler`。
+    let specta_builder_for_setup = specta_builder.clone();
 
     builder
         .plugin(tauri_plugin_autostart::init(
@@ -256,6 +269,37 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
             runtime.set_app_handle(app.handle().clone());
             info!("AppHandle set on TauriAppRuntime for event emission");
             configure_main_window_for_platform(app.handle());
+
+            // Issue #747 Phase 5:把 specta 在 collect_events! 里登记的
+            // typed event 注册到 Tauri 的 EventRegistry。必须在
+            // `Event::emit` 第一次被调用前完成,否则 `get_event_name`
+            // 会 panic。
+            specta_builder_for_setup.mount_events(app);
+
+            // Issue #747 Phase 5:AppHandle 一旦就绪,就把
+            // TauriHostEventEmitter 通过 composite append 挂上去。daemon
+            // 后续的 emitter swap(`DaemonApiEventEmitter`)也走 composite
+            // append,不会覆盖掉这里的 Tauri emitter —— delivery 事件因此
+            // 从 dispatch_uc 流到前端,无论 daemon 启动顺序如何。
+            {
+                let mut guard = host_event_cell_for_tauri
+                    .write()
+                    .unwrap_or_else(|p| p.into_inner());
+                let existing: std::sync::Arc<dyn uc_application::facade::HostEventEmitterPort> =
+                    std::sync::Arc::clone(&*guard);
+                let tauri_emitter: std::sync::Arc<
+                    dyn uc_application::facade::HostEventEmitterPort,
+                > = std::sync::Arc::new(crate::host_event_emitter::TauriHostEventEmitter::new(
+                    app.handle().clone(),
+                ));
+                *guard = std::sync::Arc::new(
+                    uc_application::facade::CompositeHostEventEmitter::append(
+                        existing,
+                        tauri_emitter,
+                    ),
+                );
+            }
+            info!("TauriHostEventEmitter composed into shared emitter cell");
 
             // 进程级 blob/spool worker —— Tauri runtime 已在 Builder::run()
             // 内就绪,这里 tauri::async_runtime::spawn 才能拿到 reactor。

@@ -3,6 +3,10 @@ use tokio::sync::broadcast;
 use uc_application::facade::{
     ClipboardHostEvent, EmitError, HostEvent, HostEventEmitterPort, TransferHostEvent,
 };
+// `HostEvent::Delivery` 暂不对 LAN WS 客户端开放(目前只供 GUI Tauri 前端):
+// 这条 emitter 是 daemon 侧 WS 通道,LAN 客户端没有"我当前在看哪条 entry"
+// 的概念,把 delivery 事件挂上去会产生无关流量。日后若需要让其它 LAN/桌面
+// 同步状态,再单独决策。
 use uc_daemon_contract::constants::{ws_event, ws_topic};
 
 use crate::api::types::{DaemonWsEvent, FileTransferProgressPayload};
@@ -158,6 +162,15 @@ impl HostEventEmitterPort for DaemonApiEventEmitter {
                         total_bytes,
                         filenames,
                     },
+                );
+            }
+            HostEvent::Delivery(_) => {
+                // GUI Tauri 前端通过 TauriHostEventEmitter 接收 delivery
+                // 事件;daemon WS 通道暂不转发(见模块顶部注释)。本路径只
+                // 落 trace,保留事件经过 daemon emitter 这一可观测性事实。
+                tracing::trace!(
+                    event_type = "delivery",
+                    "daemon api emitter: skip WS forward"
                 );
             }
         }

@@ -563,6 +563,9 @@ async fn build_side(name: &'static str, rendezvous_base_url: String) -> Side {
         entry_repo: Arc::new(NoopClipboardEntryRepo),
         event_repo: Arc::new(NoopClipboardEventRepo),
         trusted_peer_repo: Arc::clone(&trusted_peer_repo) as Arc<dyn TrustedPeerRepositoryPort>,
+        // e2e 路径不需要前端事件 —— dispatch_uc 的 delivery emit 在
+        // `host_event_emitter = None` 时为 no-op,行为与改动前完全一致。
+        host_event_emitter: None,
     }));
     let ingest_handle = clipboard_sync.spawn_ingest_loop();
 

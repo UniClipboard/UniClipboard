@@ -12,7 +12,9 @@ use tokio::sync::RwLock;
 use tokio::task::JoinSet;
 use tokio_util::sync::CancellationToken;
 use tracing::{debug, error, info, warn};
-use uc_application::facade::{AppFacade, AppPaths, HostEventEmitterPort};
+use uc_application::facade::{
+    AppFacade, AppPaths, CompositeHostEventEmitter, HostEventEmitterPort,
+};
 use uc_core::ports::MobileLanLifecyclePort;
 
 use crate::daemon::peers::presence_monitor::PresenceMonitor;
@@ -285,11 +287,24 @@ impl DaemonApp {
         };
         // 4. Wire the event emitter into the shared cell so application
         // use cases (which read through the cell) emit WS events.
-        *self
-            .event_emitter_cell
-            .write()
-            .unwrap_or_else(|p| p.into_inner()) =
-            Arc::new(DaemonApiEventEmitter::new(self.event_tx.clone()));
+        //
+        // Issue #747 Phase 5:从"覆盖式 swap"改成"组合式 append"。GUI shell
+        // 在 Tauri setup 阶段会把 cell 已装的 LoggingEmitter 与新建的
+        // TauriHostEventEmitter 包成一个 `CompositeHostEventEmitter` 写回;
+        // 这里再 wrap 一层 = 在已有 emitter 之上挂 daemon WS emitter,既
+        // 保留 GUI 端 in-process 直推前端的能力,也不破坏 daemon 推 WS 给
+        // LAN 客户端的语义。Standalone daemon 入口下,cell 里通常只有
+        // LoggingEmitter,经 composite 包装后行为也完全等价。
+        {
+            let mut guard = self
+                .event_emitter_cell
+                .write()
+                .unwrap_or_else(|p| p.into_inner());
+            let existing: Arc<dyn HostEventEmitterPort> = Arc::clone(&*guard);
+            let daemon_emitter: Arc<dyn HostEventEmitterPort> =
+                Arc::new(DaemonApiEventEmitter::new(self.event_tx.clone()));
+            *guard = Arc::new(CompositeHostEventEmitter::append(existing, daemon_emitter));
+        }
 
         info!("uniclipboard-daemon running");
 

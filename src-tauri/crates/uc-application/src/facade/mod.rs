@@ -83,8 +83,9 @@ pub use file_transfer::{
     SeedReceiverContext, StartTransfer,
 };
 pub use host_event::{
-    ClipboardHostEvent, ClipboardOriginKind, EmitError, FileTransferHostEventPublisher, HostEvent,
-    HostEventEmitterPort, OutboundEntryIdCache, TransferHostEvent,
+    ClipboardHostEvent, ClipboardOriginKind, CompositeHostEventEmitter, DeliveryHostEvent,
+    DeliveryStatusKind, EmitError, FileTransferHostEventPublisher, HostEvent, HostEventEmitterPort,
+    OutboundEntryIdCache, TransferHostEvent,
 };
 pub use lifecycle::{
     InMemoryLifecycleStatus, LifecycleFacade, LifecycleFacadeDeps, LifecycleFacadeError,

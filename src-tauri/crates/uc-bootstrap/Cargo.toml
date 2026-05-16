@@ -18,7 +18,7 @@ anyhow = "1.0"
 thiserror = "2.0"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt", "registry"] }
-sentry = { version = "0.48.1", default-features = false, features = [
+sentry = { version = "0.48.2", default-features = false, features = [
     "backtrace",
     "contexts",
     "debug-images",
@@ -36,7 +36,7 @@ sentry = { version = "0.48.1", default-features = false, features = [
     "logs",
 ] }
 gethostname = "1.1"
-toml = "0.8"
+toml = "0.9"
 chrono = { version = "0.4", features = ["serde"] }
 async-trait = "0.1"
 # analytics::compose_event_context hashes the persisted SpaceId into the
@@ -48,7 +48,7 @@ sha2 = "0.10"
 [dev-dependencies]
 tempfile = "3"
 tokio = { version = "1", features = ["full"] }
-mockall = "0.13"
+mockall = "0.14"
 wiremock = "0.6"
 # tests/slice*_e2e.rs use serde_json::json! to build wiremock response bodies
 # and serde_json::from_slice to decode pairing request bodies. Production

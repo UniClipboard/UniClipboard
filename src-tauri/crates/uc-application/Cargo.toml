@@ -32,9 +32,9 @@ serde_json = "1"
 # Time handling
 chrono = { version = "0.4", features = ["serde"] }
 thiserror = "2.0.17"
-futures = "0.3.31"
+futures = "0.3.32"
 tracing = "0.1.44"
-hmac = "0.12"
+hmac = "0.13"
 sha2 = "0.10"
 blake3 = "1"
 hex = "0.4"
@@ -61,13 +61,13 @@ moka = { version = "0.12", default-features = false, features = ["sync"] }
 libc = "0.2"
 
 [dependencies.uuid]
-version = "1.10.0"
+version = "1.23.1"
 features = ["v4"]
 
 [dev-dependencies]
 uc-infra = { path = "../uc-infra" }
 uc-platform = { path = "../uc-platform" }
-mockall = "0.13"
+mockall = "0.14"
 tempfile = "3"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 image = "0.25"

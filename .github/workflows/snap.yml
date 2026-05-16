@@ -62,14 +62,24 @@ jobs:
     # alpha 由 release.yml 在自动发布完成后显式 dispatch,这里的
     # release.published 入口只承接人工发布的 beta / rc / stable。
     if: ${{ github.event_name != 'release' || !contains(github.event.release.tag_name, '-alpha') }}
-    name: Build snap (amd64)
+    name: Build snap (${{ matrix.arch }})
     # snap build 必须在 Ubuntu host 上跑,snapcraft action 自带 LXD;
     # 我们用 22.04 跟 base=core22 对齐,snapcraft action-build 装的工具链
-    # 跟 base 一致避免 ABI 错位。
-    runs-on: ubuntu-22.04
+    # 跟 base 一致避免 ABI 错位。arm64 走 GitHub 公开仓库免费的
+    # ubuntu-22.04-arm hosted runner,不用 QEMU 交叉构建(原生构建 Rust +
+    # webkit2gtk 比 QEMU 快一个数量级)。
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 90
     permissions:
       contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-22.04
+          - arch: arm64
+            runner: ubuntu-22.04-arm
 
     steps:
       - name: Resolve snap metadata
@@ -118,7 +128,7 @@ jobs:
         # (`snap install --dangerous file.snap`)。retention 7 天够用。
         uses: actions/upload-artifact@v7
         with:
-          name: uniclipboard-amd64-snap
+          name: uniclipboard-${{ matrix.arch }}-snap
           path: ${{ steps.build.outputs.snap }}
           retention-days: 7
           if-no-files-found: error

@@ -130,6 +130,15 @@ jobs:
         shell: bash
         run: echo "${CARGO_HOME:-$HOME/.cargo}/bin" >> "$GITHUB_PATH"
 
+      - name: ensure darwin targets installed
+        # dtolnay/rust-toolchain 命中 runner 预装的 stable toolchain 时
+        # ("using existing install for stable-...") 会跳过 `rustup target add`,
+        # `targets:` 输入被静默忽略。25960898069 因此挂在 x86_64-apple-darwin。
+        # 这里幂等补一刀,已装则 no-op。
+        if: matrix.platform == 'macos-latest'
+        shell: bash
+        run: rustup target add aarch64-apple-darwin x86_64-apple-darwin
+
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
         with:

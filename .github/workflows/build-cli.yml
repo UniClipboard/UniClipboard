@@ -107,6 +107,18 @@ jobs:
         shell: bash
         run: echo "${CARGO_HOME:-$HOME/.cargo}/bin" >> "$GITHUB_PATH"
 
+      - name: ensure rust target installed
+        # 见 build.yml 同名 step:dtolnay/rust-toolchain 命中预装 stable toolchain
+        # 时会跳过 `rustup target add`,需要在这里幂等补装,否则 x86_64-apple-darwin
+        # 与各 musl target 都会缺失。Linux job 跑在容器里,rustup 也由 action 装。
+        shell: bash
+        run: |
+          if [ "${{ matrix.platform }}" = "macos-latest" ]; then
+            rustup target add aarch64-apple-darwin x86_64-apple-darwin
+          elif [ -n "${{ matrix.target }}" ] && [ "${{ matrix.target }}" != "x86_64-pc-windows-msvc" ]; then
+            rustup target add "${{ matrix.target }}"
+          fi
+
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
         with:

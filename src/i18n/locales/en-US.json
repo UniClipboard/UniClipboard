@@ -1210,7 +1210,10 @@
       "label": "From:",
       "local": "this device",
       "remote": "{{device}}",
-      "historical": "local history (legacy)"
+      "historical": "local history (legacy)",
+      "localShort": "This device",
+      "remoteShort": "From {{device}}",
+      "historicalShort": "Legacy entry"
     },
     "list": {
       "title": "Sync status",
@@ -1222,6 +1225,17 @@
       "duplicate": "delivered (duplicate)",
       "pending": "not attempted",
       "failedWithReason": "failed · {{reason}}"
+    },
+    "summary": {
+      "synced": "Synced",
+      "partial": "Partially synced",
+      "syncing": "Syncing",
+      "failed": "Sync failed",
+      "pending": "Awaiting sync"
+    },
+    "popover": {
+      "title": "Sync status",
+      "ariaTrigger": "View per-device sync details"
     },
     "failureReason": {
       "offline": "peer offline",

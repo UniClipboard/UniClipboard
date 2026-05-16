@@ -1201,7 +1201,10 @@
       "label": "来自:",
       "local": "本地",
       "remote": "{{device}}",
-      "historical": "本机历史条目"
+      "historical": "本机历史条目",
+      "localShort": "本机",
+      "remoteShort": "来自 {{device}}",
+      "historicalShort": "历史条目"
     },
     "list": {
       "title": "同步状态",
@@ -1213,6 +1216,17 @@
       "duplicate": "已接收(去重)",
       "pending": "未尝试",
       "failedWithReason": "失败 · {{reason}}"
+    },
+    "summary": {
+      "synced": "已同步",
+      "partial": "部分同步",
+      "syncing": "同步中",
+      "failed": "同步失败",
+      "pending": "等待同步"
+    },
+    "popover": {
+      "title": "同步状态",
+      "ariaTrigger": "查看每台设备的同步详情"
     },
     "failureReason": {
       "offline": "对端离线",

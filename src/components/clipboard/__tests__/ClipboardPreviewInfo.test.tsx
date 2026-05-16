@@ -19,7 +19,14 @@ function createFileItem(): DisplayClipboardItem {
 
 describe('ClipboardPreviewInfo', () => {
   it('renders file count and combined size for file entries', () => {
-    render(<ClipboardPreviewInfo item={createFileItem()} preview={null} imageDimensions={null} />)
+    render(
+      <ClipboardPreviewInfo
+        item={createFileItem()}
+        preview={null}
+        imageDimensions={null}
+        delivery={null}
+      />
+    )
 
     expect(screen.getByText(i18n.t('header.filters.file'))).toBeInTheDocument()
     expect(
@@ -30,7 +37,7 @@ describe('ClipboardPreviewInfo', () => {
 
   it('renders nothing when no item is selected', () => {
     const { container } = render(
-      <ClipboardPreviewInfo item={null} preview={null} imageDimensions={null} />
+      <ClipboardPreviewInfo item={null} preview={null} imageDimensions={null} delivery={null} />
     )
 
     expect(container).toBeEmptyDOMElement()

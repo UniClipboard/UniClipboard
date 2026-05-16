@@ -2,6 +2,7 @@ import { Database, Files, Globe, Hash, Layers, Maximize, Type } from 'lucide-rea
 import React from 'react'
 import { useTranslation } from 'react-i18next'
 import type { DisplayClipboardItem } from './ClipboardContent'
+import EntryDeliveryBadge from './EntryDeliveryBadge'
 import type {
   ClipboardCodeItem,
   ClipboardFileItem,
@@ -9,6 +10,7 @@ import type {
   ClipboardLinkItem,
   ClipboardTextItem,
 } from '@/api/clipboardItems'
+import type { EntryDeliveryView } from '@/api/tauri-command/clipboard_delivery'
 import type { ClipboardPreviewData } from '@/lib/clipboard-preview-cache'
 import { formatFileSize } from '@/utils'
 
@@ -16,6 +18,7 @@ interface ClipboardPreviewInfoProps {
   imageDimensions: { width: number; height: number } | null
   item: DisplayClipboardItem | null
   preview: ClipboardPreviewData | null
+  delivery: EntryDeliveryView | null
 }
 
 interface InfoRow {
@@ -92,6 +95,7 @@ const ClipboardPreviewInfo: React.FC<ClipboardPreviewInfoProps> = ({
   imageDimensions,
   item,
   preview,
+  delivery,
 }) => {
   const { t } = useTranslation()
 
@@ -99,7 +103,7 @@ const ClipboardPreviewInfo: React.FC<ClipboardPreviewInfoProps> = ({
 
   const rows = buildInfoRows(item, preview, imageDimensions, t)
 
-  if (rows.length === 0) return null
+  if (rows.length === 0 && !delivery) return null
 
   return (
     <div className="shrink-0 overflow-hidden bg-muted/10 px-6 py-3">
@@ -112,6 +116,11 @@ const ClipboardPreviewInfo: React.FC<ClipboardPreviewInfoProps> = ({
             </span>
           </div>
         ))}
+        {delivery && (
+          <div className="ml-auto">
+            <EntryDeliveryBadge delivery={delivery} />
+          </div>
+        )}
       </div>
     </div>
   )

@@ -63,6 +63,13 @@
   },
   "settings": {
     "title": "Settings",
+    "restartBanner": {
+      "restartButton": "Restart now",
+      "restartingButton": "Restarting…",
+      "dismissAriaLabel": "Dismiss restart notice",
+      "errorMessage": "Automatic restart failed. Please quit the app manually and reopen it to apply the change.",
+      "retryButton": "Retry"
+    },
     "categories": {
       "general": "General",
       "appearance": "Appearance",
@@ -312,12 +319,7 @@
           }
         },
         "restartBanner": {
-          "message": "Restart the app to apply the LAN-only Mode change.",
-          "restartButton": "Restart now",
-          "restartingButton": "Restarting…",
-          "dismissAriaLabel": "Dismiss restart notice",
-          "errorMessage": "Automatic restart failed. Please quit the app manually and reopen it to apply the change.",
-          "retryButton": "Retry"
+          "message": "Restart the app to apply the LAN-only Mode change."
         }
       },
       "storage": {
@@ -429,8 +431,9 @@
         "shortcutTitle": "Shortcut",
         "enable": {
           "label": "Enable quick panel",
-          "description": "Registers a global shortcut and creates the quick panel window in the background. Takes effect immediately."
-        }
+          "description": "Registers a global shortcut and creates the quick panel window in the background. Disabling unregisters the shortcut immediately."
+        },
+        "restartHint": "Global shortcut is now off. Restart the app to fully release the background processes."
       },
       "about": {
         "title": "About",

@@ -113,12 +113,18 @@ pub async fn finalize_quick_panel_show(
 ///   3. 计算 desired OS 快捷键列表(开启时 = `resolve_quick_panel_shortcuts`,
 ///      关闭时 = `[]`)。
 ///   4. 在 main thread 上一次性完成:开启 → `pre_create` + `register`,
-///      关闭 → `unregister` + `destroy`。`tauri-plugin-global-shortcut`
+///      关闭 → 只 `unregister`,**不**销毁面板窗口。`tauri-plugin-global-shortcut`
 ///      与 webview 创建都要求 main thread。
 ///   5. 调 facade 持久化 patch。失败时反向回滚 OS 副作用,避免出现
 ///      "OS 已生效但磁盘没存"或反过来的撕裂状态。
 ///   6. 成功后 `shortcut_registry.replace(...)`,让后续 `update_keyboard_shortcuts`
 ///      能算对 old/new diff。
+///
+/// **关闭路径不彻底释放 webview**:macOS 上销毁 NSPanel 会与 ObjC 类替换 +
+/// on_window_event 异步任务发生 race 而崩溃。所以关闭只反注册 OS 快捷键,
+/// 隐藏的 WKWebView / WebContent XPC 进程依旧存在,UI 会提示用户重启 GUI
+/// 才能完全释放资源。下次启动期 `quick_panel.enabled = false` 会跳过
+/// `pre_create`,自然不会再有这些进程。
 #[tauri::command]
 #[specta::specta]
 pub async fn set_quick_panel_enabled(
@@ -212,8 +218,9 @@ pub async fn set_quick_panel_enabled(
 /// `old` is the OS-truth shortcut list before this call, `new` is the
 /// desired list after; both are passed through `update_shortcuts` so any
 /// partial failure in the middle of the registration sequence rolls itself
-/// back. `target_enabled` only decides whether the window is created or
-/// destroyed alongside the shortcut update.
+/// back. When `target_enabled = true` the panel window is pre-created (no-op
+/// if it already exists); when `target_enabled = false` only the OS shortcut
+/// is unregistered, the window is intentionally left alive.
 async fn apply_quick_panel_state_on_main_thread(
     app: &tauri::AppHandle,
     target_enabled: bool,
@@ -230,9 +237,7 @@ async fn apply_quick_panel_state_on_main_thread(
             if target_enabled {
                 // Pre-create before registering: the shortcut callback toggles
                 // the panel, so the window should exist before users can press
-                // the hotkey. `pre_create` is a no-op if already created — on
-                // a re-enable after a previous disable the same hidden window
-                // is reused (see `quiesce`).
+                // the hotkey. `pre_create` is a no-op if already created.
                 quick_panel::pre_create(&handle);
             }
 
@@ -244,13 +249,14 @@ async fn apply_quick_panel_state_on_main_thread(
             shortcuts::update_shortcuts(&registry, &old, &new)
                 .map_err(|e| CommandError::Conflict(e.to_string()))?;
 
-            if !target_enabled {
-                // Hide (don't close) the window after the OS shortcut is gone.
-                // See `quiesce` for why closing crashes — the panel's NSPanel
-                // class swap + on_window_event async tasks make the standard
-                // NSWindow destruction path unsafe.
-                quick_panel::quiesce(&handle);
-            }
+            // On disable we deliberately leave the (now-hidden) panel window
+            // alive. Destroying it on macOS races with the NSPanel ObjC class
+            // swap + on_window_event async tasks and crashes the process; even
+            // a hide-then-close shuffle did not free the underlying WKWebView's
+            // WebContent XPC. The UI surfaces a "restart to fully release
+            // resources" hint instead — see `QuickPanelSection`. The OS-level
+            // shortcut is already gone via `update_shortcuts` above, so the
+            // dormant webview cannot be reached by the user.
             Ok(())
         })();
         let _ = tx.send(result);

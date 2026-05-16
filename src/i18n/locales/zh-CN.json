@@ -63,6 +63,13 @@
   },
   "settings": {
     "title": "设置",
+    "restartBanner": {
+      "restartButton": "立即重启",
+      "restartingButton": "正在重启…",
+      "dismissAriaLabel": "收起重启提示",
+      "errorMessage": "自动重启失败，请手动退出并重新打开应用以使更改生效。",
+      "retryButton": "重试"
+    },
     "categories": {
       "general": "通用设置",
       "appearance": "外观设置",
@@ -303,12 +310,7 @@
           }
         },
         "restartBanner": {
-          "message": "需要重启应用以使 LAN-only 模式更改生效。",
-          "restartButton": "立即重启",
-          "restartingButton": "正在重启…",
-          "dismissAriaLabel": "收起重启提示",
-          "errorMessage": "自动重启失败，请手动退出并重新打开应用以使更改生效。",
-          "retryButton": "重试"
+          "message": "需要重启应用以使 LAN-only 模式更改生效。"
         }
       },
       "storage": {
@@ -420,8 +422,9 @@
         "shortcutTitle": "快捷键",
         "enable": {
           "label": "启用快捷面板",
-          "description": "开启后会注册全局快捷键，并在后台创建快捷面板窗口。修改即时生效。"
-        }
+          "description": "开启后会注册全局快捷键，并在后台创建快捷面板窗口；关闭即时反注册快捷键。"
+        },
+        "restartHint": "全局快捷键已停用。建议重启应用以彻底释放后台进程。"
       },
       "about": {
         "title": "关于",

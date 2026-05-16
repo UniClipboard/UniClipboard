@@ -14,10 +14,16 @@ afterEach(() => {
   cleanup()
 })
 
+const MSG = '需要重启应用以使更改生效。'
+
 describe('RestartBanner', () => {
   it('Test 1: visible=false 时不渲染（节点不挂）', () => {
     const { container } = render(
-      <RestartBanner visible={false} onRestart={vi.fn().mockResolvedValue(undefined)} />
+      <RestartBanner
+        visible={false}
+        message={MSG}
+        onRestart={vi.fn().mockResolvedValue(undefined)}
+      />
     )
     expect(screen.queryByRole('status')).toBeNull()
     // 整个组件应返回 null — container 内无任何子元素
@@ -25,25 +31,32 @@ describe('RestartBanner', () => {
   })
 
   it('Test 2: visible=true 时渲染主信息 + role=status + aria-live="polite"', () => {
-    render(<RestartBanner visible onRestart={vi.fn().mockResolvedValue(undefined)} />)
+    render(<RestartBanner visible message={MSG} onRestart={vi.fn().mockResolvedValue(undefined)} />)
     const status = screen.getByRole('status')
     expect(status).toBeInTheDocument()
     expect(status).toHaveAttribute('aria-live', 'polite')
-    // 主信息文案：i18n key 已就位（zh-CN: "需要重启应用以使 LAN-only 模式更改生效。"）
-    expect(status.textContent).toMatch(/需要重启应用|Restart the app/)
+    // 主信息文案由调用方注入，banner 原样渲染
+    expect(status.textContent).toContain(MSG)
   })
 
   it('Test 3: 点击「立即重启」Button 触发 onRestart 一次', async () => {
     const onRestart = vi.fn().mockResolvedValue(undefined)
     const user = userEvent.setup()
-    render(<RestartBanner visible onRestart={onRestart} />)
+    render(<RestartBanner visible message={MSG} onRestart={onRestart} />)
     const button = screen.getByRole('button', { name: /立即重启|Restart now/ })
     await user.click(button)
     expect(onRestart).toHaveBeenCalledTimes(1)
   })
 
   it('Test 4: loading=true 时 Button 禁用 + 文案变 "正在重启…"', () => {
-    render(<RestartBanner visible loading onRestart={vi.fn().mockResolvedValue(undefined)} />)
+    render(
+      <RestartBanner
+        visible
+        loading
+        message={MSG}
+        onRestart={vi.fn().mockResolvedValue(undefined)}
+      />
+    )
     const button = screen.getByRole('button', { name: /正在重启|Restarting/ })
     expect(button).toBeDisabled()
   })
@@ -52,6 +65,7 @@ describe('RestartBanner', () => {
     render(
       <RestartBanner
         visible
+        message={MSG}
         error="自动重启失败"
         onRestart={vi.fn().mockResolvedValue(undefined)}
       />
@@ -68,6 +82,7 @@ describe('RestartBanner', () => {
     render(
       <RestartBanner
         visible
+        message={MSG}
         error="自动重启失败"
         onRestart={onRestart}
         onDismissError={onDismissError}
@@ -87,7 +102,7 @@ describe('RestartBanner', () => {
 
   it('Test 7: visible=true 时含 lucide RefreshCw icon (svg)', () => {
     const { container } = render(
-      <RestartBanner visible onRestart={vi.fn().mockResolvedValue(undefined)} />
+      <RestartBanner visible message={MSG} onRestart={vi.fn().mockResolvedValue(undefined)} />
     )
     // lucide-react 输出 <svg class="lucide lucide-refresh-cw ..."> — 用 svg 选择器即可
     const svg = container.querySelector('svg')
@@ -96,7 +111,7 @@ describe('RestartBanner', () => {
 
   it('Test 8: 不复用 shadcn Alert — 静态结构 fence (data-slot="alert" 不应存在)', () => {
     const { container } = render(
-      <RestartBanner visible onRestart={vi.fn().mockResolvedValue(undefined)} />
+      <RestartBanner visible message={MSG} onRestart={vi.fn().mockResolvedValue(undefined)} />
     )
     expect(container.querySelector('[data-slot="alert"]')).toBeNull()
   })

@@ -3,21 +3,22 @@ import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
 
 /**
- * RestartBanner — NetworkSection 专属持久 inline 重启通知 (Phase 95)。
+ * RestartBanner — 设置页持久 inline 重启通知。
+ *
+ * 由父 section 把"需要重启的原因文案"作为 `message` 传入,banner 内部统一
+ * 管理按钮 / 错误 / dismiss 的视觉与文案(走 `settings.restartBanner.*`
+ * 命名空间)。这样新增需要重启提示的 section(如 QuickPanelSection)只用
+ * 注入自己的解释文案 + 处理 `onRestart`,不必各自复制一份相同样式的 inline UI。
  *
  * - Per CONTEXT D-A1: 不复用 shadcn Alert, 不用 sonner toast。
- * - Per CONTEXT D-A2: 由父组件 (NetworkSection) 嵌入到 SettingGroup 内部、Switch 上方。
+ * - Per CONTEXT D-A2: 由父组件嵌入到 SettingGroup 内部、Switch 上方。
  * - Per CONTEXT D-A3: 三态视觉只靠 Banner 出现/消失表达, Switch 自身样式不动。
- * - Per CONTEXT D-B3: app.restart() 失败时通过 error prop 渲染 inline error, 不抛 toast。
- *
- * Scope: 这个 banner 跟 NetworkSection 的 loading/error/retry 状态机紧绑,
- * i18n key 走 `settings.sections.network.restartBanner.*`。其他 surface
- * (例如 MobileSyncSettingsDialog) 的"提示重启"需求视觉与错误处理都不同,
- * 应该各自走自己的 inline UI, 不要尝试把这个 banner 改造成 generic ——
- * union 类型的 banner 会比复制一份更难维护。
+ * - Per CONTEXT D-B3: `onRestart` 失败时通过 `error` prop 渲染 inline error, 不抛 toast。
  */
 export interface RestartBannerProps {
   visible: boolean
+  /** 已 i18n 好的"为什么需要重启"说明,由调用方根据自己 section 的语义提供。 */
+  message: string
   onRestart: () => Promise<void>
   loading?: boolean
   error?: string | null
@@ -40,6 +41,7 @@ export interface RestartBannerProps {
  */
 export function RestartBanner({
   visible,
+  message,
   onRestart,
   loading = false,
   error = null,
@@ -57,9 +59,7 @@ export function RestartBanner({
     >
       <RefreshCw className="size-4 text-foreground mt-0.5 shrink-0" aria-hidden="true" />
       <div className="flex-1 space-y-1">
-        <p className="text-sm text-foreground">
-          {t('settings.sections.network.restartBanner.message')}
-        </p>
+        <p className="text-sm text-foreground">{message}</p>
         {error && (
           <p role="alert" className="text-xs text-destructive">
             {error}
@@ -77,8 +77,8 @@ export function RestartBanner({
             disabled={loading}
           >
             {loading
-              ? t('settings.sections.network.restartBanner.restartingButton')
-              : t('settings.sections.network.restartBanner.restartButton')}
+              ? t('settings.restartBanner.restartingButton')
+              : t('settings.restartBanner.restartButton')}
           </Button>
         ) : (
           <>
@@ -90,13 +90,13 @@ export function RestartBanner({
               }}
               disabled={loading}
             >
-              {t('settings.sections.network.restartBanner.retryButton')}
+              {t('settings.restartBanner.retryButton')}
             </Button>
             {onDismissError && (
               <Button
                 variant="ghost"
                 size="icon"
-                aria-label={t('settings.sections.network.restartBanner.dismissAriaLabel')}
+                aria-label={t('settings.restartBanner.dismissAriaLabel')}
                 onClick={onDismissError}
               >
                 <X className="size-3.5" aria-hidden="true" />

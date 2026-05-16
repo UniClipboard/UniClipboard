@@ -140,7 +140,7 @@ const NetworkSection: React.FC = () => {
       await commands.restartApp()
     } catch (err) {
       log.error({ err }, 'restart_app 失败')
-      setRestartError(t('settings.sections.network.restartBanner.errorMessage'))
+      setRestartError(t('settings.restartBanner.errorMessage'))
       setRestartLoading(false)
     }
   }
@@ -158,6 +158,7 @@ const NetworkSection: React.FC = () => {
     <SettingGroup title={t('settings.categories.network')}>
       <RestartBanner
         visible={pending}
+        message={t('settings.sections.network.restartBanner.message')}
         onRestart={handleRestart}
         loading={restartLoading}
         error={restartError}

@@ -127,11 +127,12 @@ export interface NetworkSettings {
  * Quick panel (Spotlight-style) feature toggle. / 快捷面板功能开关。
  *
  * Default `enabled = true`. GUI clients toggle this via the
- * `set_quick_panel_enabled` Tauri command, which applies the change live;
- * the daemon HTTP path only persists the flag (and is used by non-GUI
- * consumers / cross-window sync). At startup the GUI reads the persisted
- * flag to decide whether to register the shortcut and pre-create the
- * (hidden) panel window.
+ * `set_quick_panel_enabled` Tauri command. Enabling registers the global
+ * shortcut and pre-creates the (hidden) panel window in-process. Disabling
+ * unregisters the shortcut immediately, but the hidden webview and its
+ * WebContent XPC remain alive until the GUI is restarted — destroying the
+ * NSPanel on macOS crashes the process. The daemon HTTP path only persists
+ * the flag (used by non-GUI consumers / cross-window sync).
  */
 export interface QuickPanelSettings {
   enabled: boolean

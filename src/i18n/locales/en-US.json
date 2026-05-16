@@ -429,9 +429,8 @@
         "shortcutTitle": "Shortcut",
         "enable": {
           "label": "Enable quick panel",
-          "description": "Registers a global shortcut and pre-creates the quick panel window in the background. A restart is required for changes to take effect."
-        },
-        "restartHint": "Quick panel toggle changed. Restart the app for the change to take effect."
+          "description": "Registers a global shortcut and creates the quick panel window in the background. Takes effect immediately."
+        }
       },
       "about": {
         "title": "About",

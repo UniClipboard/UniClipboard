@@ -1,5 +1,4 @@
-import { RefreshCw } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { SettingGroup } from './SettingGroup'
 import { SettingRow } from './SettingRow'
@@ -14,8 +13,9 @@ const log = createLogger('quick-panel-section')
 const QUICK_PANEL_SHORTCUT_ID = 'global.toggleQuickPanel'
 
 /**
- * Quick panel feature section. 启用开关后需要重启 GUI 才会生效——启动期决定
- * 是否注册全局快捷键 + 预创建快捷面板窗口（参考 `uc-tauri/src/run.rs`）。
+ * Quick panel feature section. 切换 enabled 会通过
+ * `set_quick_panel_enabled` Tauri command 即时注册/反注册全局快捷键并
+ * 创建/销毁隐藏面板窗口——不需要重启 GUI。
  *
  * 这里把"切换快捷面板"的快捷键也一并展示出来，让用户在同一个 section
  * 内完成"开关 + 配快捷键"两件事；Shortcuts section 里仍然保留同一行，
@@ -34,16 +34,6 @@ export default function QuickPanelSection() {
   const enabled = setting?.quickPanel?.enabled ?? false
   const [saving, setSaving] = useState(false)
   const isBusy = loading || saving
-
-  // 记录进入设置页时的初始 enabled 值。后续 enabled 与之不一致时显示
-  // "需重启"提示——避免用户切了开关却没意识到要重启 GUI 才生效。
-  const [initialEnabled, setInitialEnabled] = useState<boolean | null>(null)
-  useEffect(() => {
-    if (initialEnabled === null && setting) {
-      setInitialEnabled(enabled)
-    }
-  }, [enabled, initialEnabled, setting])
-  const restartHintVisible = initialEnabled !== null && initialEnabled !== enabled
 
   const handleEnabledChange = async (next: boolean) => {
     try {
@@ -110,18 +100,6 @@ export default function QuickPanelSection() {
   return (
     <div className="space-y-6">
       <SettingGroup title={t('settings.sections.quickPanel.featureTitle')}>
-        {restartHintVisible && (
-          <div
-            role="status"
-            aria-live="polite"
-            className="flex items-start gap-2 px-4 py-3 bg-accent/40 border-b border-border/40"
-          >
-            <RefreshCw className="size-4 text-foreground mt-0.5 shrink-0" aria-hidden="true" />
-            <p className="text-sm text-foreground">
-              {t('settings.sections.quickPanel.restartHint')}
-            </p>
-          </div>
-        )}
         <SettingRow
           label={t('settings.sections.quickPanel.enable.label')}
           description={t('settings.sections.quickPanel.enable.description')}

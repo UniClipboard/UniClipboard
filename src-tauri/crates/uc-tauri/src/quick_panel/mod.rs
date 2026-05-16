@@ -406,6 +406,28 @@ pub fn dismiss(app: &tauri::AppHandle) {
     }
 }
 
+/// Quiesce the quick panel for the live-disable path.
+///
+/// Only **hides** the window — does not call `close()`. The macOS variant
+/// rewires the underlying NSWindow's ObjC class to a custom NSPanel subclass
+/// via `object_setClass` (see `macos::convert_to_panel`) and the
+/// `pre_create` setup attaches `on_window_event` callbacks that spawn async
+/// blur-verify tasks holding `WebviewWindow` clones. Tearing the window
+/// down via `close()` races those callbacks against Tauri's standard
+/// NSWindow destruction path and crashes the process.
+///
+/// Since the global shortcut has already been unregistered by the caller,
+/// the hidden webview is dormant; re-enable simply registers shortcuts
+/// again and the same window is reused.
+pub fn quiesce(app: &tauri::AppHandle) {
+    let Some(window) = app.get_webview_window(PANEL_LABEL) else {
+        return;
+    };
+    if let Err(e) = window.hide() {
+        warn!(error = %e, "Failed to hide quick panel window during quiesce");
+    }
+}
+
 /// Update quick panel size and center position from the current UI scale.
 pub fn set_layout(app: &tauri::AppHandle, scale: f64, preview_expanded: bool) {
     let Some(window) = app.get_webview_window(PANEL_LABEL) else {

@@ -1,10 +1,18 @@
 //! Quick-panel Tauri commands
 //! 快捷面板相关的 Tauri 命令
 
-use crate::commands::record_trace_fields;
-use crate::quick_panel;
-use tracing::{info_span, Instrument};
+use std::sync::Arc;
+
+use tauri::State;
+use tracing::{error, info_span, Instrument};
+use uc_application::facade::settings::{QuickPanelSettingsPatch, SettingsPatch};
+use uc_desktop::shortcuts::{self, CurrentShortcuts};
 use uc_platform::ports::observability::TraceMetadata;
+
+use crate::bootstrap::TauriAppRuntime;
+use crate::commands::settings::KeyboardShortcutsUpdateLock;
+use crate::commands::{record_trace_fields, CommandError};
+use crate::quick_panel;
 
 /// Dismiss the quick panel and return focus to the previous app (no paste).
 ///
@@ -91,6 +99,166 @@ pub async fn finalize_quick_panel_show(
     }
     .instrument(span)
     .await
+}
+
+/// 实时启用/禁用快捷面板。
+///
+/// 与 `update_keyboard_shortcuts` 走同一把 [`KeyboardShortcutsUpdateLock`],
+/// 因为两者都会改 OS 全局快捷键的注册状态——并发执行会让 OS 状态、
+/// [`CurrentShortcuts`] 内存视图、和 facade 持久化值互相错位。
+///
+/// 流程:
+///   1. 拿锁,读当前 settings。
+///   2. 与 `enabled` 比较:无变化直接返回。
+///   3. 计算 desired OS 快捷键列表(开启时 = `resolve_quick_panel_shortcuts`,
+///      关闭时 = `[]`)。
+///   4. 在 main thread 上一次性完成:开启 → `pre_create` + `register`,
+///      关闭 → `unregister` + `destroy`。`tauri-plugin-global-shortcut`
+///      与 webview 创建都要求 main thread。
+///   5. 调 facade 持久化 patch。失败时反向回滚 OS 副作用,避免出现
+///      "OS 已生效但磁盘没存"或反过来的撕裂状态。
+///   6. 成功后 `shortcut_registry.replace(...)`,让后续 `update_keyboard_shortcuts`
+///      能算对 old/new diff。
+#[tauri::command]
+#[specta::specta]
+pub async fn set_quick_panel_enabled(
+    app: tauri::AppHandle,
+    runtime: State<'_, Arc<TauriAppRuntime>>,
+    shortcut_registry: State<'_, CurrentShortcuts>,
+    update_lock: State<'_, KeyboardShortcutsUpdateLock>,
+    enabled: bool,
+    _trace: Option<TraceMetadata>,
+) -> Result<(), CommandError> {
+    let span = info_span!(
+        "command.quick_panel.set_enabled",
+        trace_id = tracing::field::Empty,
+        trace_ts = tracing::field::Empty,
+        enabled = enabled,
+    );
+    record_trace_fields(&span, &_trace);
+
+    async {
+        let _guard = update_lock.0.lock().await;
+        let facade = runtime.app_facade();
+        let current = facade
+            .settings
+            .get()
+            .await
+            .map_err(CommandError::internal)?;
+
+        if current.quick_panel.enabled == enabled {
+            return Ok(());
+        }
+
+        // Reconstruct a domain `Settings`-shaped view of the current keyboard
+        // shortcuts so we can reuse `resolve_quick_panel_shortcuts`. We only
+        // need the `keyboard_shortcuts` field for that helper.
+        let target_shortcuts = if enabled {
+            let mut tmp = uc_core::settings::model::Settings::default();
+            tmp.keyboard_shortcuts = current
+                .keyboard_shortcuts
+                .iter()
+                .map(|(id, key)| (id.clone(), key.clone().into()))
+                .collect();
+            shortcuts::resolve_quick_panel_shortcuts(&tmp)
+        } else {
+            Vec::new()
+        };
+
+        let old_shortcuts = shortcut_registry.current();
+        apply_quick_panel_state_on_main_thread(&app, enabled, &old_shortcuts, &target_shortcuts)
+            .await?;
+
+        let patch = SettingsPatch {
+            quick_panel: Some(QuickPanelSettingsPatch {
+                enabled: Some(enabled),
+            }),
+            ..Default::default()
+        };
+
+        match facade.settings.update(patch).await {
+            Ok(_) => {
+                shortcut_registry.replace(target_shortcuts);
+                Ok(())
+            }
+            Err(err) => {
+                // Persist failed → undo OS side effects so on-disk state and
+                // live state agree. Note that rollback reverses both args: if
+                // we just enabled, rollback disables; if we just disabled,
+                // rollback re-enables (re-registers shortcuts + pre-creates).
+                if let Err(rollback_err) = apply_quick_panel_state_on_main_thread(
+                    &app,
+                    !enabled,
+                    &target_shortcuts,
+                    &old_shortcuts,
+                )
+                .await
+                {
+                    error!(
+                        error = %rollback_err,
+                        "Failed to roll back quick panel side effects after settings save failure"
+                    );
+                }
+                Err(CommandError::internal(err))
+            }
+        }
+    }
+    .instrument(span)
+    .await
+}
+
+/// Run the enable→OS or disable→OS transition on the Tauri main thread.
+///
+/// `old` is the OS-truth shortcut list before this call, `new` is the
+/// desired list after; both are passed through `update_shortcuts` so any
+/// partial failure in the middle of the registration sequence rolls itself
+/// back. `target_enabled` only decides whether the window is created or
+/// destroyed alongside the shortcut update.
+async fn apply_quick_panel_state_on_main_thread(
+    app: &tauri::AppHandle,
+    target_enabled: bool,
+    old: &[String],
+    new: &[String],
+) -> Result<(), CommandError> {
+    let handle = app.clone();
+    let old = old.to_vec();
+    let new = new.to_vec();
+    let (tx, rx) = tokio::sync::oneshot::channel();
+
+    app.run_on_main_thread(move || {
+        let result = (|| {
+            if target_enabled {
+                // Pre-create before registering: the shortcut callback toggles
+                // the panel, so the window should exist before users can press
+                // the hotkey. `pre_create` is a no-op if already created — on
+                // a re-enable after a previous disable the same hidden window
+                // is reused (see `quiesce`).
+                quick_panel::pre_create(&handle);
+            }
+
+            let toggle_handle = handle.clone();
+            let registry =
+                quick_panel::TauriGlobalShortcutRegistry::new(handle.clone(), move || {
+                    quick_panel::toggle(&toggle_handle)
+                });
+            shortcuts::update_shortcuts(&registry, &old, &new)
+                .map_err(|e| CommandError::Conflict(e.to_string()))?;
+
+            if !target_enabled {
+                // Hide (don't close) the window after the OS shortcut is gone.
+                // See `quiesce` for why closing crashes — the panel's NSPanel
+                // class swap + on_window_event async tasks make the standard
+                // NSWindow destruction path unsafe.
+                quick_panel::quiesce(&handle);
+            }
+            Ok(())
+        })();
+        let _ = tx.send(result);
+    })
+    .map_err(|err| CommandError::internal(format!("failed to dispatch to main thread: {err}")))?;
+
+    rx.await
+        .map_err(|_| CommandError::internal("main thread dropped quick panel update result"))?
 }
 
 /// Update quick panel size and centered position from the active UI scale.

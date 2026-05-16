@@ -50,3 +50,14 @@ function shortcutKeyEquals(left: ShortcutKey | undefined, right: ShortcutKey | u
   }
   return JSON.stringify(left) === JSON.stringify(right)
 }
+
+/**
+ * Toggle the quick panel feature live — registers/unregisters the global
+ * shortcut and creates/destroys the hidden panel window in-process. Returns
+ * after both the OS side effects and the on-disk patch have committed.
+ *
+ * Backend: `commands::quick_panel::set_quick_panel_enabled`.
+ */
+export async function setQuickPanelEnabled(enabled: boolean): Promise<void> {
+  await commands.setQuickPanelEnabled(enabled)
+}

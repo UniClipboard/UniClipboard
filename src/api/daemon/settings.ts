@@ -126,9 +126,12 @@ export interface NetworkSettings {
 /**
  * Quick panel (Spotlight-style) feature toggle. / 快捷面板功能开关。
  *
- * Default `enabled = false`. Changing it requires a GUI restart — the host
- * decides at startup whether to register the global shortcut and pre-create
- * the (hidden) quick panel window.
+ * Default `enabled = true`. GUI clients toggle this via the
+ * `set_quick_panel_enabled` Tauri command, which applies the change live;
+ * the daemon HTTP path only persists the flag (and is used by non-GUI
+ * consumers / cross-window sync). At startup the GUI reads the persisted
+ * flag to decide whether to register the shortcut and pre-create the
+ * (hidden) panel window.
  */
 export interface QuickPanelSettings {
   enabled: boolean

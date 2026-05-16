@@ -256,7 +256,9 @@ pub struct NetworkSettingsDto {
 /// 快捷面板（Spotlight 风格）功能开关 DTO。
 ///
 /// wire 字段命名为 camelCase（`enabled`）。`#[serde(default)]` 让缺字段时
-/// 回退到 `Default`（`enabled = false`），兼容老 wire。
+/// 回退到 `Default`（`enabled = true`），与 `core::QuickPanelSettings` 默认
+/// 保持一致——新装/老 wire 缺字段都视为"启用"，避免出现 wire 与磁盘真相
+/// 撕裂。
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, ToSchema)]
 #[serde(default, rename_all = "camelCase")]
 pub struct QuickPanelSettingsDto {
@@ -265,7 +267,7 @@ pub struct QuickPanelSettingsDto {
 
 impl Default for QuickPanelSettingsDto {
     fn default() -> Self {
-        Self { enabled: false }
+        Self { enabled: true }
     }
 }
 

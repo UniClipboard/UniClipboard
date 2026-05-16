@@ -161,8 +161,9 @@ export interface NetworkSettings {
 /**
  * 快捷面板（Spotlight 风格）功能开关 - 对应 Rust QuickPanelSettings
  *
- * 默认 `enabled = false`：避免对用不到该功能的用户占用全局快捷键 / 资源。
- * 变更后需要重启 GUI 才会生效（启动期决定是否注册全局快捷键 + 预创建窗口）。
+ * 默认 `enabled = true`：快捷面板是产品核心交互入口，新装即应可用。
+ * 变更走 `set_quick_panel_enabled` Tauri command，即时注册/反注册全局
+ * 快捷键并创建/销毁隐藏窗口，无需重启 GUI。
  */
 export interface QuickPanelSettings {
   enabled: boolean

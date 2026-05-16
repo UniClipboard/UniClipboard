@@ -1,6 +1,9 @@
 import React, { useCallback, useEffect, useState, type ReactNode } from 'react'
 import { getSettings, updateSettings } from '@/api/daemon'
-import { updateKeyboardShortcuts as persistKeyboardShortcuts } from '@/api/tauri-command'
+import {
+  updateKeyboardShortcuts as persistKeyboardShortcuts,
+  setQuickPanelEnabled as persistQuickPanelEnabled,
+} from '@/api/tauri-command'
 import { DEFAULT_THEME_COLOR } from '@/constants/theme'
 import i18n, { normalizeLanguage, persistLanguage } from '@/i18n'
 import { connectDaemonWs } from '@/lib/daemon-ws-bootstrap'
@@ -164,21 +167,45 @@ export const SettingProvider: React.FC<SettingProviderProps> = ({ children }) =>
     return await saveSetting(updatedSetting)
   }
 
-  // Update quick panel settings — 变更需要重启 GUI 才会生效（启动期门控）。
-  // restartRequired 由 UI 自行根据 enabled 是否变化判断；daemon 端 PUT /settings
-  // 现阶段不为 quick_panel 触发 restart_required 信号（与 network 不同）。
+  // Update quick panel settings.
+  //
+  // GUI 路径必须走 Tauri in-process command:启用/禁用会即时触发全局快捷键
+  // 注册/反注册 + 隐藏窗口的创建/销毁,这些副作用只能在 GUI 进程内完成。
+  // 命令内部已经协调好 OS 注册和 facade 持久化的事务性(失败回滚),所以
+  // 这里只在成功后更新本地 setState + 广播,不再额外走 daemon HTTP PUT。
   const updateQuickPanelSetting = async (
     newQuickPanelSetting: Partial<Settings['quickPanel']>
   ): Promise<{ restartRequired: boolean }> => {
     if (!setting) return { restartRequired: false }
-    const updatedSetting: Settings = {
-      ...setting,
-      quickPanel: {
-        ...setting.quickPanel,
-        ...newQuickPanelSetting,
-      },
+    if (newQuickPanelSetting.enabled === undefined) {
+      return { restartRequired: false }
     }
-    return await saveSetting(updatedSetting)
+    try {
+      setLoading(true)
+      await persistQuickPanelEnabled(newQuickPanelSetting.enabled)
+      const updatedSetting: Settings = {
+        ...setting,
+        quickPanel: { ...setting.quickPanel, ...newQuickPanelSetting },
+      }
+      setSetting(prev =>
+        prev
+          ? { ...prev, quickPanel: { ...prev.quickPanel, ...newQuickPanelSetting } }
+          : updatedSetting
+      )
+      setError(null)
+      try {
+        await emitSettingsChanged(updatedSetting)
+      } catch (err) {
+        log.error({ err }, 'Failed to broadcast settings change')
+      }
+      return { restartRequired: false }
+    } catch (err) {
+      log.error({ err }, 'Failed to update quick panel setting')
+      setError(`保存设置失败: ${err}`)
+      throw err
+    } finally {
+      setLoading(false)
+    }
   }
 
   // 更新快捷键。GUI 路径必须走 Tauri in-process command，因为快捷面板全局

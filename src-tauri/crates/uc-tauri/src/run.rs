@@ -337,7 +337,8 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
             // `quick_panel_enabled`:决定是否在启动期注册全局快捷键 +
             // 预创建快捷面板窗口。默认（用户未显式开启）为 false,
             // 避免对用不到该功能的用户造成全局快捷键占用 / 资源浪费。
-            // 变更后需要重启 GUI 才会生效,与 mobile_sync / network 字段语义一致。
+            // 运行期的开关切换由 `set_quick_panel_enabled` command 协调，
+            // 这里只负责"以最近持久化的偏好启动"。
             let (silent_start, initial_language, lan_only_active, quick_panel_enabled) = {
                 let settings_port = runtime.settings_port();
                 match tauri::async_runtime::block_on(settings_port.load()) {
@@ -376,8 +377,8 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
             //
             // 即使 `quick_panel_enabled = false`,plugin 本身仍然注册:它只是
             // 把 `tauri-plugin-global-shortcut` 接进运行时,真正的快捷键注册
-            // 由下面的循环按需进行。这样后续用户在设置页打开 quick panel +
-            // 重启 GUI 后,plugin 已就绪,可以直接跑后面的注册流程。
+            // 由下面的循环按需进行。用户后续通过 `set_quick_panel_enabled`
+            // 打开开关时,plugin 已就绪,可直接复用同样的注册流程。
             let mut registered_quick_panel_shortcuts = Vec::new();
 
             #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -431,7 +432,8 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
             // shortcut press doesn't activate the app via WebviewWindowBuilder::build()
             //
             // 同样按 `quick_panel_enabled` 门控:禁用时不预创建窗口,避免占用
-            // webview 资源。需要时由用户在设置页打开后重启 GUI 才会生效。
+            // webview 资源。用户在设置页开启时由 `set_quick_panel_enabled`
+            // 即时补一次 `pre_create`,不需要重启 GUI。
             if quick_panel_enabled {
                 quick_panel::pre_create(app.handle());
             }

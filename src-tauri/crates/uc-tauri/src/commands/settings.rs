@@ -60,12 +60,19 @@ pub async fn update_keyboard_shortcuts(
         let _guard = update_lock.0.lock().await;
         let facade = runtime.app_facade();
         let current = facade.settings.get().await.map_err(CommandError::internal)?;
+        let quick_panel_enabled = current.quick_panel.enabled;
         let next_keyboard_shortcuts =
             apply_keyboard_shortcut_patch_to_map(current.keyboard_shortcuts, &shortcuts);
 
         let old_registered_shortcuts = shortcut_registry.current();
-        let new_registered_shortcuts =
-            quick_panel_shortcuts_from_keyboard_shortcuts(&next_keyboard_shortcuts);
+        // 快捷面板关闭时,即使快捷键被修改也不向 OS 注册——OS 视角应保持空,
+        // 与 quick_panel.enabled = false 的语义一致。用户重新打开开关时,
+        // `set_quick_panel_enabled` 命令会根据当前 keyboard_shortcuts 注册。
+        let new_registered_shortcuts = if quick_panel_enabled {
+            quick_panel_shortcuts_from_keyboard_shortcuts(&next_keyboard_shortcuts)
+        } else {
+            Vec::new()
+        };
 
         if old_registered_shortcuts != new_registered_shortcuts {
             update_global_shortcuts_on_main_thread(

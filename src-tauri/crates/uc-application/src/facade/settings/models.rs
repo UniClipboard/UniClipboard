@@ -151,8 +151,8 @@ pub struct NetworkSettingsView {
     pub allow_overlay_network_addrs: bool,
 }
 
-/// 快捷面板功能开关业务镜像。`enabled = false` 时启动期不注册全局快捷键、
-/// 不预创建快捷面板窗口；字段变更需重启 daemon / GUI 才生效。
+/// 快捷面板功能开关业务镜像。承载用户对"是否启用快捷面板"这一偏好；
+/// 落地副作用（OS 快捷键、窗口生命周期等）由消费此视图的上层负责。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct QuickPanelSettingsView {
     pub enabled: bool,

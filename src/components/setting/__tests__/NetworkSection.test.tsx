@@ -93,7 +93,7 @@ const baseSetting: Settings = {
     allowOverlayNetworkAddrs: false,
   },
   quickPanel: {
-    enabled: false,
+    enabled: true,
   },
 }
 

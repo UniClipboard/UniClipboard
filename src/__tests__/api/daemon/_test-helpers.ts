@@ -217,7 +217,7 @@ export function makeSettingsDto(overrides: Partial<Settings> = {}): Settings {
       allowOverlayNetworkAddrs: false,
     },
     quickPanel: {
-      enabled: false,
+      enabled: true,
     },
     ...overrides,
   }

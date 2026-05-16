@@ -100,6 +100,44 @@ It enables seamless and secure syncing of text, images, and files across multipl
 
 Visit the [GitHub Releases](https://github.com/UniClipboard/UniClipboard/releases) page to download the installation package for your operating system.
 
+### One-line install script (Linux / macOS)
+
+Don't want to pick a package by hand? One command does it:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/UniClipboard/UniClipboard/main/scripts/install.sh | bash
+```
+
+The script detects OS and CPU automatically:
+
+- **macOS** — downloads `.app.tar.gz`, extracts it, and moves `UniClipboard.app` into `/Applications` (escalates with `sudo` if the directory isn't writable; pass `--prefix "$HOME/Applications"` for a user-level install).
+- **Linux** — with sudo, installs `.deb` via `apt` or `.rpm` via `dnf`/`yum`; otherwise falls back to AppImage in `~/.local/bin` with a `.desktop` entry (no root needed).
+
+Common flags:
+
+```bash
+# Pin a specific version
+curl -fsSL https://raw.githubusercontent.com/UniClipboard/UniClipboard/main/scripts/install.sh | bash -s -- --version v0.9.0
+
+# Force AppImage (rootless even when sudo is available)
+curl -fsSL https://raw.githubusercontent.com/UniClipboard/UniClipboard/main/scripts/install.sh | bash -s -- --format appimage
+```
+
+Uninstall with the matching script:
+
+```bash
+# Remove the app only, keep data and config
+curl -fsSL https://raw.githubusercontent.com/UniClipboard/UniClipboard/main/scripts/uninstall.sh | bash
+
+# Full wipe — also removes data directories, config, and cache
+curl -fsSL https://raw.githubusercontent.com/UniClipboard/UniClipboard/main/scripts/uninstall.sh | bash -s -- --purge
+
+# Preview what would be removed without deleting anything
+curl -fsSL https://raw.githubusercontent.com/UniClipboard/UniClipboard/main/scripts/uninstall.sh | bash -s -- --dry-run
+```
+
+> Update behavior matches the manual download paths below: `.deb` / `.rpm` installs are not picked up by the in-app updater — re-run the script or use your system package manager. AppImage on Linux and `.app` on macOS continue to update from inside the app.
+
 ### Linux
 
 Each release ships `.deb`, `.rpm`, and `.AppImage` artifacts for both `x86_64` and `aarch64` (where supported).

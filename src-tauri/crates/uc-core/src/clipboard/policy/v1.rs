@@ -141,7 +141,12 @@ impl SelectRepresentationPolicyV1 {
             return false;
         }
 
-        let bytes = match std::str::from_utf8(&rep.bytes) {
+        // file-list rep 的字节是 uri-list 文本,LocalFile source 不会出现在 file-list 类别
+        // (LocalFile 来自 image-from-file capture 路径,format_id 是 image-from-file 而非 files)。
+        let Some(rep_bytes) = rep.inline_bytes() else {
+            return false;
+        };
+        let bytes = match std::str::from_utf8(rep_bytes) {
             Ok(bytes) => bytes,
             Err(_) => return false,
         };

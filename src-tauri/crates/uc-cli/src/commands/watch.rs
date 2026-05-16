@@ -199,7 +199,7 @@ fn first_text_preview(snapshot: &SystemClipboardSnapshot) -> Option<String> {
         if !is_text {
             continue;
         }
-        if let Ok(s) = std::str::from_utf8(&rep.bytes) {
+        if let Ok(s) = std::str::from_utf8(rep.inline_bytes().unwrap_or(&[])) {
             return Some(s.to_string());
         }
     }
@@ -214,7 +214,7 @@ fn rep_summary_line(snapshot: &SystemClipboardSnapshot) -> String {
         .iter()
         .map(|rep| {
             let mime = rep.mime.as_ref().map(|m| m.as_str()).unwrap_or("?");
-            format!("{}/{}B", mime, rep.bytes.len())
+            format!("{}/{}B", mime, rep.size_bytes())
         })
         .collect();
     format!(

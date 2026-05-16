@@ -8,6 +8,7 @@ use async_trait::async_trait;
 use bytes::Bytes;
 use thiserror::Error;
 use tracing::{info, warn};
+use uc_core::clipboard::ClipboardPayloadSource;
 use uc_core::ids::EntryId;
 use uc_core::ports::SettingsPort;
 use uc_core::{ClipboardChangeOrigin, SystemClipboardSnapshot};
@@ -79,12 +80,42 @@ impl ClipboardOutboundDispatcher {
 impl ClipboardOutboundPort for ClipboardOutboundDispatcher {
     async fn dispatch_capture(
         &self,
-        input: ClipboardOutboundInput,
+        mut input: ClipboardOutboundInput,
     ) -> Result<ClipboardOutboundOutcome, ClipboardOutboundError> {
         if input.origin.is_remote_push() {
             return Ok(ClipboardOutboundOutcome::Skipped {
                 reason: "remote_push_echo".to_string(),
             });
+        }
+
+        // Strip `LocalFile` source reps before envelope construction.
+        //
+        // capture pipeline 已经把 LocalFile rep 物化到本机 blob 仓库(BlobReady 状态)。
+        // 对端无法从远端 path 读字节,LocalFile 在 wire 协议上无意义;且 V3 envelope
+        // BinaryRepresentation 只支持 inline 字节,若 LocalFile 留在 snapshot 里会触
+        // 发 encode 时的 expect_inline_bytes panic。
+        //
+        // 真正的"图片字节跨设备传输"路径:同一文件已在 files rep(uri-list)里以路径
+        // 形式存在,outbound 通过 publish_file_blob_refs 走 iroh-blobs add_path 流式
+        // 上传得到 V3BlobRef,对端 inbound materializer 用 BlobTransferFacade.fetch_blob
+        // 把真实文件落到本地 file-cache,完整字节恢复。
+        let stripped = input
+            .snapshot
+            .representations
+            .iter()
+            .filter(|rep| matches!(rep.source(), ClipboardPayloadSource::LocalFile { .. }))
+            .count();
+        if stripped > 0 {
+            input
+                .snapshot
+                .representations
+                .retain(|rep| !matches!(rep.source(), ClipboardPayloadSource::LocalFile { .. }));
+            info!(
+                entry_id = %input.entry_id,
+                stripped_count = stripped,
+                "outbound: stripped LocalFile reps before envelope construction (already in blob store; \
+                 peers receive bytes via files rep + iroh-blobs)"
+            );
         }
 
         // Phase timing: dispatch_capture 是 outbound 关键路径,从 capture
@@ -266,7 +297,13 @@ fn extract_file_paths_from_snapshot(snapshot: &SystemClipboardSnapshot) -> Vec<P
             continue;
         }
 
-        let text = match std::str::from_utf8(&rep.bytes) {
+        // outbound 路径的 rep 来自 DB reconstruct,必然 Inline source;LocalFile 不可能
+        // 出现。保守用 inline_bytes() 而非 expect_inline_bytes(),让契约违反时直接 skip
+        // 而不是 panic 在出站路径。
+        let Some(rep_bytes) = rep.inline_bytes() else {
+            continue;
+        };
+        let text = match std::str::from_utf8(rep_bytes) {
             Ok(text) => text,
             Err(_) => continue,
         };
@@ -324,7 +361,12 @@ async fn publish_oversized_inline_blob_refs(
     let mut blob_refs = Vec::new();
 
     for (idx, rep) in snapshot.representations.iter_mut().enumerate() {
-        if rep.bytes.len() <= OVERSIZED_REP_THRESHOLD_BYTES {
+        // outbound 路径的 rep 必然 Inline source;LocalFile 在 capture 阶段已物化到 blob,
+        // 不会进入 outbound dispatch。
+        let Some(rep_bytes) = rep.inline_bytes() else {
+            continue;
+        };
+        if rep_bytes.len() <= OVERSIZED_REP_THRESHOLD_BYTES {
             continue;
         }
         let mime_str = rep.mime.as_ref().map(|m| m.as_str().to_string());
@@ -342,8 +384,10 @@ async fn publish_oversized_inline_blob_refs(
         // to match.
         let _ = rep.content_hash();
 
-        let size_bytes = rep.bytes.len() as u64;
-        let plaintext = std::mem::take(&mut rep.bytes);
+        let size_bytes = rep_bytes.len() as u64;
+        let plaintext = rep
+            .take_inline_bytes()
+            .map_err(|err| ClipboardOutboundError::Internal(err.to_string()))?;
 
         let publish_start = Instant::now();
         let result = blob_transfer

@@ -93,8 +93,8 @@ fn resolve_multi_rep_mime(rep: &ObservedClipboardRepresentation) -> Option<&str>
 
     match (rep.mime.as_deref(), format_default) {
         (Some(m), Some(default)) if default.starts_with("image/") && !m.starts_with("image/") => {
-            let recovered =
-                crate::clipboard::common::sniff_image_magic(&rep.bytes).unwrap_or(default);
+            let recovered = crate::clipboard::common::sniff_image_magic(rep.expect_inline_bytes())
+                .unwrap_or(default);
             tracing::warn!(
                 format_id = %rep.format_id,
                 wire_mime = m,
@@ -258,31 +258,31 @@ pub(crate) fn write_snapshot_multi_macos(snapshot: SystemClipboardSnapshot) -> R
             Some("text/plain") => {
                 // text/plain 的字节是 UTF-8，NSPasteboardTypeString 期望 UTF-8 字节，
                 // 直接写原始字节，不经 NSString 转换（避免对非法 UTF-8 误报）。
-                let data = make_nsdata(&rep.bytes);
+                let data = make_nsdata(rep.expect_inline_bytes());
                 // NSPasteboardTypeString 是 extern "C" 静态变量，访问需要 unsafe 块。
                 // setData_forType 本身是 `pub fn`（安全方法）。
                 let ok = unsafe { text_item.setData_forType(&data, NSPasteboardTypeString) };
                 if ok {
-                    debug!(bytes = rep.bytes.len(), "写入 NSPasteboardTypeString 成功");
+                    debug!(bytes = rep.size_bytes(), "写入 NSPasteboardTypeString 成功");
                     wrote_any = true;
                 } else {
                     warn!(
-                        bytes = rep.bytes.len(),
+                        bytes = rep.size_bytes(),
                         "setData_forType(NSPasteboardTypeString) 返回 false"
                     );
                     skipped.push(rep.format_id.as_str().to_string());
                 }
             }
             Some("text/html") => {
-                let data = make_nsdata(&rep.bytes);
+                let data = make_nsdata(rep.expect_inline_bytes());
                 // NSPasteboardTypeHTML 是 extern "C" 静态变量，访问需要 unsafe 块。
                 let ok = unsafe { text_item.setData_forType(&data, NSPasteboardTypeHTML) };
                 if ok {
-                    debug!(bytes = rep.bytes.len(), "写入 NSPasteboardTypeHTML 成功");
+                    debug!(bytes = rep.size_bytes(), "写入 NSPasteboardTypeHTML 成功");
                     wrote_any = true;
                 } else {
                     warn!(
-                        bytes = rep.bytes.len(),
+                        bytes = rep.size_bytes(),
                         "setData_forType(NSPasteboardTypeHTML) 返回 false"
                     );
                     skipped.push(rep.format_id.as_str().to_string());
@@ -294,14 +294,14 @@ pub(crate) fn write_snapshot_multi_macos(snapshot: SystemClipboardSnapshot) -> R
                 // TextEdit 纯文本模式）继续用 NSPasteboardTypeString。原始 RTF 字节是
                 // ASCII 安全的（RTF 1.x 规范，非 ASCII 都做 \uN 转义），直接喂给 NSData。
                 // NSPasteboardTypeRTF 是 extern "C" 静态变量，访问需要 unsafe 块。
-                let data = make_nsdata(&rep.bytes);
+                let data = make_nsdata(rep.expect_inline_bytes());
                 let ok = unsafe { text_item.setData_forType(&data, NSPasteboardTypeRTF) };
                 if ok {
-                    debug!(bytes = rep.bytes.len(), "写入 NSPasteboardTypeRTF 成功");
+                    debug!(bytes = rep.size_bytes(), "写入 NSPasteboardTypeRTF 成功");
                     wrote_any = true;
                 } else {
                     warn!(
-                        bytes = rep.bytes.len(),
+                        bytes = rep.size_bytes(),
                         "setData_forType(NSPasteboardTypeRTF) 返回 false"
                     );
                     skipped.push(rep.format_id.as_str().to_string());
@@ -314,17 +314,17 @@ pub(crate) fn write_snapshot_multi_macos(snapshot: SystemClipboardSnapshot) -> R
                 // PNG 字节直接喂给 NSPasteboardTypePNG，AppKit 内部 lazy-decode，比
                 // 经 NSImage 中转更稳（避免 alpha / colorspace 翻译误差）。
                 let item: Retained<NSPasteboardItem> = NSPasteboardItem::new();
-                let data = make_nsdata(&rep.bytes);
+                let data = make_nsdata(rep.expect_inline_bytes());
                 // NSPasteboardTypePNG 是 extern "C" 静态变量，访问需要 unsafe 块。
                 let ok = unsafe { item.setData_forType(&data, NSPasteboardTypePNG) };
                 if ok {
-                    debug!(bytes = rep.bytes.len(), "写入 NSPasteboardTypePNG 成功");
+                    debug!(bytes = rep.size_bytes(), "写入 NSPasteboardTypePNG 成功");
                     wrote_any = true;
                     image_total += 1;
                     image_items.push(item);
                 } else {
                     warn!(
-                        bytes = rep.bytes.len(),
+                        bytes = rep.size_bytes(),
                         "setData_forType(NSPasteboardTypePNG) 返回 false"
                     );
                     skipped.push(rep.format_id.as_str().to_string());
@@ -332,29 +332,29 @@ pub(crate) fn write_snapshot_multi_macos(snapshot: SystemClipboardSnapshot) -> R
             }
             Some("image/tiff") => {
                 let item: Retained<NSPasteboardItem> = NSPasteboardItem::new();
-                let data = make_nsdata(&rep.bytes);
+                let data = make_nsdata(rep.expect_inline_bytes());
                 // NSPasteboardTypeTIFF 是 extern "C" 静态变量，访问需要 unsafe 块。
                 let ok = unsafe { item.setData_forType(&data, NSPasteboardTypeTIFF) };
                 if ok {
-                    debug!(bytes = rep.bytes.len(), "写入 NSPasteboardTypeTIFF 成功");
+                    debug!(bytes = rep.size_bytes(), "写入 NSPasteboardTypeTIFF 成功");
                     wrote_any = true;
                     image_total += 1;
                     image_items.push(item);
                 } else {
                     warn!(
-                        bytes = rep.bytes.len(),
+                        bytes = rep.size_bytes(),
                         "setData_forType(NSPasteboardTypeTIFF) 返回 false"
                     );
                     skipped.push(rep.format_id.as_str().to_string());
                 }
             }
             Some("text/uri-list") => {
-                let uris = match parse_uri_list(&rep.bytes) {
+                let uris = match parse_uri_list(rep.expect_inline_bytes()) {
                     Ok(list) => list,
                     Err(e) => {
                         warn!(
                             error = %e,
-                            bytes = rep.bytes.len(),
+                            bytes = rep.size_bytes(),
                             format_id = %rep.format_id,
                             "macOS 多 rep 写入：text/uri-list 解析失败，跳过该 rep"
                         );
@@ -392,7 +392,7 @@ pub(crate) fn write_snapshot_multi_macos(snapshot: SystemClipboardSnapshot) -> R
                 info!(
                     format_id = %rep.format_id,
                     mime = ?other,
-                    bytes = rep.bytes.len(),
+                    bytes = rep.size_bytes(),
                     "macOS 多 rep 写入：跳过不支持的 rep（当前支持 text/plain, text/html, text/rtf, text/uri-list, image/png, image/tiff）"
                 );
                 skipped.push(rep.format_id.as_str().to_string());

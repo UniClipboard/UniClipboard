@@ -230,7 +230,7 @@ fn run_restore(input: String, select: Option<usize>) -> Result<()> {
                 idx,
                 rep.format_id,
                 rep.mime,
-                rep.bytes.len()
+                rep.size_bytes()
             );
         }
 
@@ -274,17 +274,21 @@ fn print_snapshot(snapshot: &SystemClipboardSnapshot) {
 
 fn describe_representation(rep: &ObservedClipboardRepresentation) -> String {
     let mime = rep.mime.as_ref().map(|m| m.as_str()).unwrap_or("-");
+    // probe 只处理 JSON 反序列化产物 + 本机 watcher 当前 snapshot,均为 Inline source。
+    // LocalFile source 在 probe 路径上无法出现(JSON serialize 会失败、watcher 还没有
+    // 启用 LocalFile 模式)。退一步,即便 LocalFile 出现,展示空预览即可。
+    let bytes_view: &[u8] = rep.inline_bytes().unwrap_or(&[]);
     let preview = if is_text_representation(mime, &rep.format_id) {
-        format!("\"{}\"", text_preview(&rep.bytes, 160))
+        format!("\"{}\"", text_preview(bytes_view, 160))
     } else {
-        format!("hex:{}", hex_preview(&rep.bytes, 24))
+        format!("hex:{}", hex_preview(bytes_view, 24))
     };
 
     format!(
         "format_id={} mime={} bytes={} preview={}",
         rep.format_id,
         mime,
-        rep.bytes.len(),
+        rep.size_bytes(),
         preview
     )
 }
@@ -338,7 +342,7 @@ fn snapshot_fingerprint(snapshot: &SystemClipboardSnapshot) -> u64 {
     for rep in &snapshot.representations {
         rep.format_id.hash(&mut hasher);
         rep.mime.hash(&mut hasher);
-        rep.bytes.hash(&mut hasher);
+        rep.inline_bytes().unwrap_or(&[]).hash(&mut hasher);
     }
 
     hasher.finish()

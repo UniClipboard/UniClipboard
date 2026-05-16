@@ -383,7 +383,7 @@ pub(super) fn format_rep_summary(snapshot: &SystemClipboardSnapshot) -> String {
                 "{}{}:{}",
                 rep.format_id.as_str(),
                 mime_suffix,
-                rep.bytes.len()
+                rep.size_bytes()
             )
         })
         .collect::<Vec<_>>()

@@ -171,7 +171,8 @@ impl InboundBlobMaterializer for FileCacheBlobMaterializer {
                 )
             })?;
             let fetched_len = fetched.plaintext.len();
-            rep.bytes = fetched.plaintext.to_vec();
+            rep.set_inline_bytes(fetched.plaintext.to_vec())
+                .map_err(|err| anyhow!("materialize: failed to set inline bytes: {err}"))?;
             info!(
                 entry_id = %entry_id,
                 representation_index = idx,
@@ -274,7 +275,8 @@ impl InboundBlobMaterializer for FileCacheBlobMaterializer {
         let mut rewritten_rep_count = 0usize;
         for rep in &mut snapshot.representations {
             if is_file_list_representation(rep) {
-                rep.bytes = uri_list.as_bytes().to_vec();
+                rep.set_inline_bytes(uri_list.as_bytes().to_vec())
+                    .map_err(|err| anyhow!("materialize: failed to rewrite files rep: {err}"))?;
                 rewritten_rep_count += 1;
             }
         }
@@ -300,8 +302,74 @@ impl InboundBlobMaterializer for FileCacheBlobMaterializer {
             );
         }
 
+        // 接收端 image rep 合成:对 local_paths 中的图片文件追加一条 LocalFile source
+        // image rep,capture pipeline 会在 normalize 阶段同步通过 BlobWriterPort 把它
+        // 物化到接收端本机 blob 仓库,产出 BlobReady 状态的持久化 rep。
+        //
+        // 让接收端 dashboard 通过 /clipboard/blobs/{blob_id} 拿到真实图片字节预览,
+        // paste 时 OS pasteboard 同时含 file uri-list 与 image bytes —— 解决"对端粘贴
+        // 看到的是 macOS 文件图标缩略图"这条历史回归。仅对第一张图片合成 rep,多文件
+        // 选择不重复(对应发送端单 image rep 约定)。
+        let mut already_has_image_rep = snapshot.representations.iter().any(|rep| {
+            rep.mime
+                .as_ref()
+                .map(|m| m.as_str().to_ascii_lowercase().starts_with("image/"))
+                .unwrap_or(false)
+        });
+        if !already_has_image_rep {
+            for path in &local_paths {
+                let Some(image_mime) = image_file_mime_from_path(path) else {
+                    continue;
+                };
+                let Ok(meta) = std::fs::metadata(path) else {
+                    continue;
+                };
+                if meta.len() == 0 {
+                    continue;
+                }
+                snapshot
+                    .representations
+                    .push(ObservedClipboardRepresentation::new_local_file(
+                        RepresentationId::new(),
+                        FormatId::from("image-from-file"),
+                        Some(MimeType(image_mime.to_string())),
+                        path.clone(),
+                        meta.len(),
+                    ));
+                info!(
+                    path = %path.display(),
+                    size_bytes = meta.len(),
+                    mime = image_mime,
+                    "materialize: synthesized LocalFile image rep for inbound image file \
+                     (BlobWriter will ingest during capture)"
+                );
+                already_has_image_rep = true;
+                break;
+            }
+        }
+        let _ = already_has_image_rep;
+
         Ok(snapshot)
     }
+}
+
+/// 基于文件后缀推断常见图片 MIME。与 `uc-platform/clipboard/common.rs` 的同名 helper
+/// 表项保持一致(打开扩展时两边一起改);该函数刻意复制一份在 application 层,避免把
+/// 接收端的 image rep 合成逻辑硬连到 platform crate。
+fn image_file_mime_from_path(path: &std::path::Path) -> Option<&'static str> {
+    let ext = path
+        .extension()
+        .and_then(|e| e.to_str())?
+        .to_ascii_lowercase();
+    Some(match ext.as_str() {
+        "png" => "image/png",
+        "jpg" | "jpeg" => "image/jpeg",
+        "gif" => "image/gif",
+        "webp" => "image/webp",
+        "bmp" => "image/bmp",
+        "tif" | "tiff" => "image/tiff",
+        _ => return None,
+    })
 }
 
 fn is_file_list_representation(rep: &ObservedClipboardRepresentation) -> bool {

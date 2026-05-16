@@ -141,6 +141,21 @@ impl BlobStorePort for EncryptedBlobStore {
         Ok((path, Some(on_disk_size)))
     }
 
+    async fn put_from_path(
+        &self,
+        blob_id: &BlobId,
+        source_path: &std::path::Path,
+    ) -> Result<(PathBuf, Option<i64>)> {
+        // AEAD wire format(v1_aead::encrypt_blob_xchacha)是 one-shot,目前不支持流式
+        // 加密。这里先把源文件整文件读进内存再走 put() —— 与 capture-side 调用方约定:
+        // 加密 store 启用时,path-backed ingest 的"任意大小"语义降级为"内存里能放得下",
+        // 流式 AEAD 重构属于独立 phase。
+        let bytes = tokio::fs::read(source_path)
+            .await
+            .with_context(|| format!("failed to read {} for encryption", source_path.display()))?;
+        self.put(blob_id, &bytes).await
+    }
+
     async fn get(&self, blob_id: &BlobId) -> Result<Vec<u8>> {
         <Self as BlobReaderPort>::get(self, blob_id).await
     }

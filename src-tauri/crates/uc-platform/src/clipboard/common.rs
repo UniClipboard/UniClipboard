@@ -28,6 +28,24 @@ pub(crate) fn sniff_image_magic(body: &[u8]) -> Option<&'static str> {
     None
 }
 
+/// 基于文件后缀推断常见图片 MIME。仅用于 `image-from-file` LocalFile rep 的 mime 标注;
+/// 与 `sniff_image_magic` 字节嗅探互补 —— 这里在抓取阶段不读字节,所以只能凭扩展名。
+fn image_file_mime_from_path(path: &std::path::Path) -> Option<&'static str> {
+    let ext = path
+        .extension()
+        .and_then(|e| e.to_str())?
+        .to_ascii_lowercase();
+    Some(match ext.as_str() {
+        "png" => "image/png",
+        "jpg" | "jpeg" => "image/jpeg",
+        "gif" => "image/gif",
+        "webp" => "image/webp",
+        "bmp" => "image/bmp",
+        "tif" | "tiff" => "image/tiff",
+        _ => return None,
+    })
+}
+
 /// Known TIFF UTI aliases on macOS pasteboard.
 /// When the image has already been captured via the fast raw-TIFF path,
 /// these formats must be skipped in the raw fallback loop to avoid
@@ -323,11 +341,34 @@ impl CommonClipboardImpl {
             }
         }
 
+        // macOS Finder thumbnail pollution guard.
+        //
+        // 当 captured_file_paths 含图片扩展名时,ContentFormat::Image 99% 是 Finder 在
+        // "复制文件"时注入的文件图标缩略图(128/256 px),而不是用户复制的图片内容本身。
+        // 跳过 ContentFormat::Image 分支,让下面的 image-from-file fallback 用 LocalFile
+        // source 引用真实文件 —— 这样 dashboard / 跨设备同步看到的都是真图,不是缩略图。
+        //
+        // 不在 captured_file_paths 含图片扩展名时退化:即使 Image 与 Files 共存,Files 也
+        // 可能是其他类型(PDF/ZIP)且 Image 真是用户复制的截图,不能误杀。所以仅当 file 列表
+        // 里至少一个文件是图片扩展名才 suppress。
+        #[cfg(target_os = "macos")]
+        let suppress_image_due_to_file_thumbnail = captured_file_paths
+            .iter()
+            .any(|p| image_file_mime_from_path(p).is_some());
+        #[cfg(not(target_os = "macos"))]
+        let suppress_image_due_to_file_thumbnail = false;
+
         // Track whether we successfully read image data via the high-level path.
         // Used to skip TIFF aliases in the raw fallback loop on macOS.
         let mut image_already_read = false;
 
-        if ctx.has(ContentFormat::Image) {
+        if ctx.has(ContentFormat::Image) && suppress_image_due_to_file_thumbnail {
+            info!(
+                captured_files = captured_file_paths.len(),
+                "macOS: ContentFormat::Image suppressed (looks like Finder file thumbnail); \
+                 deferring to image-from-file LocalFile rep below"
+            );
+        } else if ctx.has(ContentFormat::Image) {
             debug!("clipboard-rs reports ContentFormat::Image available");
 
             // macOS fast path: read raw TIFF directly via get_buffer, avoiding
@@ -475,52 +516,22 @@ impl CommonClipboardImpl {
             debug!("clipboard-rs reports no ContentFormat::Image available");
         }
 
-        // If the clipboard carried file references (but no image bytes were
-        // captured above) and any of those files look like image files, this
-        // fallback may load their bytes as inline `image-from-file` reps so
-        // that screenshot tools (which copy a temp PNG path) render as a real
-        // image preview in the UI rather than showing only a filename.
+        // 当 clipboard 携带文件引用且至少有一个是图片文件,produce 一条 `image-from-file`
+        // rep —— 这条 rep 走 `ClipboardPayloadSource::LocalFile` 路径,**不读字节、不占内存**,
+        // 由 capture pipeline 在 normalize 阶段同步调 `BlobWriter.write_path_if_absent` 物化
+        // 到 blob 仓库(hardlink 优先,跨卷 fallback 流式 copy)。
         //
-        // Contract (post 260426-1gz quick task):
-        // - Only "small" image files (< MAX_INLINE_IMAGE_BYTES) become inline
-        //   `image-from-file` reps for immediate UI preview. Daily screenshots
-        //   from system tools are typically well under this threshold.
-        // - Large image files are intentionally NOT inlined here. Locally the
-        //   UI still has the `files` rep (filename / file list) and the
-        //   `BackgroundBlobWorker.try_generate_thumbnail` path will populate
-        //   `clipboard_representation_thumbnail` asynchronously, so the
-        //   history list still gets a thumbnail. Cross-device transfer of the
-        //   actual pixels is the responsibility of the file transfer / blob
-        //   ref path, not this fallback.
-        // - This guarantees that no single rep produced by capture exceeds
-        //   the V3 envelope budget, preventing the
-        //   `peer rejected: payload ... exceeds local maximum 2097152`
-        //   dispatch failure observed when a >= 2 MiB PNG file URI is copied.
+        // 任意大小的图片文件都能被收纳:dashboard 通过 `/clipboard/blobs/{blob_id}` 拿真实
+        // 字节预览,跨设备同步通过 V3BlobRef + iroh-blobs 流式拉取。256 KiB 与 2 MiB envelope
+        // 预算只约束 wire 路径的 inline rep,跟 LocalFile 物化路径无关。
         if !image_already_read && !captured_file_paths.is_empty() {
-            // Hard upper safety cap: never read an image file larger than this
-            // even if the inline-budget check below were somehow bypassed.
-            const MAX_IMAGE_FILE_BYTES: u64 = 20 * 1024 * 1024; // 20 MB
-                                                                // Conservative inline budget: stays well under the 2 MiB envelope
-                                                                // (`MAX_PAYLOAD_SIZE` in `clipboard_wire.rs`) so that even after
-                                                                // V3 header + AEAD tag + co-existing reps (plain text, files,
-                                                                // html, ...) the encrypted envelope fits with ~8x headroom.
-                                                                // 256 KiB still covers typical screenshot-tool PNGs (usually
-                                                                // < 200 KiB), so the immediate inline preview UX does not regress.
-            const MAX_INLINE_IMAGE_BYTES: u64 = 256 * 1024; // 256 KiB
+            // Sanity cap:超过此阈值的图片文件视为异常(可能用户误把磁盘镜像复制了),
+            // 跳过登记,让 files rep 仍然能传文件本体。100 MB 对桌面截图场景留充裕空间。
+            const MAX_IMAGE_FILE_BYTES: u64 = 100 * 1024 * 1024;
 
             for path in &captured_file_paths {
-                let ext = match path.extension().and_then(|e| e.to_str()) {
-                    Some(e) => e.to_ascii_lowercase(),
-                    None => continue,
-                };
-                let mime = match ext.as_str() {
-                    "png" => "image/png",
-                    "jpg" | "jpeg" => "image/jpeg",
-                    "gif" => "image/gif",
-                    "webp" => "image/webp",
-                    "bmp" => "image/bmp",
-                    "tif" | "tiff" => "image/tiff",
-                    _ => continue,
+                let Some(mime) = image_file_mime_from_path(path) else {
+                    continue;
                 };
                 let meta = match std::fs::metadata(path) {
                     Ok(m) => m,
@@ -537,55 +548,26 @@ impl CommonClipboardImpl {
                     debug!(
                         path = %path.display(),
                         size_bytes = meta.len(),
-                        "Skipping clipboard image file (size out of range)"
+                        threshold = MAX_IMAGE_FILE_BYTES,
+                        "Skipping clipboard image file (size out of safe range)"
                     );
                     continue;
                 }
-                if meta.len() > MAX_INLINE_IMAGE_BYTES {
-                    // Intentionally do NOT read or push an inline rep here.
-                    // The downstream `files` rep + BackgroundBlobWorker
-                    // thumbnail path covers local UI; cross-device pixel
-                    // transfer is handled by file transfer / blob ref. This
-                    // prevents the snapshot from carrying a multi-MiB inline
-                    // rep that would blow the V3 envelope budget.
-                    //
-                    // Note (per uc-platform AGENTS §12.3): only path/size/
-                    // mime/threshold are logged — never any file bytes.
-                    debug!(
-                        path = %path.display(),
-                        size_bytes = meta.len(),
-                        mime = mime,
-                        threshold = MAX_INLINE_IMAGE_BYTES,
-                        "Skipping inline image-from-file rep (too large for envelope); files rep + background thumbnail will handle it"
-                    );
-                    break;
-                }
-                match std::fs::read(path) {
-                    Ok(bytes) => {
-                        debug!(
-                            path = %path.display(),
-                            size_bytes = bytes.len(),
-                            mime = mime,
-                            "Loaded image bytes from clipboard file path"
-                        );
-                        reps.push(ObservedClipboardRepresentation::new(
-                            RepresentationId::new(),
-                            "image-from-file".into(),
-                            Some(MimeType(mime.to_string())),
-                            bytes,
-                        ));
-                        // One image representation is enough to drive the
-                        // preview; avoid duplicating for multi-file selections.
-                        break;
-                    }
-                    Err(err) => {
-                        warn!(
-                            error = %err,
-                            path = %path.display(),
-                            "Failed to read clipboard image file"
-                        );
-                    }
-                }
+                debug!(
+                    path = %path.display(),
+                    size_bytes = meta.len(),
+                    mime = mime,
+                    "Captured image-from-file rep as LocalFile source (no inline read; blob ingest happens during normalize)"
+                );
+                reps.push(ObservedClipboardRepresentation::new_local_file(
+                    RepresentationId::new(),
+                    "image-from-file".into(),
+                    Some(MimeType(mime.to_string())),
+                    path.clone(),
+                    meta.len(),
+                ));
+                // 一个图片 rep 足以驱动 dashboard 预览;多文件选择时不重复产 rep。
+                break;
             }
         }
 
@@ -701,7 +683,7 @@ impl CommonClipboardImpl {
             (Some(m), Some(default))
                 if default.starts_with("image/") && !m.starts_with("image/") =>
             {
-                let recovered = sniff_image_magic(&rep.bytes).unwrap_or(default);
+                let recovered = sniff_image_magic(rep.expect_inline_bytes()).unwrap_or(default);
                 warn!(
                     format_id = %rep.format_id,
                     wire_mime = m,
@@ -716,19 +698,25 @@ impl CommonClipboardImpl {
 
         match effective_mime {
             Some("text/plain") => {
-                map_clipboard_err(ctx.set_text(String::from_utf8(rep.bytes.clone())?))?;
+                map_clipboard_err(
+                    ctx.set_text(String::from_utf8(rep.expect_inline_bytes().to_vec())?),
+                )?;
             }
             Some("text/rtf") => {
-                map_clipboard_err(ctx.set_rich_text(String::from_utf8(rep.bytes.clone())?))?;
+                map_clipboard_err(
+                    ctx.set_rich_text(String::from_utf8(rep.expect_inline_bytes().to_vec())?),
+                )?;
             }
             Some("text/html") => {
-                map_clipboard_err(ctx.set_html(String::from_utf8(rep.bytes.clone())?))?;
+                map_clipboard_err(
+                    ctx.set_html(String::from_utf8(rep.expect_inline_bytes().to_vec())?),
+                )?;
             }
             Some("text/uri-list") | Some("file/uri-list") => {
                 // Convert file:// URIs back to raw OS paths for set_files(),
                 // which expects native paths. Also handle raw paths for compatibility
                 // with inbound cache paths that aren't URI-encoded.
-                let files: Vec<String> = String::from_utf8(rep.bytes.clone())?
+                let files: Vec<String> = String::from_utf8(rep.expect_inline_bytes().to_vec())?
                     .lines()
                     .filter_map(|line| {
                         let line = line.trim();
@@ -752,7 +740,7 @@ impl CommonClipboardImpl {
             Some(mime) if mime.starts_with("image/") => {
                 debug!(
                     mime = mime,
-                    data_size = rep.bytes.len(),
+                    data_size = rep.size_bytes(),
                     format_id = %rep.format_id,
                     "write_snapshot: writing image to clipboard"
                 );
@@ -764,33 +752,37 @@ impl CommonClipboardImpl {
                 #[cfg(target_os = "macos")]
                 {
                     if mime == "image/png" {
-                        map_clipboard_err(ctx.set_buffer("public.png", rep.bytes.clone()))?;
+                        map_clipboard_err(
+                            ctx.set_buffer("public.png", rep.expect_inline_bytes().to_vec()),
+                        )?;
                     } else {
                         // Non-PNG images still need format conversion via set_image
                         let img =
-                            clipboard_rs::RustImageData::from_bytes(&rep.bytes).map_err(|e| {
-                                warn!(
-                                    mime = mime,
-                                    data_size = rep.bytes.len(),
-                                    error = %e,
-                                    "write_snapshot: failed to decode image bytes"
-                                );
-                                anyhow!(e)
-                            })?;
+                            clipboard_rs::RustImageData::from_bytes(rep.expect_inline_bytes())
+                                .map_err(|e| {
+                                    warn!(
+                                        mime = mime,
+                                        data_size = rep.size_bytes(),
+                                        error = %e,
+                                        "write_snapshot: failed to decode image bytes"
+                                    );
+                                    anyhow!(e)
+                                })?;
                         map_clipboard_err(ctx.set_image(img))?;
                     }
                 }
                 #[cfg(not(target_os = "macos"))]
                 {
-                    let img = clipboard_rs::RustImageData::from_bytes(&rep.bytes).map_err(|e| {
-                        warn!(
-                            mime = mime,
-                            data_size = rep.bytes.len(),
-                            error = %e,
-                            "write_snapshot: failed to decode image bytes"
-                        );
-                        anyhow!(e)
-                    })?;
+                    let img = clipboard_rs::RustImageData::from_bytes(rep.expect_inline_bytes())
+                        .map_err(|e| {
+                            warn!(
+                                mime = mime,
+                                data_size = rep.size_bytes(),
+                                error = %e,
+                                "write_snapshot: failed to decode image bytes"
+                            );
+                            anyhow!(e)
+                        })?;
                     map_clipboard_err(ctx.set_image(img))?;
                 }
                 debug!(
@@ -828,10 +820,12 @@ impl CommonClipboardImpl {
                 warn!(
                     format_id = %rep.format_id,
                     mime = ?rep.mime,
-                    bytes = rep.bytes.len(),
+                    bytes = rep.size_bytes(),
                     "write_snapshot: writing rep via raw set_buffer fallback (no recognized mime mapping)"
                 );
-                map_clipboard_err(ctx.set_buffer(&rep.format_id, rep.bytes.clone()))?;
+                map_clipboard_err(
+                    ctx.set_buffer(&rep.format_id, rep.expect_inline_bytes().to_vec()),
+                )?;
             }
         }
 

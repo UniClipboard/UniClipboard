@@ -174,7 +174,7 @@ impl RestoreClipboardEntryAsPlainTextUseCase {
                         entry_id = %entry_id,
                         event_id = %entry.event_id,
                         plain_rep_id = %rep.id,
-                        size_bytes = observed.bytes.len(),
+                        size_bytes = observed.size_bytes(),
                         "restore_plain.build_snapshot packed plain representation"
                     );
 
@@ -548,7 +548,7 @@ mod tests {
         let reps = &writes[0].representations;
         assert_eq!(reps.len(), 1, "snapshot must contain only the plain rep");
         assert_eq!(reps[0].id, plain.id);
-        assert_eq!(reps[0].bytes, b"hello world");
+        assert_eq!(reps[0].expect_inline_bytes(), b"hello world");
     }
 
     /// 条目根本没有 plain 表示（典型富文本场景：复制自 PDF 等）。用例应当

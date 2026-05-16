@@ -1366,7 +1366,7 @@ mod tests {
                     .as_ref()
                     .map(|m| m.as_str() == "text/uri-list")
                     .unwrap_or(false);
-                let body = std::str::from_utf8(&rep.bytes).unwrap_or("");
+                let body = std::str::from_utf8(rep.expect_inline_bytes()).unwrap_or("");
                 mime_ok
                     && body == "file:///C:/Users/mark/AppData/Local/uc/mobile_inbound/abc/My%20Photo.png\n"
             })

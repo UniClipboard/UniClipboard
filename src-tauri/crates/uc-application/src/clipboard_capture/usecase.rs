@@ -23,13 +23,14 @@ use std::sync::Arc;
 use std::time::SystemTime;
 
 use anyhow::Result;
-use futures::future::try_join_all;
 use tracing::{debug, info, info_span, Instrument};
 use uc_observability::analytics::{
     AnalyticsPort, CaptureOrigin, Event, PayloadSizeBucket, PayloadType,
 };
 use uc_observability::{stages, FlowId};
 
+use uc_core::blob::ports::BlobWriterPort;
+use uc_core::clipboard::{ClipboardPayloadSource, PersistedClipboardRepresentation};
 use uc_core::ids::{EntryId, EventId};
 use uc_core::ports::clipboard::{RepresentationCachePort, SpoolQueuePort, SpoolRequest};
 use uc_core::ports::{
@@ -54,6 +55,11 @@ pub struct CaptureClipboardUseCase {
     device_identity: Arc<dyn DeviceIdentityPort>,
     representation_cache: Arc<dyn RepresentationCachePort>,
     spool_queue: Arc<dyn SpoolQueuePort>,
+    /// 用于把 path-backed `ObservedClipboardRepresentation` 同步物化进 blob 仓库。
+    /// 触发时机:capture 入口检测到 `ClipboardPayloadSource::LocalFile` 的 rep,
+    /// 调 `write_path_if_absent` 得到 `BlobId`,直接产出 `BlobReady` 状态的
+    /// `PersistedClipboardRepresentation`,绕过 normalizer / cache / spool 通路。
+    blob_writer: Arc<dyn BlobWriterPort>,
     /// schema doc §12.1 · outbound 同步链路源头流量信号。
     /// 仅在 `ClipboardChangeOrigin::{LocalCapture, LocalRestore}` 路径 emit；
     /// `RemotePush` 严禁 emit（红线：与入站同步双计会污染 DAU 信号）。
@@ -69,6 +75,7 @@ impl CaptureClipboardUseCase {
         device_identity: Arc<dyn DeviceIdentityPort>,
         representation_cache: Arc<dyn RepresentationCachePort>,
         spool_queue: Arc<dyn SpoolQueuePort>,
+        blob_writer: Arc<dyn BlobWriterPort>,
         analytics: Arc<dyn AnalyticsPort>,
     ) -> Self {
         Self {
@@ -79,6 +86,7 @@ impl CaptureClipboardUseCase {
             device_identity,
             representation_cache,
             spool_queue,
+            blob_writer,
             analytics,
         }
     }
@@ -169,14 +177,54 @@ impl CaptureClipboardUseCase {
                 snapshot_hash,
             );
 
-            // 3. Normalize representations
+            // 3. Normalize representations.
+            //
+            // 分流:Inline source 走 normalizer 既有逻辑(inline / staged / staged_with_preview
+            // 决策);LocalFile source 调 BlobWriter.write_path_if_absent 同步物化到 blob 仓库,
+            // 直接产出 BlobReady 状态的 PersistedRep —— 绕过 representation_cache / spool_queue,
+            // 因为它不需要"暂存字节等待异步物化"。
+            //
+            // LocalFile 在 capture 同步路径里物化(hardlink 时是 O(1),跨卷流式 copy 时是
+            // O(file_size) IO),让 dashboard 第一秒就能从 /clipboard/blobs/{blob_id} 取到真图。
             let normalized_reps = async {
-                let normalized_futures: Vec<_> = snapshot
-                    .representations
-                    .iter()
-                    .map(|rep| self.representation_normalizer.normalize(rep))
-                    .collect();
-                try_join_all(normalized_futures).await
+                let mut out: Vec<PersistedClipboardRepresentation> =
+                    Vec::with_capacity(snapshot.representations.len());
+                for observed in &snapshot.representations {
+                    match observed.source() {
+                        ClipboardPayloadSource::LocalFile { path, size_bytes } => {
+                            let blob_id =
+                                self.blob_writer.write_path_if_absent(path).await.map_err(
+                                    |err| {
+                                        anyhow::anyhow!(
+                                            "LocalFile rep ingest into blob store failed (path={}): {err}",
+                                            path.display()
+                                        )
+                                    },
+                                )?;
+                            info!(
+                                rep_id = %observed.id,
+                                blob_id = %blob_id,
+                                file_path = %path.display(),
+                                file_size = size_bytes,
+                                "Ingested LocalFile rep into blob store as BlobReady"
+                            );
+                            out.push(PersistedClipboardRepresentation::new(
+                                observed.id.clone(),
+                                observed.format_id.clone(),
+                                observed.mime.clone(),
+                                *size_bytes as i64,
+                                None,           // inline_data
+                                Some(blob_id),  // blob_id ⇒ payload_state=BlobReady
+                            ));
+                        }
+                        ClipboardPayloadSource::Inline(_) => {
+                            let persisted =
+                                self.representation_normalizer.normalize(observed).await?;
+                            out.push(persisted);
+                        }
+                    }
+                }
+                Ok::<Vec<PersistedClipboardRepresentation>, anyhow::Error>(out)
             }
             .instrument(info_span!(stages::NORMALIZE))
             .await?;
@@ -229,9 +277,14 @@ impl CaptureClipboardUseCase {
                         if let Some(observed) =
                             snapshot.representations.iter().find(|o| o.id == rep.id)
                         {
-                            self.representation_cache
-                                .put(&rep.id, observed.bytes.clone())
-                                .await;
+                            // Staged path 当前仍要求 Inline source —— LocalFile rep 在
+                            // 上游 BlobWriter ingest 阶段会被产出 BlobReady 状态,不会
+                            // 走到 Staged 分支。
+                            if let Some(bytes) = observed.inline_bytes() {
+                                self.representation_cache
+                                    .put(&rep.id, bytes.to_vec())
+                                    .await;
+                            }
                         }
                     }
                 }
@@ -280,14 +333,13 @@ impl CaptureClipboardUseCase {
                 .iter()
                 .filter(|rep| rep.payload_state() == PayloadAvailability::Staged)
                 .filter_map(|rep| {
-                    snapshot
-                        .representations
-                        .iter()
-                        .find(|o| o.id == rep.id)
-                        .map(|observed| SpoolRequest {
-                            rep_id: rep.id.clone(),
-                            bytes: observed.bytes.clone(),
-                        })
+                    let observed = snapshot.representations.iter().find(|o| o.id == rep.id)?;
+                    // Staged spool 仅承载 Inline 字节;LocalFile rep 不进 Staged。
+                    let bytes = observed.inline_bytes()?;
+                    Some(SpoolRequest {
+                        rep_id: rep.id.clone(),
+                        bytes: bytes.to_vec(),
+                    })
                 })
                 .collect();
 
@@ -369,7 +421,10 @@ impl CaptureClipboardUseCase {
                     || mime_str.eq_ignore_ascii_case("text/plain;charset=utf-8")
                     || mime_str.starts_with("text/")
                 {
-                    if let Ok(text) = std::str::from_utf8(&rep.bytes) {
+                    let Some(rep_bytes) = rep.inline_bytes() else {
+                        continue;
+                    };
+                    if let Ok(text) = std::str::from_utf8(rep_bytes) {
                         let trimmed = text.trim();
                         if !trimmed.is_empty() {
                             // Use char_indices() to find a safe character boundary

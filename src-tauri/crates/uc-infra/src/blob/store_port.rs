@@ -10,7 +10,7 @@
 
 use anyhow::Result;
 use async_trait::async_trait;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use uc_core::BlobId;
 
@@ -24,6 +24,20 @@ pub trait BlobStorePort: Send + Sync {
 
     /// Read bytes from blob storage.
     async fn get(&self, blob_id: &BlobId) -> Result<Vec<u8>>;
+
+    /// 把 `source_path` 上的本地文件登记进 blob 存储。
+    ///
+    /// 推荐实现策略:先尝试 `hard_link`(O(1) 不占额外磁盘),失败(典型 EXDEV — 跨卷 /
+    /// 跨文件系统)再回退到流式 copy。返回 `(storage_path, compressed_size)`,语义与
+    /// `put` 一致。
+    ///
+    /// 实现不得改动 source 文件;若 store 是带加密 decorator,该接口会被 decorator
+    /// 重写为"读 → 加密 → 写新文件",而不是直接 hardlink(因为加密产物字节不同)。
+    async fn put_from_path(
+        &self,
+        blob_id: &BlobId,
+        source_path: &Path,
+    ) -> Result<(PathBuf, Option<i64>)>;
 }
 
 #[async_trait]
@@ -34,5 +48,13 @@ impl<T: BlobStorePort + ?Sized> BlobStorePort for Arc<T> {
 
     async fn get(&self, blob_id: &BlobId) -> Result<Vec<u8>> {
         (**self).get(blob_id).await
+    }
+
+    async fn put_from_path(
+        &self,
+        blob_id: &BlobId,
+        source_path: &Path,
+    ) -> Result<(PathBuf, Option<i64>)> {
+        (**self).put_from_path(blob_id, source_path).await
     }
 }

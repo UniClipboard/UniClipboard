@@ -82,7 +82,11 @@ impl ClipboardRepresentationNormalizerPort for ClipboardRepresentationNormalizer
         observed: &ObservedClipboardRepresentation,
     ) -> Result<PersistedClipboardRepresentation> {
         let inline_threshold_bytes = self.config.inline_threshold_bytes;
-        let size_bytes = observed.bytes.len() as i64;
+        let size_bytes = observed.size_bytes();
+        // Normalizer 仅处理 Inline source rep —— LocalFile rep 必须在更上游的 capture
+        // 流水线里通过 BlobWriterPort.write_path_if_absent 物化到 blob 仓库,直接产出
+        // BlobReady 状态的 PersistedClipboardRepresentation,不应进入此路径。
+        let bytes = observed.expect_inline_bytes();
 
         // Decision: inline, preview, or staged for blob materialization
         // 决策：内联、预览还是为 blob 物化创建暂存状态
@@ -101,7 +105,7 @@ impl ClipboardRepresentationNormalizerPort for ClipboardRepresentationNormalizer
                 observed.format_id.clone(),
                 observed.mime.clone(),
                 size_bytes,
-                Some(observed.bytes.clone()),
+                Some(bytes.to_vec()),
                 None, // blob_id
             ))
         } else {
@@ -123,7 +127,7 @@ impl ClipboardRepresentationNormalizerPort for ClipboardRepresentationNormalizer
                     observed.format_id.clone(),
                     observed.mime.clone(),
                     size_bytes,
-                    Some(truncate_to_preview(&observed.bytes)),
+                    Some(truncate_to_preview(bytes)),
                     None, // blob_id
                     PayloadAvailability::Staged,
                     None,

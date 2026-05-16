@@ -261,7 +261,7 @@ impl RestoreClipboardSelectionUseCase {
             paste_rep_id = %paste_rep.id,
             packed_rep_count = representations.len(),
             packed_rep_ids = ?packed_rep_ids,
-            total_size_bytes = representations.iter().map(|r| r.bytes.len()).sum::<usize>(),
+            total_size_bytes = representations.iter().map(|r| r.size_bytes() as usize).sum::<usize>(),
             "restore.build_snapshot packed representations"
         );
 

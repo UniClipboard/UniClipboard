@@ -45,14 +45,17 @@ impl ClipboardEventRepositoryPort for DecryptingClipboardEventRepository {
             .get_representation(event_id, representation_id)
             .await?;
 
-        if !observed.bytes.is_empty() {
+        // Inline source 才需要解密;LocalFile source 不应在这条路径出现 —— 仓库读出的
+        // ObservedClipboardRepresentation 必然由 inline_data 解出(走 wire / DB 字节)。
+        let inline_len = observed.inline_bytes().map(|b| b.len()).unwrap_or(0);
+        if inline_len > 0 {
             // BlobCipherAdapter 内部 wire format 与 4 个 decorator 历史 inline_data
             // 字节布局 (serde_json::to_vec(&EncryptedBlob)) 一致——既有数据可
             // 直接被新 port 解开,不需要数据迁移。
             let aad = aad::for_inline(event_id, &RepresentationId::from(representation_id));
             // 单空间模型下用占位 ActiveSpace,adapter 当前不按 SpaceId 路由。
             let active = ActiveSpace::new(SpaceId::from("space"));
-            let ciphertext = Ciphertext::new(observed.bytes.clone());
+            let ciphertext = Ciphertext::new(observed.expect_inline_bytes().to_vec());
             let plaintext = self
                 .blob_cipher
                 .decrypt(&active, &ciphertext, &Aad::from(aad.as_slice()))
@@ -65,7 +68,9 @@ impl ClipboardEventRepositoryPort for DecryptingClipboardEventRepository {
                 "Decrypted representation bytes via BlobCipherPort"
             );
 
-            observed.bytes = plaintext.into_bytes();
+            observed
+                .set_inline_bytes(plaintext.into_bytes())
+                .context("set decrypted bytes back to observed rep")?;
         }
 
         Ok(observed)

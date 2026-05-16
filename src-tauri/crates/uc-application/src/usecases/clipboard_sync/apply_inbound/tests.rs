@@ -726,16 +726,18 @@ async fn materializes_blob_refs_before_capture_and_write() {
         .expect_materialize()
         .times(1)
         .withf(move |_from_device, _receiver_entry_id, snapshot, refs| {
-            snapshot.representations[0].bytes == b"file:///sender/original.txt\n"
+            snapshot.representations[0].expect_inline_bytes() == b"file:///sender/original.txt\n"
                 && refs == &vec![blob_ref.clone()]
         })
         .returning(|_from_device, _receiver_entry_id, mut snapshot, _| {
-            snapshot.representations[0].bytes = b"file:///local/cache/original.txt\n".to_vec();
+            snapshot.representations[0]
+                .set_inline_bytes(b"file:///local/cache/original.txt\n".to_vec())
+                .unwrap();
             Ok(snapshot)
         });
 
     let assert_local_file = |snapshot: &SystemClipboardSnapshot| {
-        snapshot.representations[0].bytes == b"file:///local/cache/original.txt\n"
+        snapshot.representations[0].expect_inline_bytes() == b"file:///local/cache/original.txt\n"
     };
     let mut capture = MockCapture::new();
     capture
@@ -820,7 +822,7 @@ async fn file_cache_blob_materializer_writes_file_and_rewrites_file_uri_list() {
         .await
         .expect("materialize should succeed");
 
-    let uri_list = String::from_utf8(rewritten.representations[0].bytes.clone())
+    let uri_list = String::from_utf8(rewritten.representations[0].expect_inline_bytes().to_vec())
         .expect("uri-list should be UTF-8");
     assert!(uri_list.starts_with("file://"));
     assert!(uri_list.ends_with("/report.txt\n"));
@@ -889,7 +891,10 @@ async fn file_cache_blob_materializer_inlines_representation_bound_blob_into_rep
         .expect("representation-bound materialize should succeed");
 
     assert_eq!(materialized.representations.len(), 1);
-    assert_eq!(materialized.representations[0].bytes, b"\x89PNG\x0d");
+    assert_eq!(
+        materialized.representations[0].expect_inline_bytes(),
+        b"\x89PNG\x0d"
+    );
     assert_eq!(materialized.representations[0].format_id.as_ref(), "image");
 
     let mut entries = tokio::fs::read_dir(cache_dir.path())

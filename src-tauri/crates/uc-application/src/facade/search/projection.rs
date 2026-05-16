@@ -128,7 +128,7 @@ impl SearchProjectionBuilder {
                 .unwrap_or_default();
 
             if mime == "text/plain" || mime.starts_with("text/plain;") {
-                if let Ok(text) = std::str::from_utf8(&rep.bytes) {
+                if let Ok(text) = std::str::from_utf8(rep.inline_bytes().unwrap_or(&[])) {
                     let text = text.to_string();
                     if !text.is_empty() {
                         if rep.id == *preview_rep_id {
@@ -138,14 +138,14 @@ impl SearchProjectionBuilder {
                     }
                 }
             } else if mime == "text/html" {
-                if let Ok(text) = std::str::from_utf8(&rep.bytes) {
+                if let Ok(text) = std::str::from_utf8(rep.inline_bytes().unwrap_or(&[])) {
                     let text = text.to_string();
                     if !text.is_empty() {
                         html_text = Some(text);
                     }
                 }
             } else if mime == "text/uri-list" || mime == "file/uri-list" {
-                if let Ok(text) = std::str::from_utf8(&rep.bytes) {
+                if let Ok(text) = std::str::from_utf8(rep.inline_bytes().unwrap_or(&[])) {
                     for line in text.lines() {
                         let line = line.trim();
                         if !line.is_empty() && !line.starts_with('#') {

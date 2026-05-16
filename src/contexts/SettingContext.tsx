@@ -210,9 +210,9 @@ export const SettingProvider: React.FC<SettingProviderProps> = ({ children }) =>
   // 字段变化时触发。例如用户切换 Follow system 开关:`theme: dark → system`
   // 但当前媒体查询恰好也是 dark → resolved mode 不变 → 颜色也不变,这时
   // 不应该跑 500ms 的圆形 reveal,否则就是无意义的"闪一下"。
-  const prevResolvedModeRef = React.useRef<'light' | 'dark' | undefined>()
-  const prevAppliedColorRef = React.useRef<string | undefined>()
-  const prevAppliedOverridesRef = React.useRef<string | undefined>()
+  const prevResolvedModeRef = React.useRef<'light' | 'dark' | undefined>(undefined)
+  const prevAppliedColorRef = React.useRef<string | undefined>(undefined)
+  const prevAppliedOverridesRef = React.useRef<string | undefined>(undefined)
   const hasAppliedOnceRef = React.useRef(false)
 
   useEffect(() => {

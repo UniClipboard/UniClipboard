@@ -215,13 +215,12 @@ const Sidebar: React.FC<SidebarProps> = ({ className }) => {
     }
   }
 
-  const handleStartBackgroundDownload = async () => {
-    try {
-      await downloadUpdate()
-    } catch (error) {
+  const handleStartBackgroundDownload = () => {
+    setUpdateDialogOpen(false)
+    downloadUpdate().catch(error => {
       log.error({ err: error }, '后台下载失败')
       toast.error(t('update.downloadFailed'))
-    }
+    })
   }
 
   const handleCancelDownload = async () => {
@@ -432,7 +431,7 @@ const Sidebar: React.FC<SidebarProps> = ({ className }) => {
                   <AlertDialogAction
                     onClick={event => {
                       event.preventDefault()
-                      void handleStartBackgroundDownload()
+                      handleStartBackgroundDownload()
                     }}
                     disabled={isInstalling}
                   >

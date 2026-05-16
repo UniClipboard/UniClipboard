@@ -1,31 +1,22 @@
-//! `DeviceId` —— `Copy`-able 设备身份。
+//! `DeviceId` —— 设备身份的值对象。
 //!
-//! 为什么是 `Copy`:
-//! 设备 id 出现在大量值传递路径(`ClipboardChangeOrigin::RemotePush`
-//! 携带的 `from_device`、各 use case 的入参、tracing field、跨 span 的
-//! 闭包捕获 …)。如果它只是 `String` wrapper,每条流水线都要散布
-//! `.clone()` 才能在多次借用之间复用,可读性与维护成本都被 hit。把
-//! `DeviceId` 设计为 `Copy`,核心业务代码就能像传 `Uuid` 一样自然传值。
+//! `DeviceId` 是一个 `Copy` 值对象,代表系统中某台设备的稳定标识。
+//! 设计为 `Copy` 是为了让该标识能像普通值一样被传递、复制、比较,
+//! 而不必在每个使用点散布 `.clone()`。
 //!
-//! 为什么用 `ArrayString<64>` 而不是 `String`:
-//! `String` 拥有堆分配,无法实现 `Copy`。项目里见到的最长 device_id
-//! 形态是 `mobile_sync:<MobileDeviceId>` ≈ 48 字节,留出 64 字节余量
-//! 把存储改成栈上定长数组,从而获得 `Copy` 能力。超长输入会在 `new()`
-//! 与反序列化路径上显式拒绝(panic / serde error),不被静默截断 ——
-//! 默契是"device_id 是有限规模的稳定标识,不是任意长度字符串"。
+//! 内部以 `ArrayString<DEVICE_ID_MAX_BYTES>` 存储,从而在不进行堆分配的
+//! 前提下获得 `Copy` 能力;超过该上限的输入在 `new()` 与反序列化路径上
+//! 被显式拒绝(panic / serde error),不会被静默截断 —— 契约是
+//! "device_id 是有限规模的稳定标识,不是任意长度字符串"。
 //!
-//! Wire / DB 兼容:`Serialize`/`Deserialize` 仍以裸字符串往返,不变更
-//! 任何外部存档或协议格式。
+//! `Serialize` / `Deserialize` 以裸字符串往返,等价于一个等长字符串值。
 
 use arrayvec::ArrayString;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-/// 单个 device_id 允许的最大字节数(UTF-8 字节,非字符数)。
+/// 单个 `DeviceId` 允许的最大字节数(UTF-8 字节,非字符数)。
 ///
-/// 选 64 是因为见到的最长 device_id 形态约 48 字节
-/// (`mobile_sync:<MobileDeviceId>`),64 字节给可预见的 prefix 留余量,
-/// 同时维持栈占用合理。需要超过该上限时应优先重构 device_id 命名,
-/// 而非提高该常量。
+/// 超出该上限的输入在 `DeviceId::new` 与反序列化路径上被显式拒绝。
 pub const DEVICE_ID_MAX_BYTES: usize = 64;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

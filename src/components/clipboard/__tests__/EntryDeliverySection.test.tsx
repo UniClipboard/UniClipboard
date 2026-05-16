@@ -1,7 +1,7 @@
 import { render, screen, within } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
-import EntryDeliverySection from '../EntryDeliverySection'
 import type { EntryDeliveryView } from '@/api/tauri-command/clipboard_delivery'
+import EntryDeliverySection from '@/components/clipboard/EntryDeliverySection'
 import i18n from '@/i18n'
 
 /** "正常本地 entry,N 个对端混合状态" 是 detail 区域最常见也最容易回归的形态,

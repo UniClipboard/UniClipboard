@@ -1,38 +1,36 @@
 use super::SystemClipboardSnapshot;
 use crate::DeviceId;
 
+/// 一次剪贴板变化的领域来源。
+///
+/// 同一份剪贴板内容可能来自本机用户操作,也可能来自远端推送写入本机;
+/// 该来源是后续业务判定(归属、去重、过滤等)的依据,而非传输/持久化路径。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ClipboardChangeOrigin {
+    /// 本机捕获到的新剪贴板内容。
     LocalCapture,
+    /// 本机内部对剪贴板的回填/恢复写入。
     LocalRestore,
-    /// 由远端推送写入本机剪贴板的入站事件。
+    /// 来源于远端设备的剪贴板变化。
     ///
-    /// `from_device` 携带的是推送方 device id,持久化路径(把这次入站事件
-    /// 转成 `ClipboardEvent` 落库)需要它才能给 `ClipboardEvent.source_device`
-    /// 填正确的对端;若不带,持久化层会把入站记录的来源错记为本机,
-    /// 上层视图就会把"远端推送进来的 entry"展示成"本机产生"。
+    /// `from_device` 表示这次变化所归属的远端来源对端:
+    /// - `Some(device_id)` —— 已知具体对端;
+    /// - `None` —— 已知属于远端推送但来源对端未知或对当前消费者无关。
     ///
-    /// 守卫路径(OS 回写后让 watcher 短路忽略回声)只关心"这次变化属于
-    /// 远端推送"这个 tag,不关心是哪个对端,故为 `Option`:守卫端构造时
-    /// 传 `None`,持久化端构造时传 `Some(from_device)`。
-    RemotePush {
-        from_device: Option<DeviceId>,
-    },
+    /// 消费者据此区分"远端推送"与"本机产生",并在需要追溯归属时取用
+    /// `from_device`。
+    RemotePush { from_device: Option<DeviceId> },
 }
 
 impl ClipboardChangeOrigin {
     /// 是否为远端推送来源,忽略 `from_device` 字段。
-    ///
-    /// 用于守卫路径 / 出站过滤等仅关心 tag、不关心具体对端的比较场景。
     pub fn is_remote_push(&self) -> bool {
         matches!(self, Self::RemotePush { .. })
     }
 
-    /// 构造"匿名"远端推送 origin。
+    /// 构造一个不携带具体来源对端的远端推送 origin。
     ///
-    /// 守卫路径在 OS 回写后只想标记"下一次剪贴板变化属于远端推送的回声",
-    /// 此时并不需要追溯具体对端 —— 用本构造器表达"我知道是远端推送,但
-    /// 来源对此处不重要"的意图。
+    /// 用于"已知本次变化属于远端推送,但来源对端在当前语境无意义"的场景。
     pub fn remote_push_anonymous() -> Self {
         Self::RemotePush { from_device: None }
     }

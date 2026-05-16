@@ -1,6 +1,5 @@
 /**
- * Entry delivery view — wrapper for the `clipboard_entry_delivery_view`
- * Tauri command.
+ * Entry 投递视图 —— `clipboard_entry_delivery_view` Tauri 命令的前端薄封装。
  *
  * 为什么需要这个模块:
  * 在 entry detail 面板上要渲染"这条剪贴板内容来自哪台设备 / 已经同步到了
@@ -8,10 +7,10 @@
  * `ClipboardSyncFacade::get_entry_delivery_view` 上,这里只是一个跨 IPC 的
  * 薄读封装,供 quick-panel 与主窗口两套 detail 共享调用。
  *
- * 走 in-process facade (Tauri command 直调 `runtime.app_facade()`),不
- * 经 daemon webserver —— GUI 业务一律走 facade 是项目原则。
+ * 走 in-process facade (Tauri 命令直接通过 `runtime.app_facade()` 调用),
+ * 不经 daemon webserver —— GUI 业务一律走 facade 是项目原则。
  *
- * Backend: `src-tauri/crates/uc-tauri/src/commands/clipboard_delivery.rs`
+ * 后端入口: `src-tauri/crates/uc-tauri/src/commands/clipboard_delivery.rs`
  */
 
 import { commands } from '@/lib/ipc'
@@ -55,7 +54,7 @@ export interface EntryDeliveryView {
 }
 
 // ============================================================================
-// Invocation
+// 调用入口
 // ============================================================================
 
 /**

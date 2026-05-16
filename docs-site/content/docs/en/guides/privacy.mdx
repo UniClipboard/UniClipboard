@@ -51,8 +51,9 @@ Every product event carries these shared fields:
 
 | Field                         | Meaning                                                                                           |
 | ----------------------------- | ------------------------------------------------------------------------------------------------- |
-| `anonymous_user_id`           | Random UUIDv7 used for anonymous retention metrics.                                               |
+| `anonymous_user_id`           | Random UUIDv7 used for anonymous retention metrics on devices that have not joined a space.       |
 | `analytics_device_id`         | Random UUIDv7 used for device-level slices; independent from the business device ID.              |
+| `space_person_id`             | Random UUIDv7 shared by every paired device in the same space, so they aggregate into one anonymous person in retention metrics. Empty before you join or create a space. |
 | `session_id`                  | Random UUIDv7 for one process run.                                                                |
 | `app_version` / `app_channel` | App version and release channel.                                                                  |
 | `os` / `os_version` / `arch`  | Operating system, OS version, and CPU architecture.                                               |

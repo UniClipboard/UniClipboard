@@ -334,7 +334,11 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
             });
 
             // Load startup settings for tray and silent start
-            let (silent_start, initial_language, lan_only_active) = {
+            // `quick_panel_enabled`:决定是否在启动期注册全局快捷键 +
+            // 预创建快捷面板窗口。默认（用户未显式开启）为 false,
+            // 避免对用不到该功能的用户造成全局快捷键占用 / 资源浪费。
+            // 变更后需要重启 GUI 才会生效,与 mobile_sync / network 字段语义一致。
+            let (silent_start, initial_language, lan_only_active, quick_panel_enabled) = {
                 let settings_port = runtime.settings_port();
                 match tauri::async_runtime::block_on(settings_port.load()) {
                     Ok(settings) => {
@@ -344,11 +348,12 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
                         // = "LAN-only ON" ⇔ 后端 `allow_relay_fallback = false`。
                         // 与 NetworkSection.tsx / SpaceMembersPanel.tsx 同源。
                         let lan_only = !settings.network.allow_relay_fallback;
-                        (silent, lang, lan_only)
+                        let quick_panel = settings.quick_panel.enabled;
+                        (silent, lang, lan_only, quick_panel)
                     }
                     Err(e) => {
                         warn!("Failed to load settings for startup: {}, using defaults", e);
-                        (false, "en-US".to_string(), false)
+                        (false, "en-US".to_string(), false, false)
                     }
                 }
             };
@@ -368,6 +373,11 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
             // Register global shortcut plugin (empty — shortcuts registered dynamically).
             // `#[cfg(desktop)]` is normally injected by `tauri-build` in the bin crate;
             // here we spell it out explicitly so it compiles in this lib crate too.
+            //
+            // 即使 `quick_panel_enabled = false`,plugin 本身仍然注册:它只是
+            // 把 `tauri-plugin-global-shortcut` 接进运行时,真正的快捷键注册
+            // 由下面的循环按需进行。这样后续用户在设置页打开 quick panel +
+            // 重启 GUI 后,plugin 已就绪,可以直接跑后面的注册流程。
             let mut registered_quick_panel_shortcuts = Vec::new();
 
             #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -375,34 +385,40 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
                 app.handle()
                     .plugin(tauri_plugin_global_shortcut::Builder::new().build())?;
 
-                // 从设置读取快捷键覆盖；未配置或为空则回落到桌面层默认。
-                let shortcuts = {
-                    let settings_port = runtime.settings_port();
-                    match tauri::async_runtime::block_on(settings_port.load()) {
-                        Ok(settings) => {
-                            uc_desktop::shortcuts::resolve_quick_panel_shortcuts(&settings)
+                if quick_panel_enabled {
+                    // 从设置读取快捷键覆盖；未配置或为空则回落到桌面层默认。
+                    let shortcuts = {
+                        let settings_port = runtime.settings_port();
+                        match tauri::async_runtime::block_on(settings_port.load()) {
+                            Ok(settings) => {
+                                uc_desktop::shortcuts::resolve_quick_panel_shortcuts(&settings)
+                            }
+                            Err(e) => {
+                                warn!("Failed to load settings for shortcut: {}, using default", e);
+                                vec![
+                                    uc_desktop::shortcuts::DEFAULT_QUICK_PANEL_SHORTCUT.to_string(),
+                                ]
+                            }
                         }
-                        Err(e) => {
-                            warn!("Failed to load settings for shortcut: {}, using default", e);
-                            vec![uc_desktop::shortcuts::DEFAULT_QUICK_PANEL_SHORTCUT.to_string()]
-                        }
-                    }
-                };
+                    };
 
-                // 启动期 setup callback 已在 main thread 上下文，可直接构造 Tauri
-                // 适配器并调注册器。回调闭包绑定 `quick_panel::toggle`，避免桌面
-                // 协调层耦合任何 GUI shell 概念。
-                let toggle_handle = app.handle().clone();
-                let registry = quick_panel::TauriGlobalShortcutRegistry::new(
-                    app.handle().clone(),
-                    move || quick_panel::toggle(&toggle_handle),
-                );
-                for shortcut_str in &shortcuts {
-                    if let Err(e) = registry.register(shortcut_str) {
-                        tracing::error!(error = %e, shortcut = %shortcut_str, "Failed to register global shortcut during startup");
-                    } else {
-                        registered_quick_panel_shortcuts.push(shortcut_str.clone());
+                    // 启动期 setup callback 已在 main thread 上下文，可直接构造 Tauri
+                    // 适配器并调注册器。回调闭包绑定 `quick_panel::toggle`，避免桌面
+                    // 协调层耦合任何 GUI shell 概念。
+                    let toggle_handle = app.handle().clone();
+                    let registry = quick_panel::TauriGlobalShortcutRegistry::new(
+                        app.handle().clone(),
+                        move || quick_panel::toggle(&toggle_handle),
+                    );
+                    for shortcut_str in &shortcuts {
+                        if let Err(e) = registry.register(shortcut_str) {
+                            tracing::error!(error = %e, shortcut = %shortcut_str, "Failed to register global shortcut during startup");
+                        } else {
+                            registered_quick_panel_shortcuts.push(shortcut_str.clone());
+                        }
                     }
+                } else {
+                    info!("Quick panel disabled in settings, skipping global shortcut registration");
                 }
             }
 
@@ -413,7 +429,12 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
 
             // Pre-create quick panel (hidden) so the first
             // shortcut press doesn't activate the app via WebviewWindowBuilder::build()
-            quick_panel::pre_create(app.handle());
+            //
+            // 同样按 `quick_panel_enabled` 门控:禁用时不预创建窗口,避免占用
+            // webview 资源。需要时由用户在设置页打开后重启 GUI 才会生效。
+            if quick_panel_enabled {
+                quick_panel::pre_create(app.handle());
+            }
 
             // Show window based on silent_start setting
             if !silent_start {

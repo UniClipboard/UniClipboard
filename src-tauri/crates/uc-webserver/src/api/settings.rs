@@ -16,8 +16,8 @@ use crate::api::dto::error::{log_facade_failure, ApiError};
 use crate::api::dto::settings::{
     ContentTypesDto, ContentTypesPatchDto, FileSyncSettingsDto, GeneralSettingsDto,
     GetSettingsResponse, KeyboardShortcutsPatchDto, NetworkSettingsDto, PairingSettingsDto,
-    RetentionPolicyDto, RetentionRuleDto, SecuritySettingsDto, SettingsDto, SettingsPatchDto,
-    SyncSettingsDto, UpdateSettingsResponse,
+    QuickPanelSettingsDto, RetentionPolicyDto, RetentionRuleDto, SecuritySettingsDto, SettingsDto,
+    SettingsPatchDto, SyncSettingsDto, UpdateSettingsResponse,
 };
 use crate::api::server::DaemonApiState;
 
@@ -87,6 +87,7 @@ async fn get_settings_handler(
         has_network = payload.network.is_some(),
         has_retention_policy = payload.retention_policy.is_some(),
         has_keyboard_shortcuts = payload.keyboard_shortcuts.is_some(),
+        has_quick_panel = payload.quick_panel.is_some(),
     )
 )]
 async fn update_settings_handler(
@@ -237,6 +238,11 @@ pub fn settings_patch_from_dto(patch: SettingsPatchDto) -> app_settings::Setting
                 allow_relay_fallback: network.allow_relay_fallback,
                 allow_overlay_network_addrs: network.allow_overlay_network_addrs,
             }),
+        quick_panel: patch
+            .quick_panel
+            .map(|quick_panel| app_settings::QuickPanelSettingsPatch {
+                enabled: quick_panel.enabled,
+            }),
     }
 }
 
@@ -305,6 +311,9 @@ pub fn settings_view_to_dto(value: app_settings::SettingsView) -> SettingsDto {
         network: NetworkSettingsDto {
             allow_relay_fallback: value.network.allow_relay_fallback,
             allow_overlay_network_addrs: value.network.allow_overlay_network_addrs,
+        },
+        quick_panel: QuickPanelSettingsDto {
+            enabled: value.quick_panel.enabled,
         },
     }
 }

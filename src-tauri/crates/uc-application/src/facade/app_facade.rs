@@ -511,6 +511,7 @@ impl AppFacade {
                 keyboard_shortcuts: None,
                 file_sync: None,
                 network: None,
+                quick_panel: None,
             })
             .await?;
         Ok(())

@@ -151,6 +151,13 @@ pub struct NetworkSettingsView {
     pub allow_overlay_network_addrs: bool,
 }
 
+/// 快捷面板功能开关业务镜像。`enabled = false` 时启动期不注册全局快捷键、
+/// 不预创建快捷面板窗口；字段变更需重启 daemon / GUI 才生效。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct QuickPanelSettingsView {
+    pub enabled: bool,
+}
+
 #[derive(Debug, Clone)]
 pub struct SettingsView {
     pub schema_version: u32,
@@ -162,6 +169,7 @@ pub struct SettingsView {
     pub keyboard_shortcuts: HashMap<String, ShortcutKeyView>,
     pub file_sync: FileSyncSettingsView,
     pub network: NetworkSettingsView,
+    pub quick_panel: QuickPanelSettingsView,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -255,6 +263,12 @@ pub struct NetworkSettingsPatch {
     pub allow_overlay_network_addrs: Option<bool>,
 }
 
+/// 快捷面板字段 patch 镜像 —— `None` = 不修改。
+#[derive(Debug, Clone, Default)]
+pub struct QuickPanelSettingsPatch {
+    pub enabled: Option<bool>,
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct SettingsPatch {
     pub general: Option<GeneralSettingsPatch>,
@@ -265,6 +279,7 @@ pub struct SettingsPatch {
     pub keyboard_shortcuts: Option<HashMap<String, Option<ShortcutKeyView>>>,
     pub file_sync: Option<FileSyncSettingsPatch>,
     pub network: Option<NetworkSettingsPatch>,
+    pub quick_panel: Option<QuickPanelSettingsPatch>,
 }
 
 impl From<core::Theme> for ThemeView {
@@ -491,6 +506,9 @@ impl From<core::Settings> for SettingsView {
                 allow_relay_fallback: value.network.allow_relay_fallback,
                 allow_overlay_network_addrs: value.network.allow_overlay_network_addrs,
             },
+            quick_panel: QuickPanelSettingsView {
+                enabled: value.quick_panel.enabled,
+            },
         }
     }
 }
@@ -638,6 +656,12 @@ pub(crate) fn apply_settings_patch(
         }
         if let Some(v) = network.allow_overlay_network_addrs {
             existing.network.allow_overlay_network_addrs = v;
+        }
+    }
+
+    if let Some(quick_panel) = patch.quick_panel {
+        if let Some(v) = quick_panel.enabled {
+            existing.quick_panel.enabled = v;
         }
     }
 

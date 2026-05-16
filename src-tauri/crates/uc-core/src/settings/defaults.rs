@@ -251,6 +251,12 @@ impl Default for NetworkSettings {
     }
 }
 
+impl Default for QuickPanelSettings {
+    fn default() -> Self {
+        Self { enabled: true }
+    }
+}
+
 impl Default for MobileSyncSettings {
     /// 默认全部关闭 / 未选定。开启移动端同步暴露 LAN 监听端口,必须由用户
     /// 在设置页显式开启 + 重启 daemon。详见
@@ -301,6 +307,7 @@ impl Default for Settings {
             file_sync: FileSyncSettings::default(),
             network: NetworkSettings::default(),
             mobile_sync: MobileSyncSettings::default(),
+            quick_panel: QuickPanelSettings::default(),
         }
     }
 }

@@ -309,6 +309,33 @@ pub struct NetworkSettings {
 ///
 /// 任意字段变更后都需要重启 daemon 才能生效(v1 不做配置热重载,详见
 /// `.context/mobile-sync/SPEC.md` §1.2.5)。
+// ======================================================================
+// QuickPanelSettings —— 快捷面板（Spotlight 风格）功能开关。
+//
+// 默认 `enabled = false`：快捷面板会注册一个全局快捷键（macOS 上为
+// `Cmd+Ctrl+V`，Windows/Linux 为 `Ctrl+Alt+V`），并在启动时预创建一个
+// 隐藏的 NSPanel / Webview 窗口；对完全用不到该功能的用户而言这是不必
+// 要的资源占用，且全局快捷键还可能与其他应用冲突。因此默认关闭，需
+// 要的用户在设置页显式开启。
+//
+// 修改 `enabled` 后需要重启 daemon / GUI 才会生效——启动期决定是否注册
+// 全局快捷键和预创建窗口，运行期不做热切换。
+// ======================================================================
+
+/// 快捷面板功能开关。
+///
+/// * `enabled` —— 是否启用快捷面板。开启后启动期会注册全局快捷键
+///   并预创建隐藏窗口；关闭时这两步都跳过。
+///
+/// 字段变更需重启 daemon / GUI 才能生效。
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(default)]
+pub struct QuickPanelSettings {
+    /// 是否启用快捷面板（含全局快捷键与隐藏的快捷面板窗口）。
+    /// 默认 `false`：避免对用不到的用户占用全局快捷键 / 资源。
+    pub enabled: bool,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(default)]
 pub struct MobileSyncSettings {
@@ -363,6 +390,9 @@ pub struct Settings {
 
     #[serde(default)]
     pub mobile_sync: MobileSyncSettings,
+
+    #[serde(default)]
+    pub quick_panel: QuickPanelSettings,
 }
 
 /// The current schema version used for settings persistence.

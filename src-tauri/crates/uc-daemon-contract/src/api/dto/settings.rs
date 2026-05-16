@@ -253,6 +253,22 @@ pub struct NetworkSettingsDto {
     pub allow_overlay_network_addrs: bool,
 }
 
+/// 快捷面板（Spotlight 风格）功能开关 DTO。
+///
+/// wire 字段命名为 camelCase（`enabled`）。`#[serde(default)]` 让缺字段时
+/// 回退到 `Default`（`enabled = false`），兼容老 wire。
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, ToSchema)]
+#[serde(default, rename_all = "camelCase")]
+pub struct QuickPanelSettingsDto {
+    pub enabled: bool,
+}
+
+impl Default for QuickPanelSettingsDto {
+    fn default() -> Self {
+        Self { enabled: false }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct SettingsDto {
@@ -265,6 +281,8 @@ pub struct SettingsDto {
     pub keyboard_shortcuts: HashMap<String, ShortcutKeyDto>,
     pub file_sync: FileSyncSettingsDto,
     pub network: NetworkSettingsDto,
+    #[serde(default)]
+    pub quick_panel: QuickPanelSettingsDto,
 }
 
 // =========================
@@ -380,6 +398,13 @@ pub struct NetworkSettingsPatchDto {
     pub allow_overlay_network_addrs: Option<bool>,
 }
 
+/// 快捷面板字段 patch DTO 镜像 — `null` = 不修改。
+#[derive(Debug, Clone, Default, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct QuickPanelSettingsPatchDto {
+    pub enabled: Option<bool>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct KeyboardShortcutsPatchDto {
     pub shortcuts: HashMap<String, Option<ShortcutKeyDto>>,
@@ -396,6 +421,7 @@ pub struct SettingsPatchDto {
     pub keyboard_shortcuts: Option<KeyboardShortcutsPatchDto>,
     pub file_sync: Option<FileSyncSettingsPatchDto>,
     pub network: Option<NetworkSettingsPatchDto>,
+    pub quick_panel: Option<QuickPanelSettingsPatchDto>,
 }
 
 // =========================
@@ -568,6 +594,14 @@ impl From<core::NetworkSettings> for NetworkSettingsDto {
     }
 }
 
+impl From<core::QuickPanelSettings> for QuickPanelSettingsDto {
+    fn from(value: core::QuickPanelSettings) -> Self {
+        Self {
+            enabled: value.enabled,
+        }
+    }
+}
+
 // =========================
 // From<Dto> for core model (for merge_settings_patch)
 // =========================
@@ -649,6 +683,7 @@ impl From<core::Settings> for SettingsDto {
                 .collect(),
             file_sync: value.file_sync.into(),
             network: value.network.into(),
+            quick_panel: value.quick_panel.into(),
         }
     }
 }
@@ -753,9 +788,13 @@ mod network_dto_tests {
         assert!(dto.keyboard_shortcuts.is_none());
         assert!(dto.file_sync.is_none());
         assert!(dto.network.is_none());
+        assert!(dto.quick_panel.is_none());
 
         let net_patch = NetworkSettingsPatchDto::default();
         assert!(net_patch.allow_relay_fallback.is_none());
+
+        let quick_patch = QuickPanelSettingsPatchDto::default();
+        assert!(quick_patch.enabled.is_none());
     }
 
     /// checker WARNING 3：向后兼容硬断言 —— PUT body `{}` 反序列化所有

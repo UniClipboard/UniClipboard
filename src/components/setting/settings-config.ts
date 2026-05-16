@@ -6,6 +6,7 @@ import {
   RefreshCw,
   Settings,
   Shield,
+  SquareMousePointer,
   Wifi,
   type LucideIcon,
 } from 'lucide-react'
@@ -15,6 +16,7 @@ import AboutSection from './AboutSection'
 import AppearanceSection from './AppearanceSection'
 import GeneralSection from './GeneralSection'
 import NetworkSection from './NetworkSection'
+import QuickPanelSection from './QuickPanelSection'
 import SecuritySection from './SecuritySection'
 import StorageSection from './StorageSection'
 import SyncSection from './SyncSection'
@@ -40,6 +42,11 @@ export const SETTINGS_CATEGORIES: SettingsCategory[] = [
     id: 'shortcuts',
     icon: Command,
     Component: ShortcutsSection,
+  },
+  {
+    id: 'quickPanel',
+    icon: SquareMousePointer,
+    Component: QuickPanelSection,
   },
   {
     id: 'sync',

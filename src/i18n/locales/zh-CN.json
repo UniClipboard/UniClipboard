@@ -71,7 +71,8 @@
       "network": "网络设置",
       "storage": "存储管理",
       "about": "关于",
-      "shortcuts": "快捷键"
+      "shortcuts": "快捷键",
+      "quickPanel": "快捷面板"
     },
     "sections": {
       "general": {
@@ -412,6 +413,16 @@
         "confirm": "确认",
         "cancel": "取消",
         "modified": "已修改"
+      },
+      "quickPanel": {
+        "title": "快捷面板",
+        "featureTitle": "功能",
+        "shortcutTitle": "快捷键",
+        "enable": {
+          "label": "启用快捷面板",
+          "description": "开启后会注册全局快捷键，并在后台预创建快捷面板窗口。修改后需要重启应用才会生效。"
+        },
+        "restartHint": "快捷面板开关已修改。请重启应用以使变更生效。"
       },
       "about": {
         "title": "关于",

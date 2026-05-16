@@ -87,6 +87,9 @@ const baseSetting: Settings = {
     allowRelayFallback: true,
     allowOverlayNetworkAddrs: false,
   },
+  quickPanel: {
+    enabled: false,
+  },
 }
 
 const setup = (theme: Settings['general']['theme'] = 'light') => {
@@ -112,6 +115,7 @@ const setup = (theme: Settings['general']['theme'] = 'light') => {
     updateKeyboardShortcuts: vi.fn(),
     updateFileSyncSetting: vi.fn(),
     updateNetworkSetting: vi.fn().mockResolvedValue({ restartRequired: false }),
+    updateQuickPanelSetting: vi.fn().mockResolvedValue({ restartRequired: false }),
   })
 
   mockUseUiScale.mockReturnValue({

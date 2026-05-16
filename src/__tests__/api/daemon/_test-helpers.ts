@@ -216,6 +216,9 @@ export function makeSettingsDto(overrides: Partial<Settings> = {}): Settings {
       allowRelayFallback: true,
       allowOverlayNetworkAddrs: false,
     },
+    quickPanel: {
+      enabled: false,
+    },
     ...overrides,
   }
 }

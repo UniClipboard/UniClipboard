@@ -159,6 +159,16 @@ export interface NetworkSettings {
 }
 
 /**
+ * 快捷面板（Spotlight 风格）功能开关 - 对应 Rust QuickPanelSettings
+ *
+ * 默认 `enabled = false`：避免对用不到该功能的用户占用全局快捷键 / 资源。
+ * 变更后需要重启 GUI 才会生效（启动期决定是否注册全局快捷键 + 预创建窗口）。
+ */
+export interface QuickPanelSettings {
+  enabled: boolean
+}
+
+/**
  * 应用设置 - 对应 Rust Settings
  */
 export interface Settings {
@@ -171,6 +181,7 @@ export interface Settings {
   keyboardShortcuts?: Record<string, string | string[]>
   fileSync?: FileSyncSettings
   network: NetworkSettings
+  quickPanel: QuickPanelSettings
 }
 
 // ============================================================================
@@ -232,6 +243,9 @@ export interface SettingContextType {
   updateFileSyncSetting: (newFileSyncSetting: Partial<FileSyncSettings>) => Promise<void>
   updateNetworkSetting: (
     newNetworkSetting: Partial<NetworkSettings>
+  ) => Promise<{ restartRequired: boolean }>
+  updateQuickPanelSetting: (
+    newQuickPanelSetting: Partial<QuickPanelSettings>
   ) => Promise<{ restartRequired: boolean }>
 }
 

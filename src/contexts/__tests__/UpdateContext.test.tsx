@@ -86,6 +86,9 @@ const baseSetting: Settings = {
     allowRelayFallback: true,
     allowOverlayNetworkAddrs: false,
   },
+  quickPanel: {
+    enabled: false,
+  },
 }
 
 const UpdateConsumer = () => {
@@ -130,6 +133,7 @@ function renderWithSetting(setting: Settings, children: React.ReactNode) {
         updateKeyboardShortcuts: vi.fn(),
         updateFileSyncSetting: vi.fn(),
         updateNetworkSetting: vi.fn().mockResolvedValue({ restartRequired: false }),
+        updateQuickPanelSetting: vi.fn().mockResolvedValue({ restartRequired: false }),
       }}
     >
       <UpdateProvider>{children}</UpdateProvider>
@@ -180,6 +184,7 @@ describe('UpdateProvider', () => {
           updateKeyboardShortcuts: vi.fn(),
           updateFileSyncSetting: vi.fn(),
           updateNetworkSetting: vi.fn().mockResolvedValue({ restartRequired: false }),
+          updateQuickPanelSetting: vi.fn().mockResolvedValue({ restartRequired: false }),
         }}
       >
         <UpdateProvider>
@@ -208,6 +213,7 @@ describe('UpdateProvider', () => {
           updateKeyboardShortcuts: vi.fn(),
           updateFileSyncSetting: vi.fn(),
           updateNetworkSetting: vi.fn().mockResolvedValue({ restartRequired: false }),
+          updateQuickPanelSetting: vi.fn().mockResolvedValue({ restartRequired: false }),
         }}
       >
         <UpdateProvider>
@@ -244,6 +250,7 @@ describe('UpdateProvider', () => {
           updateKeyboardShortcuts: vi.fn(),
           updateFileSyncSetting: vi.fn(),
           updateNetworkSetting: vi.fn().mockResolvedValue({ restartRequired: false }),
+          updateQuickPanelSetting: vi.fn().mockResolvedValue({ restartRequired: false }),
         }}
       >
         <UpdateProvider>
@@ -438,6 +445,7 @@ describe('UpdateProvider', () => {
           updateKeyboardShortcuts: vi.fn(),
           updateFileSyncSetting: vi.fn(),
           updateNetworkSetting: vi.fn().mockResolvedValue({ restartRequired: false }),
+          updateQuickPanelSetting: vi.fn().mockResolvedValue({ restartRequired: false }),
         }}
       >
         <UpdateProvider>

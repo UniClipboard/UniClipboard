@@ -102,6 +102,9 @@ const baseSetting: Settings = {
     allowRelayFallback: true,
     allowOverlayNetworkAddrs: false,
   },
+  quickPanel: {
+    enabled: false,
+  },
 }
 
 describe('SettingProvider cross-window sync', () => {

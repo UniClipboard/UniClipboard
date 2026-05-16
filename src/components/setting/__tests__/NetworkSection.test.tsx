@@ -92,6 +92,9 @@ const baseSetting: Settings = {
     allowRelayFallback: true,
     allowOverlayNetworkAddrs: false,
   },
+  quickPanel: {
+    enabled: false,
+  },
 }
 
 type UpdateNetworkSettingFn = (
@@ -124,6 +127,7 @@ const setupSetting = ({
     updateKeyboardShortcuts: vi.fn(),
     updateFileSyncSetting: vi.fn(),
     updateNetworkSetting: mockUpdate,
+    updateQuickPanelSetting: vi.fn().mockResolvedValue({ restartRequired: false }),
   })
   return { mockUpdate }
 }

@@ -102,6 +102,9 @@ const baseSetting: Settings = {
     allowRelayFallback: true,
     allowOverlayNetworkAddrs: false,
   },
+  quickPanel: {
+    enabled: false,
+  },
 }
 
 const wrapper = ({ children }: { children: React.ReactNode }) => (

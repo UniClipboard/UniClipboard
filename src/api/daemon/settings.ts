@@ -124,6 +124,17 @@ export interface NetworkSettings {
 }
 
 /**
+ * Quick panel (Spotlight-style) feature toggle. / 快捷面板功能开关。
+ *
+ * Default `enabled = false`. Changing it requires a GUI restart — the host
+ * decides at startup whether to register the global shortcut and pre-create
+ * the (hidden) quick panel window.
+ */
+export interface QuickPanelSettings {
+  enabled: boolean
+}
+
+/**
  * Retention rule — discriminated union matching the Rust `RetentionRule` enum.
  *
  * 保留规则 — 与 Rust `RetentionRule` 枚举匹配的可区分联合类型。
@@ -169,6 +180,7 @@ export interface Settings {
   keyboardShortcuts: Record<string, ShortcutKey>
   fileSync: FileSyncSettings
   network: NetworkSettings
+  quickPanel: QuickPanelSettings
 }
 
 // ── API response wrappers ──────────────────────────────────────
@@ -212,6 +224,7 @@ interface SettingsPatchRequest {
   }
   fileSync?: Partial<FileSyncSettings>
   network?: Partial<NetworkSettings>
+  quickPanel?: Partial<QuickPanelSettings>
 }
 
 // ── Public API ─────────────────────────────────────────────────
@@ -366,6 +379,12 @@ function toSettingsPatchRequest(settings: Partial<Settings>): SettingsPatchReque
     // (e.g. just `{ allowRelayFallback: ... }`); we must not emit undefined
     // fields, since the wire patch interprets `null/undefined` as "no change".
     patch.network = { ...settings.network }
+  }
+
+  if (settings.quickPanel) {
+    // Same rule as `network`: only emit fields present on the partial input,
+    // so undefined-as-no-change wire semantics is preserved.
+    patch.quickPanel = { ...settings.quickPanel }
   }
 
   return patch

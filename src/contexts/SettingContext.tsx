@@ -164,6 +164,23 @@ export const SettingProvider: React.FC<SettingProviderProps> = ({ children }) =>
     return await saveSetting(updatedSetting)
   }
 
+  // Update quick panel settings — 变更需要重启 GUI 才会生效（启动期门控）。
+  // restartRequired 由 UI 自行根据 enabled 是否变化判断；daemon 端 PUT /settings
+  // 现阶段不为 quick_panel 触发 restart_required 信号（与 network 不同）。
+  const updateQuickPanelSetting = async (
+    newQuickPanelSetting: Partial<Settings['quickPanel']>
+  ): Promise<{ restartRequired: boolean }> => {
+    if (!setting) return { restartRequired: false }
+    const updatedSetting: Settings = {
+      ...setting,
+      quickPanel: {
+        ...setting.quickPanel,
+        ...newQuickPanelSetting,
+      },
+    }
+    return await saveSetting(updatedSetting)
+  }
+
   // 更新快捷键。GUI 路径必须走 Tauri in-process command，因为快捷面板全局
   // 快捷键需要同步更新 OS 注册状态；daemon HTTP settings API 只负责持久化。
   const updateKeyboardShortcuts = async (overrides: Record<string, string | string[]>) => {
@@ -326,6 +343,7 @@ export const SettingProvider: React.FC<SettingProviderProps> = ({ children }) =>
     updateKeyboardShortcuts,
     updateFileSyncSetting,
     updateNetworkSetting,
+    updateQuickPanelSetting,
   }
 
   return <SettingContext.Provider value={value}>{children}</SettingContext.Provider>

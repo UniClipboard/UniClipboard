@@ -203,7 +203,7 @@ const HeroSection: React.FC = () => {
   return (
     <div className="grid grid-cols-1 gap-3 lg:grid-cols-[1fr_auto]">
       {/* ── 本机 hero (左) ────────────────────────────────────── */}
-      <div className="relative overflow-hidden rounded-2xl border border-border/60 bg-gradient-to-br from-emerald-500/10 via-card to-card px-6 py-6">
+      <div className="relative overflow-hidden rounded-2xl border border-border/60 bg-card px-6 py-6">
         <div
           aria-hidden
           className="pointer-events-none absolute inset-0 opacity-[0.04]"
@@ -213,7 +213,7 @@ const HeroSection: React.FC = () => {
           }}
         />
         <div className="relative flex items-center gap-5">
-          <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-emerald-500/15 text-emerald-600 shadow-sm ring-1 ring-emerald-500/20 dark:text-emerald-400">
+          <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-success/15 text-success shadow-sm ring-1 ring-success/20">
             {/* eslint-disable-next-line react-hooks/static-components -- `getDeviceIcon` returns a stable lucide icon reference keyed on deviceName, not a freshly-created component */}
             <Icon className="h-8 w-8" />
           </div>
@@ -222,7 +222,7 @@ const HeroSection: React.FC = () => {
               <span className="text-[11px] uppercase tracking-wider text-muted-foreground">
                 {t('devices.thisDevice.title')}
               </span>
-              <span className="inline-flex h-1.5 w-1.5 rounded-full bg-emerald-500" />
+              <span className="inline-flex h-1.5 w-1.5 rounded-full bg-success" />
             </div>
             <h2 className="mt-1 truncate text-xl font-semibold leading-tight text-foreground">
               {localDevice.deviceName}
@@ -299,12 +299,12 @@ interface StatPillProps {
 
 const STAT_ACCENT: Record<StatAccent, { icon: string; value: string }> = {
   emerald: {
-    icon: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400',
-    value: 'text-emerald-700 dark:text-emerald-300',
+    icon: 'bg-success/10 text-success',
+    value: 'text-success',
   },
   amber: {
-    icon: 'bg-amber-500/10 text-amber-600 dark:text-amber-400',
-    value: 'text-amber-700 dark:text-amber-300',
+    icon: 'bg-warning/10 text-warning',
+    value: 'text-warning',
   },
   muted: {
     icon: 'bg-muted text-muted-foreground',
@@ -678,15 +678,13 @@ const PeerCard: React.FC<PeerCardProps> = ({ peer, lanOnlyActive, onSelect }) =>
         <div
           className={cn(
             'relative flex h-12 w-12 items-center justify-center rounded-xl',
-            peer.connected
-              ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
-              : 'bg-muted text-muted-foreground'
+            peer.connected ? 'bg-success/10 text-success' : 'bg-muted text-muted-foreground'
           )}
         >
           {/* eslint-disable-next-line react-hooks/static-components -- `getDeviceIcon` returns a stable lucide icon reference keyed on deviceName, not a freshly-created component */}
           <Icon className="h-6 w-6" />
           {peer.connected && (
-            <span className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full bg-emerald-500 ring-2 ring-card" />
+            <span className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full bg-success ring-2 ring-card" />
           )}
         </div>
         <ChevronRight className="h-4 w-4 text-muted-foreground/30 transition-all group-hover:translate-x-0.5 group-hover:text-muted-foreground" />
@@ -697,11 +695,7 @@ const PeerCard: React.FC<PeerCardProps> = ({ peer, lanOnlyActive, onSelect }) =>
           {peer.deviceName || t('devices.list.labels.unknownDevice')}
         </h4>
         <p className="mt-1 truncate text-xs text-muted-foreground">
-          <span
-            className={
-              peer.connected ? 'text-emerald-600 dark:text-emerald-400' : 'text-muted-foreground'
-            }
-          >
+          <span className={peer.connected ? 'text-success' : 'text-muted-foreground'}>
             {peer.connected
               ? `● ${t('devices.list.status.online')}`
               : `○ ${t('devices.list.status.offline')}`}
@@ -733,8 +727,8 @@ interface ChannelChipProps {
 }
 
 const CHANNEL_TONE: Record<ChannelTone, string> = {
-  emerald: 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 ring-emerald-500/20',
-  amber: 'bg-amber-500/10 text-amber-700 dark:text-amber-300 ring-amber-500/20',
+  emerald: 'bg-success/10 text-success ring-success/20',
+  amber: 'bg-warning/10 text-warning ring-warning/20',
   muted: 'bg-muted text-muted-foreground ring-border',
 }
 
@@ -795,7 +789,7 @@ const MobileCard: React.FC<{
   return (
     <div className="group relative flex w-full flex-col gap-4 overflow-hidden rounded-2xl border border-border/60 bg-card p-5 text-left transition-all hover:border-border hover:shadow-sm">
       <div className="flex items-start justify-between">
-        <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-blue-500/10 text-blue-600 dark:text-blue-400">
+        <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-info/10 text-info">
           <Smartphone className="h-6 w-6" />
         </div>
         <div className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">

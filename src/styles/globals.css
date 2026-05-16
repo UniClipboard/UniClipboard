@@ -77,6 +77,15 @@
 
   --destructive: oklch(0.58 0.22 27);
 
+  /* Semantic status tokens — global, do not switch with theme presets.
+     Override per preset with `[data-theme-preset=xxx] { --success: ... }`. */
+  --success: oklch(0.55 0.17 145);
+  --success-foreground: oklch(0.99 0 0);
+  --warning: oklch(0.72 0.17 75);
+  --warning-foreground: oklch(0.25 0.05 60);
+  --info: oklch(0.55 0.18 250);
+  --info-foreground: oklch(0.99 0 0);
+
   --border: oklch(0.922 0 0);
 
   --input: oklch(0.922 0 0);
@@ -239,6 +248,12 @@
   --color-border: var(--border);
   --color-destructive-foreground: var(--destructive-foreground);
   --color-destructive: var(--destructive);
+  --color-success-foreground: var(--success-foreground);
+  --color-success: var(--success);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-warning: var(--warning);
+  --color-info-foreground: var(--info-foreground);
+  --color-info: var(--info);
   --color-accent-foreground: var(--accent-foreground);
   --color-accent: var(--accent);
   --color-muted-foreground: var(--muted-foreground);
@@ -505,6 +520,12 @@ html[data-uc-low-effects='true']::view-transition-new(root) {
   --accent: oklch(0.371 0 0);
   --accent-foreground: oklch(0.985 0 0);
   --destructive: oklch(0.704 0.191 22.216);
+  --success: oklch(0.78 0.16 145);
+  --success-foreground: oklch(0.18 0.05 145);
+  --warning: oklch(0.83 0.16 80);
+  --warning-foreground: oklch(0.18 0.05 60);
+  --info: oklch(0.72 0.17 245);
+  --info-foreground: oklch(0.15 0.04 250);
   --border: oklch(1 0 0 / 10%);
   --input: oklch(1 0 0 / 15%);
   --ring: oklch(0.556 0 0);

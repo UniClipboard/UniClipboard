@@ -1,0 +1,4 @@
+[submodule "src-tauri/vendor/iroh-blobs"]
+	path = src-tauri/vendor/iroh-blobs
+	url = https://github.com/UniClipboard/iroh-blobs.git
+	branch = uniclipboard/0.100.0-patched

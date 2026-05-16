@@ -76,6 +76,10 @@ __pycache__/
 venv/
 target/
 vendor/
+# `src-tauri/vendor/iroh-blobs` is a git submodule (see .gitmodules) pinning
+# our fork at github.com/UniClipboard/iroh-blobs. Negate the generic
+# `vendor/` rule so submodule state shows up in `git status`.
+!src-tauri/vendor/
 coverage/
 .cache/
 tmp/

@@ -108,6 +108,11 @@ members = [
   "crates/uc-cli-macros",
   "crates/uc-daemon-client",
 ]
+# Submodule `vendor/iroh-blobs` is our fork of n0-computer/iroh-blobs
+# (branch `uniclipboard/0.100.0-patched`). It is consumed via
+# `[patch.crates-io]` below, NOT as a workspace member — exclude it so
+# cargo doesn't try to fold it into this workspace's resolver.
+exclude = ["vendor/iroh-blobs"]
 resolver = "2"
 
 [workspace.package]
@@ -122,3 +127,11 @@ license = "AGPL-3.0-only"
 # Cargo unification 强制把 specta 升到 rc.25，所以 tauri 也必须 ≥ 2.11。
 tauri = { version = "2.11", features = ["tray-icon", "macos-private-api"] }
 tauri-plugin-autostart = "2"
+
+# Vendor 替换 iroh-blobs 0.100.0：上游 HashContext::persist() 在非 Partial
+# 状态下会把 BaoFileStorage 永久污染为 Poisoned，下次 observe(hash) 触发
+# BaoFileStorage::bitfield() 的 panic 分支。修复见
+# vendor/iroh-blobs/src/store/fs.rs::HashContext::persist 与
+# vendor/iroh-blobs/src/store/fs/bao_file.rs::persist_regression 单元测试。
+[patch.crates-io]
+iroh-blobs = { path = "vendor/iroh-blobs" }

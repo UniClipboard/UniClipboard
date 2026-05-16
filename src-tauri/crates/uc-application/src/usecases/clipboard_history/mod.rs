@@ -11,6 +11,7 @@ pub(crate) mod delete_entry;
 pub(crate) mod get_entry_detail;
 pub(crate) mod get_entry_resource;
 pub(crate) mod list_entry_projections;
+pub(crate) mod reconcile_missing_files;
 pub(crate) mod toggle_favorite;
 
 pub(crate) use cleanup::{CleanupExpiredFilesUseCase, CleanupResult};
@@ -21,6 +22,7 @@ pub(crate) use get_entry_resource::{EntryResourceResult, GetEntryResourceUseCase
 pub(crate) use list_entry_projections::{
     EntryProjectionDto, ListClipboardEntryProjectionsUseCase, ListProjectionsError,
 };
+pub(crate) use reconcile_missing_files::{ReconcileMissingFilesUseCase, ReconcileResult};
 pub(crate) use toggle_favorite::ToggleFavoriteClipboardEntryUseCase;
 
 #[derive(Debug, Clone, PartialEq, Eq)]

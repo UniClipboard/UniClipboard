@@ -55,6 +55,7 @@ pub use clipboard_history::{
     ClearHistoryResultView as ClipboardClearHistoryResultView, ClipboardHistoryError,
     ClipboardHistoryFacade, ClipboardHistoryFacadeDeps, ClipboardListInput, ClipboardStatsView,
     EntryDetailView, EntryProjectionView, EntryResourceView,
+    ReconcileResultView as ClipboardReconcileResultView,
 };
 pub use clipboard_inbound::{
     InboundClipboardApplyError, InboundClipboardApplyInput, InboundClipboardApplyOutcome,

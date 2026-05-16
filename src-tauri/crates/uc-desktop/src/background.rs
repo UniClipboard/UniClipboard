@@ -19,15 +19,31 @@ use tracing::{info, warn};
 use uc_application::facade::ClipboardHistoryFacade;
 use uc_bootstrap::TaskRegistry;
 
-/// Register the file cache cleanup task with `TaskRegistry`.
+/// Register the startup file-cache hygiene task with `TaskRegistry`.
 ///
-/// Cleanup goes through `ClipboardHistoryFacade::cleanup_expired_files`,
-/// which routes every expired file through the entry-aware delete path
-/// (untag iroh-blobs reference + remove cache file + drop sqlite rows
-/// in one shot). Pre-Phase-C this called a standalone use case that
-/// `tokio::fs::remove_file`-d cache files directly, leaving iroh-blobs
-/// metadata pointing at vanished files (the precursor to the Poisoned
-/// BaoFileStorage panic at `bao_file.rs:410`).
+/// Runs two passes back to back inside a single registry task:
+///
+/// 1. **Reconcile** (`ClipboardHistoryFacade::reconcile_missing_files`):
+///    drops any DB entry whose cache-managed `file://` path no longer
+///    exists on disk. This catches drift left over from older releases
+///    (pre-Phase-C raw `tokio::fs::remove_file` cleanup) and from any
+///    out-of-band cache deletion. **Reconcile must run first**, because
+///    a `Complete{External(missing_path)}` entry in the iroh-blobs
+///    metadata is exactly the precondition for the upstream panic at
+///    `bao_file.rs:410` "poisoned storage should not be used" — once any
+///    code path observes the hash, the actor task dies. Reconcile flushes
+///    those entries through the entry-aware delete path before the rest
+///    of the daemon starts servicing observe requests.
+///
+/// 2. **Cleanup** (`ClipboardHistoryFacade::cleanup_expired_files`):
+///    walks the cache directory for files past their retention TTL and
+///    routes each one through the same entry-aware delete path (untag
+///    iroh-blobs reference + remove cache file + drop sqlite rows in one
+///    shot).
+///
+/// The two passes are complementary: cleanup walks files → entries;
+/// reconcile walks entries → files. Together they keep cache↔DB in sync
+/// in both directions.
 ///
 /// Caller must drive this future inside a tokio runtime context (e.g.
 /// `tauri::async_runtime::spawn(async move { start_file_cache_cleanup(...).await })`).
@@ -36,7 +52,29 @@ pub async fn start_file_cache_cleanup(
     task_registry: &Arc<TaskRegistry>,
 ) {
     task_registry
-        .spawn("file_cache_cleanup", |_token| async move {
+        .spawn("file_cache_hygiene", |_token| async move {
+            // Phase 1: reconcile DB entries against disk. This must
+            // happen *before* anything in the daemon observes a hash
+            // whose External path may have vanished; otherwise the
+            // iroh-blobs actor panics with poisoned storage.
+            match history_facade.reconcile_missing_files().await {
+                Ok(result) => {
+                    if result.entries_deleted > 0 || result.errors > 0 {
+                        info!(
+                            entries_scanned = result.entries_scanned,
+                            entries_deleted = result.entries_deleted,
+                            errors = result.errors,
+                            "Startup reconcile dropped stale entries with missing cache files"
+                        );
+                    }
+                }
+                Err(e) => {
+                    warn!(error = %e, "Startup reconcile failed (non-fatal)");
+                }
+            }
+
+            // Phase 2: TTL-based cleanup of cache files that have
+            // outlived `file_sync.file_retention_hours`.
             match history_facade.cleanup_expired_files().await {
                 Ok(result) => {
                     if result.files_removed > 0 {

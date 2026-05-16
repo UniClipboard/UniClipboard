@@ -115,7 +115,7 @@ pub(super) fn install_snapshot(
         // without the charset suffix still get bytes (mirrors what wlr /
         // ext data-control sources do via their multi-offer dance, and
         // what clipboard_rs's `file_uri_list_to_clipboard_data` did for X11).
-        let bytes = Arc::new(rep.bytes.clone());
+        let bytes = Arc::new(rep.expect_inline_bytes().to_vec());
         match mime.as_str() {
             "text/plain;charset=utf-8" | "text/plain;charset=UTF-8" => {
                 payloads.entry(atoms.UTF8_STRING).or_insert(bytes.clone());

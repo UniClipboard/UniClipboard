@@ -675,7 +675,7 @@ fn handle_write(
                 continue;
             }
             source.offer(mime.clone());
-            payloads.insert(mime, Arc::new(rep.bytes.clone()));
+            payloads.insert(mime, Arc::new(rep.expect_inline_bytes().to_vec()));
         }
     }
 

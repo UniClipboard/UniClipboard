@@ -707,7 +707,10 @@ async fn sponsor_dispatch_lands_on_joiner_within_2s() {
     let decoded = decode_v3_bytes_to_snapshot(&notice.plaintext)
         .expect("notice plaintext must decode as V3 envelope");
     assert_eq!(decoded.representations.len(), 1);
-    assert_eq!(decoded.representations[0].bytes, text.as_bytes());
+    assert_eq!(
+        decoded.representations[0].expect_inline_bytes(),
+        text.as_bytes()
+    );
     assert_eq!(
         decoded.representations[0].mime.as_ref().map(|m| m.as_str()),
         Some("text/plain")
@@ -802,7 +805,10 @@ async fn repeat_dispatch_lands_twice_phase2_no_dedup() {
     for notice in &received {
         let decoded = decode_v3_bytes_to_snapshot(&notice.plaintext)
             .expect("notice plaintext must decode as V3 envelope");
-        assert_eq!(decoded.representations[0].bytes, fixture_text.as_bytes());
+        assert_eq!(
+            decoded.representations[0].expect_inline_bytes(),
+            fixture_text.as_bytes()
+        );
     }
 
     sponsor.shutdown().await;

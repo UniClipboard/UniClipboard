@@ -76,12 +76,13 @@ async fn main() -> anyhow::Result<()> {
                             snapshot.representations.len()
                         );
                         for rep in &snapshot.representations {
-                            let preview = preview_bytes(&rep.bytes);
+                            let bytes = rep.inline_bytes().unwrap_or(&[]);
+                            let preview = preview_bytes(bytes);
                             println!(
                                 "  - format={} mime={:?} bytes={} preview={:?}",
                                 rep.format_id,
                                 rep.mime.as_ref().map(|m| m.0.as_str()),
-                                rep.bytes.len(),
+                                bytes.len(),
                                 preview
                             );
                         }

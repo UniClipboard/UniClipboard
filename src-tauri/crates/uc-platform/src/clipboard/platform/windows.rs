@@ -38,8 +38,8 @@ fn resolve_multi_rep_mime(rep: &ObservedClipboardRepresentation) -> Option<&str>
     // image-like format_id 但显式 mime 非 image/*:见 `common.rs::write_snapshot` 同位置注释。
     match (rep.mime.as_deref(), format_default) {
         (Some(m), Some(default)) if default.starts_with("image/") && !m.starts_with("image/") => {
-            let recovered =
-                crate::clipboard::common::sniff_image_magic(&rep.bytes).unwrap_or(default);
+            let recovered = crate::clipboard::common::sniff_image_magic(rep.expect_inline_bytes())
+                .unwrap_or(default);
             tracing::warn!(
                 format_id = %rep.format_id,
                 wire_mime = m,
@@ -354,12 +354,12 @@ pub(crate) fn write_snapshot_multi_windows(snapshot: SystemClipboardSnapshot) ->
             if resolve_multi_rep_mime(rep) != Some("image/png") {
                 return None;
             }
-            match png_to_dibv5(&rep.bytes) {
+            match png_to_dibv5(rep.expect_inline_bytes()) {
                 Ok(dib) => Some(dib),
                 Err(e) => {
                     warn!(
                         error = %e,
-                        png_bytes = rep.bytes.len(),
+                        png_bytes = rep.expect_inline_bytes().len(),
                         "PNG→CF_DIBV5 转码失败；仅写 \"PNG\" 自定义 format"
                     );
                     None
@@ -492,11 +492,14 @@ fn attempt_multi_write_inner(
             Some("text/plain") => {
                 // 必须使用 set_string_with::<NoClear>：
                 // set_string 内部调用 DoClear（EmptyClipboard），会把已写的其他 format 抹掉。
-                let text = String::from_utf8(rep.bytes.clone())
+                let text = String::from_utf8(rep.expect_inline_bytes().to_vec())
                     .map_err(|e| anyhow::anyhow!("text/plain rep is not valid UTF-8: {}", e))?;
                 cb_raw::set_string_with::<NoClear>(&text, NoClear)
                     .map_err(|e| anyhow::anyhow!("set CF_UNICODETEXT failed: {}", e))?;
-                debug!(bytes = rep.bytes.len(), "写入 CF_UNICODETEXT 成功");
+                debug!(
+                    bytes = rep.expect_inline_bytes().len(),
+                    "写入 CF_UNICODETEXT 成功"
+                );
                 wrote_any = true;
             }
             Some("text/html") => {
@@ -505,13 +508,13 @@ fn attempt_multi_write_inner(
                     skipped.push(rep.format_id.as_str().to_string());
                     continue;
                 };
-                let html = String::from_utf8(rep.bytes.clone())
+                let html = String::from_utf8(rep.expect_inline_bytes().to_vec())
                     .map_err(|e| anyhow::anyhow!("text/html rep is not valid UTF-8: {}", e))?;
                 // set_html 默认走 NoClear 分支，内部构造 "Version:0.9 / StartHTML / EndHTML /
                 // StartFragment / EndFragment" 头并包裹 BODY_HEADER/BODY_FOOTER，适合累加。
                 cb_raw::set_html(html_fmt, &html)
                     .map_err(|e| anyhow::anyhow!("set CF_HTML failed: {}", e))?;
-                debug!(bytes = rep.bytes.len(), "写入 CF_HTML 成功");
+                debug!(bytes = rep.expect_inline_bytes().len(), "写入 CF_HTML 成功");
                 wrote_any = true;
             }
             Some("text/rtf") => {
@@ -524,9 +527,12 @@ fn attempt_multi_write_inner(
                     skipped.push(rep.format_id.as_str().to_string());
                     continue;
                 };
-                cb_raw::set_without_clear(rtf_fmt, &rep.bytes)
+                cb_raw::set_without_clear(rtf_fmt, rep.expect_inline_bytes())
                     .map_err(|e| anyhow::anyhow!("set Rich Text Format failed: {}", e))?;
-                debug!(bytes = rep.bytes.len(), "写入 Rich Text Format 成功");
+                debug!(
+                    bytes = rep.expect_inline_bytes().len(),
+                    "写入 Rich Text Format 成功"
+                );
                 wrote_any = true;
             }
             Some("image/png") => {
@@ -548,7 +554,7 @@ fn attempt_multi_write_inner(
                         .map_err(|e| anyhow::anyhow!("set CF_DIBV5 failed: {}", e))?;
                     debug!(
                         dib_bytes = dib_bytes.len(),
-                        png_bytes = rep.bytes.len(),
+                        png_bytes = rep.expect_inline_bytes().len(),
                         "写入 CF_DIBV5 成功"
                     );
                     wrote_dib = true;
@@ -556,11 +562,12 @@ fn attempt_multi_write_inner(
 
                 match cb_raw::register_format("PNG") {
                     Some(png_fmt) => {
-                        cb_raw::set_without_clear(png_fmt.get(), &rep.bytes).map_err(|e| {
-                            anyhow::anyhow!("set \"PNG\" custom format failed: {}", e)
-                        })?;
+                        cb_raw::set_without_clear(png_fmt.get(), rep.expect_inline_bytes())
+                            .map_err(|e| {
+                                anyhow::anyhow!("set \"PNG\" custom format failed: {}", e)
+                            })?;
                         debug!(
-                            png_bytes = rep.bytes.len(),
+                            png_bytes = rep.expect_inline_bytes().len(),
                             "写入 \"PNG\" 自定义 format 成功"
                         );
                         wrote_png = true;
@@ -581,12 +588,12 @@ fn attempt_multi_write_inner(
                 // 已把 blob 落地到本机 iroh-blobs 缓存目录并改写为本机 URI）解析回本机
                 // 路径，打包成 DROPFILES + UTF-16 名字串，`SetClipboardData(CF_HDROP)`。
                 // 这是 Explorer / Office / 大多数桌面应用识别的文件拷贝语义。
-                let paths = match parse_uri_list_to_paths(&rep.bytes) {
+                let paths = match parse_uri_list_to_paths(rep.expect_inline_bytes()) {
                     Ok(paths) => paths,
                     Err(e) => {
                         warn!(
                             error = %e,
-                            bytes = rep.bytes.len(),
+                            bytes = rep.expect_inline_bytes().len(),
                             format_id = %rep.format_id,
                             "Windows 多 rep 写入：text/uri-list 解析失败，跳过该 rep"
                         );
@@ -622,7 +629,7 @@ fn attempt_multi_write_inner(
                 info!(
                     format_id = %rep.format_id,
                     mime = ?other,
-                    bytes = rep.bytes.len(),
+                    bytes = rep.expect_inline_bytes().len(),
                     "Windows 多 rep 写入：跳过不支持的 rep（当前支持 text/plain, text/html, text/rtf, image/png, text/uri-list）"
                 );
                 skipped.push(rep.format_id.as_str().to_string());
@@ -743,7 +750,7 @@ impl SystemClipboardPort for WindowsClipboard {
             // Extract image bytes before passing snapshot to CommonClipboardImpl
             // (which consumes it by reference but we need the bytes for fallback).
             let image_bytes = if image_fallback_eligible {
-                snapshot.representations.first().map(|rep| rep.bytes.clone())
+                snapshot.representations.first().map(|rep| rep.expect_inline_bytes().to_vec())
             } else {
                 None
             };
@@ -852,7 +859,7 @@ fn extract_text_plain_utf8(snapshot: &SystemClipboardSnapshot) -> Result<Option<
         return Ok(None);
     };
 
-    let text = String::from_utf8(text_rep.bytes.clone())
+    let text = String::from_utf8(text_rep.expect_inline_bytes().to_vec())
         .map_err(|err| anyhow::anyhow!("Failed to decode text/plain snapshot as UTF-8: {}", err))?;
     Ok(Some(text))
 }

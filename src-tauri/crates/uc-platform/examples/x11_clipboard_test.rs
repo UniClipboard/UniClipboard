@@ -98,15 +98,13 @@ fn main() -> anyhow::Result<()> {
     let snap = clipboard.read_snapshot()?;
     eprintln!("    snapshot: {} reps", snap.representations.len());
     for rep in &snap.representations {
-        let preview: String = String::from_utf8_lossy(&rep.bytes)
-            .chars()
-            .take(80)
-            .collect();
+        let bytes = rep.inline_bytes().unwrap_or(&[]);
+        let preview: String = String::from_utf8_lossy(bytes).chars().take(80).collect();
         eprintln!(
             "      - format={} mime={:?} bytes={} preview={:?}",
             rep.format_id,
             rep.mime.as_ref().map(|m| m.0.as_str()),
-            rep.bytes.len(),
+            bytes.len(),
             preview
         );
     }

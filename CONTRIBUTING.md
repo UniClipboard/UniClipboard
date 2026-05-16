@@ -91,9 +91,17 @@ Optional but useful:
 ### Clone and Install
 
 ```bash
-git clone https://github.com/UniClipboard/UniClipboard.git
+# `--recurse-submodules` pulls our `iroh-blobs` fork under
+# `src-tauri/vendor/iroh-blobs/`; without it `cargo build` fails.
+git clone --recurse-submodules https://github.com/UniClipboard/UniClipboard.git
 cd UniClipboard
 bun install
+```
+
+Already cloned without submodules? Run:
+
+```bash
+git submodule update --init --recursive
 ```
 
 `bun install` triggers Husky hook installation via the `prepare` script. Pre-commit lint-staged checks will run automatically on `git commit`.

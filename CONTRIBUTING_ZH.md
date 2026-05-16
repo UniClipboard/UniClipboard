@@ -91,9 +91,17 @@
 ### 克隆与安装
 
 ```bash
-git clone https://github.com/UniClipboard/UniClipboard.git
+# `--recurse-submodules` 会同步拉取 `src-tauri/vendor/iroh-blobs/`
+# 下的 iroh-blobs fork，缺这个 `cargo build` 会失败。
+git clone --recurse-submodules https://github.com/UniClipboard/UniClipboard.git
 cd UniClipboard
 bun install
+```
+
+如果克隆时漏了 `--recurse-submodules`：
+
+```bash
+git submodule update --init --recursive
 ```
 
 `bun install` 会通过 `prepare` 脚本自动安装 Husky 钩子，`git commit` 时会自动跑 lint-staged 检查。

@@ -194,8 +194,9 @@ GUI 和 CLI 互不冲突，需要的话两个都装即可。
 ### 从源码构建
 
 ```bash
-# 克隆仓库
-git clone https://github.com/UniClipboard/UniClipboard.git
+# 克隆仓库（`--recurse-submodules` 会同步拉取 src-tauri/vendor/iroh-blobs/
+# 下的 iroh-blobs fork，缺它 `cargo build` 会失败）
+git clone --recurse-submodules https://github.com/UniClipboard/UniClipboard.git
 cd UniClipboard
 
 # 安装依赖

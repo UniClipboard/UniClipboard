@@ -194,8 +194,9 @@ The cask and the formula can coexist — install both if you want the GUI plus t
 ### Build from Source
 
 ```bash
-# Clone the repository
-git clone https://github.com/UniClipboard/UniClipboard.git
+# Clone the repository (`--recurse-submodules` pulls the iroh-blobs fork
+# under src-tauri/vendor/iroh-blobs/; without it `cargo build` fails).
+git clone --recurse-submodules https://github.com/UniClipboard/UniClipboard.git
 cd UniClipboard
 
 # Install dependencies

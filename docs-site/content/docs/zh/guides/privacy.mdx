@@ -48,19 +48,19 @@ UniClipboard 的核心边界不变：剪贴板内容只在你已配对的设备�
 
 每条产品事件会带这些共享字段：
 
-| 字段                          | 含义                                                      |
-| ----------------------------- | --------------------------------------------------------- |
-| `anonymous_user_id`           | 随机 UUIDv7，未加入空间时用于匿名留存统计。               |
-| `analytics_device_id`         | 随机 UUIDv7，用于设备级切片；与业务设备 ID 独立。         |
+| 字段                          | 含义                                                                                                     |
+| ----------------------------- | -------------------------------------------------------------------------------------------------------- |
+| `anonymous_user_id`           | 随机 UUIDv7，未加入空间时用于匿名留存统计。                                                              |
+| `analytics_device_id`         | 随机 UUIDv7，用于设备级切片；与业务设备 ID 独立。                                                        |
 | `space_person_id`             | 随机 UUIDv7，同一空间内的所有已配对设备共享，用于在留存指标里聚合为同一个匿名 person；未加入空间时为空。 |
-| `session_id`                  | 单次进程运行的随机 UUIDv7。                               |
-| `app_version` / `app_channel` | 应用版本与发布渠道。                                      |
-| `os` / `os_version` / `arch`  | 操作系统、系统版本、CPU 架构。                            |
-| `locale` / `timezone`         | 系统语言与时区。                                          |
-| `install_source`              | 安装来源枚举；当前未能识别时为 `unknown`。                |
-| `is_first_run`                | 本次是否为首次运行。                                      |
-| `active_device_count`         | 进程启动时读取的已配对设备数量。                          |
-| `space_id_hash`               | 空间 ID 的不可逆 SHA-256 哈希前 16 位；未加入空间时为空。 |
+| `session_id`                  | 单次进程运行的随机 UUIDv7。                                                                              |
+| `app_version` / `app_channel` | 应用版本与发布渠道。                                                                                     |
+| `os` / `os_version` / `arch`  | 操作系统、系统版本、CPU 架构。                                                                           |
+| `locale` / `timezone`         | 系统语言与时区。                                                                                         |
+| `install_source`              | 安装来源枚举；当前未能识别时为 `unknown`。                                                               |
+| `is_first_run`                | 本次是否为首次运行。                                                                                     |
+| `active_device_count`         | 进程启动时读取的已配对设备数量。                                                                         |
+| `space_id_hash`               | 空间 ID 的不可逆 SHA-256 哈希前 16 位；未加入空间时为空。                                                |
 
 当前允许的产品事件范围：
 

@@ -404,7 +404,31 @@ pub trait DeviceDirectoryPort: Send + Sync {
 
 **依赖关系**:依赖 Phase 1 与 Phase 2。本 phase 是叠加增强，Phase 2 落地后 UI 已能用 fallback 跑通。
 
-**Status**: pending
+**Status**: complete (2026-05-15)
+
+**实施总结 (策略调整)**:
+
+实施前对 D6 做了重新评估，**复用 `SpaceMember.device_name`,放弃新建 `device_directory` 表**。理由：
+
+- `SpaceMember` 实体已经有 `device_name: String` 字段 (见 `uc-core/src/membership/member.rs:15`),由 pairing 流程在双方建立成员资格时写入 (`redeem_invitation.rs:151` / `pairing_inbound/orchestrator.rs:421`)
+- `MemberRepositoryPort.get(device_id)` / `list()` 已经能按 device_id 拿到名字
+- roster facade 的 `revoke_member`(`facade/roster/facade.rs:232`) 同时 remove `member_repo` 与 `trusted_peer_repo`,**trusted_peer ⊆ space_member** 在生命周期上始终成立
+- 视图层只需要"取 device_name"这一个动作，新建 `device_directory` 表会成为冗余的第二真相
+- R4 提到的"仅接收过我方推送、从未推送过我方的 trusted peer 不会出现在 directory" 风险，在复用 SpaceMember 路径不存在
+
+实际改动：
+
+1. **uc-application** · `GetEntryDeliveryViewUseCase` 注入 `MemberRepositoryPort`,执行时一次 `list()` 取全集建 `HashMap<DeviceId, String>`;`EntrySource::Remote` 加 `device_name: Option<String>`,`EntryDeliveryTargetView` 加 `target_device_name: Option<String>`;空白名按缺失处理;`member_repo.list` 故障降级为"无名字",不阻断视图。
+2. **uc-application** · 视图 use case 测试补 `FakeMemberRepo` + 3 个新分支：命中、空白 fallback、member_repo 故障降级。10/10 测试通过。
+3. **uc-application** · `ClipboardSyncFacade` 把已有的 `deps.member_repo` 传给 `view_uc`,无新增 dep 字段，wiring 零改动。
+4. **uc-tauri** · `EntrySourceDto::Remote` / `EntryDeliveryTargetDto` 加 `deviceName` / `targetDeviceName` 字段，生成 binding 自动同步。
+5. **前端** · `EntrySourceView.remote` / `EntryDeliveryTargetView` 加 `deviceName` / `targetDeviceName`;`EntryDeliverySection` 和 `EntryDeliveryBadge` 引入 `deviceLabel(name, id)` 辅助函数 (name 优先，空白/缺失时 fallback 到 id 截断，fallback 时保留 monospace 样式);测试补"name 命中" + "空白 fallback" 用例，7/7 通过。
+6. **校验** · `cargo check --workspace --tests` 通过;`cargo test -p uc-application --lib` 477/477 通过;`cargo test -p uc-infra ... entry_delivery_repo` 6/6 通过;`tsc --noEmit` 无错误;`EntryDeliverySection.test.tsx` 7/7 通过。
+
+**未做 (超出本期范围)**:
+
+- 入站 inbound ingest 不主动刷新 `SpaceMember.device_name`:配对完成那一刻的名字就是真相，对端改名不会自动回写。F4 提到的 `origin_device_name` 字段在 wire 上仍透传，但视图层不消费 (改名同步会改 member 表语义，留给后续如果产品需要再做)。
+- 不新增任何持久化结构，本期就是纯"接 wire 已有事实"的视图增强。
 
 ---
 
@@ -431,6 +455,7 @@ pub trait DeviceDirectoryPort: Send + Sync {
 | D4 | 列表批量 API | 失效 | 列表不展示，无需 |
 | D5 | facade vs webserver | facade | 既定事实 (in-process facade) |
 | D6 | 设备名解析层 | A · device_directory 表 + Port | 同时解决 source/target name，真相单点收口 |
+| D6.v2 | (Phase 3 实施前重审) 复用 SpaceMember.device_name 而不是新建 device_directory 表 | 复用 | `SpaceMember` 已有 `device_name`,由 pairing 双向写入;trusted_peer ⊆ space_member 在生命周期上恒成立;新建表会形成冗余二号真相，违反单一真相原则 |
 | D7 | 历史 entry 降级 | A1 · entry 表加 delivery_tracked 列 | per-entry 自带标志，不依赖全局变量 |
 | D8 | 离线 vs 在线失败区分 | 用现有 ClipboardDispatchError 五分类映射 | wire 层信号已足够细 |
 | D9 | trusted_peer 删除后 delivery 处理 | C · 保留行 + facade 默认不展示 | 不丢历史，UI 简洁，改动最小 |

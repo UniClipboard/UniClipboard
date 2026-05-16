@@ -13,24 +13,28 @@ function mixedDelivery(): EntryDeliveryView {
     deliveries: [
       {
         targetDeviceId: 'did_a1b2c3d4e5',
+        targetDeviceName: null,
         status: { tag: 'delivered' },
         reasonDetail: null,
         updatedAtMs: 1_700_000_000_000,
       },
       {
         targetDeviceId: 'did_f6g7h8i9j0',
+        targetDeviceName: null,
         status: { tag: 'duplicate' },
         reasonDetail: null,
         updatedAtMs: 1_700_000_000_001,
       },
       {
         targetDeviceId: 'did_k1l2m3n4o5',
+        targetDeviceName: null,
         status: { tag: 'failed', reason: 'offline' },
         reasonDetail: 'no route to host',
         updatedAtMs: 1_700_000_000_002,
       },
       {
         targetDeviceId: 'did_p6q7r8s9t0',
+        targetDeviceName: null,
         status: { tag: 'pending' },
         reasonDetail: null,
         updatedAtMs: null,
@@ -98,13 +102,14 @@ describe('EntryDeliverySection', () => {
     expect(screen.getByText(i18n.t('delivery.list.noPeers'))).toBeInTheDocument()
   })
 
-  it('renders remote source with truncated device id', () => {
+  it('renders remote source with truncated device id when name is missing', () => {
     const delivery: EntryDeliveryView = {
       entryId: 'entry-remote',
-      source: { tag: 'remote', deviceId: 'did_sender_xyz' },
+      source: { tag: 'remote', deviceId: 'did_sender_xyz', deviceName: null },
       deliveries: [
         {
           targetDeviceId: 'did_peer_aaa',
+          targetDeviceName: null,
           status: { tag: 'delivered' },
           reasonDetail: null,
           updatedAtMs: 1_700_000_000_000,
@@ -113,8 +118,41 @@ describe('EntryDeliverySection', () => {
     }
     render(<EntryDeliverySection delivery={delivery} />)
 
-    // remote 来源行用截断 device id 替代 (Phase 3 起补真实 name)
+    // 名字缺失时 fallback 到 device_id 截断
     expect(screen.getByText('did_send…')).toBeInTheDocument()
+  })
+
+  it('prefers device names over device ids when resolved', () => {
+    const delivery: EntryDeliveryView = {
+      entryId: 'entry-named',
+      source: { tag: 'remote', deviceId: 'did_sender_xyz', deviceName: 'Mac Studio' },
+      deliveries: [
+        {
+          targetDeviceId: 'did_target_aaa',
+          targetDeviceName: 'iPad Pro',
+          status: { tag: 'delivered' },
+          reasonDetail: null,
+          updatedAtMs: 1_700_000_000_000,
+        },
+        {
+          // 空白名应被视为缺失,fallback 到 id 截断
+          targetDeviceId: 'did_target_bbb',
+          targetDeviceName: '   ',
+          status: { tag: 'pending' },
+          reasonDetail: null,
+          updatedAtMs: null,
+        },
+      ],
+    }
+    render(<EntryDeliverySection delivery={delivery} />)
+
+    // 来源用真实 name 而不是截断 id
+    expect(screen.getByText('Mac Studio')).toBeInTheDocument()
+    expect(screen.queryByText('did_send…')).not.toBeInTheDocument()
+
+    // 第一台 target 用真实名;第二台 fallback 到截断 id
+    expect(screen.getByText('iPad Pro')).toBeInTheDocument()
+    expect(screen.getByText('did_targ…')).toBeInTheDocument()
   })
 
   it('maps all five failure reasons to their i18n labels', () => {
@@ -124,6 +162,7 @@ describe('EntryDeliverySection', () => {
       source: { tag: 'local' },
       deliveries: reasons.map((reason, idx) => ({
         targetDeviceId: `did_peer_${idx}xxxxxxxx`,
+        targetDeviceName: null,
         status: { tag: 'failed', reason },
         reasonDetail: null,
         updatedAtMs: 1_700_000_000_000 + idx,

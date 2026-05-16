@@ -423,6 +423,11 @@ export type EntryDeliveryStatusDto = { tag: "pending" } | { tag: "delivered" } |
 
 export type EntryDeliveryTargetDto = {
 	targetDeviceId: string,
+	/**
+	 *  取自空间成员目录中的人类可读名;不命中时为 `null`,前端 fallback
+	 *  到 `targetDeviceId` 截断。
+	 */
+	targetDeviceName: string | null,
 	status: EntryDeliveryStatusDto,
 	/**  失败时的 wire 层错误细节,供 UI tooltip / 详情展开使用。 */
 	reasonDetail: string | null,
@@ -449,8 +454,11 @@ export type EntryDeliveryViewDto = {
 export type EntrySourceDto = 
 /**  本机捕获。 */
 { tag: "local" } | 
-/**  远端推送。`deviceId` 是来源设备,Phase 3 起补 `deviceName`。 */
-{ tag: "remote"; deviceId: string } | 
+/**
+ *  远端推送。`deviceId` 是来源设备,`deviceName` 取自空间成员目录;
+ *  不命中时为 `null`,前端 fallback 到 device_id 截断。
+ */
+{ tag: "remote"; deviceId: string; deviceName: string | null } | 
 /**  追踪机制启用前已存在的老 entry,无可靠投递信息。 */
 { tag: "historical" };
 

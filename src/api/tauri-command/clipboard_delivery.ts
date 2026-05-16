@@ -23,7 +23,12 @@ import { commands } from '@/lib/ipc'
 /** entry 来源描述。 */
 export type EntrySourceView =
   | { tag: 'local' }
-  | { tag: 'remote'; deviceId: string }
+  | {
+      tag: 'remote'
+      deviceId: string
+      /** 取自空间成员目录;未命中时为 null,渲染层 fallback 到 device_id 截断。 */
+      deviceName: string | null
+    }
   | { tag: 'historical' }
 
 /** 失败原因细分,与 i18n key `delivery.failureReason.<variant>` 对应。 */
@@ -39,6 +44,8 @@ export type EntryDeliveryStatusView =
 /** 单个对端的当前同步状态。 */
 export interface EntryDeliveryTargetView {
   targetDeviceId: string
+  /** 取自空间成员目录;未命中时为 null,渲染层 fallback 到 device_id 截断。 */
+  targetDeviceName: string | null
   status: EntryDeliveryStatusView
   /** 失败时的 wire 层错误细节,可选;成功 / Pending 时为 null。 */
   reasonDetail: string | null

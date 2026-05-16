@@ -194,6 +194,7 @@ impl ClipboardSyncFacade {
             Arc::clone(&deps.trusted_peer_repo),
             Arc::clone(&deps.entry_delivery_repo),
             Arc::clone(&deps.device_identity),
+            Arc::clone(&deps.member_repo),
         ));
         Self {
             dispatch_uc,

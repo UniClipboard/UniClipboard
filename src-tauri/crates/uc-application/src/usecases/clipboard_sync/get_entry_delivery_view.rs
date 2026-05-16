@@ -19,6 +19,7 @@ use uc_core::ports::{
     EntryDeliveryRepositoryPort,
 };
 use uc_core::trusted_peer::TrustedPeerRepositoryPort;
+use uc_core::MemberRepositoryPort;
 
 /// 视图模型:某条 entry 的"来源 + 对每个可信对端的同步状态"完整快照。
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -34,9 +35,12 @@ pub struct EntryDeliveryView {
 pub enum EntrySource {
     /// 本机捕获的 entry。
     Local,
-    /// 远端推送过来的 entry。device_id 是推送方,文本/可读名由视图层用
-    /// `DeviceDirectoryPort`(Phase 3 引入)解析,本期仅返回 id。
-    Remote { device_id: DeviceId },
+    /// 远端推送过来的 entry。`device_name` 取自空间成员目录中的人类可读名;
+    /// 不命中(例如已退出空间但仍存有历史 entry)时为 `None`,渲染层 fallback 到 `device_id`。
+    Remote {
+        device_id: DeviceId,
+        device_name: Option<String>,
+    },
     /// 新机制启用前已存在的老 entry,没有可信的投递信息可查。
     Historical,
 }
@@ -46,6 +50,8 @@ pub enum EntrySource {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EntryDeliveryTargetView {
     pub target_device_id: DeviceId,
+    /// 取自空间成员目录中的人类可读名;不命中时为 `None`,渲染层 fallback 到 `target_device_id`。
+    pub target_device_name: Option<String>,
     pub status: EntryDeliveryStatusView,
     pub reason_detail: Option<String>,
     /// `Pending` 时为 `None`(未发生过,没有时间可言)。
@@ -74,6 +80,7 @@ pub(crate) struct GetEntryDeliveryViewUseCase {
     trusted_peer_repo: Arc<dyn TrustedPeerRepositoryPort>,
     entry_delivery_repo: Arc<dyn EntryDeliveryRepositoryPort>,
     device_identity: Arc<dyn DeviceIdentityPort>,
+    member_repo: Arc<dyn MemberRepositoryPort>,
 }
 
 impl GetEntryDeliveryViewUseCase {
@@ -83,6 +90,7 @@ impl GetEntryDeliveryViewUseCase {
         trusted_peer_repo: Arc<dyn TrustedPeerRepositoryPort>,
         entry_delivery_repo: Arc<dyn EntryDeliveryRepositoryPort>,
         device_identity: Arc<dyn DeviceIdentityPort>,
+        member_repo: Arc<dyn MemberRepositoryPort>,
     ) -> Self {
         Self {
             entry_repo,
@@ -90,6 +98,7 @@ impl GetEntryDeliveryViewUseCase {
             trusted_peer_repo,
             entry_delivery_repo,
             device_identity,
+            member_repo,
         }
     }
 
@@ -134,11 +143,33 @@ impl GetEntryDeliveryViewUseCase {
         };
 
         let is_local = source_device == local_device;
+
+        // 名字索引:`SpaceMember.device_name` 由配对流程在双方建立成员资格时
+        // 写入,这里只读、不刷新。用一次 list 取全集再建 HashMap,避免对
+        // peer 集合做 N 次 get。member_repo 故障不阻断视图,降级为"无名字"。
+        let name_index: HashMap<DeviceId, String> = match self.member_repo.list().await {
+            Ok(members) => members
+                .into_iter()
+                .filter(|m| !m.device_name.trim().is_empty())
+                .map(|m| (m.device_id, m.device_name))
+                .collect(),
+            Err(err) => {
+                tracing::warn!(
+                    error = %err,
+                    entry_id = %entry_id,
+                    "delivery view: member_repo.list failed; falling back to id-only names",
+                );
+                HashMap::new()
+            }
+        };
+
         let source = if is_local {
             EntrySource::Local
         } else {
+            let device_name = name_index.get(&source_device).cloned();
             EntrySource::Remote {
                 device_id: source_device,
+                device_name,
             }
         };
 
@@ -180,10 +211,12 @@ impl GetEntryDeliveryViewUseCase {
         // 参数切换,而不是把 trusted_peer 集合外的也展示出来)。
         for peer in trusted {
             let target_id = peer.peer_device_id.clone();
+            let target_name = name_index.get(&target_id).cloned();
             match delivery_index.get(target_id.as_str()) {
                 Some(rec) => {
                     target_views.push(EntryDeliveryTargetView {
                         target_device_id: target_id,
+                        target_device_name: target_name,
                         status: map_status(&rec.status),
                         reason_detail: rec.reason_detail.clone(),
                         updated_at_ms: Some(rec.updated_at_ms),
@@ -193,6 +226,7 @@ impl GetEntryDeliveryViewUseCase {
                     // trusted peer 但没有 delivery 行 → 还没尝试投递。
                     target_views.push(EntryDeliveryTargetView {
                         target_device_id: target_id,
+                        target_device_name: target_name,
                         status: EntryDeliveryStatusView::Pending,
                         reason_detail: None,
                         updated_at_ms: None,
@@ -232,6 +266,7 @@ mod tests {
     use uc_core::trusted_peer::{TrustedPeer, TrustedPeerError};
     use uc_core::ClipboardSelectionDecision;
     use uc_core::ObservedClipboardRepresentation;
+    use uc_core::{MemberSyncPreferences, MembershipError, SpaceMember};
 
     // ── 测试 doubles ───────────────────────────────────────────────────
 
@@ -398,6 +433,63 @@ mod tests {
         }
     }
 
+    /// 简易 SpaceMember 仓储 fake。`list` 返回构造时给的 (device_id, name)
+    /// 列表;`fail_list = true` 时模拟 member_repo 故障,验证视图降级路径。
+    struct FakeMemberRepo {
+        members: Vec<SpaceMember>,
+        fail_list: bool,
+    }
+    impl FakeMemberRepo {
+        fn new(named: Vec<(DeviceId, &str)>) -> Self {
+            let fingerprint = IdentityFingerprint::from_raw_string("AAAABBBBCCCCDDDD")
+                .expect("test fingerprint must be valid");
+            let now = Utc::now();
+            let members = named
+                .into_iter()
+                .map(|(device_id, name)| SpaceMember {
+                    device_id,
+                    device_name: name.to_string(),
+                    identity_fingerprint: fingerprint.clone(),
+                    joined_at: now,
+                    sync_preferences: MemberSyncPreferences::default(),
+                })
+                .collect();
+            Self {
+                members,
+                fail_list: false,
+            }
+        }
+        fn failing() -> Self {
+            Self {
+                members: Vec::new(),
+                fail_list: true,
+            }
+        }
+    }
+    #[async_trait]
+    impl MemberRepositoryPort for FakeMemberRepo {
+        async fn get(&self, device_id: &DeviceId) -> Result<Option<SpaceMember>, MembershipError> {
+            Ok(self
+                .members
+                .iter()
+                .find(|m| &m.device_id == device_id)
+                .cloned())
+        }
+        async fn list(&self) -> Result<Vec<SpaceMember>, MembershipError> {
+            if self.fail_list {
+                Err(MembershipError::Repository("simulated".into()))
+            } else {
+                Ok(self.members.clone())
+            }
+        }
+        async fn save(&self, _member: &SpaceMember) -> Result<(), MembershipError> {
+            Ok(())
+        }
+        async fn remove(&self, _device_id: &DeviceId) -> Result<bool, MembershipError> {
+            Ok(false)
+        }
+    }
+
     // ── helpers ────────────────────────────────────────────────────────
 
     fn local_id() -> DeviceId {
@@ -445,12 +537,29 @@ mod tests {
         trusted_peer_repo: Arc<FakeTrustedPeerRepo>,
         delivery_repo: Arc<FakeDeliveryRepo>,
     ) -> GetEntryDeliveryViewUseCase {
+        build_uc_with_members(
+            entry_repo,
+            event_repo,
+            trusted_peer_repo,
+            delivery_repo,
+            Arc::new(FakeMemberRepo::new(vec![])),
+        )
+    }
+
+    fn build_uc_with_members(
+        entry_repo: Arc<FakeEntryRepo>,
+        event_repo: Arc<FakeEventRepo>,
+        trusted_peer_repo: Arc<FakeTrustedPeerRepo>,
+        delivery_repo: Arc<FakeDeliveryRepo>,
+        member_repo: Arc<FakeMemberRepo>,
+    ) -> GetEntryDeliveryViewUseCase {
         GetEntryDeliveryViewUseCase::new(
             entry_repo,
             event_repo,
             trusted_peer_repo,
             delivery_repo,
             Arc::new(FixedIdentity(local_id())),
+            member_repo,
         )
     }
 
@@ -525,7 +634,8 @@ mod tests {
         assert_eq!(
             view.source,
             EntrySource::Remote {
-                device_id: peer("origin-peer")
+                device_id: peer("origin-peer"),
+                device_name: None,
             }
         );
         assert!(
@@ -612,5 +722,109 @@ mod tests {
         let view = uc.execute(&entry_id("e1")).await.unwrap();
         assert_eq!(view.deliveries.len(), 1, "孤儿 target 应被丢弃");
         assert_eq!(view.deliveries[0].target_device_id, peer("p1"));
+    }
+
+    // ── 分支 8: device_name 解析 — 命中/未命中 fallback ─────────────────
+    //
+    // SpaceMember 表里 p1 有名字、p2 是空字符串(等同缺失)、p3 完全不在
+    // 表中。视图应分别填 Some("MacBook")、None、None,前端按 None 做截断
+    // device_id fallback,不要硬塞空字符串。
+
+    #[tokio::test]
+    async fn resolves_device_names_from_space_member_repo() {
+        let entries = Arc::new(FakeEntryRepo::new());
+        entries.insert(make_entry("e1", "ev1", true));
+        let events = Arc::new(FakeEventRepo::new());
+        events.set_source(&event_id("ev1"), Some(local_id()));
+        let trusted = Arc::new(FakeTrustedPeerRepo::new(vec![
+            peer("p1"),
+            peer("p2"),
+            peer("p3"),
+        ]));
+        let delivery = Arc::new(FakeDeliveryRepo::new(vec![delivered(
+            "e1",
+            peer("p1"),
+            100,
+        )]));
+        let members = Arc::new(FakeMemberRepo::new(vec![
+            (peer("p1"), "MacBook Pro"),
+            (peer("p2"), "   "), // 空白等同缺失
+        ]));
+
+        let uc = build_uc_with_members(entries, events, trusted, delivery, members);
+        let view = uc.execute(&entry_id("e1")).await.unwrap();
+
+        let by_target: HashMap<String, &EntryDeliveryTargetView> = view
+            .deliveries
+            .iter()
+            .map(|t| (t.target_device_id.to_string(), t))
+            .collect();
+        assert_eq!(
+            by_target["p1"].target_device_name.as_deref(),
+            Some("MacBook Pro")
+        );
+        assert!(
+            by_target["p2"].target_device_name.is_none(),
+            "空白名应被视为缺失"
+        );
+        assert!(
+            by_target["p3"].target_device_name.is_none(),
+            "member 表中没有 p3 → 视图层不应硬造名字"
+        );
+    }
+
+    // ── 分支 9: 远端 entry · source.device_name 命中 ────────────────────
+
+    #[tokio::test]
+    async fn remote_source_device_name_resolves_from_members() {
+        let entries = Arc::new(FakeEntryRepo::new());
+        entries.insert(make_entry("e1", "ev1", true));
+        let events = Arc::new(FakeEventRepo::new());
+        events.set_source(&event_id("ev1"), Some(peer("origin-peer")));
+        let members = Arc::new(FakeMemberRepo::new(vec![(
+            peer("origin-peer"),
+            "Sender Desktop",
+        )]));
+
+        let uc = build_uc_with_members(
+            entries,
+            events,
+            Arc::new(FakeTrustedPeerRepo::new(vec![])),
+            Arc::new(FakeDeliveryRepo::new(vec![])),
+            members,
+        );
+        let view = uc.execute(&entry_id("e1")).await.unwrap();
+        assert_eq!(
+            view.source,
+            EntrySource::Remote {
+                device_id: peer("origin-peer"),
+                device_name: Some("Sender Desktop".to_string()),
+            }
+        );
+    }
+
+    // ── 分支 10: member_repo 故障降级 — 不阻断视图,全部 fallback 到 id ──
+
+    #[tokio::test]
+    async fn member_repo_failure_falls_back_to_id_only_names() {
+        let entries = Arc::new(FakeEntryRepo::new());
+        entries.insert(make_entry("e1", "ev1", true));
+        let events = Arc::new(FakeEventRepo::new());
+        events.set_source(&event_id("ev1"), Some(local_id()));
+        let trusted = Arc::new(FakeTrustedPeerRepo::new(vec![peer("p1")]));
+        let delivery = Arc::new(FakeDeliveryRepo::new(vec![delivered(
+            "e1",
+            peer("p1"),
+            100,
+        )]));
+        let members = Arc::new(FakeMemberRepo::failing());
+
+        let uc = build_uc_with_members(entries, events, trusted, delivery, members);
+        let view = uc.execute(&entry_id("e1")).await.expect("仍应返回视图");
+        assert_eq!(view.deliveries.len(), 1);
+        assert!(
+            view.deliveries[0].target_device_name.is_none(),
+            "member_repo 故障时名字降级为 None,而不是阻断整个视图"
+        );
     }
 }

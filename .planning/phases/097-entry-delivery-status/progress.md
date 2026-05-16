@@ -8,6 +8,7 @@
 | 2026-05-14 | 决策逐一 review + plan 重写 | task_plan.md / findings.md 第二版，所有决策已敲定 |
 | 2026-05-14 | R1 写放大基准 | `bench/r1_delivery_write_amp.py` + findings R1 更新 (已量化，1000× 余量) |
 | 2026-05-14 | Phase 1 实施完成 | uc-core + uc-infra + uc-application + uc-bootstrap 端到端落地，workspace+tests 编译通过，uc-infra 6+ / uc-application 448 测试 pass |
+| 2026-05-15 | Phase 3 实施完成 (D6 策略调整，复用 SpaceMember) | uc-application view use case 注入 member_repo;facade/wiring 零改动;前端 deviceName fallback;workspace check 通过，uc-application 477/477,EntryDeliverySection 7/7 |
 
 ---
 
@@ -222,6 +223,63 @@ test result: ok. 448 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
 cargo check --workspace --tests
 Finished `dev` profile [unoptimized + debuginfo] target(s) in 28.16s
 ```
+
+---
+
+## 2026-05-15 · Phase 3 实施 (策略调整)
+
+### 上下文
+
+按原 plan D6 准备新建 `device_directory` 表 + `DeviceDirectoryPort`,在实施前用户挑战："为什么需要新建一个表，space member 中没有吗"。
+
+### 重新评估
+
+调研发现 plan D6/F6 漏看了既有事实：
+- `SpaceMember`(`uc-core/src/membership/member.rs:15`) 已经有 `device_name: String`
+- `MemberRepositoryPort.get(device_id)` / `list()` 已能按 id 取名
+- pairing 双方都会在 `redeem_invitation` / `pairing_inbound/orchestrator` 里把对端 name 写入 SpaceMember
+- `revoke_member` 同时清 member 与 trusted_peer → trusted_peer ⊆ space_member 恒成立
+
+结论：新建 device_directory 表是冗余的二号真相，违反"单一真相来源"原则。R4 提到的"仅接收过我方推送、从未推送过我方的 trusted peer 不出现在 directory" 在 SpaceMember 路径不存在。
+
+### 决策 (D6.v2)
+
+复用 `SpaceMember.device_name`,放弃新建 device_directory 表。已删除：
+- `uc-core/src/device_directory/`
+- `uc-core/src/ports/device_directory.rs`
+- `uc-infra/migrations/2026-05-15-000001_device_directory/`
+- `uc-infra/src/db/models/device_directory.rs`
+- `schema.rs` 中的 device_directory 表条目
+
+### 实施
+
+1. **`GetEntryDeliveryViewUseCase`** 注入 `Arc<dyn MemberRepositoryPort>`:
+   - execute 流程里 `member_repo.list()` 一次取全集，过滤空白名后建 `HashMap<DeviceId, String>` 索引
+   - `EntrySource::Remote` 加 `device_name: Option<String>`,从 index 取
+   - 每个 `EntryDeliveryTargetView` 加 `target_device_name: Option<String>`,从 index 取
+   - member_repo 故障降级为空 index,view 仍正常返回，前端 fallback 到 id
+2. **`ClipboardSyncFacade::new`** 把已有的 `deps.member_repo` 透传给 `view_uc`,无新增 dep,bootstrap 零改动
+3. **uc-tauri DTO** `EntrySourceDto::Remote` / `EntryDeliveryTargetDto` 加 `deviceName` / `targetDeviceName`,转换函数同步;`cargo test -p uc-tauri --test specta_export` 自动同步生成 `src/lib/ipc-bindings.generated.ts`
+4. **前端** `src/api/tauri-command/clipboard_delivery.ts` 加 `deviceName` / `targetDeviceName`;`EntryDeliverySection.tsx` + `EntryDeliveryBadge.tsx` 各引入 `deviceLabel(name, id)` 辅助函数 (空白等同缺失，fallback 到 id 截断，fallback 时保留 monospace 字体)
+5. 测试：
+   - uc-application 新增 3 个分支测试 (name 命中 / 空白 fallback / member_repo 故障降级),view use case 测试 10/10 通过
+   - EntryDeliverySection 新增"name 优先 + 空白 fallback"测试，7/7 通过
+
+### 校验
+
+- `cargo check --workspace --tests` → 通过
+- `cargo test -p uc-application --lib` → 477 / 477 通过
+- `cargo test -p uc-infra --lib db::repositories::entry_delivery_repo` → 6 / 6 通过 (无回归)
+- `bunx tsc --noEmit` → 无错误
+- `bun run test src/components/clipboard/__tests__/EntryDeliverySection.test.tsx` → 7 / 7 通过
+
+### 关键经验
+
+plan 的事实清单要先和现有代码核对一次再决策。D6/F6 当初只看了 `TrustedPeer`(确实没 device_name),漏掉 `SpaceMember` 已经有的字段，差点新建一张冗余表。用户的"为什么不复用"挑战直接命中根问题。
+
+### 下一步
+
+无，Phase 3 完结。Issue #704 可关闭。
 
 ## 错误日志
 

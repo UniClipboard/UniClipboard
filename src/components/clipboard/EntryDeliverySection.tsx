@@ -10,8 +10,8 @@
  *   - Local + 无 deliveries: 显示"暂未配对任何设备"提示
  *   - delivery 为 null (loading / fetch failed): 渲染骨架或直接隐藏
  *
- * device 名暂用 device_id 前 8 字符 (Phase 3 起 `DeviceDirectoryPort` 落地后
- * 换成真实名称)。
+ * 设备显示名:优先用后端解析后的 `deviceName` / `targetDeviceName`(取自
+ * 空间成员目录),不命中时 fallback 到 device_id 前 8 字符截断。
  */
 
 import { Check, CircleDashed, X } from 'lucide-react'
@@ -44,6 +44,12 @@ const FAILURE_REASON_KEYS: Record<DeliveryFailureReason, string> = {
 function truncateDeviceId(deviceId: string): string {
   if (deviceId.length <= 10) return deviceId
   return `${deviceId.slice(0, 8)}…`
+}
+
+/** 名字优先于 id:后端解析到真实 name 就用,否则截断 device_id。 */
+function deviceLabel(name: string | null | undefined, deviceId: string): string {
+  if (name && name.trim().length > 0) return name
+  return truncateDeviceId(deviceId)
 }
 
 const EntryDeliverySection: React.FC<EntryDeliverySectionProps> = ({
@@ -93,7 +99,9 @@ const SourceLine: React.FC<SourceLineProps> = ({ source, className }) => {
       case 'local':
         return t('delivery.source.local')
       case 'remote':
-        return t('delivery.source.remote', { device: truncateDeviceId(source.deviceId) })
+        return t('delivery.source.remote', {
+          device: deviceLabel(source.deviceName, source.deviceId),
+        })
       case 'historical':
         return t('delivery.source.historical')
     }
@@ -164,8 +172,14 @@ const DeliveryRow: React.FC<DeliveryRowProps> = ({ target, rowPad, textSize }) =
       <span className={cn('shrink-0', tone.icon)} aria-hidden>
         {icon}
       </span>
-      <span className="min-w-0 flex-1 truncate font-mono text-foreground/80">
-        {truncateDeviceId(target.targetDeviceId)}
+      <span
+        className={cn(
+          'min-w-0 flex-1 truncate text-foreground/80',
+          // 用了真实名字时不再 monospace —— monospace 留给截断的 device_id。
+          target.targetDeviceName && target.targetDeviceName.trim().length > 0 ? '' : 'font-mono'
+        )}
+      >
+        {deviceLabel(target.targetDeviceName, target.targetDeviceId)}
       </span>
       <span className={cn('shrink-0', tone.label)}>{label}</span>
     </li>

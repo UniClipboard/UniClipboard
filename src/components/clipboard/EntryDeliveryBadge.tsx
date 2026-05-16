@@ -58,6 +58,12 @@ function truncateDeviceId(deviceId: string): string {
   return `${deviceId.slice(0, 8)}…`
 }
 
+/** 名字优先于 id:后端解析到真实 name 就用,否则截断 device_id。 */
+function deviceLabel(name: string | null | undefined, deviceId: string): string {
+  if (name && name.trim().length > 0) return name
+  return truncateDeviceId(deviceId)
+}
+
 function summarize(targets: readonly EntryDeliveryTargetView[]): SyncSummary | null {
   if (targets.length === 0) return null
   let delivered = 0
@@ -123,7 +129,9 @@ const SourceBadge: React.FC<SourceBadgeProps> = ({ source }) => {
       case 'remote':
         return {
           Icon: Cloud,
-          label: t('delivery.source.remoteShort', { device: truncateDeviceId(source.deviceId) }),
+          label: t('delivery.source.remoteShort', {
+            device: deviceLabel(source.deviceName, source.deviceId),
+          }),
           tone: 'text-sky-500/80',
         }
       case 'historical':
@@ -256,8 +264,13 @@ const DeliveryRow: React.FC<DeliveryRowProps> = ({ target }) => {
       <span className={cn('shrink-0', tone.icon)} aria-hidden>
         {renderStatusIcon(target.status)}
       </span>
-      <span className="min-w-0 flex-1 truncate font-mono text-foreground/80">
-        {truncateDeviceId(target.targetDeviceId)}
+      <span
+        className={cn(
+          'min-w-0 flex-1 truncate text-foreground/80',
+          target.targetDeviceName && target.targetDeviceName.trim().length > 0 ? '' : 'font-mono'
+        )}
+      >
+        {deviceLabel(target.targetDeviceName, target.targetDeviceId)}
       </span>
       <span className={cn('shrink-0', tone.label)}>{renderStatusLabel(target.status, t)}</span>
     </li>

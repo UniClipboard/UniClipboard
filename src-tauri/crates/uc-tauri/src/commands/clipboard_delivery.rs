@@ -43,10 +43,13 @@ pub struct EntryDeliveryViewDto {
 pub enum EntrySourceDto {
     /// 本机捕获。
     Local,
-    /// 远端推送。`deviceId` 是来源设备,Phase 3 起补 `deviceName`。
+    /// 远端推送。`deviceId` 是来源设备,`deviceName` 取自空间成员目录;
+    /// 不命中时为 `null`,前端 fallback 到 device_id 截断。
     Remote {
         #[serde(rename = "deviceId")]
         device_id: String,
+        #[serde(rename = "deviceName")]
+        device_name: Option<String>,
     },
     /// 追踪机制启用前已存在的老 entry,无可靠投递信息。
     Historical,
@@ -56,6 +59,9 @@ pub enum EntrySourceDto {
 #[serde(rename_all = "camelCase")]
 pub struct EntryDeliveryTargetDto {
     pub target_device_id: String,
+    /// 取自空间成员目录中的人类可读名;不命中时为 `null`,前端 fallback
+    /// 到 `targetDeviceId` 截断。
+    pub target_device_name: Option<String>,
     pub status: EntryDeliveryStatusDto,
     /// 失败时的 wire 层错误细节,供 UI tooltip / 详情展开使用。
     pub reason_detail: Option<String>,
@@ -105,8 +111,12 @@ impl From<EntrySource> for EntrySourceDto {
     fn from(source: EntrySource) -> Self {
         match source {
             EntrySource::Local => EntrySourceDto::Local,
-            EntrySource::Remote { device_id } => EntrySourceDto::Remote {
+            EntrySource::Remote {
+                device_id,
+                device_name,
+            } => EntrySourceDto::Remote {
                 device_id: device_id.as_str().to_string(),
+                device_name,
             },
             EntrySource::Historical => EntrySourceDto::Historical,
         }
@@ -117,6 +127,7 @@ impl From<EntryDeliveryTargetView> for EntryDeliveryTargetDto {
     fn from(target: EntryDeliveryTargetView) -> Self {
         Self {
             target_device_id: target.target_device_id.as_str().to_string(),
+            target_device_name: target.target_device_name,
             status: target.status.into(),
             reason_detail: target.reason_detail,
             updated_at_ms: target.updated_at_ms,

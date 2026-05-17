@@ -269,6 +269,31 @@ jobs:
           git tag -a "v${{ needs.validate.outputs.version }}" -m "Release v${{ needs.validate.outputs.version }}"
           git push origin "v${{ needs.validate.outputs.version }}"
 
+      - name: Fetch GitHub generated notes
+        id: gh-generated-notes
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        continue-on-error: true
+        run: |
+          VERSION="${{ needs.validate.outputs.version }}"
+          PREV_TAG="${{ needs.validate.outputs.previous_tag }}"
+
+          # 仅当 previous_tag 是真实 tag (以 v 开头) 时才传给 API；
+          # 首发场景下 previous_tag 会是 commit hash，让 GitHub 自行回退。
+          ARGS=(-X POST "/repos/${{ github.repository }}/releases/generate-notes"
+                -f "tag_name=v${VERSION}")
+          if [[ "$PREV_TAG" == v* ]]; then
+            ARGS+=(-f "previous_tag_name=${PREV_TAG}")
+          fi
+
+          if ! gh api "${ARGS[@]}" --jq '.body' > generated-notes.md; then
+            echo "Warning: gh api generate-notes failed; New Contributors section will be omitted"
+            : > generated-notes.md
+          fi
+
+          echo "Preview of GitHub-generated notes:"
+          head -80 generated-notes.md || true
+
       - name: Generate release notes
         id: release-notes
         run: |
@@ -280,6 +305,7 @@ jobs:
             --is-prerelease "${{ needs.validate.outputs.is_prerelease }}" \
             --artifacts-dir "release-assets" \
             --template ".github/release-notes/release.md.tmpl" \
+            --generated-notes-file "generated-notes.md" \
             --output "release-notes.md"
 
       - name: Create GitHub Release

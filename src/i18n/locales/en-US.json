@@ -860,7 +860,13 @@
         "description": "Listens for cleartext HTTP on the chosen network interface; required to receive mobile requests",
         "currentUrl": {
           "label": "Current listening address",
-          "unavailable": "—"
+          "unavailable": "—",
+          "copy": "Copy",
+          "copied": "Copied",
+          "auto": {
+            "label": "Auto",
+            "hint": "Daemon listens on all interfaces. Copy the one your mobile device can reach."
+          }
         },
         "bindIp": {
           "label": "Bind IP",

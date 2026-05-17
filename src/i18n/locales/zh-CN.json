@@ -851,7 +851,13 @@
         "description": "在所选网络接口上监听明文 HTTP，开启后才能接收移动设备的请求",
         "currentUrl": {
           "label": "当前监听地址",
-          "unavailable": "—"
+          "unavailable": "—",
+          "copy": "复制",
+          "copied": "已复制",
+          "auto": {
+            "label": "自动",
+            "hint": "守护进程监听所有接口，请复制移动设备能访问到的那个。"
+          }
         },
         "bindIp": {
           "label": "监听 IP",

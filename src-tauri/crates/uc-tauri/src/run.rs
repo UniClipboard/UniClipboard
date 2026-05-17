@@ -328,7 +328,13 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
                         // 也由 CLI 负责重新拉起。
                     }
                     Err(error) => {
-                        error!(error = %error, "Daemon startup/probe failed during Tauri bootstrap");
+                        // Display 只暴露 thiserror 外层 message，会把 anyhow source chain
+                        // 截掉 —— root cause 全丢；用 Debug 把整条 chain 一起打出来。
+                        error!(
+                            error = %error,
+                            error_chain = ?error,
+                            "Daemon startup/probe failed during Tauri bootstrap"
+                        );
                     }
                 }
             });

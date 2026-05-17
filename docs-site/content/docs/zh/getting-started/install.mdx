@@ -133,8 +133,19 @@ sudo dnf install uniclipboard
 Snap 包基于 `core22` 严格沙箱构建，自带 GTK + WebKit 运行时，因此在 Ubuntu 20.04+、Debian 11+、RHEL 9、openSUSE Leap 等老发行版上都能正常运行。
 
 ```bash
-sudo snap install uniclipboard
+# 当前仍处于 alpha 阶段，仅 edge 通道有包。
+sudo snap install uniclipboard --edge
 ```
+
+安装后再授权 snap 访问系统钥匙串（GNOME Keyring / KWallet），让守护进程把长期身份密钥放进系统密钥环：
+
+```bash
+sudo snap connect uniclipboard:password-manager-service
+```
+
+不接这一步也能跑——守护进程会降级到文件 KEK，存放在 snap 数据目录下（日志里能看到 `System secure storage probe failed; falling back to file-based KEK`）。接上 plug 只是把 KEK 搬进 OS 管理的钥匙串，跟其他系统应用走同一套机制。
+
+`password-manager-service` 当前不是 auto-connect interface；等 snap store 的 auto-connect 申请通过后，新安装就不再需要手动执行这条命令。
 
 没有 `snapd`？请参考 [Snapcraft 安装指南](https://snapcraft.io/docs/installing-snapd) 查看你所用发行版的安装方式。
 

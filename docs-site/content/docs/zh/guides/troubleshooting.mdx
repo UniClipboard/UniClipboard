@@ -50,6 +50,17 @@ uniclip start --foreground -v
 
 常见原因是 keyslot 文件被另一份进程占着（典型场景：GUI 与 `uniclip` 用了同一个默认 profile 同时跑）。在 CLI 端加 `--profile dev` 让二者分家即可。
 
+### Snap 安装：日志里出现 "System secure storage probe failed; falling back to file-based KEK"
+
+这条 WARN 说明 snap 沙箱无法访问 freedesktop Secret Service（GNOME Keyring / KWallet）—— AppArmor 拒绝了 D-Bus 调用，原因是 `password-manager-service` plug 没接上。守护进程不会因此崩，只是 Key Encryption Key 落到了 snap 数据目录的文件里，而不是系统钥匙串。把它搬回系统钥匙串：
+
+```bash
+sudo snap connect uniclipboard:password-manager-service
+# 接好之后重启应用
+```
+
+更早的版本（r118 之前）遇到同样情况会直接 `Daemon startup/probe failed during Tauri bootstrap` 崩溃。`sudo snap refresh uniclipboard --edge` 升到最新 edge 就好；这种情况下 plug 只决定 KEK _存在哪里_，不再决定守护进程能不能起。
+
 ## 配对失败
 
 ### 邀请码报"invalid or expired"

@@ -270,12 +270,18 @@ export const commands = {
 	 *    3. 计算 desired OS 快捷键列表(开启时 = `resolve_quick_panel_shortcuts`,
 	 *       关闭时 = `[]`)。
 	 *    4. 在 main thread 上一次性完成:开启 → `pre_create` + `register`,
-	 *       关闭 → `unregister` + `destroy`。`tauri-plugin-global-shortcut`
+	 *       关闭 → 只 `unregister`,**不**销毁面板窗口。`tauri-plugin-global-shortcut`
 	 *       与 webview 创建都要求 main thread。
 	 *    5. 调 facade 持久化 patch。失败时反向回滚 OS 副作用,避免出现
 	 *       "OS 已生效但磁盘没存"或反过来的撕裂状态。
 	 *    6. 成功后 `shortcut_registry.replace(...)`,让后续 `update_keyboard_shortcuts`
 	 *       能算对 old/new diff。
+	 * 
+	 *  **关闭路径不彻底释放 webview**:macOS 上销毁 NSPanel 会与 ObjC 类替换 +
+	 *  on_window_event 异步任务发生 race 而崩溃。所以关闭只反注册 OS 快捷键,
+	 *  隐藏的 WKWebView / WebContent XPC 进程依旧存在,UI 会提示用户重启 GUI
+	 *  才能完全释放资源。下次启动期 `quick_panel.enabled = false` 会跳过
+	 *  `pre_create`,自然不会再有这些进程。
 	 */
 	setQuickPanelEnabled: (enabled: boolean, trace: {
 	trace_id: string,

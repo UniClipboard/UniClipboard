@@ -64,15 +64,18 @@ A centered "Mobile sync settings" dialog opens. Under
 **Sync switches**, turn on **Enable mobile sync** and **LAN
 listener**. Then under **Network parameters**:
 
-- **Bind IP** — pick a specific RFC1918 LAN IPv4 from the dropdown.
-  **Don't ship `Auto` / `0.0.0.0` to your phone** — it works as a
-  placeholder for the daemon's actual bind, but a phone cannot dial
-  it. Pick the interface the phone will be on.
+- **Bind IP** — leave on `Auto` to have the desktop offer every
+  RFC1918 candidate at copy time, or pick a specific interface to
+  fix the advertised URL to one address. Either way the actual
+  socket always binds to `0.0.0.0`; this picker only controls which
+  address gets advertised to the mobile device.
 - **Port** — defaults to `42720`. Change only if there's a conflict.
 
-The dialog shows the **current listening address** as you go —
-that's the URL the phone will use. The LAN listener is hot-swapped:
-changes apply immediately, no daemon restart needed.
+The dialog shows the **current listening address** as you go. If
+Bind IP is `Auto`, that row expands inline into every candidate LAN
+IPv4 — copy the one the mobile device can dial. If a specific
+interface is picked, a single URL is shown. The LAN listener is
+hot-swapped: changes apply immediately, no daemon restart needed.
 
 If the daemon raises `lan_listener_error` (port in use, permission
 denied, etc.), a red Alert at the top of the dialog spells out the

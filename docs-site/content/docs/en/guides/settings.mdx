@@ -159,10 +159,11 @@ Quick reference for what's in that dialog:
 | Current listening address | Read-only; shows the URL derived from the persisted settings. This is what mobile clients should target.                                                                                       |
 | Listener bind error       | When the daemon raises `lan_listener_error` (port in use, permission denied, etc.), a red Alert appears at the top of the dialog with the reason — so you can see why the URL isn't reachable. |
 
-<Callout type="warn">
-  Pick a **specific LAN IPv4** in the Bind/Advertised IP picker. `Auto` / `0.0.0.0` is fine as a
-  placeholder, but it's the wrong value to print on a phone screen — phones can't dial it. Use the
-  picker to pick the RFC1918 interface the mobile device will actually be on.
+<Callout type="info">
+  Leave the Bind/Advertised IP on `Auto` and the dialog's **Current listening address** row will
+  list every RFC1918 candidate so you can copy the one the mobile device can dial; pick a specific
+  interface to fix the row to a single URL. The actual socket always binds to `0.0.0.0` — this
+  picker only controls what gets advertised.
 </Callout>
 
 For the full setup walkthrough, security caveats, and troubleshooting

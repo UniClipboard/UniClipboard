@@ -19,13 +19,13 @@
  *   │ └────────────────────────────────────────────────────┘   │
  *   │ ┌─ 端口                                        [42720]  ┐  │
  *   │ └────────────────────────────────────────────────────┘   │
- *   │ ┌─ 当前监听地址                http://192.168.1.42:42720 ┐  │
+ *   │ ┌─ 当前监听地址         http://192.168.1.42:42720 [复制] ┐  │
  *   │ └────────────────────────────────────────────────────┘   │
  *   ├────────────────────────────────────────────────────────────┤
  *   │                                                    [完成] │
  *   └────────────────────────────────────────────────────────────┘
  *
- * Section helpers（DialogSection / InfoRow / SettingRow / SettingToggleRow）
+ * 区块辅助组件（DialogSection / ListenUrlInfoRow / SettingControlRow / SettingToggleRow）
  * 与 DeviceSettingsDialog 同形：圆角 border bg-card/50，title `[11px]
  * uppercase tracking-wider`，控件靠右。
  *
@@ -40,8 +40,8 @@
  * - onSettingsChange 回调把最新 settings 视图回传给父 panel
  */
 
-import { Smartphone } from 'lucide-react'
-import React, { useCallback, useEffect, useState } from 'react'
+import { Check, Copy, Smartphone } from 'lucide-react'
+import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   deriveListenUrl,
@@ -256,9 +256,6 @@ const MobileSyncSettingsDialog: React.FC<Props> = ({ open, onOpenChange, onSetti
   const lanListenEnabled = settings?.lanListenEnabled ?? false
   const lanListenDisabled = !enabled || settingsBusy
   const lanFieldsDisabled = !enabled || !lanListenEnabled || settingsBusy
-  const listenUrl = settings
-    ? deriveListenUrl(settings)
-    : t('devices.mobileSync.lanListener.currentUrl.unavailable')
 
   return (
     <>
@@ -375,10 +372,12 @@ const MobileSyncSettingsDialog: React.FC<Props> = ({ open, onOpenChange, onSetti
                   />
                 }
               />
-              <InfoRow
+              <ListenUrlInfoRow
                 label={t('devices.mobileSync.lanListener.currentUrl.label')}
-                value={listenUrl}
-                mono
+                settings={settings}
+                lanInterfaces={lanInterfaces}
+                lanListenEnabled={lanListenEnabled}
+                unavailableLabel={t('devices.mobileSync.lanListener.currentUrl.unavailable')}
               />
             </DialogSection>
           </div>
@@ -437,18 +436,225 @@ const DialogSection: React.FC<{
   </section>
 )
 
-const InfoRow: React.FC<{ label: string; value: string; mono?: boolean }> = ({
-  label,
-  value,
-  mono,
-}) => (
-  <div className="flex items-center justify-between gap-3 rounded-lg border border-border/60 bg-card/50 px-3 py-2 text-xs">
-    <span className="shrink-0 text-muted-foreground">{label}</span>
-    <span className={cn('min-w-0 truncate text-foreground', mono && 'font-mono')} title={value}>
-      {value}
-    </span>
-  </div>
+/**
+ * 当前监听地址行的渲染分四档:
+ *
+ * 1. settings 未加载 / LAN 监听未开 → 单行 unavailable("—")
+ * 2. lanAdvertiseIp 显式指定 → 单行 URL 卡片 + 复制按钮
+ * 3. Auto + 至少一个 LAN 接口 → 整行变 vertical block,内联列出全部候选
+ *    IP,逐个可复制。daemon 永远 bind 0.0.0.0,客户端必须拿到真实可达的
+ *    LAN 地址 —— Auto 时哪一个能通要看客户端所处的网段,所以让用户在
+ *    多个候选中自己选,而不是替他猜一个。
+ * 4. Auto + 无可用 LAN 接口 → 单行 unavailable("—")
+ *
+ * 候选 IP 的来源 / 顺序与 daemon `auto_pick_advertise_ip` 完全一致
+ * (`register_device.rs:207-208` 声明两处口径绑定),所以本组件不再复制
+ * 排序策略,直接消费 listMobileLanInterfaces 的结果即可。
+ */
+const ListenUrlInfoRow: React.FC<{
+  label: string
+  settings: MobileSyncSettingsView | null
+  lanInterfaces: LanInterfaceView[]
+  lanListenEnabled: boolean
+  unavailableLabel: string
+}> = ({ label, settings, lanInterfaces, lanListenEnabled, unavailableLabel }) => {
+  // Auto + 有候选 → 独立 block 布局(label + hint + 列表)
+  if (settings && lanListenEnabled && !settings.lanAdvertiseIp && lanInterfaces.length > 0) {
+    return (
+      <AutoListenUrlBlock
+        label={label}
+        interfaces={lanInterfaces}
+        port={settings.lanPort ?? 42720}
+      />
+    )
+  }
+
+  // 其它三档共用单行 flex 布局
+  let content: React.ReactNode
+  if (!settings || !lanListenEnabled) {
+    content = <UnavailableUrl label={unavailableLabel} />
+  } else if (settings.lanAdvertiseIp) {
+    content = <ListenUrlControl url={deriveListenUrl(settings)} />
+  } else {
+    // Auto + 无候选
+    content = <UnavailableUrl label={unavailableLabel} />
+  }
+
+  return (
+    <div className="flex items-center justify-between gap-3 rounded-lg border border-border/60 bg-card/50 px-3 py-2 text-xs">
+      <span className="shrink-0 text-muted-foreground">{label}</span>
+      {content}
+    </div>
+  )
+}
+
+const UnavailableUrl: React.FC<{ label: string }> = ({ label }) => (
+  <span className="font-mono text-foreground">{label}</span>
 )
+
+/**
+ * "复制后 1.5s 还原 Check 图标"的反馈节奏,抽出来给单 URL / Auto popover
+ * 两条路径共享。timer 用 ref 持有,unmount 与下次点击都清理一次,避免在
+ * 已卸载组件上 setState 或多次点击叠加 timer。
+ */
+function useCopyWithFeedback(): {
+  copied: boolean
+  copy: (url: string) => Promise<void>
+} {
+  const { t } = useTranslation()
+  const [copied, setCopied] = useState(false)
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(
+    () => () => {
+      if (timerRef.current) clearTimeout(timerRef.current)
+    },
+    []
+  )
+
+  const copy = useCallback(
+    async (url: string) => {
+      try {
+        await navigator.clipboard.writeText(url)
+        setCopied(true)
+        if (timerRef.current) clearTimeout(timerRef.current)
+        timerRef.current = setTimeout(() => setCopied(false), 1500)
+      } catch (err) {
+        log.warn({ err }, 'failed to copy listen url')
+        toast.error(t('clipboard.errors.copyFailed'))
+      }
+    },
+    [t]
+  )
+
+  return { copied, copy }
+}
+
+const ListenUrlControl: React.FC<{ url: string }> = ({ url }) => {
+  const { t } = useTranslation()
+  const { copied, copy } = useCopyWithFeedback()
+
+  const copyLabel = copied
+    ? t('devices.mobileSync.lanListener.currentUrl.copied')
+    : t('devices.mobileSync.lanListener.currentUrl.copy')
+
+  return (
+    <div className="flex min-w-0 max-w-56 items-center gap-1 sm:max-w-xs">
+      <code
+        className="min-w-0 flex-1 truncate rounded bg-muted px-2 py-1 font-mono text-xs text-foreground"
+        title={url}
+      >
+        {url}
+      </code>
+      <Button
+        type="button"
+        size="icon-sm"
+        variant="ghost"
+        className="shrink-0"
+        aria-label={copyLabel}
+        title={copyLabel}
+        onClick={() => void copy(url)}
+      >
+        {copied ? (
+          <Check className="h-3.5 w-3.5 text-emerald-500" />
+        ) : (
+          <Copy className="h-3.5 w-3.5" />
+        )}
+      </Button>
+    </div>
+  )
+}
+
+/**
+ * Auto 模式下的"当前监听地址" block:整行变 vertical stack,顶部一行 label +
+ * "Auto" 角标,下方一行小字说明,再下方逐个 LAN 候选 IP,每条独立复制。
+ *
+ * 每行的"复制反馈"用 copiedIp 跟踪,而不是复用 useCopyWithFeedback 的单一
+ * copied —— 用户可能依次复制多条对比,需要按行独立显示 Check。
+ */
+const AutoListenUrlBlock: React.FC<{
+  label: string
+  interfaces: LanInterfaceView[]
+  port: number
+}> = ({ label, interfaces, port }) => {
+  const { t } = useTranslation()
+  const [copiedIp, setCopiedIp] = useState<string | null>(null)
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(
+    () => () => {
+      if (timerRef.current) clearTimeout(timerRef.current)
+    },
+    []
+  )
+
+  const handleCopyOne = useCallback(
+    async (url: string, ip: string) => {
+      try {
+        await navigator.clipboard.writeText(url)
+        setCopiedIp(ip)
+        if (timerRef.current) clearTimeout(timerRef.current)
+        timerRef.current = setTimeout(() => setCopiedIp(null), 1500)
+      } catch (err) {
+        log.warn({ err }, 'failed to copy listen url')
+        toast.error(t('clipboard.errors.copyFailed'))
+      }
+    },
+    [t]
+  )
+
+  const autoLabel = t('devices.mobileSync.lanListener.currentUrl.auto.label')
+  const hint = t('devices.mobileSync.lanListener.currentUrl.auto.hint')
+
+  return (
+    <div className="space-y-2 rounded-lg border border-border/60 bg-card/50 px-3 py-2 text-xs">
+      <div className="flex items-center justify-between gap-3">
+        <span className="text-muted-foreground">{label}</span>
+        <span className="rounded bg-muted px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">
+          {autoLabel}
+        </span>
+      </div>
+      <p className="text-[11px] leading-snug text-muted-foreground">{hint}</p>
+      <ul className="space-y-1">
+        {interfaces.map(iface => {
+          const url = `http://${iface.ipv4}:${port}`
+          const isCopied = copiedIp === iface.ipv4
+          const copyLabel = isCopied
+            ? t('devices.mobileSync.lanListener.currentUrl.copied')
+            : t('devices.mobileSync.lanListener.currentUrl.copy')
+          return (
+            <li
+              key={`${iface.name}-${iface.ipv4}`}
+              className="flex items-center gap-2 rounded-md border border-border/40 bg-background/60 px-2 py-1.5"
+            >
+              <div className="min-w-0 flex-1">
+                <p className="truncate font-mono text-xs text-foreground" title={url}>
+                  {url}
+                </p>
+                <p className="text-[10px] leading-snug text-muted-foreground">{iface.name}</p>
+              </div>
+              <Button
+                type="button"
+                size="icon-sm"
+                variant="ghost"
+                className="shrink-0"
+                aria-label={copyLabel}
+                title={copyLabel}
+                onClick={() => void handleCopyOne(url, iface.ipv4)}
+              >
+                {isCopied ? (
+                  <Check className="h-3.5 w-3.5 text-emerald-500" />
+                ) : (
+                  <Copy className="h-3.5 w-3.5" />
+                )}
+              </Button>
+            </li>
+          )
+        })}
+      </ul>
+    </div>
+  )
+}
 
 const SettingToggleRow: React.FC<{
   label: string

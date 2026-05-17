@@ -140,8 +140,19 @@ See the [COPR deployment notes](https://github.com/UniClipboard/UniClipboard/blo
 The Snap is built with strict confinement on `core22` and bundles its own GTK + WebKit stack, so it runs the same on Ubuntu 20.04+, Debian 11+, RHEL 9, openSUSE Leap, and similar.
 
 ```bash
-sudo snap install uniclipboard
+# While UniClipboard is in alpha, only the edge channel publishes builds.
+sudo snap install uniclipboard --edge
 ```
+
+After installing, grant the snap permission to read/write the system keyring (GNOME Keyring / KWallet), so the daemon can store its long-lived identity key there:
+
+```bash
+sudo snap connect uniclipboard:password-manager-service
+```
+
+Skipping this step is not fatal — the daemon falls back to a file-based Key Encryption Key under the snap's data directory and will start either way (look for `System secure storage probe failed; falling back to file-based KEK` in the logs). Connecting the plug just moves the KEK into the OS-managed keyring, which is what other system applications already use.
+
+`password-manager-service` is not auto-connect at install time; once the auto-connect request lands on the snap store this command will become unnecessary for new installs.
 
 Don't have `snapd`? See the [Snapcraft install guide](https://snapcraft.io/docs/installing-snapd) for your distribution.
 

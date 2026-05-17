@@ -27,8 +27,8 @@ use uc_core::ids::{EntryId, EventId};
 use uc_core::ports::blob::BlobTransferPort;
 use uc_core::ports::search::search_index::SearchIndexPort;
 use uc_core::ports::{
-    ClipboardEntryRepositoryPort, ClipboardEventWriterPort, ClipboardRepresentationRepositoryPort,
-    ClipboardSelectionRepositoryPort,
+    CacheFsPort, ClipboardEntryRepositoryPort, ClipboardEventWriterPort,
+    ClipboardRepresentationRepositoryPort, ClipboardSelectionRepositoryPort,
 };
 
 use super::delete_entry::DeleteClipboardEntryUseCase;
@@ -55,6 +55,7 @@ pub(crate) struct ReconcileMissingFilesUseCase {
     selection_repo: Arc<dyn ClipboardSelectionRepositoryPort>,
     event_writer: Arc<dyn ClipboardEventWriterPort>,
     representation_repo: Arc<dyn ClipboardRepresentationRepositoryPort>,
+    cache_fs: Arc<dyn CacheFsPort>,
     blob_transfer: Option<Arc<dyn BlobTransferPort>>,
     search_index: Option<Arc<dyn SearchIndexPort>>,
 }
@@ -66,6 +67,7 @@ impl ReconcileMissingFilesUseCase {
         selection_repo: Arc<dyn ClipboardSelectionRepositoryPort>,
         event_writer: Arc<dyn ClipboardEventWriterPort>,
         representation_repo: Arc<dyn ClipboardRepresentationRepositoryPort>,
+        cache_fs: Arc<dyn CacheFsPort>,
     ) -> Self {
         Self {
             file_cache_dir,
@@ -73,6 +75,7 @@ impl ReconcileMissingFilesUseCase {
             selection_repo,
             event_writer,
             representation_repo,
+            cache_fs,
             blob_transfer: None,
             search_index: None,
         }
@@ -90,7 +93,7 @@ impl ReconcileMissingFilesUseCase {
 
     #[tracing::instrument(name = "usecase.reconcile_missing_files.execute", skip(self))]
     pub(crate) async fn execute(&self) -> Result<ReconcileResult> {
-        if !self.file_cache_dir.exists() {
+        if !self.cache_fs.exists(&self.file_cache_dir).await {
             info!(
                 path = %self.file_cache_dir.display(),
                 "File cache directory does not exist, nothing to reconcile"
@@ -115,7 +118,11 @@ impl ReconcileMissingFilesUseCase {
         let mut result = ReconcileResult::default();
         let mut offset = 0usize;
         let mut handled: HashSet<EntryId> = HashSet::new();
+        let mut to_delete: Vec<EntryId> = Vec::new();
 
+        // Two-phase: scan first, delete second. Deleting during the scan
+        // shrinks the underlying table, which silently shifts later
+        // offset-based pages and skips entries adjacent to deletions.
         loop {
             let batch = self
                 .entry_repo
@@ -135,7 +142,7 @@ impl ReconcileMissingFilesUseCase {
             result.entries_scanned += batch_len as u32;
 
             for entry in &batch {
-                if handled.contains(&entry.entry_id) {
+                if !handled.insert(entry.entry_id.clone()) {
                     continue;
                 }
                 let missing = match self.entry_has_missing_cache_file(&entry.event_id).await {
@@ -149,32 +156,34 @@ impl ReconcileMissingFilesUseCase {
                         continue;
                     }
                 };
-                if !missing {
-                    continue;
-                }
-                handled.insert(entry.entry_id.clone());
-                match delete_uc.execute(&entry.entry_id).await {
-                    Ok(()) => {
-                        result.entries_deleted += 1;
-                        info!(
-                            entry_id = %entry.entry_id,
-                            "Reconcile: dropped entry whose cache file no longer exists"
-                        );
-                    }
-                    Err(e) => {
-                        warn!(
-                            entry_id = %entry.entry_id,
-                            error = %e,
-                            "Reconcile: delete_entry failed for stale entry"
-                        );
-                        result.errors += 1;
-                    }
+                if missing {
+                    to_delete.push(entry.entry_id.clone());
                 }
             }
 
             offset += batch_len;
             if batch_len < ENTRY_LIST_BATCH_SIZE {
                 break;
+            }
+        }
+
+        for entry_id in &to_delete {
+            match delete_uc.execute(entry_id).await {
+                Ok(()) => {
+                    result.entries_deleted += 1;
+                    info!(
+                        entry_id = %entry_id,
+                        "Reconcile: dropped entry whose cache file no longer exists"
+                    );
+                }
+                Err(e) => {
+                    warn!(
+                        entry_id = %entry_id,
+                        error = %e,
+                        "Reconcile: delete_entry failed for stale entry"
+                    );
+                    result.errors += 1;
+                }
             }
         }
 
@@ -207,7 +216,7 @@ impl ReconcileMissingFilesUseCase {
                 continue;
             };
             for path in extract_cache_paths(inline, &self.file_cache_dir) {
-                if !path.exists() {
+                if !self.cache_fs.exists(&path).await {
                     return Ok(true);
                 }
             }

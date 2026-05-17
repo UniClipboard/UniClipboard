@@ -377,6 +377,7 @@ pub fn build_app_facade_from_deps(
             settings: deps.settings.clone(),
             device_identity: deps.device.device_identity.clone(),
             clock: deps.system.clock.clone(),
+            cache_fs: deps.system.cache_fs.clone(),
         })),
         clipboard_sync: options.clipboard_sync,
         blob_transfer: options.blob_transfer,

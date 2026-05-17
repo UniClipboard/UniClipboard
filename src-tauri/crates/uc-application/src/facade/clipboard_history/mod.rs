@@ -9,9 +9,9 @@ use uc_core::ports::blob::BlobTransferPort;
 use uc_core::ports::clipboard::{ClipboardPayloadResolverPort, ThumbnailRepositoryPort};
 use uc_core::ports::search::search_index::SearchIndexPort;
 use uc_core::ports::{
-    ClipboardEntryRepositoryPort, ClipboardEventWriterPort, ClipboardRepresentationRepositoryPort,
-    ClipboardSelectionRepositoryPort, ClockPort, DeviceIdentityPort, FileTransferRepositoryPort,
-    SettingsPort,
+    CacheFsPort, ClipboardEntryRepositoryPort, ClipboardEventWriterPort,
+    ClipboardRepresentationRepositoryPort, ClipboardSelectionRepositoryPort, ClockPort,
+    DeviceIdentityPort, FileTransferRepositoryPort, SettingsPort,
 };
 use uc_core::{
     ClipboardEntry, ClipboardEvent, ClipboardSelection, ClipboardSelectionDecision, MimeType,
@@ -144,6 +144,10 @@ pub struct ClipboardHistoryFacadeDeps {
     pub device_identity: Arc<dyn DeviceIdentityPort>,
     /// `seed_text_entry` 用：构造 `captured_at_ms` / `created_at_ms`。
     pub clock: Arc<dyn ClockPort>,
+    /// `reconcile_missing_files` / `cleanup_expired_files` 等用例需要查询
+    /// cache 目录及其下路径是否真实存在；走 port 而不是 `std::fs`，让 uc-app
+    /// 保持基础设施无关。
+    pub cache_fs: Arc<dyn CacheFsPort>,
 }
 
 pub struct ClipboardHistoryFacade {
@@ -179,6 +183,7 @@ impl ClipboardHistoryFacade {
             settings,
             device_identity,
             clock,
+            cache_fs,
         } = deps;
         // seed 路径要在主 use case 装配之后单独留一份 Arc 引用——其它字段
         // 都被 move 进各 use case 内部，不能在外面继续 clone。
@@ -278,6 +283,7 @@ impl ClipboardHistoryFacade {
                 selection_repo,
                 event_writer,
                 representation_repo,
+                cache_fs,
             );
             if let Some(idx) = search_index {
                 uc = uc.with_search_index(idx);

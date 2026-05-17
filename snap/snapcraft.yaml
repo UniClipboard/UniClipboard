@@ -45,6 +45,16 @@ apps:
     # 文件传输场景。剪贴板事件从 GTK clipboard API 取,strict snap 通过
     # wayland / x11 plug 拿到 host compositor selection;daemon 监听
     # 系统剪贴板变化跟原生 .deb 行为一致。
+    #
+    # `password-manager-service`: daemon 启动期通过 secret-service D-Bus
+    # API (org.freedesktop.Secret.Service / GNOME Keyring / KWallet 等)
+    # 取本地身份的 KEK。该 plug **不会** auto-connect,首装后需要 manual
+    # `snap connect uniclipboard:password-manager-service`;未连接时
+    # uc-platform::capability 仍会探测到 desktop 然后走 system keyring,
+    # DBus 被 AppArmor 拒后直接 daemon 启动失败 ——
+    # uc-platform::secure_storage 的 file-based fallback 仅在 "no desktop
+    # detected" 路径触发。要在 snap store 启用 auto-connect 需在 snapcraft
+    # forum 提 request。
     plugs:
       - desktop
       - desktop-legacy
@@ -56,6 +66,7 @@ apps:
       - home
       - removable-media
       - mount-observe
+      - password-manager-service
 
 parts:
   uniclipboard:

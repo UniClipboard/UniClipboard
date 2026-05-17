@@ -115,7 +115,24 @@ pub(super) fn install_snapshot(
         // without the charset suffix still get bytes (mirrors what wlr /
         // ext data-control sources do via their multi-offer dance, and
         // what clipboard_rs's `file_uri_list_to_clipboard_data` did for X11).
-        let bytes = Arc::new(rep.expect_inline_bytes().to_vec());
+        //
+        // 用 `rep_bytes` 而非 `expect_inline_bytes`：远端 push 的 image rep 由
+        // `apply_inbound::materializer` 合成为 `LocalFile` source（指向 blob cache
+        // 文件），直接调 `expect_inline_bytes` 会 panic（见
+        // `clipboard::common::rep_bytes` 注释）。读盘失败时跳过该 rep + warn,
+        // 与 macOS / Windows / Wayland 平台同语义。
+        let bytes = match crate::clipboard::common::rep_bytes(rep) {
+            Ok(b) => Arc::new(b.into_owned()),
+            Err(err) => {
+                warn!(
+                    error = %err,
+                    format_id = %rep.format_id,
+                    mime = %mime,
+                    "x11 write: read LocalFile rep failed; skipping this mime"
+                );
+                continue;
+            }
+        };
         match mime.as_str() {
             "text/plain;charset=utf-8" | "text/plain;charset=UTF-8" => {
                 payloads.entry(atoms.UTF8_STRING).or_insert(bytes.clone());

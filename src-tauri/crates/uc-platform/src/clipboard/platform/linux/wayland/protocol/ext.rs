@@ -674,8 +674,25 @@ fn handle_write(
             if payloads.contains_key(&mime) {
                 continue;
             }
+            // 用 `rep_bytes` 而非 `expect_inline_bytes`：远端 push 的 image rep 由
+            // `apply_inbound::materializer` 合成为 `LocalFile` source（指向 blob cache
+            // 文件），直接调 `expect_inline_bytes` 会 panic（见
+            // `clipboard::common::rep_bytes` 注释）。读盘失败时跳过该 rep + warn,
+            // 与 macOS / Windows 平台同语义。
+            let bytes = match crate::clipboard::common::rep_bytes(rep) {
+                Ok(b) => b.into_owned(),
+                Err(err) => {
+                    warn!(
+                        error = %err,
+                        format_id = %rep.format_id,
+                        mime = %mime,
+                        "ext-data-control write: read LocalFile rep failed; skipping this mime"
+                    );
+                    continue;
+                }
+            };
             source.offer(mime.clone());
-            payloads.insert(mime, Arc::new(rep.expect_inline_bytes().to_vec()));
+            payloads.insert(mime, Arc::new(bytes));
         }
     }
 

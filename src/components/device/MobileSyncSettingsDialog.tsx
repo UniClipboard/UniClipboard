@@ -19,13 +19,13 @@
  *   │ └────────────────────────────────────────────────────┘   │
  *   │ ┌─ 端口                                        [42720]  ┐  │
  *   │ └────────────────────────────────────────────────────┘   │
- *   │ ┌─ 当前监听地址                http://192.168.1.42:42720 ┐  │
+ *   │ ┌─ 当前监听地址         http://192.168.1.42:42720 [复制] ┐  │
  *   │ └────────────────────────────────────────────────────┘   │
  *   ├────────────────────────────────────────────────────────────┤
  *   │                                                    [完成] │
  *   └────────────────────────────────────────────────────────────┘
  *
- * Section helpers（DialogSection / InfoRow / SettingRow / SettingToggleRow）
+ * Section helpers（DialogSection / ListenUrlInfoRow / SettingControlRow / SettingToggleRow）
  * 与 DeviceSettingsDialog 同形：圆角 border bg-card/50，title `[11px]
  * uppercase tracking-wider`，控件靠右。
  *
@@ -40,7 +40,7 @@
  * - onSettingsChange 回调把最新 settings 视图回传给父 panel
  */
 
-import { Smartphone } from 'lucide-react'
+import { Check, Copy, Smartphone } from 'lucide-react'
 import React, { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
@@ -256,9 +256,6 @@ const MobileSyncSettingsDialog: React.FC<Props> = ({ open, onOpenChange, onSetti
   const lanListenEnabled = settings?.lanListenEnabled ?? false
   const lanListenDisabled = !enabled || settingsBusy
   const lanFieldsDisabled = !enabled || !lanListenEnabled || settingsBusy
-  const listenUrl = settings
-    ? deriveListenUrl(settings)
-    : t('devices.mobileSync.lanListener.currentUrl.unavailable')
 
   return (
     <>
@@ -375,10 +372,10 @@ const MobileSyncSettingsDialog: React.FC<Props> = ({ open, onOpenChange, onSetti
                   />
                 }
               />
-              <InfoRow
+              <ListenUrlInfoRow
                 label={t('devices.mobileSync.lanListener.currentUrl.label')}
-                value={listenUrl}
-                mono
+                url={settings ? deriveListenUrl(settings) : null}
+                unavailableLabel={t('devices.mobileSync.lanListener.currentUrl.unavailable')}
               />
             </DialogSection>
           </div>
@@ -437,18 +434,65 @@ const DialogSection: React.FC<{
   </section>
 )
 
-const InfoRow: React.FC<{ label: string; value: string; mono?: boolean }> = ({
-  label,
-  value,
-  mono,
-}) => (
+const ListenUrlInfoRow: React.FC<{
+  label: string
+  url: string | null
+  unavailableLabel: string
+}> = ({ label, url, unavailableLabel }) => (
   <div className="flex items-center justify-between gap-3 rounded-lg border border-border/60 bg-card/50 px-3 py-2 text-xs">
     <span className="shrink-0 text-muted-foreground">{label}</span>
-    <span className={cn('min-w-0 truncate text-foreground', mono && 'font-mono')} title={value}>
-      {value}
-    </span>
+    {url ? (
+      <ListenUrlControl url={url} />
+    ) : (
+      <span className="font-mono text-foreground">{unavailableLabel}</span>
+    )}
   </div>
 )
+
+const ListenUrlControl: React.FC<{ url: string }> = ({ url }) => {
+  const { t } = useTranslation()
+  const [copied, setCopied] = useState(false)
+
+  const handleCopy = useCallback(async () => {
+    try {
+      await navigator.clipboard.writeText(url)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1500)
+    } catch {
+      toast.error(t('clipboard.errors.copyFailed'))
+    }
+  }, [url, t])
+
+  const copyLabel = copied
+    ? t('devices.mobileSync.credential.copied')
+    : t('devices.mobileSync.credential.copy')
+
+  return (
+    <div className="flex max-w-[220px] min-w-0 items-center gap-1 sm:max-w-xs">
+      <code
+        className="min-w-0 flex-1 truncate rounded bg-muted px-2 py-1 font-mono text-xs text-foreground"
+        title={url}
+      >
+        {url}
+      </code>
+      <Button
+        type="button"
+        size="icon-sm"
+        variant="ghost"
+        className="shrink-0"
+        aria-label={copyLabel}
+        title={copyLabel}
+        onClick={() => void handleCopy()}
+      >
+        {copied ? (
+          <Check className="h-3.5 w-3.5 text-emerald-500" />
+        ) : (
+          <Copy className="h-3.5 w-3.5" />
+        )}
+      </Button>
+    </div>
+  )
+}
 
 const SettingToggleRow: React.FC<{
   label: string

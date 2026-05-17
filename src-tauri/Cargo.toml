@@ -42,6 +42,14 @@ cargo-clippy = []
 # 启用后默认使用 "dev" profile（数据目录后缀 `-dev`、keychain service 后缀 `-dev`）。
 # 仅供 `bun tauri:build:dev` 使用，避免本地 dev 构建产物覆盖 prod 安装的数据。
 dev-profile = ["uc-tauri/dev-profile"]
+# Tauri 的 production webview 加载开关：开了才会用 `tauri://localhost` 协议从
+# 嵌入的 `frontendDist` 读 index.html / assets；关掉的话即便 cargo `--release`
+# 也仍走 `devUrl`（tauri.conf.json 里是 http://localhost:1420），结果是 snap
+# 包跑出来 webview 显示 "Could not connect to localhost: Connection refused"。
+# `tauri-cli`（`bun run tauri build`）会自动把这个 feature 打开，但 snap.yml
+# 绕过 tauri-cli 直接 cargo build，因此必须在这里手动通过
+# `--features custom-protocol` 启用。
+custom-protocol = ["tauri/custom-protocol"]
 
 # dev profile:用 line-tables-only 替代完整 dwarf,大幅缩短 link 阶段。
 # 实测 inner-loop 11s → 4s(-65%),target 体积 46GB → 4.4GB(-91%)。

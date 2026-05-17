@@ -11,6 +11,11 @@ use crate::{
     system_secure_storage::SystemSecureStorage,
 };
 
+/// Sentinel key used to probe whether the platform secret service is actually
+/// reachable from this process. Picked so it's clearly internal and unlikely
+/// to ever collide with a real keyring entry.
+const SYSTEM_STORAGE_PROBE_KEY: &str = "__uc_secure_storage_probe__";
+
 #[derive(Debug, thiserror::Error)]
 pub enum SecureStorageFactoryError {
     #[error("secure storage unsupported: {capability:?}")]
@@ -18,6 +23,22 @@ pub enum SecureStorageFactoryError {
 
     #[error("failed to initialize file-based secure storage: {0}")]
     FileBasedInit(#[from] std::io::Error),
+}
+
+/// Probe whether `SystemSecureStorage` can actually round-trip a call to the
+/// platform secret service. `Ok` means `get` succeeded — including the "no
+/// such entry" case, which is the expected outcome for the sentinel key.
+/// `Err` means the secret service is reachable in principle (env says we have
+/// a desktop + DBus) but the real call was rejected at runtime: snap AppArmor
+/// blocking `org.freedesktop.Secret.Service.OpenSession`, gnome-keyring
+/// locked and unable to prompt in this context, KWallet disabled, etc. Those
+/// failures used to crash daemon bootstrap; callers can now degrade
+/// gracefully to file-based KEK instead.
+fn probe_system_storage_reachable(storage: &SystemSecureStorage) -> Result<(), String> {
+    storage
+        .get(SYSTEM_STORAGE_PROBE_KEY)
+        .map(|_| ())
+        .map_err(|e| e.to_string())
 }
 
 fn secure_storage_from_capability(
@@ -167,8 +188,32 @@ pub fn create_default_secure_storage_in_app_data_root(
 
     match capability {
         SecureStorageCapability::SystemKeyring => {
-            info!("Using system secure storage");
-            secure_storage_from_capability(capability)
+            // capability detection is env-only (DISPLAY + DBUS_SESSION_BUS_ADDRESS),
+            // it cannot tell whether the secret service actually accepts our calls.
+            // snap AppArmor refusing OpenSession is the canonical failure we hit
+            // (see `password-manager-service` plug in snapcraft.yaml). Round-trip
+            // a probe before committing to system keyring; on failure degrade to
+            // FileSecureStorage so daemon bootstrap can still complete instead of
+            // crashing the GUI with an opaque "in-process daemon start failed".
+            let system_storage = SystemSecureStorage::new();
+            match probe_system_storage_reachable(&system_storage) {
+                Ok(()) => {
+                    info!("Using system secure storage");
+                    Ok(Arc::new(system_storage) as Arc<dyn SecureStoragePort>)
+                }
+                Err(probe_err) => {
+                    warn!(
+                        probe_error = %probe_err,
+                        "System secure storage probe failed; falling back to file-based KEK. \
+                         Check snap interface connections (e.g. password-manager-service) or \
+                         keyring daemon availability."
+                    );
+                    Ok(
+                        Arc::new(FileSecureStorage::new_in_app_data_root(app_data_root)?)
+                            as Arc<dyn SecureStoragePort>,
+                    )
+                }
+            }
         }
         SecureStorageCapability::FileBasedKeystore => {
             warn!("Using file-based secure storage (insecure dev fallback for WSL/headless environments)");

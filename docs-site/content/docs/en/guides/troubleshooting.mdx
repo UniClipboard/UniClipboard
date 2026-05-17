@@ -62,6 +62,26 @@ A common cause is the keyslot file being held by another process —
 typically the GUI and `uniclip` racing on the default profile. Adding
 `--profile dev` on the CLI side keeps them out of each other's way.
 
+### Snap install: "System secure storage probe failed; falling back to file-based KEK"
+
+This WARN means the snap could not reach the freedesktop Secret Service
+(GNOME Keyring / KWallet) — AppArmor refused the D-Bus call because the
+`password-manager-service` plug is not connected. The daemon still
+starts; the Key Encryption Key is just written to disk under the snap's
+data directory instead of into the system keyring. To move it back into
+the system keyring:
+
+```bash
+sudo snap connect uniclipboard:password-manager-service
+# then restart the app
+```
+
+On older revisions (pre-r118) the same situation crashed the daemon
+with `Daemon startup/probe failed during Tauri bootstrap`. `sudo snap
+refresh uniclipboard --edge` to a current revision fixes that on its
+own; connecting the plug is then only about _where_ the KEK is stored,
+not _whether_ the daemon starts.
+
 ## Pairing failures
 
 ### Invite says "invalid or expired"

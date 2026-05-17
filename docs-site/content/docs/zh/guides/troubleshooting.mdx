@@ -207,9 +207,11 @@ uniclip search rebuild     # 同步重建（会阻塞直至完成）
 
 1. **是否在同一局域网？** 手机和桌面必须接在同一 Wi-Fi / 子网下。移动端
    同步不走中继、不打洞、不做跨网络可达。
-2. **不要把 `0.0.0.0` 印给手机。** 桌面 socket 永远 bind 在 `0.0.0.0`，
-   但 **对外宣告的 IP** 必须是手机能够拨通的真实 LAN IPv4。在
-   **设备 → 移动端同步 → Configure** 里挑一个具体网卡，或
+2. **对外宣告的 IP 必须是手机能拨通的。** 桌面 socket 永远 bind 在
+   `0.0.0.0`，但安装 URL 里嵌的 IP 必须是手机能够拨通的真实 LAN
+   IPv4。Configure dialog 已经替你兜住这一点：监听 IP 为 `Auto` 时，
+   「当前监听地址」行会内联展开列出全部 RFC1918 候选 —— 挑手机所在
+   那个直接复制；选了具体网卡时，行内就是固定的那条 URL。CLI 走
    `uniclip mobile-sync lan enable --advertise <LAN_IPV4>`。
 3. **看监听器状态。** `uniclip mobile-sync status` 在 daemon 试图 bind 但
    失败时会上抛 `lan_listener_error`（端口被占、权限不足等），先解决

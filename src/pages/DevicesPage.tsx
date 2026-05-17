@@ -549,7 +549,8 @@ const DeviceTabs: React.FC = () => {
       />
       <MobileSyncCredentialModal
         payload={credentialPayload}
-        onClose={mobileActions.clearCredential}
+        onDiscard={mobileActions.discardCredential}
+        onComplete={mobileActions.completeCredential}
       />
       <RotateMobilePasswordDialog
         open={rotateTarget !== null}
@@ -877,7 +878,8 @@ interface UseMobileDevicesReturn {
     handleRevokeConfirm: () => Promise<void>
     requestRevoke: (device: MobileDeviceView) => void
     requestRotate: (device: MobileDeviceView) => void
-    clearCredential: () => void
+    discardCredential: (deviceId: string) => Promise<void>
+    completeCredential: () => void
     clearRotateTarget: () => void
     clearRotatedPayload: () => void
     clearRevokeTarget: () => void
@@ -963,6 +965,24 @@ const useMobileDevices = (): UseMobileDevicesReturn => {
     [reload]
   )
 
+  const discardCredential = useCallback(
+    async (deviceId: string) => {
+      try {
+        await revokeMobileDevice(deviceId)
+        setCredentialPayload(null)
+        await reload()
+      } catch (err) {
+        log.error({ err, deviceId }, 'failed to discard newly registered mobile device')
+        toast.error(translate(err))
+      }
+    },
+    [reload, translate]
+  )
+
+  const completeCredential = useCallback(() => {
+    setCredentialPayload(null)
+  }, [])
+
   const handleRotateSuccess = useCallback(
     (result: RotateMobilePasswordResult) => {
       setRotatedPayload(result)
@@ -1008,7 +1028,8 @@ const useMobileDevices = (): UseMobileDevicesReturn => {
       handleRevokeConfirm,
       requestRevoke: setRevokeTarget,
       requestRotate: setRotateTarget,
-      clearCredential: () => setCredentialPayload(null),
+      discardCredential,
+      completeCredential,
       clearRotateTarget: () => setRotateTarget(null),
       clearRotatedPayload: () => setRotatedPayload(null),
       clearRevokeTarget: () => setRevokeTarget(null),

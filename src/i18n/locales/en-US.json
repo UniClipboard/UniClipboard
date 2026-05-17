@@ -945,7 +945,7 @@
         "copy": "Copy",
         "copied": "Copied",
         "confirmSaved": "I have saved these credentials",
-        "close": "Close",
+        "close": "Done",
         "closeBlocked": "Confirm \"I have saved these credentials\" first"
       },
       "revoke": {

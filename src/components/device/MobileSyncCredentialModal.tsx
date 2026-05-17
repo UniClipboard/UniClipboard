@@ -4,7 +4,8 @@
  * 关键不变量(对应 facade 合约,见 RegisterMobileShortcutDeviceOutput 注释):
  * 1. password 字段是**唯一一次**面向用户的明文回显;关闭后服务端只剩 PHC,
  *    无法再取回。
- * 2. UI 必须强制用户勾选「我已保存」才允许关闭(防误关)。
+ * 2. 右上角 ✕ 丢弃本次注册(撤销设备);右下角「完成」须勾选「我已保存」
+ *    才确认保留设备并关闭;ESC / 点遮罩仍拦截并提示勾选。
  * 3. password 永远不进 log / 持久化 / analytics(已在 invokeWithTrace 的
  *    sensitive args redaction 处约束;本组件再多一层"卸载即丢"的内存策略,
  *    上层不应把这份对象长期持有)。
@@ -44,12 +45,15 @@ interface Props {
    * payload 即关闭 modal,本组件不持有任何引用。
    */
   payload: RegisterMobileDeviceResult | null
-  onClose: () => void
+  /** 用户点 ✕ 放弃:上层应撤销刚注册的设备。 */
+  onDiscard: (deviceId: string) => void | Promise<void>
+  /** 用户勾选已保存并点「完成」:保留设备,仅关闭凭据展示。 */
+  onComplete: () => void
 }
 
 type Platform = 'ios' | 'android'
 
-const MobileSyncCredentialModal: React.FC<Props> = ({ payload, onClose }) => {
+const MobileSyncCredentialModal: React.FC<Props> = ({ payload, onDiscard, onComplete }) => {
   const { t } = useTranslation()
   const [acknowledged, setAcknowledged] = useState(false)
   const [passwordVisible, setPasswordVisible] = useState(false)
@@ -59,15 +63,24 @@ const MobileSyncCredentialModal: React.FC<Props> = ({ payload, onClose }) => {
   const [hintActive, setHintActive] = useState(false)
   const acknowledgeRef = useRef<HTMLLabelElement>(null)
 
-  // 关闭时显式重置内部状态;父组件只控 payload 出现/消失,本组件确保
-  // 下一次打开是干净的"未确认 / 密码隐藏 / iOS tab"初始态
-  const handleClose = useCallback(() => {
+  const resetLocalState = useCallback(() => {
     setAcknowledged(false)
     setPasswordVisible(false)
     setPlatform('ios')
     setHintActive(false)
-    onClose()
-  }, [onClose])
+  }, [])
+
+  const handleDiscard = useCallback(() => {
+    if (!payload) return
+    const { deviceId } = payload
+    resetLocalState()
+    void Promise.resolve(onDiscard(deviceId))
+  }, [onDiscard, payload, resetLocalState])
+
+  const handleComplete = useCallback(() => {
+    resetLocalState()
+    onComplete()
+  }, [onComplete, resetLocalState])
 
   const handleAcknowledge = useCallback((v: boolean) => {
     setAcknowledged(v)
@@ -84,8 +97,8 @@ const MobileSyncCredentialModal: React.FC<Props> = ({ payload, onClose }) => {
       flagUnacknowledged()
       return
     }
-    handleClose()
-  }, [acknowledged, flagUnacknowledged, handleClose])
+    handleComplete()
+  }, [acknowledged, flagUnacknowledged, handleComplete])
 
   if (!payload) return null
 
@@ -93,7 +106,7 @@ const MobileSyncCredentialModal: React.FC<Props> = ({ payload, onClose }) => {
     <Dialog
       open
       onOpenChange={open => {
-        if (!open) tryClose()
+        if (!open) handleDiscard()
       }}
     >
       <DialogContent

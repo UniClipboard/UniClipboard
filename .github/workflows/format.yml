@@ -36,7 +36,11 @@ jobs:
       - name: Checkout PR branch
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.head_ref }}
+          # Fork PR 的 head_ref 在主仓库可能不存在(甚至与已删除的同名分支冲突,
+          # 例如 fork 上的 `dev` 在主仓库 dev 退役后会触发 "branch not found")。
+          # 显式指向 PR head 仓库 + sha,既兼容 same-repo 也兼容 fork。
+          repository: ${{ github.event.pull_request.head.repo.full_name }}
+          ref: ${{ github.event.pull_request.head.sha }}
           # Use a PAT or the default token; for same-repo PRs GITHUB_TOKEN can push.
           token: ${{ secrets.GITHUB_TOKEN }}
           fetch-depth: 0

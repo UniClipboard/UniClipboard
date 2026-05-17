@@ -304,7 +304,11 @@ const ClipboardContent: React.FC<ClipboardContentProps> = ({
   const [tick, setTick] = useState(0)
 
   const activeItemRef = useRef<HTMLDivElement>(null)
-  const prevFirstItemIdRef = useRef<string | null>(null)
+  // 用户的视觉锚是否还贴在列表顶部。初次进入、点击/键盘把 active 放到第一项、
+  // auto-follow 跟到新顶 都会把它设为 true;一旦用户主动选了非第一项就转 false。
+  // 用 ref 跟踪而不是对比上一帧 first id, 是因为 effect 还会被 filter 切换、
+  // reduxItems 引用变化、tick 等非用户事件触发, 那些不该改变锚。
+  const anchoredToTopRef = useRef(true)
 
   // Periodic tick to force timestamp recalculation
   useEffect(() => {
@@ -468,31 +472,37 @@ const ClipboardContent: React.FC<ClipboardContentProps> = ({
     activeEntryStatus != null &&
     activeEntryStatus.status !== 'completed'
 
-  // Auto-select first item when list loads or changes
+  // 统一的 active 设置入口: 同时更新 anchoredToTopRef, 避免多处 setActiveItemId
+  // 之间漏改导致锚状态偏离实际选中。
+  const selectItem = useCallback(
+    (id: string | null) => {
+      setActiveItemId(id)
+      anchoredToTopRef.current = id !== null && flatItems[0]?.id === id
+    },
+    [flatItems]
+  )
+
+  // 列表变化时维护 active:
+  //   1. 空列表 → 清空, 并把锚重置为 true(下次有数据时自动落到新顶)。
+  //   2. active 已不在列表 → 选第一项。
+  //   3. 用户的锚还在顶, 但新内容把第一项顶下去了 → 跟到新顶。
   useEffect(() => {
-    const currentFirstId = flatItems.length > 0 ? flatItems[0].id : null
-
-    if (flatItems.length > 0) {
-      // Auto-follow: active was on the old first item, and a new item took over position 0
-      if (
-        prevFirstItemIdRef.current !== null &&
-        activeItemId === prevFirstItemIdRef.current &&
-        currentFirstId !== prevFirstItemIdRef.current
-      ) {
-        setActiveItemId(currentFirstId)
-        prevFirstItemIdRef.current = currentFirstId
-        return
-      }
-      // Auto-select: if no active item or active item no longer in list
-      if (activeItemId === null || !flatItems.some(it => it.id === activeItemId)) {
-        setActiveItemId(flatItems[0].id)
-      }
-    }
     if (flatItems.length === 0) {
-      setActiveItemId(null)
+      if (activeItemId !== null) setActiveItemId(null)
+      anchoredToTopRef.current = true
+      return
+    }
+    const firstId = flatItems[0].id
+
+    if (activeItemId === null || !flatItems.some(it => it.id === activeItemId)) {
+      setActiveItemId(firstId)
+      anchoredToTopRef.current = true
+      return
     }
 
-    prevFirstItemIdRef.current = currentFirstId
+    if (anchoredToTopRef.current && activeItemId !== firstId) {
+      setActiveItemId(firstId)
+    }
   }, [flatItems, activeItemId])
 
   // Scroll active item into view
@@ -507,7 +517,7 @@ const ClipboardContent: React.FC<ClipboardContentProps> = ({
     handler: () => {
       if (flatItems.length === 0) return
       const nextIndex = activeIndex < 0 ? 0 : Math.min(activeIndex + 1, flatItems.length - 1)
-      setActiveItemId(flatItems[nextIndex].id)
+      selectItem(flatItems[nextIndex].id)
     },
   })
 
@@ -518,7 +528,7 @@ const ClipboardContent: React.FC<ClipboardContentProps> = ({
     handler: () => {
       if (flatItems.length === 0) return
       const prevIndex = activeIndex <= 0 ? 0 : activeIndex - 1
-      setActiveItemId(flatItems[prevIndex].id)
+      selectItem(flatItems[prevIndex].id)
     },
   })
 
@@ -648,9 +658,9 @@ const ClipboardContent: React.FC<ClipboardContentProps> = ({
       // Select next or previous item
       if (flatItems.length > 1) {
         const nextIndex = activeIndex < flatItems.length - 1 ? activeIndex + 1 : activeIndex - 1
-        setActiveItemId(flatItems[nextIndex]?.id ?? null)
+        selectItem(flatItems[nextIndex]?.id ?? null)
       } else {
-        setActiveItemId(null)
+        selectItem(null)
       }
     } catch (e) {
       log.error({ err: e }, 'Delete failed')
@@ -719,7 +729,7 @@ const ClipboardContent: React.FC<ClipboardContentProps> = ({
                         isStale={staleEntryIds.includes(item.id)}
                         onCopy={id => void handleCopyItem(id)}
                         onDelete={id => {
-                          setActiveItemId(id)
+                          selectItem(id)
                           captureUserIntent('delete_entry', { count: 1 })
                           setDeleteDialogOpen(true)
                         }}
@@ -730,7 +740,7 @@ const ClipboardContent: React.FC<ClipboardContentProps> = ({
                           item={item}
                           isActive={item.id === activeItemId}
                           isStale={staleEntryIds.includes(item.id)}
-                          onClick={() => setActiveItemId(item.id)}
+                          onClick={() => selectItem(item.id)}
                           elementRef={item.id === activeItemId ? activeItemRef : undefined}
                         />
                       </FileContextMenu>

@@ -15,6 +15,7 @@ function parseArgs(argv = process.argv.slice(2)) {
     template: null,
     output: null,
     docsBaseUrl: null,
+    generatedNotesFile: null,
   }
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -47,6 +48,9 @@ function parseArgs(argv = process.argv.slice(2)) {
       index += 1
     } else if (arg === '--docs-base-url' && next) {
       options.docsBaseUrl = next
+      index += 1
+    } else if (arg === '--generated-notes-file' && next) {
+      options.generatedNotesFile = next
       index += 1
     }
   }
@@ -227,6 +231,42 @@ function buildChangelogLinks({ version, docsBaseUrl, englishExists, chineseExist
   return `\n**Changelog Files**\n\n${lines.join('\n')}`
 }
 
+function buildNewContributorsSection(generatedNotesFile) {
+  if (!generatedNotesFile) {
+    return ''
+  }
+  if (!fs.existsSync(generatedNotesFile)) {
+    emitWarning(
+      `Generated notes file not found, skipping New Contributors section`,
+      generatedNotesFile
+    )
+    return ''
+  }
+
+  const content = fs.readFileSync(generatedNotesFile, 'utf8')
+  const lines = content.split('\n')
+  const headerIndex = lines.findIndex(line => /^##+\s+New Contributors\s*$/.test(line))
+  if (headerIndex === -1) {
+    return ''
+  }
+
+  const bodyLines = []
+  for (let i = headerIndex + 1; i < lines.length; i += 1) {
+    const line = lines[i]
+    if (/^##+\s/.test(line) || /^\*\*Full Changelog\*\*/.test(line)) {
+      break
+    }
+    bodyLines.push(line)
+  }
+
+  const body = bodyLines.join('\n').trim()
+  if (!body) {
+    return ''
+  }
+
+  return `\n## New Contributors\n\n${body}\n`
+}
+
 function buildPrereleaseWarning(isPrerelease, channel) {
   if (!isPrerelease) {
     return ''
@@ -289,6 +329,7 @@ export function generateReleaseNotes(options) {
       IS_PRERELEASE_WARNING: buildPrereleaseWarning(options.isPrerelease, options.channel),
       INSTALLER_TABLE: installerTable,
       CLI_INSTALLER_TABLE: cliInstallerTable,
+      NEW_CONTRIBUTORS_SECTION: buildNewContributorsSection(options.generatedNotesFile),
     }).trim() + '\n'
 
   fs.writeFileSync(outputPath, rendered, 'utf8')

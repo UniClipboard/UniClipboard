@@ -336,9 +336,18 @@ fn extract_file_paths_from_snapshot(snapshot: &SystemClipboardSnapshot) -> Vec<P
 /// 该值的 image-类 rep 会被剥出来走 blob 通道（receiver 通过 `representation_index`
 /// 把 fetched bytes 灌回原 rep），避免撞 wire 层 `MAX_PAYLOAD_SIZE = 2 MiB` 上限。
 ///
-/// 1 MiB 给 envelope 内其他 reps、V3 头、加密 AEAD overhead 留出充足余量；
-/// 大多数日常截图（< 1 MiB PNG）仍走 inline 快路径。
-const OVERSIZED_REP_THRESHOLD_BYTES: usize = 1024 * 1024;
+/// 阈值定在 64 KiB 是为了让 placeholder 真正派上用场（#785）。inline 路径下
+/// 字节随 V3 envelope 一次性传完，receiver 端 V3 decode 完成那一刻就已经持
+/// 有完整图片字节 —— `apply_inbound/usecase.rs:192` 先 emit 的
+/// `IncomingPending` 与紧随其后的 `NewContent` 之间只有几 ms 间隔，前端来不
+/// 及把"正在接收"占位卡片渲染出来。把阈值压到 64 KiB 让常见截图（百 KB ~
+/// 几 MB PNG）走 blob_refs 路径，receiver 端的 materialize 阶段才有真实的
+/// 时间窗口承载 placeholder。
+///
+/// 64 KiB 仍给 `inline_threshold_bytes = 16 KB`（uc-infra `clipboard_storage_config`）
+/// 的纯文本 rep 留出 4× 缓冲：emoji / 小 icon 之类的 < 64 KB 图片继续 inline，
+/// 不为它们多一次 iroh-blobs round-trip。
+const OVERSIZED_REP_THRESHOLD_BYTES: usize = 64 * 1024;
 
 /// 把 snapshot 中超过 `OVERSIZED_REP_THRESHOLD_BYTES` 的 image-类 rep 上传到
 /// blob store，把它们的 `bytes` 字段就地清空（保留 `format_id` / `mime` / `id`），

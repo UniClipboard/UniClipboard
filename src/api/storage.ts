@@ -76,6 +76,16 @@ export async function openDataDirectory(): Promise<void> {
   await commands.openDataDirectory()
 }
 
+/**
+ * Open the platform logs directory in the system file explorer.
+ *
+ * 打开平台日志目录的系统文件浏览器。
+ */
+export async function openLogsDirectory(): Promise<void> {
+  const { commands } = await import('@/lib/ipc')
+  await commands.openLogsDirectory()
+}
+
 // Re-export clipboard history clearance from daemon clipboard API.
 // This is used by StorageSection for the "clear all history" action.
 export { clearClipboardHistory as clearAllClipboardHistory } from './daemon/clipboard'

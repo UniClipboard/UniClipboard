@@ -67,6 +67,7 @@ pub fn build() -> Builder<tauri::Wry> {
             crate::commands::updater::get_install_kind,
             // ── storage ─────────────────────────────────────────────────────────
             crate::commands::storage::open_data_directory,
+            crate::commands::storage::open_logs_directory,
             // ── clipboard delivery view (entry detail "源 + 同步状态") ──────────
             crate::commands::clipboard_delivery::clipboard_entry_delivery_view,
             // ── quick panel ─────────────────────────────────────────────────────

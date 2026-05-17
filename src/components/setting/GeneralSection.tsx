@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
+import * as storageApi from '@/api/storage'
 import {
   Select,
   SelectContent,
@@ -8,6 +9,7 @@ import {
   SelectValue,
   Switch,
   Input,
+  Button,
 } from '@/components/ui'
 import { useSetting } from '@/hooks/useSetting'
 import { SUPPORTED_LANGUAGES, type SupportedLanguage, getInitialLanguage } from '@/i18n'
@@ -132,6 +134,14 @@ export default function GeneralSection() {
     }
   }
 
+  const handleOpenLogsDir = async () => {
+    try {
+      await storageApi.openLogsDirectory()
+    } catch (error) {
+      log.error({ err: error }, '打开日志目录失败')
+    }
+  }
+
   return (
     <>
       <SettingGroup title={t('settings.sections.general.startupTitle')}>
@@ -212,6 +222,17 @@ export default function GeneralSection() {
             onCheckedChange={handleUsageAnalyticsChange}
             disabled={isBusy}
           />
+        </SettingRow>
+      </SettingGroup>
+
+      <SettingGroup title={t('settings.sections.general.logsDirectory.title')}>
+        <SettingRow
+          label={t('settings.sections.general.logsDirectory.label')}
+          description={t('settings.sections.general.logsDirectory.description')}
+        >
+          <Button variant="outline" size="sm" onClick={handleOpenLogsDir}>
+            {t('settings.sections.general.logsDirectory.button')}
+          </Button>
         </SettingRow>
       </SettingGroup>
     </>

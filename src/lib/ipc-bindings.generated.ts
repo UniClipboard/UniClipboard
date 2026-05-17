@@ -216,6 +216,14 @@ export const commands = {
 	timestamp: number,
 } | null) => typedError<null, CommandError>(__TAURI_INVOKE("open_data_directory", { trace })),
 	/**
+	 *  Open the application logs directory in the system file manager.
+	 *  在系统文件管理器中打开应用日志目录。
+	 */
+	openLogsDirectory: (trace: {
+	trace_id: string,
+	timestamp: number,
+} | null) => typedError<null, CommandError>(__TAURI_INVOKE("open_logs_directory", { trace })),
+	/**
 	 *  拉一条 entry 的同步状态视图。
 	 * 
 	 *  前端 detail 面板在 entry 切换时调用,失败时(facade 未装配 / DB 故障)

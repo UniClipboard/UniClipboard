@@ -119,6 +119,12 @@
             "accept": "OK",
             "optOut": "Disable"
           }
+        },
+        "logsDirectory": {
+          "title": "Logs",
+          "label": "Log directory",
+          "description": "Open the folder where application logs are stored",
+          "button": "Open in file manager"
         }
       },
       "appearance": {

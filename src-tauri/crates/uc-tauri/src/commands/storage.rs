@@ -42,3 +42,39 @@ pub async fn open_data_directory(
     .instrument(span)
     .await
 }
+
+/// Open the application logs directory in the system file manager.
+/// 在系统文件管理器中打开应用日志目录。
+#[tauri::command]
+#[specta::specta]
+pub async fn open_logs_directory(
+    app: tauri::AppHandle,
+    runtime: tauri::State<'_, std::sync::Arc<crate::bootstrap::TauriAppRuntime>>,
+    _trace: Option<TraceMetadata>,
+) -> Result<(), CommandError> {
+    let span = info_span!(
+        "command.storage.open_logs_dir",
+        trace_id = tracing::field::Empty,
+        trace_ts = tracing::field::Empty,
+    );
+    record_trace_fields(&span, &_trace);
+
+    async move {
+        let dir = runtime.storage_paths().logs_dir.clone();
+        std::fs::create_dir_all(&dir).map_err(|e| {
+            CommandError::InternalError(format!(
+                "Failed to create logs directory {}: {e}",
+                dir.display()
+            ))
+        })?;
+
+        app.opener()
+            .open_path(dir.to_string_lossy(), None::<&str>)
+            .map_err(|e| CommandError::InternalError(e.to_string()))?;
+
+        tracing::info!(dir = %dir.display(), "Opened logs directory");
+        Ok(())
+    }
+    .instrument(span)
+    .await
+}

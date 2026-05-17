@@ -119,6 +119,12 @@
             "accept": "好的",
             "optOut": "关闭"
           }
+        },
+        "logsDirectory": {
+          "title": "日志",
+          "label": "日志目录",
+          "description": "在文件管理器中打开当前应用的日志文件夹",
+          "button": "在文件管理器中打开"
         }
       },
       "appearance": {

@@ -33,6 +33,10 @@ pub enum ClipboardOutboundOutcome {
         duplicate: usize,
         offline: usize,
         errored: usize,
+        /// Peers whose result the main flow didn't wait for (fan-out deadline
+        /// hit). Their delivery records are being written by a background
+        /// continuation; counted here only for observability.
+        pending: usize,
         blob_ref_count: usize,
     },
     Skipped {
@@ -244,6 +248,7 @@ impl ClipboardOutboundPort for ClipboardOutboundDispatcher {
             accepted = dispatch_result.total_accepted,
             offline = dispatch_result.total_offline,
             errored = dispatch_result.total_errored,
+            pending = dispatch_result.total_pending,
             "outbound: dispatch_capture completed"
         );
 
@@ -252,6 +257,7 @@ impl ClipboardOutboundPort for ClipboardOutboundDispatcher {
             duplicate: dispatch_result.total_duplicate,
             offline: dispatch_result.total_offline,
             errored: dispatch_result.total_errored,
+            pending: dispatch_result.total_pending,
             blob_ref_count,
         })
     }
@@ -500,6 +506,7 @@ mod tests {
                 duplicate: 0,
                 offline: 0,
                 errored: 0,
+                pending: 0,
                 blob_ref_count: 0,
             })
         }
@@ -527,6 +534,7 @@ mod tests {
                 duplicate: 0,
                 offline: 0,
                 errored: 0,
+                pending: 0,
                 blob_ref_count: 0,
             }
         );

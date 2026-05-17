@@ -99,6 +99,7 @@ impl MobileInboundFanOutPort for ClipboardOutboundFanOutAdapter {
                     duplicate,
                     offline,
                     errored,
+                    pending,
                     blob_ref_count,
                 }) => info!(
                     entry_id = %entry_id_log,
@@ -107,6 +108,7 @@ impl MobileInboundFanOutPort for ClipboardOutboundFanOutAdapter {
                     duplicate,
                     offline,
                     errored,
+                    pending,
                     blob_ref_count,
                     "mobile_sync fan-out: relayed mobile-inbound snapshot to paired peers"
                 ),

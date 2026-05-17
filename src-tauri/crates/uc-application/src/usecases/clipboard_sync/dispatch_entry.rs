@@ -42,12 +42,29 @@
 //! `ingest_inbound.rs::tests` and Phase 1 `roster/facade.rs::FakePresence`).
 
 use std::sync::Arc;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use bytes::Bytes;
-use tokio::task::JoinSet;
+use tokio::task::{JoinError, JoinSet};
 use tracing::{debug, info, info_span, instrument, warn, Instrument};
 use uc_observability::FlowId;
+
+/// 主流程等 fan-out join 的硬上限。超过此时长后,剩余仍在跑的 peer task 会被
+/// move 到后台 spawn 继续 join,delivery 写盘与 host event emit 都在后台完成
+/// (调用方 fire-and-forget,语义无损)。
+///
+/// 之所以做这个截断:`connect_with_staggered_retry` 对不可达 peer 的最长耗
+/// 时是 `STAGGERED_DELAYS[2] (5s) + ATTEMPT_TIMEOUT (10s) = 15s`。在线 peer
+/// 几百 ms 就 ack,但一旦同一笔 dispatch 里有一个离线 peer,整个主流程会被
+/// 拖到 15s,直接影响:
+///   - `EntryDeliveryRepository::record_attempt` 写盘晚到 15s,前端 detail
+///     badge 看到的"已同步到哪些设备"也跟着滞后;
+///   - tokio runtime 上同时挂 N 笔复制 = N 个 15s task,资源占用与可观测
+///     性变差。
+/// 5s 取的是"在线 peer 在 LAN/直连下完成 connect + send + ack 的宽松上限"
+/// (实测 ~3s 内完成),既能让主流程在常见场景下等到所有 peer 的真实结果,
+/// 又避免被离线 peer 的 staggered retry 长尾拖死。详见 #785。
+const FAN_OUT_DEADLINE: Duration = Duration::from_secs(5);
 
 use crate::facade::blob_transfer::SharedHostEventEmitter;
 use crate::facade::host_event::{DeliveryHostEvent, HostEvent};
@@ -187,6 +204,12 @@ pub(crate) struct DispatchPerTarget {
 /// Aggregated per-pass outcome. `total_accepted` counts peers that
 /// returned `Accepted` (the ones whose repos now carry the new entry);
 /// `total_offline` counts peers the dispatch port reported as unreachable.
+///
+/// `total_pending` counts peers whose result the main flow did not wait for
+/// because `FAN_OUT_DEADLINE` was hit; those peers are still being driven by
+/// a background task that will write their delivery record + emit the host
+/// event when they finally settle. They are NOT included in `per_target`
+/// (the returned vec only describes peers settled within the deadline).
 #[derive(Debug, Clone)]
 pub(crate) struct DispatchOutcome {
     pub content_hash: String,
@@ -195,6 +218,7 @@ pub(crate) struct DispatchOutcome {
     pub total_duplicate: usize,
     pub total_offline: usize,
     pub total_errored: usize,
+    pub total_pending: usize,
     pub at_ms: i64,
 }
 
@@ -368,6 +392,7 @@ impl DispatchClipboardEntryUseCase {
                 total_duplicate: 0,
                 total_offline: 0,
                 total_errored: 0,
+                total_pending: 0,
                 at_ms: self.clock.now_ms(),
             });
         }
@@ -515,100 +540,40 @@ impl DispatchClipboardEntryUseCase {
         let entry_id_for_delivery = input.entry_id.clone();
         let mut delivery_records: Vec<EntryDeliveryRecord> = Vec::new();
 
-        while let Some(joined) = set.join_next().await {
-            match joined {
-                Ok((device_id, Ok(DispatchAck::Accepted))) => {
-                    total_accepted += 1;
-                    debug!(device_id = %device_id.as_str(), "dispatch → Accepted");
-                    if let Some(eid) = entry_id_for_delivery.as_ref() {
-                        delivery_records.push(EntryDeliveryRecord {
-                            entry_id: eid.clone(),
-                            target_device_id: device_id.clone(),
-                            status: EntryDeliveryStatus::Delivered,
-                            reason_detail: None,
-                            updated_at_ms: self.clock.now_ms(),
-                        });
-                    }
-                    per_target.push(DispatchPerTarget {
-                        device_id,
-                        outcome: Ok(DispatchAck::Accepted),
-                    });
-                }
-                Ok((device_id, Ok(DispatchAck::DuplicateIgnored))) => {
-                    total_duplicate += 1;
-                    debug!(device_id = %device_id.as_str(), "dispatch → DuplicateIgnored");
-                    if let Some(eid) = entry_id_for_delivery.as_ref() {
-                        delivery_records.push(EntryDeliveryRecord {
-                            entry_id: eid.clone(),
-                            target_device_id: device_id.clone(),
-                            status: EntryDeliveryStatus::Duplicate,
-                            reason_detail: None,
-                            updated_at_ms: self.clock.now_ms(),
-                        });
-                    }
-                    per_target.push(DispatchPerTarget {
-                        device_id,
-                        outcome: Ok(DispatchAck::DuplicateIgnored),
-                    });
-                }
-                Ok((device_id, Err(ClipboardDispatchError::Offline))) => {
-                    total_offline += 1;
-                    warn!(device_id = %device_id.as_str(), "dispatch → Offline");
-                    if let Some(eid) = entry_id_for_delivery.as_ref() {
-                        delivery_records.push(EntryDeliveryRecord {
-                            entry_id: eid.clone(),
-                            target_device_id: device_id.clone(),
-                            status: EntryDeliveryStatus::Failed {
-                                reason: DeliveryFailureReason::Offline,
-                            },
-                            reason_detail: None,
-                            updated_at_ms: self.clock.now_ms(),
-                        });
-                    }
-                    per_target.push(DispatchPerTarget {
-                        device_id,
-                        outcome: Err("offline".to_string()),
-                    });
-                }
-                Ok((device_id, Err(err))) => {
-                    total_errored += 1;
-                    warn!(device_id = %device_id.as_str(), error = %err, "dispatch failed");
-                    let (failure_reason, reason_detail) = match &err {
-                        // Offline 在上一个 arm 已处理,这里不会进。保留以满足穷尽性。
-                        ClipboardDispatchError::Offline => (DeliveryFailureReason::Offline, None),
-                        ClipboardDispatchError::LocalPolicyExceeded(s) => {
-                            (DeliveryFailureReason::LocalPolicy, Some(s.clone()))
+        // 主流程 fan-out join 受 `FAN_OUT_DEADLINE` 截断。在 deadline 内 settle
+        // 的 peer 走原路径(计数 + per_target + delivery)。deadline 到时仍在跑
+        // 的 task 会被整体 move 给后台 spawn 继续 join,主流程立即返回
+        // `total_pending = set.len()`。详见常量 doc 与 #785。
+        let fanout_started = Instant::now();
+        loop {
+            let remaining = FAN_OUT_DEADLINE.saturating_sub(fanout_started.elapsed());
+            if remaining.is_zero() {
+                break;
+            }
+            match tokio::time::timeout(remaining, set.join_next()).await {
+                Ok(Some(joined)) => {
+                    let processed = classify_dispatch_result(
+                        joined,
+                        entry_id_for_delivery.as_ref(),
+                        self.clock.now_ms(),
+                    );
+                    match processed.bucket {
+                        DispatchResultBucket::Accepted => total_accepted += 1,
+                        DispatchResultBucket::Duplicate => total_duplicate += 1,
+                        DispatchResultBucket::Offline => total_offline += 1,
+                        DispatchResultBucket::Errored | DispatchResultBucket::Panicked => {
+                            total_errored += 1
                         }
-                        ClipboardDispatchError::PeerRejected(s) => {
-                            (DeliveryFailureReason::PeerRejected, Some(s.clone()))
-                        }
-                        ClipboardDispatchError::Io(s) => {
-                            (DeliveryFailureReason::Io, Some(s.clone()))
-                        }
-                        ClipboardDispatchError::Internal(s) => {
-                            (DeliveryFailureReason::Internal, Some(s.clone()))
-                        }
-                    };
-                    if let Some(eid) = entry_id_for_delivery.as_ref() {
-                        delivery_records.push(EntryDeliveryRecord {
-                            entry_id: eid.clone(),
-                            target_device_id: device_id.clone(),
-                            status: EntryDeliveryStatus::Failed {
-                                reason: failure_reason,
-                            },
-                            reason_detail,
-                            updated_at_ms: self.clock.now_ms(),
-                        });
                     }
-                    per_target.push(DispatchPerTarget {
-                        device_id,
-                        outcome: Err(err.to_string()),
-                    });
+                    if let Some(pt) = processed.per_target {
+                        per_target.push(pt);
+                    }
+                    if let Some(rec) = processed.delivery_record {
+                        delivery_records.push(rec);
+                    }
                 }
-                Err(err) => {
-                    total_errored += 1;
-                    warn!(error = %err, "dispatch task panicked or cancelled");
-                }
+                Ok(None) => break, // set drained — all peers settled within deadline
+                Err(_) => break,   // deadline elapsed — defer remaining to background
             }
         }
 
@@ -623,22 +588,69 @@ impl DispatchClipboardEntryUseCase {
         // 事件 payload 不携带 status —— 前端按 entry_id 匹配后 refetch
         // 拿真相,事件只是"该不该 refetch"的指针,见 `DeliveryHostEvent`
         // 的注释。
-        for record in &delivery_records {
-            if let Err(err) = self.entry_delivery_repo.record_attempt(record).await {
-                warn!(
-                    error = %err,
-                    entry_id = %record.entry_id,
-                    target_device_id = %record.target_device_id,
-                    "failed to record entry delivery"
-                );
-                continue;
-            }
-            self.host_event_bus.emit_or_warn(HostEvent::Delivery(
-                DeliveryHostEvent::StatusChanged {
-                    entry_id: record.entry_id.to_string(),
-                    target_device_id: record.target_device_id.as_str().to_string(),
-                },
-            ));
+        flush_delivery_records(
+            &delivery_records,
+            self.entry_delivery_repo.as_ref(),
+            &self.host_event_bus,
+        )
+        .await;
+
+        // 把剩余 in-flight 的 peer task 移交后台继续 join。helper 自带
+        // delivery 写盘 + emit,语义与主流程内一致;只是发生在 dispatch_capture
+        // 已经返回之后,前端 delivery badge 会按 peer 真实完成时刻陆续刷新,
+        // 而不是被 staggered retry 长尾整体卡住。
+        let total_pending = set.len();
+        if total_pending > 0 {
+            let entry_id_bg = entry_id_for_delivery.clone();
+            let clock_bg = Arc::clone(&self.clock);
+            let entry_delivery_repo_bg = Arc::clone(&self.entry_delivery_repo);
+            let host_event_bus_bg = Arc::clone(&self.host_event_bus);
+            let content_hash_bg = input.content_hash.clone();
+            tokio::spawn(
+                async move {
+                    let bg_started = Instant::now();
+                    let mut bg_records: Vec<EntryDeliveryRecord> = Vec::new();
+                    let mut bg_accepted = 0usize;
+                    let mut bg_duplicate = 0usize;
+                    let mut bg_offline = 0usize;
+                    let mut bg_errored = 0usize;
+                    while let Some(joined) = set.join_next().await {
+                        let processed = classify_dispatch_result(
+                            joined,
+                            entry_id_bg.as_ref(),
+                            clock_bg.now_ms(),
+                        );
+                        match processed.bucket {
+                            DispatchResultBucket::Accepted => bg_accepted += 1,
+                            DispatchResultBucket::Duplicate => bg_duplicate += 1,
+                            DispatchResultBucket::Offline => bg_offline += 1,
+                            DispatchResultBucket::Errored | DispatchResultBucket::Panicked => {
+                                bg_errored += 1
+                            }
+                        }
+                        if let Some(rec) = processed.delivery_record {
+                            bg_records.push(rec);
+                        }
+                    }
+                    flush_delivery_records(
+                        &bg_records,
+                        entry_delivery_repo_bg.as_ref(),
+                        &host_event_bus_bg,
+                    )
+                    .await;
+                    info!(
+                        content_hash = %content_hash_bg,
+                        deferred_count = total_pending,
+                        accepted = bg_accepted,
+                        duplicate = bg_duplicate,
+                        offline = bg_offline,
+                        errored = bg_errored,
+                        bg_duration_ms = bg_started.elapsed().as_millis() as u64,
+                        "dispatch: deferred fan-out completed"
+                    );
+                }
+                .in_current_span(),
+            );
         }
 
         Ok(DispatchOutcome {
@@ -648,6 +660,7 @@ impl DispatchClipboardEntryUseCase {
             total_duplicate,
             total_offline,
             total_errored,
+            total_pending,
             at_ms: self.clock.now_ms(),
         })
     }
@@ -730,6 +743,175 @@ impl DispatchClipboardEntryUseCase {
             Ok(Some(fp)) => fp.as_display().to_string(),
             _ => "unknown-device".to_string(),
         }
+    }
+}
+
+/// Outcome bucket for `classify_dispatch_result`. Caller uses this to bump the
+/// matching counter on the aggregated `DispatchOutcome` (or the background
+/// continuation's own counters). `Panicked` rolls up into `Errored` because
+/// the existing `DispatchOutcome` API surface has no separate panic bucket
+/// and treating a panicked task as "errored" keeps `attempted = succeeded +
+/// failed + deferred` semantics intact for telemetry.
+enum DispatchResultBucket {
+    Accepted,
+    Duplicate,
+    Offline,
+    Errored,
+    Panicked,
+}
+
+/// Folded view of one fanned-out peer's `JoinSet` result, ready for the
+/// caller to fold into `DispatchOutcome` (or the background continuation).
+struct ProcessedDispatchResult {
+    /// `None` iff the task panicked / was cancelled (no DeviceId recoverable).
+    per_target: Option<DispatchPerTarget>,
+    /// `None` iff `entry_id` was `None` OR the task panicked. Otherwise a
+    /// fully populated record ready for `EntryDeliveryRepositoryPort::record_attempt`.
+    delivery_record: Option<EntryDeliveryRecord>,
+    bucket: DispatchResultBucket,
+}
+
+/// Shared per-peer result-handling — used by both the main flow and the
+/// background continuation that drains `set` after the fan-out deadline.
+/// Kept as a free function (not a method) so the background `tokio::spawn`
+/// task can call it without holding `&self`.
+///
+/// `now_ms` is sampled by the caller (each peer's `updated_at_ms` reflects
+/// the moment that peer's result was observed, not a shared snapshot of
+/// dispatch completion).
+fn classify_dispatch_result(
+    joined: Result<(DeviceId, Result<DispatchAck, ClipboardDispatchError>), JoinError>,
+    entry_id: Option<&EntryId>,
+    now_ms: i64,
+) -> ProcessedDispatchResult {
+    match joined {
+        Ok((device_id, Ok(DispatchAck::Accepted))) => {
+            debug!(device_id = %device_id.as_str(), "dispatch → Accepted");
+            let delivery_record = entry_id.map(|eid| EntryDeliveryRecord {
+                entry_id: eid.clone(),
+                target_device_id: device_id.clone(),
+                status: EntryDeliveryStatus::Delivered,
+                reason_detail: None,
+                updated_at_ms: now_ms,
+            });
+            ProcessedDispatchResult {
+                per_target: Some(DispatchPerTarget {
+                    device_id,
+                    outcome: Ok(DispatchAck::Accepted),
+                }),
+                delivery_record,
+                bucket: DispatchResultBucket::Accepted,
+            }
+        }
+        Ok((device_id, Ok(DispatchAck::DuplicateIgnored))) => {
+            debug!(device_id = %device_id.as_str(), "dispatch → DuplicateIgnored");
+            let delivery_record = entry_id.map(|eid| EntryDeliveryRecord {
+                entry_id: eid.clone(),
+                target_device_id: device_id.clone(),
+                status: EntryDeliveryStatus::Duplicate,
+                reason_detail: None,
+                updated_at_ms: now_ms,
+            });
+            ProcessedDispatchResult {
+                per_target: Some(DispatchPerTarget {
+                    device_id,
+                    outcome: Ok(DispatchAck::DuplicateIgnored),
+                }),
+                delivery_record,
+                bucket: DispatchResultBucket::Duplicate,
+            }
+        }
+        Ok((device_id, Err(ClipboardDispatchError::Offline))) => {
+            warn!(device_id = %device_id.as_str(), "dispatch → Offline");
+            let delivery_record = entry_id.map(|eid| EntryDeliveryRecord {
+                entry_id: eid.clone(),
+                target_device_id: device_id.clone(),
+                status: EntryDeliveryStatus::Failed {
+                    reason: DeliveryFailureReason::Offline,
+                },
+                reason_detail: None,
+                updated_at_ms: now_ms,
+            });
+            ProcessedDispatchResult {
+                per_target: Some(DispatchPerTarget {
+                    device_id,
+                    outcome: Err("offline".to_string()),
+                }),
+                delivery_record,
+                bucket: DispatchResultBucket::Offline,
+            }
+        }
+        Ok((device_id, Err(err))) => {
+            warn!(device_id = %device_id.as_str(), error = %err, "dispatch failed");
+            let (failure_reason, reason_detail) = match &err {
+                // Offline 在上一个 arm 已处理,这里不会进。保留以满足穷尽性。
+                ClipboardDispatchError::Offline => (DeliveryFailureReason::Offline, None),
+                ClipboardDispatchError::LocalPolicyExceeded(s) => {
+                    (DeliveryFailureReason::LocalPolicy, Some(s.clone()))
+                }
+                ClipboardDispatchError::PeerRejected(s) => {
+                    (DeliveryFailureReason::PeerRejected, Some(s.clone()))
+                }
+                ClipboardDispatchError::Io(s) => (DeliveryFailureReason::Io, Some(s.clone())),
+                ClipboardDispatchError::Internal(s) => {
+                    (DeliveryFailureReason::Internal, Some(s.clone()))
+                }
+            };
+            let delivery_record = entry_id.map(|eid| EntryDeliveryRecord {
+                entry_id: eid.clone(),
+                target_device_id: device_id.clone(),
+                status: EntryDeliveryStatus::Failed {
+                    reason: failure_reason,
+                },
+                reason_detail,
+                updated_at_ms: now_ms,
+            });
+            ProcessedDispatchResult {
+                per_target: Some(DispatchPerTarget {
+                    device_id,
+                    outcome: Err(err.to_string()),
+                }),
+                delivery_record,
+                bucket: DispatchResultBucket::Errored,
+            }
+        }
+        Err(err) => {
+            warn!(error = %err, "dispatch task panicked or cancelled");
+            ProcessedDispatchResult {
+                per_target: None,
+                delivery_record: None,
+                bucket: DispatchResultBucket::Panicked,
+            }
+        }
+    }
+}
+
+/// Sequentially `record_attempt` each entry-delivery record then `emit_or_warn`
+/// the matching `DeliveryHostEvent`. Write-then-emit order is load-bearing —
+/// the host event is a "refetch ping" with no payload, so the frontend's
+/// follow-up read must observe the write. See `DeliveryHostEvent` docs.
+///
+/// Errors only `warn!`; this is an observability side-effect that must not
+/// mask `dispatch_capture`'s real success/failure semantics.
+async fn flush_delivery_records(
+    records: &[EntryDeliveryRecord],
+    repo: &dyn EntryDeliveryRepositoryPort,
+    bus: &SharedHostEventEmitter,
+) {
+    for record in records {
+        if let Err(err) = repo.record_attempt(record).await {
+            warn!(
+                error = %err,
+                entry_id = %record.entry_id,
+                target_device_id = %record.target_device_id,
+                "failed to record entry delivery"
+            );
+            continue;
+        }
+        bus.emit_or_warn(HostEvent::Delivery(DeliveryHostEvent::StatusChanged {
+            entry_id: record.entry_id.to_string(),
+            target_device_id: record.target_device_id.as_str().to_string(),
+        }));
     }
 }
 
@@ -2594,5 +2776,146 @@ mod tests {
         let attempts = spy.snapshot().await;
         assert_eq!(attempts.len(), 1);
         assert!(matches!(attempts[0].status, EntryDeliveryStatus::Delivered));
+    }
+
+    /// Slow fan-out 适用的 hand-written fake:peer-fast 立即 ack,peer-slow
+    /// await `slow_delay` 才 ack。mockall 的 `returning` 闭包返回同步值,无
+    /// 法在内部 `tokio::time::sleep`,所以本测试用裸 trait impl 接管 dispatch。
+    struct SleepyDispatch {
+        slow_device: DeviceId,
+        slow_delay: Duration,
+    }
+
+    #[async_trait]
+    impl ClipboardDispatchPort for SleepyDispatch {
+        async fn dispatch(
+            &self,
+            target: &DeviceId,
+            _header: &ClipboardHeader,
+            _payload: SyncPayload,
+        ) -> Result<DispatchAck, ClipboardDispatchError> {
+            if target == &self.slow_device {
+                tokio::time::sleep(self.slow_delay).await;
+            }
+            Ok(DispatchAck::Accepted)
+        }
+    }
+
+    /// FAN_OUT_DEADLINE 抢答:主流程只等到 deadline 即返回,慢 peer 转后台
+    /// 继续 join。验证三件事:
+    /// 1. 主流程返回时机被 deadline 截断(不是被 slow peer 拖到 8s);
+    /// 2. 主流程 outcome 暴露 `total_pending=1`,且 `per_target` 只含 fast
+    ///    peer —— UI 拿到的快照与"deadline 之前 settle 的"对端集合一致;
+    /// 3. 后台 task 在 slow peer 真实完成后,把 delivery 落盘并 emit 事件
+    ///    (前端 detail badge 会按真实完成时刻陆续刷新,而非整体卡 15s)。
+    ///
+    /// 用 `start_paused = true` + `tokio::time::advance` 控制虚拟时钟,
+    /// 避免真睡 5s+。
+    #[tokio::test(start_paused = true)]
+    async fn fan_out_deadline_defers_slow_peers_to_background() {
+        let mut repo = MockPeerAddrRepo::new();
+        repo.expect_list()
+            .times(1)
+            .returning(|| Ok(vec![record("peer-fast"), record("peer-slow")]));
+
+        let mut cipher = MockCipher::new();
+        cipher
+            .expect_encrypt()
+            .times(1)
+            .returning(|p| Ok(p.to_vec()));
+
+        let dispatch = SleepyDispatch {
+            slow_device: DeviceId::new("peer-slow"),
+            // 8s > FAN_OUT_DEADLINE(5s),保证 slow peer 落在 deferred 桶。
+            slow_delay: Duration::from_secs(8),
+        };
+
+        let spy = Arc::new(SpyEntryDeliveryRepo::default());
+        let recorder = Arc::new(RecordingEmitter::default());
+        let bus = Arc::new(HostEventBus::new());
+        bus.register(
+            "recorder",
+            Arc::clone(&recorder) as Arc<dyn HostEventEmitterPort>,
+        );
+
+        let uc = DispatchClipboardEntryUseCase::new(
+            Arc::new(repo),
+            Arc::new(make_member_repo_all_enabled()),
+            Arc::new(StaticPresence(ReachabilityState::Unknown)),
+            Arc::new(cipher),
+            Arc::new(dispatch),
+            Arc::new(make_device_identity("self-device")),
+            Arc::new(make_local_identity_stub()),
+            Arc::new(make_settings_stub()),
+            Arc::new(FixedClock(1_700_000_000_000)),
+            Arc::new(uc_observability::analytics::NoopAnalyticsSink),
+            Arc::new(AllMarkedFirstSyncState),
+            Arc::clone(&spy) as Arc<dyn EntryDeliveryRepositoryPort>,
+            Arc::clone(&bus),
+        );
+
+        let mut input = input();
+        input.entry_id = Some(EntryId::from("entry-deadline".to_string()));
+
+        let start = tokio::time::Instant::now();
+        let outcome = uc.execute(input).await.expect("dispatch ok");
+        let main_elapsed = start.elapsed();
+
+        // 1. 主流程返回时机:虚拟时钟在 deadline 处被截断;slack < 1s 留给
+        //    `tokio::time::timeout` 与 `set.join_next` 的 wake 调度抖动。
+        assert!(
+            main_elapsed >= FAN_OUT_DEADLINE,
+            "main should hit deadline first, elapsed={main_elapsed:?}"
+        );
+        assert!(
+            main_elapsed < FAN_OUT_DEADLINE + Duration::from_secs(1),
+            "main should return shortly after deadline (not wait for slow peer's 8s), \
+             elapsed={main_elapsed:?}"
+        );
+
+        // 2. outcome:fast peer settle 进 per_target;slow peer 计入 pending。
+        assert_eq!(outcome.total_accepted, 1, "fast peer accepted in main flow");
+        assert_eq!(outcome.total_pending, 1, "slow peer deferred to background");
+        assert_eq!(outcome.per_target.len(), 1);
+        assert_eq!(outcome.per_target[0].device_id.as_str(), "peer-fast");
+
+        // 主流程返回时 spy/emitter 只应观察到 fast peer 的写入。
+        let mid_records = spy.snapshot().await;
+        assert_eq!(mid_records.len(), 1);
+        assert_eq!(mid_records[0].target_device_id.as_str(), "peer-fast");
+        assert!(matches!(
+            mid_records[0].status,
+            EntryDeliveryStatus::Delivered
+        ));
+        assert_eq!(recorder.snapshot().len(), 1);
+
+        // 3. 推进虚拟时钟过 slow peer 的 sleep,让后台 task 跑完 join +
+        //    record_attempt + emit。3s 的额外 sleep 在 `start_paused` 模式
+        //    下会被 auto-advance 推到 8s 唤醒点之后,然后 yield 让后台 task
+        //    完成两个 await(record_attempt + emit)。
+        tokio::time::sleep(Duration::from_secs(5)).await;
+        for _ in 0..5 {
+            tokio::task::yield_now().await;
+        }
+
+        let final_records = spy.snapshot().await;
+        assert_eq!(
+            final_records.len(),
+            2,
+            "background should have written slow peer's record: {final_records:?}"
+        );
+        let final_targets: std::collections::HashSet<String> = final_records
+            .iter()
+            .map(|r| r.target_device_id.as_str().to_string())
+            .collect();
+        assert!(final_targets.contains("peer-fast"));
+        assert!(final_targets.contains("peer-slow"));
+
+        let final_events = recorder.snapshot();
+        assert_eq!(
+            final_events.len(),
+            2,
+            "background should have emitted slow peer's delivery event"
+        );
     }
 }

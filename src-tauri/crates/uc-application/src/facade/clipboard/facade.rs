@@ -101,6 +101,10 @@ pub struct DispatchEntryPerTarget {
 
 /// Public-facing aggregate report. Counts + per-target detail, mirroring
 /// the internal `DispatchOutcome`.
+///
+/// `total_pending` counts peers whose result the main flow did not wait for
+/// because the fan-out deadline was hit; their delivery records will be
+/// written by a background continuation. They are NOT present in `per_target`.
 #[derive(Debug, Clone)]
 pub struct DispatchEntryOutcome {
     pub content_hash: String,
@@ -109,6 +113,7 @@ pub struct DispatchEntryOutcome {
     pub total_duplicate: usize,
     pub total_offline: usize,
     pub total_errored: usize,
+    pub total_pending: usize,
     pub at_ms: i64,
 }
 
@@ -372,6 +377,7 @@ fn lift_outcome(internal: DispatchOutcome) -> DispatchEntryOutcome {
         total_duplicate: internal.total_duplicate,
         total_offline: internal.total_offline,
         total_errored: internal.total_errored,
+        total_pending: internal.total_pending,
         at_ms: internal.at_ms,
     }
 }

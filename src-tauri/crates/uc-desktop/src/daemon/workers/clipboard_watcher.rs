@@ -226,12 +226,14 @@ impl ClipboardChangeHandler for DaemonClipboardChangeHandler {
                                 duplicate,
                                 offline,
                                 errored,
+                                pending,
                                 blob_ref_count,
                             }) => info!(
                                 accepted,
                                 duplicate,
                                 offline,
                                 errored,
+                                pending,
                                 blob_ref_count,
                                 "Daemon outbound clipboard sync completed"
                             ),

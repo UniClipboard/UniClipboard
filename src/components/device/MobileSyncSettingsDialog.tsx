@@ -25,7 +25,7 @@
  *   │                                                    [完成] │
  *   └────────────────────────────────────────────────────────────┘
  *
- * Section helpers（DialogSection / ListenUrlInfoRow / SettingControlRow / SettingToggleRow）
+ * 区块辅助组件（DialogSection / ListenUrlInfoRow / SettingControlRow / SettingToggleRow）
  * 与 DeviceSettingsDialog 同形：圆角 border bg-card/50，title `[11px]
  * uppercase tracking-wider`，控件靠右。
  *
@@ -468,7 +468,7 @@ const ListenUrlControl: React.FC<{ url: string }> = ({ url }) => {
     : t('devices.mobileSync.credential.copy')
 
   return (
-    <div className="flex max-w-[220px] min-w-0 items-center gap-1 sm:max-w-xs">
+    <div className="flex min-w-0 max-w-56 items-center gap-1 sm:max-w-xs">
       <code
         className="min-w-0 flex-1 truncate rounded bg-muted px-2 py-1 font-mono text-xs text-foreground"
         title={url}

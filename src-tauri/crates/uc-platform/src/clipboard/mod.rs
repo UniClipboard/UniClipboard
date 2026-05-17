@@ -7,6 +7,10 @@ pub mod event_loop;
 #[cfg(target_os = "windows")]
 pub mod image_convert;
 pub mod noop;
+// `payload.rs` 是跨平台 rep payload helper（按 source 分流读字节），三平台写入
+// 路径都依赖它来消化入站的 `LocalFile` source rep。它独立于 `clipboard-rs`，
+// 因此不与 `common` 共享 cfg gate（Linux Wayland / X11 写入器也调用它）。
+pub(crate) mod payload;
 pub mod platform;
 pub mod watcher;
 

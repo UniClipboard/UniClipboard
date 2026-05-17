@@ -1,4 +1,5 @@
-use super::super::common::{rep_bytes, CommonClipboardImpl};
+use super::super::common::CommonClipboardImpl;
+use super::super::payload::rep_bytes;
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use clipboard_rs::ClipboardContext;
@@ -621,57 +622,7 @@ mod tests {
         assert_eq!(resolve_multi_rep_mime(&rep("Ole Private Data", None)), None);
     }
 
-    // —— rep_bytes（LocalFile 写入回归）——
-    //
-    // 历史回归：远端推过来的图片走 `apply_inbound::materializer` 后会带一条
-    // `LocalFile` source 的 image rep，旧版 macOS 写入路径用 `expect_inline_bytes()`
-    // 强取 Inline 字节，对 LocalFile 直接 panic，导致 daemon 整体崩溃。
-    // 这里的测试确保 helper 能消化两种 source、并在文件缺失时返回 Err 而非 panic。
-
-    #[test]
-    fn rep_bytes_borrows_inline_payload() {
-        let r = ObservedClipboardRepresentation::new(
-            RepresentationId::new(),
-            FormatId::from_str("public.png"),
-            Some(MimeType("image/png".to_string())),
-            vec![0xDE, 0xAD, 0xBE, 0xEF],
-        );
-        let bytes = rep_bytes(&r).expect("inline rep_bytes 必须返回 Ok");
-        assert_eq!(bytes.as_ref(), &[0xDE, 0xAD, 0xBE, 0xEF][..]);
-        assert!(matches!(bytes, std::borrow::Cow::Borrowed(_)));
-    }
-
-    #[test]
-    fn rep_bytes_reads_local_file_payload() {
-        let tmp = tempfile::NamedTempFile::new().expect("create tempfile");
-        let payload: &[u8] = b"\x89PNG\r\n\x1a\nfake-png-body";
-        std::fs::write(tmp.path(), payload).expect("write tempfile");
-        let r = ObservedClipboardRepresentation::new_local_file(
-            RepresentationId::new(),
-            FormatId::from_str("image-from-file"),
-            Some(MimeType("image/png".to_string())),
-            tmp.path().to_path_buf(),
-            payload.len() as u64,
-        );
-        let bytes = rep_bytes(&r).expect("LocalFile rep_bytes 必须返回 Ok");
-        assert_eq!(bytes.as_ref(), payload);
-        assert!(matches!(bytes, std::borrow::Cow::Owned(_)));
-    }
-
-    #[test]
-    fn rep_bytes_errors_when_local_file_missing() {
-        let r = ObservedClipboardRepresentation::new_local_file(
-            RepresentationId::new(),
-            FormatId::from_str("image-from-file"),
-            Some(MimeType("image/png".to_string())),
-            std::path::PathBuf::from("/nonexistent/uc-platform-macos-rep_bytes-test.png"),
-            0,
-        );
-        let err = rep_bytes(&r).expect_err("缺失文件必须返回 Err 而非 panic");
-        let msg = format!("{err:#}");
-        assert!(
-            msg.contains("/nonexistent/uc-platform-macos-rep_bytes-test.png"),
-            "错误信息应包含路径，便于排障；实际: {msg}"
-        );
-    }
+    // `rep_bytes` 自身的回归测试在 `crate::clipboard::payload::tests` 里（与 helper
+    // 同文件，三平台都跑），本测试模块只覆盖 macOS 多 rep 写入相关的
+    // `resolve_multi_rep_mime` 分派表。
 }

@@ -1,4 +1,5 @@
-use super::super::common::{rep_bytes, CommonClipboardImpl};
+use super::super::common::CommonClipboardImpl;
+use super::super::payload::rep_bytes;
 use anyhow::Result;
 use async_trait::async_trait;
 use clipboard_rs::{Clipboard, ClipboardContext};

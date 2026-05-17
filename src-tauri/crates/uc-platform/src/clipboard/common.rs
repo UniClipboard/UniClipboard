@@ -1,38 +1,9 @@
-use anyhow::{anyhow, Context, Result};
+use super::payload::rep_bytes;
+use anyhow::{anyhow, Result};
 use clipboard_rs::{common::RustImage, Clipboard, ContentFormat};
-use std::borrow::Cow;
 use tracing::{debug, info, warn};
-use uc_core::clipboard::{
-    ClipboardPayloadSource, MimeType, ObservedClipboardRepresentation, SystemClipboardSnapshot,
-};
+use uc_core::clipboard::{MimeType, ObservedClipboardRepresentation, SystemClipboardSnapshot};
 use uc_core::ids::RepresentationId;
-
-/// 取 rep 字节，按 source 分流。
-///
-/// - `Inline` → 借用现有字节，零拷贝。
-/// - `LocalFile` → 同步读盘，返回 owned `Vec<u8>`。
-///
-/// 为什么需要这个 helper：入站 `apply_inbound::materializer` 会给图片 rep 合成
-/// `LocalFile` source（指向接收端 blob cache 中已 export 的文件），同一份 snapshot
-/// 在 `clipboard_capture` ingest 进 blob store 之后还会被 `ClipboardWriteCoordinator`
-/// 透传到 `SystemClipboardPort::write_snapshot` 往系统剪贴板写。如果继续直调
-/// `rep.expect_inline_bytes()`，对 `LocalFile` 会触发 panic（参见 `uc-core` 上
-/// `expect_inline_bytes` 的契约：仅 Inline 语境），daemon 整体崩溃。本 helper
-/// 显式按 source 分流，让 macOS / Windows / Linux 写入路径都能消化 `LocalFile` rep。
-///
-/// 同步读盘的代价：`SystemClipboardPort::write_snapshot` 本就是同步签名
-/// （`ClipboardWriteCoordinator` 在 tokio worker 里直调，NSPasteboard /
-/// Win32 OpenClipboard 等系统 API 本就阻塞），对端图片 blob 已由 iroh-blobs
-/// export 到本地 cache，读盘 = 顺序 IO，通常 < 几十 ms，与原系统 API 调用同量级。
-/// 如未来出现极大 payload 阻塞 worker 的证据再换 `spawn_blocking`，目前不预先优化。
-pub(crate) fn rep_bytes(rep: &ObservedClipboardRepresentation) -> Result<Cow<'_, [u8]>> {
-    match rep.source() {
-        ClipboardPayloadSource::Inline(b) => Ok(Cow::Borrowed(b.as_slice())),
-        ClipboardPayloadSource::LocalFile { path, .. } => std::fs::read(path)
-            .map(Cow::Owned)
-            .with_context(|| format!("read LocalFile rep payload at {}", path.display())),
-    }
-}
 
 /// 文件头魔数嗅探,返回桌面剪贴板能消费的 `image/*` mime 字符串。
 /// 无法识别返回 None。只读前 12 字节,无内存分配。

@@ -188,6 +188,18 @@ impl AnalyticsPort for PosthogSink {
 /// `$lib` 取值：自写 client 自报身份，便于 PostHog 控制台按来源过滤。
 const POSTHOG_LIB_NAME: &str = "uniclipboard-rust";
 
+/// `$device_type` 固定为 PostHog 标准枚举的 `"Desktop"`。
+///
+/// PostHog 标准取值集合（Web SDK 推断 UA 时落到这三个值之一）：
+/// `Mobile` / `Tablet` / `Desktop`。uniclipboard 是桌面 App——只可能跑在
+/// macOS / Windows / Linux 桌面环境，固定 `Desktop` 让 PostHog 内置
+/// "Device type" breakdown 直接可用，无需在 PostHog 端配置自定义映射。
+///
+/// 注意：iOS Shortcut / Android 客户端只是发请求过来的"对端"——uniclipboard
+/// 桌面 daemon 本身仍是 desktop，对端 OS 走 event property `peer_os`（见
+/// `events.rs::PairingSucceeded`），不影响本字段。
+const POSTHOG_DEVICE_TYPE_DESKTOP: &str = "Desktop";
+
 /// 把 [`build_event_payload`] 的产物转成 PostHog capture endpoint 的请求 body。
 ///
 /// 输出 wire 形态（顶层）：
@@ -262,6 +274,20 @@ fn inject_posthog_standard_fields(payload: &mut Map<String, Value>) {
     if let Some(v) = payload.get("app_version").cloned() {
         payload.insert("$lib_version".into(), v);
     }
+    // PostHog 内置 dashboard 的"Top OS" / "OS version" / "Device type"
+    // breakdown 读的是 `$os` / `$os_version` / `$device_type` 标准 property，
+    // 而非自定义命名的 `os`。同时把 `os` flat 字段保留（schema doc §4 仍是
+    // wire 契约），双写让 vendor-neutral 字段集不破坏。
+    if let Some(v) = payload.get("os").cloned() {
+        payload.insert("$os".into(), v);
+    }
+    if let Some(v) = payload.get("os_version").cloned() {
+        payload.insert("$os_version".into(), v);
+    }
+    payload.insert(
+        "$device_type".into(),
+        Value::String(POSTHOG_DEVICE_TYPE_DESKTOP.into()),
+    );
     payload.insert("$lib".into(), Value::String(POSTHOG_LIB_NAME.into()));
     payload.insert("$geoip_disable".into(), Value::Bool(true));
 
@@ -647,6 +673,56 @@ mod tests {
         );
     }
 
+    /// `$os` / `$os_version` 是 PostHog 内置 dashboard 的"Top OS" / "OS version"
+    /// breakdown 的数据源——必须从 vendor-neutral 的 `os` / `os_version` 派生，
+    /// 否则控制台这两个图表对桌面端流量永远空白。
+    #[test]
+    fn build_capture_body_emits_posthog_os_fields() {
+        let payload = payload_with(
+            "app_opened",
+            "anon-1",
+            &[
+                ("os", Value::String("macos".into())),
+                ("os_version", Value::String("15.1".into())),
+            ],
+        );
+        let body = build_capture_body("app_opened", payload, "phc_test");
+        let props = body["properties"].as_object().unwrap();
+
+        assert_eq!(
+            props.get("$os").and_then(Value::as_str),
+            Some("macos"),
+            "$os 必须从 ctx.os 派生"
+        );
+        assert_eq!(
+            props.get("$os_version").and_then(Value::as_str),
+            Some("15.1"),
+            "$os_version 必须从 ctx.os_version 派生"
+        );
+        // flat 字段同时保留——schema doc §4 wire 契约不变。
+        assert_eq!(props.get("os").and_then(Value::as_str), Some("macos"));
+        assert_eq!(
+            props.get("os_version").and_then(Value::as_str),
+            Some("15.1")
+        );
+    }
+
+    /// `$device_type` 固定 `"Desktop"`——uniclipboard 桌面 daemon 只可能跑在
+    /// 桌面 OS。PostHog 内置"Device type"图表读这个字段做 Mobile/Tablet/Desktop
+    /// 切片，缺失会让所有事件归到"Unknown"。
+    #[test]
+    fn build_capture_body_emits_device_type_desktop() {
+        let payload = payload_with("app_opened", "anon-1", &[]);
+        let body = build_capture_body("app_opened", payload, "phc_test");
+        let props = body["properties"].as_object().unwrap();
+
+        assert_eq!(
+            props.get("$device_type").and_then(Value::as_str),
+            Some("Desktop"),
+            "$device_type 必须固定为 PostHog 标准枚举 Desktop"
+        );
+    }
+
     /// `$geoip_disable: true` 是 schema doc §6.1 隐私契约的兜底实施——拒绝
     /// 服务端按请求 IP 反推 `$geoip_country` / `$geoip_city` 落到 person property。
     /// 与 SDK 的 `disable_geoip=true` 等价。
@@ -861,6 +937,21 @@ mod tests {
             Some("0.7.0-alpha.7")
         );
         assert_eq!(props.get("$geoip_disable"), Some(&Value::Bool(true)));
+        // `$os` / `$os_version` / `$device_type` 必须穿越 HTTP 边界保留，
+        // PostHog 内置 OS / Device type breakdown 才能命中。
+        assert!(
+            props.get("$os").and_then(Value::as_str).is_some(),
+            "$os 必须穿越 HTTP 边界保留"
+        );
+        assert!(
+            props.get("$os_version").and_then(Value::as_str).is_some(),
+            "$os_version 必须穿越 HTTP 边界保留"
+        );
+        assert_eq!(
+            props.get("$device_type").and_then(Value::as_str),
+            Some("Desktop"),
+            "$device_type 必须穿越 HTTP 边界保留"
+        );
         assert!(
             props.get("$set").and_then(Value::as_object).is_some(),
             "$set 必须穿越 HTTP 边界保留"

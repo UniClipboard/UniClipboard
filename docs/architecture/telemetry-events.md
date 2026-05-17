@@ -352,6 +352,7 @@ PostHog 标准系统事件，由 sink 在身份切换时显式触发，与业务
 | 事件名 | 触发时机 | 关键 properties |
 |---|---|---|
 | `app_first_open` | `is_first_run == true` 时进程启动 | （仅 EventContext） |
+| `app_opened` | 每次进程启动；`compose_event_context` 在 `set_global_event_context` 之后 emit 一次（PostHog `$pageview` / `$screen` 的桌面端等价物，DAU / WAU / MAU / 留存曲线的数据源） | （仅 EventContext） |
 | `setup_started` | 引导页第一帧渲染 | `entry`: `first_run` \| `manual` |
 | `device_name_set` | 用户提交设备名 | `name_length_bucket`: `Lt8` \| `8To16` \| `Gt16` |
 | `pairing_started` | 用户点击配对 | `method`: `qr` \| `code` \| `discovery` |

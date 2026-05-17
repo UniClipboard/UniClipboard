@@ -30,6 +30,21 @@ pub enum Event {
     /// 进程启动且 `is_first_run == true`。
     AppFirstOpen,
 
+    /// 每次进程启动都触发一次（不论是否首次安装）。
+    ///
+    /// 与 [`Event::AppFirstOpen`] 的关系：`AppFirstOpen` 仅首次安装触发一次，
+    /// 是 Activation 漏斗的起点；`AppOpened` 每次启动都发，是 PostHog
+    /// `$pageview` / `$screen` 的桌面端等价物——DAU / WAU / MAU / 留存曲线
+    /// 都依赖这条事件做"今天这个 person 出现过"的口径。
+    ///
+    /// 由 bootstrap `compose_event_context` 在 `set_global_event_context` 之后、
+    /// 与 `AppFirstOpen` 同位置 emit；compose 自身的进程级幂等门控保证每次
+    /// 进程启动只 fire 一次（GUI 内拉起 daemon 不重复计数）。
+    ///
+    /// 不带 properties——所有切片维度（os / app_version / app_channel / 等）
+    /// 由 EventContext 自动注入，已覆盖 PostHog 默认 dashboard 所需字段。
+    AppOpened,
+
     /// 引导页第一帧渲染。
     SetupStarted { entry: SetupEntry },
 
@@ -148,6 +163,7 @@ impl Event {
     pub fn name(&self) -> &'static str {
         match self {
             Event::AppFirstOpen => "app_first_open",
+            Event::AppOpened => "app_opened",
             Event::SetupStarted { .. } => "setup_started",
             Event::DeviceNameSet { .. } => "device_name_set",
             Event::PairingStarted { .. } => "pairing_started",
@@ -180,6 +196,7 @@ impl Event {
     pub fn properties(&self) -> Map<String, Value> {
         match self {
             Event::AppFirstOpen => Map::new(),
+            Event::AppOpened => Map::new(),
             Event::SetupStarted { entry } => to_map(json!({ "entry": entry })),
             Event::DeviceNameSet { name_length_bucket } => {
                 to_map(json!({ "name_length_bucket": name_length_bucket }))
@@ -617,6 +634,7 @@ mod tests {
         // 与 schema doc §7.1 / §7.2 一一对应。任何变更都意味着破坏向后兼容。
         let cases: &[(Event, &str)] = &[
             (Event::AppFirstOpen, "app_first_open"),
+            (Event::AppOpened, "app_opened"),
             (
                 Event::SetupStarted {
                     entry: SetupEntry::FirstRun,
@@ -978,6 +996,15 @@ mod tests {
         assert!(!props.contains_key("payload_type"));
         assert!(!props.contains_key("transport_type"));
         assert!(!props.contains_key("peer_os"));
+    }
+
+    #[test]
+    fn app_opened_has_empty_properties() {
+        // 所有切片维度都靠 EventContext 提供（os / app_version / app_channel /
+        // 等）。事件本身不带字段：避免后续误以为可以塞进 properties 而破坏
+        // 与 PostHog `$pageview` 等价物的最小契约。
+        let props = Event::AppOpened.properties();
+        assert!(props.is_empty(), "{props:?}");
     }
 
     #[test]

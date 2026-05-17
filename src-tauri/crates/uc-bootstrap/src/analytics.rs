@@ -126,6 +126,15 @@ pub async fn compose_event_context(deps: &AppDeps, paths: &AppPaths) -> anyhow::
         deps.analytics.capture(Event::AppFirstOpen);
     }
 
+    // PostHog `$pageview` / `$screen` 的桌面端等价：每次进程启动都发一次
+    // `app_opened`，让 PostHog 默认 dashboard 的 DAU / WAU / MAU / 留存曲线
+    // 有数据源。`AppFirstOpen` 仅首次安装触发，不足以做活跃度口径。
+    //
+    // 与 `AppFirstOpen` 同位置 emit，复用同一份幂等门控——每次进程启动有且
+    // 仅有一次 `app_opened`，不会因 GUI 内拉起 daemon 两次 compose 而重复
+    // 计数。schema doc §7.1。
+    deps.analytics.capture(Event::AppOpened);
+
     Ok(())
 }
 

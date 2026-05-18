@@ -12,15 +12,15 @@
     "lint": "eslint"
   },
   "dependencies": {
-    "@ai-sdk/anthropic": "^3.0.77",
-    "@ai-sdk/openai": "^3.0.63",
-    "@ai-sdk/react": "^3.0.184",
+    "@ai-sdk/anthropic": "^3.0.78",
+    "@ai-sdk/openai": "^3.0.64",
+    "@ai-sdk/react": "^3.0.186",
     "@orama/tokenizers": "^3.1.18",
     "@radix-ui/react-presence": "^1.1.5",
-    "ai": "^6.0.182",
+    "ai": "^6.0.184",
     "fumadocs-core": "16.8.11",
-    "fumadocs-mdx": "15.0.4",
-    "fumadocs-openapi": "^10.8.3",
+    "fumadocs-mdx": "15.0.6",
+    "fumadocs-openapi": "^10.8.5",
     "fumadocs-ui": "16.8.11",
     "lucide-react": "^1.16.0",
     "next": "16.2.6",
@@ -33,13 +33,13 @@
   "devDependencies": {
     "@tailwindcss/postcss": "^4.3.0",
     "@types/mdx": "^2.0.13",
-    "@types/node": "^25.8.0",
+    "@types/node": "^25.9.0",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "postcss": "^8.5.13",
     "tailwindcss": "^4.3.0",
     "typescript": "^6.0.3",
     "eslint-config-next": "16.2.6",
-    "eslint": "^10.3.0"
+    "eslint": "^10.4.0"
   }
 }

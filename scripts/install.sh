@@ -1,28 +1,28 @@
 #!/usr/bin/env bash
 #
-# UniClipboard 一键安装脚本（Linux / macOS）
+# UniClipboard one-shot installer (Linux / macOS)
 #
-# 用法（任选其一）：
+# Usage (pick one):
 #   curl -fsSL https://raw.githubusercontent.com/UniClipboard/UniClipboard/main/scripts/install.sh | bash
 #   curl -fsSL .../install.sh | bash -s -- --version v0.9.0
 #   curl -fsSL .../install.sh | bash -s -- --format appimage
-#   curl -fsSL .../install.sh | bash -s -- --prefix "$HOME/Applications"   # macOS 用户级
+#   curl -fsSL .../install.sh | bash -s -- --prefix "$HOME/Applications"   # macOS, user-level
 #
-# 环境变量：
-#   UC_VERSION      指定版本（如 v0.9.0），默认 latest
-#   UC_FORMAT       强制安装格式：deb | rpm | snap | appimage | app
-#   UC_PREFIX       安装目录覆盖：
-#                     - macOS（app）默认 /Applications
-#                     - Linux（appimage）默认 $HOME/.local
-#   UC_REPO         GitHub 仓库，默认 UniClipboard/UniClipboard
-#   GITHUB_TOKEN    可选，规避 GitHub API 速率限制
+# Environment variables:
+#   UC_VERSION      Specific version (e.g. v0.9.0); defaults to latest
+#   UC_FORMAT       Force install format: deb | rpm | snap | appimage | app
+#   UC_PREFIX       Install directory override:
+#                     - macOS (app)      defaults to /Applications
+#                     - Linux (appimage) defaults to $HOME/.local
+#   UC_REPO         GitHub repo, defaults to UniClipboard/UniClipboard
+#   GITHUB_TOKEN    Optional, sidesteps the GitHub API rate limit
 #
-# 自动检测：
-#   - macOS:        下载 .app.tar.gz 并搬到 PREFIX
-#   - Ubuntu 20.04: snap（host 没有 libwebkit2gtk-4.1，.deb 起不来）
-#   - 其它 Linux:   有 root/sudo + apt/dpkg → deb；dnf/yum/rpm → rpm；否则 AppImage
+# Auto-detection:
+#   - macOS:        download .app.tar.gz and move it to PREFIX
+#   - Ubuntu 20.04: snap (host lacks libwebkit2gtk-4.1, .deb won't launch)
+#   - Other Linux:  with root/sudo + apt/dpkg → deb; dnf/yum/rpm → rpm; otherwise AppImage
 #
-# 提示：macOS 也可使用 Homebrew —— brew install --cask uniclipboard
+# Note: on macOS you can also use Homebrew — brew install --cask uniclipboard
 
 set -euo pipefail
 
@@ -48,7 +48,7 @@ Environment:
 Examples:
   install.sh
   install.sh --version v0.9.0
-  install.sh --format snap                  # Ubuntu 20.04 推荐
+  install.sh --format snap                  # recommended on Ubuntu 20.04
   install.sh --format appimage              # Linux, no sudo
   install.sh --prefix "$HOME/Applications"  # macOS, user-level
 EOF
@@ -56,15 +56,15 @@ EOF
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --version) [[ $# -ge 2 ]] || { echo "缺少 --version 的参数" >&2; exit 1; }; VERSION="$2"; shift 2 ;;
-    --format)  [[ $# -ge 2 ]] || { echo "缺少 --format 的参数"  >&2; exit 1; }; FORMAT="$2";  shift 2 ;;
-    --prefix)  [[ $# -ge 2 ]] || { echo "缺少 --prefix 的参数"  >&2; exit 1; }; PREFIX="$2";  shift 2 ;;
+    --version) [[ $# -ge 2 ]] || { echo "missing argument for --version" >&2; exit 1; }; VERSION="$2"; shift 2 ;;
+    --format)  [[ $# -ge 2 ]] || { echo "missing argument for --format"  >&2; exit 1; }; FORMAT="$2";  shift 2 ;;
+    --prefix)  [[ $# -ge 2 ]] || { echo "missing argument for --prefix"  >&2; exit 1; }; PREFIX="$2";  shift 2 ;;
     -h|--help) usage; exit 0 ;;
-    *) echo "未知参数：$1" >&2; usage; exit 1 ;;
+    *) echo "unknown argument: $1" >&2; usage; exit 1 ;;
   esac
 done
 
-# ---- 输出工具 ----------------------------------------------------------------
+# ---- Output helpers ---------------------------------------------------------
 if [[ -t 1 ]]; then
   C_RED=$'\033[31m'; C_GREEN=$'\033[32m'; C_CYAN=$'\033[36m'; C_RESET=$'\033[0m'
 else
@@ -72,14 +72,14 @@ else
 fi
 info() { printf '%s==>%s %s\n' "$C_CYAN" "$C_RESET" "$*"; }
 ok()   { printf '%s✔%s %s\n' "$C_GREEN" "$C_RESET" "$*"; }
-die()  { printf '%s错误:%s %s\n' "$C_RED" "$C_RESET" "$*" >&2; exit 1; }
+die()  { printf '%sError:%s %s\n' "$C_RED" "$C_RESET" "$*" >&2; exit 1; }
 
-# ---- 检测 OS / 架构 ----------------------------------------------------------
+# ---- Detect OS / arch -------------------------------------------------------
 OS_KERNEL="$(uname -s)"
 case "$OS_KERNEL" in
   Linux)  OS=linux ;;
   Darwin) OS=macos ;;
-  *) die "不支持的操作系统：${OS_KERNEL}（仅支持 Linux 和 macOS）" ;;
+  *) die "unsupported OS: ${OS_KERNEL} (only Linux and macOS are supported)" ;;
 esac
 
 ARCH="$(uname -m)"
@@ -92,19 +92,19 @@ case "$ARCH" in
     DEB_ARCH=arm64; RPM_ARCH=aarch64; AI_ARCH=aarch64
     MAC_ARCH=aarch64-apple-darwin
     ;;
-  *) die "不支持的架构：$ARCH" ;;
+  *) die "unsupported architecture: $ARCH" ;;
 esac
 
-# ---- 依赖 / sudo --------------------------------------------------------------
-command -v curl >/dev/null 2>&1 || die "缺少 curl，请先安装。"
-command -v tar  >/dev/null 2>&1 || die "缺少 tar，请先安装。"
+# ---- Dependencies / sudo ----------------------------------------------------
+command -v curl >/dev/null 2>&1 || die "curl is required; please install it first."
+command -v tar  >/dev/null 2>&1 || die "tar is required; please install it first."
 
 SUDO=""
 if [[ $EUID -ne 0 ]] && command -v sudo >/dev/null 2>&1; then
   SUDO="sudo"
 fi
 
-# ---- 检测 distro / 版本 ------------------------------------------------------
+# ---- Detect distro / version ------------------------------------------------
 DISTRO_ID=""
 DISTRO_VERSION_ID=""
 if [[ "$OS" == "linux" && -r /etc/os-release ]]; then
@@ -118,7 +118,7 @@ is_ubuntu_2004() {
   [[ "$DISTRO_ID" == "ubuntu" && "$DISTRO_VERSION_ID" == "20.04" ]]
 }
 
-# ---- 解析版本号 --------------------------------------------------------------
+# ---- Resolve version --------------------------------------------------------
 api_get() {
   local url="$1"
   if [[ -n "${GITHUB_TOKEN:-}" ]]; then
@@ -129,22 +129,24 @@ api_get() {
 }
 
 if [[ -z "$VERSION" ]]; then
-  info "查询最新发布版本…"
-  # /releases/latest 自动跳过 prerelease（alpha/beta）
+  info "Querying latest release…"
+  # /releases/latest automatically skips prereleases (alpha/beta)
   VERSION="$(api_get "https://api.github.com/repos/${REPO}/releases/latest" \
     | grep -oE '"tag_name"[[:space:]]*:[[:space:]]*"[^"]+"' \
     | head -n1 | cut -d'"' -f4 || true)"
-  [[ -n "$VERSION" ]] || die "无法获取 latest release tag。可设置 UC_VERSION 或 GITHUB_TOKEN 后重试。"
+  [[ -n "$VERSION" ]] || die "Could not fetch the latest release tag. Set UC_VERSION or GITHUB_TOKEN and retry."
 fi
 [[ "$VERSION" == v* ]] || VERSION="v$VERSION"
 VER_NUM="${VERSION#v}"
 
-# ---- 选择安装格式 -------------------------------------------------------------
+# ---- Pick install format ----------------------------------------------------
 choose_format() {
   if [[ -n "$FORMAT" ]]; then echo "$FORMAT"; return; fi
   if [[ "$OS" == "macos" ]]; then echo app; return; fi
-  # Ubuntu 20.04 host 没有 libwebkit2gtk-4.1（22.04 起才有），.deb 装上也跑不
-  # 起来。snap 自带 gnome-42-2204 extension，runtime 完全自洽，所以优先 snap。
+  # Ubuntu 20.04 hosts only ship libwebkit2gtk-4.0 (4.1 lands in 22.04), so
+  # the .deb installs but won't launch. snap pulls in the gnome-42-2204
+  # extension which bundles its own webkit2gtk-4.1 stack, so it just works
+  # — prefer it here.
   if is_ubuntu_2004; then echo snap; return; fi
   if [[ -n "$SUDO" || $EUID -eq 0 ]]; then
     if command -v dpkg >/dev/null 2>&1 && command -v apt-get >/dev/null 2>&1; then echo deb; return; fi
@@ -155,14 +157,14 @@ choose_format() {
 }
 FORMAT="$(choose_format)"
 
-# OS 与 FORMAT 必须匹配
+# OS and FORMAT must match
 case "$OS:$FORMAT" in
   macos:app) ;;
   linux:deb|linux:rpm|linux:snap|linux:appimage) ;;
-  *) die "${OS} 上不支持 --format ${FORMAT}（macOS 用 app；Linux 用 deb/rpm/snap/appimage）" ;;
+  *) die "${OS} does not support --format ${FORMAT} (macOS uses app; Linux uses deb/rpm/snap/appimage)" ;;
 esac
 
-# ---- PREFIX 默认值（按格式区分） ----------------------------------------------
+# ---- PREFIX defaults (per format) -------------------------------------------
 if [[ -z "$PREFIX" ]]; then
   case "$FORMAT" in
     app)      PREFIX="/Applications" ;;
@@ -170,7 +172,7 @@ if [[ -z "$PREFIX" ]]; then
   esac
 fi
 
-info "目标版本：${VERSION}    系统：${OS}/${ARCH}    安装方式：${FORMAT}"
+info "Target version: ${VERSION}    OS: ${OS}/${ARCH}    Format: ${FORMAT}"
 
 REL_BASE="https://github.com/${REPO}/releases/download/${VERSION}"
 TMP="$(mktemp -d 2>/dev/null || mktemp -d -t 'uc-install')"
@@ -178,8 +180,8 @@ trap 'rm -rf "$TMP"' EXIT
 
 download() {
   local url="$1" dst="$2"
-  info "下载 ${url##*/}"
-  curl -fL --progress-bar -o "$dst" "$url" || die "下载失败：$url"
+  info "Downloading ${url##*/}"
+  curl -fL --progress-bar -o "$dst" "$url" || die "download failed: $url"
 }
 
 # ---- macOS: .app.tar.gz → /Applications --------------------------------------
@@ -187,32 +189,33 @@ install_macos_app() {
   local file="${APP_NAME}_${MAC_ARCH}.app.tar.gz"
   download "${REL_BASE}/${file}" "${TMP}/${file}"
 
-  info "解压 ${APP_NAME}.app…"
+  info "Extracting ${APP_NAME}.app…"
   tar -xzf "${TMP}/${file}" -C "${TMP}"
   local app_src="${TMP}/${APP_NAME}.app"
-  [[ -d "$app_src" ]] || die "解压后未在归档中找到 ${APP_NAME}.app"
+  [[ -d "$app_src" ]] || die "${APP_NAME}.app not found inside the archive after extraction"
 
   local dst_dir="$PREFIX"
   local dst_app="${dst_dir}/${APP_NAME}.app"
   [[ -d "$dst_dir" ]] || mkdir -p "$dst_dir" 2>/dev/null || true
 
-  # 仅当目标目录不可写时再调用 sudo；普通管理员账户对 /Applications 直接可写
+  # Only escalate via sudo when the target directory is not writable;
+  # a normal admin account can write /Applications directly.
   local SH=""
   if [[ ! -w "$dst_dir" ]]; then
-    [[ -n "$SUDO" ]] || die "目录 ${dst_dir} 不可写且未找到 sudo；改用 --prefix \"\$HOME/Applications\"。"
+    [[ -n "$SUDO" ]] || die "${dst_dir} is not writable and sudo was not found; pass --prefix \"\$HOME/Applications\" instead."
     SH="$SUDO"
   fi
 
   if [[ -e "$dst_app" ]]; then
-    info "移除已有的 ${dst_app}"
+    info "Removing existing ${dst_app}"
     $SH rm -rf "$dst_app"
   fi
 
-  info "安装到 ${dst_app}"
+  info "Installing to ${dst_app}"
   $SH mv "$app_src" "$dst_app"
 
-  # 清除从浏览器/curl 继承下来的隔离属性，避免 Gatekeeper 误拦
-  # （app 自身仍由签名 + 公证把关）
+  # Strip the quarantine xattr inherited from curl/Firefox so Gatekeeper
+  # doesn't block launch (the app itself is still signed + notarized).
   if command -v xattr >/dev/null 2>&1; then
     $SH xattr -dr com.apple.quarantine "$dst_app" 2>/dev/null || true
   fi
@@ -222,10 +225,10 @@ install_macos_app() {
 install_deb() {
   local file="${APP_NAME}_${VER_NUM}_${DEB_ARCH}.deb"
   download "${REL_BASE}/${file}" "${TMP}/${file}"
-  info "安装 .deb 包（需要 sudo）…"
+  info "Installing .deb package (sudo required)…"
   if command -v apt-get >/dev/null 2>&1; then
     if ! $SUDO apt-get install -y "${TMP}/${file}"; then
-      info "apt-get 失败，回退到 dpkg + apt-get -f install"
+      info "apt-get failed; falling back to dpkg + apt-get -f install"
       $SUDO dpkg -i "${TMP}/${file}" || true
       $SUDO apt-get install -f -y
     fi
@@ -234,38 +237,41 @@ install_deb() {
   fi
 }
 
-# ---- Linux: snap (Ubuntu 20.04 等老 distro 推荐) ------------------------------
-# snap 装出来的 binary 由 gnome-42-2204 extension 提供 webkit2gtk-4.1 + GTK
-# stack，跟 host glibc / GTK 完全解耦，所以 Ubuntu 20.04（webkit2gtk-4.0
-# 时代）也能跑。注意 snap 自带 channel & 更新机制，本脚本不传 --version。
+# ---- Linux: snap (recommended on Ubuntu 20.04 and other older distros) ------
+# The snap binary loads webkit2gtk-4.1 + the full GTK stack from the
+# gnome-42-2204 extension, fully decoupled from host glibc / GTK, so it runs
+# on Ubuntu 20.04 (webkit2gtk-4.0 era) too. snap manages its own channel and
+# update flow, so this script doesn't pass --version through.
 install_snap() {
   if ! command -v snap >/dev/null 2>&1; then
-    info "未检测到 snapd，准备自动安装（需要 sudo）…"
+    info "snapd not detected; installing it (sudo required)…"
     if [[ -z "$SUDO" && $EUID -ne 0 ]]; then
-      die "需要 root/sudo 才能安装 snapd；或改用 --format appimage。"
+      die "root/sudo is required to install snapd; or use --format appimage."
     fi
     if command -v apt-get >/dev/null 2>&1; then
       $SUDO apt-get update -y
       $SUDO apt-get install -y snapd
     else
-      die "当前系统没有 apt-get，无法自动安装 snapd；请手动安装后重试。"
+      die "no apt-get on this system; cannot auto-install snapd. Install it manually and retry."
     fi
-    # snapd.socket 起来才能 install；seeded.service 等 seed 完成
+    # snapd.socket must be up before `snap install` works; seeded.service
+    # waits for the seed step to finish.
     if command -v systemctl >/dev/null 2>&1; then
       $SUDO systemctl enable --now snapd.socket >/dev/null 2>&1 || true
       $SUDO systemctl start snapd.seeded.service >/dev/null 2>&1 || true
     fi
   fi
 
-  info "通过 snap 安装 ${APP_BIN}（stable channel，需要 sudo）…"
+  info "Installing ${APP_BIN} via snap (stable channel, sudo required)…"
   if [[ -z "$SUDO" && $EUID -ne 0 ]]; then
-    die "snap install 需要 root/sudo。"
+    die "snap install requires root/sudo."
   fi
   $SUDO snap install "$APP_BIN"
 
-  # password-manager-service plug 在 snap store 没批 auto-connect，首装后必须
-  # 手动连，否则 daemon 启动期访问 secret-service 会被 AppArmor 拒。
-  info "提示：连接 keyring 插槽以让 daemon 访问系统 keyring："
+  # The password-manager-service plug is not auto-connect on the snap store
+  # yet, so it must be wired up by hand after the first install — otherwise
+  # AppArmor blocks the daemon's secret-service D-Bus call during startup.
+  info "Next: connect the keyring plug so the daemon can reach the system keyring:"
   printf '       sudo snap connect %s:password-manager-service\n' "$APP_BIN"
 }
 
@@ -273,7 +279,7 @@ install_snap() {
 install_rpm() {
   local file="${APP_NAME}-${VER_NUM}-1.${RPM_ARCH}.rpm"
   download "${REL_BASE}/${file}" "${TMP}/${file}"
-  info "安装 .rpm 包（需要 sudo）…"
+  info "Installing .rpm package (sudo required)…"
   if command -v dnf >/dev/null 2>&1; then
     $SUDO dnf install -y "${TMP}/${file}"
   elif command -v yum >/dev/null 2>&1; then
@@ -295,7 +301,7 @@ install_appimage() {
   download "${REL_BASE}/${file}" "$dst"
   chmod +x "$dst"
 
-  # 尽力提取图标，失败不影响安装
+  # Best-effort icon extraction; failure does not block install.
   (
     cd "$TMP"
     "$dst" --appimage-extract '*.png' >/dev/null 2>&1 || true
@@ -325,7 +331,7 @@ EOF
   case ":$PATH:" in
     *":$bin_dir:"*) ;;
     *)
-      info "提示：${bin_dir} 不在 PATH 中。若想在终端直接运行命令，可执行："
+      info "Note: ${bin_dir} is not on PATH. To run from the shell, append it:"
       printf '       echo '\''export PATH="%s:$PATH"'\'' >> ~/.profile\n' "$bin_dir"
       ;;
   esac
@@ -337,26 +343,26 @@ case "$FORMAT" in
   rpm)      install_rpm ;;
   snap)     install_snap ;;
   appimage) install_appimage ;;
-  *) die "未知格式：${FORMAT}" ;;
+  *) die "unknown format: ${FORMAT}" ;;
 esac
 
-# snap 版本由 snap store 管理，不在 GitHub release tag 内
+# snap versions are managed by the snap store, not the GitHub release tag.
 if [[ "$FORMAT" == "snap" ]]; then
-  ok "${APP_NAME} 安装完成（来自 snap stable channel）。"
+  ok "${APP_NAME} installed (from snap stable channel)."
 else
-  ok "${APP_NAME} ${VERSION} 安装完成。"
+  ok "${APP_NAME} ${VERSION} installed."
 fi
 case "$FORMAT" in
   app)
-    info "运行：在 Launchpad/Spotlight 搜索 UniClipboard，或执行 'open -a UniClipboard'"
+    info "Run: search for UniClipboard in Launchpad/Spotlight, or 'open -a UniClipboard'"
     ;;
   appimage)
-    info "运行：${PREFIX}/bin/${APP_NAME}.AppImage    或在应用菜单搜索 UniClipboard"
+    info "Run: ${PREFIX}/bin/${APP_NAME}.AppImage    or search UniClipboard in your app menu"
     ;;
   snap)
-    info "运行：在应用菜单搜索 UniClipboard，或执行 'snap run ${APP_BIN}'"
+    info "Run: search for UniClipboard in your app menu, or 'snap run ${APP_BIN}'"
     ;;
   *)
-    info "运行：在应用菜单搜索 UniClipboard，或执行 ${APP_BIN}"
+    info "Run: search for UniClipboard in your app menu, or the '${APP_BIN}' command"
     ;;
 esac

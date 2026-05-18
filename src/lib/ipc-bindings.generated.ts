@@ -596,17 +596,22 @@ export type LanInterfaceView = {
 };
 
 /**
- *  主窗口当前实际生效的 DWM 材质。
+ *  主窗口当前实际生效的系统材质。
  * 
  *  这个 enum 是 Rust ↔ TypeScript 共享类型（specta 生成 binding），变体名直接
- *  序列化成小写字符串，前端拿到的就是 `"mica"` / `"none"`。
+ *  序列化成小写字符串，前端拿到的就是 `"mica"` / `"hud"` / `"none"`。
  */
 export type MainWindowMaterial = 
-/**  Mica 装配成功（仅 Win 11 22H2+）。前端切到透明 background token。 */
+/**  Windows 11 22H2+ 上 DWM Mica 装配成功。前端切到透明 background token。 */
 "mica" | 
 /**
- *  未装材质：非 Windows，或 Mica 不可用（Win 10 / 早期 Win 11）。前端
- *  保持 opaque background。
+ *  macOS NSVisualEffectView (`hudWindow`)。由 `tauri.conf.json` 在窗口
+ *  创建时装好，Rust 侧只是上报。前端切到透明 background token。
+ */
+"hud" | 
+/**
+ *  未装材质：Linux，或 Windows 上 Mica 不可用（Win 10 / 早期 Win 11）。
+ *  前端保持 opaque background，与历史行为一致。
  */
 "none";
 

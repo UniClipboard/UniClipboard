@@ -87,23 +87,27 @@ export const isLowEffectsEnabled = (): boolean =>
   typeof document !== 'undefined' && document.documentElement.dataset.ucLowEffects === 'true'
 
 /**
- * Windows 主窗口 DWM 材质状态 —— Rust 侧实际装配结果，由 webview 启动后
- * 通过 `commands.getMainWindowMaterial()` 异步取回，再 patch 到 `<html>`
- * 的 `data-uc-window-material` attribute 上。`globals.css` 据此决定
- * `--background` token 走透明还是 opaque：
+ * 主窗口当前实际生效的系统材质，与后端 `MainWindowMaterial` enum 同源。
+ * 不直接 import generated type 是为了避免 `platform.ts` 反向依赖 `@/lib/ipc`，
+ * 这里的 union 由 specta_export 测试保证两端 wire format 一致。
+ */
+export type WindowMaterial = 'mica' | 'hud' | 'none'
+
+/**
+ * 主窗口系统材质状态 —— Rust 侧通过 `commands.getMainWindowMaterial()` 异步
+ * 报告，写到 `<html>` 的 `data-uc-window-material`。`globals.css` 据此决定
+ * `--background`/`--sidebar`/`--card`/`--popover` 走透明还是 opaque：
  *
- *   `[data-uc-platform="windows"]` 默认 opaque（与现状一致）；
- *   `[data-uc-platform="windows"][data-uc-window-material="mica"]` 切透明。
+ *   `"mica"` (Win 11 22H2+) / `"hud"` (macOS NSVisualEffectView) → 透明，
+ *   让底层材质透出来；
+ *   `"none"` (Linux / Win 10 / 早期 Win 11 / 装配失败) → opaque 兜底。
  *
- * 这样 Win 10 / 早期 Win 11（Mica 装不上）不会出现"窗口先透明再变白"的
- * 反向闪烁；Win 11 22H2+ 会在装配完成后从 opaque 切到透明（短暂闪烁，
- * 方向是"看见内容 → 看见 Mica"，肉眼无感）。
- *
- * 非 Windows 平台 / material 为 'none' 时不设 attr（或显式设 'none'），
- * 不影响 macOS hudWindow / Linux opaque 的现有行为。
+ * 启动时先走 opaque（CSS 默认），invoke 拿到结果再 patch attribute —— Mica
+ * 装不上的情况下不会出现"先透明再变白"的反向闪烁；Mica/Hud 命中时是
+ * "看见内容 → 看见材质"的正向过渡，肉眼几乎无感。
  */
 export const applyWindowMaterial = (
-  material: 'mica' | 'none',
+  material: WindowMaterial,
   root: HTMLElement | null = typeof document === 'undefined' ? null : document.documentElement
 ): void => {
   if (!root) {

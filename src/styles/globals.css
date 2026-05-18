@@ -429,30 +429,35 @@ html[data-uc-low-effects='true']::view-transition-new(root) {
   animation: none !important;
 }
 
-/* Windows DWM Mica（issue #699 / ship-readiness §D31）：Rust 侧 `apply_to_main_window`
-   装上 Mica 后，前端 `applyWindowMaterialFromBackend` 把 `data-uc-window-material="mica"`
-   写到 `<html>`。此时整个 webview 与窗口的 background 必须能"让光透过去"，
-   否则 Mica 被遮盖。Win10 / 早期 Win11 装不上 Mica 时 attribute 为 'none' 或缺省，
-   走默认 opaque 路径，与现状完全一致。 */
-html[data-uc-window-material='mica'] {
+/* 系统材质透出（issue #699 / ship-readiness §D31）：Rust 侧 `apply_to_main_window`
+   报告 Windows Mica 或 macOS hudWindow 已就绪后，前端 `applyWindowMaterialFromBackend`
+   把 `data-uc-window-material="mica" | "hud"` 写到 `<html>`。此时整个 webview
+   的 background 必须能"让光透过去"，否则 NSVisualEffectView / DWM Mica 被遮盖
+   (issue 之前 macOS 上配了 `windowEffects: ["hudWindow"]` 但视觉完全无效就是
+   这个原因)。Linux / Win10 / 早期 Win11 / 装配失败时 attribute 为 'none' 或缺省，
+   走默认 opaque 路径与现状一致。 */
+html[data-uc-window-material='mica'],
+html[data-uc-window-material='hud'] {
   background-color: transparent;
   --background: transparent;
   --sidebar: transparent;
-  /* 卡片 / popover 仍保持高 opacity，否则文本对比度不足 —— Win11 Settings
-     app 自身的 surface 大致也是 80%+ opacity 叠在 Mica 上。 */
+  /* 卡片 / popover 仍保持高 opacity，否则文本对比度不足 —— Win11 Settings app
+     与 macOS 系统 UI 自身的 surface 大致都是 70%+ opacity 叠在材质上。 */
   --card: oklch(1 0 0 / 0.7);
   --popover: oklch(1 0 0 / 0.92);
 }
 
-html[data-uc-window-material='mica'].dark {
+html[data-uc-window-material='mica'].dark,
+html[data-uc-window-material='hud'].dark {
   --card: oklch(0.205 0 0 / 0.7);
   --popover: oklch(0.205 0 0 / 0.92);
 }
 
 /* 兜底 React `.dark` class 还未挂上前的瞬间 —— html 默认 white / zinc-950
-   会遮住 Mica。 */
+   会遮住底层材质。 */
 @media (prefers-color-scheme: dark) {
-  html[data-uc-window-material='mica'] {
+  html[data-uc-window-material='mica'],
+  html[data-uc-window-material='hud'] {
     background-color: transparent;
   }
 }

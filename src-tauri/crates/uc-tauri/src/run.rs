@@ -85,30 +85,25 @@ async fn wait_for_daemon_connection(
     }
 }
 
-#[cfg(target_os = "windows")]
 fn configure_main_window_for_platform(app: &tauri::AppHandle) {
     let Some(window) = app.get_webview_window("main") else {
-        warn!("Main window not found during Windows window configuration");
+        warn!("Main window not found during platform window configuration");
+        // `get_main_window_material` command 需要这个 state 存在才能响应；
+        // 拿不到 window 时按 `None` 兜底，等同于"没装材质"，前端走 opaque。
+        app.manage(crate::window_material::MainWindowMaterial::None);
         return;
     };
 
+    #[cfg(target_os = "windows")]
     if let Err(error) = window.set_decorations(false) {
         warn!(error = %error, "Failed to disable Windows main window decorations");
     }
 
-    // 装 Mica（仅 Win 11 22H2+ 会成功）。结果存进 app state 给前端查，决定
-    // background token 走透明还是 opaque。见 `window_material.rs` 头注。
+    // Windows: 装 Mica；macOS: tauri.conf 已装 hudWindow，这里只上报；
+    // Linux: 返回 None。结果存进 app state 给 `get_main_window_material`
+    // command 用。见 `window_material.rs` 头注。
     let material = crate::window_material::apply_to_main_window(&window);
     app.manage(material);
-}
-
-#[cfg(not(target_os = "windows"))]
-fn configure_main_window_for_platform(app: &tauri::AppHandle) {
-    // 非 Windows 也要 manage state，否则 `get_main_window_material` command
-    // 在 macOS / Linux 上拿不到 State 会 500。值固定为 `None`：macOS 走的是
-    // `windowEffects: ["hudWindow"]` 系统材质，前端不需要透明 token 切换；
-    // Linux 没有等价材质，保持现状 opaque。
-    app.manage(crate::window_material::MainWindowMaterial::None);
 }
 
 /// Builds the process runtime, starts background tasks and the in-process daemon as needed, and runs the Tauri event loop.

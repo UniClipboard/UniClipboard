@@ -30,18 +30,14 @@ export const applyPlatformTypographyScale = () => {
 }
 
 /**
- * Windows 端：查 Rust 侧 Mica 装配结果并写 `data-uc-window-material`。
+ * 查 Rust 侧主窗口材质状态并写 `<html>` 的 `data-uc-window-material`。
  *
- * 非 Windows 直接 noop —— macOS 走 tauri.conf 的 `hudWindow`、Linux 没有
- * 等价材质，都不需要这个 attribute。失败时（Tauri runtime 未就绪 / IPC
- * 出错）静默走 opaque 兜底，与 issue #699 "Win10 旧版纯色背景" 行为一致。
+ * 后端按平台返回：Windows 装 Mica → `'mica'` 或 `'none'`；macOS 上报
+ * hudWindow → `'hud'`；Linux → `'none'`。前端无条件 invoke，让后端做平台
+ * 判断 —— 失败时（Tauri runtime 未就绪 / IPC 出错）静默走 opaque 兜底。
  */
 export const applyWindowMaterialFromBackend = async (): Promise<void> => {
   if (typeof document === 'undefined') {
-    return
-  }
-  const { isWindows } = detectPlatformInfo()
-  if (!isWindows) {
     return
   }
   try {

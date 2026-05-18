@@ -10,7 +10,7 @@
 #
 # 环境变量：
 #   UC_VERSION      指定版本（如 v0.9.0），默认 latest
-#   UC_FORMAT       强制安装格式：deb | rpm | appimage | app
+#   UC_FORMAT       强制安装格式：deb | rpm | snap | appimage | app
 #   UC_PREFIX       安装目录覆盖：
 #                     - macOS（app）默认 /Applications
 #                     - Linux（appimage）默认 $HOME/.local
@@ -18,8 +18,9 @@
 #   GITHUB_TOKEN    可选，规避 GitHub API 速率限制
 #
 # 自动检测：
-#   - macOS:  下载 .app.tar.gz 并搬到 PREFIX
-#   - Linux:  有 root/sudo + apt/dpkg → deb；dnf/yum/rpm → rpm；否则 AppImage
+#   - macOS:        下载 .app.tar.gz 并搬到 PREFIX
+#   - Ubuntu 20.04: snap（host 没有 libwebkit2gtk-4.1，.deb 起不来）
+#   - 其它 Linux:   有 root/sudo + apt/dpkg → deb；dnf/yum/rpm → rpm；否则 AppImage
 #
 # 提示：macOS 也可使用 Homebrew —— brew install --cask uniclipboard
 
@@ -39,7 +40,7 @@ usage() {
 UniClipboard installer (Linux / macOS)
 
 Usage:
-  install.sh [--version vX.Y.Z] [--format deb|rpm|appimage|app] [--prefix DIR]
+  install.sh [--version vX.Y.Z] [--format deb|rpm|snap|appimage|app] [--prefix DIR]
 
 Environment:
   UC_VERSION, UC_FORMAT, UC_PREFIX, UC_REPO, GITHUB_TOKEN
@@ -47,6 +48,7 @@ Environment:
 Examples:
   install.sh
   install.sh --version v0.9.0
+  install.sh --format snap                  # Ubuntu 20.04 推荐
   install.sh --format appimage              # Linux, no sudo
   install.sh --prefix "$HOME/Applications"  # macOS, user-level
 EOF
@@ -102,6 +104,20 @@ if [[ $EUID -ne 0 ]] && command -v sudo >/dev/null 2>&1; then
   SUDO="sudo"
 fi
 
+# ---- 检测 distro / 版本 ------------------------------------------------------
+DISTRO_ID=""
+DISTRO_VERSION_ID=""
+if [[ "$OS" == "linux" && -r /etc/os-release ]]; then
+  # shellcheck disable=SC1091
+  . /etc/os-release
+  DISTRO_ID="${ID:-}"
+  DISTRO_VERSION_ID="${VERSION_ID:-}"
+fi
+
+is_ubuntu_2004() {
+  [[ "$DISTRO_ID" == "ubuntu" && "$DISTRO_VERSION_ID" == "20.04" ]]
+}
+
 # ---- 解析版本号 --------------------------------------------------------------
 api_get() {
   local url="$1"
@@ -127,6 +143,9 @@ VER_NUM="${VERSION#v}"
 choose_format() {
   if [[ -n "$FORMAT" ]]; then echo "$FORMAT"; return; fi
   if [[ "$OS" == "macos" ]]; then echo app; return; fi
+  # Ubuntu 20.04 host 没有 libwebkit2gtk-4.1（22.04 起才有），.deb 装上也跑不
+  # 起来。snap 自带 gnome-42-2204 extension，runtime 完全自洽，所以优先 snap。
+  if is_ubuntu_2004; then echo snap; return; fi
   if [[ -n "$SUDO" || $EUID -eq 0 ]]; then
     if command -v dpkg >/dev/null 2>&1 && command -v apt-get >/dev/null 2>&1; then echo deb; return; fi
     if command -v rpm >/dev/null 2>&1 \
@@ -139,8 +158,8 @@ FORMAT="$(choose_format)"
 # OS 与 FORMAT 必须匹配
 case "$OS:$FORMAT" in
   macos:app) ;;
-  linux:deb|linux:rpm|linux:appimage) ;;
-  *) die "${OS} 上不支持 --format ${FORMAT}（macOS 用 app；Linux 用 deb/rpm/appimage）" ;;
+  linux:deb|linux:rpm|linux:snap|linux:appimage) ;;
+  *) die "${OS} 上不支持 --format ${FORMAT}（macOS 用 app；Linux 用 deb/rpm/snap/appimage）" ;;
 esac
 
 # ---- PREFIX 默认值（按格式区分） ----------------------------------------------
@@ -215,6 +234,41 @@ install_deb() {
   fi
 }
 
+# ---- Linux: snap (Ubuntu 20.04 等老 distro 推荐) ------------------------------
+# snap 装出来的 binary 由 gnome-42-2204 extension 提供 webkit2gtk-4.1 + GTK
+# stack，跟 host glibc / GTK 完全解耦，所以 Ubuntu 20.04（webkit2gtk-4.0
+# 时代）也能跑。注意 snap 自带 channel & 更新机制，本脚本不传 --version。
+install_snap() {
+  if ! command -v snap >/dev/null 2>&1; then
+    info "未检测到 snapd，准备自动安装（需要 sudo）…"
+    if [[ -z "$SUDO" && $EUID -ne 0 ]]; then
+      die "需要 root/sudo 才能安装 snapd；或改用 --format appimage。"
+    fi
+    if command -v apt-get >/dev/null 2>&1; then
+      $SUDO apt-get update -y
+      $SUDO apt-get install -y snapd
+    else
+      die "当前系统没有 apt-get，无法自动安装 snapd；请手动安装后重试。"
+    fi
+    # snapd.socket 起来才能 install；seeded.service 等 seed 完成
+    if command -v systemctl >/dev/null 2>&1; then
+      $SUDO systemctl enable --now snapd.socket >/dev/null 2>&1 || true
+      $SUDO systemctl start snapd.seeded.service >/dev/null 2>&1 || true
+    fi
+  fi
+
+  info "通过 snap 安装 ${APP_BIN}（stable channel，需要 sudo）…"
+  if [[ -z "$SUDO" && $EUID -ne 0 ]]; then
+    die "snap install 需要 root/sudo。"
+  fi
+  $SUDO snap install "$APP_BIN"
+
+  # password-manager-service plug 在 snap store 没批 auto-connect，首装后必须
+  # 手动连，否则 daemon 启动期访问 secret-service 会被 AppArmor 拒。
+  info "提示：连接 keyring 插槽以让 daemon 访问系统 keyring："
+  printf '       sudo snap connect %s:password-manager-service\n' "$APP_BIN"
+}
+
 # ---- Linux: .rpm -------------------------------------------------------------
 install_rpm() {
   local file="${APP_NAME}-${VER_NUM}-1.${RPM_ARCH}.rpm"
@@ -281,17 +335,26 @@ case "$FORMAT" in
   app)      install_macos_app ;;
   deb)      install_deb ;;
   rpm)      install_rpm ;;
+  snap)     install_snap ;;
   appimage) install_appimage ;;
   *) die "未知格式：${FORMAT}" ;;
 esac
 
-ok "${APP_NAME} ${VERSION} 安装完成。"
+# snap 版本由 snap store 管理，不在 GitHub release tag 内
+if [[ "$FORMAT" == "snap" ]]; then
+  ok "${APP_NAME} 安装完成（来自 snap stable channel）。"
+else
+  ok "${APP_NAME} ${VERSION} 安装完成。"
+fi
 case "$FORMAT" in
   app)
     info "运行：在 Launchpad/Spotlight 搜索 UniClipboard，或执行 'open -a UniClipboard'"
     ;;
   appimage)
     info "运行：${PREFIX}/bin/${APP_NAME}.AppImage    或在应用菜单搜索 UniClipboard"
+    ;;
+  snap)
+    info "运行：在应用菜单搜索 UniClipboard，或执行 'snap run ${APP_BIN}'"
     ;;
   *)
     info "运行：在应用菜单搜索 UniClipboard，或执行 ${APP_BIN}"

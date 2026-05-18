@@ -942,6 +942,7 @@
         "copy": "复制",
         "copied": "已复制",
         "confirmSaved": "我已保存上述凭据",
+        "dismiss": "放弃注册",
         "close": "完成",
         "closeBlocked": "请先勾选「我已保存上述凭据」"
       },

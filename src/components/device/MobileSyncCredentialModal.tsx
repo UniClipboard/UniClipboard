@@ -20,7 +20,7 @@
  * 桌面端打开 iCloud 共享链接无意义,不提供 "Open in Shortcuts" 按钮。
  */
 
-import { Check, Copy, Eye, EyeOff } from 'lucide-react'
+import { Check, Copy, Eye, EyeOff, XIcon } from 'lucide-react'
 import React, { useCallback, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { type RegisterMobileDeviceResult } from '@/api/tauri-command/mobile_sync'
@@ -103,13 +103,9 @@ const MobileSyncCredentialModal: React.FC<Props> = ({ payload, onDiscard, onComp
   if (!payload) return null
 
   return (
-    <Dialog
-      open
-      onOpenChange={open => {
-        if (!open) handleDiscard()
-      }}
-    >
+    <Dialog open>
       <DialogContent
+        showCloseButton={false}
         // sm:max-w-lg 必须显式覆盖 DialogContent 默认的 sm:max-w-sm,
         // 否则 64rem 长 install URL 在 24rem 容器里会撑爆。max-h + 内层滚动
         // 防止列表 + QR + 4 行凭据在小窗口下溢出底部。
@@ -135,6 +131,16 @@ const MobileSyncCredentialModal: React.FC<Props> = ({ payload, onDiscard, onComp
           }
         }}
       >
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-sm"
+          className="absolute top-2 right-2"
+          aria-label={t('devices.mobileSync.credential.dismiss')}
+          onClick={handleDiscard}
+        >
+          <XIcon />
+        </Button>
         <DialogHeader className="px-4 pt-4 pb-2">
           <DialogTitle>{t('devices.mobileSync.credential.title')}</DialogTitle>
           <DialogDescription>{t('devices.mobileSync.credential.subtitle')}</DialogDescription>

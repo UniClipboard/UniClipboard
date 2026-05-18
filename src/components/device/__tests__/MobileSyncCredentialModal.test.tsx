@@ -33,6 +33,7 @@ const defaultHandlers = () => ({
 
 describe('MobileSyncCredentialModal close behavior', () => {
   let initialLanguage = 'en-US'
+  const originalScrollIntoView = Element.prototype.scrollIntoView
 
   beforeAll(async () => {
     if (!i18n.isInitialized) {
@@ -50,6 +51,7 @@ describe('MobileSyncCredentialModal close behavior', () => {
   })
 
   afterAll(async () => {
+    Element.prototype.scrollIntoView = originalScrollIntoView
     await i18n.changeLanguage(initialLanguage)
   })
 
@@ -100,7 +102,7 @@ describe('MobileSyncCredentialModal close behavior', () => {
       />
     )
 
-    await user.click(screen.getByRole('button', { name: 'Close' }))
+    await user.click(screen.getByRole('button', { name: 'Discard registration' }))
 
     expect(onDiscard).toHaveBeenCalledTimes(1)
     expect(onDiscard).toHaveBeenCalledWith('device-1')
@@ -124,6 +126,25 @@ describe('MobileSyncCredentialModal close behavior', () => {
 
     expect(onComplete).toHaveBeenCalledTimes(1)
     expect(onDiscard).not.toHaveBeenCalled()
+  })
+
+  it('does not discard on Escape without clicking the header dismiss button', async () => {
+    const user = userEvent.setup()
+    const { onDiscard, onComplete } = defaultHandlers()
+
+    renderWithI18n(
+      <MobileSyncCredentialModal
+        payload={mockPayload}
+        onDiscard={onDiscard}
+        onComplete={onComplete}
+      />
+    )
+
+    await user.keyboard('{Escape}')
+
+    expect(onDiscard).not.toHaveBeenCalled()
+    expect(onComplete).not.toHaveBeenCalled()
+    expect(screen.getByText('Device added')).toBeInTheDocument()
   })
 
   it('does not render when payload is null', () => {

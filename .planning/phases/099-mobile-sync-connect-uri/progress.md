@@ -7,11 +7,39 @@
 | 阶段 0: 协议规范文档 | ✅ 完成 | `ec59277b` | `docs/architecture/mobile-sync-connect-uri.md`, 含 §7 golden vector |
 | 阶段 1: Rust 编解码 + 22 测试 | ✅ 完成 | `ec59277b` | `connect_uri.rs`, 与规范字节一致 |
 | 阶段 2: Rust use case + DTO | ✅ 完成 | `3756c84e` | `register_device.rs` 改 QR 内容; `mobile_sync.rs` DTO 加 `connectUri`; bindings 自动重生; 顺手清掉 phase 1 留下的 10 个 dead-code 警告 |
-| 阶段 3A: TS 解析器 + Vitest | ✅ 完成 | (本地未提交) | `src/lib/mobileSyncConnectUri.ts` + 跨语言 golden vector 22 测试 |
-| 阶段 3B: 凭据弹窗 UI | ✅ 完成 | (本地未提交) | `MobileSyncCredentialModal.tsx` 主 QR 文案 + 次要卡片; i18n + 单测同步; 9/9 + 80/513 通过 |
-| 阶段 4: iOS 模板 + Android 文档 | ⏳ 待办 | — | `docs/integrations/ios-shortcut.md` + 模板更新 (仓库外) |
+| 阶段 3A: TS 解析器 + Vitest | ✅ 完成 | `23452385` | `src/lib/mobileSyncConnectUri.ts` + 跨语言 golden vector 22 测试 |
+| 阶段 3B: 凭据弹窗 UI | ✅ 完成 | `3b220f75` | `MobileSyncCredentialModal.tsx` 主 QR 文案 + 次要卡片; i18n + 单测同步; 9/9 + 80/513 通过 |
+| 阶段 4A: iOS App + Shortcut 集成文档 | ✅ 完成 | (本地未提交) | `docs/integrations/{ios-app-connect-uri,ios-shortcut}.md` + spec §9/§11 重排 |
+| 阶段 4B: iOS App 仓库 Swift 落地 | ⏳ 跨仓库 | — | `/Users/mark/MyProjects/iOSApp/UniClipboard`, 用户落地 |
+| 阶段 4C: Shortcut 模板更新 + iCloud | ⏳ 仓库外手工 | — | 用户在 Shortcuts.app 操作 |
 
 ## 会话日志
+
+### 2026-05-18 (阶段 4 范围澄清 + 4A 文档落地)
+
+- **关键澄清**: 用户指出"接入端"的真实预期是 iOS 原生 App (走 URL scheme + .onOpenURL，让系统相机扫码即可跳 App 自动填表),**不是** 先前理解的 SyncClipboard 快捷指令。Shortcut 路径降为兜底但仍维护; Android 文档不写 (spec §9.3 已覆盖第三方实现契约)。
+- **survey iOS App** (`/Users/mark/MyProjects/iOSApp/UniClipboard`): SwiftUI App / iOS 26.2 / Swift 5 MainActor / SwiftPM 测试; 已有 `SyncClipboardClient` / `AppSettings` / `ServerConfig` / `SetupFlowView` (Welcome → ServerForm → AutoSwitch) / `QRScannerView` + `ServerQRPayload` (JSON / URL-userinfo); **没有** URL scheme 注册，**没有** .onOpenURL handler。`ServerQRPayload` 与 connect URI 不兼容 (前者不带 scheme，后者是 `uniclipboard://` URL) — 决策保留 legacy 格式，新增 `uniclipboard://` 分支共存。
+- **新增 `docs/integrations/ios-app-connect-uri.md`** (~430 行，英文):
+  - §1-2 Why 与 URL scheme 注册 (Xcode 26 UI 路径; CFBundleURLTypes 不能走 INFOPLIST_KEY_*; plutil 验证命令)。
+  - §3 `.onOpenURL` 挂 WindowGroup 根 + AppViewModel.handleIncomingURL 路由 sketch。
+  - §4 Swift `ConnectURI.Payload / ParseError` 类型 + 6 步 parser 完整 Swift 代码 (含 base64url decode helper, URL scheme http(s) 校验，MissingField 归并语义); 故意不实现 encoder (desktop 是唯一颁发方)。
+  - §5 跨语言 golden test (复用 spec §7.1 字面值，swift-testing macro 风格，4 个 §7.2 负例)。
+  - §6 UX 路由表 (SetupFlow 空态 / 已有 server / 模态在线 三态分别响应)。
+  - §7 错误码 → i18n 文案映射建议 (en + zh-Hans)。
+  - §8 `ServerQRPayload.parse` 入口统一改造 (legacy 与新 connect URI 共存)。
+  - §9 `xcrun simctl openurl` 验证命令，带 §7.1 golden URI 字面值。
+  - §10 维护规约 (o.* 新键无需 iOS 改; v bump 协调; golden test 是 drift detector)。
+- **新增 `docs/integrations/ios-shortcut.md`** (~150 行，英文):
+  - §1 Why 兜底定位。
+  - §2 两阶段 UX (不变)。
+  - §3 22 步 Shortcut Actions 表 (Receive Input / If / Get URLs / Match Text / Replace Text / Calculate padding / Base64 Decode / Get Dictionary 等); 关键 base64url → base64 6 步映射 (- → +, _ → /, 重补 padding) 与 encoder 字节一致。
+  - §4 spec §7.1 golden URI 自检 + 故障定位 checklist。
+  - §5 iCloud 分享 + `SYNC_CLIPBOARD_EX_INSTALL_URL` 常量更新触发条件。
+  - §6 退役条件 (>95% 走原生 App)。
+- **更新 `docs/architecture/mobile-sync-connect-uri.md`**:
+  - §9 重排为 delivery-priority order: §9.1 = Native iOS App (primary), §9.2 = Shortcut (fallback, still maintained), §9.3 = Android / third-party (spec 即契约)。
+  - §11 实现位置表新增 2 行：ios-app-connect-uri.md / ios-shortcut.md。
+- **下游影响**: 4B (iOS App 仓库 Swift 落地) 与 4C (Shortcut 模板手工更新) 跨仓库/仓库外，本桌面仓库不参与。
 
 ### 2026-05-18 (阶段 3B)
 
@@ -126,15 +154,25 @@
 - 2026-05-18 (阶段 3B): QR `<img src>` 仍是 `data:image/png;base64,${qrCodePngBase64}` 字段不变 —— 后端 DTO 已切，前端只更新 alt/label 文案。
 - 2026-05-18 (阶段 3B): install URL 不加 "Open in Shortcuts" CTA, 沿用 CredentialField 自带 copy; 同时把刚加的 `installShortcut.cta` i18n 文案删除避免孤儿键。
 - 2026-05-18 (阶段 3B): 前端单测只断言 UI 结构 (alt 文案 + 次要卡片可见), 不跑跨语言 byte-level 比对 —— 那是阶段 3A 的 `mobileSyncConnectUri.test.ts` 职责。
+- 2026-05-18 (阶段 4 范围): iOS 原生 App (URL scheme + .onOpenURL) 是主路径，SyncClipboard 快捷指令降为兜底但仍维护; Android 文档不写。
+- 2026-05-18 (阶段 4A): iOS App 既有 `ServerQRPayload` 与 connect URI 不兼容 — 保留 legacy 在 `ServerQRPayload.parse` 入口新增 `uniclipboard://` 分支并存，而非弃用旧格式。
+- 2026-05-18 (阶段 4A): iOS Swift parser 故意不实现 encoder — desktop 是唯一颁发方，iOS encoder = dead code + drift 风险; golden test 三方独立断言同一字面值就是 drift detector。
+- 2026-05-18 (阶段 4A): URL scheme 注册走 Xcode UI (Target → Info → URL Types) 而非 INFOPLIST_KEY_* — Xcode 26 generated-Info.plist 模型下 `array<dict>` 无法用 INFOPLIST_KEY_* 表达，PlistBuddy build phase 是更重的备选。
+- 2026-05-18 (阶段 4A): .onOpenURL 挂 `UniClipboardApp` 的 `WindowGroup` 根 (非 ContentView) — 防 SetupFlow/TabView 状态切换重新挂载时丢消息。
 
 ## 下一步动作
 
-阶段 2 (`3756c84e`) 已提交; 阶段 3A + 3B 本地完成待提交 (可单独 PR, 都不影响阶段 4 闭环 — UI 已就位但端到端需快捷指令模板配合)。
+阶段 0-3B 全部提交; 阶段 4A 本地完成待提交。本桌面仓库的工作就此告一段落。
 
-启动 **阶段 4** (iOS 快捷指令模板 + Android 客户端文档):
-1. `docs/integrations/ios-shortcut.md` (英文): 两阶段 UX 流程 (首次安装 → 后续扫码), 快捷指令需新增的步骤 (URL Trigger → 取 `p` query → base64url 解码 → JSON 取 url/user/pwd → 写三个文本变量), 错误处理建议。
-2. `docs/integrations/android-syncclipboard.md` (英文，可选): Intent filter 示例 + 字段映射表 + 兼容客户端 checklist。
-3. 仓库外：iOS 快捷指令模板更新 + 重新签名 + 通过 iCloud 分享，可能需要更新 `SYNC_CLIPBOARD_EX_INSTALL_URL` 常量 (取决于是否复用旧链接)。
-4. 真机 UAT: iPhone(iOS 17+) 一次扫码 → 快捷指令自动写入三栏 → 触发同步 → desktop entry 列表出现新增项。
+跨仓库 / 仓库外动作 (用户负责):
 
-阶段 4 详细任务见 `task_plan.md`。
+1. **阶段 4B** (iOS App 仓库): 切到 `/Users/mark/MyProjects/iOSApp/UniClipboard`, 按 `docs/integrations/ios-app-connect-uri.md` 落地：
+   - `Shared/Network/ConnectURI.swift` + `Tests/UniClipboardNetworkTests/ConnectURITests.swift`
+   - `UniClipboardApp.swift` 加 `.onOpenURL` + `AppViewModel.handleIncomingURL`
+   - `ServerQRPayload.parse` 入口加 `uniclipboard://` 分支
+   - Xcode Target → Info → URL Types 注册 `uniclipboard` scheme
+   - `Localizable.xcstrings` 加 6 个错误码 i18n key
+2. **阶段 4C** (Shortcut 模板): 按 `docs/integrations/ios-shortcut.md` §3 把 22 个 actions 加进模板; iCloud 重新分享; 如新链接 ≠ 现常量，另开 PR 改 `SYNC_CLIPBOARD_EX_INSTALL_URL`。
+3. **真机 UAT** (4B + 4C 完成后): iPhone 系统相机扫桌面 QR → "在 UniClipboard 打开" → ServerForm prefill → 同步 → desktop entry 列表出现新增项。
+
+阶段 4B/4C 详细范围与依赖见 `task_plan.md`。

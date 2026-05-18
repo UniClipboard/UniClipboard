@@ -349,38 +349,52 @@ After first install, every subsequent device add only needs the connect-URI scan
 
 ## 9. Client integration notes
 
-### 9.1 iOS Shortcut
+The three paths below are listed in **delivery-priority order**. Path 9.1 is the
+primary onboarding route for new users; 9.2 is the fallback for users who haven't
+installed the native iOS App yet; 9.3 covers third-party clients.
 
-Two-phase UX:
+### 9.1 Native UniClipboard iOS App (primary)
 
-1. **First time only**: install the SyncClipboard Shortcut template via the iCloud share
-   link (`SYNC_CLIPBOARD_EX_INSTALL_URL`). This is a one-time signed Apple Shortcut bundle.
-2. **Every add-device thereafter**: scan the `uniclipboard://connect?…` QR. The Shortcut
-   template includes steps that:
-   - Detect a URI starting with `uniclipboard://`.
-   - Extract the `p` query parameter.
-   - base64url-decode and parse the JSON dictionary.
-   - Write `url`/`user`/`pwd` into the Shortcut's three configuration text variables.
+The iOS App registers the `uniclipboard` URL scheme. When the user points the system
+Camera app at the desktop's QR, iOS surfaces an "Open in UniClipboard?" smart action
+and routes the URL into the App's `.onOpenURL` handler. The App parses per §4 and
+either pre-fills the Add Server form or asks the user to confirm before saving.
 
-Template maintenance is out of scope for this repo; see
-`docs/integrations/ios-shortcut.md` (added in Phase 4) for the step-by-step template build.
+`o.proto` distinguishes "SyncClipboard-compatible HTTP" from a possible future native
+protocol family. v1 clients ignore the field; future clients may switch transport
+based on it.
 
-### 9.2 Android / SyncClipboard-compatible clients
+Step-by-step integration (URL scheme registration, `.onOpenURL` wiring, Swift parser,
+error-code → user-copy mapping, `simctl openurl` test recipe) lives in
+`docs/integrations/ios-app-connect-uri.md`.
 
-Register an Intent filter for `uniclipboard://connect`. On
-scan:
+### 9.2 SyncClipboard Shortcut template (fallback, still maintained)
+
+Two-phase UX for users without the native App:
+
+1. **First time only**: install the SyncClipboard Shortcut template via the iCloud
+   share link (`SYNC_CLIPBOARD_EX_INSTALL_URL`). One-time signed Apple Shortcut bundle.
+2. **Every add-device thereafter**: feed the `uniclipboard://connect?…` URI to the
+   template. It detects the URI prefix, extracts the `p` query parameter,
+   base64url-decodes it, parses the JSON, and writes `url` / `user` / `pwd` into the
+   template's three keychain values.
+
+Template maintenance is out of scope for this repo; the desktop credential modal
+demotes the iCloud install link to a secondary "first time? install the shortcut"
+card. Step-by-step Shortcut actions are documented in
+`docs/integrations/ios-shortcut.md`.
+
+### 9.3 Android / other third-party clients
+
+Register an Intent filter (Android) or equivalent for `uniclipboard://connect`. On
+scan or URL receipt:
 
 1. Parse per §4.
 2. Fill the in-app server URL / username / password fields.
 3. Save; the HTTP layer is unchanged (`GET /SyncClipboard.json` + Basic Auth).
 
-No HTTP-protocol changes are required on the Android side.
-
-### 9.3 Future UniClipboard native app
-
-Use the same deep link. `o.proto` distinguishes "SyncClipboard-compatible HTTP" from a
-future native protocol family. v1 clients ignore the field; future clients may switch
-transport based on it.
+No HTTP-protocol changes are required on the client side. This repo does not maintain
+client-specific guides for this path — the spec itself is the contract.
 
 ---
 
@@ -415,7 +429,8 @@ Any change that *removes* or *re-typed* a required v1 field requires bumping pay
 | Credential modal            | `src/components/device/MobileSyncCredentialModal.tsx` — primary QR switches to connect URI (Phase 3) |
 | Golden vector (Rust tests)  | `connect_uri.rs::tests` — uses §7 vectors verbatim                                                |
 | Golden vector (TS tests)    | `src/lib/__tests__/mobileSyncConnectUri.test.ts` — uses §7 vectors verbatim                       |
-| iOS Shortcut template doc   | `docs/integrations/ios-shortcut.md` (added in Phase 4)                                            |
+| iOS App integration guide   | `docs/integrations/ios-app-connect-uri.md` (added in Phase 4 — primary client path)               |
+| iOS Shortcut template doc   | `docs/integrations/ios-shortcut.md` (added in Phase 4 — fallback path)                            |
 
 The HTTP wire protocol — unchanged from v1 SyncClipboard semantics — remains documented in
 `src-tauri/crates/uc-webserver/src/mobile_lan/mod.rs` and the existing

@@ -93,5 +93,7 @@ pub fn build() -> Builder<tauri::Wry> {
             crate::commands::factory_reset::factory_reset_space,
             // ── window chrome (macOS traffic lights) ────────────────────────────
             crate::commands::window_chrome::set_traffic_light_position,
+            // ── window material (Windows Mica) ─────────────────────────────────
+            crate::commands::window_material::get_main_window_material,
         ])
 }

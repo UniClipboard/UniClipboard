@@ -76,6 +76,9 @@ windows = { version = "0.61", features = [
     "Win32_UI_Input_KeyboardAndMouse",
     "Win32_System_Threading",
 ] }
+# Mica 装配 —— 见 `src/window_material.rs`。`window-vibrancy` 0.6 已经被
+# tauri 间接拉入 Cargo.lock，这里 promote 成显式依赖，不会引入新 crate。
+window-vibrancy = "0.6"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 core-foundation = "0.10"

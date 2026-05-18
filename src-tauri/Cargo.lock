@@ -9949,6 +9949,7 @@ dependencies = [
  "uc-observability",
  "uc-platform",
  "url",
+ "window-vibrancy",
  "windows 0.61.3",
 ]
 

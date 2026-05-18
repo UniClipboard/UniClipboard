@@ -95,10 +95,21 @@ fn configure_main_window_for_platform(app: &tauri::AppHandle) {
     if let Err(error) = window.set_decorations(false) {
         warn!(error = %error, "Failed to disable Windows main window decorations");
     }
+
+    // 装 Mica（仅 Win 11 22H2+ 会成功）。结果存进 app state 给前端查，决定
+    // background token 走透明还是 opaque。见 `window_material.rs` 头注。
+    let material = crate::window_material::apply_to_main_window(&window);
+    app.manage(material);
 }
 
 #[cfg(not(target_os = "windows"))]
-fn configure_main_window_for_platform(_app: &tauri::AppHandle) {}
+fn configure_main_window_for_platform(app: &tauri::AppHandle) {
+    // 非 Windows 也要 manage state，否则 `get_main_window_material` command
+    // 在 macOS / Linux 上拿不到 State 会 500。值固定为 `None`：macOS 走的是
+    // `windowEffects: ["hudWindow"]` 系统材质，前端不需要透明 token 切换；
+    // Linux 没有等价材质，保持现状 opaque。
+    app.manage(crate::window_material::MainWindowMaterial::None);
+}
 
 /// Builds the process runtime, starts background tasks and the in-process daemon as needed, and runs the Tauri event loop.
 ///

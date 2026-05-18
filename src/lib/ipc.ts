@@ -37,6 +37,7 @@
  * The wrapper transparently injects trace + redacts logs + bubbles errors.
  */
 
+import { toReportableError } from '@/observability/errors'
 import { redactSensitiveArgs } from '@/observability/redaction'
 import { Sentry } from '@/observability/sentry'
 import { traceManager } from '@/observability/trace'
@@ -146,7 +147,7 @@ function buildProxy(): TypedCommands {
             }
             return result
           } catch (error) {
-            Sentry.captureException(error, {
+            Sentry.captureException(toReportableError(error, prop), {
               tags: { command: prop, traceId: trace.traceId },
               extra: { args: safeArgs },
             })

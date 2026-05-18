@@ -1,4 +1,5 @@
 import { invoke } from '@tauri-apps/api/core'
+import { toReportableError } from '@/observability/errors'
 import { redactSensitiveArgs } from '@/observability/redaction'
 import { Sentry } from '@/observability/sentry'
 import { traceManager } from '@/observability/trace'
@@ -39,7 +40,7 @@ export async function invokeWithTrace<T>(
       },
     })
   } catch (error) {
-    Sentry.captureException(error, {
+    Sentry.captureException(toReportableError(error, command), {
       tags: { command, traceId: trace.traceId },
       extra: { args: safeArgs },
     })

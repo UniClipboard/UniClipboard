@@ -24,7 +24,7 @@ curl -fsSL https://raw.githubusercontent.com/UniClipboard/UniClipboard/main/scri
 What it does:
 
 - **macOS** — downloads `.app.tar.gz`, extracts it, and moves `UniClipboard.app` into `/Applications` (escalates with `sudo` if needed; pass `--prefix "$HOME/Applications"` for a user-level install).
-- **Linux** — on Ubuntu 20.04 the script installs via `snap` (the `core22` runtime bundles GTK + WebKit, so the `.deb`'s `libwebkit2gtk-4.1` requirement isn't a blocker; `snapd` is auto-installed via `apt` if missing). Other Debian-family distros install the `.deb` via `apt`. `dnf`-based distros (Fedora/RHEL/openSUSE) enable the [`mkdir700/uniclipboard`](https://copr.fedorainfracloud.org/coprs/mkdir700/uniclipboard/) COPR repo and `dnf install uniclipboard`, so `dnf upgrade` keeps tracking new releases — pass `--version vX.Y.Z` to fall back to a one-shot `.rpm` download instead. Without root, the script falls back to AppImage in `~/.local/bin` with a `.desktop` entry.
+- **Linux** — the quick-install script uses `snap` only on Ubuntu 20.04 (the `core22` runtime bundles GTK + WebKit, so the `.deb`'s `libwebkit2gtk-4.1` requirement is avoided; `snapd` is auto-installed via `apt` if missing). Other Debian-family distros default to the `.deb` via `apt`; the Snap section below is an alternative manual path. `dnf`-based distros (Fedora/RHEL/openSUSE) enable the [`mkdir700/uniclipboard`](https://copr.fedorainfracloud.org/coprs/mkdir700/uniclipboard/) COPR repo and `dnf install uniclipboard`, so `dnf upgrade` keeps tracking new releases — pass `--version vX.Y.Z` to fall back to a one-shot `.rpm` download instead. Without root, the script falls back to AppImage in `~/.local/bin` with a `.desktop` entry.
 
 Common flags:
 

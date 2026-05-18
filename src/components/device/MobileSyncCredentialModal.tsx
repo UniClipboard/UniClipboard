@@ -74,7 +74,7 @@ const MobileSyncCredentialModal: React.FC<Props> = ({ payload, onDiscard, onComp
     if (!payload) return
     const { deviceId } = payload
     resetLocalState()
-    void Promise.resolve(onDiscard(deviceId))
+    void onDiscard(deviceId)
   }, [onDiscard, payload, resetLocalState])
 
   const handleComplete = useCallback(() => {

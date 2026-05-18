@@ -967,9 +967,11 @@ const useMobileDevices = (): UseMobileDevicesReturn => {
 
   const discardCredential = useCallback(
     async (deviceId: string) => {
+      // 乐观清空:modal 立即收起,避免用户连点 ✕ 触发第二次 revoke
+      // (第二次会以 DEVICE_NOT_FOUND 失败并弹出无意义错误 toast)。
+      setCredentialPayload(null)
       try {
         await revokeMobileDevice(deviceId)
-        setCredentialPayload(null)
         await reload()
       } catch (err) {
         log.error({ err, deviceId }, 'failed to discard newly registered mobile device')

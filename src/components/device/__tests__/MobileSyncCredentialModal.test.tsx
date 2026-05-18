@@ -4,7 +4,7 @@
 
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import type { ReactElement } from 'react'
+import { useState, type ReactElement } from 'react'
 import { I18nextProvider } from 'react-i18next'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import type { RegisterMobileDeviceResult } from '@/api/tauri-command/mobile_sync'
@@ -154,5 +154,38 @@ describe('MobileSyncCredentialModal close behavior', () => {
     )
 
     expect(screen.queryByText('Device added')).not.toBeInTheDocument()
+  })
+
+  // 父组件 DevicesPage 的 discardCredential 进入函数后立刻把 payload 清空
+  // (乐观清空),避免连点 ✕ 触发第二次 revoke 拿到 DEVICE_NOT_FOUND。这里
+  // 用一个 wrapper 复现该 contract,验证 modal 在 payload 清空后不再响应。
+  it('drops the second rapid X click once parent clears payload optimistically', async () => {
+    const user = userEvent.setup()
+    const onDiscard = vi.fn<(deviceId: string) => void>()
+    const onComplete = vi.fn()
+
+    const Wrapper = () => {
+      const [payload, setPayload] = useState<RegisterMobileDeviceResult | null>(mockPayload)
+      return (
+        <MobileSyncCredentialModal
+          payload={payload}
+          onDiscard={deviceId => {
+            setPayload(null)
+            onDiscard(deviceId)
+          }}
+          onComplete={onComplete}
+        />
+      )
+    }
+
+    renderWithI18n(<Wrapper />)
+
+    const xButton = screen.getByRole('button', { name: 'Discard registration' })
+    await user.click(xButton)
+    await user.click(xButton)
+
+    expect(onDiscard).toHaveBeenCalledTimes(1)
+    expect(onDiscard).toHaveBeenCalledWith('device-1')
+    expect(screen.queryByRole('button', { name: 'Discard registration' })).not.toBeInTheDocument()
   })
 })

@@ -23,7 +23,7 @@ curl -fsSL https://raw.githubusercontent.com/UniClipboard/UniClipboard/main/scri
 脚本会自动判断：
 
 - **macOS** —— 下载 `.app.tar.gz`，解压后搬到 `/Applications/UniClipboard.app`（写权限不足时自动调用 `sudo`；也可用 `--prefix "$HOME/Applications"` 走用户级安装）。
-- **Linux** —— 有 sudo 时优先用 `apt`/`dnf`/`yum` 安装 `.deb` 或 `.rpm`；都不可用则回退到 AppImage（装到 `~/.local/bin` 并注册 `.desktop`，无需 root）。
+- **Linux** —— 在 Ubuntu 20.04 上自动通过 `snap` 安装（`core22` runtime 自带 GTK + WebKit，绕开 host 缺 `libwebkit2gtk-4.1` 的问题；缺 `snapd` 会通过 `apt` 自动补装）。其它发行版则在 sudo 可用时优先用 `apt`/`dnf`/`yum` 安装 `.deb` 或 `.rpm`；都不可用则回退到 AppImage（装到 `~/.local/bin` 并注册 `.desktop`，无需 root）。
 
 常用选项：
 

@@ -24,7 +24,7 @@ curl -fsSL https://raw.githubusercontent.com/UniClipboard/UniClipboard/main/scri
 What it does:
 
 - **macOS** — downloads `.app.tar.gz`, extracts it, and moves `UniClipboard.app` into `/Applications` (escalates with `sudo` if needed; pass `--prefix "$HOME/Applications"` for a user-level install).
-- **Linux** — with sudo, installs `.deb` via `apt` or `.rpm` via `dnf` / `yum`; otherwise falls back to AppImage in `~/.local/bin` with a `.desktop` entry (no root required).
+- **Linux** — on Ubuntu 20.04 the script installs via `snap` (the `core22` runtime bundles GTK + WebKit, so the `.deb`'s `libwebkit2gtk-4.1` requirement isn't a blocker; `snapd` is auto-installed via `apt` if missing). On other distributions, with sudo it installs `.deb` via `apt` or `.rpm` via `dnf` / `yum`; otherwise it falls back to AppImage in `~/.local/bin` with a `.desktop` entry (no root required).
 
 Common flags:
 

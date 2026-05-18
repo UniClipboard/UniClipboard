@@ -23,7 +23,7 @@ curl -fsSL https://raw.githubusercontent.com/UniClipboard/UniClipboard/main/scri
 脚本会自动判断：
 
 - **macOS** —— 下载 `.app.tar.gz`，解压后搬到 `/Applications/UniClipboard.app`（写权限不足时自动调用 `sudo`；也可用 `--prefix "$HOME/Applications"` 走用户级安装）。
-- **Linux** —— 在 Ubuntu 20.04 上自动通过 `snap` 安装（`core22` runtime 自带 GTK + WebKit，绕开 host 缺 `libwebkit2gtk-4.1` 的问题；缺 `snapd` 会通过 `apt` 自动补装）。其它 Debian 系发行版通过 `apt` 安装 `.deb`。`dnf` 系发行版（Fedora/RHEL/openSUSE）会启用 [`mkdir700/uniclipboard`](https://copr.fedorainfracloud.org/coprs/mkdir700/uniclipboard/) COPR 仓库并 `dnf install uniclipboard`，后续 `dnf upgrade` 自动跟版本——若传 `--version vX.Y.Z` 则改走一次性 `.rpm` 下载。无 root 时回退到 AppImage（装到 `~/.local/bin` 并注册 `.desktop`）。
+- **Linux** —— 一键安装脚本只会在 Ubuntu 20.04 上自动改走 `snap`（`core22` runtime 自带 GTK + WebKit，因此可以避开 `.deb` 对 `libwebkit2gtk-4.1` 的依赖问题；缺 `snapd` 会通过 `apt` 自动补装）。其它 Debian 系发行版默认仍通过 `apt` 安装 `.deb`；下方的 Snap 小节属于手动安装的备选路径。`dnf` 系发行版（Fedora/RHEL/openSUSE）会启用 [`mkdir700/uniclipboard`](https://copr.fedorainfracloud.org/coprs/mkdir700/uniclipboard/) COPR 仓库并 `dnf install uniclipboard`，后续 `dnf upgrade` 自动跟版本——若传 `--version vX.Y.Z` 则改走一次性 `.rpm` 下载。无 root 时回退到 AppImage（装到 `~/.local/bin` 并注册 `.desktop`）。
 
 常用选项：
 

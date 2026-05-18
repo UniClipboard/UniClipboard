@@ -432,18 +432,32 @@ const DeviceTabs: React.FC = () => {
           </TabsList>
 
           <div className="flex items-center gap-1.5 pb-1">
+            {/* key 上带 tab 名是为了让 tab 切换时 React 卸载旧按钮、挂载新按钮 —— */}
+            {/* 否则两个分支被 reconciliation 复用同一 DOM,Button 的 transition-all */}
+            {/* 会把 bg-primary → 透明的颜色变化做一次过渡,用户看到 primary 闪一下。 */}
             {tab === 'p2p' ? (
-              <Button variant="default" size="sm" onClick={() => setAddP2PDialogOpen(true)}>
+              <Button
+                key="p2p-add"
+                variant="default"
+                size="sm"
+                onClick={() => setAddP2PDialogOpen(true)}
+              >
                 <Plus className="h-3.5 w-3.5" />
                 {t('devices.list.actions.addDevice')}
               </Button>
             ) : (
               <>
-                <Button variant="ghost" size="sm" onClick={mobileActions.openSettings}>
+                <Button
+                  key="mobile-configure"
+                  variant="ghost"
+                  size="sm"
+                  onClick={mobileActions.openSettings}
+                >
                   <Settings2 className="h-3.5 w-3.5" />
                   {t('devices.mobileSync.configure')}
                 </Button>
                 <Button
+                  key="mobile-add"
                   variant="default"
                   size="sm"
                   onClick={mobileActions.handleAddClick}

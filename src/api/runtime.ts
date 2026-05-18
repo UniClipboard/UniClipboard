@@ -1,5 +1,5 @@
 import { commands } from '@/lib/ipc'
-import type { DeviceMeta as GeneratedDeviceMeta } from '@/lib/ipc'
+import type { DeviceMeta as GeneratedDeviceMeta, MainWindowMaterial } from '@/lib/ipc'
 
 export async function getDeviceId(): Promise<string> {
   return await commands.getDeviceId()
@@ -16,4 +16,10 @@ export type DeviceMeta = GeneratedDeviceMeta
 
 export async function getDeviceMeta(): Promise<DeviceMeta> {
   return await commands.getDeviceMeta()
+}
+
+export type { MainWindowMaterial }
+
+export async function getMainWindowMaterial(): Promise<MainWindowMaterial> {
+  return await commands.getMainWindowMaterial()
 }

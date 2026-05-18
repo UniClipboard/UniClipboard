@@ -5,7 +5,7 @@ import { Provider } from 'react-redux'
 import './i18n'
 import { getDeviceMeta } from '@/api/runtime'
 import { connectDaemonWs, registerDaemonShutdownListener } from '@/lib/daemon-ws-bootstrap'
-import { initializeWindowUi } from '@/lib/window-ui'
+import { applyWindowMaterialFromBackend, initializeWindowUi } from '@/lib/window-ui'
 import { applyDeviceMetaToSentry, initSentry, Sentry } from '@/observability/sentry'
 import App from './App'
 import { store } from './store'
@@ -63,6 +63,13 @@ if (typeof window !== 'undefined') {
 }
 
 initializeWindowUi()
+
+// Windows-only: 异步从 Rust 拉 Mica 装配结果，patch 到 `<html>` 的
+// `data-uc-window-material` 让 `globals.css` 决定 background 走透明还是 opaque。
+// 与 `getDeviceMeta` 同模式 —— fire-and-forget，失败不阻塞渲染。
+applyWindowMaterialFromBackend().catch(err => {
+  console.warn('[main] window material setup failed:', err)
+})
 
 // 初始化日志系统：将后端日志输出到浏览器 DevTools
 const initLogging = async () => {

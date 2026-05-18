@@ -217,6 +217,7 @@ export type {
   FactoryResetResult,
   InstallKind,
   LanInterfaceView,
+  MainWindowMaterial,
   MobileDeviceView,
   MobileSyncError,
   MobileSyncSettingsViewDto,

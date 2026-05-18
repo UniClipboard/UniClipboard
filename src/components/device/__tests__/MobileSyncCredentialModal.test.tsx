@@ -20,6 +20,10 @@ const mockPayload: RegisterMobileDeviceResult = {
   username: 'user_a',
   password: 'secret-pass',
   installUrl: 'https://www.icloud.com/shortcuts/example',
+  // 阶段 2 起 QR 编的是 connectUri (uniclipboard://connect?...) 而非 installUrl。
+  // 这里 base64 是占位 — 单测断言 alt 文案而不去解析 PNG 字节。
+  connectUri:
+    'uniclipboard://connect?v=1&svc=mobile-sync&p=eyJ2IjoxLCJ1cmwiOiJodHRwOi8vMTkyLjE2OC4xLjEwOjQyNzIwIn0',
   qrCodePngBase64: 'iVBORw0KGgo=',
 }
 
@@ -159,6 +163,40 @@ describe('MobileSyncCredentialModal close behavior', () => {
   // 父组件 DevicesPage 的 discardCredential 进入函数后立刻把 payload 清空
   // (乐观清空),避免连点 ✕ 触发第二次 revoke 拿到 DEVICE_NOT_FOUND。这里
   // 用一个 wrapper 复现该 contract,验证 modal 在 payload 清空后不再响应。
+  // 阶段 3B: QR 主操作从"安装快捷指令"切到"扫码自动填三栏";
+  // installUrl 降级为次要"首次安装"卡片。这两条断言锁定该 UX 切换,
+  // 防止后续误改文案 / 误删次要卡片。
+  it('renders the QR as the primary auto-fill action with the new alt text', () => {
+    const { onDiscard, onComplete } = defaultHandlers()
+    renderWithI18n(
+      <MobileSyncCredentialModal
+        payload={mockPayload}
+        onDiscard={onDiscard}
+        onComplete={onComplete}
+      />
+    )
+
+    const qr = screen.getByAltText('QR code that auto-fills the sync credentials')
+    expect(qr).toBeInTheDocument()
+    expect(qr.getAttribute('src')).toBe('data:image/png;base64,iVBORw0KGgo=')
+    expect(screen.getByText('Scan with iPhone to auto-fill the credentials')).toBeInTheDocument()
+  })
+
+  it('shows the install-shortcut secondary card with the install URL', () => {
+    const { onDiscard, onComplete } = defaultHandlers()
+    renderWithI18n(
+      <MobileSyncCredentialModal
+        payload={mockPayload}
+        onDiscard={onDiscard}
+        onComplete={onComplete}
+      />
+    )
+
+    expect(screen.getByText('First time? Install the shortcut first')).toBeInTheDocument()
+    expect(screen.getByText('Install link (one-time)')).toBeInTheDocument()
+    expect(screen.getByText('https://www.icloud.com/shortcuts/example')).toBeInTheDocument()
+  })
+
   it('drops the second rapid X click once parent clears payload optimistically', async () => {
     const user = userEvent.setup()
     const onDiscard = vi.fn<(deviceId: string) => void>()

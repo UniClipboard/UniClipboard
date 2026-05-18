@@ -13,11 +13,18 @@
  * 平台 tab:LAN 监听跑的是 SyncClipboard 协议,凭据本身平台无关 —— 同一组
  * (base URL + username + password) 在 iOS / Android 客户端上都能用。tab 仅
  * 控制「接入步骤」的展示形式:
- * - iOS(默认):展示 iCloud 快捷指令的安装二维码 + install URL
+ * - iOS(默认):
+ *   - 主操作: connect URI 二维码 (uniclipboard://connect?v=1&svc=mobile-sync&p=...)
+ *     iPhone 上的 SyncClipboard 快捷指令扫描后一次性解出 url/user/pwd 直接填
+ *     三栏 —— 替代旧版"用户肉眼抄写"。后端 DTO `qrCodePngBase64` 阶段 2 起
+ *     已切到编码 connect URI,本组件图源不变,只是语义改变。
+ *   - 次要卡片: 首次接入需先装快捷指令,展示 iCloud install URL。后续设备
+ *     已装过即可忽略。
  * - Android:暂不提供官方客户端,仅展示凭据 + 一段说明,告知用户使用任何
  *   兼容 SyncClipboard 协议的客户端接入
  *
- * 桌面端打开 iCloud 共享链接无意义,不提供 "Open in Shortcuts" 按钮。
+ * 桌面端打开 iCloud 共享链接无意义,不提供 "Open in Shortcuts" 按钮 ——
+ * CredentialField 自带 copy 按钮,在 iPhone 端粘贴到 Safari 即可。
  */
 
 import { Check, Copy, Eye, EyeOff, XIcon } from 'lucide-react'
@@ -169,7 +176,9 @@ const MobileSyncCredentialModal: React.FC<Props> = ({ payload, onDiscard, onComp
             </TabsList>
 
             <TabsContent value="ios" className="mt-3 space-y-4">
-              {/* 二维码 */}
+              {/* 主操作: 扫码自动填三栏。后端 DTO 的 qrCodePngBase64
+                  从阶段 2 起渲染的是 connectUri (uniclipboard://connect?...),
+                  不再是 iCloud install URL — 这里图源不变,只是语义已改。 */}
               <div className="flex flex-col items-center gap-2 rounded-md border border-border/60 bg-muted/30 p-4">
                 <Label className="text-xs uppercase tracking-wider text-muted-foreground">
                   {t('devices.mobileSync.credential.qr.label')}
@@ -179,14 +188,28 @@ const MobileSyncCredentialModal: React.FC<Props> = ({ payload, onDiscard, onComp
                   alt={t('devices.mobileSync.credential.qr.alt')}
                   className="h-48 w-48 rounded bg-white p-2"
                 />
+                <p className="text-center text-xs text-muted-foreground">
+                  {t('devices.mobileSync.credential.qr.help')}
+                </p>
               </div>
 
-              {/* Install URL */}
-              <CredentialField
-                label={t('devices.mobileSync.credential.installUrl.label')}
-                value={payload.installUrl}
-                mono
-              />
+              {/* 次要卡片: 首次安装快捷指令。降级为辅助操作 —— 多数后续设备
+                  注册时用户已装过 shortcut,不需要再看安装链接;但首次接入
+                  仍需引导,所以保留。桌面端打开 iCloud 链接无意义,只提供
+                  复制 (CredentialField 自带 copy 按钮), 不放 "Open" CTA。 */}
+              <div className="space-y-2 rounded-md border border-border/60 bg-card/50 p-3">
+                <p className="text-sm font-medium">
+                  {t('devices.mobileSync.credential.installShortcut.title')}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  {t('devices.mobileSync.credential.installShortcut.body')}
+                </p>
+                <CredentialField
+                  label={t('devices.mobileSync.credential.installUrl.label')}
+                  value={payload.installUrl}
+                  mono
+                />
+              </div>
             </TabsContent>
 
             <TabsContent value="android" className="mt-3 space-y-3">

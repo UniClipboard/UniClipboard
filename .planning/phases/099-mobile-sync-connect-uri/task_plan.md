@@ -8,7 +8,7 @@
 
 ## 当前阶段
 
-阶段 0-2 已提交 (commits `ec59277b` 与 `3756c84e`); 阶段 3A 本地完成待提交。下一步进入阶段 3B (前端凭据弹窗 UI 切换)。
+阶段 0-2 已提交 (commits `ec59277b` 与 `3756c84e`); 阶段 3A + 3B 本地完成待提交。下一步进入阶段 4 (iOS 模板 + Android 客户端文档)。
 
 ## 关键非目标 (本期不做)
 
@@ -42,7 +42,7 @@
     ↓
 阶段 3A (TS 解析器 + Vitest)   ✅ 本地完成(待提交)
     ↓
-阶段 3B (凭据弹窗 UI)          ⏳ 待办
+阶段 3B (凭据弹窗 UI)          ✅ 本地完成(待提交)
     ↓
 阶段 4 (iOS 模板 + 客户端文档) ⏳ 待办
 ```
@@ -138,27 +138,32 @@
 
 **完成时间**: 2026-05-18 (本地)
 
-### 3B: 凭据弹窗 UI
+### 3B: 凭据弹窗 UI ✅
 
-**目标**: 把主二维码切换到 connect URI, 把 iCloud 安装链接降级为"首次安装"次要入口。
+**目标**: 把主二维码语义切换到 connect URI (后端 DTO 已切),把 iCloud 安装链接降级为"首次安装"次要入口。
 
-**改动文件**:
+**产出** (本地，待提交):
 
-1. `src/components/device/MobileSyncCredentialModal.tsx`
-   - iOS tab 主 QR 图源换为 `connectUri` (后端 DTO 已带，阶段 2 落地)
-   - 添加次要卡片"首次需安装快捷指令", CTA 跳转 `installUrl`
-   - 文案更新："扫一下二维码就能自动填三栏" + 中文翻译
-   - 旧 e2e/单测调整断言: 主 QR 内容由 connect URI 渲染，iCloud 链接以次要卡片形式存在
+1. `src/components/device/MobileSyncCredentialModal.tsx`:
+   - iOS tab 主 QR 区图源不变 (后端阶段 2 已切到编码 connectUri), 文案换为 "扫码自动填凭据" + help 副文案。
+   - 新增二级"首次安装"卡片包裹 install URL 字段; 沿用 CredentialField 自带 copy (桌面端打开 iCloud 链接无意义，不放 Open CTA)。
+   - 顶部组件注释更新 iOS tab 描述：主操作 = connect URI QR, 次要 = 首次安装。
 
-2. (可能) `src/components/device/__tests__/MobileSyncCredentialModal.test.tsx`
-   - 断言 QR 图 `src` 包含 connect URI base64 (或 alt text)
-   - 断言"首次安装"次要卡片可见
+2. `src/i18n/locales/{en-US,zh-CN}.json`:
+   - 改 `qr.label` / `qr.alt` → auto-fill 语义。
+   - 新增 `qr.help` 副文案 + `installShortcut.{title,body}` 卡片文案。
+   - `installUrl.label` 重命名为 "Install link (one-time)" / "安装链接 (一次性)"。
 
-**验收**:
-- `bun run test` 前端单测全绿
-- 手动从弹窗用 iPhone 扫 QR → 走阶段 4 的快捷指令模板 → 三栏自动填入 (端到端需阶段 4 配合)
+3. `src/components/device/__tests__/MobileSyncCredentialModal.test.tsx`:
+   - mockPayload 加 `connectUri` 字段 (DTO 自 阶段 2 已有 → 之前测试缺字段是 TS 隐式 any tolerated)。
+   - 新增 2 条断言：① QR alt = auto-fill + src 来自 PNG base64; ② 首次安装卡片标题 + install URL + install link label 三件套都可见。
 
-**依赖**: 阶段 2 提供 `connectUri` DTO 字段。
+**测试**:
+- `bun run test src/components/device/__tests__/MobileSyncCredentialModal.test.tsx` → 9 通过 (原 7 + 新 2)
+- `bun run test --run`(全套) → 80 文件 / 513 通过 (原 511 + 新 2), 无回归
+- `npx eslint <两个改动 tsx>` → 0 error / 0 warning
+
+**完成时间**: 2026-05-18 (本地)
 
 ---
 
@@ -212,3 +217,6 @@
 - 2026-05-18 (阶段 3A): TS 端 `ConnectUriError` 用 `class ... extends Error` + `code: ConnectUriErrorCode` 联合常量，而非 discriminated union object —— JS 生态期望异常通道，且 class 能保留 stack trace, `code` 字段方便 i18n key 映射 (`CONNECT_URI_INVALID_SCHEME` 等)。
 - 2026-05-18 (阶段 3A): JSON.stringify 字段顺序依赖浏览器 V8/JSC 的"字符串键按插入顺序"行为 (ES2015 起规范保证); 编码侧手动按 v/url/user/pwd/o 顺序构造对象，`o` 内部键先 sort 再插入 —— 与 Rust BTreeMap 字典序合起来保证字节级一致。
 - 2026-05-18 (阶段 3A): `coercePayload` 对 `JSON.parse` 出的 `unknown` 显式 narrow, 非 string 的 `o.*` 键静默丢弃 (不污染 `Record<string, string>` 调用方契约); `v` 非整数走 UNSUPPORTED_VERSION 而非 PAYLOAD_DECODE_FAILED, 与 Rust serde u32 反序列化语义对齐。
+- 2026-05-18 (阶段 3B): QR `<img src>` 字段保持 `data:image/png;base64,${qrCodePngBase64}` —— 后端 DTO 在阶段 2 已将该字段所编码的 URI 从 `installUrl` 切到 `connectUri`,前端无需感知具体编了什么，只需更新 alt/label 文案让 UX 语义对齐。
+- 2026-05-18 (阶段 3B): 不为 install URL 加 "Open in Shortcuts" CTA —— 桌面端打开 iCloud 链接无意义，沿用 CredentialField 自带 copy (在 iPhone Safari 粘贴即可); 同时 `installShortcut.cta` i18n 文案删除以免成为孤儿键。
+- 2026-05-18 (阶段 3B): 测试 mockPayload 加 `connectUri` 字段补齐 DTO; 不在前端单测里跑跨语言 byte-level 比对 (那是阶段 3A 的 mobileSyncConnectUri.test.ts 职责); 这里只断言 UI 结构 (alt 文案 + 次要卡片可见性),防止误改 UX。

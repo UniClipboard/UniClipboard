@@ -930,11 +930,16 @@
           "body": "After this dialog closes, the password cannot be recovered. If you lose it, you must revoke this device and add it again."
         },
         "qr": {
-          "label": "Scan to install the SyncClipboard shortcut",
-          "alt": "SyncClipboard shortcut install QR code"
+          "label": "Scan with iPhone to auto-fill the credentials",
+          "alt": "QR code that auto-fills the sync credentials",
+          "help": "The shortcut reads server URL, username, and password from this code — no manual typing."
+        },
+        "installShortcut": {
+          "title": "First time? Install the shortcut first",
+          "body": "Open the link below on your iPhone (Safari), install the shortcut once, then come back and scan the QR above."
         },
         "installUrl": {
-          "label": "Or copy the install link"
+          "label": "Install link (one-time)"
         },
         "android": {
           "instructions": "There is no official Android client yet. Use any third-party app that speaks the SyncClipboard protocol (HTTP Basic Auth + GET/PUT /SyncClipboard.json) and configure it with the URL and credentials below."

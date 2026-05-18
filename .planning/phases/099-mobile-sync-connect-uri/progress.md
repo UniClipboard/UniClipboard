@@ -8,10 +8,29 @@
 | 阶段 1: Rust 编解码 + 22 测试 | ✅ 完成 | `ec59277b` | `connect_uri.rs`, 与规范字节一致 |
 | 阶段 2: Rust use case + DTO | ✅ 完成 | `3756c84e` | `register_device.rs` 改 QR 内容; `mobile_sync.rs` DTO 加 `connectUri`; bindings 自动重生; 顺手清掉 phase 1 留下的 10 个 dead-code 警告 |
 | 阶段 3A: TS 解析器 + Vitest | ✅ 完成 | (本地未提交) | `src/lib/mobileSyncConnectUri.ts` + 跨语言 golden vector 22 测试 |
-| 阶段 3B: 凭据弹窗 UI | ⏳ 待办 | — | `MobileSyncCredentialModal.tsx` 主 QR 切换 |
+| 阶段 3B: 凭据弹窗 UI | ✅ 完成 | (本地未提交) | `MobileSyncCredentialModal.tsx` 主 QR 文案 + 次要卡片; i18n + 单测同步; 9/9 + 80/513 通过 |
 | 阶段 4: iOS 模板 + Android 文档 | ⏳ 待办 | — | `docs/integrations/ios-shortcut.md` + 模板更新 (仓库外) |
 
 ## 会话日志
+
+### 2026-05-18 (阶段 3B)
+
+- **i18n 文案** (`src/i18n/locales/{en-US,zh-CN}.json`):
+  - `qr.label` / `qr.alt` 改 auto-fill 语义; 新增 `qr.help` 副文案 (告诉用户快捷指令会自动读 url/user/pwd, 无需手动输)。
+  - 新增 `installShortcut.{title, body}` 二级卡片文案; 中途加的 `installShortcut.cta` 又删除 —— 桌面端打开 iCloud 链接无意义，CredentialField 自带 copy 就够。
+  - `installUrl.label` 从 "Or copy the install link" / "或复制安装链接" 改为 "Install link (one-time)" / "安装链接 (一次性)", 体现"一次性入口"语义。
+- **`MobileSyncCredentialModal.tsx`** iOS tab:
+  - 主 QR 区图源不变 (`data:image/png;base64,${qrCodePngBase64}`) —— 后端阶段 2 已切到编码 connect URI, 前端无需感知具体编了什么，只需更新 alt/label 让 UX 语义对齐。新增 help 副文案放在 QR 下方。
+  - 新增二级"首次安装"卡片包裹 install URL 字段 (border + bg-card/50 突出降级), 沿用 CredentialField 自带 copy 按钮。
+  - 顶部组件注释更新 iOS tab 描述：主操作 = connect URI QR, 次要 = 首次安装。明确"桌面端打开 iCloud 链接无意义，只复制即可，在 iPhone Safari 粘贴"。
+- **单测** (`MobileSyncCredentialModal.test.tsx`):
+  - mockPayload 加 `connectUri: 'uniclipboard://connect?v=1&svc=mobile-sync&p=...'` 字段 (DTO 阶段 2 已有，之前测试缺字段是 TS 隐式默认 tolerated)。
+  - 新增 `renders the QR as the primary auto-fill action with the new alt text`: 断言 QR alt 文案 = "QR code that auto-fills the sync credentials", img src 来自 PNG base64, label 文案存在。
+  - 新增 `shows the install-shortcut secondary card with the install URL`: 断言"首次安装"标题 + install link label + install URL 字面值三件套都可见。
+- **测试结果**:
+  - 定向：`bun run test src/components/device/__tests__/MobileSyncCredentialModal.test.tsx` → 9/9 通过 (原 7 + 新 2)
+  - 全套：`bun run test --run` → 80 文件 / 513 测试 OK (原 511 + 新 2), 无回归
+  - Lint: `npx eslint <两个改动 tsx>` → 0 error / 0 warning
 
 ### 2026-05-18 (阶段 3A)
 
@@ -104,17 +123,18 @@
 - 2026-05-18 (阶段 2): `o.install` 字段在阶段 2 暂留空，等阶段 4 真机走通后再决定是否塞 iCloud 链接到 payload(规避在两处维护同一份 URL)。
 - 2026-05-18 (阶段 2): 函数名 `render_install_qr` 改为 `render_qr_code` — 旧名误导，现在它编任意 URI。crate 内零外溢，不影响 §11.4 边界。
 - 2026-05-18 (阶段 2): `ConnectUriError → RegisterMobileShortcutDeviceError` 全部翻译为 `QrRenderFailed`(复用现有变体), 不新增错误码。`UriTooLong` 带 `len/max`; 其余 catch-all 带 `unexpected:` 前缀供日志排障。
+- 2026-05-18 (阶段 3B): QR `<img src>` 仍是 `data:image/png;base64,${qrCodePngBase64}` 字段不变 —— 后端 DTO 已切，前端只更新 alt/label 文案。
+- 2026-05-18 (阶段 3B): install URL 不加 "Open in Shortcuts" CTA, 沿用 CredentialField 自带 copy; 同时把刚加的 `installShortcut.cta` i18n 文案删除避免孤儿键。
+- 2026-05-18 (阶段 3B): 前端单测只断言 UI 结构 (alt 文案 + 次要卡片可见), 不跑跨语言 byte-level 比对 —— 那是阶段 3A 的 `mobileSyncConnectUri.test.ts` 职责。
 
 ## 下一步动作
 
-阶段 2 (`3756c84e`) 已提交; 阶段 3A 本地完成待提交。
+阶段 2 (`3756c84e`) 已提交; 阶段 3A + 3B 本地完成待提交 (可单独 PR, 都不影响阶段 4 闭环 — UI 已就位但端到端需快捷指令模板配合)。
 
-启动 **阶段 3B** (前端凭据弹窗 UI):
-1. `src/components/device/MobileSyncCredentialModal.tsx` iOS tab:
-   - 主 QR 图源继续走后端 DTO `qrCodePngBase64` (内容已切到 connectUri, 阶段 2 落地)
-   - 加二级"首次需安装快捷指令"卡片，CTA 跳转 `installUrl`
-   - 文案："扫码自动填三栏" + 中英文翻译
-2. 单测 / e2e 同步更新：主 QR alt 文案、次要卡片可见性。
-3. 手动 UAT: 真机 iPhone 扫码 → 走阶段 4 模板 → 三栏自动填 (端到端需阶段 4 配合，阶段 3B 单独 PR 可只做 UI)。
+启动 **阶段 4** (iOS 快捷指令模板 + Android 客户端文档):
+1. `docs/integrations/ios-shortcut.md` (英文): 两阶段 UX 流程 (首次安装 → 后续扫码), 快捷指令需新增的步骤 (URL Trigger → 取 `p` query → base64url 解码 → JSON 取 url/user/pwd → 写三个文本变量), 错误处理建议。
+2. `docs/integrations/android-syncclipboard.md` (英文，可选): Intent filter 示例 + 字段映射表 + 兼容客户端 checklist。
+3. 仓库外：iOS 快捷指令模板更新 + 重新签名 + 通过 iCloud 分享，可能需要更新 `SYNC_CLIPBOARD_EX_INSTALL_URL` 常量 (取决于是否复用旧链接)。
+4. 真机 UAT: iPhone(iOS 17+) 一次扫码 → 快捷指令自动写入三栏 → 触发同步 → desktop entry 列表出现新增项。
 
-完成后启动 **阶段 4** (iOS 模板 + Android 文档), 详见 task_plan.md。
+阶段 4 详细任务见 `task_plan.md`。

@@ -609,11 +609,15 @@ impl DispatchClipboardEntryUseCase {
             tokio::spawn(
                 async move {
                     let bg_started = Instant::now();
-                    let mut bg_records: Vec<EntryDeliveryRecord> = Vec::new();
                     let mut bg_accepted = 0usize;
                     let mut bg_duplicate = 0usize;
                     let mut bg_offline = 0usize;
                     let mut bg_errored = 0usize;
+                    // 每个 peer task join 完就立刻把它那条 delivery record
+                    // 写盘 + emit,不再累成一笔等所有 deferred peer 跑完再
+                    // flush。否则一个 staggered retry 拖尾的离线 peer 会
+                    // 把前面早就 ack 的 peer 的 badge 刷新也一起卡 15s,
+                    // 与注释里"按 peer 真实完成时刻陆续刷新"的承诺相违背。
                     while let Some(joined) = set.join_next().await {
                         let processed = classify_dispatch_result(
                             joined,
@@ -629,15 +633,14 @@ impl DispatchClipboardEntryUseCase {
                             }
                         }
                         if let Some(rec) = processed.delivery_record {
-                            bg_records.push(rec);
+                            flush_delivery_records(
+                                std::slice::from_ref(&rec),
+                                entry_delivery_repo_bg.as_ref(),
+                                &host_event_bus_bg,
+                            )
+                            .await;
                         }
                     }
-                    flush_delivery_records(
-                        &bg_records,
-                        entry_delivery_repo_bg.as_ref(),
-                        &host_event_bus_bg,
-                    )
-                    .await;
                     info!(
                         content_hash = %content_hash_bg,
                         deferred_count = total_pending,

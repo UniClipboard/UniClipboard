@@ -14,7 +14,7 @@ import i18n from '@/i18n'
 const mockPayload: RegisterMobileDeviceResult = {
   deviceId: 'device-1',
   label: 'My iPhone',
-  clientType: 'iphone_shortcut',
+  clientType: 'ios_shortcut',
   createdAtMs: 1_700_000_000_000,
   baseUrl: 'http://192.168.1.10:42720',
   username: 'user_a',

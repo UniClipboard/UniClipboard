@@ -35,12 +35,14 @@
  *   Dialog 之上）
  * - port: 本地 portDraft + onBlur 提交，避免每键击都触发 update_settings
  * - bindIp: BIND_IP_AUTO_SENTINEL ↔ null 互转（Auto 选项）
- * - applySettingsUpdate 成功 toast.success(applied)，bind 失败 toast.error
- *   + 透传 reason（result.lanListenerBindError）
+ * - 反馈全部 inline：applySettingsUpdate 成功在 footer 短暂闪现“已生效”；
+ *   失败 / bind 失败统一走 modal 顶部 Alert banner（settingsError /
+ *   settings.lanListenerError），不用 toast —— modal 内 toast 会被 overlay
+ *   遮挡，用户根本看不到
  * - onSettingsChange 回调把最新 settings 视图回传给父 panel
  */
 
-import { Check, Copy, Smartphone } from 'lucide-react'
+import { Check, Copy, Smartphone, X } from 'lucide-react'
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
@@ -82,7 +84,6 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
-import { toast } from '@/components/ui/toast'
 import { createLogger } from '@/lib/logger'
 import { cn } from '@/lib/utils'
 
@@ -114,6 +115,24 @@ const MobileSyncSettingsDialog: React.FC<Props> = ({ open, onOpenChange, onSetti
   const [lanInterfaces, setLanInterfaces] = useState<LanInterfaceView[]>([])
   const [pendingLanEnable, setPendingLanEnable] = useState(false)
   const [portDraft, setPortDraft] = useState<string>('')
+  // 端口字段就地校验错误。其它字段(toggle / Select)没有"格式错误"概念,
+  // 失败只可能来自 daemon,所有 daemon 错误统一走 settingsError banner。
+  const [portError, setPortError] = useState<string | null>(null)
+  // 成功反馈在 footer 短暂闪现,2s 后自动消失 —— modal 内不用 toast(会被
+  // overlay 遮挡)。
+  const [appliedFlash, setAppliedFlash] = useState(false)
+  const appliedFlashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  useEffect(
+    () => () => {
+      if (appliedFlashTimerRef.current) clearTimeout(appliedFlashTimerRef.current)
+    },
+    []
+  )
+  const showAppliedFlash = useCallback(() => {
+    setAppliedFlash(true)
+    if (appliedFlashTimerRef.current) clearTimeout(appliedFlashTimerRef.current)
+    appliedFlashTimerRef.current = setTimeout(() => setAppliedFlash(false), 2000)
+  }, [])
 
   const translate = useCallback((err: unknown): string => translateMobileSyncError(t, err), [t])
 
@@ -138,7 +157,7 @@ const MobileSyncSettingsDialog: React.FC<Props> = ({ open, onOpenChange, onSetti
       setLanInterfaces(list)
     } catch (err) {
       log.warn({ err }, 'failed to list LAN interfaces')
-      toast.error(translate(err))
+      setSettingsError(translate(err))
     }
   }, [translate])
 
@@ -153,6 +172,7 @@ const MobileSyncSettingsDialog: React.FC<Props> = ({ open, onOpenChange, onSetti
   const applySettingsUpdate = useCallback(
     async (patch: Parameters<typeof updateMobileSyncSettings>[0]) => {
       setSettingsBusy(true)
+      setSettingsError(null)
       try {
         const result = await updateMobileSyncSettings(patch)
         setSettings(prev => {
@@ -170,31 +190,28 @@ const MobileSyncSettingsDialog: React.FC<Props> = ({ open, onOpenChange, onSetti
         })
         setPortDraft(result.lanPort != null ? String(result.lanPort) : '')
         // 落盘成功 ≠ listener 起来；bind 失败时 facade 透传 reason 到
-        // lanListenerBindError，这里 toast.error 让用户立刻知道。
+        // lanListenerBindError。这里仅记 log + 让 loadSettings() 拉回的
+        // settings.lanListenerError 通过 modal 顶部 Alert banner 自动展示
+        // —— 不再用 toast(modal 内会被遮挡)。
         if (result.lanListenerBindError) {
           log.warn(
             { reason: result.lanListenerBindError, patch },
             'settings saved but LAN listener bind failed'
           )
-          toast.error(
-            t('devices.mobileSync.feedback.applyFailed', {
-              message: result.lanListenerBindError,
-            })
-          )
         } else {
-          toast.success(t('devices.mobileSync.feedback.applied'))
+          showAppliedFlash()
         }
         // lanListenerError 等运行时字段由 daemon 写入，update 返回值只含持久化
         // 字段；需 reload 拿最新视图。
         await loadSettings()
       } catch (err) {
         log.error({ err, patch }, 'failed to update mobile sync settings')
-        toast.error(translate(err))
+        setSettingsError(translate(err))
       } finally {
         setSettingsBusy(false)
       }
     },
-    [loadSettings, onSettingsChange, t, translate]
+    [loadSettings, onSettingsChange, showAppliedFlash, translate]
   )
 
   const handleEnabledToggle = useCallback(
@@ -231,6 +248,7 @@ const MobileSyncSettingsDialog: React.FC<Props> = ({ open, onOpenChange, onSetti
     if (!settings) return
     const trimmed = portDraft.trim()
     if (trimmed === '') {
+      setPortError(null)
       if (settings.lanPort != null) {
         void applySettingsUpdate({ lanPort: null })
       }
@@ -238,14 +256,14 @@ const MobileSyncSettingsDialog: React.FC<Props> = ({ open, onOpenChange, onSetti
     }
     const parsed = Number(trimmed)
     if (!Number.isInteger(parsed) || parsed < 1 || parsed > 65535) {
-      setPortDraft(settings.lanPort != null ? String(settings.lanPort) : '')
-      toast.error(
+      setPortError(
         t('devices.mobileSync.errors.invalidLanParameter', {
           reason: t('devices.mobileSync.lanListener.port.label'),
         })
       )
       return
     }
+    setPortError(null)
     if (parsed !== settings.lanPort) {
       void applySettingsUpdate({ lanPort: parsed })
     }
@@ -367,9 +385,25 @@ const MobileSyncSettingsDialog: React.FC<Props> = ({ open, onOpenChange, onSetti
                     disabled={lanFieldsDisabled}
                     placeholder={t('devices.mobileSync.lanListener.port.placeholder')}
                     value={portDraft}
-                    onChange={e => setPortDraft(e.target.value)}
+                    onChange={e => {
+                      setPortDraft(e.target.value)
+                      if (portError !== null) setPortError(null)
+                    }}
                     onBlur={handlePortBlur}
+                    aria-invalid={portError !== null || undefined}
+                    aria-describedby={portError !== null ? 'mobile-sync-port-error' : undefined}
                   />
+                }
+                trailing={
+                  portError !== null && (
+                    <p
+                      id="mobile-sync-port-error"
+                      role="alert"
+                      className="mt-1 text-right text-xs text-destructive"
+                    >
+                      {portError}
+                    </p>
+                  )
                 }
               />
               <ListenUrlInfoRow
@@ -382,7 +416,17 @@ const MobileSyncSettingsDialog: React.FC<Props> = ({ open, onOpenChange, onSetti
             </DialogSection>
           </div>
 
-          <DialogFooter className="!flex-row !justify-end">
+          <DialogFooter className="!flex-row !items-center !justify-between">
+            <div
+              aria-live="polite"
+              className={cn(
+                'flex items-center gap-1.5 text-xs text-emerald-600 transition-opacity duration-200 dark:text-emerald-400',
+                appliedFlash ? 'opacity-100' : 'pointer-events-none opacity-0'
+              )}
+            >
+              <Check className="h-3.5 w-3.5" />
+              <span>{t('devices.mobileSync.feedback.applied')}</span>
+            </div>
             <Button size="sm" onClick={() => onOpenChange(false)}>
               {t('devices.mobileSync.settingsSheet.close')}
             </Button>
@@ -493,16 +537,19 @@ const UnavailableUrl: React.FC<{ label: string }> = ({ label }) => (
 )
 
 /**
- * "复制后 1.5s 还原 Check 图标"的反馈节奏,抽出来给单 URL / Auto popover
- * 两条路径共享。timer 用 ref 持有,unmount 与下次点击都清理一次,避免在
- * 已卸载组件上 setState 或多次点击叠加 timer。
+ * "复制后 1.5s 还原图标"的反馈节奏,抽出来给单 URL / Auto popover 两条路径共享。
+ *
+ * 三态:idle / copied / failed —— 失败显示红色 X 替代 toast(modal 内 toast
+ * 会被 overlay 遮挡)。timer 用 ref 持有,unmount 与下次点击都清理一次,避免
+ * 在已卸载组件上 setState 或多次点击叠加 timer。
  */
+type CopyState = 'idle' | 'copied' | 'failed'
+
 function useCopyWithFeedback(): {
-  copied: boolean
+  state: CopyState
   copy: (url: string) => Promise<void>
 } {
-  const { t } = useTranslation()
-  const [copied, setCopied] = useState(false)
+  const [state, setState] = useState<CopyState>('idle')
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(
@@ -512,31 +559,27 @@ function useCopyWithFeedback(): {
     []
   )
 
-  const copy = useCallback(
-    async (url: string) => {
-      try {
-        await navigator.clipboard.writeText(url)
-        setCopied(true)
-        if (timerRef.current) clearTimeout(timerRef.current)
-        timerRef.current = setTimeout(() => setCopied(false), 1500)
-      } catch (err) {
-        log.warn({ err }, 'failed to copy listen url')
-        toast.error(t('clipboard.errors.copyFailed'))
-      }
-    },
-    [t]
-  )
+  const copy = useCallback(async (url: string) => {
+    let next: CopyState
+    try {
+      await navigator.clipboard.writeText(url)
+      next = 'copied'
+    } catch (err) {
+      log.warn({ err }, 'failed to copy listen url')
+      next = 'failed'
+    }
+    setState(next)
+    if (timerRef.current) clearTimeout(timerRef.current)
+    timerRef.current = setTimeout(() => setState('idle'), 1500)
+  }, [])
 
-  return { copied, copy }
+  return { state, copy }
 }
 
 const ListenUrlControl: React.FC<{ url: string }> = ({ url }) => {
   const { t } = useTranslation()
-  const { copied, copy } = useCopyWithFeedback()
-
-  const copyLabel = copied
-    ? t('devices.mobileSync.lanListener.currentUrl.copied')
-    : t('devices.mobileSync.lanListener.currentUrl.copy')
+  const { state, copy } = useCopyWithFeedback()
+  const buttonLabel = copyButtonLabel(t, state)
 
   return (
     <div className="flex min-w-0 max-w-56 items-center gap-1 sm:max-w-xs">
@@ -551,15 +594,11 @@ const ListenUrlControl: React.FC<{ url: string }> = ({ url }) => {
         size="icon-sm"
         variant="ghost"
         className="shrink-0"
-        aria-label={copyLabel}
-        title={copyLabel}
+        aria-label={buttonLabel}
+        title={buttonLabel}
         onClick={() => void copy(url)}
       >
-        {copied ? (
-          <Check className="h-3.5 w-3.5 text-emerald-500" />
-        ) : (
-          <Copy className="h-3.5 w-3.5" />
-        )}
+        <CopyStateIcon state={state} />
       </Button>
     </div>
   )
@@ -578,7 +617,9 @@ const AutoListenUrlBlock: React.FC<{
   port: number
 }> = ({ label, interfaces, port }) => {
   const { t } = useTranslation()
-  const [copiedIp, setCopiedIp] = useState<string | null>(null)
+  // per-row 三态:idle 时为 null,copied/failed 记录 ip 以便定位是哪一行。
+  // 同一时刻只展示一行的反馈 —— 用户依次复制多条对比时,前一条状态自动让位。
+  const [rowState, setRowState] = useState<{ ip: string; state: CopyState } | null>(null)
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(
@@ -588,20 +629,19 @@ const AutoListenUrlBlock: React.FC<{
     []
   )
 
-  const handleCopyOne = useCallback(
-    async (url: string, ip: string) => {
-      try {
-        await navigator.clipboard.writeText(url)
-        setCopiedIp(ip)
-        if (timerRef.current) clearTimeout(timerRef.current)
-        timerRef.current = setTimeout(() => setCopiedIp(null), 1500)
-      } catch (err) {
-        log.warn({ err }, 'failed to copy listen url')
-        toast.error(t('clipboard.errors.copyFailed'))
-      }
-    },
-    [t]
-  )
+  const handleCopyOne = useCallback(async (url: string, ip: string) => {
+    let next: CopyState
+    try {
+      await navigator.clipboard.writeText(url)
+      next = 'copied'
+    } catch (err) {
+      log.warn({ err }, 'failed to copy listen url')
+      next = 'failed'
+    }
+    setRowState({ ip, state: next })
+    if (timerRef.current) clearTimeout(timerRef.current)
+    timerRef.current = setTimeout(() => setRowState(null), 1500)
+  }, [])
 
   const autoLabel = t('devices.mobileSync.lanListener.currentUrl.auto.label')
   const hint = t('devices.mobileSync.lanListener.currentUrl.auto.hint')
@@ -618,10 +658,8 @@ const AutoListenUrlBlock: React.FC<{
       <ul className="space-y-1">
         {interfaces.map(iface => {
           const url = `http://${iface.ipv4}:${port}`
-          const isCopied = copiedIp === iface.ipv4
-          const copyLabel = isCopied
-            ? t('devices.mobileSync.lanListener.currentUrl.copied')
-            : t('devices.mobileSync.lanListener.currentUrl.copy')
+          const state: CopyState = rowState?.ip === iface.ipv4 ? rowState.state : 'idle'
+          const buttonLabel = copyButtonLabel(t, state)
           return (
             <li
               key={`${iface.name}-${iface.ipv4}`}
@@ -638,15 +676,11 @@ const AutoListenUrlBlock: React.FC<{
                 size="icon-sm"
                 variant="ghost"
                 className="shrink-0"
-                aria-label={copyLabel}
-                title={copyLabel}
+                aria-label={buttonLabel}
+                title={buttonLabel}
                 onClick={() => void handleCopyOne(url, iface.ipv4)}
               >
-                {isCopied ? (
-                  <Check className="h-3.5 w-3.5 text-emerald-500" />
-                ) : (
-                  <Copy className="h-3.5 w-3.5" />
-                )}
+                <CopyStateIcon state={state} />
               </Button>
             </li>
           )
@@ -654,6 +688,22 @@ const AutoListenUrlBlock: React.FC<{
       </ul>
     </div>
   )
+}
+
+/**
+ * 三态复制按钮的图标 —— idle Copy / copied Check(绿) / failed X(红)。
+ * 抽出来给两条复制路径(单 URL 与 Auto popover 列表行)共享,避免视觉漂移。
+ */
+const CopyStateIcon: React.FC<{ state: CopyState }> = ({ state }) => {
+  if (state === 'copied') return <Check className="h-3.5 w-3.5 text-emerald-500" />
+  if (state === 'failed') return <X className="h-3.5 w-3.5 text-destructive" />
+  return <Copy className="h-3.5 w-3.5" />
+}
+
+function copyButtonLabel(t: ReturnType<typeof useTranslation>['t'], state: CopyState): string {
+  if (state === 'copied') return t('devices.mobileSync.lanListener.currentUrl.copied')
+  if (state === 'failed') return t('clipboard.errors.copyFailed')
+  return t('devices.mobileSync.lanListener.currentUrl.copy')
 }
 
 const SettingToggleRow: React.FC<{
@@ -683,15 +733,20 @@ const SettingControlRow: React.FC<{
   label: string
   control: React.ReactNode
   disabled?: boolean
-}> = ({ label, control, disabled }) => (
+  /** 控件下方可选的附加节点(如就地错误提示),挂在控件正下方右侧。 */
+  trailing?: React.ReactNode
+}> = ({ label, control, disabled, trailing }) => (
   <div
     className={cn(
-      'flex items-center justify-between gap-3 rounded-lg border border-border/60 bg-card/50 px-3 py-2',
+      'rounded-lg border border-border/60 bg-card/50 px-3 py-2',
       disabled && 'opacity-60'
     )}
   >
-    <span className="shrink-0 text-xs text-muted-foreground">{label}</span>
-    <div className="shrink-0">{control}</div>
+    <div className="flex items-center justify-between gap-3">
+      <span className="shrink-0 text-xs text-muted-foreground">{label}</span>
+      <div className="shrink-0">{control}</div>
+    </div>
+    {trailing}
   </div>
 )
 

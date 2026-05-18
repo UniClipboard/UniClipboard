@@ -9,11 +9,47 @@
 | 阶段 2: Rust use case + DTO | ✅ 完成 | `3756c84e` | `register_device.rs` 改 QR 内容; `mobile_sync.rs` DTO 加 `connectUri`; bindings 自动重生; 顺手清掉 phase 1 留下的 10 个 dead-code 警告 |
 | 阶段 3A: TS 解析器 + Vitest | ✅ 完成 | `23452385` | `src/lib/mobileSyncConnectUri.ts` + 跨语言 golden vector 22 测试 |
 | 阶段 3B: 凭据弹窗 UI | ✅ 完成 | `3b220f75` | `MobileSyncCredentialModal.tsx` 主 QR 文案 + 次要卡片; i18n + 单测同步; 9/9 + 80/513 通过 |
-| 阶段 4A: iOS App + Shortcut 集成文档 | ✅ 完成 | (本地未提交) | `docs/integrations/{ios-app-connect-uri,ios-shortcut}.md` + spec §9/§11 重排 |
-| 阶段 4B: iOS App 仓库 Swift 落地 | ⏳ 跨仓库 | — | `/Users/mark/MyProjects/iOSApp/UniClipboard`, 用户落地 |
+| 阶段 4A: iOS App + Shortcut 集成文档 | ✅ 完成 | `aeb85dd5` | `docs/integrations/{ios-app-connect-uri,ios-shortcut}.md` + spec §9/§11 重排 |
+| 阶段 4B: iOS App 仓库 Swift 落地 | ✅ 完成 (跨仓库) | — | `/Users/mark/MyProjects/iOSApp/UniClipboard`, 用户真机扫码测试通过 |
+| 阶段 5: 凭据弹窗 Tab 重构 | ✅ 完成 | (本地未提交) | 按"接入方式"分 (扫码接入 / 安装快捷指令); install URL 独立 QR (后端 + DTO + bindings + UI + i18n + 单测) |
 | 阶段 4C: Shortcut 模板更新 + iCloud | ⏳ 仓库外手工 | — | 用户在 Shortcuts.app 操作 |
 
 ## 会话日志
+
+### 2026-05-18 (阶段 5: 凭据弹窗 Tab 重构 + install URL 独立 QR)
+
+- **触发**: 用户在 iOS App 4B 真机测试通过后追问"现有 QR 是否也能给 Android 客户端用？" — 答案是协议层完全兼容 (connect URI 平台无关，HTTP wire 也是同一套), 但前端 Modal 当前的 Android tab 只显示文字说明、没 QR, 既不准也容易让 Android 用户误以为不支持。决定按"接入方式"重组 tabs。
+- **后端** `src-tauri/crates/uc-application/.../register_device.rs`:
+  - `RegisterMobileShortcutDeviceOutput` 新增 `install_qr_code_png_bytes: Vec<u8>` 字段，与既有 `qr_code_png_bytes` (编 connect URI) 对称。
+  - `execute()` 第二次调 `render_qr_code(&install_url)` 渲染 install URL QR — 共用同一管线，防止两个 QR 视觉/编码不一致。
+  - 两个测试增强：`auto_path_returns_minter_credentials_and_install_url` 加 install QR PNG magic 断言; `qr_content_follows_connect_uri_not_install_url` 加对称断言 (install QR == install URL 编码字节，主 QR ≠ install URL 编码) — 防止字段串位。
+- **Tauri DTO** `src-tauri/crates/uc-tauri/src/commands/mobile_sync.rs`:
+  - `RegisterMobileDeviceResult` 加 `install_qr_code_png_base64: String` (specta + serde camelCase 自动透出 `installQrCodePngBase64`)。
+  - `From<Output>` 透传 `BASE64.encode(out.install_qr_code_png_bytes)`。
+  - 2 个 DTO 单测扩展：`register_result_qr_is_base64_encoded` 加 install QR base64 断言; `register_result_serializes_connect_uri_camel_case` 加 wire 上 `"installQrCodePngBase64":""` camelCase 断言。
+  - `specta_export` 重生 `src/lib/ipc-bindings.generated.ts`, 自动多出字段 + doc-comment。
+- **前端 i18n** `src/i18n/locales/{en-US,zh-CN}.json`:
+  - 删除旧 keys: `platforms.{ios,android}` / 顶层 `qr.*` / `installShortcut.{title,body}` / `installUrl.label` / `android.instructions`。
+  - 新增分组化 keys: `platforms.{scan,shortcut}` ("扫码接入"/"安装快捷指令", "Scan to add"/"Install Shortcut") + `scan.qr.{label,alt,help}` (help 一行说清"iOS App + Android 第三方应用都能扫") + `shortcut.{title,body}` + `shortcut.qr.{label,alt}` + `shortcut.linkLabel`。
+- **前端 UI** `src/components/device/MobileSyncCredentialModal.tsx`:
+  - `Platform = 'ios' | 'android'` → `OnboardingTab = 'scan' | 'shortcut'`, 默认 `scan`; `resetLocalState` 同步改。
+  - Tab A "扫码接入" (默认): 主 connect URI QR (`payload.qrCodePngBase64`) + 副 help 文案 (含 Android 兼容客户端说明), 即原 iOS tab 主 QR 区，但删除了次要"首次安装"卡片。
+  - Tab B "安装快捷指令": 顶部说明卡 + install URL QR (`payload.installQrCodePngBase64`) + CredentialField 显示 install URL 文本 (含 copy 按钮)。
+  - 组件顶部注释完整重写 — 从"按平台分"叙述切到"按接入方式分", 明确两个 QR 各自内容 + 用途。
+- **前端单测** `src/components/device/__tests__/MobileSyncCredentialModal.test.tsx`:
+  - mockPayload 加 `installQrCodePngBase64: 'aW5zdGFsbFFy'` (与主 QR 'iVBORw0KGgo=' 故意不同 — 防字段串位)。
+  - 替换原 3B 加的 2 条 UI 断言：
+    - `defaults to the Scan tab with the connect-URI QR`: 断 tab triggers 两个 label 存在，默认渲 connect URI QR (src 来自主 base64), 新 Android-compatible help 文案可见。
+    - `switches to the Install Shortcut tab and shows the install-URL QR + link`: click Tab B → 顶部说明卡 + linkLabel + install URL 文本 + install QR (src 来自 install base64) 都可见。
+  - 现有 7 条 close-behavior 用例 (Done / Discard / Escape / acknowledgement / null payload / 双击 X) 全部保留，行为零变。
+- **测试结果**:
+  - `cargo test -p uc-application --lib`: 529 OK
+  - `cargo test -p uc-tauri --lib`: 35 OK
+  - `cargo test -p uc-tauri --lib commands::mobile_sync`: 18 OK (含 2 个 DTO 单测扩展)
+  - `cargo test -p uc-tauri --test specta_export`: 1 OK
+  - `bun run test src/components/device/__tests__/MobileSyncCredentialModal.test.tsx`: 9 OK (原 7 + 新 2 替换原 2)
+  - `bun run test --run`: 80 文件 / 513 OK, 无回归
+  - `npx eslint <两个改动 tsx>`: 0 error / 0 warning
 
 ### 2026-05-18 (阶段 4 范围澄清 + 4A 文档落地)
 
@@ -159,20 +195,19 @@
 - 2026-05-18 (阶段 4A): iOS Swift parser 故意不实现 encoder — desktop 是唯一颁发方，iOS encoder = dead code + drift 风险; golden test 三方独立断言同一字面值就是 drift detector。
 - 2026-05-18 (阶段 4A): URL scheme 注册走 Xcode UI (Target → Info → URL Types) 而非 INFOPLIST_KEY_* — Xcode 26 generated-Info.plist 模型下 `array<dict>` 无法用 INFOPLIST_KEY_* 表达，PlistBuddy build phase 是更重的备选。
 - 2026-05-18 (阶段 4A): .onOpenURL 挂 `UniClipboardApp` 的 `WindowGroup` 根 (非 ContentView) — 防 SetupFlow/TabView 状态切换重新挂载时丢消息。
+- 2026-05-18 (阶段 5): Tab 按"接入方式"分而非"平台", 反映"凭据/QR 协议平台无关"的实际事实，同时治掉旧 Android tab 啥都没有的死角。
+- 2026-05-18 (阶段 5): install URL QR 走后端 `render_qr_code` 二次渲染 — 与 connect URI QR 共用同一管线 (视觉/编码风格一致), 前端零新依赖，缺点是 DTO 多带 ~600 字节 PNG (可接受)。
+- 2026-05-18 (阶段 5): mockPayload 两个 QR base64 字面值故意不同 — 防止前端把 `installQrCodePngBase64` ↔ `qrCodePngBase64` 串位 (字段名相近，类型相同，复制粘贴失误是真实风险); 后端 use case 测试也加了对称断言。
+- 2026-05-18 (阶段 5): Tab labels 用"动作描述" ("扫码接入"/"安装快捷指令") 而非协议名 ("Connect URI"/"iOS Shortcut") — 用户视角更直观。
 
 ## 下一步动作
 
-阶段 0-3B 全部提交; 阶段 4A 本地完成待提交。本桌面仓库的工作就此告一段落。
+阶段 0-4A 全部提交; 阶段 4B (iOS App 仓库 Swift) 用户已完成并真机测试通过; 阶段 5 (凭据弹窗 Tab 重构) 本地完成待提交。本桌面仓库剩余仅一项可选动作：
 
-跨仓库 / 仓库外动作 (用户负责):
+- **阶段 4C** (仓库外手工，可选): 按 `docs/integrations/ios-shortcut.md` §3 把 22 个 actions 加进 SyncClipboard 快捷指令模板; iCloud 重新分享; 如新链接 ≠ 现常量，另开小 PR 改 `SYNC_CLIPBOARD_EX_INSTALL_URL`。
+  - 优先级低：iOS App 主路径已通，快捷指令是兜底; 没装 App 的兼容路径才需要。
+  - 模板更新后，阶段 5 加的"安装快捷指令" tab 里的 install URL QR 就能让用户用 iPhone 相机直接扫装 (端到端跑通)。
 
-1. **阶段 4B** (iOS App 仓库): 切到 `/Users/mark/MyProjects/iOSApp/UniClipboard`, 按 `docs/integrations/ios-app-connect-uri.md` 落地：
-   - `Shared/Network/ConnectURI.swift` + `Tests/UniClipboardNetworkTests/ConnectURITests.swift`
-   - `UniClipboardApp.swift` 加 `.onOpenURL` + `AppViewModel.handleIncomingURL`
-   - `ServerQRPayload.parse` 入口加 `uniclipboard://` 分支
-   - Xcode Target → Info → URL Types 注册 `uniclipboard` scheme
-   - `Localizable.xcstrings` 加 6 个错误码 i18n key
-2. **阶段 4C** (Shortcut 模板): 按 `docs/integrations/ios-shortcut.md` §3 把 22 个 actions 加进模板; iCloud 重新分享; 如新链接 ≠ 现常量，另开 PR 改 `SYNC_CLIPBOARD_EX_INSTALL_URL`。
-3. **真机 UAT** (4B + 4C 完成后): iPhone 系统相机扫桌面 QR → "在 UniClipboard 打开" → ServerForm prefill → 同步 → desktop entry 列表出现新增项。
-
-阶段 4B/4C 详细范围与依赖见 `task_plan.md`。
+后续可能的协议演进 (留待新 phase / 新 issue):
+- spec §10 提到的 `o.exp` / `o.token` / `o.push` 等 v1 之外的字段，若需要再独立规划。
+- 阶段 5 新增的 `installQrCodePngBase64` DTO 字段若未来想用 `connect_uri.payload.o.install` 下沉 (在 connect URI 里内嵌 install link), 是 spec §3.2 的扩展点，不破坏 v1 协议。

@@ -657,10 +657,17 @@ export type RegisterMobileDeviceResult = {
 	password: string,
 	/**
 	 *  SyncClipboard "Clipboard EX" iCloud 共享链接(常量)。前端把它放在
-	 *  二级"首次需安装快捷指令"卡片里, 不再作为 QR 主内容(QR 现在编
-	 *  `connectUri`)。
+	 *  "安装快捷指令"次要 tab 里, 不再作为 connect-URI tab 的主 QR 内容。
 	 */
 	installUrl: string,
+	/**
+	 *  `installUrl` 的二维码 PNG, Base64 编码后由前端 `<img src="data:...">`
+	 *  直接渲染。让 iPhone 相机直接扫码安装快捷指令, 替代用户在桌面上
+	 *  肉眼抄长长的 iCloud 链接到 Safari 的旧体验。与 `qrCodePngBase64`
+	 *  (编 `connectUri`) 字节不同, 用途也不同 — 前者一次性安装, 后者
+	 *  每次添加设备扫一次。
+	 */
+	installQrCodePngBase64: string,
 	/**
 	 *  `uniclipboard://connect?v=1&svc=mobile-sync&p=<base64url-json>`。
 	 *  QR 主内容: iOS Shortcut 扫描后一次性解出 base_url / username /

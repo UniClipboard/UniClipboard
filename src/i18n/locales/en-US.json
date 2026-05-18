@@ -922,27 +922,28 @@
         "title": "Device added",
         "subtitle": "Pick your platform below, then enter the credentials into the client.",
         "platforms": {
-          "ios": "iOS",
-          "android": "Android"
+          "scan": "Scan to add",
+          "shortcut": "Install Shortcut"
         },
         "warning": {
           "title": "Important: this password is shown only once",
           "body": "After this dialog closes, the password cannot be recovered. If you lose it, you must revoke this device and add it again."
         },
-        "qr": {
-          "label": "Scan with iPhone to auto-fill the credentials",
-          "alt": "QR code that auto-fills the sync credentials",
-          "help": "The shortcut reads server URL, username, and password from this code — no manual typing."
+        "scan": {
+          "qr": {
+            "label": "Scan with your phone to auto-fill the credentials",
+            "alt": "QR code that auto-fills the sync credentials",
+            "help": "Works with the UniClipboard iOS app and any SyncClipboard-protocol client (including third-party Android apps)."
+          }
         },
-        "installShortcut": {
-          "title": "First time? Install the shortcut first",
-          "body": "Open the link below on your iPhone (Safari), install the shortcut once, then come back and scan the QR above."
-        },
-        "installUrl": {
-          "label": "Install link (one-time)"
-        },
-        "android": {
-          "instructions": "There is no official Android client yet. Use any third-party app that speaks the SyncClipboard protocol (HTTP Basic Auth + GET/PUT /SyncClipboard.json) and configure it with the URL and credentials below."
+        "shortcut": {
+          "title": "iOS Shortcut — install once on your iPhone",
+          "body": "Scan the QR below with your iPhone camera, or open the link in Safari. After the shortcut is installed, future devices only need the Scan-to-add QR above.",
+          "qr": {
+            "label": "Scan to install the SyncClipboard shortcut",
+            "alt": "QR code for the iCloud shortcut install link"
+          },
+          "linkLabel": "Install link"
         },
         "baseUrl": {
           "label": "Server URL"

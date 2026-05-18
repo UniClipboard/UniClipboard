@@ -75,8 +75,13 @@ pub struct RegisterMobileShortcutDeviceOutput {
     pub password: String,
     /// SyncClipboard "Clipboard EX" iCloud 共享链接(常量) —— iOS 用户**首次**
     /// 接入时需先安装该 shortcut, 之后才能扫 `connect_uri` 自动填三栏。
-    /// 前端把它放在二级"首次需安装快捷指令"卡片里, 不再作为 QR 主内容。
+    /// 前端把它放在"安装快捷指令"次要 tab 里, 不再作为 QR 主内容。
     pub install_url: String,
+    /// `install_url` 的二维码 PNG 字节流。前端"安装快捷指令"次要 tab 把它
+    /// 渲染成 QR 让 iPhone 相机直接扫(替代用户在桌面上肉眼抄长长的 iCloud
+    /// 链接到 Safari)。内容是 `install_url` 字面值, 是一个常量;
+    /// 与 `qr_code_png_bytes`(编 `connect_uri`)字节不同, 用途也不同。
+    pub install_qr_code_png_bytes: Vec<u8>,
     /// `uniclipboard://connect?v=1&svc=mobile-sync&p=<base64url-json>` 深链。
     ///
     /// 单一 QR 内容真相 —— 协议 v1 详见
@@ -400,6 +405,10 @@ impl RegisterMobileShortcutDeviceUseCase {
 
         let install_url = SYNC_CLIPBOARD_EX_INSTALL_URL.to_string();
         let (qr_code_png_bytes, qr_code_ascii) = render_qr_code(&connect_uri)?;
+        // install_url 的 QR 走同一条 render_qr_code 流水线, 与 connect URI
+        // QR 渲染管线对称(防止前端/CLI 出现"两张 QR 看起来不一样"的视觉
+        // 不一致)。ASCII 不渲染 —— CLI 用例不展示 install QR(只展示 URL 文本)。
+        let (install_qr_code_png_bytes, _install_qr_ascii) = render_qr_code(&install_url)?;
 
         Ok(RegisterMobileShortcutDeviceOutput {
             device,
@@ -407,6 +416,7 @@ impl RegisterMobileShortcutDeviceUseCase {
             username,
             password,
             install_url,
+            install_qr_code_png_bytes,
             connect_uri,
             qr_code_png_bytes,
             qr_code_ascii,
@@ -908,6 +918,13 @@ mod tests {
         // 已从 install_url 切换到 connect_uri, 故 PNG 字节也会随凭据变化。
         assert!(out.qr_code_png_bytes.starts_with(&[0x89, 0x50, 0x4E, 0x47]));
         assert!(!out.qr_code_ascii.is_empty());
+        // install QR 是 install_url 的二维码(常量内容), 前端用于"安装快捷
+        // 指令"次要 tab 让 iPhone 扫一下直接装。PNG magic 与 connect URI QR
+        // 一致, 但字节不同 — 那是 qr_content_follows_connect_uri_not_install_url
+        // 的回归保护范围。
+        assert!(out
+            .install_qr_code_png_bytes
+            .starts_with(&[0x89, 0x50, 0x4E, 0x47]));
     }
 
     #[tokio::test]
@@ -918,8 +935,12 @@ mod tests {
         // 不会误把 QR 退回去渲染 install_url(那是 LSP / find-refs 不能直接
         // 防住的语义回归)。
         //
+        // 阶段 5 起 install QR 单独输出 `install_qr_code_png_bytes`,
+        // 同时断言它**等于** install_url 编码 —— 防止字段串位 / 后端误把
+        // 两个 QR 张冠李戴(命名相近, 类型相同, 容易复制粘贴出错)。
+        //
         // 做法: build 出 install_url 的 QR(单独走一次 render_qr_code),
-        // 断言 use case 输出的 QR 字节与之不同。
+        // 断言 connect QR 字节与之不同, install QR 字节与之相同。
         let uc = build_uc(true);
         let out = uc
             .execute(label_only("Phone"))
@@ -929,11 +950,15 @@ mod tests {
         let install_url_qr = render_qr_code(SYNC_CLIPBOARD_EX_INSTALL_URL).expect("baseline qr ok");
         assert_ne!(
             out.qr_code_png_bytes, install_url_qr.0,
-            "QR PNG must encode connect_uri, not install_url"
+            "main QR PNG must encode connect_uri, not install_url"
         );
         assert_ne!(
             out.qr_code_ascii, install_url_qr.1,
-            "QR ASCII must encode connect_uri, not install_url"
+            "main QR ASCII must encode connect_uri, not install_url"
+        );
+        assert_eq!(
+            out.install_qr_code_png_bytes, install_url_qr.0,
+            "install QR PNG must encode install_url byte-for-byte"
         );
     }
 

@@ -295,9 +295,14 @@ pub struct RegisterMobileDeviceResult {
     pub username: String,
     pub password: String,
     /// SyncClipboard "Clipboard EX" iCloud 共享链接(常量)。前端把它放在
-    /// 二级"首次需安装快捷指令"卡片里, 不再作为 QR 主内容(QR 现在编
-    /// `connectUri`)。
+    /// "安装快捷指令"次要 tab 里, 不再作为 connect-URI tab 的主 QR 内容。
     pub install_url: String,
+    /// `installUrl` 的二维码 PNG, Base64 编码后由前端 `<img src="data:...">`
+    /// 直接渲染。让 iPhone 相机直接扫码安装快捷指令, 替代用户在桌面上
+    /// 肉眼抄长长的 iCloud 链接到 Safari 的旧体验。与 `qrCodePngBase64`
+    /// (编 `connectUri`) 字节不同, 用途也不同 — 前者一次性安装, 后者
+    /// 每次添加设备扫一次。
+    pub install_qr_code_png_base64: String,
     /// `uniclipboard://connect?v=1&svc=mobile-sync&p=<base64url-json>`。
     /// QR 主内容: iOS Shortcut 扫描后一次性解出 base_url / username /
     /// password 直接填三栏, 替代旧版"用户肉眼抄写"。协议详见
@@ -319,6 +324,7 @@ impl From<RegisterMobileShortcutDeviceOutput> for RegisterMobileDeviceResult {
             username: out.username,
             password: out.password,
             install_url: out.install_url,
+            install_qr_code_png_base64: BASE64.encode(out.install_qr_code_png_bytes),
             connect_uri: out.connect_uri,
             qr_code_png_base64: BASE64.encode(out.qr_code_png_bytes),
         }
@@ -899,12 +905,18 @@ mod tests {
             username: "mobile_abcd1234".to_string(),
             password: "secretpw".to_string(),
             install_url: "https://www.icloud.com/shortcuts/abc".to_string(),
+            install_qr_code_png_bytes: vec![0x89, 0x50, 0x4E, 0x47, 0xAB],
             connect_uri: "uniclipboard://connect?v=1&svc=mobile-sync&p=fixture".to_string(),
             qr_code_png_bytes: png_bytes.clone(),
             qr_code_ascii: "...".to_string(),
         };
         let dto = RegisterMobileDeviceResult::from(out);
         assert_eq!(dto.qr_code_png_base64, BASE64.encode(&png_bytes));
+        assert_eq!(
+            dto.install_qr_code_png_base64,
+            BASE64.encode([0x89, 0x50, 0x4E, 0x47, 0xAB]),
+            "install QR PNG bytes must be base64-encoded the same way as the main QR"
+        );
         assert_eq!(dto.client_type, "ios_shortcut");
         assert_eq!(dto.device_id, "did_test");
         assert_eq!(dto.password, "secretpw");
@@ -939,6 +951,7 @@ mod tests {
             username: "mobile_abcd1234".to_string(),
             password: "secretpw".to_string(),
             install_url: "https://example.com".to_string(),
+            install_qr_code_png_bytes: vec![],
             connect_uri: "uniclipboard://connect?v=1&svc=mobile-sync&p=X".to_string(),
             qr_code_png_bytes: vec![],
             qr_code_ascii: String::new(),
@@ -950,6 +963,11 @@ mod tests {
             "missing camelCase connectUri in: {json}"
         );
         assert!(json.contains("\"installUrl\":\"https://example.com\""));
+        // 阶段 5: install QR 走 wire camelCase, 与 qrCodePngBase64 对称。
+        assert!(
+            json.contains("\"installQrCodePngBase64\":\"\""),
+            "missing camelCase installQrCodePngBase64 in: {json}"
+        );
     }
 
     #[test]

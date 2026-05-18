@@ -913,27 +913,28 @@
         "title": "设备已添加",
         "subtitle": "在下方选择平台，并按指引在客户端中填入凭据。",
         "platforms": {
-          "ios": "iOS",
-          "android": "安卓"
+          "scan": "扫码接入",
+          "shortcut": "安装快捷指令"
         },
         "warning": {
           "title": "重要：此密码仅显示一次",
           "body": "关闭此窗口后将无法再次查看密码。如不慎遗失，需要撤销此设备并重新添加。"
         },
-        "qr": {
-          "label": "用 iPhone 扫一下,自动填入凭据",
-          "alt": "自动填入同步凭据的二维码",
-          "help": "快捷指令会从这个二维码自动读出服务地址、用户名和密码,无需手动输入。"
+        "scan": {
+          "qr": {
+            "label": "用手机扫一下，自动填入凭据",
+            "alt": "自动填入同步凭据的二维码",
+            "help": "兼容 UniClipboard iOS App 与任意 SyncClipboard 协议客户端（含 Android 第三方应用）。"
+          }
         },
-        "installShortcut": {
-          "title": "首次使用?先安装快捷指令",
-          "body": "请先在 iPhone Safari 打开下方链接,安装快捷指令(只需一次),然后回到此处扫描上方二维码。"
-        },
-        "installUrl": {
-          "label": "安装链接(一次性)"
-        },
-        "android": {
-          "instructions": "暂未提供官方 Android 客户端。请使用任何兼容 SyncClipboard 协议的第三方应用（HTTP Basic Auth + GET/PUT /SyncClipboard.json），并按下方信息配置服务地址与账号密码。"
+        "shortcut": {
+          "title": "iOS 快捷指令 — 一次性安装",
+          "body": "用 iPhone 相机扫下方二维码，或在 Safari 打开链接安装。装完后续添加设备只需扫上方「扫码接入」二维码。",
+          "qr": {
+            "label": "扫码安装快捷指令",
+            "alt": "iCloud 快捷指令安装链接的二维码"
+          },
+          "linkLabel": "安装链接"
         },
         "baseUrl": {
           "label": "服务地址"

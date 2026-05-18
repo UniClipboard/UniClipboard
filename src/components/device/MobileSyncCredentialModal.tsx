@@ -10,21 +10,29 @@
  *    sensitive args redaction 处约束;本组件再多一层"卸载即丢"的内存策略,
  *    上层不应把这份对象长期持有)。
  *
- * 平台 tab:LAN 监听跑的是 SyncClipboard 协议,凭据本身平台无关 —— 同一组
- * (base URL + username + password) 在 iOS / Android 客户端上都能用。tab 仅
- * 控制「接入步骤」的展示形式:
- * - iOS(默认):
+ * tab 不按"平台"分,按"接入方式"分 —— connect URI QR 平台无关 (iOS App 与
+ * 任何 SyncClipboard 协议客户端都能扫,Android 第三方应用同理),所以早期
+ * "iOS / Android" 的分法没意义且会让 Android 用户看到一个空 tab。新分法:
+ * - 「扫码接入」 (默认):
  *   - 主操作: connect URI 二维码 (uniclipboard://connect?v=1&svc=mobile-sync&p=...)
- *     iPhone 上的 SyncClipboard 快捷指令扫描后一次性解出 url/user/pwd 直接填
- *     三栏 —— 替代旧版"用户肉眼抄写"。后端 DTO `qrCodePngBase64` 阶段 2 起
- *     已切到编码 connect URI,本组件图源不变,只是语义改变。
- *   - 次要卡片: 首次接入需先装快捷指令,展示 iCloud install URL。后续设备
- *     已装过即可忽略。
- * - Android:暂不提供官方客户端,仅展示凭据 + 一段说明,告知用户使用任何
- *   兼容 SyncClipboard 协议的客户端接入
+ *   - iPhone 上的 UniClipboard 原生 App 或 SyncClipboard 快捷指令扫到后一次性
+ *     解出 url/user/pwd 直接填三栏 —— 替代旧版"用户肉眼抄写"。后端 DTO
+ *     `qrCodePngBase64` 自阶段 2 起编码的就是 connect URI。
+ * - 「安装快捷指令」 (兜底, 一次性):
+ *   - 没装 iOS App 的用户兜底走快捷指令路径,需先把模板装到 iPhone 上 —— 装一次
+ *     之后任何"扫码接入" QR 都能用。
+ *   - 主 QR 是 install URL 的二维码 (后端 DTO `installQrCodePngBase64` 阶段 5 引入),
+ *     iPhone 相机直扫即可安装;桌面端打开 iCloud 共享链接无意义,所以也保留
+ *     install URL 的文字 + 复制按钮 (CredentialField), 让用户能复制到别处。
  *
- * 桌面端打开 iCloud 共享链接无意义,不提供 "Open in Shortcuts" 按钮 ——
- * CredentialField 自带 copy 按钮,在 iPhone 端粘贴到 Safari 即可。
+ * 关键不变量(对应 facade 合约,见 RegisterMobileShortcutDeviceOutput 注释):
+ * 1. password 字段是**唯一一次**面向用户的明文回显;关闭后服务端只剩 PHC,
+ *    无法再取回。
+ * 2. 右上角 ✕ 丢弃本次注册(撤销设备);右下角「完成」须勾选「我已保存」
+ *    才确认保留设备并关闭;ESC / 点遮罩仍拦截并提示勾选。
+ * 3. password 永远不进 log / 持久化 / analytics(已在 invokeWithTrace 的
+ *    sensitive args redaction 处约束;本组件再多一层"卸载即丢"的内存策略,
+ *    上层不应把这份对象长期持有)。
  */
 
 import { Check, Copy, Eye, EyeOff, XIcon } from 'lucide-react'
@@ -58,13 +66,13 @@ interface Props {
   onComplete: () => void
 }
 
-type Platform = 'ios' | 'android'
+type OnboardingTab = 'scan' | 'shortcut'
 
 const MobileSyncCredentialModal: React.FC<Props> = ({ payload, onDiscard, onComplete }) => {
   const { t } = useTranslation()
   const [acknowledged, setAcknowledged] = useState(false)
   const [passwordVisible, setPasswordVisible] = useState(false)
-  const [platform, setPlatform] = useState<Platform>('ios')
+  const [activeTab, setActiveTab] = useState<OnboardingTab>('scan')
   // 用户尝试关闭但未勾选时的 inline 提示。toast 在 modal 遮罩下很容易被忽视,
   // 改成把红色高亮 + 错误文本直接挂在勾选框上,视线一定会被引到下一步操作。
   const [hintActive, setHintActive] = useState(false)
@@ -73,7 +81,7 @@ const MobileSyncCredentialModal: React.FC<Props> = ({ payload, onDiscard, onComp
   const resetLocalState = useCallback(() => {
     setAcknowledged(false)
     setPasswordVisible(false)
-    setPlatform('ios')
+    setActiveTab('scan')
     setHintActive(false)
   }, [])
 
@@ -164,58 +172,66 @@ const MobileSyncCredentialModal: React.FC<Props> = ({ payload, onDiscard, onComp
             </p>
           </div>
 
-          {/* 平台 tab —— 凭据共用,只切换接入步骤的展示 */}
-          <Tabs value={platform} onValueChange={v => setPlatform(v as Platform)}>
+          {/* 接入方式 tab —— 凭据 (URL/user/pwd) 共用,只切换"扫什么 QR" */}
+          <Tabs value={activeTab} onValueChange={v => setActiveTab(v as OnboardingTab)}>
             <TabsList className="w-full">
-              <TabsTrigger value="ios">
-                {t('devices.mobileSync.credential.platforms.ios')}
+              <TabsTrigger value="scan">
+                {t('devices.mobileSync.credential.platforms.scan')}
               </TabsTrigger>
-              <TabsTrigger value="android">
-                {t('devices.mobileSync.credential.platforms.android')}
+              <TabsTrigger value="shortcut">
+                {t('devices.mobileSync.credential.platforms.shortcut')}
               </TabsTrigger>
             </TabsList>
 
-            <TabsContent value="ios" className="mt-3 space-y-4">
-              {/* 主操作: 扫码自动填三栏。后端 DTO 的 qrCodePngBase64
-                  从阶段 2 起渲染的是 connectUri (uniclipboard://connect?...),
-                  不再是 iCloud install URL — 这里图源不变,只是语义已改。 */}
+            {/* Tab A: 扫码接入 (默认主路径)
+                qrCodePngBase64 自后端阶段 2 起编码的是 connect URI
+                (uniclipboard://connect?v=1&svc=mobile-sync&p=...), 平台无关
+                —— iOS App、SyncClipboard 快捷指令、Android 第三方应用均可解。 */}
+            <TabsContent value="scan" className="mt-3 space-y-4">
               <div className="flex flex-col items-center gap-2 rounded-md border border-border/60 bg-muted/30 p-4">
                 <Label className="text-xs uppercase tracking-wider text-muted-foreground">
-                  {t('devices.mobileSync.credential.qr.label')}
+                  {t('devices.mobileSync.credential.scan.qr.label')}
                 </Label>
                 <img
                   src={`data:image/png;base64,${payload.qrCodePngBase64}`}
-                  alt={t('devices.mobileSync.credential.qr.alt')}
+                  alt={t('devices.mobileSync.credential.scan.qr.alt')}
                   className="h-48 w-48 rounded bg-white p-2"
                 />
                 <p className="text-center text-xs text-muted-foreground">
-                  {t('devices.mobileSync.credential.qr.help')}
+                  {t('devices.mobileSync.credential.scan.qr.help')}
                 </p>
-              </div>
-
-              {/* 次要卡片: 首次安装快捷指令。降级为辅助操作 —— 多数后续设备
-                  注册时用户已装过 shortcut,不需要再看安装链接;但首次接入
-                  仍需引导,所以保留。桌面端打开 iCloud 链接无意义,只提供
-                  复制 (CredentialField 自带 copy 按钮), 不放 "Open" CTA。 */}
-              <div className="space-y-2 rounded-md border border-border/60 bg-card/50 p-3">
-                <p className="text-sm font-medium">
-                  {t('devices.mobileSync.credential.installShortcut.title')}
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  {t('devices.mobileSync.credential.installShortcut.body')}
-                </p>
-                <CredentialField
-                  label={t('devices.mobileSync.credential.installUrl.label')}
-                  value={payload.installUrl}
-                  mono
-                />
               </div>
             </TabsContent>
 
-            <TabsContent value="android" className="mt-3 space-y-3">
-              <div className="rounded-md border border-border/60 bg-muted/30 p-3 text-xs leading-relaxed text-muted-foreground">
-                {t('devices.mobileSync.credential.android.instructions')}
+            {/* Tab B: 安装快捷指令 (一次性兜底)
+                installQrCodePngBase64 自后端阶段 5 起单独输出, 让 iPhone 相机
+                直接扫码安装 —— 避免用户在桌面上肉眼抄长 iCloud 链接到 Safari。
+                同时保留 install URL 文本 + 复制按钮 (CredentialField), 让用户
+                能复制链接到 IM / 笔记里日后再装。 */}
+            <TabsContent value="shortcut" className="mt-3 space-y-4">
+              <div className="space-y-2 rounded-md border border-border/60 bg-card/50 p-3">
+                <p className="text-sm font-medium">
+                  {t('devices.mobileSync.credential.shortcut.title')}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  {t('devices.mobileSync.credential.shortcut.body')}
+                </p>
               </div>
+              <div className="flex flex-col items-center gap-2 rounded-md border border-border/60 bg-muted/30 p-4">
+                <Label className="text-xs uppercase tracking-wider text-muted-foreground">
+                  {t('devices.mobileSync.credential.shortcut.qr.label')}
+                </Label>
+                <img
+                  src={`data:image/png;base64,${payload.installQrCodePngBase64}`}
+                  alt={t('devices.mobileSync.credential.shortcut.qr.alt')}
+                  className="h-48 w-48 rounded bg-white p-2"
+                />
+              </div>
+              <CredentialField
+                label={t('devices.mobileSync.credential.shortcut.linkLabel')}
+                value={payload.installUrl}
+                mono
+              />
             </TabsContent>
           </Tabs>
 

@@ -33,6 +33,8 @@ use uc_core::ports::{
 };
 use uc_observability::analytics::{AnalyticsPort, Event};
 
+use super::connect_uri::{build_mobile_sync_connect_uri, ConnectUriError, ConnectUriOther};
+
 // ─── public-shaped (input / output / error) ─────────────────────────────
 
 /// 调用方提交的请求。`username` / `password` 留空(`None`)走自动颁发;给
@@ -71,12 +73,23 @@ pub struct RegisterMobileShortcutDeviceOutput {
     /// 一次性回显:明文密码,用户在 SyncClipboard shortcut 里填进 `password` 框。
     /// 自定义模式下与 `input.password` 相同;自动模式下来自 minter。
     pub password: String,
-    /// SyncClipboard "Clipboard EX" iCloud 共享链接(常量) —— 用户扫描
-    /// `qr_code_*` 后跳转此链接安装该 shortcut。
+    /// SyncClipboard "Clipboard EX" iCloud 共享链接(常量) —— iOS 用户**首次**
+    /// 接入时需先安装该 shortcut, 之后才能扫 `connect_uri` 自动填三栏。
+    /// 前端把它放在二级"首次需安装快捷指令"卡片里, 不再作为 QR 主内容。
     pub install_url: String,
-    /// `install_url` 的二维码 PNG 字节流,前端可走 base64 data URL 直接渲染。
+    /// `uniclipboard://connect?v=1&svc=mobile-sync&p=<base64url-json>` 深链。
+    ///
+    /// 单一 QR 内容真相 —— 协议 v1 详见
+    /// `docs/architecture/mobile-sync-connect-uri.md`。iOS Shortcut 拿到该
+    /// URI 后可一次性解出 `base_url / username / password` 并直接写入三栏,
+    /// 替代用户肉眼抄写的旧体验。
+    ///
+    /// 与 `username` / `password` 等明文字段同源, 同样仅本次响应回显;
+    /// 之后服务端只持有 `password_hash`, 重新生成 QR 必须重新调用本 use case。
+    pub connect_uri: String,
+    /// `connect_uri` 的二维码 PNG 字节流, 前端走 base64 data URL 直接渲染。
     pub qr_code_png_bytes: Vec<u8>,
-    /// `install_url` 的二维码 ASCII(块字符),CLI 直接 `println!`。
+    /// `connect_uri` 的二维码 ASCII(块字符), CLI 直接 `println!`。
     pub qr_code_ascii: String,
 }
 
@@ -369,12 +382,24 @@ impl RegisterMobileShortcutDeviceUseCase {
         // telemetry 反映这一事实，与 UI 报错语义不冲突。
         self.analytics.capture(Event::MobileDeviceRegistered);
 
-        // 4. 渲染 install URL 的二维码(PNG + ASCII 双形态)。install_url 是
-        //    常量(SyncClipboard 公开 iCloud 链接), 不取决于 device, 二维码
-        //    内容对所有用户都一样;但每次仍各自渲染一次 —— 不引入全局缓存,
-        //    保持 use case 无副作用易测试。
+        // 4. 组装 connect URI 与 二维码。规范 §3.2 白名单 `o` 字段:
+        //    - label: 设备显示名, 让客户端 UI 能复用
+        //    - did:   服务端 device_id, 用于日志关联
+        //    - proto: 协议族提示, v1 固定 "syncclipboard"
+        //    - install: 暂留空, 阶段 4 决定是否下沉 iCloud 链接到 payload 里
+        //
+        //    install_url 不再用作 QR 内容, 改为前端二级"首次安装"卡片显示。
+        let other = ConnectUriOther {
+            label: Some(label.clone()),
+            did: Some(device_id.as_str().to_string()),
+            proto: Some("syncclipboard".to_string()),
+            install: None,
+        };
+        let connect_uri = build_mobile_sync_connect_uri(&base_url, &username, &password, other)
+            .map_err(translate_connect_uri_error)?;
+
         let install_url = SYNC_CLIPBOARD_EX_INSTALL_URL.to_string();
-        let (qr_code_png_bytes, qr_code_ascii) = render_install_qr(&install_url)?;
+        let (qr_code_png_bytes, qr_code_ascii) = render_qr_code(&connect_uri)?;
 
         Ok(RegisterMobileShortcutDeviceOutput {
             device,
@@ -382,6 +407,7 @@ impl RegisterMobileShortcutDeviceUseCase {
             username,
             password,
             install_url,
+            connect_uri,
             qr_code_png_bytes,
             qr_code_ascii,
         })
@@ -483,19 +509,20 @@ fn translate_probe_error(err: LanInterfaceProbeError) -> RegisterMobileShortcutD
     }
 }
 
-/// 把 install URL 渲染为 PNG + ASCII 二维码。
+/// 把任意 URI / URL 文本渲染为 PNG + ASCII 二维码。
 ///
 /// PNG: `qrcode::QrCode::render::<Luma<u8>>` 出 `image::ImageBuffer` →
 /// 写到 PNG cursor。ASCII: 调 `render::<unicode::Dense1x2>` 用 1×2 块
 /// 字符渲染,适合 80 列终端。
-fn render_install_qr(
-    install_url: &str,
-) -> Result<(Vec<u8>, String), RegisterMobileShortcutDeviceError> {
+///
+/// 调用方在 v1 路径下传入 `connect_uri`(规范 §2); 旧 `install_url` 已降级
+/// 为前端二级"首次安装"卡片显示, 不再走 QR。
+fn render_qr_code(content: &str) -> Result<(Vec<u8>, String), RegisterMobileShortcutDeviceError> {
     use image::{ImageFormat, Luma};
     use qrcode::render::unicode::Dense1x2;
     use qrcode::QrCode;
 
-    let code = QrCode::new(install_url.as_bytes())
+    let code = QrCode::new(content.as_bytes())
         .map_err(|e| RegisterMobileShortcutDeviceError::QrRenderFailed(e.to_string()))?;
 
     let png_image = code.render::<Luma<u8>>().min_dimensions(256, 256).build();
@@ -541,6 +568,32 @@ fn translate_device_error(err: MobileDeviceError) -> RegisterMobileShortcutDevic
     }
 }
 
+/// 把 connect URI 编码失败翻译为 use case 层错误。
+///
+/// 设计上 build 路径仅可能撞到 [`ConnectUriError::UriTooLong`] —— label
+/// 过长导致 payload 超 800 字符。其余 6 个变体属于"上游契约保证不会发生":
+/// - `MissingField`: `base_url` 由 `format!("http://{ip}:{port}")` 拼出非空,
+///   `username` / `password` 走 minter 或 0.1 步前置校验, 都非空。
+/// - `InvalidUrl`: base_url 永远以 `http://` 开头。
+/// - `InvalidScheme` / `UnsupportedVersion` / `UnsupportedService` /
+///   `PayloadDecodeFailed`: 仅 parse 路径出现, build 不调 parse。
+///
+/// 一旦走到这些"理论上不可能"的变体, 说明 minter 或上游契约破坏 ——
+/// 仍翻译为 `QrRenderFailed` 让 UI 给用户可见的失败 + 日志保留原因, 而
+/// 不是 panic 把整个进程拖垮。
+fn translate_connect_uri_error(err: ConnectUriError) -> RegisterMobileShortcutDeviceError {
+    match err {
+        ConnectUriError::UriTooLong { len, max } => {
+            RegisterMobileShortcutDeviceError::QrRenderFailed(format!(
+                "connect uri too long ({len} chars, max {max}); shorten device label"
+            ))
+        }
+        other => RegisterMobileShortcutDeviceError::QrRenderFailed(format!(
+            "connect uri build failed (unexpected): {other}"
+        )),
+    }
+}
+
 fn translate_hasher_error(err: PasswordHasherError) -> RegisterMobileShortcutDeviceError {
     match err {
         PasswordHasherError::InvalidPhc(msg) => {
@@ -568,6 +621,7 @@ mod tests {
     // 多个 use case 测试共用的 mock(DeviceRepo / Hasher / Minter)+
     // CapturingAnalyticsSink 集中在 test_support;register 独占的
     // SettingsPort / Clock / Probe 仍就近 mockall::mock! 定义。
+    use super::super::connect_uri::parse_mobile_sync_connect_uri;
     use super::super::test_support::{
         CapturingAnalyticsSink, MockDeviceRepo, MockHasher, MockMinter,
     };
@@ -819,11 +873,68 @@ mod tests {
         assert_eq!(out.username, "mobile_aabbccdd");
         assert_eq!(out.password, "deterministic-password-22");
         assert_eq!(out.base_url, "http://192.168.1.5:42720");
+        // install_url 保留为"首次安装快捷指令"次要入口, 仍是常量。
         assert_eq!(out.install_url, SYNC_CLIPBOARD_EX_INSTALL_URL);
 
-        // 二维码必须非空,且 PNG 字节有 magic header `\x89PNG`。
+        // connect_uri 是 QR 主内容: scheme/host/envelope 字面值固定; payload
+        // 解码后能还原出三栏 + label/did/proto 白名单字段。
+        assert!(
+            out.connect_uri
+                .starts_with("uniclipboard://connect?v=1&svc=mobile-sync&p="),
+            "unexpected prefix: {}",
+            out.connect_uri
+        );
+        let payload = parse_mobile_sync_connect_uri(&out.connect_uri)
+            .expect("connect URI must round-trip parse");
+        assert_eq!(payload.url, "http://192.168.1.5:42720");
+        assert_eq!(payload.user, "mobile_aabbccdd");
+        assert_eq!(payload.pwd, "deterministic-password-22");
+        assert_eq!(
+            payload.o.get("label").map(String::as_str),
+            Some("我的 iPhone")
+        );
+        assert_eq!(
+            payload.o.get("did").map(String::as_str),
+            Some(MINTER_DEVICE_ID)
+        );
+        assert_eq!(
+            payload.o.get("proto").map(String::as_str),
+            Some("syncclipboard")
+        );
+        // install 字段 v1 留空(规范 §3.2), 阶段 4 决定。
+        assert!(payload.o.get("install").is_none());
+
+        // 二维码必须非空,且 PNG 字节有 magic header `\x89PNG`。QR 渲染对象
+        // 已从 install_url 切换到 connect_uri, 故 PNG 字节也会随凭据变化。
         assert!(out.qr_code_png_bytes.starts_with(&[0x89, 0x50, 0x4E, 0x47]));
         assert!(!out.qr_code_ascii.is_empty());
+    }
+
+    #[tokio::test]
+    async fn qr_content_follows_connect_uri_not_install_url() {
+        // 回归保护: 阶段 2 之前 QR 渲染的是常量 install_url, 不论凭据如何
+        // 字节都不变。切换后每次 register 都会随 username/password/device_id
+        // 变化产生不同 connect_uri, PNG 字节不再固定。本测试保证后续 PR
+        // 不会误把 QR 退回去渲染 install_url(那是 LSP / find-refs 不能直接
+        // 防住的语义回归)。
+        //
+        // 做法: build 出 install_url 的 QR(单独走一次 render_qr_code),
+        // 断言 use case 输出的 QR 字节与之不同。
+        let uc = build_uc(true);
+        let out = uc
+            .execute(label_only("Phone"))
+            .await
+            .expect("happy path must succeed");
+
+        let install_url_qr = render_qr_code(SYNC_CLIPBOARD_EX_INSTALL_URL).expect("baseline qr ok");
+        assert_ne!(
+            out.qr_code_png_bytes, install_url_qr.0,
+            "QR PNG must encode connect_uri, not install_url"
+        );
+        assert_ne!(
+            out.qr_code_ascii, install_url_qr.1,
+            "QR ASCII must encode connect_uri, not install_url"
+        );
     }
 
     // ── tests: custom username ─────────────────────────────────────────
@@ -1135,6 +1246,60 @@ mod tests {
             err,
             RegisterMobileShortcutDeviceError::LanInterfaceProbeFailed(ref s) if s.contains("ifaddr crashed")
         ));
+    }
+
+    // ── tests: connect URI error translation ──────────────────────────
+
+    #[test]
+    fn translates_uri_too_long_to_qr_render_failed_with_hint() {
+        // 直接测翻译函数, 避开"全 use case 路径正好凑齐 800+ 字符"的脆弱
+        // 算术。end-to-end 上, 一旦未来新增字段让 URI 超长, 用户都会拿到
+        // 一个稳定可读的 QrRenderFailed 错误。
+        let err = translate_connect_uri_error(ConnectUriError::UriTooLong {
+            len: 1200,
+            max: 800,
+        });
+        match err {
+            RegisterMobileShortcutDeviceError::QrRenderFailed(msg) => {
+                assert!(
+                    msg.contains("connect uri too long"),
+                    "expected uri-too-long phrasing, got: {msg}"
+                );
+                assert!(msg.contains("1200"));
+                assert!(msg.contains("800"));
+            }
+            other => panic!("expected QrRenderFailed, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn translates_other_connect_uri_errors_to_qr_render_failed() {
+        // 6 个"理论上不可能触发"的变体都翻译成 QrRenderFailed, 保留原始
+        // 错误描述给日志/UI排障, 不让 use case panic。
+        for err in [
+            ConnectUriError::InvalidScheme,
+            ConnectUriError::UnsupportedVersion,
+            ConnectUriError::UnsupportedService,
+            ConnectUriError::PayloadDecodeFailed("simulated".into()),
+            ConnectUriError::MissingField("url"),
+            ConnectUriError::InvalidUrl,
+        ] {
+            let original = err.to_string();
+            let translated = translate_connect_uri_error(err);
+            match translated {
+                RegisterMobileShortcutDeviceError::QrRenderFailed(msg) => {
+                    assert!(
+                        msg.contains("unexpected"),
+                        "translation should mark unexpected variant: {msg}"
+                    );
+                    assert!(
+                        msg.contains(&original),
+                        "translation should retain original error text: {msg}"
+                    );
+                }
+                other => panic!("expected QrRenderFailed for {original:?}, got {other:?}"),
+            }
+        }
     }
 
     // ── tests: analytics emit (schema doc §7.6 / §12.2 P1) ────────────

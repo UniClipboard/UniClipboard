@@ -655,10 +655,22 @@ export type RegisterMobileDeviceResult = {
 	baseUrl: string,
 	username: string,
 	password: string,
+	/**
+	 *  SyncClipboard "Clipboard EX" iCloud 共享链接(常量)。前端把它放在
+	 *  二级"首次需安装快捷指令"卡片里, 不再作为 QR 主内容(QR 现在编
+	 *  `connectUri`)。
+	 */
 	installUrl: string,
 	/**
+	 *  `uniclipboard://connect?v=1&svc=mobile-sync&p=<base64url-json>`。
+	 *  QR 主内容: iOS Shortcut 扫描后一次性解出 base_url / username /
+	 *  password 直接填三栏, 替代旧版"用户肉眼抄写"。协议详见
+	 *  `docs/architecture/mobile-sync-connect-uri.md`。
+	 */
+	connectUri: string,
+	/**
 	 *  Base64-encoded PNG bytes; 前端 `<img src="data:image/png;base64,...">`
-	 *  直接渲染。
+	 *  直接渲染。当前编码的是 `connectUri`(阶段 2 起), 不再是 `installUrl`。
 	 */
 	qrCodePngBase64: string,
 };

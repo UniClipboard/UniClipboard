@@ -97,15 +97,22 @@ impl ConnectUriOther {
 #[derive(Debug, Error, PartialEq, Eq)]
 pub(crate) enum ConnectUriError {
     /// scheme ≠ `uniclipboard` 或 host ≠ `connect`(规范 §4.2 `INVALID_SCHEME`)。
+    /// 仅 [`parse_mobile_sync_connect_uri`] 构造; build 路径不可能产生。
     #[error("invalid scheme or host (must be uniclipboard://connect)")]
+    #[allow(dead_code)]
+    // build 路径不构造; parse 路径单测 + 跨语言契约 + 未来 v2 daemon 接收侧使用。
     InvalidScheme,
 
     /// URI `v` ≠ 1 或 payload `v` ≠ 1(规范 §4.2 `UNSUPPORTED_VERSION`)。
+    /// 仅 [`parse_mobile_sync_connect_uri`] 构造。
     #[error("unsupported version (only v=1 is supported)")]
+    #[allow(dead_code)] // 同 InvalidScheme: parse-only variant, 保留供前向兼容路径。
     UnsupportedVersion,
 
     /// URI `svc` ≠ `mobile-sync`(规范 §4.2 `UNSUPPORTED_SERVICE`)。
+    /// 仅 [`parse_mobile_sync_connect_uri`] 构造。
     #[error("unsupported service (only svc=mobile-sync is supported)")]
+    #[allow(dead_code)] // 同 InvalidScheme: parse-only variant, 保留供前向兼容路径。
     UnsupportedService,
 
     /// `p` 缺失 / base64url 损坏 / JSON 解析失败(规范 §4.2 `PAYLOAD_DECODE_FAILED`)。
@@ -202,10 +209,19 @@ pub(crate) fn build_mobile_sync_connect_uri(
 
 /// 把 QR 文本反向解码出 payload。错误码与规范 §4.2 一一对应。
 ///
+/// 当前 use case 路径只走 [`build_mobile_sync_connect_uri`](self::build_mobile_sync_connect_uri),
+/// 不调 parse —— iOS Shortcut / Android 客户端在自己端各自实现解码。
+/// 本函数保留用于:
+/// 1. 本模块单测的 round-trip 断言;
+/// 2. `register_device.rs` 跨模块测试中验证 happy-path 输出语义;
+/// 3. 未来 v2 daemon "扫码回执"路径(规范 §10) 的接收侧解析复用;
+/// 4. 跨语言契约 (`src/lib/mobileSyncConnectUri.ts` 阶段 3) 的字节级对照。
+///
 /// 不负责:
 /// - 不发起 HTTP 探活(可选, 由调用方决定)
 /// - 不持久化任何字段
 /// - 不修剪 pwd 前后空白(规范 §3.1: pwd 任何字节都合法)
+#[allow(dead_code)] // 仅测试 / 未来 v2 路径使用; 阶段 2 不接入生产消费侧。
 pub(crate) fn parse_mobile_sync_connect_uri(
     qr_text: &str,
 ) -> Result<ConnectPayload, ConnectUriError> {

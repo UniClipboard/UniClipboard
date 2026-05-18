@@ -294,9 +294,17 @@ pub struct RegisterMobileDeviceResult {
     pub base_url: String,
     pub username: String,
     pub password: String,
+    /// SyncClipboard "Clipboard EX" iCloud 共享链接(常量)。前端把它放在
+    /// 二级"首次需安装快捷指令"卡片里, 不再作为 QR 主内容(QR 现在编
+    /// `connectUri`)。
     pub install_url: String,
+    /// `uniclipboard://connect?v=1&svc=mobile-sync&p=<base64url-json>`。
+    /// QR 主内容: iOS Shortcut 扫描后一次性解出 base_url / username /
+    /// password 直接填三栏, 替代旧版"用户肉眼抄写"。协议详见
+    /// `docs/architecture/mobile-sync-connect-uri.md`。
+    pub connect_uri: String,
     /// Base64-encoded PNG bytes; 前端 `<img src="data:image/png;base64,...">`
-    /// 直接渲染。
+    /// 直接渲染。当前编码的是 `connectUri`(阶段 2 起), 不再是 `installUrl`。
     pub qr_code_png_base64: String,
 }
 
@@ -311,6 +319,7 @@ impl From<RegisterMobileShortcutDeviceOutput> for RegisterMobileDeviceResult {
             username: out.username,
             password: out.password,
             install_url: out.install_url,
+            connect_uri: out.connect_uri,
             qr_code_png_base64: BASE64.encode(out.qr_code_png_bytes),
         }
     }
@@ -890,6 +899,7 @@ mod tests {
             username: "mobile_abcd1234".to_string(),
             password: "secretpw".to_string(),
             install_url: "https://www.icloud.com/shortcuts/abc".to_string(),
+            connect_uri: "uniclipboard://connect?v=1&svc=mobile-sync&p=fixture".to_string(),
             qr_code_png_bytes: png_bytes.clone(),
             qr_code_ascii: "...".to_string(),
         };
@@ -898,6 +908,48 @@ mod tests {
         assert_eq!(dto.client_type, "ios_shortcut");
         assert_eq!(dto.device_id, "did_test");
         assert_eq!(dto.password, "secretpw");
+        // install_url 与 connect_uri 都是一次性回显字段, 透传不再做编码转换。
+        assert_eq!(dto.install_url, "https://www.icloud.com/shortcuts/abc");
+        assert_eq!(
+            dto.connect_uri,
+            "uniclipboard://connect?v=1&svc=mobile-sync&p=fixture"
+        );
+    }
+
+    #[test]
+    fn register_result_serializes_connect_uri_camel_case() {
+        // Tauri / specta 边界: 字段在 wire 上必须是 camelCase `connectUri`,
+        // 这是前端 TS DTO 与 Rust struct 的接口契约。如果未来重命名了
+        // serde rename_all 或字段名, 这个测试会立刻失败。
+        use uc_core::mobile_sync::{MobileClientType, MobileDevice, MobileDeviceId};
+        let out = RegisterMobileShortcutDeviceOutput {
+            device: MobileDevice {
+                device_id: MobileDeviceId::new("did_test"),
+                label: "Test".to_string(),
+                client_type: MobileClientType::IosShortcut,
+                username: "mobile_abcd1234".to_string(),
+                password_hash: "$argon2id$...".to_string(),
+                created_at_ms: 0,
+                last_seen_at_ms: None,
+                last_seen_ip: None,
+                reported_name: None,
+                reported_os: None,
+            },
+            base_url: "http://192.168.1.5:42720".to_string(),
+            username: "mobile_abcd1234".to_string(),
+            password: "secretpw".to_string(),
+            install_url: "https://example.com".to_string(),
+            connect_uri: "uniclipboard://connect?v=1&svc=mobile-sync&p=X".to_string(),
+            qr_code_png_bytes: vec![],
+            qr_code_ascii: String::new(),
+        };
+        let dto = RegisterMobileDeviceResult::from(out);
+        let json = serde_json::to_string(&dto).expect("serialize");
+        assert!(
+            json.contains("\"connectUri\":\"uniclipboard://connect?v=1&svc=mobile-sync&p=X\""),
+            "missing camelCase connectUri in: {json}"
+        );
+        assert!(json.contains("\"installUrl\":\"https://example.com\""));
     }
 
     #[test]

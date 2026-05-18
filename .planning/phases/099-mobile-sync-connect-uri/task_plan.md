@@ -8,7 +8,7 @@
 
 ## 当前阶段
 
-阶段 0-1 已合并 (commit `ec59277b`); 阶段 2 已在本地实现且全测试通过，待 review / 提交。准备进入阶段 3A (TS 解析器)。
+阶段 0-2 已提交 (commits `ec59277b` 与 `3756c84e`); 阶段 3A 本地完成待提交。下一步进入阶段 3B (前端凭据弹窗 UI 切换)。
 
 ## 关键非目标 (本期不做)
 
@@ -38,9 +38,11 @@
     ↓
 阶段 1 (Rust 编解码 + golden)  ✅ ec59277b
     ↓
-阶段 2 (Rust use case + DTO)   ✅ 本地完成(待提交)
+阶段 2 (Rust use case + DTO)   ✅ 3756c84e
     ↓
-阶段 3 (TS 解析器 + 弹窗 UI)   ⏳ 待办
+阶段 3A (TS 解析器 + Vitest)   ✅ 本地完成(待提交)
+    ↓
+阶段 3B (凭据弹窗 UI)          ⏳ 待办
     ↓
 阶段 4 (iOS 模板 + 客户端文档) ⏳ 待办
 ```
@@ -118,26 +120,23 @@
 
 ## 阶段 3: 前端 TS 解析器 + 凭据弹窗 UI ⏳
 
-### 3A: 共享解析器
+### 3A: 共享解析器 ✅
 
-**目标**: 写一份与 Rust 字节一致的 TS 编解码模块，让前端自检 / 未来扫码 App 复用。
+**产出** (本地，待提交):
+- `src/lib/mobileSyncConnectUri.ts` (303 行)
+  - `buildConnectUri(baseUrl, user, pwd, other)` / `parseConnectUri(qrText)` 纯函数对
+  - `ConnectUriError extends Error` + `ConnectUriErrorCode` 7 元联合，携带 `field/len/max/detail` 结构化字段
+  - 6 条字节稳定性约束逐项实现，跨语言字节级一致
+- `src/lib/__tests__/mobileSyncConnectUri.test.ts` (23 测试):
+  - happy-path golden URI 字节级 === Rust 端字面量
+  - 空 `o` 跳过 + `o` 键字典序强制
+  - 5 build 负例 + 6 §7.2 parse 负例 + 4 边界负例
+  - 前向兼容未知 `o.future_key`
+  - build→parse round-trip 含 Unicode label
 
-**改动文件**:
+**测试**: `bun run test` 22 通过; `bun run test --run` 全套 80 文件 / 511 OK 无回归。
 
-1. `src/lib/mobileSyncConnectUri.ts` (新增)
-   - `buildConnectUri(baseUrl, user, pwd, other)` — 编码
-   - `parseConnectUri(qrText)` — 解码
-   - `ConnectUriError` 类型联合 (`'INVALID_SCHEME' | 'UNSUPPORTED_VERSION' | ...`)
-   - 使用浏览器原生 `URL` + `TextEncoder` + `btoa` (需要 base64url 转换 helper: `+` → `-`, `/` → `_`, 去掉 `=` padding)
-
-2. `src/lib/__tests__/mobileSyncConnectUri.test.ts` (新增)
-   - **复用规范 §7 的 golden vector**, 字符串字面量与 Rust `GOLDEN_URI` 字节相同
-   - 对全 6 负例同样断言
-   - 与 Rust 测试形成"跨语言契约测试套"
-
-**验收**:
-- `bun run test src/lib/__tests__/mobileSyncConnectUri.test.ts` 全绿
-- Rust `GOLDEN_URI` 与 TS `GOLDEN_URI` 是同一字符串字面量 (可由 review 时 `diff` 比对)
+**完成时间**: 2026-05-18 (本地)
 
 ### 3B: 凭据弹窗 UI
 
@@ -210,3 +209,6 @@
 - 2026-05-18 (阶段 2): `render_install_qr` 改名为 `render_qr_code` — 函数语义变了 (渲染任意 URI), 旧名误导。
 - 2026-05-18 (阶段 2): `ConnectUriError` 全部翻译到 `QrRenderFailed`(复用既有变体，不新增错误码污染调用方); `UriTooLong` 带 `len/max` 提示，其余 catch-all 前缀 `unexpected:` 供日志排障。
 - 2026-05-18 (阶段 2): parse 函数 + 3 个 parse-only 变体显式 `#[allow(dead_code)]` 而非删除，注释指明保留意图 (单测 / 跨语言契约 / 未来 v2 daemon 接收侧)。
+- 2026-05-18 (阶段 3A): TS 端 `ConnectUriError` 用 `class ... extends Error` + `code: ConnectUriErrorCode` 联合常量，而非 discriminated union object —— JS 生态期望异常通道，且 class 能保留 stack trace, `code` 字段方便 i18n key 映射 (`CONNECT_URI_INVALID_SCHEME` 等)。
+- 2026-05-18 (阶段 3A): JSON.stringify 字段顺序依赖浏览器 V8/JSC 的"字符串键按插入顺序"行为 (ES2015 起规范保证); 编码侧手动按 v/url/user/pwd/o 顺序构造对象，`o` 内部键先 sort 再插入 —— 与 Rust BTreeMap 字典序合起来保证字节级一致。
+- 2026-05-18 (阶段 3A): `coercePayload` 对 `JSON.parse` 出的 `unknown` 显式 narrow, 非 string 的 `o.*` 键静默丢弃 (不污染 `Record<string, string>` 调用方契约); `v` 非整数走 UNSUPPORTED_VERSION 而非 PAYLOAD_DECODE_FAILED, 与 Rust serde u32 反序列化语义对齐。

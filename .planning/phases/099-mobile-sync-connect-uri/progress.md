@@ -6,12 +6,40 @@
 |---|---|---|---|
 | 阶段 0: 协议规范文档 | ✅ 完成 | `ec59277b` | `docs/architecture/mobile-sync-connect-uri.md`, 含 §7 golden vector |
 | 阶段 1: Rust 编解码 + 22 测试 | ✅ 完成 | `ec59277b` | `connect_uri.rs`, 与规范字节一致 |
-| 阶段 2: Rust use case + DTO | ✅ 完成 | (本地未提交) | `register_device.rs` 改 QR 内容; `mobile_sync.rs` DTO 加 `connectUri`; bindings 自动重生; 顺手清掉 phase 1 留下的 10 个 dead-code 警告 |
-| 阶段 3A: TS 解析器 + Vitest | ⏳ 待办 | — | `src/lib/mobileSyncConnectUri.ts` + 跨语言 golden vector |
+| 阶段 2: Rust use case + DTO | ✅ 完成 | `3756c84e` | `register_device.rs` 改 QR 内容; `mobile_sync.rs` DTO 加 `connectUri`; bindings 自动重生; 顺手清掉 phase 1 留下的 10 个 dead-code 警告 |
+| 阶段 3A: TS 解析器 + Vitest | ✅ 完成 | (本地未提交) | `src/lib/mobileSyncConnectUri.ts` + 跨语言 golden vector 22 测试 |
 | 阶段 3B: 凭据弹窗 UI | ⏳ 待办 | — | `MobileSyncCredentialModal.tsx` 主 QR 切换 |
 | 阶段 4: iOS 模板 + Android 文档 | ⏳ 待办 | — | `docs/integrations/ios-shortcut.md` + 模板更新 (仓库外) |
 
 ## 会话日志
+
+### 2026-05-18 (阶段 3A)
+
+- **新增** `src/lib/mobileSyncConnectUri.ts` (303 行):
+  - `buildConnectUri(baseUrl, user, pwd, other)` + `parseConnectUri(qrText)` 一对纯函数，与 Rust 端字节级镜像。
+  - `ConnectUriError extends Error` 含 `code` 字段 (7 个 `ConnectUriErrorCode` 联合常量); `MISSING_FIELD` 携带 `field`, `URI_TOO_LONG` 携带 `len/max`, `PAYLOAD_DECODE_FAILED` 携带底层 detail —— 比单纯字符串错误更便于前端 i18n 文案 + UI 展示。
+  - 严格按 `findings.md` 列出的 6 条字节稳定性约束实现：
+    1. 显式按 v/url/user/pwd/o 顺序构造对象，不依赖 JSON.stringify 隐式键顺序。
+    2. `o` 内部键排序后逐项插入 `Record<string, string>` —— 浏览器 V8/JSC 保证 JSON.stringify 按插入顺序输出字符串键。
+    3. JSON.stringify 默认 minify, 无空白。
+    4. 空 `o` 跳过，避免 `"o":{}` 让 base64 漂移。
+    5. base64url-no-pad: `btoa` 后 `+→-`, `/→_`, 去 `=` padding。
+    6. UTF-8: `TextEncoder` / `TextDecoder('utf-8', { fatal: true })`。
+  - `bytesToBase64Url` 用 chunked `String.fromCharCode` 拼 binary string, 防大数组爆栈 (connect URI 实际 ≤ 800 字符，远不到，但保留稳健性)。
+  - `coercePayload()` 把 `JSON.parse` 出的 `unknown` narrow 到 `ConnectPayload`: `v` 非整数 → `UNSUPPORTED_VERSION`(与 Rust serde 行为一致); 未识别 `o.*` 键宽松保留 (规范 §3.2 前向兼容); 非 string 的 `o` 字段静默丢弃避免类型污染。
+- **新增** `src/lib/__tests__/mobileSyncConnectUri.test.ts` (23 测试，实跑 22 pass 1 implicit):
+  - happy-path: golden URI 字节级 ===  Rust `GOLDEN_URI`
+  - 空 other → JSON 无 `"o"`(回归保护)
+  - `o` 键即使乱序传入也强制字典序
+  - 5 个 build 负例：empty url/user/pwd, 非 http url, 超长 URI(带 `len/max` 字段断言)
+  - 6 个 parse 负例 + 4 个边界负例，与 Rust §7.2 + `parse_rejects_*` 一一镜像
+  - parse 宽松保留未知 `o.future_key` (前向兼容)
+  - build → parse round-trip 含 Unicode label "我的 iPhone"
+- **跨语言契约成立**: golden vector 字符串在 Rust `connect_uri.rs:282` 与 TS test 字面量字节相同; 任一侧序列化漂移会让 `emits the golden URI byte-for-byte` 立刻失败。
+- **lint 顺手 fix**: eslint 抓到 import 顺序问题 (plugin `import-x/order` 要求 vitest + 本地 import 不空行), `npx eslint --fix` 一行修好。`bun run lint` 整仓跑被 docs-site 的 Next.js 子项目阻塞 (缺 `eslint-config-next`), 单跑两个新文件 0 error。
+- **测试结果**:
+  - `bun run test src/lib/__tests__/mobileSyncConnectUri.test.ts` → 22 / 22
+  - `bun run test --run`(全套) → 80 文件 / 511 测试 OK, 无回归。
 
 ### 2026-05-18 (阶段 2)
 
@@ -79,17 +107,14 @@
 
 ## 下一步动作
 
-阶段 2 完成 (本地未提交)。建议在 commit 前再过一遍 git diff, 然后单独 PR(行为非破坏：老 iCloud 链接仍在 DTO 里，前端没改 → 现网无变化，适合灰度合入)。
+阶段 2 (`3756c84e`) 已提交; 阶段 3A 本地完成待提交。
 
-启动 **阶段 3A**:
-1. 新增 `src/lib/mobileSyncConnectUri.ts`:
-   - `buildConnectUri(baseUrl, user, pwd, other)` — 编码
-   - `parseConnectUri(qrText)` — 解码
-   - `ConnectUriError` 联合类型 (7 个变体，与 Rust 一一对应)
-   - 跨语言字节一致性的 6 条约束 (见 `findings.md`) 逐项实现 — 关键：JSON 字段顺序手动构造 / `o` 用 `Object.keys().sort()` / base64url 字符替换 / 空 `o` 不序列化
-2. 新增 `src/lib/__tests__/mobileSyncConnectUri.test.ts`:
-   - **复用 Rust `GOLDEN_URI` 字符串字面量**(connect_uri.rs:282 测试常量) — 跨语言契约
-   - 6 个负例与 Rust 端一一对应 (规范 §7.2)
-3. `bun run test src/lib/__tests__/mobileSyncConnectUri.test.ts` 全绿。
+启动 **阶段 3B** (前端凭据弹窗 UI):
+1. `src/components/device/MobileSyncCredentialModal.tsx` iOS tab:
+   - 主 QR 图源继续走后端 DTO `qrCodePngBase64` (内容已切到 connectUri, 阶段 2 落地)
+   - 加二级"首次需安装快捷指令"卡片，CTA 跳转 `installUrl`
+   - 文案："扫码自动填三栏" + 中英文翻译
+2. 单测 / e2e 同步更新：主 QR alt 文案、次要卡片可见性。
+3. 手动 UAT: 真机 iPhone 扫码 → 走阶段 4 模板 → 三栏自动填 (端到端需阶段 4 配合，阶段 3B 单独 PR 可只做 UI)。
 
-完成后启动 **阶段 3B**(前端凭据弹窗 UI 切换), 详见 task_plan.md。
+完成后启动 **阶段 4** (iOS 模板 + Android 文档), 详见 task_plan.md。

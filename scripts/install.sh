@@ -119,10 +119,13 @@ fi
 DISTRO_ID=""
 DISTRO_VERSION_ID=""
 if [[ "$OS" == "linux" && -r /etc/os-release ]]; then
+  # Source /etc/os-release inside a subshell — it defines VERSION=, NAME=,
+  # etc. which would otherwise clobber our own VERSION variable (set from
+  # --version / UC_VERSION) and break the GitHub release URL.
   # shellcheck disable=SC1091
-  . /etc/os-release
-  DISTRO_ID="${ID:-}"
-  DISTRO_VERSION_ID="${VERSION_ID:-}"
+  DISTRO_ID="$(. /etc/os-release && printf '%s' "${ID:-}")"
+  # shellcheck disable=SC1091
+  DISTRO_VERSION_ID="$(. /etc/os-release && printf '%s' "${VERSION_ID:-}")"
 fi
 
 is_ubuntu_2004() {
@@ -307,11 +310,18 @@ install_copr() {
     die "dnf is required for the COPR path; use --format rpm or --format appimage instead."
   fi
 
-  # The `dnf copr` subcommand is shipped by dnf-plugins-core. Fedora has it
-  # by default; on CentOS / RHEL / openSUSE it usually needs installing.
+  # The `dnf copr` subcommand lives in different packages depending on the
+  # dnf major version: dnf4 (Fedora ≤40, CentOS/RHEL) ships it in
+  # `dnf-plugins-core`, dnf5 (Fedora ≥41) ships it in `dnf5-plugins`.
+  # Installing the wrong one is a no-op for the copr subcommand, so detect
+  # which dnf is in play before installing.
   if ! $SUDO dnf copr --help >/dev/null 2>&1; then
-    info "Installing dnf-plugins-core for the 'dnf copr' subcommand…"
-    $SUDO dnf install -y dnf-plugins-core
+    local plugin_pkg=dnf-plugins-core
+    if command -v dnf5 >/dev/null 2>&1 || rpm -q dnf5 >/dev/null 2>&1; then
+      plugin_pkg=dnf5-plugins
+    fi
+    info "Installing ${plugin_pkg} for the 'dnf copr' subcommand…"
+    $SUDO dnf install -y "$plugin_pkg"
   fi
 
   info "Enabling COPR repository ${COPR_PROJECT}…"

@@ -65,8 +65,27 @@ pub enum MobileSyncError {
     #[error("username already taken: {username}")]
     UsernameTaken { username: String },
 
-    #[error("invalid username shape: {reason}")]
-    UsernameInvalidShape { reason: String },
+    #[error("username too short: must be at least {min} characters (got {got})")]
+    UsernameTooShort {
+        #[specta(type = specta_typescript::Number<usize>)]
+        min: usize,
+        #[specta(type = specta_typescript::Number<usize>)]
+        got: usize,
+    },
+
+    #[error("username too long: must be at most {max} characters (got {got})")]
+    UsernameTooLong {
+        #[specta(type = specta_typescript::Number<usize>)]
+        max: usize,
+        #[specta(type = specta_typescript::Number<usize>)]
+        got: usize,
+    },
+
+    #[error("username must start with an ASCII letter")]
+    UsernameMustStartWithLetter,
+
+    #[error("username contains forbidden characters (only letters, digits, underscore allowed)")]
+    UsernameContainsForbiddenChars,
 
     #[error("password too short (min {min})")]
     PasswordTooShort {
@@ -126,8 +145,17 @@ impl From<RegisterMobileShortcutDeviceError> for MobileSyncError {
             RegisterMobileShortcutDeviceError::UsernameTaken(username) => {
                 Self::UsernameTaken { username }
             }
-            RegisterMobileShortcutDeviceError::UsernameInvalidShape(reason) => {
-                Self::UsernameInvalidShape { reason }
+            RegisterMobileShortcutDeviceError::UsernameTooShort { min, got } => {
+                Self::UsernameTooShort { min, got }
+            }
+            RegisterMobileShortcutDeviceError::UsernameTooLong { max, got } => {
+                Self::UsernameTooLong { max, got }
+            }
+            RegisterMobileShortcutDeviceError::UsernameMustStartWithLetter => {
+                Self::UsernameMustStartWithLetter
+            }
+            RegisterMobileShortcutDeviceError::UsernameContainsForbiddenChars => {
+                Self::UsernameContainsForbiddenChars
             }
             RegisterMobileShortcutDeviceError::PasswordTooShort { min } => {
                 Self::PasswordTooShort { min }

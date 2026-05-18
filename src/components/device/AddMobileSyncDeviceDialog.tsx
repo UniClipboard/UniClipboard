@@ -9,6 +9,11 @@
  * 凭据本身是 SyncClipboard 协议级别的(base URL + Basic Auth),与客户端平台
  * 无关 —— 注册时不要求用户选 iOS / Android,统一在 credential modal 里展示
  * 各自的接入方式。
+ *
+ * 错误展示:字段级错误(label / username / password 校验)就地展示在对应
+ * input 下方,系统级错误(FACADE_UNAVAILABLE / LAN_* / PERSISTENCE 等)
+ * 走 dialog 内底部 banner。不使用 toast —— dialog 是 portal 出去的高
+ * z-index 层,toast 会被遮挡。
  */
 
 import { ChevronDown, ChevronRight, Loader2 } from 'lucide-react'
@@ -32,7 +37,6 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Label } from '@/components/ui/label'
-import { toast } from '@/components/ui/toast'
 import { createLogger } from '@/lib/logger'
 
 const log = createLogger('add-mobile-sync-device-dialog')
@@ -44,6 +48,9 @@ interface Props {
   onSuccess: (result: RegisterMobileDeviceResult) => void
 }
 
+type FieldErrorKey = 'label' | 'username' | 'password'
+type FieldErrors = Partial<Record<FieldErrorKey, string>>
+
 const AddMobileSyncDeviceDialog: React.FC<Props> = ({ open, onOpenChange, onSuccess }) => {
   const { t } = useTranslation()
 
@@ -52,6 +59,8 @@ const AddMobileSyncDeviceDialog: React.FC<Props> = ({ open, onOpenChange, onSucc
   const [password, setPassword] = useState('')
   const [advancedOpen, setAdvancedOpen] = useState(false)
   const [submitting, setSubmitting] = useState(false)
+  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({})
+  const [formError, setFormError] = useState<string | null>(null)
 
   // 每次重开 dialog 时重置表单 —— 避免上一次输入残留(尤其密码)
   useEffect(() => {
@@ -61,16 +70,30 @@ const AddMobileSyncDeviceDialog: React.FC<Props> = ({ open, onOpenChange, onSucc
       setPassword('')
       setAdvancedOpen(false)
       setSubmitting(false)
+      setFieldErrors({})
+      setFormError(null)
     }
   }, [open])
+
+  const clearFieldError = useCallback((key: FieldErrorKey) => {
+    setFieldErrors(prev => {
+      if (prev[key] === undefined) return prev
+      const next = { ...prev }
+      delete next[key]
+      return next
+    })
+  }, [])
 
   const handleSubmit = useCallback(async () => {
     const trimmedLabel = label.trim()
     if (trimmedLabel === '') {
-      toast.error(t('devices.mobileSync.errors.labelEmpty'))
+      setFieldErrors({ label: t('devices.mobileSync.errors.labelEmpty') })
+      setFormError(null)
       return
     }
     setSubmitting(true)
+    setFieldErrors({})
+    setFormError(null)
     try {
       const result = await registerMobileDevice({
         label: trimmedLabel,
@@ -83,7 +106,14 @@ const AddMobileSyncDeviceDialog: React.FC<Props> = ({ open, onOpenChange, onSucc
       onOpenChange(false)
     } catch (err) {
       log.error({ err }, 'failed to register mobile device')
-      toast.error(translateRegisterError(t, err))
+      const dispatch = classifyRegisterError(t, err)
+      if (dispatch.kind === 'field') {
+        setFieldErrors({ [dispatch.field]: dispatch.message })
+        // 字段错误属于高级选项时自动展开,否则用户看不到提示
+        if (dispatch.field !== 'label') setAdvancedOpen(true)
+      } else {
+        setFormError(dispatch.message)
+      }
     } finally {
       setSubmitting(false)
     }
@@ -112,11 +142,21 @@ const AddMobileSyncDeviceDialog: React.FC<Props> = ({ open, onOpenChange, onSucc
               id="mobile-sync-label"
               autoFocus
               value={label}
-              onChange={e => setLabel(e.target.value)}
+              onChange={e => {
+                setLabel(e.target.value)
+                clearFieldError('label')
+              }}
               placeholder={t('devices.mobileSync.add.labelField.placeholder')}
               disabled={submitting}
               maxLength={64}
+              aria-invalid={fieldErrors.label !== undefined || undefined}
+              aria-describedby={fieldErrors.label ? 'mobile-sync-label-error' : undefined}
             />
+            {fieldErrors.label !== undefined && (
+              <p id="mobile-sync-label-error" role="alert" className="text-xs text-destructive">
+                {fieldErrors.label}
+              </p>
+            )}
           </div>
 
           {/* Advanced options */}
@@ -146,14 +186,29 @@ const AddMobileSyncDeviceDialog: React.FC<Props> = ({ open, onOpenChange, onSucc
                 <Input
                   id="mobile-sync-username"
                   value={username}
-                  onChange={e => setUsername(e.target.value)}
+                  onChange={e => {
+                    setUsername(e.target.value)
+                    clearFieldError('username')
+                  }}
                   placeholder={t('devices.mobileSync.add.username.placeholder')}
                   disabled={submitting}
                   autoComplete="off"
+                  aria-invalid={fieldErrors.username !== undefined || undefined}
+                  aria-describedby={fieldErrors.username ? 'mobile-sync-username-error' : undefined}
                 />
-                <p className="text-xs text-muted-foreground/80">
-                  {t('devices.mobileSync.add.username.help')}
-                </p>
+                {fieldErrors.username !== undefined ? (
+                  <p
+                    id="mobile-sync-username-error"
+                    role="alert"
+                    className="text-xs text-destructive"
+                  >
+                    {fieldErrors.username}
+                  </p>
+                ) : (
+                  <p className="text-xs text-muted-foreground/80">
+                    {t('devices.mobileSync.add.username.help')}
+                  </p>
+                )}
               </div>
 
               <div className="space-y-1.5">
@@ -164,17 +219,41 @@ const AddMobileSyncDeviceDialog: React.FC<Props> = ({ open, onOpenChange, onSucc
                   id="mobile-sync-password"
                   type="password"
                   value={password}
-                  onChange={e => setPassword(e.target.value)}
+                  onChange={e => {
+                    setPassword(e.target.value)
+                    clearFieldError('password')
+                  }}
                   placeholder={t('devices.mobileSync.add.password.placeholder')}
                   disabled={submitting}
                   autoComplete="new-password"
+                  aria-invalid={fieldErrors.password !== undefined || undefined}
+                  aria-describedby={fieldErrors.password ? 'mobile-sync-password-error' : undefined}
                 />
-                <p className="text-xs text-muted-foreground/80">
-                  {t('devices.mobileSync.add.password.help')}
-                </p>
+                {fieldErrors.password !== undefined ? (
+                  <p
+                    id="mobile-sync-password-error"
+                    role="alert"
+                    className="text-xs text-destructive"
+                  >
+                    {fieldErrors.password}
+                  </p>
+                ) : (
+                  <p className="text-xs text-muted-foreground/80">
+                    {t('devices.mobileSync.add.password.help')}
+                  </p>
+                )}
               </div>
             </CollapsibleContent>
           </Collapsible>
+
+          {formError !== null && (
+            <div
+              role="alert"
+              className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive"
+            >
+              {formError}
+            </div>
+          )}
         </div>
 
         <DialogFooter>
@@ -193,51 +272,111 @@ const AddMobileSyncDeviceDialog: React.FC<Props> = ({ open, onOpenChange, onSucc
   )
 }
 
-// Register-specific error translator: 沿用 panel 的 i18n key 表,但只覆盖
-// register 路径会触发的 variant + 兜底。集中在一处方便后续 add dialog 单独
-// 演化(panel 也仍有自己的 translateMobileSyncError, 不共享是有意 —— 两条
-// 错误路径未来文案可能分化, 例如 add 页要更详细的指引)。
-function translateRegisterError(t: ReturnType<typeof useTranslation>['t'], err: unknown): string {
+type RegisterErrorDispatch =
+  | { kind: 'field'; field: FieldErrorKey; message: string }
+  | { kind: 'form'; message: string }
+
+// 把后端 typed error 分流到具体字段或 form-level banner。映射规则:
+// LABEL_*  → label;USERNAME_*  → username;PASSWORD_TOO_*  → password。
+// 其它(facade / LAN / persistence / hash / settings / unknown)属于系统
+// 级故障,不绑定到字段,统一在底部 banner 展示。
+function classifyRegisterError(
+  t: ReturnType<typeof useTranslation>['t'],
+  err: unknown
+): RegisterErrorDispatch {
   if (isMobileSyncError(err)) {
     const e = err as MobileSyncError
     switch (e.code) {
       case 'LABEL_EMPTY':
-        return t('devices.mobileSync.errors.labelEmpty')
+        return { kind: 'field', field: 'label', message: t('devices.mobileSync.errors.labelEmpty') }
       case 'LABEL_TOO_LONG':
-        return t('devices.mobileSync.errors.labelTooLong', { max: e.max })
-      case 'LAN_LISTENER_DISABLED':
-        return t('devices.mobileSync.errors.lanListenerDisabled')
+        return {
+          kind: 'field',
+          field: 'label',
+          message: t('devices.mobileSync.errors.labelTooLong', { max: e.max }),
+        }
       case 'USERNAME_TAKEN':
-        return t('devices.mobileSync.errors.usernameTaken', { username: e.username })
-      case 'USERNAME_INVALID_SHAPE':
-        return t('devices.mobileSync.errors.usernameInvalidShape', { reason: e.reason })
+        return {
+          kind: 'field',
+          field: 'username',
+          message: t('devices.mobileSync.errors.usernameTaken', { username: e.username }),
+        }
+      case 'USERNAME_TOO_SHORT':
+        return {
+          kind: 'field',
+          field: 'username',
+          message: t('devices.mobileSync.errors.usernameTooShort', { min: e.min, got: e.got }),
+        }
+      case 'USERNAME_TOO_LONG':
+        return {
+          kind: 'field',
+          field: 'username',
+          message: t('devices.mobileSync.errors.usernameTooLong', { max: e.max, got: e.got }),
+        }
+      case 'USERNAME_MUST_START_WITH_LETTER':
+        return {
+          kind: 'field',
+          field: 'username',
+          message: t('devices.mobileSync.errors.usernameMustStartWithLetter'),
+        }
+      case 'USERNAME_CONTAINS_FORBIDDEN_CHARS':
+        return {
+          kind: 'field',
+          field: 'username',
+          message: t('devices.mobileSync.errors.usernameContainsForbiddenChars'),
+        }
       case 'PASSWORD_TOO_SHORT':
-        return t('devices.mobileSync.errors.passwordTooShort', { min: e.min })
+        return {
+          kind: 'field',
+          field: 'password',
+          message: t('devices.mobileSync.errors.passwordTooShort', { min: e.min }),
+        }
       case 'PASSWORD_TOO_LONG':
-        return t('devices.mobileSync.errors.passwordTooLong', { max: e.max })
+        return {
+          kind: 'field',
+          field: 'password',
+          message: t('devices.mobileSync.errors.passwordTooLong', { max: e.max }),
+        }
+      case 'LAN_LISTENER_DISABLED':
+        return { kind: 'form', message: t('devices.mobileSync.errors.lanListenerDisabled') }
       case 'PASSWORD_HASH_FAILED':
-        return t('devices.mobileSync.errors.passwordHashFailed', { message: e.message })
+        return {
+          kind: 'form',
+          message: t('devices.mobileSync.errors.passwordHashFailed', { message: e.message }),
+        }
       case 'PERSISTENCE_FAILED':
-        return t('devices.mobileSync.errors.persistenceFailed', { message: e.message })
+        return {
+          kind: 'form',
+          message: t('devices.mobileSync.errors.persistenceFailed', { message: e.message }),
+        }
       case 'QR_RENDER_FAILED':
-        return t('devices.mobileSync.errors.qrRenderFailed', { message: e.message })
+        return {
+          kind: 'form',
+          message: t('devices.mobileSync.errors.qrRenderFailed', { message: e.message }),
+        }
       case 'SETTINGS_LOAD_FAILED':
-        return t('devices.mobileSync.errors.settingsLoadFailed', { message: e.message })
+        return {
+          kind: 'form',
+          message: t('devices.mobileSync.errors.settingsLoadFailed', { message: e.message }),
+        }
       case 'FACADE_UNAVAILABLE':
-        return t('devices.mobileSync.errors.facadeUnavailable')
+        return { kind: 'form', message: t('devices.mobileSync.errors.facadeUnavailable') }
       case 'NO_LAN_INTERFACE_AVAILABLE':
-        return t('devices.mobileSync.errors.noLanInterfaceAvailable')
+        return { kind: 'form', message: t('devices.mobileSync.errors.noLanInterfaceAvailable') }
       case 'LAN_PROBE_FAILED':
-        return t('devices.mobileSync.errors.lanProbeFailed', { message: e.message })
+        return {
+          kind: 'form',
+          message: t('devices.mobileSync.errors.lanProbeFailed', { message: e.message }),
+        }
       default: {
         // 其余 variant 不应出现在 register 路径,落 generic 兜底
         const message = (e as { message?: string }).message ?? e.code
-        return t('devices.mobileSync.errors.unknown', { message })
+        return { kind: 'form', message: t('devices.mobileSync.errors.unknown', { message }) }
       }
     }
   }
   const message = err instanceof Error ? err.message : String(err)
-  return t('devices.mobileSync.errors.unknown', { message })
+  return { kind: 'form', message: t('devices.mobileSync.errors.unknown', { message }) }
 }
 
 export default AddMobileSyncDeviceDialog

@@ -100,9 +100,21 @@ pub enum RegisterMobileShortcutDeviceError {
     #[error("username already taken: {0}")]
     UsernameTaken(String),
 
-    /// 自定义 username 不符合形态规则(长度 / 字符集 / 必须字母开头)。
-    #[error("invalid username shape: {0}")]
-    UsernameInvalidShape(String),
+    /// 自定义 username 长度低于 [`MIN_USERNAME_LEN`]。
+    #[error("username too short: must be at least {min} characters (got {got})")]
+    UsernameTooShort { min: usize, got: usize },
+
+    /// 自定义 username 长度超过 [`MAX_USERNAME_LEN`]。
+    #[error("username too long: must be at most {max} characters (got {got})")]
+    UsernameTooLong { max: usize, got: usize },
+
+    /// 自定义 username 首字符不是 ASCII 字母 —— 避免 Basic Auth header 解析歧义。
+    #[error("username must start with an ASCII letter")]
+    UsernameMustStartWithLetter,
+
+    /// 自定义 username 含 `[A-Za-z0-9_]` 以外的字符。
+    #[error("username contains forbidden characters (only letters, digits, underscore allowed)")]
+    UsernameContainsForbiddenChars,
 
     /// 自定义 password 长度低于 [`MIN_PASSWORD_LEN`]。
     #[error("password too short (min {min} chars)")]
@@ -400,29 +412,27 @@ impl RegisterMobileShortcutDeviceUseCase {
 fn validate_username_shape(username: &str) -> Result<(), RegisterMobileShortcutDeviceError> {
     let len = username.chars().count();
     if len < MIN_USERNAME_LEN {
-        return Err(RegisterMobileShortcutDeviceError::UsernameInvalidShape(
-            format!("must be at least {MIN_USERNAME_LEN} characters (got {len})"),
-        ));
+        return Err(RegisterMobileShortcutDeviceError::UsernameTooShort {
+            min: MIN_USERNAME_LEN,
+            got: len,
+        });
     }
     if len > MAX_USERNAME_LEN {
-        return Err(RegisterMobileShortcutDeviceError::UsernameInvalidShape(
-            format!("must be at most {MAX_USERNAME_LEN} characters (got {len})"),
-        ));
+        return Err(RegisterMobileShortcutDeviceError::UsernameTooLong {
+            max: MAX_USERNAME_LEN,
+            got: len,
+        });
     }
     let mut chars = username.chars();
     let first = chars.next().expect("len ≥ MIN_USERNAME_LEN > 0");
     if !first.is_ascii_alphabetic() {
-        return Err(RegisterMobileShortcutDeviceError::UsernameInvalidShape(
-            "must start with an ASCII letter".to_string(),
-        ));
+        return Err(RegisterMobileShortcutDeviceError::UsernameMustStartWithLetter);
     }
     if !username
         .chars()
         .all(|c| c.is_ascii_alphanumeric() || c == '_')
     {
-        return Err(RegisterMobileShortcutDeviceError::UsernameInvalidShape(
-            "only letters, digits, and underscore are allowed".to_string(),
-        ));
+        return Err(RegisterMobileShortcutDeviceError::UsernameContainsForbiddenChars);
     }
     Ok(())
 }
@@ -862,7 +872,7 @@ mod tests {
             .unwrap_err();
         assert!(matches!(
             err,
-            RegisterMobileShortcutDeviceError::UsernameInvalidShape(_)
+            RegisterMobileShortcutDeviceError::UsernameTooShort { min: 6, got: 3 }
         ));
     }
 
@@ -879,7 +889,7 @@ mod tests {
             .unwrap_err();
         assert!(matches!(
             err,
-            RegisterMobileShortcutDeviceError::UsernameInvalidShape(_)
+            RegisterMobileShortcutDeviceError::UsernameTooLong { max: 32, got: 33 }
         ));
     }
 
@@ -896,7 +906,7 @@ mod tests {
             .unwrap_err();
         assert!(matches!(
             err,
-            RegisterMobileShortcutDeviceError::UsernameInvalidShape(_)
+            RegisterMobileShortcutDeviceError::UsernameMustStartWithLetter
         ));
     }
 
@@ -913,7 +923,7 @@ mod tests {
             .unwrap_err();
         assert!(matches!(
             err,
-            RegisterMobileShortcutDeviceError::UsernameInvalidShape(_)
+            RegisterMobileShortcutDeviceError::UsernameContainsForbiddenChars
         ));
     }
 

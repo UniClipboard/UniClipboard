@@ -163,8 +163,17 @@ pub fn render_register_error(err: &RegisterMobileShortcutDeviceError) -> String 
         RegisterMobileShortcutDeviceError::UsernameTaken(name) => {
             format!("Username `{name}` is already taken — pick another.")
         }
-        RegisterMobileShortcutDeviceError::UsernameInvalidShape(reason) => {
-            format!("Invalid username: {reason}")
+        RegisterMobileShortcutDeviceError::UsernameTooShort { min, got } => {
+            format!("Username is too short: must be at least {min} characters (got {got}).")
+        }
+        RegisterMobileShortcutDeviceError::UsernameTooLong { max, got } => {
+            format!("Username is too long: must be at most {max} characters (got {got}).")
+        }
+        RegisterMobileShortcutDeviceError::UsernameMustStartWithLetter => {
+            "Username must start with an ASCII letter.".into()
+        }
+        RegisterMobileShortcutDeviceError::UsernameContainsForbiddenChars => {
+            "Username contains forbidden characters — only letters, digits, and underscore are allowed.".into()
         }
         RegisterMobileShortcutDeviceError::PasswordTooShort { min } => {
             format!("Password is too short (minimum {min} characters).")

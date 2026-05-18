@@ -9,18 +9,21 @@
 #   curl -fsSL .../install.sh | bash -s -- --prefix "$HOME/Applications"   # macOS, user-level
 #
 # Environment variables:
-#   UC_VERSION      Specific version (e.g. v0.9.0); defaults to latest
-#   UC_FORMAT       Force install format: deb | rpm | snap | appimage | app
-#   UC_PREFIX       Install directory override:
-#                     - macOS (app)      defaults to /Applications
-#                     - Linux (appimage) defaults to $HOME/.local
-#   UC_REPO         GitHub repo, defaults to UniClipboard/UniClipboard
-#   GITHUB_TOKEN    Optional, sidesteps the GitHub API rate limit
+#   UC_VERSION       Specific version (e.g. v0.9.0); defaults to latest
+#   UC_FORMAT        Force install format: deb | rpm | copr | snap | appimage | app
+#   UC_PREFIX        Install directory override:
+#                      - macOS (app)      defaults to /Applications
+#                      - Linux (appimage) defaults to $HOME/.local
+#   UC_REPO          GitHub repo, defaults to UniClipboard/UniClipboard
+#   UC_COPR_PROJECT  COPR project (defaults to mkdir700/uniclipboard)
+#   GITHUB_TOKEN     Optional, sidesteps the GitHub API rate limit
 #
 # Auto-detection:
 #   - macOS:        download .app.tar.gz and move it to PREFIX
 #   - Ubuntu 20.04: snap (host lacks libwebkit2gtk-4.1, .deb won't launch)
-#   - Other Linux:  with root/sudo + apt/dpkg → deb; dnf/yum/rpm → rpm; otherwise AppImage
+#   - Other Linux:  with root/sudo + apt/dpkg → deb; dnf-based + no --version
+#                   → COPR (so `dnf upgrade` keeps tracking releases);
+#                   dnf-based + --version → local .rpm; otherwise AppImage
 #
 # Note: on macOS you can also use Homebrew — brew install --cask uniclipboard
 
@@ -30,25 +33,33 @@ REPO="${UC_REPO:-UniClipboard/UniClipboard}"
 APP_NAME="UniClipboard"
 APP_BIN="uniclipboard"
 APP_ID="app.uniclipboard.desktop"
+COPR_PROJECT="${UC_COPR_PROJECT:-mkdir700/uniclipboard}"
 
 VERSION="${UC_VERSION:-}"
 FORMAT="${UC_FORMAT:-}"
 PREFIX="${UC_PREFIX:-}"
+
+# Distinguishes a user-pinned version from the auto-resolved "latest" tag:
+# only an explicit pin should disable the COPR repo path (COPR can't pin
+# arbitrary versions, so the local .rpm path is used instead).
+VERSION_EXPLICIT=""
+[[ -n "$VERSION" ]] && VERSION_EXPLICIT=1
 
 usage() {
   cat <<'EOF'
 UniClipboard installer (Linux / macOS)
 
 Usage:
-  install.sh [--version vX.Y.Z] [--format deb|rpm|snap|appimage|app] [--prefix DIR]
+  install.sh [--version vX.Y.Z] [--format deb|rpm|copr|snap|appimage|app] [--prefix DIR]
 
 Environment:
-  UC_VERSION, UC_FORMAT, UC_PREFIX, UC_REPO, GITHUB_TOKEN
+  UC_VERSION, UC_FORMAT, UC_PREFIX, UC_REPO, UC_COPR_PROJECT, GITHUB_TOKEN
 
 Examples:
   install.sh
   install.sh --version v0.9.0
   install.sh --format snap                  # recommended on Ubuntu 20.04
+  install.sh --format copr                  # Fedora/RHEL: dnf upgrade tracks releases
   install.sh --format appimage              # Linux, no sudo
   install.sh --prefix "$HOME/Applications"  # macOS, user-level
 EOF
@@ -56,7 +67,7 @@ EOF
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --version) [[ $# -ge 2 ]] || { echo "missing argument for --version" >&2; exit 1; }; VERSION="$2"; shift 2 ;;
+    --version) [[ $# -ge 2 ]] || { echo "missing argument for --version" >&2; exit 1; }; VERSION="$2"; VERSION_EXPLICIT=1; shift 2 ;;
     --format)  [[ $# -ge 2 ]] || { echo "missing argument for --format"  >&2; exit 1; }; FORMAT="$2";  shift 2 ;;
     --prefix)  [[ $# -ge 2 ]] || { echo "missing argument for --prefix"  >&2; exit 1; }; PREFIX="$2";  shift 2 ;;
     -h|--help) usage; exit 0 ;;
@@ -151,7 +162,14 @@ choose_format() {
   if [[ -n "$SUDO" || $EUID -eq 0 ]]; then
     if command -v dpkg >/dev/null 2>&1 && command -v apt-get >/dev/null 2>&1; then echo deb; return; fi
     if command -v rpm >/dev/null 2>&1 \
-       && { command -v dnf >/dev/null 2>&1 || command -v yum >/dev/null 2>&1; }; then echo rpm; return; fi
+       && { command -v dnf >/dev/null 2>&1 || command -v yum >/dev/null 2>&1; }; then
+      # On dnf-based distros, prefer the COPR repo (mkdir700/uniclipboard)
+      # so that `dnf upgrade` keeps tracking new releases. Fall back to
+      # the local .rpm path only when the user pinned a specific version,
+      # since COPR can't pin arbitrary versions.
+      if [[ -n "$VERSION_EXPLICIT" ]]; then echo rpm; else echo copr; fi
+      return
+    fi
   fi
   echo appimage
 }
@@ -160,8 +178,8 @@ FORMAT="$(choose_format)"
 # OS and FORMAT must match
 case "$OS:$FORMAT" in
   macos:app) ;;
-  linux:deb|linux:rpm|linux:snap|linux:appimage) ;;
-  *) die "${OS} does not support --format ${FORMAT} (macOS uses app; Linux uses deb/rpm/snap/appimage)" ;;
+  linux:deb|linux:rpm|linux:copr|linux:snap|linux:appimage) ;;
+  *) die "${OS} does not support --format ${FORMAT} (macOS uses app; Linux uses deb/rpm/copr/snap/appimage)" ;;
 esac
 
 # ---- PREFIX defaults (per format) -------------------------------------------
@@ -275,6 +293,34 @@ install_snap() {
   printf '       sudo snap connect %s:password-manager-service\n' "$APP_BIN"
 }
 
+# ---- Linux: COPR (preferred on Fedora / RHEL / openSUSE) --------------------
+# Enables the mkdir700/uniclipboard COPR repo, then `dnf install uniclipboard`,
+# so that later `dnf upgrade` automatically tracks new releases. Trade-off
+# vs. the local-rpm path: COPR can't pin a specific version, so when the
+# user passes --version we fall through to install_rpm() instead (handled
+# in choose_format()).
+install_copr() {
+  if [[ -z "$SUDO" && $EUID -ne 0 ]]; then
+    die "root/sudo is required to enable a COPR repo and install via dnf."
+  fi
+  if ! command -v dnf >/dev/null 2>&1; then
+    die "dnf is required for the COPR path; use --format rpm or --format appimage instead."
+  fi
+
+  # The `dnf copr` subcommand is shipped by dnf-plugins-core. Fedora has it
+  # by default; on CentOS / RHEL / openSUSE it usually needs installing.
+  if ! $SUDO dnf copr --help >/dev/null 2>&1; then
+    info "Installing dnf-plugins-core for the 'dnf copr' subcommand…"
+    $SUDO dnf install -y dnf-plugins-core
+  fi
+
+  info "Enabling COPR repository ${COPR_PROJECT}…"
+  $SUDO dnf copr enable -y "$COPR_PROJECT"
+
+  info "Installing ${APP_BIN} via dnf (COPR ${COPR_PROJECT})…"
+  $SUDO dnf install -y "$APP_BIN"
+}
+
 # ---- Linux: .rpm -------------------------------------------------------------
 install_rpm() {
   local file="${APP_NAME}-${VER_NUM}-1.${RPM_ARCH}.rpm"
@@ -341,17 +387,18 @@ case "$FORMAT" in
   app)      install_macos_app ;;
   deb)      install_deb ;;
   rpm)      install_rpm ;;
+  copr)     install_copr ;;
   snap)     install_snap ;;
   appimage) install_appimage ;;
   *) die "unknown format: ${FORMAT}" ;;
 esac
 
-# snap versions are managed by the snap store, not the GitHub release tag.
-if [[ "$FORMAT" == "snap" ]]; then
-  ok "${APP_NAME} installed (from snap stable channel)."
-else
-  ok "${APP_NAME} ${VERSION} installed."
-fi
+# snap / copr versions are managed externally, not by the GitHub release tag.
+case "$FORMAT" in
+  snap) ok "${APP_NAME} installed (from snap stable channel)." ;;
+  copr) ok "${APP_NAME} installed (from COPR ${COPR_PROJECT}; track updates with 'dnf upgrade')." ;;
+  *)    ok "${APP_NAME} ${VERSION} installed." ;;
+esac
 case "$FORMAT" in
   app)
     info "Run: search for UniClipboard in Launchpad/Spotlight, or 'open -a UniClipboard'"

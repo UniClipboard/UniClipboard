@@ -57,9 +57,10 @@ const NOISE_FILTERS: &[&str] = &[
     // 直接做 `meta.len / meta.stride`,而 `noq_udp::RecvMeta.stride` 在 GRO/GSO
     // 边界(空 datagram、内核回退到非分段路径)允许为 0,触发 divide-by-zero
     // panic —— 因为 panic 在第三方 crate 的 trace! 求值阶段,我们栈上没有任何
-    // uc_* 帧,只能在拿到 trace event 前就把该 target 截掉。上游尚未修复
-    // (net-tools 无对应 issue),在此用 EnvFilter 硬上限堵 trace。受影响:
-    // Sentry UNICLIPBOARD-RUST-18 (Windows) / -S (macOS),同根因被按 OS 拆组。
+    // uc_* 帧,只能在拿到 trace event 前就把该 target 截掉。上游跟踪
+    // n0-computer/net-tools#148;在上游 release 修复前用 EnvFilter 硬上限堵
+    // trace。受影响 Sentry: UNICLIPBOARD-RUST-18 (Windows) / -S (macOS),
+    // 同根因被按 OS 拆组。
     "netwatch::udp=debug",
     // QUIC connection state machine internals. Cap at WARN: silences the
     // ~40k DEBUG/INFO events per peer-hour of steady-state churn but keeps

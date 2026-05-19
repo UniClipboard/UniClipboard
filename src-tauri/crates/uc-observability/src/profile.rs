@@ -53,6 +53,14 @@ const NOISE_FILTERS: &[&str] = &[
     // harmless because reachability still works over other interfaces,
     // but high-frequency, so cap at ERROR to keep Sentry Logs quiet.
     "noq_udp=error",
+    // netwatch 0.16/0.17/main 在 `UdpSocket::poll_recv_noq` 的 trace! 字段里
+    // 直接做 `meta.len / meta.stride`,而 `noq_udp::RecvMeta.stride` 在 GRO/GSO
+    // 边界(空 datagram、内核回退到非分段路径)允许为 0,触发 divide-by-zero
+    // panic —— 因为 panic 在第三方 crate 的 trace! 求值阶段,我们栈上没有任何
+    // uc_* 帧,只能在拿到 trace event 前就把该 target 截掉。上游尚未修复
+    // (net-tools 无对应 issue),在此用 EnvFilter 硬上限堵 trace。受影响:
+    // Sentry UNICLIPBOARD-RUST-18 (Windows) / -S (macOS),同根因被按 OS 拆组。
+    "netwatch::udp=debug",
     // QUIC connection state machine internals. Cap at WARN: silences the
     // ~40k DEBUG/INFO events per peer-hour of steady-state churn but keeps
     // the WARN/ERROR signals visible. The earlier `=off` here masked the
@@ -165,7 +173,14 @@ impl LogProfile {
     /// Check if `RUST_LOG` is set and return an override `EnvFilter`.
     fn rust_log_override() -> Option<EnvFilter> {
         if std::env::var("RUST_LOG").is_ok() {
-            EnvFilter::try_from_default_env().ok()
+            let filter = EnvFilter::try_from_default_env().ok()?;
+            // 即使用户主动开了 RUST_LOG=trace 也必须把 netwatch::udp 压回 debug,
+            // 否则会触发 netwatch udp.rs:436 的 divide-by-zero panic(详见
+            // NOISE_FILTERS 同名条目)。`add_directive` 会覆盖同 target 的更
+            // 宽松规则,放在用户 RUST_LOG 解析之后追加即可生效。
+            let filter =
+                filter.add_directive("netwatch::udp=debug".parse().expect("static directive"));
+            Some(filter)
         } else {
             None
         }

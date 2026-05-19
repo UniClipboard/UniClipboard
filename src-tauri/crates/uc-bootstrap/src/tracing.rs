@@ -213,15 +213,27 @@ pub fn init_tracing_subscriber() -> anyhow::Result<()> {
                 // Tracing ERROR + WARN events are routed to Logs by the
                 // `event_filter` below; INFO stays as a breadcrumb only.
                 enable_logs: true,
-                // Runtime telemetry gate. Drops every outgoing event (incl.
-                // panics from the sentry-panic integration) when the user has
-                // telemetry off, without un-installing any global hook.
+                // Runtime telemetry gate + known-upstream-panic mute.
+                //
+                // Drops every outgoing event (incl. panics from the
+                // sentry-panic integration) when the user has telemetry off,
+                // without un-installing any global hook. After the gate we
+                // also drop the small set of panics we've already traced to
+                // open upstream issues (see `known_upstream_panic`) — they
+                // would otherwise dominate the fatal-issue board with crashes
+                // we can't fix from this codebase.
                 before_send: Some(Arc::new(|event| {
-                    if uc_observability::is_telemetry_enabled() {
-                        Some(event)
-                    } else {
-                        None
+                    if !uc_observability::is_telemetry_enabled() {
+                        return None;
                     }
+                    if let Some(tracker) = known_upstream_panic(&event) {
+                        ::tracing::debug!(
+                            tracker,
+                            "dropping known-upstream panic from Sentry event stream"
+                        );
+                        return None;
+                    }
+                    Some(event)
                 })),
                 // Same gate for the breadcrumb trail — when telemetry is off
                 // we drop them at capture time so re-enabling telemetry mid-
@@ -514,4 +526,113 @@ pub fn install_panic_logging_hook() {
     }));
 
     ::tracing::debug!("panic logging hook installed");
+}
+
+/// Identify Sentry panic events that match an upstream bug we've already
+/// filed but can't fix from this codebase. Returns the tracker tag when the
+/// event should be suppressed, or `None` to let it flow to Sentry.
+///
+/// Matching is two-step on purpose:
+/// 1. exception `type == "panic"` 且 `value == <字面量>` 是 hot path,99% 的
+///    panic 在这一步就被否决;
+/// 2. 再校验栈里出现了对应上游 crate 的具名 frame,避免我们或第三方代码
+///    碰巧 panic 了同样的字符串就被静默吞掉。
+///
+/// 每条规则都带一个 tracker tag(`<crate>#<issue>`),回收时直接 grep 它
+/// 找到对应 match arm。
+fn known_upstream_panic(event: &sentry::protocol::Event<'_>) -> Option<&'static str> {
+    for exc in event.exception.values.iter() {
+        if exc.ty != "panic" {
+            continue;
+        }
+        let value = exc.value.as_deref().unwrap_or("");
+        // tao#1180 / PR #1188 — Windows 退出时 EventLoop 已进入 Destroyed,
+        // 系统又派发一条 paint message,tao runner 状态机硬 panic。我们
+        // 已 graceful 关掉 daemon、记完 `Application exiting` 日志,功能
+        // 影响为零,纯噪音。等 tauri 升级到带 PR #1188 修复的 tao 后回收。
+        // Substring match because Sentry serializes the frame as
+        // `EventLoopRunner::move_state_to<T>` (with the generic), and the
+        // exact suffix could shift with future tao refactors. The fully
+        // qualified prefix `tao::platform_impl::platform::event_loop::runner`
+        // is specific enough to never collide with anything else.
+        if value == "cannot move state from Destroyed"
+            && exception_has_frame_containing(
+                exc,
+                "tao::platform_impl::platform::event_loop::runner::EventLoopRunner::move_state_to",
+            )
+        {
+            return Some("tao#1180");
+        }
+    }
+    None
+}
+
+fn exception_has_frame_containing(exc: &sentry::protocol::Exception, needle: &str) -> bool {
+    exc.stacktrace
+        .as_ref()
+        .map(|st| {
+            st.frames.iter().any(|f| {
+                f.function
+                    .as_deref()
+                    .is_some_and(|fn_| fn_.contains(needle))
+            })
+        })
+        .unwrap_or(false)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use sentry::protocol::{Event, Exception, Frame, Stacktrace, Values};
+
+    fn make_panic_event(value: &str, frame_fn: Option<&str>) -> Event<'static> {
+        let stacktrace = frame_fn.map(|f| Stacktrace {
+            frames: vec![Frame {
+                function: Some(f.to_string()),
+                ..Default::default()
+            }],
+            ..Default::default()
+        });
+        Event {
+            exception: Values {
+                values: vec![Exception {
+                    ty: "panic".into(),
+                    value: Some(value.into()),
+                    stacktrace,
+                    ..Default::default()
+                }],
+            },
+            ..Default::default()
+        }
+    }
+
+    // Realistic frame string Sentry actually serializes — note the `<T>` suffix.
+    const TAO_DESTROYED_FRAME: &str =
+        "tao::platform_impl::platform::event_loop::runner::EventLoopRunner::move_state_to<T>";
+
+    #[test]
+    fn drops_tao_destroyed_panic_with_matching_frame() {
+        let ev = make_panic_event(
+            "cannot move state from Destroyed",
+            Some(TAO_DESTROYED_FRAME),
+        );
+        assert_eq!(known_upstream_panic(&ev), Some("tao#1180"));
+    }
+
+    #[test]
+    fn keeps_same_message_when_frame_is_unrelated() {
+        // Defense in depth: if some other crate panics with the same string
+        // (or a user does in their own code), we must NOT silently drop it.
+        let ev = make_panic_event(
+            "cannot move state from Destroyed",
+            Some("uc_app::some_module::do_thing"),
+        );
+        assert_eq!(known_upstream_panic(&ev), None);
+    }
+
+    #[test]
+    fn keeps_unrelated_panic_messages() {
+        let ev = make_panic_event("attempt to divide by zero", Some(TAO_DESTROYED_FRAME));
+        assert_eq!(known_upstream_panic(&ev), None);
+    }
 }

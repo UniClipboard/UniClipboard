@@ -94,6 +94,20 @@ jobs:
         shell: bash
         run: echo "${CARGO_HOME:-$HOME/.cargo}/bin" >> "$GITHUB_PATH"
 
+      - name: ensure darwin targets installed on pinned toolchain
+        # 见 build.yml 同名 step 注释:src-tauri/rust-toolchain.toml 把 cargo
+        # 锁到一个具体 channel(例如 1.95.0),与 dtolnay/rust-toolchain@stable
+        # 装的 stable 是两个独立 toolchain。在 src-tauri/ 下跑 cargo 时,
+        # target 必须装在 pinned channel,否则报 `Target ... is not installed`
+        # (alpha-build run 26074579386 因此挂掉,与 build.yml 早先修过的
+        # 25960898069 / 25961183688 同根因)。
+        if: matrix.platform == 'macos-latest'
+        shell: bash
+        run: |
+          TC=$(cd src-tauri && rustup show active-toolchain | awk '{print $1}')
+          echo "pinned toolchain: $TC"
+          rustup target add --toolchain "$TC" aarch64-apple-darwin x86_64-apple-darwin
+
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
         with:

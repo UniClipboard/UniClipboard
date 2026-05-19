@@ -28,6 +28,11 @@ on:
           - beta
           - rc
         default: stable
+      base_branch:
+        description: 'Branch to base the release off (default: main). Use release/vX.Y.Z when iterating prereleases on a release branch whose commits have not yet been merged back to main.'
+        required: false
+        type: string
+        default: 'main'
 
 jobs:
   prepare:
@@ -37,11 +42,12 @@ jobs:
       pull-requests: write
     env:
       CODEX_API_KEY: ${{ secrets.CODEX_API_KEY }}
+      BASE_BRANCH: ${{ inputs.base_branch || 'main' }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          ref: main
+          ref: ${{ inputs.base_branch || 'main' }}
           token: ${{ secrets.REPO_BOT_TOKEN }}
           fetch-depth: 0
           submodules: recursive
@@ -228,7 +234,7 @@ jobs:
             --body "$(cat <<EOF
           ## Release v${VERSION}
 
-          This PR prepares the release of v${VERSION}.
+          This PR prepares the release of v${VERSION} (base: \`${BASE_BRANCH}\`).
 
           ### Changes
           - Version bumped to ${VERSION} in package.json, tauri.conf.json, Cargo.toml, Cargo.lock
@@ -242,7 +248,7 @@ jobs:
           > **Do not manually create a tag.** Merging this PR handles everything.
           EOF
           )" \
-            --base main \
+            --base "${BASE_BRANCH}" \
             --head "release/v${VERSION}")
 
           echo "pr_url=$PR_URL" >> "$GITHUB_OUTPUT"

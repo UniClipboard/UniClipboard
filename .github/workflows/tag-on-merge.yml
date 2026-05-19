@@ -4,7 +4,10 @@ run-name: tag-${{ github.event.pull_request.head.ref }}
 on:
   pull_request:
     types: [closed]
-    branches: [main]
+    # 同时监听 main 和 release/v* 作为 PR base —— prepare-release.yml 支持
+    # 在已存在的 release branch(commits 尚未合回 main)上继续 bump 出下一个
+    # prerelease,这种 PR 的 base 是 release/vX.Y.Z 而不是 main。
+    branches: [main, 'release/v*']
 
 jobs:
   tag-release:

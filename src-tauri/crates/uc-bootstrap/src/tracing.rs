@@ -563,6 +563,21 @@ fn known_upstream_panic(event: &sentry::protocol::Event<'_>) -> Option<&'static 
         {
             return Some("tao#1180");
         }
+        // libappindicator-rs / tauri tray-icon — Linux 用户的
+        // libayatana-appindicator3 没装,或者 libayatana-ido3 因为 glib
+        // 符号缺失加载失败。dlopen 失败被 panic 而不是 Err 返回,我们已
+        // 在 uc_tauri::tray 用 catch_unwind 兜住,app 继续启动只是少了
+        // tray 图标。catch_unwind 不会阻止 panic hook 触发,所以 Sentry
+        // 仍会收到一条事件 —— 在 sink 这边 drop 掉避免持续噪音。
+        //
+        // 用 starts_with 而不是精确匹配:实际 value 多行,前缀后面跟具体
+        // 的 .so 路径与 undefined symbol 名,因机器而异。这条 panic 的
+        // 栈帧大多是 system .so 的 `<unknown>`,所以这里不再校验 frame。
+        if value
+            .starts_with("Failed to load ayatana-appindicator3 or appindicator3 dynamic library")
+        {
+            return Some("libappindicator-rs#dlopen");
+        }
     }
     None
 }
@@ -634,5 +649,19 @@ mod tests {
     fn keeps_unrelated_panic_messages() {
         let ev = make_panic_event("attempt to divide by zero", Some(TAO_DESTROYED_FRAME));
         assert_eq!(known_upstream_panic(&ev), None);
+    }
+
+    #[test]
+    fn drops_libappindicator_dlopen_panic_with_distro_specific_suffix() {
+        // 真实 Sentry 上看到的多行 value(prefix + 具体 .so 路径与符号),
+        // starts_with 必须把整条吞掉。
+        let ev = make_panic_event(
+            "Failed to load ayatana-appindicator3 or appindicator3 dynamic library\n\
+             /lib/x86_64-linux-gnu/libayatana-ido3-0.4.so.0: undefined symbol: g_once_init_leave_pointer\n\
+             libayatana-appindicator3.so: 无法打开共享目标文件: 没有那个文件或目录\n\
+             libappindicator3.so: 无法打开共享目标文件: 没有那个文件或目录",
+            None, // frames 通常都是 <unknown>,栈不可用
+        );
+        assert_eq!(known_upstream_panic(&ev), Some("libappindicator-rs#dlopen"));
     }
 }

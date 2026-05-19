@@ -3,6 +3,7 @@
 //! This module provides [`TrayState`] which manages the system tray icon,
 //! its context menu, and language-dependent menu item labels.
 
+use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::sync::Mutex;
 
 use tauri::menu::{MenuBuilder, MenuItem};
@@ -123,7 +124,35 @@ impl TrayState {
             }
         }
 
-        let tray = builder.build(app)?;
+        // Linux 上 tauri 的 tray-icon → libappindicator-rs 在 dlopen 失败时
+        // 走 panic 而不是 Err —— 最常见的两种情况:
+        //   1. 用户系统缺 `libayatana-appindicator3-1`(deb)或 `libayatana-appindicator`
+        //      (rpm/pacman),Arch / CachyOS / 老 Ubuntu 上特别常见。
+        //   2. 系统有 libayatana-ido3 但版本太新,要的 glib 符号
+        //      (`g_once_init_leave_pointer`) 在用户的 libglib 里不存在 →
+        //      undefined symbol → 加载链断在 ido3 上。
+        //
+        // 这个 panic 沿 FFI/C 调用栈直接撂倒进程,run.rs 那一层的
+        // `if let Err(e)` 接不住。`catch_unwind` 把它兜成"启动正常,但没
+        // tray 图标" —— 比整个 app 启不起来好得多。`is_initialized()`
+        // 保持返回 false,所有依赖 tray 的菜单更新路径已经 noop。
+        //
+        // Sentry: UNICLIPBOARD-RUST-G / -10。同根因被按栈细节拆组。
+        let tray = match catch_unwind(AssertUnwindSafe(|| builder.build(app))) {
+            Ok(Ok(tray)) => tray,
+            Ok(Err(e)) => return Err(e),
+            Err(payload) => {
+                let msg = panic_payload_to_string(payload);
+                warn!(
+                    error = %msg,
+                    "System tray init panicked (likely libayatana-appindicator3 \
+                     missing or glib ABI skew); continuing without tray. \
+                     Install `libayatana-appindicator3-1` (apt) / \
+                     `libayatana-appindicator` (pacman/dnf) and restart to restore it."
+                );
+                return Ok(());
+            }
+        };
 
         info!(
             language = %language,
@@ -247,5 +276,18 @@ fn labels_for_language(language: &str) -> (&'static str, &'static str, &'static 
     match language {
         "zh-CN" => ("打开 UniClipboard", "设置", "退出"),
         _ => ("Open UniClipboard", "Settings", "Quit"),
+    }
+}
+
+/// Stringify a `catch_unwind` payload — panics carry either `&'static str`
+/// or `String`; anything else stays opaque to avoid re-panicking inside the
+/// formatter.
+fn panic_payload_to_string(payload: Box<dyn std::any::Any + Send>) -> String {
+    if let Some(s) = payload.downcast_ref::<&'static str>() {
+        (*s).to_string()
+    } else if let Some(s) = payload.downcast_ref::<String>() {
+        s.clone()
+    } else {
+        "<non-string panic payload>".to_string()
     }
 }

@@ -69,6 +69,15 @@ chrono = { version = "0.4", features = ["serde"] }
 # Tracing support
 tracing = "0.1"
 
+[target.'cfg(target_os = "linux")'.dependencies]
+# Linux tray-icon 走 libappindicator-rs，后者用 once_cell::Lazy 包了
+# dlopen，找不到 libayatana-appindicator3 时直接 panic!()。我们的 binary
+# release profile = "abort"，catch_unwind 无法接住，所以必须在调用
+# TrayIconBuilder::build 之前用 libloading 自己探一遍 4 个候选 .so，
+# 没一个能加载就跳过 tray init 而不是让上游 panic 撂倒整个进程。
+# 版本钉到 0.7 — 与 Cargo.lock 现有的间接依赖对齐避免双版本膨胀。
+libloading = "0.7"
+
 [target.'cfg(target_os = "windows")'.dependencies]
 windows = { version = "0.61", features = [
     "Win32_Foundation",

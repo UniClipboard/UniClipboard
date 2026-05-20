@@ -14,10 +14,49 @@ use uc_core::ports::SettingsPort;
 use uc_core::{ClipboardChangeOrigin, SystemClipboardSnapshot};
 
 use crate::facade::{
-    BlobTransferFacade, ClipboardSyncFacade, PublishBlobCommand, PublishBlobPathCommand,
+    BlobTransferError, BlobTransferFacade, ClipboardSyncFacade, PublishBlobCommand,
+    PublishBlobPathCommand, PublishBlobResult,
 };
 use crate::sync_planner::{FileCandidate, FileSyncIntent, OutboundSyncPlanner};
 use crate::V3BlobRef;
+
+/// Crate-internal adapter trait over [`BlobTransferFacade`]'s publish surface.
+///
+/// 抽出这层只为单测 ergonomics:[`publish_file_blob_refs`] /
+/// [`publish_oversized_inline_blob_refs`] 同时被 `dispatch_capture` 与
+/// `ResendEntryUseCase` 复用,后者需要在不构造完整 `BlobTransferFacade`(深依赖
+/// `PublishBlobUseCase` + `ContentHashPort` + `BlobTransferPort` + `BlobReferenceRepositoryPort`)
+/// 的前提下断言 publish 调用入参/计数。trait 不出现在任何对外 API,production wiring
+/// 通过 [`OutboundBlobPublishGateway`]-for-[`BlobTransferFacade`] blanket impl 自动满足。
+#[async_trait]
+pub(crate) trait OutboundBlobPublishGateway: Send + Sync {
+    async fn publish_blob(
+        &self,
+        command: PublishBlobCommand,
+    ) -> Result<PublishBlobResult, BlobTransferError>;
+
+    async fn publish_blob_path(
+        &self,
+        command: PublishBlobPathCommand,
+    ) -> Result<PublishBlobResult, BlobTransferError>;
+}
+
+#[async_trait]
+impl OutboundBlobPublishGateway for BlobTransferFacade {
+    async fn publish_blob(
+        &self,
+        command: PublishBlobCommand,
+    ) -> Result<PublishBlobResult, BlobTransferError> {
+        BlobTransferFacade::publish_blob(self, command).await
+    }
+
+    async fn publish_blob_path(
+        &self,
+        command: PublishBlobPathCommand,
+    ) -> Result<PublishBlobResult, BlobTransferError> {
+        BlobTransferFacade::publish_blob_path(self, command).await
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct ClipboardOutboundInput {
@@ -199,12 +238,12 @@ impl ClipboardOutboundPort for ClipboardOutboundDispatcher {
 
         let publish_files_start = Instant::now();
         let mut blob_refs =
-            publish_file_blob_refs(&self.blob_transfer, &plan.files, &entry_id).await?;
+            publish_file_blob_refs(self.blob_transfer.as_ref(), &plan.files, &entry_id).await?;
         let publish_files_ms = publish_files_start.elapsed().as_millis() as u64;
 
         let publish_inline_start = Instant::now();
         let mut image_blob_refs = publish_oversized_inline_blob_refs(
-            &self.blob_transfer,
+            self.blob_transfer.as_ref(),
             &mut clipboard_intent.snapshot,
             &entry_id,
         )
@@ -285,7 +324,7 @@ fn resolve_apfs_file_reference(_path: &Path) -> Option<PathBuf> {
     None
 }
 
-fn extract_file_paths_from_snapshot(snapshot: &SystemClipboardSnapshot) -> Vec<PathBuf> {
+pub(crate) fn extract_file_paths_from_snapshot(snapshot: &SystemClipboardSnapshot) -> Vec<PathBuf> {
     let mut paths = Vec::new();
     for rep in &snapshot.representations {
         let is_file_rep = rep
@@ -368,8 +407,8 @@ const OVERSIZED_REP_THRESHOLD_BYTES: usize = 64 * 1024;
 ///
 /// 仅对 `mime` 以 `image/` 开头的 rep 生效。其它类型的大 rep 暂保持 inline；
 /// 后续若有非 image 大 rep 撞上限，会在此处扩展并补对应的 receiver 处理。
-async fn publish_oversized_inline_blob_refs(
-    blob_transfer: &BlobTransferFacade,
+pub(crate) async fn publish_oversized_inline_blob_refs(
+    blob_transfer: &dyn OutboundBlobPublishGateway,
     snapshot: &mut SystemClipboardSnapshot,
     entry_id: &EntryId,
 ) -> Result<Vec<V3BlobRef>, ClipboardOutboundError> {
@@ -441,8 +480,8 @@ async fn publish_oversized_inline_blob_refs(
     Ok(blob_refs)
 }
 
-async fn publish_file_blob_refs(
-    blob_transfer: &BlobTransferFacade,
+pub(crate) async fn publish_file_blob_refs(
+    blob_transfer: &dyn OutboundBlobPublishGateway,
     files: &[FileSyncIntent],
     entry_id: &EntryId,
 ) -> Result<Vec<V3BlobRef>, ClipboardOutboundError> {

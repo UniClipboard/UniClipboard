@@ -249,6 +249,31 @@ pub(crate) enum DispatchSyncError {
     Repository(String),
 }
 
+/// Crate-internal abstraction over [`DispatchClipboardEntryUseCase::execute`].
+///
+/// Sole consumer is `ResendEntryUseCase`, whose unit tests assert dispatch
+/// input shape (`target_filter` / `entry_id` / `content_hash`) without
+/// constructing the full 14-port dispatch use case. Production wiring
+/// satisfies the trait through the blanket impl below. Not exposed beyond
+/// the crate.
+#[async_trait::async_trait]
+pub(crate) trait DispatchEntryRunner: Send + Sync {
+    async fn execute(
+        &self,
+        input: DispatchClipboardEntryInput,
+    ) -> Result<DispatchOutcome, DispatchSyncError>;
+}
+
+#[async_trait::async_trait]
+impl DispatchEntryRunner for DispatchClipboardEntryUseCase {
+    async fn execute(
+        &self,
+        input: DispatchClipboardEntryInput,
+    ) -> Result<DispatchOutcome, DispatchSyncError> {
+        DispatchClipboardEntryUseCase::execute(self, input).await
+    }
+}
+
 pub(crate) struct DispatchClipboardEntryUseCase {
     peer_addr_repo: Arc<dyn PeerAddressRepositoryPort>,
     member_repo: Arc<dyn MemberRepositoryPort>,

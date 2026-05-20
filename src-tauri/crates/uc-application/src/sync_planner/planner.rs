@@ -78,51 +78,56 @@ impl OutboundSyncPlanner {
             }
         };
 
-        // File sync is only applicable for LocalCapture.
-        let (eligible_files, file_transfers) = if origin == ClipboardChangeOrigin::LocalCapture
-            && settings.file_sync.file_sync_enabled
-        {
-            let max_file_size = settings.file_sync.max_file_size;
+        // File sync is only applicable for outbound, user-initiated origins
+        // (LocalCapture + Resend). RemotePush is already guarded above;
+        // LocalRestore writes the snapshot back to the local clipboard with no
+        // outbound fan-out, so it has no file-sync side.
+        let user_initiated_outbound = matches!(
+            origin,
+            ClipboardChangeOrigin::LocalCapture | ClipboardChangeOrigin::Resend
+        );
+        let (eligible_files, file_transfers) =
+            if user_initiated_outbound && settings.file_sync.file_sync_enabled {
+                let max_file_size = settings.file_sync.max_file_size;
 
-            let mut eligible: Vec<FileSyncIntent> = Vec::new();
-            let mut mappings: Vec<FileTransferMapping> = Vec::new();
+                let mut eligible: Vec<FileSyncIntent> = Vec::new();
+                let mut mappings: Vec<FileTransferMapping> = Vec::new();
 
-            for candidate in file_candidates {
-                if candidate.size <= max_file_size {
-                    let transfer_id = Uuid::new_v4().to_string();
-                    let filename = candidate
-                        .path
-                        .file_name()
-                        .map(|n| n.to_string_lossy().into_owned())
-                        .unwrap_or_default();
+                for candidate in file_candidates {
+                    if candidate.size <= max_file_size {
+                        let transfer_id = Uuid::new_v4().to_string();
+                        let filename = candidate
+                            .path
+                            .file_name()
+                            .map(|n| n.to_string_lossy().into_owned())
+                            .unwrap_or_default();
 
-                    mappings.push(FileTransferMapping {
-                        transfer_id: transfer_id.clone(),
-                        filename: filename.clone(),
-                    });
+                        mappings.push(FileTransferMapping {
+                            transfer_id: transfer_id.clone(),
+                            filename: filename.clone(),
+                        });
 
-                    eligible.push(FileSyncIntent {
-                        path: candidate.path,
-                        transfer_id,
-                        filename,
-                        size: candidate.size,
-                    });
+                        eligible.push(FileSyncIntent {
+                            path: candidate.path,
+                            transfer_id,
+                            filename,
+                            size: candidate.size,
+                        });
+                    }
                 }
-            }
 
-            (eligible, mappings)
-        } else {
-            (
-                Vec::<FileSyncIntent>::new(),
-                Vec::<FileTransferMapping>::new(),
-            )
-        };
+                (eligible, mappings)
+            } else {
+                (
+                    Vec::<FileSyncIntent>::new(),
+                    Vec::<FileTransferMapping>::new(),
+                )
+            };
 
         // all_files_excluded guard: only applies when we actually attempted file sync
-        // (LocalCapture + file_sync_enabled). If file sync was not attempted, file_candidates
-        // and extracted_paths_count are irrelevant.
-        let file_sync_attempted =
-            origin == ClipboardChangeOrigin::LocalCapture && settings.file_sync.file_sync_enabled;
+        // (LocalCapture | Resend + file_sync_enabled). If file sync was not attempted,
+        // file_candidates and extracted_paths_count are irrelevant.
+        let file_sync_attempted = user_initiated_outbound && settings.file_sync.file_sync_enabled;
         let all_files_excluded =
             file_sync_attempted && extracted_paths_count > 0 && eligible_files.is_empty();
 
